@@ -41,6 +41,7 @@ const LABELS_EN = {
     "decline_combat_reward": "Decline to pay reward cost",
     "decline_combat_reward_spy": "Decline to place {spy}",
     "decline_combat_reward_trash": "Decline to {trash}",
+    "decline_acquisition_spy": "Decline to place {spy}",
     "decline_contract_spy": "Decline to place {spy}",
     "decline_control_defense": "Decline to deploy defense",
     "decline_corrinth_city_payment": "Decline to pay",

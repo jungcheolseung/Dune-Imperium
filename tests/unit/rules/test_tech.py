@@ -244,6 +244,66 @@ def test_paying_spice_for_a_tile_does_not_undo_spice_gained_this_turn() -> None:
     assert condition_holds(bought, 0, GainedSpiceThisTurn(1))
 
 
+def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() -> None:
+    # A Harvest contract is met by "sending an Agent to a Maker board space
+    # and gaining the amount of spice shown during that turn (in total,
+    # including from sources other than the space itself)" [Main p. 16]
+    # (docs/rules/choam-module.md). The Agent frame counts the gain as the
+    # Spice now, less the Spice at placement, plus what was spent after it;
+    # a Tech tile bought through Rapid Engineering's frame on top of the
+    # Agent turn must be recorded as spent there, or its price hides gains.
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.rules.contracts import legal_contract_completion_actions
+
+    def card(card_id: str) -> str:
+        return next(
+            instance
+            for instance in imperium_deck_instance_ids(True)
+            if f":{card_id}:" in instance
+        )
+
+    desert_power = card("desert_power")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power, card("smuggler_s_haven")),
+        deck=(card("smuggler_s_harvester"),),
+        intrigue_cards=("intrigue:rapid_engineering:0",),
+        active_contract_ids=("contract:harvest_4",),
+        resources=Resources(water=1),
+    )
+    state = _turn_state(
+        owner,
+        stacks=(("gene_locked_vault",), ("glowglobes",), ("plasteel_blades",)),
+        config=TECH_CHOAM,
+    )
+    engine = UprisingRulesEngine()
+
+    def take(current: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return engine.apply(current, action).state
+
+    placed = take(state, "agent_turn", card_id=desert_power, space_id="hagga_basin")
+    gained = take(placed, "resolve_agent_card_effect")  # Desert Power: +2 spice
+    plotted = take(take(gained, "play_intrigue"), "choose_intrigue_discard")
+    bought = take(plotted, "acquire_tech", tech_id="gene_locked_vault", choice="card")
+
+    assert bought.decision_stack[-1].kind == "agent_effects"
+    context = dict(bought.decision_stack[-1].context)
+    assert context["spice_spent_after_placement"] == 1
+    harvested = take(bought, "harvest_maker_spice")
+    # 2 + 2 Spice gained this turn, 3 left after the tile.
+    assert harvested.players[0].resources.spice == 3
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_completion_actions(harvested, 0)
+    ] == ["contract:harvest_4"]
+
+
 def test_a_landsraad_visit_offers_the_face_up_tiles_the_owner_can_afford() -> None:
     state = _visit(_turn_state(_owner(resources=Resources(spice=2))), "assembly_hall")
 
@@ -554,6 +614,53 @@ def test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray() -> None
     assert all(frame.kind != "leader_signet" for frame in fighting.decision_stack)
 
 
+def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> None:
+    # Imperial Privilege: "Recall one of your other Agents from the board,
+    # and draw a card." [Board Guide p. 2]; docs/rules/board-spaces.md:
+    # "이번 turn에 보낸 Agent가 아닌 자신의 다른 Agent 1개를 recall", and an
+    # Into the Fray Agent may be recalled "뒤의 turn에" (on a later turn,
+    # OQ-037 (d)). The Ixian Embassy icon on the space lets Duncan buy
+    # Servo-Receivers and move this turn's Agent into the Conflict before
+    # the recall; that Agent used to be the only (forced) recall target.
+    engine = UprisingRulesEngine()
+    state = _visit(
+        _turn_state(
+            _owner(
+                leader_id="duncan_idaho",
+                influence=Influence(emperor=2),
+                resources=Resources(solari=4, spice=6, water=2),
+            ),
+            stacks=SERVO_STACKS,
+        ),
+        "imperial_privilege",
+    )
+    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    assert opened.decision_stack[-1].kind == "leader_signet"
+    deploy = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = engine.apply(opened, deploy).state
+    assert fighting.players[0].agent_in_conflict == 1
+    hand_before = len(fighting.players[0].hand)
+    declined = engine.apply(
+        fighting,
+        DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0),
+    )
+
+    seat = declined.state.players[0]
+    assert "recall_conflict_agent_for_imperial_privilege" not in {
+        action.action_id for action in engine.legal_actions(declined.state, 0)
+    }
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert len(seat.hand) == hand_before + 1
+    assert "imperial_privilege_recall_skipped" in {
+        event.kind for event in declined.events
+    }
+
+
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
     # [Steersman Y'rkoon card] (OQ-062).
@@ -714,6 +821,79 @@ def test_spy_drones_place_two_spies_with_deep_cover() -> None:
     done = apply_spy_placement(placed, second[0]).state
     assert done.players[0].spies_supply == 1
     assert done.decision_stack[-1].kind == "turn"
+
+
+def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> None:
+    # Spy Drones' acquire column prints two Spy with Deep Cover icons, and
+    # its own flip reads "If you recalled a Spy this turn:" [Spy Drones Tech
+    # tile]; with an empty supply "you may first recall one of your Spies
+    # for no effect" [Main pp. 11, 20]. "If you recalled a Spy this turn"
+    # counts the seat's own recalls during its own turn (OQ-044 (d)). Bought
+    # as the turn's last effect by the last seat to reveal, the tile has
+    # already opened that seat's next turn when its Spies are placed; the
+    # recall-first belongs to the closed turn and used to count toward the
+    # next one.
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+    )
+    state = _turn_state(
+        _owner(spies_supply=0, spy_post_ids=posts),
+        stacks=(("spy_drones",), (), ()),
+    )
+    state = replace(
+        state,
+        players=(
+            state.players[0],
+            *(replace(seat, has_revealed=True) for seat in state.players[1:]),
+        ),
+    )
+    bought = _acquire(_visit(state, "assembly_hall"), "spy_drones")
+    assert bought.decision_stack[-1].kind == "spy_placement"
+    next_turn = bought.decision_stack[-3]
+    assert next_turn.kind == "turn"
+    assert isinstance(next_turn.decision, PlayerDecision)
+    assert next_turn.decision.owner == 0
+
+    recall = next(
+        action
+        for action in legal_spy_placement_actions(bought, 0)
+        if action.action_id == "recall_spy_for_placement"
+    )
+    recalled = apply_spy_placement(bought, recall).state
+    placed = apply_spy_placement(
+        recalled, legal_spy_placement_actions(recalled, 0)[0]
+    ).state
+    decline = next(
+        action
+        for action in legal_spy_placement_actions(placed, 0)
+        if action.action_id == "decline_spy_placement"
+    )
+    done = apply_spy_placement(placed, decline).state
+    assert done.decision_stack[-1].kind == "turn"
+    assert done.players[0].spies_recalled_turn == 0
+
+    # Bought through a Tech frame opened in the seat's own turn (a Plot, no
+    # Agent-turn context), the recall-first is that turn's and still counts.
+    opened = push_tech_acquisition(
+        _turn_state(
+            _owner(spies_supply=0, spy_post_ids=posts),
+            stacks=(("spy_drones",), (), ()),
+        ),
+        0,
+        discount=0,
+        source="test",
+    ).state
+    plotted = _acquire(opened, "spy_drones")
+    own_recall = next(
+        action
+        for action in legal_spy_placement_actions(plotted, 0)
+        if action.action_id == "recall_spy_for_placement"
+    )
+    assert apply_spy_placement(plotted, own_recall).state.players[
+        0
+    ].spies_recalled_turn == 1
 
 
 def test_ornithopter_fleet_matches_every_face_up_battle_card_at_once() -> None:

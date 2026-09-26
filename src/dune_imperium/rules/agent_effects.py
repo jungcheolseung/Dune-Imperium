@@ -46,6 +46,7 @@ from dune_imperium.rules.combat_deployment import (
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_contract_by_effect,
+    mark_contract_spy_after_turn,
 )
 from dune_imperium.rules.effects import (
     active_agent_card,
@@ -1115,6 +1116,10 @@ def apply_agent_card_contract_completion(
         completed.state, decision_stack=completed.state.decision_stack[:depth]
     )
     advanced = advance_after_effect(base, context, base.players)
+    if advanced.decision_stack[-1].kind == FrameKind.TURN:
+        # The completion was the turn's last effect: a Spy recalled for its
+        # reward belongs to the closed turn, not the one just opened.
+        follow_up = tuple(mark_contract_spy_after_turn(frame) for frame in follow_up)
     next_state = replace(
         advanced, decision_stack=(*advanced.decision_stack, *follow_up)
     )
@@ -1331,7 +1336,7 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     if action not in legal_agent_card_recall_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card recall choice")
     _, context = current_agent_effect_context(state)
-    _, source_card_id, _ = _effect_subject(context)
+    _, source_card_id, turn_space_id = _effect_subject(context)
     if action.action_id == "decline_agent_card_recall":
         finish_agent_icon(context, AGENT_ICON_RECALL)
         return RuleResult(
@@ -1361,6 +1366,13 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     # The printed card draw is the box's other icon, resolved by its own
     # action in the owner's order (OQ-027).
     finish_agent_icon(context, AGENT_ICON_RECALL)
+    if space_id == turn_space_id:
+        # Twisted Mentat: "You may recall the Agent you sent this turn."
+        # [Twisted Mentat card]. This turn's Agent is home, not Into the
+        # Fray, so every Agent left in the Conflict is an earlier turn's and
+        # one of Imperial Privilege's "other Agents" [Board Guide p. 2]
+        # (OQ-037 (d)); board_effects reads this mark.
+        context["turn_agent_recalled"] = True
     next_state = advance_after_effect(
         state,
         context,
@@ -4106,9 +4118,20 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
+    ) or (
+        effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
+        and context.get("agent_card_spy_pending") is True
     ):
-        if legal_agent_card_spy_actions(state, player):
+        # Placing is mandatory only with a Spy in supply (the erratum to
+        # [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in
+        # your supply when you need to place one, you may first recall one
+        # of your Spies for no effect" [Main pp. 11, 20]: the recall stays on
+        # offer, and passing it up leaves the box to fizzle at the turn's
+        # end (``finish_agent_turn``). Arrakis Observer's Deep Cover Spy
+        # after its paid discard follows the same rule.
+        if owner.spies_supply > 0 and legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
+        context.pop("agent_card_spy_pending", None)
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:
@@ -4307,6 +4330,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             player,
             tuple(post.post_id for post in OBSERVATION_POSTS),
             source=event_source,
+            # As the turn's last effect the box handed the turn over already;
+            # a recall-first for this Spy is still this turn's (OQ-044 (d)).
+            turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
         )
         draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
         return RuleResult(state=draw.state, events=(event, *draw.events))

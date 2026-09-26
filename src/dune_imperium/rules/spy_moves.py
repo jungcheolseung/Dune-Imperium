@@ -133,7 +133,16 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     origin = context_str(context, "post_id", owner="Spy move frame")
     owner = state.players[action.actor]
-    recalled = recall_spy(owner, origin)
+    # The forced move (and the OQ-065 loss) is not a recall by the Spy's
+    # owner: the opponent's card makes them "move their Spy to an empty
+    # observation post" [FAQ p. 2] during the card player's turn, while
+    # "If you recalled a Spy this turn" counts the seat's own recalls in its
+    # own turn (OQ-044 (d)). Holy War resolved as a turn's last effect runs
+    # these frames after the next seat's turn has opened, so counting the
+    # move would credit that seat's turn.
+    recalled = replace(
+        recall_spy(owner, origin), spies_recalled_turn=owner.spies_recalled_turn
+    )
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{frame.frame_id}:recalled",
@@ -223,11 +232,15 @@ def spy_placement_frame(
     *,
     source: str,
     deep_cover: bool = False,
+    turn_closed: bool = False,
 ) -> GameState:
     """Push the owner's placement of a Spy on one of ``allowed_post_ids``.
 
     With ``deep_cover`` the placement ignores opponents' Spies (Spy with
     Deep Cover [Bloodlines pp. 5, 12]); only the owner's own Spies block.
+    ``turn_closed`` marks a Spy owed by an Agent turn that has already
+    handed over: a recall-first made for it belongs to that closed turn and
+    does not count as the newly opened turn's (OQ-044 (d)).
     """
 
     return state.push_decision(
@@ -247,6 +260,7 @@ def spy_placement_frame(
                 ("deep_cover", deep_cover),
                 ("player", player),
                 ("source", source),
+                *((("turn_closed", True),) if turn_closed else ()),
             ),
         )
     )
@@ -325,6 +339,10 @@ def apply_spy_placement(state: GameState, action: DomainAction) -> RuleResult:
     post_id = str(dict(action.arguments)["post_id"])
     if action.action_id == "recall_spy_for_placement":
         recalled = recall_spy(owner, post_id)
+        if dict(frame.context).get("turn_closed") is True:
+            recalled = replace(
+                recalled, spies_recalled_turn=owner.spies_recalled_turn
+            )
         return RuleResult(
             state=replace(state, players=replace_player(state.players, recalled)),
             events=(

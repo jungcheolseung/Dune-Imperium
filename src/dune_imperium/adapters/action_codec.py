@@ -222,6 +222,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # The generic Spy placement frame's way out when nothing can be
             # placed (every ruleset since the Emperor track's Spy uses it).
             "decline_spy_placement",
+            # An acquisition-bonus Spy may pass up the recall-first without a
+            # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
+            "decline_acquisition_spy",
             "resolve_faction_influence",
             "retreat_leader_troop",
             "reveal_turn",

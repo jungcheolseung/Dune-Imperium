@@ -9,6 +9,7 @@ a choice (a Spy post, a card to trash, a Faction) resolve through the space's
 dedicated actions further down this module.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Final, assert_never
 
@@ -1087,10 +1088,35 @@ def legal_imperial_privilege_actions(
                     actor=player,
                 ),
             )
-            if owner.agent_in_conflict
+            if _recallable_conflict_agents(owner, context)
             else ()
         ),
     )
+
+
+def _recallable_conflict_agents(
+    owner: PlayerState, context: Mapping[str, ActionValue]
+) -> int:
+    """Count the owner's Conflict Agents Imperial Privilege may recall.
+
+    "Recall one of your other Agents from the board" [Board Guide p. 2]
+    excludes the Agent sent there this turn (docs/rules/board-spaces.md),
+    and an Into the Fray Agent may be recalled only on a later turn
+    (OQ-037 (d)). While Imperial Privilege's recall is pending, this turn's
+    Agent is still on the space, or Into the Fray has moved it to the
+    Conflict, where it is not one of the "other" Agents, or Twisted
+    Mentat's "You may recall the Agent you sent this turn." [Twisted Mentat
+    card] has sent it home (``turn_agent_recalled``), which leaves every
+    Conflict Agent an earlier turn's.
+    """
+
+    sent_this_turn = (
+        0
+        if "imperial_privilege" in owner.agent_locations
+        or context.get("turn_agent_recalled") is True
+        else 1
+    )
+    return max(0, owner.agent_in_conflict - sent_this_turn)
 
 
 def apply_imperial_privilege_action(
@@ -1210,7 +1236,7 @@ def apply_imperial_privilege_action(
         events.extend(drawn.events)
 
     context["imperial_privilege_intrigue_resolved"] = True
-    if not _other_agent_spaces(effect_state, action.actor):
+    if not _other_agent_spaces(effect_state, action.actor, context):
         skipped = _skip_imperial_privilege_recall(
             effect_state, context, action.actor, source, action.action_id
         )
@@ -1220,7 +1246,9 @@ def apply_imperial_privilege_action(
     return RuleResult(state=next_state, events=tuple(events))
 
 
-def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
+def _other_agent_spaces(
+    state: GameState, player: int, context: Mapping[str, ActionValue]
+) -> tuple[str, ...]:
     """Return where Imperial Privilege may recall from ("conflict" for Duncan)."""
 
     owner = state.players[player]
@@ -1230,7 +1258,7 @@ def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
             for location in owner.agent_locations
             if location != "imperial_privilege"
         ),
-        *(("conflict",) if owner.agent_in_conflict else ()),
+        *(("conflict",) if _recallable_conflict_agents(owner, context) else ()),
     )
 
 
@@ -1293,7 +1321,7 @@ def skip_impossible_imperial_privilege_recall(result: RuleResult) -> RuleResult:
         context.get("space_id") != "imperial_privilege"
         or not board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
         or context.get("imperial_privilege_intrigue_resolved") is not True
-        or _other_agent_spaces(state, player)
+        or _other_agent_spaces(state, player, context)
     ):
         return result
     source = f"round:{state.round_number}:player:{player}:board:imperial_privilege"

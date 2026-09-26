@@ -75,6 +75,7 @@ const ACTION_LABELS = {
   decline_combat_reward: "보상 비용 지불 안 함",
   decline_combat_reward_spy: "{spy} 배치 안 함",
   decline_combat_reward_trash: "{trash} 안 함",
+  decline_acquisition_spy: "{spy} 배치 안 함",
   decline_contract_spy: "{spy} 배치 안 함",
   decline_control_defense: "방어 배치 안 함",
   decline_corrinth_city_payment: "지불 안 함",

@@ -626,6 +626,78 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     assert engine.legal_actions(result.state, 0) == ()
 
 
+def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> GameState:
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(SIGNET,),
+        deck=(RECON,),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        agents_available=2 - earlier_in_conflict,
+        agent_in_conflict=earlier_in_conflict,
+    )
+    state = _play(_turn_state(owner), SIGNET, "imperial_privilege")
+    deploy = next(
+        action
+        for action in legal_leader_signet_actions(state, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = apply_leader_agent_deploy(state, deploy).state
+    assert fighting.players[0].agent_locations == ()
+    assert fighting.players[0].agent_in_conflict == earlier_in_conflict + 1
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(fighting, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    return apply_imperial_privilege_action(fighting, decline).state
+
+
+def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> None:
+    # "Recall one of your other Agents from the board, and draw a card."
+    # [Board Guide p. 2]; docs/rules/board-spaces.md: "이번 turn에 보낸
+    # Agent가 아닌 자신의 다른 Agent 1개를 recall", and OQ-037 (d) allows
+    # recalling an Into the Fray Agent only "뒤의 turn에" (on a later turn).
+    # Resolving Into the Fray first moves this turn's Agent to the Conflict;
+    # it used to be the only (forced) recall target, so Duncan got back the
+    # Agent he had just sent. Now the recall is skipped and the card is still
+    # drawn (OQ-023).
+    from dune_imperium.rules.board_effects import legal_imperial_privilege_actions
+
+    declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=0)
+
+    assert legal_imperial_privilege_actions(declined, 0) == ()
+    seat = declined.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert seat.hand == (RECON,)
+
+
+def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> None:
+    # An Agent Into the Fray sent on an earlier turn (OQ-037 (e)) is one of
+    # the "other Agents" [Board Guide p. 2]: one recall stays on offer and
+    # this turn's Agent stays in the Conflict.
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+
+    declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=1)
+    recalls = legal_imperial_privilege_actions(declined, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_imperial_privilege"
+    ]
+    seat = apply_imperial_privilege_action(declined, recalls[0]).state.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+
+
 def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:
     # A Servo-Receivers Signet can send a second "Agent you sent this turn"
     # into the Conflict [Duncan Idaho card] (OQ-037(e)). Imperial Privilege

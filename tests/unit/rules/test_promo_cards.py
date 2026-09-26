@@ -622,10 +622,12 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # net change as the base catalog (see test_action_codec.
     # test_catalog_is_fixed_and_versioned_for_a_ruleset); the CHOAM catalog
     # also gains decline_contract_spy (+1).
-    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
     assert choam_promo.size == (
-        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1
+        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1 + 1
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

@@ -597,6 +597,74 @@ def _engine_finish_turn(state: GameState) -> GameState:
     raise AssertionError("the Agent turn did not close")
 
 
+def test_sardaukar_coordination_lets_recruits_deploy_on_either_graft_side() -> None:
+    # Graft: "Both played cards are considered to have 'sent' the Agent, no
+    # matter which card's icon you use" and "You gain the effects on both
+    # cards" [Immortality p. 10]. Sardaukar Coordination's Agent box reads
+    # "You may deploy any troops you recruit this turn to the Conflict."
+    # [Sardaukar Coordination card]. It used to count only as the placed
+    # card, so grafted as Face Dancer's partner -- even at Deliver Supplies,
+    # where its own Emperor icon cannot go -- its recruits stayed home.
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+    from dune_imperium.rules.frames import with_context
+
+    coordination = next(
+        card
+        for card in imperium_deck_instance_ids(False)
+        if ":sardaukar_coordination:" in card
+    )
+    for placed_id, partner_id, space_id in (
+        (FACE_DANCER, coordination, "deliver_supplies"),
+        (FACE_DANCER, coordination, "dutiful_service"),
+        (coordination, FACE_DANCER, "dutiful_service"),
+    ):
+        owner = _owner((placed_id, partner_id), troops_garrison=4, troops_supply=8)
+        grafted = _graft(_state(owner), placed_id, space_id, partner_id)
+        frame, context = current_agent_effect_context(grafted)
+        assert context["pending_combat_deployment"] is True, (placed_id, space_id)
+        assert context["existing_troop_deployment_limit"] == 0
+        recruited = replace(
+            grafted,
+            decision_stack=(
+                *grafted.decision_stack[:-1],
+                with_context(frame, {**context, "troops_recruited": 2}),
+            ),
+        )
+        counts = [
+            dict(action.arguments)["count"]
+            for action in legal_combat_deployments(recruited, 0)
+        ]
+        assert counts == [1, 2], (placed_id, space_id)
+
+    # A turn whose unit deployment is banned (Emperor of the Known Universe,
+    # applied "immediately" when the Agent is sent [Main p. 17] [FAQ p. 3])
+    # gets no deployment window from the partner either.
+    owner = _owner((FACE_DANCER, coordination), troops_garrison=4, troops_supply=8)
+    placed = _place(_state(owner), FACE_DANCER, "deliver_supplies", graft=True)
+    effect_frame = placed.decision_stack[-2]
+    assert effect_frame.kind == FrameKind.AGENT_EFFECTS
+    blocked = replace(
+        placed,
+        decision_stack=(
+            *placed.decision_stack[:-2],
+            with_context(
+                effect_frame,
+                {**dict(effect_frame.context), "units_deploy_blocked": True},
+            ),
+            placed.decision_stack[-1],
+        ),
+    )
+    partner = next(
+        action
+        for action in legal_graft_partner_actions(blocked, 0)
+        if dict(action.arguments)["card_id"] == coordination
+    )
+    _, context = current_agent_effect_context(
+        apply_graft_partner(blocked, partner).state
+    )
+    assert context.get("pending_combat_deployment") is not True
+
+
 def test_ghola_borrows_the_other_grafted_box_on_either_side() -> None:
     ghola = _tleilaxu("ghola")
     tanks = _tleilaxu("from_the_tanks")

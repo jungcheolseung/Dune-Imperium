@@ -418,6 +418,7 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     working = replace(working, players=players)
 
     # --- frame bookkeeping ------------------------------------------------
+    turn_closed = False
     if context is not None:
         finish_board_icon(context, BOARD_ICON_TECH)
         context["troops_recruited"] = (
@@ -443,6 +444,11 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             )
         else:
             working = advance_after_effect(working, context, players)
+            # As the Agent turn's last effect the tile handed the turn over
+            # already; a recall-first for its Deep Cover Spies is still this
+            # turn's (OQ-044 (d)). A Tech frame without Agent context (a
+            # Plot) pops back to its own turn, which stays unflagged.
+            turn_closed = working.decision_stack[-1].kind == FrameKind.TURN
     else:
         working = working.pop_decision()
         working = replace(
@@ -495,6 +501,7 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             ALL_POST_IDS,
             source=f"{source}:{tech_id}:{index}",
             deep_cover=True,
+            turn_closed=turn_closed,
         )
     if intrigue:
         drawn = draw_or_queue_intrigue_cards(
