@@ -19,6 +19,11 @@
 - **저장**: 포지션은 게임 spec(seed·구성·Leader)과 **그 결정까지의 플레이어 선택 번호**만 저장한다. chance는 seed의 난수를
   순서대로 쓰므로 엔진만으로 다시 만든다. 합법 집합의 지문(`fingerprint`)을 함께 저장해, 엔진이 바뀌어 포지션이 움직이면
   복원이 **"re-mine"** 오류를 낸다 — 그때는 문제집을 다시 캔다(규칙 정정 뒤의 정상 절차).
+- **복원 가드**: 기본 pytest의 `tests/unit/test_problem_set.py::test_every_position_of_the_committed_suite_restores`가
+  커밋된 문제집의 **모든** 포지션을 `check`와 같은 함수(`unrestorable`)로 복원해 본다(약 10초). 규칙을 바꿔 포지션이 움직이면
+  움직인 포지션 id 목록과 함께 실패한다 — 그 커밋에서 아래 "다시 캐는 명령"으로 다시 캔다. 2026-09-27 전에는 문항마다 앞의 3개만
+  복원해 봐서, master `60f8e95`에서 106개 가운데 4개가 조용히 깨져 있다가 다음 재채굴 때에야 드러났다(첫 번째 `s42/p2`는 OQ-069
+  병합 `1420936`부터 깨져 있었다).
 - **채점**(`answer`): 포지션마다 새 에이전트를 만들어 그 결정을 묻는다. 모든 에이전트는 "고른 행동이 옳은가"로, 네트워크
   (`checkpoint:`)는 추가로 **옳은 답들의 softmax 확률 합**(`p_right`)으로 채점한다. `search:`·`rollout`은 상태를 받는 탐색으로 답한다.
 
@@ -29,7 +34,25 @@ uv run dune-imperium-problems score --agents heuristic,random,checkpoint:<path> 
 ```
 
 `--append`는 다른 테이블의 포지션을 같은 파일에 더한다(포지션 id에 생성 테이블 이름이 들어간다).
-`check`는 문제집의 모든 포지션을 복원해 본다(규칙을 고친 뒤 먼저 돌린다; 약 40초). 포지션 하나를 복원하는 데 약 0.3초가 든다.
+
+**다시 캐는 명령**(tips-v1). 파일의 `note`는 명령줄이 아니라 캔 조건의 요약("heuristic mirror seeds 0-799 (all problems) and
+800-2799 (last_round_hold_battle_icon only), 5081 mirror seeds 0-59; at most 40 positions per problem per run")이므로, 그대로 옮긴
+명령은 이렇다(2026-09-26 밤 재채굴에 쓴 것; 약 4분). 새 파일에 캔 뒤 `check`로 확인하고 커밋된 파일을 바꾼다.
+
+```bash
+FLAGS=(--choam --bloodlines --tech-module --immortality --promo-cards --workers 4 --max-per-problem 40)
+NOTE="$(uv run python -c 'from dune_imperium.evaluation.problem_set import suite_note; print(suite_note())')"
+uv run dune-imperium-problems mine --agents heuristic --games 800 --start-seed 0 "${FLAGS[@]}" --note "$NOTE" --out <new.json>
+uv run dune-imperium-problems mine --agents heuristic --games 2000 --start-seed 800 \
+    --problems last_round_hold_battle_icon "${FLAGS[@]}" --append --out <new.json>
+uv run dune-imperium-problems mine --agents checkpoint:<champion-5081.pt> --games 60 --start-seed 0 "${FLAGS[@]}" \
+    --append --out <new.json>
+uv run dune-imperium-problems check --suite <new.json>
+```
+
+5081은 `checkpoints/2026-09-22/exploit/champion-5081.pt`(git 무시, 메인 체크아웃)이다. 옛 codec의 체크포인트는 불러올 때 행동
+이름으로 이관된다.
+`check`는 문제집의 모든 포지션을 복원해 본다(위의 복원 가드와 같은 검사). 2026-09-27 Mac mini 실측으로 109개에 약 10초, 포지션 하나에 약 0.1초가 든다.
 
 ## 문항 (tips-v1)
 

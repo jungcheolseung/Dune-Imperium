@@ -207,7 +207,9 @@ recruit했든 새 troop은 Conflict에 deploy할 수 있다" `[Main p. 10]` `[FA
   Refinery에서 Spy 12개가 모두 놓였을 때만 생긴다). 판정 전까지 현재 convention을 유지한다.
 - 버전: `ACTION_CODEC_VERSION` 108 → 109(`recall_conflict_agent_for_agent_card`는 Bloodlines 카탈로그, `recall_conflict_agent_for_contract`는
   CHOAM+Bloodlines 카탈로그). 카탈로그 기본 4,424·CHOAM 4,715·CHOAM+Bloodlines 11,252·전 확장 33,004 → 33,006. 5081 이관(v107 → v109): 유지
-  32,980·새 26·삭제 7. `OBSERVATION_VERSION` 20 유지. 이 판정들이 닿는 판은 드물어 golden 인코딩·문제집·census 고정 판은 그대로 복원된다.
+  32,980·새 26·삭제 7. `OBSERVATION_VERSION` 20 유지. 이 판정들이 닿는 판은 드물어 golden 인코딩·문제집·census 고정 판은 그대로 복원된다. (2026-09-27 정정: 문제집은 아니었다 — OQ-069 병합
+  `1420936`부터 `deep_desert_summon_into_contest/heuristic/…/s42/p2` 하나가 복원되지 않았는데, pytest가 문항마다 앞의 3개만 복원해 봐서 놓쳤다.
+  모든 포지션을 복원하는 가드는 [evaluation/problem-set.md](../evaluation/problem-set.md) "구조"의 복원 가드.)
 
 ## 새 open question
 
