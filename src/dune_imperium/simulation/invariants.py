@@ -31,6 +31,7 @@ from dune_imperium.core.observation import (
     peeked_card_id,
     peeked_intrigue_ids,
     resolving_intrigue_ids,
+    revealed_contract_ids,
 )
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
@@ -371,6 +372,7 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     # Imperium Ceremony shows the observer the deck's top cards, which
     # therefore stay in place.
     peeked_intrigue = peeked_intrigue_ids(state, observer)
+    revealed_contracts = revealed_contract_ids(state)
     intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
     scrambled_conflict_deck, scrambled_unused_conflicts = _scramble_conflicts(state)
     players = list(state.players)
@@ -428,7 +430,13 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         players=tuple(players),
         intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
         imperium_deck=tuple(reversed(state.imperium_deck)),
-        contract_bank=tuple(reversed(state.contract_bank)),
+        # The Contracts an open Coercive Negotiation revealed are face up to
+        # the whole table [Coercive Negotiation card] and stay on top of the
+        # bank; only the face-down rest reorders.
+        contract_bank=(
+            *state.contract_bank[: len(revealed_contracts)],
+            *reversed(state.contract_bank[len(revealed_contracts) :]),
+        ),
         navigation_stock=tuple(reversed(state.navigation_stock)),
         # Each Tech stack is face down below its top [Bloodlines p. 6].
         tech_stacks=tuple(

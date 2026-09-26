@@ -789,22 +789,15 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # City icon shifts its agent_turn space coverage by +1 (see
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
-    # FIXUP-V108 (merge of s2): recompute this size after all slices merge.
-    # Card-face re-read (2026-09-26, no version bump — pending the
-    # controller's post-merge re-pin): Maker Keeper's and Undercover Asset's
-    # corrected Agent icons drop -36 here too (see test_action_codec.
-    # test_catalog_is_fixed_and_versioned_for_a_ruleset).
-    # After v107: +14 + 1, the Conflict reward and Leader Spies'
-    # recall-first.
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 14 + 1
-    # s2 side of the merge:
-    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
-    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
-    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
-    # assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 1 + 4
-    # Commander choices, the Commander share of retreats and deployments,
-    # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
-    assert codec.size > base.size
+    # v108 (2026-09-26 card-transcription audit, net per catalog without
+    # Bloodlines): Maker Keeper's single City icon and Undercover Asset's
+    # missing Spy icon [card faces] drop 36 agent_turn placements; a Conflict
+    # reward Spy may recall first or decline [Main pp. 11, 20] (+13 recalls,
+    # +1 decline) and so may a Leader Spy (+1); Covert Operation's two Reveal
+    # Spies (+1 resume) and Unswerving Loyalty's Fremen Bond troop move (+1
+    # resume, and Shadout Mapes' deploy/retreat/decline join every catalog,
+    # +3).
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),

@@ -1251,9 +1251,16 @@ def legal_conflict_end_trigger_actions(
 
 
 def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleResult:
-    """Fire the chosen hand card as if it had waited face up, or close the window."""
+    """Stage the chosen hand card face up, or close the window.
 
-    from dune_imperium.rules.intrigue import resolve_faceup_trigger_option
+    The card is played now (designer ruling, OQ-057) but its effect waits
+    for the loss it names: "When you lose at least three troops at the end
+    of a Conflict:" [Harvest Cells card], and "When resolving combat, troops
+    that return to your supply are considered 'lost.'" [FAQ p. 1]. So it
+    joins the face-up cards that ``finish_combat`` fires after the troops
+    are back in the supply -- where its specimens come from ("take a troop
+    from your supply" [Immortality p. 8]) -- in turn order (OQ-002).
+    """
 
     if action not in legal_conflict_end_trigger_actions(state, action.actor):
         raise ValueError("action is not a legal Conflict-end Intrigue choice")
@@ -1284,22 +1291,14 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
         intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
         intrigue_faceup=(*owner.intrigue_faceup, card_id),
     )
-    prepared = replace(base, players=replace_player(base.players, staged))
-    fired = resolve_faceup_trigger_option(
-        prepared,
-        player,
-        card_id,
-        source=f"round:{state.round_number}:player:{player}:conflict_end:{card_id}",
-    )
     return RuleResult(
-        state=fired.state,
+        state=replace(base, players=replace_player(base.players, staged)),
         events=(
             GameEvent(
                 event_id=f"{frame.frame_id}:played:{card_id}",
                 kind="intrigue_played",
                 payload=(("card_id", card_id), ("player", player)),
             ),
-            *fired.events,
         ),
     )
 

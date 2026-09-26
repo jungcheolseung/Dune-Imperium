@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 107
+ACTION_CODEC_VERSION = 108
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -707,6 +707,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "recruit_sardaukar_commander",
             # Bought without a Skill when none is choosable (OQ-031).
             "acquire_sardaukar_commander",
+            # False Orders / Holy War: no empty post off the Agent's space,
+            # so the forced-to-move Spy is lost [FAQ p. 2] (OQ-065).
+            "lose_moved_spy",
         )
     ]
     for action_id in (
@@ -779,7 +782,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "decline_intrigue_contract_trigger",
             # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
             "recall_conflict_agent_for_imperial_privilege",
@@ -810,6 +812,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="play_navigation", arguments=(("option", option),))
         for option in range(2)
     )
+    # An arrow cost is optional [Main p. 20]: Navigation card 10 may be
+    # declined (spent without effect).
+    templates.append(ActionTemplate(action_id="decline_navigation"))
     twisted = twisted_intrigue_instance_ids()
     all_intrigue = (
         *intrigue_deck_instance_ids(

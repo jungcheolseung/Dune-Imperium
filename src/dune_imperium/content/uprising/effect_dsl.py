@@ -602,13 +602,20 @@ class TrashPersonalCard:
 class PlaceSpy:
     """Place a Spy on an empty Observation Post, limited to ``factions`` if set.
 
+    ``agent_icons`` limits it instead to posts connected to a board space
+    with one of those Agent icons: "'[Spy] on [City]' means the observation
+    post must connect to a [City] board space" [Main p. 20].
+
     Without a Spy in supply the player first recalls one [Main pp. 11, 20].
-    ``shared_post`` inverts the target rule for card text that places the Spy
-    on the same post as another player's Spy.
+    ``shared_post`` adds the posts held only by other players' Spies to the
+    normal empty-post targets, for card text that says the Spy *may* go on
+    the same post as another player's Spy [Distraction card] -- the Spy with
+    Deep Cover set [Bloodlines p. 5]; the owner's own posts never qualify.
     """
 
     factions: tuple[Faction, ...] | None = None
     shared_post: bool = False
+    agent_icons: tuple[AgentIcon, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.factions is not None:
@@ -616,10 +623,21 @@ class PlaceSpy:
                 raise ValueError("Spy target Factions must be unique and non-empty")
             if any(not isinstance(faction, Faction) for faction in self.factions):
                 raise TypeError("Spy target Factions must use Faction")
+        if self.agent_icons is not None:
+            if not self.agent_icons or len(self.agent_icons) != len(
+                set(self.agent_icons)
+            ):
+                raise ValueError("Spy target Agent icons must be unique and non-empty")
+            if any(not isinstance(icon, AgentIcon) for icon in self.agent_icons):
+                raise TypeError("Spy target Agent icons must use AgentIcon")
+            if self.factions is not None:
+                raise ValueError("a Spy target is Factions or Agent icons, not both")
         if not isinstance(self.shared_post, bool):
             raise TypeError("shared_post must be a boolean")
-        if self.shared_post and self.factions is not None:
-            raise ValueError("a shared-post placement cannot limit Factions")
+        if self.shared_post and (
+            self.factions is not None or self.agent_icons is not None
+        ):
+            raise ValueError("a shared-post placement cannot limit its posts")
 
 
 @dataclass(frozen=True, slots=True)

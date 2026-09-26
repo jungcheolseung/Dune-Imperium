@@ -261,9 +261,13 @@ detonation icon is a detonate-or-keep choice because the rules make removing
 the token optional [Main pp. 10, 20].
 
 The fourth batch transcribes Cunning and Special Mission from their card
-images. Special Mission's first half places a Spy on a Bene Gesserit-connected
-post (the purple Faction disc on the card); DIU's `target: "blue"` is read the
-same way.
+images. Special Mission's first half places a Spy on a City-connected post:
+the plain blue-violet disc on the card is the City Agent icon (compare
+`assets/icons/agent_icon_city.png`; the Bene Gesserit icon is the ornament),
+and "'[Spy] on [City]' means the observation post must connect to a [City]
+board space" [Main p. 20]. DIU's `target: "blue"` says the same. The batch
+first misread the disc as the Bene Gesserit Faction and targeted the Bene
+Gesserit post; corrected 2026-09-26.
 
 The fifth batch transcribes Weirding Combat, Questionable Methods and Find
 Weakness from their card images; all three match DIU's shapes.
@@ -289,7 +293,10 @@ The ninth batch transcribes Distraction from its card image ("When you
 deploy three or more units to the Conflict in a single turn:" then "You may
 place this Spy on the same observation post as another player's Spy."). DIU
 models it as a `deploy_units amount 3` condition with a `shared_post` Spy
-reward, matching the local trigger and the shared-post placement.
+reward, matching the local trigger. The sentence is a permission ("may"):
+the Spy still goes on any unoccupied post [Main p. 20] and may also share
+another player's post, never the owner's own -- the Deep Cover set
+[Bloodlines p. 5]. The engine offered only shared posts until 2026-09-26.
 
 The tenth batch transcribes Leverage from its card image ("If you gained
 spice this turn:" then the CHOAM Contract icon and a one-Solari coin). DIU's

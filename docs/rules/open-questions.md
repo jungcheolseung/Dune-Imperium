@@ -250,9 +250,9 @@
 
 - 상태: `DECIDED` (project convention)
 - Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
-- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 일반 배치 규칙을 따른다: **Spy를 옮기는 좌석이** 빈 observation post 아무 곳이나 고른다(`move_spy(post_id)`). 갈 곳이 없는 경우는 없다 — post는 13곳이고 게임의 Spy는 4인 × 3 = 12개라 항상 하나는 비어 있다(엔진은 이를 불변식으로 둔다). 이동 순서는 시계 방향 다음 좌석부터. (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터. 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-065](#oq-065--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
 - 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
-- 재개 조건: 공식 FAQ가 "lose a troop"의 출처나 강제 이동의 목적지를 정할 때.
+- 재개 조건: 공식 FAQ가 "lose a troop"의 출처를 정할 때. 강제 이동의 목적지는 False Orders에 대해 FAQ 2025-01-13이 정했고(위 (b)), 같은 FAQ의 둘째 문장 "You may play this Intrigue card even if no opponents' Spies are on the space where you sent an Agent this turn." `[FAQ p. 2]`도 이미 따른다([designer-rulings-audit.md](designer-rulings-audit.md)). Holy War에 대한 공식 판정이 나오면 (b)의 확장을 다시 본다.
 
 ## OQ-037 — Into the Fray로 Conflict에 간 Agent와 Bloodlines Leader 카드면의 아이콘 읽기
 
@@ -278,6 +278,7 @@
 - 상태: `DECIDED` (project convention)
 - Steersman Y'rkoon의 Plot Course(카드면)와 `[Bloodlines p. 12]`(face-down 카드를 언제든 볼 수 있고, Influence를 잃었다가 다시 2에 닿으면 또 play한다)는 (a) Navigation 카드를 "play"하는 정확한 시점, (b) 카드의 어느 option도 지불·적용할 수 없을 때(예: 카드 10 "Lose 1 Influence"를 Influence 0에서, 카드 2를 Spy 없이) 카드가 소모되는지, (c) "If this is in Navigation slot N" 조건의 판정 기준, (d) play된 카드의 행방을 말하지 않는다.
 - 판정(2026-09-07, project convention): (a) trigger를 일으킨 Influence 획득 효과가 끝난 직후 엔진이 `navigation_choice` frame을 열고 소유자가 인쇄 option 중 play 가능한 것을 고른다(OQ-012 재검토 참조). (b) 어느 option도 play할 수 없으면 카드는 효과 없이 소모된다(공개 이벤트 `navigation_card_played`에 `fizzled`). (c) slot 번호는 setup 때 놓은 순서(왼쪽부터 1~4)이며, 카드는 항상 남은 가장 왼쪽 slot에서 play되므로 "play된 장수 + 1"이다. (d) play된 카드는 소유자 옆에 공개로 둔다(`navigation_played`); 남은 slot은 소유자만 아는 비공개 정보(관측 `private_navigation_slots`), box로 돌려보낸 6장은 아무도 모른다. 카드 5의 "trash a card"는 선택(icon)이며 비용 1 이상(starter·Reserve 제외)의 카드를 trash했을 때만 spice 2를 준다. 카드 4의 The Spice Must Flow 획득은 Reserve가 남아 있을 때만 이루어지고 획득 VP를 준다. 카드 1의 "different Faction where you have 2+"는 trigger 진영을 제외한 Influence 2 이상의 진영이다. Hungry for Spice는 turn당 1회, "이번 turn 얻은 spice"는 다른 카드와 같은 `spice_gained_this_turn` 기준이다.
+- 보강(2026-09-26): 지불할 수 **있는** 화살표 비용도 거절할 수 있다 — "If you don't pay the cost, you don't get the effect. You do not have to pay such a cost on a card." `[Main p. 20]`, OQ-058의 일반 원칙. Plot Course가 카드를 play하게 할 뿐("play the next Navigation card above" `[Steersman Y'rkoon card]`) 비용 지불까지 강제하지는 않으며, FAQ의 "except when playing an Intrigue card, where paying a cost is required" `[FAQ p. 3]`는 Intrigue 카드를 **골라 낼 때**의 규칙이라 강제로 play되는 Navigation 카드(별도 구성물 `[Bloodlines p. 2]`)에는 적용하지 않는다. 그래서 play 가능한 option이 모두 화살표 비용을 가진 카드(현재 카드 10의 "Influence 1 잃기 → Influence 1")는 `decline_navigation`으로 거절할 수 있고, 거절한 카드는 (b)처럼 효과 없이 소모된다(`navigation_card_played`에 `declined`). 비용 없는 option이 있는 카드(1·2·4·6·9)는 그 option으로 비용을 피할 수 있으므로 거절 행동이 없다(카드 2처럼 무료 option을 지금 play할 수 없으면 거절이 생긴다). 전에는 카드 10이 Influence를 잃도록 강제했다(예: Fremen 2에 막 닿은 좌석이 2→1로 VP를 잃고 다시 얻으며 두 번째 Navigation trigger까지 일으켰다). `tests/unit/rules/test_navigation.py`(`test_card_ten_arrow_cost_may_be_declined_and_the_card_is_spent`).
 - 재개 조건: 공식 FAQ가 Navigation 카드의 play 시점이나 불발 처리를 정할 때.
 
 ## OQ-040 — Tech tile의 Endgame 효과 시점
@@ -355,6 +356,7 @@
 - 필요한 답: face-up Intrigue의 만료와 거절 시 처리에 대한 공식 판정.
 - 구현 convention: (a)(b) 창이 명시된 카드(Call to Arms의 "이번 round의 자신의 Reveal turn")는 그 창이 닫힐 때(Reveal turn 종료) 발동 여부와 무관하게 discard한다. "whenever" trigger는 창이 닫힐 때까지 반복 발동한다. (c) 선택적 trigger(Distraction)를 거절한 카드는 사용된 것이 아니므로 face up으로 남아 이후의 조건 충족 turn에 다시 제시된다. 같은 turn에서는 배치 수가 마지막 제시 시점보다 늘었을 때만 다시 제시하며, 이미 제시가 지나간 수치에서 나중에 낸 두 번째 사본은 다음 배치 때 제시된다. 세 판정 모두 `tests/unit/rules/test_intrigue.py`로 고정한다.
 - 확정(2026-09-01): 위 (a)-(c) convention 전부를 최종 판정으로 채택한다. 현재 face-up trigger 카드는 Call to Arms와 Distraction 두 종뿐이며 두 카드 모두 이 판정으로 완전히 규정된다.
+- 보강(2026-09-26, 사용자 판정): (c)의 거절은 인쇄문이 "you may"인 trigger(Distraction)에만 해당한다. Bloodlines의 Coercive Negotiation("When you deploy three or more units to the Conflict in a single turn: Reveal three contracts from the bank. Take one and trash the other two." `[Coercive Negotiation card]`)에는 "may"가 없고 "Most effects from a board space or card you play are mandatory, unless: a card says 'you may' do something" `[FAQ p. 3]`이므로, 조건이 성립하면 효과가 해결된다(거절 없음; 카드는 발동할 때까지만 face up으로 남는다). 가져갈 수 있는 contract가 없을 때의 처리는 [OQ-064](#oq-064--coercive-negotiation이-공개한-contract를-하나도-가져갈-수-없을-때).
 
 ## OQ-015 — Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불
 
@@ -501,7 +503,7 @@
 - (12) **Ghola + Long Reach**(Email, TTS Discord): 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다. Ghola의 복사가 Long Reach의 BG Bond 아이콘 조건을 충족시키는 것으로 모델링했다(`effective_agent_icons(..., ghola_partner=True)`): hand에 Ghola가 있으면 graft 배치가 조건부 아이콘으로 공간에 닿고, 그 아이콘으로만 닿은 공간이면 partner는 Ghola로 제한된다. Immortality p. 14의 "Ghola 자체는 BG 카드가 아니다"는 다른 카드의 Bond(Ghola를 세지 않음)에 그대로 적용된다. (2026-09-26 보강) hand의 Bene Gesserit 카드를 graft 상대로 쓸 때(Planned Coupling)도 같은 약속으로 조건을 충족한다: graft 쌍은 함께 play되고 "You may use an Agent icon from either card" `[Immortality p. 10]`, Ghola 설명은 Ghola를 graft한 BG 카드를 "Bene Gesserit card in play"로 센다 `[Immortality p. 14]`. 이름은 `ghola_partner` → `bond_partner`(`rules/agent_icons.is_bond_partner`). play 중인 Long Reach 자신은 "another" BG 카드로 세지 않는다(Slig Farmer의 아이콘 수, OQ-055).
 - (13) **Tleilaxu Master**(BGG): Reveal의 Research 2개는 따로 해결할 수 있다 — `advance_reveal_research` 행동 하나가 아이콘 하나만 전진시키고 나머지를 다시 대기열에 둔다(사이에 다른 Reveal 효과·획득 가능).
 - (4) **"Choose Two"의 원자성**(Message from designer): Propaganda(Combat 보상 "서로 다른 진영 둘"), Stitched Horror(보상 넷 중 둘), Rapid Engineering(Tech 3장 이상이면 진영 둘)은 둘을 먼저 정하고 나서 해결한다 — Bene Gesserit 4단계에서 뽑은 Intrigue를 보고 두 번째를 고를 수 없다. 같은 "Choose two" 문구인 Long Reach(Agent box의 진영 둘)도 같은 원칙으로 처리했다. 구현: 첫 선택은 frame 문맥에만 기록하고(`chosen_factions`/`rewards_chosen`/`deferred_factions`/`influence_chosen`), 두 번째 선택이 들어오면 둘을 인쇄 순서(선택 순서)로 해결한다. Propaganda를 sandworm으로 이겨 두 세트를 받으면 세트 사이에는 첫 세트가 해결된다(세트 단위 원자성).
-- (11) **Combat 보상으로 받은 Harvest Cells**(BGG): 그 Combat에서 즉시 play할 수 있다. Combat Intrigue 창은 보상 지급보다 앞이므로, 보상 해결이 끝나고 정리(troop 반환) 전에 새 창을 연다: First Player부터 turn 순서로, hand에 "Conflict 끝에 troop을 N개 이상 잃으면" trigger 카드가 있고 그 조건이 성립할 좌석마다 `conflict_end_trigger` frame을 밀어 `play_conflict_end_intrigue(card_id)`(face-up 대기 없이 즉시 발동) 또는 `decline_conflict_end_intrigue`를 제시한다. 상태 플래그 `combat_end_triggers_offered`(round마다 초기화)가 창을 한 번만 열고, 이미 face-up으로 대기하던 Harvest Cells는 기존대로 정리 때 발동한다. 관측 v17(frame 종류 index 이동), codec v101(Immortality 카탈로그).
+- (11) **Combat 보상으로 받은 Harvest Cells**(BGG): 그 Combat에서 즉시 play할 수 있다. Combat Intrigue 창은 보상 지급보다 앞이므로, 보상 해결이 끝나고 정리(troop 반환) 전에 새 창을 연다: First Player부터 turn 순서로, hand에 "Conflict 끝에 troop을 N개 이상 잃으면" trigger 카드가 있고 그 조건이 성립할 좌석마다 `conflict_end_trigger` frame을 밀어 `play_conflict_end_intrigue(card_id)` 또는 `decline_conflict_end_intrigue`를 제시한다. play한 카드는 face-up으로 옮겨 정리의 troop 반환 뒤 발동한다(2026-09-26 정정: 전에는 face-up 대기 없이 즉시 발동해, 반환 전 supply로 specimen을 만들어 supply가 비면 specimen 0이었다). 근거: 카드는 "When you lose at least three troops at the end of a Conflict:" `[Harvest Cells card]`이고 "When resolving combat, troops that return to your supply are considered 'lost.'" `[FAQ p. 1]`이며 specimen은 "take a troop from your supply" `[Immortality p. 8]`다; 디자이너 판정("This card is played after combat resolves.")은 play를 허용할 뿐 손실보다 먼저 보상을 준다고 하지 않는다. 발동 순서는 face-up 대기 카드와 같이 First Player부터(OQ-002). 상태 플래그 `combat_end_triggers_offered`(round마다 초기화)가 창을 한 번만 열고, 이미 face-up으로 대기하던 Harvest Cells는 기존대로 정리 때 발동한다. 관측 v17(frame 종류 index 이동), codec v101(Immortality 카탈로그).
 - (1) **조건이 거짓인 의무 Agent box는 turn 종료까지 보류**(Hidden Assets Discord, Guiding Principles): 의무 효과를 조건이 거짓인 동안 "발동해 불발"시킬 수 없다. Guild Envoy가 유일한 손패여도 그 turn에 카드를 뽑으면 discard해야 하고, turn이 끝날 때까지 불가능할 때만 불발한다. OQ-028(a)의 "해결 시 `agent_card_effect_unavailable`로 종료"를 "소유자의 요청으로는 불발 불가"로 재판정한다. 구현: `agent_effects.agent_card_effect_is_unavailable`이 해결을 dry-run해 불발이 될 box면 `resolve_agent_card_effect`를 제시하지 않고, `finish_agent_turn`(OQ-029의 명시적 turn 종료)을 다른 의무 효과가 모두 끝났을 때 제시해 그때 box를 불발 처리한다(Combat 배치 창과 무관하게). Intrigue play 같은 선택 행동은 그동안 열려 있으므로 뒤에 뽑은 카드로 조건이 성립하면 box가 다시 의무가 된다. graft로 두 box가 열려 있으면 살아 있는 상대 box로 전환(`switch_graft_card`)할 수 있고, 두 box가 모두 불발일 때만 전환을 숨기고 turn 종료가 둘을 차례로 불발 처리한다(heuristic이 전환을 무한 반복하던 graft 소크 실패로 확인). (2026-09-26 보강) 여러 아이콘 box(OQ-027)의 아이콘별 조건도 같다 — Hidden Missive·Maker Keeper·Wheels Within Wheels의 Influence 문턱, Fremen War Name의 "If you gained [2 spice] or more this turn:", Sardaukar Quartermaster의 "If grafted:", Tleilaxu Infiltrator의 "[2 genetic markers]: [Intrigue]". 조건이 거짓인 아이콘은 제시하지 않고(`agent_effects.agent_icon_condition_holds`) turn 종료에 불발하며, 뒤의 효과로 성립하면 다시 제시되어 의무가 된다. 이전에는 이 아이콘들을 제시해 조건이 거짓인 채 발동·불발시킬 수 있었다(Fremen War Name을 spice 수확 전에 소모).
 - (2) **Interstellar Trade는 한 번만**(In person): Reveal 중 완료된 contract(Acquire contract를 The Spice Must Flow 구매로 완료)는 Persuasion을 더 주지 않는다. OQ-028(c)의 "증분 지급"을 폐기하고 Reveal 시작(또는 늦게 도착한 시점)의 완료 수를 한 번 센다. 다른 늦은 지급(Command 6+, Bond 성립 등)은 OQ-028(b)대로 유지한다.
 - (3) **Guild Spy**(In person): The Spice Must Flow를 두 장 사도 Guild Spy 한 장은 한 번만 발동한다; Reveal 중 늦게 뽑힌 Guild Spy도 이미 산 SMF에 반응한다; Emperor bump로 얻은 Spy나 Sleeper Unit로 나중에 놓은 Spy는 그 발동에 세지 않는다(발동 순간의 Spy만). 구현: Reveal frame 문맥 `spice_must_flow_acquired`·`guild_spy_fired`; `reveal_turn.fire_guild_spy_on_spice_must_flow`가 구매 시(revealed·미발동 Guild Spy 전부)와 늦은 도착 시(그 카드)에 발동한다. Reveal box이므로 소유자의 Reveal 밖(Agent turn의 Intrigue 획득 등)에서는 발동하지 않는다.
@@ -517,7 +519,7 @@
 - FAQ는 "Intrigue를 play하려면 조건을 충족하고 비용을 지불해야 한다"고만 한다 `[FAQ pp. 2-3]`. 한 카드에 "—OR—" 없이 화살표 줄이 둘 인쇄돼 있을 때(Change Allegiances, Strategic Stockpiling; Find Weakness·Questionable Methods의 검 줄 + 화살표 줄; Depart for Arrakis의 화살표 줄 + 조건 줄) 비용을 play 시점에 합쳐 내는지, 줄마다 따로 내는지, 줄을 골라 쓸 수 있는지는 말하지 않는다. 디자이너는 Change Allegiances에 대해 "한 효과만 또는 둘 다, 첫 효과로 얻은 자원으로 두 번째 비용 지불 가능"이라고 했다([designer-rulings-audit.md](designer-rulings-audit.md) 7).
 - 필요한 답: 복수 줄 Intrigue의 비용 지불 시점과 줄의 선택 가능 여부.
 - 확정(2026-09-09, 사용자 판정 "책략 하나가 통으로 비용 계산이 되는 게 아니고, 책략을 사용하면 그 책략에 있는 동작을 진행할 수 있게 되는 거고, 여러 효과가 있다면 각각 분리되어서 사용할 수 있어야지"): Intrigue를 play하면 그 카드의 줄들이 열린다. 비용이 없는 줄(검, 조건부 draw 등)은 play 즉시 해결되고, 화살표 줄은 각각 별개 행동(`use_intrigue_effect(section)`)으로 원하는 순서에 쓰며 그 줄의 비용을 **그때** 낸다. 어느 줄도 의무가 아니고, 남은 줄을 쓰지 않으려면 `finish_intrigue_effects`로 카드를 마무리한다(남은 줄이 없으면 자동 마무리). play 조건은 "지금 쓸 수 있는 줄이 하나 이상"이다. 따라서 Change Allegiances를 spice 1로 play해 첫 줄의 Influence로 Lady Margot의 Loyalty spice를 얻은 뒤 두 번째 줄을 낼 수 있다. "—OR—"로 나뉜 카드(Market Opportunity, Cunning, Tactical Option, Rapid Engineering 등)는 그대로 배타 option이다.
-- 일반 원칙(사용자 판정, 같은 날): **화살표(→) 비용 효과는 어디서나 선택이다** — Intrigue뿐 아니라 Imperium·Tleilaxu 카드의 Agent/Reveal box, Bene Tleilax board, Tech tile, Leader 능력 모두. 전수 조사 결과 Intrigue 밖의 화살표 효과는 이미 거절 행동을 가진다: Imperium(Ecological Testing Station·Shishakli·Treacherous Maneuver·Replacement Eyes 등 `decline_agent_card_*`), Tleilaxu(Surgeon·Slig Farmer·Scientific Breakthrough·Dissecting Kit), Bene Tleilax board c7r3·c8r6(`decline_research_bonus`), Tech tile Desperate·Plasteel Blades(`decline_skill`), Leader Signet 지불(`decline_leader_signet_payment`). 화살표 없는 인쇄 지시(Guild Envoy·Desert Survival·Calculus of Power·Tread in Darkness의 trash/discard 아이콘, Subversive Advisor의 문장)는 이 판정의 대상이 아니다.
+- 일반 원칙(사용자 판정, 같은 날): **화살표(→) 비용 효과는 어디서나 선택이다** — Intrigue뿐 아니라 Imperium·Tleilaxu 카드의 Agent/Reveal box, Bene Tleilax board, Tech tile, Leader 능력 모두. 전수 조사 결과 Intrigue 밖의 화살표 효과는 이미 거절 행동을 가진다: Imperium(Ecological Testing Station·Shishakli·Treacherous Maneuver·Replacement Eyes 등 `decline_agent_card_*`), Tleilaxu(Surgeon·Slig Farmer·Scientific Breakthrough·Dissecting Kit), Bene Tleilax board c7r3·c8r6(`decline_research_bonus`), Tech tile Desperate·Plasteel Blades(`decline_skill`), Leader Signet 지불(`decline_leader_signet_payment`), Navigation 카드 10(`decline_navigation`, 2026-09-26 추가 — OQ-039 보강). 화살표 없는 인쇄 지시(Guild Envoy·Desert Survival·Calculus of Power·Tread in Darkness의 trash/discard 아이콘, Subversive Advisor의 문장)는 이 판정의 대상이 아니다.
 - 적용 카드(카드면 확인, `IntrigueOption.separate`): Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness, Questionable Methods.
 - trash 아이콘(사용자 판정, 같은 날): 룰북 용어집대로 "trash는 비용을 지불하는 경우나 카드가 자기 자신을 trash하라고 지시하는 경우가 아니면 선택"이다 `[Main p. 20]`. 따라서 일반 trash 아이콘은 모두 선택(hand·discard·play 중 1장)이고, "Trash this card." 문장(Seek Allies)과 Subversive Advisor의 조건부 문장, Guild Envoy의 discard 아이콘은 의무다. 이 기준으로 Calculus of Power의 Agent box가 "자기 자신 trash"로 잘못 전사돼 있던 것을 일반 선택 trash로 고쳤고(사용자 적발), Tread in Darkness의 "[trash][draw]"는 화살표가 아니므로 trash를 거절해도 draw는 한다. Twisted Intrigue Devious의 "Trash a card from your hand."는 문장 option을 고른 것이라 의무로 둔다. 조건만 다른 자동 줄들(Weirding Combat, Shaddam's Favor, Intelligence Report, Devour, Return the Favor, Vicious Talents 등)은 비용이 없어 결과가 같으므로 기존 모델을 유지한다. OQ-015(b)는 폐기.
 - 구현: `rules/intrigue.py`의 `intrigue_effects` frame(`_play_separate_lines`, `legal_intrigue_effect_actions`, `apply_intrigue_effect`, `_settle_effects_frame`), `effect_interpreter.section_is_usable`, `finish_intrigue_play(discard=False)`; 마무리 전까지 카드는 소유자의 Intrigue hand에 남되 공개 상태(`resolving_intrigue_ids`). 관측 v18(frame 종류), codec v103.
@@ -652,6 +654,52 @@
 - 확정: **Y'rkoon 자신의 Agent turn 또는 Reveal turn**에 얻은 spice만 센다. Combat·Makers·Recall은 turn이 아니고 `[Main p. 8]`, 상대의 turn은 그의 turn이 아니다. 그 turn의 마지막 단계에서 얻은 spice는 turn을 닫는 전이에서도 판정한다. Round Start에서 turn당 1회 표시를 지운다(그 라운드 첫 turn은 따로 초기화되지 않으므로).
 - 구현: `rules/leader_abilities.py`의 `grant_hungry_for_spice(result, before)`(엔진이 전이 시작 상태를 넘긴다), `rules/phases.py`의 Round Start 초기화. `tests/unit/rules/test_navigation.py`.
 - 재개 조건: 공식 FAQ가 Hungry for Spice의 시점을 다룰 때.
+
+## OQ-064 — Coercive Negotiation이 공개한 contract를 하나도 가져갈 수 없을 때
+
+- 상태: `OPEN` (구현 convention 적용 중)
+- Coercive Negotiation은 의무다(OQ-016 보강, `[FAQ p. 3]`). 그런데 bank 위에서 공개한 contract가 모두
+  Bloodlines의 Immediate token이고 hand에 trash할 Intrigue가 없으면 어느 것도 가져갈 수 없다("trash할
+  Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`). 이때 (a) 카드가 사용되지 않은 채 face up으로
+  남는지, (b) 공개·trash만 하고 카드를 discard하는지 공식 문서는 말하지 않는다 `[Coercive Negotiation card]`.
+  Immediate token이 하나뿐이라 bank에 그 token만 남았을 때만 생기는 드문 경우다.
+- 필요한 답: 가져갈 수 없는 공개 결과에서 Coercive Negotiation의 처리.
+- 구현 convention: (a) — 효과를 해결할 수 없으므로 trigger가 열리지 않는다: 아무것도 공개·trash하지 않고, 카드는
+  face up으로 남아 해결할 수 있는 이후의 조건 충족 시점에 열린다(같은 turn에 hand에 Intrigue가 들어온 뒤 더
+  배치해도 된다; 가져갈 수 없는 동안에는 제시 기록 `deploy_trigger_offered_at`도 올리지 않는다). 의무 효과라
+  거절 행동은 없다(2026-09-26: 처음엔 거절 하나만 있는 frame을 열었으나, 사용자 판정 "no decline"에 맞춰
+  거절 행동 `decline_intrigue_contract_trigger`를 없앴다 — codec Bloodlines 카탈로그 템플릿 1개 감소).
+  `tests/unit/rules/test_bloodlines_contracts.py`(`test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken`)로
+  고정한다.
+
+## OQ-065 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
+
+- 상태: `OPEN` (구현 convention 적용 중)
+- False Orders·Holy War로 Spy를 옮기는 상대는 "an empty observation post that isn't connected to the space
+  where you sent an Agent this turn"로 가야 한다(`[FAQ p. 2]`, Holy War는 OQ-036 (b)의 확장). 연결 post가 둘인
+  Research Station·Spice Refinery에서는 연결되지 않은 post가 11곳이라, Spy 12개가 모두 board에 있고 옮길 Spy를
+  뺀 11개가 그 11곳을 하나씩 차지하면 갈 곳이 없다(연결 post가 하나인 공간에서는 생기지 않는다). 공식 문서는
+  이 경우를 말하지 않는다.
+- 필요한 답: 옮길 곳이 없는 Spy의 처리(잃는지, 연결된 빈 post로라도 옮기는지, 그대로 두는지).
+- 구현 convention: 인쇄된 가장 가까운 규칙인 Bloodlines의 Rival clarification — "When a Rival must move a Spy, it
+  treats it as though it were placing a new Spy ... If all other Faction observation posts are full, the Spy is
+  lost." `[Bloodlines p. 8]` — 을 따라 **Spy를 잃는다**: 그 Spy는 주인의 supply로 돌아간다("lose"를 troop처럼
+  supply 반환으로 읽음). 행동은 `lose_moved_spy` 하나만 제시되고 공개 이벤트 `spy_lost`를 남긴다(codec에
+  Bloodlines 템플릿 1개 추가). `tests/unit/rules/test_bloodlines_cards.py`
+  (`test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy`)로 고정한다. 사용자 확인 대기.
+
+## OQ-066 — Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가
+
+- 상태: `OPEN` (구현 convention 적용 중)
+- Tleilaxu Row의 카드는 Imperium 카드처럼 Reveal turn에 acquire한다("In many ways, Tleilaxu cards are similar to
+  Imperium cards. You acquire them during your Reveal turn" `[Immortality p. 8]`). 그래서 Call to Arms("During your
+  Reveal turn this round, whenever you acquire a card:" `[Call to Arms card]`)는 Tleilaxu Row 획득에도 발동한다
+  (2026-09-26). 그러나 Reclaimed Forces는 Row에서 제거되지 않고, 룰북이 그 획득을 따옴표로 쓴다: "When a player
+  “acquires” it, they choose one of its effects ... but leave the card in place." `[Immortality p. 9]` 카드를
+  얻지 않는 이 "acquire"가 "acquire a card" trigger(Call to Arms 등)에 해당하는지 공식 문서는 말하지 않는다.
+- 필요한 답: Reclaimed Forces의 "acquire"가 카드 획득 trigger를 일으키는지.
+- 구현 convention: 일으키지 않는다(카드가 소유자에게 오지 않으며, 따옴표가 일반 획득과 구분한다). 엔진은
+  `_apply_reclaimed_forces`에서 `fire_reveal_acquisition_intrigue`를 부르지 않는다. 사용자 확인 대기.
 
 ## OQ-067 — 두 Intrigue 더미가 모두 비었을 때 Captured Mentat·Guild Spy의 discard
 

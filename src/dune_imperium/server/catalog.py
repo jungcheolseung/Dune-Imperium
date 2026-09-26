@@ -222,6 +222,9 @@ def build_catalog(
         intrigue[intrigue_id] = {
             "name": intrigue_entry.card.name,
             "timings": timings,
+            # The client names a Navigation card as such (Plot Course plays
+            # it [Steersman Y'rkoon card]).
+            "navigation": intrigue_entry.navigation,
             "text": list(intrigue_card_text(intrigue_entry)),
             "image": _image_url("intrigue", intrigue_id, image_files),
         }

@@ -1,5 +1,7 @@
 """Tests for the Intrigue effect DSL English text renderer."""
 
+import pytest
+
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
@@ -16,11 +18,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
     PayResources,
+    PlaceSpy,
     SandwormsInConflictAtLeast,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.display.effect_dsl_text import (
     condition_text,
     cost_text,
@@ -71,9 +74,11 @@ def test_trigger_text_renders_on_reveal_acquisition() -> None:
 
 
 def test_trigger_text_renders_on_units_deployed() -> None:
+    # "When you deploy three or more units to the Conflict in a single
+    # turn:" [Distraction card; Coercive Negotiation card].
     assert (
         trigger_text(OnUnitsDeployedInTurn(3))
-        == "When you deploy 3 or more units in a turn"
+        == "When you deploy 3 or more units to the Conflict in a turn"
     )
 
 
@@ -120,9 +125,11 @@ def test_option_text_renders_a_reveal_acquisition_trigger() -> None:
 def test_option_text_renders_a_units_deployed_trigger() -> None:
     entry = INTRIGUE_CARDS_BY_ID["distraction"]
 
+    # "You may place this Spy on the same observation post as another
+    # player's Spy." [Distraction card]: sharing is allowed, not required.
     assert option_text(entry.options[0]) == (
-        "Plot — When you deploy 3 or more units in a turn: "
-        "Place a Spy (sharing another player's Spy's post)"
+        "Plot — When you deploy 3 or more units to the Conflict in a turn: "
+        "Place a Spy (may share another player's Spy's post)"
     )
 
 
@@ -311,3 +318,35 @@ def test_option_text_show_timing_false_omits_the_prefix() -> None:
 
     assert option_text(entry.options[0], show_timing=False) == "Draw 1 card"
     assert option_text(entry.options[0]) == "Plot — Draw 1 card"
+
+
+def test_navigation_cards_carry_no_timing_prefix() -> None:
+    # Navigation cards print no timing banner; Plot Course plays them
+    # [Steersman Y'rkoon card; navigation_card_10 face].
+    navigation = [entry for entry in INTRIGUE_CARDS if entry.navigation]
+    assert len(navigation) == 10
+    for entry in navigation:
+        for line in intrigue_card_text(entry):
+            assert not line.startswith(("Plot", "Combat", "Endgame")), line
+    (line,) = intrigue_card_text(INTRIGUE_CARDS_BY_ID["navigation_card_10"])
+    assert line.startswith("Lose 1 Influence")
+
+
+def test_special_mission_text_names_the_city_post() -> None:
+    # "[Spy] on [City disc]" [Special Mission card]; the post must connect
+    # to a City space [Main p. 20].
+    entry = INTRIGUE_CARDS_BY_ID["special_mission"]
+
+    assert option_text(entry.options[0]) == "Plot — Place a Spy (City Observation Post)"
+
+
+def test_place_spy_agent_icon_target_is_validated() -> None:
+    assert reward_text(PlaceSpy(agent_icons=(AgentIcon.SPICE_TRADE,))) == (
+        "Place a Spy (Spice Trade Observation Post)"
+    )
+    with pytest.raises(ValueError):
+        PlaceSpy(agent_icons=())
+    with pytest.raises(ValueError):
+        PlaceSpy(agent_icons=(AgentIcon.CITY,), factions=(Faction.FREMEN,))
+    with pytest.raises(ValueError):
+        PlaceSpy(agent_icons=(AgentIcon.CITY,), shared_post=True)

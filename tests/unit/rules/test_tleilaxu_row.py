@@ -162,6 +162,29 @@ def test_acquiring_pays_specimens_refills_the_row_and_pays_the_acquire_box() -> 
     assert result.events[0].kind == "tleilaxu_card_acquired"
 
 
+def test_a_tleilaxu_acquisition_fires_call_to_arms() -> None:
+    # "During your Reveal turn this round, whenever you acquire a card:
+    # [troop]" [Call to Arms card]; "Tleilaxu cards are similar to Imperium
+    # cards. You acquire them during your Reveal turn" [Immortality p. 8].
+    # A Tleilaxu Row acquisition used to recruit nothing.
+    from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(_owner(intrigue_faceup=(call_to_arms,)))
+    garrison = state.players[0].troops_garrison
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)[CONTAMINATOR])
+
+    owner = result.state.players[0]
+    assert owner.troops_garrison == garrison + 1
+    assert "intrigue_triggered" in [event.kind for event in result.events]
+    # The card still waits for the rest of the Reveal turn, then expires.
+    assert owner.intrigue_faceup == (call_to_arms,)
+    expired = expire_reveal_faceup_intrigue(result.state, 0).state
+    assert expired.players[0].intrigue_faceup == ()
+    assert call_to_arms in expired.intrigue_discard
+
+
 def test_past_the_first_marker_the_card_may_go_on_top_of_the_deck() -> None:
     state = _reveal_state(_owner(research_space="c4r4"))
 

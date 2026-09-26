@@ -218,6 +218,32 @@ def test_a_tile_cannot_occupy_two_zones() -> None:
 # --- acquiring from a Landsraad visit ---------------------------------------
 
 
+def test_paying_spice_for_a_tile_does_not_undo_spice_gained_this_turn() -> None:
+    # Leverage: "If you gained spice this turn:" [Leverage card]; spending
+    # it later does not un-gain it (designer ruling, designer-rulings-audit
+    # "Leverage는 실제 spice 획득 필요"), and Harvest Contracts count every
+    # gain of the turn [Main p. 16]. The Tech price was taken from the Spice
+    # without being recorded as spent, so it hid the turn's gains.
+    from dune_imperium.content.uprising.effect_dsl import GainedSpiceThisTurn
+    from dune_imperium.rules.agent_effects import spice_gained_this_turn
+    from dune_imperium.rules.effect_interpreter import condition_holds
+
+    owner = _owner(
+        resources=Resources(solari=4, spice=6, water=2), spice_at_turn_start=4
+    )
+    state = _visit(_turn_state(owner, config=TECH_CHOAM), "assembly_hall")
+    assert spice_gained_this_turn(state.players[0]) == 2
+
+    bought = _acquire(state, "glowglobes:faction=fremen")
+    seat = bought.players[0]
+    assert seat.resources.spice == 4
+    assert seat.spice_spent_turn == 2
+    assert spice_gained_this_turn(seat) == 2
+    # Leverage's own condition; the Agent turn has closed, so it is checked
+    # directly rather than through the Plot window.
+    assert condition_holds(bought, 0, GainedSpiceThisTurn(1))
+
+
 def test_a_landsraad_visit_offers_the_face_up_tiles_the_owner_can_afford() -> None:
     state = _visit(_turn_state(_owner(resources=Resources(spice=2))), "assembly_hall")
 
@@ -1708,9 +1734,11 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
     )
     combat = begin_combat_intrigue(state).state
     plays = legal_intrigue_play_actions(combat, 0)
-    assert [dict(a.arguments)["option"] for a in plays] == [0, 1]
-    scored = apply_intrigue_play(combat, plays[1]).state
-    assert scored.players[0].victory_points == 1 + 1
+    # The VP band is dark green, the Endgame colour, and only the red retreat
+    # band is Combat ("COMBAT / ENDGAME" footer) [card face; Main p. 7: "You
+    # may play an Endgame Intrigue card only at the end of the game"]. The
+    # VP used to be offered in Combat too.
+    assert [dict(a.arguments)["option"] for a in plays] == [0]
 
     retreat = apply_intrigue_play(combat, plays[0]).state
     counts = sorted(
@@ -1728,6 +1756,40 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
     assert bought.players[0].resources.spice == 0
     assert "plasteel_blades" in bought.players[0].tech_ids
     assert bought.decision_stack[-1].kind == "combat_intrigue"
+
+
+def test_battlefield_research_scores_its_point_only_at_the_endgame() -> None:
+    # "If you have three or more Tech tiles: [VP]" sits in the dark-green
+    # Endgame band [Battlefield Research card; Main p. 7].
+    from dune_imperium.rules.endgame import begin_endgame_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_play,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:battlefield_research:0"
+
+    def window(*tech_ids: str) -> GameState:
+        owner = _tech_owner(*tech_ids, intrigue_cards=(card,), victory_points=1)
+        state = replace(
+            _turn_state(
+                owner,
+                stacks=(("plasteel_blades",), ("delivery_bay",), ("servo_receivers",)),
+            ),
+            phase=GamePhase.ENDGAME,
+            first_player=0,
+            reveal_order=(0, 1, 2, 3),
+            decision_stack=(),
+        )
+        return begin_endgame_intrigue(state).state
+
+    two = window("glowglobes", "training_depot")
+    assert legal_intrigue_play_actions(two, 0) == ()
+    three = window("glowglobes", "training_depot", "panopticon")
+    plays = legal_intrigue_play_actions(three, 0)
+    assert [dict(a.arguments)["option"] for a in plays] == [1]
+    scored = apply_intrigue_play(three, plays[0]).state
+    assert scored.players[0].victory_points == 2
 
 
 def test_kota_odax_needs_the_tech_module_and_picks_a_secret_project() -> None:

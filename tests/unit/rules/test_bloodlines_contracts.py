@@ -242,10 +242,12 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
         return offer_deployment_triggers(RuleResult(state=base)).state
 
     without = offered(_owner(intrigue_faceup=(card,), units_deployed_turn=3))
+    # The trigger is mandatory [Coercive Negotiation card; FAQ p. 3], so
+    # only the takeable Contracts are offered, with no decline.
     assert [
         dict(action.arguments).get("instance_id")
         for action in legal_trigger_contract_actions(without, 0)
-    ] == [None, "contract:arrakeen_i", "contract:arrakeen_ii"]
+    ] == ["contract:arrakeen_i", "contract:arrakeen_ii"]
 
     holding = offered(
         _owner(
@@ -255,12 +257,47 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
         )
     )
     actions = legal_trigger_contract_actions(holding, 0)
-    assert dict(actions[1].arguments)["instance_id"] == IMMEDIATE
-    taken = apply_trigger_contract_action(holding, actions[1]).state
+    assert dict(actions[0].arguments)["instance_id"] == IMMEDIATE
+    taken = apply_trigger_contract_action(holding, actions[0]).state
     assert taken.decision_stack[-1].kind == "contract_intrigue_trash"
     assert taken.players[0].active_contract_ids == (IMMEDIATE,)
     assert taken.contract_trash == ("contract:arrakeen_i", "contract:arrakeen_ii")
     assert taken.contract_bank == ("contract:secrets",)
+
+
+def test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken() -> None:
+    # Only the Immediate is left in the bank and the hand holds no Intrigue:
+    # "You can't take the new Immediate contract unless you have an Intrigue
+    # card to trash." [Bloodlines p. 2]. The trigger is mandatory ("Most
+    # effects from a board space or card you play are mandatory, unless: a
+    # card says 'you may' do something" [FAQ p. 3]), so there is no decline
+    # to offer; the card does not open, reveals nothing and waits face up
+    # for a qualifying turn it can resolve on (OQ-064). It used to open a
+    # frame offering only a decline.
+    card = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
+    base = _state(
+        _owner(intrigue_faceup=(card,), units_deployed_turn=3),
+        market=(),
+        bank=(IMMEDIATE,),
+    )
+    waiting = offer_deployment_triggers(RuleResult(state=base)).state
+    assert waiting.decision_stack == base.decision_stack
+    assert waiting.players[0].intrigue_faceup == (card,)
+    assert waiting.players[0].deploy_trigger_offered_at == 0
+    assert waiting.contract_bank == (IMMEDIATE,)
+    # With an Intrigue card in hand the same deployment opens it.
+    holding = replace(
+        base,
+        players=(
+            replace(base.players[0], intrigue_cards=INTRIGUE[:1]),
+            *base.players[1:],
+        ),
+    )
+    opened = offer_deployment_triggers(RuleResult(state=holding)).state
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_trigger_contract_actions(opened, 0)
+    ] == [IMMEDIATE]
 
 
 def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> None:

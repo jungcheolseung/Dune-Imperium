@@ -260,9 +260,8 @@ function cardDetail(instanceId) {
     return bits.join(" · ");
   }
   const intrigue = state.catalog && state.catalog.intrigue[id];
+  if (intrigue && intrigue.navigation) return phraseText("{navigation}");
   if (intrigue) {
-    /* Navigation cards print no timing banner and carry timings: [] (they
-       are played by Plot Course, not chosen by timing). */
     return intrigue.timings.length
       ? t("core.intrigue_timings", { timings: timingWords(intrigue.timings) })
       : "";
@@ -423,7 +422,10 @@ function openPopover(entry, anchor) {
   if (entry.factions && entry.factions.length) {
     words.push(entry.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
   }
-  if (entry.timings && entry.timings.length) {
+  if (entry.navigation) {
+    /* No timing banner: Plot Course plays it [Steersman Y'rkoon card]. */
+    words.push(phraseText("{navigation}"));
+  } else if (entry.timings && entry.timings.length) {
     words.push(t("core.intrigue_timings", { timings: timingWords(entry.timings) }));
   }
   if (entry.tier !== undefined) {

@@ -245,22 +245,39 @@ def legal_navigation_play_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer each playable printed option of the slot's card."""
+    """Offer each playable printed option of the slot's card.
+
+    Plot Course plays the card ("play the next Navigation card above"
+    [Steersman Y'rkoon card]), but an arrow cost stays optional: "If you
+    don't pay the cost, you don't get the effect. You do not have to pay
+    such a cost on a card." [Main p. 20] (OQ-058). So when every playable
+    option costs something (card 10's lose-one-Influence swap) the owner may
+    decline; the card is then spent without effect, as in OQ-039 (b).
+    """
 
     frame = owned_top_frame(state, FrameKind.NAVIGATION_CHOICE, player)
     if frame is None:
         return ()
     card_id = context_str(dict(frame.context), "card_id", owner="Navigation frame")
     options = intrigue_card_for_instance(card_id).options
-    return tuple(
+    playable = tuple(
+        (index, option)
+        for index, option in enumerate(options)
+        if option_is_playable(state, player, option)
+    )
+    plays = tuple(
         DomainAction(
             action_id="play_navigation",
             actor=player,
             arguments=(("option", index),),
         )
-        for index, option in enumerate(options)
-        if option_is_playable(state, player, option)
+        for index, _ in playable
     )
+    if all(
+        any(section.costs for section in option.sections) for _, option in playable
+    ):
+        return (*plays, DomainAction(action_id="decline_navigation", actor=player))
+    return plays
 
 
 def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
@@ -272,6 +289,34 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     card_id = context_str(context, "card_id", owner="Navigation frame")
     source = context_str(context, "source", owner="Navigation frame")
+    if action.action_id == "decline_navigation":
+        # The arrow cost was not paid [Main p. 20]: the card is still played
+        # and spent, like one that fizzles (OQ-039 (b)).
+        owner = state.players[action.actor]
+        spent = replace(
+            owner,
+            navigation_slots=owner.navigation_slots[1:],
+            navigation_played=(*owner.navigation_played, card_id),
+            navigation_active_slot=0,
+            navigation_trigger_faction="",
+        )
+        return RuleResult(
+            state=replace(
+                state.pop_decision(), players=replace_player(state.players, spent)
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="navigation_card_played",
+                    payload=(
+                        ("card_id", card_id),
+                        ("declined", 1),
+                        ("faction", owner.navigation_trigger_faction),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
     option_index = context_int(
         dict(action.arguments), "option", owner="Navigation play"
     )

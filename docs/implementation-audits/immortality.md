@@ -80,7 +80,7 @@ Sardaukar Quartermaster는 카드면에 "Sarduakar"로 오식돼 있다(하브�
 | Disguised Bureaucrat | Plot | (1M): spice 1; (2M): ◇? |
 | Economic Positioning | Combat / Endgame | troop 2개 retreat ▶ Solari 3 —OR— Solari 10 이상이면 VP 1 |
 | Gruesome Sacrifice | Combat | Conflict의 자기 troop 2개 잃기 ▶ Tleilaxu + specimen 2 |
-| Harvest Cells | Combat에 play하면 face-up으로 대기; `finish_combat`이 정리 전 각 좌석의 Conflict troop+Commander 수를 "잃은 troop"으로 삼아(FAQ p. 1 Chani: supply로 돌아간 troop은 lost) 3 이상이면 `resolve_faceup_trigger_option`으로 발동(Makers 전에 INTRIGUE_CHOICE frame), 아니면 `intrigue_expired`로 discard. | `[FAQ p. 1]` `[card face]`. |
+| Harvest Cells | Combat에 play하면 face-up으로 대기; `finish_combat`이 정리 전 각 좌석의 Conflict troop+Commander 수를 "잃은 troop"으로 삼아(FAQ p. 1 Chani: supply로 돌아간 troop은 lost) 3 이상이면 `resolve_faceup_trigger_option`으로 발동(Makers 전에 INTRIGUE_CHOICE frame), 아니면 `intrigue_expired`로 discard. 보상 뒤 `conflict_end_trigger` 창에서 hand로부터 play한 카드(OQ-057 (11))도 face-up에 놓일 뿐 같은 경로로 troop 반환 뒤 발동한다(2026-09-26부터; 전에는 반환 전에 즉시 발동해 supply가 비면 specimen 0). | `[FAQ p. 1]` `[card face]`. |
 | Illicit Dealings | Plot | Tleilaxu |
 | Shadowy Bargain | Plot / Endgame | specimen 1 —OR— Tleilaxu |
 | Study Melange | Plot / Endgame | spice 1 —OR— spice 3 이상이면 (2M): VP 1 |
@@ -143,7 +143,7 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | DSL | `effect_dsl.py`: 조건 `GeneticMarkersAtLeast(1|2)`·`SolariAtLeast`·`SpiceAtLeast`·`OpponentPlayedCombatIntrigue`·`AllConditions`(Study Melange·Tleilaxu Puppet의 두 조건); 보상 `Research`·`AdvanceTleilaxu(count)`·`GenerateSpecimens(count)`·`AcquireTleilaxuCard`·`RevealPersuasionThisRound`; trigger `OnTroopsLostAtConflictEnd(minimum)`(Combat timing 허용). | 전사표(위 Intrigue 표)와 1:1. |
 | 해석 | `effect_interpreter.apply_rewards`가 자원 뒤에 specimen → Tleilaxu → Research 순으로 state 수준에서 해결(research는 방향 frame을 열 수 있어 마지막). `AcquireTleilaxuCard`는 선택 slot: Row 카드(specimen ≥ 비용)와 deck 맨 위 변형, 거절. Harvest Cells는 자동 보상(specimen 2)을 OQ-015대로 소유자가 `resolve_intrigue_rewards`로 먼저 받아야 살 수 있다. | `[Immortality pp. 6-8]`. |
 | Counterattack | `apply_intrigue_play`가 Combat 중 play된 Combat option의 좌석을 `combat_intrigue_players`에 기록하고 `finish_combat`이 비운다(관측 세그먼트). | "in this Conflict" = 이번 Combat. |
-| Harvest Cells | Combat에 play하면 face-up으로 대기; `finish_combat`이 정리 전 각 좌석의 Conflict troop+Commander 수를 "잃은 troop"으로 삼아(FAQ p. 1 Chani: supply로 돌아간 troop은 lost) 3 이상이면 `resolve_faceup_trigger_option`으로 발동(Makers 전에 INTRIGUE_CHOICE frame), 아니면 `intrigue_expired`로 discard. | `[FAQ p. 1]` `[card face]`. |
+| Harvest Cells | Combat에 play하면 face-up으로 대기; `finish_combat`이 정리 전 각 좌석의 Conflict troop+Commander 수를 "잃은 troop"으로 삼아(FAQ p. 1 Chani: supply로 돌아간 troop은 lost) 3 이상이면 `resolve_faceup_trigger_option`으로 발동(Makers 전에 INTRIGUE_CHOICE frame), 아니면 `intrigue_expired`로 discard. 보상 뒤 `conflict_end_trigger` 창에서 hand로부터 play한 카드(OQ-057 (11))도 face-up에 놓일 뿐 같은 경로로 troop 반환 뒤 발동한다(2026-09-26부터; 전에는 반환 전에 즉시 발동해 supply가 비면 specimen 0). | `[FAQ p. 1]` `[card face]`. |
 | Tleilaxu Puppet | `PlayerState.reveal_persuasion_round_bonus`: Round Start에 0, `begin_reveal_turn`의 Persuasion 합계에 더한다(Command (6+) 판정에도 포함). 소유자의 Reveal이 이미 열린 뒤 play하면(Plot은 Reveal turn에도 쓸 수 있다 `[Main pp. 7, 8]`) 그 Reveal frame에 바로 더하고 round 보너스는 그대로 둔다(2026-09-26 감사 수정; 전에는 카드만 쓰이고 Persuasion이 사라졌다). | "this round". |
 | heuristic | `switch_graft_card` 우선순위를 0.2로 낮췄다(전 옵션 소크에서 두 box를 무한히 오가는 seed 발견). | |
 

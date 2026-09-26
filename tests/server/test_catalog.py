@@ -109,6 +109,13 @@ def test_catalog_names_and_details_match_the_manifests() -> None:
     cunning = intrigue["cunning"]
     assert isinstance(cunning, dict)
     assert cunning["timings"] == ["plot"]
+    assert cunning["navigation"] is False
+    # A Navigation card has no timing banner; Plot Course plays it
+    # [Steersman Y'rkoon card], so the client labels it a Navigation card.
+    navigation = intrigue["navigation_card_10"]
+    assert isinstance(navigation, dict)
+    assert navigation["timings"] == []
+    assert navigation["navigation"] is True
 
     leaders = catalog["leaders"]
     assert isinstance(leaders, dict)

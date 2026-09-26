@@ -152,9 +152,14 @@ def _gain_influence_text(gain: GainInfluence) -> str:
 
 def _place_spy_text(spy: PlaceSpy) -> str:
     if spy.shared_post:
-        return "Place a Spy (sharing another player's Spy's post)"
+        return "Place a Spy (may share another player's Spy's post)"
     if spy.factions is not None:
         names = " or ".join(_faction_name(faction) for faction in spy.factions)
+        return f"Place a Spy ({names} Observation Post)"
+    if spy.agent_icons is not None:
+        names = " or ".join(
+            icon.value.replace("_", " ").title() for icon in spy.agent_icons
+        )
         return f"Place a Spy ({names} Observation Post)"
     return "Place a Spy"
 
@@ -418,7 +423,7 @@ def trigger_text(trigger: Trigger) -> str:
         case OnRevealAcquisitionThisRound():
             return "Whenever you acquire a card during your Reveal turn this round"
         case OnUnitsDeployedInTurn(minimum=minimum):
-            return f"When you deploy {minimum} or more units in a turn"
+            return f"When you deploy {minimum} or more units to the Conflict in a turn"
         case OnTroopsLostAtConflictEnd(minimum=minimum):
             return f"When you lose {minimum} or more troops at the end of a Conflict"
         case _:
@@ -458,7 +463,12 @@ def option_text(option: IntrigueOption, *, show_timing: bool = True) -> str:
 
 
 def intrigue_card_text(entry: IntrigueCardEntry) -> list[str]:
-    """Render one line of English text per printed Intrigue option."""
+    """Render one line of English text per printed Intrigue option.
+
+    A Navigation card prints no timing banner -- Plot Course plays it when
+    its owner reaches 2 Influence [Steersman Y'rkoon card] -- so its lines
+    carry no timing prefix.
+    """
 
     return [
         option_text(option, show_timing=not entry.navigation)

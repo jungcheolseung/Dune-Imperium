@@ -19,7 +19,7 @@
 ## 일치 확인 항목 (코드로 직접 확인)
 
 | 판정 | 구현 위치 |
-| --- | --- |
+| --- | --- | --- | --- | --- |
 | Agent 배치 직후 Gather Intelligence 결정을 먼저 하고, 그 뒤 space·Agent box·Faction 효과 자유 순서 | `rules/agent_effect_frame.py`(Gather Intelligence 행동이 단독 제시), OQ-011 |
 | space 비용은 어떤 효과보다 먼저 지불(Spice Refinery·Gather Support: 카드로 얻은 spice로 1 spice 업그레이드 불가) | `rules/agent_turn.py`(`_pay_cost`가 effect frame 생성보다 앞) |
 | trash된 카드의 효과는 발동 불가, 이미 pool에 들어간 Persuasion·검은 유지 | OQ-022(같은 Paul 판정을 이미 채택), `expire_trashed_card_effects` |
@@ -30,7 +30,7 @@
 | 같은 post에 자기 Spy 둘 금지, supply가 비면 recall 뒤 재배치(같은 자리 포함) | `rules/spy_placement.py`, `rules/spy_moves.py` |
 | Combat 아이콘은 중첩되지 않음(garrison 2개 상한) | `rules/combat_deployment.py` `grant_combat_icon`(`max(limit, 2)`) |
 | 검은 unit이 없으면 0이지만, 같은 Reveal에서 unit이 들어오면 기록된 `sword_strength`가 합산됨 | `rules/reveal_turn.py`(`sword_strength`와 `strength` 분리 기록) |
-| Call to Arms: Intrigue draw는 세지 않고, 소급하지 않으며, Agent turn에 play해 face-up 대기 | `rules/intrigue_triggers.py` `fire_reveal_acquisition_intrigue`(personal card 획득 경로에서만 호출) |
+| Call to Arms: Intrigue draw는 세지 않고, 소급하지 않으며, Agent turn에 play해 face-up 대기 | `rules/intrigue_triggers.py` `fire_reveal_acquisition_intrigue`(personal card 획득 경로에서만 호출 — 2026-09-26부터 Tleilaxu Row 획득 `acquire_tleilaxu_card`도 포함 `[Immortality p. 8]`; Reclaimed Forces는 OQ-066) |
 | Leverage는 실제 spice 획득 필요, Counterattack은 supply 0이어도 play, Shield Wall 제거는 선택, Unexpected Allies는 hooks 없이 worm | `rules/effect_interpreter.py`, `tests/unit/rules/test_intrigue.py` |
 | False Orders는 상대 Spy가 없어도 play 가능(Spy 배치 부분만) | `rules/intrigue.py`, `tests/unit/rules/test_bloodlines_cards.py` |
 | Strategic Stockpiling: 조건이 성립한 section만 발동 | `tests/unit/rules/test_intrigue.py` |
@@ -68,7 +68,7 @@
 | 8 | (2026-09-09 반영: OQ-054 보강) Usurp로 빌린 Stillsuit Manufacturer는 "in play"가 아니므로 hand로 돌아올 수 없다(BGG) | 빌린 Row 카드가 `in_play`에 들어가 Fremen Alliance면 hand로 이동 | `rules/graft.py:135`, `rules/agent_effects.py:3606` | OQ-054 보강 |
 | 9 | (2026-09-09 반영: OQ-057) Battlefield Research·Rapid Engineering(·Machine Culture)은 play했으면 반드시 Tech 획득(Message from designer) | Tech 획득 frame에 항상 `decline_tech` | `rules/tech.py:237` | Intrigue 출처 frame에서만 decline 제거 |
 | 10 | (2026-09-09 반영: OQ-057) Imperium Ceremony의 "keep one"은 draw 1 → Suspensor Suits troop 1(Message from designer) | peek keep 경로는 `suspensor_owed`를 올리지 않음 | `rules/intrigue_peek.py:114` | Tech+Immortality 조합 |
-| 11 | (2026-09-09 반영: OQ-057, `conflict_end_trigger` 창) Combat 보상으로 받은 Harvest Cells는 즉시 play 가능(BGG) | trigger는 face-up 카드만 보고, Combat Intrigue 창은 보상 지급보다 앞이라 그 Combat에서는 불가 | `rules/combat.py:1461` `_fire_troop_loss_triggers` | 보상 지급 뒤 troop 손실 전 hand의 Harvest Cells를 play할 창이 필요 |
+| 11 | (2026-09-09 반영: OQ-057, `conflict_end_trigger` 창) Combat 보상으로 받은 Harvest Cells는 즉시 play 가능(BGG) | trigger는 face-up 카드만 보고, Combat Intrigue 창은 보상 지급보다 앞이라 그 Combat에서는 불가 | `rules/combat.py:1461` `_fire_troop_loss_triggers` | 보상 지급 뒤 troop 손실 전 hand의 Harvest Cells를 play할 창이 필요. 2026-09-26: 창에서 play한 카드는 face-up으로 대기해 정리의 troop 반환 뒤 발동(`[FAQ p. 1]` "lost"는 supply 반환) |
 | 12 | (2026-09-09 반영: OQ-057, `ghola_partner` → 2026-09-26 `bond_partner`) Ghola를 Long Reach와 graft하면 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다(Email, TTS Discord) | Long Reach 아이콘은 BG Bond 조건이고 Ghola는 BG가 아니라 City만 접근 | `rules/agent_icons.py:36` | Planned Coupling(BG)과의 graft: 2026-09-26까지 코드는 이 칸과 달리 BG 상대를 세지 않았다 — `bond_partner`로 고쳐 이제 일치 |
 | 13 | (2026-09-09 반영: OQ-057) Tleilaxu Master의 research 2개는 따로 해결 가능(BGG) | 한 행동에서 연속 처리(방향 선택 frame만 끼어듦) | `rules/reveal_turn.py:2231` | 영향 작음 |
 

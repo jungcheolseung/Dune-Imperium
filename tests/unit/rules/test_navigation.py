@@ -351,6 +351,38 @@ def test_a_card_with_no_playable_option_is_spent_without_effect() -> None:
     assert dropped.events[0].kind == "navigation_exhausted"
 
 
+def test_card_ten_arrow_cost_may_be_declined_and_the_card_is_spent() -> None:
+    # Card 10 prints "[lose 1 Influence] -> [gain 1 Influence]" with an
+    # arrow; "You do not have to pay such a cost on a card." [Main p. 20]
+    # (OQ-058). Plot Course still plays the card, so declining spends it
+    # without effect (OQ-039 (b)). It used to force the loss.
+    owner = _steersman(
+        (_card(10), _card(5)), influence=Influence(fremen=1), victory_points=1
+    )
+    opened = _reach_two(_turn_state(owner), Faction.FREMEN)
+    actions = legal_navigation_play_actions(opened, 0)
+    decline = DomainAction(action_id="decline_navigation", actor=0)
+    assert [a.action_id for a in actions] == ["play_navigation", "decline_navigation"]
+    declined = apply_navigation_play(opened, decline)
+    seat = declined.state.players[0]
+    assert seat.influence.fremen == 2
+    assert seat.victory_points == 1 + 1
+    assert seat.navigation_played == (_card(10),)
+    assert seat.navigation_slots == (_card(5),)
+    assert seat.navigation_active_slot == 0
+    assert declined.state.pending_navigation_plays == ()
+    assert declined.state.decision_stack[-1].kind == "turn"
+    assert dict(declined.events[0].payload)["declined"] == 1
+    # A card with a cost-free option has no decline: its play is mandatory.
+    free = _reach_two(
+        _turn_state(_steersman((_card(9),), influence=Influence(fremen=1))),
+        Faction.FREMEN,
+    )
+    assert "decline_navigation" not in {
+        a.action_id for a in legal_navigation_play_actions(free, 0)
+    }
+
+
 def test_card_five_pays_spice_for_trashing_a_costed_card() -> None:
     owner = _steersman(
         (_card(5),),

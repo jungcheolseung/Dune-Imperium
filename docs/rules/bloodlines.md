@@ -129,7 +129,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 ### Tech 전용 카드와 Leader
 
 - **Ixian Ambassador ×2**(Imperium, 4, 진영 없음, Landsraad 아이콘): Agent: spice 1. Reveal: Persuasion 1; Tech tile 2장 이상이면 Influence 1 선택. `[card face]`
-- **Battlefield Research**(Intrigue, Combat/Endgame): troop 1~2 retreat → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 VP 1. `[card face]`
+- **Battlefield Research**(Intrigue, Combat/Endgame): Combat에는 troop 1~2 retreat → Acquire Tech(spice 1 할인) — OR — Endgame에는 Tech tile 3장 이상이면 VP 1. 두 띠의 색(빨강/짙은 녹색)과 바닥글 "COMBAT / ENDGAME"이 띠마다 시점을 하나씩 정한다("Each Intrigue card indicates when it can be played" `[Main p. 7]`; Grasp Arrakis·Tenuous Bond도 같다, 2026-09-26 사용자 판정). `[card face]`
 - **Rapid Engineering**(Intrigue, Plot): 카드 1장 discard → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 네 진영 중 둘을 골라 Influence 1씩. `[card face]`
 - **Kota Odax of Ix**(Leader, Tech Module 전용 `[Bloodlines p. 6]`): **Secret Project** — "Game Start: 각 stack의 맨 아래 Tech tile을 본다. 하나를 face-down으로 여기에 둔다. Tech tile을 acquire할 수 있을 때마다 이 tile을 고를 수 있고, 비용이 spice 1 적다." **Reverse Engineering(Signet)** — spice 1 — OR — 자신의 Tech tile 하나를 trash → Intrigue 1 + draw 1. `[card face]`
 
