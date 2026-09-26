@@ -2002,6 +2002,45 @@ def test_call_to_arms_recruits_per_reveal_acquisition_then_expires() -> None:
     assert "intrigue_expired" in [event.kind for event in finished.events]
 
 
+def test_call_to_arms_troop_counts_toward_reveal_deployment_allowance() -> None:
+    # "You may deploy any units you recruit this turn and up to two more
+    # from your garrison" [Bloodlines p. 5] does not carve out an exception
+    # for a troop a face-up Call to Arms recruits: it is still recruited
+    # during this Reveal turn. The trigger used to leave
+    # ``reveal_troops_recruited`` unchanged, so a Combat icon's deployment
+    # allowance never grew past the flat 2 from the garrison no matter how
+    # many acquisitions fired the card.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _intrigue("call_to_arms")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_faceup=(card,),
+        hand=_persuasion_hand(1),
+        combat_icon_turn=True,
+    )
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+
+    context = dict(bought.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(bought, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
 def test_call_to_arms_played_during_the_reveal_applies_at_once() -> None:
     card = _intrigue("call_to_arms")
     owner = PlayerState(

@@ -209,18 +209,18 @@ def _apply_reclaimed_forces(
             ("specimens", RECLAIMED_FORCES.specimen_cost),
         ),
     )
+    # "In many ways, Tleilaxu cards are similar to Imperium cards. You
+    # acquire them during your Reveal turn" [Immortality p. 8], and
+    # Reclaimed Forces is acquired the same way, just left in place instead
+    # of going to the discard pile [Immortality p. 9] (user ruling,
+    # 2026-09-26, OQ-066): a face-up Call to Arms ("During your Reveal turn
+    # this round, whenever you acquire a card:" [Call to Arms card]) fires
+    # after the chosen effect (OQ-012).
     if choice == "tleilaxu":
         paid = replace(state, players=replace_player(state.players, owner))
         advanced = advance_tleilaxu(
             paid, player, 1, source=f"{source}:reclaimed_forces"
         )
-        # "In many ways, Tleilaxu cards are similar to Imperium cards. You
-        # acquire them during your Reveal turn" [Immortality p. 8], and
-        # Reclaimed Forces is acquired the same way, just left in place
-        # instead of taken to hand [Immortality p. 9] (user ruling,
-        # 2026-09-26, OQ-066): a face-up Call to Arms ("During your Reveal
-        # turn this round, whenever you acquire a card:" [Call to Arms card])
-        # fires after the chosen effect (OQ-012).
         fired = fire_reveal_acquisition_intrigue(
             advanced.state, player, source=f"{source}:reclaimed_forces"
         )

@@ -35,6 +35,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     replace_top_frame,
     reveal_is_open_for,
+    update_turn_recruits,
     with_context,
 )
 from dune_imperium.rules.spy_placement import place_spy, recall_spy
@@ -63,13 +64,18 @@ def fire_reveal_acquisition_intrigue(
     """Fire each face-up per-acquisition card once for one Reveal acquisition.
 
     Only acquisitions made while the owner's own Reveal frame is on the stack
-    count; the trigger window is the owner's Reveal turn this round.
+    count; the trigger window is the owner's Reveal turn this round. Troops
+    a trigger recruits join the Reveal turn's recruit count like any other
+    Reveal-turn recruit: "You may deploy any units you recruit this turn and
+    up to two more from your garrison" [Bloodlines p. 5] governs the
+    Combat-icon deployment allowance regardless of what recruited them.
     """
 
     owner = state.players[player]
     if not owner.intrigue_faceup or not reveal_is_open_for(state, player):
         return RuleResult(state=state)
     events: list[GameEvent] = []
+    total_recruited = 0
     for card_id in _faceup_entries_with_trigger(
         owner.intrigue_faceup, OnRevealAcquisitionThisRound
     ):
@@ -90,6 +96,7 @@ def fire_reveal_acquisition_intrigue(
                 owner, recruited = recruit_troops(owner, reward.count)
                 recruited_total += recruited
                 requested_total += reward.count
+        total_recruited += recruited_total
         trigger_source = f"{source}:reveal_trigger:{card_id}"
         events.append(
             GameEvent(
@@ -110,6 +117,7 @@ def fire_reveal_acquisition_intrigue(
     if not events:
         return RuleResult(state=state)
     next_state = replace(state, players=replace_player(state.players, owner))
+    next_state = update_turn_recruits(next_state, troops_recruited=total_recruited)
     return RuleResult(state=next_state, events=tuple(events))
 
 

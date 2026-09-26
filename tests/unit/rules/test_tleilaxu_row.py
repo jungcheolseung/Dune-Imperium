@@ -168,9 +168,12 @@ def test_a_tleilaxu_acquisition_fires_call_to_arms() -> None:
     # cards. You acquire them during your Reveal turn" [Immortality p. 8].
     # A Tleilaxu Row acquisition used to recruit nothing.
     from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
 
     call_to_arms = "intrigue:call_to_arms:0"
-    state = _reveal_state(_owner(intrigue_faceup=(call_to_arms,)))
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), combat_icon_turn=True)
+    )
     garrison = state.players[0].troops_garrison
 
     result = apply_tleilaxu_acquisition(state, _actions(state)[CONTAMINATOR])
@@ -180,6 +183,18 @@ def test_a_tleilaxu_acquisition_fires_call_to_arms() -> None:
     assert "intrigue_triggered" in [event.kind for event in result.events]
     # The card still waits for the rest of the Reveal turn, then expires.
     assert owner.intrigue_faceup == (call_to_arms,)
+    # "You may deploy any units you recruit this turn and up to two more
+    # from your garrison" [Bloodlines p. 5]: the trigger's troop is
+    # recruited during this Reveal turn, so a Combat icon's deployment
+    # allowance must count it -- a Row-card acquisition used to leave
+    # ``reveal_troops_recruited`` at 0 and cap the deploy at 2.
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result.state, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
     expired = expire_reveal_faceup_intrigue(result.state, 0).state
     assert expired.players[0].intrigue_faceup == ()
     assert call_to_arms in expired.intrigue_discard
@@ -219,8 +234,12 @@ def test_reclaimed_forces_troops_choice_fires_call_to_arms() -> None:
     # turn this round, whenever you acquire a card:" [Call to Arms card])
     # fires for it too. It used to fire only for Row cards, not for
     # Reclaimed Forces.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
     call_to_arms = "intrigue:call_to_arms:0"
-    state = _reveal_state(_owner(intrigue_faceup=(call_to_arms,)))
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), combat_icon_turn=True)
+    )
 
     result = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:troops"])
 
@@ -229,8 +248,17 @@ def test_reclaimed_forces_troops_choice_fires_call_to_arms() -> None:
     assert owner.troops_garrison == 6
     assert "intrigue_triggered" in [event.kind for event in result.events]
     assert owner.intrigue_faceup == (call_to_arms,)
-    # The trigger's troop is not part of Reclaimed Forces' own recruit count.
-    assert dict(result.state.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+    # The trigger's troop joins the Reveal turn's recruit count exactly like
+    # Reclaimed Forces' own troops -- "You may deploy any units you recruit
+    # this turn" [Bloodlines p. 5] does not distinguish who or what
+    # recruited them. 2 (Reclaimed Forces) + 1 (Call to Arms) = 3.
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 3
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result.state, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3, 4, 5}
 
 
 def test_reclaimed_forces_tleilaxu_choice_fires_call_to_arms() -> None:
