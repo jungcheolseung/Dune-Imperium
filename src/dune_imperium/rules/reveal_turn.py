@@ -581,13 +581,27 @@ def apply_reveal_sandworm_action(
         raise RuntimeError("Reveal sandworm frame has invalid card ID")
     source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     if action.action_id == "decline_reveal_sandworm":
+        # "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
+        # [Main pp. 10, 20]: choosing the Persuasion branch is what gains the
+        # 2 Persuasion, so Command (6+) and every other total only count them
+        # from here (user ruling 2026-09-26).
+        remaining = add_reveal_persuasion(state.decision_stack[:-1], 2)
         return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            state=replace(state, decision_stack=remaining),
             events=(
                 GameEvent(
                     event_id=f"{source}:sandworm_declined",
                     kind="reveal_sandworm_declined",
                     payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+                GameEvent(
+                    event_id=f"{source}:persuasion",
+                    kind="reveal_persuasion_gained",
+                    payload=(
+                        ("amount", 2),
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                    ),
                 ),
             ),
         )
@@ -601,11 +615,10 @@ def apply_reveal_sandworm_action(
         paid = replace(
             owner, resources=replace(owner.resources, water=owner.resources.water - 1)
         )
-        remaining = add_reveal_persuasion(state.decision_stack[:-1], -2)
         popped = replace(
             state,
             players=replace_player(state.players, paid),
-            decision_stack=remaining,
+            decision_stack=state.decision_stack[:-1],
         )
         return replace_sandworms(popped, action.actor, 1, source=source)
     previous_units = owner.units_in_conflict
@@ -634,9 +647,7 @@ def apply_reveal_sandworm_action(
         combat_strength=owner.combat_strength + strength_delta,
         units_deployed_turn=owner.units_deployed_turn + 1,
     )
-    remaining = state.decision_stack[:-1]
-    remaining = add_reveal_persuasion(remaining, -2)
-    remaining = add_reveal_strength(remaining, strength_delta)
+    remaining = add_reveal_strength(state.decision_stack[:-1], strength_delta)
     return RuleResult(
         state=replace(
             state,
@@ -1973,11 +1984,11 @@ def add_reveal_persuasion(
         generated = _generated_persuasion(context)
         context["persuasion"] = persuasion + amount
         if generated is not None:
-            # Gains are generated Persuasion [Bloodlines p. 5]; the only
-            # negative amount is Desert Power's "2 Persuasion -OR- sandworm",
-            # whose sandworm branch takes back its 2 while they are still
-            # unspent (_can_summon_reveal_sandworm), so they were never
-            # generated. Acquisition costs do not come through here.
+            # Gains are generated Persuasion [Bloodlines p. 5]. Desert
+            # Power's "2 Persuasion -OR- sandworm" waits out of both totals
+            # until the owner picks the Persuasion branch (user ruling
+            # 2026-09-26), so this is never called with a negative amount.
+            # Acquisition costs do not come through here.
             context[GENERATED_PERSUASION_KEY] = generated + amount
         return (
             *frames[:index],
@@ -2045,7 +2056,12 @@ def add_reveal_optional_sword_strength(
 
 
 def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
-    """Return whether Desert Power can currently deploy its sandworm."""
+    """Return whether Desert Power can currently deploy its sandworm.
+
+    The 2 Persuasion are no longer counted (and so cannot be "spent") before
+    the owner picks a branch [Desert Power card] (user ruling 2026-09-26), so
+    this only gates the sandworm branch's own standing requirements.
+    """
 
     owner = state.players[player]
     return (
@@ -2057,25 +2073,39 @@ def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
             replaces_sandworms(owner)
             or not current_conflict_is_shield_wall_protected(state)
         )
-        # "[2 Persuasion] -OR- ... [sandworm]" [Desert Power card]: the
-        # sandworm branch gives the 2 Persuasion back, so it closes once they
-        # are spent on an acquisition [Main p. 12].
-        and _unspent_reveal_persuasion(state) >= 2
     )
 
 
-def _unspent_reveal_persuasion(state: GameState) -> int:
-    """Return the Reveal frame's unspent Persuasion.
+def _desert_power_persuasion_pending(
+    card: PersonalCardDefinition,
+    owner: PlayerState,
+) -> bool:
+    """Return whether a revealed card's Persuasion waits for a Reveal choice.
 
-    ``begin_reveal_turn`` judges its choices before the Reveal frame exists,
-    right after Desert Power's 2 Persuasion were counted, so they are all
-    still unspent then.
+    "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
+    [Main pp. 10, 20]: with Maker Hooks the sandworm branch is always
+    choosable, so the 2 Persuasion are not generated -- and cannot fund
+    Command (6+) -- until the owner picks the Persuasion branch
+    (``decline_reveal_sandworm``) (user ruling 2026-09-26). Without Maker
+    Hooks the sandworm branch can never be taken, so the card is simply 2
+    Persuasion counted immediately, unchanged from before.
     """
 
-    for frame in reversed(state.decision_stack):
-        if frame.kind == FrameKind.REVEAL:
-            return context_int(frame_context(frame), "persuasion", owner="Reveal frame")
-    return 2
+    return (
+        PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
+        in card.reveal_choice_effects
+        and owner.maker_hooks
+    )
+
+
+def _card_reveal_persuasion(card: PersonalCardDefinition, owner: PlayerState) -> int:
+    """Return a revealed card's own Persuasion, deferring Desert Power's."""
+
+    return (
+        0
+        if _desert_power_persuasion_pending(card, owner)
+        else card.reveal_persuasion
+    )
 
 
 def _reveal_frame_context(
@@ -3341,8 +3371,13 @@ def _reveal_choice_effect_is_available(
         or effect
         is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
         or (
+            # The Persuasion branch is always choosable, so the choice opens
+            # whenever the sandworm branch's standing requirement (Maker
+            # Hooks) holds; ``legal_reveal_sandworm_actions`` gates the
+            # sandworm branch itself on water, a Conflict and Shield Wall
+            # (user ruling 2026-09-26).
             effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-            and _can_summon_reveal_sandworm(state, player)
+            and owner.maker_hooks
         )
         or (
             effect
@@ -3698,14 +3733,17 @@ def _late_reveal_one_card(
     frame_persuasion = _frame_generated_persuasion(state.decision_stack)
     # Command (6+) counts the card's own Persuasion [Bloodlines p. 5]; the
     # effects paid here are recorded on the same total below, so
-    # grant_late_reveal_effects never pays them a second time.
+    # grant_late_reveal_effects never pays them a second time. Desert Power's
+    # 2 wait for its own Reveal choice like any other card (user ruling
+    # 2026-09-26), so they are excluded here too.
+    card_persuasion = _card_reveal_persuasion(card, owner)
     command_persuasion = (
-        None if frame_persuasion is None else frame_persuasion + card.reveal_persuasion
+        None if frame_persuasion is None else frame_persuasion + card_persuasion
     )
     eligible = _eligible_reveal_effects(
         next_owner, cards_in_play, card_id, card, persuasion=command_persuasion
     )
-    persuasion_gain = card.reveal_persuasion + sum(
+    persuasion_gain = card_persuasion + sum(
         _reveal_effect_persuasion(
             effect, revealed_cards, completed_contracts, _in_play_cards(next_owner)
         )
@@ -3986,7 +4024,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     def total_persuasion(
         effects: tuple[tuple[str, PersonalCardRevealEffect], ...],
     ) -> int:
-        total = sum(card.reveal_persuasion for card in cards) + sum(
+        total = sum(_card_reveal_persuasion(card, owner) for card in cards) + sum(
             _reveal_effect_persuasion(
                 effect, cards, len(owner.completed_contract_ids), in_play_cards
             )

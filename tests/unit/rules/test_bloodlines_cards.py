@@ -55,6 +55,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_resume_reveal_choice_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_gain_actions,
+    legal_reveal_sandworm_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
     reveal_pending_gains,
@@ -362,6 +363,120 @@ def test_a_late_command_counts_persuasion_spent_before_it() -> None:
     assert context["persuasion_generated"] == 6
     pending = reveal_pending_gains(dict(retreated.decision_stack[-1].context))
     assert ("troops", "2", _card("i_believe")) in pending
+
+
+# --- Desert Power's Command (6+) timing (OQ-069) ---------------------------
+
+
+def _desert_power_owner(**overrides: object) -> PlayerState:
+    diplomacy = next(instance for instance in STARTERS if ":diplomacy:" in instance)
+    values: dict[str, object] = {
+        "hand": (_card("desert_power"), _card("i_believe"), diplomacy),
+        "high_council": True,
+        "maker_hooks": True,
+        "resources": Resources(water=1),
+    }
+    values.update(overrides)
+    return _owner(**values)
+
+
+def _desert_power_state(**owner_overrides: object) -> GameState:
+    return replace(
+        _state(_desert_power_owner(**owner_overrides)),
+        current_conflict_ids=("propaganda",),
+    )
+
+
+def test_desert_power_defers_i_believes_command_below_six_persuasion() -> None:
+    # OQ-069 (user ruling 2026-09-26): "(A)가 맞지 ... 근데 설득력을 선택하기
+    # 전에 총 설득력이 6 미만이라면 당연히 통솔(+6)도 발동되면 안 되겠지. 그러다
+    # 설득력으로 최종 선택했고 그때 총 설득력이 6 이상이면 효과 발동되게 해야지".
+    # "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
+    # [Main pp. 10, 20]: with Maker Hooks the choice may be deferred, so the
+    # 2 Persuasion do not count until it is resolved. I Believe (1) +
+    # Diplomacy (1) + High Council (2) is 4 without them, below Command's 6,
+    # so I Believe's "Command (6+): recruit two troops" [I Believe card]
+    # [Bloodlines pp. 5, 12] does not queue yet.
+    revealed = _reveal(_desert_power_state())
+    context = _reveal_context(revealed)
+    assert context["persuasion_generated"] == 4
+    assert context["persuasion"] == 4
+    (reveal,) = (f for f in revealed.decision_stack if f.kind == FrameKind.REVEAL)
+    pending = reveal_pending_gains(dict(reveal.context))
+    assert not any(entry[2] == _card("i_believe") for entry in pending)
+    frame = revealed.decision_stack[-1]
+    assert frame.kind == "reveal_choice"
+    assert dict(frame.context)["reveal_choice_effect"] == "may_pay_water_for_sandworm"
+
+
+def test_desert_power_sandworm_branch_never_commands_i_believe() -> None:
+    # Paying Water for the sandworm keeps the 2 Persuasion out of the total
+    # for good, so Command (6+) never opens for them this Reveal.
+    revealed = _reveal(_desert_power_state())
+    sandworm = next(
+        action
+        for action in legal_reveal_sandworm_actions(revealed, 0)
+        if action.action_id == "pay_reveal_water_for_sandworm"
+    )
+    engine = UprisingRulesEngine()
+    deployed = engine.apply(revealed, sandworm).state
+    context = _reveal_context(deployed)
+    assert context["persuasion_generated"] == 4
+    (reveal,) = (f for f in deployed.decision_stack if f.kind == FrameKind.REVEAL)
+    pending = reveal_pending_gains(dict(reveal.context))
+    assert not any(entry[2] == _card("i_believe") for entry in pending)
+    assert deployed.players[0].troops_garrison == 3
+    assert deployed.players[0].sandworms_conflict == 1
+
+
+def test_desert_power_persuasion_branch_commands_i_believe() -> None:
+    # Choosing the Persuasion branch gains Desert Power's 2 from then on, so
+    # the turn's generated Persuasion reaches 6 and I Believe's Command
+    # troops become pending through the late grant (grant_late_reveal_effects).
+    revealed = _reveal(_desert_power_state())
+    engine = UprisingRulesEngine()
+    declined = engine.apply(
+        revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    ).state
+    context = _reveal_context(declined)
+    assert context["persuasion_generated"] == 6
+    assert context["persuasion"] == 6
+    pending = reveal_pending_gains(dict(declined.decision_stack[-1].context))
+    assert ("troops", "2", _card("i_believe")) in pending
+
+
+def test_desert_power_deferred_choice_still_commands_i_believe_once_resumed() -> None:
+    # Deferring the choice and resuming it later reaches the same result as
+    # deciding immediately (the resumed choice always opens with Maker
+    # Hooks, so it cannot lapse).
+    revealed = _reveal(_desert_power_state())
+    engine = UprisingRulesEngine()
+    deferred = engine.apply(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    assert deferred.decision_stack[-1].kind == "reveal"
+    (resume,) = legal_resume_reveal_choice_actions(deferred, 0)
+    resumed = engine.apply(deferred, resume).state
+    declined = engine.apply(
+        resumed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    ).state
+    context = _reveal_context(declined)
+    assert context["persuasion_generated"] == 6
+    pending = reveal_pending_gains(dict(declined.decision_stack[-1].context))
+    assert ("troops", "2", _card("i_believe")) in pending
+
+
+def test_desert_power_without_maker_hooks_commands_i_believe_immediately() -> None:
+    # Without Maker Hooks the sandworm branch can never be taken, so the
+    # card is simply 2 Persuasion counted at the Reveal start (unchanged by
+    # OQ-069): I Believe (1) + Diplomacy (1) + High Council (2) + Desert
+    # Power (2) reaches 6 immediately and Command pays at once. ``_reveal``
+    # takes every pending gain, so the paid-out troops show up on the owner.
+    revealed = _reveal(_desert_power_state(maker_hooks=False))
+    context = _reveal_context(revealed)
+    assert context["persuasion_generated"] == 6
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert revealed.players[0].troops_garrison == 3 + 2
 
 
 def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
