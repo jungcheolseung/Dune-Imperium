@@ -181,6 +181,10 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 #game-screen {
   display: grid;
+  /* One column no wider than the window: without it the implicit column
+     took the table's min-content width, and at 600px the board's own
+     minimum (it sizes from its row's height) pushed the page 4px sideways. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
 }
