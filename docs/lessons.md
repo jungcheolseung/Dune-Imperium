@@ -606,3 +606,14 @@
      trash·Long Live the Fighters에, 비슷한 누락(Plot으로 산 tile의 troop이 turn의 recruit로 안 셈)이 `tech.py`에 남아 있었다 — 검증자가
      "후속 확인 필요"로 남긴 메모를 main 세션이 따라가서야 드러났다. 수정 지시에는 "같은 모양의 다른 호출 지점을 grep으로 찾아 함께
      고치거나 보고하라"를 넣는다.
+
+## 2026-09-26 — guard를 한 줄씩 지우는 확인이 낡은 `.pyc`를 읽어 엉뚱한 테스트를 가리킴
+
+- 무슨 일: 자기 자신을 trash하는 경로 9곳에 trash-recruit guard를 넣고(위 항목 4의 전수 점검, `implementation-audits/bloodlines.md`
+  Eliminate Allies 행 (g)), 스크립트로 guard를 하나씩 지워 그 회귀 테스트만 실패하는지 봤다. `reveal_turn.py`의 두 guard 줄은 글자까지
+  같아 지운 파일의 크기가 같았고, 결과가 "중간 도착 guard를 지우면 *늦게 충족* 테스트가 실패"로 나와 테스트가 엉뚱한 경로를 지킨다고
+  결론 낼 뻔했다. 그 한 경우를 손으로 다시 돌리니 올바르게 갈렸고, bytecode 쓰기를 끄고 쓰기 사이에 1초를 두자 9곳 모두 맞게 갈렸다.
+- 원인: Python은 `.pyc`를 source의 mtime(초 단위)과 크기로만 검증한다. 크기가 같은 두 변형을 같은 초 안에 연달아 쓰면 앞 변형의
+  `.pyc`가 그대로 쓰일 수 있다(이번 결과와 맞아떨어지는 설명이며, 캐시를 끈 재실행으로 확인했다).
+- 재발 방지: source를 지웠다 되돌리는 확인은 `PYTHONDONTWRITEBYTECODE=1`로 돌리고 해당 `__pycache__`를 먼저 지운다(또는 쓰기 사이에
+  1초 이상 둔다). 결과가 예상과 어긋나면 결론 전에 그 한 경우를 손으로 다시 돌린다.
