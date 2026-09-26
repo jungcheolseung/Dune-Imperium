@@ -62,7 +62,13 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 108
+# v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
+# Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
+# Steersman's Recall Agent icon and Twisted Mentat
+# (recall_conflict_agent_for_agent_card, Bloodlines catalogs) and the
+# Sardaukar II / High Council token Contract reward
+# (recall_conflict_agent_for_contract, CHOAM+Bloodlines catalogs).
+ACTION_CODEC_VERSION = 109
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -788,6 +794,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
             "recall_conflict_agent_for_imperial_privilege",
+            # Steersman's Recall Agent icon and Twisted Mentat may likewise
+            # recall an Into the Fray Agent from the Conflict (OQ-068).
+            "recall_conflict_agent_for_agent_card",
             "pay_leader_signet_water",
             "decline_optional_trash",
             "take_tuek_sietch_spice",
@@ -844,6 +853,11 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 arguments=(("card_id", card_id),),
             )
             for card_id in all_intrigue
+        )
+        # Sardaukar II and the High Council token's Recall Agent reward may
+        # likewise recall an Into the Fray Agent from the Conflict (OQ-068).
+        templates.append(
+            ActionTemplate(action_id="recall_conflict_agent_for_contract")
         )
     templates.extend(
         ActionTemplate(

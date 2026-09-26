@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 108
+    assert ACTION_CODEC_VERSION == 109
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -43,6 +43,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # +3).
     # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect may
+    # recall an Into the Fray Agent from the Conflict, not only Imperial
+    # Privilege. Both new templates need Bloodlines (an Into the Fray Agent
+    # only exists then), so the Bloodlines-less base catalog is unchanged.
     assert first.size == (
         4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
     )
@@ -73,6 +77,8 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # The CHOAM catalogs also gain decline_contract_spy (+1).
     # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    # v109 (OQ-068): both new Conflict-recall templates also need Bloodlines,
+    # so the CHOAM-without-Bloodlines catalog is unchanged (see v109 above).
     assert codec.size == (
         4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
         + 1
@@ -92,20 +98,34 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # trash join the CHOAM+Bloodlines catalog; v99: Imperial Privilege may
     # recall Duncan Idaho's Into the Fray Agent (OQ-037(d)).
     both = ActionCodec(RulesetConfig(choam_module=True, bloodlines=True))
+    take_contract = DomainAction(
+        action_id="take_contract",
+        actor=1,
+        arguments=(("instance_id", "contract:bloodlines_earn_any_alliance"),),
+    )
+    trash_intrigue = DomainAction(
+        action_id="trash_intrigue_for_contract",
+        actor=1,
+        arguments=(("card_id", "intrigue:backed_by_choam:0"),),
+    )
+    recall_conflict_privilege = DomainAction(
+        action_id="recall_conflict_agent_for_imperial_privilege", actor=1
+    )
+    # v109 (OQ-068, 2026-09-26 user ruling): Steersman's Recall Agent icon
+    # and Twisted Mentat, and the Sardaukar II / High Council token Contract
+    # reward, may likewise recall an Into the Fray Agent from the Conflict.
+    recall_conflict_agent_card = DomainAction(
+        action_id="recall_conflict_agent_for_agent_card", actor=1
+    )
+    recall_conflict_contract = DomainAction(
+        action_id="recall_conflict_agent_for_contract", actor=1
+    )
     actions = (
-        DomainAction(
-            action_id="take_contract",
-            actor=1,
-            arguments=(("instance_id", "contract:bloodlines_earn_any_alliance"),),
-        ),
-        DomainAction(
-            action_id="trash_intrigue_for_contract",
-            actor=1,
-            arguments=(("card_id", "intrigue:backed_by_choam:0"),),
-        ),
-        DomainAction(
-            action_id="recall_conflict_agent_for_imperial_privilege", actor=1
-        ),
+        take_contract,
+        trash_intrigue,
+        recall_conflict_privilege,
+        recall_conflict_agent_card,
+        recall_conflict_contract,
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
@@ -131,16 +151,28 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # The CHOAM catalog also gains decline_contract_spy (+1).
     # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
-    assert both.size == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1
+    # v109 (OQ-068): recall_conflict_agent_for_agent_card (+1) and
+    # recall_conflict_agent_for_contract (+1).
+    assert (
+        both.size
+        == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1
+    )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:
         with pytest.raises(ValueError, match="not present"):
             choam_only.encode(action)
     bloodlines_only = ActionCodec(RulesetConfig(bloodlines=True))
-    for action in actions[:2]:
+    for action in (take_contract, trash_intrigue, recall_conflict_contract):
         with pytest.raises(ValueError, match="not present"):
             bloodlines_only.encode(action)
+    # recall_conflict_agent_for_imperial_privilege and
+    # recall_conflict_agent_for_agent_card need only Bloodlines: an Into the
+    # Fray Agent exists without the CHOAM Module (OQ-068).
+    for action in (recall_conflict_privilege, recall_conflict_agent_card):
+        assert (
+            bloodlines_only.decode(bloodlines_only.encode(action), actor=1) == action
+        )
 
 def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))

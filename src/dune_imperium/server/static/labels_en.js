@@ -108,6 +108,8 @@ const LABELS_EN = {
     "recall_agent_for_contract": "Recall {agent}",
     "recall_agent_for_imperial_privilege": "Recall {agent}",
     "recall_conflict_agent_for_imperial_privilege": "Recall {agent} from {conflict} (Into the Fray)",
+    "recall_conflict_agent_for_agent_card": "Recall {agent} from {conflict} (Into the Fray)",
+    "recall_conflict_agent_for_contract": "Recall {agent} from {conflict} (Into the Fray)",
     "recall_spies_for_combat_reward": "Recall {spy}",
     "recall_spies_for_reveal": "Recall {spy}",
     "recall_spy_for_acquisition": "Recall {spy}",

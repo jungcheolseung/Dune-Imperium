@@ -57,8 +57,11 @@ from dune_imperium.rules.effects import (
     is_grafted,
     other_grafted_card_id,
     pending_agent_icons,
+    recall_conflict_agent,
+    recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
+    turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -1093,14 +1096,22 @@ def apply_agent_card_contract_completion(
     )
     garrison_before = state.players[action.actor].troops_garrison
     # A Recall Agent reward may not take back the Agent this turn sent
-    # [Main p. 20], as for a Contract completed by its own space.
+    # [Main p. 20], as for a Contract completed by its own space, whether it
+    # is still on the board or Into the Fray moved it to the Conflict
+    # (OQ-068).
     turn_space_id = context.get("space_id")
+    reward_turn_agent_in_conflict = isinstance(
+        turn_space_id, str
+    ) and turn_agent_in_conflict(
+        state.players[action.actor], context, turn_space_id
+    )
     completed = complete_contract_by_effect(
         state,
         action.actor,
         instance_id,
         source=source,
         excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
+        turn_agent_in_conflict=reward_turn_agent_in_conflict,
     )
     recruited = completed.state.players[action.actor].troops_garrison - garrison_before
     if recruited:
@@ -1295,14 +1306,18 @@ def legal_agent_card_recall_actions(
     if AGENT_ICON_RECALL not in pending_agent_icons(context):
         return ()
     _, source_card_id, turn_space_id = _effect_subject(context)
+    owner = state.players[player]
     if (
         active_agent_card(context).agent_effect
         is PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN
     ):
         # Twisted Mentat: "You may recall the Agent you sent this turn."
+        # [Twisted Mentat card]; Into the Fray may have already moved that
+        # very Agent into the Conflict, where it is still "the Agent you
+        # sent this turn" (2026-09-26 user ruling, OQ-068).
         locations = tuple(
             space_id
-            for space_id in state.players[player].agent_locations
+            for space_id in owner.agent_locations
             if space_id == turn_space_id
         )
         return (
@@ -1315,19 +1330,48 @@ def legal_agent_card_recall_actions(
                 )
                 for space_id in locations
             ),
+            *(
+                (
+                    DomainAction(
+                        action_id="recall_conflict_agent_for_agent_card",
+                        actor=player,
+                    ),
+                )
+                if turn_agent_in_conflict(owner, context, turn_space_id)
+                else ()
+            ),
         )
     # The Recall Agent icon: "Return one of your other Agents on the board to
     # your Leader (not the Agent you sent during this turn)." [Main p. 20].
-    # With no other Agent on the board the icon offers nothing; the box then
-    # waits for the turn's end and fizzles there (OQ-057 (1)).
-    return tuple(
-        DomainAction(
-            action_id="recall_agent_for_agent_card",
-            actor=player,
-            arguments=(("space_id", space_id),),
-        )
-        for space_id in state.players[player].agent_locations
-        if space_id != turn_space_id
+    # An earlier turn's Into the Fray Agent in the Conflict is one of the
+    # "other" Agents too (OQ-037 (d)), extended to every Recall Agent effect
+    # by the 2026-09-26 user ruling (OQ-068). With nothing recallable the
+    # icon offers nothing; the box then waits for the turn's end and fizzles
+    # there (OQ-057 (1)).
+    return (
+        *(
+            DomainAction(
+                action_id="recall_agent_for_agent_card",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in owner.agent_locations
+            if space_id != turn_space_id
+        ),
+        *(
+            (
+                DomainAction(
+                    action_id="recall_conflict_agent_for_agent_card",
+                    actor=player,
+                ),
+            )
+            if recallable_conflict_agents(
+                owner,
+                sent_this_turn=turn_agent_in_conflict(owner, context, turn_space_id),
+            )
+            > 0
+            else ()
+        ),
     )
 
 
@@ -1353,6 +1397,35 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
                 ),
             ),
         )
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}"
+    )
+    if action.action_id == "recall_conflict_agent_for_agent_card":
+        owner = state.players[action.actor]
+        next_owner, recall_event = recall_conflict_agent(
+            owner,
+            player=action.actor,
+            source=source_card_id,
+            event_id=f"{source}:agent_recalled:conflict",
+        )
+        finish_agent_icon(context, AGENT_ICON_RECALL)
+        if (
+            active_agent_card(context).agent_effect
+            is PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN
+        ):
+            # Twisted Mentat recalled "the Agent you sent this turn"
+            # [Twisted Mentat card] straight from the Conflict (OQ-068);
+            # every Agent left there is an earlier turn's and one of
+            # Imperial Privilege's "other Agents" [Board Guide p. 2]
+            # (OQ-037 (d)); board_effects reads this mark.
+            context["turn_agent_recalled"] = True
+        next_state = advance_after_effect(
+            state,
+            context,
+            replace_player(state.players, next_owner),
+        )
+        return RuleResult(state=next_state, events=(recall_event,))
     space_id = dict(action.arguments).get("space_id")
     if not isinstance(space_id, str):
         raise RuntimeError("Agent-card recall choice has invalid space ID")
@@ -1378,10 +1451,6 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
         state,
         context,
         replace_player(state.players, next_owner),
-    )
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"agent_card:{source_card_id}"
     )
     return RuleResult(
         state=next_state,

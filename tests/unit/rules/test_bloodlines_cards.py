@@ -2534,9 +2534,13 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # Negotiation is mandatory (-1 decline, OQ-064).
     # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    # v109 (OQ-068, 2026-09-26 user ruling): Steersman's Recall Agent icon
+    # and Twisted Mentat may also recall an Into the Fray Agent from the
+    # Conflict (+1); the Contract reward's twin needs the CHOAM Module too,
+    # which this catalog lacks.
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
-        + 1
+        + 1 + 1
     )
     action = DomainAction(
         action_id="trash_agent_card",
