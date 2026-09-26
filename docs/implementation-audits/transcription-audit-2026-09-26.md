@@ -200,4 +200,4 @@ OQ-069(Desert Power와 Command (6+), OPEN). OPEN 다섯은 현재 동작을 적�
 
 `ACTION_CODEC_VERSION` 107 → 108(새 거절·회수·선택 행동, Grasp Arrakis·Tenuous Bond의 시점 정리 등). `OBSERVATION_VERSION` 20 유지
 (인코더 파일은 바이트 동일, `FrameKind.LEADER_SIGNET`은 끝에 붙어 기존 인덱스 불변). 형식 2 체크포인트는 v108로 이관된다(5081: 유지
-32,980·새 23·삭제 7). 규칙이 넓게 바뀌어(기본판 카드 포함) 기존 체크포인트와 대전 수치는 모두 옛 규칙의 것이다.
+32,980·새 24·삭제 7; 통합 리뷰 전에는 새 23 — 리뷰가 `decline_acquisition_spy`를 더했다). 규칙이 넓게 바뀌어(기본판 카드 포함) 기존 체크포인트와 대전 수치는 모두 옛 규칙의 것이다.
