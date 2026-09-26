@@ -419,25 +419,36 @@ def test_bond_plays_and_activations_are_consistent(
 
 
 # ---------------------------------------------------------------------------
-# Exact hand-traced values (base seed 3, seat 1) -- pins concrete numbers so
+# Exact hand-traced values (base seed 3, seat 2) -- pins concrete numbers so
 # a change that still satisfies every invariant above (e.g. a mutant that
 # shifts a count while keeping the totals consistent) is still caught.
+# Re-pinned 2026-09-26 for the card-transcription audit's rules fixes (codec
+# v108): the game now diverges at seat 2's round-5 Reveal (Sardaukar
+# Coordination's corrected 2 Persuasion) and seat 1 no longer trashes, so the
+# pin moved from seat 1 to seat 2 (Irulan: one free acquisition, four Signet
+# Ring starter trashes); buys, payments, trashes and exposure were checked
+# against the game's card_acquired/card_trashed events and hands.
 # ---------------------------------------------------------------------------
 
 
-def test_base_seed_3_seat_1_matches_the_hand_trace(tip_census: ModuleType) -> None:
+def test_base_seed_3_seat_2_matches_the_hand_trace(tip_census: ModuleType) -> None:
     census = tip_census.play(_spec(False, 3), ("deck",))
-    row = census["seats"][1]
-    assert row["deck.buys"] == 14
-    assert row["deck.buys_r1_3"] == 5
+    row = census["seats"][2]
+    assert row["deck.buys"] == 15
+    assert row["deck.buys_r1_3"] == 4
     assert row["deck.buys_r4_6"] == 4
-    assert row["deck.buys_r7p"] == 5
-    assert row["deck.buys_by_payment"] == {"persuasion": 14}
-    assert row["deck.trash_chosen"] == 1
-    assert row["deck.trash_starters"] == 1
-    assert row["deck.first_trash_round"] == 8
-    assert row["deck.trashed"] == {"dune_the_desert_planet": 1}
-    assert row["deck.exposure"] == pytest.approx(20 / 14)
+    assert row["deck.buys_r7p"] == 7
+    assert row["deck.buys_by_payment"] == {"persuasion": 14, "free": 1}
+    assert row["deck.trash_chosen"] == 4
+    assert row["deck.trash_starters"] == 4
+    assert row["deck.first_trash_round"] == 2
+    assert row["deck.trashed"] == {
+        "dagger": 1,
+        "diplomacy": 1,
+        "dune_the_desert_planet": 1,
+        "convincing_argument": 1,
+    }
+    assert row["deck.exposure"] == pytest.approx(27 / 15)
 
 
 # ---------------------------------------------------------------------------
