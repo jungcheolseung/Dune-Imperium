@@ -851,8 +851,10 @@ def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> No
     )
     bought = _acquire(_visit(state, "assembly_hall"), "spy_drones")
     assert bought.decision_stack[-1].kind == "spy_placement"
-    assert bought.decision_stack[-3].kind == "turn"
-    assert bought.decision_stack[-3].decision.owner == 0
+    next_turn = bought.decision_stack[-3]
+    assert next_turn.kind == "turn"
+    assert isinstance(next_turn.decision, PlayerDecision)
+    assert next_turn.decision.owner == 0
 
     recall = next(
         action
