@@ -823,6 +823,77 @@ def test_spy_drones_place_two_spies_with_deep_cover() -> None:
     assert done.decision_stack[-1].kind == "turn"
 
 
+def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> None:
+    # Spy Drones' acquire column prints two Spy with Deep Cover icons, and
+    # its own flip reads "If you recalled a Spy this turn:" [Spy Drones Tech
+    # tile]; with an empty supply "you may first recall one of your Spies
+    # for no effect" [Main pp. 11, 20]. "If you recalled a Spy this turn"
+    # counts the seat's own recalls during its own turn (OQ-044 (d)). Bought
+    # as the turn's last effect by the last seat to reveal, the tile has
+    # already opened that seat's next turn when its Spies are placed; the
+    # recall-first belongs to the closed turn and used to count toward the
+    # next one.
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+    )
+    state = _turn_state(
+        _owner(spies_supply=0, spy_post_ids=posts),
+        stacks=(("spy_drones",), (), ()),
+    )
+    state = replace(
+        state,
+        players=(
+            state.players[0],
+            *(replace(seat, has_revealed=True) for seat in state.players[1:]),
+        ),
+    )
+    bought = _acquire(_visit(state, "assembly_hall"), "spy_drones")
+    assert bought.decision_stack[-1].kind == "spy_placement"
+    assert bought.decision_stack[-3].kind == "turn"
+    assert bought.decision_stack[-3].decision.owner == 0
+
+    recall = next(
+        action
+        for action in legal_spy_placement_actions(bought, 0)
+        if action.action_id == "recall_spy_for_placement"
+    )
+    recalled = apply_spy_placement(bought, recall).state
+    placed = apply_spy_placement(
+        recalled, legal_spy_placement_actions(recalled, 0)[0]
+    ).state
+    decline = next(
+        action
+        for action in legal_spy_placement_actions(placed, 0)
+        if action.action_id == "decline_spy_placement"
+    )
+    done = apply_spy_placement(placed, decline).state
+    assert done.decision_stack[-1].kind == "turn"
+    assert done.players[0].spies_recalled_turn == 0
+
+    # Bought through a Tech frame opened in the seat's own turn (a Plot, no
+    # Agent-turn context), the recall-first is that turn's and still counts.
+    opened = push_tech_acquisition(
+        _turn_state(
+            _owner(spies_supply=0, spy_post_ids=posts),
+            stacks=(("spy_drones",), (), ()),
+        ),
+        0,
+        discount=0,
+        source="test",
+    ).state
+    plotted = _acquire(opened, "spy_drones")
+    own_recall = next(
+        action
+        for action in legal_spy_placement_actions(plotted, 0)
+        if action.action_id == "recall_spy_for_placement"
+    )
+    assert apply_spy_placement(plotted, own_recall).state.players[
+        0
+    ].spies_recalled_turn == 1
+
+
 def test_ornithopter_fleet_matches_every_face_up_battle_card_at_once() -> None:
     owner = _owner(
         objective_ids=("propaganda",),
