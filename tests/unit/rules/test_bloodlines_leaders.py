@@ -8,6 +8,8 @@ Leader audit.
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -697,6 +699,22 @@ def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> Non
     seat = apply_imperial_privilege_action(declined, recalls[0]).state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
+
+
+def test_recall_conflict_agent_rejects_an_empty_conflict() -> None:
+    # Review round 2 minor finding: recall_conflict_agent is the single
+    # implementation every Recall Agent effect shares (Imperial Privilege,
+    # Steersman's Recall Agent icon, the Contract reward) for "Return one of
+    # your other Agents on the board to your Leader (not the Agent you sent
+    # during this turn)." [Main p. 20]; it must refuse to recall a Conflict
+    # Agent that is not there rather than drive agent_in_conflict negative.
+    from dune_imperium.rules.effects import recall_conflict_agent
+
+    owner = PlayerState(player_id=0, agents_available=2, agent_in_conflict=0)
+    with pytest.raises(RuntimeError):
+        recall_conflict_agent(
+            owner, player=0, source="imperial_privilege", event_id="test:recall"
+        )
 
 
 def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:

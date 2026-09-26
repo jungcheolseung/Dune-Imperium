@@ -1139,6 +1139,7 @@ def test_steersman_recalls_an_earlier_into_the_fray_agent_from_the_conflict() ->
     # OQ-062: see test_steersman_recall_never_offers_its_own_into_the_fray_agent
     # in test_tech.py).
     state = _steersman_conflict_state()
+    steersman_instance = state.players[0].hand[0]
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
     actions = legal_agent_card_recall_actions(placed, 0)
@@ -1155,7 +1156,13 @@ def test_steersman_recalls_an_earlier_into_the_fray_agent_from_the_conflict() ->
     assert seat.agent_locations == ("deliver_supplies",)
     assert units_strength(seat) == 0
     assert [event.kind for event in result.events] == ["agent_recalled"]
-    assert dict(result.events[0].payload)["space_id"] == "conflict"
+    payload = dict(result.events[0].payload)
+    assert payload["space_id"] == "conflict"
+    # Review round 2 minor finding: the Conflict recall's event must keep
+    # the same payload shape as Steersman's board recall (``card_id``, not
+    # ``source``); nothing reads these keys today, but the two recall
+    # branches of the same icon should log alike.
+    assert payload["card_id"] == steersman_instance
 
 
 def test_steersman_conflict_recall_counts_the_swordmaster_bonus() -> None:

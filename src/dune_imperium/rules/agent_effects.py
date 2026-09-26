@@ -1338,6 +1338,7 @@ def legal_agent_card_recall_actions(
                     ),
                 )
                 if turn_agent_in_conflict(owner, context, turn_space_id)
+                and owner.agent_in_conflict > 0
                 else ()
             ),
         )
@@ -1408,6 +1409,9 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
             player=action.actor,
             source=source_card_id,
             event_id=f"{source}:agent_recalled:conflict",
+            # Match the board branch's payload shape below, keyed by
+            # ``card_id`` rather than ``source`` (review round 2 finding).
+            source_key="card_id",
         )
         finish_agent_icon(context, AGENT_ICON_RECALL)
         if (
