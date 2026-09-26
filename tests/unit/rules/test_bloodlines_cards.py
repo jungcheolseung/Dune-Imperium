@@ -217,6 +217,63 @@ def test_i_believe_discards_to_draw_and_recruits_two_on_command() -> None:
     assert below.players[0].troops_garrison == 3
 
 
+@pytest.mark.parametrize(
+    ("card_name", "gain"),
+    [
+        ("i_believe", ("troops", "2")),
+        ("southern_faith", ("resources", "0/2/0")),
+        ("bombast", ("resources", "3/0/0")),
+    ],
+)
+def test_a_card_drawn_mid_reveal_pays_its_command_once(
+    card_name: str, gain: tuple[str, str]
+) -> None:
+    # "Command (6+)": "In a Reveal turn, you use the effect that follows if
+    # you generate 6 Persuasion or more" [Bloodlines p. 5] (bloodlines.md §4),
+    # and a card drawn during the Reveal is revealed and used at once
+    # [FAQ p. 3]. Each face prints one Command line (I Believe "2 troops",
+    # Southern Faith "2 spice", Bombast "3 Solari and trash this card"), so
+    # it pays once. Before the fix the arrival paid it without recording it
+    # and grant_late_reveal_effects paid it again: 4 troops, 4 spice, 6
+    # Solari.
+    card = _card(card_name)
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["persuasion_generated"] == 6
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    pending = reveal_pending_gains(_reveal_context(drawn))
+    assert [entry for entry in pending if entry[2] == card] == [(*gain, card)]
+    player = drawn.players[0]
+    if card_name == "bombast":
+        assert player.trashed.count(card) == 1
+        assert card not in player.in_play
+    else:
+        assert card in player.in_play
+
+
+def test_ruthless_leadership_drawn_mid_reveal_still_commands_the_combat_icon() -> None:
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    # Paid and recorded at arrival, "Command (6+): [Combat]" [Ruthless
+    # Leadership card] still opens this Reveal's deployment [Bloodlines p. 5].
+    card = _card("ruthless_leadership")
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner, PROMO_BLOODLINES), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    assert _reveal_context(drawn)["combat_deployment"] is True
+    assert {a.action_id for a in legal_reveal_deployments(drawn, 0)} == {
+        "deploy_troops"
+    }
+
+
 def test_intelligence_training_command_places_a_spy() -> None:
     card = _card("intelligence_training")
     revealed = _reveal(_state(_six_persuasion_hand(card)))

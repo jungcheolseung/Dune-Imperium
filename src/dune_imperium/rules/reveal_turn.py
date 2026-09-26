@@ -3676,16 +3676,14 @@ def _late_reveal_one_card(
     )
 
     frame_persuasion = _frame_generated_persuasion(state.decision_stack)
+    # Command (6+) counts the card's own Persuasion [Bloodlines p. 5]; the
+    # effects paid here are recorded on the same total below, so
+    # grant_late_reveal_effects never pays them a second time.
+    command_persuasion = (
+        None if frame_persuasion is None else frame_persuasion + card.reveal_persuasion
+    )
     eligible = _eligible_reveal_effects(
-        next_owner,
-        cards_in_play,
-        card_id,
-        card,
-        persuasion=(
-            None
-            if frame_persuasion is None
-            else frame_persuasion + card.reveal_persuasion
-        ),
+        next_owner, cards_in_play, card_id, card, persuasion=command_persuasion
     )
     persuasion_gain = card.reveal_persuasion + sum(
         _reveal_effect_persuasion(
@@ -3767,7 +3765,12 @@ def _late_reveal_one_card(
                     counts_toward_combat=counts_toward_combat,
                 ),
                 _granted_entries(
-                    (card_id,), (card,), next_owner, cards_in_play, completed_contracts
+                    (card_id,),
+                    (card,),
+                    next_owner,
+                    cards_in_play,
+                    completed_contracts,
+                    persuasion=command_persuasion,
                 ),
             ),
             late_gains,
