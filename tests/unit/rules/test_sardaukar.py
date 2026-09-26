@@ -501,6 +501,32 @@ def test_a_recruited_commanders_slot_is_not_a_garrison_troops() -> None:
     assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
 
 
+def test_a_space_commander_bought_under_a_combat_icon_keeps_its_slot() -> None:
+    # "During one of your turns, if you send an Agent to a board space that
+    # has a Sardaukar Commander, you may spend 2 Solari to acquire and then
+    # immediately recruit that Sardaukar Commander" [Bloodlines p. 4]. Every
+    # Commander setup space is a non-Combat space, so its slot matters under
+    # a Combat icon opened this turn [Bloodlines pp. 5, 12]; the bought
+    # Commander is credited as a Commander, never as a troop (OQ-070).
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, combat_icon_turn=True)
+    )
+    state = _visit(state, "dutiful_service")
+    bought = apply_sardaukar_commander_action(
+        state, _commander_actions(state)["acquire_sardaukar_commander:canny"]
+    ).state
+
+    context = dict(bought.decision_stack[-1].context)
+    assert context["commanders_recruited"] == 1
+    assert context["troops_recruited"] == 0
+    assert _counts(legal_combat_deployments(bought, 0), "deploy_troops") == [1, 2]
+    assert _counts(legal_commander_deployments(bought, 0), "deploy_commanders") == [1]
+    commander = apply_commander_deployment(
+        bought, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
 def test_a_commander_slot_survives_a_deployment_split_over_several_actions() -> None:
     state = _recruited_commander_at_research_station()
 
@@ -663,6 +689,16 @@ def test_a_commander_recruited_in_the_reveal_keeps_its_slot() -> None:
     owner = both.players[0]
     assert (owner.commanders_conflict, owner.troops_conflict) == (1, 2)
     assert legal_reveal_deployments(both, 0) == ()
+
+    # The Commander first: the Reveal keeps its Commander share apart
+    # (``reveal_commanders_deployed``), so the garrison two still follow.
+    commander = apply_reveal_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert dict(commander.decision_stack[-1].context)[
+        "reveal_commanders_deployed"
+    ] == 1
+    assert _counts(legal_reveal_deployments(commander, 0), "deploy_troops") == [1, 2]
 
 
 def test_a_reveal_troops_slot_is_not_a_garrison_commanders() -> None:
