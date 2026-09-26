@@ -116,8 +116,10 @@ class TrainingBatch:
     slice starts -- instead of a dense ``[steps, action_size]`` mask. The
     dense form is the largest array in training by a wide margin (32,987
     bytes a step against 17,308 for the observation) and it is almost all
-    zeros; ``dense_masks`` materializes just the rows an update is about to
-    use. Nothing is approximated: the row count is ragged and exact, so a
+    zeros. The learner reads a minibatch through ``local_legal``, which
+    indexes the rows over their legal union only; ``dense_masks`` still
+    materializes full-width rows for callers that want them. Nothing is
+    approximated: the row count is ragged and exact, so a
     decision offering an unusual number of actions needs no padding and can
     never be truncated.
     """
@@ -142,6 +144,49 @@ class TrainingBatch:
         masks = np.zeros((selected.shape[0], self.action_size), dtype=np.int8)
         masks[np.repeat(np.arange(selected.shape[0]), counts), values] = 1
         return masks
+
+    def local_legal(self, rows: np.ndarray) -> LocalLegal:
+        """Return ``rows``' legal sets over the actions legal in any of them.
+
+        The learner's masked softmax gives an illegal action a logit of
+        ``MASKED_LOGIT``, so its probability, its entropy term and its
+        gradient are all exactly zero; a catalog action legal in none of the
+        rows therefore contributes nothing, and computing its head row at
+        all is wasted work. ``catalog`` is the sorted union of the rows'
+        legal sets (690 to 795 of the 33,007 catalog actions for a
+        1,024-step minibatch of champion-5081 self-play, 2026-09-27),
+        ``mask[i, j]`` says whether ``catalog[j]`` is legal in row ``i``,
+        and ``chosen[i]`` is the position of row ``i``'s action in
+        ``catalog``. Every chosen action must be legal in its own row.
+        """
+
+        selected = np.asarray(rows, dtype=np.int64)
+        values, offsets = _gather_rows(
+            self.legal_indices, self.legal_offsets, selected
+        )
+        catalog, columns = np.unique(values, return_inverse=True)
+        counts = np.diff(offsets)
+        mask = np.zeros((selected.shape[0], catalog.shape[0]), dtype=np.bool_)
+        mask[np.repeat(np.arange(selected.shape[0]), counts), columns.reshape(-1)] = (
+            True
+        )
+        actions = self.actions[selected]
+        chosen = np.searchsorted(catalog, actions).astype(np.int64)
+        found = chosen < catalog.shape[0]
+        found[found] = catalog[chosen[found]] == actions[found]
+        found[found] = mask[np.flatnonzero(found), chosen[found]]
+        if not found.all():
+            raise ValueError("a chosen action is not in its own row's legal set")
+        return LocalLegal(catalog=catalog.astype(np.int64), mask=mask, chosen=chosen)
+
+
+@dataclass(frozen=True, slots=True)
+class LocalLegal:
+    """Some rows' legal sets indexed over their union (``local_legal``)."""
+
+    catalog: np.ndarray  # int64 [K]: sorted catalog indices legal in any row
+    mask: np.ndarray  # bool [rows, K]: catalog[j] is legal in row i
+    chosen: np.ndarray  # int64 [rows]: position of the row's action in catalog
 
 
 def _gather_rows(
