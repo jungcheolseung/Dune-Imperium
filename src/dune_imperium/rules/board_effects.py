@@ -1087,10 +1087,25 @@ def legal_imperial_privilege_actions(
                     actor=player,
                 ),
             )
-            if owner.agent_in_conflict
+            if _recallable_conflict_agents(owner)
             else ()
         ),
     )
+
+
+def _recallable_conflict_agents(owner: PlayerState) -> int:
+    """Count the owner's Conflict Agents Imperial Privilege may recall.
+
+    "Recall one of your other Agents from the board" [Board Guide p. 2]
+    excludes the Agent sent there this turn (docs/rules/board-spaces.md),
+    and an Into the Fray Agent may be recalled only on a later turn
+    (OQ-037 (d)). While Imperial Privilege's recall is pending, this turn's
+    Agent is either still on the space or Into the Fray has just moved it
+    to the Conflict, where it is not one of the "other" Agents.
+    """
+
+    sent_this_turn = 0 if "imperial_privilege" in owner.agent_locations else 1
+    return max(0, owner.agent_in_conflict - sent_this_turn)
 
 
 def apply_imperial_privilege_action(
@@ -1230,7 +1245,7 @@ def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
             for location in owner.agent_locations
             if location != "imperial_privilege"
         ),
-        *(("conflict",) if owner.agent_in_conflict else ()),
+        *(("conflict",) if _recallable_conflict_agents(owner) else ()),
     )
 
 

@@ -554,6 +554,53 @@ def test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray() -> None
     assert all(frame.kind != "leader_signet" for frame in fighting.decision_stack)
 
 
+def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> None:
+    # Imperial Privilege: "Recall one of your other Agents from the board,
+    # and draw a card." [Board Guide p. 2]; docs/rules/board-spaces.md:
+    # "이번 turn에 보낸 Agent가 아닌 자신의 다른 Agent 1개를 recall", and an
+    # Into the Fray Agent may be recalled "뒤의 turn에" (on a later turn,
+    # OQ-037 (d)). The Ixian Embassy icon on the space lets Duncan buy
+    # Servo-Receivers and move this turn's Agent into the Conflict before
+    # the recall; that Agent used to be the only (forced) recall target.
+    engine = UprisingRulesEngine()
+    state = _visit(
+        _turn_state(
+            _owner(
+                leader_id="duncan_idaho",
+                influence=Influence(emperor=2),
+                resources=Resources(solari=4, spice=6, water=2),
+            ),
+            stacks=SERVO_STACKS,
+        ),
+        "imperial_privilege",
+    )
+    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    assert opened.decision_stack[-1].kind == "leader_signet"
+    deploy = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = engine.apply(opened, deploy).state
+    assert fighting.players[0].agent_in_conflict == 1
+    hand_before = len(fighting.players[0].hand)
+    declined = engine.apply(
+        fighting,
+        DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0),
+    )
+
+    seat = declined.state.players[0]
+    assert "recall_conflict_agent_for_imperial_privilege" not in {
+        action.action_id for action in engine.legal_actions(declined.state, 0)
+    }
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert len(seat.hand) == hand_before + 1
+    assert "imperial_privilege_recall_skipped" in {
+        event.kind for event in declined.events
+    }
+
+
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
     # [Steersman Y'rkoon card] (OQ-062).
