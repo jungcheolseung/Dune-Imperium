@@ -45,10 +45,11 @@ GAMES = (
     # Random seats wander into what a heuristic never picks (Family Atomics,
     # the Feyd track, Secrets' random steal, an exchanged Influence).
     {"seats": ["random"] * 4, "game_seed": 25, "policy_seed": 25, **EVERY_EXPANSION},
-    # Seed 38 (was 30 until the 2026-09-26 card-transcription audit's rules
-    # fixes moved every game): still Family Atomics, the Feyd track and
-    # research, and now the only one of the four with a Secrets steal.
-    {"seats": ["random"] * 4, "game_seed": 38, "policy_seed": 38, **EVERY_EXPANSION},
+    # Seed 47 (30 until the 2026-09-26 card-transcription audit, then 38
+    # until OQ-070's Commander deploy slot moved that game off its Secrets
+    # steal): Family Atomics, the Feyd track and research, and the only one
+    # of the four with a Secrets steal.
+    {"seats": ["random"] * 4, "game_seed": 47, "policy_seed": 47, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,

@@ -127,3 +127,15 @@ troop의 배치 몫 등, [감사 문서](../implementation-audits/transcription-
 | random | 0.56 | 0.44 | 0.71 |
 | heuristic | 1.00 | 1.00 | 0.35 |
 | 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.94 / 0.88 |
+
+## 재채굴 (2026-09-27, OQ-070)
+
+recruit한 Sardaukar Commander의 배치 몫은 Commander 것이라는 사용자 판정(OQ-070) 뒤 국면 13개가 복원되지 않아 같은 명령으로 다시
+캤다. **111개**(유지 93, 빠짐 13 — 마지막 라운드 보유 7·Endgame 4·sandworm 2, 새로 듦 18 — 보유 13·Endgame 3·sandworm 2): sandworm 80,
+마지막 라운드 보유 23, Endgame 8. 빠진 국면이 많은 것은 Commander가 있는 판에서 배치 수가 바뀌어 그 뒤 진행이 모두 달라지기 때문이다.
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 8) | 마지막 라운드 보유 (tip, 23) |
+|---|---|---|---|
+| random | 0.56 | 0.50 | 0.70 |
+| heuristic | 1.00 | 1.00 | 0.35 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.83 / 0.83 |

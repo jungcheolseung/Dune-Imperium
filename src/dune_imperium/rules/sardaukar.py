@@ -43,10 +43,11 @@ from dune_imperium.rules.effects import (
     finish_board_icon,
 )
 from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
     FrameKind,
-    context_int,
     context_str,
     owned_top_frame,
+    recruited_commander_count,
     replace_player,
     turn_owner_of,
     update_turn_recruits,
@@ -72,6 +73,20 @@ def _owned_effect_context(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return None
     return context
+
+
+def _credit_commander(context: dict[str, ActionValue]) -> None:
+    """Count one Commander recruited this turn on the Agent-turn effect frame.
+
+    Kept apart from ``troops_recruited``: "commander 소집했으면 커맨더를
+    배치해야지, troop이 그 배치 몫을 차지하면 안 되지" (user ruling
+    2026-09-26, OQ-070), so the recruited Commander's deploy slot is a
+    Commander's (``combat_deployment.deployment_rooms``).
+    """
+
+    context[COMMANDERS_RECRUITED_KEY] = (
+        recruited_commander_count(context, COMMANDERS_RECRUITED_KEY) + 1
+    )
 
 
 def commander_cost(owner: PlayerState) -> int:
@@ -243,10 +258,9 @@ def apply_sardaukar_commander_action(
     skill_id = str(skill_value) if skill_value is not None else ""
     working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
     # The Commander is recruited this turn, so it may join the turn's basic
-    # deployment like a recruited troop [Bloodlines p. 4].
-    context["troops_recruited"] = (
-        context_int(context, "troops_recruited", owner=_FRAME_LABEL) + 1
-    )
+    # deployment like a recruited troop [Bloodlines p. 4]; its slot is kept
+    # for a Commander (user ruling OQ-070).
+    _credit_commander(context)
     players = replace_player(working.players, next_owner)
     next_state = queue_plasteel_blades(
         advance_after_effect(replace(working, players=players), context, players),
@@ -334,7 +348,8 @@ def _acquire_bank_commander(
     working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
     players = replace_player(working.players, next_owner)
     # Recruited this turn: it may join an open Agent turn's basic deployment
-    # like a recruited troop [Bloodlines p. 4]. This box's own Skill choice
+    # like a recruited troop [Bloodlines p. 4], in a slot kept for a
+    # Commander (user ruling OQ-070). This box's own Skill choice
     # is queued and opened by the engine (``begin_skill_choice``), so
     # anything -- a Reveal, an Intrigue choice, another stacked frame -- can
     # sit on top by the time it resolves; ``with_recruited_units`` only
@@ -349,7 +364,9 @@ def _acquire_bank_commander(
         and top.decision.owner == player
     )
     if credited_in_place:
-        decision_stack = with_recruited_units(working.decision_stack, player, 1)
+        decision_stack = with_recruited_units(
+            working.decision_stack, player, commanders=1
+        )
     else:
         decision_stack = working.decision_stack
         if not turn_closed and turn_owner_of(working) == player:
@@ -361,7 +378,7 @@ def _acquire_bank_commander(
             # box's own trigger reopened (or reached after it reopened), not
             # the turn the acquisition belongs to (OQ-044 (d)), so the
             # credit is skipped even though ``turn_owner_of`` still matches.
-            working = update_turn_recruits(working, troops_recruited=1)
+            working = update_turn_recruits(working, commanders_recruited=1)
             decision_stack = working.decision_stack
     events.insert(
         0,
@@ -589,9 +606,7 @@ def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResul
     next_state = replace(state, players=players)
     context = _owned_effect_context(state, player)
     if context is not None:
-        context["troops_recruited"] = (
-            context_int(context, "troops_recruited", owner=_FRAME_LABEL) + 1
-        )
+        _credit_commander(context)
         next_state = advance_after_effect(next_state, context, players)
     elif turn_owner_of(next_state) == player:
         # "Once per turn, Agent or Reveal" [Bloodlines p. 4]: in a Reveal
@@ -607,7 +622,7 @@ def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResul
         # player action resolved from the frame ``legal_commander_recruit_
         # actions`` already required, so it never reaches a stale reopened
         # turn frame the way a queued follow-up could.
-        next_state = update_turn_recruits(next_state, troops_recruited=1)
+        next_state = update_turn_recruits(next_state, commanders_recruited=1)
     recruit_source = (
         f"round:{state.round_number}:player:{player}:recruit_commander:"
         f"{next_owner.commanders_total - next_owner.commanders_supply}"

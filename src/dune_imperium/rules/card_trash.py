@@ -11,7 +11,12 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
-from dune_imperium.rules.frames import FrameKind, turn_owner_of, update_turn_recruits
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    FrameKind,
+    turn_owner_of,
+    update_turn_recruits,
+)
 from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 
 
@@ -207,11 +212,21 @@ def trash_personal_card(
 def with_recruited_units(
     frames: tuple[DecisionFrame, ...],
     player: int,
-    recruited: int,
+    *,
+    troops: int = 0,
+    commanders: int = 0,
 ) -> tuple[DecisionFrame, ...]:
-    """Count units recruited mid-turn toward the owner's open Agent turn."""
+    """Count units recruited mid-turn toward the owner's open Agent turn.
 
-    return _with_recruited_troops(frames, player, recruited)
+    Sardaukar Commanders are counted apart from the troops
+    (``COMMANDERS_RECRUITED_KEY``): a recruited Commander's deploy slot is
+    kept for a Commander (OQ-070).
+    """
+
+    frames = _with_recruited_count(frames, player, "troops_recruited", troops)
+    return _with_recruited_count(
+        frames, player, COMMANDERS_RECRUITED_KEY, commanders
+    )
 
 
 def _with_recruited_troops(
@@ -220,6 +235,17 @@ def _with_recruited_troops(
     recruited: int,
 ) -> tuple[DecisionFrame, ...]:
     """Count troops recruited mid-turn toward the owner's open Agent turn."""
+
+    return _with_recruited_count(frames, player, "troops_recruited", recruited)
+
+
+def _with_recruited_count(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    key: str,
+    recruited: int,
+) -> tuple[DecisionFrame, ...]:
+    """Add ``recruited`` to ``key`` on the owner's Agent-turn frame on top."""
 
     if not recruited or not frames:
         return frames
@@ -231,10 +257,10 @@ def _with_recruited_troops(
     if frame.decision.owner != player:
         return frames
     context = dict(frame.context)
-    previous = context.get("troops_recruited", 0)
+    previous = context.get(key, 0)
     if isinstance(previous, bool) or not isinstance(previous, int):
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-    context["troops_recruited"] = previous + recruited
+    context[key] = previous + recruited
     return (*frames[:-1], replace(frame, context=tuple(sorted(context.items()))))
 
 

@@ -2126,8 +2126,13 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     assert owner.commanders_garrison == 1
     assert len(owner.skill_ids) == 1
     assert chosen.decision_stack[-1].kind == "agent_effects"
-    # Recruited this turn: it joins the basic deployment count.
-    assert dict(chosen.decision_stack[-1].context)["troops_recruited"] == 1 + 1
+    # Recruited this turn: it joins the basic deployment, counted apart
+    # from Arrakeen's troop so its slot stays a Commander's (user ruling
+    # 2026-09-26, OQ-070: "commander 소집했으면 커맨더를 배치해야지, troop이
+    # 그 배치 몫을 차지하면 안 되지").
+    context = dict(chosen.decision_stack[-1].context)
+    assert context["troops_recruited"] == 1
+    assert context["commanders_recruited"] == 1
 
     empty = replace(state, sardaukar_commanders_bank=0)
     nothing = trash_personal_card(empty, 0, card, source="test")
@@ -2191,10 +2196,12 @@ def test_sardaukar_standard_bank_commander_joins_the_reveals_allowance() -> None
 
     assert chosen.decision_stack[-1].kind == "reveal"
     assert chosen.players[0].commanders_garrison == 1
-    # 1 from Sardaukar Standard's own "Reveal: 2 Persuasion + troop 1"
-    # [card face] (already taken before the trash below) plus 1 from the
-    # bank Commander this fix now credits.
-    assert dict(chosen.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+    # 1 troop from Sardaukar Standard's own "Reveal: 2 Persuasion + troop 1"
+    # [card face] (already taken before the trash below) and, counted apart
+    # so its slot stays a Commander's (OQ-070), the bank Commander.
+    context = dict(chosen.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert context["reveal_commanders_recruited"] == 1
 
 
 def test_sardaukar_standard_trashed_before_the_turn_closes_credits_nothing() -> None:
@@ -2260,6 +2267,8 @@ def test_sardaukar_standard_trashed_before_the_turn_closes_credits_nothing() -> 
     assert top.kind == "turn"
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)
+    # The Commander's own count (OQ-070) stays out of the fresh turn too.
+    assert dict(top.context).get("commanders_recruited") in (None, 0)
 
 
 def test_litany_against_fear_draws_and_passes_the_turn() -> None:

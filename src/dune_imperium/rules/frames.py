@@ -143,6 +143,24 @@ def context_int(context: FrameContext, key: str, *, owner: str = "frame") -> int
     return value
 
 
+COMMANDERS_RECRUITED_KEY = "commanders_recruited"
+"""Sardaukar Commanders recruited this turn, kept apart from the troops on
+the Agent-turn effect frame and on the turn frame before the placement
+(absent means none): each reserves a deploy slot for a Commander (OQ-070)."""
+
+REVEAL_COMMANDERS_RECRUITED_KEY = "reveal_commanders_recruited"
+"""The Reveal frame's Commanders recruited this turn (absent means none)."""
+
+
+def recruited_commander_count(context: FrameContext, key: str) -> int:
+    """Return the Commander recruit count kept under ``key`` (0 when absent)."""
+
+    value = context.get(key, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {key}")
+    return value
+
+
 def frame_context_int(frame: DecisionFrame, key: str) -> int | None:
     """Read an optional non-bool integer from a frame's context."""
 
@@ -355,6 +373,7 @@ def update_turn_recruits(
     state: GameState,
     *,
     troops_recruited: int = 0,
+    commanders_recruited: int = 0,
     spice_spent: int = 0,
 ) -> GameState:
     """Keep the turn owner's bookkeeping in step with a mid-turn effect.
@@ -362,7 +381,9 @@ def update_turn_recruits(
     Troops recruited during the owner's turn join that turn's deployment
     allowance whether the effect resolved before or after placing the Agent
     (a Reveal turn's recruits feed its Combat-icon deployment
-    [Bloodlines p. 5]). Spice paid for an effect is recorded as spent so
+    [Bloodlines p. 5]). Sardaukar Commanders are counted apart from the
+    troops (``COMMANDERS_RECRUITED_KEY``): each reserves a deploy slot for a
+    Commander (OQ-070). Spice paid for an effect is recorded as spent so
     that Harvest Spice Contracts, which count Spice gained from every source
     during the turn [Main p. 16], still see the full amount gained.
     """
@@ -375,6 +396,11 @@ def update_turn_recruits(
             if isinstance(recruited, bool) or not isinstance(recruited, int):
                 raise RuntimeError("Reveal frame has an invalid recruit count")
             context["reveal_troops_recruited"] = recruited + troops_recruited
+            if commanders_recruited:
+                context[REVEAL_COMMANDERS_RECRUITED_KEY] = (
+                    recruited_commander_count(context, REVEAL_COMMANDERS_RECRUITED_KEY)
+                    + commanders_recruited
+                )
             return replace(
                 state,
                 decision_stack=(
@@ -390,6 +416,11 @@ def update_turn_recruits(
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("turn frame has an invalid recruit count")
         context["troops_recruited"] = previous + troops_recruited
+        if commanders_recruited:
+            context[COMMANDERS_RECRUITED_KEY] = (
+                recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+                + commanders_recruited
+            )
         if frame.kind == FrameKind.AGENT_EFFECTS:
             spent = context_int(context, "spice_spent_after_placement")
             context["spice_spent_after_placement"] = spent + spice_spent
