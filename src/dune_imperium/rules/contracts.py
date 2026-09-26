@@ -174,8 +174,17 @@ def complete_acquire_contracts(
     acquired_card_id: str,
     *,
     source: str,
+    credit_turn_recruits: bool = True,
 ) -> RuleResult:
-    """Complete Contracts triggered by acquiring a named card."""
+    """Complete Contracts triggered by acquiring a named card.
+
+    ``credit_turn_recruits`` is false when the caller already closed the
+    owner's turn frame (Tleilaxu Master, the Leader's Signet) before this
+    Contract's reward resolved: ``turn_owner_of`` would then find whatever
+    turn frame opened next, which is never the one this reward belongs to,
+    even when it happens to belong to the same player again (the
+    only-seat-left-unrevealed case) [Main p. 10] [FAQ p. 4].
+    """
 
     if not state.config.choam_module:
         return RuleResult(state=state)
@@ -216,7 +225,7 @@ def complete_acquire_contracts(
         next_state = completed.state
         events = (*events, *completed.events)
         recruited = next_state.players[player].troops_garrison - garrison_before
-        if recruited and turn_owner_of(next_state) == player:
+        if recruited and credit_turn_recruits and turn_owner_of(next_state) == player:
             # Troops recruited during the owner's own turn "from any
             # source" may be deployed [Main p. 10] [FAQ p. 4]; an Acquire
             # Contract completed outside the owner's turn (Combat, another

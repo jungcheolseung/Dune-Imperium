@@ -1897,6 +1897,13 @@ def apply_leader_signet_acquire(
     # Research direction, Immortality) stacks above the turn.
     context["pending_agent_effect"] = False
     settled = _store_signet(state, context)
+    # As with Tleilaxu Master (``_acquire_by_agent_card``), settling the
+    # Signet above can close this turn and reopen a fresh "turn" frame for
+    # the next unrevealed player -- possibly this same player, if every
+    # other seat has revealed. The acquisition below must not let
+    # ``turn_owner_of`` credit that new frame with a troop this box
+    # recruited in the turn that just closed [Main p. 10] [FAQ p. 4].
+    turn_closed = settled.decision_stack[-1].kind == FrameKind.TURN
     if action.action_id == "acquire_leader_reserve":
         card_id = arguments.get("card_id")
         if not isinstance(card_id, str):
@@ -1907,6 +1914,7 @@ def apply_leader_signet_acquire(
             card_id,
             to_hand=True,
             source=source,
+            credit_turn_recruits=not turn_closed,
         )
     else:
         instance_id = arguments.get("instance_id")
@@ -1918,6 +1926,7 @@ def apply_leader_signet_acquire(
             instance_id,
             to_hand=True,
             source=source,
+            credit_turn_recruits=not turn_closed,
         )
     next_state = acquired.result.state
     if acquired.places_spy:

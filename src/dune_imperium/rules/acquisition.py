@@ -352,6 +352,14 @@ def _acquire_by_agent_card(
     # The box has resolved; the acquisition's own follow-ups (a Research
     # direction, a Spy post, the Contract market) stack above the turn.
     next_state = advance_after_effect(state, context)
+    # When the box was the turn's last pending effect, ``advance_after_effect``
+    # already replaced this turn's frame with the next unrevealed player's
+    # "turn" frame -- which can be this same player's, if every other seat
+    # has revealed. The acquisition below must not let ``turn_owner_of``
+    # find and credit that new frame: it is never the turn this box's troop
+    # was recruited in, even when it happens to reopen for the same player
+    # [Main p. 10] [FAQ p. 4].
+    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     arguments = dict(action.arguments)
     if action.action_id == "acquire_reserve_by_card":
         acquired = acquire_reserve_for_intrigue(
@@ -360,6 +368,7 @@ def _acquire_by_agent_card(
             str(arguments["card_id"]),
             to_hand=to_hand,
             source=source,
+            credit_turn_recruits=not turn_closed,
         )
     else:
         acquired = acquire_imperium_for_intrigue(
@@ -368,6 +377,7 @@ def _acquire_by_agent_card(
             str(arguments["instance_id"]),
             to_hand=to_hand,
             source=source,
+            credit_turn_recruits=not turn_closed,
         )
     result_state = acquired.result.state
     events = acquired.result.events
@@ -1362,8 +1372,14 @@ def acquire_reserve_for_intrigue(
     *,
     to_hand: bool,
     source: str,
+    credit_turn_recruits: bool = True,
 ) -> IntrigueAcquisition:
-    """Acquire one Reserve card without Persuasion for an Intrigue effect."""
+    """Acquire one Reserve card without Persuasion for an Intrigue effect.
+
+    ``credit_turn_recruits`` is false when the caller already closed the
+    owner's turn frame before calling this (Tleilaxu Master, the Leader's
+    Signet): see ``complete_acquire_contracts``.
+    """
 
     definition = RESERVE_STACKS_BY_ID[card_id]
     instance_id = next_reserve_instance_id(state, card_id)
@@ -1391,7 +1407,11 @@ def acquire_reserve_for_intrigue(
     )
     triggered = _resolve_reveal_acquisition_triggers(prepared, player, card_id)
     completed = complete_acquire_contracts(
-        triggered.state, player, card_id, source=source
+        triggered.state,
+        player,
+        card_id,
+        source=source,
+        credit_turn_recruits=credit_turn_recruits,
     )
     fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(
@@ -1513,12 +1533,17 @@ def acquire_imperium_for_intrigue(
     *,
     to_hand: bool,
     source: str,
+    credit_turn_recruits: bool = True,
 ) -> IntrigueAcquisition:
     """Acquire one Imperium Row card without Persuasion for an Intrigue effect.
 
     The Row position refills from the Imperium Deck at once [Main p. 13] and
     any acquire box resolves immediately [Main p. 20]. Bonuses that need a
     follow-up decision are reported to the caller instead of pushing frames.
+
+    ``credit_turn_recruits`` is false when the caller already closed the
+    owner's turn frame before calling this (Tleilaxu Master, the Leader's
+    Signet): see ``complete_acquire_contracts``.
     """
 
     definition = imperium_card_for_instance(instance_id)
@@ -1548,7 +1573,7 @@ def acquire_imperium_for_intrigue(
         intrigue_deck=bonus.intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
     )
-    if bonus.recruited and turn_owner_of(prepared) == player:
+    if bonus.recruited and credit_turn_recruits and turn_owner_of(prepared) == player:
         # Shared by many callers: a card-granted Acquire Tech style effect
         # played mid-turn (Tleilaxu Master, a Leader's Signet acquisition,
         # Engineered Miracle's Command, a Navigation or Inspire Awe pick),
@@ -1557,7 +1582,12 @@ def acquire_imperium_for_intrigue(
         # turn and credits nothing. Troops recruited during the owner's own
         # turn "from any source" join its deploy allowance [Main p. 10]
         # [FAQ p. 4]; ``turn_owner_of`` finds that turn's frame directly
-        # instead of trusting a possibly stale local context.
+        # instead of trusting a possibly stale local context. When Tleilaxu
+        # Master or the Leader's Signet already closed the turn before this
+        # ran, ``credit_turn_recruits`` is false: any frame ``turn_owner_of``
+        # would find now is a new turn, never the one this box belongs to,
+        # even when it reopens for the same player (the
+        # only-seat-left-unrevealed case).
         prepared = update_turn_recruits(prepared, troops_recruited=bonus.recruited)
     acquisition_events = bonus.events
     faction = _acquisition_influence_faction(definition.acquisition_effect)
@@ -1581,6 +1611,7 @@ def acquire_imperium_for_intrigue(
         player,
         definition.card.card_id,
         source=source,
+        credit_turn_recruits=credit_turn_recruits,
     )
     fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(

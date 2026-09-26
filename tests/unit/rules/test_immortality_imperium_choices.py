@@ -40,6 +40,10 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_effect,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.board_effects import (
+    legal_board_effect_actions,
+    resolve_board_effect,
+)
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -67,6 +71,9 @@ IMMORTALITY = RulesetConfig(immortality=True)
 IMMORTALITY_BLOODLINES = RulesetConfig(immortality=True, bloodlines=True)
 STARTERS = starting_deck_instance_ids(0, immortality=True)
 DAGGER = next(card for card in STARTERS if "dagger:0" in card)
+# Immortality replaces Dune, the Desert Planet with Experimentation, the only
+# starter carrying its Spice Trade icon [Immortality p. 5].
+EXPERIMENTATION = next(card for card in STARTERS if "experimentation:0" in card)
 FACE_DANCER = "tleilaxu:face_dancer:0"
 INTRIGUE = intrigue_deck_instance_ids(False, immortality=True)
 
@@ -617,8 +624,8 @@ def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> Non
     # (docs/rules/player-turns.md). This Agent turn visits a Combat space
     # (Imperial Basin's Spice Trade icon [Main p. 15]), so the troop must
     # join ``troops_recruited`` and ``legal_combat_deployments`` there, not
-    # just the garrison -- the engine used to advance the Agent-turn frame
-    # before the acquisition recruited, discarding the count.
+    # just the garrison -- the engine used to put the troop in the garrison
+    # without crediting any turn frame.
     master = _card("tleilaxu_master")
     arrakis_revolt = "imperium:arrakis_revolt:0"
     placed = _place(
@@ -643,6 +650,60 @@ def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> Non
     assert [
         dict(a.arguments)["count"] for a in legal_combat_deployments(result.state, 0)
     ] == [1, 2, 3]
+
+
+def test_tleilaxu_masters_acquired_troop_does_not_join_the_next_agent_turn() -> None:
+    # Same acquire box as above, but resolved as the Agent turn's very last
+    # pending effect (Assembly Hall carries no Combat icon, so nothing keeps
+    # a deployment window open) while every other seat has already
+    # revealed. ``_acquire_by_agent_card`` calls ``advance_after_effect``
+    # *before* the acquisition recruits, and since seats 1-3 have revealed,
+    # ``next_unrevealed_player`` reopens seat 0's own next "turn" frame.
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+    # 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해
+    # 두 개 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md): this troop belongs to the turn that
+    # just closed, not to the fresh one that happens to reopen for the same
+    # player -- the engine used to let ``turn_owner_of`` find and credit
+    # that new frame anyway, joining the troop to the *next* Agent turn's
+    # deploy allowance instead of leaving it uncredited there.
+    master = _card("tleilaxu_master")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    placed = _place(
+        _state(
+            _owner((master, EXPERIMENTATION), research_space="c4r2"),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            imperium_row=(arrakis_revolt,),
+        ),
+        master,
+        "assembly_hall",
+    )
+    # Assembly Hall's own Landsraad icon is a separate pending effect from
+    # Tleilaxu Master's marker ability; resolve it first so the acquisition
+    # below is the turn's last one [Main p. 9] (OQ-027).
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(placed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_agent_card_acquisition(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == 4
+    top = result.state.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(result.state, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
 
 
 def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
