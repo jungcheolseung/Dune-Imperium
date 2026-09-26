@@ -8,6 +8,8 @@ rules [Immortality pp. 10-11] and the FAQ's Beguiling Pheromones ruling
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -16,7 +18,7 @@ from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardTrashEffect
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -27,6 +29,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.observation import observe_state
+from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_payment,
@@ -195,6 +198,44 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     assert "card_trashed" in {event.kind for event in result.events}
     kept = resolve_agent_card_effect(two).state.players[0]
     assert breakthrough in kept.in_play and kept.victory_points == 1
+
+
+def test_scientific_breakthrough_self_trash_keeps_its_trash_troops_in_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The trash line writes back the context it read before its own trash.
+    # No shipped card both trashes itself and recruits when trashed, so this
+    # card borrows Eliminate Allies' "When this card is trashed: 2 troops"
+    # (fabricated data, like ``test_acquisition.py``'s
+    # ``_fake_troop_contract``): "그 turn에 어떤 출처에서 recruit했든 새
+    # troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    shipped = card_trash._trash_effect
+
+    def fabricated(candidate: str) -> PersonalCardTrashEffect | None:
+        if candidate == breakthrough:
+            return PersonalCardTrashEffect.RECRUIT_TWO_TROOPS
+        return shipped(candidate)
+
+    monkeypatch.setattr(card_trash, "_trash_effect", fabricated)
+    placed = _place(
+        _state(_owner((breakthrough,), research_space="c8r4")), breakthrough, "arrakeen"
+    )
+    _, before = current_agent_effect_context(placed)
+    recruited = before["troops_recruited"]
+    assert isinstance(recruited, int)
+    garrison = placed.players[0].troops_garrison
+
+    result = apply_agent_card_payment(
+        placed, _payment(placed, "trash_agent_card_self_for_vp")
+    ).state
+
+    assert breakthrough in result.players[0].trashed
+    assert result.players[0].troops_garrison == garrison + 2
+    frame, after = current_agent_effect_context(result)
+    assert frame is result.decision_stack[-1]
+    assert after["troops_recruited"] == recruited + 2
 
 
 def _research_to(state: GameState, space_id: str) -> GameState:

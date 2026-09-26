@@ -1785,6 +1785,9 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             source_card_id,
             source=source,
         )
+        # The self-trash's own troops (none on a shipped card yet) survive
+        # the write-back below, like the paid card's above.
+        _keep_trash_recruits(context, source_trashed)
         space_id = context.get("space_id")
         if not isinstance(space_id, str):
             raise RuntimeError("Agent-turn effect frame has invalid space")
@@ -2486,6 +2489,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         trashed = trash_personal_card(
             state, action.actor, card_instance_id, source=f"{source}:trash"
         )
+        _keep_trash_recruits(context, trashed)
         trashed_owner = trashed.state.players[action.actor]
         rewarded = replace(
             trashed_owner, victory_points=trashed_owner.victory_points + 1
@@ -3097,6 +3101,7 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
                 trashed = trash_personal_card(
                     state, player, card_instance_id, source=source
                 )
+                _keep_trash_recruits(context, trashed)
                 effect_state = trashed.state
                 next_owner = effect_state.players[player]
                 extra_events = trashed.events
@@ -3309,6 +3314,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             card_instance_id,
             source=f"round:{state.round_number}:player:{player}:agent_card",
         )
+        _keep_trash_recruits(context, trashed)
         context["pending_agent_effect"] = False
         next_state = advance_after_effect(
             trashed.state,
@@ -3343,6 +3349,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             card_instance_id,
             source=source,
         )
+        _keep_trash_recruits(context, trashed)
         context["pending_agent_effect"] = False
         next_state = advance_after_effect(
             trashed.state,

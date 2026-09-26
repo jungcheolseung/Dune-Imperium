@@ -21,7 +21,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_acquire_contracts,
@@ -1527,6 +1527,9 @@ def apply_reveal_command_acquisition(
         )
     instance_id = str(dict(action.arguments)["instance_id"])
     trashed = trash_personal_card(popped, action.actor, source_card_id, source=source)
+    # The Reveal frame, not an AGENT_EFFECTS one, is below: the self-trash's
+    # own troops (none on a shipped card yet) are credited here.
+    trashed = credit_trash_recruits(trashed, action.actor)
     acquired = acquire_imperium_for_intrigue(
         trashed.state, action.actor, instance_id, to_hand=False, source=source
     )

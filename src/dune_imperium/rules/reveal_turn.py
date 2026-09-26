@@ -3108,6 +3108,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             trashed = trash_personal_card(
                 working, player, trashed_card_id, source=trash_source
             )
+            # No AGENT_EFFECTS frame is on top in a Reveal, so the trash's
+            # own troops (none on a shipped card yet) are credited here.
+            trashed = credit_trash_recruits(trashed, player)
             working = trashed.state
             events.extend(trashed.events)
     if pending_combat_icons:
@@ -3915,6 +3918,7 @@ def _late_reveal_one_card(
             trashed = trash_personal_card(
                 next_state, player, card_id, source=f"{source}:late_trash"
             )
+            trashed = credit_trash_recruits(trashed, player)
             next_state = trashed.state
             self_events.extend(trashed.events)
         if effect.grants_combat_icon:
@@ -4323,6 +4327,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             trashed = trash_personal_card(
                 next_state, action.actor, card_id, source=f"{event.event_id}:{card_id}"
             )
+            trashed = credit_trash_recruits(trashed, action.actor)
             next_state = trashed.state
             events.extend(trashed.events)
         if effect.grants_combat_icon:

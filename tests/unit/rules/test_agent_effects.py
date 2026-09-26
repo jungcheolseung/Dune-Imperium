@@ -9,6 +9,7 @@ from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
@@ -22,6 +23,7 @@ from dune_imperium.core import (
     Resources,
     RuleResult,
 )
+from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     apply_agent_card_discard,
@@ -4049,6 +4051,122 @@ def test_long_live_the_fighters_trash_keeps_eliminate_allies_troops_deployable()
 
     assert ready.players[0].trashed == (ELIMINATE_ALLIES,)
     assert _deploy_allowance(ready) == (2, [1, 2, 3, 4])
+
+
+# A self-trashing Agent box writes back the context it read before its own
+# trash, the same overwrite as above. No shipped card both trashes itself
+# and recruits when trashed, so these tests give the self-trashing card
+# Eliminate Allies' "When this card is trashed: 2 troops" (fabricated data,
+# like ``test_acquisition.py``'s ``_fake_troop_contract``): "그 turn에 어떤
+# 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10]
+# [FAQ p. 4] (docs/rules/player-turns.md:137).
+
+
+def _recruits_two_when_trashed(monkeypatch: pytest.MonkeyPatch, card_id: str) -> None:
+    shipped = card_trash._trash_effect
+
+    def fabricated(candidate: str) -> PersonalCardTrashEffect | None:
+        if candidate == card_id:
+            return PersonalCardTrashEffect.RECRUIT_TWO_TROOPS
+        return shipped(candidate)
+
+    monkeypatch.setattr(card_trash, "_trash_effect", fabricated)
+
+
+def _turn_state(owner: PlayerState) -> GameState:
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _agent_turn_recruits(state: GameState) -> int:
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    recruited = dict(frame.context)["troops_recruited"]
+    assert isinstance(recruited, int)
+    return recruited
+
+
+def test_seek_allies_self_trash_keeps_its_trash_troops_in_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state("seek_allies")
+    card = state.players[0].hand[0]
+    _recruits_two_when_trashed(monkeypatch, card)
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    before = _agent_turn_recruits(placed)
+
+    resolved = resolve_agent_card_effect(placed).state
+
+    assert resolved.players[0].trashed == (card,)
+    assert resolved.players[0].troops_garrison == 3 + 2
+    assert _agent_turn_recruits(resolved) == before + 2
+
+
+def test_subversive_advisor_self_trash_keeps_its_trash_troops_in_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _subversive_state()
+    subversive = state.players[0].hand[0]
+    _recruits_two_when_trashed(monkeypatch, subversive)
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    before = _agent_turn_recruits(placed)
+
+    resolved = resolve_agent_card_effect(placed).state
+
+    assert resolved.players[0].trashed == (subversive,)
+    assert resolved.players[0].troops_garrison == 3 + 2
+    assert _agent_turn_recruits(resolved) == before + 2
+
+
+def test_dangerous_rhetoric_trash_icon_keeps_its_trash_troops_in_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rhetoric = _imperium_instance("dangerous_rhetoric")
+    _recruits_two_when_trashed(monkeypatch, rhetoric)
+    state = _turn_state(PlayerState(player_id=0, hand=(rhetoric,)))
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    before = _agent_turn_recruits(placed)
+
+    trashed = resolve_agent_card_icon(placed, _icon_action(placed, "trash_self")).state
+
+    assert trashed.players[0].trashed == (rhetoric,)
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert _agent_turn_recruits(trashed) == before + 2
+
+
+def test_treacherous_maneuver_self_trash_keeps_its_trash_troops_in_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    _recruits_two_when_trashed(monkeypatch, maneuver)
+    state = _turn_state(PlayerState(player_id=0, hand=(maneuver, sardaukar)))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    before = _agent_turn_recruits(placed)
+    trash = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == sardaukar
+    )
+
+    paid = apply_agent_card_trash(placed, trash).state
+
+    assert paid.players[0].trashed == (sardaukar, maneuver)
+    assert paid.players[0].troops_garrison == 3 + 2
+    assert _agent_turn_recruits(paid) == before + 2
 
 
 def test_long_live_the_fighters_returns_a_trashed_reserve_card_to_its_stack() -> None:
