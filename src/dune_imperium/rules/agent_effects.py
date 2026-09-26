@@ -1336,7 +1336,7 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     if action not in legal_agent_card_recall_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card recall choice")
     _, context = current_agent_effect_context(state)
-    _, source_card_id, _ = _effect_subject(context)
+    _, source_card_id, turn_space_id = _effect_subject(context)
     if action.action_id == "decline_agent_card_recall":
         finish_agent_icon(context, AGENT_ICON_RECALL)
         return RuleResult(
@@ -1366,6 +1366,13 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     # The printed card draw is the box's other icon, resolved by its own
     # action in the owner's order (OQ-027).
     finish_agent_icon(context, AGENT_ICON_RECALL)
+    if space_id == turn_space_id:
+        # Twisted Mentat: "You may recall the Agent you sent this turn."
+        # [Twisted Mentat card]. This turn's Agent is home, not Into the
+        # Fray, so every Agent left in the Conflict is an earlier turn's and
+        # one of Imperial Privilege's "other Agents" [Board Guide p. 2]
+        # (OQ-037 (d)); board_effects reads this mark.
+        context["turn_agent_recalled"] = True
     next_state = advance_after_effect(
         state,
         context,
