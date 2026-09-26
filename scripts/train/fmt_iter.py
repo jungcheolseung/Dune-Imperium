@@ -18,7 +18,7 @@ if update.get("clip_fraction"):
 evaluation = ""
 if record["eval_win_rate"] is not None:
     evaluation = (
-        f" | EVAL vs heuristic x3: win {record['eval_win_rate']:.1%}"
+        f" | EVAL vs --eval-opponent x3: win {record['eval_win_rate']:.1%}"
         f" rank {record['eval_mean_rank']:.2f}"
     )
     if record.get("eval_failures"):
