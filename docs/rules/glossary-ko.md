@@ -36,6 +36,12 @@ uv run scripts/prepare_official_rules.py --output-dir <저장소 밖 경로>
 Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 보드
 공간 설명서 `[Board Guide pp. 1-2]`.
 
+**새 출처 종류: `[KO card: <영어 카드 이름>]`.** 네 룰북이 침묵하지만 한글판
+카드 실물 인쇄가 쓰는 단어가 있으면(2026-09-25부터), 그 단어를 룰북 인용
+대신 이 형식으로 인용해 올릴 수 있다 — 발명이 아니라 또 하나의 공식 출처(카드
+자체의 인쇄)에서 가져왔다는 뜻이다. 룰북과 카드 인쇄 둘 다 침묵하면
+[`open-questions.md`](open-questions.md)로 간다.
+
 ## 적용 범위
 
 | 대상 | 정책 |
@@ -44,7 +50,9 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 항해 카드는 제목이 인쇄되지 않아 영어 그대로 |
 | **공간 이름** | **영어 그대로** |
 | 카드 그림 | 화면 언어를 따른다 — 한국어 화면은 한글판 그림(있을 때), 영어 화면은 영어판 그림 |
-| 카드 인쇄 텍스트 | **영어 그대로 + 이 표를 쓰는 용어 툴팁** |
+| 카드·Contract·Conflict·기술 타일·공간의 **효과 문구** | **화면 언어를 따른다**(2026-09-25 사용자 결정). 화면의 효과 문장은 카드 인쇄를 옮긴 것이 아니라 `display/*.py`가 엔진 데이터로 짓는 문장이다 — 카드 능력(`cards.py`·`tokens.py`), 책략·운항 카드(`effect_dsl_text.py`), 계약·교전 보상(`structs.py`), 공간(`spaces.py`), 기술 타일·지휘관 기술 토큰(`bloodlines.py`), 선택 줄의 효과 설명(`actions.py`). 한국어는 그 옆의 `*_ko` 쌍둥이가 이 표의 단어와 한글판 카드의 문체([`korean-card-style.md`](korean-card-style.md))로 짓고, 영어가 아이콘으로 그리는 자리는 `{term}`/`{term:count}` 자리표시자로 같은 아이콘을 그린다. 공간 이름은 여기서도 영어 그대로 |
+| 리더 능력·인장 반지 능력 **문구** | **한국어 화면은 한글판 카드 인쇄를 그대로 옮긴다**(2026-09-25 사용자 결정). 이름 행과 같이 두 번 독립적으로 옮기고 대조했다(`display/leaders_ko.py`, 기록은 [`../implementation-audits/leaders-ko.md`](../implementation-audits/leaders-ko.md)). 인쇄가 이 표와 다른 단어를 쓴 곳(Liet Kynes가 모래벌레에 "소환")이나 공간 이름을 한국어로 적은 곳(시치 타브르, 튜엑의 시치)도 인쇄대로다. 한글판 스캔이 없는 Reverend Mother Jessica는 영어 |
+| 카드 그림에 인쇄된 문구 | 그림 그대로 — 한국어 화면은 한글판 그림이 있을 때 그것 |
 
 아래 표의 "적용"은 UI가 그 한국어를 쓰는지다. `참고`는 룰북에 있지만 위 정책에
 따라 화면에서는 영어를 유지하는 항목이다.
@@ -65,7 +73,10 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 
 | EN | 한국어 | 인용 | 적용 |
 | --- | --- | --- | --- |
+| Gain (resource/Influence/VP) | 얻다 | `[Main p. 20]`(아이콘 안내 "Resources"/"Influence"/"Victory Point" 항목: "자원을 얻거나 비용으로 지불할 때는", "영향력을 얻습니다", "승점 1을 얻으면") | 적용 |
 | Acquire | 획득 | `[Main p. 20]` | 적용 |
+| Take a Contract | 가져오다 | `[Main p. 16]`("이 아이콘은 게임판에서 앞면으로 놓인 두 계약 토큰 중 1개를 **가져와** 개인 공급처에 놓는다는 의미입니다"), `[Main p. 20]`("앞면 계약 1개를 **가져옵니다**") | 적용(Acquire의 "획득"과 다른 동사 — 같은 단어가 두 행동을 가리키지 않도록, 2026-09-25 검토) |
+| Complete (a Contract) | 완수 | `[Main p. 16]`("대부분의 계약에는 특정 게임판 장소가 적혀 있으며, 그 장소에 에이전트를 보내면 **완수됩니다**", "즉시 계약은 그 계약을 가져가자마자 **완수됩니다**") | 적용 |
 | Draw a card | 카드 1장 뽑기 | `[Main p. 20]` | 적용 |
 | Draw an Intrigue card | 책략 카드 1장 뽑기 | `[Main p. 20]` | 적용 |
 | Discard a card | 카드 1장 버리기 | `[Main p. 20]` | 적용 |
@@ -97,13 +108,20 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | --- | --- | --- | --- |
 | Troop | 병력 | `[Main p. 20]` | 적용 |
 | Recruit | 소집 | `[Main p. 20]` ("병력 1을 소집합니다") | 적용 |
+| Lose (troops) | 잃다 | `[Bloodlines p. 12]`(Chani clarification: "전술 트랙의 끝까지 도달하고도 남을 만큼의 병력을 잃거나 후퇴시킨 경우에도") | 적용(Influence의 "잃기"와 같은 동사, `합성 표기` 절 참고) |
 | Sandworm | 모래벌레 | `[Main p. 20]` | 적용 |
+| Sandworm (summon) | 부르다 — **"소환"이 아님**(소환은 Agent/Spy 회수 전용) | `[Main p. 10]`("모래벌레를 불러서 즉시 교전 칸에 배치합니다"), `[Main p. 20]`("Sandworm" 항목: "모래벌레 1마리를 불러서 배치합니다") | 적용 |
 | units (병력 + 모래벌레) | 부대 | `[Main p. 10]` | 적용 |
 | Agent | 에이전트 | `[Main p. 20]` | 적용 |
+| Agent box | 에이전트 칸 | `[Main p. 8]`(카드 구조 범례 D=에이전트 칸, E=공개 칸: "당신의 카드덱을 구성하는 각 카드의 효과는 에이전트 칸과 공개 칸으로 구분되어 있습니다") | 적용 |
+| Send an Agent | 보내다 | `[Main p. 9]`("에이전트 1명을 게임판의 장소로 보내면"), `[Main p. 7]`("에이전트를 게임판의 팩션 장소에 보내면") | 적용(Place a Spy의 "배치하다"와는 다른 동사) |
 | Recall Agent | 에이전트 소환 | `[Main p. 20]` | 적용 |
 | Spy | 스파이 | `[Main p. 20]` | 적용 |
+| Place a Spy | 배치 | `[Main p. 20]`("Spy" 항목: "개인 공급처에서 스파이 1명을 가져와서 게임판의 빈 관측소 한 곳에 배치합니다") | 적용(Deploy와 같은 동사를 공유) |
+| Deploy (to the Conflict) | 배치 | `[Main p. 10]`("부대를 교전 칸에 배치할 수 있습니다"), `[Main p. 20]`("Control" 항목: "개인 공급처에 있던 병력 1을 교전 칸에 배치할 수 있습니다") | 적용 |
 | Recall Spy | 스파이 소환 | `[Main p. 20]` | 적용 |
 | Infiltrate | 침투 | `[Main p. 11]` ("침투: 다른 플레이어의 에이전트가 이미 놓여 있는 게임판 장소에…") | 적용 |
+| spying on (a Faction) | 정탐 | `[KO card: Guild Spy]` ("당신이 정탐하고 있는 각각의 팩션에서") | 적용 |
 | Gather Intelligence | 정보 수집 | `[Main p. 11]` ("정보 수집: 당신이 게임판 장소에 에이전트를 보낼 때마다…") | 적용 |
 | Maker Hooks | 메이커 작살 | `[Main p. 20]` | 적용 |
 | Shield Wall | 방어벽 | `[Main p. 20]` | 적용 |
@@ -141,6 +159,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Alliance | 동맹 | `[Main p. 20]` | 적용 |
 | Fremen Bond | 프레멘의 유대감 | `[Main p. 20]` | 적용 |
 | Landsraad | 랜드스래드 | `[Main p. 2]` | 적용 |
+| any Faction | 4개의 팩션 중 하나 | `[Main p. 20]`("Influence" 선택 효과 항목: "영향력 1 얻기, 영향력 2 얻기, 영향력 1 잃기: 4개의 팩션 중 하나를 선택합니다") | 적용 |
+| each Faction | 각 팩션 | `[Main p. 7]`("게임 시작 시 팩션 큐브들은 각 팩션의 영향력 트랙 가장 아래 칸에 놓입니다") | 적용 |
 
 ## 라운드와 단계
 
@@ -163,6 +183,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | EN | 한국어 | 인용 | 적용 |
 | --- | --- | --- | --- |
 | Maker | 메이커 | `[Main p. 20]` | 적용 |
+| opponent | 다른 플레이어 — **"상대"가 아님** | `[Main p. 20]`("Steal Intrigue": "책략 카드를 4장 이상 가진 다른 플레이어들은 각자 당신에게…"), `[Main p. 7]`(동맹 토큰 이전 규칙: "이후 해당 영향력 트랙에서 다른 플레이어의 팩션 큐브가 더 높은 칸을 차지하게 되면") | 적용 |
 | game board | 게임판 | `[Main p. 3]`("양면 게임판" / "Two-sided game board") | 적용 |
 | Imperium Deck / Intrigue Deck / Conflict deck | 임페리움 카드덱 / 책략 카드덱 / 교전 카드덱 | `[Main p. 4]`(준비 C1·C2, "교전 카드덱을 만듭니다") | 적용 |
 | Contract | 계약 | `[Main p. 20]` | 적용 |
@@ -240,6 +261,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Spy with Deep Cover | 잠복 스파이 | `[Bloodlines p. 12]` | 적용 |
 | Twisted Intrigue | 뒤틀린 책략 | `[Bloodlines p. 12]` | 적용 |
 | Navigation card | 운항 카드 | `[Bloodlines p. 12]` | 적용 |
+| Navigation slot | 운항 구획 | `[KO card: Navigation Card 3]` ("이 카드가 운항 구획 4에 놓여 있었다면") | 적용 |
 | Tactics token / track | 전술 토큰 / 전술 트랙 | `[Bloodlines p. 12]` | 적용 |
 | Rival Tech Tile | 라이벌 기술 타일 | `[Bloodlines p. 12]` | 범위 밖(1인 게임) |
 | Tuek's Sietch | 튜엑의 시치 | `[Bloodlines p. 12]` | 참고(공간 이름) |
@@ -274,13 +296,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 
 ## 아직 채우지 않은 것
 
-- **CHOAM Module**: 초암 모듈·계약·계약 토큰은 위 표에 있지만, 계약 조건과 보상의
-  세부 문구는 아직 대조하지 않았다. CHOAM UI 문구를 건드릴 때 `[Main p. 16]`에서
-  채운다.
 - Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,
   Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
-- **Agent box**: `[Bloodlines p. 12]`의 한국어판이 "에이전트 칸"으로 쓴다.
-  라벨은 그 표기를 따르지만 용어집 행으로는 아직 올리지 않았다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
   용어는 본문 룰북의 단어를 쓴다.
 - 엔진 event kind 207개 중 177개가 아직 한국어 라벨이 없다
@@ -295,3 +312,4 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 3. 고유명사 중 공간 이름은 영어를 유지한다. 카드·리더·Conflict·Contract·기술
    타일·사다우카 지휘관 기술 토큰 이름은 한글판 인쇄가 확인된 것(`display/names_ko.py`)만
    한국어이고, 나머지는 영어를 유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.
+   리더 능력·인장 반지 문구는 한글판 인쇄를 옮긴 것이라 그 안의 공간 이름도 인쇄대로다.

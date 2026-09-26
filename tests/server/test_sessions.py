@@ -104,6 +104,7 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
     game_id = _text(summary["game_id"])
     placements = _rows(manager.legal_actions(game_id, 0)["actions"])
     assert all(entry["detail"] is None for entry in placements)
+    assert all(entry["detail_ko"] is None for entry in placements)
     assert _obj(placements[0]["arguments"])["space_id"] == "assembly_hall"
 
     summary = manager.apply_action(
@@ -115,6 +116,14 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
         for entry in actions
         if entry["action_id"] == "resolve_board_effect"
     ] == [("resolve_board_effect", "intrigue", "Draw 1 Intrigue card")]
+    # detail_ko: display.spaces.board_effect_action_text_ko (Step K4) renders
+    # the same automatic-effect table English draws from, as its Korean twin
+    # (display.spaces.automatic_effect_texts_ko).
+    assert [
+        entry["detail_ko"]
+        for entry in actions
+        if entry["action_id"] == "resolve_board_effect"
+    ] == ["{intrigue:1}"]
 
 
 def _play_until(
@@ -549,3 +558,89 @@ def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
     ]
     assert serialized["resolve_board_effect"]["warning"] is None
     assert serialized["resolve_board_effect"]["shortfall"] is None
+
+
+def test_serialized_actions_carry_the_agent_box_icon_detail_ko() -> None:
+    """Step K2 (2026-09-25): a personal card's own keyed Agent-box icon
+    (OQ-027) now carries a real Korean ``detail_ko``, not just English
+    ``detail`` (``display.actions.agent_card_icon_text_ko``) — the same as
+    ``resolve_board_effect``'s own ``detail_ko`` since Step K4
+    (test_legal_actions_describe_the_board_icon_they_resolve, above)."""
+
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.core import (
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        PlayerDecision,
+        PlayerState,
+    )
+    from dune_imperium.core.player import Influence
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+    from dune_imperium.server.sessions import _serialize_action
+
+    # Hidden Missive: RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO, a
+    # two-icon Agent box (Recruit 1 troop, Draw 1 card, each conditioned on
+    # 2+ Bene Gesserit Influence) resolved as two separate
+    # resolve_agent_card_effect actions, one per icon (OQ-027).
+    hidden_missive = "imperium:hidden_missive:0"
+    seats = [
+        PlayerState(
+            player_id=0,
+            hand=(hidden_missive,),
+            influence=Influence(bene_gesserit=2),
+        ),
+        *(PlayerState(player_id=seat) for seat in range(1, 4)),
+    ]
+    imperium = imperium_deck_instance_ids(False)
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=tuple(seats),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    # Assembly Hall: a free Landsraad space, matching Hidden Missive's own
+    # printed Agent icon.
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "assembly_hall"
+    )
+    placed = apply_agent_action(state, placement).state
+    engine = UprisingRulesEngine()
+    session = SimpleNamespace(engine=engine, state=placed)
+    actions = [
+        _serialize_action(index, action, session)  # type: ignore[arg-type]
+        for index, action in enumerate(engine.legal_actions(placed, 0))
+    ]
+    agent_card_details = {
+        _obj(entry["arguments"])["effect"]: (entry["detail"], entry["detail_ko"])
+        for entry in actions
+        if entry["action_id"] == "resolve_agent_card_effect"
+    }
+    assert agent_card_details == {
+        "troops": (
+            "Recruit 1 troop (at 2 Bene Gesserit Influence)",
+            "{troop:1} ({influence_bene_gesserit:2}일 때)",
+        ),
+        "cards": (
+            "Draw 1 card (at 2 Bene Gesserit Influence)",
+            "{draw:1} ({influence_bene_gesserit:2}일 때)",
+        ),
+    }

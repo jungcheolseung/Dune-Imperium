@@ -69,6 +69,28 @@ function el(id) {
   return document.getElementById(id);
 }
 
+/* #game-error carries at most one message at a time. A background refresh
+   failure (the doorbell's silent poll losing a request, screens.js
+   showRefreshError) is marked with data-source="refresh" so that once a
+   later snapshot lands the page can tell its own stale message apart from
+   one the player caused; adoptSnapshot (session.js) clears the banner on a
+   success only when it still carries that mark. Every other writer goes
+   through here too, so its own message (the player's action, turn end,
+   undo, or a review request) is never wiped by an unrelated refresh landing
+   behind it. */
+function showGameError(message) {
+  const box = el("game-error");
+  box.textContent = message;
+  delete box.dataset.source;
+  box.hidden = false;
+}
+
+function hideGameError() {
+  const box = el("game-error");
+  box.hidden = true;
+  delete box.dataset.source;
+}
+
 async function api(path, options) {
   const response = await fetch(path, options);
   if (!response.ok) {
@@ -371,33 +393,307 @@ function termLine(key, vars) {
   return line;
 }
 
+/* Where a seat's own state sits on its leader's printed track: Feyd-Rautha's
+   Training track [Main p. 17] and Chani's Tactics track [Bloodlines p. 12]
+   are the only two with a UI text key today (the popover's `seatState` is
+   `null`/`undefined` for every other card, and for a leader with no printed
+   on-card token, so no line is built for them). `spaceNode` is icon-bearing
+   (for the popover line, `tNode`); `spaceText` is the same words as plain
+   text (for the token's title, `t()`). */
+function leaderStateDescriptor(seatState) {
+  if (!seatState) return null;
+  if (seatState.leader_id === "chani") {
+    const space = seatState.tactics_track_space + 1;
+    return { key: "panels.tactics_space", spaceNode: String(space), spaceText: String(space) };
+  }
+  if (seatState.leader_id === "feyd_rautha_harkonnen") {
+    const label = FEYD_TRACK_LABELS[seatState.feyd_track_space] || seatState.feyd_track_space;
+    return { key: "panels.feyd_track_space", spaceNode: phrase(label), spaceText: phraseText(label) };
+  }
+  return null;
+}
+
+/* The popover's no-image fallback (openPopover's last branch): plain text
+   lines for what the card image would otherwise show -- Chani's and
+   Feyd-Rautha's printed space, how many of Steersman Y'rkoon's Navigation
+   cards are played and remaining, and that Kota Odax holds a Secret
+   Project. Other leaders get no line. */
+function leaderFallbackLines(seatState) {
+  if (!seatState) return [];
+  const lines = [];
+  const descriptor = leaderStateDescriptor(seatState);
+  if (descriptor) lines.push({ key: descriptor.key, vars: { space: descriptor.spaceNode } });
+  if (seatState.leader_id === "steersman_y_rkoon") {
+    const played = (seatState.navigation_played || []).length;
+    const remaining = seatState.navigation_remaining || 0;
+    /* Nothing before his setup placed the cards; after that the line
+       stays, even once all four are played. */
+    if (played || remaining) {
+      lines.push({ key: "panels.navigation_progress", vars: { played, remaining } });
+    }
+  }
+  if (seatState.leader_id === "kota_odax_of_ix" && seatState.has_secret_project) {
+    lines.push({ key: "panels.secret_project", vars: {} });
+  }
+  return lines;
+}
+
+/* The box (percent of the leader-card image, `entry.layout` from
+   `display.leader_layout`) a seat's own token sits on, or `null` for a
+   leader with no printed on-card token, a leader entry with no layout at
+   all, or no seat context (a non-leader popover). */
+function leaderTokenBox(entry, seatState) {
+  if (!entry.layout || !seatState) return null;
+  if (seatState.leader_id === "feyd_rautha_harkonnen") {
+    return entry.layout.track ? entry.layout.track[seatState.feyd_track_space] || null : null;
+  }
+  if (seatState.leader_id === "chani") {
+    return Array.isArray(entry.layout.track)
+      ? entry.layout.track[seatState.tactics_track_space] || null
+      : null;
+  }
+  return null;
+}
+
+/* One shared token size for every space on either track, a percent of the
+   leader-card stage's width: like one physical piece, sized (with a CSS
+   `aspect-ratio: 1` token, so its rendered height matches regardless of the
+   stage's own aspect ratio) to sit inside Chani's tightest printed space —
+   about 6.4% of the stage on both axes — with a margin, and it also clears
+   Feyd's tightest space (`mid_trash`, 5.9% wide). */
+const LEADER_TOKEN_SIZE = 4;
+
+/* Each Navigation-card thumbnail's width, a percent of `leaderNavigationRow`'s
+   own width (which spans the same width as the leader image below it, both
+   being direct children of the popover). Navigation art is a 573x880
+   portrait, so this also sets the row's own height (its `aspectRatio`
+   below) to fit one card at full height. 18 sits comfortably under the
+   narrowest gap between two slot centres — about 24% of the row, between
+   slots 1 and 2 (`display.leader_layout.YRKOON_NAVIGATION_SLOT_BOXES`). */
+const NAVIGATION_CARD_WIDTH = 18;
+
+/* `visualCard()` (board.js) marks its `<img>` "lazy"; the few cards of a
+   leader popover load eagerly instead, so none can sit outside the
+   still-unmeasured fixed popover and miss the lazy-load threshold. The
+   popover's height needs them (openPopover repositions as each loads). */
+function eagerCard(instanceId, options) {
+  const card = visualCard(instanceId, options);
+  const image = card.querySelector("img");
+  if (image) image.loading = "eager";
+  return card;
+}
+
+/* Steersman Y'rkoon's four Navigation-card slots, drawn in a row above the
+   leader image (openPopover), not overlaid on it: printed slot k (1-based;
+   `entry.layout.navigation_slots[k - 1]` is the box around the printed
+   "1 2 3 4" strip marking where a card lies above the card) shows
+   `seatState.navigation_played[k - 1]` face up, for every viewer, once
+   played [Bloodlines p. 12]. While a slot still waits
+   (k <= navigation_played.length + navigation_remaining), only Y'rkoon's
+   own owner sees its face -- docs/rules/bloodlines.md:142 "자신의 face-down
+   Navigation 카드를 언제든 볼 수 있다" [Bloodlines p. 12] -- read from
+   `state.view.private.navigation_slots` (populated only into the owning
+   seat's own view, core/observation.py); every other viewer gets a plain
+   card-back placeholder, since no back art exists for a Navigation card.
+   Nothing is drawn past
+   navigation_played.length + navigation_remaining. Returns `null` when this
+   leader has no Navigation slots (every leader but Y'rkoon) or there is no
+   seat context. */
+function leaderNavigationRow(entry, seatState) {
+  const boxes = entry.layout && entry.layout.navigation_slots;
+  if (!boxes || !seatState) return null;
+  const played = seatState.navigation_played || [];
+  const remaining = seatState.navigation_remaining || 0;
+  const view = state.view;
+  const owner = Boolean(view && view.private && view.player === seatState.player);
+  const hidden = owner ? view.private.navigation_slots || [] : [];
+  const row = document.createElement("div");
+  row.className = "popover-navigation-row";
+  row.style.aspectRatio = `100 / ${NAVIGATION_CARD_WIDTH * (880 / 573)}`;
+  boxes.forEach((box, index) => {
+    const slot = index + 1;
+    if (slot > played.length + remaining) return;
+    let card;
+    if (slot <= played.length) {
+      card = eagerCard(played[slot - 1], { className: "leader-nav-card" });
+    } else {
+      const cardId = hidden[slot - played.length - 1];
+      if (cardId !== undefined) {
+        card = eagerCard(cardId, {
+          className: "leader-nav-card flipped",
+          badge: t("panels.face_down_badge"),
+        });
+      } else {
+        card = document.createElement("div");
+        card.className = "leader-nav-card nav-card-back";
+      }
+    }
+    const [left, , width] = box;
+    card.style.width = `${NAVIGATION_CARD_WIDTH}%`;
+    placeAt(card, left + width / 2, 50);
+    row.appendChild(card);
+  });
+  return row.childNodes.length ? row : null;
+}
+
+/* Kota Odax of Ix's kept Secret Project tile, drawn below the leader image
+   (openPopover), left-aligned under the card's own printed "Secret
+   Project" ability box: the card has no printed frame for the tile itself
+   ("Place one face down here" [card face]), only the
+   ability text it sits under. The owner alone sees which tile it is
+   (`view.private.secret_project_tech_id`, populated only into the owning
+   seat's own view, core/observation.py) and gets its face muted with the
+   same "Face down" badge a face-down Navigation slot uses above
+   (`leaderNavigationRow`); every other viewer, knowing only
+   `has_secret_project`, gets a Tech-tile-shaped (737x479, landscape)
+   placeholder with no identity, since no back art
+   exists for a Tech tile either. Nothing once the tile is acquired --
+   `has_secret_project` turns false the moment `_take_tile` clears it
+   (rules/tech.py). Returns `null` for every leader but Kota, a seat with
+   no tile kept, or no seat context. */
+function leaderSecretProjectBox(seatState) {
+  if (
+    !seatState ||
+    seatState.leader_id !== "kota_odax_of_ix" ||
+    !seatState.has_secret_project
+  ) {
+    return null;
+  }
+  const view = state.view;
+  const owner = Boolean(view && view.private && view.player === seatState.player);
+  const techId = owner ? view.private.secret_project_tech_id : null;
+  const row = document.createElement("div");
+  row.className = "popover-secret-project-row";
+  row.appendChild(
+    techId
+      ? eagerCard(techId, { className: "tile flipped", badge: t("panels.face_down_badge") })
+      : Object.assign(document.createElement("div"), { className: "tile-back" }),
+  );
+  return row;
+}
+
+/* Shaddam Corrino IV's two set-aside Sardaukar contracts [Main p. 17]
+   [FAQ p. 3], drawn face up below his leader image the same way Kota's
+   tile is: `view.sardaukar_contract_ids` is a top-level, fully public
+   field (not per-seat, core/observation.py), so both viewers of his own
+   popover see the same list -- it shrinks as he takes one and the popover
+   redraws (refreshPinnedLeaderPopover), with no market refill
+   (rules/contracts.py). Their own `take_contract` action rows are
+   unaffected; a card here stays a legal click target like any other
+   `visualCard` (board.js `tableClick`). Returns `null` for every leader
+   but Shaddam, no contracts left set aside, or no seat context. */
+function leaderSardaukarRow(seatState) {
+  if (!seatState || seatState.leader_id !== "shaddam_corrino_iv") return null;
+  const view = state.view;
+  const ids = (view && view.sardaukar_contract_ids) || [];
+  if (!ids.length) return null;
+  const row = document.createElement("div");
+  row.className = "popover-sardaukar-row";
+  for (const id of ids) {
+    row.appendChild(eagerCard(id, { className: "contract", badge: t("board.set_aside") }));
+  }
+  return row;
+}
+
+/* The Bloodlines Leaders' texts already open with their ability's own name
+   ("Tactician: Whenever…", "Plot Course (no Signet Ring): …"), so the
+   popover does not print that name a second time in front of it. */
+function opensWithName(text, name) {
+  const first = String(name || "").split(" / ")[0];
+  return Boolean(first) && (text.startsWith(`${first}:`) || text.startsWith(`${first} (`));
+}
+
+/* A line that opens with its own header name ("Tactician: Whenever…", a
+   Leader's ability_text) unless the text already starts with it — a Leader
+   whose Bloodlines ability text already opens that way is not given it a
+   second time (opensWithName(), above). `name` is the ENGLISH header
+   (entry.ability_en falls back to entry.ability); `textKo`/`nameKo` are
+   Step K5's Korean twins (entry.ability_text_ko / entry.ability, the
+   latter already the Korean name once i18n.js's LOCALIZED_FIELDS has
+   localized it) — `undefined` for a face with no Korean scan, in which
+   case this renders exactly the English line. The Korean check is re-run
+   against the Korean text and name (its own text may or may not open with
+   its own name, independently of whether the English does). */
+function namedEffectLine(text, name, textKo, nameKo) {
+  const en = opensWithName(text, name) ? text : `${name}: ${text}`;
+  if (textKo === undefined) return effectLine(en, undefined);
+  const koName = nameKo === undefined ? name : nameKo;
+  const ko = opensWithName(textKo, koName) ? textKo : `${koName}: ${textKo}`;
+  return effectLine(en, ko);
+}
+
 function popoverNodes(entry) {
   const nodes = [];
-  if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
-  if (entry.condition) {
-    nodes.push(termLine("core.condition_line", { text: iconize(entry.condition) }));
+  if (entry.text) {
+    const textKo = entry.text_ko || [];
+    entry.text.forEach((text, i) => nodes.push(effectLine(text, textKo[i])));
   }
-  if (entry.reward) nodes.push(termLine("core.reward_line", { text: iconize(entry.reward) }));
-  if (entry.rewards) for (const text of entry.rewards) nodes.push(iconLine(text));
+  if (entry.condition) {
+    nodes.push(
+      termLine("core.condition_line", {
+        text: effectNode(entry.condition, entry.condition_ko),
+      }),
+    );
+  }
+  if (entry.reward) {
+    nodes.push(
+      termLine("core.reward_line", { text: effectNode(entry.reward, entry.reward_ko) }),
+    );
+  }
+  if (entry.rewards) {
+    const rewardsKo = entry.rewards_ko || [];
+    entry.rewards.forEach((text, i) => nodes.push(effectLine(text, rewardsKo[i])));
+  }
   if (entry.options) {
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
     for (const option of spaceOptionsFor(entry)) nodes.push(spaceOptionLine(option));
   }
   if (entry.ability_text) {
-    nodes.push(iconLine(`${entry.ability}: ${entry.ability_text}`));
+    const abilityEn = entry.ability_en !== undefined ? entry.ability_en : entry.ability;
+    nodes.push(
+      namedEffectLine(entry.ability_text, abilityEn, entry.ability_text_ko, entry.ability),
+    );
   }
   if (entry.signet_text) {
+    const signetEn = entry.signet_en !== undefined ? entry.signet_en : entry.signet;
+    // Named vs. unnamed is decided against the rendered language's OWN
+    // text and name (entry.signet_text_ko / entry.signet, the latter
+    // already the Korean name once localized) rather than always against
+    // English — the way namedEffectLine already does for the ability line
+    // above. Steersman Y'rkoon's Korean signet_text_ko ("게임 시작: 운항
+    // 카드를 …") never opens with its own name "항로 결정" even though the
+    // English "Plot Course (no Signet Ring): …" opens with its own, so
+    // deciding from English alone picked the unnamed template for Korean
+    // too and the Korean name never showed (2026-09-25 fix review).
+    const named =
+      TERM_LANGUAGE === "ko" && entry.signet_text_ko !== undefined
+        ? opensWithName(entry.signet_text_ko, entry.signet)
+        : opensWithName(entry.signet_text, signetEn);
     nodes.push(
-      termLine("core.signet_line", { name: entry.signet, text: iconize(entry.signet_text) }),
+      named
+        ? termLine("core.signet_line_unnamed", {
+            text: effectNode(entry.signet_text, entry.signet_text_ko),
+          })
+        : termLine("core.signet_line", {
+            name: entry.signet,
+            text: effectNode(entry.signet_text, entry.signet_text_ko),
+          }),
     );
   }
   if (entry.notes) {
-    for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
+    const notesKo = entry.notes_ko || [];
+    entry.notes.forEach((text, i) => {
+      nodes.push(effectLine(text, notesKo[i], "popover-line muted"));
+    });
   }
   return nodes;
 }
 
-function openPopover(entry, anchor) {
+/* `seatState` is the seat's own `PublicPlayerView` (panels.js's `player`)
+   when this popover was opened from a seat's leader thumbnail or name, so
+   the leader image can draw that seat's own state on the card; every other
+   caller leaves it out and gets the plain card popover unchanged. */
+function openPopover(entry, anchor, seatState) {
   const pop = el("card-popover");
   pop.classList.remove("hover");
   pop.textContent = "";
@@ -437,20 +733,109 @@ function openPopover(entry, anchor) {
   if (meta.childNodes.length) pop.appendChild(meta);
 
   for (const node of popoverNodes(entry)) pop.appendChild(node);
-  if (entryImage(entry)) {
-    const image = document.createElement("img");
-    image.loading = "lazy";
-    image.src = entryImage(entry);
-    image.alt = entry.name;
-    pop.appendChild(image);
+  const image = entryImage(entry);
+  if (image && seatState) {
+    /* Y'rkoon's own state is a row of Navigation-card slots above the
+       image, not a token on it (leaderNavigationRow); every other leader
+       with on-card state gets a token instead, below. */
+    const navRow = leaderNavigationRow(entry, seatState);
+    if (navRow) pop.appendChild(navRow);
+    /* A seat's own leader popover: the image becomes a stage (a
+       `position: relative` wrapper the same width as the popover; the img
+       inside keeps its own natural aspect, so the stage does too) and a
+       seat-coloured token is laid on it at the box `leaderTokenBox` finds
+       for this seat's current state, in percent of the stage — the same
+       technique the board draws its own tokens with (`board.js`'s
+       `seatDisc`/`placeAt`). */
+    const stage = document.createElement("div");
+    stage.className = "popover-leader-stage";
+    const stageImage = document.createElement("img");
+    stageImage.loading = "lazy";
+    stageImage.src = image;
+    stageImage.alt = entry.name;
+    stage.appendChild(stageImage);
+    const box = leaderTokenBox(entry, seatState);
+    if (box) {
+      const [left, top, width, height] = box;
+      const token = seatDisc(seatState.player, "leader-token", LEADER_TOKEN_SIZE);
+      const descriptor = leaderStateDescriptor(seatState);
+      if (descriptor) token.title = t(descriptor.key, { space: descriptor.spaceText });
+      placeAt(token, left + width / 2, top + height / 2);
+      stage.appendChild(token);
+    }
+    pop.appendChild(stage);
+    /* Kota's kept tile and Shaddam's set-aside contracts sit below the
+       image, like the Navigation row above it: neither is a token *on*
+       the printed card, so neither uses `leaderTokenBox`. */
+    const secretProjectBox = leaderSecretProjectBox(seatState);
+    if (secretProjectBox) pop.appendChild(secretProjectBox);
+    const sardaukarRow = leaderSardaukarRow(seatState);
+    if (sardaukarRow) pop.appendChild(sardaukarRow);
+  } else if (image) {
+    const plainImage = document.createElement("img");
+    plainImage.loading = "lazy";
+    plainImage.src = image;
+    plainImage.alt = entry.name;
+    pop.appendChild(plainImage);
+  } else if (seatState) {
+    /* No card image (no private assets): say in words where the token
+       sits or what the seat holds -- the same wording the seat panel's own
+       status flag used to carry for Chani, Y'rkoon and Kota, and the log's
+       own Feyd track wording for Feyd-Rautha. Kota's tile and Shaddam's
+       contracts still draw here too -- `visualCard` (via `eagerCard`)
+       already falls back to a named textcard when `entry.image` is
+       missing, so these are the only place those two facts appear when no
+       card art is loaded at all. */
+    for (const line of leaderFallbackLines(seatState)) pop.appendChild(termLine(line.key, line.vars));
+    const secretProjectBox = leaderSecretProjectBox(seatState);
+    if (secretProjectBox) pop.appendChild(secretProjectBox);
+    const sardaukarRow = leaderSardaukarRow(seatState);
+    if (sardaukarRow) pop.appendChild(sardaukarRow);
   }
   placePopover(pop, anchor, 340);
+  /* Every `<img>` this popover ends up with -- the leader's own portrait
+     and, now, any eager card below or above it -- lacks an explicit
+     `aspect-ratio`, so before it finishes loading the browser lays it out
+     at no height at all; `placePopover` above, called synchronously, then
+     measures a too-short popover and misplaces it. Repositioning again as
+     each image finishes loading (there again once it is already
+     `.complete`, e.g. from the browser's own cache, is harmless) fixes
+     that without delaying the popover's first paint. */
+  for (const loadingImage of pop.querySelectorAll("img")) {
+    if (loadingImage.complete) continue;
+    loadingImage.addEventListener(
+      "load",
+      () => {
+        /* Only while this is still the popover showing it. A later
+           `openPopover` replacing the content detaches this image
+           (`pop.textContent = ""`), but `closePopover` does not -- it only
+           sets `pop.hidden = true`, leaving a slow image connected and
+           able to un-hide the popover from under a pointer that has
+           already left. Check both. */
+        if (loadingImage.isConnected && !pop.hidden) placePopover(pop, anchor, 340);
+      },
+      { once: true },
+    );
+  }
 }
 
 /* The popover is fixed-positioned (the table columns scroll on their own)
-   and flips above the anchor when it would run off the bottom. */
+   and flips above the anchor when it would run off the bottom. An anchor
+   that has left the page has an all-zero rect and would throw the popover
+   into the top-left corner: the table re-rendered under a pinned popover
+   before its image finished loading, or the anchor was a card inside this
+   very popover, cleared with its old content. The popover then stays where
+   it is, only pulled back up if its new content runs off the bottom. */
 function placePopover(pop, anchor, maxWidth) {
   pop.hidden = false;
+  if (!anchor.isConnected) {
+    const height = pop.offsetHeight;
+    const top = parseFloat(pop.style.top) || 8;
+    if (top + height > window.innerHeight - 8) {
+      pop.style.top = `${Math.max(8, window.innerHeight - height - 8)}px`;
+    }
+    return;
+  }
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(maxWidth, window.innerWidth - 16);
   pop.style.width = `${width}px`;
@@ -469,6 +854,7 @@ function closePopover() {
   pop.hidden = true;
   pop.classList.remove("hover");
   popoverPinned = false;
+  pinnedLeaderSeat = null;
   clearTimeout(hoverTimer);
 }
 
@@ -480,13 +866,20 @@ let popoverPinned = false;
 let hoverTimer = 0;
 const HOVER_DELAY_MS = 120;
 
-function hoverPopover(anchor, entryOf) {
+/* The seat whose leader popover is currently pinned open, or `null` when
+   nothing is pinned or the pinned popover is not a seat's leader.
+   `refreshPinnedLeaderPopover` uses this after a render to redraw it
+   against the seat's freshly rendered state, the way a pinned popover
+   otherwise stays open unrefreshed through a foreign one. */
+let pinnedLeaderSeat = null;
+
+function hoverPopover(anchor, entryOf, seatOf) {
   anchor.addEventListener("mouseenter", () => {
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       const entry = entryOf();
       if (!entry || popoverPinned) return;
-      openPopover(entry, anchor);
+      openPopover(entry, anchor, seatOf ? seatOf() : undefined);
       popoverPinned = false;
       el("card-popover").classList.add("hover");
     }, HOVER_DELAY_MS);
@@ -498,9 +891,35 @@ function hoverPopover(anchor, entryOf) {
 }
 
 /* A click pins the popover open until a click elsewhere or Escape. */
-function pinPopover(entry, anchor) {
-  openPopover(entry, anchor);
+function pinPopover(entry, anchor, seatState) {
+  openPopover(entry, anchor, seatState);
   popoverPinned = true;
+  pinnedLeaderSeat = seatState ? seatState.player : null;
+}
+
+/* After a foreign update (someone else's move synced in), a pinned popover
+   otherwise stays open exactly as it was — fine for a card's fixed text,
+   but a seat's leader popover draws that seat's own live state, which the
+   update may have just changed. Redraw it against the freshly rendered seat
+   panel (panels.js's `renderSeats()` calls this right after rebuilding it);
+   if the seat or its leader is gone, close it instead of showing something
+   stale. */
+function refreshPinnedLeaderPopover() {
+  if (!popoverPinned || pinnedLeaderSeat === null) return;
+  const view = state.view;
+  const player = view && view.players.find((p) => p.player === pinnedLeaderSeat);
+  const faceId = player && (player.leader_face_id || player.leader_id);
+  const entry = faceId ? lookup(faceId) : null;
+  const anchor = document.querySelector(
+    `.seat[data-seat="${pinnedLeaderSeat}"] .leader-name`,
+  );
+  if (!player || !entry || !anchor) {
+    closePopover();
+    return;
+  }
+  openPopover(entry, anchor, player);
+  popoverPinned = true;
+  pinnedLeaderSeat = player.player;
 }
 
 function chipList(container, ids, emptyText) {
@@ -513,6 +932,24 @@ function chipList(container, ids, emptyText) {
     return;
   }
   for (const id of ids) container.appendChild(chip(id));
+}
+
+/* An Intrigue card's chosen-option body, its timing prefix stripped
+   ("Plot — " etc., intrigue_card_text()'s own label) — the card's own name
+   is already on the line, so repeating the timing here would be redundant.
+   entry.text_ko[index] is that option's Korean twin, undefined until a
+   later step's effect_dsl_text_ko.py fills it in; this strips the same
+   " — " separator from it too on the assumption that generator keeps
+   ``effect_dsl_text.py option_text()``'s own prefix format (not yet
+   written, so unconfirmed — worth checking when that step lands). Until
+   the twin exists, effectNode() falls back to the English body. */
+function intrigueOptionBody(entry, index) {
+  const strip = (line) => {
+    const split = line.indexOf(" — ");
+    return split === -1 ? line : line.slice(split + 3);
+  };
+  const textKo = entry.text_ko && entry.text_ko[index];
+  return effectNode(strip(entry.text[index]), textKo ? strip(textKo) : undefined);
 }
 
 /* One action as nodes, not a string. The verb and any effect label are ours,
@@ -534,17 +971,97 @@ function describeAction(action) {
          effect id is the engine's name for what the events then say. */
       if (action.detail) {
         /* Some details are an engine prompt (resume_reveal_choice), which
-           Korean translates; the rest is card wording. */
+           Korean translates; the rest is generated effect text (action.
+           detail_ko is its Korean twin, server/sessions.py, undefined
+           until a later step's generator fills it in — effectNode() then
+           falls back to iconize(action.detail) exactly as before). */
         const translated = promptText(action.detail);
         parts.push(
           translated !== action.detail
             ? document.createTextNode(translated)
-            : iconize(action.detail),
+            : effectNode(action.detail, action.detail_ko),
         );
       }
       else if (EFFECT_ICON_LABELS[value]) parts.push(phrase(EFFECT_ICON_LABELS[value]));
     } else if (SEAT_PAYLOAD_KEYS.has(key) && typeof value === "number") {
       parts.push(document.createTextNode(t("common.seat", { seat: value })));
+    } else if (
+      action.action_id === "play_intrigue" &&
+      key === "option" &&
+      typeof value === "number"
+    ) {
+      /* The numeric option index means nothing on its own ("선택지: 0"); the
+         catalog already carries each printed option's wording
+         (catalog.intrigue[card_id].text[option], one line per engine
+         option, always prefixed by its timing: "Plot — ", "Combat — ",
+         "Endgame — "). Show that line, prefix stripped, as printed card
+         text. A card with only one option needs nothing here (the card
+         name already said it); a card the catalog can't resolve (redacted
+         or unknown) falls back to the plain numeric label. */
+      const cardId = action.arguments.card_id;
+      const entry =
+        typeof cardId === "string" && state.catalog
+          ? state.catalog.intrigue[baseId(cardId)]
+          : null;
+      const lines = entry && Array.isArray(entry.text) ? entry.text : null;
+      if (lines && lines[value] !== undefined) {
+        if (lines.length > 1) {
+          parts.push(intrigueOptionBody(entry, value));
+        }
+      } else {
+        parts.push(document.createTextNode(`${label}: ${value}`));
+      }
+    } else if (
+      action.action_id === "play_navigation" &&
+      key === "option" &&
+      typeof value === "number"
+    ) {
+      /* Unlike play_intrigue, this action carries only "option"
+         (rules/navigation.py legal_navigation_play_actions) — no card_id
+         argument names the card, so (unlike the play_intrigue branch above)
+         this branch must find the card itself, not just its option text.
+         A logged step's own `navigation_card_played` event (this action's
+         `.events`, panels.js turnLine) carries the card that resolved; the
+         card stays in `navigation_slots` while it resolves
+         (rules/navigation.py begin_navigation_play/apply_navigation_play),
+         so for a LIVE legal action (not yet in `.events`) the front of the
+         viewing seat's own `view.private.navigation_slots` is that same
+         card. That live-view fallback must not fire for anything else: a
+         turn-log entry always carries its own `.events` already (handled
+         above), but a replay-review label (server/sessions.py
+         `_review_step_label`) carries neither `.events` nor a `card_id` --
+         by the time it is shown, `state.view` is the view AFTER the step,
+         so the played card has usually already left `navigation_slots` for
+         the NEXT slot's own card, and reading the live view here would
+         print that wrong card's name as if it were the one played. A live
+         legal action (server/sessions.py `_serialize_action`) is the only
+         shape with no "type" key at all; both a log entry and a review
+         label carry `type: "action"`. Falls back to the plain numeric
+         label when neither the event nor (for a live action only) the live
+         view resolves a card (a redacted or unknown card, no seat context,
+         or -- always, for a review label -- no event). */
+      const played = Array.isArray(action.events)
+        ? action.events.find((event) => event.kind === "navigation_card_played")
+        : null;
+      const live = action.type === undefined;
+      const view = state.view;
+      const liveSlots = live && view && view.private ? view.private.navigation_slots : null;
+      const cardId =
+        played && typeof played.payload.card_id === "string"
+          ? played.payload.card_id
+          : liveSlots && liveSlots.length
+            ? liveSlots[0]
+            : null;
+      const entry = cardId && state.catalog ? state.catalog.intrigue[baseId(cardId)] : null;
+      const lines = entry && Array.isArray(entry.text) ? entry.text : null;
+      if (cardId && lines && lines[value] !== undefined) {
+        parts.push(document.createTextNode(nameOf(cardId)));
+        if (lines.length > 1) {
+          parts.push(intrigueOptionBody(entry, value));
+        }
+      } else {
+        parts.push(document.createTextNode(`${label}: ${value}`));
+      }
     } else if (typeof value === "boolean") {
       /* A flag says itself by its name. */
       if (value) parts.push(document.createTextNode(label));

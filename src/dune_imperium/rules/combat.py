@@ -1538,6 +1538,7 @@ def _combat_reward_event(
             ),
             ("spice", reward.spice * assignment.multiplier),
             ("troops", reward.troops * assignment.multiplier),
+            ("victory_points", reward.victory_points * assignment.multiplier),
             ("water", reward.water * assignment.multiplier),
         ),
     )

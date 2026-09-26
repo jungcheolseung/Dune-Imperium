@@ -35,7 +35,11 @@ PROFILES = (
 def create_full_game(host, base: str) -> str:
     host.goto(f"{base}/#admin={KEY}")
     host.wait_for_selector("#setup-screen:not([hidden])")
+    # A remote room now defaults every seat to human; seats 2 and 3, which
+    # nobody visits in this rehearsal, need an explicit AI.
     host.select_option("#seat-selects select[data-seat='1']", "human")
+    host.select_option("#seat-selects select[data-seat='2']", "heuristic")
+    host.select_option("#seat-selects select[data-seat='3']", "heuristic")
     for option in (
         "opt-choam",
         "opt-promo",

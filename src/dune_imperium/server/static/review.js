@@ -79,7 +79,7 @@ async function reviewGoto(cursor) {
   cursor = Math.max(0, Math.min(review.meta.step_count, cursor));
   const request = ++reviewRequest;
   try {
-    el("game-error").hidden = true;
+    hideGameError();
     const payload = await api(
       `/games/${state.gameId}/review/${cursor}?seat=${review.seat}`
     );
@@ -96,8 +96,7 @@ async function reviewGoto(cursor) {
     render();
     return true;
   } catch (error) {
-    el("game-error").textContent = t("review.status_fetch_failed", { message: error.message });
-    el("game-error").hidden = false;
+    showGameError(t("review.status_fetch_failed", { message: error.message }));
     return false;
   }
 }
@@ -189,6 +188,12 @@ function reviewLog(review) {
    there is a full record to walk through and nothing left to wait for. */
 const playback = { playing: false, timer: 0, unit: "turn", intervalMs: 1000 };
 
+/* Declining a Combat or Endgame Intrigue window (rules/combat.py,
+   rules/endgame.py): both count as "a pass" for turnStops below, whichever
+   seat and whichever of the two it is. panels.js logGroups reads this same
+   set too, to fold consecutive passes into one log card. */
+const PASS_ACTION_IDS = new Set(["pass_combat_intrigue", "pass_endgame_intrigue"]);
+
 /* Where turn-by-turn playback stops: the cursor positions between two
    turns, by the rule the log's turn cards follow (logGroups) — the action
    before closed its turn, or the next action is another seat's. Chance steps
@@ -204,7 +209,8 @@ function turnStops(steps) {
         SOLO_ACTIONS.has(last.action_id) ||
         QUIET_ACTIONS.has(last.action_id) ||
         label.actor !== last.actor;
-      const passing = last.action_id === "pass" && label.action_id === "pass";
+      const passing =
+        PASS_ACTION_IDS.has(last.action_id) && PASS_ACTION_IDS.has(label.action_id);
       if (closed && !passing) stops.push(position);
     }
     last = label;
@@ -350,8 +356,7 @@ function spectatorOnly() {
 function watchGame() {
   enterReview(state.review ? state.review.seat : 0, { cursor: 0, play: true }).catch(
     (error) => {
-      el("game-error").textContent = t("review.watch_failed", { message: error.message });
-      el("game-error").hidden = false;
+      showGameError(t("review.watch_failed", { message: error.message }));
     }
   );
 }

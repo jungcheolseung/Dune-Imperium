@@ -470,7 +470,8 @@ function renderBoardStage(board, view) {
    the unit counts stay on top. The Conflict card fills its portrait frame;
    the landscape contracts are drawn a little larger than their slot
    because the dark band around it is empty. Shaddam's set-aside Sardaukar
-   contracts have no printed home and stay in the market strip. */
+   contracts have no printed home on the board either; they are drawn on
+   his own leader popover instead (core.js leaderSardaukarRow), not here. */
 const CONTRACT_SLOT_SCALE = 1.2;
 
 function renderSlotCards(stage, view) {
@@ -947,7 +948,10 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const detail = document.createElement("div");
   if (entry.requirement) detail.appendChild(requirementNode(entry.requirement));
   for (const option of spaceOptionsFor(entry)) detail.appendChild(spaceOptionLine(option));
-  for (const noteText of entry.notes) detail.appendChild(iconLine(noteText, "muted"));
+  const notesKo = entry.notes_ko || [];
+  entry.notes.forEach((noteText, i) => {
+    detail.appendChild(effectLine(noteText, notesKo[i], "muted"));
+  });
   const status = [];
   const seats = occupants.get(spaceId);
   if (seats && seats.length) {
@@ -1259,16 +1263,8 @@ function renderMarket() {
       "Contracts",
     );
   }
-  if (view.sardaukar_contract_ids.length) {
-    cardStrip(
-      market,
-      t("board.sardaukar_contract_title"),
-      view.sardaukar_contract_ids,
-      "",
-      { className: "contract", badge: t("board.set_aside") },
-      "Sardaukar contract",
-    );
-  }
+  /* Shaddam's set-aside Sardaukar contracts are drawn on his leader
+     popover (core.js leaderSardaukarRow), not in the shared market. */
   renderIntriguePiles(market, view);
   /* Folding is only worth anything if the column then gives its width back,
      and #market has a min-width that would otherwise hold it open. */

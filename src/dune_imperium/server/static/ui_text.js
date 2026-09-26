@@ -133,10 +133,6 @@ const UI_TEXT = {
     "ko": "{commander} · 보드 {{count}} · 은행 {{bank}}",
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
-  "board.sardaukar_contract_title": {
-    "ko": "사다우카 {contract} · 샤담 코리노 4세 전용, 따로 치워둠",
-    "en": "Sardaukar {contract} · Shaddam only, set aside"
-  },
   "board.seat_conflict_troops": {
     "ko": "좌석 {{seat}} · {conflict} 병력",
     "en": "Seat {{seat}} · {conflict} troops"
@@ -308,6 +304,10 @@ const UI_TEXT = {
   "core.signet_line": {
     "ko": "인장 반지 능력 — {{name}}: {{text}}",
     "en": "Signet — {{name}}: {{text}}"
+  },
+  "core.signet_line_unnamed": {
+    "ko": "인장 반지 능력 — {{text}}",
+    "en": "Signet — {{text}}"
   },
   "core.reward_line": {
     "ko": "보상: {{text}}",
@@ -661,6 +661,10 @@ const UI_TEXT = {
     "ko": "{discard_pile} 보기",
     "en": "View {discard_pile}"
   },
+  "panels.face_down_badge": {
+    "ko": "뒷면",
+    "en": "Face down"
+  },
   "panels.facedown_suffix": {
     "ko": " (뒤집힘)",
     "en": " (face-down)"
@@ -729,9 +733,9 @@ const UI_TEXT = {
     "ko": "내 손패 · {{seat}}",
     "en": "My hand · {{seat}}"
   },
-  "panels.navigation_remaining": {
-    "ko": "{navigation} {{count}}장 남음",
-    "en": "{{count}} Navigation cards remaining"
+  "panels.navigation_progress": {
+    "ko": "{navigation} {{played}}장 사용, {{remaining}}장 남음",
+    "en": "{{played}} Navigation card(s) played, {{remaining}} remaining"
   },
   "panels.neutral_combat_intrigue": {
     "ko": "전투 책략 카드 창",
@@ -756,6 +760,10 @@ const UI_TEXT = {
   "panels.neutral_setup": {
     "ko": "게임 준비",
     "en": "Game setup"
+  },
+  "panels.pass_fold_endgame_intrigue": {
+    "ko": "{endgame} {intrigue} 패스",
+    "en": "{endgame} {intrigue} Passed"
   },
   "panels.reveal_preview_prefix": {
     "ko": "지금 공개하면 ",
@@ -841,6 +849,10 @@ const UI_TEXT = {
     "ko": "전술 트랙 {{space}}칸",
     "en": "Tactics space {{space}}"
   },
+  "panels.feyd_track_space": {
+    "ko": "훈련 트랙: {{space}}",
+    "en": "Training track: {{space}}"
+  },
   "panels.tech_label": {
     "ko": "{tech_tile}",
     "en": "Tech"
@@ -888,6 +900,30 @@ const UI_TEXT = {
   "render.buyable_cards_heading": {
     "ko": "살 수 있는 카드 — 테이블에서 빛나는 카드를 눌러도 됩니다",
     "en": "Cards you can acquire — you can also click the highlighted cards on the table"
+  },
+  "render.combat_result_line": {
+    "ko": "{{name}} — {{ranks}} — 내 보상: {{reward}}",
+    "en": "{{name}} — {{ranks}} — Your reward: {{reward}}"
+  },
+  "render.combat_result_line_ranks": {
+    "ko": "{{name}} — {{ranks}}",
+    "en": "{{name}} — {{ranks}}"
+  },
+  "render.combat_result_rank_1": {
+    "ko": "1위",
+    "en": "1st"
+  },
+  "render.combat_result_rank_2": {
+    "ko": "2위",
+    "en": "2nd"
+  },
+  "render.combat_result_rank_3": {
+    "ko": "3위",
+    "en": "3rd"
+  },
+  "render.combat_result_unranked": {
+    "ko": "없음 (순위 밖)",
+    "en": "none (not ranked)"
   },
   "render.confirm_count_label": {
     "ko": "{{count}}개 {{label}}",
@@ -1212,6 +1248,10 @@ const UI_TEXT = {
   "screens.delete_button": {
     "ko": "삭제",
     "en": "Delete"
+  },
+  "screens.delete_confirm_button": {
+    "ko": "정말 삭제?",
+    "en": "Delete for good?"
   },
   "screens.empty_seat": {
     "ko": "빈 좌석",

@@ -309,6 +309,51 @@ def test_desert_mouse_rewards_apply_by_rank() -> None:
     assert result.state.decision_stack == ()
 
 
+def test_combat_reward_event_records_the_reward_s_victory_points() -> None:
+    # ITEM 5 (UI): the log line reporting a Conflict's outcome reads the
+    # reward events, so the payload must carry the Victory Points a reward
+    # row grants, not just the resources resolve_combat_rewards applies to
+    # the player above. Battle for Arrakeen's first-place row grants 1
+    # Victory Point alongside its Control space.
+    result = resolve_combat_rewards(_reward_state("battle_for_arrakeen"))
+    reward_events = [
+        event for event in result.events if event.kind == "combat_reward_gained"
+    ]
+    first_place = next(
+        event for event in reward_events if dict(event.payload)["rank"] == 1
+    )
+    assert dict(first_place.payload) == {
+        "choose_influence": 0,
+        "contracts": 0,
+        "control_space_id": "arrakeen",
+        "faction": "",
+        "faction_influence": 0,
+        "intrigue": 0,
+        "multiplier": 1,
+        "player": 0,
+        "rank": 1,
+        "solari": 0,
+        "spice": 0,
+        "troops": 0,
+        "victory_points": 1,
+        "water": 0,
+    }
+
+
+def test_combat_reward_event_doubles_victory_points_for_a_sandworm() -> None:
+    result = resolve_combat_rewards(
+        _reward_state("battle_for_arrakeen", sandworm_players=(0,))
+    )
+    reward_events = [
+        event for event in result.events if event.kind == "combat_reward_gained"
+    ]
+    first_place = next(
+        event for event in reward_events if dict(event.payload)["rank"] == 1
+    )
+    assert dict(first_place.payload)["victory_points"] == 2
+    assert dict(first_place.payload)["multiplier"] == 2
+
+
 def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
     result = resolve_combat_rewards(_reward_state("skirmish_ornithopter"))
 

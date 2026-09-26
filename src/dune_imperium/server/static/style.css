@@ -54,8 +54,50 @@ body.in-game header {
   background: linear-gradient(90deg, #14120f, #2a1e10 50%, #14120f);
   border-bottom: 1px solid #7f5a28;
 }
-header h1 { font-size: 1.05rem; margin: 0; flex: none; }
-#header-status { flex: 1; font-size: 0.9rem; opacity: 0.9; }
+header h1 { font-size: 1.05rem; margin: 0; }
+/* One line in the fixed-height header (render.js renderHeaderStatus): the
+   round and phase, the review label, then the seed and ruleset badges. The badges
+   are size-contained, so they add nothing to the minimum width; they only
+   fill the room left over and end in an ellipsis. When the round and label
+   alone no longer fit beside the buttons, the page title gives way next.
+   The round never does. It used to wrap to three lines inside the 44px
+   header on a half-laptop window and lose the round off the top
+   (2026-09-24). */
+#header-status {
+  flex: 1 1 auto;
+  min-width: min-content;
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+.status-core,
+.status-label { flex: none; white-space: pre; }
+.status-badges {
+  flex: 1 1 0;
+  min-width: 0;
+  contain: inline-size;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* A flex item starts its own line for white space, so plain nowrap would
+     drop the leading " · "; pre keeps it and still never wraps. */
+  white-space: pre;
+}
+header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header > button { flex: none; }
+#connection-note {
+  flex: 0 1 auto;
+  min-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A half-laptop window (600-760px, next to a chat window) needs the room. */
+@media (max-width: 760px) {
+  header { gap: 0.5rem; padding: 0 0.6rem; }
+  header button { padding: 0.2rem 0.45rem; }
+}
 header button { padding: 0.2rem 0.7rem; }
 
 main { max-width: 1180px; margin: 0 auto; padding: 1rem; }
@@ -539,7 +581,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   border-radius: 50%;
   box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
-.board-stage .seat-disc, .bt-stage .seat-disc {
+.board-stage .seat-disc, .bt-stage .seat-disc, .popover-leader-stage .seat-disc {
   position: absolute;
   transform: translate(-50%, -50%);
 }
@@ -1015,6 +1057,9 @@ kbd {
 #decision-banner { border-left: 6px solid var(--accent); }
 #decision-info .prompt { font-weight: 700; font-size: 1rem; }
 #decision-info .meta { font-size: 0.8rem; opacity: 0.75; }
+/* ITEM 5: the most recently resolved Conflict, one muted line above the
+   prompt (render.js's combatResultLine) -- no badge, no animation. */
+#decision-info .combat-result { font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.35rem; }
 
 #actions {
   display: flex;
@@ -1269,6 +1314,16 @@ kbd {
 #game-list button, #save-list button { margin-left: 0.3rem; }
 #game-list li, #save-list li { margin: 0.25rem 0; }
 
+/* Delete button (screens.js loadSaveList): armed by a first click, it
+   reads "정말 삭제?"/"Delete for good?" in the warning colour until a second
+   click deletes or it reverts. */
+.save-delete.armed {
+  border-color: var(--bad);
+  color: var(--bad);
+  font-weight: 700;
+}
+.save-delete.armed:hover:not(:disabled) { background: var(--bad); color: #fff; }
+
 #standings table { border-collapse: collapse; width: 100%; }
 #standings th, #standings td {
   border-bottom: 1px solid var(--line);
@@ -1296,7 +1351,72 @@ kbd {
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover .meta { font-size: 0.8rem; opacity: 0.85; margin-bottom: 0.3rem; }
 .popover-line { margin: 0.15rem 0; }
+/* A Leader's printed Korean text (render.js effectNode) carries literal
+   "\n" for a printed line/column break with no punctuation (Staban's and
+   Liet's case lists, Esmar's two columns, Steersman's two boxes,
+   display/leaders_ko.py) -- phrase() emits it as a plain text node, so the
+   line must keep it as a visible break itself (2026-09-25 fix review: with
+   no white-space rule the browser collapsed it to a single run). */
+.effect-text-ko { white-space: pre-line; }
 .popover > img { width: 100%; border-radius: 8px; margin-top: 0.5rem; }
+/* A seat's own leader popover: the image becomes a stage the token from
+   `leaderTokenBox` (core.js) lies on, sized and placed in percent of it
+   like the board's own tokens (`.board-stage .seat-disc`). */
+.popover-leader-stage { position: relative; margin-top: 0.5rem; }
+.popover-leader-stage > img { display: block; width: 100%; border-radius: 8px; }
+.leader-token { z-index: 1; }
+/* Steersman Y'rkoon's Navigation-card row (core.js `leaderNavigationRow`),
+   above the leader image rather than over it: its own `aspectRatio` (set
+   inline, matching `NAVIGATION_CARD_WIDTH`) gives it a height to lay its
+   cards in, each centred at its slot's measured x like a card in its
+   printed board slot (`.vcard.slot-card`). */
+.popover-navigation-row { position: relative; margin-top: 0.5rem; }
+.popover-navigation-row .leader-nav-card {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+/* `.vcard.flipped img` (below) already mutes a face-down-but-owner-visible
+   card's picture. No back art exists for a Navigation card: a plain
+   card-shaped box in the page's own
+   palette, no text — like `.commander-piece.drawn` without a rulebook
+   figure to draw. Flat fill, not a gradient (`.vcard`'s own background;
+   user convention, `ui-token-style.md`: flat colour, no gradients). */
+.nav-card-back {
+  aspect-ratio: 573 / 880;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2419;
+}
+/* The face-down badge (`.vcard-badge`, board.js `visualCard`) at the
+   ~55px-wide Navigation-slot scale: English "Face down" wraps to two lines
+   at the badge's usual 0.7rem there, covering most of the card. Smaller and
+   non-wrapping keeps it to the one line Korean "뒷면" already fits on. */
+.leader-nav-card .vcard-badge {
+  font-size: 0.55rem;
+  white-space: nowrap;
+  padding: 0 0.25em;
+}
+/* Kota Odax of Ix's kept Secret Project tile (core.js
+   `leaderSecretProjectBox`), below the leader image: the card has no
+   printed frame for it ("Place one face down here"), so this is a plain
+   block, left-aligned by default, not positioned like the Navigation
+   row's per-slot boxes above. */
+.popover-secret-project-row { margin-top: 0.5rem; }
+/* No back art exists for a Tech tile either: a
+   landscape placeholder (737x479) at the width `.vcard.tile` draws its
+   own face at, flat-filled like `.nav-card-back`. */
+.tile-back {
+  display: block;
+  width: 118px;
+  aspect-ratio: 737 / 479;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2419;
+}
+/* Shaddam Corrino IV's set-aside Sardaukar contracts (core.js
+   `leaderSardaukarRow`), below the leader image, face up side by side. */
+.popover-sardaukar-row { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
 
 /* ---------- text board fallback ---------- */
 
@@ -1361,6 +1481,10 @@ kbd {
 .turn-card.neutral .turn-head strong { opacity: 0.85; font-size: 0.85rem; letter-spacing: 0.04em; }
 .turn-card.neutral .logevent { margin-left: 0.3rem; }
 .neutral-mark { opacity: 0.6; }
+/* A folded chain of Combat/Endgame Intrigue passes (ITEM 8h): the seats
+   that passed, inline in the card's one .turn-head line, instead of a full
+   turn card each. .pass-seat.undone shares .turn-line.undone's rule below. */
+.turn-card.passes .pass-seat { display: inline-flex; align-items: center; gap: 0.25rem; }
 .turn-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
 .turn-head strong { font-size: 0.95rem; }
 .turn-where { margin-left: auto; font-weight: 700; white-space: nowrap; }
@@ -1372,7 +1496,7 @@ kbd {
 .turn-index { font-size: 0.7rem; opacity: 0.5; flex: none; }
 .turn-line.quiet { opacity: 0.5; font-size: 0.75rem; }
 .turn-line.chance { opacity: 0.6; font-size: 0.75rem; font-style: italic; }
-.turn-line.undone { opacity: 0.55; text-decoration: line-through; }
+.turn-line.undone, .turn-card.passes .pass-seat.undone { opacity: 0.55; text-decoration: line-through; }
 .turn-cards { display: flex; flex-direction: column; gap: 0.25rem; flex: none; }
 .turn-cards .vcard.small { width: 54px; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }

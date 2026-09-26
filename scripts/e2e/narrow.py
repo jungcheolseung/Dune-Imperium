@@ -13,6 +13,13 @@ measured at 1090, 1000, 820 and 700px with all five expansions on, no strip
 ever had scrollWidth > clientWidth. The rule is reachable CSS over an
 unreachable state, so there is nothing for a check to assert and nothing for
 render() to carry. Re-measure before adding one.
+
+The header (2026-09-24): on a half-laptop window its status line used to wrap
+to three lines inside the fixed 44px header, cutting the round off the top
+and running over the seats. It is one line now: the round and phase, the
+review label, then the seed and ruleset badges, which alone give way to an
+ellipsis. check_header() looks at the widths a window beside a chat app has,
+in both languages, in a watched game (the review label) and a live one.
 """
 
 from __future__ import annotations
@@ -204,10 +211,80 @@ def check_tleilaxu_row(page) -> None:
 
 
 
+HEADER_SIZES = ((600, 800), (683, 768), (720, 900), (768, 864), (1366, 768))
+
+HEADER_JS = """() => {
+    const header = document.querySelector('header').getBoundingClientRect();
+    const status = document.getElementById('header-status');
+    const box = status.getBoundingClientRect();
+    const whole = (selector) => {
+        const span = status.querySelector(selector);
+        if (!span) return null;
+        const b = span.getBoundingClientRect();
+        return b.left >= box.left - 0.5 && b.right <= box.right + 0.5
+            && b.right <= innerWidth + 0.5 && span.scrollWidth <= span.clientWidth + 0.5;
+    };
+    const badges = status.querySelector('.status-badges');
+    return {
+        headerH: header.height,
+        inside: box.top >= header.top - 0.5 && box.bottom <= header.bottom + 0.5,
+        statusH: box.height,
+        core: whole('.status-core'),
+        label: whole('.status-label'),
+        badgesWhole: badges ? badges.scrollWidth <= badges.clientWidth + 0.5 : null,
+        sideways: document.documentElement.scrollWidth > innerWidth + 0.5,
+        title: status.title === status.textContent,
+        text: status.textContent,
+    };
+}"""
+
+
+def live_game(page, base: str) -> None:
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(1, 4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "heuristic")
+    for option in EXPANSIONS:
+        page.check(f"#opt-{option}")
+    page.fill("#opt-seed", str(SEED))
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null")
+
+
+def check_header(browser, base: str) -> None:
+    for mode, start in (("watched", watched_game), ("live", live_game)):
+        context, page, _rec = open_context(browser, f"header-{mode}", NARROW)
+        start(page, base)
+        for language in ("ko", "en"):
+            if page.evaluate("TERM_LANGUAGE") != language:
+                page.click("#language-toggle")
+                page.wait_for_function(f"TERM_LANGUAGE === '{language}'")
+            for width, height in HEADER_SIZES:
+                page.set_viewport_size({"width": width, "height": height})
+                page.wait_for_timeout(50)
+                g = page.evaluate(HEADER_JS)
+                where = f"{mode} {language} {width}x{height}"
+                check.ok(
+                    abs(g["headerH"] - 44) < 0.5 and g["inside"] and g["statusH"] < 30,
+                    f"{where}: the header stays one 44px line",
+                    g,
+                )
+                check.ok(g["core"], f"{where}: the round and phase are whole", g["text"])
+                if mode == "watched":
+                    check.ok(g["label"], f"{where}: the review label is whole", g["text"])
+                check.ok(not g["sideways"], f"{where}: the page does not scroll sideways")
+                check.ok(g["title"], f"{where}: the full status is in the title")
+                if width >= 1366 and language == "ko" and mode == "live":
+                    check.ok(g["badgesWhole"], f"{where}: nothing is cut when there is room")
+        context.close()
+
+
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
             run(base, browser)
+            check_header(browser, base)
         errors = [
             line
             for line in log_path.read_text().splitlines()

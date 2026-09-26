@@ -12,7 +12,15 @@ legend, so an icon added to the table without a legend row fails here.
 
 from __future__ import annotations
 
-from common import SERVER_LOG_COPY, Check, chrome, client_state, open_context, server
+from common import (
+    LAPTOP_VIEWPORT,
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    client_state,
+    open_context,
+    server,
+)
 from open_mode import create_game, settled
 
 check = Check()
@@ -316,12 +324,70 @@ def help_panel(page) -> None:
     page.evaluate("document.getElementById('scratch-input').remove()")
 
 
+# The turn walkthrough (ITEM 8e): it used to be the last section openHelp
+# built, so on a laptop it sat below the fold -- offsetTop 752 in a 689px
+# #help-body at 1366x768, with the last line cut at 1440x900. It is now the
+# first section after the panel heading, so it must fit unscrolled here.
+FIT_JS = """() => {
+    const body = document.getElementById('help-body');
+    const list = document.querySelector('#help-body ul.help-turn');
+    const heading = list ? list.previousElementSibling : null;
+    const firstGrid = document.querySelector('#help-body .help-grid');
+    const bodyBox = body.getBoundingClientRect();
+    const listBox = list ? list.getBoundingClientRect() : null;
+    return {
+        clientHeight: body.clientHeight,
+        scrollTop: body.scrollTop,
+        headingTag: heading ? heading.tagName : null,
+        listBottom: listBox ? listBox.bottom - bodyBox.top + body.scrollTop : null,
+        itemCount: list ? list.children.length : 0,
+        turnBeforeIcons: !!(
+            list && firstGrid &&
+            (list.compareDocumentPosition(firstGrid) & Node.DOCUMENT_POSITION_FOLLOWING)
+        ),
+    };
+}"""
+
+
+def help_fits_laptop(page) -> None:
+    print("[4] the turn walkthrough fits a laptop screen")
+    page.set_viewport_size(LAPTOP_VIEWPORT)
+    where = f"{LAPTOP_VIEWPORT['width']}x{LAPTOP_VIEWPORT['height']}"
+    for language in ("ko", "en"):
+        if page.evaluate("TERM_LANGUAGE") != language:
+            page.click("#language-toggle")
+            page.wait_for_function(f"TERM_LANGUAGE === '{language}'")
+        page.click("#open-help")
+        page.wait_for_selector("#help:not([hidden])")
+        g = page.evaluate(FIT_JS)
+        label = f"{where} {language}"
+        check.ok(
+            g["headingTag"] == "H3" and g["itemCount"] > 0,
+            f"{label}: the turn walkthrough heading and list are present",
+            g,
+        )
+        check.ok(g["scrollTop"] == 0, f"{label}: the panel opens unscrolled", g["scrollTop"])
+        check.ok(
+            g["listBottom"] is not None and g["listBottom"] <= g["clientHeight"] + 0.5,
+            f"{label}: the whole turn walkthrough is inside the visible help body",
+            g,
+        )
+        check.ok(
+            g["turnBeforeIcons"],
+            f"{label}: the turn walkthrough comes before the icon legend",
+            g,
+        )
+        page.keyboard.press("Escape")
+        page.wait_for_function("document.getElementById('help').hidden")
+
+
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "help")
     create_game(page, base, humans=(0, 1))
     live_region(page)
     names(page)
     help_panel(page)
+    help_fits_laptop(page)
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
     check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])

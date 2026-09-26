@@ -15,8 +15,27 @@ machine without the assets checkout serves the same catalog with every
 ``image_index_ko`` is the Korean UI's, and wherever the two differ an entry
 carries ``image_ko`` beside ``image``. Cards whose Korean print is known
 (``display.names_ko``) carry ``name_ko`` beside ``name``; the page shows
-the pair of its language. ``icon_files``, ``token_files`` and ``board_image``
-work the same way for the rulebook icon set (``/icons/...``), the pictured
+the pair of its language. An entry's engine-*generated* effect text (as
+opposed to printed card wording, which stays English) carries its Korean
+twin the same way, suffixed ``_ko``: so far ``contracts[].condition_ko``/
+``reward_ko``, ``conflicts[].rewards_ko`` (``display.structs``'s ``_ko``
+renderers), ``cards[].text_ko`` (``display.cards``'s
+``personal_card_text_ko``, Step K2) and ``intrigue[].text_ko``
+(``display.effect_dsl_text_ko``'s ``intrigue_card_text_ko``, Step K3, one
+line per printed option, aligned index-for-index with ``text``);
+``spaces[].options[].effect_ko``/``.choam_options[].effect_ko``/
+``.immortality.options[].effect_ko``, ``spaces[].notes_ko``,
+``skills[].text_ko`` and ``tech[].text_ko`` (``display.spaces`` and
+``display.bloodlines``'s ``_ko`` renderers, Step K4); more fields grow this
+list as later work translates their generators. ``leaders[].ability_ko``/
+``ability_text_ko``/``signet_ko``/``signet_text_ko``/``notes_ko`` (Step K5)
+are the one exception to "printed card wording stays English": a Leader
+face's own ability/Signet Ring name and text are hand-transcribed from the
+Korean card print the same way the English is (``display.leaders_ko``'s
+``LEADER_FACE_TEXTS_KO``), not composed from engine data, and are absent for
+``reverend_mother_jessica``, whose flip face has no Korean scan.
+``icon_files``, ``token_files`` and ``board_image`` work the same way for
+the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
 scan (``/board-image``): the catalog also carries the percent coordinates
 that place the live state on that scan (``display.board_layout``).
@@ -50,24 +69,36 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display import (
     LEADER_FACE_TEXTS,
+    LEADER_FACE_TEXTS_KO,
     RECLAIMED_FORCES_TEXT,
+    RECLAIMED_FORCES_TEXT_KO,
     available_icons,
     available_strength_tokens,
     conflict_rewards_texts,
+    conflict_rewards_texts_ko,
     contract_condition_text,
+    contract_condition_text_ko,
     contract_reward_text,
+    contract_reward_text_ko,
     intrigue_card_text,
+    intrigue_card_text_ko,
     personal_card_text,
+    personal_card_text_ko,
     space_is_implemented,
     space_notes,
+    space_notes_ko,
     space_option_count,
     space_option_effects,
+    space_option_effects_ko,
 )
 from dune_imperium.display.bene_tleilax_layout import bene_tleilax_layout
 from dune_imperium.display.bloodlines import (
     skill_effect_text,
+    skill_effect_text_ko,
     tech_ability_text,
+    tech_ability_text_ko,
     tech_acquire_text,
+    tech_acquire_text_ko,
 )
 from dune_imperium.display.board_layout import (
     COMMANDER_ANCHOR,
@@ -87,6 +118,7 @@ from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
 )
+from dune_imperium.display.leader_layout import leader_layout
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.token_images import (
     MAKER_HOOKS_TOKEN_FILENAME,
@@ -149,6 +181,7 @@ def build_catalog(
             factions=tuple(faction.value for faction in starter.factions),
             agent_icons=tuple(icon.value for icon in starter.agent_icons),
             text=personal_card_text(starter),
+            text_ko=personal_card_text_ko(starter),
             image=_image_url("other", card_id, image_files),
         )
     for stack in RESERVE_STACKS:
@@ -160,6 +193,7 @@ def build_catalog(
             factions=tuple(faction.value for faction in stack.factions),
             agent_icons=tuple(icon.value for icon in stack.agent_icons),
             text=personal_card_text(stack),
+            text_ko=personal_card_text_ko(stack),
             image=_image_url("other", stack.card.card_id, image_files),
         )
     for card_id, entry in IMPERIUM_CARDS_BY_ID.items():
@@ -171,6 +205,7 @@ def build_catalog(
             factions=tuple(faction.value for faction in entry.factions),
             agent_icons=tuple(icon.value for icon in entry.agent_icons),
             text=personal_card_text(entry),
+            text_ko=personal_card_text_ko(entry),
             image=_image_url("imperium", card_id, image_files),
             # Immortality's Imperium deck has Graft cards too (Dissecting
             # Kit, Corrino Genes, ...), not only the Tleilaxu deck.
@@ -199,6 +234,11 @@ def build_catalog(
                 if card_id == RECLAIMED_FORCES.card.card_id
                 else personal_card_text(tleilaxu_entry)
             ),
+            text_ko=(
+                list(RECLAIMED_FORCES_TEXT_KO)
+                if card_id == RECLAIMED_FORCES.card.card_id
+                else personal_card_text_ko(tleilaxu_entry)
+            ),
             image=_image_url("tleilaxu", card_id, image_files),
             specimens=tleilaxu_entry.specimen_cost,
             graft=tleilaxu_entry.graft,
@@ -226,9 +266,11 @@ def build_catalog(
             # it [Steersman Y'rkoon card]).
             "navigation": intrigue_entry.navigation,
             "text": list(intrigue_card_text(intrigue_entry)),
+            "text_ko": list(intrigue_card_text_ko(intrigue_entry)),
             "image": _image_url("intrigue", intrigue_id, image_files),
         }
 
+    leader_layouts = leader_layout()
     leaders: dict[str, JsonValue] = {}
     for leader in LEADERS:
         leaders[leader.leader_id] = _leader_face(
@@ -237,6 +279,7 @@ def build_catalog(
             signet=leader.signet_name,
             face_id=leader.leader_id,
             image_files=image_files,
+            layout=leader_layouts.get(leader.leader_id),
         )
         if leader.alternate_face_id is not None:
             leaders[leader.alternate_face_id] = _leader_face(
@@ -252,6 +295,7 @@ def build_catalog(
             "name": skill.name,
             "kind": skill.kind.value,
             "text": [skill_effect_text(skill)],
+            "text_ko": [skill_effect_text_ko(skill)],
             "image": _image_url("skill", skill.skill_id, image_files),
         }
         for skill in SKILLS
@@ -269,6 +313,17 @@ def build_catalog(
                     else ()
                 ),
                 tech_ability_text(tile),
+            ],
+            # Korean twin of "text" (Step K4): "{acquire}: " matches the
+            # bare box-label placeholder convention every other timing/box
+            # label in this feature uses ({reveal_turn}:, {endgame}:, ...).
+            "text_ko": [
+                *(
+                    (f"{{acquire}}: {tech_acquire_text_ko(tile)}",)
+                    if tech_acquire_text_ko(tile)
+                    else ()
+                ),
+                tech_ability_text_ko(tile),
             ],
             "flips": tile.flips,
             "choam_only": tile.choam_only,
@@ -314,7 +369,9 @@ def build_catalog(
             contract_id: {
                 "name": definition.card.name,
                 "condition": contract_condition_text(definition.condition),
+                "condition_ko": contract_condition_text_ko(definition.condition),
                 "reward": contract_reward_text(definition.reward),
+                "reward_ko": contract_reward_text_ko(definition.reward),
                 "immediate": definition.completes_immediately,
                 "image": _image_url("contract", contract_id, image_files),
             }
@@ -331,6 +388,7 @@ def build_catalog(
                 ),
                 "shield_wall_protected": conflict.shield_wall_protected,
                 "rewards": _conflict_rewards(conflict),
+                "rewards_ko": _conflict_rewards_ko(conflict),
                 "image": _image_url(
                     "conflict", conflict.card.card_id, image_files
                 ),
@@ -467,6 +525,7 @@ def _personal_card(
     factions: tuple[str, ...],
     agent_icons: tuple[str, ...],
     text: list[str],
+    text_ko: list[str],
     image: str | None,
     specimens: int | None = None,
     graft: bool = False,
@@ -479,6 +538,7 @@ def _personal_card(
         "factions": list(factions),
         "agent_icons": list(agent_icons),
         "text": list(text),
+        "text_ko": list(text_ko),
         "image": image,
     }
     if specimens is not None:
@@ -496,9 +556,10 @@ def _leader_face(
     signet: str | None,
     face_id: str,
     image_files: dict[tuple[str, str], str],
+    layout: JsonValue | None = None,
 ) -> JsonObject:
     texts = LEADER_FACE_TEXTS[face_id]
-    return {
+    entry: JsonObject = {
         "name": name,
         "ability": ability,
         "signet": signet,
@@ -506,27 +567,52 @@ def _leader_face(
         "signet_text": texts.signet_text,
         "notes": list(texts.notes),
         "image": _image_url("leader", face_id, image_files),
+        # Percent-coordinate boxes for the state a seat's leader popover
+        # draws on the card image (display.leader_layout); null for a
+        # leader with no printed on-card token/slot state.
+        "layout": layout,
     }
+    # Korean twin (Step K5, 2026-09-25): a face with a Korean scan carries
+    # its transcribed ability/Signet Ring name and text beside the English
+    # ones (LOCALIZED_FIELDS in i18n.js already swaps ability/signet by
+    # name; core.js's popoverNodes already reads ability_text_ko/
+    # signet_text_ko). Absent for reverend_mother_jessica, whose flip face
+    # has no Korean scan — the client falls back to English exactly as it
+    # does before any _ko field exists.
+    texts_ko = LEADER_FACE_TEXTS_KO.get(face_id)
+    if texts_ko is not None:
+        entry["ability_ko"] = texts_ko.ability_name
+        entry["signet_ko"] = texts_ko.signet_name
+        entry["ability_text_ko"] = texts_ko.ability_text
+        entry["signet_text_ko"] = texts_ko.signet_text
+        entry["notes_ko"] = list(texts_ko.notes)
+    return entry
 
 
 def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject:
     space = BOARD_SPACES_BY_ID[space_id]
     base_effects = space_option_effects(space_id, choam_module=False)
+    base_effects_ko = space_option_effects_ko(space_id, choam_module=False)
     choam_effects = space_option_effects(space_id, choam_module=True)
+    choam_effects_ko = space_option_effects_ko(space_id, choam_module=True)
     costs: list[JsonObject] = [
         {"solari": cost.solari, "spice": cost.spice, "water": cost.water}
         for cost in space.cost_options
     ] or [{"solari": 0, "spice": 0, "water": 0}]
     assert len(costs) == space_option_count(space_id)
     options: list[JsonValue] = [
-        {"cost": cost, "effect": effect}
-        for cost, effect in zip(costs, base_effects, strict=True)
+        {"cost": cost, "effect": effect, "effect_ko": effect_ko}
+        for cost, effect, effect_ko in zip(
+            costs, base_effects, base_effects_ko, strict=True
+        )
     ]
     choam_options: list[JsonValue] | None = None
     if choam_effects != base_effects:
         choam_options = [
-            {"cost": cost, "effect": effect}
-            for cost, effect in zip(costs, choam_effects, strict=True)
+            {"cost": cost, "effect": effect, "effect_ko": effect_ko}
+            for cost, effect, effect_ko in zip(
+                costs, choam_effects, choam_effects_ko, strict=True
+            )
         ]
     return {
         "name": space.name,
@@ -549,6 +635,7 @@ def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject
         "choam_options": choam_options,
         "immortality": _immortality_overlay(space_id, costs, base_effects, image_files),
         "notes": list(space_notes(space_id)),
+        "notes_ko": list(space_notes_ko(space_id)),
         "box": list(SPACE_BOXES[space_id]),
         "implemented": space_is_implemented(space_id, choam_module=False),
         "choam_implemented": space_is_implemented(space_id, choam_module=True),
@@ -583,10 +670,11 @@ def _immortality_overlay(
     if effects == base_effects:
         return None
     assert space_id == "research_station", space_id
+    effects_ko = space_option_effects_ko(space_id, choam_module=False, immortality=True)
     return {
         "options": [
-            {"cost": cost, "effect": effect}
-            for cost, effect in zip(costs, effects, strict=True)
+            {"cost": cost, "effect": effect, "effect_ko": effect_ko}
+            for cost, effect, effect_ko in zip(costs, effects, effects_ko, strict=True)
         ],
         "image": _image_url("location", RESEARCH_STATION_OVERLAY_IMAGE_ID, image_files),
         "tile_box": list(RESEARCH_STATION_OVERLAY_BOX),
@@ -595,6 +683,14 @@ def _immortality_overlay(
 
 def _conflict_rewards(conflict: ConflictDefinition) -> list[JsonValue] | None:
     texts = conflict_rewards_texts(conflict)
+    if texts is None:
+        return None
+    rewards: list[JsonValue] = list(texts)
+    return rewards
+
+
+def _conflict_rewards_ko(conflict: ConflictDefinition) -> list[JsonValue] | None:
+    texts = conflict_rewards_texts_ko(conflict)
     if texts is None:
         return None
     rewards: list[JsonValue] = list(texts)

@@ -156,6 +156,11 @@ const ICON_RULES = [
   [/\b[Dd]iscard piles?\b/y, (m) => document.createTextNode(m[0])],
   [/\b[Dd]iscard\b/y, () => textIcon("discard", "Discard")],
   [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => textIcon("spy", m[0].trim())],
+  /* A line's box label ("Agent: …" for an Agent box, "Agent Turn: …",
+     "On discard: …") names where the effect sits, not a piece: kept as
+     words. As an icon it read like part of the card title above it
+     ("Double Agent" / "[Agent]: Place a Spy"). */
+  [/(?:Agent(?: Turn)?|On discard):/y, (m) => document.createTextNode(m[0])],
   [/\bAgents?\b/y, (m) => textIcon("agent", m[0])],
   [/\b[Ss]andworms?\b/y, (m) => textIcon("sandworm", m[0])],
   [/\bMaker Hooks\b/y, () => textIcon("maker_hooks", "Maker Hooks")],
@@ -252,6 +257,42 @@ function iconLine(text, className) {
   const line = document.createElement("div");
   line.className = className || "popover-line";
   line.appendChild(iconize(text));
+  return line;
+}
+
+/* One line of engine-*generated* effect text (a card's Agent/Reveal line, a
+   Contract's condition/reward, a space option, ...), as opposed to printed
+   card wording (which stays English in both languages and always goes
+   through iconize() above). The catalog serves such a field's Korean twin
+   beside the English one, suffixed `_ko` (server/catalog.py); ``ko`` is
+   that twin, possibly ``undefined`` where a later step's generator has not
+   filled it in yet.
+
+   Korean reads `ko` through phrase(), the same `{term}`/`{term:count}`
+   expansion our own hand-written labels use (TERMS, static/labels.js) — a
+   Korean line names its icons this way instead of English words for
+   iconize()'s regex to catch. It is wrapped in its own class, not
+   `card-text` (which marks *printed* wording and is what lang.py's/
+   log_words.py's Korean-leak checks skip): this text is not printed on any
+   card, so it must read as ordinary Korean and stays inside those checks.
+
+   English, or Korean with no twin yet, reads `en` through iconize() exactly
+   as before — the fallback that keeps every renderer working before its
+   own step fills in a `_ko` field. */
+function effectNode(en, ko) {
+  if (TERM_LANGUAGE === "ko" && ko) {
+    const span = document.createElement("span");
+    span.className = "effect-text-ko";
+    span.appendChild(phrase(ko));
+    return span;
+  }
+  return iconize(en);
+}
+
+function effectLine(en, ko, className) {
+  const line = document.createElement("div");
+  line.className = className || "popover-line";
+  line.appendChild(effectNode(en, ko));
   return line;
 }
 
@@ -383,18 +424,7 @@ function render(options) {
   const foreign = Boolean(options && options.foreign);
   const kept = foreign ? keepScroll() : [];
   if (!(foreign && popoverPinned)) closePopover();
-  const shown = state.review && state.review.phase ? state.review : null;
-  const round = shown ? shown.round : summary.round_number;
-  const phase = shown ? shown.phase : summary.phase;
-  el("header-status").textContent =
-    t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase }) +
-    (summary.game_seed === null ? "" : " · " + t("common.seed", { seed: summary.game_seed })) +
-    RULESET_BADGES.filter(([field]) => summary[field])
-      .map(([, key]) => " · " + t(key))
-      .join("") +
-    (state.review
-      ? " · " + (spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review"))
-      : "");
+  renderHeaderStatus();
   el("decision-banner").hidden = Boolean(state.review);
   renderBanner();
   renderStandings();
@@ -411,6 +441,38 @@ function render(options) {
     pane.scrollTop = top;
     pane.scrollLeft = left;
   }
+}
+
+/* #header-status in three spans (style.css): the round and phase, the
+   review label, then the seed and ruleset badges. The first two always
+   stay whole; the last, which never changes during a game, takes what room
+   is left and ends in an ellipsis when it runs out. The full text goes in
+   the title. */
+function renderHeaderStatus() {
+  const summary = state.summary;
+  const shown = state.review && state.review.phase ? state.review : null;
+  const round = shown ? shown.round : summary.round_number;
+  const phase = shown ? shown.phase : summary.phase;
+  const pieces = [
+    ["status-core", t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase })],
+  ];
+  if (state.review) {
+    const label = spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review");
+    pieces.push(["status-label", " · " + label]);
+  }
+  /* The seed and the ruleset badges never change during a game. */
+  const extras = RULESET_BADGES.filter(([field]) => summary[field]).map(([, key]) => t(key));
+  if (summary.game_seed !== null) extras.unshift(t("common.seed", { seed: summary.game_seed }));
+  if (extras.length) pieces.push(["status-badges", " · " + extras.join(" · ")]);
+  const status = el("header-status");
+  status.textContent = "";
+  for (const [className, text] of pieces) {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    status.appendChild(span);
+  }
+  status.title = status.textContent;
 }
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
@@ -541,10 +603,140 @@ function appendTurnEndRow(container, label, onClick) {
   container.appendChild(row);
 }
 
+/* ---------- combat result line (banner) ----------
+
+   ITEM 5: nothing on screen said who won a Conflict or what a seat got —
+   the reward is a public log event (combat_reward_gained, conflict_won),
+   just never surfaced. One muted line above the prompt reports the most
+   recently resolved Conflict from the live log, from the moment its
+   reward events appear (so the winner reads it while still choosing an
+   optional reward) until the viewing seat's own next turn-taking step. */
+
+/* The action ids that start the viewing seat's own next turn, at which
+   point an older combat result stops being news. */
+const OWN_TURN_ACTION_IDS = new Set(["agent_turn", "reveal_turn", "play_turn_start_card"]);
+
+/* The reward group for the most recently resolved Conflict the given seat
+   has seen, or null when none has resolved yet, it already resolved with
+   no participants (rank_combat's zero-strength rule leaves no reward
+   events to report), or the seat has since taken its own next turn. Reads
+   only the live log (undone steps dropped, like board.js's spyArrivals). */
+function latestCombatResolution(seat) {
+  const entries = (state.log && state.log.entries) || [];
+  let conflictId = null;
+  let bundle = null;
+  let sawRewards = false;
+  for (const entry of entries) {
+    if (entry.undone) continue;
+    for (const event of entry.events || []) {
+      if (event.kind === "conflict_revealed") {
+        conflictId = event.payload.conflict_id;
+        sawRewards = false;
+      } else if (event.kind === "combat_reward_gained") {
+        if (!sawRewards) {
+          bundle = { conflictId, rewards: [] };
+          sawRewards = true;
+        }
+        bundle.rewards.push(event.payload);
+      } else if (event.kind === "combat_cleaned_up" && !sawRewards) {
+        bundle = null;
+      }
+    }
+    if (
+      bundle &&
+      entry.type === "action" &&
+      entry.actor === seat &&
+      OWN_TURN_ACTION_IDS.has(entry.action_id)
+    ) {
+      bundle = null;
+    }
+  }
+  return bundle;
+}
+
+const COMBAT_RESULT_RANK_KEYS = {
+  1: "render.combat_result_rank_1",
+  2: "render.combat_result_rank_2",
+  3: "render.combat_result_rank_3",
+};
+
+/* "1위: 좌석 0 (사람) · 2위: 좌석 1 (사람), 좌석 2 (사람)" — ties share a rank
+   and are read from left in turn order (the ranking's own order, combat.py's
+   _rewards). Plain text: ranks and names are never a rule term. */
+function combatResultRanksText(bundle) {
+  const byRank = new Map();
+  for (const reward of bundle.rewards) {
+    if (!byRank.has(reward.rank)) byRank.set(reward.rank, []);
+    byRank.get(reward.rank).push(reward.player);
+  }
+  return [...byRank.keys()]
+    .sort((a, b) => a - b)
+    .map(
+      (rank) => `${t(COMBAT_RESULT_RANK_KEYS[rank])}: ${byRank.get(rank).map(playerLabel).join(", ")}`,
+    )
+    .join(" · ");
+}
+
+/* What one reward payload (combat.py's _combat_reward_event) grants, as
+   term icons in printed order. A reward already carries the sandworm
+   multiplier, so the counts here are the amounts the seat actually got. */
+function combatRewardNodes(reward) {
+  const nodes = [];
+  const add = (term, count) => nodes.push(termNode(term, count));
+  if (reward.victory_points) add("victory_point", reward.victory_points);
+  if (reward.solari) add("solari", reward.solari);
+  if (reward.spice) add("spice", reward.spice);
+  if (reward.water) add("water", reward.water);
+  if (reward.troops) add("troop", reward.troops);
+  if (reward.intrigue) add("intrigue", reward.intrigue);
+  if (reward.contracts) add("contract", reward.contracts);
+  if (reward.faction_influence && reward.faction) {
+    nodes.push(termNode(`influence_${reward.faction}`, reward.faction_influence));
+  }
+  if (reward.choose_influence) add("influence_any", reward.choose_influence);
+  if (reward.control_space_id) nodes.push(termNode("control"));
+  return nodes;
+}
+
+/* The banner's one-line Conflict summary for `seat`, or null to show
+   nothing (no Conflict has resolved yet, review mode, or the line's
+   window has closed). */
+function combatResultLine(seat) {
+  /* A finished game has its own headline; review shows the log instead. */
+  if (state.review || state.summary.finished) return null;
+  const bundle = latestCombatResolution(seat);
+  if (!bundle) return null;
+  const own = bundle.rewards.find((reward) => reward.player === seat);
+  const vars = { name: nameOf(bundle.conflictId), ranks: combatResultRanksText(bundle) };
+  let key = "render.combat_result_line";
+  if (!own) {
+    vars.reward = t("render.combat_result_unranked");
+  } else {
+    const nodes = combatRewardNodes(own);
+    if (nodes.length) {
+      vars.reward = document.createDocumentFragment();
+      nodes.forEach((node, index) => {
+        if (index) vars.reward.append(" ");
+        vars.reward.appendChild(node);
+      });
+    } else {
+      /* A reward the event does not itemize (a Spy, a trash, two distinct
+         Influences) is the choice the seat is shown next. */
+      key = "render.combat_result_line_ranks";
+    }
+  }
+  const line = document.createElement("div");
+  line.className = "combat-result";
+  line.appendChild(tNode(key, vars));
+  return line;
+}
+
 function renderBanner() {
   const summary = state.summary;
   const info = el("decision-info");
   info.textContent = "";
+  const resultLine = combatResultLine(state.viewSeat);
+  if (resultLine) info.appendChild(resultLine);
   const actionsBox = el("actions");
   actionsBox.textContent = "";
 
@@ -724,7 +916,7 @@ function spaceOptionLine(option) {
   line.className = "popover-line option-line";
   line.appendChild(costNode(option.cost));
   line.appendChild(icon("arrow_right", "→"));
-  line.appendChild(iconize(option.effect));
+  line.appendChild(effectNode(option.effect, option.effect_ko));
   return line;
 }
 
@@ -739,7 +931,10 @@ function actionPreviewNodes(action, entry) {
     const nodes = [];
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
     nodes.push(spaceOptionLine(option));
-    for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
+    const notesKo = entry.notes_ko || [];
+    entry.notes.forEach((text, i) => {
+      nodes.push(effectLine(text, notesKo[i], "popover-line muted"));
+    });
     return nodes;
   }
   const optionIndex = action.arguments.option;
@@ -749,7 +944,8 @@ function actionPreviewNodes(action, entry) {
     typeof optionIndex === "number" &&
     entry.text[optionIndex]
   ) {
-    return [iconLine(entry.text[optionIndex])];
+    const textKo = entry.text_ko || [];
+    return [effectLine(entry.text[optionIndex], textKo[optionIndex])];
   }
   return popoverNodes(entry);
 }
@@ -884,13 +1080,62 @@ function countRow(id, family, compact) {
   return row;
 }
 
+/* The viewing seat's own pile holding a card instance ("hand", "discard_pile"
+   or "in_play"), or null when the card sits in none of them (a board or
+   reserve card, or another seat's). Zones come from the viewing seat's own
+   view: its hand in the private block, its discard pile and in-play list in
+   its public player block. */
+function ownCardZone(cardId) {
+  const hand = (state.view && state.view.private && state.view.private.hand) || [];
+  if (hand.includes(cardId)) return "hand";
+  const own = state.view && state.view.players && state.view.players[state.viewSeat];
+  if (own && own.discard_pile.includes(cardId)) return "discard_pile";
+  if (own && own.in_play.includes(cardId)) return "in_play";
+  return null;
+}
+
+/* Rows of this list that need a zone suffix: two or more rows of the same
+   action_id naming the same card (same baseId) but sitting in different
+   piles of the viewing seat. Trashing the hand copy costs that card's play
+   this round, and nothing else on the row says which pile a row means
+   (item 8c: the Feyd track, Desert Tactics and Combat reward trashes all
+   offer hand, then discard pile, then in-play candidates). A duplicate
+   that shares one pile with its sibling rows is interchangeable and keeps
+   its plain label. */
+function zoneSuffixes(actions) {
+  const groups = new Map();
+  for (const action of actions) {
+    const cardId = action.arguments.card_id;
+    if (typeof cardId !== "string") continue;
+    const zone = ownCardZone(cardId);
+    if (!zone) continue;
+    const key = `${action.action_id}\u0000${baseId(cardId)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ action, zone });
+  }
+  const suffixes = new Map();
+  for (const entries of groups.values()) {
+    if (new Set(entries.map((entry) => entry.zone)).size < 2) continue;
+    for (const { action, zone } of entries) suffixes.set(action, zone);
+  }
+  return suffixes;
+}
+
+/* " (hand)" / " (discard pile)" / " (in play)": the TERMS glossary word for
+   the zone a row's card sits in ([Main p. 20]), through phrase() so it
+   reads in the chosen language like the rest of the row. */
+function zoneSuffixNode(zone) {
+  return phrase(` ({${zone}})`);
+}
+
 /* A list of legal actions with its count families folded into rows. */
 function appendActionItems(box, actions) {
   const families = countFamilies(actions);
+  const suffixes = zoneSuffixes(actions);
   const done = new Set();
   for (const action of actions) {
     const family = families.get(action.action_id);
-    if (!family) box.appendChild(actionItem(action));
+    if (!family) box.appendChild(actionItem(action, undefined, suffixes.get(action)));
     else if (!done.has(action.action_id)) {
       done.add(action.action_id);
       box.appendChild(countRow(action.action_id, family, false));
@@ -1008,13 +1253,14 @@ function tableRefs(action) {
   );
 }
 
-function actionItem(action, onApply) {
+function actionItem(action, onApply, zone) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
   wrap.dataset.index = String(action.index);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   const button = document.createElement("button");
   button.appendChild(describeAction(action));
+  if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>
     onApply ? onApply(action) : applyAction(action.index)

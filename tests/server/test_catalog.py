@@ -2,6 +2,8 @@
 
 import json
 import re
+import sys
+from pathlib import Path
 
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
@@ -9,6 +11,17 @@ from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
 from dune_imperium.server.catalog import build_catalog
 from dune_imperium.server.sessions import JsonValue
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py, so pytest never puts the repo root on
+# sys.path for a test file here); reached by path instead, shared by every
+# generator's test file this way (tests/unit/display/test_struct_text.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
+    assert_no_stray_latin,
+    assert_placeholders_are_terms,
+    terms_keys,
+)
 
 
 def test_catalog_is_json_serializable_and_covers_every_card() -> None:
@@ -153,8 +166,13 @@ def test_catalog_serves_generated_effect_text() -> None:
     assert isinstance(cards, dict)
     for entry in cards.values():
         assert isinstance(entry, dict)
+        # A card with no dynamic effect data (no Agent/Reveal/acquire/
+        # discard/trash line beyond its printed Persuasion/strength) serves
+        # an empty list, not a made-up placeholder line (ITEM 8f,
+        # 2026-09-25); every line the list does serve must still be real,
+        # non-empty text.
         assert isinstance(entry["text"], list)
-        assert entry["text"]
+        assert all(isinstance(line, str) and line for line in entry["text"])
 
     intrigue = catalog["intrigue"]
     assert isinstance(intrigue, dict)
@@ -187,6 +205,130 @@ def test_catalog_serves_generated_effect_text() -> None:
         assert "icon" in entry
 
 
+def test_catalog_serves_korean_contract_and_conflict_text() -> None:
+    """``condition_ko``/``reward_ko``/``rewards_ko`` beside the English.
+
+    Feature decided 2026-09-25 (Korean twin of engine-*generated* effect
+    text); ``display.structs``'s ``*_ko`` renderers are the first
+    generator this covers. Every placeholder must be a real
+    ``static/labels.js`` ``TERMS`` key and the text must hold no stray
+    Latin (``tests/support/ko_text.py``, shared with the unit-level
+    ``display/structs.py`` tests).
+    """
+    from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+    from dune_imperium.content.uprising.contracts import (
+        CONTRACTS_BY_ID,
+        ContractConditionKind,
+    )
+    from dune_imperium.display.structs import _card_name, _card_name_ko
+
+    terms = terms_keys()
+    space_names = frozenset(space.name for space in BOARD_SPACES_BY_ID.values())
+    catalog = build_catalog()
+
+    contracts = catalog["contracts"]
+    assert isinstance(contracts, dict)
+    for contract_id, entry in contracts.items():
+        assert isinstance(entry, dict)
+        condition_ko = entry["condition_ko"]
+        reward_ko = entry["reward_ko"]
+        assert isinstance(condition_ko, str) and condition_ko.strip(), contract_id
+        assert isinstance(reward_ko, str) and reward_ko.strip(), contract_id
+        assert_placeholders_are_terms(condition_ko, terms)
+        assert_placeholders_are_terms(reward_ko, terms)
+        assert_no_stray_latin(reward_ko)
+        # A board space name always stays English; an acquired card with no
+        # known Korean print keeps its English name too.
+        condition = CONTRACTS_BY_ID[contract_id].condition
+        allowed: frozenset[str] = frozenset()
+        if condition.kind is ContractConditionKind.BOARD_SPACE:
+            allowed = frozenset({BOARD_SPACES_BY_ID[condition.target].name})
+        elif condition.kind is ContractConditionKind.ACQUIRE_CARD:
+            english = _card_name(condition.target)
+            korean = _card_name_ko(condition.target)
+            allowed = frozenset({english}) if english == korean else frozenset()
+        assert_no_stray_latin(condition_ko, allowed)
+
+    conflicts = catalog["conflicts"]
+    assert isinstance(conflicts, dict)
+    for conflict_id, entry in conflicts.items():
+        assert isinstance(entry, dict)
+        rewards = entry["rewards"]
+        rewards_ko = entry["rewards_ko"]
+        assert (rewards is None) == (rewards_ko is None), conflict_id
+        if rewards_ko is None:
+            continue
+        assert isinstance(rewards_ko, list) and len(rewards_ko) == 3, conflict_id
+        for label, line in zip(("1등: ", "2등: ", "3등: "), rewards_ko, strict=True):
+            assert isinstance(line, str)
+            assert line.startswith(label)
+            assert_placeholders_are_terms(line, terms)
+            assert_no_stray_latin(line, space_names)
+
+
+def test_catalog_serves_korean_personal_card_text() -> None:
+    """``cards[id].text_ko`` beside the English ``text`` (Step K2,
+    2026-09-25): every card carries the same number of Korean lines as
+    English ones (``display.cards.personal_card_text_ko``), each a valid
+    Korean line by the same guards ``ko_text.py`` gives every generator.
+    """
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    assert cards, "no cards in the catalog"
+
+    for card_id, entry in cards.items():
+        assert isinstance(entry, dict)
+        text = entry["text"]
+        text_ko = entry["text_ko"]
+        assert isinstance(text, list) and isinstance(text_ko, list)
+        assert len(text_ko) == len(text), card_id
+        for _en_line, ko_line in zip(text, text_ko, strict=True):
+            assert isinstance(ko_line, str) and ko_line.strip(), card_id
+            assert_placeholders_are_terms(ko_line, terms)
+            assert_no_stray_latin(ko_line)
+
+
+def test_catalog_serves_korean_intrigue_text() -> None:
+    """``intrigue[id].text_ko`` beside the English ``text`` (Step K3,
+    2026-09-25): one Korean line per printed option, same length and order
+    as ``text`` (``display.effect_dsl_text_ko.intrigue_card_text_ko``), each
+    a valid Korean line by the same guards ``ko_text.py`` gives every
+    generator, and carrying the same " — " timing separator the client
+    strips (``core.js`` ``intrigueOptionBody()``) -- except a Navigation
+    card, whose lines carry no timing prefix in either language (Plot
+    Course plays it automatically [Steersman Y'rkoon card]).
+    """
+    from dune_imperium.display.effect_dsl_text import intrigue_card_text
+    from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    assert intrigue, "no intrigue cards in the catalog"
+
+    for intrigue_id, entry in intrigue.items():
+        assert isinstance(entry, dict)
+        text = entry["text"]
+        text_ko = entry["text_ko"]
+        assert isinstance(text, list) and isinstance(text_ko, list)
+        assert len(text_ko) == len(text), intrigue_id
+        # Matches the direct renderer call, confirming the catalog wires the
+        # same generator through rather than a stale/duplicated copy.
+        definition = INTRIGUE_CARDS_BY_ID[intrigue_id]
+        assert text_ko == intrigue_card_text_ko(definition), intrigue_id
+        assert text == intrigue_card_text(definition), intrigue_id
+        for ko_line in text_ko:
+            assert isinstance(ko_line, str) and ko_line.strip(), intrigue_id
+            assert_placeholders_are_terms(ko_line, terms)
+            assert_no_stray_latin(ko_line)
+            if not definition.navigation:
+                assert " — " in ko_line, (intrigue_id, ko_line)
+
+
 def test_catalog_includes_leader_alternate_faces_with_text() -> None:
     catalog = build_catalog()
     leaders = catalog["leaders"]
@@ -206,6 +348,77 @@ def test_catalog_includes_leader_alternate_faces_with_text() -> None:
     assert reverend_mother["ability_text"]
 
 
+def test_catalog_serves_korean_leader_text() -> None:
+    """Step K5 (2026-09-25): a scanned Leader face carries its Korean
+
+    ability/Signet Ring name and text beside the English ones;
+    ``reverend_mother_jessica`` has no Korean scan and so carries none of
+    the ``_ko`` keys, exactly like a field with no Korean twin anywhere
+    else in the catalog.
+    """
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+
+    chani = leaders["chani"]
+    assert isinstance(chani, dict)
+    assert chani["ability_ko"] == "전술가"
+    assert chani["signet_ko"] == "페다이킨의 책략"
+    for field in ("ability_text_ko", "signet_text_ko"):
+        value = chani[field]
+        assert isinstance(value, str) and value.strip()
+        assert_placeholders_are_terms(value, terms)
+        assert_no_stray_latin(value)
+    assert isinstance(chani["notes_ko"], list)
+
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["notes_ko"] == [
+        "한정된 조력자: 당신의 카드덱에서 외교를 제외한 채로 게임을 시작합니다."
+    ]
+
+    reverend_mother = leaders["reverend_mother_jessica"]
+    assert isinstance(reverend_mother, dict)
+    ko_fields = (
+        "ability_ko",
+        "signet_ko",
+        "ability_text_ko",
+        "signet_text_ko",
+        "notes_ko",
+    )
+    for field in ko_fields:
+        assert field not in reverend_mother
+
+
+def test_catalog_serves_leader_card_overlay_layouts() -> None:
+    from dune_imperium.display.leader_layout import leader_layout
+
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+    layouts = leader_layout()
+
+    feyd = leaders["feyd_rautha_harkonnen"]
+    assert isinstance(feyd, dict)
+    assert feyd["layout"] == layouts["feyd_rautha_harkonnen"]
+
+    chani = leaders["chani"]
+    assert isinstance(chani, dict)
+    assert chani["layout"] == layouts["chani"]
+
+    yrkoon = leaders["steersman_y_rkoon"]
+    assert isinstance(yrkoon, dict)
+    assert yrkoon["layout"] == layouts["steersman_y_rkoon"]
+
+    # A leader with no printed on-card token/slot state serves a null
+    # layout rather than leaving the key out.
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["layout"] is None
+
+
 def test_catalog_spaces_carry_structured_board_data() -> None:
     catalog = build_catalog()
     spaces = catalog["spaces"]
@@ -222,6 +435,7 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
                 "Gain 1 Emperor Influence, Draw 1 Intrigue card, "
                 "Recruit 4 troops"
             ),
+            "effect_ko": "{influence_emperor:1}, {intrigue:1}, {troop:4}",
         }
     ]
     assert sardaukar["choam_options"] is None
@@ -521,6 +735,7 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
         {
             "cost": {"solari": 0, "spice": 0, "water": 2},
             "effect": "Recruit 2 troops, Draw 2 cards",
+            "effect_ko": "{troop:2}, {draw:2}",
         }
     ]
     overlay = station["immortality"]
@@ -529,6 +744,7 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
         {
             "cost": {"solari": 0, "spice": 0, "water": 2},
             "effect": "Draw 2 cards, Research (advance your research token)",
+            "effect_ko": "{draw:2}, {research} (연구 토큰 전진)",
         }
     ]
     assert overlay["image"] is None

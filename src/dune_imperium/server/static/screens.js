@@ -18,7 +18,11 @@ function buildSeatSelects() {
       option.textContent = text;
       select.appendChild(option);
     }
-    select.value = chosen[seat] || (seat === 0 ? "human" : "heuristic");
+    /* Remote games are four friends: an admin who forgets to change three
+       dropdowns must not seat AIs where a friend expects to sit. The open
+       (local) server keeps its human + heuristic-AI default. */
+    const defaultKind = isRemote() ? "human" : seat === 0 ? "human" : "heuristic";
+    select.value = chosen[seat] || defaultKind;
     label.appendChild(select);
     wrap.appendChild(label);
   }
@@ -45,8 +49,33 @@ async function loadGameList() {
   }
 }
 
+/* The delete button arms on a first click (text -> "정말 삭제?") instead of
+   deleting at once, so a misclick next to the identical Load button cannot
+   throw a save away by itself; a second click on the same armed button
+   within SAVE_DELETE_ARM_MS deletes for real. Anything else -- the timeout,
+   a click on a different target, or the list being redrawn -- reverts it.
+   Only one button is ever armed at a time. A second click sooner than
+   SAVE_DELETE_GUARD_MS after arming is the same double-click gesture, not
+   a decision, so it leaves the button armed. */
+const SAVE_DELETE_ARM_MS = 4000;
+const SAVE_DELETE_GUARD_MS = 400;
+let armedSaveDelete = null; // { button, timer, at } while a delete button is armed
+
+function disarmSaveDelete() {
+  if (!armedSaveDelete) return;
+  clearTimeout(armedSaveDelete.timer);
+  armedSaveDelete.button.classList.remove("armed");
+  armedSaveDelete.button.textContent = t("screens.delete_button");
+  armedSaveDelete = null;
+}
+
+document.addEventListener("click", (event) => {
+  if (armedSaveDelete && event.target !== armedSaveDelete.button) disarmSaveDelete();
+});
+
 async function loadSaveList() {
   const saves = await api("/saves");
+  disarmSaveDelete();
   el("save-list-wrap").hidden = saves.length === 0;
   const list = el("save-list");
   list.textContent = "";
@@ -77,12 +106,24 @@ async function loadSaveList() {
       }
     });
     const remove = document.createElement("button");
+    remove.className = "save-delete";
     remove.textContent = t("screens.delete_button");
     remove.addEventListener("click", async () => {
-      await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(
-        () => {}
-      );
-      loadSaveList().catch(() => {});
+      if (armedSaveDelete && armedSaveDelete.button === remove) {
+        if (performance.now() - armedSaveDelete.at < SAVE_DELETE_GUARD_MS) return;
+        clearTimeout(armedSaveDelete.timer);
+        armedSaveDelete = null;
+        await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(() => {});
+        loadSaveList().catch(() => {});
+        return;
+      }
+      disarmSaveDelete();
+      remove.classList.add("armed");
+      remove.textContent = t("screens.delete_confirm_button");
+      const timer = setTimeout(() => {
+        if (armedSaveDelete && armedSaveDelete.button === remove) disarmSaveDelete();
+      }, SAVE_DELETE_ARM_MS);
+      armedSaveDelete = { button: remove, timer, at: performance.now() };
     });
     item.append(load, " ", remove);
     list.appendChild(item);
@@ -300,8 +341,11 @@ function resetGameState() {
   announcedTurn = undefined;
   document.title = baseTitle();
   /* The header named the game's round and ruleset; the setup screen kept
-     showing it, in whichever language it was drawn. */
+     showing it, in whichever language it was drawn. textContent clears the
+     child spans but not an attribute set directly on the element, so the
+     title (render.js's renderHeaderStatus) needs clearing here too. */
   el("header-status").textContent = "";
+  el("header-status").title = "";
   el("review-bar").hidden = true;
 }
 
@@ -370,7 +414,7 @@ function enterTable(summary, seat) {
   stopPlayback();
   state.review = null;
   el("review-bar").hidden = true;
-  el("game-error").hidden = true;
+  hideGameError();
   showScreen("game-screen");
   const options = seat === undefined ? undefined : { seat };
   const gameId = state.gameId;
@@ -382,9 +426,16 @@ function enterTable(summary, seat) {
     .catch(showRefreshError);
 }
 
+/* A refresh failing in the background (the doorbell asked for one and the
+   request was lost, not something the player did) must not sit on screen
+   once the page has caught up: the message is marked "refresh" so
+   adoptSnapshot can clear it, on its own, the moment a later snapshot
+   lands. */
 function showRefreshError(error) {
-  el("game-error").textContent = t("screens.game_state_failed", { message: error.message });
-  el("game-error").hidden = false;
+  const box = el("game-error");
+  box.textContent = t("screens.game_state_failed", { message: error.message });
+  box.dataset.source = "refresh";
+  box.hidden = false;
 }
 
 function leaveGame(message) {

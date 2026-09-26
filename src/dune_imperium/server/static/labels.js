@@ -725,6 +725,27 @@ const TERMS = {
     icon: "influence_bene_gesserit", ko: "베네 게세리트 영향력", en: "Bene Gesserit Influence",
   },
   influence_fremen: { icon: "influence_fremen", ko: "프레멘 영향력", en: "Fremen Influence" },
+  /* The seven printed board-space Agent-box icons (glossary-ko.md "Agent
+     아이콘 분류", `[Board Guide pp. 1-2]`) plus the Spy Agent icon variant
+     (glossary-ko.md's "Spy" row, `[Main p. 20]` — a distinct rulebook glyph
+     from the plain Spy piece icon `spy` above, naming the same rule
+     concept). A Leader's printed Signet Ring text (Step K5,
+     display/leaders_ko.py) names one of these inline where the card shows
+     the icon in place of the faction/space word. */
+  agent_icon_emperor: { icon: "agent_icon_emperor", ko: "황제", en: "Emperor" },
+  agent_icon_spacing_guild: {
+    icon: "agent_icon_spacing_guild", ko: "우주 항행 길드", en: "Spacing Guild",
+  },
+  agent_icon_bene_gesserit: {
+    icon: "agent_icon_bene_gesserit", ko: "베네 게세리트", en: "Bene Gesserit",
+  },
+  agent_icon_fremen: { icon: "agent_icon_fremen", ko: "프레멘", en: "Fremen" },
+  agent_icon_landsraad: { icon: "agent_icon_landsraad", ko: "랜드스래드", en: "Landsraad" },
+  agent_icon_city: { icon: "agent_icon_city", ko: "도시", en: "City" },
+  agent_icon_spice_trade: {
+    icon: "agent_icon_spice_trade", ko: "스파이스 거래", en: "Spice Trade",
+  },
+  agent_icon_spy: { icon: "agent_icon_spy", ko: "스파이", en: "Spy" },
   contract: { icon: "contract", ko: "계약", en: "Contract" },
   control: { icon: "control", ko: "지배", en: "Control" },
   maker: { icon: "maker", ko: "메이커", en: "Maker" },
@@ -756,6 +777,7 @@ const TERMS = {
   hand: { icon: null, ko: "핸드", en: "hand" },
   deck: { icon: null, ko: "카드덱", en: "deck" },
   discard_pile: { icon: null, ko: "버림 더미", en: "discard pile" },
+  in_play: { icon: null, ko: "플레이 영역", en: "in play" },
   conflict: { icon: null, ko: "교전", en: "Conflict" },
   strength: { icon: null, ko: "전투력", en: "strength" },
   research: { icon: null, ko: "연구", en: "Research" },
@@ -765,6 +787,14 @@ const TERMS = {
   tech_tile: { icon: null, ko: "기술 타일", en: "Tech tile" },
   commander_skill: { icon: null, ko: "사다우카 지휘관 기술 토큰", en: "Sardaukar Commander Skill" },
   commander: { icon: null, ko: "사다우카 지휘관", en: "Sardaukar Commander" },
+  /* Not a rulebook word — the printed cost→effect arrow (`[Main p. 20]`
+     "비용 지불": "화살표는 비용… 과 효과…를 표시합니다"), the same glyph in
+     both languages. A Korean generated line names it `{arrow_right}` so
+     phrase() draws the same icon ICON_RULES' own bare "→" rule draws for
+     English (`iconize()`, above) instead of leaving a plain "→" character
+     that only the English pass turns into an icon (render-parity blocker,
+     2026-09-25 review). */
+  arrow_right: { icon: "arrow_right", ko: "→", en: "→" },
 };
 
 /* The language the client renders rule terms in. Stage 2c turns this into a

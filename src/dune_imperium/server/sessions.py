@@ -57,7 +57,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
-from dune_imperium.display import effect_action_text
+from dune_imperium.display import effect_action_text, effect_action_text_ko
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.server.access import (
@@ -1783,7 +1783,12 @@ def _serialize_action(
 ) -> JsonObject:
     """Serialize one legal action.
 
-    ``detail`` names a keyed icon's printed effect; ``undoable`` says whether
+    ``detail`` names a keyed icon's printed effect; ``detail_ko`` is its
+    Korean twin, real for a personal card's own Agent-box icon (Step K2,
+    ``display.actions.agent_card_icon_text_ko``) and a board-space icon
+    (Step K4, ``display.spaces.board_effect_action_text_ko``); the client
+    falls back to ``detail`` whenever a resolution kind has no Korean text
+    yet, ``static/core.js`` ``describeAction``. ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
@@ -1801,6 +1806,7 @@ def _serialize_action(
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
         "detail": effect_action_text(session.state, action),
+        "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
         "warning": shortfall_warning(outcome),
         "shortfall": shortfall_details(outcome),

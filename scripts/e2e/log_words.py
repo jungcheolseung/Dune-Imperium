@@ -17,7 +17,10 @@ languages, with prettify() wrapped, and asserts:
   English by policy) and the phrases the glossary deliberately leaves English
   (docs/rules/glossary-ko.md has no row for them, e.g. Secret Project);
 - in English, no Hangul, and nowhere an engine id's shape: snake_case, a
-  colon path, a research coordinate, a post id.
+  colon path, a research coordinate, a post id;
+- every pass_combat_intrigue / pass_endgame_intrigue turn-line renders quiet
+  (panels.js QUIET_ACTIONS), the class that keeps a Combat/Endgame Intrigue
+  pass from reading as a full-weight turn card.
 
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
@@ -40,6 +43,11 @@ EVERY_EXPANSION = {
     "immortality": True,
     "promo_cards": True,
 }
+# Declining a Combat or Endgame Intrigue window (rules/combat.py,
+# rules/endgame.py) — the engine never emits a bare "pass". Mirrors
+# QUIET_ACTIONS/PASS_ACTION_IDS in static/panels.js and static/review.js.
+PASS_ACTION_IDS = {"pass_combat_intrigue", "pass_endgame_intrigue"}
+
 GAMES = (
     {"seats": ["heuristic"] * 4, "game_seed": 7, **EVERY_EXPANSION},
     # Random seats wander into what a heuristic never picks (Family Atomics,
@@ -85,6 +93,27 @@ async ({gameId}) => {
   const realPrettify = window.prettify;
   window.prettify = (id) => { calls.push(String(id)); return realPrettify(id); };
   const take = () => calls.splice(0, calls.length);
+  // Printed card wording (ITEM 8b's Intrigue option line, and any other
+  // .card-text span) stays English by policy in both languages (iconize()'s
+  // own comment: "the wrapper marks it as the card's own English text ...
+  // which lang.py's Korean check skips"). The Korean-leak check below needs
+  // the same exemption lang.py already gives the rest of the page, so every
+  // DOM-built line reports a second, .card-text-stripped copy of its words
+  // for that check only; the full text (still used for display and the
+  // English/Hangul check) is unaffected. An engine-*generated* effect
+  // line's Korean twin (STEP K1, 2026-09-25) is NOT stripped here: its own
+  // class is .effect-text-ko, not .card-text, on purpose (render.js
+  // effectNode()) -- it must read as ordinary Korean, so this loop leaves
+  // it in place for the Korean-leak check below. None of this script's own
+  // turn/event/chance renderers reach a popover today, so no such line is
+  // in these recorded strings yet; this comment is here so the next
+  // generator's step does not have to rediscover why the strip list stops
+  // at .card-text.
+  const wordsOf = (el) => {
+    const clone = el.cloneNode(true);
+    for (const node of clone.querySelectorAll(".card-text")) node.remove();
+    return clone.textContent;
+  };
   const events = (lang, entry) => {
     for (const event of entry.events || []) {
       for (const [key, value] of Object.entries(event.payload)) {
@@ -94,8 +123,9 @@ async ({gameId}) => {
                   pretty: take()});
       }
       take();
-      out.push({lang, src: `event ${event.kind}`, text: logEventLine(event).textContent,
-                pretty: take()});
+      const eventLine = logEventLine(event);
+      out.push({lang, src: `event ${event.kind}`, text: eventLine.textContent,
+                wordsText: wordsOf(eventLine), pretty: take()});
     }
   };
   try {
@@ -112,9 +142,11 @@ async ({gameId}) => {
           events(lang, entry);
         } else if (entry.type === "action") {
           take();
-          const text = turnLine({...entry, events: []}).textContent;
-          out.push({lang, src: `action ${entry.action_id}`, text, pretty: take(),
-                    args: entry.arguments});
+          const line = turnLine({...entry, events: []});
+          out.push({lang, src: `action ${entry.action_id}`, text: line.textContent,
+                    wordsText: wordsOf(line),
+                    pretty: take(), args: entry.arguments,
+                    quiet: line.classList.contains("quiet")});
           events(lang, entry);
         }
       }
@@ -220,9 +252,24 @@ def check_coverage(records: list[dict]) -> None:
         == "payload family_atomics_used.removed",
         "an exchanged Influence": lambda s: s == "action exchange_reveal_influence",
         "a Secrets steal": lambda s: s.startswith("chance ") and ":secrets:steal:" in s,
+        "a Combat/Endgame Intrigue pass": lambda s: s.startswith("action ")
+        and s.split(" ", 1)[1] in PASS_ACTION_IDS,
     }
     missing = [label for label, test in wanted.items() if not any(map(test, sources))]
     check.ok(not missing, "the games reach every surface this guards", missing)
+
+
+def check_pass_quiet(records: list[dict]) -> None:
+    """Every pass_combat_intrigue / pass_endgame_intrigue turn-line renders
+    quiet (panels.js QUIET_ACTIONS) — it never gets the full-weight card."""
+    passes = [
+        r
+        for r in records
+        if r["src"].startswith("action ")
+        and r["src"].split(" ", 1)[1] in PASS_ACTION_IDS
+    ]
+    loud = [(r["lang"], r["src"], r["text"][:60]) for r in passes if not r.get("quiet")]
+    check.ok(not loud, "every Intrigue pass renders quiet", loud[:4])
 
 
 def check_log(records, names, posts) -> None:
@@ -238,7 +285,12 @@ def check_log(records, names, posts) -> None:
     latin = [
         (r["src"], words, r["text"][:90])
         for r in korean
-        if (words := sorted(set(LATIN.findall(strip(r["text"], allowed)))))
+        # Printed card wording (a .card-text span, e.g. ITEM 8b's Intrigue
+        # option line) is stripped out by wordsOf() before this check, the
+        # same exemption lang.py already gives the rest of the page; a
+        # source with no DOM element to strip (a payload, a chance line)
+        # falls back to its plain text, unaffected.
+        if (words := sorted(set(LATIN.findall(strip(r.get("wordsText", r["text"]), allowed)))))
     ]
     check.ok(
         not latin,
@@ -301,6 +353,7 @@ def main() -> None:
         print(f"  .. {len(records)} rendered lines")
         check_coverage(records)
         check_log(records, names, posts)
+        check_pass_quiet(records)
         print("[2] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)

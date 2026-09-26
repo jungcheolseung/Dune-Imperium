@@ -6,11 +6,13 @@ or on the finished game). The page therefore opens it as a replay review
 from the first position with playback running: one turn per second by
 default, the action log following the cursor. The checks read the cursor
 against the page's own table of turn stops, so "one turn per tick" is a
-number and not an impression, then walk through the controls: pause, one
-step at a time, a faster interval, stepping by hand (takes the wheel), a
-seek (does not), another seat's eyes, the end of the game (the result shows,
-play starts over), leaving and coming back, a reload. A game with a human
-seat must not start playing by itself.
+number and not an impression, and check that consecutive Combat/Endgame
+Intrigue passes (pass_combat_intrigue, pass_endgame_intrigue) merge into one
+stop instead of splitting at every seat's pass, then walk through the
+controls: pause, one step at a time, a faster interval, stepping by hand
+(takes the wheel), a seek (does not), another seat's eyes, the end of the
+game (the result shows, play starts over), leaving and coming back, a
+reload. A game with a human seat must not start playing by itself.
 """
 
 from __future__ import annotations
@@ -24,6 +26,11 @@ from open_mode import create_game
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 check = Check()
+
+# Declining a Combat or Endgame Intrigue window (rules/combat.py,
+# rules/endgame.py) — the engine never emits a bare "pass". Mirrors
+# PASS_ACTION_IDS in static/review.js.
+PASS_ACTION_IDS = {"pass_combat_intrigue", "pass_endgame_intrigue"}
 
 REVIEW_JS = """() => state.review && ({
   seat: state.review.seat,
@@ -108,7 +115,7 @@ def walks_turn_by_turn(page, rec) -> None:
         (len(stops), stops[:6]),
     )
     labels = page.evaluate("state.review.meta.steps")
-    closing = {"finish_agent_turn", "finish_reveal", "pass", "pick_leader"}
+    closing = {"finish_agent_turn", "finish_reveal", "pick_leader", *PASS_ACTION_IDS}
     wrong = []
     for stop in stops[:-1]:
         before = [label for label in labels[:stop] if label["type"] == "action"][-1]
@@ -118,6 +125,34 @@ def walks_turn_by_turn(page, rec) -> None:
         ):
             wrong.append(stop)
     check.ok(not wrong, "every stop lies between two turns", wrong[:5])
+
+    # Two seats (or the same seat) passing one after another — a Combat or
+    # Endgame Intrigue window nobody used — must merge into one stop, not
+    # split at the boundary between them. `closing` alone cannot see this:
+    # a pass is always in `closing`, so the loop above would wave through a
+    # stop planted between two consecutive passes. Recompute those
+    # boundaries independently of `stops` and check none of them is one.
+    merged = []
+    last_action = None
+    for position, label in enumerate(labels):
+        if label["type"] != "action":
+            continue
+        if (
+            last_action is not None
+            and last_action["action_id"] in PASS_ACTION_IDS
+            and label["action_id"] in PASS_ACTION_IDS
+        ):
+            merged.append(position)
+        last_action = label
+    check.ok(
+        bool(merged),
+        "the game reaches consecutive passes to test the merge on",
+        len(merged),
+    )
+    split = sorted(set(merged) & set(stops))
+    check.ok(
+        not split, "no replay stop falls between two consecutive pass steps", split[:5]
+    )
 
     window = now()  # the recorder's clock
     moves = sample_moves(page, 4.3)

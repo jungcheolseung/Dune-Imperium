@@ -174,6 +174,13 @@ async function loadSnapshot(hint, first) {
    line could answer late and put the page back in time, after the last
    doorbell, where nothing would correct it. */
 function adoptSnapshot(snapshot, seat) {
+  /* The page has just caught up with the server: a refresh-failure message
+     left over from an earlier, aborted request is stale now, whether this
+     snapshot answers that request or a later one. An error the player
+     caused (their own action, turn end, undo, or a review request) carries
+     no such mark and stays until its own next clearing. */
+  const errorBox = el("game-error");
+  if (!errorBox.hidden && errorBox.dataset.source === "refresh") hideGameError();
   const held = mySeats().length > 0;
   state.summary = snapshot.summary;
   state.me = snapshot.you;
@@ -393,7 +400,7 @@ async function applyAction(index) {
   state.pick = null;
   render();
   try {
-    el("game-error").hidden = true;
+    hideGameError();
     const summary = await api(`/games/${state.gameId}/actions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -414,8 +421,7 @@ async function applyAction(index) {
       await refresh();
       return;
     }
-    el("game-error").textContent = t("session.action_failed", { message: error.message });
-    el("game-error").hidden = false;
+    showGameError(t("session.action_failed", { message: error.message }));
     render();
   }
 }
@@ -428,7 +434,7 @@ async function confirmTurn() {
   state.busy = true;
   render();
   try {
-    el("game-error").hidden = true;
+    hideGameError();
     const summary = await api(`/games/${state.gameId}/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -448,8 +454,7 @@ async function confirmTurn() {
       await refresh();
       return;
     }
-    el("game-error").textContent = t("session.turn_end_failed", { message: error.message });
-    el("game-error").hidden = false;
+    showGameError(t("session.turn_end_failed", { message: error.message }));
     render();
   }
 }
@@ -460,7 +465,7 @@ async function submitUndo(seat, steps) {
   state.busy = true;
   render();
   try {
-    el("game-error").hidden = true;
+    hideGameError();
     const summary = await api(`/games/${state.gameId}/undo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -481,8 +486,7 @@ async function submitUndo(seat, steps) {
       await refresh();
       return;
     }
-    el("game-error").textContent = t("session.undo_failed", { message: error.message });
-    el("game-error").hidden = false;
+    showGameError(t("session.undo_failed", { message: error.message }));
     render();
   }
 }

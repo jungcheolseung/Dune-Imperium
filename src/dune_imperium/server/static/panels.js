@@ -111,9 +111,9 @@ function renderSeats() {
       image.alt = leaderEntry.name;
       image.addEventListener("click", (event) => {
         event.stopPropagation();
-        pinPopover(leaderEntry, image);
+        pinPopover(leaderEntry, image, player);
       });
-      hoverPopover(image, () => leaderEntry);
+      hoverPopover(image, () => leaderEntry, () => player);
       head.appendChild(image);
     }
     const who = document.createElement("div");
@@ -134,9 +134,9 @@ function renderSeats() {
       leaderName.classList.add("clickable");
       leaderName.addEventListener("click", (event) => {
         event.stopPropagation();
-        pinPopover(leaderEntry, leaderName);
+        pinPopover(leaderEntry, leaderName, player);
       });
-      hoverPopover(leaderName, () => leaderEntry);
+      hoverPopover(leaderName, () => leaderEntry, () => player);
     }
     nameLine.appendChild(leaderName);
     who.appendChild(nameLine);
@@ -216,18 +216,13 @@ function renderSeats() {
         }),
       );
     }
-    /* Bloodlines Leader state: Chani's Tactics token, Piter's Twisted deck,
-       Y'rkoon's remaining Navigation slots, Kota's Secret Project tile. */
-    if (player.leader_id === "chani") {
-      flags.push(tNode("panels.tactics_space", { space: player.tactics_track_space + 1 }));
-    }
+    /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
+       Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
+       on the leader popover (core.js openPopover, with a text fallback
+       without card images), so this line does not repeat them. */
     if (player.twisted_deck_size) {
       flags.push(tNode("panels.twisted_deck", { count: player.twisted_deck_size }));
     }
-    if (player.navigation_remaining) {
-      flags.push(tNode("panels.navigation_remaining", { count: player.navigation_remaining }));
-    }
-    if (player.has_secret_project) flags.push(tNode("panels.secret_project"));
     if (player.spies_boxed) flags.push(tNode("panels.spy_boxed", { count: player.spies_boxed }));
     /* Immortality state not drawn on the Bene Tleilax board: the Family
        Atomics token and grafted-card promises. */
@@ -295,9 +290,25 @@ function renderSeats() {
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
       zones.title = t("panels.discard_pile_view");
+      /* Same "mine" test as this seat panel's own "you" badge above, with a
+         review guard added to the local branch: on a remote table
+         ownership follows the seats this browser claimed regardless of what
+         is being viewed; locally (live or reviewed) it follows the seat
+         being looked at, but only when reviewing a seat this browser
+         actually played -- an all-AI review must never call an AI's pile
+         "my discard" just because it is the one on screen. */
+      const mine = isRemote()
+        ? mySeats().includes(seat)
+        : seat === activeSeat() && (!state.review || mySeats().includes(seat));
       zones.addEventListener("click", (event) => {
         event.stopPropagation();
-        openPileList(`${t("common.seat", { seat })} discard`, player.discard_pile, zones);
+        openPileList(
+          mine
+            ? t("panels.my_discard")
+            : t("panels.seat_discard", { seat: t("common.seat", { seat }) }),
+          player.discard_pile,
+          zones,
+        );
       });
     }
     card.appendChild(zones);
@@ -384,6 +395,12 @@ function renderSeats() {
     }
     wrap.appendChild(card);
   }
+  // A pinned leader popover otherwise stays open exactly as it was through
+  // a foreign update (render.js's `render()` only closes a pinned popover
+  // on a local one) -- fine for a card's fixed text, but this popover draws
+  // the seat's own live state, which the update may have just changed;
+  // redraw it (core.js) against the seat panel this call just rebuilt.
+  refreshPinnedLeaderPopover();
 }
 
 /* A Skill tile instance ("skill:<id>:<copy>") to its catalog id. */
@@ -429,10 +446,23 @@ const SEAT_PAYLOAD_KEYS = new Set([
   "visitor",
 ]);
 
-function logEventPayload(payload) {
+function logEventPayload(payload, eventKind) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
+    /* intrigue_played and navigation_card_played (rules/intrigue.py,
+       rules/navigation.py): the step head already names the option in words
+       (describeAction's play_intrigue and play_navigation branches,
+       core.js), so a bare index here ("선택지: 1") would only repeat it
+       unreadably. A fizzled navigation_card_played (rules/navigation.py
+       begin_navigation_play) carries no "option" at all, so this leaves it
+       untouched. */
+    if (
+      key === "option" &&
+      (eventKind === "intrigue_played" || eventKind === "navigation_card_played")
+    ) {
+      continue;
+    }
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
     if (SEAT_PAYLOAD_KEYS.has(key)) {
@@ -487,13 +517,22 @@ function logEventLine(event) {
   /* phrase(), not textContent: an event label may name a term, and the
      braces must never reach the screen. */
   line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
-  const payload = logEventPayload(event.payload);
+  const payload = logEventPayload(event.payload, event.kind);
   if (payload) line.append(` — ${payload}`);
   return line;
 }
 
-/* Steps that only close a window; kept in the record but muted. */
-const QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
+/* Steps that only close a window; kept in the record but muted:
+   finish_agent_turn and finish_reveal end an Agent or Reveal turn, and
+   pass_combat_intrigue / pass_endgame_intrigue decline a Combat or Endgame
+   Intrigue window (rules/combat.py, rules/endgame.py) — the engine never
+   emits a bare "pass". */
+const QUIET_ACTIONS = new Set([
+  "finish_agent_turn",
+  "finish_reveal",
+  "pass_combat_intrigue",
+  "pass_endgame_intrigue",
+]);
 
 /* Steps that stand as a card of their own (setup picks). */
 const SOLO_ACTIONS = new Set(["pick_leader"]);
@@ -538,12 +577,28 @@ function splitEntryEvents(entry) {
   return { own, neutral };
 }
 
+/* Events a folded pass's own line (below) may carry and still fold: the
+   window's own "declined" marker, or nothing at all (the pass that closes
+   the window reads as flow instead, see splitEntryEvents/NEUTRAL_EVENT_KINDS
+   and combat_intrigue_finished). */
+const PASS_MARKER_KINDS = new Set(["combat_intrigue_passed", "endgame_intrigue_passed"]);
+
 /* Group the log into cards. A turn card holds consecutive steps by one
    seat (with only their own events) until a step closes the turn
-   (finish_agent_turn, finish_reveal, pass); a Leader pick is a card of
+   (finish_agent_turn, finish_reveal, pass_combat_intrigue,
+   pass_endgame_intrigue); a Leader pick is a card of
    its own. Everything the game does by itself — the neutral events above
    and every chance step — goes into a "게임 진행" card between them, so
-   the round change never reads as the last actor's move. */
+   the round change never reads as the last actor's move.
+
+   A pass_combat_intrigue / pass_endgame_intrigue that would otherwise start
+   a brand new, single-entry card of its own (nothing of that seat's own is
+   open to continue) instead folds into the run of chained passes right
+   before it, one "passes" group per unbroken chain of the same action_id:
+   an unused Combat or Endgame Intrigue window used to show "pass" once per
+   seat, each as its own full-weight card (ITEM 8h). A pass that closes a
+   seat's own open card (it played something first) still ends that card,
+   as before -- it is that seat's own move, not an empty decline. */
 function logGroups(entries) {
   const groups = [];
   let open = null;
@@ -571,7 +626,18 @@ function logGroups(entries) {
     }
     const { own, neutral: flow } = splitEntryEvents(entry);
     const step = { ...entry, events: own };
-    if (SOLO_ACTIONS.has(entry.action_id)) {
+    const foldable =
+      PASS_ACTION_IDS.has(entry.action_id) &&
+      !(open && open.actor === entry.actor) &&
+      own.every((event) => PASS_MARKER_KINDS.has(event.kind));
+    const last = groups[groups.length - 1];
+    if (foldable && last && last.kind === "passes" && last.action_id === entry.action_id) {
+      last.entries.push(step);
+      open = null;
+    } else if (foldable) {
+      groups.push({ kind: "passes", action_id: entry.action_id, entries: [step] });
+      open = null;
+    } else if (SOLO_ACTIONS.has(entry.action_id)) {
       groups.push({ kind: "turn", actor: entry.actor, entries: [step] });
       open = null;
     } else {
@@ -615,10 +681,10 @@ function neutralTitle(group) {
   return parts.length ? parts.join(" · ") : t("panels.neutral_default");
 }
 
-function neutralCard(group, freshFrom) {
+function neutralCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card neutral";
-  if (group.lastIndex >= freshFrom) card.classList.add("fresh");
+  if (group.lastIndex >= glowFrom) card.classList.add("fresh");
   const head = document.createElement("div");
   head.className = "turn-head";
   const mark = document.createElement("span");
@@ -684,21 +750,28 @@ function turnLine(entry) {
   return line;
 }
 
-function turnCard(group, freshFrom) {
+/* The Leader name shown for a seat in the log -- its current Leader once
+   picked (front or flipped face), "Seat N" before that. turnCard's head and
+   a folded pass's seat line (passesCard) both read a seat's name this way. */
+function seatLeaderName(seat) {
+  const player = state.view && state.view.players[seat];
+  const leaderFace = player && (player.leader_face_id || player.leader_id);
+  return leaderFace ? nameOf(leaderFace) : t("common.seat", { seat });
+}
+
+function turnCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card";
   const color = SEAT_COLORS[group.actor];
   card.style.borderLeftColor = color;
-  if (group.entries.some((entry) => entry.index >= freshFrom)) card.classList.add("fresh");
+  if (group.entries.some((entry) => entry.index >= glowFrom)) card.classList.add("fresh");
   if (group.entries.every((entry) => entry.undone)) card.classList.add("undone");
 
-  const player = state.view && state.view.players[group.actor];
-  const leaderFace = player && (player.leader_face_id || player.leader_id);
   const head = document.createElement("div");
   head.className = "turn-head";
   head.appendChild(seatToken(group.actor, "seat-mark"));
   const who = document.createElement("strong");
-  who.textContent = leaderFace ? nameOf(leaderFace) : t("common.seat", { seat: group.actor });
+  who.textContent = seatLeaderName(group.actor);
   head.appendChild(who);
   const kind = state.summary.seats[group.actor];
   const badge = document.createElement("span");
@@ -753,6 +826,50 @@ function turnCard(group, freshFrom) {
   return card;
 }
 
+/* The label for a folded chain of Combat/Endgame Intrigue passes: the words
+   the engine's own event carries for it, once for the whole card. Combat
+   Intrigue already has one that names the window
+   (EVENT_LABELS.combat_intrigue_passed, "{combat} {intrigue} 패스"); Endgame
+   Intrigue's own event label is bare ("Passed", EVENT_LABELS.
+   endgame_intrigue_passed) -- and so is the action label next to it
+   (ACTION_LABELS.pass_endgame_intrigue is just "패스"/"Pass" too, nothing on
+   an unfolded pass names the window either) -- so a fold needs a label of
+   its own that does name it (panels.pass_fold_endgame_intrigue, UI_TEXT). */
+function passFoldLabel(actionId) {
+  return actionId === "pass_endgame_intrigue"
+    ? tNode("panels.pass_fold_endgame_intrigue")
+    : phrase(EVENT_LABELS.combat_intrigue_passed);
+}
+
+/* One compact card for a run of chained Combat/Endgame Intrigue passes
+   (logGroups, ITEM 8h): the label once, then the seats that passed, in
+   order, on the SAME wrapping line as the label (one .turn-head, like a
+   turn card's own head) -- not a full turn card per seat repeating the
+   same "pass", and not a second line below the label either. */
+function passesCard(group, glowFrom) {
+  const card = document.createElement("div");
+  card.className = "turn-card passes";
+  if (group.entries.some((entry) => entry.index >= glowFrom)) card.classList.add("fresh");
+  if (group.entries.every((entry) => entry.undone)) card.classList.add("undone");
+
+  const head = document.createElement("div");
+  head.className = "turn-head";
+  const label = document.createElement("strong");
+  label.appendChild(passFoldLabel(group.action_id));
+  head.appendChild(label);
+  group.entries.forEach((entry, index) => {
+    if (index) head.append(" · ");
+    const seat = document.createElement("span");
+    seat.className = "pass-seat";
+    if (entry.undone) seat.classList.add("undone");
+    seat.appendChild(seatToken(entry.actor, "seat-mark"));
+    seat.append(seatLeaderName(entry.actor));
+    head.appendChild(seat);
+  });
+  card.appendChild(head);
+  return card;
+}
+
 function undoRow(entry) {
   const row = document.createElement("div");
   row.className = "turn-card undo-marker";
@@ -760,21 +877,58 @@ function undoRow(entry) {
   return row;
 }
 
-/* Entries from this index on arrived since the viewing seat last acted;
-   their turn cards are marked and the list scrolls to the first one. */
+/* Entries from this index on arrived since the previous render: the list
+   scrolls to the first card that holds one of them (arrivedFrom in
+   renderLog). Locally a whole AI batch lands in one render, so this is
+   close to "since the viewing seat last acted" (glowFrom) -- not exactly
+   equal, since glowFrom also leaves out the viewing seat's own new card,
+   which this number includes. In remote play every opponent step triggers
+   its own render, so this number alone would only ever cover the last
+   step -- see glowFrom for what actually glows. */
 let logSeen = { gameId: null, count: 0, freshFrom: 0 };
+
+/* The scrollTop the renderer itself set on its last automatic scroll (to the
+   first arrived card, or to the end), per game. Whether the *next* render
+   should keep following is decided from this, not from "near the bottom"
+   alone: a fresh batch taller than the list (the leader draft, a round
+   change) lands the auto-scroll well short of the end, and comparing only
+   position then reads that as the reader having wandered off and never
+   follows again. */
+let logAutoTop = { gameId: null, top: 0 };
+
+/* Where "new to `seat`" starts: one past `seat`'s own last live entry (its
+   last non-undone action, or its last undo marker, whichever is later in
+   the log). Everything from there on is new to that seat, whether it
+   arrived in one render or many -- which is what a remote table needs,
+   since there every opponent step is its own render and "since the
+   previous render" (logSeen.freshFrom) would only ever show the last one.
+   0 when the seat has not acted yet, so its whole log is new. */
+function ownGlowFrom(seat, entries) {
+  let last = -1;
+  for (const entry of entries) {
+    if (entry.type === "action" && entry.actor === seat && !entry.undone) last = entry.index;
+    else if (entry.type === "undo" && entry.seat === seat) last = entry.index;
+  }
+  return last + 1;
+}
 
 function renderLog() {
   const panel = el("action-log");
   /* The list is rebuilt from scratch, so its scroll offset has to be read
      before the panel is emptied. A reader who has scrolled up to re-read an
-     earlier turn keeps their place; one already at the end keeps following
-     the game. Without this the log yanked itself to the newest entry on
-     every render, including renders caused by somebody else's move. */
+     earlier turn keeps their place; one already at the end, or still sitting
+     where the previous render's auto-scroll left them, keeps following the
+     game. Without this the log yanked itself to the newest entry on every
+     render, including renders caused by somebody else's move. */
   const previous = panel.querySelector(".log-list");
   const previousTop = previous ? previous.scrollTop : 0;
+  const atAutoOffset =
+    Boolean(previous) &&
+    logAutoTop.gameId === state.gameId &&
+    Math.abs(previousTop - logAutoTop.top) <= 2;
   const following =
     !previous ||
+    atAutoOffset ||
     previous.scrollHeight - previous.scrollTop - previous.clientHeight < 24;
   panel.textContent = "";
   /* In review the log follows the cursor (reviewLog) and leaves the live
@@ -785,7 +939,17 @@ function renderLog() {
     return;
   }
   panel.hidden = false;
-  let freshFrom = log.freshFrom;
+  /* arrivedFrom only decides the auto-scroll target (below); glowFrom
+     decides which cards get the .fresh class. In review both are the
+     cursor's own freshFrom, as before -- review has one reader and no
+     per-step renders to tell apart. Live, arrivedFrom keeps today's "since
+     the previous render" bookkeeping, and glowFrom is the viewing seat's
+     own boundary (ownGlowFrom), so a remote table's separate renders for
+     each opponent step still glow every step since this seat's own last
+     action, not just the last one to arrive. A spectator (no seat) has no
+     "own last action", so it falls back to arrivedFrom like before. */
+  let arrivedFrom = log.freshFrom;
+  let glowFrom = log.freshFrom;
   if (!state.review) {
     if (logSeen.gameId !== state.gameId) {
       logSeen = { gameId: state.gameId, count: log.count, freshFrom: log.count };
@@ -793,7 +957,9 @@ function renderLog() {
       logSeen.freshFrom = logSeen.count;
       logSeen.count = log.count;
     }
-    freshFrom = logSeen.freshFrom;
+    arrivedFrom = logSeen.freshFrom;
+    const seat = activeSeat();
+    glowFrom = typeof seat === "number" ? ownGlowFrom(seat, log.entries) : arrivedFrom;
   }
 
   const heading = document.createElement("h2");
@@ -801,10 +967,26 @@ function renderLog() {
   panel.appendChild(heading);
   const list = document.createElement("div");
   list.className = "log-list";
+  /* The scroll target is picked from the groups themselves (which card
+     first reaches arrivedFrom), not by re-querying the DOM for .fresh --
+     that class now tracks glowFrom, which can lag behind arrivedFrom (a
+     seat's own new card is never fresh to itself) or sit ahead of it (a
+     remote reader catching up on several opponents' steps at once). */
+  let arrivedTarget = null;
   for (const group of logGroups(log.entries)) {
-    if (group.kind === "undo") list.appendChild(undoRow(group.entry));
-    else if (group.kind === "neutral") list.appendChild(neutralCard(group, freshFrom));
-    else list.appendChild(turnCard(group, freshFrom));
+    let node;
+    if (group.kind === "undo") {
+      node = undoRow(group.entry);
+    } else if (group.kind === "neutral") {
+      node = neutralCard(group, glowFrom);
+      if (!arrivedTarget && group.lastIndex >= arrivedFrom) arrivedTarget = node;
+    } else {
+      node = group.kind === "passes" ? passesCard(group, glowFrom) : turnCard(group, glowFrom);
+      if (!arrivedTarget && group.entries.some((entry) => entry.index >= arrivedFrom)) {
+        arrivedTarget = node;
+      }
+    }
+    list.appendChild(node);
   }
   panel.appendChild(list);
   /* Review drives the cursor itself, so it always shows the step it moved to. */
@@ -812,9 +994,13 @@ function renderLog() {
     list.scrollTop = previousTop;
     return;
   }
-  const first = list.querySelector(".turn-card.fresh");
-  if (first) list.scrollTop = Math.max(0, first.offsetTop - list.offsetTop - 6);
+  if (arrivedTarget) list.scrollTop = Math.max(0, arrivedTarget.offsetTop - list.offsetTop - 6);
   else list.scrollTop = list.scrollHeight;
+  /* Remember this render's own offset so the next one can tell "still
+     following" from "wandered off, coincidentally near the same spot".
+     Review positions the cursor itself and never follows, so it neither
+     reads nor writes this. */
+  if (!state.review) logAutoTop = { gameId: state.gameId, top: list.scrollTop };
 }
 
 /* ---------- own hand ---------- */
@@ -896,13 +1082,10 @@ function renderPrivate() {
     zones.appendChild(intrigue);
   }
   /* Owner-only peeks: the deck's top card (Controlled, Glowglobes) and
-     Kota Odax's face-down Secret Project tile. */
+     peeked Intrigue. Kota Odax's Secret Project tile is on his leader
+     popover (core.js leaderSecretProjectBox). */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
-  if (
-    view.private.peeked_card_id ||
-    view.private.secret_project_tech_id ||
-    peekedIntrigue.length
-  ) {
+  if (view.private.peeked_card_id || peekedIntrigue.length) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
     if (view.private.peeked_card_id) {
@@ -916,14 +1099,6 @@ function renderPrivate() {
     for (const cardId of peekedIntrigue) {
       peeks.appendChild(
         visualCard(cardId, { className: "small", badge: t("panels.intrigue_deck_top_badge") })
-      );
-    }
-    if (view.private.secret_project_tech_id) {
-      peeks.appendChild(
-        visualCard(view.private.secret_project_tech_id, {
-          className: "tile",
-          badge: "Secret Project (−1)",
-        })
       );
     }
     zones.appendChild(peeks);
@@ -1010,10 +1185,7 @@ function renderStandings() {
           ? mySeats()[0]
           : humans[0];
       enterReview(seat).catch((error) => {
-        el("game-error").textContent = t("panels.review_start_failed", {
-          message: error.message,
-        });
-        el("game-error").hidden = false;
+        showGameError(t("panels.review_start_failed", { message: error.message }));
       });
     });
   }
