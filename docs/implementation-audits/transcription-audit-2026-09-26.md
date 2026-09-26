@@ -143,6 +143,44 @@
 제외: #29(Subversive Advisor — 다른 효과가 이 카드를 먼저 trash해 box가 풀리지 않을 때 방문한 Faction의 기본 Influence 1도 사라지는지,
 불확실·낮은 확신)는 공식 문서가 답하지 않는 드문 순서 문제라 고치지 않았다.
 
+## 통합 리뷰 (2026-09-26)
+
+여덟 단위를 `fix-integration`에 병합한 뒤, 단위 사이에서 생긴 문제를 찾는 독립 리뷰를 영역 여섯 개(Reveal, Leader·설정, Agent box,
+Combat·Contract·Spy, Intrigue·Tech·보드, 콘텐츠·codec·관측)로 돌렸다. 병합 중에 이미 고친 교차 충돌 넷(Hardy의 `reveal_water` 제거를
+s4가 계속 읽음, Commander 배치 템플릿이 Immortality 카탈로그에만 있음, 비공개 정보 섞기가 공개된 contract를 옮김, Servo 신호 card id가
+로그에 샘)에 더해, 반박 검증을 통과한 발견 18건을 세 작업 단위(`fix2-r1-reveal` R0–R4, `fix2-r2-leaders` R5–R8,
+`fix2-r3-agent-spy-intrigue` R9–R17)로 고치고 단위마다 독립 검토자의 승인을 받았다.
+
+| R | 영역 | 발견 | 처리 |
+|---|---|---|---|
+| 0 | Reveal | Command Center의 troop 2 retreat가 strength를 줄이지 않음 | r1 |
+| 1 | Reveal | Reveal 중 들어온 카드의 Command (6+) 자동 효과가 두 번 지급됨 | r1 |
+| 2 | Reveal | Reveal 중 들어온 Holy War의 Fremen Bond Combat 아이콘이 열리지 않음 | r1 |
+| 3 | Reveal | 카드의 Reveal retreat(Chani, Clever Tactician·Command Center)가 Chani의 Tactics token을 올리지 않음 | r1 |
+| 4 | Reveal | Desert Power의 2 Persuasion을 쓴 뒤에도 sandworm을 살 수 있음(Persuasion −2) | r1 |
+| 5 | Leader | Y'rkoon의 다음 turn이 곧바로 자기 turn이면 Hungry for Spice가 turn을 닫는 획득을 놓침 | r2 |
+| 6 | Leader | 배치 전 TURN frame이나 Reveal에서 쓴 Servo Signet이 Harkonnen Advisor·Emperor의 금지와 Signet recruit를 잃음 | r2 |
+| 7 | Leader | Fenring과 비용을 내지 않은 Mohiam이 recall-first 뒤 Spy를 놓지 않을 수 있음 | r2 |
+| 8 | Leader | Signet으로 trash한 Eliminate Allies의 troop 2가 배치 몫에서 빠짐 | r2 |
+| 9 | Agent box | Agent box Spy 아이콘이 빈 supply에서 recall-first를 강제함(거절 없음) | r3 |
+| 10 | Agent box | Sardaukar Coordination의 "recruit한 troop 배치" box가 graft 짝일 때 무시됨 | r3 |
+| 11 | Spy | Holy War의 강제 Spy 이동이 다음 좌석의 turn에 recall로 셈 | r3 |
+| 12 | Contract | turn이 넘어간 뒤의 Contract Spy 보상 recall-first가 다음 turn에 셈 | r3 |
+| 13 | 보드 | Into the Fray로 Conflict에 간 Agent를 Imperial Privilege가 되돌리게 함 | r3 |
+| 14 | Intrigue | Distraction이 recall-first 뒤에도 거절을 허용함 | r3 |
+| 15 | Tech | Tech 가격이 `spice_spent_after_placement`에 더해지는지 테스트가 없음 | r3 |
+| 16 | 콘텐츠 | Agent box·획득 Spy 아이콘이 빈 supply recall을 여전히 강제함 | r3 |
+| 17 | Intrigue | Distraction이 함께 face up이면 Coercive Negotiation의 대기(OQ-064)가 소모됨 | r3 |
+
+리뷰 뒤 main 세션이 두 가지를 더 고쳤다: Agent box의 trash(Shishakli·Desert Survival 등)와 Long Live the Fighters로 trash한
+Eliminate Allies의 troop 2도 R8과 같은 이유로 배치 몫에서 빠졌고, Rapid Engineering·Battlefield Research로 산 tile의 troop(Rapid
+Dropships·Ornithopter Fleet 2, Forbidden Weapons 1)이 배치 전·Reveal에서는 그 turn의 recruit로 세이지 않았다("그 turn에 어떤 출처에서
+recruit했든 새 troop은 Conflict에 deploy할 수 있다" `[Main p. 10]` `[FAQ p. 4]`). r1이 보고한 Desert Power와 Command (6+)의 순서 문제는
+[OQ-069](../rules/open-questions.md#oq-069--desert-power의-선택-전-2-persuasion과-command-6)에 OPEN으로 적었다.
+
+커밋 메시지 정정(기존 커밋은 고치지 않는다): e797452의 "13 of 107 positions moved"는 **20**개가 옮겨졌고, b6fa486의 마지막 항목(Influence·lands·Spy 열)
+"full seed 158 seat 0 with base seed 3 seat 2"의 뒤쪽은 **full seed 3 seat 2**다(앞의 deck 열 "base seed 3 seat 2"는 맞다).
+
 ## 사용자 판정 (2026-09-26)
 
 - Tenuous Bond·Grasp Arrakis·Battlefield Research: 칸의 색띠와 카드 아래의 시점 인쇄(COMBAT / ENDGAME, PLOT / COMBAT)대로 칸마다 한
@@ -155,8 +193,8 @@
 
 OQ-062(Servo-Receivers의 Signet Ring 아이콘, DECIDED), OQ-063(Hungry for Spice의 "in a single turn", DECIDED), OQ-064(Coercive
 Negotiation이 가져갈 contract가 없을 때, OPEN), OQ-065(강제 Spy 이동에 갈 곳이 없을 때, OPEN), OQ-066(Reclaimed Forces의 "acquire"와
-Call to Arms, OPEN), OQ-067(두 Intrigue 더미가 빈 Captured Mentat·Guild Spy, DECIDED), OQ-068(Recall Agent와 Into the Fray Agent, OPEN).
-OPEN 넷은 구현 convention을 적용한 채 사용자 판정을 기다린다.
+Call to Arms, OPEN), OQ-067(두 Intrigue 더미가 빈 Captured Mentat·Guild Spy, DECIDED), OQ-068(Recall Agent와 Into the Fray Agent, OPEN),
+OQ-069(Desert Power와 Command (6+), OPEN). OPEN 다섯은 현재 동작을 적은 채 사용자 판정을 기다린다.
 
 ## 버전과 학습
 

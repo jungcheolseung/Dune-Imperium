@@ -721,3 +721,24 @@
 - Recall Agent 아이콘(Steersman)은 "Return one of your other Agents on the board to your Leader (not the Agent you sent during this turn)." `[Main p. 20]`이다. Duncan Idaho의 Into the Fray로 Conflict에 간 Agent는 board space를 떠난다(OQ-037 (a)). 디자이너는 같은 Agent를 Imperial Privilege("자신의 다른 Agent 1개를 recall" `[Board Guide p. 2]`)로 recall할 수 있다고 판정했지만(OQ-037 (d)), Recall Agent 아이콘에 대해서는 판정이 없다.
 - 현재 구현: Steersman의 recall은 board space의 Agent(`agent_locations`) 가운데 이번 turn에 보낸 Agent를 뺀 것만 제시한다(2026-09-26, `rules/agent_effects.legal_agent_card_recall_actions`). Conflict의 Agent는 대상이 아니다.
 - 필요한 답: Conflict의 Into the Fray Agent가 "your other Agents on the board"에 드는지. 든다면 Imperial Privilege의 `recall_conflict_agent_for_imperial_privilege` 같은 행동이 Agent card recall에도 필요하다(codec 변경).
+
+## OQ-069 — Desert Power의 선택 전 2 Persuasion과 Command (6+)
+
+- 상태: `OPEN` (현재 동작 기록, 사용자 판정 대기)
+- Desert Power의 Reveal box는 "[2 Persuasion] -OR- [water] → [sandworm]"(Maker Hooks 필요)이고
+  `[Desert Power card]` `[Main pp. 10, 20]`, Command (6+)는 "if you generate 6 Persuasion or more"일 때만
+  쓴다 `[Bloodlines pp. 5, 12]`. Reveal 효과는 원하는 순서로 해결한다 `[Main p. 12]`. sandworm을 고르면 그 Reveal은
+  Desert Power의 2 Persuasion을 생성하지 않는다.
+- 현재 구현: 엔진은 Desert Power의 2 Persuasion을 Reveal 시작 때 생성된 것으로 세고(`persuasion_generated`),
+  sandworm 갈래는 그 2를 되돌린다(`apply_reveal_sandworm_action`의 `add_reveal_persuasion(-2)`; 2가 구매에
+  쓰였으면 sandworm은 닫힌다, 2026-09-26). 자동 Command 효과는 Reveal 시작 때 합계 6 이상이면 지급되므로
+  (OQ-033), Desert Power의 2로 6에 닿은 Reveal에서 sandworm을 고르면 생성 합계는 4로 끝나는데 Command
+  효과는 이미 지급된 채 남는다. 재현: Bloodlines, High Council 좌석, hand Desert Power + I Believe + Diplomacy,
+  Maker Hooks와 water 1 — Reveal 시작 생성 6, I Believe의 troop 2 대기; `pay_reveal_water_for_sandworm` 뒤 생성
+  4인데 troop 2는 그대로 대기한다. Training Depot의 검 2·Delivery Bay의 Solari 2도 같은 경로다.
+- 필요한 답: Desert Power의 선택이 Command 판정과 어떤 순서로 해결되는가. 후보: (A) Command는 Desert Power의
+  2를 선택(sandworm 거절, 또는 2를 구매에 써서 sandworm이 닫힘)이 끝난 뒤에만 센다 — 6에 못 미치던 자동
+  Command는 그때 늦은 지급(`grant_late_reveal_effects`)으로 나온다. 인쇄문과 자유 순서를 가장 그대로 따른다.
+  (B) Desert Power의 2가 Command를 켜는 데 쓰이면 sandworm 갈래를 닫는다(구매에 쓴 것과 같게 취급) — 단순하지만
+  자동 지급이 소유자의 선택 없이 sandworm을 막는다. (C) 현재대로 둔다.
+- 발견: 2026-09-26 통합 리뷰(Reveal 수정 그룹의 보고, 위 재현 절차로 확인).
