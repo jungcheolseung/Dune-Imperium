@@ -474,6 +474,19 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
         "leader_signet_started",
         "leader_signet_resolved",
     ]
+    # The tile is named by its tech_id like tech_acquired, so the log shows
+    # its name rather than an engine id (scripts/e2e/log_words.py).
+    assert dict(result.events[-2].payload) == {
+        "player": 0,
+        "tech_id": "servo_receivers",
+    }
+    # The ability's own event names the tile the same way, not the Signet
+    # frame's internal card id.
+    assert dict(result.events[-1].payload) == {
+        "player": 0,
+        "tech_id": "servo_receivers",
+        "troops": 1,
+    }
     # Nothing else was pending at Assembly Hall: the turn moved on.
     assert result.state.decision_stack[-1].kind == "turn"
     assert _decider(result.state) == 1

@@ -293,7 +293,8 @@ def use_leader_signet_for_tech(
     started = GameEvent(
         event_id=f"{source}:leader_signet",
         kind="leader_signet_started",
-        payload=(("card_id", SERVO_SIGNET_CARD_ID), ("player", player)),
+        # Named like tech_acquired's tile, so the log shows the tile's name.
+        payload=(("player", player), ("tech_id", "servo_receivers")),
     )
     if legal_feyd_track_actions(working, player) or legal_leader_signet_actions(
         working, player
@@ -328,9 +329,39 @@ def _block_agent_turn_deployment(state: GameState, player: int) -> GameState:
     return state
 
 
+def _name_servo_tile(events: tuple[GameEvent, ...]) -> tuple[GameEvent, ...]:
+    """Name Servo-Receivers by its ``tech_id`` in a Signet event's payload.
+
+    The Signet frame opened by the tile carries a sentinel ``card_id`` that
+    is no printed card; the log resolves ``tech_id`` like tech_acquired's.
+    """
+
+    return tuple(
+        replace(
+            event,
+            payload=tuple(
+                sorted(
+                    ("tech_id", "servo_receivers")
+                    if (key, value) == ("card_id", SERVO_SIGNET_CARD_ID)
+                    else (key, value)
+                    for key, value in event.payload
+                )
+            ),
+        )
+        if ("card_id", SERVO_SIGNET_CARD_ID) in event.payload
+        else event
+        for event in events
+    )
+
+
 def resolve_leader_signet(state: GameState) -> RuleResult:
     """Resolve the current player's Signet Ring ability [Main pp. 6, 20]."""
 
+    result = _resolve_leader_signet(state)
+    return RuleResult(state=result.state, events=_name_servo_tile(result.events))
+
+
+def _resolve_leader_signet(state: GameState) -> RuleResult:
     context = _signet_context(state)
     if context.get("pending_agent_effect") is not True:
         raise ValueError("the current Agent turn has no pending card effect")
