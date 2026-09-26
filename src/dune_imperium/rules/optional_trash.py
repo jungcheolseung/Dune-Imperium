@@ -11,7 +11,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.frames import FrameKind, context_str, owned_top_frame
 
 
@@ -69,4 +69,29 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     card_id = str(dict(action.arguments)["card_id"])
-    return trash_personal_card(popped, action.actor, card_id, source=source)
+    top = popped.decision_stack[-1] if popped.decision_stack else None
+    credited_in_place = (
+        top is not None
+        and top.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(top.decision, PlayerDecision)
+        and top.decision.owner == action.actor
+    )
+    trashed = trash_personal_card(popped, action.actor, card_id, source=source)
+    if not credited_in_place:
+        # trash_personal_card's own crediting (card_trash._with_recruited_
+        # troops) only fires when the owner's AGENT_EFFECTS frame sits
+        # directly beneath the OPTIONAL_TRASH frame just popped. With more
+        # than one replacement (Arrakis Planetologist, two summons at Deep
+        # Desert) or a Reveal turn's Desert Power sandworm, another
+        # OPTIONAL_TRASH frame, a REVEAL frame or a TURN frame sits there
+        # instead, so Eliminate Allies' "When this card is trashed: 2
+        # troops" [Eliminate Allies card] would otherwise reach the
+        # garrison uncounted. "그 turn에 어떤 출처에서 recruit했든 새
+        # troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+        # (docs/rules/player-turns.md:137); credit_trash_recruits finds the
+        # owner's still-open turn frame past any such frame and is a no-op
+        # outside the owner's own turn, so this never double-counts and
+        # never credits a trash resolved during Combat or another seat's
+        # turn.
+        trashed = credit_trash_recruits(trashed, action.actor)
+    return trashed
