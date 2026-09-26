@@ -1102,6 +1102,23 @@ def legal_leader_signet_actions(
         # prints the Deep Cover icon (a gold Spy behind a grey one, as on
         # Deliver Supplies), so an opponent's Spy there does not block it
         # [Count Hasimir Fenring card] [Bloodlines pp. 5, 12].
+        spy_choices = _leader_spy_placement_actions(
+            state,
+            player,
+            context,
+            EMPEROR_POST_IDS,
+            deep_cover=True,
+            offer_decline=False,
+        )
+        if context.get("leader_spy_recalled") is True:
+            # The recall-first began the Spy half of the "— OR —": "If you
+            # have no Spies in your supply when you need to place one, you
+            # may first recall one of your Spies" [Main p. 11]; after it only
+            # the placement remains (OQ-057 (14)). The decline is kept only
+            # so the frame cannot jam.
+            return spy_choices or (
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            )
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
             *(
@@ -1112,14 +1129,7 @@ def legal_leader_signet_actions(
                 )
                 for card_id in owner.in_play
             ),
-            *_leader_spy_placement_actions(
-                state,
-                player,
-                context,
-                EMPEROR_POST_IDS,
-                deep_cover=True,
-                offer_decline=False,
-            ),
+            *spy_choices,
         )
 
     if owner.leader_id == "esmar_tuek":
@@ -1190,8 +1200,7 @@ def legal_leader_signet_actions(
         # anywhere [Gaius Helen Mohiam card].
         if context.get("listeners_paid") is True:
             return _leader_spy_placement_actions(state, player, context, None)
-        return (
-            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+        listeners = (
             *_leader_spy_placement_actions(
                 state, player, context, LANDSRAAD_POST_IDS, offer_decline=False
             ),
@@ -1200,6 +1209,18 @@ def legal_leader_signet_actions(
                 if owner.resources.spice >= 1
                 else ()
             ),
+        )
+        if context.get("leader_spy_recalled") is True:
+            # Both halves place a Spy, so after the recall-first [Main p. 11]
+            # either may still be chosen, but not the decline: the recalled
+            # Spy must be placed (OQ-057 (14)). The decline is kept only so
+            # the frame cannot jam.
+            return listeners or (
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            )
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *listeners,
         )
 
     return ()
@@ -1227,6 +1248,7 @@ def apply_leader_signet_payment(
     context["pending_agent_effect"] = False
     context.pop("staban_bonus_post", None)
     context.pop("listeners_paid", None)
+    context.pop("leader_spy_recalled", None)
 
     if action.action_id == "decline_leader_signet_payment":
         next_state = _store_signet(state, context, state.players)

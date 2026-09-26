@@ -72,7 +72,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 ### Count Hasimir Fenring
 
 - **Assassin** — "Whenever you trash a card: 1 Solari." `card_trash.trash_personal_card`에서 지급; Intrigue trash는 제외 `[Bloodlines p. 12]`.
-- **Corrino Liaison(Signet)** — "You may trash a card in your play area. —OR— [Spy with Deep Cover] on [Emperor]." play area의 어떤 카드든(Signet Ring 자신 포함) `trash_leader_card`, 또는 Emperor observation post(`emperor-sardaukar-dutiful-service` 하나)에 `place_leader_spy`(supply가 비면 회수 먼저), 또는 거절. Deep Cover라서 상대 Spy가 있어도 놓을 수 있고 자기 Spy가 이미 있으면 놓을 수 없다 `[Bloodlines pp. 5, 12]`. **2026-09-25 정정**: 아이콘은 회색 원기둥 뒤에 금색 원기둥이 겹친 Spy with Deep Cover(Deliver Supplies contract와 같은 그림)인데, 처음 전사에서 일반 Spy로 읽어 상대 Spy가 있는 post를 막고 있었다. 같은 확장의 Mohiam Listeners는 회색 원기둥 하나(일반 Spy)라 인쇄가 구별된다. 회귀 테스트 `test_corrino_liaison_spy_has_deep_cover`.
+- **Corrino Liaison(Signet)** — "You may trash a card in your play area. —OR— [Spy with Deep Cover] on [Emperor]." play area의 어떤 카드든(Signet Ring 자신 포함) `trash_leader_card`, 또는 Emperor observation post(`emperor-sardaukar-dutiful-service` 하나)에 `place_leader_spy`(supply가 비면 회수 먼저), 또는 거절. 회수를 하면 Spy 쪽을 고른 것이므로 그 뒤에는 배치만 남는다(trash·거절 없음; "you may first recall one of your Spies" `[Main p. 11]`, OQ-057 (14); 2026-09-26 정정, `test_corrino_liaison_recall_first_commits_to_the_spy`). Mohiam의 Listeners도 회수 뒤에는 거절이 없다(두 쪽 모두 Spy를 놓으므로 Landsraad 배치나 spice 지불은 남는다). Deep Cover라서 상대 Spy가 있어도 놓을 수 있고 자기 Spy가 이미 있으면 놓을 수 없다 `[Bloodlines pp. 5, 12]`. **2026-09-25 정정**: 아이콘은 회색 원기둥 뒤에 금색 원기둥이 겹친 Spy with Deep Cover(Deliver Supplies contract와 같은 그림)인데, 처음 전사에서 일반 Spy로 읽어 상대 Spy가 있는 post를 막고 있었다. 같은 확장의 Mohiam Listeners는 회색 원기둥 하나(일반 Spy)라 인쇄가 구별된다. 회귀 테스트 `test_corrino_liaison_spy_has_deep_cover`.
 
 ### Duncan Idaho
 

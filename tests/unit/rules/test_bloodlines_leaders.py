@@ -392,6 +392,91 @@ def test_corrino_liaison_spy_has_deep_cover() -> None:
     ]
 
 
+_SPIES_ELSEWHERE = (
+    "choam-shipping-accept-contract",
+    "arrakis-deep-desert",
+    "fremen-desert-tactics-fremkit",
+)
+
+
+def _recall_first(state: GameState) -> GameState:
+    recall = next(
+        a
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "recall_spy_for_leader_placement"
+    )
+    return apply_leader_spy_action(state, recall).state
+
+
+def test_corrino_liaison_recall_first_commits_to_the_spy() -> None:
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect" [Main p. 11]: the
+    # recall is the first step of the Spy half of "You may trash a card in
+    # your play area. —OR— [Deep Cover Spy] on [Emperor]" [Count Hasimir
+    # Fenring card], and "각각 recall한 뒤에는 배치만 남는다" (OQ-057 (14)).
+    # Before, the decline and the trash half stayed on offer, so he could
+    # keep a counted recall (spies_recalled_turn) and trash as well.
+    owner = PlayerState(
+        player_id=0,
+        leader_id="count_hasimir_fenring",
+        hand=(SIGNET, RECON),
+        spies_supply=0,
+        spy_post_ids=_SPIES_ELSEWHERE,
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    assert {a.action_id for a in legal_leader_signet_actions(state, 0)} == {
+        "decline_leader_signet_payment",
+        "recall_spy_for_leader_placement",
+        "trash_leader_card",
+    }
+    recalled = _recall_first(state)
+    assert recalled.players[0].spies_supply == 1
+    assert [
+        (a.action_id, dict(a.arguments)["post_id"])
+        for a in legal_leader_signet_actions(recalled, 0)
+    ] == [("place_leader_spy", "emperor-sardaukar-dutiful-service")]
+
+
+def test_listeners_recall_first_leaves_only_the_spy_halves() -> None:
+    # Listeners: "[Spy] on [Landsraad] —OR— [1 spice] → [Spy]" [Gaius Helen
+    # Mohiam card]. Both halves place a Spy, so after the recall-first
+    # [Main p. 11] either remains, but the recalled Spy must be placed
+    # (OQ-057 (14)): no decline.
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gaius_helen_mohiam",
+        hand=(SIGNET,),
+        resources=Resources(spice=1),
+        spies_supply=0,
+        spy_post_ids=_SPIES_ELSEWHERE,
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    assert "decline_leader_signet_payment" in {
+        a.action_id for a in legal_leader_signet_actions(state, 0)
+    }
+    recalled = _recall_first(state)
+    actions = legal_leader_signet_actions(recalled, 0)
+    assert {a.action_id for a in actions} == {
+        "place_leader_spy",
+        "pay_leader_signet_spice",
+    }
+    assert {
+        dict(a.arguments)["post_id"]
+        for a in actions
+        if a.action_id == "place_leader_spy"
+    } == {
+        "landsraad-high-council-imperial-privilege-swordmaster",
+        "landsraad-assembly-hall-gather-support",
+    }
+    # Paying after the recall still ends in a placement, never a decline.
+    paid = apply_leader_signet_payment(
+        recalled, DomainAction(action_id="pay_leader_signet_spice", actor=0)
+    ).state
+    assert {a.action_id for a in legal_leader_signet_actions(paid, 0)} == {
+        "place_leader_spy"
+    }
+
+
 # --- Duncan Idaho ------------------------------------------------------------
 
 
