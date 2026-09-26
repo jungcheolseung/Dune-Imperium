@@ -596,6 +596,7 @@ def apply_agent_card_long_live_action(
         source=source,
         allow_deck=True,
     )
+    _keep_trash_recruits(context, trashed)
     next_owner = trashed.state.players[player]
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(
@@ -1587,6 +1588,32 @@ def legal_agent_card_trash_actions(
     )
 
 
+def _keep_trash_recruits(
+    context: dict[str, ActionValue], trashed: RuleResult
+) -> None:
+    """Carry troops a trash trigger recruited into the context written back.
+
+    Eliminate Allies: "When this card is trashed: 2 troops", and a troop
+    recruited during the turn "from any source" may be deployed [Main p. 10]
+    [FAQ p. 4]. ``trash_personal_card`` credits them to the Agent-turn frame
+    on top, which the box's own context -- read before the trash -- then
+    overwrites; the count goes into that context instead.
+    """
+
+    recruited = sum(
+        troops
+        for event in trashed.events
+        if event.kind == "personal_card_trash_effect_resolved"
+        for troops in (dict(event.payload).get("troops", 0),)
+        if isinstance(troops, int) and not isinstance(troops, bool)
+    )
+    if recruited:
+        previous = context.get("troops_recruited", 0)
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+
+
 def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult:
     """Resolve or decline an Agent-box personal-card trash choice."""
 
@@ -1624,6 +1651,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         card_id,
         source=source,
     )
+    _keep_trash_recruits(context, trashed)
     if source_card.agent_effect in (
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,

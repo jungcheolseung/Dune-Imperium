@@ -3864,6 +3864,82 @@ def test_long_live_the_fighters_trashes_from_deck_with_shared_trash_triggers() -
     ]
 
 
+# Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate Allies
+# card], and a troop recruited during the turn "from any source" may be
+# deployed [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md). Trashed by
+# an Agent box, the two troops used to vanish from the turn's allowance: the
+# box wrote back the context it had read before the trash.
+
+ELIMINATE_ALLIES = "imperium:eliminate_allies:0"
+
+
+def _deploy_allowance(state: GameState) -> tuple[object, list[int]]:
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    counts: set[int] = set()
+    for action in legal_combat_deployments(state, 0):
+        count = dict(action.arguments)["count"]
+        assert isinstance(count, int)
+        counts.add(count)
+    return dict(frame.context)["troops_recruited"], sorted(counts)
+
+
+def test_agent_box_trash_keeps_eliminate_allies_troops_deployable() -> None:
+    owner = PlayerState(
+        player_id=0,
+        hand=(_imperium_instance("shishakli"), ELIMINATE_ALLIES),
+        deck=(_instance("dagger"),),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    action = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == ELIMINATE_ALLIES
+    )
+
+    trashed = apply_agent_card_trash(placed, action).state
+
+    assert trashed.players[0].troops_garrison == 3 + 2
+    # Two recruited plus up to two more from the garrison [Main p. 10].
+    assert _deploy_allowance(trashed) == (2, [1, 2, 3, 4])
+
+
+def test_long_live_the_fighters_trash_keeps_eliminate_allies_troops_deployable() -> (
+    None
+):
+    draw_card = _instance("dagger")
+    discard_card = _instance("convincing_argument")
+    state = _long_live_state((draw_card, discard_card, ELIMINATE_ALLIES))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = resolve_agent_card_effect(placed).state
+    for card_id in (draw_card, discard_card):
+        ready = apply_agent_card_long_live_action(
+            ready,
+            next(
+                action
+                for action in legal_agent_card_long_live_actions(ready, 0)
+                if dict(action.arguments)["card_id"] == card_id
+            ),
+        ).state
+
+    assert ready.players[0].trashed == (ELIMINATE_ALLIES,)
+    assert _deploy_allowance(ready) == (2, [1, 2, 3, 4])
+
+
 def test_long_live_the_fighters_returns_a_trashed_reserve_card_to_its_stack() -> None:
     draw_card = _instance("dagger")
     discard_card = _instance("convincing_argument")
