@@ -601,3 +601,8 @@
      `reveal_water`; 한 slice의 새 합법 행동이 다른 slice가 넓힌 카드에서 codec에 없음 — Commander 이동)을 통합 브랜치의 전체 테스트와
      codec 탐침(모든 합법 행동을 인코딩)으로 잡는다. worktree는 `origin/master`에서 갈라질 수 있으니 기준 커밋을 확인한다. 서브에이전트가
      출력 없이 3분 넘게 도는 명령(부하 걸린 전체 pytest)은 멈춤으로 처리되므로 테스트를 묶음으로 나눠 돌리게 한다.
+  4. 한 곳에서 찾은 **결함의 모양**은 저장소 전체에서 찾는다. 통합 리뷰의 R8(Signet으로 trash한 Eliminate Allies의 troop 2가, trash 전에
+     읽은 frame 문맥을 다시 써서 배치 몫에서 사라짐)은 담당 그룹이 자기 파일만 고쳤고, 같은 덮어쓰기가 `agent_effects.py`의 Agent box
+     trash·Long Live the Fighters에, 비슷한 누락(Plot으로 산 tile의 troop이 turn의 recruit로 안 셈)이 `tech.py`에 남아 있었다 — 검증자가
+     "후속 확인 필요"로 남긴 메모를 main 세션이 따라가서야 드러났다. 수정 지시에는 "같은 모양의 다른 호출 지점을 grep으로 찾아 함께
+     고치거나 보고하라"를 넣는다.
