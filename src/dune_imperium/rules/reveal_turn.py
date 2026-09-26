@@ -39,7 +39,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import grant_combat_icon, undeployable_troops
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
@@ -946,6 +946,13 @@ def apply_contract_reveal_choice(
         card_id,
         source=source,
     )
+    # A trashed card's own troop-on-trash trigger (Eliminate Allies) is not
+    # credited by ``trash_personal_card`` here: the frame on top is this
+    # Reveal choice's own, not an AGENT_EFFECTS frame. A troop recruited
+    # during the owner's own turn "from any source" may be deployed
+    # [Main p. 10] [FAQ p. 4]; the Reveal's Combat icon deploys it
+    # [Bloodlines pp. 5, 12].
+    trashed = credit_trash_recruits(trashed, action.actor)
     owner = trashed.state.players[action.actor]
     next_owner = replace(owner, victory_points=owner.victory_points + 1)
     next_state = replace(
@@ -1508,6 +1515,14 @@ def apply_reveal_card_trash(
         card_id,
         source=source,
     )
+    # The frame on top here is this Reveal choice's own, not an
+    # AGENT_EFFECTS frame, so ``trash_personal_card`` never credited a
+    # troop-on-trash trigger (Eliminate Allies) anywhere: "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main
+    # p. 10] [FAQ p. 4], and the Combat 아이콘 deploys "이번 turn에
+    # recruit한 유닛 전부" [Bloodlines pp. 5, 12]. Every branch below shares
+    # this credit.
+    trashed = credit_trash_recruits(trashed, action.actor)
     if (
         context.get("reveal_choice_effect")
         == PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD.value

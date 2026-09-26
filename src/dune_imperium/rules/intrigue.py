@@ -61,7 +61,7 @@ from dune_imperium.rules.acquisition import (
     take_imperium_row_card,
 )
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat import refresh_combat_participants
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
@@ -1036,6 +1036,12 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             result = trash_personal_card(
                 state, player, str(arguments["card_id"]), source=step_source
             )
+            # The Intrigue choice frame is on top here, not an AGENT_EFFECTS
+            # frame, so ``trash_personal_card`` credited no troop-on-trash
+            # trigger (Eliminate Allies) anywhere. A troop recruited during
+            # the owner's own turn "from any source" may be deployed
+            # [Main p. 10] [FAQ p. 4].
+            result = credit_trash_recruits(result, player)
         case AcquireTleilaxuCard():
             if action.action_id == "decline_intrigue_tleilaxu":
                 result = RuleResult(
@@ -1177,6 +1183,12 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 result = trash_personal_card(
                     state, player, trashed_id, source=step_source
                 )
+                # The Intrigue choice frame is on top here, not an
+                # AGENT_EFFECTS frame, so ``trash_personal_card`` credited no
+                # troop-on-trash trigger (Eliminate Allies) anywhere. A troop
+                # recruited during the owner's own turn "from any source" may
+                # be deployed [Main p. 10] [FAQ p. 4].
+                result = credit_trash_recruits(result, player)
                 cost = getattr(
                     personal_card_for_instance(trashed_id), "acquisition_cost", None
                 )

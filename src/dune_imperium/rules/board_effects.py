@@ -24,7 +24,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
@@ -1008,6 +1008,11 @@ def apply_desert_tactics_action(
                 f"round:{state.round_number}:player:{action.actor}:board:desert_tactics"
             ),
         )
+        # Eliminate Allies' "2 troops" lands in this AGENT_EFFECTS frame's
+        # own context (``_with_recruited_troops``), which the write-back
+        # below would otherwise overwrite with the box's context read
+        # before the trash, discarding the credit [Main p. 10] [FAQ p. 4].
+        keep_trash_recruits(context, trashed)
         effect_state = trashed.state
         events.extend(trashed.events)
 

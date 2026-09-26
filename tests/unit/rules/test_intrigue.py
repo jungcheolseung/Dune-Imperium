@@ -32,6 +32,7 @@ from dune_imperium.rules.acquisition import (
     legal_imperium_acquisitions,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -1118,6 +1119,55 @@ def test_cunning_owner_may_draw_first_and_trash_the_drawn_card() -> None:
     assert trashed.players[0].hand == (dagger,)
     assert trashed.players[0].deck == ()
     assert trashed.intrigue_discard == (card,)
+
+
+def test_cunning_trash_of_eliminate_allies_before_placement_joins_the_combat_turn() -> (
+    None
+):
+    # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
+    # Allies card]. Cunning's paid option trashes from the Intrigue choice
+    # frame (``apply_intrigue_choice``'s ``TrashPersonalCard`` branch), not
+    # an AGENT_EFFECTS frame, so ``trash_personal_card``'s own crediting
+    # never applied there: "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137). Played before the Agent is placed,
+    # the credit must reach the bare turn frame and carry into the Agent
+    # turn's Combat deployment [Main p. 10].
+    card = _intrigue("cunning")
+    eliminate_allies = "imperium:eliminate_allies:0"
+    diplomacy = _starter("diplomacy")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        hand=(eliminate_allies, diplomacy),
+        deck=(_starter("reconnaissance"),),
+        resources=Resources(spice=6),
+    )
+    state = replace(_turn_state(owner), config=RulesetConfig(bloodlines=True))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    resolved = engine.apply(
+        opened, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+    trashed = engine.apply(resolved, _trash(eliminate_allies)).state
+
+    assert trashed.decision_stack[-1].kind == "turn"
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
+
+    placed = engine.apply(
+        trashed,
+        next(
+            a
+            for a in legal_agent_actions(trashed, 0)
+            if dict(a.arguments)["card_id"] == diplomacy
+            and dict(a.arguments)["space_id"] == "heighliner"
+        ),
+    ).state
+    assert {
+        dict(a.arguments)["count"] for a in legal_combat_deployments(placed, 0)
+    } == {1, 2, 3, 4}
 
 
 _CITY_POSTS = frozenset(

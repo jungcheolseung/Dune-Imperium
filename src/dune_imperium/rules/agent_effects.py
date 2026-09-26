@@ -37,6 +37,7 @@ from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import keep_trash_recruits as _keep_trash_recruits
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
 from dune_imperium.rules.combat_deployment import (
@@ -1659,32 +1660,6 @@ def legal_agent_card_trash_actions(
             for card_id in eligible
         ),
     )
-
-
-def _keep_trash_recruits(
-    context: dict[str, ActionValue], trashed: RuleResult
-) -> None:
-    """Carry troops a trash trigger recruited into the context written back.
-
-    Eliminate Allies: "When this card is trashed: 2 troops", and a troop
-    recruited during the turn "from any source" may be deployed [Main p. 10]
-    [FAQ p. 4]. ``trash_personal_card`` credits them to the Agent-turn frame
-    on top, which the box's own context -- read before the trash -- then
-    overwrites; the count goes into that context instead.
-    """
-
-    recruited = sum(
-        troops
-        for event in trashed.events
-        if event.kind == "personal_card_trash_effect_resolved"
-        for troops in (dict(event.payload).get("troops", 0),)
-        if isinstance(troops, int) and not isinstance(troops, bool)
-    )
-    if recruited:
-        previous = context.get("troops_recruited", 0)
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
 
 
 def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult:

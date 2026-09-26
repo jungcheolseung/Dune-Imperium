@@ -187,6 +187,43 @@ def test_shrouded_counsel_command_trash_opens_at_six_persuasion() -> None:
     assert trashed.decision_stack[-1].kind == "reveal"
 
 
+def test_shrouded_counsel_command_trash_of_eliminate_allies_joins_the_reveal() -> None:
+    # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
+    # Allies card]. Shrouded Counsel's Command trash runs from its own
+    # "reveal_choice" frame, not a Reveal or Agent-turn effect frame, so
+    # ``trash_personal_card``'s own AGENT_EFFECTS-only crediting never ran
+    # for it: "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    # deploy할 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:
+    # 137), and the Combat 아이콘 deploys "이번 turn에 recruit한 유닛
+    # 전부와 garrison에서 최대 두 개" [Bloodlines pp. 5, 12].
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _card("shrouded_counsel")
+    eliminate_allies = _card("eliminate_allies")
+    owner = replace(
+        _six_persuasion_hand(card, eliminate_allies), combat_icon_turn=True
+    )
+    revealed = _reveal(_state(owner))
+    frame = revealed.decision_stack[-1]
+    assert dict(frame.context)["reveal_choice_effect"] == "command_may_trash_card"
+    action = next(
+        a
+        for a in legal_reveal_card_trash_actions(revealed, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+
+    trashed = apply_reveal_card_trash(revealed, action).state
+
+    assert trashed.decision_stack[-1].kind == "reveal"
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert _reveal_context(trashed)["reveal_troops_recruited"] == 2
+    assert {
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(trashed, 0)
+        if a.action_id == "deploy_troops"
+    } == {1, 2, 3, 4}
+
+
 def test_command_choices_wait_below_six_persuasion() -> None:
     card = _card("shrouded_counsel")
     revealed = _reveal(_state(_owner(hand=(card, _card("sandwalk")))))

@@ -984,6 +984,55 @@ def test_desert_tactics_can_trash_the_just_played_card_itself() -> None:
     assert decision.owner == 1
 
 
+def test_desert_tactics_trash_of_eliminate_allies_joins_the_combat_allowance() -> None:
+    # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
+    # Allies card]. Desert Tactics is a Combat space (``combat=True``,
+    # [Board Guide p. 1]), and "그 turn에 어떤 출처에서 recruit했든 새
+    # troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137). ``apply_desert_tactics_action`` reads
+    # its box context before the trash and writes it back through
+    # ``advance_after_effect`` -- the stale-context trap that used to
+    # silently drop this credit before ``keep_trash_recruits`` was added
+    # here (review round 2).
+    eliminate_allies = "imperium:eliminate_allies:0"
+    fremen_card = _instance("diplomacy")
+    state = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(
+            PlayerState(player_id=0, hand=(fremen_card, eliminate_allies)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "desert_tactics")).state
+    action = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(placed, 0)
+        if candidate.action_id == "trash_card_for_desert_tactics"
+        and dict(candidate.arguments)["card_id"] == eliminate_allies
+    )
+
+    trashed = apply_desert_tactics_action(placed, action).state
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
+
+    recruited = _resolve_board(trashed, "troops")
+    assert recruited.players[0].troops_garrison == 3 + 2 + 1
+    assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 3
+    assert {
+        dict(deploy.arguments)["count"]
+        for deploy in legal_combat_deployments(recruited, 0)
+    } == {1, 2, 3, 4, 5}
+
+
 def _imperial_privilege_state(
     *,
     intrigue_cards: tuple[str, ...] = (),
