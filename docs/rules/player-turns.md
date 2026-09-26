@@ -152,7 +152,11 @@
 - Sardaukar Coordination으로 Agent를 보내면 Combat space가 아니어도 그 turn에
   실제로 recruit한 troop을 Conflict에 deploy할 수 있다. 이 예외는 기존
   garrison troop 두 개를 추가로 deploy하는 권한을 주지 않는다.
-  `[Sardaukar Coordination card]` `[Main p. 6]`
+  `[Sardaukar Coordination card]` `[Main p. 6]` Immortality의 Graft로 다른 카드와
+  함께 냈다면 어느 카드의 아이콘으로 보냈든 같다 — "Both played cards are
+  considered to have 'sent' the Agent, no matter which card's icon you use",
+  "You gain the effects on both cards" `[Immortality p. 10]` (2026-09-26 수정:
+  이전에는 놓은 카드일 때만 적용했다).
 - garrison이나 supply의 troop은 Conflict strength를 제공하지 않는다. [Main p. 10] [Main p. 12]
 
 ## Reveal turn
