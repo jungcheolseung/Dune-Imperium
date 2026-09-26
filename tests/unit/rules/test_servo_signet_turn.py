@@ -9,7 +9,10 @@ tile was acquired in (OQ-062 (b)). Rapid Engineering ("[discard] → [-1]
 of an Agent or Reveal turn, including before the Agent is placed.
 """
 
+import pytest
+
 from dune_imperium import RulesetConfig
+from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
@@ -17,12 +20,14 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
 
 TECH = RulesetConfig(bloodlines=True, tech_module=True)
 ENGINE = UprisingRulesEngine()
@@ -37,6 +42,11 @@ def _owner(leader_id: str, **extra: object) -> PlayerState:
         "player_id": 0,
         "leader_id": leader_id,
         "hand": (DIPLOMACY, DAGGER),
+        "deck": (
+            "player:0:starter:reconnaissance:0",
+            "player:0:starter:seek_allies:0",
+            "player:0:starter:convincing_argument:0",
+        ),
         "intrigue_cards": (RAPID_ENGINEERING,),
         "resources": Resources(solari=4, spice=6, water=2),
     }
@@ -131,3 +141,143 @@ def test_servo_signet_trash_keeps_eliminate_allies_troops_deployable() -> None:
     assert trashed.players[0].troops_garrison == 3 + 2
     assert _agent_frame(trashed)["troops_recruited"] == 2
     assert _deploy_counts(trashed) == [1, 2, 3, 4]
+
+
+# --- Before the Agent is placed ----------------------------------------------
+#
+# A Plot played from the turn frame belongs to the Agent turn that follows:
+# "You may play a Plot Intrigue card any time during one of your Agent or
+# Reveal turns" [Main p. 7], and troops it recruits join that turn's
+# deployment (frames.update_turn_recruits). OQ-062 (b): in the owner's Agent
+# turn "Emperor의 배치 금지가 그 turn에 걸리며, recruit한 troop은 그 turn의
+# 배치 몫에 들어가고 Harkonnen Advisor의 troop은 배치 불가로 남는다". Before,
+# the Servo frame folded its counters only into an Agent-turn effect frame,
+# so all three were lost when the tile came before the placement.
+
+
+def _servo_before_placement(owner: PlayerState, pick: str = "") -> GameState:
+    state = _acquire_servo(_turn_state(owner))
+    while state.decision_stack[-1].kind == FrameKind.LEADER_SIGNET:
+        state = _act(state, pick)
+    assert [frame.kind for frame in state.decision_stack] == [FrameKind.TURN]
+    return state
+
+
+@pytest.mark.parametrize("spies_supply", [3, 0])
+@pytest.mark.parametrize("leader_id", sorted(IMPLEMENTED_ABILITY_LEADER_IDS))
+def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
+    leader_id: str, spies_supply: int
+) -> None:
+    # Every choice path closes the leader_signet frame and leaves only the
+    # owner's turn frame, waiting for the Agent placement (merge guard, like
+    # the Landsraad and Reveal walk in test_tech.py).
+    codec = ActionCodec(TECH)
+    owner = _owner(
+        leader_id,
+        influence=Influence(emperor=2, fremen=2),
+        troops_conflict=2,
+        troops_supply=7,
+        spies_supply=spies_supply,
+        spy_post_ids=()
+        if spies_supply
+        else (
+            "arrakis-deep-desert",
+            "fremen-desert-tactics-fremkit",
+            "emperor-sardaukar-dutiful-service",
+        ),
+    )
+    pending = [_acquire_servo(_turn_state(owner))]
+    leaves = 0
+    while pending:
+        current = pending.pop()
+        if all(f.kind != FrameKind.LEADER_SIGNET for f in current.decision_stack):
+            leaves += 1
+            assert [f.kind for f in current.decision_stack] == [FrameKind.TURN]
+            continue
+        decision = current.decision_stack[-1].decision
+        assert isinstance(decision, PlayerDecision)
+        actions = ENGINE.legal_actions(current, decision.owner)
+        assert actions, "a leader_signet frame must offer a choice"
+        for action in actions:
+            assert codec.decode(codec.encode(action), action.actor) == action
+            pending.append(ENGINE.apply(current, action).state)
+        assert leaves + len(pending) < 400, "Signet choices must terminate"
+    assert leaves >= 1
+
+
+def test_harkonnen_advisor_troop_from_the_turn_frame_stays_undeployable() -> None:
+    # "1 troop. You can't deploy this troop to the Conflict this turn."
+    # [Piter De Vries card]; "garrison에 그 troop만 있으면 이번 turn에는
+    # 아무것도 배치할 수 없다" (OQ-038 (b)).
+    from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
+
+    owner = _owner("piter_de_vries", troops_garrison=0, troops_supply=12)
+    before = _servo_before_placement(owner)
+    assert before.players[0].troops_garrison == 1
+    assert undeployable_troops_this_turn(before, 0) == 1
+    placed = _send_agent(before, "heighliner")
+    assert _agent_frame(placed)["undeployable_troops"] == 1
+    assert _deploy_counts(placed) == []
+
+
+def test_emperor_ban_from_the_turn_frame_blocks_the_agent_turn() -> None:
+    # "Units can't be deployed to the Conflict this turn" [Shaddam Corrino
+    # IV card]; the ability "affects only the turn in which it is
+    # triggered" [FAQ p. 3] and takes effect at once [Main p. 17].
+    from dune_imperium.rules.leader_abilities import units_deployment_blocked
+
+    owner = _owner("shaddam_corrino_iv")
+    before = _servo_before_placement(owner, "gain_leader_signet_troop")
+    assert units_deployment_blocked(before, 0)
+    placed = _send_agent(before, "heighliner")
+    context = _agent_frame(placed)
+    assert context["units_deploy_blocked"] is True
+    assert context["pending_combat_deployment"] is False
+    assert _deploy_counts(placed) == []
+
+
+def test_warmaster_troop_from_the_turn_frame_joins_the_allowance() -> None:
+    # "You may deploy any or all units recruited during your current turn
+    # ... plus up to two more units from your garrison" [Main p. 10].
+    owner = _owner("gurney_halleck", troops_garrison=2, troops_supply=10)
+    before = _servo_before_placement(owner)
+    assert before.players[0].troops_garrison == 3
+    placed = _send_agent(before, "heighliner")
+    assert _agent_frame(placed)["troops_recruited"] == 1
+    assert _deploy_counts(placed) == [1, 2, 3]
+
+
+# --- In a Reveal turn --------------------------------------------------------
+
+
+def _reveal_with_servo(owner: PlayerState) -> GameState:
+    """Reveal with a Combat icon open, then acquire Servo-Receivers."""
+
+    from dune_imperium.rules.tech import push_tech_acquisition
+
+    revealed = _act(_turn_state(owner), "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["combat_deployment"] is True
+    opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
+    bought = _act(opened, "acquire_tech", tech_id="servo_receivers")
+    assert bought.decision_stack[-1].kind == FrameKind.REVEAL
+    return bought
+
+
+def test_harkonnen_advisor_troop_stays_undeployable_in_a_reveal_turn() -> None:
+    # A Combat icon gained earlier this turn opens the Reveal deployment:
+    # "You may deploy any units you recruit this turn and up to two more
+    # from your garrison" [Bloodlines p. 5]. Piter's troop still "can't be
+    # deployed to the Conflict this turn" [Piter De Vries card] (OQ-038);
+    # before, the Reveal offered deploy_troops(1) for it.
+    owner = _owner(
+        "piter_de_vries", troops_garrison=0, troops_supply=12, combat_icon_turn=True
+    )
+    bought = _reveal_with_servo(owner)
+    assert bought.players[0].troops_garrison == 1
+    assert _deploy_counts(bought) == []
+
+    # Warmaster's troop is recruited this turn and deploys.
+    gurney = _owner(
+        "gurney_halleck", troops_garrison=0, troops_supply=12, combat_icon_turn=True
+    )
+    assert _deploy_counts(_reveal_with_servo(gurney)) == [1]

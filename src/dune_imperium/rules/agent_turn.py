@@ -414,11 +414,18 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     owner = state.players[action.actor]
     # Emperor of the Known Universe: playing Shaddam's Signet Ring blocks
     # unit deployment to the Conflict for this whole turn, effective
-    # immediately from the placement [Main p. 17] [FAQ p. 3].
+    # immediately from the placement [Main p. 17] [FAQ p. 3]. Used through
+    # Servo-Receivers before the placement, the ban already waits in the
+    # turn frame, as may a Harkonnen Advisor troop that stays undeployable
+    # (OQ-062 (b), OQ-038).
+    turn_context = dict(state.decision_stack[-1].context)
     units_deploy_blocked = (
         card.agent_effect is PersonalCardAgentEffect.LEADER_SIGNET
         and owner.leader_id == "shaddam_corrino_iv"
-    )
+    ) or turn_context.get("units_deploy_blocked") is True
+    undeployable = turn_context.get("undeployable_troops", 0)
+    if isinstance(undeployable, bool) or not isinstance(undeployable, int):
+        raise RuntimeError("turn frame has an invalid undeployable count")
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -542,6 +549,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("spice_spent_after_placement", 0),
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
+                    *((("undeployable_troops", undeployable),) if undeployable else ()),
                     ("units_deploy_blocked", units_deploy_blocked),
                 )
             )

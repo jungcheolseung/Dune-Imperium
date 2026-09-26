@@ -55,11 +55,10 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     FrameKind,
+    own_turn_frame_index,
     owned_top_frame,
     replace_player,
-    reveal_is_open_for,
     turn_owner_of,
-    update_turn_recruits,
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -225,46 +224,56 @@ def _close_servo_signet(
     state: GameState,
     context: dict[str, ActionValue],
 ) -> GameState:
-    """Fold a finished Servo-Receivers Signet into the owner's open turn."""
+    """Fold a finished Servo-Receivers Signet into the owner's open turn.
+
+    The ability's recruits join that turn's deployment allowance and
+    Harkonnen Advisor's troop stays undeployable for it (OQ-062 (b),
+    OQ-038): in the Agent-turn effect frame, in the turn frame when the
+    tile came before the Agent was placed (the placement carries both), or
+    in the Reveal frame, whose Combat-icon deployment counts the recruits
+    [Bloodlines p. 5]. Outside the owner's turn (Combat) nothing is kept.
+    """
 
     player = context.get("turn_owner")
     if isinstance(player, bool) or not isinstance(player, int):
         raise RuntimeError("Leader Signet frame has invalid owner")
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return state
     frames = state.decision_stack
-    for index in range(len(frames) - 1, -1, -1):
-        frame = frames[index]
-        if (
-            frame.kind != FrameKind.AGENT_EFFECTS
-            or not isinstance(frame.decision, PlayerDecision)
-            or frame.decision.owner != player
-        ):
-            continue
-        # The ability resolved inside the owner's Agent turn: its recruits
-        # stay deployable and Harkonnen Advisor's troop stays undeployable (a
-        # Spy recalled for it counts through the seat's spies_recalled_turn).
-        agent_context = dict(frame.context)
-        for key in _TURN_COUNTERS:
-            agent_context[key] = _context_count(agent_context, key) + (
-                _context_count(context, key)
-            )
-        if index == len(frames) - 1 and context.get("advance_agent_frame") is True:
-            # The Landsraad visit's Acquire Tech waited for the ability;
-            # the Agent turn now moves on as that icon's resolution would.
-            return advance_after_effect(state, agent_context)
-        return replace(
-            state,
-            decision_stack=(
-                *frames[:index],
-                replace(frame, context=tuple(sorted(agent_context.items()))),
-                *frames[index + 1 :],
-            ),
-        )
-    troops = _context_count(context, "troops_recruited")
-    if troops and reveal_is_open_for(state, player):
-        # A Reveal turn's recruits feed its Combat-icon deployment
-        # [Bloodlines p. 5].
-        return update_turn_recruits(state, troops_recruited=troops)
-    return state
+    frame = frames[index]
+    host = dict(frame.context)
+    if frame.kind == FrameKind.REVEAL:
+        host["reveal_troops_recruited"] = _context_count(
+            host, "reveal_troops_recruited"
+        ) + _context_count(context, "troops_recruited")
+        keys: tuple[str, ...] = ("undeployable_troops",)
+    elif frame.kind == FrameKind.TURN:
+        keys = ("troops_recruited", "undeployable_troops")
+    else:
+        # A Spy recalled for the ability counts through the seat's
+        # spies_recalled_turn.
+        keys = _TURN_COUNTERS
+    for key in keys:
+        added = _context_count(context, key)
+        if added:
+            host[key] = _context_count(host, key) + added
+    if (
+        frame.kind == FrameKind.AGENT_EFFECTS
+        and index == len(frames) - 1
+        and context.get("advance_agent_frame") is True
+    ):
+        # The Landsraad visit's Acquire Tech waited for the ability;
+        # the Agent turn now moves on as that icon's resolution would.
+        return advance_after_effect(state, host)
+    return replace(
+        state,
+        decision_stack=(
+            *frames[:index],
+            replace(frame, context=tuple(sorted(host.items()))),
+            *frames[index + 1 :],
+        ),
+    )
 
 
 def use_leader_signet_for_tech(
@@ -341,28 +350,29 @@ def use_leader_signet_for_tech(
 
 
 def _block_agent_turn_deployment(state: GameState, player: int) -> GameState:
-    """Set Emperor of the Known Universe's ban on the owner's Agent turn."""
+    """Set Emperor of the Known Universe's ban on the owner's Agent turn.
 
-    frames = state.decision_stack
-    for index in range(len(frames) - 1, -1, -1):
-        frame = frames[index]
-        if frame.kind != FrameKind.AGENT_EFFECTS:
-            continue
-        if not isinstance(frame.decision, PlayerDecision) or (
-            frame.decision.owner != player
-        ):
-            return state
-        agent_context = dict(frame.context)
-        agent_context["units_deploy_blocked"] = True
-        return replace(
-            state,
-            decision_stack=(
-                *frames[:index],
-                replace(frame, context=tuple(sorted(agent_context.items()))),
-                *frames[index + 1 :],
-            ),
-        )
-    return state
+    The turn frame before the Agent is placed is part of that Agent turn:
+    the placement reads the ban from it. A Reveal turn has no way to carry
+    it (OQ-062 (b)).
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    if frame.kind not in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
+        return state
+    host = dict(frame.context)
+    host["units_deploy_blocked"] = True
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(host.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
 
 
 def _name_servo_tile(events: tuple[GameEvent, ...]) -> tuple[GameEvent, ...]:
@@ -1758,18 +1768,19 @@ def units_deployment_blocked(state: GameState, player: int) -> bool:
     Playing Shaddam's Signet Ring means units can't be deployed to the
     Conflict for that whole Agent turn, effective from the placement
     [Shaddam Corrino IV card] [Main p. 17]; the restriction ends with the
-    turn [FAQ p. 3], so it lives in the Agent-turn effect frame.
+    turn [FAQ p. 3], so it lives in the Agent-turn effect frame, or in the
+    turn frame when Servo-Receivers used the ability before the Agent was
+    placed (OQ-062 (b)).
     """
 
-    for frame in reversed(state.decision_stack):
-        if frame.kind != FrameKind.AGENT_EFFECTS:
-            continue
-        return (
-            isinstance(frame.decision, PlayerDecision)
-            and frame.decision.owner == player
-            and dict(frame.context).get("units_deploy_blocked") is True
-        )
-    return False
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return False
+    frame = state.decision_stack[index]
+    return (
+        frame.kind in (FrameKind.AGENT_EFFECTS, FrameKind.TURN)
+        and dict(frame.context).get("units_deploy_blocked") is True
+    )
 
 
 def apply_leader_signet_spy(

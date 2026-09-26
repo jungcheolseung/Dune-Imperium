@@ -228,6 +228,31 @@ def turn_owner_of(state: GameState) -> int | None:
     return None
 
 
+def own_turn_frame_index(state: GameState, player: int) -> int | None:
+    """Return the stack index of ``player``'s own open turn frame, if any.
+
+    The turn frame before the Agent is placed, the Agent-turn effect frame
+    and the Reveal frame each carry the bookkeeping of that one turn.
+    ``None`` when the open turn is another seat's or no turn is open (the
+    Combat, Makers and Recall phases are not turns [Main p. 8]).
+    """
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if frame.kind not in (
+            FrameKind.TURN,
+            FrameKind.AGENT_EFFECTS,
+            FrameKind.REVEAL,
+        ):
+            continue
+        if isinstance(frame.decision, PlayerDecision) and (
+            frame.decision.owner == player
+        ):
+            return index
+        return None
+    return None
+
+
 def reveal_is_open_for(state: GameState, player: int) -> bool:
     """Return whether ``player``'s Reveal frame is on the decision stack."""
 

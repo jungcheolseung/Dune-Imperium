@@ -40,7 +40,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
-from dune_imperium.rules.combat_deployment import grant_combat_icon
+from dune_imperium.rules.combat_deployment import grant_combat_icon, undeployable_troops
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -457,7 +457,8 @@ def legal_reveal_deployments(
     owner = state.players[player]
     actions: list[DomainAction] = []
     for action_id, garrison in (
-        ("deploy_troops", owner.troops_garrison),
+        # Harkonnen Advisor's troop stays undeployable (OQ-038, OQ-062).
+        ("deploy_troops", max(0, owner.troops_garrison - undeployable_troops(context))),
         ("deploy_commanders", owner.commanders_garrison),
     ):
         actions.extend(

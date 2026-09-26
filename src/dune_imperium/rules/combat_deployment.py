@@ -28,7 +28,7 @@ from dune_imperium.rules.effects import (
     agent_turn_has_other_pending_effects,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.frames import FrameKind, own_turn_frame_index, replace_player
 
 
 def undeployable_troops(context: dict[str, ActionValue]) -> int:
@@ -41,22 +41,21 @@ def undeployable_troops(context: dict[str, ActionValue]) -> int:
 
 
 def undeployable_troops_this_turn(state: GameState, player: int) -> int:
-    """Troops the player's open Agent turn forbids deploying (OQ-038).
+    """Troops the player's open turn forbids deploying (OQ-038).
 
-    Zero outside an Agent turn; every deployment that reads the garrison
-    (basic deployment, Intrigue and Navigation "deploy from garrison"
-    effects) must subtract this before judging what is possible.
+    The count lives in the owner's turn frame: the Agent-turn effect frame,
+    the turn frame before the Agent is placed, or the Reveal frame (a
+    Harkonnen Advisor troop from Servo-Receivers, OQ-062). Zero outside the
+    owner's turn; every deployment that reads the garrison (basic
+    deployment, Reveal Combat-icon deployment, Intrigue and Navigation
+    "deploy from garrison" effects) must subtract this before judging what
+    is possible.
     """
 
-    for frame in reversed(state.decision_stack):
-        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
-            frame.decision, PlayerDecision
-        ):
-            continue
-        if frame.decision.owner != player:
-            continue
-        return undeployable_troops(dict(frame.context))
-    return 0
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return 0
+    return undeployable_troops(dict(state.decision_stack[index].context))
 
 
 def release_undeployable_troops(
@@ -73,23 +72,23 @@ def release_undeployable_troops(
 
     if count < 1:
         return state
-    frames = list(state.decision_stack)
-    for index in range(len(frames) - 1, -1, -1):
-        frame = frames[index]
-        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
-            frame.decision, PlayerDecision
-        ):
-            continue
-        if frame.decision.owner != player:
-            continue
-        context = dict(frame.context)
-        undeployable = undeployable_troops(context)
-        if not undeployable:
-            return state
-        context["undeployable_troops"] = max(0, undeployable - count)
-        frames[index] = replace(frame, context=tuple(sorted(context.items())))
-        return replace(state, decision_stack=tuple(frames))
-    return state
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    undeployable = undeployable_troops(context)
+    if not undeployable:
+        return state
+    context["undeployable_troops"] = max(0, undeployable - count)
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
 
 
 def _deployment_context(
