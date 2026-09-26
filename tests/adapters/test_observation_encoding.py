@@ -236,16 +236,21 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # ``promo_bloodlines_tech`` again; the encoder of that pin (ab87327) and the
 # current one agreed on every vector of all five games, and no observation
 # or encoder file changed in between.
+# Re-pinned the same night for OQ-070 (a recruited Commander's deploy slot
+# is a Commander's): promo_bloodlines_tech first diverges at decision 371
+# and everything at decision 690, both at the changed deploy_troops offer;
+# master's encoder (59e7d46 line) and this one agreed on every vector of all
+# five games, and no observation or encoder file changed.
 _GOLDEN_DIGESTS = {
     "base": ("2d50b45756e1958cd6b83c1433839c9f228e344edc14bffa88f44c0d8f8ab0c2", 2572),
     "choam": ("7a0d28ab59a1721b19d38c3a4eee18add65bc1924a64ac252b8eef90e9609095", 2972),
     "promo_bloodlines_tech": (
-        "53a671ab242e040e5fac4b53e6a9a861700df1e216319269eec309657071be6d",
-        3040,
+        "2ef7cd10f4a8adbbbc3377f05d97d94a9bc3f79867beccaf4d9681d0b1c332b9",
+        2772,
     ),
     "everything": (
-        "703f5f984e007045a4b7b15410e819d22d513f9560a95a5f08a78b211c32463e",
-        3012,
+        "ab8f81804639898f312acff9dbd2cc2e41c29592a786ff87fd5b601dffbf3756",
+        3044,
     ),
     "draft": ("a5e5cdaa2b4382445f48f93b5beb721f59e880a1c99deff6c0896c9cf30369ba", 2476),
 }
