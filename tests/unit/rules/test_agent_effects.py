@@ -2274,7 +2274,11 @@ def test_bene_gesserit_operative_recalls_before_placing_when_supply_is_empty() -
         ),
     )
     placed_agent = apply_agent_action(state, _action_to(state, "secrets")).state
-    recall_action = legal_agent_card_spy_actions(placed_agent, 0)[0]
+    recall_action = next(
+        action
+        for action in legal_agent_card_spy_actions(placed_agent, 0)
+        if action.action_id == "recall_spy_for_agent_card"
+    )
 
     recalled = apply_agent_card_spy_action(placed_agent, recall_action)
     recalled_post = dict(recall_action.arguments)["post_id"]
@@ -2290,8 +2294,15 @@ def test_bene_gesserit_operative_recalls_before_placing_when_supply_is_empty() -
     assert set(replaced.state.players[0].spy_post_ids) == set(posts)
 
 
-def _walk_to_turn_end_offer(engine: UprisingRulesEngine, state: GameState) -> GameState:
-    """Take every other choice until the turn end is offered (or nothing is left)."""
+_SPY_BOX_ACTIONS = frozenset(
+    {"decline_agent_card_spy", "place_agent_card_spy", "recall_spy_for_agent_card"}
+)
+
+
+def _walk_past_other_effects(
+    engine: UprisingRulesEngine, state: GameState
+) -> GameState:
+    """Take every other choice until only the Spy box or the turn end is left."""
 
     for _ in range(20):
         offered = engine.legal_actions(state, 0)
@@ -2300,8 +2311,8 @@ def _walk_to_turn_end_offer(engine: UprisingRulesEngine, state: GameState) -> Ga
         others = [
             action
             for action in offered
-            if action.action_id
-            not in ("recall_spy_for_agent_card", "withdraw_troops", "deploy_troops")
+            if action.action_id not in _SPY_BOX_ACTIONS
+            and action.action_id not in ("withdraw_troops", "deploy_troops")
         ]
         if not others:
             return state
@@ -2309,13 +2320,20 @@ def _walk_to_turn_end_offer(engine: UprisingRulesEngine, state: GameState) -> Ga
     raise AssertionError("the Agent turn kept offering choices")
 
 
-def test_bene_gesserit_operative_may_pass_up_the_recall_with_an_empty_supply() -> None:
-    # "If you have no Spies in your supply when you need to place one, you
-    # may first recall one of your Spies for no effect." [Main p. 11] (again
-    # [Main p. 20]); docs/rules/uprising-systems.md: with an empty supply the
-    # recall stays optional, so the owner may pass without placing (OQ-057
-    # (14)). The engine used to offer only the recall, so the owner was
-    # forced to pull a Spy off a post and the turn could not end without it.
+def _pass_the_turn(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    """Resolve the rest of seat 0's Agent turn; it passes to seat 1."""
+
+    settled = _walk_past_other_effects(engine, state)
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    if finish in engine.legal_actions(settled, 0):
+        settled = engine.apply(settled, finish).state
+    frame = settled.decision_stack[-1]
+    assert frame.kind == FrameKind.TURN
+    assert isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 1
+    return settled
+
+
+def _operative_state_with_every_spy_placed() -> tuple[GameState, tuple[str, ...]]:
     operative = _imperium_instance("bene_gesserit_operative")
     posts = (
         "emperor-sardaukar-dutiful-service",
@@ -2340,31 +2358,93 @@ def test_bene_gesserit_operative_may_pass_up_the_recall_with_an_empty_supply() -
             ),
         ),
     )
+    return state, posts
+
+
+def test_bene_gesserit_operative_may_pass_up_the_recall_with_an_empty_supply() -> None:
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect." [Main p. 11] (again
+    # [Main p. 20]). docs/rules/uprising-systems.md ("Spy와 observation
+    # post"): "supply가 비었을 때의 선행 recall("you may first recall one of
+    # your Spies" [Main pp. 11, 20])은 그대로 선택이므로, 그때는 배치하지
+    # 않고 넘어갈 수 있다" (OQ-057 (14)), and docs/rules/player-turns.md:
+    # the space's and the Agent box's effects "원하는 순서로 처리한다"
+    # [Main p. 9]. So the pass is offered when the box resolves and the
+    # Agent turn goes on; it used to exist only as the turn's end
+    # (finish_agent_turn), and before that the recall was forced.
+    state, posts = _operative_state_with_every_spy_placed()
     engine = UprisingRulesEngine()
-    placed = _walk_to_turn_end_offer(
+    placed = engine.apply(state, _action_to(state, "secrets")).state
+
+    offered = {action.action_id for action in engine.legal_actions(placed, 0)}
+    assert {"decline_agent_card_spy", "recall_spy_for_agent_card"} <= offered
+    assert "resolve_board_effect" in offered
+    passed = engine.apply(
+        placed, DomainAction(action_id="decline_agent_card_spy", actor=0)
+    )
+
+    owner = passed.state.players[0]
+    assert owner.spy_post_ids == posts
+    assert owner.spies_supply == 0
+    assert owner.spies_recalled_turn == 0
+    assert [event.kind for event in passed.events] == ["spy_placement_unavailable"]
+    # The Agent turn goes on with Secrets' own icons still to resolve.
+    assert passed.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    remaining = {action.action_id for action in engine.legal_actions(passed.state, 0)}
+    assert "resolve_board_effect" in remaining
+    assert not remaining & _SPY_BOX_ACTIONS
+
+    ended = _pass_the_turn(engine, passed.state)
+    assert ended.players[0].spy_post_ids == posts
+
+
+def test_bene_gesserit_operative_spy_box_is_answered_before_the_turn_passes() -> None:
+    # The pass-up is the box's own answer, like Espionage's
+    # resolve_espionage_without_spy: with everything else resolved only the
+    # box's choices remain (no turn end past them), and the turn passes on
+    # once it is answered.
+    state, _ = _operative_state_with_every_spy_placed()
+    engine = UprisingRulesEngine()
+    settled = _walk_past_other_effects(
         engine, engine.apply(state, _action_to(state, "secrets")).state
     )
 
-    offered = {action.action_id for action in engine.legal_actions(placed, 0)}
-    assert offered == {"recall_spy_for_agent_card", "finish_agent_turn"}
+    offered = {action.action_id for action in engine.legal_actions(settled, 0)}
+    assert offered == {"decline_agent_card_spy", "recall_spy_for_agent_card"}
     passed = engine.apply(
-        placed, DomainAction(action_id="finish_agent_turn", actor=0)
-    )
-    assert passed.state.players[0].spy_post_ids == posts
-    assert passed.state.players[0].spies_recalled_turn == 0
-    assert "agent_card_effect_unavailable" in {event.kind for event in passed.events}
-    assert passed.state.decision_stack[-1].kind == FrameKind.TURN
+        settled, DomainAction(action_id="decline_agent_card_spy", actor=0)
+    ).state
+    _pass_the_turn(engine, passed)
 
-    # Once the recall is made the Spy is in supply and must be placed.
-    recall = next(
-        action
-        for action in engine.legal_actions(placed, 0)
-        if action.action_id == "recall_spy_for_agent_card"
+
+def test_bene_gesserit_operative_must_place_once_it_recalled_first() -> None:
+    # After the recall-first the Spy is in the supply, and "It is mandatory
+    # to place a Spy if you have at least one Spy in your supply" (the
+    # erratum to [Main p. 11], OQ-057 (14)): neither the pass-up nor the
+    # turn end is offered until the Spy is placed.
+    state, posts = _operative_state_with_every_spy_placed()
+    engine = UprisingRulesEngine()
+    settled = _walk_past_other_effects(
+        engine, engine.apply(state, _action_to(state, "secrets")).state
     )
-    recalled = engine.apply(placed, recall).state
-    assert {action.action_id for action in engine.legal_actions(recalled, 0)} == {
-        "place_agent_card_spy"
-    }
+    recall = DomainAction(
+        action_id="recall_spy_for_agent_card",
+        actor=0,
+        arguments=(("post_id", posts[0]),),
+    )
+    recalled = engine.apply(settled, recall).state
+
+    assert recalled.players[0].spies_supply == 1
+    offered = {action.action_id for action in engine.legal_actions(recalled, 0)}
+    assert offered == {"place_agent_card_spy"}
+    placement = next(
+        action
+        for action in engine.legal_actions(recalled, 0)
+        if dict(action.arguments)["post_id"] == posts[0]
+    )
+    replaced = engine.apply(recalled, placement).state
+    assert set(replaced.players[0].spy_post_ids) == set(posts)
+    assert replaced.players[0].spies_supply == 0
 
 
 def test_reliable_informant_limits_spy_placement_to_three_faction_posts() -> None:
@@ -2444,7 +2524,9 @@ def test_reliable_informant_can_only_recall_a_spy_that_opens_a_target_post() -> 
 
     actions = legal_agent_card_spy_actions(placed_agent, 0)
 
-    assert tuple(dict(action.arguments)["post_id"] for action in actions) == (
+    # The recall-first stays optional [Main pp. 11, 20] (OQ-057 (14)).
+    assert actions[0] == DomainAction(action_id="decline_agent_card_spy", actor=0)
+    assert tuple(dict(action.arguments)["post_id"] for action in actions[1:]) == (
         target_posts[0],
     )
 
@@ -3151,6 +3233,40 @@ def _recall_with_special_mission(state: GameState, post_id: str) -> GameState:
 def _decline_gathering(state: GameState) -> GameState:
     decline = DomainAction(action_id="decline_gather_intelligence", actor=0)
     return apply_gather_intelligence_action(state, decline).state
+
+
+def test_a_passed_up_agent_box_spy_stays_passed_after_a_plot_refills_the_supply() -> (
+    None
+):
+    # The owner resolves the Agent box and the rest of the turn "원하는
+    # 순서로" [Main p. 9] (docs/rules/player-turns.md). With no Spy in supply
+    # the recall-first is optional, "그때는 배치하지 않고 넘어갈 수 있다"
+    # [Main pp. 11, 20] (docs/rules/uprising-systems.md, OQ-057 (14)). Passing
+    # Bene Gesserit Operative's Spy up first and then paying Special
+    # Mission's Recall Spy cost leaves that Spy in the supply. When the pass
+    # only existed at the turn's end, the refilled supply made the box's
+    # placement mandatory again.
+    posts = (
+        _ARRAKEEN_POST,
+        "emperor-sardaukar-dutiful-service",
+        "fremen-desert-tactics-fremkit",
+    )
+    state = _recall_card_state("bene_gesserit_operative", posts)
+    engine = UprisingRulesEngine()
+    placed = engine.apply(state, _action_to(state, "secrets")).state
+    passed = engine.apply(
+        placed, DomainAction(action_id="decline_agent_card_spy", actor=0)
+    ).state
+
+    recalled = _recall_with_special_mission(passed, _ARRAKEEN_POST)
+
+    assert recalled.players[0].spies_supply == 1
+    assert not {
+        action.action_id for action in engine.legal_actions(recalled, 0)
+    } & _SPY_BOX_ACTIONS
+    ended = _pass_the_turn(engine, recalled)
+    assert ended.players[0].spies_supply == 1
+    assert ended.players[0].spy_post_ids == posts[1:]
 
 
 def test_imperial_spymaster_counts_a_plot_recall_made_before_the_agent() -> None:
@@ -5248,7 +5364,7 @@ def test_double_agent_empty_supply_recalls_only_to_open_a_connected_post() -> No
     # Spies for no effect." [Main p. 20]: when the owner's own Spy holds the
     # only connected post, only that recall can open a destination. The
     # recall stays optional (docs/rules/uprising-systems.md, OQ-057 (14)):
-    # the owner may also end the turn without it.
+    # the owner may pass it up instead.
     own_post = "arrakis-spice-refinery-arrakeen"
     state = _double_agent_state(
         owner_posts=(
@@ -5264,24 +5380,27 @@ def test_double_agent_empty_supply_recalls_only_to_open_a_connected_post() -> No
 
     actions = legal_agent_card_spy_actions(placed, 0)
     assert actions == (
+        DomainAction(action_id="decline_agent_card_spy", actor=0),
         DomainAction(
             action_id="recall_spy_for_agent_card",
             actor=0,
             arguments=(("post_id", own_post),),
         ),
     )
-    recalled = apply_agent_card_spy_action(placed, actions[0]).state
+    recalled = apply_agent_card_spy_action(placed, actions[1]).state
     assert _double_agent_posts(recalled) == {own_post}
+    assert legal_agent_card_spy_actions(recalled, 0) == (
+        DomainAction(
+            action_id="place_agent_card_spy",
+            actor=0,
+            arguments=(("post_id", own_post),),
+        ),
+    )
 
-    engine = UprisingRulesEngine()
-    resolved = _walk_to_turn_end_offer(engine, placed)
-    offered = {action.action_id for action in engine.legal_actions(resolved, 0)}
-    assert {"recall_spy_for_agent_card", "finish_agent_turn"} <= offered
-    passed = engine.apply(
-        resolved, DomainAction(action_id="finish_agent_turn", actor=0)
-    ).state
+    passed = apply_agent_card_spy_action(placed, actions[0]).state
     assert passed.players[0].spy_post_ids == placed.players[0].spy_post_ids
     assert passed.players[0].spies_recalled_turn == 0
+    assert legal_agent_card_spy_actions(passed, 0) == ()
 
 
 def test_calculus_of_power_agent_box_is_an_optional_trash() -> None:

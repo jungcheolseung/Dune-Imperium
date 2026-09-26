@@ -623,6 +623,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "recall_conflict_agent_for_agent_card": apply_agent_card_recall,
     "place_agent_card_spy": apply_agent_card_spy_action,
     "recall_spy_for_agent_card": apply_agent_card_spy_action,
+    "decline_agent_card_spy": apply_agent_card_spy_action,
     "choose_agent_card_influence": apply_agent_card_influence,
     "acquire_imperium_with_solari": apply_agent_card_acquisition,
     "acquire_reserve_with_solari": apply_agent_card_acquisition,

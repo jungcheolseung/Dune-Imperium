@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 109
+    assert ACTION_CODEC_VERSION == 110
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -47,8 +47,11 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # recall an Into the Fray Agent from the Conflict, not only Imperial
     # Privilege. Both new templates need Bloodlines (an Into the Fray Agent
     # only exists then), so the Bloodlines-less base catalog is unchanged.
+    # v110: an Agent-box Spy may pass up the recall-first too, when the box
+    # resolves (decline_agent_card_spy, +1).
     assert first.size == (
         4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
+        + 1
     )
 
 
@@ -79,9 +82,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     # v109 (OQ-068): both new Conflict-recall templates also need Bloodlines,
     # so the CHOAM-without-Bloodlines catalog is unchanged (see v109 above).
+    # v110: an Agent-box Spy may pass up the recall-first too, when the box
+    # resolves (decline_agent_card_spy, +1).
     assert codec.size == (
         4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
-        + 1
+        + 1 + 1
     )
 
     try:
@@ -153,9 +158,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     # v109 (OQ-068): recall_conflict_agent_for_agent_card (+1) and
     # recall_conflict_agent_for_contract (+1).
+    # v110: an Agent-box Spy may pass up the recall-first too, when the box
+    # resolves (decline_agent_card_spy, +1).
     assert (
         both.size
-        == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1
+        == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -205,7 +212,7 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
     # A Spy icon without a Spy in supply: "you may first recall one of your
     # Spies for no effect" [Main pp. 11, 20] -- the Conflict reward and
     # Leader Spies' recall and decline templates exist in every catalog, and
-    # so does the acquisition-bonus Spy's decline.
+    # so do the acquisition-bonus and Agent-box Spies' declines.
     actions = (
         DomainAction(action_id="decline_combat_reward_spy", actor=2),
         DomainAction(
@@ -215,6 +222,7 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
         ),
         DomainAction(action_id="decline_leader_spy_placement", actor=2),
         DomainAction(action_id="decline_acquisition_spy", actor=2),
+        DomainAction(action_id="decline_agent_card_spy", actor=2),
     )
     for config in (
         RulesetConfig(),

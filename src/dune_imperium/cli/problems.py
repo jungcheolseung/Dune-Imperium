@@ -12,10 +12,10 @@ from dune_imperium.evaluation.problem_set import (
     answer,
     load_suite,
     mine,
-    restore,
     save_suite,
     suite_note,
     summarize_answers,
+    unrestorable,
 )
 from dune_imperium.evaluation.tournament import tournament_specs
 
@@ -137,12 +137,7 @@ def _score(args: argparse.Namespace) -> None:
 
 def _check(args: argparse.Namespace) -> None:
     positions = load_suite(args.suite)
-    failures = []
-    for position in positions:
-        try:
-            restore(position)
-        except ValueError as error:
-            failures.append(str(error))
+    failures = unrestorable(positions)
     print(f"{len(positions) - len(failures)}/{len(positions)} positions restore")
     for line in failures:
         print(f"- {line}")

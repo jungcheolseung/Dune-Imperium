@@ -68,7 +68,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # (recall_conflict_agent_for_agent_card, Bloodlines catalogs) and the
 # Sardaukar II / High Council token Contract reward
 # (recall_conflict_agent_for_contract, CHOAM+Bloodlines catalogs).
-ACTION_CODEC_VERSION = 109
+# v110 (OQ-057 (14)): an Agent-box Spy without a Spy in supply may pass up
+# the recall-first when the box resolves [Main pp. 9, 11, 20]
+# (decline_agent_card_spy, every catalog), instead of only fizzling at the
+# turn's end.
+ACTION_CODEC_VERSION = 110
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -231,6 +235,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # An acquisition-bonus Spy may pass up the recall-first without a
             # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
             "decline_acquisition_spy",
+            # So may an Agent-box Spy, when the box resolves (codec v110).
+            "decline_agent_card_spy",
             "resolve_faction_influence",
             "retreat_leader_troop",
             "reveal_turn",

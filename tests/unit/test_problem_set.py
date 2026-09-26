@@ -24,6 +24,7 @@ from dune_imperium.evaluation.problem_set import (
     restore,
     save_suite,
     summarize_answers,
+    unrestorable,
 )
 from dune_imperium.evaluation.tournament import MatchSpec, tournament_specs
 
@@ -76,10 +77,41 @@ def test_the_committed_suite_covers_every_problem_and_still_restores(
 ) -> None:
     assert {p.problem_id for p in suite} == set(PROBLEMS)
     assert len({p.position_id for p in suite}) == len(suite)
-    # A sample keeps this fast; an engine change that moves a stored
-    # position fails here -- re-mine the suite (docs/evaluation/problem-set.md).
+    # The judges are checked on a sample; restoring every stored position is
+    # test_every_position_of_the_committed_suite_restores below.
     for position in _sample(suite, 3):
         _assert_discriminates(position)
+
+
+def test_every_position_of_the_committed_suite_restores(
+    suite: list[Position],
+) -> None:
+    # The same restore as `dune-imperium-problems check` (about 10 seconds).
+    # A rule change that moves any stored position fails here, instead of
+    # waiting for the next re-mine: on master 60f8e95 four of 106 positions
+    # had stopped restoring unnoticed, because only a sample was restored.
+    failures = unrestorable(suite)
+    if failures:
+        pytest.fail(
+            f"{len(failures)} of {len(suite)} positions of {DEFAULT_SUITE.name} "
+            "no longer restore; re-mine the suite (docs/evaluation/"
+            "problem-set.md, 다시 캐는 명령):\n"
+            + "\n".join(f"- {failure}" for failure in failures),
+            pytrace=False,
+        )
+
+
+def test_the_suite_check_lists_every_position_that_moved(
+    suite: list[Position],
+) -> None:
+    moved = [replace(position, fingerprint="0" * 16) for position in suite[1:3]]
+
+    failures = unrestorable([suite[0], *moved])
+
+    assert len(failures) == 2
+    for position, failure in zip(moved, failures, strict=True):
+        assert failure.startswith(f"{position.position_id}: ")
+        assert "re-mine" in failure
 
 
 def test_a_position_the_engine_no_longer_reaches_is_reported(

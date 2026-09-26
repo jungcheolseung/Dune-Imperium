@@ -609,6 +609,23 @@ def restore(
     return replay.engine, replay.state, replay.legal
 
 
+def unrestorable(positions: Sequence[Position]) -> list[str]:
+    """Restore every position; return why each one that no longer restores fails.
+
+    The ``check`` command and the test suite's guard over the committed suite
+    both use this, so an engine change that moves a stored position is caught
+    the same way in both places.
+    """
+
+    failures = []
+    for position in positions:
+        try:
+            restore(position)
+        except ValueError as error:
+            failures.append(str(error))
+    return failures
+
+
 # --- suites ------------------------------------------------------------------
 
 

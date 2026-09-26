@@ -1151,7 +1151,16 @@ def legal_agent_card_spy_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return placement or recall choices for an Agent-box Spy icon."""
+    """Return placement, recall, or decline choices for an Agent-box Spy icon.
+
+    Placing is mandatory while a Spy is in the supply (the erratum to
+    [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in your
+    supply when you need to place one, you may first recall one of your
+    Spies for no effect" [Main pp. 11, 20]: the owner may pass the icon up
+    (``decline_agent_card_spy``) when the box resolves -- the Agent box and
+    the space's effects resolve in any order [Main p. 9] -- and once the
+    recall is made the Spy has to be placed.
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -1229,7 +1238,7 @@ def legal_agent_card_spy_actions(
         recall_post_ids = tuple(
             post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
         )
-    return tuple(
+    recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_agent_card",
             actor=player,
@@ -1237,25 +1246,49 @@ def legal_agent_card_spy_actions(
         )
         for post_id in recall_post_ids
     )
+    if not recalls or context.get("agent_card_spy_recalled") is True:
+        # With nothing to recall the box waits for the turn's end like any
+        # box that can only fizzle (OQ-057 (1)); after a recall-first the
+        # placement is mandatory, even if another freely ordered effect
+        # (Espionage) spent that Spy meanwhile.
+        return recalls
+    return (DomainAction(action_id="decline_agent_card_spy", actor=player), *recalls)
 
 
 def apply_agent_card_spy_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve a card's place-Spy effect, recalling first when necessary."""
+    """Resolve a card's place-Spy effect, recalling first or passing it up."""
 
     if action not in legal_agent_card_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card Spy choice")
     _, context = current_agent_effect_context(state)
     _, source_card_id, _ = _effect_subject(context)
-    post_id = dict(action.arguments).get("post_id")
-    if not isinstance(post_id, str):
-        raise RuntimeError("Agent-card Spy choice has invalid post ID")
     owner = state.players[action.actor]
     source = (
         f"round:{state.round_number}:player:{action.actor}:agent_card:{source_card_id}"
     )
+
+    if action.action_id == "decline_agent_card_spy":
+        # No Spy in supply and the recall-first passed up [Main pp. 11, 20]:
+        # the box resolves without a Spy and the Agent turn goes on.
+        context["pending_agent_effect"] = False
+        context.pop("agent_card_spy_pending", None)
+        return RuleResult(
+            state=advance_after_effect(state, context, state.players),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_unavailable",
+                    kind="spy_placement_unavailable",
+                    payload=(("card_id", source_card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(post_id, str):
+        raise RuntimeError("Agent-card Spy choice has invalid post ID")
 
     if action.action_id == "recall_spy_for_agent_card":
         next_owner = recall_spy(owner, post_id)
@@ -1279,6 +1312,9 @@ def apply_agent_card_spy_action(
     next_owner = place_spy(owner, post_id)
     context["pending_agent_effect"] = False
     context.pop("agent_card_spy_pending", None)
+    # A second Spy box this turn (a graft partner, Ghola's copy) starts
+    # without a recall-first of its own.
+    context.pop("agent_card_spy_recalled", None)
     next_state = advance_after_effect(
         state,
         context,
@@ -4274,13 +4310,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # Placing is mandatory only with a Spy in supply (the erratum to
         # [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in
         # your supply when you need to place one, you may first recall one
-        # of your Spies for no effect" [Main pp. 11, 20]: the recall stays on
-        # offer, and passing it up leaves the box to fizzle at the turn's
-        # end (``finish_agent_turn``). Arrakis Observer's Deep Cover Spy
-        # after its paid discard follows the same rule.
-        if owner.spies_supply > 0 and legal_agent_card_spy_actions(state, player):
+        # of your Spies for no effect" [Main pp. 11, 20]: the recall and its
+        # pass-up (``decline_agent_card_spy``) are the owner's choice, so
+        # the box fizzles here only when neither is possible, and then
+        # waits for the turn's end (OQ-057 (1)). Arrakis Observer's Deep
+        # Cover Spy after its paid discard follows the same rule.
+        if legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
         context.pop("agent_card_spy_pending", None)
+        context.pop("agent_card_spy_recalled", None)
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:

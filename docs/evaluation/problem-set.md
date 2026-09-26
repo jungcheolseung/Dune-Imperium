@@ -19,6 +19,11 @@
 - **저장**: 포지션은 게임 spec(seed·구성·Leader)과 **그 결정까지의 플레이어 선택 번호**만 저장한다. chance는 seed의 난수를
   순서대로 쓰므로 엔진만으로 다시 만든다. 합법 집합의 지문(`fingerprint`)을 함께 저장해, 엔진이 바뀌어 포지션이 움직이면
   복원이 **"re-mine"** 오류를 낸다 — 그때는 문제집을 다시 캔다(규칙 정정 뒤의 정상 절차).
+- **복원 가드**: 기본 pytest의 `tests/unit/test_problem_set.py::test_every_position_of_the_committed_suite_restores`가
+  커밋된 문제집의 **모든** 포지션을 `check`와 같은 함수(`unrestorable`)로 복원해 본다(약 10초). 규칙을 바꿔 포지션이 움직이면
+  움직인 포지션 id 목록과 함께 실패한다 — 그 커밋에서 아래 "다시 캐는 명령"으로 다시 캔다. 2026-09-27 전에는 문항마다 앞의 3개만
+  복원해 봐서, master `60f8e95`에서 106개 가운데 4개가 조용히 깨져 있다가 다음 재채굴 때에야 드러났다(첫 번째 `s42/p2`는 OQ-069
+  병합 `1420936`부터 깨져 있었다).
 - **채점**(`answer`): 포지션마다 새 에이전트를 만들어 그 결정을 묻는다. 모든 에이전트는 "고른 행동이 옳은가"로, 네트워크
   (`checkpoint:`)는 추가로 **옳은 답들의 softmax 확률 합**(`p_right`)으로 채점한다. `search:`·`rollout`은 상태를 받는 탐색으로 답한다.
 
@@ -29,7 +34,25 @@ uv run dune-imperium-problems score --agents heuristic,random,checkpoint:<path> 
 ```
 
 `--append`는 다른 테이블의 포지션을 같은 파일에 더한다(포지션 id에 생성 테이블 이름이 들어간다).
-`check`는 문제집의 모든 포지션을 복원해 본다(규칙을 고친 뒤 먼저 돌린다; 약 40초). 포지션 하나를 복원하는 데 약 0.3초가 든다.
+
+**다시 캐는 명령**(tips-v1). 파일의 `note`는 명령줄이 아니라 캔 조건의 요약("heuristic mirror seeds 0-799 (all problems) and
+800-2799 (last_round_hold_battle_icon only), 5081 mirror seeds 0-59; at most 40 positions per problem per run")이므로, 그대로 옮긴
+명령은 이렇다(2026-09-26 밤 재채굴에 쓴 것; 약 4분). 새 파일에 캔 뒤 `check`로 확인하고 커밋된 파일을 바꾼다.
+
+```bash
+FLAGS=(--choam --bloodlines --tech-module --immortality --promo-cards --workers 4 --max-per-problem 40)
+NOTE="$(uv run python -c 'from dune_imperium.evaluation.problem_set import suite_note; print(suite_note())')"
+uv run dune-imperium-problems mine --agents heuristic --games 800 --start-seed 0 "${FLAGS[@]}" --note "$NOTE" --out <new.json>
+uv run dune-imperium-problems mine --agents heuristic --games 2000 --start-seed 800 \
+    --problems last_round_hold_battle_icon "${FLAGS[@]}" --append --out <new.json>
+uv run dune-imperium-problems mine --agents checkpoint:<champion-5081.pt> --games 60 --start-seed 0 "${FLAGS[@]}" \
+    --append --out <new.json>
+uv run dune-imperium-problems check --suite <new.json>
+```
+
+5081은 `checkpoints/2026-09-22/exploit/champion-5081.pt`(git 무시, 메인 체크아웃)이다. 옛 codec의 체크포인트는 불러올 때 행동
+이름으로 이관된다.
+`check`는 문제집의 모든 포지션을 복원해 본다(위의 복원 가드와 같은 검사). 2026-09-27 Mac mini 실측으로 109개에 약 10초, 포지션 하나에 약 0.1초가 든다.
 
 ## 문항 (tips-v1)
 
@@ -128,6 +151,24 @@ troop의 배치 몫 등, [감사 문서](../implementation-audits/transcription-
 | heuristic | 1.00 | 1.00 | 0.35 |
 | 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.94 / 0.88 |
 
+## 재채굴 (2026-09-26 밤, Agent box Spy의 거절)
+
+Agent box Spy의 거절(`decline_agent_card_spy`, codec v110, [OQ-057 (14)](../rules/open-questions.md))은 supply가 빈 채 Spy
+아이콘 box가 대기하는 결정의 합법 집합에 행동 하나를 recall들 앞에 더한다. heuristic은 recall(1.0)을 거절(−2.0)보다 높게 쳐 그
+결정에서 전과 똑같이 두지만, 저장된 선택 번호가 밀려 sandworm 국면 넷(heuristic `s3/p2`·`s21/p3`·`s34/p3`·`s41/p3`; 지문·길이는
+그대로, 번호 1~3개만 다름)이 복원되지 않았다. 그 전에 master(`60f8e95`)에서 이미 넷(heuristic `s7/p0`·`s7/p1`·`s42/p2`, 5081
+`s15/p1`)이 복원되지 않고 있었다 — 106개 재채굴 뒤의 recruit 집계 전수 수정, OQ-064·066·068·069 판정, 강제 Spy 이동 순서가 판을
+바꿨다. 파일의 `note` 명령 그대로 다시 캤다(5081은 codec v107 → v110으로 이관: 유지 32,980·새 27·삭제 7). **109개**(그대로 98,
+같은 id에 선택 번호만 바뀜 7, 빠짐 1 — sandworm `s42/p2`, 새로 듦 4 — sandworm `s37/p0`와 마지막 라운드 보유 `s1010/p2`·`s1037/p0`·
+`s1330/p0`): sandworm 80, 마지막 라운드 보유 20, Endgame 9. 새로 든 마지막 라운드 보유 셋은 master 엔진으로 같은 seed를 캐도
+나온다 — 이번 변경이 아니라 앞의 규칙 수정에서 왔다.
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 9) | 마지막 라운드 보유 (tip, 20) |
+|---|---|---|---|
+| random | 0.56 | 0.44 | 0.75 |
+| heuristic | 1.00 | 1.00 | 0.40 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.95 / 0.90 |
+
 ## 재채굴 (2026-09-27, OQ-070)
 
 recruit한 Sardaukar Commander의 배치 몫은 Commander 것이라는 사용자 판정(OQ-070) 뒤 국면 13개가 복원되지 않아 같은 명령으로 다시
@@ -139,3 +180,11 @@ recruit한 Sardaukar Commander의 배치 몫은 Commander 것이라는 사용자
 | random | 0.56 | 0.50 | 0.70 |
 | heuristic | 1.00 | 1.00 | 0.35 |
 | 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.83 / 0.83 |
+
+## 재채굴 (2026-09-27, 병합: Agent box Spy의 거절 + OQ-070)
+
+위 두 재채굴은 서로 다른 브랜치에서 했다(Agent box Spy의 거절은 `agent-card-spy-decline`, OQ-070은 master). 병합한 엔진에서는 어느
+쪽 파일도 전부 복원되지 않아(master의 111개 중 104개) 구조 절의 "다시 캐는 명령"으로 다시 캤다. **111개**, master의 OQ-070 문제집과
+견주면 그대로 104, 같은 국면(지문·길이 같음)에 선택 번호만 1~7개 밀린 것 7(sandworm `s3/p2`·`s21/p3`·`s34/p3`·`s41/p3`, 마지막 라운드
+보유 `s807/p3`·`s1052/p0`·`s2195/p0`), 빠지거나 새로 든 국면 없음: sandworm 80, 마지막 라운드 보유 23, Endgame 8. 국면이 모두 같으므로
+채점은 위 OQ-070 표와 같다.

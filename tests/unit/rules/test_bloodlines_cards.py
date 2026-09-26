@@ -1701,10 +1701,10 @@ def test_arrakis_observer_discard_places_a_deep_cover_spy() -> None:
 def test_arrakis_observer_spy_may_pass_up_the_recall_with_an_empty_supply() -> None:
     # "If you have no Spies in your supply when you need to place one, you
     # may first recall one of your Spies for no effect." [Main p. 11];
-    # docs/rules/uprising-systems.md: with an empty supply the recall stays
-    # optional, so the owner may pass without placing (OQ-057 (14)). After
-    # the paid discard the Deep Cover Spy used to have no way to lapse: the
-    # recall was the only choice and the turn could not end.
+    # docs/rules/uprising-systems.md: "supply가 비었을 때의 선행 recall(...)은
+    # 그대로 선택이므로, 그때는 배치하지 않고 넘어갈 수 있다" (OQ-057 (14)).
+    # After the paid discard the Deep Cover Spy used to have no way to lapse
+    # (the recall was the only choice), and then only at the turn's end.
     card = _card("arrakis_observer")
     filler = STARTERS[4]
     posts = (
@@ -1725,14 +1725,19 @@ def test_arrakis_observer_spy_may_pass_up_the_recall_with_an_empty_supply() -> N
     discarded = apply_agent_card_discard(state, discard).state
     engine = UprisingRulesEngine()
     offered = {action.action_id for action in engine.legal_actions(discarded, 0)}
-    assert {"recall_spy_for_agent_card", "finish_agent_turn"} <= offered
+    assert {"decline_agent_card_spy", "recall_spy_for_agent_card"} <= offered
+    assert "finish_agent_turn" not in offered
 
     passed = engine.apply(
-        discarded, DomainAction(action_id="finish_agent_turn", actor=0)
+        discarded, DomainAction(action_id="decline_agent_card_spy", actor=0)
     ).state
     assert passed.players[0].spy_post_ids == posts
     assert passed.players[0].spies_recalled_turn == 0
-    assert passed.decision_stack[-1].kind == FrameKind.TURN
+    # The Agent turn goes on (Arrakeen's Combat deployment is still open).
+    assert passed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not {
+        action.action_id for action in engine.legal_actions(passed, 0)
+    } & {"decline_agent_card_spy", "recall_spy_for_agent_card", "place_agent_card_spy"}
 
 
 def test_arrakis_observer_recalls_a_spy_for_three_swords() -> None:
@@ -3184,9 +3189,11 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # and Twisted Mentat may also recall an Into the Fray Agent from the
     # Conflict (+1); the Contract reward's twin needs the CHOAM Module too,
     # which this catalog lacks.
+    # v110: an Agent-box Spy may pass up the recall-first too, when the box
+    # resolves (decline_agent_card_spy, +1).
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
-        + 1 + 1
+        + 1 + 1 + 1
     )
     action = DomainAction(
         action_id="trash_agent_card",
