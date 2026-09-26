@@ -891,7 +891,9 @@ def _allowance(state: GameState) -> tuple[object, list[object]]:
 
     frame = state.decision_stack[-1]
     assert frame.kind == FrameKind.AGENT_EFFECTS
-    counts = [dict(a.arguments)["count"] for a in legal_combat_deployments(state, 0)]
+    counts: list[object] = [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(state, 0)
+    ]
     return dict(frame.context)["troops_recruited"], counts
 
 
