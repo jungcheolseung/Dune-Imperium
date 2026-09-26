@@ -659,7 +659,7 @@
 
 ## OQ-064 — Coercive Negotiation이 공개한 contract를 하나도 가져갈 수 없을 때
 
-- 상태: `OPEN` (구현 convention 적용 중)
+- 상태: `DECIDED` (2026-09-26 사용자 판정)
 - Coercive Negotiation은 의무다(OQ-016 보강, `[FAQ p. 3]`). 그런데 bank 위에서 공개한 contract가 모두
   Bloodlines의 Immediate token이고 hand에 trash할 Intrigue가 없으면 어느 것도 가져갈 수 없다("trash할
   Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`). 이때 (a) 카드가 사용되지 않은 채 face up으로
@@ -677,6 +677,14 @@
   Coercive Negotiation의 대기가 소모되었다. 이제 제시 기록은 거절할 수 있는 trigger(Distraction, OQ-016 (c))에만
   적용하고, Coercive Negotiation은 가져갈 수 있게 된 첫 시점에 같은 수치에서도 열린다(이미 열린 frame이 있으면 다시
   열지 않는다). `test_coercive_negotiation_waits_even_when_distraction_is_offered`.
+- 판정(2026-09-26 저녁, 사용자): 가져갈 수 없는 경우는 contract bank에 3장 미만이 남았을 때뿐이다(3장을 공개하면 조건이 붙은
+  Immediate token은 하나뿐이라 늘 가져갈 것이 있다). 그때는 **아예 사용할 수 없다** — "책략은 명백히 리필된다는 룰이 있지만,
+  계약은 리필되는 수단이 없으니 3장이 없으면 Coercive Negotiation을 아예 사용할 수 없는게 맞다고 보여진다. 사용 후 효과가
+  없는게 아니라 아예 사용을 못 하는거지". Intrigue deck은 바닥나면 버린 카드를 섞어 다시 만들지만 `[FAQ p. 2]`, contract
+  bank를 채우는 규칙은 없다. 구현: bank에 3장 미만이면 hand에서 낼 수 없고(`rules/contract_tiles.contract_reveal_is_possible`,
+  `effect_interpreter.option_is_playable`), 이미 face up인 카드도 발동하지 않은 채 남는다(`intrigue_triggers._trigger_frame_kind`).
+  bank는 다시 늘지 않으므로 그 카드는 사실상 쓸 수 없다. 위 (a)의 "가져갈 수 있게 될 때까지 대기"는 3장 이상일 때 생기지
+  않으므로 없어졌다. `tests/unit/rules/test_bloodlines_contracts.py`의 `test_coercive_negotiation_*`.
 
 ## OQ-065 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
 
