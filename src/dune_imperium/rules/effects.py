@@ -469,17 +469,21 @@ def turn_agent_in_conflict(
 ) -> bool:
     """Return whether Into the Fray moved this turn's Agent to the Conflict.
 
-    Every Recall Agent effect ("Recall one of your other Agents from the
-    board" [Main p. 20], the Contract reward "recall one of your Agents"
-    [Main p. 20]) excludes the Agent sent there this turn, and an Into the
-    Fray Agent is one of "your Agents" that may be recalled only on a later
-    turn (designer ruling adopted as OQ-037 (d), extended to every Recall
-    Agent effect by the 2026-09-26 user ruling, OQ-068). While the effect is
-    pending, this turn's Agent is still on ``turn_space_id``, or Into the
-    Fray has moved it to the Conflict, or Twisted Mentat's "You may recall
-    the Agent you sent this turn." [Twisted Mentat card] has already sent it
-    home (``turn_agent_recalled``), which leaves every Conflict Agent an
-    earlier turn's.
+    Every Recall Agent effect excludes the Agent sent there this turn, per
+    the printed Recall Agent icon: "Return one of your other Agents on the
+    board to your Leader (not the Agent you sent during this turn)."
+    [Main p. 20]. Imperial Privilege's own wording is "Recall one of your
+    other Agents from the board" [Board Guide p. 2], and the Contract
+    reward (Sardaukar II, the Bloodlines High Council token) prints the
+    same Recall Agent icon. An Into the Fray Agent is one of "your Agents"
+    that may be recalled only on a later turn (designer ruling adopted as
+    OQ-037 (d), extended to every Recall Agent effect by the 2026-09-26 user
+    ruling, OQ-068). While the effect is pending, this turn's Agent is
+    still on ``turn_space_id``, or Into the Fray has moved it to the
+    Conflict, or Twisted Mentat's "You may recall the Agent you sent this
+    turn." [Twisted Mentat card] has already sent it home
+    (``turn_agent_recalled``), which leaves every Conflict Agent an earlier
+    turn's.
     """
 
     return (
@@ -491,10 +495,11 @@ def turn_agent_in_conflict(
 def recallable_conflict_agents(owner: PlayerState, *, sent_this_turn: bool) -> int:
     """Count the owner's Conflict Agents a Recall Agent effect may target.
 
-    "Recall one of your other Agents from the board" [Main p. 20] excludes
-    the Agent sent there this turn (OQ-068); every other Conflict Agent, an
-    earlier turn's Into the Fray Agent, is one of the "other" Agents
-    (OQ-037 (d)).
+    The Recall Agent icon, "Return one of your other Agents on the board to
+    your Leader (not the Agent you sent during this turn)." [Main p. 20],
+    excludes the Agent sent there this turn (OQ-068); every other Conflict
+    Agent, an earlier turn's Into the Fray Agent, is one of the "other"
+    Agents (OQ-037 (d)).
     """
 
     return max(0, owner.agent_in_conflict - (1 if sent_this_turn else 0))

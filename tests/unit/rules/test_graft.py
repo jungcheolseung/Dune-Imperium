@@ -488,10 +488,12 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     # Fray의 Agent를 Imperial Privilege로 recall 가능 이니까 recall agent
     # 기능으로 되는건 모두 같게 동작해야지. 사다우카 계약 완료보상이나 원로회
     # 계약 완료보상에 있는 recall agent도 마찬가지겠지" (OQ-068): Sardaukar
-    # II's "recall one of your Agents" [Main p. 20] excludes the Agent sent
-    # this turn exactly like Imperial Privilege (OQ-037 (d)). With an earlier
-    # turn's Into the Fray Agent also in the Conflict, the reward recalls
-    # that one and never this turn's -- which stays in the Conflict.
+    # II's printed Recall Agent reward excludes the Agent sent this turn
+    # exactly like Imperial Privilege, per the printed Recall Agent icon
+    # "Return one of your other Agents on the board to your Leader (not the
+    # Agent you sent during this turn)." [Main p. 20] (OQ-037 (d)). With an
+    # earlier turn's Into the Fray Agent also in the Conflict, the reward
+    # recalls that one and never this turn's -- which stays in the Conflict.
     from dune_imperium.rules.contracts import (
         apply_contract_completion,
         apply_contract_recall_action,
@@ -554,8 +556,10 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
 
 def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> None:
     # Review round 1 major finding: with no board Agent and no earlier
-    # turn's Conflict Agent, Sardaukar II's "recall one of your Agents"
-    # [Main p. 20] must still fizzle -- it is never this turn's own Agent,
+    # turn's Conflict Agent, Sardaukar II's printed Recall Agent reward must
+    # still fizzle -- the printed Recall Agent icon, "Return one of your
+    # other Agents on the board to your Leader (not the Agent you sent
+    # during this turn)." [Main p. 20], is never this turn's own Agent,
     # even though Into the Fray moved it to the Conflict (OQ-037 (d),
     # extended to every Recall Agent effect by the 2026-09-26 user ruling,
     # OQ-068). Unlike
