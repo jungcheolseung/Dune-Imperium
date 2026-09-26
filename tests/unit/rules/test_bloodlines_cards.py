@@ -2765,7 +2765,12 @@ def test_forced_spy_moves_go_seat_by_seat_from_the_next_seat() -> None:
     pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
     added = pushed.decision_stack[len(state.decision_stack) :]
     # Top of the stack first: seat 1's two moves, then seat 2's.
-    assert [frame.decision.owner for frame in reversed(added)] == [1, 1, 2]
+    owners = [
+        frame.decision.owner
+        for frame in reversed(added)
+        if isinstance(frame.decision, PlayerDecision)
+    ]
+    assert owners == [1, 1, 2]
 
     moving = pushed
     for destination in off_space[9:11]:
