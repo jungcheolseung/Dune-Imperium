@@ -1821,6 +1821,57 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     assert lost.decision_stack[-1].kind == "turn"
 
 
+def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
+    # Holy War: "Each opponent spying on the board space where you sent an
+    # Agent this turn must move that Spy." [Holy War card]; the FAQ calls it
+    # a move "to an empty observation post" [FAQ p. 2], not a return "from
+    # an observation post to your supply" (Recall Spy, [Main p. 11]), and
+    # "If you recalled a Spy this turn" counts the seat's own recalls in its
+    # own turn (OQ-044 (d)). Resolved as the turn's last effect, Holy War's
+    # move runs after seat 1's turn has opened; the move used to count as
+    # seat 1's recall, so Rebel Supplier recruited for free.
+    from dune_imperium.rules.spy_moves import apply_spy_move, legal_spy_move_actions
+
+    card = _card("holy_war")
+    supplier = _card("rebel_supplier")
+    watcher = replace(
+        PlayerState(player_id=1),
+        hand=(supplier,),
+        spies_supply=2,
+        spy_post_ids=(ASSEMBLY_POST,),
+    )
+    base = _state(_owner(hand=(card,)))
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    result = resolve_agent_card_effect(_play(base, card, "assembly_hall"))
+    stack = result.state.decision_stack[-2:]
+    assert [frame.kind for frame in stack] == ["turn", "opponent_spy_move"]
+    assert all(
+        isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 1
+        for frame in stack
+    )
+    move = next(
+        action
+        for action in legal_spy_move_actions(result.state, 1)
+        if dict(action.arguments)["post_id"] == "arrakis-deep-desert"
+    )
+    moved = apply_spy_move(result.state, move).state
+    assert moved.players[1].spy_post_ids == ("arrakis-deep-desert",)
+    assert moved.players[1].spies_recalled_turn == 0
+
+    engine = UprisingRulesEngine()
+    sent = engine.apply(
+        moved,
+        next(
+            action
+            for action in legal_agent_actions(moved, 1)
+            if dict(action.arguments)["space_id"] == "arrakeen"
+            and dict(action.arguments)["card_id"] == supplier
+        ),
+    ).state
+    offered = {action.action_id for action in engine.legal_actions(sent, 1)}
+    assert "resolve_agent_card_effect" not in offered
+
+
 def test_holy_war_reveal_recruits_and_bonds_for_the_combat_icon() -> None:
     card = _card("holy_war")
     plain = _reveal(_state(_owner(hand=(card,))))
@@ -1977,6 +2028,8 @@ def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
     lost = apply_spy_move(pushed, actions[0])
     assert lost.state.players[1].spy_post_ids == tuple(off_space[3:5])
     assert lost.state.players[1].spies_supply == 1
+    # Lost to a forced move, not recalled by its owner (OQ-044 (d)).
+    assert lost.state.players[1].spies_recalled_turn == 0
     assert lost.state.decision_stack == state.decision_stack
     assert "spy_lost" in [event.kind for event in lost.events]
 

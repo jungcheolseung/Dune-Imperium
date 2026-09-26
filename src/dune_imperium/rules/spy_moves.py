@@ -133,7 +133,16 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     origin = context_str(context, "post_id", owner="Spy move frame")
     owner = state.players[action.actor]
-    recalled = recall_spy(owner, origin)
+    # The forced move (and the OQ-065 loss) is not a recall by the Spy's
+    # owner: the opponent's card makes them "move their Spy to an empty
+    # observation post" [FAQ p. 2] during the card player's turn, while
+    # "If you recalled a Spy this turn" counts the seat's own recalls in its
+    # own turn (OQ-044 (d)). Holy War resolved as a turn's last effect runs
+    # these frames after the next seat's turn has opened, so counting the
+    # move would credit that seat's turn.
+    recalled = replace(
+        recall_spy(owner, origin), spies_recalled_turn=owner.spies_recalled_turn
+    )
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{frame.frame_id}:recalled",
