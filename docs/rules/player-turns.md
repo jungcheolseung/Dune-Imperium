@@ -197,10 +197,11 @@
   sandworm 갈래를 고르면 그 2는 끝내 생성되지 않는다. Maker Hooks가 없으면
   sandworm 갈래를 고를 수 없으므로 이 카드는 그냥 Reveal 시작 시점에
   Persuasion 2로 집계된다(변화 없음). `[Desert Power card]`
-  `[Main pp. 10, 20]` `[FAQ p. 2]` (OQ-069, 사용자 판정 2026-09-26: "설득력을
-  선택하기 전에 총 설득력이 6 미만이라면 통솔(+6)도 발동되면 안 되고,
-  설득력으로 최종 선택했을 때 총 설득력이 6 이상이면 그때 발동되어야
-  한다").
+  `[Main pp. 10, 20]` `[FAQ p. 2]` (OQ-069, 사용자 판정 2026-09-26, 원문 그대로:
+  "(A)가 맞지. 혹시 공개 때 뽑은 책략카드 등에 따라 desert power의 보상을
+  나중에 선택하고 싶을 수도 있잖아. 근데 설득력을 선택하기 전에 총 설득력이
+  6 미만이라면 당연히 통솔(+6)도 발동되면 안 되겠지. 그러다 설득력으로 최종
+  선택했고 그때 총 설득력이 6 이상이면 효과 발동되게 해야지").
 - Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
   `[Long Live the Fighters card]`
 - Subversive Advisor는 Reveal에서 Persuasion 1을 얻는다. Reveal box는 파란
