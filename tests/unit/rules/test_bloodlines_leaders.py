@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -745,6 +746,57 @@ def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -
     cleaned = finish_combat(_cleanup_state(fighting)).state.players[0]
     assert cleaned.agent_in_conflict == 0
     assert cleaned.agents_available == 3
+
+
+def test_sardaukar_ii_recalls_an_earlier_into_the_fray_agent_instead_of_fizzling() -> (
+    None
+):
+    # User ruling (2026-09-26, verbatim): "Duncan Idaho(Bloodlines) Into the
+    # Fray의 Agent를 Imperial Privilege로 recall 가능 이니까 recall agent
+    # 기능으로 되는건 모두 같게 동작해야지. 사다우카 계약 완료보상이나 원로회
+    # 계약 완료보상에 있는 recall agent도 마찬가지겠지" (OQ-068): an earlier
+    # turn's Into the Fray Agent in the Conflict is one of "your Agents"
+    # [Main p. 20] Sardaukar II's reward may recall too, so it no longer
+    # fizzles; this turn's own Agent, still on the board, is never offered.
+    from dune_imperium.rules.contracts import (
+        apply_contract_completion,
+        apply_contract_recall_action,
+        legal_contract_completion_actions,
+        legal_contract_recall_actions,
+    )
+
+    truthtrance = next(
+        card_id
+        for card_id in imperium_deck_instance_ids(True)
+        if ":truthtrance:" in card_id
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(truthtrance,),
+        deck=(RECON,),
+        resources=Resources(spice=4),
+        agents_available=1,
+        agent_in_conflict=1,
+        active_contract_ids=("contract:sardaukar_ii",),
+    )
+    state = _turn_state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
+    placed = _play(state, truthtrance, "sardaukar")
+    completion = next(
+        action
+        for action in legal_contract_completion_actions(placed, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = apply_contract_completion(placed, completion).state
+
+    recalls = legal_contract_recall_actions(completed, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_contract"
+    ]
+    resolved = apply_contract_recall_action(completed, recalls[0]).state.players[0]
+    assert resolved.agent_in_conflict == 0
+    assert resolved.agents_available == 1
+    assert resolved.agent_locations == ("sardaukar",)
 
 
 # --- Gaius Helen Mohiam ------------------------------------------------------

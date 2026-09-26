@@ -79,6 +79,7 @@ from dune_imperium.rules.spy_moves import (
     apply_spy_placement,
     legal_spy_placement_actions,
 )
+from dune_imperium.rules.strength import units_strength
 
 
 def _instance(card_id: str) -> str:
@@ -1098,6 +1099,75 @@ def test_steersman_recall_fizzles_at_turn_end_without_another_agent() -> None:
         and dict(event.payload)["effect"] == "recall"
         for event in result.events
     )
+
+
+def _steersman_conflict_state(**owner_overrides: object) -> GameState:
+    values: dict[str, object] = {
+        "player_id": 0,
+        "leader_id": "duncan_idaho",
+        "agents_available": 1,
+        "agent_in_conflict": 1,
+        "hand": (_imperium_instance("steersman"),),
+        "deck": (_instance("dagger"),),
+    }
+    values.update(owner_overrides)
+    owner = PlayerState(**values)  # type: ignore[arg-type]
+    return GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_steersman_recalls_an_earlier_into_the_fray_agent_from_the_conflict() -> None:
+    # Designer ruling (OQ-037 (d)), extended to every Recall Agent effect by
+    # the 2026-09-26 user ruling (OQ-068): an Into the Fray Agent sent on an
+    # earlier turn is one of the "other Agents on the board" [Main p. 20] a
+    # Recall Agent icon may target. It is never the Agent sent this turn --
+    # which Steersman's own Agent can never be, since only a Leader's Signet
+    # Ring sends an Agent Into the Fray, so the only offer here is the
+    # Conflict recall.
+    state = _steersman_conflict_state()
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+
+    actions = legal_agent_card_recall_actions(placed, 0)
+    assert [action.action_id for action in actions] == [
+        "recall_conflict_agent_for_agent_card"
+    ]
+    assert units_strength(placed.players[0]) == 2
+
+    result = apply_agent_card_recall(placed, actions[0])
+    seat = result.state.players[0]
+
+    assert seat.agent_in_conflict == 0
+    assert seat.agents_available == 1
+    assert seat.agent_locations == ("deliver_supplies",)
+    assert units_strength(seat) == 0
+    assert [event.kind for event in result.events] == ["agent_recalled"]
+    assert dict(result.events[0].payload)["space_id"] == "conflict"
+
+
+def test_steersman_conflict_recall_counts_the_swordmaster_bonus() -> None:
+    # Into the Fray fights at 3 strength with the Swordmaster, not 2
+    # [Duncan Idaho card]; the recall follows whichever value applied.
+    state = _steersman_conflict_state(swordmaster_acquired=True, agents_available=2)
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    assert units_strength(placed.players[0]) == 3
+
+    actions = legal_agent_card_recall_actions(placed, 0)
+    result = apply_agent_card_recall(placed, actions[0])
+
+    assert units_strength(result.state.players[0]) == 0
+    assert result.state.players[0].agents_available == 2
 
 
 def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
