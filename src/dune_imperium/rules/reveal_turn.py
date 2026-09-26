@@ -3209,7 +3209,7 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         else "Gain five Solari or pay five for a High Council seat"
         if effect
         is (PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL)
-        else "Keep two Persuasion or pay one Water for a sandworm"
+        else "Gain two Persuasion or pay one Water for a sandworm"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
         else "Gain Spice or trash this card for one Victory Point"
         if effect
