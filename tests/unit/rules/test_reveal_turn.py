@@ -50,6 +50,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_corrinth_city_reveal_actions,
     legal_defer_reveal_choice_actions,
     legal_finish_reveal_actions,
+    legal_resume_reveal_choice_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_exchange_actions,
@@ -152,6 +153,60 @@ def test_desert_power_can_keep_persuasion_or_pay_water_for_a_sandworm() -> None:
         "reveal_sandworm_deployed",
         "reveal_strength_gained",
     )
+
+
+@pytest.mark.parametrize("extra_persuasion", [False, True])
+def test_desert_power_sandworm_closes_once_its_two_persuasion_are_spent(
+    extra_persuasion: bool,
+) -> None:
+    # "[2 Persuasion] -OR- [Maker Hooks]: [water] -> [sandworm]" [Desert Power
+    # card] (player-turns.md: "Desert Power는 Reveal에서 Persuasion 2를
+    # 얻거나, ... sandworm 1개를 소환" [Desert Power card] [Main pp. 10, 20]).
+    # Effects resolve in any order and "you may use Persuasion that you've
+    # gained to acquire new cards" [Main p. 12], but the 2 spent on Prepare
+    # the Way were the Persuasion branch: the sandworm, which gives them
+    # back, no longer opens. Before the fix the seat bought the card and then
+    # still took the sandworm, leaving the Reveal at -2 Persuasion. With 2
+    # more Persuasion unspent (Convincing Argument) the sandworm stays open.
+    desert_power = _imperium_instance("desert_power")
+    hand = (desert_power, _instance("convincing_argument")) if extra_persuasion else (
+        desert_power,
+    )
+    owner = PlayerState(
+        player_id=0, hand=hand, maker_hooks=True, resources=Resources(water=2)
+    )
+    state = replace(
+        _state(owner),
+        current_conflict_ids=("propaganda",),
+        reserve_stacks=(("prepare_the_way", 7),),
+    )
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    deferred = engine.apply(
+        revealed.state, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    bought = engine.apply(
+        deferred,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    persuasion = dict(bought.decision_stack[-1].context)["persuasion"]
+    assert persuasion == (2 if extra_persuasion else 0)
+    resumes = legal_resume_reveal_choice_actions(bought, 0)
+    if not extra_persuasion:
+        assert resumes == ()
+        finish = engine.legal_actions(bought, 0)
+        assert DomainAction(action_id="finish_reveal", actor=0) in finish
+        return
+    resumed = engine.apply(bought, resumes[0]).state
+    sandworm = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=0)
+    assert sandworm in legal_reveal_sandworm_actions(resumed, 0)
+    worm = engine.apply(resumed, sandworm).state
+    assert worm.players[0].sandworms_conflict == 1
+    assert dict(worm.decision_stack[-1].context)["persuasion"] == 0
 
 
 def test_desert_power_recalculates_sword_strength_when_sandworm_is_first_unit() -> None:

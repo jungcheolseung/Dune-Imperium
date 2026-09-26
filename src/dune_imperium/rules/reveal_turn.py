@@ -956,7 +956,7 @@ def apply_reveal_troop_retreat(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or retreat two troops for four Reveal strength."""
+    """Decline, or retreat two troops for four swords or two Persuasion."""
 
     if action not in legal_reveal_troop_retreat_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop-retreat choice")
@@ -985,7 +985,20 @@ def apply_reveal_troop_retreat(
     if owner.troops_conflict < troops or owner.commanders_conflict < commanders:
         raise RuntimeError("Reveal troop-retreat payment requires two troops")
     remaining_units = owner.units_in_conflict - 2
-    next_strength = owner.combat_strength if remaining_units else 0
+    persuasion_choice = context.get("reveal_choice_effect") == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
+    )
+    if not remaining_units:
+        # No unit left, no strength, swords or not [Main p. 12].
+        next_strength = 0
+    elif persuasion_choice:
+        # Command Center pays Persuasion, not swords: each retreated troop or
+        # Commander takes its 2 strength along [Main pp. 12, 14]
+        # [Bloodlines p. 4].
+        next_strength = max(owner.combat_strength - 2 * 2, 0)
+    else:
+        # Chani, Clever Tactician: the 4 troop strength becomes 4 swords.
+        next_strength = owner.combat_strength
     next_owner = replace(
         owner,
         troops_garrison=owner.troops_garrison + troops,
@@ -994,13 +1007,16 @@ def apply_reveal_troop_retreat(
         commanders_conflict=owner.commanders_conflict - commanders,
         combat_strength=next_strength,
     )
+    # Tactician: "Whenever you retreat or lose any number of troops from the
+    # Conflict, advance your Tactics token that many spaces" [Chani card];
+    # Commanders are troops [Bloodlines p. 4], and this one source moves the
+    # token once [FAQ p. 1].
+    next_owner, tactics_events = advance_tactics_token(next_owner, 2, source=source)
     remaining = state.decision_stack[:-1]
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
         remaining = add_reveal_strength(remaining, strength_delta)
-    if context.get("reveal_choice_effect") == (
-        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
-    ):
+    if persuasion_choice:
         # Command Center (Bloodlines): "Retreat two troops -> +2 Persuasion".
         remaining = add_reveal_persuasion(remaining, 2)
         reward_event = GameEvent(
@@ -1027,6 +1043,7 @@ def apply_reveal_troop_retreat(
                 kind="troops_retreated",
                 payload=(("count", 2), ("player", action.actor)),
             ),
+            *tactics_events,
             reward_event,
         ),
     )
@@ -1957,7 +1974,8 @@ def add_reveal_persuasion(
         if generated is not None:
             # Gains are generated Persuasion [Bloodlines p. 5]; the only
             # negative amount is Desert Power's "2 Persuasion -OR- sandworm",
-            # whose sandworm branch takes back Persuasion that was never
+            # whose sandworm branch takes back its 2 while they are still
+            # unspent (_can_summon_reveal_sandworm), so they were never
             # generated. Acquisition costs do not come through here.
             context[GENERATED_PERSUASION_KEY] = generated + amount
         return (
@@ -2038,7 +2056,25 @@ def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
             replaces_sandworms(owner)
             or not current_conflict_is_shield_wall_protected(state)
         )
+        # "[2 Persuasion] -OR- ... [sandworm]" [Desert Power card]: the
+        # sandworm branch gives the 2 Persuasion back, so it closes once they
+        # are spent on an acquisition [Main p. 12].
+        and _unspent_reveal_persuasion(state) >= 2
     )
+
+
+def _unspent_reveal_persuasion(state: GameState) -> int:
+    """Return the Reveal frame's unspent Persuasion.
+
+    ``begin_reveal_turn`` judges its choices before the Reveal frame exists,
+    right after Desert Power's 2 Persuasion were counted, so they are all
+    still unspent then.
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind == FrameKind.REVEAL:
+            return context_int(frame_context(frame), "persuasion", owner="Reveal frame")
+    return 2
 
 
 def _reveal_frame_context(
@@ -3659,16 +3695,14 @@ def _late_reveal_one_card(
     )
 
     frame_persuasion = _frame_generated_persuasion(state.decision_stack)
+    # Command (6+) counts the card's own Persuasion [Bloodlines p. 5]; the
+    # effects paid here are recorded on the same total below, so
+    # grant_late_reveal_effects never pays them a second time.
+    command_persuasion = (
+        None if frame_persuasion is None else frame_persuasion + card.reveal_persuasion
+    )
     eligible = _eligible_reveal_effects(
-        next_owner,
-        cards_in_play,
-        card_id,
-        card,
-        persuasion=(
-            None
-            if frame_persuasion is None
-            else frame_persuasion + card.reveal_persuasion
-        ),
+        next_owner, cards_in_play, card_id, card, persuasion=command_persuasion
     )
     persuasion_gain = card.reveal_persuasion + sum(
         _reveal_effect_persuasion(
@@ -3750,7 +3784,12 @@ def _late_reveal_one_card(
                     counts_toward_combat=counts_toward_combat,
                 ),
                 _granted_entries(
-                    (card_id,), (card,), next_owner, cards_in_play, completed_contracts
+                    (card_id,),
+                    (card,),
+                    next_owner,
+                    cards_in_play,
+                    completed_contracts,
+                    persuasion=command_persuasion,
                 ),
             ),
             late_gains,
@@ -3811,9 +3850,27 @@ def _late_reveal_one_card(
                 next_state.decision_stack, tuple(late_deferred)
             ),
         )
+    # The card is used this turn like a card revealed at the start [FAQ p. 3],
+    # so its recorded effects also trash it or open the Combat icon, as in
+    # begin_reveal_turn (after Leadership has counted it, as in
+    # grant_late_reveal_effects).
+    self_events: list[GameEvent] = []
+    for effect in eligible:
+        if effect.trashes_self and card_id in next_state.players[player].in_play:
+            # Bombast: "Command (6+): 3 Solari and trash this card".
+            trashed = trash_personal_card(
+                next_state, player, card_id, source=f"{source}:late_trash"
+            )
+            next_state = trashed.state
+            self_events.extend(trashed.events)
+        if effect.grants_combat_icon:
+            # Holy War's Fremen Bond, Ruthless Leadership's Command: deploy
+            # as though at a Combat space [Bloodlines p. 5].
+            next_state = grant_combat_icon(next_state, player)
 
     return RuleResult(
-        state=next_state, events=(*events, *counted.events, *guild_spy_events)
+        state=next_state,
+        events=(*events, *counted.events, *guild_spy_events, *self_events),
     )
 
 

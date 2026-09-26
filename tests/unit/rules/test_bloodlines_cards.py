@@ -217,6 +217,64 @@ def test_i_believe_discards_to_draw_and_recruits_two_on_command() -> None:
     assert below.players[0].troops_garrison == 3
 
 
+@pytest.mark.parametrize(
+    ("card_name", "gain"),
+    [
+        ("i_believe", ("troops", "2")),
+        ("southern_faith", ("resources", "0/2/0")),
+        ("bombast", ("resources", "3/0/0")),
+    ],
+)
+def test_a_card_drawn_mid_reveal_pays_its_command_once(
+    card_name: str, gain: tuple[str, str]
+) -> None:
+    # "Command (6+)": "In a Reveal turn, you use the effect that follows if
+    # you generate 6 Persuasion or more" [Bloodlines p. 5] (bloodlines.md §4),
+    # and a card drawn during the Reveal is revealed and used at once
+    # [FAQ p. 3]. Each face prints one Command line (I Believe "2 troops",
+    # Southern Faith "2 spice", Bombast "3 Solari and trash this card"), so
+    # it pays once. Before the fix the arrival paid it without recording it
+    # and grant_late_reveal_effects paid it again: 4 troops, 4 spice, 6
+    # Solari.
+    card = _card(card_name)
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["persuasion_generated"] == 6
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    (reveal,) = (f for f in drawn.decision_stack if f.kind == FrameKind.REVEAL)
+    pending = reveal_pending_gains(dict(reveal.context))
+    assert [entry for entry in pending if entry[2] == card] == [(*gain, card)]
+    player = drawn.players[0]
+    if card_name == "bombast":
+        assert player.trashed.count(card) == 1
+        assert card not in player.in_play
+    else:
+        assert card in player.in_play
+
+
+def test_ruthless_leadership_drawn_mid_reveal_still_commands_the_combat_icon() -> None:
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    # Paid and recorded at arrival, "Command (6+): [Combat]" [Ruthless
+    # Leadership card] still opens this Reveal's deployment [Bloodlines p. 5].
+    card = _card("ruthless_leadership")
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner, PROMO_BLOODLINES), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    assert _reveal_context(drawn)["combat_deployment"] is True
+    assert {a.action_id for a in legal_reveal_deployments(drawn, 0)} == {
+        "deploy_troops"
+    }
+
+
 def test_intelligence_training_command_places_a_spy() -> None:
     card = _card("intelligence_training")
     revealed = _reveal(_state(_six_persuasion_hand(card)))
@@ -361,6 +419,85 @@ def test_command_center_retreats_two_troops_for_two_persuasion() -> None:
     assert result.state.players[0].troops_garrison == 5
     assert _reveal_context(result.state)["persuasion"] == 1 + 2
     assert result.events[1].kind == "reveal_persuasion_gained"
+
+
+@pytest.mark.parametrize("commanders", [0, 1])
+def test_command_center_retreat_takes_the_two_units_strength(commanders: int) -> None:
+    # "Retreat two troops -> +2 [Persuasion]" [Command Center card] gives no
+    # swords, and "Each troop is worth 2 strength" [Main p. 12]
+    # (player-turns.md: "Conflict의 troop 하나는 strength 2"); a Commander is
+    # "a 'troop' that's worth 2 strength" [Bloodlines p. 4]. "If a card changes
+    # the number of units a player has in the Conflict ... they adjust their
+    # Combat marker accordingly" [Main p. 14]. Three units (6) retreating two
+    # leave one troop: strength 2. Before the fix the strength stayed at 6.
+    card = _card("command_center")
+    owner = _owner(
+        hand=(card,),
+        troops_supply=6 + commanders,
+        troops_conflict=3 - commanders,
+        commanders_conflict=commanders,
+        combat_strength=6,
+    )
+    engine = UprisingRulesEngine()
+    revealed = _reveal(_state(owner))
+    retreat = DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(("commanders", commanders),) if commanders else (),
+    )
+    assert retreat in legal_reveal_troop_retreat_actions(revealed, 0)
+    retreated = engine.apply(revealed, retreat).state
+    player = retreated.players[0]
+    assert player.troops_conflict + player.commanders_conflict == 1
+    assert player.combat_strength == 2
+    assert _reveal_context(retreated)["strength"] == 2
+    assert _reveal_context(retreated)["persuasion"] == 1 + 2
+
+
+@pytest.mark.parametrize(
+    ("card_name", "start", "commanders", "space", "spice"),
+    [
+        ("command_center", 2, 0, 4, 0),
+        ("chani_clever_tactician", 2, 0, 4, 0),
+        # From the fourth space the two reach the sixth, which pays a spice.
+        ("chani_clever_tactician", 3, 0, 5, 1),
+        # A Commander is a troop [Bloodlines p. 4] and moves the token too.
+        ("command_center", 2, 1, 4, 0),
+    ],
+)
+def test_reveal_two_troop_retreats_advance_chanis_tactics_token(
+    card_name: str, start: int, commanders: int, space: int, spice: int
+) -> None:
+    # Tactician: "Whenever you retreat or lose any number of troops from the
+    # Conflict, advance your Tactics token that many spaces, earning rewards
+    # as you reach them" [Chani card]; "Each different source of retreating
+    # or losing troops is handled separately" [FAQ p. 1] (bloodlines.md §6),
+    # so one "Retreat two troops" [Command Center card] / "Retreat two of
+    # your troops" [Chani, Clever Tactician card] moves it two spaces, once.
+    # Before the fix both Reveal retreats left the token where it was.
+    card = _card(card_name)
+    owner = _owner(
+        leader_id="chani",
+        tactics_track_space=start,
+        hand=(card,),
+        troops_supply=6 + commanders,
+        troops_conflict=3 - commanders,
+        commanders_conflict=commanders,
+        combat_strength=6,
+    )
+    revealed = _reveal(_state(owner))
+    retreat = DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(("commanders", commanders),) if commanders else (),
+    )
+    result = apply_reveal_troop_retreat(revealed, retreat)
+    player = result.state.players[0]
+    assert player.tactics_track_space == space
+    assert player.resources.spice == revealed.players[0].resources.spice + spice
+    advanced = [e for e in result.events if e.kind == "tactics_token_advanced"]
+    assert len(advanced) == 1
+    assert dict(advanced[0].payload)["count"] == 2
 
 
 # --- trash, discard, acquisition triggers -------------------------------------
@@ -1792,6 +1929,37 @@ def test_holy_war_reveal_recruits_and_bonds_for_the_combat_icon() -> None:
     assert _reveal_context(plain)["combat_deployment"] is False
     bonded = _reveal(_state(_owner(hand=(card,), in_play=(_card("desert_power"),))))
     assert _reveal_context(bonded)["combat_deployment"] is True
+
+
+@pytest.mark.parametrize("bonded", [True, False])
+def test_holy_war_drawn_mid_reveal_still_bonds_for_the_combat_icon(
+    bonded: bool,
+) -> None:
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    # "If you draw a card during your Reveal turn ... you must immediately
+    # reveal that card and use it this turn" [FAQ p. 3]; Holy War's "Fremen
+    # Bond: [Combat]" [Holy War card] lets this Reveal "deploy troops to the
+    # Conflict as though you'd sent an Agent to a Combat space" [Bloodlines
+    # p. 5] (bloodlines.md §4). Stilgar, The Devoted (Fremen) is revealed,
+    # Cunning's Plot draws Holy War: before the fix its Bond line was recorded
+    # as paid but the deployment window never opened.
+    card = _card("holy_war")
+    revealed_card = _card("stilgar_the_devoted") if bonded else STARTERS[0]
+    cunning = _intrigue("cunning")
+    owner = _owner(hand=(revealed_card,), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["combat_deployment"] is False
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    assert card in drawn.players[0].in_play
+    assert _reveal_context(drawn)["combat_deployment"] is bonded
+    deployments = {
+        a.action_id for a in engine.legal_actions(drawn, 0)
+    } & {a.action_id for a in legal_reveal_deployments(drawn, 0)}
+    assert ("deploy_troops" in deployments) is bonded
 
 
 def test_false_orders_moves_watching_spies_then_places_one() -> None:
