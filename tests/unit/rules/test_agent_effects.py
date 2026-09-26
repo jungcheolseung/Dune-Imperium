@@ -2177,6 +2177,83 @@ def test_bene_gesserit_operative_recalls_before_placing_when_supply_is_empty() -
     assert set(replaced.state.players[0].spy_post_ids) == set(posts)
 
 
+def _walk_to_turn_end_offer(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    """Take every other choice until the turn end is offered (or nothing is left)."""
+
+    for _ in range(20):
+        offered = engine.legal_actions(state, 0)
+        if any(action.action_id == "finish_agent_turn" for action in offered):
+            return state
+        others = [
+            action
+            for action in offered
+            if action.action_id
+            not in ("recall_spy_for_agent_card", "withdraw_troops", "deploy_troops")
+        ]
+        if not others:
+            return state
+        state = engine.apply(state, others[0]).state
+    raise AssertionError("the Agent turn kept offering choices")
+
+
+def test_bene_gesserit_operative_may_pass_up_the_recall_with_an_empty_supply() -> None:
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect." [Main p. 11] (again
+    # [Main p. 20]); docs/rules/uprising-systems.md: with an empty supply the
+    # recall stays optional, so the owner may pass without placing (OQ-057
+    # (14)). The engine used to offer only the recall, so the owner was
+    # forced to pull a Spy off a post and the turn could not end without it.
+    operative = _imperium_instance("bene_gesserit_operative")
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "fremen-desert-tactics-fremkit",
+        "landsraad-assembly-hall-gather-support",
+    )
+    owner = PlayerState(
+        player_id=0, hand=(operative,), spies_supply=0, spy_post_ids=posts
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    placed = _walk_to_turn_end_offer(
+        engine, engine.apply(state, _action_to(state, "secrets")).state
+    )
+
+    offered = {action.action_id for action in engine.legal_actions(placed, 0)}
+    assert offered == {"recall_spy_for_agent_card", "finish_agent_turn"}
+    passed = engine.apply(
+        placed, DomainAction(action_id="finish_agent_turn", actor=0)
+    )
+    assert passed.state.players[0].spy_post_ids == posts
+    assert passed.state.players[0].spies_recalled_turn == 0
+    assert "agent_card_effect_unavailable" in {event.kind for event in passed.events}
+    assert passed.state.decision_stack[-1].kind == FrameKind.TURN
+
+    # Once the recall is made the Spy is in supply and must be placed.
+    recall = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "recall_spy_for_agent_card"
+    )
+    recalled = engine.apply(placed, recall).state
+    assert {action.action_id for action in engine.legal_actions(recalled, 0)} == {
+        "place_agent_card_spy"
+    }
+
+
 def test_reliable_informant_limits_spy_placement_to_three_faction_posts() -> None:
     informant = _imperium_instance("reliable_informant")
     owner = PlayerState(player_id=0, hand=(informant,))
@@ -4818,7 +4895,9 @@ def test_double_agent_never_offers_a_post_holding_its_owners_spy() -> None:
 def test_double_agent_empty_supply_recalls_only_to_open_a_connected_post() -> None:
     # "If you have no Spies in your supply, you may first recall one of your
     # Spies for no effect." [Main p. 20]: when the owner's own Spy holds the
-    # only connected post, only that recall can open a destination.
+    # only connected post, only that recall can open a destination. The
+    # recall stays optional (docs/rules/uprising-systems.md, OQ-057 (14)):
+    # the owner may also end the turn without it.
     own_post = "arrakis-spice-refinery-arrakeen"
     state = _double_agent_state(
         owner_posts=(
@@ -4842,6 +4921,16 @@ def test_double_agent_empty_supply_recalls_only_to_open_a_connected_post() -> No
     )
     recalled = apply_agent_card_spy_action(placed, actions[0]).state
     assert _double_agent_posts(recalled) == {own_post}
+
+    engine = UprisingRulesEngine()
+    resolved = _walk_to_turn_end_offer(engine, placed)
+    offered = {action.action_id for action in engine.legal_actions(resolved, 0)}
+    assert {"recall_spy_for_agent_card", "finish_agent_turn"} <= offered
+    passed = engine.apply(
+        resolved, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
+    assert passed.players[0].spy_post_ids == placed.players[0].spy_post_ids
+    assert passed.players[0].spies_recalled_turn == 0
 
 
 def test_calculus_of_power_agent_box_is_an_optional_trash() -> None:

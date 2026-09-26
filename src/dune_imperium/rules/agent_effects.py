@@ -4106,9 +4106,20 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
+    ) or (
+        effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
+        and context.get("agent_card_spy_pending") is True
     ):
-        if legal_agent_card_spy_actions(state, player):
+        # Placing is mandatory only with a Spy in supply (the erratum to
+        # [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in
+        # your supply when you need to place one, you may first recall one
+        # of your Spies for no effect" [Main pp. 11, 20]: the recall stays on
+        # offer, and passing it up leaves the box to fizzle at the turn's
+        # end (``finish_agent_turn``). Arrakis Observer's Deep Cover Spy
+        # after its paid discard follows the same rule.
+        if owner.spies_supply > 0 and legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
+        context.pop("agent_card_spy_pending", None)
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:

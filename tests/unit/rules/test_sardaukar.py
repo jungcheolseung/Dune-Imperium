@@ -797,7 +797,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # Spies (+1 resume) and Unswerving Loyalty's Fremen Bond troop move (+1
     # resume, and Shadout Mapes' deploy/retreat/decline join every catalog,
     # +3).
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),

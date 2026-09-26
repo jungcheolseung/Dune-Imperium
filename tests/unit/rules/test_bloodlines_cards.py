@@ -1279,6 +1279,43 @@ def test_arrakis_observer_discard_places_a_deep_cover_spy() -> None:
     assert legal_agent_card_spy_actions(plain, 0) != ()
 
 
+def test_arrakis_observer_spy_may_pass_up_the_recall_with_an_empty_supply() -> None:
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect." [Main p. 11];
+    # docs/rules/uprising-systems.md: with an empty supply the recall stays
+    # optional, so the owner may pass without placing (OQ-057 (14)). After
+    # the paid discard the Deep Cover Spy used to have no way to lapse: the
+    # recall was the only choice and the turn could not end.
+    card = _card("arrakis_observer")
+    filler = STARTERS[4]
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "fremen-desert-tactics-fremkit",
+        "landsraad-assembly-hall-gather-support",
+    )
+    state = _play(
+        _state(_owner(hand=(card, filler), spies_supply=0, spy_post_ids=posts)),
+        card,
+        "arrakeen",
+    )
+    discard = next(
+        action
+        for action in legal_agent_card_discard_actions(state, 0)
+        if dict(action.arguments).get("card_id") == filler
+    )
+    discarded = apply_agent_card_discard(state, discard).state
+    engine = UprisingRulesEngine()
+    offered = {action.action_id for action in engine.legal_actions(discarded, 0)}
+    assert {"recall_spy_for_agent_card", "finish_agent_turn"} <= offered
+
+    passed = engine.apply(
+        discarded, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
+    assert passed.players[0].spy_post_ids == posts
+    assert passed.players[0].spies_recalled_turn == 0
+    assert passed.decision_stack[-1].kind == FrameKind.TURN
+
+
 def test_arrakis_observer_recalls_a_spy_for_three_swords() -> None:
     from dune_imperium.rules.reveal_turn import apply_reveal_spy_action
 
@@ -2173,8 +2210,11 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # post off the Agent's space loses the Spy (+1 lose_moved_spy, OQ-065),
     # Navigation card 10's arrow cost may be declined (+1), Coercive
     # Negotiation is mandatory (-1 decline, OQ-064).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
+        + 1
     )
     action = DomainAction(
         action_id="trash_agent_card",

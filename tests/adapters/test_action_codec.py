@@ -41,8 +41,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # Spies (+1 resume) and Unswerving Loyalty's Fremen Bond troop move (+1
     # resume, and Shadout Mapes' deploy/retreat/decline join every catalog,
     # +3).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     assert first.size == (
-        4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3
+        4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
     )
 
 
@@ -69,8 +71,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # resume, and Shadout Mapes' deploy/retreat/decline join every catalog,
     # +3).
     # The CHOAM catalogs also gain decline_contract_spy (+1).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     assert codec.size == (
         4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
+        + 1
     )
 
     try:
@@ -124,7 +129,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # Navigation card 10's arrow cost may be declined (+1), Coercive
     # Negotiation is mandatory (-1 decline, OQ-064).
     # The CHOAM catalog also gains decline_contract_spy (+1).
-    assert both.size == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    assert both.size == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:
@@ -165,7 +172,8 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
 def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
     # A Spy icon without a Spy in supply: "you may first recall one of your
     # Spies for no effect" [Main pp. 11, 20] -- the Conflict reward and
-    # Leader Spies' recall and decline templates exist in every catalog.
+    # Leader Spies' recall and decline templates exist in every catalog, and
+    # so does the acquisition-bonus Spy's decline.
     actions = (
         DomainAction(action_id="decline_combat_reward_spy", actor=2),
         DomainAction(
@@ -174,6 +182,7 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
             arguments=(("post_id", "arrakis-deep-desert"),),
         ),
         DomainAction(action_id="decline_leader_spy_placement", actor=2),
+        DomainAction(action_id="decline_acquisition_spy", actor=2),
     )
     for config in (
         RulesetConfig(),

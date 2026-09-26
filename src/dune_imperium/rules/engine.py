@@ -661,6 +661,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "resume_reveal_choice": apply_resume_reveal_choice,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,
+    "decline_acquisition_spy": apply_acquisition_spy_action,
     # Reveal serial choices
     "gain_five_reveal_solari": apply_corrinth_city_reveal,
     "take_high_council_from_reveal": apply_corrinth_city_reveal,
