@@ -12,6 +12,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -22,6 +23,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import card_trash
 from dune_imperium.rules.acquisition import apply_reserve_acquisition
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
@@ -1826,6 +1828,122 @@ def test_engineered_miracle_command_troop_joins_the_reveals_allowance() -> None:
         for action in legal_reveal_deployments(result, 0)
         if action.action_id == "deploy_troops"
     } == {1, 2, 3}
+
+
+# A Reveal-turn self-trash resolves with no AGENT_EFFECTS frame on top, so
+# ``trash_personal_card`` credits a trash trigger's troops to nothing. No
+# shipped card both trashes itself and recruits when trashed, so these tests
+# give the self-trashing card Eliminate Allies' "When this card is trashed:
+# 2 troops" (fabricated data, like ``test_acquisition.py``'s
+# ``_fake_troop_contract``): "그 turn에 어떤 출처에서 recruit했든 새 troop은
+# Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+# (docs/rules/player-turns.md:137), and the Combat 아이콘 deploys "이번
+# turn에 recruit한 유닛 전부" [Bloodlines pp. 5, 12].
+
+
+def _recruits_two_when_trashed(monkeypatch: pytest.MonkeyPatch, card_id: str) -> None:
+    shipped = card_trash._trash_effect
+
+    def fabricated(candidate: str) -> PersonalCardTrashEffect | None:
+        if candidate == card_id:
+            return PersonalCardTrashEffect.RECRUIT_TWO_TROOPS
+        return shipped(candidate)
+
+    monkeypatch.setattr(card_trash, "_trash_effect", fabricated)
+
+
+def test_bombast_reveal_self_trash_keeps_its_trash_troops_in_the_reveal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    card = _card("bombast")
+    _recruits_two_when_trashed(monkeypatch, card)
+
+    revealed = _reveal(_state(_six_persuasion_hand(card)))
+
+    assert card in revealed.players[0].trashed
+    assert revealed.players[0].troops_garrison == 3 + 2
+    assert _reveal_context(revealed)["reveal_troops_recruited"] == 2
+
+
+def test_bombast_drawn_mid_reveal_keeps_its_trash_troops_in_the_reveal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    card = _card("bombast")
+    _recruits_two_when_trashed(monkeypatch, card)
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+
+    assert drawn.players[0].trashed.count(card) == 1
+    assert drawn.players[0].troops_garrison == 3 + 2
+    assert _reveal_context(drawn)["reveal_troops_recruited"] == 2
+
+
+def test_bombast_command_met_late_keeps_its_trash_troops_in_the_reveal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Five Persuasion at the Reveal's start; the drawn Convincing Argument's
+    # two lift it past Command (6+), which then pays out late
+    # (``grant_late_reveal_effects``) [Bloodlines p. 5].
+    card = _card("bombast")
+    _recruits_two_when_trashed(monkeypatch, card)
+    argument = next(c for c in STARTERS if ":convincing_argument:" in c)
+    cunning = _intrigue("cunning")
+    owner = _owner(
+        hand=(_card("sandwalk"), _card("sandwalk", 1), card),
+        deck=(argument,),
+        intrigue_cards=(cunning,),
+    )
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["persuasion_generated"] == 5
+    assert card in revealed.players[0].in_play
+
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+
+    assert drawn.players[0].trashed.count(card) == 1
+    assert drawn.players[0].troops_garrison == 3 + 2
+    assert _reveal_context(drawn)["reveal_troops_recruited"] == 2
+
+
+def test_engineered_miracle_command_self_trash_keeps_its_trash_troops_in_the_reveal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dune_imperium.rules.acquisition import (
+        apply_reveal_command_acquisition,
+        legal_reveal_command_acquisition_actions,
+    )
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _card("engineered_miracle")
+    _recruits_two_when_trashed(monkeypatch, card)
+    envoy = _card("guild_envoy")
+    owner = replace(_six_persuasion_hand(card), combat_icon_turn=True)
+    revealed = _reveal(replace(_state(owner), imperium_row=(envoy,)))
+    acquire = next(
+        a
+        for a in legal_reveal_command_acquisition_actions(revealed, 0)
+        if dict(a.arguments).get("instance_id") == envoy
+    )
+
+    result = apply_reveal_command_acquisition(revealed, acquire).state
+
+    assert card in result.players[0].trashed
+    assert result.players[0].troops_garrison == 3 + 2
+    assert _reveal_context(result)["reveal_troops_recruited"] == 2
+    # Two recruited plus up to two more from the garrison [Main p. 10].
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3, 4}
 
 
 def test_southern_faith_draws_or_takes_bene_gesserit_influence_with_a_bond() -> None:
