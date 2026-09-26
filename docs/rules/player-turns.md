@@ -191,8 +191,16 @@
 - Desert Power는 Reveal에서 Persuasion 2를 얻거나, Maker Hooks를 보유하고
   Water 1을 지불해 sandworm 1개를 소환하고 현재 Conflict에 즉시 배치한다.
   Maker Hooks는 소비하지 않으며 Shield Wall이 현재 Conflict를 보호하면
-  sandworm 선택을 할 수 없다. `[Desert Power card]` `[Main pp. 10, 20]`
-  `[FAQ p. 2]`
+  sandworm 선택을 할 수 없다. Maker Hooks를 보유하면 이 선택은 다른 Reveal
+  선택처럼 미룰 수 있고(defer_reveal_choice), Persuasion 2는 실제로
+  Persuasion 갈래를 선택한 순간부터만 지출과 Command (6+) 판정에 들어간다 —
+  sandworm 갈래를 고르면 그 2는 끝내 생성되지 않는다. Maker Hooks가 없으면
+  sandworm 갈래를 고를 수 없으므로 이 카드는 그냥 Reveal 시작 시점에
+  Persuasion 2로 집계된다(변화 없음). `[Desert Power card]`
+  `[Main pp. 10, 20]` `[FAQ p. 2]` (OQ-069, 사용자 판정 2026-09-26: "설득력을
+  선택하기 전에 총 설득력이 6 미만이라면 통솔(+6)도 발동되면 안 되고,
+  설득력으로 최종 선택했을 때 총 설득력이 6 이상이면 그때 발동되어야
+  한다").
 - Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
   `[Long Live the Fighters card]`
 - Subversive Advisor는 Reveal에서 Persuasion 1을 얻는다. Reveal box는 파란
