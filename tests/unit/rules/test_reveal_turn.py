@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_DECK,
     starting_deck_instance_ids,
 )
+from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
@@ -298,7 +299,10 @@ def test_desert_power_choice_opens_with_maker_hooks_and_no_water() -> None:
     # OQ-069 (user ruling 2026-09-26): with Maker Hooks the Persuasion branch
     # is always choosable, so the choice opens even with no water to pay the
     # sandworm branch -- offering only ``decline_reveal_sandworm`` (and a
-    # defer) -- and the Reveal cannot finish until the owner resolves it.
+    # defer) -- and the Reveal cannot finish until the owner resolves it. A
+    # deferred Desert Power choice must stay resumable (unlike a choice whose
+    # printed condition can genuinely fail forever), since the Persuasion
+    # branch never becomes unavailable.
     desert_power = _imperium_instance("desert_power")
     owner = PlayerState(
         player_id=0,
@@ -307,6 +311,7 @@ def test_desert_power_choice_opens_with_maker_hooks_and_no_water() -> None:
         resources=Resources(water=0),
     )
     state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    engine = UprisingRulesEngine()
     revealed = begin_reveal_turn(
         state, DomainAction(action_id="reveal_turn", actor=0)
     ).state
@@ -324,6 +329,40 @@ def test_desert_power_choice_opens_with_maker_hooks_and_no_water() -> None:
     ).state
     assert dict(declined.decision_stack[-1].context)["persuasion"] == 2
     assert legal_finish_reveal_actions(declined, 0) != ()
+
+    # A deferred Desert Power choice blocks finish and always resumes back
+    # to the same choosable Persuasion branch, unlike the old code, where
+    # the choice's unavailability (no water, no legal sandworm) let it lapse
+    # once deferred (Main p. 12's "any order" does not let a mandatory
+    # Reveal-box choice vanish).
+    deferred = engine.apply(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    assert deferred.decision_stack[-1].kind == "reveal"
+    assert legal_finish_reveal_actions(deferred, 0) == ()
+    assert legal_resume_reveal_choice_actions(deferred, 0) == (
+        DomainAction(
+            action_id="resume_reveal_choice",
+            actor=0,
+            arguments=(
+                (
+                    "effect",
+                    PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value,
+                ),
+            ),
+        ),
+    )
+
+    (resume,) = legal_resume_reveal_choice_actions(deferred, 0)
+    resumed = engine.apply(deferred, resume).state
+    assert engine.legal_actions(resumed, 0) == (
+        DomainAction(action_id="decline_reveal_sandworm", actor=0),
+    )
+
+    redeclined = engine.apply(
+        resumed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    ).state
+    assert legal_finish_reveal_actions(redeclined, 0) != ()
 
 
 def test_engine_dispatches_desert_power_reveal_sandworm_choice() -> None:
@@ -347,6 +386,46 @@ def test_engine_dispatches_desert_power_reveal_sandworm_choice() -> None:
 
     assert transition.state.players[0].sandworms_conflict == 1
     assert transition.state.players[0].resources.water == 0
+
+
+def test_desert_power_sandworm_branch_never_grants_persuasion_for_liet_kynes() -> None:
+    # OQ-069 (user ruling 2026-09-26) counterpart: Arrakis Planetologist
+    # replaces the sandworm ("You summon no sandworms. For each one you
+    # would, instead: ..." [Liet Kynes card]) but the branch is still the
+    # water branch, not the Persuasion branch, so it must not generate
+    # Desert Power's 2 Persuasion either.
+    desert_power = _imperium_instance("desert_power")
+    diplomacy = _instance("diplomacy")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(desert_power, diplomacy),
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    reveal_action = DomainAction(action_id="reveal_turn", actor=0)
+    revealed = begin_reveal_turn(state, reveal_action).state
+    context = dict(revealed.decision_stack[0].context)
+    assert context["persuasion"] == 1
+    assert context["persuasion_generated"] == 1
+
+    pay_water = next(
+        action
+        for action in legal_reveal_sandworm_actions(revealed, 0)
+        if action.action_id == "pay_reveal_water_for_sandworm"
+    )
+    result = apply_reveal_sandworm_action(revealed, pay_water)
+
+    assert "sandworms_replaced" in {event.kind for event in result.events}
+    assert result.state.players[0].resources.water == 0
+    assert result.state.players[0].sandworms_conflict == 0
+    reveal_frame = next(
+        frame for frame in result.state.decision_stack if frame.kind == "reveal"
+    )
+    final_context = dict(reveal_frame.context)
+    assert final_context["persuasion"] == 1
+    assert final_context["persuasion_generated"] == 1
 
 
 def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:

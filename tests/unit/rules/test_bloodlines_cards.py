@@ -479,6 +479,69 @@ def test_desert_power_without_maker_hooks_commands_i_believe_immediately() -> No
     assert revealed.players[0].troops_garrison == 3 + 2
 
 
+def test_desert_power_persuasion_branch_reopens_pointing_the_ways_command() -> None:
+    # OQ-069 counterpart for a Command *choice* frame, not an automatic
+    # effect: Pointing the Way's "Command: choose a Faction to gain one
+    # Influence with" [Pointing the Way card] queues deferred below 6
+    # Persuasion (Command (6+) [Bloodlines pp. 5, 12]); Pointing the Way (1)
+    # + Diplomacy (1) + High Council (2) is 4 without Desert Power's 2, so
+    # the choice cannot open until the owner picks the Persuasion branch.
+    diplomacy = next(instance for instance in STARTERS if ":diplomacy:" in instance)
+    owner = _owner(
+        hand=(_card("desert_power"), _card("pointing_the_way"), diplomacy),
+        high_council=True,
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    revealed = _reveal(state)
+    context = _reveal_context(revealed)
+    assert context["persuasion_generated"] == 4
+    assert legal_reveal_influence_gain_actions(revealed, 0) == ()
+
+    engine = UprisingRulesEngine()
+    declined = engine.apply(
+        revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    ).state
+    resume = next(
+        action
+        for action in legal_resume_reveal_choice_actions(declined, 0)
+        if dict(action.arguments)["effect"] == "command_gain_chosen_influence"
+    )
+    resumed = engine.apply(declined, resume).state
+    assert legal_reveal_influence_gain_actions(resumed, 0) != ()
+    assert legal_finish_reveal_actions(resumed, 0) == ()
+
+
+def test_desert_power_sandworm_branch_never_reopens_pointing_the_ways_command() -> None:
+    # Counterpart: paying Water for the sandworm keeps the total at 4 for
+    # good, so Pointing the Way's Command choice never resumes this Reveal.
+    diplomacy = next(instance for instance in STARTERS if ":diplomacy:" in instance)
+    owner = _owner(
+        hand=(_card("desert_power"), _card("pointing_the_way"), diplomacy),
+        high_council=True,
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    revealed = _reveal(state)
+
+    engine = UprisingRulesEngine()
+    sandworm = next(
+        action
+        for action in legal_reveal_sandworm_actions(revealed, 0)
+        if action.action_id == "pay_reveal_water_for_sandworm"
+    )
+    paid = engine.apply(revealed, sandworm).state
+    context = _reveal_context(paid)
+    assert context["persuasion_generated"] == 4
+    assert legal_resume_reveal_choice_actions(paid, 0) == ()
+    # Pointing the Way's Command choice must stay correctly deferred (never
+    # forced open) rather than sitting unresolved on the stack, so nothing
+    # blocks finishing the Reveal turn.
+    assert legal_finish_reveal_actions(paid, 0) != ()
+
+
 def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
     card = _card("pointing_the_way")
     state = _play(_state(_owner(hand=(card,))), card, "arrakeen")

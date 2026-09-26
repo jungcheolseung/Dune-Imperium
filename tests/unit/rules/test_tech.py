@@ -1643,6 +1643,8 @@ def test_desert_power_command_tile_pays_only_after_the_persuasion_branch() -> No
     context = dict(revealed.decision_stack[0].context)
     assert context["persuasion_generated"] == 4
     assert context["tech_granted"] == ""
+    swords = context["sword_strength"]
+    assert isinstance(swords, int)
 
     decline = DomainAction(action_id="decline_reveal_sandworm", actor=0)
     assert decline in legal_reveal_sandworm_actions(revealed, 0)
@@ -1650,6 +1652,61 @@ def test_desert_power_command_tile_pays_only_after_the_persuasion_branch() -> No
     late_context = dict(declined.decision_stack[0].context)
     assert late_context["persuasion_generated"] == 6
     assert late_context["tech_granted"] == "training_depot"
+    # The 2 swords must actually reach the Reveal frame's sword strength, not
+    # just the tile's recorded name (Training Depot tile "[2 swords]"
+    # [Bloodlines p. 5]).
+    assert late_context["sword_strength"] == swords + 2
+
+
+def test_desert_power_command_tile_does_not_pay_on_the_sandworm_branch() -> None:
+    # OQ-069 (user ruling 2026-09-26) counterpart: paying water for the
+    # sandworm instead of picking the Persuasion branch never generates the
+    # 2 Persuasion, so Training Depot's Command (6+) line
+    # [Training Depot tile] [Bloodlines p. 5] must not pay either.
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.rules.reveal_turn import legal_reveal_sandworm_actions
+
+    desert_power = next(
+        instance
+        for instance in imperium_deck_instance_ids(False, bloodlines=True)
+        if ":desert_power:" in instance
+    )
+    diplomacy = next(
+        instance
+        for instance in starting_deck_instance_ids(0)
+        if ":diplomacy:" in instance
+    )
+    dune_the_desert_planet = next(
+        instance
+        for instance in starting_deck_instance_ids(0)
+        if ":dune_the_desert_planet:" in instance
+    )
+    owner = _tech_owner(
+        "training_depot",
+        hand=(desert_power, diplomacy, dune_the_desert_planet),
+        deck=(),
+        high_council=True,
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = _turn_state(owner, stacks=((), (), ()))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    context = dict(revealed.decision_stack[0].context)
+    assert context["persuasion_generated"] == 4
+    swords = context["sword_strength"]
+    assert isinstance(swords, int)
+
+    pay_water = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=0)
+    assert pay_water in legal_reveal_sandworm_actions(revealed, 0)
+    paid = engine.apply(revealed, pay_water).state
+    reveal_frame = next(
+        frame for frame in paid.decision_stack if frame.kind == "reveal"
+    )
+    paid_context = dict(reveal_frame.context)
+    assert paid_context["persuasion_generated"] == 4
+    assert paid_context["tech_granted"] == ""
+    assert paid_context["sword_strength"] == swords
 
 
 def test_forbidden_weapons_demands_its_choice_in_the_owners_order() -> None:
