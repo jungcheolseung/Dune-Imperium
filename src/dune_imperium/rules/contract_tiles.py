@@ -4,8 +4,10 @@ from dataclasses import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.contracts import contract_for_instance
+from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind
 
 
@@ -93,3 +95,19 @@ def contract_intrigue_trash_frame(
             ("turn_owner", player),
         ),
     )
+
+
+def contract_reveal_is_possible(
+    state: GameState, reward: RevealContractsTakeOne
+) -> bool:
+    """Return whether the bank holds every Contract ``reward`` must reveal.
+
+    "Reveal three contracts from the bank. Take one and trash the other
+    two." [Coercive Negotiation card]. Intrigue cards reshuffle when their
+    deck runs out [FAQ p. 2], but no rule refills the Contract bank, so with
+    fewer than three left the card cannot be used at all (OQ-064, user
+    ruling 2026-09-26): "3장이 없으면 Coercive Negotiation을 아예 사용할 수
+    없는게 맞다 ... 사용 후 효과가 없는게 아니라 아예 사용을 못 하는거지".
+    """
+
+    return state.config.choam_module and len(state.contract_bank) >= reward.count

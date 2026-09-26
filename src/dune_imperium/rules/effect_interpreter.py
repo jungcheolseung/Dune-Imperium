@@ -88,6 +88,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
+from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     agent_turn_space_id,
@@ -636,8 +637,17 @@ def option_is_playable(
     )
     if option.trigger is not None:
         # Playing only sets the card waiting face up; its rewards resolve
-        # when the trigger fires, so present feasibility does not gate it.
-        return bool(sections)
+        # when the trigger fires, so present feasibility does not gate it --
+        # except Coercive Negotiation's "Reveal three contracts from the
+        # bank" [Coercive Negotiation card]: nothing refills the bank, so
+        # with fewer than three there the card cannot be used at all, not
+        # used for no effect (OQ-064, user ruling 2026-09-26).
+        return bool(sections) and all(
+            contract_reveal_is_possible(state, reward)
+            for section in option.sections
+            for reward in section.rewards
+            if isinstance(reward, RevealContractsTakeOne)
+        )
     return (
         bool(sections)
         and can_afford(owner, resource_cost(sections))
