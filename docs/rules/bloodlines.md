@@ -22,7 +22,7 @@ CHOAM Module과 함께 쓸 때만 기존 contract 20개에 섞는 token 8개다(
 | Earn Any Alliance | 아직 갖고 있지 않은 Alliance token을 가져갈 때 | Solari 2, troop 2 | 아래 "Earn Any Alliance" 참조 |
 | Harvest 3+ | Maker space에 Agent, 그 turn spice 3+ | Solari 2, Spy 1 | Uprising Harvest와 같은 조건 `[Main p. 16]` |
 | Harvest 4+ | Maker space에 Agent, 그 turn spice 4+ | Solari 3, Spy 1 | |
-| High Council | High Council에 Agent | Agent 1 recall | Sardaukar II와 같은 보상; 방금 보낸 Agent는 대상이 아니다 `[Main p. 20]` |
+| High Council | High Council에 Agent | Agent 1 recall | Sardaukar II와 같은 보상; 방금 보낸 Agent는 대상이 아니다 `[Main p. 20]`. Duncan Idaho(Bloodlines)의 Into the Fray로 이전 turn에 Conflict에 보낸 Agent도 "자신의 Agent" 중 하나라 recall 대상이 되며, 방금 보낸 Agent는 여전히 제외된다(2026-09-26 사용자 판정, OQ-068) |
 | Immediate ("Requires an Intrigue card") | 가져오는 즉시 | Intrigue 카드 1장 trash → Intrigue 1 + draw 1 | 아래 "새 Immediate" 참조 |
 | Secrets | Secrets에 Agent | Solari 2, draw 1 | |
 | Spice Refinery | Spice Refinery에 Agent | troop 2 | |
@@ -74,7 +74,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 ## 4. 새 아이콘과 용어
 
 - **Spy with Deep Cover**: 일반 규칙대로 Spy 하나를 놓되, 놓을 때 상대의 Spy를 무시할 수 있다. 자신의 Spy가 이미 있는 post에는 놓을 수 없다. `[Bloodlines pp. 5, 12]`
-- **Command (6+)**: Reveal box에 적힌 효과로, 그 Reveal turn에 Persuasion을 6 이상 생성했을 때만 사용한다(그 카드 자신의 Persuasion 포함). `[Bloodlines pp. 5, 12]`
+- **Command (6+)**: Reveal box에 적힌 효과로, 그 Reveal turn에 Persuasion을 6 이상 생성했을 때만 사용한다(그 카드 자신의 Persuasion 포함). `[Bloodlines pp. 5, 12]` Desert Power(Persuasion 2 -OR- sandworm)처럼 선택형인 카드는 그 선택이 아직 안 끝났으면 자신의 Persuasion을 생성한 것으로 치지 않는다 — Persuasion 갈래를 고른 뒤부터 세고, sandworm 갈래를 고르면 끝내 세지 않는다(OQ-069, 사용자 판정 2026-09-26; `player-turns.md`의 Desert Power 항목).
 - **Combat 아이콘**: Combat space에 Agent를 보낸 것처럼 이번 turn에 troop을 Conflict에 deploy할 수 있다 — 이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두 개. 한 turn에 이 아이콘이 둘 이상이어도 garrison에서 deploy하는 수는 두 개를 넘지 못한다. Reveal turn에서도 쓸 수 있다(Disruption Tactics 예시). `[Bloodlines pp. 5, 12]`
 - **wild battle icon(clarification)**: Endgame에서 wild battle icon은 supply의 다른 아무 battle icon과 짝지을 수 있다 — 세 표준 아이콘 중 하나 또는 또 다른 wild. 짝지은 두 장을 face-down으로 뒤집고 1 VP를 얻는다. Uprising Main p. 20의 "세 종류 중 하나"는 wild가 하나뿐이던 시절의 서술이다. `[Bloodlines p. 5]`
 - **Trash an Intrigue card**: hand의 Intrigue 카드 1장을 trash한다. `[Bloodlines p. 12]`

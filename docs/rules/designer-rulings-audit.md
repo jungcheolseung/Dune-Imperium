@@ -30,7 +30,7 @@
 | 같은 post에 자기 Spy 둘 금지, supply가 비면 recall 뒤 재배치(같은 자리 포함) | `rules/spy_placement.py`, `rules/spy_moves.py` |
 | Combat 아이콘은 중첩되지 않음(garrison 2개 상한) | `rules/combat_deployment.py` `grant_combat_icon`(`max(limit, 2)`) |
 | 검은 unit이 없으면 0이지만, 같은 Reveal에서 unit이 들어오면 기록된 `sword_strength`가 합산됨 | `rules/reveal_turn.py`(`sword_strength`와 `strength` 분리 기록) |
-| Call to Arms: Intrigue draw는 세지 않고, 소급하지 않으며, Agent turn에 play해 face-up 대기 | `rules/intrigue_triggers.py` `fire_reveal_acquisition_intrigue`(personal card 획득 경로에서만 호출 — 2026-09-26부터 Tleilaxu Row 획득 `acquire_tleilaxu_card`도 포함 `[Immortality p. 8]`; Reclaimed Forces는 OQ-066) |
+| Call to Arms: Intrigue draw는 세지 않고, 소급하지 않으며, Agent turn에 play해 face-up 대기 | `rules/intrigue_triggers.py` `fire_reveal_acquisition_intrigue`(카드 획득 경로 — personal card, Tleilaxu Row `acquire_tleilaxu_card` `[Immortality p. 8]`, Reclaimed Forces `_apply_reclaimed_forces` — 에서 호출; Reclaimed Forces는 2026-09-26부터 포함 — 사용자 판정, OQ-066) |
 | Leverage는 실제 spice 획득 필요, Counterattack은 supply 0이어도 play, Shield Wall 제거는 선택, Unexpected Allies는 hooks 없이 worm | `rules/effect_interpreter.py`, `tests/unit/rules/test_intrigue.py` |
 | False Orders는 상대 Spy가 없어도 play 가능(Spy 배치 부분만) | `rules/intrigue.py`, `tests/unit/rules/test_bloodlines_cards.py` |
 | Strategic Stockpiling: 조건이 성립한 section만 발동 | `tests/unit/rules/test_intrigue.py` |

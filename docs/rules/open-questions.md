@@ -226,7 +226,7 @@
 - 상태: `DECIDED` (project convention)
 - 룰북은 "In a Reveal turn, you use the effect that follows if you generate 6 Persuasion or more"라고만 한다 `[Bloodlines p. 5]`. Reveal turn의 Persuasion은 Reveal 중의 선택(Corrinth City의 High Council, Reveal 중 draw한 카드, Command Center의 retreat 등)으로 늘어날 수 있어, Command를 Reveal 시작 시점에 한 번만 판정하는지 Reveal 도중 6에 도달해도 인정하는지가 열려 있다.
 - 판정(2026-09-07, project convention): OQ-028의 원칙(조건은 해결 시점에 판정하고 같은 turn의 뒤 선택으로 성립한 조건도 인정)을 그대로 적용한다. 자동 Command 효과(I Believe의 troop 2 등)는 Reveal 시작 시 Persuasion이 6 이상이면 지급되고, 미만이면 다른 자동 효과처럼 Reveal 도중 6에 도달하는 첫 시점에 지급된다(`grant_late_reveal_effects`). 선택형 Command 효과(Shrouded Counsel의 trash, Intelligence Training의 Spy, Pointing the Way의 Influence)는 6 미만이면 미뤄졌다가(`deferred_reveal_choices`) 6에 도달하면 다시 열리고, Reveal이 끝날 때까지 도달하지 못하면 소멸한다. Command 효과 자체는 Persuasion을 주지 않으므로(`PersonalCardRevealEffect.__post_init__`이 강제) 판정이 순환하지 않는다.
-- 보강(2026-09-26, 카드 전사 감사 — 공식 문구의 적용이며 새 convention이 아니다): 기준은 그 Reveal turn에 **생성한** Persuasion이다 — "You may use this effect only in a Reveal turn in which you generate 6 Persuasion or more" `[Bloodlines p. 12]`, "if you generate 6 Persuasion or more" `[Bloodlines p. 5]`. 구매에 쓴 Persuasion도 생성된 것이므로 6 이상에서 미룬 Command 선택은 구매 뒤에도 다시 열리고, 6 미만에서 산 뒤 추가 Persuasion으로 생성 합계가 6에 닿으면 늦은 지급이 일어난다. 이전 구현은 구매마다 줄어드는 Reveal frame의 남은 Persuasion으로 다시 판정해 Intelligence Training의 미룬 Spy가 구매 뒤 사라지고 Training Depot·I Believe의 늦은 Command가 지급되지 않았다. 구현: Reveal frame의 `persuasion_generated`(획득마다 증가, 구매로는 줄지 않음; Desert Power의 sandworm 갈래만 받지 않은 2 Persuasion을 되돌린다).
+- 보강(2026-09-26, 카드 전사 감사 — 공식 문구의 적용이며 새 convention이 아니다): 기준은 그 Reveal turn에 **생성한** Persuasion이다 — "You may use this effect only in a Reveal turn in which you generate 6 Persuasion or more" `[Bloodlines p. 12]`, "if you generate 6 Persuasion or more" `[Bloodlines p. 5]`. 구매에 쓴 Persuasion도 생성된 것이므로 6 이상에서 미룬 Command 선택은 구매 뒤에도 다시 열리고, 6 미만에서 산 뒤 추가 Persuasion으로 생성 합계가 6에 닿으면 늦은 지급이 일어난다. 이전 구현은 구매마다 줄어드는 Reveal frame의 남은 Persuasion으로 다시 판정해 Intelligence Training의 미룬 Spy가 구매 뒤 사라지고 Training Depot·I Believe의 늦은 Command가 지급되지 않았다. 구현: Reveal frame의 `persuasion_generated`(획득마다 증가, 구매로는 줄지 않음). Desert Power의 2는 Persuasion 갈래를 고를 때 더해진다([OQ-069](#oq-069--desert-power의-선택-전-2-persuasion과-command-6)).
 - 재개 조건: 공식 FAQ가 Command의 판정 시점을 정할 때.
 
 ## OQ-034 — Disruption Tactics의 "enemy troop" 선택과 Reveal 중 Combat 아이콘 배치의 회수
@@ -696,7 +696,7 @@
 
 ## OQ-066 — Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가
 
-- 상태: `OPEN` (구현 convention 적용 중)
+- 상태: `DECIDED` (2026-09-26 사용자 판정)
 - Tleilaxu Row의 카드는 Imperium 카드처럼 Reveal turn에 acquire한다("In many ways, Tleilaxu cards are similar to
   Imperium cards. You acquire them during your Reveal turn" `[Immortality p. 8]`). 그래서 Call to Arms("During your
   Reveal turn this round, whenever you acquire a card:" `[Call to Arms card]`)는 Tleilaxu Row 획득에도 발동한다
@@ -704,8 +704,16 @@
   “acquires” it, they choose one of its effects ... but leave the card in place." `[Immortality p. 9]` 카드를
   얻지 않는 이 "acquire"가 "acquire a card" trigger(Call to Arms 등)에 해당하는지 공식 문서는 말하지 않는다.
 - 필요한 답: Reclaimed Forces의 "acquire"가 카드 획득 trigger를 일으키는지.
-- 구현 convention: 일으키지 않는다(카드가 소유자에게 오지 않으며, 따옴표가 일반 획득과 구분한다). 엔진은
-  `_apply_reclaimed_forces`에서 `fire_reveal_acquisition_intrigue`를 부르지 않는다. 사용자 확인 대기.
+- 처음 convention(2026-09-26 오전): 일으키지 않는다(카드가 소유자에게 오지 않으며, 따옴표가 일반 획득과 구분한다).
+- 판정(2026-09-26, 사용자): **일으킨다** — "acquire 발동하지. 룰북 보면 acquire는 하지만 카드 열에서 안 없어지는걸로
+  표현되어 있지 않나". 룰북 문장도 acquire한다는 것이고 다른 점은 카드가 Row에 남는다는 것뿐이다("they choose one of
+  its effects ... but leave the card in place" `[Immortality p. 9]`). 그래서 Reclaimed Forces를 acquire하면 선택한
+  효과 뒤에(OQ-012의 고정 순서: 카드 자신의 보상 → … → face-up trigger Intrigue) face-up Call to Arms 같은
+  "acquire a card" trigger가 발동한다. 현재 콘텐츠에서 그런 일반 trigger는 Call to Arms뿐이다(Acquire Contract는
+  The Spice Must Flow만 지정한다). 구현: `rules/tleilaxu_row._apply_reclaimed_forces`가
+  `fire_reveal_acquisition_intrigue`를 부른다. 같은 날 함께 고친 것: Call to Arms가 recruit한 troop은 어느 획득 경로에서든
+  그 Reveal의 recruit(`reveal_troops_recruited`)로 세어 Combat 아이콘 배치에 든다(Combat 아이콘은 "이번 turn에 recruit한 유닛 전부와
+  garrison에서 최대 두 개" `[Bloodlines pp. 5, 12]`, bloodlines.md; 전에는 세지 않았다). `tests/unit/rules/test_tleilaxu_row.py`, `tests/unit/rules/test_intrigue.py`.
 
 ## OQ-067 — 두 Intrigue 더미가 모두 비었을 때 Captured Mentat·Guild Spy의 discard
 
@@ -717,14 +725,23 @@
 
 ## OQ-068 — Recall Agent 아이콘이 Into the Fray로 Conflict에 간 Agent를 되돌릴 수 있는지
 
-- 상태: `OPEN`
+- 상태: `DECIDED` (2026-09-26 사용자 판정)
 - Recall Agent 아이콘(Steersman)은 "Return one of your other Agents on the board to your Leader (not the Agent you sent during this turn)." `[Main p. 20]`이다. Duncan Idaho의 Into the Fray로 Conflict에 간 Agent는 board space를 떠난다(OQ-037 (a)). 디자이너는 같은 Agent를 Imperial Privilege("자신의 다른 Agent 1개를 recall" `[Board Guide p. 2]`)로 recall할 수 있다고 판정했지만(OQ-037 (d)), Recall Agent 아이콘에 대해서는 판정이 없다.
 - 현재 구현: Steersman의 recall은 board space의 Agent(`agent_locations`) 가운데 이번 turn에 보낸 Agent를 뺀 것만 제시한다(2026-09-26, `rules/agent_effects.legal_agent_card_recall_actions`). Conflict의 Agent는 대상이 아니다.
 - 필요한 답: Conflict의 Into the Fray Agent가 "your other Agents on the board"에 드는지. 든다면 Imperial Privilege의 `recall_conflict_agent_for_imperial_privilege` 같은 행동이 Agent card recall에도 필요하다(codec 변경).
+- 판정(2026-09-26, 사용자): **든다, 모든 recall 효과가 같다** — "Duncan Idaho(Bloodlines) Into the Fray의 Agent를 Imperial
+  Privilege로 recall 가능 이니까 recall agent 기능으로 되는건 모두 같게 동작해야지. 사다우카 계약 완료보상이나 원로회
+  계약 완료보상에 있는 recall agent도 마찬가지겠지". OQ-037 (d)의 디자이너 판정(Conflict의 Into the Fray Agent는 여전히
+  "자신의 Agent")을 모든 Agent recall로 넓힌다: Steersman의 Recall Agent 아이콘, Sardaukar II와 Bloodlines High Council
+  contract token의 완료 보상(CHOAM Demands로 완료할 때 포함)은 이번 turn에 보낸 Agent가 아닌 한 Conflict의 Agent도
+  고를 수 있고(`recall_conflict_agent_for_agent_card`, `recall_conflict_agent_for_contract`), 다른 Agent가 Conflict에만
+  있어도 보상이 불발되지 않는다. Twisted Mentat의 "You may recall the Agent you sent this turn." `[Twisted Mentat card]`은
+  이번 turn의 Into the Fray로 Conflict에 간 그 Agent도 되돌릴 수 있다. Conflict의 Agent를 되돌리면 유닛으로서 떠나므로
+  strength가 2(Swordmaster가 있으면 3) 준다. 구현은 Imperial Privilege와 한 helper를 쓴다. codec v109.
 
 ## OQ-069 — Desert Power의 선택 전 2 Persuasion과 Command (6+)
 
-- 상태: `OPEN` (현재 동작 기록, 사용자 판정 대기)
+- 상태: `DECIDED` (2026-09-26 사용자 판정, 후보 A)
 - Desert Power의 Reveal box는 "[2 Persuasion] -OR- [water] → [sandworm]"(Maker Hooks 필요)이고
   `[Desert Power card]` `[Main pp. 10, 20]`, Command (6+)는 "if you generate 6 Persuasion or more"일 때만
   쓴다 `[Bloodlines pp. 5, 12]`. Reveal 효과는 원하는 순서로 해결한다 `[Main p. 12]`. sandworm을 고르면 그 Reveal은
@@ -742,3 +759,13 @@
   (B) Desert Power의 2가 Command를 켜는 데 쓰이면 sandworm 갈래를 닫는다(구매에 쓴 것과 같게 취급) — 단순하지만
   자동 지급이 소유자의 선택 없이 sandworm을 막는다. (C) 현재대로 둔다.
 - 발견: 2026-09-26 통합 리뷰(Reveal 수정 그룹의 보고, 위 재현 절차로 확인).
+- 판정(2026-09-26, 사용자): **(A)** — "(A)가 맞지. 혹시 공개 때 뽑은 책략카드 등에 따라 desert power의 보상을 나중에
+  선택하고 싶을 수도 있잖아. 근데 설득력을 선택하기 전에 총 설득력이 6 미만이라면 당연히 통솔(+6)도 발동되면 안
+  되겠지. 그러다 설득력으로 최종 선택했고 그때 총 설득력이 6 이상이면 효과 발동되게 해야지". 구현: Maker Hooks가
+  있어 sandworm 갈래가 가능한 좌석은 Desert Power의 2 Persuasion을 Reveal 시작 때 세지 않는다 — 쓸 수도 없고
+  Command 판정에도 들지 않는다. 선택은 언제든 미룰 수 있고(`defer_reveal_choice`), Persuasion 갈래
+  (`decline_reveal_sandworm`)는 늘 고를 수 있으며, 고르기 전에는 Reveal을 끝낼 수 없다. Persuasion을 고르는 순간
+  2가 생성·사용 가능해지고, 그때 생성 합계가 6 이상이면 자동 Command 효과가 늦은 지급으로 나오고 미룬 Command 선택이
+  열린다. sandworm을 고르면 2는 끝까지 생성되지 않는다. Maker Hooks가 없으면 sandworm 갈래가 없으므로 2는 전처럼
+  Reveal 시작 때 센다. 전의 "2가 구매에 쓰였으면 sandworm을 닫는다"(2026-09-26 오전)는 2를 먼저 쓸 수 없게 되어
+  없어졌다. `tests/unit/rules/test_reveal_turn.py`.

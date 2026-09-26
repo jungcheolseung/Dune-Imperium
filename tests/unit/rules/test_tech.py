@@ -703,6 +703,129 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     }
 
 
+def test_steersman_recall_never_offers_its_own_into_the_fray_agent() -> None:
+    # Review round 1 major finding: Steersman's own Agent can reach the
+    # Conflict this very turn too, when Servo-Receivers' Signet Ring icon
+    # outside the printed card (OQ-037 (e), OQ-062) sends it Into the Fray
+    # while Steersman's own Recall Agent icon [Main p. 20] is still pending.
+    # With nothing else recallable the icon must offer nothing, never this
+    # turn's own Agent (2026-09-26 user ruling, OQ-068); with an earlier
+    # turn's Conflict Agent also present, exactly that one comes back.
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+
+    steersman = next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if ":steersman:" in instance_id
+    )
+    engine = UprisingRulesEngine()
+
+    def _fray(agent_in_conflict: int, agents_available: int) -> GameState:
+        owner = _owner(
+            leader_id="duncan_idaho",
+            hand=(steersman,),
+            agent_in_conflict=agent_in_conflict,
+            agents_available=agents_available,
+        )
+        state = _turn_state(owner, stacks=SERVO_STACKS)
+        placement = next(
+            action
+            for action in engine.legal_actions(state, 0)
+            if dict(action.arguments).get("space_id") == "assembly_hall"
+        )
+        placed = engine.apply(state, placement).state
+        acquire = next(
+            action
+            for action in engine.legal_actions(placed, 0)
+            if action.action_id == "acquire_tech"
+        )
+        opened = engine.apply(placed, acquire).state
+        deploy = next(
+            action
+            for action in engine.legal_actions(opened, 0)
+            if action.action_id == "deploy_leader_agent"
+        )
+        return engine.apply(opened, deploy).state
+
+    alone = _fray(agent_in_conflict=0, agents_available=2)
+    assert alone.players[0].agent_in_conflict == 1
+    assert alone.players[0].agent_locations == ()
+    assert "recall_conflict_agent_for_agent_card" not in {
+        action.action_id for action in engine.legal_actions(alone, 0)
+    }
+
+    fighting = _fray(agent_in_conflict=1, agents_available=1)
+    assert fighting.players[0].agent_in_conflict == 2
+    recall = next(
+        action
+        for action in engine.legal_actions(fighting, 0)
+        if action.action_id == "recall_conflict_agent_for_agent_card"
+    )
+    result = engine.apply(fighting, recall).state
+    assert result.players[0].agent_in_conflict == 1
+    assert result.players[0].agents_available == 1
+
+
+def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> None:
+    # Review round 1 major finding: CHOAM Demands' "Complete one of your
+    # contracts." [CHOAM Demands card] Agent-box completion resolves
+    # (apply_agent_card_contract_completion in agent_effects.py) through a
+    # turn-Agent-in-Conflict computation separate from a board-space
+    # completion (apply_contract_completion in contracts.py). Buying
+    # Servo-Receivers from the same Assembly Hall visit sends CHOAM Demands'
+    # own Agent Into the Fray before its box resolves; with no earlier
+    # turn's Conflict Agent and no board Agent, Sardaukar II's "recall one of
+    # your Agents" [Main p. 20] reward must still fizzle, never targeting
+    # this turn's own Agent (OQ-037 (d), extended to every Recall Agent
+    # effect by the 2026-09-26 user ruling, OQ-068).
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+    from dune_imperium.rules.contracts import legal_contract_recall_actions
+
+    choam_demands = "imperium:choam_demands:0"
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(choam_demands,),
+        resources=Resources(solari=4, spice=6, water=2),
+        agent_in_conflict=0,
+        agents_available=2,
+        active_contract_ids=("contract:sardaukar_ii",),
+    )
+    state = _turn_state(owner, stacks=SERVO_STACKS, config=TECH_CHOAM)
+    placement = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "assembly_hall"
+    )
+    placed = engine.apply(state, placement).state
+    acquire = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "acquire_tech"
+    )
+    opened = engine.apply(placed, acquire).state
+    deploy = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = engine.apply(opened, deploy).state
+    assert fighting.players[0].agent_locations == ()
+    assert fighting.players[0].agent_in_conflict == 1
+
+    completion = legal_agent_card_contract_completion_actions(fighting, 0)[0]
+    completed = apply_agent_card_contract_completion(fighting, completion)
+
+    assert any(
+        event.kind == "contract_recall_unavailable" for event in completed.events
+    )
+    assert legal_contract_recall_actions(completed.state, 0) == ()
+
+
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
     # [Steersman Y'rkoon card] (OQ-062).
@@ -1603,6 +1726,110 @@ def test_training_depot_counts_persuasion_spent_before_the_sixth() -> None:
     assert late_context["persuasion"] == 6 - 2
     assert late_context["tech_granted"] == "training_depot"
     assert late_context["sword_strength"] == swords + 2
+
+
+def test_desert_power_command_tile_pays_only_after_the_persuasion_branch() -> None:
+    # OQ-069 (user ruling 2026-09-26): "[2 Persuasion] -OR- [water] ->
+    # [sandworm]" [Desert Power card] [Main pp. 10, 20]; with Maker Hooks the
+    # sandworm branch stays open, so Training Depot's "Reveal Turn:
+    # Command (6+): [2 swords]" [Training Depot tile] [Bloodlines p. 5] does
+    # not pay until the owner picks the Persuasion branch.
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.rules.reveal_turn import legal_reveal_sandworm_actions
+
+    desert_power = next(
+        instance
+        for instance in imperium_deck_instance_ids(False, bloodlines=True)
+        if ":desert_power:" in instance
+    )
+    diplomacy = next(
+        instance
+        for instance in starting_deck_instance_ids(0)
+        if ":diplomacy:" in instance
+    )
+    dune_the_desert_planet = next(
+        instance
+        for instance in starting_deck_instance_ids(0)
+        if ":dune_the_desert_planet:" in instance
+    )
+    owner = _tech_owner(
+        "training_depot",
+        hand=(desert_power, diplomacy, dune_the_desert_planet),
+        deck=(),
+        high_council=True,
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = _turn_state(owner, stacks=((), (), ()))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    context = dict(revealed.decision_stack[0].context)
+    assert context["persuasion_generated"] == 4
+    assert context["tech_granted"] == ""
+    swords = context["sword_strength"]
+    assert isinstance(swords, int)
+
+    decline = DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    assert decline in legal_reveal_sandworm_actions(revealed, 0)
+    declined = engine.apply(revealed, decline).state
+    late_context = dict(declined.decision_stack[0].context)
+    assert late_context["persuasion_generated"] == 6
+    assert late_context["tech_granted"] == "training_depot"
+    # The 2 swords must actually reach the Reveal frame's sword strength, not
+    # just the tile's recorded name (Training Depot tile "[2 swords]"
+    # [Bloodlines p. 5]).
+    assert late_context["sword_strength"] == swords + 2
+
+
+def test_desert_power_command_tile_does_not_pay_on_the_sandworm_branch() -> None:
+    # OQ-069 (user ruling 2026-09-26) counterpart: paying water for the
+    # sandworm instead of picking the Persuasion branch never generates the
+    # 2 Persuasion, so Training Depot's Command (6+) line
+    # [Training Depot tile] [Bloodlines p. 5] must not pay either.
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.rules.reveal_turn import legal_reveal_sandworm_actions
+
+    desert_power = next(
+        instance
+        for instance in imperium_deck_instance_ids(False, bloodlines=True)
+        if ":desert_power:" in instance
+    )
+    diplomacy = next(
+        instance
+        for instance in starting_deck_instance_ids(0)
+        if ":diplomacy:" in instance
+    )
+    dune_the_desert_planet = next(
+        instance
+        for instance in starting_deck_instance_ids(0)
+        if ":dune_the_desert_planet:" in instance
+    )
+    owner = _tech_owner(
+        "training_depot",
+        hand=(desert_power, diplomacy, dune_the_desert_planet),
+        deck=(),
+        high_council=True,
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = _turn_state(owner, stacks=((), (), ()))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    context = dict(revealed.decision_stack[0].context)
+    assert context["persuasion_generated"] == 4
+    swords = context["sword_strength"]
+    assert isinstance(swords, int)
+
+    pay_water = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=0)
+    assert pay_water in legal_reveal_sandworm_actions(revealed, 0)
+    paid = engine.apply(revealed, pay_water).state
+    reveal_frame = next(
+        frame for frame in paid.decision_stack if frame.kind == "reveal"
+    )
+    paid_context = dict(reveal_frame.context)
+    assert paid_context["persuasion_generated"] == 4
+    assert paid_context["tech_granted"] == ""
+    assert paid_context["sword_strength"] == swords
 
 
 def test_forbidden_weapons_demands_its_choice_in_the_owners_order() -> None:

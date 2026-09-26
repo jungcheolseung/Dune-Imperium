@@ -176,7 +176,10 @@ s4가 계속 읽음, Commander 배치 템플릿이 Immortality 카탈로그에�
 Eliminate Allies의 troop 2도 R8과 같은 이유로 배치 몫에서 빠졌고, Rapid Engineering·Battlefield Research로 산 tile의 troop(Rapid
 Dropships·Ornithopter Fleet 2, Forbidden Weapons 1)이 배치 전·Reveal에서는 그 turn의 recruit로 세이지 않았다("그 turn에 어떤 출처에서
 recruit했든 새 troop은 Conflict에 deploy할 수 있다" `[Main p. 10]` `[FAQ p. 4]`). r1이 보고한 Desert Power와 Command (6+)의 순서 문제는
-[OQ-069](../rules/open-questions.md#oq-069--desert-power의-선택-전-2-persuasion과-command-6)에 OPEN으로 적었다.
+[OQ-069](../rules/open-questions.md#oq-069--desert-power의-선택-전-2-persuasion과-command-6)에 OPEN으로 적었다. (갱신: OQ-069는
+2026-09-26 사용자 판정으로 DECIDED되어 반영되었다. 그 결과 위 R4의 수정(쓴 뒤에도 sandworm을 살 수 있던 것을 막는 "Persuasion −2"
+게이트, `_unspent_reveal_persuasion`)은 전제 자체가 없어져 제거되었다: Desert Power의 2 Persuasion은 이제 Persuasion 갈래를 실제로
+고르기 전까지 애초에 집계되지 않으므로, 고르기 전에 "쓴다"는 상황이 생기지 않는다.)
 
 커밋 메시지 정정(기존 커밋은 고치지 않는다): e797452의 "13 of 107 positions moved"는 **20**개가 옮겨졌고, b6fa486의 마지막 항목(Influence·lands·Spy 열)
 "full seed 158 seat 0 with base seed 3 seat 2"의 뒤쪽은 **full seed 3 seat 2**다(앞의 deck 열 "base seed 3 seat 2"는 맞다).
@@ -188,6 +191,23 @@ recruit했든 새 troop은 Conflict에 deploy할 수 있다" `[Main p. 10]` `[FA
 - Coercive Negotiation: 조건이 되면 반드시 수행한다(거절 없음).
 - False Orders: 공식 FAQ대로 영향을 받은 상대는 이번 turn에 Agent를 보낸 공간에 **연결되지 않은** 빈 post로 Spy를 옮긴다 `[FAQ p. 2]`.
   Holy War도 문구가 같아 같은 판정을 적용한다(프로젝트 판정). OQ-036 (b) 갱신.
+
+## 사용자 판정 2차 (2026-09-26 저녁)
+
+- OQ-066: Reclaimed Forces의 "acquire"도 acquire다 — 선택한 효과 뒤에 face-up Call to Arms가 발동한다("they choose one of its effects ...
+  but leave the card in place" `[Immortality p. 9]`). 같은 작업에서 Call to Arms가 recruit한 troop이 어느 획득 경로에서든 그 Reveal의
+  recruit로 세지 않던 결함도 고쳤다.
+- OQ-068: 모든 Agent recall(Steersman의 Recall Agent 아이콘, Twisted Mentat, Sardaukar II·High Council contract token의 완료 보상, CHOAM
+  Demands 경로)이 Imperial Privilege처럼 Conflict의 Into the Fray Agent를 되돌릴 수 있다(이번 turn의 Agent는 아니다; Twisted Mentat은
+  이번 turn의 그 Agent를 되돌린다). Imperial Privilege와 한 helper(`rules/effects.py`)를 쓴다. 참고: 이 작업의 커밋 7afb22b는 두 새 행동을
+  제시하지만 748a16a 전까지 처리기가 없어 그 커밋 단독으로는 엔진이 깨진다(bisect 때 건너뛴다; 기존 커밋은 고치지 않는다).
+- OQ-069: 후보 (A) — Maker Hooks가 있으면 Desert Power의 2 Persuasion은 Persuasion 갈래를 고를 때까지 쓸 수도, Command (6+)에 셀 수도
+  없다; 고르기 전에는 Reveal을 끝낼 수 없다. 오전의 "2를 쓰면 sandworm을 닫는다"(통합 리뷰 R4)는 없어졌다.
+- OQ-064·065: 사용자가 사실 확인을 물었다(Coercive Negotiation은 contract bank가 3장 미만일 때만, 강제 Spy 이동은 Research Station·Spice
+  Refinery에서 Spy 12개가 모두 놓였을 때만 생긴다). 판정 전까지 현재 convention을 유지한다.
+- 버전: `ACTION_CODEC_VERSION` 108 → 109(`recall_conflict_agent_for_agent_card`는 Bloodlines 카탈로그, `recall_conflict_agent_for_contract`는
+  CHOAM+Bloodlines 카탈로그). 카탈로그 기본 4,424·CHOAM 4,715·CHOAM+Bloodlines 11,252·전 확장 33,004 → 33,006. 5081 이관(v107 → v109): 유지
+  32,980·새 26·삭제 7. `OBSERVATION_VERSION` 20 유지. 이 판정들이 닿는 판은 드물어 golden 인코딩·문제집·census 고정 판은 그대로 복원된다.
 
 ## 새 open question
 
