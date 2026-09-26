@@ -1,4 +1,4 @@
-"""CLI for checkpoint files: inspect, stamp for migration, migrate (``train`` extra)."""
+"""CLI for checkpoint files: inspect, stamp, migrate, widen (``train`` extra)."""
 
 import argparse
 from collections.abc import Sequence
@@ -8,6 +8,7 @@ from dune_imperium.training.checkpoint import (
     load_checkpoint,
     save_checkpoint,
     stamp_checkpoint,
+    widen_checkpoint,
 )
 
 
@@ -16,8 +17,9 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="dune-imperium-checkpoint",
         description=(
             "Inspect training checkpoints, stamp format-1 files with their "
-            "action catalog so a later codec change can migrate them, or write "
-            "a checkpoint migrated to the current encodings."
+            "action catalog so a later codec change can migrate them, write "
+            "a checkpoint migrated to the current encodings, or widen an MLP "
+            "checkpoint to another architecture computing the same function."
         ),
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -37,6 +39,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     migrate.add_argument("source", type=Path)
     migrate.add_argument("target", type=Path)
+    widen = commands.add_parser(
+        "widen",
+        help=(
+            "write an MLP file as another architecture with the same outputs "
+            "(new weights at zero, Adam moments kept, same iteration)"
+        ),
+    )
+    widen.add_argument("--arch", choices=("mlp_slots",), required=True)
+    widen.add_argument("source", type=Path)
+    widen.add_argument("destination", type=Path)
     return parser
 
 
@@ -46,7 +58,8 @@ def _describe(path: Path) -> str:
     if info.migration is not None:
         migration = f"; migrated on load: {info.migration.describe()}"
     return (
-        f"{path}: format {info.format}, codec v{info.action_codec_version}, "
+        f"{path}: format {info.format}, arch {info.arch}, "
+        f"codec v{info.action_codec_version}, "
         f"observation v{info.observation_version}, ruleset {info.ruleset}, "
         f"iteration {info.iteration}, actions {info.action_size}, hidden "
         f"{list(info.hidden)}, optimizer {'yes' if info.optimizer_state else 'no'}, "
@@ -64,6 +77,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             for path in arguments.paths:
                 stamp_checkpoint(path)
                 print(f"stamped {_describe(path)}")
+        elif arguments.command == "widen":
+            info = widen_checkpoint(
+                arguments.source, arguments.destination, arch=arguments.arch
+            )
+            print(f"widened {arguments.source} to {info.arch}")
+            migrated = info.metadata.get("widened_migration")
+            if migrated is not None:
+                print(f"{arguments.source}: {migrated}")
+            print(f"wrote {_describe(arguments.destination)}")
         else:
             network, info = load_checkpoint(arguments.source)
             if info.migration is None:
@@ -72,7 +94,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"{arguments.source}: {info.migration.describe()}")
             # The migrated file is written without a codec: its template list
             # is re-derived by ``stamp`` if ever needed, and the optimizer
-            # moments travel with it.
+            # moments travel with it. An ``mlp_slots`` network writes format 3
+            # and ``stamp`` keeps it there.
             save_checkpoint(
                 arguments.target,
                 network,

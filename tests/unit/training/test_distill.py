@@ -1,5 +1,6 @@
 """Tests for expert-iteration distillation (``training.distill``)."""
 
+import copy
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -48,7 +49,10 @@ from dune_imperium.training.expert import (  # noqa: E402
     run_meta,
     write_game,
 )
-from dune_imperium.training.network import PolicyValueNetwork  # noqa: E402
+from dune_imperium.training.network import (  # noqa: E402
+    MlpSlotsNetwork,
+    PolicyValueNetwork,
+)
 
 
 def _stack_rows(
@@ -449,6 +453,52 @@ def test_save_candidate_round_trips_and_produces_working_agents(tmp_path: Path) 
     view = engine.observe(state, owner)
     chosen = checkpoint_agent.choose_action(view, actions)
     assert chosen in actions
+
+
+def test_an_mlp_slots_network_distills_saves_and_copies(tmp_path: Path) -> None:
+    # A distill run trains the slot embedding along with the rest.
+    rng = np.random.default_rng(2)
+    data = _bit_flip_data(rng, games=20, rows_per_game=20)
+    # Give the rows identity columns to read (the Imperium Row's first slot).
+    data.observations[:, 13] = 1 + data.observations[:, 0]
+    torch.manual_seed(1)
+    small = MlpSlotsNetwork(12, hidden=(16,))
+    report = distill(
+        small,
+        data,
+        DistillConfig(
+            max_epochs=1, minibatch_size=64, learning_rate=1e-2, warmup_steps=1
+        ),
+    )
+    assert report.best_epoch == 1
+    assert float(small.slot_embed.weight.detach().abs().sum()) > 0.0
+
+    config = RulesetConfig()
+    codec = ActionCodec(config)
+    torch.manual_seed(4)
+    network = MlpSlotsNetwork(codec.size, hidden=(16,))
+    with torch.no_grad():
+        network.slot_embed.weight.normal_(std=0.1)
+    parent = tmp_path / "parent.pt"
+    save_checkpoint(
+        parent, network, ruleset=config.identifier, iteration=3, codec=codec
+    )
+    out = tmp_path / "candidate.pt"
+    save_candidate(out, network, parent=parent, metadata={"tag": "slots"})
+    reloaded, info = load_checkpoint(out)
+    assert isinstance(reloaded, MlpSlotsNetwork)
+    assert (info.arch, info.format, info.iteration) == ("mlp_slots", 3, 3)
+    for (name, expected), (_, actual) in zip(
+        network.state_dict().items(), reloaded.state_dict().items(), strict=True
+    ):
+        assert torch.equal(expected, actual), name
+
+    duplicate = copy.deepcopy(network)
+    observations = torch.randint(0, 6, (3, OBSERVATION_SIZE), dtype=torch.int32)
+    with torch.no_grad():
+        assert torch.equal(duplicate.trunk(observations), network.trunk(observations))
+        assert torch.equal(reloaded.trunk(observations), network.trunk(observations))
+    assert make_agent(f"checkpoint:{out}", 0) is not None
 
 
 # -- 9. CLI end to end ----------------------------------------------------------
