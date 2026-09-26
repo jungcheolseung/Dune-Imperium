@@ -264,8 +264,12 @@ def test_reclaimed_forces_troops_choice_fires_call_to_arms() -> None:
 def test_reclaimed_forces_tleilaxu_choice_fires_call_to_arms() -> None:
     # Same ruling as above (OQ-066), exercised on the Tleilaxu-track choice:
     # Call to Arms fires for any acquisition, not only the troops effect.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
     call_to_arms = "intrigue:call_to_arms:0"
-    state = _reveal_state(_owner(intrigue_faceup=(call_to_arms,)))
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), combat_icon_turn=True)
+    )
 
     result = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:tleilaxu"])
 
@@ -274,6 +278,17 @@ def test_reclaimed_forces_tleilaxu_choice_fires_call_to_arms() -> None:
     assert owner.troops_garrison == 4
     assert "intrigue_triggered" in [event.kind for event in result.events]
     assert owner.intrigue_faceup == (call_to_arms,)
+    # The Tleilaxu-track branch recruits none of its own, so the recruit
+    # count on the Reveal frame comes only from Call to Arms's troop -- it
+    # must still join "You may deploy any units you recruit this turn"
+    # [Bloodlines p. 5] the same way the troops-choice branch's does.
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result.state, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
 
 
 def _agent_turn(card_id: str, space_id: str, **overrides: object) -> GameState:
