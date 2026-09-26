@@ -1757,6 +1757,107 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
     ] == ["hagga_basin"]
 
 
+_FAR_POSTS = (
+    "emperor-sardaukar-dutiful-service",
+    "arrakis-hagga-basin",
+    "arrakis-deep-desert",
+)
+
+
+def _last_to_reveal(state: GameState) -> GameState:
+    return replace(
+        state,
+        players=(
+            state.players[0],
+            *(replace(seat, has_revealed=True) for seat in state.players[1:]),
+        ),
+    )
+
+
+def _recall_and_place_contract_spy(state: GameState) -> GameState:
+    engine = UprisingRulesEngine()
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
+    assert state.decision_stack[-2].kind == FrameKind.TURN
+    recall = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "recall_spy_for_contract"
+    )
+    recalled = engine.apply(state, recall).state
+    return engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
+
+
+def test_a_contract_spy_recall_after_the_turn_closed_is_not_the_next_turns() -> None:
+    # "If a contract's condition is sending an Agent to a board space, the
+    # contract is another effect of your Agent turn." [FAQ p. 1], and "If
+    # you recalled a Spy this turn" counts the seat's recalls in its own
+    # turn (OQ-044 (d)). Completed as the turn's last effect by the last
+    # seat to reveal, the reward's recall-first ("you may first recall one
+    # of your Spies for no effect" [Main pp. 11, 20]) resolved after the
+    # seat's next turn had opened, and counted for that next turn.
+    seek_allies = next(card for card in STARTERS if ":seek_allies:" in card)
+    state = _last_to_reveal(
+        _state(
+            _owner(
+                hand=(seek_allies,),
+                spies_supply=0,
+                spy_post_ids=_FAR_POSTS,
+                active_contract_ids=("contract:bloodlines_deliver_supplies",),
+            ),
+            CHOAM_BLOODLINES,
+        )
+    )
+    engine = UprisingRulesEngine()
+    current = _play(state, seek_allies, "deliver_supplies")
+    for _ in range(10):
+        if current.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS:
+            break
+        offered = engine.legal_actions(current, 0)
+        pick = next(
+            (a for a in offered if a.action_id != "complete_contract"), offered[0]
+        )
+        current = engine.apply(current, pick).state
+    placed = _recall_and_place_contract_spy(current)
+
+    seat = placed.players[0]
+    assert placed.decision_stack[-1].kind == FrameKind.TURN
+    assert seat.spies_supply == 0 and len(seat.spy_post_ids) == 3
+    assert seat.spies_recalled_turn == 0
+
+
+def test_choam_demands_spy_recall_after_the_turn_closed_is_not_the_next_turns() -> (
+    None
+):
+    # The same for a Contract completed by CHOAM Demands' Agent box
+    # ("Complete one of your contracts." [CHOAM Demands card]) as the turn's
+    # last effect: its Spy frame is re-pushed above the next turn (OQ-044
+    # (d)).
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+
+    card = _card("choam_demands")
+    state = _last_to_reveal(
+        _state(
+            _owner(
+                hand=(card,),
+                spies_supply=0,
+                spy_post_ids=_FAR_POSTS,
+                active_contract_ids=("contract:arrakeen_ii",),
+            ),
+            CHOAM_BLOODLINES,
+        )
+    )
+    played = _play(state, card, "assembly_hall")
+    completion = legal_agent_card_contract_completion_actions(played, 0)[0]
+    completed = apply_agent_card_contract_completion(played, completion).state
+    placed = _recall_and_place_contract_spy(completed)
+
+    assert placed.decision_stack[-1].kind == FrameKind.TURN
+    assert placed.players[0].spies_recalled_turn == 0
+
+
 # --- Bloodlines slice 4d-3: Holy War, False Orders, Coercive Negotiation --
 
 

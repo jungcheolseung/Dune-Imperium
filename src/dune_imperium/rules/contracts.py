@@ -33,6 +33,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
     update_turn_recruits,
+    with_context,
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -145,6 +146,9 @@ def apply_contract_completion(
         definition,
         source=source,
         excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
+        # The completion was the turn's last effect when the advance replaced
+        # the Agent frame with the next turn's.
+        turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
     )
     return RuleResult(
         state=follow_up.state,
@@ -291,6 +295,11 @@ def apply_contract_spy_action(
     owner = state.players[action.actor]
     if action.action_id == "recall_spy_for_contract":
         next_owner = recall_spy(owner, post_id)
+        if context.get("turn_closed") is True:
+            # The recall belongs to the closed turn (OQ-044 (d)).
+            next_owner = replace(
+                next_owner, spies_recalled_turn=owner.spies_recalled_turn
+            )
         context["contract_spy_recalled"] = True
         next_frame = replace(frame, context=tuple(sorted(context.items())))
         next_state = replace(
@@ -1052,6 +1061,7 @@ def _begin_contract_reward_choice(
     *,
     source: str,
     excluded_space_id: str = "",
+    turn_closed: bool = False,
 ) -> RuleResult:
     reward = definition.reward
     choice_count = sum(
@@ -1136,8 +1146,26 @@ def _begin_contract_reward_choice(
                 ("turn_owner", player),
             ),
         )
+        if turn_closed:
+            frame = mark_contract_spy_after_turn(frame)
         return RuleResult(state=state.push_decision(frame))
     return RuleResult(state=state)
+
+
+def mark_contract_spy_after_turn(frame: DecisionFrame) -> DecisionFrame:
+    """Mark a Contract Spy frame that resolves after its turn has closed.
+
+    A Contract completed by sending an Agent "is another effect of your
+    Agent turn" [FAQ p. 1], so a recall made for its Spy belongs to that
+    turn. When the completion was the turn's last effect the next turn --
+    the same seat's, if it is the last to reveal -- has already opened and
+    reset its counters; the recall must not count as that turn's "If you
+    recalled a Spy this turn" (OQ-044 (d)).
+    """
+
+    if frame.kind != FrameKind.CONTRACT_REWARD_SPY:
+        return frame
+    return with_context(frame, {**dict(frame.context), "turn_closed": True})
 
 
 # --- Bloodlines Immediate: trash an Intrigue card -----------------------------------

@@ -2739,6 +2739,52 @@ def test_in_high_places_spy_may_pass_on_the_recall_with_an_empty_supply() -> Non
     assert passed.decision_stack[-1].kind == placed.decision_stack[-1].kind
 
 
+def test_in_high_places_spy_recall_after_the_turn_closed_is_not_the_next_turns() -> (
+    None
+):
+    # Resolved as the turn's last effect, In High Places hands the turn over
+    # before its Spy is placed; for the last seat to reveal the next turn is
+    # its own. A recall-first for that Spy ("you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20]) belongs to the closed turn and
+    # must not satisfy the next turn's "If you recalled a Spy this turn"
+    # (OQ-044 (d)).
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    placed, _ = _in_high_places_on_secrets(spies_supply=0, spy_post_ids=posts)
+    placed = replace(
+        placed,
+        players=(
+            placed.players[0],
+            *(replace(seat, has_revealed=True) for seat in placed.players[1:]),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    current = placed
+    for _ in range(5):
+        others = [
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id != "resolve_agent_card_effect"
+        ]
+        if not others:
+            break
+        current = engine.apply(current, others[0]).state
+    resolved = engine.apply(
+        current, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    assert resolved.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert resolved.decision_stack[-2].kind == FrameKind.TURN
+
+    recall = next(
+        action
+        for action in engine.legal_actions(resolved, 0)
+        if action.action_id == "recall_spy_for_placement"
+    )
+    recalled = engine.apply(resolved, recall).state
+    spied = engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
+    assert spied.decision_stack[-1].kind == FrameKind.TURN
+    assert spied.players[0].spies_recalled_turn == 0
+
+
 def test_rebel_supplier_recruits_two_after_gathering_intelligence() -> None:
     supplier = _imperium_instance("rebel_supplier")
     drawn = _instance("dagger")

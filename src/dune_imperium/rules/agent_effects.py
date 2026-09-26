@@ -46,6 +46,7 @@ from dune_imperium.rules.combat_deployment import (
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_contract_by_effect,
+    mark_contract_spy_after_turn,
 )
 from dune_imperium.rules.effects import (
     active_agent_card,
@@ -1115,6 +1116,10 @@ def apply_agent_card_contract_completion(
         completed.state, decision_stack=completed.state.decision_stack[:depth]
     )
     advanced = advance_after_effect(base, context, base.players)
+    if advanced.decision_stack[-1].kind == FrameKind.TURN:
+        # The completion was the turn's last effect: a Spy recalled for its
+        # reward belongs to the closed turn, not the one just opened.
+        follow_up = tuple(mark_contract_spy_after_turn(frame) for frame in follow_up)
     next_state = replace(
         advanced, decision_stack=(*advanced.decision_stack, *follow_up)
     )
@@ -4318,6 +4323,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             player,
             tuple(post.post_id for post in OBSERVATION_POSTS),
             source=event_source,
+            # As the turn's last effect the box handed the turn over already;
+            # a recall-first for this Spy is still this turn's (OQ-044 (d)).
+            turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
         )
         draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
         return RuleResult(state=draw.state, events=(event, *draw.events))
