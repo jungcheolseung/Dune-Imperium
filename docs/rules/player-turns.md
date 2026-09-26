@@ -135,6 +135,7 @@
 - Agent turn의 기본 deploy는 Combat space에 Agent를 보냈을 때 할 수 있다. Combat space는 사막 그림과 교차한 sword 표시가 있는 space다. [Main p. 10]
 - Combat space에 들어간 turn에는 그 turn에 recruit한 troop을 원하는 수만큼 deploy하고, 그와 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다. [Main p. 10]
 - 그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다. [Main p. 10] [FAQ p. 4]
+  Bloodlines에서는 이번 turn에 recruit한 Sardaukar Commander의 몫은 Commander만, recruit한 troop의 몫은 troop만 채우고 garrison의 두 개는 두 종류가 함께 쓴다(사용자 판정, [OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫); [bloodlines.md](bloodlines.md) 3절).
 - Retreat는 "troop을 Conflict에서 garrison으로 옮긴다"는 효과 키워드로
   정의된다(Chani, Clever Tactician 등 카드 효과가 지시할 때). [Main p. 20]
   [FAQ p. 3] 배치한 troop을 같은 turn 안에서 임의로 되돌릴 수 있는지, 배치를

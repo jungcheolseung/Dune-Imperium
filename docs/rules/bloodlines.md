@@ -46,7 +46,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 - 자신의 turn에 Sardaukar Commander가 있는 board space에 Agent를 보내면, 2 Solari를 지불해 그 Commander를 acquire하고 즉시 recruit할 수 있다. 이것은 그 space의 효과이며, 다른 board space·카드 효과와 원하는 순서로 처리한다. `[Bloodlines p. 4]`
 - Commander를 acquire할 때마다 Skill 하나를 얻는다. face-up 4장 중 하나를 골라 자신의 supply에 놓고(모두에게 공개), 이미 supply에 있는 것과 같은 Skill은 고를 수 없다. 고른 뒤 stack에서 한 장을 face-up으로 보충한다. `[Bloodlines p. 4]`
-- supply의 Commander는 일반 수단으로 recruit할 수 없다. 대신 turn(Agent 또는 Reveal)마다 한 번, 2 Solari를 지불해 supply의 Commander 하나를 garrison으로(이번 turn에 Combat space에 Agent를 보냈다면 Conflict로) recruit할 수 있다. 이때는 acquire가 아니므로 Skill을 고르지 않는다. 한 turn에 4 Solari로 두 개를 recruit할 수는 없다. `[Bloodlines p. 4]`
+- supply의 Commander는 일반 수단으로 recruit할 수 없다. 대신 turn(Agent 또는 Reveal)마다 한 번, 2 Solari를 지불해 supply의 Commander 하나를 garrison으로(이번 turn에 Combat space에 Agent를 보냈다면 Conflict로) recruit할 수 있다. 이때는 acquire가 아니므로 Skill을 고르지 않는다. 한 turn에 4 Solari로 두 개를 recruit할 수는 없다. `[Bloodlines p. 4]` 엔진은 이것을 garrison으로의 recruit와 그 뒤의 배치로 나눠 모델링한다: recruit한 Commander는 "You may place it in your garrison or … deploy it to the Conflict" `[Bloodlines p. 4]`(아래 '유닛으로서의 취급')이므로 Conflict로 보낼지는 소유자가 고르고, 그 배치 몫은 Commander 몫으로 남아 있어 troop이 먼저 가져가지 못한다([OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫)). 배치가 막힌 turn(예: Emperor of the Known Universe의 배치 금지)에는 garrison에 남는다.
 
 ### 유닛으로서의 취급
 

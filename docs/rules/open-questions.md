@@ -817,7 +817,13 @@
   carry(`reveal_turn._begin_reveal_turn`)가 그 수를 따로 넘긴다. OQ-044 (d)의 닫힌-turn 가드(`turn_closed`)는 새
   수에도 그대로 적용된다. Reveal 배치는 Commander 몫을 `reveal_commanders_deployed`(`reveal_units_deployed`의 일부)로
   센다. 공개 이벤트 payload는 바뀌지 않았다.
-- 테스트: `tests/unit/rules/test_sardaukar.py`의 OQ-070 절(Agent turn·Reveal의 recruit한 Commander 몫, recruit한
+- 테스트: `tests/unit/rules/test_sardaukar.py`의 OQ-070 절(Agent turn·Reveal의 recruit한 Commander 몫 — Reveal은
+  Commander를 먼저 배치하는 순서 포함, Combat 아이콘 아래 방문한 space에서 산 Commander, recruit한
   troop 몫과 garrison Commander, Sardaukar Coordination의 한도 0, Elite Forces의 Combat 아이콘, 여러 번 나눈 배치와
   회수, 배치 전·Reveal 전 carry, 닫힌 turn의 Commander credit), `tests/unit/rules/test_bloodlines_cards.py`의
   Sardaukar Standard 테스트.
+- 참고(2026-09-26 리뷰): 룰북은 supply에서 지불 recruit한 Commander를 garrison으로(이번 turn에 Combat space에
+  Agent를 보냈다면 Conflict로) 옮긴다고 적는다 `[Bloodlines p. 4]`. 같은 쪽의 일반 규칙은 recruit한 Commander를
+  garrison에 두거나 Conflict에 deploy할 수 있다고 하므로 `[Bloodlines p. 4]`, 엔진은 이것을 garrison recruit 뒤 이
+  판정의 예약된 Commander 몫을 통한 배치로 모델링한다(Conflict로 보낼지는 소유자가 고른다; 배치가 막힌 turn에는
+  garrison에 남는다). [bloodlines.md](bloodlines.md) 3절 '획득과 recruit'.
