@@ -127,3 +127,21 @@ troop의 배치 몫 등, [감사 문서](../implementation-audits/transcription-
 | random | 0.56 | 0.44 | 0.71 |
 | heuristic | 1.00 | 1.00 | 0.35 |
 | 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.94 / 0.88 |
+
+## 재채굴 (2026-09-26 밤, Agent box Spy의 거절)
+
+Agent box Spy의 거절(`decline_agent_card_spy`, codec v110, [OQ-057 (14)](../rules/open-questions.md))은 supply가 빈 채 Spy
+아이콘 box가 대기하는 결정의 합법 집합에 행동 하나를 recall들 앞에 더한다. heuristic은 recall(1.0)을 거절(−2.0)보다 높게 쳐 그
+결정에서 전과 똑같이 두지만, 저장된 선택 번호가 밀려 sandworm 국면 넷(heuristic `s3/p2`·`s21/p3`·`s34/p3`·`s41/p3`; 지문·길이는
+그대로, 번호 1~3개만 다름)이 복원되지 않았다. 그 전에 master(`60f8e95`)에서 이미 넷(heuristic `s7/p0`·`s7/p1`·`s42/p2`, 5081
+`s15/p1`)이 복원되지 않고 있었다 — 106개 재채굴 뒤의 recruit 집계 전수 수정, OQ-064·066·068·069 판정, 강제 Spy 이동 순서가 판을
+바꿨다. 파일의 `note` 명령 그대로 다시 캤다(5081은 codec v107 → v110으로 이관: 유지 32,980·새 27·삭제 7). **109개**(그대로 98,
+같은 id에 선택 번호만 바뀜 7, 빠짐 1 — sandworm `s42/p2`, 새로 듦 4 — sandworm `s37/p0`와 마지막 라운드 보유 `s1010/p2`·`s1037/p0`·
+`s1330/p0`): sandworm 80, 마지막 라운드 보유 20, Endgame 9. 새로 든 마지막 라운드 보유 셋은 master 엔진으로 같은 seed를 캐도
+나온다 — 이번 변경이 아니라 앞의 규칙 수정에서 왔다.
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 9) | 마지막 라운드 보유 (tip, 20) |
+|---|---|---|---|
+| random | 0.56 | 0.44 | 0.75 |
+| heuristic | 1.00 | 1.00 | 0.40 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.95 / 0.90 |
