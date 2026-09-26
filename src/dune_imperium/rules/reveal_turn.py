@@ -1974,7 +1974,8 @@ def add_reveal_persuasion(
         if generated is not None:
             # Gains are generated Persuasion [Bloodlines p. 5]; the only
             # negative amount is Desert Power's "2 Persuasion -OR- sandworm",
-            # whose sandworm branch takes back Persuasion that was never
+            # whose sandworm branch takes back its 2 while they are still
+            # unspent (_can_summon_reveal_sandworm), so they were never
             # generated. Acquisition costs do not come through here.
             context[GENERATED_PERSUASION_KEY] = generated + amount
         return (
@@ -2055,7 +2056,25 @@ def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
             replaces_sandworms(owner)
             or not current_conflict_is_shield_wall_protected(state)
         )
+        # "[2 Persuasion] -OR- ... [sandworm]" [Desert Power card]: the
+        # sandworm branch gives the 2 Persuasion back, so it closes once they
+        # are spent on an acquisition [Main p. 12].
+        and _unspent_reveal_persuasion(state) >= 2
     )
+
+
+def _unspent_reveal_persuasion(state: GameState) -> int:
+    """Return the Reveal frame's unspent Persuasion.
+
+    ``begin_reveal_turn`` judges its choices before the Reveal frame exists,
+    right after Desert Power's 2 Persuasion were counted, so they are all
+    still unspent then.
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind == FrameKind.REVEAL:
+            return context_int(frame_context(frame), "persuasion", owner="Reveal frame")
+    return 2
 
 
 def _reveal_frame_context(
