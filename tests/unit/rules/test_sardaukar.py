@@ -45,18 +45,28 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     apply_commander_deployment,
     apply_commander_withdrawal,
+    apply_troop_withdrawal,
     legal_combat_deployments,
     legal_commander_deployments,
     legal_commander_withdrawals,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
-from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.reveal_turn import (
+    apply_reveal_deployment,
+    apply_reveal_gain,
+    begin_reveal_turn,
+    legal_reveal_deployments,
+    legal_reveal_gain_actions,
+)
 from dune_imperium.rules.sardaukar import (
     apply_commander_recruit,
     apply_sardaukar_commander_action,
+    apply_skill_choice,
     apply_skill_trash,
+    begin_skill_choice,
     legal_commander_recruit_actions,
     legal_sardaukar_commander_actions,
+    legal_skill_choice_actions,
     legal_skill_trash_actions,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
@@ -319,8 +329,11 @@ def test_paid_recruit_from_supply_once_per_turn() -> None:
     assert legal_commander_deployments(recruited, 0) != ()
     # Finding 2's Reveal branch (``turn_owner_of(next_state) == player``)
     # must not double-credit this Agent-turn recruit, which the in-place
-    # ``context["troops_recruited"]`` update already counts once.
-    assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 1
+    # update already counts once -- as a Commander, never as a troop, so
+    # its deploy slot stays a Commander's (user ruling OQ-070).
+    context = dict(recruited.decision_stack[-1].context)
+    assert context["commanders_recruited"] == 1
+    assert context["troops_recruited"] == 0
 
 
 def test_paid_recruit_is_offered_in_the_reveal_turn_to_the_garrison() -> None:
@@ -354,7 +367,11 @@ def test_paid_recruit_in_reveal_joins_the_shared_allowance() -> None:
     recruited = apply_commander_recruit(state, recruit).state
 
     assert recruited.decision_stack[-1].kind == "reveal"
-    assert dict(recruited.decision_stack[-1].context)["reveal_troops_recruited"] == 1
+    # Counted as a Commander, apart from the troops: its slot is a
+    # Commander's (user ruling OQ-070).
+    context = dict(recruited.decision_stack[-1].context)
+    assert context["reveal_commanders_recruited"] == 1
+    assert context["reveal_troops_recruited"] == 0
 
 
 def test_paid_recruit_needs_supply_solari_and_the_option() -> None:
@@ -411,6 +428,339 @@ def test_commanders_share_the_two_from_garrison_limit_and_count_two_strength() -
     assert [
         dict(a.arguments)["count"] for a in legal_commander_withdrawals(troop_first, 0)
     ] == [1]
+
+
+# --- a recruited Commander's deploy slot (OQ-070) ---------------------------
+#
+# User ruling 2026-09-26 (OQ-070), verbatim: "commander 소집했으면 커맨더를
+# 배치해야지, troop이 그 배치 몫을 차지하면 안 되지". Rules: "Combat space에
+# 들어간 turn에는 그 turn에 recruit한 troop을 원하는 수만큼 deploy하고, 그와
+# 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다. [Main p. 10]"
+# (docs/rules/player-turns.md:136); the Combat icon deploys "이번 turn에
+# recruit한 유닛 전부와 garrison에서 최대 두 개" [Bloodlines pp. 5, 12]
+# (docs/rules/bloodlines.md); a Commander is a "troop" worth 2 strength
+# [Bloodlines p. 4]. Each recruited unit reserves a slot for its own kind and
+# the garrison extra is shared: legal iff
+# max(0, t - R_t) + max(0, c - R_c) <= existing limit.
+
+
+def _counts(actions: tuple[DomainAction, ...], action_id: str) -> list[int]:
+    counts: list[int] = []
+    for action in actions:
+        if action.action_id != action_id:
+            continue
+        count = dict(action.arguments)["count"]
+        assert isinstance(count, int)
+        counts.append(count)
+    return counts
+
+
+def _recruited_commander_at_research_station(**overrides: object) -> GameState:
+    """Research Station (a Combat space, no troop icon) + a paid Commander."""
+
+    values: dict[str, object] = {
+        "commanders_supply": 1,
+        "troops_garrison": 5,
+        "troops_supply": 7,
+        "resources": Resources(solari=2, water=2),
+    }
+    values.update(overrides)
+    state = _turn_state(_owner(**values), spaces=())
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    return apply_commander_recruit(state, recruit).state
+
+
+def test_a_recruited_commanders_slot_is_not_a_garrison_troops() -> None:
+    # The reviewer's probe in an Agent turn: one Commander recruited, five
+    # troops in the garrison. Three troops used to deploy while the new
+    # Commander stayed home.
+    state = _recruited_commander_at_research_station()
+
+    assert _counts(legal_combat_deployments(state, 0), "deploy_troops") == [1, 2]
+    assert _counts(legal_commander_deployments(state, 0), "deploy_commanders") == [1]
+
+    # Two garrison troops first: the Commander's own slot is still open.
+    troops = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(troops, 0) == ()
+    assert _counts(legal_commander_deployments(troops, 0), "deploy_commanders") == [1]
+    both = apply_commander_deployment(
+        troops, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    owner = both.players[0]
+    assert (owner.commanders_conflict, owner.troops_conflict) == (1, 2)
+    assert legal_combat_deployments(both, 0) == ()
+    assert legal_commander_deployments(both, 0) == ()
+
+    # The Commander first: the two garrison troops still follow it.
+    commander = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
+def test_a_commander_slot_survives_a_deployment_split_over_several_actions() -> None:
+    state = _recruited_commander_at_research_station()
+
+    one = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(one, 0), "deploy_troops") == [1]
+    two = apply_combat_deployment(
+        one, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    assert legal_combat_deployments(two, 0) == ()
+    # A withdrawal (OQ-029) reopens exactly the troop share it returns.
+    back = apply_troop_withdrawal(
+        two, DomainAction("withdraw_troops", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(back, 0), "deploy_troops") == [1]
+    assert _counts(legal_commander_deployments(back, 0), "deploy_commanders") == [1]
+    commander = apply_commander_deployment(
+        back, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1]
+    # Withdrawing the Commander gives its own slot back, not a troop's.
+    withdrawn = apply_commander_withdrawal(
+        commander, DomainAction("withdraw_commanders", 0, (("count", 1),))
+    ).state
+    offered = (
+        *legal_combat_deployments(withdrawn, 0),
+        *legal_commander_deployments(withdrawn, 0),
+    )
+    assert _counts(offered, "deploy_troops") == [1]
+    assert _counts(offered, "deploy_commanders") == [1]
+
+
+def test_a_recruited_troops_slot_is_not_a_garrison_commanders() -> None:
+    # Arrakeen recruits one troop; three Commanders wait in the garrison.
+    # Only the garrison two may be Commanders -- the troop's slot is a
+    # troop's.
+    state = _turn_state(
+        _owner(commanders_garrison=3, troops_garrison=0, troops_supply=12), spaces=()
+    )
+    state = _visit(state, "arrakeen")
+    assert state.players[0].troops_garrison == 1
+
+    assert _counts(legal_commander_deployments(state, 0), "deploy_commanders") == [1, 2]
+    commanders = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 2),))
+    ).state
+    assert legal_commander_deployments(commanders, 0) == ()
+    assert _counts(legal_combat_deployments(commanders, 0), "deploy_troops") == [1]
+
+
+def test_sardaukar_coordination_deploys_only_the_recruited_commander() -> None:
+    # "You may deploy any troops you recruit this turn to the Conflict"
+    # [Sardaukar Coordination card] grants no garrison extra (limit 0): the
+    # recruited Commander deploys, a garrison troop may not take its slot.
+    card = "imperium:sardaukar_coordination:0"
+    state = _turn_state(
+        _owner(
+            hand=(card,),
+            commanders_supply=1,
+            troops_garrison=3,
+            troops_supply=9,
+            resources=Resources(solari=2),
+        ),
+        spaces=(),
+    )
+    action = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["card_id"] == card
+        and dict(action.arguments)["space_id"] == "dutiful_service"
+    )
+    state = apply_agent_action(state, action).state
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    state = apply_commander_recruit(state, recruit).state
+
+    assert legal_combat_deployments(state, 0) == ()
+    assert _counts(legal_commander_deployments(state, 0), "deploy_commanders") == [1]
+
+
+def test_elite_forces_combat_icon_keeps_the_commander_slot() -> None:
+    # Elite Forces' Combat icon: "never more than two units from the
+    # garrison" [Bloodlines p. 5] at a non-Combat space, plus its troop
+    # icon; a paid Commander keeps its own slot.
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_trash,
+        legal_agent_card_icon_actions,
+        legal_agent_card_trash_actions,
+        resolve_agent_card_icon,
+    )
+
+    card = "imperium:elite_forces:0"
+    emperor = "imperium:quash_rebellion:0"
+    state = _turn_state(
+        _owner(
+            hand=(card, emperor),
+            commanders_supply=1,
+            troops_garrison=3,
+            troops_supply=9,
+            resources=Resources(solari=2),
+        ),
+        spaces=(),
+    )
+    state = _visit(state, "dutiful_service")
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    state = apply_commander_recruit(state, recruit).state
+    trash = next(
+        action
+        for action in legal_agent_card_trash_actions(state, 0)
+        if dict(action.arguments).get("card_id") == emperor
+    )
+    state = apply_agent_card_trash(state, trash).state
+    troop_icon = next(
+        action
+        for action in legal_agent_card_icon_actions(state, 0)
+        if dict(action.arguments)["effect"] == "troops"
+    )
+    state = resolve_agent_card_icon(state, troop_icon).state
+    assert state.players[0].troops_garrison == 4
+
+    # One recruited troop plus the garrison two; the Commander's slot is
+    # its own.
+    assert _counts(legal_combat_deployments(state, 0), "deploy_troops") == [1, 2, 3]
+    deployed = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 3),))
+    ).state
+    assert legal_combat_deployments(deployed, 0) == ()
+    assert _counts(legal_commander_deployments(deployed, 0), "deploy_commanders") == [1]
+
+
+def test_a_commander_recruited_in_the_reveal_keeps_its_slot() -> None:
+    # The reviewer's probe: Bloodlines, a Combat icon earlier this turn, five
+    # garrison troops, Reveal, recruit_sardaukar_commander. deploy_troops
+    # used to go up to three while the new Commander stayed home.
+    state = _turn_state(
+        _owner(
+            commanders_supply=1,
+            troops_garrison=5,
+            troops_supply=7,
+            combat_icon_turn=True,
+            resources=Resources(solari=2),
+        ),
+        spaces=(),
+    )
+    state = begin_reveal_turn(state, DomainAction("reveal_turn", 0)).state
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    state = apply_commander_recruit(state, recruit).state
+
+    offered = legal_reveal_deployments(state, 0)
+    assert _counts(offered, "deploy_troops") == [1, 2]
+    assert _counts(offered, "deploy_commanders") == [1]
+    troops = apply_reveal_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert _counts(legal_reveal_deployments(troops, 0), "deploy_troops") == []
+    assert _counts(legal_reveal_deployments(troops, 0), "deploy_commanders") == [1]
+    both = apply_reveal_deployment(
+        troops, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    owner = both.players[0]
+    assert (owner.commanders_conflict, owner.troops_conflict) == (1, 2)
+    assert legal_reveal_deployments(both, 0) == ()
+
+
+def test_a_reveal_troops_slot_is_not_a_garrison_commanders() -> None:
+    # Sardaukar Standard's own Reveal box recruits a troop [card face]; of
+    # three garrison Commanders only the garrison two may deploy.
+    card = "imperium:sardaukar_standard:0"
+    state = _turn_state(
+        _owner(
+            hand=(card,),
+            commanders_garrison=3,
+            troops_garrison=0,
+            troops_supply=12,
+            combat_icon_turn=True,
+        ),
+        spaces=(),
+    )
+    state = begin_reveal_turn(state, DomainAction("reveal_turn", 0)).state
+    while gains := legal_reveal_gain_actions(state, 0):
+        state = apply_reveal_gain(state, gains[0]).state
+    assert state.players[0].troops_garrison == 1
+
+    offered = legal_reveal_deployments(state, 0)
+    assert _counts(offered, "deploy_commanders") == [1, 2]
+    assert _counts(offered, "deploy_troops") == [1]
+
+
+def _queued_bank_commander(state: GameState, *, turn_closed: bool) -> GameState:
+    """Acquire Sardaukar Standard's bank Commander from the queued choice."""
+
+    queued = replace(
+        state,
+        pending_skill_choices=(
+            (0, "imperium:sardaukar_standard:0", "test:standard", turn_closed),
+        ),
+    )
+    opened = begin_skill_choice(queued).state
+    return apply_skill_choice(opened, legal_skill_choice_actions(opened, 0)[0]).state
+
+
+def test_a_commander_recruited_before_the_placement_keeps_its_slot() -> None:
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, resources=Resources(water=2)),
+        spaces=(),
+    )
+    acquired = _queued_bank_commander(state, turn_closed=False)
+    turn = acquired.decision_stack[-1]
+    assert turn.kind == "turn"
+    assert dict(turn.context)["commanders_recruited"] == 1
+    assert dict(turn.context).get("troops_recruited") in (None, 0)
+
+    placed = apply_agent_action(
+        acquired, _agent_action_to(acquired, "research_station")
+    ).state
+    assert dict(placed.decision_stack[-1].context)["commanders_recruited"] == 1
+    assert _counts(legal_combat_deployments(placed, 0), "deploy_troops") == [1, 2]
+    commander = apply_commander_deployment(
+        placed, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
+def test_a_commander_recruited_before_the_reveal_keeps_its_slot() -> None:
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, combat_icon_turn=True), spaces=()
+    )
+    acquired = _queued_bank_commander(state, turn_closed=False)
+    revealed = begin_reveal_turn(acquired, DomainAction("reveal_turn", 0)).state
+    context = dict(revealed.decision_stack[-1].context)
+    assert context["reveal_commanders_recruited"] == 1
+    assert context["reveal_troops_recruited"] == 0
+
+    offered = legal_reveal_deployments(revealed, 0)
+    assert _counts(offered, "deploy_troops") == [1, 2]
+    assert _counts(offered, "deploy_commanders") == [1]
+
+
+def test_a_closed_turns_commander_credit_goes_nowhere() -> None:
+    # OQ-044 (d): a Commander whose Skill choice was queued by a turn that
+    # already closed must not join the fresh turn frame underneath, even
+    # the same player's own [Main p. 10] [FAQ p. 4].
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, resources=Resources(water=2)),
+        spaces=(),
+    )
+    acquired = _queued_bank_commander(state, turn_closed=True)
+    assert acquired.players[0].commanders_garrison == 1
+    assert dict(acquired.decision_stack[-1].context).get("commanders_recruited") in (
+        None,
+        0,
+    )
+    placed = apply_agent_action(
+        acquired, _agent_action_to(acquired, "research_station")
+    ).state
+    # A plain garrison Commander: it takes one of the garrison two.
+    commander = apply_commander_deployment(
+        placed, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1]
 
 
 def _seat_with_skills(**overrides: object) -> PlayerState:

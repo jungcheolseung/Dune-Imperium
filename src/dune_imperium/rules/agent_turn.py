@@ -47,8 +47,10 @@ from dune_imperium.rules.effects import (
     next_unrevealed_player,
 )
 from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
     FrameKind,
     owned_top_frame,
+    recruited_commander_count,
     replace_player,
     reset_turn_counters,
 )
@@ -426,6 +428,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     undeployable = turn_context.get("undeployable_troops", 0)
     if isinstance(undeployable, bool) or not isinstance(undeployable, int):
         raise RuntimeError("turn frame has an invalid undeployable count")
+    commanders_before = _commanders_recruited_before_placement(state)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -550,6 +553,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
                     *((("undeployable_troops", undeployable),) if undeployable else ()),
+                    # A Commander recruited before the placement keeps its
+                    # deploy slot for a Commander (OQ-070).
+                    *(
+                        ((COMMANDERS_RECRUITED_KEY, commanders_before),)
+                        if commanders_before
+                        else ()
+                    ),
                     ("units_deploy_blocked", units_deploy_blocked),
                 )
             )
@@ -872,6 +882,19 @@ def _troops_recruited_before_placement(state: GameState) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError("turn frame has an invalid recruit count")
     return value
+
+
+def _commanders_recruited_before_placement(state: GameState) -> int:
+    """Commanders recruited earlier this turn keep their own deploy slots.
+
+    A Sardaukar Standard trashed before the placement acquires and recruits
+    the bank Commander into the turn frame (``update_turn_recruits``); the
+    placement carries that count apart from the troops (OQ-070).
+    """
+
+    return recruited_commander_count(
+        dict(state.decision_stack[-1].context), COMMANDERS_RECRUITED_KEY
+    )
 
 
 def _actions_for_affordable_costs(

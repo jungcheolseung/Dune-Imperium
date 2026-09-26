@@ -40,14 +40,21 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
-from dune_imperium.rules.combat_deployment import grant_combat_icon, undeployable_troops
+from dune_imperium.rules.combat_deployment import (
+    deployment_rooms,
+    grant_combat_icon,
+    undeployable_troops,
+)
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    REVEAL_COMMANDERS_RECRUITED_KEY,
     FrameKind,
     context_int,
     context_str,
     frame_context,
     owned_top_frame,
+    recruited_commander_count,
     replace_player,
     replace_top_frame,
     reset_turn_counters,
@@ -287,6 +294,17 @@ def legal_reveal_influence_exchange_actions(
 # frame's "persuasion" is what is left to spend after acquisitions.
 GENERATED_PERSUASION_KEY = "persuasion_generated"
 
+# The Commander share of ``reveal_units_deployed`` (absent means none): the
+# Combat-icon deployment keeps its recruited slots per kind (OQ-070).
+REVEAL_COMMANDERS_DEPLOYED_KEY = "reveal_commanders_deployed"
+
+
+def _reveal_commanders_deployed(context: Mapping[str, ActionValue]) -> int:
+    value = context.get(REVEAL_COMMANDERS_DEPLOYED_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("Reveal frame has an invalid Commander deployment count")
+    return value
+
 
 def _generated_persuasion(context: Mapping[str, ActionValue]) -> int | None:
     """Return the Persuasion a Reveal frame's turn has generated so far.
@@ -441,8 +459,11 @@ def legal_reveal_deployments(
 
     "You may deploy any units you recruit this turn and up to two more from
     your garrison", never more than two from the garrison however many
-    icons [Bloodlines p. 5]; troops and Sardaukar Commanders share the
-    limit [Bloodlines p. 4].
+    icons [Bloodlines p. 5]; a Sardaukar Commander is a "troop"
+    [Bloodlines p. 4]. The garrison two are shared by troops and
+    Commanders, but each unit recruited this turn keeps its slot for its
+    own kind: a recruited Commander's slot is a Commander's (user ruling
+    OQ-070, ``combat_deployment.deployment_rooms``).
     """
 
     frame = owned_top_frame(state, FrameKind.REVEAL, player)
@@ -453,19 +474,32 @@ def legal_reveal_deployments(
         return ()
     recruited = context_int(context, "reveal_troops_recruited", owner="Reveal frame")
     deployed = context_int(context, "reveal_units_deployed", owner="Reveal frame")
-    remaining = recruited + 2 - deployed
+    commanders_deployed = _reveal_commanders_deployed(context)
+    troop_room, commander_room = deployment_rooms(
+        troops_recruited=recruited,
+        commanders_recruited=recruited_commander_count(
+            context, REVEAL_COMMANDERS_RECRUITED_KEY
+        ),
+        existing_limit=2,
+        troops_deployed=max(0, deployed - commanders_deployed),
+        commanders_deployed=commanders_deployed,
+    )
     owner = state.players[player]
     actions: list[DomainAction] = []
-    for action_id, garrison in (
+    for action_id, garrison, room in (
         # Harkonnen Advisor's troop stays undeployable (OQ-038, OQ-062).
-        ("deploy_troops", max(0, owner.troops_garrison - undeployable_troops(context))),
-        ("deploy_commanders", owner.commanders_garrison),
+        (
+            "deploy_troops",
+            max(0, owner.troops_garrison - undeployable_troops(context)),
+            troop_room,
+        ),
+        ("deploy_commanders", owner.commanders_garrison, commander_room),
     ):
         actions.extend(
             DomainAction(
                 action_id=action_id, actor=player, arguments=(("count", count),)
             )
-            for count in range(1, min(garrison, remaining) + 1)
+            for count in range(1, min(garrison, room) + 1)
         )
     return tuple(actions)
 
@@ -485,6 +519,12 @@ def apply_reveal_deployment(state: GameState, action: DomainAction) -> RuleResul
     context["reveal_units_deployed"] = (
         context_int(context, "reveal_units_deployed", owner="Reveal frame") + count
     )
+    if commanders:
+        # The Commander share of the deployment, kept apart so the
+        # recruited slots stay per kind (OQ-070).
+        context[REVEAL_COMMANDERS_DEPLOYED_KEY] = (
+            _reveal_commanders_deployed(context) + commanders
+        )
     prepared = replace_top_frame(state, with_context(frame, context))
     counted = add_units_to_reveal(
         prepared, action.actor, troops=troops, commanders=commanders
@@ -4137,6 +4177,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         reveal_troops_recruited, int
     ):
         raise RuntimeError("turn frame has an invalid recruit count")
+    # A Commander recruited before the Reveal keeps its own deploy slot
+    # (OQ-070), carried apart from the troops.
+    carried_commanders = recruited_commander_count(
+        turn_context, COMMANDERS_RECRUITED_KEY
+    )
     # A Harkonnen Advisor troop kept undeployable that turn stays so in the
     # Reveal (OQ-038, OQ-062); ``legal_reveal_deployments`` already reads
     # this key off the Reveal frame's context.
@@ -4245,6 +4290,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     ]
     if carried_undeployable:
         context.append(("undeployable_troops", carried_undeployable))
+    if carried_commanders:
+        context.append((REVEAL_COMMANDERS_RECRUITED_KEY, carried_commanders))
     context.extend(
         (f"revealed_card_{index:03d}", card_id)
         for index, card_id in enumerate(revealed)

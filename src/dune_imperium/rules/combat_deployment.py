@@ -9,14 +9,16 @@ turn never exceeds "every troop recruited this turn plus two garrison troops"
 [Main p. 10] [FAQ p. 4], and a withdrawal may not drop the turn's deployed
 unit count below a condition an effect already consumed (Distraction's Spy).
 
-Bloodlines Sardaukar Commanders are "troops" for this purpose: one recruited
-this turn or in the garrison deploys under the same limit, counted together
-with the troops [Bloodlines p. 4] (``deploy_commanders`` /
-``withdraw_commanders``; the frame tracks the Commander share separately so a
-withdrawal returns the right kind of unit).
+Bloodlines Sardaukar Commanders are "troops" for this purpose [Bloodlines
+p. 4] (``deploy_commanders`` / ``withdraw_commanders``; the frame tracks the
+Commander share separately so a withdrawal returns the right kind of unit).
+Each unit recruited this turn reserves a deploy slot for its own kind: a
+recruited Commander's slot is filled only by a Commander and a recruited
+troop's only by a troop, and the garrison extra (normally two) is shared by
+both kinds on top of those (user ruling OQ-070, ``deployment_rooms``).
 """
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
@@ -28,7 +30,13 @@ from dune_imperium.rules.effects import (
     agent_turn_has_other_pending_effects,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind, own_turn_frame_index, replace_player
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    FrameKind,
+    own_turn_frame_index,
+    recruited_commander_count,
+    replace_player,
+)
 
 
 def undeployable_troops(context: dict[str, ActionValue]) -> int:
@@ -91,11 +99,53 @@ def release_undeployable_troops(
     )
 
 
+def deployment_rooms(
+    *,
+    troops_recruited: int,
+    commanders_recruited: int,
+    existing_limit: int,
+    troops_deployed: int,
+    commanders_deployed: int,
+) -> tuple[int, int]:
+    """Return how many more troops and Commanders the turn may still deploy.
+
+    "Combat space에 들어간 turn에는 그 turn에 recruit한 troop을 원하는
+    수만큼 deploy하고, 그와 별도로 garrison의 troop을 최대 두 개 더
+    deploy할 수 있다" [Main p. 10] (docs/rules/player-turns.md:136); a
+    Commander is a "troop" worth 2 strength [Bloodlines p. 4]. User ruling
+    2026-09-26 (OQ-070): "commander 소집했으면 커맨더를 배치해야지, troop이
+    그 배치 몫을 차지하면 안 되지". So each unit recruited this turn
+    reserves a slot for its own kind, and ``existing_limit`` more units of
+    either kind may come from the garrison: a deployment is legal iff
+    ``max(0, t - R_t) + max(0, c - R_c) <= existing_limit``. Each room is
+    the kind's own unfilled recruit slots plus the unused garrison extra;
+    availability (garrison contents, undeployable troops) is the caller's.
+    """
+
+    troop_excess = max(0, troops_deployed - troops_recruited)
+    commander_excess = max(0, commanders_deployed - commanders_recruited)
+    shared = max(0, existing_limit - troop_excess - commander_excess)
+    return (
+        max(0, troops_recruited - troops_deployed) + shared,
+        max(0, commanders_recruited - commanders_deployed) + shared,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Deployment:
+    """The open Agent-turn deployment window's counters."""
+
+    context: dict[str, ActionValue]
+    deployed: int
+    troop_room: int
+    commander_room: int
+
+
 def _deployment_context(
     state: GameState,
     player: int,
-) -> tuple[dict[str, ActionValue], int, int, int] | None:
-    """Return (context, recruited, existing limit, deployed so far) or None."""
+) -> _Deployment | None:
+    """Return the open deployment window's counters, or None."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -116,26 +166,40 @@ def _deployment_context(
     deployed = context.get("combat_troops_deployed", 0)
     if isinstance(deployed, bool) or not isinstance(deployed, int):
         raise RuntimeError("Agent-turn effect frame has invalid deployment count")
-    return context, recruited, existing_limit, deployed
+    commanders = _commanders_deployed(context)
+    troop_room, commander_room = deployment_rooms(
+        troops_recruited=recruited,
+        commanders_recruited=recruited_commander_count(
+            context, COMMANDERS_RECRUITED_KEY
+        ),
+        existing_limit=existing_limit,
+        troops_deployed=max(0, deployed - commanders),
+        commanders_deployed=commanders,
+    )
+    return _Deployment(context, deployed, troop_room, commander_room)
 
 
 def legal_combat_deployments(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Enumerate the troop counts that may still be added to this deployment."""
+    """Enumerate the troop counts that may still be added to this deployment.
+
+    A Commander recruited this turn keeps its slot for a Commander; the
+    troops take their own recruit slots and the shared garrison extra
+    (OQ-070, ``deployment_rooms``).
+    """
 
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    context, recruited, existing_limit, deployed = found
     # Harkonnen Advisor's troop "can't be deployed to the Conflict this
     # turn": it sits in the garrison but is not available [Piter De Vries
     # card] (OQ-038).
     garrison = max(
-        0, state.players[player].troops_garrison - undeployable_troops(context)
+        0, state.players[player].troops_garrison - undeployable_troops(found.context)
     )
-    maximum = min(garrison, recruited + existing_limit - deployed)
+    maximum = min(garrison, found.troop_room)
     return tuple(
         DomainAction(
             action_id="deploy_troops",
@@ -152,9 +216,13 @@ def legal_commander_deployments(
 ) -> tuple[DomainAction, ...]:
     """Enumerate the Sardaukar Commander counts that may still deploy.
 
-    A Commander shares the turn's unit limit with the troops: every unit
-    recruited this turn plus two more from the garrison [Bloodlines p. 4]
-    [Main p. 10].
+    A Commander is a "troop" [Bloodlines p. 4]: every Commander recruited
+    this turn may deploy, and a garrison Commander may be one of the "up to
+    two" garrison units [Bloodlines p. 4] [Main p. 10]. The recruit slots
+    are kept per kind -- a Commander recruited this turn reserves its slot
+    for a Commander and a recruited troop's slot is never a Commander's --
+    while the garrison extra is shared with the troops (user ruling OQ-070,
+    ``deployment_rooms``).
     """
 
     if not state.config.bloodlines:
@@ -162,9 +230,8 @@ def legal_commander_deployments(
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    _, recruited, existing_limit, deployed = found
     garrison = state.players[player].commanders_garrison
-    maximum = min(garrison, recruited + existing_limit - deployed)
+    maximum = min(garrison, found.commander_room)
     return tuple(
         DomainAction(
             action_id="deploy_commanders",
@@ -191,7 +258,7 @@ def legal_troop_withdrawals(
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    context, _, _, deployed = found
+    context, deployed = found.context, found.deployed
     owner = state.players[player]
     # A consumed deployment condition (Distraction) keeps its minimum deployed.
     # The units actually in the Conflict bound this too: a troop deployed this
@@ -227,7 +294,7 @@ def legal_commander_withdrawals(
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    context, _, _, _ = found
+    context = found.context
     owner = state.players[player]
     # Bounded by the Commanders actually in the Conflict, for the same reason
     # the troop withdrawal is: Bloodlines loses a Commander from the garrison
