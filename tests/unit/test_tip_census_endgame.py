@@ -70,13 +70,18 @@ def _spec(full: bool, seed: int) -> T.MatchSpec:
     )[0]
 
 
-def _play_to_finished(tip_census: ModuleType, spec: T.MatchSpec) -> Any:
+def _play_to_finished(
+    tip_census: ModuleType,
+    spec: T.MatchSpec,
+    events: list[GameEvent] | None = None,
+) -> Any:
     """Replay ``spec`` with the driver's own loop and return the final state.
 
     Deterministic replica of ``tip_census.play``'s loop (same seeds, same
     agent construction), kept independent of the collectors so the final
     ``GameState`` can be cross-checked against what ``endgame.py`` counted
-    from events alone.
+    from events alone. Every step's events are appended to ``events`` when
+    it is given.
     """
 
     Tmod = tip_census.T
@@ -111,6 +116,8 @@ def _play_to_finished(tip_census: ModuleType, spec: T.MatchSpec) -> Any:
             if action not in legal:
                 action = legal[0]
             result = engine.apply(state, action, legal_actions=legal)
+        if events is not None:
+            events.extend(result.events)
         state = result.state
     raise RuntimeError(f"step limit reached for seed {spec.game_seed}")
 
@@ -467,13 +474,41 @@ def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreat
 def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     tip_census: ModuleType,
 ) -> None:
-    """Regression for the code-review finding: full seed 3, seat 0, round 4
-    pays a Sardaukar Commander to Gruesome Sacrifice's Intrigue cost, which
-    is a Conflict loss (unit_loss.py), not a "retreat and reuse" (C7.2).
+    """Regression for the code-review finding: a Sardaukar Commander paid to
+    Gruesome Sacrifice's Intrigue cost is a Conflict loss (unit_loss.py), not
+    a "retreat and reuse" (C7.2).
+
+    The pin was full seed 3, seat 0, round 4. Re-pinned 2026-09-27 for
+    OQ-070 (a recruited Commander's deploy slot is kept for a Commander):
+    seed 3 now diverges at round 6, where seat 1's recruited Commander takes
+    the deploy slot a troop used to fill, and seat 0 later retreats
+    Commanders through real Intrigue retreats (Withdrawal Agreement round 8,
+    Battlefield Research round 9), so its count is 2. Its round-4 Gruesome
+    Sacrifice had also stopped paying a Commander before OQ-070 (two troops
+    on master), so the old pin no longer exercised the loss. The case is
+    now seed 24 seat 2, the first seat in full seeds 1-200 whose Gruesome
+    Sacrifice pays a Commander (round 5); that game only loses one troop
+    offer to OQ-070 (round 8) and plays out unchanged. The replay below
+    checks the loss is still there and is seat 2's only Commander retreat
+    event, so a count of 0 is the loss being excluded, not a game without
+    one.
     """
 
-    census = tip_census.play(_spec(True, 3), ("endgame",))
-    assert census["seats"][0]["bt.commander_retreats"] == 0
+    spec = _spec(True, 24)
+    events: list[GameEvent] = []
+    _play_to_finished(tip_census, spec, events)
+    commander_retreats = [
+        event.event_id
+        for event in events
+        if event.kind == "troops_retreated"
+        and dict(event.payload).get("player") == 2
+        and dict(event.payload).get("commanders", 0)
+    ]
+    assert commander_retreats == [
+        "round:5:player:2:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
+    ]
+    census = tip_census.play(spec, ("endgame",))
+    assert census["seats"][2]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(
