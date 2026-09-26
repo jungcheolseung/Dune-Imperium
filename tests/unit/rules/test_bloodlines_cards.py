@@ -245,7 +245,8 @@ def test_a_card_drawn_mid_reveal_pays_its_command_once(
     ).state
     assert _reveal_context(revealed)["persuasion_generated"] == 6
     drawn = engine.apply(revealed, _play_intrigue(cunning)).state
-    pending = reveal_pending_gains(_reveal_context(drawn))
+    (reveal,) = (f for f in drawn.decision_stack if f.kind == FrameKind.REVEAL)
+    pending = reveal_pending_gains(dict(reveal.context))
     assert [entry for entry in pending if entry[2] == card] == [(*gain, card)]
     player = drawn.players[0]
     if card_name == "bombast":
