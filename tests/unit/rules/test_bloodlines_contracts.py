@@ -34,6 +34,7 @@ from dune_imperium.rules.contracts import (
     legal_contract_actions,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
@@ -298,6 +299,53 @@ def test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken() -> None
         dict(action.arguments)["instance_id"]
         for action in legal_trigger_contract_actions(opened, 0)
     ] == [IMMEDIATE]
+
+
+def test_coercive_negotiation_waits_even_when_distraction_is_offered() -> None:
+    # OQ-064: while nothing Coercive Negotiation reveals can be taken, the
+    # card stays face up and opens at a later qualifying point where it can
+    # be resolved; its wait does not raise the offer record. Distraction
+    # face up beside it used to raise the seat's shared record at the same
+    # count, so gaining an Intrigue card later that turn no longer opened
+    # the mandatory card ("When you deploy three or more units to the
+    # Conflict in a single turn: Reveal three contracts from the bank. Take
+    # one and trash the other two." [Coercive Negotiation card]).
+    coercive = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
+    distraction = next(card for card in INTRIGUE if ":distraction:" in card)
+    base = _state(
+        _owner(intrigue_faceup=(coercive, distraction), units_deployed_turn=3),
+        market=(),
+        bank=(IMMEDIATE,),
+    )
+    offered = offer_deployment_triggers(RuleResult(state=base)).state
+    assert [frame.kind for frame in offered.decision_stack[-1:]] == [
+        FrameKind.INTRIGUE_TRIGGER_SPY
+    ]
+    assert offered.players[0].deploy_trigger_offered_at == 3
+    declined = UprisingRulesEngine().apply(
+        offered, DomainAction(action_id="decline_intrigue_trigger", actor=0)
+    ).state
+    assert declined.decision_stack == base.decision_stack
+
+    holding = replace(
+        declined,
+        players=(
+            replace(declined.players[0], intrigue_cards=INTRIGUE[:1]),
+            *declined.players[1:],
+        ),
+    )
+    opened = offer_deployment_triggers(RuleResult(state=holding)).state
+    # Coercive Negotiation opens at the same count; the declined Distraction
+    # is not offered again there (OQ-016 (c)).
+    pushed = opened.decision_stack[len(base.decision_stack) :]
+    assert [frame.kind for frame in pushed] == [FrameKind.INTRIGUE_TRIGGER_CONTRACT]
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_trigger_contract_actions(opened, 0)
+    ] == [IMMEDIATE]
+    # A pending Coercive Negotiation frame is not pushed a second time.
+    again = offer_deployment_triggers(RuleResult(state=opened)).state
+    assert again.decision_stack == opened.decision_stack
 
 
 def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> None:

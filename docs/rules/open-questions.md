@@ -672,6 +672,10 @@
   거절 행동 `decline_intrigue_contract_trigger`를 없앴다 — codec Bloodlines 카탈로그 템플릿 1개 감소).
   `tests/unit/rules/test_bloodlines_contracts.py`(`test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken`)로
   고정한다.
+  보강(2026-09-26): 제시 기록은 좌석 하나에 하나라, 같은 수치에서 face up의 Distraction이 제시되면 기록이 올라
+  Coercive Negotiation의 대기가 소모되었다. 이제 제시 기록은 거절할 수 있는 trigger(Distraction, OQ-016 (c))에만
+  적용하고, Coercive Negotiation은 가져갈 수 있게 된 첫 시점에 같은 수치에서도 열린다(이미 열린 frame이 있으면 다시
+  열지 않는다). `test_coercive_negotiation_waits_even_when_distraction_is_offered`.
 
 ## OQ-065 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
 

@@ -177,6 +177,21 @@ def _trigger_frame_kind(state: GameState, player: int, card_id: str) -> str | No
     return None
 
 
+def _trigger_is_mandatory(card_id: str) -> bool:
+    """Return whether a deployment trigger resolves without a decline.
+
+    The seat's offer record ``deploy_trigger_offered_at`` only stops a
+    declined optional trigger (Distraction) from being offered again at the
+    same count (OQ-016 (c)). Coercive Negotiation has no decline and waits
+    face up while nothing it reveals can be taken, opening at a later point
+    where it can be resolved (OQ-064); another card's offer must not use that
+    wait up. It leaves the face-up row when it resolves, so it cannot be
+    offered twice; a frame already pending is skipped by the caller.
+    """
+
+    return isinstance(_deployment_trigger_reward(card_id), RevealContractsTakeOne)
+
+
 def offer_deployment_triggers(result: RuleResult) -> RuleResult:
     """Open the face-up deployment-trigger choice after a transition.
 
@@ -194,15 +209,26 @@ def offer_deployment_triggers(result: RuleResult) -> RuleResult:
     if not isinstance(top.decision, PlayerDecision):
         return result
     next_state = state
+    pending = {
+        dict(frame.context).get("card_id")
+        for frame in state.decision_stack
+        if frame.kind
+        in (FrameKind.INTRIGUE_TRIGGER_SPY, FrameKind.INTRIGUE_TRIGGER_CONTRACT)
+    }
     for seat in state.players:
         count = seat.units_deployed_turn
-        if not seat.intrigue_faceup or count <= seat.deploy_trigger_offered_at:
+        if not seat.intrigue_faceup:
             continue
         cards = tuple(
             (card_id, kind)
             for card_id in seat.intrigue_faceup
             if (minimum := _deployment_trigger_minimum(card_id)) is not None
             and minimum <= count
+            and card_id not in pending
+            and (
+                count > seat.deploy_trigger_offered_at
+                or _trigger_is_mandatory(card_id)
+            )
             and (kind := _trigger_frame_kind(next_state, seat.player_id, card_id))
             is not None
         )
