@@ -781,3 +781,43 @@
   열린다. sandworm을 고르면 2는 끝까지 생성되지 않는다. Maker Hooks가 없으면 sandworm 갈래가 없으므로 2는 전처럼
   Reveal 시작 때 센다. 전의 "2가 구매에 쓰였으면 sandworm을 닫는다"(2026-09-26 오전)는 2를 먼저 쓸 수 없게 되어
   없어졌다. `tests/unit/rules/test_reveal_turn.py`.
+
+## OQ-070 — 이번 turn에 recruit한 Sardaukar Commander의 배치 몫
+
+- 상태: `DECIDED` (2026-09-26 사용자 판정)
+- 규칙: "Combat space에 들어간 turn에는 그 turn에 recruit한 troop을 원하는 수만큼 deploy하고, 그와 별도로 garrison의
+  troop을 최대 두 개 더 deploy할 수 있다. `[Main p. 10]`", "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+  deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다.
+  `[Main p. 10]` `[FAQ p. 4]`"([player-turns.md](player-turns.md)); Combat 아이콘은 Reveal turn에서도 "이번 turn에
+  recruit한 유닛 전부와 garrison에서 최대 두 개" `[Bloodlines pp. 5, 12]`; Commander는 Conflict에서 strength 2인
+  "troop"이고, garrison에 있으면 "garrison에서 deploy하는 `up to two` 유닛 중 하나"가 될 수 있다 `[Bloodlines p. 4]`
+  ([bloodlines.md](bloodlines.md) 3절·4절). 공식 문서는 recruit한 Commander의 몫을 garrison의 troop이 차지할 수
+  있는지 말하지 않는다.
+- 이전 구현: 한 turn의 배치 한도를 하나로 셌다 — "이번 turn에 recruit한 유닛 수(troop + Commander) + garrison 2 −
+  이미 배치한 유닛 수". 그래서 Commander 하나를 recruit하면 garrison에 원래 있던 troop 셋이 대신 deploy할 수 있었고
+  (새 Commander는 garrison에 남음), 거꾸로 recruit한 troop의 몫을 garrison의 Commander가 차지할 수도 있었다. 재현
+  (리뷰어): Bloodlines, `combat_icon_turn=True`, garrison troop 5, Reveal, `recruit_sardaukar_commander` →
+  `reveal_troops_recruited` 1, `deploy_troops`가 3까지 제시된다. Agent turn의 Combat space에서도 같다.
+- 판정(2026-09-26, 사용자): "commander 소집했으면 커맨더를 배치해야지, troop이 그 배치 몫을 차지하면 안 되지".
+  이번 turn에 recruit한 troop 수 R_t와 Commander 수 R_c, 이번 turn에 배치한 troop 수 t와 Commander 수 c를 따로
+  세고, garrison 몫 L(보통 2; Combat space·Combat 아이콘·Elite Forces는 2, Sardaukar Coordination만으로 열린 창은
+  0)은 두 종류가 함께 쓴다. 배치는 `max(0, t − R_t) + max(0, c − R_c) ≤ L`일 때만 가능하다 — recruit한 Commander의
+  몫은 Commander만, recruit한 troop의 몫은 troop만(troop끼리는 구별하지 않으므로 garrison의 어느 troop이든) 채우고,
+  그 밖에 어느 종류든 L개까지 더 나온다. garrison 내용, Harkonnen Advisor의 배치 금지 troop(OQ-038), Emperor of the
+  Known Universe의 배치 금지, Commander는 Bloodlines에서만 같은 기존 제한은 그대로다. 회수(OQ-029)는 배치 수를
+  줄이기만 하므로 식을 깨지 않는다.
+- 구현: `rules/combat_deployment.deployment_rooms`(종류별 남은 몫 = 그 종류의 채우지 않은 recruit 몫 + 쓰지 않은
+  garrison 몫)를 Agent turn의 기본 배치(`legal_combat_deployments`·`legal_commander_deployments`, Combat space와
+  Agent turn의 Combat 아이콘)와 Reveal의 Combat 아이콘 배치(`reveal_turn.legal_reveal_deployments`)가 함께 쓴다.
+  Commander recruit은 troop 수가 아니라 새 context 키에 센다: AGENT_EFFECTS frame과 배치 전 TURN frame의
+  `commanders_recruited`, REVEAL frame의 `reveal_commanders_recruited`(없으면 0). 세는 자리는 방문한 space의
+  Commander 획득(`sardaukar.apply_sardaukar_commander_action`), 지불 recruit(`apply_commander_recruit`), Sardaukar
+  Standard의 bank Commander(`_acquire_bank_commander` → `card_trash.with_recruited_units(commanders=...)` 또는
+  `frames.update_turn_recruits(commanders_recruited=...)`)이고, 배치 전 carry(`agent_turn`의 placement)와 Reveal 전
+  carry(`reveal_turn._begin_reveal_turn`)가 그 수를 따로 넘긴다. OQ-044 (d)의 닫힌-turn 가드(`turn_closed`)는 새
+  수에도 그대로 적용된다. Reveal 배치는 Commander 몫을 `reveal_commanders_deployed`(`reveal_units_deployed`의 일부)로
+  센다. 공개 이벤트 payload는 바뀌지 않았다.
+- 테스트: `tests/unit/rules/test_sardaukar.py`의 OQ-070 절(Agent turn·Reveal의 recruit한 Commander 몫, recruit한
+  troop 몫과 garrison Commander, Sardaukar Coordination의 한도 0, Elite Forces의 Combat 아이콘, 여러 번 나눈 배치와
+  회수, 배치 전·Reveal 전 carry, 닫힌 turn의 Commander credit), `tests/unit/rules/test_bloodlines_cards.py`의
+  Sardaukar Standard 테스트.

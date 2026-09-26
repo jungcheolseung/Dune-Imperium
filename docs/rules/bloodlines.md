@@ -50,7 +50,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 ### 유닛으로서의 취급
 
-- recruit한 Commander는 대부분 다른 유닛과 같이 쓴다. garrison에 두거나, 이번 turn에 Combat space에 Agent를 보냈다면 Conflict에 deploy할 수 있다. 나중에 garrison에 있을 때 Combat space에 Agent를 보내면 garrison에서 deploy하는 `up to two` 유닛 중 하나가 될 수 있다. `[Bloodlines p. 4]`
+- recruit한 Commander는 대부분 다른 유닛과 같이 쓴다. garrison에 두거나, 이번 turn에 Combat space에 Agent를 보냈다면 Conflict에 deploy할 수 있다. 나중에 garrison에 있을 때 Combat space에 Agent를 보내면 garrison에서 deploy하는 `up to two` 유닛 중 하나가 될 수 있다. `[Bloodlines p. 4]` 이번 turn에 recruit한 Commander의 배치 몫은 Commander만 채운다 — garrison의 troop이 그 몫을 대신 차지할 수 없고, recruit한 troop의 몫도 Commander가 차지할 수 없다. garrison 몫(최대 두 개)은 두 종류가 함께 쓴다(사용자 판정, [OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫)).
 - Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다. `[Bloodlines p. 4]`
 - Combat이 해결되고 보상이 지급되면 Commander는 소유자의 supply로 돌아간다. `[Bloodlines p. 4]`
 - Endgame의 최종 tiebreaker "garrison의 troop 수" `[Main p. 15]`에는 garrison에 있는 Commander도 troop으로 센다. 공식 문서는 이 경우를 다루지 않으며, "Commander는 troop이다"의 연장으로 프로젝트가 확정했다(OQ-047 project convention). supply나 Conflict에 있는 Commander는 세지 않는다.
@@ -75,7 +75,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 - **Spy with Deep Cover**: 일반 규칙대로 Spy 하나를 놓되, 놓을 때 상대의 Spy를 무시할 수 있다. 자신의 Spy가 이미 있는 post에는 놓을 수 없다. `[Bloodlines pp. 5, 12]`
 - **Command (6+)**: Reveal box에 적힌 효과로, 그 Reveal turn에 Persuasion을 6 이상 생성했을 때만 사용한다(그 카드 자신의 Persuasion 포함). `[Bloodlines pp. 5, 12]` Desert Power(Persuasion 2 -OR- sandworm)처럼 선택형인 카드는 그 선택이 아직 안 끝났으면 자신의 Persuasion을 생성한 것으로 치지 않는다 — Persuasion 갈래를 고른 뒤부터 세고, sandworm 갈래를 고르면 끝내 세지 않는다(OQ-069, 사용자 판정 2026-09-26; `player-turns.md`의 Desert Power 항목).
-- **Combat 아이콘**: Combat space에 Agent를 보낸 것처럼 이번 turn에 troop을 Conflict에 deploy할 수 있다 — 이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두 개. 한 turn에 이 아이콘이 둘 이상이어도 garrison에서 deploy하는 수는 두 개를 넘지 못한다. Reveal turn에서도 쓸 수 있다(Disruption Tactics 예시). `[Bloodlines pp. 5, 12]`
+- **Combat 아이콘**: Combat space에 Agent를 보낸 것처럼 이번 turn에 troop을 Conflict에 deploy할 수 있다 — 이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두 개. 한 turn에 이 아이콘이 둘 이상이어도 garrison에서 deploy하는 수는 두 개를 넘지 못한다. Reveal turn에서도 쓸 수 있다(Disruption Tactics 예시). `[Bloodlines pp. 5, 12]` recruit한 유닛의 몫은 종류별이다 — 이번 turn에 recruit한 Commander의 몫은 Commander만 채운다(3절, OQ-070).
 - **wild battle icon(clarification)**: Endgame에서 wild battle icon은 supply의 다른 아무 battle icon과 짝지을 수 있다 — 세 표준 아이콘 중 하나 또는 또 다른 wild. 짝지은 두 장을 face-down으로 뒤집고 1 VP를 얻는다. Uprising Main p. 20의 "세 종류 중 하나"는 wild가 하나뿐이던 시절의 서술이다. `[Bloodlines p. 5]`
 - **Trash an Intrigue card**: hand의 Intrigue 카드 1장을 trash한다. `[Bloodlines p. 12]`
 - **Discard**: hand의 카드 1장을 discard한다. 명시하지 않는 한 Intrigue 카드는 대상이 아니다. `[Bloodlines p. 12]`
@@ -172,3 +172,4 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-09: 디자이너 판정 채택(OQ-057) — 카드 출처 Acquire Tech의 거절 제거(살 수 있을 때), Imperium Ceremony의 Suspensor troop, Combat 보상 동률의 turn 순서(OQ-002).
 - 2026-09-26 (카드 전사 감사): Command (6+)를 그 Reveal에 생성한 Persuasion으로 판정한다(구매로 줄지 않음, OQ-033 보강). Reveal 도중 Conflict에 처음 들어온 Commander가 Charismatic·Driven·Hardy의 Reveal 보너스를 그때 한 번 지급한다(OQ-028 (c)). 3절의 "Commander는 troop"을 Shadout Mapes의 "deploy or retreat one of your troops"에도 적용했다.
 - 2026-09-26 카드면 감사 정정: Servo-Receivers의 획득 효과는 Signet Ring 아이콘(Leader의 Signet Ring 능력 1회, [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력))이고 Hardy는 Reveal turn의 troop recruit이다(둘 다 2026-09-07 전사에서 아이콘 오독). 단일 키 공간(첫 High Council 방문·Imperial Privilege·Swordmaster)도 Acquire Tech와 대기 중인 Commander를 받는다. Suspensor Suits는 자기 turn의 모든 Intrigue draw를 센다(Bene Gesserit 4단계 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal 포함). Chani의 Tactics token은 Combat 정리로 supply에 돌아가는 유닛만큼 전진하고, 한 출처가 여러 troop을 잃어도 한 번만 전진한다 `[FAQ p. 1]`.
+- 2026-09-26 (사용자 판정 [OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫)): 이번 turn에 recruit한 Commander는 troop과 따로 센다(`commanders_recruited`·`reveal_commanders_recruited`). 배치는 종류별 recruit 몫 + 함께 쓰는 garrison 몫으로 판정한다(`combat_deployment.deployment_rooms`; Agent turn의 기본 배치와 Combat 아이콘, Reveal의 Combat 아이콘). 전에는 한도 하나를 공유해 Commander를 recruit하면 garrison의 troop 셋이 대신 deploy할 수 있었다.
