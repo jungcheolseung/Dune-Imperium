@@ -192,6 +192,23 @@ recruit했든 새 troop은 Conflict에 deploy할 수 있다" `[Main p. 10]` `[FA
 - False Orders: 공식 FAQ대로 영향을 받은 상대는 이번 turn에 Agent를 보낸 공간에 **연결되지 않은** 빈 post로 Spy를 옮긴다 `[FAQ p. 2]`.
   Holy War도 문구가 같아 같은 판정을 적용한다(프로젝트 판정). OQ-036 (b) 갱신.
 
+## 사용자 판정 2차 (2026-09-26 저녁)
+
+- OQ-066: Reclaimed Forces의 "acquire"도 acquire다 — 선택한 효과 뒤에 face-up Call to Arms가 발동한다("they choose one of its effects ...
+  but leave the card in place" `[Immortality p. 9]`). 같은 작업에서 Call to Arms가 recruit한 troop이 어느 획득 경로에서든 그 Reveal의
+  recruit로 세지 않던 결함도 고쳤다.
+- OQ-068: 모든 Agent recall(Steersman의 Recall Agent 아이콘, Twisted Mentat, Sardaukar II·High Council contract token의 완료 보상, CHOAM
+  Demands 경로)이 Imperial Privilege처럼 Conflict의 Into the Fray Agent를 되돌릴 수 있다(이번 turn의 Agent는 아니다; Twisted Mentat은
+  이번 turn의 그 Agent를 되돌린다). Imperial Privilege와 한 helper(`rules/effects.py`)를 쓴다. 참고: 이 작업의 커밋 7afb22b는 두 새 행동을
+  제시하지만 748a16a 전까지 처리기가 없어 그 커밋 단독으로는 엔진이 깨진다(bisect 때 건너뛴다; 기존 커밋은 고치지 않는다).
+- OQ-069: 후보 (A) — Maker Hooks가 있으면 Desert Power의 2 Persuasion은 Persuasion 갈래를 고를 때까지 쓸 수도, Command (6+)에 셀 수도
+  없다; 고르기 전에는 Reveal을 끝낼 수 없다. 오전의 "2를 쓰면 sandworm을 닫는다"(통합 리뷰 R4)는 없어졌다.
+- OQ-064·065: 사용자가 사실 확인을 물었다(Coercive Negotiation은 contract bank가 3장 미만일 때만, 강제 Spy 이동은 Research Station·Spice
+  Refinery에서 Spy 12개가 모두 놓였을 때만 생긴다). 판정 전까지 현재 convention을 유지한다.
+- 버전: `ACTION_CODEC_VERSION` 108 → 109(`recall_conflict_agent_for_agent_card`는 Bloodlines 카탈로그, `recall_conflict_agent_for_contract`는
+  CHOAM+Bloodlines 카탈로그). 카탈로그 기본 4,424·CHOAM 4,715·CHOAM+Bloodlines 11,252·전 확장 33,004 → 33,006. 5081 이관(v107 → v109): 유지
+  32,980·새 26·삭제 7. `OBSERVATION_VERSION` 20 유지. 이 판정들이 닿는 판은 드물어 golden 인코딩·문제집·census 고정 판은 그대로 복원된다.
+
 ## 새 open question
 
 OQ-062(Servo-Receivers의 Signet Ring 아이콘, DECIDED), OQ-063(Hungry for Spice의 "in a single turn", DECIDED), OQ-064(Coercive
