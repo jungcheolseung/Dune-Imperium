@@ -28,6 +28,7 @@ from dune_imperium.core import (
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_alliance_contracts,
@@ -41,6 +42,7 @@ from dune_imperium.rules.intrigue_triggers import (
     legal_trigger_contract_actions,
     offer_deployment_triggers,
 )
+from dune_imperium.rules.reveal_turn import legal_reveal_deployments
 from dune_imperium.rules.setup import create_initial_state
 
 CHOAM_BLOODLINES = RulesetConfig(bloodlines=True, choam_module=True)
@@ -423,6 +425,103 @@ def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() 
     assert rival_done.state.players[2].completed_contract_ids == (EARN_ALLIANCE,)
     assert rival_done.state.players[2].troops_garrison == 3 + 2
     assert dict(rival_done.state.decision_stack[-1].context)["troops_recruited"] == 0
+
+
+def _closing_alliance_state() -> GameState:
+    """Seat 0 is one Influence bump from completing Earn Any Alliance, and
+    that bump is the Agent turn's last pending effect with every other seat
+    already revealed -- ``advance_after_effect`` then reopens seat 0's own
+    next "turn" frame in the same step."""
+
+    return _state(
+        _owner(
+            influence=Influence(spacing_guild=3),
+            active_contract_ids=(EARN_ALLIANCE,),
+        ),
+        market=(),
+        opponents=(
+            PlayerState(player_id=1, has_revealed=True),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+    )
+
+
+def test_earn_any_alliance_does_not_join_the_next_agent_turns_allowance() -> None:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
+    # 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137). Deliver Supplies is a Spacing Guild
+    # space with no automatic troop recruit [Main p. 7], so its
+    # ``resolve_faction_influence`` (Guild 3 -> 4) is the turn's very last
+    # pending effect; with seats 1-3 already revealed,
+    # ``next_unrevealed_player`` reopens seat 0's own next "turn" frame in
+    # the same step Earn Any Alliance completes -- the engine used to let
+    # ``complete_alliance_contracts`` credit that fresh frame with the
+    # completion's 2 troops instead of leaving it uncredited there.
+    engine = UprisingRulesEngine()
+    placed = _place(_closing_alliance_state(), "deliver_supplies")
+    with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
+
+    result = engine.apply(
+        with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+
+    owner = result.players[0]
+    assert owner.influence.spacing_guild == 4
+    assert owner.alliance_faction_ids == ("spacing_guild",)
+    assert owner.completed_contract_ids == (EARN_ALLIANCE,)
+    assert owner.troops_garrison == 3 + 2
+    top = result.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    # Arrakeen recruits nothing on its own [Main p. 7]; the deploy window
+    # opens on placement, before its printed icons resolve (OQ-027).
+    next_placed = _place(result, "arrakeen")
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_earn_any_alliance_does_not_join_a_later_reveals_allowance() -> None:
+    # Same closed-turn scenario as above, but seat 0 picks a Reveal turn
+    # next instead of another Agent turn. The fresh "turn" frame correctly
+    # holds no troops_recruited (previous test), and
+    # ``reveal_turn._begin_reveal_turn``'s carry of a closing turn frame's
+    # recruits into the Reveal (``2d2fa81``, OQ-062) must carry that
+    # (correct) zero, not the completion's 2 troops: Combat 아이콘 "이번
+    # turn에 recruit한 유닛 전부와 garrison에서 최대 두 개 ... Reveal
+    # turn에서도 쓸 수 있다" [Bloodlines pp. 5, 12].
+    engine = UprisingRulesEngine()
+    placed = _place(_closing_alliance_state(), "deliver_supplies")
+    with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
+    result = engine.apply(
+        with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+    assert result.decision_stack[-1].kind == FrameKind.TURN
+
+    # The Combat icon is granted only now, after the turn has already
+    # closed: setting it before placement would keep the deployment window
+    # (and so the Agent-turn effect frame) open through this whole step.
+    combat_icon_owner = replace(result.players[0], combat_icon_turn=True)
+    with_combat_icon = replace(
+        result, players=(combat_icon_owner, *result.players[1:])
+    )
+    revealed = engine.apply(
+        with_combat_icon, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+    reveal_frame = next(
+        frame for frame in revealed.decision_stack if frame.kind == FrameKind.REVEAL
+    )
+    assert dict(reveal_frame.context)["reveal_troops_recruited"] == 0
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(revealed, 0)
+        if a.action_id == "deploy_troops"
+    ] == [1, 2]
 
 
 def test_earn_any_alliance_waits_for_a_new_alliance_token() -> None:

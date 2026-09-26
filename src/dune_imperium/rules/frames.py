@@ -279,6 +279,40 @@ def own_turn_frame_index(state: GameState, player: int) -> int | None:
     return None
 
 
+def turn_closing_player(before: GameState, after: GameState) -> int | None:
+    """Return the player whose still-open turn closed between two states.
+
+    "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
+    제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    (docs/rules/player-turns.md:137). When a step's automatic advance closes
+    an Agent-turn-effects or Reveal frame and no other seat is left
+    unrevealed, ``advance_after_effect`` reopens a fresh bare "turn" frame
+    for that very same player (the reopen ``4e29e27`` already guards at the
+    acquisition call sites). A caller that would credit a recruit resolved
+    during ``before..after`` to whatever frame ``turn_owner_of`` finds in
+    ``after`` must not credit the player this returns: that fresh frame
+    belongs to the turn that is only just starting, never the one the
+    recruit happened in.
+    """
+
+    owner = turn_owner_of(before)
+    if owner is None:
+        return None
+    before_index = own_turn_frame_index(before, owner)
+    if before_index is None or before.decision_stack[before_index].kind not in (
+        FrameKind.AGENT_EFFECTS,
+        FrameKind.REVEAL,
+    ):
+        return None
+    after_index = own_turn_frame_index(after, owner)
+    if after_index is None:
+        return None
+    if after.decision_stack[after_index].kind == FrameKind.TURN:
+        return owner
+    return None
+
+
 def reveal_is_open_for(state: GameState, player: int) -> bool:
     """Return whether ``player``'s Reveal frame is on the decision stack."""
 

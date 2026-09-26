@@ -139,7 +139,12 @@ from dune_imperium.rules.endgame import (
     finish_endgame_without_pending_effects,
     legal_endgame_intrigue_actions,
 )
-from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_owner_of
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    turn_closing_player,
+    turn_owner_of,
+)
 from dune_imperium.rules.graft import (
     apply_graft_partner,
     apply_graft_switch,
@@ -782,9 +787,16 @@ class UprisingRulesEngine(RulesEngine):
             expire_trashed_card_effects(_advance_automatic(result))
         )
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
+        # ``state`` (before this whole chance resolution) is the reference
+        # ``turn_closing_player`` needs: a still-open turn's automatic
+        # advance may already have closed and reopened by this point, and a
+        # troop the closed turn recruited must not join the fresh one
+        # (``frames.turn_closing_player``) [Main p. 10] [FAQ p. 4].
+        advanced = _advance_automatic(result)
+        closing_player = turn_closing_player(state, advanced.state)
         result = deploy_suspensor_troops(
             draw_owed_tech_cards(
-                complete_alliance_contracts(_advance_automatic(result))
+                complete_alliance_contracts(advanced, closing_player=closing_player)
             )
         )
         return refresh_pre_reveal_strength(
@@ -828,9 +840,18 @@ class UprisingRulesEngine(RulesEngine):
         )
         # Units moved this step: the running strength follows [Main p. 12].
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
+        # ``state`` (before the action) is the reference ``turn_closing_player``
+        # needs: the action's own handler may already have closed and
+        # reopened the actor's turn (an Influence bump crossing an Alliance
+        # threshold as the turn's last effect, with every other seat
+        # revealed), and a troop that closed turn recruited must not join
+        # the fresh one (``frames.turn_closing_player``) [Main p. 10]
+        # [FAQ p. 4].
+        advanced = _advance_automatic(result)
+        closing_player = turn_closing_player(state, advanced.state)
         result = deploy_suspensor_troops(
             draw_owed_tech_cards(
-                complete_alliance_contracts(_advance_automatic(result))
+                complete_alliance_contracts(advanced, closing_player=closing_player)
             )
         )
         return refresh_pre_reveal_strength(
