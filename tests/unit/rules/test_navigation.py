@@ -26,6 +26,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.observation import observe_state
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import advance_after_effect
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.influence import gain_faction_influence
@@ -653,3 +654,82 @@ def test_navigation_trigger_after_the_turn_passed_credits_no_other_seat() -> Non
     assert top.kind == "turn"
     assert dict(top.context)["turn_owner"] == 1
     assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_the_closed_turns() -> (
+    None
+):
+    # 2026-09-26 review, mutation gap: ``_apply_legal`` marks a Navigation
+    # play its own handler queued with ``turn_closing_player`` first and
+    # ``turn_closed_frame_owner`` only as a fallback. Replacing the first
+    # with ``None`` passed every rules test. This is the engine path that
+    # needs it: Glowglobes bought at Assembly Hall as the Agent turn's last
+    # effect runs ``advance_after_effect`` *before* its own Influence gain
+    # (``tech.apply_tech_acquisition``), so the Emperor bump to 2 queues the
+    # play unflagged, after the turn already closed and reopened a fresh
+    # bare "turn" frame for P0 (every other seat revealed). Only the
+    # engine's before/after comparison sees that close; the Agent-effects
+    # frame the purchase resolved carried no ``turn_closed`` marker for the
+    # fallback to read.
+    # Card 6's troop belongs to the closed turn (OQ-044 (d)): "그 turn에
+    # 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미
+    # garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을
+    # 우회할 수는 없다." [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    dagger = "player:0:starter:dagger:0"
+    desert_planet = "player:0:starter:dune_the_desert_planet:0"
+    owner = _steersman(
+        (_card(6),),
+        influence=Influence(emperor=1),
+        hand=(dagger, desert_planet),
+        resources=Resources(solari=4, spice=6, water=2),
+    )
+    state = _turn_state(
+        owner,
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+        tech_stacks=(("glowglobes",), (), ()),
+        players=(
+            owner,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3)),
+        ),
+    )
+
+    def act(current: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            a
+            for a in ENGINE.legal_actions(current, 0)
+            if a.action_id == action_id
+            and all(dict(a.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return ENGINE.apply(current, action).state
+
+    visited = act(state, "agent_turn", card_id=dagger, space_id="assembly_hall")
+    visited = act(visited, "resolve_board_effect", effect="intrigue")
+    bought = act(visited, "acquire_tech", tech_id="glowglobes", faction="emperor")
+
+    assert bought.players[0].influence.emperor == 2
+    assert [frame.kind for frame in bought.decision_stack] == [
+        "turn",
+        "navigation_choice",
+    ]
+    reopened = bought.decision_stack[0]
+    assert isinstance(reopened.decision, PlayerDecision)
+    assert reopened.decision.owner == 0
+    assert dict(bought.decision_stack[-1].context).get("turn_closed") is True
+
+    played = act(bought, "play_navigation", option=0)
+
+    # Card 6's troop is still recruited, just not into the fresh turn.
+    assert played.players[0].troops_garrison == 3 + 1
+    top = played.decision_stack[-1]
+    assert top.kind == "turn"
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    # The next Agent turn's Combat deploy: only the two garrison troops.
+    placed = act(played, "agent_turn", card_id=desert_planet, space_id="hagga_basin")
+    counts = [
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(placed, 0)
+    ]
+    assert counts == [1, 2]
