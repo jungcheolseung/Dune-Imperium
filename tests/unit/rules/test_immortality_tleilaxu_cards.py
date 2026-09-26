@@ -636,6 +636,34 @@ def test_sardaukar_coordination_lets_recruits_deploy_on_either_graft_side() -> N
         ]
         assert counts == [1, 2], (placed_id, space_id)
 
+    # A turn whose unit deployment is banned (Emperor of the Known Universe,
+    # applied "immediately" when the Agent is sent [Main p. 17] [FAQ p. 3])
+    # gets no deployment window from the partner either.
+    owner = _owner((FACE_DANCER, coordination), troops_garrison=4, troops_supply=8)
+    placed = _place(_state(owner), FACE_DANCER, "deliver_supplies", graft=True)
+    effect_frame = placed.decision_stack[-2]
+    assert effect_frame.kind == FrameKind.AGENT_EFFECTS
+    blocked = replace(
+        placed,
+        decision_stack=(
+            *placed.decision_stack[:-2],
+            with_context(
+                effect_frame,
+                {**dict(effect_frame.context), "units_deploy_blocked": True},
+            ),
+            placed.decision_stack[-1],
+        ),
+    )
+    partner = next(
+        action
+        for action in legal_graft_partner_actions(blocked, 0)
+        if dict(action.arguments)["card_id"] == coordination
+    )
+    _, context = current_agent_effect_context(
+        apply_graft_partner(blocked, partner).state
+    )
+    assert context.get("pending_combat_deployment") is not True
+
 
 def test_ghola_borrows_the_other_grafted_box_on_either_side() -> None:
     ghola = _tleilaxu("ghola")
