@@ -2725,6 +2725,65 @@ def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
     assert "spy_lost" in [event.kind for event in lost.events]
 
 
+def test_forced_spy_moves_go_seat_by_seat_from_the_next_seat() -> None:
+    # User ruling 2026-09-26 (OQ-036 (b), OQ-065): "스파이 옮기는건 카드 쓴
+    # 다음 사람부터 순서대로 하는걸로. 한 사람이 여러 스파이를 옮겨야하면 그
+    # 사람 차례에 모두 옮길 수 있도록. 갈 곳 없는 스파이는 공급처로 되돌아가게
+    # 하기." The FAQ orders Mohiam's opponent discards the same way,
+    # "beginning with the player to your left and proceeding clockwise"
+    # [FAQ p. 3]. Seat 1 has a Spy on both Spice Refinery posts and seat 2 a
+    # Spy with Deep Cover on one of them; the other nine Spies leave two of
+    # the eleven unconnected posts empty [FAQ p. 2], so seat 1 moves both
+    # of its Spies first and seat 2, last, loses its Spy to its supply.
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+    from dune_imperium.rules.spy_moves import (
+        apply_spy_move,
+        legal_spy_move_actions,
+        turn_space_spy_frames,
+    )
+
+    off_space = [
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if post.post_id not in REFINERY_POSTS
+    ]
+    seats = (
+        _owner(spies_supply=0, spy_post_ids=tuple(off_space[0:3])),
+        PlayerState(
+            player_id=1,
+            spies_supply=0,
+            spy_post_ids=(*REFINERY_POSTS, off_space[3]),
+        ),
+        PlayerState(
+            player_id=2,
+            spies_supply=0,
+            spy_post_ids=(REFINERY_POSTS[0], *off_space[4:6]),
+        ),
+        PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[6:9])),
+    )
+    state = replace(_state(seats[0]), players=seats)
+    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    added = pushed.decision_stack[len(state.decision_stack) :]
+    # Top of the stack first: seat 1's two moves, then seat 2's.
+    assert [frame.decision.owner for frame in reversed(added)] == [1, 1, 2]
+
+    moving = pushed
+    for destination in off_space[9:11]:
+        move = next(
+            action
+            for action in legal_spy_move_actions(moving, 1)
+            if dict(action.arguments).get("post_id") == destination
+        )
+        moving = apply_spy_move(moving, move).state
+    assert set(moving.players[1].spy_post_ids) == {off_space[3], *off_space[9:11]}
+    actions = legal_spy_move_actions(moving, 2)
+    assert [action.action_id for action in actions] == ["lose_moved_spy"]
+    lost = apply_spy_move(moving, actions[0]).state
+    assert lost.players[2].spy_post_ids == tuple(off_space[4:6])
+    assert lost.players[2].spies_supply == 1
+    assert lost.decision_stack == state.decision_stack
+
+
 def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> None:
     from dune_imperium.content.uprising.contracts import contract_instance_ids
     from dune_imperium.core.engine import RuleResult

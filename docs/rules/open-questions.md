@@ -250,7 +250,7 @@
 
 - 상태: `DECIDED` (project convention)
 - Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
-- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터(2026-09-26 정정: 이 순서는 사용자 판정이 아니라 구현 기본값이었다 — 2026-08-20 Covert Operation에서 처음 쓴 "카드 쓴 좌석의 왼쪽부터 시계 방향"을 그대로 따랐다. Holy War·False Orders에 대한 공식 순서 규정은 없지만, 같은 공식 FAQ가 비슷한 "각 상대" 효과에 같은 순서를 정한다: Reverend Mother Mohiam — "beginning with the player to your left and proceeding clockwise" `[FAQ p. 3]`; 원판 Dune: Imperium 룰북의 Test of Humanity 설명(p. 13)도 같다. BGG의 답변자들도 False Orders·Holy War를 이 순서로 읽는다(비공식). Combat 보상처럼 모두에게 동시에 일어나는 효과는 디자이너 메시지대로 First Player부터이고(OQ-002), 한 좌석의 카드 효과는 이 순서다). 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-065](#oq-065--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터(2026-09-26 정정: 이 순서는 사용자 판정이 아니라 구현 기본값이었다 — 2026-08-20 Covert Operation에서 처음 쓴 "카드 쓴 좌석의 왼쪽부터 시계 방향"을 그대로 따랐다. Holy War·False Orders에 대한 공식 순서 규정은 없지만, 같은 공식 FAQ가 비슷한 "각 상대" 효과에 같은 순서를 정한다: Reverend Mother Mohiam — "beginning with the player to your left and proceeding clockwise" `[FAQ p. 3]`; 원판 Dune: Imperium 룰북의 Test of Humanity 설명(p. 13)도 같다. BGG의 답변자들도 False Orders·Holy War를 이 순서로 읽는다(비공식). Combat 보상처럼 모두에게 동시에 일어나는 효과는 디자이너 메시지대로 First Player부터이고(OQ-002), 한 좌석의 카드 효과는 이 순서다). **2026-09-26 사용자 판정으로 확정**: "스파이 옮기는건 카드 쓴 다음 사람부터 순서대로 하는걸로. 한 사람이 여러 스파이를 옮겨야하면 그 사람 차례에 모두 옮길 수 있도록." — 카드를 쓴 좌석의 다음 좌석부터 시계 방향으로, 한 좌석은 옮길 Spy를 자기 차례에 모두 옮긴다 (`tests/unit/rules/test_bloodlines_cards.py::test_forced_spy_moves_go_seat_by_seat_from_the_next_seat`). 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-065](#oq-065--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
 - 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
 - 재개 조건: 공식 FAQ가 "lose a troop"의 출처를 정할 때. 강제 이동의 목적지는 False Orders에 대해 FAQ 2025-01-13이 정했고(위 (b)), 같은 FAQ의 둘째 문장 "You may play this Intrigue card even if no opponents' Spies are on the space where you sent an Agent this turn." `[FAQ p. 2]`도 이미 따른다([designer-rulings-audit.md](designer-rulings-audit.md)). Holy War에 대한 공식 판정이 나오면 (b)의 확장을 다시 본다.
 
@@ -688,7 +688,7 @@
 
 ## OQ-065 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
 
-- 상태: `OPEN` (구현 convention 적용 중)
+- 상태: `DECIDED` (2026-09-26 사용자 판정)
 - False Orders·Holy War로 Spy를 옮기는 상대는 "an empty observation post that isn't connected to the space
   where you sent an Agent this turn"로 가야 한다(`[FAQ p. 2]`, Holy War는 OQ-036 (b)의 확장). 연결 post가 둘인
   Research Station·Spice Refinery에서는 연결되지 않은 post가 11곳이라, Spy 12개가 모두 board에 있고 옮길 Spy를
@@ -701,6 +701,10 @@
   supply 반환으로 읽음). 행동은 `lose_moved_spy` 하나만 제시되고 공개 이벤트 `spy_lost`를 남긴다(codec에
   Bloodlines 템플릿 1개 추가). `tests/unit/rules/test_bloodlines_cards.py`
   (`test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy`)로 고정한다. 사용자 확인 대기.
+- 판정(2026-09-26 밤, 사용자): 현재 convention을 확정한다 — "갈 곳 없는 스파이는 공급처로 되돌아가게 하기." 공식 근거를 찾아
+  보았지만 사람 좌석에 대한 판정은 없고 Rival 규칙 `[Bloodlines p. 8]`뿐이다. 갈 곳이 모자랄 수 있는 것은 Research Station·Spice
+  Refinery에서 Spy 12개가 모두 놓였을 때뿐이며, 옮길 Spy가 몇 개든(Deep Cover로 겹쳐 있어도) 모자라는 것은 최대 1개다 — 옮기는 Spy가
+  하나 늘 때마다 연결되지 않은 11칸을 차지할 수 있는 다른 Spy가 하나 줄기 때문이다. 순서상 마지막 좌석(OQ-036 (b))이 그 Spy를 잃는다.
 
 ## OQ-066 — Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가
 
