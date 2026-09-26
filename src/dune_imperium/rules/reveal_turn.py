@@ -956,7 +956,7 @@ def apply_reveal_troop_retreat(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or retreat two troops for four Reveal strength."""
+    """Decline, or retreat two troops for four swords or two Persuasion."""
 
     if action not in legal_reveal_troop_retreat_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop-retreat choice")
@@ -985,7 +985,20 @@ def apply_reveal_troop_retreat(
     if owner.troops_conflict < troops or owner.commanders_conflict < commanders:
         raise RuntimeError("Reveal troop-retreat payment requires two troops")
     remaining_units = owner.units_in_conflict - 2
-    next_strength = owner.combat_strength if remaining_units else 0
+    persuasion_choice = context.get("reveal_choice_effect") == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
+    )
+    if not remaining_units:
+        # No unit left, no strength, swords or not [Main p. 12].
+        next_strength = 0
+    elif persuasion_choice:
+        # Command Center pays Persuasion, not swords: each retreated troop or
+        # Commander takes its 2 strength along [Main pp. 12, 14]
+        # [Bloodlines p. 4].
+        next_strength = max(owner.combat_strength - 2 * 2, 0)
+    else:
+        # Chani, Clever Tactician: the 4 troop strength becomes 4 swords.
+        next_strength = owner.combat_strength
     next_owner = replace(
         owner,
         troops_garrison=owner.troops_garrison + troops,
@@ -998,9 +1011,7 @@ def apply_reveal_troop_retreat(
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
         remaining = add_reveal_strength(remaining, strength_delta)
-    if context.get("reveal_choice_effect") == (
-        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
-    ):
+    if persuasion_choice:
         # Command Center (Bloodlines): "Retreat two troops -> +2 Persuasion".
         remaining = add_reveal_persuasion(remaining, 2)
         reward_event = GameEvent(

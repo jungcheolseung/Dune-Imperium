@@ -363,6 +363,39 @@ def test_command_center_retreats_two_troops_for_two_persuasion() -> None:
     assert result.events[1].kind == "reveal_persuasion_gained"
 
 
+@pytest.mark.parametrize("commanders", [0, 1])
+def test_command_center_retreat_takes_the_two_units_strength(commanders: int) -> None:
+    # "Retreat two troops -> +2 [Persuasion]" [Command Center card] gives no
+    # swords, and "Each troop is worth 2 strength" [Main p. 12]
+    # (player-turns.md: "Conflict의 troop 하나는 strength 2"); a Commander is
+    # "a 'troop' that's worth 2 strength" [Bloodlines p. 4]. "If a card changes
+    # the number of units a player has in the Conflict ... they adjust their
+    # Combat marker accordingly" [Main p. 14]. Three units (6) retreating two
+    # leave one troop: strength 2. Before the fix the strength stayed at 6.
+    card = _card("command_center")
+    owner = _owner(
+        hand=(card,),
+        troops_supply=6 + commanders,
+        troops_conflict=3 - commanders,
+        commanders_conflict=commanders,
+        combat_strength=6,
+    )
+    engine = UprisingRulesEngine()
+    revealed = _reveal(_state(owner))
+    retreat = DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(("commanders", commanders),) if commanders else (),
+    )
+    assert retreat in legal_reveal_troop_retreat_actions(revealed, 0)
+    retreated = engine.apply(revealed, retreat).state
+    player = retreated.players[0]
+    assert player.troops_conflict + player.commanders_conflict == 1
+    assert player.combat_strength == 2
+    assert _reveal_context(retreated)["strength"] == 2
+    assert _reveal_context(retreated)["persuasion"] == 1 + 2
+
+
 # --- trash, discard, acquisition triggers -------------------------------------
 
 
