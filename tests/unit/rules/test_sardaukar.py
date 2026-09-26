@@ -824,7 +824,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # +3).
     # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1
+    # v110: an Agent-box Spy may pass up the recall-first too, when the box
+    # resolves (decline_agent_card_spy, +1).
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
