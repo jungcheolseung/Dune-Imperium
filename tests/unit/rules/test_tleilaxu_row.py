@@ -28,6 +28,8 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules import tleilaxu_row
+from dune_imperium.rules.acquisition import AcquisitionBonus
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -160,6 +162,34 @@ def test_acquiring_pays_specimens_refills_the_row_and_pays_the_acquire_box() -> 
     assert result.state.tleilaxu_row == (CONTAMINATOR, FROM_THE_TANKS)
     assert result.state.tleilaxu_deck == ()
     assert result.events[0].kind == "tleilaxu_card_acquired"
+
+
+def test_a_future_troop_acquire_box_fails_loudly_instead_of_dropping_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No shipped Tleilaxu card recruits a troop in its acquire box, but a
+    # future one would repeat the exact defect this sweep fixed for Arrakis
+    # Revolt's and Occupation's Imperium acquire boxes -- a troop reaching
+    # the garrison without ever joining the owner's turn allowance
+    # [Main p. 10] [FAQ p. 4] -- if this guard did not fail loudly instead.
+    state = _reveal_state(_owner())
+
+    def fake_bonus(
+        state: GameState, player: int, instance_id: str, next_owner: PlayerState
+    ) -> AcquisitionBonus:
+        return AcquisitionBonus(
+            owner=next_owner,
+            intrigue_deck=state.intrigue_deck,
+            events=(),
+            places_spy=False,
+            takes_contract=False,
+            recruited=1,
+        )
+
+    monkeypatch.setattr(tleilaxu_row, "resolve_acquisition_bonus", fake_bonus)
+
+    with pytest.raises(NotImplementedError):
+        apply_tleilaxu_acquisition(state, _actions(state)[CONTAMINATOR])
 
 
 def test_a_tleilaxu_acquisition_fires_call_to_arms() -> None:

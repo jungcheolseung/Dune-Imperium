@@ -158,8 +158,15 @@ def acquire_tleilaxu_card(
             pending_intrigue_draws=with_pending_draw(state, bonus.pending_draw),
         )
     )
-    if bonus.places_spy or bonus.takes_contract:
-        raise NotImplementedError("Tleilaxu acquire boxes never place Spies")
+    if bonus.places_spy or bonus.takes_contract or bonus.recruited:
+        # No shipped Tleilaxu card recruits a troop in its acquire box, but a
+        # future one would need this counted toward the owner's turn like
+        # Arrakis Revolt's and Occupation's [Main p. 10] [FAQ p. 4]; fail
+        # loudly rather than let the troop reach the garrison uncounted.
+        raise NotImplementedError(
+            "Tleilaxu acquire boxes never place Spies, take Contracts or "
+            "recruit troops"
+        )
     tracked = apply_acquisition_track_effects(
         next_state, player, definition, source=f"{source}:{instance_id}"
     )
