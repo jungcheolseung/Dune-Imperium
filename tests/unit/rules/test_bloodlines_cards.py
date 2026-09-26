@@ -1859,11 +1859,22 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
     # board to your Leader (not the Agent you sent during this turn)"
     # [Main p. 20]. Completed by CHOAM Demands' Agent box, the Agent just
     # sent to Arrakeen used to be a legal target.
+    #
+    # User ruling (2026-09-26, verbatim): "Duncan Idaho(Bloodlines) Into the
+    # Fray의 Agent를 Imperial Privilege로 recall 가능 이니까 recall agent
+    # 기능으로 되는건 모두 같게 동작해야지. 사다우카 계약 완료보상이나 원로회
+    # 계약 완료보상에 있는 recall agent도 마찬가지겠지" (OQ-068): an earlier
+    # turn's Into the Fray Agent in the Conflict (OQ-037 (d)) is one of
+    # "your Agents" the reward may recall too, so it no longer fizzles when
+    # that Conflict Agent is the only other one.
     from dune_imperium.rules.agent_effects import (
         apply_agent_card_contract_completion,
         legal_agent_card_contract_completion_actions,
     )
-    from dune_imperium.rules.contracts import legal_contract_recall_actions
+    from dune_imperium.rules.contracts import (
+        apply_contract_recall_action,
+        legal_contract_recall_actions,
+    )
 
     card = _card("choam_demands")
 
@@ -1892,6 +1903,21 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
         dict(action.arguments)["space_id"]
         for action in legal_contract_recall_actions(earlier, 0)
     ] == ["hagga_basin"]
+
+    # An earlier turn's Into the Fray Agent, alone in the Conflict, used to
+    # leave the reward with nothing to recall and it fizzled (OQ-068 fixes
+    # this); it is never this turn's own Agent, which stayed on Arrakeen.
+    conflict, conflict_kinds = complete(agent_in_conflict=1, agents_available=1)
+    assert "contract_recall_unavailable" not in conflict_kinds
+    assert conflict.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    recalls = legal_contract_recall_actions(conflict, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_contract"
+    ]
+    resolved = apply_contract_recall_action(conflict, recalls[0]).state.players[0]
+    assert resolved.agent_in_conflict == 0
+    assert resolved.agents_available == 1
+    assert resolved.agent_locations == ("arrakeen",)
 
 
 _FAR_POSTS = (
@@ -2534,9 +2560,13 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # Negotiation is mandatory (-1 decline, OQ-064).
     # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    # v109 (OQ-068, 2026-09-26 user ruling): Steersman's Recall Agent icon
+    # and Twisted Mentat may also recall an Into the Fray Agent from the
+    # Conflict (+1); the Contract reward's twin needs the CHOAM Module too,
+    # which this catalog lacks.
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
-        + 1
+        + 1 + 1
     )
     action = DomainAction(
         action_id="trash_agent_card",

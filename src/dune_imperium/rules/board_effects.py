@@ -40,8 +40,11 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     finish_board_icon,
     pending_board_icons,
+    recall_conflict_agent,
+    recallable_conflict_agents,
     recruit_shortfall_events,
     recruit_troops,
+    turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -1102,21 +1105,16 @@ def _recallable_conflict_agents(
     "Recall one of your other Agents from the board" [Board Guide p. 2]
     excludes the Agent sent there this turn (docs/rules/board-spaces.md),
     and an Into the Fray Agent may be recalled only on a later turn
-    (OQ-037 (d)). While Imperial Privilege's recall is pending, this turn's
-    Agent is still on the space, or Into the Fray has moved it to the
-    Conflict, where it is not one of the "other" Agents, or Twisted
-    Mentat's "You may recall the Agent you sent this turn." [Twisted Mentat
-    card] has sent it home (``turn_agent_recalled``), which leaves every
-    Conflict Agent an earlier turn's.
+    (OQ-037 (d)), like every Recall Agent effect (OQ-068). See
+    ``turn_agent_in_conflict`` for when this turn's Agent counts as moved.
     """
 
-    sent_this_turn = (
-        0
-        if "imperial_privilege" in owner.agent_locations
-        or context.get("turn_agent_recalled") is True
-        else 1
+    return recallable_conflict_agents(
+        owner,
+        sent_this_turn=turn_agent_in_conflict(
+            owner, context, "imperial_privilege"
+        ),
     )
-    return max(0, owner.agent_in_conflict - sent_this_turn)
 
 
 def apply_imperial_privilege_action(
@@ -1139,14 +1137,19 @@ def apply_imperial_privilege_action(
     ):
         if action.action_id == "recall_conflict_agent_for_imperial_privilege":
             # Into the Fray's Agent leaves the Conflict as a unit and returns
-            # to the Leader (OQ-037(d)); the running strength follows. One
-            # recall brings back one Agent, even when a Servo-Receivers
-            # Signet sent a second one (OQ-037(e)).
+            # to the Leader (OQ-037(d), OQ-068); the running strength
+            # follows (``recall_conflict_agent``). One recall brings back one
+            # Agent, even when a Servo-Receivers Signet sent a second one
+            # (OQ-037(e)).
             space_id = "conflict"
-            next_owner = replace(
+            next_owner, recall_event = recall_conflict_agent(
                 owner,
-                agents_available=owner.agents_available + 1,
-                agent_in_conflict=owner.agent_in_conflict - 1,
+                player=action.actor,
+                source="imperial_privilege",
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"agent_recalled:imperial_privilege:conflict"
+                ),
             )
         else:
             space_value = dict(action.arguments).get("space_id")
@@ -1162,6 +1165,18 @@ def apply_imperial_privilege_action(
                     if location != space_id
                 ),
             )
+            recall_event = GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"agent_recalled:imperial_privilege:{space_id}"
+                ),
+                kind="agent_recalled",
+                payload=(
+                    ("player", action.actor),
+                    ("source", "imperial_privilege"),
+                    ("space_id", space_id),
+                ),
+            )
         players = tuple(
             next_owner if candidate.player_id == action.actor else candidate
             for candidate in state.players
@@ -1173,18 +1188,7 @@ def apply_imperial_privilege_action(
         )
         next_state = draw.state
         recall_events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"agent_recalled:imperial_privilege:{space_id}"
-                ),
-                kind="agent_recalled",
-                payload=(
-                    ("player", action.actor),
-                    ("source", "imperial_privilege"),
-                    ("space_id", space_id),
-                ),
-            ),
+            recall_event,
             *draw.events,
             GameEvent(
                 event_id=source,

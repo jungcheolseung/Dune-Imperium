@@ -8,8 +8,11 @@ Leader audit.
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -698,6 +701,22 @@ def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> Non
     assert seat.agents_available == 1
 
 
+def test_recall_conflict_agent_rejects_an_empty_conflict() -> None:
+    # Review round 2 minor finding: recall_conflict_agent is the single
+    # implementation every Recall Agent effect shares (Imperial Privilege,
+    # Steersman's Recall Agent icon, the Contract reward) for "Return one of
+    # your other Agents on the board to your Leader (not the Agent you sent
+    # during this turn)." [Main p. 20]; it must refuse to recall a Conflict
+    # Agent that is not there rather than drive agent_in_conflict negative.
+    from dune_imperium.rules.effects import recall_conflict_agent
+
+    owner = PlayerState(player_id=0, agents_available=2, agent_in_conflict=0)
+    with pytest.raises(RuntimeError):
+        recall_conflict_agent(
+            owner, player=0, source="imperial_privilege", event_id="test:recall"
+        )
+
+
 def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:
     # A Servo-Receivers Signet can send a second "Agent you sent this turn"
     # into the Conflict [Duncan Idaho card] (OQ-037(e)). Imperial Privilege
@@ -745,6 +764,113 @@ def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -
     cleaned = finish_combat(_cleanup_state(fighting)).state.players[0]
     assert cleaned.agent_in_conflict == 0
     assert cleaned.agents_available == 3
+
+
+def test_sardaukar_ii_recalls_an_earlier_into_the_fray_agent_instead_of_fizzling() -> (
+    None
+):
+    # User ruling (2026-09-26, verbatim): "Duncan Idaho(Bloodlines) Into the
+    # Fray의 Agent를 Imperial Privilege로 recall 가능 이니까 recall agent
+    # 기능으로 되는건 모두 같게 동작해야지. 사다우카 계약 완료보상이나 원로회
+    # 계약 완료보상에 있는 recall agent도 마찬가지겠지" (OQ-068): an earlier
+    # turn's Into the Fray Agent in the Conflict is one of "your Agents"
+    # [Main p. 20] Sardaukar II's reward may recall too, so it no longer
+    # fizzles; this turn's own Agent, still on the board, is never offered.
+    from dune_imperium.rules.contracts import (
+        apply_contract_completion,
+        apply_contract_recall_action,
+        legal_contract_completion_actions,
+        legal_contract_recall_actions,
+    )
+
+    truthtrance = next(
+        card_id
+        for card_id in imperium_deck_instance_ids(True)
+        if ":truthtrance:" in card_id
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(truthtrance,),
+        deck=(RECON,),
+        resources=Resources(spice=4),
+        agents_available=1,
+        agent_in_conflict=1,
+        active_contract_ids=("contract:sardaukar_ii",),
+    )
+    state = _turn_state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
+    placed = _play(state, truthtrance, "sardaukar")
+    completion = next(
+        action
+        for action in legal_contract_completion_actions(placed, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = apply_contract_completion(placed, completion).state
+
+    recalls = legal_contract_recall_actions(completed, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_contract"
+    ]
+    resolved = apply_contract_recall_action(completed, recalls[0]).state.players[0]
+    assert resolved.agent_in_conflict == 0
+    assert resolved.agents_available == 1
+    assert resolved.agent_locations == ("sardaukar",)
+
+
+def test_sardaukar_ii_conflict_recall_updates_combat_strength_through_the_engine() -> (
+    None
+):
+    # Review round 1 blocker: recall_conflict_agent_for_contract must be
+    # registered in engine.ACTION_HANDLERS
+    # (src/dune_imperium/rules/engine.py) exactly like recall_agent_for_
+    # contract, or choosing it through UprisingRulesEngine raises KeyError --
+    # it is the only legal action once the reward opens with no board Agent
+    # left to recall. The running Combat strength [Main p. 12] the engine
+    # keeps current (refresh_pre_reveal_strength) is what a real turn
+    # actually depends on.
+    engine = UprisingRulesEngine()
+    truthtrance = next(
+        card_id
+        for card_id in imperium_deck_instance_ids(True)
+        if ":truthtrance:" in card_id
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(truthtrance,),
+        deck=(RECON,),
+        resources=Resources(spice=4),
+        agents_available=1,
+        agent_in_conflict=1,
+        active_contract_ids=("contract:sardaukar_ii",),
+    )
+    state = _turn_state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
+    placement = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "sardaukar"
+    )
+    placed = engine.apply(state, placement).state
+    assert placed.players[0].combat_strength == 2
+
+    completion = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "complete_contract"
+        and dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = engine.apply(placed, completion).state
+
+    recall = next(
+        action
+        for action in engine.legal_actions(completed, 0)
+        if action.action_id == "recall_conflict_agent_for_contract"
+    )
+    result = engine.apply(completed, recall)
+
+    assert result.state.players[0].combat_strength == 0
+    assert result.state.players[0].agent_in_conflict == 0
+    assert result.state.players[0].agents_available == 1
 
 
 # --- Gaius Helen Mohiam ------------------------------------------------------

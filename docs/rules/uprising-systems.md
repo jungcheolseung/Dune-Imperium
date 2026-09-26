@@ -94,7 +94,7 @@ Observation post 13개의 공식 board 연결선 전사는 [`observation-posts.m
 - Alliance 조건 아이콘이 붙은 효과는 표시된 Faction의 Alliance token을 가진 경우에만 사용할 수 있다. `[Main p. 20]`
 - Fremen Bond 효과는 다른 Fremen card가 하나 이상 in play일 때 사용할 수 있다. Fremen Bond 카드 두 장은 play 순서와 관계없이 서로를 활성화할 수 있다. `[Main p. 20]`
 - 임의의 Faction Influence를 1 또는 2 얻거나 1 잃는 효과는 네 Faction 가운데 하나를 고른다. Influence 2를 얻을 때 서로 다른 Faction에 나누지 않는다. `[Main p. 20]`
-- Recall Agent는 이번 turn에 방금 보낸 Agent가 아닌 board의 다른 자기 Agent를 Leader로 돌린다. 돌아온 Agent는 같은 round의 이후 Agent turn에 다시 사용할 수 있다. `[Main p. 20]`
+- Recall Agent는 이번 turn에 방금 보낸 Agent가 아닌 board의 다른 자기 Agent를 Leader로 돌린다. 돌아온 Agent는 같은 round의 이후 Agent turn에 다시 사용할 수 있다. `[Main p. 20]` Duncan Idaho(Bloodlines)의 Into the Fray로 Conflict에 간 Agent도 "자신의 다른 Agent" 중 하나이며(디자이너 판정 OQ-037 (d)), 방금 보낸 turn이 아니라면 Imperial Privilege, Steersman의 Recall Agent 아이콘, Sardaukar II·원로회(High Council) 계약 보상이 그 Agent를 대상으로 삼을 수 있다(2026-09-26 사용자 판정, OQ-068). Twisted Mentat는 반대로 이번 turn에 보낸 Agent만 recall하며, Into the Fray가 그 Agent를 Conflict로 옮겼어도 그 Agent를 recall할 수 있다 `[Twisted Mentat card]` (2026-09-26 사용자 판정, OQ-068).
 - Retreat는 troop을 Conflict에서 자기 garrison으로 옮긴다. 효과가 `any number`의 troop을 retreat하게 하면 0개도 선택할 수 있다. `[Main p. 20]` `[FAQ p. 3]`
 - Steal Intrigue는 Intrigue card가 4장 이상인 각 opponent에게서 무작위로 1장씩 받는 효과다. `[Main p. 20]`
 - Uprising 아이콘은 set 식별용이며 그 자체로 게임 효과가 없다. `[Main p. 20]`

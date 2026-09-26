@@ -464,6 +464,96 @@ def eligible_agent_contract_ids(
     return tuple(eligible)
 
 
+def turn_agent_in_conflict(
+    owner: PlayerState, context: Mapping[str, ActionValue], turn_space_id: str
+) -> bool:
+    """Return whether Into the Fray moved this turn's Agent to the Conflict.
+
+    Every Recall Agent effect excludes the Agent sent there this turn, per
+    the printed Recall Agent icon: "Return one of your other Agents on the
+    board to your Leader (not the Agent you sent during this turn)."
+    [Main p. 20]. Imperial Privilege's own wording is "Recall one of your
+    other Agents from the board" [Board Guide p. 2], and the Contract
+    reward (Sardaukar II, the Bloodlines High Council token) prints the
+    same Recall Agent icon. An Into the Fray Agent is one of "your Agents"
+    that may be recalled only on a later turn (designer ruling adopted as
+    OQ-037 (d), extended to every Recall Agent effect by the 2026-09-26 user
+    ruling, OQ-068). While the effect is pending, this turn's Agent is
+    still on ``turn_space_id``, or Into the Fray has moved it to the
+    Conflict, or Twisted Mentat's "You may recall the Agent you sent this
+    turn." [Twisted Mentat card] has already sent it home
+    (``turn_agent_recalled``), which leaves every Conflict Agent an earlier
+    turn's.
+    """
+
+    return (
+        turn_space_id not in owner.agent_locations
+        and context.get("turn_agent_recalled") is not True
+    )
+
+
+def recallable_conflict_agents(owner: PlayerState, *, sent_this_turn: bool) -> int:
+    """Count the owner's Conflict Agents a Recall Agent effect may target.
+
+    The Recall Agent icon, "Return one of your other Agents on the board to
+    your Leader (not the Agent you sent during this turn)." [Main p. 20],
+    excludes the Agent sent there this turn (OQ-068); every other Conflict
+    Agent, an earlier turn's Into the Fray Agent, is one of the "other"
+    Agents (OQ-037 (d)).
+    """
+
+    return max(0, owner.agent_in_conflict - (1 if sent_this_turn else 0))
+
+
+def recall_conflict_agent(
+    owner: PlayerState,
+    *,
+    player: int,
+    source: str,
+    event_id: str,
+    source_key: str = "source",
+) -> tuple[PlayerState, GameEvent]:
+    """Return the owner with one Conflict Agent recalled, and its event.
+
+    The recalled Agent leaves the Conflict as a unit and returns to its
+    Leader (OQ-037 (d), extended to every Recall Agent effect by the
+    2026-09-26 user ruling, OQ-068); the running Combat strength follows
+    without further code, since it is re-derived from the unit counts before
+    each seat's Reveal turn (``refresh_pre_reveal_strength``). One recall
+    brings back one Agent, even when a Servo-Receivers Signet sent a second
+    one (OQ-037 (e)). ``source_key`` names the payload key ``source`` is
+    filed under, so each caller's ``agent_recalled`` event keeps the same
+    shape its own board recall already uses (Steersman's Agent-card recall
+    uses ``card_id``; Imperial Privilege and the Contract reward use
+    ``source``).
+    """
+
+    if owner.agent_in_conflict <= 0:
+        raise RuntimeError("owner has no Conflict Agent left to recall")
+    next_owner = replace(
+        owner,
+        agents_available=owner.agents_available + 1,
+        agent_in_conflict=owner.agent_in_conflict - 1,
+    )
+    event = GameEvent(
+        event_id=event_id,
+        kind="agent_recalled",
+        # GameEvent requires the payload sorted by key name, and the key
+        # named by ``source_key`` sorts differently depending on its name
+        # ("card_id" before "player"; "source" after it).
+        payload=tuple(
+            sorted(
+                (
+                    ("player", player),
+                    (source_key, source),
+                    ("space_id", "conflict"),
+                )
+            )
+        ),
+    )
+    return next_owner, event
+
+
 def next_unrevealed_player(state: GameState, owner: int) -> int:
     """Return the next clockwise seat that has not taken its Reveal turn."""
 

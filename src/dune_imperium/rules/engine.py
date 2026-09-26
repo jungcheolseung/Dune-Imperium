@@ -613,6 +613,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_intrigue_for_agent_card": apply_agent_card_intrigue_payment,
     "decline_agent_card_intrigue_payment": apply_agent_card_intrigue_payment,
     "recall_agent_for_agent_card": apply_agent_card_recall,
+    "recall_conflict_agent_for_agent_card": apply_agent_card_recall,
     "place_agent_card_spy": apply_agent_card_spy_action,
     "recall_spy_for_agent_card": apply_agent_card_spy_action,
     "choose_agent_card_influence": apply_agent_card_influence,
@@ -714,6 +715,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,
+    "recall_conflict_agent_for_contract": apply_contract_recall_action,
     "trash_intrigue_for_contract": apply_contract_intrigue_trash,
     # Round start and Combat
     "deploy_control_defense": apply_control_defense_action,
