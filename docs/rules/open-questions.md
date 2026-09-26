@@ -805,7 +805,10 @@
   몫은 Commander만, recruit한 troop의 몫은 troop만(troop끼리는 구별하지 않으므로 garrison의 어느 troop이든) 채우고,
   그 밖에 어느 종류든 L개까지 더 나온다. garrison 내용, Harkonnen Advisor의 배치 금지 troop(OQ-038), Emperor of the
   Known Universe의 배치 금지, Commander는 Bloodlines에서만 같은 기존 제한은 그대로다. 회수(OQ-029)는 배치 수를
-  줄이기만 하므로 식을 깨지 않는다.
+  줄이기만 하므로 식을 깨지 않는다. Agent turn 도중의 retreat(Intrigue, Signet, Piter의 troop 손실)가 배치 수를
+  맞출 때(`combat_deployment.reconcile_deployment_after_retreat`)는 종류마다 자기 몫에서만 뺀다: 이 turn 전부터
+  Conflict에 있던 troop이 retreat해도 Commander 몫은 그대로다(전에는 전체 수만 줄여 troop 몫이 모자라게 읽혀,
+  recruit한 Commander 옆에 garrison troop 셋이 deploy할 수 있었다 — 2026-09-26 리뷰 round 2, master에도 있던 결함).
 - 구현: `rules/combat_deployment.deployment_rooms`(종류별 남은 몫 = 그 종류의 채우지 않은 recruit 몫 + 쓰지 않은
   garrison 몫)를 Agent turn의 기본 배치(`legal_combat_deployments`·`legal_commander_deployments`, Combat space와
   Agent turn의 Combat 아이콘)와 Reveal의 Combat 아이콘 배치(`reveal_turn.legal_reveal_deployments`)가 함께 쓴다.
@@ -820,7 +823,8 @@
 - 테스트: `tests/unit/rules/test_sardaukar.py`의 OQ-070 절(Agent turn·Reveal의 recruit한 Commander 몫 — Reveal은
   Commander를 먼저 배치하는 순서 포함, Combat 아이콘 아래 방문한 space에서 산 Commander, recruit한
   troop 몫과 garrison Commander, Sardaukar Coordination의 한도 0, Elite Forces의 Combat 아이콘, 여러 번 나눈 배치와
-  회수, 배치 전·Reveal 전 carry, 닫힌 turn의 Commander credit), `tests/unit/rules/test_bloodlines_cards.py`의
+  회수, 배치 전·Reveal 전 carry, 닫힌 turn의 Commander credit, 이 turn 전부터 있던 유닛의 retreat),
+  `tests/unit/rules/test_bloodlines_cards.py`의
   Sardaukar Standard 테스트.
 - 참고(2026-09-26 리뷰): 룰북은 supply에서 지불 recruit한 Commander를 garrison으로(이번 turn에 Combat space에
   Agent를 보냈다면 Conflict로) 옮긴다고 적는다 `[Bloodlines p. 4]`. 같은 쪽의 일반 규칙은 recruit한 Commander를
