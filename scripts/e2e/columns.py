@@ -12,7 +12,8 @@ own width (190px to 170px at the default size, once #market's min-width stops
 applying). The board grows by that much and no more — it is sized by the
 centre grid, not by these columns. Runs at the default viewport because that
 is where the column is vertical and its width is the thing at stake; below
-1100px the column is a full-width row and folding only shortens it.
+1340px (1100px until 2026-09-27) the column is a full-width row and folding
+only shortens it.
 """
 
 from __future__ import annotations

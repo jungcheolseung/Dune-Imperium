@@ -1,9 +1,10 @@
-"""E2E of the layout below 1100px, with every expansion on.
+"""E2E of the layout below 1340px, with every expansion on.
 
 style.css has four media queries and every script ran at one size, which is
-how a scroll promise stayed vacuous for months (README). Below 1100px the
-table changes shape in ways nothing has ever checked: #center stacks the
-board above the shared cards instead of putting them side by side, #market
+how a scroll promise stayed vacuous for months (README). Below 1340px
+(1100px until 2026-09-27) the table changes shape in ways nothing had
+checked: #center stacks the board above the shared cards instead of putting
+them side by side, #market
 becomes a row of strips instead of a column, and each strip's card row stops
 wrapping and scrolls sideways.
 
@@ -20,6 +21,14 @@ and running over the seats. It is one line now: the round and phase, the
 review label, then the seed and ruleset badges, which alone give way to an
 ellipsis. check_header() looks at the widths a window beside a chat app has,
 in both languages, in a watched game (the review label) and a live one.
+
+The board's floor (user decision 2026-09-27): narrowing the window shrinks
+only the centre, so the board never goes below --board-min (480px); a window
+too narrow for that scrolls the table sideways under the header (main) and
+the page itself never does. Before, the board shrank to 241px at 1101px
+beside the shared-card column and to 68px at 600px, and below 1100px the
+Bene Tleilax board came out at its scan's own 5551px. check_floor() walks
+the widths across both breakpoints.
 """
 
 from __future__ import annotations
@@ -97,7 +106,7 @@ def run(base: str, browser) -> None:
     # count. Ask where the two panels actually are.
     check.ok(
         shape["marketTop"] >= shape["boardBottom"] - 1,
-        "below 1100px the shared cards sit BELOW the board, not beside it",
+        "below 1340px the shared cards sit BELOW the board, not beside it",
         (shape["boardBottom"], shape["marketTop"]),
     )
     check.ok(
@@ -112,7 +121,7 @@ def run(base: str, browser) -> None:
     )
     check.ok(
         shape["marketDirection"] == "row",
-        "below 1100px the shared columns lay out as a row",
+        "below 1340px the shared columns lay out as a row",
         shape["marketDirection"],
     )
     check.ok(
@@ -280,11 +289,117 @@ def check_header(browser, base: str) -> None:
         context.close()
 
 
+BOARD_MIN = 480
+FLOOR_WIDTHS = (1700, 1500, 1401, 1400, 1341, 1340, 1200, 1100, 1012, 1000, 800, 600)
+
+FLOOR_JS = """() => {
+    const box = (sel) => {
+        const n = document.querySelector(sel);
+        if (!n) return null;
+        const r = n.getBoundingClientRect();
+        return {left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+                width: r.width, height: r.height};
+    };
+    const main = document.querySelector('main');
+    return {
+        inner: innerWidth,
+        pageScroll: document.documentElement.scrollWidth,
+        mainScroll: main.scrollWidth,
+        mainClient: main.clientWidth,
+        board: box('#board'),
+        stage: box('.board-stage'),
+        market: box('#market'),
+        side: box('#side'),
+        table: box('#table'),
+        hand: box('#private-zone'),
+        bt: box('#market .bene-tleilax .bt-stage'),
+        btColumn: box('#market .bene-tleilax'),
+        header: box('header'),
+    };
+}"""
+
+
+def check_floor(browser, base: str) -> None:
+    wide = {"width": 1700, "height": 1000}
+    context, page, _rec = open_context(browser, "floor", wide)
+    live_game(page, base)
+    page.wait_for_function("refreshFlight === null")
+    for width in FLOOR_WIDTHS:
+        page.set_viewport_size({"width": width, "height": 1000})
+        page.wait_for_timeout(80)
+        g = page.evaluate(FLOOR_JS)
+        where = f"{width}px"
+        # The board's box is its column; the stage inside keeps the scan's
+        # aspect, so a board row shorter than the floor may cap it by height.
+        check.ok(
+            g["board"]["width"] >= BOARD_MIN - 0.5,
+            f"{where}: the board's column never goes below {BOARD_MIN}px",
+            g["board"],
+        )
+        check.ok(
+            g["stage"]["width"]
+            >= min(BOARD_MIN, g["board"]["height"]) - 1.5,
+            f"{where}: and the board itself fills it up to its row's height",
+            (g["stage"], g["board"]),
+        )
+        check.ok(
+            g["pageScroll"] <= width + 0.5,
+            f"{where}: the page itself never scrolls sideways",
+            g["pageScroll"],
+        )
+        overflows = g["table"]["width"] > width + 0.5
+        check.ok(
+            (g["mainScroll"] > g["mainClient"] + 0.5) == overflows,
+            f"{where}: the table scrolls sideways under the header only when"
+            " it cannot fit",
+            (g["mainScroll"], g["mainClient"], g["table"]["width"]),
+        )
+        check.ok(
+            abs(g["hand"]["width"] - g["table"]["width"]) < 1,
+            f"{where}: the hand zone is as wide as the table",
+            (g["hand"]["width"], g["table"]["width"]),
+        )
+        beside = width > 1340
+        check.ok(
+            (g["market"]["left"] >= g["board"]["right"] - 1) == beside
+            and (g["market"]["top"] >= g["board"]["bottom"] - 1) == (not beside),
+            f"{where}: the shared cards sit "
+            + ("beside" if beside else "below")
+            + " the board",
+            (g["board"], g["market"]),
+        )
+        check.ok(
+            g["bt"] is not None and 150 <= g["bt"]["width"] <= 200
+            and abs(g["bt"]["width"] - g["btColumn"]["width"]) < 1,
+            f"{where}: the Bene Tleilax board keeps its column's width",
+            g["bt"],
+        )
+        if overflows:
+            # Scrolled to the end, the right panel is whole and the header
+            # has not moved.
+            page.evaluate(
+                "document.querySelector('main').scrollLeft ="
+                " document.querySelector('main').scrollWidth"
+            )
+            end = page.evaluate(FLOOR_JS)
+            check.ok(
+                end["side"]["right"] <= width + 0.5
+                and end["side"]["left"] >= 0
+                and abs(end["header"]["left"]) < 0.5,
+                f"{where}: scrolled to the end, the right panel is whole under"
+                " a header that stays put",
+                (end["side"], end["header"]),
+            )
+            page.evaluate("document.querySelector('main').scrollLeft = 0")
+    context.close()
+
+
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
             run(base, browser)
             check_header(browser, base)
+            check_floor(browser, base)
         errors = [
             line
             for line in log_path.read_text().splitlines()

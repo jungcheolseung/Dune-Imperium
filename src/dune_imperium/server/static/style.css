@@ -105,6 +105,11 @@ body.in-game main {
   max-width: none;
   height: calc(100vh - var(--header-h));
   padding: 0;
+  /* A window narrower than the table's minimum (--table-min: the board
+     never below --board-min) scrolls the table sideways under the header
+     rather than shrinking the board further (user decision 2026-09-27). */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .panel {
@@ -179,18 +184,31 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 /* ---------- table layout ---------- */
 
+/* The board has a floor: the centre column never gives it less than
+   --board-min (with the shared-card column beside it, that plus
+   --market-min), and a window too narrow for the three columns at their
+   floors scrolls sideways (body.in-game main) instead. --table-min is that
+   floor summed, so the hand zone under the table is as wide as the table. */
 #game-screen {
+  --board-min: 480px;
+  --market-min: 190px;
+  --table-min: calc(250px + var(--board-min) + var(--market-min) + 380px + 2.5rem);
   display: grid;
-  /* One column no wider than the window: without it the implicit column
-     took the table's min-content width, and at 600px the board's own
-     minimum (it sizes from its row's height) pushed the page 4px sideways. */
-  grid-template-columns: minmax(0, 1fr);
+  /* The column is the window's width down to the table's floor; its
+     min-content would have taken whatever the widest row happened to hold. */
+  grid-template-columns: minmax(var(--table-min), 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
 }
 #table {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) clamp(380px, 34vw, 760px);
+  /* The right panel's growth (up to 34vw) gives way before the board's
+     floor: its track is minmax(380px, ...) and the grid fills it only from
+     the space left once every track has its minimum. */
+  grid-template-columns:
+    250px
+    minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
+    minmax(380px, min(34vw, 760px));
   gap: 0.5rem;
   min-height: 0;
   padding: 0.5rem 0.5rem 0;
@@ -739,7 +757,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-width: 190px;
+  min-width: var(--market-min);
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -1552,10 +1570,19 @@ kbd {
   #action-log .log-list { max-height: 28rem; }
 }
 @media (max-width: 1400px) {
-  #table { grid-template-columns: 250px minmax(0, 1fr) 380px; }
+  #table {
+    grid-template-columns:
+      250px minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr) 380px;
+  }
 }
-@media (max-width: 1100px) {
-  #table { grid-template-columns: 200px minmax(0, 1fr) 300px; }
+/* Below the width at which the shared-card column beside the board would
+   push the board under its floor (250 + 480 + 190 + 380 + gaps = 1340px),
+   the cards move under the board and the side columns narrow. This was
+   1100px, and between 1100 and 1400px the board shrank to 241px beside the
+   column, then jumped back to 479px below 1100px (2026-09-27). */
+@media (max-width: 1340px) {
+  #game-screen { --table-min: calc(200px + var(--board-min) + 300px + 2rem); }
+  #table { grid-template-columns: 200px minmax(var(--board-min), 1fr) 300px; }
   /* The market row was `auto`, so it sized to its content and left the
      board's `1fr` row nothing: with every expansion on, seven strips took
      the whole centre and #board rendered 468x0 — the board simply was not
@@ -1575,6 +1602,11 @@ kbd {
     border-top: 1px solid var(--line);
   }
   #market .strip-cards { flex-wrap: nowrap; overflow-x: auto; }
+  /* The Bene Tleilax board is as wide here as in the column beside the
+     board. A strip in this row sizes to its content, which left the scan's
+     `width: 100%` nothing to be a percent of, and the picture came out at
+     its own 5551 px (2026-09-27). */
+  #market .bene-tleilax { width: calc(var(--market-min) - 0.7rem); }
 }
 
 /* Bloodlines: Skill tiles (portrait, small) and Tech tiles (landscape). */
