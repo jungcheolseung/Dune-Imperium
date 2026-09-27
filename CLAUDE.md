@@ -51,6 +51,26 @@ in the same work unit.
   task fits neither project subagent.
 - Review every delegated diff and rerun pytest/ruff/mypy before committing.
 
+## Verifying UI changes: scale the checks to the risk
+
+User decision, 2026-09-27. In UI stages 7-10 every item, however small, went
+implement → independent review → fix → re-review, and those checking stages
+took 47% of about 20 agent-hours (running the tests themselves took only about
+21%). The numbers and the reasoning are in `docs/lessons.md` (2026-09-27).
+
+- **Low risk.** Wording, labels, CSS and layout, help text, and display-only
+  Korean twins (`display/*_ko`). The implementer runs the targeted pytest and
+  the e2e scripts that cover the code it touched. No separate review agent:
+  the main session reads the diff itself.
+- **High risk.** Remote sync and polling, hidden information (what a seat may
+  see), engine events and their payloads, undo/save/replay, and the list of
+  actions a seat is offered. Keep an independent review agent for these.
+- Fix a review finding directly, either the reviewer or the main session.
+  Send it back for re-review only when the fix changes the design.
+- For each item, run only the tests that cover it. Run the full pytest, ruff,
+  mypy and every e2e script once per batch, before a merge or a handoff:
+  `scripts/e2e/run_all.py` runs the e2e scripts 4 at a time (see its README).
+
 ## Rule changes: verify before you act
 
 Never change what the engine does under a rule — including "fixing" it after a

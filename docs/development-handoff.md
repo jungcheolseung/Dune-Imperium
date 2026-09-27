@@ -79,7 +79,7 @@ OQ-065(강제 Spy 이동 순서와 갈 곳이 없는 Spy)도 밤에 사용자 �
    한글판을 직접 찍기로 했다(사진이 오면 크롭해 `cards/ko/`에 넣고 이름은 두 번 따로 읽어 `names_ko.py`에).
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
-- `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **27종**을 돌린다(2026-09-27 UI 7~10단계의 10종 추가; `rehearsal.py`는 Tailscale 주소가 있을 때만).
+- `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md)에 **27종**이 있다(2026-09-27 UI 7~10단계의 10종 추가; `rehearsal.py`는 Tailscale 주소가 있을 때만). 항목마다는 관련 스크립트만, 전부는 병합·handoff 전에 `run_all.py`로 한 번 돌린다(4개씩 병렬, Mac mini 76초). 리뷰를 얼마나 둘지는 [`CLAUDE.md`](../CLAUDE.md)의 "Verifying UI changes"(2026-09-27 사용자 결정 — 위험도별).
 - 화면에 새 효과 문구를 더하면 영어 생성기 옆의 한국어 쌍둥이(`display/*_ko`, `personal_card_text_ko` 등)도 같은 순서로 더한다 — 짝 테스트가 빠진 줄을 잡는다. 한국어 낱말은 [`rules/glossary-ko.md`](rules/glossary-ko.md), 문체는 [`rules/korean-card-style.md`](rules/korean-card-style.md).
 - 턴 흐름을 건드리면 "사람 좌석의 모든 턴 끝은 그 좌석이 `턴 종료 ▶`를 정확히 한 번 누른다"를 지킨다([`lessons.md`](lessons.md) 2026-09-23; 판정은 `server/turn_end.py`와 `sessions.py`의 `_settle_locked`, 엔진에 명시적 종료 행동이 늘면 서버 `EXPLICIT_TURN_ENDS`와 `render.js`의 `EXPLICIT_TURN_END_IDS`에 함께 넣는다).
 - 엔진 값을 화면에 낼 때는 `fieldText`(`core.js`)를 거친다. 새 종류의 id(관측소·연구 칸·Feyd 칸 같은)가
@@ -510,7 +510,7 @@ caffeinate -i uv run dune-imperium-server --remote --host <tailscale 주소>   #
 
 # 브라우저 E2E (app.js를 고친 뒤; Playwright는 스크래치 venv에만 — scripts/e2e/README.md)
 uv venv /tmp/dune-e2e-venv --python 3.12 && uv pip install --python /tmp/dune-e2e-venv/bin/python playwright
-(cd scripts/e2e && for s in remote.py open_mode.py 'races.py --ab' recovery.py; do /tmp/dune-e2e-venv/bin/python $s || break; done)
+(cd scripts/e2e && /tmp/dune-e2e-venv/bin/python run_all.py)   # 27종을 4개씩(약 76초); 고른 것만: run_all.py lang narrow
 # 실제 원격 판 전의 리허설: 이 머신의 Tailscale 주소에 bind해서 (docs/remote-play-guide.md)
 (cd scripts/e2e && E2E_HOST=100.x.y.z /tmp/dune-e2e-venv/bin/python rehearsal.py)
 
