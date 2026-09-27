@@ -40,6 +40,12 @@ def check_default_seats(base, browser) -> None:
     _, page, _ = open_context(browser, "defaults")
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
+    # The setup screen is visible in index.html from the start; init() builds
+    # the seat selects only once /catalog and /whoami are back. Under load
+    # (run_all.py) this read came first and found no select at all.
+    page.wait_for_function(
+        "document.querySelectorAll('#seat-selects select').length === 4"
+    )
     values = page.evaluate(
         "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
     )
