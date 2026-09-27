@@ -2,13 +2,14 @@
 
 Collection dominates training time (the Python engine, not the network),
 so ``Collector`` can fan one iteration's games out over worker processes.
-Each worker rebuilds the learner network on the CPU from the state dict it
-receives, plays its chunk of games with the lockstep runner, keeps only the
-learner's own decisions, and hands the arrays back through a temporary
-``.npz`` file (hundreds of megabytes per iteration would otherwise cross
-the pipe); the episode summaries come back without their steps. Chunk
-seeds derive from the iteration so a run is reproducible for a fixed
-worker count, and serial collection re-seeds the same way. Collection
+Each worker rebuilds the learner network on the CPU from its architecture
+document (``arch_spec``) and the state dict it receives, plays its chunk
+of games with the lockstep runner, keeps only the learner's own
+decisions, and hands the arrays back through a temporary ``.npz`` file
+(hundreds of megabytes per iteration would otherwise cross the pipe);
+the episode summaries come back without their steps. Chunk seeds derive
+from the iteration so a run is reproducible for a fixed worker count,
+and serial collection re-seeds the same way. Collection
 always withholds the pure-undo actions (``undo_actions=False``): a sampled
 policy that is offered deploy/withdraw learns to loop on it.
 """
@@ -29,7 +30,7 @@ import torch
 
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX
 from dune_imperium.config import RulesetConfig
-from dune_imperium.training.network import PolicyValueNetwork
+from dune_imperium.training.network import PolicyValueNetwork, build_network
 from dune_imperium.training.policy import AgentBatchPolicy, BatchPolicy
 from dune_imperium.training.selfplay import (
     Episode,
@@ -56,7 +57,9 @@ class CollectionResult:
 @dataclass(frozen=True, slots=True)
 class _ChunkJob:
     weights_path: str
-    hidden: tuple[int, ...]
+    # ``PolicyValueNetwork.arch_spec()``: a plain dict so it pickles to the
+    # spawned workers.
+    arch: dict[str, Any]
     action_size: int
     ruleset: RulesetConfig
     specs: tuple[SelfPlaySpec, ...]
@@ -109,7 +112,7 @@ def _policies(
 
 def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
     torch.set_num_threads(1)
-    network = PolicyValueNetwork(job.action_size, hidden=job.hidden)
+    network = build_network(job.arch, job.action_size)
     network.load_state_dict(
         torch.load(job.weights_path, map_location="cpu", weights_only=True)
     )
@@ -245,7 +248,7 @@ class Collector:
         jobs = [
             _ChunkJob(
                 weights_path=str(weights_path),
-                hidden=network.hidden,
+                arch=network.arch_spec(),
                 action_size=network.action_size,
                 ruleset=self.config,
                 specs=chunk,

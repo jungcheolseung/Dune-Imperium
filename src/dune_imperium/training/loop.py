@@ -292,7 +292,11 @@ def train(
     codec_size = codec.size
     start_iteration = 0
     resumed_optimizer: Mapping[str, Any] | None = None
+    network: PolicyValueNetwork
     if config.resume is not None:
+        # Resuming keeps the checkpoint's architecture (an ``mlp_slots`` file
+        # made by ``dune-imperium-checkpoint widen`` resumes as one); a fresh
+        # run is always the plain MLP.
         network, info = load_checkpoint(config.resume)
         if info.ruleset != ruleset.identifier:
             raise ValueError("resumed checkpoint belongs to a different ruleset")
@@ -339,7 +343,10 @@ def train(
                 learner.network,
                 ruleset=ruleset.identifier,
                 iteration=iteration + 1,
-                metadata={"config": _config_document(config)},
+                metadata={
+                    "config": _config_document(config),
+                    "arch": learner.network.arch_spec(),
+                },
                 optimizer_state=learner.optimizer_state(),
                 codec=codec,
             )

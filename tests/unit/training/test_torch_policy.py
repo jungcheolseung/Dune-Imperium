@@ -44,6 +44,7 @@ from dune_imperium.training import loop as loop_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
     load_checkpoint,
     save_checkpoint,
+    widen_checkpoint,
 )
 from dune_imperium.training.learner import Learner, LearnerConfig  # noqa: E402
 from dune_imperium.training.loop import (  # noqa: E402
@@ -55,7 +56,9 @@ from dune_imperium.training.loop import (  # noqa: E402
 )
 from dune_imperium.training.network import (  # noqa: E402
     MASKED_LOGIT,
+    MlpSlotsNetwork,
     PolicyValueNetwork,
+    build_network,
 )
 from dune_imperium.training.torch_policy import (  # noqa: E402
     NetworkAgent,
@@ -92,14 +95,19 @@ def test_network_masks_illegal_actions_to_zero_probability() -> None:
         PolicyValueNetwork(0)
 
 
-def test_sliced_head_reads_match_the_full_forward_pass() -> None:
+@pytest.mark.parametrize("kind", ["mlp", "mlp_slots"])
+def test_sliced_head_reads_match_the_full_forward_pass(kind: str) -> None:
     """``trunk`` + ``action_logits`` give the full pass's legal logits.
 
     The search agent reads only a decision's legal rows of the policy head,
     and its value from the trunk, so both must agree with ``forward``.
     """
 
-    network = _network(action_size=11)
+    torch.manual_seed(0)
+    network = build_network({"kind": kind, "hidden": [32], "slot_version": 1}, 11)
+    if isinstance(network, MlpSlotsNetwork):
+        with torch.no_grad():
+            network.slot_embed.weight.normal_(std=0.1)
     observations = torch.randint(0, 5, (2, OBSERVATION_SIZE), dtype=torch.int32)
     masks = torch.ones(2, 11, dtype=torch.int8)
     index = torch.tensor([9, 0, 4])
@@ -580,6 +588,43 @@ def test_train_loop_rejects_resuming_into_a_different_ruleset(tmp_path: Path) ->
         )
 
 
+def test_train_loop_resumes_a_widened_checkpoint_as_mlp_slots(tmp_path: Path) -> None:
+    config = TrainConfig(
+        out_dir=tmp_path / "run",
+        iterations=1,
+        games_per_iteration=1,
+        seed=2,
+        hidden=(16,),
+        learner=LearnerConfig(minibatch_size=512),
+        opponent="heuristic",
+    )
+    base = train(config)
+    _, base_info = load_checkpoint(base.latest_checkpoint)
+    assert base_info.arch == "mlp"
+    assert base_info.metadata["arch"] == {"kind": "mlp", "hidden": [16]}
+
+    widened = tmp_path / "widened.pt"
+    widen_checkpoint(base.latest_checkpoint, widened)
+    resumed = train(
+        TrainConfig(
+            out_dir=tmp_path / "slots",
+            iterations=1,
+            games_per_iteration=1,
+            seed=2,
+            learner=LearnerConfig(minibatch_size=512),
+            opponent="heuristic",
+            resume=widened,
+        )
+    )
+    network, info = load_checkpoint(resumed.latest_checkpoint)
+    assert isinstance(network, MlpSlotsNetwork)
+    assert info.arch == "mlp_slots" and info.format == 3
+    assert info.iteration == 2
+    assert info.metadata["arch"]["kind"] == "mlp_slots"
+    # One update trained the embedding rows the collected games touched.
+    assert float(network.slot_embed.weight.detach().abs().sum()) > 0.0
+
+
 def test_select_policy_steps_keeps_only_the_named_seats() -> None:
     runner = SelfPlayRunner(RulesetConfig(), max_steps=40)
     network = _network(runner.codec.size)
@@ -693,6 +738,47 @@ def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None
     )
     assert parallel.records[0].games == 2
     assert parallel.records[0].learner_steps > 0
+
+
+def test_parallel_collection_is_the_same_for_a_widened_network() -> None:
+    """Workers rebuild the learner from its arch; a widened copy plays alike.
+
+    The widened network computes the same logits bit for bit, so seeded
+    sampling picks the same actions and the batches are identical. A worker
+    that rebuilt a plain MLP would refuse the ``slot_embed`` weight.
+    """
+
+    from dune_imperium.training.collect import Collector
+
+    config = RulesetConfig()
+    network = _network(SelfPlayRunner(config).codec.size)
+    widened = MlpSlotsNetwork(network.action_size, hidden=network.hidden)
+    widened.load_state_dict(network.state_dict(), strict=False)
+    widened.eval()
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=("learner",) * 4) for seed in (50, 51)
+    )
+    batches = []
+    for learner in (network, widened):
+        with Collector(config, workers=2, max_steps=400) as collector:
+            batches.append(
+                collector.collect(
+                    learner, _CPU, specs, policy_seed=9, opponent_seed=10
+                ).batch
+            )
+    plain, slots = batches
+    assert plain.actions.shape[0] > 0
+    for name in (
+        "observations",
+        "legal_indices",
+        "legal_offsets",
+        "actions",
+        "seats",
+        "returns",
+        "episode_ids",
+    ):
+        assert np.array_equal(getattr(plain, name), getattr(slots, name)), name
+    assert plain.action_size == slots.action_size
 
 
 def test_parallel_collection_pickles_an_expansion_ruleset(tmp_path: Path) -> None:
