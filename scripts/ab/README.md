@@ -49,6 +49,7 @@ heuristic·rollout 변경을 측정으로 채택하는 데 쓰는 스크립트�
 | `probe_mix.py` | 배치 분포·종료 자산·Conflict 승 probe |
 | `tip_census.py`, `tipcensus/` | 사람 팁 가설용 좌석별 통계(덱·전투·영향력·Landsraad·Spy·끝내기·Bloodlines/Tech·Bond). 대회와 같은 게임, 판마다 JSONL + 종류별·승자 평균표; 어떤 registry 종류든(`checkpoint:` 포함) 돈다 — [`docs/player-tips-for-training.md`](../../docs/player-tips-for-training.md) 7절 |
 | `tip_compare.py` | census 출력 둘(또는 `dir::kind`로 한 표의 두 종류, `--split-winners`로 승자 대 나머지)을 열마다 비교: 평균과 seed 군집 부트스트랩 95% 구간 |
+| `value_swap_probe.py` | 체크포인트가 Imperium Row·손패·Conflict의 **정체**에 반응하는지: 실제 관측에서 하나씩 바꿔 가치 출력의 평균 \|ΔV\|를 낸다(같은 행·같은 교체를 모든 체크포인트에; 형식 3 `mlp_slots`면 slot 행 노름도). 기본 입력은 ExIt 라벨 shard — [`docs/evaluation/m10-2026-09-27.md`](../../docs/evaluation/m10-2026-09-27.md) 3절 |
 | `profile_run.py`, `profile_legal.py`, `profile_guards.py` | 대회 경로 cProfile(전체 / legal·관측 / handler guard 비용) |
 | `profile_selfplay.py` | M10 수집 경로(`SelfPlayRunner`) cProfile |
 | `soak.sh`, `soak_summary.py` | 전 룰셋 검증 소크와 census 요약 |

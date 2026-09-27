@@ -43,6 +43,19 @@
 - **읽기.** 버전이 현재와 같으면 그대로 읽는다. 다르면 정책 head의 행은 템플릿 정체성으로, 입력층의 열은 (세그먼트 이름, 세그먼트 안 offset)으로 옮긴다. 현재 코드에 없는 템플릿·열은 버리고, 새 템플릿·열은 0으로 시작한다 — 입력 열이 0이면 출력이 그대로이고, logit 행이 0이면 새 행동은 선호도 억제도 되지 않는다. Adam 모멘트도 같은 대응으로 옮긴다. 결과는 `CheckpointInfo.migration`(`MigrationReport`)에 남고 `--resume`은 한 줄로 보고한다. hidden 폭이 다르거나 정체성 목록이 없는 옛 파일은 여전히 거부한다. 세그먼트는 뒤에 덧붙여 자라는 것으로 가정하므로, 세그먼트 안의 순서를 바꾸는 관측 변경은 새 네트워크가 필요하다.
 - **첫 적용 — codec v105.** Chani의 Fedaykin Maneuver `retreat_leader_troops`는 troop과 Commander를 합친 수를 후퇴시키는데(Commander는 troop `[Bloodlines p. 4]`), Commander share 템플릿의 count가 12에서 끝나 12 troop + Commander 1개의 Conflict에서 count 13이 codec에 없었다(학습 정책의 greedy 평가가 seed 13에서 적발, 2026-09-18). 범위를 `retreat_intrigue_troops`와 같게 19까지 늘려 Bloodlines 카탈로그가 28개씩 커졌다(전 확장 32,963 → 32,991). v104로 새겨 둔 2026-09-18 밤샘 실행의 체크포인트 34개는 이관으로 32,963개 행동을 유지한 채 읽히고, 그 `latest.pt`에서 `--resume`한 학습과 실패했던 평가 게임 모두 정상이었다.
 
+## 네트워크 구조와 형식 3 (2026-09-27)
+
+- **`mlp`**(기본): `log1p(clamp(obs, 0))` → MLP → 행동마다 한 행인 정책 head + 가치 head. 새 학습 실행은 늘 이것이다.
+- **`mlp_slots`**: `training/slots.py`가 관측 v20에서 정체를 `index + 1`로 담는 칸(Imperium Row, 현재 Conflict, 결정 종류, Agent 위치,
+  좌석별 Leader·track 칸 등; 108개 조회 → 1,128행, `SLOT_KEYS`)을 이름 붙이고, `MlpSlotsNetwork`가 0으로 초기화한 `EmbeddingBag`을 첫 층의
+  활성화 전 값에 더한다. MLP는 이 칸을 크기로 읽어 무엇이 있는지 가르지 못한다(가치 민감도 측정, [evaluation/m10-2026-09-27.md](evaluation/m10-2026-09-27.md) 3절).
+  `dune-imperium-checkpoint widen --arch mlp_slots SRC DST`가 MLP 파일을 **같은 함수**의 slot 네트워크로 바꾼다(Adam 모멘트 유지, 새 매개변수는
+  상태 없이 index `2 * len(hidden) + 4`, iteration 유지, 불러올 때의 이관 기록 보존). 1,000 iteration RL 비교에서는 강해지지 않았다(불확정).
+- **형식 3**: `mlp`가 아닌 구조만 쓴다(`arch`, `slot_keys`). MLP 파일은 형식 2 그대로다. `slot_keys`나 `slot_version`이 현재 표와 다르면 읽기를
+  거부하고(행의 뜻이 달라진다), `stamp`는 형식을 내리지 않는다. 관측 버전을 올리면 slot 표를 다시 보고 `SLOT_VERSION`을 올린다.
+- **learner**: 미니배치마다 그 행들에서 합법인 행동의 합집합만으로 logit·log-softmax·엔트로피를 계산한다(`TrainingBatch.local_legal`).
+  dense mask 경로와 수학적으로 같다 — 가려진 행동은 확률·엔트로피 항·기울기가 정확히 0이었다.
+
 ## 검증 기준
 
 - 레이아웃 pin 테스트(`tests/adapters/test_observation_encoding.py`): 크기, 세그먼트 연속성, 버전.
@@ -50,4 +63,6 @@
 - env 테스트(`tests/adapters/test_pettingzoo_env.py`): PettingZoo api/seed 테스트, 전체 게임 episode의 zero-sum 승자독식 보상, truncation.
 - 관측 경계 테스트(`tests/unit/test_observation.py`): 상대 identity 부재와 장수 공개 convention.
 - 되돌리기 행동 테스트(`tests/unit/training/test_selfplay.py`, `tests/unit/training/test_torch_policy.py`): 엔진에서 회수가 합법인 결정에서 `undo_actions=False` 러너가 그것을 정책에 제시하지 않고 기록 mask에도 남기지 않으며 기본 러너는 제시한다. `NetworkAgent`는 회수 logit이 가장 커도 고르지 않는다.
-- 체크포인트 이관 테스트(`tests/unit/training/test_checkpoint.py`): 형식 2의 정체성 목록·레이아웃 저장, 위조한 옛 버전 파일의 행·열 이관과 Adam 모멘트 이동, 형식 1 불일치 거부와 stamp, CLI. codec 범위 회귀(`tests/adapters/test_action_codec.py`): Fedaykin Maneuver의 모든 troop·Commander 조합이 인코딩된다.
+- 체크포인트 이관 테스트(`tests/unit/training/test_checkpoint.py`): 형식 2의 정체성 목록·레이아웃 저장, 형식 3의 왕복·거부·`widen`, 위조한 옛 버전 파일의 행·열 이관과 Adam 모멘트 이동, 형식 1 불일치 거부와 stamp, CLI. codec 범위 회귀(`tests/adapters/test_action_codec.py`): Fedaykin Maneuver의 모든 troop·Commander 조합이 인코딩된다.
+- slot 네트워크(`tests/unit/training/test_slot_network.py`): 표 크기·digest, 실제 판의 관측에서 독립 복호한 키와 활성 행의 일치, 범위, 함수 보존,
+  기울기, 경로의 계산식. learner(`tests/unit/training/test_learner_local_legal.py`): dense 참조와 손실·기울기·update 일치, 카탈로그 폭 텐서 가드.
