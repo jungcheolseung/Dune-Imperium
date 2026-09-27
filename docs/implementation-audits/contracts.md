@@ -9,7 +9,7 @@ visual reference.
 
 | Area | Implemented behavior | Rule-sensitive note |
 | --- | --- | --- |
-| Manifest | The 20 standard Uprising Contracts have unique stable IDs, typed completion conditions and rewards, and Dune Cards Hub URLs. | The printed images were checked individually; Harvest 3+ uses the printed 3-Solari reward rather than DIU's incorrect value of 1. Corrected 2026-08-30: the set contains both Sardaukar tiles (Sardaukar II recalls one of your other Agents [Main p. 20]); the previously listed third High Council tile is a Rise of Ix jumpstart tile whose printed reward includes a Tech acquisition and does not belong to the standard 20. |
+| Manifest | The 20 standard Uprising Contracts (18 printed faces: Espionage I and Harvest 3+ have two copies, the second as `<id>_copy_2` with `copy_of`) have unique stable IDs, typed completion conditions and rewards, and Dune Cards Hub URLs. | Corrected 2026-09-27: four Rise of Ix tiles (Espionage II, Harvest 3+ and 4+ with a Contract, Heighliner III) had stood in for Spice Refinery I and II and the two second copies; the membership now follows the BGG card inventory's Rise of Ix column and copy counts, which match the rulebook's 20 + 10 split and its "jumpstart" purpose (every Rise of Ix tile prints "+1 Contract") [Main p. 16] (see Verification). The printed images were checked individually; Harvest 3+ uses the printed 3-Solari reward rather than DIU's incorrect value of 1. Corrected 2026-08-30: the set contains both Sardaukar tiles (Sardaukar II recalls one of your other Agents [Main p. 20]); the previously listed third High Council tile is a Rise of Ix jumpstart tile whose printed reward includes a Tech acquisition and does not belong to the standard 20. |
 | Setup | With CHOAM enabled, one recorded chance permutation shuffles all 20 tiles, exposes the first two, and leaves 18 in the face-down bank. | With CHOAM disabled, no Contract chance decision or state is created. |
 | Market choice | A Contract icon selects either face-up tile by stable instance ID. The bank's top tile refills the same market position. | The already-shuffled bank order stays authoritative and replayable; taking a tile adds no new chance outcome. |
 | Depletion | Once the bank is empty, taking a face-up tile shrinks the market. Once the market is also empty, each remaining Contract icon grants 2 Solari. | A doubled Conflict reward can take the last tile and automatically convert its second icon. |
@@ -49,6 +49,23 @@ visual reference.
   Council" tile prints a Rise of Ix Tech-acquisition reward and is a RoI
   jumpstart tile; DIU's flat contract list had dropped that Tech icon, which
   is how it was originally mistaken for a standard tile.
+- **That 2026-08-30 composition was wrong** (user report 2026-09-27): "sums to
+  exactly 20" was the only check, and four of the counted tiles were Rise of
+  Ix jumpstart tiles. The BGG card inventory's Contracts tab marks the ten
+  "Rise of Ix -Specific?" tiles -- Dreadnought, Espionage (1 Solari,
+  Contract), Harvest 3+ (Contract), Harvest 4+ (2 Solari, Contract),
+  Heighliner (3 Solari, Contract), High Council (the Rise of Ix Tech icon,
+  which the sheet calls "Ixian Ambassador", and a Contract),
+  Interstellar Shipping, Secrets, Smuggling, Tech Negotiation, every one
+  printing "+1 Contract" -- and counts the standard 20 as Acquire 1,
+  Arrakeen 2, Deliver Supplies 1, Espionage 2 (both 3 Solari), Harvest 3+ 2
+  (both 3 Solari), Harvest 4+ 1, Heighliner 2, High Council 2, Immediate 1,
+  Research Station 2, Sardaukar 2, Spice Refinery 2. Both totals match the
+  rulebook's 20 + 10 [Main p. 16]. Spice Refinery I (draw two cards) and II
+  (1 water) were read from their faces. Dune Cards Hub lists all 28 faces as
+  "Uprising contract" with one copy each and no Rise of Ix flag, so it cannot
+  settle membership or copies. `tests/unit/content/test_setup_manifests.py`
+  pins the faces, the copies and "no standard tile prints +1 Contract".
 - Setup replay, take/refill, partial and complete depletion, Immediate,
   board-space/Harvest/Acquire completion, all reward shapes, same-space multiple
   Contracts, no retroactive completion, Gather ordering, troop deployment,

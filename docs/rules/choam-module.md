@@ -12,6 +12,7 @@ CHOAM Module은 Uprising에 포함된 mini-expansion이다. 공식 룰북은 먼
 - standard contract 20개를 face-down으로 shuffle한다. 그중 2개를 face-up으로 board의 표시된 두 칸에 놓고, 나머지 18개를 face-down bank에 둔다. `[Main p. 16]`
 - module 전용 Imperium card 4장을 Imperium Deck에, Intrigue card 4장을 Intrigue Deck에 섞는다. Shaddam Corrino IV를 Leader로 선택할 수 있지만 반드시 선택할 필요는 없다. `[Main p. 16]`
 - Uprising에 든 뒷면이 다른 Rise of Ix용 contract 10개와 그 setup은 Rise of Ix를 함께 쓸 때만 사용한다. 현재 4인 Uprising-only 룰셋에는 넣지 않는다. `[Main p. 16]`
+- 룰북은 어느 타일이 standard 20개인지 목록으로 적지 않는다. 구성물 표는 "20 Contract tokens"와 "10 Contract tokens with contrasting backs"("Used only with the RISE OF IX expansion")로 나누고, Rise of Ix용 타일은 "to compensate and jumpstart the completion of contracts" 들어 있다고 한다 `[Main p. 16]`. 카드 수량 기준인 BGG 카드 인벤토리 시트(에셋 저장소 `reference/bgg-card-inventory/`, Contracts 탭의 "Rise of Ix -Specific?"·Count 열)로 나누면 standard 20장은 **18종**이다: Acquire, Arrakeen 2종, Deliver Supplies, Espionage(3 Solari) **2장**, Harvest 3+(3 Solari) **2장**, Harvest 4+(4 Solari), Heighliner 2종, High Council 2종, Immediate, Research Station 2종, Sardaukar 2종, Spice Refinery 2종(카드 2장 뽑기 / 물 1). Rise of Ix용 10장(Dreadnought, Espionage, Harvest 3+, Harvest 4+, Heighliner, High Council, Interstellar Shipping, Secrets, Smuggling, Tech Negotiation)은 모두 보상에 "+1 Contract"가 있고(jumpstart) standard 타일에는 없어, 두 출처가 서로 맞는다. Dune Cards Hub는 28종 모두를 "Uprising contract", 한 장씩으로 적어 이 구분에 쓸 수 없다(2026-09-27 정정, [lessons](../lessons.md)).
 
 ## contract 가져오기
 

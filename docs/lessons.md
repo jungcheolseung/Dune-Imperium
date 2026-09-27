@@ -684,3 +684,28 @@
     네 묶음(starting·Reserve·Imperium·Tleilaxu)이 id를 나누지 않는다는 것도 고정했다. 겹치면 나중에 쓴 것이 조용히 이긴다.
   5. 일반 규칙이 둘이다. **테스트의 설명에 다른 층(클라이언트·서버)의 동작을 적지 않는다.** 그 동작은 그 층을 실행하는 검사가
     지킨다. 또, **이름표 없는 여러 네임스페이스를 한 번에 찾는 조회는 모호할 때 조용히 고르지 말고 소리를 낸다.**
+
+## 2026-09-27 — 계약 구성을 "합이 20"으로만 확인해, Rise of Ix 전용 타일 넷이 한 달 동안 게임에 들어가 있었음
+
+- 무슨 일: 사용자가 "익스의 부상 확장을 쓸 때만 쓰는 계약이 확장 없이도 들어간다"고 알렸다. CHOAM standard 20장 가운데
+  Espionage II, Harvest 3+(Contract), Harvest 4+(2 Solari, Contract), Heighliner III가 Rise of Ix 전용 "jumpstart" 타일이었다.
+  반대로 standard인 Spice Refinery I·II와, 두 장씩 있는 Espionage I·Harvest 3+의 두 번째 사본이 빠져 있었다. 2026-08-27 계약
+  시장을 만들 때부터였다. 2026-08-30 재확인은 세 번째 High Council을 Ix 타일로 걸러 냈지만, 나머지 구성은 "합이 정확히 20"이라는
+  것만으로 확정했다. 학습 기준 체크포인트까지 모든 CHOAM 판이 틀린 계약으로 돌았다.
+- 원인:
+  1. 구성원 판정에 쓴 Dune Cards Hub는 28종 모두를 "Uprising contract", 한 장씩으로 적는다. Ix 표시도 사본 수도 없어 이
+     질문에 답할 수 없는 출처였다. AGENTS.md는 사본 수를 BGG 카드 인벤토리 시트로 정하라고 한다. 그 시트의 Contracts 탭에는
+     "Rise of Ix -Specific?" 열이 있는데, README가 탭 이름을 "conflicts-objectives"로 적어 두어 아무도 열어 보지 않았다.
+  2. "합이 20"은 필요조건일 뿐이다. 룰북이 준 다른 단서, 곧 Ix 타일은 "to compensate and jumpstart the completion of contracts"
+     들어 있다는 문장(Ix 10장은 모두 "+1 Contract")을 판정에 쓰지 않았다 `[Main p. 16]`.
+- 재발 방지:
+  1. 구성원 판정은 그 질문에 답하는 출처로 한다. 사본 수와 확장 구분은 BGG 시트로, 합계와 목적은 룰북으로 정하고, 둘이
+     맞는지 본다. 이번에는 둘 다 20 + 10으로 맞았다.
+  2. 테스트가 종류별 사본 수와 "standard 타일은 +1 Contract를 인쇄하지 않는다"를 고정한다(`test_setup_manifests.py`).
+  3. BGG 시트 README의 탭 이름을 바로잡는다(`conflicts-objectives.gid-1606604728.csv`는 실제로 Contracts 탭이다).
+  4. 새 타일 넷은 빠진 넷의 자리(index)에 넣어, 관측의 계약 구간에서 남은 타일은 제자리다(순서도 테스트로 고정). 처음에는 이것으로
+     이관도 맞는다고 적었지만, 독립 리뷰가 반례를 찾았다. 체크포인트 이관은 구간 안의 열을 **위치로** 옮기므로, 새 Spice
+     Refinery 두 장이 Harvest 4+(Contract)·Heighliner III의 학습된 가중치를 물려받고 있었다. 이제 v21 이전 파일은 계약 구간을
+     identity로 다시 잇는다: Spice Refinery는 0에서 시작하고, 두 번째 사본은 첫 사본의 열을 받는다(`training/checkpoint.py`,
+     테스트로 A/B). 일반 규칙: **identity를 제자리에서 바꾸는 버전은 "위치로 옮기는" 이관을 믿지 말고 identity 표를 둔다.**
+     새 계약 넷에 대한 행동과 Spice Refinery 입력은 학습된 적이 없으니, 기준 체크포인트로 무엇을 재기 전에 재적응을 먼저 판단한다.

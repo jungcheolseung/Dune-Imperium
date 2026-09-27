@@ -188,3 +188,16 @@ recruit한 Sardaukar Commander의 배치 몫은 Commander 것이라는 사용자
 견주면 그대로 104, 같은 국면(지문·길이 같음)에 선택 번호만 1~7개 밀린 것 7(sandworm `s3/p2`·`s21/p3`·`s34/p3`·`s41/p3`, 마지막 라운드
 보유 `s807/p3`·`s1052/p0`·`s2195/p0`), 빠지거나 새로 든 국면 없음: sandworm 80, 마지막 라운드 보유 23, Endgame 8. 국면이 모두 같으므로
 채점은 위 OQ-070 표와 같다.
+
+## 재채굴 (2026-09-27, 계약 구성 정정)
+
+CHOAM standard 계약에서 Rise of Ix 전용 타일 4장을 빼고 Spice Refinery I·II와 Espionage I·Harvest 3+의 두 번째 사본을 넣자
+(`[Main p. 16]`, codec v111·관측 v21, [lessons](../lessons.md)) 커밋된 111개 가운데 복원되지 않는 것이 생겨 구조 절의
+"다시 캐는 명령"으로 다시 캤다(5081 체크포인트는 codec v107 → v111로 이관). **118개**, 옛 파일과 견주면 그대로 78, 빠진 것 33,
+새로 든 것 40: sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 28, Endgame 10. 새 문제집의 채점:
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 10) | 마지막 라운드 보유 (tip, 28) |
+|---|---|---|---|
+| random | 0.53 | 0.70 | 0.79 |
+| heuristic | 1.00 | 1.00 | 0.25 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.93 / 0.89 |
