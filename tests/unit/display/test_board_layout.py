@@ -1,5 +1,8 @@
 """Tests for the board-scan overlay coordinates behind the browser UI."""
 
+import math
+from dataclasses import dataclass
+
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -18,8 +21,12 @@ from dune_imperium.display.board_layout import (
     CONFLICT_UNIT_PADDING,
     CONFLICT_UNIT_SIZES,
     CONTROL_FLAG_BOXES,
+    FORCE_STEPPER_BAND,
     GARRISON_POINTS,
     GARRISON_RINGS,
+    GARRISON_UNIT_LINE,
+    GARRISON_UNIT_MIN_SCALE,
+    GARRISON_UNIT_PADDING,
     INFLUENCE_CUBE_SIZE,
     LEADER_TILE_BOXES,
     MAKER_HOOKS_POINTS,
@@ -302,6 +309,288 @@ def test_conflict_quadrants_hold_the_units_as_pieces() -> None:
         depth = troop_rows * troop[1] + gap * troop_rows + max(h for _, h in figures)
         assert depth <= inner_height, (width, height, depth)
     assert 0 < CONFLICT_UNIT_MIN_SCALE < 1
+
+
+@dataclass
+class _Row:
+    kind: str
+    w: float
+    h: float
+    top: float = 0.0
+    span: tuple[float, float] | None = None
+    capacity: int = 0
+    count: int = 0
+
+
+def _row_splits(rows: int, parts: int) -> list[list[int]]:
+    if parts == 1:
+        return [[rows]]
+    return [
+        [first, *rest]
+        for first in range(1, rows - parts + 2)
+        for rest in _row_splits(rows - first, parts - 1)
+    ]
+
+
+def _ring_unit_layout(
+    counts: dict[str, int], ring: Box, avoid: tuple[Box, ...] = ()
+) -> tuple[float, list[tuple[str, Box]]]:
+    """The garrison's pieces as the client lays them (board.js ringUnitLayout).
+
+    Rows inside the ring's inner circle, troops then Commanders, in the
+    fewest rows that hold them, a kind's units shared evenly among its rows;
+    the block centred, or moved just clear of a box to avoid, or else the rows
+    that box cuts narrowed; every piece and gap shrinks in 0.05 steps down to
+    ``GARRISON_UNIT_MIN_SCALE``. Returns the scale and each piece's box, or
+    no pieces when nothing fits there (the client then closes the rows up).
+    """
+
+    left, top, width, height = ring
+    inset = GARRISON_UNIT_LINE + GARRISON_UNIT_PADDING
+    cx, cy = left + width / 2, top + height / 2
+    rx, ry = width / 2 - inset, height / 2 - inset
+    kinds = [kind for kind in ("troop", "commander") if counts.get(kind)]
+    total = sum(counts[kind] for kind in kinds)
+    pad = GARRISON_UNIT_PADDING
+    blocks = [
+        (bl - pad, bt - pad, bl + bw + pad, bt + bh + pad) for bl, bt, bw, bh in avoid
+    ]
+
+    def free_span(
+        row_top: float, row_bottom: float
+    ) -> tuple[tuple[float, float] | None, bool]:
+        edge = max(abs(row_top - cy), abs(row_bottom - cy))
+        if edge >= ry:
+            return None, False
+        half = rx * math.sqrt(1 - (edge / ry) ** 2)
+        spans = [(cx - half, cx + half)]
+        cut = False
+        for bx0, by0, bx1, by1 in blocks:
+            if by1 <= row_top or by0 >= row_bottom:
+                continue
+            rest = []
+            for a, b in spans:
+                if bx1 <= a or bx0 >= b:
+                    rest.append((a, b))
+                    continue
+                cut = True
+                if bx0 > a:
+                    rest.append((a, bx0))
+                if bx1 < b:
+                    rest.append((bx1, b))
+            spans = rest
+        best = None
+        for span in spans:
+            if best is None or span[1] - span[0] > best[1] - best[0]:
+                best = span
+        return best, cut
+
+    def fill(rows: list[_Row]) -> bool:
+        for kind in kinds:
+            own = [row for row in rows if row.kind == kind]
+            room = sum(row.capacity for row in own)
+            if any(row.capacity < 1 for row in own) or room < counts[kind]:
+                return False
+            for _ in range(counts[kind]):
+                pick = min(
+                    (row for row in own if row.count < row.capacity),
+                    key=lambda row: row.count,
+                )
+                pick.count += 1
+        return True
+
+    def arrange(split: list[int], scale: float) -> list[_Row] | None:
+        between = CONFLICT_UNIT_GAP * scale
+        sized = [
+            (
+                kind,
+                CONFLICT_UNIT_SIZES[kind][0] * scale,
+                CONFLICT_UNIT_SIZES[kind][1] * scale,
+            )
+            for kind, count in zip(kinds, split, strict=True)
+            for _ in range(count)
+        ]
+        depth = sum(h for _, _, h in sized) + between * (len(sized) - 1)
+        if depth > 2 * ry + 1e-9:
+            return None
+        shifts = [0.0]
+        for _, by0, _, by1 in blocks:
+            for shift in (by0 - (cy + depth / 2), by1 - (cy - depth / 2)):
+                if abs(shift) > 1e-9 and abs(shift) + depth / 2 <= ry + 1e-9:
+                    shifts.append(shift)
+        shifts.sort(key=abs)
+        narrowed = None
+        for shift in shifts:
+            row_top = cy + shift - depth / 2
+            cut = False
+            rows = []
+            for kind, w, h in sized:
+                span, cuts = free_span(row_top, row_top + h)
+                cut = cut or cuts
+                room = span[1] - span[0] if span else 0.0
+                capacity = (
+                    math.floor((room + between + 1e-9) / (w + between)) if span else 0
+                )
+                rows.append(_Row(kind, w, h, row_top, span, capacity))
+                row_top += h + between
+            if not fill(rows):
+                continue
+            if not cut:
+                return rows
+            narrowed = narrowed or rows
+        return narrowed
+
+    scale = 1.0
+    while True:
+        for count in range(len(kinds), total + 1):
+            for split in _row_splits(count, len(kinds)):
+                arranged = arrange(split, scale)
+                if arranged is None:
+                    continue
+                between = CONFLICT_UNIT_GAP * scale
+                pieces = []
+                for row in arranged:
+                    assert row.span is not None
+                    length = row.count * row.w + (row.count - 1) * between
+                    start = max(row.span[0], min(cx - length / 2, row.span[1] - length))
+                    for index in range(row.count):
+                        x = start + index * (row.w + between)
+                        pieces.append((row.kind, (x, row.top, row.w, row.h)))
+                return scale, pieces
+        if scale <= GARRISON_UNIT_MIN_SCALE + 1e-9:
+            return scale, []
+        scale = max(GARRISON_UNIT_MIN_SCALE, round(scale - 0.05, 2))
+
+
+def test_garrison_rings_hold_their_units_as_pieces() -> None:
+    # Every unit in a garrison stands in its seat's printed ring as a piece
+    # of its own, the same pieces as in the Conflict: troops, and Bloodlines'
+    # Sardaukar Commanders (up to 7 exist). The client gets the rings and the
+    # packing's constants in one table.
+    units = marker_layout()["garrison_units"]
+    assert isinstance(units, dict)
+    assert units["rings"] == [list(ring) for ring in GARRISON_RINGS]
+    assert units["sizes"] == {
+        kind: list(CONFLICT_UNIT_SIZES[kind]) for kind in ("troop", "commander")
+    }
+    assert units["gap"] == CONFLICT_UNIT_GAP
+    assert units["line"] == GARRISON_UNIT_LINE
+    assert units["padding"] == GARRISON_UNIT_PADDING
+    assert units["min_scale"] == GARRISON_UNIT_MIN_SCALE
+    # The printed line is 3-4 px (0.06), so the packing keeps inside it.
+    assert 0.06 <= GARRISON_UNIT_LINE < GARRISON_UNIT_PADDING
+    for (x, y), (left, top, width, height) in zip(
+        GARRISON_POINTS, GARRISON_RINGS, strict=True
+    ):
+        assert left < x < left + width and top < y < top + height
+        assert abs(x - (left + width / 2)) < 0.3 and abs(y - (top + height / 2)) < 0.3
+
+    hooks = [_centred(point, MAKER_HOOKS_SIZE) for point in MAKER_HOOKS_POINTS]
+    for seat, ring in enumerate(GARRISON_RINGS):
+        # The setup garrison (3 troops [Main p. 4]) is one row at full size
+        # on the ring's centre, and a full one (12) is three rows of four.
+        scale, pieces = _ring_unit_layout({"troop": 3}, ring)
+        left, top, width, height = ring
+        centre_x, centre_y = left + width / 2, top + height / 2
+        assert scale == 1 and len({box[1] for _, box in pieces}) == 1
+        assert abs(pieces[0][1][1] + pieces[0][1][3] / 2 - centre_y) < 1e-9
+        scale, pieces = _ring_unit_layout({"troop": 12}, ring)
+        rows: dict[float, int] = {}
+        for _, box in pieces:
+            rows[round(box[1], 6)] = rows.get(round(box[1], 6), 0) + 1
+        assert scale == 1 and sorted(rows.values()) == [4, 4, 4], rows
+        # The Maker Hooks slot is printed over the ring's outer corner and
+        # reaches into the circle, so a token lying there takes that corner.
+        slot = hooks[seat]
+        slot_right_of_centre = slot[0] > centre_x
+        near_x = slot[0] if slot_right_of_centre else slot[0] + slot[2]
+        assert abs(near_x - centre_x) < 2.5
+
+    # Every garrison a game can hold (0-12 troops, 0-7 Commanders) fits in
+    # every ring, beside a Maker Hooks token or not, at no less than the
+    # smallest scale; the most crowded one needs exactly that scale. Every
+    # piece stands inside the inner circle, off the token by the padding and
+    # off every other piece.
+    inset = GARRISON_UNIT_LINE + GARRISON_UNIT_PADDING
+    scales = []
+    for seat, ring in enumerate(GARRISON_RINGS):
+        left, top, width, height = ring
+        centre_x, centre_y = left + width / 2, top + height / 2
+        rx, ry = width / 2 - inset, height / 2 - inset
+        for avoid in ((), (hooks[seat],)):
+            for troops in range(13):
+                for commanders in range(8):
+                    if not troops and not commanders:
+                        continue
+                    counts = {"troop": troops, "commander": commanders}
+                    scale, pieces = _ring_unit_layout(counts, ring, avoid)
+                    assert pieces, (seat, bool(avoid), counts)
+                    scales.append(scale)
+                    kinds = [kind for kind, _ in pieces]
+                    assert kinds.count("troop") == troops
+                    assert kinds.count("commander") == commanders
+                    boxes = [box for _, box in pieces]
+                    for bl, bt, bw, bh in boxes:
+                        for corner_x, corner_y in (
+                            (bl, bt),
+                            (bl + bw, bt),
+                            (bl, bt + bh),
+                            (bl + bw, bt + bh),
+                        ):
+                            reach = ((corner_x - centre_x) / rx) ** 2 + (
+                                (corner_y - centre_y) / ry
+                            ) ** 2
+                            assert reach <= 1 + 1e-9, (seat, counts)
+                        for slot in avoid:
+                            grown = (
+                                slot[0] - GARRISON_UNIT_PADDING + 1e-9,
+                                slot[1] - GARRISON_UNIT_PADDING + 1e-9,
+                                slot[2] + 2 * GARRISON_UNIT_PADDING - 2e-9,
+                                slot[3] + 2 * GARRISON_UNIT_PADDING - 2e-9,
+                            )
+                            assert _apart((bl, bt, bw, bh), grown), (seat, counts)
+                    for index, first in enumerate(boxes):
+                        for second in boxes[index + 1 :]:
+                            assert _apart(first, second), (seat, counts)
+    assert min(scales) == GARRISON_UNIT_MIN_SCALE
+
+
+def test_the_board_stepper_band_is_plain_desert_above_the_conflict() -> None:
+    # The board's copy of the count rows (deploy / withdraw units) stands in
+    # the plain desert just above the Conflict: inside the scan, clear of
+    # every space, its effect icons' bonus-spice hexagon, Esmar Tuek's tile,
+    # the Conflict field, the garrison rings and the Maker Hooks slots.
+    band = FORCE_STEPPER_BAND
+    left, top, width, height = band
+    assert 0 <= left < left + width <= 100 and 0 <= top < top + height <= 100
+    assert marker_layout()["force_stepper_band"] == list(band)
+    for space_id, box in SPACE_BOXES.items():
+        assert _apart(band, box), space_id
+    for space_id, point in MAKER_SPICE_POINTS.items():
+        assert _apart(band, _centred(point, MAKER_SPICE_SIZE)), space_id
+    for space_id, box in LEADER_TILE_BOXES.items():
+        assert _apart(band, box), space_id
+    for space_id, box in CONTROL_FLAG_BOXES.items():
+        assert _apart(band, box), space_id
+    for post_id, point in POST_POINTS.items():
+        assert _apart(band, _centred(point, (POST_SIZE, POST_SIZE))), post_id
+    for box in (*GARRISON_RINGS, *CONFLICT_UNIT_BOXES):
+        assert _apart(band, box), box
+    for point in MAKER_HOOKS_POINTS:
+        assert _apart(band, _centred(point, MAKER_HOOKS_SIZE)), point
+    for box in (SHIELD_WALL_BOX, CONFLICT_SLOT, CONFLICT_DECK_SLOT, STRENGTH_ZERO_BOX):
+        assert _apart(band, box), box
+    # Between Deep Desert and Esmar Tuek's tile, under Hagga Basin's icons
+    # and above the Conflict area's shaded panel (65.46) and its rings.
+    deep_desert_x, _ = MAKER_SPICE_POINTS["deep_desert"]
+    hagga_x, hagga_y = MAKER_SPICE_POINTS["hagga_basin"]
+    assert deep_desert_x + MAKER_SPICE_SIZE[0] / 2 < left
+    assert hagga_y + MAKER_SPICE_SIZE[1] / 2 < top
+    assert left < hagga_x < left + width
+    assert left + width < LEADER_TILE_BOXES["tuek_sietch"][0]
+    assert top + height < 65.46 < min(ring[1] for ring in GARRISON_RINGS)
+    # Room for the rows: about a quarter of the board wide.
+    assert width > 25 and height > 8
 
 
 def test_the_alliance_token_covers_the_ring_printed_for_it() -> None:

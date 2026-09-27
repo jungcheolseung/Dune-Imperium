@@ -101,10 +101,6 @@ const UI_TEXT = {
     "ko": "{{space}} · {commander} (2 {solari})",
     "en": "{{space}} · {commander} (2 {solari})"
   },
-  "board.commander_count": {
-    "ko": "{commander} {{count}}",
-    "en": "{commander} {{count}}"
-  },
   "board.no_human_seats": {
     "ko": "사람 좌석이 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",
     "en": "This game has no human seats. Use \"Watch the AI game again\" in the final standings to watch it from the start."
@@ -137,9 +133,9 @@ const UI_TEXT = {
     "ko": "좌석 {{seat}} · {conflict}: {{units}}",
     "en": "Seat {{seat}} · {conflict}: {{units}}"
   },
-  "board.seat_garrison": {
-    "ko": "좌석 {{seat}} · {garrison} {{count}}",
-    "en": "Seat {{seat}} · {garrison} {{count}}"
+  "board.seat_garrison_units": {
+    "ko": "좌석 {{seat}} · {garrison}: {{units}}",
+    "en": "Seat {{seat}} · {garrison}: {{units}}"
   },
   "board.seat_high_council": {
     "ko": "좌석 {{seat}} · 원로회",

@@ -1,8 +1,9 @@
 """E2E of the unit stepper and of the Reveal shop.
 
 Both are views of the server's flat action list, like the staged Agent turn:
-"deploy 1 / deploy 2 / ..." is one row with a number in it (in the panel and
-by the seat's units in the Conflict area, sharing the number), previewed
+"deploy 1 / deploy 2 / ..." is one row with a number in it (in the panel and,
+when the board is large enough, in the plain desert above the Conflict,
+sharing the number; a narrow board leaves it to the panel), previewed
 with the engine's own strength figure (`strength_after`, from the server's
 dry run); a Reveal shows the Persuasion still unspent (the summary carries
 it), what has been bought (the session log), the cards that can be bought
@@ -56,21 +57,94 @@ def troop_pieces(page) -> int:
     )
 
 
-def stepper_by_the_cross(page) -> dict:
-    """Where the board's stepper stands against the printed cross."""
-    return page.evaluate(
-        """() => {
-          const stage = document.querySelector('.board-stage').getBoundingClientRect();
-          const r = document.querySelector('.force-stepper').getBoundingClientRect();
-          const [, crossY] = state.catalog.tracks.conflict_units.cross;
-          const [, quadrantY] = state.catalog.tracks.conflict_quadrants[state.viewSeat];
-          return {
-            top: (r.top - stage.top) / stage.height * 100,
-            bottom: (r.bottom - stage.top) / stage.height * 100,
-            crossY,
-            below: quadrantY > crossY,
-          };
-        }"""
+# The board's copy of the count rows shows only where its band (plain desert
+# above the Conflict) holds it at a readable size: at 2400x1500 the board is
+# about 1050 px, at 800x900 only 268 px and the rows stay in the panel.
+LARGE = {"width": 2400, "height": 1500}
+SMALL = {"width": 800, "height": 900}
+
+# Everything the board draws that the stepper must not cover.
+PIECES = (
+    ".conflict-unit, .garrison-unit, .hotspot, .bonus-spice, .maker-hooks-token,"
+    " .board-tile, .commander-piece, .spy-post, .control-marker, .slot-card"
+)
+
+STEPPER_JS = """(pieces) => {
+  const stage = document.querySelector('.board-stage').getBoundingClientRect();
+  const pct = (r) => ({
+    left: (r.left - stage.left) / stage.width * 100,
+    top: (r.top - stage.top) / stage.height * 100,
+    width: r.width / stage.width * 100,
+    height: r.height / stage.height * 100,
+  });
+  const control = document.querySelector('.board-stage .force-stepper');
+  if (!control) return null;
+  const tracks = state.catalog.tracks;
+  return {
+    shown: !control.hidden && control.getClientRects().length > 0,
+    rect: pct(control.getBoundingClientRect()),
+    font: parseFloat(getComputedStyle(control).fontSize),
+    stage: stage.width,
+    band: tracks.force_stepper_band,
+    printed: [...tracks.garrison_units.rings, ...tracks.conflict_units.boxes],
+    pieces: [...document.querySelectorAll('.board-stage :is(' + pieces + ')')]
+      .map((node) => ({ what: node.className.baseVal ?? node.className,
+                        rect: pct(node.getBoundingClientRect()) })),
+  };
+}"""
+
+
+def next_frames(page) -> None:
+    """Past the next paint: the stepper is fitted by a ResizeObserver."""
+    page.evaluate(
+        "new Promise((done) =>"
+        " requestAnimationFrame(() => requestAnimationFrame(done)))"
+    )
+
+
+def board_stepper(page) -> dict | None:
+    next_frames(page)
+    return page.evaluate(STEPPER_JS, PIECES)
+
+
+def meets(a: dict, b: dict) -> bool:
+    return (
+        a["left"] + a["width"] > b["left"]
+        and b["left"] + b["width"] > a["left"]
+        and a["top"] + a["height"] > b["top"]
+        and b["top"] + b["height"] > a["top"]
+    )
+
+
+def stepper_in_its_band(info: dict, where: str) -> None:
+    """Shown, inside the band, and on nothing the board draws or prints."""
+    rect = info["rect"]
+    left, top, width, height = info["band"]
+    slack = 0.05
+    check.ok(
+        rect["left"] >= left - slack
+        and rect["top"] >= top - slack
+        and rect["left"] + rect["width"] <= left + width + slack
+        and rect["top"] + rect["height"] <= top + height + slack,
+        f"{where}: the board's stepper lies inside its band above the Conflict",
+        (rect, info["band"]),
+    )
+    check.ok(
+        abs(rect["top"] + rect["height"] - (top + height)) < 0.1
+        and abs(rect["left"] + rect["width"] / 2 - (left + width / 2)) < 0.1,
+        f"{where}: on the band's bottom edge, centred",
+        rect,
+    )
+    covered = [p["what"] for p in info["pieces"] if meets(rect, p["rect"])]
+    covered += [
+        box
+        for box in info["printed"]
+        if meets(rect, dict(zip(("left", "top", "width", "height"), box, strict=True)))
+    ]
+    check.ok(
+        not covered,
+        f"{where}: it covers no piece, space, bonus spice, garrison ring or quadrant",
+        covered[:4],
     )
 
 
@@ -110,16 +184,31 @@ def deployment(page, rec) -> None:
         "beside the turn's other actions",
     )
     board = page.locator(".force-stepper .count-row[data-action='deploy_troops']")
-    check.ok(board.count() == 1, "the same row stands by the seat's units on the board")
-    # Against the printed cross on the seat's side, clear of the outer edge
-    # where the seat's troop cubes start.
-    spot = stepper_by_the_cross(page)
+    check.ok(board.count() == 1, "the same row stands on the board")
+    # In the plain desert above the Conflict, on nothing the board shows.
+    info = board_stepper(page)
+    if check.ok(
+        info is not None and info["shown"],
+        f"a {info and round(info['stage'])} px board shows it",
+        info and (info["shown"], info["font"]),
+    ):
+        stepper_in_its_band(info, "large window")
+    # The window narrows: the same rows no longer fit, and the band hides
+    # them without a new render (the node stays), and shows them again.
+    page.evaluate("window.__stepper = document.querySelector('.force-stepper')")
+    page.set_viewport_size(SMALL)
+    narrow = board_stepper(page)
+    same = "window.__stepper === document.querySelector('.force-stepper')"
     check.ok(
-        (spot["crossY"] < spot["top"] < spot["crossY"] + 1)
-        if spot["below"]
-        else (spot["crossY"] - 1 < spot["bottom"] < spot["crossY"]),
-        "the board's stepper stands against the cross, on the seat's side",
-        spot,
+        page.evaluate(same) and narrow is not None and not narrow["shown"],
+        "narrowed to 800x900, the board hides its stepper without a re-render",
+        narrow and (narrow["stage"], narrow["shown"], narrow["font"]),
+    )
+    page.set_viewport_size(LARGE)
+    wide = board_stepper(page)
+    check.ok(
+        page.evaluate(same) and wide is not None and wide["shown"],
+        "widened again, it shows the same stepper again",
     )
     most = max(d["count"] for d in deploys)
     shown = (
@@ -187,6 +276,50 @@ def deployment(page, rec) -> None:
         "and its cube left the quadrant",
         (troop_pieces(page), after[0] - least),
     )
+
+
+def narrow_deployment(base: str, browser) -> None:
+    """A board too small for the stepper: the panel's row sends the units."""
+    print("[1b] a narrow window (800x900): the panel sends the units")
+    context, page, rec = open_context(browser, "narrow", SMALL)
+    create_game(page, base, humans=(0,), seed=11)
+    reached = play_until(
+        page,
+        "state.actions.actions"
+        ".filter((a) => a.action_id === 'deploy_troops').length > 1",
+        f"""(() => {{ const combat = {json.dumps(COMBAT)};
+          const a = state.actions.actions.find((x) => x.action_id === 'agent_turn'
+            && combat.includes(x.arguments.space_id));
+          return a ? a.index : 0; }})()""",
+    )
+    if not check.ok(reached, "narrow: the seat may send troops"):
+        context.close()
+        return
+    info = board_stepper(page)
+    check.ok(
+        info is None or not info["shown"],
+        f"narrow: a {info and round(info['stage'])} px board shows no stepper",
+        info and (info["shown"], info["font"]),
+    )
+    most = max(d["count"] for d in of_id(page, "deploy_troops"))
+    before = page.evaluate(f"{SEAT}.troops_conflict")
+    posts = rec.count("POST", "/actions")
+    page.locator(
+        "#actions .count-row[data-action='deploy_troops'] .count-confirm"
+    ).click()
+    assert settled(page, 20)
+    after = page.evaluate(f"{SEAT}.troops_conflict")
+    check.ok(
+        after == before + most and rec.count("POST", "/actions") == posts + 1,
+        "narrow: the panel's row sends them, with a single request",
+        (before, most, after),
+    )
+    check.ok(
+        troop_pieces(page) == after,
+        "narrow: a troop cube stands in the quadrant for each",
+        (troop_pieces(page), after),
+    )
+    context.close()
 
 
 def reveal_shop(page, rec) -> None:
@@ -368,7 +501,7 @@ def tleilaxu_shop(base: str, browser) -> None:
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
-            context, page, rec = open_context(browser, "player")
+            context, page, rec = open_context(browser, "player", LARGE)
             create_game(page, base, humans=(0,), seed=11)
             deployment(page, rec)
             reveal_shop(page, rec)
@@ -376,6 +509,7 @@ def main() -> None:
             check.ok(not failed, "no failed requests", failed[:5])
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
+            narrow_deployment(base, browser)
             tleilaxu_shop(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)

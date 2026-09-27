@@ -751,22 +751,215 @@ function conflictUnitLayout(counts, box, layout, { fromRight = false, fromBottom
   return { scale, pieces };
 }
 
+/* The kinds of unit a garrison holds, in the order they are laid out:
+   troops, then Bloodlines' Sardaukar Commanders (nothing else is ever
+   garrisoned; a sandworm goes straight to the Conflict). */
+const GARRISON_UNIT_KINDS = ["troop", "commander"];
+
+/* Every way to share `total` rows among `parts` kinds, at least one row
+   each, the first kind's fewest first. */
+function rowSplits(total, parts) {
+  if (parts === 1) return [[total]];
+  const splits = [];
+  for (let first = 1; first <= total - parts + 1; first += 1) {
+    for (const rest of rowSplits(total - first, parts - 1)) splits.push([first, ...rest]);
+  }
+  return splits;
+}
+
+/* Where each unit of a seat's garrison stands in its printed ring, one
+   piece per unit as on the table. `counts` is {kind: n}, `ring` the ring's
+   outer box (stage percent), `layout` catalog.tracks.garrison_units, and
+   `avoid` boxes (stage percent) lying over the ring that the pieces keep
+   clear of: a Maker Hooks token in the slot printed over the ring's outer
+   corner. The pieces stand in rows inside the ring's inner circle (the
+   outer edge less layout.line and layout.padding; an ellipse in stage
+   percent, as the scan is a hair wider than tall): troops first, then
+   Commanders, in the fewest rows that hold them, a kind's units shared
+   evenly among its rows (the upper rows take any extra). The block of rows
+   is centred in the ring and every row on the ring's centre line; a row is
+   only as long as the circle is wide at its edge farther from the centre.
+   A box to avoid first moves the block just clear of the box's height;
+   where the circle has no room for that, the rows it cuts keep a padding
+   off it, in the part it leaves free. Rows that do not fit shrink every
+   piece and the gaps in steps of 0.05 down to layout.min_scale; past that
+   (no real garrison gets there) the rows close up inside the ring's box.
+   Pure: returns {scale, pieces: [{kind, x, y, w, h}]}, the top-left corner
+   and size of each piece in stage percent. */
+function ringUnitLayout(counts, ring, layout, avoid = []) {
+  const [left, top, width, height] = ring;
+  const { gap, padding, sizes } = layout;
+  const inset = layout.line + padding;
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  const rx = width / 2 - inset;
+  const ry = height / 2 - inset;
+  const kinds = GARRISON_UNIT_KINDS.filter((kind) => counts[kind] > 0);
+  if (!kinds.length) return { scale: 1, pieces: [] };
+  const total = kinds.reduce((sum, kind) => sum + counts[kind], 0);
+  const blocks = avoid.map(([bl, bt, bw, bh]) => [
+    bl - padding, bt - padding, bl + bw + padding, bt + bh + padding,
+  ]);
+  /* The longest stretch of a row from `rowTop` to `rowBottom` inside the
+     circle and clear of every box, and whether a box cut into it. */
+  const freeSpan = (rowTop, rowBottom) => {
+    const edge = Math.max(Math.abs(rowTop - cy), Math.abs(rowBottom - cy));
+    if (edge >= ry) return { span: null, cut: false };
+    const half = rx * Math.sqrt(1 - (edge / ry) ** 2);
+    let spans = [[cx - half, cx + half]];
+    let cut = false;
+    for (const [bx0, by0, bx1, by1] of blocks) {
+      if (by1 <= rowTop || by0 >= rowBottom) continue;
+      const rest = [];
+      for (const [a, b] of spans) {
+        if (bx1 <= a || bx0 >= b) {
+          rest.push([a, b]);
+          continue;
+        }
+        cut = true;
+        if (bx0 > a) rest.push([a, bx0]);
+        if (bx1 < b) rest.push([bx1, b]);
+      }
+      spans = rest;
+    }
+    let span = null;
+    for (const s of spans) if (!span || s[1] - s[0] > span[1] - span[0]) span = s;
+    return { span, cut };
+  };
+  /* Share each kind's units among its rows, least-filled row first. */
+  const fill = (rows) => {
+    for (const kind of kinds) {
+      const own = rows.filter((row) => row.kind === kind);
+      const room = own.reduce((sum, row) => sum + row.capacity, 0);
+      if (own.some((row) => row.capacity < 1) || room < counts[kind]) return false;
+      for (let unit = 0; unit < counts[kind]; unit += 1) {
+        let pick = null;
+        for (const row of own) {
+          if (row.count < row.capacity && (!pick || row.count < pick.count)) pick = row;
+        }
+        pick.count += 1;
+      }
+    }
+    return true;
+  };
+  /* `split[k]` rows of kinds[k] at `scale`: centred, or moved just clear
+     of a box above or below it; the first placement no box cuts, else the
+     centred one with the cut rows narrowed, else null. */
+  const arrange = (split, scale) => {
+    const between = gap * scale;
+    const rows = [];
+    kinds.forEach((kind, index) => {
+      const [w, h] = sizes[kind].map((value) => value * scale);
+      for (let n = 0; n < split[index]; n += 1) rows.push({ kind, w, h });
+    });
+    const depth = rows.reduce((sum, row) => sum + row.h, 0) + between * (rows.length - 1);
+    if (depth > 2 * ry + 1e-9) return null;
+    const shifts = [0];
+    for (const [, by0, , by1] of blocks) {
+      for (const shift of [by0 - (cy + depth / 2), by1 - (cy - depth / 2)]) {
+        if (Math.abs(shift) > 1e-9 && Math.abs(shift) + depth / 2 <= ry + 1e-9) shifts.push(shift);
+      }
+    }
+    shifts.sort((a, b) => Math.abs(a) - Math.abs(b));
+    let narrowed = null;
+    for (const shift of shifts) {
+      let rowTop = cy + shift - depth / 2;
+      let cut = false;
+      const placed = rows.map((row) => {
+        const free = freeSpan(rowTop, rowTop + row.h);
+        cut = cut || free.cut;
+        const capacity = free.span
+          ? Math.floor((free.span[1] - free.span[0] + between + 1e-9) / (row.w + between))
+          : 0;
+        const at = { ...row, top: rowTop, span: free.span, capacity, count: 0 };
+        rowTop += row.h + between;
+        return at;
+      });
+      if (!fill(placed)) continue;
+      if (!cut) return { rows: placed, between };
+      if (!narrowed) narrowed = { rows: placed, between };
+    }
+    return narrowed;
+  };
+  let scale = 1;
+  let arranged = null;
+  for (;;) {
+    for (let count = kinds.length; count <= total && !arranged; count += 1) {
+      for (const split of rowSplits(count, kinds.length)) {
+        arranged = arrange(split, scale);
+        if (arranged) break;
+      }
+    }
+    if (arranged || scale <= layout.min_scale + 1e-9) break;
+    scale = Math.max(layout.min_scale, Math.round((scale - 0.05) * 100) / 100);
+  }
+  if (!arranged && total) {
+    /* Closed up: rows as wide as the circle, their pitch shrunk so the
+       last one still ends inside the ring's box. */
+    const between = gap * scale;
+    const rows = [];
+    for (const kind of kinds) {
+      const [w, h] = sizes[kind].map((value) => value * scale);
+      const perRow = Math.max(1, Math.floor((2 * rx + between + 1e-9) / (w + between)));
+      for (let rest = counts[kind]; rest > 0; rest -= perRow) {
+        rows.push({ kind, w, h, count: Math.min(perRow, rest), span: [cx - rx, cx + rx] });
+      }
+    }
+    const offsets = [];
+    let running = 0;
+    for (const row of rows) {
+      offsets.push(running);
+      running += row.h + between;
+    }
+    const depth = running - between;
+    let squeeze = 1;
+    rows.forEach((row, index) => {
+      if (offsets[index] > 0 && offsets[index] + row.h > 2 * ry) {
+        squeeze = Math.min(squeeze, Math.max(0, 2 * ry - row.h) / offsets[index]);
+      }
+    });
+    const start = depth <= 2 * ry ? cy - depth / 2 : cy - ry;
+    rows.forEach((row, index) => {
+      row.top = start + offsets[index] * squeeze;
+    });
+    arranged = { rows, between };
+  }
+  const pieces = [];
+  for (const row of arranged ? arranged.rows : []) {
+    const length = row.count * row.w + (row.count - 1) * arranged.between;
+    const [spanLeft, spanRight] = row.span;
+    const rowLeft = Math.max(spanLeft, Math.min(cx - length / 2, spanRight - length));
+    for (let index = 0; index < row.count; index += 1) {
+      pieces.push({
+        kind: row.kind,
+        x: rowLeft + index * (row.w + arranged.between),
+        y: row.top,
+        w: row.w,
+        h: row.h,
+      });
+    }
+  }
+  return { scale, pieces };
+}
+
 /* One unit's piece: a troop is the seat's cube (the Influence cube's
    colour, size and edge), an Agent the seat's Agent figure; a Sardaukar
    Commander and a sandworm are the neutral pieces everyone shares, their
    own pictures (catalog.commander_token, the Icon Guide's worm) or a drawn
-   shape without them. The quadrant says whose they are, as on the table. */
-function conflictUnitPiece(kind, seat) {
+   shape without them. The quadrant or the garrison ring says whose they
+   are, as on the table. `className` is the piece's class where it stands
+   (conflict-unit, garrison-unit). */
+function unitPiece(kind, seat, className) {
   let piece;
   if (kind === "agent") {
     piece = seatPiece("agent", seat);
     piece.removeAttribute("role");
     piece.removeAttribute("aria-label");
     piece.querySelector("title").remove();
-    piece.setAttribute("class", "conflict-unit");
+    piece.setAttribute("class", className);
   } else if (kind === "troop") {
     piece = document.createElement("span");
-    piece.className = "conflict-unit";
+    piece.className = className;
     piece.style.background = SEAT_COLORS[seat];
   } else {
     const picture = kind === "commander" ? state.catalog.commander_token : iconUrl("sandworm");
@@ -775,12 +968,12 @@ function conflictUnitPiece(kind, seat) {
       piece.src = picture;
       piece.alt = "";
       piece.draggable = false;
-      piece.className = "conflict-unit";
+      piece.className = className;
     } else if (kind === "sandworm") {
-      piece = drawnSandworm();
+      piece = drawnSandworm(className);
     } else {
       piece = document.createElement("span");
-      piece.className = "conflict-unit drawn";
+      piece.className = `${className} drawn`;
     }
   }
   piece.setAttribute("aria-hidden", "true");
@@ -791,10 +984,10 @@ function conflictUnitPiece(kind, seat) {
 
 /* A sandworm without the Icon Guide's picture: the worm's arch rising out
    of the sand, in the plastic's grey with the dark edge of every piece. */
-function drawnSandworm() {
+function drawnSandworm(className) {
   const svgNs = "http://www.w3.org/2000/svg";
   const worm = document.createElementNS(svgNs, "svg");
-  worm.setAttribute("class", "conflict-unit drawn");
+  worm.setAttribute("class", `${className} drawn`);
   worm.setAttribute("viewBox", "0 0 62 57");
   worm.setAttribute("preserveAspectRatio", "none");
   const body = document.createElementNS(svgNs, "path");
@@ -807,27 +1000,24 @@ function drawnSandworm() {
   return worm;
 }
 
-/* A seat's units in its quadrant of the Conflict: no count, no badge — one
-   piece per unit (conflictUnitLayout), with the exact numbers in the
-   quadrant's name. The seat's strength is on the combat track. */
-function conflictUnits(seat, counts, layout) {
-  const box = layout.boxes[seat] || layout.boxes[0];
+/* "troop 3, Sardaukar Commander 1": the kinds a seat has, with their
+   numbers, for the name of its pieces. */
+function unitCountsText(kinds, counts) {
+  return kinds
+    .filter((kind) => counts[kind] > 0)
+    .map((kind) => phraseText(`{${kind}:${counts[kind]}}`))
+    .join(", ");
+}
+
+/* A seat's pieces in a printed box (a Conflict quadrant, a garrison ring):
+   the box is the group, named with the exact numbers, and every piece is
+   placed and sized in percent of it. `placed` is a layout's result. */
+function unitGroup(seat, box, placed, { className, pieceClass, label }) {
   const [left, top, width, height] = box;
-  const [crossX, crossY] = layout.cross;
-  const { scale, pieces } = conflictUnitLayout(counts, box, layout, {
-    fromRight: left + width / 2 > crossX,
-    fromBottom: top + height / 2 > crossY,
-  });
   const units = document.createElement("div");
-  units.className = "conflict-units";
+  units.className = className;
   units.dataset.seat = String(seat);
-  units.dataset.scale = String(scale);
-  const label = t("board.seat_conflict_units", {
-    seat,
-    units: CONFLICT_UNIT_KINDS.filter((kind) => counts[kind] > 0)
-      .map((kind) => phraseText(`{${kind}:${counts[kind]}}`))
-      .join(", "),
-  });
+  units.dataset.scale = String(placed.scale);
   units.setAttribute("role", "img");
   units.setAttribute("aria-label", label);
   units.title = label;
@@ -835,8 +1025,8 @@ function conflictUnits(seat, counts, layout) {
   units.style.top = `${top}%`;
   units.style.width = `${width}%`;
   units.style.height = `${height}%`;
-  for (const { kind, x, y, w, h } of pieces) {
-    const piece = conflictUnitPiece(kind, seat);
+  for (const { kind, x, y, w, h } of placed.pieces) {
+    const piece = unitPiece(kind, seat, pieceClass);
     piece.style.left = `${((x - left) / width) * 100}%`;
     piece.style.top = `${((y - top) / height) * 100}%`;
     piece.style.width = `${(w / width) * 100}%`;
@@ -846,11 +1036,117 @@ function conflictUnits(seat, counts, layout) {
   return units;
 }
 
+/* A seat's units in its quadrant of the Conflict: no count, no badge — one
+   piece per unit (conflictUnitLayout), with the exact numbers in the
+   quadrant's name. The seat's strength is on the combat track. */
+function conflictUnits(seat, counts, layout) {
+  const box = layout.boxes[seat] || layout.boxes[0];
+  const [left, top, width, height] = box;
+  const [crossX, crossY] = layout.cross;
+  const placed = conflictUnitLayout(counts, box, layout, {
+    fromRight: left + width / 2 > crossX,
+    fromBottom: top + height / 2 > crossY,
+  });
+  return unitGroup(seat, box, placed, {
+    className: "conflict-units",
+    pieceClass: "conflict-unit",
+    label: t("board.seat_conflict_units", {
+      seat,
+      units: unitCountsText(CONFLICT_UNIT_KINDS, counts),
+    }),
+  });
+}
+
+/* A seat's garrison in its printed ring: no count, no badge — one piece
+   per unit (ringUnitLayout), clear of a Maker Hooks token in the ring's
+   slot (`avoid`), with the exact numbers in the ring's name. */
+function garrisonUnits(seat, counts, layout, avoid) {
+  const ring = layout.rings[seat] || layout.rings[0];
+  return unitGroup(seat, ring, ringUnitLayout(counts, ring, layout, avoid), {
+    className: "garrison-units",
+    pieceClass: "garrison-unit",
+    label: t("board.seat_garrison_units", {
+      seat,
+      units: unitCountsText(GARRISON_UNIT_KINDS, counts),
+    }),
+  });
+}
+
+/* The box (stage percent) a seat's Maker Hooks token covers in its slot. */
+function makerHooksBox(seat, layout) {
+  const [x, y] = layout.points[seat] || layout.points[0];
+  const [width, height] = layout.size;
+  return [x - width / 2, y - height / 2, width, height];
+}
+
+/* The smallest text (px) the board's copy of the count rows is drawn at: a
+   band too small for the rows at this size shows none, and the panel
+   (#actions) keeps the same rows. */
+const FORCE_STEPPER_MIN_FONT = 9;
+
+/* The seat to move sends and takes back its units on the board as well:
+   the same count rows as in the panel, in the plain desert just above the
+   Conflict (catalog.tracks.force_stepper_band) where nothing is printed and
+   no piece stands, on the band's bottom edge, the one nearest the
+   Conflict. The rows shrink with the board (fitForceStepper). */
+function forceStepper(seat, rows, band) {
+  const [left, top, width, height] = band;
+  const holder = document.createElement("div");
+  holder.className = "force-stepper-band";
+  holder.style.left = `${left}%`;
+  holder.style.top = `${top}%`;
+  holder.style.width = `${width}%`;
+  holder.style.height = `${height}%`;
+  const control = document.createElement("div");
+  control.className = "force-stepper";
+  control.style.borderColor = SEAT_COLORS[seat];
+  for (const [id, family] of rows) control.appendChild(countRow(id, family, true));
+  holder.appendChild(control);
+  watchForceStepper(holder);
+  return holder;
+}
+
+/* Fit the board's count rows into their band: the CSS size when they fit,
+   smaller when not, and hidden below FORCE_STEPPER_MIN_FONT. The borders
+   do not shrink with the text, so it steps until the rows fit. */
+function fitForceStepper(holder) {
+  const control = holder.querySelector(".force-stepper");
+  if (!control || !holder.isConnected) return;
+  const room = holder.getBoundingClientRect();
+  control.hidden = false;
+  control.style.fontSize = "";
+  let size = parseFloat(getComputedStyle(control).fontSize);
+  for (let step = 0; step < 8 && size >= FORCE_STEPPER_MIN_FONT; step += 1) {
+    const box = control.getBoundingClientRect();
+    const ratio = Math.min(room.width / box.width, room.height / box.height);
+    if (ratio >= 1) break;
+    size = Math.floor(size * ratio * 0.99 * 100) / 100;
+    control.style.fontSize = `${size}px`;
+  }
+  control.hidden = !(size >= FORCE_STEPPER_MIN_FONT);
+}
+
+/* The band follows the board, so a ResizeObserver on it re-fits the rows
+   whenever the window (or the table's columns) change size, without a
+   re-render. One band at a time: every render builds a new one. */
+let forceStepperObserver = null;
+
+function watchForceStepper(holder) {
+  if (typeof ResizeObserver !== "function") return;
+  if (!forceStepperObserver) {
+    forceStepperObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) fitForceStepper(entry.target);
+    });
+  }
+  forceStepperObserver.disconnect();
+  forceStepperObserver.observe(holder);
+}
+
 /* Live markers on the printed tracks (catalog.tracks, percent of the
    scan): Influence cubes and Alliance rings on the Faction strips, VP
-   tokens on the score column, strength tokens on the combat track, deployed
-   units in each seat's Conflict quadrant, and Councilor tokens on the High
-   Council seats. */
+   tokens on the score column, strength tokens on the combat track, each
+   seat's garrison in its ring and deployed units in its Conflict quadrant,
+   and Councilor tokens on the High Council seats. */
 function renderTrackMarkers(stage, view) {
   const tracks = state.catalog.tracks;
   if (!tracks || !Array.isArray(view.players)) return;
@@ -982,30 +1278,21 @@ function renderTrackMarkers(stage, view) {
     }
     stage.appendChild(token);
 
-    /* Garrison count in the seat's bracketed circle (always shown), and
-       the units deployed this round in the seat's quadrant of the central
-       field [Main p. 10], a piece each. */
-    const [gx, gy] = tracks.garrisons[seat] || tracks.garrisons[0];
-    const garrison = document.createElement("div");
-    garrison.className = "force-chip garrison";
-    garrison.style.borderColor = color;
-    garrison.title = t("board.seat_garrison", { seat, count: player.troops_garrison || 0 });
-    garrison.append(
-      seatToken(seat, "seat-mark"),
-      amount("troop", phraseText("{garrison} {troop}"), player.troops_garrison || 0)
-    );
-    if (player.commanders_garrison) {
-      const commanders = document.createElement("span");
-      commanders.className = "commander-count";
-      commanders.title = t("board.commander_count", { count: player.commanders_garrison });
-      commanders.textContent = `C${player.commanders_garrison}`;
-      garrison.appendChild(commanders);
+    /* The seat's garrison in its bracketed circle and the units deployed
+       this round in its quadrant of the central field [Main p. 10], a
+       piece each. A Maker Hooks token lies in the slot printed over the
+       ring's outer corner, so the garrison keeps clear of it; the token is
+       drawn after the garrison, on top of the ring's name. */
+    const hooks = player.maker_hooks && tracks.maker_hooks ? tracks.maker_hooks : null;
+    const garrison = {
+      troop: player.troops_garrison || 0,
+      commander: player.commanders_garrison || 0,
+    };
+    if (tracks.garrison_units && GARRISON_UNIT_KINDS.some((kind) => garrison[kind] > 0)) {
+      const avoid = hooks ? [makerHooksBox(seat, hooks)] : [];
+      stage.appendChild(garrisonUnits(seat, garrison, tracks.garrison_units, avoid));
     }
-    placeAt(garrison, gx, gy);
-    stage.appendChild(garrison);
-    if (player.maker_hooks && tracks.maker_hooks) {
-      stage.appendChild(makerHooksToken(seat, tracks.maker_hooks));
-    }
+    if (hooks) stage.appendChild(makerHooksToken(seat, hooks));
 
     const unitLayout = tracks.conflict_units;
     const counts = {
@@ -1018,25 +1305,12 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(conflictUnits(seat, counts, unitLayout));
     }
 
-    /* The seat to move sends and takes back its units right here: the same
-       count rows as in the panel, in the seat's quadrant against the
-       printed cross (under it for the lower seats, above it for the upper
-       ones), away from the outer edge where the troops start. */
-    if (seat === state.viewSeat && !state.review && state.actions) {
+    /* The seat to move sends and takes back its units on the board too,
+       just above the Conflict (forceStepper). */
+    if (seat === state.viewSeat && !state.review && state.actions && tracks.force_stepper_band) {
       const families = countFamilies(state.actions.actions);
       const rows = [...families.entries()].filter(([id]) => FORCE_STEPPER_ACTIONS.has(id));
-      if (rows.length) {
-        const [sx, sy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
-        const [, crossY] = unitLayout.cross;
-        const below = sy > crossY;
-        const control = document.createElement("div");
-        control.className = "force-stepper";
-        control.style.borderColor = color;
-        control.style.transform = below ? "translate(-50%, 0)" : "translate(-50%, -100%)";
-        for (const [id, family] of rows) control.appendChild(countRow(id, family, true));
-        placeAt(control, sx, crossY + (below ? 0.4 : -0.4));
-        stage.appendChild(control);
-      }
+      if (rows.length) stage.appendChild(forceStepper(seat, rows, tracks.force_stepper_band));
     }
 
     if (player.high_council && councilSlot < tracks.council_seats.length) {

@@ -15,15 +15,21 @@ input of the render); the Reveal preview and the Intrigue pile are checked on
 the live game. The units in the Conflict are a piece each in their seat's
 printed quadrant (`catalog.tracks.conflict_units`): a cube per troop, the
 seat's Agent figure, the neutral Commander and sandworm pictures, and no
-number. A Bloodlines table then checks the Sardaukar Commanders that
-stand on their setup spaces, the rulebook's figure on each frame's top-right
-corner [Bloodlines p. 3].
+number; so is every unit in a garrison, inside its printed ring's circle
+(`catalog.tracks.garrison_units`) and clear of a Maker Hooks token in the
+ring's slot, and a busy Conflict area is laid out without overlaps at three
+window sizes down to a 268 px board. A Bloodlines table then checks the
+Sardaukar Commanders that stand on their setup spaces, the rulebook's figure
+on each frame's top-right corner [Bloodlines p. 3].
 """
 
 from __future__ import annotations
 
 import json
+import math
+import os
 import shutil
+from pathlib import Path
 
 from common import (
     SERVER_LOG_COPY,
@@ -910,6 +916,385 @@ def conflict_units(page) -> None:
     page.evaluate(SET_UNITS_JS, [[{}, {}, {}, {}], UNIT_FIELDS])
 
 
+# The view fields behind each kind of unit in a garrison (PublicPlayerView).
+GARRISON_FIELDS = {"troop": "troops_garrison", "commander": "commanders_garrison"}
+# Seat by seat: the setup garrison (3 troops), troops with Commanders beside
+# a Maker Hooks token, a lone Commander, and an empty ring.
+GARRISON_UNITS = [
+    {"troop": 3},
+    {"troop": 5, "commander": 2},
+    {"commander": 1},
+    {},
+]
+GARRISON_HOOKS = [1, 2]
+# The most a garrison can hold: 12 troops and all 7 Commanders.
+GARRISON_CROWDED = {"troop": 12, "commander": 7}
+
+SET_GARRISONS_JS = """([units, fields, hooks]) => {
+  state.view.players.forEach((player, seat) => {
+    for (const [kind, field] of Object.entries(fields)) {
+      player[field] = (units[seat] || {})[kind] || 0;
+    }
+    player.maker_hooks = hooks.includes(seat);
+  });
+  render();
+}"""
+
+# Every group of unit pieces on the board (garrison rings or Conflict
+# quadrants) with its pieces' rectangles in stage percent, and the stage's
+# height over its width (a ring is round in pixels, not in percent).
+GROUPS_JS = """([groupSelector, pieceSelector]) => {
+  const stageNode = document.querySelector(".board-stage");
+  const stage = stageNode.getBoundingClientRect();
+  const pct = (r) => ({
+    left: (r.left - stage.left) / stage.width * 100,
+    top: (r.top - stage.top) / stage.height * 100,
+    width: r.width / stage.width * 100,
+    height: r.height / stage.height * 100,
+  });
+  return {
+    aspect: stage.height / stage.width,
+    groups: [...stageNode.querySelectorAll(groupSelector)].map((wrap) => ({
+      seat: Number(wrap.dataset.seat),
+      scale: Number(wrap.dataset.scale),
+      role: wrap.getAttribute("role"),
+      label: wrap.getAttribute("aria-label"),
+      text: wrap.innerText,
+      pieces: [...wrap.querySelectorAll(pieceSelector)].map((piece) => ({
+        seat: Number(piece.dataset.seat),
+        kind: piece.dataset.kind,
+        tag: piece.tagName.toLowerCase(),
+        rect: pct(piece.getBoundingClientRect()),
+        background: getComputedStyle(piece).backgroundColor,
+        src: piece.getAttribute("src"),
+        loaded: piece.tagName === "IMG"
+          ? piece.complete && piece.naturalWidth > 0 : null,
+        pointer: getComputedStyle(piece).pointerEvents,
+      })),
+    })),
+  };
+}"""
+
+
+def garrison_groups(page) -> tuple[float, dict[int, dict]]:
+    shown = page.evaluate(GROUPS_JS, [".garrison-units", ".garrison-unit"])
+    return shown["aspect"], {group["seat"]: group for group in shown["groups"]}
+
+
+def in_ring(rect: dict, ring: list[float], line: float, aspect: float,
+            tolerance: float = 0.12) -> bool:
+    """All four corners of `rect` inside the ring's inner circle (its outer
+    edge less the printed line), measured in percent of the stage's width."""
+    left, top, width, height = ring
+    centre_x, centre_y = left + width / 2, top + height / 2
+    radius = width / 2 - line + tolerance
+    corners = [
+        (rect["left"] + dx, rect["top"] + dy)
+        for dx in (0, rect["width"])
+        for dy in (0, rect["height"])
+    ]
+    return all(
+        math.hypot(x - centre_x, (y - centre_y) * aspect) <= radius
+        for x, y in corners
+    )
+
+
+def rects_meet(a: dict, b: dict, tolerance: float = 0.12) -> bool:
+    """Two rectangles that overlap by more than `tolerance` both ways."""
+    return (
+        a["left"] + a["width"] > b["left"] + tolerance
+        and b["left"] + b["width"] > a["left"] + tolerance
+        and a["top"] + a["height"] > b["top"] + tolerance
+        and b["top"] + b["height"] > a["top"] + tolerance
+    )
+
+
+def box_rect(box: list[float]) -> dict:
+    left, top, width, height = box
+    return {"left": left, "top": top, "width": width, "height": height}
+
+
+def garrison_units(page) -> None:
+    print("[3e] garrisons (edited view): a piece per unit in the ring, no numbers")
+    tracks = page.evaluate("state.catalog.tracks")
+    layout = tracks.get("garrison_units")
+    if not check.ok(layout is not None, "the catalog serves the garrison rings"):
+        return
+    rings, line = layout["rings"], layout["line"]
+    colors = page.evaluate("SEAT_COLORS")
+    commander_picture = page.evaluate("state.catalog.commander_token")
+    page.evaluate(SET_GARRISONS_JS, [GARRISON_UNITS, GARRISON_FIELDS, GARRISON_HOOKS])
+    images_loaded(page)
+    aspect, shown = garrison_groups(page)
+    hooks = {r["seat"]: r for r in rects(page, ".maker-hooks-token")}
+    check.ok(
+        set(hooks) == {str(seat) for seat in GARRISON_HOOKS},
+        "the Maker Hooks tokens of the seats that have one",
+        sorted(hooks),
+    )
+    check.ok(page.locator(".force-chip").count() == 0, "no garrison count chip left")
+
+    for seat, wanted in enumerate(GARRISON_UNITS):
+        group = shown.get(seat)
+        if not wanted:
+            check.ok(group is None, f"seat {seat}: an empty garrison draws nothing")
+            continue
+        if not check.ok(group is not None, f"seat {seat}: its garrison is drawn"):
+            continue
+        counts = {kind: 0 for kind in GARRISON_FIELDS}
+        for piece in group["pieces"]:
+            counts[piece["kind"]] = counts.get(piece["kind"], 0) + 1
+        check.ok(
+            counts == {kind: wanted.get(kind, 0) for kind in GARRISON_FIELDS}
+            and all(piece["seat"] == seat for piece in group["pieces"]),
+            f"seat {seat}: one piece per unit, by kind",
+            (counts, wanted),
+        )
+        check.ok(
+            all(in_ring(p["rect"], rings[seat], line, aspect) for p in group["pieces"]),
+            f"seat {seat}: every piece inside the ring's inner circle",
+            [p["rect"] for p in group["pieces"]
+             if not in_ring(p["rect"], rings[seat], line, aspect)][:3],
+        )
+        check.ok(
+            not overlapping(group["pieces"]),
+            f"seat {seat}: no two pieces overlap",
+            overlapping(group["pieces"])[:3],
+        )
+        check.ok(
+            all(piece["pointer"] == "none" for piece in group["pieces"]),
+            f"seat {seat}: the pieces never take a click",
+        )
+        troops = [p for p in group["pieces"] if p["kind"] == "troop"]
+        check.ok(
+            all(p["background"] == rgb(colors[seat]) for p in troops),
+            f"seat {seat}: troops are cubes in the seat's colour",
+            {p["background"] for p in troops},
+        )
+        commanders = [p for p in group["pieces"] if p["kind"] == "commander"]
+        if commanders and commander_picture:
+            check.ok(
+                all(p["src"] == commander_picture and p["loaded"] for p in commanders),
+                f"seat {seat}: a Commander is its own picture, loaded",
+                [(p["src"], p["loaded"]) for p in commanders],
+            )
+        elif commanders:
+            print("  .. no local Commander picture: the drawn piece is checked")
+        hook = hooks.get(str(seat))
+        if hook is not None:
+            check.ok(
+                not any(rects_meet(p["rect"], hook, 0.01) for p in group["pieces"]),
+                f"seat {seat}: clear of its Maker Hooks token",
+            )
+        label = group["label"] or ""
+        check.ok(
+            group["role"] == "img"
+            and all(
+                page.evaluate(f"phraseText('{{{kind}:{count}}}')") in label
+                for kind, count in wanted.items()
+            )
+            and all(
+                page.evaluate(f"phraseText('{{{kind}}}')") not in label
+                for kind in GARRISON_FIELDS
+                if kind not in wanted
+            ),
+            f"seat {seat}: its name counts every kind it has",
+            group["label"],
+        )
+        check.ok(
+            not any(ch.isdigit() for ch in group["text"]),
+            f"seat {seat}: no number drawn in the ring",
+            group["text"],
+        )
+
+    setup = shown.get(0) or {"pieces": [], "scale": 0}
+    cube = tracks["influence"]["cube_size"]
+    check.ok(
+        setup["scale"] == 1
+        and len(setup["pieces"]) == 3
+        and all(near(p["rect"]["width"], cube) for p in setup["pieces"])
+        and len({round(p["rect"]["top"], 2) for p in setup["pieces"]}) == 1,
+        "the setup garrison: three cubes in a row, an Influence cube's size",
+        (setup["scale"], [round(p["rect"]["width"], 3) for p in setup["pieces"]]),
+    )
+
+    # Crowded, beside a Maker Hooks token: every piece stays in the circle.
+    page.evaluate(
+        SET_GARRISONS_JS, [[{}, GARRISON_CROWDED, {}, {}], GARRISON_FIELDS, [1]]
+    )
+    images_loaded(page)
+    aspect, shown = garrison_groups(page)
+    crowded = shown.get(1)
+    hook = {r["seat"]: r for r in rects(page, ".maker-hooks-token")}.get("1")
+    if check.ok(crowded is not None, "a crowded garrison is drawn"):
+        counts: dict[str, int] = {}
+        for piece in crowded["pieces"]:
+            counts[piece["kind"]] = counts.get(piece["kind"], 0) + 1
+        check.ok(counts == GARRISON_CROWDED, "crowded: still a piece per unit", counts)
+        check.ok(
+            layout["min_scale"] <= crowded["scale"] < 1,
+            "crowded: the pieces shrink, not below the smallest scale",
+            crowded["scale"],
+        )
+        check.ok(
+            all(in_ring(p["rect"], rings[1], line, aspect) for p in crowded["pieces"])
+            and not overlapping(crowded["pieces"])
+            and hook is not None
+            and not any(rects_meet(p["rect"], hook, 0.01) for p in crowded["pieces"]),
+            "crowded: inside the circle, apart, and clear of the Maker Hooks token",
+        )
+
+    # Without the Commander picture the drawn piece takes its place.
+    page.evaluate("state.catalog.commander_token = null")
+    page.evaluate(SET_GARRISONS_JS, [GARRISON_UNITS, GARRISON_FIELDS, GARRISON_HOOKS])
+    aspect, shown = garrison_groups(page)
+    pieces = [p for p in (shown.get(1) or {"pieces": []})["pieces"]
+              if p["kind"] == "commander"]
+    check.ok(
+        len(pieces) == GARRISON_UNITS[1]["commander"]
+        and all(p["tag"] == "span" and p["src"] is None for p in pieces)
+        and all(in_ring(p["rect"], rings[1], line, aspect) for p in pieces)
+        and all(p["rect"]["width"] > 0.5 for p in pieces),
+        "without the picture a Commander is drawn, counted and inside",
+        [(p["tag"], p["rect"]) for p in pieces],
+    )
+    page.evaluate(
+        "(picture) => { state.catalog.commander_token = picture; }", commander_picture
+    )
+    page.evaluate(SET_GARRISONS_JS, [[{}, {}, {}, {}], GARRISON_FIELDS, []])
+
+
+# A busy table for the overlap sweep: every garrison and quadrant holds
+# pieces, and two seats have a Maker Hooks token in their ring's slot.
+BUSY_GARRISONS = [
+    {"troop": 3},
+    {"troop": 12, "commander": 2},
+    {"troop": 5, "commander": 7},
+    {"troop": 12, "commander": 7},
+]
+BUSY_CONFLICT = [
+    {"troop": 12},
+    {"troop": 3, "sandworm": 2},
+    {"troop": 4, "commander": 2, "agent": 1},
+    {"troop": 6, "commander": 1},
+]
+BUSY_HOOKS = [0, 3]
+SWEEP_SIZES = ({"width": 1600, "height": 1000}, {"width": 1000, "height": 900},
+               {"width": 800, "height": 900})
+
+
+def busy_table(page) -> None:
+    page.evaluate(SET_UNITS_JS, [BUSY_CONFLICT, UNIT_FIELDS])
+    page.evaluate(SET_GARRISONS_JS, [BUSY_GARRISONS, GARRISON_FIELDS, BUSY_HOOKS])
+    images_loaded(page)
+
+
+def conflict_area_shot(page, name: str) -> None:
+    """A picture of the Conflict area for a reviewer, into E2E_SHOTS_DIR
+    when it is set (no default: a session's scratch path is not portable)."""
+    shots = os.environ.get("E2E_SHOTS_DIR")
+    if not shots:
+        return
+    Path(shots).mkdir(parents=True, exist_ok=True)
+    box = page.evaluate(
+        """() => { const r = document.querySelector('.board-stage')
+          .getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }"""
+    )
+    left, top, width, height = box
+    page.screenshot(
+        path=str(Path(shots) / name),
+        clip={
+            "x": left + width * 0.36,
+            "y": top + height * 0.53,
+            "width": width * 0.57,
+            "height": height * 0.38,
+        },
+    )
+
+
+def overlap_sweep(base: str, browser) -> None:
+    print("[3f] a busy Conflict area at three window sizes: nothing overlaps")
+    for size in SWEEP_SIZES:
+        tag = f"{size['width']}x{size['height']}"
+        context, page, _ = open_context(browser, f"sweep-{tag}", size)
+        create_game(page, base, humans=(0,), seed=11)
+        busy_table(page)
+        tracks = page.evaluate("state.catalog.tracks")
+        rings = tracks["garrison_units"]["rings"]
+        line = tracks["garrison_units"]["line"]
+        boxes = tracks["conflict_units"]["boxes"]
+        aspect, garrisons = garrison_groups(page)
+        conflict = {
+            group["seat"]: group
+            for group in page.evaluate(
+                GROUPS_JS, [".conflict-units", ".conflict-unit"]
+            )["groups"]
+        }
+        hooks = rects(page, ".maker-hooks-token")
+        stage = page.evaluate(
+            "document.querySelector('.board-stage').getBoundingClientRect().width"
+        )
+        check.ok(
+            sorted(garrisons) == [0, 1, 2, 3] and sorted(conflict) == [0, 1, 2, 3]
+            and len(hooks) == len(BUSY_HOOKS),
+            f"{tag} (stage {stage:.0f} px): every garrison and quadrant is drawn",
+        )
+        garrison_pieces = [
+            (seat, piece)
+            for seat, group in garrisons.items()
+            for piece in group["pieces"]
+        ]
+        conflict_pieces = [
+            (seat, piece)
+            for seat, group in conflict.items()
+            for piece in group["pieces"]
+        ]
+        check.ok(
+            all(in_ring(p["rect"], rings[seat], line, aspect)
+                for seat, p in garrison_pieces),
+            f"{tag}: every garrison piece inside its ring's circle",
+            [(seat, p["rect"]) for seat, p in garrison_pieces
+             if not in_ring(p["rect"], rings[seat], line, aspect)][:3],
+        )
+        check.ok(
+            all(inside_box(p["rect"], boxes[seat]) for seat, p in conflict_pieces),
+            f"{tag}: every Conflict piece inside its quadrant",
+        )
+        clashes = [
+            (seat, other_seat)
+            for seat, p in garrison_pieces
+            for other_seat, q in conflict_pieces
+            if rects_meet(p["rect"], q["rect"])
+        ]
+        check.ok(
+            not clashes, f"{tag}: no garrison piece on a Conflict piece", clashes[:3]
+        )
+        on_hooks = [
+            (seat, hook["seat"])
+            for seat, p in garrison_pieces
+            for hook in hooks
+            if rects_meet(p["rect"], hook)
+        ]
+        check.ok(not on_hooks, f"{tag}: no garrison piece on a Maker Hooks token",
+                 on_hooks[:3])
+        strays = [
+            (seat, other)
+            for seat, p in garrison_pieces
+            for other, ring in enumerate(rings)
+            if other != seat and rects_meet(p["rect"], box_rect(ring))
+        ]
+        check.ok(not strays, f"{tag}: no garrison piece in another seat's ring",
+                 strays[:3])
+        conflict_area_shot(page, f"busy-{tag}.png")
+        if size["width"] == 1600:
+            page.evaluate(
+                SET_GARRISONS_JS, [[{}, GARRISON_CROWDED, {}, {}], GARRISON_FIELDS, [1]]
+            )
+            images_loaded(page)
+            conflict_area_shot(page, "crowded-12-troops-7-commanders.png")
+        context.close()
+
+
 # Setup: "Place five of them on the game board, one on each of the following
 # spaces: Sardaukar, Dutiful Service, Deliver Supplies, High Council, and
 # Gather Support. Leave room on each space for an Agent" and a sixth on
@@ -1200,11 +1585,13 @@ def main() -> None:
             agent_pieces(page)
             spy_pieces(page)
             conflict_units(page)
+            garrison_units(page)
             intrigue_pile(page)
             failed = [r for r in rec.requests if r[3] >= 400]
             check.ok(not failed, "no failed requests", failed[:5])
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
+            overlap_sweep(base, browser)
             commander_pieces(base, browser)
             tleilaxu_spice(base, browser)
         finally:

@@ -357,6 +357,26 @@ CONFLICT_UNIT_GAP: Final = 0.35
 CONFLICT_UNIT_PADDING: Final = 0.5
 CONFLICT_UNIT_MIN_SCALE: Final = 0.5
 
+# A garrison holds troops and Sardaukar Commanders, a piece each inside its
+# printed ring (``GARRISON_RINGS``), the same pieces as in the Conflict
+# (``CONFLICT_UNIT_SIZES``, ``CONFLICT_UNIT_GAP``). The rows are packed
+# inside the ring's inner circle: its outer edge less the printed line
+# (``GARRISON_UNIT_LINE``, the line is 3-4 px, 0.06) and a padding. The
+# padding is the widest that still lays a full garrison of 12 troops as
+# three rows of four at full size (4 x 1.58 + 3 x 0.35 wide, the outer rows'
+# corners 4.58 from the centre, the inner circle 4.615). A Commander is
+# nearly six troops tall, so a garrison with Commanders shrinks: the gap
+# shrinks with the pieces, and ``GARRISON_UNIT_MIN_SCALE`` is the smallest
+# scale any real garrison needs (12 troops and all 7 Commanders beside a
+# Maker Hooks token, 0.35; tests/unit/display/test_board_layout.py).
+# The Maker Hooks slot (``MAKER_HOOKS_POINTS``) is printed over the ring's
+# outer corner and reaches 1.9 from its centre, so a token lying there takes
+# that corner: the pieces keep the padding clear of it (board.js
+# ringUnitLayout).
+GARRISON_UNIT_LINE: Final = 0.1
+GARRISON_UNIT_PADDING: Final = 0.3
+GARRISON_UNIT_MIN_SCALE: Final = 0.35
+
 # The Maker Hooks token: "Take a Maker Hooks token from the bank, if you
 # don't already have one. Place it on your garrison" [Main p. 20]. Every
 # garrison prints a slot in the token's shape on its outer side, a faint
@@ -377,6 +397,26 @@ MAKER_HOOKS_POINTS: Final = (
 MAKER_HOOKS_SIZE: Final = (3.4, 4.88)
 # (rotation in degrees, mirrored before turning) per seat.
 MAKER_HOOKS_TURNS: Final = ((90, False), (90, True), (-90, False), (-90, True))
+
+# Where the seat to move sends and takes back its units on the board (the
+# same count rows as the action panel): plain desert just above the
+# Conflict, where nothing is printed and no piece stands, ``(left, top,
+# width, height)``. Measured 2026-09-27 with brightness profiles on the
+# 6012 x 6005 scan:
+# - left: Deep Desert's icon panel (its effect icons and bonus-spice
+#   hexagon) ends in a double border line at x px 2909 and 2918-2919
+#   (48.39 and 48.55 %) on the rows 58-63 %;
+# - top: Hagga Basin's icon panel ends in a double border line at y px 3390
+#   and 3400-3401 (56.45 and 56.63 %) across x 52-66 %;
+# - right: Esmar Tuek's tile (``LEADER_TILE_BOXES``) starts at 74.5;
+# - bottom: the Conflict area's shaded panel, which holds the garrison
+#   rings and the field, starts with a straight edge at y px 3930-3932
+#   (65.46 %) all the way across x 46-80 %.
+# Inside, the scan prints only map art: the three-line track that runs from
+# under Hagga Basin's panel (x 67, y 56.7) down to the Conflict (x 59.5-60,
+# y 62-65.3) with a dotted strip beside it, and a faint thin contour line
+# near the left edge. The band keeps 0.15-0.2 off each of those edges.
+FORCE_STEPPER_BAND: Final = (48.7, 56.8, 25.6, 8.5)
 
 # The four High Council seats, left to right: the centres of the printed
 # circles (diameter 2.91; re-measured 2026-09-18 from the white rings).
@@ -458,6 +498,17 @@ def marker_layout() -> dict[str, Any]:
             "padding": CONFLICT_UNIT_PADDING,
             "min_scale": CONFLICT_UNIT_MIN_SCALE,
         },
+        "garrison_units": {
+            "rings": [list(ring) for ring in GARRISON_RINGS],
+            "sizes": {
+                kind: list(CONFLICT_UNIT_SIZES[kind]) for kind in ("troop", "commander")
+            },
+            "gap": CONFLICT_UNIT_GAP,
+            "line": GARRISON_UNIT_LINE,
+            "padding": GARRISON_UNIT_PADDING,
+            "min_scale": GARRISON_UNIT_MIN_SCALE,
+        },
+        "force_stepper_band": list(FORCE_STEPPER_BAND),
         "council_seats": [list(point) for point in COUNCIL_SEATS],
         "disc_size": SEAT_DISC_SIZE,
         "conflict_deck_slot": list(CONFLICT_DECK_SLOT),

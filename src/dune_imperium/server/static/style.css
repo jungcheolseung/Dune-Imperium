@@ -622,30 +622,13 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .strength-token.pictured img { display: block; width: 100%; height: 100%; }
 .strength-token.pictured:hover { z-index: 4; }
-/* The garrison count chip in the seat's circle. */
-.force-chip {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  gap: 0.3em;
-  padding: 0.15em 0.45em;
-  background: rgba(0, 0, 0, 0.72);
-  border: 2px solid;
-  border-radius: 8px;
-  color: #fff;
-  font-weight: 700;
-  white-space: nowrap;
-  font-size: 0.9em;
-}
-.force-chip .icon { height: 1.3em; }
-.force-chip.garrison { border-style: dashed; }
 /* A seat's units in its quadrant of the Conflict field (board.js
-   conflictUnits): the box is the printed quadrant, and each piece is
-   placed and sized inline in percent of it. The pieces never take a click;
-   the quadrant's name (title) gives the exact counts. */
-.conflict-units { position: absolute; }
-.conflict-unit {
+   conflictUnits) and in its garrison ring (garrisonUnits): the box is the
+   printed quadrant or the ring's, and each piece is placed and sized inline
+   in percent of it. The pieces never take a click; the box's name (title)
+   gives the exact counts. */
+.conflict-units, .garrison-units { position: absolute; }
+:is(.conflict-unit, .garrison-unit) {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
@@ -653,7 +636,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 /* A troop is the seat's cube, exactly like an Influence cube (.track-cube):
    flat colour, the dark edge a ring outside the box. */
-.conflict-unit[data-kind="troop"] {
+:is(.conflict-unit, .garrison-unit)[data-kind="troop"] {
   box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 /* The seat's Agent figure (seatPiece), as on a space (.agent-token). */
@@ -663,12 +646,13 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 /* The neutral figures: their own pictures with the dark hairline every
    piece on the scan gets (.commander-piece), no seat colour. */
-.conflict-unit[data-kind="commander"], .conflict-unit[data-kind="sandworm"] {
+:is(.conflict-unit, .garrison-unit)[data-kind="commander"],
+.conflict-unit[data-kind="sandworm"] {
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
 }
 /* Without the pictures: a Commander as its drawn mark on a space
    (.commander-piece.drawn), a worm as a drawn arch, in the plastic's grey. */
-.conflict-unit[data-kind="commander"].drawn {
+:is(.conflict-unit, .garrison-unit)[data-kind="commander"].drawn {
   border: 1px solid #111;
   border-radius: 45% 45% 18% 18%;
   background: #c8bdb9;
@@ -1216,11 +1200,23 @@ kbd {
   font-size: 1.1em;
 }
 #actions .count-confirm { flex: 1; }
-/* The same rows by the seat's units in the Conflict area. */
+/* The same rows on the board (board.js forceStepper), in the plain desert
+   above the Conflict: the band (placed inline, percent of the stage) takes
+   no pointer, and the rows stand on its bottom edge, the one nearest the
+   Conflict. Every length inside is in em, so the rows shrink as a whole
+   when fitForceStepper sets a smaller font size to fit the band. */
+.force-stepper-band {
+  position: absolute;
+  pointer-events: none;
+}
 .force-stepper {
   position: absolute;
-  transform: translate(-50%, -50%);
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: max-content;
   z-index: 5;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 0.2em;
@@ -1233,7 +1229,9 @@ kbd {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 .force-stepper .action-item.count-row { flex-wrap: nowrap; gap: 0.35em; }
-.force-stepper button { padding: 0.1rem 0.45rem; }
+.force-stepper .stepper { gap: 0.15em; }
+.force-stepper button { padding: 0.1em 0.45em; }
+.force-stepper .stepper button { padding: 0.15em 0.3em; }
 /* The Reveal shop (renderRevealPanel). */
 .reveal-status {
   display: flex;
@@ -1616,11 +1614,6 @@ kbd {
   color: #111;
   font-size: 0.7rem;
   font-weight: 700;
-}
-.force-chip .commander-count {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #ffb3b3;
 }
 .seat .commander-count, .help-mark .commander-count {
   font-size: 0.72rem;
