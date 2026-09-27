@@ -15,7 +15,14 @@ import json
 import shutil
 import time
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+    set_rule_options,
+)
 from open_mode import create_game, settled
 
 check = Check()
@@ -243,6 +250,75 @@ def reveal_shop(page, rec) -> None:
     )
 
 
+def tleilaxu_shop(base: str, browser) -> None:
+    """A Tleilaxu Row card is acquired like an Imperium card, for specimens
+    [Immortality p. 8]: the Reveal panel lists it among what was acquired
+    (it once listed only Imperium and Reserve cards, 2026-09-27)."""
+    print("[4] a Reveal that acquires from the Tleilaxu Row (Immortality)")
+    context, page, rec = open_context(browser, "tleilaxu")
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(
+            f"#seat-selects select[data-seat='{seat}']",
+            "human" if seat == 0 else "heuristic",
+        )
+    set_rule_options(page, "immortality")
+    page.fill("#opt-seed", "3")
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    reached = play_until(
+        page,
+        "state.actions.actions.some((a) => a.action_id === 'acquire_tleilaxu')",
+        """(() => { const A = state.actions.actions;
+          const pick = A.find((x) => x.action_id === 'generate_reveal_specimens');
+          return pick ? pick.index : A[A.length - 1].index; })()""",
+    )
+    if not check.ok(reached, "the seat can acquire from the Tleilaxu Row"):
+        context.close()
+        return
+    buys = page.evaluate(
+        "state.actions.actions.filter((a) => a.action_id.startsWith('acquire')).length"
+    )
+    check.ok(
+        page.locator("#actions .acquire-cost").count() == buys,
+        "every card that can be acquired is listed with its cost (specimens too)",
+        (page.locator("#actions .acquire-cost").count(), buys),
+    )
+    # Reclaimed Forces' row names the effect chosen, not the card; its cost
+    # is the card's specimens all the same (a game rarely offers it here).
+    reclaimed = page.evaluate(
+        """() => {
+          const node = acquireCostNode({action_id: 'acquire_reclaimed_forces',
+                                        arguments: {choice: 'troops'}});
+          return node ? node.textContent : null;
+        }"""
+    )
+    specimens = page.evaluate("state.catalog.cards.reclaimed_forces.specimens")
+    check.ok(
+        reclaimed is not None and reclaimed.endswith(f" {specimens}"),
+        "a Reclaimed Forces row shows its specimen cost",
+        (reclaimed, specimens),
+    )
+    action = page.evaluate(
+        "state.actions.actions.find((a) => a.action_id === 'acquire_tleilaxu'"
+        " && !a.arguments.to_deck_top)"
+    )
+    card = page.evaluate("(id) => baseId(id)", action["arguments"]["instance_id"])
+    page.evaluate(f"applyAction({action['index']})")
+    assert settled(page, 20)
+    # The oracle reads the cards section itself, never the panel's own lookup.
+    name = page.evaluate("(id) => state.catalog.cards[id].name", card)
+    bought = page.locator(".reveal-bought")
+    check.ok(
+        bought.count() == 1 and name in bought.inner_text(),
+        "the panel lists the Tleilaxu card among what was acquired",
+        (name, bought.inner_text() if bought.count() else None),
+    )
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
@@ -254,6 +330,7 @@ def main() -> None:
             check.ok(not failed, "no failed requests", failed[:5])
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
+            tleilaxu_shop(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

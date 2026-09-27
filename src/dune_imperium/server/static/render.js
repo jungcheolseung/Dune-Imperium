@@ -1160,6 +1160,16 @@ function isAcquire(action) {
   return action.action_id.startsWith("acquire");
 }
 
+/* The card each acquisition event names. A Tleilaxu Row card is acquired
+   like an Imperium card, for specimens [Immortality p. 8]; Reclaimed Forces
+   is "acquired" but stays in the Row [Immortality p. 9] (OQ-066), and its
+   event names no card. */
+const ACQUIRED_CARD = {
+  card_acquired: (payload) => payload.card_id,
+  tleilaxu_card_acquired: (payload) => payload.card_id,
+  reclaimed_forces_acquired: () => "reclaimed_forces",
+};
+
 function boughtThisReveal() {
   const entries = (state.log && state.log.entries) || [];
   const seat = state.viewSeat;
@@ -1172,21 +1182,27 @@ function boughtThisReveal() {
   for (const entry of entries.slice(start + 1)) {
     if (entry.actor !== seat || entry.undone) continue;
     for (const event of entry.events || []) {
-      if (event.kind === "card_acquired" && event.payload.player === seat) {
-        bought.push(event.payload.card_id);
-      }
+      const cardOf = ACQUIRED_CARD[event.kind];
+      if (cardOf && event.payload.player === seat) bought.push(cardOf(event.payload));
     }
   }
   return bought;
 }
 
 function acquireCostNode(action) {
+  /* Reclaimed Forces' only argument is the effect chosen, not the card. */
+  const reclaimed = action.action_id === "acquire_reclaimed_forces";
   const ref = actionRefs(action)[0];
-  const entry = ref ? entryOf(ref) : null;
+  const entry = reclaimed
+    ? lookup("reclaimed_forces", "cards")
+    : ref
+      ? entryOf(ref)
+      : null;
   if (!entry) return null;
   const cost = document.createElement("span");
   cost.className = "acquire-cost";
-  if (action.action_id.includes("tleilaxu") && typeof entry.specimens === "number") {
+  const specimens = reclaimed || action.action_id.includes("tleilaxu");
+  if (specimens && typeof entry.specimens === "number") {
     cost.append(`${phraseText("{specimen}")} ${entry.specimens}`);
   } else if (typeof entry.cost === "number") {
     cost.append(
@@ -1221,7 +1237,7 @@ function renderRevealPanel(box, actions) {
     const list = document.createElement("span");
     list.className = "reveal-bought";
     list.append(t("render.bought_cards_label"));
-    bought.forEach((cardId) => list.appendChild(chip(cardId)));
+    bought.forEach((cardId) => list.appendChild(chip(cardId, "cards")));
     status.appendChild(list);
   }
   if (status.childNodes.length) box.appendChild(status);
