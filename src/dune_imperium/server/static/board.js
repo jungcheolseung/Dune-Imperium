@@ -277,9 +277,6 @@ function makerSpicePoint(spaceId) {
   return (spots && spots.points[spaceId]) || null;
 }
 
-/* The bonus spice waiting on a Maker space, "in the spot designated for
-   bonus spice" [Main p. 15]: a spice hexagon exactly over the printed one,
-   with the amount in it like the board's own spice numbers. */
 /* A Sardaukar Commander still on its setup space, standing on the top-right
    corner of the printed frame so the frame stays free for Agents, about as
    tall as the frame [Bloodlines p. 3] (catalog.commander_spot). It is the
@@ -310,12 +307,13 @@ function commanderPiece(spaceId, box) {
   return piece;
 }
 
-function bonusSpiceToken(spaceId, count, point) {
-  const [width, height] = state.catalog.tracks.maker_spice.size;
+/* Spice waiting on a printed hexagon: a spice hexagon exactly over the
+   printed one (`size` is its white outline, percent of the stage), with the
+   amount in it like the board's own spice numbers. */
+function spiceHex(count, point, [width, height], title) {
   const token = document.createElement("span");
   token.className = "bonus-spice";
-  token.dataset.space = spaceId;
-  token.title = `${spaceName(spaceId)} · ${t("board.bonus_spice", { count })}`;
+  token.title = title;
   token.style.width = `${width}%`;
   token.style.height = `${height}%`;
   const amountText = document.createElement("span");
@@ -323,6 +321,19 @@ function bonusSpiceToken(spaceId, count, point) {
   amountText.textContent = String(count);
   token.appendChild(amountText);
   return placeAt(token, point[0], point[1]);
+}
+
+/* The bonus spice waiting on a Maker space, "in the spot designated for
+   bonus spice" [Main p. 15]. */
+function bonusSpiceToken(spaceId, count, point) {
+  const token = spiceHex(
+    count,
+    point,
+    state.catalog.tracks.maker_spice.size,
+    `${spaceName(spaceId)} · ${t("board.bonus_spice", { count })}`,
+  );
+  token.dataset.space = spaceId;
+  return token;
 }
 
 /* The scanned board with the live state on top: a hotspot per space
@@ -1560,12 +1571,16 @@ function renderBeneTleilaxScan(layout, view) {
       stage.appendChild(token);
     });
   });
+  /* The setup spice on the fourth space [Immortality p. 4], the same
+     hexagon as a Maker space's bonus spice over the printed "1st / 2" one. */
   if (view.tleilaxu_track_spice) {
-    const spice = document.createElement("span");
-    spice.className = "bt-spice";
-    spice.append(icon("spice", phraseText("{spice}")), String(view.tleilaxu_track_spice));
-    spice.title = t("board.spice_first_reacher");
-    placeAt(spice, overlay.spice_point[0], overlay.spice_point[1]);
+    const spice = spiceHex(
+      view.tleilaxu_track_spice,
+      overlay.spice_point,
+      overlay.spice_size,
+      t("board.spice_first_reacher"),
+    );
+    spice.classList.add("bt-spice");
     stage.appendChild(spice);
   }
   return stage;

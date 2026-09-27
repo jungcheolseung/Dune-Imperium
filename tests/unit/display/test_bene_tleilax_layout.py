@@ -49,3 +49,22 @@ def test_every_seat_has_a_printed_spot_on_both_start_spaces() -> None:
     )
     _, start_y = layout["research_points"][RESEARCH_START_ID]
     assert rows[0] < start_y < rows[-1]
+
+
+def test_setup_spice_covers_the_printed_hexagon() -> None:
+    # "bank의 spice 2를 Tleilaxu track의 네 번째 칸에 놓는다" [Immortality p. 4]
+    # (docs/rules/immortality.md): the fourth space prints a "1st / 2"
+    # hexagon, and the spice is drawn as the main board's bonus spice
+    # hexagon over its white outline (310 x 270 px on the 5551x3952 scan).
+    from dune_imperium.content.immortality.board import TLEILAXU_SETUP_SPICE_SPACE
+
+    layout = bene_tleilax_layout()
+    (x, y), (width, height) = layout["spice_point"], layout["spice_size"]
+    assert round(width / 100 * 5551) == 310
+    assert round(height / 100 * 3952) == 270
+    # A regular flat-topped hexagon: height = width * sqrt(3)/2 on the scan.
+    assert abs(height / (width * layout["aspect"]) - 3**0.5 / 2) < 0.01
+    left, cell_width = layout["track_cells"][TLEILAXU_SETUP_SPICE_SPACE]
+    band_top, band_height = layout["track_band"]
+    assert left <= x - width / 2 and x + width / 2 <= left + cell_width
+    assert band_top <= y - height / 2 and y + height / 2 <= band_top + band_height

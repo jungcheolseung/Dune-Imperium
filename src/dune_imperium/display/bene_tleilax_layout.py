@@ -61,8 +61,14 @@ TRACK_CELLS: Final[tuple[tuple[float, float], ...]] = (
     (80.5, 7.5),
     (88.0, 10.0),
 )
-# The setup spice sits on the fourth space's printed "1st / 2" hex.
-SPICE_POINT: Final = (65.0, 17.0)
+# The setup spice sits on the fourth space's printed "1st / 2" hexagon
+# [Immortality p. 4], drawn as the main board's bonus spice hexagon
+# (board_layout.MAKER_SPICE_SIZE): centre and size of the printed white
+# outline's outer edge, from half-maximum brightness edges on the 5551x3952
+# scan (x 3474.5..3784.5, y 541..811; 2026-09-27). 270/310 = 0.871 against
+# a regular flat-topped hexagon's sqrt(3)/2 = 0.866.
+SPICE_POINT: Final = (65.38, 17.11)
+SPICE_SIZE: Final = (5.58, 6.83)
 
 # The player disc (the same common token as the Score marker and the
 # Councilor token of the main board, ``board_layout.SEAT_DISC_SIZE``): the
@@ -93,6 +99,7 @@ def bene_tleilax_layout() -> dict[str, Any]:
         "track_band": list(TRACK_BAND),
         "track_cells": [[left, width] for left, width in TRACK_CELLS],
         "spice_point": list(SPICE_POINT),
+        "spice_size": list(SPICE_SIZE),
         "disc_size": DISC_SIZE,
         "aspect": SCAN_ASPECT,
         "track_start_discs": [list(point) for point in TRACK_START_DISCS],

@@ -99,7 +99,7 @@ def fresh_table(page) -> None:
         )
     check.ok(not rects(page, ".alliance-ring"), "no ring without a holder")
     check.ok(not rects(page, ".control-marker"), "no Control marker yet")
-    check.ok(not rects(page, ".bonus-spice"), "no bonus spice yet")
+    check.ok(not rects(page, ".board-stage .bonus-spice"), "no bonus spice yet")
     check.ok(not rects(page, ".maker-hooks-token"), "no Maker Hooks token yet")
 
 
@@ -228,7 +228,7 @@ def printed_places(page) -> None:
         "no Control mark left inside the hotspots",
     )
 
-    spice = {r["space"]: r for r in rects(page, ".bonus-spice")}
+    spice = {r["space"]: r for r in rects(page, ".board-stage .bonus-spice")}
     check.ok(
         set(spice) == {"deep_desert", "imperial_basin"}, "spice only where it waits"
     )
@@ -789,6 +789,111 @@ def commander_pieces(base: str, browser) -> None:
     context.close()
 
 
+# The Tleilaxu track's setup spice [Immortality p. 4] on the Bene Tleilax
+# scan: the same hexagon as a Maker space's bonus spice, over the fourth
+# space's printed "1st / 2" hexagon (catalog.bene_tleilax.layout).
+BT_SPICE_JS = """(stageSelector) => {
+  const stageNode = document.querySelector(stageSelector);
+  if (!stageNode) return null;
+  const stage = stageNode.getBoundingClientRect();
+  return [...stageNode.querySelectorAll(".bonus-spice")].map((node) => {
+    const r = node.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    return {
+      text: node.textContent.trim(),
+      clip: style.clipPath,
+      background: style.backgroundColor,
+      left: (r.left - stage.left) / stage.width * 100,
+      top: (r.top - stage.top) / stage.height * 100,
+      width: r.width / stage.width * 100,
+      height: r.height / stage.height * 100,
+      stagePx: stage.width,
+    };
+  });
+}"""
+
+
+def tleilaxu_spice(base: str, browser) -> None:
+    print("[6] the Tleilaxu track's setup spice (Immortality)")
+    context, page, rec = open_context(browser, "tleilaxu-spice")
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(
+            f"#seat-selects select[data-seat='{seat}']",
+            "human" if seat == 0 else "heuristic",
+        )
+    set_rule_options(page, "immortality")
+    page.fill("#opt-seed", "11")
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    board = page.evaluate("state.catalog.bene_tleilax")
+    if not board.get("image"):
+        print("  .. SKIP: no local Bene Tleilax scan, so no printed hexagon to cover")
+        context.close()
+        return
+    page.wait_for_function(
+        "[...document.querySelectorAll('img.bt-map')].every((i) => i.complete)"
+    )
+    layout = board["layout"]
+    (x, y), (width, height) = layout["spice_point"], layout["spice_size"]
+    want = [x - width / 2, y - height / 2, width, height]
+    maker_background = page.evaluate(
+        """() => { const probe = document.createElement("span");
+          probe.className = "bonus-spice"; document.body.appendChild(probe);
+          const colour = getComputedStyle(probe).backgroundColor;
+          probe.remove(); return colour; }"""
+    )
+
+    def hexagon(stage_selector: str, label: str, tolerance: float) -> None:
+        found = page.evaluate(BT_SPICE_JS, stage_selector) or []
+        if not check.ok(len(found) == 1, f"{label}: one spice hexagon", found):
+            return
+        spice = found[0]
+        check.ok(
+            box_matches(spice, want, tolerance),
+            f"{label}: it covers the printed hexagon's white outline",
+            (spice, want),
+        )
+        check.ok(
+            spice["text"] == str(page.evaluate("state.view.tleilaxu_track_spice"))
+            and spice["clip"].startswith("polygon(")
+            and spice["background"] == maker_background,
+            f"{label}: the Maker spaces' bonus spice hexagon with the amount",
+            spice,
+        )
+
+    check.ok(
+        page.evaluate("state.view.tleilaxu_track_spice") == 2,
+        "setup puts 2 spice on the track's fourth space [Immortality p. 4]",
+    )
+    # The column copy is a small stage: about a pixel of it in percent.
+    small = page.evaluate(
+        "document.querySelector('#market .bene-tleilax .bt-stage')"
+        ".getBoundingClientRect().width"
+    )
+    hexagon("#market .bene-tleilax .bt-stage", "the column", max(0.12, 100 / small))
+    check.ok(
+        page.evaluate(
+            "document.querySelectorAll('.bt-stage .bt-spice:not(.bonus-spice)').length"
+        )
+        == 0,
+        "no dark rounded pill is left",
+    )
+    page.click(".bt-open")
+    page.wait_for_selector("#bt-zoom:not([hidden])")
+    hexagon("#bt-zoom-body .bt-stage", "the enlarged board", TOLERANCE)
+    page.keyboard.press("Escape")
+    page.evaluate("state.view.tleilaxu_track_spice = 0; render();")
+    check.ok(
+        page.evaluate("document.querySelectorAll('.bt-stage .bonus-spice').length")
+        == 0,
+        "taken by the first to reach the space, it leaves the board",
+    )
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
@@ -806,6 +911,7 @@ def main() -> None:
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
             commander_pieces(base, browser)
+            tleilaxu_spice(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

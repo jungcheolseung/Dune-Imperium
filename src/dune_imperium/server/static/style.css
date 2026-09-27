@@ -1639,17 +1639,6 @@ kbd {
 .bt-hex, .bt-track-cell { position: absolute; }
 .bt-hex:hover, .bt-track-cell:hover { outline: 2px solid var(--glow); border-radius: 8px; }
 .bt-token { pointer-events: none; }
-.bt-spice {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.55);
-  border-radius: 4px;
-  padding: 0 0.2em;
-  font-size: 0.7rem;
-  color: #ffd27a;
-  white-space: nowrap;
-}
-.bt-spice .icon { height: 1.2em; }
 
 
 /* ---------- remote play: lobby, presence, host block (M14 slice 4) ---------- */
