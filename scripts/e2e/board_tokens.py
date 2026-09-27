@@ -671,7 +671,8 @@ UNITS_JS = """() => {
         background: getComputedStyle(piece).backgroundColor,
         fill: body ? getComputedStyle(body).fill : null,
         src: piece.getAttribute("src"),
-        loaded: piece.tagName === "IMG" ? piece.complete && piece.naturalWidth > 0 : null,
+        loaded: piece.tagName === "IMG"
+          ? piece.complete && piece.naturalWidth > 0 : null,
         pointer: getComputedStyle(piece).pointerEvents,
       };
     }),
@@ -832,11 +833,15 @@ def conflict_units(page) -> None:
                             >= max(t["rect"]["top"] + t["rect"]["height"]
                                    for t in troops) - 0.01
                             for f in figures)
-            check.ok(ahead, f"seat {seat}: the figures stand past the troops, toward the cross")
+            check.ok(
+                ahead,
+                f"seat {seat}: the figures stand past the troops, toward the cross",
+            )
         check.ok(
             group["role"] == "img"
             and all(
-                page.evaluate(f"phraseText('{{{kind}:{count}}}')") in (group["label"] or "")
+                page.evaluate(f"phraseText('{{{kind}:{count}}}')")
+                in (group["label"] or "")
                 for kind, count in wanted.items()
             )
             and all(
