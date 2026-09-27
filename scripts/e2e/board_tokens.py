@@ -12,7 +12,10 @@ browser really laid out with those tables, so a CSS or transform slip shows
 as a number. Reaching Control, hooks and an Alliance takes rounds of play, so
 the view is edited in the page for the geometry checks (the view is the only
 input of the render); the Reveal preview and the Intrigue pile are checked on
-the live game. A Bloodlines table then checks the Sardaukar Commanders that
+the live game. The units in the Conflict are a piece each in their seat's
+printed quadrant (`catalog.tracks.conflict_units`): a cube per troop, the
+seat's Agent figure, the neutral Commander and sandworm pictures, and no
+number. A Bloodlines table then checks the Sardaukar Commanders that
 stand on their setup spaces, the rulebook's figure on each frame's top-right
 corner [Bloodlines p. 3].
 """
@@ -616,6 +619,292 @@ def intrigue_pile(page) -> None:
     check.ok(len(titles) == 2, "two headed piles", titles)
 
 
+# The view fields behind each kind of unit in the Conflict (PublicPlayerView).
+UNIT_FIELDS = {
+    "troop": "troops_conflict",
+    "commander": "commanders_conflict",
+    "agent": "agent_in_conflict",
+    "sandworm": "sandworms_conflict",
+}
+# Seat by seat: a full row and a partial one, troops with sandworms, troops
+# with both kinds of figure, and nobody.
+CONFLICT_UNITS = [
+    {"troop": 12},
+    {"troop": 3, "sandworm": 2},
+    {"troop": 4, "commander": 2, "agent": 1},
+    {},
+]
+# The most one quadrant is likely to hold: it must shrink, and stay inside.
+CONFLICT_STRESS = {"troop": 12, "sandworm": 3, "commander": 3, "agent": 2}
+
+SET_UNITS_JS = """([units, fields]) => {
+  state.view.players.forEach((player, seat) => {
+    for (const [kind, field] of Object.entries(fields)) {
+      player[field] = (units[seat] || {})[kind] || 0;
+    }
+  });
+  render();
+}"""
+
+UNITS_JS = """() => {
+  const stage = document.querySelector(".board-stage").getBoundingClientRect();
+  const pct = (r) => ({
+    left: (r.left - stage.left) / stage.width * 100,
+    top: (r.top - stage.top) / stage.height * 100,
+    width: r.width / stage.width * 100,
+    height: r.height / stage.height * 100,
+  });
+  const units = document.querySelectorAll(".board-stage .conflict-units");
+  return [...units].map((wrap) => ({
+    seat: Number(wrap.dataset.seat),
+    scale: Number(wrap.dataset.scale),
+    role: wrap.getAttribute("role"),
+    label: wrap.getAttribute("aria-label"),
+    text: wrap.innerText,
+    pieces: [...wrap.querySelectorAll(".conflict-unit")].map((piece) => {
+      const body = piece.querySelector(".piece-body");
+      return {
+        seat: Number(piece.dataset.seat),
+        kind: piece.dataset.kind,
+        tag: piece.tagName.toLowerCase(),
+        rect: pct(piece.getBoundingClientRect()),
+        background: getComputedStyle(piece).backgroundColor,
+        fill: body ? getComputedStyle(body).fill : null,
+        src: piece.getAttribute("src"),
+        loaded: piece.tagName === "IMG" ? piece.complete && piece.naturalWidth > 0 : null,
+        pointer: getComputedStyle(piece).pointerEvents,
+      };
+    }),
+  }));
+}"""
+
+
+def rgb(hex_color: str) -> str:
+    value = hex_color.lstrip("#")
+    red, green, blue = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgb({red}, {green}, {blue})"
+
+
+def overlapping(pieces: list[dict], slack: float = 0.01) -> list[tuple[int, int]]:
+    """Pairs of pieces whose rectangles overlap by more than `slack`."""
+    pairs = []
+    for i, first in enumerate(pieces):
+        for j in range(i + 1, len(pieces)):
+            a, b = first["rect"], pieces[j]["rect"]
+            if (
+                a["left"] + a["width"] > b["left"] + slack
+                and b["left"] + b["width"] > a["left"] + slack
+                and a["top"] + a["height"] > b["top"] + slack
+                and b["top"] + b["height"] > a["top"] + slack
+            ):
+                pairs.append((i, j))
+    return pairs
+
+
+def inside_box(rect: dict, box: list[float], tolerance: float = 0.12) -> bool:
+    left, top, width, height = box
+    return (
+        rect["left"] >= left - tolerance
+        and rect["top"] >= top - tolerance
+        and rect["left"] + rect["width"] <= left + width + tolerance
+        and rect["top"] + rect["height"] <= top + height + tolerance
+    )
+
+
+def conflict_units(page) -> None:
+    print("[3d] units in the Conflict (edited view): a piece per unit, no numbers")
+    tracks = page.evaluate("state.catalog.tracks")
+    layout = tracks["conflict_units"] if "conflict_units" in tracks else None
+    colors = page.evaluate("SEAT_COLORS")
+    pictures = page.evaluate(
+        "({ commander: state.catalog.commander_token,"
+        " sandworm: (state.catalog.icons || {}).sandworm || null })"
+    )
+    page.evaluate(SET_UNITS_JS, [CONFLICT_UNITS, UNIT_FIELDS])
+    images_loaded(page)
+    shown = {group["seat"]: group for group in page.evaluate(UNITS_JS)}
+    boxes = layout["boxes"] if layout else [[0, 0, 0, 0]] * 4
+    padding = layout["padding"] if layout else 0
+
+    for seat, wanted in enumerate(CONFLICT_UNITS):
+        group = shown.get(seat)
+        if not wanted:
+            check.ok(group is None, f"seat {seat}: nothing in the Conflict, no pieces")
+            continue
+        if not check.ok(group is not None, f"seat {seat}: its units are drawn"):
+            continue
+        counts = {kind: 0 for kind in UNIT_FIELDS}
+        for piece in group["pieces"]:
+            counts[piece["kind"]] = counts.get(piece["kind"], 0) + 1
+        check.ok(
+            all(counts[kind] == wanted.get(kind, 0) for kind in UNIT_FIELDS)
+            and all(piece["seat"] == seat for piece in group["pieces"]),
+            f"seat {seat}: one piece per unit, by kind",
+            (counts, wanted),
+        )
+        check.ok(group["scale"] == 1, f"seat {seat}: full size", group["scale"])
+        box = boxes[seat]
+        check.ok(
+            all(inside_box(piece["rect"], box) for piece in group["pieces"]),
+            f"seat {seat}: every piece inside its quadrant",
+            [piece["rect"] for piece in group["pieces"]
+             if not inside_box(piece["rect"], box)][:3],
+        )
+        check.ok(
+            not overlapping(group["pieces"]),
+            f"seat {seat}: no two pieces overlap",
+            overlapping(group["pieces"])[:3],
+        )
+        check.ok(
+            all(piece["pointer"] == "none" for piece in group["pieces"]),
+            f"seat {seat}: the pieces never take a click",
+        )
+        troops = [p for p in group["pieces"] if p["kind"] == "troop"]
+        check.ok(
+            all(p["background"] == rgb(colors[seat]) for p in troops),
+            f"seat {seat}: troops are cubes in the seat's colour",
+            {p["background"] for p in troops},
+        )
+        cube = tracks["influence"]["cube_size"]
+        check.ok(
+            all(near(p["rect"]["width"], cube) for p in troops),
+            f"seat {seat}: a troop is an Influence cube's size ({cube})",
+            [round(p["rect"]["width"], 3) for p in troops][:3],
+        )
+        agents = [p for p in group["pieces"] if p["kind"] == "agent"]
+        check.ok(
+            all(p["tag"] == "svg" and p["fill"] == rgb(colors[seat]) for p in agents),
+            f"seat {seat}: an Agent is the seat's Agent figure",
+            [(p["tag"], p["fill"]) for p in agents],
+        )
+        for kind in ("commander", "sandworm"):
+            figures = [p for p in group["pieces"] if p["kind"] == kind]
+            if not figures:
+                continue
+            if pictures[kind]:
+                check.ok(
+                    all(p["src"] == pictures[kind] and p["loaded"] for p in figures),
+                    f"seat {seat}: a {kind} is its own picture, loaded",
+                    [(p["src"], p["loaded"]) for p in figures],
+                )
+            else:
+                print(f"  .. no local {kind} picture: the drawn piece is checked")
+        # The garrison side and the outer edge fill first: rows from the
+        # outer edge, each from the garrison side, a partial row innermost.
+        from_right = seat in (2, 3)
+        from_bottom = seat in (0, 3)
+        left, top, width, height = box
+        rows: dict[float, list[dict]] = {}
+        for piece in troops:
+            rows.setdefault(round(piece["rect"]["top"], 1), []).append(piece)
+        ordered = [rows[y] for y in sorted(rows, reverse=from_bottom)]
+        hugs = all(
+            near(
+                max(p["rect"]["left"] + p["rect"]["width"] for p in row)
+                if from_right
+                else min(p["rect"]["left"] for p in row),
+                left + width - padding if from_right else left + padding,
+            )
+            for row in ordered
+        )
+        outer = ordered[0][0]["rect"] if ordered else None
+        check.ok(
+            bool(ordered)
+            and hugs
+            and outer is not None
+            and near(
+                outer["top"] + outer["height"] if from_bottom else outer["top"],
+                top + height - padding if from_bottom else top + padding,
+            )
+            and [len(row) for row in ordered]
+            == sorted((len(row) for row in ordered), reverse=True),
+            f"seat {seat}: troops fill from the garrison side and the outer edge",
+            [len(row) for row in ordered],
+        )
+        figures = [p for p in group["pieces"] if p["kind"] != "troop"]
+        if figures and troops:
+            if from_bottom:
+                ahead = all(f["rect"]["top"] + f["rect"]["height"]
+                            <= min(t["rect"]["top"] for t in troops) + 0.01
+                            for f in figures)
+            else:
+                ahead = all(f["rect"]["top"]
+                            >= max(t["rect"]["top"] + t["rect"]["height"]
+                                   for t in troops) - 0.01
+                            for f in figures)
+            check.ok(ahead, f"seat {seat}: the figures stand past the troops, toward the cross")
+        check.ok(
+            group["role"] == "img"
+            and all(
+                page.evaluate(f"phraseText('{{{kind}:{count}}}')") in (group["label"] or "")
+                for kind, count in wanted.items()
+            )
+            and all(
+                page.evaluate(f"phraseText('{{{kind}}}')") not in (group["label"] or "")
+                for kind in UNIT_FIELDS
+                if kind not in wanted
+            ),
+            f"seat {seat}: its name counts every kind it has",
+            group["label"],
+        )
+        check.ok(
+            not any(ch.isdigit() for ch in group["text"]),
+            f"seat {seat}: no number drawn in the quadrant",
+            group["text"],
+        )
+    check.ok(
+        page.locator(".force-chip.deployed, .force-strength").count() == 0,
+        "no count chip and no strength badge in the Conflict",
+    )
+
+    # Crowded: the pieces shrink (not below half size) and stay inside.
+    stress = [{}, {}, {}, CONFLICT_STRESS]
+    page.evaluate(SET_UNITS_JS, [stress, UNIT_FIELDS])
+    images_loaded(page)
+    crowded = {group["seat"]: group for group in page.evaluate(UNITS_JS)}.get(3)
+    if check.ok(crowded is not None, "a crowded quadrant is drawn"):
+        counts = {}
+        for piece in crowded["pieces"]:
+            counts[piece["kind"]] = counts.get(piece["kind"], 0) + 1
+        check.ok(counts == CONFLICT_STRESS, "crowded: still a piece per unit", counts)
+        check.ok(
+            0.5 <= crowded["scale"] < 1,
+            "crowded: the pieces shrink, to half size at most",
+            crowded["scale"],
+        )
+        check.ok(
+            all(inside_box(piece["rect"], boxes[3]) for piece in crowded["pieces"]),
+            "crowded: every piece stays inside the quadrant",
+        )
+
+    # Without the pictures the drawn pieces take their places.
+    page.evaluate(
+        "state.catalog.commander_token = null;"
+        " if (state.catalog.icons) delete state.catalog.icons.sandworm;"
+    )
+    page.evaluate(SET_UNITS_JS, [CONFLICT_UNITS, UNIT_FIELDS])
+    drawn = {group["seat"]: group for group in page.evaluate(UNITS_JS)}
+    for seat, kind in ((2, "commander"), (1, "sandworm")):
+        group = drawn.get(seat) or {"pieces": []}
+        pieces = [p for p in group["pieces"] if p["kind"] == kind]
+        check.ok(
+            len(pieces) == CONFLICT_UNITS[seat][kind]
+            and all(p["tag"] in ("span", "svg") and p["src"] is None for p in pieces)
+            and all(inside_box(p["rect"], boxes[seat]) for p in pieces)
+            and all(p["rect"]["width"] > 0.5 for p in pieces),
+            f"without the picture a {kind} is drawn, counted and inside",
+            [(p["tag"], p["rect"]) for p in pieces],
+        )
+    page.evaluate(
+        """([pictures]) => {
+          state.catalog.commander_token = pictures.commander;
+          if (pictures.sandworm) state.catalog.icons.sandworm = pictures.sandworm;
+        }""",
+        [pictures],
+    )
+    page.evaluate(SET_UNITS_JS, [[{}, {}, {}, {}], UNIT_FIELDS])
+
+
 # Setup: "Place five of them on the game board, one on each of the following
 # spaces: Sardaukar, Dutiful Service, Deliver Supplies, High Council, and
 # Gather Support. Leave room on each space for an Agent" and a sixth on
@@ -800,6 +1089,7 @@ def main() -> None:
             printed_places(page)
             agent_pieces(page)
             spy_pieces(page)
+            conflict_units(page)
             intrigue_pile(page)
             failed = [r for r in rec.requests if r[3] >= 400]
             check.ok(not failed, "no failed requests", failed[:5])

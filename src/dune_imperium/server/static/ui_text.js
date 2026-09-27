@@ -133,9 +133,9 @@ const UI_TEXT = {
     "ko": "{commander} · 보드 {{count}} · 은행 {{bank}}",
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
-  "board.seat_conflict_troops": {
-    "ko": "좌석 {{seat}} · {conflict} 병력",
-    "en": "Seat {{seat}} · {conflict} troops"
+  "board.seat_conflict_units": {
+    "ko": "좌석 {{seat}} · {conflict}: {{units}}",
+    "en": "Seat {{seat}} · {conflict}: {{units}}"
   },
   "board.seat_garrison": {
     "ko": "좌석 {{seat}} · {garrison} {{count}}",
@@ -204,10 +204,6 @@ const UI_TEXT = {
   "board.tleilaxu_track": {
     "ko": "틀레이락스 트랙",
     "en": "Tleilaxu track"
-  },
-  "board.total_strength": {
-    "ko": "전투력 {{strength}}",
-    "en": "strength {{strength}}"
   },
   "board.unimplemented_badge": {
     "ko": "미구현 · 배치 불가",
@@ -364,10 +360,6 @@ const UI_TEXT = {
   "help.seat_mark_commander": {
     "ko": "{commander} — {garrison}·{conflict}·{supply}에 있는 수",
     "en": "{commander} — count at {garrison} · {conflict} · {supply}"
-  },
-  "help.seat_mark_conflict": {
-    "ko": "{conflict}에 배치한 유닛",
-    "en": "Units deployed to the {conflict}"
   },
   "help.seat_mark_first_player": {
     "ko": "{first_player}",

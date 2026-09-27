@@ -467,7 +467,7 @@ function renderBoardStage(board, view) {
 /* The Conflict card and the face-up CHOAM contracts drawn in their printed
    slots (catalog.tracks.conflict_slot / contract_slots, percent boxes).
    Every card is centred on its slot and drawn before the live markers so
-   the unit counts stay on top. The Conflict card fills its portrait frame;
+   the units stay on top. The Conflict card fills its portrait frame;
    the landscape contracts are drawn a little larger than their slot
    because the dark band around it is empty. Shaddam's set-aside Sardaukar
    contracts have no printed home on the board either; they are drawn on
@@ -655,6 +655,186 @@ function makerHooksToken(seat, layout) {
   return placeAt(token, x, y);
 }
 
+/* The kinds of unit a seat can have in the Conflict, in the order they are
+   laid out: troops, then the figures (Bloodlines' Sardaukar Commanders,
+   Duncan Idaho's Into the Fray Agent, sandworms). */
+const CONFLICT_UNIT_KINDS = ["troop", "commander", "agent", "sandworm"];
+
+/* Where each of a seat's units stands in its quadrant of the Conflict, one
+   piece per unit as on the table ("keep your deployed units in the quadrant
+   nearest to your garrison" [Main p. 10]). `counts` is {kind: n}, `box` the
+   quadrant (stage percent) and `layout` catalog.tracks.conflict_units.
+   Troops fill rows from the quadrant's outer edge (`fromBottom` for the
+   lower seats), each row from the garrison side (`fromRight` for the right
+   seats), so a partial row is the innermost; the figures follow in rows
+   toward the printed cross, Commanders first, then Agents, then sandworms,
+   every piece standing on its row's floor. Rows that do not fit shrink
+   every piece in steps of 0.05 down to layout.min_scale; past that the rows
+   close up (and may overlap) so that everything stays inside the box.
+   Pure: returns {scale, pieces: [{kind, x, y, w, h}]}, the top-left corner
+   and size of each piece in stage percent. */
+function conflictUnitLayout(counts, box, layout, { fromRight = false, fromBottom = false } = {}) {
+  const [left, top, width, height] = box;
+  const { gap, padding, sizes } = layout;
+  const innerWidth = width - 2 * padding;
+  const innerHeight = height - 2 * padding;
+  const rowsAt = (scale) => {
+    const rows = [];
+    let row = null;
+    for (const kind of CONFLICT_UNIT_KINDS) {
+      const [w, h] = sizes[kind].map((value) => value * scale);
+      const figure = kind !== "troop";
+      for (let index = 0; index < (counts[kind] || 0); index += 1) {
+        const wider = row ? row.width + gap + w : w;
+        if (!row || row.figure !== figure || wider > innerWidth + 1e-9) {
+          row = { figure, items: [], width: 0, height: 0 };
+          rows.push(row);
+        }
+        row.width = row.items.length ? row.width + gap + w : w;
+        row.height = Math.max(row.height, h);
+        row.items.push({ kind, w, h });
+      }
+    }
+    return rows;
+  };
+  const depth = (rows) =>
+    rows.reduce((sum, row) => sum + row.height, 0) + gap * Math.max(0, rows.length - 1);
+  let scale = 1;
+  let rows = rowsAt(scale);
+  while (depth(rows) > innerHeight + 1e-9 && scale > layout.min_scale + 1e-9) {
+    scale = Math.max(layout.min_scale, Math.round((scale - 0.05) * 100) / 100);
+    rows = rowsAt(scale);
+  }
+  /* Rows start `offset` in from the outer edge; closing up scales every
+     offset by one factor, the largest that keeps each row inside. */
+  const offsets = [];
+  let running = 0;
+  for (const row of rows) {
+    offsets.push(running);
+    running += row.height + gap;
+  }
+  let squeeze = 1;
+  rows.forEach((row, index) => {
+    if (offsets[index] > 0 && offsets[index] + row.height > innerHeight) {
+      squeeze = Math.min(squeeze, Math.max(0, innerHeight - row.height) / offsets[index]);
+    }
+  });
+  const pieces = [];
+  rows.forEach((row, index) => {
+    const start = offsets[index] * squeeze;
+    const rowTop = fromBottom
+      ? top + height - padding - start - row.height
+      : top + padding + start;
+    let along = 0;
+    for (const item of row.items) {
+      pieces.push({
+        kind: item.kind,
+        x: fromRight ? left + width - padding - along - item.w : left + padding + along,
+        y: rowTop + row.height - item.h,
+        w: item.w,
+        h: item.h,
+      });
+      along += item.w + gap;
+    }
+  });
+  return { scale, pieces };
+}
+
+/* One unit's piece: a troop is the seat's cube (the Influence cube's
+   colour, size and edge), an Agent the seat's Agent figure; a Sardaukar
+   Commander and a sandworm are the neutral pieces everyone shares, their
+   own pictures (catalog.commander_token, the Icon Guide's worm) or a drawn
+   shape without them. The quadrant says whose they are, as on the table. */
+function conflictUnitPiece(kind, seat) {
+  let piece;
+  if (kind === "agent") {
+    piece = seatPiece("agent", seat);
+    piece.removeAttribute("role");
+    piece.removeAttribute("aria-label");
+    piece.querySelector("title").remove();
+    piece.setAttribute("class", "conflict-unit");
+  } else if (kind === "troop") {
+    piece = document.createElement("span");
+    piece.className = "conflict-unit";
+    piece.style.background = SEAT_COLORS[seat];
+  } else {
+    const picture = kind === "commander" ? state.catalog.commander_token : iconUrl("sandworm");
+    if (picture) {
+      piece = document.createElement("img");
+      piece.src = picture;
+      piece.alt = "";
+      piece.draggable = false;
+      piece.className = "conflict-unit";
+    } else if (kind === "sandworm") {
+      piece = drawnSandworm();
+    } else {
+      piece = document.createElement("span");
+      piece.className = "conflict-unit drawn";
+    }
+  }
+  piece.setAttribute("aria-hidden", "true");
+  piece.dataset.seat = String(seat);
+  piece.dataset.kind = kind;
+  return piece;
+}
+
+/* A sandworm without the Icon Guide's picture: the worm's arch rising out
+   of the sand, in the plastic's grey with the dark edge of every piece. */
+function drawnSandworm() {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const worm = document.createElementNS(svgNs, "svg");
+  worm.setAttribute("class", "conflict-unit drawn");
+  worm.setAttribute("viewBox", "0 0 62 57");
+  worm.setAttribute("preserveAspectRatio", "none");
+  const body = document.createElementNS(svgNs, "path");
+  body.setAttribute(
+    "d",
+    "M3 55 C3 28 15 3 35 3 C52 3 60 16 60 31 L60 38 L47 38 L47 31" +
+      " C47 22 43 16 35 16 C24 16 17 30 17 55 Z",
+  );
+  worm.appendChild(body);
+  return worm;
+}
+
+/* A seat's units in its quadrant of the Conflict: no count, no badge — one
+   piece per unit (conflictUnitLayout), with the exact numbers in the
+   quadrant's name. The seat's strength is on the combat track. */
+function conflictUnits(seat, counts, layout) {
+  const box = layout.boxes[seat] || layout.boxes[0];
+  const [left, top, width, height] = box;
+  const [crossX, crossY] = layout.cross;
+  const { scale, pieces } = conflictUnitLayout(counts, box, layout, {
+    fromRight: left + width / 2 > crossX,
+    fromBottom: top + height / 2 > crossY,
+  });
+  const units = document.createElement("div");
+  units.className = "conflict-units";
+  units.dataset.seat = String(seat);
+  units.dataset.scale = String(scale);
+  const label = t("board.seat_conflict_units", {
+    seat,
+    units: CONFLICT_UNIT_KINDS.filter((kind) => counts[kind] > 0)
+      .map((kind) => phraseText(`{${kind}:${counts[kind]}}`))
+      .join(", "),
+  });
+  units.setAttribute("role", "img");
+  units.setAttribute("aria-label", label);
+  units.title = label;
+  units.style.left = `${left}%`;
+  units.style.top = `${top}%`;
+  units.style.width = `${width}%`;
+  units.style.height = `${height}%`;
+  for (const { kind, x, y, w, h } of pieces) {
+    const piece = conflictUnitPiece(kind, seat);
+    piece.style.left = `${((x - left) / width) * 100}%`;
+    piece.style.top = `${((y - top) / height) * 100}%`;
+    piece.style.width = `${(w / width) * 100}%`;
+    piece.style.height = `${(h / height) * 100}%`;
+    units.appendChild(piece);
+  }
+  return units;
+}
+
 /* Live markers on the printed tracks (catalog.tracks, percent of the
    scan): Influence cubes and Alliance rings on the Faction strips, VP
    tokens on the score column, strength tokens on the combat track, deployed
@@ -744,11 +924,6 @@ function renderTrackMarkers(stage, view) {
     placeAt(vpToken, tracks.victory_points.x + vpDx, vpY + vpDy);
     stage.appendChild(vpToken);
 
-    const units =
-      (player.troops_conflict || 0) +
-      (player.sandworms_conflict || 0) +
-      (player.commanders_conflict || 0) +
-      (player.agent_in_conflict || 0);
     /* Every seat's strength token is always on the track: in the framed
        square left of 1/11 at strength 0 (four tokens in a 2×2), on the
        printed number otherwise, and on its "+20" face beyond 20 (23 is
@@ -798,7 +973,7 @@ function renderTrackMarkers(stage, view) {
 
     /* Garrison count in the seat's bracketed circle (always shown), and
        the units deployed this round in the seat's quadrant of the central
-       field, with the strength [Main p. 10]. */
+       field [Main p. 10], a piece each. */
     const [gx, gy] = tracks.garrisons[seat] || tracks.garrisons[0];
     const garrison = document.createElement("div");
     garrison.className = "force-chip garrison";
@@ -821,59 +996,34 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(makerHooksToken(seat, tracks.maker_hooks));
     }
 
-    if (units > 0) {
-      const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
-      const deployed = document.createElement("div");
-      deployed.className = "force-chip deployed";
-      deployed.style.borderColor = color;
-      deployed.title = t("board.seat_conflict_troops", { seat });
-      deployed.appendChild(seatToken(seat, "seat-mark"));
-      if (player.troops_conflict) {
-        deployed.appendChild(
-          amount("troop", phraseText("{conflict} {troop}"), player.troops_conflict),
-        );
-      }
-      if (player.sandworms_conflict) {
-        deployed.appendChild(
-          amount("sandworm", phraseText("{sandworm}"), player.sandworms_conflict),
-        );
-      }
-      if (player.commanders_conflict) {
-        const commanders = document.createElement("span");
-        commanders.className = "commander-count";
-        commanders.title = t("board.commander_count", { count: player.commanders_conflict });
-        commanders.textContent = `C${player.commanders_conflict}`;
-        deployed.appendChild(commanders);
-      }
-      if (player.agent_in_conflict) {
-        deployed.appendChild(
-          agentAmount(`${phraseText("{agent}")} (Into the Fray)`, player.agent_in_conflict),
-        );
-      }
-      if (strength) {
-        const total = document.createElement("span");
-        total.className = "force-strength";
-        total.title = t("board.total_strength", { strength });
-        total.textContent = String(strength);
-        deployed.appendChild(total);
-      }
-      placeAt(deployed, qx, qy);
-      stage.appendChild(deployed);
+    const unitLayout = tracks.conflict_units;
+    const counts = {
+      troop: player.troops_conflict || 0,
+      commander: player.commanders_conflict || 0,
+      agent: player.agent_in_conflict || 0,
+      sandworm: player.sandworms_conflict || 0,
+    };
+    if (CONFLICT_UNIT_KINDS.some((kind) => counts[kind] > 0)) {
+      stage.appendChild(conflictUnits(seat, counts, unitLayout));
     }
 
     /* The seat to move sends and takes back its units right here: the same
-       count rows as in the panel, by the seat's quadrant (above the upper
-       seats, under the lower ones, clear of the units chip). */
+       count rows as in the panel, in the seat's quadrant against the
+       printed cross (under it for the lower seats, above it for the upper
+       ones), away from the outer edge where the troops start. */
     if (seat === state.viewSeat && !state.review && state.actions) {
       const families = countFamilies(state.actions.actions);
       const rows = [...families.entries()].filter(([id]) => FORCE_STEPPER_ACTIONS.has(id));
       if (rows.length) {
         const [sx, sy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
+        const [, crossY] = unitLayout.cross;
+        const below = sy > crossY;
         const control = document.createElement("div");
         control.className = "force-stepper";
         control.style.borderColor = color;
+        control.style.transform = below ? "translate(-50%, 0)" : "translate(-50%, -100%)";
         for (const [id, family] of rows) control.appendChild(countRow(id, family, true));
-        placeAt(control, sx, sy + (sy > 77 ? 4.6 : -4.6));
+        placeAt(control, sx, crossY + (below ? 0.4 : -0.4));
         stage.appendChild(control);
       }
     }

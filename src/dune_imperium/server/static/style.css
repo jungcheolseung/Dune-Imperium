@@ -622,8 +622,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .strength-token.pictured img { display: block; width: 100%; height: 100%; }
 .strength-token.pictured:hover { z-index: 4; }
-/* Per-seat force chips: the garrison count in the seat's circle and the
-   deployed units in its quadrant of the Conflict field. */
+/* The garrison count chip in the seat's circle. */
 .force-chip {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -641,12 +640,47 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .force-chip .icon { height: 1.3em; }
 .force-chip.garrison { border-style: dashed; }
-.force-strength {
-  margin-left: 0.15em;
-  padding: 0 0.35em;
-  border-radius: 5px;
-  background: var(--glow);
-  color: #1a140c;
+/* A seat's units in its quadrant of the Conflict field (board.js
+   conflictUnits): the box is the printed quadrant, and each piece is
+   placed and sized inline in percent of it. The pieces never take a click;
+   the quadrant's name (title) gives the exact counts. */
+.conflict-units { position: absolute; }
+.conflict-unit {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+}
+/* A troop is the seat's cube, exactly like an Influence cube (.track-cube):
+   flat colour, the dark edge a ring outside the box. */
+.conflict-unit[data-kind="troop"] {
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+/* The seat's Agent figure (seatPiece), as on a space (.agent-token). */
+.conflict-unit[data-kind="agent"] {
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+/* The neutral figures: their own pictures with the dark hairline every
+   piece on the scan gets (.commander-piece), no seat colour. */
+.conflict-unit[data-kind="commander"], .conflict-unit[data-kind="sandworm"] {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
+}
+/* Without the pictures: a Commander as its drawn mark on a space
+   (.commander-piece.drawn), a worm as a drawn arch, in the plastic's grey. */
+.conflict-unit[data-kind="commander"].drawn {
+  border: 1px solid #111;
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  filter: none;
+}
+.conflict-unit[data-kind="sandworm"].drawn { overflow: visible; filter: none; }
+.conflict-unit[data-kind="sandworm"].drawn path {
+  fill: #b9b4ae;
+  stroke: #111;
+  stroke-width: 1.2px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 /* Cards in their printed slots: width is set inline as a percent of the
    stage, so they scale with the scan like the hotspots do. */

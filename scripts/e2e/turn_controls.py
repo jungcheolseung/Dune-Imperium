@@ -41,6 +41,32 @@ def play_until(page, wanted_js: str, choose_js: str, limit: int = 200) -> bool:
     return False
 
 
+def troop_pieces(page) -> int:
+    """The viewing seat's troop cubes standing in its Conflict quadrant."""
+    return page.evaluate(
+        "document.querySelectorAll(`.board-stage .conflict-unit"
+        "[data-seat='${state.viewSeat}'][data-kind='troop']`).length"
+    )
+
+
+def stepper_by_the_cross(page) -> dict:
+    """Where the board's stepper stands against the printed cross."""
+    return page.evaluate(
+        """() => {
+          const stage = document.querySelector('.board-stage').getBoundingClientRect();
+          const r = document.querySelector('.force-stepper').getBoundingClientRect();
+          const [, crossY] = state.catalog.tracks.conflict_units.cross;
+          const [, quadrantY] = state.catalog.tracks.conflict_quadrants[state.viewSeat];
+          return {
+            top: (r.top - stage.top) / stage.height * 100,
+            bottom: (r.bottom - stage.top) / stage.height * 100,
+            crossY,
+            below: quadrantY > crossY,
+          };
+        }"""
+    )
+
+
 def of_id(page, action_id: str) -> list[dict]:
     return page.evaluate(
         f"state.actions.actions.filter((a) => a.action_id === '{action_id}')"
@@ -78,6 +104,16 @@ def deployment(page, rec) -> None:
     )
     board = page.locator(".force-stepper .count-row[data-action='deploy_troops']")
     check.ok(board.count() == 1, "the same row stands by the seat's units on the board")
+    # Against the printed cross on the seat's side, clear of the outer edge
+    # where the seat's troop cubes start.
+    spot = stepper_by_the_cross(page)
+    check.ok(
+        (spot["crossY"] < spot["top"] < spot["crossY"] + 1)
+        if spot["below"]
+        else (spot["crossY"] - 1 < spot["bottom"] < spot["crossY"]),
+        "the board's stepper stands against the cross, on the seat's side",
+        spot,
+    )
     most = max(d["count"] for d in deploys)
     shown = (
         "[...document.querySelectorAll("
@@ -118,6 +154,11 @@ def deployment(page, rec) -> None:
         (before, after),
     )
     check.ok(rec.count("POST", "/actions") == posts + 1, "with a single request")
+    check.ok(
+        troop_pieces(page) == after[0],
+        "a troop cube stands in the seat's quadrant for each troop sent",
+        (troop_pieces(page), after[0]),
+    )
 
     print("[2] taking units back")
     withdraws = of_id(page, "withdraw_troops")
@@ -133,6 +174,11 @@ def deployment(page, rec) -> None:
         page.evaluate(f"[{SEAT}.troops_conflict, {SEAT}.combat_strength]")
         == [after[0] - least, back["after"]],
         "one troop came back, to the previewed strength",
+    )
+    check.ok(
+        troop_pieces(page) == after[0] - least,
+        "and its cube left the quadrant",
+        (troop_pieces(page), after[0] - least),
     )
 
 
