@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
 from dune_imperium.server.catalog import build_catalog
@@ -854,22 +855,27 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
 
 
 def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
-    """Sections share one namespace in the client's lookup(); overlapping
-    ids are legal content (a Contract named after a space) but each one
-    must be a conscious, pinned decision because the client resolves space
-    ids explicitly against the spaces section to disambiguate."""
+    """An id is unique only inside its section. An overlap is legal content
+    (a Contract named after the space it pays for), but pytest cannot see
+    the client that has to keep the two apart, and this pin once said it
+    did while the Commander strip showed the Deliver Supplies contract for
+    the space (docs/lessons.md 2026-09-27). The client's guard is core.js:
+    lookup() without a kind reports a shared id as a console error, and
+    scripts/e2e/catalog_kinds.py walks every client path that holds one of
+    the pinned kinds. A new overlap needs its own lines in that script."""
 
     catalog = build_catalog()
-    sections = [
-        "cards",
-        "intrigue",
-        "contracts",
-        "conflicts",
-        "leaders",
-        "spaces",
-        "skills",
-        "tech",
-    ]
+    # Every section the client searches, read from core.js itself: a hand
+    # copy here would silently stop covering a section added there.
+    core_js = (
+        Path(__file__).resolve().parents[2] / "src/dune_imperium/server/static/core.js"
+    ).read_text()
+    listed = re.search(r"const LOOKUP_SECTIONS = \[(.*?)\];", core_js, re.S)
+    assert listed is not None
+    sections = re.findall(r'"(\w+)"', listed.group(1))
+    assert len(sections) == 9 and all(
+        isinstance(catalog[section], dict) for section in sections
+    )
     overlaps: dict[tuple[str, str], set[str]] = {}
     for index, first in enumerate(sections):
         first_section = catalog[first]
@@ -881,6 +887,33 @@ def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
             if shared:
                 overlaps[(first, second)] = shared
     assert overlaps == {("contracts", "spaces"): {"deliver_supplies"}}
+
+
+def test_catalog_card_pools_share_no_id() -> None:
+    """Starting, Reserve, Imperium and Tleilaxu cards fill the one `cards`
+    section by bare id, and the client strips each instance prefix before
+    it looks a card up, so a shared id would give every copy of one card
+    the other's name, picture and text (the last write wins, silently)."""
+
+    from dune_imperium.content.immortality.tleilaxu import (
+        RECLAIMED_FORCES,
+        TLEILAXU_CARDS_BY_ID,
+    )
+
+    pools = {
+        "starting": set(STARTING_CARDS_BY_ID),
+        "reserve": {stack.card.card_id for stack in RESERVE_STACKS},
+        "imperium": set(IMPERIUM_CARDS_BY_ID),
+        "tleilaxu": {*TLEILAXU_CARDS_BY_ID, RECLAIMED_FORCES.card.card_id},
+    }
+    names = list(pools)
+    shared = {
+        (first, second): pools[first] & pools[second]
+        for index, first in enumerate(names)
+        for second in names[index + 1 :]
+        if pools[first] & pools[second]
+    }
+    assert shared == {}
 
 
 def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:

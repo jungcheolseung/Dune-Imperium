@@ -116,37 +116,86 @@ function prettify(id) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function baseId(instanceId) {
+/* The catalog section an instance prefix names. */
+const INSTANCE_KINDS = {
+  imperium: "cards",
+  reserve: "cards",
+  tleilaxu: "cards",
+  intrigue: "intrigue",
+  skill: "skills",
+};
+
+/* An engine instance id as the catalog entry it is a copy of: the bare id,
+   and the section its prefix names ("contract:x" a contract, "imperium:x:0"
+   a card). A bare id's kind is null: only the caller knows it. */
+function instanceRef(instanceId) {
   const value = String(instanceId);
   const starter = value.match(/^player:\d+:starter:(.+):\d+$/);
-  if (starter) return starter[1];
-  const shared = value.match(/^(?:imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$/);
-  if (shared) return shared[1];
+  if (starter) return { id: starter[1], kind: "cards" };
+  const shared = value.match(/^(imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$/);
+  if (shared) return { id: shared[2], kind: INSTANCE_KINDS[shared[1]] };
   const contract = value.match(/^contract:(.+)$/);
-  if (contract) return contract[1];
-  return value;
+  if (contract) return { id: contract[1], kind: "contracts" };
+  return { id: value, kind: null };
 }
 
-function lookup(id) {
+function baseId(instanceId) {
+  return instanceRef(instanceId).id;
+}
+
+/* The sections an id of unknown kind is searched in, in this order. */
+const LOOKUP_SECTIONS = [
+  "cards",
+  "intrigue",
+  "contracts",
+  "conflicts",
+  "leaders",
+  "spaces",
+  "objectives",
+  "skills",
+  "tech",
+];
+const ambiguousReported = new Set();
+
+/* An id is unique only inside its catalog section: `deliver_supplies` is
+   both a board space and the Uprising contract that pays for visiting it
+   (tests/server/test_catalog.py pins every such overlap). A caller that
+   knows what it holds passes `kind`, the section; one that holds an
+   instance id uses entryOf(), which reads the kind off the prefix. Only an
+   id of unknown kind is searched section by section, and one that two
+   sections share is an error: the first hit would be a guess (the
+   Commander strip once showed the Deliver Supplies contract for the space,
+   docs/lessons.md 2026-09-27). The e2e scripts fail on a console error. */
+function lookup(id, kind) {
   const c = state.catalog;
   if (!c) return null;
-  return (
-    c.cards[id] ||
-    c.intrigue[id] ||
-    c.contracts[id] ||
-    c.conflicts[id] ||
-    c.leaders[id] ||
-    c.spaces[id] ||
-    c.objectives[id] ||
-    (c.skills && c.skills[id]) ||
-    (c.tech && c.tech[id]) ||
-    null
-  );
+  if (kind) return (c[kind] && c[kind][id]) || null;
+  const found = LOOKUP_SECTIONS.filter((section) => c[section] && c[section][id]);
+  if (found.length > 1 && !ambiguousReported.has(id)) {
+    ambiguousReported.add(id);
+    console.error(`lookup("${id}"): the id is in ${found.join(" and ")}; pass the kind`);
+  }
+  return found.length ? c[found[0]][id] : null;
 }
 
+/* The entry an instance id (or a bare id of the given kind) is a copy of. */
+function entryOf(instanceId, kind) {
+  const ref = instanceRef(instanceId);
+  return lookup(ref.id, kind || ref.kind);
+}
+
+/* One argument only: callers map ids through it (`ids.map(nameOf)`), which
+   passes the index second. A kind-bearing caller uses spaceName() or
+   lookup(id, kind). */
 function nameOf(instanceId) {
-  const entry = lookup(baseId(instanceId));
+  const entry = entryOf(instanceId);
   return entry ? entry.name : prettify(baseId(instanceId));
+}
+
+/* A board space's name: a space id never resolves through another kind. */
+function spaceName(spaceId) {
+  const entry = lookup(spaceId, "spaces");
+  return entry ? entry.name : prettify(spaceId);
 }
 
 /* An observation post has no printed name: it is called after the spaces
@@ -178,16 +227,38 @@ function researchSpaceName(spaceId, withBonus) {
   return bonus ? `${name} (${phraseText(bonus)})` : name;
 }
 
+/* The section a provenance segment names for the segment after it
+   ("board:arrakeen", "contract:contract:espionage_ii", "imperium:x:0"). */
+const PROVENANCE_KINDS = {
+  board: "spaces",
+  contract: "contracts",
+  agent_card: "cards",
+  imperium: "cards",
+  reserve: "cards",
+  tleilaxu: "cards",
+  starter: "cards",
+  intrigue: "intrigue",
+  skill: "skills",
+  tech: "tech",
+};
+
 /* A provenance string ("imperium:high_priority_travel:1",
    "round:9:player:1:agent_card:imperium:priority_contracts:0") names the
    card or space behind an event somewhere among its segments; the rest is
-   bookkeeping. */
+   bookkeeping. Only a segment whose kind the segment before it names is
+   looked up: the engine's own words sit between them, and a word can also
+   be an id ("…:acquire:imperium:interstellar_trade:0:…" is Interstellar
+   Trade, not the Acquire contract). A single bare segment ("espionage",
+   "forbidden_weapons") is the whole source and is searched by kind. */
 function sourceName(value) {
-  for (const part of String(value).split(":")) {
-    const entry = lookup(part);
+  const parts = String(value).split(":");
+  for (let index = 1; index < parts.length; index += 1) {
+    const kind = PROVENANCE_KINDS[parts[index - 1]];
+    const entry = kind ? lookup(parts[index], kind) : null;
     if (entry) return entry.name;
   }
-  return null;
+  const entry = parts.length === 1 ? lookup(parts[0]) : null;
+  return entry ? entry.name : null;
 }
 
 /* What one engine value reads as on screen, given the field that holds it
@@ -213,6 +284,10 @@ function fieldText(key, value, siblings = {}) {
   return fieldWord(key, text, siblings);
 }
 
+/* The engine's names for a field that holds a space: space_id,
+   control_space_id, space_ids, from_space, to_space. */
+const SPACE_FIELD = /(?:^|_)space_ids?$|^(?:from|to)_space$/;
+
 function fieldWord(key, text, siblings) {
   if (key === "post_id" || key.endsWith("_post_id")) return postName(text);
   if (/^c\d+r\d+$/.test(text)) {
@@ -227,7 +302,9 @@ function fieldWord(key, text, siblings) {
   /* An acquired card goes to the discard pile; TERMS.discard is the verb. */
   if (key === "destination" && text === "discard") return phraseText("{discard_pile}");
   const isId = key.endsWith("_id") || key.endsWith("_ids");
-  const entry = lookup(baseId(text));
+  /* A space field holds a board space (or a Feyd track space, below),
+     never the contract that shares its id. */
+  const entry = entryOf(text, SPACE_FIELD.test(key) ? "spaces" : undefined);
   if (isId && entry) return entry.name;
   if ((key === "from_space" || key === "to_space" || key === "space_id") && text in FEYD_TRACK_LABELS) {
     return phraseText(FEYD_TRACK_LABELS[text]);
@@ -266,9 +343,13 @@ function describeChance(decisionId) {
   return cause ? `${what} (${cause})` : what;
 }
 
-function cardDetail(instanceId) {
-  const id = baseId(instanceId);
-  const card = state.catalog && state.catalog.cards[id];
+/* A card-like entry's tooltip line; "" for another kind (a space, a
+   contract, a leader). `kind` as for lookup(). */
+function cardDetail(instanceId, kind) {
+  const ref = instanceRef(instanceId);
+  const section = kind || ref.kind;
+  const find = (name) => (!section || section === name ? lookup(ref.id, name) : null);
+  const card = find("cards");
   if (card) {
     const bits = [];
     if (card.cost !== null) bits.push(t("core.card_cost", { cost: card.cost }));
@@ -281,16 +362,16 @@ function cardDetail(instanceId) {
     }
     return bits.join(" · ");
   }
-  const intrigue = state.catalog && state.catalog.intrigue[id];
+  const intrigue = find("intrigue");
   if (intrigue && intrigue.navigation) return phraseText("{navigation}");
   if (intrigue) {
     return intrigue.timings.length
       ? t("core.intrigue_timings", { timings: timingWords(intrigue.timings) })
       : "";
   }
-  const tile = state.catalog && state.catalog.tech && state.catalog.tech[id];
+  const tile = find("tech");
   if (tile) return t("core.tech_tile_cost", { cost: tile.cost });
-  const skill = state.catalog && state.catalog.skills && state.catalog.skills[id];
+  const skill = find("skills");
   if (skill) return phraseText("{commander_skill}");
   return "";
 }
@@ -307,12 +388,13 @@ function timingWords(timings) {
   return timings.map((timing) => (TIMING_KEYS[timing] ? t(TIMING_KEYS[timing]) : timing)).join("/");
 }
 
-function chip(instanceId, entryOverride) {
+/* `kind` as for lookup(): a caller holding a bare space id says "spaces". */
+function chip(instanceId, kind) {
   const span = document.createElement("span");
   span.className = "tag";
-  const entry = entryOverride || lookup(baseId(instanceId));
+  const entry = entryOf(instanceId, kind);
   span.textContent = entry ? entry.name : prettify(baseId(instanceId));
-  const detail = cardDetail(instanceId);
+  const detail = cardDetail(instanceId, kind);
   if (detail) span.title = detail;
   if (entry) {
     span.classList.add("clickable");
@@ -909,7 +991,7 @@ function refreshPinnedLeaderPopover() {
   const view = state.view;
   const player = view && view.players.find((p) => p.player === pinnedLeaderSeat);
   const faceId = player && (player.leader_face_id || player.leader_id);
-  const entry = faceId ? lookup(faceId) : null;
+  const entry = faceId ? lookup(faceId, "leaders") : null;
   const anchor = document.querySelector(
     `.seat[data-seat="${pinnedLeaderSeat}"] .leader-name`,
   );

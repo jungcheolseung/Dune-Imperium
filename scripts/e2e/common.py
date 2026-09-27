@@ -121,6 +121,16 @@ def server(*extra: str):
         process.stop()
 
 
+# Every Recorder of this run, so that Check.finish() can fail on a JS error in
+# any page, including in a script that never looks at rec.js_errors itself.
+RECORDERS: list[Recorder] = []
+
+# A resource the server did not deliver is a request failure, not a JS error;
+# scripts that care about requests check them, and some cut them on purpose
+# (races.py, recovery.py kill the server mid-game).
+NETWORK_FAILURES = ("Failed to load resource", "net::ERR_")
+
+
 class Recorder:
     """Per-context timeline of requests, console lines and page errors."""
 
@@ -129,6 +139,7 @@ class Recorder:
         self.events: list[tuple[float, str, str]] = []
         self.js_errors: list[str] = []
         self.requests: list[tuple[float, str, str, int | None]] = []
+        RECORDERS.append(self)
 
     def attach(self, page) -> None:
         page.on("console", lambda m: self._console(m))
@@ -250,6 +261,18 @@ class Check:
         return bool(condition)
 
     def finish(self) -> None:
+        # A console error or an uncaught exception in any page fails the run,
+        # whether or not the script asked. The client reports some bugs only
+        # there: a kind-blind catalog lookup of an id two sections share is a
+        # console.error (core.js lookup(), docs/lessons.md 2026-09-27). A
+        # script that provokes one on purpose clears it after its own check.
+        errors = [
+            (recorder.name, error)
+            for recorder in RECORDERS
+            for error in recorder.js_errors
+            if not any(marker in error for marker in NETWORK_FAILURES)
+        ]
+        self.ok(not errors, "no JS errors in any page (common.Check)", errors[:5])
         print(f"\n{self.passed} passed, {len(self.failed)} failed")
         for label in self.failed:
             print(f"  FAILED: {label}")

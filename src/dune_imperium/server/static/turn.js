@@ -53,7 +53,7 @@ function matchesPick(action, pick = state.pick) {
 }
 
 function isGraftCard(instanceId) {
-  const entry = lookup(baseId(instanceId));
+  const entry = entryOf(instanceId);
   return Boolean(entry && entry.graft);
 }
 
@@ -143,7 +143,7 @@ function pickStep(ref, entry, anchor) {
     note(
       t("turn.no_route", {
         from: part === "spaceId" ? cards : entry ? entry.name : nameOf(ref),
-        to: part === "spaceId" ? (entry ? entry.name : nameOf(ref)) : nameOf(current.spaceId),
+        to: part === "spaceId" ? (entry ? entry.name : spaceName(ref)) : spaceName(current.spaceId),
       })
     );
     if (entry) pinPopover(entry, anchor);
@@ -280,7 +280,7 @@ function openPlacementChooser(candidates) {
   pop.classList.remove("hover");
   const title = document.createElement("div");
   title.className = "popover-title";
-  title.textContent = `${pickedCardNames(pick)} → ${nameOf(pick.spaceId)}`;
+  title.textContent = `${pickedCardNames(pick)} → ${spaceName(pick.spaceId)}`;
   pop.appendChild(title);
   for (const action of candidates) pop.appendChild(placementOptionItem(action, candidates));
   placePopover(pop, anchor, 340);
@@ -298,7 +298,9 @@ function pickStepNode(number, label, ref, part) {
   step.disabled = !ref || state.busy;
   step.append(`${number} ${label} · `);
   const value = document.createElement("strong");
-  value.textContent = ref ? nameOf(ref) : t("turn.choose");
+  /* The step names what it holds: step ② a board space, the others cards. */
+  const name = part === "spaceId" ? spaceName : nameOf;
+  value.textContent = ref ? name(ref) : t("turn.choose");
   step.appendChild(value);
   if (ref) {
     step.append(" ✕");

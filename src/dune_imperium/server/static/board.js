@@ -241,7 +241,7 @@ function controlMarker(seat, spaceId, box) {
   marker.style.width = `${width}%`;
   marker.style.height = `${height}%`;
   const title = document.createElementNS(svgNs, "title");
-  title.textContent = t("board.control_seat_space", { seat, name: nameOf(spaceId) });
+  title.textContent = t("board.control_seat_space", { seat, name: spaceName(spaceId) });
   const pennant = document.createElementNS(svgNs, "polygon");
   pennant.setAttribute("points", `0,0 100,0 100,100 50,${dip} 0,100`);
   pennant.setAttribute("fill", SEAT_COLORS[seat]);
@@ -315,7 +315,7 @@ function bonusSpiceToken(spaceId, count, point) {
   const token = document.createElement("span");
   token.className = "bonus-spice";
   token.dataset.space = spaceId;
-  token.title = `${nameOf(spaceId)} · ${t("board.bonus_spice", { count })}`;
+  token.title = `${spaceName(spaceId)} · ${t("board.bonus_spice", { count })}`;
   token.style.width = `${width}%`;
   token.style.height = `${height}%`;
   const amountText = document.createElement("span");
@@ -926,7 +926,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   row.dataset.space = spaceId;
 
   const title = document.createElement("div");
-  title.appendChild(chip(spaceId, entry));
+  title.appendChild(chip(spaceId, "spaces"));
   const flags = [];
   if (entry.combat) flags.push(t("board.flag_combat_space"));
   if (entry.maker) flags.push(phraseText("{maker}"));
@@ -987,7 +987,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
 /* One card as its printed image (or a text card without the cache), lit
    when a legal action references it; a click applies or focuses. */
 function visualCard(instanceId, options = {}) {
-  const entry = options.entry || lookup(baseId(instanceId));
+  const entry = options.entry || entryOf(instanceId);
   const card = document.createElement("button");
   card.type = "button";
   card.className = "vcard" + (options.className ? ` ${options.className}` : "");
@@ -1205,7 +1205,7 @@ function renderMarket() {
       empty.textContent = t("board.no_commanders_on_board");
       row.appendChild(empty);
     }
-    for (const spaceId of spaces) row.appendChild(chip(spaceId));
+    for (const spaceId of spaces) row.appendChild(chip(spaceId, "spaces"));
     box.appendChild(row);
     market.appendChild(box);
     cardStrip(
@@ -1353,7 +1353,7 @@ function renderBeneTleilax(market, view) {
     rowIds,
     "",
     (id) => {
-      const entry = lookup(baseId(id));
+      const entry = entryOf(id);
       const specimens = entry && entry.specimens !== undefined ? entry.specimens : null;
       return {
         className: id === "reclaimed_forces" ? "reclaimed" : "",

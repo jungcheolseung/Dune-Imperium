@@ -103,7 +103,7 @@ function renderSeats() {
     const head = document.createElement("div");
     head.className = "seat-head";
     const faceId = player.leader_face_id || player.leader_id;
-    const leaderEntry = faceId ? lookup(faceId) : null;
+    const leaderEntry = faceId ? lookup(faceId, "leaders") : null;
     if (leaderEntry && leaderEntry.image) {
       const image = document.createElement("img");
       image.className = "leader-thumb";
@@ -127,7 +127,9 @@ function renderSeats() {
     nameLine.appendChild(seatMark);
     const leaderName = document.createElement("span");
     leaderName.className = "leader-name";
-    leaderName.textContent = player.leader_id ? nameOf(faceId) : t("panels.leader_unset");
+    leaderName.textContent = player.leader_id
+      ? (leaderEntry ? leaderEntry.name : prettify(faceId))
+      : t("panels.leader_unset");
     /* A cut-short name reads whole in the hover card, or in the title. */
     if (!leaderEntry) leaderName.title = leaderName.textContent;
     if (leaderEntry) {
@@ -212,7 +214,7 @@ function renderSeats() {
     if (player.control_space_ids.length) {
       flags.push(
         tNode("panels.control_spaces", {
-          spaces: player.control_space_ids.map(nameOf).join("/"),
+          spaces: player.control_space_ids.map(spaceName).join("/"),
         }),
       );
     }
@@ -276,7 +278,7 @@ function renderSeats() {
       }
       detail.appendChild(line);
     }
-    const agents = player.agent_locations.map(nameOf).join(", ");
+    const agents = player.agent_locations.map(spaceName).join(", ");
     if (agents) seatLine(detail, t("panels.agents_placed_label"), agents);
 
     const zones = document.createElement("div");
@@ -756,7 +758,9 @@ function turnLine(entry) {
 function seatLeaderName(seat) {
   const player = state.view && state.view.players[seat];
   const leaderFace = player && (player.leader_face_id || player.leader_id);
-  return leaderFace ? nameOf(leaderFace) : t("common.seat", { seat });
+  const entry = leaderFace ? lookup(leaderFace, "leaders") : null;
+  if (entry) return entry.name;
+  return leaderFace ? prettify(leaderFace) : t("common.seat", { seat });
 }
 
 function turnCard(group, glowFrom) {
@@ -790,7 +794,7 @@ function turnCard(group, glowFrom) {
     where.append(
       agentPieceIcon(phraseText("{agent}")),
       " ",
-      targets.spaces.map(nameOf).join(", "),
+      targets.spaces.map(spaceName).join(", "),
     );
     head.appendChild(where);
   }

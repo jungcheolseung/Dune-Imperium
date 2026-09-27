@@ -333,12 +333,15 @@ function logTargets(group) {
   const consider = (value) => {
     if (typeof value !== "string") return;
     /* An event may name a card both by kind (card_id) and by the exact
-       copy (instance_id); one image per printed card is enough. */
-    const key = state.catalog.spaces[value] ? value : baseId(value);
+       copy (instance_id); one image per printed card is enough. A bare
+       space id and a card sharing it ("contract:deliver_supplies") are two
+       targets, so a space is kept apart in `seen`. */
+    const space = state.catalog.spaces[value];
+    const key = space ? `space:${value}` : baseId(value);
     if (seen.has(key)) return;
     seen.add(key);
-    if (state.catalog.spaces[value]) spaces.push(value);
-    else if (lookup(key)) cards.push(value);
+    if (space) spaces.push(value);
+    else if (entryOf(value)) cards.push(value);
   };
   for (const entry of group.entries) {
     if (entry.type !== "action") continue;
@@ -707,7 +710,11 @@ function combatResultLine(seat) {
   const bundle = latestCombatResolution(seat);
   if (!bundle) return null;
   const own = bundle.rewards.find((reward) => reward.player === seat);
-  const vars = { name: nameOf(bundle.conflictId), ranks: combatResultRanksText(bundle) };
+  const conflict = lookup(bundle.conflictId, "conflicts");
+  const vars = {
+    name: conflict ? conflict.name : prettify(bundle.conflictId),
+    ranks: combatResultRanksText(bundle),
+  };
   let key = "render.combat_result_line";
   if (!own) {
     vars.reward = t("render.combat_result_unranked");
@@ -905,7 +912,7 @@ function actionPreviewEntries(action) {
   }
   for (const [key, value] of Object.entries(args)) {
     if (key === "space_id" || typeof value !== "string") continue;
-    const entry = lookup(baseId(value));
+    const entry = entryOf(value);
     if (entry && !entries.includes(entry)) entries.push(entry);
   }
   return entries;
@@ -1175,7 +1182,7 @@ function boughtThisReveal() {
 
 function acquireCostNode(action) {
   const ref = actionRefs(action)[0];
-  const entry = ref ? lookup(baseId(ref)) : null;
+  const entry = ref ? entryOf(ref) : null;
   if (!entry) return null;
   const cost = document.createElement("span");
   cost.className = "acquire-cost";
