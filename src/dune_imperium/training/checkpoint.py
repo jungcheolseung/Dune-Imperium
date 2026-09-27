@@ -31,7 +31,7 @@ import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import torch
 
@@ -41,11 +41,14 @@ from dune_imperium.adapters.action_codec import (
     ActionTemplate,
 )
 from dune_imperium.adapters.observation_encoding import (
+    CONTRACT_IDS,
+    CONTRACT_SEGMENTS,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
 )
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
 from dune_imperium.training.network import (
     MlpSlotsNetwork,
     PolicyValueNetwork,
@@ -307,6 +310,68 @@ def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
     return network, info
 
 
+# The Contract identities of observation v16-v20, in column order. v21 swapped
+# four of them in place (the four Rise of Ix tiles out, Spice Refinery I/II
+# and the second Espionage I and Harvest 3+ in [Main p. 16]); a layout names
+# segments, not identities, so without this table an older file's columns
+# for the removed tiles would feed the new ones. Files before v16 had only
+# the first 20.
+_CONTRACT_IDS_BEFORE_V21: Final = (
+    "acquire",
+    "arrakeen_i",
+    "arrakeen_ii",
+    "deliver_supplies",
+    "espionage_i",
+    "espionage_ii",
+    "harvest_3",
+    "harvest_3_contract",
+    "harvest_4",
+    "harvest_4_contract",
+    "heighliner_i",
+    "heighliner_ii",
+    "heighliner_iii",
+    "high_council_i",
+    "high_council_ii",
+    "immediate",
+    "research_station_i",
+    "research_station_ii",
+    "sardaukar_i",
+    "sardaukar_ii",
+    "bloodlines_deliver_supplies",
+    "bloodlines_earn_any_alliance",
+    "bloodlines_harvest_3",
+    "bloodlines_harvest_4",
+    "bloodlines_high_council",
+    "bloodlines_immediate",
+    "bloodlines_secrets",
+    "bloodlines_spice_refinery",
+)
+
+
+def _relink_contract_columns(
+    column_source: torch.Tensor, old_columns: Mapping[str, tuple[int, int]]
+) -> None:
+    """Point a pre-v21 file's Contract columns at their identities.
+
+    A new tile starts at zero; a second copy of a printed tile takes the
+    first copy's column, since the two are the same tile to play.
+    """
+
+    old_index = {
+        contract_id: index for index, contract_id in enumerate(_CONTRACT_IDS_BEFORE_V21)
+    }
+    for segment in OBSERVATION_SEGMENTS:
+        if segment.name not in CONTRACT_SEGMENTS or segment.name not in old_columns:
+            continue
+        offset, length = old_columns[segment.name]
+        for index, contract_id in enumerate(CONTRACT_IDS):
+            printed = CONTRACTS_BY_ID[contract_id].copy_of or contract_id
+            source = old_index.get(printed)
+            column_source[segment.offset + index] = (
+                offset + source if source is not None and source < length else -1
+            )
+
+
 def _key(entry: Sequence[Any]) -> TemplateKey:
     action_id, arguments = entry
     return (str(action_id), tuple((str(name), value) for name, value in arguments))
@@ -344,6 +409,8 @@ def _migrate(
         column_source[segment.offset : segment.offset + shared] = torch.arange(
             offset, offset + shared
         )
+    if int(document["observation_version"]) < 21:
+        _relink_contract_columns(column_source, old_columns)
     old_observation_size = int(document["observation_size"])
     if sum(length for _, length in old_columns.values()) != old_observation_size:
         raise ValueError("checkpoint layout does not match its observation size")
@@ -361,6 +428,9 @@ def _migrate(
         )
     kept_actions = int((action_source >= 0).sum())
     kept_columns = int((column_source >= 0).sum())
+    # A second Contract copy reads its first copy's column: count old
+    # columns once, so the ones nothing reads any more show as dropped.
+    read_columns = len(set(column_source[column_source >= 0].tolist()))
     report = MigrationReport(
         from_codec_version=int(document["action_codec_version"]),
         to_codec_version=ACTION_CODEC_VERSION,
@@ -371,7 +441,7 @@ def _migrate(
         actions_dropped=len(old_index) - kept_actions,
         observation_kept=kept_columns,
         observation_new=OBSERVATION_SIZE - kept_columns,
-        observation_dropped=old_observation_size - kept_columns,
+        observation_dropped=old_observation_size - read_columns,
     )
     return migrated, optimizer_state, report
 

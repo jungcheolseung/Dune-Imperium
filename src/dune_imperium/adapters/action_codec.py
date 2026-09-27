@@ -72,7 +72,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # the recall-first when the box resolves [Main pp. 9, 11, 20]
 # (decline_agent_card_spy, every catalog), instead of only fizzling at the
 # turn's end.
-ACTION_CODEC_VERSION = 110
+# v111 (2026-09-27): the standard Contract set drops the four Rise of Ix
+# tiles (Espionage II, Harvest 3+/4+ with a Contract, Heighliner III) for
+# Spice Refinery I and II and the second copies of Espionage I and Harvest
+# 3+ [Main p. 16]; the per-Contract templates follow the new instance ids.
+ACTION_CODEC_VERSION = 111
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

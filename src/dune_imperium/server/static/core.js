@@ -228,7 +228,7 @@ function researchSpaceName(spaceId, withBonus) {
 }
 
 /* The section a provenance segment names for the segment after it
-   ("board:arrakeen", "contract:contract:espionage_ii", "imperium:x:0"). */
+   ("board:arrakeen", "contract:contract:espionage_i", "imperium:x:0"). */
 const PROVENANCE_KINDS = {
   board: "spaces",
   contract: "contracts",

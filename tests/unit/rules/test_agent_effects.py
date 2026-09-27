@@ -5660,7 +5660,7 @@ def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
             "contract:arrakeen_ii",
             "contract:deliver_supplies",
             "contract:espionage_i",
-            "contract:espionage_ii",
+            "contract:espionage_i_copy_2",
         ),
     )
     state = GameState(

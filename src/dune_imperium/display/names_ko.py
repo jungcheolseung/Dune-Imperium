@@ -211,14 +211,10 @@ _CONTRACTS: Final[dict[str, str]] = {
     "bloodlines_spice_refinery": "스파이스 정제소",
     "deliver_supplies": "보급품 배송",
     "espionage_i": "첩보 활동 I",
-    "espionage_ii": "첩보 활동 II",
     "harvest_3": "채취 3+",
-    "harvest_3_contract": "채취 3+",
     "harvest_4": "채취 4+",
-    "harvest_4_contract": "채취 4+",
     "heighliner_i": "하이라이너 I",
     "heighliner_ii": "하이라이너 II",
-    "heighliner_iii": "하이라이너 III",
     "high_council_i": "원로회 I",
     "high_council_ii": "원로회 II",
     "immediate": "즉시",
@@ -226,6 +222,8 @@ _CONTRACTS: Final[dict[str, str]] = {
     "research_station_ii": "연구 기지 II",
     "sardaukar_i": "사다우카 I",
     "sardaukar_ii": "사다우카 II",
+    "spice_refinery_i": "스파이스 정제소 I",
+    "spice_refinery_ii": "스파이스 정제소 II",
 }
 
 

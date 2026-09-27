@@ -5,6 +5,15 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.contracts import (
+    CONTRACT_SOURCES,
+    CONTRACTS_BY_ID,
+    ContractCondition,
+    ContractConditionKind,
+    ContractDefinition,
+    ContractReward,
+)
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -489,12 +498,27 @@ def test_acquiring_the_spice_must_flow_completes_acquire_contract() -> None:
     ]
 
 
-def test_contract_reward_can_take_a_new_contract_without_retroactive_completion() -> (
-    None
-):
+def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No tile in play prints "+1 Contract": that reward is the Rise of Ix
+    # tiles' jumpstart [Main p. 16], out of scope. ContractReward keeps it,
+    # so a tile of that shape is patched in to keep its path tested.
+    jumpstart = ContractDefinition(
+        card=CardDefinition(
+            card_id="test_jumpstart",
+            name="Espionage (1 Solari, Contract)",
+            sources=CONTRACT_SOURCES,
+        ),
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE, target="espionage"
+        ),
+        reward=ContractReward(solari=1, contracts=1),
+    )
+    monkeypatch.setitem(CONTRACTS_BY_ID, "test_jumpstart", jumpstart)
     state = _agent_contract_state(
         "player:0:starter:diplomacy:0",
-        "contract:espionage_ii",
+        "contract:test_jumpstart",
     )
     state = replace(
         state,
@@ -519,7 +543,7 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
     ).state
     owner = taken.players[0]
 
-    assert owner.completed_contract_ids == ("contract:espionage_ii",)
+    assert owner.completed_contract_ids == ("contract:test_jumpstart",)
     assert owner.active_contract_ids == ("contract:high_council_i",)
     assert not legal_contract_completion_actions(taken, 0)
 

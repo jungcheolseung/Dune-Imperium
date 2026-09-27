@@ -55,7 +55,10 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 20
+# v21 (2026-09-27): the Contract identity universe swaps the four Rise of
+# Ix tiles for the standard ones they stood in for [Main p. 16]; the kept
+# tiles keep their index and the length is unchanged (docs/rl-environment.md).
+OBSERVATION_VERSION: Final = 21
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -69,6 +72,16 @@ PERSONAL_CARD_IDS: Final = (
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
 INTRIGUE_IDS: Final = tuple(INTRIGUE_CARDS_BY_ID)
 CONTRACT_IDS: Final = tuple(CONTRACTS_BY_ID)
+# The segments with one column per CONTRACT_IDS identity, in that order
+# (checkpoint migration re-links them by identity across versions).
+CONTRACT_SEGMENTS: Final = frozenset(
+    {"face_up_contracts", "sardaukar_contracts", "contract_trash"}
+    | {
+        f"seat{seat}_{kind}_contracts"
+        for seat in range(4)
+        for kind in ("active", "completed")
+    }
+)
 CONFLICT_IDS: Final = tuple(conflict.card.card_id for conflict in CONFLICTS)
 BATTLE_CARD_IDS: Final = (
     *CONFLICT_IDS,

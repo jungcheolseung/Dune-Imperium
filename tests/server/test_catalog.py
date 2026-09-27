@@ -629,7 +629,9 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     assert korean(cards, "steersman") == "조타수"
     assert korean(cards, "treacherous_maneuver") == "기만적인 계책"
     assert korean(contracts, "arrakeen_i") == "아라킨 I"
-    assert korean(contracts, "harvest_3_contract") == "채취 3+"
+    assert korean(contracts, "spice_refinery_i") == "스파이스 정제소 I"
+    # A second copy of a tile reads as the first.
+    assert korean(contracts, "harvest_3_copy_2") == "채취 3+"
     assert korean(conflicts, "skirmish_crysknife") == "소규모 전투 (크리스나이프)"
     assert korean(leaders, "shaddam_corrino_iv") == "샤담 코리노 4세"
     # Bloodlines: its Skirmish's wild battle icon [Bloodlines p. 5], the

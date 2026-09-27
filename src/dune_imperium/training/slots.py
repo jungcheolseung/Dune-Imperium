@@ -64,7 +64,7 @@ SLOT_VERSION: Final = 1
 # The observation the table was written against. A new observation version
 # must revisit the table (and bump SLOT_VERSION if any row changes); a test
 # fails until it does.
-SLOT_OBSERVATION_VERSION: Final = 20
+SLOT_OBSERVATION_VERSION: Final = 21
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

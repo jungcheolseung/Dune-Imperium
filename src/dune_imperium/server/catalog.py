@@ -373,7 +373,10 @@ def build_catalog(
                 "reward": contract_reward_text(definition.reward),
                 "reward_ko": contract_reward_text_ko(definition.reward),
                 "immediate": definition.completes_immediately,
-                "image": _image_url("contract", contract_id, image_files),
+                # A second copy shows the first copy's face.
+                "image": _image_url(
+                    "contract", definition.copy_of or contract_id, image_files
+                ),
             }
             for contract_id, definition in CONTRACTS_BY_ID.items()
         },
@@ -501,6 +504,15 @@ def _add_korean(catalog: JsonObject, korean_images: dict[str, str]) -> None:
             entry = entries[entry_id]
             assert isinstance(entry, dict), entry_id
             entry["name_ko"] = name
+    # A second copy of a Contract tile reads as the first.
+    contracts = catalog["contracts"]
+    assert isinstance(contracts, dict)
+    for contract_id, definition in CONTRACTS_BY_ID.items():
+        first = definition.copy_of and contracts[definition.copy_of]
+        if isinstance(first, dict) and "name_ko" in first:
+            copy = contracts[contract_id]
+            assert isinstance(copy, dict), contract_id
+            copy["name_ko"] = first["name_ko"]
 
     def visit(node: JsonValue) -> None:
         if isinstance(node, dict):

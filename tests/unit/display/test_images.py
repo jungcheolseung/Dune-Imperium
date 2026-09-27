@@ -32,7 +32,11 @@ def _all_content_keys() -> set[tuple[str, str]]:
     keys: list[tuple[str, str]] = []
     keys += [("imperium", entry.card.card_id) for entry in IMPERIUM_CARDS]
     keys += [("intrigue", entry.card.card_id) for entry in INTRIGUE_CARDS]
-    keys += [("contract", contract.card.card_id) for contract in CONTRACTS]
+    keys += [
+        ("contract", contract.card.card_id)
+        for contract in CONTRACTS
+        if contract.copy_of is None
+    ]
     keys += [("conflict", conflict.card.card_id) for conflict in CONFLICTS]
     keys += [("location", space.space_id) for space in BOARD_SPACES]
     for leader in LEADERS:
@@ -162,7 +166,8 @@ def test_resolve_prefers_korean_scans_and_drops_missing_files(tmp_path: Path) ->
 
 def test_required_image_keys_cover_every_displayable_content_id() -> None:
     keys = required_image_keys()
-    # 57 imperium (54 + 3 promo) + 39 intrigue + 20 contracts + 16 conflicts
+    # 57 imperium (54 + 3 promo) + 39 intrigue + 18 contract faces (20
+    # tiles; Espionage I and Harvest 3+ have two copies) + 16 conflicts
     # + 22 spaces + 10 leader faces + 7 starting + 2 reserve.
     # Bloodlines: 44 cards plus the promo Ruthless Leadership, 12 Twisted
     # Intrigue, 10 Navigation, eight Leaders, Tuek's Sietch, the Tech
@@ -173,7 +178,7 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # Bloodlines' eight contract tokens (CHOAM Module).
     # Immortality's Research Station overlay tile.
     assert len(keys) == (
-        175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1 + 8 + 1
+        173 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1 + 8 + 1
     )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()

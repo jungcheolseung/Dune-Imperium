@@ -13,11 +13,14 @@ from dune_imperium.adapters.action_codec import (  # noqa: E402
     ActionCodec,
 )
 from dune_imperium.adapters.observation_encoding import (  # noqa: E402
+    CONTRACT_IDS,
+    CONTRACT_SEGMENTS,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
 )
 from dune_imperium.cli.checkpoint import main as checkpoint_main  # noqa: E402
+from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
     SelfPlayRunner,
@@ -26,6 +29,7 @@ from dune_imperium.training import (  # noqa: E402
 )
 from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
+    _CONTRACT_IDS_BEFORE_V21,
     ARCH_CHECKPOINT_FORMAT,
     CHECKPOINT_FORMAT,
     load_checkpoint,
@@ -71,7 +75,11 @@ def _forge_older(
 
     The template at ``drop_action`` and the column ``drop_column`` (inside the
     first segment) are removed as if they never existed, a template the
-    current code does not know is appended, and the versions go down by one.
+    current code does not know is appended, and the codec version goes down
+    by one. The observation version stays: the smaller size already forces
+    the migration, and a version before 21 would also re-link the Contract
+    columns by the v20 identities, which this file (the current network)
+    does not have.
     """
 
     forged = dict(document)
@@ -104,7 +112,7 @@ def _forge_older(
     forged["observation_layout"] = layout
     forged["observation_size"] = OBSERVATION_SIZE - 1
     forged["action_codec_version"] = ACTION_CODEC_VERSION - 1
-    forged["observation_version"] = OBSERVATION_VERSION - 1
+    forged["observation_version"] = OBSERVATION_VERSION
     optimizer = document["optimizer_state"]
     if optimizer is not None:
         moved = {}
@@ -304,6 +312,50 @@ def test_a_format_1_mismatch_is_refused_and_stamping_fixes_it(tmp_path: Path) ->
     )
     with pytest.raises(ValueError, match="catalog"):
         stamp_checkpoint(odd)
+
+
+def test_a_v20_file_reads_its_contract_columns_by_identity(tmp_path: Path) -> None:
+    # Observation v21 put Spice Refinery I/II and the second Espionage I and
+    # Harvest 3+ where four Rise of Ix tiles were [Main p. 16]. A v20 file's
+    # Contract columns follow the v20 identities: a kept tile keeps its
+    # column, a second copy reads its first copy's, a new tile starts at zero.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=3, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    v20 = list(_CONTRACT_IDS_BEFORE_V21)
+    mark = {contract_id: float(index + 1) for index, contract_id in enumerate(v20)}
+    state = dict(document["state_dict"])
+    weight = state["body.0.weight"].clone()
+    segments = [s for s in OBSERVATION_SEGMENTS if s.name in CONTRACT_SEGMENTS]
+    assert len(segments) == 11
+    for segment in segments:
+        for index, contract_id in enumerate(v20):
+            weight[:, segment.offset + index] = mark[contract_id]
+    state["body.0.weight"] = weight
+    document["state_dict"] = state
+    document["observation_version"] = 20
+    document["action_codec_version"] = ACTION_CODEC_VERSION - 1
+    older = tmp_path / "v20.pt"
+    torch.save(document, older)
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.observation_new, report.observation_dropped) == (2 * 11, 4 * 11)
+    first_layer = migrated.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    for segment in segments:
+        for index, contract_id in enumerate(CONTRACT_IDS):
+            column = first[:, segment.offset + index]
+            printed = CONTRACTS_BY_ID[contract_id].copy_of or contract_id
+            expected = mark.get(printed, 0.0)
+            assert torch.all(column == expected), (segment.name, contract_id)
 
 
 def test_checkpoint_cli_inspects_stamps_and_migrates(

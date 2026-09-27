@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 20
+    assert OBSERVATION_VERSION == 21
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -241,6 +241,14 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # and everything at decision 690, both at the changed deploy_troops offer;
 # master's encoder (59e7d46 line) and this one agreed on every vector of all
 # five games, and no observation or encoder file changed.
+# Re-pinned on 2026-09-27 for observation v21 (the four Rise of Ix Contract
+# tiles out, Spice Refinery I/II and the second Espionage I and Harvest 3+
+# in [Main p. 16]): only everything moved. Traced against HEAD (6d615a5) in
+# a worktree, its first difference is decision 617, where the same face-up
+# slot holds contract:espionage_i_copy_2 instead of contract:espionage_ii;
+# the four vectors there are byte for byte the old ones (the kept tiles keep
+# their index), and the game then differs by the reward. The encoder file
+# changed only its version constant.
 _GOLDEN_DIGESTS = {
     "base": ("2d50b45756e1958cd6b83c1433839c9f228e344edc14bffa88f44c0d8f8ab0c2", 2572),
     "choam": ("7a0d28ab59a1721b19d38c3a4eee18add65bc1924a64ac252b8eef90e9609095", 2972),
@@ -249,8 +257,8 @@ _GOLDEN_DIGESTS = {
         2772,
     ),
     "everything": (
-        "ab8f81804639898f312acff9dbd2cc2e41c29592a786ff87fd5b601dffbf3756",
-        3044,
+        "8ba6167a80afe0ca491f4a2ec4d028aa6a09045dac7422bfce0870b2555b0ae2",
+        3012,
     ),
     "draft": ("a5e5cdaa2b4382445f48f93b5beb721f59e880a1c99deff6c0896c9cf30369ba", 2476),
 }

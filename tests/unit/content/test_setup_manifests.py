@@ -14,6 +14,7 @@ from dune_imperium.content.uprising.conflicts import (
 from dune_imperium.content.uprising.contracts import (
     BLOODLINES_CONTRACTS,
     CONTRACTS,
+    CONTRACTS_BY_ID,
     STANDARD_CONTRACTS,
     ContractCondition,
     ContractConditionKind,
@@ -580,6 +581,77 @@ def test_standard_contract_manifest_has_twenty_unique_physical_tiles() -> None:
     )
 
 
+def test_standard_contracts_are_the_twenty_uprising_tiles_not_rise_of_ix() -> None:
+    """"20 Contract tokens" plus "10 Contract tokens with contrasting backs",
+    "Used only with the RISE OF IX expansion" to "jumpstart the completion of
+    contracts" [Main p. 16]. The BGG card inventory's Contracts tab says
+    which is which and counts the copies; every Rise of Ix tile prints
+    "+1 Contract" and no standard tile does."""
+
+    faces = Counter(
+        contract.copy_of or contract.card.card_id for contract in STANDARD_CONTRACTS
+    )
+    assert faces == {
+        "acquire": 1,
+        "arrakeen_i": 1,
+        "arrakeen_ii": 1,
+        "deliver_supplies": 1,
+        "espionage_i": 2,
+        "harvest_3": 2,
+        "harvest_4": 1,
+        "heighliner_i": 1,
+        "heighliner_ii": 1,
+        "high_council_i": 1,
+        "high_council_ii": 1,
+        "immediate": 1,
+        "research_station_i": 1,
+        "research_station_ii": 1,
+        "sardaukar_i": 1,
+        "sardaukar_ii": 1,
+        "spice_refinery_i": 1,
+        "spice_refinery_ii": 1,
+    }
+    assert not any(contract.reward.contracts for contract in STANDARD_CONTRACTS)
+    for contract in STANDARD_CONTRACTS:
+        if contract.copy_of is not None:
+            first = CONTRACTS_BY_ID[contract.copy_of]
+            assert (contract.card.name, contract.condition, contract.reward) == (
+                first.card.name,
+                first.condition,
+                first.reward,
+            )
+
+
+def test_contracts_kept_from_observation_v20_keep_their_index() -> None:
+    """The observation's Contract segments follow this order, so the tiles
+    that replaced the four Rise of Ix ones took their places and nothing else
+    moved (observation v21); training/checkpoint.py re-links a v20 file's
+    columns by identity from its own copy of the old order."""
+
+    assert [contract.card.card_id for contract in STANDARD_CONTRACTS] == [
+        "acquire",
+        "arrakeen_i",
+        "arrakeen_ii",
+        "deliver_supplies",
+        "espionage_i",
+        "espionage_i_copy_2",  # v20: espionage_ii
+        "harvest_3",
+        "harvest_3_copy_2",  # v20: harvest_3_contract
+        "harvest_4",
+        "spice_refinery_i",  # v20: harvest_4_contract
+        "heighliner_i",
+        "heighliner_ii",
+        "spice_refinery_ii",  # v20: heighliner_iii
+        "high_council_i",
+        "high_council_ii",
+        "immediate",
+        "research_station_i",
+        "research_station_ii",
+        "sardaukar_i",
+        "sardaukar_ii",
+    ]
+
+
 def test_bloodlines_contract_manifest_adds_eight_tokens_to_the_same_bank() -> None:
     # Eight contract tokens shuffle into the existing contracts with the
     # CHOAM Module [Bloodlines p. 2]; one copy each (BGG card inventory).
@@ -685,25 +757,27 @@ def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards()
             ContractCondition(ContractConditionKind.BOARD_SPACE, target="espionage"),
             ContractReward(solari=3),
         ),
-        "espionage_ii": (
+        "espionage_i_copy_2": (
             ContractCondition(ContractConditionKind.BOARD_SPACE, target="espionage"),
-            ContractReward(solari=1, contracts=1),
+            ContractReward(solari=3),
         ),
         "harvest_3": (
             ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
             ContractReward(solari=3),
         ),
-        "harvest_3_contract": (
+        "harvest_3_copy_2": (
             ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-            ContractReward(contracts=1),
+            ContractReward(solari=3),
         ),
         "harvest_4": (
             ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
             ContractReward(solari=4),
         ),
-        "harvest_4_contract": (
-            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
-            ContractReward(solari=2, contracts=1),
+        "spice_refinery_i": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE, target="spice_refinery"
+            ),
+            ContractReward(personal_cards=2),
         ),
         "heighliner_i": (
             ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
@@ -713,9 +787,11 @@ def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards()
             ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
             ContractReward(troops=2),
         ),
-        "heighliner_iii": (
-            ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
-            ContractReward(solari=3, contracts=1),
+        "spice_refinery_ii": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE, target="spice_refinery"
+            ),
+            ContractReward(water=1),
         ),
         "high_council_i": (
             ContractCondition(

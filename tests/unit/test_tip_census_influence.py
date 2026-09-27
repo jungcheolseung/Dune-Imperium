@@ -440,55 +440,63 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # Influence events by source, Spies placed, used, recalled and trashed,
     # Infiltrate offers and the Reveal means were checked against the games'
     # own events.
-    game = tip_census.play(_spec(True, 177), ("influence",))
-    seat1 = game["seats"][1]
-    assert seat1["infl.sources"] == {
-        "visit:starter": 5,
-        "visit:bought": 3,
-        "board": 1,
-        "reveal_card": 2,
-        "reveal_gain": 2,
-        "combat_reward": 2,
-        "agent_card": 1,
-        "intrigue": 2,
-        "leader": 1,
-    }
-    assert seat1["infl.gained"] == 19
-    assert seat1["infl.lost"] == 5
-    assert seat1["infl.fremen2_round"] == 6
-    assert seat1["infl.hooks_round"] is None
-    assert seat1["lands.reveal_cards"] == pytest.approx(3.8)
-    assert seat1["lands.reveal_persuasion"] == pytest.approx(4.7)
-    assert seat1["spy.placed"] == 8
-    assert seat1["spy.used_gather"] == 1
-    assert seat1["spy.recalled_other"] == 1
-    assert seat1["spy.trashed"] == 1
-    assert seat1["spy.on_board_end"] == 2
-    assert seat1["spy.use_lag"] == pytest.approx(1.0)
-    assert seat1["spy.infiltrate_offered"] == 3
-    assert seat1["spy.infiltrate_taken"] == 3
-
-    game = tip_census.play(_spec(True, 161), ("influence",))
-    seat0 = game["seats"][0]
-    assert seat0["infl.sources"] == {
+    # Re-pinned 2026-09-27 for observation v21 (the four Rise of Ix Contract
+    # tiles out, the four standard ones in [Main p. 16]): seed 177 seat 1 and
+    # seed 161 seat 0 no longer fill their roles, and no seat of seeds 1-200
+    # does. Seeds 201-600 give seed 240 seat 2 as the only seat in the first
+    # role (with Reveal-gain sources and Maker Hooks too) and seed 287 seat 3
+    # as the first in the second (a fractional Spy use lag, 4/7). The
+    # Influence gained and lost, Spies placed and trashed and Infiltrates
+    # taken were recounted from the games' own events.
+    game = tip_census.play(_spec(True, 240), ("influence",))
+    seat2 = game["seats"][2]
+    assert seat2["infl.sources"] == {
         "visit:starter": 4,
         "visit:bought": 2,
-        "reveal_card": 1,
+        "board": 1,
+        "reveal_gain": 2,
+        "combat_reward": 5,
+        "agent_card": 1,
+        "intrigue": 1,
+    }
+    assert seat2["infl.gained"] == 16
+    assert seat2["infl.lost"] == 1
+    assert seat2["infl.fremen2_round"] == 4
+    assert seat2["infl.hooks_round"] == 5
+    assert seat2["lands.reveal_cards"] == pytest.approx(3.7)
+    assert seat2["lands.reveal_persuasion"] == pytest.approx(4.7)
+    assert seat2["spy.placed"] == 9
+    assert seat2["spy.used_gather"] == 3
+    assert seat2["spy.recalled_other"] == 2
+    assert seat2["spy.trashed"] == 1
+    assert seat2["spy.on_board_end"] == 1
+    assert seat2["spy.use_lag"] == pytest.approx(1.4)
+    assert seat2["spy.infiltrate_offered"] == 4
+    assert seat2["spy.infiltrate_taken"] == 2
+
+    game = tip_census.play(_spec(True, 287), ("influence",))
+    seat3 = game["seats"][3]
+    assert seat3["infl.sources"] == {
+        "visit:starter": 6,
+        "visit:bought": 2,
+        "reveal_card": 2,
+        "combat_reward": 1,
+        "intrigue": 1,
         "acquisition": 1,
     }
-    assert seat0["infl.gained"] == 8
-    assert seat0["infl.lost"] == 1
-    assert seat0["infl.fremen2_round"] == 7
-    assert seat0["infl.hooks_round"] == 2
-    assert seat0["lands.reveal_cards"] == pytest.approx(3.9)
-    assert seat0["lands.reveal_persuasion"] == pytest.approx(6.0)
-    assert seat0["spy.placed"] == 11
-    assert seat0["spy.used_gather"] == 2
-    assert seat0["spy.recalled_other"] == 3
-    assert seat0["spy.on_board_end"] == 3
-    assert seat0["spy.use_lag"] == pytest.approx(0.8)
-    assert seat0["spy.infiltrate_offered"] == 4
-    assert seat0["spy.infiltrate_taken"] == 3
+    assert seat3["infl.gained"] == 13
+    assert seat3["infl.lost"] == 4
+    assert seat3["infl.fremen2_round"] == 5
+    assert seat3["infl.hooks_round"] == 5
+    assert seat3["lands.reveal_cards"] == pytest.approx(3.7)
+    assert seat3["lands.reveal_persuasion"] == pytest.approx(6.1)
+    assert seat3["spy.placed"] == 9
+    assert seat3["spy.used_gather"] == 5
+    assert seat3["spy.recalled_other"] == 0
+    assert seat3["spy.on_board_end"] == 2
+    assert seat3["spy.use_lag"] == pytest.approx(4 / 7)
+    assert seat3["spy.infiltrate_offered"] == 3
+    assert seat3["spy.infiltrate_taken"] == 2
 
 
 def test_subversive_advisor_credits_the_visit_and_the_card_effect(

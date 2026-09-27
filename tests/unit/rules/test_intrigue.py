@@ -2676,7 +2676,7 @@ def test_leverage_needs_spice_gained_this_turn() -> None:
     churning = replace(
         _turn_state(churned),
         config=RulesetConfig(choam_module=True),
-        face_up_contract_ids=("contract:heighliner_iii",),
+        face_up_contract_ids=("contract:heighliner_ii",),
     )
     engine = UprisingRulesEngine()
     assert legal_intrigue_play_actions(churning, 0) == (_play(churning, card),)
@@ -2689,10 +2689,10 @@ def test_leverage_needs_spice_gained_this_turn() -> None:
         DomainAction(
             action_id="take_contract",
             actor=0,
-            arguments=(("instance_id", "contract:heighliner_iii"),),
+            arguments=(("instance_id", "contract:heighliner_ii"),),
         ),
     ).state
-    assert "contract:heighliner_iii" in taken.players[0].active_contract_ids
+    assert "contract:heighliner_ii" in taken.players[0].active_contract_ids
     assert taken.intrigue_discard == (card,)
 
 
@@ -3119,7 +3119,7 @@ def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:
     state = replace(
         _combat_state(fighter, _fighter(1, 1)),
         config=RulesetConfig(choam_module=True),
-        face_up_contract_ids=("contract:immediate", "contract:heighliner_iii"),
+        face_up_contract_ids=("contract:immediate", "contract:heighliner_ii"),
         contract_bank=(),
     )
     engine = UprisingRulesEngine()

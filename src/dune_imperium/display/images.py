@@ -132,7 +132,12 @@ def required_image_keys() -> tuple[ImageKey, ...]:
     keys: list[ImageKey] = []
     keys += [("imperium", entry.card.card_id) for entry in IMPERIUM_CARDS]
     keys += [("intrigue", entry.card.card_id) for entry in INTRIGUE_CARDS]
-    keys += [("contract", contract.card.card_id) for contract in CONTRACTS]
+    # A second copy of a tile shows the first copy's face.
+    keys += [
+        ("contract", contract.card.card_id)
+        for contract in CONTRACTS
+        if contract.copy_of is None
+    ]
     keys += [("conflict", conflict.card.card_id) for conflict in CONFLICTS]
     keys += [("location", space.space_id) for space in BOARD_SPACES]
     for leader in LEADERS:

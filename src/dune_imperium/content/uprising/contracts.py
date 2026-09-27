@@ -2,10 +2,12 @@
 
 The 20 standard tiles come from the Uprising box [Main p. 16]; the eight
 Bloodlines tiles join them only with the ``bloodlines`` option
-[Bloodlines p. 2].
+[Bloodlines p. 2]. The box's other ten tiles, "with contrasting backs",
+are "Used only with the RISE OF IX expansion" [Main p. 16] and are not
+transcribed.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Final
 
@@ -97,12 +99,18 @@ class ContractReward:
 
 @dataclass(frozen=True, slots=True)
 class ContractDefinition:
-    """One unique standard Contract tile."""
+    """One standard Contract tile.
+
+    Each physical tile has its own id, so two copies of one printed face are
+    two definitions; ``copy_of`` names the first copy's id, whose picture
+    and Korean name the second copy shares.
+    """
 
     card: CardDefinition
     condition: ContractCondition
     reward: ContractReward
     bloodlines_only: bool = False
+    copy_of: str | None = None
 
     @property
     def completes_immediately(self) -> bool:
@@ -145,6 +153,17 @@ def _contract(
     )
 
 
+def _second_copy(original: ContractDefinition) -> ContractDefinition:
+    """The second physical tile of a printed face that has two copies."""
+
+    first_id = original.card.card_id
+    return replace(
+        original,
+        card=replace(original.card, card_id=f"{first_id}_copy_2"),
+        copy_of=first_id,
+    )
+
+
 def _bloodlines_contract(
     slug: str,
     name: str,
@@ -170,6 +189,41 @@ def _bloodlines_contract(
     )
 
 
+# The two faces with two copies each (see STANDARD_CONTRACTS).
+_ESPIONAGE_I: Final = _contract(
+    506,
+    "espionage-i",
+    "Espionage I",
+    condition=ContractCondition(
+        ContractConditionKind.BOARD_SPACE,
+        target="espionage",
+    ),
+    reward=ContractReward(solari=3),
+)
+_HARVEST_3: Final = _contract(
+    508,
+    "harvest-3",
+    "Harvest 3+",
+    condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+    reward=ContractReward(solari=3),
+)
+
+# The box holds 30 tiles: "20 Contract tokens" and "10 Contract tokens with
+# contrasting backs", the latter "Used only with the RISE OF IX expansion" to
+# "jumpstart the completion of contracts" [Main p. 16]. Which is which, and
+# how many copies of each face, comes from the BGG card inventory sheet
+# (assets reference/bgg-card-inventory, the Contracts tab's "Rise of Ix
+# -Specific?" and Count columns): the 20 standard tiles are 18 faces, with
+# Espionage (3 Solari) and Harvest 3+ (3 Solari) two copies each. Every Rise
+# of Ix tile prints "+1 Contract" (the jumpstart); no standard tile does.
+# Dune Cards Hub lists all 28 faces as "Uprising contract", one copy each,
+# which is how four Rise of Ix tiles (Espionage II, Harvest 3+ and 4+ with a
+# Contract, Heighliner III) once stood in for Spice Refinery I and II and the
+# two second copies (corrected 2026-09-27, docs/lessons.md). The tiles kept
+# then hold their old places in this tuple and the four replacements took
+# the removed tiles' places, so the observation's Contract segments (which
+# follow this order) moved only there; a checkpoint from before observation
+# v21 re-links those columns by identity (training/checkpoint.py).
 STANDARD_CONTRACTS: Final = (
     _contract(
         517,
@@ -215,40 +269,10 @@ STANDARD_CONTRACTS: Final = (
         ),
         reward=ContractReward(solari=3),
     ),
-    _contract(
-        506,
-        "espionage-i",
-        "Espionage I",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="espionage",
-        ),
-        reward=ContractReward(solari=3),
-    ),
-    _contract(
-        496,
-        "espionage-ii",
-        "Espionage II",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="espionage",
-        ),
-        reward=ContractReward(solari=1, contracts=1),
-    ),
-    _contract(
-        508,
-        "harvest-3",
-        "Harvest 3+",
-        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-        reward=ContractReward(solari=3),
-    ),
-    _contract(
-        493,
-        "harvest-3-contract",
-        "Harvest 3+",
-        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
-        reward=ContractReward(contracts=1),
-    ),
+    _ESPIONAGE_I,
+    _second_copy(_ESPIONAGE_I),
+    _HARVEST_3,
+    _second_copy(_HARVEST_3),
     _contract(
         507,
         "harvest-4",
@@ -257,11 +281,15 @@ STANDARD_CONTRACTS: Final = (
         reward=ContractReward(solari=4),
     ),
     _contract(
-        500,
-        "harvest-4-contract",
-        "Harvest 4+",
-        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
-        reward=ContractReward(solari=2, contracts=1),
+        513,
+        "spice-refinery-i",
+        "Spice Refinery I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="spice_refinery",
+        ),
+        # Two card backs: draw two cards [tile face].
+        reward=ContractReward(personal_cards=2),
     ),
     _contract(
         505,
@@ -284,14 +312,14 @@ STANDARD_CONTRACTS: Final = (
         reward=ContractReward(troops=2),
     ),
     _contract(
-        494,
-        "heighliner-iii",
-        "Heighliner III",
+        514,
+        "spice-refinery-ii",
+        "Spice Refinery II",
         condition=ContractCondition(
             ContractConditionKind.BOARD_SPACE,
-            target="heighliner",
+            target="spice_refinery",
         ),
-        reward=ContractReward(solari=3, contracts=1),
+        reward=ContractReward(water=1),
     ),
     _contract(
         516,
@@ -450,7 +478,7 @@ def contracts_for(*, bloodlines: bool = False) -> tuple[ContractDefinition, ...]
 
 
 def contract_instance_ids(*, bloodlines: bool = False) -> tuple[str, ...]:
-    """Return stable IDs for the unique Contract tiles in play.
+    """Return stable IDs for the Contract tiles in play, one per tile.
 
     The 20 standard tiles always; Bloodlines adds its eight tokens to the
     same bank when the option is on [Bloodlines p. 2].
