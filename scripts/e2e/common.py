@@ -27,7 +27,11 @@ REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
 # plain-HTTP origin that is not a secure context. Anything but loopback needs
 # a --remote server, so only remote.py, races.py and recovery.py run that way.
 HOST = os.environ.get("E2E_HOST", "127.0.0.1")
-SERVER_LOG_COPY = Path(tempfile.gettempdir()) / "dune-e2e-server-last.log"
+# One file per script, so that scripts running side by side (run_all.py) do
+# not overwrite each other's copy.
+SERVER_LOG_COPY = (
+    Path(tempfile.gettempdir()) / f"dune-e2e-server-last-{Path(sys.argv[0]).stem}.log"
+)
 T0 = time.monotonic()
 
 

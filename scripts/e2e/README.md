@@ -18,42 +18,63 @@ uv pip install --python /tmp/dune-e2e-venv/bin/python playwright
 서버는 이 체크아웃의 `.venv/bin/dune-imperium-server`를 빈 포트에 직접 띄우고 끝나면 내린다(`common.ServerProcess`; `kill()`은 SIGKILL이다)
 (`uv sync --extra ui`가 돼 있어야 한다). 다른 체크아웃을 검사하려면 `E2E_REPO=<경로>`.
 
-## 실행
+## 한꺼번에 돌리기 (`run_all.py`)
 
 ```bash
 cd scripts/e2e
-/tmp/dune-e2e-venv/bin/python remote.py        # 약 25초; `remote.py 120`이면 첫 구간을 120 스텝으로
-/tmp/dune-e2e-venv/bin/python open_mode.py     # 약 40초; `open_mode.py game` / `open_mode.py bell`로 절반만
-/tmp/dune-e2e-venv/bin/python races.py --ab    # 약 40초
-/tmp/dune-e2e-venv/bin/python recovery.py      # 약 30초
-/tmp/dune-e2e-venv/bin/python turn_controls.py # 약 20초; 병력 수 조절기와 Reveal 구매 패널
-/tmp/dune-e2e-venv/bin/python turn_end.py      # 약 20초; 턴 종료 컨트롤 하나로 통일(리더 드래프트 마지막/비마지막 뽑기, finish_agent_turn·finish_reveal·pass_combat_intrigue·pass_endgame_intrigue, 되돌릴 수 없는 종료, 영어 표기)
-/tmp/dune-e2e-venv/bin/python staged_turn.py   # 1~2분; Agent turn의 단계별 선택(카드 → 칸 → 남은 선택, graft는 두 장 먼저)
-/tmp/dune-e2e-venv/bin/python board_tokens.py  # 약 15초; 인쇄된 자리에 놓이는 조각(칸 hotspot의 흰 테두리·Agent·Spy 말·Control·bonus spice·Maker Hooks·Alliance·사다우카 지휘관)과 Reveal 미리보기·Intrigue 더미
-/tmp/dune-e2e-venv/bin/python leader_card.py   # 약 60초; 좌석 리더 팝오버에 그려지는 좌석 자신의 상태(Feyd 훈련 트랙·Chani 전술 트랙 토큰, Y'rkoon의 Navigation 카드 네 칸, Kota의 Secret Project 타일, Shaddam의 따로 치워둔 사다우카 계약 두 장, 리뷰 라벨의 폴백, Jessica의 뒤집힌 그림), 좌석 상태 줄이 그 세 플래그를 더는 되풀이하지 않는지, 두 언어 + --remote 두 컨텍스트 + 실제 판 리뷰 재현
-/tmp/dune-e2e-venv/bin/python spectate.py      # 약 35초; 전 좌석 AI 게임의 관전(리플레이 검토의 자동 재생)
-/tmp/dune-e2e-venv/bin/python endgame.py       # 약 40초; 끝난 판의 최종 순위·종료 후 공개, 노트북 1366x768
-/tmp/dune-e2e-venv/bin/python narrow.py        # 약 45초; 1100px 미만 레이아웃(전 확장) + 좁은 창의 머리글(600~1366px, 두 언어)
-/tmp/dune-e2e-venv/bin/python columns.py       # 약 40초; 공용 카드 열 접기와 Bene Tleilax 크게 보기
-/tmp/dune-e2e-venv/bin/python seats.py         # 약 35초; 좌석 패널의 자세히 접기, 노트북 1366x768에서 좌석 넷
-/tmp/dune-e2e-venv/bin/python help.py          # 약 30초; 도움말 창과 스크린 리더 알림(aria-live·role·이름)
-/tmp/dune-e2e-venv/bin/python lang.py          # 약 1분; 한국어/English 전환 — 영어에서 한글 0, 왕복 동일, 새로고침 유지, 카드 이름·그림이 언어를 따름
-/tmp/dune-e2e-venv/bin/python log_follow.py    # 약 10초; 실시간 행동 로그가 게임을 계속 따라가는지(전 확장 + 지도자 드래프트, 3라운드+)
-/tmp/dune-e2e-venv/bin/python log_words.py     # 약 10초; 행동 로그·행동 목록·보드 title에 엔진 id가 없는지(두 언어)
-/tmp/dune-e2e-venv/bin/python log_passes.py    # 약 10초; 이어진 Combat/Endgame Intrigue 패스가 카드 하나로 접히는지(기본판+전 확장, 두 언어)
-/tmp/dune-e2e-venv/bin/python remote_fresh.py  # 약 15초; 원격 판에서 로그가 내 마지막 수 이후 전부(상대 셋 + 그 사이 중립 카드) 빛나는지, 내 카드 자신은 아닌지
-/tmp/dune-e2e-venv/bin/python combat_result.py # 약 10초; 전투 해결 뒤 배너에 뜨는 결과 줄(승자·순위·내 보상), 기본판+전 확장, 두 언어
-/tmp/dune-e2e-venv/bin/python intrigue_options.py # 약 15초; 두 선택지를 가진 Intrigue 카드 한 장이 그 카드 이름 뒤에 "선택지: 0/1"이 아니라 카탈로그의 실제 문구를 보이는지, 두 언어
-/tmp/dune-e2e-venv/bin/python trash_zone.py    # 약 10초; 같은 이름의 트래시 후보 둘이 보는 좌석의 다른 보관 구역(핸드/버림 더미/플레이 영역)에 있을 때 행이 그 구역을 이름으로 구별하는지, 두 언어
-/tmp/dune-e2e-venv/bin/python save_delete.py   # 약 10초; 저장 목록의 삭제 버튼 두 번 누르기 확인(ITEM 8d), 두 언어
-/tmp/dune-e2e-venv/bin/python card_labels.py   # 약 10초; 카드 줄 머리의 "Agent:"·"Agent Turn:"·"On discard:"(또는 한국어 트윈이 있으면 "에이전트 칸:"·"버리면:")가 아이콘이 아니라 글자인지, 두 언어
-E2E_SHOTS_DIR=<경로> /tmp/dune-e2e-venv/bin/python effect_text.py # 약 15초; 엔진 생성 효과 문구의 한국어(K1-K4, 2026-09-25) — Contract·Conflict·개인 카드(guild_spy)·Intrigue(backed_by_choam)·보드 공간(imperial_privilege)·Tech 타일(forbidden_weapons) 팝오버와 Agent 칸/보드 효과 아이콘의 해결 행·두 선택지 play_intrigue 행(describeAction)이 .effect-text-ko로 그려지는지(플레이스홀더 남지 않음, 아이콘 최소 1개, 공간 이름 밖 라틴 문자 없음), 영어는 .card-text 그대로인지, 카탈로그의 모든 카드·Intrigue 카드·보드 공간(옵션·노트)·Tech·Skill 타일의 text[]/text_ko[]·effect[]/effect_ko[] 줄이 iconize(en)/phrase(ko)로 같은 아이콘 다중집합을 그리는지(guild_spy 한 장만 보던 이전 검사가 놓친 17줄, 2026-09-25 리뷰; K3의 같은 전수 스윕이 13줄을 추가로 잡았고, K4의 전수 스윕은 FORBIDDEN_WEAPONS의 소문자 "lose"가 {influence_lose}가 아니라 {influence_any}를 그린다는 것을 잡았다); 스크린샷을 E2E_SHOTS_DIR에 남김(기본은 스크래치 임시 디렉터리)
-/tmp/dune-e2e-venv/bin/python refresh_error.py # 약 5초; 새로고침 실패 배너가 뒤늦게 성공한 새로고침에 스스로 지워지는지(ITEM 8g), 내 행동이 낸 오류는 지워지지 않는지
+/tmp/dune-e2e-venv/bin/python run_all.py              # 전부(rehearsal.py 제외), 4개씩
+/tmp/dune-e2e-venv/bin/python run_all.py lang narrow  # 고른 것만
+/tmp/dune-e2e-venv/bin/python run_all.py -j 2         # 학습이 도는 기계에서
+```
+
+스크립트마다 자기 서버(빈 포트·임시 저장 폴더)와 자기 Chrome을 띄우므로 서로 상태를 나누지 않는다. 실행기는
+오래 걸리는 것부터 넣고, 출력은 스크립트별 로그 파일에 두며, 실패한 것만 끝에 마지막 25줄을 보인다. 실패를
+다시 돌려 덮지 않는다 — 부하에서만 깨지는 검사는 그 검사의 타이밍 가정이 틀린 것이니 드러나야 한다.
+`rehearsal.py`는 이름으로 부를 때만 돈다. 학습이 도는 기계에서는 메모리를 보고 `-j`를 줄인다
+([`docs/lessons.md`](../../docs/lessons.md) 2026-09-27 메모리 압박 항목).
+
+2026-09-27 Mac mini(10코어) 실측: 27종 **4개씩 73~76초**(세 번 모두 통과), 한 개씩 순서대로 230초, 8개씩 64초(스크립트마다 두 배쯤 느려져 기본은 4).
+UI 변경의 검증 순서는 [`CLAUDE.md`](../../CLAUDE.md)의 "Verifying UI changes" — 항목마다는 관련 스크립트만,
+전부는 병합·handoff 전에 한 번.
+
+## 하나씩 돌리기
+
+아래 시간은 한 개씩 순서대로 돌린 실측(2026-09-27 Mac mini; `rehearsal.py`만 예전 값)이다.
+
+```bash
+cd scripts/e2e
+/tmp/dune-e2e-venv/bin/python remote.py        # 약 6초; `remote.py 120`이면 첫 구간을 120 스텝으로
+/tmp/dune-e2e-venv/bin/python open_mode.py     # 약 25초; `open_mode.py game` / `open_mode.py bell`로 절반만
+/tmp/dune-e2e-venv/bin/python races.py --ab    # 약 26초
+/tmp/dune-e2e-venv/bin/python recovery.py      # 약 14초
+/tmp/dune-e2e-venv/bin/python turn_controls.py # 약 2초; 병력 수 조절기와 Reveal 구매 패널
+/tmp/dune-e2e-venv/bin/python turn_end.py      # 약 14초; 턴 종료 컨트롤 하나로 통일(리더 드래프트 마지막/비마지막 뽑기, finish_agent_turn·finish_reveal·pass_combat_intrigue·pass_endgame_intrigue, 되돌릴 수 없는 종료, 영어 표기)
+/tmp/dune-e2e-venv/bin/python staged_turn.py   # 약 8초; Agent turn의 단계별 선택(카드 → 칸 → 남은 선택, graft는 두 장 먼저)
+/tmp/dune-e2e-venv/bin/python board_tokens.py  # 약 3초; 인쇄된 자리에 놓이는 조각(칸 hotspot의 흰 테두리·Agent·Spy 말·Control·bonus spice·Maker Hooks·Alliance·사다우카 지휘관)과 Reveal 미리보기·Intrigue 더미
+/tmp/dune-e2e-venv/bin/python leader_card.py   # 약 30초; 좌석 리더 팝오버에 그려지는 좌석 자신의 상태(Feyd 훈련 트랙·Chani 전술 트랙 토큰, Y'rkoon의 Navigation 카드 네 칸, Kota의 Secret Project 타일, Shaddam의 따로 치워둔 사다우카 계약 두 장, 리뷰 라벨의 폴백, Jessica의 뒤집힌 그림), 좌석 상태 줄이 그 세 플래그를 더는 되풀이하지 않는지, 두 언어 + --remote 두 컨텍스트 + 실제 판 리뷰 재현
+/tmp/dune-e2e-venv/bin/python spectate.py      # 약 16초; 전 좌석 AI 게임의 관전(리플레이 검토의 자동 재생)
+/tmp/dune-e2e-venv/bin/python endgame.py       # 약 4초; 끝난 판의 최종 순위·종료 후 공개, 노트북 1366x768
+/tmp/dune-e2e-venv/bin/python narrow.py        # 약 6초; 1100px 미만 레이아웃(전 확장) + 좁은 창의 머리글(600~1366px, 두 언어)
+/tmp/dune-e2e-venv/bin/python columns.py       # 약 3초; 공용 카드 열 접기와 Bene Tleilax 크게 보기
+/tmp/dune-e2e-venv/bin/python seats.py         # 약 4초; 좌석 패널의 자세히 접기, 노트북 1366x768에서 좌석 넷
+/tmp/dune-e2e-venv/bin/python help.py          # 약 2초; 도움말 창과 스크린 리더 알림(aria-live·role·이름)
+/tmp/dune-e2e-venv/bin/python lang.py          # 약 4초; 한국어/English 전환 — 영어에서 한글 0, 왕복 동일, 새로고침 유지, 카드 이름·그림이 언어를 따름
+/tmp/dune-e2e-venv/bin/python log_follow.py    # 약 4초; 실시간 행동 로그가 게임을 계속 따라가는지(전 확장 + 지도자 드래프트, 3라운드+)
+/tmp/dune-e2e-venv/bin/python log_words.py     # 약 5초; 행동 로그·행동 목록·보드 title에 엔진 id가 없는지(두 언어)
+/tmp/dune-e2e-venv/bin/python log_passes.py    # 약 6초; 이어진 Combat/Endgame Intrigue 패스가 카드 하나로 접히는지(기본판+전 확장, 두 언어)
+/tmp/dune-e2e-venv/bin/python remote_fresh.py  # 약 14초; 원격 판에서 로그가 내 마지막 수 이후 전부(상대 셋 + 그 사이 중립 카드) 빛나는지, 내 카드 자신은 아닌지
+/tmp/dune-e2e-venv/bin/python combat_result.py # 약 4초; 전투 해결 뒤 배너에 뜨는 결과 줄(승자·순위·내 보상), 기본판+전 확장, 두 언어
+/tmp/dune-e2e-venv/bin/python intrigue_options.py # 약 2초; 두 선택지를 가진 Intrigue 카드 한 장이 그 카드 이름 뒤에 "선택지: 0/1"이 아니라 카탈로그의 실제 문구를 보이는지, 두 언어
+/tmp/dune-e2e-venv/bin/python trash_zone.py    # 약 7초; 같은 이름의 트래시 후보 둘이 보는 좌석의 다른 보관 구역(핸드/버림 더미/플레이 영역)에 있을 때 행이 그 구역을 이름으로 구별하는지, 두 언어
+/tmp/dune-e2e-venv/bin/python save_delete.py   # 약 11초; 저장 목록의 삭제 버튼 두 번 누르기 확인(ITEM 8d), 두 언어
+/tmp/dune-e2e-venv/bin/python card_labels.py   # 약 2초; 카드 줄 머리의 "Agent:"·"Agent Turn:"·"On discard:"(또는 한국어 트윈이 있으면 "에이전트 칸:"·"버리면:")가 아이콘이 아니라 글자인지, 두 언어
+E2E_SHOTS_DIR=<경로> /tmp/dune-e2e-venv/bin/python effect_text.py # 약 4초; 엔진 생성 효과 문구의 한국어(K1-K4, 2026-09-25) — Contract·Conflict·개인 카드(guild_spy)·Intrigue(backed_by_choam)·보드 공간(imperial_privilege)·Tech 타일(forbidden_weapons) 팝오버와 Agent 칸/보드 효과 아이콘의 해결 행·두 선택지 play_intrigue 행(describeAction)이 .effect-text-ko로 그려지는지(플레이스홀더 남지 않음, 아이콘 최소 1개, 공간 이름 밖 라틴 문자 없음), 영어는 .card-text 그대로인지, 카탈로그의 모든 카드·Intrigue 카드·보드 공간(옵션·노트)·Tech·Skill 타일의 text[]/text_ko[]·effect[]/effect_ko[] 줄이 iconize(en)/phrase(ko)로 같은 아이콘 다중집합을 그리는지(guild_spy 한 장만 보던 이전 검사가 놓친 17줄, 2026-09-25 리뷰; K3의 같은 전수 스윕이 13줄을 추가로 잡았고, K4의 전수 스윕은 FORBIDDEN_WEAPONS의 소문자 "lose"가 {influence_lose}가 아니라 {influence_any}를 그린다는 것을 잡았다); 스크린샷을 E2E_SHOTS_DIR에 남김(기본은 스크래치 임시 디렉터리)
+/tmp/dune-e2e-venv/bin/python refresh_error.py # 약 2초; 새로고침 실패 배너가 뒤늦게 성공한 새로고침에 스스로 지워지는지(ITEM 8g), 내 행동이 낸 오류는 지워지지 않는지
 E2E_HOST=100.x.y.z /tmp/dune-e2e-venv/bin/python rehearsal.py   # 약 1분; 실제 원격 판 전의 리허설
 ```
 
 종료 코드 0이 통과다. 실패하면 뒤처진 페이지의 상태와 요청·콘솔 타임라인을 출력하고, 서버 로그 사본을
-`$TMPDIR/dune-e2e-server-last.log`에 남긴다.
+`$TMPDIR/dune-e2e-server-last-<스크립트 이름>.log`에 남긴다(스크립트마다 따로라 나란히 돌아도 덮이지 않는다).
 
 | 스크립트 | 무엇을 보나 |
 |---|---|
