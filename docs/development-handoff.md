@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-27
+기준일: 2026-09-28
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -96,6 +96,19 @@ OQ-065(강제 Spy 이동 순서와 갈 곳이 없는 Spy)도 밤에 사용자 �
 - 경합은 기기 속도에 맡기지 않고 `page.route`로 응답을 늦춰 강제한다(`spectate.py`).
 - 학습이 도는 동안 이 체크아웃의 `src/`를 고치지 않는다 — **워크트리에서** 한다. 워크트리에는 git 밖의
   `assets` symlink와 `.venv`가 없으니 둘 다 걸고 `PYTHONPATH=<wt>/src E2E_REPO=<wt>`로 그 클라이언트를 띄운다.
+
+### Arrakeen Scouts (M15) — 계획만, 착수 전 (2026-09-28)
+
+Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(아라킨 스카웃)를 시작 옵션
+`RulesetConfig(arrakeen_scouts=True)`로 넣는 계획이다.
+- 설계: [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md). 구현 계획: [`implementation-plan.md`](implementation-plan.md) M15.
+- 원자료: 공식 룰북이 없어 설치본에서 추출했다. 비공개 에셋 저장소 `reference/dwgr-arrakeen-scouts/`(README에 재추출 절차).
+- **착수 조건.** 사용자가 설계 12절의 D1~D9를 정하고 시작을 지시하기 전에는 시작하지 않는다.
+  - D1 풀과 옵션 조합, D2 소위원회까지 공개 라운드의 chance로 추첨, D3 Round Start 뒤 첫 턴 전, D4 봉인 입찰을 순차 비공개 확정으로(순위는 앱대로),
+    D5 결정의 수락·패스·확정을 명시적 턴 종료로, D6 codec v112·관측 v22부터 슬라이스마다·slot 행 이관·학습 제외, D7 공개 저장소에는 이름·수치·의역만,
+    D8 OQ-071부터의 판정(설계 9절 19개), D9 슬라이스 순서.
+- **첫 슬라이스.** 문서·콘텐츠 카탈로그만 한다(엔진 동작 변경 없음).
+- **착수 전에 다시 볼 것.** 앱이 업데이트됐으면 `tools/extract.py`로 다시 추출해 `data/`의 git diff부터 본다.
 
 ### 학습(M10) 쪽 순서
 
@@ -543,6 +556,12 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-28(Mac mini, Arrakeen Scouts 추출·M15 계획 세션): **두 저장소 모두 push했다.**
+- 에셋 저장소 `35752c5`: `reference/dwgr-arrakeen-scouts/`의 도구·추출 데이터·분석, 약 3.9 MB.
+- 메인 저장소: 이 문서 커밋(`docs/`뿐).
+- 에셋 커밋은 사용자 지시("추출 도구는 private assets 쪽으로")보다 넓게 데이터·분석까지 담았다. 2026-09-23의 "게임에 쓰이는 에셋만 이력에" 방침과 맞는지 사용자에게 확인을 요청했다.
+- 도구만 남기거나 `.gitignore`로 빼기로 하면 이력 재작성(force push)이 필요하다([`lessons.md`](lessons.md) 2026-09-28).
+
 2026-09-23 저녁(WSL 노트북, **에셋 저장소 이력 정리** — 사용자 지시 "진짜 게임에 쓰이는 asset만 git 이력에"):
 전날 다른 기기로 넘기려고 커밋·push한 블로그 사진·크롭·`best/`·매칭 표·도구(`reference/naver-vampmiyu-*`,
 854개·354 MB)를 에셋 저장소 이력에서 뺐다. `3fcf62f` 위의 세 커밋을 둘로 다시 만들어 `--force-with-lease`로
@@ -578,6 +597,35 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-28 Arrakeen Scouts 추출·M15 계획 세션 요약 (Mac mini, **코드 변경 없음**, 변경은 `docs/`뿐; 에셋 `35752c5`)
+
+**추출(2026-09-27).**
+- 사용자가 Dire Wolf Game Room(Steam)의 Dune 컴패니언 모드 "Arrakeen Scouts"의 숨은 규칙을 설치본에서 뽑을 수 있는지 물었다.
+- 게임은 Unity 2022.3 IL2CPP다. 다음으로 뽑았다:
+  - UnityPy + TypeTreeGeneratorAPI로 정의 데이터(소위원회 17·임무 28·이벤트 53·경매 15·판매 6, 일정 풀 8)
+  - 13개 언어 문구(공식 한국어 포함)와 UI 프리팹의 아이콘 트리
+  - IL2CPP 메타데이터 파서 + capstone 디스어셈블로 일정 생성·라운드 진행·경매 판정 코드
+- 검증: 분석 에이전트 9개, 반박 검증 6개. 알고리즘 11개 주장 중 10개 확인, 1개 보정. Uprising 항목 해석은 모두 확인.
+- 결과: 에셋 `reference/dwgr-arrakeen-scouts/`의 `analysis/report-ko.md`.
+
+**도구 이관(2026-09-28, 사용자 지시).**
+- 추출 도구를 에셋 저장소로 옮겼다. 빌드 전용 주소(CodeRegistration·codeGenModules·MetadataRegistration)는 검색으로 찾게 바꿨다.
+- 흩어진 스크립트는 `tools/extract.py` 하나로 합쳤다(약 5초).
+- 새 uv 임시 환경에서 다시 추출한 결과가 파일 단위로 같음을 확인했다.
+
+**계획(2026-09-28).**
+- 엔진 구조 조사: 에이전트 6개가 옵션 배선, 결정·비공개 정보, 보드 상태, 관측·codec·AI, 서버·UI, 문서 관례를 조사했다.
+- 이를 바탕으로 [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md)와 [`implementation-plan.md`](implementation-plan.md) M15를 썼다.
+- 핵심 결정 제안:
+  - 일정은 공개 라운드마다 chance로 추첨한다(소위원회도 1라운드 시작). 앱의 미리 뽑기와 분포가 같고 숨은 미래 상태가 없다.
+  - 가중치는 추첨표(× 10)로 표현한다.
+  - Scouts 단계는 CONTROL_DEFENSE처럼 TURN frame 없이 서고, 진행 커서와 `_advance_automatic` 분기로 이어 간다(턴 귀속 오류와 교착 방지).
+  - 봉인 입찰·비밀 선택은 한 좌석씩 비공개로 확정한다.
+- 계획 문서는 독립 비평 두 개(추출 자료 대비 사실, 코드 대비 설계)로 검토했다. 반영한 것: 라운드 시작 단계의 진행 커서(하위 frame 뒤 교착 방지), 봉인 결정의 누출 경로(행동 id·공개 이벤트·서버 미리보기), Critical Moment의 "같은 액수 금지", 임무 공개 때의 참여 결정과 비밀 보상 해결 때의 선택, 소위원회를 1라운드 chance로 뽑기(draft 전 공개 방지), 슬라이스마다 라벨·버전.
+- 착수 전 사용자 결정: D1~D9. 앱이 정하지 않은 판정 후보: 설계 9절 19개.
+
+**교훈.** 에셋 저장소에 참조 자료를 커밋하기 전에 이력에 남길지를 묻지 않았다([`lessons.md`](lessons.md) 2026-09-28).
 
 ## 2026-09-27 저녁 카탈로그 종류·계약 구성·Tleilaxu·Conflict 유닛 세션 요약 (Mac mini, master 직접 커밋 + 워크트리 `ui-conflict-units` → master `55beed1`, codec v110→**v111**, 관측 v20→**v21** — **규칙 콘텐츠 변경 하나(계약 구성)**)
 
