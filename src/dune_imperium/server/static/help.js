@@ -77,14 +77,6 @@ function announceTurn(summary) {
 const HELP_SEAT_MARKS = [
   [() => commanderChip(2, "{garrison}"), "help.seat_mark_commander"],
   [() => t("panels.first_badge"), "help.seat_mark_first_player"],
-  [
-    () => {
-      const mark = document.createElement("span");
-      mark.append(phraseText("{conflict} "), icon("troop", phraseText("{troop}")), "3");
-      return mark;
-    },
-    "help.seat_mark_conflict",
-  ],
 ];
 
 const HELP_SHORTCUTS = [

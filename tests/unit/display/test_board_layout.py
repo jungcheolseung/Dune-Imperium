@@ -6,8 +6,21 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.display.board_layout import (
+    AGENT_ON_SPACE_HEIGHT,
+    COMMANDER_HEIGHT,
+    CONFLICT_CROSS,
+    CONFLICT_DECK_SLOT,
+    CONFLICT_QUADRANTS,
+    CONFLICT_SLOT,
+    CONFLICT_UNIT_BOXES,
+    CONFLICT_UNIT_GAP,
+    CONFLICT_UNIT_MIN_SCALE,
+    CONFLICT_UNIT_PADDING,
+    CONFLICT_UNIT_SIZES,
     CONTROL_FLAG_BOXES,
     GARRISON_POINTS,
+    GARRISON_RINGS,
+    INFLUENCE_CUBE_SIZE,
     LEADER_TILE_BOXES,
     MAKER_HOOKS_POINTS,
     MAKER_HOOKS_SIZE,
@@ -21,8 +34,13 @@ from dune_imperium.display.board_layout import (
     SHIELD_WALL_ROTATION,
     SPACE_BOXES,
     SPACE_FRAME_CUT,
+    STRENGTH_TOKEN_ROW_Y,
+    STRENGTH_TOKEN_SIZE,
+    STRENGTH_ZERO_BOX,
     marker_layout,
 )
+
+Box = tuple[float, float, float, float]
 
 
 def test_marker_tables_cover_the_printed_tracks() -> None:
@@ -91,6 +109,17 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert victory["overflow_y"] < victory["levels"][-1] - disc
     assert len(layout["garrisons"]) == 4
     assert len(layout["conflict_quadrants"]) == 4
+    # The units in the Conflict stand in the printed quadrants, one piece
+    # per unit (test_conflict_quadrants_hold_the_units_as_pieces).
+    units = layout["conflict_units"]
+    assert isinstance(units, dict)
+    assert units["boxes"] == [list(box) for box in CONFLICT_UNIT_BOXES]
+    assert units["cross"] == list(CONFLICT_CROSS)
+    assert set(units["sizes"]) == {"troop", "commander", "agent", "sandworm"}
+    assert units["sizes"]["troop"][0] == cube
+    assert units["gap"] == CONFLICT_UNIT_GAP
+    assert units["padding"] == CONFLICT_UNIT_PADDING
+    assert units["min_scale"] == CONFLICT_UNIT_MIN_SCALE
     assert len(layout["council_seats"]) == 4
     # Card slots are boxes like the hotspots: the Conflict deck and the
     # current Conflict card, two face-up contracts [Main p. 16].
@@ -180,6 +209,99 @@ def test_maker_hooks_slots_flank_the_garrisons() -> None:
     layout = marker_layout()["maker_hooks"]
     assert layout["size"] == [width, height]
     assert layout["turns"][1] == {"rotation": 90, "mirrored": True}
+
+
+def _apart(first: Box, second: Box) -> bool:
+    """Two boxes that do not overlap (touching edges allowed)."""
+
+    epsilon = 1e-9
+    return (
+        first[0] + first[2] <= second[0] + epsilon
+        or second[0] + second[2] <= first[0] + epsilon
+        or first[1] + first[3] <= second[1] + epsilon
+        or second[1] + second[3] <= first[1] + epsilon
+    )
+
+
+def _centred(point: tuple[float, float], size: tuple[float, float]) -> Box:
+    (x, y), (width, height) = point, size
+    return (x - width / 2, y - height / 2, width, height)
+
+
+def test_conflict_quadrants_hold_the_units_as_pieces() -> None:
+    # "keep your deployed units in the quadrant nearest to your garrison"
+    # [Main p. 10]: every deployed unit stands in its seat's printed
+    # quadrant as a piece of its own. The four quadrants fill the field
+    # between the garrison rings and meet at the printed cross; nothing else
+    # printed or laid on the board lies in them.
+    assert len(CONFLICT_UNIT_BOXES) == 4
+    cross_x, cross_y = CONFLICT_CROSS
+    for seat, box in enumerate(CONFLICT_UNIT_BOXES):
+        left, top, width, height = box
+        assert 0 <= left < left + width <= 100 and 0 <= top < top + height <= 100
+        x, y = CONFLICT_QUADRANTS[seat]
+        assert left < x < left + width and top < y < top + height, seat
+        # Seats run clockwise from the bottom-left, each quadrant touching
+        # the cross with its inner corner.
+        right_side = seat in (2, 3)
+        lower = seat in (0, 3)
+        assert abs((left if right_side else left + width) - cross_x) < 1e-9, seat
+        assert abs((top if lower else top + height) - cross_y) < 1e-9, seat
+        # Clear of every garrison ring (a circle inside its box) and of the
+        # other pieces around the field.
+        for ring in GARRISON_RINGS:
+            assert _apart(box, ring), (seat, ring)
+        for point in MAKER_HOOKS_POINTS:
+            assert _apart(box, _centred(point, MAKER_HOOKS_SIZE)), (seat, point)
+        for slot in (STRENGTH_ZERO_BOX, CONFLICT_SLOT, CONFLICT_DECK_SLOT):
+            assert _apart(box, slot), (seat, slot)
+        assert _apart(box, LEADER_TILE_BOXES["tuek_sietch"]), seat
+        assert top + height < STRENGTH_TOKEN_ROW_Y[0] - STRENGTH_TOKEN_SIZE / 2
+    for index, first in enumerate(CONFLICT_UNIT_BOXES):
+        for second in CONFLICT_UNIT_BOXES[index + 1 :]:
+            assert _apart(first, second)
+    # The rings are the garrisons: each ring holds its seat's garrison point
+    # and is 603-605 px across both ways.
+    for (x, y), (left, top, width, height) in zip(
+        GARRISON_POINTS, GARRISON_RINGS, strict=True
+    ):
+        assert abs(x - (left + width / 2)) < 0.3 and abs(y - (top + height / 2)) < 0.3
+        assert 603 <= round(width / 100 * 6012) <= 605
+        assert 603 <= round(height / 100 * 6005) <= 605
+
+    # Each piece is as large as the same piece elsewhere on the board: a
+    # troop is the Influence cube, an Agent and a Commander are as tall as
+    # on a space; all keep their pictures' shapes on the 6012 x 6005 scan.
+    frame_height = SPACE_BOXES["sardaukar"][3]
+    troop = CONFLICT_UNIT_SIZES["troop"]
+    agent, commander = CONFLICT_UNIT_SIZES["agent"], CONFLICT_UNIT_SIZES["commander"]
+    assert troop[0] == INFLUENCE_CUBE_SIZE
+    assert abs(agent[1] - frame_height * AGENT_ON_SPACE_HEIGHT) < 1e-3
+    assert abs(commander[1] - frame_height * COMMANDER_HEIGHT) < 1e-3
+
+    def shape(size: tuple[float, float]) -> float:
+        return size[0] * 6012 / (size[1] * 6005)
+
+    assert abs(shape(troop) - 1) < 0.005
+    assert abs(shape(agent) - 52 / 81) < 0.005
+    assert abs(shape(commander) - 130 / 195) < 0.005
+    assert abs(shape(CONFLICT_UNIT_SIZES["sandworm"]) - 62 / 57) < 0.005
+
+    # At full size one quadrant holds a full Conflict of troops (12) and one
+    # of each figure, laid out as the client does (board.js
+    # conflictUnitLayout): rows of troops from the outer edge, then the
+    # figures in a row of their own, with the gap between pieces and rows
+    # and the padding inside the box.
+    gap, padding = CONFLICT_UNIT_GAP, CONFLICT_UNIT_PADDING
+    figures = [commander, agent, CONFLICT_UNIT_SIZES["sandworm"]]
+    for _, _, width, height in CONFLICT_UNIT_BOXES:
+        inner_width, inner_height = width - 2 * padding, height - 2 * padding
+        per_row = int((inner_width + gap) // (troop[0] + gap))
+        troop_rows = -(-12 // per_row)
+        assert sum(w for w, _ in figures) + gap * (len(figures) - 1) <= inner_width
+        depth = troop_rows * troop[1] + gap * troop_rows + max(h for _, h in figures)
+        assert depth <= inner_height, (width, height, depth)
+    assert 0 < CONFLICT_UNIT_MIN_SCALE < 1
 
 
 def test_the_alliance_token_covers_the_ring_printed_for_it() -> None:

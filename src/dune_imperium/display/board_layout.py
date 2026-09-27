@@ -259,6 +259,104 @@ STRENGTH_TOKEN_SIZE: Final = 3.0
 GARRISON_POINTS: Final = ((44.9, 83.1), (44.9, 71.8), (85.7, 71.8), (85.7, 83.1))
 CONFLICT_QUADRANTS: Final = ((56.5, 83.0), (56.5, 71.8), (74.0, 71.8), (74.0, 83.0))
 
+# The printed quadrants themselves, where each deployed unit stands as a
+# piece of its own, as on the table. Measured 2026-09-27 with brightness
+# profiles across the printed lines (pixel runs on the 6012 x 6005 scan;
+# every line is 3-4 px wide):
+# - the garrison rings (``GARRISON_RINGS``): the left pair's right edge
+#   runs x 2983-2985 and 2982-2986 on the rows through their centres, the
+#   right pair's left edge x 4848-4851 on both;
+# - the cross between the quadrants: its vertical line x 3911-3914 on the
+#   upper and the lower arm, its horizontal line y 4638-4642 on the left
+#   arm and 4639-4642 on the right one;
+# - the outline framing the garrisons: its top line y 3992-3995 above the
+#   upper pair, its bottom line y 5297-5299 below the lower pair (averaged
+#   over the outline's outer columns, x 39.6-41.6 and 88.8-90.8 %).
+# The field runs from just right of the left rings (px 2988: 49.7) to just
+# left of the right rings (px 4847: 80.62) and from the outline's top line
+# (66.5) to its bottom line (88.23); the centre lines of the cross (px
+# 3912.5 and 4640) split it into the four quadrants, ``(left, top, width,
+# height)`` clockwise from the bottom-left like the tables above.
+CONFLICT_CROSS: Final = (65.08, 77.27)
+_FIELD_LEFT, _FIELD_RIGHT = 49.7, 80.62
+_FIELD_TOP, _FIELD_BOTTOM = 66.5, 88.23
+
+
+def _box(
+    left: float, top: float, right: float, bottom: float
+) -> tuple[float, float, float, float]:
+    return (left, top, round(right - left, 2), round(bottom - top, 2))
+
+
+_CROSS_X, _CROSS_Y = CONFLICT_CROSS
+CONFLICT_UNIT_BOXES: Final = (
+    _box(_FIELD_LEFT, _CROSS_Y, _CROSS_X, _FIELD_BOTTOM),
+    _box(_FIELD_LEFT, _FIELD_TOP, _CROSS_X, _CROSS_Y),
+    _box(_CROSS_X, _FIELD_TOP, _FIELD_RIGHT, _CROSS_Y),
+    _box(_CROSS_X, _CROSS_Y, _FIELD_RIGHT, _FIELD_BOTTOM),
+)
+# The garrison rings from the same profiles, ``(left, top, width, height)``
+# of each ring's outer edge (the half-height ends of the line's runs on the
+# row and the column through its centre): x px 2383-2986, 2383-2987,
+# 4848-5453, 4848-5453 and y px 4686-5289, 4001-4606, 4001-4606, 4686-5290,
+# 603-605 px across both ways. ``GARRISON_POINTS`` (placed by hand) lie
+# within 0.25 of their centres.
+GARRISON_RINGS: Final = (
+    (39.64, 78.04, 10.03, 10.04),
+    (39.64, 66.63, 10.05, 10.08),
+    (80.64, 66.63, 10.06, 10.08),
+    (80.64, 78.04, 10.06, 10.06),
+)
+
+# The pieces that stand in a quadrant, ``(width, height)`` in percent of the
+# scan's width and height (a square piece is a hair taller in height
+# percent, 6012 / 6005). Each is as large as the same piece elsewhere on
+# the board:
+# - a troop is the same cube as an Influence cube (``INFLUENCE_CUBE_SIZE``,
+#   95 px square);
+# - an Agent (Duncan Idaho's Into the Fray) is as tall as on a space, 72%
+#   of the printed frame (``.agent-token`` in style.css), at the Agent
+#   icon's 52:81;
+# - a Sardaukar Commander is as tall as on its setup space
+#   (``COMMANDER_HEIGHT`` of the frame), at its picture's 130:195;
+# - a sandworm is the Icon Guide's grey worm (62:57). Nothing on the board
+#   sets its size: 3.6 of the width is a judgment call, about a
+#   Commander's width.
+# Rows keep ``CONFLICT_UNIT_GAP`` between pieces and ``CONFLICT_UNIT_PADDING``
+# inside the box; a crowded quadrant shrinks its pieces down to
+# ``CONFLICT_UNIT_MIN_SCALE`` before its rows close up.
+_SCAN_WIDTH, _SCAN_HEIGHT = 6012, 6005
+_FRAME_HEIGHT = SPACE_BOXES["sardaukar"][3]
+AGENT_ON_SPACE_HEIGHT: Final = 0.72
+SANDWORM_WIDTH: Final = 3.6
+
+
+def _piece_by_height(height: float, aspect: float) -> tuple[float, float]:
+    """A piece ``height`` percent of the scan's height, ``aspect`` wide/tall."""
+
+    width_px = height / 100 * _SCAN_HEIGHT * aspect
+    return (round(width_px / _SCAN_WIDTH * 100, 3), round(height, 3))
+
+
+def _piece_by_width(width: float, aspect: float) -> tuple[float, float]:
+    """A piece ``width`` percent of the scan's width, ``aspect`` wide/tall."""
+
+    height_px = width / 100 * _SCAN_WIDTH / aspect
+    return (round(width, 3), round(height_px / _SCAN_HEIGHT * 100, 3))
+
+
+CONFLICT_UNIT_SIZES: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
+    {
+        "troop": _piece_by_width(INFLUENCE_CUBE_SIZE, 1.0),
+        "commander": _piece_by_height(_FRAME_HEIGHT * COMMANDER_HEIGHT, 130 / 195),
+        "agent": _piece_by_height(_FRAME_HEIGHT * AGENT_ON_SPACE_HEIGHT, 52 / 81),
+        "sandworm": _piece_by_width(SANDWORM_WIDTH, 62 / 57),
+    }
+)
+CONFLICT_UNIT_GAP: Final = 0.35
+CONFLICT_UNIT_PADDING: Final = 0.5
+CONFLICT_UNIT_MIN_SCALE: Final = 0.5
+
 # The Maker Hooks token: "Take a Maker Hooks token from the bank, if you
 # don't already have one. Place it on your garrison" [Main p. 20]. Every
 # garrison prints a slot in the token's shape on its outer side, a faint
@@ -352,6 +450,14 @@ def marker_layout() -> dict[str, Any]:
         },
         "garrisons": [list(point) for point in GARRISON_POINTS],
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
+        "conflict_units": {
+            "boxes": [list(box) for box in CONFLICT_UNIT_BOXES],
+            "cross": list(CONFLICT_CROSS),
+            "sizes": {kind: list(size) for kind, size in CONFLICT_UNIT_SIZES.items()},
+            "gap": CONFLICT_UNIT_GAP,
+            "padding": CONFLICT_UNIT_PADDING,
+            "min_scale": CONFLICT_UNIT_MIN_SCALE,
+        },
         "council_seats": [list(point) for point in COUNCIL_SEATS],
         "disc_size": SEAT_DISC_SIZE,
         "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
