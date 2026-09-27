@@ -16,6 +16,14 @@ the policy and makes several ``epochs`` over the same batch sound. The
 collecting policy's log-probabilities need no transport: collection runs
 on the very weights the learner holds when ``update`` starts, with the
 same masks, so they are recomputed here before the first gradient step.
+
+Each minibatch computes logits only for the catalog actions legal in at
+least one of its rows (``TrainingBatch.local_legal``), not for the whole
+33,007-action head. That is exact, not an approximation: under the dense
+mask every other action had logit ``MASKED_LOGIT``, hence probability,
+entropy term and gradient exactly zero, and a head row no row can play gets
+a zero gradient either way. Losses and gradients agree with the dense
+computation up to float summation order.
 """
 
 from collections.abc import Mapping
@@ -26,7 +34,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from dune_imperium.training.network import PolicyValueNetwork
+from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
 from dune_imperium.training.selfplay import TrainingBatch
 
 
@@ -109,11 +117,10 @@ class Learner:
         if steps == 0:
             raise ValueError("cannot update on an empty batch")
         observations = torch.from_numpy(batch.observations).to(self.device)
-        actions = torch.from_numpy(batch.actions).to(self.device)
         returns = torch.from_numpy(batch.returns).to(self.device)
 
         self.network.train()
-        values, behaviour = self._behaviour(observations, batch, actions)
+        values, behaviour = self._behaviour(observations, batch)
         advantages = returns - values
         old_chosen = behaviour if self.config.clip_ratio is not None else None
         if self.config.normalize_advantages and steps > 1:
@@ -128,8 +135,8 @@ class Learner:
                 index = order[start : start + self.config.minibatch_size]
                 policy_loss, value_loss, entropy, clipped, kl = self._losses(
                     observations[index],
-                    self._masks(batch, index),
-                    actions[index],
+                    batch,
+                    index,
                     returns[index],
                     advantages[index],
                     None if old_chosen is None else old_chosen[index],
@@ -152,7 +159,7 @@ class Learner:
                 kl_total += kl
                 minibatches += 1
 
-        fitted, _ = self._behaviour(observations, batch, actions)
+        fitted, _ = self._behaviour(observations, batch)
         return UpdateStats(
             steps=steps,
             minibatches=minibatches,
@@ -167,27 +174,33 @@ class Learner:
             approx_kl=kl_total / minibatches,
         )
 
-    def _masks(self, batch: TrainingBatch, rows: Tensor) -> Tensor:
-        """Materialize the dense mask of ``rows`` only for this minibatch.
+    def _local_logits(
+        self, observations: Tensor, batch: TrainingBatch, rows: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Masked logits over the minibatch's legal union, chosen positions, values.
 
-        The batch keeps the legal sets compressed (see ``TrainingBatch``);
-        one minibatch of dense masks is about 34 MB at the full-expansion
-        catalog, against gigabytes for the whole iteration.
+        The logits are ``[rows, K]`` over ``batch.local_legal(rows).catalog``
+        instead of ``[rows, action_size]``; no dense mask is built.
         """
 
-        return torch.from_numpy(batch.dense_masks(rows.to("cpu").numpy())).to(
-            self.device
+        legal = batch.local_legal(rows.to("cpu").numpy())
+        catalog = torch.from_numpy(legal.catalog).to(self.device)
+        mask = torch.from_numpy(legal.mask).to(self.device)
+        hidden = self.network.trunk(observations)
+        logits = self.network.action_logits(hidden, catalog).masked_fill(
+            ~mask, MASKED_LOGIT
         )
+        values = self.network.value_head(hidden).squeeze(-1)
+        return logits, torch.from_numpy(legal.chosen).to(self.device), values
 
     def _behaviour(
-        self, observations: Tensor, batch: TrainingBatch, actions: Tensor
+        self, observations: Tensor, batch: TrainingBatch
     ) -> tuple[Tensor, Tensor]:
         """Values and chosen-action log-probabilities of the current weights.
 
         Called before the first gradient step these are the collecting
-        policy's. A single pass over every step would materialize the full
-        logit matrix (steps x actions in float32), which is gigabytes for a
-        large iteration; chunking keeps the peak at one minibatch.
+        policy's. The pass is chunked by minibatch so each chunk's logits
+        cover only that chunk's legal union.
         """
 
         values: list[Tensor] = []
@@ -196,14 +209,12 @@ class Learner:
         with torch.no_grad():
             for start in range(0, observations.shape[0], self.config.minibatch_size):
                 stop = start + self.config.minibatch_size
-                logits, value = self.network(
-                    observations[start:stop], self._masks(batch, rows[start:stop])
+                logits, positions, value = self._local_logits(
+                    observations[start:stop], batch, rows[start:stop]
                 )
                 log_probabilities = torch.log_softmax(logits, dim=-1)
                 chosen.append(
-                    log_probabilities.gather(
-                        1, actions[start:stop].unsqueeze(-1)
-                    ).squeeze(-1)
+                    log_probabilities.gather(1, positions.unsqueeze(-1)).squeeze(-1)
                 )
                 values.append(value)
         return torch.cat(values), torch.cat(chosen)
@@ -211,15 +222,15 @@ class Learner:
     def _losses(
         self,
         observations: Tensor,
-        masks: Tensor,
-        actions: Tensor,
+        batch: TrainingBatch,
+        rows: Tensor,
         returns: Tensor,
         advantages: Tensor,
         old_chosen: Tensor | None,
     ) -> tuple[Tensor, Tensor, Tensor, float, float]:
-        logits, values = self.network(observations, masks)
+        logits, positions, values = self._local_logits(observations, batch, rows)
         log_probabilities = torch.log_softmax(logits, dim=-1)
-        chosen = log_probabilities.gather(1, actions.unsqueeze(-1)).squeeze(-1)
+        chosen = log_probabilities.gather(1, positions.unsqueeze(-1)).squeeze(-1)
         clipped = kl = 0.0
         if old_chosen is None or self.config.clip_ratio is None:
             policy_loss = -(chosen * advantages).mean()
