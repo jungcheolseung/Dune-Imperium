@@ -117,7 +117,20 @@ Rise of Ix 전용 계약 타일 4장이 든 CHOAM 판에서 잰 것이다(학습
 불러올 때 이관된다: 행동 32,991개 유지·16개 신규(새 계약 4장 × 템플릿 4)·16개 폐기, 관측 4,305열 유지·22열 신규(Spice Refinery I·II × 11구간,
 0에서 시작)·44열 폐기(Ix 4장 × 11). 두 번째 사본은 첫 사본의 열을 받는다(`training/checkpoint.py`의 identity 재연결). 새 계약에 대한 행동은
 학습된 적이 없으니, **이 체크포인트로 무엇을 재기 전에 재적응(v110 때처럼 약 500~1,000 iteration)을 돌릴지 사용자에게 먼저 묻는다.**
-tips-v1은 새 규칙으로 다시 캤다(118개; [evaluation/problem-set.md](evaluation/problem-set.md)).
+tips-v1은 새 규칙으로 다시 캤다(118개; [evaluation/problem-set.md](evaluation/problem-set.md)). → **2026-09-28 밤샘에 재적응을 끝냈다(아래).**
+
+**현재 위치(2026-09-28 아침, v111 밤샘 마감).** 결론과 근거는 **[evaluation/m10-2026-09-28.md](evaluation/m10-2026-09-28.md)**. 사용자가
+"C·T 두 팔 7081까지"를 골랐다(판정 규칙은 결과 전에 git 무시 `checkpoints/2026-09-27/ext-v111/README.md`에). 요지:
+- **v111 기준선은 `checkpoints/2026-09-27/ext-v111/C/iteration_07081.pt`**(쓰기 금지, 옵티마이저 있음). v110 기준 6081에서 v111로
+  1,000 iteration을 더 돌린 MLP다. 5600(v110 기준, 이관)을 2:2 1,400판에서 **+18.3%p [+13.1, +23.4]**로 이겼고(순위·마진도 분해),
+  중간점 6600은 +7.0%p [+1.7, +12.3]였다. 7081 대 6600을 직접 잰 L3도 **+11.7%p [+6.6, +16.9]**라, 세 점이 맞고 이번에는 1,000 iteration 내내 올랐다(v110 때는 500에서 끝). 5600은 새 계약 4장을 배운 적이 없으니 +18%p를 모두
+  일반 실력 차로 읽지는 않는다.
+- **slot 입력(`mlp_slots`) RL 팔은 끝났다.** 선언된 연장(두 팔 7081까지) 뒤 J1' T@7081 대 C@7081 2,800판 **−4.2%p [−7.8, −0.6]** →
+  선언 규칙의 "무익". T는 Row·Conflict에 C보다 3.6~7배 반응하지만(M') 결과 신호 self-play는 그것을 강도로 바꾸지 못했다. 표현 문제는
+  expert iteration(탐색 레이블) 쪽으로 넘긴다.
+- 합법 행 learner로 1,000 iteration이 약 3시간(9.5초/it), 메모리 압박 경고 0. heuristic 3명 상대 89%로 포화.
+- **다음 후보(사용자 결정)**: (a) 탐색 좌석(`search:`)을 7081로 다시 재기 — 게임에서 쓰는 가장 강한 AI, (b) slot 네트워크로 expert
+  iteration 재시도, (c) 같은 설정으로 C 연장(L3로 보아 아직 정체 전; 약 3시간 + 사다리), (d) iteration당 64판 메모리 시험.
 
 **현재 위치(2026-09-27 오후, 밤샘 세션 마감).** 결론과 근거는 **[evaluation/m10-2026-09-27.md](evaluation/m10-2026-09-27.md)**. 요지:
 - **새 규칙(codec v110) 재적응 — 이득은 첫 500 iteration에 다 왔다.** 5081에서 long-2k 설정으로 1,000 iteration(`checkpoints/2026-09-27/readapt-v110`,
@@ -597,6 +610,18 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-28 밤샘 v111 재적응·slot 연장 세션 요약 (Mac mini, master 직접 커밋, 관측 v21, codec v111 — **코드 변경 없음**; 변경은 `docs/`뿐)
+
+- **기준 검증**(master `061df24`): pytest 2,550 통과, ruff·mypy 통과.
+- **이관 확인**: v110 체크포인트 셋(5600, MLP 6081, `mlp_slots` 6081)은 모두 v111로 이관된다. 두 6081은 1 iteration 스모크도 통과했다(format 3 유지, 옵티마이저 포함).
+- **계획 선택**: 사용자가 "C·T 두 팔 7081까지"를 골랐다. 판정 규칙, 선언과 다른 점, 판정 칸은 결과 전에
+  `checkpoints/2026-09-27/ext-v111/README.md`에 적었다. 분리 실행한 `chain.sh`가 전부를 차례로 돌렸다(C → L1·L2 → T → J1'·M'·J4'·문제집, 23:37~07:09).
+- **결과**: [evaluation/m10-2026-09-28.md](evaluation/m10-2026-09-28.md).
+  - 기준선은 `ext-v111/C/iteration_07081.pt`다(규칙 1).
+  - slot RL 팔은 무익으로 끝났다.
+  - L3(7081 대 6600)는 판정 뒤에 정보용으로 더한 칸이다.
+- **작업 트리 기록**: 밤사이 다른 세션이 이 체크아웃에 문서 커밋 `ffbf2ae`(Arrakeen Scouts 계획)를 넣었다. `src/`는 그대로라 두 팔은 같은 코드로 돌았다(README에 적음).
 
 ## 2026-09-28 Arrakeen Scouts 추출·M15 계획 세션 요약 (Mac mini, **코드 변경 없음**, 변경은 `docs/`뿐; 에셋 `35752c5`)
 
