@@ -295,6 +295,17 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
 | Go to 11 (변형) | 11점을 향해 | `[Immortality p. 12]`("11점을 향해 … 4인 게임이라면, 승점 트랙의 0칸에서 게임을 시작해서 종료 점수를 10점으로 설정하면 됩니다") | 적용 |
 
+## Rise of Ix Epic Game Mode
+
+`epic_game` 옵션(2026-09-28)의 용어. 출처는 한국어판 Rise of Ix 룰북(`rise-of-ix-ko`)과 Uprising 한국어판 룰북이다. 카드 이름 둘은 한글판 카드 실물 사진으로 확인한 것이 아니라 **한국어판 룰북 표기를 쓰기로 한 사용자 결정**(2026-09-28, OQ-092)이다. TTS 한글화 모드의 Control the Spice 카드면은 "스파이스를 조종하라"로 적혀 있지만 쓰지 않는다.
+
+| EN | KO | 출처 | 상태 |
+| --- | --- | --- | --- |
+| Epic Game Mode | 에픽 게임 모드 | `[Rise of Ix p. 10]`("에픽 게임 모드에서는 10점이 아닌 12점에 도달한 플레이어가 있어야 게임이 끝납니다") | 적용 |
+| Control the Spice | 스파이스를 지배하라 | `[Rise of Ix p. 10]`("사막 행성 듄 카드를 1장씩 제거한 다음, 스파이스를 지배하라 카드를 1장씩 추가합니다"), `[Immortality p. 12]` | 적용(카드 이름, 사용자 결정) |
+| Economic Supremacy | 경제적 패권 | `[Main p. 18]`("이런 경우, 경제적 패권을 추가합니다"), `[Board Guide p. 13]` | 적용(카드 이름, 사용자 결정) |
+| Epic Game Only (아이콘) | 에픽 게임 모드 전용 | `[Rise of Ix p. 12]` | 참고 |
+
 ## Arrakeen Scouts 모듈
 
 **새 출처 종류: `[KO app: <loc key>]`**(2026-09-28). Arrakeen Scouts에는 룰북이 없어 Dire Wolf Game Room 컴패니언 앱의 공식 한국어 문구(`ko_KR` 로컬라이제이션)가 한국어 용어의 출처다([sources.md](sources.md)의 "Arrakeen Scouts" 절). 인용은 앱의 loc key다. 앱 한국어에는 오역과 누락이 있어(OQ-086) **용어로만** 쓰고, 효과 문장은 이 표의 단어로 우리가 짓는다.

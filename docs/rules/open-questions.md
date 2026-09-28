@@ -982,3 +982,24 @@
 - 공식: Immortality 룰북의 Go to 11 변형은 11 Victory Point까지 하는 것을 권하고, 4인 게임은 0에서 시작해 10까지 한다고 적는다 `[Immortality p. 12]`. 이 룰북은 원판 Dune: Imperium용이고, Uprising의 "Adding Immortality" `[Main p. 18]`는 Research Station overlay만 지시한다. 이 변형을 Uprising에 쓰는지, Immortality 없이도 쓰는지는 어느 문서도 말하지 않는다.
 - 판정: (a) 적용한다. 4인 Uprising도 Score marker를 1에서 시작하고 10점에서 Endgame을 열므로 `[Main pp. 5, 15]`, 4인 문장("0에서 시작해 10까지")을 그대로 쓴다: 시작 점수만 0이 되고 종료 조건 10점은 그대로다. (b) Immortality 옵션을 켰을 때만 고를 수 있다(`tech_module`이 `bloodlines`를 요구하는 것과 같은 모양). 룰북이 이 변형을 Immortality의 덱빌딩 선택지 때문에 권한다는 점을 따른 결정이다. (c) 브라우저 새 게임 화면의 체크박스는 기본으로 켠다. Dune: Imperium 디지털판과 대회가 이 변형을 기본으로 쓴다는 사용자 판단이다. 엔진 `RulesetConfig`와 CLI의 기본값은 꺼짐이라 학습·sweep 기준선은 바뀌지 않는다.
 - 구현: `RulesetConfig.go_to_11`(Immortality 필요, 체크포인트 식별자 `+go11`)과 `RulesetConfig.starting_victory_points`, `rules/setup.create_unshuffled_players`. 명세는 [immortality.md](immortality.md) 8절.
+
+## OQ-092 — Epic Game Mode를 Rise of Ix 없이 Uprising에 적용
+
+- 상태: `DECIDED` (사용자 결정, 2026-09-28)
+- 공식: Epic Game Mode는 Rise of Ix 룰북의 변형이다 `[Rise of Ix p. 10]`. Uprising의 "Adding Rise of Ix"는 Rise of Ix를 더할 때 Epic Game Mode에 Conflict III가 한 장 더 필요하니 Economic Supremacy를 넣으라고 적는다 `[Main p. 18]`. Rise of Ix의 나머지(Ix board, Tech tile, dreadnought, 새 카드) 없이 이 모드만 쓰는 것은 어느 문서도 말하지 않는다.
+- 판정: (a) 적용한다. 모드의 변경은 전부 setup과 종료 점수이고, 필요한 Rise of Ix 구성물은 Control the Spice(색마다 1장)와 Economic Supremacy 두 종류뿐이다. 사용자는 이 모드를 "Control the Spice만 있으면 어느 확장에서나 쓸 수 있는 모드"로 본다. (b) 다른 옵션을 요구하지 않는 독립 옵션 `epic_game`이다(Rise of Ix 옵션은 없다). (c) 브라우저 새 게임 화면의 체크박스는 기본으로 켠다. 엔진 `RulesetConfig`와 CLI의 기본값은 꺼짐이다. (d) checkpoint·search AI 좌석도 앉을 수 있다. (e) 한국어 카드 이름은 한국어판 룰북 표기 "스파이스를 지배하라" `[Rise of Ix p. 10]`·"경제적 패권" `[Main p. 18]`을 쓴다.
+- 구현: `RulesetConfig.epic_game`(체크포인트 식별자 `+epic`). 명세는 [epic-game-mode.md](epic-game-mode.md).
+
+## OQ-093 — Go to 11과 Epic Game Mode를 함께 쓸 때
+
+- 상태: `DECIDED` (사용자 결정, 2026-09-28)
+- 공식: Go to 11은 11 Victory Point까지 하되 4인 게임은 0에서 시작해 10까지 한다 `[Immortality p. 12]`. Epic Game Mode는 10이 아니라 12까지 한다 `[Rise of Ix p. 10]`. 같은 쪽의 "Immortality with Epic Game Mode" 문단은 Control the Spice의 위치만 다루고 `[Immortality p. 12]`, 두 변형의 점수 조합은 어느 문서도 말하지 않는다.
+- 판정: 둘 다 적용한다. Score marker는 0에서 시작하고(Go to 11) Endgame은 12점에서 열린다(Epic). "목표 +1"로 읽어도(1에서 시작해 13) 필요한 점수가 같다.
+- 구현: `RulesetConfig.starting_victory_points`(Go to 11)과 `RulesetConfig.endgame_victory_points`(Epic)가 서로 독립이다.
+
+## OQ-094 — battle icon이 없는 Conflict 카드
+
+- 상태: `DECIDED` (프로젝트 판정, 2026-09-28)
+- 공식: Economic Supremacy에는 battle icon이 인쇄돼 있지 않다(카드면). 6인 Epic 문단은 Rise of Ix Conflict를 섞으면 "some Conflicts may not award the winner a battle icon"이라고 적는다 `[Board Guide p. 13]`. battle icon 매칭은 같은 icon끼리 `[Main p. 14]`, wild는 Endgame에 세 종류 중 하나와 짝을 짓는다 `[Main p. 20]`. Ornithopter Fleet은 "Each battle icon you have, including wild battle icons"를 Ornithopter로 취급한다 `[Bloodlines p. 12]`. Grasp Arrakis의 Endgame 효과는 "face-up Conflict cards" 두 장을 뒤집는다(카드면).
+- 판정: 이긴 플레이어는 카드를 supply에 앞면으로 두지만 icon이 없으므로 (a) 도착 즉시 매칭도, Endgame의 wild 매칭 상대도 되지 않는다. (b) Crysknife·Desert Mouse·Ornithopter Intrigue의 Endgame 뒤집기 대상이 아니다. (c) Ornithopter Fleet은 "가진 battle icon"만 바꾸므로 이 카드를 Ornithopter로 만들지 않는다(매칭과 Ornithopter 뒤집기 대상에서 빠진다). (d) The Beast's Spoils처럼 face-up battle icon 종류를 세는 효과에 아무것도 더하지 않는다. (e) Grasp Arrakis는 icon이 아니라 Conflict 카드를 세므로 이 카드도 뒤집을 수 있다.
+- 구현: `ConflictDefinition`이 "인쇄된 icon 없음"을 "전사 안 됨"과 구분한다. 명세는 [epic-game-mode.md](epic-game-mode.md) 6절.

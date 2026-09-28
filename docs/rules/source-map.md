@@ -341,7 +341,7 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[Immortality pp. 10-11]` | Graft: 두 장 play, 아이콘 선택, 두 카드 모두 "보낸" 것, 효과 자유 순서, Reveal 사용, "if grafted"·"the other grafted card" | `covered` | [immortality.md](immortality.md) 5절 |
 | `[Immortality p. 12]` | Family Atomics | `covered` | [immortality.md](immortality.md) 7절 |
 | `[Immortality p. 12]` | Go to 11 변형(4인: Score marker를 0에서 시작, 10점 Endgame 조건은 그대로) | `covered` | [immortality.md](immortality.md) 8절, [OQ-091](open-questions.md#oq-091--go-to-11-변형을-uprising에-적용하는-방식) |
-| `[Immortality p. 12]` | Rise of Ix Epic Game Mode 조합 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Immortality p. 12]` | Rise of Ix Epic Game Mode 조합(Control the Spice를 시작 덱 대신 discard pile에) | `covered` | [epic-game-mode.md](epic-game-mode.md) 4절 |
 | `[Immortality p. 13]` | 솔로 Rivals 규칙과 House Hagal 카드 | `out of scope` | 현재 룰셋에서 제외 |
 | `[Immortality p. 14]` | Clandestine Meeting·Ghola·Usurp clarification | `covered` | [immortality.md](immortality.md) 5절 |
 | `[Immortality p. 14]` | Dispatch an Envoy·Ilesa Ecaz·Kwisatz Haderach·Spaceport(원본·Rise of Ix 카드) | `out of scope` | 해당 카드가 현재 룰셋에 없음 |
@@ -351,6 +351,24 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[FAQ p. 4]` | Tleilaxu track은 Faction이 아님 | `covered` | [immortality.md](immortality.md) 3절 |
 | `[Tleilaxu card faces]` `[card face]` | Tleilaxu 18장, Reclaimed Forces, Imperium 25종, Intrigue 11종, Experimentation, 프로모 Piter의 인쇄 텍스트 | `deferred to content manifest` | [implementation-audits/immortality.md](../implementation-audits/immortality.md) |
 
+
+## Rise of Ix Rulebook
+
+`[Rise of Ix p. N]`은 PDF 페이지(인쇄 쪽수와 같다)다. Epic Game Mode(`epic_game` 옵션)만 적용하며, Rise of Ix 확장 없이 쓰는 것은 사용자 결정이다([OQ-092](open-questions.md#oq-092--epic-game-mode를-rise-of-ix-없이-uprising에-적용)).
+
+| 출처 | 규칙 주제 | 상태 | 반영 위치 또는 처리 |
+| --- | --- | --- | --- |
+| `[Rise of Ix p. 2]` | Control the Spice(색마다 시작 카드 1장, Epic Game 전용) | `covered` | [epic-game-mode.md](epic-game-mode.md) 2절 |
+| `[Rise of Ix pp. 2-9]` | Ix board, Tech tile, dreadnought, Freighter, 새 카드·Leader, 1·2인 규칙 | `out of scope` | Rise of Ix 확장은 구현 대상이 아님 |
+| `[Rise of Ix p. 10]` | Epic Game Mode: 12점, Conflict II 5장 위 III 5장(I 없음), Dune 1장 → Control the Spice, Intrigue 1장, garrison 5 | `covered` | [epic-game-mode.md](epic-game-mode.md) 2-3절 |
+| `[Rise of Ix p. 10]` | Viscount Hundro Moritani의 Epic setup 순서 | `out of scope` | Rise of Ix Leader |
+| `[Rise of Ix p. 10]` | Appropriate·Court Intrigue·Ilesa Ecaz·Imperial Bashar·Second Wave·Treachery clarification | `out of scope` | Rise of Ix 카드 |
+| `[Rise of Ix p. 12]` | Epic Game Only 아이콘 | `covered` | [epic-game-mode.md](epic-game-mode.md) 2절 |
+| `[Main p. 18]` | Uprising에서 Epic Game Mode를 할 때 Economic Supremacy를 다섯 번째 Conflict III로 | `covered` | [epic-game-mode.md](epic-game-mode.md) 3절 |
+| `[Main p. 18]` | Rise of Ix의 CHOAM overlay·Ix board의 observation post, 다른 Conflict 카드, Ilesa Ecaz | `out of scope` | Rise of Ix 확장 |
+| `[Board Guide p. 13]` | 6인 Epic Game Mode(icon 없는 Conflict 언급 포함) | `out of scope` | 6인 제외; icon 없는 Conflict 취급은 [OQ-094](open-questions.md#oq-094--battle-icon이-없는-conflict-카드) |
+| `[Control the Spice card]` `[Economic Supremacy card]` | 두 카드의 인쇄 텍스트 | `covered` | [epic-game-mode.md](epic-game-mode.md) 6절 |
+| (없음) | Go to 11과의 점수 조합 | `open question` | [OQ-093](open-questions.md#oq-093--go-to-11과-epic-game-mode를-함께-쓸-때) (`DECIDED`) |
 
 ## Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
 
