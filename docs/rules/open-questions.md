@@ -938,7 +938,7 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 비밀 선택의 보상은 1 또는 2라운드 뒤 그 라운드의 Scout 직후에 공개·해결된다. 앱은 같은 선택끼리 묶어(일부 선택) 차례 순서로 처리한다 `[Scouts schedule]`. 게임이 기한 전에 끝나는 경우와, Immortality 조합에서 비밀 선택 이벤트가 두 번 나올 때 앱의 묶음 처리가 한 좌석을 빠뜨리는 버그는 앱이 다루지 않는다.
 - 판정: (a) 기한 전에 게임이 끝나면 보상은 사라진다(종료 후 공개 패널에는 보인다). (b) 기한이 된 선택은 모두 한꺼번에 공개하고, 이벤트 공개 순서 → 선택지 순서 → First Player부터의 좌석 순서로 해결한다. (c) "손의 카드 1장 버리기 → troop 3"은 버릴 카드가 있으면 버리고 받는 선택형이다(버리지 않으면 troop도 없다). (d) 앱의 묶음 버그는 따라 하지 않고 모든 보상을 해결한다.
-- 구현: 슬라이스 7.
+- 구현: 슬라이스 7(`rules/scouts_secrets.py`: 공개 라운드의 Scouts 단계 첫 일로 `reveal_due_secrets`, 해결은 `scouts_effects.offer_secret_reward`; (c)의 선택은 그 좌석의 `scouts_choice` frame에서 `scouts_choose_option` 또는 `scouts_pass`). `tests/unit/rules/test_scouts_secrets.py`.
 
 ## OQ-086 — 앱 한국어의 오역과 누락
 

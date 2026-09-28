@@ -278,6 +278,11 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 7: 7절 비밀 선택(`rules/scouts_secrets.py`).
+  - 이벤트가 나오면 First Player부터 좌석마다 `scouts_secret_pick(pick)`으로 고른다(frame `scouts_secret`, 네 값이 늘 모두 제시된다). 선택은 `GameState.scouts_secret_picks`에 남고 그 좌석만 안다.
+  - 공개 라운드의 Scouts 단계 첫 일로 기한이 된 선택을 모두 공개하고(`scouts_secret_revealed`), 이벤트 → 줄 → First Player부터의 좌석 순서로 해결한다. "카드 1장 버리기 → troop 3"은 받을지 고른다. Offworld Operation의 둘째 줄은 첫 genetic marker에 닿았으면 spice 2(OQ-085, OQ-089 (b)).
+  - 봉인 장치: 좌석 한정 id로 숨은 정보 등록부(`known_card_seats`)에 넣어 공개 단계가 되돌릴 수 없는 공개가 되고, 서버 로그는 선택 인자를 게임이 끝날 때까지 가리며, 행동 목록의 미리보기를 싣지 않는다. 탐색 AI(`determinize`)와 소크의 비공개 검사는 상대의 선택을 구별할 수 없는 줄로 바꾼다. 종료 후 공개에 남은 선택이 보인다([information-visibility.md](information-visibility.md)).
+  - 관측 v24(좌석별 숨은 선택 수, 자기 선택), codec v118.
 - 2026-09-28 슬라이스 6b: 나머지 임무의 수령.
   - Desert Riding: Hagga Basin의 Maker 선택에 `take_desert_riding_hooks`(spice 2 대신 토큰, bonus spice는 그대로, 같은 방문 sandworm 없음). Maker Hooks가 있는 좌석에는 없다. 토큰이 남은 마지막 Maker Hooks이면 Sietch Tabr의 Maker Hooks 획득이 가져간다(OQ-079).
   - Valued Informants(Urban Surveillance, Planetary Exploration)와 CHOAM Escort: 매 전이 뒤 자동 단계가 Spy가 놓인 물품 관측소와 완료된 Contract를 찾아 물품을 준다. 어느 배치·완료 경로든 같다(OQ-080).

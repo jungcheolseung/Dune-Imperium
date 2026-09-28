@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령).
+기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령), 슬라이스 7(비밀 선택).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -82,8 +82,8 @@
 | `water_for_spice_smugglers` | `Def_Event_InfluenceReduction_Smugglers2` 18.2 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
 | `bene_gesserit_treachery` | `Def_Event_InfluenceReduction_Treachery2` 18.3 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
 | `funeral_rites` | `Def_Event_InfluenceReduction_FuneralRites` 18.4 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
-| `covert_operation` | `Def_Event_CovertOperation2` 19.0 | 둘 다 | secret | 4~7 | 10 | 없을 때 전용 | 카탈로그 |
-| `covert_operation_choam` | `Def_Event_CovertOperation3` 19.1 | 둘 다 | secret | 4~7 | 10 | 전용 | 카탈로그 |
+| `covert_operation` | `Def_Event_CovertOperation2` 19.0 | 둘 다 | secret | 4~7 | 10 | 없을 때 전용 | 7: 비밀 선택·공개·해결 |
+| `covert_operation_choam` | `Def_Event_CovertOperation3` 19.1 | 둘 다 | secret | 4~7 | 10 | 전용 | 7: 비밀 선택·공개·해결 |
 | `mating_season` | `Def_Event_MatingSeason` 20.0 | 둘 다 | automatic | 4~7 | 10 |  | 3a: Maker 칸마다 +1 |
 | `unlikely_allies` | `Def_Event_UnlikelyAllies` 21.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 3b: Influence 요구 무시 (`agent_turn`) |
 | `clear_the_market` | `Def_Event_ClearTheMarket` 22.0 | 둘 다 | automatic | 4~7 | 10 | 없을 때 전용 | 3a: Row 교체, 치운 카드는 `imperium_removed` |
@@ -97,7 +97,7 @@
 | `betrayal` | `Def_Event_Betrayal` 9.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
 | `new_innovations` | `Def_Event_NewInnovations` 10.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
 | `termination_request` | `Def_Event_TerminationRequest` 11.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
-| `offworld_operation` | `Def_Event_OffworldOperation` 12.0 | +Immortality | secret | 4~7 | 10 |  | 카탈로그 |
+| `offworld_operation` | `Def_Event_OffworldOperation` 12.0 | +Immortality | secret | 4~7 | 10 |  | 7: 비밀 선택·공개·해결 |
 
 ### 경매 (슬라이스 8)
 
