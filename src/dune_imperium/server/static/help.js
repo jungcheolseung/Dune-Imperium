@@ -145,6 +145,12 @@ function openHelp() {
     item.textContent = t(line);
     list.appendChild(item);
   }
+  if (state.summary && state.summary.arrakeen_scouts) {
+    /* Arrakeen Scouts' step and its sealed choices, only in such a game. */
+    const item = document.createElement("li");
+    item.textContent = t("help.turn_scouts");
+    list.appendChild(item);
+  }
   body.append(turn, list);
 
   /* Every rule term that has a printed icon, from the one table the rest

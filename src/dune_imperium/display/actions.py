@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.types import (
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
+from dune_imperium.display.scouts import scouts_action_text
 from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
@@ -179,8 +180,11 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
 
 
 def effect_action_text(state: GameState, action: DomainAction) -> str | None:
-    """Describe a keyed icon resolution; None for every other action."""
+    """Describe a keyed icon resolution or a Scouts choice; None otherwise."""
 
+    scouts = scouts_action_text(state, action)
+    if scouts is not None:
+        return scouts[0]
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None
@@ -213,6 +217,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     returns ``None`` (``static/render.js`` ``effectNode``).
     """
 
+    scouts = scouts_action_text(state, action)
+    if scouts is not None:
+        return scouts[1]
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None

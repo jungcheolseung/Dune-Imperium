@@ -417,6 +417,7 @@ const RULESET_BADGES = [
   ["bloodlines", "render.badge_bloodlines"],
   ["tech_module", "render.badge_tech"],
   ["immortality", "render.badge_immortality"],
+  ["arrakeen_scouts", "render.badge_scouts"],
   ["leader_draft", "render.badge_draft"],
 ];
 
@@ -431,6 +432,7 @@ function render(options) {
   el("decision-banner").hidden = Boolean(state.review);
   renderBanner();
   renderStandings();
+  renderScouts();
   renderBoard();
   renderMarket();
   renderSeats();
@@ -555,6 +557,22 @@ function renderDisclosure() {
   deckLine(t("render.deck_conflict"), view.disclosure.conflict_deck);
   if (view.disclosure.contract_bank.length) {
     deckLine(t("render.contract_bank"), view.disclosure.contract_bank);
+  }
+  if (view.disclosure.scouts_board_cards && view.disclosure.scouts_board_cards.length) {
+    deckLine(t("panels.scouts_face_down", { count: "" }).trim(), view.disclosure.scouts_board_cards);
+  }
+  /* Arrakeen Scouts: secret picks the game ended before (OQ-085 (a)). */
+  const lost = view.disclosure.scouts_secret_picks || [];
+  if (lost.length) {
+    const box = section(panel, t("panels.scouts_lost_picks"));
+    for (const [round, event, seat, pick] of lost) {
+      const item = scoutsItem(event);
+      const row = document.createElement("div");
+      row.className = "cardline";
+      row.append(`${t("common.seat", { seat })} · ${t("panels.scouts_round", { round })} ${item.name}: `);
+      row.appendChild(effectNode(item.lines[pick] || "", item.lines_ko[pick]));
+      box.appendChild(row);
+    }
   }
 }
 
@@ -1007,6 +1025,11 @@ function revealTurnPreview() {
    Actions of one id that differ only in a `count` argument are shown as a
    single row with a stepper over the legal counts; the panel and the
    Conflict area share the chosen number. */
+/* Count families shown as a stepper in the panel even with one count left:
+   an Arrakeen Scouts sealed bid is the same control whatever the seat can
+   afford, 0 alone included (D5, docs/arrakeen-scouts-design.md). */
+const SINGLE_COUNT_STEPPERS = new Set(["scouts_bid"]);
+
 function countFamilies(actions) {
   const byId = new Map();
   for (const action of actions) {
@@ -1021,7 +1044,12 @@ function countFamilies(actions) {
     });
     /* Units go in and out of the Conflict through the same control even
        when a single count is left to choose. */
-    if (!onlyCount || (group.length < 2 && !FORCE_STEPPER_ACTIONS.has(id))) continue;
+    if (
+      !onlyCount ||
+      (group.length < 2 && !FORCE_STEPPER_ACTIONS.has(id) && !SINGLE_COUNT_STEPPERS.has(id))
+    ) {
+      continue;
+    }
     families.set(id, [...group].sort((a, b) => a.arguments.count - b.arguments.count));
   }
   return families;

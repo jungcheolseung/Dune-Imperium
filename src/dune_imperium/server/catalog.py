@@ -44,6 +44,8 @@ that place the live state on that scan (``display.board_layout``).
 from functools import cache
 from urllib.parse import quote
 
+from dune_imperium.adapters.observation_encoding import SCOUTS_ITEM_IDS
+from dune_imperium.content.arrakeen_scouts import SUBCOMMITTEES_BY_ID
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import (
@@ -120,12 +122,18 @@ from dune_imperium.display.images import (
 )
 from dune_imperium.display.leader_layout import leader_layout
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+from dune_imperium.display.scouts import (
+    SCOUTS_ITEM_NAMES_KO,
+    scouts_item_lines,
+    scouts_item_name,
+)
 from dune_imperium.display.token_images import (
     MAKER_HOOKS_TOKEN_FILENAME,
     SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
     available_alliance_tokens,
 )
+from dune_imperium.rules.scouts import item_kind
 from dune_imperium.server.sessions import JsonObject, JsonValue
 
 
@@ -483,9 +491,28 @@ def build_catalog(
         # Live-state marker coordinates on the scan (Influence, VP, strength,
         # Conflict quadrants, High Council seats), percent of the image.
         "tracks": marker_layout(),
+        # Arrakeen Scouts items (``display.scouts``): kind, names and the
+        # lines each offers, in English and Korean.
+        "scouts_items": _scouts_items(),
     }
     _add_korean(catalog, korean_images)
     return catalog
+
+
+def _scouts_items() -> JsonObject:
+    items: JsonObject = {}
+    for item_id in SCOUTS_ITEM_IDS:
+        english, korean = scouts_item_lines(item_id)
+        items[item_id] = {
+            "kind": (
+                "subcommittee" if item_id in SUBCOMMITTEES_BY_ID else item_kind(item_id)
+            ),
+            "name": scouts_item_name(item_id),
+            "name_ko": SCOUTS_ITEM_NAMES_KO[item_id],
+            "lines": list(english),
+            "lines_ko": list(korean),
+        }
+    return items
 
 
 def _add_korean(catalog: JsonObject, korean_images: dict[str, str]) -> None:

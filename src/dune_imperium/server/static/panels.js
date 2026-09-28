@@ -1195,3 +1195,210 @@ function renderStandings() {
   }
   panel.appendChild(open);
 }
+
+/* ---------- Arrakeen Scouts ----------
+
+   Everything the view says about the Scouts deck (docs/rules/arrakeen-
+   scouts.md): the subcommittees and their members, what was revealed each
+   round, the mission pieces on the board, who still has a secret pick
+   waiting (and the viewer's own), and the auction running now. Only the
+   view is read, so nothing hidden can show: another seat's pick or bid is
+   never in it. */
+const SCOUTS_KIND_KEYS = {
+  subcommittee: "panels.scouts_kind_subcommittee",
+  mission: "panels.scouts_kind_mission",
+  event: "panels.scouts_kind_event",
+  auction: "panels.scouts_kind_auction",
+  sale: "panels.scouts_kind_sale",
+};
+
+function scoutsItem(itemId) {
+  const items = (state.catalog && state.catalog.scouts_items) || {};
+  return items[itemId] || { kind: "", name: prettify(itemId), lines: [], lines_ko: [] };
+}
+
+function scoutsItemLines(item, box) {
+  item.lines.forEach((line, index) => {
+    box.appendChild(effectLine(line, item.lines_ko[index], "scouts-line"));
+  });
+}
+
+function scoutsPlace(location) {
+  if (location.startsWith("post:")) return phraseText("{observation_post}");
+  if (location.startsWith("contract:")) return nameOf(location.slice("contract:".length));
+  if (location === "helix") return t("panels.scouts_helix");
+  if (location === "reclaimed_forces") return nameOf(location);
+  if (location === "tleilaxu_track") return phraseText("{tleilaxu}");
+  return spaceName(location);
+}
+
+function scoutsGoodsText(resource, amount) {
+  if (resource === "marker") return "{control}";
+  if (resource === "maker_hooks") return "{maker_hooks}";
+  return `{${resource}:${amount}}`;
+}
+
+function scoutsSection(panel, title) {
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  panel.appendChild(heading);
+  const box = document.createElement("div");
+  box.className = "scouts-section";
+  panel.appendChild(box);
+  return box;
+}
+
+function scoutsRow(box, content) {
+  const row = document.createElement("div");
+  row.className = "scouts-row";
+  if (typeof content === "string") row.appendChild(phrase(content));
+  else row.appendChild(content);
+  box.appendChild(row);
+  return row;
+}
+
+function renderScouts() {
+  const panel = el("scouts-panel");
+  const summary = state.summary;
+  const view = state.view;
+  if (!summary || !summary.arrakeen_scouts || !view) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  panel.textContent = "";
+  const heading = document.createElement("h2");
+  heading.textContent = t("panels.scouts_heading");
+  panel.appendChild(heading);
+  const kindLabel = (kind) => (SCOUTS_KIND_KEYS[kind] ? t(SCOUTS_KIND_KEYS[kind]) : kind);
+
+  if (view.scouts_subcommittees.length) {
+    const box = scoutsSection(panel, t("panels.scouts_subcommittees"));
+    const members = new Map(view.scouts_subcommittee_members.map(([id, seat]) => [id, seat]));
+    for (const id of view.scouts_subcommittees) {
+      const item = scoutsItem(id);
+      const member = members.has(id) ? playerLabel(members.get(id)) : t("panels.scouts_open_seat");
+      const row = scoutsRow(box, `${item.name} — ${member}`);
+      row.dataset.item = id;
+      scoutsItemLines(item, row);
+    }
+  }
+
+  const current = view.scouts_revealed.filter(([round]) => round === view.round_number);
+  const earlier = view.scouts_revealed.filter(([round]) => round !== view.round_number);
+  if (current.length) {
+    const box = scoutsSection(panel, t("panels.scouts_this_round"));
+    for (const [, id] of current) {
+      const item = scoutsItem(id);
+      const row = scoutsRow(box, `${kindLabel(item.kind)} · ${item.name}`);
+      row.dataset.item = id;
+      scoutsItemLines(item, row);
+    }
+  }
+
+  const pieces = [];
+  const goodsByMission = new Map();
+  for (const [mission, location, resource, amount, seat] of view.scouts_goods) {
+    const who = seat < 0 ? t("panels.scouts_anyone") : playerLabel(seat);
+    if (!goodsByMission.has(mission)) goodsByMission.set(mission, []);
+    goodsByMission
+      .get(mission)
+      .push(`${scoutsPlace(location)}: ${scoutsGoodsText(resource, amount)} (${who})`);
+  }
+  for (const [mission, seat, location, troops] of view.scouts_parked) {
+    if (!goodsByMission.has(mission)) goodsByMission.set(mission, []);
+    goodsByMission
+      .get(mission)
+      .push(`${scoutsPlace(location)}: ${t("panels.scouts_parked", { count: troops })} (${playerLabel(seat)})`);
+  }
+  for (const [mission, location, count] of view.scouts_board_card_counts) {
+    if (!goodsByMission.has(mission)) goodsByMission.set(mission, []);
+    goodsByMission
+      .get(mission)
+      .push(`${scoutsPlace(location)}: ${t("panels.scouts_face_down", { count })}`);
+  }
+  for (const [mission, lines] of goodsByMission) pieces.push([mission, lines]);
+  if (pieces.length) {
+    const box = scoutsSection(panel, t("panels.scouts_pieces"));
+    for (const [mission, lines] of pieces) {
+      const row = scoutsRow(box, scoutsItem(mission).name);
+      row.dataset.item = mission;
+      for (const line of lines) {
+        const detail = document.createElement("div");
+        detail.className = "scouts-line";
+        detail.appendChild(phrase(line));
+        row.appendChild(detail);
+      }
+    }
+  }
+
+  const own = (view.private && view.private.scouts_secret_picks) || [];
+  if (view.scouts_secret_pending.length || own.length) {
+    const box = scoutsSection(panel, t("panels.scouts_secrets"));
+    const waiting = new Map();
+    for (const [round, event, seat] of view.scouts_secret_pending) {
+      const key = `${round}|${event}`;
+      if (!waiting.has(key)) waiting.set(key, []);
+      waiting.get(key).push(playerLabel(seat));
+    }
+    for (const [key, seats] of waiting) {
+      const [round, event] = key.split("|");
+      scoutsRow(
+        box,
+        t("panels.scouts_secret_waiting", {
+          round,
+          name: scoutsItem(event).name,
+          seats: seats.join(", "),
+        }),
+      );
+    }
+    for (const [, event, pick] of own) {
+      const item = scoutsItem(event);
+      const row = scoutsRow(box, t("panels.scouts_own_pick", { name: item.name }));
+      row.classList.add("scouts-own");
+      row.appendChild(effectNode(item.lines[pick] || "", item.lines_ko[pick]));
+    }
+  }
+
+  const auctionHere = current.some(([, id]) => scoutsItem(id).kind === "auction");
+  const ownBid = view.private ? view.private.scouts_bid : -1;
+  if (auctionHere && (view.scouts_bids_confirmed.length || ownBid >= 0)) {
+    const box = scoutsSection(panel, kindLabel("auction"));
+    scoutsRow(
+      box,
+      view.scouts_bids_confirmed.length
+        ? t("panels.scouts_bids", { seats: view.scouts_bids_confirmed.map(playerLabel).join(", ") })
+        : t("panels.scouts_no_bids"),
+    );
+    if (ownBid >= 0) scoutsRow(box, t("panels.scouts_own_bid", { count: ownBid })).classList.add("scouts-own");
+  }
+  if (view.scouts_market_cards.length) {
+    const box = scoutsSection(panel, t("panels.scouts_market"));
+    view.scouts_market_cards.forEach((id, slot) => {
+      const row = scoutsRow(box, `${slot + 1}. ${nameOf(id)}`);
+      row.dataset.card = id;
+    });
+    if (view.scouts_calls.length) {
+      const calls = view.scouts_calls.map(
+        ([seat, amount]) => `${playerLabel(seat)} ${amount ? `{spice:${amount}}` : t("panels.scouts_pass")}`,
+      );
+      scoutsRow(box, t("panels.scouts_calls", { calls: calls.join(", ") }));
+    }
+  }
+
+  if (earlier.length) {
+    const details = document.createElement("details");
+    const label = document.createElement("summary");
+    label.textContent = t("panels.scouts_earlier");
+    details.appendChild(label);
+    for (const [round, id] of earlier) {
+      const item = scoutsItem(id);
+      const row = document.createElement("div");
+      row.className = "scouts-row";
+      row.dataset.item = id;
+      row.textContent = `${t("panels.scouts_round", { round })} · ${kindLabel(item.kind)} · ${item.name}`;
+      details.appendChild(row);
+    }
+    panel.appendChild(details);
+  }
+}

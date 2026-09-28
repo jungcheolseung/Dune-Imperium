@@ -1043,6 +1043,15 @@ function intrigueOptionBody(entry, index) {
 function describeAction(action) {
   const fragment = document.createDocumentFragment();
   fragment.appendChild(phrase(ACTION_LABELS[action.action_id] || prettify(action.action_id)));
+  if (action.detail && !("effect" in action.arguments)) {
+    /* An Arrakeen Scouts choice (a line, a secret pick, a subcommittee, a
+       mission's way in, a revealed card): the server's detail says what it
+       does (display/scouts.py), which a bare index or id would not. Only
+       the choosing seat's live actions carry it. */
+    fragment.append(" — ");
+    fragment.appendChild(effectNode(action.detail, action.detail_ko));
+    return fragment;
+  }
   const parts = [];
   for (const [key, value] of Object.entries(action.arguments)) {
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);

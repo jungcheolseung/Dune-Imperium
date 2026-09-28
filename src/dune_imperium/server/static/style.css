@@ -1774,3 +1774,20 @@ kbd {
 }
 .pile-button:hover { border-color: var(--glow, #ffcf5a); }
 .pile-button .icon { height: 1.3em; width: auto; }
+
+/* Arrakeen Scouts panel (panels.js renderScouts). */
+#scouts-panel h3 {
+  margin: 0.5em 0 0.2em;
+  font-size: 0.95em;
+}
+#scouts-panel .scouts-row {
+  margin: 0.15em 0;
+}
+#scouts-panel .scouts-line {
+  margin-left: 1em;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+#scouts-panel .scouts-own {
+  font-weight: 600;
+}

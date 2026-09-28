@@ -405,6 +405,10 @@ const UI_TEXT = {
     "ko": "{reveal_turn}: 카드를 공개하고, 남은 {persuasion}으로 빛나는 카드를 산 뒤 끝냅니다.",
     "en": "{reveal_turn}: reveal your cards, acquire highlighted cards with the {persuasion} left, then end."
   },
+  "help.turn_scouts": {
+    "ko": "아라킨 스카웃: 각 라운드 첫 턴 전에 그 라운드의 항목을 차례로 처리합니다(오른쪽 패널). 비밀 선택과 봉인 입찰액은 다른 좌석에 보이지 않고, 입찰은 액수를 고른 뒤 \"턴 종료 ▶\"가 곧 확정입니다.",
+    "en": "Arrakeen Scouts: before each round's first turn, the round's item is handled seat by seat (panel on the right). Secret picks and sealed bids stay hidden from the other seats; pick a bid, then \"End turn ▶\" confirms it."
+  },
   "help.turn_undo_limit": {
     "ko": "되돌리기는 자기 연속 행동만 됩니다. 무작위 결과나 숨겨진 정보가 공개된 뒤로는 되돌릴 수 없습니다.",
     "en": "Undo only covers your own run of actions. Once a random result or hidden information is revealed, it cannot be undone."
@@ -492,6 +496,10 @@ const UI_TEXT = {
   "html.opt_immortality": {
     "ko": "불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
     "en": "Immortality expansion (Bene Tleilax board · Tleilaxu Row · Graft · new cards)"
+  },
+  "html.opt_scouts": {
+    "ko": "아라킨 스카웃 (컴패니언 앱 모드: 소위원회·임무·이벤트·경매·판매, 공식 규칙서 없음)",
+    "en": "Arrakeen Scouts (companion app mode: subcommittees · missions · events · auctions · sales; no official rulebook)"
   },
   "html.opt_leader_draft": {
     "ko": "지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)",
@@ -797,6 +805,110 @@ const UI_TEXT = {
     "ko": "{garrison} {troop}",
     "en": "Garrison"
   },
+  "panels.scouts_helix": {
+    "ko": "나선",
+    "en": "Helix"
+  },
+  "panels.scouts_heading": {
+    "ko": "아라킨 스카웃",
+    "en": "Arrakeen Scouts"
+  },
+  "panels.scouts_subcommittees": {
+    "ko": "소위원회",
+    "en": "Subcommittees"
+  },
+  "panels.scouts_open_seat": {
+    "ko": "빈 자리",
+    "en": "open"
+  },
+  "panels.scouts_this_round": {
+    "ko": "이번 라운드",
+    "en": "This round"
+  },
+  "panels.scouts_earlier": {
+    "ko": "지난 항목",
+    "en": "Earlier"
+  },
+  "panels.scouts_round": {
+    "ko": "{{round}}라운드",
+    "en": "Round {{round}}"
+  },
+  "panels.scouts_kind_mission": {
+    "ko": "임무",
+    "en": "Mission"
+  },
+  "panels.scouts_kind_event": {
+    "ko": "이벤트",
+    "en": "Event"
+  },
+  "panels.scouts_kind_auction": {
+    "ko": "경매",
+    "en": "Auction"
+  },
+  "panels.scouts_kind_sale": {
+    "ko": "판매",
+    "en": "Sale"
+  },
+  "panels.scouts_kind_subcommittee": {
+    "ko": "소위원회",
+    "en": "Subcommittee"
+  },
+  "panels.scouts_pieces": {
+    "ko": "임무 조각",
+    "en": "Mission pieces"
+  },
+  "panels.scouts_anyone": {
+    "ko": "누구나",
+    "en": "anyone"
+  },
+  "panels.scouts_parked": {
+    "ko": "세워 둔 병력 {{count}}",
+    "en": "{{count}} parked troops"
+  },
+  "panels.scouts_face_down": {
+    "ko": "뒷면 카드 {{count}}장",
+    "en": "{{count}} face-down cards"
+  },
+  "panels.scouts_secrets": {
+    "ko": "비밀 선택",
+    "en": "Secret picks"
+  },
+  "panels.scouts_secret_waiting": {
+    "ko": "{{round}}라운드 {{name}}: {{seats}}",
+    "en": "Round {{round}} {{name}}: {{seats}}"
+  },
+  "panels.scouts_own_pick": {
+    "ko": "내 선택 — {{name}}: ",
+    "en": "My pick — {{name}}: "
+  },
+  "panels.scouts_bids": {
+    "ko": "입찰 확정: {{seats}}",
+    "en": "Bids confirmed: {{seats}}"
+  },
+  "panels.scouts_no_bids": {
+    "ko": "아직 확정한 좌석 없음",
+    "en": "No bid confirmed yet"
+  },
+  "panels.scouts_own_bid": {
+    "ko": "내 입찰액: {{count}}",
+    "en": "My bid: {{count}}"
+  },
+  "panels.scouts_market": {
+    "ko": "공개된 카드",
+    "en": "Revealed cards"
+  },
+  "panels.scouts_calls": {
+    "ko": "호가: {{calls}}",
+    "en": "Calls: {{calls}}"
+  },
+  "panels.scouts_pass": {
+    "ko": "패스",
+    "en": "pass"
+  },
+  "panels.scouts_lost_picks": {
+    "ko": "쓰이지 않은 비밀 선택",
+    "en": "Secret picks never due"
+  },
   "panels.standings_heading": {
     "ko": "최종 순위",
     "en": "Final standings"
@@ -1044,6 +1156,10 @@ const UI_TEXT = {
   "render.badge_immortality": {
     "ko": "불멸",
     "en": "Immortality"
+  },
+  "render.badge_scouts": {
+    "ko": "아라킨 스카웃",
+    "en": "Arrakeen Scouts"
   },
   "render.badge_draft": {
     "ko": "지도자 드래프트",

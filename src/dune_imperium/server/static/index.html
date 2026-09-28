@@ -43,6 +43,8 @@
             <span data-i18n="html.opt_tech">기술 모듈 (혈통 필요: 익스 대사관 판·기술 타일 18장·익스의 코타 오닥스)</span></label>
           <label><input type="checkbox" id="opt-immortality" checked>
             <span data-i18n="html.opt_immortality">불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)</span></label>
+          <label><input type="checkbox" id="opt-scouts">
+            <span data-i18n="html.opt_scouts">아라킨 스카웃 (컴패니언 앱 모드: 소위원회·임무·이벤트·경매·판매, 공식 규칙서 없음)</span></label>
           <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">시드 (빈칸 = 무작위)</span>
             <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>
         </fieldset>
@@ -132,6 +134,7 @@
             <p id="game-error" class="error" role="alert" hidden></p>
             <p id="game-note" class="muted" hidden></p>
             <section id="standings" class="panel" hidden></section>
+            <section id="scouts-panel" class="panel" hidden></section>
             <section id="disclosure" class="panel" hidden></section>
           </div>
           <div id="side-log">

@@ -33,6 +33,7 @@ ARGS = {"races": ["--ab"]}
 # Only the order uses them, so a new script without an entry just runs last.
 SECONDS = {
     "leader_card": 30,
+    "scouts": 28,
     "races": 26,
     "open_mode": 25,
     "spectate": 16,

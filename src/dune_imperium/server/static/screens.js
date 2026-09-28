@@ -184,6 +184,7 @@ async function createGame(event) {
     bloodlines: el("opt-bloodlines").checked,
     tech_module: el("opt-tech").checked,
     immortality: el("opt-immortality").checked,
+    arrakeen_scouts: el("opt-scouts").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
