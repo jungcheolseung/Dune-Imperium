@@ -226,6 +226,12 @@ _SPY_PLACEMENT_SCORE: Final = 3.0
 _MINOR_ACTION_SCORE: Final = 1.0
 _DECLINE_SCORE: Final = -2.0
 _PASS_SCORE: Final = -3.0
+# Arrakeen Scouts. Critical Moment: call a small amount (the largest of 1-3
+# still open), never more; a pass is 0. A sealed bid: a small fixed amount,
+# then the confirmation at once (``HeuristicAgent._sealed_bid``).
+_SCOUTS_CALL_SCORES: Final[dict[int, float]] = {0: 0.0, 1: 0.5, 2: 0.6, 3: 0.7}
+_SCOUTS_CALL_TOO_HIGH: Final = -1.0
+_SCOUTS_BID: Final = 2
 _RETREAT_SCORE: Final = -1.0
 
 # Board space preference. Only Swordmaster and High Council were ranked
@@ -925,6 +931,11 @@ def score_action(
     """
 
     action_id = action.action_id
+    if action_id == "scouts_call":
+        count = _argument(action, "count")
+        if not isinstance(count, int):
+            return 0.0
+        return _SCOUTS_CALL_SCORES.get(count, _SCOUTS_CALL_TOO_HIGH)
     if action_id in _COUNT_DEPLOYMENTS:
         count = _argument(action, "count")
         return float(count) if isinstance(count, int) else 0.0
@@ -969,6 +980,30 @@ def score_action(
     if action_id.startswith(("trash_", "pay_", "recall_")):
         return _MINOR_ACTION_SCORE
     return 0.0
+
+
+def _sealed_bid(
+    observation: PlayerView, legal_actions: tuple[DomainAction, ...]
+) -> DomainAction | None:
+    """An Arrakeen Scouts sealed bid: pick once, then confirm.
+
+    Every count and the confirmation would otherwise tie, and the agent
+    would re-pick until it drew the confirmation. None outside a bid.
+    """
+
+    confirms = [a for a in legal_actions if a.action_id == "confirm_scouts_bid"]
+    confirm = confirms[0] if confirms else None
+    if confirm is None:
+        return None
+    if observation.private is not None and observation.private.scouts_bid >= 0:
+        return confirm
+    bids = [action for action in legal_actions if action.action_id == "scouts_bid"]
+    if not bids:
+        return confirm
+    return min(
+        bids,
+        key=lambda action: abs(int(_argument(action, "count") or 0) - _SCOUTS_BID),
+    )
 
 
 def _argument(action: DomainAction, name: str) -> ActionValue | None:
@@ -1049,6 +1084,9 @@ class HeuristicAgent:
             raise ValueError("a heuristic agent requires at least one legal action")
         if any(action.actor != observation.player for action in legal_actions):
             raise ValueError("every legal action must belong to the observing player")
+        sealed = _sealed_bid(observation, legal_actions)
+        if sealed is not None:
+            return sealed
         bonuses = (
             UPRISING_SPACE_BONUSES
             if self.space_bonuses is None

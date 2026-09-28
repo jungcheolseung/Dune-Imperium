@@ -309,3 +309,34 @@ def test_mercenaries_deploy_only_what_the_supply_holds() -> None:
     state = _bid_all(state, {0: 0, 1: 3, 2: 0, 3: 0})
     assert state.players[1].troops_conflict == 1
     assert state.players[1].resources.spice == spice - 3
+
+
+def test_the_heuristic_bids_once_then_confirms() -> None:
+    """Slice 10: a sealed bid would otherwise tie every count with the
+    confirmation, and the agent re-picked until it drew the confirmation."""
+
+    from dune_imperium.agents import HeuristicAgent
+
+    state = _draw(_base(), "highest_bidder_mid")
+    agent = HeuristicAgent(seed=3)
+    steps = 0
+    while state.decision_stack[-1].kind == FrameKind.SCOUTS_BID:
+        seat = _owner(state)
+        legal = ENGINE.legal_actions(state, seat)
+        action = agent.choose_action(observe_state(state, seat), legal)
+        state = ENGINE.apply(state, action, legal_actions=legal).state
+        steps += 1
+    assert steps == 8  # a bid and a confirmation per seat
+
+
+def test_the_heuristic_calls_a_small_open_amount() -> None:
+    from dune_imperium.agents.heuristic_agent import score_action
+
+    def call(count: int) -> float:
+        return score_action(
+            DomainAction(
+                action_id="scouts_call", actor=0, arguments=(("count", count),)
+            )
+        )
+
+    assert call(3) > call(2) > call(1) > call(0) > call(4)
