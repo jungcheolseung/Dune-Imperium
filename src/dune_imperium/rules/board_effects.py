@@ -63,7 +63,10 @@ from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.scouts_missions import (
     BOARD_ICON_SCOUTS,
+    desert_riding_token,
+    maker_hooks_left_in_bank,
     mission_collectable,
+    take_desert_riding_token,
 )
 from dune_imperium.rules.scouts_offers import queue_subcommittee_offer
 from dune_imperium.rules.shield_wall import (
@@ -847,6 +850,22 @@ def apply_sietch_tabr_action(
     _, context = current_agent_effect_context(state)
     owner = state.players[action.actor]
     recruited = 0
+    token_events: tuple[GameEvent, ...] = ()
+    if (
+        action.action_id == "take_sietch_tabr_supplies"
+        and not owner.maker_hooks
+        and maker_hooks_left_in_bank(state) <= 0
+    ):
+        # Desert Riding's token is one of the four Maker Hooks: when it is
+        # the last, Sietch Tabr takes it (OQ-079 (e)).
+        taken = take_desert_riding_token(
+            state,
+            action.actor,
+            source=f"round:{state.round_number}:player:{action.actor}:sietch_tabr",
+        )
+        state = taken.state
+        token_events = taken.events
+        owner = state.players[action.actor]
     if action.action_id == "take_sietch_tabr_supplies":
         owner, recruited = recruit_troops(owner, 1)
         owner = replace(
@@ -869,7 +888,7 @@ def apply_sietch_tabr_action(
         for candidate in state.players
     )
     effect_state = replace(state, players=players)
-    events: list[GameEvent] = []
+    events: list[GameEvent] = [*token_events]
     if action.action_id == "take_sietch_tabr_water_and_destroy_wall":
         destruction = destroy_shield_wall(
             effect_state,
@@ -1468,6 +1487,21 @@ def legal_maker_space_actions(
     ]
     owner = state.players[player]
     if (
+        space_id == "hagga_basin"
+        and not owner.maker_hooks
+        and desert_riding_token(state) is not None
+    ):
+        # Arrakeen Scouts' Desert Riding: the token "instead of taking the
+        # space's base 2 spice" [Scouts mission: Desert Riding]; a seat
+        # holding Maker Hooks gets no second one [Main p. 20] (OQ-079).
+        actions.append(
+            DomainAction(
+                action_id="take_desert_riding_hooks",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+        )
+    if (
         space_id != "imperial_basin"
         and owner.maker_hooks
         and state.current_conflict_ids
@@ -1508,7 +1542,27 @@ def apply_maker_space_action(
     base_spice = 0
     sandworms = 0
     replaced = 0
-    if action.action_id == "harvest_maker_spice":
+    token_events: tuple[GameEvent, ...] = ()
+    if action.action_id == "take_desert_riding_hooks":
+        # The token replaces the base spice; the bonus spice still comes
+        # [Scouts mission: Desert Riding]. It is this visit's one choice of
+        # the printed row, so no sandworm follows (OQ-079 (d)).
+        taken = take_desert_riding_token(
+            state,
+            action.actor,
+            source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
+        )
+        state = taken.state
+        token_events = taken.events
+        owner = state.players[action.actor]
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + bonus_spice,
+            ),
+        )
+    elif action.action_id == "harvest_maker_spice":
         base_spice = {
             "deep_desert": 4,
             "hagga_basin": 2,
@@ -1584,7 +1638,7 @@ def apply_maker_space_action(
             turn_closed=turn_closed,
         )
         return RuleResult(state=replacement.state, events=(event, *replacement.events))
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=(event, *token_events))
 
 
 def _gain_resources(

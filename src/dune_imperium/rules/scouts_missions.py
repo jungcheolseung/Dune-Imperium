@@ -26,6 +26,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.contract_tiles import (
     contract_intrigue_trash_frame,
@@ -49,6 +50,13 @@ from dune_imperium.rules.frames import (
 BOARD_ICON_SCOUTS: Final = "scouts_mission"
 _JOIN_FRAME: Final = "Mission participation frame"
 TLEILAXU_OFFERING_SPACE: Final = "tleilaxu_track"
+# Tleilaxu Offering's "third space of the Tleilaxu Track", counted like the
+# setup spice's "fourth space" (index 4, the start space uncounted)
+# [Immortality p. 4] (OQ-089 (a)).
+TLEILAXU_OFFERING_TRACK_SPACE: Final = 3
+# Where the goods of the missions paid off away from a visit wait.
+HELIX: Final = "helix"
+RECLAIMED_FORCES: Final = "reclaimed_forces"
 
 # Participation: (troop source, troops parked) per mission kind.
 _PARKING: Final = {
@@ -159,11 +167,11 @@ def place_mission_goods(
                 goods.append((mission_id, mission.space_id, "maker_hooks", 1, -1))
         case MissionKind.SPONSORED_RESEARCH:
             assert mission.goods is not None
-            goods.append((mission_id, "helix", "spice", mission.goods.spice, -1))
+            goods.append((mission_id, HELIX, "spice", mission.goods.spice, -1))
         case MissionKind.BACK_ROOM_DEAL:
             assert mission.goods is not None
             goods.append(
-                (mission_id, "reclaimed_forces", "solari", mission.goods.solari, -1)
+                (mission_id, RECLAIMED_FORCES, "solari", mission.goods.solari, -1)
             )
         case _:
             pass
@@ -218,6 +226,13 @@ def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, 
     if kind is MissionKind.PRISON_PLANET:
         free_marker = len(owner.control_space_ids) + _markers_out(state, player) < 3
         return ("",) if owner.troops_garrison and free_marker else ()
+    if (
+        kind is MissionKind.TLEILAXU_OFFERING
+        and owner.tleilaxu_space >= TLEILAXU_OFFERING_TRACK_SPACE
+    ):
+        # A token already on or past the third space never advances to it
+        # again, so its troops could never become specimens (OQ-089 (a)).
+        return ()
     source, _ = _PARKING[kind]
     available = {
         "supply": owner.troops_supply,
@@ -626,6 +641,216 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
     for pushed_frame in pushed:
         next_state = next_state.push_decision(pushed_frame)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+# --- Goods paid off away from a visit -----------------------------------------------
+
+
+def _give(owner: PlayerState, resource: str, amount: int) -> PlayerState:
+    return replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            **{resource: getattr(owner.resources, resource) + amount},
+        ),
+    )
+
+
+def _taken_event(
+    source: str, mission_id: str, player: int, resource: str, amount: int
+) -> GameEvent:
+    return GameEvent(
+        event_id=f"{source}:{mission_id}:{resource}",
+        kind="scouts_mission_goods_taken",
+        payload=(
+            ("amount", amount),
+            ("mission_id", mission_id),
+            ("player", player),
+            ("resource", resource),
+        ),
+    )
+
+
+def claim_goods_at(
+    state: GameState, player: int, location: str, *, source: str
+) -> RuleResult:
+    """``player`` takes the bank goods waiting at ``location`` for anyone.
+
+    Sponsored Research's spice beside the Helix goes to "the next player who
+    reaches the Helix", Back Room Deal's Solari to "the next player who
+    'acquires' Reclaimed Forces" [Scouts mission: Sponsored Research]
+    [Scouts mission: Back Room Deal].
+    """
+
+    rows = [row for row in state.scouts_goods if row[1] == location and row[4] < 0]
+    if not rows:
+        return RuleResult(state=state)
+    owner = state.players[player]
+    events = []
+    for mission_id, _, resource, amount, _ in rows:
+        owner = _give(owner, resource, amount)
+        events.append(_taken_event(source, mission_id, player, resource, amount))
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(row for row in state.scouts_goods if row not in rows),
+        ),
+        events=tuple(events),
+    )
+
+
+def release_offering(state: GameState, player: int, *, source: str) -> RuleResult:
+    """Tleilaxu Offering: the seat's parked troops become specimens.
+
+    "When that player advances their Tleilaxu marker to that space, they add
+    those 2 troops to the Axolotl Tanks as 2 specimens" [Scouts mission:
+    Tleilaxu Offering].
+    """
+
+    rows = [
+        row
+        for row in state.scouts_parked
+        if row[1] == player and row[2] == TLEILAXU_OFFERING_SPACE
+    ]
+    if not rows:
+        return RuleResult(state=state)
+    owner = state.players[player]
+    troops = sum(row[3] for row in rows)
+    owner = replace(
+        owner,
+        troops_parked=owner.troops_parked - troops,
+        specimens=owner.specimens + troops,
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_parked=tuple(row for row in state.scouts_parked if row not in rows),
+        ),
+        events=tuple(
+            GameEvent(
+                event_id=f"{source}:{row[0]}:troops",
+                kind="scouts_mission_troops",
+                payload=(
+                    ("count", row[3]),
+                    ("mission_id", row[0]),
+                    ("player", player),
+                    ("to", "specimens"),
+                ),
+            )
+            for row in rows
+        ),
+    )
+
+
+def _post_occupant(state: GameState, location: str) -> int | None:
+    post = location.removeprefix("post:")
+    return next(
+        (seat.player_id for seat in state.players if post in seat.spy_post_ids),
+        None,
+    )
+
+
+def _escort_due(state: GameState, row: tuple[str, str, str, int, int]) -> bool:
+    contract = row[1].removeprefix("contract:")
+    return contract not in state.players[row[4]].active_contract_ids
+
+
+def mission_goods_are_due(state: GameState) -> bool:
+    """Whether a Spy or a completed Contract has earned waiting goods."""
+
+    if not state.scouts_goods:
+        return False
+    for row in state.scouts_goods:
+        if row[1].startswith("post:") and _post_occupant(state, row[1]) is not None:
+            return True
+        if row[1].startswith("contract:") and _escort_due(state, row):
+            return True
+    return False
+
+
+def claim_due_mission_goods(state: GameState) -> RuleResult:
+    """Pay the goods a Spy placement or a Contract completion has earned.
+
+    Valued Informants: "Whenever a player places a Spy on one of those
+    observation posts, they gain" its good, by any placement (OQ-080).
+    CHOAM Escort: "When that player completes that contract, they also gain
+    the 1 Solari and 1 spice on it"; a Contract that left the seat's supply
+    uncompleted takes them back to the bank. The claims run after every
+    step, so every placement and completion path pays the same way.
+    """
+
+    players = list(state.players)
+    kept = []
+    events = []
+    source = f"round:{state.round_number}:scouts_goods"
+    for row in state.scouts_goods:
+        mission_id, location, resource, amount, seat = row
+        if location.startswith("post:"):
+            occupant = _post_occupant(state, location)
+            if occupant is None:
+                kept.append(row)
+                continue
+            players[occupant] = _give(players[occupant], resource, amount)
+            events.append(
+                _taken_event(
+                    f"{source}:{location}", mission_id, occupant, resource, amount
+                )
+            )
+            continue
+        if location.startswith("contract:") and _escort_due(state, row):
+            contract = location.removeprefix("contract:")
+            if contract in players[seat].completed_contract_ids:
+                players[seat] = _give(players[seat], resource, amount)
+                events.append(
+                    _taken_event(
+                        f"{source}:{contract}", mission_id, seat, resource, amount
+                    )
+                )
+            continue
+        kept.append(row)
+    return RuleResult(
+        state=replace(state, players=tuple(players), scouts_goods=tuple(kept)),
+        events=tuple(events),
+    )
+
+
+# --- Maker Hooks (Desert Riding) -----------------------------------------------------
+
+
+def desert_riding_token(state: GameState) -> tuple[str, str, str, int, int] | None:
+    return next((row for row in state.scouts_goods if row[2] == "maker_hooks"), None)
+
+
+def take_desert_riding_token(
+    state: GameState, player: int, *, source: str
+) -> RuleResult:
+    """``player`` takes the Maker Hooks token Desert Riding left out.
+
+    At Hagga Basin "instead of taking the space's base 2 spice"
+    [Scouts mission: Desert Riding]; at Sietch Tabr when it is the last of
+    the four tokens (OQ-079 (e)).
+    """
+
+    row = desert_riding_token(state)
+    if row is None:
+        return RuleResult(state=state)
+    owner = replace(state.players[player], maker_hooks=True)
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(r for r in state.scouts_goods if r != row),
+        ),
+        events=(_taken_event(source, row[0], player, "maker_hooks", 1),),
+    )
+
+
+def maker_hooks_left_in_bank(state: GameState) -> int:
+    """The four tokens less the seats' and Desert Riding's [Main p. 3]."""
+
+    return _free_maker_hooks(state) - (desert_riding_token(state) is not None)
 
 
 def free_prison_marker(

@@ -1,4 +1,4 @@
-"""Arrakeen Scouts: missions, core pieces (slice 6a).
+"""Arrakeen Scouts: missions (slices 6a and 6b).
 
 docs/rules/arrakeen-scouts.md 5: "임무로 놓인 조각은 라운드가 끝나도 남는다.
 보상은 받을 때까지 유효하다." [Scouts help]; each seat decides in turn order
@@ -38,6 +38,8 @@ CARD_FOR = {
     "imperial_privilege": "player:0:starter:dagger:0",
     "gather_support": "player:0:starter:dagger:0",
     "research_station": "player:0:starter:reconnaissance:0",
+    "sietch_tabr": "player:0:starter:reconnaissance:0",
+    "hagga_basin": "player:0:starter:dune_the_desert_planet:0",
 }
 
 
@@ -457,3 +459,232 @@ def test_choam_research_skips_the_immediate_without_an_intrigue_card() -> None:
         "research_station",
     )
     assert _no_mission_icon(state)
+
+
+def _apply(state: GameState, action_id: str, **arguments: Any) -> GameState:
+    return _act(state, action_id, **arguments)
+
+
+def test_desert_riding_trades_hagga_basin_spice_for_the_maker_hooks() -> None:
+    """[Scouts mission: Desert Riding]: the token "instead of taking the
+    space's base 2 spice"; bonus spice still comes (OQ-079)."""
+
+    state = _reveal(_base(), "desert_riding")
+    assert [row[2] for row in state.scouts_goods] == ["maker_hooks"]
+    seat = replace(state.players[0], maker_hooks=False)
+    state = replace(
+        state,
+        players=(seat, *state.players[1:]),
+        maker_bonus_spice=tuple(
+            (space, 1 if space == "hagga_basin" else amount)
+            for space, amount in state.maker_bonus_spice
+        ),
+    )
+    state = _send_agent(_turn_for(state), "hagga_basin")
+    spice = state.players[0].resources.spice
+    legal = ENGINE.legal_actions(state, 0)
+    # The printed row's one choice: spice, or the token; no sandworm (d).
+    assert {a.action_id for a in legal} >= {
+        "harvest_maker_spice",
+        "take_desert_riding_hooks",
+    }
+    assert "summon_maker_sandworms" not in {a.action_id for a in legal}
+    state = _apply(state, "take_desert_riding_hooks", space_id="hagga_basin")
+    assert state.players[0].maker_hooks
+    assert state.players[0].resources.spice == spice + 1
+    assert state.scouts_goods == ()
+    assert _taken(state) == [("maker_hooks", 1)]
+
+
+def test_desert_riding_token_is_not_for_a_seat_with_maker_hooks() -> None:
+    state = _reveal(_base(), "desert_riding")
+    seat = replace(state.players[0], maker_hooks=True)
+    state = _send_agent(
+        _turn_for(replace(state, players=(seat, *state.players[1:]))),
+        "hagga_basin",
+    )
+    assert "take_desert_riding_hooks" not in {
+        a.action_id for a in ENGINE.legal_actions(state, 0)
+    }
+
+
+def test_sietch_tabr_takes_the_desert_riding_token_when_it_is_the_last() -> None:
+    """OQ-079 (e): the token is one of the four Maker Hooks [Main p. 3]."""
+
+    state = _reveal(_base(), "desert_riding")
+    players = tuple(
+        replace(player, maker_hooks=player.player_id != 0) for player in state.players
+    )
+    state = _send_agent(_turn_for(replace(state, players=players)), "sietch_tabr")
+    state = _apply(state, "take_sietch_tabr_supplies")
+    assert state.players[0].maker_hooks
+    assert state.scouts_goods == ()
+
+
+def test_valued_informants_pays_the_seat_placing_a_spy_on_the_post() -> None:
+    """[Scouts mission: Planetary Exploration]: "Whenever a player places a
+    Spy on one of those observation posts, they gain" it (OQ-080)."""
+
+    state = _reveal(_base(), "planetary_exploration")
+    assert sorted(row[1] for row in state.scouts_goods) == [
+        "post:arrakis-deep-desert",
+        "post:arrakis-hagga-basin",
+        "post:arrakis-imperial-basin",
+    ]
+    state = _send_agent(_turn_for(state), "espionage")
+    spice = state.players[0].resources.spice
+    state = _apply(state, "resolve_espionage_place_spy", post_id="arrakis-hagga-basin")
+    assert state.players[0].resources.spice == spice + 1
+    assert "post:arrakis-hagga-basin" not in {row[1] for row in state.scouts_goods}
+    assert len(state.scouts_goods) == 2
+
+
+def test_urban_surveillance_skips_occupied_posts() -> None:
+    base = _base()
+    spy = replace(
+        base.players[1],
+        spies_supply=base.players[1].spies_supply - 1,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+    state = _reveal(
+        replace(base, players=(base.players[0], spy, *base.players[2:])),
+        "urban_surveillance",
+    )
+    assert sorted(row[1] for row in state.scouts_goods) == [
+        "post:arrakis-research-station-sietch-tabr",
+        "post:arrakis-research-station-spice-refinery",
+    ]
+
+
+def _escort_state(contract: str) -> GameState:
+    base = _base()
+    seat = replace(base.players[0], active_contract_ids=(contract,))
+    return replace(
+        base,
+        players=(seat, *base.players[1:]),
+        contract_bank=tuple(c for c in base.contract_bank if c != contract),
+        face_up_contract_ids=tuple(
+            c for c in base.face_up_contract_ids if c != contract
+        ),
+    )
+
+
+def test_choam_escort_pays_its_goods_when_the_contract_completes() -> None:
+    """[Scouts mission: CHOAM Escort]: "When that player completes that
+    contract, they also gain the 1 Solari and 1 spice on it"."""
+
+    contract = "contract:deliver_supplies"
+    state = _answer(_reveal(_escort_state(contract), "choam_escort"), {0: contract})
+    assert len(state.scouts_goods) == 2
+    state = _send_agent(_turn_for(state), "deliver_supplies")
+    before = state.players[0].resources
+    state = _apply(state, "complete_contract", instance_id=contract)
+    after = state.players[0].resources
+    assert state.scouts_goods == ()
+    assert after.spice == before.spice + 1
+    assert sorted(_taken(state)) == [("solari", 1), ("spice", 1)]
+
+
+def test_choam_escort_goods_return_when_the_contract_leaves_uncompleted() -> None:
+    contract = "contract:deliver_supplies"
+    state = _answer(_reveal(_escort_state(contract), "choam_escort"), {0: contract})
+    gone = replace(state.players[0], active_contract_ids=())
+    state = _advance_automatic(
+        RuleResult(state=replace(state, players=(gone, *state.players[1:])))
+    ).state
+    assert state.scouts_goods == ()
+    assert _taken(state) == []
+
+
+def _immortality_state() -> GameState:
+    return _base(IMMORTALITY, round_number=2)
+
+
+def test_sponsored_research_goes_to_the_next_seat_reaching_the_helix() -> None:
+    """[Scouts mission: Sponsored Research]: "The next player who reaches the
+    Helix gains that 2 spice"; the Helix is the first genetic marker
+    [Immortality p. 6] (OQ-089 (b))."""
+
+    from dune_imperium.content.immortality.board import (
+        FIRST_GENETIC_MARKER_COLUMN,
+        RESEARCH_SPACES,
+        research_next_space_ids,
+    )
+    from dune_imperium.rules.immortality import move_research_token
+
+    state = replace(
+        _immortality_state(),
+        scouts_goods=(("sponsored_research", "helix", "spice", 2, -1),),
+    )
+    before = next(
+        s
+        for s in RESEARCH_SPACES
+        if s.column == FIRST_GENETIC_MARKER_COLUMN - 1
+        and research_next_space_ids(s.space_id)
+    )
+    after = research_next_space_ids(before.space_id)[0]
+    seat = replace(state.players[1], research_space=before.space_id)
+    state = replace(state, players=(state.players[0], seat, *state.players[2:]))
+    spice = seat.resources.spice
+    moved = move_research_token(state, 1, after, source="test").state
+    assert moved.scouts_goods == ()
+    assert moved.players[1].resources.spice >= spice + 2
+    # A seat already past the Helix does not reach it again.
+    past = replace(state.players[1], research_space=after)
+    state = replace(state, players=(state.players[0], past, *state.players[2:]))
+    beyond = research_next_space_ids(after)[0]
+    assert move_research_token(state, 1, beyond, source="test").state.scouts_goods
+
+
+def test_back_room_deal_pays_the_next_reclaimed_forces_acquisition() -> None:
+    """[Scouts mission: Back Room Deal]: "The next player who 'acquires'
+    Reclaimed Forces gains those 2 Solari"."""
+
+    from dune_imperium.rules.tleilaxu_row import _apply_reclaimed_forces
+
+    state = replace(
+        _immortality_state(),
+        scouts_goods=(("back_room_deal", "reclaimed_forces", "solari", 2, -1),),
+    )
+    seat = state.players[0]
+    seat = replace(seat, specimens=3, troops_supply=seat.troops_supply - 3)
+    state = replace(state, players=(seat, *state.players[1:]))
+    solari = seat.resources.solari
+    result = _apply_reclaimed_forces(state, 0, "tleilaxu", "test")
+    assert result.state.scouts_goods == ()
+    assert result.state.players[0].resources.solari == solari + 2
+
+
+def test_tleilaxu_offering_turns_parked_troops_into_specimens() -> None:
+    """[Scouts mission: Tleilaxu Offering]: "When that player advances their
+    Tleilaxu marker to that space, they add those 2 troops to the Axolotl
+    Tanks as 2 specimens" (OQ-089 (a): the third space is index 3)."""
+
+    from dune_imperium.rules.immortality import advance_tleilaxu
+    from dune_imperium.rules.scouts_missions import offer_mission_join
+
+    state = replace(_immortality_state(), decision_stack=())
+    seat = replace(state.players[0], tleilaxu_space=1)
+    state = replace(state, players=(seat, *state.players[1:]))
+    state = offer_mission_join(state, 0, "tleilaxu_offering", source="test").state
+    supply = state.players[0].troops_supply
+    state = _act(state, "scouts_join_mission", target="")
+    assert state.players[0].troops_supply == supply - 2
+    assert state.players[0].troops_parked == 2
+    specimens = state.players[0].specimens
+    state = advance_tleilaxu(state, 0, 1, source="test").state
+    assert state.players[0].troops_parked == 2
+    state = advance_tleilaxu(state, 0, 1, source="test").state
+    assert state.players[0].tleilaxu_space == 3
+    assert state.players[0].troops_parked == 0
+    assert state.players[0].specimens == specimens + 2
+    assert state.scouts_parked == ()
+
+
+def test_tleilaxu_offering_skips_a_seat_already_past_the_third_space() -> None:
+    from dune_imperium.rules.scouts_missions import offer_mission_join
+
+    state = replace(_immortality_state(), decision_stack=())
+    seat = replace(state.players[0], tleilaxu_space=3)
+    state = replace(state, players=(seat, *state.players[1:]))
+    assert offer_mission_join(state, 0, "tleilaxu_offering", source="t").state == state

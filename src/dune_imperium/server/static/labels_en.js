@@ -240,6 +240,7 @@ const LABELS_EN = {
     "scouts_join_mission": "Take Part in the Mission",
     "scouts_decline_mission": "Pass on the Mission",
     "scouts_collect_mission": "Collect the Mission Pieces",
+    "take_desert_riding_hooks": "Take {maker_hooks} Instead of {spice}",
     "trash_intrigue_for_research_bonus": "{research} bonus: {trash} {intrigue} -> card + {intrigue}",
     "pay_research_bonus": "{research} bonus: 7 {solari} -> {tleilaxu} x2",
     "decline_research_bonus": "{research} bonus: decline",

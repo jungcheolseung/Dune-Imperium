@@ -41,6 +41,10 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.immortality import advance_tleilaxu
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
+from dune_imperium.rules.scouts_missions import (
+    RECLAIMED_FORCES as BACK_ROOM_DEAL_GOODS,
+)
+from dune_imperium.rules.scouts_missions import claim_goods_at
 from dune_imperium.rules.specimens import spend_specimens
 
 RECLAIMED_FORCES_CHOICES = ("troops", "tleilaxu")
@@ -206,6 +210,12 @@ def acquire_tleilaxu_card(
 def _apply_reclaimed_forces(
     state: GameState, player: int, choice: str, source: str
 ) -> RuleResult:
+    # Arrakeen Scouts' Back Room Deal: the Solari on the card go to the next
+    # seat to acquire it [Scouts mission: Back Room Deal].
+    deal = claim_goods_at(
+        state, player, BACK_ROOM_DEAL_GOODS, source=f"{source}:reclaimed_forces"
+    )
+    state = deal.state
     owner = spend_specimens(state.players[player], RECLAIMED_FORCES.specimen_cost)
     event = GameEvent(
         event_id=f"{source}:reclaimed_forces",
@@ -232,7 +242,8 @@ def _apply_reclaimed_forces(
             advanced.state, player, source=f"{source}:reclaimed_forces"
         )
         return RuleResult(
-            state=fired.state, events=(event, *advanced.events, *fired.events)
+            state=fired.state,
+            events=(event, *deal.events, *advanced.events, *fired.events),
         )
     recruited_owner, recruited = recruit_troops(owner, 2)
     next_state = _record_reveal_recruits(
@@ -246,6 +257,7 @@ def _apply_reclaimed_forces(
         state=fired.state,
         events=(
             event,
+            *deal.events,
             *recruit_shortfall_events(
                 f"{source}:reclaimed_forces", player, 2, recruited
             ),

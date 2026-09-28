@@ -47,6 +47,12 @@ from dune_imperium.rules.frames import (
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.scouts_missions import (
+    HELIX,
+    TLEILAXU_OFFERING_TRACK_SPACE,
+    claim_goods_at,
+    release_offering,
+)
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 
 __all__ = [
@@ -201,6 +207,11 @@ def advance_tleilaxu(
                 payload=tuple(sorted(payload)),
             )
         )
+        if space == TLEILAXU_OFFERING_TRACK_SPACE:
+            # Arrakeen Scouts' Tleilaxu Offering waits on this space.
+            offered = release_offering(working, player, source=step_source)
+            working = offered.state
+            events.extend(offered.events)
         if bonus is TleilaxuBonus.INTRIGUE:
             drawn = draw_or_queue_intrigue_cards(working, player, 1, source=step_source)
             working = drawn.state
@@ -325,6 +336,14 @@ def move_research_token(
     markers = genetic_markers_reached(space_id)
     moved = replace(state, players=replace_player(state.players, next_owner))
     step_source = f"{source}:research:{space_id}"
+    helix: tuple[GameEvent, ...] = ()
+    if markers_before == 0 and markers:
+        # Arrakeen Scouts' Sponsored Research: the spice beside the Helix
+        # (the first genetic marker) goes to the next seat to reach it
+        # (OQ-089 (b)).
+        claimed = claim_goods_at(moved, player, HELIX, source=step_source)
+        moved = claimed.state
+        helix = claimed.events
     events: list[GameEvent] = [
         GameEvent(
             event_id=step_source,
@@ -345,6 +364,7 @@ def move_research_token(
                 payload=(("genetic_markers", markers), ("player", player)),
             )
         )
+    events.extend(helix)
     bonus = _resolve_research_bonus(
         moved, player, space.bonus, source=step_source, turn_closed=turn_closed
     )

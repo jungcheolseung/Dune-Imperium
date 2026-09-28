@@ -312,7 +312,9 @@ from dune_imperium.rules.scouts_effects import (
 from dune_imperium.rules.scouts_missions import (
     apply_mission_collect,
     apply_mission_join,
+    claim_due_mission_goods,
     legal_mission_join_actions,
+    mission_goods_are_due,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
@@ -611,6 +613,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_leader_bonus_spice": apply_leader_bonus_spice,
     "take_leader_bonus_spice": apply_leader_bonus_spice,
     "harvest_maker_spice": apply_maker_space_action,
+    "take_desert_riding_hooks": apply_maker_space_action,
     "summon_maker_sandworms": apply_maker_space_action,
     "choose_shipping_influence": apply_shipping_action,
     "resolve_desert_tactics_without_trash": apply_desert_tactics_action,
@@ -992,7 +995,11 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
     state = result.state
     events: list[GameEvent] = list(result.events)
     while True:
-        if intrigue_draw_is_queued(state):
+        if mission_goods_are_due(state):
+            # Arrakeen Scouts: a Spy on a Valued Informants post or a
+            # completed CHOAM Escort Contract, by whatever path it got there.
+            automatic = claim_due_mission_goods(state)
+        elif intrigue_draw_is_queued(state):
             automatic = resolve_pending_intrigue_draw(state)
         elif usurp_trash_is_queued(state):
             automatic = resolve_usurp_trash(state)

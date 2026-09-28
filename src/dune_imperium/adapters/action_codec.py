@@ -90,7 +90,8 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v114: subcommittees (join/decline) and the Scouts effect frame's choices.
 # v115: the Scouts events' and sales' turn-order choices and Influence losses.
 # v116: missions (take part or pass, collect on a visit).
-ACTION_CODEC_VERSION = 116
+# v117: Desert Riding's Maker Hooks token at Hagga Basin.
+ACTION_CODEC_VERSION = 117
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1047,6 +1048,11 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 action_id="scouts_collect_mission", arguments=(("choice", choice),)
             )
             for choice in ("", "solari", "spice")
+        ),
+        # Desert Riding: Hagga Basin's Maker Hooks token instead of its spice.
+        ActionTemplate(
+            action_id="take_desert_riding_hooks",
+            arguments=(("space_id", "hagga_basin"),),
         ),
         # One seat's turn-order pick of an event's or sale's line, or a pass.
         ActionTemplate(action_id="scouts_pass"),
