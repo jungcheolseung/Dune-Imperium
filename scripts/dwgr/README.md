@@ -34,6 +34,7 @@ uv run --no-project --with UnityPy --with TypeTreeGeneratorAPI --with capstone p
 | `il2dis.py <메서드 이름 일부 \| 0x주소>` | 메서드의 x86-64 디스어셈블에 호출 대상·메타데이터·float 상수 주석을 단다(capstone) |
 | `il2fields.py <타입 전체 이름 \| 접두사*>` | 타입의 필드 오프셋·타입·enum 값과 메서드 주소 |
 | `il2xref.py <메서드 이름 일부 \| 0x주소>` | 그 메서드를 직접 부르는 곳(E8/E9 rel32) |
+| `show_text.py <loc 키 \| 키의 일부> [--ko]` | 로컬 추출본의 앱 문구를 키로 찾아 그대로 출력한다(영어, `--ko`면 한국어도). 규칙 문서는 loc 키만 인용하므로, 판정을 원문과 한 단어씩 대조할 때 쓴다. 문구는 화면에만 나오고 어디에도 저장하지 않는다 |
 | `ANALYSIS.md` | IL2CPP 코드를 읽는 관례(인자 레지스터, `List<T>`·배열·문자열 배치, 정적 필드, 런타임 helper)와 추출 데이터 설명 |
 
 예:
