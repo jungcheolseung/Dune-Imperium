@@ -68,7 +68,8 @@ from dune_imperium.rules.frames import FrameKind
 # tiles keep their index and the length is unchanged (docs/rl-environment.md).
 # v22 (2026-09-28): the Arrakeen Scouts segments are appended after every
 # older one (all zero without the option), so the old columns keep their
-# offsets.
+# offsets. (The same day, before any file used v22, Market Opening's used
+# discount became the value 2 in its modifier column.)
 OBSERVATION_VERSION: Final = 22
 _SEATS: Final = 4
 
@@ -503,10 +504,11 @@ def _write_scouts(values: list[int], view: PlayerView) -> None:
     for round_number, item_id in view.scouts_revealed:
         values[offset + _SCOUTS_ITEM_INDEX[item_id]] = round_number
     if view.scouts_round_modifier:
+        # 2 once Market Opening's discount has been used this round.
         values[
             _OFFSET["scouts_modifier"]
             + _SCOUTS_MODIFIER_INDEX[view.scouts_round_modifier]
-        ] = 1
+        ] = 2 if view.scouts_discount_used else 1
     offset = _OFFSET["scouts_schedule"]
     values[offset : offset + 3] = [
         view.scouts_mission_rounds.count(2),

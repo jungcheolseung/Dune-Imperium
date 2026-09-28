@@ -289,7 +289,11 @@ from dune_imperium.rules.sardaukar import (
 )
 from dune_imperium.rules.scouts import (
     advance_scouts_step,
+    apply_four_bonus_choice,
     apply_scouts_draw,
+    begin_four_bonus_choice,
+    four_bonus_choice_is_queued,
+    legal_four_bonus_actions,
     scouts_draw_is_pending,
     scouts_step_is_pending,
 )
@@ -492,11 +496,15 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
+    # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
+    FrameKind.SCOUTS_FOUR_BONUS: (legal_four_bonus_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Setup Leader draft (OQ-007 convention)
     "pick_leader": apply_leader_draft_pick,
+    # Arrakeen Scouts (docs/rules/arrakeen-scouts.md)
+    "choose_four_bonus": apply_four_bonus_choice,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,
@@ -965,6 +973,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = open_held_contract_icons(state, held_owner)
         elif skill_choice_is_queued(state):
             automatic = begin_skill_choice(state)
+        elif four_bonus_choice_is_queued(state):
+            # Friends Everywhere: the seat picks the Influence 4 bonus
+            # first; an Emperor pick then queues its Spy (Arrakeen Scouts).
+            automatic = begin_four_bonus_choice(state)
         elif track_spy_is_queued(state):
             # The Emperor track's Influence 4 Spy [Main p. 7] is placed
             # before any other player-initiated action (OQ-057).

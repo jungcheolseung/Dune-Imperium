@@ -258,7 +258,9 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # appended after every older one): for all five old games the vector's first
 # 4,327 columns reproduced the previous digests exactly and every Scouts
 # column was 0, so the games and the old columns are byte for byte what they
-# were. "scouts" (CHOAM with the new option) was added then.
+# were. "scouts" (CHOAM with the new option) was added then, and re-pinned
+# the same day when the four round modifiers began to act (slice 3b): the
+# five other games did not move.
 _GOLDEN_DIGESTS = {
     "base": ("042434aa5c4a0f288cd43548c1d4d9fc9b37f1e1bd5dd10a82a2b66dfec2534c", 2572),
     "choam": ("73dd50524182d98ae2479f6c62db00846ce7fd8a590c8a9d6838711230e24f73", 2972),
@@ -272,8 +274,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("5d2134633b71199990940445a03ca7d15c0bd4c150798c8f86f8ab8a06ceba1c", 2476),
     "scouts": (
-        "572bf5a09be8c0f93779e3ea8f714db8f73acd2e374e6cf1008d5c1bde976bd1",
-        2784,
+        "4c6b9a0b6cfb1bf23e6b42b79352c1d6a61b12233209853213dae796c1a955ca",
+        3188,
     ),
 }
 _GOLDEN_CONFIGS = {

@@ -150,8 +150,13 @@ class GameState:
     scouts_opening: bool = False
     scouts_item: str = ""
     scouts_tasks: tuple[str, ...] = ()
-    # The rule change an event made for the rest of this round ("" none).
+    # The rule change an event made for the rest of this round ("" none),
+    # and whether Market Opening's discount has been used up this round.
     scouts_round_modifier: str = ""
+    scouts_discount_used: bool = False
+    # Friends Everywhere: Influence 4 bonuses whose Faction the seat picks,
+    # as (player, Faction reached, event source), opened in order.
+    scouts_four_bonus_choices: tuple[tuple[int, str, str], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -329,6 +334,8 @@ class GameState:
             or self.scouts_item
             or self.scouts_tasks
             or self.scouts_round_modifier
+            or self.scouts_discount_used
+            or self.scouts_four_bonus_choices
         ):
             raise ValueError("Scouts state requires the Arrakeen Scouts module")
 

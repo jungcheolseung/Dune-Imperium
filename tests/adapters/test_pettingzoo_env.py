@@ -104,12 +104,12 @@ def test_leader_draft_episode_starts_with_pick_decisions_and_completes() -> None
 
 
 def test_arrakeen_scouts_option_threads_into_the_config() -> None:
-    # M15 option skeleton: no Scouts templates exist yet, so the catalog is
-    # unchanged either way (see tests/adapters/test_action_codec.py).
+    # The env's codec follows the ruleset: the Scouts catalog adds only its
+    # gated templates (see tests/adapters/test_action_codec.py).
     environment = env(arrakeen_scouts=True)
 
     assert environment.config.arrakeen_scouts is True
-    assert environment.codec.size == env().codec.size
+    assert set(env().codec.catalog) < set(environment.codec.catalog)
 
 
 def test_step_limit_truncates_without_rewards() -> None:

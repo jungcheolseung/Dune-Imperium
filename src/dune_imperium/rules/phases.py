@@ -93,6 +93,7 @@ def begin_round(state: GameState) -> RuleResult:
         # automatic advance (``rules.scouts``); last round's rule change ends.
         scouts_opening=scouts,
         scouts_round_modifier="",
+        scouts_discount_used=False,
         round_number=round_number,
         reveal_order=(),
         players=players,

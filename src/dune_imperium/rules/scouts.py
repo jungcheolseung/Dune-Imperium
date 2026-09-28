@@ -42,16 +42,20 @@ from dune_imperium.content.arrakeen_scouts import (
     scouts_pool,
     subcommittees_for,
 )
+from dune_imperium.content.uprising.board import BoardSpace, Faction
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
-from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
+    owned_top_frame,
     reset_turn_counters,
 )
+from dune_imperium.rules.influence import grant_chosen_four_bonus
 
 # Four players reveal five subcommittees: one of each tier, then the rest
 # from the whole remaining pool [Scouts schedule].
@@ -66,6 +70,7 @@ _MID_ROUNDS: Final = (5, 6)
 _LATE_ROUNDS: Final = (8, 9)
 
 _DRAW_FRAME: Final = "Scouts draw frame"
+_FOUR_BONUS_FRAME: Final = "Friends Everywhere frame"
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +123,56 @@ def round_modifier(state: GameState) -> RoundModifier | None:
     if not state.scouts_round_modifier:
         return None
     return RoundModifier(state.scouts_round_modifier)
+
+
+def ignores_influence_requirements_this_round(state: GameState) -> bool:
+    """Unlikely Allies: board spaces' Influence requirements are waived.
+
+    [Scouts event: Unlikely Allies] (docs/rules/arrakeen-scouts.md 6.1):
+    only the requirement; cost and occupancy rules stand.
+    """
+
+    return round_modifier(state) is RoundModifier.IGNORE_INFLUENCE_REQUIREMENTS
+
+
+SPICE_MUST_FLOW: Final = "the_spice_must_flow"
+MARKET_OPENING_DISCOUNT: Final = 2
+
+
+def reserve_discount(state: GameState, card_id: str) -> int:
+    """Market Opening: the round's first The Spice Must Flow costs 2 less.
+
+    [Scouts event: Market Opening] (docs/rules/arrakeen-scouts.md 6.1): the
+    first copy acquired this round by anyone (OQ-081 (b)); the discount
+    applies to the cost check and the payment alike.
+    """
+
+    if card_id != SPICE_MUST_FLOW or state.scouts_discount_used:
+        return 0
+    if round_modifier(state) is not RoundModifier.SPICE_MUST_FLOW_DISCOUNT:
+        return 0
+    return MARKET_OPENING_DISCOUNT
+
+
+def discount_used_after(state: GameState, card_id: str) -> bool:
+    """``scouts_discount_used`` once ``card_id`` has been acquired now."""
+
+    return state.scouts_discount_used or reserve_discount(state, card_id) > 0
+
+
+def space_is_combat(state: GameState, space: BoardSpace) -> bool:
+    """Whether ``space`` counts as a Combat space this round.
+
+    Eyes on Arrakis makes every Faction space a Combat space for the round
+    [Scouts event: Eyes on Arrakis] (docs/rules/arrakeen-scouts.md 6.1).
+    """
+
+    if space.combat:
+        return True
+    return (
+        space.faction is not None
+        and round_modifier(state) is RoundModifier.FACTION_SPACES_ARE_COMBAT
+    )
 
 
 def turn_order(state: GameState) -> tuple[int, ...]:
@@ -572,4 +627,71 @@ def _deal_cleared_contracts(state: GameState, outcome: ChanceOutcome) -> RuleRes
                 payload=(("dealt", ",".join(dealt)), ("removed", ",".join(removed))),
             ),
         ),
+    )
+
+
+# --- Friends Everywhere ------------------------------------------------------------
+
+
+def four_bonus_choice_is_queued(state: GameState) -> bool:
+    """Whether a Friends Everywhere choice can open now.
+
+    Like the Emperor track's Spy (``spy_moves.track_spy_is_queued``): after
+    any pending chance frame and after a Conflict's own reward choices.
+    """
+
+    if not state.scouts_four_bonus_choices:
+        return False
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if frame is None:
+        return True
+    if isinstance(frame.decision, ChanceDecision):
+        return False
+    return not str(frame.kind).startswith("combat_reward")
+
+
+def begin_four_bonus_choice(state: GameState) -> RuleResult:
+    """Open the oldest queued Friends Everywhere choice."""
+
+    player, reached, source = state.scouts_four_bonus_choices[0]
+    remaining = replace(
+        state, scouts_four_bonus_choices=state.scouts_four_bonus_choices[1:]
+    )
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_FOUR_BONUS,
+        frame_id=f"{source}:four_bonus",
+        decision=PlayerDecision(
+            owner=player, prompt="Choose which Influence 4 bonus to take"
+        ),
+        context=(("reached", reached), ("source", source)),
+    )
+    return RuleResult(state=remaining.push_decision(frame))
+
+
+def legal_four_bonus_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Offer every Faction's Influence 4 bonus (the reached one included)."""
+
+    if owned_top_frame(state, FrameKind.SCOUTS_FOUR_BONUS, player) is None:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="choose_four_bonus",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+
+
+def apply_four_bonus_choice(state: GameState, action: DomainAction) -> RuleResult:
+    """Earn the chosen Faction's Influence 4 bonus."""
+
+    if action not in legal_four_bonus_actions(state, action.actor):
+        raise ValueError("action is not a legal Friends Everywhere choice")
+    context = dict(state.decision_stack[-1].context)
+    reached = Faction(context_str(context, "reached", owner=_FOUR_BONUS_FRAME))
+    source = context_str(context, "source", owner=_FOUR_BONUS_FRAME)
+    chosen = Faction(str(dict(action.arguments)["faction"]))
+    return grant_chosen_four_bonus(
+        state.pop_decision(), action.actor, reached, chosen, source=source
     )

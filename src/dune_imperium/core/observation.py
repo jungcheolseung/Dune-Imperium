@@ -216,6 +216,7 @@ class PlayerView:
     scouts_late_auction_round: int = 0
     scouts_item: str = ""
     scouts_round_modifier: str = ""
+    scouts_discount_used: bool = False
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -440,6 +441,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_late_auction_round=state.scouts_late_auction_round,
         scouts_item=state.scouts_item,
         scouts_round_modifier=state.scouts_round_modifier,
+        scouts_discount_used=state.scouts_discount_used,
     )
 
 

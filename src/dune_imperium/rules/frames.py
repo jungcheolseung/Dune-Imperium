@@ -83,6 +83,8 @@ class FrameKind(StrEnum):
     # Arrakeen Scouts: a chance draw of the round's schedule (appended last,
     # like every kind: the observation encodes the kind by its index).
     SCOUTS_DRAW = "scouts_draw"
+    # Friends Everywhere: which Faction's Influence 4 bonus to take.
+    SCOUTS_FOUR_BONUS = "scouts_four_bonus"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

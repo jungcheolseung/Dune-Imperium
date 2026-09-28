@@ -224,6 +224,7 @@ const LABELS_EN = {
     "decline_agent_card_recall": "Decline {recall_agent}",
     "choose_research_space": "{research}: advance to",
     "choose_research_influence": "{research} bonus: {influence_any}",
+    "choose_four_bonus": "Choose the {influence_any} 4 bonus",
     "trash_intrigue_for_research_bonus": "{research} bonus: {trash} {intrigue} -> card + {intrigue}",
     "pay_research_bonus": "{research} bonus: 7 {solari} -> {tleilaxu} x2",
     "decline_research_bonus": "{research} bonus: decline",

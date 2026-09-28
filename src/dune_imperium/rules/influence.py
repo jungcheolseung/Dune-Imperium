@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.arrakeen_scouts import RoundModifier
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -11,6 +12,8 @@ from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 
 MAX_INFLUENCE = 6
+# Arrakeen Scouts' Friends Everywhere (``RoundModifier`` value).
+_ANY_FACTION_FOUR_BONUS = RoundModifier.ANY_FACTION_FOUR_BONUS.value
 
 
 def gain_faction_influence(
@@ -33,6 +36,7 @@ def gain_faction_influence(
     pending_draws = state.pending_intrigue_draws
     pending_navigation = state.pending_navigation_plays
     pending_spies = state.pending_track_spies
+    pending_four = state.scouts_four_bonus_choices
     gained = 0
     events: list[GameEvent] = []
     for step in range(amount):
@@ -84,49 +88,34 @@ def gain_faction_influence(
                 )
 
         if next_amount == 4:
-            deck_before = len(intrigue_deck)
-            players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
-                players,
-                intrigue_deck,
-                player,
-                faction,
-            )
-            # The Bene Gesserit bonus's Intrigue draw counts for Suspensor
-            # Suits.
-            players = replace_player(
-                players,
-                credit_suspensor_suits(
-                    state, players[player], deck_before - len(intrigue_deck)
-                ),
-            )
-            if shortfall:
-                pending_draws = (
-                    *pending_draws,
-                    (player, shortfall, f"{event_prefix}:track_bonus:{step}"),
-                )
             track_bonus_source = f"{event_prefix}:track_bonus:{step}"
-            if faction is Faction.EMPEROR:
-                # The Emperor track prints the Spy icon: the placement is a
-                # decision, so it is queued and opened by the engine right
-                # after this gain, before any other player-initiated action
-                # (designer ruling on delaying the Emperor track's Spy,
-                # Message from designer; OQ-057).
-                pending_spies = (*pending_spies, (player, track_bonus_source))
-            events.append(
-                GameEvent(
-                    event_id=track_bonus_source,
-                    kind="influence_track_bonus_gained",
-                    payload=tuple(
-                        sorted(
-                            (
-                                ("faction", faction.value),
-                                ("player", player),
-                                *bonus_payload,
-                            )
-                        )
-                    ),
+            if state.scouts_round_modifier == _ANY_FACTION_FOUR_BONUS:
+                # Friends Everywhere (Arrakeen Scouts): the seat may take
+                # any Faction's Influence 4 bonus instead, so the choice is
+                # queued and opened by the engine like the Emperor Spy
+                # [Scouts event: Friends Everywhere] (OQ-081 (a)).
+                pending_four = (
+                    *pending_four,
+                    (player, faction.value, track_bonus_source),
                 )
-            )
+            else:
+                (
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    bonus_event,
+                ) = _grant_four_bonus(
+                    state,
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    player,
+                    faction,
+                    source=track_bonus_source,
+                )
+                events.append(bonus_event)
 
         players, alliance_event = _update_alliance(
             players,
@@ -158,8 +147,109 @@ def gain_faction_influence(
             pending_intrigue_draws=pending_draws,
             pending_navigation_plays=pending_navigation,
             pending_track_spies=pending_spies,
+            scouts_four_bonus_choices=pending_four,
         ),
         events=tuple(events),
+    )
+
+
+def _grant_four_bonus(
+    state: GameState,
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    pending_draws: tuple[tuple[int, int, str], ...],
+    pending_spies: tuple[tuple[int, str], ...],
+    player: int,
+    faction: Faction,
+    *,
+    source: str,
+    reached: Faction | None = None,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[int, int, str], ...],
+    tuple[tuple[int, str], ...],
+    GameEvent,
+]:
+    """Earn ``faction``'s Influence 4 bonus [Main p. 7].
+
+    ``reached`` names the track actually reached when Friends Everywhere
+    let the seat take another Faction's bonus (it is added to the event).
+    """
+
+    deck_before = len(intrigue_deck)
+    players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
+        players,
+        intrigue_deck,
+        player,
+        faction,
+    )
+    # The Bene Gesserit bonus's Intrigue draw counts for Suspensor Suits.
+    players = replace_player(
+        players,
+        credit_suspensor_suits(
+            state, players[player], deck_before - len(intrigue_deck)
+        ),
+    )
+    if shortfall:
+        pending_draws = (*pending_draws, (player, shortfall, source))
+    if faction is Faction.EMPEROR:
+        # The Emperor track prints the Spy icon: the placement is a
+        # decision, so it is queued and opened by the engine right after
+        # this gain, before any other player-initiated action (designer
+        # ruling on delaying the Emperor track's Spy, Message from designer;
+        # OQ-057).
+        pending_spies = (*pending_spies, (player, source))
+    reached_payload: tuple[tuple[str, int | str], ...] = (
+        () if reached is None else (("reached_faction", reached.value),)
+    )
+    event = GameEvent(
+        event_id=source,
+        kind="influence_track_bonus_gained",
+        payload=tuple(
+            sorted(
+                (
+                    ("faction", faction.value),
+                    ("player", player),
+                    *bonus_payload,
+                    *reached_payload,
+                )
+            )
+        ),
+    )
+    return players, intrigue_deck, pending_draws, pending_spies, event
+
+
+def grant_chosen_four_bonus(
+    state: GameState,
+    player: int,
+    reached: Faction,
+    chosen: Faction,
+    *,
+    source: str,
+) -> RuleResult:
+    """Earn the Influence 4 bonus a Friends Everywhere seat picked."""
+
+    players, intrigue_deck, pending_draws, pending_spies, event = _grant_four_bonus(
+        state,
+        state.players,
+        state.intrigue_deck,
+        state.pending_intrigue_draws,
+        state.pending_track_spies,
+        player,
+        chosen,
+        source=source,
+        reached=reached,
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=players,
+            intrigue_deck=intrigue_deck,
+            pending_intrigue_draws=pending_draws,
+            pending_track_spies=pending_spies,
+        ),
+        events=(event,),
     )
 
 

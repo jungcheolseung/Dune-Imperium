@@ -4,6 +4,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
+from dune_imperium.adapters.action_codec import ActionTemplate
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
@@ -16,7 +17,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 112
+    assert ACTION_CODEC_VERSION == 113
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -56,34 +57,30 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     assert first.size == 4425
 
 
-def test_arrakeen_scouts_option_does_not_change_the_catalog_yet() -> None:
-    # M15 option skeleton: arrakeen_scouts joined RulesetConfig (v112) but no
-    # Scouts templates exist yet, so the catalog is unchanged either way.
-    base = ActionCodec(RulesetConfig())
-    with_scouts = ActionCodec(RulesetConfig(arrakeen_scouts=True))
-    assert with_scouts.catalog == base.catalog
-    assert with_scouts.size == 4425
-
-    every_option = ActionCodec(
-        RulesetConfig(
-            choam_module=True,
-            promo_cards=True,
-            bloodlines=True,
-            tech_module=True,
-            immortality=True,
-        )
-    )
-    every_option_with_scouts = ActionCodec(
-        RulesetConfig(
-            choam_module=True,
-            promo_cards=True,
-            bloodlines=True,
-            tech_module=True,
-            immortality=True,
-            arrakeen_scouts=True,
-        )
-    )
-    assert every_option_with_scouts.catalog == every_option.catalog
+def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
+    # Design 4.9: every Scouts template sits in one gated block, so the
+    # catalogs without the option are byte for byte what they were (base
+    # 4,425) and a Scouts catalog adds exactly those templates.
+    scouts_only = {
+        ActionTemplate(action_id="choose_four_bonus", arguments=(("faction", f),))
+        for f in ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+    }
+    for options in (
+        {},
+        {
+            "choam_module": True,
+            "promo_cards": True,
+            "bloodlines": True,
+            "tech_module": True,
+            "immortality": True,
+        },
+    ):
+        without = ActionCodec(RulesetConfig(**options))
+        with_scouts = ActionCodec(RulesetConfig(arrakeen_scouts=True, **options))
+        assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
+        assert set(without.catalog) <= set(with_scouts.catalog)
+    assert ActionCodec(RulesetConfig()).size == 4425
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4429
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:

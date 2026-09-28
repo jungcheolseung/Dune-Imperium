@@ -259,6 +259,8 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
     # Emperor track's Spy at 4) travel with the rewards like the owed draws.
     pending_navigation = state.pending_navigation_plays
     pending_spies = state.pending_track_spies
+    # Friends Everywhere's Influence 4 choices (Arrakeen Scouts) likewise.
+    pending_four = state.scouts_four_bonus_choices
     frames_in_order: list[DecisionFrame] = []
     events: list[GameEvent] = []
     for assignment in ranking.rewards:
@@ -321,6 +323,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     pending_intrigue_draws=pending_draws,
                     pending_navigation_plays=pending_navigation,
                     pending_track_spies=pending_spies,
+                    scouts_four_bonus_choices=pending_four,
                 ),
                 assignment.player,
                 reward.influence_faction,
@@ -335,6 +338,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             pending_draws = influence_result.state.pending_intrigue_draws
             pending_navigation = influence_result.state.pending_navigation_plays
             pending_spies = influence_result.state.pending_track_spies
+            pending_four = influence_result.state.scouts_four_bonus_choices
             events.extend(influence_result.events)
             next_owner = players[assignment.player]
         if reward.control_space_id is not None:
@@ -457,6 +461,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         pending_intrigue_draws=pending_draws,
         pending_navigation_plays=pending_navigation,
         pending_track_spies=pending_spies,
+        scouts_four_bonus_choices=pending_four,
         combat_rewards_resolved=not frames,
         # The pledge was folded into the first-place frames above.
         conflict_first_place_influence_bonus=0,

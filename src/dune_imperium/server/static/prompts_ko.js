@@ -27,6 +27,7 @@ const PROMPT_KO = {
   "Choose the card to graft": "{graft}할 카드 선택",
   "Choose the next Agent-turn effect to resolve": "다음에 해결할 {agent_turn} 효과 선택",
   "Choose two Spies to recall or decline this Reveal effect": "소환할 {spy} 2개 선택, 또는 이 {reveal_turn} 효과 거절",
+  "Choose which Influence 4 bonus to take": "받을 {influence_any} 4 보너스 선택",
   "Choose where to advance your research token": "{research} 토큰을 전진시킬 위치 선택",
   "Choose where to lose one unit": "부대 1을 잃을 위치 선택",
   "Choose where to place a Spy for this Reveal effect": "이 {reveal_turn} 효과로 {spy}를 배치할 위치 선택",

@@ -258,6 +258,7 @@ const ACTION_LABELS = {
   decline_agent_card_recall: "{recall_agent} 거절",
   choose_research_space: "{research}: 전진할 칸 선택",
   choose_research_influence: "{research} 보너스: {influence_any}",
+  choose_four_bonus: "{influence_any} 4 보너스 선택",
   trash_intrigue_for_research_bonus: "{research} 보너스: {intrigue} {trash} → 카드 + {intrigue}",
   pay_research_bonus: "{research} 보너스: 7 {solari} → {tleilaxu} ×2",
   decline_research_bonus: "{research} 보너스: 받지 않음",

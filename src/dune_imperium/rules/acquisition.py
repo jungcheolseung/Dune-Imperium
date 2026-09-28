@@ -50,6 +50,7 @@ from dune_imperium.rules.reveal_turn import (
     fire_guild_spy_on_spice_must_flow,
     reveal_late_arrivals,
 )
+from dune_imperium.rules.scouts import discount_used_after, reserve_discount
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
@@ -423,10 +424,12 @@ def _acquire_reserve_to_hand_with_solari(
         (candidate_id, count - 1 if candidate_id == card_id else count)
         for candidate_id, count in state.reserve_stacks
     )
+    discount_used = discount_used_after(state, card_id)
     prepared = replace(
         state,
         players=replace_player(state.players, next_owner),
         reserve_stacks=reserve_stacks,
+        scouts_discount_used=discount_used,
     )
     garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
@@ -691,6 +694,7 @@ def apply_reserve_acquisition(
         (candidate_id, count - 1 if candidate_id == card_id else count)
         for candidate_id, count in state.reserve_stacks
     )
+    discount_used = discount_used_after(state, card_id)
     context["persuasion"] = persuasion - reserve_cost(state, card_id)
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
@@ -698,6 +702,7 @@ def apply_reserve_acquisition(
         state,
         players=players,
         reserve_stacks=reserve_stacks,
+        scouts_discount_used=discount_used,
         decision_stack=(*state.decision_stack[:-1], next_frame),
     )
     event = GameEvent(
@@ -1118,8 +1123,8 @@ def reserve_cost(state: GameState, card_id: str) -> int:
     changes the check and the payment together.
     """
 
-    del state
-    return RESERVE_STACKS_BY_ID[card_id].acquisition_cost
+    printed = RESERVE_STACKS_BY_ID[card_id].acquisition_cost
+    return max(0, printed - reserve_discount(state, card_id))
 
 
 def next_reserve_instance_id(state: GameState, card_id: str) -> str:
@@ -1431,10 +1436,12 @@ def acquire_reserve_for_intrigue(
         (candidate_id, count - 1 if candidate_id == card_id else count)
         for candidate_id, count in state.reserve_stacks
     )
+    discount_used = discount_used_after(state, card_id)
     prepared = replace(
         state,
         players=replace_player(state.players, next_owner),
         reserve_stacks=reserve_stacks,
+        scouts_discount_used=discount_used,
     )
     triggered = _resolve_reveal_acquisition_triggers(prepared, player, card_id)
     completed = complete_acquire_contracts(

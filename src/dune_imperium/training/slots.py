@@ -64,9 +64,9 @@ SLOT_VERSION: Final = 1
 # The observation the table was written against. A new observation version
 # must revisit the table (and bump SLOT_VERSION if any row changes); a test
 # fails until it does.
-# v22 (Arrakeen Scouts) added no identity column; its new frame kind added
-# the row ``decision_kind:scouts_draw``, and checkpoints re-link their rows
-# by key (``training.checkpoint``).
+# v22 (Arrakeen Scouts) added no identity column; its new frame kinds add
+# ``decision_kind:scouts_*`` rows, and checkpoints re-link their rows by key
+# (``training.checkpoint``).
 SLOT_OBSERVATION_VERSION: Final = 22
 VALUE_RANGE: Final = 256
 

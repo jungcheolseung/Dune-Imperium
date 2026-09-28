@@ -79,7 +79,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v112: the ``arrakeen_scouts`` option joined ``RulesetConfig``, so every
 # state hash changes and old saves need the clean version error -- no
 # Scouts templates exist yet.
-ACTION_CODEC_VERSION = 112
+# v113: the first Scouts templates (Friends Everywhere's choice of Influence
+# 4 bonus), only in ``arrakeen_scouts`` catalogs.
+ACTION_CODEC_VERSION = 113
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -325,6 +327,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.extend(_tech_templates(config))
     if config.immortality:
         templates.extend(_immortality_templates(config))
+    if config.arrakeen_scouts:
+        templates.extend(_scouts_templates(config))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
@@ -928,6 +932,20 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for faction in Faction
     )
     return tuple(templates)
+
+
+def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Arrakeen Scouts actions (docs/rules/arrakeen-scouts.md), all here so
+    the other catalogs never grow with them (design 4.9)."""
+
+    del config
+    return tuple(
+        # Friends Everywhere: take any Faction's Influence 4 bonus.
+        ActionTemplate(
+            action_id="choose_four_bonus", arguments=(("faction", faction.value),)
+        )
+        for faction in Faction
+    )
 
 
 def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

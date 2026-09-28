@@ -56,6 +56,10 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
+from dune_imperium.rules.scouts import (
+    ignores_influence_requirements_this_round,
+    space_is_combat,
+)
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -265,8 +269,10 @@ def _placements_for_card(
                 and card.ignores_influence_requirements
             )
             # Insider Information (Bloodlines) waives them for the turn;
-            # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card].
+            # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card];
+            # Unlikely Allies (Arrakeen Scouts) for the round.
             and not owner.ignores_influence_requirements_turn
+            and not ignores_influence_requirements_this_round(state)
             and not (
                 owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr"
             )
@@ -405,6 +411,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
 
     card = personal_card_for_instance(card_instance_id)
     space = BOARD_SPACES_BY_ID[space_id]
+    combat_space = space_is_combat(state, space)
     cost_option, cost = _selected_cost(
         state, space, arguments.get("cost_option"), action.actor
     )
@@ -495,9 +502,10 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("graft_pending_icons", ""),
                     # A Combat icon gained earlier this turn deploys like a Combat
                     # space, never more than two from the garrison [Bloodlines p. 5].
+                    # Eyes on Arrakis makes Faction spaces Combat spaces.
                     (
                         "existing_troop_deployment_limit",
-                        2 if space.combat or owner.combat_icon_turn else 0,
+                        2 if combat_space or owner.combat_icon_turn else 0,
                     ),
                     ("pending_agent_effect", agent_effect_pending),
                     ("pending_agent_icons", agent_icons),
@@ -507,7 +515,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         "pending_combat_deployment",
                         not units_deploy_blocked
                         and (
-                            space.combat
+                            combat_space
                             or owner.combat_icon_turn
                             or (
                                 isinstance(card, ImperiumCardEntry)
