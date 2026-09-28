@@ -389,7 +389,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 7. **비밀 선택.** **완료(2026-09-28)**: 선택·공개·해결, 봉인 장치(등록부, 로그 가림, 이벤트 검사, 미리보기 억제, `determinize`와 scramble), 관측 v24, codec v118. 계획: Covert Operation 두 판과 Offworld Operation, 기한 라운드의 공개와 좌석별 해결(묶음은 차례 순서), 종료 후 공개. 첫 숨긴 값이 여기서 생기므로 **봉인 장치 전부**를 이 슬라이스에서 만든다: 숨긴 값 등록부, 로그의 봉인 표시와 가림, 이벤트 가시성 검사, 되돌리기 경계, 미리보기 억제, `determinize`와 scramble.
 8. **경매.** **완료(2026-09-28)**: 봉인 입찰(고르기·확정·공개·순위·지불, 봉인 장치 확장), Mercenaries의 전원 지불·투입·최저 입찰자 후퇴, Critical Moment(공개·호가·구매·남은 카드 제거), 관측 v25, codec v119. 계획: 봉인 입찰(확정·공개·순위·지불, 7의 봉인 장치를 입찰로 넓힌다), Mercenaries와 Shadow Warfare의 라운드 시작 분쟁 투입, 공개 경매(Critical Moment의 매물 공개와 시계 방향 입찰).
 9. **서버·UI.** **완료(2026-09-28)**: 체크박스(기본 꺼짐)·배지, Scouts 패널, 선택지 설명(한/영), 입찰 스테퍼와 턴 종료 줄, 종료 후 공개, 도움말 한 줄, `scripts/e2e/scouts.py`. 계획: 패널·보드 물품·스테퍼·비밀 선택 패널·복기·도움말과 `scripts/e2e/scouts.py`. 옵션을 UI에 드러낸다(기본 꺼짐). 행동·이벤트 라벨과 한국어 prompt는 여기서 몰아 넣지 않는다: `test_action_labels.py`·`test_i18n.py`가 전체 pytest를 막으므로 3~8의 각 `Play` 슬라이스가 자기 id·event·prompt의 `labels.js`·`labels_en.js`·`prompts_ko.js` 항목을 함께 낸다(CLAUDE.md의 낮은 위험 UI 문구).
-10. **AI와 완주.** heuristic·rollout 처리, census, 단독·교차 소크 실패 0. 필요하면 짝 A/B. 학습 배선은 D6 결정대로 한다.
+10. **AI와 완주.** **완료(2026-09-28)**: heuristic의 입찰(한 번 고르고 확정)·호가(1~3), 교차 소크 실패 0. 학습 배선은 D6대로 하지 않았다. heuristic·rollout 처리, census, 단독·교차 소크 실패 0. 필요하면 짝 A/B. 학습 배선은 D6 결정대로 한다.
 
 **완료 조건.**
 
