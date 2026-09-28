@@ -382,7 +382,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
    - 전원 자동 이벤트(Clear the Market의 계약 되섞기 chance 포함)와 규칙 변경 네 개(4.7). The Spice Must Flow 비용을 중앙 `reserve_cost()`로 모으는 리팩터는 이 슬라이스 안의 별도 커밋으로 먼저 낸다.
    - 관측 v22 세그먼트, FrameKind 추가, slot 행 이관.
    - 이 슬라이스의 미구현 항목은 공개만 하고 `scouts_item_unimplemented` 공개 이벤트를 남긴다. 옵션은 UI에 아직 드러내지 않는다.
-   - **3a 완료(2026-09-28)**: 일정·흐름·자동 이벤트·규칙 변경의 설정과 해제·관측 v22·slot 행 이관. **3b**: 규칙 변경 네 개를 읽는 곳(`reserve_cost()` 리팩터 포함).
+   - **3a 완료(2026-09-28)**: 일정·흐름·자동 이벤트·규칙 변경의 설정과 해제·관측 v22·slot 행 이관. **3b 완료(2026-09-28)**: 규칙 변경 네 개를 읽는 곳(`reserve_cost()` 리팩터는 별도 커밋), Friends Everywhere의 선택 frame, codec v113.
 4. **소위원회.** 원로회 자리 두 경로의 가입 대기열, 가입 frame, 비용·보상(Uprising 11 + Immortality 3).
 5. **차례 순서 거래·양자택일·판매.** 주인 교대 frame, 양자택일 손실, Political Equilibrium의 동률 선택, Rebuild Infrastructure, 판매 4종, Immortality 거래 이벤트.
 6. **임무.** 공개 때 좌석별 참여 결정, 칸·관측소 물품(뒷면 카드의 비공개 처리 포함), 세워 둔 병력(12개 불변식), 방문 아이콘, 즉시 배치 카운터, 계약 위 보상의 세 완료 경로, Conflict 보상 Spy 경로 정리, Maker Hooks 토큰, 지배 마커, Immortality 임무 4종.

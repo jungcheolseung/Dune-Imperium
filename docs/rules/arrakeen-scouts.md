@@ -278,6 +278,12 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 3b: 6.1절의 규칙 변경 넷을 읽는 곳.
+  - Unlikely Allies: Agent를 보낼 칸을 고를 때 Influence 요구를 건너뛴다(`agent_turn`).
+  - Eyes on Arrakis: Faction 칸 여덟 곳이 Combat 칸이다(`scouts.space_is_combat`). 그 칸에 Agent를 보낸 turn에는 이번 turn에 recruit한 troop과 garrison의 troop 2개까지 배치할 수 있다 `[Main p. 10]`.
+  - Market Opening: Reserve 카드의 비용을 읽는 곳을 모두 `acquisition.reserve_cost()` 하나로 모은 뒤, 이번 라운드 처음 획득되는 The Spice Must Flow의 비용을 2 줄인다. 누구든 한 장을 획득하면 할인은 끝난다(OQ-081 (b)).
+  - Friends Everywhere: Influence 4에 닿으면 보너스를 바로 주지 않고 대기열에 넣는다. 엔진이 그 좌석에게 네 Faction의 4칸 보너스 중 하나를 고르게 한다(`choose_four_bonus`, frame `scouts_four_bonus`; OQ-081 (a)). Emperor를 고르면 그 Spy 배치가 이어진다. Conflict 보상의 고정 Influence도 같은 대기열을 탄다.
+  - codec v113(Scouts 카탈로그만 행동 4개 추가, 다른 룰셋은 그대로).
 - 2026-09-28 슬라이스 3a: 2절의 일정 전부와 3절의 흐름.
   - 공개 라운드의 chance frame(`scouts_draw`)으로 뽑는다(`rules/scouts.py`): 1라운드의 소위원회(등급 0·1·2 → 나머지 2개), 임무 배치(70/30)와 임무(계열 제거, 마지막 종류 규칙), 이벤트 추첨표(가중치 × 10), 중간·후반 경매 라운드와 후보, 판매.
   - Scouts 단계는 Control 방어 배치 뒤에 `_advance_automatic`이 한 단위씩 진행하고, 끝나면 First Player의 turn을 연다(그 좌석의 turn 카운터를 전부 다시 찍는다).
