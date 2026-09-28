@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대).
+기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -47,20 +47,20 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `security_detail` | `Def_Mission_SecurityDetail` 13.0 | 둘 다 | 0 | 2~3 |  | 6a: 참여·방문 → Conflict |
 | `imperial_reserve` | `Def_Mission_ImperialReserve` 14.0 | 둘 다 | 0 | 2~3 |  | 6a: 물품·방문(둘 중 하나) |
-| `desert_riding` | `Def_Mission_DesertRiding` 15.0 | 둘 다 | 0 | 2~3 |  | 6a: 토큰 배치 (수령은 6b) |
-| `urban_surveillance` | `Def_Mission_ValuedInformants_UrbanSurveillance` 15.0 | 둘 다 | 0 | 2~3 |  | 6a: 물품 배치 (수령은 6b) |
-| `planetary_exploration` | `Def_Mission_ValuedInformants_PlanetaryExploration` 15.1 | 둘 다 | 0 | 2~3 |  | 6a: 물품 배치 (수령은 6b) |
+| `desert_riding` | `Def_Mission_DesertRiding` 15.0 | 둘 다 | 0 | 2~3 |  | 6a·6b: 토큰, Hagga Basin·Sietch Tabr |
+| `urban_surveillance` | `Def_Mission_ValuedInformants_UrbanSurveillance` 15.0 | 둘 다 | 0 | 2~3 |  | 6a·6b: 물품, Spy 배치 때 수령 |
+| `planetary_exploration` | `Def_Mission_ValuedInformants_PlanetaryExploration` 15.1 | 둘 다 | 0 | 2~3 |  | 6a·6b: 물품, Spy 배치 때 수령 |
 | `choam_research` | `Def_Mission_CHOAMResearch` 16.0 | 둘 다 | 0 | 2~3 | 전용 | 6a: 뒷면 Contract 2장, 방문마다 1장 |
-| `choam_escort` | `Def_Mission_CHOAMEscort` 17.0 | 둘 다 | 0 | 2~3 | 전용 | 6a: 참여 (완료 보상은 6b) |
-| `sponsored_research` | `Def_Mission_SponsoredResearch` 9.0 | +Immortality | 0 | 2~2 |  | 6a: 물품 배치 (수령은 6b) |
-| `back_room_deal` | `Def_Mission_BackRoomDeal` 10.0 | +Immortality | 0 | 2~3 |  | 6a: 물품 배치 (수령은 6b) |
+| `choam_escort` | `Def_Mission_CHOAMEscort` 17.0 | 둘 다 | 0 | 2~3 | 전용 | 6a·6b: 참여, 완료 때 수령 |
+| `sponsored_research` | `Def_Mission_SponsoredResearch` 9.0 | +Immortality | 0 | 2~2 |  | 6a·6b: 물품, 첫 genetic marker 도달 때 수령 |
+| `back_room_deal` | `Def_Mission_BackRoomDeal` 10.0 | +Immortality | 0 | 2~3 |  | 6a·6b: 물품, Reclaimed Forces 획득 때 수령 |
 | `prison_planet` | `Def_Mission_EliteSardaukar_PrisonPlanet` 18.0 | Uprising | 1 | 2~3 |  | 6a: 참여·방문·세 번째 지배 |
 | `emperors_schemes` | `Def_Mission_EliteSardaukar_EmperorsSchemes` 18.1 | 둘 다 | 1 | 2~3 |  | 6a: 뒷면 Intrigue 2장, 방문마다 1장 |
 | `fedaykin_assistance` | `Def_Mission_FedaykinAssistance` 19.0 | 둘 다 | 1 | 3~3 |  | 6a: 참여·방문 → recruit |
 | `weirding_warfare` | `Def_Mission_WeirdingWarfare` 20.0 | 둘 다 | 1 | 2~3 |  | 6a: 참여·방문 → Conflict |
 | `send_for_aid` | `Def_Mission_SendForAid` 21.0 | 둘 다 | 1 | 2~3 |  | 6a: 참여·방문 → Conflict + 물 |
 | `coordinate_with_the_emperor` | `Def_Mission_CoordinateWithTheEmporer2` 18.0 | +Immortality | 1 | 3~3 |  | 6a: 참여·방문 → garrison + Solari |
-| `tleilaxu_offering` | `Def_Mission_TleilaxuOffering` 11.0 | +Immortality | 1 | 2~2 |  | 6a: 참여 (수령은 6b) |
+| `tleilaxu_offering` | `Def_Mission_TleilaxuOffering` 11.0 | +Immortality | 1 | 2~2 |  | 6a·6b: 참여, 세 번째 칸 도달 때 specimen |
 
 ### 이벤트 (슬라이스 3·5·7)
 

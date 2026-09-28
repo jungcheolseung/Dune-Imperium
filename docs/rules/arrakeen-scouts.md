@@ -278,13 +278,18 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 6b: 나머지 임무의 수령.
+  - Desert Riding: Hagga Basin의 Maker 선택에 `take_desert_riding_hooks`(spice 2 대신 토큰, bonus spice는 그대로, 같은 방문 sandworm 없음). Maker Hooks가 있는 좌석에는 없다. 토큰이 남은 마지막 Maker Hooks이면 Sietch Tabr의 Maker Hooks 획득이 가져간다(OQ-079).
+  - Valued Informants(Urban Surveillance, Planetary Exploration)와 CHOAM Escort: 매 전이 뒤 자동 단계가 Spy가 놓인 물품 관측소와 완료된 Contract를 찾아 물품을 준다. 어느 배치·완료 경로든 같다(OQ-080).
+  - Sponsored Research: research token이 첫 genetic marker 열에 처음 닿을 때 spice 2. Tleilaxu Offering: Tleilaxu token이 세 번째 칸(index 3)에 닿을 때 세워 둔 troop 2가 specimen 2가 된다. 이미 그 칸이나 뒤에 있는 좌석에는 참여를 묻지 않는다. Back Room Deal: Reclaimed Forces를 다음에 획득하는 좌석이 Solari 2(OQ-089).
+  - codec v117(`take_desert_riding_hooks`). 관측은 그대로(v23).
 - 2026-09-28 슬라이스 6a: 5절 임무의 뼈대(`rules/scouts_missions.py`).
   - 공개하면 은행 물품과 뒷면 카드를 놓고(`scouts_goods`, `scouts_goods_cards`), 참여 임무는 First Player부터 좌석마다 참여/패스를 묻는다(frame `scouts_mission`; 참여할 수 없는 좌석은 묻지 않는다, OQ-088).
   - 세워 둔 troop은 `PlayerState.troops_parked`로 12개 보존에 든다(`scouts_parked`가 위치를 적는다).
   - Agent가 그 칸을 방문하면 그 좌석의 조각을 받는 것이 방문 효과 하나로 붙는다(`scouts_collect_mission`, Bloodlines Commander 선례). Security Detail·Weirding Warfare·Send for Aid의 troop은 Conflict로, Fedaykin Assistance의 troop은 이번 turn에 recruit한 troop으로 garrison에, Coordinate With The Emperor의 specimen은 garrison으로 간다(OQ-077). Imperial Reserve는 둘 중 하나를 고른다(OQ-078). Prison Planet은 garrison troop 1을 잃고 지배 마커와 spice 2를 둔다; 마커는 지배 칸과 합쳐 3개를 넘지 않고, 그 좌석이 Conflict 보상으로 세 번째 칸을 지배하게 되면 마커를 가져다 쓰고 spice는 은행으로 돌아간다(`scouts_prison_marker_taken`). CHOAM Research의 뒷면 카드가 Bloodlines의 Immediate이고 방문자에게 Intrigue가 없으면 다음 장을 받는다(OQ-090).
   - CHOAM Research의 Contract 2장과 Emperor's Schemes의 Intrigue 2장은 뒷면이다: 누구도 모르며(`known_card_seats`), 탐색 AI의 재추첨과 비공개 검사에서 bank·덱과 함께 섞이고, 카드 보존 검사에 든다. 방문마다 1장씩 받는다.
   - 관측 v23(임무별 세워 둔 troop과 물품), codec v116.
-  - 남은 것(6b): Desert Riding, Valued Informants의 관측소 물품 수령, CHOAM Escort의 완료 보상, Sponsored Research, Back Room Deal, Tleilaxu Offering의 수령. 이들의 물품은 놓이지만 아직 받을 수 없다.
+  - 남은 것은 슬라이스 6b에서 끝냈다(아래).
 - 2026-09-28 슬라이스 5: 6절의 선택형 이벤트(Immortality 넷 포함)와 9절의 판매, Political Equilibrium, Rebuild Infrastructure.
   - 공개되면 First Player부터 좌석마다 `scouts_choice` frame을 연다. 낼 수 있는 줄만 `scouts_choose_option`으로, 패스가 있으면 `scouts_pass`로 제시한다. 패스가 없는데 할 수 있는 줄이 하나뿐이면 결정 없이 그 줄을, 하나도 없으면 아무것도 하지 않는다(OQ-071). 고른 줄은 슬라이스 4의 `scouts_effect` frame이 푼다.
   - Influence 잃기(`LoseFactionInfluence`, Political Equilibrium의 `LoseHighestInfluence`)는 효과 frame의 선택이다. 동률인 가장 높은 Faction과, Alliance를 넘겨받을 상대가 동률일 때의 받는 좌석을 고른다(`scouts_lose_influence`, `scouts_lose_influence_to`; `[Main p. 7]`의 Alliance 규칙은 기존 `lose_faction_influence`).

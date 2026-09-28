@@ -881,28 +881,29 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 임무는 troop을 칸에 세워 두고 "다음 방문 때 recruit한다"(Fedaykin Assistance), "recruit해 곧바로 Conflict에"(Security Detail, Weirding Warfare, Send for Aid — Send for Aid의 troop은 garrison에서 옮긴 것)라고 한다 `[Scouts mission: <이름>]`. FAQ는 garrison의 troop을 다시 recruit한 것으로 쳐서 배치 한도를 늘릴 수 없다고 한다 `[FAQ p. 4]`.
 - 판정: (a) 세워 둔 troop은 supply도 garrison도 아닌 그 좌석의 troop으로 센다(12개 보존). (b) 방문 때 "recruit"는 그 troop을 garrison으로 옮기는 recruit이며, 그 turn에 recruit한 troop으로 센다(Combat 칸이면 `[Main p. 10]`의 이번 turn recruit 몫으로 배치 가능). (c) "곧바로 Conflict에"는 칸이 Combat 칸이 아니어도 그 troop만 Conflict에 넣는다(그 troop 전용 배치 몫; garrison의 다른 troop 배치를 열지 않는다). (d) Send for Aid의 troop은 공개 때 garrison에서 칸으로 옮겨 가 garrison을 떠났으므로, 방문 때 앱의 말대로 recruit해 곧바로 Conflict에 넣는다. garrison에 있는 troop을 다시 recruit하는 것이 아니라서 `[FAQ p. 4]`에 걸리지 않는다.
-- 구현: 슬라이스 6.
+- 구현: 슬라이스 6a(`rules/scouts_missions.apply_mission_collect`; Fedaykin Assistance는 이번 turn recruit 수에 더한다).
 
 ## OQ-078 — 칸 위 물품을 여러 방문자가 나눌 때
 
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: Imperial Reserve는 "방문자가 둘 중 하나를 가진다"고 하고 도움말이 "남은 쪽은 다음 방문자 몫"이라고 해설한다. Desert Riding의 토큰도 방문자 몫이다 `[Scouts help]`. CHOAM Research와 Emperor's Schemes는 "방문할 때마다 1장씩"이라고 한다(Emperor's Schemes는 영어가 의무, 한국어가 선택) `[Scouts mission: CHOAM Research]` `[Scouts mission: Emperor's Schemes]`.
 - 판정: 칸 위 물품은 모두 다 가져갈 때까지 남는다. 방문자는 한 방문에 Imperial Reserve의 한 가지, CHOAM Research·Emperor's Schemes의 한 장을 받는다. Emperor's Schemes는 영어대로 의무다(OQ-086). CHOAM Research의 Contract는 받는 순간 그 좌석의 앞면 Contract가 된다(`[Main p. 16]`).
-- 구현: 슬라이스 6.
+- 구현: 슬라이스 6a(`scouts_collect_mission`의 `choice`, 방문마다 뒷면 카드 1장).
 
 ## OQ-079 — Desert Riding의 Maker Hooks 토큰
 
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 토큰은 네 Maker Hooks 가운데 하나다. Hagga Basin 방문자는 칸의 spice 2 대신 토큰을 가질 수 있고, 남은 마지막 토큰이면 Sietch Tabr로도 가져갈 수 있다 `[Scouts help]`.
-- 판정: (a) 공개 때 네 Maker Hooks가 모두 주인이 있으면 토큰을 두지 않는다(임무 물품 없음). (b) 이미 Maker Hooks가 있는 좌석은 가져갈 수 없다(대신 spice 2). (c) Maker 보너스 spice는 어느 쪽이든 받는다. (d) 같은 방문에서 토큰을 얻으면 그 방문의 sandworm 소환(Maker Hooks 조건)에 쓸 수 있다 — Sietch Tabr의 Maker Hooks 획득과 같다. (e) Hagga Basin 옆 토큰이 마지막 토큰이면 Sietch Tabr의 Maker Hooks 획득이 그 토큰을 가져간다(임무 종료).
-- 구현: 슬라이스 6.
+- 판정: (a) 공개 때 네 Maker Hooks가 모두 주인이 있으면 토큰을 두지 않는다(임무 물품 없음). (b) 이미 Maker Hooks가 있는 좌석은 가져갈 수 없다(대신 spice 2). (c) Maker 보너스 spice는 어느 쪽이든 받는다. (d) 토큰은 그 방문의 한 선택(spice 2 또는 sandworm)을 대신하므로 같은 방문에 sandworm을 소환하지 않는다(아래 변경). (e) Hagga Basin 옆 토큰이 마지막 토큰이면 Sietch Tabr의 Maker Hooks 획득이 그 토큰을 가져간다(임무 종료).
+- 구현: 슬라이스 6b(`take_desert_riding_hooks`, Sietch Tabr의 `take_sietch_tabr_supplies`가 마지막 토큰을 가져간다).
+- 변경(2026-09-28 슬라이스 6b, D8 검토 대상): (d)를 뒤집었다. Hagga Basin의 인쇄 줄은 "(a) spice 2, 또는 (b) Maker Hooks가 있으면 sandworm 1개 소환 중 하나를 선택" `[Board Guide p. 2]`이고 토큰은 "칸의 기본 spice 2 대신" 받는다 `[Scouts mission: Desert Riding]`. 토큰은 그 한 선택의 세 번째 갈래라서 같은 방문에 sandworm을 소환하지 않는다(처음 판정은 Sietch Tabr의 Maker Hooks 획득과 같이 보았지만, Sietch Tabr는 Maker 칸이 아니라 비교가 맞지 않았다).
 
 ## OQ-080 — Valued Informants: "관측소에 Spy를 놓을 때"의 범위
 
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 도시(City) 또는 Maker 칸에 연결된 빈 관측소마다 물품을 두고, 그 관측소에 Spy를 놓으면 가진다 `[Scouts mission: Urban Surveillance]` `[Scouts mission: Planetary Exploration]`.
 - 판정: 어떤 경로로 Spy를 놓든(Agent 칸·카드·Intrigue·Conflict 보상·Scouts 항목·Deep Cover 공유 관측소 포함) 그 관측소의 물품을 가진다. 공개 때 이미 Spy가 있는 관측소에는 두지 않는다.
-- 구현: 슬라이스 6.
+- 구현: 슬라이스 6b. 배치 경로마다 고리를 걸지 않고, 매 전이 뒤 자동 단계(`rules/scouts_missions.claim_due_mission_goods`)가 Spy가 놓인 물품 관측소를 찾아 그 좌석에 준다. Spy를 옮겨 놓거나(이동) 상대가 옮긴 Spy도 그 관측소에 놓인 것이므로 받는다. CHOAM Escort의 완료 보상도 같은 단계가 준다(완료 경로와 무관). 완료되지 않은 채 좌석을 떠난 Contract 위의 물품은 은행으로 돌아간다.
 
 ## OQ-081 — Friends Everywhere와 Market Opening의 범위
 
@@ -957,14 +958,15 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 임무의 참여는 "원하면"이고, 비용(spice 1, Solari 2, garrison troop, specimen)을 낼 수 없는 경우를 적지 않는다 `[Scouts mission: <이름>]`.
 - 판정: 참여는 모든 임무에서 선택이다(CHOAM Escort도 "may"). 비용을 낼 수 없거나 세울 troop이 없는 좌석에는 묻지 않는다(결정 없이 넘어간다). CHOAM Escort에서 앞면 Contract가 없는 좌석에는 troop recruit와 패스만 남는다.
-- 구현: 슬라이스 6.
+- 구현: 슬라이스 6a(`rules/scouts_missions.join_targets`). Tleilaxu Offering은 Tleilaxu token이 이미 세 번째 칸이나 그 뒤에 있는 좌석에 묻지 않는다(다시 그 칸으로 전진하지 않으므로, OQ-089 (a)).
 
 ## OQ-089 — Immortality 풀 항목의 세부
 
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: Tleilaxu Offering은 "Tleilaxu track의 세 번째 칸", Offworld Operation의 둘째 선택은 "spice 1, 또는 Helix: spice 2", Coordinate With The Emperor는 "specimen 1을 Sardaukar 칸으로 옮기고 처음 보낼 때 garrison으로"라고 한다 `[Scouts mission: Tleilaxu Offering]` `[Scouts event: Offworld Operation]` `[Scouts mission: Coordinate With The Emperor]`.
 - 판정: (a) "세 번째 칸"은 시작 칸을 세지 않고 세 번째 칸이다(Tleilaxu track 전사의 index로 고정, 슬라이스 6에서 확인). (b) "Helix"는 자기 research token이 Helix 칸(research track의 Helix 보너스 칸)에 닿았거나 지나간 상태다. (c) Coordinate With The Emperor의 specimen은 Axolotl tanks에서 빼 칸에 세우고, 처음 방문 때 garrison으로 간다(recruit가 아니다).
-- 구현: 슬라이스 6(임무), 7(Offworld Operation).
+- 구현: 슬라이스 6b(임무: `immortality.advance_tleilaxu`의 세 번째 칸, `immortality.move_research_token`의 Helix), 7(Offworld Operation).
+- 보강(2026-09-28 슬라이스 6b): (a) "세 번째 칸"은 index 3이다. 셋업의 spice를 두는 "네 번째 칸" `[Immortality p. 4]`을 프로젝트가 index 4(시작 칸 0을 세지 않음)로 전사한 것과 같은 셈이다. (b) "Helix"는 research track 아래의 첫 genetic marker다(카드의 genetic marker 아이콘이 나선 모양이다, `[Immortality pp. 6, 16]`). "Helix에 닿는다"는 token이 첫 marker 열(열 4) 앞에서 그 열이나 그 뒤로 옮겨 가는 전진이다. 그래서 Sponsored Research를 공개할 때 이미 지나간 좌석은 그 spice를 받을 수 없다. Offworld Operation의 "Helix"는 marker를 1개 이상 얻은 상태다.
 
 ## OQ-090 — CHOAM Research의 뒷면 Contract가 Bloodlines의 Immediate일 때
 
