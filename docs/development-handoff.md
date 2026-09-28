@@ -102,13 +102,13 @@ OQ-065(강제 Spy 이동 순서와 갈 곳이 없는 Spy)도 밤에 사용자 �
 Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(아라킨 스카웃)를 시작 옵션
 `RulesetConfig(arrakeen_scouts=True)`로 넣는 계획이다.
 - 설계: [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md). 구현 계획: [`implementation-plan.md`](implementation-plan.md) M15.
-- 원자료: 공식 룰북이 없어 설치본에서 추출했다. 비공개 에셋 저장소 `reference/dwgr-arrakeen-scouts/`(README에 재추출 절차).
+- 원자료: 공식 룰북이 없어 설치본에서 추출했다. 도구는 [`scripts/dwgr/`](../scripts/dwgr/README.md). 추출 결과와 분석은 git 밖으로, Mac mini의 에셋 체크아웃 `reference/dwgr-arrakeen-scouts/`(에셋 `.gitignore`)에만 있다.
 - **착수 조건.** 사용자가 설계 12절의 D1~D9를 정하고 시작을 지시하기 전에는 시작하지 않는다.
   - D1 풀과 옵션 조합, D2 소위원회까지 공개 라운드의 chance로 추첨, D3 Round Start 뒤 첫 턴 전, D4 봉인 입찰을 순차 비공개 확정으로(순위는 앱대로),
     D5 결정의 수락·패스·확정을 명시적 턴 종료로, D6 codec v112·관측 v22부터 슬라이스마다·slot 행 이관·학습 제외, D7 공개 저장소에는 이름·수치·의역만,
     D8 OQ-071부터의 판정(설계 9절 19개), D9 슬라이스 순서.
 - **첫 슬라이스.** 문서·콘텐츠 카탈로그만 한다(엔진 동작 변경 없음).
-- **착수 전에 다시 볼 것.** 앱이 업데이트됐으면 `tools/extract.py`로 다시 추출해 `data/`의 git diff부터 본다.
+- **착수 전에 다시 볼 것.** 앱이 업데이트됐으면 `scripts/dwgr/extract.py`로 새 폴더에 다시 추출해 이전 추출과 `diff -r`부터 본다. 다른 기기라면 앱을 설치하고 추출부터 한다.
 
 ### 학습(M10) 쪽 순서
 
@@ -569,11 +569,12 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-28(Mac mini, Arrakeen Scouts 추출·M15 계획 세션): **두 저장소 모두 push했다.**
-- 에셋 저장소 `35752c5`: `reference/dwgr-arrakeen-scouts/`의 도구·추출 데이터·분석, 약 3.9 MB.
-- 메인 저장소: 이 문서 커밋(`docs/`뿐).
-- 에셋 커밋은 사용자 지시("추출 도구는 private assets 쪽으로")보다 넓게 데이터·분석까지 담았다. 2026-09-23의 "게임에 쓰이는 에셋만 이력에" 방침과 맞는지 사용자에게 확인을 요청했다.
-- 도구만 남기거나 `.gitignore`로 빼기로 하면 이력 재작성(force push)이 필요하다([`lessons.md`](lessons.md) 2026-09-28).
+2026-09-28(Mac mini, Arrakeen Scouts 추출·M15 계획 세션, **에셋 저장소 이력 재작성**): 두 저장소 모두 push했다.
+- 에셋 저장소에 한 번 push했던 `35752c5`(`reference/dwgr-arrakeen-scouts/`의 도구·추출 데이터·분석, 약 3.9 MB)를 사용자 지시("assets 레포에는 게임에 쓰이는 에셋만 이력에", "원격에 올렸던 커밋도 없애기")로 이력에서 뺐다.
+  - `a82825b`로 `--mixed` reset(파일은 유지)한 뒤, 그 폴더를 `.gitignore`에 넣는 **`b2c53eb`**를 만들어 `--force-with-lease`로 push했다. 원격과 로컬의 어떤 ref도 `35752c5`를 가리키지 않는다.
+  - **다른 기기**에서 그 사이 에셋 저장소를 pull했다면 `git status`로 로컬 변경이 없는지 본 뒤 `git fetch origin && git reset --hard origin/master`로 맞춘다. 옛 커밋을 가진 채 push하면 지운 커밋이 되살아난다.
+- 추출 도구는 메인 저장소 `scripts/dwgr/`로 옮겼다. 추출 결과·분석은 Mac mini의 에셋 체크아웃에 git 밖으로만 남는다.
+- 메인 저장소: `ffbf2ae`(계획 문서)와 도구 이관·문서 갱신 커밋.
 
 2026-09-23 저녁(WSL 노트북, **에셋 저장소 이력 정리** — 사용자 지시 "진짜 게임에 쓰이는 asset만 git 이력에"):
 전날 다른 기기로 넘기려고 커밋·push한 블로그 사진·크롭·`best/`·매칭 표·도구(`reference/naver-vampmiyu-*`,
@@ -623,7 +624,7 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
   - L3(7081 대 6600)는 판정 뒤에 정보용으로 더한 칸이다.
 - **작업 트리 기록**: 밤사이 다른 세션이 이 체크아웃에 문서 커밋 `ffbf2ae`(Arrakeen Scouts 계획)를 넣었다. `src/`는 그대로라 두 팔은 같은 코드로 돌았다(README에 적음).
 
-## 2026-09-28 Arrakeen Scouts 추출·M15 계획 세션 요약 (Mac mini, **코드 변경 없음**, 변경은 `docs/`뿐; 에셋 `35752c5`)
+## 2026-09-28 Arrakeen Scouts 추출·M15 계획 세션 요약 (Mac mini, **엔진 코드 변경 없음**, 변경은 `docs/`와 `scripts/dwgr/`; 에셋 `b2c53eb`)
 
 **추출(2026-09-27).**
 - 사용자가 Dire Wolf Game Room(Steam)의 Dune 컴패니언 모드 "Arrakeen Scouts"의 숨은 규칙을 설치본에서 뽑을 수 있는지 물었다.
@@ -632,12 +633,12 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
   - 13개 언어 문구(공식 한국어 포함)와 UI 프리팹의 아이콘 트리
   - IL2CPP 메타데이터 파서 + capstone 디스어셈블로 일정 생성·라운드 진행·경매 판정 코드
 - 검증: 분석 에이전트 9개, 반박 검증 6개. 알고리즘 11개 주장 중 10개 확인, 1개 보정. Uprising 항목 해석은 모두 확인.
-- 결과: 에셋 `reference/dwgr-arrakeen-scouts/`의 `analysis/report-ko.md`.
+- 결과: Mac mini의 에셋 체크아웃 `reference/dwgr-arrakeen-scouts/`(git 밖)의 `analysis/report-ko.md`.
 
 **도구 이관(2026-09-28, 사용자 지시).**
-- 추출 도구를 에셋 저장소로 옮겼다. 빌드 전용 주소(CodeRegistration·codeGenModules·MetadataRegistration)는 검색으로 찾게 바꿨다.
-- 흩어진 스크립트는 `tools/extract.py` 하나로 합쳤다(약 5초).
-- 새 uv 임시 환경에서 다시 추출한 결과가 파일 단위로 같음을 확인했다.
+- 처음에는 추출 도구를 에셋 저장소로 옮겼다(사용자 지시). 빌드 전용 주소(CodeRegistration·codeGenModules·MetadataRegistration)는 검색으로 찾게 바꿨고, 흩어진 스크립트는 `extract.py` 하나로 합쳤다(약 5초).
+- 그 커밋이 도구뿐 아니라 데이터·분석까지 담아, 사용자가 되돌렸다: 도구는 메인 저장소 [`scripts/dwgr/`](../scripts/dwgr/README.md)로 옮기고 ruff를 통과하게 정리했다. 에셋의 그 폴더는 `.gitignore`로 빼고, push했던 커밋은 force push로 이력에서 뺐다(위 "원격 저장소 인계 주의").
+- 두 번의 이관 뒤마다 새 uv 임시 환경에서 다시 추출한 결과가 파일 단위로 같음을 확인했다.
 
 **계획(2026-09-28).**
 - 엔진 구조 조사: 에이전트 6개가 옵션 배선, 결정·비공개 정보, 보드 상태, 관측·codec·AI, 서버·UI, 문서 관례를 조사했다.

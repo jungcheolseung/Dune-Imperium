@@ -720,3 +720,4 @@
 - 재발 방지:
   1. 에셋 저장소에 무엇이든 커밋하기 전에 [`development-handoff.md`](development-handoff.md)의 "원격 저장소 인계 주의"와 이 문서의 2026-09-23 항목을 다시 읽는다.
   2. 요청이 "옮겨 달라"면 옮기는 것까지만 한다. 이력에 남길 범위(도구만 / 데이터까지 / `.gitignore`)는 크기와 되돌리기 비용(force push)을 적어 따로 묻는다.
+- 결과(같은 날): 사용자가 폴더를 `.gitignore`로 빼고 push했던 커밋도 없애라고 했다. `a82825b`로 `--mixed` reset → `.gitignore` 커밋 `b2c53eb` → `--force-with-lease` push. 도구는 "굳이 asset 쪽에 있을 필요가 없다"며 메인 저장소 `scripts/dwgr/`로 옮겼다. 앱에서 나온 코드 **도구**는 공개 저장소에, 앱의 **내용**(문구·정의·분석)은 어느 저장소에도 넣지 않는다.

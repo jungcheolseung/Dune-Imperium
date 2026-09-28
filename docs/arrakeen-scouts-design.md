@@ -19,12 +19,12 @@
 
 ## 2. 출처와 권리
 
-- **원자료(비공개).** 비공개 에셋 저장소 `Dune-Imperium-assets/reference/dwgr-arrakeen-scouts/`(에셋 `35752c5`).
+- **원자료(로컬 전용, git 밖).** 추출 결과와 분석은 에셋 체크아웃의 `reference/dwgr-arrakeen-scouts/`에 둔다. 에셋 `.gitignore`가 이 폴더를 빼므로 그 기기(Mac mini)에만 있다. 에셋 저장소 이력에는 게임에 쓰이는 에셋만 남긴다(2026-09-28 사용자 결정).
   - 앱: Dire Wolf Game Room macOS, Unity 2022.3.62f2, build-guid `84d64e1237b54105aee1940811cd9e43`, 2026-09-26 설치.
   - 데이터: 정의 데이터 5종(`data/spice_mb/*Definition.json`), 일정 풀 8개(`data/schedules.json`), 13개 언어 문구(`data/loc/`, 공식 한국어 포함), UI 프리팹의 아이콘 트리(`data/beat_prefabs.json`).
   - 분석: 앱의 일정 생성·라운드 진행·경매 판정 코드 분석(`analysis/findings/`), 항목별 해석과 반박 검증(`analysis/verification/`), 한국어 요약(`analysis/report-ko.md`).
-  - 도구: `tools/extract.py`가 앱이 업데이트되면 5초 만에 다시 추출한다.
-- **공개 저장소에 넣는 것.** 항목 이름, 수치(비용·보상·라운드·가중치), 효과의 **의역**, 그리고 우리 말로 쓴 절차 설명. 앱 문구(영·한)와 도움말 원문, 디스어셈블 세부는 넣지 않는다(`rules/sources.md`의 "옮겨 적지 않고 의역" 원칙과 같다). D7에서 확인한다.
+  - 도구: 이 저장소의 [`scripts/dwgr/`](../scripts/dwgr/README.md). `extract.py`가 설치된 앱에서 5초 만에 다시 추출한다. 다른 기기에서는 앱을 설치하고 다시 추출한다(분석 결과 `analysis/`는 Mac mini에만 있다).
+- **공개 저장소에 넣는 것.** 항목 이름, 수치(비용·보상·라운드·가중치), 효과의 **의역**, 우리 말로 쓴 절차 설명, 그리고 추출 도구(`scripts/dwgr/`, 앱 내용은 담지 않는다). 앱 문구(영·한), 도움말 원문, 추출 결과는 넣지 않는다(`rules/sources.md`의 "옮겨 적지 않고 의역" 원칙과 같다). D7에서 확인한다.
 - **규칙 권위의 순서.**
   1. 앱의 영어 문구와 아이콘(sprite 이름)이 항목의 효과를 정한다.
   2. 앱 도움말이 절차를 정한다.
@@ -32,7 +32,7 @@
   4. 한국어 문구는 **용어**로만 쓴다. `sources.md:84`의 원칙과 같으며, 앱의 한국어에는 오역이 있다(9절).
 - **인용 태그**(슬라이스 1에서 `rules/README.md`에 등록): `[Scouts help]`, `[Scouts subcommittee: <이름>]`, `[Scouts mission: …]`, `[Scouts event: …]`, `[Scouts auction: …]`, `[Scouts sale: …]`, `[Scouts schedule]`(일정 생성 절차 — 앱 코드의 동작을 재현한 것이다), 용어는 `[KO app: <loc key>]`.
   - `scripts/official-rule-sources.json`에는 넣지 않는다. PDF 전용 스키마라 `prepare_official_rules.py`가 깨진다.
-  - 파일 해시는 에셋 쪽 README와 `data/manifest.json`에 둔다.
+  - 원본 파일 해시는 추출할 때마다 `data/manifest.json`에 남는다. `sources.md`에는 build-guid와 해시만 적는다.
   - 코드의 출처 표기는 `SourceDocument`에 앱 항목 하나를 더하고, `CARD_FACE`처럼 page 1 관례를 쓴다.
 - **정체성과 계열.** 앱의 beatId는 식별자로 쓰지 않는다. Desert Riding과 Urban Surveillance가 같은 id(15.0)를 쓰는 충돌이 있다. 프로젝트의 안정 id(snake_case 이름)를 쓴다(`lessons.md` 2026-09-27).
   - beatId는 **계열(family)** 키로만 옮긴다. 일정 추첨은 한 항목을 뽑으면 같은 계열을 모두 빼므로, 계열이 추첨 결과를 정한다.
@@ -117,8 +117,8 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 - 새 패키지 `content/arrakeen_scouts/`에 소위원회·임무·이벤트·경매·판매의 typed 정의를 둔다.
   - 필드: 안정 id, 이름, 계열(앱 beatId를 묶음 키로만), 풀 소속, 등급 또는 `missionType`, 라운드 창, CHOAM 플래그, 가중치, 비용·보상 효과(기존 effect DSL로 쓸 수 있는 것은 DSL로), 출처 표기.
   - 감사는 계열 소속도 beatId와 대조한다.
-- 수치는 에셋의 정의 JSON과 **기계 대조**하는 감사 스크립트로 확인한다.
-  - 에셋 체크아웃이 없는 기기에서는 skip한다(`test_images.py`의 에셋 대조와 같은 방식).
+- 수치는 추출한 정의 JSON(`scripts/dwgr/extract.py`의 출력)과 **기계 대조**하는 감사 스크립트로 확인한다.
+  - 추출 폴더가 없는 기기에서는 skip한다(`test_images.py`의 에셋 대조와 같은 방식).
   - 아이콘만 있는 항목(예: Shadow Warfare)은 sprite 이름과 화살표 좌우 배치로 정하고 감사 문서에 근거를 남긴다(`lessons.md` 2026-09-19, 2026-09-26).
 
 ### 4.3 일정: 라운드마다 추첨 (D2)
@@ -308,7 +308,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
   - `test_ruleset_gates.py`에 모든 Scouts provider를 더한다.
 - **일정 분포.** 확률은 표본이 아니라 **chance frame의 선택지 다중집합**으로 고정한다. 예:
   - 4라운드 이벤트의 추첨표가 CHOAM 켬에서 총 170장이고(풀 190장에서 라운드 창 밖의 Friends Everywhere·Rebuild Infrastructure 20장 제외), 영향력 증가·축소 계열이 30장씩이다.
-  - 에셋의 확률 스크립트(`analysis/probability/`)가 계산한 한 게임 등장 확률을 작은 열거 테스트로 재현한다. 예: Rebuild Infrastructure 켬 0.0712 / 끔 0.0774, 영향력 증가 계열 0.5681 / 0.5959.
+  - 로컬 분석 폴더의 확률 스크립트(`analysis/probability/`)가 계산한 한 게임 등장 확률을 작은 열거 테스트로 재현한다. 예: Rebuild Infrastructure 켬 0.0712 / 끔 0.0774, 영향력 증가 계열 0.5681 / 0.5959.
 - **규칙 단위.** 항목마다 대표 시나리오를 둔다. 앱이 정하지 않은 판정은 OQ 번호를 docstring에 적는다.
 - **비공개.**
   - 봉인 입찰·비밀 선택의 로그 가림과 되돌리기 경계(`tests/server/test_undo.py` 형식)
@@ -367,7 +367,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 1. **출처 등록·규칙 명세·콘텐츠 카탈로그.**
    - 7절의 문서 전부와 OQ 등록(사용자 판정 요청).
    - `SourceDocument` 항목.
-   - `content/arrakeen_scouts/`의 typed 정의(Uprising·Immortality 풀)와 에셋 대조 감사.
+   - `content/arrakeen_scouts/`의 typed 정의(Uprising·Immortality 풀)와 추출 데이터 대조 감사.
    - 엔진 동작 변경 없음.
 2. **옵션 골격.**
    - `RulesetConfig(arrakeen_scouts)`와 `+scouts`, 4.1절의 모든 배선.
@@ -391,7 +391,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 **완료 조건.**
 
 - `arrakeen_scouts` 룰셋(단독, CHOAM, Bloodlines·Tech·Immortality·leader draft 교차)의 random·heuristic 소크가 실패 0으로 완주한다.
-- 모든 정의가 에셋 대조를 거쳐 감사 문서에 기록된다.
+- 모든 정의가 추출 데이터 대조를 거쳐 감사 문서에 기록된다.
 - 일정 분포 테스트가 앱의 확률과 맞는다.
 - 비공개 정보 테스트가 통과한다.
 - 옵션을 끈 룰셋의 동일성 테스트가 통과한다.
@@ -409,8 +409,8 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 | 규칙 변경자의 부분 적용(The Spice Must Flow 비용을 여러 곳에서 읽음) | 중앙 `reserve_cost()`로 먼저 모으는 리팩터를 슬라이스 3 안의 별도 커밋으로 둔다 |
 | 계약 위 보상의 완료 경로 누락 | 세 경로 모두에 hook, 경로별 테스트 |
 | mlp_slots 체크포인트가 새 FrameKind로 거부됨 | 슬라이스 3에서 키 기반 행 이관 |
-| 앱 업데이트로 내용이 바뀜 | `tools/extract.py` 재추출 → `data/` git diff → 바뀐 정의는 규칙 변경으로 다룬다 |
-| 아이콘만 있는 항목의 오독 | sprite 이름·배치로 정하고, 반박 검증 결과(에셋 `analysis/verification/`)를 감사에 인용한다 |
+| 앱 업데이트로 내용이 바뀜 | `scripts/dwgr/extract.py`로 새 폴더에 재추출 → 이전 추출과 `diff -r` → 바뀐 정의는 규칙 변경으로 다룬다 |
+| 아이콘만 있는 항목의 오독 | sprite 이름·배치로 정하고, 반박 검증 결과(로컬 `analysis/verification/`)를 감사에 요약한다 |
 
 ## 12. 사용자 결정 (착수 전에 필요)
 
@@ -422,7 +422,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 | D4 | 봉인 입찰 | First Player부터 한 좌석씩 비공개 확정, 전원 확정 뒤 공개. 순위·지불은 앱 코드대로(0은 이기지 못함, 이긴 좌석만 지불, Mercenaries는 전원). 입찰 범위는 `0..min(보유, 상한)`. 상한은 앱처럼 99 또는 codec을 줄인 값(예: 20) 중 선택 |
 | D5 | 사람 좌석의 턴 종료 | Scouts 결정의 수락·패스·입찰 확정을 명시적 종료 행동으로 둬서 결정마다 "턴 종료"를 따로 누르지 않게 한다. 대신 확정한 결정은 되돌릴 수 없다(명시적 종료는 확정 즉시 봉인된다) |
 | D6 | 버전·학습 | codec은 v112부터, 관측은 v22부터 슬라이스마다 올린다. mlp_slots 행 이관으로 기존 체크포인트를 보존한다. Scouts 게임의 체크포인트·탐색 좌석은 룰셋 재지정 이관 전까지 거절한다. Scouts는 M10 학습 설정에 넣지 않고, 학습이 필요해지면 따로 정한다 |
-| D7 | 공개 저장소의 서술 범위 | 이름·수치·의역·절차만 공개 저장소에. 앱 문구·도움말 원문·디스어셈블 세부는 비공개 에셋에만 |
+| D7 | 공개 저장소의 서술 범위 | 이름·수치·의역·절차와 추출 도구(`scripts/dwgr/`)만 공개 저장소에. 앱 문구·도움말 원문·추출 결과·분석은 어느 저장소에도 넣지 않고 로컬 추출 폴더에만 |
 | D8 | 9절 OQ의 판정 | 제안 convention으로 등록하고, 각 슬라이스 시작 전에 해당 항목을 확인받는다 |
 | D9 | 슬라이스 순서와 착수 시점 | 10절 순서. 착수는 사용자 지시 뒤 |
 
