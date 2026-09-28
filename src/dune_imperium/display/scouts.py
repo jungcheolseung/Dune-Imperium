@@ -368,8 +368,8 @@ def auction_rule_text(item_id: str) -> str:
             + (", the second may buy another." if auction.places > 1 else ".")
         )
     return (
-        "Sealed bids of 0-3 spice: everyone pays and puts that many troops into "
-        "the Conflict; the lowest may retreat them."
+        "Sealed bids of 0-3 spice: each seat pays and sends one troop per spice "
+        "to the Conflict; the lowest bidders may pull theirs back."
     )
 
 

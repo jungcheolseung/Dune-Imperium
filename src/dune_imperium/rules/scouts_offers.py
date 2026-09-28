@@ -16,9 +16,8 @@ def queue_subcommittee_offer(
 ) -> GameState:
     """Queue the seat's one subcommittee offer on taking a High Council seat.
 
-    [Scouts help]: when you take a High Council seat you may join one
-    subcommittee nobody has joined yet (docs/rules/arrakeen-scouts.md 4,
-    OQ-076).
+    Taking a High Council seat lets the seat join one still-empty
+    subcommittee (docs/rules/arrakeen-scouts.md 4, OQ-076).
     """
 
     if not state.config.arrakeen_scouts:

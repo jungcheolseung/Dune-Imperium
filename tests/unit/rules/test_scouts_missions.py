@@ -466,8 +466,8 @@ def _apply(state: GameState, action_id: str, **arguments: Any) -> GameState:
 
 
 def test_desert_riding_trades_hagga_basin_spice_for_the_maker_hooks() -> None:
-    """[Scouts mission: Desert Riding]: the token "instead of taking the
-    space's base 2 spice"; bonus spice still comes (OQ-079)."""
+    """docs/rules/arrakeen-scouts.md 5 (Desert Riding): "방문자는 칸의 기본
+    spice 2 대신 그 토큰을 가질 수 있다(Maker 보너스 spice는 그대로)" (OQ-079)."""
 
     state = _reveal(_base(), "desert_riding")
     assert [row[2] for row in state.scouts_goods] == ["maker_hooks"]
@@ -522,8 +522,9 @@ def test_sietch_tabr_takes_the_desert_riding_token_when_it_is_the_last() -> None
 
 
 def test_valued_informants_pays_the_seat_placing_a_spy_on_the_post() -> None:
-    """[Scouts mission: Planetary Exploration]: "Whenever a player places a
-    Spy on one of those observation posts, they gain" it (OQ-080)."""
+    """docs/rules/arrakeen-scouts.md 5 (Valued Informants): "그 관측소에 Spy를
+    놓는 좌석이 그 Solari를 가진다(OQ-080)"; Planetary Exploration's spice
+    likewise."""
 
     state = _reveal(_base(), "planetary_exploration")
     assert sorted(row[1] for row in state.scouts_goods) == [
@@ -570,8 +571,8 @@ def _escort_state(contract: str) -> GameState:
 
 
 def test_choam_escort_pays_its_goods_when_the_contract_completes() -> None:
-    """[Scouts mission: CHOAM Escort]: "When that player completes that
-    contract, they also gain the 1 Solari and 1 spice on it"."""
+    """docs/rules/arrakeen-scouts.md 5 (CHOAM Escort): "자기 앞면 Contract 하나
+    위에 Solari 1 + spice 1을 올려 두고 그 Contract를 완료할 때 함께 받는다"."""
 
     contract = "contract:deliver_supplies"
     state = _answer(_reveal(_escort_state(contract), "choam_escort"), {0: contract})
@@ -601,8 +602,8 @@ def _immortality_state() -> GameState:
 
 
 def test_sponsored_research_goes_to_the_next_seat_reaching_the_helix() -> None:
-    """[Scouts mission: Sponsored Research]: "The next player who reaches the
-    Helix gains that 2 spice"; the Helix is the first genetic marker
+    """docs/rules/arrakeen-scouts.md 5 (Sponsored Research): "다음에 Helix에
+    닿는 좌석이 가진다"; the Helix is the first genetic marker
     [Immortality p. 6] (OQ-089 (b))."""
 
     from dune_imperium.content.immortality.board import (
@@ -637,8 +638,8 @@ def test_sponsored_research_goes_to_the_next_seat_reaching_the_helix() -> None:
 
 
 def test_back_room_deal_pays_the_next_reclaimed_forces_acquisition() -> None:
-    """[Scouts mission: Back Room Deal]: "The next player who 'acquires'
-    Reclaimed Forces gains those 2 Solari"."""
+    """docs/rules/arrakeen-scouts.md 5 (Back Room Deal): "다음에 Reclaimed
+    Forces를 "획득"하는 좌석이 가진다"."""
 
     from dune_imperium.rules.tleilaxu_row import _apply_reclaimed_forces
 
@@ -656,9 +657,9 @@ def test_back_room_deal_pays_the_next_reclaimed_forces_acquisition() -> None:
 
 
 def test_tleilaxu_offering_turns_parked_troops_into_specimens() -> None:
-    """[Scouts mission: Tleilaxu Offering]: "When that player advances their
-    Tleilaxu marker to that space, they add those 2 troops to the Axolotl
-    Tanks as 2 specimens" (OQ-089 (a): the third space is index 3)."""
+    """docs/rules/arrakeen-scouts.md 5 (Tleilaxu Offering): "자기 Tleilaxu 토큰이
+    그 칸에 닿으면 그 troop 2를 specimen으로 Axolotl tanks에 넣는다"
+    (OQ-089 (a): the third space is index 3)."""
 
     from dune_imperium.rules.immortality import advance_tleilaxu
     from dune_imperium.rules.scouts_missions import offer_mission_join

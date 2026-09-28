@@ -676,10 +676,9 @@ def claim_goods_at(
 ) -> RuleResult:
     """``player`` takes the bank goods waiting at ``location`` for anyone.
 
-    Sponsored Research's spice beside the Helix goes to "the next player who
-    reaches the Helix", Back Room Deal's Solari to "the next player who
-    'acquires' Reclaimed Forces" [Scouts mission: Sponsored Research]
-    [Scouts mission: Back Room Deal].
+    Sponsored Research's spice waits beside the Helix for the next seat to
+    reach it, Back Room Deal's Solari on Reclaimed Forces for the next seat to
+    acquire that card (docs/rules/arrakeen-scouts.md 5, OQ-089).
     """
 
     rows = [row for row in state.scouts_goods if row[1] == location and row[4] < 0]
@@ -703,9 +702,9 @@ def claim_goods_at(
 def release_offering(state: GameState, player: int, *, source: str) -> RuleResult:
     """Tleilaxu Offering: the seat's parked troops become specimens.
 
-    "When that player advances their Tleilaxu marker to that space, they add
-    those 2 troops to the Axolotl Tanks as 2 specimens" [Scouts mission:
-    Tleilaxu Offering].
+    The troops a seat left on the Tleilaxu track's third space go into its
+    Axolotl tanks as specimens once its own Tleilaxu token gets there
+    (docs/rules/arrakeen-scouts.md 5, OQ-089 (a)).
     """
 
     rows = [
@@ -773,10 +772,10 @@ def mission_goods_are_due(state: GameState) -> bool:
 def claim_due_mission_goods(state: GameState) -> RuleResult:
     """Pay the goods a Spy placement or a Contract completion has earned.
 
-    Valued Informants: "Whenever a player places a Spy on one of those
-    observation posts, they gain" its good, by any placement (OQ-080).
-    CHOAM Escort: "When that player completes that contract, they also gain
-    the 1 Solari and 1 spice on it"; a Contract that left the seat's supply
+    Valued Informants: the seat whose Spy lands on a post holding a good takes
+    it, whatever put the Spy there (OQ-080). CHOAM Escort: the seat that loaded
+    a Contract gets the Solari and spice on it when that Contract is
+    completed (docs/rules/arrakeen-scouts.md 5); a Contract that left the seat's supply
     uncompleted takes them back to the bank. The claims run after every
     step, so every placement and completion path pays the same way.
     """
@@ -828,8 +827,8 @@ def take_desert_riding_token(
 ) -> RuleResult:
     """``player`` takes the Maker Hooks token Desert Riding left out.
 
-    At Hagga Basin "instead of taking the space's base 2 spice"
-    [Scouts mission: Desert Riding]; at Sietch Tabr when it is the last of
+    At Hagga Basin in place of the space's own 2 spice
+    (docs/rules/arrakeen-scouts.md 5); at Sietch Tabr when it is the last of
     the four tokens (OQ-079 (e)).
     """
 
@@ -862,8 +861,9 @@ def free_prison_marker(
 ) -> tuple[tuple[tuple[str, str, str, int, int], ...], tuple[GameEvent, ...]]:
     """Prison Planet: a seat gaining control with no free marker takes it back.
 
-    "If you need the marker for a third space, take it back; the mission ends
-    without its spice" [Scouts help]: the seat's marker and spice rows leave
+    Per the help (docs/rules/arrakeen-scouts.md 5), the marker is reused when
+    the seat has none left for a third space, and the mission then ends with
+    no spice for it: the seat's marker and spice rows leave
     the board, the spice to the bank.
     """
 

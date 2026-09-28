@@ -1491,9 +1491,9 @@ def legal_maker_space_actions(
         and not owner.maker_hooks
         and desert_riding_token(state) is not None
     ):
-        # Arrakeen Scouts' Desert Riding: the token "instead of taking the
-        # space's base 2 spice" [Scouts mission: Desert Riding]; a seat
-        # holding Maker Hooks gets no second one [Main p. 20] (OQ-079).
+        # Arrakeen Scouts' Desert Riding: the token in place of the space's
+        # own 2 spice (docs/rules/arrakeen-scouts.md 5); a seat holding Maker
+        # Hooks gets no second one [Main p. 20] (OQ-079).
         actions.append(
             DomainAction(
                 action_id="take_desert_riding_hooks",
@@ -1545,7 +1545,7 @@ def apply_maker_space_action(
     token_events: tuple[GameEvent, ...] = ()
     if action.action_id == "take_desert_riding_hooks":
         # The token replaces the base spice; the bonus spice still comes
-        # [Scouts mission: Desert Riding]. It is this visit's one choice of
+        # (docs/rules/arrakeen-scouts.md 5). It is this visit's one choice of
         # the printed row, so no sandworm follows (OQ-079 (d)).
         taken = take_desert_riding_token(
             state,

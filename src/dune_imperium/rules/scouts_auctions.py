@@ -13,9 +13,10 @@ revealed at once and ranked as the app does [Scouts schedule]:
 - a seat wins when its rank is within the auction's places and it bid more
   than 0, so a tie for first leaves no second place and a tie for second
   gives every tied seat the second-place reward;
-- only winners pay, except in Mercenaries, where every seat pays and puts
-  that many troops from its supply into the Conflict; the lowest bidders may
-  then retreat any of those troops to their garrison (OQ-074).
+- only winners pay, except in Mercenaries, where every seat pays its spice
+  and sends one supply troop per spice to the Conflict; the seats with the
+  lowest bid may pull some or all of those troops back to their garrison
+  (OQ-074).
 
 Winners' rewards resolve from the First Player on (OQ-073).
 
