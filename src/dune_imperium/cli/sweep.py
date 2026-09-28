@@ -23,6 +23,7 @@ def _ruleset_options(identifier: str) -> dict[str, bool]:
         "bloodlines": "+bloodlines" in identifier,
         "tech_module": "+tech" in identifier,
         "immortality": "+immortality" in identifier,
+        "arrakeen_scouts": "+scouts" in identifier,
     }
 
 _RULESETS = {
@@ -100,6 +101,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--immortality",
         action="store_true",
         help="play with the Immortality expansion (docs/rules/immortality.md)",
+    )
+    parser.add_argument(
+        "--arrakeen-scouts",
+        action="store_true",
+        help="play with the Arrakeen Scouts module (docs/rules/arrakeen-scouts.md)",
     )
     parser.add_argument(
         "--rotate-leaders",
@@ -210,6 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         bloodlines=arguments.bloodlines,
         tech_module=arguments.tech_module,
         immortality=arguments.immortality,
+        arrakeen_scouts=arguments.arrakeen_scouts,
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,
     )

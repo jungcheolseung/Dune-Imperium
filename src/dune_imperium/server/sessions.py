@@ -364,6 +364,7 @@ class GameSessionManager:
         bloodlines: bool = False,
         tech_module: bool = False,
         immortality: bool = False,
+        arrakeen_scouts: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
         credentials: Credentials = ANONYMOUS,
@@ -383,6 +384,7 @@ class GameSessionManager:
                 bloodlines=bloodlines,
                 tech_module=tech_module,
                 immortality=immortality,
+                arrakeen_scouts=arrakeen_scouts,
             )
         except ValueError as error:
             # RulesetConfig rejects unsupported combinations (the Tech Module
@@ -1352,6 +1354,7 @@ class GameSessionManager:
             "bloodlines": session.config.bloodlines,
             "tech_module": session.config.tech_module,
             "immortality": session.config.immortality,
+            "arrakeen_scouts": session.config.arrakeen_scouts,
             "seats": list(kinds),
             "players": players,
             "decision": decision,
@@ -1403,6 +1406,13 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
+        if config.arrakeen_scouts and assignment.startswith(
+            (CHECKPOINT_PREFIX, SEARCH_PREFIX)
+        ):
+            raise SessionError(
+                "checkpoint and search seats cannot play Arrakeen Scouts: "
+                "their policy was trained without it"
+            )
 
 
 def _build_agents(seats: tuple[str, ...], policy_seed: int) -> dict[int, Agent]:

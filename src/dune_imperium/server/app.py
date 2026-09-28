@@ -196,6 +196,8 @@ class CreateGameRequest(BaseModel):
     tech_module: bool = False
     # The Immortality expansion (docs/rules/immortality.md).
     immortality: bool = False
+    # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
+    arrakeen_scouts: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
 
@@ -469,6 +471,7 @@ def create_app(
                 bloodlines=body.bloodlines,
                 tech_module=body.tech_module,
                 immortality=body.immortality,
+                arrakeen_scouts=body.arrakeen_scouts,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,
                 credentials=_credentials(request),

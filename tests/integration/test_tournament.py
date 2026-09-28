@@ -87,6 +87,34 @@ def test_tournament_specs_cross_seeds_rulesets_and_rotations() -> None:
         tournament_specs(agents=("random",), games=0)
 
 
+def test_tournament_specs_reject_checkpoint_and_search_seats_with_scouts() -> None:
+    with pytest.raises(
+        ValueError, match="checkpoint and search seats cannot play Arrakeen Scouts"
+    ):
+        tournament_specs(
+            agents=("checkpoint:/nonexistent.pt", "random", "random", "random"),
+            games=1,
+            arrakeen_scouts=True,
+        )
+    with pytest.raises(
+        ValueError, match="checkpoint and search seats cannot play Arrakeen Scouts"
+    ):
+        tournament_specs(
+            agents=("search:/nonexistent.pt", "random", "random", "random"),
+            games=1,
+            arrakeen_scouts=True,
+        )
+    # Without the option, or with agents that are neither checkpoint nor
+    # search, Scouts specs build fine.
+    specs = tournament_specs(
+        agents=("heuristic", "random", "random", "random"),
+        games=1,
+        arrakeen_scouts=True,
+    )
+    assert all(spec.arrakeen_scouts for spec in specs)
+    assert all(spec.config.arrakeen_scouts for spec in specs)
+
+
 def test_play_match_meters_every_seat() -> None:
     spec = MatchSpec(
         game_seed=3,

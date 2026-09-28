@@ -76,7 +76,10 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # tiles (Espionage II, Harvest 3+/4+ with a Contract, Heighliner III) for
 # Spice Refinery I and II and the second copies of Espionage I and Harvest
 # 3+ [Main p. 16]; the per-Contract templates follow the new instance ids.
-ACTION_CODEC_VERSION = 111
+# v112: the ``arrakeen_scouts`` option joined ``RulesetConfig``, so every
+# state hash changes and old saves need the clean version error -- no
+# Scouts templates exist yet.
+ACTION_CODEC_VERSION = 112
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

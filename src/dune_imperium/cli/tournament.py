@@ -103,6 +103,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="play with the Immortality expansion",
     )
     parser.add_argument(
+        "--arrakeen-scouts",
+        action="store_true",
+        help="play with the Arrakeen Scouts module (docs/rules/arrakeen-scouts.md)",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
@@ -158,6 +163,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             bloodlines=arguments.bloodlines,
             tech_module=arguments.tech_module,
             immortality=arguments.immortality,
+            arrakeen_scouts=arguments.arrakeen_scouts,
             max_steps=arguments.max_steps,
         )
     except ValueError as error:

@@ -41,6 +41,11 @@ class RulesetConfig:
     # cards, Family Atomics, and its Imperium/Intrigue cards. Off by default;
     # independent of ``bloodlines`` (the two may be combined) [Main p. 18].
     immortality: bool = False
+    # The Arrakeen Scouts module of the Dire Wolf Game Room companion app
+    # (docs/rules/arrakeen-scouts.md): subcommittees, missions, events,
+    # auctions and sales revealed round by round. Off by default; combines
+    # with every other option.
+    arrakeen_scouts: bool = False
 
     def __post_init__(self) -> None:
         if self.players != 4:
@@ -59,7 +64,8 @@ class RulesetConfig:
         bloodlines = "+bloodlines" if self.bloodlines else ""
         tech = "+tech" if self.tech_module else ""
         immortality = "+immortality" if self.immortality else ""
-        return f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"
+        scouts = "+scouts" if self.arrakeen_scouts else ""
+        return f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}{scouts}"
 
     @classmethod
     def from_identifier(cls, identifier: str) -> RulesetConfig:
@@ -76,7 +82,7 @@ class RulesetConfig:
         module, *options = identifier.removeprefix(prefix).split("+")
         if module not in ("base", "choam"):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
-        order = ("promo", "bloodlines", "tech", "immortality")
+        order = ("promo", "bloodlines", "tech", "immortality", "scouts")
         if len(set(options)) != len(options) or any(o not in order for o in options):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
         if options != [o for o in order if o in options]:
@@ -87,4 +93,5 @@ class RulesetConfig:
             bloodlines="bloodlines" in options,
             tech_module="tech" in options,
             immortality="immortality" in options,
+            arrakeen_scouts="scouts" in options,
         )

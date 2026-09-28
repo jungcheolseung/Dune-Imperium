@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 111
+    assert ACTION_CODEC_VERSION == 112
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -53,6 +53,37 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
         + 1
     )
+    assert first.size == 4425
+
+
+def test_arrakeen_scouts_option_does_not_change_the_catalog_yet() -> None:
+    # M15 option skeleton: arrakeen_scouts joined RulesetConfig (v112) but no
+    # Scouts templates exist yet, so the catalog is unchanged either way.
+    base = ActionCodec(RulesetConfig())
+    with_scouts = ActionCodec(RulesetConfig(arrakeen_scouts=True))
+    assert with_scouts.catalog == base.catalog
+    assert with_scouts.size == 4425
+
+    every_option = ActionCodec(
+        RulesetConfig(
+            choam_module=True,
+            promo_cards=True,
+            bloodlines=True,
+            tech_module=True,
+            immortality=True,
+        )
+    )
+    every_option_with_scouts = ActionCodec(
+        RulesetConfig(
+            choam_module=True,
+            promo_cards=True,
+            bloodlines=True,
+            tech_module=True,
+            immortality=True,
+            arrakeen_scouts=True,
+        )
+    )
+    assert every_option_with_scouts.catalog == every_option.catalog
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:

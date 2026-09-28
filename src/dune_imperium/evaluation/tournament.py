@@ -25,7 +25,12 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 from dune_imperium.agents import Agent, StateAgent
-from dune_imperium.agents.registry import is_agent_kind, make_agent
+from dune_imperium.agents.registry import (
+    CHECKPOINT_PREFIX,
+    SEARCH_PREFIX,
+    is_agent_kind,
+    make_agent,
+)
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.core.actions import DomainAction
@@ -47,6 +52,7 @@ class MatchSpec:
     bloodlines: bool = False
     tech_module: bool = False
     immortality: bool = False
+    arrakeen_scouts: bool = False
     leader_ids: tuple[str, ...] | None = None
     max_steps: int = 30_000
 
@@ -58,6 +64,7 @@ class MatchSpec:
             bloodlines=self.bloodlines,
             tech_module=self.tech_module,
             immortality=self.immortality,
+            arrakeen_scouts=self.arrakeen_scouts,
         )
 
 
@@ -329,6 +336,7 @@ def tournament_specs(
     bloodlines: bool = False,
     tech_module: bool = False,
     immortality: bool = False,
+    arrakeen_scouts: bool = False,
     max_steps: int = 30_000,
 ) -> tuple[MatchSpec, ...]:
     """Cross a lineup over seats, rulesets, and a seed range.
@@ -344,6 +352,13 @@ def tournament_specs(
     if not rulesets:
         raise ValueError("a tournament needs at least one ruleset")
     lineup = fill_lineup(agents)
+    if arrakeen_scouts:
+        for kind in lineup:
+            if kind.startswith((CHECKPOINT_PREFIX, SEARCH_PREFIX)):
+                raise ValueError(
+                    "checkpoint and search seats cannot play Arrakeen Scouts: "
+                    "their policy was trained without it"
+                )
     rotations = seat_rotations(lineup) if rotate_seats else (lineup,)
     return tuple(
         MatchSpec(
@@ -355,6 +370,7 @@ def tournament_specs(
             bloodlines=bloodlines,
             tech_module=tech_module,
             immortality=immortality,
+            arrakeen_scouts=arrakeen_scouts,
             leader_ids=(
                 _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
                 if rotate_leaders

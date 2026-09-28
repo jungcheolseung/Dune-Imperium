@@ -356,6 +356,7 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
         bloodlines=True,
         tech_module=True,
         immortality=True,
+        arrakeen_scouts=True,
     )
     original = _advance(manager, created, 5)
 
@@ -365,6 +366,7 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
     assert ruleset["bloodlines"] is True
     assert ruleset["tech_module"] is True
     assert ruleset["immortality"] is True
+    assert ruleset["arrakeen_scouts"] is True
 
     restored = manager.restore_game(_roundtrip(document))
     for field in ("revision", "phase", "round_number", "decision", "seats"):
@@ -372,10 +374,17 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
     assert restored["bloodlines"] is True
     assert restored["tech_module"] is True
     assert restored["immortality"] is True
+    assert restored["arrakeen_scouts"] is True
 
     legacy = _obj(_roundtrip(manager.save_game(_text(original["game_id"]))))
     legacy_ruleset = dict(_obj(legacy["ruleset"]))
-    for key in ("promo_cards", "bloodlines", "tech_module", "immortality"):
+    for key in (
+        "promo_cards",
+        "bloodlines",
+        "tech_module",
+        "immortality",
+        "arrakeen_scouts",
+    ):
         del legacy_ruleset[key]
     parsed = parse_save_document({**legacy, "ruleset": legacy_ruleset})
     assert parsed.replay.ruleset.bloodlines is False

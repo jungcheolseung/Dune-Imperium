@@ -103,6 +103,15 @@ def test_leader_draft_episode_starts_with_pick_decisions_and_completes() -> None
     assert sorted(info["rank"] for info in infos.values()) == [1, 2, 3, 4]
 
 
+def test_arrakeen_scouts_option_threads_into_the_config() -> None:
+    # M15 option skeleton: no Scouts templates exist yet, so the catalog is
+    # unchanged either way (see tests/adapters/test_action_codec.py).
+    environment = env(arrakeen_scouts=True)
+
+    assert environment.config.arrakeen_scouts is True
+    assert environment.codec.size == env().codec.size
+
+
 def test_step_limit_truncates_without_rewards() -> None:
     environment = env(max_steps=5)
     terminal_rewards, infos, steps = _play_episode(environment, seed=8)

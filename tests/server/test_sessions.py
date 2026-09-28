@@ -423,6 +423,33 @@ def test_creation_validates_seats_and_seeds() -> None:
         manager.create_game(ALL_AI, game_seed=-1)
 
 
+def test_arrakeen_scouts_rejects_checkpoint_and_search_seats() -> None:
+    manager = GameSessionManager()
+
+    with pytest.raises(
+        SessionError, match="checkpoint and search seats cannot play Arrakeen Scouts"
+    ):
+        manager.create_game(
+            ("human", "checkpoint:/nonexistent.pt", "random", "random"),
+            arrakeen_scouts=True,
+        )
+    with pytest.raises(
+        SessionError, match="checkpoint and search seats cannot play Arrakeen Scouts"
+    ):
+        manager.create_game(
+            ("human", "search:/nonexistent.pt", "random", "random"),
+            arrakeen_scouts=True,
+        )
+
+
+def test_arrakeen_scouts_game_is_created_with_random_and_heuristic_seats() -> None:
+    manager = GameSessionManager()
+
+    summary = manager.create_game(ALL_AI, game_seed=17, arrakeen_scouts=True)
+
+    assert summary["arrakeen_scouts"] is True
+
+
 def test_unknown_games_and_deletion() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(ALL_AI, game_seed=16)

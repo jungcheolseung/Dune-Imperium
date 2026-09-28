@@ -250,6 +250,7 @@ class _GameSpec:
     bloodlines: bool = False
     tech_module: bool = False
     immortality: bool = False
+    arrakeen_scouts: bool = False
     soundness_interval: int = 0
     collect_coverage: bool = False
     # Set only by sweep_specs(rotate_leaders=True); fixes the four Leaders
@@ -267,6 +268,7 @@ def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
         bloodlines=spec.bloodlines,
         tech_module=spec.tech_module,
         immortality=spec.immortality,
+        arrakeen_scouts=spec.arrakeen_scouts,
     )
     engine = (
         UprisingRulesEngine(leader_ids=spec.leader_ids)
@@ -334,6 +336,7 @@ def sweep_specs(
     bloodlines: bool = False,
     tech_module: bool = False,
     immortality: bool = False,
+    arrakeen_scouts: bool = False,
     rotate_leaders: bool = False,
     collect_coverage: bool = False,
 ) -> tuple[_GameSpec, ...]:
@@ -363,6 +366,7 @@ def sweep_specs(
             bloodlines=bloodlines,
             tech_module=tech_module,
             immortality=immortality,
+            arrakeen_scouts=arrakeen_scouts,
             collect_coverage=collect_coverage,
             leader_ids=(
                 tuple(

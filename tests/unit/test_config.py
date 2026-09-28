@@ -50,6 +50,20 @@ def test_immortality_extends_the_identifier_independently() -> None:
     )
 
 
+def test_arrakeen_scouts_extends_the_identifier_independently() -> None:
+    assert RulesetConfig(arrakeen_scouts=True).identifier == "uprising-4p-base+scouts"
+    assert (
+        RulesetConfig(
+            choam_module=True,
+            bloodlines=True,
+            tech_module=True,
+            immortality=True,
+            arrakeen_scouts=True,
+        ).identifier
+        == "uprising-4p-choam+bloodlines+tech+immortality+scouts"
+    )
+
+
 def test_tech_module_requires_bloodlines() -> None:
     with pytest.raises(
         ValueError,
@@ -62,7 +76,9 @@ def test_from_identifier_rebuilds_every_option_combination() -> None:
     from itertools import product
 
     seen = 0
-    for choam, promo, bloodlines, tech, immortality in product((False, True), repeat=5):
+    for choam, promo, bloodlines, tech, immortality, arrakeen_scouts in product(
+        (False, True), repeat=6
+    ):
         if tech and not bloodlines:
             continue
         config = RulesetConfig(
@@ -71,15 +87,17 @@ def test_from_identifier_rebuilds_every_option_combination() -> None:
             bloodlines=bloodlines,
             tech_module=tech,
             immortality=immortality,
+            arrakeen_scouts=arrakeen_scouts,
         )
         assert RulesetConfig.from_identifier(config.identifier) == config
         seen += 1
-    assert seen == 24
+    assert seen == 48
     for bad in (
         "uprising-3p-base",
         "uprising-4p-tech",
         "uprising-4p-base+bloodlines+promo",
         "uprising-4p-choam+promo+promo",
+        "uprising-4p-base+scouts+promo",
     ):
         with pytest.raises(ValueError, match="unknown ruleset identifier"):
             RulesetConfig.from_identifier(bad)

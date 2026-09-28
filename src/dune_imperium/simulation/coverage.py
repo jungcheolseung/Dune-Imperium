@@ -202,6 +202,7 @@ def zero_coverage(
     bloodlines: bool = False,
     tech_module: bool = False,
     immortality: bool = False,
+    arrakeen_scouts: bool = False,
 ) -> dict[str, list[str]]:
     """Return, per dimension with a well-defined catalog, the untouched IDs.
 
@@ -216,6 +217,7 @@ def zero_coverage(
         bloodlines=bloodlines,
         tech_module=tech_module,
         immortality=immortality,
+        arrakeen_scouts=arrakeen_scouts,
     )
     codec = ActionCodec(config)
 
