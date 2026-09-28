@@ -278,6 +278,12 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 9: 서버·UI.
+  - 새 게임 화면에 "아라킨 스카웃" 체크박스(기본 꺼짐)와 머리글 배지.
+  - 오른쪽 열의 Scouts 패널: 소위원회와 가입 좌석, 이번 라운드 항목과 그 줄, 임무 조각(칸·관측소·Contract 위 물품, 세워 둔 병력, 뒷면 카드 수), 기다리는 비밀 선택(누가, 자기 선택은 줄까지), 진행 중인 경매(확정한 좌석, 자기 입찰액, Critical Moment의 카드와 호가), 지난 항목. view만 읽으므로 숨은 값은 나오지 않는다.
+  - 선택지 버튼에 줄의 효과를 쓴다(`display/scouts.py`, 한/영). 한국어 항목 이름은 [glossary-ko.md](glossary-ko.md)의 공식 용어다. 효과 문장은 우리 문장이다(D7).
+  - 봉인 입찰은 개수 스테퍼(입찰액이 0뿐이어도)와 배너의 "턴 종료 ▶" 한 줄(= 확정)이다. 게임이 끝나면 쓰이지 않은 비밀 선택이 종료 후 공개에 나온다.
+  - `scripts/e2e/scouts.py`: 사람 좌석 하나로 시드 게임을 끝까지 두며 위 화면을 확인한다(영어에서 한글 없음 포함).
 - 2026-09-28 슬라이스 8: 8절 경매(`rules/scouts_auctions.py`).
   - 봉인 입찰: First Player부터 좌석마다 `scouts_bid(count)`로 고르고(몇 번이든 바꿀 수 있다) `confirm_scouts_bid`로 확정한다(frame `scouts_bid`). 범위는 0부터 자기 통화와 상한 중 작은 쪽까지다. 입찰액은 `GameState.scouts_bids`에 있고 그 좌석만 안다(`secret_bid_id`). 마지막 확정이 전원의 입찰을 공개하고(`scouts_bid_revealed`), 앱 코드대로 순위를 매겨 이긴 좌석만 지불한 뒤 차례 순서로 보상을 해결한다(OQ-073).
   - Mercenaries: 전원이 입찰한 spice를 내고 그만큼 supply의 troop을 Conflict에 넣는다. 최저 입찰자(동점이면 모두)는 그 troop 중 원하는 만큼 garrison으로 후퇴한다(`scouts_retreat(count)`, OQ-074).
