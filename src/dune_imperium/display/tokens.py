@@ -296,6 +296,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "At the start of your Reveal turn, "
             "return the other grafted card from play to your hand"
         ),
+        # Control the Spice (Epic Game Mode starting card): the black-X
+        # trash stays optional after the arrow is paid [FAQ p. 3], as on
+        # Arrakis Revolt's "You may remove the Shield Wall" above.
+        PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: (
+            "You may pay 1 spice → You may trash a card, Recruit 1 troop"
+        ),
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"

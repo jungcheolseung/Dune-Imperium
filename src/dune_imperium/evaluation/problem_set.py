@@ -505,7 +505,7 @@ def _mine_spec(spec: MatchSpec, problem_ids: Sequence[str]) -> list[Position]:
     positions: list[Position] = []
     engine = _engine(spec)
     agents = tuple(
-        make_agent(kind, spec.policy_seed + seat)
+        make_agent(kind, spec.policy_seed + seat, spec.config)
         for seat, kind in enumerate(spec.seat_agents)
     )
     state = engine.reset(spec.config, spec.game_seed)
@@ -761,7 +761,7 @@ def answer(
     )
     owner = position.owner
     right_actions = sum(problem.right(state, owner, action) for action in legal)
-    agent = make_agent(kind, agent_seed(position, seed))
+    agent = make_agent(kind, agent_seed(position, seed), state.config)
     probabilities = policy_probabilities(agent, engine.observe(state, owner), legal)
     p_right = None
     if probabilities is not None:

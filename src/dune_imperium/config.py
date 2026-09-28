@@ -46,6 +46,14 @@ class RulesetConfig:
     # [Main p. 5] and still plays to 10 [Main p. 15]. Offered only with
     # ``immortality`` (user decision, OQ-091). Off by default.
     go_to_11: bool = False
+    # Rise of Ix's Epic Game Mode [Rise of Ix p. 10]
+    # (``docs/rules/epic-game-mode.md``): play to 12, a Conflict deck of
+    # five II over five III (Economic Supremacy the fifth III [Main p. 18]),
+    # Control the Spice for one Dune, the Desert Planet (into the discard
+    # pile with ``immortality`` [Immortality p. 12]), one Intrigue card and
+    # five garrison troops. Needs no other option: the rest of Rise of Ix is
+    # not implemented (user decision, OQ-092). Off by default.
+    epic_game: bool = False
     # The Arrakeen Scouts module of the Dire Wolf Game Room companion app
     # (docs/rules/arrakeen-scouts.md): subcommittees, missions, events,
     # auctions and sales revealed round by round. Off by default; combines
@@ -74,6 +82,26 @@ class RulesetConfig:
         return 0 if self.go_to_11 else 1
 
     @property
+    def endgame_victory_points(self) -> int:
+        """Return the score that opens the Endgame at a round's end.
+
+        Ten [Main p. 15]; twelve in Epic Game Mode [Rise of Ix p. 10]. With
+        ``go_to_11`` as well, the game runs from 0 to 12 (OQ-093).
+        """
+
+        return 12 if self.epic_game else 10
+
+    @property
+    def starting_garrison_troops(self) -> int:
+        """Return the troops each player starts with in their garrison.
+
+        Three [Main p. 5]; five in Epic Game Mode [Rise of Ix p. 10]. The rest
+        of the twelve start in the supply.
+        """
+
+        return 5 if self.epic_game else 3
+
+    @property
     def identifier(self) -> str:
         """Return a stable, human-readable ruleset identifier."""
 
@@ -83,10 +111,11 @@ class RulesetConfig:
         tech = "+tech" if self.tech_module else ""
         immortality = "+immortality" if self.immortality else ""
         go_to_11 = "+go11" if self.go_to_11 else ""
+        epic = "+epic" if self.epic_game else ""
         scouts = "+scouts" if self.arrakeen_scouts else ""
         return (
             f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"
-            f"{go_to_11}{scouts}"
+            f"{go_to_11}{epic}{scouts}"
         )
 
     @classmethod
@@ -104,7 +133,15 @@ class RulesetConfig:
         module, *options = identifier.removeprefix(prefix).split("+")
         if module not in ("base", "choam"):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
-        order = ("promo", "bloodlines", "tech", "immortality", "go11", "scouts")
+        order = (
+            "promo",
+            "bloodlines",
+            "tech",
+            "immortality",
+            "go11",
+            "epic",
+            "scouts",
+        )
         if len(set(options)) != len(options) or any(o not in order for o in options):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
         if options != [o for o in order if o in options]:
@@ -116,5 +153,6 @@ class RulesetConfig:
             tech_module="tech" in options,
             immortality="immortality" in options,
             go_to_11="go11" in options,
+            epic_game="epic" in options,
             arrakeen_scouts="scouts" in options,
         )

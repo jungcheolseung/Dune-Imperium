@@ -67,7 +67,14 @@ SLOT_VERSION: Final = 1
 # v22 (Arrakeen Scouts) added no identity column; its new frame kinds add
 # ``decision_kind:scouts_*`` rows, and checkpoints re-link their rows by key
 # (``training.checkpoint``).
-SLOT_OBSERVATION_VERSION: Final = 25
+# v26 (Epic Game Mode) grows the Conflict universe by Economic Supremacy at
+# its end, so the current-Conflict field gains ``conflict:economic_supremacy``
+# and every older value keeps its row (re-linked by key, SLOT_VERSION kept).
+# Control the Spice joins only count segments (read through ``log1p``) and
+# can never be in the Imperium Row, the Tleilaxu Row or set aside, whose
+# fields list the Imperium and Tleilaxu cards alone; the new ``epic_game``
+# column is a 0/1 flag, not an identity.
+SLOT_OBSERVATION_VERSION: Final = 26
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

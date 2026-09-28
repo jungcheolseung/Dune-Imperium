@@ -417,7 +417,7 @@ class GameSessionManager:
             engine=engine,
             state=engine.reset(config, game_seed),
             chance=ChanceResolver(seed=game_seed),
-            agents=_build_agents(seats, policy_seed),
+            agents=_build_agents(seats, policy_seed, config),
         )
         with session.lock:
             self._advance_locked(session)
@@ -881,7 +881,7 @@ class GameSessionManager:
             engine=engine,
             state=engine.reset(config, parsed.replay.seed),
             chance=ChanceResolver(seed=parsed.replay.seed),
-            agents=_build_agents(parsed.seats, parsed.policy_seed),
+            agents=_build_agents(parsed.seats, parsed.policy_seed, config),
         )
         with session.lock:
             _replay_recorded_steps(session, parsed.replay.steps)
@@ -1421,12 +1421,16 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
             )
 
 
-def _build_agents(seats: tuple[str, ...], policy_seed: int) -> dict[int, Agent]:
+def _build_agents(
+    seats: tuple[str, ...], policy_seed: int, config: RulesetConfig
+) -> dict[int, Agent]:
     """Instantiate one registry agent per non-human seat.
 
     A checkpoint seat loads its network here, so a missing file, a foreign
     observation or codec version, or an absent ``train`` extra surfaces as
-    a session error instead of a crash while the game advances.
+    a session error instead of a crash while the game advances. It answers
+    for ``config``'s catalog, so it may sit at a ruleset it was not trained
+    on, such as Epic Game Mode (OQ-092).
     """
 
     agents: dict[int, Agent] = {}
@@ -1434,7 +1438,7 @@ def _build_agents(seats: tuple[str, ...], policy_seed: int) -> dict[int, Agent]:
         if assignment == HUMAN_SEAT:
             continue
         try:
-            agents[seat] = make_agent(assignment, policy_seed + seat)
+            agents[seat] = make_agent(assignment, policy_seed + seat, config)
         except (ValueError, OSError, ImportError, RuntimeError) as error:
             raise SessionError(
                 f"cannot build seat {seat} agent {assignment!r}: {error}"

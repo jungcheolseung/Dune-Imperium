@@ -148,6 +148,20 @@ def test_conflict_reward_text_renders_an_optional_trade() -> None:
     )
 
 
+def test_conflict_rewards_texts_render_both_economic_supremacy_arrows() -> None:
+    # Each optional cost is its own arrow, in the printed order (6 Solari
+    # above 4 spice) [Economic Supremacy card; docs/rules/epic-game-mode.md].
+    conflict = _conflict_by_id("economic_supremacy")
+
+    assert conflict.battle_icon is None
+    assert conflict_rewards_texts(conflict) == [
+        "1st: Gain 1 VP, You may pay 6 solari → Gain 1 VP, "
+        "You may pay 4 spice → Gain 1 VP",
+        "2nd: Gain 1 VP",
+        "3rd: Gain 2 solari, Gain 2 spice",
+    ]
+
+
 def test_conflict_reward_text_renders_choose_distinct_influence() -> None:
     conflict = _conflict_by_id("propaganda")
     assert conflict.rewards is not None
@@ -368,6 +382,18 @@ def test_conflict_reward_text_ko_renders_an_optional_trade() -> None:
         "{victory_point:1}, Arrakeen 지배, "
         "{spy} 2 소환 가능 {arrow_right} {victory_point:1}"
     )
+
+
+def test_conflict_rewards_texts_ko_render_both_economic_supremacy_arrows() -> None:
+    conflict = _conflict_by_id("economic_supremacy")
+
+    assert conflict_rewards_texts_ko(conflict) == [
+        "1등: {victory_point:1}, "
+        "{solari:6} 지불 가능 {arrow_right} {victory_point:1}, "
+        "{spice:4} 지불 가능 {arrow_right} {victory_point:1}",
+        "2등: {victory_point:1}",
+        "3등: {solari:2}, {spice:2}",
+    ]
 
 
 def test_conflict_reward_text_ko_renders_choose_distinct_influence() -> None:

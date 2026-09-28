@@ -42,6 +42,8 @@ _ALL_ENTRIES_WITH_TLEILAXU: tuple[PersonalCardDefinition, ...] = (
     *_ALL_ENTRIES,
     *TLEILAXU_CARDS_BY_ID.values(),
     RECLAIMED_FORCES,
+    # Epic Game Mode's starting card, outside the base ``STARTING_DECK``.
+    STARTING_CARDS_BY_ID["control_the_spice"],
 )
 
 
@@ -211,6 +213,24 @@ def test_signet_ring_starting_card_agent_line() -> None:
     entry = STARTING_CARDS_BY_ID["signet_ring"]
 
     assert personal_card_text(entry) == ["Agent: Your Leader's Signet Ring ability"]
+
+
+def test_control_the_spice_starting_card_lines() -> None:
+    # "[1 spice] -> [trash a card] [troop]"; Reveal 1 Persuasion (a catalog
+    # field, not restated) and 1 spice [Control the Spice card]. The black
+    # trash icon stays optional after the arrow is paid [FAQ p. 3].
+    entry = STARTING_CARDS_BY_ID["control_the_spice"]
+
+    assert personal_card_text(entry) == [
+        "Agent: You may pay 1 spice → You may trash a card, Recruit 1 troop",
+        "Reveal: Gain 1 spice",
+    ]
+    assert personal_card_text_ko(entry) == [
+        "에이전트 칸: {spice:1} 지불 가능 {arrow_right} 카드 1장 {trash} 가능, "
+        "{troop:1}",
+        "공개 칸: {spice:1}",
+    ]
+    assert KOREAN_CARD_NAMES["cards"]["control_the_spice"] == "스파이스를 지배하라"
 
 
 def test_prepare_the_way_reserve_agent_line() -> None:

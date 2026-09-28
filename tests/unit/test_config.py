@@ -83,6 +83,43 @@ def test_go_to_11_follows_immortality_in_the_identifier() -> None:
     )
 
 
+def test_epic_game_follows_go_to_11_in_the_identifier() -> None:
+    # OQ-092: an independent option, token ``+epic`` between ``+go11`` and
+    # ``+scouts`` (docs/rules/epic-game-mode.md section 7).
+    assert RulesetConfig(epic_game=True).identifier == "uprising-4p-base+epic"
+    assert (
+        RulesetConfig(
+            choam_module=True,
+            promo_cards=True,
+            bloodlines=True,
+            tech_module=True,
+            immortality=True,
+            go_to_11=True,
+            epic_game=True,
+            arrakeen_scouts=True,
+        ).identifier
+        == "uprising-4p-choam+promo+bloodlines+tech+immortality+go11+epic+scouts"
+    )
+    assert (
+        RulesetConfig(epic_game=True, arrakeen_scouts=True).identifier
+        == "uprising-4p-base+epic+scouts"
+    )
+
+
+def test_epic_game_plays_to_twelve_with_five_garrison_troops() -> None:
+    # Ten [Main p. 15] and three [Main p. 5]; twelve and five in Epic Game
+    # Mode [Rise of Ix p. 10]. With Go to 11 the game runs 0 -> 12 (OQ-093).
+    assert RulesetConfig().endgame_victory_points == 10
+    assert RulesetConfig().starting_garrison_troops == 3
+    assert RulesetConfig(immortality=True, go_to_11=True).endgame_victory_points == 10
+    epic = RulesetConfig(epic_game=True)
+    assert (epic.endgame_victory_points, epic.starting_garrison_troops) == (12, 5)
+    assert epic.starting_victory_points == 1
+    both = RulesetConfig(immortality=True, go_to_11=True, epic_game=True)
+    assert (both.starting_victory_points, both.endgame_victory_points) == (0, 12)
+    assert RulesetConfig().epic_game is False
+
+
 def test_go_to_11_requires_immortality() -> None:
     # OQ-091 (user decision, not a rulebook rule): the variant is offered
     # only with the Immortality expansion.
@@ -116,9 +153,16 @@ def test_from_identifier_rebuilds_every_option_combination() -> None:
     from itertools import product
 
     seen = 0
-    for choam, promo, bloodlines, tech, immortality, go_to_11, scouts in product(
-        (False, True), repeat=7
-    ):
+    for (
+        choam,
+        promo,
+        bloodlines,
+        tech,
+        immortality,
+        go_to_11,
+        epic,
+        scouts,
+    ) in product((False, True), repeat=8):
         if (tech and not bloodlines) or (go_to_11 and not immortality):
             continue
         config = RulesetConfig(
@@ -128,11 +172,13 @@ def test_from_identifier_rebuilds_every_option_combination() -> None:
             tech_module=tech,
             immortality=immortality,
             go_to_11=go_to_11,
+            epic_game=epic,
             arrakeen_scouts=scouts,
         )
         assert RulesetConfig.from_identifier(config.identifier) == config
         seen += 1
-    assert seen == 72
+    # 72 without Epic Game Mode, 72 with it (it requires no other option).
+    assert seen == 144
     for bad in (
         "uprising-3p-base",
         "uprising-4p-tech",
@@ -141,6 +187,11 @@ def test_from_identifier_rebuilds_every_option_combination() -> None:
         "uprising-4p-base+scouts+promo",
         "uprising-4p-base+immortality+scouts+go11",
         "uprising-4p-base+immortality+goto11",
+        "uprising-4p-base+scouts+epic",
+        "uprising-4p-base+immortality+epic+go11",
+        "uprising-4p-base+epic+immortality",
+        "uprising-4p-base+epic+epic",
+        "uprising-4p-base+epic_game",
     ):
         with pytest.raises(ValueError, match="unknown ruleset identifier"):
             RulesetConfig.from_identifier(bad)

@@ -241,6 +241,9 @@ class PlayerView:
     scouts_bids_confirmed: tuple[int, ...] = ()
     scouts_market_cards: tuple[str, ...] = ()
     scouts_calls: tuple[tuple[int, int], ...] = ()
+    # Epic Game Mode (``RulesetConfig.epic_game``), public like every setup
+    # option: the game ends at 12 instead of 10 [Rise of Ix p. 10].
+    epic_game: bool = False
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -546,6 +549,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         ),
         scouts_market_cards=state.scouts_market_cards,
         scouts_calls=state.scouts_calls,
+        epic_game=state.config.epic_game,
     )
 
 

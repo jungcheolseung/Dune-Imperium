@@ -24,17 +24,23 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 25
+    assert OBSERVATION_VERSION == 26
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
-    # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
-    # Uprising Intrigue identities plus 18 Bloodlines, 12 Twisted, 10
-    # Navigation, and 11 Immortality.
-    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19
+    # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
+    # Game Mode's Control the Spice; 39 Uprising Intrigue identities plus 18
+    # Bloodlines, 12 Twisted, 10 Navigation, and 11 Immortality.
+    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1
+    assert PERSONAL_CARD_IDS[-1] == "control_the_spice"
     assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11
-    # 16 Uprising Conflicts plus the two Bloodlines cards (identity universe).
-    assert len(CONFLICT_IDS) == 18
-    assert len(BATTLE_CARD_IDS) == 23
+    # 16 Uprising Conflicts, the two Bloodlines cards and Epic Game Mode's
+    # Economic Supremacy (identity universe); the battle cards add the four
+    # Objectives before Economic Supremacy, so the older ones keep their
+    # columns.
+    assert len(CONFLICT_IDS) == 19
+    assert CONFLICT_IDS[-1] == "economic_supremacy"
+    assert len(BATTLE_CARD_IDS) == 24
+    assert BATTLE_CARD_IDS[-1] == "economic_supremacy"
     # v9: Tech Module segments (24 global, 21 per seat, 1 private).
     # v10: the Bloodlines promo Ruthless Leadership adds one personal-card
     # identity to every identity-count segment.
@@ -58,6 +64,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # and x 5 goods columns (4,411 -> 4,555). v24: secret picks, 4 relative
     # seats x 2 and 3 secret events x 4 lines (4,555 -> 4,575). v25:
     # auctions, bids 4 + 1, market 3, calls 4 (4,575 -> 4,587).
+    # v26: Epic Game Mode: Control the Spice in the 19 personal-card segments
+    # (4 x 4 seat zones, imperium_removed, private_hand, private_peeked_card),
+    # Economic Supremacy in the 4 seat battle-card segments, and the
+    # epic_game flag (4,587 -> 4,611).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -81,7 +91,11 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 5
         + 3
         + 4
+        + 19
+        + 4
+        + 1
     )
+    assert OBSERVATION_SIZE == 4_611
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -92,11 +106,13 @@ def test_layout_is_versioned_and_contiguous() -> None:
 
     assert segment_slice("global_scalars") == slice(0, 12)
     seat0_in_play = segment_slice("seat0_in_play")
-    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20
+    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20 + 1
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
     assert private_secret_project.stop == segment_slice("scouts_items").start
-    assert segment_slice("scouts_calls").stop == OBSERVATION_SIZE
+    # v26 appends the Epic Game Mode flag after the last Scouts segment.
+    assert segment_slice("scouts_calls").stop == segment_slice("epic_game").start
+    assert segment_slice("epic_game").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -123,6 +139,40 @@ def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
         seat_scalars = encoded[segment_slice("seat0_scalars")]
         assert seat_scalars[23] == 5  # own public hand size
         assert seat_scalars[24] == 5  # own public deck size
+
+
+def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
+    # v26: the flag says the Endgame opens at 12 [Rise of Ix p. 10]; Control
+    # the Spice and Economic Supremacy take the last column of their
+    # segments, so every older identity keeps its column.
+    engine = UprisingRulesEngine()
+    plain = engine.reset(RulesetConfig(immortality=True), seed=5)
+    epic = engine.reset(RulesetConfig(immortality=True, epic_game=True), seed=5)
+    flag = segment_slice("epic_game")
+    control_the_spice = len(PERSONAL_CARD_IDS) - 1
+    for observer in range(4):
+        assert encode_player_view(engine.observe(plain, observer))[flag] == (0,)
+        encoded = encode_player_view(engine.observe(epic, observer))
+        assert encoded[flag] == (1,)
+        # With Immortality every Control the Spice starts in its owner's
+        # discard pile [Immortality p. 12], which every seat sees (OQ-010).
+        for seat in range(4):
+            discard = encoded[segment_slice(f"seat{seat}_discard")]
+            assert discard[control_the_spice] == 1
+            assert sum(discard) == 1
+
+    # A won Economic Supremacy shows face up in the last battle-card column.
+    winner = replace(epic.players[1], won_conflict_ids=("economic_supremacy",))
+    won = replace(
+        epic,
+        players=(epic.players[0], winner, *epic.players[2:]),
+        conflict_deck=tuple(
+            card for card in epic.conflict_deck if card != "economic_supremacy"
+        ),
+    )
+    encoded = encode_player_view(engine.observe(won, 0))
+    battle_cards = encoded[segment_slice("seat1_battle_cards")]
+    assert battle_cards[len(BATTLE_CARD_IDS) - 1] == 1
 
 
 def test_seat_blocks_rotate_egocentrically() -> None:
@@ -298,20 +348,26 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # Re-pinned for observation v25 (the auction segments appended after v24's):
 # the five old games' first 4,575 columns reproduced the v24 digests exactly
 # and every new column was 0; "scouts" moved as auctions began (slice 8).
+# Re-pinned for observation v26 (Epic Game Mode: Control the Spice at the
+# end of every personal-card segment, Economic Supremacy at the end of every
+# battle-card segment, the epic_game flag appended last): for all six games
+# the vector cut back to the v25 layout (each v25 segment's first columns)
+# reproduced the v25 digests exactly, vector for vector against master's
+# encoder (4c4656c), and all 24 new columns were 0.
 _GOLDEN_DIGESTS = {
-    "base": ("ed8d94673888aa6b5912dfe42ab0a7f008e4730b267ea67ad46b7b1d00f443f0", 2572),
-    "choam": ("e7d47837d88ea30610e5a8a20fe0a81ec9699298ac5240428c1a53cb762463c6", 2972),
+    "base": ("030d8d5d5ab8b94f5248e9535b5470b2b1d71942371fef144dc420adf5254a5f", 2572),
+    "choam": ("8edfe0117a9c3f9ca873c58e981aa9564df8c06472ec92d5af64bc5917f28ed1", 2972),
     "promo_bloodlines_tech": (
-        "90eb2c749063dabf55630750cb65e3132739f0da7592d32bbee5967bb5f8d852",
+        "21e4ea5d1d23e305b40396db78ec74f617986692a5a5b6bf9e9504713ac72ac2",
         2772,
     ),
     "everything": (
-        "3a144388c56bcea26774516c9230215d9136023f5f8a17ca06a30316868154cd",
+        "adec8b4c163ee85986f6143298d46a3c06784bbd4a4c2227d9783b46c8bb3262",
         3012,
     ),
-    "draft": ("9c5c2002d961fe0062a868753bb96fedcbeae15c05af31fec1f25f278a8bb7d6", 2476),
+    "draft": ("a1de76720a1ead2e8faa3546756101487bc783c5b77076c2605b2fa146c52ba4", 2476),
     "scouts": (
-        "3f989c0edcf601767a6888601f1193d41cb082ccb16903b569c21cdb63888faf",
+        "bbae7ec25df9cf6915de835e88cd0a05240d57048ea4f2ddb9e634d28106e8a1",
         2960,
     ),
 }

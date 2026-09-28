@@ -140,7 +140,9 @@ def flippable_battle_card_ids(
 ) -> tuple[str, ...]:
     """Return the player's face-up won Conflict cards bearing ``icon`` or wild.
 
-    Objective cards are not valid targets for a printed flip effect.
+    Objective cards are not valid targets for a printed flip effect. A card
+    with no printed icon (Economic Supremacy) is never a target, Ornithopter
+    Fleet or not (OQ-094 (b), (c)).
     """
 
     face_down = set(player.face_down_battle_card_ids)
@@ -148,12 +150,16 @@ def flippable_battle_card_ids(
         # Ornithopter Fleet: every icon is an Ornithopter, so "the Crysknife
         # and Desert Mouse Intrigue cards can't be used to gain a Victory
         # Point" [Bloodlines p. 12] while any Ornithopter flip may pick any
-        # face-up card.
+        # face-up card that has an icon to treat as one.
         if icon is not BattleIcon.ORNITHOPTER:
             return ()
         return tuple(
-            card_id for card_id in player.won_conflict_ids if card_id not in face_down
+            card_id
+            for card_id in player.won_conflict_ids
+            if card_id not in face_down
+            and CONFLICTS_BY_ID[card_id].battle_icon is not None
         )
+    # A no-icon card's ``None`` is never ``icon`` or wild, so it never matches.
     return tuple(
         card_id
         for card_id in player.won_conflict_ids
@@ -163,7 +169,11 @@ def flippable_battle_card_ids(
 
 
 def face_up_conflict_card_ids(player: PlayerState) -> tuple[str, ...]:
-    """Return the player's face-up won Conflict cards (any icon)."""
+    """Return the player's face-up won Conflict cards (any icon).
+
+    Grasp Arrakis flips "face-up Conflict cards", not battle icons, so a card
+    with no printed icon (Economic Supremacy) counts too (OQ-094 (e)).
+    """
 
     face_down = set(player.face_down_battle_card_ids)
     return tuple(

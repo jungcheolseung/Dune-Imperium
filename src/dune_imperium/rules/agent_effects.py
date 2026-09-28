@@ -127,6 +127,12 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
     PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+# Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash a
+# card] [troop]" [card face] [Rise of Ix p. 10].
+_SPICE_FOR_TRASH_AND_TROOP = (
+    PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT
+)
+CONTROL_THE_SPICE_PRICE: Final = 1
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
 # arrow cost trashes an Intrigue card from hand, not a personal card.
 _BRANCHING_PATH = (
@@ -2229,6 +2235,18 @@ def legal_agent_card_payment_actions(
             for reward in STITCHED_HORROR_REWARDS
             if reward not in chosen
         )
+    if source_card.agent_effect is _SPICE_FOR_TRASH_AND_TROOP:
+        # Control the Spice: the arrow cost may be left unpaid and is chosen
+        # once [Main p. 9] [FAQ p. 3]; like Smuggler's Haven's below it is
+        # judged when the owner resolves the box in their chosen order
+        # (OQ-028), so a spice gained first (Imperial Basin) pays it.
+        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
+        if owner.resources.spice < CONTROL_THE_SPICE_PRICE:
+            return (decline,)
+        return (
+            decline,
+            DomainAction(action_id="pay_agent_card_spice", actor=player),
+        )
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
@@ -2689,6 +2707,8 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     # cards, and crashed outright when the seat could not pay in the resource
     # it was never asked for.
     source_card = active_agent_card(context)
+    if source_card.agent_effect is _SPICE_FOR_TRASH_AND_TROOP:
+        return _apply_control_the_spice_payment(state, action, context, source)
     pays_water = (
         source_card.agent_effect
         is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
@@ -2886,6 +2906,77 @@ def _apply_arrakis_revolt_payment(
             state=replacement.state, events=(*events, *replacement.events)
         )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _apply_control_the_spice_payment(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    """Pay Control the Spice's spice, recruit its troop, then offer its trash.
+
+    "[1 spice] -> [trash a card] [troop]" [card face]. The black trash icon
+    stays optional once the cost is paid ("검은색 카드 폐기 아이콘을 사용하지
+    않는 경우에는 그 효과를 생략할 수 있다" [FAQ p. 3]) and "hand, discard
+    pile, in play 가운데 카드 1장을 대상으로 한다" [Main p. 20], this card
+    included. The two rewards are independent, so the box follows Throne Room
+    Politics: the troop now, then the generic optional-trash frame. The
+    troop is one recruited this turn, which a Combat space lets the owner
+    deploy ("그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    deploy할 수 있다" [Main p. 10] [FAQ p. 4]).
+    """
+
+    player = action.actor
+    _, card_instance_id, _ = _effect_subject(context)
+    owner = state.players[player]
+    context["spice_spent_after_placement"] = (
+        context_int(
+            context, "spice_spent_after_placement", owner="Agent-turn effect frame"
+        )
+        + CONTROL_THE_SPICE_PRICE
+    )
+    paid_owner = replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            spice=owner.resources.spice - CONTROL_THE_SPICE_PRICE,
+        ),
+        spice_spent_turn=owner.spice_spent_turn + CONTROL_THE_SPICE_PRICE,
+    )
+    # "supply에 troop이 없으면 recruit할 수 없다" [Main p. 10].
+    recruited_owner, recruited = recruit_troops(paid_owner, 1)
+    context["troops_recruited"] = (
+        context_int(context, "troops_recruited", owner="Agent-turn effect frame")
+        + recruited
+    )
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, recruited_owner)
+    )
+    # As the turn's last effect ``advance_after_effect`` already opened the
+    # next "turn" frame (possibly this same player's): a troop the trash
+    # recruits (Eliminate Allies) belongs to the closed turn, as with
+    # Throne Room Politics [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
+    box_source = f"{source}:{card_instance_id}"
+    return RuleResult(
+        state=next_state.push_decision(
+            optional_trash_frame(player, box_source, turn_closed=turn_closed)
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{box_source}:paid",
+                kind="agent_card_payment_resolved",
+                payload=(
+                    ("player", player),
+                    ("resource", "spice"),
+                    ("spent", CONTROL_THE_SPICE_PRICE),
+                    ("troops", recruited),
+                ),
+            ),
+            *recruit_shortfall_events(box_source, player, 1, recruited),
+        ),
+    )
 
 
 def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
@@ -4480,6 +4571,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
         raise RuntimeError("Agent-card Influence effect requires a player choice")
+    elif effect is _SPICE_FOR_TRASH_AND_TROOP:
+        # Control the Spice resolves through its payment choice, which
+        # always offers at least the decline.
+        raise RuntimeError("Agent-card payment effect requires a player choice")
     elif effect is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD:
         if owner.hand:
             raise RuntimeError("Agent-card discard effect requires a player choice")

@@ -386,8 +386,11 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
     ):
         raise ValueError("Combat cleanup must finish before Recall")
 
+    # Ten Victory Points [Main p. 15]; twelve in Epic Game Mode
+    # [Rise of Ix p. 10], whatever the Score markers started on (OQ-093).
+    endgame_score = state.config.endgame_victory_points
     if not state.conflict_deck or any(
-        player.victory_points >= 10 for player in state.players
+        player.victory_points >= endgame_score for player in state.players
     ):
         next_state = replace(state, phase=GamePhase.ENDGAME)
         event = GameEvent(

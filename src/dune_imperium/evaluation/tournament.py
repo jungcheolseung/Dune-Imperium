@@ -53,6 +53,7 @@ class MatchSpec:
     tech_module: bool = False
     immortality: bool = False
     go_to_11: bool = False
+    epic_game: bool = False
     arrakeen_scouts: bool = False
     leader_ids: tuple[str, ...] | None = None
     max_steps: int = 30_000
@@ -66,6 +67,7 @@ class MatchSpec:
             tech_module=self.tech_module,
             immortality=self.immortality,
             go_to_11=self.go_to_11,
+            epic_game=self.epic_game,
             arrakeen_scouts=self.arrakeen_scouts,
         )
 
@@ -193,7 +195,7 @@ def play_match(
             else UprisingRulesEngine()
         )
     metered = tuple(
-        _MeteredAgent(make_agent(kind, spec.policy_seed + seat))
+        _MeteredAgent(make_agent(kind, spec.policy_seed + seat, config))
         for seat, kind in enumerate(spec.seat_agents)
     )
     started = time.perf_counter()

@@ -5,13 +5,17 @@ an Ornithopter instead. This can cause you to immediately match battle
 icons when you acquire it" [Bloodlines p. 12] [Ornithopter Fleet Tech
 tile]. With one icon on every card, any two face-up battle cards match, so
 the matching needs no choice: the face-up cards pair off in a fixed order
-and each pair flips for one Victory Point [Main p. 14]. A leaf module so
-both ``combat`` and ``tech`` can use it.
+and each pair flips for one Victory Point [Main p. 14]. A card with no
+printed battle icon (Economic Supremacy) has no icon to treat as an
+Ornithopter, so it never pairs (OQ-094 (c)). A leaf module so both
+``combat`` and ``tech`` can use it.
 """
 
 from dataclasses import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 
@@ -23,13 +27,24 @@ def has_ornithopter_fleet(player: PlayerState) -> bool:
 
 
 def face_up_battle_card_ids(player: PlayerState) -> tuple[str, ...]:
-    """Return the seat's face-up Objective and won Conflict cards, in order."""
+    """Return the seat's face-up Objective and won Conflict cards, in order.
+
+    Only cards that print a battle icon count: a no-icon Conflict stays
+    face up but is never an Ornithopter (OQ-094 (c)).
+    """
 
     face_down = set(player.face_down_battle_card_ids)
     return tuple(
         card_id
         for card_id in (*player.objective_ids, *player.won_conflict_ids)
-        if card_id not in face_down
+        if card_id not in face_down and _prints_battle_icon(card_id)
+    )
+
+
+def _prints_battle_icon(card_id: str) -> bool:
+    # Every Objective prints an icon; a Conflict's ``None`` means none.
+    return (
+        card_id in OBJECTIVES_BY_ID or CONFLICTS_BY_ID[card_id].battle_icon is not None
     )
 
 
