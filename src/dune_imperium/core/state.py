@@ -135,6 +135,23 @@ class GameState:
     # the engine opens each one's placement as soon as the gaining effect
     # has finished, before any other player decision.
     pending_track_spies: tuple[tuple[int, str], ...] = ()
+    # Arrakeen Scouts (``arrakeen_scouts`` option, docs/rules/arrakeen-
+    # scouts.md; ``rules.scouts``). All public, all empty without the
+    # option. The five subcommittees revealed in round 1 (draw order); every
+    # item revealed since, as (round, item id); the mission layout's rounds
+    # and the mid and late auction rounds once drawn (0 until then).
+    scouts_subcommittees: tuple[str, ...] = ()
+    scouts_revealed: tuple[tuple[int, str], ...] = ()
+    scouts_mission_rounds: tuple[int, ...] = ()
+    scouts_mid_auction_round: int = 0
+    scouts_late_auction_round: int = 0
+    # Whether this round's Scouts step still runs before the first turn,
+    # and its cursor: the item being resolved and its remaining tasks.
+    scouts_opening: bool = False
+    scouts_item: str = ""
+    scouts_tasks: tuple[str, ...] = ()
+    # The rule change an event made for the rest of this round ("" none).
+    scouts_round_modifier: str = ""
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -293,6 +310,27 @@ class GameState:
             )
         ):
             raise ValueError("the Bene Tleilax board requires Immortality")
+
+        if self.config.arrakeen_scouts:
+            if len(self.scouts_subcommittees) != len(set(self.scouts_subcommittees)):
+                raise ValueError("a subcommittee is revealed once")
+            revealed = tuple(item_id for _, item_id in self.scouts_revealed)
+            if len(revealed) != len(set(revealed)):
+                raise ValueError("a Scouts item is revealed once")
+            if self.scouts_tasks and not self.scouts_item:
+                raise ValueError("Scouts tasks belong to an item being resolved")
+        elif (
+            self.scouts_subcommittees
+            or self.scouts_revealed
+            or self.scouts_mission_rounds
+            or self.scouts_mid_auction_round
+            or self.scouts_late_auction_round
+            or self.scouts_opening
+            or self.scouts_item
+            or self.scouts_tasks
+            or self.scouts_round_modifier
+        ):
+            raise ValueError("Scouts state requires the Arrakeen Scouts module")
 
         maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
         if maker_ids not in (

@@ -204,6 +204,18 @@ class PlayerView:
     tleilaxu_track_spice: int = 0
     # Seats that played a Combat Intrigue card in this Conflict (public).
     combat_intrigue_players: tuple[int, ...] = ()
+    # Arrakeen Scouts, all public (docs/rules/arrakeen-scouts.md): the five
+    # subcommittees, every item revealed so far as (round, item id), the
+    # mission layout's rounds, the auction rounds (0 until drawn), the item
+    # being resolved and this round's rule change. Nothing unrevealed is in
+    # the state to hide: each item is drawn in the round it appears.
+    scouts_subcommittees: tuple[str, ...] = ()
+    scouts_revealed: tuple[tuple[int, str], ...] = ()
+    scouts_mission_rounds: tuple[int, ...] = ()
+    scouts_mid_auction_round: int = 0
+    scouts_late_auction_round: int = 0
+    scouts_item: str = ""
+    scouts_round_modifier: str = ""
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -421,6 +433,13 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         tleilaxu_deck_size=len(state.tleilaxu_deck),
         tleilaxu_track_spice=state.tleilaxu_track_spice,
         combat_intrigue_players=state.combat_intrigue_players,
+        scouts_subcommittees=state.scouts_subcommittees,
+        scouts_revealed=state.scouts_revealed,
+        scouts_mission_rounds=state.scouts_mission_rounds,
+        scouts_mid_auction_round=state.scouts_mid_auction_round,
+        scouts_late_auction_round=state.scouts_late_auction_round,
+        scouts_item=state.scouts_item,
+        scouts_round_modifier=state.scouts_round_modifier,
     )
 
 

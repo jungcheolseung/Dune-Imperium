@@ -287,6 +287,12 @@ from dune_imperium.rules.sardaukar import (
     legal_skill_trash_actions,
     skill_choice_is_queued,
 )
+from dune_imperium.rules.scouts import (
+    advance_scouts_step,
+    apply_scouts_draw,
+    scouts_draw_is_pending,
+    scouts_step_is_pending,
+)
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
@@ -764,6 +770,11 @@ class UprisingRulesEngine(RulesEngine):
             # like the draft; Round Start follows once they are made.
             return setup.state
         started = prepare_round_start(setup.state)
+        if config.arrakeen_scouts:
+            # Round 1 begins inside reset(): its Scouts step (the
+            # subcommittee draws) starts here, so the reset state already
+            # waits on the first Scouts chance frame.
+            started = _advance_automatic(started)
         return replace(started.state, event_log=started.events)
 
     def _apply_chance(
@@ -777,6 +788,8 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_intrigue_reshuffle(state, outcome)
         elif secrets_steal_is_pending(state):
             result = apply_secrets_steal(state, outcome)
+        elif scouts_draw_is_pending(state):
+            result = apply_scouts_draw(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
         # Flag any Skill choice or Navigation play this chance resolution
@@ -969,6 +982,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = fizzle_combat_influence_choice(state)
         elif state.decision_stack:
             break
+        elif scouts_step_is_pending(state):
+            # Arrakeen Scouts: the round's Scouts step, one unit at a time,
+            # until it opens the First Player's turn.
+            automatic = advance_scouts_step(state)
         elif state.phase is GamePhase.COMBAT:
             if not state.combat_intrigue_complete:
                 automatic = begin_combat_intrigue(state)

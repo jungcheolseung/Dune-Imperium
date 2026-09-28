@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 21
+    assert OBSERVATION_VERSION == 22
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -52,8 +52,11 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v16: Bloodlines' eight contract tokens in each of the 11 contract segments.
     # v20: one seat scalar for the Contract icons held to the turn's end when
     # nothing in a non-empty market could be taken (OQ-059).
+    # v22: Arrakeen Scouts: 77 items (14 subcommittees, 16 missions, 32
+    # events, 11 auctions, 4 sales), 4 round modifiers, 3 schedule values
+    # (4,327 -> 4,411).
     assert OBSERVATION_SIZE == (
-        3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90 + 8 + 11 * 8 + 4
+        3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90 + 8 + 11 * 8 + 4 + 77 + 4 + 3
     )
 
     offset = 0
@@ -67,7 +70,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
     seat0_in_play = segment_slice("seat0_in_play")
     assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20
     private_secret_project = segment_slice("private_secret_project")
-    assert private_secret_project.stop == OBSERVATION_SIZE
+    # v22 appends the Arrakeen Scouts segments after the private ones.
+    assert private_secret_project.stop == segment_slice("scouts_items").start
+    assert segment_slice("scouts_schedule").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -249,18 +254,27 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # the four vectors there are byte for byte the old ones (the kept tiles keep
 # their index), and the game then differs by the reward. The encoder file
 # changed only its version constant.
+# Re-pinned on 2026-09-28 for observation v22 (the Arrakeen Scouts segments
+# appended after every older one): for all five old games the vector's first
+# 4,327 columns reproduced the previous digests exactly and every Scouts
+# column was 0, so the games and the old columns are byte for byte what they
+# were. "scouts" (CHOAM with the new option) was added then.
 _GOLDEN_DIGESTS = {
-    "base": ("2d50b45756e1958cd6b83c1433839c9f228e344edc14bffa88f44c0d8f8ab0c2", 2572),
-    "choam": ("7a0d28ab59a1721b19d38c3a4eee18add65bc1924a64ac252b8eef90e9609095", 2972),
+    "base": ("042434aa5c4a0f288cd43548c1d4d9fc9b37f1e1bd5dd10a82a2b66dfec2534c", 2572),
+    "choam": ("73dd50524182d98ae2479f6c62db00846ce7fd8a590c8a9d6838711230e24f73", 2972),
     "promo_bloodlines_tech": (
-        "2ef7cd10f4a8adbbbc3377f05d97d94a9bc3f79867beccaf4d9681d0b1c332b9",
+        "38c6e246eef430aa9abbf2ef943e7060ff8d2b4c67644d253b044abb0cffdd2e",
         2772,
     ),
     "everything": (
-        "8ba6167a80afe0ca491f4a2ec4d028aa6a09045dac7422bfce0870b2555b0ae2",
+        "a728b6c3e56486559a38e36b75b2425c073d24a7163ae498308c5d9b3980a7c7",
         3012,
     ),
-    "draft": ("a5e5cdaa2b4382445f48f93b5beb721f59e880a1c99deff6c0896c9cf30369ba", 2476),
+    "draft": ("5d2134633b71199990940445a03ca7d15c0bd4c150798c8f86f8ab8a06ceba1c", 2476),
+    "scouts": (
+        "572bf5a09be8c0f93779e3ea8f714db8f73acd2e374e6cf1008d5c1bde976bd1",
+        2784,
+    ),
 }
 _GOLDEN_CONFIGS = {
     "base": {},
@@ -278,6 +292,7 @@ _GOLDEN_CONFIGS = {
         "immortality": True,
     },
     "draft": {"leader_draft": True},
+    "scouts": {"choam_module": True, "arrakeen_scouts": True},
 }
 
 
@@ -320,6 +335,7 @@ def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
 
 @pytest.mark.parametrize("name", sorted(_GOLDEN_DIGESTS))
 def test_encoding_matches_the_pinned_golden_digest(name: str) -> None:
-    assert _encoding_digest(RulesetConfig(**_GOLDEN_CONFIGS[name]), 91) == (
-        _GOLDEN_DIGESTS[name]
+    assert (
+        _encoding_digest(RulesetConfig(**_GOLDEN_CONFIGS[name]), 91)
+        == (_GOLDEN_DIGESTS[name])
     )

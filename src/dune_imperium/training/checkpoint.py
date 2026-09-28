@@ -22,9 +22,14 @@ Format 3 (2026-09-27) is format 2 plus the network architecture: an MLP
 file is still written as format 2, byte for byte, and only another
 architecture (``mlp_slots``) writes format 3 with an ``arch`` document and,
 for ``mlp_slots``, the ``slot_keys`` its embedding rows stand for. A slot
-file whose keys differ from the current table is refused (the rows would
-silently mean other things). ``widen_checkpoint`` turns an MLP file into
-an ``mlp_slots`` one computing the same function, Adam moments included.
+file whose keys differ from the current table has its rows re-linked by key
+(2026-09-28, when the Arrakeen Scouts frame kind added a row): a kept key
+keeps its row, a new key starts at zero (so the file computes what it did
+wherever the new rows are idle), and a key the table no longer has is
+dropped. Its Adam moments move the same way. A different ``slot_version``
+(the meaning of a key changed) is still refused.
+``widen_checkpoint`` turns an MLP file into an ``mlp_slots`` one computing
+the same function, Adam moments included.
 """
 
 import os
@@ -235,12 +240,59 @@ def _document_arch(document: Mapping[str, Any]) -> dict[str, Any]:
                 f"checkpoint slot table v{arch.get('slot_version')} does not match "
                 f"the current v{SLOT_VERSION}"
             )
-        if list(document.get("slot_keys") or ()) != list(SLOT_KEYS):
-            raise ValueError(
-                "checkpoint slot keys differ from the current slot table "
-                "(training/slots.py); its embedding rows cannot be read by name yet"
-            )
+        keys = list(document.get("slot_keys") or ())
+        if not keys or len(set(keys)) != len(keys):
+            raise ValueError("checkpoint slot keys must be a list of distinct keys")
     return arch
+
+
+_SLOT_EMBED: Final = "slot_embed.weight"
+
+
+def _slot_source(document: Mapping[str, Any]) -> torch.Tensor | None:
+    """Each current slot row's old row (-1 when new), or None when unchanged.
+
+    The pad row stays last on both sides.
+    """
+
+    keys = [str(key) for key in document.get("slot_keys") or ()]
+    if keys == list(SLOT_KEYS):
+        return None
+    old_index = {key: index for index, key in enumerate(keys)}
+    return torch.tensor(
+        [*(old_index.get(key, -1) for key in SLOT_KEYS), len(keys)],
+        dtype=torch.long,
+    )
+
+
+def _relink_slot_rows(
+    state_dict: dict[str, torch.Tensor],
+    optimizer_state: dict[str, Any] | None,
+    source: torch.Tensor,
+    hidden: tuple[int, ...],
+) -> tuple[dict[str, torch.Tensor], dict[str, Any] | None]:
+    """Move the slot embedding's rows (and their Adam moments) by key."""
+
+    embedding = state_dict[_SLOT_EMBED]
+    if embedding.shape[0] != int(source[-1]) + 1:
+        raise ValueError("checkpoint slot keys do not match its embedding rows")
+    moved = {**state_dict, _SLOT_EMBED: _gather_rows(embedding, source)}
+    if optimizer_state is None:
+        return moved, None
+    # The embedding follows the body (two per layer) and the four head
+    # parameters in ``MlpSlotsNetwork.parameters()`` order.
+    index = 2 * len(hidden) + 4
+    state = dict(optimizer_state.get("state", {}))
+    for raw_index, moments in state.items():
+        if int(raw_index) != index:
+            continue
+        relinked = dict(moments)
+        for name in ("exp_avg", "exp_avg_sq", "max_exp_avg_sq"):
+            tensor = relinked.get(name)
+            if isinstance(tensor, torch.Tensor):
+                relinked[name] = _gather_rows(tensor, source)
+        state[raw_index] = relinked
+    return moved, {**optimizer_state, "state": state}
 
 
 def _format_for(arch: Mapping[str, Any]) -> int:
@@ -287,8 +339,13 @@ def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
             document, state_dict, optimizer_state, codec, hidden
         )
         action_size = codec.size
-    # Migration moves the head rows and first-layer columns only; the slot
-    # embedding is keyed by SLOT_KEYS (checked above) and passes through.
+    # Migration moves the head rows and first-layer columns; the slot
+    # embedding is keyed by SLOT_KEYS and moves by key.
+    slot_source = _slot_source(document) if arch["kind"] == "mlp_slots" else None
+    if slot_source is not None:
+        state_dict, optimizer_state = _relink_slot_rows(
+            state_dict, optimizer_state, slot_source, hidden
+        )
     network = build_network(arch, action_size)
     network.load_state_dict(state_dict)
     network.eval()

@@ -19,6 +19,14 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
+from dune_imperium.content.arrakeen_scouts import (
+    AUCTIONS,
+    EVENTS,
+    MISSIONS,
+    SALES,
+    SUBCOMMITTEES,
+    RoundModifier,
+)
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_SETUP_SPACE_IDS,
     SKILLS,
@@ -58,7 +66,10 @@ from dune_imperium.rules.frames import FrameKind
 # v21 (2026-09-27): the Contract identity universe swaps the four Rise of
 # Ix tiles for the standard ones they stood in for [Main p. 16]; the kept
 # tiles keep their index and the length is unchanged (docs/rl-environment.md).
-OBSERVATION_VERSION: Final = 21
+# v22 (2026-09-28): the Arrakeen Scouts segments are appended after every
+# older one (all zero without the option), so the old columns keep their
+# offsets.
+OBSERVATION_VERSION: Final = 22
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -97,6 +108,16 @@ MAKER_SPACE_IDS: Final = ("deep_desert", "hagga_basin", "imperial_basin", "tuek_
 RESERVE_STACK_IDS: Final = tuple(stack.card.card_id for stack in RESERVE_STACKS)
 SKILL_IDS: Final = tuple(skill.skill_id for skill in SKILLS)
 COMMANDER_SPACE_IDS: Final = COMMANDER_SETUP_SPACE_IDS
+# Arrakeen Scouts: every subcommittee, mission, event, auction and sale, in
+# catalog order (the ids are unique across kinds).
+SCOUTS_ITEM_IDS: Final = (
+    *(entry.subcommittee_id for entry in SUBCOMMITTEES),
+    *(entry.mission_id for entry in MISSIONS),
+    *(entry.event_id for entry in EVENTS),
+    *(entry.auction_id for entry in AUCTIONS),
+    *(entry.sale_id for entry in SALES),
+)
+SCOUTS_MODIFIERS: Final = tuple(modifier.value for modifier in RoundModifier)
 
 _PHASES: Final = tuple(GamePhase)
 _AGENT_ICONS: Final = tuple(icon.value for icon in AgentIcon)
@@ -152,6 +173,12 @@ _MAKER_SPACE_INDEX: Final = {
 _PHASE_INDEX: Final = {phase: index for index, phase in enumerate(_PHASES)}
 _FRAME_KIND_INDEX: Final = {kind: index for index, kind in enumerate(_FRAME_KINDS)}
 _AGENT_ICON_INDEX: Final = {icon: index for index, icon in enumerate(_AGENT_ICONS)}
+_SCOUTS_ITEM_INDEX: Final = {
+    item_id: index for index, item_id in enumerate(SCOUTS_ITEM_IDS)
+}
+_SCOUTS_MODIFIER_INDEX: Final = {
+    modifier: index for index, modifier in enumerate(SCOUTS_MODIFIERS)
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +263,13 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_peeked_intrigue", len(INTRIGUE_IDS)),
             ("private_navigation_slots", 4),
             ("private_secret_project", 1),
+            # v22, Arrakeen Scouts (all public): the round each item was
+            # revealed in (subcommittees: 1), this round's rule change, and
+            # the schedule drawn so far (round-2 mission count, mid and late
+            # auction rounds).
+            ("scouts_items", len(SCOUTS_ITEM_IDS)),
+            ("scouts_modifier", len(SCOUTS_MODIFIERS)),
+            ("scouts_schedule", 3),
         )
     )
     return tuple(lengths)
@@ -458,7 +492,27 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     values[_OFFSET["private_secret_project"]] = (
         _TECH_INDEX[secret] + 1 if secret else 0
     )
+    _write_scouts(values, view)
     return tuple(values)
+
+
+def _write_scouts(values: list[int], view: PlayerView) -> None:
+    offset = _OFFSET["scouts_items"]
+    for subcommittee_id in view.scouts_subcommittees:
+        values[offset + _SCOUTS_ITEM_INDEX[subcommittee_id]] = 1
+    for round_number, item_id in view.scouts_revealed:
+        values[offset + _SCOUTS_ITEM_INDEX[item_id]] = round_number
+    if view.scouts_round_modifier:
+        values[
+            _OFFSET["scouts_modifier"]
+            + _SCOUTS_MODIFIER_INDEX[view.scouts_round_modifier]
+        ] = 1
+    offset = _OFFSET["scouts_schedule"]
+    values[offset : offset + 3] = [
+        view.scouts_mission_rounds.count(2),
+        view.scouts_mid_auction_round,
+        view.scouts_late_auction_round,
+    ]
 
 
 def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -> None:

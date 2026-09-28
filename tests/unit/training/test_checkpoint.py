@@ -158,9 +158,7 @@ def test_format_2_stores_template_identities_and_the_layout(tmp_path: Path) -> N
         (segment.name, segment.offset, segment.length)
         for segment in OBSERVATION_SEGMENTS
     ]
-    assert torch.equal(
-        loaded.policy_head.weight, network.policy_head.weight.detach()
-    )
+    assert torch.equal(loaded.policy_head.weight, network.policy_head.weight.detach())
 
     # A codec that does not fit the network is refused at save time.
     with pytest.raises(ValueError, match="does not match the codec"):
@@ -451,10 +449,11 @@ def test_a_slot_network_writes_format_3_and_an_mlp_stays_format_2(
         expected = network(observations, masks)[0]
         assert torch.equal(loaded(observations, masks)[0], expected)
 
-    # A file whose slot table differs is refused, not read with shifted rows.
+    # A slot table whose keys do not fit the embedding, or whose meaning
+    # changed (another slot_version), is refused, not read with shifted rows.
     for change, message in (
         ({"slot_keys": list(SLOT_KEYS[:-1])}, "slot keys"),
-        ({"slot_keys": [*SLOT_KEYS[1:], SLOT_KEYS[0]]}, "slot keys"),
+        ({"slot_keys": [*SLOT_KEYS[1:], SLOT_KEYS[1]]}, "slot keys"),
         ({"arch": {**document["arch"], "slot_version": 0}}, "slot table"),
         ({"arch": {**document["arch"], "hidden": [32]}}, "hidden shape"),
     ):
@@ -464,6 +463,69 @@ def test_a_slot_network_writes_format_3_and_an_mlp_stays_format_2(
             load_checkpoint(forged)
         with pytest.raises(ValueError, match=message):
             stamp_checkpoint(forged)
+
+
+def test_a_slot_checkpoint_relinks_its_embedding_rows_by_key(
+    tmp_path: Path,
+) -> None:
+    # Observation v22 added the Arrakeen Scouts frame kind, hence the row
+    # ``decision_kind:scouts_draw``: a file written before it has one row
+    # fewer. Its rows move by key, the new row starts at zero, and Adam's
+    # moments move with the rows.
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec, slots=True)
+    assert isinstance(network, MlpSlotsNetwork)
+    path = tmp_path / "slots.pt"
+    save_checkpoint(
+        path,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=5,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    document = torch.load(path, weights_only=True)
+    new_key = "decision_kind:scouts_draw"
+    dropped = SLOT_KEYS.index(new_key)
+    embedding = document["state_dict"]["slot_embed.weight"]
+    keep = [row for row in range(embedding.shape[0]) if row != dropped]
+    old_keys = [key for key in SLOT_KEYS if key != new_key]
+    # Shuffle the old order too: rows are found by key, not by position.
+    old_keys = [*old_keys[5:], *old_keys[:5]]
+    old_rows = [*keep[5:-1], *keep[:5], keep[-1]]
+    state = dict(document["optimizer_state"]["state"])
+    embed_index = next(
+        index
+        for index, moments in state.items()
+        if moments["exp_avg"].shape == embedding.shape
+    )
+    moments = dict(state[embed_index])
+    moments["exp_avg"] = moments["exp_avg"][old_rows]
+    moments["exp_avg_sq"] = moments["exp_avg_sq"][old_rows]
+    state[embed_index] = moments
+    forged = {
+        **document,
+        "slot_keys": old_keys,
+        "state_dict": {
+            **document["state_dict"],
+            "slot_embed.weight": embedding[old_rows],
+        },
+        "optimizer_state": {**document["optimizer_state"], "state": state},
+    }
+    old_path = tmp_path / "old_slots.pt"
+    torch.save(forged, old_path)
+
+    loaded, info = load_checkpoint(old_path)
+    assert isinstance(loaded, MlpSlotsNetwork)
+    relinked = loaded.slot_embed.weight.detach()
+    assert torch.equal(relinked[keep], embedding[keep])
+    assert float(relinked[dropped].abs().sum()) == 0.0
+    assert info.optimizer_state is not None
+    moved = info.optimizer_state["state"][embed_index]["exp_avg"]
+    assert torch.equal(
+        moved[keep], document["optimizer_state"]["state"][embed_index]["exp_avg"][keep]
+    )
+    assert float(moved[dropped].abs().sum()) == 0.0
 
 
 def test_a_slot_checkpoint_migrates_its_head_and_keeps_its_embedding(

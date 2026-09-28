@@ -80,6 +80,9 @@ class FrameKind(StrEnum):
     # without the Signet Ring card, so outside its Agent box (appended last:
     # the observation encodes the frame kind by its index).
     LEADER_SIGNET = "leader_signet"
+    # Arrakeen Scouts: a chance draw of the round's schedule (appended last,
+    # like every kind: the observation encodes the kind by its index).
+    SCOUTS_DRAW = "scouts_draw"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

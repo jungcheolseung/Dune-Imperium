@@ -77,15 +77,22 @@ def begin_round(state: GameState) -> RuleResult:
         else player
         for player in players
     )
+    scouts = state.config.arrakeen_scouts
     opening_frame = _round_opening_frame(
         players,
         conflict_id,
         round_number,
         state.first_player,
+        scouts=scouts,
     )
     next_state = replace(
         state,
         phase=GamePhase.PLAYER_TURNS,
+        # Arrakeen Scouts: the round's Scouts step runs after the Control
+        # defense and before the first turn (OQ-072), driven by the engine's
+        # automatic advance (``rules.scouts``); last round's rule change ends.
+        scouts_opening=scouts,
+        scouts_round_modifier="",
         round_number=round_number,
         reveal_order=(),
         players=players,
@@ -96,7 +103,7 @@ def begin_round(state: GameState) -> RuleResult:
         combat_rewards_resolved=False,
         combat_end_triggers_offered=False,
         combat_intrigue_players=(),
-        decision_stack=(opening_frame,),
+        decision_stack=() if opening_frame is None else (opening_frame,),
     )
     events = (
         GameEvent(
@@ -241,13 +248,17 @@ def apply_control_defense_action(
         next_owner if player.player_id == action.actor else player
         for player in state.players
     )
+    # With Arrakeen Scouts the Scouts step follows the defense, and it opens
+    # the first turn itself (``rules.scouts``).
+    opening = (
+        ()
+        if state.scouts_opening
+        else (turn_frame(state.round_number, state.first_player),)
+    )
     next_state = replace(
         state,
         players=players,
-        decision_stack=(
-            *state.decision_stack[:-1],
-            _turn_frame(state.round_number, state.first_player),
-        ),
+        decision_stack=(*state.decision_stack[:-1], *opening),
     )
     event = GameEvent(
         event_id=(
@@ -276,7 +287,11 @@ def _round_opening_frame(
     conflict_id: str,
     round_number: int,
     first_player: int,
-) -> DecisionFrame:
+    *,
+    scouts: bool = False,
+) -> DecisionFrame | None:
+    """Return the Control defense, else the first turn (``None`` with Scouts)."""
+
     conflict = CONFLICTS_BY_ID[conflict_id]
     control_space_id = (
         None if conflict.rewards is None else conflict.rewards[0].control_space_id
@@ -304,10 +319,12 @@ def _round_opening_frame(
                 ("turn_owner", first_player),
             ),
         )
-    return _turn_frame(round_number, first_player)
+    return None if scouts else turn_frame(round_number, first_player)
 
 
-def _turn_frame(round_number: int, player: int) -> DecisionFrame:
+def turn_frame(round_number: int, player: int) -> DecisionFrame:
+    """Return the frame that opens ``player``'s turn in ``round_number``."""
+
     return DecisionFrame(
         kind=FrameKind.TURN,
         frame_id=f"round:{round_number}:turn:{player}",
