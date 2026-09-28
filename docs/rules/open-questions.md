@@ -958,13 +958,14 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 임무의 참여는 "원하면"이고, 비용(spice 1, Solari 2, garrison troop, specimen)을 낼 수 없는 경우를 적지 않는다 `[Scouts mission: <이름>]`.
 - 판정: 참여는 모든 임무에서 선택이다(CHOAM Escort도 "may"). 비용을 낼 수 없거나 세울 troop이 없는 좌석에는 묻지 않는다(결정 없이 넘어간다). CHOAM Escort에서 앞면 Contract가 없는 좌석에는 troop recruit와 패스만 남는다.
+- 코드 세부(2026-09-28 점검에서 드러남, D8 검토 대상): 세울 troop이 정해진 수보다 적어도 1개 이상이면 참여할 수 있고, 있는 만큼만 세우며 비용은 다 낸다(`scouts_missions._join`의 `min(count, available)`; 예: Weirding Warfare에서 supply가 1이면 Solari 2를 내고 troop 1만 세운다). 넘어간 좌석에는 이벤트를 남기지 않는다.
 - 구현: 슬라이스 6a(`rules/scouts_missions.join_targets`). Tleilaxu Offering은 Tleilaxu token이 이미 세 번째 칸이나 그 뒤에 있는 좌석에 묻지 않는다(다시 그 칸으로 전진하지 않으므로, OQ-089 (a)).
 
 ## OQ-089 — Immortality 풀 항목의 세부
 
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: Tleilaxu Offering은 "Tleilaxu track의 세 번째 칸", Offworld Operation의 둘째 선택은 "spice 1, 또는 Helix: spice 2", Coordinate With The Emperor는 "specimen 1을 Sardaukar 칸으로 옮기고 처음 보낼 때 garrison으로"라고 한다 `[Scouts mission: Tleilaxu Offering]` `[Scouts event: Offworld Operation]` `[Scouts mission: Coordinate With The Emperor]`.
-- 판정: (a) "세 번째 칸"은 시작 칸을 세지 않고 세 번째 칸이다(Tleilaxu track 전사의 index로 고정, 슬라이스 6에서 확인). (b) "Helix"는 자기 research token이 Helix 칸(research track의 Helix 보너스 칸)에 닿았거나 지나간 상태다. (c) Coordinate With The Emperor의 specimen은 Axolotl tanks에서 빼 칸에 세우고, 처음 방문 때 garrison으로 간다(recruit가 아니다).
+- 판정: (a) "세 번째 칸"은 시작 칸을 세지 않고 세 번째 칸이다(Tleilaxu track 전사의 index로 고정, 슬라이스 6에서 확인). (b) "Helix"는 research track 아래의 첫 genetic marker다(아래 보강: Sponsored Research의 "닿는다"는 marker 0개에서 1개 이상으로 가는 전진, Offworld Operation의 조건은 marker 1개 이상). (c) Coordinate With The Emperor의 specimen은 Axolotl tanks에서 빼 칸에 세우고, 처음 방문 때 garrison으로 간다(recruit가 아니다).
 - 구현: 슬라이스 6b(임무: `immortality.advance_tleilaxu`의 세 번째 칸, `immortality.move_research_token`의 Helix), 7(Offworld Operation).
 - 보강(2026-09-28 슬라이스 6b): (a) "세 번째 칸"은 index 3이다. 셋업의 spice를 두는 "네 번째 칸" `[Immortality p. 4]`을 프로젝트가 index 4(시작 칸 0을 세지 않음)로 전사한 것과 같은 셈이다. (b) "Helix"는 research track 아래의 첫 genetic marker다(카드의 genetic marker 아이콘이 나선 모양이다, `[Immortality pp. 6, 16]`). "Helix에 닿는다"는 token이 첫 marker 열(열 4) 앞에서 그 열이나 그 뒤로 옮겨 가는 전진이다. 그래서 Sponsored Research를 공개할 때 이미 지나간 좌석은 그 spice를 받을 수 없다. Offworld Operation의 "Helix"는 marker를 1개 이상 얻은 상태다.
 
