@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령), 슬라이스 7(비밀 선택), 슬라이스 8(경매).
+기준일: 2026-09-29(의역 대조 감사) — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령), 슬라이스 7(비밀 선택), 슬라이스 8(경매).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -136,3 +136,13 @@
   - 명세 3절의 끊긴 절 참조(7.3절 → 7.2절·7절), 2.2절 후반 경매 후보 문장, 8.2절 Mercenaries 후퇴(전부 또는 일부), 8.3절 Critical Moment의 최소 1과 2위의 선택 구매(OQ-087), 2.3절과 `events.py`의 추첨표 설명(5장은 스파이스 획득·책략 보너스 계열만), 6절의 Covert Operation·Clear the Market 계열 표시(CHOAM 변형), 7.2절 해결 순서를 OQ-085와 맞춤, 임무 칸의 공식 한국어 이름에 계열 접두어.
   - 코드 설명: `Mission.goods`(Valued Informants는 관측소마다, Imperial Reserve는 둘 중 하나), `ScoutsAuction`(Critical Moment 2위는 살 수도 있다), `MAX_AUCTION_BID`(공개 경매에는 앱이 상한을 쓰지 않는다).
 - **더한 기계 대조.** 비밀 선택의 묶음 여부를 앱의 `CondenseEventCompletions`가 묶는 선택 id(5, 6, 7, 8, 10)와 대조한다. 패스 여부는 아이콘 트리에만 있어 기계 대조가 없고, 위 독립 대조로 확인했다.
+
+## 의역 대조 감사 (2026-09-29)
+
+명세·OQ·카탈로그·화면 문구의 의역을 앱의 영어 원문(`data/loc/en_US.json`, 한국어 `ko_KR.json`)과 항목마다 다시 대었다(읽기 전용 에이전트 24개, 가족별 발견 → 반박 검증). 규칙 문서는 이제 원문을 loc 키로 인용하고, 원문은 `scripts/dwgr/show_text.py`로 로컬에서 바로 본다(저장소에는 넣지 않는다).
+
+- **엔진이 영어와 달랐던 것(고침):** 여러 승자 경매의 보상 순서(OQ-073, 순위 먼저), Mercenaries의 후퇴가 게임의 후퇴를 거치지 않음(OQ-074, Chani), Moment of Revelation이 Reserve가 비어도 spice를 받음(OQ-071), 임무가 인쇄된 troop 수보다 적게 세우게 함(OQ-088).
+- **문서·화면 문구만 달랐던 것(고침):** Prison Planet·Send for Aid·Coordinate With The Emperor의 물품 출처(은행)와 받는 말(얻는다), Offworld Operation의 "past the Helix"(엔진은 도달), OQ-073·OQ-083의 앱 인용(turn order의 범위, Critical Moment의 discard), OQ-075의 없는 대상("Corrinth City의 Agent")과 "supply로" 회수.
+- **문서에 없던 판정(기록함):** Political Equilibrium과 Moment of Revelation의 차례 순서는 앱이 아니라 프로젝트 convention(OQ-071), Clear the Market CHOAM 판의 bank 부족 처리(OQ-083, 사용자 확인 대기), Tleilaxu Offering의 참여 제외는 프로젝트 추론(OQ-088).
+- **사용자와 다시 볼 것:** 소위원회는 영어가 "가입하려면 비용을 내야 한다", "자리를 차지할 때"라고 적어, 가입 뒤 비용을 선택으로 두고 turn 안에서 나중에 가입하는 방향(OQ-075, OQ-076)과 부딪친다.
+- **의미 차이가 아니라고 반박된 주장:** 소위원회 명세가 must를 빠뜨렸다는 주장(명세·OQ-076에 이미 있음), Mercenaries의 출처·동점 처리(표시된 convention), 후반 경매 2위의 0 조건(앱 코드가 근거로 이미 적혀 있음), Influence 꼭대기에서 비용을 받는 영향력 이벤트(원문이 다루지 않는 정책 문제).
