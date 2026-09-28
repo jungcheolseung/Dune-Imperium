@@ -20,7 +20,7 @@
   2. 앱 도움말이 절차를 정한다.
   3. 항목이 부르는 기본 행동(recruit, Spy 배치·회수, Influence, Contract, 카드 획득·trash·draw)의 처리는 여전히 Main Rulebook·Board Space Guide·FAQ가 정한다.
   4. 앱의 한국어 문구는 **용어**로만 쓴다. 한국어판에는 오역과 누락이 있다(OQ-086).
-- 앱이 정하지 않은 판정은 OQ-071~OQ-089에 project convention으로 둔다. 2026-09-28 사용자 결정(D8)에 따라 제안한 convention으로 구현하고, 모든 슬라이스가 끝난 뒤 한꺼번에 검토받는다.
+- 앱이 정하지 않은 판정은 OQ-071~OQ-090에 project convention으로 둔다. 2026-09-28 사용자 결정(D8)에 따라 제안한 convention으로 구현하고, 모든 슬라이스가 끝난 뒤 한꺼번에 검토받는다.
 
 ## 2. 일정
 
@@ -274,10 +274,17 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 - Scouts 단계의 recruit는 turn 밖이다. "이번 turn에 recruit한 troop" 배치 규칙 `[Main p. 10]`은 적용되지 않는다. 곧바로 Conflict에 넣으라는 Scouts 단계의 항목(Shadow Warfare, Mercenaries)만 그렇게 한다(OQ-074).
 - 임무 칸을 방문해 세워 둔 troop을 받는 것(Security Detail, Fedaykin Assistance, Weirding Warfare, Send for Aid)은 그 좌석의 Agent turn 안에서 일어난다. 그 troop은 그 turn에 recruit한 troop이다(OQ-077).
 - 비밀 선택·봉인 입찰의 가시성은 [information-visibility.md](information-visibility.md)에 적는다.
-- 공식 문서와 앱이 침묵하는 판정은 [open-questions.md](open-questions.md)의 OQ-071~OQ-089에 기록한다.
+- 공식 문서와 앱이 침묵하는 판정은 [open-questions.md](open-questions.md)의 OQ-071~OQ-090에 기록한다.
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 6a: 5절 임무의 뼈대(`rules/scouts_missions.py`).
+  - 공개하면 은행 물품과 뒷면 카드를 놓고(`scouts_goods`, `scouts_goods_cards`), 참여 임무는 First Player부터 좌석마다 참여/패스를 묻는다(frame `scouts_mission`; 참여할 수 없는 좌석은 묻지 않는다, OQ-088).
+  - 세워 둔 troop은 `PlayerState.troops_parked`로 12개 보존에 든다(`scouts_parked`가 위치를 적는다).
+  - Agent가 그 칸을 방문하면 그 좌석의 조각을 받는 것이 방문 효과 하나로 붙는다(`scouts_collect_mission`, Bloodlines Commander 선례). Security Detail·Weirding Warfare·Send for Aid의 troop은 Conflict로, Fedaykin Assistance의 troop은 이번 turn에 recruit한 troop으로 garrison에, Coordinate With The Emperor의 specimen은 garrison으로 간다(OQ-077). Imperial Reserve는 둘 중 하나를 고른다(OQ-078). Prison Planet은 garrison troop 1을 잃고 지배 마커와 spice 2를 둔다; 마커는 지배 칸과 합쳐 3개를 넘지 않고, 그 좌석이 Conflict 보상으로 세 번째 칸을 지배하게 되면 마커를 가져다 쓰고 spice는 은행으로 돌아간다(`scouts_prison_marker_taken`). CHOAM Research의 뒷면 카드가 Bloodlines의 Immediate이고 방문자에게 Intrigue가 없으면 다음 장을 받는다(OQ-090).
+  - CHOAM Research의 Contract 2장과 Emperor's Schemes의 Intrigue 2장은 뒷면이다: 누구도 모르며(`known_card_seats`), 탐색 AI의 재추첨과 비공개 검사에서 bank·덱과 함께 섞이고, 카드 보존 검사에 든다. 방문마다 1장씩 받는다.
+  - 관측 v23(임무별 세워 둔 troop과 물품), codec v116.
+  - 남은 것(6b): Desert Riding, Valued Informants의 관측소 물품 수령, CHOAM Escort의 완료 보상, Sponsored Research, Back Room Deal, Tleilaxu Offering의 수령. 이들의 물품은 놓이지만 아직 받을 수 없다.
 - 2026-09-28 슬라이스 5: 6절의 선택형 이벤트(Immortality 넷 포함)와 9절의 판매, Political Equilibrium, Rebuild Infrastructure.
   - 공개되면 First Player부터 좌석마다 `scouts_choice` frame을 연다. 낼 수 있는 줄만 `scouts_choose_option`으로, 패스가 있으면 `scouts_pass`로 제시한다. 패스가 없는데 할 수 있는 줄이 하나뿐이면 결정 없이 그 줄을, 하나도 없으면 아무것도 하지 않는다(OQ-071). 고른 줄은 슬라이스 4의 `scouts_effect` frame이 푼다.
   - Influence 잃기(`LoseFactionInfluence`, Political Equilibrium의 `LoseHighestInfluence`)는 효과 frame의 선택이다. 동률인 가장 높은 Faction과, Alliance를 넘겨받을 상대가 동률일 때의 받는 좌석을 고른다(`scouts_lose_influence`, `scouts_lose_influence_to`; `[Main p. 7]`의 Alliance 규칙은 기존 `lose_faction_influence`).

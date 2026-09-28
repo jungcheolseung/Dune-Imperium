@@ -965,3 +965,10 @@
 - 앱: Tleilaxu Offering은 "Tleilaxu track의 세 번째 칸", Offworld Operation의 둘째 선택은 "spice 1, 또는 Helix: spice 2", Coordinate With The Emperor는 "specimen 1을 Sardaukar 칸으로 옮기고 처음 보낼 때 garrison으로"라고 한다 `[Scouts mission: Tleilaxu Offering]` `[Scouts event: Offworld Operation]` `[Scouts mission: Coordinate With The Emperor]`.
 - 판정: (a) "세 번째 칸"은 시작 칸을 세지 않고 세 번째 칸이다(Tleilaxu track 전사의 index로 고정, 슬라이스 6에서 확인). (b) "Helix"는 자기 research token이 Helix 칸(research track의 Helix 보너스 칸)에 닿았거나 지나간 상태다. (c) Coordinate With The Emperor의 specimen은 Axolotl tanks에서 빼 칸에 세우고, 처음 방문 때 garrison으로 간다(recruit가 아니다).
 - 구현: 슬라이스 6(임무), 7(Offworld Operation).
+
+## OQ-090 — CHOAM Research의 뒷면 Contract가 Bloodlines의 Immediate일 때
+
+- 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
+- 앱: CHOAM Research는 뒷면 Contract 2장을 Research Station에 두고 방문할 때마다 1장씩 가져가게 한다 `[Scouts mission: CHOAM Research]`. Bloodlines의 Immediate는 "trash할 Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`. 둘을 함께 쓰면 뒷면 카드가 Immediate이고 방문자에게 Intrigue가 없을 수 있는데, 어느 문서도 이 경우를 말하지 않는다(무작위 soak에서 교착으로 드러남).
+- 판정: 방문자는 그 칸의 뒷면 카드 가운데 가져갈 수 있는 첫 장을 가진다. Intrigue가 없으면 Immediate를 건너뛰고 다음 장을, 다음 장이 없으면 카드를 받지 않는다(Immediate는 뒷면 그대로 남는다). 받을 것이 그것뿐이면 임무 아이콘도 붙지 않는다. Intrigue가 있으면 Immediate를 받아 곧바로 Intrigue 하나를 trash한다(시장에서 가져갈 때와 같다).
+- 구현: `rules/scouts_missions._takeable_card`. `tests/unit/rules/test_scouts_missions.py`(`test_choam_research_skips_the_immediate_without_an_intrigue_card`).

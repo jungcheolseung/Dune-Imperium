@@ -385,7 +385,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
    - **3a 완료(2026-09-28)**: 일정·흐름·자동 이벤트·규칙 변경의 설정과 해제·관측 v22·slot 행 이관. **3b 완료(2026-09-28)**: 규칙 변경 네 개를 읽는 곳(`reserve_cost()` 리팩터는 별도 커밋), Friends Everywhere의 선택 frame, codec v113.
 4. **소위원회.** 원로회 자리 두 경로의 가입 대기열, 가입 frame, 비용·보상(Uprising 11 + Immortality 3). **완료(2026-09-28)**: 좌석별 줄을 푸는 `scouts_effect` frame(자동 칸은 `effect_interpreter.apply_rewards`, 선택 칸은 이 frame의 `scouts_*` 행동, Spy 배치·선택 trash·Contract는 기존 frame)을 여기서 만들었다. codec v114.
 5. **차례 순서 거래·양자택일·판매.** 주인 교대 frame, 양자택일 손실, Political Equilibrium의 동률 선택, Rebuild Infrastructure, 판매 4종, Immortality 거래 이벤트. **완료(2026-09-28)**: 좌석 차례는 Scouts 커서의 과제(`offer:<seat>`)로 이어 가고, 각 좌석의 `scouts_choice` frame이 고른 줄을 `scouts_effect`에 넘긴다. codec v115.
-6. **임무.** 공개 때 좌석별 참여 결정, 칸·관측소 물품(뒷면 카드의 비공개 처리 포함), 세워 둔 병력(12개 불변식), 방문 아이콘, 즉시 배치 카운터, 계약 위 보상의 세 완료 경로, Conflict 보상 Spy 경로 정리, Maker Hooks 토큰, 지배 마커, Immortality 임무 4종.
+6. **임무.** **6a 완료(2026-09-28)**: 참여, 물품·뒷면 카드, 세워 둔 병력, 방문 수령(9종), Prison Planet의 세 번째 지배, 비공개 처리, 관측 v23, codec v116. **6b**: Desert Riding, Valued Informants, CHOAM Escort 완료 보상, Sponsored Research, Back Room Deal, Tleilaxu Offering. 계획: 공개 때 좌석별 참여 결정, 칸·관측소 물품(뒷면 카드의 비공개 처리 포함), 세워 둔 병력(12개 불변식), 방문 아이콘, 즉시 배치 카운터, 계약 위 보상의 세 완료 경로, Conflict 보상 Spy 경로 정리, Maker Hooks 토큰, 지배 마커, Immortality 임무 4종.
 7. **비밀 선택.** Covert Operation 두 판과 Offworld Operation, 기한 라운드의 공개와 좌석별 해결(묶음은 차례 순서), 종료 후 공개. 첫 숨긴 값이 여기서 생기므로 **봉인 장치 전부**를 이 슬라이스에서 만든다: 숨긴 값 등록부, 로그의 봉인 표시와 가림, 이벤트 가시성 검사, 되돌리기 경계, 미리보기 억제, `determinize`와 scramble.
 8. **경매.** 봉인 입찰(확정·공개·순위·지불, 7의 봉인 장치를 입찰로 넓힌다), Mercenaries와 Shadow Warfare의 라운드 시작 분쟁 투입, 공개 경매(Critical Moment의 매물 공개와 시계 방향 입찰).
 9. **서버·UI.** 패널·보드 물품·스테퍼·비밀 선택 패널·복기·도움말과 `scripts/e2e/scouts.py`. 옵션을 UI에 드러낸다(기본 꺼짐). 행동·이벤트 라벨과 한국어 prompt는 여기서 몰아 넣지 않는다: `test_action_labels.py`·`test_i18n.py`가 전체 pytest를 막으므로 3~8의 각 `Play` 슬라이스가 자기 id·event·prompt의 `labels.js`·`labels_en.js`·`prompts_ko.js` 항목을 함께 낸다(CLAUDE.md의 낮은 위험 UI 문구).
@@ -426,7 +426,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 | D5 | 사람 좌석의 턴 종료 | 수락·패스·입찰 확정을 명시적 종료 행동으로(되돌리기 불가) | **턴 종료를 따로.** 다음 좌석이 행동하기 전까지 자기 결정을 되돌릴 수 있다. 봉인 입찰은 선택과 확정을 나누고 확정이 곧 턴 종료다(4.8절) |
 | D6 | 버전·학습 | codec은 v112부터, 관측은 v22부터 슬라이스마다 올린다. mlp_slots 행 이관. Scouts 게임의 체크포인트·탐색 좌석은 거절. Scouts는 M10 학습 설정에 넣지 않음 | 제안대로. 학습에는 언젠가 넣을 예정이다(그때 따로 정한다) |
 | D7 | 공개 저장소의 서술 범위 | 이름·수치·의역·절차와 추출 도구만 공개 저장소에 | 제안대로 |
-| D8 | 9절 OQ의 판정 | 제안 convention으로 등록하고, 각 슬라이스 시작 전에 확인 | **제안대로 구현하고 끝에 한꺼번에 검토.** OQ-071~OQ-089를 `DECIDED`(잠정)로 등록했다 |
+| D8 | 9절 OQ의 판정 | 제안 convention으로 등록하고, 각 슬라이스 시작 전에 확인 | **제안대로 구현하고 끝에 한꺼번에 검토.** OQ-071~OQ-089를 `DECIDED`(잠정)로 등록했다(6a에서 OQ-090 추가) |
 | D9 | 슬라이스 순서와 착수 시점 | 10절 순서. 착수는 사용자 지시 뒤 | 제안대로. 커밋은 슬라이스마다, **푸시는 사용자가 말할 때만** |
 
 ## 13. 기각한 대안
