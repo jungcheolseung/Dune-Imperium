@@ -1360,7 +1360,11 @@ def acquirable_reserve_card_ids(
     state: GameState,
     max_cost: int,
 ) -> tuple[str, ...]:
-    """Return non-empty Reserve stacks whose printed cost is within the cap."""
+    """Return non-empty Reserve stacks whose current cost is within the cap.
+
+    The cost is ``reserve_cost``'s, so a discount in force (Arrakeen Scouts'
+    Market Opening) counts toward the cap.
+    """
 
     return tuple(
         card_id

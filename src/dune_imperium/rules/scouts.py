@@ -56,23 +56,28 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
 from dune_imperium.rules.scouts_auctions import (
+    apply_top_up,
     auction_tasks,
     clear_market,
     close_bids,
     close_market,
+    deploy_mercenaries,
     offer_bid,
     offer_call,
     offer_retreat,
     offer_take,
+    offer_top_up,
     reveal_market,
     run_auction_reward,
 )
 from dune_imperium.rules.scouts_effects import (
+    apply_scouts_effect_action,
     highest_factions,
     offer_scouts_choice,
     push_scouts_effect,
 )
 from dune_imperium.rules.scouts_missions import (
+    apply_mission_join,
     mission_tasks,
     offer_mission_join,
     place_mission_goods,
@@ -531,6 +536,10 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         return close_bids(state, item, turn_order(state))
     if task.startswith("auction_reward:"):
         return run_auction_reward(state, task)
+    if task.startswith("top_up:"):
+        return offer_top_up(state, task)
+    if task.startswith("mercenaries:"):
+        return deploy_mercenaries(state, task)
     if task.startswith("retreat:"):
         return offer_retreat(state, task)
     if task == "market":
@@ -750,3 +759,20 @@ def apply_four_bonus_choice(state: GameState, action: DomainAction) -> RuleResul
     return grant_chosen_four_bonus(
         state.pop_decision(), action.actor, reached, chosen, source=source
     )
+
+
+# --- Specimen top-ups ------------------------------------------------------------
+
+
+def apply_scouts_return_specimens(state: GameState, action: DomainAction) -> RuleResult:
+    """Return specimens before a Scouts recruit, mission or Mercenaries
+    deployment: each frame that offers it resolves it."""
+
+    kind = state.decision_stack[-1].kind if state.decision_stack else None
+    if kind == FrameKind.SCOUTS_EFFECT:
+        return apply_scouts_effect_action(state, action)
+    if kind == FrameKind.SCOUTS_MISSION:
+        return apply_mission_join(state, action)
+    if kind == FrameKind.SCOUTS_TOP_UP:
+        return apply_top_up(state, action)
+    raise ValueError("no Scouts frame offers a specimen return")

@@ -291,6 +291,7 @@ from dune_imperium.rules.scouts import (
     advance_scouts_step,
     apply_four_bonus_choice,
     apply_scouts_draw,
+    apply_scouts_return_specimens,
     begin_four_bonus_choice,
     four_bonus_choice_is_queued,
     legal_four_bonus_actions,
@@ -306,6 +307,7 @@ from dune_imperium.rules.scouts_auctions import (
     legal_call_actions,
     legal_retreat_actions,
     legal_take_actions,
+    legal_top_up_actions,
 )
 from dune_imperium.rules.scouts_effects import (
     advance_scouts_effect,
@@ -540,6 +542,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.SCOUTS_RETREAT: (legal_retreat_actions,),
     FrameKind.SCOUTS_CALL: (legal_call_actions,),
     FrameKind.SCOUTS_MARKET: (legal_take_actions,),
+    FrameKind.SCOUTS_TOP_UP: (legal_top_up_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -569,6 +572,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_call": apply_call,
     "scouts_take_card": apply_take,
     "scouts_decline_card": apply_take,
+    "scouts_return_specimens": apply_scouts_return_specimens,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,

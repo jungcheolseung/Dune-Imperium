@@ -36,6 +36,10 @@ from dune_imperium.content.uprising.effect_dsl import (
 MAX_AUCTION_BID: Final = 99
 # Mercenaries' own cap: 0-3 spice, one troop each.
 MAX_MERCENARIES_BID: Final = 3
+# The most specimens one Immortality top-up returns before a Scouts recruit,
+# a Mercenaries deployment or a mission's parking: the most troops any of
+# them takes at once (a test checks each).
+MAX_SPECIMEN_TOP_UP: Final = 3
 
 _MID: Final = (5, 6)
 _LATE: Final = (8, 9)

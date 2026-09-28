@@ -30,7 +30,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.scouts_auctions import rank_bids
+from dune_imperium.rules.scouts_auctions import close_bids, rank_bids
 from dune_imperium.server.session_log import log_step, reveals_hidden_information
 from dune_imperium.server.sessions import _log_entry_json
 from dune_imperium.simulation.invariants import check_observation_privacy
@@ -39,10 +39,12 @@ ENGINE = UprisingRulesEngine()
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
 
 
-def _base(round_number: int = 5, **seat_fields: Any) -> GameState:
+def _base(
+    round_number: int = 5, config: RulesetConfig = SCOUTS, **seat_fields: Any
+) -> GameState:
     """A round-5 Scouts step about to draw its mid auction; seat 0 first."""
 
-    state = ENGINE.reset(SCOUTS, 17)
+    state = ENGINE.reset(config, 17)
     resolver = ChanceResolver(seed=17)
     while isinstance(ENGINE.current_decision(state), ChanceDecision):
         decision = ENGINE.current_decision(state)
@@ -340,3 +342,132 @@ def test_the_heuristic_calls_a_small_open_amount() -> None:
         )
 
     assert call(3) > call(2) > call(1) > call(0) > call(4)
+
+
+def test_auction_rewards_resolve_by_place_then_turn_order() -> None:
+    """OQ-073, user ruling 2026-09-29: winners' rewards resolve first place
+    first, and seats sharing a place from the First Player on. Seat 3 (idx 3)
+    wins first place though it sits after the tied 2nd-place seats 0 and 1
+    (idx 0, 1) in turn order."""
+
+    state = replace(
+        _base(),
+        scouts_item="highest_bidder_late",
+        scouts_bids=((0, 3, True), (1, 3, True), (2, 0, True), (3, 5, True)),
+    )
+    result = close_bids(state, "highest_bidder_late", (0, 1, 2, 3))
+    assert result.state.scouts_tasks == (
+        "auction_reward:3:0",
+        "auction_reward:0:1",
+        "auction_reward:1:1",
+    )
+
+
+def test_close_bids_only_takes_spice_and_queues_mercenaries_tasks() -> None:
+    """OQ-074: Mercenaries deploys later (``deploy_mercenaries``);
+    ``close_bids`` itself only pays each seat's bid and queues its tasks.
+    Without Immortality no ``top_up`` task is queued."""
+
+    state = replace(
+        _base(),
+        scouts_item="mercenaries",
+        scouts_bids=((0, 3, True), (1, 0, True), (2, 0, True), (3, 0, True)),
+    )
+    spice = state.players[0].resources.spice
+    result = close_bids(state, "mercenaries", (0, 1, 2, 3))
+    assert result.state.players[0].resources.spice == spice - 3
+    assert result.state.players[0].troops_conflict == 0
+    assert result.state.scouts_tasks == ("mercenaries:0=3,1=0,2=0,3=0",)
+    assert not any(task.startswith("top_up:") for task in result.state.scouts_tasks)
+
+
+def test_top_up_offers_the_specimen_shortfall_before_deploying() -> None:
+    """Immortality p. 8, user ruling 2026-09-29 (OQ-074 (c)): a seat short of
+    supply troops for its Mercenaries bid may return specimens first, up to
+    the shortfall; after returning them all, Mercenaries deploys the bid in
+    full."""
+
+    config = RulesetConfig(arrakeen_scouts=True, immortality=True)
+    base = _base(config=config)
+    seat = replace(base.players[0], troops_supply=1, troops_garrison=9, specimens=2)
+    state = _draw(replace(base, players=(seat, *base.players[1:])), "mercenaries")
+    state = _bid_all(state, {0: 3, 1: 0, 2: 0, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_TOP_UP
+    assert _owner(state) == 0
+    counts = sorted(
+        dict(a.arguments)["count"]
+        for a in ENGINE.legal_actions(state, 0)
+        if a.action_id == "scouts_return_specimens"
+    )
+    assert counts == [0, 1, 2]
+    state = _act(state, "scouts_return_specimens", count=2)
+    assert state.players[0].troops_conflict == 3
+    assert state.players[0].troops_supply == 0
+    assert state.players[0].specimens == 0
+
+
+def test_mercenaries_retreat_advances_chanis_tactics_token() -> None:
+    """OQ-074 (c): the Mercenaries retreat is the game's own retreat
+    (``retreat_units``); Chani's Tactics token counts it like any other
+    retreat, and retreating 0 troops changes nothing and does not raise."""
+
+    base = _base()
+    seat = replace(base.players[0], leader_id="chani")
+    state = _draw(replace(base, players=(seat, *base.players[1:])), "mercenaries")
+    space = state.players[0].tactics_track_space
+    state = _bid_all(state, {0: 1, 1: 3, 2: 1, 3: 2})
+    assert _owner(state) == 0
+    state = _act(state, "scouts_retreat", count=1)
+    assert state.players[0].tactics_track_space == space + 1
+    assert _owner(state) == 2
+    before = state.players[2].troops_conflict
+    state = _act(state, "scouts_retreat", count=0)
+    assert state.players[2].troops_conflict == before
+
+
+def test_specimen_top_up_covers_every_scouts_recruit_and_parking_count() -> None:
+    """MAX_SPECIMEN_TOP_UP bounds every specimen top-up the rules offer:
+    Mercenaries' own cap, every RecruitTroops/RecruitToConflict reward in the
+    Scouts content, and every mission's parked troop count (user ruling
+    2026-09-29)."""
+
+    from dune_imperium.content.arrakeen_scouts import (
+        AUCTIONS,
+        EVENTS,
+        MAX_MERCENARIES_BID,
+        MAX_SPECIMEN_TOP_UP,
+        SALES,
+        SUBCOMMITTEES,
+    )
+    from dune_imperium.content.arrakeen_scouts.types import RecruitToConflict
+    from dune_imperium.content.uprising.effect_dsl import RecruitTroops
+    from dune_imperium.rules.scouts_missions import _PARKING
+
+    assert MAX_SPECIMEN_TOP_UP >= MAX_MERCENARIES_BID
+
+    options = [
+        option
+        for event in EVENTS
+        for option in (
+            *event.options,
+            *(choice.option for choice in event.secret_choices),
+        )
+    ]
+    options += [option for sale in SALES for option in sale.options]
+    options += [subcommittee.option for subcommittee in SUBCOMMITTEES]
+    recruit_counts = [
+        reward.count
+        for option in options
+        for reward in option.rewards
+        if isinstance(reward, (RecruitTroops, RecruitToConflict))
+    ]
+    recruit_counts += [
+        reward.count
+        for auction in AUCTIONS
+        for rewards in auction.rank_rewards
+        for reward in rewards
+        if isinstance(reward, (RecruitTroops, RecruitToConflict))
+    ]
+    assert recruit_counts  # the content actually recruits somewhere
+    assert MAX_SPECIMEN_TOP_UP >= max(recruit_counts)
+    assert MAX_SPECIMEN_TOP_UP >= max(count for _, count in _PARKING.values())

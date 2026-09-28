@@ -81,7 +81,9 @@ from dune_imperium.rules.frames import FrameKind
 # v25 (2026-09-28): Arrakeen Scouts auctions, appended after v24's: who has
 # confirmed a sealed bid and the observer's own bid, Critical Moment's
 # revealed cards and each seat's open call.
-OBSERVATION_VERSION: Final = 25
+# v26 (2026-09-29): the Arrakeen Scouts specimen top-up frame kind
+# (``scouts_top_up``), appended to the frame kinds.
+OBSERVATION_VERSION: Final = 26
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (

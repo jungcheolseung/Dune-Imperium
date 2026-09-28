@@ -30,7 +30,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 120
+    assert ACTION_CODEC_VERSION == 121
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -94,6 +94,31 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
     assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4425 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
+
+
+def test_scouts_specimen_return_needs_immortality_recall_conflict_always_in() -> None:
+    """OQ-074, OQ-075 (D), user ruling 2026-09-29: the specimen top-up
+    template range (0..MAX_SPECIMEN_TOP_UP) needs Immortality on; a
+    ``scouts_recall_agent`` with ``space_id="conflict"`` (Into the Fray) is
+    in every Scouts catalog, with or without Immortality."""
+
+    from dune_imperium.content.arrakeen_scouts import MAX_SPECIMEN_TOP_UP
+
+    plain = ActionCodec(RulesetConfig(arrakeen_scouts=True))
+    immortal = ActionCodec(RulesetConfig(arrakeen_scouts=True, immortality=True))
+    assert not any(t.action_id == "scouts_return_specimens" for t in plain.catalog)
+    counts = sorted(
+        dict(t.arguments)["count"]
+        for t in immortal.catalog
+        if t.action_id == "scouts_return_specimens"
+    )
+    assert counts == list(range(MAX_SPECIMEN_TOP_UP + 1))
+    for codec in (plain, immortal):
+        assert any(
+            t.action_id == "scouts_recall_agent"
+            and dict(t.arguments)["space_id"] == "conflict"
+            for t in codec.catalog
+        )
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:

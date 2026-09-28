@@ -689,3 +689,141 @@ def test_tleilaxu_offering_skips_a_seat_already_past_the_third_space() -> None:
     seat = replace(state.players[0], tleilaxu_space=3)
     state = replace(state, players=(seat, *state.players[1:]))
     assert offer_mission_join(state, 0, "tleilaxu_offering", source="t").state == state
+
+
+def test_a_parking_mission_needs_its_whole_troop_count() -> None:
+    """OQ-088, the missions' English: Weirding Warfare parks 2 supply troops,
+    so a seat with only 1 (and no Immortality) is not asked at all."""
+    from dune_imperium.rules.scouts_missions import offer_mission_join
+
+    base = _base()
+    short = replace(
+        base.players[0],
+        troops_supply=1,
+        troops_garrison=(
+            base.players[0].troops_garrison + base.players[0].troops_supply - 1
+        ),
+    )
+    state = replace(base, players=(short, *base.players[1:]))
+    result = offer_mission_join(state, 0, "weirding_warfare", source="t")
+    assert result.state == state
+    assert result.events == ()
+
+
+def test_immortality_offers_the_specimen_shortfall_before_joining_a_mission() -> None:
+    """Immortality p. 8, user ruling 2026-09-29 (OQ-074, OQ-088): a seat whose
+    supply is short but covered by specimens is offered to return them before
+    parking the mission's whole troop count; the join frame stays open after
+    a return."""
+    from dune_imperium.rules.scouts_missions import offer_mission_join
+
+    base = _immortality_state()
+    seat = replace(
+        base.players[0],
+        troops_supply=0,
+        specimens=2,
+        troops_garrison=(
+            base.players[0].troops_garrison + base.players[0].troops_supply - 2
+        ),
+    )
+    state = replace(base, players=(seat, *base.players[1:]), decision_stack=())
+    state = offer_mission_join(state, 0, "weirding_warfare", source="test").state
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
+    actions = ENGINE.legal_actions(state, 0)
+    assert {a.action_id for a in actions} == {
+        "scouts_decline_mission",
+        "scouts_return_specimens",
+    }
+    counts = sorted(
+        dict(a.arguments)["count"]
+        for a in actions
+        if a.action_id == "scouts_return_specimens"
+    )
+    assert counts == [1, 2]
+    state = _act(state, "scouts_return_specimens", count=2)
+    # The join frame stays open after a return: nothing pops it.
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
+    assert {a.action_id for a in ENGINE.legal_actions(state, 0)} == {
+        "scouts_decline_mission",
+        "scouts_join_mission",
+    }
+    state = _act(state, "scouts_join_mission", target="")
+    assert state.players[0].troops_parked == 2
+    assert state.players[0].troops_supply == 0
+    assert state.players[0].specimens == 0
+
+
+def test_immortality_offers_the_specimen_shortfall_before_choam_escort() -> None:
+    """Immortality p. 8, user ruling 2026-09-29 (OQ-074, OQ-088): the same
+    top-up applies to CHOAM Escort's one recruited troop; after it, the
+    "recruit" target appears."""
+    from dune_imperium.rules.scouts_missions import offer_mission_join
+
+    config = RulesetConfig(arrakeen_scouts=True, immortality=True, choam_module=True)
+    base = _base(config, round_number=2)
+    seat = replace(
+        base.players[0],
+        troops_supply=0,
+        specimens=1,
+        troops_garrison=(
+            base.players[0].troops_garrison + base.players[0].troops_supply - 1
+        ),
+    )
+    state = replace(base, players=(seat, *base.players[1:]), decision_stack=())
+    state = offer_mission_join(state, 0, "choam_escort", source="test").state
+    actions = ENGINE.legal_actions(state, 0)
+    assert {a.action_id for a in actions} == {
+        "scouts_decline_mission",
+        "scouts_return_specimens",
+    }
+    assert [
+        dict(a.arguments)["count"]
+        for a in actions
+        if a.action_id == "scouts_return_specimens"
+    ] == [1]
+    state = _act(state, "scouts_return_specimens", count=1)
+    targets = {
+        dict(a.arguments).get("target")
+        for a in ENGINE.legal_actions(state, 0)
+        if a.action_id == "scouts_join_mission"
+    }
+    assert targets == {"recruit"}
+
+
+def test_coordinate_with_the_emperor_counts_its_troop_as_recruited() -> None:
+    """OQ-077, OQ-089 (c), user ruling 2026-09-29: Coordinate With The
+    Emperor's garrison-bound specimen troop counts toward the visit's
+    ``troops_recruited``, like Fedaykin Assistance's already did."""
+    base = _base(IMMORTALITY)
+    seat = replace(
+        base.players[0], specimens=1, troops_supply=base.players[0].troops_supply - 1
+    )
+    state = _reveal(
+        replace(base, players=(seat, *base.players[1:])),
+        "coordinate_with_the_emperor",
+    )
+    state = _answer(state, {0: ""})
+    state = _visit(_turn_for(state), "sardaukar")
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    recruited = dict(frame.context)["troops_recruited"]
+    # Only the mission's troop so far: the space's own icons are unresolved.
+    assert recruited == 1
+
+
+def test_specimen_returns_split_over_two_actions_keep_distinct_event_ids() -> None:
+    """Review 2026-09-29: a seat may return a mission's shortfall one
+    specimen at a time; each ``specimen_returned`` id carries the tank count,
+    so the second return does not repeat the first one's id."""
+    from dune_imperium.rules.specimens import return_specimens
+
+    base = _base(IMMORTALITY)
+    seat = replace(
+        base.players[0], specimens=2, troops_supply=base.players[0].troops_supply - 2
+    )
+    state = replace(base, players=(seat, *base.players[1:]))
+    first = return_specimens(state, 0, 1, source="t")
+    second = return_specimens(first.state, 0, 1, source="t")
+    ids = [e.event_id for e in (*first.events, *second.events)]
+    assert len(ids) == len(set(ids)) == 2
+    assert second.state.players[0].specimens == 0

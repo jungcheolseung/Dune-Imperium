@@ -12,6 +12,7 @@ from dune_imperium.content.arrakeen_scouts.auctions import (
     AUCTIONS_BY_ID,
     MAX_AUCTION_BID,
     MAX_MERCENARIES_BID,
+    MAX_SPECIMEN_TOP_UP,
     SALES,
     SALES_BY_ID,
 )
@@ -102,6 +103,7 @@ __all__ = [
     "EVENTS_BY_ID",
     "MAX_AUCTION_BID",
     "MAX_MERCENARIES_BID",
+    "MAX_SPECIMEN_TOP_UP",
     "MISSIONS",
     "MISSIONS_BY_ID",
     "SALES",

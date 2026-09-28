@@ -32,6 +32,7 @@ from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind, turn_owner_of
 from dune_imperium.rules.phases import apply_control_defense_action, begin_round
 from dune_imperium.rules.scouts import _next_draw, item_kind
+from dune_imperium.rules.setup import maker_bonus_spice_for
 from dune_imperium.simulation import run_random_game
 
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
@@ -408,6 +409,25 @@ def test_mating_season_adds_one_spice_to_each_maker_space() -> None:
     }
     assert state.decision_stack[-1].kind == FrameKind.TURN
     assert any(e.kind == "scouts_maker_spice_added" for e in state.event_log)
+
+
+def test_mating_season_includes_tueks_sietch_with_bloodlines() -> None:
+    # OQ-082: "Maker 아이콘이 있는 모든 칸(Bloodlines의 Tuek's Sietch 포함)에
+    # spice 1을 더한다."
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(arrakeen_scouts=True, bloodlines=True)
+    # Esmar Tuek at the table brings Tuek's Sietch [Bloodlines p. 12].
+    start = replace(
+        engine.reset(config, 2),
+        maker_bonus_spice=maker_bonus_spice_for(("esmar_tuek",)),
+    )
+    state = _reveal(start, engine, "mating_season")
+    assert dict(state.maker_bonus_spice) == {
+        "deep_desert": 1,
+        "hagga_basin": 1,
+        "imperial_basin": 1,
+        "tuek_sietch": 1,
+    }
 
 
 def test_clear_the_market_replaces_the_row_and_removes_the_old_one() -> None:

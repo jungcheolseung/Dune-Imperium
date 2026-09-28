@@ -10,6 +10,7 @@ from dune_imperium.content.arrakeen_scouts import (
     EVENTS,
     MAX_AUCTION_BID,
     MAX_MERCENARIES_BID,
+    MAX_SPECIMEN_TOP_UP,
     SALES,
     scouts_pool,
     subcommittees_for,
@@ -99,7 +100,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v120: the ``go_to_11`` option joined ``RulesetConfig``, so every state
 # hash changes and old saves need the clean version error -- no template
 # changes.
-ACTION_CODEC_VERSION = 120
+# v121: Immortality specimen top-ups before a Scouts recruit, mission or
+# Mercenaries deployment, and an Agent recalled from the Conflict.
+ACTION_CODEC_VERSION = 121
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1001,9 +1004,19 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         *(
             ActionTemplate(
                 action_id="scouts_recall_agent",
-                arguments=(("space_id", space.space_id),),
+                arguments=(("space_id", space_id),),
             )
-            for space in catalog_spaces(config)
+            for space_id in (
+                *(space.space_id for space in catalog_spaces(config)),
+                "conflict",  # an Into the Fray Agent (OQ-075 (D))
+            )
+        ),
+        # Immortality: specimens returned to the supply first (0 = none).
+        *(
+            ActionTemplate(
+                action_id="scouts_return_specimens", arguments=(("count", n),)
+            )
+            for n in range(MAX_SPECIMEN_TOP_UP + 1 if config.immortality else 0)
         ),
         # Influence losses (Crackdown and the like, Political Equilibrium),
         # with the Alliance recipient when several opponents tie.

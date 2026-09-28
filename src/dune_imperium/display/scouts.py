@@ -153,7 +153,7 @@ def _step_text(step: object, *, cost: bool) -> str:
         case GainLowestInfluence():
             return "+1 Influence with your lowest Faction"
         case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix):
-            return f"Gain {spice} spice ({helix} past the Helix)"
+            return f"Gain {spice} spice ({helix} once you reach the Helix)"
         case TrashPersonalCard() if cost:
             return reward_text(step)
     return cost_text(step) if cost else reward_text(step)  # type: ignore[arg-type]
@@ -243,10 +243,11 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "Reclaimed Forces 위 {solari:2}. 다음에 획득하는 좌석이 가진다.",
     ),
     "prison_planet": (
-        "Each may lose a garrison troop to put a Control marker and 2 spice on "
-        "Sardaukar, taken back by a visit.",
-        "각자 주둔지 {troop:1}을 잃고 Sardaukar에 {control} 마커와 {spice:2}를 "
-        "둘 수 있다. 방문하면 되찾는다.",
+        "Each may lose a garrison troop to put a Control marker on Sardaukar "
+        "with 2 spice from the bank; their visit takes the marker back and "
+        "gains the spice.",
+        "각자 주둔지 {troop:1}을 잃고 Sardaukar에 {control} 마커를 둘 수 있다. "
+        "은행의 {spice:2}를 그 위에 둔다. 방문하면 마커를 되찾고 spice를 얻는다.",
     ),
     "emperors_schemes": (
         "2 face-down Intrigue cards at Sardaukar, one per visit.",
@@ -265,16 +266,19 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "다음 방문 때 {conflict}으로 간다.",
     ),
     "send_for_aid": (
-        "Each may move a garrison troop and 1 water to Gather Support; the next "
-        "visit sends the troop into the Conflict and takes the water.",
-        "각자 주둔지 {troop:1}과 {water:1}을 Gather Support로 옮길 수 있다. "
-        "다음 방문 때 병력은 {conflict}으로, 물은 방문자에게.",
+        "Each may move a garrison troop to Gather Support, with 1 water from "
+        "the bank under it; their next visit sends the troop into the Conflict "
+        "and gains the water.",
+        "각자 주둔지 {troop:1}을 Gather Support로 옮길 수 있다. 은행의 {water:1}을 "
+        "그 밑에 둔다. 다음 방문 때 병력은 {conflict}으로 가고 물은 그 좌석이 "
+        "얻는다.",
     ),
     "coordinate_with_the_emperor": (
-        "Each may move a specimen and 2 Solari to Sardaukar; the first visit "
-        "takes both, the specimen as a garrison troop.",
-        "각자 {specimen:1}과 {solari:2}를 Sardaukar로 옮길 수 있다. 처음 방문 "
-        "때 둘 다 받고, 표본은 주둔지 병력이 된다.",
+        "Each may move a specimen to Sardaukar, with 2 Solari from the bank "
+        "under it; their first visit gains both, the specimen recruited as a "
+        "garrison troop.",
+        "각자 {specimen:1}을 Sardaukar로 옮길 수 있다. 은행의 {solari:2}를 그 "
+        "밑에 둔다. 처음 방문 때 둘 다 얻고, 표본은 주둔지로 소집된다.",
     ),
     "tleilaxu_offering": (
         "Each may put 2 supply troops on the Tleilaxu track's third space; "
@@ -436,6 +440,8 @@ def scouts_action_text(
                     f"{contract_ko}에 {{solari:1}}와 {{spice:1}} 올려 두기",
                 )
             return None
+        case "scouts_recall_agent" if arguments.get("space_id") == "conflict":
+            return "Recall the Agent in the Conflict", "{conflict}의 {agent} 소환"
         case "scouts_collect_mission":
             choice = arguments.get("choice")
             if choice == "solari":

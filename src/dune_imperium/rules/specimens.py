@@ -80,3 +80,34 @@ def spend_specimens(owner: PlayerState, count: int) -> PlayerState:
         specimens=owner.specimens - count,
         troops_supply=owner.troops_supply + count,
     )
+
+
+def return_specimens(
+    state: GameState,
+    player: int,
+    count: int,
+    *,
+    source: str,
+) -> RuleResult:
+    """Return ``count`` specimens to the supply by the seat's own choice.
+
+    "You may return any of your specimens to your supply at any time"
+    [Immortality p. 8]; one ``specimen_returned`` event per specimen, the
+    same event a single ``return_specimen`` action records. Each id carries
+    the tank count before that specimen left, so a seat returning some now
+    and more later under the same ``source`` keeps its ids distinct.
+    """
+
+    owner = state.players[player]
+    next_owner = spend_specimens(owner, count)
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, next_owner)),
+        events=tuple(
+            GameEvent(
+                event_id=f"{source}:specimen_return:{owner.specimens - returned}",
+                kind="specimen_returned",
+                payload=(("player", player),),
+            )
+            for returned in range(count)
+        ),
+    )

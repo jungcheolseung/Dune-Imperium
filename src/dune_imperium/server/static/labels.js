@@ -276,6 +276,7 @@ const ACTION_LABELS = {
   scouts_bid: "입찰액 고르기",
   confirm_scouts_bid: "입찰 확정",
   scouts_retreat: "용병 후퇴",
+  scouts_return_specimens: "{specimen}을 {supply}로 되돌리기",
   scouts_call: "호가",
   scouts_take_card: "카드 사기",
   scouts_decline_card: "사지 않기",

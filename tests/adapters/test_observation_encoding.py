@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 25
+    assert OBSERVATION_VERSION == 26
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -298,6 +298,11 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # Re-pinned for observation v25 (the auction segments appended after v24's):
 # the five old games' first 4,575 columns reproduced the v24 digests exactly
 # and every new column was 0; "scouts" moved as auctions began (slice 8).
+# Re-pinned for observation v26 (the ``scouts_top_up`` frame kind, appended
+# to the frame kinds): the five old games reproduced their digests exactly;
+# "scouts" moved with the 2026-09-29 rulings, which change what its game
+# offers (it reveals Weirding Warfare, Moment of Revelation and a late
+# auction).
 _GOLDEN_DIGESTS = {
     "base": ("ed8d94673888aa6b5912dfe42ab0a7f008e4730b267ea67ad46b7b1d00f443f0", 2572),
     "choam": ("e7d47837d88ea30610e5a8a20fe0a81ec9699298ac5240428c1a53cb762463c6", 2972),
@@ -311,8 +316,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("9c5c2002d961fe0062a868753bb96fedcbeae15c05af31fec1f25f278a8bb7d6", 2476),
     "scouts": (
-        "3f989c0edcf601767a6888601f1193d41cb082ccb16903b569c21cdb63888faf",
-        2960,
+        "c93f53fef53b52ac401e97316881b42c9ad86f6dfe7bc4b896cc804483452d78",
+        2912,
     ),
 }
 _GOLDEN_CONFIGS = {

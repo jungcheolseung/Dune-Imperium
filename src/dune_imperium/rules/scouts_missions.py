@@ -46,6 +46,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
+from dune_imperium.rules.specimens import return_specimens
 
 BOARD_ICON_SCOUTS: Final = "scouts_mission"
 _JOIN_FRAME: Final = "Mission participation frame"
@@ -212,11 +213,33 @@ def _markers_out(state: GameState, player: int) -> int:
     )
 
 
-def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, ...]:
-    """The ways ``player`` can take part now ("" = the one plain way)."""
+def _parking_open(state: GameState, player: int, mission: Mission) -> bool:
+    """Whether a parking mission is open to the seat but for its troops."""
 
     owner = state.players[player]
+    if (
+        mission.kind is MissionKind.TLEILAXU_OFFERING
+        and owner.tleilaxu_space >= TLEILAXU_OFFERING_TRACK_SPACE
+    ):
+        # A token already on or past the third space never advances to it
+        # again, so its troops could never become specimens (OQ-089 (a)).
+        return False
     resources = owner.resources
+    return all(
+        getattr(cost, "spice", 0) <= resources.spice
+        and getattr(cost, "solari", 0) <= resources.solari
+        for cost in mission.participation_cost
+    )
+
+
+def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, ...]:
+    """The ways ``player`` can take part now ("" = the one plain way).
+
+    A parking mission moves its whole printed number of troops, so a seat
+    with fewer cannot take part (OQ-088, the missions' English).
+    """
+
+    owner = state.players[player]
     kind = mission.kind
     if kind is MissionKind.CHOAM_ESCORT:
         return (
@@ -226,25 +249,43 @@ def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, 
     if kind is MissionKind.PRISON_PLANET:
         free_marker = len(owner.control_space_ids) + _markers_out(state, player) < 3
         return ("",) if owner.troops_garrison and free_marker else ()
-    if (
-        kind is MissionKind.TLEILAXU_OFFERING
-        and owner.tleilaxu_space >= TLEILAXU_OFFERING_TRACK_SPACE
-    ):
-        # A token already on or past the third space never advances to it
-        # again, so its troops could never become specimens (OQ-089 (a)).
+    if not _parking_open(state, player, mission):
         return ()
-    source, _ = _PARKING[kind]
+    source, count = _PARKING[kind]
     available = {
         "supply": owner.troops_supply,
         "garrison": owner.troops_garrison,
         "specimens": owner.specimens,
     }[source]
-    for cost in mission.participation_cost:
-        if getattr(cost, "spice", 0) > resources.spice or (
-            getattr(cost, "solari", 0) > resources.solari
-        ):
-            return ()
-    return ("",) if available else ()
+    return ("",) if available >= count else ()
+
+
+def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
+    """How many specimens the seat may return so it can take part (0: none).
+
+    "You may return any of your specimens to your supply at any time"
+    [Immortality p. 8]; a seat short of the supply troops a mission takes
+    may do so first (user ruling 2026-09-29, OQ-074, OQ-088).
+    """
+
+    if not state.config.immortality:
+        return 0
+    owner = state.players[player]
+    kind = mission.kind
+    if kind is MissionKind.CHOAM_ESCORT:
+        needed = 1  # the troop it recruits
+    elif (
+        kind in _PARKING
+        and _PARKING[kind][0] == "supply"
+        and _parking_open(state, player, mission)
+    ):
+        needed = _PARKING[kind][1]
+    else:
+        return 0
+    short = needed - owner.troops_supply
+    if short < 1 or owner.specimens < short:
+        return 0
+    return short
 
 
 def offer_mission_join(
@@ -253,7 +294,9 @@ def offer_mission_join(
     """Ask one seat whether it takes part (OQ-088: skipped when it cannot)."""
 
     mission = MISSIONS_BY_ID[mission_id]
-    if not join_targets(state, player, mission):
+    if not join_targets(state, player, mission) and not mission_top_up(
+        state, player, mission
+    ):
         return RuleResult(state=state)
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_MISSION,
@@ -285,6 +328,14 @@ def legal_mission_join_actions(
             )
             for target in join_targets(state, player, mission)
         ),
+        *(
+            DomainAction(
+                action_id="scouts_return_specimens",
+                actor=player,
+                arguments=(("count", count),),
+            )
+            for count in range(1, mission_top_up(state, player, mission) + 1)
+        ),
     )
 
 
@@ -294,8 +345,13 @@ def apply_mission_join(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(state.decision_stack[-1].context)
     mission = MISSIONS_BY_ID[context_str(context, "mission_id", owner=_JOIN_FRAME)]
     source = context_str(context, "source", owner=_JOIN_FRAME)
-    popped = state.pop_decision()
     player = action.actor
+    if action.action_id == "scouts_return_specimens":
+        # The seat is still asked; the returned troops are now its supply.
+        count = dict(action.arguments)["count"]
+        assert isinstance(count, int)
+        return return_specimens(state, player, count, source=f"{source}:top_up")
+    popped = state.pop_decision()
     if action.action_id == "scouts_decline_mission":
         return RuleResult(
             state=popped,
@@ -364,14 +420,7 @@ def _join(state: GameState, player: int, mission: Mission, target: str) -> GameS
             spice=resources.spice - getattr(cost, "spice", 0),
             solari=resources.solari - getattr(cost, "solari", 0),
         )
-    moved = min(
-        count,
-        {
-            "supply": owner.troops_supply,
-            "garrison": owner.troops_garrison,
-            "specimens": owner.specimens,
-        }[source],
-    )
+    moved = count  # join_targets only offers a seat that has them all
     owner = replace(
         owner,
         resources=resources,
@@ -532,7 +581,9 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
             troops_conflict=owner.troops_conflict + (troops if to_conflict else 0),
             troops_garrison=owner.troops_garrison + (0 if to_conflict else troops),
         )
-        if kind is MissionKind.FEDAYKIN_ASSISTANCE:
+        if not to_conflict:
+            # Troops gained into the garrison are recruited this turn
+            # (OQ-077, OQ-089 (c), user ruling 2026-09-29).
             recruited += troops
         events.append(
             GameEvent(
@@ -625,7 +676,7 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
             )
     finish_board_icon(context, BOARD_ICON_SCOUTS)
     if recruited:
-        # Fedaykin Assistance recruits them: this turn's recruits (OQ-077).
+        # Garrison-bound mission troops are this turn's recruits (OQ-077).
         context["troops_recruited"] = (
             context_int(context, "troops_recruited", owner="Agent effect frame")
             + recruited

@@ -181,6 +181,32 @@ def test_political_equilibrium_lowers_the_highest_track_and_asks_on_a_tie() -> N
     assert _on_turn(state)
 
 
+def test_political_equilibrium_transfers_the_alliance_to_the_first_loser() -> None:
+    """FAQ p.1, as implemented by ``rules/influence.py``'s
+    ``lose_faction_influence``: First Player order decides an Alliance's new
+    holder when the holder and another seat tie for the losing seat's
+    highest track (OQ-071, OQ-002)."""
+    state = _base(
+        **{
+            "0": {
+                "influence": Influence(emperor=5),
+                "alliance_faction_ids": ("emperor",),
+            },
+            "1": {"influence": Influence(emperor=5)},
+            "2": {"influence": Influence()},
+            "3": {"influence": Influence()},
+        }
+    )
+    state = _reveal(state, "political_equilibrium")
+    # Seat 0 (First Player) loses first, while seat 1 is still tied at 5:
+    # the Alliance transfers to seat 1, not returned to the bank.
+    assert state.players[0].influence.emperor == 4
+    assert state.players[0].alliance_faction_ids == ()
+    assert state.players[1].influence.emperor == 4
+    assert state.players[1].alliance_faction_ids == ("emperor",)
+    assert _on_turn(state)
+
+
 def test_rebuild_infrastructure_needs_two_seats_to_pay() -> None:
     assert EVENTS_BY_ID["rebuild_infrastructure"].rounds == (7, 7)
     state = replace(_base(), round_number=7, shield_wall_present=False)
@@ -226,6 +252,27 @@ def test_moment_of_revelation_puts_prepare_the_way_in_hand() -> None:
         card.startswith("reserve:prepare_the_way") for card in state.players[0].hand
     )
     assert dict(state.reserve_stacks)["prepare_the_way"] == before - 1
+
+
+def test_moment_of_revelation_is_skipped_with_an_empty_reserve_stack() -> None:
+    """OQ-022's direction, the Moment of Revelation ruling of 2026-09-29: a
+    cost that buys nothing (Prepare the Way exhausted) is not offered
+    [Main p. 20]; every seat is skipped and nobody pays."""
+    base = _base()
+    empty_stack = tuple(
+        (card_id, 0) if card_id == "prepare_the_way" else (card_id, count)
+        for card_id, count in base.reserve_stacks
+    )
+    spice_before = [player.resources.spice for player in base.players]
+    state = _reveal(replace(base, reserve_stacks=empty_stack), "moment_of_revelation")
+    assert _on_turn(state)
+    assert [player.resources.spice for player in state.players] == spice_before
+    skipped = [
+        dict(e.payload)["player"]
+        for e in state.event_log
+        if e.kind == "scouts_choice_skipped"
+    ]
+    assert skipped == [0, 1, 2, 3]
 
 
 def _late(state: GameState) -> GameState:
@@ -296,3 +343,20 @@ def test_betrayal_trades_bene_gesserit_influence_for_the_tleilaxu_track() -> Non
     assert state.players[0].influence.bene_gesserit == 1
     assert state.players[0].tleilaxu_space != start
     assert isinstance(state.players[0], PlayerState)
+
+
+def test_royal_delegation_is_not_offered_at_the_top_of_the_emperor_track() -> None:
+    """The user's arrow-cost ruling of 2026-09-29 (OQ-071, OQ-046): a line
+    whose reward cannot happen is not offered, so a seat already at the top
+    of the Emperor track (the gain would be lost, OQ-060) keeps its Solari."""
+    state = _base(**{"0": {"influence": Influence(emperor=6)}})
+    solari = state.players[0].resources.solari
+    state = _reveal(state, "royal_delegation")
+    assert _owner(state) == 1  # seat 0 was skipped
+    assert state.players[0].resources.solari == solari
+    skipped = [
+        dict(e.payload)["player"]
+        for e in state.event_log
+        if e.kind == "scouts_choice_skipped"
+    ]
+    assert skipped == [0]

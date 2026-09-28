@@ -61,7 +61,7 @@ def _owner(**overrides: Any) -> PlayerState:
     return PlayerState(**values)
 
 
-def _act(state: GameState, action_id: str, **arguments: str) -> GameState:
+def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     top = state.decision_stack[-1].decision
     assert isinstance(top, PlayerDecision)
     action = DomainAction(
@@ -206,6 +206,35 @@ def test_contingencies_recalls_another_agent_not_the_high_council_one() -> None:
     assert state.players[0].agents_available == 1
 
 
+def test_contingencies_can_recall_an_agent_sent_into_the_conflict() -> None:
+    """Into the Fray, OQ-068, OQ-075 (D): ``_recallable_spaces`` also offers
+    the pseudo space "conflict" when the seat has an Agent there, alongside
+    its other board Agents; choosing it calls ``effects.recall_conflict_agent``."""
+    owner = _owner(
+        intrigue_cards=("intrigue:9",),
+        agent_locations=("imperial_basin",),
+        agent_in_conflict=1,
+        agents_available=1,
+        swordmaster_acquired=True,
+    )
+    state = _visit_high_council(
+        _state(
+            owner,
+            scouts_subcommittees=(*DISPLAY[:4], "contingencies"),
+        )
+    )
+    state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
+    assert _options(state) == {
+        ("scouts_recall_agent", "imperial_basin"),
+        ("scouts_recall_agent", "conflict"),
+    }
+    state = _act(state, "scouts_recall_agent", space_id="conflict")
+    assert state.players[0].agent_in_conflict == 0
+    assert state.players[0].agents_available == 1
+    assert state.players[0].agent_locations == ("imperial_basin", "high_council")
+
+
 def test_declining_ends_the_chance_and_a_claimed_one_is_gone() -> None:
     state = _visit_high_council(_state(_owner()))
     state = _act(state, "decline_subcommittee")
@@ -241,6 +270,53 @@ def test_members_are_unique() -> None:
     assert replace(base, scouts_subcommittee_members=(("readiness", 0),))
 
 
+def test_specimen_top_up_offers_the_shortfall_before_readiness_recruits() -> None:
+    """Immortality p. 8, user ruling 2026-09-29 (OQ-050, OQ-074): Readiness's
+    RecruitTroops(1) offers 0..min(short, specimens) first when the seat's
+    supply is short; the recruit then resolves with the enlarged supply."""
+    config = RulesetConfig(arrakeen_scouts=True, immortality=True)
+    owner = _owner(troops_supply=0, troops_garrison=11, specimens=1)
+    state = _visit_high_council(_state(owner, config=config))
+    state = _act(state, "join_subcommittee", subcommittee_id="readiness")
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    counts = sorted(
+        dict(a.arguments)["count"]
+        for a in ENGINE.legal_actions(state, 0)
+        if a.action_id == "scouts_return_specimens"
+    )
+    assert counts == [0, 1]
+    state = _act(state, "scouts_return_specimens", count=1)
+    assert state.players[0].troops_supply == 0
+    assert state.players[0].troops_garrison == 12
+    assert state.players[0].specimens == 0
+    assert _scouts_frames_done(state)
+
+
+def test_specimen_top_up_needs_immortality() -> None:
+    """Immortality p. 8: without Immortality, Readiness just recruits what
+    the supply holds; no specimen choice appears."""
+    owner = _owner(troops_supply=0, troops_garrison=12)
+    state = _visit_high_council(_state(owner))
+    state = _act(state, "join_subcommittee", subcommittee_id="readiness")
+    assert _scouts_frames_done(state)
+    assert state.players[0].troops_supply == 0
+    assert state.players[0].troops_garrison == 12
+
+
+def test_specimen_top_up_is_skipped_with_enough_supply() -> None:
+    """Immortality p. 8, user ruling 2026-09-29: the top-up only appears when
+    the seat's supply is short of the recruit; with enough supply Readiness
+    just recruits and the specimens stay untouched."""
+    config = RulesetConfig(arrakeen_scouts=True, immortality=True)
+    owner = _owner(troops_supply=1, troops_garrison=10, specimens=1)
+    state = _visit_high_council(_state(owner, config=config))
+    state = _act(state, "join_subcommittee", subcommittee_id="readiness")
+    assert _scouts_frames_done(state)
+    assert state.players[0].troops_supply == 0
+    assert state.players[0].troops_garrison == 11
+    assert state.players[0].specimens == 1
+
+
 def test_influence_choice_skips_tracks_at_the_top() -> None:
     # OQ-060: an Influence gain at the top of a track is lost; with only one
     # track below the top there is no choice to make.
@@ -249,3 +325,29 @@ def test_influence_choice_skips_tracks_at_the_top() -> None:
     state = _act(state, "join_subcommittee", subcommittee_id="relations")
     assert state.players[0].influence.fremen == 1
     assert _scouts_frames_done(state)
+
+
+def test_the_conflict_agent_is_not_recallable_during_the_seats_reveal() -> None:
+    """Review 2026-09-29 (OQ-075, pending): Corrinth City's seat is taken in
+    the Reveal turn, while the seat's strength is being counted, so the Into
+    the Fray Agent is not offered then; its board Agents still are."""
+    from dune_imperium.rules.scouts_effects import _recallable_spaces
+
+    owner = _owner(
+        agent_locations=("imperial_basin",),
+        agent_in_conflict=1,
+        agents_available=0,
+    )
+    agent_turn = _state(owner)
+    assert _recallable_spaces(agent_turn, owner, "") == ("imperial_basin", "conflict")
+    reveal = replace(
+        agent_turn,
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.REVEAL,
+                frame_id="round:2:reveal:0",
+                decision=PlayerDecision(owner=0, prompt="Reveal"),
+            ),
+        ),
+    )
+    assert _recallable_spaces(reveal, owner, "") == ("imperial_basin",)

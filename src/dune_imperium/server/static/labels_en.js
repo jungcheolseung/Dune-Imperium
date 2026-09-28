@@ -242,6 +242,7 @@ const LABELS_EN = {
     "scouts_bid": "Choose a Bid",
     "confirm_scouts_bid": "Confirm the Bid",
     "scouts_retreat": "Retreat Mercenaries",
+    "scouts_return_specimens": "Return {specimen} to {supply}",
     "scouts_call": "Call",
     "scouts_take_card": "Buy the Card",
     "scouts_decline_card": "Do Not Buy",

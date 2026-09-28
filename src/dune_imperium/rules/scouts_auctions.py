@@ -15,10 +15,14 @@ revealed at once and ranked as the app does [Scouts schedule]:
   gives every tied seat the second-place reward;
 - only winners pay, except in Mercenaries, where every seat pays its spice
   and sends one supply troop per spice to the Conflict; the seats with the
-  lowest bid may pull some or all of those troops back to their garrison
-  (OQ-074).
+  lowest bid may retreat some or all of those troops to their garrison
+  (OQ-074). With Immortality a seat short of supply troops may first
+  return specimens to it ("at any time" [Immortality p. 8], user ruling
+  2026-09-29), and the retreat is the game's retreat (``retreat_units``:
+  Chani's Tactics token counts it, OQ-074 (c)).
 
-Winners' rewards resolve from the First Player on (OQ-073).
+Winners' rewards resolve by place, first place first, and seats sharing a
+place from the First Player on (OQ-073, user ruling 2026-09-29).
 
 Critical Moment is open: the Imperium deck's top two (late: three) cards are
 revealed (``GameState.scouts_market_cards``), each seat from the First
@@ -51,11 +55,14 @@ from dune_imperium.rules.frames import (
     replace_player,
 )
 from dune_imperium.rules.scouts_effects import push_scouts_effect
+from dune_imperium.rules.specimens import return_specimens
+from dune_imperium.rules.units import retreat_units
 
 _BID_FRAME: Final = "Scouts bid frame"
 _CALL_FRAME: Final = "Scouts call frame"
 _TAKE_FRAME: Final = "Scouts market frame"
 _RETREAT_FRAME: Final = "Mercenaries retreat frame"
+_TOP_UP_FRAME: Final = "Mercenaries top-up frame"
 
 
 def auction_tasks(auction_id: str, order: tuple[int, ...]) -> tuple[str, ...]:
@@ -176,30 +183,20 @@ def close_bids(state: GameState, auction_id: str, order: tuple[int, ...]) -> Rul
     currency = auction.currency
     tasks: list[str] = []
     if auction.kind is AuctionKind.MERCENARIES:
-        deployed: dict[int, int] = {}
         for seat in order:
             owner = players[seat]
             paid = bids.get(seat, 0)
-            troops = min(paid, owner.troops_supply)
             players[seat] = replace(
                 owner,
                 resources=replace(owner.resources, spice=owner.resources.spice - paid),
-                troops_supply=owner.troops_supply - troops,
-                troops_conflict=owner.troops_conflict + troops,
             )
-            deployed[seat] = troops
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:mercenaries:{seat}",
-                    kind="scouts_mercenaries_deployed",
-                    payload=(("paid", paid), ("player", seat), ("troops", troops)),
-                )
-            )
-        lowest = min(bids.get(seat, 0) for seat in order)
         tasks = [
-            f"retreat:{seat}:{deployed[seat]}"
-            for seat in order
-            if bids.get(seat, 0) == lowest and deployed[seat]
+            *(
+                f"top_up:{seat}:{bids[seat]}"
+                for seat in order
+                if state.config.immortality and bids.get(seat, 0)
+            ),
+            "mercenaries:" + ",".join(f"{seat}={bids.get(seat, 0)}" for seat in order),
         ]
     else:
         winners = rank_bids({seat: bids.get(seat, 0) for seat in order}, auction.places)
@@ -229,7 +226,9 @@ def close_bids(state: GameState, auction_id: str, order: tuple[int, ...]) -> Rul
                     ),
                 )
             )
-            tasks.append(f"auction_reward:{seat}:{winners[seat]}")
+        # First place first; seats sharing a place from the First Player on.
+        by_place = sorted(winners, key=lambda seat: (winners[seat], order.index(seat)))
+        tasks = [f"auction_reward:{seat}:{winners[seat]}" for seat in by_place]
     return RuleResult(
         state=replace(
             state,
@@ -252,7 +251,104 @@ def run_auction_reward(state: GameState, task: str) -> RuleResult:
     )
 
 
-# --- Mercenaries' retreat -----------------------------------------------------------
+# --- Mercenaries ----------------------------------------------------------------------
+
+
+def _top_up_limit(state: GameState, player: int, needed: int) -> int:
+    owner = state.players[player]
+    short = needed - owner.troops_supply
+    return min(short, owner.specimens) if short > 0 else 0
+
+
+def offer_top_up(state: GameState, task: str) -> RuleResult:
+    """Let a seat short of supply troops return specimens before deploying."""
+
+    seat, needed = (int(part) for part in task.removeprefix("top_up:").split(":"))
+    if _top_up_limit(state, seat, needed) < 1:
+        return RuleResult(state=state)
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_TOP_UP,
+        frame_id=f"round:{state.round_number}:scouts:mercenaries:top_up:{seat}",
+        decision=PlayerDecision(
+            owner=seat, prompt="Return specimens to your supply before deploying"
+        ),
+        context=(("needed", needed), ("player", seat)),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def legal_top_up_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    frame = owned_top_frame(state, FrameKind.SCOUTS_TOP_UP, player)
+    if frame is None:
+        return ()
+    needed = context_int(dict(frame.context), "needed", owner=_TOP_UP_FRAME)
+    return tuple(
+        DomainAction(
+            action_id="scouts_return_specimens",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(_top_up_limit(state, player, needed) + 1)
+    )
+
+
+def apply_top_up(state: GameState, action: DomainAction) -> RuleResult:
+    if action not in legal_top_up_actions(state, action.actor):
+        raise ValueError("action is not a legal specimen return")
+    count = dict(action.arguments)["count"]
+    assert isinstance(count, int)
+    return return_specimens(
+        state.pop_decision(),
+        action.actor,
+        count,
+        source=f"round:{state.round_number}:scouts:mercenaries:top_up:{action.actor}",
+    )
+
+
+def deploy_mercenaries(state: GameState, task: str) -> RuleResult:
+    """Send each seat's paid troops to the Conflict, then queue the lowest
+    bidders' retreats."""
+
+    paid_by_seat = [
+        (int(seat), int(paid))
+        for seat, paid in (
+            entry.split("=") for entry in task.removeprefix("mercenaries:").split(",")
+        )
+    ]
+    source = f"round:{state.round_number}:scouts:{state.scouts_item}"
+    players = list(state.players)
+    events: list[GameEvent] = []
+    deployed: dict[int, int] = {}
+    for seat, paid in paid_by_seat:
+        owner = players[seat]
+        troops = min(paid, owner.troops_supply)
+        players[seat] = replace(
+            owner,
+            troops_supply=owner.troops_supply - troops,
+            troops_conflict=owner.troops_conflict + troops,
+        )
+        deployed[seat] = troops
+        events.append(
+            GameEvent(
+                event_id=f"{source}:mercenaries:{seat}",
+                kind="scouts_mercenaries_deployed",
+                payload=(("paid", paid), ("player", seat), ("troops", troops)),
+            )
+        )
+    lowest = min(paid for _, paid in paid_by_seat)
+    retreats = tuple(
+        f"retreat:{seat}:{deployed[seat]}"
+        for seat, paid in paid_by_seat
+        if paid == lowest and deployed[seat]
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=tuple(players),
+            scouts_tasks=(*retreats, *state.scouts_tasks),
+        ),
+        events=tuple(events),
+    )
 
 
 def offer_retreat(state: GameState, task: str) -> RuleResult:
@@ -287,22 +383,21 @@ def apply_retreat(state: GameState, action: DomainAction) -> RuleResult:
         raise ValueError("action is not a legal Mercenaries retreat")
     count = dict(action.arguments)["count"]
     assert isinstance(count, int)
-    owner = state.players[action.actor]
-    moved = replace(
-        owner,
-        troops_conflict=owner.troops_conflict - count,
-        troops_garrison=owner.troops_garrison + count,
+    source = f"round:{state.round_number}:scouts:mercenaries:retreated:{action.actor}"
+    retreated = (
+        retreat_units(state.pop_decision(), action.actor, source, troops=count)
+        if count
+        else RuleResult(state=state.pop_decision())
     )
     return RuleResult(
-        state=replace(
-            state.pop_decision(), players=replace_player(state.players, moved)
-        ),
+        state=retreated.state,
         events=(
             GameEvent(
-                event_id=f"round:{state.round_number}:scouts:mercenaries:retreated:{action.actor}",
+                event_id=source,
                 kind="scouts_mercenaries_retreated",
                 payload=(("count", count), ("player", action.actor)),
             ),
+            *retreated.events,
         ),
     )
 
