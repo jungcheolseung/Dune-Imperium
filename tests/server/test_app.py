@@ -108,6 +108,44 @@ def test_go_to_11_option_starts_every_score_at_zero(client: TestClient) -> None:
     assert scores(plain) == [1, 1, 1, 1]
 
 
+def test_epic_game_option_reaches_the_setup(client: TestClient) -> None:
+    # Epic Game Mode puts five troops in each garrison and deals each player
+    # one Intrigue card at setup [Rise of Ix p. 10]; the Score marker keeps
+    # its printed start of 1 [Main p. 5], or 0 with Go to 11 (OQ-093). Four
+    # human seats keep the view at the first decision.
+    humans = ["human", "human", "human", "human"]
+
+    def players(summary: dict[str, object]) -> list[tuple[object, ...]]:
+        decision = summary["decision"]
+        assert isinstance(decision, dict)
+        view = client.get(
+            f"/games/{summary['game_id']}/seats/{decision['owner']}/view"
+        )
+        assert view.status_code == 200, view.text
+        return [
+            (
+                player["troops_garrison"],
+                player["intrigue_card_count"],
+                player["victory_points"],
+            )
+            for player in view.json()["players"]
+        ]
+
+    # An independent option (OQ-092): nothing else needs to be on.
+    epic = _create(client, seats=humans, epic_game=True)
+    assert epic["epic_game"] is True
+    assert players(epic) == [(5, 1, 1)] * 4
+    both = _create(
+        client, seats=humans, epic_game=True, immortality=True, go_to_11=True
+    )
+    assert both["epic_game"] is True
+    assert players(both) == [(5, 1, 0)] * 4
+    # An omitted key is off: raw POSTs from scripts keep the retail setup.
+    plain = _create(client, seats=humans)
+    assert plain["epic_game"] is False
+    assert players(plain) == [(3, 0, 1)] * 4
+
+
 def test_created_games_are_listed_and_summarized(client: TestClient) -> None:
     summary = _create(client)
     game_id = summary["game_id"]

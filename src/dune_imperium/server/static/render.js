@@ -418,6 +418,7 @@ const RULESET_BADGES = [
   ["tech_module", "render.badge_tech"],
   ["immortality", "render.badge_immortality"],
   ["go_to_11", "render.badge_go_to_11"],
+  ["epic_game", "render.badge_epic_game"],
   ["arrakeen_scouts", "render.badge_scouts"],
   ["leader_draft", "render.badge_draft"],
 ];

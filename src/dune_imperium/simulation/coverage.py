@@ -202,6 +202,7 @@ def zero_coverage(
     bloodlines: bool = False,
     tech_module: bool = False,
     immortality: bool = False,
+    epic_game: bool = False,
     arrakeen_scouts: bool = False,
 ) -> dict[str, list[str]]:
     """Return, per dimension with a well-defined catalog, the untouched IDs.
@@ -217,6 +218,9 @@ def zero_coverage(
         bloodlines=bloodlines,
         tech_module=tech_module,
         immortality=immortality,
+        # Epic Game Mode adds Control the Spice's templates to the catalog
+        # (ACTION_CODEC_VERSION 121).
+        epic_game=epic_game,
         arrakeen_scouts=arrakeen_scouts,
     )
     codec = ActionCodec(config)

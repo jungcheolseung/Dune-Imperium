@@ -1034,6 +1034,15 @@ function intrigueOptionBody(entry, index) {
   return effectNode(strip(entry.text[index]), textKo ? strip(textKo) : undefined);
 }
 
+/* Payments several Agent boxes share. pay_agent_card_spice pays Smuggler's
+   Haven's 4 spice -> 1 VP and Control the Spice's 1 spice -> trash a card
+   (optional) + recruit a troop (Epic Game Mode), so its label only says a
+   card effect's cost is paid: a logged step carries no detail, and the
+   events under it say what was paid and gained. On the buttons the server's
+   detail (display/actions.py _PAYMENT_TEXT) says what paying buys on the
+   card resolving and stands in for the label. */
+const DETAIL_REPLACES_LABEL = new Set(["pay_agent_card_spice"]);
+
 /* One action as nodes, not a string. The verb and any effect label are ours,
    so they go through phrase() and may name terms; a card, Leader or space
    name is a proper noun and is appended as plain text. That split is the
@@ -1042,6 +1051,10 @@ function intrigueOptionBody(entry, index) {
    and its line read "배치 — , Arrakeen". */
 function describeAction(action) {
   const fragment = document.createDocumentFragment();
+  if (action.detail && DETAIL_REPLACES_LABEL.has(action.action_id)) {
+    fragment.appendChild(effectNode(action.detail, action.detail_ko));
+    return fragment;
+  }
   fragment.appendChild(phrase(ACTION_LABELS[action.action_id] || prettify(action.action_id)));
   if (action.detail && !("effect" in action.arguments)) {
     /* An Arrakeen Scouts choice (a line, a secret pick, a subcommittee, a

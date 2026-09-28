@@ -65,7 +65,7 @@ const ACTION_LABELS = {
   pay_agent_card_spice_for_sandworm: "2 {spice} 지불 → {sandworm} 소환",
   pay_agent_card_spice_for_sandworm_and_shield_wall:
     "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 소환",
-  pay_agent_card_spice: "4 {spice} 지불 → {victory_point} 1",
+  pay_agent_card_spice: "{spice} 지불 (카드 효과 비용)",
   pay_agent_card_water: "2 {water} 지불 → 카드 2장 {draw}",
   pay_corrinth_city: "카드 선택 ({discard}, 2/2) · 5 {solari} 지불 → {victory_point} 1",
   select_corrinth_city_discard: "카드 선택 ({discard}, 1/2)",

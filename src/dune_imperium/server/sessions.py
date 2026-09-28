@@ -367,6 +367,7 @@ class GameSessionManager:
         tech_module: bool = False,
         immortality: bool = False,
         go_to_11: bool = False,
+        epic_game: bool = False,
         arrakeen_scouts: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
@@ -388,6 +389,7 @@ class GameSessionManager:
                 tech_module=tech_module,
                 immortality=immortality,
                 go_to_11=go_to_11,
+                epic_game=epic_game,
                 arrakeen_scouts=arrakeen_scouts,
             )
         except ValueError as error:
@@ -1360,6 +1362,7 @@ class GameSessionManager:
             "tech_module": session.config.tech_module,
             "immortality": session.config.immortality,
             "go_to_11": session.config.go_to_11,
+            "epic_game": session.config.epic_game,
             "arrakeen_scouts": session.config.arrakeen_scouts,
             "seats": list(kinds),
             "players": players,
@@ -1807,7 +1810,9 @@ def _serialize_action(
 ) -> JsonObject:
     """Serialize one legal action.
 
-    ``detail`` names a keyed icon's printed effect; ``detail_ko`` is its
+    ``detail`` names a keyed icon's printed effect, or what a payment
+    several Agent boxes share buys on the resolving card (Control the Spice,
+    ``display.actions.agent_card_payment_text``); ``detail_ko`` is its
     Korean twin, real for a personal card's own Agent-box icon (Step K2,
     ``display.actions.agent_card_icon_text_ko``) and a board-space icon
     (Step K4, ``display.spaces.board_effect_action_text_ko``); the client

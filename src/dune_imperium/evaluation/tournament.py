@@ -341,6 +341,7 @@ def tournament_specs(
     tech_module: bool = False,
     immortality: bool = False,
     go_to_11: bool = False,
+    epic_game: bool = False,
     arrakeen_scouts: bool = False,
     max_steps: int = 30_000,
 ) -> tuple[MatchSpec, ...]:
@@ -363,6 +364,7 @@ def tournament_specs(
         tech_module=tech_module,
         immortality=immortality,
         go_to_11=go_to_11,
+        epic_game=epic_game,
     )
     lineup = fill_lineup(agents)
     if arrakeen_scouts:
@@ -384,6 +386,7 @@ def tournament_specs(
             tech_module=tech_module,
             immortality=immortality,
             go_to_11=go_to_11,
+            epic_game=epic_game,
             arrakeen_scouts=arrakeen_scouts,
             leader_ids=(
                 _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
