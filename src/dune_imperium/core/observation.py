@@ -1,6 +1,7 @@
 """Player-scoped, immutable observations with explicit redaction."""
 
 from dataclasses import dataclass
+from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
@@ -131,6 +132,9 @@ class PrivatePlayerView:
     navigation_slots: tuple[str, ...] = ()
     # Kota Odax's face-down Secret Project tile [Kota Odax of Ix card].
     secret_project_tech_id: str = ""
+    # Arrakeen Scouts: the seat's own secret picks not yet due, as (event
+    # round, event id, pick index).
+    scouts_secret_picks: tuple[tuple[int, str, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +228,12 @@ class PlayerView:
     scouts_goods: tuple[tuple[str, str, str, int, int], ...] = ()
     scouts_parked: tuple[tuple[str, int, str, int], ...] = ()
     scouts_board_card_counts: tuple[tuple[str, str, int], ...] = ()
+    # Secret picks still hidden, as (event round, event id, seat): who has
+    # picked in which event, never what; and the last round whose due picks
+    # were revealed (a pick left after its event's next round is one of the
+    # two-round lines).
+    scouts_secret_pending: tuple[tuple[int, str, int], ...] = ()
+    scouts_secrets_round: int = 0
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -245,6 +255,25 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
+_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:",)
+
+
+def secret_pick_id(event_round: int, seat: int) -> str:
+    """The registry id of ``seat``'s Arrakeen Scouts secret pick."""
+
+    return f"{_SEALED_VALUE_PREFIXES[0]}{event_round}:{seat}"
+
+
+def is_sealed_value_id(value: str) -> bool:
+    """Whether a registry id is a seat's sealed choice rather than a card.
+
+    Such a value is revealed by the rules when it falls due, never by its
+    seat's own choice, so revealing even the actor's own is a reveal.
+    """
+
+    return value.startswith(_SEALED_VALUE_PREFIXES)
+
+
 def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     """Map every card that is not public to the seats that can identify it.
 
@@ -261,7 +290,8 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     owner has been shown is known to that owner: a peeked deck top
     (Controlled, Glowglobes), Long Live the Fighters' top three, Imperium
     Ceremony's two Intrigue cards, Kota Odax's bottom Tech tiles and Secret
-    Project. This is the single source the
+    Project. An Arrakeen Scouts secret pick is listed under
+    ``secret_pick_id`` for its seat until it is due. This is the single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
@@ -319,6 +349,12 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         ):
             if card_id:
                 known[card_id] = owner
+    for event_round, _, seat, _ in state.scouts_secret_picks:
+        # Arrakeen Scouts: a secret pick is its seat's alone until due. It
+        # is no card, but the log redaction, the undo boundary and the
+        # sweep's leak check all read this one registry, so the reveal step
+        # is a reveal like any other.
+        known[secret_pick_id(event_round, seat)] = frozenset({seat})
     return known
 
 
@@ -349,8 +385,10 @@ class HiddenZoneDisclosure:
     intrigue_deck: tuple[str, ...]
     contract_bank: tuple[str, ...]
     conflict_deck: tuple[str, ...]
-    # Arrakeen Scouts: the face-down cards still on the board.
+    # Arrakeen Scouts: the face-down cards still on the board, and the
+    # secret picks never revealed (event round, event id, seat, pick).
     scouts_board_cards: tuple[str, ...] = ()
+    scouts_secret_picks: tuple[tuple[int, str, int, int], ...] = ()
 
 
 def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
@@ -371,6 +409,7 @@ def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
         contract_bank=state.contract_bank,
         conflict_deck=state.conflict_deck,
         scouts_board_cards=tuple(card for _, _, card in state.scouts_goods_cards),
+        scouts_secret_picks=state.scouts_secret_picks,
     )
 
 
@@ -423,6 +462,11 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             peeked_intrigue_ids=peeked_intrigue_ids(state, player),
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
+            scouts_secret_picks=tuple(
+                (event_round, event_id, pick)
+                for event_round, event_id, seat, pick in state.scouts_secret_picks
+                if seat == player
+            ),
         ),
         current_conflict_ids=state.current_conflict_ids,
         conflict_deck_size=len(state.conflict_deck),
@@ -469,6 +513,11 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_goods=state.scouts_goods,
         scouts_parked=state.scouts_parked,
         scouts_board_card_counts=_board_card_counts(state),
+        scouts_secret_pending=tuple(
+            (event_round, event_id, seat)
+            for event_round, event_id, seat, _ in state.scouts_secret_picks
+        ),
+        scouts_secrets_round=state.scouts_secrets_round,
     )
 
 

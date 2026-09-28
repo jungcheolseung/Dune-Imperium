@@ -41,6 +41,7 @@ from dune_imperium.content.arrakeen_scouts.types import (
     ScoutsCost,
     ScoutsReward,
 )
+from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
@@ -106,7 +107,6 @@ _NOT_DSL_REWARDS: Final = (
     FlipBattleCard,
     TrashDiscardPileCard,
     FlipFaceUpConflictCard,
-    GainSpiceWithHelixBonus,
 )
 
 
@@ -480,6 +480,27 @@ def _apply_automatic(
             )
         case RecallOtherAgent():
             return RuleResult(state=state)  # no other Agent is out (OQ-075)
+        case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix_spice):
+            # Offworld Operation: more once the seat's research token has
+            # reached the Helix, the first genetic marker (OQ-089 (b)).
+            helix = state.config.immortality and (
+                genetic_markers_reached(owner.research_space) >= 1
+            )
+            gained = helix_spice if helix else spice
+            return _owner_event(
+                state,
+                replace(
+                    owner,
+                    resources=replace(
+                        owner.resources, spice=owner.resources.spice + gained
+                    ),
+                ),
+                GameEvent(
+                    event_id=f"{source}:helix_spice",
+                    kind="scouts_helix_spice",
+                    payload=(("helix", helix), ("player", player), ("spice", gained)),
+                ),
+            )
         case DiscardFromHand() | RecallSpy() | TrashIntrigueCard():
             # A choice with nothing left to choose (checked before paying a
             # cost; a delayed reward's may run dry): nothing happens.
@@ -846,6 +867,48 @@ def offer_scouts_choice(
     return RuleResult(state=state.push_decision(frame))
 
 
+def offer_secret_reward(
+    state: GameState, player: int, event_id: str, pick: int, *, source: str
+) -> RuleResult:
+    """Resolve a revealed secret pick's line for its seat.
+
+    A line with a cost ("discard a card -> 3 troops") is the seat's to take
+    or leave, and one it cannot pay gives nothing (OQ-085 (c)).
+    """
+
+    option = scouts_option(event_id, pick)
+    if not option.costs:
+        return RuleResult(
+            state=push_scouts_effect(state, player, event_id, pick, source=source)
+        )
+    if not option_is_affordable(state, player, option):
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:skipped",
+                    kind="scouts_choice_skipped",
+                    payload=(("item_id", event_id), ("player", player)),
+                ),
+            ),
+        )
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_CHOICE,
+        frame_id=f"{source}:choice",
+        decision=PlayerDecision(
+            owner=player, prompt="Choose an Arrakeen Scouts option or pass"
+        ),
+        context=(
+            ("item", event_id),
+            ("player", player),
+            ("secret_pick", pick),
+            ("source", source),
+            ("volunteer", -1),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
 def legal_scouts_choice_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
@@ -854,12 +917,21 @@ def legal_scouts_choice_actions(
     frame = owned_top_frame(state, FrameKind.SCOUTS_CHOICE, player)
     if frame is None:
         return ()
-    item = context_str(dict(frame.context), "item", owner=_CHOICE_FRAME)
-    passes = (
-        (DomainAction(action_id="scouts_pass", actor=player),)
-        if _is_passable(item)
-        else ()
-    )
+    context = dict(frame.context)
+    item = context_str(context, "item", owner=_CHOICE_FRAME)
+    secret = context.get("secret_pick")
+    if type(secret) is int:
+        # A revealed secret line with a cost: take it or leave it.
+        passable = True
+        indices: tuple[int, ...] = (
+            (secret,)
+            if option_is_affordable(state, player, scouts_option(item, secret))
+            else ()
+        )
+    else:
+        passable = _is_passable(item)
+        indices = _affordable(state, player, item)
+    passes = (DomainAction(action_id="scouts_pass", actor=player),) if passable else ()
     return (
         *passes,
         *(
@@ -868,7 +940,7 @@ def legal_scouts_choice_actions(
                 actor=player,
                 arguments=(("option", index),),
             )
-            for index in _affordable(state, player, item)
+            for index in indices
         ),
     )
 

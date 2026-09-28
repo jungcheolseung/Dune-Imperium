@@ -169,6 +169,11 @@ class GameState:
     scouts_goods: tuple[tuple[str, str, str, int, int], ...] = ()
     scouts_goods_cards: tuple[tuple[str, str, str], ...] = ()
     scouts_parked: tuple[tuple[str, int, str, int], ...] = ()
+    # Secret picks (``rules.scouts_secrets``) as (event round, event id,
+    # seat, pick index), each known to its seat only until the round it is
+    # due; and the last round whose Scouts step revealed the due picks.
+    scouts_secret_picks: tuple[tuple[int, str, int, int], ...] = ()
+    scouts_secrets_round: int = 0
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -365,6 +370,14 @@ class GameState:
                     raise ValueError("a player has only three control markers")
             if any(row[3] < 1 for row in self.scouts_goods):
                 raise ValueError("a goods row holds something")
+            picked = tuple((row[0], row[2]) for row in self.scouts_secret_picks)
+            if len(picked) != len(set(picked)):
+                raise ValueError("a seat picks once per secret event")
+            if any(
+                not 0 <= seat < self.config.players or not 0 <= pick < 4
+                for _, _, seat, pick in self.scouts_secret_picks
+            ):
+                raise ValueError("a secret pick names a seat and one of four lines")
         elif (
             self.scouts_subcommittees
             or self.scouts_revealed
@@ -382,6 +395,8 @@ class GameState:
             or self.scouts_goods
             or self.scouts_goods_cards
             or self.scouts_parked
+            or self.scouts_secret_picks
+            or self.scouts_secrets_round
             or any(player.troops_parked for player in self.players)
         ):
             raise ValueError("Scouts state requires the Arrakeen Scouts module")

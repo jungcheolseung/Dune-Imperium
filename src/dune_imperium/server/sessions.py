@@ -80,6 +80,8 @@ from dune_imperium.server.persistence import (
     parse_save_document,
 )
 from dune_imperium.server.session_log import (
+    SEALED_ACTION_IDS,
+    SEALED_REVEAL_EVENTS,
     LogEntry,
     LoggedStep,
     LoggedUndo,
@@ -1728,7 +1730,11 @@ def _log_entry_json(
         return payload
     redact = not finished and step.actor != seat
     arguments = {
-        key: ("(비공개)" if redact and value in entry.hidden_arguments else value)
+        key: (
+            "(비공개)"
+            if redact and (entry.sealed or value in entry.hidden_arguments)
+            else value
+        )
         for key, value in step.arguments
     }
     return {
@@ -1811,6 +1817,7 @@ def _serialize_action(
     undoable = action.action_id not in EXPLICIT_TURN_ENDS and _action_is_undoable(
         session, action, outcome
     )
+    outcome = preview_outcome(action, outcome)
     serialized: JsonObject = {
         "index": index,
         "action_id": action.action_id,
@@ -1826,6 +1833,25 @@ def _serialize_action(
     if revealed is not None:
         serialized["reveal_preview"] = revealed
     return serialized
+
+
+def preview_outcome(
+    action: DomainAction, outcome: RuleResult | None
+) -> RuleResult | None:
+    """The dry run's outcome the previews may read, or None.
+
+    A secret choice's own outcome, or one that runs into the reveal of due
+    secret choices (a Control defense, or a round's last step when the next
+    round opens without chance), could show other seats' secrets through
+    its warnings before the step is taken; such an action previews nothing
+    but whether it can be taken back.
+    """
+
+    if action.action_id in SEALED_ACTION_IDS or outcome is None:
+        return None
+    if any(event.kind in SEALED_REVEAL_EVENTS for event in outcome.events):
+        return None
+    return outcome
 
 
 def reveal_preview(

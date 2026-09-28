@@ -21,6 +21,7 @@ sweep can see across containers and time:
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
+from typing import Final
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.types import ConflictTier
@@ -35,6 +36,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.scouts_secrets import pick_alternatives
 
 
 class InvariantViolation(AssertionError):
@@ -315,6 +317,10 @@ def _payload_strings(event: GameEvent) -> Iterator[tuple[str, str]]:
             yield key, value
 
 
+# The only payload fields a secret choice's public event may carry.
+_SEALED_EVENT_FIELDS: Final = {"scouts_secret_picked": frozenset({"item_id", "player"})}
+
+
 def check_event_visibility(state: GameState, events: Iterable[GameEvent]) -> None:
     """Fail when a public event names a card that is hidden after the step.
 
@@ -331,6 +337,13 @@ def check_event_visibility(state: GameState, events: Iterable[GameEvent]) -> Non
     for event in events:
         if event.visible_to is not None:
             continue
+        sealed = _SEALED_EVENT_FIELDS.get(event.kind)
+        if sealed is not None and not {key for key, _ in event.payload} <= sealed:
+            # A secret choice's public event says who chose, never what.
+            raise InvariantViolation(
+                f"public event {event.kind} ({event.event_id}) carries a sealed "
+                f"value: {sorted(key for key, _ in event.payload)}"
+            )
         for key, value in _payload_strings(event):
             if value in hidden:
                 raise InvariantViolation(
@@ -448,10 +461,20 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         (row[0], row[1], board_cards.get(row, row[2]))
         for row in state.scouts_goods_cards
     )
+    # Arrakeen Scouts: another seat's secret pick moves to the next line it
+    # could as well be (``pick_alternatives``).
+    secret_picks = []
+    for row in state.scouts_secret_picks:
+        alternatives = pick_alternatives(state, row)
+        if row[2] != observer and len(alternatives) > 1:
+            index = alternatives.index(row[3])
+            row = (*row[:3], alternatives[(index + 1) % len(alternatives)])
+        secret_picks.append(row)
     return replace(
         state,
         players=tuple(players),
         scouts_goods_cards=scouts_goods_cards,
+        scouts_secret_picks=tuple(secret_picks),
         intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
         imperium_deck=tuple(reversed(state.imperium_deck)),
         # The Contracts an open Coercive Negotiation revealed are face up to

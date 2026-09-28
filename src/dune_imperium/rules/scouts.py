@@ -65,6 +65,13 @@ from dune_imperium.rules.scouts_missions import (
     offer_mission_join,
     place_mission_goods,
 )
+from dune_imperium.rules.scouts_secrets import (
+    offer_secret_pick,
+    reveal_due_secrets,
+    run_secret_reward,
+    secret_tasks,
+    secrets_are_due,
+)
 
 # Four players reveal five subcommittees: one of each tier, then the rest
 # from the whole remaining pool [Scouts schedule].
@@ -161,6 +168,9 @@ def advance_scouts_step(state: GameState) -> RuleResult:
         return _run_task(replace(state, scouts_tasks=tuple(rest)), task)
     if state.scouts_item:
         return RuleResult(state=replace(state, scouts_item=""))
+    if secrets_are_due(state):
+        # The picks due this round come first, before its own item (OQ-085).
+        return reveal_due_secrets(state, turn_order(state))
     draw = _next_draw(state)
     if draw is not None:
         return RuleResult(state=state.push_decision(_draw_frame(state, draw)))
@@ -454,6 +464,8 @@ def _item_tasks(state: GameState, item_id: str) -> tuple[str, ...]:
         return tuple(f"equilibrium:{seat}" for seat in order)
     if item_id in MISSIONS_BY_ID:
         return mission_tasks(state, item_id, order)
+    if event is not None and event.kind is EventKind.SECRET:
+        return secret_tasks(order)
     if event is not None:
         if event.kind is EventKind.ROUND_MODIFIER:
             return ("modifier",)
@@ -491,6 +503,13 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         return RuleResult(
             state=push_scouts_effect(state, seat, item, 0, source=f"{source}:{seat}")
         )
+    if task.startswith("secret:"):
+        secret_seat = int(task.removeprefix("secret:"))
+        return offer_secret_pick(
+            state, secret_seat, item, source=f"{source}:{secret_seat}"
+        )
+    if task.startswith("secret_reward:"):
+        return run_secret_reward(state, task)
     if task == "goods":
         return place_mission_goods(state, item, source=source)
     if task.startswith("join:"):

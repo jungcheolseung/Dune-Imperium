@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 23
+    assert OBSERVATION_VERSION == 24
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -55,7 +55,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v22: Arrakeen Scouts: 77 items (14 subcommittees, 16 missions, 32
     # events, 11 auctions, 4 sales), 4 round modifiers, 3 schedule values
     # (4,327 -> 4,411). v23: mission pieces, 16 missions x 4 parked seats
-    # and x 5 goods columns (4,411 -> 4,555).
+    # and x 5 goods columns (4,411 -> 4,555). v24: secret picks, 4 relative
+    # seats x 2 and 3 secret events x 4 lines (4,555 -> 4,575).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -74,6 +75,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 3
         + 16 * 4
         + 16 * 5
+        + 4 * 2
+        + 3 * 4
     )
 
     offset = 0
@@ -89,7 +92,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
     assert private_secret_project.stop == segment_slice("scouts_items").start
-    assert segment_slice("scouts_goods").stop == OBSERVATION_SIZE
+    assert segment_slice("scouts_secret_own").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -284,21 +287,25 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # v22's): the five old games' first 4,411 columns reproduced the v22
 # digests exactly and every new column was 0; "scouts" moved as missions
 # began to act (slice 6a).
+# Re-pinned for observation v24 (the secret-pick segments appended after
+# v23's): the five old games' first 4,555 columns reproduced the v23
+# digests exactly and every new column was 0; "scouts" moved as secret
+# events began to be played (slice 7).
 _GOLDEN_DIGESTS = {
-    "base": ("28289533faea220701d33557fbc383615a99f8ae1a1f26261b569e19289800a4", 2572),
-    "choam": ("96f4bcbf9616bf37001b4e7fafe794f88cbebd3459452641bc71412cf5269cee", 2972),
+    "base": ("fcefdf4d18ff57a555438994b6e580b184f1674730b2a3a45f8abb46c1c1aa03", 2572),
+    "choam": ("842fbb1a4c9aa81b565ea8c74018c62e2c65b46fba300a5b7cd97c1e5eeab5d3", 2972),
     "promo_bloodlines_tech": (
-        "3346cd493036870d54b83e5c03118b6179740ff3f41ee5c47e0bcb0ac2821c16",
+        "676b1a776309d34150d1628b94626caa2f3d9979693410356bba6d1e118a4e53",
         2772,
     ),
     "everything": (
-        "4c83e9410b6fe6c5d5abd3ff020715493a1d82b386817ffe295c215c8133d74c",
+        "ff891191bde0fd7c9711bec41391f57fd5bd71261ddbae12fc28064252226167",
         3012,
     ),
-    "draft": ("ee5a5dbfce49de1bac5063e0317e5fe63664c5b56e75f4f57a58806daec65a10", 2476),
+    "draft": ("10ccac89b55cba64ab18f87566697d4919b4bb639a7013684c004eded4957573", 2476),
     "scouts": (
-        "4de9a5643592a4e0735ba5ff89d3a377719df7eb755382ee12fd25ed74ca3253",
-        2888,
+        "405cb582f9a2b4850e9b57c31fe8cd6fbc132719961ea804750b9409d4242807",
+        2640,
     ),
 }
 _GOLDEN_CONFIGS = {

@@ -93,6 +93,8 @@ class FrameKind(StrEnum):
     SCOUTS_CHOICE = "scouts_choice"
     # A seat's answer to a mission: take part or pass.
     SCOUTS_MISSION = "scouts_mission"
+    # A seat's secret pick of a Covert or Offworld Operation line.
+    SCOUTS_SECRET = "scouts_secret"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

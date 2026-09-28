@@ -220,6 +220,10 @@ _NOT_ZONES = frozenset(
         "pending_skill_choices",
         "pending_navigation_plays",
         "pending_track_spies",
+        # Arrakeen Scouts' step cursor and queues: tasks and event sources.
+        "scouts_tasks",
+        "scouts_subcommittee_offers",
+        "scouts_four_bonus_choices",
     }
 )
 _NOT_PLAYER_ZONES = frozenset(
@@ -306,6 +310,8 @@ def _mismatches(
             ),
             0,
         ),
+        (RulesetConfig(choam_module=True, arrakeen_scouts=True), 4),
+        (RulesetConfig(immortality=True, arrakeen_scouts=True), 5),
     ],
 )
 def test_known_card_seats_matches_what_each_seat_is_shown(

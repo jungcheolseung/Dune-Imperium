@@ -316,6 +316,10 @@ from dune_imperium.rules.scouts_missions import (
     legal_mission_join_actions,
     mission_goods_are_due,
 )
+from dune_imperium.rules.scouts_secrets import (
+    apply_secret_pick,
+    legal_secret_pick_actions,
+)
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
@@ -521,6 +525,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.SCOUTS_SUBCOMMITTEE: (legal_subcommittee_actions,),
     FrameKind.SCOUTS_CHOICE: (legal_scouts_choice_actions,),
     FrameKind.SCOUTS_MISSION: (legal_mission_join_actions,),
+    FrameKind.SCOUTS_SECRET: (legal_secret_pick_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -543,6 +548,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_join_mission": apply_mission_join,
     "scouts_decline_mission": apply_mission_join,
     "scouts_collect_mission": apply_mission_collect,
+    "scouts_secret_pick": apply_secret_pick,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,

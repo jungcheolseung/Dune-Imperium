@@ -75,7 +75,10 @@ from dune_imperium.rules.frames import FrameKind
 # v23 (2026-09-28): Arrakeen Scouts mission pieces, appended after v22's
 # segments: parked troops per mission and relative seat, and goods per
 # mission for anyone and per relative seat (face-down cards counted there).
-OBSERVATION_VERSION: Final = 23
+# v24 (2026-09-28): Arrakeen Scouts secret picks, appended after v23's:
+# each relative seat's hidden picks (still any line / known two-round), and
+# the observer's own picks by event and line (the value is the event round).
+OBSERVATION_VERSION: Final = 24
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -125,6 +128,10 @@ SCOUTS_ITEM_IDS: Final = (
 )
 SCOUTS_MODIFIERS: Final = tuple(modifier.value for modifier in RoundModifier)
 SCOUTS_MISSION_IDS: Final = tuple(entry.mission_id for entry in MISSIONS)
+SCOUTS_SECRET_EVENT_IDS: Final = tuple(
+    entry.event_id for entry in EVENTS if entry.secret_choices
+)
+_SECRET_LINES: Final = 4
 
 _PHASES: Final = tuple(GamePhase)
 _AGENT_ICONS: Final = tuple(icon.value for icon in AgentIcon)
@@ -188,6 +195,9 @@ _SCOUTS_MODIFIER_INDEX: Final = {
 }
 _SCOUTS_MISSION_INDEX: Final = {
     mission_id: index for index, mission_id in enumerate(SCOUTS_MISSION_IDS)
+}
+_SCOUTS_SECRET_EVENT_INDEX: Final = {
+    event_id: index for index, event_id in enumerate(SCOUTS_SECRET_EVENT_IDS)
 }
 
 
@@ -285,6 +295,11 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # the four relative seats).
             ("scouts_parked", len(SCOUTS_MISSION_IDS) * _SEATS),
             ("scouts_goods", len(SCOUTS_MISSION_IDS) * (_SEATS + 1)),
+            # v24: secret picks. Per relative seat: hidden picks that may be
+            # any line, and those known to be two-round lines. The
+            # observer's own: event x line, valued by the event's round.
+            ("scouts_secret_pending", _SEATS * 2),
+            ("scouts_secret_own", len(SCOUTS_SECRET_EVENT_IDS) * _SECRET_LINES),
         )
     )
     return tuple(lengths)
@@ -545,6 +560,15 @@ def _write_scouts(
         values[offset + _SCOUTS_MISSION_INDEX[mission_id] * width + slot] += amount
     for mission_id, _, count in view.scouts_board_card_counts:
         values[offset + _SCOUTS_MISSION_INDEX[mission_id] * width] += count
+    offset = _OFFSET["scouts_secret_pending"]
+    for event_round, _, seat in view.scouts_secret_pending:
+        known_two_round = view.scouts_secrets_round >= event_round + 1
+        values[offset + (relative(seat) - 1) * 2 + int(known_two_round)] += 1
+    offset = _OFFSET["scouts_secret_own"]
+    assert view.private is not None
+    for event_round, event_id, pick in view.private.scouts_secret_picks:
+        column = _SCOUTS_SECRET_EVENT_INDEX[event_id] * _SECRET_LINES + pick
+        values[offset + column] = event_round
 
 
 def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -> None:

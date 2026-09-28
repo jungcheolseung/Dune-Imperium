@@ -19,17 +19,29 @@ Two visibility facts are computed when a step is applied, from
 - ``hidden_arguments``: action argument values naming cards that are still
   not public after the step, redacted for every seat but the actor when the
   live log is served.
+- ``sealed``: the step is a seat's secret choice (``SEALED_ACTION_IDS``), so
+  every one of its arguments is redacted the same way. Its value becomes
+  public only through the later step that reveals it, which is a reveal in
+  the sense above because the pick is listed in ``known_card_seats``.
 """
 
 from dataclasses import dataclass, replace
+from typing import Final
 
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.observation import known_card_seats
+from dune_imperium.core.observation import is_sealed_value_id, known_card_seats
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
+
+# Actions whose arguments are the acting seat's secret: Arrakeen Scouts'
+# secret pick (docs/rules/arrakeen-scouts.md 7). A single action id carries
+# the value in its arguments, so the id itself tells nothing.
+SEALED_ACTION_IDS: Final = frozenset({"scouts_secret_pick"})
+# Events of the step that reveals sealed choices when they fall due.
+SEALED_REVEAL_EVENTS: Final = frozenset({"scouts_secret_revealed"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +53,7 @@ class LoggedStep:
     reveals: bool
     hidden_arguments: frozenset[str]
     undone: bool = False
+    sealed: bool = False
 
     @property
     def actor(self) -> int | None:
@@ -77,6 +90,10 @@ def reveals_hidden_information(
     actor's own loss to accept when undoing. Chance steps have no actor,
     so any of their reveals count. A starting card that a Leader pick takes
     out of the game is not a reveal either (``_removed_by_leader_pick``).
+    A sealed choice falling due (an Arrakeen Scouts secret pick) is always a
+    reveal, the actor's own included: the rules reveal it, not the actor, and
+    exempting it would let a step's undoability tell whether any other
+    seat's pick was due with it.
     """
 
     everyone = frozenset(range(before.config.players))
@@ -87,7 +104,11 @@ def reveals_hidden_information(
         seats_after = known_after.get(card_id, everyone)
         if seats_after <= seats_before:
             continue
-        if own_secret is not None and seats_before == own_secret:
+        if (
+            own_secret is not None
+            and seats_before == own_secret
+            and not is_sealed_value_id(card_id)
+        ):
             continue
         if card_id not in known_after and _removed_by_leader_pick(
             before, after, card_id
@@ -146,6 +167,8 @@ def log_step(
         events=events,
         reveals=reveals_hidden_information(before, after, actor),
         hidden_arguments=hidden_argument_values(step, after),
+        sealed=not isinstance(step, ChanceOutcome)
+        and step.action_id in SEALED_ACTION_IDS,
     )
 
 

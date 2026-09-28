@@ -73,7 +73,7 @@ from dune_imperium.training.slots import (  # noqa: E402
 
 # Changing the slot table must change this deliberately (with SLOT_VERSION):
 # checkpoints store SLOT_KEYS and refuse a different table.
-_GOLDEN_DIGEST = "d3b31e2cbdbb6872f0dab79e0d5c9f3e1224e15eb58999beec86328ab27718c2"
+_GOLDEN_DIGEST = "32fb597836f95aef6024fab144fabc9a79676cc5b33beeec0a4ebde7a3914792"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -265,7 +265,7 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
             f"seat{seat}_set_aside": len(IMPERIUM_CARDS_BY_ID),
         }
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
-    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_134
+    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_135
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10
 

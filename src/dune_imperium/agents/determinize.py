@@ -23,6 +23,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.scouts_secrets import pick_alternatives
 
 
 def secret_project_candidates(state: GameState, observer: int) -> tuple[str, ...]:
@@ -153,9 +154,19 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         below = list(stack[1:])
         rng.shuffle(below)
         tech_stacks.append((*stack[:1], *below))
+    # Arrakeen Scouts: another seat's secret pick is any line it could still
+    # be (``pick_alternatives``); the observer's own stay. No draw without a
+    # pick, so games without the option consume the same random numbers.
+    secret_picks = tuple(
+        row
+        if row[2] == observer
+        else (row[0], row[1], row[2], rng.choice(pick_alternatives(state, row)))
+        for row in state.scouts_secret_picks
+    )
     return replace(
         state,
         players=tuple(players),
+        scouts_secret_picks=secret_picks,
         scouts_goods_cards=tuple(
             (row[0], row[1], board_cards.get(row, row[2]))
             for row in state.scouts_goods_cards

@@ -91,7 +91,8 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v115: the Scouts events' and sales' turn-order choices and Influence losses.
 # v116: missions (take part or pass, collect on a visit).
 # v117: Desert Riding's Maker Hooks token at Hagga Basin.
-ACTION_CODEC_VERSION = 117
+# v118: secret picks (Covert Operation, Offworld Operation).
+ACTION_CODEC_VERSION = 118
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1054,6 +1055,11 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="take_desert_riding_hooks",
             arguments=(("space_id", "hagga_basin"),),
         ),
+        # A secret pick among an event's four lines.
+        *(
+            ActionTemplate(action_id="scouts_secret_pick", arguments=(("pick", i),))
+            for i in range(4)
+        ),
         # One seat's turn-order pick of an event's or sale's line, or a pass.
         ActionTemplate(action_id="scouts_pass"),
         *(
@@ -1064,11 +1070,14 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(templates)
 
 
-# The most lines any Scouts event or sale offers.
+# The most lines any Scouts event or sale offers, counting a revealed secret
+# pick's line, which is taken or left by its index (Covert Operation's
+# third line).
 _MAX_SCOUTS_OPTIONS = max(
     len(options)
     for options in (
         *(event.options for event in EVENTS),
+        *(event.secret_choices for event in EVENTS),
         *(sale.options for sale in SALES),
     )
 )
