@@ -279,7 +279,7 @@ def legal_agent_card_acquisitions(
             arguments=(("card_id", card_id),),
         )
         for card_id, count in state.reserve_stacks
-        if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= solari
+        if count > 0 and reserve_cost(state, card_id) <= solari
     )
     imperium_actions = tuple(
         DomainAction(
@@ -415,7 +415,7 @@ def _acquire_reserve_to_hand_with_solari(
         hand_public=(*owner.hand_public, instance_id),
         resources=replace(
             owner.resources,
-            solari=owner.resources.solari - definition.acquisition_cost,
+            solari=owner.resources.solari - reserve_cost(state, card_id),
         ),
         victory_points=owner.victory_points + definition.acquisition_vp,
     )
@@ -655,7 +655,7 @@ def legal_reserve_acquisitions(
         )
         for card_id, count in state.reserve_stacks
         if count > 0
-        and RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= persuasion
+        and reserve_cost(state, card_id) <= persuasion
     )
 
 
@@ -691,7 +691,7 @@ def apply_reserve_acquisition(
         (candidate_id, count - 1 if candidate_id == card_id else count)
         for candidate_id, count in state.reserve_stacks
     )
-    context["persuasion"] = persuasion - definition.acquisition_cost
+    context["persuasion"] = persuasion - reserve_cost(state, card_id)
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
     next_state = replace(
@@ -1110,6 +1110,18 @@ resolve_acquisition_bonus = _resolve_imperium_acquisition_bonus
 with_pending_draw = _with_pending_draw
 
 
+def reserve_cost(state: GameState, card_id: str) -> int:
+    """Return what acquiring one card of a Reserve stack costs now.
+
+    Every legality check and payment of a Reserve acquisition reads its cost
+    here, so an effect that changes it (Arrakeen Scouts' Market Opening)
+    changes the check and the payment together.
+    """
+
+    del state
+    return RESERVE_STACKS_BY_ID[card_id].acquisition_cost
+
+
 def next_reserve_instance_id(state: GameState, card_id: str) -> str:
     """Return an unused ``reserve:<card>:<copy>`` ID for the next acquisition.
 
@@ -1345,7 +1357,7 @@ def acquirable_reserve_card_ids(
     return tuple(
         card_id
         for card_id, count in state.reserve_stacks
-        if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= max_cost
+        if count > 0 and reserve_cost(state, card_id) <= max_cost
     )
 
 
