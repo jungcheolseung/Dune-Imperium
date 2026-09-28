@@ -103,6 +103,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="play with the Immortality expansion",
     )
     parser.add_argument(
+        "--go-to-11",
+        action="store_true",
+        help=(
+            "start every Score marker at 0 (Immortality's Go to 11 variant) "
+            "[Immortality p. 12]; requires --immortality"
+        ),
+    )
+    parser.add_argument(
         "--arrakeen-scouts",
         action="store_true",
         help="play with the Arrakeen Scouts module (docs/rules/arrakeen-scouts.md)",
@@ -163,6 +171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             bloodlines=arguments.bloodlines,
             tech_module=arguments.tech_module,
             immortality=arguments.immortality,
+            go_to_11=arguments.go_to_11,
             arrakeen_scouts=arguments.arrakeen_scouts,
             max_steps=arguments.max_steps,
         )

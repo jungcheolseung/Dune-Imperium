@@ -41,6 +41,11 @@ class RulesetConfig:
     # cards, Family Atomics, and its Imperium/Intrigue cards. Off by default;
     # independent of ``bloodlines`` (the two may be combined) [Main p. 18].
     immortality: bool = False
+    # The Immortality rulebook's "Go to 11" variant [Immortality p. 12]: a
+    # four-player table starts every Score marker at 0 instead of 1
+    # [Main p. 5] and still plays to 10 [Main p. 15]. Offered only with
+    # ``immortality`` (user decision, OQ-091). Off by default.
+    go_to_11: bool = False
     # The Arrakeen Scouts module of the Dire Wolf Game Room companion app
     # (docs/rules/arrakeen-scouts.md): subcommittees, missions, events,
     # auctions and sales revealed round by round. Off by default; combines
@@ -54,6 +59,19 @@ class RulesetConfig:
         if self.tech_module and not self.bloodlines:
             message = "the Tech Module requires the Bloodlines expansion"
             raise ValueError(message)
+        if self.go_to_11 and not self.immortality:
+            message = "the Go to 11 variant requires the Immortality expansion"
+            raise ValueError(message)
+
+    @property
+    def starting_victory_points(self) -> int:
+        """Return the Score track space every player starts on.
+
+        Four-player setup puts the Score marker on 1 [Main p. 5]; the Go to
+        11 variant starts it on 0 [Immortality p. 12].
+        """
+
+        return 0 if self.go_to_11 else 1
 
     @property
     def identifier(self) -> str:
@@ -64,8 +82,12 @@ class RulesetConfig:
         bloodlines = "+bloodlines" if self.bloodlines else ""
         tech = "+tech" if self.tech_module else ""
         immortality = "+immortality" if self.immortality else ""
+        go_to_11 = "+go11" if self.go_to_11 else ""
         scouts = "+scouts" if self.arrakeen_scouts else ""
-        return f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}{scouts}"
+        return (
+            f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"
+            f"{go_to_11}{scouts}"
+        )
 
     @classmethod
     def from_identifier(cls, identifier: str) -> RulesetConfig:
@@ -82,7 +104,7 @@ class RulesetConfig:
         module, *options = identifier.removeprefix(prefix).split("+")
         if module not in ("base", "choam"):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
-        order = ("promo", "bloodlines", "tech", "immortality", "scouts")
+        order = ("promo", "bloodlines", "tech", "immortality", "go11", "scouts")
         if len(set(options)) != len(options) or any(o not in order for o in options):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
         if options != [o for o in order if o in options]:
@@ -93,5 +115,6 @@ class RulesetConfig:
             bloodlines="bloodlines" in options,
             tech_module="tech" in options,
             immortality="immortality" in options,
+            go_to_11="go11" in options,
             arrakeen_scouts="scouts" in options,
         )

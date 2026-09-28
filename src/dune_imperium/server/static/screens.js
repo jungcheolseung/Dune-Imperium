@@ -169,6 +169,15 @@ function syncTechOption() {
   if (!bloodlines) el("opt-tech").checked = false;
 }
 
+/* Go to 11 is offered only with Immortality (OQ-091; RulesetConfig rejects
+   it alone), so its box follows the Immortality box the way Tech follows
+   Bloodlines. */
+function syncGoTo11Option() {
+  const immortality = el("opt-immortality").checked;
+  el("opt-go-to-11").disabled = !immortality;
+  if (!immortality) el("opt-go-to-11").checked = false;
+}
+
 async function createGame(event) {
   event.preventDefault();
   const checkpoint = el("opt-checkpoint").value.trim();
@@ -185,6 +194,7 @@ async function createGame(event) {
     tech_module: el("opt-tech").checked,
     immortality: el("opt-immortality").checked,
     arrakeen_scouts: el("opt-scouts").checked,
+    go_to_11: el("opt-go-to-11").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);

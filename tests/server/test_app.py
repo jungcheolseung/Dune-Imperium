@@ -84,6 +84,30 @@ def test_promo_cards_option_reaches_the_ruleset(client: TestClient) -> None:
     assert _create(client, game_seed=5)["promo_cards"] is False
 
 
+def test_go_to_11_option_starts_every_score_at_zero(client: TestClient) -> None:
+    # The Immortality variant starts every Score marker at 0 instead of 1
+    # [Immortality p. 12] [Main p. 5]. Four human seats keep the view at the
+    # first decision, before any seat could score.
+    humans = ["human", "human", "human", "human"]
+
+    def scores(summary: dict[str, object]) -> list[object]:
+        decision = summary["decision"]
+        assert isinstance(decision, dict)
+        view = client.get(
+            f"/games/{summary['game_id']}/seats/{decision['owner']}/view"
+        )
+        assert view.status_code == 200, view.text
+        return [player["victory_points"] for player in view.json()["players"]]
+
+    go_to_11 = _create(client, seats=humans, immortality=True, go_to_11=True)
+    assert go_to_11["go_to_11"] is True
+    assert scores(go_to_11) == [0, 0, 0, 0]
+    # An omitted key is off: raw POSTs from scripts keep the printed start.
+    plain = _create(client, seats=humans, immortality=True)
+    assert plain["go_to_11"] is False
+    assert scores(plain) == [1, 1, 1, 1]
+
+
 def test_created_games_are_listed_and_summarized(client: TestClient) -> None:
     summary = _create(client)
     game_id = summary["game_id"]
@@ -167,6 +191,18 @@ def test_unknown_games_and_bad_requests_map_to_http_errors(
     )
     assert tech_without_bloodlines.status_code == 400, tech_without_bloodlines.text
     assert "Bloodlines" in tech_without_bloodlines.json()["detail"]
+    # Go to 11 is offered only with Immortality (OQ-091), the same way.
+    go_to_11_without_immortality = client.post(
+        "/games",
+        json={
+            "seats": ["human", "random", "random", "random"],
+            "go_to_11": True,
+        },
+    )
+    assert go_to_11_without_immortality.status_code == 400, (
+        go_to_11_without_immortality.text
+    )
+    assert "Immortality" in go_to_11_without_immortality.json()["detail"]
 
 
 def test_deleting_a_game_removes_it(client: TestClient) -> None:

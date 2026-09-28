@@ -4,7 +4,7 @@
 
 이 디렉터리는 **Dune: Imperium - Uprising 4인 플레이**를 구현할 때 사용하는 규칙 명세다. 공식 문장을 대체하는 번역본이 아니라, 공식 룰북과 FAQ의 내용을 구현 단위로 재구성한 요약이다. 실제 판정의 최종 근거는 항상 [공식 자료](sources.md)에 링크한 Dire Wolf Digital 문서다.
 
-첫 엔진 완성 범위는 CHOAM Module을 끈 4인 게임이다. CHOAM Module도 규칙을 미리 문서화하지만 별도 룰셋 옵션으로 취급한다. Bloodlines 확장과 그 Tech Module은 2026-09-07부터 같은 방식의 옵션(`bloodlines`, `tech_module`)으로, Immortality 확장은 2026-09-08부터 옵션 `immortality`로 추가한다(Main p. 18의 "Adding Immortality"). Dire Wolf Game Room 컴패니언 앱의 Arrakeen Scouts 모드는 2026-09-28부터 옵션 `arrakeen_scouts`로 추가한다(룰북이 없어 앱이 출처다). 1·2인 Rivals, 3인, 6인 팀전, Epic Game Mode, 다른 확장과의 혼합 규칙은 현재 범위 밖이다. `[Main p. 3]` `[Main p. 16]`
+첫 엔진 완성 범위는 CHOAM Module을 끈 4인 게임이다. CHOAM Module도 규칙을 미리 문서화하지만 별도 룰셋 옵션으로 취급한다. Bloodlines 확장과 그 Tech Module은 2026-09-07부터 같은 방식의 옵션(`bloodlines`, `tech_module`)으로, Immortality 확장은 2026-09-08부터 옵션 `immortality`로 추가한다(Main p. 18의 "Adding Immortality"). Immortality 룰북 p. 12의 Go to 11 변형은 2026-09-28부터 옵션 `go_to_11`(Immortality 필요)이다. Dire Wolf Game Room 컴패니언 앱의 Arrakeen Scouts 모드는 2026-09-28부터 옵션 `arrakeen_scouts`로 추가한다(룰북이 없어 앱이 출처다). 1·2인 Rivals, 3인, 6인 팀전, Epic Game Mode, 다른 확장과의 혼합 규칙은 현재 범위 밖이다. `[Main p. 3]` `[Main p. 16]`
 
 ## 문서 구성
 
@@ -33,7 +33,7 @@
 - `[Board Guide p. N]`은 Uprising Rules Supplements PDF 앞부분의 Board Space Guide 페이지다.
 - `[FAQ p. N]`은 2025-01-13 FAQ의 페이지다.
 - `[Bloodlines p. N]`은 Bloodlines 룰북의 PDF 페이지(인쇄 쪽수와 같다)이며 `bloodlines`·`tech_module` 옵션에만 적용된다.
-- `[Immortality p. N]`은 Immortality 룰북의 PDF 페이지(인쇄 쪽수와 같다)이며 `immortality` 옵션에만 적용된다.
+- `[Immortality p. N]`은 Immortality 룰북의 PDF 페이지(인쇄 쪽수와 같다)이며 `immortality`·`go_to_11` 옵션에만 적용된다.
 - `[Scouts help]`, `[Scouts schedule]`, `[Scouts subcommittee: <이름>]`, `[Scouts mission: <이름>]`, `[Scouts event: <이름>]`, `[Scouts auction: <이름>]`, `[Scouts sale: <이름>]`은 Dire Wolf Game Room 컴패니언 앱의 도움말, 일정 생성 코드, 항목 정의다. `[KO app: <loc key>]`는 앱의 한국어 용어다. `arrakeen_scouts` 옵션에만 적용된다([sources.md](sources.md)의 "Arrakeen Scouts" 절).
 - 연속 범위는 `pp. N-M`, 떨어진 페이지와 범위의 조합은 `pp. N, M-M, K`처럼 쓴다. 한 문장에 서로 다른 자료를 썼다면 source tag를 각각 붙인다.
 - source tag는 Markdown inline code로 감싸는 것을 기본 형식으로 한다. 기존 문서의 plain `[Main p. N]`도 같은 의미로 읽지만 새 문장에서는 만들지 않는다.

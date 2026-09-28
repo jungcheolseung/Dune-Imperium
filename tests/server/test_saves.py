@@ -356,6 +356,7 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
         bloodlines=True,
         tech_module=True,
         immortality=True,
+        go_to_11=True,
         arrakeen_scouts=True,
     )
     original = _advance(manager, created, 5)
@@ -366,6 +367,7 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
     assert ruleset["bloodlines"] is True
     assert ruleset["tech_module"] is True
     assert ruleset["immortality"] is True
+    assert ruleset["go_to_11"] is True
     assert ruleset["arrakeen_scouts"] is True
 
     restored = manager.restore_game(_roundtrip(document))
@@ -374,6 +376,7 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
     assert restored["bloodlines"] is True
     assert restored["tech_module"] is True
     assert restored["immortality"] is True
+    assert restored["go_to_11"] is True
     assert restored["arrakeen_scouts"] is True
 
     legacy = _obj(_roundtrip(manager.save_game(_text(original["game_id"]))))
@@ -383,11 +386,18 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
         "bloodlines",
         "tech_module",
         "immortality",
+        "go_to_11",
         "arrakeen_scouts",
     ):
         del legacy_ruleset[key]
     parsed = parse_save_document({**legacy, "ruleset": legacy_ruleset})
     assert parsed.replay.ruleset.bloodlines is False
+    assert parsed.replay.ruleset.go_to_11 is False
+    # Go to 11 without Immortality is no ruleset (OQ-091).
+    with pytest.raises(SaveError, match="Immortality"):
+        parse_save_document(
+            {**legacy, "ruleset": {**legacy_ruleset, "go_to_11": True}}
+        )
     with pytest.raises(SaveError):
         parse_save_document(
             {**legacy, "ruleset": {**legacy_ruleset, "bloodlines": "yes"}}

@@ -63,6 +63,7 @@ from dune_imperium.rules.setup import create_draft_initial_state, create_initial
 from dune_imperium.simulation.sweep import run_checked_game
 
 IMMORTALITY = RulesetConfig(immortality=True)
+GO_TO_11 = RulesetConfig(immortality=True, go_to_11=True)
 LEADERS = (
     "feyd_rautha_harkonnen",
     "gurney_halleck",
@@ -161,6 +162,30 @@ def test_draft_setup_places_the_board_too() -> None:
     ).state
     assert state.tleilaxu_track_spice == 2
     assert all(player.family_atomics for player in state.players)
+
+
+def test_go_to_11_starts_every_score_marker_on_zero() -> None:
+    # "For a 4-player game, start at 0 and play to 10." [Immortality p. 12]
+    # replaces the usual start on 1 [Main p. 5], on both setup paths.
+    fixed = create_initial_state(GO_TO_11, 7, LEADERS)
+    draft = create_draft_initial_state(replace(GO_TO_11, leader_draft=True), 3)
+    for result in (fixed, draft):
+        assert [player.victory_points for player in result.state.players] == [0] * 4
+
+    plain = create_initial_state(IMMORTALITY, 7, LEADERS)
+    assert [player.victory_points for player in plain.state.players] == [1] * 4
+    # Nothing else moves: the same shuffles and the same chance record.
+    assert fixed.chance_outcomes == plain.chance_outcomes
+    assert (
+        replace(
+            fixed.state,
+            config=IMMORTALITY,
+            players=tuple(
+                replace(player, victory_points=1) for player in fixed.state.players
+            ),
+        )
+        == plain.state
+    )
 
 
 def test_board_state_requires_the_option() -> None:
@@ -516,6 +541,21 @@ def test_the_codec_holds_the_immortality_choices_only_with_the_option() -> None:
     }
     assert added <= immortality
     assert not (added & base)
+
+
+def test_go_to_11_leaves_the_action_catalog_alone() -> None:
+    # The variant adds no decision, so the codec only changed its version.
+    assert ActionCodec(GO_TO_11).catalog == ActionCodec(IMMORTALITY).catalog
+
+
+@pytest.mark.parametrize("policy", ["random", "heuristic"])
+def test_a_go_to_11_game_finishes_from_zero(policy: str) -> None:
+    # Every Victory Point loss undoes an earlier gain [Main pp. 7, 17], so a
+    # game started on 0 never trips the non-negative check.
+    report = run_checked_game(
+        GO_TO_11, 11, 900_011, policy=policy, soundness_interval=25
+    )
+    assert report.winner is not None
 
 
 @pytest.mark.parametrize("policy", ["random", "heuristic"])

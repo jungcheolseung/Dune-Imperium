@@ -194,8 +194,11 @@ class CreateGameRequest(BaseModel):
     # The Bloodlines expansion and its Tech Module (docs/rules/bloodlines.md).
     bloodlines: bool = False
     tech_module: bool = False
-    # The Immortality expansion (docs/rules/immortality.md).
+    # The Immortality expansion (docs/rules/immortality.md) and its Go to 11
+    # variant: every Score marker starts at 0 [Immortality p. 12]. Omitted
+    # means off; the browser setup box is checked by default (OQ-091).
     immortality: bool = False
+    go_to_11: bool = False
     # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
     arrakeen_scouts: bool = False
     game_seed: int | None = None
@@ -471,6 +474,7 @@ def create_app(
                 bloodlines=body.bloodlines,
                 tech_module=body.tech_module,
                 immortality=body.immortality,
+                go_to_11=body.go_to_11,
                 arrakeen_scouts=body.arrakeen_scouts,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,

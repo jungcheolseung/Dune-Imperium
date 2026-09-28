@@ -96,7 +96,10 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v117: Desert Riding's Maker Hooks token at Hagga Basin.
 # v118: secret picks (Covert Operation, Offworld Operation).
 # v119: auctions (sealed bids, Mercenaries' retreat, Critical Moment).
-ACTION_CODEC_VERSION = 119
+# v120: the ``go_to_11`` option joined ``RulesetConfig``, so every state
+# hash changes and old saves need the clean version error -- no template
+# changes.
+ACTION_CODEC_VERSION = 120
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

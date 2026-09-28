@@ -493,6 +493,10 @@ const UI_TEXT = {
     "ko": "초암 모듈",
     "en": "CHOAM Module"
   },
+  "html.opt_go_to_11": {
+    "ko": "11점을 향해 (불멸 필요: 모두 승점 0에서 시작, 종료 조건 10점은 그대로)",
+    "en": "Go to 11 (requires Immortality: everyone starts at 0 VP; the game still ends at 10)"
+  },
   "html.opt_immortality": {
     "ko": "불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
     "en": "Immortality expansion (Bene Tleilax board · Tleilaxu Row · Graft · new cards)"
@@ -1156,6 +1160,10 @@ const UI_TEXT = {
   "render.badge_immortality": {
     "ko": "불멸",
     "en": "Immortality"
+  },
+  "render.badge_go_to_11": {
+    "ko": "11점을 향해",
+    "en": "Go to 11"
   },
   "render.badge_scouts": {
     "ko": "아라킨 스카웃",

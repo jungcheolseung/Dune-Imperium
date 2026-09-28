@@ -250,6 +250,7 @@ class _GameSpec:
     bloodlines: bool = False
     tech_module: bool = False
     immortality: bool = False
+    go_to_11: bool = False
     arrakeen_scouts: bool = False
     soundness_interval: int = 0
     collect_coverage: bool = False
@@ -268,6 +269,7 @@ def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
         bloodlines=spec.bloodlines,
         tech_module=spec.tech_module,
         immortality=spec.immortality,
+        go_to_11=spec.go_to_11,
         arrakeen_scouts=spec.arrakeen_scouts,
     )
     engine = (
@@ -336,6 +338,7 @@ def sweep_specs(
     bloodlines: bool = False,
     tech_module: bool = False,
     immortality: bool = False,
+    go_to_11: bool = False,
     arrakeen_scouts: bool = False,
     rotate_leaders: bool = False,
     collect_coverage: bool = False,
@@ -351,6 +354,14 @@ def sweep_specs(
         # engine's fixed leader_ids, so a rotated roster would be silently
         # ignored rather than actually vary the draft.
         raise ValueError("rotate_leaders cannot be combined with leader_draft")
+    # Reject an invalid option mix here: _run_spec builds its config outside
+    # its try block, so it would crash the whole sweep instead.
+    RulesetConfig(
+        bloodlines=bloodlines,
+        tech_module=tech_module,
+        immortality=immortality,
+        go_to_11=go_to_11,
+    )
     return tuple(
         _GameSpec(
             choam_module=choam_module,
@@ -366,6 +377,7 @@ def sweep_specs(
             bloodlines=bloodlines,
             tech_module=tech_module,
             immortality=immortality,
+            go_to_11=go_to_11,
             arrakeen_scouts=arrakeen_scouts,
             collect_coverage=collect_coverage,
             leader_ids=(

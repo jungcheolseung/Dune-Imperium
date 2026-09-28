@@ -1,8 +1,8 @@
 # Immortality 확장
 
-Immortality는 원본 Dune: Imperium의 두 번째 확장이며, Uprising Main Rulebook은 "Adding Immortality"로 Uprising과의 조합을 공식 지원한다 — 유일한 변경 지시는 Uprising의 Research Station도 Research Station overlay로 덮으라는 것이다 `[Main p. 18]`. 이 문서는 4인 Uprising 게임에 Immortality를 더했을 때 바뀌거나 추가되는 규칙을 구현 단위로 정리한다. 규범 근거는 [공식 Immortality 룰북](sources.md)이며, `[Immortality p. N]`은 그 PDF의 페이지 번호다(인쇄된 쪽수와 같다). 프로젝트는 확장을 `RulesetConfig(immortality=True)` 옵션으로 취급하며 기본값은 꺼짐이다. Bloodlines 옵션과는 독립이라 함께 켤 수 있다.
+Immortality는 원본 Dune: Imperium의 두 번째 확장이며, Uprising Main Rulebook은 "Adding Immortality"로 Uprising과의 조합을 공식 지원한다 — 유일한 변경 지시는 Uprising의 Research Station도 Research Station overlay로 덮으라는 것이다 `[Main p. 18]`. 이 문서는 4인 Uprising 게임에 Immortality를 더했을 때 바뀌거나 추가되는 규칙을 구현 단위로 정리한다. 규범 근거는 [공식 Immortality 룰북](sources.md)이며, `[Immortality p. N]`은 그 PDF의 페이지 번호다(인쇄된 쪽수와 같다). 프로젝트는 확장을 `RulesetConfig(immortality=True)` 옵션으로 취급하며 기본값은 꺼짐이다. Bloodlines 옵션과는 독립이라 함께 켤 수 있다. p. 12의 Go to 11 변형은 `RulesetConfig(go_to_11=True)` 옵션이며 Immortality가 켜져 있어야 고를 수 있다(8절).
 
-범위 밖: 1인 Rivals와 House Hagal 카드 `[Immortality p. 13]`, Rise of Ix Epic Game Mode·Go to 11 변형 `[Immortality p. 12]`, 원본 Dune: Imperium 전용 카드(Mentat, Foldspace 등)를 전제한 clarification. Uprising Rules Supplements의 Immortality 항목은 Rivals(p. 3)와 6인 팀전(p. 11)에 관한 것이라 범위 밖이다.
+범위 밖: 1인 Rivals와 House Hagal 카드 `[Immortality p. 13]`, Rise of Ix Epic Game Mode 변형 `[Immortality p. 12]`, 원본 Dune: Imperium 전용 카드(Mentat, Foldspace 등)를 전제한 clarification. Uprising Rules Supplements의 Immortality 항목은 Rivals(p. 3)와 6인 팀전(p. 11)에 관한 것이라 범위 밖이다.
 
 ## 1. 구성물
 
@@ -101,14 +101,21 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 
 - 각 플레이어는 setup 때 Family Atomics token을 받는다. 게임에 한 번, 자신의 turn에 token을 box로 돌려보내고 Imperium Row의 카드를 전부 제거한 뒤 Imperium Deck 맨 위에서 새 Imperium Row를 deal할 수 있다. `[Immortality p. 12]`
 
-## 8. 기존 명세와의 관계
+## 8. Go to 11 변형 (`go_to_11` 옵션)
+
+- 룰북은 Immortality가 덱빌딩 선택지를 늘리므로 조금 더 긴 게임을 원하는 그룹(특히 숙련자와 대회)에 11 Victory Point까지 하는 것을 권하고, 4인 게임은 0에서 시작해 10까지 한다고 적는다. 한국어판 이름은 "11점을 향해"다. `[Immortality p. 12]`
+- 이 엔진은 4인 전용이므로 옵션이 바꾸는 것은 하나다: setup에서 각 플레이어의 Score marker를 1 `[Main p. 5]`이 아니라 0에 놓는다. Endgame 조건(라운드가 끝났을 때 10 Victory Point 이상인 플레이어가 있거나 Conflict deck이 비었다) `[Main p. 15]`은 그대로다. 변형 이름의 11을 종료 조건으로 옮기지 않는다.
+- Victory Point를 잃는 경우는 Influence가 2 아래로 내려갈 때 `[Main pp. 7, 17]`와 Alliance token을 넘겨줄 때 `[Main p. 7]` `[FAQ p. 1]`뿐이고(카드·확장 효과에 VP를 잃는 것은 없다, 2026-09-28 코드 전수 확인), 둘 다 앞서 얻은 1점을 되돌린다([uprising-systems.md](uprising-systems.md)). 그래서 0에서 시작해도 점수는 0 아래로 내려가지 않는다. 모두 1점을 더 얻어야 하므로 Conflict deck이 비어 끝나는 게임은 늘 수 있다.
+- 원판 Dune: Imperium용 변형을 Uprising에 적용하는 것과 Immortality를 켜야만 고를 수 있게 한 것은 공식 규칙이 아니라 사용자 결정이다([OQ-091](open-questions.md#oq-091--go-to-11-변형을-uprising에-적용하는-방식)). 엔진과 CLI의 기본값은 꺼짐이고, 브라우저 새 게임 화면의 체크박스는 기본으로 켜져 있다.
+
+## 9. 기존 명세와의 관계
 
 - specimen은 supply의 troop이므로 [player-turns.md](player-turns.md)의 recruit 규칙과 OQ-030(해결 시점의 supply만큼만 recruit, 소급 없음)이 그대로 적용된다. 플레이어는 specimen을 먼저 돌려보내 supply를 채운다 `[Immortality p. 8]`.
 - Graft는 [player-turns.md](player-turns.md)의 "카드 1장과 일치하는 Agent 아이콘 하나로 Agent 1개 배치" `[Main p. 9]`를 카드 두 장으로 넓히는 예외이며, 두 카드의 Agent box는 space 효과와 같은 자유 순서 그룹에 들어간다(OQ-027).
 - Bloodlines와 함께 쓸 때 "lose a troop"·retreat 효과의 Commander 취급은 [bloodlines.md](bloodlines.md) 3절을 따른다.
 - 공식 문서가 침묵하는 판정은 [open-questions.md](open-questions.md)에 기록한다.
 
-## 9. 구현 상태
+## 10. 구현 상태
 
 - 2026-09-26: Twisted Mentat("You may recall the Agent you sent this turn.")이 recall하는 "이번 turn 보낸 Agent"는 Duncan Idaho(Bloodlines)의 Into the Fray가 그 사이 Conflict로 옮겼어도 여전히 그 Agent이므로, Mentat의 recall이 Conflict까지 따라간다(2026-09-26 사용자 판정, OQ-068; `docs/rules/uprising-systems.md` 97행).
 - 2026-09-16: 점유된 space로의 graft 배치는 놓는 카드가 Ghola의 약속(OQ-057) 없이 그 space에 닿을 때만(또는 놓는 카드가 Tleilaxu Infiltrator일 때만) 제시한다 — 한 turn에 카드는 두 장뿐이라 `[Immortality p. 10]` "Infiltrator가 partner"와 "Ghola가 partner"를 한 partner가 다 지킬 수 없다. 전 확장 기준선 seed 42에서 Long Reach(BG Bond 아이콘)·Ghola·Infiltrator를 든 좌석이 점유된 Arrakeen에 graft 배치를 받고 partner 선택에 합법 행동이 없던 결함([evaluation/baseline-2026-09-10.md](../evaluation/baseline-2026-09-10.md) 18절(k)).

@@ -57,7 +57,7 @@
 
 1. 각 플레이어는 색상을 하나 정하고 그 색의 구성물을 가져간다. [Main p. 5]
 2. Agent 2개는 Leader 위에 놓고, 세 번째 Agent인 Swordmaster는 game board 옆에 둔다. Uprising에는 Mentat Agent가 없다. [Main p. 5] [Main p. 6]
-3. 4인 게임에서는 disc 하나를 Score track의 1에 놓고 Combat marker를 0에 놓는다. [Main p. 5]
+3. 4인 게임에서는 disc 하나를 Score track의 1에 놓고 Combat marker를 0에 놓는다. [Main p. 5] Immortality의 Go to 11 변형(`go_to_11` 옵션)에서는 disc를 0에 놓는다 `[Immortality p. 12]`([immortality.md](immortality.md) 8절).
 4. 각 Faction Influence track의 맨 아래에 자기 cube를 하나씩 놓는다. [Main p. 5]
 5. troop 12개 중 3개는 자신과 가장 가까운 garrison에 놓고 나머지는 자기 supply에 둔다. [Main p. 5]
 6. 각 플레이어는 water 1개를 받고, Spy와 남은 개인 구성물을 다른 플레이어가 수량을 볼 수 있도록 supply에 둔다. [Main p. 5]

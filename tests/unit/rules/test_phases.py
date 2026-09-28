@@ -285,6 +285,29 @@ def test_recall_returns_agents_rotates_first_player_and_resets_reveal() -> None:
     assert all(player.has_revealed is False for player in result.state.players)
 
 
+@pytest.mark.parametrize(("victory_points", "endgame"), ((9, False), (10, True)))
+def test_go_to_11_still_enters_endgame_at_ten(
+    victory_points: int, endgame: bool
+) -> None:
+    # The variant only moves the start: "start at 0 and play to 10"
+    # [Immortality p. 12]; the trigger stays 10 or more at round end
+    # [Main p. 15], whatever the variant's name says.
+    config = RulesetConfig(immortality=True, go_to_11=True)
+    state = create_initial_state(
+        config, seed=71, leader_ids=SELECTED_LEADERS
+    ).state
+    leader = replace(state.players[2], victory_points=victory_points)
+    state = replace(
+        state,
+        phase=GamePhase.RECALL_OR_ENDGAME,
+        players=(*state.players[:2], leader, state.players[3]),
+    )
+
+    result = resolve_recall_or_endgame(state)
+
+    assert (result.state.phase is GamePhase.ENDGAME) is endgame
+
+
 @pytest.mark.parametrize("reason", ("victory_points", "conflict_deck"))
 def test_recall_enters_endgame_at_either_end_condition(reason: str) -> None:
     state = replace(_setup_state(), phase=GamePhase.RECALL_OR_ENDGAME)

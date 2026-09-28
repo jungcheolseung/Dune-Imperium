@@ -189,16 +189,19 @@ class Recorder:
 
 
 # The setup form's expansion boxes. Since 2026-09-22 every one starts checked
-# and the Tech Module box is disabled while Bloodlines is off, so a script
-# that wants a narrower game says which boxes it keeps.
-RULE_OPTIONS = ("choam", "promo", "bloodlines", "tech", "immortality")
+# and the Tech Module box is disabled while Bloodlines is off; the Go to 11
+# box (2026-09-28, OQ-091) also starts checked and is disabled while
+# Immortality is off. A script that wants a narrower game says which boxes it
+# keeps: keeping "immortality" alone plays from the printed start of 1 VP.
+RULE_OPTIONS = ("choam", "promo", "bloodlines", "tech", "immortality", "go-to-11")
 
 
 def rule_option_steps(*keep: str) -> list[tuple[str, bool]]:
     """Checkbox moves leaving exactly ``keep`` of RULE_OPTIONS checked.
 
-    Unchecks run Tech before Bloodlines and checks run Bloodlines before
-    Tech, so no move touches the Tech box while it is disabled.
+    Unchecks run Tech before Bloodlines and Go to 11 before Immortality, and
+    checks run each parent before its dependant, so no move touches the Tech
+    or Go to 11 box while it is disabled.
     """
     unchecks = [
         (f"#opt-{name}", False) for name in reversed(RULE_OPTIONS) if name not in keep

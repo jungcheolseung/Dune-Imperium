@@ -974,3 +974,10 @@
 - 앱: CHOAM Research는 뒷면 Contract 2장을 Research Station에 두고 방문할 때마다 1장씩 가져가게 한다 `[Scouts mission: CHOAM Research]`. Bloodlines의 Immediate는 "trash할 Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`. 둘을 함께 쓰면 뒷면 카드가 Immediate이고 방문자에게 Intrigue가 없을 수 있는데, 어느 문서도 이 경우를 말하지 않는다(무작위 soak에서 교착으로 드러남).
 - 판정: 방문자는 그 칸의 뒷면 카드 가운데 가져갈 수 있는 첫 장을 가진다. Intrigue가 없으면 Immediate를 건너뛰고 다음 장을, 다음 장이 없으면 카드를 받지 않는다(Immediate는 뒷면 그대로 남는다). 받을 것이 그것뿐이면 임무 아이콘도 붙지 않는다. Intrigue가 있으면 Immediate를 받아 곧바로 Intrigue 하나를 trash한다(시장에서 가져갈 때와 같다).
 - 구현: `rules/scouts_missions._takeable_card`. `tests/unit/rules/test_scouts_missions.py`(`test_choam_research_skips_the_immediate_without_an_intrigue_card`).
+
+## OQ-091 — Go to 11 변형을 Uprising에 적용하는 방식
+
+- 상태: `DECIDED` (사용자 결정, 2026-09-28)
+- 공식: Immortality 룰북의 Go to 11 변형은 11 Victory Point까지 하는 것을 권하고, 4인 게임은 0에서 시작해 10까지 한다고 적는다 `[Immortality p. 12]`. 이 룰북은 원판 Dune: Imperium용이고, Uprising의 "Adding Immortality" `[Main p. 18]`는 Research Station overlay만 지시한다. 이 변형을 Uprising에 쓰는지, Immortality 없이도 쓰는지는 어느 문서도 말하지 않는다.
+- 판정: (a) 적용한다. 4인 Uprising도 Score marker를 1에서 시작하고 10점에서 Endgame을 열므로 `[Main pp. 5, 15]`, 4인 문장("0에서 시작해 10까지")을 그대로 쓴다: 시작 점수만 0이 되고 종료 조건 10점은 그대로다. (b) Immortality 옵션을 켰을 때만 고를 수 있다(`tech_module`이 `bloodlines`를 요구하는 것과 같은 모양). 룰북이 이 변형을 Immortality의 덱빌딩 선택지 때문에 권한다는 점을 따른 결정이다. (c) 브라우저 새 게임 화면의 체크박스는 기본으로 켠다. Dune: Imperium 디지털판과 대회가 이 변형을 기본으로 쓴다는 사용자 판단이다. 엔진 `RulesetConfig`와 CLI의 기본값은 꺼짐이라 학습·sweep 기준선은 바뀌지 않는다.
+- 구현: `RulesetConfig.go_to_11`(Immortality 필요, 체크포인트 식별자 `+go11`)과 `RulesetConfig.starting_victory_points`, `rules/setup.create_unshuffled_players`. 명세는 [immortality.md](immortality.md) 8절.
