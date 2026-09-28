@@ -350,7 +350,7 @@ tests/
 
 ### M15. Arrakeen Scouts 모듈
 
-상태: **계획만, 착수 전** (2026-09-28 설계). 사용자 요구는 Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(공식 한국어 "아라킨 스카웃")를 확장팩·모듈처럼 시작 옵션으로 넣는 것이다. 설계·근거·사용자 결정 항목은 [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md)에 있다.
+상태: **구현 중** (2026-09-28 설계·착수; 사용자가 D1~D9를 정했다 — 설계 12절). 사용자 요구는 Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(공식 한국어 "아라킨 스카웃")를 확장팩·모듈처럼 시작 옵션으로 넣는 것이다. 설계·근거·사용자 결정 항목은 [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md)에 있다.
 
 - **출처.** 공식 룰북이 없어 앱 설치본(build-guid `84d64e12…`)에서 추출한 정의·문구·일정 생성 절차가 유일한 출처다. 추출 도구는 [`scripts/dwgr/`](../scripts/dwgr/README.md)에 있고, 추출 결과와 분석은 git 밖의 로컬 폴더(에셋 체크아웃의 `reference/dwgr-arrakeen-scouts/`, 에셋 `.gitignore`)에만 둔다. 이 저장소에는 이름·수치·의역만 넣는다.
 - **모드.** 게임 시작 때 소위원회 5개가 공개되고 원로회 자리를 차지할 때 하나에 가입한다. 라운드마다 정해진 일정이 공개된다: 2~3라운드 임무 3개, 4~7라운드 이벤트 1개씩, 5/6라운드 중간 경매, 8·9라운드 후반 경매와 판매.
@@ -360,7 +360,7 @@ tests/
 슬라이스 순서(설계 문서 10절):
 
 0. 설계·계획 문서. **완료(2026-09-28).**
-1. 출처 등록·규칙 명세·OQ 등록(OQ-071부터)·용어집·콘텐츠 카탈로그와 추출 데이터 대조 감사(엔진 동작 변경 없음).
+1. 출처 등록·규칙 명세·OQ 등록(OQ-071부터)·용어집·콘텐츠 카탈로그와 추출 데이터 대조 감사(엔진 동작 변경 없음). **완료(2026-09-28).**
 2. 옵션 골격: `+scouts` identifier, 서버·CLI·저장·소크·평가 배선, module-off 불변식, codec v112, 옵션을 끈 동일성 테스트.
 3. 일정과 라운드 흐름: 1라운드 시작의 소위원회 추첨과 공개 라운드별 chance 추첨(가중치는 추첨표), Round Start 뒤 첫 턴 전의 Scouts 단계와 그 진행 커서, 전원 자동 이벤트와 이번 라운드 규칙 변경, 관측 v22, slot 행 이관.
 4. 소위원회: 원로회 자리 두 경로의 가입과 비용·보상.
@@ -431,5 +431,5 @@ rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 
 **M14 원격 멀티플레이**([multiplayer-design.md](multiplayer-design.md), 같은 날 확정)가 시작돼 슬라이스 1(접근 계층과 좌석
 claim), 슬라이스 2(snapshot + 증분 로그 + gzip), 슬라이스 3(SSE 초인종 + presence + 폴링 fallback), 슬라이스 4(클라이언트 원격 UX와 브라우저
 E2E), 슬라이스 5(자동 저장과 복구), 슬라이스 6의 리허설과 운영 문서가 끝났고 남은 것은 실제 친구와의 한 판과 그 피드백이다.
-2026-09-28에 **M15 Arrakeen Scouts 모듈**의 설계([arrakeen-scouts-design.md](arrakeen-scouts-design.md))를 세웠다. 착수는 사용자가 설계 12절의
-D1~D9를 정하고 시작을 지시한 뒤다.
+2026-09-28에 **M15 Arrakeen Scouts 모듈**의 설계([arrakeen-scouts-design.md](arrakeen-scouts-design.md))를 세우고, 같은 날
+사용자가 D1~D9를 정해 착수했다(슬라이스 1 완료).

@@ -61,6 +61,44 @@ Tleilax board의 research·Tleilaxu track은 룰북에 실린 공식 board 그�
 (`[Immortality p. 3 board artwork]`)에서 전사했고, 카드의 인쇄 텍스트는 카드면
 (`SourceDocument.CARD_FACE`)을 근거로 전사한다.
 
+### Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
+
+`arrakeen_scouts` 옵션(M15, 2026-09-28)의 근거는 룰북이 아니라 Steam의 **Dire Wolf
+Game Room**에 들어 있는 Dune: Imperium 컴패니언(내부 이름 `grm.companions.spice`)이다.
+이 모드에는 공식 룰북이 없고, 앱의 정의 데이터·문구·아이콘·코드가 유일한 출처다.
+명세는 [arrakeen-scouts.md](arrakeen-scouts.md)다.
+
+- **고정한 빌드.** macOS 앱, Unity 2022.3.62f2, build-guid
+  `84d64e1237b54105aee1940811cd9e43`, 2026-09-26 설치. 원본 파일의 SHA-256:
+
+  | 파일 (`.app/Contents/` 아래) | SHA-256 |
+  | --- | --- |
+  | `Frameworks/GameAssembly.dylib` | `42dcf92f93d66293e2c18fc34e4d4c450c175cb73df7ec0c935d02f39c08a0c4` |
+  | `Resources/Data/il2cpp_data/Metadata/global-metadata.dat` | `2c63409db7251d451576e130e47d72a3b102b4ee16b41bf9ca77b3ad0def9433` |
+  | `Resources/Data/resources.assets` | `081a4409c6a0f49311171aadd094453811689764660ecb32517df704d93fdff2` |
+  | `Resources/Data/level9` | `62f791d3530c8ff82d2b81c5f641e546a7071033a80651a2daac9e181eeacd2d` |
+  | `Resources/Data/StreamingAssets/Localization/osx/localization` | `da1b40164ad7572edd04708801caaf6dee695f73cc50889ef30c67a9a2d999f9` |
+
+- **추출과 보관.** [`scripts/dwgr/extract.py`](../../scripts/dwgr/README.md)가 설치된
+  앱에서 정의 데이터, 일정 풀, 13개 언어 문구, UI 아이콘 트리를 꺼낸다(추출할 때마다
+  `manifest.json`에 위 해시를 남긴다). 추출 결과와 2026-09-27 분석은 Dire Wolf
+  Digital의 저작물에서 나온 것이라 **어느 저장소에도 넣지 않는다.** 에셋 체크아웃의
+  git 무시 폴더 `reference/dwgr-arrakeen-scouts/`에 두며, 그 기기(Mac mini)에만 있다.
+  다른 기기에서는 앱을 설치하고 다시 추출한다. `scripts/official-rule-sources.json`에는
+  넣지 않는다(PDF 전용 스키마).
+- **의역 원칙.** 이 저장소에는 항목 이름, 수치(비용·보상·라운드·가중치), 효과의 의역,
+  우리 말로 쓴 절차만 둔다. 앱 문구(영·한)와 도움말 원문은 옮겨 적지 않는다.
+- **권위 순서.** 앱의 영어 문구와 아이콘이 효과를, 앱 도움말이 절차를 정한다. 항목이
+  부르는 기본 행동은 여전히 Main·Board Guide·FAQ가 정한다. 앱의 한국어는 용어로만
+  쓴다(`[KO app: <loc key>]`; 한국어판의 오역은 OQ-086).
+- **코드의 출처 표기.** `SourceDocument.ARRAKEEN_SCOUTS_APP`(인용 태그는
+  [arrakeen-scouts.md](arrakeen-scouts.md) 1절, page 1 관례)이며, 항목마다 앱 정의
+  asset 이름(`AppDefinition`)을 남겨 추출과 기계 대조한다
+  (`tests/unit/content/test_arrakeen_scouts_extraction.py`, 추출이 없으면 skip).
+- **앱이 업데이트되면.** 새 폴더에 다시 추출하고 이전 추출과 `diff -r`로 비교한다.
+  정의(`spice_mb/*Definition.json`)나 일정 풀(`schedules.json`)이 바뀌었으면 규칙
+  변경으로 다루고, 이 절의 빌드와 해시를 같은 변경에서 갱신한다.
+
 ### 한국어 룰북 (UI 용어집 전용, 규칙 근거 아님)
 
 공식 리소스 페이지는 같은 룰북의 한국어판도 배포한다(국내 유통 Korea

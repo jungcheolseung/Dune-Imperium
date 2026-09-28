@@ -350,3 +350,22 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[FAQ p. 4]` | Tleilaxu track은 Faction이 아님 | `covered` | [immortality.md](immortality.md) 3절 |
 | `[Tleilaxu card faces]` `[card face]` | Tleilaxu 18장, Reclaimed Forces, Imperium 25종, Intrigue 11종, Experimentation, 프로모 Piter의 인쇄 텍스트 | `deferred to content manifest` | [implementation-audits/immortality.md](../implementation-audits/immortality.md) |
 
+
+## Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
+
+룰북이 아니라 앱의 정의 데이터·문구·아이콘·코드가 출처다([sources.md](sources.md)의 "Arrakeen Scouts" 절, build `84d64e12…`). `arrakeen_scouts` 옵션에만 적용된다. 원자료는 저장소 밖(에셋 체크아웃의 git 무시 폴더)에 있고, 표의 "원자료"는 그 폴더 안의 위치다.
+
+| 출처 | 원자료 | 규칙 주제 | 상태 | 반영 위치 또는 처리 |
+| --- | --- | --- | --- | --- |
+| `[Scouts help]` | 도움말 문구(`spice.help.*`) | 모드의 목적, 라운드마다 Scout, 소위원회 가입 절차, 임무 조각이 남는다는 것, 선택형 이벤트의 "할 수 없는 쪽" 규칙, Imperial Reserve·Desert Riding·Prison Planet 해설 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 3~5절 |
+| `[Scouts schedule]` | `schedules.json`, `ScheduleController`의 `pickSubcommittees`·`pickMissions`·`pickEvents`·`pickAuctionsAndSale` | 풀, CHOAM 필터, 라운드 배치, 계열 제거, 가중치, 추첨 순서 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 2절 |
+| `[Scouts schedule]` | 라운드 진행 코드(`PickRoundFirstPrompt`, 비밀 선택 완료) | Scouts 단계 안의 순서, 중간 경매 → 같은 라운드 이벤트, 10라운드 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 3절, 7.2절 |
+| `[Scouts subcommittee: <이름>]` | `SubcommitteeDefinition.json`, 문구, 아이콘 | Uprising 11 + Immortality 3의 등급·비용·보상 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 4절, `content/arrakeen_scouts/subcommittees.py` |
+| `[Scouts mission: <이름>]` | `MissionDefinition.json`, 문구, 아이콘 | Uprising 12 + Immortality 4의 종류·라운드·조각 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 5절, `content/arrakeen_scouts/missions.py` |
+| `[Scouts event: <이름>]` | `EventDefinition.json`(가중치, 비밀 선택의 기한), 문구, 아이콘 | Uprising 27 + Immortality 5 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 6·7절, `content/arrakeen_scouts/events.py` |
+| `[Scouts auction: <이름>]` | `AuctionDefinition.json`(봉인 여부, 상한, 통화, 순위), 입찰 판정 코드 | Uprising 9 + Immortality 2, 봉인 입찰 순위·지불 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 8절, `content/arrakeen_scouts/auctions.py` |
+| `[Scouts sale: <이름>]` | `SaleDefinition.json`, 문구, 아이콘(Shadow Warfare는 아이콘만) | 판매 4 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 9절, `content/arrakeen_scouts/auctions.py` |
+| `[KO app: <loc key>]` | `loc/ko_KR.json` | 공식 한국어 용어 | `covered` | [glossary-ko.md](glossary-ko.md) |
+| `[Scouts schedule]` | 기본판 풀 넷, Uprising+Ix의 Ix 전용 임무 | 원본 Dune: Imperium·Rise of Ix 보드용 항목 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Scouts help]` | 3인 규칙(소위원회 4개) | 3인 플레이 | `out of scope` | 엔진이 4인 전용 |
+| — | 앱이 정하지 않은 판정 | 차례 순서, 칸 위 물품의 남은 것, 입찰 동점 처리 등 | `open question` | [open-questions.md](open-questions.md) OQ-071~OQ-089 |

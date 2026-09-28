@@ -294,6 +294,95 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Family Atomics token | 가문 핵 토큰 | `[Immortality p. 3]`(구성물), `[Immortality p. 5]`(준비), `[Immortality p. 12]`("각 플레이어는 게임 준비 단계에 가문 핵 토큰을 1개씩 받습니다… 가문 핵 토큰을 소비할 수 있습니다… 임페리움 열을 다시 채웁니다") | 적용 |
 | Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
 
+## Arrakeen Scouts 모듈
+
+**새 출처 종류: `[KO app: <loc key>]`**(2026-09-28). Arrakeen Scouts에는 룰북이 없어 Dire Wolf Game Room 컴패니언 앱의 공식 한국어 문구(`ko_KR` 로컬라이제이션)가 한국어 용어의 출처다([sources.md](sources.md)의 "Arrakeen Scouts" 절). 인용은 앱의 loc key다. 앱 한국어에는 오역과 누락이 있어(OQ-086) **용어로만** 쓰고, 효과 문장은 이 표의 단어로 우리가 짓는다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Arrakeen Scouts | 아라킨 스카웃 | `[KO app: spice.mainmenu.34pgame.label]` | 적용 |
+| subcommittee | 소위원회 | `[KO app: spice.subcommittees.confirmtitle]`("소위원회 가입") | 적용 |
+| remaining subcommittee seats | 남아있는 소위원회 자리 | `[KO app: spice.subcommittees.available.title]` | 적용 |
+| mission | 임무 | `[KO app: spice.mission.title]` | 적용 |
+| event | 이벤트 | `[KO app: spice.event.title]` | 적용 |
+| auction | 경매 | `[KO app: spice.auction.title]` | 적용 |
+| sale | 판매 | `[KO app: spice.sale.title]` | 적용 |
+
+**항목 이름.** 카드 이름처럼 공식 한국어가 있으므로 한국어 화면은 아래 이름을 쓴다(영어 화면은 EN). 같은 이름의 중간·후반 판과 CHOAM 판은 이름을 함께 쓴다. 이벤트의 계열 이름은 앱이 제목으로, 변형 이름을 부제로 보여 준다: 스파이스 획득 `[KO app: spice.event.title.spicegain]`, 책략 보너스 `[KO app: spice.event.title.intriguebonus]`, 영향력 증가 `[KO app: spice.event.title.influencegain]`, 영향력 축소 `[KO app: spice.event.title.influencereduction]`.
+
+| EN | 한국어 | 인용 |
+| --- | --- | --- |
+| Appropriations | 재무 | `[KO app: spice.subcommittees.appropriations.title]` |
+| Intelligence | 정보 | `[KO app: spice.subcommittees.intelligence.title]` |
+| Readiness | 긴급대응 | `[KO app: spice.subcommittees.readiness.title]` |
+| CHOAM Coordination | 초암 조직화 | `[KO app: spice.subcommittees.choamcoordination.title]` |
+| Growth Project | 성장 프로젝트 | `[KO app: spice.subcommittees.growthproject.title]` |
+| Oversight | 관리감독 | `[KO app: spice.subcommittees.oversight.title]` |
+| Investigations | 수사 | `[KO app: spice.subcommittees.investigations.title]` |
+| Forecasting | 예측 | `[KO app: spice.subcommittees.forecasting.title]` |
+| CHOAM Management | 초암 운영 | `[KO app: spice.subcommittees.choammanagement.title]` |
+| Analytics | 분석 | `[KO app: spice.subcommittees.analytics.title]` |
+| Relations | 외교 | `[KO app: spice.subcommittees.relations.title]` |
+| Contingencies | 유사시 대비 | `[KO app: spice.subcommittees.contingencies.title]` |
+| Leverage | 권위 | `[KO app: spice.subcommittees.leverage.title]` |
+| Tleilaxu Relations | 협력: 틀레이락스 | `[KO app: spice.subcommittees.tleilaxurelations.title]` |
+| Security Detail | 경호 요원 | `[KO app: spice.mission.securitydetail.title]` |
+| Imperial Reserve | 제국 비축 물자 | `[KO app: spice.mission.imperialreserve.title]` |
+| Desert Riding | 사막 질주 | `[KO app: spice.mission.desertriding.title]` |
+| Urban Surveillance | 유익한 정보원 - 도시 감시 | `[KO app: spice.mission.valuedinformants.urbansurveillance.title]` |
+| Planetary Exploration | 유익한 정보원 - 행성 탐사 | `[KO app: spice.mission.valuedinformants.planetaryexploration.title]` |
+| CHOAM Research | 초암 연구 | `[KO app: spice.mission.choamresearch.title]` |
+| CHOAM Escort | 초암 호송대 | `[KO app: spice.mission.choamescort.title]` |
+| Sponsored Research | 연구 후원 | `[KO app: spice.mission.sponsoredresearch.title]` |
+| Back Room Deal | 밀실 거래 | `[KO app: spice.mission.backroomdeal.title]` |
+| Prison Planet | 정예 사다우카 - 감옥 행성 | `[KO app: spice.mission.elitesardaukar.prisonplanet.title]` |
+| Emperor's Schemes | 정예 사다우카 - 황제의 계략 | `[KO app: spice.mission.elitesardaukar.emperorsschemes.title]` |
+| Fedaykin Assistance | 페다이킨의 지원 | `[KO app: spice.mission.fedaykinassistance.title]` |
+| Weirding Warfare | 기이한 전투 | `[KO app: spice.mission.weirdingwarfare.title]` |
+| Send for Aid | 지원 제공 | `[KO app: spice.mission.sendforaid.title]` |
+| Coordinate With The Emperor | 황제와의 협력 | `[KO app: spice.mission.coordinatewiththeemperor.title]` |
+| Tleilaxu Offering | 틀레이락스의 공물 | `[KO app: spice.mission.tleilaxuoffering.title]` |
+| Private Stock | 개인 비축품 | `[KO app: spice.event.subtitle.privatestock]` |
+| Market Research | 시장 조사 | `[KO app: spice.event.subtitle.marketresearch]` |
+| Smoke and Mirrors | 진실의 왜곡 | `[KO app: spice.event.subtitle.smokeandmirrors]` |
+| Rotating Doors | 회전문 | `[KO app: spice.event.subtitle.rot]` |
+| Moment of Revelation | 폭로의 순간 | `[KO app: spice.event.title.momentofrevelation]` |
+| Water Discipline | 물 규칙 | `[KO app: spice.event.title.waterdiscipline]` |
+| Royal Delegation | 왕실 대표단 | `[KO app: spice.event.subtitle.royaldelegation]` |
+| Guild Negotiation | 길드 협상 | `[KO app: spice.event.subtitle.negotiation]` |
+| Covert Assistance | 비밀스러운 지원 | `[KO app: spice.event.subtitle.covertassistance]` |
+| Gift of Water | 물이 가져다 준 선물 | `[KO app: spice.event.subtitle.giftofwater]` |
+| Share Intelligence | 정보 공유 | `[KO app: spice.event.subtitle.shareintelligence]` |
+| Political Equilibrium | 정치적 균형 | `[KO app: spice.event.subtitle.equ]` |
+| Crackdown | 강력 단속 | `[KO app: spice.event.subtitle.crackdown]` |
+| Water for Spice Smugglers | 밀수업자들에게 물 제공 | `[KO app: spice.event.subtitle.smu]` |
+| Bene Gesserit Treachery | 베네 게세리트의 음모 | `[KO app: spice.event.subtitle.ben]` |
+| Funeral Rites | 장례 의식 | `[KO app: spice.event.subtitle.funeralrites]` |
+| Covert Operation | 작전 변경 | `[KO app: spice.event.title.cov]` |
+| Mating Season | 교미기 | `[KO app: spice.event.title.matingseason]` |
+| Unlikely Allies | 뜻밖의 동맹 | `[KO app: spice.event.title.unlikelyallies]` |
+| Clear the Market | 시장 정리 | `[KO app: spice.event.title.clearthemarket]` |
+| Market Opening | 시장 개장 | `[KO app: spice.event.title.marketopening]` |
+| Eyes on Arrakis | 아라키스를 지켜보는 눈 | `[KO app: spice.event.title.eyesonarrakis]` |
+| Friends Everywhere | 어디든 있는 벗 | `[KO app: spice.event.title.friendseverywhere]` |
+| Rebuild Infrastructure | 인프라 재구축 | `[KO app: spice.event.title.rebuildinfrastructure]` |
+| CHOAM Bargain | 초암 협정 | `[KO app: spice.event.title.choambargain]` |
+| Ingratiate | 비위 맞추기 | `[KO app: spice.event.title.ingratiate]` |
+| Betrayal | 배반 | `[KO app: spice.event.title.betrayal]` |
+| New Innovations | 새로운 혁신 | `[KO app: spice.event.title.newinnovations]` |
+| Termination Request | 폐기 요청 | `[KO app: spice.event.title.terminationrequest]` |
+| Offworld Operation | 외우주 작전 | `[KO app: spice.event.title.offworldoperation]` |
+| To The Highest Bidder | 최고 입찰자에게 | `[KO app: spice.auction.title.highestbidder]` |
+| Mercenaries | 용병단 | `[KO app: spice.auction.title.mercenaries]` |
+| Competitive Study | 경쟁적인 연구 | `[KO app: spice.auction.title.competitivestudy]` |
+| Spies for Hire | 스파이 고용 | `[KO app: spice.auction.title.spiesforhire]` |
+| Critical Moment | 중대한 순간 | `[KO app: spice.auction.title.criticalmoment]` |
+| CHOAM Negotiations | 초암 협상 | `[KO app: spice.auction.title.choamnegotiations]` |
+| Unravel the Future | 미래의 실타래를 풀다 | `[KO app: spice.sale.title.fut]` |
+| Imperium Connections | 임페리움 접점 | `[KO app: spice.sale.title.imperiumconnections]` |
+| Secrets for Sale | 기밀 정보 판매 | `[KO app: spice.sale.title.secretsforsale]` |
+| Shadow Warfare | 그림자 속 전투 | `[KO app: spice.sale.title.shadowwarfare]` |
+
 ## 아직 채우지 않은 것
 
 - Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,

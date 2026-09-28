@@ -39,3 +39,13 @@
 - matched Conflict/Objective의 identity는 뒤집힌 뒤에도 공개를 유지하고, completed contract도 identity를 공개한다(완료 사실이 공지됐으므로).
 - 실시간 행동 로그는 엔진 이벤트를 `visible_to`로 걸러 보여 준다. 공개 이벤트는 그 직후 공개 존에 있는 카드만 이름을 담는다(sweep 불변식으로 검사).
 - 게임 종료 후에는 모든 비공개 존(각 좌석의 hand·deck 순서·보유 Intrigue, 공용 deck·bank 순서)을 공개하고, 검토는 모든 좌석 시점과 모든 행동·chance 값을 보여 준다. 이는 재확인 원칙이 아니라 검토 편의 convention이다.
+
+## Arrakeen Scouts (`arrakeen_scouts` 옵션)
+
+앱은 공개·비공개를 규칙으로 적지 않고 화면으로만 다룬다(비밀 선택 화면은 다음 좌석으로 넘어가면 표시를 지우고, 입찰은 전원 확정 뒤 한꺼번에 공개한다 `[Scouts help]` `[Scouts schedule]`). 엔진은 다음 경계를 쓴다(설계 [arrakeen-scouts-design.md](../arrakeen-scouts-design.md) 4.8절). 모두 project convention이다.
+
+- **일정.** 아직 공개되지 않은 라운드의 항목은 상태에 없다(공개되는 라운드에 chance로 뽑는다). 공개된 소위원회·임무·이벤트·경매·판매와 가입 좌석, 이번 라운드 규칙 변경은 전원에게 공개다.
+- **비밀 선택**(Covert Operation, Offworld Operation). 고른 좌석만 자기 선택을 본다. 다른 좌석은 "누가 이미 골랐는가"만 본다. 공개 라운드의 Scouts 단계 맨 앞에서 전원에게 공개한다. 기한 전에 게임이 끝나 사라진 선택은 종료 후 공개 패널에서 보인다.
+- **봉인 입찰**(경매의 봉인 판, Mercenaries). 입찰한 좌석만 자기 입찰액을 본다. 다른 좌석은 확정 여부만 본다. 입찰 범위는 자기 자원만으로 정해지고, 지불은 공개 때 한다(확정 때 줄어든 자원이 입찰을 드러내지 않도록). 전원이 확정한 뒤 한꺼번에 공개한다. 공개는 되돌릴 수 없다.
+- **공개 경매**(Critical Moment). 공개한 Imperium 덱 카드와 부른 액수는 전원에게 공개다.
+- **칸 위의 뒷면 카드**(CHOAM Research의 Contract 2장, Emperor's Schemes의 Intrigue 2장). 가져가기 전까지 누구도 모른다. 가져간 좌석은 자기 카드로 보며, Contract는 가져가면 앞면 Contract가 되어 공개다(`[Main p. 16]`).
