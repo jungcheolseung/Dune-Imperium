@@ -19,6 +19,10 @@ class SourceDocument(StrEnum):
     # A card that no official document describes (the Uprising promo cards):
     # the printed card face itself is the source, cited as page 1.
     CARD_FACE = "card_face"
+    # The Arrakeen Scouts mode of the Dire Wolf Game Room companion app, which
+    # has no rulebook (``docs/rules/sources.md``); cited as page 1 like
+    # ``CARD_FACE``, with the app asset in ``content.arrakeen_scouts``.
+    ARRAKEEN_SCOUTS_APP = "arrakeen_scouts_app"
 
 
 @dataclass(frozen=True, slots=True)
