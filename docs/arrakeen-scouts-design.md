@@ -383,7 +383,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
    - 관측 v22 세그먼트, FrameKind 추가, slot 행 이관.
    - 이 슬라이스의 미구현 항목은 공개만 하고 `scouts_item_unimplemented` 공개 이벤트를 남긴다. 옵션은 UI에 아직 드러내지 않는다.
    - **3a 완료(2026-09-28)**: 일정·흐름·자동 이벤트·규칙 변경의 설정과 해제·관측 v22·slot 행 이관. **3b 완료(2026-09-28)**: 규칙 변경 네 개를 읽는 곳(`reserve_cost()` 리팩터는 별도 커밋), Friends Everywhere의 선택 frame, codec v113.
-4. **소위원회.** 원로회 자리 두 경로의 가입 대기열, 가입 frame, 비용·보상(Uprising 11 + Immortality 3).
+4. **소위원회.** 원로회 자리 두 경로의 가입 대기열, 가입 frame, 비용·보상(Uprising 11 + Immortality 3). **완료(2026-09-28)**: 좌석별 줄을 푸는 `scouts_effect` frame(자동 칸은 `effect_interpreter.apply_rewards`, 선택 칸은 이 frame의 `scouts_*` 행동, Spy 배치·선택 trash·Contract는 기존 frame)을 여기서 만들었다. codec v114.
 5. **차례 순서 거래·양자택일·판매.** 주인 교대 frame, 양자택일 손실, Political Equilibrium의 동률 선택, Rebuild Infrastructure, 판매 4종, Immortality 거래 이벤트.
 6. **임무.** 공개 때 좌석별 참여 결정, 칸·관측소 물품(뒷면 카드의 비공개 처리 포함), 세워 둔 병력(12개 불변식), 방문 아이콘, 즉시 배치 카운터, 계약 위 보상의 세 완료 경로, Conflict 보상 Spy 경로 정리, Maker Hooks 토큰, 지배 마커, Immortality 임무 4종.
 7. **비밀 선택.** Covert Operation 두 판과 Offworld Operation, 기한 라운드의 공개와 좌석별 해결(묶음은 차례 순서), 종료 후 공개. 첫 숨긴 값이 여기서 생기므로 **봉인 장치 전부**를 이 슬라이스에서 만든다: 숨긴 값 등록부, 로그의 봉인 표시와 가림, 이벤트 가시성 검사, 되돌리기 경계, 미리보기 억제, `determinize`와 scramble.

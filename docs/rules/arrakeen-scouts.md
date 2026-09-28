@@ -278,6 +278,12 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 4: 4절의 소위원회.
+  - High Council 칸의 자리 아이콘과 Corrinth City의 자리 획득이 가입 기회 하나를 대기열에 넣고, 엔진이 곧바로 연다(`rules/scouts_effects.py`, frame `scouts_subcommittee`). 비용을 낼 수 있는 빈 소위원회만 제시하고, 하나도 없으면 결정 없이 사라진다. 거절도 기회를 없앤다(OQ-076).
+  - 가입하면 그 소위원회의 비용 → 보상 줄을 `scouts_effect` frame이 한 칸씩 푼다. 자동 칸(지불, 자원·recruit·draw·Influence·Contract·specimen·연구·Tleilaxu)은 기존 효과 해석기로, 선택 칸(버릴 카드, trash할 카드·Intrigue, 회수할 Spy, Faction, 회수할 Agent)은 이 frame의 행동으로 푼다. Spy 배치와 선택 trash는 기존 frame을 연다. 같은 frame이 슬라이스 5~8의 모든 좌석별 줄에 쓰인다.
+  - Contingencies는 방금 원로회 자리를 얻게 한 Agent(High Council 칸의 Agent)를 뺀 자기 Agent 하나를 회수한다(OQ-075).
+  - 자리 아이콘이 그 turn의 마지막 효과여서 turn이 이미 닫혔으면, 가입으로 얻은 것은 새로 열린 turn에 세지 않는다(OQ-044 (d) 선례).
+  - 관측: 가입한 소위원회의 칸은 1 + 가입 좌석의 상대 번호. codec v114.
 - 2026-09-28 슬라이스 3b: 6.1절의 규칙 변경 넷을 읽는 곳.
   - Unlikely Allies: Agent를 보낼 칸을 고를 때 Influence 요구를 건너뛴다(`agent_turn`).
   - Eyes on Arrakis: Faction 칸 여덟 곳이 Combat 칸이다(`scouts.space_is_combat`). 그 칸에 Agent를 보낸 turn에는 이번 turn에 recruit한 troop과 garrison의 troop 2개까지 배치할 수 있다 `[Main p. 10]`.

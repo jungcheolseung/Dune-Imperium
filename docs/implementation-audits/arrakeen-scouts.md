@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷).
+기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -26,20 +26,20 @@
 
 | id | 앱 정의 | 풀 | 등급 | CHOAM | 엔진 |
 | --- | --- | --- | --- | --- | --- |
-| `appropriations` | `Def_Subcommittee_E_Appropriations` 1.0 | 둘 다 | 0 |  | 카탈로그 |
-| `intelligence` | `Def_Subcommittee_E_Intelligence` 8.0 | 둘 다 | 0 |  | 카탈로그 |
-| `readiness` | `Def_Subcommittee_E_Readiness` 2.0 | 둘 다 | 0 |  | 카탈로그 |
-| `choam_coordination` | `Def_Subcommittee_E_CHOAMCoordination` 13.0 | 둘 다 | 0 | 전용 | 카탈로그 |
-| `growth_project` | `Def_Subcommittee_E_GrowthProject` 10.0 | +Immortality | 0 |  | 카탈로그 |
-| `oversight` | `Def_Subcommittee_M_Oversight` 3.0 | 둘 다 | 1 |  | 카탈로그 |
-| `investigations` | `Def_Subcommittee_M_Investigations` 4.0 | 둘 다 | 1 |  | 카탈로그 |
-| `forecasting` | `Def_Subcommittee_M_Forecasting` 14.0 | 둘 다 | 1 |  | 카탈로그 |
-| `choam_management` | `Def_Subcommittee_M_CHOAMManagement` 15.0 | 둘 다 | 1 | 전용 | 카탈로그 |
-| `analytics` | `Def_Subcommittee_M_Analytics` 11.0 | +Immortality | 1 |  | 카탈로그 |
-| `relations` | `Def_Subcommittee_L_Relations` 5.0 | 둘 다 | 2 |  | 카탈로그 |
-| `contingencies` | `Def_Subcommittee_L_Contingencies` 16.0 | 둘 다 | 2 |  | 카탈로그 |
-| `leverage` | `Def_Subcommittee_L_Leverage` 17.0 | 둘 다 | 2 |  | 카탈로그 |
-| `tleilaxu_relations` | `Def_Subcommittee_L_TleilaxuRelations` 12.0 | +Immortality | 2 |  | 카탈로그 |
+| `appropriations` | `Def_Subcommittee_E_Appropriations` 1.0 | 둘 다 | 0 |  | 4: 가입 + `scouts_effect` |
+| `intelligence` | `Def_Subcommittee_E_Intelligence` 8.0 | 둘 다 | 0 |  | 4: 가입 + `scouts_effect` |
+| `readiness` | `Def_Subcommittee_E_Readiness` 2.0 | 둘 다 | 0 |  | 4: 가입 + `scouts_effect` |
+| `choam_coordination` | `Def_Subcommittee_E_CHOAMCoordination` 13.0 | 둘 다 | 0 | 전용 | 4: 가입 + `scouts_effect` |
+| `growth_project` | `Def_Subcommittee_E_GrowthProject` 10.0 | +Immortality | 0 |  | 4: 가입 + `scouts_effect` |
+| `oversight` | `Def_Subcommittee_M_Oversight` 3.0 | 둘 다 | 1 |  | 4: 가입 + `scouts_effect` |
+| `investigations` | `Def_Subcommittee_M_Investigations` 4.0 | 둘 다 | 1 |  | 4: 가입 + `scouts_effect` |
+| `forecasting` | `Def_Subcommittee_M_Forecasting` 14.0 | 둘 다 | 1 |  | 4: 가입 + `scouts_effect` |
+| `choam_management` | `Def_Subcommittee_M_CHOAMManagement` 15.0 | 둘 다 | 1 | 전용 | 4: 가입 + `scouts_effect` |
+| `analytics` | `Def_Subcommittee_M_Analytics` 11.0 | +Immortality | 1 |  | 4: 가입 + `scouts_effect` |
+| `relations` | `Def_Subcommittee_L_Relations` 5.0 | 둘 다 | 2 |  | 4: 가입 + `scouts_effect` |
+| `contingencies` | `Def_Subcommittee_L_Contingencies` 16.0 | 둘 다 | 2 |  | 4: 가입 + `scouts_effect` |
+| `leverage` | `Def_Subcommittee_L_Leverage` 17.0 | 둘 다 | 2 |  | 4: 가입 + `scouts_effect` |
+| `tleilaxu_relations` | `Def_Subcommittee_L_TleilaxuRelations` 12.0 | +Immortality | 2 |  | 4: 가입 + `scouts_effect` |
 
 ### 임무 (슬라이스 6)
 
