@@ -278,4 +278,12 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 3a: 2절의 일정 전부와 3절의 흐름.
+  - 공개 라운드의 chance frame(`scouts_draw`)으로 뽑는다(`rules/scouts.py`): 1라운드의 소위원회(등급 0·1·2 → 나머지 2개), 임무 배치(70/30)와 임무(계열 제거, 마지막 종류 규칙), 이벤트 추첨표(가중치 × 10), 중간·후반 경매 라운드와 후보, 판매.
+  - Scouts 단계는 Control 방어 배치 뒤에 `_advance_automatic`이 한 단위씩 진행하고, 끝나면 First Player의 turn을 연다(그 좌석의 turn 카운터를 전부 다시 찍는다).
+  - 자동 이벤트 Mating Season과 Clear the Market(CHOAM 판의 Contract 되섞기 chance 포함)이 동작한다. 규칙 변경 넷은 설정되고 다음 Round Start에 풀린다. 규칙 변경을 읽는 곳은 슬라이스 3b다.
+  - 나머지 항목은 공개만 하고 `scouts_item_unimplemented` 이벤트를 남긴다.
+  - 관측 v22: Scouts 칸을 벡터 끝에 붙였다. 옵션을 끈 게임은 옛 칸이 바이트 그대로다. `mlp_slots` 체크포인트의 embedding 행은 키로 이관한다.
+  - 앱 분석의 정확한 확률(임무 71/180·79/308, 영향력 증가 0.5681·0.5959, Rebuild Infrastructure 0.0712·0.0774)을 추첨표 열거로 재현한다(`tests/unit/rules/test_scouts_schedule.py`).
+- 2026-09-28 슬라이스 2: `RulesetConfig(arrakeen_scouts=True)`와 식별자 `+scouts`(맨 뒤). 서버 API·요약·저장 파일·sweep·coverage·대회·PettingZoo 배선, Scouts 게임의 `checkpoint:`·`search:` 좌석 거절(설계 4.9). codec v112(카탈로그 변화 없음). 학습 설정(`train`, `problems`)에는 넣지 않았다(D6). UI 체크박스는 슬라이스 9다.
 - 2026-09-28 슬라이스 1: 이 명세, 출처 등록([sources.md](sources.md), [source-map.md](source-map.md)), OQ-071~OQ-089, 용어([glossary-ko.md](glossary-ko.md)), 콘텐츠 카탈로그(`content/arrakeen_scouts/`: 소위원회 14, 임무 16, 이벤트 32, 경매 11, 판매 4)와 추출 데이터 대조 감사([implementation-audits/arrakeen-scouts.md](../implementation-audits/arrakeen-scouts.md)). 엔진 동작은 바뀌지 않았다.

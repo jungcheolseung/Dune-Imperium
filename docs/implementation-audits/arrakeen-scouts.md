@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그).
+기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -20,7 +20,7 @@
 
 ## 항목 표
 
-"엔진" 열은 구현 상태다(카탈로그 = 레코드만 있고 엔진 동작 없음). 슬라이스가 동작을 구현하면 그 슬라이스와 테스트를 적는다.
+"엔진" 열은 구현 상태다(카탈로그 = 레코드만 있고 엔진 동작 없음). 슬라이스 3a부터 모든 항목은 일정대로 뽑혀 공개되고, 아직 동작이 없는 항목은 `scouts_item_unimplemented` 이벤트를 남긴다. 슬라이스가 동작을 구현하면 그 슬라이스와 테스트를 적는다.
 
 ### 소위원회 (슬라이스 4)
 
@@ -84,13 +84,13 @@
 | `funeral_rites` | `Def_Event_InfluenceReduction_FuneralRites` 18.4 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
 | `covert_operation` | `Def_Event_CovertOperation2` 19.0 | 둘 다 | secret | 4~7 | 10 | 없을 때 전용 | 카탈로그 |
 | `covert_operation_choam` | `Def_Event_CovertOperation3` 19.1 | 둘 다 | secret | 4~7 | 10 | 전용 | 카탈로그 |
-| `mating_season` | `Def_Event_MatingSeason` 20.0 | 둘 다 | automatic | 4~7 | 10 |  | 카탈로그 |
-| `unlikely_allies` | `Def_Event_UnlikelyAllies` 21.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 카탈로그 |
-| `clear_the_market` | `Def_Event_ClearTheMarket` 22.0 | 둘 다 | automatic | 4~7 | 10 | 없을 때 전용 | 카탈로그 |
-| `clear_the_market_choam` | `Def_Event_ClearTheMarket2` 22.1 | 둘 다 | automatic | 4~7 | 10 | 전용 | 카탈로그 |
-| `market_opening` | `Def_Event_MarketOpening` 23.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 카탈로그 |
-| `eyes_on_arrakis` | `Def_Event_EyesOnArrakis` 24.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 카탈로그 |
-| `friends_everywhere` | `Def_Event_FriendsEverywhere` 25.0 | 둘 다 | round_modifier | 5~7 | 10 |  | 카탈로그 |
+| `mating_season` | `Def_Event_MatingSeason` 20.0 | 둘 다 | automatic | 4~7 | 10 |  | 3a: Maker 칸마다 +1 |
+| `unlikely_allies` | `Def_Event_UnlikelyAllies` 21.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 3a: 설정·해제 (읽는 곳은 3b) |
+| `clear_the_market` | `Def_Event_ClearTheMarket` 22.0 | 둘 다 | automatic | 4~7 | 10 | 없을 때 전용 | 3a: Row 교체, 치운 카드는 `imperium_removed` |
+| `clear_the_market_choam` | `Def_Event_ClearTheMarket2` 22.1 | 둘 다 | automatic | 4~7 | 10 | 전용 | 3a: Row 교체 + Contract 되섞기 chance |
+| `market_opening` | `Def_Event_MarketOpening` 23.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 3a: 설정·해제 (읽는 곳은 3b) |
+| `eyes_on_arrakis` | `Def_Event_EyesOnArrakis` 24.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 3a: 설정·해제 (읽는 곳은 3b) |
+| `friends_everywhere` | `Def_Event_FriendsEverywhere` 25.0 | 둘 다 | round_modifier | 5~7 | 10 |  | 3a: 설정·해제 (읽는 곳은 3b) |
 | `rebuild_infrastructure` | `Def_Event_RebuildInfrastructure` 26.0 | 둘 다 | shared | 7~7 | 10 |  | 카탈로그 |
 | `choam_bargain` | `Def_Event_CHOAMBargain` 27.0 | 둘 다 | choice | 4~7 | 10 | 전용 | 카탈로그 |
 | `ingratiate` | `Def_Event_Ingratiate` 8.0 | +Immortality | choice | 4~7 | 10 |  | 카탈로그 |
