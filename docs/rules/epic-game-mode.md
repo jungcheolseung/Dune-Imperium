@@ -95,6 +95,9 @@ Second Wave, Treachery — 모두 Rise of Ix 카드).
   recruit한 troop은 Combat space에 Agent를 보낸 turn이면 Conflict에 deploy할 수 있다
   `[Main p. 10]` `[FAQ p. 4]`.
 - Reveal box: Persuasion 1, spice 1.
+- 구현 관례(규칙 판정 아님): 비용을 내면 troop을 먼저 recruit하고 그 다음 trash를
+  고른다(Throne Room Politics와 같은 순서). 두 보상은 서로에게 영향을 주지 않아
+  순서가 결과를 바꾸는 경우를 찾지 못했다.
 
 ### Economic Supremacy (Conflict III)
 
@@ -129,4 +132,5 @@ Second Wave, Treachery — 모두 Rise of Ix 카드).
 
 ## 8. 구현 상태
 
-구현 진행 중(2026-09-28, 브랜치 `epic-game-mode`).
+2026-09-28 구현(브랜치 `epic-game-mode`). 코드 위치와 테스트는
+[implementation-audits/epic-game-mode.md](../implementation-audits/epic-game-mode.md).
