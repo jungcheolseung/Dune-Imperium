@@ -5,7 +5,12 @@ from numbers import Integral
 
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
-from dune_imperium.content.arrakeen_scouts import scouts_pool, subcommittees_for
+from dune_imperium.content.arrakeen_scouts import (
+    EVENTS,
+    SALES,
+    scouts_pool,
+    subcommittees_for,
+)
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import (
@@ -83,7 +88,8 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v113: the first Scouts templates (Friends Everywhere's choice of Influence
 # 4 bonus), only in ``arrakeen_scouts`` catalogs.
 # v114: subcommittees (join/decline) and the Scouts effect frame's choices.
-ACTION_CODEC_VERSION = 114
+# v115: the Scouts events' and sales' turn-order choices and Influence losses.
+ACTION_CODEC_VERSION = 115
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -989,8 +995,55 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for space in catalog_spaces(config)
         ),
+        # Influence losses (Crackdown and the like, Political Equilibrium),
+        # with the Alliance recipient when several opponents tie.
+        *(
+            ActionTemplate(
+                action_id="scouts_lose_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        ),
+        *(
+            ActionTemplate(
+                action_id="scouts_lose_influence_to",
+                arguments=(
+                    ("alliance_recipient", recipient),
+                    ("faction", faction.value),
+                ),
+            )
+            for recipient in range(config.players)
+            for faction in Faction
+        ),
+        # The trash icon (Oversight, Water Discipline) opens the generic
+        # optional-trash frame, which only the Bloodlines and Immortality
+        # catalogs hold otherwise.
+        *(
+            (
+                ActionTemplate(action_id="decline_optional_trash"),
+                *_trash_templates(config, "trash_optional_card"),
+            )
+            if not config.bloodlines and not config.immortality
+            else ()
+        ),
+        # One seat's turn-order pick of an event's or sale's line, or a pass.
+        ActionTemplate(action_id="scouts_pass"),
+        *(
+            ActionTemplate(action_id="scouts_choose_option", arguments=(("option", i),))
+            for i in range(_MAX_SCOUTS_OPTIONS)
+        ),
     ]
     return tuple(templates)
+
+
+# The most lines any Scouts event or sale offers.
+_MAX_SCOUTS_OPTIONS = max(
+    len(options)
+    for options in (
+        *(event.options for event in EVENTS),
+        *(sale.options for sale in SALES),
+    )
+)
 
 
 def _held_intrigue_instance_ids(config: RulesetConfig) -> tuple[str, ...]:

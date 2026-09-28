@@ -29,6 +29,8 @@ const PROMPT_KO = {
   "Choose two Spies to recall or decline this Reveal effect": "소환할 {spy} 2개 선택, 또는 이 {reveal_turn} 효과 거절",
   "Choose which Influence 4 bonus to take": "받을 {influence_any} 4 보너스 선택",
   "Join a subcommittee or decline": "가입할 소위원회 선택, 또는 거절",
+  "Choose an Arrakeen Scouts option or pass": "아라킨 스카웃 선택지 선택, 또는 패스",
+  "Choose an Arrakeen Scouts option": "아라킨 스카웃 선택지 선택",
   "Resolve the Arrakeen Scouts effect": "아라킨 스카웃 효과 해결",
   "Choose where to advance your research token": "{research} 토큰을 전진시킬 위치 선택",
   "Choose where to lose one unit": "부대 1을 잃을 위치 선택",

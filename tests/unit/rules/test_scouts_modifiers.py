@@ -22,7 +22,7 @@ from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actio
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
-from dune_imperium.rules.scouts import discount_used_after, space_is_combat
+from dune_imperium.rules.scouts_modifiers import discount_used_after, space_is_combat
 
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
 STARTERS = starting_deck_instance_ids(0)

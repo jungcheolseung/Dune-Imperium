@@ -17,6 +17,10 @@ _SCOUTS_ACTION_PREFIXES = (
     "join_subcommittee",
     "decline_subcommittee",
     "scouts_",
+    # The generic optional-trash frame's actions, which only the Bloodlines
+    # and Immortality catalogs hold otherwise.
+    "decline_optional_trash",
+    "trash_optional_card",
 )
 
 
@@ -24,7 +28,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 114
+    assert ACTION_CODEC_VERSION == 115
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,

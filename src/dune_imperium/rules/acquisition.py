@@ -50,7 +50,10 @@ from dune_imperium.rules.reveal_turn import (
     fire_guild_spy_on_spice_must_flow,
     reveal_late_arrivals,
 )
-from dune_imperium.rules.scouts import discount_used_after, reserve_discount
+from dune_imperium.rules.scouts_modifiers import (
+    discount_used_after,
+    reserve_discount,
+)
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,

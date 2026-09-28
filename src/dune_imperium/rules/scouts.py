@@ -33,7 +33,6 @@ from dune_imperium.content.arrakeen_scouts import (
     AuctionSlot,
     AutomaticEffect,
     EventKind,
-    RoundModifier,
     ScoutsPool,
     auctions_for,
     events_for,
@@ -42,7 +41,7 @@ from dune_imperium.content.arrakeen_scouts import (
     scouts_pool,
     subcommittees_for,
 )
-from dune_imperium.content.uprising.board import BoardSpace, Faction
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
@@ -56,6 +55,11 @@ from dune_imperium.rules.frames import (
     reset_turn_counters,
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
+from dune_imperium.rules.scouts_effects import (
+    highest_factions,
+    offer_scouts_choice,
+    push_scouts_effect,
+)
 
 # Four players reveal five subcommittees: one of each tier, then the rest
 # from the whole remaining pool [Scouts schedule].
@@ -115,64 +119,6 @@ def revealed_of_kind(state: GameState, kind: str) -> tuple[str, ...]:
     """Return every revealed item of one kind, in reveal order."""
 
     return tuple(item for _, item in state.scouts_revealed if item_kind(item) == kind)
-
-
-def round_modifier(state: GameState) -> RoundModifier | None:
-    """Return this round's rule change, if an event set one."""
-
-    if not state.scouts_round_modifier:
-        return None
-    return RoundModifier(state.scouts_round_modifier)
-
-
-def ignores_influence_requirements_this_round(state: GameState) -> bool:
-    """Unlikely Allies: board spaces' Influence requirements are waived.
-
-    [Scouts event: Unlikely Allies] (docs/rules/arrakeen-scouts.md 6.1):
-    only the requirement; cost and occupancy rules stand.
-    """
-
-    return round_modifier(state) is RoundModifier.IGNORE_INFLUENCE_REQUIREMENTS
-
-
-SPICE_MUST_FLOW: Final = "the_spice_must_flow"
-MARKET_OPENING_DISCOUNT: Final = 2
-
-
-def reserve_discount(state: GameState, card_id: str) -> int:
-    """Market Opening: the round's first The Spice Must Flow costs 2 less.
-
-    [Scouts event: Market Opening] (docs/rules/arrakeen-scouts.md 6.1): the
-    first copy acquired this round by anyone (OQ-081 (b)); the discount
-    applies to the cost check and the payment alike.
-    """
-
-    if card_id != SPICE_MUST_FLOW or state.scouts_discount_used:
-        return 0
-    if round_modifier(state) is not RoundModifier.SPICE_MUST_FLOW_DISCOUNT:
-        return 0
-    return MARKET_OPENING_DISCOUNT
-
-
-def discount_used_after(state: GameState, card_id: str) -> bool:
-    """``scouts_discount_used`` once ``card_id`` has been acquired now."""
-
-    return state.scouts_discount_used or reserve_discount(state, card_id) > 0
-
-
-def space_is_combat(state: GameState, space: BoardSpace) -> bool:
-    """Whether ``space`` counts as a Combat space this round.
-
-    Eyes on Arrakis makes every Faction space a Combat space for the round
-    [Scouts event: Eyes on Arrakis] (docs/rules/arrakeen-scouts.md 6.1).
-    """
-
-    if space.combat:
-        return True
-    return (
-        space.faction is not None
-        and round_modifier(state) is RoundModifier.FACTION_SPACES_ARE_COMBAT
-    )
 
 
 def turn_order(state: GameState) -> tuple[int, ...]:
@@ -471,7 +417,7 @@ def _reveal(state: GameState, item_id: str) -> RuleResult:
         state,
         scouts_revealed=(*state.scouts_revealed, (round_number, item_id)),
         scouts_item=item_id,
-        scouts_tasks=_item_tasks(item_id),
+        scouts_tasks=_item_tasks(state, item_id),
     )
     return RuleResult(
         state=revealed,
@@ -489,8 +435,18 @@ def _reveal(state: GameState, item_id: str) -> RuleResult:
     )
 
 
-def _item_tasks(item_id: str) -> tuple[str, ...]:
+def _item_tasks(state: GameState, item_id: str) -> tuple[str, ...]:
+    order = turn_order(state)
     event = EVENTS_BY_ID.get(item_id)
+    if item_id in SALES_BY_ID or (event is not None and event.kind is EventKind.CHOICE):
+        # Each seat in turn order picks a line (OQ-071).
+        return tuple(f"offer:{seat}" for seat in order)
+    if event is not None and event.kind is EventKind.SHARED:
+        if state.shield_wall_present:
+            return ("moot",)  # Rebuild Infrastructure: nothing to rebuild
+        return tuple(f"rebuild:{seat}|-1" for seat in order)
+    if event is not None and event.automatic is AutomaticEffect.POLITICAL_EQUILIBRIUM:
+        return tuple(f"equilibrium:{seat}" for seat in order)
     if event is not None:
         if event.kind is EventKind.ROUND_MODIFIER:
             return ("modifier",)
@@ -507,6 +463,38 @@ def _item_tasks(item_id: str) -> tuple[str, ...]:
 
 
 def _run_task(state: GameState, task: str) -> RuleResult:
+    item = state.scouts_item
+    source = f"round:{state.round_number}:scouts:{item}"
+    if task.startswith("offer:"):
+        seat = int(task.removeprefix("offer:"))
+        return offer_scouts_choice(state, seat, item, source=f"{source}:{seat}")
+    if task.startswith("rebuild:"):
+        rebuild_seat, volunteer = task.removeprefix("rebuild:").split("|")
+        return offer_scouts_choice(
+            state,
+            int(rebuild_seat),
+            item,
+            source=f"{source}:{rebuild_seat}",
+            volunteer=int(volunteer),
+        )
+    if task.startswith("equilibrium:"):
+        seat = int(task.removeprefix("equilibrium:"))
+        if not highest_factions(state.players[seat]):
+            return RuleResult(state=state)
+        return RuleResult(
+            state=push_scouts_effect(state, seat, item, 0, source=f"{source}:{seat}")
+        )
+    if task == "moot":
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:moot",
+                    kind="scouts_item_moot",
+                    payload=(("item_id", item),),
+                ),
+            ),
+        )
     if task == "modifier":
         return _set_round_modifier(state)
     if task == "mating_season":

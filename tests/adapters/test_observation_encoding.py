@@ -260,8 +260,9 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # column was 0, so the games and the old columns are byte for byte what they
 # were. "scouts" (CHOAM with the new option) was added then, and re-pinned
 # the same day when the four round modifiers began to act (slice 3b) and
-# again when subcommittees could be joined (slice 4): the five other games
-# did not move.
+# again when subcommittees could be joined (slice 4) and when events and
+# sales offered their turn-order choices (slice 5): the five other games did
+# not move.
 _GOLDEN_DIGESTS = {
     "base": ("042434aa5c4a0f288cd43548c1d4d9fc9b37f1e1bd5dd10a82a2b66dfec2534c", 2572),
     "choam": ("73dd50524182d98ae2479f6c62db00846ce7fd8a590c8a9d6838711230e24f73", 2972),
@@ -275,8 +276,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("5d2134633b71199990940445a03ca7d15c0bd4c150798c8f86f8ab8a06ceba1c", 2476),
     "scouts": (
-        "6150c5f5d11fed2a22ba1c5bd53140dfec656b7571a92f0136d9482bb00028cb",
-        3204,
+        "df355678c0eeef7b2fff02e96187e2a1a1dc7253c4f60f4271e03c30bc084f92",
+        3012,
     ),
 }
 _GOLDEN_CONFIGS = {

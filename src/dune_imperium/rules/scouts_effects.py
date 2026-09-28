@@ -24,6 +24,8 @@ from dune_imperium.content.arrakeen_scouts import (
     EVENTS_BY_ID,
     SALES_BY_ID,
     SUBCOMMITTEES_BY_ID,
+    AutomaticEffect,
+    EventKind,
     ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
@@ -32,6 +34,7 @@ from dune_imperium.content.arrakeen_scouts.types import (
     GainSpiceWithHelixBonus,
     LoseFactionInfluence,
     LoseGarrisonTroops,
+    LoseHighestInfluence,
     PaySpecimens,
     RecallOtherAgent,
     RecruitToConflict,
@@ -77,8 +80,10 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
+    alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
+    lose_faction_influence,
 )
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.spy_moves import spy_placement_frame
@@ -86,12 +91,14 @@ from dune_imperium.rules.spy_moves import spy_placement_frame
 _EFFECT_FRAME: Final = "Scouts effect frame"
 _OFFER_FRAME: Final = "Subcommittee offer frame"
 _ALL_POSTS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)
+_CHOICE_FRAME: Final = "Scouts choice frame"
+# Political Equilibrium, per seat: one Influence off the highest track.
+_EQUILIBRIUM: Final = ScoutsOption(costs=(LoseHighestInfluence(),))
 
 type ScoutsStep = ScoutsCost | ScoutsReward
 # Steps ``apply_rewards`` cannot take; the ones this module handles itself
 # never reach it, the rest arrive with later slices.
 _NOT_DSL_REWARDS: Final = (
-    LoseFactionInfluence,
     LoseInfluence,
     LoseTroops,
     GiveIntrigueToOpponent,
@@ -113,6 +120,8 @@ def scouts_option(item: str, index: int) -> ScoutsOption:
         return SUBCOMMITTEES_BY_ID[item].option
     if item in EVENTS_BY_ID:
         event = EVENTS_BY_ID[item]
+        if event.automatic is AutomaticEffect.POLITICAL_EQUILIBRIUM:
+            return _EQUILIBRIUM
         if event.secret_choices:
             return event.secret_choices[index].option
         return event.options[index]
@@ -163,6 +172,11 @@ def option_is_affordable(state: GameState, player: int, option: ScoutsOption) ->
             case PaySpecimens(count=count):
                 if owner.specimens < count:
                     return False
+            case LoseFactionInfluence(faction=faction, count=count):
+                if influence_amount(owner.influence, faction) < count:
+                    return False
+            case LoseHighestInfluence():
+                pass
             case _:
                 # Influence losses are the only other costs; slice 5 adds them.
                 raise NotImplementedError(f"Scouts cost not supported yet: {cost!r}")
@@ -266,6 +280,10 @@ def _is_choice(
             return len(_lowest_factions(owner)) > 1
         case RecallOtherAgent():
             return len(_recallable_spaces(owner, frame)) > 0
+        case LoseFactionInfluence(faction=faction):
+            return len(_loss_actions(state, player, (faction,))) > 1
+        case LoseHighestInfluence():
+            return len(_loss_actions(state, player, highest_factions(owner))) > 1
     return False
 
 
@@ -466,6 +484,18 @@ def _apply_automatic(
             # A choice with nothing left to choose (checked before paying a
             # cost; a delayed reward's may run dry): nothing happens.
             return RuleResult(state=state)
+        case LoseFactionInfluence(faction=faction, count=count):
+            return lose_faction_influence(
+                state, player, faction, count, event_prefix=source
+            )
+        case LoseHighestInfluence():
+            factions = highest_factions(owner)
+            if not factions:
+                return RuleResult(state=state)  # no Influence to lose
+            (faction,) = factions
+            return lose_faction_influence(
+                state, player, faction, 1, event_prefix=source
+            )
     if isinstance(step, _NOT_DSL_REWARDS):
         raise NotImplementedError(f"Scouts step not supported yet: {step!r}")
     outcome = apply_rewards(state, player, (cast(Reward, step),), source=source)
@@ -501,6 +531,50 @@ def _lowest_factions(owner: PlayerState) -> tuple[Faction, ...]:
         for faction in Faction
         if influence_amount(owner.influence, faction) == lowest
     )
+
+
+def highest_factions(owner: PlayerState) -> tuple[Faction, ...]:
+    """The seat's highest Influence tracks (none when every track is at 0)."""
+
+    highest = max(influence_amount(owner.influence, faction) for faction in Faction)
+    if highest == 0:
+        return ()
+    return tuple(
+        faction
+        for faction in Faction
+        if influence_amount(owner.influence, faction) == highest
+    )
+
+
+def _loss_actions(
+    state: GameState, player: int, factions: tuple[Faction, ...]
+) -> tuple[DomainAction, ...]:
+    """One loss per Faction, split by Alliance recipient when several tie."""
+
+    actions: list[DomainAction] = []
+    for faction in factions:
+        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        if len(recipients) > 1:
+            actions.extend(
+                DomainAction(
+                    action_id="scouts_lose_influence_to",
+                    actor=player,
+                    arguments=(
+                        ("alliance_recipient", recipient),
+                        ("faction", faction.value),
+                    ),
+                )
+                for recipient in recipients
+            )
+        else:
+            actions.append(
+                DomainAction(
+                    action_id="scouts_lose_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+            )
+    return tuple(actions)
 
 
 def _recallable_spaces(owner: PlayerState, frame: DecisionFrame) -> tuple[str, ...]:
@@ -561,6 +635,10 @@ def legal_scouts_effect_actions(
             return offer(
                 "scouts_recall_agent", "space_id", _recallable_spaces(owner, frame)
             )
+        case LoseFactionInfluence(faction=faction):
+            return _loss_actions(state, player, (faction,))
+        case LoseHighestInfluence():
+            return _loss_actions(state, player, highest_factions(owner))
     return ()
 
 
@@ -582,6 +660,8 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
         "scouts_recall_agent",
         "scouts_trash_card",
         "scouts_trash_intrigue",
+        "scouts_lose_influence",
+        "scouts_lose_influence_to",
     )
     if done:
         cursor_state = _moved(state, frame, step=step + 1)
@@ -671,7 +751,218 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
                     ),
                 ),
             )
+        case "scouts_lose_influence" | "scouts_lose_influence_to":
+            arguments = dict(action.arguments)
+            recipient = arguments.get("alliance_recipient")
+            return lose_faction_influence(
+                cursor_state,
+                player,
+                Faction(str(arguments["faction"])),
+                1,
+                event_prefix=pick_source,
+                alliance_recipient=recipient if isinstance(recipient, int) else None,
+            )
     raise RuntimeError(f"unknown Scouts choice: {action.action_id}")
+
+
+# --- One seat's turn-order choice ---------------------------------------------------
+
+
+def _choice_options(item: str) -> tuple[ScoutsOption, ...]:
+    if item in SALES_BY_ID:
+        return SALES_BY_ID[item].options
+    return EVENTS_BY_ID[item].options
+
+
+def _is_passable(item: str) -> bool:
+    """A sale and Rebuild Infrastructure may always be passed; an event only
+    when it offers "or Pass" [Scouts event: <name>] [Scouts sale: <name>]."""
+
+    if item in SALES_BY_ID:
+        return True
+    event = EVENTS_BY_ID[item]
+    return event.passable or event.kind is EventKind.SHARED
+
+
+def _affordable(state: GameState, player: int, item: str) -> tuple[int, ...]:
+    return tuple(
+        index
+        for index, option in enumerate(_choice_options(item))
+        if option_is_affordable(state, player, option)
+    )
+
+
+def offer_scouts_choice(
+    state: GameState,
+    player: int,
+    item: str,
+    *,
+    source: str,
+    volunteer: int = -1,
+) -> RuleResult:
+    """Open one seat's turn-order choice of an event or sale (OQ-071).
+
+    Only lines the seat can pay for are offered. A seat that must choose and
+    can do one line only takes it; one that can do none is skipped
+    [Scouts help]. ``volunteer`` is Rebuild Infrastructure's first seat that
+    agreed to pay (OQ-084).
+    """
+
+    affordable = _affordable(state, player, item)
+    if not affordable:
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:skipped",
+                    kind="scouts_choice_skipped",
+                    payload=(("item_id", item), ("player", player)),
+                ),
+            ),
+        )
+    passable = _is_passable(item)
+    if not passable and len(affordable) == 1:
+        return RuleResult(
+            state=push_scouts_effect(state, player, item, affordable[0], source=source)
+        )
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_CHOICE,
+        frame_id=f"{source}:choice",
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                "Choose an Arrakeen Scouts option or pass"
+                if passable
+                else "Choose an Arrakeen Scouts option"
+            ),
+        ),
+        context=(
+            ("item", item),
+            ("player", player),
+            ("source", source),
+            ("volunteer", volunteer),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def legal_scouts_choice_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The seat's payable lines, and a pass where the item allows one."""
+
+    frame = owned_top_frame(state, FrameKind.SCOUTS_CHOICE, player)
+    if frame is None:
+        return ()
+    item = context_str(dict(frame.context), "item", owner=_CHOICE_FRAME)
+    passes = (
+        (DomainAction(action_id="scouts_pass", actor=player),)
+        if _is_passable(item)
+        else ()
+    )
+    return (
+        *passes,
+        *(
+            DomainAction(
+                action_id="scouts_choose_option",
+                actor=player,
+                arguments=(("option", index),),
+            )
+            for index in _affordable(state, player, item)
+        ),
+    )
+
+
+def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Pass, or take a line (Rebuild Infrastructure: agree to pay)."""
+
+    if action not in legal_scouts_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Arrakeen Scouts option")
+    context = dict(state.decision_stack[-1].context)
+    item = context_str(context, "item", owner=_CHOICE_FRAME)
+    source = context_str(context, "source", owner=_CHOICE_FRAME)
+    popped = state.pop_decision()
+    if action.action_id == "scouts_pass":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:passed",
+                    kind="scouts_choice_passed",
+                    payload=(("item_id", item), ("player", action.actor)),
+                ),
+            ),
+        )
+    index = dict(action.arguments)["option"]
+    assert isinstance(index, int)
+    event = EVENTS_BY_ID.get(item)
+    if event is not None and event.kind is EventKind.SHARED:
+        volunteer = context_int(context, "volunteer", owner=_CHOICE_FRAME)
+        return _rebuild(popped, action.actor, volunteer, source=source)
+    return RuleResult(
+        state=push_scouts_effect(popped, action.actor, item, index, source=source),
+        events=(
+            GameEvent(
+                event_id=f"{source}:chosen",
+                kind="scouts_option_chosen",
+                payload=(
+                    ("item_id", item),
+                    ("option", index),
+                    ("player", action.actor),
+                ),
+            ),
+        ),
+    )
+
+
+def _rebuild(
+    state: GameState, player: int, volunteer: int, *, source: str
+) -> RuleResult:
+    """Rebuild Infrastructure (OQ-084): the first two seats that agree each
+    pay 1 spice and the Shield Wall returns; one seat alone pays nothing."""
+
+    if volunteer < 0:
+        tasks = tuple(
+            task.replace("|-1", f"|{player}") if task.startswith("rebuild:") else task
+            for task in state.scouts_tasks
+        )
+        return RuleResult(
+            state=replace(state, scouts_tasks=tasks),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:volunteered",
+                    kind="scouts_rebuild_offered",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    players = state.players
+    for payer in (volunteer, player):
+        owner = players[payer]
+        players = replace_player(
+            players,
+            replace(
+                owner,
+                resources=replace(owner.resources, spice=owner.resources.spice - 1),
+            ),
+        )
+    return RuleResult(
+        state=replace(
+            state,
+            players=players,
+            shield_wall_present=True,
+            scouts_tasks=tuple(
+                task for task in state.scouts_tasks if not task.startswith("rebuild:")
+            ),
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:rebuilt",
+                kind="scouts_shield_wall_rebuilt",
+                payload=(("players", f"{volunteer},{player}"),),
+            ),
+        ),
+    )
 
 
 # --- Subcommittees --------------------------------------------------------------------

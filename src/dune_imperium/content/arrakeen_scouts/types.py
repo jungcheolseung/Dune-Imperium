@@ -99,6 +99,12 @@ class LoseFactionInfluence:
 
 
 @dataclass(frozen=True, slots=True)
+class LoseHighestInfluence:
+    """Lose one Influence on the player's highest track, choosing among tied
+    tracks (Political Equilibrium); nothing with no Influence at all."""
+
+
+@dataclass(frozen=True, slots=True)
 class LoseGarrisonTroops:
     """Lose ``count`` troops from the garrison to the supply (Bene Gesserit
     Treachery, Prison Planet). The DSL's ``LoseTroops`` also allows the
@@ -178,7 +184,12 @@ class GainSpiceWithHelixBonus:
 # is the price or the loss in several Scouts lines (Funeral Rites,
 # Termination Request), so it may stand on the cost side here.
 type ScoutsCost = (
-    Cost | LoseFactionInfluence | LoseGarrisonTroops | PaySpecimens | TrashPersonalCard
+    Cost
+    | LoseFactionInfluence
+    | LoseHighestInfluence
+    | LoseGarrisonTroops
+    | PaySpecimens
+    | TrashPersonalCard
 )
 type ScoutsReward = (
     Reward

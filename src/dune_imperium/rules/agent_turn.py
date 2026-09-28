@@ -56,7 +56,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
-from dune_imperium.rules.scouts import (
+from dune_imperium.rules.scouts_modifiers import (
     ignores_influence_requirements_this_round,
     space_is_combat,
 )

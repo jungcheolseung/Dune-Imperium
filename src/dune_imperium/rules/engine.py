@@ -299,9 +299,11 @@ from dune_imperium.rules.scouts import (
 )
 from dune_imperium.rules.scouts_effects import (
     advance_scouts_effect,
+    apply_scouts_choice_action,
     apply_scouts_effect_action,
     apply_subcommittee_action,
     begin_subcommittee_offer,
+    legal_scouts_choice_actions,
     legal_scouts_effect_actions,
     legal_subcommittee_actions,
     scouts_effect_can_advance,
@@ -510,6 +512,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.SCOUTS_FOUR_BONUS: (legal_four_bonus_actions,),
     FrameKind.SCOUTS_EFFECT: (legal_scouts_effect_actions,),
     FrameKind.SCOUTS_SUBCOMMITTEE: (legal_subcommittee_actions,),
+    FrameKind.SCOUTS_CHOICE: (legal_scouts_choice_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -525,6 +528,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_recall_spy": apply_scouts_effect_action,
     "scouts_choose_faction": apply_scouts_effect_action,
     "scouts_recall_agent": apply_scouts_effect_action,
+    "scouts_lose_influence": apply_scouts_effect_action,
+    "scouts_lose_influence_to": apply_scouts_effect_action,
+    "scouts_choose_option": apply_scouts_choice_action,
+    "scouts_pass": apply_scouts_choice_action,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,

@@ -89,6 +89,8 @@ class FrameKind(StrEnum):
     # offer on taking a High Council seat.
     SCOUTS_EFFECT = "scouts_effect"
     SCOUTS_SUBCOMMITTEE = "scouts_subcommittee"
+    # One seat's turn-order pick among an event's or sale's lines.
+    SCOUTS_CHOICE = "scouts_choice"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
