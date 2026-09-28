@@ -61,6 +61,10 @@ from dune_imperium.rules.intrigue_deck import (
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
+from dune_imperium.rules.scouts_missions import (
+    BOARD_ICON_SCOUTS,
+    mission_collectable,
+)
 from dune_imperium.rules.scouts_offers import queue_subcommittee_offer
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
@@ -334,6 +338,10 @@ def board_icons_for(
         # Bloodlines: the Commander waiting on the space may be bought as
         # one more freely ordered effect of the visit [Bloodlines p. 4].
         icons.append(BOARD_ICON_COMMANDER)
+    if mission_collectable(state, player, space_id):
+        # Arrakeen Scouts: the visiting seat's mission pieces on the space
+        # are one more effect of the visit (docs/rules/arrakeen-scouts.md 5).
+        icons.append(BOARD_ICON_SCOUTS)
     if (
         state.config.tech_module
         and BOARD_SPACES_BY_ID[space_id].agent_icon is AgentIcon.LANDSRAAD

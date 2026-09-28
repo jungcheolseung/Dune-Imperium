@@ -63,6 +63,7 @@ from dune_imperium.rules.sardaukar import (
     legal_commander_recruit_actions,
     legal_sardaukar_commander_actions,
 )
+from dune_imperium.rules.scouts_missions import legal_mission_collect_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
@@ -118,6 +119,7 @@ def legal_agent_effect_frame_actions(
         *legal_imperial_privilege_actions(state, player),
         *legal_maker_space_actions(state, player),
         *legal_sardaukar_commander_actions(state, player),
+        *legal_mission_collect_actions(state, player),
         *legal_tech_acquisition_actions(state, player),
         *legal_tech_flip_actions(state, player),
         *legal_commander_recruit_actions(state, player),

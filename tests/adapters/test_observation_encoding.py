@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 22
+    assert OBSERVATION_VERSION == 23
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -54,9 +54,26 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # nothing in a non-empty market could be taken (OQ-059).
     # v22: Arrakeen Scouts: 77 items (14 subcommittees, 16 missions, 32
     # events, 11 auctions, 4 sales), 4 round modifiers, 3 schedule values
-    # (4,327 -> 4,411).
+    # (4,327 -> 4,411). v23: mission pieces, 16 missions x 4 parked seats
+    # and x 5 goods columns (4,411 -> 4,555).
     assert OBSERVATION_SIZE == (
-        3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90 + 8 + 11 * 8 + 4 + 77 + 4 + 3
+        3038
+        + 24
+        + 4 * 21
+        + 1
+        + 19
+        + 563
+        + 400
+        + 8
+        + 90
+        + 8
+        + 11 * 8
+        + 4
+        + 77
+        + 4
+        + 3
+        + 16 * 4
+        + 16 * 5
     )
 
     offset = 0
@@ -72,7 +89,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
     assert private_secret_project.stop == segment_slice("scouts_items").start
-    assert segment_slice("scouts_schedule").stop == OBSERVATION_SIZE
+    assert segment_slice("scouts_goods").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -263,21 +280,25 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # again when subcommittees could be joined (slice 4) and when events and
 # sales offered their turn-order choices (slice 5): the five other games did
 # not move.
+# Re-pinned for observation v23 (the mission-piece segments appended after
+# v22's): the five old games' first 4,411 columns reproduced the v22
+# digests exactly and every new column was 0; "scouts" moved as missions
+# began to act (slice 6a).
 _GOLDEN_DIGESTS = {
-    "base": ("042434aa5c4a0f288cd43548c1d4d9fc9b37f1e1bd5dd10a82a2b66dfec2534c", 2572),
-    "choam": ("73dd50524182d98ae2479f6c62db00846ce7fd8a590c8a9d6838711230e24f73", 2972),
+    "base": ("28289533faea220701d33557fbc383615a99f8ae1a1f26261b569e19289800a4", 2572),
+    "choam": ("96f4bcbf9616bf37001b4e7fafe794f88cbebd3459452641bc71412cf5269cee", 2972),
     "promo_bloodlines_tech": (
-        "38c6e246eef430aa9abbf2ef943e7060ff8d2b4c67644d253b044abb0cffdd2e",
+        "3346cd493036870d54b83e5c03118b6179740ff3f41ee5c47e0bcb0ac2821c16",
         2772,
     ),
     "everything": (
-        "a728b6c3e56486559a38e36b75b2425c073d24a7163ae498308c5d9b3980a7c7",
+        "4c83e9410b6fe6c5d5abd3ff020715493a1d82b386817ffe295c215c8133d74c",
         3012,
     ),
-    "draft": ("5d2134633b71199990940445a03ca7d15c0bd4c150798c8f86f8ab8a06ceba1c", 2476),
+    "draft": ("ee5a5dbfce49de1bac5063e0317e5fe63664c5b56e75f4f57a58806daec65a10", 2476),
     "scouts": (
-        "df355678c0eeef7b2fff02e96187e2a1a1dc7253c4f60f4271e03c30bc084f92",
-        3012,
+        "4de9a5643592a4e0735ba5ff89d3a377719df7eb755382ee12fd25ed74ca3253",
+        2888,
     ),
 }
 _GOLDEN_CONFIGS = {

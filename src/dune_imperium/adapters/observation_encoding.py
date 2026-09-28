@@ -72,7 +72,10 @@ from dune_imperium.rules.frames import FrameKind
 # offsets. (The same day, before any file used v22, Market Opening's used
 # discount became the value 2 in its modifier column, and a joined
 # subcommittee's item column 1 + its member's relative seat.)
-OBSERVATION_VERSION: Final = 22
+# v23 (2026-09-28): Arrakeen Scouts mission pieces, appended after v22's
+# segments: parked troops per mission and relative seat, and goods per
+# mission for anyone and per relative seat (face-down cards counted there).
+OBSERVATION_VERSION: Final = 23
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -121,6 +124,7 @@ SCOUTS_ITEM_IDS: Final = (
     *(entry.sale_id for entry in SALES),
 )
 SCOUTS_MODIFIERS: Final = tuple(modifier.value for modifier in RoundModifier)
+SCOUTS_MISSION_IDS: Final = tuple(entry.mission_id for entry in MISSIONS)
 
 _PHASES: Final = tuple(GamePhase)
 _AGENT_ICONS: Final = tuple(icon.value for icon in AgentIcon)
@@ -181,6 +185,9 @@ _SCOUTS_ITEM_INDEX: Final = {
 }
 _SCOUTS_MODIFIER_INDEX: Final = {
     modifier: index for index, modifier in enumerate(SCOUTS_MODIFIERS)
+}
+_SCOUTS_MISSION_INDEX: Final = {
+    mission_id: index for index, mission_id in enumerate(SCOUTS_MISSION_IDS)
 }
 
 
@@ -273,6 +280,11 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("scouts_items", len(SCOUTS_ITEM_IDS)),
             ("scouts_modifier", len(SCOUTS_MODIFIERS)),
             ("scouts_schedule", 3),
+            # v23: mission pieces. Parked troops: mission x relative seat.
+            # Goods (resources and face-down cards): mission x (anyone, then
+            # the four relative seats).
+            ("scouts_parked", len(SCOUTS_MISSION_IDS) * _SEATS),
+            ("scouts_goods", len(SCOUTS_MISSION_IDS) * (_SEATS + 1)),
         )
     )
     return tuple(lengths)
@@ -522,6 +534,17 @@ def _write_scouts(
         view.scouts_mid_auction_round,
         view.scouts_late_auction_round,
     ]
+    offset = _OFFSET["scouts_parked"]
+    for mission_id, seat, _, troops in view.scouts_parked:
+        column = _SCOUTS_MISSION_INDEX[mission_id] * _SEATS + relative(seat) - 1
+        values[offset + column] += troops
+    offset = _OFFSET["scouts_goods"]
+    width = _SEATS + 1
+    for mission_id, _, _, amount, seat in view.scouts_goods:
+        slot = 0 if seat < 0 else relative(seat)
+        values[offset + _SCOUTS_MISSION_INDEX[mission_id] * width + slot] += amount
+    for mission_id, _, count in view.scouts_board_card_counts:
+        values[offset + _SCOUTS_MISSION_INDEX[mission_id] * width] += count
 
 
 def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -> None:

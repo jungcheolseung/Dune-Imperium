@@ -90,8 +90,17 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         )
         players[seat] = replace(player, hand=hand, deck=deck)
 
+    # Arrakeen Scouts: the board's face-down cards are unknown to every seat,
+    # so they are dealt from the same pools as the deck and the bank.
+    board_intrigue = [
+        row for row in state.scouts_goods_cards if row[2].startswith("intrigue")
+    ]
+    intrigue_pool.extend(row[2] for row in board_intrigue)
     rng.shuffle(intrigue_pool)
-    cursor = 0
+    board_cards = {
+        row: intrigue_pool[index] for index, row in enumerate(board_intrigue)
+    }
+    cursor = len(board_intrigue)
     for seat, player in enumerate(players):
         if seat == observer:
             continue
@@ -111,8 +120,16 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     # the frame's own choices become unappliable in the sampled world
     # (2026-09-16 rollout cells, CHOAM+Bloodlines+Tech, 16 of 200 games).
     revealed = list(revealed_contract_ids(state))
-    contract_bank = list(state.contract_bank[len(revealed) :])
+    board_contracts = [
+        row for row in state.scouts_goods_cards if row[2].startswith("contract:")
+    ]
+    contract_bank = [
+        *state.contract_bank[len(revealed) :],
+        *(row[2] for row in board_contracts),
+    ]
     rng.shuffle(contract_bank)
+    for row in board_contracts:
+        board_cards[row] = contract_bank.pop()
     contract_bank = [*revealed, *contract_bank]
     conflict_deck = list(state.conflict_deck)
     rng.shuffle(conflict_deck)
@@ -139,6 +156,10 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     return replace(
         state,
         players=tuple(players),
+        scouts_goods_cards=tuple(
+            (row[0], row[1], board_cards.get(row, row[2]))
+            for row in state.scouts_goods_cards
+        ),
         intrigue_deck=(*peeked_intrigue, *intrigue_pool[cursor:]),
         imperium_deck=tuple(imperium_deck),
         contract_bank=tuple(contract_bank),

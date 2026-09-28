@@ -69,7 +69,16 @@ def _all_personal_instances(state: GameState) -> Iterator[str]:
         yield from _personal_zone_instances(player)
 
 
+def _board_cards(state: GameState, prefix: str) -> Iterator[str]:
+    """Arrakeen Scouts: face-down cards a mission put on the board."""
+
+    for _, _, card_id in state.scouts_goods_cards:
+        if card_id.startswith(prefix):
+            yield card_id
+
+
 def _all_intrigue_instances(state: GameState) -> Iterator[str]:
+    yield from _board_cards(state, "intrigue")
     yield from state.intrigue_deck
     yield from state.intrigue_discard
     yield from state.intrigue_trash
@@ -93,6 +102,7 @@ def _all_conflict_ids(state: GameState) -> Iterator[str]:
 
 
 def _all_contract_ids(state: GameState) -> Iterator[str]:
+    yield from _board_cards(state, "contract:")
     yield from state.contract_bank
     yield from state.face_up_contract_ids
     yield from state.sardaukar_contract_ids
@@ -410,8 +420,17 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         )
         players[seat] = replace(player, hand=hand, deck=deck, twisted_deck=twisted)
 
+    # Arrakeen Scouts: the board's face-down Intrigue cards are as unknown
+    # as the deck, so they join the pool and take its first cards back.
+    board_intrigue = [
+        row for row in state.scouts_goods_cards if row[2].startswith("intrigue")
+    ]
+    intrigue_pool.extend(row[2] for row in board_intrigue)
     reordered_intrigue = tuple(reversed(intrigue_pool))
-    cursor = 0
+    board_cards = {
+        row: reordered_intrigue[index] for index, row in enumerate(board_intrigue)
+    }
+    cursor = len(board_intrigue)
     for seat, player in enumerate(players):
         if seat == observer:
             continue
@@ -425,9 +444,14 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         )
         cursor += held
 
+    scouts_goods_cards = tuple(
+        (row[0], row[1], board_cards.get(row, row[2]))
+        for row in state.scouts_goods_cards
+    )
     return replace(
         state,
         players=tuple(players),
+        scouts_goods_cards=scouts_goods_cards,
         intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
         imperium_deck=tuple(reversed(state.imperium_deck)),
         # The Contracts an open Coercive Negotiation revealed are face up to

@@ -91,6 +91,8 @@ class FrameKind(StrEnum):
     SCOUTS_SUBCOMMITTEE = "scouts_subcommittee"
     # One seat's turn-order pick among an event's or sale's lines.
     SCOUTS_CHOICE = "scouts_choice"
+    # A seat's answer to a mission: take part or pass.
+    SCOUTS_MISSION = "scouts_mission"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

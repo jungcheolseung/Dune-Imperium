@@ -219,6 +219,11 @@ class PlayerView:
     scouts_item: str = ""
     scouts_round_modifier: str = ""
     scouts_discount_used: bool = False
+    # Mission pieces: goods rows, parked-troop rows, and how many face-down
+    # cards each mission left on each location (their identities are hidden).
+    scouts_goods: tuple[tuple[str, str, str, int, int], ...] = ()
+    scouts_parked: tuple[tuple[str, int, str, int], ...] = ()
+    scouts_board_card_counts: tuple[tuple[str, str, int], ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -275,6 +280,10 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         *state.navigation_stock,
         *state.tleilaxu_deck,
         *state.skill_stack,
+        # Arrakeen Scouts: the face-down cards missions put on the board
+        # (CHOAM Research's Contracts, Emperor's Schemes' Intrigue cards) are
+        # unknown to every seat until one takes them.
+        *(card_id for _, _, card_id in state.scouts_goods_cards),
     ):
         known[card_id] = nobody
     for stack in state.tech_stacks:
@@ -340,6 +349,8 @@ class HiddenZoneDisclosure:
     intrigue_deck: tuple[str, ...]
     contract_bank: tuple[str, ...]
     conflict_deck: tuple[str, ...]
+    # Arrakeen Scouts: the face-down cards still on the board.
+    scouts_board_cards: tuple[str, ...] = ()
 
 
 def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
@@ -359,6 +370,16 @@ def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
         intrigue_deck=state.intrigue_deck,
         contract_bank=state.contract_bank,
         conflict_deck=state.conflict_deck,
+        scouts_board_cards=tuple(card for _, _, card in state.scouts_goods_cards),
+    )
+
+
+def _board_card_counts(state: GameState) -> tuple[tuple[str, str, int], ...]:
+    counts: dict[tuple[str, str], int] = {}
+    for mission_id, location, _ in state.scouts_goods_cards:
+        counts[(mission_id, location)] = counts.get((mission_id, location), 0) + 1
+    return tuple(
+        (mission, location, count) for (mission, location), count in counts.items()
     )
 
 
@@ -445,6 +466,9 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_item=state.scouts_item,
         scouts_round_modifier=state.scouts_round_modifier,
         scouts_discount_used=state.scouts_discount_used,
+        scouts_goods=state.scouts_goods,
+        scouts_parked=state.scouts_parked,
+        scouts_board_card_counts=_board_card_counts(state),
     )
 
 

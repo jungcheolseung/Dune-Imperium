@@ -65,6 +65,9 @@ class PlayerState:
     troops_supply: int = 9
     troops_garrison: int = 3
     troops_conflict: int = 0
+    # Arrakeen Scouts: troops parked on the board by missions until their
+    # seat collects them (``GameState.scouts_parked`` says where).
+    troops_parked: int = 0
     # Troops stored on the Bene Gesserit area of the board as memories
     # (Lady Jessica's Spice Agony).
     memories: int = 0
@@ -303,6 +306,7 @@ class PlayerState:
             + self.troops_conflict
             + self.memories
             + self.specimens
+            + self.troops_parked
             != 12
         ):
             raise ValueError("a player must always account for all 12 troops")

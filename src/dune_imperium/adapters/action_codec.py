@@ -89,7 +89,8 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # 4 bonus), only in ``arrakeen_scouts`` catalogs.
 # v114: subcommittees (join/decline) and the Scouts effect frame's choices.
 # v115: the Scouts events' and sales' turn-order choices and Influence losses.
-ACTION_CODEC_VERSION = 115
+# v116: missions (take part or pass, collect on a visit).
+ACTION_CODEC_VERSION = 116
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1025,6 +1026,27 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             if not config.bloodlines and not config.immortality
             else ()
+        ),
+        # Missions: take part (CHOAM Escort: recruit or a face-up Contract of
+        # the seat's) or pass, and collect on a visit (Imperial Reserve's
+        # pick of spice or Solari).
+        ActionTemplate(action_id="scouts_decline_mission"),
+        *(
+            ActionTemplate(action_id="scouts_join_mission", arguments=(("target", t),))
+            for t in (
+                "",
+                *(
+                    ("recruit", *contract_instance_ids(bloodlines=config.bloodlines))
+                    if config.choam_module
+                    else ()
+                ),
+            )
+        ),
+        *(
+            ActionTemplate(
+                action_id="scouts_collect_mission", arguments=(("choice", choice),)
+            )
+            for choice in ("", "solari", "spice")
         ),
         # One seat's turn-order pick of an event's or sale's line, or a pass.
         ActionTemplate(action_id="scouts_pass"),

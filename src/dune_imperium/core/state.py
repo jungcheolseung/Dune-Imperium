@@ -162,6 +162,13 @@ class GameState:
     # space of the Agent that took it, whether that seat's turn had closed).
     scouts_subcommittee_members: tuple[tuple[str, int], ...] = ()
     scouts_subcommittee_offers: tuple[tuple[int, str, str, bool], ...] = ()
+    # Mission pieces (``rules.scouts_missions``): bank goods as (mission,
+    # location, resource, amount, seat or -1 for anyone), face-down cards as
+    # (mission, location, card id), and parked troops as (mission, seat,
+    # location, troops). The cards are hidden from every seat.
+    scouts_goods: tuple[tuple[str, str, str, int, int], ...] = ()
+    scouts_goods_cards: tuple[tuple[str, str, str], ...] = ()
+    scouts_parked: tuple[tuple[str, int, str, int], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -198,6 +205,12 @@ class GameState:
                 *self.contract_bank,
                 *self.face_up_contract_ids,
                 *self.sardaukar_contract_ids,
+                # CHOAM Research's face-down pair (Arrakeen Scouts).
+                *(
+                    card_id
+                    for _, location, card_id in self.scouts_goods_cards
+                    if card_id.startswith("contract:")
+                ),
                 *(
                     contract_id
                     for player in self.players
@@ -335,6 +348,23 @@ class GameState:
                 raise ValueError("a subcommittee has one member; a seat joins once")
             if not set(joined) <= set(self.scouts_subcommittees):
                 raise ValueError("members join a revealed subcommittee")
+            parked: dict[int, int] = {}
+            for _, seat, _, troops in self.scouts_parked:
+                if troops < 1:
+                    raise ValueError("a parked row holds at least one troop")
+                parked[seat] = parked.get(seat, 0) + troops
+            for player in self.players:
+                if parked.get(player.player_id, 0) != player.troops_parked:
+                    raise ValueError("parked troops must match their rows")
+                markers = sum(
+                    1
+                    for row in self.scouts_goods
+                    if row[2] == "marker" and row[4] == player.player_id
+                )
+                if len(player.control_space_ids) + markers > 3:
+                    raise ValueError("a player has only three control markers")
+            if any(row[3] < 1 for row in self.scouts_goods):
+                raise ValueError("a goods row holds something")
         elif (
             self.scouts_subcommittees
             or self.scouts_revealed
@@ -349,6 +379,10 @@ class GameState:
             or self.scouts_four_bonus_choices
             or self.scouts_subcommittee_members
             or self.scouts_subcommittee_offers
+            or self.scouts_goods
+            or self.scouts_goods_cards
+            or self.scouts_parked
+            or any(player.troops_parked for player in self.players)
         ):
             raise ValueError("Scouts state requires the Arrakeen Scouts module")
 

@@ -1,0 +1,668 @@
+"""Arrakeen Scouts: missions (docs/rules/arrakeen-scouts.md 5).
+
+A revealed mission places bank goods on the board (``GameState.scouts_goods``,
+face-down cards in ``scouts_goods_cards``) and asks each seat in turn order
+whether it takes part, parking troops on a space (``scouts_parked``, counted
+by ``PlayerState.troops_parked`` in the 12-troop total). Pieces stay until
+claimed [Scouts help]. An Agent visiting such a space collects what is there
+for its seat as one more freely ordered effect of the visit
+(``BOARD_ICON_SCOUTS``, like the Bloodlines Commander [Bloodlines p. 4]).
+
+Goods rows are ``(mission, location, resource, amount, seat)`` (seat -1:
+whoever collects first); parked rows ``(mission, seat, location, troops)``.
+"""
+
+from dataclasses import replace
+from typing import Final
+
+from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID, Mission, MissionKind
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+)
+from dune_imperium.content.uprising.contracts import contract_for_instance
+from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.contract_tiles import (
+    contract_intrigue_trash_frame,
+    receive_contract,
+)
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    current_agent_effect_context,
+    finish_board_icon,
+    pending_board_icons,
+    recruit_troops,
+)
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    context_str,
+    owned_top_frame,
+    replace_player,
+)
+
+BOARD_ICON_SCOUTS: Final = "scouts_mission"
+_JOIN_FRAME: Final = "Mission participation frame"
+TLEILAXU_OFFERING_SPACE: Final = "tleilaxu_track"
+
+# Participation: (troop source, troops parked) per mission kind.
+_PARKING: Final = {
+    MissionKind.SECURITY_DETAIL: ("supply", 1),
+    MissionKind.FEDAYKIN_ASSISTANCE: ("supply", 2),
+    MissionKind.WEIRDING_WARFARE: ("supply", 2),
+    MissionKind.SEND_FOR_AID: ("garrison", 1),
+    MissionKind.COORDINATE_WITH_THE_EMPEROR: ("specimens", 1),
+    MissionKind.TLEILAXU_OFFERING: ("supply", 2),
+}
+# Where a mission's collected troops go when their seat visits (OQ-077).
+_TO_CONFLICT: Final = frozenset(
+    {
+        MissionKind.SECURITY_DETAIL,
+        MissionKind.WEIRDING_WARFARE,
+        MissionKind.SEND_FOR_AID,
+    }
+)
+_PARTICIPATION: Final = frozenset(
+    {*_PARKING, MissionKind.PRISON_PLANET, MissionKind.CHOAM_ESCORT}
+)
+
+
+def mission_tasks(
+    state: GameState, mission_id: str, order: tuple[int, ...]
+) -> tuple[str, ...]:
+    """The reveal's tasks: place the goods, then ask each seat in turn order."""
+
+    mission = MISSIONS_BY_ID[mission_id]
+    tasks = ["goods"]
+    if mission.kind in _PARTICIPATION:
+        tasks.extend(f"join:{seat}" for seat in order)
+    return tuple(tasks)
+
+
+# --- Goods -------------------------------------------------------------------------
+
+
+def _posts_next_to(
+    state: GameState, icon: AgentIcon | None, *, maker: bool
+) -> tuple[str, ...]:
+    """Empty Observation Posts connected to a City (or Maker) space."""
+
+    occupied = {post for seat in state.players for post in seat.spy_post_ids}
+    spaces = {
+        space_id
+        for space_id, space in BOARD_SPACES_BY_ID.items()
+        if (space.maker if maker else space.agent_icon is icon)
+    }
+    return tuple(
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if post.post_id not in occupied and spaces & set(post.connected_space_ids)
+    )
+
+
+def _free_maker_hooks(state: GameState) -> int:
+    """Four Maker Hooks tokens exist [Main p. 3]; the seats hold the rest."""
+
+    return 4 - sum(1 for seat in state.players if seat.maker_hooks)
+
+
+def place_mission_goods(
+    state: GameState, mission_id: str, *, source: str
+) -> RuleResult:
+    """Put the mission's bank goods (and face-down cards) on the board."""
+
+    mission = MISSIONS_BY_ID[mission_id]
+    goods: list[tuple[str, str, str, int, int]] = []
+    cards: list[tuple[str, str, str]] = []
+    next_state = state
+    match mission.kind:
+        case MissionKind.IMPERIAL_RESERVE:
+            assert mission.goods is not None and mission.space_id is not None
+            goods += [
+                (mission_id, mission.space_id, "spice", mission.goods.spice, -1),
+                (mission_id, mission.space_id, "solari", mission.goods.solari, -1),
+            ]
+        case MissionKind.URBAN_SURVEILLANCE | MissionKind.PLANETARY_EXPLORATION:
+            assert mission.goods is not None
+            urban = mission.kind is MissionKind.URBAN_SURVEILLANCE
+            resource, amount = (
+                ("solari", mission.goods.solari)
+                if urban
+                else ("spice", mission.goods.spice)
+            )
+            goods += [
+                (mission_id, f"post:{post}", resource, amount, -1)
+                for post in _posts_next_to(state, AgentIcon.CITY, maker=not urban)
+            ]
+        case MissionKind.CHOAM_RESEARCH:
+            assert mission.space_id is not None
+            taken = state.contract_bank[: mission.goods_cards]
+            cards += [(mission_id, mission.space_id, card) for card in taken]
+            next_state = replace(
+                next_state, contract_bank=state.contract_bank[len(taken) :]
+            )
+        case MissionKind.EMPERORS_SCHEMES:
+            assert mission.space_id is not None
+            taken = state.intrigue_deck[: mission.goods_cards]
+            cards += [(mission_id, mission.space_id, card) for card in taken]
+            next_state = replace(
+                next_state, intrigue_deck=state.intrigue_deck[len(taken) :]
+            )
+        case MissionKind.DESERT_RIDING:
+            assert mission.space_id is not None
+            if _free_maker_hooks(state) > 0:
+                goods.append((mission_id, mission.space_id, "maker_hooks", 1, -1))
+        case MissionKind.SPONSORED_RESEARCH:
+            assert mission.goods is not None
+            goods.append((mission_id, "helix", "spice", mission.goods.spice, -1))
+        case MissionKind.BACK_ROOM_DEAL:
+            assert mission.goods is not None
+            goods.append(
+                (mission_id, "reclaimed_forces", "solari", mission.goods.solari, -1)
+            )
+        case _:
+            pass
+    if not goods and not cards:
+        return RuleResult(state=next_state)
+    next_state = replace(
+        next_state,
+        scouts_goods=(*next_state.scouts_goods, *goods),
+        scouts_goods_cards=(*next_state.scouts_goods_cards, *cards),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:goods",
+                kind="scouts_mission_goods_placed",
+                payload=(
+                    ("cards", len(cards)),
+                    (
+                        "locations",
+                        ",".join(
+                            sorted({row[1] for row in goods} | {c[1] for c in cards})
+                        ),
+                    ),
+                    ("mission_id", mission_id),
+                ),
+            ),
+        ),
+    )
+
+
+# --- Participation ------------------------------------------------------------------
+
+
+def _markers_out(state: GameState, player: int) -> int:
+    return sum(
+        1 for row in state.scouts_goods if row[2] == "marker" and row[4] == player
+    )
+
+
+def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, ...]:
+    """The ways ``player`` can take part now ("" = the one plain way)."""
+
+    owner = state.players[player]
+    resources = owner.resources
+    kind = mission.kind
+    if kind is MissionKind.CHOAM_ESCORT:
+        return (
+            *(("recruit",) if owner.troops_supply else ()),
+            *owner.active_contract_ids,
+        )
+    if kind is MissionKind.PRISON_PLANET:
+        free_marker = len(owner.control_space_ids) + _markers_out(state, player) < 3
+        return ("",) if owner.troops_garrison and free_marker else ()
+    source, _ = _PARKING[kind]
+    available = {
+        "supply": owner.troops_supply,
+        "garrison": owner.troops_garrison,
+        "specimens": owner.specimens,
+    }[source]
+    for cost in mission.participation_cost:
+        if getattr(cost, "spice", 0) > resources.spice or (
+            getattr(cost, "solari", 0) > resources.solari
+        ):
+            return ()
+    return ("",) if available else ()
+
+
+def offer_mission_join(
+    state: GameState, player: int, mission_id: str, *, source: str
+) -> RuleResult:
+    """Ask one seat whether it takes part (OQ-088: skipped when it cannot)."""
+
+    mission = MISSIONS_BY_ID[mission_id]
+    if not join_targets(state, player, mission):
+        return RuleResult(state=state)
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_MISSION,
+        frame_id=f"{source}:join",
+        decision=PlayerDecision(
+            owner=player, prompt="Take part in the mission or pass"
+        ),
+        context=(("mission_id", mission_id), ("player", player), ("source", source)),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def legal_mission_join_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    frame = owned_top_frame(state, FrameKind.SCOUTS_MISSION, player)
+    if frame is None:
+        return ()
+    mission = MISSIONS_BY_ID[
+        context_str(dict(frame.context), "mission_id", owner=_JOIN_FRAME)
+    ]
+    return (
+        DomainAction(action_id="scouts_decline_mission", actor=player),
+        *(
+            DomainAction(
+                action_id="scouts_join_mission",
+                actor=player,
+                arguments=(("target", target),),
+            )
+            for target in join_targets(state, player, mission)
+        ),
+    )
+
+
+def apply_mission_join(state: GameState, action: DomainAction) -> RuleResult:
+    if action not in legal_mission_join_actions(state, action.actor):
+        raise ValueError("action is not a legal mission choice")
+    context = dict(state.decision_stack[-1].context)
+    mission = MISSIONS_BY_ID[context_str(context, "mission_id", owner=_JOIN_FRAME)]
+    source = context_str(context, "source", owner=_JOIN_FRAME)
+    popped = state.pop_decision()
+    player = action.actor
+    if action.action_id == "scouts_decline_mission":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="scouts_mission_declined",
+                    payload=(("mission_id", mission.mission_id), ("player", player)),
+                ),
+            ),
+        )
+    target = str(dict(action.arguments)["target"])
+    joined = _join(popped, player, mission, target)
+    return RuleResult(
+        state=joined,
+        events=(
+            GameEvent(
+                event_id=f"{source}:joined",
+                kind="scouts_mission_joined",
+                payload=(
+                    ("mission_id", mission.mission_id),
+                    ("player", player),
+                    ("target", target),
+                ),
+            ),
+        ),
+    )
+
+
+def _join(state: GameState, player: int, mission: Mission, target: str) -> GameState:
+    owner = state.players[player]
+    goods = list(state.scouts_goods)
+    parked = list(state.scouts_parked)
+    kind = mission.kind
+    mission_id = mission.mission_id
+    if kind is MissionKind.CHOAM_ESCORT:
+        if target == "recruit":
+            recruited, _ = recruit_troops(owner, 1)
+            return replace(state, players=replace_player(state.players, recruited))
+        goods += [
+            (mission_id, f"contract:{target}", "solari", 1, player),
+            (mission_id, f"contract:{target}", "spice", 1, player),
+        ]
+        return replace(state, scouts_goods=tuple(goods))
+    if kind is MissionKind.PRISON_PLANET:
+        assert mission.space_id is not None and mission.seat_goods is not None
+        owner = replace(
+            owner,
+            troops_garrison=owner.troops_garrison - 1,
+            troops_supply=owner.troops_supply + 1,
+        )
+        goods += [
+            (mission_id, mission.space_id, "marker", 1, player),
+            (mission_id, mission.space_id, "spice", mission.seat_goods.spice, player),
+        ]
+        return replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(goods),
+        )
+    source, count = _PARKING[kind]
+    resources = owner.resources
+    for cost in mission.participation_cost:
+        resources = replace(
+            resources,
+            spice=resources.spice - getattr(cost, "spice", 0),
+            solari=resources.solari - getattr(cost, "solari", 0),
+        )
+    moved = min(
+        count,
+        {
+            "supply": owner.troops_supply,
+            "garrison": owner.troops_garrison,
+            "specimens": owner.specimens,
+        }[source],
+    )
+    owner = replace(
+        owner,
+        resources=resources,
+        troops_parked=owner.troops_parked + moved,
+        troops_supply=owner.troops_supply - (moved if source == "supply" else 0),
+        troops_garrison=owner.troops_garrison - (moved if source == "garrison" else 0),
+        specimens=owner.specimens - (moved if source == "specimens" else 0),
+    )
+    location = (
+        mission.space_id if mission.space_id is not None else TLEILAXU_OFFERING_SPACE
+    )
+    parked.append((mission_id, player, location, moved))
+    if mission.seat_goods is not None:
+        for resource in ("solari", "spice", "water"):
+            amount = getattr(mission.seat_goods, resource)
+            if amount:
+                goods.append((mission_id, location, resource, amount, player))
+    return replace(
+        state,
+        players=replace_player(state.players, owner),
+        scouts_goods=tuple(goods),
+        scouts_parked=tuple(parked),
+    )
+
+
+# --- Visits ---------------------------------------------------------------------------
+
+_VISITED: Final = frozenset(
+    {
+        MissionKind.SECURITY_DETAIL,
+        MissionKind.IMPERIAL_RESERVE,
+        MissionKind.CHOAM_RESEARCH,
+        MissionKind.PRISON_PLANET,
+        MissionKind.EMPERORS_SCHEMES,
+        MissionKind.FEDAYKIN_ASSISTANCE,
+        MissionKind.WEIRDING_WARFARE,
+        MissionKind.SEND_FOR_AID,
+        MissionKind.COORDINATE_WITH_THE_EMPEROR,
+    }
+)
+
+
+def _collects(mission_id: str) -> bool:
+    return MISSIONS_BY_ID[mission_id].kind in _VISITED
+
+
+def _takeable_card(
+    state: GameState, player: int, space_id: str
+) -> tuple[str, str, str] | None:
+    """The next face-down card on ``space_id`` that ``player`` may take.
+
+    Bloodlines' Immediate Contract cannot be taken without an Intrigue card
+    to trash [Bloodlines p. 2], so a seat holding none takes the next card
+    instead, or none (OQ-090).
+    """
+
+    holds_intrigue = bool(state.players[player].intrigue_cards)
+    for row in state.scouts_goods_cards:
+        if row[1] != space_id or not _collects(row[0]):
+            continue
+        card_id = row[2]
+        if (
+            card_id.startswith("contract:")
+            and contract_for_instance(card_id).requires_intrigue_trash
+            and not holds_intrigue
+        ):
+            continue
+        return row
+    return None
+
+
+def mission_collectable(state: GameState, player: int, space_id: str) -> bool:
+    """Whether a visit by ``player`` to ``space_id`` collects mission pieces."""
+
+    if not state.config.arrakeen_scouts:
+        return False
+    return (
+        any(
+            row[1] == space_id
+            and row[3] > 0
+            and row[4] in (-1, player)
+            and _collects(row[0])
+            for row in state.scouts_goods
+        )
+        or _takeable_card(state, player, space_id) is not None
+        or any(
+            row[1] == player and row[2] == space_id and _collects(row[0])
+            for row in state.scouts_parked
+        )
+    )
+
+
+def _imperial_reserve_choices(state: GameState, space_id: str) -> tuple[str, ...]:
+    return tuple(
+        row[2]
+        for row in state.scouts_goods
+        if row[1] == space_id
+        and MISSIONS_BY_ID[row[0]].kind is MissionKind.IMPERIAL_RESERVE
+        and row[3] > 0
+    )
+
+
+def legal_mission_collect_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The visit's mission icon: one action, or Imperial Reserve's pick."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if BOARD_ICON_SCOUTS not in pending_board_icons(context):
+        return ()
+    space_id = context_str(context, "space_id", owner="Agent effect frame")
+    reserve = _imperial_reserve_choices(state, space_id)
+    choices = reserve if len(reserve) > 1 else ("",)
+    return tuple(
+        DomainAction(
+            action_id="scouts_collect_mission",
+            actor=player,
+            arguments=(("choice", choice),),
+        )
+        for choice in choices
+    )
+
+
+def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
+    """Collect everything the visiting seat's missions left on this space."""
+
+    if action not in legal_mission_collect_actions(state, action.actor):
+        raise ValueError("action is not a legal mission collection")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    space_id = context_str(context, "space_id", owner="Agent effect frame")
+    choice = str(dict(action.arguments)["choice"])
+    source = f"round:{state.round_number}:player:{player}:scouts:{space_id}"
+    owner = state.players[player]
+    goods = list(state.scouts_goods)
+    cards = list(state.scouts_goods_cards)
+    parked = list(state.scouts_parked)
+    events: list[GameEvent] = []
+    pushed: list[DecisionFrame] = []
+    recruited = 0
+    intrigue_gained: list[str] = []
+    # Parked troops (OQ-077): to the Conflict, or recruited to the garrison.
+    for row in [
+        r for r in parked if r[1] == player and r[2] == space_id and _collects(r[0])
+    ]:
+        mission_id, _, _, troops = row
+        parked.remove(row)
+        kind = MISSIONS_BY_ID[mission_id].kind
+        to_conflict = kind in _TO_CONFLICT
+        owner = replace(
+            owner,
+            troops_parked=owner.troops_parked - troops,
+            troops_conflict=owner.troops_conflict + (troops if to_conflict else 0),
+            troops_garrison=owner.troops_garrison + (0 if to_conflict else troops),
+        )
+        if kind is MissionKind.FEDAYKIN_ASSISTANCE:
+            recruited += troops
+        events.append(
+            GameEvent(
+                event_id=f"{source}:{mission_id}:troops",
+                kind="scouts_mission_troops",
+                payload=(
+                    ("count", troops),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                    ("to", "conflict" if to_conflict else "garrison"),
+                ),
+            )
+        )
+    # Goods on the space: the seat's own, and the anyone-goods (Imperial
+    # Reserve: one of the two, OQ-078).
+    reserve_taken = False
+    for goods_row in [r for r in goods if r[1] == space_id and _collects(r[0])]:
+        mission_id, _, resource, amount, seat = goods_row
+        kind = MISSIONS_BY_ID[mission_id].kind
+        if seat not in (-1, player):
+            continue
+        if kind is MissionKind.IMPERIAL_RESERVE:
+            if reserve_taken or (choice and resource != choice):
+                continue
+            reserve_taken = True
+        goods.remove(goods_row)
+        if resource == "marker":
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:marker",
+                    kind="scouts_marker_returned",
+                    payload=(("mission_id", mission_id), ("player", player)),
+                )
+            )
+            continue
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                **{resource: getattr(owner.resources, resource) + amount},
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:{mission_id}:{resource}",
+                kind="scouts_mission_goods_taken",
+                payload=(
+                    ("amount", amount),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                    ("resource", resource),
+                ),
+            )
+        )
+    # One face-down card per visit (OQ-078): a Contract or an Intrigue card.
+    card_row = _takeable_card(state, player, space_id)
+    if card_row is not None:
+        cards.remove(card_row)
+        mission_id, _, card_id = card_row
+        if MISSIONS_BY_ID[mission_id].kind is MissionKind.CHOAM_RESEARCH:
+            owner = receive_contract(owner, card_id)
+            if contract_for_instance(card_id).requires_intrigue_trash:
+                pushed.append(
+                    contract_intrigue_trash_frame(
+                        player, card_id, source=f"{source}:contract:{card_id}"
+                    )
+                )
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:contract",
+                    kind="contract_taken",
+                    payload=(
+                        ("contract_id", card_id),
+                        ("player", player),
+                        ("replacement_id", ""),
+                        ("source", source),
+                    ),
+                )
+            )
+        else:
+            owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, card_id))
+            intrigue_gained.append(card_id)
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:intrigue",
+                    kind="intrigue_card_drawn",
+                    payload=(("count", 1), ("player", player)),
+                    visible_to=None,
+                )
+            )
+    finish_board_icon(context, BOARD_ICON_SCOUTS)
+    if recruited:
+        # Fedaykin Assistance recruits them: this turn's recruits (OQ-077).
+        context["troops_recruited"] = (
+            context_int(context, "troops_recruited", owner="Agent effect frame")
+            + recruited
+        )
+    working = replace(
+        state,
+        players=replace_player(state.players, owner),
+        scouts_goods=tuple(goods),
+        scouts_goods_cards=tuple(cards),
+        scouts_parked=tuple(parked),
+    )
+    next_state = advance_after_effect(working, context, working.players)
+    for pushed_frame in pushed:
+        next_state = next_state.push_decision(pushed_frame)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def free_prison_marker(
+    goods: tuple[tuple[str, str, str, int, int], ...],
+    player: int,
+    controlled: int,
+    *,
+    source: str,
+) -> tuple[tuple[tuple[str, str, str, int, int], ...], tuple[GameEvent, ...]]:
+    """Prison Planet: a seat gaining control with no free marker takes it back.
+
+    "If you need the marker for a third space, take it back; the mission ends
+    without its spice" [Scouts help]: the seat's marker and spice rows leave
+    the board, the spice to the bank.
+    """
+
+    rows = [
+        row
+        for row in goods
+        if row[4] == player and MISSIONS_BY_ID[row[0]].kind is MissionKind.PRISON_PLANET
+    ]
+    markers = sum(1 for row in rows if row[2] == "marker")
+    if not markers or controlled + markers < 3:
+        return goods, ()
+    remaining = tuple(row for row in goods if row not in rows)
+    spice = sum(row[3] for row in rows if row[2] == "spice")
+    return remaining, (
+        GameEvent(
+            event_id=f"{source}:prison_planet_marker:{player}",
+            kind="scouts_prison_marker_taken",
+            payload=(("player", player), ("spice_returned", spice)),
+        ),
+    )
+
+
+def parked_troops_by_seat(state: GameState) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for _, seat, _, troops in state.scouts_parked:
+        counts[seat] = counts.get(seat, 0) + troops
+    return counts

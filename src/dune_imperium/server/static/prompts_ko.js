@@ -31,6 +31,7 @@ const PROMPT_KO = {
   "Join a subcommittee or decline": "가입할 소위원회 선택, 또는 거절",
   "Choose an Arrakeen Scouts option or pass": "아라킨 스카웃 선택지 선택, 또는 패스",
   "Choose an Arrakeen Scouts option": "아라킨 스카웃 선택지 선택",
+  "Take part in the mission or pass": "임무에 참여, 또는 패스",
   "Resolve the Arrakeen Scouts effect": "아라킨 스카웃 효과 해결",
   "Choose where to advance your research token": "{research} 토큰을 전진시킬 위치 선택",
   "Choose where to lose one unit": "부대 1을 잃을 위치 선택",

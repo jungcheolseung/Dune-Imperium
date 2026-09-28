@@ -35,6 +35,7 @@ from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
 )
+from dune_imperium.rules.scouts_missions import free_prison_marker
 from dune_imperium.rules.spy_placement import recall_spy
 from dune_imperium.rules.tactics import advance_tactics_token
 
@@ -253,6 +254,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
 
     ranking = rank_combat(state.players, first_player=state.first_player)
     players = list(state.players)
+    scouts_goods = state.scouts_goods
     intrigue_deck = state.intrigue_deck
     pending_draws = state.pending_intrigue_draws
     # The queues an Influence gain may add to (Navigation plays at 2, the
@@ -341,6 +343,19 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             pending_four = influence_result.state.scouts_four_bonus_choices
             events.extend(influence_result.events)
             next_owner = players[assignment.player]
+        if (
+            reward.control_space_id is not None
+            and reward.control_space_id
+            not in players[assignment.player].control_space_ids
+        ):
+            # Arrakeen Scouts' Prison Planet may hold this seat's last marker.
+            scouts_goods, released = free_prison_marker(
+                scouts_goods,
+                assignment.player,
+                len(players[assignment.player].control_space_ids),
+                source=f"round:{state.round_number}:combat_reward",
+            )
+            events.extend(released)
         if reward.control_space_id is not None:
             players = list(
                 _apply_control(
@@ -462,6 +477,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         pending_navigation_plays=pending_navigation,
         pending_track_spies=pending_spies,
         scouts_four_bonus_choices=pending_four,
+        scouts_goods=scouts_goods,
         combat_rewards_resolved=not frames,
         # The pledge was folded into the first-place frames above.
         conflict_first_place_influence_bonus=0,

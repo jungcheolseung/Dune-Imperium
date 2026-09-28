@@ -60,6 +60,11 @@ from dune_imperium.rules.scouts_effects import (
     offer_scouts_choice,
     push_scouts_effect,
 )
+from dune_imperium.rules.scouts_missions import (
+    mission_tasks,
+    offer_mission_join,
+    place_mission_goods,
+)
 
 # Four players reveal five subcommittees: one of each tier, then the rest
 # from the whole remaining pool [Scouts schedule].
@@ -447,6 +452,8 @@ def _item_tasks(state: GameState, item_id: str) -> tuple[str, ...]:
         return tuple(f"rebuild:{seat}|-1" for seat in order)
     if event is not None and event.automatic is AutomaticEffect.POLITICAL_EQUILIBRIUM:
         return tuple(f"equilibrium:{seat}" for seat in order)
+    if item_id in MISSIONS_BY_ID:
+        return mission_tasks(state, item_id, order)
     if event is not None:
         if event.kind is EventKind.ROUND_MODIFIER:
             return ("modifier",)
@@ -483,6 +490,13 @@ def _run_task(state: GameState, task: str) -> RuleResult:
             return RuleResult(state=state)
         return RuleResult(
             state=push_scouts_effect(state, seat, item, 0, source=f"{source}:{seat}")
+        )
+    if task == "goods":
+        return place_mission_goods(state, item, source=source)
+    if task.startswith("join:"):
+        join_seat = int(task.removeprefix("join:"))
+        return offer_mission_join(
+            state, join_seat, item, source=f"{source}:{join_seat}"
         )
     if task == "moot":
         return RuleResult(
