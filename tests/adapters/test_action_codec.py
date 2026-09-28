@@ -4,7 +4,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
-from dune_imperium.adapters.action_codec import ActionTemplate
+from dune_imperium.adapters.action_codec import _scouts_templates
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
@@ -12,12 +12,19 @@ from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.simulation import run_random_round
 
+_SCOUTS_ACTION_PREFIXES = (
+    "choose_four_bonus",
+    "join_subcommittee",
+    "decline_subcommittee",
+    "scouts_",
+)
+
 
 def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 113
+    assert ACTION_CODEC_VERSION == 114
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -51,8 +58,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
     assert first.size == (
-        4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
-        + 1
+        4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1 + 1
     )
     assert first.size == 4425
 
@@ -61,10 +67,6 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
     # Design 4.9: every Scouts template sits in one gated block, so the
     # catalogs without the option are byte for byte what they were (base
     # 4,425) and a Scouts catalog adds exactly those templates.
-    scouts_only = {
-        ActionTemplate(action_id="choose_four_bonus", arguments=(("faction", f),))
-        for f in ("emperor", "spacing_guild", "bene_gesserit", "fremen")
-    }
     for options in (
         {},
         {
@@ -76,11 +78,16 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         },
     ):
         without = ActionCodec(RulesetConfig(**options))
-        with_scouts = ActionCodec(RulesetConfig(arrakeen_scouts=True, **options))
+        scouts_config = RulesetConfig(arrakeen_scouts=True, **options)
+        with_scouts = ActionCodec(scouts_config)
+        scouts_only = set(_scouts_templates(scouts_config))
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
+        assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
     assert ActionCodec(RulesetConfig()).size == 4425
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4429
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4425 + len(
+        _scouts_templates(RulesetConfig(arrakeen_scouts=True))
+    )
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -113,8 +120,26 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
     assert codec.size == (
-        4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1
-        + 1 + 1
+        4640
+        + 2
+        + 7
+        + 4
+        + 1
+        + 2
+        + 1
+        + 44
+        + 1
+        + 27
+        - 36
+        + 13
+        + 1
+        + 1
+        + 1
+        + 1
+        + 3
+        + 1
+        + 1
+        + 1
     )
 
     try:
@@ -123,7 +148,6 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         assert "not present" in str(error)
     else:
         raise AssertionError("module-off codec accepted a Contract action")
-
 
 
 def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
@@ -205,9 +229,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # recall_conflict_agent_for_agent_card need only Bloodlines: an Into the
     # Fray Agent exists without the CHOAM Module (OQ-068).
     for action in (recall_conflict_privilege, recall_conflict_agent_card):
-        assert (
-            bloodlines_only.decode(bloodlines_only.encode(action), actor=1) == action
-        )
+        assert bloodlines_only.decode(bloodlines_only.encode(action), actor=1) == action
+
 
 def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
@@ -654,4 +677,3 @@ def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> Non
     )
     with pytest.raises(ValueError, match="not present"):
         codec.encode(beyond)
-

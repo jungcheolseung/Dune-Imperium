@@ -61,6 +61,7 @@ from dune_imperium.rules.intrigue_deck import (
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
+from dune_imperium.rules.scouts_offers import queue_subcommittee_offer
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -568,6 +569,17 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     # last pending effect and every other seat has revealed [Main p. 10]
     # [FAQ p. 4] (OQ-044 (d)).
     turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
+    if key == BOARD_ICON_HIGH_COUNCIL:
+        # Arrakeen Scouts: the seat just taken offers one subcommittee
+        # (docs/rules/arrakeen-scouts.md 4, OQ-076); Contingencies may not
+        # recall the Agent standing on the High Council (OQ-075).
+        next_state = queue_subcommittee_offer(
+            next_state,
+            player,
+            source=f"{source}:{key}",
+            exclude_space=space_id,
+            turn_closed=turn_closed,
+        )
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(

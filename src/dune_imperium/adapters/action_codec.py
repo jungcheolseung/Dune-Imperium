@@ -5,6 +5,7 @@ from numbers import Integral
 
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.arrakeen_scouts import scouts_pool, subcommittees_for
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import (
@@ -81,7 +82,8 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Scouts templates exist yet.
 # v113: the first Scouts templates (Friends Everywhere's choice of Influence
 # 4 bonus), only in ``arrakeen_scouts`` catalogs.
-ACTION_CODEC_VERSION = 113
+# v114: subcommittees (join/decline) and the Scouts effect frame's choices.
+ACTION_CODEC_VERSION = 114
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -938,14 +940,72 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Arrakeen Scouts actions (docs/rules/arrakeen-scouts.md), all here so
     the other catalogs never grow with them (design 4.9)."""
 
-    del config
-    return tuple(
+    templates: list[ActionTemplate] = [
         # Friends Everywhere: take any Faction's Influence 4 bonus.
-        ActionTemplate(
-            action_id="choose_four_bonus", arguments=(("faction", faction.value),)
-        )
-        for faction in Faction
+        *(
+            ActionTemplate(
+                action_id="choose_four_bonus", arguments=(("faction", faction.value),)
+            )
+            for faction in Faction
+        ),
+        # Subcommittees: join one, or decline the offer.
+        ActionTemplate(action_id="decline_subcommittee"),
+        *(
+            ActionTemplate(
+                action_id="join_subcommittee",
+                arguments=(("subcommittee_id", entry.subcommittee_id),),
+            )
+            for entry in subcommittees_for(
+                scouts_pool(immortality=config.immortality),
+                choam=config.choam_module,
+            )
+        ),
+        # A seat's line: the choices of the Scouts effect frame.
+        *_trash_templates(config, "scouts_discard"),
+        *_trash_templates(config, "scouts_trash_card"),
+        *(
+            ActionTemplate(
+                action_id="scouts_trash_intrigue", arguments=(("card_id", card_id),)
+            )
+            for card_id in _held_intrigue_instance_ids(config)
+        ),
+        *(
+            ActionTemplate(
+                action_id="scouts_recall_spy", arguments=(("post_id", post.post_id),)
+            )
+            for post in OBSERVATION_POSTS
+        ),
+        *(
+            ActionTemplate(
+                action_id="scouts_choose_faction",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        ),
+        *(
+            ActionTemplate(
+                action_id="scouts_recall_agent",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in catalog_spaces(config)
+        ),
+    ]
+    return tuple(templates)
+
+
+def _held_intrigue_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
+    """Every Intrigue card a seat can hold in this ruleset."""
+
+    held = intrigue_deck_instance_ids(
+        config.choam_module,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+        immortality=config.immortality,
     )
+    if config.bloodlines:
+        # Piter De Vries' Twisted Intrigue cards are held once dealt.
+        held = (*held, *twisted_intrigue_instance_ids())
+    return held
 
 
 def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

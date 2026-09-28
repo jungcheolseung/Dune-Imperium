@@ -15,6 +15,7 @@ Encoding rules:
   (0 absent, 1 face up, 2 face down).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 from typing import Final
@@ -69,7 +70,8 @@ from dune_imperium.rules.frames import FrameKind
 # v22 (2026-09-28): the Arrakeen Scouts segments are appended after every
 # older one (all zero without the option), so the old columns keep their
 # offsets. (The same day, before any file used v22, Market Opening's used
-# discount became the value 2 in its modifier column.)
+# discount became the value 2 in its modifier column, and a joined
+# subcommittee's item column 1 + its member's relative seat.)
 OBSERVATION_VERSION: Final = 22
 _SEATS: Final = 4
 
@@ -493,14 +495,19 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     values[_OFFSET["private_secret_project"]] = (
         _TECH_INDEX[secret] + 1 if secret else 0
     )
-    _write_scouts(values, view)
+    _write_scouts(values, view, relative)
     return tuple(values)
 
 
-def _write_scouts(values: list[int], view: PlayerView) -> None:
+def _write_scouts(
+    values: list[int], view: PlayerView, relative: Callable[[int | None], int]
+) -> None:
     offset = _OFFSET["scouts_items"]
     for subcommittee_id in view.scouts_subcommittees:
         values[offset + _SCOUTS_ITEM_INDEX[subcommittee_id]] = 1
+    # A joined subcommittee: 1 + its member's seat relative to the observer.
+    for subcommittee_id, seat in view.scouts_subcommittee_members:
+        values[offset + _SCOUTS_ITEM_INDEX[subcommittee_id]] = 1 + relative(seat)
     for round_number, item_id in view.scouts_revealed:
         values[offset + _SCOUTS_ITEM_INDEX[item_id]] = round_number
     if view.scouts_round_modifier:

@@ -73,6 +73,7 @@ from dune_imperium.rules.intrigue_deck import (
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
+from dune_imperium.rules.scouts_offers import queue_subcommittee_offer
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
@@ -890,6 +891,15 @@ def apply_corrinth_city_reveal(
                 ("player", action.actor),
                 ("solari", 5),
             ),
+        )
+        # Arrakeen Scouts: the seat offers one subcommittee (OQ-076); no
+        # Agent took it, so Contingencies may recall any (OQ-075).
+        state = queue_subcommittee_offer(
+            state,
+            action.actor,
+            source=f"{source}:high_council",
+            exclude_space="",
+            turn_closed=False,
         )
     return RuleResult(
         state=replace(

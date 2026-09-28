@@ -157,6 +157,11 @@ class GameState:
     # Friends Everywhere: Influence 4 bonuses whose Faction the seat picks,
     # as (player, Faction reached, event source), opened in order.
     scouts_four_bonus_choices: tuple[tuple[int, str, str], ...] = ()
+    # Subcommittee members as (subcommittee id, seat), in joining order, and
+    # the offers owed by High Council seats taken, as (player, event source,
+    # space of the Agent that took it, whether that seat's turn had closed).
+    scouts_subcommittee_members: tuple[tuple[str, int], ...] = ()
+    scouts_subcommittee_offers: tuple[tuple[int, str, str, bool], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -324,6 +329,12 @@ class GameState:
                 raise ValueError("a Scouts item is revealed once")
             if self.scouts_tasks and not self.scouts_item:
                 raise ValueError("Scouts tasks belong to an item being resolved")
+            joined = tuple(item for item, _ in self.scouts_subcommittee_members)
+            seats = tuple(seat for _, seat in self.scouts_subcommittee_members)
+            if len(joined) != len(set(joined)) or len(seats) != len(set(seats)):
+                raise ValueError("a subcommittee has one member; a seat joins once")
+            if not set(joined) <= set(self.scouts_subcommittees):
+                raise ValueError("members join a revealed subcommittee")
         elif (
             self.scouts_subcommittees
             or self.scouts_revealed
@@ -336,6 +347,8 @@ class GameState:
             or self.scouts_round_modifier
             or self.scouts_discount_used
             or self.scouts_four_bonus_choices
+            or self.scouts_subcommittee_members
+            or self.scouts_subcommittee_offers
         ):
             raise ValueError("Scouts state requires the Arrakeen Scouts module")
 

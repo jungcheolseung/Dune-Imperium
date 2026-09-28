@@ -297,6 +297,16 @@ from dune_imperium.rules.scouts import (
     scouts_draw_is_pending,
     scouts_step_is_pending,
 )
+from dune_imperium.rules.scouts_effects import (
+    advance_scouts_effect,
+    apply_scouts_effect_action,
+    apply_subcommittee_action,
+    begin_subcommittee_offer,
+    legal_scouts_effect_actions,
+    legal_subcommittee_actions,
+    scouts_effect_can_advance,
+    subcommittee_offer_is_queued,
+)
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
@@ -498,6 +508,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
     FrameKind.SCOUTS_FOUR_BONUS: (legal_four_bonus_actions,),
+    FrameKind.SCOUTS_EFFECT: (legal_scouts_effect_actions,),
+    FrameKind.SCOUTS_SUBCOMMITTEE: (legal_subcommittee_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -505,6 +517,14 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pick_leader": apply_leader_draft_pick,
     # Arrakeen Scouts (docs/rules/arrakeen-scouts.md)
     "choose_four_bonus": apply_four_bonus_choice,
+    "join_subcommittee": apply_subcommittee_action,
+    "decline_subcommittee": apply_subcommittee_action,
+    "scouts_discard": apply_scouts_effect_action,
+    "scouts_trash_card": apply_scouts_effect_action,
+    "scouts_trash_intrigue": apply_scouts_effect_action,
+    "scouts_recall_spy": apply_scouts_effect_action,
+    "scouts_choose_faction": apply_scouts_effect_action,
+    "scouts_recall_agent": apply_scouts_effect_action,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,
@@ -981,6 +1001,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # The Emperor track's Influence 4 Spy [Main p. 7] is placed
             # before any other player-initiated action (OQ-057).
             automatic = begin_track_spy_placement(state)
+        elif subcommittee_offer_is_queued(state):
+            # Arrakeen Scouts: taking a High Council seat offers a
+            # subcommittee (OQ-076).
+            automatic = begin_subcommittee_offer(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
         elif combat_reward_spy_is_unavailable(state):
@@ -992,6 +1016,9 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # Every eligible Faction is at the top of its track, so the
             # choice is lost like any other Influence gain there (OQ-060).
             automatic = fizzle_combat_influence_choice(state)
+        elif scouts_effect_can_advance(state):
+            # Arrakeen Scouts: the next automatic step of a seat's line.
+            automatic = advance_scouts_effect(state)
         elif state.decision_stack:
             break
         elif scouts_step_is_pending(state):

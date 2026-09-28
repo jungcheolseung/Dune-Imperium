@@ -85,6 +85,10 @@ class FrameKind(StrEnum):
     SCOUTS_DRAW = "scouts_draw"
     # Friends Everywhere: which Faction's Influence 4 bonus to take.
     SCOUTS_FOUR_BONUS = "scouts_four_bonus"
+    # One seat's cost -> reward line of a Scouts item, and the subcommittee
+    # offer on taking a High Council seat.
+    SCOUTS_EFFECT = "scouts_effect"
+    SCOUTS_SUBCOMMITTEE = "scouts_subcommittee"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

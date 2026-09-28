@@ -210,6 +210,8 @@ class PlayerView:
     # being resolved and this round's rule change. Nothing unrevealed is in
     # the state to hide: each item is drawn in the round it appears.
     scouts_subcommittees: tuple[str, ...] = ()
+    # (subcommittee id, member seat), in joining order.
+    scouts_subcommittee_members: tuple[tuple[str, int], ...] = ()
     scouts_revealed: tuple[tuple[int, str], ...] = ()
     scouts_mission_rounds: tuple[int, ...] = ()
     scouts_mid_auction_round: int = 0
@@ -435,6 +437,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         tleilaxu_track_spice=state.tleilaxu_track_spice,
         combat_intrigue_players=state.combat_intrigue_players,
         scouts_subcommittees=state.scouts_subcommittees,
+        scouts_subcommittee_members=state.scouts_subcommittee_members,
         scouts_revealed=state.scouts_revealed,
         scouts_mission_rounds=state.scouts_mission_rounds,
         scouts_mid_auction_round=state.scouts_mid_auction_round,
