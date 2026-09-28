@@ -174,6 +174,13 @@ class GameState:
     # due; and the last round whose Scouts step revealed the due picks.
     scouts_secret_picks: tuple[tuple[int, str, int, int], ...] = ()
     scouts_secrets_round: int = 0
+    # The auction being run (``rules.scouts_auctions``): sealed bids as
+    # (seat, amount, confirmed), each known to its seat only until the last
+    # confirmation; Critical Moment's revealed Imperium cards and its open
+    # calls as (seat, amount; 0 a pass).
+    scouts_bids: tuple[tuple[int, int, bool], ...] = ()
+    scouts_market_cards: tuple[str, ...] = ()
+    scouts_calls: tuple[tuple[int, int], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -378,6 +385,15 @@ class GameState:
                 for _, _, seat, pick in self.scouts_secret_picks
             ):
                 raise ValueError("a secret pick names a seat and one of four lines")
+            bidders = tuple(seat for seat, _, _ in self.scouts_bids)
+            if len(bidders) != len(set(bidders)) or any(
+                amount < 0 for _, amount, _ in self.scouts_bids
+            ):
+                raise ValueError("a seat holds one bid of 0 or more")
+            callers = tuple(seat for seat, _ in self.scouts_calls)
+            called = tuple(amount for _, amount in self.scouts_calls if amount)
+            if len(callers) != len(set(callers)) or len(called) != len(set(called)):
+                raise ValueError("a seat calls once, and no amount twice")
         elif (
             self.scouts_subcommittees
             or self.scouts_revealed
@@ -397,6 +413,9 @@ class GameState:
             or self.scouts_parked
             or self.scouts_secret_picks
             or self.scouts_secrets_round
+            or self.scouts_bids
+            or self.scouts_market_cards
+            or self.scouts_calls
             or any(player.troops_parked for player in self.players)
         ):
             raise ValueError("Scouts state requires the Arrakeen Scouts module")

@@ -567,11 +567,12 @@ const EXPLICIT_TURN_END_IDS = new Set([
   "finish_reveal",
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
+  "confirm_scouts_bid",
 ]);
 
 /* The seat's own explicit turn-end action among its legal actions, if the
-   pending decision offers one. There is at most one: the four ids belong
-   to four different decision kinds. */
+   pending decision offers one. There is at most one: the ids belong to
+   different decision kinds. */
 function turnEndAction(actions) {
   return actions.find((action) => EXPLICIT_TURN_END_IDS.has(action.action_id)) || null;
 }

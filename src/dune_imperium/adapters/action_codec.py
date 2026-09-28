@@ -6,7 +6,10 @@ from numbers import Integral
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.arrakeen_scouts import (
+    AUCTIONS,
     EVENTS,
+    MAX_AUCTION_BID,
+    MAX_MERCENARIES_BID,
     SALES,
     scouts_pool,
     subcommittees_for,
@@ -92,7 +95,8 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v116: missions (take part or pass, collect on a visit).
 # v117: Desert Riding's Maker Hooks token at Hagga Basin.
 # v118: secret picks (Covert Operation, Offworld Operation).
-ACTION_CODEC_VERSION = 118
+# v119: auctions (sealed bids, Mercenaries' retreat, Critical Moment).
+ACTION_CODEC_VERSION = 119
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1059,6 +1063,26 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         *(
             ActionTemplate(action_id="scouts_secret_pick", arguments=(("pick", i),))
             for i in range(4)
+        ),
+        # Auctions: a sealed bid and its confirmation, Mercenaries' retreat,
+        # Critical Moment's call (0 a pass) and the purchase by card slot.
+        ActionTemplate(action_id="confirm_scouts_bid"),
+        *(
+            ActionTemplate(action_id="scouts_bid", arguments=(("count", n),))
+            for n in range(MAX_AUCTION_BID + 1)
+        ),
+        *(
+            ActionTemplate(action_id="scouts_retreat", arguments=(("count", n),))
+            for n in range(MAX_MERCENARIES_BID + 1)
+        ),
+        *(
+            ActionTemplate(action_id="scouts_call", arguments=(("count", n),))
+            for n in range(MAX_AUCTION_BID + 1)
+        ),
+        ActionTemplate(action_id="scouts_decline_card"),
+        *(
+            ActionTemplate(action_id="scouts_take_card", arguments=(("slot", slot),))
+            for slot in range(max(auction.revealed_cards for auction in AUCTIONS))
         ),
         # One seat's turn-order pick of an event's or sale's line, or a pass.
         ActionTemplate(action_id="scouts_pass"),

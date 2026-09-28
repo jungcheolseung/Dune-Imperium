@@ -297,6 +297,16 @@ from dune_imperium.rules.scouts import (
     scouts_draw_is_pending,
     scouts_step_is_pending,
 )
+from dune_imperium.rules.scouts_auctions import (
+    apply_bid_action,
+    apply_call,
+    apply_retreat,
+    apply_take,
+    legal_bid_actions,
+    legal_call_actions,
+    legal_retreat_actions,
+    legal_take_actions,
+)
 from dune_imperium.rules.scouts_effects import (
     advance_scouts_effect,
     apply_scouts_choice_action,
@@ -526,6 +536,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.SCOUTS_CHOICE: (legal_scouts_choice_actions,),
     FrameKind.SCOUTS_MISSION: (legal_mission_join_actions,),
     FrameKind.SCOUTS_SECRET: (legal_secret_pick_actions,),
+    FrameKind.SCOUTS_BID: (legal_bid_actions,),
+    FrameKind.SCOUTS_RETREAT: (legal_retreat_actions,),
+    FrameKind.SCOUTS_CALL: (legal_call_actions,),
+    FrameKind.SCOUTS_MARKET: (legal_take_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -549,6 +563,12 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_decline_mission": apply_mission_join,
     "scouts_collect_mission": apply_mission_collect,
     "scouts_secret_pick": apply_secret_pick,
+    "scouts_bid": apply_bid_action,
+    "confirm_scouts_bid": apply_bid_action,
+    "scouts_retreat": apply_retreat,
+    "scouts_call": apply_call,
+    "scouts_take_card": apply_take,
+    "scouts_decline_card": apply_take,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,

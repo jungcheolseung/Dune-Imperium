@@ -55,6 +55,18 @@ from dune_imperium.rules.frames import (
     reset_turn_counters,
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
+from dune_imperium.rules.scouts_auctions import (
+    auction_tasks,
+    clear_market,
+    close_bids,
+    close_market,
+    offer_bid,
+    offer_call,
+    offer_retreat,
+    offer_take,
+    reveal_market,
+    run_auction_reward,
+)
 from dune_imperium.rules.scouts_effects import (
     highest_factions,
     offer_scouts_choice,
@@ -464,6 +476,8 @@ def _item_tasks(state: GameState, item_id: str) -> tuple[str, ...]:
         return tuple(f"equilibrium:{seat}" for seat in order)
     if item_id in MISSIONS_BY_ID:
         return mission_tasks(state, item_id, order)
+    if item_id in AUCTIONS_BY_ID:
+        return auction_tasks(item_id, order)
     if event is not None and event.kind is EventKind.SECRET:
         return secret_tasks(order)
     if event is not None:
@@ -510,6 +524,26 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         )
     if task.startswith("secret_reward:"):
         return run_secret_reward(state, task)
+    if task.startswith("bid:"):
+        bid_seat = int(task.removeprefix("bid:"))
+        return offer_bid(state, bid_seat, item, source=f"{source}:{bid_seat}")
+    if task == "bids_close":
+        return close_bids(state, item, turn_order(state))
+    if task.startswith("auction_reward:"):
+        return run_auction_reward(state, task)
+    if task.startswith("retreat:"):
+        return offer_retreat(state, task)
+    if task == "market":
+        return reveal_market(state)
+    if task.startswith("call:"):
+        call_seat = int(task.removeprefix("call:"))
+        return offer_call(state, call_seat, source=f"{source}:{call_seat}")
+    if task == "market_close":
+        return close_market(state)
+    if task.startswith("take:"):
+        return offer_take(state, task)
+    if task == "market_clear":
+        return clear_market(state)
     if task == "goods":
         return place_mission_goods(state, item, source=source)
     if task.startswith("join:"):

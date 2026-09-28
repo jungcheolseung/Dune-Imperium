@@ -1578,12 +1578,15 @@ def acquire_imperium_for_intrigue(
     to_hand: bool,
     source: str,
     credit_turn_recruits: bool = True,
+    from_market: bool = False,
 ) -> IntrigueAcquisition:
     """Acquire one Imperium Row card without Persuasion for an Intrigue effect.
 
     The Row position refills from the Imperium Deck at once [Main p. 13] and
     any acquire box resolves immediately [Main p. 20]. Bonuses that need a
     follow-up decision are reported to the caller instead of pushing frames.
+    ``from_market`` takes the card from Arrakeen Scouts' Critical Moment
+    cards instead of the Row, with nothing to refill.
 
     ``credit_turn_recruits`` is false when the caller already closed the
     owner's turn frame before calling this (Tleilaxu Master, the Leader's
@@ -1596,7 +1599,14 @@ def acquire_imperium_for_intrigue(
             f"acquisition bonus is not implemented: {definition.card.card_id}"
         )
     destination = "hand" if to_hand else "discard"
-    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
+    market = state.scouts_market_cards
+    if from_market:
+        if instance_id not in market:
+            raise ValueError("the card is not among the revealed cards")
+        imperium_row, imperium_deck = state.imperium_row, state.imperium_deck
+        market = tuple(card for card in market if card != instance_id)
+    else:
+        imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
     owner = state.players[player]
     next_owner = replace(
         owner,
@@ -1614,6 +1624,7 @@ def acquire_imperium_for_intrigue(
         players=replace_player(state.players, bonus.owner),
         imperium_deck=imperium_deck,
         imperium_row=imperium_row,
+        scouts_market_cards=market,
         intrigue_deck=bonus.intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
     )

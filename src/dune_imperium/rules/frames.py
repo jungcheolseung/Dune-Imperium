@@ -95,6 +95,12 @@ class FrameKind(StrEnum):
     SCOUTS_MISSION = "scouts_mission"
     # A seat's secret pick of a Covert or Offworld Operation line.
     SCOUTS_SECRET = "scouts_secret"
+    # Auctions: a sealed bid (pick, then confirm), Mercenaries' retreat, an
+    # open call in Critical Moment and its winner's purchase.
+    SCOUTS_BID = "scouts_bid"
+    SCOUTS_RETREAT = "scouts_retreat"
+    SCOUTS_CALL = "scouts_call"
+    SCOUTS_MARKET = "scouts_market"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

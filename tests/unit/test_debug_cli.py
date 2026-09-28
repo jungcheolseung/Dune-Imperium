@@ -26,6 +26,7 @@ def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
         "navigation_slots": (),
         "secret_project_tech_id": "",
         "scouts_secret_picks": (),
+        "scouts_bid": -1,
     }
     actions = snapshot["legal_actions"]
     assert isinstance(actions, list)

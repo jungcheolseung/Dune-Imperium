@@ -135,6 +135,8 @@ class PrivatePlayerView:
     # Arrakeen Scouts: the seat's own secret picks not yet due, as (event
     # round, event id, pick index).
     scouts_secret_picks: tuple[tuple[int, str, int], ...] = ()
+    # The seat's own bid in the sealed auction running now (-1: none yet).
+    scouts_bid: int = -1
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +236,11 @@ class PlayerView:
     # two-round lines).
     scouts_secret_pending: tuple[tuple[int, str, int], ...] = ()
     scouts_secrets_round: int = 0
+    # The running auction: who has confirmed a sealed bid (never how much),
+    # Critical Moment's revealed cards and its open calls (seat, amount).
+    scouts_bids_confirmed: tuple[int, ...] = ()
+    scouts_market_cards: tuple[str, ...] = ()
+    scouts_calls: tuple[tuple[int, int], ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -255,13 +262,19 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
-_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:",)
+_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:")
 
 
 def secret_pick_id(event_round: int, seat: int) -> str:
     """The registry id of ``seat``'s Arrakeen Scouts secret pick."""
 
     return f"{_SEALED_VALUE_PREFIXES[0]}{event_round}:{seat}"
+
+
+def secret_bid_id(round_number: int, seat: int) -> str:
+    """The registry id of ``seat``'s Arrakeen Scouts sealed bid."""
+
+    return f"{_SEALED_VALUE_PREFIXES[1]}{round_number}:{seat}"
 
 
 def is_sealed_value_id(value: str) -> bool:
@@ -291,7 +304,8 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     (Controlled, Glowglobes), Long Live the Fighters' top three, Imperium
     Ceremony's two Intrigue cards, Kota Odax's bottom Tech tiles and Secret
     Project. An Arrakeen Scouts secret pick is listed under
-    ``secret_pick_id`` for its seat until it is due. This is the single source the
+    ``secret_pick_id`` for its seat until it is due, and a sealed bid under
+    ``secret_bid_id`` until every seat has confirmed. This is the single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
@@ -355,6 +369,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         # sweep's leak check all read this one registry, so the reveal step
         # is a reveal like any other.
         known[secret_pick_id(event_round, seat)] = frozenset({seat})
+    for seat, _, _ in state.scouts_bids:
+        # A sealed bid likewise, until the last seat confirms.
+        known[secret_bid_id(state.round_number, seat)] = frozenset({seat})
     return known
 
 
@@ -389,6 +406,7 @@ class HiddenZoneDisclosure:
     # secret picks never revealed (event round, event id, seat, pick).
     scouts_board_cards: tuple[str, ...] = ()
     scouts_secret_picks: tuple[tuple[int, str, int, int], ...] = ()
+    scouts_bids: tuple[tuple[int, int, bool], ...] = ()
 
 
 def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
@@ -410,6 +428,7 @@ def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
         conflict_deck=state.conflict_deck,
         scouts_board_cards=tuple(card for _, _, card in state.scouts_goods_cards),
         scouts_secret_picks=state.scouts_secret_picks,
+        scouts_bids=state.scouts_bids,
     )
 
 
@@ -467,6 +486,10 @@ def observe_state(state: GameState, player: int) -> PlayerView:
                 for event_round, event_id, seat, pick in state.scouts_secret_picks
                 if seat == player
             ),
+            scouts_bid=next(
+                (amount for seat, amount, _ in state.scouts_bids if seat == player),
+                -1,
+            ),
         ),
         current_conflict_ids=state.current_conflict_ids,
         conflict_deck_size=len(state.conflict_deck),
@@ -518,6 +541,11 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             for event_round, event_id, seat, _ in state.scouts_secret_picks
         ),
         scouts_secrets_round=state.scouts_secrets_round,
+        scouts_bids_confirmed=tuple(
+            seat for seat, _, confirmed in state.scouts_bids if confirmed
+        ),
+        scouts_market_cards=state.scouts_market_cards,
+        scouts_calls=state.scouts_calls,
     )
 
 

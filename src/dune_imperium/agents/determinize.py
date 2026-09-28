@@ -23,6 +23,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 
 
@@ -163,10 +164,18 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         else (row[0], row[1], row[2], rng.choice(pick_alternatives(state, row)))
         for row in state.scouts_secret_picks
     )
+    # An opponent's sealed bid is any amount it could have bid.
+    bids = tuple(
+        (seat, rng.randint(0, bid_cap(state, seat)), confirmed)
+        if seat != observer
+        else (seat, amount, confirmed)
+        for seat, amount, confirmed in state.scouts_bids
+    )
     return replace(
         state,
         players=tuple(players),
         scouts_secret_picks=secret_picks,
+        scouts_bids=bids,
         scouts_goods_cards=tuple(
             (row[0], row[1], board_cards.get(row, row[2]))
             for row in state.scouts_goods_cards

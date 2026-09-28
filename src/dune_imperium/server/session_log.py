@@ -37,11 +37,14 @@ from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
 
 # Actions whose arguments are the acting seat's secret: Arrakeen Scouts'
-# secret pick (docs/rules/arrakeen-scouts.md 7). A single action id carries
-# the value in its arguments, so the id itself tells nothing.
-SEALED_ACTION_IDS: Final = frozenset({"scouts_secret_pick"})
+# secret pick and sealed bid (docs/rules/arrakeen-scouts.md 7, 8.1). A
+# single action id carries the value in its arguments, so the id itself
+# tells nothing.
+SEALED_ACTION_IDS: Final = frozenset({"scouts_secret_pick", "scouts_bid"})
 # Events of the step that reveals sealed choices when they fall due.
-SEALED_REVEAL_EVENTS: Final = frozenset({"scouts_secret_revealed"})
+SEALED_REVEAL_EVENTS: Final = frozenset(
+    {"scouts_secret_revealed", "scouts_bid_revealed"}
+)
 
 
 @dataclass(frozen=True, slots=True)

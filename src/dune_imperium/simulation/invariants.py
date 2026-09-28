@@ -36,6 +36,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 
 
@@ -65,6 +66,7 @@ def _all_personal_instances(state: GameState) -> Iterator[str]:
     yield from state.imperium_deck
     yield from state.imperium_row
     yield from state.imperium_removed
+    yield from state.scouts_market_cards
     yield from state.tleilaxu_deck
     yield from state.tleilaxu_row
     for player in state.players:
@@ -318,7 +320,10 @@ def _payload_strings(event: GameEvent) -> Iterator[tuple[str, str]]:
 
 
 # The only payload fields a secret choice's public event may carry.
-_SEALED_EVENT_FIELDS: Final = {"scouts_secret_picked": frozenset({"item_id", "player"})}
+_SEALED_EVENT_FIELDS: Final = {
+    "scouts_secret_picked": frozenset({"item_id", "player"}),
+    "scouts_bid_confirmed": frozenset({"item_id", "player"}),
+}
 
 
 def check_event_visibility(state: GameState, events: Iterable[GameEvent]) -> None:
@@ -470,11 +475,19 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
             index = alternatives.index(row[3])
             row = (*row[:3], alternatives[(index + 1) % len(alternatives)])
         secret_picks.append(row)
+    # A sealed bid moves to another amount its seat could have bid.
+    bids = tuple(
+        (seat, (amount + 1) % (bid_cap(state, seat) + 1), confirmed)
+        if seat != observer
+        else (seat, amount, confirmed)
+        for seat, amount, confirmed in state.scouts_bids
+    )
     return replace(
         state,
         players=tuple(players),
         scouts_goods_cards=scouts_goods_cards,
         scouts_secret_picks=tuple(secret_picks),
+        scouts_bids=bids,
         intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
         imperium_deck=tuple(reversed(state.imperium_deck)),
         # The Contracts an open Coercive Negotiation revealed are face up to

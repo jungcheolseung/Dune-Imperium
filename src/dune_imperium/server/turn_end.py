@@ -30,6 +30,9 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         "finish_reveal",
         "pass_combat_intrigue",
         "pass_endgame_intrigue",
+        # Arrakeen Scouts: confirming a sealed bid is the seat's turn end;
+        # until then it may change the bid (D5, docs/arrakeen-scouts-design.md).
+        "confirm_scouts_bid",
     }
 )
 

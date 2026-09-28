@@ -78,7 +78,10 @@ from dune_imperium.rules.frames import FrameKind
 # v24 (2026-09-28): Arrakeen Scouts secret picks, appended after v23's:
 # each relative seat's hidden picks (still any line / known two-round), and
 # the observer's own picks by event and line (the value is the event round).
-OBSERVATION_VERSION: Final = 24
+# v25 (2026-09-28): Arrakeen Scouts auctions, appended after v24's: who has
+# confirmed a sealed bid and the observer's own bid, Critical Moment's
+# revealed cards and each seat's open call.
+OBSERVATION_VERSION: Final = 25
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -132,6 +135,7 @@ SCOUTS_SECRET_EVENT_IDS: Final = tuple(
     entry.event_id for entry in EVENTS if entry.secret_choices
 )
 _SECRET_LINES: Final = 4
+_SCOUTS_MARKET_SLOTS: Final = max(entry.revealed_cards for entry in AUCTIONS)
 
 _PHASES: Final = tuple(GamePhase)
 _AGENT_ICONS: Final = tuple(icon.value for icon in AgentIcon)
@@ -300,6 +304,13 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # observer's own: event x line, valued by the event's round.
             ("scouts_secret_pending", _SEATS * 2),
             ("scouts_secret_own", len(SCOUTS_SECRET_EVENT_IDS) * _SECRET_LINES),
+            # v25: auctions. Per relative seat: confirmed a sealed bid; then
+            # the observer's own bid + 1 (0 = none yet). Critical Moment's
+            # revealed cards by identity, and each relative seat's call + 1
+            # (1 = a pass, 0 = not yet called).
+            ("scouts_bids", _SEATS + 1),
+            ("scouts_market", _SCOUTS_MARKET_SLOTS),
+            ("scouts_calls", _SEATS),
         )
     )
     return tuple(lengths)
@@ -569,6 +580,20 @@ def _write_scouts(
     for event_round, event_id, pick in view.private.scouts_secret_picks:
         column = _SCOUTS_SECRET_EVENT_INDEX[event_id] * _SECRET_LINES + pick
         values[offset + column] = event_round
+    offset = _OFFSET["scouts_bids"]
+    for seat in view.scouts_bids_confirmed:
+        values[offset + relative(seat) - 1] = 1
+    values[offset + _SEATS] = view.private.scouts_bid + 1
+    _write_identity_slots(
+        values,
+        _OFFSET["scouts_market"],
+        _SCOUTS_MARKET_SLOTS,
+        view.scouts_market_cards,
+        "Critical Moment",
+    )
+    offset = _OFFSET["scouts_calls"]
+    for seat, amount in view.scouts_calls:
+        values[offset + relative(seat) - 1] = amount + 1
 
 
 def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -> None:
