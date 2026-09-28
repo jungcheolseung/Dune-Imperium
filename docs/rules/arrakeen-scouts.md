@@ -278,6 +278,11 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 5: 6절의 선택형 이벤트(Immortality 넷 포함)와 9절의 판매, Political Equilibrium, Rebuild Infrastructure.
+  - 공개되면 First Player부터 좌석마다 `scouts_choice` frame을 연다. 낼 수 있는 줄만 `scouts_choose_option`으로, 패스가 있으면 `scouts_pass`로 제시한다. 패스가 없는데 할 수 있는 줄이 하나뿐이면 결정 없이 그 줄을, 하나도 없으면 아무것도 하지 않는다(OQ-071). 고른 줄은 슬라이스 4의 `scouts_effect` frame이 푼다.
+  - Influence 잃기(`LoseFactionInfluence`, Political Equilibrium의 `LoseHighestInfluence`)는 효과 frame의 선택이다. 동률인 가장 높은 Faction과, Alliance를 넘겨받을 상대가 동률일 때의 받는 좌석을 고른다(`scouts_lose_influence`, `scouts_lose_influence_to`; `[Main p. 7]`의 Alliance 규칙은 기존 `lose_faction_influence`).
+  - Rebuild Infrastructure: Shield Wall이 서 있으면 아무 일도 없다. 먼저 내기로 한 두 좌석이 spice 1씩 내면 토큰이 돌아오고, 그 뒤 좌석에는 묻지 않는다. 끝까지 한 좌석뿐이면 아무도 내지 않는다(OQ-084).
+  - codec v115. 소크(codec 왕복 검사)가 잡은 결함: 기본 룰셋+Scouts에서 trash 아이콘(Water Discipline)이 여는 기존 선택 trash frame의 행동이 카탈로그에 없었다(그 행동은 Bloodlines·Immortality 카탈로그에만 있었다). Scouts 카탈로그에 더했다.
 - 2026-09-28 슬라이스 4: 4절의 소위원회.
   - High Council 칸의 자리 아이콘과 Corrinth City의 자리 획득이 가입 기회 하나를 대기열에 넣고, 엔진이 곧바로 연다(`rules/scouts_effects.py`, frame `scouts_subcommittee`). 비용을 낼 수 있는 빈 소위원회만 제시하고, 하나도 없으면 결정 없이 사라진다. 거절도 기회를 없앤다(OQ-076).
   - 가입하면 그 소위원회의 비용 → 보상 줄을 `scouts_effect` frame이 한 칸씩 푼다. 자동 칸(지불, 자원·recruit·draw·Influence·Contract·specimen·연구·Tleilaxu)은 기존 효과 해석기로, 선택 칸(버릴 카드, trash할 카드·Intrigue, 회수할 Spy, Faction, 회수할 Agent)은 이 frame의 행동으로 푼다. Spy 배치와 선택 trash는 기존 frame을 연다. 같은 frame이 슬라이스 5~8의 모든 좌석별 줄에 쓰인다.

@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회).
+기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -66,22 +66,22 @@
 
 | id | 앱 정의 | 풀 | 종류 | 라운드 | 추첨표 | CHOAM | 엔진 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `private_stock` | `Def_Event_SpiceGain_PrivateStock` 13.0 | 둘 다 | choice | 4~7 | 5 |  | 카탈로그 |
-| `market_research` | `Def_Event_SpiceGain_MarketResearch` 13.1 | 둘 다 | choice | 4~7 | 5 |  | 카탈로그 |
-| `smoke_and_mirrors` | `Def_Event_IntrigueBonus_SmokeAndMirrors` 14.0 | 둘 다 | choice | 4~7 | 5 |  | 카탈로그 |
-| `rotating_doors` | `Def_Event_IntrigueBonus_RotatingDoors2` 14.1 | 둘 다 | choice | 4~7 | 5 |  | 카탈로그 |
-| `moment_of_revelation` | `Def_Event_MomentOfRevelation` 15.0 | 둘 다 | choice | 4~7 | 10 |  | 카탈로그 |
-| `water_discipline` | `Def_Event_WaterDiscipline` 16.0 | 둘 다 | choice | 4~7 | 10 |  | 카탈로그 |
-| `royal_delegation` | `Def_Event_InfluenceGain_RoyalDelegation` 17.0 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `guild_negotiation` | `Def_Event_InfluenceGain_Negotiation2` 17.1 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `covert_assistance` | `Def_Event_InfluenceGain_CovertAssistance` 17.2 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `gift_of_water` | `Def_Event_InfluenceGain_GiftOfWater` 17.3 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `share_intelligence` | `Def_Event_InfluenceGain_ShareIntelligence` 17.4 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `political_equilibrium` | `Def_Event_InfluenceReduction_Equilibrium2` 18.0 | 둘 다 | automatic | 4~7 | 6 |  | 카탈로그 |
-| `crackdown` | `Def_Event_InfluenceReduction_Crackdown` 18.1 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `water_for_spice_smugglers` | `Def_Event_InfluenceReduction_Smugglers2` 18.2 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `bene_gesserit_treachery` | `Def_Event_InfluenceReduction_Treachery2` 18.3 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
-| `funeral_rites` | `Def_Event_InfluenceReduction_FuneralRites` 18.4 | 둘 다 | choice | 4~7 | 6 |  | 카탈로그 |
+| `private_stock` | `Def_Event_SpiceGain_PrivateStock` 13.0 | 둘 다 | choice | 4~7 | 5 |  | 5: `scouts_choice` |
+| `market_research` | `Def_Event_SpiceGain_MarketResearch` 13.1 | 둘 다 | choice | 4~7 | 5 |  | 5: `scouts_choice` |
+| `smoke_and_mirrors` | `Def_Event_IntrigueBonus_SmokeAndMirrors` 14.0 | 둘 다 | choice | 4~7 | 5 |  | 5: `scouts_choice` |
+| `rotating_doors` | `Def_Event_IntrigueBonus_RotatingDoors2` 14.1 | 둘 다 | choice | 4~7 | 5 |  | 5: `scouts_choice` |
+| `moment_of_revelation` | `Def_Event_MomentOfRevelation` 15.0 | 둘 다 | choice | 4~7 | 10 |  | 5: `scouts_choice` |
+| `water_discipline` | `Def_Event_WaterDiscipline` 16.0 | 둘 다 | choice | 4~7 | 10 |  | 5: `scouts_choice` |
+| `royal_delegation` | `Def_Event_InfluenceGain_RoyalDelegation` 17.0 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `guild_negotiation` | `Def_Event_InfluenceGain_Negotiation2` 17.1 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `covert_assistance` | `Def_Event_InfluenceGain_CovertAssistance` 17.2 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `gift_of_water` | `Def_Event_InfluenceGain_GiftOfWater` 17.3 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `share_intelligence` | `Def_Event_InfluenceGain_ShareIntelligence` 17.4 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `political_equilibrium` | `Def_Event_InfluenceReduction_Equilibrium2` 18.0 | 둘 다 | automatic | 4~7 | 6 |  | 5: 좌석마다 `LoseHighestInfluence` |
+| `crackdown` | `Def_Event_InfluenceReduction_Crackdown` 18.1 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `water_for_spice_smugglers` | `Def_Event_InfluenceReduction_Smugglers2` 18.2 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `bene_gesserit_treachery` | `Def_Event_InfluenceReduction_Treachery2` 18.3 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
+| `funeral_rites` | `Def_Event_InfluenceReduction_FuneralRites` 18.4 | 둘 다 | choice | 4~7 | 6 |  | 5: `scouts_choice` |
 | `covert_operation` | `Def_Event_CovertOperation2` 19.0 | 둘 다 | secret | 4~7 | 10 | 없을 때 전용 | 카탈로그 |
 | `covert_operation_choam` | `Def_Event_CovertOperation3` 19.1 | 둘 다 | secret | 4~7 | 10 | 전용 | 카탈로그 |
 | `mating_season` | `Def_Event_MatingSeason` 20.0 | 둘 다 | automatic | 4~7 | 10 |  | 3a: Maker 칸마다 +1 |
@@ -91,12 +91,12 @@
 | `market_opening` | `Def_Event_MarketOpening` 23.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 3b: `reserve_cost` 할인, 첫 획득에 소진 |
 | `eyes_on_arrakis` | `Def_Event_EyesOnArrakis` 24.0 | 둘 다 | round_modifier | 4~7 | 10 |  | 3b: Faction 칸이 Combat 칸 (`space_is_combat`) |
 | `friends_everywhere` | `Def_Event_FriendsEverywhere` 25.0 | 둘 다 | round_modifier | 5~7 | 10 |  | 3b: `choose_four_bonus` 선택 frame |
-| `rebuild_infrastructure` | `Def_Event_RebuildInfrastructure` 26.0 | 둘 다 | shared | 7~7 | 10 |  | 카탈로그 |
-| `choam_bargain` | `Def_Event_CHOAMBargain` 27.0 | 둘 다 | choice | 4~7 | 10 | 전용 | 카탈로그 |
-| `ingratiate` | `Def_Event_Ingratiate` 8.0 | +Immortality | choice | 4~7 | 10 |  | 카탈로그 |
-| `betrayal` | `Def_Event_Betrayal` 9.0 | +Immortality | choice | 4~7 | 10 |  | 카탈로그 |
-| `new_innovations` | `Def_Event_NewInnovations` 10.0 | +Immortality | choice | 4~7 | 10 |  | 카탈로그 |
-| `termination_request` | `Def_Event_TerminationRequest` 11.0 | +Immortality | choice | 4~7 | 10 |  | 카탈로그 |
+| `rebuild_infrastructure` | `Def_Event_RebuildInfrastructure` 26.0 | 둘 다 | shared | 7~7 | 10 |  | 5: 두 좌석 분담 (OQ-084) |
+| `choam_bargain` | `Def_Event_CHOAMBargain` 27.0 | 둘 다 | choice | 4~7 | 10 | 전용 | 5: `scouts_choice` |
+| `ingratiate` | `Def_Event_Ingratiate` 8.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
+| `betrayal` | `Def_Event_Betrayal` 9.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
+| `new_innovations` | `Def_Event_NewInnovations` 10.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
+| `termination_request` | `Def_Event_TerminationRequest` 11.0 | +Immortality | choice | 4~7 | 10 |  | 5: `scouts_choice` |
 | `offworld_operation` | `Def_Event_OffworldOperation` 12.0 | +Immortality | secret | 4~7 | 10 |  | 카탈로그 |
 
 ### 경매 (슬라이스 8)
@@ -119,10 +119,10 @@
 
 | id | 앱 정의 | 풀 | 엔진 |
 | --- | --- | --- | --- |
-| `unravel_the_future` | `Def_Sale_Future` 2.0 | 둘 다 | 카탈로그 |
-| `imperium_connections` | `Def_Sale_ImperiumConnections` 3.0 | 둘 다 | 카탈로그 |
-| `secrets_for_sale` | `Def_Sale_SecretsForSale` 4.0 | 둘 다 | 카탈로그 |
-| `shadow_warfare` | `Def_Sale_ShadowWarfare` 5.0 | 둘 다 | 카탈로그 |
+| `unravel_the_future` | `Def_Sale_Future` 2.0 | 둘 다 | 5: `scouts_choice` |
+| `imperium_connections` | `Def_Sale_ImperiumConnections` 3.0 | 둘 다 | 5: `scouts_choice` |
+| `secrets_for_sale` | `Def_Sale_SecretsForSale` 4.0 | 둘 다 | 5: `scouts_choice` |
+| `shadow_warfare` | `Def_Sale_ShadowWarfare` 5.0 | 둘 다 | 5: `scouts_choice` |
 
 ## 독립 대조 결과
 
