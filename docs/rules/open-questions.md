@@ -853,14 +853,14 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 순위와 지불은 코드가 정한다(입찰액 내림차순 공동 순위, 이기는 자리 수 이내이고 0보다 커야 승자, 1위 동점이면 2위 없음, 진 좌석은 지불하지 않음, Mercenaries만 전원 지불) `[Scouts schedule]`. 여러 승자의 보상은 "in turn order"라고 한다 `[Scouts auction: Spies for Hire]`. 입찰 상한은 99(Mercenaries 3)다.
 - 판정: 여러 승자의 보상은 First Player부터 차례로 해결한다. 입찰 범위는 0부터 가진 통화와 상한(99, Mercenaries 3) 중 작은 쪽까지다(D4, 2026-09-28 사용자: 앱과 같게 99). 좌석은 앞선 입찰을 보지 않고 차례로 확정하며, 전원이 확정한 뒤 한꺼번에 공개한다(엔진에 동시 결정이 없으므로, 설계 4.5절).
-- 구현: 슬라이스 8.
+- 구현: 슬라이스 8(`rules/scouts_auctions.rank_bids`, `close_bids`). `tests/unit/rules/test_scouts_auctions.py`.
 
 ## OQ-074 — Mercenaries와 Shadow Warfare의 턴 밖 Conflict 투입
 
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: Mercenaries는 "입찰한 spice만큼 troop을 Conflict에 넣고, 가장 적게 낸 좌석은 그 troop을 후퇴시킬 수 있다"고 한다 `[Scouts auction: Mercenaries]`. Shadow Warfare는 "이 판매로 recruit한 troop은 곧바로 Conflict에"라고 한다 `[Scouts sale: Shadow Warfare]`. troop의 출처, 최저 입찰 동점, 입찰 0, troop이 모자랄 때를 적지 않는다.
 - 판정: (a) 넣는 troop은 supply에서 온다(recruit와 같다). supply에 모자라면 있는 만큼만 넣는다(OQ-030의 "해결 시점의 supply만큼" 선례). (b) 입찰 0은 아무것도 넣지 않는다. (c) 최저 입찰액이 동점이면 그 좌석 모두 후퇴를 고를 수 있다. 입찰 0인 좌석도 최저이지만 후퇴할 troop이 없다. (d) 후퇴는 Mercenaries로 넣은 troop만, 전부 또는 일부를 garrison으로 옮긴다. (e) Scouts 단계의 투입은 turn 밖이라 Combat 칸 배치 한도(`[Main p. 10]`)와 무관하다.
-- 구현: 슬라이스 8.
+- 구현: 슬라이스 8(Mercenaries: `close_bids`, `scouts_retreat`). Shadow Warfare는 슬라이스 5의 판매로 이미 구현했다.
 
 ## OQ-075 — Contingencies의 "다른 Agent"
 
@@ -924,7 +924,7 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: Clear the Market은 Imperium Row를 "치우고 새로 채운다", Critical Moment는 사지 않은 공개 카드를 "치운다"고 한다 `[Scouts event: Clear the Market]` `[Scouts auction: Critical Moment]`. 어디로 가는지 적지 않는다.
 - 판정: 치운 Imperium 카드는 게임에서 빠진다(공개 존 `imperium_removed`, Family Atomics의 OQ-051 선례). Clear the Market의 CHOAM 판에서 치운 Contract 2장은 앱의 지시대로 뒷면 bank에 섞는다(chance).
-- 구현: 슬라이스 3(Clear the Market), 8(Critical Moment).
+- 구현: 슬라이스 3(Clear the Market), 8(Critical Moment: `scouts_auctions.clear_market`).
 
 ## OQ-084 — Rebuild Infrastructure의 비용 분담
 
@@ -951,7 +951,7 @@
 - 상태: `DECIDED` (잠정, 2026-09-28 — D8 일괄 검토 대기)
 - 앱: 덱 위 2장(후반 3장)을 공개하고 한 번씩 부르며, 1위가 1장을, 후반 판은 2위도 남은 것 중 1장을 "살 수 있다"고 한다 `[Scouts auction: Critical Moment]`.
 - 판정: (a) 모두 패스하면 공개한 카드를 모두 치운다(OQ-083). (b) Imperium 덱에 카드가 모자라면 있는 만큼만 공개한다(덱은 다시 만들지 않는다). (c) 2위는 사지 않을 수 있다(그러면 지불도 없다). 1위는 부른 액수를 내고 반드시 한 장을 가진다. (d) 부를 수 있는 액수는 1부터 가진 spice까지이며, 이미 나온 액수는 부를 수 없다.
-- 구현: 슬라이스 8.
+- 구현: 슬라이스 8(`reveal_market`, `scouts_call`, `scouts_take_card`/`scouts_decline_card`, `clear_market`).
 
 ## OQ-088 — 임무 참여를 할 수 없는 좌석
 

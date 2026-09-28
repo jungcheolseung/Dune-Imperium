@@ -1,6 +1,6 @@
 # Arrakeen Scouts implementation audit
 
-기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령), 슬라이스 7(비밀 선택).
+기준일: 2026-09-28 — 슬라이스 1(출처·명세·OQ·콘텐츠 카탈로그), 슬라이스 2(옵션 골격), 슬라이스 3a(일정·라운드 흐름·자동 이벤트), 슬라이스 3b(규칙 변경 넷), 슬라이스 4(소위원회), 슬라이스 5(선택형 이벤트·판매), 슬라이스 6a(임무 뼈대), 슬라이스 6b(나머지 임무 수령), 슬라이스 7(비밀 선택), 슬라이스 8(경매).
 
 규범 근거는 [`rules/arrakeen-scouts.md`](../rules/arrakeen-scouts.md)이고, 콘텐츠 정의는 `content/arrakeen_scouts/`(소위원회 `subcommittees.py`, 임무 `missions.py`, 이벤트 `events.py`, 경매·판매 `auctions.py`)가 소유한다. 모든 동작은 `RulesetConfig(arrakeen_scouts=True)`에서만 켜진다(슬라이스 2부터). 설계와 슬라이스 순서는 [`arrakeen-scouts-design.md`](../arrakeen-scouts-design.md)다.
 
@@ -103,17 +103,17 @@
 
 | id | 앱 정의 | 풀 | 방식 | 자리 | 통화·상한 | 이기는 자리 | CHOAM | 엔진 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `highest_bidder_mid` | `Def_Auction_HighestBidder_Mid` 1.0 | 둘 다 | sealed | mid | solari 99 | 1 |  | 카탈로그 |
-| `highest_bidder_late` | `Def_Auction_HighestBidder_Late` 1.1 | 둘 다 | sealed | late | solari 99 | 2 |  | 카탈로그 |
-| `mercenaries` | `Def_Auction_Mercenaries` 3.0 | 둘 다 | mercenaries | either | spice 3 | 1 |  | 카탈로그 |
-| `competitive_study_mid` | `Def_Auction_CompetitiveStudy_Mid` 4.0 | +Immortality | sealed | mid | solari 99 | 1 |  | 카탈로그 |
-| `competitive_study_late` | `Def_Auction_CompetitiveStudy_Late` 4.1 | +Immortality | sealed | late | solari 99 | 2 |  | 카탈로그 |
-| `spies_for_hire_mid` | `Def_Auction_SpiesForHire_Mid` 5.0 | 둘 다 | sealed | mid | solari 99 | 1 |  | 카탈로그 |
-| `spies_for_hire_late` | `Def_Auction_SpiesForHire_Late` 5.1 | 둘 다 | sealed | late | solari 99 | 2 |  | 카탈로그 |
-| `critical_moment_mid` | `Def_Auction_CriticalMoment_Mid` 6.0 | 둘 다 | open_cards | mid | spice 99 | 1 |  | 카탈로그 |
-| `critical_moment_late` | `Def_Auction_CriticalMoment_Late` 6.1 | 둘 다 | open_cards | late | spice 99 | 2 |  | 카탈로그 |
-| `choam_negotiations_mid` | `Def_Auction_CHOAMNegotiations_Mid` 7.0 | 둘 다 | sealed | mid | solari 99 | 1 | 전용 | 카탈로그 |
-| `choam_negotiations_late` | `Def_Auction_CHOAMNegotiations_Late` 7.1 | 둘 다 | sealed | late | solari 99 | 2 | 전용 | 카탈로그 |
+| `highest_bidder_mid` | `Def_Auction_HighestBidder_Mid` 1.0 | 둘 다 | sealed | mid | solari 99 | 1 |  | 8: 봉인 입찰 |
+| `highest_bidder_late` | `Def_Auction_HighestBidder_Late` 1.1 | 둘 다 | sealed | late | solari 99 | 2 |  | 8: 봉인 입찰 |
+| `mercenaries` | `Def_Auction_Mercenaries` 3.0 | 둘 다 | mercenaries | either | spice 3 | 1 |  | 8: 봉인 입찰·전원 지불·후퇴 |
+| `competitive_study_mid` | `Def_Auction_CompetitiveStudy_Mid` 4.0 | +Immortality | sealed | mid | solari 99 | 1 |  | 8: 봉인 입찰 |
+| `competitive_study_late` | `Def_Auction_CompetitiveStudy_Late` 4.1 | +Immortality | sealed | late | solari 99 | 2 |  | 8: 봉인 입찰 |
+| `spies_for_hire_mid` | `Def_Auction_SpiesForHire_Mid` 5.0 | 둘 다 | sealed | mid | solari 99 | 1 |  | 8: 봉인 입찰 |
+| `spies_for_hire_late` | `Def_Auction_SpiesForHire_Late` 5.1 | 둘 다 | sealed | late | solari 99 | 2 |  | 8: 봉인 입찰 |
+| `critical_moment_mid` | `Def_Auction_CriticalMoment_Mid` 6.0 | 둘 다 | open_cards | mid | spice 99 | 1 |  | 8: 공개 경매 |
+| `critical_moment_late` | `Def_Auction_CriticalMoment_Late` 6.1 | 둘 다 | open_cards | late | spice 99 | 2 |  | 8: 공개 경매 |
+| `choam_negotiations_mid` | `Def_Auction_CHOAMNegotiations_Mid` 7.0 | 둘 다 | sealed | mid | solari 99 | 1 | 전용 | 8: 봉인 입찰 |
+| `choam_negotiations_late` | `Def_Auction_CHOAMNegotiations_Late` 7.1 | 둘 다 | sealed | late | solari 99 | 2 | 전용 | 8: 봉인 입찰 |
 
 ### 판매 (슬라이스 5)
 

@@ -278,6 +278,12 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-28 슬라이스 8: 8절 경매(`rules/scouts_auctions.py`).
+  - 봉인 입찰: First Player부터 좌석마다 `scouts_bid(count)`로 고르고(몇 번이든 바꿀 수 있다) `confirm_scouts_bid`로 확정한다(frame `scouts_bid`). 범위는 0부터 자기 통화와 상한 중 작은 쪽까지다. 입찰액은 `GameState.scouts_bids`에 있고 그 좌석만 안다(`secret_bid_id`). 마지막 확정이 전원의 입찰을 공개하고(`scouts_bid_revealed`), 앱 코드대로 순위를 매겨 이긴 좌석만 지불한 뒤 차례 순서로 보상을 해결한다(OQ-073).
+  - Mercenaries: 전원이 입찰한 spice를 내고 그만큼 supply의 troop을 Conflict에 넣는다. 최저 입찰자(동점이면 모두)는 그 troop 중 원하는 만큼 garrison으로 후퇴한다(`scouts_retreat(count)`, OQ-074).
+  - Critical Moment: Imperium 덱 위 2장(후반 3장)을 공개하고(`scouts_market_cards`, 덱이 모자라면 있는 만큼), 좌석마다 한 번 `scouts_call(count)`(0은 패스, 이미 나온 액수는 없음). 1위는 부른 spice를 내고 한 장을 손으로 획득하며(`scouts_take_card(slot)`), 후반 판의 2위는 사거나 사지 않는다(`scouts_decline_card`). 남은 카드는 게임에서 빠진다(`imperium_removed`, OQ-083, OQ-087).
+  - 봉인 장치를 입찰로 넓혔다: 서버 로그가 `scouts_bid`의 인자를 가리고, 공개로 이어지는 확정의 미리보기를 싣지 않으며, 확정은 명시적 턴 종료다(`EXPLICIT_TURN_ENDS`). 탐색 AI와 비공개 검사는 상대의 입찰을 그 좌석이 낼 수 있던 다른 액수로 바꾼다.
+  - 관측 v25(확정 여부·자기 입찰액, 공개 카드, 호가), codec v119.
 - 2026-09-28 슬라이스 7: 7절 비밀 선택(`rules/scouts_secrets.py`).
   - 이벤트가 나오면 First Player부터 좌석마다 `scouts_secret_pick(pick)`으로 고른다(frame `scouts_secret`, 네 값이 늘 모두 제시된다). 선택은 `GameState.scouts_secret_picks`에 남고 그 좌석만 안다.
   - 공개 라운드의 Scouts 단계 첫 일로 기한이 된 선택을 모두 공개하고(`scouts_secret_revealed`), 이벤트 → 줄 → First Player부터의 좌석 순서로 해결한다. "카드 1장 버리기 → troop 3"은 받을지 고른다. Offworld Operation의 둘째 줄은 첫 genetic marker에 닿았으면 spice 2(OQ-085, OQ-089 (b)).
