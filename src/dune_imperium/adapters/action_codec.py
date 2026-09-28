@@ -91,7 +91,10 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # v115: the Scouts events' and sales' turn-order choices and Influence losses.
 # v116: missions (take part or pass, collect on a visit).
 # v117: Desert Riding's Maker Hooks token at Hagga Basin.
-ACTION_CODEC_VERSION = 117
+# v118: the ``go_to_11`` option joined ``RulesetConfig``, so every state
+# hash changes and old saves need the clean version error -- no template
+# changes.
+ACTION_CODEC_VERSION = 118
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

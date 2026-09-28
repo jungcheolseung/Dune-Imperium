@@ -340,7 +340,8 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[Immortality p. 9]` | Tleilaxu Row 2장 + Reclaimed Forces 유지·보충, Reclaimed Forces의 선택 효과, Imperium Row·Persuasion 효과로 획득 불가 | `covered` | [immortality.md](immortality.md) 4절 |
 | `[Immortality pp. 10-11]` | Graft: 두 장 play, 아이콘 선택, 두 카드 모두 "보낸" 것, 효과 자유 순서, Reveal 사용, "if grafted"·"the other grafted card" | `covered` | [immortality.md](immortality.md) 5절 |
 | `[Immortality p. 12]` | Family Atomics | `covered` | [immortality.md](immortality.md) 7절 |
-| `[Immortality p. 12]` | Rise of Ix Epic Game Mode 조합, Go to 11 변형 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Immortality p. 12]` | Go to 11 변형(4인: Score marker를 0에서 시작, 10점 Endgame 조건은 그대로) | `covered` | [immortality.md](immortality.md) 8절, [OQ-091](open-questions.md#oq-091--go-to-11-변형을-uprising에-적용하는-방식) |
+| `[Immortality p. 12]` | Rise of Ix Epic Game Mode 조합 | `out of scope` | 현재 룰셋에서 제외 |
 | `[Immortality p. 13]` | 솔로 Rivals 규칙과 House Hagal 카드 | `out of scope` | 현재 룰셋에서 제외 |
 | `[Immortality p. 14]` | Clandestine Meeting·Ghola·Usurp clarification | `covered` | [immortality.md](immortality.md) 5절 |
 | `[Immortality p. 14]` | Dispatch an Envoy·Ilesa Ecaz·Kwisatz Haderach·Spaceport(원본·Rise of Ix 카드) | `out of scope` | 해당 카드가 현재 룰셋에 없음 |

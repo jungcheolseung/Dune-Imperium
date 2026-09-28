@@ -77,19 +77,21 @@ class SetupResult:
 
 
 def create_unshuffled_players(
-    *, immortality: bool = False
+    *, immortality: bool = False, victory_points: int = 1
 ) -> tuple[PlayerState, ...]:
     """Create four players before leader, objective, and shuffle decisions.
 
     With Immortality the two Dune, the Desert Planet become Experimentation
     [Immortality p. 5]; the Bene Tleilax tokens and Family Atomics are
-    placed by ``_with_immortality``.
+    placed by ``_with_immortality``. Every Score marker starts on
+    ``victory_points``: ``RulesetConfig.starting_victory_points``.
     """
 
     return tuple(
         PlayerState(
             player_id=player,
             deck=starting_deck_instance_ids(player, immortality=immortality),
+            victory_points=victory_points,
         )
         for player in range(4)
     )
@@ -514,7 +516,10 @@ def create_initial_state(
         bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
-        create_unshuffled_players(immortality=config.immortality),
+        create_unshuffled_players(
+            immortality=config.immortality,
+            victory_points=config.starting_victory_points,
+        ),
         resolver.resolve(objective_setup_decision()),
     )
     # The shuffle decision below then covers the reduced decks.
@@ -650,7 +655,10 @@ def create_draft_initial_state(
         bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
-        create_unshuffled_players(immortality=config.immortality),
+        create_unshuffled_players(
+            immortality=config.immortality,
+            victory_points=config.starting_victory_points,
+        ),
         resolver.resolve(objective_setup_decision()),
     )
     pool = resolver.resolve(leader_draft_pool_decision(config)).values

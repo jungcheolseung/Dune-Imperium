@@ -293,6 +293,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Graft | 접합 | `[Immortality p. 10]` | 적용 |
 | Family Atomics token | 가문 핵 토큰 | `[Immortality p. 3]`(구성물), `[Immortality p. 5]`(준비), `[Immortality p. 12]`("각 플레이어는 게임 준비 단계에 가문 핵 토큰을 1개씩 받습니다… 가문 핵 토큰을 소비할 수 있습니다… 임페리움 열을 다시 채웁니다") | 적용 |
 | Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
+| Go to 11 (변형) | 11점을 향해 | `[Immortality p. 12]`("11점을 향해 … 4인 게임이라면, 승점 트랙의 0칸에서 게임을 시작해서 종료 점수를 10점으로 설정하면 됩니다") | 적용 |
 
 ## Arrakeen Scouts 모듈
 
