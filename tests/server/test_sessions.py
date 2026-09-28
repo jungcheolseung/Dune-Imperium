@@ -450,6 +450,28 @@ def test_arrakeen_scouts_game_is_created_with_random_and_heuristic_seats() -> No
     assert summary["arrakeen_scouts"] is True
 
 
+def test_go_to_11_is_summarized_and_keeps_every_seat_kind() -> None:
+    manager = GameSessionManager()
+
+    summary = manager.create_game(
+        ALL_AI, game_seed=17, immortality=True, go_to_11=True
+    )
+    assert summary["go_to_11"] is True
+    assert manager.create_game(ALL_AI, game_seed=17)["go_to_11"] is False
+    with pytest.raises(SessionError, match="requires the Immortality"):
+        manager.create_game(ALL_AI, game_seed=17, go_to_11=True)
+    # Unlike Arrakeen Scouts, trained policies may sit at a Go to 11 table
+    # (user decision, OQ-091): the seat passes validation and fails only
+    # when its (here absent) file is loaded.
+    for kind in ("checkpoint", "search"):
+        with pytest.raises(SessionError, match="cannot build seat 1"):
+            manager.create_game(
+                ("human", f"{kind}:/nonexistent.pt", "random", "random"),
+                immortality=True,
+                go_to_11=True,
+            )
+
+
 def test_unknown_games_and_deletion() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(ALL_AI, game_seed=16)

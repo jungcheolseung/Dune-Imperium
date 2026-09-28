@@ -364,6 +364,7 @@ class GameSessionManager:
         bloodlines: bool = False,
         tech_module: bool = False,
         immortality: bool = False,
+        go_to_11: bool = False,
         arrakeen_scouts: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
@@ -384,11 +385,13 @@ class GameSessionManager:
                 bloodlines=bloodlines,
                 tech_module=tech_module,
                 immortality=immortality,
+                go_to_11=go_to_11,
                 arrakeen_scouts=arrakeen_scouts,
             )
         except ValueError as error:
             # RulesetConfig rejects unsupported combinations (the Tech Module
-            # without Bloodlines [Bloodlines pp. 6-7], a non-four-player game).
+            # without Bloodlines [Bloodlines pp. 6-7], Go to 11 without
+            # Immortality (OQ-091), a non-four-player game).
             # That is a bad request, not a server fault, so it must not reach
             # the client as a bare 500.
             raise SessionError(str(error)) from error
@@ -1354,6 +1357,7 @@ class GameSessionManager:
             "bloodlines": session.config.bloodlines,
             "tech_module": session.config.tech_module,
             "immortality": session.config.immortality,
+            "go_to_11": session.config.go_to_11,
             "arrakeen_scouts": session.config.arrakeen_scouts,
             "seats": list(kinds),
             "players": players,

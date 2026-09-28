@@ -94,6 +94,8 @@ async function init() {
   el("setup-form").addEventListener("submit", createGame);
   el("opt-bloodlines").addEventListener("change", syncTechOption);
   syncTechOption();
+  el("opt-immortality").addEventListener("change", syncGoTo11Option);
+  syncGoTo11Option();
   el("leave-game").addEventListener("click", () => leaveGame());
   el("open-lobby").addEventListener("click", () => showLobby());
   el("lobby-enter").addEventListener("click", () => enterTable(state.summary));

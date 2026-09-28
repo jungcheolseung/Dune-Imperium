@@ -157,6 +157,27 @@ def test_unknown_sweep_policy_is_rejected() -> None:
         sweep_specs(games=1, rulesets=(False,), start_seed=1, policy="best")
 
 
+def test_sweep_specs_rejects_go_to_11_without_immortality() -> None:
+    with pytest.raises(ValueError, match="Go to 11 variant requires the Immortality"):
+        sweep_specs(games=1, rulesets=(False,), start_seed=1, go_to_11=True)
+
+
+def test_go_to_11_sweep_runs_to_finished() -> None:
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=70,
+        immortality=True,
+        go_to_11=True,
+        privacy_interval=0,
+        verify_replay=False,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-base+immortality+go11"
+
+
 def test_small_sweep_covers_both_rulesets() -> None:
     specs = sweep_specs(
         games=1,
@@ -630,6 +651,42 @@ def test_cli_rejects_rotate_leaders_with_leader_draft() -> None:
         sweep_main(["--games", "1", "--rotate-leaders", "--leader-draft"])
 
     assert excinfo.value.code == 2
+
+
+def test_cli_rejects_go_to_11_without_immortality() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        sweep_main(["--games", "1", "--go-to-11"])
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_accepts_go_to_11_with_immortality(tmp_path: Path) -> None:
+    coverage_path = tmp_path / "coverage.json"
+
+    result = sweep_main(
+        [
+            "--games",
+            "1",
+            "--ruleset",
+            "base",
+            "--start-seed",
+            "71",
+            "--immortality",
+            "--go-to-11",
+            "--privacy-interval",
+            "0",
+            "--skip-replay",
+            "--coverage-json",
+            str(coverage_path),
+        ]
+    )
+
+    assert result == 0
+    # A --coverage-json key is the RulesetConfig identifier the games actually
+    # ran under, so this catches a --go-to-11 flag the CLI parses but drops
+    # before it reaches sweep_specs (identifier would then lack "+go11").
+    payload = json.loads(coverage_path.read_text())
+    assert set(payload) == {"uprising-4p-base+immortality+go11"}
 
 
 def test_cli_accepts_soundness_interval() -> None:

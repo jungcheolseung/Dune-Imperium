@@ -115,6 +115,41 @@ def test_tournament_specs_reject_checkpoint_and_search_seats_with_scouts() -> No
     assert all(spec.config.arrakeen_scouts for spec in specs)
 
 
+def test_tournament_specs_rejects_go_to_11_without_immortality() -> None:
+    with pytest.raises(ValueError, match="Go to 11 variant requires the Immortality"):
+        tournament_specs(agents=("random",), games=1, go_to_11=True)
+
+
+def test_tournament_specs_forwards_go_to_11() -> None:
+    specs = tournament_specs(
+        agents=("random",), games=1, immortality=True, go_to_11=True
+    )
+
+    assert specs
+    assert all(spec.go_to_11 for spec in specs)
+    assert all(spec.config.go_to_11 for spec in specs)
+    assert all(
+        spec.config.identifier == "uprising-4p-base+immortality+go11"
+        for spec in specs
+    )
+
+
+def test_go_to_11_match_runs_to_finished() -> None:
+    spec = MatchSpec(
+        game_seed=3,
+        policy_seed=900_003,
+        seat_agents=("random", "random", "random", "random"),
+        immortality=True,
+        go_to_11=True,
+    )
+
+    result = play_match(spec)
+
+    assert result.ruleset == "uprising-4p-base+immortality+go11"
+    assert result.rounds >= 1
+    assert sorted(seat.rank for seat in result.seats) == [1, 2, 3, 4]
+
+
 def test_play_match_meters_every_seat() -> None:
     spec = MatchSpec(
         game_seed=3,
@@ -296,6 +331,41 @@ def test_match_rows_keep_the_pairing_the_summary_collapses(tmp_path: Path) -> No
 def test_cli_rejects_unknown_agents() -> None:
     with pytest.raises(SystemExit):
         tournament_main(["--agents", "oracle", "--games", "1"])
+
+
+def test_cli_rejects_go_to_11_without_immortality() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        tournament_main(["--agents", "random", "--games", "1", "--go-to-11"])
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_accepts_go_to_11_with_immortality(tmp_path: Path) -> None:
+    written = tmp_path / "matches.jsonl"
+
+    exit_code = tournament_main(
+        [
+            "--agents",
+            "random",
+            "--games",
+            "1",
+            "--immortality",
+            "--go-to-11",
+            "--matches",
+            str(written),
+        ]
+    )
+
+    assert exit_code == 0
+    # The match rows record the ruleset the games actually ran under, which
+    # catches a --go-to-11 flag the CLI parses but drops before it reaches
+    # tournament_specs (the identifier would then lack "+go11").
+    lines = written.read_text().splitlines()
+    assert lines
+    assert all(
+        json.loads(line)["ruleset"] == "uprising-4p-base+immortality+go11"
+        for line in lines
+    )
 
 
 class _CountingProtocolCheck(type):

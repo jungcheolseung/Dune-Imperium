@@ -52,6 +52,7 @@ class MatchSpec:
     bloodlines: bool = False
     tech_module: bool = False
     immortality: bool = False
+    go_to_11: bool = False
     arrakeen_scouts: bool = False
     leader_ids: tuple[str, ...] | None = None
     max_steps: int = 30_000
@@ -64,6 +65,7 @@ class MatchSpec:
             bloodlines=self.bloodlines,
             tech_module=self.tech_module,
             immortality=self.immortality,
+            go_to_11=self.go_to_11,
             arrakeen_scouts=self.arrakeen_scouts,
         )
 
@@ -336,6 +338,7 @@ def tournament_specs(
     bloodlines: bool = False,
     tech_module: bool = False,
     immortality: bool = False,
+    go_to_11: bool = False,
     arrakeen_scouts: bool = False,
     max_steps: int = 30_000,
 ) -> tuple[MatchSpec, ...]:
@@ -351,6 +354,14 @@ def tournament_specs(
         raise ValueError("a tournament needs at least one game seed")
     if not rulesets:
         raise ValueError("a tournament needs at least one ruleset")
+    # Reject an invalid option mix here rather than once per match inside
+    # play_match (MatchSpec.config is built lazily).
+    RulesetConfig(
+        bloodlines=bloodlines,
+        tech_module=tech_module,
+        immortality=immortality,
+        go_to_11=go_to_11,
+    )
     lineup = fill_lineup(agents)
     if arrakeen_scouts:
         for kind in lineup:
@@ -370,6 +381,7 @@ def tournament_specs(
             bloodlines=bloodlines,
             tech_module=tech_module,
             immortality=immortality,
+            go_to_11=go_to_11,
             arrakeen_scouts=arrakeen_scouts,
             leader_ids=(
                 _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
