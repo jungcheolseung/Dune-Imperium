@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter), 슬라이스 5c-2(Ghola·Chairdog·Usurp — 카드 play data 전부), 슬라이스 6(UI·대규모 소크·census) 완료 — **M13 마감**. 2026-09-09에 baseline agent의 Immortality 가치를 더했다(아래 절).
+기준일: 2026-09-28(Go to 11 변형 추가), 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter), 슬라이스 5c-2(Ghola·Chairdog·Usurp — 카드 play data 전부), 슬라이스 6(UI·대규모 소크·census) 완료 — **M13 마감**. 2026-09-09에 baseline agent의 Immortality 가치를 더했다(아래 절).
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -220,6 +220,23 @@ heuristic은 Tleilaxu 카드를 전부 2.5, research 분기를 전부 3.0으로 
 A/B(변경 전 스냅샷을 별도 baseline으로 등록해 같은 seed·좌석 회전으로 대전, `--immortality --rotate-leaders`, 400 seed × 4 회전 = 1,599 매치, 2:2 미러): 새 가중치 승률 27.9%·평균 순위 2.403·평균 VP 7.20, 스냅샷 22.1%·2.597·6.92. 미러의 기준선 25% 대비 +2.9%p이고 독립 seed 블록 4개 전부에서 평균 순위가 개선됐다.
 
 같은 A/B가 엔진 교착 1건을 적발했다(seed 78): Ghola가 Steersman의 "draw 1 + recall" box를 복사하면 첫 box의 recall이 이번 turn의 유일한 Agent를 되돌린 뒤 복사본의 recall 아이콘에 대상이 없어지는데, 불발 판정이 아이콘이 남은 box를 즉시 "불발 아님"으로 처리해 `finish_agent_turn`이 제시되지 않았다. OQ-057 (1)의 확정 판정("의무 box는 turn 종료까지 보류되고 그때 불발")을 아이콘 box에도 적용하도록 고쳤다(`_pending_icons_offer_nothing`, `fizzle_pending_agent_icons`; 회귀 테스트는 `tests/unit/rules/test_immortality_tleilaxu_cards.py`).
+
+## Go to 11 변형 (2026-09-28)
+
+규범 근거는 [`rules/immortality.md`](../rules/immortality.md) 8절과 [OQ-091](../rules/open-questions.md#oq-091--go-to-11-변형을-uprising에-적용하는-방식)이다. 4인 게임의 승점 마커만 1 `[Main p. 5]`에서 0으로 옮기고 `[Immortality p. 12]`, 10점 Endgame 조건(`rules/phases.py`의 `>= 10`)은 건드리지 않는다.
+
+| 항목 | 구현 | 고정하는 테스트 |
+| --- | --- | --- |
+| 옵션 | `RulesetConfig.go_to_11`(Immortality 없이 켜면 `ValueError`), 식별자 `+go11`(`+immortality` 뒤), `starting_victory_points` | `tests/unit/test_config.py` |
+| setup | `create_unshuffled_players(victory_points=...)`를 고정 Leader·draft 두 경로가 모두 넘긴다. 무작위 결정은 늘지 않아 chance 기록이 같다. `PlayerState`의 기본값 1은 fixture를 위해 그대로 둔다 | `tests/unit/rules/test_immortality.py`(`test_go_to_11_starts_every_score_marker_on_zero`) |
+| Endgame | 조건 그대로(9점은 아니고 10점이면 Endgame) — 변형 이름의 11로 잘못 고치는 것을 막는다 | `tests/unit/rules/test_phases.py`(`test_go_to_11_still_enters_endgame_at_ten`) |
+| codec·관측 | 카탈로그·인코딩 변화 없음. 새 필드가 모든 state hash를 바꾸므로 codec v118로 올려 옛 저장 파일이 깔끔한 버전 오류를 받게 했다(v112 선례) | `test_go_to_11_leaves_the_action_catalog_alone` |
+| 음수 방지 | VP를 잃는 곳은 `rules/influence.py`의 세 곳(Influence 2 → 1, Alliance 이전·반환)뿐이고 모두 앞선 +1을 되돌린다. `PlayerState`의 음수 검사가 안전망이다 | `test_a_go_to_11_game_finishes_from_zero`, sweep |
+| 서버·저장 | `CreateGameRequest`·요약·저장 문서의 `go_to_11`(없으면 꺼짐). checkpoint·search 좌석도 허용한다(사용자 결정) | `tests/server/test_app.py`, `test_saves.py`, `test_sessions.py` |
+| 브라우저 | 불멸 아래 체크박스(기본 체크, 불멸이 꺼지면 비활성·해제 — Tech와 같다), 머리글 배지 | `scripts/e2e/setup_options.py` |
+| CLI | sweep·tournament `--go-to-11`(`--immortality` 없으면 `parser.error`) | `tests/integration/test_sweep.py`, `test_tournament.py` |
+
+검증(2026-09-28): `--immortality --go-to-11 --soundness-interval 25` sweep 2,200판 실패 0 — random 800·heuristic 400(base·CHOAM), 전 확장 random 600, 전 확장 + leader draft heuristic 200, Bloodlines·Tech·Arrakeen Scouts random 200. 라운드 중앙값 10.
 
 ## 미완 경계
 
