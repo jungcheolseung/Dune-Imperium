@@ -84,7 +84,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 
 - 원로회 자리(High Council seat)를 차지할 때(High Council 칸, Corrinth City), 아직 아무도 가입하지 않은 소위원회 하나에 **가입할 수 있다**. 비용을 내고 보상을 한 번 받는다.
 - 가입은 선택이다. 비용을 낼 수 있는 빈 소위원회가 없거나 거절하면 그 기회는 사라진다. 이후 원로회 칸을 방문해도 다시 가입할 수 없다(원로회 자리는 한 번만 얻는다). 소위원회 하나에는 한 명만 가입한다(OQ-076).
-- 2026-09-29: 가입 시점과 비용을 사용자와 다시 검토 중이다(OQ-075, OQ-076). 앱 영어는 비용 있는 소위원회에 가입하려면 그 비용을 내야 한다고 적는다(`spice.subcommittees.<이름>.instructions`의 괄호, `spice.help.body.uprising`). 결정 전까지 엔진은 위 규칙 그대로다.
+- 비용 있는 소위원회는 그 비용을 내야 가입한다(`spice.subcommittees.<이름>.instructions`의 괄호, `spice.help.body.uprising`). 비용을 낼 수 있어도 보상이 아무 일도 못 하면(회수할 다른 Agent가 없는 Contingencies) 가입할 수 없다(OQ-071, OQ-075). 화면은 빈 소위원회를 모두 보여 주고 가입할 수 없는 것은 이유와 함께 회색으로 둔다. 아직 풀지 않은 High Council 행동에는 지금 자리를 차지하면 가입할 수 있는 소위원회를 미리 보여 준다(OQ-076; 가입만 나중에 하는 방식은 사용자 재확인 대기).
 - 표의 "비용 → 보상"은 Uprising 판이다. 앱은 기본판 일정에서 셋(Appropriations, Intelligence, Oversight)에 다른 줄을 보여 주지만 여기서는 쓰지 않는다.
 
 | id | 이름 (공식 한국어) | 등급 | 비용 → 보상 | 비고 |
@@ -165,7 +165,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `mating_season` | Mating Season (교미기) | 단일 | 10 | 4~7 | Maker 칸마다 spice 1 추가(OQ-082) |
 | `unlikely_allies` | Unlikely Allies (뜻밖의 동맹) | 단일 | 10 | 4~7 | 이번 라운드, 칸의 Influence 요구를 무시한다 |
 | `clear_the_market` | Clear the Market (시장 정리) | CHOAM 변형 | 10 | 4~7 | Imperium Row를 치우고 새로 채운다(OQ-083). CHOAM 없을 때 전용 |
-| `clear_the_market_choam` | Clear the Market (시장 정리) | CHOAM 변형 | 10 | 4~7 | Imperium Row를 치우고 새로 채운 뒤, 앞면 Contract 2장도 치우고 새로 채운다. 치운 Contract는 뒷면 더미에 섞는다. CHOAM 전용 |
+| `clear_the_market_choam` | Clear the Market (시장 정리) | CHOAM 변형 | 10 | 4~7 | Imperium Row를 치우고 새로 채운 뒤, 앞면 Contract 2장도 치우고 새로 채운다. 치운 Contract는 뒷면 더미에 섞는다. bank가 모자라도 교체하고 있는 만큼만 채운다(OQ-083). CHOAM 전용 |
 | `market_opening` | Market Opening (시장 개장) | 단일 | 10 | 4~7 | 이번 라운드 처음 획득되는 The Spice Must Flow의 비용이 Persuasion 2 적다(OQ-081) |
 | `eyes_on_arrakis` | Eyes on Arrakis (아라키스를 지켜보는 눈) | 단일 | 10 | 4~7 | 이번 라운드 모든 Faction 칸이 Combat 칸이다 |
 | `friends_everywhere` | Friends Everywhere (어디든 있는 벗) | 단일 | 10 | 5~7 | 이번 라운드, Influence 4 도달 보너스를 받을 때 대신 아무 Faction의 보너스를 골라도 된다(OQ-081) |
@@ -248,7 +248,7 @@ CHOAM Negotiations는 CHOAM 전용, Competitive Study는 Immortality 풀이다.
 
 - 중간·후반 어느 자리에도 나온다(라운드 5~9). 봉인 입찰로 각자 spice 0~3을 확정한다.
 - 공개 뒤 **모두** 입찰한 spice를 낸다. Immortality에서는 supply가 입찰액보다 적은 좌석이 먼저 specimen을 supply로 되돌려 채울 수 있다. 그다음 낸 만큼 supply의 troop을 Conflict에 넣는다(부족하면 있는 만큼, OQ-074).
-- 가장 적게 낸 좌석은 그렇게 넣은 troop 가운데 원하는 만큼(전부 또는 일부)을 garrison으로 후퇴시킬 수 있다. 최저가 동점이면 모두 그렇다. 이 후퇴는 게임의 후퇴다(앱 영어의 동사가 retreat): Chani의 Tactics token이 후퇴한 troop 수만큼 전진한다(OQ-074).
+- 1 이상 입찰한 좌석 가운데 가장 적게 낸 좌석은 그렇게 넣은 troop 가운데 원하는 만큼(전부 또는 일부)을 garrison으로 후퇴시킬 수 있다. 최저가 동점이면 모두 그렇다. 0은 입찰이 아니라 후퇴하지도 남을 막지도 않는다(OQ-074, 2026-09-29 사용자 결정). 이 후퇴는 게임의 후퇴다(앱 영어의 동사가 retreat): Chani의 Tactics token이 후퇴한 troop 수만큼 전진한다(OQ-074).
 
 ### 8.3 공개 경매: Critical Moment (중대한 순간)
 
@@ -281,13 +281,18 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-29 D8 2차 반영(사용자 결정).
+  - Corrinth City로 Contingencies에 가입한 좌석도 Conflict의 Agent를 회수하고, 전투력과 Reveal frame 합계를 다시 센다(`effects.recall_conflict_agent`; OQ-075).
+  - 소위원회 가입은 비용을 낼 수 있고 보상이 무언가를 할 때만 가능하다. 이번 turn에 Into the Fray로 옮긴 좌석 차지 Agent는 회수 대상이 아니다.
+  - Mercenaries 후퇴는 1 이상 입찰 가운데 최저(OQ-074). Clear the Market의 CHOAM 판은 항상 교체한다(OQ-083).
+  - 화면: 지금 고를 수 없는 줄(이벤트·판매·소위원회·임무)을 이유와 함께 회색으로 보이고, High Council 행동에 소위원회 미리보기, 건너뛴 좌석 알림, 로그의 Scouts id를 이름으로(OQ-071). 엔진 합법 행동·codec·관측·이벤트는 그대로다.
 - 2026-09-29 D8 일괄 검토 1차 반영(사용자 결정과 영어 원문 대조 감사).
   - 경매 보상은 순위대로, 같은 순위는 First Player부터(OQ-073).
   - Immortality의 specimen 보충: Scouts 줄의 recruit(`scouts_effect` frame의 선택 단계), Mercenaries 투입(frame `scouts_top_up`), 임무 참여(참여 frame 안에서) 전에 `scouts_return_specimens(count)`(OQ-074, OQ-088).
   - Mercenaries의 후퇴는 `units.retreat_units`를 거친다(Chani의 Tactics, OQ-074).
   - 비용이 있는 줄은 보상이 무언가를 할 수 있을 때만 제시한다(`scouts_effects.line_is_offered`): Moment of Revelation은 Reserve에 Prepare the Way가 없으면, 영향력 줄은 대상 track이 모두 꼭대기면, recruit 줄은 병력도 specimen도 없으면 제시하지 않는다(OQ-071; 보상 없는 손실 줄은 이 검사에서 빠진다).
   - 임무는 인쇄된 troop 수를 모두 세워야 참여한다(OQ-088). garrison으로 가는 임무 troop은 모두 이번 turn의 recruit다(OQ-089 (c)).
-  - Contingencies의 회수 대상에 Into the Fray로 Conflict에 있는 Agent를 넣었다(OQ-075 (D)). 그 좌석의 Reveal turn 중(Corrinth City 경로)에는 전투력을 세는 중이라 넣지 않는다.
+  - Contingencies의 회수 대상에 Into the Fray로 Conflict에 있는 Agent를 넣었다(OQ-075 (D)).
   - 소위원회의 가입 시점과 비용(OQ-075, OQ-076)은 영어 원문과 사용자 방향이 달라 다시 묻는 중이다.
   - 화면 문구: Prison Planet·Send for Aid·Coordinate With The Emperor의 물품이 은행에서 온다는 점, Offworld Operation의 "Helix에 닿으면".
   - 관측 v26(frame kind `scouts_top_up`), slot key 1,140, action codec v121.
