@@ -13,6 +13,7 @@ per action; the card is discarded when the last slot completes.
 
 from collections.abc import Mapping
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
@@ -71,6 +72,7 @@ from dune_imperium.rules.combat_deployment import (
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
+    OptionUnplayable,
     applicable_sections,
     apply_rewards,
     automatic_rewards,
@@ -80,7 +82,7 @@ from dune_imperium.rules.effect_interpreter import (
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
     influence_gain_candidates,
-    option_is_playable,
+    option_unplayable_reason,
     pay_cost,
     resource_cost,
     section_is_usable,
@@ -146,6 +148,63 @@ PLOT_FRAME_KINDS = frozenset(
 _CHOICE_FRAME = "Intrigue choice frame"
 
 
+class IntriguePlayBlock(StrEnum):
+    """Why an Intrigue option is not for the window open now (its timing).
+
+    ``intrigue_play_block`` returns one of these, or the option's own reason
+    (``option_unplayable_reason``); the legal list plays exactly the options
+    without a block, and the page greys out the others with that reason
+    (``display.unavailable``, user request 2026-09-29).
+    """
+
+    TIMING = "timing"  # printed for another window (Plot, Combat, Endgame)
+    TURN_START = "turn_start"  # "At the start of your turn", after that point
+
+
+def intrigue_window(state: GameState, player: int) -> IntrigueTiming | None:
+    """Return the Intrigue window ``player`` has open now, or None.
+
+    Plot during the owner's own turn frames, Combat at the owner's Combat
+    Intrigue priority, Endgame in the owner's Endgame window.
+    """
+
+    frame = top_frame(state)
+    if (
+        frame is None
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+    ):
+        return None
+    if state.phase is GamePhase.PLAYER_TURNS and frame.kind in PLOT_FRAME_KINDS:
+        return IntrigueTiming.PLOT
+    if state.phase is GamePhase.COMBAT and frame.kind == FrameKind.COMBAT_INTRIGUE:
+        # Only the participant whose priority it is may play [Main p. 14].
+        return IntrigueTiming.COMBAT
+    if state.phase is GamePhase.ENDGAME and frame.kind == FrameKind.ENDGAME_INTRIGUE:
+        # Endgame Intrigue resolves in the owner's Endgame window
+        # [Main pp. 7, 15].
+        return IntrigueTiming.ENDGAME
+    return None
+
+
+def intrigue_play_block(
+    state: GameState,
+    player: int,
+    frame_kind: str,
+    timing: IntrigueTiming,
+    option: IntrigueOption,
+) -> IntriguePlayBlock | OptionUnplayable | None:
+    """Why ``player`` cannot play ``option`` in the ``timing`` window now."""
+
+    if option.timing is not timing:
+        return IntriguePlayBlock.TIMING
+    if option.turn_start_only and frame_kind != FrameKind.TURN:
+        # "At the start of your turn" (Withdrawn): only before the Agent or
+        # Reveal choice.
+        return IntriguePlayBlock.TURN_START
+    return option_unplayable_reason(state, player, option)
+
+
 def legal_intrigue_play_actions(
     state: GameState,
     player: int,
@@ -154,24 +213,10 @@ def legal_intrigue_play_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    frame = top_frame(state)
-    if (
-        frame is None
-        or not isinstance(frame.decision, PlayerDecision)
-        or frame.decision.owner != player
-    ):
+    timing = intrigue_window(state, player)
+    if timing is None:
         return ()
-    if state.phase is GamePhase.PLAYER_TURNS and frame.kind in PLOT_FRAME_KINDS:
-        timing = IntrigueTiming.PLOT
-    elif state.phase is GamePhase.COMBAT and frame.kind == FrameKind.COMBAT_INTRIGUE:
-        # Only the participant whose priority it is may play [Main p. 14].
-        timing = IntrigueTiming.COMBAT
-    elif state.phase is GamePhase.ENDGAME and frame.kind == FrameKind.ENDGAME_INTRIGUE:
-        # Endgame Intrigue resolves in the owner's Endgame window
-        # [Main pp. 7, 15].
-        timing = IntrigueTiming.ENDGAME
-    else:
-        return ()
+    frame_kind = state.decision_stack[-1].kind
     owner = state.players[player]
     actions: list[DomainAction] = []
     for card_id in owner.intrigue_cards:
@@ -179,13 +224,7 @@ def legal_intrigue_play_actions(
         if entry is None or not entry.play_data_complete:
             continue
         for index, option in enumerate(entry.options):
-            if option.timing is not timing:
-                continue
-            if option.turn_start_only and frame.kind != FrameKind.TURN:
-                # "At the start of your turn" (Withdrawn): only before the
-                # Agent or Reveal choice.
-                continue
-            if option_is_playable(state, player, option):
+            if intrigue_play_block(state, player, frame_kind, timing, option) is None:
                 actions.append(
                     DomainAction(
                         action_id="play_intrigue",

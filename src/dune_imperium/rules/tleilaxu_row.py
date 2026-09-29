@@ -25,8 +25,10 @@ from dune_imperium.content.immortality.tleilaxu import (
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
+    AcquireBlock,
     apply_acquisition_track_effects,
     resolve_acquisition_bonus,
     with_pending_draw,
@@ -66,15 +68,13 @@ def legal_tleilaxu_acquisitions(
 ) -> tuple[DomainAction, ...]:
     """Offer the Row cards and Reclaimed Forces the revealer can pay for."""
 
-    if not state.config.immortality:
-        return ()
-    if owned_top_frame(state, FrameKind.REVEAL, player) is None:
+    if not tleilaxu_shop_is_open(state, player):
         return ()
     owner = state.players[player]
     deck_top_allowed = genetic_markers_reached(owner.research_space) >= 1
     actions: list[DomainAction] = []
     for instance_id in state.tleilaxu_row:
-        if tleilaxu_card_for_instance(instance_id).specimen_cost > owner.specimens:
+        if tleilaxu_acquisition_block(owner, instance_id) is not None:
             continue
         actions.append(
             DomainAction(
@@ -91,7 +91,7 @@ def legal_tleilaxu_acquisitions(
                     arguments=(("instance_id", instance_id), ("to_deck_top", True)),
                 )
             )
-    if owner.specimens >= RECLAIMED_FORCES.specimen_cost:
+    if reclaimed_forces_block(owner) is None:
         actions.extend(
             DomainAction(
                 action_id="acquire_reclaimed_forces",
@@ -101,6 +101,37 @@ def legal_tleilaxu_acquisitions(
             for choice in RECLAIMED_FORCES_CHOICES
         )
     return tuple(actions)
+
+
+def tleilaxu_shop_is_open(state: GameState, player: int) -> bool:
+    """Whether ``player`` is in their own Reveal with the Tleilaxu Row in play."""
+
+    return (
+        state.config.immortality
+        and owned_top_frame(state, FrameKind.REVEAL, player) is not None
+    )
+
+
+def tleilaxu_acquisition_block(
+    owner: PlayerState, instance_id: str
+) -> AcquireBlock | None:
+    """Why ``owner`` cannot acquire a Tleilaxu Row card now: its specimen cost.
+
+    ``legal_tleilaxu_acquisitions`` offers exactly the cards without one, and
+    the page's greyed-out rows read the same block (``display.unavailable``).
+    """
+
+    if tleilaxu_card_for_instance(instance_id).specimen_cost > owner.specimens:
+        return AcquireBlock.SPECIMENS
+    return None
+
+
+def reclaimed_forces_block(owner: PlayerState) -> AcquireBlock | None:
+    """Why ``owner`` cannot "acquire" Reclaimed Forces now [Immortality p. 9]."""
+
+    if owner.specimens < RECLAIMED_FORCES.specimen_cost:
+        return AcquireBlock.SPECIMENS
+    return None
 
 
 def apply_tleilaxu_acquisition(state: GameState, action: DomainAction) -> RuleResult:

@@ -47,6 +47,12 @@ from dune_imperium.core.state import GameState
 from dune_imperium.display.effect_dsl_text import cost_text, reward_text
 from dune_imperium.display.effect_dsl_text_ko import cost_text_ko, reward_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+from dune_imperium.display.unavailable import NOT_NOW as _NOT_NOW
+from dune_imperium.display.unavailable import Reason
+from dune_imperium.display.unavailable import held_text as _held
+from dune_imperium.display.unavailable import plural_s as _s
+from dune_imperium.display.unavailable import resource_reason as _resource_reason
+from dune_imperium.display.unavailable import troops_reason as _troops_reason
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.scouts_effects import (
@@ -189,7 +195,7 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
         case RecallOtherAgent():
             return "다른 {agent} 1 회수"
         case RecruitToConflict(count=count):
-            return f"{{troop:{count}}} 분쟁에 투입"
+            return f"{{troop:{count}}} 교전에 배치"
         case AcquireReserveCardToHand(card_id=card_id):
             name = KOREAN_CARD_NAMES["cards"].get(card_id, card_id)
             return f"{name} 손으로 획득"
@@ -516,40 +522,9 @@ def scouts_action_text(
 
 # --- Every line of a Scouts choice, the ones a seat cannot take too ---------------
 
-# Why a line cannot be taken: English, Korean (icons as tokens), a code.
-type Reason = tuple[str, str, str]
-
-_NOT_NOW: Final[Reason] = ("Not available now", "지금은 고를 수 없음", "unavailable")
-
-
-def _s(count: int) -> str:
-    return "s" if count != 1 else ""
-
-
-def _held(held: int) -> tuple[str, str]:
-    return f" (you have {held})", f" (보유 {held})"
-
-
-def _resource_reason(resource: str, needed: int, held: int) -> Reason:
-    en, ko = _held(held)
-    return f"Needs {needed} {resource}{en}", f"{{{resource}:{needed}}} 필요{ko}", "cost"
-
-
-def _troops_reason(where: str, needed: int, held: int) -> Reason:
-    """Troops short in the supply or the garrison, or specimens short."""
-
-    en, ko = _held(held)
-    if where == "specimens":
-        return (
-            f"Needs {needed} specimen{_s(needed)}{en}",
-            f"{{specimen:{needed}}} 필요{ko}",
-            where,
-        )
-    return (
-        f"Needs {needed} troop{_s(needed)} in your {where}{en}",
-        f"{{{where}}}에 {{troop:{needed}}} 필요{ko}",
-        where,
-    )
+# Why a line cannot be taken: English, Korean (icons as tokens), a code. The
+# helpers are shared with the rest of the game's greyed-out choices
+# (``display.unavailable``, where they live now).
 
 
 def _cost_reason(state: GameState, seat: int, cost: object) -> Reason:

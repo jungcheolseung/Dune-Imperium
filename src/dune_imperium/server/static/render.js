@@ -1243,6 +1243,76 @@ function unavailableBadge(line) {
   return badge;
 }
 
+/* ---------- choices the seat cannot take now ----------
+
+   The rest of the game does what a Scouts choice does (user request
+   2026-09-29): the server's `unavailable` (display/unavailable.py
+   unavailable_choices) lists what the seat's own decision offers that it
+   cannot take right now, with the reason — a card of the Reveal shop it
+   cannot afford, one of its Intrigue cards whose cost or condition fails,
+   an effect still waiting on its condition. Each is a row shaped like an
+   action row that takes no click; its action is described like a legal
+   one (describeAction, no index), and `refs` dims the table cards with
+   the reason as their title (visualCard). Every snapshot works them out
+   again, so a row becomes an ordinary action row as soon as the seat can
+   take it, and the reverse. */
+const UNAVAILABLE_HEADINGS = {
+  acquire: "render.unavailable_acquire_heading",
+  intrigue: "render.unavailable_intrigue_heading",
+  waiting: "render.unavailable_waiting_heading",
+};
+
+function unavailableRows(surface) {
+  const info = state.actions && state.actions.unavailable;
+  return info ? info.rows.filter((row) => row.surface === surface) : [];
+}
+
+/* Why a table object (a card) cannot be taken now, or null. */
+function unavailableRef(ref) {
+  const info = state.actions && state.actions.unavailable;
+  return (info && info.refs && info.refs[ref]) || null;
+}
+
+/* A reason as plain text, for a title or a note. */
+function unavailableText(why) {
+  return TERM_LANGUAGE === "ko" && why.reason_ko ? phraseText(why.reason_ko) : why.reason;
+}
+
+/* One greyed-out row: like unavailableLineItem, not an .action-item (which
+   focusActions matches by its refs) and not a disabled button (which means
+   "busy" on this page). */
+function unavailableRow(row) {
+  const item = document.createElement("div");
+  item.className = "unavailable-item";
+  item.setAttribute("role", "button");
+  item.setAttribute("aria-disabled", "true");
+  item.dataset.key = row.key;
+  item.dataset.surface = row.surface;
+  item.title = t("render.unavailable_title");
+  const body = document.createElement("span");
+  body.className = "unavailable-body";
+  body.appendChild(describeAction(row.action));
+  /* A waiting effect names the card it sits on. A card that cannot be
+     bought shows no cost of its own: its reason names the cost and what
+     the seat holds ("Needs 5 Persuasion (you have 3)"). */
+  if (row.card_id) body.append(" · ", nameOf(row.card_id));
+  item.append(body, unavailableBadge(row));
+  return item;
+}
+
+/* The greyed-out rows of `surfaces`, each kind under its own heading. */
+function appendUnavailableRows(box, surfaces) {
+  for (const surface of surfaces) {
+    const rows = unavailableRows(surface);
+    if (!rows.length) continue;
+    const heading = document.createElement("div");
+    heading.className = "pick-others muted unavailable-heading";
+    heading.textContent = t(UNAVAILABLE_HEADINGS[surface]);
+    box.appendChild(heading);
+    for (const row of rows) box.appendChild(unavailableRow(row));
+  }
+}
+
 /* Under a step that takes a High Council seat (Arrakeen Scouts): the
    subcommittees the seat would let the seat join, then the others it could
    not join right now and why (server/sessions.py subcommittee_preview; a
@@ -1387,6 +1457,11 @@ function renderRevealPanel(box, actions) {
     heading(t("render.reveal_effects_heading"));
     appendActionItems(box, effects);
   }
+  /* What the seat cannot take now, under what it can (server's
+     `unavailable`): a deferred Reveal choice still waiting on its
+     condition, an Intrigue card it cannot play, the cards it cannot
+     afford. */
+  appendUnavailableRows(box, ["waiting", "intrigue"]);
   if (buys.length) {
     heading(t("render.buyable_cards_heading"));
     for (const action of buys) {
@@ -1396,6 +1471,7 @@ function renderRevealPanel(box, actions) {
       box.appendChild(item);
     }
   }
+  appendUnavailableRows(box, ["acquire"]);
 }
 
 /* The arguments of an action that name something on the table: a board

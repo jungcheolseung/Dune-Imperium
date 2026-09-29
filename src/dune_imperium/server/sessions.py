@@ -59,6 +59,7 @@ from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.display import effect_action_text, effect_action_text_ko
 from dune_imperium.display.scouts import scouts_choice_lines
+from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.server.access import (
@@ -1021,6 +1022,16 @@ class GameSessionManager:
         ``scouts_choice_lines``). None for any other decision. The legal
         actions themselves are unchanged: a line the seat cannot take is
         not among them.
+
+        ``unavailable`` is the rest of the game's choices the seat cannot
+        take now, with the reason (``display.unavailable``
+        ``unavailable_choices``): greyed-out rows for the Reveal shop, the
+        seat's own Intrigue cards and effects waiting on their condition,
+        and the table cards to dim. None when nothing is greyed out. Each
+        row describes its action without an index or a dry run; none is
+        among ``actions``, which stay exactly the engine's. The rows are
+        display only: if working them out fails, the error is logged and
+        the key is None, so the seat still gets its legal actions.
         """
 
         actions = (
@@ -1029,6 +1040,16 @@ class GameSessionManager:
             else session.engine.legal_actions(session.state, seat)
         )
         lines = scouts_choice_lines(session.state, seat, actions) if actions else None
+        unavailable: dict[str, object] | None = None
+        if actions:
+            try:
+                unavailable = unavailable_choices(session.state, seat, actions)
+            except Exception:
+                _LOGGER.exception(
+                    "greyed-out choices failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
         return {
             "game_id": session.game_id,
             "revision": session.state.revision,
@@ -1038,6 +1059,7 @@ class GameSessionManager:
                 for index, action in enumerate(actions)
             ],
             "scouts_lines": None if lines is None else _jsonify(lines),
+            "unavailable": None if unavailable is None else _jsonify(unavailable),
         }
 
     def _online_seats_locked(self, session: GameSession) -> frozenset[int]:

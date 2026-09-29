@@ -1,6 +1,7 @@
 """Card acquisition during Reveal and card-driven Agent effects."""
 
 from dataclasses import dataclass, replace
+from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
@@ -59,6 +60,22 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+
+
+class AcquireBlock(StrEnum):
+    """Why a card of the Reveal shop cannot be acquired right now.
+
+    Each Reveal acquisition provider keeps a card exactly when its block is
+    None, and the page's greyed-out "can't acquire now" rows read the same
+    block (``display.unavailable``, user request 2026-09-29), so the reason
+    shown can never disagree with the legal list.
+    """
+
+    EMPTY = "empty"  # the Reserve stack has no card left
+    NO_COST = "no_cost"  # no printed Persuasion cost to pay
+    PERSUASION = "persuasion"  # costs more than the Persuasion left
+    SPECIMENS = "specimens"  # costs more specimens than the seat holds
+    NOT_IMPLEMENTED = "not_implemented"  # its acquire bonus is not implemented
 
 
 def take_imperium_row_card(
@@ -637,10 +654,32 @@ def legal_reserve_acquisitions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
+    persuasion = revealer_persuasion(state, player)
+    if persuasion is None:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id, count in state.reserve_stacks
+        if reserve_acquisition_block(state, card_id, count, persuasion) is None
+    )
+
+
+def revealer_persuasion(state: GameState, player: int) -> int | None:
+    """Return the Persuasion ``player`` has left in their own open Reveal.
+
+    None unless the decision on top is ``player``'s Reveal frame
+    (``current_reveal_context``); a Reveal frame with invalid context raises,
+    as the acquisition providers always did.
+    """
+
     try:
         context = current_reveal_context(state)
     except ValueError:
-        return ()
+        return None
     owner = context["turn_owner"]
     persuasion = context["persuasion"]
     if (
@@ -650,19 +689,22 @@ def legal_reserve_acquisitions(
         or not isinstance(persuasion, int)
     ):
         raise RuntimeError("Reveal frame has invalid acquisition context")
-    if owner != player:
-        return ()
+    return persuasion if owner == player else None
 
-    return tuple(
-        DomainAction(
-            action_id="acquire_reserve",
-            actor=player,
-            arguments=(("card_id", card_id),),
-        )
-        for card_id, count in state.reserve_stacks
-        if count > 0
-        and reserve_cost(state, card_id) <= persuasion
-    )
+
+def reserve_acquisition_block(
+    state: GameState, card_id: str, count: int, persuasion: int
+) -> AcquireBlock | None:
+    """Why one card of a Reserve stack holding ``count`` cannot be bought now.
+
+    The cost is ``reserve_cost``'s, the one the payment reads too.
+    """
+
+    if count <= 0:
+        return AcquireBlock.EMPTY
+    if reserve_cost(state, card_id) > persuasion:
+        return AcquireBlock.PERSUASION
+    return None
 
 
 def apply_reserve_acquisition(
@@ -745,34 +787,31 @@ def legal_imperium_acquisitions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        context = current_reveal_context(state)
-    except ValueError:
+    persuasion = revealer_persuasion(state, player)
+    if persuasion is None:
         return ()
-    owner = context["turn_owner"]
-    persuasion = context["persuasion"]
-    if (
-        isinstance(owner, bool)
-        or not isinstance(owner, int)
-        or isinstance(persuasion, bool)
-        or not isinstance(persuasion, int)
-    ):
-        raise RuntimeError("Reveal frame has invalid acquisition context")
-    if owner != player:
-        return ()
+    return tuple(
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in state.imperium_row
+        if imperium_acquisition_block(instance_id, persuasion) is None
+    )
 
-    actions: list[DomainAction] = []
-    for instance_id in state.imperium_row:
-        cost = imperium_card_for_instance(instance_id).acquisition_cost
-        if cost is not None and cost <= persuasion:
-            actions.append(
-                DomainAction(
-                    action_id="acquire_imperium",
-                    actor=player,
-                    arguments=(("instance_id", instance_id),),
-                )
-            )
-    return tuple(actions)
+
+def imperium_acquisition_block(
+    instance_id: str, persuasion: int
+) -> AcquireBlock | None:
+    """Why an Imperium Row card cannot be bought with ``persuasion`` now."""
+
+    cost = imperium_card_for_instance(instance_id).acquisition_cost
+    if cost is None:
+        return AcquireBlock.NO_COST
+    if cost > persuasion:
+        return AcquireBlock.PERSUASION
+    return None
 
 
 def apply_imperium_acquisition(
@@ -1191,7 +1230,9 @@ def acquisition_spy_frame(
 MANIPULATE_DISCOUNT = 1
 
 
-def _manipulated_cost(instance_id: str) -> int | None:
+def manipulated_cost(instance_id: str) -> int | None:
+    """What a set-aside (Manipulate) card costs its owner: one less."""
+
     cost = imperium_card_for_instance(instance_id).acquisition_cost
     if cost is None:
         return None
@@ -1213,20 +1254,8 @@ def legal_manipulated_acquisitions(
     owner = state.players[player]
     if not owner.imperium_set_aside:
         return ()
-    try:
-        context = current_reveal_context(state)
-    except ValueError:
-        return ()
-    turn_owner = context["turn_owner"]
-    persuasion = context["persuasion"]
-    if (
-        isinstance(turn_owner, bool)
-        or not isinstance(turn_owner, int)
-        or isinstance(persuasion, bool)
-        or not isinstance(persuasion, int)
-    ):
-        raise RuntimeError("Reveal frame has invalid acquisition context")
-    if turn_owner != player:
+    persuasion = revealer_persuasion(state, player)
+    if persuasion is None:
         return ()
     return tuple(
         DomainAction(
@@ -1235,14 +1264,24 @@ def legal_manipulated_acquisitions(
             arguments=(("instance_id", instance_id),),
         )
         for instance_id in owner.imperium_set_aside
-        if (cost := _manipulated_cost(instance_id)) is not None
-        and cost <= persuasion
-        and (
-            not (definition := imperium_card_for_instance(instance_id))
-            .has_acquisition_bonus
-            or definition.acquisition_effect is not None
-        )
+        if manipulated_acquisition_block(instance_id, persuasion) is None
     )
+
+
+def manipulated_acquisition_block(
+    instance_id: str, persuasion: int
+) -> AcquireBlock | None:
+    """Why a set-aside card cannot be bought back with ``persuasion`` now."""
+
+    cost = manipulated_cost(instance_id)
+    if cost is None:
+        return AcquireBlock.NO_COST
+    if cost > persuasion:
+        return AcquireBlock.PERSUASION
+    definition = imperium_card_for_instance(instance_id)
+    if definition.has_acquisition_bonus and definition.acquisition_effect is None:
+        return AcquireBlock.NOT_IMPLEMENTED
+    return None
 
 
 def apply_manipulated_acquisition(
@@ -1257,7 +1296,7 @@ def apply_manipulated_acquisition(
     if not isinstance(instance_id, str):
         raise ValueError("set-aside acquisition instance_id must be a string")
     definition = imperium_card_for_instance(instance_id)
-    cost = _manipulated_cost(instance_id)
+    cost = manipulated_cost(instance_id)
     if cost is None:
         raise RuntimeError("set-aside Imperium card is missing its cost")
 

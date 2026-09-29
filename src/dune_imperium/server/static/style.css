@@ -1027,6 +1027,9 @@ kbd {
   box-shadow: 0 0 0 2px var(--glow), 0 0 18px 4px rgba(255, 207, 90, 0.85);
 }
 .vcard.taken { opacity: 0.4; }
+/* A card the seat's decision offers but it cannot take now (render.js
+   unavailableRef): dimmed, the reason in its title. */
+.vcard.blocked { opacity: 0.5; filter: grayscale(0.6); }
 .vcard-badge {
   position: absolute;
   right: 3px;
@@ -1350,11 +1353,12 @@ kbd {
   border: 1px solid var(--bad);
   vertical-align: middle;
 }
-/* An Arrakeen Scouts line the seat cannot take now (render.js
-   appendScoutsLines): shaped like an action row, dashed and dimmed, with no
-   pointer and the reason as a badge. Not button:disabled, which means
-   "busy" here (cursor: wait). */
-.scouts-line-item.unavailable {
+/* An Arrakeen Scouts line, or any other choice, the seat cannot take now
+   (render.js appendScoutsLines, appendUnavailableRows): shaped like an
+   action row, dashed and dimmed, with no pointer and the reason as a
+   badge. Not button:disabled, which means "busy" here (cursor: wait). */
+.scouts-line-item.unavailable,
+.unavailable-item {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

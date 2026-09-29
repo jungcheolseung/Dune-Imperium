@@ -4,6 +4,8 @@ The Agent-turn effect frame carries several pending groups at once (card
 effect, board effect, Faction Influence, Contract completion, deployment). This
 module decides which of those groups may currently offer actions and in which
 order, so the dispatcher does not have to know the frame's internal flags.
+``agent_box_is_waiting`` exposes the one test that withholds a single-effect
+Agent box (OQ-057), for the page's greyed-out row (``display.unavailable``).
 """
 
 from dune_imperium.core.actions import DomainAction
@@ -153,6 +155,53 @@ def _graft_switch_actions(
     return ()
 
 
+def agent_box_is_waiting(state: GameState, player: int) -> bool:
+    """Whether ``player``'s pending single-effect Agent box is withheld now.
+
+    The box is pending as one effect (not a multi-icon box, OQ-027), none
+    of its serial choices is offered, and it would resolve without effect
+    now (``agent_card_effect_is_unavailable``, a cached dry run of the
+    owner's own box): a mandatory box whose condition is false waits for
+    the turn's end instead of fizzling now (OQ-057), so
+    ``resolve_agent_card_effect`` is not offered. The legal list offers the
+    box through the same ``_single_box_actions``, and the page greys the
+    waiting box out with this predicate (``display.unavailable``, user
+    request 2026-09-29), so the two cannot drift.
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return False
+    if context["pending_agent_effect"] is not True or pending_agent_icons(context):
+        return False
+    return not _single_box_actions(state, player)
+
+
+def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """What a pending single-effect Agent box offers now; () while it waits.
+
+    Its serial choices when any is offered (the generic resolution is
+    withheld until the choice is made); otherwise ``resolve_agent_card_effect``,
+    unless the box would resolve without effect now: a mandatory box whose
+    condition is false waits for the turn's end instead of fizzling now
+    (OQ-057); ``finish_agent_turn`` resolves it then.
+    """
+
+    choice_actions = tuple(
+        action
+        for provider in _AGENT_CARD_CHOICE_PROVIDERS
+        for action in provider(state, player)
+    )
+    if choice_actions:
+        return choice_actions
+    if agent_card_effect_is_unavailable(state):
+        return ()
+    return (DomainAction(action_id="resolve_agent_card_effect", actor=player),)
+
+
 def _pending_group_actions(
     state: GameState,
     player: int,
@@ -168,20 +217,8 @@ def _pending_group_actions(
         actions.extend(legal_agent_card_recall_actions(state, player))
         actions.extend(legal_agent_card_influence_actions(state, player))
     elif context["pending_agent_effect"] is True:
-        choice_actions = tuple(
-            action
-            for provider in _AGENT_CARD_CHOICE_PROVIDERS
-            for action in provider(state, player)
-        )
-        if choice_actions:
-            actions.extend(choice_actions)
-        elif not agent_card_effect_is_unavailable(state):
-            # A mandatory box whose condition is false waits for the turn's
-            # end instead of fizzling now (OQ-057); ``finish_agent_turn``
-            # resolves it then.
-            actions.append(
-                DomainAction(action_id="resolve_agent_card_effect", actor=player)
-            )
+        # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
+        actions.extend(_single_box_actions(state, player))
     # One action per pending automatic icon of the visited space; its
     # choice icons are offered by the dedicated providers below (OQ-027).
     actions.extend(legal_board_effect_actions(state, player))

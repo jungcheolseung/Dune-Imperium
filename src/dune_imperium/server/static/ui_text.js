@@ -1257,6 +1257,22 @@ const UI_TEXT = {
     "ko": "이번 차례에 할 일을 마쳤습니다.",
     "en": "You have nothing left to do this turn."
   },
+  "render.unavailable_acquire_heading": {
+    "ko": "지금은 살 수 없는 카드",
+    "en": "Cards you cannot acquire now"
+  },
+  "render.unavailable_intrigue_heading": {
+    "ko": "지금은 쓸 수 없는 책략 카드",
+    "en": "Intrigue cards you cannot play now"
+  },
+  "render.unavailable_title": {
+    "ko": "지금은 고를 수 없습니다. 할 수 있게 되면 바로 고를 수 있습니다",
+    "en": "You cannot take this right now; it opens as soon as you can"
+  },
+  "render.unavailable_waiting_heading": {
+    "ko": "조건을 기다리는 효과",
+    "en": "Effects waiting on their condition"
+  },
   "render.undo_all_steps": {
     "ko": "{{steps}}단계 모두 되돌리기",
     "en": "Undo all {{steps}} steps"

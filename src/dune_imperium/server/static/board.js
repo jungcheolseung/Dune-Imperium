@@ -1420,7 +1420,10 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
 /* ---------- market strip (shared table zones) ---------- */
 
 /* One card as its printed image (or a text card without the cache), lit
-   when a legal action references it; a click applies or focuses. */
+   when a legal action references it; a click applies or focuses. A card
+   the seat's decision offers but it cannot take now (a Row card it cannot
+   afford, an Intrigue card it cannot play) is dimmed instead, with the
+   server's reason in its title (render.js unavailableRef). */
 function visualCard(instanceId, options = {}) {
   const entry = options.entry || entryOf(instanceId);
   const card = document.createElement("button");
@@ -1429,6 +1432,8 @@ function visualCard(instanceId, options = {}) {
   card.dataset.instance = instanceId;
   const legal = legalActionsFor(instanceId);
   if (legal.length) card.classList.add("legal");
+  const blocked = legal.length ? null : unavailableRef(instanceId);
+  if (blocked) card.classList.add("blocked");
   if (state.pick && (state.pick.cardId === instanceId || state.pick.partnerId === instanceId)) {
     card.classList.add("picked");
   } else if (partnerCandidate(instanceId)) {
@@ -1463,7 +1468,8 @@ function visualCard(instanceId, options = {}) {
     badge.textContent = options.badge;
     card.appendChild(badge);
   }
-  card.title = entry ? entry.name : nameOf(instanceId);
+  const name = entry ? entry.name : nameOf(instanceId);
+  card.title = blocked ? `${name} — ${unavailableText(blocked)}` : name;
   card.addEventListener("click", (event) => {
     event.stopPropagation();
     if (options.onClick) options.onClick(entry, card);

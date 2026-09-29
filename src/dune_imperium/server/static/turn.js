@@ -343,6 +343,9 @@ function renderActionPanel(box, turnEnd) {
     const choice = state.actions.scouts_lines;
     if (choice) appendScoutsLines(box, actions, choice);
     else appendActionItems(box, actions);
+    /* And any decision what else it cannot take now, with the reason
+       (render.js appendUnavailableRows). */
+    appendUnavailableRows(box, ["waiting", "intrigue"]);
     return;
   }
   const pick = state.pick || {};
@@ -391,6 +394,7 @@ function renderActionPanel(box, turnEnd) {
     box.appendChild(heading);
     appendActionItems(box, others);
   }
+  appendUnavailableRows(box, ["waiting", "intrigue"]);
   box.appendChild(actionListToggle(true, actions.length));
 }
 
@@ -421,7 +425,8 @@ function legalActionsFor(ref) {
 
 /* Click on a table object: a step of the staged Agent turn, or else one
    legal action applies directly, several focus the action list, none shows
-   the detail popover. */
+   the detail popover (and why it cannot be taken now, when the server
+   says: unavailableRef). */
 function tableClick(ref, entry, anchor) {
   if (state.busy) return;
   if (stagedTurn() && pickStep(ref, entry, anchor)) return;
@@ -437,6 +442,8 @@ function tableClick(ref, entry, anchor) {
     );
     return;
   }
+  const blocked = unavailableRef(ref);
+  if (blocked) note(unavailableText(blocked));
   if (entry) pinPopover(entry, anchor);
 }
 

@@ -8,6 +8,7 @@ decision at a time; everything else is applied automatically.
 """
 
 from dataclasses import dataclass, replace
+from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import Faction
@@ -23,6 +24,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
+    Cost,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -387,10 +389,16 @@ def choice_slots(
     return tuple(slots)
 
 
-def _choice_costs_feasible(
+def _choice_cost_block(
     player: PlayerState,
     sections: tuple[EffectSection, ...],
-) -> bool:
+) -> Cost | None:
+    """Return a player-choice cost the owner cannot pay in full, or None.
+
+    Costs of one kind add up across the sections; the one returned is the
+    first printed cost of the first kind that falls short.
+    """
+
     influence_needed = 0
     discards_needed = 0
     recalls_needed = 0
@@ -398,36 +406,57 @@ def _choice_costs_feasible(
     losses_needed = 0
     conflict_losses_needed = 0
     intrigue_needed = 0
+    influence_cost: Cost | None = None
+    discard_cost: Cost | None = None
+    recall_cost: Cost | None = None
+    retreat_cost: Cost | None = None
+    loss_cost: Cost | None = None
+    conflict_loss_cost: Cost | None = None
+    intrigue_cost: Cost | None = None
     for section in sections:
         for cost in section.costs:
             match cost:
                 case LoseInfluence(count=count):
                     influence_needed += count
+                    if influence_cost is None:
+                        influence_cost = cost
                 case DiscardFromHand(count=count):
                     discards_needed += count
+                    if discard_cost is None:
+                        discard_cost = cost
                 case LoseTroops(count=count, from_conflict=from_conflict):
                     losses_needed += count
+                    if loss_cost is None:
+                        loss_cost = cost
                     if from_conflict:
                         conflict_losses_needed += count
+                        if conflict_loss_cost is None:
+                            conflict_loss_cost = cost
                 case GiveIntrigueToOpponent() | TrashIntrigueCard():
                     # The played card itself is still held while it resolves.
                     intrigue_needed += 1
+                    if intrigue_cost is None:
+                        intrigue_cost = cost
                 case RecallSpy(count=count):
                     recalls_needed += count
+                    if recall_cost is None:
+                        recall_cost = cost
                 case RetreatTroops(minimum=minimum):
                     retreats_needed += minimum
+                    if retreat_cost is None:
+                        retreat_cost = cost
                 case FlipBattleCard(icon=icon) if not flippable_battle_card_ids(
                     player, icon
                 ):
-                    return False
+                    return cost
                 case FlipFaceUpConflictCard(count=count) if (
                     len(face_up_conflict_card_ids(player)) < count
                 ):
-                    return False
+                    return cost
                 case TrashDiscardPileCard(minimum_cost=minimum_cost) if (
                     not trashable_discard_pile_ids(player, minimum_cost)
                 ):
-                    return False
+                    return cost
                 case _:
                     pass
     total_influence = sum(
@@ -439,21 +468,24 @@ def _choice_costs_feasible(
         + player.troops_conflict
         + player.commanders_conflict
     )
-    return (
-        total_influence >= influence_needed
-        and len(player.hand) >= discards_needed
-        and len(player.spy_post_ids) >= recalls_needed
-        and player.troops_conflict + player.commanders_conflict >= retreats_needed
-        and units >= losses_needed
-        and player.troops_conflict + player.commanders_conflict
-        >= conflict_losses_needed
-        # The played card itself is still held while it resolves (a
-        # Navigation card is not held at all, so it needs no allowance).
-        and (
-            intrigue_needed == 0
-            or len(player.intrigue_cards) >= intrigue_needed + 1
-        )
-    )
+    in_conflict = player.troops_conflict + player.commanders_conflict
+    if total_influence < influence_needed:
+        return influence_cost
+    if len(player.hand) < discards_needed:
+        return discard_cost
+    if len(player.spy_post_ids) < recalls_needed:
+        return recall_cost
+    if in_conflict < retreats_needed:
+        return retreat_cost
+    if units < losses_needed:
+        return loss_cost
+    if in_conflict < conflict_losses_needed:
+        return conflict_loss_cost
+    # The played card itself is still held while it resolves (a Navigation
+    # card is not held at all, so it needs no allowance).
+    if intrigue_needed and len(player.intrigue_cards) < intrigue_needed + 1:
+        return intrigue_cost
+    return None
 
 
 def spy_placement_targets(
@@ -495,11 +527,13 @@ def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> b
     return bool(solo_occupied_post_ids(state, player, allowed))
 
 
-def _choice_rewards_feasible(
+def _choice_reward_block(
     state: GameState,
     player: int,
     sections: tuple[EffectSection, ...],
-) -> bool:
+) -> Reward | None:
+    """Return the first reward that has nothing to act on now, or None."""
+
     owner = state.players[player]
     for section in sections:
         for reward in section.rewards:
@@ -513,40 +547,40 @@ def _choice_rewards_feasible(
                     < 1
                     or units_deployment_blocked(state, player)
                 ):
-                    return False
+                    return reward
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
-                    return False
+                    return reward
                 case RetreatTroops(minimum=minimum) if (
                     owner.troops_conflict + owner.commanders_conflict < minimum
                 ):
-                    return False
+                    return reward
                 case TakeContract() if not state.config.choam_module:
-                    return False
+                    return reward
                 case SetAsideImperiumRowCard() if not state.imperium_row:
-                    return False
+                    return reward
                 case PeekTopCard() if not owner.deck:
-                    return False
+                    return reward
                 case TrashPersonalCard(mandatory=True, hand_only=True) if (
                     not owner.hand
                 ):
-                    return False
+                    return reward
                 case GainInfluence(where_opponent_leads=True) if not (
                     factions_where_opponent_leads(state, player)
                 ):
-                    return False
+                    return reward
                 case GainInfluence() as gain if (
                     gain.different_from_trigger or gain.minimum_own
                 ) and not influence_gain_candidates(state, player, gain):
-                    return False
+                    return reward
                 case RedirectSpiesOnTurnSpace() if (
                     agent_turn_space_id(state, player) is None
                 ):
                     # "the board space where you sent an Agent this turn":
                     # only after this turn's placement.
-                    return False
+                    return reward
                 case _:
                     pass
-    return True
+    return None
 
 
 def influence_gain_candidates(
@@ -611,9 +645,27 @@ def section_is_usable(
     sections = (section,)
     return (
         can_afford(owner, resource_cost(sections))
-        and _choice_costs_feasible(owner, sections)
-        and _choice_rewards_feasible(state, player, sections)
+        and _choice_cost_block(owner, sections) is None
+        and _choice_reward_block(state, player, sections) is None
     )
+
+
+class OptionBlock(StrEnum):
+    """Why an Intrigue option cannot be played, beyond a named cost or reward.
+
+    ``option_unplayable_reason`` returns one of these, or the printed cost or
+    reward that fails; ``option_is_playable`` is its ``is None``, so the
+    page's reason for a greyed-out Intrigue card (``display.unavailable``,
+    user request 2026-09-29) reads the very check the legal list does.
+    """
+
+    CONDITION = "condition"  # no printed section applies now
+    COST = "cost"  # the resource cost is more than the owner holds
+    NO_LINE = "no_line"  # separate printed lines: none usable now (OQ-058)
+    CONTRACT_BANK = "contract_bank"  # too few Contracts to reveal (OQ-064)
+
+
+type OptionUnplayable = OptionBlock | Cost | Reward
 
 
 def option_is_playable(
@@ -627,14 +679,35 @@ def option_is_playable(
     one line is usable; each line is paid when it is used (OQ-058).
     """
 
+    return option_unplayable_reason(state, player, option) is None
+
+
+def option_unplayable_reason(
+    state: GameState,
+    player: int,
+    option: IntrigueOption,
+) -> OptionUnplayable | None:
+    """Why ``option`` cannot be played now, or None when it can.
+
+    The checks, in order: a separate-lines card needs one usable line; a
+    triggered card needs an applicable section (and Coercive Negotiation its
+    three Contracts); any other needs an applicable section, its resource
+    cost, then each player-choice cost and reward (``_choice_cost_block``,
+    ``_choice_reward_block``).
+    """
+
     owner = state.players[player]
     if option.separate and option.trigger is None:
-        return any(
+        if any(
             section_is_usable(state, player, section) for section in option.sections
-        )
+        ):
+            return None
+        return OptionBlock.NO_LINE
     sections = applicable_sections(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
+    if not sections:
+        return OptionBlock.CONDITION
     if option.trigger is not None:
         # Playing only sets the card waiting face up; its rewards resolve
         # when the trigger fires, so present feasibility does not gate it --
@@ -642,18 +715,20 @@ def option_is_playable(
         # bank" [Coercive Negotiation card]: nothing refills the bank, so
         # with fewer than three there the card cannot be used at all, not
         # used for no effect (OQ-064, user ruling 2026-09-26).
-        return bool(sections) and all(
+        if all(
             contract_reveal_is_possible(state, reward)
             for section in option.sections
             for reward in section.rewards
             if isinstance(reward, RevealContractsTakeOne)
-        )
-    return (
-        bool(sections)
-        and can_afford(owner, resource_cost(sections))
-        and _choice_costs_feasible(owner, sections)
-        and _choice_rewards_feasible(state, player, sections)
-    )
+        ):
+            return None
+        return OptionBlock.CONTRACT_BANK
+    if not can_afford(owner, resource_cost(sections)):
+        return OptionBlock.COST
+    cost = _choice_cost_block(owner, sections)
+    if cost is not None:
+        return cost
+    return _choice_reward_block(state, player, sections)
 
 
 @dataclass(frozen=True, slots=True)

@@ -3566,6 +3566,30 @@ def _available_deferred_choices(
     )
 
 
+def waiting_deferred_choices(
+    state: GameState,
+    player: int,
+) -> tuple[tuple[str, str], ...]:
+    """Return ``player``'s deferred Reveal choices whose condition fails now.
+
+    Each is a ``(card instance, effect)`` entry of the open Reveal frame's
+    deferred queue that ``_available_deferred_choices`` leaves out, so it has
+    no ``resume_reveal_choice`` action; a later choice of the owner can still
+    meet its condition, and it lapses at ``finish_reveal`` if it never does
+    [Main p. 12]. The page shows these greyed out (``display.unavailable``,
+    user request 2026-09-29). Empty unless ``player``'s Reveal is on top.
+    """
+
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if frame is None:
+        return ()
+    context = frame_context(frame)
+    available = _available_deferred_choices(state, player, context)
+    return tuple(
+        entry for entry in _deferred_reveal_choices(context) if entry not in available
+    )
+
+
 def legal_defer_reveal_choice_actions(
     state: GameState,
     player: int,
