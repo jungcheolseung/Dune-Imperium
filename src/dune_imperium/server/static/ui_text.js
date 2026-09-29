@@ -1325,6 +1325,22 @@ const UI_TEXT = {
     "ko": "기타",
     "en": "other"
   },
+  "core.chance_scouts": {
+    "ko": "아라킨 스카웃 추첨({{what}})",
+    "en": "Arrakeen Scouts draw ({{what}})"
+  },
+  "core.chance_scouts_layout": {
+    "ko": "임무 라운드",
+    "en": "Mission rounds"
+  },
+  "core.chance_scouts_auction_round": {
+    "ko": "경매 라운드",
+    "en": "Auction round"
+  },
+  "core.chance_scouts_contracts": {
+    "ko": "앞면 {contract} 교체",
+    "en": "Face-up {contract} replacement"
+  },
   "review.chance_values": {
     "ko": "{{count}}장 · {{names}} …",
     "en": "{{count}} card(s) · {{names}} …"

@@ -8,9 +8,10 @@ a chance line read `chance: Round:2:Player:0:Discard Shuffle`, an action head
 space) or a comma list of card instance ids. They came through prettify() —
 the last resort for an id no table knows — or were printed as they came.
 
-This renders every entry of a few finished games with the page's own
-functions (turnLine, logEventLine, chanceLine, describeReviewStep) in both
-languages, with prettify() wrapped, and asserts:
+This renders every entry of a few finished games (two of them Arrakeen
+Scouts games, 2026-09-29) with the page's own functions (turnLine,
+logEventLine, chanceLine, describeReviewStep) in both languages, with
+prettify() wrapped, and asserts:
 
 - prettify() is never called: every id resolves through a table;
 - in Korean, no Latin word is left outside catalog names (proper nouns stay
@@ -63,6 +64,26 @@ GAMES = (
         "game_seed": 23,
         "policy_seed": 23,
         "leader_draft": True,
+        **EVERY_EXPANSION,
+    },
+    # Arrakeen Scouts (user report 2026-09-29: its payloads read "Kind:
+    # mission", "Modifier: any_faction_four_bonus", "Paid", "To" in the
+    # Korean log, and its draws "Layout:233#1"). Seed 200: Clear the Market
+    # with CHOAM, two round modifiers, a mission's pieces on posts, the
+    # Helix spice, an auction and Mercenaries; seed 152: Mating Season,
+    # Critical Moment's market and mission troops.
+    {
+        "seats": ["random"] * 4,
+        "game_seed": 200,
+        "policy_seed": 200,
+        "arrakeen_scouts": True,
+        **EVERY_EXPANSION,
+    },
+    {
+        "seats": ["random"] * 4,
+        "game_seed": 152,
+        "policy_seed": 152,
+        "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
 )
@@ -254,6 +275,22 @@ def check_coverage(records: list[dict]) -> None:
         "a Secrets steal": lambda s: s.startswith("chance ") and ":secrets:steal:" in s,
         "a Combat/Endgame Intrigue pass": lambda s: s.startswith("action ")
         and s.split(" ", 1)[1] in PASS_ACTION_IDS,
+        "an Arrakeen Scouts draw": lambda s: s.startswith("chance ")
+        and ":scouts:" in s,
+        "a Scouts item's kind": lambda s: s == "payload scouts_item_revealed.kind",
+        "a Scouts round modifier": lambda s: s
+        == "payload scouts_round_modifier.modifier",
+        "Clear the Market's Contracts": lambda s: s
+        == "payload scouts_contracts_cleared.dealt",
+        "a Scouts mission's pieces": lambda s: s
+        == "payload scouts_mission_goods_placed.locations",
+        "Scouts mission troops": lambda s: s == "payload scouts_mission_troops.to",
+        "a Scouts auction won": lambda s: s == "payload scouts_auction_won.place",
+        "Scouts Mercenaries": lambda s: s == "payload scouts_mercenaries_deployed.paid",
+        "a Scouts secret pick revealed": lambda s: s
+        == "payload scouts_secret_revealed.event_round",
+        "Mating Season's spaces": lambda s: s
+        == "payload scouts_maker_spice_added.space_ids",
     }
     missing = [label for label, test in wanted.items() if not any(map(test, sources))]
     check.ok(not missing, "the games reach every surface this guards", missing)

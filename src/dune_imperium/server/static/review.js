@@ -121,12 +121,13 @@ function describeReviewStep(label) {
   if (!label) return t("review.before_game_start");
   if (label.type === "chance") {
     const values = label.values || [];
+    const valueName = (value) => chanceValueName(label.decision_id, value);
     const shown =
       values.length <= 3
-        ? values.map(nameOf).join(", ")
+        ? values.map(valueName).join(", ")
         : t("review.chance_values", {
             count: values.length,
-            names: values.slice(0, 3).map(nameOf).join(", "),
+            names: values.slice(0, 3).map(valueName).join(", "),
           });
     return (
       t("core.chance_label", { decision: describeChance(label.decision_id) }) +

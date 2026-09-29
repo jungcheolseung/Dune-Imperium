@@ -450,6 +450,74 @@ def test_every_label_table_switches_language() -> None:
     assert not missing, f"label tables setLanguage() never swaps: {missing}"
 
 
+def _scouts_payloads() -> dict[str, set[str]]:
+    """{key: the string literals its value can be} of every GameEvent payload
+    built in rules/scouts*.py (an id or a count holds none)."""
+    payloads: dict[str, set[str]] = {}
+    for path in sorted(_RULES.glob("scouts*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "GameEvent"
+            ):
+                continue
+            payload = next((k.value for k in node.keywords if k.arg == "payload"), None)
+            if not isinstance(payload, ast.Tuple):
+                continue
+            for pair in payload.elts:
+                assert isinstance(pair, ast.Tuple), ast.unparse(pair)
+                key, value = pair.elts
+                assert isinstance(key, ast.Constant), ast.unparse(pair)
+                assert isinstance(key.value, str), ast.unparse(pair)
+                payloads.setdefault(key.value, set()).update(
+                    inner.value
+                    for inner in ast.walk(value)
+                    if isinstance(inner, ast.Constant) and isinstance(inner.value, str)
+                )
+    return payloads
+
+
+def test_every_scouts_payload_key_and_word_has_a_label() -> None:
+    """An Arrakeen Scouts log line names each field and each engine word.
+
+    User report 2026-09-29: "Kind: mission", "Modifier:
+    any_faction_four_bonus", "Paid", "Place", "To", "Rounds" reached the
+    Korean log as the engine wrote them. Every key of a payload the Scouts
+    rules build has a PAYLOAD_KEY_LABELS row (LABELS_EN mirrors it, above),
+    and every word such a payload can hold is a rule term (TERMS), a
+    VALUE_LABELS row or an item kind the Scouts panel names; the rest of the
+    values are ids and numbers, which the catalog and fieldText() read.
+    scripts/e2e/log_words.py renders two Scouts games to check the result.
+    """
+
+    from dune_imperium.content.arrakeen_scouts.types import RoundModifier
+
+    payloads = _scouts_payloads()
+    assert len(payloads) > 30, "the Scouts events were not read"
+    tables = _korean_tables()
+    missing = sorted(set(payloads) - set(tables["PAYLOAD_KEY_LABELS"]))
+    assert not missing, f"Scouts payload keys with no label: {missing}"
+
+    labels = (_STATIC / "labels.js").read_text()
+    block = re.search(r"^const TERMS = \{(.*?)\n\};", labels, re.S | re.M)
+    assert block
+    terms = set(re.findall(r"^  ([a-z_]+): \{", block.group(1), re.M))
+    # Words, not a join's "," separator; then the words built from something
+    # else than a literal: the round modifier's enum value, and the auction
+    # slot (rules/scouts.py, the draw step's "mid_" / "late_" prefix).
+    words = {w for vs in payloads.values() for w in vs if re.fullmatch("[a-z_]+", w)}
+    words |= {modifier.value for modifier in RoundModifier} | {"mid", "late"}
+    items = build_catalog()["scouts_items"]
+    assert isinstance(items, dict)
+    kinds = {str(entry["kind"]) for entry in items.values() if isinstance(entry, dict)}
+    ui_text = _ui_text()
+    unnamed_kinds = sorted(k for k in kinds if f"panels.scouts_kind_{k}" not in ui_text)
+    assert not unnamed_kinds, f"Scouts item kinds with no name: {unnamed_kinds}"
+    unnamed = sorted(words - terms - set(tables["VALUE_LABELS"]) - kinds)
+    assert not unnamed, f"Scouts payload words with no label: {unnamed}"
+
+
 def test_static_page_keys_exist_and_match_the_korean() -> None:
     table = _ui_text()
     html = (_STATIC / "index.html").read_text()

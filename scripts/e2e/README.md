@@ -62,7 +62,7 @@ cd scripts/e2e
 /tmp/dune-e2e-venv/bin/python unavailable.py   # 약 3초; 지금 고를 수 없는 선택지가 흐리게, 까닭과 함께(Reveal 상점·Intrigue 카드, 2026-09-29)
 /tmp/dune-e2e-venv/bin/python lang.py          # 약 4초; 한국어/English 전환 — 영어에서 한글 0, 왕복 동일, 새로고침 유지, 카드 이름·그림이 언어를 따름
 /tmp/dune-e2e-venv/bin/python log_follow.py    # 약 4초; 실시간 행동 로그가 게임을 계속 따라가는지(전 확장 + 지도자 드래프트, 3라운드+)
-/tmp/dune-e2e-venv/bin/python log_words.py     # 약 5초; 행동 로그·행동 목록·보드 title에 엔진 id가 없는지(두 언어)
+/tmp/dune-e2e-venv/bin/python log_words.py     # 약 8초; 행동 로그·행동 목록·보드 title에 엔진 id가 없는지(두 언어, 2026-09-29부터 아라킨 스카웃 판 둘 포함 — 페이로드 키·값과 추첨 줄)
 /tmp/dune-e2e-venv/bin/python log_passes.py    # 약 6초; 이어진 Combat/Endgame Intrigue 패스가 카드 하나로 접히는지(기본판+전 확장, 두 언어)
 /tmp/dune-e2e-venv/bin/python remote_fresh.py  # 약 14초; 원격 판에서 로그가 내 마지막 수 이후 전부(상대 셋 + 그 사이 중립 카드) 빛나는지, 내 카드 자신은 아닌지
 /tmp/dune-e2e-venv/bin/python combat_result.py # 약 4초; 전투 해결 뒤 배너에 뜨는 결과 줄(승자·순위·내 보상), 기본판+전 확장, 두 언어
