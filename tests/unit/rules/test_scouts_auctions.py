@@ -13,6 +13,8 @@ import random
 from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents.determinize import determinize
@@ -30,7 +32,11 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.scouts_auctions import close_bids, rank_bids
+from dune_imperium.rules.scouts_auctions import (
+    close_bids,
+    deploy_mercenaries,
+    rank_bids,
+)
 from dune_imperium.server.session_log import log_step, reveals_hidden_information
 from dune_imperium.server.sessions import _log_entry_json
 from dune_imperium.simulation.invariants import check_observation_privacy
@@ -172,6 +178,64 @@ def test_mercenaries_everyone_pays_and_the_lowest_may_retreat() -> None:
     assert _owner(state) == 2
     state = _act(state, "scouts_retreat", count=0)
     assert [p.troops_conflict for p in state.players] == [0, 3, 1, 2]
+
+
+def _offered_retreats(state: GameState) -> list[tuple[int, int]]:
+    """Decline every queued Mercenaries retreat; each seat and its most troops."""
+
+    offered = []
+    while state.decision_stack[-1].kind == FrameKind.SCOUTS_RETREAT:
+        seat = _owner(state)
+        counts = [
+            int(dict(a.arguments)["count"])
+            for a in ENGINE.legal_actions(state, seat)
+            if a.action_id == "scouts_retreat"
+        ]
+        offered.append((seat, max(counts)))
+        state = _act(state, "scouts_retreat", count=0)
+    return offered
+
+
+@pytest.mark.parametrize(
+    ("bids", "offered"),
+    [
+        ({0: 0, 1: 2, 2: 1, 3: 3}, [(2, 1)]),
+        ({0: 0, 1: 0, 2: 2, 3: 2}, [(2, 2), (3, 2)]),
+        ({0: 0, 1: 0, 2: 0, 3: 2}, [(3, 2)]),  # a lone positive bid is the lowest
+        ({0: 0, 1: 0, 2: 0, 3: 0}, []),
+    ],
+)
+def test_mercenaries_retreat_goes_to_the_lowest_positive_bid(
+    bids: dict[int, int], offered: list[tuple[int, int]]
+) -> None:
+    """The seat that bid the least may retreat its Mercenaries troops
+    (``spice.auction.description.mercenaries``). User ruling 2026-09-29
+    (OQ-074 (c)): a 0 is not a bid; the lowest bidders among the seats that
+    bid 1 or more may retreat, and a seat that bid 0 neither retreats nor
+    blocks the others."""
+
+    state = _draw(_base(), "mercenaries")
+    state = _bid_all(state, bids)
+    assert [p.troops_conflict for p in state.players] == [bids[s] for s in range(4)]
+    assert _offered_retreats(state) == offered
+
+
+def test_mercenaries_lowest_positive_bidder_without_troops_retreats_nothing() -> None:
+    """OQ-074 (a), (c): the lowest positive bid stays the lowest when its
+    seat's supply held no troop to deploy; that seat has nothing to retreat
+    and the higher bidder is still not offered a retreat."""
+
+    state = replace(_base(), scouts_item="mercenaries")
+    empty = replace(
+        state.players[1],
+        troops_supply=0,
+        troops_garrison=state.players[1].troops_garrison
+        + state.players[1].troops_supply,
+    )
+    state = replace(state, players=(state.players[0], empty, *state.players[2:]))
+    result = deploy_mercenaries(state, "mercenaries:0=0,1=1,2=2,3=0")
+    assert [p.troops_conflict for p in result.state.players] == [0, 0, 2, 0]
+    assert not any(t.startswith("retreat:") for t in result.state.scouts_tasks)
 
 
 def test_critical_moment_calls_are_open_and_distinct() -> None:

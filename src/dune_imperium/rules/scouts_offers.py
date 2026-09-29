@@ -2,8 +2,14 @@
 seat-taking modules can call it without an import cycle)."""
 
 from dataclasses import replace
+from typing import Final
 
 from dune_imperium.core.state import GameState
+
+# The pseudo space of an Agent in the Conflict (Into the Fray): a recall
+# target, and the ``exclude_space`` of an offer whose seat-taking Agent went
+# there this turn.
+CONFLICT_AGENT: Final = "conflict"
 
 
 def queue_subcommittee_offer(

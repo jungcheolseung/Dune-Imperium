@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -327,21 +328,24 @@ def test_influence_choice_skips_tracks_at_the_top() -> None:
     assert _scouts_frames_done(state)
 
 
-def test_the_conflict_agent_is_not_recallable_during_the_seats_reveal() -> None:
-    """Review 2026-09-29 (OQ-075, pending): Corrinth City's seat is taken in
-    the Reveal turn, while the seat's strength is being counted, so the Into
-    the Fray Agent is not offered then; its board Agents still are."""
-    from dune_imperium.rules.scouts_effects import _recallable_spaces
+def test_the_conflict_agent_is_recallable_during_the_seats_reveal() -> None:
+    """User ruling 2026-09-29 (OQ-075): Contingencies joined through Corrinth
+    City's Reveal-turn seat may recall any of the seat's other Agents,
+    including an Into the Fray Agent in the Conflict, so the Conflict Agent
+    is offered while the seat's own REVEAL frame is open too."""
+    from dune_imperium.content.arrakeen_scouts import SUBCOMMITTEES_BY_ID
+    from dune_imperium.rules.scouts_effects import _recallable_spaces, line_is_offered
 
     owner = _owner(
+        intrigue_cards=("intrigue:9",),
         agent_locations=("imperial_basin",),
         agent_in_conflict=1,
         agents_available=0,
     )
-    agent_turn = _state(owner)
-    assert _recallable_spaces(agent_turn, owner, "") == ("imperial_basin", "conflict")
+    assert _recallable_spaces(owner, "") == ("imperial_basin", "conflict")
+    only_conflict = replace(owner, agent_locations=(), agents_available=1)
     reveal = replace(
-        agent_turn,
+        _state(only_conflict),
         decision_stack=(
             DecisionFrame(
                 kind=FrameKind.REVEAL,
@@ -350,4 +354,196 @@ def test_the_conflict_agent_is_not_recallable_during_the_seats_reveal() -> None:
             ),
         ),
     )
-    assert _recallable_spaces(reveal, owner, "") == ("imperial_basin",)
+    assert _recallable_spaces(only_conflict, "") == ("conflict",)
+    contingencies = SUBCOMMITTEES_BY_ID["contingencies"].option
+    assert line_is_offered(reveal, 0, contingencies)
+
+
+CORRINTH = "imperium:corrinth_city:0"
+
+
+def _corrinth_contingencies(owner: PlayerState) -> GameState:
+    """Reveal Corrinth City, take the seat, join Contingencies and pay it;
+    the recall choice is next (OQ-075: joined means the recall is made)."""
+
+    state = _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
+    state = _act(state, "reveal_turn")
+    state = _act(state, "take_high_council_from_reveal")
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SUBCOMMITTEE
+    state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
+    assert _options(state) == {("scouts_recall_agent", "conflict")}
+    return state
+
+
+def _reveal_strength(state: GameState) -> int:
+    frame = next(f for f in state.decision_stack if f.kind == FrameKind.REVEAL)
+    strength = dict(frame.context)["strength"]
+    assert isinstance(strength, int)
+    return strength
+
+
+@pytest.mark.parametrize("swordmaster", [False, True])
+def test_corrinth_contingencies_recalls_the_conflict_agent_and_its_strength(
+    swordmaster: bool,
+) -> None:
+    """User ruling 2026-09-29 (OQ-075): the Corrinth City seat's Contingencies
+    may recall the Into the Fray Agent, and its strength is recomputed.
+    Into the Fray: "deploy it to the Conflict as a 2 strength unit ... If you
+    have your Swordmaster, it has 3 strength instead." [Duncan Idaho card];
+    "Reveal turn 중 효과가 unit 수나 strength를 바꾸면 Combat marker도 그에
+    맞게 갱신한다." [Main p. 13] (docs/rules/player-turns.md)."""
+    owner = _owner(
+        hand=(CORRINTH,),
+        intrigue_cards=("intrigue:9",),
+        agent_in_conflict=1,
+        agents_available=2 if swordmaster else 1,
+        swordmaster_acquired=swordmaster,
+        troops_supply=7,
+        troops_conflict=2,
+    )
+    agent = 3 if swordmaster else 2
+    state = _corrinth_contingencies(owner)
+    before = state.players[0]
+    assert before.combat_strength == _reveal_strength(state) == 4 + agent
+    state = _act(state, "scouts_recall_agent", space_id="conflict")
+    seat = state.players[0]
+    assert seat.agent_in_conflict == 0
+    assert seat.agents_available == before.agents_available + 1
+    assert seat.combat_strength == 4
+    assert _reveal_strength(state) == seat.combat_strength
+    assert state.decision_stack[-1].kind == FrameKind.REVEAL
+
+
+def test_recalling_the_only_unit_drops_strength_to_zero_until_a_troop_arrives() -> None:
+    """ "Conflict에 unit이 하나 이상 있어야 strength를 가질 수 있다. 마지막
+    unit이 제거되면 sword가 남아 있어도 strength는 0이 된다." [Main p. 12]
+    (docs/rules/player-turns.md): the Into the Fray Agent was the seat's only
+    unit, so the Dagger's revealed sword stops counting; a troop that enters
+    later in the same Reveal brings the swords back [Main p. 13]."""
+    from dune_imperium.rules.reveal_turn import add_units_to_reveal
+
+    owner = _owner(
+        hand=(CORRINTH, DAGGER),
+        intrigue_cards=("intrigue:9",),
+        agent_in_conflict=1,
+        agents_available=1,
+    )
+    state = _corrinth_contingencies(owner)
+    assert state.players[0].combat_strength == _reveal_strength(state) == 2 + 1
+    state = _act(state, "scouts_recall_agent", space_id="conflict")
+    assert state.players[0].units_in_conflict == 0
+    assert state.players[0].combat_strength == 0
+    assert _reveal_strength(state) == 0
+    state = add_units_to_reveal(state, 0, troops=1).state
+    assert state.players[0].combat_strength == 2 + 1
+    assert _reveal_strength(state) == 2 + 1
+
+
+def test_the_corrinth_seat_gets_no_further_agent_turn_after_the_recall() -> None:
+    """User ruling 2026-09-29 (OQ-075): having revealed, the seat takes no
+    Agent turn with the recalled Agent; the other seats reveal and Combat
+    follows without a TURN frame for seat 0."""
+    owner = _owner(
+        hand=(CORRINTH,),
+        intrigue_cards=("intrigue:9",),
+        agent_in_conflict=1,
+        agents_available=1,
+        troops_supply=7,
+        troops_conflict=2,
+    )
+    state = _corrinth_contingencies(owner)
+    state = _act(state, "scouts_recall_agent", space_id="conflict")
+    state = _act(state, "finish_reveal")
+    assert state.players[0].has_revealed
+    assert state.players[0].agents_available == 2
+    turn_owners = []
+    while state.phase is GamePhase.PLAYER_TURNS:
+        top = state.decision_stack[-1]
+        assert isinstance(top.decision, PlayerDecision)
+        if top.kind == FrameKind.TURN:
+            turn_owners.append(top.decision.owner)
+        legal = ENGINE.legal_actions(state, top.decision.owner)
+        pick = next(a for a in legal if a.action_id in ("reveal_turn", "finish_reveal"))
+        state = ENGINE.apply(state, pick, legal_actions=legal).state
+    assert turn_owners == [1, 2, 3]
+    assert state.phase is GamePhase.COMBAT
+
+
+def test_contingencies_is_not_offered_without_another_agent_to_recall() -> None:
+    """User principle 2026-09-29 (OQ-071): a white-arrow line whose effect
+    cannot happen cannot be paid for, and joining a subcommittee with a cost
+    means paying it (docs/rules/arrakeen-scouts.md 4, OQ-075). The seat's
+    only Agent out is the one that took the seat, so Contingencies is not
+    joinable; with nothing else joinable the offer lapses."""
+    owner = _owner(intrigue_cards=("intrigue:9",))
+    state = _visit_high_council(
+        _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
+    )
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SUBCOMMITTEE
+    assert ("join_subcommittee", "contingencies") not in _options(state)
+    lapsed = _visit_high_council(_state(owner, scouts_subcommittees=("contingencies",)))
+    assert lapsed.decision_stack[-1].kind != FrameKind.SCOUTS_SUBCOMMITTEE
+    assert any(e.kind == "scouts_subcommittee_unavailable" for e in lapsed.event_log)
+    assert lapsed.players[0].intrigue_cards == ("intrigue:9",)
+
+
+def test_contingencies_is_offered_for_an_into_the_fray_agent_alone() -> None:
+    """Into the Fray (OQ-068, OQ-075 (D)): an earlier turn's Conflict Agent is
+    one of the seat's other Agents, so Contingencies stays joinable when it
+    is the only one, and the recall offers exactly that Agent."""
+    owner = _owner(
+        intrigue_cards=("intrigue:9",), agent_in_conflict=1, agents_available=1
+    )
+    state = _visit_high_council(
+        _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
+    )
+    assert ("join_subcommittee", "contingencies") in _options(state)
+    state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
+    assert _options(state) == {("scouts_recall_agent", "conflict")}
+    state = _act(state, "scouts_recall_agent", space_id="conflict")
+    assert state.players[0].agent_in_conflict == 0
+    assert state.players[0].agents_available == 1
+
+
+def _into_the_fray_then_the_seat(extra_locations: tuple[str, ...]) -> GameState:
+    """Duncan Idaho's Signet Ring at the High Council: Into the Fray moves the
+    Agent into the Conflict first, then the seat is taken."""
+    signet = "player:0:starter:signet_ring:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(signet,),
+        intrigue_cards=("intrigue:9",),
+        resources=Resources(solari=10, spice=0, water=0),
+        agent_locations=extra_locations,
+        agents_available=2 - len(extra_locations),
+    )
+    state = _state(
+        owner,
+        config=RulesetConfig(arrakeen_scouts=True, bloodlines=True),
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        scouts_subcommittees=(*DISPLAY[:4], "contingencies"),
+    )
+    state = _act(state, "agent_turn", card_id=signet, space_id="high_council")
+    state = _act(state, "deploy_leader_agent")
+    assert state.players[0].agent_in_conflict == 1
+    board = [
+        a
+        for a in ENGINE.legal_actions(state, 0)
+        if a.action_id == "resolve_board_effect"
+    ]
+    return ENGINE.apply(state, board[0]).state
+
+
+def test_contingencies_never_recalls_the_seat_taker_moved_by_into_the_fray() -> None:
+    """Review 2026-09-29: "not the Agent you sent during this turn"
+    [Main p. 20] (OQ-068, OQ-075). The Agent that took the seat and then
+    went into the Conflict is not "another Agent"."""
+    alone = _into_the_fray_then_the_seat(())
+    assert ("join_subcommittee", "contingencies") not in _options(alone)
+    with_other = _into_the_fray_then_the_seat(("imperial_basin",))
+    state = _act(with_other, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
+    assert _options(state) == {("scouts_recall_agent", "imperial_basin")}

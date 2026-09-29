@@ -457,6 +457,34 @@ def test_clear_the_market_with_choam_shuffles_the_old_contracts_into_the_bank() 
     assert state.decision_stack[-1].kind == FrameKind.TURN
 
 
+@pytest.mark.parametrize("bank_size", [1, 0])
+def test_clear_the_market_with_choam_always_removes_the_old_contracts(
+    bank_size: int,
+) -> None:
+    # The CHOAM variant replaces both face-up Contracts and mixes the old
+    # pair into the face-down supply (``spice.event.description.
+    # clearthemarket2``). OQ-083 (user ruling 2026-09-29): the pair always
+    # goes; a short bank deals what it has and leaves the other slots empty.
+    engine = UprisingRulesEngine()
+    full = engine.reset(SCOUTS_CHOAM, 4)
+    start = replace(full, contract_bank=full.contract_bank[:bank_size])
+    old, bank = start.face_up_contract_ids, start.contract_bank
+    assert len(old) == 2
+    state = _reveal(start, engine, "clear_the_market_choam")
+    step, decision = _draw_frame(state)
+    assert step == "contract_shuffle"
+    # Nothing of the bank is left over after the deal: only the old pair
+    # is shuffled.
+    assert sorted(decision.options) == sorted(old)
+    assert decision.count == 2
+    state = _resolve_chance(engine, state, ChanceResolver(seed=9))
+    assert state.face_up_contract_ids == bank
+    assert sorted(state.contract_bank) == sorted(old)
+    assert state.decision_stack[-1].kind == FrameKind.TURN
+    (cleared,) = [e for e in state.event_log if e.kind == "scouts_contracts_cleared"]
+    assert dict(cleared.payload) == {"dealt": ",".join(bank), "removed": ",".join(old)}
+
+
 @pytest.mark.parametrize(
     ("event_id", "modifier"),
     [

@@ -15,11 +15,12 @@ revealed at once and ranked as the app does [Scouts schedule]:
   gives every tied seat the second-place reward;
 - only winners pay, except in Mercenaries, where every seat pays its spice
   and sends one supply troop per spice to the Conflict; the seats with the
-  lowest bid may retreat some or all of those troops to their garrison
-  (OQ-074). With Immortality a seat short of supply troops may first
-  return specimens to it ("at any time" [Immortality p. 8], user ruling
-  2026-09-29), and the retreat is the game's retreat (``retreat_units``:
-  Chani's Tactics token counts it, OQ-074 (c)).
+  lowest bid of 1 or more may retreat some or all of those troops to their
+  garrison (a 0 is not a bid: it neither retreats nor blocks, OQ-074 (c),
+  user ruling 2026-09-29). With Immortality a seat short of supply troops
+  may first return specimens to it ("at any time" [Immortality p. 8], user
+  ruling 2026-09-29), and the retreat is the game's retreat
+  (``retreat_units``: Chani's Tactics token counts it, OQ-074 (c)).
 
 Winners' rewards resolve by place, first place first, and seats sharing a
 place from the First Player on (OQ-073, user ruling 2026-09-29).
@@ -307,7 +308,17 @@ def apply_top_up(state: GameState, action: DomainAction) -> RuleResult:
 
 def deploy_mercenaries(state: GameState, task: str) -> RuleResult:
     """Send each seat's paid troops to the Conflict, then queue the lowest
-    bidders' retreats."""
+    bidders' retreats.
+
+    The app lets the seat that bid the least spice retreat any of those
+    troops to its garrison (``spice.auction.description.mercenaries``).
+    User ruling 2026-09-29 (OQ-074 (c)): a 0 is not a bid, so the lowest
+    bid is the lowest among the seats that bid 1 or more, and every seat
+    tied at it may retreat the troops it put in; a seat that bid 0 neither
+    retreats nor blocks the others. A lone positive bidder is therefore also the lowest
+    and may retreat; when nobody bid more than 0 nobody retreats. A lowest
+    bidder whose supply held no troop has nothing to retreat.
+    """
 
     paid_by_seat = [
         (int(seat), int(paid))
@@ -335,10 +346,11 @@ def deploy_mercenaries(state: GameState, task: str) -> RuleResult:
                 payload=(("paid", paid), ("player", seat), ("troops", troops)),
             )
         )
-    lowest = min(paid for _, paid in paid_by_seat)
+    bids = [(seat, paid) for seat, paid in paid_by_seat if paid > 0]
+    lowest = min((paid for _, paid in bids), default=0)
     retreats = tuple(
         f"retreat:{seat}:{deployed[seat]}"
-        for seat, paid in paid_by_seat
+        for seat, paid in bids
         if paid == lowest and deployed[seat]
     )
     return RuleResult(

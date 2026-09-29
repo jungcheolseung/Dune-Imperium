@@ -718,6 +718,47 @@ def test_recall_conflict_agent_rejects_an_empty_conflict() -> None:
         )
 
 
+@pytest.mark.parametrize(("swordmaster", "agent_strength"), [(False, 2), (True, 3)])
+def test_recall_conflict_agent_takes_its_strength_out_of_the_running_total(
+    swordmaster: bool, agent_strength: int
+) -> None:
+    # Into the Fray: "deploy it to the Conflict as a 2 strength unit that
+    # can't be retreated. If you have your Swordmaster, it has 3 strength
+    # instead." [Duncan Idaho card]; recalling it removes that strength, and
+    # "마지막 unit이 제거되면 sword가 남아 있어도 strength는 0이 된다."
+    # [Main p. 12] (docs/rules/player-turns.md). The running total moves at
+    # once, also during the seat's own Reveal turn (OQ-075).
+    from dune_imperium.rules.effects import recall_conflict_agent
+
+    agents = 3 if swordmaster else 2
+    with_troops = PlayerState(
+        player_id=0,
+        agents_available=agents - 1,
+        agent_in_conflict=1,
+        swordmaster_acquired=swordmaster,
+        troops_supply=7,
+        troops_conflict=2,
+        combat_strength=4 + agent_strength + 1,  # two troops, the Agent, a sword
+    )
+    recalled, _ = recall_conflict_agent(
+        with_troops, player=0, source="imperial_privilege", event_id="test:recall"
+    )
+    assert recalled.combat_strength == 4 + 1
+    assert recalled.combat_strength == with_troops.combat_strength - agent_strength
+
+    alone = replace(
+        with_troops,
+        troops_supply=9,
+        troops_conflict=0,
+        combat_strength=agent_strength + 1,
+    )
+    recalled, _ = recall_conflict_agent(
+        alone, player=0, source="imperial_privilege", event_id="test:recall"
+    )
+    assert recalled.units_in_conflict == 0
+    assert recalled.combat_strength == 0
+
+
 def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:
     # A Servo-Receivers Signet can send a second "Agent you sent this turn"
     # into the Conflict [Duncan Idaho card] (OQ-037(e)). Imperial Privilege

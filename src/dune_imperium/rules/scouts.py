@@ -660,25 +660,32 @@ def _clear_row(state: GameState) -> RuleResult:
 
 
 def _clear_contracts(state: GameState) -> RuleResult:
-    """Deal two new face-up Contracts, then shuffle the old two into the bank.
+    """Deal new face-up Contracts, then shuffle the old ones into the bank.
 
     [Scouts event: Clear the Market] (CHOAM): the old pair goes into the
     face-down supply after the new pair is dealt from it, so the shuffle is
-    one chance frame over the rest of the bank and the old pair.
+    one chance frame over the rest of the bank and the old pair. The old
+    pair always goes; a short bank deals what it has and leaves the other
+    slots empty (OQ-083).
     """
 
     old = state.face_up_contract_ids
-    if not old or len(state.contract_bank) < len(old):
-        # Nothing to replace the pair with (the bank ran low): it stays.
+    if not old:
         return RuleResult(state=state)
-    pool = (*state.contract_bank[len(old) :], *old)
+    dealt_count = min(len(old), len(state.contract_bank))
+    pool = (*state.contract_bank[dealt_count:], *old)
     draw = _Draw(step="contract_shuffle", options=pool, count=len(pool))
     return RuleResult(state=state.push_decision(_draw_frame(state, draw)))
 
 
 def _deal_cleared_contracts(state: GameState, outcome: ChanceOutcome) -> RuleResult:
+    """Deal the new face-up Contracts; ``outcome`` is the shuffled bank.
+
+    A short bank deals fewer than it removes, possibly none (OQ-083).
+    """
+
     removed = state.face_up_contract_ids
-    dealt = state.contract_bank[: len(removed)]
+    dealt = state.contract_bank[: min(len(removed), len(state.contract_bank))]
     return RuleResult(
         state=replace(state, face_up_contract_ids=dealt, contract_bank=outcome.values),
         events=(

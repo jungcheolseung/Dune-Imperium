@@ -31,12 +31,25 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
 
 
+def conflict_agent_strength(player: PlayerState) -> int:
+    """Return the strength one of the seat's Conflict Agents fights with.
+
+    Into the Fray: "You may take the Agent you sent this turn and deploy it
+    to the Conflict as a 2 strength unit that can't be retreated. If you
+    have your Swordmaster, it has 3 strength instead." [Duncan Idaho card]
+    (docs/implementation-audits/leaders.md).
+    """
+
+    return 3 if player.swordmaster_acquired else 2
+
+
 def units_strength(player: PlayerState) -> int:
     """Return the strength the units in the Conflict provide on their own.
 
     A troop is worth 2 and a sandworm 3 [Main p. 12], a Sardaukar Commander
-    2 [Bloodlines p. 4], and without a unit there is no strength at all,
-    swords or not [Main p. 12].
+    2 [Bloodlines p. 4], an Into the Fray Agent 2 or 3
+    (``conflict_agent_strength``), and without a unit there is no strength
+    at all, swords or not [Main p. 12].
     """
 
     if player.units_in_conflict <= 0:
@@ -45,9 +58,7 @@ def units_strength(player: PlayerState) -> int:
         player.troops_conflict * 2
         + player.sandworms_conflict * 3
         + player.commanders_conflict * COMMANDER_STRENGTH
-        # Into the Fray: the Agent fights with 2 strength, 3 with the
-        # Swordmaster [Duncan Idaho card].
-        + player.agent_in_conflict * (3 if player.swordmaster_acquired else 2)
+        + player.agent_in_conflict * conflict_agent_strength(player)
     )
 
 

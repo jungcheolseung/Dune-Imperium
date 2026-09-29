@@ -260,6 +260,54 @@ def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, 
     return ("",) if available >= count else ()
 
 
+def join_unavailable_reason(
+    state: GameState, player: int, mission: Mission, target: str = ""
+) -> tuple[str, int, int] | None:
+    """Why ``target`` is not among ``join_targets``; None when it is.
+
+    ``(what, needed, held)``: "supply", "garrison" or "specimens" (troops
+    short, OQ-088), "spice" or "solari" (the participation cost), "marker"
+    (all three Control markers are out), "tleilaxu_track" (the token is
+    already on or past the third space, OQ-089 (a)), "contract" (not one of
+    the seat's face-up Contracts) or "none" (no participation at all). For
+    the display only, which shows a way in the seat cannot take beside the
+    reason; it reads ``join_targets`` first, so the two never disagree.
+    """
+
+    kind = mission.kind
+    if kind not in _PARTICIPATION:
+        return ("none", 0, 0)
+    if target in join_targets(state, player, mission):
+        return None
+    owner = state.players[player]
+    if kind is MissionKind.CHOAM_ESCORT:
+        if target == "recruit":
+            return ("supply", 1, owner.troops_supply)
+        return ("contract", 1, 0)
+    if kind is MissionKind.PRISON_PLANET:
+        if not owner.troops_garrison:
+            return ("garrison", 1, 0)
+        return ("marker", 1, 0)
+    if (
+        kind is MissionKind.TLEILAXU_OFFERING
+        and owner.tleilaxu_space >= TLEILAXU_OFFERING_TRACK_SPACE
+    ):
+        return ("tleilaxu_track", TLEILAXU_OFFERING_TRACK_SPACE, owner.tleilaxu_space)
+    for cost in mission.participation_cost:
+        for resource in ("spice", "solari"):
+            needed = getattr(cost, resource, 0)
+            held = getattr(owner.resources, resource)
+            if needed > held:
+                return (resource, needed, held)
+    source, count = _PARKING[kind]
+    held = {
+        "supply": owner.troops_supply,
+        "garrison": owner.troops_garrison,
+        "specimens": owner.specimens,
+    }[source]
+    return (source, count, held)
+
+
 def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
     """How many specimens the seat may return so it can take part (0: none).
 

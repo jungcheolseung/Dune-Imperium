@@ -13,7 +13,8 @@ turn (a subcommittee joined at the High Council) and in the Scouts step.
 
 Subcommittees [Scouts help] (docs/rules/arrakeen-scouts.md 4): taking a
 High Council seat queues one offer (OQ-076); the offer lists the unclaimed
-subcommittees whose cost the seat can pay, and joining one opens its line.
+subcommittees whose cost the seat can pay and whose reward can do something
+(OQ-071), and joining one opens its line.
 """
 
 from collections.abc import Mapping
@@ -90,6 +91,8 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.reveal_turn import add_reveal_strength
+from dune_imperium.rules.scouts_offers import CONFLICT_AGENT
 from dune_imperium.rules.specimens import return_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.strength import reveal_in_progress
@@ -213,7 +216,7 @@ def reward_has_effect(
         case AcquireReserveCardToHand(card_id=card_id):
             return dict(state.reserve_stacks).get(card_id, 0) > 0
         case RecallOtherAgent():
-            return bool(_recallable_spaces(state, owner, exclude_space))
+            return bool(_recallable_spaces(owner, exclude_space))
         case GainInfluence():
             return bool(_gainable_factions(owner, reward))
         case RecruitTroops() | RecruitToConflict():
@@ -247,6 +250,59 @@ def line_is_offered(
         reward_has_effect(state, player, reward, exclude_space=exclude_space)
         for reward in option.rewards
     )
+
+
+def line_unavailable_reason(
+    state: GameState,
+    player: int,
+    option: ScoutsOption,
+    *,
+    exclude_space: str = "",
+) -> ScoutsStep | None:
+    """The step that keeps ``option`` from being offered now; None if offered.
+
+    The first cost the seat cannot pay, or else the reward that cannot
+    happen (``line_is_offered``). For the display only, which shows a line
+    the seat cannot take beside the reason; it reads the same checks, so the
+    two never disagree.
+    """
+
+    if line_is_offered(state, player, option, exclude_space=exclude_space):
+        return None
+    if not option_is_affordable(state, player, option):
+        return _first_unpaid_cost(state, player, option)
+    # Payable but not offered: every reward is one that cannot happen.
+    return next(
+        (
+            reward
+            for reward in option.rewards
+            if not reward_has_effect(state, player, reward, exclude_space=exclude_space)
+        ),
+        option.rewards[0],
+    )
+
+
+def _first_unpaid_cost(
+    state: GameState, player: int, option: ScoutsOption
+) -> ScoutsCost:
+    """The first cost, in printed order, that ``option_is_affordable`` fails on."""
+
+    resources = state.players[player].resources
+    solari = spice = water = 0
+    for cost in option.costs:
+        if isinstance(cost, PayResources):
+            solari += cost.solari
+            spice += cost.spice
+            water += cost.water
+            if (
+                solari > resources.solari
+                or spice > resources.spice
+                or water > resources.water
+            ):
+                return cost
+        elif not option_is_affordable(state, player, ScoutsOption(costs=(cost,))):
+            return cost
+    return option.costs[0]  # not reached while the option is unaffordable
 
 
 # --- The effect frame --------------------------------------------------------------
@@ -342,7 +398,7 @@ def _is_choice(
         case GainLowestInfluence():
             return len(_lowest_factions(owner)) > 1
         case RecallOtherAgent():
-            return len(_frame_recallable(state, owner, frame)) > 0
+            return len(_frame_recallable(owner, frame)) > 0
         case LoseFactionInfluence(faction=faction):
             return len(_loss_actions(state, player, (faction,))) > 1
         case LoseHighestInfluence():
@@ -677,36 +733,36 @@ def _loss_actions(
     return tuple(actions)
 
 
-CONFLICT_AGENT: Final = "conflict"
 
 
-def _recallable_spaces(
-    state: GameState, owner: PlayerState, excluded: str
-) -> tuple[str, ...]:
+def _recallable_spaces(owner: PlayerState, excluded: str) -> tuple[str, ...]:
     """The seat's other Agents: on the board but the one that took the seat
     (``excluded``), and one sent into the Conflict by Into the Fray (every
     Recall Agent effect may bring that one back, OQ-068, OQ-075 (D)).
 
-    Not the Conflict one while the seat's own Reveal turn runs (Corrinth
-    City's seat): its strength is being counted then, and the user's
-    direction for that path is no recall at all (OQ-075, pending).
+    The Conflict one is offered during the seat's own Reveal turn too
+    (Contingencies joined through Corrinth City's seat): the seat may pick
+    any of its other Agents, the Into the Fray one included, and its
+    strength is recomputed (user ruling 2026-09-29, OQ-075); "Reveal turn
+    중 효과가 unit 수나 strength를 바꾸면 Combat marker도 그에 맞게
+    갱신한다." [Main p. 13].
     """
 
     locations = list(owner.agent_locations)
     if excluded in locations:
         locations.remove(excluded)  # only the one Agent that took the seat
-    if owner.agent_in_conflict > 0 and not reveal_in_progress(
-        state, owner.player_id
-    ):
+    # The seat-taking Agent may itself have gone into the Conflict by Into
+    # the Fray this turn: "not the Agent you sent during this turn"
+    # [Main p. 20], as for every other Recall Agent effect (OQ-068).
+    sent_there = 1 if excluded == CONFLICT_AGENT else 0
+    if owner.agent_in_conflict - sent_there > 0:
         locations.append(CONFLICT_AGENT)
     return tuple(dict.fromkeys(locations))
 
 
-def _frame_recallable(
-    state: GameState, owner: PlayerState, frame: DecisionFrame
-) -> tuple[str, ...]:
+def _frame_recallable(owner: PlayerState, frame: DecisionFrame) -> tuple[str, ...]:
     excluded = context_str(dict(frame.context), "exclude_space", owner=_EFFECT_FRAME)
-    return _recallable_spaces(state, owner, excluded)
+    return _recallable_spaces(owner, excluded)
 
 
 # --- Choices -------------------------------------------------------------------------
@@ -769,7 +825,7 @@ def legal_scouts_effect_actions(
             return offer(
                 "scouts_recall_agent",
                 "space_id",
-                _frame_recallable(state, owner, frame),
+                _frame_recallable(owner, frame),
             )
         case LoseFactionInfluence(faction=faction):
             return _loss_actions(state, player, (faction,))
@@ -886,9 +942,18 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
                 source=pick_source,
                 event_id=f"{pick_source}:agent_recalled",
             )
+            stack = cursor_state.decision_stack
+            delta = back.combat_strength - owner.combat_strength
+            if delta and reveal_in_progress(cursor_state, player):
+                # Corrinth City's seat, in the seat's Reveal turn (OQ-075):
+                # the Reveal frame's own tally follows the running total
+                # [Main p. 13], as for any unit removed during the Reveal.
+                stack = add_reveal_strength(stack, delta)
             return RuleResult(
                 state=replace(
-                    cursor_state, players=replace_player(cursor_state.players, back)
+                    cursor_state,
+                    players=replace_player(cursor_state.players, back),
+                    decision_stack=stack,
                 ),
                 events=(recall_event,),
             )
@@ -1026,7 +1091,8 @@ def offer_only_line(
     don't pay the cost, you don't get the effect." [Main p. 20]; it is not
     offered at all when the seat cannot pay it or when paying would buy
     nothing (``line_is_offered``). Used by a revealed secret pick (OQ-085
-    (c)) and a joined subcommittee (OQ-075, user ruling 2026-09-29).
+    (c), ``offer_secret_reward``); a joined subcommittee opens its line
+    directly, its cost already checked by ``joinable_subcommittees``.
     """
 
     option = scouts_option(item, index)
@@ -1246,16 +1312,33 @@ def subcommittee_offer_is_queued(state: GameState) -> bool:
     return not str(frame.kind).startswith("combat_reward")
 
 
-def joinable_subcommittees(state: GameState, player: int) -> tuple[str, ...]:
-    """Unclaimed subcommittees of the display whose cost ``player`` can pay."""
+def joinable_subcommittees(
+    state: GameState, player: int, *, exclude_space: str = ""
+) -> tuple[str, ...]:
+    """Unclaimed subcommittees of the display that ``player`` may join now.
+
+    Taking a council seat lets the seat join one subcommittee nobody has
+    chosen yet, and joining one with a cost means paying that cost
+    (docs/rules/arrakeen-scouts.md 4; the app's help and subcommittee
+    instructions, OQ-075, OQ-076). A white-arrow line whose effect cannot
+    happen cannot be paid for (user principle 2026-09-29, OQ-071), so the
+    line must be offered (``line_is_offered``): Contingencies with no other
+    Agent to recall is not joinable. ``exclude_space`` is the space of the
+    Agent that took the seat (``CONFLICT_AGENT`` when Into the Fray moved it
+    into the Conflict this turn; "" for Corrinth City's Reveal-turn seat,
+    OQ-075).
+    """
 
     claimed = {subcommittee for subcommittee, _ in state.scouts_subcommittee_members}
     return tuple(
         subcommittee_id
         for subcommittee_id in state.scouts_subcommittees
         if subcommittee_id not in claimed
-        and option_is_affordable(
-            state, player, SUBCOMMITTEES_BY_ID[subcommittee_id].option
+        and line_is_offered(
+            state,
+            player,
+            SUBCOMMITTEES_BY_ID[subcommittee_id].option,
+            exclude_space=exclude_space,
         )
     )
 
@@ -1267,7 +1350,7 @@ def begin_subcommittee_offer(state: GameState) -> RuleResult:
         state.scouts_subcommittee_offers
     )
     remaining = replace(state, scouts_subcommittee_offers=tuple(rest))
-    if not joinable_subcommittees(remaining, player):
+    if not joinable_subcommittees(remaining, player, exclude_space=exclude_space):
         return RuleResult(
             state=remaining,
             events=(
@@ -1297,8 +1380,10 @@ def legal_subcommittee_actions(
 ) -> tuple[DomainAction, ...]:
     """Join one joinable subcommittee, or decline (the chance is then gone)."""
 
-    if owned_top_frame(state, FrameKind.SCOUTS_SUBCOMMITTEE, player) is None:
+    frame = owned_top_frame(state, FrameKind.SCOUTS_SUBCOMMITTEE, player)
+    if frame is None:
         return ()
+    excluded = context_str(dict(frame.context), "exclude_space", owner=_OFFER_FRAME)
     return (
         DomainAction(action_id="decline_subcommittee", actor=player),
         *(
@@ -1307,7 +1392,9 @@ def legal_subcommittee_actions(
                 actor=player,
                 arguments=(("subcommittee_id", subcommittee_id),),
             )
-            for subcommittee_id in joinable_subcommittees(state, player)
+            for subcommittee_id in joinable_subcommittees(
+                state, player, exclude_space=excluded
+            )
         ),
     )
 

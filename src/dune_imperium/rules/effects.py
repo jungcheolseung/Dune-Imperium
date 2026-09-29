@@ -18,6 +18,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind, reset_turn_counters
+from dune_imperium.rules.strength import conflict_agent_strength
 
 
 @dataclass(frozen=True, slots=True)
@@ -579,23 +580,36 @@ def recall_conflict_agent(
 
     The recalled Agent leaves the Conflict as a unit and returns to its
     Leader (OQ-037 (d), extended to every Recall Agent effect by the
-    2026-09-26 user ruling, OQ-068); the running Combat strength follows
-    without further code, since it is re-derived from the unit counts before
-    each seat's Reveal turn (``refresh_pre_reveal_strength``). One recall
-    brings back one Agent, even when a Servo-Receivers Signet sent a second
-    one (OQ-037 (e)). ``source_key`` names the payload key ``source`` is
-    filed under, so each caller's ``agent_recalled`` event keeps the same
-    shape its own board recall already uses (Steersman's Agent-card recall
-    uses ``card_id``; Imperial Privilege and the Contract reward use
-    ``source``).
+    2026-09-26 user ruling, OQ-068). It fought as "a 2 strength unit ... If
+    you have your Swordmaster, it has 3 strength instead." [Duncan Idaho
+    card], so the running Combat strength loses that much here, as
+    ``units.retreat_units`` does for a troop: "Conflict에 unit이 하나 이상
+    있어야 strength를 가질 수 있다. 마지막 unit이 제거되면 sword가 남아
+    있어도 strength는 0이 된다." [Main p. 12] (docs/rules/player-turns.md).
+    Before the seat's Reveal ``refresh_pre_reveal_strength`` re-derives the
+    same value from the unit counts; during it (Contingencies joined
+    through Corrinth City's seat, OQ-075) this is what moves the total, and
+    the caller keeps the Reveal frame's tally in step [Main p. 13]. One
+    recall brings back one Agent, even when a Servo-Receivers Signet sent a
+    second one (OQ-037 (e)). ``source_key`` names the payload key
+    ``source`` is filed under, so each caller's ``agent_recalled`` event
+    keeps the same shape its own board recall already uses (Steersman's
+    Agent-card recall uses ``card_id``; Imperial Privilege and the Contract
+    reward use ``source``).
     """
 
     if owner.agent_in_conflict <= 0:
         raise RuntimeError("owner has no Conflict Agent left to recall")
+    remaining_units = owner.units_in_conflict - 1
     next_owner = replace(
         owner,
         agents_available=owner.agents_available + 1,
         agent_in_conflict=owner.agent_in_conflict - 1,
+        combat_strength=(
+            max(owner.combat_strength - conflict_agent_strength(owner), 0)
+            if remaining_units > 0
+            else 0
+        ),
     )
     event = GameEvent(
         event_id=event_id,

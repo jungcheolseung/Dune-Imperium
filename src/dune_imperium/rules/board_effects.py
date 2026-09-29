@@ -68,7 +68,7 @@ from dune_imperium.rules.scouts_missions import (
     mission_collectable,
     take_desert_riding_token,
 )
-from dune_imperium.rules.scouts_offers import queue_subcommittee_offer
+from dune_imperium.rules.scouts_offers import CONFLICT_AGENT, queue_subcommittee_offer
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -583,12 +583,17 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     if key == BOARD_ICON_HIGH_COUNCIL:
         # Arrakeen Scouts: the seat just taken offers one subcommittee
         # (docs/rules/arrakeen-scouts.md 4, OQ-076); Contingencies may not
-        # recall the Agent standing on the High Council (OQ-075).
+        # recall the Agent that took the seat (OQ-075), which Into the Fray
+        # may already have moved into the Conflict.
         next_state = queue_subcommittee_offer(
             next_state,
             player,
             source=f"{source}:{key}",
-            exclude_space=space_id,
+            exclude_space=(
+                CONFLICT_AGENT
+                if turn_agent_in_conflict(next_owner, context, space_id)
+                else space_id
+            ),
             turn_closed=turn_closed,
         )
     draw_events: tuple[GameEvent, ...] = ()
