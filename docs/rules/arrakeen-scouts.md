@@ -68,7 +68,7 @@
 
 ## 3. 라운드 흐름
 
-`[Scouts help]`는 패를 뽑고 Conflict를 공개한 뒤 Scout을 누르라고 한다. 엔진의 Round Start는 Conflict 공개와 draw를 한 전이로 처리한 뒤 Control 방어 배치를 묻는다(`rules/phases.begin_round`; [setup-and-game-flow.md](setup-and-game-flow.md) 5절은 방어 배치 → draw 순서로 적는다, `[Main p. 8]`, `[Main p. 20]`). **Scouts 단계는 Round Start가 모두 끝난 뒤(방어 배치 뒤), 첫 turn 전에 둔다**(OQ-072). Scouts 단계 안의 순서는 앱과 같다.
+`[Scouts help]`는 패를 뽑고 Conflict를 공개한 뒤 Scout을 누르라고 한다. Round Start는 Conflict 공개 → (선택) Control 방어 배치 → draw 순서다([setup-and-game-flow.md](setup-and-game-flow.md) 5절, `[Main p. 8]`, `[Main p. 10]`, `[Main p. 20]`; 엔진도 2026-09-29부터 이 순서, OQ-072). **Scouts 단계는 Round Start가 모두 끝난 뒤(방어 배치 뒤), 첫 turn 전에 둔다**(OQ-072). Scouts 단계 안의 순서는 앱과 같다.
 
 1. 이번 라운드가 기한인 비밀 선택 보상(7.2절).
 2. 그 라운드의 항목: 1라운드 소위원회 공개, 2·3라운드 임무, 4~7라운드 (중간 경매 →) 이벤트, 8·9라운드 후반 경매 또는 판매.
@@ -120,12 +120,12 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `desert_riding` | Desert Riding (사막 질주) | 0 | 2~3 | Hagga Basin 옆에 Maker Hooks 토큰을 둔다. 방문자는 칸의 기본 spice 2 대신 그 토큰을 가질 수 있다(Maker 보너스 spice는 그대로). 토큰은 네 Maker Hooks 가운데 하나다(OQ-079) |
 | `urban_surveillance` | Urban Surveillance (유익한 정보원 - 도시 감시) | 0 | 2~3 | City 칸에 연결된 빈 관측소마다 Solari 1을 둔다. 그 관측소에 Spy를 놓는 좌석이 그 Solari를 가진다(OQ-080) |
 | `planetary_exploration` | Planetary Exploration (유익한 정보원 - 행성 탐사) | 0 | 2~3 | Maker 칸에 연결된 빈 관측소마다 spice 1을 둔다. 받는 방식은 위와 같다 |
-| `choam_research` | CHOAM Research (초암 연구) | 0 | 2~3 | 뒷면 Contract 2장을 Research Station에 둔다. 방문할 때마다 1장씩 가져간다(OQ-078). CHOAM 전용 |
+| `choam_research` | CHOAM Research (초암 연구) | 0 | 2~3 | 뒷면 Contract 2장을 Research Station에 둔다(Bloodlines의 Immediate는 놓지 않는다, OQ-090). 방문할 때마다 1장씩 가져간다(OQ-078). CHOAM 전용 |
 | `choam_escort` | CHOAM Escort (초암 호송대) | 0 | 2~3 | 각자 원하면 둘 중 하나: troop 1 recruit, 또는 자기 앞면 Contract 하나 위에 Solari 1 + spice 1을 올려 두고 그 Contract를 완료할 때 함께 받는다. CHOAM 전용 |
 | `sponsored_research` | Sponsored Research (연구 후원) | 0 | 2 | research track의 Helix 옆에 spice 2를 둔다. 다음에 Helix에 닿는 좌석이 가진다. Immortality 풀 |
 | `back_room_deal` | Back Room Deal (밀실 거래) | 0 | 2~3 | Tleilaxu Row의 Reclaimed Forces 위에 Solari 2를 둔다. 다음에 Reclaimed Forces를 "획득"하는 좌석이 가진다. Immortality 풀 |
 | `prison_planet` | Prison Planet (정예 사다우카 - 감옥 행성) | 1 | 2~3 | 각자 원하면 garrison의 troop 1을 잃고, Sardaukar 칸에 자기 Control 마커를 둔다. 은행의 spice 2를 그 위에 둔다. 그 좌석이 그 칸을 방문하면 마커를 되찾고 spice를 얻는다. 세 번째 칸을 지배하게 될 때 마커가 모자라면 이 마커를 가져다 쓰고 임무는 spice 없이 끝난다(도움말). Uprising 풀 |
-| `emperors_schemes` | Emperor's Schemes (정예 사다우카 - 황제의 계략) | 1 | 2~3 | Intrigue 2장을 Sardaukar 칸에 둔다. 방문할 때마다 1장씩 가져간다(OQ-078) |
+| `emperors_schemes` | Emperor's Schemes (정예 사다우카 - 황제의 계략) | 1 | 2~3 | Intrigue 2장을 Sardaukar 칸에 둔다(덱이 모자라면 버린 Intrigue를 섞어 채운다). 방문할 때마다 1장씩 가져간다(OQ-078) |
 | `fedaykin_assistance` | Fedaykin Assistance (페다이킨의 지원) | 1 | 3 | 각자 원하면 spice 1을 내고 supply의 troop 2를 모두 Desert Tactics에 세운다. 다음에 그 칸을 방문할 때 그 troop을 recruit한다 |
 | `weirding_warfare` | Weirding Warfare (기이한 전투) | 1 | 2~3 | 각자 원하면 Solari 2를 내고 supply의 troop 2를 모두 Espionage에 세운다. 다음 방문 때 recruit해 곧바로 Conflict에 배치한다 |
 | `send_for_aid` | Send for Aid (지원 제공) | 1 | 2~3 | 각자 원하면 garrison의 troop 1을 Gather Support로 옮긴다. 은행의 물 1을 그 밑에 둔다. 다음 방문 때 그 troop을 recruit해 곧바로 Conflict에 배치하고 물을 얻는다 |
@@ -139,7 +139,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 
 `[Scouts event: <이름>]`. 표의 "추첨표"는 한 라운드 추첨표에서 그 이벤트가 차지하는 선택지 수다(2.3절).
 
-- **선택형.** "각자 선택"인 이벤트는 First Player부터 차례로 한 가지를 고른다(앱 영어의 "in turn order"; 한국어판에는 빠져 있다. Moment of Revelation의 문구에는 순서 말이 없어 같은 순서가 프로젝트 convention이다, OQ-071). "또는 패스"가 있으면 선택하지 않아도 된다. 패스가 없으면 반드시 하나를 해야 하며, 할 수 없는 쪽은 고를 수 없다. 둘 다 할 수 없으면 아무 일도 없다(도움말, OQ-071).
+- **선택형.** "각자 선택"인 이벤트는 First Player부터 차례로 한 가지를 고른다(앱 영어의 "in turn order"; 한국어판에는 빠져 있다. Moment of Revelation의 문구에는 순서 말이 없어 같은 순서가 프로젝트 convention이다, OQ-071). "또는 패스"가 있으면 선택하지 않아도 된다. 패스가 없으면 반드시 하나를 해야 하며, 할 수 없는 쪽은 고를 수 없다(한 쪽만 할 수 있어도 결정은 열리고 할 수 없는 쪽은 회색으로 보인다). 둘 다 할 수 없으면 아무 일도 없다(도움말, OQ-071).
 - **이번 라운드 규칙 변경.** 공개된 라운드가 끝날 때까지 적용된다.
 
 | id | 이름 (공식 한국어) | 계열 | 추첨표 | 라운드 | 내용 |
@@ -246,13 +246,13 @@ CHOAM Negotiations는 CHOAM 전용, Competitive Study는 Immortality 풀이다.
 
 ### 8.2 Mercenaries (용병단)
 
-- 중간·후반 어느 자리에도 나온다(라운드 5~9). 봉인 입찰로 각자 spice 0~3을 확정한다.
-- 공개 뒤 **모두** 입찰한 spice를 낸다. Immortality에서는 supply가 입찰액보다 적은 좌석이 먼저 specimen을 supply로 되돌려 채울 수 있다. 그다음 낸 만큼 supply의 troop을 Conflict에 넣는다(부족하면 있는 만큼, OQ-074).
+- 중간·후반 어느 자리에도 나온다(라운드 5~9). 봉인 입찰로 각자 spice 0~3을 확정한다. 상한은 넣을 수 있는 troop 수(supply, Immortality면 specimen 포함)도 넘지 않는다(OQ-074).
+- 공개 뒤 **모두** 입찰한 spice를 내고, 낸 만큼 troop을 Conflict에 넣는다. supply가 모자라면 그만큼 specimen을 자동으로 supply로 되돌려 채운다(Immortality, OQ-074).
 - 1 이상 입찰한 좌석 가운데 가장 적게 낸 좌석은 그렇게 넣은 troop 가운데 원하는 만큼(전부 또는 일부)을 garrison으로 후퇴시킬 수 있다. 최저가 동점이면 모두 그렇다. 0은 입찰이 아니라 후퇴하지도 남을 막지도 않는다(OQ-074, 2026-09-29 사용자 결정). 이 후퇴는 게임의 후퇴다(앱 영어의 동사가 retreat): Chani의 Tactics token이 후퇴한 troop 수만큼 전진한다(OQ-074).
 
 ### 8.3 공개 경매: Critical Moment (중대한 순간)
 
-- 중간 판은 Imperium 덱 위 2장, 후반 판은 3장을 공개한다.
+- 중간 판은 Imperium 덱 위 2장, 후반 판은 3장을 공개한다. 덱이 그보다 적으면 그 라운드의 경매 추첨에서 이 경매를 뺀다(OQ-087).
 - First Player부터 시계 방향으로 한 번씩, 1부터 가진 spice까지의 액수를 부르거나 패스한다(최소 1은 OQ-087). **이미 나온 액수와 같은 액수는 부를 수 없다.** 한국어판에는 이 조건이 빠져 있다(OQ-086).
 - 가장 높게 부른 좌석이 그 spice를 내고 공개된 카드 1장을 **손으로** 획득한다. 후반 판은 두 번째로 높게 부른 좌석도 원하면 부른 spice를 내고 남은 카드 중 1장을 손으로 획득한다(사지 않으면 내지 않는다, OQ-087).
 - 남은 카드는 게임에서 뺀다(앱 영어는 discard; Imperium 카드의 버림 더미가 없어 게임에서 빼는 것으로 읽는다, OQ-083). 모두 패스한 경우와 덱이 모자란 경우는 OQ-087.
@@ -268,7 +268,7 @@ CHOAM Negotiations는 CHOAM 전용, Competitive Study는 Immortality 풀이다.
 | `secrets_for_sale` | Secrets for Sale (기밀 정보 판매) | spice 1 → Intrigue 1장, 또는 spice 3 → Intrigue 2장 |
 | `shadow_warfare` | Shadow Warfare (그림자 속 전투) | Spy 1 회수 → troop 1 + spice 1, 또는 Spy 2 회수 → troop 3 + spice 2. 이 판매로 recruit한 troop은 곧바로 Conflict에 넣는다 |
 
-Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 비용, 오른쪽을 보상으로 읽었다(로컬 분석의 반박 검증도 같은 해석).
+Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른쪽이 보상), 이 판매로 recruit한 troop은 모두 Conflict에 곧바로 배치한다는 문구 한 줄이 따로 있다(`spice.sale.description.shadowwarfare2`; 2026-09-29 확인 — 전에는 아이콘만 있다고 잘못 적었다).
 
 ## 10. 기존 명세와의 관계
 
@@ -281,6 +281,12 @@ Shadow Warfare는 앱에 문구 없이 아이콘만 있다. 화살표 왼쪽을 
 
 ## 11. 구현 상태
 
+- 2026-09-29 D8 3차 반영(사용자 결정).
+  - Round Start를 규칙 순서로(공개 → 선택 방어 배치 → draw; 모든 게임, codec v122, OQ-072).
+  - Mercenaries 입찰 상한에 넣을 수 있는 troop 수를 넣고 모자란 supply는 specimen으로 자동 보충(선택형 보충 frame 제거, 관측 v27, OQ-074).
+  - Critical Moment는 덱이 모자라면 추첨에서 뺀다(OQ-087). Clear the Market은 옛 Contract를 먼저 섞고 채운다(OQ-083). Emperor's Schemes는 덱이 모자라면 버린 Intrigue를 섞는다(OQ-078). CHOAM Research는 Immediate를 놓지 않는다(OQ-090).
+  - 의무 이벤트에서 한 줄만 할 수 있어도 결정이 열린다(OQ-071).
+  - 게임 전체에 "지금 고를 수 없는 선택지"를 이유와 함께 회색으로: 구매(Reveal의 Row·Reserve·Tleilaxu), Intrigue 사용, 조건을 기다리는 효과(1단계).
 - 2026-09-29 D8 2차 반영(사용자 결정).
   - Corrinth City로 Contingencies에 가입한 좌석도 Conflict의 Agent를 회수하고, 전투력과 Reveal frame 합계를 다시 센다(`effects.recall_conflict_agent`; OQ-075).
   - 소위원회 가입은 비용을 낼 수 있고 보상이 무언가를 할 때만 가능하다. 이번 turn에 Into the Fray로 옮긴 좌석 차지 Agent는 회수 대상이 아니다.

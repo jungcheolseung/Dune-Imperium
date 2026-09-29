@@ -77,7 +77,7 @@
 | 전원 자동 | Political Equilibrium(가장 높은 Faction −1, 동률이면 선택), Mating Season, Clear the Market(CHOAM 판은 계약도 교체) |
 | 이번 라운드 규칙 변경 | Unlikely Allies, Market Opening, Eyes on Arrakis, Friends Everywhere |
 | 인원 제한 선택 | Rebuild Infrastructure(Shield Wall 토큰이 제거된 상태일 때, 두 명이 각 spice 1을 내고 토큰을 보드에 되돌린다. 한 명만으로 되는지는 OQ) |
-| 라운드 시작의 분쟁 투입 | Mercenaries(입찰한 수만큼 병력을 분쟁에 투입, 최저 입찰자는 그 병력을 주둔지로 후퇴 가능), 판매 Shadow Warfare(Spy 회수 → 병력·spice, 이 판매로 모집한 병력은 곧바로 분쟁으로) |
+| 라운드 시작의 교전 배치 | Mercenaries(입찰한 수만큼 병력을 교전에 배치, 최저 입찰자는 그 병력을 주둔지로 후퇴 가능), 판매 Shadow Warfare(Spy 회수 → 병력·spice, 이 판매로 모집한 병력은 곧바로 분쟁으로) |
 | 비밀 선택 | Covert Operation(CHOAM 켬/끔 두 판) |
 | 임무: 칸 위 보상 | Imperial Reserve, Desert Riding(Maker Hooks 토큰), CHOAM Research(계약 2), Emperor's Schemes(Intrigue 2) |
 | 임무: 관측소 보상 | Valued Informants 2종 |
@@ -143,7 +143,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 
 ### 4.4 라운드 흐름
 
-- `begin_round`(`rules/phases.py:17-127`)는 Conflict 공개와 5장 드로우를 하고 CONTROL_DEFENSE 또는 첫 TURN frame을 연다. Scouts 단계는 **CONTROL_DEFENSE 뒤, 첫 TURN 전**에 둔다(D3).
+- `begin_round`(`rules/phases.py`)는 Conflict를 공개하고 CONTROL_DEFENSE를 열거나 곧바로 5장 드로우로 넘어간다(2026-09-29부터 규칙 순서: 공개 → 방어 배치 → 드로우, OQ-072). Scouts 단계는 **CONTROL_DEFENSE 뒤, 첫 TURN 전**에 둔다(D3).
   - 근거 1: 앱 도움말은 "패를 뽑고 Conflict를 공개한 뒤 Scout"이라고 한다.
   - 근거 2: Round Start의 순서는 공개 → 방어 배치 → 드로우다(`[Main p. 8]`, `[Main p. 20]`, `setup-and-game-flow.md` 5절).
 - **라운드 안의 순서**(앱과 같다):
@@ -230,7 +230,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 - **미리보기.** 서버는 합법 행동마다 실제 상태에서 dry run을 돌려 경고를 만든다(`sessions.py:1799-1817`). 그 경고(`shortfall_warning`·`shortfall_details`)는 결과의 **모든** 이벤트를 훑으므로, 마지막 입찰자의 목록이 공개 결과(다른 좌석의 보상, supply 부족)를 입찰액별로 다르게 보여 준다.
   - 봉인 값을 공개하는 결과의 행동에는 미리보기 필드(경고, shortfall, `strength_after`)를 싣지 않거나, 행위자 자신의 이벤트만 쓴다.
   - 상대 입찰만 다른 두 상태에서 마지막 입찰자의 행동 목록이 같음을 테스트한다.
-- **되돌리기와 턴 종료(D5: 턴 종료를 따로).** 사람 좌석의 Scouts 결정은 CONTROL_DEFENSE처럼 그 좌석의 단위이며, 서버는 그 좌석이 "턴 종료"를 누를 때까지 다음 좌석으로 넘기지 않는다(`server/turn_end.py`). 누르기 전에는 자기 결정을 되돌릴 수 있다.
+- **되돌리기와 턴 종료(D5: 턴 종료를 따로).** 사람 좌석의 Scouts 결정은 CONTROL_DEFENSE처럼 그 좌석의 단위이며, 서버는 그 좌석이 "턴 종료"를 누를 때까지 다음 좌석으로 넘기지 않는다(`server/turn_end.py`). 누르기 전에는 자기 결정을 되돌릴 수 있다(2026-09-29부터 CONTROL_DEFENSE는 예외다: 방어 결정 뒤 곧바로 카드를 뽑아 숨은 정보가 드러나므로 되돌릴 수 없다).
   - **봉인 입찰은 두 행동이다.** `scouts_bid(count=n)`은 입찰액을 고르기만 하고(다시 고를 수 있다), `confirm_scouts_bid`가 확정한다. 확정 행동을 `EXPLICIT_TURN_ENDS`에 넣어 그것이 곧 그 좌석의 "턴 종료"가 된다(한 번 누르기 원칙). 그래서 확정 전에는 입찰을 바꿀 수 있고, 마지막 좌석의 확정이 처음으로 전원의 입찰을 공개한다. 공개하는 그 단계는 되돌릴 수 없는 공개로 표시한다(`session_log.reveals_hidden_information`). 앞 좌석의 확정은 아무것도 공개하지 않지만, 확정이 곧 턴 종료이므로 누른 뒤에는 되돌리지 않는다. 확정 전에는 입찰액을 몇 번이든 바꾸거나 되돌릴 수 있다(2026-09-28 슬라이스 8에서 이 문장의 앞뒤 모순을 바로잡음).
   - 비밀 선택은 한 행동이다. 마지막 좌석의 선택도 아무것도 공개하지 않으므로(공개는 1~2라운드 뒤) 턴 종료 전까지 되돌릴 수 있다. 기한 라운드의 공개 단계는 되돌릴 수 없다.
   - 거래·판매·임무 참여처럼 공개 결정은 한 행동이고, 턴 종료를 따로 누른다.

@@ -838,7 +838,7 @@
 
 - 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: 선택형 이벤트와 판매의 영어 문구는 "in turn order"라고 하고(한국어판에는 빠져 있다), 임무의 참여 결정은 "each player"라고만 한다. 비밀 선택은 앱의 플레이어 순서대로 한 명씩 고른다. 누가 먼저인지, 각 좌석이 언제의 상태로 판단하는지는 적지 않는다. `[Scouts help]` `[Scouts event: Private Stock]` `[Scouts mission: Security Detail]`
-- 판정: 좌석마다 차례로 결정하는 모든 Scouts 항목(선택형 이벤트, 판매, 임무 참여, 비밀 선택, 봉인 입찰, 공개 경매, 자동 이벤트 Political Equilibrium의 좌석별 Influence 손실)은 **First Player부터 시계 방향**으로 한다(OQ-002의 turn 순서 선례). 여러 승자의 보상은 OQ-073. 각 좌석은 자기 차례에 그때의 상태로 판단한다(앞 좌석의 결과가 반영된 뒤). 선택형 이벤트에서 반드시 하나를 해야 하는데 할 수 있는 쪽이 하나뿐이면 그것만 제시하고, 둘 다 할 수 없으면 그 좌석은 아무것도 하지 않는다(도움말: "잃어야 하는 것이 없으면 다른 쪽을 골라야 한다").
+- 판정: 좌석마다 차례로 결정하는 모든 Scouts 항목(선택형 이벤트, 판매, 임무 참여, 비밀 선택, 봉인 입찰, 공개 경매, 자동 이벤트 Political Equilibrium의 좌석별 Influence 손실)은 **First Player부터 시계 방향**으로 한다(OQ-002의 turn 순서 선례). 여러 승자의 보상은 OQ-073. 각 좌석은 자기 차례에 그때의 상태로 판단한다(앞 좌석의 결과가 반영된 뒤). 선택형 이벤트에서 반드시 하나를 해야 하는데 할 수 있는 쪽이 하나뿐이면 그 한 줄만 고를 수 있게 결정을 열고(할 수 없는 줄은 화면에 이유와 함께 회색으로 보인다; 2026-09-29 사용자 결정 — 전에는 그 줄을 결정 없이 자동으로 처리했다), 둘 다 할 수 없으면 그 좌석은 아무것도 하지 않는다(도움말: "잃어야 하는 것이 없으면 다른 쪽을 골라야 한다"). Political Equilibrium의 First Player 순서와 Moment of Revelation에서 재고가 모자랄 때 앞 좌석이 먼저 가져가는 순서는 2026-09-29 사용자 확인.
 - 구현: 슬라이스 5(거래·판매), 6(임무), 7(비밀 선택), 8(경매).
 - 보강(2026-09-29, 영어 원문 대조 감사): (a) 차례 순서 말("in turn order")은 선택형 이벤트의 공용 문구(`spice.event.description.each`)에 있다. Moment of Revelation은 자기 문구(`spice.event.description.mor`)를 쓰고 순서 말이 없으므로, 이 이벤트의 First Player 순서는 앱이 아니라 프로젝트 convention이다(Prepare the Way가 모자라면 앞 좌석이 먼저 가져간다). (b) Political Equilibrium의 문구(`spice.event.description.alllose1inf`)도 순서를 적지 않는다. Alliance 보유자와 동률 상대가 함께 잃을 때는 순서가 Alliance의 주인을 바꾸므로(`[FAQ p. 1]`의 이전 규칙) First Player 순서를 판정으로 적는다(OQ-002 선례). 회귀 테스트는 `tests/unit/rules/test_scouts_choices.py`.
 - 사용자 결정(2026-09-29, Moment of Revelation): 비용만 내고 보상을 받지 못하는 경우는 없어야 한다. Reserve에 Prepare the Way가 남아 있지 않으면 그 줄을 제시하지 않고 spice도 받지 않는다. 일반화(사용자의 075 원칙: 화살표 뒤 효과가 일어날 수 없으면 앞의 비용만 내고 끝낼 수 없다): 비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만 제시한다(`scouts_effects.line_is_offered`). 검사하는 것은 아무 일도 못 할 수 있는 보상이다: Reserve 재고, 회수할 다른 Agent, 모든 대상 track이 꼭대기인 Influence 획득(OQ-060에 따라 사라진다), supply에 troop이 없고 되돌릴 specimen도 없는 recruit. 보상이 없는 손실 줄(Crackdown 등)은 이 검사에서 빠진다. 선례는 OQ-046(얻을 Influence가 없으면 화살표 비용을 제시하지 않음).
@@ -848,7 +848,8 @@
 
 - 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: "패를 뽑고 Conflict를 공개한 뒤 Scout"이라고 한다 `[Scouts help]`. 규칙 문서의 Round Start는 공개 → Control 방어 배치 → draw 순서다 `[Main p. 8]` `[Main p. 20]`. 엔진(`rules/phases.begin_round`)은 공개와 draw를 한 전이로 처리한 뒤 방어 배치를 묻는다(2026-09-29 정정: 이 줄은 전에 엔진 순서를 문서 순서로 잘못 적었다).
-- 판정: Scouts 단계는 Round Start 전부(공개, draw, 방어 배치)가 끝난 뒤, 첫 turn 전이다(D3). Scouts 단계의 결정은 누구의 turn에도 속하지 않는다.
+- 판정: Scouts 단계는 Round Start 전부(공개, 방어 배치, draw)가 끝난 뒤, 첫 turn 전이다(D3). Scouts 단계의 결정은 누구의 turn에도 속하지 않는다.
+- 변경(2026-09-29 사용자 결정, 모든 게임): 엔진도 규칙 순서를 따른다. Conflict를 공개하고, 방어 배치를 묻고("you may deploy one troop from your supply to the Conflict" `[Main p. 10]` `[Main p. 20]`, 선택이다), 그다음 5장을 뽑는다 `[Main p. 8]`. 방어할 좌석은 새 hand를 보기 전에 정한다. 버린 더미 섞기(chance)는 전처럼 공개 앞에 두는데, 방어 배치는 덱을 건드리지 않으므로 결과가 같다(project convention). Twisted Genius의 Round Start Twisted Intrigue는 hand와 함께 방어 뒤에 뽑는다(규칙이 순서를 정하지 않는 부분의 convention). 방어 결정 뒤 곧바로 카드를 뽑으므로 그 결정은 되돌릴 수 없다(테이블과 같다). 저장 호환을 위해 action codec을 v122로 올렸다.
 - 구현: 슬라이스 3.
 
 ## OQ-073 — 봉인 입찰: 동점 승자의 처리 순서와 입찰 상한
@@ -860,16 +861,16 @@
 
 ## OQ-074 — Mercenaries와 Shadow Warfare의 턴 밖 Conflict 투입
 
-- 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
+- 상태: `DECIDED` (잠정 — 1 이상 입찰자가 한 명뿐일 때의 후퇴만 사용자 재확인 대기)
 - 앱: Mercenaries는 "입찰한 spice만큼 troop을 Conflict에 넣고, 가장 적게 낸 좌석은 그 troop을 후퇴시킬 수 있다"고 한다 `[Scouts auction: Mercenaries]`. Shadow Warfare는 "이 판매로 recruit한 troop은 곧바로 Conflict에"라고 한다 `[Scouts sale: Shadow Warfare]`. troop의 출처, 최저 입찰 동점, 입찰 0, troop이 모자랄 때를 적지 않는다.
-- 판정: (a) 넣는 troop은 supply에서 온다(recruit와 같다). supply에 모자라면 있는 만큼만 넣는다(OQ-030의 "해결 시점의 supply만큼" 선례). (b) 입찰 0은 아무것도 넣지 않는다. (c) 최저 입찰액이 동점이면 그 좌석 모두 후퇴를 고를 수 있다. 변경(2026-09-29 사용자 결정): 0은 입찰이 아니다. 1 이상 입찰한 좌석 가운데 최저인 좌석들이 후퇴하고, 0을 낸 좌석은 후퇴하지도 남을 막지도 않는다. 1 이상 입찰한 좌석이 하나뿐이면 그 좌석이 최저이므로 후퇴할 수 있다(사용자에게 이 결과를 확인 중). 전원이 0이면 아무도 후퇴하지 않는다. (d) 후퇴는 Mercenaries로 넣은 troop만, 전부 또는 일부를 garrison으로 옮긴다. (e) Scouts 단계의 투입은 turn 밖이라 Combat 칸 배치 한도(`[Main p. 10]`)와 무관하다.
+- 판정: (a) 넣는 troop은 supply에서 온다(recruit와 같다). supply에 모자라면 있는 만큼만 넣는다(OQ-030의 "해결 시점의 supply만큼" 선례). (b) 입찰 0은 아무것도 넣지 않는다. (c) 최저 입찰액이 동점이면 그 좌석 모두 후퇴를 고를 수 있다. 변경(2026-09-29 사용자 결정): 0은 입찰이 아니다. 1 이상 입찰한 좌석 가운데 최저인 좌석들이 후퇴하고, 0을 낸 좌석은 후퇴하지도 남을 막지도 않는다. 1 이상 입찰한 좌석이 하나뿐이면 그 좌석이 최저이므로 후퇴할 수 있다(사용자에게 이 결과를 확인 중). 전원이 0이면 아무도 후퇴하지 않는다. (f) 변경(2026-09-29 사용자 결정): 입찰 상한은 가진 spice, 3, 넣을 수 있는 troop 수(supply, Immortality면 specimen 포함) 가운데 가장 작은 값이다. 입찰액이 곧 넣는 troop 수이므로, supply가 모자라면 그만큼 specimen을 자동으로 supply로 되돌려 입찰액 전부를 넣는다(전에 있던 선택형 보충 frame `scouts_top_up`은 없앴다; 관측 v27). (d) 후퇴는 Mercenaries로 넣은 troop만, 전부 또는 일부를 garrison으로 옮긴다. (e) Scouts 단계의 투입은 turn 밖이라 Combat 칸 배치 한도(`[Main p. 10]`)와 무관하다.
 - 구현: 슬라이스 8(Mercenaries: `close_bids`, `scouts_retreat`). Shadow Warfare는 슬라이스 5의 판매로 이미 구현했다.
 - 사용자 결정(2026-09-29): (a) 보강: supply에 모자라면 있는 만큼만 넣는 것은 그대로다. Immortality에서는 specimen을 supply로 "언제든" 되돌릴 수 있으므로 `[Immortality p. 8]`, Scouts 단계에서 supply보다 많은 troop을 요구받은 좌석(항목 줄의 recruit와 Conflict 투입, Mercenaries 투입, 임무 참여)은 먼저 원하는 만큼 specimen을 되돌릴 수 있다(`scouts_return_specimens(count)`). (d) 보강: 앱 영어의 동사가 게임 용어 retreat이다(`spice.auction.description.mercenaries`). 그래서 이 후퇴는 게임의 후퇴(`units.retreat_units`)다. 전투력이 따라가고, Chani의 Tactics token이 후퇴한 troop 수만큼 한 번에 전진한다(출처 하나, `[Bloodlines p. 4]`, bloodlines.md의 `[FAQ p. 1]` 규칙).
-- 구현(2026-09-29): `scouts_auctions.close_bids`는 spice만 받고 `top_up:<좌석>:<입찰>`(Immortality)과 `mercenaries:` 과제를 쌓는다. `offer_top_up`(frame `scouts_top_up`), `deploy_mercenaries`, `apply_retreat`(→ `retreat_units`). 항목 줄의 보충은 `scouts_effects._specimen_top_up`, 임무는 `scouts_missions.mission_top_up`.
+- 구현(2026-09-29): `scouts_auctions.close_bids`는 spice만 받고 `mercenaries:` 과제를 쌓는다. `deploy_mercenaries`가 모자란 supply를 specimen으로 자동 보충하고(아래 (f); 처음 구현했던 선택형 보충 frame `scouts_top_up`은 같은 날 없앴다), `apply_retreat`는 `retreat_units`를 거친다. 항목 줄의 보충은 `scouts_effects._specimen_top_up`, 임무는 `scouts_missions.mission_top_up`(둘 다 좌석의 선택).
 
 ## OQ-075 — Contingencies의 "다른 Agent"
 
-- 상태: `DECIDED` (잠정 — 2026-09-29 D8 검토에서 사용자 재확인 대기)
+- 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: "다른 Agent 1개를 회수한다" `[Scouts subcommittee: Contingencies]`. 무엇과 다른지 적지 않는다.
 - 판정: 방금 원로회 자리를 얻게 한 Agent(High Council 칸의 Agent)가 아닌 자기 Agent 하나를 회수해 다시 보낼 수 있게 한다. Corrinth City는 Reveal 효과라 자리를 얻게 한 Agent가 없고, 엔진은 그 경로에서 보드 위의 아무 자기 Agent나 회수하게 한다(Conflict의 Into the Fray Agent는 빼는데, 그 좌석의 전투력을 세는 중이기 때문이다, 2026-09-29 리뷰; 2026-09-29 정정: 이 줄은 전에 "Corrinth City의 Agent"라는 없는 대상을 적었고, 회수를 "supply로"라고 잘못 적었다). 되돌릴 다른 Agent가 없으면 비용을 내도 보상이 없다(가입은 선택이므로 좌석이 판단한다).
 - 구현: 슬라이스 4.
@@ -885,6 +886,7 @@
 - 판정: (a) 원로회 자리를 얻는 즉시(High Council 칸의 효과를 해결하는 중, Corrinth City의 자리 획득 때) 가입 결정을 연다. (b) 그때까지 얻은 자원으로 비용을 낼 수 있다(자리 획득이 끝난 뒤의 상태로 판단). (c) 가입은 선택이다. 비용을 낼 수 있는 빈 소위원회가 없으면 결정 없이 넘어가고, 거절하면 기회는 사라진다. (d) 소위원회 하나에 한 명만 가입한다.
 - 구현: 슬라이스 4.
 - 재검토 중(2026-09-29): 사용자는 소위원회 효과를 보드 칸 효과처럼 turn 안에서 원하는 순서로(예: 기술을 산 뒤) 푸는 방향(대안 C)을 제시했다. 앱 영어는 자리를 차지할 "때"(when) 가입한다고 적는다(`spice.help.body.uprising`, `spice.subcommittees.anouncement.description`). 자리 아이콘 자체는 이미 방문의 다른 효과와 자유 순서라서(OQ-027) 다른 효과를 먼저 풀고 자리를 나중에 차지하면 같은 목적을 이룰 수 있다. 자리와 가입을 떼어 가입만 나중에 하는 것은 영어에 없는 convention이다. 2026-09-29 구현: 아직 풀지 않은 High Council 행동(보드 칸과 Corrinth City)에 "지금 자리를 차지하면 가입할 수 있는 소위원회" 미리보기를 붙여, 자원이 바뀌면 곧바로 갱신한다. 가입만 나중에 하는 대안 C는 사용자 재확인 대기.
+- 사용자 질문(2026-09-29)에 대한 답: 칸과 카드의 효과는 "You may carry out all these effects in any order." `[Main p. 9]`이고, FAQ에는 High Council 효과 순서에 대한 항목이 없다. Bloodlines Tech Module은 Landsraad 칸(High Council 포함)에 Agent를 보낸 turn에 Tech 하나를 살 수 있게 하고, 자리가 있으면 Tech가 spice 1 싸다("if you have a High Council seat, each Tech tile costs you 1 less spice" `[Bloodlines p. 7]`, 예시는 자리 먼저). 따라서 Tech를 먼저 사고(정가) 자리를 나중에 차지하는 순서도 허용되고, 엔진도 두 순서를 모두 제시한다. Scouts에서는 자리를 먼저 차지하면 그 자리에서 곧바로 가입 결정이 열려 Tech 전의 자원으로 정해야 하고, Tech를 먼저 사면 할인을 잃는 대신 Tech의 획득 효과를 가입 비용에 쓸 수 있다. 자리 먼저 + 가입은 Tech 뒤(대안 C)는 앱 문장("When you take a council seat")에 없는 convention이다.
 
 ## OQ-077 — 세워 둔 troop과 garrison 재모집 금지
 
@@ -898,7 +900,7 @@
 
 - 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: Imperial Reserve는 "방문자가 둘 중 하나를 가진다"고 하고 도움말이 "남은 쪽은 다음 방문자 몫"이라고 해설한다. Desert Riding의 토큰도 방문자 몫이다 `[Scouts help]`. CHOAM Research와 Emperor's Schemes는 "방문할 때마다 1장씩"이라고 한다(Emperor's Schemes는 영어가 의무, 한국어가 선택) `[Scouts mission: CHOAM Research]` `[Scouts mission: Emperor's Schemes]`.
-- 판정: 칸 위 물품은 모두 다 가져갈 때까지 남는다. 방문자는 한 방문에 Imperial Reserve의 한 가지, CHOAM Research·Emperor's Schemes의 한 장을 받는다. Emperor's Schemes는 영어대로 의무다(OQ-086). CHOAM Research의 Contract는 받는 순간 그 좌석의 앞면 Contract가 된다(`[Main p. 16]`).
+- 판정: 칸 위 물품은 모두 다 가져갈 때까지 남는다. 방문자는 한 방문에 Imperial Reserve의 한 가지, CHOAM Research·Emperor's Schemes의 한 장을 받는다. Emperor's Schemes는 영어대로 의무다(OQ-086). 사용자 결정(2026-09-29): Emperor's Schemes를 놓을 때 Intrigue 덱이 2장보다 적으면 버린 Intrigue를 섞어 새 덱을 만든 뒤 2장을 놓는다(Intrigue 덱 재구성 규칙 `[FAQ p. 2]`과 같다). CHOAM Research의 Contract는 받는 순간 그 좌석의 앞면 Contract가 된다(`[Main p. 16]`).
 - 구현: 슬라이스 6a(`scouts_collect_mission`의 `choice`, 방문마다 뒷면 카드 1장).
 
 ## OQ-079 — Desert Riding의 Maker Hooks 토큰
@@ -919,10 +921,11 @@
 
 ## OQ-081 — Friends Everywhere와 Market Opening의 범위
 
-- 상태: `DECIDED` (잠정 — 2026-09-29 D8 검토에서 사용자 재확인 대기)
+- 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: Friends Everywhere는 "Influence 4 보너스를 받을 때 대신 아무 Faction의 보너스를 골라도 된다", Market Opening은 "이번 라운드 처음 획득되는 The Spice Must Flow는 Persuasion 2 적다"고 한다 `[Scouts event: Friends Everywhere]` `[Scouts event: Market Opening]`.
 - 판정: (a) Friends Everywhere의 대체 보너스에는 Emperor의 Spy 배치를 포함한 모든 Faction의 4 보너스가 든다. 한 번 4에 닿을 때 보너스 하나를 고른다. (b) Market Opening의 "처음"은 탁자 전체 기준이다(가장 먼저 획득하는 좌석 한 명만). 할인은 획득 비용 판정(살 수 있는지)과 지불 모두에 든다. 비용 대신 "비용 N 이하 카드 획득" 효과로 가져가는 경우에도 할인한 비용으로 비교한다.
 - 구현: 슬라이스 3.
+- 사용자 확인(2026-09-29): (a) 대체 보너스는 네 Faction 모두다(Emperor의 Spy 배치 포함; 엔진이 처음부터 그렇게 한다). (b) 탁자 전체의 첫 장이고, 경로와 상관없이(Persuasion, Solari, 카드·Intrigue 효과) 첫 The Spice Must Flow가 획득되면 할인은 끝난다. 엔진의 모든 Reserve 획득이 `reserve_cost`와 `discount_used_after`를 거쳐 이미 그렇게 한다.
 
 ## OQ-082 — Mating Season과 Tuek's Sietch
 
@@ -938,7 +941,7 @@
 - 판정: 치운 Imperium 카드는 게임에서 빠진다(공개 존 `imperium_removed`, Family Atomics의 OQ-051 선례). Clear the Market의 CHOAM 판에서 치운 Contract 2장은 앱의 지시대로 뒷면 bank에 섞는다(chance).
 - 구현: 슬라이스 3(Clear the Market), 8(Critical Moment: `scouts_auctions.clear_market`).
 - 사용자 결정(2026-09-29): 교체는 항상 한다. 앞면 2장을 치우고 bank에 있는 만큼만 새로 올리며, 모자라면 빈 자리로 남는다. 치운 2장은 영어대로 뒷면 더미에 섞는다(`spice.event.description.clearthemarket2`). 전에는 bank가 모자라면 아무것도 바꾸지 않았다. 구현: `scouts._clear_contracts`, `_deal_cleared_contracts`.
-- 따라오는 결과(사용자 확인 대기): 새 카드를 먼저 뽑고 옛 2장을 섞으므로, bank가 0~1장이었다면 빈 앞면 자리가 생기고 bank에는 옛 2장이 들어간다. 앞면 자리는 누가 Contract를 가져갈 때만 채워지므로(`[Main p. 16]`) 그 자리는 비어 남고, 앞면이 0장이면 Contract 아이콘은 Solari 2로 바뀐다(기본 규칙은 모든 Contract를 가져갔을 때만 바꾼다). 섞은 뒤 뽑기, 또는 섞은 뒤 빈 자리 채우기로 바꿀지 사용자에게 물었다.
+- 변경(2026-09-29 사용자 결정): 치운 옛 2장을 먼저 뒷면 bank에 섞고, 그다음 섞인 bank에서 2장을 앞면에 채운다. 그래서 bank가 비어 있었어도 옛 2장이 들어가 있어 교체가 된다. bank와 옛 2장을 합해 2장이 안 될 때만 모자란 만큼 비는데, 그때는 모든 Contract가 소진된 상태라 결과적으로 교체가 안 될 수도 있다. 옛 카드가 다시 나올 수 있다. 앞의 "먼저 뽑고 섞기"(빈 자리가 남던 문제)를 대신한다.
 
 ## OQ-084 — Rebuild Infrastructure의 비용 분담
 
@@ -963,18 +966,18 @@
 
 ## OQ-087 — Critical Moment: 모두 패스, 덱 부족, 2위의 선택
 
-- 상태: `DECIDED` (잠정 — 2026-09-29 D8 검토에서 사용자 재확인 대기)
+- 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: 덱 위 2장(후반 3장)을 공개하고 한 번씩 부르며, 1위가 1장을, 후반 판은 2위도 남은 것 중 1장을 "살 수 있다"고 한다 `[Scouts auction: Critical Moment]`.
-- 판정: (a) 모두 패스하면 공개한 카드를 모두 치운다(OQ-083). (b) Imperium 덱에 카드가 모자라면 있는 만큼만 공개한다(덱은 다시 만들지 않는다). (c) 2위는 사지 않을 수 있다(그러면 지불도 없다). 1위는 부른 액수를 내고 반드시 한 장을 가진다. (d) 부를 수 있는 액수는 1부터 가진 spice까지이며, 이미 나온 액수는 부를 수 없다. 0은 패스라 여러 좌석이 패스할 수 있고, 순위에는 1 이상 부른 좌석만 들어간다(한 좌석만 1을 부르면 2위는 없다). 부르는 순서는 First Player부터 한 번씩이고 오름차순일 필요는 없다(`spice.auction.description.criticalmoment.*`). (c)·(d)는 2026-09-29 사용자 확인. (a)·(b)와 남은 카드의 행방(영어는 discard, Uprising에는 Imperium 버림 더미가 없어 게임에서 뺀다)은 사용자 확인 대기.
+- 판정: (a) 모두 패스하면 공개한 카드를 모두 치운다(OQ-083). (b) Imperium 덱에 카드가 모자라면 있는 만큼만 공개한다(덱은 다시 만들지 않는다). (c) 2위는 사지 않을 수 있다(그러면 지불도 없다). 1위는 부른 액수를 내고 반드시 한 장을 가진다. (d) 부를 수 있는 액수는 1부터 가진 spice까지이며, 이미 나온 액수는 부를 수 없다. 0은 패스라 여러 좌석이 패스할 수 있고, 순위에는 1 이상 부른 좌석만 들어간다(한 좌석만 1을 부르면 2위는 없다). 부르는 순서는 First Player부터 한 번씩이고 오름차순일 필요는 없다(`spice.auction.description.criticalmoment.*`). (c)·(d)와 (a), 남은 카드의 행방(영어는 discard, Uprising에는 Imperium 버림 더미가 없어 게임에서 뺀다)은 2026-09-29 사용자 확인. (b) 변경(2026-09-29 사용자 결정): Imperium 덱이 공개할 장수(중간 2, 후반 3)보다 적으면 이 경매를 그 라운드의 경매 추첨 후보에서 뺀다(온전히 성립하지 않는 이벤트는 나오지 않는다).
 - 구현: 슬라이스 8(`reveal_market`, `scouts_call`, `scouts_take_card`/`scouts_decline_card`, `clear_market`).
 
 ## OQ-088 — 임무 참여를 할 수 없는 좌석
 
-- 상태: `DECIDED` (잠정 — 2026-09-29 D8 검토에서 사용자 재확인 대기)
+- 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: 임무의 참여는 "원하면"이고, 비용(spice 1, Solari 2, garrison troop, specimen)을 낼 수 없는 경우를 적지 않는다 `[Scouts mission: <이름>]`.
 - 판정: 참여는 모든 임무에서 선택이다(CHOAM Escort도 영어가 "may"). 비용을 낼 수 없거나 세울 troop이 없는 좌석에는 묻지 않는다(결정 없이 넘어간다). CHOAM Escort에서 앞면 Contract가 없는 좌석에는 troop recruit와 패스만 남는다.
 - 변경(2026-09-29, 영어 원문 기준): 세우는 troop은 인쇄된 수 그대로다(Fedaykin Assistance, Weirding Warfare, Tleilaxu Offering의 troop 2, `spice.mission.fedaykinassistance.desc` 등). 전에는 1개만 있어도 참여시키고 있는 만큼 세웠으나(비용은 다 받음) 영어에 없는 선택지였다. Immortality에서는 모자란 만큼 specimen을 먼저 supply로 되돌려 참여할 수 있다(참여 frame 안의 `scouts_return_specimens`, OQ-074). CHOAM Escort의 recruit도 supply가 비었으면 같다.
-- 사용자 확인(2026-09-29): CHOAM Escort는 패스 / troop 소집 / (가능하면) 자기 앞면 Contract에 자원 올리기의 세 갈래다(영어의 may가 두 선택지 전체에 걸린다). 엔진이 이미 그렇게 제시한다. 올리는 Solari 1과 spice 1의 출처는 영어에 없다(다른 임무는 bank나 supply라고 적는다). 엔진은 bank에서 공짜로 올리며, 사용자 확인 대기. Tleilaxu Offering의 참여 제외(이미 세 번째 칸이나 그 뒤)도 사용자가 확인했다.
+- 사용자 확인(2026-09-29): CHOAM Escort는 패스 / troop 소집 / (가능하면) 자기 앞면 Contract에 자원 올리기의 세 갈래다(영어의 may가 두 선택지 전체에 걸린다). 엔진이 이미 그렇게 제시한다. 올리는 Solari 1과 spice 1의 출처는 영어에 없다(다른 임무는 bank나 supply라고 적는다). 엔진은 bank에서 공짜로 올리며, 2026-09-29 사용자 확인("당연히 은행"). Tleilaxu Offering의 참여 제외(이미 세 번째 칸이나 그 뒤)도 사용자가 확인했다.
 - 구현: 슬라이스 6a(`rules/scouts_missions.join_targets`, 2026-09-29 `mission_top_up`). Tleilaxu Offering은 Tleilaxu token이 이미 세 번째 칸이나 그 뒤에 있는 좌석에 묻지 않는다. 영어는 모든 좌석에 참여를 허용하지만, 그 좌석은 다시 그 칸으로 전진하지 않아 troop 2를 잃기만 하므로 프로젝트가 뺀 선택지다(프로젝트 추론, OQ-089 (a)).
 
 ## OQ-089 — Immortality 풀 항목의 세부
@@ -987,12 +990,12 @@
 
 ## OQ-090 — CHOAM Research의 뒷면 Contract가 Bloodlines의 Immediate일 때
 
-- 상태: `DECIDED` (잠정 — 2026-09-29 D8 검토에서 사용자 재확인 대기)
+- 상태: `DECIDED` (2026-09-29 사용자 D8 검토 완료)
 - 앱: CHOAM Research는 뒷면 Contract 2장을 Research Station에 두고 방문할 때마다 1장씩 가져가게 한다 `[Scouts mission: CHOAM Research]`. Bloodlines의 Immediate는 "trash할 Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`. 둘을 함께 쓰면 뒷면 카드가 Immediate이고 방문자에게 Intrigue가 없을 수 있는데, 어느 문서도 이 경우를 말하지 않는다(무작위 soak에서 교착으로 드러남).
 - 판정: 방문자는 그 칸의 뒷면 카드 가운데 가져갈 수 있는 첫 장을 가진다. Intrigue가 없으면 Immediate를 건너뛰고 다음 장을, 다음 장이 없으면 카드를 받지 않는다(Immediate는 뒷면 그대로 남는다). 받을 것이 그것뿐이면 임무 아이콘도 붙지 않는다. Intrigue가 있으면 Immediate를 받아 곧바로 Intrigue 하나를 trash한다(시장에서 가져갈 때와 같다).
 - 구현: `rules/scouts_missions._takeable_card`. `tests/unit/rules/test_scouts_missions.py`(`test_choam_research_skips_the_immediate_without_an_intrigue_card`).
 - 사용자 질문(2026-09-29): Intrigue가 없으면 효과 없이 계약만 완료로 치는 방향과, Intrigue가 있어도 trash하지 않고 가져갈 수 있는지(흰 화살표 비용은 선택이므로). 규칙 문서의 답: 새 Immediate는 "trash할 Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`([bloodlines.md](bloodlines.md) 1절). trash가 선택이라면 이 제한 문장이 쓸모없으므로, 가져가는 것과 trash는 묶여 있다고 읽힌다. 엔진은 시장에서도(OQ-059) 이렇게 한다.
-- BGG 스레드 3478280(Bloodlines Rules 게시판, 2025-03-14~16, 글 23개): 처음에는 흰 화살표가 선택이라는 의견과 의무라는 의견이 갈렸지만, 끝에는 모두 "가져가면 trash한다"에 동의했다. 근거는 위 `[Bloodlines p. 2]` 문장이다. 디자이너나 Dire Wolf의 글은 없고, 디자이너 판정이라는 말은 출처 없는 전언이다. 공동체 판정 모음에도 이 token 항목은 없다. CHOAM Research의 앱 문구는 방문마다 Contract 1장을 얻는다고만 하고 Bloodlines를 모른다. 사용자 결정 대기: Intrigue를 가진 방문자에게 다음 뒷면 카드가 Immediate일 때 (a) 현행대로 받고 trash, (b) 거절하고 그다음 장을 받을 수 있게.
+- BGG 스레드 3478280(Bloodlines Rules 게시판, 2025-03-14~16, 글 23개): 처음에는 흰 화살표가 선택이라는 의견과 의무라는 의견이 갈렸지만, 끝에는 모두 "가져가면 trash한다"에 동의했다. 근거는 위 `[Bloodlines p. 2]` 문장이다. 디자이너나 Dire Wolf의 글은 없고, 디자이너 판정이라는 말은 출처 없는 전언이다. 공동체 판정 모음에도 이 token 항목은 없다. CHOAM Research의 앱 문구는 방문마다 Contract 1장을 얻는다고만 하고 Bloodlines를 모른다. 사용자 결정(2026-09-29): 이 임무는 Immediate를 아예 놓지 않는다. bank의 무작위 뒷면 2장을 가져오는 것과 같으므로, 놓을 때 Immediate를 건너뛰고 그다음 Contract를 놓는다(Immediate는 bank의 제자리에 남는다). 방문자에게 보이는 차이는 없다. 이 이벤트는 Bloodlines Contract를 고려해 설계되지 않았다는 판단이다. 구현: `scouts_missions.place_mission_goods`, 숨은 정보 재배치(`agents/determinize.py`)도 같은 제약을 지킨다.
 
 ## OQ-091 — Go to 11 변형을 Uprising에 적용하는 방식
 

@@ -365,7 +365,7 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[Scouts mission: <이름>]` | `MissionDefinition.json`, 문구, 아이콘 | Uprising 12 + Immortality 4의 종류·라운드·조각 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 5절, `content/arrakeen_scouts/missions.py` |
 | `[Scouts event: <이름>]` | `EventDefinition.json`(가중치, 비밀 선택의 기한), 문구, 아이콘 | Uprising 27 + Immortality 5 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 6·7절, `content/arrakeen_scouts/events.py` |
 | `[Scouts auction: <이름>]` | `AuctionDefinition.json`(봉인 여부, 상한, 통화, 순위), 입찰 판정 코드 | Uprising 9 + Immortality 2, 봉인 입찰 순위·지불 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 8절, `content/arrakeen_scouts/auctions.py` |
-| `[Scouts sale: <이름>]` | `SaleDefinition.json`, 문구, 아이콘(Shadow Warfare는 아이콘만) | 판매 4 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 9절, `content/arrakeen_scouts/auctions.py` |
+| `[Scouts sale: <이름>]` | `SaleDefinition.json`, 문구, 아이콘(Shadow Warfare는 두 줄이 아이콘, Conflict 배치 문구 한 줄) | 판매 4 | `covered` | [arrakeen-scouts.md](arrakeen-scouts.md) 9절, `content/arrakeen_scouts/auctions.py` |
 | `[KO app: <loc key>]` | `loc/ko_KR.json` | 공식 한국어 용어 | `covered` | [glossary-ko.md](glossary-ko.md) |
 | `[Scouts schedule]` | 기본판 풀 넷, Uprising+Ix의 Ix 전용 임무 | 원본 Dune: Imperium·Rise of Ix 보드용 항목 | `out of scope` | 현재 룰셋에서 제외 |
 | `[Scouts help]` | 3인 규칙(소위원회 4개) | 3인 플레이 | `out of scope` | 엔진이 4인 전용 |

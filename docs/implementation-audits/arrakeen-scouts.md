@@ -15,7 +15,7 @@
 
 ## 해석이 아이콘에만 기대는 항목
 
-- **Shadow Warfare**: 앱에 문구가 없다. 화살표 왼쪽 Spy 회수를 비용, 오른쪽 troop·spice를 보상으로 읽었고, "이 판매로 recruit한 troop은 곧바로 Conflict에"는 판매 공통 문구에서 왔다. 로컬 반박 검증도 같은 해석이다.
+- **Shadow Warfare**: 두 줄은 아이콘이다. 화살표 왼쪽 Spy 회수를 비용, 오른쪽 troop·spice를 보상으로 읽었다. 이 판매로 recruit한 troop이 모두 Conflict에 곧바로 배치된다는 것은 이 판매 자신의 문구 한 줄이다(`spice.sale.description.shadowwarfare2`; 2026-09-29 정정 — 전에는 판매 공통 문구에서 왔다고 적었다).
 - **Imperium Connections, Secrets for Sale, Unravel the Future**: 선택지가 아이콘만이다(비용 숫자 → 보상 아이콘). 앱 영어 요약 문구와 일치한다.
 
 ## 항목 표
