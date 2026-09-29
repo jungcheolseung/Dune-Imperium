@@ -344,6 +344,20 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
     assert not leaks, "; ".join(leaks[:10])
 
 
+def test_korean_labels_call_a_sandworm_rather_than_summon_it() -> None:
+    """A sandworm is called, "모래벌레를 불러서" [Main p. 10] [Main p. 20]:
+    소환 is kept for recalling Agents and Spies (docs/rules/glossary-ko.md).
+    The display-text guard (tests/support/ko_text.py) reads Python text
+    only, so this one covers the label tables of static/labels.js."""
+    wrong = [
+        f"{table}.{key}: {text!r}"
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+        if "{sandworm" in text and "소환" in text
+    ]
+    assert not wrong, "; ".join(wrong)
+
+
 # Catalog names the glossary still gives in Korean where they are a status
 # rather than the board space: the High Council seat (원로회) and the
 # Swordmaster (소드마스터) [Main p. 17]. The guard above strips catalog
