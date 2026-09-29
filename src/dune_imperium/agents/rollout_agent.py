@@ -111,6 +111,21 @@ def player_value(player: PlayerState, *, deck_by_value: bool = True) -> float:
     )
 
 
+def past_horizon(state: GameState, horizon: int) -> bool:
+    """Whether a playout has reached its horizon round and may stop.
+
+    A round's Round Start runs reveal, then any Control defense, then the
+    five-card draw [Main p. 8] [Main p. 20]; with a defender the engine
+    stops between them in ``ROUND_START`` with the round number already
+    advanced and every hand still undrawn (OQ-072). A leaf there would be
+    read before the draw, a state no seat otherwise sees at the horizon, so
+    the playout carries on through the defense and stops once the hands
+    are drawn, where it stopped before the defense moved ahead of the draw.
+    """
+
+    return state.round_number >= horizon and state.phase is not GamePhase.ROUND_START
+
+
 def position_value(
     state: GameState,
     seat: int,
@@ -263,7 +278,7 @@ class RolloutAgent:
         chance = ChanceResolver(seed=seeds[0])
         policy = HeuristicAgent(seed=seeds[1])
         for _ in range(self.max_rollout_steps):
-            if state.phase is GamePhase.FINISHED or state.round_number >= horizon:
+            if state.phase is GamePhase.FINISHED or past_horizon(state, horizon):
                 break
             decision = engine.current_decision(state)
             if isinstance(decision, ChanceDecision):

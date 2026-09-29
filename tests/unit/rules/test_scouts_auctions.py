@@ -32,10 +32,12 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.scouts import _next_draw
 from dune_imperium.rules.scouts_auctions import (
     close_bids,
     deploy_mercenaries,
     rank_bids,
+    reveal_market,
 )
 from dune_imperium.server.session_log import log_step, reveals_hidden_information
 from dune_imperium.server.sessions import _log_entry_json
@@ -43,6 +45,7 @@ from dune_imperium.simulation.invariants import check_observation_privacy
 
 ENGINE = UprisingRulesEngine()
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
+IMMORTALITY = RulesetConfig(arrakeen_scouts=True, immortality=True)
 
 
 def _base(
@@ -220,22 +223,94 @@ def test_mercenaries_retreat_goes_to_the_lowest_positive_bid(
     assert _offered_retreats(state) == offered
 
 
-def test_mercenaries_lowest_positive_bidder_without_troops_retreats_nothing() -> None:
-    """OQ-074 (a), (c): the lowest positive bid stays the lowest when its
-    seat's supply held no troop to deploy; that seat has nothing to retreat
-    and the higher bidder is still not offered a retreat."""
+def _with_troops(
+    state: GameState, seat: int, supply: int, specimens: int = 0
+) -> GameState:
+    """``seat`` holds ``supply`` supply troops and ``specimens`` specimens;
+    the rest of its 12 wait in the garrison."""
 
-    state = replace(_base(), scouts_item="mercenaries")
-    empty = replace(
-        state.players[1],
-        troops_supply=0,
-        troops_garrison=state.players[1].troops_garrison
-        + state.players[1].troops_supply,
+    owner = state.players[seat]
+    total = owner.troops_supply + owner.troops_garrison + owner.specimens
+    changed = replace(
+        owner,
+        troops_supply=supply,
+        specimens=specimens,
+        troops_garrison=total - supply - specimens,
     )
-    state = replace(state, players=(state.players[0], empty, *state.players[2:]))
-    result = deploy_mercenaries(state, "mercenaries:0=0,1=1,2=2,3=0")
-    assert [p.troops_conflict for p in result.state.players] == [0, 0, 2, 0]
-    assert not any(t.startswith("retreat:") for t in result.state.scouts_tasks)
+    players = list(state.players)
+    players[seat] = changed
+    return replace(state, players=tuple(players))
+
+
+def _bid_counts(state: GameState, seat: int) -> list[int]:
+    return [
+        int(dict(a.arguments)["count"])
+        for a in ENGINE.legal_actions(state, seat)
+        if a.action_id == "scouts_bid"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("config", "supply", "specimens", "spice", "counts"),
+    [
+        (SCOUTS, 1, 0, 6, [0, 1]),
+        (SCOUTS, 0, 0, 6, [0]),
+        (SCOUTS, 9, 0, 2, [0, 1, 2]),  # spice is the lower cap
+        (SCOUTS, 9, 0, 6, [0, 1, 2, 3]),  # Mercenaries' own cap
+        (IMMORTALITY, 1, 1, 6, [0, 1, 2]),
+        (IMMORTALITY, 0, 1, 6, [0, 1]),
+        (IMMORTALITY, 1, 5, 6, [0, 1, 2, 3]),
+    ],
+)
+def test_mercenaries_bid_cap_counts_the_troops_a_seat_can_send(
+    config: RulesetConfig, supply: int, specimens: int, spice: int, counts: list[int]
+) -> None:
+    """OQ-074 (a), user ruling 2026-09-29: the Mercenaries bid is capped at
+    the lower of the seat's spice, 3 and its troops, supply troops plus its
+    specimens with Immortality."""
+
+    base = _with_troops(_base(config=config), 0, supply, specimens)
+    owner = base.players[0]
+    rich = replace(owner, resources=replace(owner.resources, spice=spice))
+    state = _draw(replace(base, players=(rich, *base.players[1:])), "mercenaries")
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_BID
+    assert _owner(state) == 0
+    assert _bid_counts(state, 0) == counts
+
+
+def test_mercenaries_every_spice_bid_is_one_troop_in_the_conflict() -> None:
+    """OQ-074 (a): with the cap on the troops a seat can send, a seat never
+    pays for a troop it does not deploy. Seat 1 holds one supply troop, so
+    its highest bid is 1 and it deploys it."""
+
+    state = _draw(_with_troops(_base(), 1, 1), "mercenaries")
+    spice = state.players[1].resources.spice
+    state = _bid_all(state, {0: 0, 1: 1, 2: 0, 3: 0})
+    assert state.players[1].troops_conflict == 1
+    assert state.players[1].troops_supply == 0
+    assert state.players[1].resources.spice == spice - 1
+
+
+def test_mercenaries_refuses_a_bid_beyond_the_seats_troops() -> None:
+    """A bid above ``bid_cap`` cannot happen by the rules; the deployment
+    says so instead of deploying less than was paid for."""
+
+    state = _with_troops(replace(_base(), scouts_item="mercenaries"), 1, 0)
+    with pytest.raises(RuntimeError, match="exceeds its seat's troops"):
+        deploy_mercenaries(state, "mercenaries:0=0,1=1,2=2,3=0")
+
+
+def test_determinize_keeps_a_mercenaries_bid_within_the_troop_cap() -> None:
+    state = _draw(_with_troops(_base(), 0, 1), "mercenaries")
+    state = _act(state, "scouts_bid", count=1)
+    state = _act(state, "confirm_scouts_bid")
+    samples = {
+        amount
+        for seed in range(20)
+        for seat, amount, _ in determinize(state, 1, random.Random(seed)).scouts_bids
+        if seat == 0
+    }
+    assert samples == {0, 1}
 
 
 def test_critical_moment_calls_are_open_and_distinct() -> None:
@@ -348,33 +423,53 @@ def test_critical_moment_second_place_may_decline_and_all_passes_clear() -> None
     assert state.scouts_market_cards == ()
 
 
-def test_critical_moment_reveals_what_a_short_deck_has() -> None:
+@pytest.mark.parametrize(("deck_size", "offered"), [(1, False), (2, True)])
+def test_critical_moment_mid_leaves_the_draw_while_the_deck_is_short(
+    deck_size: int, offered: bool
+) -> None:
+    """OQ-087 (b), user ruling 2026-09-29: an auction that cannot happen in
+    full leaves the pool, so the mid Critical Moment is drawn only while the
+    Imperium deck holds the two cards it reveals."""
+
     base = _base()
-    state = _draw(
-        replace(base, imperium_deck=base.imperium_deck[:1]), "critical_moment_mid"
+    state = replace(base, imperium_deck=base.imperium_deck[:deck_size])
+    draw = _next_draw(state)
+    assert draw is not None and draw.step == "mid_auction"
+    assert ("critical_moment_mid" in draw.options) is offered
+    assert {"highest_bidder_mid", "mercenaries", "spies_for_hire_mid"} <= set(
+        draw.options
     )
-    assert len(state.scouts_market_cards) == 1
+
+
+@pytest.mark.parametrize(("deck_size", "offered"), [(2, False), (3, True)])
+def test_critical_moment_late_leaves_the_draw_while_the_deck_is_short(
+    deck_size: int, offered: bool
+) -> None:
+    """OQ-087 (b): the late Critical Moment reveals three cards."""
+
+    base = replace(
+        _base(round_number=8), scouts_mid_auction_round=5, scouts_late_auction_round=8
+    )
+    state = replace(base, imperium_deck=base.imperium_deck[:deck_size])
+    draw = _next_draw(state)
+    assert draw is not None and draw.step == "late_auction"
+    assert ("critical_moment_late" in draw.options) is offered
+    assert len(draw.options) >= 2
+
+
+def test_critical_moment_with_an_empty_deck_is_never_drawn() -> None:
+    base = _base()
     empty = replace(base, imperium_deck=(), imperium_removed=base.imperium_deck)
     state = _draw(empty, "critical_moment_mid")
-    # No card, no calls: the round's event draw comes next.
-    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_DRAW
+    # The draw could not pick it: another auction was revealed instead.
+    assert state.scouts_item != "critical_moment_mid"
     assert state.scouts_market_cards == ()
-
-
-def test_mercenaries_deploy_only_what_the_supply_holds() -> None:
-    state = _draw(_base(), "mercenaries")
+    # The reveal itself refuses a short deck (it cannot be reached).
     short = replace(
-        state.players[1],
-        troops_supply=1,
-        troops_garrison=state.players[1].troops_garrison
-        + state.players[1].troops_supply
-        - 1,
+        base, scouts_item="critical_moment_mid", imperium_deck=base.imperium_deck[:1]
     )
-    state = replace(state, players=(state.players[0], short, *state.players[2:]))
-    spice = state.players[1].resources.spice
-    state = _bid_all(state, {0: 0, 1: 3, 2: 0, 3: 0})
-    assert state.players[1].troops_conflict == 1
-    assert state.players[1].resources.spice == spice - 3
+    with pytest.raises(RuntimeError, match="short Imperium deck"):
+        reveal_market(short)
 
 
 def test_the_heuristic_bids_once_then_confirms() -> None:
@@ -427,13 +522,17 @@ def test_auction_rewards_resolve_by_place_then_turn_order() -> None:
     )
 
 
-def test_close_bids_only_takes_spice_and_queues_mercenaries_tasks() -> None:
+@pytest.mark.parametrize("config", [SCOUTS, IMMORTALITY])
+def test_close_bids_only_takes_spice_and_queues_mercenaries_tasks(
+    config: RulesetConfig,
+) -> None:
     """OQ-074: Mercenaries deploys later (``deploy_mercenaries``);
-    ``close_bids`` itself only pays each seat's bid and queues its tasks.
-    Without Immortality no ``top_up`` task is queued."""
+    ``close_bids`` itself only pays each seat's bid and queues the one
+    deployment task. With Immortality too: the specimen top-up is part of
+    the deployment (OQ-074 (a))."""
 
     state = replace(
-        _base(),
+        _base(config=config),
         scouts_item="mercenaries",
         scouts_bids=((0, 3, True), (1, 0, True), (2, 0, True), (3, 0, True)),
     )
@@ -442,32 +541,49 @@ def test_close_bids_only_takes_spice_and_queues_mercenaries_tasks() -> None:
     assert result.state.players[0].resources.spice == spice - 3
     assert result.state.players[0].troops_conflict == 0
     assert result.state.scouts_tasks == ("mercenaries:0=3,1=0,2=0,3=0",)
-    assert not any(task.startswith("top_up:") for task in result.state.scouts_tasks)
 
 
-def test_top_up_offers_the_specimen_shortfall_before_deploying() -> None:
-    """Immortality p. 8, user ruling 2026-09-29 (OQ-074 (c)): a seat short of
-    supply troops for its Mercenaries bid may return specimens first, up to
-    the shortfall; after returning them all, Mercenaries deploys the bid in
-    full."""
+def test_mercenaries_returns_the_specimen_shortfall_by_itself() -> None:
+    """OQ-074 (a), user ruling 2026-09-29: the bid counts specimens, so the
+    deployment returns a seat's shortfall of specimens to its supply by
+    itself ("at any time" [Immortality p. 8]), one ``specimen_returned``
+    event each, and deploys the whole bid; no seat is asked. Seat 0 (supply
+    1, specimens 2) bids 3 and returns 2; seat 1 (supply 1, specimens 5)
+    bids 2 and returns only its shortfall of 1."""
 
-    config = RulesetConfig(arrakeen_scouts=True, immortality=True)
-    base = _base(config=config)
-    seat = replace(base.players[0], troops_supply=1, troops_garrison=9, specimens=2)
-    state = _draw(replace(base, players=(seat, *base.players[1:])), "mercenaries")
+    base = _base(config=IMMORTALITY)
+    base = _with_troops(_with_troops(base, 0, 1, 2), 1, 1, 5)
+    state = _draw(base, "mercenaries")
+    before = len(state.event_log)
+    state = _bid_all(state, {0: 3, 1: 2, 2: 0, 3: 0})
+    seat0, seat1 = state.players[:2]
+    assert (seat0.troops_conflict, seat0.troops_supply, seat0.specimens) == (3, 0, 0)
+    assert (seat1.troops_conflict, seat1.troops_supply, seat1.specimens) == (2, 0, 4)
+    returned = [
+        dict(e.payload)["player"]
+        for e in state.event_log[before:]
+        if e.kind == "specimen_returned"
+    ]
+    assert returned == [0, 0, 1]
+    deployed = {
+        dict(e.payload)["player"]: dict(e.payload)["troops"]
+        for e in state.event_log[before:]
+        if e.kind == "scouts_mercenaries_deployed"
+    }
+    assert deployed == {0: 3, 1: 2, 2: 0, 3: 0}
+    # Seat 1 bid the least of the positive bids: its retreat comes next.
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_RETREAT
+    assert _owner(state) == 1
+
+
+def test_mercenaries_without_a_shortfall_returns_no_specimen() -> None:
+    base = _with_troops(_base(config=IMMORTALITY), 0, 5, 2)
+    state = _draw(base, "mercenaries")
+    before = len(state.event_log)
     state = _bid_all(state, {0: 3, 1: 0, 2: 0, 3: 0})
-    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_TOP_UP
-    assert _owner(state) == 0
-    counts = sorted(
-        dict(a.arguments)["count"]
-        for a in ENGINE.legal_actions(state, 0)
-        if a.action_id == "scouts_return_specimens"
-    )
-    assert counts == [0, 1, 2]
-    state = _act(state, "scouts_return_specimens", count=2)
+    assert state.players[0].specimens == 2
     assert state.players[0].troops_conflict == 3
-    assert state.players[0].troops_supply == 0
-    assert state.players[0].specimens == 0
+    assert not any(e.kind == "specimen_returned" for e in state.event_log[before:])
 
 
 def test_mercenaries_retreat_advances_chanis_tactics_token() -> None:
@@ -490,15 +606,14 @@ def test_mercenaries_retreat_advances_chanis_tactics_token() -> None:
 
 
 def test_specimen_top_up_covers_every_scouts_recruit_and_parking_count() -> None:
-    """MAX_SPECIMEN_TOP_UP bounds every specimen top-up the rules offer:
-    Mercenaries' own cap, every RecruitTroops/RecruitToConflict reward in the
-    Scouts content, and every mission's parked troop count (user ruling
-    2026-09-29)."""
+    """MAX_SPECIMEN_TOP_UP bounds every specimen top-up the rules offer as
+    an action: every RecruitTroops/RecruitToConflict reward in the Scouts
+    content and every mission's parked troop count (user ruling 2026-09-29).
+    Mercenaries returns its shortfall by itself (OQ-074 (a))."""
 
     from dune_imperium.content.arrakeen_scouts import (
         AUCTIONS,
         EVENTS,
-        MAX_MERCENARIES_BID,
         MAX_SPECIMEN_TOP_UP,
         SALES,
         SUBCOMMITTEES,
@@ -506,8 +621,6 @@ def test_specimen_top_up_covers_every_scouts_recruit_and_parking_count() -> None
     from dune_imperium.content.arrakeen_scouts.types import RecruitToConflict
     from dune_imperium.content.uprising.effect_dsl import RecruitTroops
     from dune_imperium.rules.scouts_missions import _PARKING
-
-    assert MAX_SPECIMEN_TOP_UP >= MAX_MERCENARIES_BID
 
     options = [
         option

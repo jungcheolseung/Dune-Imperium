@@ -4,10 +4,11 @@ Sealed auctions (To The Highest Bidder, Spies for Hire, CHOAM Negotiations,
 Competitive Study, Mercenaries): each seat in turn order picks a bid with
 ``scouts_bid(count)``, as often as it likes, and confirms it with
 ``confirm_scouts_bid`` (OQ-073). The range is 0 to the lower of the seat's
-own currency and the cap, so the offered counts say nothing of the other
-bids. A bid is its seat's alone (``core.observation.secret_bid_id`` in
-``known_card_seats``) until the last seat confirms; then every bid is
-revealed at once and ranked as the app does [Scouts schedule]:
+own currency and the cap (Mercenaries: and the seat's troops, OQ-074 (a)),
+so the offered counts say nothing of the other bids. A bid is its seat's
+alone (``core.observation.secret_bid_id`` in ``known_card_seats``) until
+the last seat confirms; then every bid is revealed at once and ranked as
+the app does [Scouts schedule]:
 
 - competition ranking from the highest bid (equal bids share a rank);
 - a seat wins when its rank is within the auction's places and it bid more
@@ -17,9 +18,11 @@ revealed at once and ranked as the app does [Scouts schedule]:
   and sends one supply troop per spice to the Conflict; the seats with the
   lowest bid of 1 or more may retreat some or all of those troops to their
   garrison (a 0 is not a bid: it neither retreats nor blocks, OQ-074 (c),
-  user ruling 2026-09-29). With Immortality a seat short of supply troops
-  may first return specimens to it ("at any time" [Immortality p. 8], user
-  ruling 2026-09-29), and the retreat is the game's retreat
+  user ruling 2026-09-29). A Mercenaries bid is also capped at the troops
+  the seat can send, its supply plus (Immortality) its specimens, and a seat
+  whose bid exceeds its supply returns the shortfall of specimens to it by
+  itself before deploying (OQ-074 (a), user ruling 2026-09-29; "at any
+  time" [Immortality p. 8]). The retreat is the game's retreat
   (``retreat_units``: Chani's Tactics token counts it, OQ-074 (c)).
 
 Winners' rewards resolve by place, first place first, and seats sharing a
@@ -30,8 +33,9 @@ revealed (``GameState.scouts_market_cards``), each seat from the First
 Player calls once an amount of spice nobody has called yet, or passes
 (``scouts_call(count)``, 0 = pass). The highest caller pays and takes one
 of the cards into hand; in the late auction the second highest may buy one
-of the rest the same way. What is left is removed from the game (OQ-083,
-OQ-087).
+of the rest the same way. What is left, all of it when every seat passes,
+is removed from the game (OQ-083, OQ-087). It is not drawn while the deck
+holds fewer cards than it reveals (OQ-087 (b), user ruling 2026-09-29).
 """
 
 from dataclasses import replace
@@ -63,7 +67,6 @@ _BID_FRAME: Final = "Scouts bid frame"
 _CALL_FRAME: Final = "Scouts call frame"
 _TAKE_FRAME: Final = "Scouts market frame"
 _RETREAT_FRAME: Final = "Mercenaries retreat frame"
-_TOP_UP_FRAME: Final = "Mercenaries top-up frame"
 
 
 def auction_tasks(auction_id: str, order: tuple[int, ...]) -> tuple[str, ...]:
@@ -79,11 +82,30 @@ def _currency(state: GameState, player: int, auction_id: str) -> int:
     return int(getattr(resources, AUCTIONS_BY_ID[auction_id].currency))
 
 
+def mercenary_troops(state: GameState, player: int) -> int:
+    """The troops ``player`` can send to Mercenaries: its supply, plus its
+    specimens with Immortality (a specimen returns to the supply "at any
+    time" [Immortality p. 8])."""
+
+    owner = state.players[player]
+    return owner.troops_supply + (owner.specimens if state.config.immortality else 0)
+
+
 def bid_cap(state: GameState, player: int) -> int:
-    """The highest bid ``player`` may make in the running sealed auction."""
+    """The highest bid ``player`` may make in the running sealed auction.
+
+    The lower of the seat's currency and the auction's cap; Mercenaries also
+    caps it at the troops the seat can send (``mercenary_troops``), so every
+    spice a seat pays puts a troop in the Conflict (OQ-074 (a), user ruling
+    2026-09-29). Supply troops and specimens are public, so the offered
+    counts still say nothing of the other bids.
+    """
 
     auction = AUCTIONS_BY_ID[state.scouts_item]
-    return min(_currency(state, player, auction.auction_id), auction.max_bid)
+    cap = min(_currency(state, player, auction.auction_id), auction.max_bid)
+    if auction.kind is AuctionKind.MERCENARIES:
+        cap = min(cap, mercenary_troops(state, player))
+    return cap
 
 
 def rank_bids(bids: dict[int, int], places: int) -> dict[int, int]:
@@ -113,7 +135,7 @@ def offer_bid(
 
 
 def legal_bid_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
-    """Any count the seat's own currency covers, and the confirmation."""
+    """Any count up to ``bid_cap``, and the confirmation."""
 
     frame = owned_top_frame(state, FrameKind.SCOUTS_BID, player)
     if frame is None:
@@ -192,12 +214,7 @@ def close_bids(state: GameState, auction_id: str, order: tuple[int, ...]) -> Rul
                 resources=replace(owner.resources, spice=owner.resources.spice - paid),
             )
         tasks = [
-            *(
-                f"top_up:{seat}:{bids[seat]}"
-                for seat in order
-                if state.config.immortality and bids.get(seat, 0)
-            ),
-            "mercenaries:" + ",".join(f"{seat}={bids.get(seat, 0)}" for seat in order),
+            "mercenaries:" + ",".join(f"{seat}={bids.get(seat, 0)}" for seat in order)
         ]
     else:
         winners = rank_bids({seat: bids.get(seat, 0) for seat in order}, auction.places)
@@ -255,69 +272,23 @@ def run_auction_reward(state: GameState, task: str) -> RuleResult:
 # --- Mercenaries ----------------------------------------------------------------------
 
 
-def _top_up_limit(state: GameState, player: int, needed: int) -> int:
-    owner = state.players[player]
-    short = needed - owner.troops_supply
-    return min(short, owner.specimens) if short > 0 else 0
-
-
-def offer_top_up(state: GameState, task: str) -> RuleResult:
-    """Let a seat short of supply troops return specimens before deploying."""
-
-    seat, needed = (int(part) for part in task.removeprefix("top_up:").split(":"))
-    if _top_up_limit(state, seat, needed) < 1:
-        return RuleResult(state=state)
-    frame = DecisionFrame(
-        kind=FrameKind.SCOUTS_TOP_UP,
-        frame_id=f"round:{state.round_number}:scouts:mercenaries:top_up:{seat}",
-        decision=PlayerDecision(
-            owner=seat, prompt="Return specimens to your supply before deploying"
-        ),
-        context=(("needed", needed), ("player", seat)),
-    )
-    return RuleResult(state=state.push_decision(frame))
-
-
-def legal_top_up_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
-    frame = owned_top_frame(state, FrameKind.SCOUTS_TOP_UP, player)
-    if frame is None:
-        return ()
-    needed = context_int(dict(frame.context), "needed", owner=_TOP_UP_FRAME)
-    return tuple(
-        DomainAction(
-            action_id="scouts_return_specimens",
-            actor=player,
-            arguments=(("count", count),),
-        )
-        for count in range(_top_up_limit(state, player, needed) + 1)
-    )
-
-
-def apply_top_up(state: GameState, action: DomainAction) -> RuleResult:
-    if action not in legal_top_up_actions(state, action.actor):
-        raise ValueError("action is not a legal specimen return")
-    count = dict(action.arguments)["count"]
-    assert isinstance(count, int)
-    return return_specimens(
-        state.pop_decision(),
-        action.actor,
-        count,
-        source=f"round:{state.round_number}:scouts:mercenaries:top_up:{action.actor}",
-    )
-
-
 def deploy_mercenaries(state: GameState, task: str) -> RuleResult:
     """Send each seat's paid troops to the Conflict, then queue the lowest
     bidders' retreats.
+
+    Every spice bid is one troop: ``bid_cap`` never lets a bid exceed the
+    seat's supply plus (Immortality) its specimens, and a seat whose bid
+    exceeds its supply returns the shortfall of specimens to it first, by
+    itself, one ``specimen_returned`` event each (OQ-074 (a), user ruling
+    2026-09-29; "at any time" [Immortality p. 8]).
 
     The app lets the seat that bid the least spice retreat any of those
     troops to its garrison (``spice.auction.description.mercenaries``).
     User ruling 2026-09-29 (OQ-074 (c)): a 0 is not a bid, so the lowest
     bid is the lowest among the seats that bid 1 or more, and every seat
     tied at it may retreat the troops it put in; a seat that bid 0 neither
-    retreats nor blocks the others. A lone positive bidder is therefore also the lowest
-    and may retreat; when nobody bid more than 0 nobody retreats. A lowest
-    bidder whose supply held no troop has nothing to retreat.
+    retreats nor blocks the others. A lone positive bidder is therefore also
+    the lowest and may retreat; when nobody bid more than 0 nobody retreats.
     """
 
     paid_by_seat = [
@@ -327,38 +298,44 @@ def deploy_mercenaries(state: GameState, task: str) -> RuleResult:
         )
     ]
     source = f"round:{state.round_number}:scouts:{state.scouts_item}"
-    players = list(state.players)
+    working = state
     events: list[GameEvent] = []
-    deployed: dict[int, int] = {}
     for seat, paid in paid_by_seat:
-        owner = players[seat]
-        troops = min(paid, owner.troops_supply)
-        players[seat] = replace(
-            owner,
-            troops_supply=owner.troops_supply - troops,
-            troops_conflict=owner.troops_conflict + troops,
+        if paid > mercenary_troops(working, seat):
+            # ``bid_cap`` counts the same troops, and nothing moves them
+            # between the bids and the deployment.
+            raise RuntimeError("a Mercenaries bid exceeds its seat's troops")
+        short = paid - working.players[seat].troops_supply
+        if short > 0:
+            topped = return_specimens(
+                working, seat, short, source=f"{source}:top_up:{seat}"
+            )
+            working = topped.state
+            events.extend(topped.events)
+        owner = working.players[seat]
+        working = replace(
+            working,
+            players=replace_player(
+                working.players,
+                replace(
+                    owner,
+                    troops_supply=owner.troops_supply - paid,
+                    troops_conflict=owner.troops_conflict + paid,
+                ),
+            ),
         )
-        deployed[seat] = troops
         events.append(
             GameEvent(
                 event_id=f"{source}:mercenaries:{seat}",
                 kind="scouts_mercenaries_deployed",
-                payload=(("paid", paid), ("player", seat), ("troops", troops)),
+                payload=(("paid", paid), ("player", seat), ("troops", paid)),
             )
         )
     bids = [(seat, paid) for seat, paid in paid_by_seat if paid > 0]
     lowest = min((paid for _, paid in bids), default=0)
-    retreats = tuple(
-        f"retreat:{seat}:{deployed[seat]}"
-        for seat, paid in bids
-        if paid == lowest and deployed[seat]
-    )
+    retreats = tuple(f"retreat:{seat}:{paid}" for seat, paid in bids if paid == lowest)
     return RuleResult(
-        state=replace(
-            state,
-            players=tuple(players),
-            scouts_tasks=(*retreats, *state.scouts_tasks),
-        ),
+        state=replace(working, scouts_tasks=(*retreats, *working.scouts_tasks)),
         events=tuple(events),
     )
 
@@ -418,10 +395,18 @@ def apply_retreat(state: GameState, action: DomainAction) -> RuleResult:
 
 
 def reveal_market(state: GameState) -> RuleResult:
-    """Reveal the deck's top cards; fewer when it runs short (OQ-087 (b))."""
+    """Reveal the Imperium deck's top two (late: three) cards.
+
+    The deck always holds them: the schedule draw leaves Critical Moment out
+    while the deck is short (OQ-087 (b), user ruling 2026-09-29;
+    ``rules.scouts._auction_draw``), and nothing draws from the deck between
+    that draw and this reveal.
+    """
 
     auction_id = state.scouts_item
-    count = min(AUCTIONS_BY_ID[auction_id].revealed_cards, len(state.imperium_deck))
+    count = AUCTIONS_BY_ID[auction_id].revealed_cards
+    if len(state.imperium_deck) < count:
+        raise RuntimeError("Critical Moment was drawn with a short Imperium deck")
     cards = state.imperium_deck[:count]
     revealed = replace(
         state,
@@ -429,9 +414,6 @@ def reveal_market(state: GameState) -> RuleResult:
         scouts_market_cards=cards,
         scouts_calls=(),
     )
-    if not cards:
-        # Nothing to bid for: the calls and the close have no work.
-        return RuleResult(state=replace(revealed, scouts_tasks=("moot",)))
     return RuleResult(
         state=revealed,
         events=(

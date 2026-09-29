@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 26
+    assert OBSERVATION_VERSION == 27
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -303,20 +303,26 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # "scouts" moved with the 2026-09-29 rulings, which change what its game
 # offers (it reveals Weirding Warfare, Moment of Revelation and a late
 # auction).
+# Re-pinned for observation v27 and the 2026-09-29 Round Start order
+# (reveal -> optional Control defense -> draw, OQ-072): every game kept
+# its vector count, so the trajectories are the same; only the vectors at
+# a Control defense decision changed (phase Round Start, hands not yet
+# drawn, no turn owner). "promo_bloodlines_tech" has no defense in its
+# game and did not move; the Scouts rule batch left "scouts" unchanged.
 _GOLDEN_DIGESTS = {
-    "base": ("ed8d94673888aa6b5912dfe42ab0a7f008e4730b267ea67ad46b7b1d00f443f0", 2572),
-    "choam": ("e7d47837d88ea30610e5a8a20fe0a81ec9699298ac5240428c1a53cb762463c6", 2972),
+    "base": ("065fd43c904ab67a65c21d0d5b41d81338880c6d883a861132773deb646161ea", 2572),
+    "choam": ("57a3a11eed5f3b0b5a9ecab205250400463fe0e2bc831dad3d8e59737f98ead8", 2972),
     "promo_bloodlines_tech": (
         "90eb2c749063dabf55630750cb65e3132739f0da7592d32bbee5967bb5f8d852",
         2772,
     ),
     "everything": (
-        "3a144388c56bcea26774516c9230215d9136023f5f8a17ca06a30316868154cd",
+        "b237d765c302ee775ef8f9821435465a9ff0f96fa95dfb980ca668e00f783292",
         3012,
     ),
-    "draft": ("9c5c2002d961fe0062a868753bb96fedcbeae15c05af31fec1f25f278a8bb7d6", 2476),
+    "draft": ("74b78ffc572d573d52b5ee711a79170f40456a932d4217f5ed3e7c4b6acd3e32", 2476),
     "scouts": (
-        "c93f53fef53b52ac401e97316881b42c9ad86f6dfe7bc4b896cc804483452d78",
+        "bc2b5bda85477514a9a8f8c37c4774a4deb6bc266fbff2a7ac19c56af481c142",
         2912,
     ),
 }

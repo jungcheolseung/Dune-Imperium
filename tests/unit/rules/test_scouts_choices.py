@@ -131,9 +131,15 @@ def test_private_stock_must_take_one_of_its_two_lines() -> None:
     assert state.players[0].resources.spice == spice + 1
 
 
-def test_crackdown_takes_the_only_loss_a_seat_can_suffer() -> None:
-    # Seat 0 has no Spy on the board: the Emperor loss is its only line, so it
-    # is taken without a decision. Seat 1 holds a Spy and Emperor Influence.
+def test_crackdown_still_asks_a_seat_with_only_one_possible_loss() -> None:
+    """OQ-071, user ruling 2026-09-29: when one of a mandatory event's two
+    lines is impossible, the seat still gets the choice, with that line
+    shown but not selectable; only a seat that can do neither is skipped.
+    Seat 0 has no Spy on the board, so the Emperor loss is its one legal
+    line. Seat 1 holds a Spy and Emperor Influence: both lines."""
+
+    from dune_imperium.display.scouts import scouts_choice_lines
+
     state = _base(
         **{
             "0": {"influence": Influence(emperor=2)},
@@ -147,16 +153,36 @@ def test_crackdown_takes_the_only_loss_a_seat_can_suffer() -> None:
         }
     )
     state = _reveal(state, "crackdown")
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CHOICE
+    assert _owner(state) == 0
+    assert state.players[0].influence.emperor == 2  # nothing taken yet
+    assert _offered(state) == [("scouts_choose_option", (("option", 1),))]
+    legal = ENGINE.legal_actions(state, 0)
+    info = scouts_choice_lines(state, 0, legal)
+    assert info is not None
+    lines = info["lines"]
+    assert isinstance(lines, list)
+    spy, emperor = lines
+    assert not spy["enabled"] and spy["reason"]
+    assert emperor["enabled"]
+    state = _act(state, "scouts_choose_option", option=1)
     assert state.players[0].influence.emperor == 1
     assert state.players[0].victory_points == 0  # dropped below 2
     assert _owner(state) == 1
     assert {action for action, _ in _offered(state)} == {"scouts_choose_option"}
+    assert len(_offered(state)) == 2
     state = _act(state, "scouts_choose_option", option=0)
     state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
     assert state.players[1].spy_post_ids == ()
     assert state.players[1].influence.emperor == 1
-    # Seats 2 and 3 can do neither: nothing happens and the turn opens.
+    # Seats 2 and 3 can do neither: they are skipped and the turn opens.
     assert _on_turn(state)
+    skipped = [
+        dict(e.payload)["player"]
+        for e in state.event_log
+        if e.kind == "scouts_choice_skipped"
+    ]
+    assert skipped == [2, 3]
 
 
 def test_political_equilibrium_lowers_the_highest_track_and_asks_on_a_tie() -> None:

@@ -67,7 +67,7 @@ SLOT_VERSION: Final = 1
 # v22 (Arrakeen Scouts) added no identity column; its new frame kinds add
 # ``decision_kind:scouts_*`` rows, and checkpoints re-link their rows by key
 # (``training.checkpoint``).
-SLOT_OBSERVATION_VERSION: Final = 26
+SLOT_OBSERVATION_VERSION: Final = 27
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

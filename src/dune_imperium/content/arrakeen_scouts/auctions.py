@@ -36,9 +36,9 @@ from dune_imperium.content.uprising.effect_dsl import (
 MAX_AUCTION_BID: Final = 99
 # Mercenaries' own cap: 0-3 spice, one troop each.
 MAX_MERCENARIES_BID: Final = 3
-# The most specimens one Immortality top-up returns before a Scouts recruit,
-# a Mercenaries deployment or a mission's parking: the most troops any of
-# them takes at once (a test checks each).
+# The most specimens one Immortality top-up returns before a Scouts recruit
+# or a mission's parking: the most troops any of them takes at once (a test
+# checks each). Mercenaries returns its shortfall by itself (OQ-074 (a)).
 MAX_SPECIMEN_TOP_UP: Final = 3
 
 _MID: Final = (5, 6)
@@ -231,7 +231,9 @@ SALES: Final[tuple[ScoutsSale, ...]] = (
     ScoutsSale(
         sale_id="shadow_warfare",
         name="Shadow Warfare",
-        # Icon-only in the app: read left of the arrow as the cost.
+        # Left of the arrow is the cost. A text line of the app adds that
+        # every troop this sale recruits goes straight into the Conflict
+        # (``spice.sale.description.shadowwarfare2``): RecruitToConflict.
         options=(
             ScoutsOption(
                 costs=(RecallSpy(1),),

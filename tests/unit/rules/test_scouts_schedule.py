@@ -441,30 +441,59 @@ def test_clear_the_market_replaces_the_row_and_removes_the_old_one() -> None:
 
 
 def test_clear_the_market_with_choam_shuffles_the_old_contracts_into_the_bank() -> None:
+    """The CHOAM variant removes and replaces both face-up Contracts and
+    mixes the old pair into the face-down supply (``spice.event.description
+    .clearthemarket2``). OQ-083, user ruling 2026-09-29: the old pair goes
+    into the bank first, then the two face-up Contracts are dealt from the
+    shuffled whole, so one chance frame shuffles the bank and the old pair
+    together."""
+
+    engine = UprisingRulesEngine()
+    start = engine.reset(SCOUTS_CHOAM, 4)
+    old, bank = start.face_up_contract_ids, start.contract_bank
+    assert len(old) == 2 and len(bank) > 2
+    state = _reveal(start, engine, "clear_the_market_choam")
+    step, decision = _draw_frame(state)
+    assert step == "contract_shuffle"
+    assert sorted(decision.options) == sorted((*bank, *old))
+    assert decision.count == len(bank) + 2
+    # An old Contract may come back face up: the deal is from the whole.
+    shuffled = (old[1], *bank, old[0])
+    state = engine.apply(
+        state, ChanceOutcome(decision_id=decision.decision_id, values=shuffled)
+    ).state
+    assert state.face_up_contract_ids == (old[1], bank[0])
+    assert state.contract_bank == (*bank[1:], old[0])
+    assert state.decision_stack[-1].kind == FrameKind.TURN
+    (cleared,) = [e for e in state.event_log if e.kind == "scouts_contracts_cleared"]
+    assert dict(cleared.payload) == {
+        "dealt": f"{old[1]},{bank[0]}",
+        "removed": ",".join(old),
+    }
+
+
+def test_clear_the_market_with_choam_deals_two_from_a_random_shuffle() -> None:
     engine = UprisingRulesEngine()
     start = engine.reset(SCOUTS_CHOAM, 4)
     old, bank = start.face_up_contract_ids, start.contract_bank
     state = _reveal(start, engine, "clear_the_market_choam")
-    # The shuffle is a recorded chance frame over the rest of the bank and
-    # the old pair [Scouts event: Clear the Market].
-    step, decision = _draw_frame(state)
-    assert step == "contract_shuffle"
-    assert set(decision.options) == {*bank[2:], *old}
-    assert decision.count == len(bank)
     state = _resolve_chance(engine, state, ChanceResolver(seed=9))
-    assert state.face_up_contract_ids == bank[:2]
-    assert sorted(state.contract_bank) == sorted((*bank[2:], *old))
+    assert len(state.face_up_contract_ids) == 2
+    assert sorted((*state.face_up_contract_ids, *state.contract_bank)) == sorted(
+        (*bank, *old)
+    )
     assert state.decision_stack[-1].kind == FrameKind.TURN
 
 
 @pytest.mark.parametrize("bank_size", [1, 0])
-def test_clear_the_market_with_choam_always_removes_the_old_contracts(
+def test_clear_the_market_with_choam_on_a_short_bank_still_deals_two(
     bank_size: int,
 ) -> None:
-    # The CHOAM variant replaces both face-up Contracts and mixes the old
-    # pair into the face-down supply (``spice.event.description.
-    # clearthemarket2``). OQ-083 (user ruling 2026-09-29): the pair always
-    # goes; a short bank deals what it has and leaves the other slots empty.
+    """OQ-083: with the old pair mixed in first, the bank and the old pair
+    always hold two Contracts to deal while both face-up slots were full,
+    even when the bank itself is short or empty; an old Contract may come
+    back face up."""
+
     engine = UprisingRulesEngine()
     full = engine.reset(SCOUTS_CHOAM, 4)
     start = replace(full, contract_bank=full.contract_bank[:bank_size])
@@ -473,16 +502,40 @@ def test_clear_the_market_with_choam_always_removes_the_old_contracts(
     state = _reveal(start, engine, "clear_the_market_choam")
     step, decision = _draw_frame(state)
     assert step == "contract_shuffle"
-    # Nothing of the bank is left over after the deal: only the old pair
-    # is shuffled.
-    assert sorted(decision.options) == sorted(old)
-    assert decision.count == 2
-    state = _resolve_chance(engine, state, ChanceResolver(seed=9))
-    assert state.face_up_contract_ids == bank
-    assert sorted(state.contract_bank) == sorted(old)
+    assert sorted(decision.options) == sorted((*bank, *old))
+    assert decision.count == bank_size + 2
+    shuffled = (*old, *bank)
+    state = engine.apply(
+        state, ChanceOutcome(decision_id=decision.decision_id, values=shuffled)
+    ).state
+    assert state.face_up_contract_ids == old
+    assert state.contract_bank == bank
     assert state.decision_stack[-1].kind == FrameKind.TURN
-    (cleared,) = [e for e in state.event_log if e.kind == "scouts_contracts_cleared"]
-    assert dict(cleared.payload) == {"dealt": ",".join(bank), "removed": ",".join(old)}
+
+
+@pytest.mark.parametrize(("face_up", "bank_size", "dealt"), [(1, 0, 1), (0, 0, 0)])
+def test_clear_the_market_with_choam_deals_fewer_only_when_fewer_exist(
+    face_up: int, bank_size: int, dealt: int
+) -> None:
+    """OQ-083: fewer than two are dealt only when the bank and the old pair
+    together hold fewer (a face-up slot empties only once the bank is
+    empty [Main p. 16]). One lone Contract comes back face up; with none
+    anywhere the event changes nothing."""
+
+    engine = UprisingRulesEngine()
+    full = engine.reset(SCOUTS_CHOAM, 4)
+    start = replace(
+        full,
+        face_up_contract_ids=full.face_up_contract_ids[:face_up],
+        contract_bank=full.contract_bank[:bank_size],
+    )
+    old = start.face_up_contract_ids
+    state = _reveal(start, engine, "clear_the_market_choam")
+    state = _resolve_chance(engine, state, ChanceResolver(seed=9))
+    assert len(state.face_up_contract_ids) == dealt
+    assert state.face_up_contract_ids == old
+    assert state.contract_bank == ()
+    assert state.decision_stack[-1].kind == FrameKind.TURN
 
 
 @pytest.mark.parametrize(
@@ -519,19 +572,50 @@ def test_a_round_modifier_lasts_until_the_next_round(
 
 
 def test_the_scouts_step_follows_the_control_defense() -> None:
+    """Round Start is reveal, then the optional defense, then the draw.
+
+    "Each round begins by revealing a new Conflict card ... Next, each
+    player draws five cards" [Main p. 8]; the defense answers the reveal:
+    "you may deploy one troop from your supply to the Conflict" [Main p. 10]
+    [Main p. 20]. The Scouts step follows the whole Round Start, before the
+    first turn (OQ-072), so the defense is asked in Round Start with the
+    hands undrawn, and its answer draws them and leaves the step pending.
+    """
+
     engine = UprisingRulesEngine()
-    state = _at_round(engine.reset(SCOUTS, 2), 4, scouts_opening=True)
+    start = _at_round(
+        engine.reset(SCOUTS, 2),
+        4,
+        phase=GamePhase.ROUND_START,
+        scouts_opening=False,
+    )
+    assert start.first_player is not None
+    hands = tuple(player.hand for player in start.players)
+    undrawn = tuple(
+        replace(player, deck=(*player.hand, *player.deck), hand=())
+        for player in start.players
+    )
     defense = DecisionFrame(
         kind=FrameKind.CONTROL_DEFENSE,
         frame_id="round:4:control_defense",
         decision=PlayerDecision(owner=1, prompt="Deploy one troop"),
-        context=(("space_id", "arrakeen"), ("turn_owner", state.first_player or 0)),
+        context=(("space_id", "arrakeen"),),
     )
-    state = replace(state, decision_stack=(defense,))
+    state = replace(start, players=undrawn, decision_stack=(defense,))
+
     result = apply_control_defense_action(
         state, DomainAction(action_id="decline_control_defense", actor=1)
     )
+
+    assert [event.kind for event in result.events] == [
+        "control_defense_declined",
+        *["cards_drawn"] * 4,
+    ]
+    assert result.state.phase is GamePhase.PLAYER_TURNS
+    assert result.state.scouts_opening
     assert result.state.decision_stack == ()
+    assert all(len(player.hand) == 5 for player in result.state.players)
+    assert tuple(player.hand for player in result.state.players) == hands
     advanced = _advance_automatic(result).state
     step, _ = _draw_frame(advanced)
     assert step == "event"

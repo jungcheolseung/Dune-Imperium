@@ -2467,7 +2467,12 @@ def grant_hungry_for_spice(
 
     An earned draw waits (``hungry_for_spice_owed``) while a reshuffle is
     pending, since drawing would queue a second reshuffle of the same
-    discard pile; the hook pays it after a later transition.
+    discard pile; the hook pays it after a later transition. It also waits
+    through Round Start: the Control defense is answered after the reveal
+    and before "each player draws five cards" [Main p. 8] [Main p. 20], on
+    a deck the Round Start reshuffle has already filled for that draw, so
+    the card comes after the round's hand (OQ-072), like the owed Tech
+    draw (``tech.draw_owed_tech_cards``).
     """
 
     state = result.state
@@ -2480,8 +2485,9 @@ def grant_hungry_for_spice(
                 seat, hungry_for_spice_granted_turn=True, hungry_for_spice_owed=True
             )
             state = replace(state, players=replace_player(state.players, earned))
-    if state.decision_stack and isinstance(
-        state.decision_stack[-1].decision, ChanceDecision
+    if state.phase is GamePhase.ROUND_START or (
+        state.decision_stack
+        and isinstance(state.decision_stack[-1].decision, ChanceDecision)
     ):
         return RuleResult(state=state, events=result.events)
     events = list(result.events)

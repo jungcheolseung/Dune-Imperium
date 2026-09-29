@@ -14,14 +14,22 @@ from dune_imperium.agents import (
     StateAgent,
     determinize,
     make_agent,
+    rollout_agent,
 )
-from dune_imperium.agents.rollout_agent import player_value, position_value
+from dune_imperium.agents.rollout_agent import (
+    past_horizon,
+    player_value,
+    position_value,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.observation import PlayerView, observe_state
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.phases import prepare_round_start
+from dune_imperium.rules.setup import create_initial_state
 from dune_imperium.simulation.runner import run_policy_game
 
 
@@ -389,6 +397,74 @@ def test_paired_playouts_share_the_seeds_across_candidates() -> None:
     unpaired = Recording(seed=5, rollouts=2, candidates=3, paired_playouts=False)
     unpaired.choose_action_with_state(state, engine.observe(state, seat), legal)
     assert seen == [None] * 6
+
+
+def _round_start_defense() -> GameState:
+    """Round 1's Round Start stopped on the Control defense, hands undrawn.
+
+    Reveal, then the optional defense, then the five-card draw [Main p. 8]
+    [Main p. 20] (OQ-072): seat 2 controls Arrakeen as Siege of Arrakeen is
+    revealed.
+    """
+
+    setup = create_initial_state(
+        RulesetConfig(),
+        seed=71,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    ).state
+    controller = replace(setup.players[2], control_space_ids=("arrakeen",))
+    setup = replace(
+        setup,
+        players=(*setup.players[:2], controller, setup.players[3]),
+        conflict_deck=(
+            "siege_of_arrakeen",
+            *(card for card in setup.conflict_deck if card != "siege_of_arrakeen"),
+        ),
+    )
+    state = prepare_round_start(setup).state
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 1
+    assert state.decision_stack[-1].kind == FrameKind.CONTROL_DEFENSE
+    assert all(player.hand == () for player in state.players)
+    return state
+
+
+def test_the_horizon_is_not_reached_before_the_round_start_draw() -> None:
+    # The round number moves at the reveal, but the hands are drawn only
+    # after the defense; a leaf read in between would see empty hands.
+    state = _round_start_defense()
+    assert not past_horizon(state, state.round_number)
+
+    engine = UprisingRulesEngine()
+    drawn = engine.apply(state, engine.legal_actions(state, 2)[0]).state
+    assert drawn.phase is GamePhase.PLAYER_TURNS
+    assert past_horizon(drawn, drawn.round_number)
+    assert not past_horizon(drawn, drawn.round_number + 1)
+
+
+def test_a_rollout_reaching_the_horizon_is_read_after_the_round_start_draw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leaves: list[GameState] = []
+
+    def recorded(state: GameState, seat: int, **_: object) -> float:
+        leaves.append(state)
+        return 0.0
+
+    monkeypatch.setattr(rollout_agent, "position_value", recorded)
+    state = _round_start_defense()
+
+    RolloutAgent(seed=0)._rollout(state, 0, state.round_number, (0, 0))
+
+    (leaf,) = leaves
+    assert leaf.phase is GamePhase.PLAYER_TURNS
+    assert leaf.round_number == state.round_number
+    assert all(len(player.hand) == 5 for player in leaf.players)
 
 
 def test_the_untuned_rollout_variant_pins_the_first_knobs() -> None:

@@ -56,7 +56,6 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
 from dune_imperium.rules.scouts_auctions import (
-    apply_top_up,
     auction_tasks,
     clear_market,
     close_bids,
@@ -66,7 +65,6 @@ from dune_imperium.rules.scouts_auctions import (
     offer_call,
     offer_retreat,
     offer_take,
-    offer_top_up,
     reveal_market,
     run_auction_reward,
 )
@@ -101,6 +99,8 @@ _MISSION_COUNT: Final = 3
 _EVENT_ROUNDS: Final = (4, 5, 6, 7)
 _MID_ROUNDS: Final = (5, 6)
 _LATE_ROUNDS: Final = (8, 9)
+# The two face-up CHOAM Contracts [Main p. 16].
+_FACE_UP_CONTRACTS: Final = 2
 
 _DRAW_FRAME: Final = "Scouts draw frame"
 _FOUR_BONUS_FRAME: Final = "Friends Everywhere frame"
@@ -198,9 +198,10 @@ def _open_first_turn(state: GameState) -> RuleResult:
     """End the step and open the First Player's turn.
 
     The round's first turn opens without ``reset_turn_counters`` when there
-    is no Scouts step (``phases.begin_round`` resets part of it); here the
-    step may have moved any per-turn counter (a Spy recall, a completed
-    Contract), so the First Player's are all reset as their turn opens.
+    is no Scouts step (``phases.draw_round_hands``, Round Start's last step,
+    resets part of it for every seat); here the step may have moved any
+    per-turn counter (a Spy recall, a completed Contract), so the First
+    Player's are all reset as their turn opens.
     """
 
     from dune_imperium.rules.phases import turn_frame
@@ -341,12 +342,17 @@ def _auction_draw(state: GameState, *, slot: AuctionSlot) -> _Draw:
         AUCTIONS_BY_ID[auction_id].app.family
         for auction_id in revealed_of_kind(state, "auction")
     }
+    deck = len(state.imperium_deck)
     options = tuple(
         entry.auction_id
         for entry in auctions_for(state_pool(state), choam=state.config.choam_module)
         if entry.slot in (slot, AuctionSlot.EITHER)
         and entry.rounds[0] <= round_number <= entry.rounds[1]
         and entry.app.family not in taken
+        # Critical Moment cannot happen in full on a deck short of the cards
+        # it reveals, so it leaves the pool (OQ-087 (b), user ruling
+        # 2026-09-29); every other auction reveals none.
+        and deck >= entry.revealed_cards
     )
     if not options:
         raise RuntimeError("no auction can fill the schedule slot")
@@ -536,8 +542,6 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         return close_bids(state, item, turn_order(state))
     if task.startswith("auction_reward:"):
         return run_auction_reward(state, task)
-    if task.startswith("top_up:"):
-        return offer_top_up(state, task)
     if task.startswith("mercenaries:"):
         return deploy_mercenaries(state, task)
     if task.startswith("retreat:"):
@@ -660,34 +664,36 @@ def _clear_row(state: GameState) -> RuleResult:
 
 
 def _clear_contracts(state: GameState) -> RuleResult:
-    """Deal new face-up Contracts, then shuffle the old ones into the bank.
+    """Mix the old face-up Contracts into the bank, then deal two new ones.
 
-    [Scouts event: Clear the Market] (CHOAM): the old pair goes into the
-    face-down supply after the new pair is dealt from it, so the shuffle is
-    one chance frame over the rest of the bank and the old pair. The old
-    pair always goes; a short bank deals what it has and leaves the other
-    slots empty (OQ-083).
+    [Scouts event: Clear the Market] (CHOAM) removes and replaces the two
+    face-up Contracts and mixes the old pair into the face-down supply
+    (``spice.event.description.clearthemarket2``). OQ-083 (user ruling
+    2026-09-29): the old pair goes into the bank first, so one chance frame
+    shuffles the bank and the old pair together, and the face-up slots are
+    dealt from the shuffled whole (``_deal_cleared_contracts``). A dealt
+    Contract may be one of the old pair.
     """
 
-    old = state.face_up_contract_ids
-    if not old:
+    pool = (*state.contract_bank, *state.face_up_contract_ids)
+    if not pool:
         return RuleResult(state=state)
-    dealt_count = min(len(old), len(state.contract_bank))
-    pool = (*state.contract_bank[dealt_count:], *old)
     draw = _Draw(step="contract_shuffle", options=pool, count=len(pool))
     return RuleResult(state=state.push_decision(_draw_frame(state, draw)))
 
 
 def _deal_cleared_contracts(state: GameState, outcome: ChanceOutcome) -> RuleResult:
-    """Deal the new face-up Contracts; ``outcome`` is the shuffled bank.
-
-    A short bank deals fewer than it removes, possibly none (OQ-083).
-    """
+    """Deal the two face-up Contracts from ``outcome``, the shuffled bank and
+    old pair; fewer only when the two together held fewer (OQ-083)."""
 
     removed = state.face_up_contract_ids
-    dealt = state.contract_bank[: min(len(removed), len(state.contract_bank))]
+    dealt = outcome.values[:_FACE_UP_CONTRACTS]
     return RuleResult(
-        state=replace(state, face_up_contract_ids=dealt, contract_bank=outcome.values),
+        state=replace(
+            state,
+            face_up_contract_ids=dealt,
+            contract_bank=outcome.values[len(dealt) :],
+        ),
         events=(
             GameEvent(
                 event_id=f"round:{state.round_number}:scouts:clear_contracts",
@@ -772,14 +778,13 @@ def apply_four_bonus_choice(state: GameState, action: DomainAction) -> RuleResul
 
 
 def apply_scouts_return_specimens(state: GameState, action: DomainAction) -> RuleResult:
-    """Return specimens before a Scouts recruit, mission or Mercenaries
-    deployment: each frame that offers it resolves it."""
+    """Return specimens before a Scouts recruit or a mission: each frame
+    that offers it resolves it. (Mercenaries returns its shortfall by
+    itself, ``scouts_auctions.deploy_mercenaries``, OQ-074 (a).)"""
 
     kind = state.decision_stack[-1].kind if state.decision_stack else None
     if kind == FrameKind.SCOUTS_EFFECT:
         return apply_scouts_effect_action(state, action)
     if kind == FrameKind.SCOUTS_MISSION:
         return apply_mission_join(state, action)
-    if kind == FrameKind.SCOUTS_TOP_UP:
-        return apply_top_up(state, action)
     raise ValueError("no Scouts frame offers a specimen return")

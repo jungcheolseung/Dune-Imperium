@@ -101,9 +101,6 @@ class FrameKind(StrEnum):
     SCOUTS_RETREAT = "scouts_retreat"
     SCOUTS_CALL = "scouts_call"
     SCOUTS_MARKET = "scouts_market"
-    # Immortality: a seat short of supply troops for Mercenaries returns
-    # specimens first ("at any time" [Immortality p. 8]).
-    SCOUTS_TOP_UP = "scouts_top_up"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

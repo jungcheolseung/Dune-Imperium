@@ -35,7 +35,6 @@ const PROMPT_KO = {
   "Make a secret pick": "비밀 선택",
   "Choose and confirm a sealed bid": "봉인 입찰액을 골라 확정",
   "Retreat any of your Mercenaries troops": "용병 troop 후퇴",
-  "Return specimens to your supply before deploying": "투입 전에 {specimen}을 {supply}로 되돌리기",
   "Call an amount of spice or pass": "spice 호가, 또는 패스",
   "Pay your call and take a revealed card": "호가를 내고 공개된 카드 1장 가져가기",
   "Pay your call for a revealed card, or decline": "호가를 내고 공개된 카드 1장 사기, 또는 사지 않기",

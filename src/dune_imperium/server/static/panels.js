@@ -544,11 +544,18 @@ const SOLO_ACTIONS = new Set(["pick_leader"]);
    Reveal, the round change — rather than the acting seat's doing. From
    the first of these in a step, the rest of that step's events belong to
    the game too (the round-start draws follow the recall, the Victory
-   Points follow the combat reward). */
+   Points follow the combat reward).
+
+   cards_drawn is only ever the Round Start draw (rules/phases.py
+   draw_round_hands). When a revealed Conflict offers a Control defense, the
+   draw comes after it [Main p. 8] [Main p. 20], so it arrives inside the
+   controller's defense step: listing it here keeps the controller's own
+   draw (and whatever follows it in that step) out of their defense card. */
 const NEUTRAL_EVENT_KINDS = new Set([
   "leader_draft_pool_revealed",
   "leader_draft_unused",
   "conflict_revealed",
+  "cards_drawn",
   "combat_intrigue_started",
   "combat_intrigue_finished",
   "combat_reward_gained",
@@ -667,7 +674,13 @@ function neutralTitle(group) {
   if (kinds.has("conflict_won") || kinds.has("combat_reward_gained")) {
     parts.push(t("panels.neutral_combat_resolved"));
   }
-  if (kinds.has("agents_recalled") || kinds.has("conflict_revealed")) {
+  // cards_drawn is the Round Start draw; after a Control defense it lands
+  // in a card of its own, apart from the reveal [Main p. 8] [Main p. 20].
+  if (
+    kinds.has("agents_recalled") ||
+    kinds.has("conflict_revealed") ||
+    kinds.has("cards_drawn")
+  ) {
     const revealed = group.items.find(
       (item) => item.event && item.event.kind === "conflict_revealed"
     );

@@ -923,10 +923,22 @@ def draw_owed_tech_cards(result: RuleResult) -> RuleResult:
     pushed safely; the owing seat records the count and this hook draws
     once the transition has settled. A pending chance frame defers it to
     the next transition, like Hungry for Spice.
+
+    Round Start defers it too. Its order is reveal, then any Control
+    defense, then "each player draws five cards from their own deck"
+    [Main p. 8] [Main p. 20], and the Round Start reshuffle has already put
+    the discard pile beneath the deck for exactly that draw
+    (``phases.prepare_round_start``). A card drawn while the defense is
+    open would come out of the round's hand and leave the deck short of
+    five, which the draw rejects. So the owed card waits for the draw's
+    transition and comes after the hand, as it did when the reveal and the
+    draw were one transition (OQ-072).
     """
 
     state = result.state
     if not any(seat.tech_cards_owed for seat in state.players):
+        return result
+    if state.phase is GamePhase.ROUND_START:
         return result
     if state.decision_stack and isinstance(
         state.decision_stack[-1].decision, ChanceDecision

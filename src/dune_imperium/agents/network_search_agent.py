@@ -49,6 +49,7 @@ import torch
 from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.rollout_agent import past_horizon
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -331,7 +332,7 @@ class NetworkSearchAgent:
         # reversible pair runs every playout to ``max_rollout_steps``.
         taken = _Taken()
         for _ in range(self.max_rollout_steps):
-            if state.phase is GamePhase.FINISHED or state.round_number >= horizon:
+            if state.phase is GamePhase.FINISHED or past_horizon(state, horizon):
                 break
             decision = engine.current_decision(state)
             if isinstance(decision, ChanceDecision):

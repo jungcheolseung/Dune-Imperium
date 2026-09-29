@@ -1031,9 +1031,11 @@ def offer_scouts_choice(
 
     Only lines the seat can pay for, and whose cost buys something, are
     offered (``line_is_offered``). A seat that must choose and can do one
-    line only takes it; one that can do none is skipped [Scouts help].
-    ``volunteer`` is Rebuild Infrastructure's first seat that agreed to pay
-    (OQ-084).
+    line only still gets the choice, with the other line shown but not
+    selectable (``display.scouts.scouts_choice_lines``); one that can do
+    none is skipped without a choice (OQ-071, user ruling 2026-09-29)
+    [Scouts help]. ``volunteer`` is Rebuild Infrastructure's first seat
+    that agreed to pay (OQ-084).
     """
 
     affordable = _affordable(state, player, item)
@@ -1049,10 +1051,6 @@ def offer_scouts_choice(
             ),
         )
     passable = _is_passable(item)
-    if not passable and len(affordable) == 1:
-        return RuleResult(
-            state=push_scouts_effect(state, player, item, affordable[0], source=source)
-        )
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_CHOICE,
         frame_id=f"{source}:choice",

@@ -15,6 +15,7 @@ state, which the tests pin.
 import random
 from dataclasses import replace
 
+from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.core.observation import (
     peeked_card_id,
     peeked_intrigue_ids,
@@ -131,7 +132,14 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     ]
     rng.shuffle(contract_bank)
     for row in board_contracts:
-        board_cards[row] = contract_bank.pop()
+        # CHOAM Research never places Bloodlines' Immediate (OQ-090), so a
+        # board row takes the last other Contract of the shuffle.
+        index = max(
+            position
+            for position, card in enumerate(contract_bank)
+            if not contract_for_instance(card).requires_intrigue_trash
+        )
+        board_cards[row] = contract_bank.pop(index)
     contract_bank = [*revealed, *contract_bank]
     conflict_deck = list(state.conflict_deck)
     rng.shuffle(conflict_deck)
@@ -164,7 +172,8 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         else (row[0], row[1], row[2], rng.choice(pick_alternatives(state, row)))
         for row in state.scouts_secret_picks
     )
-    # An opponent's sealed bid is any amount it could have bid.
+    # An opponent's sealed bid is any amount it could have bid (``bid_cap``
+    # reads only public counts: currency, and Mercenaries' troops, OQ-074).
     bids = tuple(
         (seat, rng.randint(0, bid_cap(state, seat)), confirmed)
         if seat != observer

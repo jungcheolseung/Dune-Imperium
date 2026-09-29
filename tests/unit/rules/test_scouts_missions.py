@@ -429,36 +429,118 @@ def test_prison_planet_marker_is_taken_back_for_a_third_control() -> None:
     assert [dict(e.payload) for e in taken] == [{"player": 0, "spice_returned": 2}]
 
 
-def test_choam_research_skips_the_immediate_without_an_intrigue_card() -> None:
-    """[Bloodlines p. 2]: the Immediate cannot be taken without an Intrigue
-    card to trash; the visitor takes the next face-down card (OQ-090)."""
+_IMMEDIATE = "contract:bloodlines_immediate"
 
+
+def _bloodlines_base() -> GameState:
     config = RulesetConfig(arrakeen_scouts=True, choam_module=True, bloodlines=True)
     base = _base(config)
-    immediate = "contract:bloodlines_immediate"
-    assert immediate in base.contract_bank
-    other = next(c for c in base.contract_bank if c != immediate)
-    rest = tuple(c for c in base.contract_bank if c not in (immediate, other))
+    assert _IMMEDIATE in base.contract_bank
+    return base
+
+
+def test_choam_research_never_places_the_immediate() -> None:
+    """OQ-090, user ruling 2026-09-29: Bloodlines' Immediate (taken only by
+    trashing an Intrigue card [Bloodlines p. 2]) never comes out through
+    this mission. CHOAM Research places the bank's first two other
+    Contracts and the Immediate keeps its place in the bank."""
+
+    base = _bloodlines_base()
+    others = tuple(c for c in base.contract_bank if c != _IMMEDIATE)
+    first, second, *rest = others
     empty_handed = replace(base.players[0], intrigue_cards=())
     state = _reveal(
         replace(
             base,
-            contract_bank=(immediate, other, *rest),
+            contract_bank=(_IMMEDIATE, first, second, *rest),
             players=(empty_handed, *base.players[1:]),
         ),
         "choam_research",
     )
+    assert [card for _, _, card in state.scouts_goods_cards] == [first, second]
+    assert state.contract_bank == (_IMMEDIATE, *rest)
+    # A seat without an Intrigue card takes the next card like any other.
     state = _visit(_turn_for(state), "research_station")
-    assert other in state.players[0].active_contract_ids + (
+    assert first in state.players[0].active_contract_ids + (
         state.players[0].completed_contract_ids
     )
-    assert [card for _, _, card in state.scouts_goods_cards] == [immediate]
-    # Only the Immediate is left: no mission icon for a seat without Intrigue.
-    state = _send_agent(
-        replace(_turn_for(state), players=(empty_handed, *state.players[1:])),
-        "research_station",
+    assert [card for _, _, card in state.scouts_goods_cards] == [second]
+    assert state.decision_stack[-1].kind != FrameKind.CONTRACT_INTRIGUE_TRASH
+
+
+def test_determinize_never_deals_the_immediate_to_the_research_station() -> None:
+    """OQ-090: a sampled world must be one the rules can produce, so the
+    board's face-down Contracts are redealt from the bank without the
+    Immediate; the Contracts as a whole are conserved."""
+
+    import random
+
+    base = _bloodlines_base()
+    others = tuple(c for c in base.contract_bank if c != _IMMEDIATE)
+    state = _reveal(
+        replace(base, contract_bank=(*others[:3], _IMMEDIATE, *others[3:])),
+        "choam_research",
     )
-    assert _no_mission_icon(state)
+    before = sorted(
+        (*state.contract_bank, *(c for _, _, c in state.scouts_goods_cards))
+    )
+    for seed in range(40):
+        sampled = determinize(state, 1, random.Random(seed))
+        board = [c for _, _, c in sampled.scouts_goods_cards]
+        assert len(board) == 2 and _IMMEDIATE not in board
+        assert _IMMEDIATE in sampled.contract_bank
+        after = sorted((*sampled.contract_bank, *board))
+        assert after == before
+
+
+def test_emperors_schemes_reshuffles_a_short_intrigue_deck_first() -> None:
+    """OQ-078, user ruling 2026-09-29: with fewer than two Intrigue cards in
+    the deck the discard pile is shuffled into a new deck first ("shuffle
+    the discarded Intrigue cards to form a new deck" [FAQ p. 2]) through
+    the engine's Intrigue reshuffle chance frame; the new deck forms under
+    the card still on top, and the mission then places two."""
+
+    base = _base()
+    deck = base.intrigue_deck
+    top, discard, rest = deck[0], deck[1:6], deck[6:]
+    state = replace(
+        base, intrigue_deck=(top,), intrigue_discard=discard, intrigue_trash=rest
+    )
+    state = _reveal(state, "emperors_schemes")
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.INTRIGUE_RESHUFFLE
+    shuffle = frame.decision
+    assert isinstance(shuffle, ChanceDecision)
+    assert sorted(shuffle.options) == sorted(discard)
+    assert shuffle.count == len(discard)
+    assert state.scouts_goods_cards == ()
+    order = tuple(reversed(discard))
+    state = ENGINE.apply(
+        state, ChanceOutcome(decision_id=shuffle.decision_id, values=order)
+    ).state
+    assert tuple(card for _, _, card in state.scouts_goods_cards) == (top, order[0])
+    assert state.intrigue_deck == order[1:]
+    assert state.intrigue_discard == ()
+    assert any(e.kind == "intrigue_discard_shuffled" for e in state.event_log)
+    assert state.decision_stack[-1].kind == FrameKind.TURN
+
+
+@pytest.mark.parametrize("deck_size", [0, 1])
+def test_emperors_schemes_places_what_there_is_with_both_piles_short(
+    deck_size: int,
+) -> None:
+    base = _base()
+    deck = base.intrigue_deck
+    state = replace(
+        base,
+        intrigue_deck=deck[:deck_size],
+        intrigue_discard=(),
+        intrigue_trash=deck[deck_size:],
+    )
+    state = _reveal(state, "emperors_schemes")
+    assert tuple(card for _, _, card in state.scouts_goods_cards) == deck[:deck_size]
+    assert not any(e.kind == "intrigue_discard_shuffled" for e in state.event_log)
+    assert state.decision_stack[-1].kind == FrameKind.TURN
 
 
 def _apply(state: GameState, action_id: str, **arguments: Any) -> GameState:

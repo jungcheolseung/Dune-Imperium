@@ -23,15 +23,12 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.contract_tiles import (
-    contract_intrigue_trash_frame,
-    receive_contract,
-)
+from dune_imperium.rules.contract_tiles import receive_contract
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -120,10 +117,58 @@ def _free_maker_hooks(state: GameState) -> int:
     return 4 - sum(1 for seat in state.players if seat.maker_hooks)
 
 
+def _is_immediate(contract_id: str) -> bool:
+    """Bloodlines' Immediate Contract: taken only by trashing an Intrigue
+    card [Bloodlines p. 2]."""
+
+    return contract_for_instance(contract_id).requires_intrigue_trash
+
+
+def _reshuffle_intrigue_for_goods(state: GameState, *, source: str) -> RuleResult:
+    """Shuffle the Intrigue discard into a new deck, then place the goods.
+
+    The engine's Intrigue reshuffle chance frame [FAQ p. 2]: the new deck
+    forms beneath the cards still on top (``intrigue_deck
+    .apply_intrigue_reshuffle``), and with a count of 0 it draws nothing.
+    The ``goods`` task is queued again, so the Scouts step places the new
+    top two once the frame resolves.
+    """
+
+    if state.first_player is None:
+        raise ValueError("the Scouts step requires a First Player")
+    decision_id = f"{source}:intrigue_shuffle"
+    frame = DecisionFrame(
+        kind=FrameKind.INTRIGUE_RESHUFFLE,
+        frame_id=f"{decision_id}:intrigue_reshuffle",
+        decision=ChanceDecision(
+            decision_id=decision_id,
+            prompt="Shuffle the Intrigue discard pile into a new deck",
+            options=state.intrigue_discard,
+            count=len(state.intrigue_discard),
+        ),
+        context=(
+            ("count", 0),
+            ("player", state.first_player),
+            ("purpose", "scouts_goods"),
+            ("source", source),
+        ),
+    )
+    requeued = replace(state, scouts_tasks=("goods", *state.scouts_tasks))
+    return RuleResult(state=requeued.push_decision(frame))
+
+
 def place_mission_goods(
     state: GameState, mission_id: str, *, source: str
 ) -> RuleResult:
-    """Put the mission's bank goods (and face-down cards) on the board."""
+    """Put the mission's bank goods (and face-down cards) on the board.
+
+    CHOAM Research takes the bank's first two Contracts other than
+    Bloodlines' Immediate, which keeps its place in the bank (OQ-090, user
+    ruling 2026-09-29). Emperor's Schemes shuffles the Intrigue discard into
+    a new deck first when the deck holds fewer than its two cards (OQ-078,
+    user ruling 2026-09-29; "shuffle the discarded Intrigue cards to form a
+    new deck" [FAQ p. 2]); with both piles short it places what there is.
+    """
 
     mission = MISSIONS_BY_ID[mission_id]
     goods: list[tuple[str, str, str, int, int]] = []
@@ -150,13 +195,22 @@ def place_mission_goods(
             ]
         case MissionKind.CHOAM_RESEARCH:
             assert mission.space_id is not None
-            taken = state.contract_bank[: mission.goods_cards]
+            taken = tuple(
+                card for card in state.contract_bank if not _is_immediate(card)
+            )[: mission.goods_cards]
             cards += [(mission_id, mission.space_id, card) for card in taken]
             next_state = replace(
-                next_state, contract_bank=state.contract_bank[len(taken) :]
+                next_state,
+                contract_bank=tuple(
+                    card for card in state.contract_bank if card not in taken
+                ),
             )
         case MissionKind.EMPERORS_SCHEMES:
             assert mission.space_id is not None
+            if len(state.intrigue_deck) < mission.goods_cards and (
+                state.intrigue_discard
+            ):
+                return _reshuffle_intrigue_for_goods(state, source=source)
             taken = state.intrigue_deck[: mission.goods_cards]
             cards += [(mission_id, mission.space_id, card) for card in taken]
             next_state = replace(
@@ -515,29 +569,22 @@ def _collects(mission_id: str) -> bool:
     return MISSIONS_BY_ID[mission_id].kind in _VISITED
 
 
-def _takeable_card(
-    state: GameState, player: int, space_id: str
-) -> tuple[str, str, str] | None:
-    """The next face-down card on ``space_id`` that ``player`` may take.
+def _takeable_card(state: GameState, space_id: str) -> tuple[str, str, str] | None:
+    """The next face-down card on ``space_id`` (one per visit, OQ-078).
 
-    Bloodlines' Immediate Contract cannot be taken without an Intrigue card
-    to trash [Bloodlines p. 2], so a seat holding none takes the next card
-    instead, or none (OQ-090).
+    Any seat may take it: Bloodlines' Immediate Contract, the one card that
+    needs an Intrigue card to trash [Bloodlines p. 2], never reaches the
+    Research Station (OQ-090, ``place_mission_goods``).
     """
 
-    holds_intrigue = bool(state.players[player].intrigue_cards)
-    for row in state.scouts_goods_cards:
-        if row[1] != space_id or not _collects(row[0]):
-            continue
-        card_id = row[2]
-        if (
-            card_id.startswith("contract:")
-            and contract_for_instance(card_id).requires_intrigue_trash
-            and not holds_intrigue
-        ):
-            continue
-        return row
-    return None
+    return next(
+        (
+            row
+            for row in state.scouts_goods_cards
+            if row[1] == space_id and _collects(row[0])
+        ),
+        None,
+    )
 
 
 def mission_collectable(state: GameState, player: int, space_id: str) -> bool:
@@ -553,7 +600,7 @@ def mission_collectable(state: GameState, player: int, space_id: str) -> bool:
             and _collects(row[0])
             for row in state.scouts_goods
         )
-        or _takeable_card(state, player, space_id) is not None
+        or _takeable_card(state, space_id) is not None
         or any(
             row[1] == player and row[2] == space_id and _collects(row[0])
             for row in state.scouts_parked
@@ -612,7 +659,6 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
     cards = list(state.scouts_goods_cards)
     parked = list(state.scouts_parked)
     events: list[GameEvent] = []
-    pushed: list[DecisionFrame] = []
     recruited = 0
     intrigue_gained: list[str] = []
     # Parked troops (OQ-077): to the Conflict, or recruited to the garrison.
@@ -687,18 +733,14 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
             )
         )
     # One face-down card per visit (OQ-078): a Contract or an Intrigue card.
-    card_row = _takeable_card(state, player, space_id)
+    card_row = _takeable_card(state, space_id)
     if card_row is not None:
         cards.remove(card_row)
         mission_id, _, card_id = card_row
         if MISSIONS_BY_ID[mission_id].kind is MissionKind.CHOAM_RESEARCH:
+            if _is_immediate(card_id):
+                raise RuntimeError("the Immediate never reaches the Research Station")
             owner = receive_contract(owner, card_id)
-            if contract_for_instance(card_id).requires_intrigue_trash:
-                pushed.append(
-                    contract_intrigue_trash_frame(
-                        player, card_id, source=f"{source}:contract:{card_id}"
-                    )
-                )
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:contract",
@@ -737,8 +779,6 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         scouts_parked=tuple(parked),
     )
     next_state = advance_after_effect(working, context, working.players)
-    for pushed_frame in pushed:
-        next_state = next_state.push_decision(pushed_frame)
     return RuleResult(state=next_state, events=tuple(events))
 
 

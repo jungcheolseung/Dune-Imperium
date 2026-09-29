@@ -15,10 +15,25 @@ from dune_imperium.rules.tech import apply_endgame_tech_effects
 
 
 def begin_round(state: GameState) -> RuleResult:
-    """Reveal a Conflict, draw up to five cards each, and open the first turn.
+    """Reveal the round's Conflict, then offer the Control defense or draw.
+
+    "Each round begins by revealing a new Conflict card from the top of the
+    Conflict Deck. ... Next, each player draws five cards from their own
+    deck, forming their hand for the round." [Main p. 8]. The defensive
+    bonus is triggered by the reveal: "When a Conflict card is revealed for
+    a space that you already control, you receive a defensive bonus: you
+    may deploy one troop from your supply to the Conflict." [Main p. 10]
+    [Main p. 20]. So the controller answers between the reveal and the draw
+    (docs/rules/setup-and-game-flow.md section 5): with a defender this
+    returns in Round Start with only the ``CONTROL_DEFENSE`` frame on the
+    stack, and ``apply_control_defense_action`` draws; without one the draw
+    (``draw_round_hands``) follows in this same transition. A Round Start
+    state with an empty stack is therefore always before the reveal.
 
     Any discard pile needed to complete the draw must already have been
-    shuffled beneath the remaining draw deck by ``prepare_round_start``.
+    shuffled beneath the remaining draw deck by ``prepare_round_start``; the
+    defense only moves a troop, so shuffling before the reveal draws the
+    same cards.
     """
 
     if state.phase is not GamePhase.ROUND_START:
@@ -34,6 +49,53 @@ def begin_round(state: GameState) -> RuleResult:
 
     round_number = state.round_number + 1
     conflict_id = state.conflict_deck[0]
+    defense = _control_defense_frame(state.players, conflict_id, round_number)
+    revealed = replace(
+        state,
+        # Arrakeen Scouts: last round's rule change ends with the round.
+        scouts_round_modifier="",
+        scouts_discount_used=False,
+        round_number=round_number,
+        reveal_order=(),
+        conflict_deck=state.conflict_deck[1:],
+        current_conflict_ids=(*state.current_conflict_ids, conflict_id),
+        conflict_first_place_influence_bonus=0,
+        combat_intrigue_complete=False,
+        combat_rewards_resolved=False,
+        combat_end_triggers_offered=False,
+        combat_intrigue_players=(),
+        decision_stack=() if defense is None else (defense,),
+    )
+    event = GameEvent(
+        event_id=f"round:{round_number}:conflict",
+        kind="conflict_revealed",
+        payload=(("conflict_id", conflict_id), ("round", round_number)),
+    )
+    if defense is not None:
+        return RuleResult(state=revealed, events=(event,))
+    drawn = draw_round_hands(revealed)
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+
+
+def draw_round_hands(state: GameState) -> RuleResult:
+    """Draw up to five cards each and open the first turn (or the Scouts step).
+
+    "Next, each player draws five cards from their own deck, forming their
+    hand for the round." [Main p. 8]. This is Round Start's last step: it
+    runs once the Conflict is revealed (``begin_round``) and any Control
+    defense is answered (``apply_control_defense_action``).
+    """
+
+    if state.phase is not GamePhase.ROUND_START:
+        raise ValueError("the Round Start draw happens only during Round Start")
+    if state.decision_stack:
+        raise ValueError("the Round Start draw cannot run with a pending decision")
+    if state.first_player is None:
+        raise ValueError("a round requires a First Player")
+    if any(len(player.deck) < 5 and player.discard_pile for player in state.players):
+        raise ValueError("Round Start draw requires a discard reshuffle transition")
+
+    round_number = state.round_number
     draw_counts = tuple(min(5, len(player.deck)) for player in state.players)
     players = tuple(
         replace(
@@ -65,7 +127,10 @@ def begin_round(state: GameState) -> RuleResult:
         for player, count in zip(state.players, draw_counts, strict=True)
     )
     # Twisted Genius: "Round Start: Draw a Twisted Intrigue card" [Piter De
-    # Vries card]; it is an Intrigue card in hand from then on.
+    # Vries card]; it is an Intrigue card in hand from then on. The rules do
+    # not order a leader's Round Start effect against the defensive bonus;
+    # by project convention it comes with the hand, after the defense, so a
+    # defending Piter decides on what he held at the reveal (OQ-072).
     twisted_draws = tuple(player.player_id for player in players if player.twisted_deck)
     players = tuple(
         replace(
@@ -77,41 +142,20 @@ def begin_round(state: GameState) -> RuleResult:
         else player
         for player in players
     )
+    # Arrakeen Scouts: the round's Scouts step runs after the whole Round
+    # Start (the reveal, any Control defense, the draw) and before the first
+    # turn (OQ-072), driven by the engine's automatic advance
+    # (``rules.scouts``), which then opens the first turn itself.
     scouts = state.config.arrakeen_scouts
-    opening_frame = _round_opening_frame(
-        players,
-        conflict_id,
-        round_number,
-        state.first_player,
-        scouts=scouts,
-    )
+    opening = () if scouts else (turn_frame(round_number, state.first_player),)
     next_state = replace(
         state,
         phase=GamePhase.PLAYER_TURNS,
-        # Arrakeen Scouts: the round's Scouts step runs after the Control
-        # defense and before the first turn (OQ-072), driven by the engine's
-        # automatic advance (``rules.scouts``); last round's rule change ends.
         scouts_opening=scouts,
-        scouts_round_modifier="",
-        scouts_discount_used=False,
-        round_number=round_number,
-        reveal_order=(),
         players=players,
-        conflict_deck=state.conflict_deck[1:],
-        current_conflict_ids=(*state.current_conflict_ids, conflict_id),
-        conflict_first_place_influence_bonus=0,
-        combat_intrigue_complete=False,
-        combat_rewards_resolved=False,
-        combat_end_triggers_offered=False,
-        combat_intrigue_players=(),
-        decision_stack=() if opening_frame is None else (opening_frame,),
+        decision_stack=opening,
     )
     events = (
-        GameEvent(
-            event_id=f"round:{round_number}:conflict",
-            kind="conflict_revealed",
-            payload=(("conflict_id", conflict_id), ("round", round_number)),
-        ),
         *(
             # The draw count is public: zone sizes are visible at the table
             # (OQ-010) and the payload carries no card identity.
@@ -215,17 +259,26 @@ def legal_control_defense_actions(
         or decision.owner != player
     ):
         return ()
-    return (
-        DomainAction(action_id="decline_control_defense", actor=player),
-        DomainAction(action_id="deploy_control_defense", actor=player),
-    )
+    decline = DomainAction(action_id="decline_control_defense", actor=player)
+    if state.players[player].troops_supply < 1:
+        # The frame opens only for a controller with a supply troop, but an
+        # effect resolved in the same step (an Earn Any Alliance completion)
+        # may have emptied that supply since: then only declining is left.
+        return (decline,)
+    return (decline, DomainAction(action_id="deploy_control_defense", actor=player))
 
 
 def apply_control_defense_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve the optional deployment and open the First Player's turn."""
+    """Resolve the optional deployment, then draw the round's hands.
+
+    The defense answers the reveal, before the draw [Main p. 8] [Main p. 20]
+    (``begin_round``), so deploying or declining both run straight on into
+    the Round Start draw (``draw_round_hands``), which opens the First
+    Player's turn or the Arrakeen Scouts step.
+    """
 
     if action not in legal_control_defense_actions(state, action.actor):
         raise ValueError("action is not a legal Control defense choice")
@@ -249,17 +302,10 @@ def apply_control_defense_action(
         next_owner if player.player_id == action.actor else player
         for player in state.players
     )
-    # With Arrakeen Scouts the Scouts step follows the defense, and it opens
-    # the first turn itself (``rules.scouts``).
-    opening = (
-        ()
-        if state.scouts_opening
-        else (turn_frame(state.round_number, state.first_player),)
-    )
-    next_state = replace(
+    defended = replace(
         state,
         players=players,
-        decision_stack=(*state.decision_stack[:-1], *opening),
+        decision_stack=state.decision_stack[:-1],
     )
     event = GameEvent(
         event_id=(
@@ -272,7 +318,8 @@ def apply_control_defense_action(
             ("troops", int(deployed)),
         ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    drawn = draw_round_hands(defended)
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
 
 
 def _draw_cards(player: PlayerState, count: int) -> PlayerState:
@@ -283,44 +330,42 @@ def _draw_cards(player: PlayerState, count: int) -> PlayerState:
     )
 
 
-def _round_opening_frame(
+def _control_defense_frame(
     players: tuple[PlayerState, ...],
     conflict_id: str,
     round_number: int,
-    first_player: int,
-    *,
-    scouts: bool = False,
 ) -> DecisionFrame | None:
-    """Return the Control defense, else the first turn (``None`` with Scouts)."""
+    """Return the Control defense the revealed Conflict offers, if any.
+
+    "When a Conflict card is revealed for a space that you already control,
+    you may deploy one troop from your supply to the Conflict." [Main p. 20]
+    [Main p. 10]. With no troop in the controller's supply there is nothing
+    to ask. The frame carries no ``turn_owner``: the defense is part of
+    Round Start (Phase 1), before any turn opens [Main p. 8].
+    """
 
     conflict = CONFLICTS_BY_ID[conflict_id]
     control_space_id = (
         None if conflict.rewards is None else conflict.rewards[0].control_space_id
     )
+    if control_space_id is None:
+        return None
     controllers = tuple(
-        player
-        for player in players
-        if control_space_id is not None and control_space_id in player.control_space_ids
+        player for player in players if control_space_id in player.control_space_ids
     )
     if len(controllers) > 1:
         raise RuntimeError("a critical location cannot have multiple controllers")
-    if controllers and controllers[0].troops_supply > 0:
-        if control_space_id is None:
-            raise RuntimeError("Control defender requires a critical location")
-        controller = controllers[0]
-        return DecisionFrame(
-            kind=FrameKind.CONTROL_DEFENSE,
-            frame_id=f"round:{round_number}:control_defense",
-            decision=PlayerDecision(
-                owner=controller.player_id,
-                prompt="Deploy one troop from supply to defend your location?",
-            ),
-            context=(
-                ("space_id", control_space_id),
-                ("turn_owner", first_player),
-            ),
-        )
-    return None if scouts else turn_frame(round_number, first_player)
+    if not controllers or controllers[0].troops_supply == 0:
+        return None
+    return DecisionFrame(
+        kind=FrameKind.CONTROL_DEFENSE,
+        frame_id=f"round:{round_number}:control_defense",
+        decision=PlayerDecision(
+            owner=controllers[0].player_id,
+            prompt="Deploy one troop from supply to defend your location?",
+        ),
+        context=(("space_id", control_space_id),),
+    )
 
 
 def turn_frame(round_number: int, player: int) -> DecisionFrame:

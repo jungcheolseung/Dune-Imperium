@@ -376,6 +376,63 @@ def test_a_finished_playout_is_read_as_the_value_head_s_reward(
     assert agent._playout(state, last, horizon, 0) == LOSER_REWARD
 
 
+def test_a_playout_reaching_the_horizon_is_read_after_the_round_start_draw(
+    tmp_path: Path,
+) -> None:
+    """The leaf is read once the hands are drawn, not at the Control defense.
+
+    Round Start reveals, asks the optional defense, then draws [Main p. 8]
+    [Main p. 20] (OQ-072). The round number moves at the reveal, so a
+    playout that stopped there read a state with every hand empty, one the
+    value head never trained on.
+    """
+
+    from dataclasses import replace
+
+    from dune_imperium.core.observation import PlayerView
+    from dune_imperium.rules.phases import prepare_round_start
+    from dune_imperium.rules.setup import create_initial_state
+
+    config = RulesetConfig()
+    setup = create_initial_state(
+        config,
+        seed=71,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    ).state
+    controller = replace(setup.players[2], control_space_ids=("arrakeen",))
+    setup = replace(
+        setup,
+        players=(*setup.players[:2], controller, setup.players[3]),
+        conflict_deck=(
+            "siege_of_arrakeen",
+            *(card for card in setup.conflict_deck if card != "siege_of_arrakeen"),
+        ),
+    )
+    state = prepare_round_start(setup).state
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 1
+    leaves: list[PlayerView] = []
+
+    class Recording(NetworkSearchAgent):
+        def _leaf_value(self, view: PlayerView) -> float:
+            leaves.append(view)
+            return 0.0
+
+    agent = Recording(_checkpoint(tmp_path, config), seed=0)
+    agent._playout(state, 0, state.round_number, 0)
+
+    (leaf,) = leaves
+    assert leaf.phase is GamePhase.PLAYER_TURNS
+    assert leaf.round_number == state.round_number
+    assert leaf.private is not None
+    assert len(leaf.private.hand) == 5
+
+
 def test_a_search_result_carries_the_values_behind_its_choice(tmp_path: Path) -> None:
     """``search_with_state`` returns the candidates and per-world values.
 

@@ -83,7 +83,14 @@ from dune_imperium.rules.frames import FrameKind
 # revealed cards and each seat's open call.
 # v26 (2026-09-29): the Arrakeen Scouts specimen top-up frame kind
 # (``scouts_top_up``), appended to the frame kinds.
-OBSERVATION_VERSION: Final = 26
+# v27 (2026-09-29): the scouts_top_up frame kind is gone: Mercenaries tops up
+# by itself (OQ-074 (a)). It was the last frame kind, so no other index moves.
+# The same day Round Start took the rules order, reveal -> Control defense ->
+# draw [Main p. 8] [Main p. 20] (OQ-072): the defense decision now encodes
+# in ROUND_START, with every hand still undrawn and no turn_owner, where it
+# used to encode in PLAYER_TURNS after the draw with the First Player as
+# turn owner. No column moves.
+OBSERVATION_VERSION: Final = 27
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (

@@ -101,8 +101,21 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # hash changes and old saves need the clean version error -- no template
 # changes.
 # v121: Immortality specimen top-ups before a Scouts recruit, mission or
-# Mercenaries deployment, and an Agent recalled from the Conflict.
-ACTION_CODEC_VERSION = 121
+# Mercenaries deployment, and an Agent recalled from the Conflict. (The
+# Mercenaries part is superseded by v122: Mercenaries now tops up by itself.)
+# v122: Round Start follows the rules order [Main p. 8] [Main p. 20]: the
+# Control defense comes before the draw (OQ-072). The same batch of
+# Arrakeen Scouts rulings changes replays too: Mercenaries returns its
+# specimens by itself, so ``scouts_return_specimens`` is no longer offered
+# there (OQ-074 (a)); Critical Moment is not drawn while the Imperium deck
+# is short, which changes that draw's options (OQ-087 (b)); Clear the
+# Market's CHOAM shuffle mixes the old pair into the whole bank before
+# dealing (OQ-083); CHOAM Research skips Bloodlines' Immediate Contract
+# (OQ-090); a mandatory event a seat can do only one line of still opens
+# its choice frame (OQ-071); Emperor's Schemes reshuffles the Intrigue
+# discard when the deck is short (OQ-078). Saves whose game met any of
+# these replay differently -- no template change.
+ACTION_CODEC_VERSION = 122
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
