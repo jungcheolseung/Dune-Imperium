@@ -11,10 +11,19 @@ to the end, and on the way the page must show:
 - a sealed bid as the count stepper plus the one turn-end row, which is the
   confirmation itself (D5);
 - in English, no Hangul anywhere in the panel;
+- a Scouts choice with a line the seat cannot take right now (user request
+  2026-09-29) shows it greyed out: one row per such line in the server's
+  scouts_lines, each with its reason, not clickable (a click changes
+  nothing), while the lines it can take are the ordinary rows of exactly
+  the legal line actions; in English, no Hangul in the action list;
+- a choice the seat is skipped for (nothing it could take) says so in the
+  note, naming the item;
 - after the game, the finished page without errors.
 
 The seat picks each secret line and bids in turn so every kind is seen;
-everything else takes the first legal action.
+everything else takes the first legal action. Seed 21 meets an unpayable
+line for the seat (CHOAM Escort without a Contract early on, a sale later)
+and skips it once (Guild Negotiation).
 """
 
 from __future__ import annotations
@@ -27,7 +36,7 @@ from common import Check, chrome, open_context, server, set_rule_options
 from open_mode import settled
 
 check = Check()
-SEEDS = (31, 44, 58)
+SEEDS = (21, 58, 31, 44)
 HANGUL = re.compile(r"[가-힣]")
 
 CHOOSE_JS = """(() => {
@@ -54,6 +63,47 @@ CHOOSE_JS = """(() => {
 })()"""
 
 
+# Every line of the seat's Scouts choice, against the rows on the page.
+LINES_JS = """(() => {
+  const ids = new Set(
+    ["scouts_choose_option", "join_subcommittee", "scouts_join_mission"]);
+  const lines = state.actions.scouts_lines.lines;
+  const order = (a, b) => a - b;
+  const legal = state.actions.actions
+    .filter((a) => ids.has(a.action_id)).map((a) => a.index).sort(order);
+  const rows = [...document.querySelectorAll('#actions .action-item')]
+    .map((r) => Number(r.dataset.index)).filter((i) => legal.includes(i)).sort(order);
+  const grey = [...document.querySelectorAll('#actions .scouts-line-item.unavailable')];
+  return {
+    legal,
+    rows,
+    enabled: lines.filter((l) => l.enabled).map((l) => l.action_index).sort(order),
+    unavailable: lines.filter((l) => !l.enabled).length,
+    grey: grey.length,
+    badges: grey.map(
+      (r) => (r.querySelector('.unavailable-badge') || {}).innerText || ''),
+    aria: grey.every((r) => r.getAttribute('aria-disabled') === 'true'),
+  };
+})()"""
+
+
+# Keep every note the page shows (it hides itself after a few seconds).
+NOTE_SPY_JS = """(() => {
+  window.noteLog = [];
+  const shown = note;
+  note = (text) => {
+    window.noteLog.push(String(text));
+    shown(text);
+  };
+})()"""
+
+# The Scouts items the seat was skipped for, by name, from the log.
+SKIPPED_JS = """(() => state.log.entries.flatMap((entry) => (entry.events || [])
+  .filter((e) => e.kind === 'scouts_choice_skipped'
+    && e.payload.player === state.viewSeat)
+  .map((e) => scoutsItem(e.payload.item_id).name)))()"""
+
+
 def create(page, base: str, seed: int) -> None:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
@@ -70,6 +120,7 @@ def create(page, base: str, seed: int) -> None:
     page.click("#create-game")
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.view !== null && refreshFlight === null")
+    page.evaluate(NOTE_SPY_JS)
 
 
 def panel_text(page) -> str:
@@ -92,9 +143,63 @@ def play(page, seen: dict[str, bool], limit: int = 4000) -> bool:
     return False
 
 
+def inspect_lines(page, seen: dict[str, bool]) -> None:
+    """A Scouts choice with a line the seat cannot take: greyed out, with
+    its reason, and a click on it does nothing."""
+
+    if seen.get("lines") or not page.evaluate(
+        "Boolean(state.actions.scouts_lines"
+        " && state.actions.scouts_lines.lines.some((l) => !l.enabled))"
+    ):
+        return
+    rows = page.evaluate(LINES_JS)
+    ok = check.ok(
+        rows["grey"] == rows["unavailable"] > 0 and rows["aria"],
+        "each line the seat cannot take is one greyed-out row",
+        rows,
+    )
+    ok &= check.ok(
+        all(badge.strip() for badge in rows["badges"]),
+        "each greyed-out row says why",
+        rows["badges"],
+    )
+    ok &= check.ok(
+        rows["enabled"] == rows["legal"] == rows["rows"],
+        "the lines it can take are the rows of exactly the legal line actions",
+        rows,
+    )
+    revision = page.evaluate("state.summary.revision")
+    # force: the row is announced as a disabled button (aria-disabled), so
+    # Playwright would wait for it to be enabled; the click must still land.
+    page.click("#actions .scouts-line-item.unavailable >> nth=0", force=True)
+    time.sleep(0.3)
+    assert settled(page, 10)
+    ok &= check.ok(
+        page.evaluate("state.summary.revision") == revision
+        and page.evaluate("document.getElementById('game-error').hidden"),
+        "a click on a greyed-out row changes nothing",
+    )
+    page.evaluate("setLanguage('en')")
+    assert settled(page, 10)
+    english = page.evaluate("document.getElementById('actions').innerText")
+    ok &= check.ok(
+        not HANGUL.search(english)
+        and page.evaluate(
+            "document.querySelectorAll('#actions .scouts-line-item.unavailable').length"
+        )
+        == rows["grey"],
+        "in English the greyed-out rows carry no Hangul",
+        HANGUL.findall(english)[:10],
+    )
+    page.evaluate("setLanguage('ko')")
+    assert settled(page, 10)
+    seen["lines"] = ok
+
+
 def inspect(page, seen: dict[str, bool]) -> None:
     ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
     text = panel_text(page)
+    inspect_lines(page, seen)
     if not seen.get("subcommittees") and page.evaluate(
         "state.view.scouts_subcommittees.length === 5"
     ):
@@ -182,6 +287,8 @@ def main() -> None:
         "own_pick",
         "pieces",
         "english",
+        "lines",
+        "skip_notice",
     )
     with server() as (base, _server_log), chrome() as browser:
         _, page, _ = open_context(browser, "scouts")
@@ -195,6 +302,17 @@ def main() -> None:
             )
             finished = play(page, seen)
             check.ok(finished, f"seed {seed} plays to the end")
+            skipped = page.evaluate(SKIPPED_JS)
+            if skipped and not seen.get("skip_notice"):
+                notes = page.evaluate("window.noteLog")
+                seen["skip_notice"] = check.ok(
+                    all(
+                        any(note.startswith(f"{name}: ") for note in notes)
+                        for name in skipped
+                    ),
+                    "a skipped choice says so in the note, naming the item",
+                    (skipped, notes),
+                )
             check.ok(
                 page.evaluate("!document.getElementById('scouts-panel').hidden"),
                 "the finished game still shows the panel",

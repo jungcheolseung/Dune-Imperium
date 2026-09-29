@@ -1350,6 +1350,38 @@ kbd {
   border: 1px solid var(--bad);
   vertical-align: middle;
 }
+/* An Arrakeen Scouts line the seat cannot take now (render.js
+   appendScoutsLines): shaped like an action row, dashed and dimmed, with no
+   pointer and the reason as a badge. Not button:disabled, which means
+   "busy" here (cursor: wait). */
+.scouts-line-item.unavailable {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.4rem;
+  max-width: 100%;
+  padding: 0.35rem 0.8rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.unavailable-badge {
+  display: inline-block;
+  padding: 0 0.35em;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  vertical-align: middle;
+}
+.unavailable-badge .icon { height: 1.1em; }
+/* Under a High Council step: what its seat would let the seat join. */
+.subcommittee-preview {
+  flex-basis: 100%;
+  padding: 0.1rem 0.6rem 0.2rem;
+  font-size: 0.82rem;
+}
 
 #review-bar { border-left: 6px solid var(--good); }
 .review-controls {

@@ -58,6 +58,7 @@ from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.display import effect_action_text, effect_action_text_ko
+from dune_imperium.display.scouts import scouts_choice_lines
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.server.access import (
@@ -1012,6 +1013,14 @@ class GameSessionManager:
         A seat whose turn end waits for its press has none, even when the
         next decision is its own again (its next turn, or the round-1 turn
         after its last Leader pick).
+
+        ``scouts_lines`` is every line of the seat's own Arrakeen Scouts
+        choice, a subcommittee offer or a mission's ways in, the ones it
+        cannot take now too, with the reason; an enabled line's
+        ``action_index`` is its row in ``actions`` (``display.scouts``
+        ``scouts_choice_lines``). None for any other decision. The legal
+        actions themselves are unchanged: a line the seat cannot take is
+        not among them.
         """
 
         actions = (
@@ -1019,6 +1028,7 @@ class GameSessionManager:
             if session.awaiting_confirmation == seat
             else session.engine.legal_actions(session.state, seat)
         )
+        lines = scouts_choice_lines(session.state, seat, actions) if actions else None
         return {
             "game_id": session.game_id,
             "revision": session.state.revision,
@@ -1027,6 +1037,7 @@ class GameSessionManager:
                 _serialize_action(index, action, session)
                 for index, action in enumerate(actions)
             ],
+            "scouts_lines": None if lines is None else _jsonify(lines),
         }
 
     def _online_seats_locked(self, session: GameSession) -> frozenset[int]:
@@ -1813,7 +1824,11 @@ def _serialize_action(
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
     ``strength_after`` is the acting seat's running combat strength once the
-    step is taken, when the step changes it (``strength_preview``).
+    step is taken, when the step changes it (``strength_preview``);
+    ``reveal_preview`` sums up a Reveal the step would start; and
+    ``subcommittee_preview`` lists the Arrakeen Scouts subcommittees the
+    seat could join once the step takes its High Council seat, and why the
+    others cannot be (``subcommittee_preview``).
     """
 
     outcome = _dry_run(session, action)
@@ -1836,6 +1851,9 @@ def _serialize_action(
     revealed = reveal_preview(action, outcome)
     if revealed is not None:
         serialized["reveal_preview"] = revealed
+    offer = subcommittee_preview(session, action, outcome)
+    if offer is not None:
+        serialized["subcommittee_preview"] = offer
     return serialized
 
 
@@ -1881,6 +1899,51 @@ def reveal_preview(
                 "strength": outcome.state.players[action.actor].combat_strength,
             }
     return None
+
+
+def subcommittee_preview(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> JsonObject | None:
+    """Return the subcommittees the step's High Council seat would offer.
+
+    Arrakeen Scouts: taking a High Council seat offers one unclaimed
+    subcommittee (docs/rules/arrakeen-scouts.md 4, OQ-076), and the offer
+    lists only what the seat can join then. Read off the same dry run as
+    the rest, so it follows the seat's resources as they change during the
+    turn: ``joinable`` with every line (claimed, joinable, or not now with
+    its reason; no ``action_index``, the lines are not this list's), or not
+    ``joinable`` when the offer would lapse. None for a step that takes no
+    seat, or whose outcome the previews may not read (``preview_outcome``).
+    """
+
+    if outcome is None:
+        return None
+    if any(
+        event.kind == "scouts_subcommittee_unavailable"
+        and dict(event.payload).get("player") == action.actor
+        for event in outcome.events
+    ):
+        return {"joinable": False, "lines": []}
+    after = outcome.state
+    top = after.decision_stack[-1] if after.decision_stack else None
+    if (
+        top is None
+        or str(top.kind) != "scouts_subcommittee"
+        or not isinstance(top.decision, PlayerDecision)
+        or top.decision.owner != action.actor
+    ):
+        return None
+    offer = scouts_choice_lines(
+        after, action.actor, session.engine.legal_actions(after, action.actor)
+    )
+    if offer is None:
+        return None
+    lines = offer["lines"]
+    assert isinstance(lines, list)
+    return {
+        "joinable": True,
+        "lines": [_jsonify({**line, "action_index": None}) for line in lines],
+    }
 
 
 def strength_preview(

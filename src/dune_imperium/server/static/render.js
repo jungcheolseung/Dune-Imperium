@@ -1180,6 +1180,106 @@ function appendActionItems(box, actions) {
   }
 }
 
+/* ---------- Arrakeen Scouts lines ----------
+
+   A Scouts choice (an event's or a sale's lines, a subcommittee offer, a
+   mission's ways in) lists every line in its printed order, the ones the
+   seat cannot take right now too: the server's scouts_lines (display/
+   scouts.py scouts_choice_lines) says which are legal and why the others
+   are not. A legal line is its ordinary action row; any other is a row
+   shaped like one that takes no click, with the reason on it. Every
+   snapshot works the lines out again, so a line opens as soon as the seat
+   can take it and closes when it no longer can (user request 2026-09-29).
+   The pass or decline, and a specimen stepper, follow as usual. */
+function appendScoutsLines(box, actions, choice) {
+  const byIndex = new Map(actions.map((action) => [action.index, action]));
+  const shown = new Set();
+  for (const line of choice.lines) {
+    const action = line.action_index === null ? undefined : byIndex.get(line.action_index);
+    if (action) {
+      box.appendChild(actionItem(action));
+      shown.add(action.index);
+    } else {
+      box.appendChild(unavailableLineItem(line));
+    }
+  }
+  appendActionItems(box, actions.filter((action) => !shown.has(action.index)));
+}
+
+/* A line the seat cannot take now. Not an .action-item, which focusActions
+   matches by its refs, and not a disabled button either, which means
+   "busy" on this page (cursor: wait). */
+function unavailableLineItem(line) {
+  const row = document.createElement("div");
+  row.className = "scouts-line-item unavailable";
+  // A button that cannot be pressed, announced as such (no tabindex: it
+  // takes no focus and has no handler).
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-disabled", "true");
+  row.dataset.key = line.key;
+  row.title = t("render.scouts_line_unavailable_title");
+  const body = document.createElement("span");
+  body.className = "scouts-line-body";
+  body.appendChild(phrase(ACTION_LABELS[line.action_id] || prettify(line.action_id)));
+  if (line.text) {
+    body.append(" — ");
+    body.appendChild(effectNode(line.text, line.text_ko));
+  }
+  row.append(body, unavailableBadge(line));
+  return row;
+}
+
+/* Why: who joined a claimed subcommittee, or the server's reason. */
+function unavailableBadge(line) {
+  const badge = document.createElement("span");
+  badge.className = "unavailable-badge";
+  if (line.code === "claimed" && typeof line.seat === "number") {
+    badge.append(t("render.scouts_joined_by", { player: playerLabel(line.seat) }));
+  } else if (line.reason) {
+    badge.appendChild(effectNode(line.reason, line.reason_ko));
+  } else {
+    badge.append(t("render.scouts_line_unavailable"));
+  }
+  return badge;
+}
+
+/* Under a step that takes a High Council seat (Arrakeen Scouts): the
+   subcommittees the seat would let the seat join, then the others it could
+   not join right now and why (server/sessions.py subcommittee_preview; a
+   claimed one is in the Scouts panel). Read off the step's dry run, so it
+   follows the seat's resources until the icon is resolved. */
+function subcommitteePreview(preview) {
+  const box = document.createElement("div");
+  box.className = "subcommittee-preview";
+  if (!preview.joinable) {
+    box.classList.add("muted");
+    box.append(t("render.subcommittee_preview_none"));
+    return box;
+  }
+  const name = (line) => scoutsItem(line.subcommittee_id).name;
+  const open = preview.lines.filter((line) => line.enabled);
+  const shut = preview.lines.filter((line) => !line.enabled && line.code !== "claimed");
+  const joinable = document.createElement("div");
+  joinable.append(t("render.subcommittee_preview_join", { names: open.map(name).join(", ") }));
+  box.appendChild(joinable);
+  if (shut.length) {
+    const reasons = document.createDocumentFragment();
+    shut.forEach((line, position) => {
+      reasons.append(`${position ? " · " : ""}${name(line)} — `);
+      reasons.appendChild(
+        line.reason
+          ? effectNode(line.reason, line.reason_ko)
+          : document.createTextNode(t("render.scouts_line_unavailable")),
+      );
+    });
+    const later = document.createElement("div");
+    later.className = "muted";
+    later.appendChild(tNode("render.subcommittee_preview_not_now", { lines: reasons }));
+    box.appendChild(later);
+  }
+  return box;
+}
+
 /* ---------- Reveal purchases ----------
 
    A Reveal is a small shop: the Persuasion still unspent (the server's
@@ -1387,6 +1487,7 @@ function actionItem(action, onApply, zone) {
     });
     wrap.append(info, detail);
   }
+  if (action.subcommittee_preview) wrap.appendChild(subcommitteePreview(action.subcommittee_preview));
   return wrap;
 }
 
@@ -1398,6 +1499,9 @@ function actionItem(action, onApply, zone) {
 function focusActions(ref, label) {
   clearActionFocus();
   const box = el("actions");
+  // The rows' own order, restored as is by clearActionFocus (a Scouts line
+  // list mixes .action-item rows with greyed rows that have no index).
+  box._rowOrder = [...box.children];
   const items = [...box.querySelectorAll(".action-item")];
   const matches = items.filter((item) =>
     JSON.parse(item.dataset.refs || "[]").includes(ref)
@@ -1430,9 +1534,11 @@ function clearActionFocus() {
   const box = el("actions");
   const header = box.querySelector(".action-focus");
   if (header) header.remove();
-  const items = [...box.querySelectorAll(".action-item")];
-  for (const item of items) item.classList.remove("action-match", "action-dim");
-  items
-    .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index))
-    .forEach((item) => box.appendChild(item));
+  for (const item of box.querySelectorAll(".action-item")) {
+    item.classList.remove("action-match", "action-dim");
+  }
+  // Rows a render has since replaced are gone from the box: skip them.
+  const order = (box._rowOrder || []).filter((row) => row.parentNode === box);
+  delete box._rowOrder;
+  for (const row of order) box.appendChild(row);
 }

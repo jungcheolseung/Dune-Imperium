@@ -288,8 +288,24 @@ function fieldText(key, value, siblings = {}) {
    control_space_id, space_ids, from_space, to_space. */
 const SPACE_FIELD = /(?:^|_)space_ids?$|^(?:from|to)_space$/;
 
+/* The fields that name an Arrakeen Scouts item (rules/scouts*.py); the
+   catalog's scouts_items section is not searched by kind, so these look
+   there themselves. */
+const SCOUTS_ITEM_FIELDS = new Set([
+  "item_id",
+  "event_id",
+  "mission_id",
+  "subcommittee_id",
+  "subcommittee_ids",
+  "auction_id",
+]);
+
 function fieldWord(key, text, siblings) {
   if (key === "post_id" || key.endsWith("_post_id")) return postName(text);
+  if (SCOUTS_ITEM_FIELDS.has(key)) {
+    const items = state.catalog && state.catalog.scouts_items;
+    if (items && items[text]) return items[text].name;
+  }
   if (/^c\d+r\d+$/.test(text)) {
     const research = researchSpaceName(text, !("bonus" in siblings));
     if (research) return research;
@@ -1054,6 +1070,8 @@ function describeAction(action) {
   }
   const parts = [];
   for (const [key, value] of Object.entries(action.arguments)) {
+    /* An empty argument is "none" (a mission's one plain way in). */
+    if (value === "") continue;
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     if (key === "effect" && typeof value === "string") {
       /* action.detail is the server's English effect fragment; it is printed

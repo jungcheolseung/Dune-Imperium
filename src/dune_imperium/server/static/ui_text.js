@@ -913,6 +913,14 @@ const UI_TEXT = {
     "ko": "쓰이지 않은 비밀 선택",
     "en": "Secret picks never due"
   },
+  "panels.scouts_skipped": {
+    "ko": "{{item}}: 지금 할 수 있는 선택이 없어 넘어갔습니다",
+    "en": "{{item}}: nothing you could take, skipped"
+  },
+  "panels.scouts_subcommittee_skipped": {
+    "ko": "소위원회: 지금 가입할 수 있는 곳이 없어 넘어갔습니다",
+    "en": "Subcommittees: none you could join, skipped"
+  },
   "panels.standings_heading": {
     "ko": "최종 순위",
     "en": "Final standings"
@@ -1189,6 +1197,18 @@ const UI_TEXT = {
     "ko": "공용 덱 순서",
     "en": "Shared deck order"
   },
+  "render.scouts_joined_by": {
+    "ko": "{{player}} 가입",
+    "en": "Joined by {{player}}"
+  },
+  "render.scouts_line_unavailable": {
+    "ko": "지금은 고를 수 없음",
+    "en": "Not available now"
+  },
+  "render.scouts_line_unavailable_title": {
+    "ko": "지금은 고를 수 없는 선택지입니다. 할 수 있게 되면 바로 고를 수 있습니다",
+    "en": "You cannot take this line right now; it opens as soon as you can"
+  },
   "render.shortfall_specimens": {
     "ko": "{supply} 부족: {specimen} {{requested}}개 중 {{made}}개만 생성",
     "en": "Short {supply}: only {{made}} of {{requested}} {specimen} made"
@@ -1208,6 +1228,18 @@ const UI_TEXT = {
   "render.strength_preview_title": {
     "ko": "이 행동 뒤의 내 {strength}",
     "en": "My {strength} after this action"
+  },
+  "render.subcommittee_preview_join": {
+    "ko": "이 원로회 자리로 가입할 수 있는 소위원회: {{names}}",
+    "en": "Subcommittees this seat lets you join: {{names}}"
+  },
+  "render.subcommittee_preview_none": {
+    "ko": "지금은 이 원로회 자리로 가입할 수 있는 소위원회가 없습니다",
+    "en": "No subcommittee this seat would let you join right now"
+  },
+  "render.subcommittee_preview_not_now": {
+    "ko": "지금은 불가: {{lines}}",
+    "en": "Not now: {{lines}}"
   },
   "render.turn_end_button": {
     "ko": "턴 종료 ▶",

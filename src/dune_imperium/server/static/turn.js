@@ -339,7 +339,10 @@ function renderActionPanel(box, turnEnd) {
     /* The flat list of an Agent turn is long: its way back to the steps
        goes on top, where the panel cannot push it under the log. */
     if (placements.length) box.appendChild(actionListToggle(false, actions.length));
-    appendActionItems(box, actions);
+    /* An Arrakeen Scouts choice shows the lines it cannot take too. */
+    const choice = state.actions.scouts_lines;
+    if (choice) appendScoutsLines(box, actions, choice);
+    else appendActionItems(box, actions);
     return;
   }
   const pick = state.pick || {};

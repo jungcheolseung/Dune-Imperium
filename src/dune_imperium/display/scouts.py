@@ -15,6 +15,7 @@ from dune_imperium.content.arrakeen_scouts import (
     MISSIONS_BY_ID,
     SALES_BY_ID,
     SUBCOMMITTEES_BY_ID,
+    MissionKind,
     ScoutsOption,
 )
 from dune_imperium.content.arrakeen_scouts.types import (
@@ -29,15 +30,31 @@ from dune_imperium.content.arrakeen_scouts.types import (
     RecruitToConflict,
 )
 from dune_imperium.content.uprising.contracts import contract_for_instance
-from dune_imperium.content.uprising.effect_dsl import TrashPersonalCard
+from dune_imperium.content.uprising.effect_dsl import (
+    DiscardFromHand,
+    GainInfluence,
+    PayResources,
+    RecallSpy,
+    RecruitTroops,
+    TrashIntrigueCard,
+    TrashPersonalCard,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.display.effect_dsl_text import cost_text, reward_text
 from dune_imperium.display.effect_dsl_text_ko import cost_text_ko, reward_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
-from dune_imperium.rules.scouts_effects import scouts_option
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.scouts_effects import (
+    ScoutsStep,
+    line_unavailable_reason,
+    scouts_option,
+)
+from dune_imperium.rules.scouts_missions import join_unavailable_reason
 
 SCOUTS_ITEM_NAMES_KO: Final[Mapping[str, str]] = {
     "analytics": "분석",
@@ -186,17 +203,17 @@ def _step_text_ko(step: object, *, cost: bool) -> str:
 
 
 def scouts_option_text(option: ScoutsOption) -> str:
-    """One line: its costs, an arrow, its rewards."""
+    """One line: its costs, an arrow, its rewards (no arrow for one side)."""
 
     costs = ", ".join(_step_text(cost, cost=True) for cost in option.costs)
     rewards = ", ".join(_step_text(reward, cost=False) for reward in option.rewards)
-    return f"{costs} → {rewards}" if costs else rewards
+    return " → ".join(side for side in (costs, rewards) if side)
 
 
 def scouts_option_text_ko(option: ScoutsOption) -> str:
     costs = ", ".join(_step_text_ko(cost, cost=True) for cost in option.costs)
     rewards = ", ".join(_step_text_ko(reward, cost=False) for reward in option.rewards)
-    return f"{costs} → {rewards}" if costs else rewards
+    return " → ".join(side for side in (costs, rewards) if side)
 
 
 # Items without lines to choose between, in the project's own words (the
@@ -325,6 +342,40 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
 }
 
 
+# A mission's one plain way in (every participation mission but CHOAM
+# Escort), as a choice to take; docs/rules/arrakeen-scouts.md 5.
+_JOIN_LINES: Final[Mapping[str, tuple[str, str]]] = {
+    "security_detail": (
+        "Park 1 supply troop at Deliver Supplies",
+        "{supply}의 {troop:1}을 Deliver Supplies에 세우기",
+    ),
+    "fedaykin_assistance": (
+        "Pay 1 spice, park 2 supply troops at Desert Tactics",
+        "{spice:1} 내고 {supply}의 {troop:2}를 Desert Tactics에 세우기",
+    ),
+    "weirding_warfare": (
+        "Pay 2 Solari, park 2 supply troops at Espionage",
+        "{solari:2} 내고 {supply}의 {troop:2}를 Espionage에 세우기",
+    ),
+    "send_for_aid": (
+        "Move 1 garrison troop to Gather Support",
+        "{garrison}의 {troop:1}을 Gather Support로 옮기기",
+    ),
+    "coordinate_with_the_emperor": (
+        "Move 1 specimen to Sardaukar",
+        "{specimen:1}을 Sardaukar로 옮기기",
+    ),
+    "tleilaxu_offering": (
+        "Put 2 supply troops on the Tleilaxu track's third space",
+        "{supply}의 {troop:2}를 {tleilaxu} 트랙 세 번째 칸에 두기",
+    ),
+    "prison_planet": (
+        "Lose 1 garrison troop to put a Control marker on Sardaukar",
+        "{garrison}의 {troop:1}을 잃고 Sardaukar에 {control} 마커 두기",
+    ),
+}
+
+
 def scouts_item_lines(item_id: str) -> tuple[list[str], list[str]]:
     """What an item offers, in English and Korean, one entry per line."""
 
@@ -429,6 +480,11 @@ def scouts_action_text(
             target = arguments.get("target")
             if target == "recruit":
                 return "Recruit 1 troop", "{troop:1} 소집"
+            if target == "":
+                mission_id = context.get("mission_id")
+                return (
+                    _JOIN_LINES.get(mission_id) if isinstance(mission_id, str) else None
+                )
             if isinstance(target, str) and target:
                 contract = contract_for_instance(target)
                 names = KOREAN_CARD_NAMES["contracts"]
@@ -456,3 +512,357 @@ def scouts_action_text(
             card = imperium_card_for_instance(state.scouts_market_cards[slot]).card
             return card.name, KOREAN_CARD_NAMES["cards"].get(card.card_id, card.name)
     return None
+
+
+# --- Every line of a Scouts choice, the ones a seat cannot take too ---------------
+
+# Why a line cannot be taken: English, Korean (icons as tokens), a code.
+type Reason = tuple[str, str, str]
+
+_NOT_NOW: Final[Reason] = ("Not available now", "지금은 고를 수 없음", "unavailable")
+
+
+def _s(count: int) -> str:
+    return "s" if count != 1 else ""
+
+
+def _held(held: int) -> tuple[str, str]:
+    return f" (you have {held})", f" (보유 {held})"
+
+
+def _resource_reason(resource: str, needed: int, held: int) -> Reason:
+    en, ko = _held(held)
+    return f"Needs {needed} {resource}{en}", f"{{{resource}:{needed}}} 필요{ko}", "cost"
+
+
+def _troops_reason(where: str, needed: int, held: int) -> Reason:
+    """Troops short in the supply or the garrison, or specimens short."""
+
+    en, ko = _held(held)
+    if where == "specimens":
+        return (
+            f"Needs {needed} specimen{_s(needed)}{en}",
+            f"{{specimen:{needed}}} 필요{ko}",
+            where,
+        )
+    return (
+        f"Needs {needed} troop{_s(needed)} in your {where}{en}",
+        f"{{{where}}}에 {{troop:{needed}}} 필요{ko}",
+        where,
+    )
+
+
+def _cost_reason(state: GameState, seat: int, cost: object) -> Reason:
+    """Why ``seat`` cannot pay ``cost`` (the one ``line_unavailable_reason``
+    named), with what it holds."""
+
+    owner = state.players[seat]
+    match cost:
+        case PayResources():
+            for resource in ("solari", "spice", "water"):
+                needed = getattr(cost, resource)
+                held = getattr(owner.resources, resource)
+                if needed > held:
+                    return _resource_reason(resource, needed, held)
+        case DiscardFromHand(count=count):
+            en, ko = _held(len(owner.hand))
+            return (
+                f"Needs {count} card{_s(count)} in hand{en}",
+                f"{{hand}}에 카드 {count}장 필요{ko}",
+                "cost",
+            )
+        case RecallSpy(count=count):
+            en, ko = _held(len(owner.spy_post_ids))
+            spies = "Spy" if count == 1 else "Spies"
+            return (
+                f"Needs {count} {spies} on the board{en}",
+                f"보드에 {{spy:{count}}} 필요{ko}",
+                "cost",
+            )
+        case TrashIntrigueCard():
+            return "No Intrigue card to trash", "{trash}할 {intrigue} 없음", "cost"
+        case TrashPersonalCard(hand_only=True):
+            return "No card in hand to trash", "{hand}에 {trash}할 카드 없음", "cost"
+        case TrashPersonalCard():
+            return "No card to trash", "{trash}할 카드 없음", "cost"
+        case LoseGarrisonTroops(count=count):
+            en, ko, _ = _troops_reason("garrison", count, owner.troops_garrison)
+            return en, ko, "cost"
+        case PaySpecimens(count=count):
+            en, ko, _ = _troops_reason("specimens", count, owner.specimens)
+            return en, ko, "cost"
+        case LoseFactionInfluence(faction=faction, count=count):
+            held = influence_amount(owner.influence, faction)
+            en, ko = _held(held)
+            name = faction.value.replace("_", " ").title()
+            return (
+                f"Needs {count} {name} Influence{en}",
+                f"{{influence_{faction.value}}} 영향력 {count} 필요{ko}",
+                "cost",
+            )
+    return (
+        f"Cannot pay: {_step_text(cost, cost=True)}",
+        f"낼 수 없음: {_step_text_ko(cost, cost=True)}",
+        "cost",
+    )
+
+
+def _reward_reason(reward: object) -> Reason:
+    """Why a line's reward cannot happen now (``reward_has_effect``)."""
+
+    match reward:
+        case AcquireReserveCardToHand(card_id=card_id):
+            name = RESERVE_STACKS_BY_ID[card_id].card.name
+            name_ko = KOREAN_CARD_NAMES["cards"].get(card_id, name)
+            return (
+                f"No {name} left to acquire",
+                f"획득할 {name_ko} 없음",
+                "reward",
+            )
+        case RecallOtherAgent():
+            return "No other Agent to recall", "소환할 다른 {agent} 없음", "reward"
+        case GainInfluence():
+            return (
+                "That Influence is already at the top",
+                "그 영향력은 이미 최대",
+                "reward",
+            )
+        case RecruitTroops() | RecruitToConflict():
+            return "No troop in your supply", "{supply}에 {troop} 없음", "reward"
+    return (
+        f"Nothing happens now: {_step_text(reward, cost=False)}",
+        f"지금은 효과 없음: {_step_text_ko(reward, cost=False)}",
+        "reward",
+    )
+
+
+def _step_reason(
+    state: GameState, seat: int, option: ScoutsOption, step: ScoutsStep
+) -> Reason:
+    if step in option.costs:
+        return _cost_reason(state, seat, step)
+    return _reward_reason(step)
+
+
+def _mission_reason(what: str, needed: int, held: int) -> Reason:
+    match what:
+        case "supply" | "garrison" | "specimens":
+            return _troops_reason(what, needed, held)
+        case "spice" | "solari":
+            return _resource_reason(what, needed, held)
+        case "marker":
+            return (
+                "No free Control marker (all three are out)",
+                "남은 {control} 마커 없음 (셋 모두 사용 중)",
+                what,
+            )
+        case "tleilaxu_track":
+            return (
+                "Your Tleilaxu token is already on or past the third space",
+                "{tleilaxu} 토큰이 이미 세 번째 칸이거나 그 너머",
+                what,
+            )
+        case "contract":
+            return "You have no face-up Contract", "앞면 {contract} 없음", what
+    return _NOT_NOW
+
+
+def _line(
+    key: str,
+    action: DomainAction,
+    legal: tuple[DomainAction, ...],
+    text: tuple[str, str] | None,
+    reason: Reason | None,
+) -> dict[str, object]:
+    """One line; ``action_index`` is its action's place in ``legal``."""
+
+    index = legal.index(action) if action in legal else None
+    english, korean = text if text is not None else ("", "")
+    line: dict[str, object] = {
+        "key": key,
+        "action_id": action.action_id,
+        "text": english,
+        "text_ko": korean,
+        "action_index": index,
+        "enabled": index is not None,
+        "reason": None,
+        "reason_ko": None,
+        "code": None,
+    }
+    if index is None:
+        why = reason if reason is not None else _NOT_NOW
+        line.update(reason=why[0], reason_ko=why[1], code=why[2])
+    return line
+
+
+def _choice_lines(
+    state: GameState,
+    seat: int,
+    context: Mapping[str, object],
+    legal: tuple[DomainAction, ...],
+) -> list[dict[str, object]]:
+    item = str(context["item"])
+    only = context.get("only_option")
+    excluded = context.get("exclude_space", "")
+    if type(only) is int:
+        indices: tuple[int, ...] = (only,)  # a revealed secret pick's own line
+    elif item in SALES_BY_ID:
+        indices = tuple(range(len(SALES_BY_ID[item].options)))
+    else:
+        indices = tuple(range(len(EVENTS_BY_ID[item].options)))
+    lines = []
+    for index in indices:
+        option = scouts_option(item, index)
+        action = DomainAction(
+            action_id="scouts_choose_option", actor=seat, arguments=(("option", index),)
+        )
+        step = line_unavailable_reason(
+            state,
+            seat,
+            option,
+            exclude_space=excluded if isinstance(excluded, str) else "",
+        )
+        lines.append(
+            _line(
+                f"option:{index}",
+                action,
+                legal,
+                scouts_action_text(state, action),
+                None if step is None else _step_reason(state, seat, option, step),
+            )
+        )
+    return lines
+
+
+def _subcommittee_lines(
+    state: GameState,
+    seat: int,
+    exclude_space: str,
+    legal: tuple[DomainAction, ...],
+) -> list[dict[str, object]]:
+    """Every subcommittee on display, joinable or not, for ``seat``.
+
+    A claimed one says who joined it (``seat``); the others say why the
+    seat cannot join them now (``line_unavailable_reason``, OQ-071, OQ-076).
+    """
+
+    members = dict(state.scouts_subcommittee_members)
+    lines = []
+    for subcommittee_id in state.scouts_subcommittees:
+        option = SUBCOMMITTEES_BY_ID[subcommittee_id].option
+        action = DomainAction(
+            action_id="join_subcommittee",
+            actor=seat,
+            arguments=(("subcommittee_id", subcommittee_id),),
+        )
+        member = members.get(subcommittee_id)
+        if member is not None:
+            reason: Reason | None = (
+                "Already joined",
+                "이미 가입한 좌석이 있음",
+                "claimed",
+            )
+        else:
+            step = line_unavailable_reason(
+                state, seat, option, exclude_space=exclude_space
+            )
+            reason = None if step is None else _step_reason(state, seat, option, step)
+        line = _line(
+            subcommittee_id,
+            action,
+            legal,
+            scouts_action_text(state, action),
+            reason,
+        )
+        line["subcommittee_id"] = subcommittee_id
+        if member is not None:
+            line["seat"] = member
+        lines.append(line)
+    return lines
+
+
+def _mission_lines(
+    state: GameState,
+    seat: int,
+    mission_id: str,
+    legal: tuple[DomainAction, ...],
+) -> list[dict[str, object]]:
+    mission = MISSIONS_BY_ID[mission_id]
+    if mission.kind is MissionKind.CHOAM_ESCORT:
+        targets = ("recruit", *state.players[seat].active_contract_ids)
+    else:
+        targets = ("",)
+    lines = []
+    for target in targets:
+        action = DomainAction(
+            action_id="scouts_join_mission", actor=seat, arguments=(("target", target),)
+        )
+        block = join_unavailable_reason(state, seat, mission, target)
+        lines.append(
+            _line(
+                f"target:{target}",
+                action,
+                legal,
+                scouts_action_text(state, action),
+                None if block is None else _mission_reason(*block),
+            )
+        )
+    if mission.kind is MissionKind.CHOAM_ESCORT and len(targets) == 1:
+        # No face-up Contract to load: the second way in, shown greyed out.
+        placeholder = DomainAction(
+            action_id="scouts_join_mission", actor=seat, arguments=(("target", "-"),)
+        )
+        lines.append(
+            _line(
+                "target:contract",
+                placeholder,
+                (),
+                (
+                    "Load 1 Solari and 1 spice onto a face-up Contract",
+                    "앞면 {contract}에 {solari:1}와 {spice:1} 올려 두기",
+                ),
+                _mission_reason("contract", 1, 0),
+            )
+        )
+    return lines
+
+
+def scouts_choice_lines(
+    state: GameState, seat: int, legal: tuple[DomainAction, ...]
+) -> dict[str, object] | None:
+    """Every line of ``seat``'s own Scouts choice, the ones it cannot take too.
+
+    The engine offers only the lines a seat can take now (``line_is_offered``,
+    ``joinable_subcommittees``, ``join_targets``); the page shows the others
+    too, greyed out with the reason, so a line lights up as soon as the seat
+    can take it and greys out when it no longer can (user request
+    2026-09-29). Display only: ``legal`` is the list the page numbers, and a
+    line is enabled exactly when its action is in it (``action_index``, its
+    place there). A secret pick has none: its four lines are always legal,
+    and no other seat's pick is ever named. None for any other decision.
+    """
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        frame is None
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != seat
+    ):
+        return None
+    context = dict(frame.context)
+    item: str | None
+    if frame.kind == FrameKind.SCOUTS_CHOICE:
+        item = str(context["item"])
+        lines = _choice_lines(state, seat, context, legal)
+    elif frame.kind == FrameKind.SCOUTS_SUBCOMMITTEE:
+        item = None
+        excluded = context.get("exclude_space", "")
+        lines = _subcommittee_lines(
+            state, seat, excluded if isinstance(excluded, str) else "", legal
+        )
+    elif frame.kind == FrameKind.SCOUTS_MISSION:
+        item = str(context["mission_id"])
+        lines = _mission_lines(state, seat, item, legal)
+    else:
+        return None
+    return {"frame": str(frame.kind), "item_id": item, "lines": lines}
