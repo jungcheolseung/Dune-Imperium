@@ -21,6 +21,13 @@ viewing seat's own next turn (including a reward choice of its own, when
 the seed hands it one) and disappears the moment that next turn starts.
 Finally it checks the line carries no Hangul in English and no stray
 Latin in Korean.
+
+A third game (2026-09-29) has no Leader draft, so the setup itself reveals
+round 1's Conflict (engine.reset runs Round Start) and the log never names
+it: the line used to read "Null -- 1st: ..." there (seed 21, CHOAM +
+Arrakeen Scouts, scouts.py's game, at the start of round 2). Its expected
+name comes from the board at the start of the game instead, and the line
+must keep that name at every step up to the seat's own next turn.
 """
 
 from __future__ import annotations
@@ -57,6 +64,10 @@ SEAT = 0
 # cases are covered at the rules level (tests/unit/rules/test_combat.py).
 BASE_SEED = 5
 EXPANSION_SEED = 2
+# The seed the "Null" line was seen in (scouts.py's first game); with this
+# script's policy seat 0 places first in round 1 and still shows the line
+# in round 2's Scouts step, before its own first turn there.
+SETUP_REVEAL_SEED = 21
 
 # Mirrors render.js's OWN_TURN_ACTION_IDS: the action ids that start the
 # viewing seat's own next turn, at which point the line must be gone.
@@ -78,7 +89,9 @@ REWARD_FIELDS = [
 ]
 
 
-def create_game(page, base: str, seed: int, expansions: bool) -> str:
+def create_game(
+    page, base: str, seed: int, expansions: bool, *, setup_reveal: bool = False
+) -> str:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
     for seat in range(4):
@@ -88,6 +101,12 @@ def create_game(page, base: str, seed: int, expansions: bool) -> str:
         )
     if expansions:
         set_rule_options(page, *RULE_OPTIONS)
+    elif setup_reveal:
+        # scouts.py's setup: no Leader draft, so no logged step comes
+        # before round 1's Round Start.
+        set_rule_options(page, "choam")
+        page.set_checked("#opt-leader-draft", False)
+        page.set_checked("#opt-scouts", True)
     else:
         set_rule_options(page)
     page.fill("#opt-seed", str(seed))
@@ -204,8 +223,11 @@ def expected_reward_terms(reward: dict) -> list[tuple[str, int | None]]:
     return terms
 
 
-def check_resolution_content(page, label: str) -> dict:
-    """The line's content against an independent read of the raw log."""
+def check_resolution_content(
+    page, label: str, first_conflict: str | None = None
+) -> dict:
+    """The line's content against an independent read of the raw log (and,
+    for a Conflict the log never revealed, of the board at the start)."""
     entries = page.evaluate("state.log.entries")
     bundle = find_resolution(entries, SEAT)
     if not check.ok(bundle is not None, f"{label}: a Conflict has resolved"):
@@ -213,11 +235,16 @@ def check_resolution_content(page, label: str) -> dict:
     dom = combat_result_dom(page)
     if not check.ok(dom is not None, f"{label}: the combat result line is on screen"):
         return bundle
+    conflict_id = bundle["conflict_id"] or first_conflict
+    if not check.ok(
+        conflict_id is not None, f"{label}: the log or the board names the Conflict"
+    ):
+        return bundle
     conflict_name = page.evaluate(
-        f"state.catalog.conflicts[{json.dumps(bundle['conflict_id'])}].name"
+        f"state.catalog.conflicts[{json.dumps(conflict_id)}].name"
     )
     check.ok(
-        conflict_name in dom["text"],
+        conflict_name in dom["text"] and "Null" not in dom["text"],
         f"{label}: the line names the resolved Conflict",
         (conflict_name, dom["text"]),
     )
@@ -280,11 +307,14 @@ def check_language(page, conflict_name: str, label: str) -> None:
     check.ok(not latin, f"{label}: Korean has no stray Latin in the line", (latin, text))
 
 
-def check_persistence(page, label: str) -> None:
+def check_persistence(page, label: str, conflict_name: str | None) -> None:
     """The line survives everything between the resolution and the seat's
     own next turn-taking step (including its own reward choices, when the
-    seed hands it any), and is gone right after that step."""
+    seed hands it any), still naming the same Conflict, and is gone right
+    after that step."""
     chose = []
+    unnamed = []
+    rounds = set()
     for _ in range(400):
         assert settled(page, 20)
         if page.evaluate("state.summary.finished"):
@@ -296,6 +326,10 @@ def check_persistence(page, label: str) -> None:
         dom = combat_result_dom(page)
         if not check.ok(dom is not None, f"{label}: the line is still shown", dom):
             return
+        rounds.add(page.evaluate("state.view.round_number"))
+        text = dom["text"]
+        if conflict_name and (conflict_name not in text or "Null" in text):
+            unnamed.append(text)
         if page.evaluate("state.summary.confirmation === state.viewSeat"):
             page.evaluate("confirmTurn()")
             assert settled(page, 20)
@@ -317,6 +351,12 @@ def check_persistence(page, label: str) -> None:
                 f"{label}: the line stayed on screen through the seat's reward choices",
                 chose,
             )
+            check.ok(
+                bool(conflict_name) and not unnamed,
+                f"{label}: every step up to then named {conflict_name} "
+                f"(rounds {sorted(rounds)})",
+                unnamed[:3],
+            )
             page.evaluate(f"applyAction({index})")
             assert settled(page, 20)
             after = combat_result_dom(page)
@@ -331,28 +371,96 @@ def check_persistence(page, label: str) -> None:
     check.ok(False, f"{label}: reached the seat's own next turn within the step budget")
 
 
-def scenario(base, browser, *, seed: int, expansions: bool, label: str) -> None:
-    kind = "all expansions" if expansions else "base game"
+# render.js's resolvedConflictId on a made-up board of two Conflicts: the
+# log's own id wins; otherwise the unrevealed one is the last on the board,
+# or just under a Conflict revealed since (a tie for first leaves it there,
+# which no seed here reaches); past the board, no id (the generic word).
+RESOLVED_ID_JS = """(() => {
+  const saved = state.view;
+  state.view = { ...saved, current_conflict_ids: ["older", "newer"] };
+  try {
+    return [
+      resolvedConflictId({ conflictId: "logged", laterReveals: 1 }),
+      resolvedConflictId({ conflictId: null, laterReveals: 0 }),
+      resolvedConflictId({ conflictId: null, laterReveals: 1 }),
+      resolvedConflictId({ conflictId: null, laterReveals: 2 }),
+    ];
+  } finally {
+    state.view = saved;
+  }
+})()"""
+
+
+def check_setup_reveal(page, label: str) -> str | None:
+    """The case under test: the first Conflict is on the board, not in the
+    log. Returns its id."""
+    first = page.evaluate("state.view.current_conflict_ids")
+    revealed = [
+        event
+        for entry in page.evaluate("state.log.entries")
+        for event in entry.get("events") or []
+        if event["kind"] == "conflict_revealed"
+    ]
+    check.ok(
+        len(first) == 1 and not revealed,
+        f"{label}: the setup revealed the first Conflict outside the log",
+        (first, revealed),
+    )
+    check.ok(
+        page.evaluate(RESOLVED_ID_JS) == ["logged", "newer", "older", None],
+        f"{label}: resolvedConflictId reads the log, then the board",
+        page.evaluate(RESOLVED_ID_JS),
+    )
+    return first[0] if first else None
+
+
+def scenario(
+    base,
+    browser,
+    *,
+    seed: int,
+    expansions: bool,
+    label: str,
+    setup_reveal: bool = False,
+) -> None:
+    kind = (
+        "CHOAM + Arrakeen Scouts, no Leader draft"
+        if setup_reveal
+        else "all expansions" if expansions else "base game"
+    )
     print(f"[{label}] {kind}, seed {seed}")
     context, page, rec = open_context(browser, label, VIEWPORT)
-    create_game(page, base, seed, expansions)
+    create_game(page, base, seed, expansions, setup_reveal=setup_reveal)
+    first_conflict = check_setup_reveal(page, label) if setup_reveal else None
     reached = drive_to_resolution(page)
     if not check.ok(reached, f"{label}: reached the first Combat resolution"):
         context.close()
         return
-    bundle = check_resolution_content(page, f"{label}/ko")
+    bundle = check_resolution_content(page, f"{label}/ko", first_conflict)
+    if setup_reveal and bundle:
+        check.ok(
+            bundle["conflict_id"] is None,
+            f"{label}: the log never revealed the resolved Conflict",
+            bundle["conflict_id"],
+        )
+    conflict_id = (bundle.get("conflict_id") or first_conflict) if bundle else None
     conflict_name = (
-        page.evaluate(f"state.catalog.conflicts[{json.dumps(bundle['conflict_id'])}].name")
-        if bundle
+        page.evaluate(f"state.catalog.conflicts[{json.dumps(conflict_id)}].name")
+        if conflict_id
         else None
     )
     if conflict_name:
         check_language(page, conflict_name, f"{label}/ko")
     switch_language(page, "en")
-    check_resolution_content(page, f"{label}/en")
-    if conflict_name:
-        check_language(page, conflict_name, f"{label}/en")
-    check_persistence(page, label)
+    check_resolution_content(page, f"{label}/en", first_conflict)
+    en_name = (
+        page.evaluate(f"state.catalog.conflicts[{json.dumps(conflict_id)}].name")
+        if conflict_id
+        else None
+    )
+    if en_name:
+        check_language(page, en_name, f"{label}/en")
+    check_persistence(page, label, en_name)
     failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not failed, f"{label}: no failed requests", failed[:5])
     check.ok(not rec.js_errors, f"{label}: no JS exceptions", rec.js_errors[:5])
@@ -364,6 +472,14 @@ def main() -> None:
         with chrome() as browser:
             scenario(base, browser, seed=BASE_SEED, expansions=False, label="base")
             scenario(base, browser, seed=EXPANSION_SEED, expansions=True, label="expansions")
+            scenario(
+                base,
+                browser,
+                seed=SETUP_REVEAL_SEED,
+                expansions=False,
+                label="setup-reveal",
+                setup_reveal=True,
+            )
         errors = [
             line
             for line in log_path.read_text().splitlines()

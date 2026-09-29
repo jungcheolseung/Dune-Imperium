@@ -643,7 +643,10 @@ const OWN_TURN_ACTION_IDS = new Set(["agent_turn", "reveal_turn", "play_turn_sta
    has seen, or null when none has resolved yet, it already resolved with
    no participants (rank_combat's zero-strength rule leaves no reward
    events to report), or the seat has since taken its own next turn. Reads
-   only the live log (undone steps dropped, like board.js's spyArrivals). */
+   only the live log (undone steps dropped, like board.js's spyArrivals).
+   `conflictId` is null when the log never revealed that Conflict (see
+   resolvedConflictId); `laterReveals` counts the Conflicts revealed
+   after it. */
 function latestCombatResolution(seat) {
   const entries = (state.log && state.log.entries) || [];
   let conflictId = null;
@@ -655,12 +658,16 @@ function latestCombatResolution(seat) {
       if (event.kind === "conflict_revealed") {
         conflictId = event.payload.conflict_id;
         sawRewards = false;
+        if (bundle) bundle.laterReveals += 1;
       } else if (event.kind === "combat_reward_gained") {
         if (!sawRewards) {
-          bundle = { conflictId, rewards: [] };
+          bundle = { conflictId, laterReveals: 0, rewards: [] };
           sawRewards = true;
         }
         bundle.rewards.push(event.payload);
+      } else if (event.kind === "conflict_won" && sawRewards) {
+        /* Cleanup names the card it hands the sole winner. */
+        bundle.conflictId = event.payload.conflict_id;
       } else if (event.kind === "combat_cleaned_up" && !sawRewards) {
         bundle = null;
       }
@@ -675,6 +682,19 @@ function latestCombatResolution(seat) {
     }
   }
   return bundle;
+}
+
+/* The id of the Conflict a resolution reports. Without a Leader draft the
+   setup itself reveals the first Conflict (engine.reset runs Round Start),
+   so its conflict_revealed event never reaches the log and the line once
+   read "Null". Until cleanup hands it to a sole winner (conflict_won),
+   that card is still on the board: the last of current_conflict_ids, or
+   just under the one Conflict revealed since (a tie leaves it there, and
+   the line closes before that next Conflict resolves). */
+function resolvedConflictId(bundle) {
+  if (bundle.conflictId) return bundle.conflictId;
+  const onBoard = (state.view && state.view.current_conflict_ids) || [];
+  return onBoard[onBoard.length - 1 - bundle.laterReveals] || null;
 }
 
 const COMBAT_RESULT_RANK_KEYS = {
@@ -730,9 +750,10 @@ function combatResultLine(seat) {
   const bundle = latestCombatResolution(seat);
   if (!bundle) return null;
   const own = bundle.rewards.find((reward) => reward.player === seat);
-  const conflict = lookup(bundle.conflictId, "conflicts");
+  const conflictId = resolvedConflictId(bundle);
+  const conflict = conflictId && lookup(conflictId, "conflicts");
   const vars = {
-    name: conflict ? conflict.name : prettify(bundle.conflictId),
+    name: conflict ? conflict.name : conflictId ? prettify(conflictId) : termLabel("conflict"),
     ranks: combatResultRanksText(bundle),
   };
   let key = "render.combat_result_line";

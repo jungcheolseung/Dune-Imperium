@@ -251,6 +251,66 @@ def test_snapshot_errors_on_an_unknown_game_and_bad_seats() -> None:
         manager.snapshot(game_id, 9)
 
 
+# --- where the banner's combat result line finds the Conflict ---------------
+
+
+def _events(entries: list[dict[str, object]], kind: str) -> list[dict[str, object]]:
+    return [
+        _obj(event["payload"])
+        for entry in entries
+        if not entry.get("undone")
+        for event in _rows(entry["events"])
+        if event["kind"] == kind
+    ]
+
+
+def test_without_a_leader_draft_the_first_conflict_is_in_the_view_not_the_log() -> None:
+    """render.js's combatResultLine names the resolved Conflict. Without a
+    Leader draft the setup itself runs round 1's Round Start, so the first
+    Conflict's reveal predates the log and the line read "Null" (seed 21,
+    CHOAM + Arrakeen Scouts, seen at the start of round 2). The client now
+    reads it from the conflict_won event once cleanup has run, and from the
+    snapshot's view before that; this pins what both carry for seat 0."""
+
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST, choam_module=True, arrakeen_scouts=True, game_seed=21
+    )
+    game_id = _text(summary["game_id"])
+
+    snapshot = manager.snapshot(game_id, 0)
+    first = _obj(snapshot["view"])["current_conflict_ids"]
+    assert isinstance(first, list) and len(first) == 1
+    assert _events(_rows(_obj(snapshot["log"])["entries"]), "conflict_revealed") == []
+
+    checked_during_rewards = False
+    for _ in range(400):
+        entries = _rows(manager.log(game_id, 0)["entries"])
+        if _events(entries, "conflict_won"):
+            break
+        if _events(entries, "combat_reward_gained"):
+            # Rewards under way: the Conflict is still the last on the board.
+            view = _obj(manager.snapshot(game_id, 0)["view"])
+            assert view["current_conflict_ids"] == first
+            checked_during_rewards = True
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id, seat=0, revision=_int(summary["revision"])
+            )
+        else:
+            summary = manager.apply_action(
+                game_id, seat=0, revision=_int(summary["revision"]), index=0
+            )
+    else:
+        raise AssertionError("round 1's Conflict was never won")
+
+    assert checked_during_rewards
+    # Cleanup may already have run on into round 2's (logged) reveal.
+    revealed = _events(entries, "conflict_revealed")
+    assert all(_int(shown["round"]) > 1 for shown in revealed)
+    assert [won["conflict_id"] for won in _events(entries, "conflict_won")] == first
+
+
 # --- REMOTE access ----------------------------------------------------------
 
 
