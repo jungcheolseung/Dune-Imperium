@@ -11,7 +11,12 @@ extraction, so a ruling can be checked against the original word for word.
 
 An argument that is not a whole key matches every key containing it. Text
 sprites print as ``<sprite=N>``; ``text_sprites.json`` in the same extraction
-names them (for example the Helix).
+names them (for example the Helix). ``--para WORD`` (repeatable) prints only
+the paragraphs of a long text (the help body) that contain one of the words,
+so the subcommittee rules can be read out of the whole help page:
+
+    uv run --no-project python scripts/dwgr/show_text.py spice.help.body \
+        --para subcommittee --para 소위원회 --ko
 """
 
 import argparse
@@ -41,6 +46,12 @@ def main() -> None:
     parser.add_argument("keys", nargs="+", help="loc keys, or parts of keys")
     parser.add_argument("--ko", action="store_true", help="also print ko_KR")
     parser.add_argument("--data", type=Path, default=_DEFAULT_DATA)
+    parser.add_argument(
+        "--para",
+        action="append",
+        default=[],
+        help="print only paragraphs containing this word (repeatable)",
+    )
     args = parser.parse_args()
     languages = ["en_US", *(["ko_KR"] if args.ko else [])]
     tables = {language: _load(args.data, language) for language in languages}
@@ -54,7 +65,22 @@ def main() -> None:
         for key in keys:
             print(key)
             for language in languages:
-                print(f"  [{language}] {tables[language].get(key, '(missing)')}")
+                text = tables[language].get(key, "(missing)")
+                for part in _paragraphs(text, args.para):
+                    print(f"  [{language}] {part}")
+
+
+def _paragraphs(text: str, words: list[str]) -> list[str]:
+    """The whole text, or only its paragraphs that contain one of ``words``."""
+
+    if not words:
+        return [text]
+    wanted = [word.lower() for word in words]
+    return [
+        part
+        for part in text.split("<br><br>")
+        if any(word in part.lower() for word in wanted)
+    ]
 
 
 if __name__ == "__main__":
