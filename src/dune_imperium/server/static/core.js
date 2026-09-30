@@ -300,12 +300,47 @@ const SCOUTS_ITEM_FIELDS = new Set([
   "auction_id",
 ]);
 
+/* A Scouts item's kind (catalog scouts_items, scouts_item_revealed's
+   "kind"), as the Scouts panel names it. */
+const SCOUTS_KIND_KEYS = {
+  subcommittee: "panels.scouts_kind_subcommittee",
+  mission: "panels.scouts_kind_mission",
+  event: "panels.scouts_kind_event",
+  auction: "panels.scouts_kind_auction",
+  sale: "panels.scouts_kind_sale",
+};
+
+function scoutsKindName(kind) {
+  return SCOUTS_KIND_KEYS[kind] ? t(SCOUTS_KIND_KEYS[kind]) : kind;
+}
+
+/* Where a Scouts mission piece sits (rules/scouts_missions.py): a board
+   space, an observation post ("post:<id>"), a Contract ("contract:<id>"),
+   the Helix, Reclaimed Forces or the Tleilaxu track. `exact` names a post
+   by the spaces it watches, as the log does; the Scouts panel's rows only
+   say 관측소. */
+function scoutsPlace(location, exact = false) {
+  if (location.startsWith("post:")) {
+    return exact ? postName(location.slice("post:".length)) : phraseText("{observation_post}");
+  }
+  if (location.startsWith("contract:")) return nameOf(location.slice("contract:".length));
+  if (location === "helix") return t("panels.scouts_helix");
+  if (location === "reclaimed_forces") return nameOf(location);
+  if (location === "tleilaxu_track") return phraseText("{tleilaxu}");
+  return spaceName(location);
+}
+
 function fieldWord(key, text, siblings) {
   if (key === "post_id" || key.endsWith("_post_id")) return postName(text);
   if (SCOUTS_ITEM_FIELDS.has(key)) {
     const items = state.catalog && state.catalog.scouts_items;
     if (items && items[text]) return items[text].name;
   }
+  if (key === "kind" && SCOUTS_KIND_KEYS[text]) return scoutsKindName(text);
+  if (key === "locations") return scoutsPlace(text, true);
+  /* A number the engine wrote as text: a Scouts mission layout's rounds,
+     "2,3,3", read as a list. */
+  if (/^\d+$/.test(text)) return text;
   if (/^c\d+r\d+$/.test(text)) {
     const research = researchSpaceName(text, !("bonus" in siblings));
     if (research) return research;
@@ -351,12 +386,45 @@ function describeChance(decisionId) {
     what = t("core.chance_discard_shuffle", { seat });
   } else if (id.endsWith(":intrigue_shuffle")) {
     what = t("core.chance_intrigue_shuffle");
+  } else if (SCOUTS_DRAW.test(id)) {
+    return t("core.chance_scouts", { what: scoutsDrawName(id.match(SCOUTS_DRAW)[1]) });
   } else {
     return t("core.chance_other");
   }
   /* The seat's own "player:N" and the last word are the kind, not the cause. */
   const cause = steal ? null : sourceName(id.split(":").slice(0, -1).join(":"));
   return cause ? `${what} (${cause})` : what;
+}
+
+/* An Arrakeen Scouts draw (rules/scouts.py _draw_frame):
+   "round:<n>:scouts:<step>:<serial>". A reward's own card draw or shuffle
+   sits deeper ("…:scouts:highest_bidder_mid:reward:…") and is not one. */
+const SCOUTS_DRAW = /:scouts:([a-z0-9_]+):\d+$/;
+
+function scoutsDrawName(step) {
+  if (step.startsWith("subcommittee_")) return scoutsKindName("subcommittee");
+  if (step === "mission_layout") return t("core.chance_scouts_layout");
+  if (step.endsWith("_auction_round")) return t("core.chance_scouts_auction_round");
+  if (step.endsWith("_auction")) return scoutsKindName("auction");
+  if (step === "contract_shuffle") return t("core.chance_scouts_contracts");
+  return SCOUTS_KIND_KEYS[step] ? scoutsKindName(step) : t("core.chance_other");
+}
+
+/* One drawn value of a chance step, for its log line. A Scouts draw holds
+   an item id (a "#<n>" suffix tells equal tickets apart), a mission layout
+   "layout:233" (the rounds of the three missions) or an auction's
+   "round:6"; everything else is a card, contract or other catalog id. */
+function chanceValueName(decisionId, value) {
+  if (SCOUTS_DRAW.test(String(decisionId))) {
+    const text = String(value).split("#")[0];
+    const layout = text.match(/^layout:(\d+)$/);
+    if (layout) return layout[1].split("").join(", ");
+    const round = text.match(/^round:(\d+)$/);
+    if (round) return t("panels.scouts_round", { round: Number(round[1]) });
+    const items = state.catalog && state.catalog.scouts_items;
+    if (items && items[text]) return items[text].name;
+  }
+  return nameOf(value);
 }
 
 /* A card-like entry's tooltip line; "" for another kind (a space, a

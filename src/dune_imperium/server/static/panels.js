@@ -473,6 +473,13 @@ function logEventPayload(payload, eventKind) {
       parts.push(key === "player" ? seat : `${label}: ${seat}`);
       continue;
     }
+    /* Seats joined into one string: Rebuild Infrastructure's two payers,
+       "0,1" (rules/scouts_effects.py). Named bare, as "player" is. */
+    if (key === "players" && typeof value === "string") {
+      const seats = value.split(",").filter(Boolean);
+      parts.push(seats.map((seat) => t("common.seat", { seat: Number(seat) })).join(", "));
+      continue;
+    }
     /* Combat rewards and the like list every field; zeros say nothing. */
     if (value === 0 || value === "" || value === null || value === false) continue;
     if (Array.isArray(value) && value.length === 0) continue;
@@ -738,10 +745,11 @@ function chanceLine(entry) {
   line.className = "turn-line chance";
   let text = t("core.chance_label", { decision: describeChance(entry.decision_id) });
   if (entry.values) {
+    const valueName = (value) => chanceValueName(entry.decision_id, value);
     const shown =
       entry.values.length <= 3
-        ? entry.values.map(nameOf).join(", ")
-        : `${entry.values.slice(0, 3).map(nameOf).join(", ")} …`;
+        ? entry.values.map(valueName).join(", ")
+        : `${entry.values.slice(0, 3).map(valueName).join(", ")} …`;
     text += ` — ${shown}`;
   }
   line.textContent = text;
@@ -1241,14 +1249,6 @@ function renderStandings() {
    waiting (and the viewer's own), and the auction running now. Only the
    view is read, so nothing hidden can show: another seat's pick or bid is
    never in it. */
-const SCOUTS_KIND_KEYS = {
-  subcommittee: "panels.scouts_kind_subcommittee",
-  mission: "panels.scouts_kind_mission",
-  event: "panels.scouts_kind_event",
-  auction: "panels.scouts_kind_auction",
-  sale: "panels.scouts_kind_sale",
-};
-
 function scoutsItem(itemId) {
   const items = (state.catalog && state.catalog.scouts_items) || {};
   return items[itemId] || { kind: "", name: prettify(itemId), lines: [], lines_ko: [] };
@@ -1258,15 +1258,6 @@ function scoutsItemLines(item, box) {
   item.lines.forEach((line, index) => {
     box.appendChild(effectLine(line, item.lines_ko[index], "scouts-line"));
   });
-}
-
-function scoutsPlace(location) {
-  if (location.startsWith("post:")) return phraseText("{observation_post}");
-  if (location.startsWith("contract:")) return nameOf(location.slice("contract:".length));
-  if (location === "helix") return t("panels.scouts_helix");
-  if (location === "reclaimed_forces") return nameOf(location);
-  if (location === "tleilaxu_track") return phraseText("{tleilaxu}");
-  return spaceName(location);
 }
 
 function scoutsGoodsText(resource, amount) {
@@ -1307,7 +1298,6 @@ function renderScouts() {
   const heading = document.createElement("h2");
   heading.textContent = t("panels.scouts_heading");
   panel.appendChild(heading);
-  const kindLabel = (kind) => (SCOUTS_KIND_KEYS[kind] ? t(SCOUTS_KIND_KEYS[kind]) : kind);
 
   if (view.scouts_subcommittees.length) {
     const box = scoutsSection(panel, t("panels.scouts_subcommittees"));
@@ -1327,7 +1317,7 @@ function renderScouts() {
     const box = scoutsSection(panel, t("panels.scouts_this_round"));
     for (const [, id] of current) {
       const item = scoutsItem(id);
-      const row = scoutsRow(box, `${kindLabel(item.kind)} · ${item.name}`);
+      const row = scoutsRow(box, `${scoutsKindName(item.kind)} · ${item.name}`);
       row.dataset.item = id;
       scoutsItemLines(item, row);
     }
@@ -1400,7 +1390,7 @@ function renderScouts() {
   const auctionHere = current.some(([, id]) => scoutsItem(id).kind === "auction");
   const ownBid = view.private ? view.private.scouts_bid : -1;
   if (auctionHere && (view.scouts_bids_confirmed.length || ownBid >= 0)) {
-    const box = scoutsSection(panel, kindLabel("auction"));
+    const box = scoutsSection(panel, scoutsKindName("auction"));
     scoutsRow(
       box,
       view.scouts_bids_confirmed.length
@@ -1433,7 +1423,7 @@ function renderScouts() {
       const row = document.createElement("div");
       row.className = "scouts-row";
       row.dataset.item = id;
-      row.textContent = `${t("panels.scouts_round", { round })} · ${kindLabel(item.kind)} · ${item.name}`;
+      row.textContent = `${t("panels.scouts_round", { round })} · ${scoutsKindName(item.kind)} · ${item.name}`;
       details.appendChild(row);
     }
     panel.appendChild(details);
