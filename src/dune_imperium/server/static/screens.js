@@ -9,7 +9,10 @@ function buildSeatSelects() {
   wrap.textContent = "";
   for (let seat = 0; seat < 4; seat += 1) {
     const label = document.createElement("label");
-    label.append(`${t("common.seat", { seat })} `);
+    label.style.setProperty("--seat-color", SEAT_COLORS[seat]);
+    const name = document.createElement("span");
+    name.textContent = t("common.seat", { seat });
+    label.appendChild(name);
     const select = document.createElement("select");
     select.dataset.seat = String(seat);
     for (const [value, text] of SEAT_KINDS) {
@@ -26,6 +29,17 @@ function buildSeatSelects() {
     label.appendChild(select);
     wrap.appendChild(label);
   }
+  updateSetupSummary();
+}
+
+function updateSetupSummary() {
+  const seats = [...el("seat-selects").querySelectorAll("select")];
+  el("opt-checkpoint-row").hidden = !seats.some((select) => select.value === "checkpoint");
+  const human = seats.filter((select) => select.value === "human").length;
+  const options = el("rule-options").querySelectorAll("input:checked:not(:disabled)").length;
+  el("setup-summary").textContent = t("screens.setup_summary", {
+    human, ai: seats.length - human, options,
+  });
 }
 
 async function loadGameList() {

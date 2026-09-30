@@ -140,6 +140,108 @@ fieldset label { display: block; margin: 0.25rem 0; }
 fieldset label:has(input:disabled) { opacity: 0.5; }
 #seat-selects label { display: flex; gap: 0.5rem; align-items: center; }
 
+/* ---------- table setup ---------- */
+
+#setup-screen { background: transparent; border: none; padding: 1rem 0; }
+.setup-intro { margin: 0.4rem 0 1.8rem; }
+.setup-intro h2 { font-size: 2.2rem; font-weight: 650; letter-spacing: -0.04em; }
+.setup-intro p { margin: 0.4rem 0 0; color: #746956; }
+#setup-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 2fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+#setup-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border-color: #ddd4c5;
+  background: var(--panel);
+  border-radius: 12px;
+}
+#setup-form legend { padding: 0 0.4rem; font-weight: 700; font-size: 1rem; }
+#seat-selects { display: grid; gap: 0.65rem; }
+#seat-selects label {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--seat-color);
+  border-radius: 7px;
+}
+#seat-selects label > span { font-size: 0.8rem; font-weight: 700; }
+#setup-form select, #setup-form input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+}
+#setup-form #opt-seed-row, #setup-form #opt-checkpoint-row {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+}
+#opt-seed-row input, #opt-checkpoint-row input { margin-top: 0.4rem; }
+#rule-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+#rule-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  cursor: pointer;
+}
+#rule-options label:has(input:checked) { border-color: #b9a17a; background: #f7f2e8; }
+#rule-options label:has(input:disabled) { cursor: default; }
+#rule-options label:hover:not(:has(input:disabled)) { border-color: var(--accent); }
+#rule-options input { flex: none; width: 16px; height: 16px; margin: 3px 0 0; accent-color: #826336; }
+.setup-start {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  background: #252b2d;
+  color: #eee9df;
+  border-radius: 10px;
+}
+#setup-summary { margin: 0; font-size: 0.9rem; }
+#setup-form #create-game {
+  padding: 0.65rem 2rem;
+  background: #d5b478;
+  border-color: #d5b478;
+  color: #211d15;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#setup-form #create-game:hover { background: #ebcd97; }
+#setup-screen #game-list-wrap, #setup-screen #save-list-wrap {
+  margin-top: 1.5rem;
+  padding: 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+@media (max-width: 900px) {
+  #setup-form { grid-template-columns: minmax(0, 1fr); }
+  #seat-selects { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 550px) {
+  #rule-options, #seat-selects { grid-template-columns: minmax(0, 1fr); }
+  .setup-start { align-items: stretch; flex-direction: column; }
+}
+
 button {
   font: inherit;
   border: 1px solid var(--accent);
