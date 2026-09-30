@@ -137,6 +137,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 
 - **계열.** Desert Riding과 Valued Informants 두 종(Urban Surveillance, Planetary Exploration)은 한 계열이라 셋 중 하나만 나온다. Elite Sardaukar 두 종(Prison Planet, Emperor's Schemes)도 한 계열이고(앱의 제목은 "Valued Informants - …", "Elite Sardaukar - …"처럼 계열 이름을 앞에 붙인다), Immortality 풀에서는 Coordinate With The Emperor가 Prison Planet 대신 그 계열에 들어간다.
 - 앱의 데이터에서 Desert Riding과 Urban Surveillance는 같은 id(15.0)를 쓴다. 프로젝트는 앱 id를 식별자로 쓰지 않는다.
+- **Prison Planet의 지배 마커(2026-09-30 원문 재확인).** 앱은 좌석 **자신의 지배 마커 하나**를 놓게 한다(`spice.mission.elitesardaukar.prisonplanet.desc`의 "one of their control markers"; 참여 표시용 별도 토큰이 아니다). 지배 마커는 색마다 3개이고 지배 칸도 3개다("Control marker 3개" `[Main p. 3]`, `setup-and-game-flow.md`; Arrakeen·Spice Refinery·Imperial Basin `[Main p. 10]`). 모자라는 경우는 앱 도움말이 직접 정한다: 세 번째 칸을 지배하게 되는데 마커가 아직 Sardaukar에 있으면 그 마커를 가져와 세 번째 칸에 놓고, 그 좌석은 임무를 더 완수할 수 없으며 spice를 얻지 못한다(`spice.help.body.uprising`의 Clarifications). 기본판 일정의 Sapho Juice(Mentat 칸)도 같은 방식과 같은 해설을 쓴다(`spice.mission.saphojuice.desc`, `spice.help.body`). 그래서 기본 규칙의 마커 3개는 넘지 않는다. **project convention(앱 문장에 없음):** 되가져간 마커 위의 spice 2는 은행으로 돌아간다("gains no spice"만 있다), 잃은 garrison troop은 돌려받지 않는다, 세 마커를 모두 쓴 좌석(지배 칸 + 임무 위 마커 = 3)에게는 참여를 묻지 않는다(놓을 마커가 실물로 없다). 구현: `rules/scouts_missions.py` `free_prison_marker`·참여 검사, `rules/combat.py`의 지배 보상 직전 호출; `tests/unit/rules/test_scouts_missions.py`의 prison 테스트 셋.
 
 ## 6. 이벤트
 
