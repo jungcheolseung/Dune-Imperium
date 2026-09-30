@@ -115,7 +115,13 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # its choice frame (OQ-071); Emperor's Schemes reshuffles the Intrigue
 # discard when the deck is short (OQ-078). Saves whose game met any of
 # these replay differently -- no template change.
-ACTION_CODEC_VERSION = 122
+# v123: the subcommittee join moves into the turn: choose_subcommittee (no
+# arguments, every Scouts catalog) opens the list any time in the turn a
+# High Council seat was taken, beside the visit's other effects or in the
+# rest of Corrinth City's Reveal turn, and decline_subcommittee is offered
+# there too; the old immediate offer is gone (OQ-076 alternative C, user
+# ruling 2026-09-30).
+ACTION_CODEC_VERSION = 123
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -980,7 +986,9 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for faction in Faction
         ),
-        # Subcommittees: join one, or decline the offer.
+        # Subcommittees: open the list during the turn (OQ-076), join one,
+        # or decline the chance.
+        ActionTemplate(action_id="choose_subcommittee"),
         ActionTemplate(action_id="decline_subcommittee"),
         *(
             ActionTemplate(

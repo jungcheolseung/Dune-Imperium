@@ -313,12 +313,11 @@ from dune_imperium.rules.scouts_effects import (
     apply_scouts_choice_action,
     apply_scouts_effect_action,
     apply_subcommittee_action,
-    begin_subcommittee_offer,
     legal_scouts_choice_actions,
     legal_scouts_effect_actions,
     legal_subcommittee_actions,
+    legal_subcommittee_choice_actions,
     scouts_effect_can_advance,
-    subcommittee_offer_is_queued,
 )
 from dune_imperium.rules.scouts_missions import (
     apply_mission_collect,
@@ -467,6 +466,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_specimen_return_actions,
         legal_family_atomics_actions,
         legal_tleilaxu_acquisitions,
+        # Arrakeen Scouts: Corrinth City's seat's subcommittee (OQ-076).
+        legal_subcommittee_choice_actions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
@@ -548,6 +549,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pick_leader": apply_leader_draft_pick,
     # Arrakeen Scouts (docs/rules/arrakeen-scouts.md)
     "choose_four_bonus": apply_four_bonus_choice,
+    "choose_subcommittee": apply_subcommittee_action,
     "join_subcommittee": apply_subcommittee_action,
     "decline_subcommittee": apply_subcommittee_action,
     "scouts_discard": apply_scouts_effect_action,
@@ -1052,10 +1054,6 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # The Emperor track's Influence 4 Spy [Main p. 7] is placed
             # before any other player-initiated action (OQ-057).
             automatic = begin_track_spy_placement(state)
-        elif subcommittee_offer_is_queued(state):
-            # Arrakeen Scouts: taking a High Council seat offers a
-            # subcommittee (OQ-076).
-            automatic = begin_subcommittee_offer(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
         elif combat_reward_spy_is_unavailable(state):

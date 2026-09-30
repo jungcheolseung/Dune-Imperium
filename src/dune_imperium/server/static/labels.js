@@ -259,6 +259,7 @@ const ACTION_LABELS = {
   choose_research_space: "{research}: 전진할 칸 선택",
   choose_research_influence: "{research} 보너스: {influence_any}",
   choose_four_bonus: "{influence_any} 4 보너스 선택",
+  choose_subcommittee: "소위원회 선택",
   join_subcommittee: "소위원회 가입",
   decline_subcommittee: "소위원회 가입 안 함",
   scouts_discard: "카드 {discard}",

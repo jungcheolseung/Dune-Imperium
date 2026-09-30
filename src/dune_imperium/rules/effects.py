@@ -243,6 +243,21 @@ def finish_board_icon(context: dict[str, ActionValue], key: str) -> None:
     context["pending_board_effect"] = bool(remaining)
 
 
+def add_board_icon(context: dict[str, ActionValue], key: str) -> None:
+    """Queue one more freely ordered effect of the visit, unlocked by an icon
+    just resolved (Arrakeen Scouts: the new High Council seat's
+    subcommittee, OQ-076).
+
+    It joins ``pending_board_icons`` only, not the printed ``board_icons``,
+    so a repeat of the printed effects never re-arms it."""
+
+    icons = pending_board_icons(context)
+    if key in icons:
+        raise ValueError(f"board icon is already pending: {key}")
+    context["pending_board_icons"] = ",".join((*icons, key))
+    context["pending_board_effect"] = True
+
+
 def pending_agent_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
     """Return the played card's Agent-box icons still waiting for their action.
 

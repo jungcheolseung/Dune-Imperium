@@ -14,6 +14,7 @@ from dune_imperium.simulation import run_random_round
 
 _SCOUTS_ACTION_PREFIXES = (
     "choose_four_bonus",
+    "choose_subcommittee",
     "join_subcommittee",
     "decline_subcommittee",
     "scouts_",
@@ -30,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 122
+    assert ACTION_CODEC_VERSION == 123
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,

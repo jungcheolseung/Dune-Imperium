@@ -73,7 +73,10 @@ from dune_imperium.rules.intrigue_deck import (
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
-from dune_imperium.rules.scouts_offers import queue_subcommittee_offer
+from dune_imperium.rules.scouts_offers import (
+    queue_reveal_subcommittee_offer,
+    reveal_subcommittee_offer,
+)
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
@@ -860,6 +863,7 @@ def apply_corrinth_city_reveal(
     source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     owner = state.players[action.actor]
     remaining = state.decision_stack[:-1]
+    offer_events: tuple[GameEvent, ...] = ()
     if action.action_id == "gain_five_reveal_solari":
         next_owner = replace(
             owner,
@@ -892,14 +896,12 @@ def apply_corrinth_city_reveal(
                 ("solari", 5),
             ),
         )
-        # Arrakeen Scouts: the seat offers one subcommittee (OQ-076); no
-        # Agent took it, so Contingencies may recall any (OQ-075).
-        state = queue_subcommittee_offer(
-            state,
-            action.actor,
-            source=f"{source}:high_council",
-            exclude_space="",
-            turn_closed=False,
+        # Arrakeen Scouts: the new seat lets the seat join a subcommittee
+        # any time in the rest of this Reveal turn (OQ-076 alternative C,
+        # user ruling 2026-09-30); no Agent took it, so Contingencies may
+        # recall any other Agent (OQ-075).
+        state, offer_events = queue_reveal_subcommittee_offer(
+            state, action.actor, source=f"{source}:high_council"
         )
     return RuleResult(
         state=replace(
@@ -907,7 +909,7 @@ def apply_corrinth_city_reveal(
             players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
-        events=(event,),
+        events=(event, *offer_events),
     )
 
 
@@ -4487,6 +4489,13 @@ def legal_finish_reveal_actions(
     if reveal_pending_gains(context):
         # Every troop recruit and Intrigue draw must be taken (OQ-045).
         return ()
+    if reveal_subcommittee_offer(state, player) is not None:
+        # Arrakeen Scouts: Corrinth City's seat must join a subcommittee or
+        # decline before the Reveal ends, as the High Council board space's
+        # choice must be answered before its Agent turn ends; nothing lapses
+        # unasked (user rulings 2026-09-30, OQ-076). Declining is always
+        # offered, so this never blocks the turn.
+        return ()
     pending_tech = tech_reveal_pending(context)
     if "forbidden_weapons" in pending_tech or (
         "panopticon" in pending_tech
@@ -4624,7 +4633,12 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     )
     return RuleResult(
         state=next_state,
-        events=(*lapsed_events, *expired.events, *removal_events, event),
+        events=(
+            *lapsed_events,
+            *expired.events,
+            *removal_events,
+            event,
+        ),
     )
 
 

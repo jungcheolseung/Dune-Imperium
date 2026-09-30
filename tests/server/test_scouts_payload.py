@@ -5,7 +5,9 @@ ones the seat cannot take now greyed out with the reason, and a High Council
 step says which subcommittees its seat would let the seat join. Display and
 payload only: the legal actions (and so the codec, the observation, the
 events and the saves) are unchanged (``display.scouts.scouts_choice_lines``,
-``sessions.subcommittee_preview``).
+``sessions.subcommittee_preview``). Since the 2026-09-30 ruling (OQ-076
+alternative C) the seat chooses its subcommittee any time in that turn, so
+the preview describes what could be joined once the seat is taken.
 """
 
 import json
@@ -156,7 +158,9 @@ def test_the_preview_follows_the_seats_resources() -> None:
     assert lines["relations"]["enabled"] and lines["relations"]["reason"] is None
 
 
-def test_the_preview_says_when_the_offer_would_lapse() -> None:
+def test_the_preview_says_when_nothing_is_joinable_at_once() -> None:
+    """OQ-076 alternative C: the seat may still choose later in the turn, so
+    open subcommittees nothing can meet yet come with their reasons."""
     # Three other seats hold three; Oversight needs a Spy on the board and
     # Contingencies an Intrigue card, and the seat has neither.
     claimed = (("readiness", 1), ("relations", 2), ("appropriations", 3))
@@ -168,7 +172,74 @@ def test_the_preview_says_when_the_offer_would_lapse() -> None:
         )
     )
 
+    preview = _obj(serialized["subcommittee_preview"])
+    assert preview["joinable"] is False
+    lines = {line["subcommittee_id"]: line for line in preview["lines"]}
+    assert not any(line["enabled"] for line in lines.values())
+    assert lines["oversight"]["reason"] == "Needs 1 Spy on the board (you have 0)"
+    assert lines["contingencies"]["code"] == "cost"
+
+
+def test_the_preview_says_when_the_chance_would_lapse() -> None:
+    # A seat joins once, so three other seats can hold a three-strong display.
+    claimed = (("readiness", 1), ("oversight", 2), ("relations", 3))
+    serialized = _council_step(
+        _state(
+            5,
+            scouts_subcommittees=DISPLAY[:3],
+            scouts_subcommittee_members=claimed,
+        )
+    )
+
     assert serialized["subcommittee_preview"] == {"joinable": False, "lines": []}
+
+
+def test_choosing_a_subcommittee_can_be_taken_back() -> None:
+    """Opening the list reveals nothing and hands nothing to chance, so the
+    step stays undoable like the visit's other effects."""
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(_state(3), 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "high_council"
+        and "dagger" in str(dict(action.arguments)["card_id"])
+    )
+    placed = ENGINE.apply(_state(3), placement).state
+    seated = ENGINE.apply(
+        placed,
+        DomainAction(
+            action_id="resolve_board_effect",
+            actor=0,
+            arguments=(("effect", "high_council"),),
+        ),
+    ).state
+    legal = ENGINE.legal_actions(seated, 0)
+    rows = {
+        action.action_id: _serialize_action(
+            legal.index(action),
+            action,
+            _session(seated),  # type: ignore[arg-type]
+        )
+        for action in legal
+    }
+    assert rows["choose_subcommittee"]["undoable"] is True
+    assert rows["decline_subcommittee"]["undoable"] is True
+    # Neither is the seat taking its seat: no preview on either.
+    assert "subcommittee_preview" not in rows["choose_subcommittee"]
+    chosen = ENGINE.apply(
+        seated, DomainAction(action_id="choose_subcommittee", actor=0)
+    ).state
+    join = DomainAction(
+        action_id="join_subcommittee",
+        actor=0,
+        arguments=(("subcommittee_id", "readiness"),),
+    )
+    joined = _serialize_action(
+        ENGINE.legal_actions(chosen, 0).index(join),
+        join,
+        _session(chosen),  # type: ignore[arg-type]
+    )
+    assert joined["undoable"] is True
 
 
 def test_a_step_without_a_council_seat_has_no_preview() -> None:

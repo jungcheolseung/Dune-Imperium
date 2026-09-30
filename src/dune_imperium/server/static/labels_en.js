@@ -225,6 +225,7 @@ const LABELS_EN = {
     "choose_research_space": "{research}: advance to",
     "choose_research_influence": "{research} bonus: {influence_any}",
     "choose_four_bonus": "Choose the {influence_any} 4 bonus",
+    "choose_subcommittee": "Choose a Subcommittee",
     "join_subcommittee": "Join Subcommittee",
     "decline_subcommittee": "Decline Subcommittee",
     "scouts_discard": "{discard} Card",

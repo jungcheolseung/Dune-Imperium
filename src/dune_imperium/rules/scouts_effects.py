@@ -12,9 +12,10 @@ automatic advance runs the automatic steps. The same frame serves inside a
 turn (a subcommittee joined at the High Council) and in the Scouts step.
 
 Subcommittees [Scouts help] (docs/rules/arrakeen-scouts.md 4): taking a
-High Council seat queues one offer (OQ-076); the offer lists the unclaimed
-subcommittees whose cost the seat can pay and whose reward can do something
-(OQ-071), and joining one opens its line.
+High Council seat lets the seat choose a subcommittee any time in that turn
+(OQ-076 alternative C); the choice lists the unclaimed subcommittees whose
+cost the seat can pay and whose reward can do something (OQ-071), and
+joining one opens its line.
 """
 
 from collections.abc import Mapping
@@ -64,7 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
 )
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -73,7 +74,14 @@ from dune_imperium.rules.acquisition import acquire_reserve_for_intrigue
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effect_interpreter import apply_rewards
-from dune_imperium.rules.effects import recall_conflict_agent
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    board_icon_is_pending,
+    current_agent_effect_context,
+    finish_board_icon,
+    recall_conflict_agent,
+    turn_agent_in_conflict,
+)
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -92,7 +100,13 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.reveal_turn import add_reveal_strength
-from dune_imperium.rules.scouts_offers import CONFLICT_AGENT
+from dune_imperium.rules.scouts_offers import (
+    BOARD_ICON_SUBCOMMITTEE,
+    CONFLICT_AGENT,
+    drop_reveal_subcommittee_offer,
+    open_subcommittees,
+    reveal_subcommittee_offer,
+)
 from dune_imperium.rules.specimens import return_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.strength import reveal_in_progress
@@ -1295,19 +1309,16 @@ def _rebuild(
 
 
 # --- Subcommittees --------------------------------------------------------------------
-
-
-def subcommittee_offer_is_queued(state: GameState) -> bool:
-    """Whether a queued offer can open now (after chance and Conflict rewards)."""
-
-    if not state.scouts_subcommittee_offers:
-        return False
-    frame = state.decision_stack[-1] if state.decision_stack else None
-    if frame is None:
-        return True
-    if isinstance(frame.decision, ChanceDecision):
-        return False
-    return not str(frame.kind).startswith("combat_reward")
+#
+# A new High Council seat may join one still-empty subcommittee any time in
+# the turn it was taken (OQ-076 alternative C, user ruling 2026-09-30, a
+# project convention widening the app's "when you take a council seat"):
+# "You may carry out all these effects in any order." [Main p. 9]. Two
+# levels: the turn's own frame (the Agent-turn effect frame while
+# ``BOARD_ICON_SUBCOMMITTEE`` is pending, or the Reveal frame while
+# Corrinth City's offer is open) offers ``choose_subcommittee`` and
+# ``decline_subcommittee``; choosing opens the ``scouts_subcommittee`` frame
+# listing ``join_subcommittee`` per joinable subcommittee and the decline.
 
 
 def joinable_subcommittees(
@@ -1327,12 +1338,10 @@ def joinable_subcommittees(
     OQ-075).
     """
 
-    claimed = {subcommittee for subcommittee, _ in state.scouts_subcommittee_members}
     return tuple(
         subcommittee_id
-        for subcommittee_id in state.scouts_subcommittees
-        if subcommittee_id not in claimed
-        and line_is_offered(
+        for subcommittee_id in open_subcommittees(state, player)
+        if line_is_offered(
             state,
             player,
             SUBCOMMITTEES_BY_ID[subcommittee_id].option,
@@ -1341,36 +1350,54 @@ def joinable_subcommittees(
     )
 
 
-def begin_subcommittee_offer(state: GameState) -> RuleResult:
-    """Open the oldest offer, or let it lapse when nothing can be joined."""
+def pending_subcommittee_exclude(state: GameState, player: int) -> str | None:
+    """The ``exclude_space`` of ``player``'s open subcommittee choice, or
+    None while the seat's own turn frame offers none.
 
-    (player, source, exclude_space, turn_closed), *rest = (
-        state.scouts_subcommittee_offers
-    )
-    remaining = replace(state, scouts_subcommittee_offers=tuple(rest))
-    if not joinable_subcommittees(remaining, player, exclude_space=exclude_space):
-        return RuleResult(
-            state=remaining,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:subcommittee_unavailable",
-                    kind="scouts_subcommittee_unavailable",
-                    payload=(("player", player),),
-                ),
-            ),
+    At the High Council board space it is worked out now, not when the seat
+    was taken: the seat-taking Agent's space, or ``CONFLICT_AGENT`` once Into
+    the Fray has moved it into the Conflict ("not the Agent you sent during
+    this turn" [Main p. 20], OQ-068, OQ-075). Corrinth City's seat has no
+    Agent of its own ("", OQ-075).
+    """
+
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if frame.kind == FrameKind.AGENT_EFFECTS:
+        _, context = current_agent_effect_context(state)
+        if not board_icon_is_pending(context, BOARD_ICON_SUBCOMMITTEE):
+            return None
+        space_id = context_str(context, "space_id", owner=_OFFER_FRAME)
+        owner = state.players[player]
+        return (
+            CONFLICT_AGENT
+            if turn_agent_in_conflict(owner, context, space_id)
+            else space_id
         )
-    frame = DecisionFrame(
-        kind=FrameKind.SCOUTS_SUBCOMMITTEE,
-        frame_id=f"{source}:subcommittee",
-        decision=PlayerDecision(owner=player, prompt="Join a subcommittee or decline"),
-        context=(
-            ("exclude_space", exclude_space),
-            ("player", player),
-            ("source", source),
-            ("turn_closed", turn_closed),
-        ),
+    if frame.kind == FrameKind.REVEAL:
+        entry = reveal_subcommittee_offer(state, player)
+        return None if entry is None else entry[2]
+    return None
+
+
+def legal_subcommittee_choice_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The turn frame's subcommittee choice: choose (when one can be joined
+    now) or decline; the seat may also leave it for later in the turn."""
+
+    excluded = pending_subcommittee_exclude(state, player)
+    if excluded is None:
+        return ()
+    choose = (
+        (DomainAction(action_id="choose_subcommittee", actor=player),)
+        if joinable_subcommittees(state, player, exclude_space=excluded)
+        else ()
     )
-    return RuleResult(state=remaining.push_decision(frame))
+    return (*choose, DomainAction(action_id="decline_subcommittee", actor=player))
 
 
 def legal_subcommittee_actions(
@@ -1397,53 +1424,114 @@ def legal_subcommittee_actions(
     )
 
 
-def apply_subcommittee_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Join (and open its line) or decline the subcommittee offer."""
+def _offer_source(state: GameState, player: int) -> str:
+    """The event source of the seat's open choice (its turn frame on top)."""
 
-    if action not in legal_subcommittee_actions(state, action.actor):
-        raise ValueError("action is not a legal subcommittee choice")
     frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    source = context_str(context, "source", owner=_OFFER_FRAME)
-    popped = state.pop_decision()
-    if action.action_id == "decline_subcommittee":
+    if frame.kind == FrameKind.REVEAL:
+        entry = reveal_subcommittee_offer(state, player)
+        if entry is None:
+            raise RuntimeError("the Reveal frame holds no subcommittee offer")
+        return entry[1]
+    _, context = current_agent_effect_context(state)
+    space_id = context_str(context, "space_id", owner=_OFFER_FRAME)
+    return f"round:{state.round_number}:player:{player}:board:{space_id}:high_council"
+
+
+def _close_offer(state: GameState, player: int) -> GameState:
+    """Retire the seat's choice on its turn frame, now back on top.
+
+    The Agent-turn effect frame finishes the icon and advances, which may
+    close the turn (``advance_after_effect``); the Reveal frame drops the
+    offer.
+    """
+
+    frame = state.decision_stack[-1]
+    if frame.kind == FrameKind.REVEAL:
+        return drop_reveal_subcommittee_offer(state, player)
+    _, context = current_agent_effect_context(state)
+    finish_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
+    return advance_after_effect(state, context)
+
+
+def _declined(source: str, player: int) -> GameEvent:
+    return GameEvent(
+        event_id=f"{source}:subcommittee_declined",
+        kind="scouts_subcommittee_declined",
+        payload=(("player", player),),
+    )
+
+
+def apply_subcommittee_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Choose, join (then the line) or decline the new seat's subcommittee.
+
+    From the turn frame ``choose_subcommittee`` opens the list and
+    ``decline_subcommittee`` gives the chance up; in the list
+    ``join_subcommittee`` records the member, retires the choice on the turn
+    frame and opens the line (its cost is paid, OQ-075), and
+    ``decline_subcommittee`` gives the chance up too.
+    """
+
+    player = action.actor
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if top is not None and top.kind == FrameKind.SCOUTS_SUBCOMMITTEE:
+        if action not in legal_subcommittee_actions(state, player):
+            raise ValueError("action is not a legal subcommittee choice")
+        context = dict(top.context)
+        source = context_str(context, "source", owner=_OFFER_FRAME)
+        excluded = context_str(context, "exclude_space", owner=_OFFER_FRAME)
+        closed = _close_offer(state.pop_decision(), player)
+        if action.action_id == "decline_subcommittee":
+            return RuleResult(state=closed, events=(_declined(source, player),))
+        subcommittee_id = str(dict(action.arguments)["subcommittee_id"])
+        joined = replace(
+            closed,
+            scouts_subcommittee_members=(
+                *closed.scouts_subcommittee_members,
+                (subcommittee_id, player),
+            ),
+        )
+        # The choice may have been the visit's last effect: the line's
+        # recruits and spice then belong to no open turn (OQ-044 (d)).
+        opened = push_scouts_effect(
+            joined,
+            player,
+            subcommittee_id,
+            0,
+            source=f"{source}:{subcommittee_id}",
+            exclude_space=excluded,
+            turn_closed=joined.decision_stack[-1].kind == FrameKind.TURN,
+        )
         return RuleResult(
-            state=popped,
+            state=opened,
             events=(
                 GameEvent(
-                    event_id=f"{source}:subcommittee_declined",
-                    kind="scouts_subcommittee_declined",
-                    payload=(("player", action.actor),),
+                    event_id=f"{source}:subcommittee_joined",
+                    kind="scouts_subcommittee_joined",
+                    payload=(
+                        ("player", player),
+                        ("subcommittee_id", subcommittee_id),
+                    ),
                 ),
             ),
         )
-    subcommittee_id = str(dict(action.arguments)["subcommittee_id"])
-    joined = replace(
-        popped,
-        scouts_subcommittee_members=(
-            *popped.scouts_subcommittee_members,
-            (subcommittee_id, action.actor),
+    if action not in legal_subcommittee_choice_actions(state, player):
+        raise ValueError("action is not a legal subcommittee choice")
+    excluded_now = pending_subcommittee_exclude(state, player)
+    assert excluded_now is not None
+    source = _offer_source(state, player)
+    if action.action_id == "decline_subcommittee":
+        return RuleResult(
+            state=_close_offer(state, player), events=(_declined(source, player),)
+        )
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_SUBCOMMITTEE,
+        frame_id=f"{source}:subcommittee",
+        decision=PlayerDecision(owner=player, prompt="Join a subcommittee or decline"),
+        context=(
+            ("exclude_space", excluded_now),
+            ("player", player),
+            ("source", source),
         ),
     )
-    opened = push_scouts_effect(
-        joined,
-        action.actor,
-        subcommittee_id,
-        0,
-        source=f"{source}:{subcommittee_id}",
-        exclude_space=context_str(context, "exclude_space", owner=_OFFER_FRAME),
-        turn_closed=context.get("turn_closed") is True,
-    )
-    return RuleResult(
-        state=opened,
-        events=(
-            GameEvent(
-                event_id=f"{source}:subcommittee_joined",
-                kind="scouts_subcommittee_joined",
-                payload=(
-                    ("player", action.actor),
-                    ("subcommittee_id", subcommittee_id),
-                ),
-            ),
-        ),
-    )
+    return RuleResult(state=state.push_decision(frame))

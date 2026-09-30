@@ -57,10 +57,13 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.scouts_effects import (
     ScoutsStep,
+    joinable_subcommittees,
     line_unavailable_reason,
+    pending_subcommittee_exclude,
     scouts_option,
 )
 from dune_imperium.rules.scouts_missions import join_unavailable_reason
+from dune_imperium.rules.scouts_offers import open_subcommittees
 
 SCOUTS_ITEM_NAMES_KO: Final[Mapping[str, str]] = {
     "analytics": "분석",
@@ -754,6 +757,81 @@ def _subcommittee_lines(
             line["seat"] = member
         lines.append(line)
     return lines
+
+
+def _join_actions(
+    state: GameState, seat: int, exclude_space: str
+) -> tuple[DomainAction, ...]:
+    """The ``join_subcommittee`` actions the seat's list would offer now."""
+
+    return tuple(
+        DomainAction(
+            action_id="join_subcommittee",
+            actor=seat,
+            arguments=(("subcommittee_id", subcommittee_id),),
+        )
+        for subcommittee_id in joinable_subcommittees(
+            state, seat, exclude_space=exclude_space
+        )
+    )
+
+
+def pending_subcommittee_lines(
+    state: GameState, seat: int
+) -> list[dict[str, object]] | None:
+    """Every subcommittee on display as ``seat``'s open choice would list it.
+
+    While the seat's own turn frame holds its new High Council seat's
+    choice (``pending_subcommittee_exclude``, OQ-076 alternative C): the
+    lines ``choose_subcommittee`` would open now, joinable ones enabled and
+    the others with their reason. ``action_index`` numbers the lines' own
+    join actions, not any legal list. None while no choice is open.
+    """
+
+    excluded = pending_subcommittee_exclude(state, seat)
+    if excluded is None:
+        return None
+    return _subcommittee_lines(
+        state, seat, excluded, _join_actions(state, seat, excluded)
+    )
+
+
+_NO_SUBCOMMITTEE: Final[Reason] = (
+    "No subcommittee you can join now",
+    "지금 가입할 수 있는 소위원회 없음",
+    "subcommittee",
+)
+
+
+def choose_subcommittee_reason(state: GameState, seat: int) -> Reason | None:
+    """Why ``choose_subcommittee`` is not offered now, or None.
+
+    None while the seat has no open choice or can join one now. With one
+    subcommittee left open, its name and its own reason
+    (``line_unavailable_reason``); with several, that none of them can be
+    joined now (each one's reason is in the Scouts panel and in the list
+    once it opens). The engine offers ``choose_subcommittee`` exactly when
+    ``joinable_subcommittees`` is not empty, which is what this reads, so
+    the two cannot drift.
+    """
+
+    excluded = pending_subcommittee_exclude(state, seat)
+    if excluded is None or _join_actions(state, seat, excluded):
+        return None
+    left = open_subcommittees(state, seat)
+    if len(left) != 1:
+        return _NO_SUBCOMMITTEE
+    subcommittee_id = left[0]
+    option = SUBCOMMITTEES_BY_ID[subcommittee_id].option
+    step = line_unavailable_reason(state, seat, option, exclude_space=excluded)
+    if step is None:
+        return _NO_SUBCOMMITTEE
+    english, korean, code = _step_reason(state, seat, option, step)
+    return (
+        f"{scouts_item_name(subcommittee_id)}: {english}",
+        f"{SCOUTS_ITEM_NAMES_KO[subcommittee_id]}: {korean}",
+        code,
+    )
 
 
 def _mission_lines(

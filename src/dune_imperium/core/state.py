@@ -158,8 +158,11 @@ class GameState:
     # as (player, Faction reached, event source), opened in order.
     scouts_four_bonus_choices: tuple[tuple[int, str, str], ...] = ()
     # Subcommittee members as (subcommittee id, seat), in joining order, and
-    # the offers owed by High Council seats taken, as (player, event source,
-    # space of the Agent that took it, whether that seat's turn had closed).
+    # the choices open for a High Council seat taken through Corrinth City
+    # during a Reveal turn (OQ-076), as (player, event source, space of the
+    # Agent that took it: always "", whether that seat's turn had closed:
+    # always False); each lapses when its Reveal turn ends. A board-space
+    # seat's choice is a pending icon of its Agent-turn frame instead.
     scouts_subcommittee_members: tuple[tuple[str, int], ...] = ()
     scouts_subcommittee_offers: tuple[tuple[int, str, str, bool], ...] = ()
     # Mission pieces (``rules.scouts_missions``): bank goods as (mission,

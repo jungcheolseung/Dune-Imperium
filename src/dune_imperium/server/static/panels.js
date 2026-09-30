@@ -929,10 +929,11 @@ function ownGlowFrom(seat, entries) {
   return last + 1;
 }
 
-/* An Arrakeen Scouts choice or subcommittee offer the viewing seat could
-   take nothing from is skipped without asking (rules/scouts_effects.py,
-   OQ-071, OQ-076). The log records it; this also says so once, in the
-   note, when it arrives. */
+/* An Arrakeen Scouts choice the viewing seat could take nothing from, or a
+   new High Council seat with no subcommittee left open, is skipped without
+   asking (rules/scouts_effects.py, rules/scouts_offers.py, OQ-071,
+   OQ-076). The log records it; this also says so once, in the note, when
+   it arrives. */
 function noticeScoutsSkips(entries, from) {
   const seat = activeSeat();
   if (typeof seat !== "number") return;

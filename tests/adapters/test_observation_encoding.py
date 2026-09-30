@@ -309,6 +309,15 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # a Control defense decision changed (phase Round Start, hands not yet
 # drawn, no turn owner). "promo_bloodlines_tech" has no defense in its
 # game and did not move; the Scouts rule batch left "scouts" unchanged.
+# Re-pinned on 2026-09-30 for the subcommittee join inside the turn (OQ-076
+# alternative C, codec v123, observation v27 unchanged): only "scouts"
+# moved. Traced against HEAD (6878111, extracted with ``git archive``): the
+# first difference is decision 344, where a random seat has just taken the
+# High Council seat; the old engine opened the ``scouts_subcommittee``
+# frame there at once, the new one keeps the Agent-turn frame with
+# ``choose_subcommittee``, and the new decision 345 (the list, opened) is
+# byte for byte the old decision 344's four vectors. No encoder file
+# changed.
 _GOLDEN_DIGESTS = {
     "base": ("065fd43c904ab67a65c21d0d5b41d81338880c6d883a861132773deb646161ea", 2572),
     "choam": ("57a3a11eed5f3b0b5a9ecab205250400463fe0e2bc831dad3d8e59737f98ead8", 2972),
@@ -322,8 +331,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("74b78ffc572d573d52b5ee711a79170f40456a932d4217f5ed3e7c4b6acd3e32", 2476),
     "scouts": (
-        "bc2b5bda85477514a9a8f8c37c4774a4deb6bc266fbff2a7ac19c56af481c142",
-        2912,
+        "2c6f03b336100442a94e027a150e0ed9b51d350e221a4b1c653f739d94e62197",
+        2752,
     ),
 }
 _GOLDEN_CONFIGS = {

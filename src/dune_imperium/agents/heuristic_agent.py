@@ -181,6 +181,12 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "choose_tech_strength": 1.0,
     "choose_tech_trash": -1.0,
     "choose_secret_project": 1.0,
+    # Arrakeen Scouts: a new High Council seat's subcommittee, offered only
+    # when one can be joined now. Above ``finish_reveal`` (0.0) so a
+    # Corrinth City seat's choice is not left to lapse; below the visit's
+    # paid effects, which may make another subcommittee payable first. The
+    # list it opens always holds the decline, so it never loops.
+    "choose_subcommittee": 1.0,
     "gain_leader_signet_spice": 1.5,
     "trash_leader_tech": 0.5,
 }

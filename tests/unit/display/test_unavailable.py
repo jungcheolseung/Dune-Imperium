@@ -532,3 +532,68 @@ def test_the_text_fallbacks_carry_the_fallback_code() -> None:
     assert short[0].startswith("Cannot pay: ") and short[2] == NOT_NOW_CODE
     for english, korean, _ in (cost, reward, short):
         assert korean and english != korean
+
+
+# --- Arrakeen Scouts: the new High Council seat's subcommittee choice -------------
+
+DAGGER = "player:0:starter:dagger:0"
+
+
+def _council_seat(spice: int, display: tuple[str, ...]) -> GameState:
+    """Seat 0 sent the Dagger to the High Council and took the seat: its
+    subcommittee choice is one more effect of the visit (OQ-076)."""
+
+    owner = PlayerState(
+        player_id=0,
+        hand=(DAGGER,),
+        resources=Resources(solari=5, spice=spice, water=1),
+    )
+    state = _state(
+        owner,
+        config=RulesetConfig(arrakeen_scouts=True),
+        round_number=2,
+        scouts_subcommittees=display,
+    )
+    for action in (
+        DomainAction(
+            action_id="agent_turn",
+            actor=0,
+            arguments=(("card_id", DAGGER), ("space_id", "high_council")),
+        ),
+        DomainAction(
+            action_id="resolve_board_effect",
+            actor=0,
+            arguments=(("effect", "high_council"),),
+        ),
+    ):
+        state = ENGINE.apply(state, action).state
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    return state
+
+
+def test_a_subcommittee_choice_nothing_can_meet_waits_greyed_out() -> None:
+    """``choose_subcommittee`` is offered exactly when a subcommittee can be
+    joined now; while none can, the row says why and the decline stays."""
+    several = _council_seat(0, ("oversight", "relations", "leverage"))
+    assert _legal(several, "choose_subcommittee") == []
+    assert _legal(several, "decline_subcommittee") == [{}]
+    row = _rows(_found(several), "waiting")["waiting:choose_subcommittee"]
+    assert row["action"]["action_id"] == "choose_subcommittee"
+    assert row["reason"] == "No subcommittee you can join now"
+    assert row["reason_ko"] == "지금 가입할 수 있는 소위원회 없음"
+    assert row["code"] == "subcommittee"
+    # One subcommittee left: its own reason, by name.
+    one = _council_seat(1, ("relations",))
+    row = _rows(_found(one), "waiting")["waiting:choose_subcommittee"]
+    assert row["reason"] == "Relations: Needs 2 spice (you have 1)"
+    assert row["reason_ko"].startswith("외교: ")
+    assert row["code"] == "cost"
+
+
+def test_the_subcommittee_row_goes_once_one_can_be_joined() -> None:
+    state = _council_seat(2, ("relations",))
+    assert _legal(state, "choose_subcommittee") == [{}]
+    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    rows = found["rows"] if found is not None else []
+    assert isinstance(rows, list)
+    assert "waiting:choose_subcommittee" not in {row["key"] for row in rows}

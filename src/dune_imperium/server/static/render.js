@@ -1317,20 +1317,28 @@ function appendUnavailableRows(box, surfaces) {
    subcommittees the seat would let the seat join, then the others it could
    not join right now and why (server/sessions.py subcommittee_preview; a
    claimed one is in the Scouts panel). Read off the step's dry run, so it
-   follows the seat's resources until the icon is resolved. */
+   follows the seat's resources until the icon is resolved. The seat may
+   choose its subcommittee any time later in that turn (OQ-076), so with
+   none joinable at once but some still open it says so and gives the
+   reasons; with none open at all the chance would lapse. */
 function subcommitteePreview(preview) {
   const box = document.createElement("div");
   box.className = "subcommittee-preview";
-  if (!preview.joinable) {
+  const name = (line) => scoutsItem(line.subcommittee_id).name;
+  const open = preview.lines.filter((line) => line.enabled);
+  const shut = preview.lines.filter((line) => !line.enabled && line.code !== "claimed");
+  if (!preview.joinable && !shut.length) {
     box.classList.add("muted");
     box.append(t("render.subcommittee_preview_none"));
     return box;
   }
-  const name = (line) => scoutsItem(line.subcommittee_id).name;
-  const open = preview.lines.filter((line) => line.enabled);
-  const shut = preview.lines.filter((line) => !line.enabled && line.code !== "claimed");
   const joinable = document.createElement("div");
-  joinable.append(t("render.subcommittee_preview_join", { names: open.map(name).join(", ") }));
+  if (preview.joinable) {
+    joinable.append(t("render.subcommittee_preview_join", { names: open.map(name).join(", ") }));
+  } else {
+    joinable.className = "muted";
+    joinable.append(t("render.subcommittee_preview_later"));
+  }
   box.appendChild(joinable);
   if (shut.length) {
     const reasons = document.createDocumentFragment();

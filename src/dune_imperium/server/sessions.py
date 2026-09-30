@@ -58,7 +58,7 @@ from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.display import effect_action_text, effect_action_text_ko
-from dune_imperium.display.scouts import scouts_choice_lines
+from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
@@ -1926,44 +1926,38 @@ def reveal_preview(
 def subcommittee_preview(
     session: GameSession, action: DomainAction, outcome: RuleResult | None
 ) -> JsonObject | None:
-    """Return the subcommittees the step's High Council seat would offer.
+    """Return the subcommittees the step's High Council seat would let the
+    seat join.
 
-    Arrakeen Scouts: taking a High Council seat offers one unclaimed
-    subcommittee (docs/rules/arrakeen-scouts.md 4, OQ-076), and the offer
-    lists only what the seat can join then. Read off the same dry run as
-    the rest, so it follows the seat's resources as they change during the
-    turn: ``joinable`` with every line (claimed, joinable, or not now with
-    its reason; no ``action_index``, the lines are not this list's), or not
-    ``joinable`` when the offer would lapse. None for a step that takes no
-    seat, or whose outcome the previews may not read (``preview_outcome``).
+    Arrakeen Scouts: taking a High Council seat lets the seat join one
+    unclaimed subcommittee any time in that turn (docs/rules/
+    arrakeen-scouts.md 4, OQ-076 alternative C). Read off the same dry run
+    as the rest, so it follows the seat's resources as they change during
+    the turn: every line (claimed, joinable right after the step, or not
+    now with its reason; no ``action_index``, the lines are not this
+    list's), and ``joinable`` when at least one could be joined at once.
+    Not ``joinable`` with no lines when nothing is left to join, so the
+    chance would lapse. None for a step that takes no seat, or whose
+    outcome the previews may not read (``preview_outcome``).
     """
 
     if outcome is None:
         return None
+    seat = action.actor
     if any(
         event.kind == "scouts_subcommittee_unavailable"
-        and dict(event.payload).get("player") == action.actor
+        and dict(event.payload).get("player") == seat
         for event in outcome.events
     ):
         return {"joinable": False, "lines": []}
     after = outcome.state
-    top = after.decision_stack[-1] if after.decision_stack else None
-    if (
-        top is None
-        or str(top.kind) != "scouts_subcommittee"
-        or not isinstance(top.decision, PlayerDecision)
-        or top.decision.owner != action.actor
-    ):
+    if session.state.players[seat].high_council or not after.players[seat].high_council:
         return None
-    offer = scouts_choice_lines(
-        after, action.actor, session.engine.legal_actions(after, action.actor)
-    )
-    if offer is None:
+    lines = pending_subcommittee_lines(after, seat)
+    if lines is None:
         return None
-    lines = offer["lines"]
-    assert isinstance(lines, list)
     return {
-        "joinable": True,
+        "joinable": any(line["enabled"] for line in lines),
         "lines": [_jsonify({**line, "action_index": None}) for line in lines],
     }
 

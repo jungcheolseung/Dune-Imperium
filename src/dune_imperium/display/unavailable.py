@@ -4,7 +4,8 @@ User request 2026-09-29: an option that cannot be taken right now is shown
 but not selectable, with the reason, and it becomes selectable as soon as it
 can be taken (and the reverse), for the whole game. Arrakeen Scouts choices
 already do this (``display.scouts.scouts_choice_lines``); this module does it
-for the Reveal shop, Intrigue plays and effects waiting on their condition.
+for the Reveal shop, Intrigue plays and effects waiting on their condition
+(a new High Council seat's subcommittee choice among them).
 
 Display only, under four rules:
 
@@ -15,8 +16,8 @@ Display only, under four rules:
 - A reason is worked out only for a candidate that is not legal, from the
   block predicate the legal provider itself uses (``AcquireBlock``,
   ``option_unplayable_reason``, ``intrigue_play_block``,
-  ``waiting_deferred_choices``, ``agent_box_is_waiting``), so the two
-  cannot drift.
+  ``waiting_deferred_choices``, ``agent_box_is_waiting``,
+  ``joinable_subcommittees``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
   (``shadow_action``). The one dry run is the provider's own:
   ``agent_box_is_waiting`` asks ``agent_card_effect_is_unavailable``, which
@@ -722,9 +723,33 @@ def _agent_box(state: GameState, seat: int, found: _Found) -> None:
     )
 
 
+def _subcommittee_choice(state: GameState, seat: int, found: _Found) -> None:
+    """A new High Council seat's subcommittee choice that nothing can meet
+    now (Arrakeen Scouts, OQ-076 alternative C).
+
+    ``choose_subcommittee`` is offered exactly when a subcommittee can be
+    joined now; while the choice stays open and none can,
+    ``choose_subcommittee_reason`` (the same ``joinable_subcommittees``
+    test) says why, and the row lights up once one can.
+    """
+
+    # Imported here: display.scouts imports this module for its reasons.
+    from dune_imperium.display.scouts import choose_subcommittee_reason
+
+    reason = choose_subcommittee_reason(state, seat)
+    if reason is None:
+        return
+    found.row(
+        "waiting",
+        "choose_subcommittee",
+        DomainAction(action_id="choose_subcommittee", actor=seat),
+        reason,
+    )
+
+
 _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ...]]] = {
-    FrameKind.REVEAL: (_shop, _deferred, _intrigue),
-    FrameKind.AGENT_EFFECTS: (_agent_box, _intrigue),
+    FrameKind.REVEAL: (_shop, _deferred, _subcommittee_choice, _intrigue),
+    FrameKind.AGENT_EFFECTS: (_agent_box, _subcommittee_choice, _intrigue),
     FrameKind.TURN: (_intrigue,),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),

@@ -4,8 +4,15 @@ docs/rules/arrakeen-scouts.md 4: "원로회 자리(High Council seat)를 차지�
 (High Council 칸, Corrinth City), 아직 아무도 가입하지 않은 소위원회 하나에
 가입할 수 있다. 비용을 내고 보상을 한 번 받는다." [Scouts help]; the offer
 lists only what the seat can pay for and may be declined for good (OQ-076).
+
+OQ-076 alternative C (user ruling 2026-09-30, a project convention): the
+join is one more effect of the turn the seat was taken in, taken whenever
+the seat likes: "You may carry out all these effects in any order."
+[Main p. 9]. The turn's frame offers ``choose_subcommittee`` (only when one
+can be joined now) and ``decline_subcommittee``; choosing opens the list.
 """
 
+import random
 from dataclasses import replace
 from typing import Any
 
@@ -75,10 +82,10 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     return ENGINE.apply(state, action, legal_actions=legal).state
 
 
-def _visit_high_council(state: GameState) -> GameState:
-    """Send the Dagger to the High Council and resolve its board icons."""
+def _visit_high_council(state: GameState, card_id: str = DAGGER) -> GameState:
+    """Send a card (the Dagger) to the High Council; resolve its board icons."""
 
-    state = _act(state, "agent_turn", card_id=DAGGER, space_id="high_council")
+    state = _act(state, "agent_turn", card_id=card_id, space_id="high_council")
     while state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS:
         board = [
             a
@@ -88,6 +95,15 @@ def _visit_high_council(state: GameState) -> GameState:
         if not board:
             break
         state = ENGINE.apply(state, board[0]).state
+    return state
+
+
+def _choose(state: GameState) -> GameState:
+    """Open the new seat's subcommittee list from the turn's own frame."""
+
+    assert state.decision_stack[-1].kind in (FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
+    state = _act(state, "choose_subcommittee")
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SUBCOMMITTEE
     return state
 
 
@@ -114,8 +130,13 @@ def _options(state: GameState) -> set[tuple[str, str]]:
 def test_taking_the_high_council_seat_offers_the_payable_subcommittees() -> None:
     state = _visit_high_council(_state(_owner()))
     assert state.players[0].high_council
-    frame = state.decision_stack[-1]
-    assert frame.kind == FrameKind.SCOUTS_SUBCOMMITTEE
+    # One more effect of the visit: the turn's frame stays open for it.
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _options(state) == {
+        ("choose_subcommittee", ""),
+        ("decline_subcommittee", ""),
+    }
+    state = _choose(state)
     offered = _options(state)
     # Oversight needs a Spy to recall and Leverage two; the seat has none.
     assert offered == {
@@ -131,10 +152,11 @@ def test_without_the_option_no_offer_is_queued() -> None:
     assert state.players[0].high_council
     assert state.decision_stack[-1].kind != FrameKind.SCOUTS_SUBCOMMITTEE
     assert not state.scouts_subcommittee_offers
+    assert _scouts_frames_done(state)
 
 
 def test_readiness_recruits_a_troop_and_records_the_member() -> None:
-    state = _visit_high_council(_state(_owner()))
+    state = _choose(_visit_high_council(_state(_owner())))
     garrison = state.players[0].troops_garrison
     state = _act(state, "join_subcommittee", subcommittee_id="readiness")
     assert state.scouts_subcommittee_members == (("readiness", 0),)
@@ -146,7 +168,7 @@ def test_readiness_recruits_a_troop_and_records_the_member() -> None:
 
 
 def test_appropriations_discards_a_chosen_card_for_water() -> None:
-    state = _visit_high_council(_state(_owner()))
+    state = _choose(_visit_high_council(_state(_owner())))
     state = _act(state, "join_subcommittee", subcommittee_id="appropriations")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
     discard = next(iter(state.players[0].hand))
@@ -159,7 +181,7 @@ def test_appropriations_discards_a_chosen_card_for_water() -> None:
 
 
 def test_relations_pays_spice_and_lets_the_seat_choose_a_faction() -> None:
-    state = _visit_high_council(_state(_owner()))
+    state = _choose(_visit_high_council(_state(_owner())))
     spice = state.players[0].resources.spice
     state = _act(state, "join_subcommittee", subcommittee_id="relations")
     assert state.players[0].resources.spice == spice - 2
@@ -172,7 +194,7 @@ def test_leverage_recalls_two_chosen_spies_then_gains() -> None:
         spies_supply=1,
         spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
     )
-    state = _visit_high_council(_state(owner))
+    state = _choose(_visit_high_council(_state(owner)))
     state = _act(state, "join_subcommittee", subcommittee_id="leverage")
     state = _act(state, "scouts_recall_spy", post_id="arrakis-hagga-basin")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
@@ -198,7 +220,7 @@ def test_contingencies_recalls_another_agent_not_the_high_council_one() -> None:
             scouts_subcommittees=(*DISPLAY[:4], "contingencies"),
         )
     )
-    state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="contingencies")
     state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
     assert "intrigue:9" in state.intrigue_trash
     assert _options(state) == {("scouts_recall_agent", "imperial_basin")}
@@ -224,7 +246,7 @@ def test_contingencies_can_recall_an_agent_sent_into_the_conflict() -> None:
             scouts_subcommittees=(*DISPLAY[:4], "contingencies"),
         )
     )
-    state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="contingencies")
     state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
     assert _options(state) == {
         ("scouts_recall_agent", "imperial_basin"),
@@ -236,26 +258,60 @@ def test_contingencies_can_recall_an_agent_sent_into_the_conflict() -> None:
     assert state.players[0].agent_locations == ("imperial_basin", "high_council")
 
 
-def test_declining_ends_the_chance_and_a_claimed_one_is_gone() -> None:
-    state = _visit_high_council(_state(_owner()))
+def test_declining_in_the_list_ends_the_chance_and_a_claimed_one_is_gone() -> None:
+    state = _choose(_visit_high_council(_state(_owner())))
     state = _act(state, "decline_subcommittee")
     assert not state.scouts_subcommittee_members
     assert _scouts_frames_done(state)
+    assert [e.kind for e in state.event_log].count("scouts_subcommittee_declined") == 1
     # Another seat, later: Readiness is claimed by seat 2 meanwhile.
     claimed = _state(
         _owner(),
         scouts_subcommittee_members=(("readiness", 2),),
     )
-    offered = _options(_visit_high_council(claimed))
+    offered = _options(_choose(_visit_high_council(claimed)))
     assert ("join_subcommittee", "readiness") not in offered
 
 
-def test_an_offer_with_nothing_payable_lapses_without_a_frame() -> None:
+def test_declining_at_the_turn_frame_ends_the_chance() -> None:
+    """Joining is optional ("may", OQ-076): the decline sits beside the
+    visit's other effects, and it retires the icon like any other."""
+    state = _visit_high_council(_state(_owner()))
+    state = _act(state, "decline_subcommittee")
+    assert not state.scouts_subcommittee_members
+    assert _scouts_frames_done(state)
+    declined = [e for e in state.event_log if e.kind == "scouts_subcommittee_declined"]
+    assert [dict(e.payload)["player"] for e in declined] == [0]
+
+
+def test_nothing_joinable_now_offers_only_the_decline() -> None:
+    """Every subcommittee left is open but none can be joined now (their
+    costs are unpaid): no ``choose_subcommittee``, the decline stays, and
+    the turn waits on it rather than dropping the chance."""
     poor = _owner(resources=Resources(solari=5, spice=0, water=1), hand=(DAGGER,))
     state = _visit_high_council(
         _state(poor, scouts_subcommittees=("oversight", "relations", "leverage"))
     )
-    assert state.decision_stack[-1].kind != FrameKind.SCOUTS_SUBCOMMITTEE
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _options(state) == {("decline_subcommittee", "")}
+    assert not any(
+        e.kind == "scouts_subcommittee_unavailable" for e in state.event_log
+    )
+    state = _act(state, "decline_subcommittee")
+    assert _scouts_frames_done(state)
+
+
+def test_an_offer_with_every_subcommittee_taken_lapses_without_a_frame() -> None:
+    # A seat joins once, so three other seats can hold a three-strong display.
+    claimed = tuple((subcommittee, 1 + n) for n, subcommittee in enumerate(DISPLAY[:3]))
+    state = _visit_high_council(
+        _state(
+            _owner(),
+            scouts_subcommittees=DISPLAY[:3],
+            scouts_subcommittee_members=claimed,
+        )
+    )
+    assert _scouts_frames_done(state)
     assert any(e.kind == "scouts_subcommittee_unavailable" for e in state.event_log)
 
 
@@ -277,7 +333,7 @@ def test_specimen_top_up_offers_the_shortfall_before_readiness_recruits() -> Non
     supply is short; the recruit then resolves with the enlarged supply."""
     config = RulesetConfig(arrakeen_scouts=True, immortality=True)
     owner = _owner(troops_supply=0, troops_garrison=11, specimens=1)
-    state = _visit_high_council(_state(owner, config=config))
+    state = _choose(_visit_high_council(_state(owner, config=config)))
     state = _act(state, "join_subcommittee", subcommittee_id="readiness")
     assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
     counts = sorted(
@@ -297,7 +353,7 @@ def test_specimen_top_up_needs_immortality() -> None:
     """Immortality p. 8: without Immortality, Readiness just recruits what
     the supply holds; no specimen choice appears."""
     owner = _owner(troops_supply=0, troops_garrison=12)
-    state = _visit_high_council(_state(owner))
+    state = _choose(_visit_high_council(_state(owner)))
     state = _act(state, "join_subcommittee", subcommittee_id="readiness")
     assert _scouts_frames_done(state)
     assert state.players[0].troops_supply == 0
@@ -310,7 +366,7 @@ def test_specimen_top_up_is_skipped_with_enough_supply() -> None:
     just recruits and the specimens stay untouched."""
     config = RulesetConfig(arrakeen_scouts=True, immortality=True)
     owner = _owner(troops_supply=1, troops_garrison=10, specimens=1)
-    state = _visit_high_council(_state(owner, config=config))
+    state = _choose(_visit_high_council(_state(owner, config=config)))
     state = _act(state, "join_subcommittee", subcommittee_id="readiness")
     assert _scouts_frames_done(state)
     assert state.players[0].troops_supply == 0
@@ -322,7 +378,7 @@ def test_influence_choice_skips_tracks_at_the_top() -> None:
     # OQ-060: an Influence gain at the top of a track is lost; with only one
     # track below the top there is no choice to make.
     owner = _owner(influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6))
-    state = _visit_high_council(_state(owner))
+    state = _choose(_visit_high_council(_state(owner)))
     state = _act(state, "join_subcommittee", subcommittee_id="relations")
     assert state.players[0].influence.fremen == 1
     assert _scouts_frames_done(state)
@@ -369,8 +425,8 @@ def _corrinth_contingencies(owner: PlayerState) -> GameState:
     state = _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
     state = _act(state, "reveal_turn")
     state = _act(state, "take_high_council_from_reveal")
-    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SUBCOMMITTEE
-    state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
+    assert state.decision_stack[-1].kind == FrameKind.REVEAL
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="contingencies")
     state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
     assert _options(state) == {("scouts_recall_agent", "conflict")}
     return state
@@ -475,17 +531,17 @@ def test_contingencies_is_not_offered_without_another_agent_to_recall() -> None:
     cannot happen cannot be paid for, and joining a subcommittee with a cost
     means paying it (docs/rules/arrakeen-scouts.md 4, OQ-075). The seat's
     only Agent out is the one that took the seat, so Contingencies is not
-    joinable; with nothing else joinable the offer lapses."""
+    joinable; with nothing else joinable only declining is offered."""
     owner = _owner(intrigue_cards=("intrigue:9",))
     state = _visit_high_council(
         _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
     )
-    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_SUBCOMMITTEE
-    assert ("join_subcommittee", "contingencies") not in _options(state)
-    lapsed = _visit_high_council(_state(owner, scouts_subcommittees=("contingencies",)))
-    assert lapsed.decision_stack[-1].kind != FrameKind.SCOUTS_SUBCOMMITTEE
-    assert any(e.kind == "scouts_subcommittee_unavailable" for e in lapsed.event_log)
-    assert lapsed.players[0].intrigue_cards == ("intrigue:9",)
+    assert ("join_subcommittee", "contingencies") not in _options(_choose(state))
+    alone = _visit_high_council(_state(owner, scouts_subcommittees=("contingencies",)))
+    assert _options(alone) == {("decline_subcommittee", "")}
+    declined = _act(alone, "decline_subcommittee")
+    assert _scouts_frames_done(declined)
+    assert declined.players[0].intrigue_cards == ("intrigue:9",)
 
 
 def test_contingencies_is_offered_for_an_into_the_fray_agent_alone() -> None:
@@ -498,6 +554,7 @@ def test_contingencies_is_offered_for_an_into_the_fray_agent_alone() -> None:
     state = _visit_high_council(
         _state(owner, scouts_subcommittees=(*DISPLAY[:4], "contingencies"))
     )
+    state = _choose(state)
     assert ("join_subcommittee", "contingencies") in _options(state)
     state = _act(state, "join_subcommittee", subcommittee_id="contingencies")
     state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
@@ -542,8 +599,314 @@ def test_contingencies_never_recalls_the_seat_taker_moved_by_into_the_fray() -> 
     [Main p. 20] (OQ-068, OQ-075). The Agent that took the seat and then
     went into the Conflict is not "another Agent"."""
     alone = _into_the_fray_then_the_seat(())
-    assert ("join_subcommittee", "contingencies") not in _options(alone)
-    with_other = _into_the_fray_then_the_seat(("imperial_basin",))
+    assert ("join_subcommittee", "contingencies") not in _options(_choose(alone))
+    with_other = _choose(_into_the_fray_then_the_seat(("imperial_basin",)))
     state = _act(with_other, "join_subcommittee", subcommittee_id="contingencies")
     state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
     assert _options(state) == {("scouts_recall_agent", "imperial_basin")}
+
+
+# --- OQ-076 alternative C: the join is taken any time in the turn ------------------
+
+TECH_SCOUTS = RulesetConfig(arrakeen_scouts=True, bloodlines=True, tech_module=True)
+TECH_STACKS = (
+    ("glowglobes", "training_depot"),
+    ("gene_locked_vault", "delivery_bay"),
+    ("advanced_data_analysis", "plasteel_blades"),
+)
+GLOWGLOBES = (("faction", "emperor"), ("tech_id", "glowglobes"))
+
+
+def _tech_visit(spice: int) -> GameState:
+    """The Dagger at the High Council with the Tech Module on: the seat and
+    the Ixian Embassy's Acquire Tech are both effects of the visit."""
+
+    owner = _owner(hand=(DAGGER,), resources=Resources(solari=5, spice=spice, water=1))
+    state = _state(
+        owner,
+        config=TECH_SCOUTS,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        tech_stacks=TECH_STACKS,
+    )
+    return _visit_high_council(state)
+
+
+def test_the_seat_buys_a_tech_tile_at_its_discount_then_joins() -> None:
+    """The user's example (2026-09-30): take the High Council seat, buy a
+    Tech tile 1 spice cheaper for it ("if you have a High Council seat, each
+    Tech tile costs you 1 less spice" [Bloodlines p. 7]), and only then
+    choose the subcommittee, paying its cost from what is left."""
+    from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
+
+    state = _tech_visit(spice=4)
+    assert ("choose_subcommittee", "") in _options(state)
+    assert ("decline_tech", "") in _options(state)
+    state = ENGINE.apply(
+        state, DomainAction(action_id="acquire_tech", actor=0, arguments=GLOWGLOBES)
+    ).state
+    assert state.players[0].tech_ids == ("glowglobes",)
+    discounted = TECH_TILES_BY_ID["glowglobes"].cost - 1
+    assert state.players[0].resources.spice == 4 - discounted
+    # The choice waited for its turn; Relations' 2 spice is still payable.
+    assert _options(state) == {
+        ("choose_subcommittee", ""),
+        ("decline_subcommittee", ""),
+    }
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="relations")
+    assert state.players[0].resources.spice == 4 - discounted - 2
+    state = _act(state, "scouts_choose_faction", faction="fremen")
+    assert state.scouts_subcommittee_members == (("relations", 0),)
+    assert state.players[0].influence.fremen == 1
+    assert _scouts_frames_done(state)
+
+
+def test_the_seat_joins_first_then_buys_its_tech_tile() -> None:
+    """The other order [Main p. 9]: the line resolves above the still-open
+    turn, which then offers the Tech tile at the seat's discount."""
+    state = _choose(_tech_visit(spice=4))
+    state = _act(state, "join_subcommittee", subcommittee_id="readiness")
+    assert state.scouts_subcommittee_members == (("readiness", 0),)
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    offered = _options(state)
+    assert ("choose_subcommittee", "") not in offered
+    assert ("decline_subcommittee", "") not in offered
+    assert ("acquire_tech", "emperor") in offered
+    state = ENGINE.apply(
+        state, DomainAction(action_id="acquire_tech", actor=0, arguments=GLOWGLOBES)
+    ).state
+    assert state.players[0].tech_ids == ("glowglobes",)
+    assert _scouts_frames_done(state)
+
+
+STEERSMAN = "imperium:steersman:0"
+
+
+def _steersman_visit(display: tuple[str, ...]) -> GameState:
+    """Steersman at the High Council: its Agent box draws a card, a
+    freely ordered effect beside the seat's choice [Main p. 9]."""
+
+    owner = _owner(
+        hand=(STEERSMAN,),
+        deck=(DAGGER,),
+        resources=Resources(solari=5, spice=0, water=1),
+    )
+    return _visit_high_council(_state(owner, scouts_subcommittees=display), STEERSMAN)
+
+
+def test_the_card_effect_first_then_the_subcommittee() -> None:
+    state = _steersman_visit(DISPLAY)
+    assert {("choose_subcommittee", ""), ("decline_subcommittee", "")} <= _options(
+        state
+    )
+    state = _act(state, "resolve_agent_card_effect", effect="cards")
+    assert state.players[0].hand == (DAGGER,)
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="readiness")
+    assert state.scouts_subcommittee_members == (("readiness", 0),)
+    # Only Steersman's recall is left, with no other Agent to bring back: it
+    # waits for the explicit turn end (OQ-057).
+    assert _options(state) == {("finish_agent_turn", "")}
+
+
+def _waiting_rows(state: GameState) -> dict[str, dict[str, Any]]:
+    """The seat's greyed-out rows (``display.unavailable``), by key."""
+    from dune_imperium.display.unavailable import unavailable_choices
+
+    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    if found is None:
+        return {}
+    rows = found["rows"]
+    assert isinstance(rows, list)
+    return {str(row["key"]): row for row in rows}
+
+
+def test_a_subcommittee_becomes_choosable_once_the_turn_pays_for_it() -> None:
+    """Appropriations discards a card from hand; the seat played its only
+    card, so nothing is joinable until Steersman's draw fills the hand. The
+    greyed-out row says why meanwhile (``display.unavailable``)."""
+    state = _steersman_visit(("appropriations", "oversight", "leverage"))
+    assert state.players[0].hand == ()
+    offered = _options(state)
+    assert ("choose_subcommittee", "") not in offered
+    assert ("decline_subcommittee", "") in offered
+    assert _waiting_rows(state)["waiting:choose_subcommittee"]["code"] == (
+        "subcommittee"
+    )
+    state = _act(state, "resolve_agent_card_effect", effect="cards")
+    assert ("choose_subcommittee", "") in _options(state)
+    assert "waiting:choose_subcommittee" not in _waiting_rows(state)
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="appropriations")
+    state = _act(state, "scouts_discard", card_id=DAGGER)
+    assert state.players[0].resources.water == 2
+    assert _options(state) == {("finish_agent_turn", "")}
+
+
+SARDAUKAR_COORDINATION = "imperium:sardaukar_coordination:0"
+
+
+def _coordination_visit() -> GameState:
+    """Sardaukar Coordination lets this turn's recruits deploy, so the High
+    Council visit keeps a deployment window open to the explicit turn end."""
+
+    owner = _owner(
+        hand=(SARDAUKAR_COORDINATION,),
+        resources=Resources(solari=5, spice=0, water=1),
+    )
+    state = _state(owner, current_conflict_ids=(CONFLICTS[0].card.card_id,))
+    return _visit_high_council(state, SARDAUKAR_COORDINATION)
+
+
+def test_the_turn_cannot_end_while_the_choice_is_pending() -> None:
+    """The turn ends only once the choice is made or declined: the explicit
+    turn end waits like it does for every other pending effect."""
+    state = _coordination_visit()
+    assert _options(state) == {
+        ("choose_subcommittee", ""),
+        ("decline_subcommittee", ""),
+    }
+    declined = _act(state, "decline_subcommittee")
+    assert _options(declined) == {("finish_agent_turn", "")}
+
+
+def test_a_readiness_troop_joins_the_still_open_turn() -> None:
+    """Chosen inside the turn, the line's recruit is this turn's recruit
+    [Main p. 10] and may deploy with the turn's deployment."""
+    state = _choose(_coordination_visit())
+    state = _act(state, "join_subcommittee", subcommittee_id="readiness")
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert ("deploy_troops", "1") in _options(state)
+    state = _act(state, "deploy_troops", count=1)
+    assert state.players[0].troops_conflict == 1
+
+
+def _seat_then_into_the_fray(extra_locations: tuple[str, ...]) -> GameState:
+    """Duncan Idaho's Signet Ring at the High Council: the seat is taken
+    first, then Into the Fray moves the seat-taker into the Conflict."""
+    signet = "player:0:starter:signet_ring:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(signet,),
+        intrigue_cards=("intrigue:9",),
+        resources=Resources(solari=10, spice=0, water=0),
+        agent_locations=extra_locations,
+        agents_available=2 - len(extra_locations),
+    )
+    state = _state(
+        owner,
+        config=RulesetConfig(arrakeen_scouts=True, bloodlines=True),
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        scouts_subcommittees=(*DISPLAY[:4], "contingencies"),
+    )
+    state = _act(state, "agent_turn", card_id=signet, space_id="high_council")
+    state = _act(state, "resolve_board_effect", effect="high_council")
+    state = _act(state, "deploy_leader_agent")
+    assert state.players[0].agent_in_conflict == 1
+    return state
+
+
+def test_into_the_fray_after_the_seat_still_excludes_the_seat_taker() -> None:
+    """OQ-068, OQ-075: "not the Agent you sent during this turn" [Main p. 20].
+    The Agent that took the seat is worked out when the list opens, so one
+    moved into the Conflict after the seat but before the choice is still
+    not "another Agent"."""
+    alone = _choose(_seat_then_into_the_fray(()))
+    assert ("join_subcommittee", "contingencies") not in _options(alone)
+    with_other = _choose(_seat_then_into_the_fray(("imperial_basin",)))
+    state = _act(with_other, "join_subcommittee", subcommittee_id="contingencies")
+    state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
+    assert _options(state) == {("scouts_recall_agent", "imperial_basin")}
+
+
+def _corrinth_seat(**owner_fields: Any) -> GameState:
+    """Reveal Corrinth City and take the seat: the Reveal goes on."""
+    owner = _owner(hand=(CORRINTH, DAGGER), **owner_fields)
+    state = _act(_state(owner), "reveal_turn")
+    state = _act(state, "take_high_council_from_reveal")
+    assert state.decision_stack[-1].kind == FrameKind.REVEAL
+    return state
+
+
+def test_the_corrinth_seat_chooses_during_the_rest_of_its_reveal() -> None:
+    state = _corrinth_seat()
+    offered = _options(state)
+    assert {("choose_subcommittee", ""), ("decline_subcommittee", "")} <= offered
+    # The Reveal cannot end with the choice unanswered (OQ-076).
+    assert ("finish_reveal", "") not in offered
+    state = _act(_choose(state), "join_subcommittee", subcommittee_id="readiness")
+    assert state.scouts_subcommittee_members == (("readiness", 0),)
+    assert not state.scouts_subcommittee_offers
+    assert state.decision_stack[-1].kind == FrameKind.REVEAL
+    offered = _options(state)
+    assert ("choose_subcommittee", "") not in offered
+    assert ("decline_subcommittee", "") not in offered
+
+
+def test_the_corrinth_reveal_cannot_end_before_the_choice_is_answered() -> None:
+    """User rulings 2026-09-30 (OQ-076): nothing lapses unasked; the seat
+    joins or declines before its Reveal ends, as at the High Council board
+    space, and declining is always there, so the Reveal never gets stuck."""
+    state = _corrinth_seat()
+    legal = {a.action_id for a in ENGINE.legal_actions(state, 0)}
+    assert "finish_reveal" not in legal
+    assert "decline_subcommittee" in legal
+
+
+def test_the_corrinth_offer_can_be_declined_before_the_reveal_ends() -> None:
+    state = _act(_corrinth_seat(), "decline_subcommittee")
+    assert not state.scouts_subcommittee_offers
+    assert state.decision_stack[-1].kind == FrameKind.REVEAL
+    assert _options(state) == {("finish_reveal", "")}
+    finished = _act(state, "finish_reveal")
+    kinds = [e.kind for e in finished.event_log]
+    assert kinds.count("scouts_subcommittee_declined") == 1
+
+
+def test_the_choice_joins_the_pending_icons_once() -> None:
+    """The choice is an effect of the visit, not a printed icon: it joins
+    ``pending_board_icons`` only (so a repeat of the printed effects never
+    re-arms it) and cannot be queued twice (``effects.add_board_icon``)."""
+    from dune_imperium.rules.effects import add_board_icon
+    from dune_imperium.rules.scouts_offers import BOARD_ICON_SUBCOMMITTEE
+
+    context: dict[str, bool | int | str] = {
+        "pending_board_icons": "",
+        "pending_board_effect": False,
+    }
+    add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
+    assert context == {
+        "pending_board_icons": BOARD_ICON_SUBCOMMITTEE,
+        "pending_board_effect": True,
+    }
+    with pytest.raises(ValueError, match="already pending"):
+        add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
+
+
+def test_the_heuristic_joins_a_subcommittee_and_ends_its_turn() -> None:
+    """The heuristic chooses when a subcommittee can be joined, never loops,
+    and a random pick always terminates: the list always holds the decline."""
+    from dune_imperium.agents import HeuristicAgent
+    from dune_imperium.core.observation import observe_state
+
+    state = _act(
+        _state(_owner()), "agent_turn", card_id=DAGGER, space_id="high_council"
+    )
+    agent = HeuristicAgent(seed=5)
+    steps = 0
+    while state.decision_stack[-1].kind != FrameKind.TURN:
+        legal = ENGINE.legal_actions(state, 0)
+        action = agent.choose_action(observe_state(state, 0), legal)
+        state = ENGINE.apply(state, action, legal_actions=legal).state
+        steps += 1
+        assert steps < 20
+    assert [seat for _, seat in state.scouts_subcommittee_members] == [0]
+    for seed in range(8):
+        rng = random.Random(seed)
+        state = _visit_high_council(_state(_owner()))
+        steps = 0
+        while state.decision_stack[-1].kind != FrameKind.TURN:
+            top = state.decision_stack[-1].decision
+            assert isinstance(top, PlayerDecision)
+            legal = ENGINE.legal_actions(state, top.owner)
+            state = ENGINE.apply(state, rng.choice(legal), legal_actions=legal).state
+            steps += 1
+            assert steps < 20

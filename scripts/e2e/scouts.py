@@ -18,7 +18,10 @@ to the end, and on the way the page must show:
   the legal line actions; in English, no Hangul in the action list;
 - a choice the seat is skipped for (nothing it could take) says so in the
   note, naming the item;
-- after the game, the finished page without errors.
+- after the game, the finished page without errors;
+- a seat steered to the High Council (OQ-076 alternative C, 2026-09-30):
+  its subcommittee choice is one more row of the turn ("소위원회 선택"),
+  and pressing it opens the list of subcommittees.
 
 The seat picks each secret line and bids in turn so every kind is seen;
 everything else takes the first legal action. Seed 21 meets an unpayable
@@ -37,6 +40,7 @@ from open_mode import settled
 
 check = Check()
 SEEDS = (21, 58, 31, 44)
+COUNCIL_SEED = 21
 HANGUL = re.compile(r"[가-힣]")
 
 CHOOSE_JS = """(() => {
@@ -84,6 +88,29 @@ LINES_JS = """(() => {
       (r) => (r.querySelector('.unavailable-badge') || {}).innerText || ''),
     aria: grey.every((r) => r.getAttribute('aria-disabled') === 'true'),
   };
+})()"""
+
+
+# CHOOSE_JS steered to the High Council: send an Agent there whenever the
+# seat can, then take the seat.
+COUNCIL_JS = CHOOSE_JS.replace(
+    "  const own = state.view.private || {};",
+    """  const council = actions.findIndex((a) =>
+    (a.action_id === 'agent_turn' && a.arguments.space_id === 'high_council')
+    || (a.action_id === 'resolve_board_effect'
+        && a.arguments.effect === 'high_council'));
+  if (council >= 0) return council;
+  const own = state.view.private || {};""",
+)
+
+
+# The label of the turn's "choose a subcommittee" row, or null.
+CHOOSE_ROW_JS = """(() => {
+  const action = state.actions.actions.find(
+    (a) => a.action_id === 'choose_subcommittee');
+  const row = action && document.querySelector(
+    `#actions .action-item[data-index="${action.index}"]`);
+  return row ? row.innerText : null;
 })()"""
 
 
@@ -215,6 +242,29 @@ def inspect(page, seen: dict[str, bool]) -> None:
             "the panel lists the five subcommittees",
             rows,
         )
+    if "choose_subcommittee" in ids and not seen.get("choose"):
+        # OQ-076 alternative C: a new High Council seat's subcommittee is one
+        # more row among the turn's effects; pressing it opens the list.
+        label = page.evaluate(CHOOSE_ROW_JS)
+        seen["choose"] = check.ok(
+            bool(label) and "소위원회 선택" in label,
+            "a new council seat's subcommittee choice is a row of the turn",
+            label,
+        )
+    if not seen.get("choose_grey") and page.evaluate(
+        "Boolean(document.querySelector("
+        "'#actions .unavailable-item[data-key=\"waiting:choose_subcommittee\"]'))"
+    ):
+        badge = page.evaluate(
+            "document.querySelector('#actions .unavailable-item"
+            "[data-key=\"waiting:choose_subcommittee\"] .unavailable-badge')"
+            "?.innerText || ''"
+        )
+        seen["choose_grey"] = check.ok(
+            bool(badge.strip()) and "choose_subcommittee" not in ids,
+            "a subcommittee choice nothing can meet is greyed out with why",
+            badge,
+        )
     if "scouts_secret_pick" in ids and not seen.get("pick"):
         details = page.evaluate(
             "state.actions.actions.filter((a) => a.action_id === 'scouts_secret_pick')"
@@ -278,6 +328,44 @@ def inspect(page, seen: dict[str, bool]) -> None:
         assert settled(page, 10)
 
 
+def council(page, seen: dict[str, bool], limit: int = 3000) -> None:
+    """OQ-076 alternative C: steer the seat to the High Council; its
+    subcommittee choice is one more row of the turn ("소위원회 선택"), and
+    pressing it opens the list of subcommittees, greyed ones with why."""
+
+    for _ in range(limit):
+        assert settled(page, 30)
+        if page.evaluate("state.summary.finished"):
+            return
+        if page.evaluate("state.summary.confirmation === state.viewSeat"):
+            page.evaluate("confirmTurn()")
+            continue
+        if not page.evaluate("Boolean(state.actions && state.actions.actions.length)"):
+            time.sleep(0.05)
+            continue
+        inspect(page, seen)
+        ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
+        if "choose_subcommittee" in ids:
+            page.evaluate(
+                "applyAction(state.actions.actions.find("
+                "(a) => a.action_id === 'choose_subcommittee').index)"
+            )
+            assert settled(page, 10)
+            lines = page.evaluate(
+                "state.actions.scouts_lines && state.actions.scouts_lines.frame"
+            )
+            joins = page.evaluate(
+                "document.querySelectorAll('#actions .action-item').length"
+            )
+            seen["choose_list"] = check.ok(
+                lines == "scouts_subcommittee" and joins >= 2,
+                "pressing it opens the subcommittee list (joins and the decline)",
+                (lines, joins),
+            )
+            return
+        page.evaluate(f"applyAction({page.evaluate(COUNCIL_JS)})")
+
+
 def main() -> None:
     wanted = (
         "subcommittees",
@@ -319,7 +407,10 @@ def main() -> None:
             )
             if all(seen.get(name) for name in wanted):
                 break
-        for name in wanted:
+        print("[game] the High Council seat's subcommittee choice")
+        create(page, base, COUNCIL_SEED)
+        council(page, seen)
+        for name in (*wanted, "choose", "choose_list"):
             check.ok(bool(seen.get(name)), f"seen: {name}")
     check.finish()
 

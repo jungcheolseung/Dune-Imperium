@@ -918,8 +918,8 @@ const UI_TEXT = {
     "en": "{{item}}: nothing you could take, skipped"
   },
   "panels.scouts_subcommittee_skipped": {
-    "ko": "소위원회: 지금 가입할 수 있는 곳이 없어 넘어갔습니다",
-    "en": "Subcommittees: none you could join, skipped"
+    "ko": "소위원회: 남은 빈 소위원회가 없어 넘어갔습니다",
+    "en": "Subcommittees: none left open to join, skipped"
   },
   "panels.standings_heading": {
     "ko": "최종 순위",
@@ -1233,9 +1233,13 @@ const UI_TEXT = {
     "ko": "이 원로회 자리로 가입할 수 있는 소위원회: {{names}}",
     "en": "Subcommittees this seat lets you join: {{names}}"
   },
+  "render.subcommittee_preview_later": {
+    "ko": "지금 바로 가입할 수 있는 소위원회는 없습니다. 이번 턴 안에 조건을 갖추면 가입할 수 있습니다",
+    "en": "No subcommittee you can join right away; you may still join one later this turn"
+  },
   "render.subcommittee_preview_none": {
-    "ko": "지금은 이 원로회 자리로 가입할 수 있는 소위원회가 없습니다",
-    "en": "No subcommittee this seat would let you join right now"
+    "ko": "이 원로회 자리로 가입할 수 있는 빈 소위원회가 없습니다",
+    "en": "No open subcommittee is left for this seat to join"
   },
   "render.subcommittee_preview_not_now": {
     "ko": "지금은 불가: {{lines}}",
