@@ -170,7 +170,12 @@ class NetworkAgent:
     ``HeuristicAgent`` seeded with ``seed`` instead. A decision that mixes
     trained and untrained actions stays with the network, which ranks the
     new ones at logit 0 against its trained ones. With ``untrained`` empty
-    (a checkpoint on its own catalog) the agent is the plain greedy network.
+    (a file written at the current codec, playing its own ruleset) the
+    agent is the plain greedy network. An older file on its own ruleset
+    can still carry untrained rows that later codecs added (the pinned
+    5081 and 5600 controls: 43 and 16 rows); they reach an all-untrained
+    decision only rarely (a ``take_contract`` choice, 2-3 times in 10
+    games in the 2026-09-30 review, with the same choice as the network).
     """
 
     def __init__(
