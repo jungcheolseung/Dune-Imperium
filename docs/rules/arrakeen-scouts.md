@@ -83,8 +83,11 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 `[Scouts help]` `[Scouts subcommittee: <이름>]`
 
 - 원로회 자리(High Council seat)를 차지할 때(High Council 칸, Corrinth City), 아직 아무도 가입하지 않은 소위원회 하나에 **가입할 수 있다**. 비용을 내고 보상을 한 번 받는다.
-- 가입은 선택이다. 비용을 낼 수 있는 빈 소위원회가 없거나 거절하면 그 기회는 사라진다. 이후 원로회 칸을 방문해도 다시 가입할 수 없다(원로회 자리는 한 번만 얻는다). 소위원회 하나에는 한 명만 가입한다(OQ-076).
-- 비용 있는 소위원회는 그 비용을 내야 가입한다(`spice.subcommittees.<이름>.instructions`의 괄호, `spice.help.body.uprising`). 비용을 낼 수 있어도 보상이 아무 일도 못 하면(회수할 다른 Agent가 없는 Contingencies) 가입할 수 없다(OQ-071, OQ-075). 화면은 빈 소위원회를 모두 보여 주고 가입할 수 없는 것은 이유와 함께 회색으로 둔다. 아직 풀지 않은 High Council 행동에는 지금 자리를 차지하면 가입할 수 있는 소위원회를 미리 보여 준다(OQ-076; 가입만 나중에 하는 방식은 사용자 재확인 대기).
+- **가입 시점(project convention, OQ-076 대안 C, 2026-09-30 사용자 판정).** 앱은 자리를 차지할 "때" 가입한다고 적지만, 여기서는 자리를 차지한 **그 turn 안 아무 때나** 다른 효과와 같은 자유 순서로 가입한다("You may carry out all these effects in any order." `[Main p. 9]`). 예: 자리를 차지해 Tech를 spice 1 싸게 사고(`[Bloodlines p. 7]`) 그 다음 소위원회를 고른다, 카드의 Agent 효과를 먼저 풀고 고른다.
+  - High Council 칸: 자리 아이콘을 풀면 방문의 효과 목록에 "소위원회 선택"(`choose_subcommittee`, 지금 가입할 수 있는 곳이 있을 때만)과 "소위원회 가입 안 함"(`decline_subcommittee`)이 더해진다. "소위원회 선택"을 누르면 가입할 소위원회를 고른다(`join_subcommittee`, 또는 거절). 이 선택이 남아 있는 동안 turn은 끝나지 않는다.
+  - Corrinth City: 그 Reveal turn 안에서 같은 두 행동이 다른 Reveal 효과 옆에 나온다. 가입하거나 거절하기 전에는 Reveal을 마칠 수 없다(묻지 않고 사라지는 기회는 없다).
+- 가입은 선택이다. 거절하면 그 기회는 사라진다. 빈 소위원회가 하나도 없으면 기회 없이 넘어간다. 빈 소위원회가 있지만 지금 비용을 낼 수 없으면 기회는 열린 채로 남고, turn 중 다른 효과로 비용이 마련되면 그때 고를 수 있다. 이후 원로회 칸을 방문해도 다시 가입할 수 없다(원로회 자리는 한 번만 얻는다). 소위원회 하나에는 한 명만 가입한다(OQ-076).
+- 비용 있는 소위원회는 그 비용을 내야 가입한다(`spice.subcommittees.<이름>.instructions`의 괄호, `spice.help.body.uprising`). 비용을 낼 수 있어도 보상이 아무 일도 못 하면(회수할 다른 Agent가 없는 Contingencies) 가입할 수 없다(OQ-071, OQ-075). 자리를 차지한 Agent는 목록을 여는 순간에 정해서, 그 사이 Into the Fray로 Conflict에 간 그 Agent도 회수 대상이 아니다. 화면은 빈 소위원회를 모두 보여 주고 가입할 수 없는 것은 이유와 함께 회색으로 둔다. 지금 가입할 수 있는 곳이 없으면 "소위원회 선택"도 이유와 함께 회색으로 남는다. 아직 풀지 않은 High Council 행동에는 자리를 차지한 직후 가입할 수 있는 소위원회를 미리 보여 준다.
 - 표의 "비용 → 보상"은 Uprising 판이다. 앱은 기본판 일정에서 셋(Appropriations, Intelligence, Oversight)에 다른 줄을 보여 주지만 여기서는 쓰지 않는다.
 
 | id | 이름 (공식 한국어) | 등급 | 비용 → 보상 | 비고 |
@@ -281,6 +284,11 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 
 ## 11. 구현 상태
 
+- 2026-09-30 OQ-076 대안 C(사용자 판정, project convention).
+  - 소위원회 가입이 자리를 차지한 turn 안의 자유 순서 효과가 됐다: High Council 칸에서는 방문의 효과 하나(`BOARD_ICON_SUBCOMMITTEE`), Corrinth City에서는 그 Reveal turn 동안의 기회. turn frame에 `choose_subcommittee`(지금 가입할 수 있을 때만)와 `decline_subcommittee`, 고르면 `scouts_subcommittee` frame에서 `join_subcommittee`. 자리를 얻는 즉시 열리던 결정은 없앴다.
+  - 비용은 낸다. 가입 가능 여부는 고르는 순간의 자원으로, Contingencies의 제외 Agent도 그 순간에 정한다(OQ-075).
+  - 화면: "소위원회 선택" 행, 가입할 수 없을 때는 이유와 함께 회색 행, 미리보기는 자리를 차지한 직후 기준. heuristic은 가입할 수 있으면 고른다.
+  - codec v123(`choose_subcommittee` 템플릿), 관측 v27 그대로.
 - 2026-09-29 D8 3차 반영(사용자 결정).
   - Round Start를 규칙 순서로(공개 → 선택 방어 배치 → draw; 모든 게임, codec v122, OQ-072).
   - Mercenaries 입찰 상한에 넣을 수 있는 troop 수를 넣고 모자란 supply는 specimen으로 자동 보충(선택형 보충 frame 제거, 관측 v27, OQ-074).
@@ -299,7 +307,7 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
   - 비용이 있는 줄은 보상이 무언가를 할 수 있을 때만 제시한다(`scouts_effects.line_is_offered`): Moment of Revelation은 Reserve에 Prepare the Way가 없으면, 영향력 줄은 대상 track이 모두 꼭대기면, recruit 줄은 병력도 specimen도 없으면 제시하지 않는다(OQ-071; 보상 없는 손실 줄은 이 검사에서 빠진다).
   - 임무는 인쇄된 troop 수를 모두 세워야 참여한다(OQ-088). garrison으로 가는 임무 troop은 모두 이번 turn의 recruit다(OQ-089 (c)).
   - Contingencies의 회수 대상에 Into the Fray로 Conflict에 있는 Agent를 넣었다(OQ-075 (D)).
-  - 소위원회의 가입 시점과 비용(OQ-075, OQ-076)은 영어 원문과 사용자 방향이 달라 다시 묻는 중이다.
+  - 소위원회의 가입 시점과 비용(OQ-075, OQ-076)은 영어 원문과 사용자 방향이 달라 다시 묻는 중이다(2026-09-30 대안 C로 결정, 위).
   - 화면 문구: Prison Planet·Send for Aid·Coordinate With The Emperor의 물품이 은행에서 온다는 점, Offworld Operation의 "Helix에 닿으면".
   - 관측 v26(frame kind `scouts_top_up`), slot key 1,140, action codec v121.
 - 2026-09-28 슬라이스 10: heuristic이 봉인 입찰을 한 번 고르고 곧바로 확정하며(전에는 모든 액수와 확정이 같은 점수라 확정을 뽑을 때까지 다시 골랐다), Critical Moment에서 아직 안 나온 1~3 중 가장 큰 액수를 부른다. Scouts 행동이 없는 게임의 동작은 그대로다. 단독·교차 소크(무작위·heuristic × 기본·CHOAM·Immortality·전 확장+draft) 실패 0. **모든 슬라이스 완료**; OQ-071~OQ-090은 D8에 따라 일괄 검토를 기다린다.
@@ -338,7 +346,7 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
   - Rebuild Infrastructure: Shield Wall이 서 있으면 아무 일도 없다. 먼저 내기로 한 두 좌석이 spice 1씩 내면 토큰이 돌아오고, 그 뒤 좌석에는 묻지 않는다. 끝까지 한 좌석뿐이면 아무도 내지 않는다(OQ-084).
   - codec v115. 소크(codec 왕복 검사)가 잡은 결함: 기본 룰셋+Scouts에서 trash 아이콘(Water Discipline)이 여는 기존 선택 trash frame의 행동이 카탈로그에 없었다(그 행동은 Bloodlines·Immortality 카탈로그에만 있었다). Scouts 카탈로그에 더했다.
 - 2026-09-28 슬라이스 4: 4절의 소위원회.
-  - High Council 칸의 자리 아이콘과 Corrinth City의 자리 획득이 가입 기회 하나를 대기열에 넣고, 엔진이 곧바로 연다(`rules/scouts_effects.py`, frame `scouts_subcommittee`). 비용을 낼 수 있는 빈 소위원회만 제시하고, 하나도 없으면 결정 없이 사라진다. 거절도 기회를 없앤다(OQ-076).
+  - High Council 칸의 자리 아이콘과 Corrinth City의 자리 획득이 가입 기회 하나를 대기열에 넣고, 엔진이 곧바로 연다(`rules/scouts_effects.py`, frame `scouts_subcommittee`). 비용을 낼 수 있는 빈 소위원회만 제시하고, 하나도 없으면 결정 없이 사라진다. 거절도 기회를 없앤다(OQ-076; 2026-09-30부터는 turn 안 자유 순서 효과, 위).
   - 가입하면 그 소위원회의 비용 → 보상 줄을 `scouts_effect` frame이 한 칸씩 푼다. 자동 칸(지불, 자원·recruit·draw·Influence·Contract·specimen·연구·Tleilaxu)은 기존 효과 해석기로, 선택 칸(버릴 카드, trash할 카드·Intrigue, 회수할 Spy, Faction, 회수할 Agent)은 이 frame의 행동으로 푼다. Spy 배치와 선택 trash는 기존 frame을 연다. 같은 frame이 슬라이스 5~8의 모든 좌석별 줄에 쓰인다.
   - Contingencies는 방금 원로회 자리를 얻게 한 Agent(High Council 칸의 Agent)를 뺀 자기 Agent 하나를 회수한다(OQ-075).
   - 자리 아이콘이 그 turn의 마지막 효과여서 turn이 이미 닫혔으면, 가입으로 얻은 것은 새로 열린 turn에 세지 않는다(OQ-044 (d) 선례).

@@ -87,7 +87,7 @@
 | 임무 공개 때의 좌석별 참여 결정 | Security Detail, Fedaykin Assistance(spice 1), Weirding Warfare(Solari 2), Send for Aid(주둔 병력), Prison Planet(주둔 병력 1 잃기), CHOAM Escort(둘 중 하나). Immortality: Coordinate With The Emperor, Tleilaxu Offering |
 | 봉인 입찰 경매 | Highest Bidder, Spies for Hire, CHOAM Negotiations, Mercenaries(0~3, 전원 지불) |
 | 공개 경매(시계 방향 1회 입찰) | Critical Moment(임페리움 덱 위 2/3장. 이미 나온 액수와 같은 액수는 부를 수 없다. 후반 판은 2위도 한 장을 산다) |
-| 소위원회 가입 | 원로회 자리를 차지할 때 한 번, 비어 있는 소위원회 하나에 **가입할 수 있다**(선택). 거절하거나 비용을 낼 수 있는 곳이 없으면 그 기회는 사라진다(이후 방문에는 없다) |
+| 소위원회 가입 | 원로회 자리를 차지할 때 한 번, 비어 있는 소위원회 하나에 **가입할 수 있다**(선택). 거절하면 그 기회는 사라진다(이후 방문에는 없다). 2026-09-30부터는 자리를 차지한 그 turn 안 아무 때나 가입한다(project convention, OQ-076 대안 C) |
 
 Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상을 더한다(소위원회 +3, 이벤트 +5, 경매 +1 계열). Offworld Operation은 비밀 선택이다.
 
@@ -177,7 +177,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 | 비밀 선택 | Navigation setup(`rules/navigation.py:38-162`), Kota Odax의 Secret Project | 좌석별 순차 결정. 선택은 `PlayerState`의 좌석 한정 id로 보관(frame context에 두지 않는다). 기한 라운드에는 선택을 공개하는 것만 자동이고, 보상 해결은 차례 순서의 좌석별 결정이다: Spy를 놓을 관측소, 가져올 앞면 계약, 버릴 카드, 영향력 최저 Faction의 동률 선택, Offworld Operation의 Tleilaxu·Helix 조건. 앱처럼 같은 선택끼리 묶어 차례 순서로 처리한다 |
 | 봉인 입찰 | 없음(새 유형) | 좌석별 순차 결정(First Player부터). 입찰액은 공개 전까지 숨긴다. 전원이 확정하면 자동 단계에서 공개·순위·지불. 순위는 앱 코드가 정한다(`[Scouts auction]`): 입찰액 내림차순의 공동 순위, 순위가 보상 칸 수 이내이고 입찰액이 0보다 커야 승자, 1위 동점이면 2위 보상 없음, 2위 동점자는 모두 2위 보상, 진 좌석은 지불하지 않음(Mercenaries만 전원 지불) |
 | 공개 경매 | Combat Intrigue의 priority 순환(`rules/combat.py:129-250`, `:1771`) | First Player부터 시계 방향으로 한 번씩, 1..(자기 spice) 중 이미 나온 액수와 다른 액수를 부르거나 패스. 1위가 공개 카드 한 장을 손으로, 후반 판은 2위가 남은 것 중 한 장을 산다. 공개한 덱 카드는 `revealed_contract_ids`처럼 공개 존으로 두고 `determinize`·scramble이 제자리에 둔다 |
-| 소위원회 가입 | Emperor 트랙 Spy 대기열(`pending_track_spies`, `rules/spy_moves.py:183-225`) | 원로회 자리를 얻는 두 경로(`board_effects.py:538-539`의 High Council 칸, `reveal_turn.py:877-893`의 Corrinth City)에서 대기열에 넣고 `_advance_automatic`이 연다. 가입 거절 행동을 둔다 |
+| 소위원회 가입 | Bloodlines Sardaukar Commander·Tech Module의 방문 효과(`BOARD_ICON_COMMANDER`, `BOARD_ICON_TECH`) | 2026-09-30 대안 C(OQ-076): High Council 칸의 자리 아이콘이 방문의 효과 하나(`BOARD_ICON_SUBCOMMITTEE`)를 더하고, Corrinth City는 그 Reveal turn 동안 기회(`scouts_subcommittee_offers`)를 연다. turn frame에 `choose_subcommittee`·`decline_subcommittee`, 고르면 `scouts_subcommittee` frame. (처음 구현은 Emperor 트랙 Spy 대기열처럼 자리를 얻는 즉시 `_advance_automatic`이 결정을 열었다.) |
 
 - **결정 소유는 여전히 한 좌석.** 엔진은 동시 결정 유형을 만들지 않는다. 앱도 사람이 한 명씩 자기 리더를 눌러 입찰을 확정한다. M14 설계 2절의 "결정은 항상 한 좌석 소유" 전제가 유지된다.
 - **입찰 합법성은 자기 자원만 본다.** 앞선 입찰에 의존하면 action mask가 입찰을 누설한다. 범위는 `0..min(가진 자원, 경매 상한)`이다. 상한은 Mercenaries 3이고, 나머지는 앱의 99를 쓰거나 codec 크기를 위해 더 작은 상한을 둔다(D4). 입찰 템플릿의 인자 이름은 `count`로 해서 UI의 스테퍼(`render.js:1005-1012`의 `countFamilies`)를 그대로 쓴다. 공개 경매는 앞선 입찰이 공개이므로 이 제약이 없다.
@@ -328,7 +328,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 3. 봉인 입찰. 순위 규칙은 앱 코드가 정한다(4.5). 남은 것은 동점 승자들의 보상 처리 순서(First Player부터, 앱의 "차례 순서대로")와 입찰 상한(D4)이다.
 4. Mercenaries와 Shadow Warfare의 라운드 시작 분쟁 투입: 병력의 출처(supply), Mercenaries 최저 입찰 동점일 때 후퇴(동점자 모두 가능), 입찰 0, 투입할 병력이 모자랄 때(있는 만큼), 턴 밖 투입의 배치 한도.
 5. Contingencies의 "다른 에이전트"(방금 원로회에 보낸 Agent가 아닌 자기 Agent).
-6. 소위원회 가입 시점: 원로회 칸 방문의 자유 순서 아이콘 묶음(OQ-027) 안에서 가입하는지, 같은 방문에서 얻은 자원으로 비용을 낼 수 있는지. Corrinth City로 자리를 얻어도 가입하는지(앱 문구는 "자리를 차지할 때"). 가입은 선택이다. 비용을 낼 수 있는 빈 소위원회가 없거나 거절하면 기회가 사라진다(Uprising 도움말: 이후 방문에는 가입할 수 없다).
+6. 소위원회 가입 시점: 원로회 칸 방문의 자유 순서 아이콘 묶음(OQ-027) 안에서 가입하는지, 같은 방문에서 얻은 자원으로 비용을 낼 수 있는지. Corrinth City로 자리를 얻어도 가입하는지(앱 문구는 "자리를 차지할 때"). 가입은 선택이다. 비용을 낼 수 있는 빈 소위원회가 없거나 거절하면 기회가 사라진다(Uprising 도움말: 이후 방문에는 가입할 수 없다). → OQ-076: 2026-09-30 사용자 판정으로 자리를 차지한 turn 안 아무 때나(대안 C, project convention).
 7. 세워 둔 병력: garrison에서 옮긴 병력을 다시 "recruit"하는 것과 FAQ의 garrison 재모집 금지(`[FAQ p. 4]`)의 관계, 비전투 칸에서의 즉시 배치 한도.
 8. 칸 위 물품의 남은 것.
    - Imperial Reserve와 Desert Riding은 도움말이 정한다: 다음 방문자 몫.
