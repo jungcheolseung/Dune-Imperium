@@ -69,7 +69,7 @@
 
 ## 8. Phase 5: Recall과 Endgame 진입
 
-- 플레이어 중 누구라도 Score track에서 Victory Point 10 이상이거나 Conflict Deck이 비어 있으면 Endgame을 시작한다. 이 조건은 즉시 승자를 정하는 조건이 아니라 Endgame을 여는 조건이다. [Main p. 15]
+- 플레이어 중 누구라도 Score track에서 Victory Point 10 이상이거나 Conflict Deck이 비어 있으면 Endgame을 시작한다. 이 조건은 즉시 승자를 정하는 조건이 아니라 Endgame을 여는 조건이다. [Main p. 15] Epic Game Mode(`epic_game` 옵션)에서는 10 대신 12다 `[Rise of Ix p. 10]`([epic-game-mode.md](epic-game-mode.md)).
 - Endgame 조건이 충족되면 다음 라운드를 준비하는 Agent recall과 First Player marker 전달을 하지 않고 Endgame으로 진행한다. [Main p. 15]
 - Endgame이 시작되지 않으면 모든 플레이어는 board의 Agent를 자신의 Leader로 돌려보내고, First Player marker를 시계 방향의 다음 플레이어에게 넘긴 뒤 Phase 1부터 새 라운드를 시작한다. [Main p. 15]
 

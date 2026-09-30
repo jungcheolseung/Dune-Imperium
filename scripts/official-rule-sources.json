@@ -34,6 +34,13 @@
     "pdf_filename": "di-immortality.pdf",
     "text_filename": "di-immortality.txt"
   },
+  "rise-of-ix": {
+    "label": "Rise of Ix Rulebook",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_RISE_OF_IX_Rulebook_22-2-11.pdf",
+    "sha256": "ca010552db0b043cb8630352f95eafb06bfe50ba4dc5a7bd318eb5b24a03658f",
+    "pdf_filename": "di-rise-of-ix.pdf",
+    "text_filename": "di-rise-of-ix.txt"
+  },
   "main-ko": {
     "label": "Uprising Main Rulebook (Korean)",
     "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_UPRISING_Rulebook.pdf",
@@ -61,5 +68,12 @@
     "sha256": "b02ff637ee480d9e58ffc758f30c6bfc02bbfa88bb5d8491bc328be70d7a737b",
     "pdf_filename": "di-immortality-ko.pdf",
     "text_filename": "di-immortality-ko.txt"
+  },
+  "rise-of-ix-ko": {
+    "label": "Rise of Ix Rulebook (Korean)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_RISE_OF_IX_Rulebook.pdf",
+    "sha256": "177a00b5efa4a0fec42f02e34314dcbb9c37bab9429448d76a82addba9529bfb",
+    "pdf_filename": "di-rise-of-ix-ko.pdf",
+    "text_filename": "di-rise-of-ix-ko.txt"
   }
 }

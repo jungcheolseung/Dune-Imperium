@@ -2,8 +2,10 @@
 
 The play server attaches this to each legal action so the browser can show
 which printed effect a keyed resolution (``resolve_board_effect`` /
-``resolve_agent_card_effect`` with an ``effect`` argument) stands for. It is
-derived from the same engine tables and card data the rules execute.
+``resolve_agent_card_effect`` with an ``effect`` argument) stands for, or
+what a payment shared by several Agent boxes buys on the card resolving
+(``_PAYMENT_TEXT``). It is derived from the same engine tables and card data
+the rules execute.
 """
 
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -18,7 +20,10 @@ from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
 )
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import (
+    active_agent_card,
+    current_agent_effect_context,
+)
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
 _BOX = PersonalCardAgentEffect
@@ -89,6 +94,54 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "이번 차례에 {spice}를 2 이상 얻었다면"
     ),
 }
+
+
+# Payments whose action id several Agent boxes share. ``pay_agent_card_spice``
+# pays Smuggler's Haven's 4 spice for a Victory Point and, in Epic Game Mode,
+# Control the Spice's 1 spice to trash a card and recruit a troop, the trash
+# still optional after paying [FAQ p. 3] (docs/rules/epic-game-mode.md 6).
+# The client's label only says a card effect's cost is paid (it is all the
+# action log has); on the buttons this detail replaces it (static/core.js
+# describeAction). English is card wording for iconize(), in the printed
+# order; Korean keeps tokens_ko.py's words for the same boxes and labels.js's
+# "카드 {trash} (선택)".
+_PAYMENT_TEXT: dict[tuple[str, PersonalCardAgentEffect], tuple[str, str]] = {
+    ("pay_agent_card_spice", _BOX.MAY_PAY_FOUR_SPICE_FOR_VP): (
+        "Pay 4 spice → Gain 1 VP",
+        "{spice:4} 지불 {arrow_right} {victory_point:1}",
+    ),
+    ("pay_agent_card_spice", _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT): (
+        "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
+        "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}",
+    ),
+}
+_PAYMENT_ACTION_IDS = frozenset(action_id for action_id, _ in _PAYMENT_TEXT)
+
+
+def agent_card_payment_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Name what a shared Agent-box payment buys on the resolving card.
+
+    Returns the English and Korean text, or None when the action is no such
+    payment.
+    """
+
+    if action.action_id not in _PAYMENT_ACTION_IDS:
+        return None
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    card_id = context.get("card_id")
+    if not isinstance(card_id, str) or not card_id:
+        return None
+    # The box resolving, a Ghola's borrowed one included (the engine's own
+    # payment choice reads it the same way).
+    effect = active_agent_card(context).agent_effect
+    if effect is None:
+        return None
+    return _PAYMENT_TEXT.get((action.action_id, effect))
 
 
 def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> str:
@@ -180,11 +233,17 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
 
 
 def effect_action_text(state: GameState, action: DomainAction) -> str | None:
-    """Describe a keyed icon resolution or a Scouts choice; None otherwise."""
+    """Describe a keyed icon resolution, a shared payment or a Scouts choice.
+
+    None otherwise.
+    """
 
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[0]
+    payment = agent_card_payment_text(state, action)
+    if payment is not None:
+        return payment[0]
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None
@@ -220,6 +279,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[1]
+    payment = agent_card_payment_text(state, action)
+    if payment is not None:
+        return payment[1]
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None

@@ -111,6 +111,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--epic",
+        action="store_true",
+        help=(
+            "play Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md): "
+            "to 12, Conflict II over III, Control the Spice, one Intrigue card "
+            "and five garrison troops [Rise of Ix p. 10]"
+        ),
+    )
+    parser.add_argument(
         "--arrakeen-scouts",
         action="store_true",
         help="play with the Arrakeen Scouts module (docs/rules/arrakeen-scouts.md)",
@@ -172,6 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             tech_module=arguments.tech_module,
             immortality=arguments.immortality,
             go_to_11=arguments.go_to_11,
+            epic_game=arguments.epic,
             arrakeen_scouts=arguments.arrakeen_scouts,
             max_steps=arguments.max_steps,
         )

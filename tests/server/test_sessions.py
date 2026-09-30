@@ -472,6 +472,24 @@ def test_go_to_11_is_summarized_and_keeps_every_seat_kind() -> None:
             )
 
 
+def test_epic_game_is_summarized_and_keeps_every_seat_kind() -> None:
+    manager = GameSessionManager()
+
+    # An independent option (OQ-092): no other option is required.
+    summary = manager.create_game(ALL_AI, game_seed=17, epic_game=True)
+    assert summary["epic_game"] is True
+    assert manager.create_game(ALL_AI, game_seed=17)["epic_game"] is False
+    # Trained policies may sit at an Epic table (user decision, OQ-092): the
+    # seat passes validation and fails only when its (here absent) file is
+    # loaded.
+    for kind in ("checkpoint", "search"):
+        with pytest.raises(SessionError, match="cannot build seat 1"):
+            manager.create_game(
+                ("human", f"{kind}:/nonexistent.pt", "random", "random"),
+                epic_game=True,
+            )
+
+
 def test_unknown_games_and_deletion() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(ALL_AI, game_seed=16)
@@ -692,4 +710,79 @@ def test_serialized_actions_carry_the_agent_box_icon_detail_ko() -> None:
             "Draw 1 card (at 2 Bene Gesserit Influence)",
             "{draw:1} ({influence_bene_gesserit:2}일 때)",
         ),
+    }
+
+
+def test_serialized_control_the_spice_payment_says_what_it_buys() -> None:
+    """Control the Spice (Epic Game Mode) pays with Smuggler's Haven's
+    ``pay_agent_card_spice``, whose client label only says a card effect's
+    cost is paid; its ``detail``/``detail_ko`` say what this card's payment buys
+    (``display.actions.agent_card_payment_text``), and the client shows it
+    in place of the label (``static/core.js`` ``describeAction``)."""
+
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+    from dune_imperium.core import (
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        PlayerDecision,
+        PlayerState,
+        Resources,
+    )
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.server.sessions import _serialize_action
+
+    control = "player:0:starter:control_the_spice:0"
+    imperium = imperium_deck_instance_ids(False)
+    state = GameState(
+        config=RulesetConfig(epic_game=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=("choam_security",),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=(
+            PlayerState(player_id=0, hand=(control,), resources=Resources(spice=2)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    # Accept Contract: a Spice Trade space, Control the Spice's Agent icon.
+    placement = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)
+        == {"card_id": control, "space_id": "accept_contract"}
+    )
+    placed = engine.apply(state, placement).state
+    session = SimpleNamespace(engine=engine, state=placed)
+    details = {
+        entry["action_id"]: (entry["detail"], entry["detail_ko"])
+        for entry in (
+            _serialize_action(index, action, session)  # type: ignore[arg-type]
+            for index, action in enumerate(engine.legal_actions(placed, 0))
+        )
+        if entry["action_id"]
+        in ("pay_agent_card_spice", "decline_agent_card_payment")
+    }
+    assert details == {
+        "pay_agent_card_spice": (
+            "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
+            "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}",
+        ),
+        "decline_agent_card_payment": (None, None),
     }

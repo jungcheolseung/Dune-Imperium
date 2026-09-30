@@ -18,6 +18,7 @@ decision costs 12 one-round heuristic rollouts.
 
 import random
 from dataclasses import dataclass, field
+from functools import cache
 
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.heuristic_agent import (
@@ -25,7 +26,12 @@ from dune_imperium.agents.heuristic_agent import (
     card_printed_value,
     score_action,
 )
+from dune_imperium.config import RulesetConfig
 from dune_imperium.content.immortality.board import RESEARCH_SPACES_BY_ID
+from dune_imperium.content.uprising.starting_cards import (
+    starting_deck_entries,
+    starting_discard_entries,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -53,13 +59,40 @@ def _research_column(space_id: str) -> int:
     return 0 if space is None else space.column
 
 
-def player_value(player: PlayerState, *, deck_by_value: bool = True) -> float:
+@cache
+def starting_card_count(config: RulesetConfig) -> int:
+    """Cards each seat owns at setup, before any Leader removes one.
+
+    Ten [Main p. 3]; eleven with Immortality and Epic Game Mode together,
+    whose Control the Spice starts in the discard pile beside the unchanged
+    ten-card deck [Immortality p. 12].
+    """
+
+    entries = (
+        *starting_deck_entries(
+            immortality=config.immortality, epic_game=config.epic_game
+        ),
+        *starting_discard_entries(
+            immortality=config.immortality, epic_game=config.epic_game
+        ),
+    )
+    return sum(entry.copies for entry in entries)
+
+
+def player_value(
+    player: PlayerState,
+    *,
+    deck_by_value: bool = True,
+    starting_cards: int = _STARTING_DECK_SIZE,
+) -> float:
     """Score one seat's position: Victory Points first, then durable assets.
 
     With ``deck_by_value`` the deck counts by printed value (a bought 9-cost
     card outweighs a 1-cost one, the starting cards only their Reveal
-    boxes); without it every card beyond the starting ten counts the same,
-    the 2026-09-16 evening formula the registry pins for the paired A/B.
+    boxes); without it every card beyond the ``starting_cards`` a seat
+    starts with (``starting_card_count``: ten but for Immortality with Epic
+    Game Mode) counts the same, the 2026-09-16 evening formula the registry
+    pins for the paired A/B.
     """
 
     influence = player.influence
@@ -70,7 +103,7 @@ def player_value(player: PlayerState, *, deck_by_value: bool = True) -> float:
         )
     else:
         cards = sum(len(zone) for zone in zones)
-        deck = _CARD_COUNT_WEIGHT * max(0, cards - _STARTING_DECK_SIZE)
+        deck = _CARD_COUNT_WEIGHT * max(0, cards - starting_cards)
     return (
         10.0 * player.victory_points
         + 1.5
@@ -148,9 +181,16 @@ def position_value(
     if state.phase is GamePhase.FINISHED:
         rank = next(s.rank for s in final_standings(state) if s.player == seat)
         return _WIN_VALUE - _RANK_STEP * (rank - 1)
-    own = player_value(state.players[seat], deck_by_value=deck_by_value)
+    starting_cards = starting_card_count(state.config)
+    own = player_value(
+        state.players[seat],
+        deck_by_value=deck_by_value,
+        starting_cards=starting_cards,
+    )
     others = [
-        player_value(player, deck_by_value=deck_by_value)
+        player_value(
+            player, deck_by_value=deck_by_value, starting_cards=starting_cards
+        )
         for player in state.players
         if player.player_id != seat
     ]

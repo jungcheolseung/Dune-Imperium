@@ -57,9 +57,11 @@ from dune_imperium.content.uprising.reserve import (
     ReserveStackDefinition,
 )
 from dune_imperium.content.uprising.starting_cards import (
+    CONTROL_THE_SPICE,
     STARTING_DECK,
     StartingCardEntry,
     starting_deck_entries,
+    starting_discard_entries,
 )
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
@@ -121,7 +123,12 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # rest of Corrinth City's Reveal turn, and decline_subcommittee is offered
 # there too; the old immediate offer is gone (OQ-076 alternative C, user
 # ruling 2026-09-30).
-ACTION_CODEC_VERSION = 123
+# v124: the ``epic_game`` option (Epic Game Mode) joined ``RulesetConfig``;
+# its catalogs add Control the Spice's templates and Economic Supremacy's
+# ``flip_battle_card``. Catalogs without the option are unchanged. (Built
+# as v121 on the epic-game-mode branch; renumbered when it was merged onto
+# the line that had meanwhile used v121..v123.)
+ACTION_CODEC_VERSION = 124
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -369,6 +376,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.extend(_immortality_templates(config))
     if config.arrakeen_scouts:
         templates.extend(_scouts_templates(config))
+    if config.epic_game and not (
+        config.bloodlines or config.immortality or config.arrakeen_scouts
+    ):
+        # Control the Spice's paid trash opens the generic optional-trash
+        # frame, which only the Bloodlines, Immortality and Scouts catalogs
+        # hold otherwise; it pays with the shared ``pay_agent_card_spice``.
+        templates.append(ActionTemplate(action_id="decline_optional_trash"))
+        templates.extend(_trash_templates(config, "trash_optional_card"))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
@@ -565,7 +580,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("card_id", conflict.card.card_id),),
         )
         for conflict in CONFLICTS
-        if config.bloodlines or not conflict.bloodlines_only
+        if (config.bloodlines or not conflict.bloodlines_only)
+        and (config.epic_game or not conflict.epic_only)
     )
     for action_id in ("manipulate_imperium_row", "acquire_manipulated_imperium"):
         templates.extend(
@@ -1439,6 +1455,7 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
         StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry, ...
     ] = (
         *STARTING_DECK,
+        CONTROL_THE_SPICE,
         *RESERVE_STACKS,
         *imperium_cards_for_choam(
             True, True, bloodlines=True, tech_module=True, immortality=True
@@ -1484,7 +1501,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     if config.bloodlines:
         granted = every_icon
     templates: list[ActionTemplate] = []
-    for starting_card in starting_deck_entries(immortality=config.immortality):
+    for starting_card in _starting_entries(config):
         templates.extend(
             _agent_turn_templates_for_card(
                 "starter",
@@ -1681,7 +1698,8 @@ def _endgame_wild_templates(
         *(
             (conflict.card.card_id, conflict.battle_icon)
             for conflict in CONFLICTS
-            if config.bloodlines or not conflict.bloodlines_only
+            if (config.bloodlines or not conflict.bloodlines_only)
+            and (config.epic_game or not conflict.epic_only)
         ),
         *(
             (objective.objective_id, objective.battle_icon)
@@ -1731,10 +1749,24 @@ def _trash_templates(
     )
 
 
+def _starting_entries(config: RulesetConfig) -> tuple[StartingCardEntry, ...]:
+    """Every starting card a seat owns: its deck and, in Epic Game Mode with
+    Immortality, the Control the Spice that starts in the discard pile."""
+
+    return (
+        *starting_deck_entries(
+            immortality=config.immortality, epic_game=config.epic_game
+        ),
+        *starting_discard_entries(
+            immortality=config.immortality, epic_game=config.epic_game
+        ),
+    )
+
+
 def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
     card_ids = [
         f"starter:{card.card.card_id}:{copy}"
-        for card in starting_deck_entries(immortality=config.immortality)
+        for card in _starting_entries(config)
         for copy in range(card.copies)
     ]
     card_ids.extend(

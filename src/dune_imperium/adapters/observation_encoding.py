@@ -58,7 +58,10 @@ from dune_imperium.content.uprising.leaders import FEYD_TRACK_BY_ID, LEADERS_BY_
 from dune_imperium.content.uprising.objectives import OBJECTIVES
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
+from dune_imperium.content.uprising.starting_cards import (
+    CONTROL_THE_SPICE,
+    STARTING_CARDS_BY_ID,
+)
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
@@ -90,16 +93,31 @@ from dune_imperium.rules.frames import FrameKind
 # in ROUND_START, with every hand still undrawn and no turn_owner, where it
 # used to encode in PLAYER_TURNS after the draw with the First Player as
 # turn owner. No column moves.
-OBSERVATION_VERSION: Final = 27
+# v28 (2026-09-30): Epic Game Mode. Control the Spice joins the end of the
+# personal-card universe and Economic Supremacy the end of the battle-card
+# universe (after the Objectives); the Conflict universe grows at its end.
+# One "epic_game" flag (1 in an Epic game: the Endgame opens at 12, not 10)
+# is appended after every Arrakeen Scouts segment. Every older column keeps
+# its segment offset, so a v25..v27 checkpoint migrates by segment. (Built
+# as v26 on the epic-game-mode branch; renumbered when it was merged onto
+# the line that had meanwhile used v26 and v27.)
+OBSERVATION_VERSION: Final = 28
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
-    *STARTING_CARDS_BY_ID,
+    *(
+        card_id
+        for card_id in STARTING_CARDS_BY_ID
+        if card_id != CONTROL_THE_SPICE.card.card_id
+    ),
     *(stack.card.card_id for stack in RESERVE_STACKS),
     *IMPERIUM_CARDS_BY_ID,
     # Immortality: the Tleilaxu deck (its promo included) joins the
     # personal-card universe; Reclaimed Forces never enters a deck.
     *TLEILAXU_CARDS_BY_ID,
+    # v28, Epic Game Mode: Control the Spice, after every older identity so
+    # a migrated checkpoint keeps each segment's old columns.
+    CONTROL_THE_SPICE.card.card_id,
 )
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
 INTRIGUE_IDS: Final = tuple(INTRIGUE_CARDS_BY_ID)
@@ -115,9 +133,12 @@ CONTRACT_SEGMENTS: Final = frozenset(
     }
 )
 CONFLICT_IDS: Final = tuple(conflict.card.card_id for conflict in CONFLICTS)
+# v28: Epic Game Mode's Economic Supremacy follows the Objectives, so the
+# older battle cards keep their columns.
 BATTLE_CARD_IDS: Final = (
-    *CONFLICT_IDS,
+    *(conflict.card.card_id for conflict in CONFLICTS if not conflict.epic_only),
     *(objective.objective_id for objective in OBJECTIVES),
+    *(conflict.card.card_id for conflict in CONFLICTS if conflict.epic_only),
 )
 LEADER_IDS: Final = tuple(LEADERS_BY_ID)
 SPACE_IDS: Final = tuple(BOARD_SPACES_BY_ID)
@@ -320,6 +341,9 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("scouts_bids", _SEATS + 1),
             ("scouts_market", _SCOUTS_MARKET_SLOTS),
             ("scouts_calls", _SEATS),
+            # v28: 1 in an Epic Game Mode game, whose Endgame opens at 12
+            # Victory Points instead of 10 [Rise of Ix p. 10].
+            ("epic_game", 1),
         )
     )
     return tuple(lengths)
@@ -543,6 +567,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         _TECH_INDEX[secret] + 1 if secret else 0
     )
     _write_scouts(values, view, relative)
+    values[_OFFSET["epic_game"]] = int(view.epic_game)
     return tuple(values)
 
 

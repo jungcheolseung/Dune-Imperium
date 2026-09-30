@@ -336,17 +336,23 @@ def _choose_influence_text(count: int, *, distinct: bool) -> str:
     return f"Gain {count} Influence (choose {choice} each time)"
 
 
-def _optional_trade_text(reward: ConflictReward) -> str | None:
+def _optional_trade_text(reward: ConflictReward) -> list[str]:
+    """One "You may <cost> → Gain N VP" part per printed arrow.
+
+    Each optional cost is its own arrow; Economic Supremacy prints two
+    (6 Solari above 4 spice), rendered in that printed order.
+    """
+
+    cost_texts: list[str] = []
+    if reward.optional_solari_cost:
+        cost_texts.append(f"pay {reward.optional_solari_cost} solari")
     if reward.optional_spice_cost:
-        cost_text = f"pay {reward.optional_spice_cost} spice"
-    elif reward.optional_solari_cost:
-        cost_text = f"pay {reward.optional_solari_cost} solari"
-    elif reward.optional_recall_spies:
+        cost_texts.append(f"pay {reward.optional_spice_cost} spice")
+    if reward.optional_recall_spies:
         count = reward.optional_recall_spies
-        cost_text = "recall a Spy" if count == 1 else f"recall {count} Spies"
-    else:
-        return None
-    return f"You may {cost_text} → Gain {reward.optional_victory_points} VP"
+        cost_texts.append("recall a Spy" if count == 1 else f"recall {count} Spies")
+    vp = reward.optional_victory_points
+    return [f"You may {cost_text} → Gain {vp} VP" for cost_text in cost_texts]
 
 
 def conflict_reward_text(reward: ConflictReward) -> str:
@@ -391,9 +397,7 @@ def conflict_reward_text(reward: ConflictReward) -> str:
     if reward.control_space_id is not None:
         space = BOARD_SPACES_BY_ID[reward.control_space_id]
         parts.append(f"Take control of {space.name}")
-    optional = _optional_trade_text(reward)
-    if optional is not None:
-        parts.append(optional)
+    parts.extend(_optional_trade_text(reward))
     return ", ".join(parts)
 
 
@@ -427,7 +431,7 @@ def _choose_influence_text_ko(count: int, *, distinct: bool) -> str:
     return f"{{influence_any:{count}}} (매번 {choice} 선택)"
 
 
-def _optional_trade_text_ko(reward: ConflictReward) -> str | None:
+def _optional_trade_text_ko(reward: ConflictReward) -> list[str]:
     """Korean twin of ``_optional_trade_text``.
 
     "가능" is the terse nominal ending printed Korean card text uses for
@@ -443,19 +447,22 @@ def _optional_trade_text_ko(reward: ConflictReward) -> str | None:
     The recall-Spies branch uses ``_recall_spy_text_ko`` for the same
     bare-icon reason as the Spy reward fields above: English's "recall 2
     Spies" still draws one plain Spy icon, never a distinct "recall" icon
-    or a numbered one.
+    or a numbered one. Like English, one part per printed arrow, in the
+    same order (Economic Supremacy's Solari arrow before its spice one).
     """
 
+    cost_texts: list[str] = []
+    if reward.optional_solari_cost:
+        cost_texts.append(f"{{solari:{reward.optional_solari_cost}}} 지불 가능")
     if reward.optional_spice_cost:
-        cost_text = f"{{spice:{reward.optional_spice_cost}}} 지불 가능"
-    elif reward.optional_solari_cost:
-        cost_text = f"{{solari:{reward.optional_solari_cost}}} 지불 가능"
-    elif reward.optional_recall_spies:
-        cost_text = f"{_recall_spy_text_ko(reward.optional_recall_spies)} 가능"
-    else:
-        return None
+        cost_texts.append(f"{{spice:{reward.optional_spice_cost}}} 지불 가능")
+    if reward.optional_recall_spies:
+        cost_texts.append(f"{_recall_spy_text_ko(reward.optional_recall_spies)} 가능")
     vp = reward.optional_victory_points
-    return f"{cost_text} {{arrow_right}} {{victory_point:{vp}}}"
+    return [
+        f"{cost_text} {{arrow_right}} {{victory_point:{vp}}}"
+        for cost_text in cost_texts
+    ]
 
 
 def conflict_reward_text_ko(reward: ConflictReward) -> str:
@@ -513,9 +520,7 @@ def conflict_reward_text_ko(reward: ConflictReward) -> str:
     if reward.control_space_id is not None:
         space = BOARD_SPACES_BY_ID[reward.control_space_id]
         parts.append(f"{space.name} 지배")
-    optional = _optional_trade_text_ko(reward)
-    if optional is not None:
-        parts.append(optional)
+    parts.extend(_optional_trade_text_ko(reward))
     return ", ".join(parts)
 
 

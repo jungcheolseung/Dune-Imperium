@@ -178,6 +178,46 @@ def test_go_to_11_sweep_runs_to_finished() -> None:
     assert report.games[0].ruleset == "uprising-4p-base+immortality+go11"
 
 
+def test_epic_game_sweep_runs_to_finished() -> None:
+    # Epic Game Mode needs no other option (OQ-092).
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=72,
+        epic_game=True,
+        privacy_interval=0,
+        verify_replay=False,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-base+epic"
+
+
+def test_epic_game_with_arrakeen_scouts_runs_to_finished() -> None:
+    # Rise of Ix recommends the companion app's Arrakeen Scouts mode for a
+    # longer Epic game [Rise of Ix p. 10] (docs/rules/epic-game-mode.md
+    # section 2): the Scouts schedule follows the round number, so it runs
+    # over Epic's Conflict II/III deck unchanged. With Immortality, Control
+    # the Spice starts in the discard pile [Immortality p. 12]. The two
+    # options were built on separate branches; this pins the merged line,
+    # Round Start order included (reveal -> Control defense -> draw).
+    specs = sweep_specs(
+        games=1,
+        rulesets=(True,),
+        start_seed=73,
+        immortality=True,
+        epic_game=True,
+        arrakeen_scouts=True,
+        privacy_interval=10,
+        soundness_interval=25,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-choam+immortality+epic+scouts"
+
+
 def test_small_sweep_covers_both_rulesets() -> None:
     specs = sweep_specs(
         games=1,
@@ -597,6 +637,17 @@ def test_zero_coverage_expansion_universes_follow_the_ruleset_options() -> None:
     assert len(with_modules["skills_taken"]) == len(SKILLS)
 
 
+def test_zero_coverage_action_ids_follow_the_epic_catalog() -> None:
+    # Control the Spice's paid trash adds the optional-trash templates to an
+    # Epic catalog that has none of the options which otherwise hold them.
+    assert "trash_optional_card" not in zero_coverage({}, choam_module=False)[
+        "action_ids"
+    ]
+    assert "trash_optional_card" in zero_coverage(
+        {}, choam_module=False, epic_game=True
+    )["action_ids"]
+
+
 def test_rotate_leaders_specs_are_deterministic_with_four_distinct_ids() -> None:
     first = sweep_specs(
         games=3, rulesets=(False, True), start_seed=61, rotate_leaders=True
@@ -687,6 +738,39 @@ def test_cli_accepts_go_to_11_with_immortality(tmp_path: Path) -> None:
     # before it reaches sweep_specs (identifier would then lack "+go11").
     payload = json.loads(coverage_path.read_text())
     assert set(payload) == {"uprising-4p-base+immortality+go11"}
+
+
+def test_cli_accepts_epic_alone(tmp_path: Path) -> None:
+    coverage_path = tmp_path / "coverage.json"
+
+    result = sweep_main(
+        [
+            "--games",
+            "1",
+            "--ruleset",
+            "base",
+            "--start-seed",
+            "73",
+            "--epic",
+            "--privacy-interval",
+            "0",
+            "--skip-replay",
+            "--coverage-json",
+            str(coverage_path),
+        ]
+    )
+
+    assert result == 0
+    # The key is the identifier the games ran under: a dropped --epic would
+    # lack "+epic". The zero report reads the Epic catalog from that key.
+    payload = json.loads(coverage_path.read_text())
+    assert set(payload) == {"uprising-4p-base+epic"}
+    epic_zero = zero_coverage(
+        payload["uprising-4p-base+epic"]["counts"],
+        choam_module=False,
+        epic_game=True,
+    )
+    assert payload["uprising-4p-base+epic"]["zero"] == epic_zero
 
 
 def test_cli_accepts_soundness_interval() -> None:

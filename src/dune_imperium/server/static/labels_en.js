@@ -31,7 +31,7 @@ const LABELS_EN = {
     "decline_agent_card_payment": "Decline to pay",
     "pay_agent_card_spice_for_sandworm": "Pay 2 {spice} -> Summon {sandworm}",
     "pay_agent_card_spice_for_sandworm_and_shield_wall": "Pay 2 {spice} -> Remove {shield_wall} + summon {sandworm}",
-    "pay_agent_card_spice": "Pay 4 {spice} -> 1 {victory_point}",
+    "pay_agent_card_spice": "Pay {spice} (card effect cost)",
     "pay_agent_card_water": "Pay 2 {water} -> {draw} 2 cards",
     "pay_corrinth_city": "Choose card ({discard}, 2/2) · Pay 5 {solari} -> 1 {victory_point}",
     "select_corrinth_city_discard": "Choose card ({discard}, 1/2)",

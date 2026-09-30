@@ -306,6 +306,10 @@ class PersonalCardAgentEffect(StrEnum):
     RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START = (
         "return_other_grafted_to_hand_at_reveal_start"
     )
+    # Control the Spice (Epic Game Mode starting card): "[1 spice] -> [trash
+    # a card] [troop]". The arrow cost is optional and once [Main p. 9]
+    # [FAQ p. 3]; the black-X trash stays optional after paying [FAQ p. 3].
+    MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT = "may_pay_spice_to_trash_and_recruit"
 
 
 class PersonalCardTrashEffect(StrEnum):

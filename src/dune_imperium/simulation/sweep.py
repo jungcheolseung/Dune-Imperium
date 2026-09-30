@@ -251,6 +251,7 @@ class _GameSpec:
     tech_module: bool = False
     immortality: bool = False
     go_to_11: bool = False
+    epic_game: bool = False
     arrakeen_scouts: bool = False
     soundness_interval: int = 0
     collect_coverage: bool = False
@@ -270,6 +271,7 @@ def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
         tech_module=spec.tech_module,
         immortality=spec.immortality,
         go_to_11=spec.go_to_11,
+        epic_game=spec.epic_game,
         arrakeen_scouts=spec.arrakeen_scouts,
     )
     engine = (
@@ -339,6 +341,7 @@ def sweep_specs(
     tech_module: bool = False,
     immortality: bool = False,
     go_to_11: bool = False,
+    epic_game: bool = False,
     arrakeen_scouts: bool = False,
     rotate_leaders: bool = False,
     collect_coverage: bool = False,
@@ -361,6 +364,7 @@ def sweep_specs(
         tech_module=tech_module,
         immortality=immortality,
         go_to_11=go_to_11,
+        epic_game=epic_game,
     )
     return tuple(
         _GameSpec(
@@ -378,6 +382,7 @@ def sweep_specs(
             tech_module=tech_module,
             immortality=immortality,
             go_to_11=go_to_11,
+            epic_game=epic_game,
             arrakeen_scouts=arrakeen_scouts,
             collect_coverage=collect_coverage,
             leader_ids=(

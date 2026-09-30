@@ -199,6 +199,11 @@ class CreateGameRequest(BaseModel):
     # means off; the browser setup box is checked by default (OQ-091).
     immortality: bool = False
     go_to_11: bool = False
+    # Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md): play to 12,
+    # Conflict II over III, Control the Spice, an Intrigue card and five
+    # garrison troops [Rise of Ix p. 10]. Needs no other option; omitted
+    # means off, while the browser setup box is checked by default (OQ-092).
+    epic_game: bool = False
     # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
     arrakeen_scouts: bool = False
     game_seed: int | None = None
@@ -475,6 +480,7 @@ def create_app(
                 tech_module=body.tech_module,
                 immortality=body.immortality,
                 go_to_11=body.go_to_11,
+                epic_game=body.epic_game,
                 arrakeen_scouts=body.arrakeen_scouts,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,

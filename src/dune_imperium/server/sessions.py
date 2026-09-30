@@ -369,6 +369,7 @@ class GameSessionManager:
         tech_module: bool = False,
         immortality: bool = False,
         go_to_11: bool = False,
+        epic_game: bool = False,
         arrakeen_scouts: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
@@ -390,6 +391,7 @@ class GameSessionManager:
                 tech_module=tech_module,
                 immortality=immortality,
                 go_to_11=go_to_11,
+                epic_game=epic_game,
                 arrakeen_scouts=arrakeen_scouts,
             )
         except ValueError as error:
@@ -419,7 +421,7 @@ class GameSessionManager:
             engine=engine,
             state=engine.reset(config, game_seed),
             chance=ChanceResolver(seed=game_seed),
-            agents=_build_agents(seats, policy_seed),
+            agents=_build_agents(seats, policy_seed, config),
         )
         with session.lock:
             self._advance_locked(session)
@@ -883,7 +885,7 @@ class GameSessionManager:
             engine=engine,
             state=engine.reset(config, parsed.replay.seed),
             chance=ChanceResolver(seed=parsed.replay.seed),
-            agents=_build_agents(parsed.seats, parsed.policy_seed),
+            agents=_build_agents(parsed.seats, parsed.policy_seed, config),
         )
         with session.lock:
             _replay_recorded_steps(session, parsed.replay.steps)
@@ -1393,6 +1395,7 @@ class GameSessionManager:
             "tech_module": session.config.tech_module,
             "immortality": session.config.immortality,
             "go_to_11": session.config.go_to_11,
+            "epic_game": session.config.epic_game,
             "arrakeen_scouts": session.config.arrakeen_scouts,
             "seats": list(kinds),
             "players": players,
@@ -1454,12 +1457,16 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
             )
 
 
-def _build_agents(seats: tuple[str, ...], policy_seed: int) -> dict[int, Agent]:
+def _build_agents(
+    seats: tuple[str, ...], policy_seed: int, config: RulesetConfig
+) -> dict[int, Agent]:
     """Instantiate one registry agent per non-human seat.
 
     A checkpoint seat loads its network here, so a missing file, a foreign
     observation or codec version, or an absent ``train`` extra surfaces as
-    a session error instead of a crash while the game advances.
+    a session error instead of a crash while the game advances. It answers
+    for ``config``'s catalog, so it may sit at a ruleset it was not trained
+    on, such as Epic Game Mode (OQ-092).
     """
 
     agents: dict[int, Agent] = {}
@@ -1467,7 +1474,7 @@ def _build_agents(seats: tuple[str, ...], policy_seed: int) -> dict[int, Agent]:
         if assignment == HUMAN_SEAT:
             continue
         try:
-            agents[seat] = make_agent(assignment, policy_seed + seat)
+            agents[seat] = make_agent(assignment, policy_seed + seat, config)
         except (ValueError, OSError, ImportError, RuntimeError) as error:
             raise SessionError(
                 f"cannot build seat {seat} agent {assignment!r}: {error}"
@@ -1836,7 +1843,9 @@ def _serialize_action(
 ) -> JsonObject:
     """Serialize one legal action.
 
-    ``detail`` names a keyed icon's printed effect; ``detail_ko`` is its
+    ``detail`` names a keyed icon's printed effect, or what a payment
+    several Agent boxes share buys on the resolving card (Control the Spice,
+    ``display.actions.agent_card_payment_text``); ``detail_ko`` is its
     Korean twin, real for a personal card's own Agent-box icon (Step K2,
     ``display.actions.agent_card_icon_text_ko``) and a board-space icon
     (Step K4, ``display.spaces.board_effect_action_text_ko``); the client

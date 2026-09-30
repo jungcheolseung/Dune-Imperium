@@ -192,17 +192,59 @@ class NetworkAgent:
 
 
 @lru_cache(maxsize=8)
-def _cached_network(path: str, modified: float) -> tuple[PolicyValueNetwork, str]:
+def _cached_network(
+    path: str, modified: float, game_ruleset: str | None = None
+) -> tuple[PolicyValueNetwork, str]:
+    """Load ``path`` once per process; return the network and its catalog.
+
+    With ``game_ruleset``, a game whose catalog holds templates the file's
+    catalog lacks (an Epic Game Mode game's Control the Spice, a game
+    without Immortality's Dune, the Desert Planet) gets the policy head
+    moved onto that game's catalog (``load_checkpoint(ruleset=...)``);
+    a game the file's catalog already covers keeps the file as it is.
+    """
+
     del modified  # part of the cache key so a rewritten file reloads
     network, info = load_checkpoint(Path(path))
-    return network, info.ruleset
+    if game_ruleset is None or _catalog_covers(info.ruleset, game_ruleset):
+        return network, info.ruleset
+    network, _ = load_checkpoint(
+        Path(path), ruleset=RulesetConfig.from_identifier(game_ruleset)
+    )
+    return network, game_ruleset
 
 
-def load_network_agent(path: str) -> NetworkAgent:
-    """Build a greedy agent from a checkpoint file, cached per process."""
+@lru_cache(maxsize=16)
+def _catalog_covers(ruleset: str, game_ruleset: str) -> bool:
+    """Return whether ``ruleset``'s catalog holds every ``game_ruleset`` template."""
+
+    if ruleset == game_ruleset:
+        return True
+    held = set(ActionCodec(RulesetConfig.from_identifier(ruleset)).catalog)
+    wanted = ActionCodec(RulesetConfig.from_identifier(game_ruleset)).catalog
+    return all(template in held for template in wanted)
+
+
+def load_network_agent(
+    path: str, config: RulesetConfig | None = None
+) -> NetworkAgent:
+    """Build a greedy agent from a checkpoint file, cached per process.
+
+    ``config`` is the game the agent will play. When its catalog has
+    templates the checkpoint was never trained on, the policy head is moved
+    onto the game's catalog by template identity and the new templates
+    start at zero logits, as for a checkpoint of an older codec
+    (``training.checkpoint``); OQ-092 lets checkpoint seats play Epic Game
+    Mode this way. Without ``config`` the agent answers for the file's own
+    ruleset.
+    """
 
     resolved = str(Path(path).expanduser())
-    network, ruleset = _cached_network(resolved, os.path.getmtime(resolved))
+    network, ruleset = _cached_network(
+        resolved,
+        os.path.getmtime(resolved),
+        None if config is None else config.identifier,
+    )
     return NetworkAgent(network, RulesetConfig.from_identifier(ruleset))
 
 

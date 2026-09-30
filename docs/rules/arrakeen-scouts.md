@@ -36,7 +36,7 @@
 | 8·9 중 후반 경매가 없는 라운드 | 판매 1개 |
 | 10 | 없음 |
 
-게임이 10 VP나 Conflict 덱 소진으로 먼저 끝나면 남은 항목은 나오지 않는다. 앱도 점수를 판정하지 않고 플레이어가 끝낸다.
+게임이 10 VP(Epic Game Mode에서는 12 VP, [epic-game-mode.md](epic-game-mode.md))나 Conflict 덱 소진으로 먼저 끝나면 남은 항목은 나오지 않는다. 앱도 점수를 판정하지 않고 플레이어가 끝낸다.
 
 ### 2.2 추첨 규칙 `[Scouts schedule]`
 

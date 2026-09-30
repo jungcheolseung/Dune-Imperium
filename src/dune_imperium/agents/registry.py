@@ -16,6 +16,7 @@ from dune_imperium.agents.heuristic_agent import (
 )
 from dune_imperium.agents.random_agent import RandomAgent
 from dune_imperium.agents.rollout_agent import RolloutAgent
+from dune_imperium.config import RulesetConfig
 
 type AgentFactory = Callable[[int], Agent]
 
@@ -222,8 +223,14 @@ def is_agent_kind(kind: str) -> bool:
     )
 
 
-def make_agent(kind: str, seed: int) -> Agent:
-    """Instantiate the named baseline (or a checkpoint or search) with ``seed``."""
+def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Agent:
+    """Instantiate the named baseline (or a checkpoint or search) with ``seed``.
+
+    ``config`` is the game the agent will play: a checkpoint or search seat
+    answers for that game's action catalog (``load_network_agent``), so a
+    file trained on another ruleset can sit at, say, an Epic Game Mode game.
+    Baselines ignore it.
+    """
 
     if kind.startswith(CHECKPOINT_PREFIX):
         path = kind[len(CHECKPOINT_PREFIX) :]
@@ -231,14 +238,14 @@ def make_agent(kind: str, seed: int) -> Agent:
             raise ValueError("checkpoint agent kind needs a path")
         from dune_imperium.training.torch_policy import load_network_agent
 
-        return load_network_agent(path)
+        return load_network_agent(path, config)
     if kind.startswith(SEARCH_PREFIX):
         path = kind[len(SEARCH_PREFIX) :]
         if not path:
             raise ValueError("search agent kind needs a path")
         from dune_imperium.agents.network_search_agent import NetworkSearchAgent
 
-        return NetworkSearchAgent(path, seed=seed)
+        return NetworkSearchAgent(path, seed=seed, config=config)
     try:
         factory = BASELINE_AGENT_FACTORIES[kind]
     except KeyError:

@@ -23,8 +23,9 @@ file, in the order given: the play server resolves once for each UI
 language, English first (``en/<path>``, else ``ko/<path>``) and Korean
 first, and the page shows the picture of its language. Only entries of
 the indexed sets (Uprising, and Bloodlines for the ``bloodlines`` option)
-that carry a ``content_id`` are indexed; the other sets in the manifest
-are archived for future expansions. The
+that carry a ``content_id`` are indexed (Rise of Ix: only Epic Game
+Mode's two cards carry one); the other sets in the manifest are archived
+for future expansions. The
 manifest's ``starting`` and ``reserve`` kinds both map to the catalog's
 ``other`` kind (starting and Reserve cards), and its ``promo`` kind (the
 three Uprising promo Imperium cards) to ``imperium``.
@@ -38,7 +39,11 @@ from typing import Final
 
 MANIFEST_FILENAME: Final = "manifest.json"
 UPRISING_SET: Final = "uprising"
-INDEXED_SETS: Final = frozenset({UPRISING_SET, "bloodlines", "immortality"})
+# Rise of Ix is indexed only for Epic Game Mode's two cards (Control the
+# Spice, Economic Supremacy), the only entries of that set with a content id.
+INDEXED_SETS: Final = frozenset(
+    {UPRISING_SET, "bloodlines", "immortality", "rise-of-ix"}
+)
 DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
 
 # Manifest kind -> catalog kind. Every other kind keeps its name.

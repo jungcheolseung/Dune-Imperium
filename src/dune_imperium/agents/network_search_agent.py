@@ -50,6 +50,7 @@ from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.rollout_agent import past_horizon
+from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -166,6 +167,7 @@ class NetworkSearchAgent:
         horizon_rounds: int = DEFAULT_HORIZON_ROUNDS,
         max_rollout_steps: int = 3_000,
         search_effect_order: bool = DEFAULT_SEARCH_EFFECT_ORDER,
+        config: RulesetConfig | None = None,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
@@ -173,9 +175,10 @@ class NetworkSearchAgent:
             raise ValueError("rollouts, candidates, and horizon_rounds are positive")
         from dune_imperium.training.torch_policy import load_network_agent
 
-        # The greedy agent owns the cached network and the catalog, and
-        # answers decisions the search cannot branch from.
-        self.greedy = load_network_agent(path)
+        # The greedy agent owns the cached network and the catalog (the
+        # game's, for ``config``), and answers decisions the search cannot
+        # branch from.
+        self.greedy = load_network_agent(path, config)
         self.rollouts = rollouts
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds

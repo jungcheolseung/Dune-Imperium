@@ -31,6 +31,7 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import (
     starting_card_for_instance,
     starting_deck_instance_ids,
+    starting_discard_instance_ids,
 )
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.chance import (
@@ -48,6 +49,10 @@ from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
 from dune_imperium.rules.tech import assign_secret_project
 
+# Each color's 12 troops [Main p. 5]: the garrison's share starts there and
+# the rest in the supply.
+_TROOPS_PER_PLAYER: Final = 12
+
 
 @dataclass(frozen=True, slots=True)
 class ConflictSetup:
@@ -55,11 +60,20 @@ class ConflictSetup:
 
     deck: tuple[str, ...]
     unused: tuple[str, ...]
+    epic_game: bool = False
 
     def __post_init__(self) -> None:
         if len(self.deck) != 10:
             raise ValueError("the four-player Conflict deck must contain 10 cards")
-        if len(self.unused) not in (6, 8):
+        if self.epic_game:
+            if len(self.unused) not in (7, 9):
+                # 16 retail cards plus Economic Supremacy [Main p. 18], or 19
+                # with the two Bloodlines cards.
+                raise ValueError(
+                    "seven (nine with Bloodlines) Conflict cards must remain "
+                    "unused in Epic Game Mode"
+                )
+        elif len(self.unused) not in (6, 8):
             # 16 retail cards, or 18 with the two Bloodlines cards.
             raise ValueError(
                 "six (eight with Bloodlines) Conflict cards must remain unused"
@@ -77,7 +91,11 @@ class SetupResult:
 
 
 def create_unshuffled_players(
-    *, immortality: bool = False, victory_points: int = 1
+    *,
+    immortality: bool = False,
+    victory_points: int = 1,
+    epic_game: bool = False,
+    garrison_troops: int = 3,
 ) -> tuple[PlayerState, ...]:
     """Create four players before leader, objective, and shuffle decisions.
 
@@ -85,40 +103,71 @@ def create_unshuffled_players(
     [Immortality p. 5]; the Bene Tleilax tokens and Family Atomics are
     placed by ``_with_immortality``. Every Score marker starts on
     ``victory_points``: ``RulesetConfig.starting_victory_points``.
+
+    Epic Game Mode swaps one Dune, the Desert Planet for Control the Spice
+    [Rise of Ix p. 10]; with Immortality the deck keeps its ten cards and
+    Control the Spice starts in the discard pile [Immortality p. 12]. Each
+    garrison starts with ``garrison_troops`` of the 12 troops
+    (``RulesetConfig.starting_garrison_troops``: 3 [Main p. 5], 5 in Epic
+    Game Mode [Rise of Ix p. 10]) and the rest wait in the supply.
     """
 
     return tuple(
         PlayerState(
             player_id=player,
-            deck=starting_deck_instance_ids(player, immortality=immortality),
+            deck=starting_deck_instance_ids(
+                player, immortality=immortality, epic_game=epic_game
+            ),
+            discard_pile=starting_discard_instance_ids(
+                player, immortality=immortality, epic_game=epic_game
+            ),
             victory_points=victory_points,
+            troops_supply=_TROOPS_PER_PLAYER - garrison_troops,
+            troops_garrison=garrison_troops,
         )
         for player in range(4)
     )
 
 
-def conflict_setup_decisions(*, bloodlines: bool = False) -> tuple[ChanceDecision, ...]:
+# (tier, cards drawn) in the order the tier decisions resolve: the standard
+# 1/5/4 deck [Main p. 4], and Epic Game Mode's five Conflict II over five
+# Conflict III with no Conflict I [Rise of Ix p. 10].
+_CONFLICT_TIER_COUNTS: Final = (
+    (ConflictTier.THREE, 4),
+    (ConflictTier.TWO, 5),
+    (ConflictTier.ONE, 1),
+)
+_EPIC_CONFLICT_TIER_COUNTS: Final = (
+    (ConflictTier.THREE, 5),
+    (ConflictTier.TWO, 5),
+)
+
+
+def conflict_setup_decisions(
+    *, bloodlines: bool = False, epic_game: bool = False
+) -> tuple[ChanceDecision, ...]:
     """Return tier shuffles in the order prescribed by setup.
 
     Bloodlines adds its two Conflict cards to the pools the tiers are drawn
-    from; the deck keeps its 1/5/4 shape [Bloodlines p. 3].
+    from; the deck keeps its 1/5/4 shape [Bloodlines p. 3]. Epic Game Mode
+    draws no Conflict I and orders all five Conflict III, Economic Supremacy
+    among them [Rise of Ix p. 10] [Main p. 18].
     """
 
+    counts = _EPIC_CONFLICT_TIER_COUNTS if epic_game else _CONFLICT_TIER_COUNTS
     return tuple(
         ChanceDecision(
             decision_id=f"setup:conflict:tier:{tier.value}",
             prompt=f"Shuffle and select Conflict tier {tier.value}",
             options=tuple(
                 conflict.card.card_id
-                for conflict in conflicts_by_tier(tier, bloodlines=bloodlines)
+                for conflict in conflicts_by_tier(
+                    tier, bloodlines=bloodlines, epic_game=epic_game
+                )
             ),
             count=count,
         )
-        for tier, count in (
-            (ConflictTier.THREE, 4),
-            (ConflictTier.TWO, 5),
-            (ConflictTier.ONE, 1),
-        )
+        for tier, count in counts
     )
 
 
@@ -126,23 +175,24 @@ def build_conflict_setup(
     outcomes: tuple[ChanceOutcome, ...],
     *,
     bloodlines: bool = False,
+    epic_game: bool = False,
 ) -> ConflictSetup:
-    """Build the top-to-bottom deck from the three recorded tier outcomes."""
+    """Build the top-to-bottom deck from the recorded tier outcomes.
 
-    decisions = conflict_setup_decisions(bloodlines=bloodlines)
+    In Epic Game Mode every Conflict I card goes back to the box unseen.
+    """
+
+    decisions = conflict_setup_decisions(bloodlines=bloodlines, epic_game=epic_game)
     if len(outcomes) != len(decisions):
         raise ValueError("Conflict setup requires one outcome for each tier")
 
     by_id = {outcome.decision_id: outcome for outcome in outcomes}
     if len(by_id) != len(outcomes):
         raise ValueError("Conflict setup outcomes must have unique decision IDs")
+    counts = _EPIC_CONFLICT_TIER_COUNTS if epic_game else _CONFLICT_TIER_COUNTS
     selected: dict[ConflictTier, tuple[str, ...]] = {}
     unused: list[str] = []
-    for decision, tier in zip(
-        decisions,
-        (ConflictTier.THREE, ConflictTier.TWO, ConflictTier.ONE),
-        strict=True,
-    ):
+    for decision, (tier, _) in zip(decisions, counts, strict=True):
         try:
             outcome = by_id[decision.decision_id]
         except KeyError as error:
@@ -152,14 +202,20 @@ def build_conflict_setup(
         unused.extend(
             option for option in decision.options if option not in outcome.values
         )
+    if epic_game:
+        unused.extend(
+            conflict.card.card_id
+            for conflict in conflicts_by_tier(ConflictTier.ONE, bloodlines=bloodlines)
+        )
 
     return ConflictSetup(
         deck=(
-            *selected[ConflictTier.ONE],
+            *selected.get(ConflictTier.ONE, ()),
             *selected[ConflictTier.TWO],
             *selected[ConflictTier.THREE],
         ),
         unused=tuple(unused),
+        epic_game=epic_game,
     )
 
 
@@ -508,18 +564,9 @@ def create_initial_state(
     _validate_leader_selection(config, leader_ids)
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
-    conflict = build_conflict_setup(
-        tuple(
-            resolver.resolve(decision)
-            for decision in conflict_setup_decisions(bloodlines=config.bloodlines)
-        ),
-        bloodlines=config.bloodlines,
-    )
+    conflict = _conflict_setup(config, resolver)
     players, first_player = assign_objectives(
-        create_unshuffled_players(
-            immortality=config.immortality,
-            victory_points=config.starting_victory_points,
-        ),
+        _unshuffled_players(config),
         resolver.resolve(objective_setup_decision()),
     )
     # The shuffle decision below then covers the reduced decks.
@@ -576,6 +623,7 @@ def create_initial_state(
         )
         for player in players
     )
+    players, intrigue = _deal_setup_intrigue(config, players, first_player, intrigue)
 
     if recorded_outcomes is not None and not resolver.exhausted:
         raise ChanceReplayError("recorded chance stream has unused outcomes")
@@ -601,6 +649,64 @@ def create_initial_state(
     )
     state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+def _conflict_setup(config: RulesetConfig, resolver: ChanceResolver) -> ConflictSetup:
+    """Resolve the Conflict tier decisions of ``config`` and build the deck."""
+
+    decisions = conflict_setup_decisions(
+        bloodlines=config.bloodlines, epic_game=config.epic_game
+    )
+    return build_conflict_setup(
+        tuple(resolver.resolve(decision) for decision in decisions),
+        bloodlines=config.bloodlines,
+        epic_game=config.epic_game,
+    )
+
+
+def _unshuffled_players(config: RulesetConfig) -> tuple[PlayerState, ...]:
+    """The four players of ``config`` before any setup decision."""
+
+    return create_unshuffled_players(
+        immortality=config.immortality,
+        victory_points=config.starting_victory_points,
+        epic_game=config.epic_game,
+        garrison_troops=config.starting_garrison_troops,
+    )
+
+
+def _deal_setup_intrigue(
+    config: RulesetConfig,
+    players: tuple[PlayerState, ...],
+    first_player: int,
+    intrigue: tuple[str, ...],
+) -> tuple[tuple[PlayerState, ...], tuple[str, ...]]:
+    """Deal Epic Game Mode's Intrigue card to each player; return the rest.
+
+    Each player draws one Intrigue card at setup [Rise of Ix p. 10]. The
+    rulebook sets no order, so the shuffled deck's top cards go out one each
+    in seat order from the First Player (project convention,
+    ``docs/rules/epic-game-mode.md`` section 7). The shuffle already fixed
+    every card, so this adds no chance decision.
+    """
+
+    if not config.epic_game:
+        return players, intrigue
+    seats = len(players)
+    dealt = {
+        (first_player + position) % seats: intrigue[position]
+        for position in range(seats)
+    }
+    return (
+        tuple(
+            replace(
+                player,
+                intrigue_cards=(*player.intrigue_cards, dealt[player.player_id]),
+            )
+            for player in players
+        ),
+        intrigue[seats:],
+    )
 
 
 LEADER_DRAFT_POOL_SIZE: Final = 6
@@ -647,18 +753,9 @@ def create_draft_initial_state(
         raise ValueError("the draft setup requires the leader_draft option")
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
-    conflict = build_conflict_setup(
-        tuple(
-            resolver.resolve(decision)
-            for decision in conflict_setup_decisions(bloodlines=config.bloodlines)
-        ),
-        bloodlines=config.bloodlines,
-    )
+    conflict = _conflict_setup(config, resolver)
     players, first_player = assign_objectives(
-        create_unshuffled_players(
-            immortality=config.immortality,
-            victory_points=config.starting_victory_points,
-        ),
+        _unshuffled_players(config),
         resolver.resolve(objective_setup_decision()),
     )
     pool = resolver.resolve(leader_draft_pool_decision(config)).values
@@ -703,6 +800,7 @@ def create_draft_initial_state(
         )
         for player in players
     )
+    players, intrigue = _deal_setup_intrigue(config, players, first_player, intrigue)
 
     if recorded_outcomes is not None and not resolver.exhausted:
         raise ChanceReplayError("recorded chance stream has unused outcomes")

@@ -1,6 +1,6 @@
 """The ten-card Uprising starting deck listed in Main Rulebook p. 3."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
@@ -147,22 +147,81 @@ EXPERIMENTATION: Final = StartingCardEntry(
 )
 REPLACED_BY_EXPERIMENTATION: Final = "dune_the_desert_planet"
 
+# Epic Game Mode: "Each player removes one copy of Dune, the Desert Planet
+# from their starting deck and replaces it with one copy of Control the
+# Spice" [Rise of Ix p. 10]; with Immortality no card is replaced and it
+# starts in the discard pile instead [Immortality p. 12]. Printed face:
+# Spice Trade icon; Agent: 1 spice -> trash a card, troop; Reveal: 1
+# Persuasion, 1 spice [card face].
+CONTROL_THE_SPICE: Final = StartingCardEntry(
+    CardDefinition(
+        "control_the_spice",
+        "Control the Spice",
+        (
+            SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2, 10)),
+            SourceRef(SourceDocument.CARD_FACE, (1,)),
+        ),
+        catalog_url=(
+            "https://dunecardshub.com/images/rise-of-ix-imperium-control-the-spice.webp"
+        ),
+    ),
+    copies=1,
+    agent_icons=(AgentIcon.SPICE_TRADE,),
+    agent_effect=PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
+    reveal_persuasion=1,
+    reveal_effects=(PersonalCardRevealEffect(spice=1),),
+)
+REPLACED_BY_CONTROL_THE_SPICE: Final = "dune_the_desert_planet"
+
+# The observation's personal-card universe lists Control the Spice after
+# every older identity, not here among the starting cards (observation v28).
 STARTING_CARDS_BY_ID: Final = {
-    entry.card.card_id: entry for entry in (*STARTING_DECK, EXPERIMENTATION)
+    entry.card.card_id: entry
+    for entry in (*STARTING_DECK, EXPERIMENTATION, CONTROL_THE_SPICE)
 }
 
 
 def starting_deck_entries(
-    *, immortality: bool = False
+    *, immortality: bool = False, epic_game: bool = False
 ) -> tuple[StartingCardEntry, ...]:
-    """Return the ten-card starting deck of the selected setup."""
+    """Return the ten-card starting deck of the selected setup.
 
-    if not immortality:
+    Immortality turns both Dune, the Desert Planet into Experimentation
+    [Immortality p. 5]. Epic Game Mode without Immortality turns one of them
+    into Control the Spice [Rise of Ix p. 10]; with Immortality the deck is
+    unchanged and Control the Spice starts in the discard pile
+    (``starting_discard_entries``) [Immortality p. 12].
+    """
+
+    if immortality:
+        return tuple(
+            EXPERIMENTATION
+            if entry.card.card_id == REPLACED_BY_EXPERIMENTATION
+            else entry
+            for entry in STARTING_DECK
+        )
+    if not epic_game:
         return STARTING_DECK
-    return tuple(
-        EXPERIMENTATION if entry.card.card_id == REPLACED_BY_EXPERIMENTATION else entry
-        for entry in STARTING_DECK
-    )
+    entries: list[StartingCardEntry] = []
+    for entry in STARTING_DECK:
+        if entry.card.card_id != REPLACED_BY_CONTROL_THE_SPICE:
+            entries.append(entry)
+            continue
+        entries.append(replace(entry, copies=entry.copies - 1))
+        entries.append(CONTROL_THE_SPICE)
+    return tuple(entries)
+
+
+def starting_discard_entries(
+    *, immortality: bool = False, epic_game: bool = False
+) -> tuple[StartingCardEntry, ...]:
+    """Return the starting cards that begin the game in the discard pile.
+
+    Only Control the Spice, in Epic Game Mode with Immortality
+    [Immortality p. 12].
+    """
+
+    return (CONTROL_THE_SPICE,) if immortality and epic_game else ()
 
 
 def starting_card_for_instance(instance_id: str) -> StartingCardEntry:
@@ -184,7 +243,7 @@ def starting_card_for_instance(instance_id: str) -> StartingCardEntry:
 
 
 def starting_deck_instance_ids(
-    player: int, *, immortality: bool = False
+    player: int, *, immortality: bool = False, epic_game: bool = False
 ) -> tuple[str, ...]:
     """Create stable IDs for one player's unshuffled starting cards."""
 
@@ -192,6 +251,24 @@ def starting_deck_instance_ids(
         raise ValueError("player must not be negative")
     return tuple(
         f"player:{player}:starter:{entry.card.card_id}:{copy}"
-        for entry in starting_deck_entries(immortality=immortality)
+        for entry in starting_deck_entries(
+            immortality=immortality, epic_game=epic_game
+        )
+        for copy in range(entry.copies)
+    )
+
+
+def starting_discard_instance_ids(
+    player: int, *, immortality: bool = False, epic_game: bool = False
+) -> tuple[str, ...]:
+    """Create stable IDs for one player's starting discard pile."""
+
+    if player < 0:
+        raise ValueError("player must not be negative")
+    return tuple(
+        f"player:{player}:starter:{entry.card.card_id}:{copy}"
+        for entry in starting_discard_entries(
+            immortality=immortality, epic_game=epic_game
+        )
         for copy in range(entry.copies)
     )

@@ -57,13 +57,13 @@ class ConflictReward:
             raise ValueError("Conflict reward quantities must not be negative")
         if (self.faction_influence > 0) != (self.influence_faction is not None):
             raise ValueError("fixed Influence requires both a faction and amount")
+        # Each optional cost is its own arrow worth ``optional_victory_points``;
+        # Economic Supremacy prints two (6 Solari and 4 spice) in one row.
         optional_costs = (
             self.optional_spice_cost,
             self.optional_solari_cost,
             self.optional_recall_spies,
         )
-        if sum(cost > 0 for cost in optional_costs) > 1:
-            raise ValueError("an optional Conflict reward requires one cost type")
         if any(optional_costs) != (self.optional_victory_points > 0):
             raise ValueError("optional Conflict rewards require a cost and reward")
         if self.control_space_id == "":
@@ -78,12 +78,16 @@ class ConflictDefinition:
 
     card: CardDefinition
     tier: ConflictTier
+    # ``None``: the card prints no battle icon (Economic Supremacy; OQ-094).
     battle_icon: BattleIcon | None = None
     shield_wall_protected: bool = False
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None
     # Added to the tier pool only with ``RulesetConfig(bloodlines=True)``
     # [Bloodlines p. 3].
     bloodlines_only: bool = False
+    # Added to the tier pool only with ``RulesetConfig(epic_game=True)``
+    # [Main p. 18].
+    epic_only: bool = False
 
 
 MAIN_P3_P4: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
@@ -408,18 +412,51 @@ CONFLICTS: Final = (
         ),
         bloodlines_only=True,
     ),
+    # Epic Game Mode needs a fifth Conflict III: "In this situation, you
+    # should add Economic Supremacy" [Main p. 18] [Rise of Ix p. 10]. Rise of
+    # Ix card face: no battle icon, no location; first place 1 VP plus two
+    # optional arrows (6 Solari, 4 spice -> 1 VP each).
+    ConflictDefinition(
+        card=CardDefinition(
+            "economic_supremacy",
+            "Economic Supremacy",
+            (
+                SourceRef(SourceDocument.MAIN_RULEBOOK, (18,)),
+                SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (10,)),
+                SourceRef(SourceDocument.CARD_FACE, (1,)),
+            ),
+            catalog_url=(
+                "https://dunecardshub.com/images/"
+                "rise-of-ix-conflict-economic-supremacy.webp"
+            ),
+        ),
+        tier=ConflictTier.THREE,
+        rewards=(
+            ConflictReward(
+                victory_points=1,
+                optional_solari_cost=6,
+                optional_spice_cost=4,
+                optional_victory_points=1,
+            ),
+            ConflictReward(victory_points=1),
+            ConflictReward(spice=2, solari=2),
+        ),
+        epic_only=True,
+    ),
 )
 
 
 def conflicts_by_tier(
-    tier: ConflictTier, *, bloodlines: bool = False
+    tier: ConflictTier, *, bloodlines: bool = False, epic_game: bool = False
 ) -> tuple[ConflictDefinition, ...]:
     """Return the physical Conflict cards with the requested back in the pool."""
 
     return tuple(
         conflict
         for conflict in CONFLICTS
-        if conflict.tier is tier and (bloodlines or not conflict.bloodlines_only)
+        if conflict.tier is tier
+        and (bloodlines or not conflict.bloodlines_only)
+        and (epic_game or not conflict.epic_only)
     )
 
 

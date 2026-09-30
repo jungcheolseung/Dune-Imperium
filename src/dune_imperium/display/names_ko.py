@@ -46,6 +46,10 @@ _CARDS: Final[dict[str, str]] = {
     "clandestine_meeting": "비밀 회의",
     "command_center": "지휘본부",
     "contaminator": "오염시키는 자",
+    # Epic Game Mode's two Rise of Ix cards are named as the Korean rulebooks
+    # print them (Rise of Ix p. 10, Uprising p. 18), not from a card photo:
+    # user decision 2026-09-28 (OQ-092, docs/rules/glossary-ko.md).
+    "control_the_spice": "스파이스를 지배하라",
     "convincing_argument": "합리적 주장",
     "corrino_genes": "코리노 유전자",
     "corrinth_city": "코린트 시티",
@@ -232,6 +236,7 @@ _CONFLICTS: Final[dict[str, str]] = {
     "battle_for_imperial_basin": "제국 분지 점령전",
     "battle_for_spice_refinery": "스파이스 정제소 대전투",
     "choam_security": "초암 공사 방위",
+    "economic_supremacy": "경제적 패권",
     "propaganda": "프로파간다",
     "protect_the_sietches": "시치 방어전",
     "secure_imperial_basin": "제국 분지 확보",

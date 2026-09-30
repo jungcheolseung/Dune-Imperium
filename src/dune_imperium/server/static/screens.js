@@ -195,6 +195,9 @@ async function createGame(event) {
     immortality: el("opt-immortality").checked,
     arrakeen_scouts: el("opt-scouts").checked,
     go_to_11: el("opt-go-to-11").checked,
+    // Epic Game Mode depends on no other box and opens checked (OQ-092 user
+    // decision); the engine and the CLIs keep it off.
+    epic_game: el("opt-epic-game").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
