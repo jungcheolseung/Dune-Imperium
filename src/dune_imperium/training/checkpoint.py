@@ -86,6 +86,10 @@ class MigrationReport:
     observation_kept: int
     observation_new: int
     observation_dropped: int
+    # The policy-head rows (current catalog indices) of the ``actions_new``
+    # templates: rows the file was never trained on, which start at zero.
+    # A ``NetworkAgent`` hands a decision made only of these to a heuristic.
+    new_action_rows: frozenset[int] = frozenset()
 
     def describe(self) -> str:
         return (
@@ -506,6 +510,7 @@ def _migrate(
             optimizer_state, hidden, column_source, action_source
         )
     kept_actions = int((action_source >= 0).sum())
+    new_rows = frozenset(int(row) for row in (action_source < 0).nonzero().flatten())
     kept_columns = int((column_source >= 0).sum())
     # A second Contract copy reads its first copy's column: count old
     # columns once, so the ones nothing reads any more show as dropped.
@@ -521,6 +526,7 @@ def _migrate(
         observation_kept=kept_columns,
         observation_new=OBSERVATION_SIZE - kept_columns,
         observation_dropped=old_observation_size - read_columns,
+        new_action_rows=new_rows,
     )
     return migrated, optimizer_state, report
 

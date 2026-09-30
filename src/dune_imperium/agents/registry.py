@@ -229,7 +229,8 @@ def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Age
     ``config`` is the game the agent will play: a checkpoint or search seat
     answers for that game's action catalog (``load_network_agent``), so a
     file trained on another ruleset can sit at, say, an Epic Game Mode game.
-    Baselines ignore it.
+    Baselines ignore it. A checkpoint seat hands a decision made only of
+    templates it was never trained on to a heuristic seeded with ``seed``.
     """
 
     if kind.startswith(CHECKPOINT_PREFIX):
@@ -238,7 +239,7 @@ def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Age
             raise ValueError("checkpoint agent kind needs a path")
         from dune_imperium.training.torch_policy import load_network_agent
 
-        return load_network_agent(path, config)
+        return load_network_agent(path, config, seed=seed)
     if kind.startswith(SEARCH_PREFIX):
         path = kind[len(SEARCH_PREFIX) :]
         if not path:

@@ -27,10 +27,11 @@ import torch
 
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.adapters.observation_encoding import encode_player_view
+from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
-from dune_imperium.training.checkpoint import load_checkpoint
+from dune_imperium.training.checkpoint import CheckpointInfo, load_checkpoint
 from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
 from dune_imperium.training.policy import PolicyRequest, without_undo_actions
 
@@ -155,9 +156,36 @@ class TorchBatchPolicy:
 
 
 class NetworkAgent:
-    """Greedy single-decision agent over a policy network (tournament use)."""
+    """Greedy single-decision agent over a policy network (tournament use).
 
-    def __init__(self, network: PolicyValueNetwork, config: RulesetConfig) -> None:
+    ``untrained`` names the catalog rows the network was never trained on:
+    the templates a checkpoint's policy head gained when it was moved onto
+    a newer codec or onto another game's catalog (``load_checkpoint``; an
+    Arrakeen Scouts or Epic Game Mode game). Those rows start at zero, so
+    when *every* legal action of a decision is one of them the logits tie
+    and the argmax is simply the lowest catalog row -- a seat that always
+    confirms a sealed bid of 0, never calls, never joins a mission and
+    always takes an event's first line (measured on Scouts, 2026-09-30,
+    docs/arrakeen-scouts-design.md section 4.9). Such a decision goes to a
+    ``HeuristicAgent`` seeded with ``seed`` instead. A decision that mixes
+    trained and untrained actions stays with the network, which ranks the
+    new ones at logit 0 against its trained ones. With ``untrained`` empty
+    (a file written at the current codec, playing its own ruleset) the
+    agent is the plain greedy network. An older file on its own ruleset
+    can still carry untrained rows that later codecs added (the pinned
+    5081 and 5600 controls: 43 and 16 rows); they reach an all-untrained
+    decision only rarely (a ``take_contract`` choice, 2-3 times in 10
+    games in the 2026-09-30 review, with the same choice as the network).
+    """
+
+    def __init__(
+        self,
+        network: PolicyValueNetwork,
+        config: RulesetConfig,
+        *,
+        untrained: frozenset[int] = frozenset(),
+        seed: int = 0,
+    ) -> None:
         self.network = network
         self.codec = ActionCodec(config)
         if self.codec.size != network.action_size:
@@ -165,8 +193,28 @@ class NetworkAgent:
                 f"network action size {network.action_size} does not match the "
                 f"{config.identifier} catalog ({self.codec.size})"
             )
+        if any(row < 0 or row >= self.codec.size for row in untrained):
+            raise ValueError("untrained rows must be rows of the catalog")
         self.network.eval()
+        self.untrained = untrained
+        self._seed = seed
+        self._fallback: HeuristicAgent | None = None
         self._guard = _CycleGuard()
+
+    def untrained_only(self, legal_indices: Sequence[int]) -> bool:
+        """Whether every one of ``legal_indices`` is an untrained row."""
+
+        return bool(self.untrained) and all(
+            index in self.untrained for index in legal_indices
+        )
+
+    @property
+    def fallback(self) -> HeuristicAgent:
+        """The heuristic that answers decisions made only of untrained rows."""
+
+        if self._fallback is None:
+            self._fallback = HeuristicAgent(seed=self._seed)
+        return self._fallback
 
     def choose_action(
         self,
@@ -179,6 +227,8 @@ class NetworkAgent:
         # their logits are untrained noise; keep them out of greedy play too.
         legal_actions = without_undo_actions(legal_actions)
         legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
+        if self.untrained_only(legal_indices):
+            return self.fallback.choose_action(observation, legal_actions)
         mask = np.zeros(self.codec.size, dtype=np.int8)
         mask[list(legal_indices)] = 1
         encoded = np.asarray(encode_player_view(observation), dtype=np.int32)
@@ -194,24 +244,31 @@ class NetworkAgent:
 @lru_cache(maxsize=8)
 def _cached_network(
     path: str, modified: float, game_ruleset: str | None = None
-) -> tuple[PolicyValueNetwork, str]:
-    """Load ``path`` once per process; return the network and its catalog.
+) -> tuple[PolicyValueNetwork, str, frozenset[int]]:
+    """Load ``path`` once per process; return the network, its catalog, and
+    the rows of that catalog the file was never trained on.
 
     With ``game_ruleset``, a game whose catalog holds templates the file's
-    catalog lacks (an Epic Game Mode game's Control the Spice, a game
-    without Immortality's Dune, the Desert Planet) gets the policy head
-    moved onto that game's catalog (``load_checkpoint(ruleset=...)``);
-    a game the file's catalog already covers keeps the file as it is.
+    catalog lacks (an Epic Game Mode game's Control the Spice, an Arrakeen
+    Scouts game's bids and picks, a game without Immortality's Dune, the
+    Desert Planet) gets the policy head moved onto that game's catalog
+    (``load_checkpoint(ruleset=...)``); a game the file's catalog already
+    covers keeps the file as it is. Either way a file written under an
+    older codec is migrated, and the templates that codec lacked are new.
     """
 
     del modified  # part of the cache key so a rewritten file reloads
     network, info = load_checkpoint(Path(path))
     if game_ruleset is None or _catalog_covers(info.ruleset, game_ruleset):
-        return network, info.ruleset
-    network, _ = load_checkpoint(
+        return network, info.ruleset, _new_rows(info)
+    network, info = load_checkpoint(
         Path(path), ruleset=RulesetConfig.from_identifier(game_ruleset)
     )
-    return network, game_ruleset
+    return network, game_ruleset, _new_rows(info)
+
+
+def _new_rows(info: CheckpointInfo) -> frozenset[int]:
+    return frozenset() if info.migration is None else info.migration.new_action_rows
 
 
 @lru_cache(maxsize=16)
@@ -226,7 +283,7 @@ def _catalog_covers(ruleset: str, game_ruleset: str) -> bool:
 
 
 def load_network_agent(
-    path: str, config: RulesetConfig | None = None
+    path: str, config: RulesetConfig | None = None, *, seed: int = 0
 ) -> NetworkAgent:
     """Build a greedy agent from a checkpoint file, cached per process.
 
@@ -235,17 +292,24 @@ def load_network_agent(
     onto the game's catalog by template identity and the new templates
     start at zero logits, as for a checkpoint of an older codec
     (``training.checkpoint``); OQ-092 lets checkpoint seats play Epic Game
-    Mode this way. Without ``config`` the agent answers for the file's own
-    ruleset.
+    Mode this way, and design D6 Arrakeen Scouts. A decision made only of
+    such templates goes to a heuristic seeded with ``seed``
+    (``NetworkAgent``). Without ``config`` the agent answers for the file's
+    own ruleset.
     """
 
     resolved = str(Path(path).expanduser())
-    network, ruleset = _cached_network(
+    network, ruleset, untrained = _cached_network(
         resolved,
         os.path.getmtime(resolved),
         None if config is None else config.identifier,
     )
-    return NetworkAgent(network, RulesetConfig.from_identifier(ruleset))
+    return NetworkAgent(
+        network,
+        RulesetConfig.from_identifier(ruleset),
+        untrained=untrained,
+        seed=seed,
+    )
 
 
 def load_frozen_network(path: str) -> PolicyValueNetwork:
@@ -260,6 +324,6 @@ def load_frozen_network(path: str) -> PolicyValueNetwork:
     """
 
     resolved = str(Path(path).expanduser())
-    network, _ = _cached_network(resolved, os.path.getmtime(resolved))
+    network, _, _ = _cached_network(resolved, os.path.getmtime(resolved))
     network.eval()
     return network

@@ -61,6 +61,7 @@ from dune_imperium.training.network import (  # noqa: E402
     PolicyValueNetwork,
     build_network,
 )
+from dune_imperium.training.policy import without_undo_actions  # noqa: E402
 from dune_imperium.training.torch_policy import (  # noqa: E402
     NetworkAgent,
     TorchBatchPolicy,
@@ -296,6 +297,105 @@ def test_a_checkpoint_seat_answers_for_an_epic_game_it_was_not_trained_on(
     )
     assert result.seats[0].decisions > 0
     assert result.seats[0].illegal_actions == 0
+
+def test_migration_names_the_policy_rows_a_file_was_never_trained_on(
+    tmp_path: Path,
+) -> None:
+    base = RulesetConfig()
+    base_codec = ActionCodec(base)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path, _network(base_codec.size), ruleset=base.identifier, iteration=1,
+        codec=base_codec,
+    )
+
+    _, same = load_checkpoint(path)
+    assert same.migration is None
+    scouts = RulesetConfig(arrakeen_scouts=True)
+    _, moved = load_checkpoint(path, ruleset=scouts)
+    assert moved.migration is not None
+    held = set(base_codec.catalog)
+    catalog = ActionCodec(scouts).catalog
+    expected = {row for row, template in enumerate(catalog) if template not in held}
+    assert moved.migration.new_action_rows == expected
+    assert len(expected) == moved.migration.actions_new > 0
+    assert any(catalog[row].action_id == "scouts_bid" for row in expected)
+
+
+class _Seat0Recorder:
+    """Seat 0's agent, checked decision by decision against two twins."""
+
+    def __init__(self, agent: NetworkAgent, network: PolicyValueNetwork) -> None:
+        from dune_imperium.agents.heuristic_agent import HeuristicAgent
+
+        self.agent = agent
+        # The heuristic the untrained-only decisions must go to, and the
+        # plain greedy network every other decision must stay with.
+        self.heuristic = HeuristicAgent(seed=7)
+        self.network_only = NetworkAgent(network, agent.codec.config)
+        self.untrained_only = 0
+        self.network_decisions = 0
+
+    def choose_action(
+        self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
+    ) -> DomainAction:
+        chosen = self.agent.choose_action(observation, legal_actions)
+        offered = without_undo_actions(legal_actions)
+        rows = [self.agent.codec.encode(action) for action in offered]
+        if all(row in self.agent.untrained for row in rows):
+            self.untrained_only += 1
+            assert chosen == self.heuristic.choose_action(observation, offered)
+        else:
+            self.network_decisions += 1
+            assert chosen == self.network_only.choose_action(
+                observation, legal_actions
+            )
+        return chosen
+
+
+def test_a_checkpoint_seat_hands_untrained_only_decisions_to_a_heuristic(
+    tmp_path: Path,
+) -> None:
+    # Design D6 (2026-09-30): a checkpoint seat may play Arrakeen Scouts. A
+    # file trained without Scouts has zero logits for every Scouts template,
+    # so a decision offering only those (a sealed bid, a secret pick, a
+    # mission) goes to a heuristic seeded with the agent seed; a decision
+    # with any trained action stays with the network.
+    from dune_imperium.agents.heuristic_agent import HeuristicAgent
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.simulation.runner import run_policy_game
+
+    base = RulesetConfig()
+    base_codec = ActionCodec(base)
+    network = _network(base_codec.size)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path, network, ruleset=base.identifier, iteration=1, codec=base_codec
+    )
+    kind = f"checkpoint:{path}"
+    # On its own catalog nothing is untrained: the plain greedy network.
+    plain = make_agent(kind, 7, base)
+    assert isinstance(plain, NetworkAgent)
+    assert plain.untrained == frozenset()
+
+    scouts = RulesetConfig(arrakeen_scouts=True)
+    agent = make_agent(kind, 7, scouts)
+    assert isinstance(agent, NetworkAgent)
+    assert agent.codec.config == scouts
+    assert agent.untrained
+    recorder = _Seat0Recorder(agent, agent.network)
+    others = [HeuristicAgent(seed=seed) for seed in (1, 2, 3)]
+
+    simulation = run_policy_game(
+        UprisingRulesEngine(), scouts, 6, [recorder, *others], max_steps=30_000
+    )
+
+    assert simulation.state.phase.name == "FINISHED"
+    assert recorder.untrained_only > 0
+    assert recorder.network_decisions > recorder.untrained_only
+    with pytest.raises(ValueError, match="rows of the catalog"):
+        NetworkAgent(network, base, untrained=frozenset({base_codec.size}))
+
 
 def test_a_frozen_checkpoint_opponent_plays_the_same_games_batched(
     tmp_path: Path,

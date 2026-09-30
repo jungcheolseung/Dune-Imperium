@@ -87,32 +87,56 @@ def test_tournament_specs_cross_seeds_rulesets_and_rotations() -> None:
         tournament_specs(agents=("random",), games=0)
 
 
-def test_tournament_specs_reject_checkpoint_and_search_seats_with_scouts() -> None:
-    with pytest.raises(
-        ValueError, match="checkpoint and search seats cannot play Arrakeen Scouts"
-    ):
-        tournament_specs(
-            agents=("checkpoint:/nonexistent.pt", "random", "random", "random"),
+def test_tournament_specs_seat_checkpoint_and_search_seats_with_scouts() -> None:
+    # Design D6 (user decision 2026-09-30): trained seats may play Arrakeen
+    # Scouts; the policy head is moved onto the Scouts catalog when the
+    # match builds its agents, so the specs no longer refuse them.
+    for kind in ("checkpoint:/nonexistent.pt", "search:/nonexistent.pt"):
+        specs = tournament_specs(
+            agents=(kind, "random", "random", "random"),
             games=1,
             arrakeen_scouts=True,
         )
-    with pytest.raises(
-        ValueError, match="checkpoint and search seats cannot play Arrakeen Scouts"
-    ):
-        tournament_specs(
-            agents=("search:/nonexistent.pt", "random", "random", "random"),
-            games=1,
-            arrakeen_scouts=True,
-        )
-    # Without the option, or with agents that are neither checkpoint nor
-    # search, Scouts specs build fine.
-    specs = tournament_specs(
-        agents=("heuristic", "random", "random", "random"),
-        games=1,
-        arrakeen_scouts=True,
+        assert all(spec.arrakeen_scouts for spec in specs)
+        assert all(spec.config.arrakeen_scouts for spec in specs)
+        assert any(spec.seat_agents[0] == kind for spec in specs)
+
+
+def test_a_checkpoint_seat_plays_a_whole_arrakeen_scouts_match(
+    tmp_path: Path,
+) -> None:
+    torch = pytest.importorskip("torch")
+    from dune_imperium.adapters.action_codec import ActionCodec
+    from dune_imperium.training.checkpoint import save_checkpoint
+    from dune_imperium.training.network import PolicyValueNetwork
+
+    # A file trained without Scouts, as every checkpoint so far is.
+    base = RulesetConfig()
+    codec = ActionCodec(base)
+    torch.manual_seed(0)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path,
+        PolicyValueNetwork(codec.size, hidden=(32,)),
+        ruleset=base.identifier,
+        iteration=1,
+        codec=codec,
     )
-    assert all(spec.arrakeen_scouts for spec in specs)
-    assert all(spec.config.arrakeen_scouts for spec in specs)
+    kind = f"checkpoint:{path}"
+
+    result = play_match(
+        MatchSpec(
+            game_seed=6,
+            policy_seed=1,
+            seat_agents=(kind, "heuristic", "heuristic", "heuristic"),
+            arrakeen_scouts=True,
+        )
+    )
+
+    assert result.ruleset == "uprising-4p-base+scouts"
+    assert result.seats[0].agent == kind
+    assert result.seats[0].decisions > 0
+    assert result.seats[0].illegal_actions == 0
 
 
 def test_tournament_specs_rejects_go_to_11_without_immortality() -> None:
