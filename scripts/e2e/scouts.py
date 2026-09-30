@@ -21,7 +21,24 @@ to the end, and on the way the page must show:
 - after the game, the finished page without errors;
 - a seat steered to the High Council (OQ-076 alternative C, 2026-09-30):
   its subcommittee choice is one more row of the turn ("소위원회 선택"),
-  and pressing it opens the list of subcommittees.
+  and pressing it opens the list of subcommittees;
+- the mission pieces drawn where they lie (design 6, user request
+  2026-09-30): six seeded games (PIECE_GAMES) that between them show all
+  sixteen missions' pieces, checked whenever the pieces change: one DOM
+  piece per view row, inside its space's regions (catalog
+  tracks.scouts.regions), on its post's disc (beside a Spy), on the Bene
+  Tleilax board's Helix spot or third Tleilaxu space, in its seat's
+  Contract chip or on Reclaimed Forces; a seat's pieces (or one mission's
+  bank goods) in one region of their space, its goods on its marker or
+  troop; a cube per parked troop in the seat's colour; nothing on a hotspot, Agent, Spy, Control marker, bonus
+  spice, Commander or garrison ring, and a click at each hotspot's, Agent's
+  and Spy's centre still reaches it; titles in Korean and, in English,
+  without Hangul; and no face-down card's id (read off the game's save,
+  replayed by the engine) or name anywhere on the page;
+- the fullest table the missions can leave (an edited view), both pools,
+  at 2400x1500 and 1366x900, with and without the Sardaukar Commanders,
+  two seats on Prison Planet (each spice on its own marker), and without the board scan the panel's list only. Screenshots go to
+  E2E_SHOTS_DIR (a temporary folder by default).
 
 The seat picks each secret line and bids in turn so every kind is seen;
 everything else takes the first legal action. Seed 21 meets an unpayable
@@ -31,11 +48,16 @@ and skips it once (Guild Negotiation).
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import time
+from pathlib import Path
 
-from common import Check, chrome, open_context, server, set_rule_options
+from common import REPO, Check, chrome, open_context, server, set_rule_options
 from open_mode import settled
 
 check = Check()
@@ -366,6 +388,593 @@ def council(page, seen: dict[str, bool], limit: int = 3000) -> None:
         page.evaluate(f"applyAction({page.evaluate(COUNCIL_JS)})")
 
 
+# --- Mission pieces on the boards (design 6, user request 2026-09-30) -------------
+
+# Each view row of Scouts pieces and the one DOM piece that should stand for
+# it: on the board scan (a space's regions, a post's disc), on the Bene
+# Tleilax scan (the Helix, the third Tleilaxu track space), on the seat's
+# Contract chip or on Reclaimed Forces in the Tleilaxu Row. The zoomed Bene
+# Tleilax board repeats its pieces and is left out.
+PIECES_JS = """(() => {
+  const view = state.view;
+  const rows = scoutsPieceRows(view);
+  const tracks = state.catalog.tracks || {};
+  const regions = (tracks.scouts || {}).regions || {};
+  const stage = document.querySelector('#board .board-stage');
+  const btStage = document.querySelector('#market .bt-stage');
+  const outside = (n) => !n.closest('#bt-zoom');
+  const pct = (node, host) => {
+    const s = host.getBoundingClientRect(), r = node.getBoundingClientRect();
+    return { left: (r.left - s.left) / s.width * 100, top: (r.top - s.top) / s.height * 100,
+      width: r.width / s.width * 100, height: r.height / s.height * 100 };
+  };
+  const spies = new Set(view.players.flatMap((p) => p.spy_post_ids));
+  const out = rows.map((row) => {
+    const all = [...document.querySelectorAll(`.scouts-piece[data-row="${row.key}"]`)]
+      .filter(outside);
+    const loc = row.location;
+    let host = null, where = null;
+    if (loc.startsWith('post:') || regions[loc]) { host = stage; where = 'board'; }
+    else if (loc === 'helix' || loc === 'tleilaxu_track') { host = btStage; where = 'bt'; }
+    else if (loc.startsWith('contract:')) {
+      host = document.querySelector(
+        `#seats .seat[data-seat="${row.seat}"] .tag[data-contract="${loc.slice(9)}"]`);
+      where = 'contract';
+    } else if (loc === 'reclaimed_forces') {
+      host = document.querySelector('#market .vcard[data-instance="reclaimed_forces"]');
+      where = 'card';
+    }
+    const inside = host ? all.filter((n) => host.contains(n)) : [];
+    const node = inside[0] || null;
+    let within = null;
+    if (node && (where === 'contract' || where === 'card')) {
+      const a = node.getBoundingClientRect(), b = host.getBoundingClientRect();
+      within = a.left >= b.left - 1 && a.right <= b.right + 1
+        && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+    }
+    return {
+      key: row.key, kind: row.kind, mission: row.mission, location: loc,
+      seat: row.seat, count: row.count, where, host: Boolean(host),
+      n: all.length, inside: inside.length,
+      rect: node && (where === 'board' || where === 'bt') ? pct(node, host) : null,
+      within,
+      spied: loc.startsWith('post:') && spies.has(loc.slice(5)),
+      title: node ? node.title : null,
+      label: node ? node.getAttribute('aria-label') : null,
+      cubes: node ? [...node.querySelectorAll('.scouts-cube')]
+        .map((c) => getComputedStyle(c).backgroundColor) : [],
+    };
+  });
+  return {
+    rows: out,
+    total: [...document.querySelectorAll('.scouts-piece')].filter(outside).length,
+    scan: Boolean(stage),
+    btScan: Boolean(btStage),
+    colors: SEAT_COLORS,
+  };
+})()"""
+
+# What a piece on the board scan must stay off, in stage percent: every
+# space's hotspot (its frame, where the Agents stand), the Spies, Control
+# markers, the Maker bonus spice, the Commanders and the garrison rings;
+# and whether a click at the centre of each hotspot, Agent and Spy still
+# lands on it.
+BLOCKERS_JS = """(() => {
+  const stage = document.querySelector('#board .board-stage');
+  if (!stage) return null;
+  const s = stage.getBoundingClientRect();
+  const pct = (r) => ({ left: (r.left - s.left) / s.width * 100,
+    top: (r.top - s.top) / s.height * 100,
+    width: r.width / s.width * 100, height: r.height / s.height * 100 });
+  const boxes = [];
+  const add = (selector, kind) => {
+    for (const n of stage.querySelectorAll(selector)) {
+      boxes.push({ kind, name: n.dataset.space || n.dataset.seat || '',
+        ...pct(n.getBoundingClientRect()) });
+    }
+  };
+  add('.hotspot', 'hotspot');
+  add('.spy-post', 'spy');
+  add('.control-marker', 'control');
+  add('.bonus-spice:not(.scouts-piece)', 'bonus spice');
+  add('.commander-piece', 'commander');
+  (state.catalog.tracks.garrison_units.rings || []).forEach(([left, top, width, height], seat) => {
+    boxes.push({ kind: 'garrison', name: String(seat), left, top, width, height });
+  });
+  const missed = [];
+  const hit = (node, selector) => {
+    const r = node.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return;
+    const top = document.elementFromPoint(x, y);
+    if (!top || top.closest(selector) !== node.closest(selector)) {
+      missed.push([selector, node.dataset.space || node.dataset.seat || '',
+        top ? top.className.baseVal ?? top.className : null]);
+    }
+  };
+  for (const n of stage.querySelectorAll('.hotspot')) hit(n, '.hotspot');
+  for (const n of stage.querySelectorAll('.hotspot .agent-token')) hit(n, '.hotspot');
+  for (const n of stage.querySelectorAll('.spy-post')) hit(n, '.spy-post');
+  return { boxes, missed };
+})()"""
+
+HANGUL_TITLES_JS = """[...document.querySelectorAll('.scouts-piece')]
+  .map((n) => n.title + ' | ' + (n.getAttribute('aria-label') || '') + ' | ' + n.innerText)"""
+
+
+def _meets(a: dict, b: dict, slack: float = 0.02) -> bool:
+    return not (
+        a["left"] + a["width"] <= b["left"] + slack
+        or b["left"] + b["width"] <= a["left"] + slack
+        or a["top"] + a["height"] <= b["top"] + slack
+        or b["top"] + b["height"] <= a["top"] + slack
+    )
+
+
+def _inside(rect: dict, box: list[float], tolerance: float = 0.15) -> bool:
+    left, top, width, height = box
+    return (
+        rect["left"] >= left - tolerance
+        and rect["top"] >= top - tolerance
+        and rect["left"] + rect["width"] <= left + width + tolerance
+        and rect["top"] + rect["height"] <= top + height + tolerance
+    )
+
+
+def _rgb(hex_color: str) -> str:
+    value = hex_color.lstrip("#")
+    red, green, blue = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgb({red}, {green}, {blue})"
+
+
+def check_pieces(page, label: str) -> set[str]:
+    """Every Scouts piece in the view is exactly one DOM piece at its place:
+    inside its space's regions, on (or beside a Spy on) its post, on the
+    Helix spot or the third Tleilaxu space, in its seat's Contract chip or on
+    Reclaimed Forces; parked troops are a cube each in the seat's colour; no
+    piece stands on a hotspot, Agent, Spy, Control marker, bonus spice,
+    Commander or garrison ring; every piece is titled. Returns the missions
+    whose pieces were checked (or rightly left to the panel without a
+    scan)."""
+
+    found = page.evaluate(PIECES_JS)
+    catalog = page.evaluate(
+        "({ scouts: state.catalog.tracks.scouts, posts: state.catalog.posts,"
+        " postSize: state.catalog.post_size,"
+        " bt: (state.catalog.bene_tleilax || {}).layout || null })"
+    )
+    colors = found["colors"]
+    problems: list[object] = []
+    expected_total = 0
+    checked: set[str] = set()
+    for row in found["rows"]:
+        name = f"{row['mission']} {row['kind']} at {row['location']}"
+        drawn = (
+            (row["where"] == "board" and found["scan"])
+            or (row["where"] == "bt" and found["btScan"])
+            or row["where"] in ("contract", "card")
+        )
+        if not drawn:
+            # Without the scan the Scouts panel's list is all there is.
+            if row["n"]:
+                problems.append((name, "drawn without its scan", row["n"]))
+            else:
+                checked.add(row["mission"])
+            continue
+        expected_total += 1
+        if not (row["host"] and row["n"] == 1 and row["inside"] == 1):
+            problems.append((name, "not one piece at its place", row))
+            continue
+        checked.add(row["mission"])
+        if not row["title"] or row["title"] != row["label"]:
+            problems.append((name, "untitled", row["title"]))
+        if row["kind"] == "troop" and row["cubes"] != [_rgb(colors[row["seat"]])] * row["count"]:
+            problems.append((name, "cubes", row["cubes"], row["count"]))
+        rect = row["rect"]
+        location = row["location"]
+        if row["where"] in ("contract", "card"):
+            if not row["within"]:
+                problems.append((name, "outside its card", row))
+        elif location.startswith("post:"):
+            x, y = catalog["posts"][location.removeprefix("post:")]
+            centre = (rect["left"] + rect["width"] / 2, rect["top"] + rect["height"] / 2)
+            if abs(centre[1] - y) > 0.15 or (
+                rect["left"] < x + catalog["postSize"] / 2 - 0.1
+                if row["spied"]
+                else abs(centre[0] - x) > 0.15
+            ):
+                problems.append((name, "not on its post", rect, (x, y), row["spied"]))
+        elif row["where"] == "bt":
+            bt = catalog["bt"]["scouts"]
+            if location == "helix":
+                x, y = bt["helix_spice_point"]
+                centre_y = rect["top"] + rect["height"] / 2
+                if abs(centre_y - y) > 0.3 or rect["left"] + rect["width"] > x + 3:
+                    problems.append((name, "not beside the Helix", rect))
+            elif not any(_inside(rect, r["box"], 0.3) for r in bt["regions"][location]):
+                problems.append((name, "not on the third space", rect))
+        elif not any(
+            _inside(rect, region["box"]) for region in catalog["scouts"]["regions"][location]
+        ):
+            problems.append((name, "outside its regions", rect))
+    if found["total"] != expected_total:
+        problems.append(("pieces", found["total"], "for", expected_total, "rows"))
+
+    # A seat's pieces (or one mission's bank goods) lie together in one
+    # region of their space, and a seat's goods lie on its marker or troop.
+    homes: dict[tuple[str, str], set[int]] = {}
+    for row in found["rows"]:
+        regions = catalog["scouts"]["regions"].get(row["location"])
+        if row["where"] != "board" or not regions or not row["rect"]:
+            continue
+        group = f"seat:{row['seat']}" if row["seat"] >= 0 else f"bank:{row['mission']}"
+        index = next(
+            (i for i, region in enumerate(regions) if _inside(row["rect"], region["box"])),
+            -1,
+        )
+        homes.setdefault((row["location"], group), set()).add(index)
+        if row["kind"] in ("spice", "solari", "water") and row["seat"] >= 0:
+            holders = [
+                other
+                for other in found["rows"]
+                if other["kind"] in ("troop", "marker")
+                and other["seat"] == row["seat"]
+                and other["mission"] == row["mission"]
+                and other["location"] == row["location"]
+                and other["rect"]
+            ]
+            if holders and not any(_meets(row["rect"], h["rect"], 0) for h in holders):
+                problems.append((f"{row['mission']} {row['kind']}", "off its holder", row["rect"]))
+    for (location, group), indexes in homes.items():
+        if len(indexes) > 1:
+            problems.append((location, group, "split across regions", sorted(indexes)))
+
+    blockers = page.evaluate(BLOCKERS_JS)
+    if blockers is not None:
+        board_rects = [
+            (f"{row['mission']} {row['kind']} at {row['location']}", row["rect"])
+            for row in found["rows"]
+            if row["where"] == "board" and row["rect"]
+        ]
+        for name, rect in board_rects:
+            for box in blockers["boxes"]:
+                if _meets(rect, box):
+                    problems.append((name, "on", box["kind"], box["name"]))
+        if blockers["missed"]:
+            problems.append(("clicks that miss", blockers["missed"][:5]))
+    check.ok(not problems, f"{label}: every Scouts piece at its place", problems[:8])
+    return checked
+
+
+def check_titles(page, label: str) -> None:
+    """Each piece names its mission and goods in the page's language."""
+
+    korean = page.evaluate(HANGUL_TITLES_JS)
+    page.evaluate("setLanguage('en')")
+    assert settled(page, 10)
+    english = page.evaluate(HANGUL_TITLES_JS)
+    page.evaluate("setLanguage('ko')")
+    assert settled(page, 10)
+    check.ok(
+        korean
+        and all(title.split(" | ")[0] for title in korean)
+        and any(HANGUL.search(title) for title in korean),
+        f"{label}: the pieces are titled in Korean",
+        korean[:3],
+    )
+    check.ok(
+        len(english) == len(korean)
+        and all(title.split(" | ")[0] for title in english)
+        and not any(HANGUL.search(title) for title in english),
+        f"{label}: in English the pieces' titles carry no Hangul",
+        [t for t in english if HANGUL.search(t)][:3],
+    )
+
+
+# The face-down cards on the board, read off the game's own save: the page
+# never learns them (the view carries counts only), so the script asks the
+# engine, replaying the saved game in this checkout.
+REPLAY_PY = """
+import json, sys
+from dune_imperium.core.replay import replay_game
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.server.persistence import parse_save_document
+document = json.loads(open(sys.argv[1], encoding="utf-8").read())
+state = replay_game(UprisingRulesEngine(), parse_save_document(document).replay)
+print(json.dumps([card for _, _, card in state.scouts_goods_cards]))
+"""
+
+
+def face_down_ids(page, base: str, saves: Path) -> list[str]:
+    game_id = page.evaluate("state.gameId")
+    response = page.request.post(f"{base}/games/{game_id}/save", data={})
+    save_id = response.json()["save_id"]
+    result = subprocess.run(
+        [str(REPO / ".venv/bin/python"), "-c", REPLAY_PY, str(saves / f"{save_id}.json")],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO,
+    )
+    return json.loads(result.stdout)
+
+
+# Every attribute value and text of the page and the view, split into id-like
+# words: a face-down card's id must be none of them.
+WORDS_JS = """(() => {
+  const words = new Set();
+  const add = (text) => { for (const w of String(text).split(/[^A-Za-z0-9_]+/)) if (w) words.add(w); };
+  for (const node of document.querySelectorAll('*')) {
+    for (const attribute of node.attributes) add(attribute.value);
+  }
+  add(document.body.innerText);
+  add(JSON.stringify(state.view));
+  return [...words];
+})()"""
+
+
+def check_face_down(page, base: str, saves: Path, label: str) -> bool:
+    ids = face_down_ids(page, base, saves)
+    counts = page.evaluate("state.view.scouts_board_card_counts")
+    words = set(page.evaluate(WORDS_JS))
+    piles = page.evaluate(
+        "[...document.querySelectorAll('.scouts-intrigue, .scouts-contract')]"
+        ".map((n) => ({ text: n.innerText.trim(), title: n.title,"
+        " data: JSON.stringify(n.dataset) }))"
+    )
+    names = page.evaluate(
+        "Object.values({...state.catalog.intrigue, ...state.catalog.contracts})"
+        ".map((e) => e.name)"
+    )
+    leaked = [card for card in ids if card in words]
+    named = [
+        pile for pile in piles if any(name in pile["title"] + pile["text"] for name in names)
+    ]
+    return check.ok(
+        ids
+        and len(ids) == sum(count for _, _, count in counts)
+        and not leaked
+        and not named
+        and all(pile["text"].isdigit() for pile in piles),
+        f"{label}: no face-down card's id or name reaches the page",
+        (ids, counts, leaked, named, piles),
+    )
+
+
+# Games whose missions leave every kind of piece (seed search 2026-09-30 over
+# seeds 1-40 of both pools, seat 0 playing CHOOSE_JS as here): (rule options,
+# seed, rounds to play). Missions come out in rounds 2 and 3 and place their
+# pieces then, so three rounds show them all.
+# Six games cover all sixteen missions; seat 0 joins every mission it can,
+# so each parking mission has troops on the board.
+UPRISING_POOL = ("choam",)
+IMMORTALITY_POOL = ("choam", "immortality")
+PIECE_GAMES: tuple[tuple[tuple[str, ...], int, int], ...] = (
+    (UPRISING_POOL, 1, 3),  # Emperor's Schemes, Imperial Reserve
+    (UPRISING_POOL, 2, 3),  # CHOAM Research, Prison Planet, Urban Surveillance
+    (UPRISING_POOL, 7, 3),  # Desert Riding, Imperial Reserve, Send for Aid
+    (IMMORTALITY_POOL, 4, 3),  # CHOAM Escort, Tleilaxu Offering, Weirding Warfare
+    (IMMORTALITY_POOL, 16, 3),  # Fedaykin Assistance, Security Detail,
+    # Sponsored Research
+    (IMMORTALITY_POOL, 36, 3),  # Back Room Deal, Coordinate With The Emperor,
+    # Planetary Exploration
+)
+EXPECTED_MISSIONS = frozenset(
+    {
+        "security_detail",
+        "imperial_reserve",
+        "desert_riding",
+        "urban_surveillance",
+        "planetary_exploration",
+        "choam_research",
+        "choam_escort",
+        "sponsored_research",
+        "back_room_deal",
+        "prison_planet",
+        "emperors_schemes",
+        "fedaykin_assistance",
+        "weirding_warfare",
+        "send_for_aid",
+        "coordinate_with_the_emperor",
+        "tleilaxu_offering",
+    }
+)
+
+
+def create_with(page, base: str, seed: int, options: tuple[str, ...]) -> None:
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(
+            f"#seat-selects select[data-seat='{seat}']",
+            "human" if seat == 0 else "heuristic",
+        )
+    set_rule_options(page, *options)
+    page.set_checked("#opt-leader-draft", False)
+    page.set_checked("#opt-scouts", True)
+    page.fill("#opt-seed", str(seed))
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+
+
+# The pieces change a few times a game; the Spies decide where a post's
+# goods lie.
+PIECE_KEY_JS = """JSON.stringify([state.view.scouts_goods, state.view.scouts_parked,
+  state.view.scouts_board_card_counts, state.view.players.map((p) => p.spy_post_ids),
+  state.view.players.map((p) => p.active_contract_ids)])"""
+
+
+def piece_games(page, base: str, saves: Path) -> None:
+    """Live games: whenever the pieces change, check them where they lie;
+    the face-down piles once per game against the engine's cards."""
+
+    covered: set[str] = set()
+    for options, seed, rounds in PIECE_GAMES:
+        label = f"{'+'.join(options) or 'base'} seed {seed}"
+        print(f"[pieces] {label}")
+        create_with(page, base, seed, options)
+        last = None
+        piles = False
+        titled = False
+        for _ in range(4000):
+            assert settled(page, 30)
+            if page.evaluate(
+                f"state.summary.finished || state.view.round_number > {rounds}"
+            ):
+                break
+            key = page.evaluate(PIECE_KEY_JS)
+            if key != last:
+                last = key
+                # Agents just placed fly in from their seats' panels first.
+                page.wait_for_function("!document.querySelector('.agent-token.flying')")
+                covered |= check_pieces(page, label)
+                if not titled and page.evaluate("scoutsPieceRows(state.view).length > 0"):
+                    check_titles(page, label)
+                    titled = True
+                if not piles and page.evaluate(
+                    "state.view.scouts_board_card_counts.length > 0"
+                ):
+                    piles = check_face_down(page, base, saves, label)
+            if page.evaluate("state.summary.confirmation === state.viewSeat"):
+                page.evaluate("confirmTurn()")
+                continue
+            if not page.evaluate(
+                "Boolean(state.actions && state.actions.actions.length)"
+            ):
+                time.sleep(0.05)
+                continue
+            page.evaluate(f"applyAction({page.evaluate(CHOOSE_JS)})")
+    check.ok(
+        EXPECTED_MISSIONS <= covered,
+        "the seeded games show every mission's pieces",
+        sorted(EXPECTED_MISSIONS - covered),
+    )
+
+
+# The fullest table the missions can leave (an edited view, the render's only
+# input): four seats on every parking mission, the bank's goods everywhere,
+# both face-down piles, goods on every post (one guarded by a Spy), Agents
+# on every mission space and the Sardaukar Commanders on their setup spaces.
+FILL_JS = """(variant) => {
+  const v = state.view;
+  const goods = [], parked = [], cards = [];
+  const seats = [0, 1, 2, 3];
+  if (variant === 'uprising') {
+    for (const s of seats) {
+      goods.push(['prison_planet', 'sardaukar', 'marker', 1, s]);
+      goods.push(['prison_planet', 'sardaukar', 'spice', 2, s]);
+    }
+  } else {
+    cards.push(['emperors_schemes', 'sardaukar', 2]);
+    for (const s of seats) {
+      parked.push(['coordinate_with_the_emperor', s, 'sardaukar', 1]);
+      goods.push(['coordinate_with_the_emperor', 'sardaukar', 'solari', 2, s]);
+    }
+  }
+  for (const s of seats) parked.push(['security_detail', s, 'deliver_supplies', 1]);
+  for (const s of seats) parked.push(['weirding_warfare', s, 'espionage', 2]);
+  for (const s of seats) parked.push(['fedaykin_assistance', s, 'desert_tactics', 2]);
+  goods.push(['imperial_reserve', 'imperial_privilege', 'spice', 1, -1]);
+  goods.push(['imperial_reserve', 'imperial_privilege', 'solari', 2, -1]);
+  for (const s of seats) {
+    parked.push(['send_for_aid', s, 'gather_support', 1]);
+    goods.push(['send_for_aid', 'gather_support', 'water', 1, s]);
+  }
+  cards.push(['choam_research', 'research_station', 2]);
+  goods.push(['desert_riding', 'hagga_basin', 'maker_hooks', 1, -1]);
+  const posts = Object.keys(state.catalog.posts);
+  posts.forEach((post, i) => {
+    goods.push([i % 2 ? 'urban_surveillance' : 'planetary_exploration', `post:${post}`,
+      i % 2 ? 'solari' : 'spice', 1, -1]);
+  });
+  const contract = Object.keys(state.catalog.contracts)[0];
+  v.players[0].active_contract_ids = [contract];
+  goods.push(['choam_escort', `contract:${contract}`, 'solari', 1, 0]);
+  goods.push(['choam_escort', `contract:${contract}`, 'spice', 1, 0]);
+  goods.push(['sponsored_research', 'helix', 'spice', 2, -1]);
+  goods.push(['back_room_deal', 'reclaimed_forces', 'solari', 2, -1]);
+  for (const s of seats) parked.push(['tleilaxu_offering', s, 'tleilaxu_track', 2]);
+  v.scouts_goods = goods;
+  v.scouts_parked = parked;
+  v.scouts_board_card_counts = cards;
+  const busy = ['sardaukar', 'deliver_supplies', 'espionage', 'desert_tactics',
+    'imperial_privilege', 'gather_support', 'research_station', 'hagga_basin'];
+  v.players.forEach((p, s) => {
+    p.agent_locations = busy.slice();
+    p.spy_post_ids = [];
+    p.tleilaxu_space = s + 1;
+  });
+  v.players[1].spy_post_ids = [posts[0]];
+  v.sardaukar_commander_space_ids = ['sardaukar', 'dutiful_service', 'deliver_supplies',
+    'high_council', 'gather_support', 'assembly_hall'];
+  render();
+}"""
+
+# Seats 0 and 2 joined Prison Planet: two markers, each with its 2 spice.
+PRISON_PLANET_JS = """(() => {
+  const v = state.view;
+  v.scouts_goods = [0, 2].flatMap((s) => [
+    ['prison_planet', 'sardaukar', 'marker', 1, s],
+    ['prison_planet', 'sardaukar', 'spice', 2, s]]);
+  v.scouts_parked = [];
+  v.scouts_board_card_counts = [];
+  v.sardaukar_commander_space_ids = [];
+  render();
+})()"""
+
+SHOTS = os.environ.get("E2E_SHOTS_DIR") or tempfile.mkdtemp(prefix="dune-e2e-scouts-")
+
+
+def fullest_table(base: str, browser) -> None:
+    """The fullest table at two window sizes, both mission pools, with and
+    without the Commanders."""
+
+    for viewport in ({"width": 2400, "height": 1500}, {"width": 1366, "height": 900}):
+        _, page, _ = open_context(browser, f"fullest-{viewport['width']}", viewport)
+        create_with(page, base, 5, ("choam", "bloodlines", "immortality"))
+        for variant in ("uprising", "immortality"):
+            label = f"fullest table ({variant}, {viewport['width']}px)"
+            print(f"[pieces] {label}")
+            page.evaluate(FILL_JS, variant)
+            page.wait_for_function(
+                "[...document.querySelectorAll('.board-stage img')].every((i) => i.complete)"
+            )
+            page.wait_for_function("!document.querySelector('.agent-token.flying')")
+            page.wait_for_timeout(350)
+            check_pieces(page, label)
+            scales = page.evaluate(
+                "[...document.querySelectorAll('.board-stage .scouts-piece[data-scale]')]"
+                ".map((n) => Number(n.dataset.scale))"
+            )
+            check.ok(
+                scales and min(scales) >= 0.5,
+                f"{label}: a crowded space shrinks no piece below half",
+                sorted(set(scales)),
+            )
+            page.screenshot(path=f"{SHOTS}/scouts_pieces_{variant}_{viewport['width']}.png")
+            if viewport["width"] == 2400:
+                check_titles(page, label)
+                page.evaluate(
+                    "state.view.sardaukar_commander_space_ids = []; render();"
+                )
+                page.wait_for_timeout(100)
+                check_pieces(page, f"{label}, no Commanders")
+        # Two seats on Prison Planet and no Commander: each seat's spice
+        # lies on its own marker, in the same region (verify 2026-09-30).
+        page.evaluate(PRISON_PLANET_JS)
+        page.wait_for_timeout(100)
+        check_pieces(page, f"two seats on Prison Planet ({viewport['width']}px)")
+        # Without the board scan the pieces are the panel's text only.
+        page.evaluate("state.catalog.board_image = null; render();")
+        check.ok(
+            page.evaluate("document.querySelectorAll('#board .scouts-piece').length") == 0
+            and "임무 조각" in panel_text(page),
+            f"fullest table ({viewport['width']}px): no scan, the panel's list only",
+        )
+        page.context.close()
+
+
 def main() -> None:
     wanted = (
         "subcommittees",
@@ -412,6 +1021,9 @@ def main() -> None:
         council(page, seen)
         for name in (*wanted, "choose", "choose_list"):
             check.ok(bool(seen.get(name)), f"seen: {name}")
+        piece_games(page, base, Path(_server_log).parent)
+        fullest_table(base, browser)
+    print(f"[pieces] screenshots in {SHOTS}")
     check.finish()
 
 

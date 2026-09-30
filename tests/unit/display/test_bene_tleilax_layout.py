@@ -68,3 +68,39 @@ def test_setup_spice_covers_the_printed_hexagon() -> None:
     band_top, band_height = layout["track_band"]
     assert left <= x - width / 2 and x + width / 2 <= left + cell_width
     assert band_top <= y - height / 2 and y + height / 2 <= band_top + band_height
+
+
+def test_scouts_pieces_have_their_places_on_this_board() -> None:
+    # Sponsored Research's spice lies beside the Helix (the first genetic
+    # marker, OQ-089 (b)) and Tleilaxu Offering's troops on the Tleilaxu
+    # track's third space (docs/rules/arrakeen-scouts.md 5).
+    from dune_imperium.display.bene_tleilax_layout import (
+        SCOUTS_OFFERING_BOX,
+        TLEILAXU_OFFERING_TRACK_SPACE,
+    )
+    from dune_imperium.rules import scouts_missions
+
+    offering_space = scouts_missions.TLEILAXU_OFFERING_TRACK_SPACE
+    assert TLEILAXU_OFFERING_TRACK_SPACE == offering_space
+    layout = bene_tleilax_layout()
+    scouts = layout["scouts"]
+    assert scouts["offering_space"] == TLEILAXU_OFFERING_TRACK_SPACE
+    assert set(scouts["regions"]) == {scouts_missions.TLEILAXU_OFFERING_SPACE}
+    # The box lies inside the third space and the track band.
+    cell_left, cell_width = layout["track_cells"][TLEILAXU_OFFERING_TRACK_SPACE]
+    band_top, band_height = layout["track_band"]
+    left, top, width, height = SCOUTS_OFFERING_BOX
+    assert cell_left <= left and left + width <= cell_left + cell_width
+    assert band_top <= top and top + height <= band_top + band_height
+    # A seat's two troops stand side by side in it at full size: the main
+    # board's cube (95 px of 6012) at this scan's scale (324 / 176).
+    troop_width, troop_height = scouts["sizes"]["troop"]
+    assert round(troop_width / 100 * 5551) == 175
+    assert abs(troop_width * 5551 - troop_height * 3952) < 5
+    assert 2 * troop_width + scouts["gap"][0] <= width
+    # The Helix's spice: the setup spice's hexagon, left of the Helix tile
+    # (outline x 41.1-51.6, y 87.8-96.6), inside the scan.
+    x, y = scouts["helix_spice_point"]
+    spice_width, spice_height = layout["spice_size"]
+    assert x + spice_width / 2 < 41.1 and 87.8 < y < 96.6
+    assert y + spice_height / 2 < 100

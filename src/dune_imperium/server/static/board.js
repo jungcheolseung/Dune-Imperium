@@ -442,6 +442,9 @@ function renderBoardStage(board, view) {
     if (entry && spaceInPlay(entry, view)) stage.appendChild(commanderPiece(spaceId, entry.box));
   }
 
+  /* Arrakeen Scouts: what missions left on the spaces and posts. */
+  renderScoutsBoardPieces(stage, view, spies);
+
   for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
     const seats = stackOrder(postId, spies.get(postId) || [], arrivals);
     if (!seats.length) continue;
@@ -1788,7 +1791,7 @@ function renderBeneTleilax(market, view) {
   /* The Tleilaxu Row: two deck cards bought with specimens plus the fixed
      Reclaimed Forces card [Immortality pp. 6, 9]. */
   const rowIds = [...(view.tleilaxu_row || []), "reclaimed_forces"];
-  cardStrip(
+  const tleilaxuRow = cardStrip(
     market,
     t("board.strip_tleilaxu_row", { count: view.tleilaxu_deck_size || 0 }),
     rowIds,
@@ -1803,6 +1806,11 @@ function renderBeneTleilax(market, view) {
     },
     "Tleilaxu Row",
   );
+  /* Back Room Deal's Solari lie on Reclaimed Forces until someone next
+     acquires it. */
+  const reclaimed = tleilaxuRow.querySelector('.vcard[data-instance="reclaimed_forces"]');
+  const tray = reclaimed && scoutsTray("reclaimed_forces", view);
+  if (tray) reclaimed.appendChild(tray);
 
   const layout = state.catalog && state.catalog.bene_tleilax;
   if (!layout) return;
@@ -1968,6 +1976,8 @@ function renderBeneTleilaxScan(layout, view) {
 
   /* Tleilaxu track: tokens along the top band, the bank's spice on the
      fourth space until a token first arrives [Immortality p. 4]. */
+  const scouts = overlay.scouts || null;
+  const scoutsRows = scouts ? scoutsPieceRows(view) : [];
   const [bandTop, bandHeight] = overlay.track_band;
   overlay.track_cells.forEach(([left, width], index) => {
     const cell = document.createElement("div");
@@ -1980,6 +1990,11 @@ function renderBeneTleilaxScan(layout, view) {
     cell.title =
       `${t("board.tleilaxu_track")} ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + phraseText(TLEILAXU_TRACK_LABELS[bonus]) : ""}`;
     stage.appendChild(cell);
+    /* Tleilaxu Offering's troops on the track's third space, under the
+       tokens that come to stand there. */
+    if (scouts && index === scouts.offering_space) {
+      renderScoutsRegionPieces(stage, scoutsRows, "tleilaxu_track", scouts);
+    }
     /* The first space prints a spot per disc. The other spaces take the
        same two rows: the upper one first, which leaves the printed bonus
        in sight, and a pair stands upright where a space is too narrow. */
@@ -2001,6 +2016,17 @@ function renderBeneTleilaxScan(layout, view) {
       stage.appendChild(token);
     });
   });
+  /* Sponsored Research's spice beside the Helix, the first genetic
+     marker (OQ-089 (b)): the setup spice's hexagon. */
+  if (scouts) {
+    let x = scouts.helix_spice_point[0];
+    for (const row of scoutsRowsAt(scoutsRows, "helix")) {
+      const [w, h] = overlay.spice_size;
+      const piece = scoutsPiece(row, { x: x - w / 2, y: scouts.helix_spice_point[1] - h / 2, w, h });
+      stage.appendChild(piece);
+      x -= w + scouts.gap[0];
+    }
+  }
   /* The setup spice on the fourth space [Immortality p. 4], the same
      hexagon as a Maker space's bonus spice over the printed "1st / 2" one. */
   if (view.tleilaxu_track_spice) {
@@ -2014,4 +2040,413 @@ function renderBeneTleilaxScan(layout, view) {
     stage.appendChild(spice);
   }
   return stage;
+}
+
+/* ---------- Arrakeen Scouts: mission pieces on the boards ---------- */
+
+/* Every Scouts piece in the view, one entry per row of it: bank goods
+   (view.scouts_goods, seat -1 for anyone), parked troops (scouts_parked)
+   and face-down piles (scouts_board_card_counts: the view carries only
+   their counts, never the cards). `key` names the row for the DOM. */
+function scoutsPieceRows(view) {
+  const rows = [];
+  (view.scouts_goods || []).forEach(([mission, location, resource, count, seat], index) => {
+    rows.push({ key: `goods:${index}`, kind: resource, mission, location, count, seat });
+  });
+  (view.scouts_parked || []).forEach(([mission, seat, location, troops], index) => {
+    rows.push({ key: `parked:${index}`, kind: "troop", mission, location, count: troops, seat });
+  });
+  (view.scouts_board_card_counts || []).forEach(([mission, location, count], index) => {
+    rows.push({
+      key: `cards:${index}`,
+      kind: mission === "choam_research" ? "contract" : "intrigue",
+      mission,
+      location,
+      count,
+      seat: -1,
+    });
+  });
+  return rows;
+}
+
+/* The rows waiting at one location, in the order they are laid out: the
+   bank's goods and piles first, then each seat's troops and goods. */
+const SCOUTS_KIND_ORDER = ["contract", "intrigue", "maker_hooks", "troop", "marker", "spice", "solari", "water"];
+
+function scoutsRowsAt(rows, location) {
+  const order = (row) => SCOUTS_KIND_ORDER.indexOf(row.kind);
+  return rows
+    .filter((row) => row.location === location)
+    .sort((a, b) => a.seat - b.seat || order(a) - order(b));
+}
+
+/* "Prison Planet · 2 spice (Seat 1)": the piece's mission, what it is and
+   whose, in the page's language. */
+function scoutsPieceTitle(row) {
+  let goods;
+  if (row.kind === "troop") goods = scoutsParkedText(row.count);
+  else if (row.kind === "contract" || row.kind === "intrigue") {
+    goods = scoutsFaceDownText(row.count);
+  } else goods = phraseText(scoutsGoodsText(row.kind, row.count));
+  const who = row.seat < 0 ? t("panels.scouts_anyone") : t("common.seat", { seat: row.seat });
+  return t("board.scouts_piece", { mission: scoutsItem(row.mission).name, goods, who });
+}
+
+/* A piece's footprint (width, height) in stage percent at scale 1:
+   several troops of one row stand side by side, as do several drops. */
+function scoutsPieceSize(row, layout) {
+  const [w, h] = layout.sizes[row.kind] || layout.sizes.spice;
+  if (row.kind === "troop" || row.kind === "water") {
+    const n = Math.max(1, row.count);
+    return [n * w + (n - 1) * layout.gap[0], h];
+  }
+  return [w, h];
+}
+
+/* Where each unit lies in a location's free regions (catalog
+   tracks.scouts.regions): rows from each region's start edge (the bottom
+   one for `from_bottom`), left to right; a unit's pieces `gap` apart,
+   groups `group_gap` apart. A group (the consecutive units sharing
+   `group`: one seat's pieces, or one mission's bank goods) lies whole in
+   the first region with room for all of it, never split across two, and a
+   unit that `overlap`s the one before it (goods on their marker or troop)
+   stays in that unit's row. A crowded location shrinks every piece in
+   steps of 0.05 down to `min_scale`; past that the last region's rows
+   close up. Pure: returns {scale, places: [{x, y, w, h}]} (top-left corner
+   and size, stage percent), in the units' order. */
+function scoutsPieceLayout(units, regions, layout) {
+  const [gapX, gapY] = layout.gap;
+  const groupGapX = layout.group_gap[0];
+  const attempt = (scale, overflow) => {
+    const boxes = regions.map((region) => ({ region, rows: [] }));
+    /* One unit into `box`: its last row when there is room (always for an
+       overlapping unit), else a new row under it (past the bottom only
+       when `deep`). Returns the placement or null, changing nothing. */
+    const fit = (box, unit, deep) => {
+      const w = unit.w * scale;
+      const h = unit.h * scale;
+      const [, , width, height] = box.region.box;
+      const row = box.rows[box.rows.length - 1];
+      if (row) {
+        const gap = row.group === unit.group
+          ? (unit.overlap ? -unit.overlap * w : gapX * scale)
+          : groupGapX * scale;
+        const grown = Math.max(row.h, h);
+        if (row.x + gap + w <= width + 1e-9 && (row.top + grown <= height + 1e-9 || deep)) {
+          return { row, x: row.x + gap, w, h, grown };
+        }
+        if (unit.overlap && row.group === unit.group) return null;
+      }
+      const top = row ? row.top + row.h + gapY * scale : 0;
+      if (w <= width + 1e-9 && (top + h <= height + 1e-9 || deep)) {
+        return { row: null, top, x: 0, w, h, grown: h };
+      }
+      return null;
+    };
+    /* The whole group into `box`, or nothing (its rows as they were). */
+    const settle = (box, group, deep) => {
+      const saved = box.rows.map((row) => [row, row.x, row.h, row.group, row.items.length]);
+      const count = box.rows.length;
+      const done = [];
+      for (const unit of group) {
+        const spot = fit(box, unit, deep);
+        if (!spot) {
+          box.rows.length = count;
+          for (const [row, x, h, owner, items] of saved) {
+            Object.assign(row, { x, h, group: owner });
+            row.items.length = items;
+          }
+          return null;
+        }
+        let row = spot.row;
+        if (!row) {
+          row = { top: spot.top, h: spot.h, x: 0, items: [], group: unit.group };
+          box.rows.push(row);
+        }
+        const item = { w: spot.w, h: spot.h, x: spot.x };
+        row.items.push(item);
+        row.h = spot.grown;
+        row.x = Math.max(row.x, spot.x + spot.w);
+        row.group = unit.group;
+        done.push({ item, row, box });
+      }
+      return done;
+    };
+    const placed = [];
+    /* Regions fill in order: a group never goes back to an earlier one. */
+    let first = 0;
+    for (let start = 0; start < units.length;) {
+      let stop = start + 1;
+      while (stop < units.length && units[stop].group === units[start].group) stop += 1;
+      const group = units.slice(start, stop);
+      let done = null;
+      for (let index = first; index < boxes.length && !done; index += 1) {
+        done = settle(boxes[index], group, overflow && index === boxes.length - 1);
+        if (done) first = index;
+      }
+      if (!done) return null;
+      placed.push(...done);
+      start = stop;
+    }
+    for (const box of boxes) {
+      const height = box.region.box[3];
+      const end = box.rows.length ? box.rows[box.rows.length - 1] : null;
+      const depth = end ? end.top + end.h : 0;
+      /* Closing up: every row's offset shrinks by one factor so the last
+         one ends inside the region. */
+      box.squeeze = depth > height && end && end.top > 0
+        ? Math.max(0, height - end.h) / end.top
+        : 1;
+    }
+    return placed.map(({ item, row, box }) => {
+      const [left, top, , height] = box.region.box;
+      const rowTop = row.top * box.squeeze;
+      const y = box.region.from_bottom
+        ? top + height - rowTop - row.h + (row.h - item.h) / 2
+        : top + rowTop + (row.h - item.h) / 2;
+      return { x: left + item.x, y, w: item.w, h: item.h };
+    });
+  };
+  let scale = 1;
+  for (;;) {
+    const places = attempt(scale, false);
+    if (places) return { scale, places };
+    if (scale <= layout.min_scale + 1e-9) break;
+    scale = Math.max(layout.min_scale, Math.round((scale - 0.05) * 100) / 100);
+  }
+  return { scale, places: attempt(scale, true) || [] };
+}
+
+/* One Scouts piece, named for its row. Seat pieces are flat in the seat's
+   colour with the cubes' dark edge: a cube per parked troop, a Control
+   marker as the printed flag's pennant. The bank's goods are the tokens the
+   board prints: a spice hexagon and a Solari coin with the amount, a water
+   drop per water; the Maker Hooks token is its picture (or the icon); a
+   face-down pile is a card back with its count and nothing else. The box
+   is the piece's footprint, centred on (x, y) in stage percent (or sized
+   in em when `inline`, for the seat panel and the Tleilaxu Row). */
+function scoutsPiece(row, box, { inline = false } = {}) {
+  const piece = document.createElement("span");
+  piece.className = `scouts-piece scouts-${row.kind}` + (inline ? " inline" : "");
+  piece.dataset.row = row.key;
+  piece.dataset.location = row.location;
+  piece.dataset.mission = row.mission;
+  piece.dataset.kind = row.kind;
+  if (row.seat >= 0) piece.dataset.seat = String(row.seat);
+  const title = scoutsPieceTitle(row);
+  piece.title = title;
+  piece.setAttribute("role", "img");
+  piece.setAttribute("aria-label", title);
+  if (box) {
+    const { x, y, w, h } = box;
+    piece.style.width = `${w}%`;
+    piece.style.height = `${h}%`;
+    placeAt(piece, x + w / 2, y + h / 2);
+  }
+  const count = (text) => {
+    const number = document.createElement("span");
+    number.className = "scouts-count" + (String(text).length > 1 ? " wide" : "");
+    number.textContent = String(text);
+    return number;
+  };
+  const svgNs = "http://www.w3.org/2000/svg";
+  switch (row.kind) {
+    case "troop":
+    case "water": {
+      const n = Math.max(1, row.count);
+      for (let index = 0; index < n; index += 1) {
+        let part;
+        if (row.kind === "troop") {
+          part = document.createElement("span");
+          part.className = "scouts-cube";
+          part.style.background = SEAT_COLORS[row.seat];
+        } else {
+          part = document.createElementNS(svgNs, "svg");
+          part.setAttribute("class", "scouts-drop");
+          part.setAttribute("viewBox", "0 0 58 100");
+          part.setAttribute("preserveAspectRatio", "none");
+          const drop = document.createElementNS(svgNs, "path");
+          drop.setAttribute("d", "M29 2 C35 22 56 44 56 68 A27 29 0 0 1 2 68 C2 44 23 22 29 2 Z");
+          part.appendChild(drop);
+        }
+        /* Each part is 1/n of the row less the gaps between them. */
+        part.style.width = `calc((100% - ${n - 1} * var(--scouts-gap, 0%)) / ${n})`;
+        part.style.left = `calc(${index} * ((100% - ${n - 1} * var(--scouts-gap, 0%)) / ${n} + var(--scouts-gap, 0%)))`;
+        piece.appendChild(part);
+      }
+      break;
+    }
+    case "spice":
+    case "solari":
+      piece.appendChild(count(row.count));
+      break;
+    case "marker": {
+      const dip = 100 * (1 - ((state.catalog.tracks.control_flags || {}).notch || 0.2));
+      const pennant = document.createElementNS(svgNs, "svg");
+      pennant.setAttribute("class", "scouts-pennant");
+      pennant.setAttribute("viewBox", "0 0 100 100");
+      pennant.setAttribute("preserveAspectRatio", "none");
+      const shape = document.createElementNS(svgNs, "polygon");
+      shape.setAttribute("points", `0,0 100,0 100,100 50,${dip} 0,100`);
+      shape.setAttribute("fill", SEAT_COLORS[row.seat]);
+      pennant.appendChild(shape);
+      piece.appendChild(pennant);
+      break;
+    }
+    case "maker_hooks": {
+      const url = state.catalog.maker_hooks_token;
+      if (url) {
+        const picture = document.createElement("img");
+        picture.src = url;
+        picture.alt = "";
+        picture.draggable = false;
+        piece.appendChild(picture);
+      } else {
+        piece.classList.add("drawn");
+        const mark = icon("maker_hooks", title);
+        mark.removeAttribute("title");
+        piece.appendChild(mark);
+      }
+      break;
+    }
+    case "contract":
+    case "intrigue": {
+      const mark = icon(row.kind, phraseText(`{${row.kind}}`));
+      mark.removeAttribute("title");
+      mark.setAttribute("aria-hidden", "true");
+      piece.append(mark, count(row.count));
+      break;
+    }
+    default:
+      piece.appendChild(count(row.count));
+  }
+  return piece;
+}
+
+/* A location's regions less the boxes a piece stands in (a Sardaukar
+   Commander on the space's frame corner): a region such a box cuts keeps
+   its parts left and right of it, full height. */
+function scoutsRegionsClear(regions, avoid) {
+  let result = regions;
+  for (const [bl, bt, bw, bh] of avoid) {
+    const next = [];
+    for (const region of result) {
+      const [left, top, width, height] = region.box;
+      const clear = bl >= left + width || bl + bw <= left || bt >= top + height || bt + bh <= top;
+      if (clear) {
+        next.push(region);
+        continue;
+      }
+      const margin = 0.2;
+      if (bl - margin - left > 0.5) {
+        next.push({ ...region, box: [left, top, bl - margin - left, height] });
+      }
+      if (left + width - (bl + bw + margin) > 0.5) {
+        next.push({ ...region, box: [bl + bw + margin, top, left + width - bl - bw - margin, height] });
+      }
+    }
+    result = next;
+  }
+  return result;
+}
+
+/* The box (stage percent) of the Sardaukar Commander standing on a space's
+   frame (commanderPiece). */
+function commanderBox(spaceBox) {
+  const [left, top, width, height] = spaceBox;
+  const spot = state.catalog.commander_spot;
+  const size = state.catalog.tracks.conflict_units.sizes.commander;
+  const tall = height * spot.height;
+  const wide = tall * (size[0] / size[1]);
+  const x = left + width * spot.anchor[0];
+  const y = top + height * spot.anchor[1];
+  return [x - wide * spot.base[0], y - tall * spot.base[1], wide, tall];
+}
+
+/* The pieces waiting at `location` laid out in its regions
+   (layout.regions[location], scoutsPieceLayout) and drawn on `stage`. */
+function renderScoutsRegionPieces(stage, rows, location, layout, avoid = []) {
+  const regions = scoutsRegionsClear(layout.regions[location] || [], avoid);
+  const here = scoutsRowsAt(rows, location);
+  if (!regions.length || !here.length) return;
+  const units = here.map((row, index) => {
+    const [w, h] = scoutsPieceSize(row, layout);
+    /* A seat's goods lie on its marker or against its troop: they overlap
+       the piece before them a little, as they do on the table. */
+    const before = here[index - 1];
+    const onto = row.seat >= 0 && before && before.seat === row.seat
+      && before.mission === row.mission && (before.kind === "troop" || before.kind === "marker");
+    return {
+      w,
+      h,
+      group: row.seat < 0 ? `bank:${row.mission}` : `seat:${row.seat}`,
+      overlap: onto ? 0.35 : 0,
+    };
+  });
+  const { scale, places } = scoutsPieceLayout(units, regions, layout);
+  here.forEach((row, index) => {
+    const place = places[index];
+    if (!place) return;
+    const piece = scoutsPiece(row, place);
+    piece.dataset.scale = String(scale);
+    piece.style.setProperty("--scouts-gap", `${((layout.gap[0] * scale) / place.w) * 100}%`);
+    stage.appendChild(piece);
+  });
+}
+
+/* The Scouts pieces on the main board scan: the goods, parked troops and
+   face-down piles of each space in the free parts of its printed panel
+   (catalog.tracks.scouts.regions), and the goods of an observation post on
+   its disc (beside it when a Spy stands there). Locations the scan has no
+   place for (a seat's Contract, the Bene Tleilax board, the Tleilaxu Row)
+   are drawn where those are; the Scouts panel lists them all as text. */
+function renderScoutsBoardPieces(stage, view, spies) {
+  const layout = state.catalog.tracks && state.catalog.tracks.scouts;
+  if (!layout) return;
+  const rows = scoutsPieceRows(view);
+  if (!rows.length) return;
+  const commanders = new Set(view.sardaukar_commander_space_ids || []);
+  for (const location of Object.keys(layout.regions)) {
+    const space = state.catalog.spaces[location];
+    const avoid = space && commanders.has(location) && state.catalog.commander_spot
+      ? [commanderBox(space.box)]
+      : [];
+    renderScoutsRegionPieces(stage, rows, location, layout, avoid);
+  }
+  const size = state.catalog.post_size || 1.93;
+  const byPost = new Map();
+  for (const row of rows) {
+    if (!row.location.startsWith("post:")) continue;
+    const postId = row.location.slice("post:".length);
+    if (!state.catalog.posts[postId]) continue;
+    if (!byPost.has(postId)) byPost.set(postId, []);
+    byPost.get(postId).push(row);
+  }
+  for (const [postId, here] of byPost) {
+    const [px, py] = state.catalog.posts[postId];
+    const guarded = (spies.get(postId) || []).length > 0;
+    let x = guarded ? px + size / 2 + layout.gap[0] : null;
+    here.forEach((row, index) => {
+      const [w, h] = scoutsPieceSize(row, layout);
+      if (x === null) x = px - w / 2;
+      const place = { x, y: py - h / 2, w, h };
+      x += w + layout.gap[0];
+      const piece = scoutsPiece(row, place);
+      piece.dataset.index = String(index);
+      stage.appendChild(piece);
+    });
+  }
+}
+
+/* The Scouts pieces of a location drawn on something that is not a scan
+   (a seat's face-up Contract in its panel, Reclaimed Forces in the
+   Tleilaxu Row): small tokens in em, in a tray the caller places. */
+function scoutsTray(location, view) {
+  const rows = scoutsRowsAt(scoutsPieceRows(view), location);
+  if (!rows.length) return null;
+  const tray = document.createElement("span");
+  tray.className = "scouts-tray";
+  tray.dataset.location = location;
+  for (const row of rows) tray.appendChild(scoutsPiece(row, null, { inline: true }));
+  return tray;
 }

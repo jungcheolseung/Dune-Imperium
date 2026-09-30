@@ -736,3 +736,181 @@ def test_pieces_laid_on_the_scan_keep_their_pictures_shape() -> None:
     tuek_frame = frame_in(tuek, (550, 310), (36.5, 65.5, 297.5, 264.5))
     assert close(tuek_frame, SPACE_BOXES["tuek_sietch"])
 
+
+
+# --- Arrakeen Scouts mission pieces -------------------------------------------------
+
+
+def _meets(first: Box, second: Box) -> bool:
+    return not (
+        first[0] + first[2] <= second[0]
+        or second[0] + second[2] <= first[0]
+        or first[1] + first[3] <= second[1]
+        or second[1] + second[3] <= first[1]
+    )
+
+
+def _commander_box(space_id: str) -> Box:
+    # The figure commanderPiece draws on the frame's top-right corner
+    # [Bloodlines p. 3]: COMMANDER_HEIGHT frames tall at its picture's
+    # 130:195, its base (COMMANDER_PICTURE_BASE) on COMMANDER_ANCHOR.
+    from dune_imperium.display.board_layout import (
+        COMMANDER_ANCHOR,
+        COMMANDER_PICTURE_BASE,
+    )
+
+    left, top, width, height = SPACE_BOXES[space_id]
+    tall = height * COMMANDER_HEIGHT
+    wide = tall * 130 / 195
+    x = left + width * COMMANDER_ANCHOR[0]
+    y = top + height * COMMANDER_ANCHOR[1]
+    return (
+        x - wide * COMMANDER_PICTURE_BASE[0],
+        y - tall * COMMANDER_PICTURE_BASE[1],
+        wide,
+        tall,
+    )
+
+
+def test_every_scouts_mission_space_has_regions_for_its_pieces() -> None:
+    # A mission's pieces stay on its space until claimed
+    # (docs/rules/arrakeen-scouts.md 5): every space a mission names has
+    # free parts of the scan to lie in, and nothing else does.
+    from dune_imperium.content.arrakeen_scouts import MISSIONS
+    from dune_imperium.display.board_layout import SCOUTS_SPACE_REGIONS
+
+    spaces = {mission.space_id for mission in MISSIONS if mission.space_id}
+    assert set(SCOUTS_SPACE_REGIONS) == spaces
+    served = marker_layout()["scouts"]
+    assert set(served["regions"]) == spaces
+    for space_id, regions in served["regions"].items():
+        assert regions, space_id
+        for region in regions:
+            assert len(region["box"]) == 4 and isinstance(region["from_bottom"], bool)
+
+
+def test_scouts_regions_lie_on_free_print() -> None:
+    # Each region is plain panel or map art: inside the scan, off every
+    # frame (the Agents' place) and every other piece's printed place, and
+    # off the other regions.
+    from dune_imperium.display.board_layout import SCOUTS_SPACE_REGIONS
+
+    radius = POST_SIZE / 2
+    taken: list[tuple[str, Box]] = [
+        *((f"frame {space_id}", box) for space_id, box in SPACE_BOXES.items()),
+        *(
+            (f"post {post_id}", (x - radius, y - radius, POST_SIZE, POST_SIZE))
+            for post_id, (x, y) in POST_POINTS.items()
+        ),
+        *((f"flag {space_id}", box) for space_id, box in CONTROL_FLAG_BOXES.items()),
+        *(
+            (
+                f"bonus spice {space_id}",
+                (
+                    x - MAKER_SPICE_SIZE[0] / 2,
+                    y - MAKER_SPICE_SIZE[1] / 2,
+                    MAKER_SPICE_SIZE[0],
+                    MAKER_SPICE_SIZE[1],
+                ),
+            )
+            for space_id, (x, y) in MAKER_SPICE_POINTS.items()
+        ),
+        *((f"garrison {seat}", ring) for seat, ring in enumerate(GARRISON_RINGS)),
+        *((f"tile {space_id}", box) for space_id, box in LEADER_TILE_BOXES.items()),
+        ("research overlay", RESEARCH_STATION_OVERLAY_BOX),
+        ("shield wall", SHIELD_WALL_BOX),
+        ("stepper band", FORCE_STEPPER_BAND),
+        ("conflict deck", CONFLICT_DECK_SLOT),
+        ("conflict", CONFLICT_SLOT),
+    ]
+    # The face-up Contracts are drawn 1.2 times their slot (board.js
+    # CONTRACT_SLOT_SCALE), centred on it.
+    from dune_imperium.display.board_layout import CONTRACT_SLOTS
+
+    for index, (left, top, width, height) in enumerate(CONTRACT_SLOTS):
+        taken.append(
+            (
+                f"contract {index}",
+                (left - width * 0.1, top - height * 0.1, width * 1.2, height * 1.2),
+            )
+        )
+    regions = [
+        (space_id, region[:4])
+        for space_id, entries in SCOUTS_SPACE_REGIONS.items()
+        for region in entries
+    ]
+    for space_id, box in regions:
+        left, top, width, height = box
+        assert 0 <= left and left + width <= 100 and 0 <= top and top + height <= 100
+        for name, other in taken:
+            assert not _meets(box, other), (space_id, box, name)
+    for index, (first_id, first) in enumerate(regions):
+        for second_id, second in regions[index + 1 :]:
+            assert not _meets(first, second), (first_id, second_id)
+
+
+def test_scouts_regions_keep_room_beside_a_commander() -> None:
+    # A Sardaukar Commander stands on three mission spaces' frames until
+    # acquired [Bloodlines p. 3]; the client keeps the parts of a region
+    # left and right of its figure (board.js scoutsRegionsClear), and every
+    # space still has room there for a seat's piece at full size.
+    from dune_imperium.content.bloodlines import COMMANDER_SETUP_SPACE_IDS
+    from dune_imperium.display.board_layout import (
+        SCOUTS_PIECE_SIZES,
+        SCOUTS_SPACE_REGIONS,
+    )
+
+    cube = SCOUTS_PIECE_SIZES["troop"]
+    shared = set(COMMANDER_SETUP_SPACE_IDS) & set(SCOUTS_SPACE_REGIONS)
+    assert shared == {"sardaukar", "deliver_supplies", "gather_support"}
+    for space_id in shared:
+        figure = _commander_box(space_id)
+        parts: list[Box] = []
+        for left, top, width, height, _ in SCOUTS_SPACE_REGIONS[space_id]:
+            box = (left, top, width, height)
+            if not _meets(box, figure):
+                parts.append(box)
+                continue
+            parts.append((left, top, figure[0] - 0.2 - left, height))
+            right = figure[0] + figure[2] + 0.2
+            parts.append((right, top, left + width - right, height))
+        assert any(
+            width >= cube[0] and height >= cube[1] for _, _, width, height in parts
+        ), space_id
+
+
+def test_scouts_pieces_are_the_size_of_the_board_print() -> None:
+    from dune_imperium.display.board_layout import (
+        SCOUTS_CARD_SCALE,
+        SCOUTS_MIN_SCALE,
+        SCOUTS_PIECE_SIZES,
+    )
+
+    sizes = SCOUTS_PIECE_SIZES
+    # A troop is the Influence cube, 95 px of the 6012 px scan.
+    assert sizes["troop"][0] == INFLUENCE_CUBE_SIZE
+    assert round(sizes["troop"][0] / 100 * 6012) == 95
+    # The printed icons: Hagga Basin's spice hexagon (99 x 100 px), Gather
+    # Support's Solari coin (94 px) and Deliver Supplies' drop (88 x 153).
+    assert (round(sizes["spice"][0] * 60.12), round(sizes["spice"][1] * 60.05)) == (
+        99,
+        100,
+    )
+    assert round(sizes["solari"][0] * 60.12) == 94
+    assert (round(sizes["water"][0] * 60.12), round(sizes["water"][1] * 60.05)) == (
+        88,
+        153,
+    )
+    # The Control marker is the flag it lies on under a controlled space;
+    # the Maker Hooks token lies flat, as long as its garrison slot is tall.
+    marker_width, marker_height = sizes["marker"]
+    assert all(
+        abs(box[2] - marker_width) < 0.02 and abs(box[3] - marker_height) < 0.03
+        for box in CONTROL_FLAG_BOXES.values()
+    )
+    assert sizes["maker_hooks"] == (MAKER_HOOKS_SIZE[1], MAKER_HOOKS_SIZE[0])
+    # Face-down piles are a card back at a third of the card.
+    assert SCOUTS_CARD_SCALE == 1 / 3
+    assert sizes["intrigue"] == (2.8, 4.27)
+    assert sizes["contract"] == (3.5, 2.17)
+    assert 0 < SCOUTS_MIN_SCALE < 1

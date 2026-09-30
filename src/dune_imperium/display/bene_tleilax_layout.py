@@ -88,6 +88,34 @@ TRACK_START_DISCS: Final = ((6.08, 8.65), (12.28, 8.65), (6.08, 17.36), (12.28, 
 RESEARCH_START_DISCS: Final = ((4.39, 38.79), (4.39, 47.47), (4.39, 56.3), (4.39, 65.0))
 
 
+# Arrakeen Scouts pieces on this board (docs/rules/arrakeen-scouts.md 5):
+# - Sponsored Research's spice lies "beside the Helix on the research track",
+#   the first genetic marker (OQ-089 (b)): the tile printed under column 4
+#   with the DNA marker, its white outline x 41.1-51.6 and y 87.8-96.6 on a
+#   1 % grid (2026-09-30). The spice is the setup spice's hexagon
+#   (``SPICE_SIZE``) left of it, on the empty nebula art, its right edge
+#   0.8 off the outline and its centre level with the tile's.
+# - Tleilaxu Offering's troops stand on "the third space of the Tleilaxu
+#   Track" (index 3, ``TRACK_CELLS[3]``): the box is the part of that
+#   chevron-shaped space clear of both chevron lines (their points reach
+#   x 39.3 and 49.5, their ends x 37 and 47) and inside the band. A troop
+#   is the main board's Influence cube at this scan's scale: the player
+#   disc is 176 px of the main scan and 324 px of this one, so the 95 px cube
+#   is 174.9 px here, and the main board's 18 px gap between pieces 33 px.
+#   The Tleilaxu tokens are drawn over the troops.
+SCOUTS_HELIX_SPICE_POINT: Final = (37.5, 92.2)
+TLEILAXU_OFFERING_TRACK_SPACE: Final = 3
+SCOUTS_OFFERING_BOX: Final = (39.8, 4.3, 7.0, 16.9)
+_SCALE_FROM_MAIN: Final = 324 / 176
+_CUBE_PX: Final = 95 * _SCALE_FROM_MAIN
+_GAP_PX: Final = 18 * _SCALE_FROM_MAIN
+SCOUTS_TROOP_SIZE: Final = (
+    round(_CUBE_PX / 5551 * 100, 3),
+    round(_CUBE_PX / 3952 * 100, 3),
+)
+SCOUTS_GAP: Final = (round(_GAP_PX / 5551 * 100, 3), round(_GAP_PX / 3952 * 100, 3))
+
+
 def bene_tleilax_layout() -> dict[str, Any]:
     """Return the overlay layout as plain JSON-ready values."""
 
@@ -104,4 +132,17 @@ def bene_tleilax_layout() -> dict[str, Any]:
         "aspect": SCAN_ASPECT,
         "track_start_discs": [list(point) for point in TRACK_START_DISCS],
         "research_start_discs": [list(point) for point in RESEARCH_START_DISCS],
+        "scouts": {
+            "helix_spice_point": list(SCOUTS_HELIX_SPICE_POINT),
+            "offering_space": TLEILAXU_OFFERING_TRACK_SPACE,
+            "regions": {
+                "tleilaxu_track": [
+                    {"box": list(SCOUTS_OFFERING_BOX), "from_bottom": False}
+                ],
+            },
+            "sizes": {"troop": list(SCOUTS_TROOP_SIZE)},
+            "gap": list(SCOUTS_GAP),
+            "group_gap": [round(2.5 * value, 3) for value in SCOUTS_GAP],
+            "min_scale": 0.5,
+        },
     }

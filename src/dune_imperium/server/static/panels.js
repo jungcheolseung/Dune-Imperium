@@ -337,7 +337,14 @@ function renderSeats() {
       const strong = document.createElement("strong");
       strong.textContent = `${t("panels.contracts_label")} `;
       line.appendChild(strong);
-      for (const id of player.active_contract_ids) line.appendChild(chip(id));
+      for (const id of player.active_contract_ids) {
+        const tag = chip(id);
+        tag.dataset.contract = id;
+        /* CHOAM Escort's goods wait on the Contract until it is completed. */
+        const tray = scoutsTray(`contract:${id}`, view);
+        if (tray) tag.appendChild(tray);
+        line.appendChild(tag);
+      }
       /* Completed Contracts stay re-checkable (OQ-010): their completion
          was announced before they flipped face down. */
       for (const id of player.completed_contract_ids) {
@@ -1261,9 +1268,22 @@ function scoutsItemLines(item, box) {
 }
 
 function scoutsGoodsText(resource, amount) {
-  if (resource === "marker") return "{control}";
+  if (resource === "marker") return "{control_marker}";
   if (resource === "maker_hooks") return "{maker_hooks}";
   return `{${resource}:${amount}}`;
+}
+
+/* "1 parked troop" / "2 parked troops"; the same for face-down cards. */
+function scoutsParkedText(count) {
+  return Number(count) === 1
+    ? t("panels.scouts_parked_one", { count })
+    : t("panels.scouts_parked", { count });
+}
+
+function scoutsFaceDownText(count) {
+  return Number(count) === 1
+    ? t("panels.scouts_face_down_one", { count })
+    : t("panels.scouts_face_down", { count });
 }
 
 function scoutsSection(panel, title) {
@@ -1336,13 +1356,13 @@ function renderScouts() {
     if (!goodsByMission.has(mission)) goodsByMission.set(mission, []);
     goodsByMission
       .get(mission)
-      .push(`${scoutsPlace(location)}: ${t("panels.scouts_parked", { count: troops })} (${playerLabel(seat)})`);
+      .push(`${scoutsPlace(location)}: ${scoutsParkedText(troops)} (${playerLabel(seat)})`);
   }
   for (const [mission, location, count] of view.scouts_board_card_counts) {
     if (!goodsByMission.has(mission)) goodsByMission.set(mission, []);
     goodsByMission
       .get(mission)
-      .push(`${scoutsPlace(location)}: ${t("panels.scouts_face_down", { count })}`);
+      .push(`${scoutsPlace(location)}: ${scoutsFaceDownText(count)}`);
   }
   for (const [mission, lines] of goodsByMission) pieces.push([mission, lines]);
   if (pieces.length) {

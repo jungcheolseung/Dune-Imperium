@@ -129,6 +129,10 @@ const UI_TEXT = {
     "ko": "{commander} · 보드 {{count}} · 은행 {{bank}}",
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
+  "board.scouts_piece": {
+    "ko": "{{mission}} · {{goods}} ({{who}})",
+    "en": "{{mission}} · {{goods}} ({{who}})"
+  },
   "board.seat_conflict_units": {
     "ko": "좌석 {{seat}} · {conflict}: {{units}}",
     "en": "Seat {{seat}} · {conflict}: {{units}}"
@@ -869,9 +873,17 @@ const UI_TEXT = {
     "ko": "세워 둔 병력 {{count}}",
     "en": "{{count}} parked troops"
   },
+  "panels.scouts_parked_one": {
+    "ko": "세워 둔 병력 {{count}}",
+    "en": "{{count}} parked troop"
+  },
   "panels.scouts_face_down": {
     "ko": "뒷면 카드 {{count}}장",
     "en": "{{count}} face-down cards"
+  },
+  "panels.scouts_face_down_one": {
+    "ko": "뒷면 카드 {{count}}장",
+    "en": "{{count}} face-down card"
   },
   "panels.scouts_secrets": {
     "ko": "비밀 선택",

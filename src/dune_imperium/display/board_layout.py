@@ -442,6 +442,95 @@ CONFLICT_SLOT: Final = (29.1, 79.5, 8.4, 12.8)
 CONTRACT_SLOTS: Final = ((29.1, 21.5, 10.5, 6.5), (40.3, 21.5, 10.6, 6.5))
 
 
+# Arrakeen Scouts mission pieces (docs/rules/arrakeen-scouts.md 5): the bank
+# goods a mission puts on a space, the troops seats park there and the
+# face-down cards a mission lays there stay until claimed [Scouts help]. The
+# companion app says only which space they go on, and the board prints no
+# place for them, so each space names the free parts of its printed panel
+# where they lie: ``(left, top, width, height, from_bottom)`` boxes, tried
+# in order, their rows filled from the bottom edge (the one against the
+# space's name) when ``from_bottom`` holds, else from the top edge. Every box
+# is plain panel or map art, measured on a 0.5 % grid of the 6012 x 6005
+# scan (2026-09-30), clear of the frame (the Agents' place), the printed
+# icons, the space's name, the connector lines and the posts. A Sardaukar
+# Commander standing on the frame's corner (``COMMANDER_ANCHOR``) rises over
+# two of them (on Sardaukar over x 18.6-22.4, y 2.9-8.5; on Deliver Supplies
+# over x 18.7-22.4, y 37.5-43.1): while it stands there the client keeps
+# the parts of a box left and right of it (board.js scoutsRegionsClear).
+# - Sardaukar: the Emperor panel's head (its top line 1.3, its inner edge
+#   26.3), right of the name (x 18.2, down to the Intrigue icon at 6.6) and
+#   above it (the name from y 5.0);
+# - Deliver Supplies: the band between Heighliner's frame (37.44) and the
+#   name (39.6), left of the connector line (21.1); then under the water
+#   drop (45.85) down to the Spacing Guild panel's bottom line (48.6);
+# - Espionage and Desert Tactics: the Bene Gesserit and Fremen panels' heads
+#   above the name (panel tops 50.3 and 74.9, names from 54.1 and 78.5);
+# - Imperial Privilege: right of the two card icons (44.2), under the
+#   connector to the post (13.1) and above the panel's bottom (19.4);
+# - Gather Support: the plain map under the Landsraad panel (its bottom line
+#   19.5), above the dotted line at 22.5, to the CHOAM column (81);
+# - Research Station: the desert under its panel (40.62, also the bottom of
+#   Immortality's overlay tile ``RESEARCH_STATION_OVERLAY_BOX``), right of
+#   Sietch Tabr's panel (46.0) and left of the Shield Wall's lines (60);
+# - Hagga Basin (Desert Riding's Maker Hooks token, "beside Hagga Basin"):
+#   the desert above its name (48.3), clear of that box and of the post.
+SCOUTS_SPACE_REGIONS: Final[
+    Mapping[str, tuple[tuple[float, float, float, float, bool], ...]]
+] = MappingProxyType(
+    {
+        "sardaukar": ((18.2, 1.7, 7.9, 4.8, True), (13.2, 1.7, 4.8, 3.1, True)),
+        "deliver_supplies": (
+            (13.4, 37.7, 7.5, 1.75, True),
+            (22.6, 46.1, 3.6, 2.2, False),
+        ),
+        "espionage": ((13.2, 50.7, 12.9, 3.2, True),),
+        "desert_tactics": ((13.2, 75.3, 12.9, 3.0, True),),
+        "imperial_privilege": ((44.3, 13.4, 2.5, 5.9, False),),
+        "gather_support": ((65.4, 19.75, 15.3, 2.6, False),),
+        "research_station": ((46.5, 40.9, 8.0, 3.0, False),),
+        "hagga_basin": ((50.5, 44.3, 8.5, 3.8, True),),
+    }
+)
+# The pieces, ``(width, height)`` in percent of the scan. Bank goods are the
+# size of the icons the board prints for them (pixel runs of the grey rims,
+# 2026-09-30): the spice hexagon of Hagga Basin's "2" (x 58.87-60.52,
+# y 50.53-52.19), the Solari coin of Gather Support's "2" (x 73.97-75.53,
+# y 16.3-17.88) and Deliver Supplies' water drop (x 22.88-24.35,
+# y 43.3-45.85). A troop is the Influence cube; the Control marker (Prison
+# Planet) is the printed flag it lies on under a controlled space
+# (``CONTROL_FLAG_BOXES``); the Maker Hooks token lies flat as in its
+# garrison slot (``MAKER_HOOKS_SIZE``, turned back). A face-down pile is a
+# card back at a third of the card: an Intrigue card is the Conflict card's
+# size (``CONFLICT_SLOT``), a Contract its printed slot (``CONTRACT_SLOTS``);
+# the board has no place for them and a whole card would hide the space.
+SCOUTS_CARD_SCALE: Final = 1 / 3
+SCOUTS_PIECE_SIZES: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
+    {
+        "troop": _piece_by_width(INFLUENCE_CUBE_SIZE, 1.0),
+        "spice": (1.65, 1.66),
+        "solari": _piece_by_width(1.57, 1.0),
+        "water": (1.47, 2.55),
+        "marker": (3.18, 3.82),
+        "maker_hooks": (MAKER_HOOKS_SIZE[1], MAKER_HOOKS_SIZE[0]),
+        "intrigue": (
+            round(CONFLICT_SLOT[2] * SCOUTS_CARD_SCALE, 2),
+            round(CONFLICT_SLOT[3] * SCOUTS_CARD_SCALE, 2),
+        ),
+        "contract": (
+            round(CONTRACT_SLOTS[0][2] * SCOUTS_CARD_SCALE, 2),
+            round(CONTRACT_SLOTS[0][3] * SCOUTS_CARD_SCALE, 2),
+        ),
+    }
+)
+# Pieces of one seat (or the bank's goods of one mission) stand
+# ``SCOUTS_PIECE_GAP`` apart, groups ``SCOUTS_GROUP_GAP`` apart; a crowded
+# space shrinks its pieces in steps of 0.05 down to ``SCOUTS_MIN_SCALE``
+# before its rows close up, like the Conflict quadrants.
+SCOUTS_PIECE_GAP: Final = 0.2
+SCOUTS_GROUP_GAP: Final = 0.5
+SCOUTS_MIN_SCALE: Final = 0.5
+
+
 def marker_layout() -> dict[str, Any]:
     """Return every marker table as plain JSON-ready values."""
 
@@ -514,4 +603,17 @@ def marker_layout() -> dict[str, Any]:
         "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
         "conflict_slot": list(CONFLICT_SLOT),
         "contract_slots": [list(box) for box in CONTRACT_SLOTS],
+        "scouts": {
+            "regions": {
+                space_id: [
+                    {"box": [left, top, width, height], "from_bottom": from_bottom}
+                    for left, top, width, height, from_bottom in regions
+                ]
+                for space_id, regions in SCOUTS_SPACE_REGIONS.items()
+            },
+            "sizes": {kind: list(size) for kind, size in SCOUTS_PIECE_SIZES.items()},
+            "gap": [SCOUTS_PIECE_GAP, SCOUTS_PIECE_GAP],
+            "group_gap": [SCOUTS_GROUP_GAP, SCOUTS_GROUP_GAP],
+            "min_scale": SCOUTS_MIN_SCALE,
+        },
     }

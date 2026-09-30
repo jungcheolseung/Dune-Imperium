@@ -984,3 +984,105 @@ def test_catalog_bene_tleilax_layout_covers_the_board() -> None:
     with_scan = build_catalog(bene_tleilax_image=True)["bene_tleilax"]
     assert isinstance(with_scan, dict)
     assert with_scan["image"] == "/bene-tleilax-image"
+
+
+def test_catalog_places_every_scouts_mission_piece() -> None:
+    """Every place an Arrakeen Scouts mission leaves pieces
+    (rules/scouts_missions.py; docs/rules/arrakeen-scouts.md 5) has an
+    anchor the client draws them at: a board space's free regions, an
+    observation post's disc, the Bene Tleilax board's Helix spot or its
+    third Tleilaxu track space, a seat's face-up Contract or the Tleilaxu
+    Row's Reclaimed Forces; and every kind of piece has a size."""
+
+    from dune_imperium.content.arrakeen_scouts import MISSIONS, MissionKind
+    from dune_imperium.content.uprising.board import (
+        BOARD_SPACES_BY_ID,
+        OBSERVATION_POSTS,
+    )
+    from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
+    from dune_imperium.content.uprising.types import AgentIcon
+    from dune_imperium.rules import scouts_missions
+
+    catalog = build_catalog()
+    tracks = catalog["tracks"]
+    assert isinstance(tracks, dict)
+    scouts = tracks["scouts"]
+    assert isinstance(scouts, dict)
+    regions = scouts["regions"]
+    sizes = scouts["sizes"]
+    posts = catalog["posts"]
+    bene_tleilax = catalog["bene_tleilax"]
+    assert isinstance(regions, dict) and isinstance(sizes, dict)
+    assert isinstance(posts, dict) and isinstance(bene_tleilax, dict)
+    overlay = bene_tleilax["layout"]
+    assert isinstance(overlay, dict)
+    bt_scouts = overlay["scouts"]
+    assert isinstance(bt_scouts, dict)
+    bt_regions = bt_scouts["regions"]
+    assert isinstance(bt_regions, dict)
+    contracts = catalog["contracts"]
+    cards = catalog["cards"]
+    assert isinstance(contracts, dict) and isinstance(cards, dict)
+
+    def posts_next_to(maker: bool) -> set[str]:
+        spaces = {
+            space_id
+            for space_id, space in BOARD_SPACES_BY_ID.items()
+            if (space.maker if maker else space.agent_icon is AgentIcon.CITY)
+        }
+        return {
+            f"post:{post.post_id}"
+            for post in OBSERVATION_POSTS
+            if spaces & set(post.connected_space_ids)
+        }
+
+    locations: dict[str, set[str]] = {}
+    for mission in MISSIONS:
+        places: set[str] = set()
+        if mission.space_id is not None:
+            places.add(mission.space_id)
+        match mission.kind:
+            case MissionKind.URBAN_SURVEILLANCE:
+                places |= posts_next_to(maker=False)
+            case MissionKind.PLANETARY_EXPLORATION:
+                places |= posts_next_to(maker=True)
+            case MissionKind.CHOAM_ESCORT:
+                places |= {f"contract:{contract}" for contract in CONTRACTS_BY_ID}
+            case MissionKind.SPONSORED_RESEARCH:
+                places.add(scouts_missions.HELIX)
+            case MissionKind.BACK_ROOM_DEAL:
+                places.add(scouts_missions.RECLAIMED_FORCES)
+            case MissionKind.TLEILAXU_OFFERING:
+                places.add(scouts_missions.TLEILAXU_OFFERING_SPACE)
+            case _:
+                pass
+        assert places, mission.mission_id
+        locations[mission.mission_id] = places
+
+    for mission_id, places in locations.items():
+        for location in places:
+            if location.startswith("post:"):
+                anchored = location.removeprefix("post:") in posts
+            elif location.startswith("contract:"):
+                anchored = location.removeprefix("contract:") in contracts
+            elif location == scouts_missions.HELIX:
+                anchored = "helix_spice_point" in bt_scouts
+            elif location == scouts_missions.RECLAIMED_FORCES:
+                anchored = location in cards
+            elif location == scouts_missions.TLEILAXU_OFFERING_SPACE:
+                anchored = location in bt_regions
+            else:
+                anchored = location in regions
+            assert anchored, (mission_id, location)
+    assert posts_next_to(maker=False) and posts_next_to(maker=True)
+
+    kinds = {"troop", "marker", "maker_hooks", "intrigue", "contract"}
+    for mission in MISSIONS:
+        for goods in (mission.goods, mission.seat_goods):
+            if goods is not None:
+                kinds |= {
+                    resource
+                    for resource in ("spice", "solari", "water")
+                    if getattr(goods, resource)
+                }
+    assert kinds <= set(sizes)

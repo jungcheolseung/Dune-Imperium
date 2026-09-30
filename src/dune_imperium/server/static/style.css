@@ -1735,6 +1735,125 @@ kbd {
 .bt-hex:hover, .bt-track-cell:hover { outline: 2px solid var(--glow); border-radius: 8px; }
 .bt-token { pointer-events: none; }
 
+/* Arrakeen Scouts mission pieces (board.js renderScoutsBoardPieces): each
+   piece's footprint is set inline in percent of its stage and centred on
+   its place; the amounts scale with the piece (container units). Seat
+   pieces are flat in the seat's colour with the Influence cube's edge, a
+   ring outside the box; the bank's goods are the tokens the board prints. */
+.scouts-piece {
+  position: absolute;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  user-select: none;
+}
+.scouts-piece.inline {
+  position: relative;
+  transform: none;
+  display: inline-flex;
+  vertical-align: middle;
+  width: 1.3em;
+  height: 1.3em;
+  margin-left: 0.2em;
+}
+.scouts-count {
+  position: relative;
+  font-weight: 800;
+  line-height: 1;
+  font-size: 72cqh;
+}
+.scouts-count.wide { font-size: 54cqh; letter-spacing: -0.04em; }
+.scouts-cube {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.scouts-piece.inline .scouts-cube { position: relative; }
+/* Spice: the board's spice hexagon (the bonus spice's .bonus-spice), its
+   light rim and orange face drawn by the two pseudo-elements so the piece
+   itself can cast the shadow that lifts it off the print. */
+.scouts-spice { filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9)); }
+.scouts-spice::before, .scouts-spice::after {
+  content: "";
+  position: absolute;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+.scouts-spice::before { inset: 0; background: #f3e9dc; }
+.scouts-spice::after { inset: 7%; background: #e0571f; }
+.scouts-spice .scouts-count { z-index: 1; }
+.scouts-spice .scouts-count { color: #fff; text-shadow: 0 0 2px #000, 0 1px 2px #000; }
+/* Solari: the board's grey coin with a ring inside its rim and a dark
+   numeral. */
+.scouts-solari {
+  border-radius: 50%;
+  background: #cbc5cf;
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.scouts-solari::before {
+  content: "";
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  border: max(1px, 3cqh) solid #4a4550;
+}
+.scouts-solari .scouts-count { color: #1b1a1c; }
+/* Water: a drop per water, the board's blue drop. */
+.scouts-drop {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.scouts-drop path {
+  fill: #5796f2;
+  stroke: #111;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+/* A Control marker: the pennant of .control-marker. */
+.scouts-pennant {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.scouts-pennant polygon {
+  stroke: #111;
+  stroke-width: 1px;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+.scouts-maker_hooks img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.scouts-maker_hooks.drawn .icon { width: 90%; height: auto; }
+/* A face-down pile: a card back with its count, never the card. */
+.scouts-intrigue, .scouts-contract {
+  gap: 5%;
+  border: 1px solid #d8cdb8;
+  border-radius: 8%;
+  background: #2a2419;
+  box-shadow: 0 0 0 1px #111, 0 2px 5px rgba(0, 0, 0, 0.85);
+  color: #f3e9dc;
+}
+.scouts-intrigue { flex-direction: column; }
+.scouts-intrigue .icon, .scouts-contract .icon { width: auto; height: 42cqmin; }
+.scouts-intrigue .scouts-count, .scouts-contract .scouts-count { font-size: 40cqmin; }
+/* Goods on a seat's Contract chip and on Reclaimed Forces. */
+.scouts-tray { display: inline-flex; gap: 0.15em; vertical-align: middle; }
+/* On a card: over the art in the middle of its left edge, clear of the
+   printed cost and Agent icons at the top and of the count badge below. */
+.vcard .scouts-tray { position: absolute; top: 40%; left: 3px; font-size: 0.9rem; }
+.vcard .scouts-tray .scouts-piece.inline { margin-left: 0; }
+
 
 /* ---------- remote play: lobby, presence, host block (M14 slice 4) ---------- */
 

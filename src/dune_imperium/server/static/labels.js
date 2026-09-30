@@ -855,6 +855,7 @@ const TERMS = {
   agent_icon_spy: { icon: "agent_icon_spy", ko: "스파이", en: "Spy" },
   contract: { icon: "contract", ko: "계약", en: "Contract" },
   control: { icon: "control", ko: "지배", en: "Control" },
+  control_marker: { icon: "control", ko: "지배 마커", en: "Control marker" },
   maker: { icon: "maker", ko: "메이커", en: "Maker" },
   maker_hooks: { icon: "maker_hooks", ko: "메이커 작살", en: "Maker Hooks" },
   shield_wall: { icon: "shield_wall", ko: "방어벽", en: "Shield Wall" },
