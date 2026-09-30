@@ -257,9 +257,10 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 - **체크포인트.**
   - 형식 2 체크포인트는 행동 identity·세그먼트 이름으로 이관돼 기존 동작 그대로 쓸 수 있다(새 열은 0).
   - `mlp_slots` 형식 3은 `SLOT_KEYS`가 바뀌면(새 FrameKind) 거부된다(`training/checkpoint.py:222-243`). 같은 슬라이스에 **키 기반 embedding 행 이관**(새 행 0 = 기존 출력 보존)을 넣는다.
-  - 체크포인트는 자기 룰셋 카탈로그로 행동을 해석한다(`torch_policy.py:157-206`). 그래서 Scouts 게임에 `checkpoint:`·`search:` 좌석을 앉히면 첫 Scouts 행동에서 "action is not present in this codec version"으로 멈춘다(`action_codec.py:120-133`).
-  - 슬라이스 2에서 옵션을 켠 게임의 `checkpoint:`·`search:` 좌석을 서버 `create_game`과 대회·문제집 CLI에서 분명한 오류로 거절한다(테스트 포함).
-  - "룰셋 재지정" 이관이 생기면 이 거절을 푼다. 이는 D6의 학습 결정과 함께 한다.
+  - (옛 상태) 체크포인트는 자기 룰셋 카탈로그로 행동을 해석했다. 그래서 Scouts 게임에 `checkpoint:`·`search:` 좌석을 앉히면 첫 Scouts 행동에서 "action is not present in this codec version"으로 멈췄고, 슬라이스 2부터 서버 `create_game`과 대회 CLI가 그 좌석을 분명한 오류로 거절했다.
+  - **2026-09-30 사용자 결정: 허용.** Epic Game Mode 병합(OQ-092)이 "룰셋 재지정" 이관을 들여왔다: `load_checkpoint(ruleset=...)`가 정책 head의 행을 행동 identity로 게임의 카탈로그에 옮기고, 파일이 본 적 없는 템플릿은 0에서 시작한다(`training/torch_policy.py` `load_network_agent(path, config)`). 그래서 거절을 풀었다. Scouts 게임의 좌석은 그 게임의 설정으로 만들어진다(서버 `_build_agents`, 대회 `play_match`의 `make_agent(kind, seed, config)`). Scouts의 숨은 정보(비밀 선택, 봉인 입찰, 뒷면 임무 카드)는 이미 `known_card_seats`에 등록돼 탐색 좌석의 `determinize`가 섞는다(규칙 명세 7·8·11절).
+  - **학습하지 않은 템플릿만 있는 결정은 heuristic에게.** 지금까지의 체크포인트는 Scouts 없이 학습됐으므로 Scouts 템플릿의 logit이 모두 0으로 같다. 그러면 argmax는 카탈로그 순서의 첫 행이다. ext-v111/C/iteration_07081을 heuristic 셋과 200판씩 두어 보니(기본 +scouts, CHOAM·Immortality·Bloodlines·Tech +scouts) 좌석의 Scouts 결정 82~91%가 전부 새 템플릿이었고, 선택은 퇴화했다: 봉인 입찰은 언제나 0으로 확정, Critical Moment 호가는 언제나 0, 비밀 선택은 언제나 0번, 임무는 언제나 불참, 소위원회 가입 결정에서는 언제나 거절, 이벤트·판매는 거의 언제나 0번 줄. 그래서 `NetworkAgent`는 **합법 행동이 전부** 파일이 학습하지 않은 행(이관 보고의 `new_action_rows`)인 결정을 에이전트 seed로 만든 `HeuristicAgent`에게 넘긴다. 학습한 행동이 하나라도 섞인 결정은 그대로 네트워크가 고른다(새 템플릿은 logit 0으로 경쟁한다). 탐색 좌석은 그런 결정을 탐색하지 않고 같은 heuristic으로 답하며, playout 안에서는 playout의 chance seed로 만든 heuristic이 모든 좌석의 그런 결정에 답한다(후보들이 같은 답을 만나도록). Scouts 전용이 아니라 codec 이관이나 다른 룰셋 재지정으로 생긴 새 템플릿 전부에 적용된다. 효과(같은 seed 200판씩 짝 비교, 좌석 0 대 heuristic 셋): 우승률 기본 46.0% → 45.5%(−0.5pp [−9.5, +8.5]), 확장 전부 84.5% → 90.5%(+6.0pp [0.0, +12.0]), 평균 순위 −0.06·−0.10; 같은 seed의 heuristic 좌석 0은 22.5%·24.5%. 즉 강도는 비슷하거나 약간 낫고, 좌석이 입찰하고 임무에 참여하고 소위원회에 가입하게 된다.
+  - Scouts는 여전히 학습 설정(`train`, `problems`)에 없다. 학습에 넣는 것은 D6대로 따로 정한다.
 
 ## 5. AI
 
@@ -375,7 +376,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
    - `RulesetConfig(arrakeen_scouts)`와 `+scouts`, 4.1절의 모든 배선.
    - module-off 불변식, codec v112(템플릿 0개).
    - 옵션을 끈 동일성 테스트, config 왕복 48조합, 저장 키.
-   - Scouts 게임의 `checkpoint:`·`search:` 좌석 거절(4.9).
+   - Scouts 게임의 `checkpoint:`·`search:` 좌석 거절(4.9; 2026-09-30에 풀었다).
 3. **일정과 라운드 흐름.**
    - 1라운드 시작의 소위원회 추첨, 라운드별 chance(임무 배치, 임무·이벤트 추첨표, 경매 라운드·계열, 판매), 공개 이벤트. 고정 배정과 draft 두 경로 모두, 각 드라이버의 reset 직후 chance를 테스트한다.
    - Scouts 진행 커서와 `_advance_automatic` 분기(4.4), 첫 TURN의 `reset_turn_counters`.
@@ -424,7 +425,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 | D3 | 라운드 안 순서 | Round Start(공개·방어 배치·드로우) 뒤, 첫 턴 전. 비밀 보상 → 그 라운드 항목 순(앱과 같음) | 제안대로 |
 | D4 | 봉인 입찰 | First Player부터 한 좌석씩 비공개 확정, 전원 확정 뒤 공개. 순위·지불은 앱 코드대로. 입찰 범위는 `0..min(보유, 상한)`. 상한 99 또는 20 | **99(앱과 같음).** 사용자는 나중에 학습에 넣을 계획이다. 입찰 100칸은 학습 룰셋 행동 32,131개의 0.3%이고, 합법 행 learner라 계산은 보유 자원만큼뿐이며, 체크포인트는 행동 이름으로 열을 잇기 때문에 상한을 나중에 바꿔도 된다(2026-09-28 설명) |
 | D5 | 사람 좌석의 턴 종료 | 수락·패스·입찰 확정을 명시적 종료 행동으로(되돌리기 불가) | **턴 종료를 따로.** 다음 좌석이 행동하기 전까지 자기 결정을 되돌릴 수 있다. 봉인 입찰은 선택과 확정을 나누고 확정이 곧 턴 종료다(4.8절) |
-| D6 | 버전·학습 | codec은 v112부터, 관측은 v22부터 슬라이스마다 올린다. mlp_slots 행 이관. Scouts 게임의 체크포인트·탐색 좌석은 거절. Scouts는 M10 학습 설정에 넣지 않음 | 제안대로. 학습에는 언젠가 넣을 예정이다(그때 따로 정한다) |
+| D6 | 버전·학습 | codec은 v112부터, 관측은 v22부터 슬라이스마다 올린다. mlp_slots 행 이관. Scouts 게임의 체크포인트·탐색 좌석은 거절. Scouts는 M10 학습 설정에 넣지 않음 | 제안대로. 학습에는 언젠가 넣을 예정이다(그때 따로 정한다). **2026-09-30 변경: 체크포인트·탐색 좌석 허용**(정책 head 재지정; 학습하지 않은 템플릿만 있는 결정은 heuristic이 답한다, 4.9절). 학습 설정에는 여전히 넣지 않음 |
 | D7 | 공개 저장소의 서술 범위 | 이름·수치·의역·절차와 추출 도구만 공개 저장소에 | 제안대로 |
 | D8 | 9절 OQ의 판정 | 제안 convention으로 등록하고, 각 슬라이스 시작 전에 확인 | **제안대로 구현하고 끝에 한꺼번에 검토.** OQ-071~OQ-089를 `DECIDED`(잠정)로 등록했다(6a에서 OQ-090 추가) |
 | D9 | 슬라이스 순서와 착수 시점 | 10절 순서. 착수는 사용자 지시 뒤 | 제안대로. 커밋은 슬라이스마다, **푸시는 사용자가 말할 때만** |

@@ -284,6 +284,9 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 
 ## 11. 구현 상태
 
+- 2026-09-30 AI 좌석(사용자 결정, 설계 D6·4.9절).
+  - Scouts 게임에 `checkpoint:`·`search:` 좌석을 앉힐 수 있다. 서버와 대회의 거절을 풀었고, 좌석은 게임의 설정으로 만들어져 정책 head가 Scouts 카탈로그로 옮겨진다(Epic 병합의 룰셋 재지정). 비밀 선택·봉인 입찰·뒷면 카드는 7·8절대로 `known_card_seats`에 있어 탐색 좌석의 재추첨이 섞는다.
+  - 합법 행동이 전부 체크포인트가 학습하지 않은 템플릿인 결정(Scouts 없이 학습한 파일에게는 입찰·호가·비밀 선택·임무 참여·소위원회 가입·이벤트 줄 대부분)은 에이전트 seed의 heuristic이 답한다. 섞인 결정은 네트워크가 답한다. 규칙 동작은 바뀌지 않는다(엔진·codec·관측 무변경).
 - 2026-09-30 OQ-076 대안 C(사용자 판정, project convention).
   - 소위원회 가입이 자리를 차지한 turn 안의 자유 순서 효과가 됐다: High Council 칸에서는 방문의 효과 하나(`BOARD_ICON_SUBCOMMITTEE`), Corrinth City에서는 그 Reveal turn 동안의 기회. turn frame에 `choose_subcommittee`(지금 가입할 수 있을 때만)와 `decline_subcommittee`, 고르면 `scouts_subcommittee` frame에서 `join_subcommittee`. 자리를 얻는 즉시 열리던 결정은 없앴다.
   - 비용은 낸다. 가입 가능 여부는 고르는 순간의 자원으로, Contingencies의 제외 Agent도 그 순간에 정한다(OQ-075).
@@ -364,5 +367,5 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
   - 나머지 항목은 공개만 하고 `scouts_item_unimplemented` 이벤트를 남긴다.
   - 관측 v22: Scouts 칸을 벡터 끝에 붙였다. 옵션을 끈 게임은 옛 칸이 바이트 그대로다. `mlp_slots` 체크포인트의 embedding 행은 키로 이관한다.
   - 앱 분석의 정확한 확률(임무 71/180·79/308, 영향력 증가 0.5681·0.5959, Rebuild Infrastructure 0.0712·0.0774)을 추첨표 열거로 재현한다(`tests/unit/rules/test_scouts_schedule.py`).
-- 2026-09-28 슬라이스 2: `RulesetConfig(arrakeen_scouts=True)`와 식별자 `+scouts`(맨 뒤). 서버 API·요약·저장 파일·sweep·coverage·대회·PettingZoo 배선, Scouts 게임의 `checkpoint:`·`search:` 좌석 거절(설계 4.9). codec v112(카탈로그 변화 없음). 학습 설정(`train`, `problems`)에는 넣지 않았다(D6). UI 체크박스는 슬라이스 9다.
+- 2026-09-28 슬라이스 2: `RulesetConfig(arrakeen_scouts=True)`와 식별자 `+scouts`(맨 뒤). 서버 API·요약·저장 파일·sweep·coverage·대회·PettingZoo 배선, Scouts 게임의 `checkpoint:`·`search:` 좌석 거절(설계 4.9; 2026-09-30에 풀었다). codec v112(카탈로그 변화 없음). 학습 설정(`train`, `problems`)에는 넣지 않았다(D6). UI 체크박스는 슬라이스 9다.
 - 2026-09-28 슬라이스 1: 이 명세, 출처 등록([sources.md](sources.md), [source-map.md](source-map.md)), OQ-071~OQ-089, 용어([glossary-ko.md](glossary-ko.md)), 콘텐츠 카탈로그(`content/arrakeen_scouts/`: 소위원회 14, 임무 16, 이벤트 32, 경매 11, 판매 4)와 추출 데이터 대조 감사([implementation-audits/arrakeen-scouts.md](../implementation-audits/arrakeen-scouts.md)). 엔진 동작은 바뀌지 않았다.
