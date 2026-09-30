@@ -489,3 +489,110 @@ def test_candidates_can_be_evaluated_without_letting_the_search_choose(
 
     assert ranked[:2] == result.candidates
     assert labeller.evaluate_candidates(state, view.player, ranked[:2]) == result.values
+
+
+def _base_checkpoint_with_templates(tmp_path: Path) -> str:
+    """A small file trained without Arrakeen Scouts, carrying its catalog."""
+
+    from dune_imperium.adapters.action_codec import ActionCodec
+
+    base = RulesetConfig()
+    codec = ActionCodec(base)
+    torch.manual_seed(0)
+    network = PolicyValueNetwork(codec.size, hidden=(32,))
+    path = tmp_path / "base.pt"
+    save_checkpoint(
+        path, network, ruleset=base.identifier, iteration=1, codec=codec
+    )
+    return str(path)
+
+
+def _untrained_only_states(
+    agent: NetworkSearchAgent, config: RulesetConfig, seed: int, count: int
+) -> list[GameState]:
+    """States of a heuristic game at decisions the file was never trained on."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    players = [make_agent("heuristic", index) for index in range(config.players)]
+    found: list[GameState] = []
+    while len(found) < count and state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        offered = without_undo_actions(actions)
+        if len(offered) > 1 and agent._untrained_only(offered):
+            found.append(state)
+        choice = players[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, choice).state
+    return found
+
+
+def test_a_search_seat_hands_untrained_only_scouts_decisions_to_a_heuristic(
+    tmp_path: Path,
+) -> None:
+    # Design D6 (2026-09-30): a search seat may play Arrakeen Scouts. Its
+    # file never saw a Scouts template, so a decision offering only those has
+    # tied zero logits and no shortlist to search: the seat answers it with
+    # the heuristic its greedy agent holds, seeded with the agent seed.
+    from dune_imperium.agents.heuristic_agent import HeuristicAgent
+
+    scouts = RulesetConfig(arrakeen_scouts=True)
+    path = _base_checkpoint_with_templates(tmp_path)
+    agent = NetworkSearchAgent(path, seed=4, rollouts=1, candidates=2, config=scouts)
+    twin = HeuristicAgent(seed=4)
+    engine = UprisingRulesEngine()
+    assert agent.greedy.codec.config == scouts
+
+    states = _untrained_only_states(agent, scouts, seed=6, count=3)
+    assert len(states) == 3
+    for state in states:
+        decision = engine.current_decision(state)
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        view = engine.observe(state, decision.owner)
+        result = agent.search_with_state(state, view, actions)
+        assert not result.searched
+        assert result.chosen == twin.choose_action(view, without_undo_actions(actions))
+
+
+def test_search_playouts_hand_untrained_only_decisions_to_a_seeded_heuristic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inside a playout every seat's untrained-only decision goes to a
+    heuristic seeded from the playout's chance seed, so the playout stays
+    reproducible and two candidates meet the same answers."""
+
+    from dune_imperium.agents import network_search_agent as module
+    from dune_imperium.agents.heuristic_agent import HeuristicAgent
+
+    seeds: list[int] = []
+
+    class _Counting(HeuristicAgent):
+        def __post_init__(self) -> None:
+            super().__post_init__()
+            seeds.append(self.seed)
+
+    monkeypatch.setattr(module, "HeuristicAgent", _Counting)
+    scouts = RulesetConfig(arrakeen_scouts=True)
+    agent = NetworkSearchAgent(
+        _base_checkpoint_with_templates(tmp_path),
+        seed=4,
+        rollouts=1,
+        candidates=2,
+        config=scouts,
+    )
+    (state,) = _untrained_only_states(agent, scouts, seed=6, count=1)
+    decision = UprisingRulesEngine().current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+
+    horizon = state.round_number + 1
+    first = agent._playout(state, decision.owner, horizon, 11)
+    assert seeds == [11]
+    assert agent._playout(state, decision.owner, horizon, 11) == first

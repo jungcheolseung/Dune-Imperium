@@ -37,6 +37,14 @@ head rated that stalled mid-turn position above finishing the turn, so the
 seat switched forever (docs/evaluation/m10-2026-09-22.md section 13).
 
 Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
+
+A decision whose legal actions are all templates the checkpoint was never
+trained on (``NetworkAgent.untrained``: an Arrakeen Scouts bid, pick or
+mission on a file trained without Scouts) has only tied zero logits, so
+there is no shortlist to search. The seat answers it through its greedy
+agent, which hands it to a heuristic, and every playout does the same with
+a heuristic seeded from the playout's chance seed, so the candidates of one
+decision still meet the same answers (docs/arrakeen-scouts-design.md 4.9).
 """
 
 import random
@@ -49,6 +57,7 @@ import torch
 from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.agents.rollout_agent import past_horizon
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
@@ -178,7 +187,7 @@ class NetworkSearchAgent:
         # The greedy agent owns the cached network and the catalog (the
         # game's, for ``config``), and answers decisions the search cannot
         # branch from.
-        self.greedy = load_network_agent(path, config)
+        self.greedy = load_network_agent(path, config, seed=seed)
         self.rollouts = rollouts
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds
@@ -215,6 +224,14 @@ class NetworkSearchAgent:
         self, view: PlayerView, legal: Sequence[DomainAction]
     ) -> np.ndarray:
         return self._scores(self._encode(view), legal)
+
+    def _untrained_only(self, offered: Sequence[DomainAction]) -> bool:
+        """Whether every offered action is a template the file never saw."""
+
+        greedy = self.greedy
+        return bool(greedy.untrained) and greedy.untrained_only(
+            [greedy.codec.encode(action) for action in offered]
+        )
 
     def _leaf_value(self, view: PlayerView) -> float:
         with torch.no_grad():
@@ -261,6 +278,9 @@ class NetworkSearchAgent:
         offered = without_undo_actions(legal_actions)
         if len(offered) == 1:
             return SearchResult(chosen=offered[0], searched=False)
+        if self._untrained_only(offered):
+            chosen = self.greedy.choose_action(observation, legal_actions)
+            return SearchResult(chosen=chosen, searched=False)
         seat = observation.player
         encoded = self._encode(observation)
         key, fresh = self._taken.untried(state.round_number, seat, encoded, offered)
@@ -334,6 +354,8 @@ class NetworkSearchAgent:
         # Greedy playouts need the same guard as greedy play: without it a
         # reversible pair runs every playout to ``max_rollout_steps``.
         taken = _Taken()
+        # Seeded per playout, so every candidate meets the same answers.
+        fallback: HeuristicAgent | None = None
         for _ in range(self.max_rollout_steps):
             if state.phase is GamePhase.FINISHED or past_horizon(state, horizon):
                 break
@@ -349,6 +371,11 @@ class NetworkSearchAgent:
             offered = without_undo_actions(actions)
             if len(offered) == 1:
                 action = offered[0]
+            elif self._untrained_only(offered):
+                if fallback is None:
+                    fallback = HeuristicAgent(seed=chance_seed)
+                owner = decision.owner
+                action = fallback.choose_action(engine.observe(state, owner), offered)
             else:
                 owner = decision.owner
                 encoded = self._encode(engine.observe(state, owner))
