@@ -1,6 +1,27 @@
 # 개발 인수인계
 
-기준일: 2026-09-30
+기준일: 2026-10-01 (UI 브랜치; master 기준선은 아래 2026-09-30 기록)
+
+## 2026-10-01 로컬 UI 개선 브랜치
+
+- 사용자 요청으로 `master` **`659cefbc0f8e330afea73ab9743479736937f628`**에서
+  `codex/ui-table-refresh`를 만들었다. **사내 환경에서 push 금지.** master는 이동하지 않았다.
+- `395b772`: 보드에 더 많은 폭을 배분하고, 행동 목록과 로그를 독립 스크롤 영역으로 나눴다.
+  현재 안내·턴 종료는 행동 목록 위에 남고, 로그는 크게 보기/줄이기를 브라우저에 기억한다.
+  차콜·황동 색상과 버튼 위계를 정리하고 책략 카드를 손패 옆으로 옮겼다.
+- `4ad05fe`: 시작 화면을 좌석·규칙 옵션·현재 설정 요약으로 구성했다. 체크포인트 입력은
+  해당 AI를 선택할 때만 보이며, 언어 전환과 숨김/다시 표시에서도 입력을 유지한다.
+- 변경은 `server/static/`와 브라우저 검사·문서에 한정한다. 엔진·codec·관측·저장 형식·규칙 기본값은
+  그대로다. 아래 L1/L2/C1/C2 작업은 이 브랜치에 들어 있지 않다.
+- 검증: **브라우저 E2E 33종 모두 통과**, Ruff 통과, mypy 306파일 통과.
+  pytest는 **2,963 통과·5 건너뜀·1 실패**(237초). 실패는 이 머신의 에셋에서
+  `economic_supremacy`·`control_the_spice` 이미지가 연결되지 않는 기존 문제이며,
+  별도 디렉터리에 푼 **master 659cefb에서도 같은 단일 테스트 실패를 재현**했다.
+  5개 건너뜀은 이 머신에 DWGR 추출 자료가 없기 때문이다. 에셋은 수정하지 않았다.
+- 상세 변경과 검증은 [`ui-improvement-plan.md`](ui-improvement-plan.md)의 11단계.
+  개인 PC에서는 전달 ZIP의 README대로 로컬 Git bundle을 가져오거나 패치 시리즈를 적용한다.
+  에셋·체크포인트·가상환경은 전달 묶음에 없다. 에셋 링크와 `uv sync --extra rl --extra ui --extra train`은
+  개인 PC 환경에서 준비한다. 이 머신에서는 gitignored `.venv`가 임시 `/tmp/dune-ui-runtime`을 가리킨다.
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
