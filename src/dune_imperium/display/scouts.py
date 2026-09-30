@@ -231,7 +231,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     "security_detail": (
         "Each may park 1 supply troop at Deliver Supplies; their first Agent "
         "there sends it into the Conflict.",
-        "각자 supply의 {troop:1}을 Deliver Supplies에 세울 수 있다. 그 칸에 처음 "
+        "각자 {supply}의 {troop:1}을 Deliver Supplies에 세울 수 있다. 그 칸에 처음 "
         "{agent}를 보내면 그 병력이 {conflict}으로 간다.",
     ),
     "imperial_reserve": (
@@ -244,11 +244,11 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "urban_surveillance": (
         "1 Solari on each empty post by a City space, for the Spy placed there.",
-        "City 칸 옆 빈 관측소마다 {solari:1}. 거기 {spy}를 놓는 좌석이 가진다.",
+        "도시 칸 옆 빈 관측소마다 {solari:1}. 거기 {spy}를 놓는 좌석이 가진다.",
     ),
     "planetary_exploration": (
         "1 spice on each empty post by a Maker space, for the Spy placed there.",
-        "Maker 칸 옆 빈 관측소마다 {spice:1}. 거기 {spy}를 놓는 좌석이 가진다.",
+        "{maker} 칸 옆 빈 관측소마다 {spice:1}. 거기 {spy}를 놓는 좌석이 가진다.",
     ),
     "choam_research": (
         "2 face-down Contracts at Research Station, one per visit.",
@@ -262,7 +262,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "sponsored_research": (
         "2 spice by the Helix, for the next seat to reach it.",
-        "research track의 나선 옆 {spice:2}. 다음에 닿는 좌석이 가진다.",
+        "연구 트랙의 나선 옆 {spice:2}. 다음에 닿는 좌석이 가진다.",
     ),
     "back_room_deal": (
         "2 Solari on Reclaimed Forces, for the next seat to acquire it.",
@@ -273,7 +273,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "with 2 spice from the bank; their visit takes the marker back and "
         "gains the spice.",
         "각자 주둔지 {troop:1}을 잃고 Sardaukar에 {control} 마커를 둘 수 있다. "
-        "은행의 {spice:2}를 그 위에 둔다. 방문하면 마커를 되찾고 spice를 얻는다.",
+        "은행의 {spice:2}를 그 위에 둔다. 방문하면 마커를 되찾고 그 {spice}를 얻는다.",
     ),
     "emperors_schemes": (
         "2 face-down Intrigue cards at Sardaukar, one per visit.",
@@ -282,13 +282,13 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     "fedaykin_assistance": (
         "Each may pay 1 spice to park 2 supply troops at Desert Tactics, "
         "recruited by the next visit.",
-        "각자 {spice:1}를 내고 supply의 {troop:2}를 Desert Tactics에 세울 수 "
+        "각자 {spice:1}를 내고 {supply}의 {troop:2}를 Desert Tactics에 세울 수 "
         "있다. 다음 방문 때 소집한다.",
     ),
     "weirding_warfare": (
         "Each may pay 2 Solari to park 2 supply troops at Espionage, sent into "
         "the Conflict by the next visit.",
-        "각자 {solari:2}를 내고 supply의 {troop:2}를 Espionage에 세울 수 있다. "
+        "각자 {solari:2}를 내고 {supply}의 {troop:2}를 Espionage에 세울 수 있다. "
         "다음 방문 때 {conflict}으로 간다.",
     ),
     "send_for_aid": (
@@ -309,7 +309,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     "tleilaxu_offering": (
         "Each may put 2 supply troops on the Tleilaxu track's third space; "
         "reaching it turns them into specimens.",
-        "각자 supply의 {troop:2}를 틀레이락스 트랙 세 번째 칸에 둘 수 있다. "
+        "각자 {supply}의 {troop:2}를 틀레이락스 트랙 세 번째 칸에 둘 수 있다. "
         "그 칸에 닿으면 {specimen:2}이 된다.",
     ),
     "political_equilibrium": (
@@ -318,7 +318,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "mating_season": (
         "1 more spice on each Maker space.",
-        "Maker 칸마다 {spice:1} 추가.",
+        "{maker} 칸마다 {spice:1} 추가.",
     ),
     "unlikely_allies": (
         "This round, spaces ignore their Influence requirements.",
@@ -334,7 +334,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "market_opening": (
         "This round, the first The Spice Must Flow costs 2 less.",
-        "이번 라운드 처음 획득하는 The Spice Must Flow의 비용이 2 적다.",
+        "이번 라운드 처음 획득하는 ‘스파이스는 흘러야 한다’ 카드의 비용이 2 적다.",
     ),
     "eyes_on_arrakis": (
         "This round, every Faction space is a Combat space.",

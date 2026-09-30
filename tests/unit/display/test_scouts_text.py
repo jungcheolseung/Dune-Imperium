@@ -102,3 +102,23 @@ def test_an_event_line_and_a_subcommittee_are_described() -> None:
     assert effect_action_text_ko(state, join) == (
         "관리감독: {spy} 소환 → 카드 1장 {trash}, {spice:1}"
     )
+
+
+def test_korean_scouts_text_leaves_no_rules_word_in_english() -> None:
+    """The Korean Scouts texts say rules words in Korean ("supply" is 개인
+    공급처, the research track 연구 트랙; docs/rules/glossary-ko.md) or
+    through a {term} token. Board space and card names printed on the
+    English board scan stay as printed (capitalised), and so pass."""
+
+    source = (
+        Path(__file__).resolve().parents[3]
+        / "src/dune_imperium/display/scouts.py"
+    ).read_text(encoding="utf-8")
+    stray: list[tuple[int, str]] = []
+    for number, line in enumerate(source.splitlines(), 1):
+        for text in re.findall(r'"([^"]*)"', line):
+            if not re.search(r"[가-힣]", text):
+                continue
+            bare = re.sub(r"\{[^}]*\}", " ", text)
+            stray += [(number, word) for word in re.findall(r"\b[a-z]{2,}\b", bare)]
+    assert not stray, stray
