@@ -5,6 +5,14 @@
    hole the caller fills, {term} a rule term in the current language (see
    t() and tNode() in i18n.js). */
 const UI_TEXT = {
+  "panels.log_compact": {
+    "ko": "기록 줄이기",
+    "en": "Compact history"
+  },
+  "panels.log_expand": {
+    "ko": "기록 크게 보기",
+    "en": "Expand history"
+  },
   "app.admin_link_invalid": {
     "ko": "관리자 링크가 맞지 않습니다 ({{message}})",
     "en": "The admin link is not valid ({{message}})"

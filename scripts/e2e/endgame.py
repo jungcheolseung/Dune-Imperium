@@ -418,7 +418,7 @@ def run_laptop(base: str, browser) -> None:
     seek_to_end(page)
     size = page.evaluate(
         """() => {
-            const side = document.getElementById('side');
+            const side = document.getElementById('side-main');
             const standings = document.getElementById('standings');
             return {
                 viewport: [innerWidth, innerHeight],
@@ -439,7 +439,7 @@ def run_laptop(base: str, browser) -> None:
     )
     check.ok(
         size["sideScrolls"] in ("auto", "scroll"),
-        "at a laptop width the side column is the scroller",
+        "at a laptop width the content pane scrolls independently of history",
         size["sideScrolls"],
     )
     # The result must be reachable: the panel exists, has height, and the
@@ -454,7 +454,7 @@ def run_laptop(base: str, browser) -> None:
     )
     reached = page.evaluate(
         """() => {
-            const side = document.getElementById('side');
+            const side = document.getElementById('side-main');
             const standings = document.getElementById('standings');
             standings.scrollIntoView({block: 'start'});
             const box = standings.getBoundingClientRect();
@@ -469,7 +469,7 @@ def run_laptop(base: str, browser) -> None:
         """() => {
             const box = document.getElementById('standings').getBoundingClientRect();
             // Only the part the side column shows; below it is #private-zone.
-            const shown = document.getElementById('side').getBoundingClientRect();
+            const shown = document.getElementById('side-main').getBoundingClientRect();
             const x = box.left + box.width / 2;
             const hits = [];
             const end = Math.min(box.bottom, shown.bottom) - 4;

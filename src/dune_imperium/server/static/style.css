@@ -20,12 +20,13 @@
 
 /* The game screen is a dark table; the setup screen keeps the light page. */
 body.in-game {
-  --bg: #100e0b;
-  --panel: #1d1914;
-  --ink: #eee5d5;
-  --line: #4a3d2c;
-  --accent: #dfa04e;
-  --accent-soft: #33291b;
+  --bg: #111416;
+  --panel: #1b1f21;
+  --ink: #eee9df;
+  --line: #394043;
+  --accent: #d5b478;
+  --accent-soft: #302b23;
+  --glow: #ebc87e;
   --good: #7ddc6a;
   --bad: #ff6b5e;
 }
@@ -51,8 +52,8 @@ header {
   color: #f4efe6;
 }
 body.in-game header {
-  background: linear-gradient(90deg, #14120f, #2a1e10 50%, #14120f);
-  border-bottom: 1px solid #7f5a28;
+  background: #191d1f;
+  border-bottom: 1px solid var(--line);
 }
 header h1 { font-size: 1.05rem; margin: 0; }
 /* One line in the fixed-height header (render.js renderHeaderStatus): the
@@ -149,8 +150,22 @@ button {
   cursor: pointer;
 }
 button:hover:not(:disabled) { background: var(--accent); color: #fff; }
-body.in-game button:hover:not(:disabled) { color: #1a140c; }
+body.in-game button:hover:not(:disabled) { color: var(--ink); }
 button:disabled { opacity: 0.5; cursor: wait; }
+:where(body.in-game) button {
+  border-color: var(--line);
+  background: #24292b;
+  border-radius: 6px;
+}
+:where(body.in-game) button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #383329;
+  color: var(--ink);
+}
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 .error { color: var(--bad); font-weight: 600; }
 .muted { opacity: 0.65; }
@@ -192,7 +207,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 #game-screen {
   --board-min: 480px;
   --market-min: 190px;
-  --table-min: calc(250px + var(--board-min) + var(--market-min) + 380px + 2.5rem);
+  --table-min: calc(210px + var(--board-min) + var(--market-min) + 340px + 2.5rem);
   display: grid;
   /* The column is the window's width down to the table's floor; its
      min-content would have taken whatever the widest row happened to hold. */
@@ -202,13 +217,12 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 #table {
   display: grid;
-  /* The right panel's growth (up to 34vw) gives way before the board's
-     floor: its track is minmax(380px, ...) and the grid fills it only from
-     the space left once every track has its minimum. */
+  /* Spend extra desktop width on the board, keeping the reading column
+     steady. The board still has its 480px floor on a narrow window. */
   grid-template-columns:
-    250px
+    210px
     minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
-    minmax(380px, min(34vw, 760px));
+    340px;
   gap: 0.5rem;
   min-height: 0;
   padding: 0.5rem 0.5rem 0;
@@ -218,21 +232,25 @@ button:disabled { opacity: 0.5; cursor: wait; }
   overflow-y: auto;
   scrollbar-width: thin;
 }
-/* The right panel is two columns: the decision and its actions on the
-   left, the action log on the right, each scrolling on its own. Narrow
-   screens (media query at the end) stack them again. */
+/* Decisions and history have independent scrolling at every width. A
+   compact history stays visible without pushing the turn controls away. */
 #side {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, clamp(120px, 23vh, 240px));
   gap: 0.5rem;
   min-height: 0;
+  overflow: hidden;
 }
+#side.log-expanded { grid-template-rows: minmax(160px, 1fr) minmax(0, 55%); }
+#side:has(#action-log[hidden]) { grid-template-rows: minmax(0, 1fr); }
+#side-log:has(#action-log[hidden]) { display: none; }
 #side-main, #side-log {
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
 }
-#side-log { display: flex; flex-direction: column; }
+#side-log { display: flex; flex-direction: column; overflow: hidden; }
 #side-log #action-log {
   display: flex;
   flex-direction: column;
@@ -249,7 +267,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 #center {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(22%);
+  grid-template-columns: minmax(0, 1fr) fit-content(190px);
   gap: 0.5rem;
   min-height: 0;
   min-width: 0;
@@ -324,7 +342,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .hotspot:hover .space-frame polygon,
 .hotspot:focus-visible .space-frame polygon { stroke: rgba(255, 255, 255, 0.7); fill: rgba(255, 255, 255, 0.05); }
-.hotspot.legal .space-frame { animation: frame-pulse 1.6s ease-in-out infinite; }
+.hotspot.legal .space-frame { animation: none; }
 .hotspot.legal .space-frame polygon { stroke: var(--glow); fill: rgba(255, 207, 90, 0.1); }
 .hotspot.legal:hover .space-frame polygon { fill: rgba(255, 207, 90, 0.22); }
 /* A hand card that can be grafted to the picked one: a dashed glow and a
@@ -1017,7 +1035,7 @@ kbd {
 .vcard:hover:not(:disabled) { background: #2a2419; border-color: rgba(255, 255, 255, 0.6); color: inherit; }
 .vcard.legal {
   border-color: var(--glow);
-  box-shadow: 0 0 12px 2px rgba(255, 207, 90, 0.6);
+  box-shadow: 0 0 0 1px rgba(235, 200, 126, 0.15);
 }
 .vcard.legal:hover { transform: translateY(-3px); }
 /* The card of a staged Agent turn's pick: lifted out of the hand. */
@@ -1044,28 +1062,28 @@ kbd {
 /* ---------- own hand ---------- */
 
 #private-zone {
-  border-top: 1px solid #7f5a28;
-  background: linear-gradient(180deg, #1a1611, #100e0b);
-  padding: 0.3rem 0.8rem 0.5rem;
+  border-top: 1px solid var(--line);
+  background: #181c1e;
+  padding: 0.45rem 0.8rem 0.5rem;
 }
 .hand-label { display: flex; gap: 1.2rem; align-items: center; margin-bottom: 0.2rem; }
 .hand-counts { display: inline-flex; gap: 0.8rem; }
-.hand-zones { display: flex; gap: 1.2rem; align-items: flex-start; }
-.hand-cards { flex: 1; min-width: 0; }
-.intrigue-cards { flex: none; border-left: 1px dashed var(--line); padding-left: 0.8rem; }
+.hand-zones { display: flex; gap: 1.2rem; align-items: flex-start; overflow-x: auto; }
+.hand-cards { flex: 0 1 auto; min-width: 0; }
+.intrigue-cards { flex: 0 1 auto; min-width: 80px; border-left: 1px solid var(--line); padding-left: 0.8rem; }
 
 /* ---------- seats ---------- */
 
 .seat {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-left: 5px solid var(--line);
-  border-radius: 10px;
+  border-left: 3px solid var(--line);
+  border-radius: 7px;
   padding: 0.45rem 0.6rem;
   margin-bottom: 0.45rem;
   font-size: 0.82rem;
 }
-.seat.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.seat.active { border-color: var(--accent); background: #282820; }
 .seat-head { display: flex; gap: 0.5rem; align-items: center; }
 .leader-thumb { width: 74px; border-radius: 5px; cursor: pointer; flex: none; }
 .seat .who { font-weight: 700; display: flex; flex-wrap: wrap; gap: 0.1rem 0.3rem; align-items: center; flex: 1; min-width: 0; }
@@ -1097,7 +1115,14 @@ kbd {
 
 /* ---------- decision panel ---------- */
 
-#decision-banner { border-left: 6px solid var(--accent); }
+#decision-banner {
+  border-top: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow: hidden;
+}
+#decision-info { flex: none; }
 #decision-info .prompt { font-weight: 700; font-size: 1rem; }
 #decision-info .meta { font-size: 0.8rem; opacity: 0.75; }
 /* ITEM 5: the most recently resolved Conflict, one muted line above the
@@ -1109,7 +1134,19 @@ kbd {
   flex-direction: column;
   gap: 0.3rem;
   margin-top: 0.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 2px 3px 4px;
 }
+#decision-info .turn-end-row button {
+  width: 100%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #211d15;
+  font-weight: 700;
+}
+#decision-info .turn-end-row button:hover:not(:disabled) { background: #ebcd97; }
 #actions button { text-align: left; max-width: 100%; }
 
 /* The staged Agent turn (renderActionPanel): what has been picked, a hint
@@ -1558,7 +1595,7 @@ kbd {
 }
 .turn-card.fresh {
   border-color: var(--glow);
-  box-shadow: 0 0 10px rgba(255, 207, 90, 0.35);
+  background: rgba(213, 180, 120, 0.06);
 }
 .turn-card.undone { opacity: 0.55; }
 .turn-card.undo-marker { color: var(--accent); font-weight: 600; }
@@ -1591,31 +1628,12 @@ kbd {
 .turn-cards .vcard.small { width: 54px; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
 
-/* Below about 1700px the right panel's two columns (34vw ≈ 540px at
-   1600px) squeeze the action list and the log to ~270px each, so they
-   stack again earlier than the table columns shrink. */
-@media (max-width: 1700px) {
-  /* Stacked, each pane is as tall as its content and #side scrolls. The
-     implicit rows were `auto` with min-height: 0 items, so the grid split
-     the column in half: #side-main got 438px of 1734px at 1600x1000 and the
-     rest ran on underneath the opaque log panel — the standings at 1366px,
-     a long action list in play. */
-  #side { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow-y: auto; }
-  #side-main, #side-log { overflow: visible; }
-  #side-log #action-log { flex: none; }
-  #action-log .log-list { max-height: 28rem; }
-}
-@media (max-width: 1400px) {
-  #table {
-    grid-template-columns:
-      250px minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr) 380px;
-  }
-}
+.log-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.log-heading h2 { margin: 0; font-size: 0.85rem; }
+.log-size-toggle { padding: 0.2rem 0.45rem; font-size: 0.75rem; }
 /* Below the width at which the shared-card column beside the board would
-   push the board under its floor (250 + 480 + 190 + 380 + gaps = 1340px),
-   the cards move under the board and the side columns narrow. This was
-   1100px, and between 1100 and 1400px the board shrank to 241px beside the
-   column, then jumped back to 479px below 1100px (2026-09-27). */
+   crowd the board, retain the compact table layout and its horizontal
+   scrolling floor (the 2026-09-27 narrow-window convention). */
 @media (max-width: 1340px) {
   #game-screen { --table-min: calc(200px + var(--board-min) + 300px + 2rem); }
   #table { grid-template-columns: 200px minmax(var(--board-min), 1fr) 300px; }
