@@ -194,6 +194,30 @@ def test_epic_game_sweep_runs_to_finished() -> None:
     assert report.games[0].ruleset == "uprising-4p-base+epic"
 
 
+def test_epic_game_with_arrakeen_scouts_runs_to_finished() -> None:
+    # Rise of Ix recommends the companion app's Arrakeen Scouts mode for a
+    # longer Epic game [Rise of Ix p. 10] (docs/rules/epic-game-mode.md
+    # section 2): the Scouts schedule follows the round number, so it runs
+    # over Epic's Conflict II/III deck unchanged. With Immortality, Control
+    # the Spice starts in the discard pile [Immortality p. 12]. The two
+    # options were built on separate branches; this pins the merged line,
+    # Round Start order included (reveal -> Control defense -> draw).
+    specs = sweep_specs(
+        games=1,
+        rulesets=(True,),
+        start_seed=73,
+        immortality=True,
+        epic_game=True,
+        arrakeen_scouts=True,
+        privacy_interval=10,
+        soundness_interval=25,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-choam+immortality+epic+scouts"
+
+
 def test_small_sweep_covers_both_rulesets() -> None:
     specs = sweep_specs(
         games=1,
