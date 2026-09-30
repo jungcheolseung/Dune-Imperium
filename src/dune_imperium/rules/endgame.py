@@ -286,6 +286,9 @@ def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
             for card_id in sorted(face_up_ids)
             if _battle_icon(card_id) is BattleIcon.WILD
         )
+        # A wild pairs with one of the three printed icons [Main p. 20]; a
+        # card with no printed icon (Economic Supremacy) is never a partner
+        # (OQ-094 (a)).
         matching_ids = tuple(
             card_id
             for card_id in sorted(face_up_ids)
@@ -307,6 +310,8 @@ def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
 
 
 def _battle_icon(card_id: str) -> BattleIcon | None:
+    """Return the card's printed icon; ``None`` when it prints none (OQ-094)."""
+
     if card_id in OBJECTIVES_BY_ID:
         return OBJECTIVES_BY_ID[card_id].battle_icon
     return CONFLICTS_BY_ID[card_id].battle_icon

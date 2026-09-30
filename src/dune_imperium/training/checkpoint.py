@@ -307,12 +307,20 @@ def _versions_match(document: Mapping[str, Any]) -> bool:
     )
 
 
-def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
+def load_checkpoint(
+    path: Path, *, ruleset: RulesetConfig | None = None
+) -> tuple[PolicyValueNetwork, CheckpointInfo]:
     """Rebuild the network on the CPU, migrating it to the current encodings.
 
     A file written under the current versions loads as is. One written under
     other versions is migrated when it carries its template list and
     layout, and refused otherwise.
+
+    ``ruleset`` retargets the policy head onto another ruleset's catalog
+    (a game the file was not trained on, such as an Epic Game Mode one) the
+    same way: rows move by template identity and a template the file never
+    saw starts at zero. ``CheckpointInfo.ruleset`` still names the file's
+    own ruleset; the returned network answers for ``ruleset``.
     """
 
     document = _read(path)
@@ -321,12 +329,24 @@ def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
     state_dict = dict(document["state_dict"])
     optimizer_state = document.get("optimizer_state")
     hidden = tuple(int(width) for width in document["hidden"])
-    if _versions_match(document):
+    target = (
+        None
+        if ruleset is None or ruleset.identifier == str(document["ruleset"])
+        else ruleset
+    )
+    if _versions_match(document) and target is None:
         action_size = int(document["action_size"])
     else:
         templates = document.get("action_templates")
         layout = document.get("observation_layout")
         if templates is None or layout is None:
+            if target is not None:
+                raise ValueError(
+                    f"checkpoint for {document['ruleset']} cannot answer for "
+                    f"{target.identifier}: the file carries no template list to "
+                    "move its policy head by (stamp it with the code that wrote "
+                    "it: dune-imperium-checkpoint stamp)"
+                )
             raise ValueError(
                 f"checkpoint codec v{document['action_codec_version']} / observation "
                 f"v{document['observation_version']} does not match the current "
@@ -334,7 +354,9 @@ def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
                 "carries no template list to migrate by (stamp it with the code "
                 "that wrote it: dune-imperium-checkpoint stamp)"
             )
-        codec = ActionCodec(RulesetConfig.from_identifier(str(document["ruleset"])))
+        codec = ActionCodec(
+            target or RulesetConfig.from_identifier(str(document["ruleset"]))
+        )
         state_dict, optimizer_state, migration = _migrate(
             document, state_dict, optimizer_state, codec, hidden
         )

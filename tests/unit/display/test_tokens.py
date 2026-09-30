@@ -11,7 +11,10 @@ from dune_imperium.content.immortality.tleilaxu import (
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.starting_cards import STARTING_DECK
+from dune_imperium.content.uprising.starting_cards import (
+    CONTROL_THE_SPICE,
+    STARTING_DECK,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -62,6 +65,8 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
 _ALL_REVEAL_EFFECT_ENTRIES: tuple[PersonalCardDefinition, ...] = (
     *IMPERIUM_CARDS,
     *STARTING_DECK,
+    # Epic Game Mode's starting card is not in the base ``STARTING_DECK``.
+    CONTROL_THE_SPICE,
     *RESERVE_STACKS,
     *TLEILAXU_CARDS_BY_ID.values(),
     RECLAIMED_FORCES,

@@ -384,17 +384,11 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                         len(frames_in_order),
                     )
                 )
-            if reward.optional_spice_cost:
-                frames_in_order.append(
-                    _optional_payment_frame(
-                        state,
-                        assignment.player,
-                        len(frames_in_order),
-                        "spice",
-                        reward.optional_spice_cost,
-                        reward.optional_victory_points,
-                    )
-                )
+            # Each optional cost is its own arrow, paid or declined on its
+            # own and at most once per reward [Main p. 9] [FAQ p. 3];
+            # Economic Supremacy prints two (6 Solari, then 4 spice) and
+            # they are offered in that printed order. A sandworm offers
+            # each arrow a second time [Main p. 14].
             if reward.optional_solari_cost:
                 frames_in_order.append(
                     _optional_payment_frame(
@@ -403,6 +397,17 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                         len(frames_in_order),
                         "solari",
                         reward.optional_solari_cost,
+                        reward.optional_victory_points,
+                    )
+                )
+            if reward.optional_spice_cost:
+                frames_in_order.append(
+                    _optional_payment_frame(
+                        state,
+                        assignment.player,
+                        len(frames_in_order),
+                        "spice",
+                        reward.optional_spice_cost,
                         reward.optional_victory_points,
                     )
                 )
@@ -1467,9 +1472,9 @@ def finish_combat(state: GameState) -> RuleResult:
 def _matching_battle_card(player: PlayerState, conflict_id: str) -> str | None:
     battle_icon = CONFLICTS_BY_ID[conflict_id].battle_icon
     if battle_icon is None:
-        raise NotImplementedError(
-            f"Conflict battle icon is not transcribed: {conflict_id}"
-        )
+        # No printed icon (Economic Supremacy): the card stays face up in
+        # the winner's supply but never matches on arrival (OQ-094 (a)).
+        return None
     if battle_icon is BattleIcon.WILD:
         # A wild battle icon is matched during the Endgame, by choice, not
         # on arrival [Main p. 20] [Bloodlines p. 5].
@@ -1494,33 +1499,29 @@ def face_up_battle_icons(player: PlayerState) -> frozenset[BattleIcon]:
     so at most one face-up card per printed icon exists and the set of
     icons is the whole information. A face-up wild card (Propaganda)
     reports ``BattleIcon.WILD``, never one of the three printed icons. With
-    Ornithopter Fleet every icon is an Ornithopter [Bloodlines p. 12].
+    Ornithopter Fleet every icon is an Ornithopter [Bloodlines p. 12]. A
+    face-up card with no printed icon (Economic Supremacy) adds nothing,
+    Ornithopter Fleet or not (OQ-094 (c), (d)).
     """
 
     face_down = set(player.face_down_battle_card_ids)
-    if has_ornithopter_fleet(player):
-        return (
-            frozenset({BattleIcon.ORNITHOPTER})
-            if any(
-                card_id not in face_down
-                for card_id in (*player.objective_ids, *player.won_conflict_ids)
-            )
-            else frozenset()
-        )
-    return frozenset(
+    face_up = (
         _battle_icon_for(card_id)
         for card_id in (*player.objective_ids, *player.won_conflict_ids)
         if card_id not in face_down
     )
+    icons = frozenset(icon for icon in face_up if icon is not None)
+    if has_ornithopter_fleet(player):
+        return frozenset({BattleIcon.ORNITHOPTER}) if icons else frozenset()
+    return icons
 
 
-def _battle_icon_for(card_id: str) -> BattleIcon:
+def _battle_icon_for(card_id: str) -> BattleIcon | None:
+    """Return the card's printed icon; ``None`` when it prints none (OQ-094)."""
+
     if card_id in OBJECTIVES_BY_ID:
         return OBJECTIVES_BY_ID[card_id].battle_icon
-    battle_icon = CONFLICTS_BY_ID[card_id].battle_icon
-    if battle_icon is None:
-        raise NotImplementedError(f"Conflict battle icon is not transcribed: {card_id}")
-    return battle_icon
+    return CONFLICTS_BY_ID[card_id].battle_icon
 
 
 def _combat_reward_event(

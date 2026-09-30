@@ -191,9 +191,19 @@ class Recorder:
 # The setup form's expansion boxes. Since 2026-09-22 every one starts checked
 # and the Tech Module box is disabled while Bloodlines is off; the Go to 11
 # box (2026-09-28, OQ-091) also starts checked and is disabled while
-# Immortality is off. A script that wants a narrower game says which boxes it
-# keeps: keeping "immortality" alone plays from the printed start of 1 VP.
-RULE_OPTIONS = ("choam", "promo", "bloodlines", "tech", "immortality", "go-to-11")
+# Immortality is off; the Epic Game Mode box (2026-09-28, OQ-092) starts
+# checked and depends on no other box. A script that wants a narrower game
+# says which boxes it keeps: keeping "immortality" alone plays from the
+# printed start of 1 VP, and leaving out "epic-game" plays the retail setup.
+RULE_OPTIONS = (
+    "choam",
+    "promo",
+    "bloodlines",
+    "tech",
+    "immortality",
+    "go-to-11",
+    "epic-game",
+)
 
 
 def rule_option_steps(*keep: str) -> list[tuple[str, bool]]:

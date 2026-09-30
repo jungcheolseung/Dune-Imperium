@@ -10,6 +10,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
 from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     OBSERVATION_SIZE,
     encode_player_view,
@@ -245,6 +246,56 @@ def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="catalog"):
         NetworkAgent(network, RulesetConfig(choam_module=True))
 
+
+
+def test_a_checkpoint_seat_answers_for_an_epic_game_it_was_not_trained_on(
+    tmp_path: Path,
+) -> None:
+    # OQ-092 (d): checkpoint seats may sit at Epic games. The Epic catalog
+    # adds Control the Spice's and Economic Supremacy's templates, so the
+    # head moves onto it by template identity and the new templates start
+    # at zero, as for an older codec (``load_checkpoint(ruleset=...)``).
+    base = RulesetConfig()
+    base_codec = ActionCodec(base)
+    network = _network(base_codec.size)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path, network, ruleset=base.identifier, iteration=1, codec=base_codec
+    )
+    kind = f"checkpoint:{path}"
+
+    # A game the file's catalog already covers keeps the file as it is.
+    covered = make_agent(kind, 0, base)
+    assert isinstance(covered, NetworkAgent)
+    assert covered.codec.config == base
+
+    epic = RulesetConfig(epic_game=True)
+    agent = make_agent(kind, 0, epic)
+    assert isinstance(agent, NetworkAgent)
+    assert agent.codec.config == epic
+    old_rows = {template: row for row, template in enumerate(base_codec.catalog)}
+    weight = agent.network.policy_head.weight.detach()
+    bias = agent.network.policy_head.bias.detach()
+    old_weight = network.policy_head.weight.detach()
+    new_templates = 0
+    for row, template in enumerate(agent.codec.catalog):
+        if template in old_rows:
+            assert torch.equal(weight[row], old_weight[old_rows[template]])
+        else:
+            new_templates += 1
+            assert not weight[row].any() and not bias[row].any()
+    assert new_templates > 0
+
+    result = play_match(
+        MatchSpec(
+            game_seed=6,
+            policy_seed=1,
+            seat_agents=(kind, "heuristic", "heuristic", "heuristic"),
+            epic_game=True,
+        )
+    )
+    assert result.seats[0].decisions > 0
+    assert result.seats[0].illegal_actions == 0
 
 def test_a_frozen_checkpoint_opponent_plays_the_same_games_batched(
     tmp_path: Path,

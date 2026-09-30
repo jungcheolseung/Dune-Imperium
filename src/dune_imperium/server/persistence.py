@@ -237,6 +237,7 @@ def build_save_document(
             "tech_module": config.tech_module,
             "immortality": config.immortality,
             "go_to_11": config.go_to_11,
+            "epic_game": config.epic_game,
             "arrakeen_scouts": config.arrakeen_scouts,
         },
         "game_seed": replay.seed,
@@ -298,6 +299,7 @@ def parse_save_document(document: object) -> ParsedSave:
         "tech_module",
         "immortality",
         "go_to_11",
+        "epic_game",
         "arrakeen_scouts",
     ):
         flag = ruleset_value.get(key, False)

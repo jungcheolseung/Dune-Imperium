@@ -16,6 +16,10 @@ class SourceDocument(StrEnum):
     # The Immortality expansion rulebook (``official-rule-sources.json`` key
     # ``immortality``); cited as ``[Immortality p. N]`` with PDF page numbers.
     IMMORTALITY_RULEBOOK = "immortality_rulebook"
+    # The Rise of Ix expansion rulebook (``official-rule-sources.json`` key
+    # ``rise-of-ix``); only its Epic Game Mode is used, cited as
+    # ``[Rise of Ix p. N]`` with PDF page numbers.
+    RISE_OF_IX_RULEBOOK = "rise_of_ix_rulebook"
     # A card that no official document describes (the Uprising promo cards):
     # the printed card face itself is the source, cited as page 1.
     CARD_FACE = "card_face"

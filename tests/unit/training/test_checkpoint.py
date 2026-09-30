@@ -177,6 +177,21 @@ def test_format_2_stores_template_identities_and_the_layout(tmp_path: Path) -> N
     assert not plain.migratable
 
 
+
+def test_a_file_without_templates_cannot_answer_for_another_ruleset(
+    tmp_path: Path,
+) -> None:
+    # Moving a head onto another catalog needs the file's template list.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    path = tmp_path / "plain.pt"
+    save_checkpoint(path, network, ruleset=codec.config.identifier, iteration=1)
+
+    _, info = load_checkpoint(path, ruleset=RulesetConfig())
+    assert info.migration is None
+    with pytest.raises(ValueError, match="cannot answer for"):
+        load_checkpoint(path, ruleset=RulesetConfig(epic_game=True))
+
 def test_migration_moves_rows_and_columns_by_identity(tmp_path: Path) -> None:
     codec = ActionCodec(RulesetConfig())
     network, learner = _trained(codec)
@@ -354,6 +369,114 @@ def test_a_v20_file_reads_its_contract_columns_by_identity(tmp_path: Path) -> No
             printed = CONTRACTS_BY_ID[contract_id].copy_of or contract_id
             expected = mark.get(printed, 0.0)
             assert torch.all(column == expected), (segment.name, contract_id)
+
+
+# Observation v28 (Epic Game Mode; v26 on the epic-game-mode branch)
+# appended Control the Spice to every personal-card segment, Economic
+# Supremacy to every battle-card segment, and the one-column ``epic_game``
+# segment after all the others. v27 has v25's layout (v26's frame kind was
+# removed again), so the previous layout is 4,587 columns wide.
+_V28_GROWN_SEGMENTS = frozenset(
+    {"imperium_removed", "private_hand", "private_peeked_card"}
+    | {
+        f"seat{seat}_{zone}"
+        for seat in range(4)
+        for zone in ("hand_public", "in_play", "discard", "trashed", "battle_cards")
+    }
+)
+
+
+def test_a_v27_file_migrates_to_v28_and_computes_the_same_outputs(
+    tmp_path: Path,
+) -> None:
+    # A file written under v27 knows neither card nor the flag: each v27
+    # segment's columns keep their place at its start, the 24 new columns
+    # start at zero, and a game without the option (every new column 0)
+    # scores exactly as the v27 network did.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=4, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    kept: list[int] = []
+    layout: list[tuple[str, int, int]] = []
+    offset = 0
+    for segment in OBSERVATION_SEGMENTS:
+        if segment.name == "epic_game":
+            continue
+        length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
+        kept.extend(range(segment.offset, segment.offset + length))
+        layout.append((segment.name, offset, length))
+        offset += length
+    assert offset == 4_587 == OBSERVATION_SIZE - 24
+    state = dict(document["state_dict"])
+    state["body.0.weight"] = state["body.0.weight"][:, torch.tensor(kept)]
+    older = tmp_path / "v27.pt"
+    torch.save(
+        {
+            **document,
+            "state_dict": state,
+            "observation_layout": layout,
+            "observation_size": offset,
+            "observation_version": 27,
+            "action_codec_version": ACTION_CODEC_VERSION - 1,
+        },
+        older,
+    )
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.from_observation_version, report.to_observation_version) == (
+        27,
+        OBSERVATION_VERSION,
+    )
+    assert (
+        report.observation_kept,
+        report.observation_new,
+        report.observation_dropped,
+    ) == (4_587, 24, 0)
+    assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
+        codec.size,
+        0,
+        0,
+    )
+    new = torch.tensor(sorted(set(range(OBSERVATION_SIZE)) - set(kept)))
+    first_layer = migrated.body[0]
+    original_first = network.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    assert isinstance(original_first, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    assert torch.equal(
+        first[:, torch.tensor(kept)],
+        original_first.weight.detach()[:, torch.tensor(kept)],
+    )
+    assert float(first[:, new].abs().sum()) == 0.0
+
+    runner = SelfPlayRunner(codec.config, max_steps=80, record=True)
+    result = runner.run(
+        {"r": RandomBatchPolicy(seed=5)},
+        (SelfPlaySpec(game_seed=6, lineup=("r",) * 4),),
+    )
+    observations = torch.stack(
+        [
+            torch.as_tensor(step.observation, dtype=torch.int32)
+            for episode in result.episodes
+            for step in episode.steps
+        ]
+    )
+    assert observations.shape[1] == OBSERVATION_SIZE
+    # Every new column of a game without the option is 0, so the network the
+    # v27 file was cut from computes the v27 file's function on it.
+    assert not bool(observations[:, new].any())
+    masks = torch.ones(observations.shape[0], codec.size, dtype=torch.int8)
+    expected, expected_values = network(observations, masks)
+    actual, actual_values = migrated(observations, masks)
+    assert torch.equal(actual, expected)
+    assert torch.equal(actual_values, expected_values)
 
 
 def test_checkpoint_cli_inspects_stamps_and_migrates(

@@ -54,10 +54,15 @@ from dune_imperium.content.uprising.types import (
 
 def test_conflict_manifest_has_the_official_tier_counts() -> None:
     # 16 Uprising cards plus the two Bloodlines cards (one I, one II), which
-    # only enter the pool with the option [Bloodlines p. 3].
-    assert len(CONFLICTS) == 18
-    assert len({conflict.card.card_id for conflict in CONFLICTS}) == 18
-    retail = tuple(conflict for conflict in CONFLICTS if not conflict.bloodlines_only)
+    # only enter the pool with the option [Bloodlines p. 3], and Rise of Ix's
+    # Economic Supremacy, a fifth III only in Epic Game Mode [Main p. 18].
+    assert len(CONFLICTS) == 19
+    assert len({conflict.card.card_id for conflict in CONFLICTS}) == 19
+    retail = tuple(
+        conflict
+        for conflict in CONFLICTS
+        if not conflict.bloodlines_only and not conflict.epic_only
+    )
     assert Counter(conflict.tier for conflict in retail) == {
         ConflictTier.ONE: 3,
         ConflictTier.TWO: 9,
@@ -66,6 +71,9 @@ def test_conflict_manifest_has_the_official_tier_counts() -> None:
     assert Counter(
         conflict.tier for conflict in CONFLICTS if conflict.bloodlines_only
     ) == {ConflictTier.ONE: 1, ConflictTier.TWO: 1}
+    assert [
+        conflict.card.card_id for conflict in CONFLICTS if conflict.epic_only
+    ] == ["economic_supremacy"]
     assert all(conflict.card.catalog_url for conflict in CONFLICTS)
 
 
@@ -298,12 +306,16 @@ def test_conflict_reward_rejects_incomplete_compound_effects() -> None:
         ConflictReward(faction_influence=1)
     with pytest.raises(ValueError, match="cost and reward"):
         ConflictReward(optional_spice_cost=3)
-    with pytest.raises(ValueError, match="one cost type"):
-        ConflictReward(
-            optional_spice_cost=3,
-            optional_solari_cost=2,
-            optional_victory_points=1,
-        )
+    with pytest.raises(ValueError, match="cost and reward"):
+        ConflictReward(optional_victory_points=1)
+    # Two arrows in one row are allowed: Economic Supremacy's first place
+    # prints 6 Solari -> 1 VP and 4 spice -> 1 VP [Economic Supremacy card].
+    both = ConflictReward(
+        optional_spice_cost=4,
+        optional_solari_cost=6,
+        optional_victory_points=1,
+    )
+    assert (both.optional_spice_cost, both.optional_solari_cost) == (4, 6)
 
 
 def test_reserve_play_data_matches_the_printed_cards() -> None:

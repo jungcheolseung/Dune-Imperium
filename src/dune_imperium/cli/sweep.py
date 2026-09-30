@@ -23,6 +23,7 @@ def _ruleset_options(identifier: str) -> dict[str, bool]:
         "bloodlines": "+bloodlines" in identifier,
         "tech_module": "+tech" in identifier,
         "immortality": "+immortality" in identifier,
+        "epic_game": "+epic" in identifier,
         "arrakeen_scouts": "+scouts" in identifier,
     }
 
@@ -108,6 +109,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "start every Score marker at 0 (Immortality's Go to 11 variant) "
             "[Immortality p. 12]; requires --immortality"
+        ),
+    )
+    parser.add_argument(
+        "--epic",
+        action="store_true",
+        help=(
+            "play Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md): "
+            "to 12, Conflict II over III, Control the Spice, one Intrigue card "
+            "and five garrison troops [Rise of Ix p. 10]"
         ),
     )
     parser.add_argument(
@@ -227,6 +237,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         tech_module=arguments.tech_module,
         immortality=arguments.immortality,
         go_to_11=arguments.go_to_11,
+        epic_game=arguments.epic,
         arrakeen_scouts=arguments.arrakeen_scouts,
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,

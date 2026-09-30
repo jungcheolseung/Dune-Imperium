@@ -88,10 +88,20 @@ already use, so it reuses ``check_korean``/``check_english`` directly, and
 its own full-catalog sweep reuses ``check_icon_parity`` the same way
 ``check_all_cards_icon_parity`` does.
 
+Epic Game Mode (2026-09-28): Control the Spice pays with Smuggler's Haven's
+``pay_agent_card_spice``, so that action's label only says a card effect's
+cost is paid; the server's ``detail``/``detail_ko``
+(``display.actions.agent_card_payment_text``, pinned by
+``tests/server/test_sessions.py``
+``test_serialized_control_the_spice_payment_says_what_it_buys``) replaces the
+label on the buttons (``core.js`` ``DETAIL_REPLACES_LABEL``). A synthetic
+payment row checks that, and that the same action without a detail (a
+logged step) reads the label.
+
 Screenshots of the Contract/Conflict/personal-card/Intrigue/board-space/Tech
-popovers, the Agent-box and board-effect resolution rows and the Intrigue
-play row, Korean, 1440x900, go beside this script's results for a human to
-look at.
+popovers, the Agent-box and board-effect resolution rows, the Control the
+Spice payment row and the Intrigue play row, Korean, 1440x900, go beside
+this script's results for a human to look at.
 """
 
 from __future__ import annotations
@@ -700,6 +710,77 @@ def check_board_resolution_row_english(page) -> None:
     )
 
 
+# Control the Spice's payment (Epic Game Mode): the action id it shares with
+# Smuggler's Haven, with the detail the server sends for Control the Spice.
+PAYMENT_ACTION = {
+    "action_id": "pay_agent_card_spice",
+    "arguments": {},
+    "detail": "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
+    "detail_ko": "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}",
+}
+# The same action without a detail, as a logged step: the label.
+LABELLED_PAYMENT_ACTION = {**PAYMENT_ACTION, "detail": None, "detail_ko": None}
+
+LABEL_TEXT_JS = """(id) => {
+  const box = document.createElement("span");
+  box.appendChild(phrase(ACTION_LABELS[id]));
+  return box.textContent;
+}"""
+
+
+def check_payment_rows(page, language: str) -> None:
+    """The Control the Spice payment row shows its detail instead of the
+    shared label; the same action without a detail keeps the label."""
+
+    label = page.evaluate(LABEL_TEXT_JS, PAYMENT_ACTION["action_id"])
+    shown = page.evaluate(ROW_JS, PAYMENT_ACTION)
+    plain = page.evaluate(ROW_JS, LABELLED_PAYMENT_ACTION)
+    check.ok(
+        plain["text"] == label and plain["koSpans"] == 0,
+        f"{language} payment row without a detail (a logged step): the label",
+        (plain, label),
+    )
+    check.ok(
+        label not in shown["text"] and " — " not in shown["text"],
+        f"{language} Control the Spice payment row: the detail replaces the label",
+        (shown, label),
+    )
+    if language == "Korean":
+        check_icon_parity(
+            page,
+            "payment row",
+            "detail",
+            PAYMENT_ACTION["detail"],
+            PAYMENT_ACTION["detail_ko"],
+        )
+        check.ok(
+            shown["koSpans"] > 0 and shown["cardTextSpans"] == 0,
+            "Korean payment row: renders through .effect-text-ko, not .card-text",
+            shown,
+        )
+        check.ok(
+            "{" not in shown["text"] and "}" not in shown["text"],
+            "Korean payment row: no leftover {placeholder}",
+            shown,
+        )
+        _check_no_stray_latin("Korean payment row", shown["text"], [])
+        check.ok(
+            shown["icons"] >= 4,
+            "Korean payment row: draws spice, arrow, trash and troop icons",
+            shown,
+        )
+    else:
+        expected = page.evaluate(ICONIZE_TEXT_JS, PAYMENT_ACTION["detail"])
+        check.ok(
+            shown["cardTextSpans"] > 0
+            and shown["koSpans"] == 0
+            and shown["text"] == expected,
+            "English payment row: .card-text, matching an independent iconize() "
+            "reading",
+            (shown, expected),
+        )
+
+
 # A REAL resolve_board_effect decision (2026-09-25 review): the synthetic
 # BOARD_RESOLUTION_ACTION check above only proves describeAction() renders a
 # hand-built detail/detail_ko pair correctly -- it would keep passing even
@@ -992,6 +1073,27 @@ def main() -> None:
             _wait_for_popover_images(page)
             page.screenshot(path=str(shots / "effect_text_board_resolution_row_ko.png"))
 
+        print("[2c3] Korean: Control the Spice's payment row (Epic Game Mode)")
+        check_payment_rows(page, "Korean")
+        row_shot = page.evaluate(
+            """(actions) => {
+              const box = document.getElementById("card-popover");
+              box.classList.add("hover");
+              box.textContent = "";
+              for (const action of actions) {
+                const line = document.createElement("div");
+                line.className = "popover-line";
+                line.appendChild(describeAction(action));
+                box.appendChild(line);
+              }
+              return true;
+            }""",
+            [PAYMENT_ACTION, LABELLED_PAYMENT_ACTION],
+        )
+        if row_shot:
+            _wait_for_popover_images(page)
+            page.screenshot(path=str(shots / "effect_text_payment_rows_ko.png"))
+
         print("[2d] Korean: icon parity across every catalog card (2026-09-25 review)")
         check_all_cards_icon_parity(page)
 
@@ -1039,6 +1141,7 @@ def main() -> None:
         check_english(page, "Tech", TECH_ID)
         check_resolution_row_english(page)
         check_board_resolution_row_english(page)
+        check_payment_rows(page, "English")
         check_play_intrigue_rows_english(page)
         # ... and match iconize(condition/reward) computed independently.
         contract = page.evaluate("(id) => lookup(id)", CONTRACT_ID)

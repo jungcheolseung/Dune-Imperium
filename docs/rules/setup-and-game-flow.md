@@ -42,6 +42,7 @@
 3. Conflict II 9장을 따로 섞고 그중 5장을 Conflict III 위에 뒷면으로 놓는다. [Main p. 4]
 4. Conflict I 3장을 따로 섞고 그중 1장을 맨 위에 뒷면으로 놓는다. [Main p. 4]
 5. 완성된 덱은 위에서부터 I 1장, II 5장, III 4장이다. 사용하지 않는 I와 II 카드는 앞면을 보지 않고 상자로 돌려보낸다. [Main p. 4]
+6. Epic Game Mode(`epic_game` 옵션)에서는 Conflict I을 쓰지 않고 II 5장을 III 5장(Economic Supremacy 포함) 위에 놓는다 `[Rise of Ix p. 10]` `[Main p. 18]`([epic-game-mode.md](epic-game-mode.md)). 시작 덱의 Dune, the Desert Planet 1장이 Control the Spice로 바뀌고, garrison troop이 5개가 되며, 각자 Intrigue 1장을 뽑고, Endgame 점수가 12가 된다.
 
 ### 카드 공급처와 Leader
 

@@ -5,13 +5,28 @@ from pathlib import Path
 
 import pytest
 
+from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+)
 from dune_imperium.display.actions import (
     _ICON_CONDITIONS,
     _ICON_CONDITIONS_KO,
     agent_card_icon_text,
     agent_card_icon_text_ko,
+    effect_action_text,
+    effect_action_text_ko,
 )
+from dune_imperium.rules.engine import UprisingRulesEngine
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/unit/display/test_struct_text.py's identical comment).
@@ -124,3 +139,83 @@ def test_agent_card_icon_text_ko_appends_the_spice_this_turn_condition() -> None
 def test_agent_card_icon_text_ko_unknown_key_raises() -> None:
     with pytest.raises(KeyError):
         agent_card_icon_text_ko(None, "not_a_real_key")
+
+
+_ENGINE = UprisingRulesEngine()
+
+
+def _pay_spice(
+    config: RulesetConfig, card: str, space_id: str
+) -> tuple[GameState, DomainAction]:
+    """Seat 0 sends ``card`` to ``space_id``; return the spice payment then."""
+
+    owner = PlayerState(player_id=0, hand=(card,), resources=Resources(spice=4))
+    imperium = imperium_deck_instance_ids(False)
+    state = GameState(
+        config=config,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=("choam_security",),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    place = next(
+        action
+        for action in _ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments) == {"card_id": card, "space_id": space_id}
+    )
+    placed = _ENGINE.apply(state, place).state
+    payment = next(
+        action
+        for action in _ENGINE.legal_actions(placed, 0)
+        if action.action_id == "pay_agent_card_spice"
+    )
+    return placed, payment
+
+
+def test_control_the_spice_payment_says_what_it_buys() -> None:
+    # The shared pay_agent_card_spice is labelled for Smuggler's Haven's
+    # "4 spice -> 1 VP"; on Control the Spice it pays 1 spice to trash a card
+    # (black X, still optional [FAQ p. 3]) and recruit a troop
+    # (docs/rules/epic-game-mode.md 6), and the detail replaces the label.
+    placed, payment = _pay_spice(
+        RulesetConfig(epic_game=True),
+        "player:0:starter:control_the_spice:0",
+        "accept_contract",
+    )
+
+    english = effect_action_text(placed, payment)
+    korean = effect_action_text_ko(placed, payment)
+
+    assert english == "Pay 1 spice → Trash a card (optional) + Recruit 1 troop"
+    assert korean == "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}"
+    assert_placeholders_are_terms(korean, terms_keys())
+    assert_no_stray_latin(korean)
+    assert_trash_and_discard_match(english, korean)
+
+
+def test_smugglers_haven_payment_says_what_it_buys() -> None:
+    haven = next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if ":smuggler_s_haven:" in instance_id
+    )
+    placed, payment = _pay_spice(RulesetConfig(), haven, "deliver_supplies")
+
+    # The shared action's client label only says a cost is paid, so the
+    # button names this card's reward too.
+    assert effect_action_text(placed, payment) == "Pay 4 spice → Gain 1 VP"
+    assert effect_action_text_ko(placed, payment) == (
+        "{spice:4} 지불 {arrow_right} {victory_point:1}"
+    )

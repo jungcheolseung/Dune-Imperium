@@ -85,7 +85,7 @@ def test_conflict_setup_builds_tiered_deck_and_tracks_unused_cards() -> None:
     tier_by_id = {
         conflict.card.card_id: conflict.tier
         for conflict in CONFLICTS
-        if not conflict.bloodlines_only
+        if not conflict.bloodlines_only and not conflict.epic_only
     }
 
     assert len(setup.deck) == 10
@@ -111,7 +111,7 @@ def test_bloodlines_adds_its_two_conflicts_to_the_tier_pools() -> None:
     assert len(setup.deck) == 10
     assert len(set(setup.unused)) == 8
     assert set(setup.deck) | set(setup.unused) == {
-        conflict.card.card_id for conflict in CONFLICTS
+        conflict.card.card_id for conflict in CONFLICTS if not conflict.epic_only
     }
     with pytest.raises(ValueError):
         build_conflict_setup(outcomes)

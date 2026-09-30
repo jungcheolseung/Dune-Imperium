@@ -2,7 +2,7 @@
 
 ## 규칙 권위
 
-현재 규칙 명세는 다음 공식 자료만을 규칙 근거로 사용한다. 앞의 세 문서가 4인 Uprising 기본 룰셋의 근거이고, Bloodlines 룰북은 2026-09-07에 추가된 `bloodlines`·`tech_module` 옵션의, Immortality 룰북은 2026-09-08에 추가된 `immortality` 옵션과 2026-09-28에 추가된 `go_to_11` 옵션의 근거다.
+현재 규칙 명세는 다음 공식 자료만을 규칙 근거로 사용한다. 앞의 세 문서가 4인 Uprising 기본 룰셋의 근거이고, Bloodlines 룰북은 2026-09-07에 추가된 `bloodlines`·`tech_module` 옵션의, Immortality 룰북은 2026-09-08에 추가된 `immortality` 옵션과 2026-09-28에 추가된 `go_to_11` 옵션의, Rise of Ix 룰북은 2026-09-28에 추가된 `epic_game` 옵션의 근거다.
 
 | 식별자 | 공식 자료 | 확인한 버전 | 현재 범위 |
 | --- | --- | --- | --- |
@@ -11,6 +11,7 @@
 | `FAQ` | [Errata and Frequently Asked Questions](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf) | 문서 표기 `Last Updated January 13, 2025`, 4쪽 | 4인 Uprising에 적용되는 항목 |
 | `Bloodlines` | [Bloodlines Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2024, 12쪽 | `bloodlines`/`tech_module` 옵션의 규범 규칙 pp. 2-7, 12; 범위 밖 pp. 8-10 |
 | `Immortality` | [Immortality Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_IMMORTALITY_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2022, 16쪽 | `immortality`/`go_to_11` 옵션의 규범 규칙 pp. 3-12, 14, 16; 범위 밖 p. 13 |
+| `Rise of Ix` | [Rise of Ix Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_RISE_OF_IX_Rulebook_22-2-11.pdf) | 공식 asset 이름 `22-2-11`, © 2021, 12쪽 | `epic_game` 옵션의 규범 규칙 p. 10(구성물·아이콘 pp. 2, 12); 나머지는 범위 밖 |
 
 공식 진입점은 [Dire Wolf Digital 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)와
 [Uprising 룰북 페이지](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)다.
@@ -27,6 +28,7 @@
 | `FAQ` | `7b54c283357244e5107d1d0f4e87817d39297e914c2014239acbb2c460c0c6b9` |
 | `Bloodlines` | `5f0b4646ab59f467a1027b95e2b6f67809c77c224d98ddab26dd661d7e2b042a` |
 | `Immortality` | `2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79` |
+| `Rise of Ix` | `ca010552db0b043cb8630352f95eafb06bfe50ba4dc5a7bd318eb5b24a03658f` |
 
 같은 URL과 checksum은 자동 검증 도구가 읽는
 [`scripts/official-rule-sources.json`](../../scripts/official-rule-sources.json)에
@@ -54,13 +56,25 @@ Immortality 룰북은 공식 리소스 페이지의 "Immortality Rules" 링크(�
 2026-09-08에 받아 위 checksum을 고정했다. Uprising Main Rulebook p. 18의 "Adding
 Immortality"가 Uprising과의 조합을 공식 지원하므로(Research Station overlay만
 지시) 4인 게임에 적용되는 규칙(pp. 3-12)과 clarification(p. 14), 아이콘 정의
-(p. 16)를 [immortality.md](immortality.md)에 반영하며, 솔로 규칙(p. 13)과
-Rise of Ix 조합 변형(p. 12)은 범위 밖이다. 같은 쪽의 Go to 11 변형은
-2026-09-28부터 `go_to_11` 옵션이다(OQ-091). 2025-01-13 FAQ의 Immortality 항목
+(p. 16)를 [immortality.md](immortality.md)에 반영하며, 솔로 규칙(p. 13)은 범위
+밖이다. p. 12의 Go to 11 변형은 2026-09-28부터 `go_to_11` 옵션이고(OQ-091), 같은
+쪽의 Rise of Ix Epic Game Mode 조합 문단은 같은 날부터 `epic_game` 옵션과 함께
+적용한다([epic-game-mode.md](epic-game-mode.md) 4절). 2025-01-13 FAQ의 Immortality 항목
 (Beguiling Pheromones, Chairdog, Ghola, Tleilaxu track)은 적용한다. Bene
 Tleilax board의 research·Tleilaxu track은 룰북에 실린 공식 board 그림
 (`[Immortality p. 3 board artwork]`)에서 전사했고, 카드의 인쇄 텍스트는 카드면
 (`SourceDocument.CARD_FACE`)을 근거로 전사한다.
+
+### Rise of Ix 룰북
+
+Rise of Ix 룰북은 공식 리소스 페이지의 영어판 링크(위 URL)에서 2026-09-28에 받아
+위 checksum을 고정했다. 원판 Dune: Imperium용 확장이며, 이 프로젝트는 확장 전체가
+아니라 **Epic Game Mode**(p. 10)만 `epic_game` 옵션으로 쓴다(OQ-092). 그 쪽의 규칙과
+구성물 목록(p. 2), Epic Game Only 아이콘 정의(p. 12)를 [epic-game-mode.md](epic-game-mode.md)에
+반영하며, Uprising과의 조합은 Main p. 18의 "Adding Rise of Ix"(Economic Supremacy를
+다섯 번째 Conflict III로)를 따른다. Ix board·Tech tile·dreadnought·Rise of Ix 카드와
+Leader, 1·2인 규칙, p. 10의 카드 clarification은 범위 밖이다. Control the Spice와
+Economic Supremacy의 인쇄 텍스트는 카드면(`SourceDocument.CARD_FACE`)에서 전사한다.
 
 ### Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
 
@@ -103,7 +117,7 @@ Game Room**에 들어 있는 Dune: Imperium 컴패니언(내부 이름 `grm.comp
 ### 한국어 룰북 (UI 용어집 전용, 규칙 근거 아님)
 
 공식 리소스 페이지는 같은 룰북의 한국어판도 배포한다(국내 유통 Korea
-Boardgames). 2026-09-20에 아래 네 문서를 받아 checksum을 고정하고 manifest에
+Boardgames). 2026-09-20에 아래 문서 넷을, 2026-09-28에 Rise of Ix를 받아 checksum을 고정하고 manifest에
 `*-ko` 항목으로 더했다. 용도는 **브라우저 UI의 한국어 용어를 정하는 것 하나**이며,
 [`glossary-ko.md`](glossary-ko.md)가 그 대조표다.
 
@@ -113,11 +127,12 @@ Boardgames). 2026-09-20에 아래 네 문서를 받아 checksum을 고정하고 
 | `board-guide-ko` | [KR] Uprising Supplements | 14 (EN과 동일) | `cd763a87485bbf795f556ed03e84f9191b7d7a10e9aedc6ef7b256717996b774` |
 | `bloodlines-ko` | [KR] Bloodlines Rules | 12 (EN과 동일) | `d65509007618c81971e652d45e84fb2b36a2eb7ff38525214daaad03aac0fc21` |
 | `immortality-ko` | [KR] Immortality Rules | 16 (EN과 동일) | `b02ff637ee480d9e58ffc758f30c6bfc02bbfa88bb5d8491bc328be70d7a737b` |
+| `rise-of-ix-ko` | [KR] Rise of Ix Rules | 12 (EN과 동일) | `177a00b5efa4a0fec42f02e34314dcbb9c37bab9429448d76a82addba9529bfb` |
 
 URL은 모두 `https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_...pdf`이고
 manifest에 적혀 있다. **한국어 FAQ는 존재하지 않는다**(FAQ는 영어판만 배포된다).
 
-네 문서 모두 영어판과 **쪽수가 정렬돼 있어** 같은 쪽에 같은 내용이 온다. 그래서
+다섯 문서 모두 영어판과 **쪽수가 정렬돼 있어** 같은 쪽에 같은 내용이 온다. 그래서
 `glossary-ko.md`의 인용 `[Main p. N]`은 EN·KR 두 룰북의 같은 쪽을 함께 가리킨다.
 
 **규칙 판정 근거는 영어판이다.** 한국어판은 번역본이므로 두 판이 어긋나 보이면

@@ -380,6 +380,11 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START: (
         "{reveal_turn} 시작 시, 다른 {graft} 카드를 {in_play}에서 핸드로 되돌림"
     ),
+    # Control the Spice: MAY_PAY_FOUR_SPICE_FOR_VP's arrow wording, then
+    # RECRUIT_ONE_AND_MAY_TRASH's two rewards in the printed order.
+    PersonalCardAgentEffect.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT: (
+        "{spice:1} 지불 가능 {arrow_right} 카드 1장 {trash} 가능, {troop:1}"
+    ),
     PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
         "{influence_bene_gesserit} 2 이상이면: {water:1}, "
         "{influence_fremen} 2 이상이면: {spice:1}"
