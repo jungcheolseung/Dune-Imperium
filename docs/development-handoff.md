@@ -48,7 +48,37 @@ uv run mypy src tests
 
 ## 다음 구현 순서
 
-**현재 위치(2026-09-30 저녁).** Arrakeen Scouts D8 검토 1~3차와 OQ-076 대안 C(소위원회 가입은 원로회 자리를 차지한 turn 안 아무 때나 — 원로회 진입 → "소위원회 선택" → 종류 고르기, 되돌릴 수 있음; Corrinth City는 가입하거나 거절해야 Reveal이 끝남), 기본 엔진의 Round Start 규칙 순서, 게임 전체 선택 불가 표시 1단계를 반영했고, 같은 날 저녁 **epic-game-mode를 병합**했으며(codec v124·관측 v28, OQ-092~094), Scouts 게임에 **체크포인트·탐색 AI 좌석**을 허용했고(학습하지 않은 템플릿만 있는 결정은 heuristic이 답한다), **보드 위 임무 조각**과 Scouts 로그 라벨(`8b8e8b6`)도 들어왔다(아래 요약). **다른 세션에서 할 일(문서와 작업 제안이 있다):** (1) [`explicit-turn-end-plan.md`](explicit-turn-end-plan.md) — 모든 Agent 턴을 "턴 종료"로만 닫는다(사용자 2026-09-30, 세 번째 지적; 지금 엔진은 마지막 효과와 함께 턴을 닫아 그 뒤의 Plot·Family Atomics·표본 반환이 막히고 OQ-076의 spice 한계가 생긴다). (2) [`unavailable-options-plan.md`](unavailable-options-plan.md) — 선택 불가 표시 3단계(18곳 전부; 영향력 6인 진영과 다 떨어진 Reserve 줄도 보인다), 자동 처리 없애기(사막의 힘 (B); 신성한 전쟁은 선택지가 하나여도 잃는 좌석에게 묻는다 — OQ-036 (a) 뒤집음), Harvest Cells 숨은 정보 문제(고위험). **(1)과 (2)의 자동 처리 없애기는 둘 다 턴 흐름과 codec을 바꾸므로 동시에 하지 말고 (1)을 먼저 한다**(다음 codec 번호는 v125). 사용자 결정(2026-09-29): 보드 칸은 갈 수 있는 칸을 이미 밝히므로 갈 수 없는 칸에는 따로 표시하지 않는다. Mercenaries의 단독 양수 입찰자는 전부 후퇴할 수 있다(OQ-074 확인). 2026-09-30 밤 사용자가 푸시했다(`79b14b9`까지). 그 뒤 교전 결과 줄의 "Null" 수정 `127ad51`(지도자 드래프트 없는 게임에서 setup이 공개한 첫 Conflict의 이름을 로그 대신 `conflict_won`·보드에서 읽는다)을 병합했다(`1222dd8`, 미푸시). 푸시된 브랜치의 worktree·브랜치(`epic-game-mode`, `merge-epic-game-mode`, `scouts-ai-seats`, `exciting-brahmagupta-1753f3`)는 정리했고, `keen-pasteur-e698d0`은 푸시 뒤 정리한다. 원문은 `scripts/dwgr/show_text.py <loc 키>`(`--para`로 문단 거르기)로 본다. 그다음 푸시(D9, 사용자가 말할 때).
+**현재 위치(2026-09-30 저녁).** Arrakeen Scouts D8 검토 1~3차와 OQ-076 대안 C(소위원회 가입은 원로회 자리를 차지한 turn 안 아무 때나 — 원로회 진입 → "소위원회 선택" → 종류 고르기, 되돌릴 수 있음; Corrinth City는 가입하거나 거절해야 Reveal이 끝남), 기본 엔진의 Round Start 규칙 순서, 게임 전체 선택 불가 표시 1단계를 반영했고, 같은 날 저녁 **epic-game-mode를 병합**했으며(codec v124·관측 v28, OQ-092~094), Scouts 게임에 **체크포인트·탐색 AI 좌석**을 허용했고(학습하지 않은 템플릿만 있는 결정은 heuristic이 답한다), **보드 위 임무 조각**과 Scouts 로그 라벨(`8b8e8b6`)도 들어왔다(아래 요약). **다른 세션에서 할 일(문서와 작업 제안이 있다):** (1) [`explicit-turn-end-plan.md`](explicit-turn-end-plan.md) — 모든 Agent 턴을 "턴 종료"로만 닫는다(사용자 2026-09-30, 세 번째 지적; 지금 엔진은 마지막 효과와 함께 턴을 닫아 그 뒤의 Plot·Family Atomics·표본 반환이 막히고 OQ-076의 spice 한계가 생긴다). (2) [`unavailable-options-plan.md`](unavailable-options-plan.md) — 선택 불가 표시 3단계(18곳 전부; 영향력 6인 진영과 다 떨어진 Reserve 줄도 보인다), 자동 처리 없애기(사막의 힘 (B); 신성한 전쟁은 선택지가 하나여도 잃는 좌석에게 묻는다 — OQ-036 (a) 뒤집음), Harvest Cells 숨은 정보 문제(고위험). **(1)과 (2)의 자동 처리 없애기는 둘 다 턴 흐름과 codec을 바꾸므로 동시에 하지 말고 (1)을 먼저 한다**(다음 codec 번호는 v125). 사용자 결정(2026-09-29): 보드 칸은 갈 수 있는 칸을 이미 밝히므로 갈 수 없는 칸에는 따로 표시하지 않는다. Mercenaries의 단독 양수 입찰자는 전부 후퇴할 수 있다(OQ-074 확인). 2026-09-30 밤 사용자가 푸시했다(`79b14b9`까지). 그 뒤 교전 결과 줄의 "Null" 수정 `127ad51`(지도자 드래프트 없는 게임에서 setup이 공개한 첫 Conflict의 이름을 로그 대신 `conflict_won`·보드에서 읽는다)을 병합했다(`1222dd8`). 아래 "작업 배분"을 적은 커밋까지 푸시했고, 병합을 마친 worktree·브랜치는 모두 정리했다(`epic-game-mode`, `merge-epic-game-mode`, `scouts-ai-seats`, `exciting-brahmagupta-1753f3`, `keen-pasteur-e698d0`). 원문은 `scripts/dwgr/show_text.py <loc 키>`(`--para`로 문단 거르기)로 본다. 푸시는 사용자가 말할 때만 한다(D9).
+
+### 작업 배분 — 다음 세션들 (2026-09-30 사용자 결정)
+
+사용자는 남은 일을 둘로 나눠 진행한다: **로컬 자료가 필요한 일은 이 Mac mini에서 Codex로, 필요 없는 일은 Claude 클라우드 세션으로.**
+새 세션은 이 절에서 자기 몫을 고르고, 해당 계획 문서를 처음부터 읽은 뒤 시작한다. 두 계획 문서는 도구 중립이다
+("subagent", "독립 리뷰 agent"는 Codex에서는 별도 검토 단계로 읽는다).
+
+로컬에만 있는 것: 학습 체크포인트(`checkpoints/`, git 밖 — 예: `checkpoints/2026-09-27/ext-v111/C/iteration_07081.pt`, 평가 문제집을
+다시 캐는 5081 champion), 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`; 보드 스캔·카드 그림 — 없으면 UI는 합성 grid로
+그리고 보드 조각 E2E가 제대로 돌지 않는다), 몇 시간짜리 자동 대전·학습을 돌릴 기계, DWGR 앱 설치본(`scripts/dwgr/`).
+
+| 순서 | 작업 | 어디서 | 문서 | 비고 |
+|---|---|---|---|---|
+| L1 | Agent 턴은 "턴 종료"로만 닫기 | **로컬(Codex)** | [`explicit-turn-end-plan.md`](explicit-turn-end-plan.md) | 게임 흐름이 바뀌어 tips-v1을 다시 캐야 한다(5081 체크포인트, [`evaluation/problem-set.md`](evaluation/problem-set.md) "다시 캐는 명령"). 착수 때 사용자에게 8절의 Q1(Withdrawn·Litany Against Fear로 넘긴 턴에서도 누르기 전에 Plot 등을 할 수 있나), Q2(v111 재적응 실행 여부)를 묻는다. |
+| L2 | 자동 처리 → 결정 창 | **로컬(Codex)**, L1 **뒤** | [`unavailable-options-plan.md`](unavailable-options-plan.md) 5절 | L1과 같이 턴 흐름·codec을 바꾸므로 동시에 하지 않는다. 사막의 힘은 (B), 신성한 전쟁은 선택지가 하나여도 묻는다(OQ-036 (a), 다시 묻지 않는다). tips-v1 재채굴. |
+| L3 | (나중) v111 재적응, Scouts를 학습 설정에 | 로컬 | 이 문서 M10 절 | 몇 시간짜리 실행은 착수 전에 사용자에게 묻는다. |
+| C1 | 선택 불가 표시 3단계(18곳) | **Claude 클라우드** | [`unavailable-options-plan.md`](unavailable-options-plan.md) 1~4·7절 | 화면만(합법 행동·codec·관측·저장 불변)이라 pytest로 검증된다. 보드 스캔이 필요한 E2E·스크린샷 확인은 병합 전에 로컬에서 한 번. |
+| C2 | Harvest Cells 숨은 정보 문제 | **Claude 클라우드** | [`unavailable-options-plan.md`](unavailable-options-plan.md) 6절 | 고위험(숨은 정보·제시 행동): 독립 리뷰, `--privacy-interval` 소크. tips-v1 테스트가 깨지면 재채굴만 로컬로 넘긴다. |
+
+병행 규칙:
+
+- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v124, 다음 v125). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
+  (epic 병합 때와 같다: 버전 주석에 양쪽 뜻을 모두 남기고 golden digest는 문서화된 절차로 다시 핀한다). 관측 버전도 같다(지금 v28).
+- **충돌.** C1은 여러 `rules/` 공급자 함수에 막힘 판정을 드러내고, L1은 `rules/effects.py`·`combat_deployment.py`·`agent_effect_frame.py`·
+  `engine.py`·`server/sessions.py`를 고친다. 함께 진행하면 작게 자주 master에 합친다. 합칠 때는 master 쪽에서 `--no-ff`로 합친다.
+- **시작 전.** 어느 도구든 세션 시작 체크리스트(위)대로 `git fetch origin` 후 양방향 비교를 먼저 한다 — 여러 기계·도구가 같은 master에 쓴다.
+- 이 Mac의 Claude 앱에 만들어 둔 작업 제안 카드(같은 작업들)는 쓰지 않아도 된다; 위 표와 계획 문서가 같은 내용을 담는다.
+
+급하지 않은 사용자 결정 거리(보드 위 임무 조각, `a195676`): 관측소 위 Solari 동전이 인쇄된 아이콘처럼 보인다; CHOAM Escort 물품은
+좌석 세부를 펼쳐야 Contract 옆에 보인다(Scouts 패널 목록에는 늘 있다).
 
 **현재 위치(2026-09-26 저녁).** 카드·보드 전사 전수 감사로 규칙 약 130건(기본판 카드 포함)이 바뀌었고(아래 "2026-09-26 카드·보드
 전사 전수 감사" 세션 요약), 저녁에 OQ-066·068·069를 사용자 판정대로 반영했다(codec **v109**, 관측 v20; 아래 "2026-09-26 저녁 OQ 판정" 요약).
@@ -105,7 +135,7 @@ Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(아라�
 `RulesetConfig(arrakeen_scouts=True)`(새 게임 화면의 체크박스, 기본 꺼짐)로 들어갔다. 설계 12절의 D1~D9를 사용자가 정했고 슬라이스 1~10을 모두 끝냈다.
 - 규범 명세 [`rules/arrakeen-scouts.md`](rules/arrakeen-scouts.md)(11절에 슬라이스별 구현 상태), 설계 [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md), 감사 [`implementation-audits/arrakeen-scouts.md`](implementation-audits/arrakeen-scouts.md).
 - **D8 일괄 검토는 끝났다(2026-09-29~30).** OQ-071~OQ-090을 사용자와 1~3차로 검토해 바뀐 판정을 규칙 변경으로 반영했고(명세 인용·회귀 테스트), 마지막으로 OQ-076 대안 C(소위원회 가입을 자리를 차지한 turn 안 아무 때나)를 넣었다. 판정과 근거는 각 OQ 항목과 아래 세션 요약에 있다. 남은 Scouts 관련 일은 게임 전체의 선택 불가 표시·자동 처리 없애기 계획([`unavailable-options-plan.md`](unavailable-options-plan.md))에 들어 있다.
-- **다음 할 일 2: 푸시.** 사용자가 말할 때만 푸시한다(이 세션의 커밋은 모두 로컬 master에 있다).
+- **푸시.** 2026-09-30 밤 푸시했다. 앞으로도 사용자가 말할 때만 푸시한다(D9). 남은 일의 배분은 위 "작업 배분" 절.
 - 2026-09-30 저녁: 보드 그림 위의 임무 조각(`a195676`)과 Scouts 게임의 `checkpoint:`·`search:` 좌석(`b7cf49c`, D6 변경)을 끝냈다. 후속 후보: 학습 배선(Scouts를 M10 학습 설정에 넣기 — D6대로 아직 안 함; 지금 체크포인트는 Scouts 결정의 82~91%가 학습하지 않은 템플릿뿐이라 heuristic에게 넘긴다), 앱 업데이트 시 `scripts/dwgr/extract.py` 재추출과 `diff -r`.
 - 숨은 정보: 비밀 선택과 봉인 입찰은 좌석 한정 id로 `known_card_seats`에 들어가 로그 가림·되돌리기 경계·소크 누출 검사·탐색 AI 재추첨이 모두 같은 등록부를 읽는다. 슬라이스 7·8은 독립 리뷰를 거쳤다(7에서 누출 두 건을 고쳤다).
 
