@@ -26,8 +26,6 @@ from dataclasses import dataclass
 
 from dune_imperium.agents import Agent, StateAgent
 from dune_imperium.agents.registry import (
-    CHECKPOINT_PREFIX,
-    SEARCH_PREFIX,
     is_agent_kind,
     make_agent,
 )
@@ -367,13 +365,6 @@ def tournament_specs(
         epic_game=epic_game,
     )
     lineup = fill_lineup(agents)
-    if arrakeen_scouts:
-        for kind in lineup:
-            if kind.startswith((CHECKPOINT_PREFIX, SEARCH_PREFIX)):
-                raise ValueError(
-                    "checkpoint and search seats cannot play Arrakeen Scouts: "
-                    "their policy was trained without it"
-                )
     rotations = seat_rotations(lineup) if rotate_seats else (lineup,)
     return tuple(
         MatchSpec(

@@ -1,9 +1,11 @@
 """Tests for the framework-neutral game sessions of the play server."""
 
 import json
+from pathlib import Path
 
 import pytest
 
+from dune_imperium import RulesetConfig
 from dune_imperium.server.sessions import (
     GameSessionManager,
     SeatAccessError,
@@ -423,23 +425,56 @@ def test_creation_validates_seats_and_seeds() -> None:
         manager.create_game(ALL_AI, game_seed=-1)
 
 
-def test_arrakeen_scouts_rejects_checkpoint_and_search_seats() -> None:
+def test_arrakeen_scouts_game_seats_checkpoint_and_search_seats(
+    tmp_path: Path,
+) -> None:
+    # Design D6 (user decision 2026-09-30): trained seats may sit at an
+    # Arrakeen Scouts table. The file below was trained without Scouts, so
+    # its policy head is moved onto the Scouts catalog (as for Epic,
+    # OQ-092), and each seat plays its decisions up to the human's turn.
+    torch = pytest.importorskip("torch")
+    from dune_imperium.adapters.action_codec import ActionCodec
+    from dune_imperium.core.actions import DomainAction
+    from dune_imperium.training.checkpoint import save_checkpoint
+    from dune_imperium.training.network import PolicyValueNetwork
+
+    base = RulesetConfig()
+    codec = ActionCodec(base)
+    torch.manual_seed(0)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path,
+        PolicyValueNetwork(codec.size, hidden=(32,)),
+        ruleset=base.identifier,
+        iteration=1,
+        codec=codec,
+    )
     manager = GameSessionManager()
 
-    with pytest.raises(
-        SessionError, match="checkpoint and search seats cannot play Arrakeen Scouts"
+    # Seeds whose first round lets the trained seat act before the human.
+    for seats, trained_seat, game_seed in (
+        ((f"checkpoint:{path}", "random", "random", "human"), 0, 22),
+        (("human", f"search:{path}", "random", "random"), 1, 27),
     ):
-        manager.create_game(
-            ("human", "checkpoint:/nonexistent.pt", "random", "random"),
-            arrakeen_scouts=True,
+        summary = manager.create_game(
+            seats, game_seed=game_seed, arrakeen_scouts=True
         )
-    with pytest.raises(
-        SessionError, match="checkpoint and search seats cannot play Arrakeen Scouts"
-    ):
-        manager.create_game(
-            ("human", "search:/nonexistent.pt", "random", "random"),
-            arrakeen_scouts=True,
-        )
+        assert summary["arrakeen_scouts"] is True
+        session = manager._sessions[_text(summary["game_id"])]
+        from dune_imperium.agents.network_search_agent import NetworkSearchAgent
+        from dune_imperium.training.torch_policy import NetworkAgent
+
+        agent = session.agents[trained_seat]
+        greedy = agent.greedy if isinstance(agent, NetworkSearchAgent) else agent
+        assert isinstance(greedy, NetworkAgent)
+        assert greedy.codec.config.arrakeen_scouts
+        assert greedy.untrained
+        played = [
+            step
+            for step in session.steps
+            if isinstance(step, DomainAction) and step.actor == trained_seat
+        ]
+        assert played, f"seat {trained_seat} never decided before the human"
 
 
 def test_arrakeen_scouts_game_is_created_with_random_and_heuristic_seats() -> None:

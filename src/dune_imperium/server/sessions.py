@@ -1448,13 +1448,6 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
-        if config.arrakeen_scouts and assignment.startswith(
-            (CHECKPOINT_PREFIX, SEARCH_PREFIX)
-        ):
-            raise SessionError(
-                "checkpoint and search seats cannot play Arrakeen Scouts: "
-                "their policy was trained without it"
-            )
 
 
 def _build_agents(
@@ -1466,7 +1459,7 @@ def _build_agents(
     observation or codec version, or an absent ``train`` extra surfaces as
     a session error instead of a crash while the game advances. It answers
     for ``config``'s catalog, so it may sit at a ruleset it was not trained
-    on, such as Epic Game Mode (OQ-092).
+    on, such as Epic Game Mode (OQ-092) or Arrakeen Scouts (design D6).
     """
 
     agents: dict[int, Agent] = {}
