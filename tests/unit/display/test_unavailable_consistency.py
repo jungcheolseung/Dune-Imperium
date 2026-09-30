@@ -130,8 +130,18 @@ CONFIGS = [
         promo_cards=True,
         arrakeen_scouts=True,
     ),
+    RulesetConfig(epic_game=True),
+    RulesetConfig(choam_module=True, epic_game=True, arrakeen_scouts=True),
 ]
-IDS = ["base", "choam", "bloodlines-tech", "immortality", "everything-scouts"]
+IDS = [
+    "base",
+    "choam",
+    "bloodlines-tech",
+    "immortality",
+    "everything-scouts",
+    "epic",
+    "epic-choam-scouts",
+]
 
 
 def _decisions(

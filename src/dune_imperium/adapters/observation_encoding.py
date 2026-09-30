@@ -98,9 +98,13 @@ from dune_imperium.rules.frames import FrameKind
 # universe (after the Objectives); the Conflict universe grows at its end.
 # One "epic_game" flag (1 in an Epic game: the Endgame opens at 12, not 10)
 # is appended after every Arrakeen Scouts segment. Every older column keeps
-# its segment offset, so a v25..v27 checkpoint migrates by segment. (Built
-# as v26 on the epic-game-mode branch; renumbered when it was merged onto
-# the line that had meanwhile used v26 and v27.)
+# its segment offset, so a v25..v27 checkpoint migrates by segment. A v26
+# file also knew the since-removed scouts_top_up frame kind; the frame kind
+# is one global scalar (kind index + 1), which migration keeps as it is, and
+# scouts_top_up was the last kind, so every other kind still reads the value
+# the file saw and the top-up's value never occurs again. (Built as v26 on
+# the epic-game-mode branch; renumbered when it was merged onto the line
+# that had meanwhile used v26 and v27.)
 OBSERVATION_VERSION: Final = 28
 _SEATS: Final = 4
 
