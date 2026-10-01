@@ -1019,7 +1019,6 @@ def test_planetary_array_last_effect_trash_credits_this_turn() -> None:
     visited = _visit(state, "assembly_hall")
     bought = _acquire(visited, "planetary_array")
     assert bought.decision_stack[-1].kind == "optional_trash"
-    assert dict(bought.decision_stack[-1].context).get("turn_closed") is None
     # The trash offer sits on the owner's still-open Agent turn.
     beneath = bought.decision_stack[-2]
     assert beneath.kind == "agent_effects"

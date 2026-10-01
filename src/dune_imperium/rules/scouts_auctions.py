@@ -568,13 +568,15 @@ def apply_take(state: GameState, action: DomainAction) -> RuleResult:
         resources=replace(owner.resources, spice=owner.resources.spice - amount),
     )
     working = replace(popped, players=replace_player(popped.players, paid))
+    # The Scouts step runs outside any turn (no turn frame is on the stack),
+    # so ``turn_owner_of`` finds none and nothing this acquisition recruits
+    # joins a turn's deployment allowance.
     acquired = acquire_imperium_for_intrigue(
         working,
         player,
         instance_id,
         to_hand=True,
         source=source,
-        credit_turn_recruits=False,
         from_market=True,
     )
     next_state = acquired.result.state

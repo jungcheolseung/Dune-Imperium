@@ -222,22 +222,12 @@ def advance_tleilaxu(
 # --- research track ------------------------------------------------------
 
 
-def advance_research(
-    state: GameState, player: int, *, source: str, turn_closed: bool = False
-) -> RuleResult:
+def advance_research(state: GameState, player: int, *, source: str) -> RuleResult:
     """Trigger one Research icon for ``player``.
 
     Past the second genetic marker the icon draws a card instead
     [Immortality p. 6]. With a single rightward space the token moves at
     once; with two the owner chooses through a ``RESEARCH_ADVANCE`` frame.
-
-    ``turn_closed`` marks a Research icon triggered by a box whose own
-    ``advance_after_effect`` call already closed the owner's turn: a
-    ``TRASH_AND_SPECIMEN`` bonus's trash then belongs to the turn that just
-    closed, not to whatever fresh "turn" frame happens to sit beneath the
-    trash offer (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. The flag carries
-    through the direction choice, since the token may not move until the
-    owner picks one.
     """
 
     if not state.config.immortality:
@@ -260,20 +250,14 @@ def advance_research(
         )
     options = research_next_space_ids(owner.research_space)
     if len(options) == 1:
-        return move_research_token(
-            state, player, options[0], source=source, turn_closed=turn_closed
-        )
+        return move_research_token(state, player, options[0], source=source)
     frame = DecisionFrame(
         kind=FrameKind.RESEARCH_ADVANCE,
         frame_id=f"{source}:research_advance",
         decision=PlayerDecision(
             owner=player, prompt="Choose where to advance your research token"
         ),
-        context=(
-            ("player", player),
-            ("source", source),
-            *((("turn_closed", True),) if turn_closed else ()),
-        ),
+        context=(("player", player), ("source", source)),
     )
     return RuleResult(state=state.push_decision(frame), events=())
 
@@ -306,14 +290,9 @@ def apply_research_advance(state: GameState, action: DomainAction) -> RuleResult
     frame = state.decision_stack[-1]
     context = dict(frame.context)
     source = context_str(context, "source", owner=_ADVANCE_LABEL)
-    turn_closed = context.get("turn_closed") is True
     space_id = str(dict(action.arguments)["space_id"])
     return move_research_token(
-        state.pop_decision(),
-        action.actor,
-        space_id,
-        source=source,
-        turn_closed=turn_closed,
+        state.pop_decision(), action.actor, space_id, source=source
     )
 
 
@@ -323,7 +302,6 @@ def move_research_token(
     space_id: str,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
     """Advance the token to ``space_id`` and resolve the printed bonus."""
 
@@ -365,9 +343,7 @@ def move_research_token(
             )
         )
     events.extend(helix)
-    bonus = _resolve_research_bonus(
-        moved, player, space.bonus, source=step_source, turn_closed=turn_closed
-    )
+    bonus = _resolve_research_bonus(moved, player, space.bonus, source=step_source)
     return RuleResult(state=bonus.state, events=(*events, *bonus.events))
 
 
@@ -377,7 +353,6 @@ def _resolve_research_bonus(
     bonus: ResearchBonus,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
     owner = state.players[player]
     match bonus:
@@ -388,16 +363,14 @@ def _resolve_research_bonus(
         case ResearchBonus.TLEILAXU:
             return advance_tleilaxu(state, player, 1, source=source)
         case ResearchBonus.RESEARCH:
-            return advance_research(
-                state, player, source=source, turn_closed=turn_closed
-            )
+            return advance_research(state, player, source=source)
         case ResearchBonus.TRASH_AND_SPECIMEN:
             # A black trash icon is optional [Main p. 20]; the specimen is
             # not.
             specimen = generate_specimens(state, player, 1, source=source)
             return RuleResult(
                 state=specimen.state.push_decision(
-                    optional_trash_frame(player, source, turn_closed=turn_closed)
+                    optional_trash_frame(player, source)
                 ),
                 events=specimen.events,
             )
@@ -440,7 +413,7 @@ def _resolve_research_bonus(
         case ResearchBonus.INFLUENCE_ANY:
             return RuleResult(
                 state=state.push_decision(
-                    _bonus_frame(player, bonus, source, turn_closed=turn_closed)
+                    _bonus_frame(player, bonus, source)
                 ),
                 events=(),
             )
@@ -451,7 +424,7 @@ def _resolve_research_bonus(
                 return _bonus_unavailable(state, player, bonus, source)
             return RuleResult(
                 state=state.push_decision(
-                    _bonus_frame(player, bonus, source, turn_closed=turn_closed)
+                    _bonus_frame(player, bonus, source)
                 ),
                 events=(),
             )
@@ -460,7 +433,7 @@ def _resolve_research_bonus(
                 return _bonus_unavailable(state, player, bonus, source)
             return RuleResult(
                 state=state.push_decision(
-                    _bonus_frame(player, bonus, source, turn_closed=turn_closed)
+                    _bonus_frame(player, bonus, source)
                 ),
                 events=(),
             )
@@ -482,19 +455,9 @@ def _bonus_unavailable(
 
 
 def _bonus_frame(
-    player: int, bonus: ResearchBonus, source: str, *, turn_closed: bool = False
+    player: int, bonus: ResearchBonus, source: str
 ) -> DecisionFrame:
-    """Return the frame offering a research space's printed bonus choice.
-
-    ``turn_closed`` marks a bonus reached after ``advance_after_effect`` had
-    already closed the owner's turn: an Influence gain the owner chooses
-    here can complete an Earn Any Alliance Contract, whose troop must not
-    join the fresh "turn" frame that reopened underneath, even the same
-    player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. The engine reads this
-    marker directly off the frame (``frames.turn_closed_frame_owner``) when
-    it resolves the choice action, since the close happened in an earlier
-    action than the one that completes the Contract.
-    """
+    """Return the frame offering a research space's printed bonus choice."""
 
     return DecisionFrame(
         kind=FrameKind.RESEARCH_BONUS,
@@ -506,7 +469,6 @@ def _bonus_frame(
             ("bonus", bonus.value),
             ("player", player),
             ("source", source),
-            *((("turn_closed", True),) if turn_closed else ()),
         ),
     )
 

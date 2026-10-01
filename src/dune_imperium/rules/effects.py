@@ -368,50 +368,6 @@ def _icon_keys(context: Mapping[str, ActionValue], name: str) -> tuple[str, ...]
     return tuple(key for key in value.split(",") if key)
 
 
-def _closed_for(
-    entry: tuple[int, str, str, bool], owner: int
-) -> tuple[int, str, str, bool]:
-    """Flag one queued ``(player, ..., source, turn_closed)`` entry as closed.
-
-    Leaves an entry belonging to another player untouched, and an
-    already-flagged entry unchanged (setting it again is a no-op).
-    """
-
-    queued_player, first, second, closed = entry
-    return (queued_player, first, second, True if queued_player == owner else closed)
-
-
-def mark_queued_turn_closed(state: GameState, owner: int) -> GameState:
-    """Flag ``owner``'s queued Skill choices and Navigation plays as closed.
-
-    ``advance_after_effect``'s own retroactive pass above only reaches an
-    entry already queued at the moment it closes ``owner``'s turn. An entry
-    queued afterward -- later in the very same action's handler (an
-    Influence gain that runs after a post-close acquisition box), or by a *later*
-    action that only resolves a follow-up frame a prior action left marked
-    ``turn_closed`` (a Research bonus's Influence choice reaching 2 with a
-    Faction) -- is queued unmarked by every one of those individual call
-    sites. The engine calls this once per action, right after the action's
-    own handler returns and before ``_advance_automatic`` can open any
-    freshly queued entry, so nothing threading ``turn_closed`` through a
-    particular caller can miss: whatever it recruits or completes must not
-    join the turn that only just reopened, even the same player's own
-    (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. Usurp's end-of-turn trash runs
-    later, in the engine's automatic advance, so ``graft.resolve_usurp_trash``
-    marks its own entry.
-    """
-
-    return replace(
-        state,
-        pending_skill_choices=tuple(
-            _closed_for(entry, owner) for entry in state.pending_skill_choices
-        ),
-        pending_navigation_plays=tuple(
-            _closed_for(entry, owner) for entry in state.pending_navigation_plays
-        ),
-    )
-
-
 def _owner_effect_frame(state: GameState, owner: int) -> DecisionFrame:
     """Return the top frame, checked to be ``owner``'s Agent-turn effect frame."""
 

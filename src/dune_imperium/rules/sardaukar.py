@@ -120,7 +120,7 @@ def queue_plasteel_blades(state: GameState, player: int, source: str) -> GameSta
         state,
         pending_skill_choices=(
             *state.pending_skill_choices,
-            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades", False),
+            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades"),
         ),
     )
 
@@ -326,17 +326,8 @@ def _acquire_bank_commander(
     skill_id: str,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
-    """Move the bank's Commander to the garrison with ``skill_id`` (or none).
-
-    ``turn_closed`` marks a Skill choice whose owner's turn had already
-    closed before it opened (the queued ``pending_skill_choices`` entry's own
-    flag, set either by the ``OPTIONAL_TRASH`` frame that queued it or
-    retroactively by ``advance_after_effect``): the Commander this acquires
-    must then not join whatever fresh "turn" frame reopened underneath, even
-    the same player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-    """
+    """Move the bank's Commander to the garrison with ``skill_id`` (or none)."""
 
     if state.sardaukar_commanders_bank < 1:
         raise RuntimeError("no Sardaukar Commander is left in the bank")
@@ -369,15 +360,11 @@ def _acquire_bank_commander(
         )
     else:
         decision_stack = working.decision_stack
-        if not turn_closed and turn_owner_of(working) == player:
+        if turn_owner_of(working) == player:
             # ``update_turn_recruits`` finds the owner's Reveal (or bare
             # turn) frame directly instead, guarded the same way
             # ``credit_trash_recruits`` guards a trash reward: nothing is
             # credited outside the owner's own turn [Main p. 10] [FAQ p. 4].
-            # When ``turn_closed`` is set, that frame is a fresh "turn" this
-            # box's own trigger reopened (or reached after it reopened), not
-            # the turn the acquisition belongs to (OQ-044 (d)), so the
-            # credit is skipped even though ``turn_owner_of`` still matches.
             working = update_turn_recruits(working, commanders_recruited=1)
             decision_stack = working.decision_stack
     events.insert(
@@ -417,7 +404,7 @@ def begin_skill_choice(state: GameState) -> RuleResult:
 
     if not state.pending_skill_choices:
         raise ValueError("there is no pending Skill choice")
-    player, card_id, source, turn_closed = state.pending_skill_choices[0]
+    player, card_id, source = state.pending_skill_choices[0]
     remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
     if card_id == PLASTEEL_BLADES_CARD_ID:
         owner = remaining.players[player]
@@ -441,9 +428,7 @@ def begin_skill_choice(state: GameState) -> RuleResult:
     ):
         # Every face-up Skill is already held: the Commander comes without
         # a Skill and needs no choice (OQ-031, OQ-035).
-        return _acquire_bank_commander(
-            remaining, player, card_id, "", source=source, turn_closed=turn_closed
-        )
+        return _acquire_bank_commander(remaining, player, card_id, "", source=source)
     if remaining.sardaukar_commanders_bank < 1:
         # The bank emptied while the trash effect finished (OQ-035).
         return RuleResult(
@@ -467,7 +452,6 @@ def begin_skill_choice(state: GameState) -> RuleResult:
             ("card_id", card_id),
             ("player", player),
             ("source", source),
-            *((("turn_closed", True),) if turn_closed else ()),
         ),
     )
     return RuleResult(state=remaining.push_decision(frame))
@@ -506,7 +490,6 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     source = context_str(context, "source", owner="Skill choice frame")
     card_id = context_str(context, "card_id", owner="Skill choice frame")
-    turn_closed = context.get("turn_closed") is True
     popped = state.pop_decision()
     if action.action_id == "decline_skill":
         return RuleResult(
@@ -550,7 +533,7 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     return _acquire_bank_commander(
-        popped, action.actor, card_id, skill_id, source=source, turn_closed=turn_closed
+        popped, action.actor, card_id, skill_id, source=source
     )
 
 

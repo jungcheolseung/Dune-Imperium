@@ -373,14 +373,6 @@ def _acquire_by_agent_card(
     # The box has resolved; the acquisition's own follow-ups (a Research
     # direction, a Spy post, the Contract market) stack above the turn.
     next_state = advance_after_effect(state, context)
-    # When the box was the turn's last pending effect, ``advance_after_effect``
-    # already replaced this turn's frame with the next unrevealed player's
-    # "turn" frame -- which can be this same player's, if every other seat
-    # has revealed. The acquisition below must not let ``turn_owner_of``
-    # find and credit that new frame: it is never the turn this box's troop
-    # was recruited in, even when it happens to reopen for the same player
-    # [Main p. 10] [FAQ p. 4].
-    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     arguments = dict(action.arguments)
     if action.action_id == "acquire_reserve_by_card":
         acquired = acquire_reserve_for_intrigue(
@@ -389,7 +381,6 @@ def _acquire_by_agent_card(
             str(arguments["card_id"]),
             to_hand=to_hand,
             source=source,
-            credit_turn_recruits=not turn_closed,
         )
     else:
         acquired = acquire_imperium_for_intrigue(
@@ -398,7 +389,6 @@ def _acquire_by_agent_card(
             str(arguments["instance_id"]),
             to_hand=to_hand,
             source=source,
-            credit_turn_recruits=not turn_closed,
         )
     result_state = acquired.result.state
     events = acquired.result.events
@@ -590,7 +580,6 @@ def _acquire_imperium_to_hand_with_solari(
             context, "troops_recruited", owner="Agent-turn effect frame"
         )
         context["troops_recruited"] = previous + contract_recruited
-    turn_closed = False
     if places_spy:
         next_state = replace(
             prepared,
@@ -605,11 +594,6 @@ def _acquire_imperium_to_hand_with_solari(
             context,
             prepared.players,
         )
-        # See ``_acquire_by_agent_card``: a Research box's TRASH_AND_
-        # SPECIMEN trash offer must not credit the fresh "turn" frame this
-        # ``advance_after_effect`` call may already have reopened for this
-        # same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-        turn_closed = resumed.decision_stack[-1].kind == FrameKind.TURN
         contracts = begin_contract_gain(
             resumed,
             action.actor,
@@ -624,11 +608,10 @@ def _acquire_imperium_to_hand_with_solari(
             context,
             prepared.players,
         )
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     # A Research box (Immortality) opens its direction choice above the
     # settled effect frame, never inside it.
     tracked = apply_acquisition_track_effects(
-        next_state, action.actor, definition, source=source, turn_closed=turn_closed
+        next_state, action.actor, definition, source=source
     )
     next_state = tracked.state
     acquisition_events = (*acquisition_events, *tracked.events)
@@ -974,28 +957,18 @@ def apply_acquisition_track_effects(
     definition: ImperiumCardEntry,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
     """Pay an acquire box that moves a Bene Tleilax token (Immortality).
 
     Spiritual Fervor's box researches and Subject X-137's advances the
     Tleilaxu token [card faces]; both resolve after the card has reached
     its zone, and the research may open a direction choice.
-
-    ``turn_closed`` marks an acquisition whose caller already closed the
-    owner's turn before this ran (Tleilaxu Master, the Leader's Signet): a
-    TRASH_AND_SPECIMEN Research bonus's trash offer must not credit the
-    fresh "turn" frame that reopened underneath [Main p. 10] [FAQ p. 4]
-    (OQ-044 (d)).
     """
 
     effect = definition.acquisition_effect
     if effect is PersonalCardAcquisitionEffect.RESEARCH:
         return advance_research(
-            state,
-            player,
-            source=f"{source}:acquisition_bonus",
-            turn_closed=turn_closed,
+            state, player, source=f"{source}:acquisition_bonus"
         )
     if effect is PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU:
         return advance_tleilaxu(
@@ -1454,14 +1427,8 @@ def acquire_reserve_for_intrigue(
     *,
     to_hand: bool,
     source: str,
-    credit_turn_recruits: bool = True,
 ) -> IntrigueAcquisition:
-    """Acquire one Reserve card without Persuasion for an Intrigue effect.
-
-    ``credit_turn_recruits`` is false when the caller already closed the
-    owner's turn frame before calling this (Tleilaxu Master, the Leader's
-    Signet): see ``complete_acquire_contracts``.
-    """
+    """Acquire one Reserve card without Persuasion for an Intrigue effect."""
 
     definition = RESERVE_STACKS_BY_ID[card_id]
     instance_id = next_reserve_instance_id(state, card_id)
@@ -1491,11 +1458,7 @@ def acquire_reserve_for_intrigue(
     )
     triggered = _resolve_reveal_acquisition_triggers(prepared, player, card_id)
     completed = complete_acquire_contracts(
-        triggered.state,
-        player,
-        card_id,
-        source=source,
-        credit_turn_recruits=credit_turn_recruits,
+        triggered.state, player, card_id, source=source
     )
     fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(
@@ -1620,7 +1583,6 @@ def acquire_imperium_for_intrigue(
     *,
     to_hand: bool,
     source: str,
-    credit_turn_recruits: bool = True,
     from_market: bool = False,
 ) -> IntrigueAcquisition:
     """Acquire one Imperium Row card without Persuasion for an Intrigue effect.
@@ -1630,10 +1592,6 @@ def acquire_imperium_for_intrigue(
     follow-up decision are reported to the caller instead of pushing frames.
     ``from_market`` takes the card from Arrakeen Scouts' Critical Moment
     cards instead of the Row, with nothing to refill.
-
-    ``credit_turn_recruits`` is false when the caller already closed the
-    owner's turn frame before calling this (Tleilaxu Master, the Leader's
-    Signet): see ``complete_acquire_contracts``.
     """
 
     definition = imperium_card_for_instance(instance_id)
@@ -1671,21 +1629,17 @@ def acquire_imperium_for_intrigue(
         intrigue_deck=bonus.intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
     )
-    if bonus.recruited and credit_turn_recruits and turn_owner_of(prepared) == player:
+    if bonus.recruited and turn_owner_of(prepared) == player:
         # Shared by many callers: a card-granted Acquire Tech style effect
         # played mid-turn (Tleilaxu Master, a Leader's Signet acquisition,
         # Engineered Miracle's Command, a Navigation or Inspire Awe pick),
         # where the recruiting frame may no longer be the stack's top by
-        # now, and Impress's identical Combat reward, which is outside any
-        # turn and credits nothing. Troops recruited during the owner's own
-        # turn "from any source" join its deploy allowance [Main p. 10]
-        # [FAQ p. 4]; ``turn_owner_of`` finds that turn's frame directly
-        # instead of trusting a possibly stale local context. When Tleilaxu
-        # Master or the Leader's Signet already closed the turn before this
-        # ran, ``credit_turn_recruits`` is false: any frame ``turn_owner_of``
-        # would find now is a new turn, never the one this box belongs to,
-        # even when it reopens for the same player (the
-        # only-seat-left-unrevealed case).
+        # now, and Impress's identical Combat reward or an Arrakeen Scouts
+        # Critical Moment purchase, which are outside any turn and credit
+        # nothing. Troops recruited during the owner's own turn "from any
+        # source" join its deploy allowance [Main p. 10] [FAQ p. 4];
+        # ``turn_owner_of`` finds that turn's frame directly instead of
+        # trusting a possibly stale local context.
         prepared = update_turn_recruits(prepared, troops_recruited=bonus.recruited)
     acquisition_events = bonus.events
     faction = _acquisition_influence_faction(definition.acquisition_effect)
@@ -1699,25 +1653,13 @@ def acquire_imperium_for_intrigue(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
-    # When the caller already closed the owner's turn (``credit_turn_
-    # recruits`` false), a Research bonus's TRASH_AND_SPECIMEN trash offer
-    # must not credit the fresh "turn" frame that reopened underneath
-    # either [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
     tracked = apply_acquisition_track_effects(
-        prepared,
-        player,
-        definition,
-        source=source,
-        turn_closed=not credit_turn_recruits,
+        prepared, player, definition, source=source
     )
     prepared = tracked.state
     acquisition_events = (*acquisition_events, *tracked.events)
     completed = complete_acquire_contracts(
-        prepared,
-        player,
-        definition.card.card_id,
-        source=source,
-        credit_turn_recruits=credit_turn_recruits,
+        prepared, player, definition.card.card_id, source=source
     )
     fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(

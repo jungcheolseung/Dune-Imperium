@@ -36,7 +36,6 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
     update_turn_recruits,
-    with_context,
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -157,9 +156,6 @@ def apply_contract_completion(
         definition,
         source=source,
         excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
-        # The completion was the turn's last effect when the advance replaced
-        # the Agent frame with the next turn's.
-        turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
         turn_agent_in_conflict=reward_turn_agent_in_conflict,
     )
     return RuleResult(
@@ -174,17 +170,8 @@ def complete_acquire_contracts(
     acquired_card_id: str,
     *,
     source: str,
-    credit_turn_recruits: bool = True,
 ) -> RuleResult:
-    """Complete Contracts triggered by acquiring a named card.
-
-    ``credit_turn_recruits`` is false when the caller already closed the
-    owner's turn frame (Tleilaxu Master, the Leader's Signet) before this
-    Contract's reward resolved: ``turn_owner_of`` would then find whatever
-    turn frame opened next, which is never the one this reward belongs to,
-    even when it happens to belong to the same player again (the
-    only-seat-left-unrevealed case) [Main p. 10] [FAQ p. 4].
-    """
+    """Complete Contracts triggered by acquiring a named card."""
 
     if not state.config.choam_module:
         return RuleResult(state=state)
@@ -225,7 +212,7 @@ def complete_acquire_contracts(
         next_state = completed.state
         events = (*events, *completed.events)
         recruited = next_state.players[player].troops_garrison - garrison_before
-        if recruited and credit_turn_recruits and turn_owner_of(next_state) == player:
+        if recruited and turn_owner_of(next_state) == player:
             # Troops recruited during the owner's own turn "from any
             # source" may be deployed [Main p. 10] [FAQ p. 4]; an Acquire
             # Contract completed outside the owner's turn (Combat, another
@@ -325,11 +312,6 @@ def apply_contract_spy_action(
     owner = state.players[action.actor]
     if action.action_id == "recall_spy_for_contract":
         next_owner = recall_spy(owner, post_id)
-        if context.get("turn_closed") is True:
-            # The recall belongs to the closed turn (OQ-044 (d)).
-            next_owner = replace(
-                next_owner, spies_recalled_turn=owner.spies_recalled_turn
-            )
         context["contract_spy_recalled"] = True
         next_frame = replace(frame, context=tuple(sorted(context.items())))
         next_state = replace(
@@ -1118,7 +1100,6 @@ def _begin_contract_reward_choice(
     *,
     source: str,
     excluded_space_id: str = "",
-    turn_closed: bool = False,
     turn_agent_in_conflict: bool = False,
 ) -> RuleResult:
     reward = definition.reward
@@ -1215,26 +1196,8 @@ def _begin_contract_reward_choice(
                 ("turn_owner", player),
             ),
         )
-        if turn_closed:
-            frame = mark_contract_spy_after_turn(frame)
         return RuleResult(state=state.push_decision(frame))
     return RuleResult(state=state)
-
-
-def mark_contract_spy_after_turn(frame: DecisionFrame) -> DecisionFrame:
-    """Mark a Contract Spy frame that resolves after its turn has closed.
-
-    A Contract completed by sending an Agent "is another effect of your
-    Agent turn" [FAQ p. 1], so a recall made for its Spy belongs to that
-    turn. When the completion was the turn's last effect the next turn --
-    the same seat's, if it is the last to reveal -- has already opened and
-    reset its counters; the recall must not count as that turn's "If you
-    recalled a Spy this turn" (OQ-044 (d)).
-    """
-
-    if frame.kind != FrameKind.CONTRACT_REWARD_SPY:
-        return frame
-    return with_context(frame, {**dict(frame.context), "turn_closed": True})
 
 
 # --- Bloodlines Immediate: trash an Intrigue card -----------------------------------
@@ -1352,9 +1315,7 @@ def apply_contract_intrigue_trash(
 # --- Bloodlines Earn Any Alliance -----------------------------------------------------
 
 
-def complete_alliance_contracts(
-    result: RuleResult, *, closing_player: int | None = None
-) -> RuleResult:
+def complete_alliance_contracts(result: RuleResult) -> RuleResult:
     """Complete Earn Any Alliance when its holder takes a new Alliance token.
 
     "Earn any Alliance is completed the next time you take an Alliance token
@@ -1366,16 +1327,6 @@ def complete_alliance_contracts(
     visit). Troops recruited during the holder's own turn join that turn's
     deployment allowance like any other mid-turn recruit [Main p. 10]
     [FAQ p. 4].
-
-    ``closing_player`` is the player, if any, whose own-turn frame closed
-    during the automatic advance that produced ``result``
-    (``frames.turn_closing_player``, the engine's caller computes it against
-    the state from before that advance). When the completed contract's
-    recruit and the alliance bump that earned it both happened while that
-    player's turn was still open, ``turn_owner_of`` would otherwise find and
-    credit the fresh "turn" frame the advance reopened for the same
-    player -- the turn that is only just starting, not the one the recruit
-    belongs to (the same reopen ``4e29e27`` guards at the acquisition sites).
     """
 
     state = result.state
@@ -1413,11 +1364,7 @@ def complete_alliance_contracts(
             state = completed.state
             events.extend(completed.events)
             recruited = state.players[player].troops_garrison - garrison_before
-            if (
-                recruited
-                and player != closing_player
-                and turn_owner_of(state) == player
-            ):
+            if recruited and turn_owner_of(state) == player:
                 state = update_turn_recruits(state, troops_recruited=recruited)
     return RuleResult(state=state, events=tuple(events))
 

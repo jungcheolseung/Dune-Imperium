@@ -417,7 +417,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     working = replace(working, players=players)
 
     # --- frame bookkeeping ------------------------------------------------
-    turn_closed = False
     if context is not None:
         finish_board_icon(context, BOARD_ICON_TECH)
         context["troops_recruited"] = (
@@ -443,11 +442,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             )
         else:
             working = advance_after_effect(working, context, players)
-            # As the Agent turn's last effect the tile handed the turn over
-            # already; a recall-first for its Deep Cover Spies is still this
-            # turn's (OQ-044 (d)). A Tech frame without Agent context (a
-            # Plot) pops back to its own turn, which stays unflagged.
-            turn_closed = working.decision_stack[-1].kind == FrameKind.TURN
     else:
         # A card-granted Acquire Tech (a Plot) returns to the turn it was
         # played in, before or after the placement or in a Reveal: its troops
@@ -490,15 +484,8 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         working = contracts.state
         events.extend(contracts.events)
     if tile.acquire_may_trash_card:
-        # Same closed-turn hole as the Deep Cover Spies below: as the Agent
-        # turn's last effect this tile already handed the turn over, so a
-        # troop Eliminate Allies' trash recruits must not join the fresh
-        # "turn" frame that reopened underneath (OQ-044 (d)) [Main p. 10]
-        # [FAQ p. 4].
         working = working.push_decision(
-            optional_trash_frame(
-                player, f"{source}:{tech_id}", turn_closed=turn_closed
-            )
+            optional_trash_frame(player, f"{source}:{tech_id}")
         )
     for index in range(tile.acquire_deep_cover_spies):
         working = spy_placement_frame(
@@ -507,7 +494,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             ALL_POST_IDS,
             source=f"{source}:{tech_id}:{index}",
             deep_cover=True,
-            turn_closed=turn_closed,
         )
     if intrigue:
         drawn = draw_or_queue_intrigue_cards(

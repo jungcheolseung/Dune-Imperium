@@ -2123,9 +2123,7 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     # The trashing effect still owns the top frame; the choice is queued and
     # the engine opens it afterwards.
     assert result.state.decision_stack[-1].kind == "agent_effects"
-    assert result.state.pending_skill_choices == (
-        (0, card, "test:trash:" + card, False),
-    )
+    assert result.state.pending_skill_choices == ((0, card, "test:trash:" + card),)
     opened = begin_skill_choice(result.state).state
     assert opened.pending_skill_choices == ()
     frame = opened.decision_stack[-1]
@@ -2198,9 +2196,7 @@ def test_sardaukar_standard_bank_commander_joins_the_reveals_allowance() -> None
     # The trashing effect resolves from the Reveal frame, not an
     # AGENT_EFFECTS one; the choice is still queued and opened afterwards.
     assert result.state.decision_stack[-1].kind == "reveal"
-    assert result.state.pending_skill_choices == (
-        (0, card, "test:trash:" + card, False),
-    )
+    assert result.state.pending_skill_choices == ((0, card, "test:trash:" + card),)
     opened = begin_skill_choice(result.state).state
     assert opened.decision_stack[-1].kind == "skill_choice"
     actions = legal_skill_choice_actions(opened, 0)
@@ -2259,18 +2255,16 @@ def test_sardaukar_standard_trashed_before_the_last_effect_credits_the_turn() ->
 
     trashed = trash_personal_card(placed, 0, card, source="test:trash")
     assert trashed.state.decision_stack[-1].kind == "agent_effects"
-    assert trashed.state.pending_skill_choices[0][3] is False
+    assert len(trashed.state.pending_skill_choices) == 1
 
     last = resolve_faction_influence(trashed.state).state
-    # The turn stays open; the queued choice is not flagged as a closed
-    # turn's follow-up any more.
+    # The turn stays open under the queued choice.
     assert last.decision_stack[-1].kind == "agent_effects"
     assert dict(last.decision_stack[-1].context)["turn_owner"] == 0
-    assert last.pending_skill_choices[0][3] is False
+    assert len(last.pending_skill_choices) == 1
 
     opened = begin_skill_choice(last).state
     assert opened.decision_stack[-1].kind == "skill_choice"
-    assert dict(opened.decision_stack[-1].context).get("turn_closed") is None
     actions = legal_skill_choice_actions(opened, 0)
     chosen = apply_skill_choice(opened, actions[0]).state
 

@@ -273,14 +273,13 @@ def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
 def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Round 3 review finding 3: apply_leader_signet_acquire used to compute
-    # ``turn_closed`` as "the top frame is a bare turn frame after the box
-    # settles", which wrongly matched Servo-Receivers running *from* a bare
-    # turn frame before the Agent is placed (OQ-062) and dropped this
-    # Contract's troop reward from the turn's recruit count.
-    # ``turn_closing_player`` (ce533c4) only reports a close when an
-    # AGENT_EFFECTS or Reveal frame actually turned into a fresh "turn"
-    # frame -- not when it was already one. No shipped Acquire Contract
+    # Round 3 review finding 3: apply_leader_signet_acquire once treated
+    # "the top frame is a bare turn frame after the box settles" as a closed
+    # turn, which wrongly matched Servo-Receivers running *from* a bare turn
+    # frame before the Agent is placed (OQ-062) and dropped this Contract's
+    # troop reward from the turn's recruit count. Turns now close only
+    # through ``finish_agent_turn`` (OQ-095), and the ``turn_owner_of``
+    # guard credits the still-open turn frame. No shipped Acquire Contract
     # rewards a troop, so a fake one shares Arrakis Revolt's and
     # Occupation's shape (``test_acquisition.py``'s ``_fake_troop_contract``)
     # to exercise the path. "그 turn에 어떤 출처에서 recruit했든 새 troop은

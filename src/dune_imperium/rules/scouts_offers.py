@@ -77,16 +77,16 @@ def queue_reveal_subcommittee_offer(
     """Open Corrinth City's seat's subcommittee choice for the rest of its
     Reveal turn, or note that nothing is left to join.
 
-    The entry is ``(player, source, exclude_space, turn_closed)``: no Agent
-    took this seat, so a Recall Agent reward may recall any other Agent
-    (``""``, OQ-075), and the Reveal turn is still open (``False``).
+    The entry is ``(player, source, exclude_space)``: no Agent took this
+    seat, so a Recall Agent reward may recall any other Agent (``""``,
+    OQ-075).
     """
 
     if not state.config.arrakeen_scouts:
         return state, ()
     if not open_subcommittees(state, player):
         return state, (subcommittee_unavailable(player, source=source),)
-    entry = (player, source, "", False)
+    entry = (player, source, "")
     return (
         replace(
             state,
@@ -98,7 +98,7 @@ def queue_reveal_subcommittee_offer(
 
 def reveal_subcommittee_offer(
     state: GameState, player: int
-) -> tuple[int, str, str, bool] | None:
+) -> tuple[int, str, str] | None:
     """The seat's open Reveal-turn subcommittee offer, if any."""
 
     return next(

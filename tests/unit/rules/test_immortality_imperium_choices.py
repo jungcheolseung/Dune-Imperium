@@ -925,7 +925,6 @@ def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -
     trashed = apply_optional_trash(resolved, trash).state
     assert trashed.pending_skill_choices[0][0] == 0
     assert trashed.pending_skill_choices[0][1] == standard
-    assert trashed.pending_skill_choices[0][3] is False
 
     opened = begin_skill_choice(trashed).state
     assert opened.decision_stack[-1].kind == "skill_choice"
@@ -1002,7 +1001,6 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
     resolved = resolve_agent_card_effect(taken).state
     assert resolved.decision_stack[-1].kind == "research_advance"
     assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
-    assert dict(resolved.decision_stack[-1].context).get("turn_closed") is not True
 
     to_influence_choice = next(
         a
@@ -1011,7 +1009,6 @@ def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() 
     )
     advanced = engine.apply(resolved, to_influence_choice).state
     assert advanced.decision_stack[-1].kind == "research_bonus"
-    assert dict(advanced.decision_stack[-1].context).get("turn_closed") is not True
 
     influence_choice = next(
         a
@@ -1105,10 +1102,9 @@ def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> Non
     opened = engine.apply(advanced, influence_choice).state
 
     # The Influence gain happens, and the queued Navigation play opens on
-    # the owner's open turn, unmarked.
+    # the owner's open turn.
     assert opened.players[0].influence.emperor == 2
     assert opened.decision_stack[-1].kind == "navigation_choice"
-    assert dict(opened.decision_stack[-1].context).get("turn_closed") is not True
     assert opened.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
 
     play = next(
@@ -1162,7 +1158,6 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     resolved = resolve_agent_card_effect(placed).state
     assert resolved.decision_stack[-1].kind == "research_advance"
     assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
-    assert dict(resolved.decision_stack[-1].context).get("turn_closed") is not True
 
     to_trash_and_specimen = next(
         a
@@ -1171,7 +1166,6 @@ def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() ->
     )
     advanced = engine.apply(resolved, to_trash_and_specimen).state
     assert advanced.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert dict(advanced.decision_stack[-1].context).get("turn_closed") is not True
     assert not _turn_end_offered(advanced)
 
     trash = next(

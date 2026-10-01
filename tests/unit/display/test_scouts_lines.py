@@ -151,7 +151,6 @@ def test_a_subcommittee_offer_lists_claimed_unpayable_and_idle_lines() -> None:
             ("exclude_space", "high_council"),
             ("player", 0),
             ("source", "offer"),
-            ("turn_closed", False),
         ),
     )
     state = _state(

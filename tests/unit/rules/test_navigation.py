@@ -618,15 +618,10 @@ def test_navigation_trigger_from_the_turns_last_effect_credits_this_turn() -> No
     resolved = advance_after_effect(gained.state, context, gained.state.players)
     assert resolved.decision_stack[-1].kind == "agent_effects"
     assert dict(resolved.decision_stack[-1].context)["turn_owner"] == 0
-    # No turn closed under the trigger, so the play is not flagged.
-    assert resolved.pending_navigation_plays == (
-        (0, "emperor", "test:navigation:0", False),
-    )
+    assert resolved.pending_navigation_plays == ((0, "emperor", "test:navigation:0"),)
 
     opened = begin_navigation_play(resolved).state
-    assert dict(opened.decision_stack[-1].context).get("turn_closed") is None
     played = _play_option(opened, 0)
-    assert dict(played.decision_stack[-1].context).get("turn_closed") is None
 
     options = legal_intrigue_choice_actions(played, 0)
     trash = next(
@@ -675,9 +670,7 @@ def test_navigation_trigger_with_seats_left_credits_the_owners_open_turn() -> No
     resolved = advance_after_effect(gained.state, context, gained.state.players)
     assert resolved.decision_stack[-1].kind == "agent_effects"
     assert dict(resolved.decision_stack[-1].context)["turn_owner"] == 0
-    assert resolved.pending_navigation_plays == (
-        (0, "emperor", "test:navigation:0", False),
-    )
+    assert resolved.pending_navigation_plays == ((0, "emperor", "test:navigation:0"),)
 
     played = _play_option(begin_navigation_play(resolved).state, 0)
 
@@ -718,11 +711,11 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     # own Influence gain (``tech.apply_tech_acquisition``), so the Emperor
     # bump to 2 queues the play after the turn's last effect (every other
     # seat revealed). That used to close the turn and reopen a bare "turn"
-    # frame for P0 first, and only ``_apply_legal``'s before/after
-    # comparison (``turn_closing_player``) marked the play as the closed
-    # turn's (OQ-044 (d)). Since OQ-095 (3) the turn stays open until its
-    # owner ends it, so the play resolves on top of it and card 6's troop is
-    # this turn's: "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    # frame for P0 first, and only a before/after comparison in
+    # ``_apply_legal`` marked the play as the closed turn's (OQ-044 (d)).
+    # Since OQ-095 (3) the turn stays open until its owner ends it, so the
+    # play resolves on top of it and card 6's troop is this turn's:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
     # deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로
     # 취급해 두 개 제한을 우회할 수는 없다." [Main p. 10] [FAQ p. 4]
     # (docs/rules/player-turns.md:137). The press reopens his own next turn
@@ -766,7 +759,6 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     still_open = bought.decision_stack[0]
     assert isinstance(still_open.decision, PlayerDecision)
     assert still_open.decision.owner == 0
-    assert dict(bought.decision_stack[-1].context).get("turn_closed") is None
 
     played = act(bought, "play_navigation", option=0)
 

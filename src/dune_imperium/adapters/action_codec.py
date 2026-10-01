@@ -135,7 +135,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # effect left behind resolves inside the turn. Usurp's borrowed card is
 # trashed by the press and its results are the turn's own. An Arrakeen
 # Scouts line's spice cost now counts as spice spent this turn, like every
-# other spend. Saves replay differently -- no template change.
+# other spend. Saves replay differently -- no template change. The
+# ``turn_closed`` fields (the 4th field of the Skill choice, Navigation play
+# and Scouts offer queues, and the frame-context markers) left the state.
 ACTION_CODEC_VERSION = 125
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
