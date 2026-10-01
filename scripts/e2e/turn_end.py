@@ -7,7 +7,8 @@ One press, EXACTLY one, ends a human seat's turn, whatever step closes it:
 - the seat's own explicit turn-end action (``EXPLICIT_TURN_END_IDS`` in
   render.js, mirroring ``EXPLICIT_TURN_ENDS`` in server/turn_end.py:
   ``finish_agent_turn``, ``finish_reveal``, ``pass_combat_intrigue``,
-  ``pass_endgame_intrigue``) renders as that SAME row instead, its button
+  ``pass_endgame_intrigue``, and Arrakeen Scouts' ``confirm_scouts_bid``)
+  renders as that SAME row instead, its button
   applying that action directly (POST /actions) -- and never doubles as an
   item in any action list (the staged Agent turn's steps, its "or" list,
   the full-list toggle, the Reveal panel).
@@ -40,12 +41,16 @@ check = Check()
 # Mirrors EXPLICIT_TURN_END_IDS in render.js / EXPLICIT_TURN_ENDS in
 # server/turn_end.py: kept as a plain Python set (not read off the page) so
 # the raw-HTTP seed searches below, which never load the client, can also
-# use it.
+# use it. tests/server/test_turn_end.py
+# (test_every_copy_of_the_explicit_turn_end_ids_matches_the_server) keeps it
+# equal to the server's set; it lacked confirm_scouts_bid until 2026-10-01.
 EXPLICIT_TURN_END_IDS = {
     "finish_agent_turn",
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
+    # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
+    "confirm_scouts_bid",
 }
 
 # Every Hangul run: the English scenario asserts the turn-end row has none.

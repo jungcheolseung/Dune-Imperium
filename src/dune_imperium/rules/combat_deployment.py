@@ -19,6 +19,7 @@ both kinds on top of those (user ruling OQ-070, ``deployment_rooms``).
 """
 
 from dataclasses import dataclass, replace
+from typing import Final
 
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
@@ -26,8 +27,8 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import (
-    advance_after_effect,
     agent_turn_has_other_pending_effects,
+    close_agent_turn,
     current_agent_effect_context,
 )
 from dune_imperium.rules.frames import (
@@ -36,7 +37,15 @@ from dune_imperium.rules.frames import (
     own_turn_frame_index,
     recruited_commander_count,
     replace_player,
+    with_context,
 )
+
+# Agent-turn effect frame keys while the turn end runs its Usurp trash
+# (OQ-095 (4)-(5)): the press happened, the window the turn had for Combat
+# deployment, and the units recruited by then.
+FINISHING_KEY: Final = "finishing"
+FINISH_DEPLOYMENT_KEY: Final = "finish_deployment_window"
+FINISH_RECRUITS_KEY: Final = "finish_recruited_units"
 
 
 def undeployable_troops(context: dict[str, ActionValue]) -> int:
@@ -314,16 +323,30 @@ def legal_commander_withdrawals(
     )
 
 
+def agent_turn_is_finishing(context: dict[str, ActionValue]) -> bool:
+    """Whether the owner already pressed the end and its own steps still run.
+
+    Only the Usurp trash puts a turn in this state (``FINISHING_KEY``): what
+    the trash leaves behind (a Skill choice, a reshuffle) resolves on top of
+    the frame, and ``settle_finishing_agent_turn`` then closes or reopens it.
+    """
+
+    return context.get(FINISHING_KEY) is True
+
+
 def legal_agent_turn_finish_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the explicit turn end once only the deployment stays open.
+    """Offer the explicit turn end once no mandatory group is pending.
 
-    The end is also offered when the only other pending group is a mandatory
-    Agent box that can only fizzle (its condition is false and nothing else
-    of the turn remains to meet it): the box waits for the turn's end rather
-    than fizzling on demand (designer ruling, OQ-057).
+    Every Agent turn ends only here, whether or not anything optional is
+    left (user ruling OQ-095); the Combat deployment window stays open until
+    the press (OQ-029). The end is also offered when the only other pending
+    group is a mandatory Agent box that can only fizzle (its condition is
+    false and nothing else of the turn remains to meet it): the box waits
+    for the turn's end rather than fizzling on demand (designer ruling,
+    OQ-057).
     """
 
     from dune_imperium.rules.agent_effects import graft_boxes_are_stalled
@@ -334,12 +357,11 @@ def legal_agent_turn_finish_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    deployment_open = context["pending_combat_deployment"] is True
+    if agent_turn_is_finishing(context):
+        return ()
     stalled_box = context["pending_agent_effect"] is True and graft_boxes_are_stalled(
         state
     )
-    if not deployment_open and not stalled_box:
-        return ()
     if agent_turn_has_other_pending_effects(
         context, state.players, ignore_agent_effect=stalled_box
     ):
@@ -619,7 +641,15 @@ def apply_agent_turn_finish(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Close the deployment window and hand the turn over."""
+    """End the Agent turn: the owner's one press (user ruling OQ-095).
+
+    In order: a mandatory Agent box that could only fizzle fizzles (OQ-057),
+    a held Contract icon fizzles (OQ-059), the turn's end is announced, the
+    Combat deployment window closes, and a Usurped Row card is trashed
+    ("trash that card at the end of the turn", OQ-054). Then the next seat's
+    turn opens -- unless the trash is still resolving, in which case the
+    frame waits as ``FINISHING_KEY`` for ``settle_finishing_agent_turn``.
+    """
 
     from dune_imperium.rules.agent_effects import (
         agent_card_effect_is_unavailable,
@@ -628,21 +658,21 @@ def apply_agent_turn_finish(
     )
     from dune_imperium.rules.contracts import fizzle_held_contract_icons
     from dune_imperium.rules.effects import pending_agent_icons
-    from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
+    from dune_imperium.rules.graft import (
+        apply_graft_switch,
+        legal_graft_switch_actions,
+        trash_usurped_card,
+    )
 
     if action not in legal_agent_turn_finish_actions(state, action.actor):
         raise ValueError("the Agent turn cannot be finished yet")
-    _, context = current_agent_effect_context(state)
+    player = action.actor
     working = state
     events: list[GameEvent] = []
     for _ in range(4):
         # Mandatory boxes that could not be met by the turn's end fizzle now
-        # (OQ-057), the grafted partner's after a switch. Their own advance
-        # may already hand the turn over.
-        try:
-            _, context = current_agent_effect_context(working)
-        except ValueError:
-            break
+        # (OQ-057), the grafted partner's after a switch.
+        _, context = current_agent_effect_context(working)
         if context["pending_agent_effect"] is True and (
             agent_card_effect_is_unavailable(working)
         ):
@@ -659,7 +689,7 @@ def apply_agent_turn_finish(
         if context["pending_agent_effect"] is not True and (
             context.get("graft_pending_effect") is True
         ):
-            switches = legal_graft_switch_actions(working, action.actor)
+            switches = legal_graft_switch_actions(working, player)
             if not switches:
                 break
             switched = apply_graft_switch(working, switches[0])
@@ -667,29 +697,114 @@ def apply_agent_turn_finish(
             events.extend(switched.events)
             continue
         break
+    _, context = current_agent_effect_context(working)
+    if context["pending_agent_effect"] is True or (
+        context.get("graft_pending_effect") is True
+    ):
+        raise RuntimeError("the turn end left a mandatory Agent box unresolved")
+    source = f"round:{state.round_number}:player:{player}:finish_agent_turn"
     # A Contract icon that never found a token it could take fizzles with the
     # turn, without the two-Solari conversion (OQ-059).
-    fizzled_contracts = fizzle_held_contract_icons(
-        working,
-        action.actor,
-        source=f"round:{state.round_number}:player:{action.actor}:finish_agent_turn",
-    )
+    fizzled_contracts = fizzle_held_contract_icons(working, player, source=source)
     working = fizzled_contracts.state
     events.extend(fizzled_contracts.events)
-    event = GameEvent(
-        event_id=f"round:{state.round_number}:player:{action.actor}:finish_agent_turn",
-        kind="agent_turn_finished",
-        payload=(("player", action.actor),),
+    events.append(
+        GameEvent(
+            event_id=source,
+            kind="agent_turn_finished",
+            payload=(("player", player),),
+        )
     )
-    try:
-        frame, context = current_agent_effect_context(working)
-    except ValueError:
-        return RuleResult(state=working, events=(*events, event))
-    if (
-        isinstance(frame.decision, PlayerDecision)
-        and frame.decision.owner == action.actor
-        and context["pending_combat_deployment"] is True
+    if not working.players[player].usurped_row_card_id:
+        return RuleResult(
+            state=close_agent_turn(working, player), events=tuple(events)
+        )
+    frame, context = current_agent_effect_context(working)
+    deployment_window = context["pending_combat_deployment"] is True
+    context["pending_combat_deployment"] = False
+    # Usurp: the borrowed card goes at the end of the turn, as an ordinary
+    # trash whose results are still this turn's (user ruling 2026-10-01,
+    # OQ-095 (5)); its follow-ups resolve on top of the waiting frame.
+    context[FINISHING_KEY] = True
+    context[FINISH_DEPLOYMENT_KEY] = deployment_window
+    context[FINISH_RECRUITS_KEY] = _recruited_units(context)
+    working = replace(
+        working,
+        decision_stack=(*working.decision_stack[:-1], with_context(frame, context)),
+    )
+    trashed = trash_usurped_card(working, player)
+    return RuleResult(state=trashed.state, events=(*events, *trashed.events))
+
+
+def _recruited_units(context: dict[str, ActionValue]) -> int:
+    troops = context["troops_recruited"]
+    if isinstance(troops, bool) or not isinstance(troops, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    return troops + recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+
+
+def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
+    """Close a finishing Agent turn, or reopen it for what its end produced.
+
+    Runs after every transition, once the Usurp trash and its follow-ups have
+    resolved and the owner's frame is back on top. The trash's results are
+    the turn's own (user ruling 2026-10-01, OQ-095 (5)): when they make a
+    snapshot Contract's condition true -- a Contract is always completed
+    [FAQ p. 1] -- or recruit units on a turn that could deploy -- "그 turn에
+    recruit한 troop을 원하는 수만큼 deploy" [Main p. 10] -- the turn
+    reopens and the owner presses the end again. Otherwise the next seat's
+    turn opens.
+    """
+
+    state = result.state
+    if not state.decision_stack:
+        return result
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
     ):
-        context["pending_combat_deployment"] = False
-        working = advance_after_effect(working, context)
-    return RuleResult(state=working, events=(*events, event))
+        return result
+    context = dict(frame.context)
+    if not agent_turn_is_finishing(context):
+        return result
+    owner = frame.decision.owner
+    deployment_window = context.pop(FINISH_DEPLOYMENT_KEY) is True
+    recruited_at_press = context.pop(FINISH_RECRUITS_KEY)
+    del context[FINISHING_KEY]
+    if isinstance(recruited_at_press, bool) or not isinstance(recruited_at_press, int):
+        raise RuntimeError("finishing Agent-turn frame has invalid recruit count")
+    # A reopened turn goes on as the same turn, so it has the deployment
+    # window it had before the press (OQ-029): a unit recruited after the
+    # reopen may still deploy.
+    reopened = {**context, "pending_combat_deployment": deployment_window}
+    reopened_state = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, reopened)),
+    )
+    recruited_more = _recruited_units(context) > recruited_at_press
+    if agent_turn_has_other_pending_effects(reopened, state.players) or (
+        recruited_more
+        and (
+            legal_combat_deployments(reopened_state, owner)
+            or legal_commander_deployments(reopened_state, owner)
+        )
+    ):
+        return replace(
+            result,
+            state=reopened_state,
+            events=(
+                *result.events,
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:player:{owner}:agent_turn_reopened"
+                    ),
+                    kind="agent_turn_reopened",
+                    payload=(("player", owner),),
+                ),
+            ),
+        )
+    closing = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+    )
+    return replace(result, state=close_agent_turn(closing, owner))

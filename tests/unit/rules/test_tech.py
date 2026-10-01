@@ -4,7 +4,9 @@ Rule source: ``docs/rules/bloodlines.md`` section 5 [Bloodlines pp. 6-7, 12]
 and the eighteen Tech tile faces transcribed on 2026-09-07.
 """
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -61,6 +63,11 @@ from dune_imperium.rules.tech import (
 )
 from dune_imperium.simulation.invariants import check_observation_privacy
 from dune_imperium.simulation.sweep import run_checked_game
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 TECH = RulesetConfig(bloodlines=True, tech_module=True)
 TECH_CHOAM = RulesetConfig(bloodlines=True, tech_module=True, choam_module=True)
@@ -558,6 +565,20 @@ def _decider(state: GameState) -> int:
     return decision.owner
 
 
+def _end_open_agent_turn(state: GameState) -> GameState:
+    # Every Agent turn ends only through its owner's "턴 종료", even with
+    # nothing left to resolve (OQ-095 (1)): the owner's Agent-turn frame
+    # stays on top with the end offered, and pressing it opens the next
+    # unrevealed seat's turn.
+    assert state.decision_stack[-1].kind == "agent_effects"
+    owner = _decider(state)
+    assert DomainAction("finish_agent_turn", owner) in (
+        UprisingRulesEngine().legal_actions(state, owner)
+    )
+    ended: GameState = finish_agent_turn(state)
+    return ended
+
+
 def _servo_visit(leader_id: str, **overrides: object) -> GameState:
     return _visit(
         _turn_state(_owner(leader_id=leader_id, **overrides), stacks=SERVO_STACKS),
@@ -592,9 +613,12 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
         "tech_id": "servo_receivers",
         "troops": 1,
     }
-    # Nothing else was pending at Assembly Hall: the turn moved on.
-    assert result.state.decision_stack[-1].kind == "turn"
-    assert _decider(result.state) == 1
+    # Nothing else was pending at Assembly Hall: the owner's turn stays open
+    # until its end is pressed, which then moves on (OQ-095).
+    assert _decider(result.state) == 0
+    ended = _end_open_agent_turn(result.state)
+    assert ended.decision_stack[-1].kind == "turn"
+    assert _decider(ended) == 1
 
     drawn = apply_tech_acquisition(
         _servo_visit("muad_dib"), _tech_actions(state)["servo_receivers"]
@@ -621,7 +645,9 @@ def test_servo_receivers_opens_a_signet_choice_frame() -> None:
     done = engine.apply(opened, trash).state
     assert dict(trash.arguments)["card_id"] in done.players[0].trashed
     assert all(frame.kind != "leader_signet" for frame in done.decision_stack)
-    assert _decider(done) == 1
+    # Back in the owner's open Agent turn; its end hands over (OQ-095).
+    assert _decider(done) == 0
+    assert _decider(_end_open_agent_turn(done)) == 1
 
 
 def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
@@ -836,7 +862,8 @@ def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"
-    assert _decider(result.state) == 1
+    assert _decider(result.state) == 0
+    assert _decider(_end_open_agent_turn(result.state)) == 1
 
 
 def test_servo_receivers_signet_outside_an_agent_turn() -> None:
@@ -891,9 +918,10 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
     # Servo-Receivers uses the Leader's Signet Ring ability [Main p. 20]
     # [Servo-Receivers Tech tile] in its own leader_signet frame (OQ-062).
     # Every choice path must close that frame and hand control back to the
-    # host: the next seat's turn after the Landsraad visit, or the owner's
-    # open Reveal turn. A Signet handler that writes through the Agent box
-    # (advance_after_effect / current_agent_effect_context) instead of
+    # host: the owner's open Agent turn after the Landsraad visit (whose
+    # end, pressed by the owner, opens the next seat's turn: OQ-095), or the
+    # owner's open Reveal turn. A Signet handler that writes through the
+    # Agent box (advance_after_effect / current_agent_effect_context) instead of
     # _store_signet / _signet_context breaks this (merge guard for Signet
     # handler changes on other branches).
     engine = UprisingRulesEngine()
@@ -907,7 +935,7 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
     )
     if host == "landsraad":
         state = _visit(_turn_state(owner, stacks=SERVO_STACKS), "assembly_hall")
-        expected = ("turn", 1)
+        expected = ("agent_effects", 0)
     else:
         revealed = _reveal(_turn_state(owner, stacks=SERVO_STACKS)).state
         state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
@@ -919,6 +947,9 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         if all(frame.kind != "leader_signet" for frame in current.decision_stack):
             leaves += 1
             assert (current.decision_stack[-1].kind, _decider(current)) == expected
+            if host == "landsraad":
+                ended = _end_open_agent_turn(current)
+                assert (ended.decision_stack[-1].kind, _decider(ended)) == ("turn", 1)
             continue
         actions = engine.legal_actions(current, _decider(current))
         assert actions, "a leader_signet frame must offer a choice"
@@ -962,17 +993,17 @@ def test_planetary_array_opens_an_optional_trash_after_the_visit() -> None:
     assert len(actions) == 1 + 4 + 1  # hand (Dagger played) + played card
 
 
-def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
-    # 2026-09-26 review round 4, minor (test gap): mutation testing found
-    # that dropping the ``turn_closed`` marker from Planetary Array's own
-    # ``optional_trash_frame`` call (``tech.apply_tech_acquisition``) left
-    # all 1356 rules tests passing; nothing exercised this tile as the
-    # Agent turn's very last effect. Bought here with every other seat
-    # revealed, the acquisition's own ``advance_after_effect`` closes and
-    # reopens a fresh "turn" frame for this same player before the trash
-    # offer even exists; Eliminate Allies' troops must not join it. "그
+def test_planetary_array_last_effect_trash_credits_this_turn() -> None:
+    # Planetary Array bought as the Agent turn's very last effect, with
+    # every other seat revealed (2026-09-26 review round 4 added this
+    # scenario). The turn no longer closes with that effect: it stays open
+    # until its owner presses the end, and a follow-up the last effect left
+    # behind resolves inside it, so what it recruits counts for this turn
+    # (user ruling OQ-095 (1), (3), docs/rules/open-questions.md). "그
     # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
-    # 있다..." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    # 있다." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137):
+    # Eliminate Allies' trash troops join this turn's recruits. The end then
+    # reopens this same seat's next turn with a fresh count.
     eliminate_allies = "imperium:eliminate_allies:0"
     owner = _owner(hand=(*starting_deck_instance_ids(0)[:5], eliminate_allies))
     state = _turn_state(
@@ -988,7 +1019,12 @@ def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
     visited = _visit(state, "assembly_hall")
     bought = _acquire(visited, "planetary_array")
     assert bought.decision_stack[-1].kind == "optional_trash"
-    assert dict(bought.decision_stack[-1].context)["turn_closed"] is True
+    assert dict(bought.decision_stack[-1].context).get("turn_closed") is None
+    # The trash offer sits on the owner's still-open Agent turn.
+    beneath = bought.decision_stack[-2]
+    assert beneath.kind == "agent_effects"
+    assert isinstance(beneath.decision, PlayerDecision)
+    assert beneath.decision.owner == 0
 
     trash = next(
         a
@@ -998,7 +1034,11 @@ def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
     trashed = apply_optional_trash(bought, trash).state
 
     assert trashed.players[0].troops_garrison == 3 + 2
-    top = trashed.decision_stack[-1]
+    assert _decider(trashed) == 0
+    assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
+
+    ended = _end_open_agent_turn(trashed)
+    top = ended.decision_stack[-1]
     assert top.kind == "turn"
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)
@@ -1030,19 +1070,23 @@ def test_spy_drones_place_two_spies_with_deep_cover() -> None:
     assert LANDSRAAD_POST not in {dict(a.arguments)["post_id"] for a in second}
     done = apply_spy_placement(placed, second[0]).state
     assert done.players[0].spies_supply == 1
-    assert done.decision_stack[-1].kind == "turn"
+    # Both Spies placed, the owner's Agent turn is still open (OQ-095).
+    assert _decider(done) == 0
+    assert _end_open_agent_turn(done).decision_stack[-1].kind == "turn"
 
 
-def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> None:
+def test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn() -> None:
     # Spy Drones' acquire column prints two Spy with Deep Cover icons, and
     # its own flip reads "If you recalled a Spy this turn:" [Spy Drones Tech
     # tile]; with an empty supply "you may first recall one of your Spies
-    # for no effect" [Main pp. 11, 20]. "If you recalled a Spy this turn"
-    # counts the seat's own recalls during its own turn (OQ-044 (d)). Bought
-    # as the turn's last effect by the last seat to reveal, the tile has
-    # already opened that seat's next turn when its Spies are placed; the
-    # recall-first belongs to the closed turn and used to count toward the
-    # next one.
+    # for no effect" [Main pp. 11, 20]. OQ-044 (d) counts "이번 Agent 또는
+    # Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로", the recall-first
+    # included. Bought as the turn's last effect by the last seat to
+    # reveal, the tile no longer closes the turn: its Spies are placed on
+    # the owner's still-open Agent turn, so the recall-first counts for this
+    # turn (user ruling OQ-095 (3), docs/rules/open-questions.md), and the
+    # end the owner presses reopens this seat's next turn with the counter
+    # back at zero.
     posts = (
         "emperor-sardaukar-dutiful-service",
         "arrakis-hagga-basin",
@@ -1061,10 +1105,10 @@ def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> No
     )
     bought = _acquire(_visit(state, "assembly_hall"), "spy_drones")
     assert bought.decision_stack[-1].kind == "spy_placement"
-    next_turn = bought.decision_stack[-3]
-    assert next_turn.kind == "turn"
-    assert isinstance(next_turn.decision, PlayerDecision)
-    assert next_turn.decision.owner == 0
+    open_turn = bought.decision_stack[-3]
+    assert open_turn.kind == "agent_effects"
+    assert isinstance(open_turn.decision, PlayerDecision)
+    assert open_turn.decision.owner == 0
 
     recall = next(
         action
@@ -1081,8 +1125,12 @@ def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> No
         if action.action_id == "decline_spy_placement"
     )
     done = apply_spy_placement(placed, decline).state
-    assert done.decision_stack[-1].kind == "turn"
-    assert done.players[0].spies_recalled_turn == 0
+    assert _decider(done) == 0
+    assert done.players[0].spies_recalled_turn == 1
+    ended = _end_open_agent_turn(done)
+    assert ended.decision_stack[-1].kind == "turn"
+    assert _decider(ended) == 0
+    assert ended.players[0].spies_recalled_turn == 0
 
     # Bought through a Tech frame opened in the seat's own turn (a Plot, no
     # Agent-turn context), the recall-first is that turn's and still counts.

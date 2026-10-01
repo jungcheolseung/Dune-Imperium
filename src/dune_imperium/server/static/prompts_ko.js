@@ -26,6 +26,7 @@ const PROMPT_KO = {
   "Choose the card to draw, then the one to discard": "뽑을 카드를 고른 뒤 버릴 카드 선택",
   "Choose the card to graft": "{graft}할 카드 선택",
   "Choose the next Agent-turn effect to resolve": "다음에 해결할 {agent_turn} 효과 선택",
+  "End the turn, or take another action first": "턴 종료를 누르거나, 그 전에 다른 행동 선택",
   "Choose two Spies to recall or decline this Reveal effect": "소환할 {spy} 2개 선택, 또는 이 {reveal_turn} 효과 거절",
   "Choose which Influence 4 bonus to take": "받을 {influence_any} 4 보너스 선택",
   "Join a subcommittee or decline": "가입할 소위원회 선택, 또는 거절",

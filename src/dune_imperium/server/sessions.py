@@ -62,6 +62,7 @@ from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choi
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.access import (
     ANONYMOUS,
     AccessMode,
@@ -96,9 +97,12 @@ from dune_imperium.server.session_log import (
 )
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
+    TURN_PASS_EVENTS,
     TURN_TAKING_EVENTS,
+    agent_turn_end_ready,
     answers_another_unit,
     at_turn_start,
+    finishing_seat,
     turn_start_seat,
     unit_seat,
 )
@@ -106,6 +110,9 @@ from dune_imperium.server.turn_end import (
 _LOGGER: Final = logging.getLogger(__name__)
 
 HUMAN_SEAT: Final = "human"
+# The banner prompt once nothing mandatory is left in an Agent turn
+# (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
+AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): ``random``, ``heuristic``, the
 # determinized-search ``rollout``, a trained policy ``checkpoint:<path>``, or
@@ -1158,11 +1165,16 @@ class GameSessionManager:
 
         One press ends every unit of a human seat, whatever step closed it
         and whether or not it can still be taken back. An explicit turn-end
-        action (``EXPLICIT_TURN_ENDS``) is that press itself, so it seals
-        the turn and hands over at once; any other step that ends an open
-        unit holds the game for ``confirm_turn``. The chance outcomes right
-        after the step are resolved first: a reshuffle in the middle of a
-        turn is not an end, and a turn can end in one.
+        action (``EXPLICIT_TURN_ENDS``) is that press itself, and so is a
+        turn-passing card (``TURN_PASS_EVENTS``, OQ-095 (6)): either seals
+        the turn and hands over at once, unless a Usurp trash's follow-up or
+        a reopen keeps the seat in the same turn. Every Agent turn ends that way
+        (``finish_agent_turn``, OQ-095); a step answering the pressed end's
+        own follow-up (a Usurp trash's Skill choice, ``finishing_seat``) is
+        still that one press and is sealed with it. Any other step that ends
+        an open unit holds the game for ``confirm_turn``. The chance
+        outcomes right after the step are resolved first: a reshuffle in the
+        middle of a turn is not an end, and a turn can end in one.
 
         ``before`` is the state the step was taken from and the step is the
         last live one. Returns whether the step handed the turn over.
@@ -1171,13 +1183,21 @@ class GameSessionManager:
         step_index = len(session.steps) - 1
         self._resolve_chance_locked(session)
         actor = action.actor
+        if finishing_seat(before) == actor:
+            self._seal_locked(session, actor)
+            return finishing_seat(session.state) != actor and not (
+                _agent_turn_is_open(session.state, actor)
+            )
         if not answers_another_unit(before, actor):
-            if action.action_id in EXPLICIT_TURN_ENDS:
-                session.open_units.pop(actor, None)
-                session.awaiting_confirmation = None
-                session.undo_floor = len(session.steps)
-                self._advance_locked(session)
-                return True
+            if action.action_id in EXPLICIT_TURN_ENDS or _passed_turn(
+                session, actor, step_index
+            ):
+                self._seal_locked(session, actor)
+                # A Usurp trash's follow-up or a reopen keeps the seat inside
+                # this same turn: the hand-over comes when the turn closes.
+                return finishing_seat(session.state) != actor and not (
+                    _agent_turn_is_open(session.state, actor)
+                )
             if actor not in session.open_units and not (
                 at_turn_start(before, actor)
                 and not _took_turn(session, actor, step_index)
@@ -1192,6 +1212,14 @@ class GameSessionManager:
         session.awaiting_confirmation = None
         self._advance_locked(session)
         return False
+
+    def _seal_locked(self, session: GameSession, seat: int) -> None:
+        """The seat's one press: seal its steps and let the game play on."""
+
+        session.open_units.pop(seat, None)
+        session.awaiting_confirmation = None
+        session.undo_floor = len(session.steps)
+        self._advance_locked(session)
 
     def _unit_ended_locked(self, session: GameSession, unit: int | None) -> bool:
         """Whether a human seat's open unit is over now.
@@ -1235,9 +1263,10 @@ class GameSessionManager:
     def _advance_locked(self, session: GameSession) -> None:
         """Resolve chance and AI decisions until a human must act or the end.
 
-        An AI seat answering a human seat's interrupt can close that human's
-        turn (its last effect made the AI discard, say); the game then
-        stops at that turn end for the human's press like any other.
+        An AI seat's answer cannot end a human Agent or Reveal turn (both
+        end only through their owner's press, OQ-095), but the check stays
+        for any unit an answer could still close: the game then stops at
+        that unit's end for the human's press like any other.
         """
 
         engine = session.engine
@@ -1337,11 +1366,16 @@ class GameSessionManager:
         pending = session.engine.current_decision(state)
         if isinstance(pending, PlayerDecision):
             frame = state.decision_stack[-1]
+            ready = agent_turn_end_ready(state) == pending.owner
             decision = {
                 "kind": str(frame.kind),
                 "owner": pending.owner,
                 "owner_is_human": session.seats[pending.owner] == HUMAN_SEAT,
-                "prompt": pending.prompt,
+                # Nothing mandatory is left in the seat's Agent turn: it may
+                # still play a Plot, deploy or return a specimen, and ends
+                # the turn with its one press (OQ-095). Public facts only.
+                "prompt": AGENT_TURN_END_PROMPT if ready else pending.prompt,
+                "turn_end_ready": ready,
             }
             # The Persuasion still unspent in a Reveal, for the buyer's
             # panel. It is table knowledge: the reveal and every purchase
@@ -1543,6 +1577,33 @@ def _open_undo_window(session: GameSession, seat: int) -> int:
 
     unsealed = len(session.steps) - session.undo_floor
     return max(0, min(undo_window(session.log, seat), unsealed))
+
+
+def _passed_turn(session: GameSession, seat: int, step_index: int) -> bool:
+    """Whether the live steps from ``step_index`` on passed ``seat``'s turn.
+
+    A turn-passing card (``TURN_PASS_EVENTS``) is the seat's turn end
+    itself (OQ-095 (6)); the caller holds the lock.
+    """
+
+    appended = len(session.steps) - step_index
+    return any(
+        event.kind in TURN_PASS_EVENTS and dict(event.payload).get("player") == seat
+        for entry in session.log[len(session.log) - appended :]
+        if isinstance(entry, LoggedStep)
+        for event in entry.events
+    )
+
+
+def _agent_turn_is_open(state: GameState, seat: int) -> bool:
+    """Whether ``seat``'s Agent-turn effect frame is still on the stack."""
+
+    return any(
+        frame.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == seat
+        for frame in state.decision_stack
+    )
 
 
 def _took_turn(session: GameSession, seat: int, step_index: int) -> bool:
@@ -1856,9 +1917,20 @@ def _serialize_action(
     """
 
     outcome = _dry_run(session, action)
-    # An explicit turn end seals the turn it ends (``_settle_locked``).
-    undoable = action.action_id not in EXPLICIT_TURN_ENDS and _action_is_undoable(
-        session, action, outcome
+    # An explicit turn end, a turn-passing card and a step of a pressed end's
+    # own follow-up seal the turn they end (``_settle_locked``).
+    undoable = (
+        action.action_id not in EXPLICIT_TURN_ENDS
+        and finishing_seat(session.state) != action.actor
+        and not (
+            outcome is not None
+            and any(
+                event.kind in TURN_PASS_EVENTS
+                and dict(event.payload).get("player") == action.actor
+                for event in outcome.events
+            )
+        )
+        and _action_is_undoable(session, action, outcome)
     )
     outcome = preview_outcome(action, outcome)
     serialized: JsonObject = {

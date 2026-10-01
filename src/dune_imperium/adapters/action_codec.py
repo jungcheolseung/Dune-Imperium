@@ -128,7 +128,15 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``flip_battle_card``. Catalogs without the option are unchanged. (Built
 # as v121 on the epic-game-mode branch; renumbered when it was merged onto
 # the line that had meanwhile used v121..v123.)
-ACTION_CODEC_VERSION = 124
+# v125: every Agent turn ends only through its owner's ``finish_agent_turn``
+# (OQ-095, user ruling 2026-09-30): the last effect no longer hands the turn
+# over, so a Plot Intrigue, Family Atomics, a specimen return, a Tech flip or
+# a Commander recruit stays possible until the press, and what the last
+# effect left behind resolves inside the turn. Usurp's borrowed card is
+# trashed by the press and its results are the turn's own. An Arrakeen
+# Scouts line's spice cost now counts as spice spent this turn, like every
+# other spend. Saves replay differently -- no template change.
+ACTION_CODEC_VERSION = 125
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

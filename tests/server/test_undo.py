@@ -85,14 +85,6 @@ def _play(
     return summary
 
 
-def _action_index(manager: GameSessionManager, game_id: str, action_id: str) -> int:
-    return next(
-        _int(entry["index"])
-        for entry in _rows(manager.legal_actions(game_id, 0)["actions"])
-        if entry["action_id"] == action_id
-    )
-
-
 def _play_until_revision(
     manager: GameSessionManager, summary: JsonObject, revision: int
 ) -> JsonObject:
@@ -279,56 +271,61 @@ def test_undo_window_holds_own_consecutive_steps_and_closes_on_reveals() -> None
 
 
 def test_turn_end_waits_for_confirmation_while_steps_are_undoable() -> None:
-    # Seat 0 (seed 14) sends Diplomacy to Dutiful Service, takes the Solari
-    # icon and then the Emperor Influence: the turn is over, nothing was
-    # revealed, so the session pauses instead of letting the AI seats act.
+    # Seed 1 with the Leader draft (OQ-007): seat 0 picks before an AI seat,
+    # so its pick reveals nothing and can still be taken back; the unit is
+    # over, so the session pauses instead of letting the next picker act.
+    # (Moved 2026-10-01 from seed 14's Agent turn: an Agent turn now ends
+    # only through its explicit finish_agent_turn, which is the press itself
+    # and never pauses (OQ-095); a Leader pick still ends with the pause.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=1)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
+    pick_revision = _int(summary["revision"])
+    assert _obj(summary["decision"])["kind"] == "leader_draft"
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert actions[0]["action_id"] == "pick_leader"
+    assert actions[0]["undoable"] is True
     summary = _play_raw(manager, summary)
-    assert summary["confirmation"] is None
-    influence = _action_index(manager, game_id, "resolve_faction_influence")
-    summary = _play_raw(manager, summary, index=influence)
 
-    assert summary["revision"] == 14
+    revision = pick_revision + 1
+    assert summary["revision"] == revision
     assert summary["confirmation"] == 0
     assert _obj(summary["decision"])["owner"] != 0
-    assert summary["undo"] == [{"seat": 0, "steps": 3}]
-    assert len(manager._get(game_id).steps) == 14
+    assert summary["undo"] == [{"seat": 0, "steps": 1}]
+    assert len(manager._get(game_id).steps) == revision
     assert manager.legal_actions(game_id, 0)["actions"] == []
     with pytest.raises(SessionError, match="another seat"):
-        manager.apply_action(game_id, seat=0, revision=14, index=0)
+        manager.apply_action(game_id, seat=0, revision=revision, index=0)
     with pytest.raises(StaleRevisionError):
-        manager.confirm_turn(game_id, seat=0, revision=13)
+        manager.confirm_turn(game_id, seat=0, revision=pick_revision)
 
     # Taking a step back reopens the seat's own decision.
-    rewound = manager.undo(game_id, seat=0, revision=14, steps=1)
+    rewound = manager.undo(game_id, seat=0, revision=revision, steps=1)
     assert rewound["confirmation"] is None
     assert _obj(rewound["decision"])["owner"] == 0
-    assert rewound["revision"] == 13
+    assert rewound["revision"] == pick_revision
 
     # Redo the same step and confirm: only now do the other seats act.
-    summary = _play_raw(manager, rewound, index=influence)
+    summary = _play_raw(manager, rewound)
     assert summary["confirmation"] == 0
     confirmed = manager.confirm_turn(
-        game_id, seat=0, revision=14, undo_count=_int(summary["undo_count"])
+        game_id, seat=0, revision=revision, undo_count=_int(summary["undo_count"])
     )
     assert confirmed["confirmation"] is None
-    assert _int(confirmed["revision"]) > 14
+    assert _int(confirmed["revision"]) > revision
     assert confirmed["undo"] == []
     with pytest.raises(SessionError, match="no turn end"):
         manager.confirm_turn(game_id, seat=0, revision=_int(confirmed["revision"]))
 
 
 def test_a_turn_ending_in_a_reveal_still_waits_for_its_press() -> None:
-    # Seed 21's opening turn ends with Assembly Hall's Intrigue draw, which
-    # reveals the deck top to the drawer and closes the undo window -- but
-    # every turn end of a human seat still waits for its own press
-    # (2026-09-23): ``resolve_board_effect`` is not one of the four
-    # explicit turn-end actions (``EXPLICIT_TURN_ENDS``), so it holds like
-    # any other step that ends the seat's unit, even with nothing left to
-    # protect.
+    # Seed 21's opening turn resolves Assembly Hall's Intrigue draw last,
+    # which reveals the deck top to the drawer and closes the undo window --
+    # but the turn still waits for its own press, even with nothing left to
+    # protect. Since OQ-095 that press is the explicit finish_agent_turn:
+    # the turn stays open after its last effect, and here the seat could
+    # still play the Plot Intrigue it just drew before pressing. The press
+    # hands over at once, with no confirm_turn after it.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=21)
     game_id = str(summary["game_id"])
@@ -339,14 +336,48 @@ def test_a_turn_ending_in_a_reveal_still_waits_for_its_press() -> None:
     ]
     summary = _play_raw(manager, summary)
 
+    assert summary["confirmation"] is None
+    assert summary["undo"] == []
+    decision = _obj(summary["decision"])
+    assert decision["owner"] == 0 and decision["kind"] == "agent_effects"
+    assert decision["turn_end_ready"] is True
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [(entry["action_id"], entry["undoable"]) for entry in actions] == [
+        ("play_intrigue", True),
+        ("finish_agent_turn", False),
+    ]
+
+    pressed = _play_raw(manager, summary, index=1)
+    assert pressed["confirmation"] is None
+    assert _int(pressed["revision"]) > _int(summary["revision"])
+    with pytest.raises(SessionError, match="no turn end"):
+        manager.confirm_turn(game_id, 0, _int(pressed["revision"]))
+
+
+def test_a_held_unit_ending_in_a_reveal_still_waits_for_its_press() -> None:
+    # The held twin of the test above, on a unit OQ-095 still holds: seed 0
+    # with the Leader draft, where seat 0 is the First Player and picks last
+    # (OQ-007). Its pick runs into the round-1 draw, which shows the seat its
+    # hand, so no pick can be taken back and the window is empty -- and the
+    # unit still waits for its own press, before the seat's own first turn.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=0)
+    game_id = str(summary["game_id"])
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert actions
+    assert {(entry["action_id"], entry["undoable"]) for entry in actions} == {
+        ("pick_leader", False)
+    }
+    summary = _play_raw(manager, summary)
+
     assert summary["confirmation"] == 0
     assert summary["undo"] == []
-    assert _obj(summary["decision"])["owner"] != 0
+    assert _obj(summary["decision"])["kind"] == "turn"
     assert manager.legal_actions(game_id, 0)["actions"] == []
 
     confirmed = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
     assert confirmed["confirmation"] is None
-    assert _int(confirmed["revision"]) > _int(summary["revision"])
+    assert _rows(manager.legal_actions(game_id, 0)["actions"])
 
 
 def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
@@ -364,20 +395,21 @@ def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
 
 
 def test_a_save_taken_during_the_pause_restores_the_pause() -> None:
+    # The pause of test_turn_end_waits_for_confirmation_while_steps_are_
+    # undoable (seed 1, Leader draft; moved 2026-10-01 from seed 14's Agent
+    # turn, which OQ-095 ends with finish_agent_turn instead of a pause).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=1)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 12)
     summary = _play_raw(manager, summary)
-    influence = _action_index(manager, game_id, "resolve_faction_influence")
-    summary = _play_raw(manager, summary, index=influence)
     assert summary["confirmation"] == 0
+    assert summary["undo"] == [{"seat": 0, "steps": 1}]
 
     document = manager.save_game(game_id)
     restored = manager.restore_game(document)
     assert restored["confirmation"] == 0
-    assert restored["revision"] == 14
-    assert restored["undo"] == [{"seat": 0, "steps": 3}]
+    assert restored["revision"] == summary["revision"]
+    assert restored["undo"] == [{"seat": 0, "steps": 1}]
 
 
 # ------------------------------------------------ piles of the expansions
@@ -409,16 +441,20 @@ def _play_seat0_until(
 
 
 @pytest.mark.parametrize(
-    ("action_id", "expansion"),
+    ("action_id", "expansion", "game_seed"),
     [
         # The Row refills from the face-down Tleilaxu deck [Immortality p. 9].
-        ("acquire_tleilaxu", "immortality"),
+        # Seed 1: since every Agent turn waits for its finish_agent_turn
+        # (OQ-095), seed 0's random walk never makes the purchase legal
+        # before the game ends (re-searched 2026-10-01; seeds 1 and 3 of 0-5
+        # reach it).
+        ("acquire_tleilaxu", "immortality", 1),
         # The stack's next tile turns face up [Bloodlines p. 6].
-        ("acquire_tech", "tech_module"),
+        ("acquire_tech", "tech_module", 0),
     ],
 )
 def test_a_purchase_that_turns_up_a_hidden_card_cannot_be_taken_back(
-    action_id: str, expansion: str
+    action_id: str, expansion: str, game_seed: int
 ) -> None:
     # 2026-09-24, found in play: buying from the Tleilaxu Row could be taken
     # back after the refill had shown the deck's next card, because the
@@ -428,7 +464,7 @@ def test_a_purchase_that_turns_up_a_hidden_card_cannot_be_taken_back(
     manager = GameSessionManager()
     summary = manager.create_game(
         HUMAN_FIRST,
-        game_seed=0,
+        game_seed=game_seed,
         immortality=expansion == "immortality",
         bloodlines=expansion == "tech_module",
         tech_module=expansion == "tech_module",
@@ -846,9 +882,15 @@ def test_a_confirmed_turn_end_stays_handed_over_to_the_next_human() -> None:
     # undoable) -- only a hold that *does* start with an open window
     # exercises the sealing this test is about, so the others are skipped
     # rather than asserted on.
+    #
+    # Seed 0 with the Leader draft (moved 2026-10-01 from seed 7's held
+    # Agent turns, which OQ-095 ends with the explicit finish_agent_turn
+    # instead): human seat 1 picks right before human seat 0
+    # (draft_pick_order, OQ-007), and a pick that is not the last one can
+    # still be taken back.
     manager = GameSessionManager()
     seats = ("human", "human", HUMAN_FIRST[1], HUMAN_FIRST[1])
-    summary = manager.create_game(seats, game_seed=7)
+    summary = manager.create_game(seats, leader_draft=True, game_seed=0)
     game_id = str(summary["game_id"])
 
     checked = 0

@@ -811,9 +811,13 @@ def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> 
     # Occupation's box (draw and the Combat icon) resolves like any partner.
     drawn = resolve_agent_card_effect(_switch(grafted.state))
     assert len(drawn.state.players[0].hand) == 1
+    # The turn stays open until its owner ends it (OQ-095), so the borrowed
+    # card is still in play beside the turn end.
+    assert drawn.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert drawn.state.players[0].usurped_row_card_id == occupation
     closed = _engine_finish_turn(drawn.state)
     owner = closed.players[0]
-    # The turn's close trashes the borrowed card automatically (OQ-054).
+    # The turn end trashes the borrowed card (OQ-054, OQ-095 (4)).
     assert occupation not in owner.in_play and occupation in owner.trashed
     assert occupation not in closed.imperium_removed
     assert owner.usurped_row_card_id == ""
@@ -879,21 +883,36 @@ def test_usurp_trash_fires_the_borrowed_cards_trash_trigger() -> None:
     assert "usurped_card_trashed" in kinds and "card_trashed" in kinds
 
 
-def test_usurp_trash_does_not_credit_a_bank_commander_to_the_next_turn() -> None:
-    """2026-09-26 review round 5, Finding 1 (Usurp regression, major):
-    ``resolve_usurp_trash`` only ever fires once ``_agent_turn_is_open_for``
-    is False -- the owner's turn has always already closed by then -- but it
-    called ``trash_personal_card`` with the default ``turn_closed=False``.
-    Sardaukar Standard's trash trigger (Emperor Faction, ACQUIRE_BANK_
-    COMMANDER) then queues an unmarked ``pending_skill_choices`` entry;
-    ``begin_skill_choice`` opens on whatever frame sits on top when the
-    engine gets to it, which -- once every other seat has revealed -- is the
-    fresh "turn" frame ``advance_after_effect`` already reopened for this
-    same player. "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
-    deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로
-    취급해 두 개 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
-    (docs/rules/player-turns.md:137); a Sardaukar Commander is a "troop"
-    worth 2 strength [Bloodlines p. 4].
+def _resolve_until_finish(state: GameState) -> GameState:
+    """Resolve the owner's pending groups (no deployment) until the end is offered."""
+
+    engine = UprisingRulesEngine()
+    for _ in range(20):
+        actions = engine.legal_actions(state, 0)
+        if any(a.action_id == "finish_agent_turn" for a in actions):
+            return state
+        preferred = [a for a in actions if not a.action_id.startswith("deploy")]
+        state = engine.apply(state, preferred[0]).state
+    raise AssertionError("the turn end was never offered")
+
+
+def _press_finish(state: GameState) -> tuple[GameState, tuple[str, ...]]:
+    engine = UprisingRulesEngine()
+    result = engine.apply(state, DomainAction("finish_agent_turn", 0))
+    return result.state, tuple(event.kind for event in result.events)
+
+
+def test_usurped_sardaukar_standard_commander_is_this_turns_and_reopens_it() -> None:
+    """User ruling 2026-10-01 (OQ-095 (5)): the Usurp trash at the turn's end
+    is the turn's own -- "trash 결과로 의무 Contract나 배치가 생기면 턴을 다시
+    열어 처리하게 하고, 다시 '턴 종료'를 누르게 한다". Sardaukar Standard's
+    trash trigger (ACQUIRE_BANK_COMMANDER) queues a Skill choice, which opens
+    on top of the waiting frame; the Commander it recruits on a Combat-space
+    turn may deploy, "그 turn에 recruit한 troop을 원하는 수만큼 deploy"
+    [Main p. 10] (docs/rules/player-turns.md:136) -- a Commander is a "troop"
+    [Bloodlines p. 4] -- so the turn reopens for it. Every other seat has
+    revealed, so the press then opens the same seat's next turn, and that
+    fresh turn starts with nothing recruited.
     """
 
     from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
@@ -924,32 +943,224 @@ def test_usurp_trash_does_not_credit_a_bank_commander_to_the_next_turn() -> None
     grafted = apply_graft_partner(
         placed, DomainAction("choose_graft_partner", 0, (("card_id", standard),))
     ).state
+    ready = _resolve_until_finish(grafted)
+    assert ready.players[0].usurped_row_card_id == standard
+
+    pressed, kinds = _press_finish(ready)
+    assert "agent_turn_finished" in kinds and "usurped_card_trashed" in kinds
+    # The Skill choice sits on the waiting frame; nothing else is offered.
+    assert pressed.decision_stack[-1].kind == FrameKind.SKILL_CHOICE
+    assert pressed.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+    assert dict(pressed.decision_stack[-2].context)["finishing"] is True
     engine = UprisingRulesEngine()
-    result = None
-    for _ in range(20):
-        if grafted.decision_stack[-1].kind == FrameKind.TURN:
-            break
-        actions = engine.legal_actions(grafted, 0)
-        preferred = [a for a in actions if not a.action_id.startswith("deploy")]
-        result = engine.apply(grafted, preferred[0])
-        grafted = result.state
-
-    top = grafted.decision_stack[-1]
-    assert top.kind == FrameKind.TURN
-    owner_after = grafted.players[0]
-    # The trash, and the Commander it acquires, still happen...
+    chosen = engine.apply(pressed, engine.legal_actions(pressed, 0)[0])
+    reopened = chosen.state
+    assert "agent_turn_reopened" in {event.kind for event in chosen.events}
+    frame, context = current_agent_effect_context(reopened)
+    assert context.get("finishing") is None
+    assert context["pending_combat_deployment"] is True
+    owner_after = reopened.players[0]
     assert standard in owner_after.trashed and owner_after.usurped_row_card_id == ""
-    assert grafted.sardaukar_commanders_bank == 0
     assert owner_after.commanders_garrison == 1
-    # ...but the Commander must not join the fresh "turn" frame's deploy
-    # allowance, since it belongs to the turn that just closed.
-    assert dict(top.context)["turn_owner"] == 0
-    assert dict(top.context).get("troops_recruited") in (None, 0)
+    offered = {a.action_id for a in engine.legal_actions(reopened, 0)}
+    assert {"deploy_commanders", "finish_agent_turn"} <= offered
 
-    next_placed = _place(grafted, experimentation, "imperial_basin")
+    closed, _ = _press_finish(reopened)
+    top = closed.decision_stack[-1]
+    assert top.kind == FrameKind.TURN and dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+    next_placed = _place(closed, experimentation, "imperial_basin")
     assert [
         dict(a.arguments)["count"] for a in legal_combat_deployments(next_placed, 0)
     ] == [1, 2]
+
+
+EXPERIMENTATION = next(card for card in STARTERS if "experimentation:0" in card)
+
+
+def _usurped_turn(
+    card_id: str,
+    placed_id: str,
+    space_id: str,
+    config: RulesetConfig = IMMORTALITY,
+    **owner_extra: object,
+) -> GameState:
+    """Seat 0's open Agent turn at ``space_id`` with ``card_id`` borrowed by
+    Usurp: in play, and trashed by the turn's end."""
+
+    owner = _owner((placed_id,), **owner_extra)
+    turn = _place(_state(owner, config=config), placed_id, space_id)
+    owner = turn.players[0]
+    borrowed = replace(
+        owner, in_play=(*owner.in_play, card_id), usurped_row_card_id=card_id
+    )
+    return replace(turn, players=(borrowed, *turn.players[1:]))
+
+
+def test_usurped_eliminate_allies_troops_reopen_a_combat_turn() -> None:
+    """Eliminate Allies' trash trigger recruits two troops (RECRUIT_TWO_TROOPS).
+    Trashed by the end of a Combat-space turn, they are this turn's recruits
+    and may deploy (OQ-095 (5), [Main p. 10]); the turn reopens, and the
+    second press closes it."""
+
+    allies = "imperium:eliminate_allies:0"
+    state = _resolve_until_finish(
+        _usurped_turn(
+            allies,
+            EXPERIMENTATION,
+            "imperial_basin",
+            troops_garrison=0,
+            troops_supply=12,
+        )
+    )
+    pressed, kinds = _press_finish(state)
+    assert "usurped_card_trashed" in kinds and "agent_turn_reopened" in kinds
+    owner = pressed.players[0]
+    assert allies in owner.trashed and owner.troops_garrison == 2
+    engine = UprisingRulesEngine()
+    counts = [
+        dict(a.arguments)["count"]
+        for a in engine.legal_actions(pressed, 0)
+        if a.action_id == "deploy_troops"
+    ]
+    assert counts == [1, 2]
+    deployed = engine.apply(pressed, DomainAction("deploy_troops", 0, (("count", 2),)))
+    assert deployed.state.players[0].troops_conflict == 2
+    closed, kinds = _press_finish(deployed.state)
+    assert "usurped_card_trashed" not in kinds
+    assert closed.decision_stack[-1].kind == FrameKind.TURN
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 1
+
+
+def test_usurped_eliminate_allies_troops_stay_home_without_a_deploy_window() -> None:
+    """Without a deployment window the recruits simply join the garrison and
+    the press hands the turn over at once (OQ-095 (5))."""
+
+    allies = "imperium:eliminate_allies:0"
+    state = _resolve_until_finish(
+        _usurped_turn(
+            allies, DAGGER, "assembly_hall", troops_garrison=0, troops_supply=12
+        )
+    )
+    closed, kinds = _press_finish(state)
+    assert "usurped_card_trashed" in kinds and "agent_turn_reopened" not in kinds
+    assert closed.players[0].troops_garrison == 2
+    assert closed.decision_stack[-1].kind == FrameKind.TURN
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 1
+
+
+def test_usurped_replacement_eyes_spice_completes_a_harvest_contract_in_turn() -> None:
+    """Replacement Eyes' trash trigger advances the Tleilaxu track; the first
+    seat to reach the fourth space takes its 2 spice [Immortality p. 7]. That
+    spice is the turn's (OQ-095 (5)), so a Harvest 3+ Contract held at
+    placement becomes due -- "조건을 만족한 contract는 반드시 완료한다"
+    [FAQ p. 1] (docs/rules/choam-module.md:33) -- and the turn reopens for
+    its completion before the owner ends it again."""
+
+    from dune_imperium.content.uprising.contracts import contract_instance_ids
+    from dune_imperium.rules.frames import with_context
+
+    eyes = "imperium:replacement_eyes:0"
+    harvest = "contract:harvest_3"
+    assert harvest in contract_instance_ids()
+    state = _usurped_turn(
+        eyes,
+        DAGGER,
+        "assembly_hall",
+        RulesetConfig(choam_module=True, immortality=True, promo_cards=True),
+        tleilaxu_space=3,
+        active_contract_ids=(harvest,),
+    )
+    frame, context = current_agent_effect_context(state)
+    owner = state.players[0]
+    # The Contract was held when the Agent went out, and this turn has
+    # already gained 1 spice: one short of Harvest 3+.
+    context["pending_contract_ids"] = harvest
+    context["spice_at_placement"] = owner.resources.spice - 1
+    state = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+    )
+    ready = _resolve_until_finish(state)
+    pressed, kinds = _press_finish(ready)
+    assert "tleilaxu_advanced" in kinds and "agent_turn_reopened" in kinds
+    owner = pressed.players[0]
+    assert owner.tleilaxu_space == 4
+    assert owner.resources.spice == ready.players[0].resources.spice + 2
+    engine = UprisingRulesEngine()
+    offered = {a.action_id for a in engine.legal_actions(pressed, 0)}
+    assert "finish_agent_turn" not in offered  # the Contract comes first
+    completion = next(
+        a
+        for a in engine.legal_actions(pressed, 0)
+        if a.action_id == "complete_contract"
+    )
+    completed = engine.apply(pressed, completion).state
+    assert harvest in completed.players[0].completed_contract_ids
+    closed, _ = _press_finish(completed)
+    assert closed.decision_stack[-1].kind == FrameKind.TURN
+
+
+def test_a_turn_reopened_for_a_contract_keeps_its_deployment_window() -> None:
+    """A reopened turn goes on as the same turn (OQ-095 (5)), so a Combat-space
+    turn keeps the deployment window it had before the press (OQ-029): a
+    Commander recruited after the reopen -- here paid for by the Contract's
+    own 3 Solari -- may deploy, "그 turn에 recruit한 troop을 원하는 수만큼
+    deploy" [Main p. 10] (docs/rules/player-turns.md:136); a Commander is a
+    "troop" [Bloodlines p. 4]. Independent review 2026-10-01: the reopen had
+    left the window shut."""
+
+    from dune_imperium.content.uprising.contracts import contract_instance_ids
+    from dune_imperium.rules.frames import with_context
+
+    eyes = "imperium:replacement_eyes:0"
+    harvest = "contract:harvest_3"
+    assert harvest in contract_instance_ids()
+    state = _usurped_turn(
+        eyes,
+        EXPERIMENTATION,
+        "imperial_basin",
+        RulesetConfig(
+            choam_module=True, bloodlines=True, immortality=True, promo_cards=True
+        ),
+        tleilaxu_space=3,
+        active_contract_ids=(harvest,),
+        resources=Resources(solari=1, spice=2, water=2),
+        troops_supply=12,
+        troops_garrison=0,
+        commanders_supply=2,
+    )
+    frame, context = current_agent_effect_context(state)
+    context["pending_contract_ids"] = harvest
+    context["spice_at_placement"] = state.players[0].resources.spice - 1
+    state = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+    )
+    engine = UprisingRulesEngine()
+    ready = _resolve_until_finish(state)
+    # 1 Solari: the supply Commander (2 Solari) cannot be recruited yet.
+    assert "recruit_sardaukar_commander" not in {
+        a.action_id for a in engine.legal_actions(ready, 0)
+    }
+    pressed, kinds = _press_finish(ready)
+    assert "agent_turn_reopened" in kinds
+    _, reopened = current_agent_effect_context(pressed)
+    assert reopened["pending_combat_deployment"] is True
+    completion = next(
+        a
+        for a in engine.legal_actions(pressed, 0)
+        if a.action_id == "complete_contract"
+    )
+    completed = engine.apply(pressed, completion).state
+    recruit = next(
+        a
+        for a in engine.legal_actions(completed, 0)
+        if a.action_id == "recruit_sardaukar_commander"
+    )
+    recruited = engine.apply(completed, recruit).state
+    offered = {a.action_id for a in engine.legal_actions(recruited, 0)}
+    assert {"deploy_commanders", "finish_agent_turn"} <= offered
 
 
 def test_usurp_placed_first_may_take_a_hand_partner_instead_of_the_row() -> None:

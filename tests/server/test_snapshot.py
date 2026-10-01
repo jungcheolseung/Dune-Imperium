@@ -95,7 +95,11 @@ def test_actions_are_none_for_a_seat_that_does_not_own_the_decision() -> None:
 
 def test_actions_are_none_while_the_seat_awaits_turn_end_confirmation() -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    # A Leader pick is still held for the confirm press; an Agent turn ends
+    # with its own finish_agent_turn press and never is (OQ-095). In this
+    # seed seat 0 picks last and is the First Player, so the held pick is
+    # followed by its own round-1 turn: no actions all the same.
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=0)
     game_id = _text(summary["game_id"])
 
     for _ in range(200):
@@ -109,6 +113,8 @@ def test_actions_are_none_while_the_seat_awaits_turn_end_confirmation() -> None:
 
     snapshot = manager.snapshot(game_id, 0)
 
+    decision = _obj(_obj(snapshot["summary"])["decision"])
+    assert (decision["kind"], decision["owner"]) == ("turn", 0)
     assert snapshot["actions"] is None
     assert _obj(snapshot["summary"])["confirmation"] == 0
 

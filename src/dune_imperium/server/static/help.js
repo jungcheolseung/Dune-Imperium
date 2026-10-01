@@ -51,9 +51,26 @@ function announceTurn(summary) {
     text = isMine(seat)
       ? t("help.announce_turn_end_mine", { name: playerLabel(seat) })
       : t("help.announce_turn_end_other", { name: playerLabel(seat) });
+  } else if (summary.decision && summary.decision.turn_end_ready) {
+    /* An Agent turn with nothing mandatory left: it ends only with the
+       seat's own press (OQ-095), so say so once, like a held turn end. */
+    const owner = summary.decision.owner;
+    key = `ready:${owner}`;
+    text = isMine(owner)
+      ? t("help.announce_turn_end_mine", { name: playerLabel(owner) })
+      : t("help.announce_turn_end_other", { name: playerLabel(owner) });
   } else if (summary.decision) {
     const owner = summary.decision.owner;
-    key = `seat:${owner}`;
+    /* A turn's start (its "turn" frame) keys apart from the rest of it, so
+       a seat's own next turn right after its last one (every other seat has
+       revealed) is announced; going on from the start into the same turn
+       says nothing new. */
+    const start = summary.decision.kind === "turn";
+    key = start ? `start:${owner}` : `seat:${owner}`;
+    if (!start && announcedTurn === `start:${owner}`) {
+      announcedTurn = key;
+      return;
+    }
     /* One screen can hold several human seats (an open server), so even
        "your turn" says which seat. */
     text = isMine(owner)

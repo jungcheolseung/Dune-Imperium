@@ -836,6 +836,13 @@ function renderBanner() {
         waitingHint(summary.confirmation);
       meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
       info.append(prompt, meta);
+    } else if (decision.owner !== state.viewSeat && decision.turn_end_ready) {
+      /* Another seat's Agent turn has nothing mandatory left; it ends with
+         that seat's own press (OQ-095), optional steps first if it likes. */
+      prompt.textContent =
+        t("render.waiting_turn_end", { name: playerLabel(decision.owner) }) +
+        waitingHint(decision.owner);
+      info.append(prompt);
     } else if (decision.owner !== state.viewSeat) {
       prompt.textContent =
         t("render.waiting_decision", { name: playerLabel(decision.owner) }) +

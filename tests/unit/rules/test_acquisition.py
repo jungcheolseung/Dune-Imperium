@@ -1,6 +1,8 @@
 """Tests for Reserve acquisition during Reveal turns."""
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +53,11 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_actions,
     legal_reveal_deployments,
 )
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 
 def _instance(card_id: str, copy: int = 0) -> str:
@@ -434,10 +441,12 @@ def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
     assert legal_agent_card_acquisitions(result.state, 0) == ()
 
 
-def test_price_is_no_object_spy_acquisition_ends_the_agent_turn() -> None:
+def test_price_is_no_object_spy_acquisition_does_not_stall_the_agent_turn() -> None:
     # After the Solari acquisition resolves an acquire-box Spy placement, the
-    # effect frame has nothing pending and the Agent turn advances instead of
-    # stalling without a legal action.
+    # effect frame has nothing pending: it stays on top with the turn end
+    # offered instead of stalling without a legal action, and the owner's
+    # press opens the next seat's turn (every Agent turn ends only through
+    # ``finish_agent_turn``, user ruling OQ-095 (1)).
     instances = imperium_deck_instance_ids(False)
     strike_fleet = _imperium_instance("strike_fleet")
     others = tuple(
@@ -470,10 +479,13 @@ def test_price_is_no_object_spy_acquisition_ends_the_agent_turn() -> None:
         for candidate in engine.legal_actions(state, 0)
         if candidate.action_id == "place_acquisition_spy"
     )
-    ended = engine.apply(state, placement).state
+    placed = engine.apply(state, placement).state
 
-    assert ended.players[0].hand == (strike_fleet,)
-    assert len(ended.players[0].spy_post_ids) == 1
+    assert placed.players[0].hand == (strike_fleet,)
+    assert len(placed.players[0].spy_post_ids) == 1
+    assert placed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert DomainAction("finish_agent_turn", 0) in engine.legal_actions(placed, 0)
+    ended = finish_agent_turn(placed)
     assert ended.decision_stack[-1].kind == "turn"
     assert isinstance(ended.decision_stack[-1].decision, PlayerDecision)
     assert ended.decision_stack[-1].decision.owner == 1

@@ -54,11 +54,12 @@ GAMES = (
     # Random seats wander into what a heuristic never picks (Family Atomics,
     # the Feyd track, Secrets' random steal, an exchanged Influence).
     {"seats": ["random"] * 4, "game_seed": 25, "policy_seed": 25, **EVERY_EXPANSION},
-    # Seed 47 (30 until the 2026-09-26 card-transcription audit, then 38
+    # Seed 28 (30 until the 2026-09-26 card-transcription audit, then 38
     # until OQ-070's Commander deploy slot moved that game off its Secrets
-    # steal): Family Atomics, the Feyd track and research, and the only one
-    # of the four with a Secrets steal.
-    {"seats": ["random"] * 4, "game_seed": 47, "policy_seed": 47, **EVERY_EXPANSION},
+    # steal, then 47 until OQ-095's explicit Agent-turn end did the same,
+    # 2026-10-01): Family Atomics, the Feyd track and research, and the only
+    # one of the four with a Secrets steal.
+    {"seats": ["random"] * 4, "game_seed": 28, "policy_seed": 28, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -68,21 +69,23 @@ GAMES = (
     },
     # Arrakeen Scouts (user report 2026-09-29: its payloads read "Kind:
     # mission", "Modifier: any_faction_four_bonus", "Paid", "To" in the
-    # Korean log, and its draws "Layout:233#1"). Seed 200: Clear the Market
-    # with CHOAM, two round modifiers, a mission's pieces on posts, the
-    # Helix spice, an auction and Mercenaries; seed 152: Mating Season,
-    # Critical Moment's market and mission troops.
+    # Korean log, and its draws "Layout:233#1"). Seeds 200 and 152 until
+    # OQ-095's explicit Agent-turn end moved both games (2026-10-01). Seed
+    # 8: Clear the Market with CHOAM, Mating Season, a mission's pieces on
+    # posts, an auction won and Mercenaries; seed 12: two round modifiers,
+    # the Helix spice, Critical Moment's market, mission troops, Mercenaries
+    # and the secret picks revealed.
     {
         "seats": ["random"] * 4,
-        "game_seed": 200,
-        "policy_seed": 200,
+        "game_seed": 8,
+        "policy_seed": 8,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
     {
         "seats": ["random"] * 4,
-        "game_seed": 152,
-        "policy_seed": 152,
+        "game_seed": 12,
+        "policy_seed": 12,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

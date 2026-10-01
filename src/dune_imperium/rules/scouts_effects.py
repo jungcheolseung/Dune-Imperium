@@ -510,6 +510,9 @@ def _apply_automatic(
     owner = state.players[player]
     match step:
         case PayResources(solari=solari, spice=spice, water=water):
+            # Every spend adds to ``spice_spent_turn``, so a line's cost inside
+            # the seat's open turn is not read as lost gains by Hungry for
+            # Spice or "gained spice this turn" (OQ-063, OQ-095 (3)).
             paid = replace(
                 owner,
                 resources=replace(
@@ -518,6 +521,7 @@ def _apply_automatic(
                     spice=owner.resources.spice - spice,
                     water=owner.resources.water - water,
                 ),
+                spice_spent_turn=owner.spice_spent_turn + spice,
             )
             next_state = replace(state, players=replace_player(state.players, paid))
             next_state = _credit_turn(

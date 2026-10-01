@@ -1,6 +1,8 @@
 """Tests for typed automatic board-space effects."""
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -52,6 +54,7 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.combat_deployment import (
     apply_agent_turn_finish,
+    legal_agent_turn_finish_actions,
     legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
@@ -61,6 +64,12 @@ from dune_imperium.rules.effects import (
     GainResourcesEffect,
     RecruitTroopsEffect,
 )
+from dune_imperium.rules.frames import FrameKind
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 
 def _instance(card_id: str) -> str:
@@ -126,6 +135,23 @@ def _resolve_board(state: GameState, *effects: str) -> GameState:
     for key in keys:
         state = resolve_board_effect(state, _board_action(state, key)).state
     return state
+
+
+def _finish_open_turn(state: GameState) -> GameState:
+    """Press seat 0's still-open Agent turn end; return the next seat's turn.
+
+    Resolving the last effect leaves the owner's Agent-turn effect frame on
+    top with the end offered: every Agent turn ends only through its
+    owner's ``finish_agent_turn`` (user ruling OQ-095 (1)).
+    """
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 0
+    assert legal_agent_turn_finish_actions(state, 0)
+    finished: GameState = finish_agent_turn(state)
+    return finished
 
 
 def test_first_resource_board_effects_are_typed() -> None:
@@ -370,9 +396,10 @@ def test_gather_support_paid_option_prints_a_separate_water_icon() -> None:
 
     done = _resolve_board(watered, "troops")
     assert done.players[0].troops_garrison == 5
-    # Nothing else is pending for a Dagger at Gather Support: the last icon
-    # closes the effect frame and opens the clockwise player's turn.
-    decision = done.decision_stack[-1].decision
+    # Nothing else is pending for a Dagger at Gather Support, yet the turn
+    # stays open until its owner presses the end (OQ-095); the press opens
+    # the clockwise player's turn.
+    decision = _finish_open_turn(done).decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
 
@@ -653,7 +680,8 @@ def test_gather_support_recruits_available_troops_and_finishes_turn() -> None:
 
     resolved = _resolve_board(placed, "troops")
     owner = resolved.players[0]
-    decision = resolved.decision_stack[-1].decision
+    # The owner's press ends the turn (OQ-095).
+    decision = _finish_open_turn(resolved).decision_stack[-1].decision
 
     assert owner.troops_supply == 7
     assert owner.troops_garrison == 5
@@ -794,12 +822,11 @@ def test_shipping_influence_choice_leaves_the_solari_icon_pending() -> None:
         "space_id": "shipping",
     }
 
-    # No other group is left pending for this hand/space combination, so
-    # the Solari icon closes the Agent-turn effect frame and opens the
-    # clockwise player's turn, mirroring
-    # test_finishing_all_effect_groups_opens_clockwise_players_turn.
+    # No other group is left pending for this hand/space combination; the
+    # turn stays open after the Solari icon and the owner's end opens the
+    # clockwise player's turn (OQ-095).
     finished = _resolve_board(result.state, "resources")
-    decision = finished.decision_stack[-1].decision
+    decision = _finish_open_turn(finished).decision_stack[-1].decision
     assert finished.players[0].resources.solari == 5
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
@@ -1168,7 +1195,7 @@ def test_imperial_privilege_recall_returns_agent_and_draws_a_card() -> None:
 
     result = apply_imperial_privilege_action(declined, recall)
     resolved_owner = result.state.players[0]
-    decision = result.state.decision_stack[-1].decision
+    decision = _finish_open_turn(result.state).decision_stack[-1].decision
 
     assert "arrakeen" not in resolved_owner.agent_locations
     assert resolved_owner.agents_available == 1
@@ -1198,7 +1225,7 @@ def test_imperial_privilege_skips_only_the_recall_without_another_agent() -> Non
 
     result = apply_imperial_privilege_action(state, action)
     resolved = result.state
-    decision = resolved.decision_stack[-1].decision
+    decision = _finish_open_turn(resolved).decision_stack[-1].decision
 
     # With no other deployed Agent only the recall is skipped; the card draw
     # is a separate printed effect and still resolves (OQ-023 decided
@@ -1241,7 +1268,7 @@ def test_imperial_privilege_recall_that_lost_its_target_is_skipped_late() -> Non
 
     result = skip_impossible_imperial_privilege_recall(RuleResult(state=lost))
 
-    decision = result.state.decision_stack[-1].decision
+    decision = _finish_open_turn(result.state).decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
     assert drawn in result.state.players[0].hand

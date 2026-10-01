@@ -323,6 +323,7 @@ const EVENT_LABELS = {
   troops_withdrawn: "병력 회수",
   troops_recruit_short: "병력 {recruit} 부족 ({supply} 없음)",
   agent_turn_finished: "{agent_turn} 종료",
+  agent_turn_reopened: "{agent_turn} 다시 열림",
   troops_retreated: "병력 후퇴",
   influence_gained: "{influence_any} 상승",
   influence_lost: "{influence_any} 하락",

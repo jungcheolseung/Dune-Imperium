@@ -42,8 +42,10 @@ to the end, and on the way the page must show:
 
 The seat picks each secret line and bids in turn so every kind is seen;
 everything else takes the first legal action. Seed 21 meets an unpayable
-line for the seat (CHOAM Escort without a Contract early on, a sale later)
-and skips it once (Guild Negotiation).
+line for the seat (CHOAM Escort without a Contract, round 2) and skips two
+choices (Guild Negotiation, Rotating Doors) -- re-checked 2026-10-01 after
+OQ-095's explicit Agent-turn end changed the walk (the unpayable sale it
+also met before no longer comes up).
 """
 
 from __future__ import annotations
@@ -62,7 +64,11 @@ from open_mode import settled
 
 check = Check()
 SEEDS = (21, 58, 31, 44)
-COUNCIL_SEED = 21
+# COUNCIL_JS's walk takes a council seat with a subcommittee still to join
+# (round 4; the list then offers two joins and the decline). Seed 21 until
+# OQ-095's explicit Agent-turn end moved its seat to round 7, when every
+# subcommittee was taken (2026-10-01).
+COUNCIL_SEED = 1
 HANGUL = re.compile(r"[가-힣]")
 
 CHOOSE_JS = """(() => {
@@ -742,22 +748,25 @@ def check_face_down(page, base: str, saves: Path, label: str) -> bool:
 
 
 # Games whose missions leave every kind of piece (seed search 2026-09-30 over
-# seeds 1-40 of both pools, seat 0 playing CHOOSE_JS as here): (rule options,
-# seed, rounds to play). Missions come out in rounds 2 and 3 and place their
-# pieces then, so three rounds show them all.
+# seeds 1-40 of both pools, seat 0 playing CHOOSE_JS as here; searched again
+# 2026-10-01 over seeds 1-60 after OQ-095's explicit Agent-turn end moved
+# seeds 16 and 36 off Security Detail and Planetary Exploration, so seed 19
+# replaced seed 1): (rule options, seed, rounds to play). Missions come out
+# in rounds 2 and 3 and place their pieces then, so three rounds show them
+# all.
 # Six games cover all sixteen missions; seat 0 joins every mission it can,
 # so each parking mission has troops on the board.
 UPRISING_POOL = ("choam",)
 IMMORTALITY_POOL = ("choam", "immortality")
 PIECE_GAMES: tuple[tuple[tuple[str, ...], int, int], ...] = (
-    (UPRISING_POOL, 1, 3),  # Emperor's Schemes, Imperial Reserve
     (UPRISING_POOL, 2, 3),  # CHOAM Research, Prison Planet, Urban Surveillance
     (UPRISING_POOL, 7, 3),  # Desert Riding, Imperial Reserve, Send for Aid
+    (UPRISING_POOL, 19, 3),  # Planetary Exploration, Security Detail,
+    # Send for Aid
     (IMMORTALITY_POOL, 4, 3),  # CHOAM Escort, Tleilaxu Offering, Weirding Warfare
-    (IMMORTALITY_POOL, 16, 3),  # Fedaykin Assistance, Security Detail,
-    # Sponsored Research
+    (IMMORTALITY_POOL, 16, 3),  # Emperor's Schemes, Fedaykin Assistance
     (IMMORTALITY_POOL, 36, 3),  # Back Room Deal, Coordinate With The Emperor,
-    # Planetary Exploration
+    # Sponsored Research
 )
 EXPECTED_MISSIONS = frozenset(
     {

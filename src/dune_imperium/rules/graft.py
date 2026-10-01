@@ -244,47 +244,23 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-def _agent_turn_is_open_for(state: GameState, player: int) -> bool:
-    return any(
-        frame.kind == FrameKind.AGENT_EFFECTS
-        and isinstance(frame.decision, PlayerDecision)
-        and frame.decision.owner == player
-        for frame in state.decision_stack
-    )
-
-
-def usurp_trash_is_queued(state: GameState) -> bool:
-    """Return whether a borrowed Row card's Agent turn has closed."""
-
-    if not state.config.immortality:
-        # Usurp is an Immortality Tleilaxu card, so no seat can hold a
-        # borrowed Row card without the module; the automatic-advance loop
-        # asks after every transition, and the module flag answers for free.
-        return False
-    return any(
-        seat.usurped_row_card_id and not _agent_turn_is_open_for(state, seat.player_id)
-        for seat in state.players
-    )
-
-
-def resolve_usurp_trash(state: GameState) -> RuleResult:
+def trash_usurped_card(state: GameState, player: int) -> RuleResult:
     """Usurp: "trash that card at the end of the turn" [card face].
 
-    The turn's close trashes the borrowed card automatically, as an ordinary
-    trash: it reaches the owner's trash pile and its "when this card is
-    trashed" trigger resolves (OQ-054, user ruling 2026-09-08). A card that
+    The owner's ``finish_agent_turn`` trashes the borrowed card, as an
+    ordinary trash: it reaches the owner's trash pile and its "when this
+    card is trashed" trigger resolves (OQ-054, user ruling 2026-09-08). The
+    owner's Agent-turn frame is still open, so what the trigger recruits or
+    gains is this turn's (user ruling 2026-10-01, OQ-095 (5)). A card that
     already left every owned zone (trashed earlier in the turn) needs
     nothing more.
     """
 
-    owner = next(
-        seat
-        for seat in state.players
-        if seat.usurped_row_card_id
-        and not _agent_turn_is_open_for(state, seat.player_id)
-    )
+    owner = state.players[player]
     card_id = owner.usurped_row_card_id
-    source = f"round:{state.round_number}:player:{owner.player_id}:usurp_trash"
+    if not card_id:
+        raise ValueError("the player holds no Usurped Row card")
+    source = f"round:{state.round_number}:player:{player}:usurp_trash"
     cleared = replace(
         state,
         players=replace_player(state.players, replace(owner, usurped_row_card_id="")),
@@ -292,23 +268,16 @@ def resolve_usurp_trash(state: GameState) -> RuleResult:
     event = GameEvent(
         event_id=f"{source}:{card_id}",
         kind="usurped_card_trashed",
-        payload=(("card_id", card_id), ("player", owner.player_id)),
+        payload=(("card_id", card_id), ("player", player)),
     )
     if card_id not in (*owner.hand, *owner.deck, *owner.discard_pile, *owner.in_play):
         return RuleResult(state=cleared, events=(event,))
-    # ``usurp_trash_is_queued`` only fires once ``_agent_turn_is_open_for``
-    # is False, so the owner's turn has always already closed by the time
-    # this trash resolves: a Sardaukar Standard Commander it queues must not
-    # join whatever fresh "turn" frame the queued Skill choice eventually
-    # opens on, even the same player's own (OQ-044 (d)) [Main p. 10]
-    # [FAQ p. 4].
     trashed = trash_personal_card(
         cleared,
-        owner.player_id,
+        player,
         card_id,
         source=source,
         allow_deck=True,
-        turn_closed=True,
     )
     return RuleResult(state=trashed.state, events=(event, *trashed.events))
 

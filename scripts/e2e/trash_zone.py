@@ -33,8 +33,19 @@ The same policy is replayed live against the browser below rather than
 hard-coded to a step count, so a content or engine change that only shifts
 *when* the decision appears still gets caught by this script; if the
 decision moves out of the step budget entirely, re-running that same
-raw-HTTP walk (a fresh throwaway script against this policy and seed 0)
-finds a new seed.
+walk (a fresh throwaway script against this policy) finds a new seed.
+
+That happened on 2026-10-01: OQ-095 ends every Agent turn only through its
+owner's `finish_agent_turn`, so the first-legal-action walk now also plays
+the optional end-of-turn actions listed before it (troop deploys, Intrigue
+cards) and seed 0 never offered such a pair again. The same walk, replayed
+in-process over seeds 0-59, found seed 1: the same Leader and track
+(`trash_leader_card`, Personal Training's paid trash) at its 19th decision,
+offering a starter "Dune, the Desert Planet" from hand and its other copy
+from in play. Seeds whose pair has two copies in one pile (several
+"Prepare the Way" in the discard pile) are no use here: those copies are
+interchangeable and rightly read the same, so "the rows differ" below
+would fail on them.
 """
 
 from __future__ import annotations
@@ -57,10 +68,11 @@ from open_mode import settled
 
 check = Check()
 
-# Found by the raw-HTTP walk described above: base ruleset (open_mode's
-# unchecked expansion boxes), Leader draft off (so this seed's server-
-# assigned Leader for seat 0 -- Feyd Rautha Harkonnen -- is deterministic).
-SEED = 0
+# Found by the walk described above: base ruleset (open_mode's unchecked
+# expansion boxes), Leader draft off (so this seed's server-assigned Leader
+# for seat 0 -- Feyd Rautha Harkonnen -- is deterministic). Seed 0 until
+# OQ-095's explicit Agent-turn end (2026-10-01).
+SEED = 1
 STEP_CAP = 200
 
 # Every Hangul run, for the English-side check (mirrors turn_end.py / lang.py).

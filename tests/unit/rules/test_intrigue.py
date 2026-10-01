@@ -1,6 +1,8 @@
 """Plot Intrigue play through the composable effect DSL."""
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -33,6 +35,7 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -42,6 +45,11 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_spy_action,
     legal_reveal_spy_actions,
 )
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 
 def _intrigue(card_id: str, copy: int = 0) -> str:
@@ -840,8 +848,16 @@ def test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision() ->
     resolved = engine.apply(pending.state, outcome)
     assert resolved.state.players[0].intrigue_cards == (outcome.values[0],)
     assert resolved.state.intrigue_discard == ()
-    # The board effect was the last pending group, so the turn passed on.
+    # The board effect was the last pending group: the owner's turn stays
+    # open with only its end left, and the press passes the turn on (user
+    # ruling OQ-095 (1)).
     top = resolved.state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 0
+    assert DomainAction("finish_agent_turn", 0) in engine.legal_actions(
+        resolved.state, 0
+    )
+    top = finish_agent_turn(resolved.state).decision_stack[-1]
     assert top.kind == "turn" and isinstance(top.decision, PlayerDecision)
     assert top.decision.owner == 1
 
@@ -862,7 +878,9 @@ def test_owed_intrigue_draw_stops_short_with_nothing_to_shuffle() -> None:
 
     assert done.state.players[0].intrigue_cards == ()
     assert done.state.pending_intrigue_draws == ()
-    assert done.state.decision_stack[-1].kind == "turn"
+    # The turn stays open until its owner presses the end (OQ-095).
+    assert done.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert finish_agent_turn(done.state).decision_stack[-1].kind == "turn"
 
 
 def _conflict(protected: bool) -> str:

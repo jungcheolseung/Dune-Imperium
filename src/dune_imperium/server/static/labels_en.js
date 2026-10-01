@@ -376,6 +376,7 @@ const LABELS_EN = {
     "troops_withdrawn": "Troops Withdrawn",
     "troops_recruit_short": "{recruit} Fell Short (No Troops in {supply})",
     "agent_turn_finished": "{agent_turn} Finished",
+    "agent_turn_reopened": "{agent_turn} Reopened",
     "troops_retreated": "Troops Retreated",
     "influence_gained": "{influence_any} Gained",
     "influence_lost": "{influence_any} Lost",

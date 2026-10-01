@@ -378,21 +378,28 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # archive``) reproduced the v27 digests above exactly with the same vector
 # counts, and all 24 new columns were 0. None of the six games turns Epic
 # on, so no trajectory moved.
+# Re-pinned 2026-10-01 for OQ-095 (codec v125): every Agent turn now ends
+# only through its owner's finish_agent_turn, so each Agent turn gains that
+# decision (and random seats take optional end-of-turn actions first), and
+# all six seeds play differently. ``adapters/observation_encoding.py``,
+# ``core/observation.py`` and ``rules/frames.py`` (FrameKind) are byte for
+# byte the files of the previous pin (master 659cefb); only the trajectories
+# moved.
 _GOLDEN_DIGESTS = {
-    "base": ("dda6c032542383558b519265d5c41ff9cde472ad4971c23d3018857706f83a4b", 2572),
-    "choam": ("3d401a1374436f22c13305bf6def7117dcdb057e03b7126dabbe97ba82e56288", 2972),
+    "base": ("29cffc270dbad833556587f296a15c4ba853f46da475a8e326b8f5dc1e85f712", 2780),
+    "choam": ("06fcbf3c4566799e6ddebfe9d5af972154bc824570f265e4ebcfd5bb3f8b613d", 2840),
     "promo_bloodlines_tech": (
-        "21e4ea5d1d23e305b40396db78ec74f617986692a5a5b6bf9e9504713ac72ac2",
-        2772,
+        "5ff3254f753d95cc95a59ee736ced4c7c5b22e614b8616c076db4c35b8a9996a",
+        3028,
     ),
     "everything": (
-        "d6aa1c982480d42aa9d7d221c64dadc97cd1ee6ee02bef08591baf650055c40e",
-        3012,
+        "78da89ca89a26f41f8e14c7eeff42394d5a00557b2d709e7a1d7f39704a86e7e",
+        3280,
     ),
-    "draft": ("81e59fc752893d555492478a6675c965795ae2bd4a91e92a9bf20052df3b4733", 2476),
+    "draft": ("a066154c2a3f217f4fb6e4285ad9fa49dd8118a60b73e8419def5f1ce7d74ec0", 2392),
     "scouts": (
-        "626fd201b43395a2bc19bd2be615ce1531c040a4775b21fb0b7c1ada321f806d",
-        2752,
+        "8faa52e54a703af6b4364f2759ced2e7d90f4d86cc6a2ad8fbe9ac7be8f127db",
+        3516,
     ),
 }
 _GOLDEN_CONFIGS = {

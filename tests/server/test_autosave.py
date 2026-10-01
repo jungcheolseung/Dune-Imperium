@@ -82,10 +82,26 @@ def _play_seat0_to_finish(
     return summary
 
 
+def _draft_game(manager: GameSessionManager, game_seed: int) -> JsonObject:
+    """Start a Leader-draft game for the tests that need a held turn end.
+
+    An Agent turn ends with its owner's own ``finish_agent_turn`` press and
+    is never held for ``confirm_turn`` any more (OQ-095); a Leader pick
+    still is, and seat 0 picks first in these seeds.
+    """
+
+    return manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=game_seed)
+
+
 def _play_until_confirmation(
     manager: GameSessionManager, summary: JsonObject, seat: int = 0, budget: int = 400
 ) -> JsonObject:
-    """Play ``seat``'s first legal action until its turn end awaits confirmation."""
+    """Play ``seat``'s first legal action until its turn end awaits confirmation.
+
+    Only a unit with no explicit end is held (a Leader pick of
+    ``_draft_game``, Conflict rewards, a Control defense): an Agent turn
+    ends with its own press instead (OQ-095).
+    """
 
     game_id = _text(summary["game_id"])
     for _ in range(budget):
@@ -243,7 +259,7 @@ def test_hand_over_between_two_humans_fires_exactly_once() -> None:
 
 def test_the_hand_over_listener_may_call_back_into_the_manager() -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = _draft_game(manager, 14)
     game_id = _text(summary["game_id"])
     seen: list[JsonObject] = []
 
@@ -268,7 +284,7 @@ def test_the_hand_over_listener_may_call_back_into_the_manager() -> None:
 
 def test_the_hand_over_listener_runs_after_the_change_listener() -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = _draft_game(manager, 14)
     game_id = _text(summary["game_id"])
     order: list[str] = []
     manager.add_change_listener(lambda gid, payload: order.append("change"))
@@ -286,7 +302,7 @@ def test_a_raising_hand_over_listener_does_not_fail_the_request(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = _draft_game(manager, 14)
     game_id = _text(summary["game_id"])
     good = _HandOverRecorder()
 
@@ -309,13 +325,31 @@ def test_a_raising_hand_over_listener_does_not_fail_the_request(
         for record in caplog.records
     )
 
-    # A later hand-over still reaches the surviving listener.
+    # A later hand-over still reaches the surviving listener. Seat 0 has no
+    # second Leader pick, so this one is its next turn's own end press
+    # (``finish_agent_turn`` or ``finish_reveal``, OQ-095), which hands over
+    # inside ``apply_action``; a held unit end on the way is confirmed.
     good.calls.clear()
     caplog.clear()
-    summary = _play_until_confirmation(manager, manager.summary(game_id), seat=0)
+    summary = result
     with caplog.at_level(logging.ERROR, logger="dune_imperium.server.sessions"):
-        manager.confirm_turn(game_id, seat=0, revision=_int(summary["revision"]))
+        for _ in range(400):
+            if good.calls:
+                break
+            revision = _int(summary["revision"])
+            if summary["confirmation"] == 0:
+                summary = manager.confirm_turn(game_id, seat=0, revision=revision)
+            else:
+                summary = manager.apply_action(
+                    game_id, seat=0, revision=revision, index=0
+                )
+        else:
+            raise AssertionError("seat 0 never handed its turn over again")
     assert good.calls == [game_id]
+    assert any(
+        record.levelno == logging.ERROR and game_id in record.getMessage()
+        for record in caplog.records
+    )
 
 
 # --- the game finishing, combined with the Autosaver's 종료 name ------------
@@ -437,7 +471,7 @@ def test_a_store_error_propagates_and_is_swallowed_through_the_listener(
     tmp_path: Path,
 ) -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = _draft_game(manager, 14)
     game_id = _text(summary["game_id"])
     blocked = tmp_path / "not-a-directory"
     blocked.write_text("occupied", encoding="utf-8")

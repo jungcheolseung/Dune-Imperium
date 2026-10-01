@@ -13,7 +13,9 @@ can be joined now) and ``decline_subcommittee``; choosing opens the list.
 """
 
 import random
+import sys
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -27,6 +29,11 @@ from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
 STARTERS = starting_deck_instance_ids(0)
@@ -108,12 +115,19 @@ def _choose(state: GameState) -> GameState:
 
 
 def _scouts_frames_done(state: GameState) -> bool:
-    """The line resolved; the High Council was the turn's last effect, so the
-    next seat's turn is open (the offer was marked ``turn_closed``)."""
+    """The line resolved; the High Council was the turn's last effect, so only
+    the owner's explicit turn end is left, and pressing it opens the next
+    seat's turn (user ruling OQ-095 (1): every Agent turn ends only through
+    its owner's ``finish_agent_turn``; (3): the line resolved inside it)."""
 
     top = state.decision_stack[-1]
     assert isinstance(top.decision, PlayerDecision)
-    return top.kind == FrameKind.TURN and top.decision.owner == 1
+    assert top.kind == FrameKind.AGENT_EFFECTS and top.decision.owner == 0
+    assert ("finish_agent_turn", "") in _options(state)
+    closed: GameState = finish_agent_turn(state)
+    after = closed.decision_stack[-1]
+    assert isinstance(after.decision, PlayerDecision)
+    return after.kind == FrameKind.TURN and after.decision.owner == 1
 
 
 def _options(state: GameState) -> set[tuple[str, str]]:
@@ -125,6 +139,15 @@ def _options(state: GameState) -> set[tuple[str, str]]:
         else (a.action_id, "")
         for a in ENGINE.legal_actions(state, top.owner)
     }
+
+
+def _turn_count(state: GameState, key: str) -> int:
+    """A count the owner's open Agent-turn effect frame keeps for the turn."""
+
+    frame = next(f for f in state.decision_stack if f.kind == FrameKind.AGENT_EFFECTS)
+    value = dict(frame.context).get(key, 0)
+    assert isinstance(value, int)
+    return value
 
 
 def test_taking_the_high_council_seat_offers_the_payable_subcommittees() -> None:
@@ -156,11 +179,17 @@ def test_without_the_option_no_offer_is_queued() -> None:
 
 
 def test_readiness_recruits_a_troop_and_records_the_member() -> None:
+    """User ruling OQ-095 (3): the join was the visit's last effect, yet its
+    line resolves inside the still-open turn, so the troop is this turn's
+    recruit: "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    deploy할 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md)."""
     state = _choose(_visit_high_council(_state(_owner())))
     garrison = state.players[0].troops_garrison
+    recruited = _turn_count(state, "troops_recruited")
     state = _act(state, "join_subcommittee", subcommittee_id="readiness")
     assert state.scouts_subcommittee_members == (("readiness", 0),)
     assert state.players[0].troops_garrison == garrison + 1
+    assert _turn_count(state, "troops_recruited") == recruited + 1
     assert _scouts_frames_done(state)
     events = [e.kind for e in state.event_log]
     assert "scouts_subcommittee_joined" in events
@@ -181,12 +210,48 @@ def test_appropriations_discards_a_chosen_card_for_water() -> None:
 
 
 def test_relations_pays_spice_and_lets_the_seat_choose_a_faction() -> None:
+    """User ruling OQ-095 (3): the cost is paid inside the still-open turn,
+    so the Agent-turn frame books it as this turn's spice spent, not a later
+    turn's, keeping the "spice gained" Harvest contracts read whole:
+    "Harvest contract는 ... 그 turn에 모든 출처를 합쳐 contract에 표시된 양의
+    spice를 얻으면 완료한다." [Main p. 16] (docs/rules/choam-module.md)."""
     state = _choose(_visit_high_council(_state(_owner())))
     spice = state.players[0].resources.spice
+    spent = _turn_count(state, "spice_spent_after_placement")
     state = _act(state, "join_subcommittee", subcommittee_id="relations")
     assert state.players[0].resources.spice == spice - 2
+    assert _turn_count(state, "spice_spent_after_placement") == spent + 2
     state = _act(state, "scouts_choose_faction", faction="fremen")
     assert state.players[0].influence.fremen == 1
+
+
+def test_oversight_spice_as_the_last_effect_counts_for_hungry_for_spice() -> None:
+    """User ruling OQ-095 (3), which lifts OQ-076's known limitation (1):
+    Steersman Y'rkoon gained 2 spice earlier this turn and joins Oversight as
+    the visit's last effect. Its spice resolves inside the still-open turn,
+    so the turn's 3 spice earn the draw before the end is pressed: "Whenever
+    you gain [spice 3] or more in a single turn: [draw]" [Steersman Y'rkoon
+    card]; only his own turn's spice counts (OQ-063)."""
+    second_dagger = "player:0:starter:dagger:1"
+    owner = _owner(
+        leader_id="steersman_y_rkoon",
+        hand=(DAGGER,),
+        deck=(second_dagger,),
+        resources=Resources(solari=10, spice=5, water=1),
+        spice_at_turn_start=3,
+        spies_supply=2,
+        spy_post_ids=("arrakis-deep-desert",),
+    )
+    state = _choose(_visit_high_council(_state(owner)))
+    assert not state.players[0].hungry_for_spice_granted_turn
+    state = _act(state, "join_subcommittee", subcommittee_id="oversight")
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
+    state = _act(state, "decline_optional_trash")
+    seat = state.players[0]
+    assert seat.resources.spice == 6
+    assert seat.hungry_for_spice_granted_turn
+    assert seat.hand == (second_dagger,)
+    assert _scouts_frames_done(state)
 
 
 def test_leverage_recalls_two_chosen_spies_then_gains() -> None:

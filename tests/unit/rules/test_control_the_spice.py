@@ -16,6 +16,9 @@ Every legal action these tests walk through comes from the engine's own
 dispatcher and must encode in the Epic catalog (``_legal``).
 """
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from dune_imperium import RulesetConfig
@@ -44,6 +47,11 @@ from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     legal_reveal_gain_actions,
 )
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 EPIC = RulesetConfig(epic_game=True)
 ENGINE = UprisingRulesEngine()
@@ -317,9 +325,11 @@ def test_an_empty_supply_pays_the_spice_without_a_troop() -> None:
     assert any(event.kind == "troops_recruit_short" for event in transition.events)
 
 
-def test_the_trash_opens_when_the_payment_ends_the_turn() -> None:
+def test_the_trash_opens_on_the_open_turn_when_the_payment_is_the_last_effect() -> None:
     # Accept Contract's own icons first, so the paid box is the turn's last
-    # effect and the turn closes before the trash is chosen.
+    # effect. The turn stays open on its owner's effect frame until the owner
+    # presses the end (OQ-095 (1)), so the trash opens on top of it and the
+    # next seat's turn waits for the press.
     owner = _owner((CONTROL, DAGGER), resources=Resources(spice=1))
     placed = _place(_state(owner), "accept_contract")
     while "resolve_board_effect" in _ids(placed):
@@ -328,20 +338,28 @@ def test_the_trash_opens_when_the_payment_ends_the_turn() -> None:
     paid = _apply(placed, "pay_agent_card_spice")
 
     assert paid.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert paid.decision_stack[-2].kind == FrameKind.TURN
+    assert paid.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+    assert "finish_agent_turn" not in _ids(paid)
     trashed = _apply(paid, "trash_optional_card", card_id=DAGGER)
     assert trashed.players[0].trashed == (DAGGER,)
-    top = trashed.decision_stack[-1]
+    assert trashed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _context(trashed)["turn_owner"] == 0
+    assert "finish_agent_turn" in _ids(trashed)
+
+    top = finish_agent_turn(trashed).decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 1
 
 
-def test_an_eliminate_allies_trash_after_the_turn_closed_is_not_credited() -> None:
+def test_an_eliminate_allies_trash_after_the_last_effect_counts_for_the_turn() -> None:
     # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
-    # Allies card]. As with Throne Room Politics, a trash offered after the
-    # payment closed the turn must not credit the fresh turn frame that
-    # reopened for this same player (every other seat revealed) [Main p. 10]
-    # [FAQ p. 4] (OQ-044 (d)).
+    # Allies card]. The paid box is the turn's last effect (every other seat
+    # revealed), but the trash it offers opens on top of the owner's
+    # still-open effect frame, so its troops count for this turn (OQ-095 (3);
+    # before OQ-095 the turn had closed and they were kept off the fresh
+    # turn frame that reopened for this same player, OQ-044 (d)). "그 turn에
+    # 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다"
+    # [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
     config = RulesetConfig(epic_game=True, bloodlines=True)
     eliminate_allies = "imperium:eliminate_allies:0"
     owner = _owner(
@@ -364,9 +382,15 @@ def test_an_eliminate_allies_trash_after_the_turn_closed_is_not_credited() -> No
 
     trashed = _apply(paid, "trash_optional_card", card_id=eliminate_allies)
 
-    # The trash still recruits its two troops; only the credit was at risk.
+    # The box's troop and the trash's two all count for this turn.
     assert trashed.players[0].troops_garrison == owner.troops_garrison + 3
-    top = trashed.decision_stack[-1]
+    assert trashed.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _context(trashed)["turn_owner"] == 0
+    assert _context(trashed)["troops_recruited"] == 1 + 2
+    assert "finish_agent_turn" in _ids(trashed)
+
+    # Pressing the end reopens this seat's own next turn without the credit.
+    top = finish_agent_turn(trashed).decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)

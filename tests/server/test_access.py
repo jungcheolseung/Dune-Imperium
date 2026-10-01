@@ -621,7 +621,12 @@ def _play_until_a_human_waits_behind_a_confirmation(
     summary: JsonObject,
     credentials: dict[int, Credentials],
 ) -> JsonObject:
-    """Play index 0 until one human must confirm while the other is next."""
+    """Play index 0 until one human must confirm while the other is next.
+
+    The callers start a Leader-draft game: a Leader pick is still held for
+    the confirm press, but an Agent turn ends with its owner's own
+    ``finish_agent_turn`` and is never held (OQ-095).
+    """
 
     game_id = _text(summary["game_id"])
     for _ in range(400):
@@ -651,7 +656,9 @@ def _play_until_a_human_waits_behind_a_confirmation(
 
 def test_a_remote_server_holds_the_turn_until_the_previous_seat_confirms() -> None:
     manager, admin = _remote_manager()
-    summary = manager.create_game(TWO_HUMANS, game_seed=13, credentials=admin)
+    summary = manager.create_game(
+        TWO_HUMANS, leader_draft=True, game_seed=13, credentials=admin
+    )
     game_id = _text(summary["game_id"])
     credentials = {
         seat: Credentials(
@@ -700,7 +707,7 @@ def test_an_open_server_still_lets_the_next_seat_act_without_the_confirmation() 
     # The local API has always allowed this (one shared browser holds the
     # table for the confirming seat); remote access must not change it.
     manager = GameSessionManager()
-    summary = manager.create_game(TWO_HUMANS, game_seed=13)
+    summary = manager.create_game(TWO_HUMANS, leader_draft=True, game_seed=13)
     game_id = _text(summary["game_id"])
     summary = _play_until_a_human_waits_behind_a_confirmation(
         manager, summary, {0: ANONYMOUS, 1: ANONYMOUS}

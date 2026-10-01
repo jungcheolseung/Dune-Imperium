@@ -6,7 +6,9 @@ to trash [Bloodlines p. 2]. Faces are transcribed in
 ``docs/rules/bloodlines.md``.
 """
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -44,6 +46,11 @@ from dune_imperium.rules.intrigue_triggers import (
 )
 from dune_imperium.rules.reveal_turn import legal_reveal_deployments
 from dune_imperium.rules.setup import create_initial_state
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 CHOAM_BLOODLINES = RulesetConfig(bloodlines=True, choam_module=True)
 LEADERS = (
@@ -428,8 +435,8 @@ def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() 
 def _closing_alliance_state() -> GameState:
     """Seat 0 is one Influence bump from completing Earn Any Alliance, and
     that bump is the Agent turn's last pending effect with every other seat
-    already revealed -- ``advance_after_effect`` then reopens seat 0's own
-    next "turn" frame in the same step."""
+    already revealed -- the owner's ``finish_agent_turn`` then reopens seat
+    0's own next "turn" frame (user ruling OQ-095)."""
 
     return _state(
         _owner(
@@ -445,18 +452,19 @@ def _closing_alliance_state() -> GameState:
     )
 
 
-def test_earn_any_alliance_does_not_join_the_next_agent_turns_allowance() -> None:
+def test_earn_any_alliance_last_effect_credits_this_turn_not_the_next() -> None:
     # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
     # 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
     # 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
     # (docs/rules/player-turns.md:137). Deliver Supplies is a Spacing Guild
     # space with no automatic troop recruit [Main p. 7], so its
     # ``resolve_faction_influence`` (Guild 3 -> 4) is the turn's very last
-    # pending effect; with seats 1-3 already revealed,
-    # ``next_unrevealed_player`` reopens seat 0's own next "turn" frame in
-    # the same step Earn Any Alliance completes -- the engine used to let
-    # ``complete_alliance_contracts`` credit that fresh frame with the
-    # completion's 2 troops instead of leaving it uncredited there.
+    # pending effect. The turn used to close in that step and reopen seat
+    # 0's own next "turn" frame (seats 1-3 already revealed), and the
+    # completion's 2 troops were left out of both turns. The turn now stays
+    # open until its owner presses the end (user ruling OQ-095 (1)), so the
+    # completion's troops count for this turn (OQ-095 (3)) and the seat's
+    # next turn starts from none.
     engine = UprisingRulesEngine()
     placed = _place(_closing_alliance_state(), "deliver_supplies")
     with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
@@ -470,23 +478,33 @@ def test_earn_any_alliance_does_not_join_the_next_agent_turns_allowance() -> Non
     assert owner.alliance_faction_ids == ("spacing_guild",)
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
     assert owner.troops_garrison == 3 + 2
-    top = result.decision_stack[-1]
+    effects = result.decision_stack[-1]
+    assert effects.kind == FrameKind.AGENT_EFFECTS
+    assert dict(effects.context)["turn_owner"] == 0
+    assert dict(effects.context)["troops_recruited"] == 2
+    assert engine.legal_actions(result, 0) == (
+        DomainAction(action_id="finish_agent_turn", actor=0),
+    )
+
+    finished = finish_agent_turn(result)
+    top = finished.decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)
 
     # Arrakeen recruits nothing on its own [Main p. 7]; the deploy window
     # opens on placement, before its printed icons resolve (OQ-027).
-    next_placed = _place(result, "arrakeen")
+    next_placed = _place(finished, "arrakeen")
     assert [
         dict(a.arguments)["count"] for a in legal_combat_deployments(next_placed, 0)
     ] == [1, 2]
 
 
 def test_earn_any_alliance_does_not_join_a_later_reveals_allowance() -> None:
-    # Same closed-turn scenario as above, but seat 0 picks a Reveal turn
-    # next instead of another Agent turn. The fresh "turn" frame correctly
-    # holds no troops_recruited (previous test), and
+    # Same scenario as above, but after the owner presses the end seat 0
+    # picks a Reveal turn next instead of another Agent turn. The
+    # completion's 2 troops were this Agent turn's (OQ-095 (3)); the fresh
+    # "turn" frame holds no troops_recruited (previous test), and
     # ``reveal_turn._begin_reveal_turn``'s carry of a closing turn frame's
     # recruits into the Reveal (``2d2fa81``, OQ-062) must carry that
     # (correct) zero, not the completion's 2 troops: Combat 아이콘 "이번
@@ -495,9 +513,11 @@ def test_earn_any_alliance_does_not_join_a_later_reveals_allowance() -> None:
     engine = UprisingRulesEngine()
     placed = _place(_closing_alliance_state(), "deliver_supplies")
     with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
-    result = engine.apply(
+    last = engine.apply(
         with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
     ).state
+    assert dict(last.decision_stack[-1].context)["troops_recruited"] == 2
+    result = finish_agent_turn(last)
     assert result.decision_stack[-1].kind == FrameKind.TURN
 
     # The Combat icon is granted only now, after the turn has already

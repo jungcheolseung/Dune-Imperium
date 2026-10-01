@@ -627,7 +627,12 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     )
     engine = UprisingRulesEngine()
     assert result.state.players[0].combat_strength == 0
-    assert engine.legal_actions(result.state, 0) == ()
+    # Nothing is left but the owner's own end of the turn (user ruling
+    # OQ-095 (1)): the turn stays open until it is pressed.
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert engine.legal_actions(result.state, 0) == (
+        DomainAction("finish_agent_turn", 0),
+    )
 
 
 def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> GameState:

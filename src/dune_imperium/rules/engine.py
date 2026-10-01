@@ -112,6 +112,7 @@ from dune_imperium.rules.combat_deployment import (
     apply_commander_deployment,
     apply_commander_withdrawal,
     apply_troop_withdrawal,
+    settle_finishing_agent_turn,
 )
 from dune_imperium.rules.contracts import (
     apply_contract_action,
@@ -151,8 +152,6 @@ from dune_imperium.rules.graft import (
     apply_graft_partner,
     apply_graft_switch,
     legal_graft_partner_actions,
-    resolve_usurp_trash,
-    usurp_trash_is_queued,
 )
 from dune_imperium.rules.immortality import (
     apply_family_atomics,
@@ -913,7 +912,7 @@ class UprisingRulesEngine(RulesEngine):
             )
         )
         return refresh_pre_reveal_strength(
-            offer_deployment_triggers(_advance_automatic(result))
+            _settle_finishing(offer_deployment_triggers(_advance_automatic(result)))
         )
 
     def legal_actions(
@@ -954,9 +953,7 @@ class UprisingRulesEngine(RulesEngine):
         # queuing a Navigation play). Either way, whatever the queued entry
         # recruits or completes must not join the turn that only just
         # reopened, even the same player's own (OQ-044 (d)) [Main p. 10]
-        # [FAQ p. 4]. Usurp's automatic end-of-turn trash is not covered
-        # here: it runs later, in ``_advance_automatic``, so
-        # ``graft.resolve_usurp_trash`` marks its own entry.
+        # [FAQ p. 4].
         handler_closed = turn_closing_player(state, handled.state)
         if handler_closed is None:
             handler_closed = turn_closed_frame_owner(state)
@@ -1004,12 +1001,27 @@ class UprisingRulesEngine(RulesEngine):
             )
         )
         return refresh_pre_reveal_strength(
-            offer_deployment_triggers(_advance_automatic(result))
+            _settle_finishing(offer_deployment_triggers(_advance_automatic(result)))
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
 
+
+
+def _settle_finishing(result: RuleResult) -> RuleResult:
+    """Close or reopen an Agent turn whose end is still resolving.
+
+    Only after every hook of the transition has run (Hungry for Spice,
+    Suspensor Suits, Alliance Contracts, deployment triggers), so whatever
+    the Usurp trash at the turn's end produced is judged inside that turn
+    (OQ-095 (5)); the next seat's turn may then need its own automatic steps.
+    """
+
+    settled = settle_finishing_agent_turn(result)
+    if settled is result:
+        return result
+    return _advance_automatic(settled)
 
 
 def _held_contract_owner(state: GameState) -> int | None:
@@ -1031,8 +1043,6 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = claim_due_mission_goods(state)
         elif intrigue_draw_is_queued(state):
             automatic = resolve_pending_intrigue_draw(state)
-        elif usurp_trash_is_queued(state):
-            automatic = resolve_usurp_trash(state)
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
         elif contract_icons_must_be_held(state):
