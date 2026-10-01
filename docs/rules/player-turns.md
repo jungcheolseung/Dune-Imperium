@@ -150,6 +150,13 @@
   물려야 한다. 기본 배치가 가능한 Agent turn은 다른 보류 효과가 끝난 뒤
   `finish_agent_turn`으로 명시적으로 끝낸다. 자세한 근거는
   [open-questions.md](open-questions.md)의 OQ-029.
+- (프로젝트 판정, OQ-095) 배치가 없는 turn을 포함해 **모든** Agent turn은
+  소유자의 `finish_agent_turn`("턴 종료")으로만 끝난다. 마지막 효과를
+  해결해도 turn은 열려 있어, 누르기 전까지 Plot Intrigue `[Main p. 8]`,
+  Family Atomics, 표본 반환, Tech flip, Commander recruit 같은 자유 시점
+  행동을 할 수 있고, 마지막 효과가 남긴 후속도 이 turn 안에서 풀린다.
+  공식 문서에는 Agent turn의 종료 단계가 없다(Reveal turn에만 Clean Up이
+  있다 `[Main p. 12]`).
 - Sardaukar Coordination으로 Agent를 보내면 Combat space가 아니어도 그 turn에
   실제로 recruit한 troop을 Conflict에 deploy할 수 있다. 이 예외는 기존
   garrison troop 두 개를 추가로 deploy하는 권한을 주지 않는다.

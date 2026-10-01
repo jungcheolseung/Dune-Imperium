@@ -201,3 +201,20 @@ CHOAM standard 계약에서 Rise of Ix 전용 타일 4장을 빼고 Spice Refine
 | random | 0.53 | 0.70 | 0.79 |
 | heuristic | 1.00 | 1.00 | 0.25 |
 | 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.93 / 0.89 |
+
+## 재채굴 (2026-10-01, OQ-095: Agent turn은 "턴 종료"로만 끝남)
+
+모든 Agent turn이 소유자의 `finish_agent_turn`으로만 끝나게 되어([OQ-095](../rules/open-questions.md), codec v125) 첫 Agent turn부터
+판의 경로가 바뀌어 고정한 국면이 하나도 복원되지 않았다. 파일의 `note` 명령 그대로 다시 캤다(5081은 메인 체크아웃의 절대 경로로;
+워크트리에는 `checkpoints/`가 없다). **106개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 17(heuristic 4 +
+2,000판 보충 12 + 5081 1), Endgame 9(heuristic 7 + 5081 2). 마지막 라운드 보유가 직전 28개에서 줄었다(같은 명령, 같은 seed 범위).
+원인은 재지 않았다 — 턴 끝에 새로 생긴 Plot 창에서 heuristic이 battle icon Intrigue를 더 일찍 쓰는지 볼 후보다. 새 문제집의 채점:
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 9) | 마지막 라운드 보유 (tip, 17) |
+|---|---|---|---|
+| random | 0.64 | 0.78 | 0.71 |
+| heuristic | 1.00 | 1.00 | 0.24 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.82 / 0.84 |
+
+5081은 옛 규칙(Agent turn이 마지막 효과에서 저절로 닫히던 때)으로 학습한 정책이다. 위 수치는 새 규칙의 국면에서 그 정책이 어떻게
+두는지를 볼 뿐이다.
