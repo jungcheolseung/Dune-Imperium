@@ -232,6 +232,49 @@ def _new_tag(state, ins, src):
     return None
 
 
+def _jump_tables(insns, a, e):
+    """{address of `jmp reg`: [(case, target)]} for the compiler's relative jump
+    tables: `lea T, [rip + table]; movsxd R, dword ptr [T + I*4]; add R, T; jmp R`.
+    The case count comes from the bounds check (`cmp I, N` before it); a coroutine's
+    MoveNext switches on <>1__state this way, so case k is usually state k."""
+    tables = {}
+    for i, ins in enumerate(insns[:-3]):
+        ops = ins.operands
+        if not (
+            ins.mnemonic == "lea"
+            and len(ops) == 2
+            and ops[1].type == X86_OP_MEM
+            and ops[1].mem.base == X86_REG_RIP
+        ):
+            continue
+        mov, add, jmp = insns[i + 1 : i + 4]
+        if not (
+            mov.mnemonic == "movsxd"
+            and add.mnemonic == "add"
+            and jmp.mnemonic == "jmp"
+            and jmp.operands
+            and jmp.operands[0].type == X86_OP_REG
+        ):
+            continue
+        tab = ins.address + ins.size + ops[1].mem.disp
+        bound = None
+        for prev in reversed(insns[max(0, i - 8) : i]):
+            pops = prev.operands
+            if prev.mnemonic == "cmp" and len(pops) == 2 and pops[1].type == X86_OP_IMM:
+                bound = pops[1].imm
+                break
+        if bound is None or not 0 <= bound < 512:
+            continue
+        targets = []
+        for k in range(bound + 1):
+            t = (tab + struct.unpack_from("<i", BIN, tab + 4 * k)[0]) & (2**64 - 1)
+            if a <= t < e:
+                targets.append((k, t))
+        if targets:
+            tables[jmp.address] = targets
+    return tables
+
+
 def _meet(states):
     """Registers whose type every incoming path agrees on."""
     if not states:
@@ -275,6 +318,14 @@ def disasm(a, maxlen=0x6000):
         if op.type == X86_OP_IMM and a <= op.imm <= ins.address
     }
     pending = {}
+    tables = _jump_tables(insns, a, e)
+    cases = {}
+    for _jmp, _targets in tables.items():
+        for k, t in _targets:
+            cases.setdefault(t, []).append(k)
+            labels.add(t)
+            if t <= _jmp:
+                backward.add(t)
     state, falls = _entry_state(a), True
     for ins in insns:
         if ins.address in labels:
@@ -347,6 +398,10 @@ def disasm(a, maxlen=0x6000):
                 state.pop(REG64.get(ins.reg_name(r)), None)
         if dest and new:
             state[dest] = new
+        for _k, t in tables.get(ins.address, ()):
+            if t > ins.address:
+                prev = pending.get(t)
+                pending[t] = dict(state) if prev is None else _meet([prev, state])
         if ins.mnemonic.startswith("j") and ops and ops[0].type == X86_OP_IMM:
             if ins.address < ops[0].imm < e:
                 prev = pending.get(ops[0].imm)
@@ -359,6 +414,11 @@ def disasm(a, maxlen=0x6000):
             ins.mnemonic in ("jmp", "ret", "ud2")
             or (ins.mnemonic == "call" and noreturn)
         )
+        if ins.address in tables:
+            cm.append(f"jump table, {len(tables[ins.address])} cases")
+        if ins.address in cases:
+            ks = ",".join(str(k) for k in sorted(cases[ins.address]))
+            out.append(f"; ---- jump-table case {ks} ----")
         line = f"{ins.address:#x}: {ins.mnemonic} {ins.op_str}"
         if cm:
             line += "    ; " + " | ".join(cm)

@@ -10,6 +10,8 @@ Writes into <out_dir>:
                      signatures and code addresses (pass il2dis.py an address)
   methods.tsv        address, full method name, signature (all assemblies)
   strings.tsv        string literal index and text, as the code loads them
+  generics.tsv       address and instance names of shared generic method code
+                     (not in any type's listing; pass il2dis.py the address)
   asm/<assembly>/<Type>.asm   (--asm) per top-level type, with its nested types:
                      the listing above followed by every method's annotated
                      disassembly (il2dis.py), so it can be grepped without
@@ -45,8 +47,10 @@ from il2meta import (
     build_guid,
     field_default,
     fqn,
+    generic_addr,
     method_addr,
     method_signature,
+    methodspec_name,
     mstr,
     parent,
     strlit,
@@ -187,6 +191,11 @@ def main(out_dir, only, asm=False):
     with open(os.path.join(out_dir, "strings.tsv"), "w") as f:
         for i in range(len(SL)):
             f.write(f"{i}\t{strlit(i)!r}\n")
+
+    with open(os.path.join(out_dir, "generics.tsv"), "w") as f:
+        for a in sorted(generic_addr):
+            for spec in generic_addr[a]:
+                f.write(f"{a:#x}\t{methodspec_name(spec)}\n")
 
 
 if __name__ == "__main__":
