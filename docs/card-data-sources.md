@@ -293,7 +293,8 @@ The ninth batch transcribes Distraction from its card image ("When you
 deploy three or more units to the Conflict in a single turn:" then "You may
 place this Spy on the same observation post as another player's Spy."). DIU
 models it as a `deploy_units amount 3` condition with a `shared_post` Spy
-reward, matching the local trigger. The sentence is a permission ("may"):
+reward; the engine matched it as a face-up trigger until 2026-10-03 and as
+a play condition (`UnitsDeployedThisTurnAtLeast(3)`, OQ-016) since. The sentence is a permission ("may"):
 the Spy still goes on any unoccupied post [Main p. 20] and may also share
 another player's post, never the owner's own -- the Deep Cover set
 [Bloodlines p. 5]. The engine offered only shared posts until 2026-09-26.

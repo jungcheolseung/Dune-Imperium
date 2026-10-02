@@ -148,9 +148,9 @@
   되돌릴 수 있고(`withdraw_troops`), 기본 배치는 여러 번 나눠 하거나 뒤의
   recruit로 늘어난 한도만큼 추가할 수 있다(`deploy_troops`는 추가 배치).
   한도는 순배치 기준으로 위의 "recruit한 troop 전부 + garrison 2개"다. 이번
-  turn의 배치 수를 조건으로 이미 사용한 효과(Distraction의 Spy 배치)가 있으면
-  그 조건 아래로 내리는 회수는 막히며, 로컬 UI의 되돌리기로 그 효과부터
-  물려야 한다. 기본 배치가 가능한 Agent turn은 다른 보류 효과가 끝난 뒤
+  turn의 배치 수를 조건으로 이미 낸 카드(Distraction, Coercive Negotiation)가
+  있으면 그 조건 아래로 내리는 회수는 막히며, 로컬 UI의 되돌리기로 그 카드부터
+  물려야 한다(Coercive Negotiation은 contract를 공개하므로 되돌릴 수 없다). 기본 배치가 가능한 Agent turn은 다른 보류 효과가 끝난 뒤
   `finish_agent_turn`으로 명시적으로 끝낸다. 자세한 근거는
   [open-questions.md](open-questions.md)의 OQ-029.
 - (프로젝트 판정, OQ-095) 배치가 없는 turn을 포함해 **모든** Agent turn은
@@ -288,6 +288,7 @@
   성립한 모든 비용 줄은 의무다. 공식 문서가 두 점을 명시하지 않으므로 OQ-015로
   관리한다.
 - 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]
+- "When you deploy three or more units to the Conflict in a single turn:"(Distraction, Coercive Negotiation)은 앞면 대기가 아니라 플레이 조건이다: 그 turn에 배치한 뒤에 낸다 — "Gurney decides to commit these troops plus two more from his garrison to the Conflict. Muad'Dib may play Distraction because he shared in the deployment of these units." [Board Guide p. 10] [FAQ p. 2]. 조건은 그 turn에 배치한 unit 3개가 동시에 Conflict에 있던 순간이 있으면 성립한다(디자이너 판정, OQ-016 재판정 2026-10-03).
 - Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다. [FAQ p. 2]
 - 구현 convention: 버린 더미까지 비어 Intrigue draw가 모자라면 draw는 있는 만큼만
   지급하고 끝난다(`implementation-audits/intrigue.md` "Deck exhaustion",
