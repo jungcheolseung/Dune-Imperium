@@ -113,6 +113,7 @@ from dune_imperium.rules.combat_deployment import (
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     apply_contract_completion,
+    apply_contract_fizzle,
     apply_contract_hold,
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
@@ -800,6 +801,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
     "hold_contract_icons": apply_contract_hold,
+    "resolve_contract_icons_without_contract": apply_contract_fizzle,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
@@ -953,10 +955,14 @@ def _held_contract_owner(state: GameState) -> int | None:
 
     The turn's owner, or in the Combat phase the seat whose Conflict reward
     icons wait while it resolves the rest of its rewards (user ruling
-    2026-10-02, L2-Q2).
+    2026-10-02, L2-Q2), or during the Arrakeen Scouts step -- no one's turn
+    -- any seat whose icons wait for the rest of the step (user ruling
+    2026-10-02, "Scouts 단계 안에서 보류 후 불발").
     """
 
-    if state.phase is GamePhase.COMBAT:
+    if state.phase is GamePhase.COMBAT or (
+        state.scouts_opening and turn_owner_of(state) is None
+    ):
         return next(
             (
                 seat.player_id
@@ -984,8 +990,9 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
         elif (held_owner := _held_contract_owner(state)) is not None:
-            # The wait ended inside the same turn, or the same seat's
-            # Conflict rewards -- an Intrigue card arrived, or a token the
+            # The wait ended inside the same turn, the same seat's Conflict
+            # rewards, or the Arrakeen Scouts step -- an Intrigue card
+            # arrived, or a token the
             # owner can take was flipped up. Taking is not optional, so the
             # market reopens on its own (OQ-057(1)). Nothing in a non-empty
             # market reachable is no longer held unasked: the owner confirms

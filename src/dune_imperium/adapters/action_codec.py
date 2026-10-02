@@ -191,7 +191,13 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Suspensor Suits troops only partly deployed log
 # ``suspensor_deployment_unavailable`` too (no template change; the event
 # log, and so a replay's hashes, moves).
-ACTION_CODEC_VERSION = 125
+# v126 (user rulings of 2026-10-02 after v125 was pushed, OQ-059): a Combat
+# Intrigue's Contract icons with nothing to take fizzle as the card
+# resolves, confirmed by ``resolve_contract_icons_without_contract``
+# (CHOAM+Bloodlines catalogs: one template, which shifts every later one),
+# and icons held in the Arrakeen Scouts step reopen when an Intrigue card
+# arrives and fizzle as the step ends.
+ACTION_CODEC_VERSION = 126
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1011,6 +1017,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # A market whose only token is the Immediate, with no Intrigue card
         # to trash: the owner confirms its Contract icons are held (OQ-059).
         templates.append(ActionTemplate(action_id="hold_contract_icons"))
+        templates.append(
+            ActionTemplate(action_id="resolve_contract_icons_without_contract")
+        )
     templates.extend(
         ActionTemplate(
             action_id="give_intrigue_card",

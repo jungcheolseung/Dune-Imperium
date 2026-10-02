@@ -946,11 +946,11 @@ def _held_contracts(state: GameState, seat: int, found: _Found) -> None:
     turn-end press, or, held from a Conflict reward, at the end of the
     seat's Conflict rewards (user ruling 2026-10-02, L2-Q2).
 
-    The row promises the reopening and the lapse only where the engine does
-    both: in the seat's own turn and in the Combat phase
-    (``engine._held_contract_owner``). Icons held anywhere else -- the
-    Arrakeen Scouts step, outside any turn -- neither reopen nor fizzle
-    (open question, OQ-059 보강 3), so their row only says they are held.
+    The row promises the reopening and the lapse where the engine does
+    both (``engine._held_contract_owner``): in the seat's own turn, in the
+    Combat phase, and during the Arrakeen Scouts step, whose held icons
+    fizzle as the step ends (user ruling 2026-10-02, "Scouts 단계 안에서
+    보류 후 불발"). Anywhere else the row only says they are held.
     """
 
     held = state.players[seat].held_contract_icons
@@ -973,6 +973,12 @@ def _held_contracts(state: GameState, seat: int, found: _Found) -> None:
         reason = (
             f"{icons_en}: {take_en}, lost when the turn ends",
             f"{icons_ko} — {take_ko}, 차례가 끝나면 사라짐",
+            "waiting",
+        )
+    elif state.scouts_opening and turn_owner_of(state) is None:
+        reason = (
+            f"{icons_en}: {take_en}, lost when the Arrakeen Scouts step ends",
+            f"{icons_ko} — {take_ko}, 아라킨 스카웃 단계가 끝나면 사라짐",
             "waiting",
         )
     else:
