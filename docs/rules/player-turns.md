@@ -83,6 +83,9 @@
   Steersman을 내며 방금 보낸 Agent는 고를 수 없고, 다른 Agent가 없으면 recall
   아이콘은 turn 종료까지 보류된 뒤 불발한다(OQ-057 (1)). 회수한 Agent는 이후
   turn에 다시 사용할 수 있다. `[Steersman card]` `[Main pp. 9, 20]`
+  보류된 recall 아이콘에는 창을 열지 않고, turn이 열려 있는 동안 화면이
+  이유와 함께 회색 줄로 보인다(2026-10-02 사용자 판정 L2-Q3
+  "①②는 확인 창, ③은 회색 줄만"의 ③; 불발은 그대로 "턴 종료" 누름에서).
   (2026-09-26 정정: 이전 문장은 방금 보낸 Agent도 고를 수 있다고 잘못 적었다.)
 - Junction Headquarters는 Spacing Guild Alliance를 보유할 때 Agent box의 화살표를
   선택해 hand의 Intrigue card 1장을 trash하고 Spice 2를 함께 지불하면 Victory
