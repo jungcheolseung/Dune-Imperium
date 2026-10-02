@@ -69,11 +69,7 @@ from dune_imperium.rules.scouts_missions import (
     mission_collectable,
     take_desert_riding_token,
 )
-from dune_imperium.rules.scouts_offers import (
-    BOARD_ICON_SUBCOMMITTEE,
-    open_subcommittees,
-    subcommittee_unavailable,
-)
+from dune_imperium.rules.scouts_offers import BOARD_ICON_SUBCOMMITTEE
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -568,7 +564,6 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             raise RuntimeError(f"board icon {key} has no effect on {space_id}")
 
     effect_state = replace(state, players=replace_player(state.players, next_owner))
-    seat_events: tuple[GameEvent, ...] = ()
     if (
         key == BOARD_ICON_HIGH_COUNCIL
         and state.config.arrakeen_scouts
@@ -579,11 +574,11 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         # in this turn, one more effect of the visit in any order with the
         # others [Main p. 9] (OQ-076 alternative C, user ruling 2026-09-30).
         # Only a seat newly taken offers it: a repeat of the printed effects
-        # takes no second seat.
-        if open_subcommittees(effect_state, player):
-            add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
-        else:
-            seat_events = (subcommittee_unavailable(player, source=f"{source}:{key}"),)
+        # takes no second seat. Armed even with every subcommittee taken
+        # (then only its decline is offered; unreachable with four players,
+        # OQ-076 (c)): "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+        # 연다" (user ruling 2026-09-30).
+        add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
     intrigue_events: tuple[GameEvent, ...] = ()
     if intrigue_draw_count:
         intrigue_draw = draw_or_queue_intrigue_cards(
@@ -658,7 +653,6 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             *steal_events,
             event,
             *recruit_shortfall,
-            *seat_events,
         ),
     )
 

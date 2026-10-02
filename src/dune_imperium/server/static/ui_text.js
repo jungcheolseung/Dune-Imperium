@@ -933,10 +933,6 @@ const UI_TEXT = {
     "ko": "{{item}}: 지금 할 수 있는 선택이 없어 넘어갔습니다",
     "en": "{{item}}: nothing you could take, skipped"
   },
-  "panels.scouts_subcommittee_skipped": {
-    "ko": "소위원회: 남은 빈 소위원회가 없어 넘어갔습니다",
-    "en": "Subcommittees: none left open to join, skipped"
-  },
   "panels.standings_heading": {
     "ko": "최종 순위",
     "en": "Final standings"

@@ -20,12 +20,18 @@ subcommittee:
 - through Corrinth City's Reveal choice it stays open in that Reveal turn
   (``GameState.scouts_subcommittee_offers``), which cannot finish until the
   seat joins or declines (``reveal_turn.legal_finish_reveal_actions``).
+
+The offer is armed even when every subcommittee already has a member:
+the seat then confirms with ``decline_subcommittee``, the only action
+offered (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두
+결정 창을 연다"; OQ-076 (c)). A four-player game never reaches that: five
+subcommittees are on display and a new seat has at most three other
+members.
 """
 
 from dataclasses import replace
 from typing import Final
 
-from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 
 # The pseudo space of an Agent in the Conflict (Into the Fray): a recall
@@ -61,21 +67,11 @@ def open_subcommittees(state: GameState, player: int) -> tuple[str, ...]:
     )
 
 
-def subcommittee_unavailable(player: int, *, source: str) -> GameEvent:
-    """The public note that a new seat found every subcommittee taken."""
-
-    return GameEvent(
-        event_id=f"{source}:subcommittee_unavailable",
-        kind="scouts_subcommittee_unavailable",
-        payload=(("player", player),),
-    )
-
-
 def queue_reveal_subcommittee_offer(
     state: GameState, player: int, *, source: str
-) -> tuple[GameState, tuple[GameEvent, ...]]:
+) -> GameState:
     """Open Corrinth City's seat's subcommittee choice for the rest of its
-    Reveal turn, or note that nothing is left to join.
+    Reveal turn, even with nothing left to join (then only its decline).
 
     The entry is ``(player, source, exclude_space)``: no Agent took this
     seat, so a Recall Agent reward may recall any other Agent (``""``,
@@ -83,16 +79,11 @@ def queue_reveal_subcommittee_offer(
     """
 
     if not state.config.arrakeen_scouts:
-        return state, ()
-    if not open_subcommittees(state, player):
-        return state, (subcommittee_unavailable(player, source=source),)
+        return state
     entry = (player, source, "")
-    return (
-        replace(
-            state,
-            scouts_subcommittee_offers=(*state.scouts_subcommittee_offers, entry),
-        ),
-        (),
+    return replace(
+        state,
+        scouts_subcommittee_offers=(*state.scouts_subcommittee_offers, entry),
     )
 
 

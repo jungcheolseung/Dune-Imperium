@@ -134,22 +134,16 @@ def push_tech_acquisition(
     discount: int,
     source: str,
 ) -> RuleResult:
-    """Open a card-granted Acquire Tech, or note that nothing can be acquired."""
+    """Open a card-granted Acquire Tech.
+
+    It opens even with no tile left to take (every stack empty and no Secret
+    Project): the owner then confirms with ``decline_tech``, the only action
+    offered (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
+    모두 결정 창을 연다"; OQ-057 (9) "살 수 없으면 거절만").
+    """
 
     if not state.config.tech_module:
         raise ValueError("Acquire Tech requires the Tech Module")
-    owner = state.players[player]
-    if not face_up_tech_ids(state) and not owner.secret_project_tech_id:
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:tech_unavailable",
-                    kind="tech_acquisition_unavailable",
-                    payload=(("player", player),),
-                ),
-            ),
-        )
     return RuleResult(
         state=state.push_decision(
             tech_acquisition_frame(player, discount=discount, source=source)
@@ -190,10 +184,16 @@ def _offer(state: GameState, player: int) -> tuple[int, str] | None:
     )
 
 
-def _candidate_tiles(
+def tech_candidates(
     state: GameState, owner: PlayerState
 ) -> tuple[tuple[TechTile, bool], ...]:
-    """Return the tiles the owner may choose from: stack tops, then the secret one."""
+    """Return the tiles the owner may choose from: stack tops, then the secret one.
+
+    Each with whether it is the owner's Secret Project. Empty when every
+    stack is empty and the owner keeps no Secret Project: an Acquire Tech
+    then offers only its refusal, and the page says why
+    (``display.unavailable``).
+    """
 
     candidates = [
         (TECH_TILES_BY_ID[tech_id], False) for tech_id in face_up_tech_ids(state)
@@ -238,7 +238,7 @@ def legal_tech_acquisition_actions(
     discount, _ = offer
     owner = state.players[player]
     actions = [DomainAction(action_id="decline_tech", actor=player)]
-    for tile, secret in _candidate_tiles(state, owner):
+    for tile, secret in tech_candidates(state, owner):
         cost = tech_cost(owner, tile, discount=discount, secret_project=secret)
         if owner.resources.spice < cost:
             continue

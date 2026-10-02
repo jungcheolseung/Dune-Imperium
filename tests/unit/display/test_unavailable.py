@@ -925,6 +925,109 @@ def test_no_influence_row_while_every_faction_can_be_taken() -> None:
     assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
 
 
+# --- Holy War's unit loss ---
+
+_NO_UNIT_TO_LOSE = ("No unit to lose", "잃을 유닛 없음", "no_unit")
+
+
+def _unit_loss(**fields: Any) -> GameState:
+    """Seat 1's Holy War unit-loss window, opened by seat 0's card."""
+
+    from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
+
+    state = _state(PlayerState(player_id=0), config=RulesetConfig(bloodlines=True))
+    loser = PlayerState(player_id=1, **fields)
+    state = replace(state, players=(state.players[0], loser, *state.players[2:]))
+    pushed = opponent_unit_loss_frames(state, 0, source="holy_war").state
+    assert pushed.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+    return pushed
+
+
+def _loss_rows(state: GameState) -> dict[str, tuple[str, str, str]]:
+    found = unavailable_choices(state, 1, ENGINE.legal_actions(state, 1))
+    if found is None:
+        return {}
+    assert found["frame"] == FrameKind.OPPONENT_UNIT_LOSS
+    rows = _rows(found, "choice")
+    for row in rows.values():
+        assert row["action"]["action_id"] == "lose_unit"
+    return {
+        key.removeprefix("choice:lose_unit:"): (
+            row["reason"],
+            row["reason_ko"],
+            row["code"],
+        )
+        for key, row in rows.items()
+    }
+
+
+def test_a_seat_with_no_unit_confirms_beside_greyed_rows() -> None:
+    """User ruling 2026-09-30 (OQ-036 (a)): every opponent is asked, and a
+    seat with no unit gets the window with every row greyed out ("잃을 유닛
+    없음") and a confirm. Commander rows only for a seat that owns one."""
+
+    state = _unit_loss(troops_supply=12, troops_garrison=0)
+    assert [a.action_id for a in ENGINE.legal_actions(state, 1)] == [
+        "resolve_unit_loss_without_unit"
+    ]
+    assert _loss_rows(state) == {
+        "garrison:0": _NO_UNIT_TO_LOSE,
+        "conflict:0": _NO_UNIT_TO_LOSE,
+    }
+    owning = _unit_loss(troops_supply=12, troops_garrison=0, commanders_supply=1)
+    assert set(_loss_rows(owning)) == {
+        "garrison:0",
+        "garrison:1",
+        "conflict:0",
+        "conflict:1",
+    }
+    assert set(_loss_rows(owning).values()) == {_NO_UNIT_TO_LOSE}
+
+
+def test_an_empty_zone_is_greyed_beside_the_units_the_seat_can_lose() -> None:
+    state = _unit_loss()  # three troops in the garrison
+    assert _legal_for(state, 1) == [("lose_unit", {"zone": "garrison"})]
+    assert _loss_rows(state) == {
+        "conflict:0": (
+            "No troop in the Conflict",
+            "{conflict}에 {troop} 없음",
+            "no_unit",
+        ),
+    }
+    commander = _unit_loss(
+        troops_supply=7, troops_conflict=2, commanders_conflict=1, combat_strength=6
+    )
+    assert _legal_for(commander, 1) == [
+        ("lose_unit", {"zone": "garrison"}),
+        ("lose_unit", {"zone": "conflict"}),
+        ("lose_unit", {"commanders": 1, "zone": "conflict"}),
+    ]
+    assert _loss_rows(commander) == {
+        "garrison:1": (
+            "No Sardaukar Commander in your garrison",
+            "{garrison}에 {commander} 없음",
+            "no_unit",
+        ),
+    }
+
+
+def test_no_unit_loss_row_for_another_seat_or_once_answered() -> None:
+    state = _unit_loss(troops_supply=12, troops_garrison=0)
+    # Seat 2 waits under seat 1's window: nothing is shown to it yet.
+    assert unavailable_choices(state, 2, ENGINE.legal_actions(state, 2)) is None
+    confirmed = ENGINE.apply(state, ENGINE.legal_actions(state, 1)[0]).state
+    decision = confirmed.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision) and decision.owner == 2
+    assert _loss_rows(confirmed) == {}
+
+
+def _legal_for(state: GameState, seat: int) -> list[tuple[str, dict[str, Any]]]:
+    return [
+        (action.action_id, dict(action.arguments))
+        for action in ENGINE.legal_actions(state, seat)
+    ]
+
+
 # --- Whose decision ---
 
 
@@ -1036,3 +1139,246 @@ def test_the_subcommittee_row_goes_once_one_can_be_joined() -> None:
     rows = found["rows"] if found is not None else []
     assert isinstance(rows, list)
     assert "waiting:choose_subcommittee" not in {row["key"] for row in rows}
+
+
+def test_every_subcommittee_taken_greys_the_choice_beside_the_decline() -> None:
+    """With every subcommittee already taken the new seat's offer still opens
+    with only its decline (user ruling 2026-09-30, OQ-076 (c); unreachable
+    with four players). It can never light up, so the row sits among the
+    choices that cannot be taken, not the waiting ones."""
+    state = _council_seat(5, ("relations",))
+    state = replace(state, scouts_subcommittee_members=(("relations", 1),))
+    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
+        "decline_subcommittee"
+    ]
+    found = _found(state)
+    assert not _rows(found, "waiting")
+    row = _rows(found, "choice")["choice:choose_subcommittee"]
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Every subcommittee already has a member",
+        "모든 소위원회에 가입한 좌석이 있음",
+        "claimed",
+    )
+
+
+# --- A Skill choice with a Skill the seat already holds (Bloodlines) ---
+
+BLOODLINES = RulesetConfig(bloodlines=True)
+_SKILL_HELD = ("You already have this Skill", "이미 가진 {commander_skill}", "held")
+
+
+def _bank_skill_choice(held: tuple[int, ...], *, fresh: bool) -> GameState:
+    """Sardaukar Standard's bank Commander owed to seat 0, whose Skills are
+    ``held`` (tile indexes). Tiles 1 and 3 (the second copies of the Skills
+    of tiles 0 and 2) are face up, with tile 5, a Skill nobody holds, when
+    ``fresh``."""
+
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.sardaukar import begin_skill_choice
+
+    tiles = skill_tile_instance_ids()
+    face_up = (tiles[1], tiles[3], *((tiles[5],) if fresh else ()))
+    owner = PlayerState(player_id=0, skill_ids=tuple(tiles[i] for i in held))
+    taken = {tiles[i] for i in held} | set(face_up)
+    state = _state(
+        owner,
+        config=BLOODLINES,
+        skill_face_up=face_up,
+        skill_stack=tuple(tile for tile in tiles if tile not in taken),
+        sardaukar_commanders_bank=1,
+        pending_skill_choices=((0, "imperium:sardaukar_standard:0", "test"),),
+    )
+    opened = begin_skill_choice(state).state
+    assert opened.decision_stack[-1].kind == FrameKind.SKILL_CHOICE
+    return opened
+
+
+def test_a_bank_commander_with_no_skill_to_choose_greys_every_skill() -> None:
+    """User ruling 2026-10-02 (L2-Q3: "①②는 확인 창"): a bank Commander
+    gained when no Skill can be chosen opens the Skill choice with only the
+    confirm (OQ-031, OQ-035 (b): the Commander comes without a Skill); every
+    face-up Skill shows greyed out as already held."""
+    state = _bank_skill_choice(held=(0, 2), fresh=False)
+    assert ENGINE.legal_actions(state, 0) == (
+        DomainAction(action_id="resolve_commander_without_skill", actor=0),
+    )
+    found = _found(state)
+    assert found["frame"] == FrameKind.SKILL_CHOICE
+    rows = _rows(found, "choice")
+    assert len(rows) == 2
+    for row in rows.values():
+        assert row["action"]["action_id"] == "choose_skill"
+        assert (row["reason"], row["reason_ko"], row["code"]) == _SKILL_HELD
+
+
+def test_a_held_skill_is_greyed_beside_the_ones_the_seat_can_choose() -> None:
+    state = _bank_skill_choice(held=(0,), fresh=True)
+    legal = ENGINE.legal_actions(state, 0)
+    assert {action.action_id for action in legal} == {"choose_skill"}
+    offered = {dict(action.arguments)["skill_id"] for action in legal}
+    found = _found(state)
+    greyed = {
+        row["action"]["arguments"]["skill_id"]
+        for row in _rows(found, "choice").values()
+    }
+    assert len(offered) == 2 and len(greyed) == 1
+    assert not offered & greyed
+
+
+# --- An Acquire Tech with every stack empty (Tech Module) ---
+
+
+def test_an_acquire_tech_with_every_stack_empty_greys_the_acquisition() -> None:
+    """A card's Acquire Tech with no tile left opens with only the refusal
+    (user ruling 2026-09-30; OQ-057 (9) "살 수 없으면 거절만"), and the
+    acquisition shows greyed out with the reason."""
+    from dune_imperium.rules.tech import push_tech_acquisition
+
+    config = RulesetConfig(bloodlines=True, tech_module=True)
+    owner = PlayerState(player_id=0, resources=Resources(spice=9))
+    state = _state(owner, config=config, tech_stacks=((), (), ()))
+    opened = push_tech_acquisition(state, 0, discount=1, source="test").state
+    assert ENGINE.legal_actions(opened, 0) == (
+        DomainAction(action_id="decline_tech", actor=0),
+    )
+    found = _found(opened)
+    assert found["frame"] == FrameKind.TECH_ACQUISITION
+    [row] = found["rows"]
+    assert row["key"] == "choice:acquire_tech"
+    assert row["action"] == {
+        "action_id": "acquire_tech",
+        "arguments": {},
+        "detail": row["action"]["detail"],
+        "detail_ko": row["action"]["detail_ko"],
+    }
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Every Tech stack is empty",
+        "{tech_tile} 더미가 모두 비었음",
+        "empty",
+    )
+    # A tile left to take: no row.
+    stocked = push_tech_acquisition(
+        _state(owner, config=config, tech_stacks=(("training_depot",), (), ())),
+        0,
+        discount=1,
+        source="test",
+    ).state
+    assert unavailable_choices(stocked, 0, ENGINE.legal_actions(stocked, 0)) is None
+
+
+# --- Agent-box icons withheld until the turn's end (OQ-057 (1)) ---
+
+
+def _imperium(card_id: str) -> str:
+    return next(i for i in imperium_deck_instance_ids(False) if f":{card_id}:" in i)
+
+
+def _icon_rows(state: GameState) -> dict[str, tuple[str, str, str]]:
+    """The greyed Agent-box icon rows, keyed by surface and icon."""
+
+    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    rows = found["rows"] if found is not None else []
+    assert isinstance(rows, list)
+    return {
+        row["key"]: (row["reason"], row["reason_ko"], row["code"])
+        for row in rows
+        if row["key"].split(":", 1)[1].startswith("agent_icon:")
+    }
+
+
+def test_steersman_recall_with_no_target_is_greyed_until_the_turn_end() -> None:
+    """User ruling 2026-10-02 (L2-Q3: "③은 회색 줄만"): Steersman's Recall
+    Agent icon with no other Agent opens no window; it shows greyed out
+    while the turn is open, and the turn's end press still fizzles it
+    (OQ-057 (1))."""
+    steersman = _imperium("steersman")
+    owner = PlayerState(
+        player_id=0, agents_available=2, hand=(steersman,), deck=(DAGGER,)
+    )
+    state = _place(_state(owner), "deliver_supplies")
+    assert not [
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id.startswith(("recall_agent", "recall_conflict_agent"))
+    ]
+    no_target = (
+        "No other Agent of yours to recall (not the one sent this turn);"
+        " it lapses when the turn ends",
+        "소환할 다른 {agent} 없음 (이번 차례에 보낸 {agent} 제외)"
+        " — 차례가 끝날 때 사라짐",
+        "no_target",
+    )
+    assert _icon_rows(state) == {"choice:agent_icon:recall": no_target}
+    row = _rows(_found(state), "choice")["choice:agent_icon:recall"]
+    assert row["action"]["action_id"] == "recall_agent_for_agent_card"
+    assert row["action"]["arguments"] == {}
+    assert row["card_id"] == steersman
+    # Resolve everything else: the row stays until the press, which fizzles
+    # the icon.
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    while finish not in (legal := ENGINE.legal_actions(state, 0)):
+        state = ENGINE.apply(state, legal[0]).state
+    assert _icon_rows(state) == {"choice:agent_icon:recall": no_target}
+    finished = ENGINE.apply(state, finish)
+    assert any(
+        event.kind == "agent_card_effect_unavailable"
+        and dict(event.payload)["effect"] == "recall"
+        for event in finished.events
+    )
+
+    # Another Agent on the board: the recall is offered, no row.
+    other = replace(owner, agents_available=1, agent_locations=("arrakeen",))
+    assert _icon_rows(_place(_state(other), "deliver_supplies")) == {}
+
+
+def test_a_conditioned_agent_icon_is_greyed_with_its_threshold() -> None:
+    """Hidden Missive's troop and card draw at two Bene Gesserit Influence:
+    below it the icons are not offered and wait for the turn's end (OQ-057
+    (1)); they show greyed out with what is missing, and are offered again
+    once the condition holds (``agent_icon_block``). A later effect of the
+    turn can still meet it, so they sit under "waiting", beside a single
+    Agent box withheld by the same rule (``_agent_box``)."""
+    missive = _imperium("hidden_missive")
+    below = PlayerState(
+        player_id=0, hand=(missive,), influence=Influence(bene_gesserit=1)
+    )
+    state = _place(_state(below), "gather_support")
+    reason = (
+        "Needs 2 Bene Gesserit Influence (you have 1);"
+        " it lapses if still unmet when the turn ends",
+        "{influence_bene_gesserit} 2 필요 (보유 1)"
+        " — 차례가 끝날 때까지 못 채우면 사라짐",
+        "condition",
+    )
+    assert _icon_rows(state) == {
+        "waiting:agent_icon:troops": reason,
+        "waiting:agent_icon:cards": reason,
+    }
+    row = _rows(_found(state), "waiting")["waiting:agent_icon:troops"]
+    assert row["action"]["action_id"] == "resolve_agent_card_effect"
+    assert row["action"]["arguments"] == {"effect": "troops"}
+    assert row["card_id"] == missive
+
+    met = replace(below, influence=Influence(bene_gesserit=2))
+    assert _icon_rows(_place(_state(met), "gather_support")) == {}
+
+
+def test_an_ungrafted_card_s_icons_are_greyed_among_the_choices() -> None:
+    """Sardaukar Quartermaster's "If grafted: [troop] [card]": played alone
+    the icons wait for the turn's end and fizzle there (OQ-057 (1)), but
+    nothing later in the turn can graft the card, so the rows sit among the
+    choices that cannot be taken ("choice"), not the waiting ones."""
+    quartermaster = "imperium:sardaukar_quartermaster:0"
+    owner = PlayerState(
+        player_id=0, hand=(quartermaster,), research_space=RESEARCH_START_ID
+    )
+    state = _place(_state(owner, config=RulesetConfig(immortality=True)), "arrakeen")
+    reason = (
+        "Only when the card is grafted; it lapses when the turn ends",
+        "{graft}한 카드일 때만 — 차례가 끝날 때 사라짐",
+        "condition",
+    )
+    assert _icon_rows(state) == {
+        "choice:agent_icon:troops": reason,
+        "choice:agent_icon:cards": reason,
+    }

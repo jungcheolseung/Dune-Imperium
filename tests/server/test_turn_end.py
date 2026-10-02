@@ -646,6 +646,130 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     assert summary["confirmation"] is None
 
 
+_HOLY_WAR = "imperium:holy_war:0"
+
+
+def _holy_war_game(loser: PlayerState) -> tuple[GameSessionManager, str]:
+    """Human seat 0 has sent Holy War to Assembly Hall, its Agent box still
+    to resolve; human seat 1 is ``loser``, AI seats 2 and 3 hold three
+    garrison troops each. The card-level setup of
+    tests/unit/rules/test_bloodlines_cards.py::
+    test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy."""
+
+    owner = PlayerState(player_id=0, hand=(_HOLY_WAR,), deck=_STARTERS[:4])
+    state = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=(owner, loser, PlayerState(player_id=2), PlayerState(player_id=3)),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    manager = GameSessionManager()
+    summary = manager.create_game(TWO_HUMANS, game_seed=0, bloodlines=True)
+    game_id = str(summary["game_id"])
+    manager._get(game_id).state = state
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    send = next(
+        a
+        for a in actions
+        if a["action_id"] == "agent_turn"
+        and _obj(a["arguments"]).get("card_id") == _HOLY_WAR
+        and _obj(a["arguments"]).get("space_id") == "assembly_hall"
+    )
+    summary = manager.apply_action(game_id, 0, 0, _int(send["index"]))
+    # Assembly Hall's own Intrigue card first, so only the box is left.
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    board = next(a for a in actions if a["action_id"] == "resolve_board_effect")
+    manager.apply_action(game_id, 0, _int(summary["revision"]), _int(board["index"]))
+    return manager, game_id
+
+
+@pytest.mark.parametrize(
+    ("loser", "answer", "event"),
+    [
+        pytest.param(
+            PlayerState(player_id=1), "lose_unit", "unit_lost", id="one_option"
+        ),
+        pytest.param(
+            PlayerState(player_id=1, troops_supply=12, troops_garrison=0),
+            "resolve_unit_loss_without_unit",
+            "unit_loss_unavailable",
+            id="no_unit",
+        ),
+    ],
+)
+def test_the_holy_war_owner_waits_for_a_human_opponents_unit_loss(
+    loser: PlayerState, answer: str, event: str
+) -> None:
+    # User ruling 2026-09-30 (OQ-036 (a)): every opponent is asked, even
+    # with a single option or none ("선택지가 단 하나여도 어쨌든 확인을
+    # 거치는 걸로 통일하는게 깔끔해"). The window sits above the owner's
+    # still-open Agent turn (OQ-095), so the owner's turn end is not offered
+    # until the human opponent has answered (``agent_turn_end_ready``), and
+    # that answer is an interrupt, not a turn end of the opponent's own: it
+    # is not held for confirm_turn.
+    manager, game_id = _holy_war_game(loser)
+    session = manager._get(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in actions] == ["resolve_agent_card_effect"]
+    box = actions[0]
+    summary = manager.apply_action(
+        game_id, 0, _int(manager.summary(game_id)["revision"]), _int(box["index"])
+    )
+
+    assert summary["confirmation"] is None
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "opponent_unit_loss"
+    assert decision["owner"] == 1 and decision["owner_is_human"] is True
+    assert decision["turn_end_ready"] is False
+    assert agent_turn_end_ready(session.state) is None
+    assert manager.legal_actions(game_id, 0)["actions"] == []
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+    payload = manager.legal_actions(game_id, 1)
+    offered = _rows(payload["actions"])
+    assert [a["action_id"] for a in offered] == [answer]
+    # The zones it cannot lose from are shown greyed out with the reason.
+    greyed = _rows(_obj(payload["unavailable"])["rows"])
+    assert {row["surface"] for row in greyed} == {"choice"}
+    assert {row["reason_ko"] for row in greyed} == (
+        {"잃을 유닛 없음"} if answer != "lose_unit" else {"{conflict}에 {troop} 없음"}
+    )
+
+    log_before = len(session.log)
+    summary = manager.apply_action(
+        game_id, 1, _int(summary["revision"]), _int(offered[0]["index"])
+    )
+
+    assert summary["confirmation"] is None
+    assert 1 not in session.open_units
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 1, _int(summary["revision"]))
+    logged = [
+        (entry.kind, dict(entry.payload).get("player"))
+        for step in live_steps(session.log[log_before:])
+        for entry in step.events
+    ]
+    # Seat 1's own answer, then AI seats 2 and 3 answer theirs at once.
+    assert (event, 1) in logged
+    assert ("unit_lost", 2) in logged and ("unit_lost", 3) in logged
+    # Every opponent has answered: the owner's turn end is offered now.
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "agent_effects" and decision["owner"] == 0
+    assert decision["turn_end_ready"] is True
+    offered = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert "finish_agent_turn" in {a["action_id"] for a in offered}
+
+
 def _covert_operation_instance(card_id: str) -> str:
     return next(i for i in imperium_deck_instance_ids(False) if f":{card_id}:" in i)
 
@@ -1140,8 +1264,10 @@ def _stack_state(*frames: DecisionFrame) -> GameState:
 def test_unit_seat_reads_a_holy_war_shaped_stack() -> None:
     # [turn(C), opponent_unit_loss(X), opponent_unit_loss(C)]: C's own turn
     # is still the running unit even though the top of the stack is C's own
-    # answer to X's Holy War (module docstring: "Holy War can stack [an
-    # interrupt] above the next seat's turn before that turn has started").
+    # answer to X's Holy War. Holy War no longer stacks its windows above
+    # the next seat's turn (they sit above the card player's open Agent turn
+    # since OQ-095), but interrupts are recognised by kind wherever they sit
+    # (``INTERRUPT_KINDS``), which this synthetic stack still pins.
     state = _stack_state(
         _frame(FrameKind.TURN, 2, "turn:2"),
         _frame(FrameKind.OPPONENT_UNIT_LOSS, 1, "loss:1"),

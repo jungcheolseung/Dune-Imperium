@@ -2165,7 +2165,10 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     assert nothing.events[-1].kind == "sardaukar_commander_unavailable"
 
     # Every face-up Skill already held: the Commander comes without a Skill
-    # and no choice frame opens (OQ-031, OQ-035).
+    # (OQ-031, OQ-035 (b)), which the owner now confirms in the Skill choice
+    # window (user ruling 2026-10-02, L2-Q3: "①②는 확인 창" -- (1) a bank
+    # Commander gained when no Skill can be chosen opens a confirm window;
+    # it used to go straight to the garrison).
     held = replace(
         state,
         skill_face_up=(skills[1], skills[3]),
@@ -2174,12 +2177,32 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
         ),
     )
     queued = trash_personal_card(held, 0, card, source="test").state
-    direct = begin_skill_choice(queued)
+    asked = begin_skill_choice(queued)
+    assert asked.events == ()
+    assert asked.state.decision_stack[-1].kind == "skill_choice"
+    # The prompt asks for the confirm, not a choice the window cannot offer.
+    assert frame.decision.prompt == (
+        "Choose the Skill for the acquired Sardaukar Commander"
+    )
+    assert asked.state.decision_stack[-1].decision.prompt == (
+        "Gain the Sardaukar Commander without a Skill"
+    )
+    assert asked.state.sardaukar_commanders_bank == 1
+    confirm = DomainAction(action_id="resolve_commander_without_skill", actor=0)
+    assert legal_skill_choice_actions(asked.state, 0) == (confirm,)
+    assert UprisingRulesEngine().legal_actions(asked.state, 0) == (confirm,)
+    direct = apply_skill_choice(asked.state, confirm)
     assert direct.state.decision_stack[-1].kind == "agent_effects"
     assert direct.state.sardaukar_commanders_bank == 0
     assert direct.state.players[0].commanders_garrison == 1
     assert len(direct.state.players[0].skill_ids) == 2
     assert direct.events[0].kind == "sardaukar_commander_acquired"
+    assert dict(direct.events[0].payload)["skill_id"] == ""
+    # The confirm is never offered beside a Skill that can be chosen: one
+    # must then be chosen (OQ-031).
+    assert all(
+        action.action_id == "choose_skill" for action in actions
+    ), actions
 
 
 def test_sardaukar_standard_bank_commander_joins_the_reveals_allowance() -> None:
@@ -2631,7 +2654,34 @@ def test_choam_demands_spy_recall_after_the_last_effect_counts_for_this_turn() -
 ASSEMBLY_POST = "landsraad-assembly-hall-gather-support"
 
 
+def _answer_unit_losses(state: GameState) -> GameState:
+    """Answer every Holy War unit-loss window on top with its first option."""
+
+    engine = UprisingRulesEngine()
+    while state.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS:
+        decision = state.decision_stack[-1].decision
+        assert isinstance(decision, PlayerDecision)
+        answer = engine.legal_actions(state, decision.owner)[0]
+        state = engine.apply(state, answer).state
+    return state
+
+
+def _owners(frames: tuple[DecisionFrame, ...]) -> list[int]:
+    return [
+        frame.decision.owner
+        for frame in frames
+        if isinstance(frame.decision, PlayerDecision)
+    ]
+
+
 def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
+    # "Each opponent loses one troop. Each opponent spying on the board space
+    # where you sent an Agent this turn must move that Spy." [Holy War card].
+    # Every opponent is asked, even with one option or none (user ruling
+    # 2026-09-30, OQ-036 (a): "선택지가 단 하나여도 어쨌든 확인을 거치는 걸로
+    # 통일하는게 깔끔해"), in the printed order: every loss clockwise from the
+    # next seat, then the Spy moves (user ruling 2026-10-02: "인쇄 순서: 모두
+    # 손실 후 모두 Spy"). Seat 1 has three options, seat 2 one, seat 3 none.
     from dune_imperium.rules.spy_moves import apply_spy_move, legal_spy_move_actions
     from dune_imperium.rules.unit_loss import (
         apply_unit_loss,
@@ -2656,47 +2706,173 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     base = replace(base, players=(base.players[0], watcher, garrisoned, empty))
     state = _play(base, card, "assembly_hall")
     result = resolve_agent_card_effect(state)
+    # Nothing is lost unasked: no seat's loss is in the card player's step.
     kinds = [event.kind for event in result.events]
-    assert "unit_lost" in kinds and "unit_loss_unavailable" in kinds
-    # Seat 2 lost its only-zone troop at once; seat 3 had nothing to lose.
-    assert result.state.players[2].troops_garrison == 0
-    assert result.state.players[2].troops_supply == 12
-    # Seat 1 moves its Spy, then chooses the zone; both frames are on top of
-    # the owner's still-open Agent turn (user ruling OQ-095 (1)).
-    stack = result.state.decision_stack
-    assert [frame.kind for frame in stack[-3:]] == [
+    assert "unit_lost" not in kinds and "unit_loss_unavailable" not in kinds
+    assert result.state.players[1:] == base.players[1:]
+    # Every frame sits on top of the owner's still-open Agent turn (user
+    # ruling OQ-095 (1)): seat 1's loss on top, then seats 2 and 3, then
+    # seat 1's Spy move.
+    stack = result.state.decision_stack[-5:]
+    assert [frame.kind for frame in stack] == [
         "agent_effects",
-        "opponent_unit_loss",
         "opponent_spy_move",
+        "opponent_unit_loss",
+        "opponent_unit_loss",
+        "opponent_unit_loss",
     ]
-    moves = legal_spy_move_actions(result.state, 1)
-    targets = {dict(a.arguments)["post_id"] for a in moves}
-    assert ASSEMBLY_POST not in targets and targets
-    moved = apply_spy_move(result.state, moves[0]).state
-    assert ASSEMBLY_POST not in moved.players[1].spy_post_ids
-    assert len(moved.players[1].spy_post_ids) == 1
+    assert _owners(stack) == [0, 1, 3, 2, 1]
+    assert [
+        frame.decision.prompt
+        for frame in stack[2:]
+        if isinstance(frame.decision, PlayerDecision)
+    ] == [
+        "No unit to lose",
+        "Choose where to lose one unit",
+        "Choose where to lose one unit",
+    ]
     # The loser picks the zone and the unit kind (OQ-036).
-    actions = legal_unit_loss_actions(moved, 1)
+    actions = legal_unit_loss_actions(result.state, 1)
     assert [tuple(a.arguments) for a in actions] == [
         (("zone", "garrison"),),
         (("zone", "conflict"),),
         (("commanders", 1), ("zone", "conflict")),
     ]
-    lost = apply_unit_loss(moved, actions[2]).state
+    assert legal_unit_loss_actions(result.state, 2) == ()  # not its go yet
+    lost = apply_unit_loss(result.state, actions[2]).state
     assert lost.players[1].commanders_conflict == 0
     assert lost.players[1].commanders_supply == 1
     assert lost.players[1].troops_conflict == 2
     assert lost.players[1].combat_strength == 4
+    # Seat 2 confirms its only option.
+    only = legal_unit_loss_actions(lost, 2)
+    assert only == (
+        DomainAction(action_id="lose_unit", actor=2, arguments=(("zone", "garrison"),)),
+    )
+    answered = apply_unit_loss(lost, only[0])
+    assert [event.kind for event in answered.events] == ["unit_lost"]
+    assert answered.state.players[2].troops_garrison == 0
+    assert answered.state.players[2].troops_supply == 12
+    # Seat 3 has nothing to lose and confirms it; the public event now comes
+    # from its own step.
+    confirm = legal_unit_loss_actions(answered.state, 3)
+    assert confirm == (DomainAction("resolve_unit_loss_without_unit", 3),)
+    none = apply_unit_loss(answered.state, confirm[0])
+    assert [(event.kind, event.payload) for event in none.events] == [
+        ("unit_loss_unavailable", (("player", 3),))
+    ]
+    assert none.state.players[3] == answered.state.players[3]
+    # Then seat 1 moves its Spy.
+    assert none.state.decision_stack[-1].kind == "opponent_spy_move"
+    moves = legal_spy_move_actions(none.state, 1)
+    targets = {dict(a.arguments)["post_id"] for a in moves}
+    assert ASSEMBLY_POST not in targets and targets
+    moved = apply_spy_move(none.state, moves[0]).state
+    assert ASSEMBLY_POST not in moved.players[1].spy_post_ids
+    assert len(moved.players[1].spy_post_ids) == 1
     # Nothing else is pending: the owner gets the decision back and only its
     # own end closes the turn (OQ-095 (1)); then seat 1's turn opens.
-    top = lost.decision_stack[-1]
+    top = moved.decision_stack[-1]
     assert top.kind == "agent_effects"
     assert dict(top.context)["turn_owner"] == 0
     engine = UprisingRulesEngine()
-    assert engine.legal_actions(lost, 0) == (DomainAction("finish_agent_turn", 0),)
-    finished = finish_agent_turn(lost)
+    assert engine.legal_actions(moved, 0) == (DomainAction("finish_agent_turn", 0),)
+    finished = finish_agent_turn(moved)
     assert finished.decision_stack[-1].kind == "turn"
     assert dict(finished.decision_stack[-1].context)["turn_owner"] == 1
+
+
+@pytest.mark.parametrize("actor", [0, 1, 2, 3])
+def test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat(
+    actor: int,
+) -> None:
+    # The FAQ's order for an "each opponent" card effect, "beginning with the
+    # player to your left and proceeding clockwise" [FAQ p. 3] (OQ-036 (b)),
+    # for every opponent whatever it can lose: nothing, one option, or
+    # several (user ruling 2026-09-30, OQ-036 (a)).
+    from dune_imperium.rules.unit_loss import (
+        legal_unit_loss_actions,
+        opponent_unit_loss_frames,
+    )
+
+    seats = (
+        PlayerState(player_id=0, troops_supply=12, troops_garrison=0),
+        PlayerState(player_id=1, troops_supply=11, troops_garrison=1),
+        PlayerState(
+            player_id=2, troops_supply=7, troops_conflict=2, commanders_garrison=1
+        ),
+        PlayerState(
+            player_id=3, troops_supply=10, troops_garrison=0, troops_conflict=2
+        ),
+    )
+    state = replace(_state(seats[0]), players=seats)
+    pushed = opponent_unit_loss_frames(state, actor, source="test")
+    assert pushed.events == ()
+    assert pushed.state.players == state.players
+    added = pushed.state.decision_stack[len(state.decision_stack) :]
+    clockwise = [(actor + offset) % 4 for offset in (1, 2, 3)]
+    assert _owners(tuple(reversed(added))) == clockwise
+    assert all(frame.kind == FrameKind.OPPONENT_UNIT_LOSS for frame in added)
+    expected = {
+        0: ("resolve_unit_loss_without_unit",),
+        1: ("lose_unit",),
+        2: ("lose_unit", "lose_unit", "lose_unit"),
+        3: ("lose_unit",),
+    }
+    engine = UprisingRulesEngine()
+    current = pushed.state
+    for seat in clockwise:
+        for other in range(4):
+            if other != seat:
+                assert legal_unit_loss_actions(current, other) == ()
+        offered = legal_unit_loss_actions(current, seat)
+        assert tuple(a.action_id for a in offered) == expected[seat]
+        current = engine.apply(current, offered[0]).state
+    assert current.decision_stack == state.decision_stack
+
+
+def test_holy_war_asks_every_loss_before_any_spy_move() -> None:
+    # User ruling 2026-10-02 (L2-Q1): "인쇄 순서: 모두 손실 후 모두 Spy" --
+    # the card prints "Each opponent loses one troop. Each opponent spying on
+    # the board space where you sent an Agent this turn must move that Spy."
+    # [Holy War card]. Seats 1 and 3 each watch one of Spice Refinery's two
+    # posts: seats 1, 2 and 3 lose a unit first, then seat 1 moves and then
+    # seat 3 (OQ-036 (b)).
+    card = _card("holy_war")
+    seats = (
+        # A granted City icon (as Emperor's Invitation grants one) sends Holy
+        # War to Spice Refinery.
+        _owner(hand=(card,), granted_agent_icon_turn="city"),
+        PlayerState(player_id=1, spies_supply=2, spy_post_ids=(REFINERY_POSTS[0],)),
+        PlayerState(player_id=2),
+        PlayerState(
+            player_id=3,
+            spies_supply=1,
+            spy_post_ids=(REFINERY_POSTS[1], _FAR_POSTS[0]),
+        ),
+    )
+    base = replace(_state(seats[0]), players=seats)
+    result = resolve_agent_card_effect(_play(base, card, "spice_refinery"))
+    engine = UprisingRulesEngine()
+    answered: list[tuple[str, int]] = []
+    current = result.state
+    while current.decision_stack[-1].kind != "agent_effects":
+        frame = current.decision_stack[-1]
+        assert isinstance(frame.decision, PlayerDecision)
+        answered.append((str(frame.kind), frame.decision.owner))
+        current = engine.apply(
+            current, engine.legal_actions(current, frame.decision.owner)[0]
+        ).state
+    assert answered == [
+        ("opponent_unit_loss", 1),
+        ("opponent_unit_loss", 2),
+        ("opponent_unit_loss", 3),
+        ("opponent_spy_move", 1),
+        ("opponent_spy_move", 3),
+    ]
+    for seat in (1, 3):
+        assert not set(current.players[seat].spy_post_ids) & set(REFINERY_POSTS)
+    assert [current.players[seat].troops_garrison for seat in (1, 2, 3)] == [2, 2, 2]
 
 
 def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
@@ -2709,7 +2885,8 @@ def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
     # move used to run after seat 1's turn had opened and count as seat 1's
     # recall, so Rebel Supplier recruited for free. The move now resolves on
     # top of the owner's still-open Agent turn (user ruling OQ-095 (1)); seat
-    # 1's turn opens only when the owner presses the end.
+    # 1's turn opens only when the owner presses the end. Every opponent
+    # first answers its unit loss (OQ-036 (a), the printed order).
     from dune_imperium.rules.spy_moves import apply_spy_move, legal_spy_move_actions
 
     card = _card("holy_war")
@@ -2723,19 +2900,16 @@ def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
     base = _state(_owner(hand=(card,)))
     base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
     result = resolve_agent_card_effect(_play(base, card, "assembly_hall"))
-    stack = result.state.decision_stack[-2:]
+    answered = _answer_unit_losses(result.state)
+    stack = answered.decision_stack[-2:]
     assert [frame.kind for frame in stack] == ["agent_effects", "opponent_spy_move"]
-    assert [
-        frame.decision.owner
-        for frame in stack
-        if isinstance(frame.decision, PlayerDecision)
-    ] == [0, 1]
+    assert _owners(stack) == [0, 1]
     move = next(
         action
-        for action in legal_spy_move_actions(result.state, 1)
+        for action in legal_spy_move_actions(answered, 1)
         if dict(action.arguments)["post_id"] == "arrakis-deep-desert"
     )
-    moved = apply_spy_move(result.state, move).state
+    moved = apply_spy_move(answered, move).state
     assert moved.players[1].spy_post_ids == ("arrakis-deep-desert",)
     assert moved.players[1].spies_recalled_turn == 0
     assert moved.decision_stack[-1].kind == "agent_effects"
@@ -2898,11 +3072,12 @@ def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:
     base = _state(owner)
     base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
     state = _play(base, card, "spice_refinery")
-    result = resolve_agent_card_effect(state)
-    assert result.state.decision_stack[-1].kind == "opponent_spy_move"
+    # The losses come first (the printed order, OQ-036 (a)); the watcher has
+    # no unit and confirms it.
+    result = _answer_unit_losses(resolve_agent_card_effect(state).state)
+    assert result.decision_stack[-1].kind == "opponent_spy_move"
     targets = {
-        dict(a.arguments)["post_id"]
-        for a in legal_spy_move_actions(result.state, 1)
+        dict(a.arguments)["post_id"] for a in legal_spy_move_actions(result, 1)
     }
     assert targets
     assert not targets & set(REFINERY_POSTS)
@@ -3256,9 +3431,13 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # v125 (L2): a Conflict reward Influence choice with every eligible
     # Faction at the top is confirmed
     # (resolve_combat_influence_without_faction, +1).
+    # v125 (L2): a Holy War opponent with no unit to lose confirms it
+    # (resolve_unit_loss_without_unit, +1).
+    # v125 (L2): a bank Commander with no choosable Skill is confirmed
+    # (resolve_commander_without_skill, +1).
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
-        + 1 + 1 + 1 + 1 + 1
+        + 1 + 1 + 1 + 1 + 1 + 1 + 1
     )
     action = DomainAction(
         action_id="trash_agent_card",

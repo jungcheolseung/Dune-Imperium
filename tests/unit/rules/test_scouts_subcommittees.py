@@ -359,14 +359,21 @@ def test_nothing_joinable_now_offers_only_the_decline() -> None:
     )
     assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert _options(state) == {("decline_subcommittee", "")}
-    assert not any(
-        e.kind == "scouts_subcommittee_unavailable" for e in state.event_log
-    )
     state = _act(state, "decline_subcommittee")
     assert _scouts_frames_done(state)
 
 
-def test_an_offer_with_every_subcommittee_taken_lapses_without_a_frame() -> None:
+def test_an_offer_with_every_subcommittee_taken_offers_only_the_decline() -> None:
+    """User ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    창을 연다" (OQ-076 (c)): with every subcommittee already taken the new
+    seat's offer is still armed, the turn waits on it, and only the decline
+    is offered; the page greys the choice out as "claimed" among the choices
+    that cannot be taken. It used to lapse with the event
+    ``scouts_subcommittee_unavailable``. Unreachable with four players (five
+    subcommittees on display, at most three other members), so a synthetic
+    three-strong display stands in."""
+    from dune_imperium.display.unavailable import unavailable_choices
+
     # A seat joins once, so three other seats can hold a three-strong display.
     claimed = tuple((subcommittee, 1 + n) for n, subcommittee in enumerate(DISPLAY[:3]))
     state = _visit_high_council(
@@ -376,8 +383,33 @@ def test_an_offer_with_every_subcommittee_taken_lapses_without_a_frame() -> None
             scouts_subcommittee_members=claimed,
         )
     )
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _options(state) == {("decline_subcommittee", "")}
+    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    assert found is not None
+    listed = found["rows"]
+    assert isinstance(listed, list)
+    [row] = listed
+    assert row["surface"] == "choice"
+    assert row["code"] == "claimed"
+    assert row["reason_ko"] == "모든 소위원회에 가입한 좌석이 있음"
+    state = _act(state, "decline_subcommittee")
     assert _scouts_frames_done(state)
-    assert any(e.kind == "scouts_subcommittee_unavailable" for e in state.event_log)
+
+    # Corrinth City's seat taken in a Reveal: the Reveal waits the same way.
+    reveal = _state(
+        _owner(hand=(CORRINTH,)),
+        scouts_subcommittees=DISPLAY[:3],
+        scouts_subcommittee_members=claimed,
+    )
+    reveal = _act(_act(reveal, "reveal_turn"), "take_high_council_from_reveal")
+    assert reveal.decision_stack[-1].kind == FrameKind.REVEAL
+    offered = _options(reveal)
+    assert ("decline_subcommittee", "") in offered
+    assert ("choose_subcommittee", "") not in offered
+    assert ("finish_reveal", "") not in offered
+    reveal = _act(reveal, "decline_subcommittee")
+    assert ("finish_reveal", "") in _options(reveal)
 
 
 def test_members_are_unique() -> None:

@@ -464,6 +464,54 @@ def test_a_card_with_no_playable_option_is_spent_without_effect() -> None:
     assert dropped.events[0].kind == "navigation_exhausted"
 
 
+def test_a_card_with_nothing_playable_opens_with_only_the_spend() -> None:
+    # Card 2 places a Spy, or recalls one for an Intrigue card and 2 spice;
+    # with every Spy in the box (Advanced Data Analysis, Tech Module)
+    # neither can happen. The card is still spent without effect (OQ-039
+    # (b)), but no longer unasked: the window opens with decline_navigation
+    # alone (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
+    # 모두 결정 창을 연다"), and the event says it fizzled. The options show
+    # greyed out with their reasons meanwhile.
+    from dune_imperium.display.unavailable import unavailable_choices
+
+    owner = _steersman(
+        (_card(2), _card(5)),
+        influence=Influence(emperor=1),
+        spies_supply=0,
+        spies_boxed=3,
+    )
+    tech = RulesetConfig(bloodlines=True, tech_module=True)
+    opened = _reach_two(_turn_state(owner, config=tech), Faction.EMPEROR)
+    assert opened.decision_stack[-1].kind == "navigation_choice"
+    decline = DomainAction(action_id="decline_navigation", actor=0)
+    assert ENGINE.legal_actions(opened, 0) == (decline,)
+    found = unavailable_choices(opened, 0, (decline,))
+    assert found is not None
+    listed = found["rows"]
+    assert isinstance(listed, list)
+    rows = {row["key"]: row for row in listed}
+    assert set(rows) == {"choice:play_navigation:0", "choice:play_navigation:1"}
+    assert rows["choice:play_navigation:1"]["reason"] == (
+        "Needs 1 Spy on the board (you have 0)"
+    )
+    assert all(row["surface"] == "choice" for row in rows.values())
+
+    spent = apply_navigation_play(opened, decline)
+    seat = spent.state.players[0]
+    assert seat.navigation_played == (_card(2),)
+    assert seat.navigation_slots == (_card(5),)
+    assert seat.navigation_active_slot == 0
+    assert spent.state.decision_stack[-1].kind == "turn"
+    [event] = spent.events
+    assert event.kind == "navigation_card_played"
+    assert dict(event.payload) == {
+        "card_id": _card(2),
+        "faction": "emperor",
+        "fizzled": 1,
+        "player": 0,
+    }
+
+
 def test_card_ten_arrow_cost_may_be_declined_and_the_card_is_spent() -> None:
     # Card 10 prints "[lose 1 Influence] -> [gain 1 Influence]" with an
     # arrow; "You do not have to pay such a cost on a card." [Main p. 20]

@@ -35,6 +35,19 @@ Imperial Privilege with no other Agent to recall: the recall greys out,
 (`resolve_imperial_privilege_without_recall`, user ruling 2026-09-30,
 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"), and goes once the
 confirm is taken.
+
+The last case is the first "choice" window a human answers inside another
+seat's open Agent turn: Holy War's unit loss (user ruling 2026-09-30,
+OQ-036 (a), "선택지가 단 하나여도 어쨌든 확인을 거치는 걸로 통일하는게
+깔끔해"), on a --remote server with the card player and the answering
+seat held by two browsers. Twice: an opponent with no unit at all, who is
+offered only the confirm (`resolve_unit_loss_without_unit`) beside rows
+that all read "잃을 유닛 없음", and an opponent with a single unit to lose,
+whose other zones grey out as "{garrison}에 {troop} 없음" and the like, the
+terms substituted on the page. Until that seat answers, the card player's
+page shows no turn-end control and none of the answering seat's rows; the
+answer is not held for a turn end of the answering seat's own, and gives
+the card player back its "턴 종료" (OQ-095, server ``INTERRUPT_KINDS``).
 """
 
 from __future__ import annotations
@@ -450,6 +463,241 @@ def recall_case(page, base: str, saves: Path) -> bool:
     return ok
 
 
+# Seats 0 and 1 (human) played by heuristics in this checkout, seats 2 and
+# 3 by the server's own, on the Bloodlines ruleset, until one human seat
+# must answer the Holy War the other human seat played, with the offer
+# named by the last argument: "confirm" (no unit at all, only
+# resolve_unit_loss_without_unit) or "single" (one lose_unit), greyed rows
+# beside it either way. The answer must hand the card player its turn end
+# straight away (the AI seats answer at once, no Spy to move, nothing else
+# left of that Agent turn), or the seed is passed over. That game is saved
+# before the answer. The seeds are tried in order from HOLY_WAR_SEEDS, as in
+# SAVE_AT_ROW_PY: today seed 5 reaches the single loss and seed 42 the
+# confirm (seat 0's Holy War, seat 1 answers, both); the confirm starts at
+# 40 only to spare the script some 20 seconds of games.
+HOLY_WAR_SEEDS = {"confirm": 40, "single": 0}
+HOLY_WAR_SAVE_PY = """
+import json, sys
+from pathlib import Path
+from dune_imperium.agents import make_agent
+from dune_imperium.server.persistence import SaveStore
+from dune_imperium.server.sessions import GameSessionManager
+saves, seeds = Path(sys.argv[1]), range(int(sys.argv[2]), int(sys.argv[3]))
+want = sys.argv[4]
+seats = ("human", "human", "heuristic", "heuristic")
+offer = {"confirm": "resolve_unit_loss_without_unit", "single": "lose_unit"}[want]
+for seed in seeds:
+    manager = GameSessionManager()
+    created = manager.create_game(seats, game_seed=seed, bloodlines=True)
+    game_id = str(created["game_id"])
+    session = manager._get(game_id)
+    agents = [make_agent("heuristic", seed + seat, session.config) for seat in (0, 1)]
+    while not (summary := manager.summary(game_id))["finished"]:
+        if isinstance(summary["confirmation"], int):
+            seat = summary["confirmation"]
+            manager.confirm_turn(game_id, seat, int(summary["revision"]))
+            continue
+        seat = summary["decision"]["owner"]
+        payload = manager.legal_actions(game_id, seat)
+        owner = next(
+            (
+                frame.decision.owner
+                for frame in reversed(session.state.decision_stack)
+                if str(frame.kind) == "agent_effects"
+            ),
+            None,
+        )
+        ids = [action["action_id"] for action in payload["actions"]]
+        if (
+            summary["decision"]["kind"] == "opponent_unit_loss"
+            and owner in (0, 1)
+            and owner != seat
+            and ids == [offer]
+            and (payload["unavailable"] or {}).get("rows")
+        ):
+            document = manager.save_document(game_id, name=f"holy_war_{want}")
+            answer = manager.apply_action(game_id, seat, int(payload["revision"]), 0)
+            back = answer["decision"]
+            if back["owner"] == owner and back.get("turn_end_ready") is True:
+                stored = SaveStore(saves).write(document)
+                found = {"seed": seed, "save_id": stored["save_id"]}
+                print(json.dumps({**found, "owner": owner, "answerer": seat}))
+                sys.exit(0)
+            break
+        legal = session.engine.legal_actions(session.state, seat)
+        view = session.engine.observe(session.state, seat)
+        index = legal.index(agents[seat].choose_action(view, legal))
+        manager.apply_action(game_id, seat, int(payload["revision"]), index)
+print(json.dumps(None))
+"""
+
+KEY = "e2e-admin-key"
+# The Korean words of a greyed lose_unit row, by its key's zone and unit.
+ZONE_KO = {"garrison": "주둔지", "conflict": "교전"}
+UNIT_KO = {"0": "병력", "1": "사다우카 지휘관"}
+
+# The words of every greyed "choice" badge, icons read as their names.
+BADGE_WORDS_JS = """() => {
+  const walk = (n) => n.nodeType === 3 ? n.textContent
+    : n.tagName === 'IMG' ? n.alt : [...n.childNodes].map(walk).join('');
+  return [...document.querySelectorAll(
+    '#actions .unavailable-item[data-surface="choice"]')].map((row) => [
+      row.dataset.key,
+      walk(row.querySelector('.unavailable-badge')).replace(/ +/g, ' ').trim(),
+    ]);
+}"""
+
+# What a seat's page holds: its view, its actions, its turn-end control.
+TABLE_JS = """() => ({
+  seat: state.viewSeat,
+  kind: state.summary.decision ? state.summary.decision.kind : null,
+  owner: state.summary.decision ? state.summary.decision.owner : null,
+  ready: state.summary.decision ? state.summary.decision.turn_end_ready : null,
+  confirmation: state.summary.confirmation,
+  actions: state.actions ? state.actions.actions.map((a) => a.action_id) : null,
+  greyed: document.querySelectorAll('#actions .unavailable-item').length,
+  turnEnd: document.querySelectorAll('.turn-end-row button').length,
+  revision: state.summary.revision,
+})"""
+
+
+def wait_for(page, predicate_js: str, timeout: float = 10.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if page.evaluate(
+            f"!state.busy && refreshFlight === null && Boolean({predicate_js})"
+        ):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def holy_war_save(saves: Path, want: str) -> dict | None:
+    result = subprocess.run(
+        [str(REPO / ".venv/bin/python"), "-c", HOLY_WAR_SAVE_PY, str(saves)]
+        + [str(HOLY_WAR_SEEDS[want]), str(HOLY_WAR_SEEDS[want] + 60), want],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO,
+    )
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def take_seat(page, base: str, game_id: str, seat: int, name: str) -> None:
+    page.goto(f"{base}/#game={game_id}")
+    page.wait_for_selector("#lobby-screen:not([hidden])")
+    page.fill("#lobby-name", name)
+    page.click(f"#lobby-seats li[data-seat='{seat}'] button")
+    page.wait_for_selector("#game-screen:not([hidden])")
+
+
+def holy_war_case(browser, base: str, saves: Path, want: str) -> bool:
+    """Holy War's unit loss answered by a human inside another seat's turn."""
+
+    label = f"Holy War ({want})"
+    print(f"[choice] {label}: a human answers another human's Holy War")
+    found = holy_war_save(saves, want)
+    if not check.ok(found is not None, f"{label}: a seed reaches it"):
+        return False
+    owner, answerer = found["owner"], found["answerer"]
+    print(f"  .. seed {found['seed']}: seat {owner} played it, {answerer} answers")
+    _, host, _ = open_context(browser, f"holy-war-{want}-card-player")
+    _, guest, _ = open_context(browser, f"holy-war-{want}-answering")
+    host.goto(f"{base}/#admin={KEY}")
+    host.wait_for_selector("#setup-screen:not([hidden])")
+    host.wait_for_function("state.server !== null && state.server.admin === true")
+    response = host.request.post(f"{base}/saves/{found['save_id']}/load", data={})
+    game_id = response.json()["game_id"]
+    take_seat(host, base, game_id, owner, "카드")
+    take_seat(guest, base, game_id, answerer, "상대")
+    ok = check.ok(
+        wait_for(guest, "state.actions && state.actions.actions.length")
+        and wait_for(host, f"state.viewSeat === {owner} && state.actions === null"),
+        f"{label}: both pages reach the loss window",
+        [host.evaluate(TABLE_JS), guest.evaluate(TABLE_JS)],
+    )
+    table = host.evaluate(TABLE_JS)
+    ok &= check.ok(
+        table["kind"] == "opponent_unit_loss"
+        and table["owner"] == answerer
+        and table["ready"] is False
+        and table["turnEnd"] == 0
+        and table["greyed"] == 0,
+        f"{label}: the card player's page waits, no turn end, no greyed rows",
+        table,
+    )
+    offer = "resolve_unit_loss_without_unit" if want == "confirm" else "lose_unit"
+    rows = guest.evaluate(
+        "[...document.querySelectorAll('#actions .action-item')]"
+        ".map((r) => r.innerText)"
+    )
+    ok &= check.ok(
+        guest.evaluate(TABLE_JS)["actions"] == [offer]
+        and len(rows) == 1
+        and (want != "confirm" or "잃을 유닛 없음 — 확인" in rows[0]),
+        f"{label}: the answering seat is offered {offer} alone",
+        rows,
+    )
+    reasons = guest.evaluate(
+        "state.actions.unavailable.rows.map((r) => [r.key, r.reason_ko, r.reason])"
+    )
+    words = guest.evaluate(BADGE_WORDS_JS)
+    if want == "confirm":
+        expected = [[key, "잃을 유닛 없음"] for key, _, _ in reasons]
+    else:
+        expected = [
+            [key, f"{ZONE_KO[key.split(':')[2]]}에 {UNIT_KO[key.split(':')[3]]} 없음"]
+            for key, _, _ in reasons
+        ]
+    ok &= check.ok(
+        bool(reasons) and words == expected,
+        f"{label}: every greyed row says why, the terms substituted",
+        [words, expected],
+    )
+    ok &= check.ok(
+        guest.evaluate(HEADING_JS, "choice") == "지금 고를 수 없는 선택지",
+        f"{label}: under the choice heading",
+        guest.evaluate(HEADING_JS, "choice"),
+    )
+    ok &= inspect_surface(guest, "choice", label)
+    guest.evaluate("setLanguage('en')")
+    assert settled(guest, 10)
+    english = guest.evaluate(BADGE_WORDS_JS)
+    ok &= check.ok(
+        english == [[key, reason] for key, _, reason in reasons]
+        and guest.evaluate(HEADING_JS, "choice") == "Choices you cannot take now",
+        f"{label}: in English the heading and the reasons",
+        english,
+    )
+    guest.evaluate("setLanguage('ko')")
+    assert settled(guest, 10)
+    guest.evaluate("applyAction(0)")
+    ok &= check.ok(
+        wait_for(host, "state.actions && state.actions.actions.length")
+        and wait_for(guest, "state.actions === null"),
+        f"{label}: the answer reaches both pages",
+        [host.evaluate(TABLE_JS), guest.evaluate(TABLE_JS)],
+    )
+    after = guest.evaluate(TABLE_JS)
+    ok &= check.ok(
+        after["confirmation"] is None and after["greyed"] == 0,
+        f"{label}: the answer is not held as the answering seat's turn end",
+        after,
+    )
+    table = host.evaluate(TABLE_JS)
+    ok &= check.ok(
+        table["kind"] == "agent_effects"
+        and table["owner"] == owner
+        and table["ready"] is True
+        and "finish_agent_turn" in (table["actions"] or [])
+        and table["turnEnd"] == 1,
+        f"{label}: the card player gets its turn-end control back",
+        table,
+    )
+    return ok
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         _, page, _ = open_context(browser, "unavailable")
@@ -467,6 +715,11 @@ def main() -> None:
         check.ok(seen["choice"], "met and checked: choice")
         seen["recall"] = recall_case(page, base, saves)
         check.ok(seen["recall"], "met and checked: the recall confirm")
+        with server("--remote", "--admin-key", KEY) as (remote, remote_log):
+            for want in ("confirm", "single"):
+                saves = Path(remote_log).parent
+                seen[want] = holy_war_case(browser, remote, saves, want)
+                check.ok(seen[want], f"met and checked: Holy War ({want})")
     check.finish()
 
 

@@ -59,7 +59,7 @@ cd scripts/e2e
 /tmp/dune-e2e-venv/bin/python seats.py         # 약 4초; 좌석 패널의 자세히 접기, 노트북 1366x768에서 좌석 넷
 /tmp/dune-e2e-venv/bin/python help.py          # 약 2초; 도움말 창과 스크린 리더 알림(aria-live·role·이름)
 /tmp/dune-e2e-venv/bin/python scouts.py        # 약 70초; 아라킨 스카웃 판(체크박스 기본 꺼짐·배지·패널·비밀 선택 설명·입찰 스테퍼와 턴 종료 줄·영어 한글 없음), 시드 게임 끝까지 + 보드 위 임무 조각(시드 게임 여섯 판이 임무 16종 전부: 칸의 빈 자리·관측소·나선·Tleilaxu 셋째 칸·계약·Reclaimed Forces에 행마다 조각 하나, 좌석 색 큐브, hotspot·Agent·Spy·Control·bonus spice·지휘관·garrison과 안 겹침, 두 언어 title, 뒷면 카드 id가 페이지에 없음 — 저장본을 엔진으로 재생해 대조; 가장 붐비는 판을 2400·1366px에서, 스크린샷은 E2E_SHOTS_DIR)
-/tmp/dune-e2e-venv/bin/python unavailable.py   # 약 3초 + 사막의 힘 저장 만들기; 지금 고를 수 없는 선택지가 흐리게, 까닭과 함께(Reveal 상점·Intrigue 카드, 2026-09-29; 선택 창의 막힌 갈래·Imperial Privilege 소환 확인, 2026-10-02)
+/tmp/dune-e2e-venv/bin/python unavailable.py   # 약 3초 + 사막의 힘 저장 만들기; 지금 고를 수 없는 선택지가 흐리게, 까닭과 함께(Reveal 상점·Intrigue 카드, 2026-09-29; 선택 창의 막힌 갈래·Imperial Privilege 소환 확인, 2026-10-02; 다른 사람 좌석의 Holy War에 답하는 손실 창 — --remote 두 브라우저, 유닛 없는 확인·하나뿐인 손실, 회색 줄의 용어 치환, 답할 때까지 카드 쓴 좌석의 턴 종료 숨김, 2026-10-02 — 모두 합쳐 약 17초)
 /tmp/dune-e2e-venv/bin/python lang.py          # 약 4초; 한국어/English 전환 — 영어에서 한글 0, 왕복 동일, 새로고침 유지, 카드 이름·그림이 언어를 따름
 /tmp/dune-e2e-venv/bin/python log_follow.py    # 약 4초; 실시간 행동 로그가 게임을 계속 따라가는지(전 확장 + 지도자 드래프트, 3라운드+)
 /tmp/dune-e2e-venv/bin/python log_words.py     # 약 8초; 행동 로그·행동 목록·보드 title에 엔진 id가 없는지(두 언어, 2026-09-29부터 아라킨 스카웃 판 둘 포함 — 페이로드 키·값과 추첨 줄)

@@ -43,9 +43,13 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
 )
 
 # Frames an opponent answers in the middle of another seat's unit
-# (Covert Operation's discard, Holy War and False Orders' Spy moves and
-# unit loss). Holy War can stack them above the next seat's turn before
-# that turn has started, so they are recognised by kind, not by position.
+# (Covert Operation's discard, Holy War and False Orders' Spy moves, Holy
+# War's unit loss). Since every Agent turn ends only through its owner's
+# press (OQ-095), they always sit above the card player's still-open Agent
+# turn: an answer belongs to that seat's unit, never opens one of the
+# answering seat's own, and the owner's turn end is not offered until
+# every opponent has answered (``agent_turn_end_ready``). They are
+# recognised by kind, so an answer is read as one wherever it sits.
 INTERRUPT_KINDS: Final = frozenset(
     {
         FrameKind.OPPONENT_CARD_DISCARD,

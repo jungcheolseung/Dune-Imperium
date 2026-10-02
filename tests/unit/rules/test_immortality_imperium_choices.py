@@ -406,8 +406,7 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     peeked = peeked_intrigue_ids(shuffled, 0)
     assert peeked[0] == INTRIGUE[0] and peeked[1] in INTRIGUE[1:4]
     assert len(shuffled.intrigue_deck) == 4
-    # An empty deck shuffles too; with nothing to shuffle the single card
-    # is simply kept.
+    # An empty deck shuffles too.
     empty = resolve_agent_card_effect(
         _place(
             _state(
@@ -418,6 +417,10 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
         )
     )
     assert empty.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
+    # With nothing to shuffle the single face-down card is all there is to
+    # look at: the peek window opens on it and keeping it is the only choice
+    # (user ruling 2026-10-02, L2-Q3: "①②는 확인 창" -- (2) OQ-052's single
+    # card; it used to be kept without a window).
     lone = resolve_agent_card_effect(
         _place(
             _state(
@@ -427,8 +430,39 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
             "assembly_hall",
         )
     )
-    assert lone.state.players[0].intrigue_cards == (INTRIGUE[0],)
-    assert lone.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    frame = lone.state.decision_stack[-1]
+    assert frame.kind == FrameKind.INTRIGUE_PEEK
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.prompt == "Keep the last Intrigue card"
+    assert lone.state.players[0].intrigue_cards == ()
+    assert peeked_intrigue_ids(lone.state, 0) == INTRIGUE[:1]
+    assert peeked_intrigue_ids(lone.state, 1) == ()
+    check_observation_privacy(lone.state)
+    peek = [event for event in lone.events if event.kind == "intrigue_cards_peeked"]
+    assert [dict(event.payload)["count"] for event in peek] == [1]
+    only = UprisingRulesEngine().legal_actions(lone.state, 0)
+    assert only == (
+        DomainAction(
+            action_id="keep_peeked_intrigue",
+            actor=0,
+            arguments=(("instance_id", INTRIGUE[0]),),
+        ),
+    )
+    kept_lone = apply_intrigue_peek(lone.state, only[0]).state
+    assert kept_lone.players[0].intrigue_cards == (INTRIGUE[0],)
+    assert kept_lone.intrigue_deck == ()
+    assert kept_lone.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    # Nothing face down and nothing to shuffle: no effect.
+    nothing = resolve_agent_card_effect(
+        _place(
+            _state(_owner((ceremony,)), intrigue_deck=(), intrigue_discard=()),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert nothing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert nothing.state.players[0].intrigue_cards == ()
+    assert "intrigue_cards_peeked" not in [event.kind for event in nothing.events]
 
 
 def test_imperium_ceremony_through_the_engine() -> None:

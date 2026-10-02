@@ -2010,20 +2010,15 @@ def subcommittee_preview(
     the turn: every line (claimed, joinable right after the step, or not
     now with its reason; no ``action_index``, the lines are not this
     list's), and ``joinable`` when at least one could be joined at once.
-    Not ``joinable`` with no lines when nothing is left to join, so the
-    chance would lapse. None for a step that takes no seat, or whose
-    outcome the previews may not read (``preview_outcome``).
+    With every subcommittee already taken every line says so (the offer
+    still opens with only its decline, OQ-076 (c)). None for a step that
+    takes no seat, or whose outcome the previews may not read
+    (``preview_outcome``).
     """
 
     if outcome is None:
         return None
     seat = action.actor
-    if any(
-        event.kind == "scouts_subcommittee_unavailable"
-        and dict(event.payload).get("player") == seat
-        for event in outcome.events
-    ):
-        return {"joinable": False, "lines": []}
     after = outcome.state
     if session.state.players[seat].high_council or not after.players[seat].high_council:
         return None

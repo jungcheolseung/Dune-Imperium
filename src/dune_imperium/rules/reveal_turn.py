@@ -865,7 +865,6 @@ def apply_corrinth_city_reveal(
     source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     owner = state.players[action.actor]
     remaining = state.decision_stack[:-1]
-    offer_events: tuple[GameEvent, ...] = ()
     if action.action_id == "gain_five_reveal_solari":
         next_owner = replace(
             owner,
@@ -901,8 +900,10 @@ def apply_corrinth_city_reveal(
         # Arrakeen Scouts: the new seat lets the seat join a subcommittee
         # any time in the rest of this Reveal turn (OQ-076 alternative C,
         # user ruling 2026-09-30); no Agent took it, so Contingencies may
-        # recall any other Agent (OQ-075).
-        state, offer_events = queue_reveal_subcommittee_offer(
+        # recall any other Agent (OQ-075). With every subcommittee taken
+        # the offer is still armed and only its decline is offered (user
+        # ruling 2026-09-30; unreachable with four players, OQ-076 (c)).
+        state = queue_reveal_subcommittee_offer(
             state, action.actor, source=f"{source}:high_council"
         )
     return RuleResult(
@@ -911,7 +912,7 @@ def apply_corrinth_city_reveal(
             players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
-        events=(event, *offer_events),
+        events=(event,),
     )
 
 

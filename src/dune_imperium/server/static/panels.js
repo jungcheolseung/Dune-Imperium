@@ -463,9 +463,9 @@ function logEventPayload(payload, eventKind) {
        rules/navigation.py): the step head already names the option in words
        (describeAction's play_intrigue and play_navigation branches,
        core.js), so a bare index here ("선택지: 1") would only repeat it
-       unreadably. A fizzled navigation_card_played (rules/navigation.py
-       begin_navigation_play) carries no "option" at all, so this leaves it
-       untouched. */
+       unreadably. A declined or fizzled navigation_card_played
+       (rules/navigation.py apply_navigation_play's decline_navigation)
+       carries no "option" at all, so this leaves it untouched. */
     if (
       key === "option" &&
       (eventKind === "intrigue_played" || eventKind === "navigation_card_played")
@@ -944,11 +944,11 @@ function ownGlowFrom(seat, entries) {
   return last + 1;
 }
 
-/* An Arrakeen Scouts choice the viewing seat could take nothing from, or a
-   new High Council seat with no subcommittee left open, is skipped without
-   asking (rules/scouts_effects.py, rules/scouts_offers.py, OQ-071,
-   OQ-076). The log records it; this also says so once, in the note, when
-   it arrives. */
+/* An Arrakeen Scouts choice the viewing seat could take nothing from is
+   skipped without asking (rules/scouts_effects.py, OQ-071). The log
+   records it; this also says so once, in the note, when it arrives. (A new
+   High Council seat with no subcommittee left open asks, offering only its
+   decline: OQ-076 (c).) */
 function noticeScoutsSkips(entries, from) {
   const seat = activeSeat();
   if (typeof seat !== "number") return;
@@ -959,8 +959,6 @@ function noticeScoutsSkips(entries, from) {
       if (!event.payload || event.payload.player !== seat) continue;
       if (event.kind === "scouts_choice_skipped") {
         notes.push(t("panels.scouts_skipped", { item: scoutsItem(event.payload.item_id).name }));
-      } else if (event.kind === "scouts_subcommittee_unavailable") {
-        notes.push(t("panels.scouts_subcommittee_skipped"));
       }
     }
   }

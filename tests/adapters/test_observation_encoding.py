@@ -388,6 +388,7 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # Re-pinned 2026-10-02 for L2's decision windows (same codec v125):
 # ``everything`` first moved with the recall confirms (Imperial Privilege
 # or a Contract's recall with no target now asks instead of skipping);
+# it moved again with Holy War, whose opponents are now always asked;
 # the encoder files are still byte for byte the previous pin's.
 _GOLDEN_DIGESTS = {
     "base": ("29cffc270dbad833556587f296a15c4ba853f46da475a8e326b8f5dc1e85f712", 2780),
@@ -397,8 +398,8 @@ _GOLDEN_DIGESTS = {
         3028,
     ),
     "everything": (
-        "6eddd06588dc312c64311005f9c92b8157196b28bedb7c8ff2e5a19b29b747ac",
-        3316,
+        "11a1651e9ddec8c8c020a566de6c9dc0e69cd36e9a7a395f1abbc52fc5a36838",
+        3388,
     ),
     "draft": ("a066154c2a3f217f4fb6e4285ad9fa49dd8118a60b73e8419def5f1ce7d74ec0", 2392),
     "scouts": (

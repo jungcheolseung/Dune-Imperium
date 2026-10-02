@@ -1352,7 +1352,8 @@ function appendUnavailableRows(box, surfaces) {
    follows the seat's resources until the icon is resolved. The seat may
    choose its subcommittee any time later in that turn (OQ-076), so with
    none joinable at once but some still open it says so and gives the
-   reasons; with none open at all the chance would lapse. */
+   reasons; with none open at all (every line "claimed") it says none is
+   left, and the seat will only be offered the decline (OQ-076 (c)). */
 function subcommitteePreview(preview) {
   const box = document.createElement("div");
   box.className = "subcommittee-preview";

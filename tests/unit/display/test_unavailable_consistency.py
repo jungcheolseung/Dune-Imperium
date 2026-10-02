@@ -16,8 +16,10 @@ The engine's providers were refactored to expose the block predicates the
 rows read (``AcquireBlock``, ``option_unplayable_reason``,
 ``intrigue_play_block``, ``agent_box_is_waiting``, and on 2026-10-02
 ``reveal_sandworm_block``, ``imperial_privilege_recall_targets``,
-``contract_recall_targets``, ``research_bonus_block`` and
-``combat_reward_influence_block``).
+``contract_recall_targets``, ``research_bonus_block``,
+``combat_reward_influence_block`` and ``unit_loss_block``; then
+``skill_choice_block``, ``agent_card_recall_targets`` and
+``agent_icon_block``).
 ``test_the_refactored_providers_offer_what_they_did`` pins that refactor
 against copies of the providers as they were before it (2026-09-29): a later
 rule change to one of them should update or drop the copy on purpose.
@@ -36,6 +38,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.determinize import determinize
+from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
 from dune_imperium.content.immortality.board import (
     ResearchBonus,
     genetic_markers_reached,
@@ -72,10 +75,11 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
+from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
-from dune_imperium.core.player import PlayerState
+from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.display.unavailable import NOT_NOW_CODE, unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine, agent_effect_frame
@@ -87,10 +91,20 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
 from dune_imperium.rules.agent_effects import (
+    AGENT_ICON_CARDS,
+    AGENT_ICON_INTRIGUE,
+    AGENT_ICON_RECALL,
+    AGENT_ICON_SOLARI,
+    AGENT_ICON_SPICE,
+    AGENT_ICON_TROOPS,
+    AGENT_ICON_WATER,
+    AUTOMATIC_AGENT_ICONS,
     agent_card_effect_is_unavailable,
+    agent_icon_condition_holds,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
+    spice_gained_this_turn,
 )
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
@@ -124,9 +138,11 @@ from dune_imperium.rules.effect_interpreter import (
     trashable_discard_pile_ids,
 )
 from dune_imperium.rules.effects import (
+    active_agent_card,
     agent_turn_space_id,
     board_icon_is_pending,
     current_agent_effect_context,
+    is_grafted,
     pending_agent_icons,
     recallable_conflict_agents,
     turn_agent_in_conflict,
@@ -142,11 +158,16 @@ from dune_imperium.rules.reveal_turn import (
     reveal_sandworm_block,
     tech_reveal_pending,
 )
+from dune_imperium.rules.sardaukar import (
+    PLASTEEL_BLADES_CARD_ID,
+    legal_skill_choice_actions,
+)
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     legal_tleilaxu_acquisitions,
 )
+from dune_imperium.rules.unit_loss import legal_unit_loss_actions, unit_loss_options
 
 ENGINE = UprisingRulesEngine()
 HANGUL = re.compile(r"[가-힣]")
@@ -877,6 +898,268 @@ def _old_combat_reward_spy(state: GameState, player: int) -> tuple[DomainAction,
     return ()
 
 
+def _old_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
+    """``unit_loss._loss_options`` before it became ``unit_loss_options``
+    over ``unit_loss_block`` (2026-10-02)."""
+
+    owner = state.players[player]
+    options: list[tuple[str, bool]] = []
+    if owner.troops_garrison > 0:
+        options.append(("garrison", False))
+    if owner.commanders_garrison > 0:
+        options.append(("garrison", True))
+    if owner.troops_conflict > 0:
+        options.append(("conflict", False))
+    if owner.commanders_conflict > 0:
+        options.append(("conflict", True))
+    return tuple(options)
+
+
+def _old_unit_loss(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``unit_loss.legal_unit_loss_actions`` before the confirm with no unit
+    (2026-10-02, user ruling 2026-09-30): the window opened only with two
+    options or more, and with none it would have offered nothing."""
+
+    frame = owned_top_frame(state, FrameKind.OPPONENT_UNIT_LOSS, player)
+    if frame is None:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="lose_unit",
+            actor=player,
+            arguments=(
+                *((("commanders", 1),) if commander else ()),
+                ("zone", zone),
+            ),
+        )
+        for zone, commander in _old_loss_options(state, player)
+    )
+
+
+def _old_eligible_skills(state: GameState, owner: PlayerState) -> tuple[str, ...]:
+    """``sardaukar.eligible_face_up_skill_ids`` before ``skill_choice_block``
+    (2026-10-02)."""
+
+    held = {skill_for_instance(instance).skill_id for instance in owner.skill_ids}
+    seen: list[str] = []
+    for instance_id in state.skill_face_up:
+        skill_id = skill_for_instance(instance_id).skill_id
+        if skill_id in held or skill_id in seen:
+            continue
+        seen.append(skill_id)
+    return tuple(seen)
+
+
+def _old_skill_choice(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``sardaukar.legal_skill_choice_actions`` before the confirm with no
+    choosable Skill (2026-10-02, user ruling L2-Q3 (1)): a bank Commander's
+    frame then offered nothing (it never opened)."""
+
+    frame = owned_top_frame(state, FrameKind.SKILL_CHOICE, player)
+    if frame is None:
+        return ()
+    plasteel = dict(frame.context).get("card_id") == PLASTEEL_BLADES_CARD_ID
+    return (
+        *((DomainAction(action_id="decline_skill", actor=player),) if plasteel else ()),
+        *(
+            DomainAction(
+                action_id="choose_skill",
+                actor=player,
+                arguments=(("skill_id", skill_id),),
+            )
+            for skill_id in _old_eligible_skills(state, state.players[player])
+        ),
+    )
+
+
+def _old_agent_card_recall(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``agent_effects.legal_agent_card_recall_actions`` before
+    ``agent_card_recall_targets`` (2026-10-02)."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    if AGENT_ICON_RECALL not in pending_agent_icons(context):
+        return ()
+    turn_space_id = str(context["space_id"])
+    owner = state.players[player]
+    if (
+        active_agent_card(context).agent_effect
+        is PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN
+    ):
+        return (
+            DomainAction(action_id="decline_agent_card_recall", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_agent_for_agent_card",
+                    actor=player,
+                    arguments=(("space_id", space_id),),
+                )
+                for space_id in owner.agent_locations
+                if space_id == turn_space_id
+            ),
+            *(
+                (
+                    DomainAction(
+                        action_id="recall_conflict_agent_for_agent_card",
+                        actor=player,
+                    ),
+                )
+                if turn_agent_in_conflict(owner, context, turn_space_id)
+                and owner.agent_in_conflict > 0
+                else ()
+            ),
+        )
+    return (
+        *(
+            DomainAction(
+                action_id="recall_agent_for_agent_card",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in owner.agent_locations
+            if space_id != turn_space_id
+        ),
+        *(
+            (
+                DomainAction(
+                    action_id="recall_conflict_agent_for_agent_card",
+                    actor=player,
+                ),
+            )
+            if recallable_conflict_agents(
+                owner,
+                sent_this_turn=turn_agent_in_conflict(owner, context, turn_space_id),
+            )
+            > 0
+            else ()
+        ),
+    )
+
+
+_BRANCHING_PATH = (
+    PersonalCardAgentEffect
+    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+)
+
+
+def _old_icon_condition_holds(
+    owner: PlayerState,
+    context: dict[str, Any],
+    effect: PersonalCardAgentEffect | None,
+    key: str,
+) -> bool:
+    """``agent_effects.agent_icon_condition_holds`` before ``agent_icon_block``
+    (2026-10-02)."""
+
+    if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
+        if effect is (
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+        ):
+            return owner.influence.bene_gesserit >= 2
+        if effect is (
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
+        ):
+            return spice_gained_this_turn(owner) >= 2
+        if effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED:
+            return is_grafted(context)
+        return True
+    if key == AGENT_ICON_INTRIGUE:
+        return (
+            effect is not PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
+            or genetic_markers_reached(owner.research_space) >= 2
+        )
+    maker_keeper = (
+        effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+    )
+    wheels = (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    )
+    if key == AGENT_ICON_SOLARI:
+        return wheels and owner.influence.emperor >= 2
+    if key == AGENT_ICON_SPICE:
+        return (
+            effect is _BRANCHING_PATH
+            or (maker_keeper and owner.influence.fremen >= 2)
+            or (wheels and owner.influence.spacing_guild >= 2)
+        )
+    if key == AGENT_ICON_WATER:
+        return maker_keeper and owner.influence.bene_gesserit >= 2
+    return True
+
+
+def _old_agent_card_icons(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``agent_effects.legal_agent_card_icon_actions`` over the old condition."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    owner = state.players[player]
+    effect = active_agent_card(context).agent_effect
+    return tuple(
+        DomainAction(
+            action_id="resolve_agent_card_effect",
+            actor=player,
+            arguments=(("effect", key),),
+        )
+        for key in pending_agent_icons(context)
+        if key in AUTOMATIC_AGENT_ICONS
+        and _old_icon_condition_holds(owner, context, effect, key)
+    )
+
+
+def test_the_agent_icon_condition_is_what_it_was() -> None:
+    """``agent_icon_condition_holds`` (now ``agent_icon_block`` is None) gives
+    the old answer for every Agent-box effect, icon key and owner state that
+    reaches a printed threshold: each Faction's Influence and the genetic
+    markers below, at and above two, spice gained this turn, grafted or
+    not."""
+
+    from dune_imperium.content.immortality.board import RESEARCH_SPACES
+
+    spaces = tuple(space.space_id for space in RESEARCH_SPACES)
+    researches = (*spaces[:: max(1, len(spaces) // 6)], spaces[-1])
+    compared = 0
+    for effect in (None, *PersonalCardAgentEffect):
+        for key in (*AUTOMATIC_AGENT_ICONS, AGENT_ICON_RECALL, "influence"):
+            for level in range(4):
+                for gained in range(4):
+                    for research in researches:
+                        owner = PlayerState(
+                            player_id=0,
+                            influence=Influence(
+                                emperor=level,
+                                spacing_guild=(level + 1) % 4,
+                                bene_gesserit=(level + 2) % 4,
+                                fremen=(level + 3) % 4,
+                            ),
+                            resources=Resources(spice=gained),
+                            research_space=research,
+                        )
+                        for grafted in (False, True):
+                            context: dict[str, Any] = (
+                                {"graft_card_id": "x"} if grafted else {}
+                            )
+                            assert agent_icon_condition_holds(
+                                owner, context, effect, key
+                            ) == _old_icon_condition_holds(
+                                owner, context, effect, key
+                            ), (effect, key, level, gained, research, grafted)
+                            compared += 1
+    assert compared > 0
+
+
 # Providers that gained a confirm where the old copy offered nothing at all:
 # (new provider, old copy, the frame kind, the confirm's action id).
 _CONFIRMS: list[
@@ -905,6 +1188,18 @@ _CONFIRMS: list[
         FrameKind.COMBAT_REWARD_SPY,
         "decline_combat_reward_spy",
     ),
+    (
+        legal_unit_loss_actions,
+        _old_unit_loss,
+        FrameKind.OPPONENT_UNIT_LOSS,
+        "resolve_unit_loss_without_unit",
+    ),
+    (
+        legal_skill_choice_actions,
+        _old_skill_choice,
+        FrameKind.SKILL_CHOICE,
+        "resolve_commander_without_skill",
+    ),
 ]
 
 
@@ -921,6 +1216,8 @@ _PAIRS: list[
     (legal_intrigue_play_actions, _old_intrigue_plays),
     (_pending_groups, _old_pending_groups),
     (legal_research_bonus_actions, _old_research_bonus),
+    (legal_agent_card_recall_actions, _old_agent_card_recall),
+    (legal_agent_card_icon_actions, _old_agent_card_icons),
 ]
 _OPTIONS = tuple(
     option
@@ -971,6 +1268,9 @@ def test_the_refactored_providers_offer_what_they_did(config: RulesetConfig) -> 
                 assert (
                     reveal_sandworm_block(state, player) is None
                 ) == _old_can_summon_reveal_sandworm(state, player), step
+                assert unit_loss_options(state, player) == _old_loss_options(
+                    state, player
+                ), step
             boxes += waiting
             if step % 10 == 0:
                 for option in _OPTIONS:

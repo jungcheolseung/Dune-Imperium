@@ -156,6 +156,28 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Spy with nothing to place offer only their declines (no template change;
 # unreachable with four players, and the ``tech_reveal_unavailable`` event is
 # gone, OQ-044 (b)).
+# Holy War's unit loss asks every opponent, even with one (zone, unit) to
+# lose or none (OQ-036 (a), user ruling 2026-09-30, which reverses the
+# automatic single-option loss and the event-only skip); a seat with no unit
+# confirms with ``resolve_unit_loss_without_unit`` (Bloodlines catalogs).
+# The windows follow the printed order: every opponent's loss, then every
+# opponent's Spy moves (user ruling 2026-10-02).
+# Rare sites that skipped without asking now open their windows too. Per
+# the user ruling of 2026-09-30 (every automatic skip opens a window):
+# Plasteel Blades' extra Skill with nothing to gain offers only
+# ``decline_skill`` (OQ-044 (c)); a Navigation card with no usable line
+# offers only ``decline_navigation`` (OQ-039 (b)); a card's Tech
+# acquisition with no tile left offers only ``decline_tech`` (the
+# ``tech_acquisition_unavailable`` event is gone, OQ-057 (9)); a new High
+# Council seat's subcommittee offer is always armed, offering only
+# ``decline_subcommittee`` when every subcommittee is taken (unreachable
+# with four players; the ``scouts_subcommittee_unavailable`` event is
+# gone, OQ-076 (c)). Per the user ruling of 2026-10-02 (L2-Q3, confirm
+# windows for the old no-window rulings): a bank Commander gained with no
+# choosable Skill is confirmed with ``resolve_commander_without_skill``
+# (Bloodlines catalogs; OQ-031, OQ-035 (b)), and Imperium Ceremony with
+# one Intrigue card left and no discard opens its peek on that card
+# (OQ-052). No other template change.
 ACTION_CODEC_VERSION = 125
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -827,6 +849,12 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # False Orders / Holy War: no empty post off the Agent's space,
             # so the forced-to-move Spy is lost [FAQ p. 2] (OQ-065).
             "lose_moved_spy",
+            # Holy War: an opponent with no unit to lose confirms it
+            # (OQ-036 (a), user ruling 2026-09-30).
+            "resolve_unit_loss_without_unit",
+            # A bank Commander with no choosable Skill is confirmed
+            # (OQ-031, OQ-035 (b), user ruling 2026-10-02).
+            "resolve_commander_without_skill",
         )
     ]
     for action_id in (

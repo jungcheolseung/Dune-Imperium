@@ -281,9 +281,15 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # v125 (L2): a Conflict reward Influence choice with every eligible
     # Faction at the top is confirmed
     # (resolve_combat_influence_without_faction, +1).
+    # v125 (L2): a Holy War opponent with no unit to lose confirms it
+    # (resolve_unit_loss_without_unit, +1).
+    # v125 (L2): a bank Commander with no choosable Skill is confirmed
+    # (resolve_commander_without_skill, +1).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
+        + 1
+        + 1
         + 1
     )
 

@@ -1204,11 +1204,28 @@ def test_a_tech_discount_icon_opens_its_own_frame_with_one_spice_off() -> None:
     assert bought.decision_stack[-1].kind == "turn"
 
 
-def test_a_tech_discount_icon_over_empty_stacks_does_nothing() -> None:
+def test_a_tech_discount_icon_over_empty_stacks_opens_with_only_the_refusal() -> None:
+    # User ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    # 창을 연다" (docs/unavailable-options-plan.md section 5): a card's
+    # Acquire Tech with every stack empty and no Secret Project still opens,
+    # offering only decline_tech (OQ-057 (9) "살 수 없으면 거절만"). It used
+    # to emit tech_acquisition_unavailable without asking.
     state = _turn_state(_owner(), stacks=((), (), ()))
-    result = push_tech_acquisition(state, 0, discount=1, source="test")
-    assert result.state is state
-    assert result.events[0].kind == "tech_acquisition_unavailable"
+    opened = push_tech_acquisition(state, 0, discount=1, source="test")
+    assert opened.events == ()
+    assert opened.state.decision_stack[-1].kind == "tech_acquisition"
+    legal = UprisingRulesEngine().legal_actions(opened.state, 0)
+    assert legal == (DomainAction(action_id="decline_tech", actor=0),)
+    declined = apply_tech_acquisition(opened.state, legal[0])
+    assert declined.state.decision_stack == state.decision_stack
+    assert declined.state.players == state.players
+
+    # A Secret Project is still a tile to take with every stack empty.
+    secret = _turn_state(
+        _owner(secret_project_tech_id="training_depot"), stacks=((), (), ())
+    )
+    offered = push_tech_acquisition(secret, 0, discount=1, source="test").state
+    assert "training_depot" in _tech_actions(offered)
 
 
 # --- observation, codec, soundness -------------------------------------------
@@ -1417,6 +1434,66 @@ def test_plasteel_blades_offers_an_extra_skill_after_a_commander_recruit() -> No
     assert taken.tech_trash == ("plasteel_blades",)
     assert len(seat.skill_ids) == 1
     assert seat.commanders_garrison == 1  # no second Commander
+
+
+def test_plasteel_blades_with_no_skill_to_gain_asks_with_only_the_keep() -> None:
+    """Plasteel Blades' extra Skill with every face-up Skill already held:
+    the window opens anyway with only ``decline_skill`` (user ruling
+    2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다";
+    the trash cannot be paid when its effect cannot happen, OQ-071), and the
+    held Skills show greyed out. It used to drop without a trace. Nothing
+    opens when the tile has left play: its trigger source is gone."""
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.display.unavailable import unavailable_choices
+    from dune_imperium.rules.sardaukar import (
+        apply_commander_recruit,
+        apply_skill_choice,
+        begin_skill_choice,
+    )
+
+    skills = skill_tile_instance_ids()
+    owner = _tech_owner(
+        "plasteel_blades",
+        commanders_supply=1,
+        resources=Resources(solari=2),
+        skill_ids=(skills[0], skills[2]),
+    )
+    state = replace(
+        _turn_state(owner, stacks=((), (), ())),
+        skill_face_up=(skills[1], skills[3]),
+        skill_stack=skills[4:],
+        sardaukar_commanders_bank=1,
+    )
+    state = _visit(state, "assembly_hall")
+    recruited = apply_commander_recruit(
+        state, DomainAction(action_id="recruit_sardaukar_commander", actor=0)
+    ).state
+    opened = begin_skill_choice(recruited)
+    assert opened.events == ()
+    assert opened.state.decision_stack[-1].kind == "skill_choice"
+    keep = DomainAction(action_id="decline_skill", actor=0)
+    assert UprisingRulesEngine().legal_actions(opened.state, 0) == (keep,)
+    found = unavailable_choices(opened.state, 0, (keep,))
+    assert found is not None
+    rows = found["rows"]
+    assert isinstance(rows, list)
+    assert {
+        (row["surface"], row["action"]["action_id"], row["code"]) for row in rows
+    } == {("choice", "choose_skill", "held")}
+    assert len(rows) == 2  # two face-up identities, both held
+    kept = apply_skill_choice(opened.state, keep)
+    assert kept.state.players[0].tech_ids == ("plasteel_blades",)
+    assert [event.kind for event in kept.events] == ["tech_trash_declined"]
+
+    # The tile left play before the choice opened: nothing to ask.
+    gone = replace(
+        recruited,
+        players=(replace(recruited.players[0], tech_ids=()), *recruited.players[1:]),
+    )
+    dropped = begin_skill_choice(gone)
+    assert dropped.events == ()
+    assert dropped.state.pending_skill_choices == ()
+    assert dropped.state.decision_stack == gone.decision_stack
 
 
 def test_gene_locked_vault_raises_the_secrets_threshold_to_five() -> None:

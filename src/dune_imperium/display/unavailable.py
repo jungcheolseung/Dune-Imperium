@@ -5,10 +5,14 @@ but not selectable, with the reason, and it becomes selectable as soon as it
 can be taken (and the reverse), for the whole game. Arrakeen Scouts choices
 already do this (``display.scouts.scouts_choice_lines``); this module does it
 for the Reveal shop, Intrigue plays and effects waiting on their condition
-(a new High Council seat's subcommittee choice among them), and for the
-branch of an open choice that cannot be taken ("choice": Desert Power's
-sandworm, a recall with no Agent to recall, a research bonus whose cost
-cannot be paid, a Conflict reward's Faction already at the top).
+(a new High Council seat's subcommittee choice and an Agent-box icon below
+its printed threshold among them), and for the branch of an open choice
+that cannot be taken ("choice": Desert Power's sandworm, a recall with no
+Agent to recall, a research bonus whose cost cannot be paid, a Conflict
+reward's Faction already at the top, a Holy War unit the seat does not
+have, a Skill the seat already holds, a Navigation card's option it cannot
+play, an Acquire Tech with every stack empty, an Agent-box icon that cannot
+come back before the turn's end).
 
 Display only, under four rules:
 
@@ -22,8 +26,10 @@ Display only, under four rules:
   ``waiting_deferred_choices``, ``agent_box_is_waiting``,
   ``joinable_subcommittees``, ``reveal_sandworm_block``,
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
-  ``research_bonus_block``, ``combat_reward_influence_block``), so the two
-  cannot drift.
+  ``research_bonus_block``, ``combat_reward_influence_block``,
+  ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
+  ``agent_icon_block``, ``agent_card_recall_targets``), so the two cannot
+  drift.
 - No candidate is dry-run: it is described from its arguments alone
   (``shadow_action``). The one dry run is the provider's own:
   ``agent_box_is_waiting`` asks ``agent_card_effect_is_unavailable``, which
@@ -77,7 +83,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
-from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
+from dune_imperium.content.uprising.intrigue import (
+    INTRIGUE_CARDS_BY_INSTANCE,
+    intrigue_card_for_instance,
+)
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
@@ -103,6 +112,13 @@ from dune_imperium.rules.acquisition import (
     revealer_persuasion,
 )
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
+from dune_imperium.rules.agent_effects import (
+    AUTOMATIC_AGENT_ICONS,
+    AgentIconBlock,
+    AgentIconCondition,
+    agent_card_recall_targets,
+    agent_icon_block,
+)
 from dune_imperium.rules.board_effects import imperial_privilege_recall_targets
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
@@ -116,9 +132,14 @@ from dune_imperium.rules.effect_interpreter import (
     applicable_sections,
     condition_holds,
     face_up_conflict_card_ids,
+    option_unplayable_reason,
     resource_cost,
 )
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import (
+    active_agent_card,
+    current_agent_effect_context,
+    pending_agent_icons,
+)
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
@@ -137,12 +158,23 @@ from dune_imperium.rules.reveal_turn import (
     reveal_sandworm_block,
     waiting_deferred_choices,
 )
+from dune_imperium.rules.sardaukar import (
+    face_up_skill_identities,
+    skill_choice_block,
+)
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
+from dune_imperium.rules.tech import tech_candidates
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     reclaimed_forces_block,
     tleilaxu_acquisition_block,
     tleilaxu_shop_is_open,
+)
+from dune_imperium.rules.unit_loss import (
+    UNIT_LOSS_CANDIDATES,
+    UnitLossBlock,
+    unit_loss_block,
+    unit_loss_options,
 )
 
 # --- Reasons: English, Korean (icons as tokens), a code ---------------------
@@ -256,6 +288,25 @@ _NAMED_FOR_THIS_REWARD: Final[Reason] = (
     "Already named for this reward",
     "이 보상에서 이미 고른 진영",
     "named",
+)
+_NO_UNIT_TO_LOSE: Final[Reason] = ("No unit to lose", "잃을 유닛 없음", "no_unit")
+_LAPSES_EN: Final = "; it lapses if still unmet when the turn ends"
+_LAPSES_KO: Final = " — 차례가 끝날 때까지 못 채우면 사라짐"
+_NO_RECALL_TARGET: Final[Reason] = (
+    "No other Agent of yours to recall (not the one sent this turn);"
+    " it lapses when the turn ends",
+    "소환할 다른 {agent} 없음 (이번 차례에 보낸 {agent} 제외) — 차례가 끝날 때 사라짐",
+    "no_target",
+)
+_TECH_STACKS_EMPTY: Final[Reason] = (
+    "Every Tech stack is empty",
+    "{tech_tile} 더미가 모두 비었음",
+    "empty",
+)
+_SKILL_HELD: Final[Reason] = (
+    "You already have this Skill",
+    "이미 가진 {commander_skill}",
+    "held",
 )
 _TIMING: Final[Mapping[IntrigueTiming, Reason]] = {
     IntrigueTiming.PLOT: (
@@ -906,6 +957,239 @@ def _combat_reward_influence(state: GameState, seat: int, found: _Found) -> None
         )
 
 
+def _unit_loss_reason(zone: str, block: UnitLossBlock) -> Reason:
+    where = "your garrison" if zone == "garrison" else "the Conflict"
+    if block is UnitLossBlock.NO_COMMANDER:
+        return (
+            f"No Sardaukar Commander in {where}",
+            f"{{{zone}}}에 {{commander}} 없음",
+            "no_unit",
+        )
+    return f"No troop in {where}", f"{{{zone}}}에 {{troop}} 없음", "no_unit"
+
+
+def _unit_loss(state: GameState, seat: int, found: _Found) -> None:
+    """Holy War's unit loss: every (zone, unit) the seat cannot lose now.
+
+    Every opponent is asked, even with one option or none (user ruling
+    2026-09-30, OQ-036 (a)). The provider offers ``lose_unit`` exactly when
+    ``unit_loss_block`` is None; an empty zone shows greyed out with its
+    reason, a Sardaukar Commander row only for a seat that owns one. With
+    no unit at all only ``resolve_unit_loss_without_unit`` is offered, and
+    every row reads "No unit to lose" beside it.
+    """
+
+    owner = state.players[seat]
+    nothing = not unit_loss_options(state, seat)
+    for zone, commander in UNIT_LOSS_CANDIDATES:
+        if commander and owner.commanders_total == 0:
+            continue
+        block = unit_loss_block(owner, zone, commander=commander)
+        if block is None:
+            continue
+        found.row(
+            "choice",
+            f"lose_unit:{zone}:{int(commander)}",
+            DomainAction(
+                action_id="lose_unit",
+                actor=seat,
+                arguments=(
+                    *((("commanders", 1),) if commander else ()),
+                    ("zone", zone),
+                ),
+            ),
+            _NO_UNIT_TO_LOSE if nothing else _unit_loss_reason(zone, block),
+        )
+
+
+def _navigation(state: GameState, seat: int, found: _Found) -> None:
+    """A Navigation card's options that cannot be played now (Steersman
+    Y'rkoon's Plot Course, OQ-039).
+
+    The provider offers ``play_navigation`` for an option exactly when
+    ``option_unplayable_reason`` is None (``option_is_playable``); the others
+    show greyed out with that block, worded as an Intrigue card's
+    (``intrigue_option_reason``). With none playable the window still opens
+    (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    창을 연다") with only ``decline_navigation``, which spends the card
+    without effect (OQ-039 (b)). The rows name no card: the page names the
+    Navigation card a ``play_navigation`` row plays by itself.
+    """
+
+    card_id = dict(state.decision_stack[-1].context).get("card_id")
+    if not isinstance(card_id, str):
+        return
+    for index, option in enumerate(intrigue_card_for_instance(card_id).options):
+        block = option_unplayable_reason(state, seat, option)
+        if block is None:
+            continue
+        found.row(
+            "choice",
+            f"play_navigation:{index}",
+            DomainAction(
+                action_id="play_navigation",
+                actor=seat,
+                arguments=(("option", index),),
+            ),
+            intrigue_option_reason(state, seat, option, block),
+        )
+
+
+def _tech(state: GameState, seat: int, found: _Found) -> None:
+    """A card's Acquire Tech with no tile left to take (Battlefield
+    Research, Rapid Engineering).
+
+    The window opens anyway (user ruling 2026-09-30, "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다") and offers only ``decline_tech``
+    exactly when ``tech_candidates`` is empty (OQ-057 (9) "살 수 없으면
+    거절만"); the acquisition shows greyed out beside it. The row names no
+    tile, so it is never a legal action (those always name one).
+    """
+
+    if tech_candidates(state, state.players[seat]):
+        return
+    found.row(
+        "choice",
+        "acquire_tech",
+        DomainAction(action_id="acquire_tech", actor=seat),
+        _TECH_STACKS_EMPTY,
+    )
+
+
+def _skill_choice(state: GameState, seat: int, found: _Found) -> None:
+    """A Skill choice's face-up Skills the seat already holds.
+
+    "You cannot choose a copy of a Sardaukar Commander Skill already in your
+    supply" [Bloodlines p. 4]: the provider offers a face-up Skill exactly
+    when ``skill_choice_block`` is None, and the others show greyed out.
+    With none choosable the window still opens (user ruling 2026-10-02,
+    L2-Q3 (1)) with only ``resolve_commander_without_skill`` (a bank
+    Commander) or ``decline_skill`` (Plasteel Blades), and every face-up
+    Skill reads "You already have this Skill" beside it.
+    """
+
+    owner = state.players[seat]
+    for skill_id in face_up_skill_identities(state):
+        if skill_choice_block(owner, skill_id) is None:
+            continue
+        found.row(
+            "choice",
+            f"choose_skill:{skill_id}",
+            DomainAction(
+                action_id="choose_skill",
+                actor=seat,
+                arguments=(("skill_id", skill_id),),
+            ),
+            _SKILL_HELD,
+        )
+
+
+def _agent_icon_reason(block: AgentIconBlock) -> Reason:
+    """Word ``agent_icon_block``'s answer with what the seat has."""
+
+    needed, held = block.needed, block.held
+    match block.condition:
+        case AgentIconCondition.INFLUENCE if block.faction is not None:
+            name = block.faction.value.replace("_", " ").title()
+            return (
+                f"Needs {needed} {name} Influence (you have {held}){_LAPSES_EN}",
+                f"{{influence_{block.faction.value}}} {needed} 필요 (보유 {held})"
+                f"{_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.SPICE_GAINED:
+            return (
+                f"Needs {needed} spice gained this turn (you gained {held})"
+                f"{_LAPSES_EN}",
+                f"이번 차례에 얻은 {{spice}} {needed} 필요 (얻은 {held}){_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.GENETIC_MARKERS:
+            return (
+                f"Needs {needed} genetic markers (you have {held}){_LAPSES_EN}",
+                f"유전자 마커 {needed}개 필요 (보유 {held}){_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.GRAFTED:
+            return (
+                "Only when the card is grafted; it lapses when the turn ends",
+                "{graft}한 카드일 때만 — 차례가 끝날 때 사라짐",
+                "condition",
+            )
+        case AgentIconCondition.NOT_PRINTED:
+            return ("Not printed on this card", "이 카드에 없는 아이콘", "condition")
+    return NOT_NOW
+
+
+# Conditions a later effect of the same turn can still meet (Influence
+# gained, spice gained, a marker reached): such an icon sits with the
+# Agent boxes waiting on theirs (``_agent_box``), under "waiting". A card
+# grafted or not stays so all turn, and an unprinted icon never comes.
+_ICON_CAN_STILL_BE_MET: Final = frozenset(
+    {
+        AgentIconCondition.INFLUENCE,
+        AgentIconCondition.SPICE_GAINED,
+        AgentIconCondition.GENETIC_MARKERS,
+    }
+)
+
+
+def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
+    """A multi-icon Agent box's icons withheld while their condition fails.
+
+    Such an icon is not offered and fizzles when the owner presses the
+    turn's end (OQ-057 (1)); no window opens for it, it shows greyed out
+    while the turn is open (user ruling 2026-10-02, L2-Q3: "③은 회색 줄만"
+    -- Steersman Y'rkoon's Recall Agent icon with no target, and the other
+    conditioned icons). The reasons come from the providers' own answers:
+    ``agent_icon_block`` (an automatic icon is offered exactly when it is
+    None) and ``agent_card_recall_targets`` (the recall is offered once per
+    target). An icon whose condition a later effect of the turn can still
+    meet (Influence, spice gained, genetic markers) sits under "waiting",
+    like a single Agent box withheld by the same rule (``_agent_box``); one
+    that cannot come back this turn (an ungrafted card, a recall with no
+    target -- targets never grow within one Agent turn) under "choice".
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return
+    if context.get("pending_agent_effect") is not True:
+        return
+    card_id = context.get("card_id")
+    card = card_id if isinstance(card_id, str) else None
+    owner = state.players[seat]
+    effect = active_agent_card(context).agent_effect
+    for key in pending_agent_icons(context):
+        if key not in AUTOMATIC_AGENT_ICONS:
+            continue
+        block = agent_icon_block(owner, context, effect, key)
+        if block is None:
+            continue
+        found.row(
+            "waiting" if block.condition in _ICON_CAN_STILL_BE_MET else "choice",
+            f"agent_icon:{key}",
+            DomainAction(
+                action_id="resolve_agent_card_effect",
+                actor=seat,
+                arguments=(("effect", key),),
+            ),
+            _agent_icon_reason(block),
+            card_id=card,
+        )
+    if agent_card_recall_targets(state, seat) == ():
+        found.row(
+            "choice",
+            "agent_icon:recall",
+            DomainAction(action_id="recall_agent_for_agent_card", actor=seat),
+            _NO_RECALL_TARGET,
+            card_id=card,
+        )
+
+
 def _agent_box(state: GameState, seat: int, found: _Found) -> None:
     """A mandatory Agent box withheld until its condition holds (OQ-057).
 
@@ -933,17 +1217,24 @@ def _subcommittee_choice(state: GameState, seat: int, found: _Found) -> None:
     ``choose_subcommittee`` is offered exactly when a subcommittee can be
     joined now; while the choice stays open and none can,
     ``choose_subcommittee_reason`` (the same ``joinable_subcommittees``
-    test) says why, and the row lights up once one can.
+    test) says why, and the row lights up once one can. With every
+    subcommittee already taken it never can: the offer still opens (user
+    ruling 2026-09-30, OQ-076 (c); unreachable with four players) with only
+    its decline, and the row sits among the choices that cannot be taken
+    rather than the waiting ones.
     """
 
     # Imported here: display.scouts imports this module for its reasons.
-    from dune_imperium.display.scouts import choose_subcommittee_reason
+    from dune_imperium.display.scouts import (
+        SUBCOMMITTEES_CLAIMED,
+        choose_subcommittee_reason,
+    )
 
     reason = choose_subcommittee_reason(state, seat)
     if reason is None:
         return
     found.row(
-        "waiting",
+        "choice" if reason == SUBCOMMITTEES_CLAIMED else "waiting",
         "choose_subcommittee",
         DomainAction(action_id="choose_subcommittee", actor=seat),
         reason,
@@ -955,6 +1246,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.REVEAL_CHOICE: (_reveal_choice,),
     FrameKind.AGENT_EFFECTS: (
         _agent_box,
+        _agent_icons,
         _imperial_privilege_recall,
         _subcommittee_choice,
         _intrigue,
@@ -963,6 +1255,10 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.RESEARCH_BONUS: (_research_bonus,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (_combat_reward_influence,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (_combat_reward_influence,),
+    FrameKind.OPPONENT_UNIT_LOSS: (_unit_loss,),
+    FrameKind.SKILL_CHOICE: (_skill_choice,),
+    FrameKind.NAVIGATION_CHOICE: (_navigation,),
+    FrameKind.TECH_ACQUISITION: (_tech,),
     FrameKind.TURN: (_intrigue,),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),
