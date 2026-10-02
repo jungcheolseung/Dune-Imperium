@@ -36,7 +36,7 @@
 | 옵션 | `RulesetConfig.epic_game`(다른 옵션 불필요), 식별자 `+epic`(`+go11` 뒤, `+scouts` 앞), `endgame_victory_points`(12/10), `starting_garrison_troops`(5/3) | `tests/unit/test_config.py`(모든 조합 왕복) |
 | Conflict deck | `conflict_setup_decisions(epic_game=)`: III 5장 중 5장(4장 + Economic Supremacy), II 5장, I 결정 없음. I은 전부 unused(기본 7장, Bloodlines 9장). II·III 결정 id는 그대로 | `tests/unit/rules/test_epic_game.py` |
 | 시작 카드 | `starting_deck_entries`/`starting_discard_entries`: Epic만이면 Dune 1장 → Control the Spice, Immortality와 함께면 덱 그대로 + discard pile에 Control the Spice `[Immortality p. 12]` | 같은 파일 |
-| garrison·Intrigue | troop 5/supply 7. 섞인 Intrigue deck 맨 위에서 First Player부터 좌석 순서로 1장씩(구현 관례, 새 chance 결정 없음). 고정 Leader·draft 두 경로 모두, 기록 재생 포함 | 같은 파일 |
+| garrison·Intrigue | troop 5/supply 7. 섞인 Intrigue deck 맨 위에서 First Player부터 좌석 순서로 1장씩(구현 관례, 새 chance 결정 없음). 고정 Leader·draft 두 경로 모두, 기록 재생 포함. 모든 Leader가 정해진 뒤에 나눈다 — draft는 마지막 pick 뒤(`leader_draft._finish_draft_setup`, 2026-10-02 codec v128 전에는 draft 전) | 같은 파일 |
 | Endgame | `rules/phases.py`가 `config.endgame_victory_points`와 비교. Go to 11과 함께면 0 → 12(OQ-093) | `test_the_epic_endgame_opens_at_twelve` 외 |
 | icon 없는 Conflict | `battle_icon=None`은 "인쇄된 icon 없음". 도착 매칭·Endgame wild·icon Intrigue 뒤집기·Ornithopter Fleet·The Beast's Spoils에서 빠지고 Grasp Arrakis는 뒤집을 수 있다(OQ-094) | `tests/unit/rules/test_economic_supremacy.py` |
 | 관측 v28 (브랜치에서 v26) | 개인 카드 우주 끝에 Control the Spice, Conflict 우주 끝과 battle card 우주의 Objective 뒤에 Economic Supremacy, 마지막에 `epic_game` 플래그(4,587 → 4,611). 옵션을 끈 관측의 옛 열은 master와 같음을 스크래치 비교로 확인했다. slot 표 1,140행(`conflict:economic_supremacy` 추가, SLOT_VERSION 유지) | `tests/adapters/test_observation_encoding.py`, `tests/unit/training/test_checkpoint.py`(v27 파일 이관 뒤 같은 출력), `test_slot_network.py` |

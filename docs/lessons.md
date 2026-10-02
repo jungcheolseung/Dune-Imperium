@@ -751,3 +751,17 @@
 - 재발 방지: 사람이 겪는 흐름 규칙은 엔진 상태로 지킨다 — 모든 Agent turn은 `finish_agent_turn`으로만 닫히고(OQ-095), census는
   "한 좌석의 turn frame이 다른 좌석의 것으로 바뀌는 모든 전이의 행동이 명시적 종료 행동 중 하나"를 센다. 엔진 기본값을 convention으로
   적을 때는 그것이 사용자 경험을 정하는지 보고, 정하면 묻는다.
+
+## 2026-10-02 — Epic의 비공개 setup 카드를 draft 전에 나눠, 자기 Intrigue를 보며 Leader를 고르게 함
+
+- 무슨 일: 사용자가 서버로 Epic 게임을 열어 보고 "리더 드래프트 시점에서도 책략을 이미 들고 있네"라고 지적했다. Epic Game Mode
+  (2026-09-28)는 setup Intrigue 1장을 OQ-007 draft의 `create_draft_initial_state`에서 다른 setup과 함께 미리 나눴다. 그래서 draft의
+  모든 pick이 자기 카드를 보고 이뤄졌다. Rise of Ix p. 10은 그 카드를 뽑을 때 Leader가 이미 정해져 있다고 전제한다("A player using
+  Viscount Hundro Moritani as their Leader should wait until all players have drawn their Intrigue card"). 규칙 문서는 Hundro를 "범위
+  밖"으로만 적고, 그 문장이 시점의 근거라는 점은 옮기지 않았다.
+- 원인: OQ-007은 Leader 선택을 First Player 뒤로 옮기면서 "두 단계 모두 공개 정보만 다루므로 정보 흐름은 달라지지 않는다"를 근거로
+  댔다. Epic이 Leader 선택 전에 끝나는 setup에 **비공개** 카드를 더했는데, 그 전제를 다시 보지 않았다. 범위 밖 문장(다른 확장의
+  Leader)도 같은 단락의 시점 정보를 담을 수 있는데, 범위 판단과 함께 버렸다.
+- 재발 방지: setup에 단계를 더할 때는 draft(OQ-007)보다 앞에 놓이는지, 그 단계가 비공개 정보를 주는지 본다 — 주면 draft 뒤로
+  옮기거나 사용자에게 묻는다(OQ-007 보충 2026-10-02). 범위 밖으로 빼는 원문 문장도 순서·시점을 말하는지 한 번 읽고, 말하면 규칙 문서에
+  인용해 둔다. 고침: codec v128, draft의 마지막 pick 뒤에 같은 카드를 나눈다.

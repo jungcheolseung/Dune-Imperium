@@ -77,6 +77,7 @@
   - 엔진에는 ruleset option으로 구현하고, 기존 고정 배정(테스트·sweep의 `DEFAULT_LEADER_IDS`) 경로는 재현성 용도로 유지한다. 공식 draft 절차가 발표되면 재검토한다.
   - 구현(2026-08-30): `RulesetConfig(leader_draft=True)`가 이 convention을 켠다. reset이 pick과 무관한 setup chance를 모두 seeded 해결한 뒤 `GamePhase.SETUP`의 `leader_draft` frame에서 멈추고, pick마다 좌석을 확정(setup face, 인쇄된 시작 카드 제거는 이미 섞인 덱에서 필터링 — 남은 순서는 균등 유지)하며, 마지막 pick이 Contract 시장을 배분한다(Shaddam pick 시 Sardaukar set-aside). `pick_leader` 템플릿(codec v79에서 도입, 이후 버전에도 유지), 관측 v2의 공개 pool 세그먼트. `tests/unit/rules/test_leader_draft.py`로 고정한다.
 - 확정(2026-09-01): 위 6종 공개 draft convention을 학습·플레이 환경의 최종 ruleset option으로 채택한다. "공식 규칙 아님" 표기와, 공식 draft 절차가 발표될 때만 재검토한다는 단서는 유지한다.
+- 보충(2026-10-02, 사용자 "고쳐야지"): 위의 "두 단계 모두 공개 정보만 다루므로 정보 흐름은 달라지지 않는다"는 Epic Game Mode의 setup Intrigue 1장(비공개)에서 깨졌다 — reset이 그 카드를 draft 전에 나눠, 자기 카드를 보며 Leader를 골랐다. Rise of Ix는 카드를 뽑을 때 Leader가 이미 정해져 있다고 전제한다("A player using Viscount Hundro Moritani as their Leader should wait until all players have drawn their Intrigue card" `[Rise of Ix p. 10]`). 그래서 draft에서는 그 카드를 **마지막 pick 뒤**에 나눈다(같은 카드, 시점만 이동; codec v128, [epic-game-mode.md](epic-game-mode.md) 7절). Leader 선택 전에 비공개 정보를 주는 setup 단계를 새로 더하면 이 draft의 전제를 다시 확인한다.
 
 ## OQ-008 — Control bonus와 방문자 효과의 상대 순서
 
