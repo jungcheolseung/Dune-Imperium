@@ -289,6 +289,15 @@
   관리한다.
 - 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]
 - Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다. [FAQ p. 2]
+- 구현 convention: 버린 더미까지 비어 Intrigue draw가 모자라면 draw는 있는 만큼만
+  지급하고 끝난다(`implementation-audits/intrigue.md` "Deck exhaustion",
+  OQ-067). 고를 것이 없으므로 결정 창은 열지 않고, 모자란 장수를 공개 이벤트
+  `intrigue_draw_short`(`requested`·`drawn`·`short`, 카드는 밝히지 않음)로 남기며,
+  플레이 서버는 그렇게 될 행동에 누르기 전에 경고를 붙인다. 사용자 판정
+  (2026-10-02, L2-Q4): "로그 + 클릭 전 경고". 두 더미의 크기는 공개 정보라
+  reshuffle이 필요한 draw의 모자람도 섞기 전에 정해지므로, 그 기록은 섞기를
+  요청하는 단계에 남는다(그래서 경고가 그 단계에 붙는다). Imperium Ceremony의
+  빈 peek(OQ-052)도 같다.
 - trash한 Intrigue card는 `intrigue_discard`에 놓지 않고 공개
   `intrigue_trash` 영역에서 게임이 끝날 때까지 제외한다. 따라서 Intrigue Deck을
   다시 만들 때 섞이지 않는다. `[Main p. 20]`

@@ -25,6 +25,9 @@
 - Arrakeen Scouts 줄(이벤트·판매·소위원회·임무 참여): `display/scouts.py` `scouts_choice_lines`, 서버 `scouts_lines`.
 - 1단계(커밋 `bb88c52`): Reveal 구매(Row·Reserve·Tleilaxu·Reclaimed Forces·set-aside), Intrigue 사용(비용·조건; 다른 창의 카드는 흐리게만), 조건을 기다리는 효과(미룬 Reveal 선택, 조건 미충족 Agent box). `display/unavailable.py`, 서버 `unavailable`, `static/render.js` `appendUnavailableRows`, 테스트 `tests/unit/display/test_unavailable*.py`, `tests/server/test_unavailable_payload.py`, E2E `scripts/e2e/unavailable.py`.
 
+- **5절(자동 처리 → 결정 창)은 2026-10-02 L2로 끝났다**(브랜치 `explicit-turn-end`, L1과 함께 병합; codec v125). 사막의 힘 (B), 제국 특권·Contract 회수 확인, 연구 보너스, 교전 보상 영향력(6에서), 신성한 전쟁(선택지가 하나여도 묻고, 인쇄 순서: 모든 손실 → 모든 Spy), Skill 없는 Commander 확인, Plasteel Blades·Navigation·Tech·소위원회 창, Imperium Ceremony 한 장 peek, CHOAM Contract 아이콘 보류 창(교전 보상은 그 좌석의 보상이 끝날 때 불발), 부족 로그 + 클릭 전 경고(책략 덕 고갈, Suspensor Suits, 턴 끝 Contract 아이콘 불발). 교전 보상 Spy·Panopticon·빈 소위원회는 4인 판에서 일어날 수 없어(관측소 13, Spy 12; 소위원회 5) 거절만 남겼다. 사용자 판정(2026-10-02): L2-Q1 "인쇄 순서: 모두 손실 후 모두 Spy", L2-Q2 "보상 끝까지 보류 후 불발", L2-Q3 "①②는 확인 창, ③은 회색 줄만", L2-Q4 "로그 + 클릭 전 경고". 판정은 각 OQ에 인용했다.
+- **C1(4절)이 그대로 쓸 것.** 새 표시면 `"choice"`("지금 고를 수 없는 선택지", `render.js` `UNAVAILABLE_HEADINGS`·`turn.js`)와 공개 막힘 판정 함수: `reveal_turn.reveal_sandworm_block`(4절 8·11의 방어벽 이유와 공유), `board_effects.imperial_privilege_recall_targets`, `contracts.contract_recall_targets`, `contracts.contract_take_block`(4절 12 — 이미 회색 줄), `unit_loss.unit_loss_block`, `immortality.research_bonus_block`, `combat.combat_reward_influence_block`(4절 14의 판정), `sardaukar.skill_choice_block`, `tech.tech_candidates`, `agent_effects.agent_icon_block`. 4절 16(항해 카드)은 `_navigation` collector가 이미 있다. 표시 모듈의 collector 표는 `display/unavailable.py` `_BY_FRAME`.
+
 ## 3. 사용자 결정 (2026-09-30)
 
 - **보드 칸에는 표시하지 않는다.** 갈 수 있는 칸을 이미 밝히므로 갈 수 없는 칸에 따로 표시할 필요가 없다. (설계의 "2단계" 가운데 보드 칸 표시는 하지 않는다. 손패 카드를 골랐을 때 그 카드로 갈 수 없는 이유는 결정되지 않았다 — 필요하면 사용자에게 묻는다.)

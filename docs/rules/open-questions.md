@@ -308,6 +308,7 @@
 - Suspensor Suits("자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치")는 (a) "자기 turn"의 범위, (b) supply에 troop이 없거나 배치가 금지된 경우(Emperor of the Known Universe), (c) Conflict가 없는 시점을 말하지 않는다 `[Tech tile face]`.
 - 판정(2026-09-07): (a) 자기 Agent turn 또는 Reveal turn frame이 열려 있는 동안(그 위에 쌓인 상대 결정 포함)의 draw·Secrets 강탈만 센다; Combat 보상·Endgame·상대 turn 중의 획득은 세지 않는다. (b)(c) 엔진이 전이 뒤에 빚진 수만큼 supply에서 Conflict로 옮기고(Reveal 중이면 Reveal 전투력 계산에 합산), supply가 모자라거나 배치가 막혔거나 Conflict가 없으면 부족분은 소멸하고 소급하지 않는다(OQ-030과 같은 방향; 이벤트 `suspensor_deployment_unavailable`). Reveal 중 배치는 그 Reveal의 배치 카운터에 합산된다.
 - 보강(2026-09-26, tile 면 "For each Intrigue card you draw or steal during your turn"): (a)의 제한은 turn뿐이다. Intrigue deck에서 카드를 바로 가져오는 효과 — Bene Gesserit Influence 4 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal — 도 모두 센다(`intrigue_deck.credit_suspensor_suits`).
+- 보강(2026-10-02, 사용자 판정 L2-Q4, 같은 날 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): 사용자: "로그 + 클릭 전 경고". (b)(c)의 부족분은 고를 것이 없으므로 결정 창을 열지 않는다(배치는 의무이고 전이 뒤 hook에서 일어난다). 대신 이벤트를 빠짐없이 남기고 미리 경고한다. supply가 일부만 채우는 부분 부족도 이제 남은 troop을 `suspensor_deployment_unavailable`로 남긴다(`troops`는 배치하지 못한 수, `deployed`는 배치한 수; 전에는 하나도 배치하지 못할 때만 이벤트가 있었고 부분 부족은 흔적 없이 사라졌다). 플레이 서버는 Intrigue를 뽑는 행동의 dry run에서 이 이벤트를 읽어 "반중력 의복: 병력 2개 중 1개만 배치" 같은 경고를 누르기 전에 붙인다 — OQ-030의 자유 순서로 supply를 먼저 채울 수 있는 시점이다. reshuffle이 필요한 draw도 같다: 그 배치는 섞기 chance 단계의 hook에서 정해지지만, 서버의 미리보기가 사본에서 그 섞기를 frame의 선택지 순서 그대로 한 번 더 돌려(새 더미에서 뽑는 장수는 순서와 무관하다) 그 단계의 부족분 이벤트만 더한다(`sessions.shortfall_outcome`; 뽑힌 카드는 읽지 않고, 되돌림 가능 여부·전투력 미리보기는 원래 dry run 그대로). `tests/unit/rules/test_tech.py::test_suspensor_suits_logs_the_troops_the_supply_cannot_cover`, `tests/server/test_sessions.py::test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose`.
 - 재개 조건: 공식 FAQ가 Suspensor Suits의 시점을 정할 때.
 
 ## OQ-043 — Command (6+) 판정에 세는 Persuasion의 범위
@@ -470,7 +471,7 @@
 - Imperium Ceremony의 Agent box는 "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로"라고만 한다 `[card face]`. deck에 한 장뿐이거나 비었을 때 discard를 섞어 두 장을 채우는지, 있는 만큼만 보는지 말하지 않는다.
 - 필요한 답: 두 장 미만일 때의 처리.
 - 확정(2026-09-08, 사용자 판정 "2장 보려면 맨 윗장 빼고 밑에 새 더미를 섞어 만들어야 한다"): face down 카드가 두 장 미만이고 discard가 있으면, 남은 맨 윗장은 그대로 두고 그 **밑에** discard를 섞어 새 deck을 만든 뒤(`[FAQ p. 2]`의 소진 규칙 "Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다", player-turns.md — 셔플 chance frame의 context `purpose=peek`) 두 장을 본다(맨 윗장이 첫 장). 섞을 discard도 없으면 남은 한 장이 볼 수 있는 전부이므로 그 한 장을 keep하고(2026-10-02 사용자 판정으로 바뀜 — 아래 보강: 그 한 장을 보여 주는 peek 창을 연다), 아무것도 없으면 효과가 없다. (처음 구현했던 "두 장 미만이면 보통의 draw 1장"은 자의적이라 사용자가 정정했다.) 구현: `rules/intrigue_peek.py`의 `begin_intrigue_peek`, `rules/intrigue_deck.py`의 `apply_intrigue_reshuffle`. peek한 두 장은 소유자만 보는 비공개 정보로 관측(`PrivatePlayerView.peeked_intrigue_ids`, v14)·determinize·invariant에서 deck 맨 위 자리를 유지한다.
-- 보강(2026-10-02 사용자 판정 L2-Q3, 같은 날 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): 사용자: "①②는 확인 창, ③은 회색 줄만" — ② OQ-052: Intrigue 카드가 한 장 남고 섞을 discard가 없을 때는 그 한 장을 보여 주는 peek 창을 연다(keep만 할 수 있다). 전에는 창 없이 보통의 draw 1장으로 가져갔다. 이제 `intrigue_peek` frame이 그 한 장으로 열리고(prompt "Keep the last Intrigue card", 공개 이벤트 `intrigue_cards_peeked`의 `count` 1), 합법 행동은 `keep_peeked_intrigue` 하나다. 그 한 장은 두 장일 때와 같이 소유자만 본다. deck과 discard가 모두 비었으면 그대로 효과가 없다. codec v125(L2 문장, 템플릿 변화 없음). `tests/unit/rules/test_immortality_imperium_choices.py::test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one`.
+- 보강(2026-10-02 사용자 판정 L2-Q3, 같은 날 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): 사용자: "①②는 확인 창, ③은 회색 줄만" — ② OQ-052: Intrigue 카드가 한 장 남고 섞을 discard가 없을 때는 그 한 장을 보여 주는 peek 창을 연다(keep만 할 수 있다). 전에는 창 없이 보통의 draw 1장으로 가져갔다. 이제 `intrigue_peek` frame이 그 한 장으로 열리고(prompt "Keep the last Intrigue card", 공개 이벤트 `intrigue_cards_peeked`의 `count` 1), 합법 행동은 `keep_peeked_intrigue` 하나다. 그 한 장은 두 장일 때와 같이 소유자만 본다. deck과 discard가 모두 비었으면 그대로 효과가 없다(같은 날 L2-Q4 보강: 그 빈 keep은 공개 이벤트 `intrigue_draw_short`로 남는다, player-turns.md "Intrigue 카드의 시점"). codec v125(L2 문장, 템플릿 변화 없음). `tests/unit/rules/test_immortality_imperium_choices.py::test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one`.
 
 ## OQ-053 — Tleilaxu Surgeon: "Lose two troops"의 출처 존
 
@@ -587,7 +588,9 @@
 - 구현(2026-09-10, 같은 날): 좌석의 `held_contract_icons`가 보류 중인 아이콘 수를 든다.
   `contract_icons_must_be_held`는 열려 있는 `CONTRACT_MARKET` frame에 가져갈 token이
   하나도 없고 시장은 비지 않았을 때 참이고, `_advance_automatic`이 그때 frame을 닫아
-  아이콘을 좌석으로 옮긴다(`hold_contract_icons`) — 그래서 turn이 막히지 않는다. 같은
+  아이콘을 좌석으로 옮긴다(`hold_contract_icons`) — 그래서 turn이 막히지 않는다(2026-10-02
+  사용자 판정으로 바뀜, 아래 보강: 이제 frame이 열린 채 소유자가 `hold_contract_icons`로
+  보류를 확인한다). 같은
   turn 안에서 가져갈 수 있게 되면(`held_contract_icons_can_open`) 의무이므로 자동으로
   시장을 다시 연다(`open_held_contract_icons`). turn이 닫힐 때
   (Agent turn은 2026-09-30 OQ-095 뒤로 언제나 `finish_agent_turn`이 닫으므로 모든 Agent turn에서)
@@ -595,6 +598,58 @@
   불발시키고 `contract_icons_fizzled` 이벤트를 남긴다. 좌석 scalar가 하나 늘어 관측은
   **v20**(좌석 scalar 51→52), action id는 그대로라 codec은 v104 유지. 가져갈 수 있는지의
   판정은 provider와 보류가 같은 `takeable_contract_ids`를 쓴다.
+- 보강(2026-10-02, 사용자 판정 2026-09-30과 L2-Q2, 같은 날 구현 —
+  [unavailable-options-plan.md](../unavailable-options-plan.md) 5절):
+  1. **보류는 확인 창을 거친다.** 사용자(2026-09-30): "결정 창 없이 자동으로 넘어가는
+     곳도 모두 결정 창을 연다", "플레이어가 직접 체크하는게 플레이하는데에는 도움이 될 것
+     같아". 비지 않은 시장에 가져갈 token이 하나도 없으면 `contract_market` 창이 열린 채로
+     남고, provider(`legal_contract_actions`)가 `hold_contract_icons`만 제시한다(CHOAM과
+     Bloodlines를 함께 켠 catalog에 템플릿 1개, codec v125의 L2 문장). 행동의 결과는 전의
+     자동 보류와 같다(`contract_icons_held`). 위 확정의 "소유자가 임의로 미리 불발시킬 수는
+     없다"는 그대로라 불발시키는 행동은 없다. 가져갈 수 있게 되었을 때 시장을 다시 여는 것
+     (`contract_icons_reopened`)은 창을 여는 일이므로 그대로 자동이고, turn 종료 누름의
+     불발(`contract_icons_fizzled`, OQ-095 4항)도 그대로다 — 누름 자체가 확인이고,
+     누르기 전 "턴 종료" 줄에는 "계약 아이콘 N개 소멸 — 가져갈 수 있는 계약 없음"
+     경고 배지만 붙는다(사용자 판정 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
+     가져갈 수 있는지는 공개 함수
+     `contracts.contract_take_block`이 판정하고(`takeable_contract_ids`가 이것으로 거른다),
+     화면은 같은 판정으로 Immediate을 "폐기할 책략 카드 없음" 회색 줄("지금 고를 수 없는
+     선택지")로 보이며 시장 token을 흐리게 한다. 보류 중인 아이콘은 그 좌석의 다음 결정마다
+     "계약 아이콘 N개 보류 — 폐기할 책략 카드가 생기면 가져감, 차례가 끝나면 사라짐" 줄
+     ("조건을 기다리는 효과")로 보인다(Combat phase에서는 "교전 보상을 다 받으면 사라짐",
+     turn 밖은 3항). 전에는 `held_contract_icons`가 화면 어디에도 없었다.
+  2. **Conflict 보상의 아이콘.** 위 확정의 "turn 종료까지"는 Combat phase에 답하지 않는다
+     (Combat은 turn이 아니다 `[Main p. 8]`). 엔진은 그 아이콘을 다시 열지 않았고, 그 좌석의
+     다음 turn이 열릴 때 `reset_turn_counters`가 흔적 없이 지웠으며, 그 좌석이 다음 라운드
+     First Player면 첫 turn까지 들고 갔다. 사용자 판정(2026-10-02, L2-Q2): "보상 끝까지
+     보류 후 불발" — 그 좌석이 남은 Conflict 보상을 푸는 동안 보류하고(그 사이 얻은
+     Intrigue로 Immediate을 가져갈 수 있게 되면 시장이 다시 열린다), 그 좌석의 Conflict
+     보상이 모두 끝나면 공개 이벤트 `contract_icons_fizzled`로 불발한다. 다음 turn으로
+     넘어가지도, 조용히 사라지지도 않는다. 구현: Combat phase에서는 보류 아이콘을 가진
+     좌석의 시장을 turn 소유자가 아니어도 다시 연다(`engine._held_contract_owner`).
+     `contracts.combat_held_contract_owner`가 "그 좌석의 보상이 끝났다"를 판정한다 —
+     `resolve_combat_rewards`가 보상 frame을 좌석별 묶음으로 한꺼번에 쌓으므로, 그 좌석이
+     가진 frame이 스택에 없고, 그 좌석 몫으로 대기 중인 것(Intrigue draw, Navigation play,
+     Skill 선택, Emperor track Spy, Friends Everywhere 선택)도 없고, chance 단계가 위에
+     없으면 끝난 것이다. 보상을 나누기 전에는 판정하지 않는다. `_advance_automatic`이 그때
+     `fizzle_combat_held_contract_icons`로 불발시킨다. 보류 행동은 다른 보상 frame처럼
+     마지막 frame을 닫을 때 `combat_rewards_resolved`를 세운다(전의 자동 보류는 세우지 않아,
+     보류가 Conflict 보상의 마지막 frame이면 보상이 한 번 더 나뉠 수 있었다).
+     `frames.reset_turn_counters`의 0 초기화는 안전장치로만 남는다.
+  3. 구현이 함께 덮는 경우(사용자 판정의 범위 밖, 프로젝트 관례): Combat Intrigue
+     Reach Agreement의 아이콘처럼 Conflict 보상 전에 Combat phase에서 보류된 아이콘도 같은
+     판정을 탄다 — 그 좌석의 Conflict 보상이 끝날 때(보상이 없으면 보상을 나눈 직후)
+     불발한다. Arrakeen Scouts 단계(이벤트·소위원회·경매의 Contract 아이콘)처럼 turn 밖에서
+     보류되는 아이콘은 이번에 바꾸지 않았다(열린 질문). 이 아이콘은 Intrigue를 얻어도 시장이
+     다시 열리지 않고 turn 종료 누름으로 불발하지도 않으므로(`reset_turn_counters`가 그 좌석의
+     turn이 열릴 때 이벤트 없이 지운다), 화면의 보류 줄은 그 좌석의 turn과 Combat phase에서만
+     "가져감 / 사라짐"을 말하고, 그 밖에서는 "계약 아이콘 N개 보류 — 지금 가져갈 수 있는 계약
+     없음"만 보인다.
+  - 테스트: `tests/unit/rules/test_bloodlines_contracts.py`(창이 열리고 보류, 같은 turn에
+    Intrigue를 얻어 다시 열림, turn 종료 누름에 불발, Conflict 보상 중 Intrigue 보상으로 다시
+    열림, 좌석의 보상이 끝날 때 불발하고 다음 라운드로 넘어가지 않음, 마지막 보상 frame의
+    보류가 보상을 다시 나누지 않음), `tests/unit/display/test_unavailable.py`(회색 줄과 보류
+    줄, turn 밖 보류 줄), `tests/unit/display/test_unavailable_consistency.py`(`_old_contract_market`와 비교).
 
 ## OQ-060 — Influence track 맨 위(6)에서의 "진영을 골라 Influence" 보상
 
@@ -766,7 +821,7 @@
 - 상태: `DECIDED` (2026-09-26, project convention)
 - Captured Mentat의 Agent box는 "[discard a card] → [draw 1 Intrigue] [draw 1 card]", Guild Spy의 Agent box는 "[discard] → [draw 1 card]. If you discarded a Spacing Guild card: [draw 1 Intrigue]"이다 `[card faces]`. 어느 면도 discard 비용에 조건을 달지 않는다. Intrigue deck이 바닥나면 버린 Intrigue 카드를 섞어 새 deck을 만들지만 `[FAQ p. 2]`, 버린 더미까지 비었을 때 Intrigue draw 보상이 어떻게 되는지, 그 상태에서 비용을 낼 수 있는지는 공식 문서가 말하지 않는다. `[Main p. 9]`는 "If you don't pay the cost, you don't get the effect. You do not have to pay such a cost on a card."라고만 한다.
 - 이전 구현: deck이 비면(버린 더미가 남아 있어도) Captured Mentat의 discard 전체와 Guild Spy의 Spacing Guild 카드 discard를 막았다. deck 소진 처리(`rules/intrigue_deck.py`의 지연 reshuffle과 `pending_intrigue_draws`)가 생기기 전, 빈 deck에서 예외가 나던 시절의 가드였다.
-- 판정: 손패의 어떤 카드로도 discard 비용을 낼 수 있다. deck이 비고 버린 더미가 있으면 draw가 reshuffle한다 `[FAQ p. 2]`. 두 더미가 모두 비었으면 Intrigue draw만 모자라게 끝나고(`implementation-audits/intrigue.md` "Deck exhaustion") 카드 draw는 그대로 지급된다 — 보상의 일부가 실제로 지급되므로 OQ-046의 "보상이 없는 비용은 열지 않는다"에 해당하지 않는다. `tests/unit/rules/test_agent_effects.py`(`test_captured_mentat_discard_still_draws_with_both_intrigue_piles_empty`, `test_guild_spy_offers_every_hand_card_with_both_intrigue_piles_empty`)로 고정한다.
+- 판정: 손패의 어떤 카드로도 discard 비용을 낼 수 있다. deck이 비고 버린 더미가 있으면 draw가 reshuffle한다 `[FAQ p. 2]`. 두 더미가 모두 비었으면 Intrigue draw만 모자라게 끝나고(`implementation-audits/intrigue.md` "Deck exhaustion"; 2026-10-02 사용자 판정 L2-Q4 "로그 + 클릭 전 경고"부터 모자란 장수를 공개 이벤트 `intrigue_draw_short`로 남기고 그 행동에 미리 경고한다, player-turns.md "Intrigue 카드의 시점") 카드 draw는 그대로 지급된다 — 보상의 일부가 실제로 지급되므로 OQ-046의 "보상이 없는 비용은 열지 않는다"에 해당하지 않는다. `tests/unit/rules/test_agent_effects.py`(`test_captured_mentat_discard_still_draws_with_both_intrigue_piles_empty`, `test_guild_spy_offers_every_hand_card_with_both_intrigue_piles_empty`)로 고정한다.
 - 재개 조건: 공식 FAQ가 빈 Intrigue 더미에서의 draw나 일부만 지급되는 화살표 보상을 정할 때.
 
 ## OQ-068 — Recall Agent 아이콘이 Into the Fray로 Conflict에 간 Agent를 되돌릴 수 있는지
