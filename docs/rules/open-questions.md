@@ -255,7 +255,7 @@
 - 상태: `DECIDED` (project convention)
 - Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
 - 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 이전 판정(폐기): 선택지가 하나뿐이면 자동. **2026-09-30 사용자 판정으로 바뀜(2026-10-02 구현 — 아래 보강)**: "holy war는 어쨌든 상대에게 확인을 하긴 해야한다. troop을 교전칸의 것을 뺄지, 주둔지의 것을 뺄지, 혹시나 사다우카커맨더를 뺄지 정해야하니까. 선택지가 단 하나여도 어쨌든 확인을 거치는 걸로 통일하는게 깔끔해." — 선택지가 하나여도 잃는 좌석에게 결정을 연다(Intrigue의 troop 손실 `lose_intrigue_troop`은 이미 그렇다). 구현은 [`../unavailable-options-plan.md`](../unavailable-options-plan.md) 5절. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 이전 판정(폐기): 유닛이 없는 좌석은 공개 이벤트만 남긴다(2026-09-30 사용자 판정으로 바뀜 — "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다", 계획 5절의 "유닛이 하나도 없는 좌석은 이 절의 원칙대로 회색 '잃을 유닛 없음' + 확인"; 그 좌석에게도 창이 열린다, 아래 보강). (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터(2026-09-26 정정: 이 순서는 사용자 판정이 아니라 구현 기본값이었다 — 2026-08-20 Covert Operation에서 처음 쓴 "카드 쓴 좌석의 왼쪽부터 시계 방향"을 그대로 따랐다. Holy War·False Orders에 대한 공식 순서 규정은 없지만, 같은 공식 FAQ가 비슷한 "각 상대" 효과에 같은 순서를 정한다: Reverend Mother Mohiam — "beginning with the player to your left and proceeding clockwise" `[FAQ p. 3]`; 원판 Dune: Imperium 룰북의 Test of Humanity 설명(p. 13)도 같다. BGG의 답변자들도 False Orders·Holy War를 이 순서로 읽는다(비공식). Combat 보상처럼 모두에게 동시에 일어나는 효과는 디자이너 메시지대로 First Player부터이고(OQ-002), 한 좌석의 카드 효과는 이 순서다). **2026-09-26 사용자 판정으로 확정**: "스파이 옮기는건 카드 쓴 다음 사람부터 순서대로 하는걸로. 한 사람이 여러 스파이를 옮겨야하면 그 사람 차례에 모두 옮길 수 있도록." — 카드를 쓴 좌석의 다음 좌석부터 시계 방향으로, 한 좌석은 옮길 Spy를 자기 차례에 모두 옮긴다 (`tests/unit/rules/test_bloodlines_cards.py::test_forced_spy_moves_go_seat_by_seat_from_the_next_seat`). 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-065](#oq-065--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
-- 보강(2026-09-30 사용자 판정, 2026-10-02 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): (a)의 확인. Holy War는 모든 상대에게 손실 창을 하나씩 연다(`unit_loss.opponent_unit_loss_frames`, 카드를 쓴 좌석의 다음 좌석부터 시계 방향). 선택지가 하나면 그 `lose_unit` 하나만, 유닛이 하나도 없으면 `resolve_unit_loss_without_unit` 하나만 제시하고, 그 누름이 전에는 카드를 쓴 좌석의 단계에서 나오던 `unit_lost`·`unit_loss_unavailable`을 잃는 좌석 자신의 단계에서 낸다. 무엇을 잃을 수 있는지는 공개 함수 `unit_loss.unit_loss_block`(NO_TROOP, NO_COMMANDER; 후보 순서 `UNIT_LOSS_CANDIDATES`는 garrison troop → garrison Commander → Conflict troop → Conflict Commander로 전과 같다)이 provider와 화면에 함께 정한다. 화면("지금 고를 수 없는 선택지")은 잃을 수 없는 zone을 "교전에 병력 없음"처럼 회색으로 보이고(사다우카 지휘관 줄은 지휘관을 가진 좌석에게만), 유닛이 하나도 없으면 모든 줄을 "잃을 유닛 없음"으로 회색으로 보인다. 창은 모두 카드를 쓴 좌석의 아직 열린 Agent turn 위에 쌓이므로(OQ-095) 그 좌석의 "턴 종료"는 모든 상대가 답할 때까지 제시되지 않고, 상대의 답은 그 상대의 턴 종료가 아니다(`server/turn_end.py` `INTERRUPT_KINDS`). 원격 게임은 사람 상대마다 그 답을 기다리고, AI 상대는 곧바로 답한다. 되돌리기에 미치는 결과(이 구현으로 바뀐 동작, **확인 대기**): 되돌리기 창은 그 좌석이 이어서 둔 마지막 단계들뿐이라(`server/sessions.py` `_open_undo_window`) 상대가 한 명이라도 답하면 카드를 쓴 좌석은 그 Holy War Agent turn을 — Agent 배치와 그 앞 단계까지 — 더는 되돌릴 수 없다. AI 상대는 창이 열리자마자 답하므로 Agent box를 해결한 바로 뒤에 그렇게 된다. 이 구현 전에는 모든 상대의 선택지가 하나 이하이고 그 공간을 보는 Spy가 없으면 아무 상대도 단계를 두지 않아 카드를 쓴 좌석이 그 turn을 되돌릴 수 있었다. 위의 사용자 판정(2026-09-30, 2026-10-02 L2-Q1)은 창을 열지와 순서만 정했고 이 결과는 따로 정하지 않았으므로, 사용자의 확인을 받기 전에는 엔진·서버를 바꾸지 않는다. codec v125(L2 문장, Bloodlines catalog에 템플릿 1개). `tests/unit/rules/test_bloodlines_cards.py`(`test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy`, `test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat`), `tests/server/test_turn_end.py`(`test_the_holy_war_owner_waits_for_a_human_opponents_unit_loss`), `tests/unit/display/test_unavailable.py`, 브라우저 `scripts/e2e/unavailable.py`(원격 두 브라우저: 유닛 없는 확인과 하나뿐인 손실, 회색 줄의 용어 치환, 답할 때까지 카드를 쓴 좌석의 턴 종료 숨김).
+- 보강(2026-09-30 사용자 판정, 2026-10-02 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): (a)의 확인. Holy War는 모든 상대에게 손실 창을 하나씩 연다(`unit_loss.opponent_unit_loss_frames`, 카드를 쓴 좌석의 다음 좌석부터 시계 방향). 선택지가 하나면 그 `lose_unit` 하나만, 유닛이 하나도 없으면 `resolve_unit_loss_without_unit` 하나만 제시하고, 그 누름이 전에는 카드를 쓴 좌석의 단계에서 나오던 `unit_lost`·`unit_loss_unavailable`을 잃는 좌석 자신의 단계에서 낸다. 무엇을 잃을 수 있는지는 공개 함수 `unit_loss.unit_loss_block`(NO_TROOP, NO_COMMANDER; 후보 순서 `UNIT_LOSS_CANDIDATES`는 garrison troop → garrison Commander → Conflict troop → Conflict Commander로 전과 같다)이 provider와 화면에 함께 정한다. 화면("지금 고를 수 없는 선택지")은 잃을 수 없는 zone을 "교전에 병력 없음"처럼 회색으로 보이고(사다우카 지휘관 줄은 지휘관을 가진 좌석에게만), 유닛이 하나도 없으면 모든 줄을 "잃을 유닛 없음"으로 회색으로 보인다. 창은 모두 카드를 쓴 좌석의 아직 열린 Agent turn 위에 쌓이므로(OQ-095) 그 좌석의 "턴 종료"는 모든 상대가 답할 때까지 제시되지 않고, 상대의 답은 그 상대의 턴 종료가 아니다(`server/turn_end.py` `INTERRUPT_KINDS`). 원격 게임은 사람 상대마다 그 답을 기다리고, AI 상대는 곧바로 답한다. 되돌리기에 미치는 결과(이 구현으로 바뀐 동작, 2026-10-02 사용자 확인 "이대로 둔다"): 되돌리기 창은 그 좌석이 이어서 둔 마지막 단계들뿐이라(`server/sessions.py` `_open_undo_window`) 상대가 한 명이라도 답하면 카드를 쓴 좌석은 그 Holy War Agent turn을 — Agent 배치와 그 앞 단계까지 — 더는 되돌릴 수 없다. AI 상대는 창이 열리자마자 답하므로 Agent box를 해결한 바로 뒤에 그렇게 된다. 이 구현 전에는 모든 상대의 선택지가 하나 이하이고 그 공간을 보는 Spy가 없으면 아무 상대도 단계를 두지 않아 카드를 쓴 좌석이 그 turn을 되돌릴 수 있었다. 위의 사용자 판정(2026-09-30, 2026-10-02 L2-Q1)은 창을 열지와 순서만 정했고, 이 결과는 병합 뒤 사용자가 따로 확인했다("이대로 둔다", 2026-10-02) — 엔진·서버는 바꾸지 않는다. codec v125(L2 문장, Bloodlines catalog에 템플릿 1개). `tests/unit/rules/test_bloodlines_cards.py`(`test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy`, `test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat`), `tests/server/test_turn_end.py`(`test_the_holy_war_owner_waits_for_a_human_opponents_unit_loss`), `tests/unit/display/test_unavailable.py`, 브라우저 `scripts/e2e/unavailable.py`(원격 두 브라우저: 유닛 없는 확인과 하나뿐인 손실, 회색 줄의 용어 치환, 답할 때까지 카드를 쓴 좌석의 턴 종료 숨김).
 - 보강(2026-10-02 사용자 판정 L2-Q1, 같은 날 구현): 두 종류의 상대 창의 순서. 사용자: "인쇄 순서: 모두 손실 후 모두 Spy". 카드가 "Each opponent loses one troop. Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]` 순서로 인쇄되어 있으므로, 모든 상대의 손실 창이 카드를 쓴 좌석의 다음 좌석부터 시계 방향으로 먼저 열리고, 그다음 모든 상대의 Spy 이동 창이 같은 순서로 열린다(한 좌석은 옮길 Spy를 자기 차례에 모두 옮긴다, (b)의 2026-09-26 판정 그대로). 이전 구현(폐기): Spy 이동 창이 손실 창 위에 쌓여 모든 Spy 이동이 어떤 손실보다 먼저였다(구현 기본값, 인쇄 순서와 반대). 두 창은 서로의 결과를 바꾸지 않으므로(손실은 Spy를, Spy 이동은 유닛을 건드리지 않는다) 게임 상태의 결과는 같고 누가 언제 답하는지만 바뀐다. 구현: `rules/agent_effects.py`가 Spy 이동 frame을 먼저 쌓고 그 위에 손실 frame을 쌓는다. `tests/unit/rules/test_bloodlines_cards.py::test_holy_war_asks_every_loss_before_any_spy_move`.
 - 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
 - 재개 조건: 공식 FAQ가 "lose a troop"의 출처를 정할 때. 강제 이동의 목적지는 False Orders에 대해 FAQ 2025-01-13이 정했고(위 (b)), 같은 FAQ의 둘째 문장 "You may play this Intrigue card even if no opponents' Spies are on the space where you sent an Agent this turn." `[FAQ p. 2]`도 이미 따른다([designer-rulings-audit.md](designer-rulings-audit.md)). Holy War에 대한 공식 판정이 나오면 (b)의 확장을 다시 본다.
@@ -606,7 +606,8 @@
      남고, provider(`legal_contract_actions`)가 `hold_contract_icons`만 제시한다(CHOAM과
      Bloodlines를 함께 켠 catalog에 템플릿 1개, codec v125의 L2 문장). 행동의 결과는 전의
      자동 보류와 같다(`contract_icons_held`). 위 확정의 "소유자가 임의로 미리 불발시킬 수는
-     없다"는 그대로라 불발시키는 행동은 없다. 가져갈 수 있게 되었을 때 시장을 다시 여는 것
+     없다"는 turn 안에서는 그대로라 그곳에서 불발시키는 행동은 없다(Combat Intrigue의 아이콘은
+     카드를 쓰는 그 시점에 끝나므로 3항의 확인으로 불발한다). 가져갈 수 있게 되었을 때 시장을 다시 여는 것
      (`contract_icons_reopened`)은 창을 여는 일이므로 그대로 자동이고, turn 종료 누름의
      불발(`contract_icons_fizzled`, OQ-095 4항)도 그대로다 — 누름 자체가 확인이고,
      누르기 전 "턴 종료" 줄에는 "계약 아이콘 N개 소멸 — 가져갈 수 있는 계약 없음"
@@ -617,7 +618,7 @@
      선택지")로 보이며 시장 token을 흐리게 한다. 보류 중인 아이콘은 그 좌석의 다음 결정마다
      "계약 아이콘 N개 보류 — 폐기할 책략 카드가 생기면 가져감, 차례가 끝나면 사라짐" 줄
      ("조건을 기다리는 효과")로 보인다(Combat phase에서는 "교전 보상을 다 받으면 사라짐",
-     turn 밖은 3항). 전에는 `held_contract_icons`가 화면 어디에도 없었다.
+     Arrakeen Scouts 단계는 4항). 전에는 `held_contract_icons`가 화면 어디에도 없었다.
   2. **Conflict 보상의 아이콘.** 위 확정의 "turn 종료까지"는 Combat phase에 답하지 않는다
      (Combat은 turn이 아니다 `[Main p. 8]`). 엔진은 그 아이콘을 다시 열지 않았고, 그 좌석의
      다음 turn이 열릴 때 `reset_turn_counters`가 흔적 없이 지웠으며, 그 좌석이 다음 라운드
@@ -636,20 +637,31 @@
      마지막 frame을 닫을 때 `combat_rewards_resolved`를 세운다(전의 자동 보류는 세우지 않아,
      보류가 Conflict 보상의 마지막 frame이면 보상이 한 번 더 나뉠 수 있었다).
      `frames.reset_turn_counters`의 0 초기화는 안전장치로만 남는다.
-  3. 구현이 함께 덮는 경우(사용자 판정의 범위 밖, 프로젝트 관례): Combat Intrigue
-     Reach Agreement의 아이콘처럼 Conflict 보상 전에 Combat phase에서 보류된 아이콘도 같은
-     판정을 탄다 — 그 좌석의 Conflict 보상이 끝날 때(보상이 없으면 보상을 나눈 직후)
-     불발한다. Arrakeen Scouts 단계(이벤트·소위원회·경매의 Contract 아이콘)처럼 turn 밖에서
-     보류되는 아이콘은 이번에 바꾸지 않았다(열린 질문). 이 아이콘은 Intrigue를 얻어도 시장이
-     다시 열리지 않고 turn 종료 누름으로 불발하지도 않으므로(`reset_turn_counters`가 그 좌석의
-     turn이 열릴 때 이벤트 없이 지운다), 화면의 보류 줄은 그 좌석의 turn과 Combat phase에서만
-     "가져감 / 사라짐"을 말하고, 그 밖에서는 "계약 아이콘 N개 보류 — 지금 가져갈 수 있는 계약
-     없음"만 보인다.
+  3. Combat Intrigue의 아이콘(Reach Agreement의 "Retreat troops → Contract"처럼 Conflict
+     보상 전, Combat Intrigue 차례에 생기는 것)은 카드를 쓰는 그 시점에 끝난다 — 사용자
+     판정(2026-10-02): "이건 책략 사용 시점에 완결해야지? 교전 책략은 어쨌든 바로 쓰고
+     효과 봐야하는거잖아". 가져갈 수 있는 token이 없으면 시장 창이 확인
+     `resolve_contract_icons_without_contract`만 제시하고 아이콘은 곧바로
+     `contract_icons_fizzled`로 불발한다(보류하지 않고, 시장이 비지 않았으므로 Solari로도
+     바뀌지 않는다 `[Main p. 16]`). 이전 구현(같은 날, 폐기): 보상이 끝날 때까지 보류.
+  4. Arrakeen Scouts 단계(라운드 시작, 누구의 turn도 아님)에서 보류된 아이콘은 **그 단계 안에서
+     보류하다가 단계가 끝날 때 불발**한다 — 사용자 판정(2026-10-02): "Scouts 단계 안에서 보류
+     후 불발". 그 단계에서 아이콘을 주는 항목은 초암 협정(CHOAM Bargain, 카드 1장 또는
+     Contract 1), 작전 변경(Covert Operation)의 비밀 선택 "Contract 1"(다음 라운드 Scouts 단계
+     맨 앞에서 해결), 초암 협상(CHOAM Negotiations) 경매의 Contract 보상(후반 1등은 Contract
+     다음에 Intrigue 1장), 중대한 순간(Critical Moment)으로 산 Interstellar Trade·Mercantile
+     Affairs의 획득 효과다(소위원회는 자기 turn 안에서만 가입하므로 turn 규칙을 따른다,
+     OQ-076 대안 C). 같은 단계에서 그 좌석이 Intrigue를 얻으면 시장이 다시 열려 반드시
+     가져가고(`engine._held_contract_owner`), 단계가 끝날 때(첫 플레이어의 turn이 열리기
+     직전, `scouts._open_first_turn`) 남은 아이콘은 `contract_icons_fizzled`와 함께 불발한다.
+     이전 구현(폐기): 다시 열리지 않고 그 좌석의 turn이 열릴 때 이벤트 없이 지워졌다(열린
+     질문으로 적혀 있었다).
   - 테스트: `tests/unit/rules/test_bloodlines_contracts.py`(창이 열리고 보류, 같은 turn에
     Intrigue를 얻어 다시 열림, turn 종료 누름에 불발, Conflict 보상 중 Intrigue 보상으로 다시
     열림, 좌석의 보상이 끝날 때 불발하고 다음 라운드로 넘어가지 않음, 마지막 보상 frame의
-    보류가 보상을 다시 나누지 않음), `tests/unit/display/test_unavailable.py`(회색 줄과 보류
-    줄, turn 밖 보류 줄), `tests/unit/display/test_unavailable_consistency.py`(`_old_contract_market`와 비교).
+    보류가 보상을 다시 나누지 않음, Combat Intrigue의 아이콘이 곧바로 불발, Scouts 단계에서 다시 열림과
+    단계 끝의 불발), `tests/unit/display/test_unavailable.py`(회색 줄과 보류 줄, Scouts 단계의 보류 줄),
+    `tests/unit/display/test_unavailable_consistency.py`(`_old_contract_market`와 비교).
 
 ## OQ-060 — Influence track 맨 위(6)에서의 "진영을 골라 Influence" 보상
 
