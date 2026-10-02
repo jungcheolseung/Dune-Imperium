@@ -51,7 +51,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     OnRevealAcquisitionThisRound,
     OnTroopsLostAtConflictEnd,
-    OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -80,6 +79,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
     Trigger,
     TriggeredByFaction,
+    UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
@@ -423,9 +423,16 @@ INTRIGUE_CARDS: Final = (
         "Distraction",
         copies=2,
         options=(
-            _plot_trigger(
-                OnUnitsDeployedInTurn(3),
-                EffectSection(rewards=(PlaceSpy(shared_post=True),)),
+            # "When you deploy three or more units to the Conflict in a
+            # single turn:" / "You may place this Spy on the same observation
+            # post as another player's Spy." [Distraction card]: played once
+            # the units are deployed [Board Guide p. 10], not left waiting
+            # face up (user ruling 2026-10-03, OQ-016).
+            _plot(
+                EffectSection(
+                    condition=UnitsDeployedThisTurnAtLeast(3),
+                    rewards=(PlaceSpy(shared_post=True),),
+                )
             ),
         ),
     ),
@@ -820,9 +827,15 @@ INTRIGUE_CARDS: Final = (
         bloodlines_only=True,
         choam_only=True,
         options=(
-            _plot_trigger(
-                OnUnitsDeployedInTurn(3),
-                EffectSection(rewards=(RevealContractsTakeOne(3),)),
+            # "When you deploy three or more units to the Conflict in a
+            # single turn: Reveal three contracts from the bank. Take one and
+            # trash the other two." [Coercive Negotiation card] -- a play
+            # condition like Distraction's (OQ-016).
+            _plot(
+                EffectSection(
+                    condition=UnitsDeployedThisTurnAtLeast(3),
+                    rewards=(RevealContractsTakeOne(3),),
+                )
             ),
         ),
     ),

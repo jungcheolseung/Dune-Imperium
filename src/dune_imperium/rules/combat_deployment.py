@@ -7,7 +7,9 @@ deployed this turn to the garrison, and ``finish_agent_turn`` closes the turn
 once every other pending effect has been resolved. The net deployment of the
 turn never exceeds "every troop recruited this turn plus two garrison troops"
 [Main p. 10] [FAQ p. 4], and a withdrawal may not drop the turn's deployed
-unit count below a condition an effect already consumed (Distraction's Spy).
+unit count below a condition a played card already used (Distraction,
+Coercive Negotiation). A withdrawal undoes the deployment, so it also lowers
+the turn's deployment peak those cards read (``record_deployment_peak``).
 
 Bloodlines Sardaukar Commanders are "troops" for this purpose [Bloodlines
 p. 4] (``deploy_commanders`` / ``withdraw_commanders``; the frame tracks the
@@ -269,7 +271,8 @@ def legal_troop_withdrawals(
         return ()
     context, deployed = found.context, found.deployed
     owner = state.players[player]
-    # A consumed deployment condition (Distraction) keeps its minimum deployed.
+    # A deployment condition a played card used (Distraction, Coercive
+    # Negotiation) keeps its minimum deployed.
     # The units actually in the Conflict bound this too: a troop deployed this
     # turn can leave it again before the turn closes, and "when you lose a
     # troop, return it to your supply (not your garrison)"
@@ -391,12 +394,24 @@ def _move_troops(
     """
 
     owner = state.players[player]
+    # A withdrawal undoes the deployment (OQ-029), so the turn's deployment
+    # peak drops with it; a deployment raises the peak through
+    # ``record_deployment_peak`` once the transition settles. Lowering it by
+    # the withdrawn count never overstates the peak; after a retreat it can
+    # understate it (withdrawing a unit deployed after the retreat), a
+    # recorded project convention (OQ-016).
+    peak = (
+        max(owner.units_deployed_turn + delta, owner.units_deployed_peak + delta)
+        if delta < 0
+        else owner.units_deployed_peak
+    )
     if commanders:
         next_owner = replace(
             owner,
             commanders_garrison=owner.commanders_garrison - delta,
             commanders_conflict=owner.commanders_conflict + delta,
             units_deployed_turn=owner.units_deployed_turn + delta,
+            units_deployed_peak=peak,
         )
         context["combat_commanders_deployed"] = _commanders_deployed(context) + delta
     else:
@@ -405,6 +420,7 @@ def _move_troops(
             troops_garrison=owner.troops_garrison - delta,
             troops_conflict=owner.troops_conflict + delta,
             units_deployed_turn=owner.units_deployed_turn + delta,
+            units_deployed_peak=peak,
         )
     players = tuple(
         next_owner if seat.player_id == player else seat for seat in state.players
@@ -457,7 +473,8 @@ def reconcile_deployment_after_retreat(
     deployment just moved (Fedaykin Maneuver); the withdrawal window keeps
     offering the counters it recorded, so they follow the retreat down.
     The per-turn deployment count also drops, never below the count a
-    trigger already consumed (OQ-029).
+    played card already used (OQ-029); the turn's peak stays, as the
+    deployment it records did happen (``record_deployment_peak``).
 
     Each kind's share shrinks only by its own retreated units: a retreated
     troop (perhaps one deployed in an earlier turn) never eats into the
@@ -476,8 +493,12 @@ def reconcile_deployment_after_retreat(
         state.players,
         replace(
             owner,
+            # Floored at the count a played card used, but a retreat never
+            # raises it: a card may have been played off the turn's peak with
+            # fewer units left in the Conflict (OQ-016).
             units_deployed_turn=max(
-                owner.units_deployed_committed, owner.units_deployed_turn - total
+                min(owner.units_deployed_committed, owner.units_deployed_turn),
+                owner.units_deployed_turn - total,
             ),
         ),
     )
@@ -808,3 +829,27 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
         decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
     )
     return replace(result, state=close_agent_turn(closing, owner))
+
+
+def record_deployment_peak(result: RuleResult) -> RuleResult:
+    """Raise each seat's turn deployment peak to its current count.
+
+    "When you deploy three or more units to the Conflict in a single turn"
+    [Distraction card; Coercive Negotiation card] is met at "a moment in
+    time when there are 3 units in the conflict that were deployed to the
+    conflict this turn, then that requirement becomes true" (Message from
+    designer, adopted per OQ-057's rule; OQ-016). Runs after every applied
+    transition, so a later retreat leaves the peak standing; the count and
+    the peak both reset when the seat's next turn opens.
+    """
+
+    state = result.state
+    players = tuple(
+        replace(seat, units_deployed_peak=seat.units_deployed_turn)
+        if seat.units_deployed_turn > seat.units_deployed_peak
+        else seat
+        for seat in state.players
+    )
+    if all(new is old for new, old in zip(players, state.players, strict=True)):
+        return result
+    return RuleResult(state=replace(state, players=players), events=result.events)

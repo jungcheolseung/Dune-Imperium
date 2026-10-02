@@ -509,14 +509,19 @@ def _old_option_is_playable(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
     if option.trigger is not None:
-        return bool(sections) and all(
+        return bool(sections)
+    # Updated on purpose 2026-10-03 (codec v129, OQ-016): Coercive
+    # Negotiation is no longer a face-up trigger but a Plot whose condition
+    # is this turn's deployment, so its Contract-bank check (OQ-064) moved
+    # from the trigger branch to the ordinary one.
+    return (
+        bool(sections)
+        and all(
             contract_reveal_is_possible(state, reward)
-            for section in option.sections
+            for section in sections
             for reward in section.rewards
             if isinstance(reward, RevealContractsTakeOne)
         )
-    return (
-        bool(sections)
         and can_afford(owner, resource_cost(sections))
         and _old_choice_costs_feasible(owner, sections)
         and _old_choice_rewards_feasible(state, player, sections)

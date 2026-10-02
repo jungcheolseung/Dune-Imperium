@@ -44,6 +44,7 @@ from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal
 from dune_imperium.rules.combat_deployment import (
     deployment_rooms,
     grant_combat_icon,
+    reconcile_deployment_after_retreat,
     undeployable_troops,
 )
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
@@ -1442,7 +1443,12 @@ def apply_reveal_troop_move(
         popped, action.actor, source, troops=1 - commanders, commanders=commanders
     )
     delta = retreated.state.players[action.actor].combat_strength - before
-    next_state = retreated.state
+    # A retreated unit no longer counts among the turn's deployed units, as
+    # on an Agent turn: "deploy, retreat, and deploy that troop again" does
+    # not reach three (Message from designer; OQ-016).
+    next_state = reconcile_deployment_after_retreat(
+        retreated.state, action.actor, troops=1 - commanders, commanders=commanders
+    )
     if delta:
         next_state = replace(
             next_state,
@@ -1524,6 +1530,12 @@ def apply_reveal_troop_sacrifice(
         working.players[action.actor], zones.count("conflict"), source=source
     )
     working = replace(working, players=replace_player(working.players, tactician))
+    if zones.count("conflict"):
+        # Troops lost from the Conflict leave the turn's deployed count, as a
+        # retreat does (OQ-016).
+        working = reconcile_deployment_after_retreat(
+            working, action.actor, troops=zones.count("conflict")
+        )
     events.extend(tactics_events)
     delta = working.players[action.actor].combat_strength - before
     if delta:

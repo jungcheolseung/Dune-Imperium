@@ -37,10 +37,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     RecallSpy,
     RetreatTroops,
+    RevealContractsTakeOne,
     SetAsideImperiumRowCard,
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
+    UnitsDeployedThisTurnAtLeast,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import (
@@ -116,6 +118,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.intrigue_triggers import open_contract_reveal
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -260,6 +263,23 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     cost = resource_cost(sections)
 
     paid_owner = pay_cost(owner, cost)
+    deployed_condition = max(
+        (
+            section.condition.count
+            for section in sections
+            if isinstance(section.condition, UnitsDeployedThisTurnAtLeast)
+        ),
+        default=0,
+    )
+    if deployed_condition:
+        # Distraction / Coercive Negotiation used this turn's deployment as
+        # their condition: a withdrawal may no longer drop below it (OQ-029).
+        paid_owner = replace(
+            paid_owner,
+            units_deployed_committed=max(
+                paid_owner.units_deployed_committed, deployed_condition
+            ),
+        )
     # Reveal and pay first. The card stays in the owner's Intrigue hand while
     # it resolves and reaches the discard pile only at the end, so a draw it
     # causes cannot reshuffle the card itself and no card leaves every zone.
@@ -1860,8 +1880,18 @@ def finish_intrigue_play(
         intrigue_discard=(*resolved.intrigue_discard, card_id),
     )
     refreshed = refresh_combat_participants(_reset_combat_passes(next_state))
+    final_state = refreshed.state
+    if any(
+        isinstance(reward, RevealContractsTakeOne)
+        for section in sections
+        for reward in section.rewards
+    ):
+        # Coercive Negotiation: the owner chooses among the revealed
+        # Contracts after the card has left the hand, so it cannot pay for
+        # the Immediate token itself [Bloodlines p. 2] [Main p. 7].
+        final_state = open_contract_reveal(final_state, player, card_id, source=source)
     return RuleResult(
-        state=refreshed.state, events=(*applied.events, *refreshed.events)
+        state=final_state, events=(*applied.events, *refreshed.events)
     )
 
 

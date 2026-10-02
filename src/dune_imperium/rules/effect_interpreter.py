@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
@@ -81,6 +81,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashIntrigueCard,
     TrashPersonalCard,
     TriggeredByFaction,
+    UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import BattleIcon
@@ -248,6 +249,14 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
                 + owner.spice_spent_turn
             )
             return gained >= amount
+        case UnitsDeployedThisTurnAtLeast(count=count):
+            # "a moment in time when there are 3 units in the conflict that
+            # were deployed to the conflict this turn, then that requirement
+            # becomes true" (Message from designer): the turn's peak, which
+            # a retreat leaves standing (OQ-016).
+            return (
+                max(owner.units_deployed_turn, owner.units_deployed_peak) >= count
+            )
         case SpiceMustFlowCardsAtLeast(count=count):
             prefix = "reserve:the_spice_must_flow:"
             copies = sum(
@@ -503,8 +512,21 @@ def spy_placement_targets(
     player: int,
     reward: PlaceSpy,
 ) -> tuple[str, ...]:
-    """Return the empty posts this placement may use."""
+    """Return the posts this placement may use: empty ones, by default.
 
+    ``shared_post`` (Distraction): "You may place this Spy on the same
+    observation post as another player's Spy" [Distraction card], so a post
+    held only by opponents is allowed too -- the Spy with Deep Cover set:
+    "you also have the option to ignore any opponents' Spies ... (You can't
+    place the Spy where you already have a Spy of your own.)"
+    [Bloodlines p. 5].
+    """
+
+    if reward.shared_post:
+        own = set(state.players[player].spy_post_ids)
+        return tuple(
+            post.post_id for post in OBSERVATION_POSTS if post.post_id not in own
+        )
     return empty_observation_post_ids(state, spy_placement_allowed_post_ids(reward))
 
 
@@ -700,10 +722,10 @@ def option_unplayable_reason(
     """Why ``option`` cannot be played now, or None when it can.
 
     The checks, in order: a separate-lines card needs one usable line; a
-    triggered card needs an applicable section (and Coercive Negotiation its
-    three Contracts); any other needs an applicable section, its resource
-    cost, then each player-choice cost and reward (``_choice_cost_block``,
-    ``_choice_reward_block``).
+    triggered card needs an applicable section; any other needs an
+    applicable section, the Contracts Coercive Negotiation reveals, its
+    resource cost, then each player-choice cost and reward
+    (``_choice_cost_block``, ``_choice_reward_block``).
     """
 
     owner = state.players[player]
@@ -720,18 +742,18 @@ def option_unplayable_reason(
         return OptionBlock.CONDITION
     if option.trigger is not None:
         # Playing only sets the card waiting face up; its rewards resolve
-        # when the trigger fires, so present feasibility does not gate it --
-        # except Coercive Negotiation's "Reveal three contracts from the
-        # bank" [Coercive Negotiation card]: nothing refills the bank, so
-        # with fewer than three there the card cannot be used at all, not
-        # used for no effect (OQ-064, user ruling 2026-09-26).
-        if all(
-            contract_reveal_is_possible(state, reward)
-            for section in option.sections
-            for reward in section.rewards
-            if isinstance(reward, RevealContractsTakeOne)
-        ):
-            return None
+        # when the trigger fires, so present feasibility does not gate it.
+        return None
+    if not all(
+        contract_reveal_is_possible(state, reward)
+        for section in sections
+        for reward in section.rewards
+        if isinstance(reward, RevealContractsTakeOne)
+    ):
+        # Coercive Negotiation's "Reveal three contracts from the bank"
+        # [Coercive Negotiation card]: nothing refills the bank, so with
+        # fewer than three there the card cannot be used at all, not used
+        # for no effect (OQ-064, user ruling 2026-09-26).
         return OptionBlock.CONTRACT_BANK
     if not can_afford(owner, resource_cost(sections)):
         return OptionBlock.COST
@@ -775,7 +797,8 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | AcquireCardUpTo
             | SetAsideImperiumRowCard
             | PeekTopCard
-            | AcquireTleilaxuCard,
+            | AcquireTleilaxuCard
+            | RevealContractsTakeOne,
         )
     )
 
@@ -955,7 +978,10 @@ def apply_rewards(
             case RedirectSpiesOnTurnSpace():
                 redirects_turn_space_spies = True
             case RevealContractsTakeOne():
-                raise ValueError("Contract reveals resolve through their trigger")
+                raise ValueError(
+                    "Contract reveals open their own frame once the card is "
+                    "discarded (finish_intrigue_play)"
+                )
             case GainCombatStrength(amount=amount):
                 # Combat Intrigue strength changes update the marker at once
                 # [Main p. 14]; the caller only offers Combat options while

@@ -53,7 +53,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     OnRevealAcquisitionThisRound,
     OnTroopsLostAtConflictEnd,
-    OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -83,6 +82,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
     Trigger,
     TriggeredByFaction,
+    UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -194,6 +194,10 @@ def condition_text(condition: Condition) -> str:
             return f"you have {count} or more sandworms in the Conflict"
         case GainedSpiceThisTurn(amount=amount):
             return f"you have gained {amount} or more spice this turn"
+        case UnitsDeployedThisTurnAtLeast(count=count):
+            # "When you deploy three or more units to the Conflict in a
+            # single turn:" [Distraction card], a play condition (OQ-016).
+            return f"you have deployed {count} or more units to the Conflict this turn"
         case SpiceMustFlowCardsAtLeast(count=count):
             return f"you own {count} or more copies of The Spice Must Flow"
         case OpponentAllianceInfluenceAtLeast(amount=amount):
@@ -422,8 +426,6 @@ def trigger_text(trigger: Trigger) -> str:
     match trigger:
         case OnRevealAcquisitionThisRound():
             return "Whenever you acquire a card during your Reveal turn this round"
-        case OnUnitsDeployedInTurn(minimum=minimum):
-            return f"When you deploy {minimum} or more units to the Conflict in a turn"
         case OnTroopsLostAtConflictEnd(minimum=minimum):
             return f"When you lose {minimum} or more troops at the end of a Conflict"
         case _:

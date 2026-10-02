@@ -1278,12 +1278,13 @@ def test_unit_seat_reads_a_holy_war_shaped_stack() -> None:
     assert at_turn_start(state, 2) is True
 
 
-def test_unit_seat_reads_an_agent_effects_stack_with_a_foreign_trigger() -> None:
-    # [agent_effects(3), intrigue_trigger_spy(0)]: seat 0 answers a leftover
-    # Intrigue trigger offered inside seat 3's still-running Agent turn.
+def test_unit_seat_reads_an_agent_effects_stack_with_a_foreign_answer() -> None:
+    # [agent_effects(3), opponent_spy_move(0)]: seat 0 moves its Spy for
+    # seat 3's False Orders inside seat 3's still-running Agent turn. (This
+    # used Distraction's face-up trigger frame until codec v129, OQ-016.)
     state = _stack_state(
         _frame(FrameKind.AGENT_EFFECTS, 3, "agent_effects:3"),
-        _frame(FrameKind.INTRIGUE_TRIGGER_SPY, 0, "trigger:0"),
+        _frame(FrameKind.OPPONENT_SPY_MOVE, 0, "spy_move:0"),
     )
     assert unit_seat(state) == 3
     assert answers_another_unit(state, 0) is True

@@ -16,8 +16,7 @@ or Endgame Intrigue go, its Conflict rewards, a Control defense). Another
 seat's decision inside a unit is an answer, not a unit of its own: the
 engine stacks it above the running unit and returns there once it is
 answered. That is every other seat's frame above a started Agent or Reveal
-turn (a leftover Intrigue trigger can be offered to its owner then), and
-the three opponent-decision frames anywhere.
+turn, and the three opponent-decision frames anywhere.
 """
 
 from typing import Final

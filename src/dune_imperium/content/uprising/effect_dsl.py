@@ -119,6 +119,32 @@ class GainedSpiceThisTurn:
 
 
 @dataclass(frozen=True, slots=True)
+class UnitsDeployedThisTurnAtLeast:
+    """The player has deployed ``count`` or more units to the Conflict this
+    turn: "When you deploy three or more units to the Conflict in a single
+    turn:" [Distraction card; Coercive Negotiation card].
+
+    It is a condition for playing the card [FAQ p. 2], met once the units
+    are deployed ("Gurney decides to commit these troops plus two more from
+    his garrison to the Conflict. Muad'Dib may play Distraction because he
+    shared in the deployment of these units." [Board Guide p. 10]), not a
+    trigger the card waits face up for (user ruling 2026-10-03). "You need
+    to have a moment in time when there are 3 units in the conflict that
+    were deployed to the conflict this turn, then that requirement becomes
+    true." (Message from designer, adopted per OQ-057's rule): it reads the
+    turn's peak, so a later retreat keeps it true, while an OQ-029
+    withdrawal undoes the deployment and lowers the peak. Troops, Sardaukar
+    Commanders and sandworms are all units [Main p. 12] [Bloodlines p. 4].
+    """
+
+    count: int = 3
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("deployed-units condition count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
 class SpiceMustFlowCardsAtLeast:
     """The player owns at least ``count`` copies of The Spice Must Flow.
 
@@ -240,6 +266,7 @@ type Condition = (
     | CompletedContractsAtLeast
     | SandwormsInConflictAtLeast
     | GainedSpiceThisTurn
+    | UnitsDeployedThisTurnAtLeast
     | SpiceMustFlowCardsAtLeast
     | OpponentAllianceInfluenceAtLeast
     | WaterAtLeast
@@ -798,8 +825,9 @@ class RedirectSpiesOnTurnSpace:
 @dataclass(frozen=True, slots=True)
 class RevealContractsTakeOne:
     """Coercive Negotiation (Bloodlines): reveal ``count`` Contracts from the
-    bank, take one and trash the others. Resolved by its deployment
-    trigger (``rules.intrigue_triggers``)."""
+    bank, take one and trash the others. Resolved in the
+    ``intrigue_trigger_contract`` frame (``rules.intrigue_triggers``) that
+    playing the card opens once it has left the hand."""
 
     count: int = 3
 
@@ -905,23 +933,6 @@ class OnRevealAcquisitionThisRound:
 
 
 @dataclass(frozen=True, slots=True)
-class OnUnitsDeployedInTurn:
-    """When the owner deploys ``minimum`` or more units to the Conflict in a
-    single turn.
-
-    Troops and sandworms are both units [Main p. 12] and a summoned sandworm
-    is immediately deployed [Main p. 20], so both count. The card waits face
-    up until a qualifying turn [FAQ p. 2].
-    """
-
-    minimum: int = 3
-
-    def __post_init__(self) -> None:
-        if self.minimum < 1:
-            raise ValueError("deployment trigger minimum must be positive")
-
-
-@dataclass(frozen=True, slots=True)
 class OnTroopsLostAtConflictEnd:
     """When the owner loses ``minimum`` or more troops at the end of a
     Conflict (Harvest Cells).
@@ -938,9 +949,7 @@ class OnTroopsLostAtConflictEnd:
             raise ValueError("loss trigger minimum must be positive")
 
 
-type Trigger = (
-    OnRevealAcquisitionThisRound | OnUnitsDeployedInTurn | OnTroopsLostAtConflictEnd
-)
+type Trigger = OnRevealAcquisitionThisRound | OnTroopsLostAtConflictEnd
 
 
 # --- Composition ------------------------------------------------------------

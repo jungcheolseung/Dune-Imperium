@@ -3191,37 +3191,46 @@ def test_forced_spy_moves_go_seat_by_seat_from_the_next_seat() -> None:
 
 def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> None:
     from dune_imperium.content.uprising.contracts import contract_instance_ids
-    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.engine import UprisingRulesEngine
     from dune_imperium.rules.intrigue_triggers import (
         apply_trigger_contract_action,
         legal_trigger_contract_actions,
-        offer_deployment_triggers,
     )
 
     card = _intrigue("coercive_negotiation")
     bank = contract_instance_ids()[:5]
     base = replace(
         _state(
-            _owner(intrigue_faceup=(card,), units_deployed_turn=3), CHOAM_BLOODLINES
+            _owner(intrigue_cards=(card,), units_deployed_turn=3), CHOAM_BLOODLINES
         ),
         contract_bank=bank,
     )
-    offered = offer_deployment_triggers(RuleResult(state=base)).state
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", card), ("option", 0)),
+    )
+    engine = UprisingRulesEngine()
+    # Three units deployed this turn meet "When you deploy three or more
+    # units to the Conflict in a single turn:" (OQ-016): the card is played
+    # and resolves at once, its reveal opening once it is discarded.
+    assert play in engine.legal_actions(base, 0)
+    offered = engine.apply(base, play).state
     frame = offered.decision_stack[-1]
     assert frame.kind == "intrigue_trigger_contract"
+    assert card in offered.intrigue_discard
     actions = legal_trigger_contract_actions(offered, 0)
     # No "may" on the card ("Reveal three contracts from the bank. Take one
     # and trash the other two." [Coercive Negotiation card]), and "Most
     # effects from a board space or card you play are mandatory, unless a
-    # card says 'you may' do something" [FAQ p. 3]: no decline is offered
-    # while a revealed Contract can be taken (it used to be).
+    # card says 'you may' do something" [FAQ p. 3]: no decline is offered.
     assert {a.action_id for a in actions} == {"take_trigger_contract"}
     assert [dict(a.arguments)["instance_id"] for a in actions] == list(bank[:3])
     taken = apply_trigger_contract_action(offered, actions[1]).state
     owner = taken.players[0]
     assert owner.active_contract_ids == (bank[1],)
+    assert owner.intrigue_cards == ()
     assert owner.intrigue_faceup == ()
-    assert card in taken.intrigue_discard
     assert taken.contract_bank == bank[3:]
     assert taken.contract_trash == (bank[0], bank[2])
     # The decline action is gone altogether (OQ-064).
@@ -3230,11 +3239,8 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
     assert "decline_intrigue_contract_trigger" not in {
         template.action_id for template in ActionCodec(CHOAM_BLOODLINES).catalog
     }
-    # Without the CHOAM bank the trigger has nothing to reveal.
-    quiet = offer_deployment_triggers(
-        RuleResult(state=replace(base, contract_bank=()))
-    ).state
-    assert quiet.decision_stack[-1].kind == "turn"
+    # Without the CHOAM bank the card cannot be played at all (OQ-064).
+    assert play not in engine.legal_actions(replace(base, contract_bank=()), 0)
 
 
 def test_engineered_miracle_command_lapses_once_the_card_left_play() -> None:
@@ -3435,9 +3441,14 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # (resolve_unit_loss_without_unit, +1).
     # v125 (L2): a bank Commander with no choosable Skill is confirmed
     # (resolve_commander_without_skill, +1).
+    # v129 (OQ-016, user ruling 2026-10-03): Distraction plays once its
+    # deployment condition holds and places its Spy through the Intrigue
+    # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
+    # trigger templates leave every catalog (-27).
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
         + 1 + 1 + 1 + 1 + 1 + 1 + 1
+        - 27
     )
     action = DomainAction(
         action_id="trash_agent_card",

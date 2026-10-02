@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 128
+    assert ACTION_CODEC_VERSION == 129
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -69,6 +69,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # v125 (L2): a Conflict reward Influence choice with every eligible
     # Faction at the top is confirmed
     # (resolve_combat_influence_without_faction, +1).
+    # v129 (OQ-016, user ruling 2026-10-03): Distraction plays once its
+    # deployment condition holds and places its Spy through the Intrigue
+    # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
+    # trigger templates leave every catalog (-27).
     assert first.size == (
         4354
         + 2
@@ -91,8 +95,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 1
         + 1
         + 1
+        - 27
     )
-    assert first.size == 4427
+    assert first.size == 4400
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -116,8 +121,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4427
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4427 + len(
+    assert ActionCodec(RulesetConfig()).size == 4400
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4400 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -181,6 +186,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # v125 (L2): a Conflict reward Influence choice with every eligible
     # Faction at the top is confirmed
     # (resolve_combat_influence_without_faction, +1).
+    # v129 (OQ-016, user ruling 2026-10-03): Distraction plays once its
+    # deployment condition holds and places its Spy through the Intrigue
+    # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
+    # trigger templates leave every catalog (-27).
     assert codec.size == (
         4640
         + 2
@@ -204,6 +213,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 1
         + 2
         + 1
+        - 27
     )
 
     try:
@@ -296,6 +306,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # by the owner's confirm (hold_contract_icons, +1; OQ-059).
     # v126: a Combat Intrigue's icons fizzle at once by the owner's confirm
     # (resolve_contract_icons_without_contract, +1; user ruling 2026-10-02).
+    # v129 (OQ-016, user ruling 2026-10-03): Distraction plays once its
+    # deployment condition holds and places its Spy through the Intrigue
+    # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
+    # trigger templates leave every catalog (-27).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
@@ -304,6 +318,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1
         + 1
         + 1
+        - 27
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

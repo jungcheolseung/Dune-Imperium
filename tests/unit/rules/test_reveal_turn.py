@@ -1977,6 +1977,40 @@ def test_unswerving_loyalty_fremen_bond_deploys_or_retreats_one_troop() -> None:
     assert declined.decision_stack[-1].kind == "reveal"
 
 
+def test_a_reveal_retreat_leaves_the_turns_deployed_count() -> None:
+    # "Can you use the same physical cube twice toward fulfilling an intrigue
+    # card like Distraction or Coercive Negotiation ... if you deploy,
+    # retreat, and deploy that troop again? No." (Message from designer):
+    # a Reveal-turn retreat lowers the turn's deployed count as an Agent-turn
+    # one does, while the turn's peak stays (OQ-016).
+    loyalty = _imperium_instance("unswerving_loyalty")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(loyalty,),
+            in_play=(maula,),
+            troops_supply=8,
+            troops_garrison=2,
+            troops_conflict=2,
+            combat_strength=4,
+            units_deployed_turn=2,
+            units_deployed_peak=2,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    retreat = next(
+        action
+        for action in legal_reveal_troop_move_actions(revealed, 0)
+        if action.action_id == "retreat_reveal_card_troop"
+    )
+    retreated = apply_reveal_troop_move(revealed, retreat).state
+    owner = retreated.players[0]
+    assert owner.troops_conflict == 1
+    assert owner.units_deployed_turn == 1
+    assert owner.units_deployed_peak == 2
+
+
 def test_unswerving_loyalty_moves_a_commander_in_a_bloodlines_only_catalog() -> None:
     # "You may deploy or retreat one of your troops" [Unswerving Loyalty
     # card]; a Sardaukar Commander "is a 'troop'" [Bloodlines p. 4]. The
