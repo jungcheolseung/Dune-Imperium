@@ -99,6 +99,7 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Nothing in a non-empty market can be taken (OQ-059): the hold is the
     # Contract window's only action, so a neutral score.
     "hold_contract_icons": 0.0,
+    "resolve_contract_icons_without_contract": 0.0,
     "gain_leader_signet_troop": 2.0,
     "use_other_memories": 1.0,
     # Reveal choice reordering never changes what the rule-based agent

@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 125
+    assert ACTION_CODEC_VERSION == 127
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -243,6 +243,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     )
     # v125 (L2): only the Bloodlines Immediate can be out of reach (OQ-059).
     hold_icons = DomainAction(action_id="hold_contract_icons", actor=1)
+    fizzle_icons = DomainAction(
+        action_id="resolve_contract_icons_without_contract", actor=1
+    )
     actions = (
         take_contract,
         trash_intrigue,
@@ -250,6 +253,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         recall_conflict_agent_card,
         recall_conflict_contract,
         hold_icons,
+        fizzle_icons,
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
@@ -290,9 +294,12 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # (resolve_commander_without_skill, +1).
     # v125 (L2): Contract icons over a market with nothing takeable are held
     # by the owner's confirm (hold_contract_icons, +1; OQ-059).
+    # v126: a Combat Intrigue's icons fizzle at once by the owner's confirm
+    # (resolve_contract_icons_without_contract, +1; user ruling 2026-10-02).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
+        + 1
         + 1
         + 1
         + 1

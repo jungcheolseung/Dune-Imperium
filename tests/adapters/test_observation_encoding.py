@@ -390,6 +390,13 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # or a Contract's recall with no target now asks instead of skipping);
 # it moved again with Holy War, whose opponents are now always asked;
 # the encoder files are still byte for byte the previous pin's.
+# Re-pinned 2026-10-02 for codec v127: ``everything`` moved in round 9,
+# where seat 3's Battlefield Research retreats its last troop and opens its
+# Tech window above the Combat Intrigue loop. Seat 3 used to be offered the
+# next pass and that pass ended Combat Intrigue; now the loop drops seat 3
+# and seats 0-2 pass again [Main p. 14; OQ-003]. A scratch trace of both
+# versions found that round-9 play as the first difference. The encoder
+# files are byte for byte the previous pin's.
 _GOLDEN_DIGESTS = {
     "base": ("29cffc270dbad833556587f296a15c4ba853f46da475a8e326b8f5dc1e85f712", 2780),
     "choam": ("06fcbf3c4566799e6ddebfe9d5af972154bc824570f265e4ebcfd5bb3f8b613d", 2840),
@@ -398,8 +405,8 @@ _GOLDEN_DIGESTS = {
         3028,
     ),
     "everything": (
-        "11a1651e9ddec8c8c020a566de6c9dc0e69cd36e9a7a395f1abbc52fc5a36838",
-        3388,
+        "53d3e82c01ce7007ea0623157baba2c6040e77dfb4648a577f0093c8fd1d93ea",
+        3624,
     ),
     "draft": ("a066154c2a3f217f4fb6e4285ad9fa49dd8118a60b73e8419def5f1ce7d74ec0", 2392),
     "scouts": (

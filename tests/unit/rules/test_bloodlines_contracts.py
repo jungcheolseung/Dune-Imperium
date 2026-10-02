@@ -1065,3 +1065,112 @@ def test_a_seat_s_rewards_are_not_done_while_its_intrigue_draw_waits() -> None:
     # Nor while a frame of the seat is still open.
     open_frame = replace(waiting, decision_stack=rewards.decision_stack)
     assert combat_held_contract_owner(open_frame) is None
+
+
+def test_a_combat_intrigue_icon_with_nothing_to_take_fizzles_at_once() -> None:
+    """User ruling 2026-10-02 on OQ-059: "이건 책략 사용 시점에 완결해야지?
+    교전 책략은 어쨌든 바로 쓰고 효과 봐야하는거잖아". A Contract icon a Combat
+    Intrigue card gives (Reach Agreement's "Retreat troops -> Contract") is
+    settled as the card resolves: with only the Immediate left and no
+    Intrigue card to trash, the owner confirms the fizzle -- the icon is not
+    held for the Conflict rewards, and the non-empty market does not turn it
+    into Solari [Main p. 16]."""
+
+    from dune_imperium.rules.contracts import contract_choice_frame
+
+    engine = UprisingRulesEngine()
+    owner = _owner(intrigue_cards=(), troops_conflict=2, troops_supply=7)
+    state = replace(
+        _state(owner, market=(IMMEDIATE,), intrigue_deck=INTRIGUE[:5]),
+        phase=GamePhase.COMBAT,
+        round_number=2,
+        first_player=3,
+        current_conflict_ids=("choam_security",),
+        conflict_deck=("skirmish_desert_mouse",),
+        combat_intrigue_complete=False,
+        decision_stack=(
+            contract_choice_frame(0, 1, source="round:2:combat_intrigue:probe"),
+        ),
+    )
+    fizzle = DomainAction(action_id="resolve_contract_icons_without_contract", actor=0)
+    assert engine.legal_actions(state, 0) == (fizzle,)
+
+    done = engine.apply(state, fizzle)
+
+    fizzled = [e for e in done.events if e.kind == "contract_icons_fizzled"]
+    assert [dict(e.payload) for e in fizzled] == [{"count": 1, "player": 0}]
+    assert "contract_icons_held" not in {e.kind for e in done.events}
+    assert done.state.players[0].held_contract_icons == 0
+    assert done.state.players[0].resources.solari == owner.resources.solari
+    assert IMMEDIATE in done.state.face_up_contract_ids
+
+
+def _scouts_step_state(*held_by: int, intrigue_for: int | None = None) -> GameState:
+    """The Arrakeen Scouts step (no one's turn): only the Immediate is face
+    up, and each seat in ``held_by`` holds one Contract icon it could not
+    take. ``intrigue_for`` gives that seat an Intrigue card to trash."""
+
+    seats = []
+    for seat in range(4):
+        cards = (INTRIGUE[0],) if seat == intrigue_for else ()
+        seats.append(
+            _owner(
+                player_id=seat,
+                intrigue_cards=cards,
+                held_contract_icons=1 if seat in held_by else 0,
+            )
+        )
+    base = _state(seats[0], market=(IMMEDIATE,), opponents=tuple(seats[1:]))
+    return replace(
+        base,
+        config=RulesetConfig(bloodlines=True, choam_module=True, arrakeen_scouts=True),
+        scouts_opening=True,
+        first_player=0,
+        intrigue_deck=INTRIGUE[1:6],
+        decision_stack=(),
+    )
+
+
+def test_a_scouts_step_icon_reopens_once_the_seat_gains_an_intrigue_card() -> None:
+    """User ruling 2026-10-02 on OQ-059: "Scouts 단계 안에서 보류 후 불발" --
+    an icon held in the Arrakeen Scouts step (no one's turn) waits for the
+    rest of the step, and an Intrigue card gained meanwhile (CHOAM
+    Negotiations' late first place pays a Contract, then an Intrigue card)
+    reopens the market, since taking it is not optional (OQ-057 (1))."""
+
+    from dune_imperium.rules.engine import _advance_automatic
+
+    state = _scouts_step_state(2, intrigue_for=2)
+    advanced = _advance_automatic(RuleResult(state=state))
+
+    assert "contract_icons_reopened" in {e.kind for e in advanced.events}
+    top = advanced.state.decision_stack[-1]
+    assert top.kind == FrameKind.CONTRACT_MARKET
+    assert advanced.state.players[2].held_contract_icons == 0
+    assert UprisingRulesEngine().legal_actions(advanced.state, 2) == (
+        DomainAction(
+            action_id="take_contract",
+            actor=2,
+            arguments=(("instance_id", IMMEDIATE),),
+        ),
+    )
+
+
+def test_a_scouts_step_icon_fizzles_with_its_event_when_the_step_ends() -> None:
+    """The same ruling: what is still held when the Scouts step ends fizzles
+    with the public event, before the First Player's turn opens -- neither
+    carried into a turn nor erased silently by its turn-counter reset."""
+
+    from dune_imperium.rules.scouts import _open_first_turn
+
+    opened = _open_first_turn(_scouts_step_state(0, 2))
+
+    fizzled = [e for e in opened.events if e.kind == "contract_icons_fizzled"]
+    assert [dict(e.payload) for e in fizzled] == [
+        {"count": 1, "player": 0},
+        {"count": 1, "player": 2},
+    ]
+    assert all(seat.held_contract_icons == 0 for seat in opened.state.players)
+    top = opened.state.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 0

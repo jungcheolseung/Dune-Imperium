@@ -1535,11 +1535,11 @@ def test_conflict_reward_icons_wait_for_the_seat_s_rewards_to_end() -> None:
     )
 
 
-def test_icons_held_outside_a_turn_promise_neither_take_nor_lapse() -> None:
-    """Held with no turn frame on the stack (the Arrakeen Scouts step shape),
-    the icons neither reopen the market nor fizzle at a turn-end press
-    (``engine._held_contract_owner``; open question, OQ-059 보강 3), so the
-    row only says they are held, with nothing in the market to take."""
+def test_icons_held_in_the_scouts_step_say_when_they_lapse() -> None:
+    """Held in the Arrakeen Scouts step (no turn frame on the stack), the
+    icons reopen the market once an Intrigue card arrives and fizzle when
+    the step ends (user ruling 2026-10-02 on OQ-059, "Scouts 단계 안에서
+    보류 후 불발"), and the row says so."""
 
     outside = _state(
         PlayerState(player_id=0),
@@ -1551,9 +1551,14 @@ def test_icons_held_outside_a_turn_promise_neither_take_nor_lapse() -> None:
     assert [frame.kind for frame in state.decision_stack] == [
         FrameKind.CONTRACT_MARKET
     ]
-    held = ENGINE.apply(state, _HOLD).state
+    scouts = replace(
+        state,
+        config=replace(_CHOAM_BLOODLINES, arrakeen_scouts=True),
+        scouts_opening=True,
+        first_player=0,
+    )
+    held = ENGINE.apply(scouts, _HOLD).state
     assert held.players[0].held_contract_icons == 1
-    assert not held.decision_stack
     later = replace(
         held,
         decision_stack=(
@@ -1570,7 +1575,9 @@ def test_icons_held_outside_a_turn_promise_neither_take_nor_lapse() -> None:
     assert isinstance(found, dict)
     row = _rows(found, "waiting")[f"waiting:held_contracts:{_IMMEDIATE}"]
     assert (row["reason"], row["reason_ko"], row["code"]) == (
-        "1 Contract icon held: no Contract you can take now",
-        "{contract} 아이콘 1개 보류 — 지금 가져갈 수 있는 {contract} 없음",
+        "1 Contract icon held: taken once you have an Intrigue card to trash,"
+        " lost when the Arrakeen Scouts step ends",
+        "{contract} 아이콘 1개 보류 — {trash}할 {intrigue}가 생기면 가져감,"
+        " 아라킨 스카웃 단계가 끝나면 사라짐",
         "waiting",
     )

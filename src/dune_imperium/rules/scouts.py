@@ -202,16 +202,33 @@ def _open_first_turn(state: GameState) -> RuleResult:
     resets part of it for every seat); here the step may have moved any
     per-turn counter (a Spy recall, a completed Contract), so the First
     Player's are all reset as their turn opens.
+
+    Contract icons a seat held during the step (only the Bloodlines
+    Immediate face up and no Intrigue card to trash, OQ-059) wait for the
+    rest of the step -- an Intrigue card gained meanwhile reopens the market
+    -- and fizzle with the public event here, as the step ends (user ruling
+    2026-10-02: "Scouts 단계 안에서 보류 후 불발"); they are neither carried
+    into a turn nor dropped silently.
     """
 
+    from dune_imperium.rules.contracts import fizzle_held_contract_icons
     from dune_imperium.rules.phases import turn_frame
 
-    if state.first_player is None:
+    first = state.first_player
+    if first is None:
         raise ValueError("the first turn requires a First Player")
-    players = reset_turn_counters(state.players, state.first_player)
+    events: list[GameEvent] = []
+    for seat in turn_order(state):
+        fizzled = fizzle_held_contract_icons(
+            state, seat, source=f"round:{state.round_number}:scouts_step"
+        )
+        state = fizzled.state
+        events.extend(fizzled.events)
+    players = reset_turn_counters(state.players, first)
     opened = replace(state, players=players, scouts_opening=False)
     return RuleResult(
-        state=opened.push_decision(turn_frame(state.round_number, state.first_player))
+        state=opened.push_decision(turn_frame(state.round_number, first)),
+        events=tuple(events),
     )
 
 

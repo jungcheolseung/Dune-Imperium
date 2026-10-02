@@ -429,6 +429,47 @@ def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     assert card in played.intrigue_discard
 
 
+def test_harvest_cells_laid_face_up_restarts_the_combat_passes() -> None:
+    """"전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를
+    끝내고 Combat를 해결한다." [Main p. 14] (docs/rules/combat-and-round-end.md).
+    Harvest Cells waits face up instead of resolving, but it is still played:
+    after seats 0 and 1 pass and seat 2 plays it, both answer again. Before
+    2026-10-02 the count stayed at two and seat 2's next pass ended Combat
+    Intrigue."""
+
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(
+        _fighter(1),
+        replace(_fighter(1), player_id=1),
+        replace(_fighter(3, intrigue_cards=(card,)), player_id=2),
+    )
+    for seat in (0, 1):
+        state = engine.apply(
+            state, DomainAction(action_id="pass_combat_intrigue", actor=seat)
+        ).state
+    played = engine.apply(
+        state,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=2,
+            arguments=(("card_id", card), ("option", 0)),
+        ),
+    ).state
+    assert card in played.players[2].intrigue_faceup
+    top = played.decision_stack[-1]
+    assert top.kind == FrameKind.COMBAT_INTRIGUE
+    assert dict(top.context)["consecutive_passes"] == 0
+    for seat in (2, 0):
+        played = engine.apply(
+            played, DomainAction(action_id="pass_combat_intrigue", actor=seat)
+        ).state
+        assert played.combat_intrigue_complete is False
+    done = engine.apply(
+        played, DomainAction(action_id="pass_combat_intrigue", actor=1)
+    ).state
+    assert done.combat_intrigue_complete is True
+
 
 def _pass_through_combat(engine: UprisingRulesEngine, state: GameState) -> GameState:
     while state.phase is GamePhase.COMBAT and state.decision_stack:

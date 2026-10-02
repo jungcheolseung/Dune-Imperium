@@ -630,7 +630,10 @@ def legal_contract_actions(
     icons are held, not converted to Solari (OQ-059), and the owner
     confirms that with ``hold_contract_icons`` instead of the engine
     closing the window unasked (user ruling 2026-09-30, "결정 창 없이
-    자동으로 넘어가는 곳도 모두 결정 창을 연다").
+    자동으로 넘어가는 곳도 모두 결정 창을 연다"). An icon a Combat Intrigue
+    card gives is settled when the card is played -- "교전 책략은 어쨌든 바로
+    쓰고 효과 봐야하는거잖아" (user, 2026-10-02) -- so there the owner confirms
+    ``resolve_contract_icons_without_contract`` and the icons fizzle at once.
     """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
@@ -661,8 +664,23 @@ def legal_contract_actions(
             DomainAction(action_id="take_exhausted_contract_solari", actor=player)
         )
     if not actions and contract_icons_must_be_held(state):
-        actions.append(DomainAction(action_id="hold_contract_icons", actor=player))
+        actions.append(
+            DomainAction(
+                action_id=(
+                    "resolve_contract_icons_without_contract"
+                    if _in_combat_intrigue(state)
+                    else "hold_contract_icons"
+                ),
+                actor=player,
+            )
+        )
     return tuple(actions)
+
+
+def _in_combat_intrigue(state: GameState) -> bool:
+    """Whether a Combat Intrigue card is resolving (before the rewards)."""
+
+    return state.phase is GamePhase.COMBAT and not state.combat_intrigue_complete
 
 
 def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
@@ -877,8 +895,11 @@ def contract_icons_must_be_held(state: GameState) -> bool:
     2 Solari" `[Main p. 16]` -- but every face-up token is out of reach, which
     happens when only the Bloodlines Immediate is left and the owner has no
     Intrigue card to trash `[Bloodlines p. 2]`. The icon waits for the rest of
-    the turn instead (OQ-059), or, from a Conflict reward, for the rest of
-    that seat's Conflict rewards (user ruling 2026-10-02, L2-Q2).
+    the turn instead (OQ-059), from a Conflict reward for the rest of that
+    seat's Conflict rewards (user ruling 2026-10-02, L2-Q2), and in the
+    Arrakeen Scouts step for the rest of the step; a Combat Intrigue's icon
+    fizzles at once (``apply_contract_fizzle``, both user rulings of the same
+    day).
     """
 
     player = _contract_frame_owner(state)
@@ -895,12 +916,51 @@ def apply_contract_hold(state: GameState, action: DomainAction) -> RuleResult:
     return hold_contract_icons(state)
 
 
+def apply_contract_fizzle(state: GameState, action: DomainAction) -> RuleResult:
+    """``resolve_contract_icons_without_contract``: a Combat Intrigue's icons
+    that find nothing the owner can take fizzle as the card resolves.
+
+    User ruling 2026-10-02 on OQ-059: "이건 책략 사용 시점에 완결해야지? 교전
+    책략은 어쨌든 바로 쓰고 효과 봐야하는거잖아" -- the card's effect is
+    complete when it is played, so its icons are neither held for the
+    Conflict rewards nor converted to Solari (the market is not empty
+    [Main p. 16]); they fizzle with the public event.
+    """
+
+    if action not in legal_contract_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    remaining = context.get("remaining")
+    source = context.get("source")
+    if (
+        isinstance(remaining, bool)
+        or not isinstance(remaining, int)
+        or remaining < 1
+        or not isinstance(source, str)
+    ):
+        raise RuntimeError("Contract choice frame has invalid context")
+    player = action.actor
+    return RuleResult(
+        state=state.pop_decision(),
+        events=(
+            GameEvent(
+                event_id=f"{source}:contract_icons_fizzled:{player}:{remaining}",
+                kind="contract_icons_fizzled",
+                payload=(("count", remaining), ("player", player)),
+            ),
+        ),
+    )
+
+
 def hold_contract_icons(state: GameState) -> RuleResult:
     """Close the open choice and keep its icons on the seat.
 
-    They wait for the turn's end (OQ-059) or, from a Conflict reward, for
-    the end of that seat's Conflict rewards (``combat_held_contract_owner``);
-    a token the seat can take meanwhile reopens the market.
+    They wait for the turn's end (OQ-059), from a Conflict reward for the
+    end of that seat's Conflict rewards (``combat_held_contract_owner``), or
+    in the Arrakeen Scouts step for the step's end
+    (``scouts._open_first_turn``); a token the seat can take meanwhile
+    reopens the market.
     """
 
     if not contract_icons_must_be_held(state):
@@ -978,8 +1038,9 @@ def combat_held_contract_owner(state: GameState) -> int | None:
     play, Skill choice, track Spy or Friends Everywhere bonus) is the seat's
     too. So the seat is done once it owns no frame on the stack and nothing
     is queued for it, and no chance step is pending (a reshuffle may still
-    bring it an Intrigue card). None before the rewards are dealt: an icon
-    held earlier in the Combat phase waits for its seat's rewards too.
+    bring it an Intrigue card). None before the rewards are dealt. A Combat
+    Intrigue's icons are never held: they fizzle as the card resolves
+    (``apply_contract_fizzle``).
     """
 
     if state.phase is not GamePhase.COMBAT or not state.combat_intrigue_complete:
@@ -1065,9 +1126,10 @@ def fizzle_held_contract_icons(
     The designer rules consistently that an effect with no valid target
     fizzles, and the two-Solari conversion is a separate printed condition
     that this market does not meet (OQ-059, user ruling 2026-09-10). The
-    owner's turn-end press calls it, and so does the end of the seat's
+    owner's turn-end press calls it, and so do the end of the seat's
     Conflict rewards (``combat_held_contract_owner``, user ruling
-    2026-10-02, L2-Q2).
+    2026-10-02, L2-Q2) and the end of the Arrakeen Scouts step
+    (``scouts._open_first_turn``, same day).
     """
 
     owner = state.players[player]

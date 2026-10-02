@@ -146,6 +146,7 @@ const LABELS_EN = {
     "take_contract": "Take {contract}",
     "take_exhausted_contract_solari": "2 {solari} instead of {contract}",
     "hold_contract_icons": "Hold {contract} icons — no {contract} to take now",
+    "resolve_contract_icons_without_contract": "{contract} icons fizzle — no {contract} to take now",
     "take_high_council_from_reveal": "Take High Council",
     "take_sietch_tabr_supplies": "Sietch Tabr Supplies ({maker_hooks})",
     "take_sietch_tabr_water": "Sietch Tabr {water}",

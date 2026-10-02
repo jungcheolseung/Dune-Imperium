@@ -230,3 +230,17 @@ L2([unavailable-options-plan.md](../unavailable-options-plan.md) 5절, codec v12
 | random | 0.56 | 0.56 | 0.81 |
 | heuristic | 1.00 | 1.00 | 0.24 |
 | 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.86 / 0.80 |
+
+## 재채굴 (2026-10-02, codec v127: Combat Intrigue 카드 창 뒤의 연속 pass)
+
+Combat Intrigue 카드가 순환 위에 자기 창을 남길 때(Reach Agreement의 Contract 시장, Battlefield Research의 Tech 창)와 Harvest
+Cells를 앞면으로 놓을 때 연속 pass를 다시 세고, 창이 닫히면 unit이 없는 좌석을 빼게 되어([OQ-003](../rules/open-questions.md),
+codec v127) 그런 판의 경로가 바뀌었다. 파일의 `note` 명령 그대로 두 번 다시 캤다(앞의 둘 뒤 110개 — 보유 19·Endgame 11, Harvest
+Cells 뒤 다시). 최종 **110개**(옛 파일과 견주면 그대로 90, 빠진 것 20, 새것 20) — sandworm 80, 마지막 라운드 보유 17(heuristic 16 +
+5081 1), Endgame 13. 새 문제집의 채점:
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 13) | 마지막 라운드 보유 (tip, 17) |
+|---|---|---|---|
+| random | 0.57 | 0.54 | 0.88 |
+| heuristic | 1.00 | 1.00 | 0.47 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.88 / 0.90 |
