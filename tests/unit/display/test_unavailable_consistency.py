@@ -18,8 +18,8 @@ rows read (``AcquireBlock``, ``option_unplayable_reason``,
 ``reveal_sandworm_block``, ``imperial_privilege_recall_targets``,
 ``contract_recall_targets``, ``research_bonus_block``,
 ``combat_reward_influence_block`` and ``unit_loss_block``; then
-``skill_choice_block``, ``agent_card_recall_targets`` and
-``agent_icon_block``).
+``skill_choice_block``, ``agent_card_recall_targets``,
+``agent_icon_block`` and ``contract_take_block``).
 ``test_the_refactored_providers_offer_what_they_did`` pins that refactor
 against copies of the providers as they were before it (2026-09-29): a later
 rule change to one of them should update or drop the copy on purpose.
@@ -48,6 +48,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_card_for_instance,
 )
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
     DestroyShieldWall,
@@ -121,6 +122,7 @@ from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import (
     contract_recall_targets,
+    legal_contract_actions,
     legal_contract_recall_actions,
 )
 from dune_imperium.rules.effect_interpreter import (
@@ -972,6 +974,40 @@ def _old_skill_choice(state: GameState, player: int) -> tuple[DomainAction, ...]
     )
 
 
+def _old_contract_market(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``contracts.legal_contract_actions`` before ``contract_take_block``
+    and the hold confirm (2026-10-02, user ruling 2026-09-30): with nothing
+    takeable in a non-empty market it offered nothing, and the engine held
+    the icons unasked (OQ-059)."""
+
+    frame = owned_top_frame(state, FrameKind.CONTRACT_MARKET, player)
+    if frame is None:
+        return ()
+    set_aside = (
+        state.sardaukar_contract_ids
+        if state.players[player].leader_id == "shaddam_corrino_iv"
+        else ()
+    )
+    holds_intrigue = bool(state.players[player].intrigue_cards)
+    return (
+        *(
+            DomainAction(
+                action_id="take_contract",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in (*state.face_up_contract_ids, *set_aside)
+            if holds_intrigue
+            or not contract_for_instance(instance_id).requires_intrigue_trash
+        ),
+        *(
+            (DomainAction(action_id="take_exhausted_contract_solari", actor=player),)
+            if set_aside and not state.face_up_contract_ids
+            else ()
+        ),
+    )
+
+
 def _old_agent_card_recall(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """``agent_effects.legal_agent_card_recall_actions`` before
     ``agent_card_recall_targets`` (2026-10-02)."""
@@ -1199,6 +1235,12 @@ _CONFIRMS: list[
         _old_skill_choice,
         FrameKind.SKILL_CHOICE,
         "resolve_commander_without_skill",
+    ),
+    (
+        legal_contract_actions,
+        _old_contract_market,
+        FrameKind.CONTRACT_MARKET,
+        "hold_contract_icons",
     ),
 ]
 

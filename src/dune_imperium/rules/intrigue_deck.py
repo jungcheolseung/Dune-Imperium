@@ -59,7 +59,9 @@ def draw_intrigue_cards(
     Cards available on the deck are drawn immediately. If more are owed and
     the discard pile is not empty, a chance decision for the reshuffle is
     pushed and the remaining draw completes when it resolves. If neither pile
-    has cards the draw simply stops short.
+    has cards the draw simply stops short; a shortfall is logged with
+    ``intrigue_draw_short`` as soon as it is certain, which with a reshuffle
+    is when the shuffle is asked for.
     """
 
     if not 0 <= player < state.config.players:
@@ -70,9 +72,20 @@ def draw_intrigue_cards(
         raise ValueError("Intrigue draw source must not be empty")
 
     drawn_now = _draw_available(state, player, count, source)
-    remaining = count - len(state.intrigue_deck[:count])
-    if remaining <= 0 or not drawn_now.state.intrigue_discard:
+    available = len(state.intrigue_deck[:count])
+    remaining = count - available
+    if remaining <= 0:
         return drawn_now
+    discard = drawn_now.state.intrigue_discard
+    # Both piles are public, so a draw they cannot cover is known to fall
+    # short before any reshuffle: logged here, the shortfall rides the step
+    # that causes it, where the play server's dry run warns about it before
+    # the click (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
+    short = intrigue_draw_short_events(
+        source, player, count, available + min(remaining, len(discard))
+    )
+    if not discard:
+        return RuleResult(state=drawn_now.state, events=(*drawn_now.events, *short))
     decision_id = f"{source}:intrigue_shuffle"
     frame = DecisionFrame(
         kind=FrameKind.INTRIGUE_RESHUFFLE,
@@ -87,7 +100,38 @@ def draw_intrigue_cards(
     )
     return RuleResult(
         state=drawn_now.state.push_decision(frame),
-        events=drawn_now.events,
+        events=(*drawn_now.events, *short),
+    )
+
+
+def intrigue_draw_short_events(
+    source: str, player: int, requested: int, drawn: int
+) -> tuple[GameEvent, ...]:
+    """Return the public event for an Intrigue draw the piles cannot cover.
+
+    A draw the Intrigue deck and its discard pile cannot cover together
+    stops short once both are exhausted (implementation-audits/intrigue.md
+    "Deck exhaustion"); nothing is left to choose, so no window opens, but
+    the shortfall is logged, before the shuffle when the draw needs one
+    (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"). Only
+    counts: the size of both piles is public, and no card is named.
+    ``requested`` is what this draw asked for -- for a queued draw, what was
+    still owed when the queue resolved.
+    """
+
+    if drawn >= requested:
+        return ()
+    return (
+        GameEvent(
+            event_id=f"{source}:intrigue_draw_short",
+            kind="intrigue_draw_short",
+            payload=(
+                ("drawn", drawn),
+                ("player", player),
+                ("requested", requested),
+                ("short", requested - drawn),
+            ),
+        ),
     )
 
 
@@ -155,7 +199,12 @@ def apply_intrigue_reshuffle(
     state: GameState,
     outcome: ChanceOutcome,
 ) -> RuleResult:
-    """Apply the recorded discard permutation and finish the pending draw."""
+    """Apply the recorded discard permutation and finish the pending draw.
+
+    A draw the new deck cannot cover was logged when the shuffle was asked
+    for (``draw_intrigue_cards``): the shuffled cards are the discard of
+    that moment, beneath a deck the draw had emptied.
+    """
 
     frame = top_frame_of_kind(state, FrameKind.INTRIGUE_RESHUFFLE)
     if frame is None or not isinstance(frame.decision, ChanceDecision):

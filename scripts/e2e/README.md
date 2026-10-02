@@ -48,7 +48,7 @@ cd scripts/e2e
 /tmp/dune-e2e-venv/bin/python races.py --ab    # 약 26초
 /tmp/dune-e2e-venv/bin/python recovery.py      # 약 14초
 /tmp/dune-e2e-venv/bin/python turn_controls.py # 약 4초; 병력 수 조절기(보드의 사막 띠·좁은 창에서는 패널만)와 Reveal 구매 패널, Immortality 판에서 Tleilaxu 열 획득
-/tmp/dune-e2e-venv/bin/python turn_end.py      # 약 14초; 턴 종료 컨트롤 하나로 통일(리더 드래프트 마지막/비마지막 뽑기, finish_agent_turn·finish_reveal·pass_combat_intrigue·pass_endgame_intrigue, 되돌릴 수 없는 종료, 영어 표기)
+/tmp/dune-e2e-venv/bin/python turn_end.py      # 약 14초; 턴 종료 컨트롤 하나로 통일(리더 드래프트 마지막/비마지막 뽑기, finish_agent_turn·finish_reveal·pass_combat_intrigue·pass_endgame_intrigue, 되돌릴 수 없는 종료, 영어 표기, 2026-10-02부터 턴 종료 줄의 부족 경고 배지 — 소멸할 계약 아이콘, 두 언어)
 /tmp/dune-e2e-venv/bin/python staged_turn.py   # 약 8초; Agent turn의 단계별 선택(카드 → 칸 → 남은 선택, graft는 두 장 먼저)
 /tmp/dune-e2e-venv/bin/python board_tokens.py  # 약 6초; 인쇄된 자리에 놓이는 조각(칸 hotspot의 흰 테두리·Agent·Spy 말·Control·bonus spice·Maker Hooks·Alliance·사다우카 지휘관·Conflict 사분면과 garrison 고리의 유닛, 세 창 크기의 겹침 검사)과 Reveal 미리보기·Intrigue 더미 + Bene Tleilax 보드의 setup spice 육각형
 /tmp/dune-e2e-venv/bin/python leader_card.py   # 약 30초; 좌석 리더 팝오버에 그려지는 좌석 자신의 상태(Feyd 훈련 트랙·Chani 전술 트랙 토큰, Y'rkoon의 Navigation 카드 네 칸, Kota의 Secret Project 타일, Shaddam의 따로 치워둔 사다우카 계약 두 장, 리뷰 라벨의 폴백, Jessica의 뒤집힌 그림), 좌석 상태 줄이 그 세 플래그를 더는 되풀이하지 않는지, 두 언어 + --remote 두 컨텍스트 + 실제 판 리뷰 재현

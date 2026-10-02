@@ -5,14 +5,15 @@ but not selectable, with the reason, and it becomes selectable as soon as it
 can be taken (and the reverse), for the whole game. Arrakeen Scouts choices
 already do this (``display.scouts.scouts_choice_lines``); this module does it
 for the Reveal shop, Intrigue plays and effects waiting on their condition
-(a new High Council seat's subcommittee choice and an Agent-box icon below
-its printed threshold among them), and for the branch of an open choice
-that cannot be taken ("choice": Desert Power's sandworm, a recall with no
-Agent to recall, a research bonus whose cost cannot be paid, a Conflict
-reward's Faction already at the top, a Holy War unit the seat does not
-have, a Skill the seat already holds, a Navigation card's option it cannot
-play, an Acquire Tech with every stack empty, an Agent-box icon that cannot
-come back before the turn's end).
+(a new High Council seat's subcommittee choice, an Agent-box icon below
+its printed threshold and held Contract icons among them), and for the
+branch of an open choice that cannot be taken ("choice": Desert Power's
+sandworm, a recall with no Agent to recall, a research bonus whose cost
+cannot be paid, a Conflict reward's Faction already at the top, a Holy War
+unit the seat does not have, a Skill the seat already holds, a Navigation
+card's option it cannot play, an Acquire Tech with every stack empty, an
+Agent-box icon that cannot come back before the turn's end, a Contract the
+seat has no Intrigue card to trash for).
 
 Display only, under four rules:
 
@@ -28,8 +29,8 @@ Display only, under four rules:
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
   ``research_bonus_block``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
-  ``agent_icon_block``, ``agent_card_recall_targets``), so the two cannot
-  drift.
+  ``agent_icon_block``, ``agent_card_recall_targets``,
+  ``contract_take_block``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
   (``shadow_action``). The one dry run is the provider's own:
   ``agent_box_is_waiting`` asks ``agent_card_effect_is_unavailable``, which
@@ -91,7 +92,7 @@ from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.display.effect_dsl_text import (
     condition_text,
     cost_text,
@@ -125,7 +126,13 @@ from dune_imperium.rules.combat import (
     combat_reward_influence_block,
 )
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
-from dune_imperium.rules.contracts import contract_recall_targets
+from dune_imperium.rules.contracts import (
+    ContractTakeBlock,
+    contract_recall_targets,
+    contract_take_block,
+    held_contract_icons_can_open,
+    market_contract_ids,
+)
 from dune_imperium.rules.effect_interpreter import (
     OptionBlock,
     OptionUnplayable,
@@ -140,7 +147,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, turn_owner_of
 from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
@@ -886,6 +893,110 @@ def _contract_recall(state: GameState, seat: int, found: _Found) -> None:
     )
 
 
+def _contract_take_reason(block: ContractTakeBlock) -> Reason:
+    match block:
+        case ContractTakeBlock.NEEDS_INTRIGUE:
+            return _NO_INTRIGUE_TO_TRASH
+    return NOT_NOW
+
+
+def _blocked_contracts(
+    state: GameState, seat: int
+) -> list[tuple[str, ContractTakeBlock]]:
+    return [
+        (instance_id, block)
+        for instance_id in market_contract_ids(state, seat)
+        if (block := contract_take_block(state, seat, instance_id)) is not None
+    ]
+
+
+def _contract_market(state: GameState, seat: int, found: _Found) -> None:
+    """A Contract icon's market: every token the seat cannot take now.
+
+    "You can't take the new Immediate contract unless you have an Intrigue
+    card to trash." `[Bloodlines p. 2]`. The provider offers a token exactly
+    when ``contract_take_block`` is None (``takeable_contract_ids``); the
+    others show greyed out with the block, and their market token dims.
+    With nothing in a non-empty market takeable the window still opens (user
+    ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    연다") with only ``hold_contract_icons`` (OQ-059).
+    """
+
+    for instance_id, block in _blocked_contracts(state, seat):
+        found.row(
+            "choice",
+            f"take_contract:{instance_id}",
+            DomainAction(
+                action_id="take_contract",
+                actor=seat,
+                arguments=(("instance_id", instance_id),),
+            ),
+            _contract_take_reason(block),
+            dim=instance_id,
+        )
+
+
+def _held_contracts(state: GameState, seat: int, found: _Found) -> None:
+    """The seat's held Contract icons, under "waiting", in any of its
+    decisions but the market itself (which greys the token out).
+
+    Held when nothing in a non-empty market could be taken (OQ-059); the
+    market reopens by itself once ``held_contract_icons_can_open`` (a token
+    the seat can take, by ``contract_take_block``). The icons fizzle at the
+    turn-end press, or, held from a Conflict reward, at the end of the
+    seat's Conflict rewards (user ruling 2026-10-02, L2-Q2).
+
+    The row promises the reopening and the lapse only where the engine does
+    both: in the seat's own turn and in the Combat phase
+    (``engine._held_contract_owner``). Icons held anywhere else -- the
+    Arrakeen Scouts step, outside any turn -- neither reopen nor fizzle
+    (open question, OQ-059 보강 3), so their row only says they are held.
+    """
+
+    held = state.players[seat].held_contract_icons
+    if not held or held_contract_icons_can_open(state, seat):
+        return
+    if state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET:
+        return
+    icons_en = f"{held} Contract icon{plural_s(held)} held"
+    icons_ko = f"{{contract}} 아이콘 {held}개 보류"
+    take_en = "taken once you have an Intrigue card to trash"
+    take_ko = "{trash}할 {intrigue}가 생기면 가져감"
+    reason: Reason
+    if state.phase is GamePhase.COMBAT:
+        reason = (
+            f"{icons_en}: {take_en}, lost when your Conflict rewards end",
+            f"{icons_ko} — {take_ko}, 교전 보상을 다 받으면 사라짐",
+            "waiting",
+        )
+    elif turn_owner_of(state) == seat:
+        reason = (
+            f"{icons_en}: {take_en}, lost when the turn ends",
+            f"{icons_ko} — {take_ko}, 차례가 끝나면 사라짐",
+            "waiting",
+        )
+    else:
+        reason = (
+            f"{icons_en}: no Contract you can take now",
+            f"{icons_ko} — 지금 가져갈 수 있는 {{contract}} 없음",
+            "waiting",
+        )
+    # The tokens it waits for; with none left in the market, an id-less
+    # take that is never legal.
+    waits_for = [instance_id for instance_id, _ in _blocked_contracts(state, seat)]
+    for instance_id in waits_for or [""]:
+        found.row(
+            "waiting",
+            f"held_contracts:{instance_id}",
+            DomainAction(
+                action_id="take_contract",
+                actor=seat,
+                arguments=(("instance_id", instance_id),) if instance_id else (),
+            ),
+            reason,
+        )
+
+
 def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
     """A research space's arrow whose cost cannot be paid (Immortality).
 
@@ -1251,6 +1362,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _subcommittee_choice,
         _intrigue,
     ),
+    FrameKind.CONTRACT_MARKET: (_contract_market,),
     FrameKind.CONTRACT_REWARD_RECALL: (_contract_recall,),
     FrameKind.RESEARCH_BONUS: (_research_bonus,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (_combat_reward_influence,),
@@ -1263,6 +1375,12 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),
 }
+
+
+# Collected in every decision of the seat, after its frame's own.
+_EVERY_FRAME: Final[tuple[Callable[[GameState, int, _Found], None], ...]] = (
+    _held_contracts,
+)
 
 
 # --- The payload ---
@@ -1323,9 +1441,7 @@ def unavailable_choices(
         or frame.decision.owner != seat
     ):
         return None
-    collectors = _BY_FRAME.get(frame.kind, ())
-    if not collectors:
-        return None
+    collectors = (*_BY_FRAME.get(frame.kind, ()), *_EVERY_FRAME)
     if legal_gather_intelligence_actions(state, seat):
         # Gather Intelligence replaces the Agent-effect frame's whole list
         # while it is pending (``legal_agent_effect_frame_actions``): the

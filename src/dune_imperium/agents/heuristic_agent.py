@@ -96,6 +96,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "gain_five_reveal_solari": 2.0,
     "keep_contract_reveal_spice": 2.0,
     "take_contract": 2.0,
+    # Nothing in a non-empty market can be taken (OQ-059): the hold is the
+    # Contract window's only action, so a neutral score.
+    "hold_contract_icons": 0.0,
     "gain_leader_signet_troop": 2.0,
     "use_other_memories": 1.0,
     # Reveal choice reordering never changes what the rule-based agent

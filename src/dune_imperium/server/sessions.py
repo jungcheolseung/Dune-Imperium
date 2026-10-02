@@ -38,7 +38,7 @@ import random
 import re
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from typing import Final
@@ -54,6 +54,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
@@ -1933,6 +1934,7 @@ def _serialize_action(
         and _action_is_undoable(session, action, outcome)
     )
     outcome = preview_outcome(action, outcome)
+    shortfalls = shortfall_outcome(session.engine, outcome)
     serialized: JsonObject = {
         "index": index,
         "action_id": action.action_id,
@@ -1940,8 +1942,8 @@ def _serialize_action(
         "detail": effect_action_text(session.state, action),
         "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
-        "warning": shortfall_warning(outcome),
-        "shortfall": shortfall_details(outcome),
+        "warning": shortfall_warning(shortfalls, action.actor),
+        "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
     revealed = reveal_preview(action, outcome)
@@ -1970,6 +1972,57 @@ def preview_outcome(
     if any(event.kind in SEALED_REVEAL_EVENTS for event in outcome.events):
         return None
     return outcome
+
+
+# More Intrigue reshuffles than one step's draws could ever ask for.
+_PREVIEW_RESHUFFLES: Final = 4
+
+
+def shortfall_outcome(
+    engine: UprisingRulesEngine, outcome: RuleResult | None
+) -> RuleResult | None:
+    """The dry run's outcome with the shortfalls of its Intrigue reshuffles.
+
+    An Intrigue draw the deck cannot cover stops at a chance step that
+    shuffles the discard pile into a new deck, and Suspensor Suits deploys
+    for the cards drawn after it in that chance step's own hook (OQ-042).
+    The shortfall is still this step's, so it is warned before the click
+    (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): the copy runs
+    the reshuffle with the frame's own options as the permutation, since how
+    many cards come off the new deck does not depend on their order, and
+    only the shortfall events of that continuation are added (counts only,
+    from public zones), never a card it drew. Every other preview
+    (``undoable``, ``strength_after``, ``reveal_preview``) stays on the dry
+    run itself.
+    """
+
+    if outcome is None:
+        return None
+    state = outcome.state
+    extra: list[GameEvent] = []
+    for _ in range(_PREVIEW_RESHUFFLES):
+        if not state.decision_stack:
+            break
+        frame = state.decision_stack[-1]
+        decision = frame.decision
+        if frame.kind != FrameKind.INTRIGUE_RESHUFFLE or not isinstance(
+            decision, ChanceDecision
+        ):
+            break
+        shuffle = ChanceOutcome(
+            decision_id=decision.decision_id, values=decision.options
+        )
+        try:
+            transition = engine.apply(state, shuffle)
+        except Exception:  # noqa: BLE001 - the preview just stops here
+            break
+        state = transition.state
+        extra.extend(
+            event for event in transition.events if event.kind in _SHORTFALL_EVENTS
+        )
+    if not extra:
+        return outcome
+    return RuleResult(state=outcome.state, events=(*outcome.events, *extra))
 
 
 def reveal_preview(
@@ -2075,60 +2128,107 @@ def _action_is_undoable(
     return not isinstance(session.engine.current_decision(after), ChanceDecision)
 
 
-def shortfall_warning(outcome: RuleResult | None) -> str | None:
-    """Describe a supply shortfall the action would run into, if any.
+def shortfall_warning(
+    outcome: RuleResult | None, player: int | None = None
+) -> str | None:
+    """Describe a shortfall the action would run into, if any.
 
     Specimens and recruits come from the troop supply and a short supply
     simply yields fewer (OQ-030, OQ-049); the choice stays legal, so the
-    player is told beforehand what the action will actually do.
+    player is told beforehand what the action will actually do. The same
+    goes for the shortfalls where nothing can be chosen (user ruling
+    2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): an Intrigue draw the
+    Intrigue deck and discard cannot cover together (both empty, or the
+    discard too small to shuffle in), Suspensor Suits troops that cannot
+    deploy (OQ-042, after such a reshuffle too, ``shortfall_outcome``),
+    and held Contract icons that fizzle as the turn-end press ends the turn
+    (OQ-059; the press itself is the confirmation, this is only the
+    warning). With ``player`` only that seat's shortfalls count -- the
+    step's own seat, as the play server passes it.
     """
 
-    if outcome is None:
-        return None
     notes: list[str] = []
-    for event in outcome.events:
-        payload = dict(event.payload)
-        if event.kind == "specimens_short":
+    for kind, requested, made in _shortfalls(outcome, player):
+        if kind == "specimens":
+            notes.append(f"supply 부족: specimen {requested}개 중 {made}개만 생성")
+        elif kind == "troops":
+            notes.append(f"supply 부족: troop {requested}개 중 {made}개만 recruit")
+        elif kind == "intrigue":
             notes.append(
-                "supply 부족: specimen "
-                f"{payload.get('requested')}개 중 {payload.get('generated')}개만 생성"
+                f"책략 카드 더미와 버림 더미를 합쳐도 {requested - made}장 모자람"
             )
-        elif event.kind == "troops_recruit_short":
-            requested, recruited = payload.get("requested"), payload.get("recruited")
-            notes.append(f"supply 부족: troop {requested}개 중 {recruited}개만 recruit")
+        elif kind == "suspensor":
+            notes.append(f"반중력 의복: 병력 {requested}개 중 {made}개만 배치")
+        else:
+            notes.append(f"계약 아이콘 {requested}개 소멸 — 가져갈 수 있는 계약 없음")
     return " · ".join(notes) if notes else None
 
 
-def shortfall_details(outcome: RuleResult | None) -> list[JsonValue] | None:
+def shortfall_details(
+    outcome: RuleResult | None, player: int | None = None
+) -> list[JsonValue] | None:
     """The same shortfalls as data, for a client that words them itself.
 
     ``warning`` stays the Korean sentence it always was; a browser showing
-    English builds its own from ``kind`` ("specimens" or "troops"),
-    ``requested`` and ``made``.
+    English builds its own from ``kind`` ("specimens", "troops",
+    "intrigue", "suspensor" or "contract"), ``requested`` and ``made``.
+    For "intrigue" ``requested`` is what the draw still asked for once the
+    deck ran out, so ``requested - made`` is the number of cards missing;
+    for "contract" ``requested`` is the number of icons and ``made`` is 0.
+    """
+
+    details: list[JsonValue] = [
+        {"kind": kind, "requested": requested, "made": made}
+        for kind, requested, made in _shortfalls(outcome, player)
+    ]
+    return details or None
+
+
+# Event kind -> (shortfall kind, payload key of what was asked for, payload
+# key of what was made). Suspensor Suits logs what is left over, so what was
+# asked for is the sum; a fizzled Contract icon made nothing.
+_SHORTFALL_EVENTS: Final[Mapping[str, tuple[str, str, str | None]]] = {
+    "specimens_short": ("specimens", "requested", "generated"),
+    "troops_recruit_short": ("troops", "requested", "recruited"),
+    "intrigue_draw_short": ("intrigue", "requested", "drawn"),
+    "suspensor_deployment_unavailable": ("suspensor", "troops", "deployed"),
+    "contract_icons_fizzled": ("contract", "count", None),
+}
+
+
+def _shortfalls(
+    outcome: RuleResult | None, player: int | None
+) -> list[tuple[str, int, int]]:
+    """``(kind, requested, made)`` for each shortfall event of the dry run.
+
+    Every one of these events is public and carries counts only, all of
+    them worked out from public zones (the troop supply, the Intrigue deck
+    and discard sizes, the seat's own held icons), so the warning shows the
+    acting seat nothing it could not see.
     """
 
     if outcome is None:
-        return None
-    details: list[JsonValue] = []
+        return []
+    found: list[tuple[str, int, int]] = []
     for event in outcome.events:
+        entry = _SHORTFALL_EVENTS.get(event.kind)
+        if entry is None:
+            continue
         payload = dict(event.payload)
-        if event.kind == "specimens_short":
-            details.append(
-                {
-                    "kind": "specimens",
-                    "requested": _jsonify(payload.get("requested")),
-                    "made": _jsonify(payload.get("generated")),
-                }
-            )
-        elif event.kind == "troops_recruit_short":
-            details.append(
-                {
-                    "kind": "troops",
-                    "requested": _jsonify(payload.get("requested")),
-                    "made": _jsonify(payload.get("recruited")),
-                }
-            )
-    return details or None
+        if player is not None and payload.get("player") != player:
+            continue
+        kind, asked_key, made_key = entry
+        made = _payload_count(payload, made_key) if made_key else 0
+        requested = _payload_count(payload, asked_key)
+        if kind == "suspensor":
+            requested += made
+        found.append((kind, requested, made))
+    return found
+
+
+def _payload_count(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    return value if type(value) is int else 0
 
 
 def _jsonify(value: object) -> JsonValue:

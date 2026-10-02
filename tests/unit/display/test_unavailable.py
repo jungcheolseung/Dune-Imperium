@@ -47,6 +47,7 @@ from dune_imperium.display.unavailable import (
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
 from dune_imperium.rules.combat import resolve_combat_rewards
+from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import OptionBlock
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import advance_research
@@ -1382,3 +1383,194 @@ def test_an_ungrafted_card_s_icons_are_greyed_among_the_choices() -> None:
         "choice:agent_icon:troops": reason,
         "choice:agent_icon:cards": reason,
     }
+
+
+# --- A Contract the seat cannot take, and Contract icons held (OQ-059) ---
+
+_IMMEDIATE = "contract:bloodlines_immediate"
+_CHOAM_BLOODLINES = RulesetConfig(choam_module=True, bloodlines=True)
+_NO_INTRIGUE_TO_TRASH = (
+    "No Intrigue card to trash",
+    "{trash}할 {intrigue} 없음",
+    "cost",
+)
+_HOLD = DomainAction(action_id="hold_contract_icons", actor=0)
+
+
+def _contract_market(market: tuple[str, ...], **owner_fields: Any) -> GameState:
+    """Seat 0's Contract icon over ``market``: its window is on top."""
+
+    owner = PlayerState(player_id=0, **owner_fields)
+    state = _state(owner, config=_CHOAM_BLOODLINES, face_up_contract_ids=market)
+    return begin_contract_gain(state, 0, 1, source="test").state
+
+
+def _take(instance_id: str) -> dict[str, Any]:
+    return {"instance_id": instance_id}
+
+
+def test_the_immediate_greys_out_without_an_intrigue_card_to_trash() -> None:
+    """"You can't take the new Immediate contract unless you have an Intrigue
+    card to trash." [Bloodlines p. 2]: ``contract_take_block`` withholds it,
+    the other token stays an ordinary choice, and the market token dims."""
+
+    state = _contract_market((_IMMEDIATE, "contract:arrakeen_i"))
+    assert _legal(state, "take_contract") == [_take("contract:arrakeen_i")]
+    found = _found(state)
+    assert found["frame"] == FrameKind.CONTRACT_MARKET
+    rows = _rows(found, "choice")
+    assert list(rows) == [f"choice:take_contract:{_IMMEDIATE}"]
+    row = rows[f"choice:take_contract:{_IMMEDIATE}"]
+    assert row["action"]["action_id"] == "take_contract"
+    assert row["action"]["arguments"] == _take(_IMMEDIATE)
+    assert (row["reason"], row["reason_ko"], row["code"]) == _NO_INTRIGUE_TO_TRASH
+    assert found["refs"] == {
+        _IMMEDIATE: {
+            "reason": _NO_INTRIGUE_TO_TRASH[0],
+            "reason_ko": _NO_INTRIGUE_TO_TRASH[1],
+            "code": _NO_INTRIGUE_TO_TRASH[2],
+        }
+    }
+
+
+def test_an_unreachable_market_greys_out_the_immediate_beside_the_hold() -> None:
+    """Nothing in a non-empty market can be taken: the window opens with only
+    ``hold_contract_icons`` (OQ-059; user ruling 2026-09-30, "결정 창 없이
+    자동으로 넘어가는 곳도 모두 결정 창을 연다"), the Immediate greyed out
+    beside it. The held-icons row is not added on the market itself."""
+
+    state = _contract_market((_IMMEDIATE,))
+    assert ENGINE.legal_actions(state, 0) == (_HOLD,)
+    found = _found(state)
+    assert [row["key"] for row in found["rows"]] == [
+        f"choice:take_contract:{_IMMEDIATE}"
+    ]
+
+
+def test_no_market_row_once_the_seat_holds_an_intrigue_card() -> None:
+    state = _contract_market((_IMMEDIATE,), intrigue_cards=("intrigue:0",))
+    assert _legal(state, "take_contract") == [_take(_IMMEDIATE)]
+    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+
+
+def _held_reason(lapse_en: str, lapse_ko: str) -> tuple[str, str, str]:
+    return (
+        "1 Contract icon held: taken once you have an Intrigue card to trash,"
+        f" lost when {lapse_en}",
+        "{contract} 아이콘 1개 보류 — {trash}할 {intrigue}가 생기면 가져감,"
+        f" {lapse_ko} 사라짐",
+        "waiting",
+    )
+
+
+def test_held_contract_icons_wait_greyed_out_for_the_rest_of_the_turn() -> None:
+    """The held icons are shown to their seat (``held_contract_icons`` had no
+    view before): a "waiting" row naming the token they wait for, in the
+    seat's next decision of the turn, until the turn-end press fizzles them."""
+
+    def instance(card_id: str) -> str:
+        return next(i for i in imperium_deck_instance_ids(True) if f":{card_id}:" in i)
+
+    mentat = instance("captured_mentat")  # a Spice Trade Agent icon
+    owner = PlayerState(
+        player_id=0,
+        hand=(mentat, instance("truthtrance")),
+        resources=Resources(solari=10, spice=10, water=10),
+    )
+    state = _state(
+        owner, config=_CHOAM_BLOODLINES, face_up_contract_ids=(_IMMEDIATE,)
+    )
+    place = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments) == {"card_id": mentat, "space_id": "accept_contract"}
+    )
+    placed = ENGINE.apply(state, place).state
+    icon = DomainAction(
+        action_id="resolve_board_effect", actor=0, arguments=(("effect", "contract"),)
+    )
+    opened = ENGINE.apply(placed, icon).state
+    assert ENGINE.legal_actions(opened, 0) == (_HOLD,)
+    held = ENGINE.apply(opened, _HOLD).state
+    assert held.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+
+    found = _found(held)
+    rows = _rows(found, "waiting")
+    assert list(rows) == [f"waiting:held_contracts:{_IMMEDIATE}"]
+    row = rows[f"waiting:held_contracts:{_IMMEDIATE}"]
+    assert row["action"]["action_id"] == "take_contract"
+    assert row["action"]["arguments"] == _take(_IMMEDIATE)
+    assert (row["reason"], row["reason_ko"], row["code"]) == _held_reason(
+        "the turn ends", "차례가 끝나면"
+    )
+
+
+def test_conflict_reward_icons_wait_for_the_seat_s_rewards_to_end() -> None:
+    """A Conflict reward's held icon lapses at the end of the seat's Conflict
+    rewards (user ruling 2026-10-02, L2-Q2: "보상 끝까지 보류 후 불발"), and
+    its row says so in the seat's remaining reward windows."""
+
+    owner = PlayerState(player_id=0, combat_strength=8)
+    state = _state(
+        owner,
+        config=_CHOAM_BLOODLINES,
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        decision_stack=(),
+        face_up_contract_ids=(_IMMEDIATE,),
+        current_conflict_ids=("choam_security",),
+        combat_intrigue_complete=True,
+        conflict_first_place_influence_bonus=1,
+        intrigue_deck=("intrigue:0", "intrigue:1"),
+    )
+    rewards = resolve_combat_rewards(state).state
+    assert ENGINE.legal_actions(rewards, 0) == (_HOLD,)
+    held = ENGINE.apply(rewards, _HOLD).state
+    assert held.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
+
+    row = _rows(_found(held), "waiting")[f"waiting:held_contracts:{_IMMEDIATE}"]
+    assert (row["reason"], row["reason_ko"], row["code"]) == _held_reason(
+        "your Conflict rewards end", "교전 보상을 다 받으면"
+    )
+
+
+def test_icons_held_outside_a_turn_promise_neither_take_nor_lapse() -> None:
+    """Held with no turn frame on the stack (the Arrakeen Scouts step shape),
+    the icons neither reopen the market nor fizzle at a turn-end press
+    (``engine._held_contract_owner``; open question, OQ-059 보강 3), so the
+    row only says they are held, with nothing in the market to take."""
+
+    outside = _state(
+        PlayerState(player_id=0),
+        config=_CHOAM_BLOODLINES,
+        decision_stack=(),
+        face_up_contract_ids=(_IMMEDIATE,),
+    )
+    state = begin_contract_gain(outside, 0, 1, source="scouts").state
+    assert [frame.kind for frame in state.decision_stack] == [
+        FrameKind.CONTRACT_MARKET
+    ]
+    held = ENGINE.apply(state, _HOLD).state
+    assert held.players[0].held_contract_icons == 1
+    assert not held.decision_stack
+    later = replace(
+        held,
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.SCOUTS_CHOICE,
+                frame_id="scouts:later",
+                decision=PlayerDecision(owner=0, prompt="later"),
+            ),
+        ),
+    )
+
+    # The later frame is a bare stand-in: no legal list is asked of it.
+    found = unavailable_choices(later, 0, ())
+    assert isinstance(found, dict)
+    row = _rows(found, "waiting")[f"waiting:held_contracts:{_IMMEDIATE}"]
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "1 Contract icon held: no Contract you can take now",
+        "{contract} 아이콘 1개 보류 — 지금 가져갈 수 있는 {contract} 없음",
+        "waiting",
+    )

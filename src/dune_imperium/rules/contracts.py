@@ -1,6 +1,7 @@
 """Public Contract market choices for the Uprising CHOAM Module."""
 
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
 from dune_imperium.content.uprising.contracts import (
@@ -554,13 +555,24 @@ def _holds_set_aside_choice(state: GameState, player: int) -> bool:
     )
 
 
+class ContractTakeBlock(StrEnum):
+    """Why ``player`` cannot take one Contract of the market right now.
 
-def takeable_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
-    """Return the Contracts ``player`` could take from the market right now.
+    The Bloodlines Immediate: "You can't take the new Immediate contract
+    unless you have an Intrigue card to trash." `[Bloodlines p. 2]`.
+    ``takeable_contract_ids`` offers a Contract exactly when
+    ``contract_take_block`` is None, and the page's greyed-out row reads the
+    same block (``display.unavailable``), so the two cannot disagree.
+    """
 
-    The Bloodlines Immediate "cannot be taken without an Intrigue card to
-    trash" `[Bloodlines p. 2]`, so a market can hold face-up tokens and still
-    offer this player nothing.
+    NEEDS_INTRIGUE = "needs_intrigue"
+
+
+def market_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """The Contracts a Contract icon of ``player`` chooses among.
+
+    The face-up tokens, and for Shaddam Corrino IV his set-aside Sardaukar
+    Contracts, taken in place of a generally available one [FAQ p. 3].
     """
 
     set_aside = (
@@ -568,12 +580,38 @@ def takeable_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
         if state.players[player].leader_id == "shaddam_corrino_iv"
         else ()
     )
-    holds_intrigue = bool(state.players[player].intrigue_cards)
+    return (*state.face_up_contract_ids, *set_aside)
+
+
+def contract_take_block(
+    state: GameState, player: int, instance_id: str
+) -> ContractTakeBlock | None:
+    """Return why ``player`` cannot take ``instance_id`` now, or None.
+
+    Only the seat's own Intrigue hand is read, so the answer is the same in
+    any re-deal of the zones the seat cannot see.
+    """
+
+    if (
+        contract_for_instance(instance_id).requires_intrigue_trash
+        and not state.players[player].intrigue_cards
+    ):
+        return ContractTakeBlock.NEEDS_INTRIGUE
+    return None
+
+
+def takeable_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the Contracts ``player`` could take from the market right now.
+
+    The Bloodlines Immediate "cannot be taken without an Intrigue card to
+    trash" `[Bloodlines p. 2]`, so a market can hold face-up tokens and still
+    offer this player nothing (``contract_take_block``).
+    """
+
     return tuple(
         instance_id
-        for instance_id in (*state.face_up_contract_ids, *set_aside)
-        if holds_intrigue
-        or not contract_for_instance(instance_id).requires_intrigue_trash
+        for instance_id in market_contract_ids(state, player)
+        if contract_take_block(state, player, instance_id) is None
     )
 
 
@@ -586,6 +624,13 @@ def legal_contract_actions(
     Shaddam Corrino IV may acquire a set-aside Sardaukar Contract in place
     of one of the generally available Contracts [FAQ p. 3], so his choices
     add the set-aside tiles while the market itself is open.
+
+    When nothing in a non-empty market can be taken (only the Bloodlines
+    Immediate is left and the owner holds no Intrigue card to trash), the
+    icons are held, not converted to Solari (OQ-059), and the owner
+    confirms that with ``hold_contract_icons`` instead of the engine
+    closing the window unasked (user ruling 2026-09-30, "결정 창 없이
+    자동으로 넘어가는 곳도 모두 결정 창을 연다").
     """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
@@ -615,6 +660,8 @@ def legal_contract_actions(
         actions.append(
             DomainAction(action_id="take_exhausted_contract_solari", actor=player)
         )
+    if not actions and contract_icons_must_be_held(state):
+        actions.append(DomainAction(action_id="hold_contract_icons", actor=player))
     return tuple(actions)
 
 
@@ -830,7 +877,8 @@ def contract_icons_must_be_held(state: GameState) -> bool:
     2 Solari" `[Main p. 16]` -- but every face-up token is out of reach, which
     happens when only the Bloodlines Immediate is left and the owner has no
     Intrigue card to trash `[Bloodlines p. 2]`. The icon waits for the rest of
-    the turn instead (OQ-059).
+    the turn instead (OQ-059), or, from a Conflict reward, for the rest of
+    that seat's Conflict rewards (user ruling 2026-10-02, L2-Q2).
     """
 
     player = _contract_frame_owner(state)
@@ -839,8 +887,21 @@ def contract_icons_must_be_held(state: GameState) -> bool:
     return not takeable_contract_ids(state, player)
 
 
+def apply_contract_hold(state: GameState, action: DomainAction) -> RuleResult:
+    """``hold_contract_icons``: the owner confirms the icons wait (OQ-059)."""
+
+    if action not in legal_contract_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract choice")
+    return hold_contract_icons(state)
+
+
 def hold_contract_icons(state: GameState) -> RuleResult:
-    """Close the open choice and keep its icons until the turn ends."""
+    """Close the open choice and keep its icons on the seat.
+
+    They wait for the turn's end (OQ-059) or, from a Conflict reward, for
+    the end of that seat's Conflict rewards (``combat_held_contract_owner``);
+    a token the seat can take meanwhile reopens the market.
+    """
 
     if not contract_icons_must_be_held(state):
         raise ValueError("there is no Contract choice to hold")
@@ -859,11 +920,19 @@ def hold_contract_icons(state: GameState) -> RuleResult:
         raise RuntimeError("Contract choice frame has invalid context")
     owner = state.players[player]
     held = owner.held_contract_icons + remaining
+    remaining_stack = state.decision_stack[:-1]
     next_state = replace(
         state,
-        decision_stack=state.decision_stack[:-1],
+        decision_stack=remaining_stack,
         players=replace_player(
             state.players, replace(owner, held_contract_icons=held)
+        ),
+        # Like every Conflict reward frame: the rewards are resolved once
+        # the last frame closes, or the engine would deal them again.
+        combat_rewards_resolved=(
+            not remaining_stack
+            if state.phase is GamePhase.COMBAT
+            else state.combat_rewards_resolved
         ),
     )
     return RuleResult(
@@ -892,8 +961,69 @@ def held_contract_icons_can_open(state: GameState, player: int) -> bool:
     )
 
 
+def combat_held_contract_owner(state: GameState) -> int | None:
+    """A seat whose Conflict rewards are all resolved with icons still held.
+
+    User ruling 2026-10-02 (L2-Q2, "보상 끝까지 보류 후 불발"): a Contract
+    icon from a Conflict reward that finds nothing it can take is held while
+    that seat resolves the rest of its Conflict rewards -- an Intrigue card
+    gained meanwhile can make the Immediate takeable, and the market then
+    reopens -- and once they are all resolved it fizzles with the public
+    event, never carried into a later turn nor dropped silently. The Combat
+    phase is no turn [Main p. 8], so no turn-end press would close it.
+
+    The rewards' frames are dealt together, each seat's in a block
+    (``resolve_combat_rewards``), and what they set off for the seat (the
+    Immediate's Intrigue trash, an owed Intrigue draw, a queued Navigation
+    play, Skill choice, track Spy or Friends Everywhere bonus) is the seat's
+    too. So the seat is done once it owns no frame on the stack and nothing
+    is queued for it, and no chance step is pending (a reshuffle may still
+    bring it an Intrigue card). None before the rewards are dealt: an icon
+    held earlier in the Combat phase waits for its seat's rewards too.
+    """
+
+    if state.phase is not GamePhase.COMBAT or not state.combat_intrigue_complete:
+        return None
+    if not state.decision_stack and not state.combat_rewards_resolved:
+        return None
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if top is not None and not isinstance(top.decision, PlayerDecision):
+        return None
+    busy = {
+        frame.decision.owner
+        for frame in state.decision_stack
+        if isinstance(frame.decision, PlayerDecision)
+    }
+    for queue in (
+        state.pending_intrigue_draws,
+        state.pending_navigation_plays,
+        state.pending_skill_choices,
+        state.pending_track_spies,
+        state.scouts_four_bonus_choices,
+    ):
+        busy.update(entry[0] for entry in queue)
+    for seat in state.players:
+        if seat.held_contract_icons and seat.player_id not in busy:
+            return seat.player_id
+    return None
+
+
+def fizzle_combat_held_contract_icons(state: GameState) -> RuleResult:
+    """Fizzle the held icons of the seat whose Conflict rewards are done."""
+
+    player = combat_held_contract_owner(state)
+    if player is None:
+        raise ValueError("no seat's Conflict rewards end with icons held")
+    return fizzle_held_contract_icons(
+        state,
+        player,
+        source=f"round:{state.round_number}:combat_reward:{player}",
+    )
+
+
 def open_held_contract_icons(state: GameState, player: int) -> RuleResult:
-    """Reopen the market for icons held earlier this turn."""
+    """Reopen the market for icons held earlier this turn, or earlier in
+    the seat's Conflict rewards."""
 
     if not held_contract_icons_can_open(state, player):
         raise ValueError("there are no held Contract icons to open")
@@ -905,7 +1035,11 @@ def open_held_contract_icons(state: GameState, player: int) -> RuleResult:
             state.players, replace(owner, held_contract_icons=0)
         ),
     )
-    source = f"round:{state.round_number}:player:{player}:held_contract"
+    source = (
+        f"round:{state.round_number}:combat_reward:{player}:held_contract"
+        if state.phase is GamePhase.COMBAT
+        else f"round:{state.round_number}:player:{player}:held_contract"
+    )
     return RuleResult(
         state=cleared.push_decision(
             contract_choice_frame(player, count, source=source)
@@ -930,7 +1064,10 @@ def fizzle_held_contract_icons(
 
     The designer rules consistently that an effect with no valid target
     fizzles, and the two-Solari conversion is a separate printed condition
-    that this market does not meet (OQ-059, user ruling 2026-09-10).
+    that this market does not meet (OQ-059, user ruling 2026-09-10). The
+    owner's turn-end press calls it, and so does the end of the seat's
+    Conflict rewards (``combat_held_contract_owner``, user ruling
+    2026-10-02, L2-Q2).
     """
 
     owner = state.players[player]

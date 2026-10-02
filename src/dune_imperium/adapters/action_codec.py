@@ -178,6 +178,19 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # (Bloodlines catalogs; OQ-031, OQ-035 (b)), and Imperium Ceremony with
 # one Intrigue card left and no discard opens its peek on that card
 # (OQ-052). No other template change.
+# A Contract icon over a market where nothing can be taken (only the
+# Bloodlines Immediate, no Intrigue card to trash) is no longer held
+# unasked: the owner confirms it with ``hold_contract_icons``
+# (CHOAM+Bloodlines catalogs; OQ-059, user ruling 2026-09-30). Such an icon
+# from a Conflict reward is held to the end of its seat's Conflict rewards
+# and then fizzles with ``contract_icons_fizzled`` (user ruling 2026-10-02,
+# L2-Q2); it no longer reaches a later turn nor vanishes silently.
+# Shortfalls with nothing to choose open no window but are logged (user
+# ruling 2026-10-02, L2-Q4): an Intrigue draw the Intrigue deck and
+# discard cannot cover together logs ``intrigue_draw_short``, and
+# Suspensor Suits troops only partly deployed log
+# ``suspensor_deployment_unavailable`` too (no template change; the event
+# log, and so a replay's hashes, moves).
 ACTION_CODEC_VERSION = 125
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -995,6 +1008,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.append(
             ActionTemplate(action_id="recall_conflict_agent_for_contract")
         )
+        # A market whose only token is the Immediate, with no Intrigue card
+        # to trash: the owner confirms its Contract icons are held (OQ-059).
+        templates.append(ActionTemplate(action_id="hold_contract_icons"))
     templates.extend(
         ActionTemplate(
             action_id="give_intrigue_card",

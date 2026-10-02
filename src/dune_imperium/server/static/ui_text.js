@@ -1225,13 +1225,25 @@ const UI_TEXT = {
     "ko": "지금은 고를 수 없는 선택지입니다. 할 수 있게 되면 바로 고를 수 있습니다",
     "en": "You cannot take this line right now; it opens as soon as you can"
   },
+  "render.shortfall_contract": {
+    "ko": "{contract} 아이콘 {{requested}}개 소멸 — 가져갈 수 있는 {contract} 없음",
+    "en": "{{requested}} {contract} icon(s) fizzle: no {contract} you can take"
+  },
+  "render.shortfall_intrigue": {
+    "ko": "{intrigue} 더미와 {discard_pile}를 합쳐도 {{short}}장 모자람",
+    "en": "Intrigue deck and {discard_pile} are {{short}} short of the draw"
+  },
   "render.shortfall_specimens": {
     "ko": "{supply} 부족: {specimen} {{requested}}개 중 {{made}}개만 생성",
     "en": "Short {supply}: only {{made}} of {{requested}} {specimen} made"
   },
+  "render.shortfall_suspensor": {
+    "ko": "{{tile}}: {troop} {{requested}}개 중 {{made}}개만 배치",
+    "en": "{{tile}}: only {{made}} of {{requested}} {troop} deployed"
+  },
   "render.shortfall_title": {
-    "ko": "선택은 할 수 있지만 {supply}가 부족해 인쇄된 만큼 되지 않습니다",
-    "en": "You can still choose, but the {supply} is short, so it does less than printed"
+    "ko": "선택은 할 수 있지만 인쇄된 만큼 되지 않습니다",
+    "en": "You can still choose, but it does less than printed"
   },
   "render.shortfall_troops": {
     "ko": "{supply} 부족: {troop} {{requested}}개 중 {{made}}개만 {recruit}",

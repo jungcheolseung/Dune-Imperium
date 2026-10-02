@@ -1629,6 +1629,57 @@ def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn(
     assert quiet.state.players[1].suspensor_owed == 0
 
 
+def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
+    # OQ-042 (b): what the supply cannot cover is lost, never paid later.
+    # Nothing is left to choose, so no window opens, but the troops left
+    # over are logged, a partial shortfall included (user ruling 2026-10-02,
+    # L2-Q4: "로그 + 클릭 전 경고").
+    from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    def shortfalls(result: RuleResult) -> list[dict[str, object]]:
+        return [
+            dict(event.payload)
+            for event in result.events
+            if event.kind == "suspensor_deployment_unavailable"
+        ]
+
+    partial = _turn_state(
+        _tech_owner("suspensor_suits", troops_supply=1, troops_garrison=11),
+        stacks=((), (), ()),
+    )
+    paid = deploy_suspensor_troops(draw_intrigue_cards(partial, 0, 2, source="t"))
+    seat = paid.state.players[0]
+    assert seat.suspensor_owed == 0
+    assert seat.troops_conflict == 1 and seat.troops_supply == 0
+    assert shortfalls(paid) == [{"deployed": 1, "player": 0, "troops": 1}]
+    deployed = [event for event in paid.events if event.kind == "troops_deployed"]
+    assert [dict(event.payload)["count"] for event in deployed] == [1]
+
+    empty = replace(
+        partial,
+        players=(
+            replace(partial.players[0], troops_supply=0, troops_garrison=12),
+            *partial.players[1:],
+        ),
+    )
+    lost = deploy_suspensor_troops(draw_intrigue_cards(empty, 0, 2, source="t"))
+    assert lost.state.players[0].troops_conflict == 0
+    assert shortfalls(lost) == [{"deployed": 0, "player": 0, "troops": 2}]
+    assert "troops_deployed" not in [event.kind for event in lost.events]
+
+    # A full supply: nothing to log.
+    full = deploy_suspensor_troops(
+        draw_intrigue_cards(
+            _turn_state(_tech_owner("suspensor_suits"), stacks=((), (), ())),
+            0,
+            2,
+            source="t",
+        )
+    )
+    assert shortfalls(full) == []
+
+
 def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
     from dune_imperium.rules.tech import deploy_suspensor_troops
 

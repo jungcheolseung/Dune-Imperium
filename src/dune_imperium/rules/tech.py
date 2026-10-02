@@ -796,6 +796,10 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
     hook pays them out after the transition, from the supply, into the
     Conflict (through the Reveal bookkeeping when the Reveal is open), and
     drops what the supply or a blocked deployment cannot honour (OQ-030).
+    What is dropped is logged with ``suspensor_deployment_unavailable``
+    (``troops`` left over, ``deployed`` paid), a partial shortfall included,
+    so the play server's dry run warns about it on the step that draws (user
+    ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
     """
 
     state = result.state
@@ -816,13 +820,7 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
             or not state.current_conflict_ids
             or units_deployment_blocked(state, player)
         ):
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:unavailable",
-                    kind="suspensor_deployment_unavailable",
-                    payload=(("player", player), ("troops", owed)),
-                )
-            )
+            events.append(_suspensor_shortfall_event(source, player, owed, 0))
             continue
         if reveal_is_open_for(state, player):
             staged = replace(
@@ -849,7 +847,27 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
                 payload=(("count", count), ("player", player), ("source", "tech")),
             )
         )
+        if count < owed:
+            # The supply covers only part of what is owed: the rest is lost
+            # (OQ-042 (b)), and logged (L2-Q4).
+            events.append(_suspensor_shortfall_event(source, player, owed, count))
     return RuleResult(state=state, events=tuple(events))
+
+
+def _suspensor_shortfall_event(
+    source: str, player: int, owed: int, deployed: int
+) -> GameEvent:
+    """The public event for Suspensor Suits troops that could not deploy."""
+
+    return GameEvent(
+        event_id=f"{source}:unavailable",
+        kind="suspensor_deployment_unavailable",
+        payload=(
+            ("deployed", deployed),
+            ("player", player),
+            ("troops", owed - deployed),
+        ),
+    )
 
 
 def apply_endgame_tech_effects(state: GameState) -> RuleResult:

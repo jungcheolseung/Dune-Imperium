@@ -7,7 +7,8 @@ new deck beneath the card(s) still on top and the peek then looks at two
 (OQ-052, user ruling); only when nothing is left to shuffle does the peek
 look at the single remaining card, which the owner then keeps through the
 same window (user ruling 2026-10-02, L2-Q3 (2)). With no card at all the
-box has no effect.
+box has no effect, and the short draw is logged (``intrigue_draw_short``,
+L2-Q4).
 """
 
 from dataclasses import replace
@@ -26,6 +27,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
+from dune_imperium.rules.intrigue_deck import intrigue_draw_short_events
 
 PEEK_COUNT = 2
 _FRAME = "Intrigue peek frame"
@@ -57,8 +59,13 @@ def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleRe
         )
         return RuleResult(state=state.push_decision(frame))
     if not top:
-        # Nothing face down and nothing to shuffle: no effect (OQ-052).
-        return RuleResult(state=state)
+        # Nothing face down and nothing to shuffle: no effect (OQ-052). The
+        # keep-one draw falls short, which is logged (user ruling
+        # 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
+        return RuleResult(
+            state=state,
+            events=intrigue_draw_short_events(source, player, 1, 0),
+        )
     # With one card left and no discard to shuffle, that card is all there
     # is to look at: the window still opens on it, and keeping it is the
     # only choice (user ruling 2026-10-02, L2-Q3: "①②는 확인 창" -- (2)

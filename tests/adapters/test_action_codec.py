@@ -241,12 +241,15 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     recall_conflict_contract = DomainAction(
         action_id="recall_conflict_agent_for_contract", actor=1
     )
+    # v125 (L2): only the Bloodlines Immediate can be out of reach (OQ-059).
+    hold_icons = DomainAction(action_id="hold_contract_icons", actor=1)
     actions = (
         take_contract,
         trash_intrigue,
         recall_conflict_privilege,
         recall_conflict_agent_card,
         recall_conflict_contract,
+        hold_icons,
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
@@ -285,9 +288,12 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # (resolve_unit_loss_without_unit, +1).
     # v125 (L2): a bank Commander with no choosable Skill is confirmed
     # (resolve_commander_without_skill, +1).
+    # v125 (L2): Contract icons over a market with nothing takeable are held
+    # by the owner's confirm (hold_contract_icons, +1; OQ-059).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
+        + 1
         + 1
         + 1
         + 1
@@ -298,7 +304,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         with pytest.raises(ValueError, match="not present"):
             choam_only.encode(action)
     bloodlines_only = ActionCodec(RulesetConfig(bloodlines=True))
-    for action in (take_contract, trash_intrigue, recall_conflict_contract):
+    for action in (take_contract, trash_intrigue, recall_conflict_contract, hold_icons):
         with pytest.raises(ValueError, match="not present"):
             bloodlines_only.encode(action)
     # recall_conflict_agent_for_imperial_privilege and

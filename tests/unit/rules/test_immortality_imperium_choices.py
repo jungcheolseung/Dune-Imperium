@@ -463,6 +463,14 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     assert nothing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert nothing.state.players[0].intrigue_cards == ()
     assert "intrigue_cards_peeked" not in [event.kind for event in nothing.events]
+    # The keep-one draw falls short, which is logged (user ruling
+    # 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"); the lone card is no shortfall.
+    assert [
+        dict(event.payload)
+        for event in nothing.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+    assert "intrigue_draw_short" not in [event.kind for event in lone.events]
 
 
 def test_imperium_ceremony_through_the_engine() -> None:

@@ -561,8 +561,15 @@ def test_bene_gesserit_is_chosen_with_both_intrigue_piles_empty() -> None:
     chosen = apply_combat_reward_influence(rewarded, bene_gesserit).state
     from dune_imperium.rules.intrigue_deck import resolve_pending_intrigue_draw
 
-    drawn = resolve_pending_intrigue_draw(chosen).state
+    resolved = resolve_pending_intrigue_draw(chosen)
+    drawn = resolved.state
 
+    # The missing card is logged (user ruling 2026-10-02, L2-Q4).
+    assert [
+        dict(event.payload)
+        for event in resolved.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
     assert drawn.decision_stack == ()
     assert drawn.pending_intrigue_draws == ()
     assert drawn.players[0].influence.bene_gesserit == 4

@@ -113,15 +113,16 @@ from dune_imperium.rules.combat_deployment import (
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     apply_contract_completion,
+    apply_contract_hold,
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
     apply_contract_spy_action,
     apply_exhausted_contract_solari,
+    combat_held_contract_owner,
     complete_alliance_contracts,
-    contract_icons_must_be_held,
     exhausted_contract_choice_is_pending,
+    fizzle_combat_held_contract_icons,
     held_contract_icons_can_open,
-    hold_contract_icons,
     legal_contract_actions,
     legal_contract_intrigue_trash_actions,
     legal_contract_recall_actions,
@@ -797,6 +798,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Contracts
     "take_contract": apply_contract_action,
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,
+    # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
+    "hold_contract_icons": apply_contract_hold,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
@@ -946,8 +949,22 @@ def _settle_finishing(result: RuleResult) -> RuleResult:
 
 
 def _held_contract_owner(state: GameState) -> int | None:
-    """Turn owner whose held Contract icons can reopen the market now."""
+    """Seat whose held Contract icons can reopen the market now.
 
+    The turn's owner, or in the Combat phase the seat whose Conflict reward
+    icons wait while it resolves the rest of its rewards (user ruling
+    2026-10-02, L2-Q2).
+    """
+
+    if state.phase is GamePhase.COMBAT:
+        return next(
+            (
+                seat.player_id
+                for seat in state.players
+                if held_contract_icons_can_open(state, seat.player_id)
+            ),
+            None,
+        )
     player = turn_owner_of(state)
     if player is None or not held_contract_icons_can_open(state, player):
         return None
@@ -966,14 +983,14 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_pending_intrigue_draw(state)
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
-        elif contract_icons_must_be_held(state):
-            # Nothing in a non-empty market is reachable, so the icon waits for
-            # the rest of the turn rather than blocking it (OQ-059).
-            automatic = hold_contract_icons(state)
         elif (held_owner := _held_contract_owner(state)) is not None:
-            # The wait ended inside the same turn -- an Intrigue card arrived,
-            # or a token the owner can take was flipped up. Taking is not
-            # optional, so the market reopens on its own (OQ-057(1)).
+            # The wait ended inside the same turn, or the same seat's
+            # Conflict rewards -- an Intrigue card arrived, or a token the
+            # owner can take was flipped up. Taking is not optional, so the
+            # market reopens on its own (OQ-057(1)). Nothing in a non-empty
+            # market reachable is no longer held unasked: the owner confirms
+            # it with ``hold_contract_icons`` (OQ-059, user ruling
+            # 2026-09-30).
             automatic = open_held_contract_icons(state, held_owner)
         elif skill_choice_is_queued(state):
             automatic = begin_skill_choice(state)
@@ -990,6 +1007,11 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif scouts_effect_can_advance(state):
             # Arrakeen Scouts: the next automatic step of a seat's line.
             automatic = advance_scouts_effect(state)
+        elif combat_held_contract_owner(state) is not None:
+            # A Conflict reward's Contract icons held to the end of that
+            # seat's Conflict rewards fizzle there (user ruling 2026-10-02,
+            # L2-Q2: "보상 끝까지 보류 후 불발").
+            automatic = fizzle_combat_held_contract_icons(state)
         elif state.decision_stack:
             break
         elif scouts_step_is_pending(state):

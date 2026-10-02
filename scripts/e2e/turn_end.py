@@ -19,7 +19,12 @@ turn-end control, in the one place, for every one of these steps, and that
 pressing it is always a single request with no second step afterwards. It
 also checks the row in English (no Hangul, "End turn ▶") at a hold and at
 an explicit-end decision, and pass_endgame_intrigue's own label, once a
-seed search (raw HTTP, no browser) finds one that reaches it.
+seed search (raw HTTP, no browser) finds one that reaches it. At
+finish_agent_turn, pass_combat_intrigue and the English explicit end it
+also checks that the row carries the shortfall badge of a warning on the
+action (held Contract icons that fizzle with the turn, user ruling
+2026-10-02, L2-Q4), worded from the payload in either language, with the
+label unchanged (TURN_END_BADGE_JS).
 """
 
 from __future__ import annotations
@@ -209,6 +214,63 @@ def scenario_non_last_pick(base, browser, seed: int) -> None:
     context.close()
 
 
+# The turn-end row with a shortfall warning on the seat's own explicit
+# turn-end action (sessions.shortfall_warning): held Contract icons that
+# fizzle as the turn ends (OQ-059), warned before the press (user ruling
+# 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"). No seeded game reaches one (300
+# heuristic CHOAM+Bloodlines+Tech games met none), so the serialized fields
+# the server sends (tests/server/test_sessions.py
+# test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose) are
+# put on the live action, the page re-rendered, the row read and the action
+# restored, all in one evaluate so no refresh can come in between.
+TURN_END_BADGE_JS = """(actionId) => {
+  const action = state.actions.actions.find((a) => a.action_id === actionId);
+  const saved = [action.warning, action.shortfall];
+  action.warning = '계약 아이콘 1개 소멸 — 가져갈 수 있는 계약 없음';
+  action.shortfall = [{ kind: 'contract', requested: 1, made: 0 }];
+  render();
+  const rows = [...document.querySelectorAll('.turn-end-row')];
+  const button = rows.length ? rows[0].querySelector('button') : null;
+  const badges = button ? [...button.querySelectorAll('.shortfall-badge')] : [];
+  const shown = {
+    rows: rows.length,
+    marked: rows.length === 1 && rows[0].classList.contains('shortfall'),
+    label: button ? button.firstChild.textContent : null,
+    plain: turnEndButtonLabel(action, state.actions.actions),
+    badges: badges.map((b) => b.textContent),
+    titled: badges.every((b) => b.title === t('render.shortfall_title')),
+  };
+  [action.warning, action.shortfall] = saved;
+  render();
+  shown.after = document.querySelectorAll('.turn-end-row .shortfall-badge').length;
+  return shown;
+}"""
+TURN_END_BADGE = {
+    "ko": "계약 아이콘 1개 소멸 — 가져갈 수 있는 계약 없음",
+    "en": "1 Contract icon(s) fizzle: no Contract you can take",
+}
+
+
+def check_turn_end_badge(page, action_id: str, language: str) -> None:
+    shown = page.evaluate(TURN_END_BADGE_JS, action_id)
+    check.ok(
+        shown["rows"] == 1 and shown["marked"],
+        f"{action_id} with a warning: one turn-end row, marked as a shortfall",
+        shown,
+    )
+    check.ok(
+        shown["badges"] == [TURN_END_BADGE[language]] and shown["titled"],
+        f"{action_id} with a warning: the row carries the badge ({language})",
+        shown,
+    )
+    check.ok(
+        shown["label"] == shown["plain"],
+        f"{action_id} with a warning: the label is unchanged before the badge",
+        shown,
+    )
+    check.ok(shown["after"] == 0, f"{action_id}: no badge without a warning", shown)
+
+
 def _not_a_panel_item(page, index: int) -> bool:
     return not page.evaluate(
         "[...document.querySelectorAll('#actions .action-item')]"
@@ -233,6 +295,7 @@ def check_finish_agent_turn(page, rec) -> None:
         "labelled plainly",
         row.inner_text(),
     )
+    check_turn_end_badge(page, "finish_agent_turn", "ko")
 
     posts = rec.count("POST", "/actions")
     confirms = rec.count("POST", "/confirm")
@@ -322,6 +385,7 @@ def check_pass_combat_intrigue(page, rec) -> None:
         "labelled Pass · End turn",
         row.inner_text(),
     )
+    check_turn_end_badge(page, "pass_combat_intrigue", "ko")
 
     posts = rec.count("POST", "/actions")
     row.click()
@@ -446,6 +510,8 @@ def scenario_english(base, browser) -> None:
         ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
         if not seen_explicit and any(i in EXPLICIT_TURN_END_IDS for i in ids):
             check_row("an explicit-end decision")
+            explicit = next(i for i in ids if i in EXPLICIT_TURN_END_IDS)
+            check_turn_end_badge(page, explicit, "en")
             seen_explicit = True
             page.click(".turn-end-row button")
             assert settled(page, 20)
