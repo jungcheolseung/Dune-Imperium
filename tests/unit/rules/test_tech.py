@@ -4,7 +4,9 @@ Rule source: ``docs/rules/bloodlines.md`` section 5 [Bloodlines pp. 6-7, 12]
 and the eighteen Tech tile faces transcribed on 2026-09-07.
 """
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -61,6 +63,11 @@ from dune_imperium.rules.tech import (
 )
 from dune_imperium.simulation.invariants import check_observation_privacy
 from dune_imperium.simulation.sweep import run_checked_game
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 TECH = RulesetConfig(bloodlines=True, tech_module=True)
 TECH_CHOAM = RulesetConfig(bloodlines=True, tech_module=True, choam_module=True)
@@ -558,6 +565,20 @@ def _decider(state: GameState) -> int:
     return decision.owner
 
 
+def _end_open_agent_turn(state: GameState) -> GameState:
+    # Every Agent turn ends only through its owner's "턴 종료", even with
+    # nothing left to resolve (OQ-095 (1)): the owner's Agent-turn frame
+    # stays on top with the end offered, and pressing it opens the next
+    # unrevealed seat's turn.
+    assert state.decision_stack[-1].kind == "agent_effects"
+    owner = _decider(state)
+    assert DomainAction("finish_agent_turn", owner) in (
+        UprisingRulesEngine().legal_actions(state, owner)
+    )
+    ended: GameState = finish_agent_turn(state)
+    return ended
+
+
 def _servo_visit(leader_id: str, **overrides: object) -> GameState:
     return _visit(
         _turn_state(_owner(leader_id=leader_id, **overrides), stacks=SERVO_STACKS),
@@ -592,9 +613,12 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
         "tech_id": "servo_receivers",
         "troops": 1,
     }
-    # Nothing else was pending at Assembly Hall: the turn moved on.
-    assert result.state.decision_stack[-1].kind == "turn"
-    assert _decider(result.state) == 1
+    # Nothing else was pending at Assembly Hall: the owner's turn stays open
+    # until its end is pressed, which then moves on (OQ-095).
+    assert _decider(result.state) == 0
+    ended = _end_open_agent_turn(result.state)
+    assert ended.decision_stack[-1].kind == "turn"
+    assert _decider(ended) == 1
 
     drawn = apply_tech_acquisition(
         _servo_visit("muad_dib"), _tech_actions(state)["servo_receivers"]
@@ -621,7 +645,9 @@ def test_servo_receivers_opens_a_signet_choice_frame() -> None:
     done = engine.apply(opened, trash).state
     assert dict(trash.arguments)["card_id"] in done.players[0].trashed
     assert all(frame.kind != "leader_signet" for frame in done.decision_stack)
-    assert _decider(done) == 1
+    # Back in the owner's open Agent turn; its end hands over (OQ-095).
+    assert _decider(done) == 0
+    assert _decider(_end_open_agent_turn(done)) == 1
 
 
 def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
@@ -694,15 +720,22 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
         DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0),
     )
 
-    seat = declined.state.players[0]
-    assert "recall_conflict_agent_for_imperial_privilege" not in {
-        action.action_id for action in engine.legal_actions(declined.state, 0)
-    }
+    legal = {action.action_id for action in engine.legal_actions(declined.state, 0)}
+    assert "recall_conflict_agent_for_imperial_privilege" not in legal
+    # With no other Agent the owner confirms the skipped recall (user ruling
+    # 2026-09-30); the card is drawn then (OQ-023).
+    assert "resolve_imperial_privilege_without_recall" in legal
+    confirmed = engine.apply(
+        declined.state,
+        DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
+    )
+
+    seat = confirmed.state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
     assert len(seat.hand) == hand_before + 1
     assert "imperial_privilege_recall_skipped" in {
-        event.kind for event in declined.events
+        event.kind for event in confirmed.events
     }
 
 
@@ -785,7 +818,10 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
         apply_agent_card_contract_completion,
         legal_agent_card_contract_completion_actions,
     )
-    from dune_imperium.rules.contracts import legal_contract_recall_actions
+    from dune_imperium.rules.contracts import (
+        apply_contract_recall_action,
+        legal_contract_recall_actions,
+    )
 
     choam_demands = "imperium:choam_demands:0"
     engine = UprisingRulesEngine()
@@ -823,10 +859,17 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
     completion = legal_agent_card_contract_completion_actions(fighting, 0)[0]
     completed = apply_agent_card_contract_completion(fighting, completion)
 
+    # The reward's recall window opens with only the confirm (user ruling
+    # 2026-09-30); confirming fizzles it.
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert completed.state.decision_stack[-1].kind == "contract_reward_recall"
+    assert legal_contract_recall_actions(completed.state, 0) == (confirm,)
+    fizzled = apply_contract_recall_action(completed.state, confirm)
     assert any(
-        event.kind == "contract_recall_unavailable" for event in completed.events
+        event.kind == "contract_recall_unavailable" for event in fizzled.events
     )
-    assert legal_contract_recall_actions(completed.state, 0) == ()
+    assert fizzled.state.decision_stack[-1].kind == "agent_effects"
+    assert fizzled.state.players[0].agent_in_conflict == 1
 
 
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
@@ -836,7 +879,8 @@ def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"
-    assert _decider(result.state) == 1
+    assert _decider(result.state) == 0
+    assert _decider(_end_open_agent_turn(result.state)) == 1
 
 
 def test_servo_receivers_signet_outside_an_agent_turn() -> None:
@@ -891,9 +935,10 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
     # Servo-Receivers uses the Leader's Signet Ring ability [Main p. 20]
     # [Servo-Receivers Tech tile] in its own leader_signet frame (OQ-062).
     # Every choice path must close that frame and hand control back to the
-    # host: the next seat's turn after the Landsraad visit, or the owner's
-    # open Reveal turn. A Signet handler that writes through the Agent box
-    # (advance_after_effect / current_agent_effect_context) instead of
+    # host: the owner's open Agent turn after the Landsraad visit (whose
+    # end, pressed by the owner, opens the next seat's turn: OQ-095), or the
+    # owner's open Reveal turn. A Signet handler that writes through the
+    # Agent box (advance_after_effect / current_agent_effect_context) instead of
     # _store_signet / _signet_context breaks this (merge guard for Signet
     # handler changes on other branches).
     engine = UprisingRulesEngine()
@@ -907,7 +952,7 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
     )
     if host == "landsraad":
         state = _visit(_turn_state(owner, stacks=SERVO_STACKS), "assembly_hall")
-        expected = ("turn", 1)
+        expected = ("agent_effects", 0)
     else:
         revealed = _reveal(_turn_state(owner, stacks=SERVO_STACKS)).state
         state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
@@ -919,6 +964,9 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         if all(frame.kind != "leader_signet" for frame in current.decision_stack):
             leaves += 1
             assert (current.decision_stack[-1].kind, _decider(current)) == expected
+            if host == "landsraad":
+                ended = _end_open_agent_turn(current)
+                assert (ended.decision_stack[-1].kind, _decider(ended)) == ("turn", 1)
             continue
         actions = engine.legal_actions(current, _decider(current))
         assert actions, "a leader_signet frame must offer a choice"
@@ -962,17 +1010,17 @@ def test_planetary_array_opens_an_optional_trash_after_the_visit() -> None:
     assert len(actions) == 1 + 4 + 1  # hand (Dagger played) + played card
 
 
-def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
-    # 2026-09-26 review round 4, minor (test gap): mutation testing found
-    # that dropping the ``turn_closed`` marker from Planetary Array's own
-    # ``optional_trash_frame`` call (``tech.apply_tech_acquisition``) left
-    # all 1356 rules tests passing; nothing exercised this tile as the
-    # Agent turn's very last effect. Bought here with every other seat
-    # revealed, the acquisition's own ``advance_after_effect`` closes and
-    # reopens a fresh "turn" frame for this same player before the trash
-    # offer even exists; Eliminate Allies' troops must not join it. "그
+def test_planetary_array_last_effect_trash_credits_this_turn() -> None:
+    # Planetary Array bought as the Agent turn's very last effect, with
+    # every other seat revealed (2026-09-26 review round 4 added this
+    # scenario). The turn no longer closes with that effect: it stays open
+    # until its owner presses the end, and a follow-up the last effect left
+    # behind resolves inside it, so what it recruits counts for this turn
+    # (user ruling OQ-095 (1), (3), docs/rules/open-questions.md). "그
     # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
-    # 있다..." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    # 있다." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137):
+    # Eliminate Allies' trash troops join this turn's recruits. The end then
+    # reopens this same seat's next turn with a fresh count.
     eliminate_allies = "imperium:eliminate_allies:0"
     owner = _owner(hand=(*starting_deck_instance_ids(0)[:5], eliminate_allies))
     state = _turn_state(
@@ -988,7 +1036,11 @@ def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
     visited = _visit(state, "assembly_hall")
     bought = _acquire(visited, "planetary_array")
     assert bought.decision_stack[-1].kind == "optional_trash"
-    assert dict(bought.decision_stack[-1].context)["turn_closed"] is True
+    # The trash offer sits on the owner's still-open Agent turn.
+    beneath = bought.decision_stack[-2]
+    assert beneath.kind == "agent_effects"
+    assert isinstance(beneath.decision, PlayerDecision)
+    assert beneath.decision.owner == 0
 
     trash = next(
         a
@@ -998,7 +1050,11 @@ def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
     trashed = apply_optional_trash(bought, trash).state
 
     assert trashed.players[0].troops_garrison == 3 + 2
-    top = trashed.decision_stack[-1]
+    assert _decider(trashed) == 0
+    assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
+
+    ended = _end_open_agent_turn(trashed)
+    top = ended.decision_stack[-1]
     assert top.kind == "turn"
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)
@@ -1030,19 +1086,23 @@ def test_spy_drones_place_two_spies_with_deep_cover() -> None:
     assert LANDSRAAD_POST not in {dict(a.arguments)["post_id"] for a in second}
     done = apply_spy_placement(placed, second[0]).state
     assert done.players[0].spies_supply == 1
-    assert done.decision_stack[-1].kind == "turn"
+    # Both Spies placed, the owner's Agent turn is still open (OQ-095).
+    assert _decider(done) == 0
+    assert _end_open_agent_turn(done).decision_stack[-1].kind == "turn"
 
 
-def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> None:
+def test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn() -> None:
     # Spy Drones' acquire column prints two Spy with Deep Cover icons, and
     # its own flip reads "If you recalled a Spy this turn:" [Spy Drones Tech
     # tile]; with an empty supply "you may first recall one of your Spies
-    # for no effect" [Main pp. 11, 20]. "If you recalled a Spy this turn"
-    # counts the seat's own recalls during its own turn (OQ-044 (d)). Bought
-    # as the turn's last effect by the last seat to reveal, the tile has
-    # already opened that seat's next turn when its Spies are placed; the
-    # recall-first belongs to the closed turn and used to count toward the
-    # next one.
+    # for no effect" [Main pp. 11, 20]. OQ-044 (d) counts "이번 Agent 또는
+    # Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로", the recall-first
+    # included. Bought as the turn's last effect by the last seat to
+    # reveal, the tile no longer closes the turn: its Spies are placed on
+    # the owner's still-open Agent turn, so the recall-first counts for this
+    # turn (user ruling OQ-095 (3), docs/rules/open-questions.md), and the
+    # end the owner presses reopens this seat's next turn with the counter
+    # back at zero.
     posts = (
         "emperor-sardaukar-dutiful-service",
         "arrakis-hagga-basin",
@@ -1061,10 +1121,10 @@ def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> No
     )
     bought = _acquire(_visit(state, "assembly_hall"), "spy_drones")
     assert bought.decision_stack[-1].kind == "spy_placement"
-    next_turn = bought.decision_stack[-3]
-    assert next_turn.kind == "turn"
-    assert isinstance(next_turn.decision, PlayerDecision)
-    assert next_turn.decision.owner == 0
+    open_turn = bought.decision_stack[-3]
+    assert open_turn.kind == "agent_effects"
+    assert isinstance(open_turn.decision, PlayerDecision)
+    assert open_turn.decision.owner == 0
 
     recall = next(
         action
@@ -1081,8 +1141,12 @@ def test_a_spy_drones_recall_after_the_turn_closed_is_not_the_next_turns() -> No
         if action.action_id == "decline_spy_placement"
     )
     done = apply_spy_placement(placed, decline).state
-    assert done.decision_stack[-1].kind == "turn"
-    assert done.players[0].spies_recalled_turn == 0
+    assert _decider(done) == 0
+    assert done.players[0].spies_recalled_turn == 1
+    ended = _end_open_agent_turn(done)
+    assert ended.decision_stack[-1].kind == "turn"
+    assert _decider(ended) == 0
+    assert ended.players[0].spies_recalled_turn == 0
 
     # Bought through a Tech frame opened in the seat's own turn (a Plot, no
     # Agent-turn context), the recall-first is that turn's and still counts.
@@ -1140,11 +1204,28 @@ def test_a_tech_discount_icon_opens_its_own_frame_with_one_spice_off() -> None:
     assert bought.decision_stack[-1].kind == "turn"
 
 
-def test_a_tech_discount_icon_over_empty_stacks_does_nothing() -> None:
+def test_a_tech_discount_icon_over_empty_stacks_opens_with_only_the_refusal() -> None:
+    # User ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    # 창을 연다" (docs/unavailable-options-plan.md section 5): a card's
+    # Acquire Tech with every stack empty and no Secret Project still opens,
+    # offering only decline_tech (OQ-057 (9) "살 수 없으면 거절만"). It used
+    # to emit tech_acquisition_unavailable without asking.
     state = _turn_state(_owner(), stacks=((), (), ()))
-    result = push_tech_acquisition(state, 0, discount=1, source="test")
-    assert result.state is state
-    assert result.events[0].kind == "tech_acquisition_unavailable"
+    opened = push_tech_acquisition(state, 0, discount=1, source="test")
+    assert opened.events == ()
+    assert opened.state.decision_stack[-1].kind == "tech_acquisition"
+    legal = UprisingRulesEngine().legal_actions(opened.state, 0)
+    assert legal == (DomainAction(action_id="decline_tech", actor=0),)
+    declined = apply_tech_acquisition(opened.state, legal[0])
+    assert declined.state.decision_stack == state.decision_stack
+    assert declined.state.players == state.players
+
+    # A Secret Project is still a tile to take with every stack empty.
+    secret = _turn_state(
+        _owner(secret_project_tech_id="training_depot"), stacks=((), (), ())
+    )
+    offered = push_tech_acquisition(secret, 0, discount=1, source="test").state
+    assert "training_depot" in _tech_actions(offered)
 
 
 # --- observation, codec, soundness -------------------------------------------
@@ -1355,6 +1436,66 @@ def test_plasteel_blades_offers_an_extra_skill_after_a_commander_recruit() -> No
     assert seat.commanders_garrison == 1  # no second Commander
 
 
+def test_plasteel_blades_with_no_skill_to_gain_asks_with_only_the_keep() -> None:
+    """Plasteel Blades' extra Skill with every face-up Skill already held:
+    the window opens anyway with only ``decline_skill`` (user ruling
+    2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다";
+    the trash cannot be paid when its effect cannot happen, OQ-071), and the
+    held Skills show greyed out. It used to drop without a trace. Nothing
+    opens when the tile has left play: its trigger source is gone."""
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.display.unavailable import unavailable_choices
+    from dune_imperium.rules.sardaukar import (
+        apply_commander_recruit,
+        apply_skill_choice,
+        begin_skill_choice,
+    )
+
+    skills = skill_tile_instance_ids()
+    owner = _tech_owner(
+        "plasteel_blades",
+        commanders_supply=1,
+        resources=Resources(solari=2),
+        skill_ids=(skills[0], skills[2]),
+    )
+    state = replace(
+        _turn_state(owner, stacks=((), (), ())),
+        skill_face_up=(skills[1], skills[3]),
+        skill_stack=skills[4:],
+        sardaukar_commanders_bank=1,
+    )
+    state = _visit(state, "assembly_hall")
+    recruited = apply_commander_recruit(
+        state, DomainAction(action_id="recruit_sardaukar_commander", actor=0)
+    ).state
+    opened = begin_skill_choice(recruited)
+    assert opened.events == ()
+    assert opened.state.decision_stack[-1].kind == "skill_choice"
+    keep = DomainAction(action_id="decline_skill", actor=0)
+    assert UprisingRulesEngine().legal_actions(opened.state, 0) == (keep,)
+    found = unavailable_choices(opened.state, 0, (keep,))
+    assert found is not None
+    rows = found["rows"]
+    assert isinstance(rows, list)
+    assert {
+        (row["surface"], row["action"]["action_id"], row["code"]) for row in rows
+    } == {("choice", "choose_skill", "held")}
+    assert len(rows) == 2  # two face-up identities, both held
+    kept = apply_skill_choice(opened.state, keep)
+    assert kept.state.players[0].tech_ids == ("plasteel_blades",)
+    assert [event.kind for event in kept.events] == ["tech_trash_declined"]
+
+    # The tile left play before the choice opened: nothing to ask.
+    gone = replace(
+        recruited,
+        players=(replace(recruited.players[0], tech_ids=()), *recruited.players[1:]),
+    )
+    dropped = begin_skill_choice(gone)
+    assert dropped.events == ()
+    assert dropped.state.pending_skill_choices == ()
+    assert dropped.state.decision_stack == gone.decision_stack
+
+
 def test_gene_locked_vault_raises_the_secrets_threshold_to_five() -> None:
     from dune_imperium.rules.board_effects import _secrets_victims
 
@@ -1486,6 +1627,57 @@ def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn(
     )
     quiet = draw_intrigue_cards(other, 1, 1, source="test")
     assert quiet.state.players[1].suspensor_owed == 0
+
+
+def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
+    # OQ-042 (b): what the supply cannot cover is lost, never paid later.
+    # Nothing is left to choose, so no window opens, but the troops left
+    # over are logged, a partial shortfall included (user ruling 2026-10-02,
+    # L2-Q4: "로그 + 클릭 전 경고").
+    from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    def shortfalls(result: RuleResult) -> list[dict[str, object]]:
+        return [
+            dict(event.payload)
+            for event in result.events
+            if event.kind == "suspensor_deployment_unavailable"
+        ]
+
+    partial = _turn_state(
+        _tech_owner("suspensor_suits", troops_supply=1, troops_garrison=11),
+        stacks=((), (), ()),
+    )
+    paid = deploy_suspensor_troops(draw_intrigue_cards(partial, 0, 2, source="t"))
+    seat = paid.state.players[0]
+    assert seat.suspensor_owed == 0
+    assert seat.troops_conflict == 1 and seat.troops_supply == 0
+    assert shortfalls(paid) == [{"deployed": 1, "player": 0, "troops": 1}]
+    deployed = [event for event in paid.events if event.kind == "troops_deployed"]
+    assert [dict(event.payload)["count"] for event in deployed] == [1]
+
+    empty = replace(
+        partial,
+        players=(
+            replace(partial.players[0], troops_supply=0, troops_garrison=12),
+            *partial.players[1:],
+        ),
+    )
+    lost = deploy_suspensor_troops(draw_intrigue_cards(empty, 0, 2, source="t"))
+    assert lost.state.players[0].troops_conflict == 0
+    assert shortfalls(lost) == [{"deployed": 0, "player": 0, "troops": 2}]
+    assert "troops_deployed" not in [event.kind for event in lost.events]
+
+    # A full supply: nothing to log.
+    full = deploy_suspensor_troops(
+        draw_intrigue_cards(
+            _turn_state(_tech_owner("suspensor_suits"), stacks=((), (), ())),
+            0,
+            2,
+            source="t",
+        )
+    )
+    assert shortfalls(full) == []
 
 
 def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
@@ -1984,19 +2176,33 @@ def test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal() ->
     assert legal_tech_reveal_actions(placed, 0) == ()
     assert legal_finish_reveal_actions(placed, 0) != ()
 
-    # Without any Spy left (all boxed) the effect lapses at the finish.
+    # Without any Spy left (all boxed) the Spy is still offered and its
+    # placement window offers only the decline (OQ-057 (14)), so its owner
+    # answers it rather than it lapsing unasked at the finish (user ruling
+    # 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    # 연다"). Synthetic: Advanced Data Analysis boxes at most one Spy.
     boxed = _tech_owner(
         "panopticon",
         hand=starting_deck_instance_ids(0)[:5],
         spies_supply=0,
         spies_boxed=3,
     )
-    lapsing = _reveal(_turn_state(boxed, stacks=((), (), ()))).state
-    lapsing = apply_reveal_gain(lapsing, legal_reveal_gain_actions(lapsing, 0)[0]).state
-    assert legal_tech_reveal_actions(lapsing, 0) == ()
-    (finish,) = legal_finish_reveal_actions(lapsing, 0)
-    finished = finish_reveal_turn(lapsing, finish)
-    assert any(e.kind == "tech_reveal_unavailable" for e in finished.events)
+    empty = _reveal(_turn_state(boxed, stacks=((), (), ()))).state
+    empty = apply_reveal_gain(empty, legal_reveal_gain_actions(empty, 0)[0]).state
+    (place,) = legal_tech_reveal_actions(empty, 0)
+    assert place.action_id == "place_tech_spy"
+    assert legal_finish_reveal_actions(empty, 0) == ()
+    opened = apply_place_tech_spy(empty, place).state
+    assert opened.decision_stack[-1].kind == "spy_placement"
+    decline = DomainAction(action_id="decline_spy_placement", actor=0)
+    assert legal_spy_placement_actions(opened, 0) == (decline,)
+    declined = apply_spy_placement(opened, decline)
+    assert [event.kind for event in declined.events] == ["spy_placement_unavailable"]
+    assert declined.state.decision_stack[-1].kind == "reveal"
+    assert legal_tech_reveal_actions(declined.state, 0) == ()
+    (finish,) = legal_finish_reveal_actions(declined.state, 0)
+    finished = finish_reveal_turn(declined.state, finish)
+    assert not any("unavailable" in event.kind for event in finished.events)
 
 
 def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> None:

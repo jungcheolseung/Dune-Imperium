@@ -613,9 +613,15 @@ function turnEndButtonLabel(action, actions) {
 
 /* The one turn-end control, always the same row in the same place: a hold
    waiting for confirmTurn(), or the seat's own explicit turn-end action
-   applied directly (onClick). Never marked irreversible — it is built by
-   hand, not through actionItem(), so no badge is possible. */
-function appendTurnEndRow(container, label, onClick) {
+   applied directly (onClick). Built by hand, not through actionItem(), so
+   it is never marked irreversible (a turn end always seals the turn). For
+   the explicit action (`action`) it carries the shortfall badge of the
+   server's dry run all the same (appendShortfallBadge): held Contract icons
+   that fizzle as the turn ends (OQ-059), or the passer's own short reward
+   on the last Combat Intrigue pass, warned before the press (user ruling
+   2026-10-02, L2-Q4: "로그 + 클릭 전 경고"). A hold has no action, and no
+   badge: its step was already taken. */
+function appendTurnEndRow(container, label, onClick, action = null) {
   const row = document.createElement("div");
   row.className = "confirm-row turn-end-row";
   const button = document.createElement("button");
@@ -623,6 +629,7 @@ function appendTurnEndRow(container, label, onClick) {
   button.textContent = label;
   button.disabled = state.busy;
   button.addEventListener("click", onClick);
+  if (action) appendShortfallBadge(row, button, action);
   row.appendChild(button);
   container.appendChild(row);
 }
@@ -836,6 +843,13 @@ function renderBanner() {
         waitingHint(summary.confirmation);
       meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
       info.append(prompt, meta);
+    } else if (decision.owner !== state.viewSeat && decision.turn_end_ready) {
+      /* Another seat's Agent turn has nothing mandatory left; it ends with
+         that seat's own press (OQ-095), optional steps first if it likes. */
+      prompt.textContent =
+        t("render.waiting_turn_end", { name: playerLabel(decision.owner) }) +
+        waitingHint(decision.owner);
+      info.append(prompt);
     } else if (decision.owner !== state.viewSeat) {
       prompt.textContent =
         t("render.waiting_decision", { name: playerLabel(decision.owner) }) +
@@ -857,6 +871,7 @@ function renderBanner() {
           info,
           turnEndButtonLabel(turnEnd, state.actions.actions),
           () => applyAction(turnEnd.index),
+          turnEnd,
         );
       }
       if (state.actions) renderActionPanel(actionsBox, turnEnd);
@@ -1272,14 +1287,17 @@ function unavailableBadge(line) {
    unavailable_choices) lists what the seat's own decision offers that it
    cannot take right now, with the reason — a card of the Reveal shop it
    cannot afford, one of its Intrigue cards whose cost or condition fails,
-   an effect still waiting on its condition. Each is a row shaped like an
-   action row that takes no click; its action is described like a legal
-   one (describeAction, no index), and `refs` dims the table cards with
-   the reason as their title (visualCard). Every snapshot works them out
-   again, so a row becomes an ordinary action row as soon as the seat can
-   take it, and the reverse. */
+   an effect still waiting on its condition, a branch of an open choice it
+   cannot take ("choice": Desert Power's sandworm without Maker Hooks, a
+   recall with no other Agent to recall).
+   Each is a row shaped like an action row that takes no click; its action
+   is described like a legal one (describeAction, no index), and `refs`
+   dims the table cards with the reason as their title (visualCard). Every
+   snapshot works them out again, so a row becomes an ordinary action row
+   as soon as the seat can take it, and the reverse. */
 const UNAVAILABLE_HEADINGS = {
   acquire: "render.unavailable_acquire_heading",
+  choice: "render.unavailable_choice_heading",
   intrigue: "render.unavailable_intrigue_heading",
   waiting: "render.unavailable_waiting_heading",
 };
@@ -1342,7 +1360,8 @@ function appendUnavailableRows(box, surfaces) {
    follows the seat's resources until the icon is resolved. The seat may
    choose its subcommittee any time later in that turn (OQ-076), so with
    none joinable at once but some still open it says so and gives the
-   reasons; with none open at all the chance would lapse. */
+   reasons; with none open at all (every line "claimed") it says none is
+   left, and the seat will only be offered the decline (OQ-076 (c)). */
 function subcommitteePreview(preview) {
   const box = document.createElement("div");
   box.className = "subcommittee-preview";
@@ -1491,7 +1510,7 @@ function renderRevealPanel(box, actions) {
      `unavailable`): a deferred Reveal choice still waiting on its
      condition, an Intrigue card it cannot play, the cards it cannot
      afford. */
-  appendUnavailableRows(box, ["waiting", "intrigue"]);
+  appendUnavailableRows(box, ["choice", "waiting", "intrigue"]);
   if (buys.length) {
     heading(t("render.buyable_cards_heading"));
     for (const action of buys) {
@@ -1510,6 +1529,51 @@ function tableRefs(action) {
   return actionRefs(action).filter(
     (ref) => ref.includes(":") || state.catalog.spaces[ref] || state.catalog.posts[ref]
   );
+}
+
+/* The words for each shortfall kind of the server's dry run (sessions.py
+   shortfall_details). */
+const SHORTFALL_TEXT = {
+  contract: "render.shortfall_contract",
+  intrigue: "render.shortfall_intrigue",
+  specimens: "render.shortfall_specimens",
+  suspensor: "render.shortfall_suspensor",
+  troops: "render.shortfall_troops",
+};
+
+function shortfallText(short) {
+  const tile = lookup("suspensor_suits", "tech");
+  return t(SHORTFALL_TEXT[short.kind], {
+    requested: short.requested,
+    made: short.made,
+    short: short.requested - short.made,
+    tile: tile ? tile.name : "Suspensor Suits",
+  });
+}
+
+/* The warning badge of a step the server dry-ran (sessions.py
+   shortfall_warning), on `button`, with `row` marked .shortfall; nothing
+   when the step has no warning. The step does less than printed: the troop
+   supply cannot cover a specimen or a recruit (OQ-030, OQ-049), or nothing
+   is left to choose (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고")
+   -- an Intrigue draw the Intrigue deck and discard cannot cover together,
+   Suspensor Suits troops that cannot deploy (OQ-042), held Contract icons
+   that fizzle as the turn ends (OQ-059). Shared by actionItem() and the
+   turn-end row (appendTurnEndRow), which is built by hand. */
+function appendShortfallBadge(row, button, action) {
+  if (!action.warning) return;
+  row.classList.add("shortfall");
+  const badge = document.createElement("span");
+  badge.className = "shortfall-badge";
+  /* The server's `warning` is Korean; `shortfall` is the same as data. */
+  const known = (action.shortfall || []).filter(
+    (short) => SHORTFALL_TEXT[short.kind],
+  );
+  badge.textContent = known.length
+    ? known.map(shortfallText).join(" · ")
+    : action.warning;
+  badge.title = t("render.shortfall_title");
+  button.appendChild(badge);
 }
 
 function actionItem(action, onApply, zone) {
@@ -1538,28 +1602,7 @@ function actionItem(action, onApply, zone) {
     button.appendChild(strengthPreview(action.strength_after));
   }
   if (action.reveal_preview) button.appendChild(revealPreview(action.reveal_preview));
-  if (action.warning) {
-    /* The server dry-ran the step: the troop supply cannot cover what the
-       effect asks for (OQ-030, OQ-049), so the action does less than printed. */
-    wrap.classList.add("shortfall");
-    const badge = document.createElement("span");
-    badge.className = "shortfall-badge";
-    /* The server's `warning` is Korean; `shortfall` is the same as data. */
-    badge.textContent = action.shortfall
-      ? action.shortfall
-          .map((short) =>
-            t(
-              short.kind === "troops"
-                ? "render.shortfall_troops"
-                : "render.shortfall_specimens",
-              { requested: short.requested, made: short.made },
-            ),
-          )
-          .join(" · ")
-      : action.warning;
-    badge.title = t("render.shortfall_title");
-    button.appendChild(badge);
-  }
+  appendShortfallBadge(wrap, button, action);
   wrap.appendChild(button);
 
   const entries = actionPreviewEntries(action);

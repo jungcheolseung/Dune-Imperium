@@ -1,10 +1,14 @@
 """When a human seat's turn is over, read off the engine's decision stack.
 
-The play server holds every turn end of a human seat until that seat
-presses "턴 종료" (project convention, not a rule; ``docs/rules/
-player-turns.md``). Which steps end a turn is a reading of the decision
-stack the engine already keeps, so the server needs no rule logic of its
-own; this module is that reading and nothing else.
+Every turn end of a human seat is exactly one press (project convention,
+not a rule; ``docs/rules/player-turns.md``). An Agent turn ends only through
+its owner's ``finish_agent_turn`` (user ruling OQ-095), a Reveal turn
+through ``finish_reveal``, and a turn-passing card is that press itself; the
+server holds the remaining unit ends (a Leader pick, Conflict rewards, a
+Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료".
+Which steps end a turn is a reading of the decision stack the engine
+already keeps, so the server needs no rule logic of its own; this module is
+that reading and nothing else.
 
 A seat's *unit* is its own run of decisions: an Agent or Reveal turn in
 Player Turns, or its share of a phase outside them (a Leader pick, a Combat
@@ -20,6 +24,8 @@ from typing import Final
 
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.combat_deployment import FINISHING_KEY
+from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
 from dune_imperium.rules.frames import FrameKind
 
 # Engine actions whose whole meaning is "I am done": pressing one is the
@@ -37,9 +43,13 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
 )
 
 # Frames an opponent answers in the middle of another seat's unit
-# (Covert Operation's discard, Holy War and False Orders' Spy moves and
-# unit loss). Holy War can stack them above the next seat's turn before
-# that turn has started, so they are recognised by kind, not by position.
+# (Covert Operation's discard, Holy War and False Orders' Spy moves, Holy
+# War's unit loss). Since every Agent turn ends only through its owner's
+# press (OQ-095), they always sit above the card player's still-open Agent
+# turn: an answer belongs to that seat's unit, never opens one of the
+# answering seat's own, and the owner's turn end is not offered until
+# every opponent has answered (``agent_turn_end_ready``). They are
+# recognised by kind, so an answer is read as one wherever it sits.
 INTERRUPT_KINDS: Final = frozenset(
     {
         FrameKind.OPPONENT_CARD_DISCARD,
@@ -48,12 +58,17 @@ INTERRUPT_KINDS: Final = frozenset(
     }
 )
 
+# Events of a turn-passing card: Withdrawn ("pass your turn") and Litany
+# Against Fear ("draw a card and pass your turn"). Playing one is the seat's
+# turn end itself, like an explicit turn-end action -- "카드 효과로 턴 넘김
+# 버튼을 눌렀다면 그건 턴 종료를 누른거랑 같으니까" (user, 2026-10-01,
+# OQ-095 (6)) -- so no press follows it.
+TURN_PASS_EVENTS: Final = frozenset({"turn_passed", "turn_start_card_played"})
+
 # Events that mean a seat has taken its turn: an Agent went out, or the
-# turn was passed (Withdrawn, Litany Against Fear). A Reveal turn ends only
-# through ``finish_reveal``, which is explicit.
-TURN_TAKING_EVENTS: Final = frozenset(
-    {"agent_placed", "turn_passed", "turn_start_card_played"}
-)
+# turn was passed. A Reveal turn ends only through ``finish_reveal``, which
+# is explicit.
+TURN_TAKING_EVENTS: Final = frozenset({"agent_placed", *TURN_PASS_EVENTS})
 
 
 _TURN_KINDS: Final = (FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
@@ -127,3 +142,47 @@ def turn_start_seat(state: GameState) -> int | None:
     if top.kind == FrameKind.TURN and isinstance(top.decision, PlayerDecision):
         return top.decision.owner
     return None
+
+
+def finishing_seat(state: GameState) -> int | None:
+    """Return the seat whose pressed Agent-turn end is still resolving.
+
+    Only Usurp's trash at the turn's end leaves follow-ups (a Skill choice, a
+    reshuffle) after the press; the engine then closes the turn, or reopens
+    it for what the trash produced (OQ-095 (4)-(5)). The flagged frame sits
+    below those follow-ups, so the whole stack is read.
+    """
+
+    for frame in state.decision_stack:
+        if (
+            frame.kind == FrameKind.AGENT_EFFECTS
+            and isinstance(frame.decision, PlayerDecision)
+            and dict(frame.context).get(FINISHING_KEY) is True
+        ):
+            return frame.decision.owner
+    return None
+
+
+def agent_turn_end_ready(state: GameState) -> int | None:
+    """Return the seat whose open Agent turn has nothing mandatory left.
+
+    The seat may still take optional steps (a Plot Intrigue, a deployment,
+    a specimen return) before its one press. Read from public facts only --
+    the effect frame's pending flags and the Contracts it must complete --
+    so every seat may be told; a stalled Agent box (OQ-057), whose judgment
+    can depend on the owner's hand, counts as not ready here.
+    """
+
+    if not state.decision_stack:
+        return None
+    top = state.decision_stack[-1]
+    if top.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        top.decision, PlayerDecision
+    ):
+        return None
+    context = dict(top.context)
+    if context.get(FINISHING_KEY) is True:
+        return None
+    if agent_turn_has_other_pending_effects(context, state.players):
+        return None
+    return top.decision.owner

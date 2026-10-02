@@ -330,14 +330,11 @@ def push_scouts_effect(
     *,
     source: str,
     exclude_space: str = "",
-    turn_closed: bool = False,
 ) -> GameState:
     """Open the frame that resolves one seat's line of a Scouts item.
 
     ``exclude_space`` is the space of the Agent that just took the High
-    Council seat (Contingencies recalls another, OQ-075). ``turn_closed``
-    marks a line whose seat's turn has already closed, so nothing it grants
-    joins a turn that opened since (OQ-044 (d)).
+    Council seat (Contingencies recalls another, OQ-075).
     """
 
     frame = DecisionFrame(
@@ -354,7 +351,6 @@ def push_scouts_effect(
             ("player", player),
             ("source", source),
             ("step", 0),
-            ("turn_closed", turn_closed),
         ),
     )
     return state.push_decision(frame)
@@ -475,26 +471,19 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
             ),
         )
     moved = _moved(state, frame, step=step + 1)
-    return _apply_automatic(
-        moved,
-        player,
-        steps[step],
-        source=f"{source}:{step}",
-        turn_closed=context.get("turn_closed") is True,
-    )
+    return _apply_automatic(moved, player, steps[step], source=f"{source}:{step}")
 
 
 def _credit_turn(
     state: GameState,
     player: int,
     *,
-    turn_closed: bool,
     troops: int = 0,
     spice_spent: int = 0,
 ) -> GameState:
     """Count recruits and spice spent toward ``player``'s own open turn only."""
 
-    if turn_closed or turn_owner_of(state) != player or not (troops or spice_spent):
+    if turn_owner_of(state) != player or not (troops or spice_spent):
         return state
     return update_turn_recruits(state, troops_recruited=troops, spice_spent=spice_spent)
 
@@ -505,11 +494,13 @@ def _apply_automatic(
     step: ScoutsStep,
     *,
     source: str,
-    turn_closed: bool,
 ) -> RuleResult:
     owner = state.players[player]
     match step:
         case PayResources(solari=solari, spice=spice, water=water):
+            # Every spend adds to ``spice_spent_turn``, so a line's cost inside
+            # the seat's open turn is not read as lost gains by Hungry for
+            # Spice or "gained spice this turn" (OQ-063, OQ-095 (3)).
             paid = replace(
                 owner,
                 resources=replace(
@@ -518,11 +509,10 @@ def _apply_automatic(
                     spice=owner.resources.spice - spice,
                     water=owner.resources.water - water,
                 ),
+                spice_spent_turn=owner.spice_spent_turn + spice,
             )
             next_state = replace(state, players=replace_player(state.players, paid))
-            next_state = _credit_turn(
-                next_state, player, turn_closed=turn_closed, spice_spent=spice
-            )
+            next_state = _credit_turn(next_state, player, spice_spent=spice)
             return RuleResult(
                 state=next_state,
                 events=(
@@ -593,14 +583,13 @@ def _apply_automatic(
                     player,
                     _ALL_POSTS,
                     source=source,
-                    turn_closed=turn_closed,
                 )
             )
         case TrashPersonalCard():
             # The trash icon: optional [Main p. 20].
             return RuleResult(
                 state=state.push_decision(
-                    optional_trash_frame(player, source, turn_closed=turn_closed)
+                    optional_trash_frame(player, source)
                 )
             )
         case AcquireReserveCardToHand(card_id=card_id):
@@ -612,7 +601,6 @@ def _apply_automatic(
                 card_id,
                 to_hand=True,
                 source=source,
-                credit_turn_recruits=not turn_closed,
             )
             return acquired.result
         case GainInfluence() if step.requires_choice:
@@ -670,10 +658,7 @@ def _apply_automatic(
         raise NotImplementedError(f"Scouts step not supported yet: {step!r}")
     outcome = apply_rewards(state, player, (cast(Reward, step),), source=source)
     next_state = _credit_turn(
-        outcome.result.state,
-        player,
-        turn_closed=turn_closed,
-        troops=outcome.troops_recruited,
+        outcome.result.state, player, troops=outcome.troops_recruited
     )
     return RuleResult(state=next_state, events=outcome.result.events)
 
@@ -857,7 +842,6 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
     player, _, option, step, picked = _cursor(frame)
     context = dict(frame.context)
     source = f"{context_str(context, 'source', owner=_EFFECT_FRAME)}:{step}"
-    turn_closed = context.get("turn_closed") is True
     current = option_steps(option)[step]
     if action.action_id == "scouts_return_specimens":
         # The recruit step itself stays next; it is automatic from here on.
@@ -902,7 +886,7 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
             )
         case "scouts_trash_card":
             return trash_personal_card(
-                cursor_state, player, value, source=pick_source, turn_closed=turn_closed
+                cursor_state, player, value, source=pick_source
             )
         case "scouts_trash_intrigue":
             next_owner = replace(
@@ -927,8 +911,7 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
             recalled = replace(
                 owner,
                 spies_supply=owner.spies_supply + 1,
-                spies_recalled_turn=owner.spies_recalled_turn
-                + (0 if turn_closed else 1),
+                spies_recalled_turn=owner.spies_recalled_turn + 1,
                 spy_post_ids=tuple(p for p in owner.spy_post_ids if p != value),
             )
             return RuleResult(
@@ -1094,7 +1077,6 @@ def offer_only_line(
     *,
     source: str,
     exclude_space: str = "",
-    turn_closed: bool = False,
 ) -> RuleResult:
     """Resolve the one line a seat is owed: at once, or as its choice.
 
@@ -1117,7 +1099,6 @@ def offer_only_line(
                 index,
                 source=source,
                 exclude_space=exclude_space,
-                turn_closed=turn_closed,
             )
         )
     if not line_is_offered(state, player, option, exclude_space=exclude_space):
@@ -1143,7 +1124,6 @@ def offer_only_line(
             ("only_option", index),
             ("player", player),
             ("source", source),
-            ("turn_closed", turn_closed),
             ("volunteer", -1),
         ),
     )
@@ -1158,14 +1138,11 @@ def offer_secret_reward(
     return offer_only_line(state, player, event_id, pick, source=source)
 
 
-def _line_flags(context: Mapping[str, object]) -> tuple[str, bool]:
-    """An only-line frame's ``exclude_space`` and ``turn_closed``."""
+def _line_exclude_space(context: Mapping[str, object]) -> str:
+    """An only-line frame's ``exclude_space``."""
 
     excluded = context.get("exclude_space", "")
-    return (
-        excluded if isinstance(excluded, str) else "",
-        context.get("turn_closed") is True,
-    )
+    return excluded if isinstance(excluded, str) else ""
 
 
 def legal_scouts_choice_actions(
@@ -1181,7 +1158,7 @@ def legal_scouts_choice_actions(
     only = context.get("only_option")
     if type(only) is int:
         # The one line a seat is owed, with a cost: take it or leave it.
-        excluded, _ = _line_flags(context)
+        excluded = _line_exclude_space(context)
         passable = True
         indices: tuple[int, ...] = (
             (only,)
@@ -1233,7 +1210,7 @@ def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleRe
     if event is not None and event.kind is EventKind.SHARED:
         volunteer = context_int(context, "volunteer", owner=_CHOICE_FRAME)
         return _rebuild(popped, action.actor, volunteer, source=source)
-    excluded, turn_closed = _line_flags(context)
+    excluded = _line_exclude_space(context)
     return RuleResult(
         state=push_scouts_effect(
             popped,
@@ -1242,7 +1219,6 @@ def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleRe
             index,
             source=source,
             exclude_space=excluded,
-            turn_closed=turn_closed,
         ),
         events=(
             GameEvent(
@@ -1441,8 +1417,8 @@ def _offer_source(state: GameState, player: int) -> str:
 def _close_offer(state: GameState, player: int) -> GameState:
     """Retire the seat's choice on its turn frame, now back on top.
 
-    The Agent-turn effect frame finishes the icon and advances, which may
-    close the turn (``advance_after_effect``); the Reveal frame drops the
+    The Agent-turn effect frame finishes the icon and advances (the turn
+    stays open until its owner ends it, OQ-095); the Reveal frame drops the
     offer.
     """
 
@@ -1491,8 +1467,6 @@ def apply_subcommittee_action(state: GameState, action: DomainAction) -> RuleRes
                 (subcommittee_id, player),
             ),
         )
-        # The choice may have been the visit's last effect: the line's
-        # recruits and spice then belong to no open turn (OQ-044 (d)).
         opened = push_scouts_effect(
             joined,
             player,
@@ -1500,7 +1474,6 @@ def apply_subcommittee_action(state: GameState, action: DomainAction) -> RuleRes
             0,
             source=f"{source}:{subcommittee_id}",
             exclude_space=excluded,
-            turn_closed=joined.decision_stack[-1].kind == FrameKind.TURN,
         )
         return RuleResult(
             state=opened,

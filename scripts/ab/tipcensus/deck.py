@@ -40,21 +40,24 @@ slice for the full file:line enumeration; summarized here:
   stack). ``imperium_set_aside`` (Manipulate's borrowed Row card, not yet
   paid for), ``twisted_deck``/``navigation_*`` (other card types entirely --
   Twisted Intrigue and Navigation cards, not personal Imperium/Reserve/
-  Tleilaxu cards) and ``usurped_row_card_id`` (a borrowed Row card that
-  "leaves the game when the Agent turn closes" [card face], never owned) are
-  therefore excluded from "owned personal cards".
+  Tleilaxu cards) and ``usurped_row_card_id`` (a borrowed Row card Usurp
+  trashes "at the end of the turn" [card face], never owned) are therefore
+  excluded from "owned personal cards".
 - Usurp (Immortality) grafts an Imperium Row card into play without
   acquiring it (``rules/graft.py``: ``card_grafted`` with ``from_row=True``,
   which also sets the owner's ``usurped_row_card_id``), then trashes it "as
-  an ordinary trash" when the Agent turn closes (``resolve_usurp_trash``,
-  OQ-054 user ruling 2026-09-08) -- a genuine ``card_trashed`` event on a
-  card this seat never bought. The borrowed card can also trash itself
-  earlier in the same Agent turn through its own "Trash this card." box
-  (``resolve_usurp_trash``'s own docstring: "a card that already left every
-  owned zone ... needs nothing more"), so the exclusion is keyed off the
-  owner's ``usurped_row_card_id`` field (set at graft, cleared only when the
-  turn closes) rather than off any one event pairing -- it catches the
-  borrowed card's trash wherever in the turn it happens.
+  an ordinary trash" when the owner presses ``finish_agent_turn``
+  (``graft.py::trash_usurped_card``, called by
+  ``combat_deployment.py::apply_agent_turn_finish``; OQ-054 user ruling
+  2026-09-08, OQ-095) -- a genuine ``card_trashed`` event on a card this
+  seat never bought, in the step whose ``s.pre`` still names it. The
+  borrowed card can also trash itself earlier in the same Agent turn
+  through its own "Trash this card." box (``trash_usurped_card``'s own
+  docstring: "a card that already left every owned zone ... needs nothing
+  more"), so the exclusion is keyed off the owner's ``usurped_row_card_id``
+  field (set at graft, cleared only by ``trash_usurped_card`` in the
+  ``finish_agent_turn`` step) rather than off any one event pairing -- it
+  catches the borrowed card's trash wherever in the turn it happens.
 - A card's mandatory "Trash this card." (no arrow, not a chosen cost) is
   excluded from ``trash_chosen`` the same way: Seek Allies
   (``PersonalCardAgentEffect.TRASH_SELF`` [Main p. 20]), Dangerous Rhetoric
@@ -519,9 +522,12 @@ def _agent_side(s: Step, p: int) -> bool:
     "agent_turn" is the placement action itself. A Graft partner is chosen
     under a separate action ID (``choose_graft_partner``), but it still
     enters play while seat ``p``'s ``FrameKind.AGENT_EFFECTS`` frame is open
-    (``rules/agent_turn.py`` pushes it at placement, popped only when the
-    Agent turn's effects are done; ``rules/graft.py::apply_graft_partner``
-    keeps it open) -- checked here by ``turn_owner`` rather than assuming
+    (``rules/agent_turn.py`` pushes it at placement; it stays open after the
+    last effect and leaves the stack only when the turn closes, which only
+    ``p``'s ``finish_agent_turn`` starts --
+    ``rules/effects.py::close_agent_turn``, OQ-095;
+    ``rules/graft.py::apply_graft_partner`` keeps it open) -- checked here by
+    ``turn_owner`` rather than assuming
     the placed card's own frame is always on top, since a chance or nested
     choice frame can sit above it.
     """

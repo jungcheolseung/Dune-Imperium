@@ -38,6 +38,7 @@ from dune_imperium.rules.board_effects import (
     legal_tuek_sietch_actions,
 )
 from dune_imperium.rules.combat_deployment import (
+    agent_turn_is_finishing,
     legal_agent_turn_finish_actions,
     legal_combat_deployments,
     legal_commander_deployments,
@@ -100,6 +101,10 @@ def legal_agent_effect_frame_actions(
 
     frame, context = current_agent_effect_context(state)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if agent_turn_is_finishing(context):
+        # The end was pressed; the engine closes or reopens the turn as soon
+        # as the Usurp trash's follow-ups are done (OQ-095 (4)-(5)).
         return ()
 
     pending_groups = _pending_group_actions(state, player, context)

@@ -4,8 +4,11 @@ The owner sees both cards while the choice is open (``PrivatePlayerView
 .peeked_intrigue_ids``); the card not kept stays on top of the deck.
 With fewer than two cards face down, the discard pile is shuffled into a
 new deck beneath the card(s) still on top and the peek then looks at two
-(OQ-052, user ruling); only when nothing is left to shuffle does the box
-take the single remaining card.
+(OQ-052, user ruling); only when nothing is left to shuffle does the peek
+look at the single remaining card, which the owner then keeps through the
+same window (user ruling 2026-10-02, L2-Q3 (2)). With no card at all the
+box has no effect, and the short draw is logged (``intrigue_draw_short``,
+L2-Q4).
 """
 
 from dataclasses import replace
@@ -24,14 +27,14 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import intrigue_draw_short_events
 
 PEEK_COUNT = 2
 _FRAME = "Intrigue peek frame"
 
 
 def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleResult:
-    """Open the keep-one choice, or draw one card when the deck is short."""
+    """Open the keep-one choice, shuffling the discard in when short."""
 
     top = state.intrigue_deck[:PEEK_COUNT]
     if len(top) < PEEK_COUNT and state.intrigue_discard:
@@ -55,17 +58,28 @@ def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleRe
             ),
         )
         return RuleResult(state=state.push_decision(frame))
-    if len(top) < PEEK_COUNT:
-        # Nothing left to shuffle: the single face-down card (if any) is all
-        # there is to look at, so it is kept.
-        if not top:
-            return RuleResult(state=state)
-        return draw_or_queue_intrigue_cards(state, player, 1, source=f"{source}:draw")
+    if not top:
+        # Nothing face down and nothing to shuffle: no effect (OQ-052). The
+        # keep-one draw falls short, which is logged (user ruling
+        # 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
+        return RuleResult(
+            state=state,
+            events=intrigue_draw_short_events(source, player, 1, 0),
+        )
+    # With one card left and no discard to shuffle, that card is all there
+    # is to look at: the window still opens on it, and keeping it is the
+    # only choice (user ruling 2026-10-02, L2-Q3: "①②는 확인 창" -- (2)
+    # OQ-052's single card is shown before it is kept).
     frame = DecisionFrame(
         kind=FrameKind.INTRIGUE_PEEK,
         frame_id=f"{source}:intrigue_peek",
         decision=PlayerDecision(
-            owner=player, prompt="Keep one of the two Intrigue cards"
+            owner=player,
+            prompt=(
+                "Keep one of the two Intrigue cards"
+                if len(top) == PEEK_COUNT
+                else "Keep the last Intrigue card"
+            ),
         ),
         context=(
             ("peeked_intrigue_ids", ",".join(top)),
@@ -79,7 +93,7 @@ def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleRe
             GameEvent(
                 event_id=f"{source}:intrigue_peek",
                 kind="intrigue_cards_peeked",
-                payload=(("count", PEEK_COUNT), ("player", player)),
+                payload=(("count", len(top)), ("player", player)),
             ),
         ),
     )

@@ -28,6 +28,7 @@ from dune_imperium.core.observation import observe_state
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.intrigue import (
+    _trash_intrigue_hand_card,
     legal_intrigue_choice_actions,
     legal_intrigue_play_actions,
 )
@@ -452,6 +453,42 @@ def test_unnatural_trashes_an_intrigue_card_and_recruits_for_a_regular_one() -> 
     assert regular in done.intrigue_trash
     assert seat.troops_garrison == 3 + 1
     assert len(seat.intrigue_cards) == 1  # the drawn replacement
+
+
+def test_unnatural_troop_joins_only_its_owners_open_turn() -> None:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137):
+    # Unnatural, a Plot played in the owner's turn, adds its troop to that
+    # turn's recruits. The ``turn_owner_of`` guard keeps the troop off any
+    # other seat's turn frame; no play reaches that today, so the probe calls
+    # the helper over seat 1's frame by hand.
+    card = _twisted("unnatural")
+    regular = intrigue_deck_instance_ids(False)[5]
+    owner = PlayerState(
+        player_id=0, leader_id="piter_de_vries", intrigue_cards=(card, regular)
+    )
+    trashing = ENGINE.apply(_turn_state(owner), _play(card)).state
+    done = ENGINE.apply(trashing, legal_intrigue_choice_actions(trashing, 0)[0]).state
+    turn = done.decision_stack[-1]
+    assert turn.kind == "turn"
+    assert dict(turn.context)["troops_recruited"] == 1
+
+    others_turn = _turn_state(
+        owner,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:1",
+                decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    stray = _trash_intrigue_hand_card(others_turn, 0, regular, 1, "test").state
+    assert stray.players[0].troops_garrison == owner.troops_garrison + 1
+    assert dict(stray.decision_stack[-1].context).get("troops_recruited") in (
+        None,
+        0,
+    )
 
 
 def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:

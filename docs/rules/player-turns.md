@@ -83,6 +83,9 @@
   Steersman을 내며 방금 보낸 Agent는 고를 수 없고, 다른 Agent가 없으면 recall
   아이콘은 turn 종료까지 보류된 뒤 불발한다(OQ-057 (1)). 회수한 Agent는 이후
   turn에 다시 사용할 수 있다. `[Steersman card]` `[Main pp. 9, 20]`
+  보류된 recall 아이콘에는 창을 열지 않고, turn이 열려 있는 동안 화면이
+  이유와 함께 회색 줄로 보인다(2026-10-02 사용자 판정 L2-Q3
+  "①②는 확인 창, ③은 회색 줄만"의 ③; 불발은 그대로 "턴 종료" 누름에서).
   (2026-09-26 정정: 이전 문장은 방금 보낸 Agent도 고를 수 있다고 잘못 적었다.)
 - Junction Headquarters는 Spacing Guild Alliance를 보유할 때 Agent box의 화살표를
   선택해 hand의 Intrigue card 1장을 trash하고 Spice 2를 함께 지불하면 Victory
@@ -150,6 +153,13 @@
   물려야 한다. 기본 배치가 가능한 Agent turn은 다른 보류 효과가 끝난 뒤
   `finish_agent_turn`으로 명시적으로 끝낸다. 자세한 근거는
   [open-questions.md](open-questions.md)의 OQ-029.
+- (프로젝트 판정, OQ-095) 배치가 없는 turn을 포함해 **모든** Agent turn은
+  소유자의 `finish_agent_turn`("턴 종료")으로만 끝난다. 마지막 효과를
+  해결해도 turn은 열려 있어, 누르기 전까지 Plot Intrigue `[Main p. 8]`,
+  Family Atomics, 표본 반환, Tech flip, Commander recruit 같은 자유 시점
+  행동을 할 수 있고, 마지막 효과가 남긴 후속도 이 turn 안에서 풀린다.
+  공식 문서에는 Agent turn의 종료 단계가 없다(Reveal turn에만 Clean Up이
+  있다 `[Main p. 12]`).
 - Sardaukar Coordination으로 Agent를 보내면 Combat space가 아니어도 그 turn에
   실제로 recruit한 troop을 Conflict에 deploy할 수 있다. 이 예외는 기존
   garrison troop 두 개를 추가로 deploy하는 권한을 주지 않는다.
@@ -192,17 +202,21 @@
 - Desert Power는 Reveal에서 Persuasion 2를 얻거나, Maker Hooks를 보유하고
   Water 1을 지불해 sandworm 1개를 소환하고 현재 Conflict에 즉시 배치한다.
   Maker Hooks는 소비하지 않으며 Shield Wall이 현재 Conflict를 보호하면
-  sandworm 선택을 할 수 없다. Maker Hooks를 보유하면 이 선택은 다른 Reveal
-  선택처럼 미룰 수 있고(defer_reveal_choice), Persuasion 2는 실제로
+  sandworm 선택을 할 수 없다. 이 선택은 Maker Hooks가 있든 없든 다른 Reveal
+  선택처럼 열리고 미룰 수 있으며(defer_reveal_choice), Persuasion 2는 실제로
   Persuasion 갈래를 선택한 순간부터만 지출과 Command (6+) 판정에 들어간다 —
   sandworm 갈래를 고르면 그 2는 끝내 생성되지 않는다. Maker Hooks가 없으면
-  sandworm 갈래를 고를 수 없으므로 이 카드는 그냥 Reveal 시작 시점에
-  Persuasion 2로 집계된다(변화 없음). `[Desert Power card]`
+  sandworm 갈래는 이유("메이커 작살 없음")와 함께 회색으로만 보이고 Persuasion
+  갈래만 고를 수 있다. `[Desert Power card]`
   `[Main pp. 10, 20]` `[FAQ p. 2]` (OQ-069, 사용자 판정 2026-09-26, 원문 그대로:
   "(A)가 맞지. 혹시 공개 때 뽑은 책략카드 등에 따라 desert power의 보상을
   나중에 선택하고 싶을 수도 있잖아. 근데 설득력을 선택하기 전에 총 설득력이
   6 미만이라면 당연히 통솔(+6)도 발동되면 안 되겠지. 그러다 설득력으로 최종
-  선택했고 그때 총 설득력이 6 이상이면 효과 발동되게 해야지").
+  선택했고 그때 총 설득력이 6 이상이면 효과 발동되게 해야지"; Maker Hooks 없는
+  좌석은 2026-09-30 사용자 판정 (B)로 바뀜, 원문: "REVEAL_CHOICE 창을 열어
+  '설득 2'만 고르게, 모래벌레 줄은 '메이커 작살 없음' 회색". 이전 판정(폐기):
+  Maker Hooks가 없으면 sandworm 갈래를 고를 수 없으므로 선택 창 없이 Reveal
+  시작 시점에 Persuasion 2로 집계한다).
 - Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
   `[Long Live the Fighters card]`
 - Subversive Advisor는 Reveal에서 Persuasion 1을 얻는다. Reveal box는 파란
@@ -275,6 +289,15 @@
   관리한다.
 - 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]
 - Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다. [FAQ p. 2]
+- 구현 convention: 버린 더미까지 비어 Intrigue draw가 모자라면 draw는 있는 만큼만
+  지급하고 끝난다(`implementation-audits/intrigue.md` "Deck exhaustion",
+  OQ-067). 고를 것이 없으므로 결정 창은 열지 않고, 모자란 장수를 공개 이벤트
+  `intrigue_draw_short`(`requested`·`drawn`·`short`, 카드는 밝히지 않음)로 남기며,
+  플레이 서버는 그렇게 될 행동에 누르기 전에 경고를 붙인다. 사용자 판정
+  (2026-10-02, L2-Q4): "로그 + 클릭 전 경고". 두 더미의 크기는 공개 정보라
+  reshuffle이 필요한 draw의 모자람도 섞기 전에 정해지므로, 그 기록은 섞기를
+  요청하는 단계에 남는다(그래서 경고가 그 단계에 붙는다). Imperium Ceremony의
+  빈 peek(OQ-052)도 같다.
 - trash한 Intrigue card는 `intrigue_discard`에 놓지 않고 공개
   `intrigue_trash` 영역에서 게임이 끝날 때까지 제외한다. 따라서 Intrigue Deck을
   다시 만들 때 섞이지 않는다. `[Main p. 20]`

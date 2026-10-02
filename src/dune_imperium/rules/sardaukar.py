@@ -7,6 +7,12 @@ Three decision points are added when the option is on:
   face-up Skill (``acquire_sardaukar_commander``), or decline
   (``decline_sardaukar_commander``) [Bloodlines p. 4]. Without a choosable
   Skill the Commander is acquired without one (OQ-031).
+- A Commander a card effect acquires (Sardaukar Standard's bank Commander,
+  OQ-035) and Plasteel Blades' extra Skill open a Skill choice
+  (``SKILL_CHOICE``). With no choosable Skill it still opens (user ruling
+  2026-10-02, L2-Q3 (1)): the bank Commander's offers only
+  ``resolve_commander_without_skill``, Plasteel Blades' only
+  ``decline_skill``.
 - Once per turn, Agent or Reveal, 2 Solari recruit one Commander from the
   supply to the garrison without a new Skill
   (``recruit_sardaukar_commander``) [Bloodlines p. 4].
@@ -19,6 +25,7 @@ The basic deployment of a recruited or garrisoned Commander lives in
 """
 
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_COST_SOLARI,
@@ -120,7 +127,7 @@ def queue_plasteel_blades(state: GameState, player: int, source: str) -> GameSta
         state,
         pending_skill_choices=(
             *state.pending_skill_choices,
-            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades", False),
+            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades"),
         ),
     )
 
@@ -129,22 +136,49 @@ def _skill_identity(instance_id: str) -> str:
     return skill_for_instance(instance_id).skill_id
 
 
-def eligible_face_up_skill_ids(state: GameState, owner: PlayerState) -> tuple[str, ...]:
-    """Return the face-up Skill identities the owner may still choose.
+class SkillChoiceBlock(StrEnum):
+    """Why a face-up Skill cannot be chosen (``skill_choice_block``)."""
+
+    HELD = "held"
+
+
+def skill_choice_block(owner: PlayerState, skill_id: str) -> SkillChoiceBlock | None:
+    """Why ``owner`` cannot choose the face-up Skill ``skill_id``, or None.
 
     "You cannot choose a copy of a Sardaukar Commander Skill already in your
-    supply" [Bloodlines p. 4]; two face-up copies of one Skill are one
-    choice. An empty result means the Commander comes without a Skill (OQ-031).
+    supply" [Bloodlines p. 4]. Every Skill choice offers a face-up Skill
+    exactly when this is None (``eligible_face_up_skill_ids``), and the page
+    greys out the others with it (``display.unavailable``).
     """
 
     held = {_skill_identity(instance_id) for instance_id in owner.skill_ids}
+    return SkillChoiceBlock.HELD if skill_id in held else None
+
+
+def face_up_skill_identities(state: GameState) -> tuple[str, ...]:
+    """The distinct Skills face up, in row order: two copies are one Skill."""
+
     seen: list[str] = []
     for instance_id in state.skill_face_up:
         skill_id = _skill_identity(instance_id)
-        if skill_id in held or skill_id in seen:
-            continue
-        seen.append(skill_id)
+        if skill_id not in seen:
+            seen.append(skill_id)
     return tuple(seen)
+
+
+def eligible_face_up_skill_ids(state: GameState, owner: PlayerState) -> tuple[str, ...]:
+    """Return the face-up Skill identities the owner may still choose.
+
+    Those ``skill_choice_block`` lets through; two face-up copies of one
+    Skill are one choice. An empty result means the Commander comes without
+    a Skill (OQ-031).
+    """
+
+    return tuple(
+        skill_id
+        for skill_id in face_up_skill_identities(state)
+        if skill_choice_block(owner, skill_id) is None
+    )
 
 
 def legal_sardaukar_commander_actions(
@@ -326,17 +360,8 @@ def _acquire_bank_commander(
     skill_id: str,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
-    """Move the bank's Commander to the garrison with ``skill_id`` (or none).
-
-    ``turn_closed`` marks a Skill choice whose owner's turn had already
-    closed before it opened (the queued ``pending_skill_choices`` entry's own
-    flag, set either by the ``OPTIONAL_TRASH`` frame that queued it or
-    retroactively by ``advance_after_effect``): the Commander this acquires
-    must then not join whatever fresh "turn" frame reopened underneath, even
-    the same player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-    """
+    """Move the bank's Commander to the garrison with ``skill_id`` (or none)."""
 
     if state.sardaukar_commanders_bank < 1:
         raise RuntimeError("no Sardaukar Commander is left in the bank")
@@ -369,15 +394,11 @@ def _acquire_bank_commander(
         )
     else:
         decision_stack = working.decision_stack
-        if not turn_closed and turn_owner_of(working) == player:
+        if turn_owner_of(working) == player:
             # ``update_turn_recruits`` finds the owner's Reveal (or bare
             # turn) frame directly instead, guarded the same way
             # ``credit_trash_recruits`` guards a trash reward: nothing is
             # credited outside the owner's own turn [Main p. 10] [FAQ p. 4].
-            # When ``turn_closed`` is set, that frame is a fresh "turn" this
-            # box's own trigger reopened (or reached after it reopened), not
-            # the turn the acquisition belongs to (OQ-044 (d)), so the
-            # credit is skipped even though ``turn_owner_of`` still matches.
             working = update_turn_recruits(working, commanders_recruited=1)
             decision_stack = working.decision_stack
     events.insert(
@@ -413,18 +434,25 @@ def skill_choice_is_queued(state: GameState) -> bool:
 
 
 def begin_skill_choice(state: GameState) -> RuleResult:
-    """Open the oldest owed Skill choice, or drop it if nothing can be gained."""
+    """Open the oldest owed Skill choice, or drop it if nothing can be gained.
+
+    The choice opens even when no face-up Skill can be chosen (user ruling
+    2026-10-02, L2-Q3: "①②는 확인 창" -- (1) a bank Commander gained with no
+    choosable Skill opens a confirm window, the outcome unchanged: the
+    Commander without a Skill, OQ-031, OQ-035 (b)). Plasteel Blades' extra
+    Skill likewise opens with only its ``decline_skill``. Nothing opens
+    when there is nothing to gain or to confirm: Plasteel Blades has left
+    play, or the bank is empty (``sardaukar_commander_unavailable``).
+    """
 
     if not state.pending_skill_choices:
         raise ValueError("there is no pending Skill choice")
-    player, card_id, source, turn_closed = state.pending_skill_choices[0]
+    player, card_id, source = state.pending_skill_choices[0]
     remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
     if card_id == PLASTEEL_BLADES_CARD_ID:
         owner = remaining.players[player]
-        if not has_tech(
-            owner.tech_ids, TechAbility.PLASTEEL_BLADES
-        ) or not eligible_face_up_skill_ids(remaining, owner):
-            # The tile left play, or no Skill could be gained: nothing to ask.
+        if not has_tech(owner.tech_ids, TechAbility.PLASTEEL_BLADES):
+            # The tile left play: its trigger source is gone, nothing to ask.
             return RuleResult(state=remaining)
         frame = DecisionFrame(
             kind=FrameKind.SKILL_CHOICE,
@@ -436,14 +464,6 @@ def begin_skill_choice(state: GameState) -> RuleResult:
             context=(("card_id", card_id), ("player", player), ("source", source)),
         )
         return RuleResult(state=remaining.push_decision(frame))
-    if remaining.sardaukar_commanders_bank >= 1 and not eligible_face_up_skill_ids(
-        remaining, remaining.players[player]
-    ):
-        # Every face-up Skill is already held: the Commander comes without
-        # a Skill and needs no choice (OQ-031, OQ-035).
-        return _acquire_bank_commander(
-            remaining, player, card_id, "", source=source, turn_closed=turn_closed
-        )
     if remaining.sardaukar_commanders_bank < 1:
         # The bank emptied while the trash effect finished (OQ-035).
         return RuleResult(
@@ -456,18 +476,24 @@ def begin_skill_choice(state: GameState) -> RuleResult:
                 ),
             ),
         )
+    # Nothing changes the Skill row or the seat's Skills while this frame is
+    # on top, so the prompt chosen now matches what the window offers.
+    choosable = eligible_face_up_skill_ids(remaining, remaining.players[player])
     frame = DecisionFrame(
         kind=FrameKind.SKILL_CHOICE,
         frame_id=f"{source}:skill_choice",
         decision=PlayerDecision(
             owner=player,
-            prompt="Choose the Skill for the acquired Sardaukar Commander",
+            prompt=(
+                "Choose the Skill for the acquired Sardaukar Commander"
+                if choosable
+                else "Gain the Sardaukar Commander without a Skill"
+            ),
         ),
         context=(
             ("card_id", card_id),
             ("player", player),
             ("source", source),
-            *((("turn_closed", True),) if turn_closed else ()),
         ),
     )
     return RuleResult(state=remaining.push_decision(frame))
@@ -477,24 +503,34 @@ def legal_skill_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the choosable Skills for a Commander acquired by a card effect."""
+    """Offer the choosable Skills for a Commander acquired by a card effect.
+
+    A bank Commander must take a Skill while one can be chosen (OQ-031);
+    with none, the owner confirms the Commander without one
+    (``resolve_commander_without_skill``, user ruling 2026-10-02). Plasteel
+    Blades' trash is an optional arrow, so ``decline_skill`` is always
+    offered, alone when no Skill can be gained.
+    """
 
     frame = owned_top_frame(state, FrameKind.SKILL_CHOICE, player)
     if frame is None:
         return ()
     plasteel = dict(frame.context).get("card_id") == PLASTEEL_BLADES_CARD_ID
-    return (
-        # Plasteel Blades' trash is an optional arrow: keeping the tile is legal.
-        *((DomainAction(action_id="decline_skill", actor=player),) if plasteel else ()),
-        *(
-            DomainAction(
-                action_id="choose_skill",
-                actor=player,
-                arguments=(("skill_id", skill_id),),
-            )
-            for skill_id in eligible_face_up_skill_ids(state, state.players[player])
-        ),
+    choices = tuple(
+        DomainAction(
+            action_id="choose_skill",
+            actor=player,
+            arguments=(("skill_id", skill_id),),
+        )
+        for skill_id in eligible_face_up_skill_ids(state, state.players[player])
     )
+    if plasteel:
+        return (DomainAction(action_id="decline_skill", actor=player), *choices)
+    if not choices:
+        return (
+            DomainAction(action_id="resolve_commander_without_skill", actor=player),
+        )
+    return choices
 
 
 def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
@@ -506,7 +542,6 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     source = context_str(context, "source", owner="Skill choice frame")
     card_id = context_str(context, "card_id", owner="Skill choice frame")
-    turn_closed = context.get("turn_closed") is True
     popped = state.pop_decision()
     if action.action_id == "decline_skill":
         return RuleResult(
@@ -519,6 +554,10 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
         )
+    if action.action_id == "resolve_commander_without_skill":
+        # No face-up Skill can be chosen: the Commander comes without one
+        # (OQ-031, OQ-035 (b)), which the owner has now confirmed.
+        return _acquire_bank_commander(popped, action.actor, card_id, "", source=source)
     skill_id = str(dict(action.arguments)["skill_id"])
     if card_id == PLASTEEL_BLADES_CARD_ID:
         owner = popped.players[action.actor]
@@ -550,7 +589,7 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     return _acquire_bank_commander(
-        popped, action.actor, card_id, skill_id, source=source, turn_closed=turn_closed
+        popped, action.actor, card_id, skill_id, source=source
     )
 
 

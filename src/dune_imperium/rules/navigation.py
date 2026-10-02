@@ -179,11 +179,17 @@ def navigation_play_is_queued(state: GameState) -> bool:
 
 
 def begin_navigation_play(state: GameState) -> RuleResult:
-    """Open the oldest owed Navigation play, or drop it when no card is left."""
+    """Open the oldest owed Navigation play, or drop it when no card is left.
+
+    The choice opens even when no option of the card can be played (user
+    ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    연다"): the owner then spends the card without effect with
+    ``decline_navigation`` (OQ-039 (b)), the only action offered.
+    """
 
     if not state.pending_navigation_plays:
         raise ValueError("there is no pending Navigation play")
-    player, faction, source, turn_closed = state.pending_navigation_plays[0]
+    player, faction, source = state.pending_navigation_plays[0]
     remaining = replace(
         state, pending_navigation_plays=state.pending_navigation_plays[1:]
     )
@@ -206,32 +212,6 @@ def begin_navigation_play(state: GameState) -> RuleResult:
         navigation_trigger_faction=faction,
     )
     working = replace(remaining, players=replace_player(remaining.players, armed))
-    options = intrigue_card_for_instance(card_id).options
-    if not any(option_is_playable(working, player, option) for option in options):
-        # Nothing on the card can be paid or applied (OQ-039): the card is
-        # still played and spent.
-        fizzled = replace(
-            armed,
-            navigation_slots=armed.navigation_slots[1:],
-            navigation_played=(*armed.navigation_played, card_id),
-            navigation_active_slot=0,
-            navigation_trigger_faction="",
-        )
-        return RuleResult(
-            state=replace(working, players=replace_player(working.players, fizzled)),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:fizzled",
-                    kind="navigation_card_played",
-                    payload=(
-                        ("card_id", card_id),
-                        ("faction", faction),
-                        ("fizzled", 1),
-                        ("player", player),
-                    ),
-                ),
-            ),
-        )
     frame = DecisionFrame(
         kind=FrameKind.NAVIGATION_CHOICE,
         frame_id=f"{source}:choice",
@@ -240,13 +220,6 @@ def begin_navigation_play(state: GameState) -> RuleResult:
             ("card_id", card_id),
             ("faction", faction),
             ("source", source),
-            # ``turn_closed`` marks a trigger that fired after
-            # ``advance_after_effect`` had already closed the owner's turn
-            # (``pending_navigation_plays``' own flag): whatever this card
-            # recruits or completes must not join the fresh "turn" frame
-            # that reopened underneath, even the same player's own
-            # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-            *((("turn_closed", True),) if turn_closed else ()),
         ),
     )
     return RuleResult(state=working.push_decision(frame))
@@ -263,7 +236,9 @@ def legal_navigation_play_actions(
     don't pay the cost, you don't get the effect. You do not have to pay
     such a cost on a card." [Main p. 20] (OQ-058). So when every playable
     option costs something (card 10's lose-one-Influence swap) the owner may
-    decline; the card is then spent without effect, as in OQ-039 (b).
+    decline; the card is then spent without effect, as in OQ-039 (b). With
+    no playable option at all the decline is the only action: the card is
+    spent without effect (OQ-039 (b)) once the owner confirms it.
     """
 
     frame = owned_top_frame(state, FrameKind.NAVIGATION_CHOICE, player)
@@ -300,11 +275,15 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     card_id = context_str(context, "card_id", owner="Navigation frame")
     source = context_str(context, "source", owner="Navigation frame")
-    turn_closed = context.get("turn_closed") is True
     if action.action_id == "decline_navigation":
-        # The arrow cost was not paid [Main p. 20]: the card is still played
-        # and spent, like one that fizzles (OQ-039 (b)).
+        # The arrow cost was not paid [Main p. 20], or no option could be
+        # played at all (OQ-039 (b)): the card is still played and spent.
+        # The event says which: ``fizzled`` when nothing was playable.
         owner = state.players[action.actor]
+        fizzled = not any(
+            option_is_playable(state, action.actor, option)
+            for option in intrigue_card_for_instance(card_id).options
+        )
         spent = replace(
             owner,
             navigation_slots=owner.navigation_slots[1:],
@@ -318,13 +297,17 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
             ),
             events=(
                 GameEvent(
-                    event_id=f"{source}:declined",
+                    event_id=f"{source}:{'fizzled' if fizzled else 'declined'}",
                     kind="navigation_card_played",
-                    payload=(
-                        ("card_id", card_id),
-                        ("declined", 1),
-                        ("faction", owner.navigation_trigger_faction),
-                        ("player", action.actor),
+                    payload=tuple(
+                        sorted(
+                            (
+                                ("card_id", card_id),
+                                ("fizzled" if fizzled else "declined", 1),
+                                ("faction", owner.navigation_trigger_faction),
+                                ("player", action.actor),
+                            )
+                        )
                     ),
                 ),
             ),
@@ -377,15 +360,8 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
                 ("shield_wall_at_play", state.shield_wall_present),
                 ("slot", 0),
                 ("source", source),
-                # Carried from the NAVIGATION_CHOICE frame: whatever this
-                # choice recruits or acquires must not join a fresh "turn"
-                # frame that reopened for the owner before this card could
-                # be played (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-                *((("turn_closed", True),) if turn_closed else ()),
             ),
         )
         return RuleResult(state=popped.push_decision(choice), events=tuple(events))
-    finished = finish_intrigue_play(
-        popped, player, card_id, sections, source, turn_closed=turn_closed
-    )
+    finished = finish_intrigue_play(popped, player, card_id, sections, source)
     return RuleResult(state=finished.state, events=(*events, *finished.events))

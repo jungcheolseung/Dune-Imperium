@@ -62,7 +62,8 @@ OQ-076 한계 서술, OQ-044 (d)(:326), OQ-054(:478-481, Usurp trash가 종료 �
 - `advance_after_effect`는 **절대 닫지 않는다**: 보류 플래그만 다시 계산하고 frame을 유지한다. `_closed_for` 소급(447-458)도 필요 없다.
 - `close_agent_turn`의 호출처는 `combat_deployment.apply_agent_turn_finish`(:618)와 아래 4.3의 "마치는 중" 자동 단계뿐이다.
 - 자동 전이(`expire_trashed_card_effects` agent_effects.py:2897-2952, `skip_impossible_imperial_privilege_recall`
-  board_effects.py:1368-1398, Covert Operation 마지막 discard agent_effects.py:686-690, acquisition.py:226-238,
+  board_effects.py:1368-1398 [2026-10-02 L2에서 없어짐: 소유자가 `resolve_imperial_privilege_without_recall`로
+  확인한다, OQ-023], Covert Operation 마지막 discard agent_effects.py:686-690, acquisition.py:226-238,
   leader_abilities.py:265-270·309-311)는 모두 `advance_after_effect`를 거치므로 이제 자기 그룹만 비우고 소유자의 열린 frame으로 돌아온다.
 - epic-game-mode의 `_apply_control_the_spice_payment`(epic에서 agent_effects.py:2911)도 `advance_after_effect` 호출처이고 :2960에
   `turn_closed = … == FrameKind.TURN` probe가 있다 — 병합 뒤 목록에 넣는다.

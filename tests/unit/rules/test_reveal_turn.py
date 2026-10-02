@@ -1,6 +1,7 @@
 """Tests for the basic Reveal-turn transition."""
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -39,6 +40,7 @@ from dune_imperium.rules.optional_trash import (
     legal_optional_trash_actions,
 )
 from dune_imperium.rules.reveal_turn import (
+    RevealSandwormBlock,
     apply_contract_reveal_choice,
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
@@ -67,6 +69,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_troop_retreat_actions,
     reveal_late_arrivals,
     reveal_pending_gains,
+    reveal_sandworm_block,
 )
 
 
@@ -282,10 +285,15 @@ def test_desert_power_reveal_sandworm_is_blocked_by_shield_wall() -> None:
     assert dict(declined.state.decision_stack[-1].context)["persuasion"] == 2
 
 
-def test_desert_power_reveal_sandworm_requires_maker_hooks() -> None:
-    # Without Maker Hooks the sandworm branch can never be taken, so the
-    # choice never opens and the card is simply 2 Persuasion counted at the
-    # Reveal start, unchanged by OQ-069 (user ruling 2026-09-26).
+def test_desert_power_choice_opens_without_maker_hooks_for_the_persuasion() -> None:
+    # Option (B), user ruling 2026-09-30 (docs/unavailable-options-plan.md
+    # section 5): "REVEAL_CHOICE 창을 열어 '설득 2'만 고르게, 모래벌레 줄은
+    # '메이커 작살 없음' 회색". Without Maker Hooks the window still opens,
+    # offering only the Persuasion branch (and a defer), and OQ-069 ("고르기
+    # 전에는 설득 2를 세지 않는다") now holds for this seat too: the 2
+    # Persuasion are generated only by ``decline_reveal_sandworm``
+    # ("[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
+    # [Main pp. 10, 20]).
     desert_power = _imperium_instance("desert_power")
     owner = PlayerState(
         player_id=0,
@@ -294,10 +302,144 @@ def test_desert_power_reveal_sandworm_requires_maker_hooks() -> None:
         resources=Resources(water=1),
     )
     state = replace(_state(owner), current_conflict_ids=("propaganda",))
-    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0))
 
-    assert legal_reveal_sandworm_actions(revealed.state, 0) == ()
-    assert dict(revealed.state.decision_stack[-1].context)["persuasion"] == 2
+    started = next(e for e in revealed.events if e.kind == "reveal_started")
+    assert dict(started.payload)["persuasion"] == 0
+    top = revealed.state.decision_stack[-1]
+    assert top.kind == "reveal_choice"
+    assert dict(top.context)["reveal_choice_effect"] == "may_pay_water_for_sandworm"
+    assert dict(revealed.state.decision_stack[-2].context)["persuasion"] == 0
+    assert reveal_sandworm_block(revealed.state, 0) is RevealSandwormBlock.MAKER_HOOKS
+    assert set(engine.legal_actions(revealed.state, 0)) == {
+        DomainAction(action_id="defer_reveal_choice", actor=0),
+        DomainAction(action_id="decline_reveal_sandworm", actor=0),
+    }
+    assert legal_finish_reveal_actions(revealed.state, 0) == ()
+
+    declined = engine.apply(
+        revealed.state, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    )
+    assert tuple(event.kind for event in declined.events) == (
+        "reveal_sandworm_declined",
+        "reveal_persuasion_gained",
+    )
+    assert dict(declined.state.decision_stack[-1].context)["persuasion"] == 2
+    assert declined.state.players[0].resources.water == 1
+    assert legal_finish_reveal_actions(declined.state, 0) != ()
+
+    # Deferred, it blocks the finish and always resumes, and a resumed
+    # choice cannot be deferred again: only the Persuasion branch is left.
+    deferred = engine.apply(
+        revealed.state, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    assert deferred.decision_stack[-1].kind == "reveal"
+    assert legal_finish_reveal_actions(deferred, 0) == ()
+    (resume,) = legal_resume_reveal_choice_actions(deferred, 0)
+    assert dict(resume.arguments)["effect"] == (
+        PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value
+    )
+    resumed = engine.apply(deferred, resume).state
+    assert engine.legal_actions(resumed, 0) == (
+        DomainAction(action_id="decline_reveal_sandworm", actor=0),
+    )
+
+
+def test_a_late_desert_power_without_maker_hooks_opens_the_choice() -> None:
+    # The same window opens for a Desert Power that joins the Reveal late
+    # [FAQ p. 3]: its 2 Persuasion wait for the choice like a card revealed
+    # at the start (option (B), user ruling 2026-09-30).
+    desert_power = _imperium_instance("desert_power")
+    state = replace(
+        _state(PlayerState(player_id=0, maker_hooks=False)),
+        current_conflict_ids=("propaganda",),
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    arrived = reveal_late_arrivals(
+        _with_late_hand(revealed, desert_power), 0, (desert_power,)
+    )
+
+    assert dict(arrived.events[0].payload)["persuasion"] == 0
+    top = arrived.state.decision_stack[-1]
+    assert top.kind == "reveal_choice"
+    assert dict(top.context)["reveal_card_id"] == desert_power
+    assert legal_reveal_sandworm_actions(arrived.state, 0) == (
+        DomainAction(action_id="decline_reveal_sandworm", actor=0),
+    )
+    declined = apply_reveal_sandworm_action(
+        arrived.state, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    )
+    assert dict(declined.state.decision_stack[-1].context)["persuasion"] == 2
+
+
+@pytest.mark.parametrize(
+    ("owner_fields", "state_fields", "block"),
+    [
+        ({"maker_hooks": False}, {}, RevealSandwormBlock.MAKER_HOOKS),
+        (
+            {"maker_hooks": False, "resources": Resources(water=0)},
+            {"current_conflict_ids": ()},
+            RevealSandwormBlock.MAKER_HOOKS,
+        ),
+        ({"resources": Resources(water=0)}, {}, RevealSandwormBlock.WATER),
+        ({}, {"current_conflict_ids": ()}, RevealSandwormBlock.NO_CONFLICT),
+        (
+            {},
+            {"current_conflict_ids": ("siege_of_arrakeen",)},
+            RevealSandwormBlock.SHIELD_WALL,
+        ),
+        (
+            {"leader_id": "liet_kynes"},
+            {"current_conflict_ids": ("siege_of_arrakeen",)},
+            None,
+        ),
+        ({}, {}, None),
+    ],
+    ids=[
+        "hooks",
+        "hooks-first",
+        "water",
+        "no-conflict",
+        "shield-wall",
+        "planetologist",
+        "open",
+    ],
+)
+def test_the_sandworm_branch_is_offered_exactly_without_a_block(
+    owner_fields: dict[str, Any],
+    state_fields: dict[str, Any],
+    block: RevealSandwormBlock | None,
+) -> None:
+    # The provider and the page's greyed-out row read the same block, in
+    # the order Maker Hooks, water, a Conflict, the Shield Wall; Arrakis
+    # Planetologist's replacement ignores the Shield Wall [Liet Kynes card].
+    desert_power = _imperium_instance("desert_power")
+    owner = replace(
+        PlayerState(
+            player_id=0,
+            hand=(desert_power,),
+            maker_hooks=True,
+            resources=Resources(water=1),
+        ),
+        **owner_fields,
+    )
+    state = replace(
+        _state(owner),
+        **{
+            "current_conflict_ids": ("propaganda",),
+            "shield_wall_present": True,
+            **state_fields,
+        },
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    assert reveal_sandworm_block(revealed, 0) is block
+    pay = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=0)
+    assert (pay in legal_reveal_sandworm_actions(revealed, 0)) is (block is None)
+    if block is not None:
+        with pytest.raises(ValueError):
+            apply_reveal_sandworm_action(revealed, pay)
 
 
 def test_desert_power_choice_opens_with_maker_hooks_and_no_water() -> None:

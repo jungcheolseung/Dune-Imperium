@@ -20,6 +20,7 @@ Rulings the official documents leave open are OQ-048 to OQ-051.
 """
 
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
@@ -35,6 +36,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
@@ -56,6 +58,7 @@ from dune_imperium.rules.scouts_missions import (
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 
 __all__ = [
+    "ResearchBonusBlock",
     "advance_research",
     "advance_tleilaxu",
     "apply_family_atomics",
@@ -68,6 +71,7 @@ __all__ = [
     "legal_research_bonus_actions",
     "legal_specimen_return_actions",
     "move_research_token",
+    "research_bonus_block",
     "spend_specimens",
 ]
 
@@ -222,22 +226,12 @@ def advance_tleilaxu(
 # --- research track ------------------------------------------------------
 
 
-def advance_research(
-    state: GameState, player: int, *, source: str, turn_closed: bool = False
-) -> RuleResult:
+def advance_research(state: GameState, player: int, *, source: str) -> RuleResult:
     """Trigger one Research icon for ``player``.
 
     Past the second genetic marker the icon draws a card instead
     [Immortality p. 6]. With a single rightward space the token moves at
     once; with two the owner chooses through a ``RESEARCH_ADVANCE`` frame.
-
-    ``turn_closed`` marks a Research icon triggered by a box whose own
-    ``advance_after_effect`` call already closed the owner's turn: a
-    ``TRASH_AND_SPECIMEN`` bonus's trash then belongs to the turn that just
-    closed, not to whatever fresh "turn" frame happens to sit beneath the
-    trash offer (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. The flag carries
-    through the direction choice, since the token may not move until the
-    owner picks one.
     """
 
     if not state.config.immortality:
@@ -260,20 +254,14 @@ def advance_research(
         )
     options = research_next_space_ids(owner.research_space)
     if len(options) == 1:
-        return move_research_token(
-            state, player, options[0], source=source, turn_closed=turn_closed
-        )
+        return move_research_token(state, player, options[0], source=source)
     frame = DecisionFrame(
         kind=FrameKind.RESEARCH_ADVANCE,
         frame_id=f"{source}:research_advance",
         decision=PlayerDecision(
             owner=player, prompt="Choose where to advance your research token"
         ),
-        context=(
-            ("player", player),
-            ("source", source),
-            *((("turn_closed", True),) if turn_closed else ()),
-        ),
+        context=(("player", player), ("source", source)),
     )
     return RuleResult(state=state.push_decision(frame), events=())
 
@@ -306,14 +294,9 @@ def apply_research_advance(state: GameState, action: DomainAction) -> RuleResult
     frame = state.decision_stack[-1]
     context = dict(frame.context)
     source = context_str(context, "source", owner=_ADVANCE_LABEL)
-    turn_closed = context.get("turn_closed") is True
     space_id = str(dict(action.arguments)["space_id"])
     return move_research_token(
-        state.pop_decision(),
-        action.actor,
-        space_id,
-        source=source,
-        turn_closed=turn_closed,
+        state.pop_decision(), action.actor, space_id, source=source
     )
 
 
@@ -323,7 +306,6 @@ def move_research_token(
     space_id: str,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
     """Advance the token to ``space_id`` and resolve the printed bonus."""
 
@@ -365,9 +347,7 @@ def move_research_token(
             )
         )
     events.extend(helix)
-    bonus = _resolve_research_bonus(
-        moved, player, space.bonus, source=step_source, turn_closed=turn_closed
-    )
+    bonus = _resolve_research_bonus(moved, player, space.bonus, source=step_source)
     return RuleResult(state=bonus.state, events=(*events, *bonus.events))
 
 
@@ -377,7 +357,6 @@ def _resolve_research_bonus(
     bonus: ResearchBonus,
     *,
     source: str,
-    turn_closed: bool = False,
 ) -> RuleResult:
     owner = state.players[player]
     match bonus:
@@ -388,16 +367,14 @@ def _resolve_research_bonus(
         case ResearchBonus.TLEILAXU:
             return advance_tleilaxu(state, player, 1, source=source)
         case ResearchBonus.RESEARCH:
-            return advance_research(
-                state, player, source=source, turn_closed=turn_closed
-            )
+            return advance_research(state, player, source=source)
         case ResearchBonus.TRASH_AND_SPECIMEN:
             # A black trash icon is optional [Main p. 20]; the specimen is
             # not.
             specimen = generate_specimens(state, player, 1, source=source)
             return RuleResult(
                 state=specimen.state.push_decision(
-                    optional_trash_frame(player, source, turn_closed=turn_closed)
+                    optional_trash_frame(player, source)
                 ),
                 events=specimen.events,
             )
@@ -437,64 +414,28 @@ def _resolve_research_bonus(
                     ),
                 ),
             )
-        case ResearchBonus.INFLUENCE_ANY:
+        case (
+            ResearchBonus.INFLUENCE_ANY
+            | ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+            | ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+        ):
+            # The window opens even when an arrow's cost cannot be paid
+            # (``research_bonus_block``): its owner then confirms the lapse
+            # with ``decline_research_bonus``, the only legal choice (user
+            # ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두
+            # 결정 창을 연다").
             return RuleResult(
                 state=state.push_decision(
-                    _bonus_frame(player, bonus, source, turn_closed=turn_closed)
+                    _bonus_frame(player, bonus, source)
                 ),
                 events=(),
             )
-        case ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
-            # "Trash an Intrigue card": one from the owner's hand
-            # [Immortality p. 16]; without one the arrow cannot be paid.
-            if not owner.intrigue_cards:
-                return _bonus_unavailable(state, player, bonus, source)
-            return RuleResult(
-                state=state.push_decision(
-                    _bonus_frame(player, bonus, source, turn_closed=turn_closed)
-                ),
-                events=(),
-            )
-        case ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
-            if owner.resources.solari < SEVEN_SOLARI_COST:
-                return _bonus_unavailable(state, player, bonus, source)
-            return RuleResult(
-                state=state.push_decision(
-                    _bonus_frame(player, bonus, source, turn_closed=turn_closed)
-                ),
-                events=(),
-            )
-
-
-def _bonus_unavailable(
-    state: GameState, player: int, bonus: ResearchBonus, source: str
-) -> RuleResult:
-    return RuleResult(
-        state=state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:bonus_unavailable",
-                kind="research_bonus_unavailable",
-                payload=(("bonus", bonus.value), ("player", player)),
-            ),
-        ),
-    )
 
 
 def _bonus_frame(
-    player: int, bonus: ResearchBonus, source: str, *, turn_closed: bool = False
+    player: int, bonus: ResearchBonus, source: str
 ) -> DecisionFrame:
-    """Return the frame offering a research space's printed bonus choice.
-
-    ``turn_closed`` marks a bonus reached after ``advance_after_effect`` had
-    already closed the owner's turn: an Influence gain the owner chooses
-    here can complete an Earn Any Alliance Contract, whose troop must not
-    join the fresh "turn" frame that reopened underneath, even the same
-    player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. The engine reads this
-    marker directly off the frame (``frames.turn_closed_frame_owner``) when
-    it resolves the choice action, since the close happened in an earlier
-    action than the one that completes the Contract.
-    """
+    """Return the frame offering a research space's printed bonus choice."""
 
     return DecisionFrame(
         kind=FrameKind.RESEARCH_BONUS,
@@ -506,16 +447,59 @@ def _bonus_frame(
             ("bonus", bonus.value),
             ("player", player),
             ("source", source),
-            *((("turn_closed", True),) if turn_closed else ()),
         ),
     )
+
+
+class ResearchBonusBlock(StrEnum):
+    """Why a research space's arrow cost cannot be paid right now.
+
+    "Trash an Intrigue card" (c7r3) takes one from the owner's hand
+    [Immortality p. 16], and c8r6 costs 7 Solari [Immortality p. 3 board
+    artwork]; an arrow's cost is the price of its effect ("비용을 지불하지
+    않으면 효과를 얻지 못하며", docs/rules/player-turns.md [Main p. 9]
+    [FAQ p. 3]). ``legal_research_bonus_actions`` offers the payment exactly
+    when ``research_bonus_block`` is None, and the page's greyed-out row
+    reads the same block (``display.unavailable``), so the reason shown can
+    never disagree with the legal list.
+    """
+
+    NO_INTRIGUE = "no_intrigue"  # no Intrigue card in hand to trash
+    SOLARI = "solari"  # fewer than 7 Solari
+
+
+def research_bonus_block(
+    owner: PlayerState, bonus: ResearchBonus
+) -> ResearchBonusBlock | None:
+    """Return why ``owner`` cannot pay ``bonus``'s arrow cost now, or None.
+
+    None for a bonus with no cost. Reads only the owner's own Intrigue hand
+    and Solari.
+    """
+
+    if (
+        bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+        and not owner.intrigue_cards
+    ):
+        return ResearchBonusBlock.NO_INTRIGUE
+    if (
+        bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+        and owner.resources.solari < SEVEN_SOLARI_COST
+    ):
+        return ResearchBonusBlock.SOLARI
+    return None
 
 
 def legal_research_bonus_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the chosen Influence, the optional trash, or the optional payment."""
+    """Offer the chosen Influence, the optional trash, or the optional payment.
+
+    While the arrow's cost cannot be paid (``research_bonus_block``) only
+    ``decline_research_bonus`` is offered: the window still opens, and its
+    owner confirms the lapse (user ruling 2026-09-30).
+    """
 
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
     if frame is None:
@@ -532,6 +516,8 @@ def legal_research_bonus_actions(
             for faction in Faction
         )
     decline = DomainAction(action_id="decline_research_bonus", actor=player)
+    if research_bonus_block(owner, bonus) is not None:
+        return (decline,)
     if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
         return (
             decline,
@@ -545,8 +531,6 @@ def legal_research_bonus_actions(
             ),
         )
     if bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
-        if owner.resources.solari < SEVEN_SOLARI_COST:
-            return (decline,)
         return (decline, DomainAction(action_id="pay_research_bonus", actor=player))
     raise RuntimeError(f"research bonus frame has no choices: {bonus}")
 

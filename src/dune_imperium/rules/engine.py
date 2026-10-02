@@ -74,13 +74,13 @@ from dune_imperium.rules.board_effects import (
     board_effect_is_implemented,
     resolve_board_effect,
     secrets_steal_is_pending,
-    skip_impossible_imperial_privilege_recall,
 )
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
     personal_draw_is_pending,
 )
 from dune_imperium.rules.combat import (
+    apply_combat_influence_without_faction,
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
@@ -90,11 +90,7 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
-    combat_influence_choice_is_unavailable,
-    combat_reward_spy_is_unavailable,
     finish_combat,
-    fizzle_combat_influence_choice,
-    fizzle_combat_reward_spy,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -112,19 +108,21 @@ from dune_imperium.rules.combat_deployment import (
     apply_commander_deployment,
     apply_commander_withdrawal,
     apply_troop_withdrawal,
+    settle_finishing_agent_turn,
 )
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     apply_contract_completion,
+    apply_contract_hold,
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
     apply_contract_spy_action,
     apply_exhausted_contract_solari,
+    combat_held_contract_owner,
     complete_alliance_contracts,
-    contract_icons_must_be_held,
     exhausted_contract_choice_is_pending,
+    fizzle_combat_held_contract_icons,
     held_contract_icons_can_open,
-    hold_contract_icons,
     legal_contract_actions,
     legal_contract_intrigue_trash_actions,
     legal_contract_recall_actions,
@@ -132,7 +130,6 @@ from dune_imperium.rules.contracts import (
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
 )
-from dune_imperium.rules.effects import mark_queued_turn_closed
 from dune_imperium.rules.endgame import (
     apply_endgame_intrigue_action,
     begin_endgame_intrigue,
@@ -143,16 +140,12 @@ from dune_imperium.rules.endgame import (
 from dune_imperium.rules.frames import (
     FrameKind,
     owned_top_frame,
-    turn_closed_frame_owner,
-    turn_closing_player,
     turn_owner_of,
 )
 from dune_imperium.rules.graft import (
     apply_graft_partner,
     apply_graft_switch,
     legal_graft_partner_actions,
-    resolve_usurp_trash,
-    usurp_trash_is_queued,
 )
 from dune_imperium.rules.immortality import (
     apply_family_atomics,
@@ -652,6 +645,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_conflict_agent_for_imperial_privilege": apply_imperial_privilege_action,
+    "resolve_imperial_privilege_without_recall": apply_imperial_privilege_action,
     "deploy_troops": _apply_deployment,
     "withdraw_troops": apply_troop_withdrawal,
     "deploy_commanders": _apply_deployment,
@@ -775,12 +769,14 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_turn_start_card": apply_turn_start_card,
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
+    "resolve_commander_without_skill": apply_skill_choice,
     "move_spy": apply_spy_move,
     "lose_moved_spy": apply_spy_move,
     "place_spy_on_space": apply_spy_placement,
     "recall_spy_for_placement": apply_spy_placement,
     "decline_spy_placement": apply_spy_placement,
     "lose_unit": apply_unit_loss,
+    "resolve_unit_loss_without_unit": apply_unit_loss,
     "take_trigger_contract": apply_trigger_contract_action,
     "decline_command_acquisition": apply_reveal_command_acquisition,
     "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
@@ -802,11 +798,14 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Contracts
     "take_contract": apply_contract_action,
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,
+    # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
+    "hold_contract_icons": apply_contract_hold,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,
     "recall_conflict_agent_for_contract": apply_contract_recall_action,
+    "resolve_contract_without_recall": apply_contract_recall_action,
     "trash_intrigue_for_contract": apply_contract_intrigue_trash,
     # Round start and Combat
     "deploy_control_defense": apply_control_defense_action,
@@ -824,6 +823,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
+    # Every eligible Faction at the top: the owner confirms the loss (OQ-060).
+    "resolve_combat_influence_without_faction": apply_combat_influence_without_faction,
     # Endgame
     "match_endgame_wild_icon": apply_endgame_intrigue_action,
     "pass_endgame_intrigue": apply_endgame_intrigue_action,
@@ -869,19 +870,6 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_scouts_draw(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
-        # Flag any Skill choice or Navigation play this chance resolution
-        # just queued before the automatic advance below can open it, for
-        # the same reason ``_apply_legal`` does (OQ-044 (d)) [Main p. 10]
-        # [FAQ p. 4]. No chance handler queues either today (see the
-        # Suspensor Suits comment further down), so this is a no-op in
-        # practice; it is kept only for symmetry and future-proofing.
-        chance_closed = turn_closing_player(state, result.state)
-        if chance_closed is None:
-            chance_closed = turn_closed_frame_owner(state)
-        if chance_closed is not None:
-            result = replace(
-                result, state=mark_queued_turn_closed(result.state, chance_closed)
-            )
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
@@ -889,31 +877,14 @@ class UprisingRulesEngine(RulesEngine):
                 grant_hungry_for_spice(_advance_automatic(result), state)
             )
         )
-        result = skip_impossible_imperial_privilege_recall(
-            expire_trashed_card_effects(_advance_automatic(result))
-        )
+        result = expire_trashed_card_effects(_advance_automatic(result))
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
-        # ``state`` (before this whole chance resolution) is the reference
-        # ``turn_closing_player`` needs: a still-open turn's automatic
-        # advance may already have closed and reopened by this point, and a
-        # troop the closed turn recruited must not join the fresh one
-        # (``frames.turn_closing_player``) [Main p. 10] [FAQ p. 4]. No chance
-        # resolution today runs ``advance_after_effect`` or otherwise
-        # replaces an AGENT_EFFECTS/REVEAL frame with a bare turn one (none
-        # of the four chance handlers, ``grant_late_reveal_effects``,
-        # ``grant_leader_reveal_passives``, ``grant_hungry_for_spice``, or
-        # any ``_advance_automatic`` step do), so ``closing_player`` is
-        # always ``None`` here; it is kept only as future-proofing should
-        # one ever need to.
         advanced = _advance_automatic(result)
-        closing_player = turn_closing_player(state, advanced.state)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(
-                complete_alliance_contracts(advanced, closing_player=closing_player)
-            )
+            draw_owed_tech_cards(complete_alliance_contracts(advanced))
         )
         return refresh_pre_reveal_strength(
-            offer_deployment_triggers(_advance_automatic(result))
+            _settle_finishing(offer_deployment_triggers(_advance_automatic(result)))
         )
 
     def legal_actions(
@@ -937,33 +908,6 @@ class UprisingRulesEngine(RulesEngine):
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         handled = ACTION_HANDLERS[action.action_id](state, action)
-        # A Sardaukar Standard Skill choice (an OPTIONAL_TRASH pick) or a
-        # Navigation play (an Influence
-        # gain reaching 2 with a Faction) this action's own handler just
-        # queued must be flagged *before* the automatic advance below can
-        # open it, not only when the specific caller that queued it happens
-        # to thread its own ``turn_closed`` flag through: threading it case
-        # by case at each of the many ``gain_faction_influence`` and
-        # ``trash_personal_card`` call sites has repeatedly missed one.
-        # ``turn_closing_player`` catches the turn closing inside this very
-        # handler (this action's own before/after states, the same
-        # reference the Suspensor Suits check below reuses);
-        # ``turn_closed_frame_owner`` catches this action instead only
-        # *resolving* a frame a prior action already left marked
-        # ``turn_closed`` (a Research bonus's Influence choice itself
-        # queuing a Navigation play). Either way, whatever the queued entry
-        # recruits or completes must not join the turn that only just
-        # reopened, even the same player's own (OQ-044 (d)) [Main p. 10]
-        # [FAQ p. 4]. Usurp's automatic end-of-turn trash is not covered
-        # here: it runs later, in ``_advance_automatic``, so
-        # ``graft.resolve_usurp_trash`` marks its own entry.
-        handler_closed = turn_closing_player(state, handled.state)
-        if handler_closed is None:
-            handler_closed = turn_closed_frame_owner(state)
-        if handler_closed is not None:
-            handled = replace(
-                handled, state=mark_queued_turn_closed(handled.state, handler_closed)
-            )
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs
@@ -973,38 +917,15 @@ class UprisingRulesEngine(RulesEngine):
                 grant_leader_reveal_passives(grant_hungry_for_spice(result, state))
             )
         )
-        # A freely ordered recall may have removed Imperial Privilege's last
-        # recall target after its Intrigue slot resolved (OQ-023); the skip
-        # draws a card, so the automatic advance runs once more.
-        result = skip_impossible_imperial_privilege_recall(
-            expire_trashed_card_effects(result)
-        )
+        result = expire_trashed_card_effects(result)
         # Units moved this step: the running strength follows [Main p. 12].
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
-        # ``state`` (before the action) is the reference ``turn_closing_player``
-        # needs: the action's own handler may already have closed and
-        # reopened the actor's turn (an Influence bump crossing an Alliance
-        # threshold as the turn's last effect, with every other seat
-        # revealed), and a troop that closed turn recruited must not join
-        # the fresh one (``frames.turn_closing_player``) [Main p. 10]
-        # [FAQ p. 4]. When the turn instead closed in an *earlier* action --
-        # this one only resolves a follow-up frame a prior effect left
-        # marked ``turn_closed`` (a Research bonus's Influence choice
-        # completing an Alliance) -- ``turn_closing_player`` can no longer
-        # see that close from this action's own before/after states alone,
-        # so ``turn_closed_frame_owner`` reads the marker off the frame this
-        # action resolves instead (OQ-044 (d)).
         advanced = _advance_automatic(result)
-        closing_player = turn_closing_player(state, advanced.state)
-        if closing_player is None:
-            closing_player = turn_closed_frame_owner(state)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(
-                complete_alliance_contracts(advanced, closing_player=closing_player)
-            )
+            draw_owed_tech_cards(complete_alliance_contracts(advanced))
         )
         return refresh_pre_reveal_strength(
-            offer_deployment_triggers(_advance_automatic(result))
+            _settle_finishing(offer_deployment_triggers(_advance_automatic(result)))
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
@@ -1012,9 +933,38 @@ class UprisingRulesEngine(RulesEngine):
 
 
 
-def _held_contract_owner(state: GameState) -> int | None:
-    """Turn owner whose held Contract icons can reopen the market now."""
+def _settle_finishing(result: RuleResult) -> RuleResult:
+    """Close or reopen an Agent turn whose end is still resolving.
 
+    Only after every hook of the transition has run (Hungry for Spice,
+    Suspensor Suits, Alliance Contracts, deployment triggers), so whatever
+    the Usurp trash at the turn's end produced is judged inside that turn
+    (OQ-095 (5)); the next seat's turn may then need its own automatic steps.
+    """
+
+    settled = settle_finishing_agent_turn(result)
+    if settled is result:
+        return result
+    return _advance_automatic(settled)
+
+
+def _held_contract_owner(state: GameState) -> int | None:
+    """Seat whose held Contract icons can reopen the market now.
+
+    The turn's owner, or in the Combat phase the seat whose Conflict reward
+    icons wait while it resolves the rest of its rewards (user ruling
+    2026-10-02, L2-Q2).
+    """
+
+    if state.phase is GamePhase.COMBAT:
+        return next(
+            (
+                seat.player_id
+                for seat in state.players
+                if held_contract_icons_can_open(state, seat.player_id)
+            ),
+            None,
+        )
     player = turn_owner_of(state)
     if player is None or not held_contract_icons_can_open(state, player):
         return None
@@ -1031,18 +981,16 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = claim_due_mission_goods(state)
         elif intrigue_draw_is_queued(state):
             automatic = resolve_pending_intrigue_draw(state)
-        elif usurp_trash_is_queued(state):
-            automatic = resolve_usurp_trash(state)
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
-        elif contract_icons_must_be_held(state):
-            # Nothing in a non-empty market is reachable, so the icon waits for
-            # the rest of the turn rather than blocking it (OQ-059).
-            automatic = hold_contract_icons(state)
         elif (held_owner := _held_contract_owner(state)) is not None:
-            # The wait ended inside the same turn -- an Intrigue card arrived,
-            # or a token the owner can take was flipped up. Taking is not
-            # optional, so the market reopens on its own (OQ-057(1)).
+            # The wait ended inside the same turn, or the same seat's
+            # Conflict rewards -- an Intrigue card arrived, or a token the
+            # owner can take was flipped up. Taking is not optional, so the
+            # market reopens on its own (OQ-057(1)). Nothing in a non-empty
+            # market reachable is no longer held unasked: the owner confirms
+            # it with ``hold_contract_icons`` (OQ-059, user ruling
+            # 2026-09-30).
             automatic = open_held_contract_icons(state, held_owner)
         elif skill_choice_is_queued(state):
             automatic = begin_skill_choice(state)
@@ -1056,18 +1004,14 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = begin_track_spy_placement(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
-        elif combat_reward_spy_is_unavailable(state):
-            # A Conflict reward Spy that cannot be placed (no Spy in the
-            # supply and none on the board to recall first, or no free post)
-            # is lost rather than left as a frame without a legal action.
-            automatic = fizzle_combat_reward_spy(state)
-        elif combat_influence_choice_is_unavailable(state):
-            # Every eligible Faction is at the top of its track, so the
-            # choice is lost like any other Influence gain there (OQ-060).
-            automatic = fizzle_combat_influence_choice(state)
         elif scouts_effect_can_advance(state):
             # Arrakeen Scouts: the next automatic step of a seat's line.
             automatic = advance_scouts_effect(state)
+        elif combat_held_contract_owner(state) is not None:
+            # A Conflict reward's Contract icons held to the end of that
+            # seat's Conflict rewards fizzle there (user ruling 2026-10-02,
+            # L2-Q2: "보상 끝까지 보류 후 불발").
+            automatic = fizzle_combat_held_contract_icons(state)
         elif state.decision_stack:
             break
         elif scouts_step_is_pending(state):

@@ -69,11 +69,7 @@ from dune_imperium.rules.scouts_missions import (
     mission_collectable,
     take_desert_riding_token,
 )
-from dune_imperium.rules.scouts_offers import (
-    BOARD_ICON_SUBCOMMITTEE,
-    open_subcommittees,
-    subcommittee_unavailable,
-)
+from dune_imperium.rules.scouts_offers import BOARD_ICON_SUBCOMMITTEE
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -568,7 +564,6 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             raise RuntimeError(f"board icon {key} has no effect on {space_id}")
 
     effect_state = replace(state, players=replace_player(state.players, next_owner))
-    seat_events: tuple[GameEvent, ...] = ()
     if (
         key == BOARD_ICON_HIGH_COUNCIL
         and state.config.arrakeen_scouts
@@ -579,11 +574,11 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         # in this turn, one more effect of the visit in any order with the
         # others [Main p. 9] (OQ-076 alternative C, user ruling 2026-09-30).
         # Only a seat newly taken offers it: a repeat of the printed effects
-        # takes no second seat.
-        if open_subcommittees(effect_state, player):
-            add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
-        else:
-            seat_events = (subcommittee_unavailable(player, source=f"{source}:{key}"),)
+        # takes no second seat. Armed even with every subcommittee taken
+        # (then only its decline is offered; unreachable with four players,
+        # OQ-076 (c)): "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+        # 연다" (user ruling 2026-09-30).
+        add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
     intrigue_events: tuple[GameEvent, ...] = ()
     if intrigue_draw_count:
         intrigue_draw = draw_or_queue_intrigue_cards(
@@ -595,12 +590,6 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         effect_state = intrigue_draw.state
         intrigue_events = intrigue_draw.events
     next_state = advance_after_effect(effect_state, context)
-    # A TRASH_AND_SPECIMEN Research bonus's trash offer must not credit the
-    # fresh "turn" frame this ``advance_after_effect`` call may already have
-    # reopened for this same player, when this board icon is the turn's
-    # last pending effect and every other seat has revealed [Main p. 10]
-    # [FAQ p. 4] (OQ-044 (d)).
-    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(
@@ -619,9 +608,7 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     if research:
         # The advance (and any direction choice it opens) follows the
         # frame bookkeeping, like the card draw.
-        advanced = advance_research(
-            next_state, player, source=source, turn_closed=turn_closed
-        )
+        advanced = advance_research(next_state, player, source=source)
         next_state = advanced.state
         contract_events = (*contract_events, *advanced.events)
     steal_events: tuple[GameEvent, ...] = ()
@@ -666,7 +653,6 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             *steal_events,
             event,
             *recruit_shortfall,
-            *seat_events,
         ),
     )
 
@@ -1106,19 +1092,19 @@ def legal_imperial_privilege_actions(
     the same line "You may discard an Intrigue card to draw an Intrigue
     card" [Board Guide p. 2]; the printed icon decides (OQ-061), so the card
     leaves the game through ``intrigue_trash``.
+
+    The recall offers one action per ``imperial_privilege_recall_targets``
+    entry. With none, only the recall is skipped and the card is still
+    drawn (OQ-023), through ``resolve_imperial_privilege_without_recall``:
+    the owner confirms it instead of the engine skipping it unasked (user
+    ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    연다").
     """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
-        context, BOARD_ICON_IMPERIAL_PRIVILEGE
-    ):
+    context = _imperial_privilege_context(state, player)
+    if context is None:
         return ()
 
     owner = state.players[player]
@@ -1134,29 +1120,80 @@ def legal_imperial_privilege_actions(
                 for card_id in owner.intrigue_cards
             ),
         )
-    return (
-        *(
+    targets = imperial_privilege_recall_targets(state, player) or ()
+    if not targets:
+        return (
             DomainAction(
-                action_id="recall_agent_for_imperial_privilege",
-                actor=player,
-                arguments=(("space_id", space_id),),
-            )
-            for space_id in owner.agent_locations
-            if space_id != "imperial_privilege"
-        ),
+                action_id="resolve_imperial_privilege_without_recall", actor=player
+            ),
+        )
+    return tuple(
         # Duncan Idaho's Into the Fray Agent is still "one of your Agents"
         # [Board Guide p. 2]: the designer confirmed Imperial Privilege may
         # recall it from the Conflict (OQ-037(d)).
+        DomainAction(
+            action_id="recall_conflict_agent_for_imperial_privilege",
+            actor=player,
+        )
+        if target == "conflict"
+        else DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=player,
+            arguments=(("space_id", target),),
+        )
+        for target in targets
+    )
+
+
+def _imperial_privilege_context(
+    state: GameState, player: int
+) -> dict[str, ActionValue] | None:
+    """``player``'s own Agent-effect context while Imperial Privilege's icon
+    is pending, else None."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
+        context, BOARD_ICON_IMPERIAL_PRIVILEGE
+    ):
+        return None
+    return context
+
+
+def imperial_privilege_recall_targets(
+    state: GameState, player: int
+) -> tuple[str, ...] | None:
+    """Where ``player``'s pending Imperial Privilege recall may take an Agent.
+
+    None unless that recall is the step left: the icon is pending on the
+    seat's own Agent-effect frame and its Intrigue slot has resolved. The
+    targets are the seat's other board spaces ("Recall one of your other
+    Agents from the board" [Board Guide p. 2]) and "conflict" for an earlier
+    turn's Into the Fray Agent (OQ-037 (d)). The provider offers one recall
+    per target, or the confirm when there is none, and the page greys the
+    recall out with this same answer (``display.unavailable``). Targets
+    never grow within one Agent turn -- only the turn's own placement adds
+    a board Agent -- so confirming as soon as none is left gives up nothing.
+    """
+
+    context = _imperial_privilege_context(state, player)
+    if (
+        context is None
+        or context.get("imperial_privilege_intrigue_resolved") is not True
+    ):
+        return None
+    owner = state.players[player]
+    return (
         *(
-            (
-                DomainAction(
-                    action_id="recall_conflict_agent_for_imperial_privilege",
-                    actor=player,
-                ),
-            )
-            if _recallable_conflict_agents(owner, context)
-            else ()
+            location
+            for location in owner.agent_locations
+            if location != "imperial_privilege"
         ),
+        *(("conflict",) if _recallable_conflict_agents(owner, context) else ()),
     )
 
 
@@ -1193,6 +1230,11 @@ def apply_imperial_privilege_action(
     source = (
         f"round:{state.round_number}:player:{action.actor}:board:imperial_privilege"
     )
+
+    if action.action_id == "resolve_imperial_privilege_without_recall":
+        return _resolve_imperial_privilege_without_recall(
+            state, context, action.actor, source
+        )
 
     if action.action_id in (
         "recall_agent_for_imperial_privilege",
@@ -1302,39 +1344,18 @@ def apply_imperial_privilege_action(
         effect_state = drawn.state
         events.extend(drawn.events)
 
+    # The recall's target is judged once the slot has resolved (OQ-023,
+    # [Main pp. 9, 20]); with none, the provider offers the confirm.
     context["imperial_privilege_intrigue_resolved"] = True
-    if not _other_agent_spaces(effect_state, action.actor, context):
-        skipped = _skip_imperial_privilege_recall(
-            effect_state, context, action.actor, source, action.action_id
-        )
-        return RuleResult(state=skipped.state, events=(*events, *skipped.events))
-
     next_state = advance_after_effect(effect_state, context, effect_state.players)
     return RuleResult(state=next_state, events=tuple(events))
 
 
-def _other_agent_spaces(
-    state: GameState, player: int, context: Mapping[str, ActionValue]
-) -> tuple[str, ...]:
-    """Return where Imperial Privilege may recall from ("conflict" for Duncan)."""
-
-    owner = state.players[player]
-    return (
-        *(
-            location
-            for location in owner.agent_locations
-            if location != "imperial_privilege"
-        ),
-        *(("conflict",) if _recallable_conflict_agents(owner, context) else ()),
-    )
-
-
-def _skip_imperial_privilege_recall(
+def _resolve_imperial_privilege_without_recall(
     state: GameState,
     context: dict[str, ActionValue],
     player: int,
     source: str,
-    action_id: str,
 ) -> RuleResult:
     """Skip the impossible recall and still draw the card (OQ-023)."""
 
@@ -1355,7 +1376,7 @@ def _skip_imperial_privilege_recall(
             event_id=source,
             kind="board_effect_resolved",
             payload=(
-                ("action_id", action_id),
+                ("action_id", "resolve_imperial_privilege_without_recall"),
                 ("effect", BOARD_ICON_IMPERIAL_PRIVILEGE),
                 ("player", player),
                 ("space_id", "imperial_privilege"),
@@ -1363,39 +1384,6 @@ def _skip_imperial_privilege_recall(
         ),
     )
     return RuleResult(state=draw.state, events=events)
-
-
-def skip_impossible_imperial_privilege_recall(result: RuleResult) -> RuleResult:
-    """Resolve a pending Imperial Privilege recall that lost its last target.
-
-    The recall's target is judged when it resolves (OQ-023, [Main pp. 9,
-    20]): the Intrigue slot may have left another Agent on the board, and a
-    freely ordered effect of the same turn (Steersman's Agent-box recall)
-    may then bring that Agent home. Nothing is left for the owner to choose,
-    so the engine skips the recall and pays the separate card draw as it
-    would have at the slot's resolution.
-    """
-
-    state = result.state
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return result
-    if not isinstance(frame.decision, PlayerDecision):
-        return result
-    player = frame.decision.owner
-    if (
-        context.get("space_id") != "imperial_privilege"
-        or not board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
-        or context.get("imperial_privilege_intrigue_resolved") is not True
-        or _other_agent_spaces(state, player, context)
-    ):
-        return result
-    source = f"round:{state.round_number}:player:{player}:board:imperial_privilege"
-    skipped = _skip_imperial_privilege_recall(
-        state, context, player, source, "skip_imperial_privilege_recall"
-    )
-    return RuleResult(state=skipped.state, events=(*result.events, *skipped.events))
 
 
 def legal_tuek_sietch_actions(
@@ -1637,16 +1625,11 @@ def apply_maker_space_action(
         ),
     )
     if replaced:
-        # See ``planetologist.replace_sandworms``: future-proofing only,
-        # since summoning at a Maker space keeps the turn open here today
-        # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         replacement = replace_sandworms(
             next_state,
             action.actor,
             replaced,
             source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
-            turn_closed=turn_closed,
         )
         return RuleResult(state=replacement.state, events=(event, *replacement.events))
     return RuleResult(state=next_state, events=(event, *token_events))

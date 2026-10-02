@@ -568,6 +568,7 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
     # all to recall.
     from dune_imperium.rules.contracts import (
         apply_contract_completion,
+        apply_contract_recall_action,
         legal_contract_completion_actions,
         legal_contract_recall_actions,
     )
@@ -605,11 +606,17 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
     )
     completed = apply_contract_completion(fighting, completion)
 
+    # The recall window opens with only the confirm (user ruling
+    # 2026-09-30); its press fizzles the reward.
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert completed.state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    assert legal_contract_recall_actions(completed.state, 0) == (confirm,)
+    fizzled = apply_contract_recall_action(completed.state, confirm)
     assert any(
-        event.kind == "contract_recall_unavailable" for event in completed.events
+        event.kind == "contract_recall_unavailable" for event in fizzled.events
     )
-    assert legal_contract_recall_actions(completed.state, 0) == ()
-    assert completed.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert fizzled.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert fizzled.state.players[0].agent_in_conflict == 1
 
 
 def test_twisted_mentat_never_offers_an_earlier_turns_conflict_agent() -> None:

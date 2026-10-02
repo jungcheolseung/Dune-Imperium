@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 124
+    assert ACTION_CODEC_VERSION == 125
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -64,16 +64,41 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # only exists then), so the Bloodlines-less base catalog is unchanged.
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
+    # v125 (L2): Imperial Privilege's recall with no target is confirmed
+    # (resolve_imperial_privilege_without_recall, +1).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
     assert first.size == (
-        4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 13 + 1 + 1 + 1 + 1 + 3 + 1 + 1
+        4354
+        + 2
+        + 7
+        + 4
+        + 1
+        + 2
+        + 1
+        + 40
+        + 1
+        + 27
+        - 36
+        + 13
+        + 1
+        + 1
+        + 1
+        + 1
+        + 3
+        + 1
+        + 1
+        + 1
+        + 1
     )
-    assert first.size == 4425
+    assert first.size == 4427
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
     # Design 4.9: every Scouts template sits in one gated block, so the
     # catalogs without the option are byte for byte what they were (base
-    # 4,425) and a Scouts catalog adds exactly those templates.
+    # 4,427) and a Scouts catalog adds exactly those templates.
     for options in (
         {},
         {
@@ -91,8 +116,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4425
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4425 + len(
+    assert ActionCodec(RulesetConfig()).size == 4427
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4427 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -151,6 +176,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # so the CHOAM-without-Bloodlines catalog is unchanged (see v109 above).
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
+    # v125 (L2): the recall confirms, resolve_imperial_privilege_without_recall
+    # and resolve_contract_without_recall (+2).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
     assert codec.size == (
         4640
         + 2
@@ -171,6 +201,8 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 3
         + 1
         + 1
+        + 1
+        + 2
         + 1
     )
 
@@ -209,12 +241,15 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     recall_conflict_contract = DomainAction(
         action_id="recall_conflict_agent_for_contract", actor=1
     )
+    # v125 (L2): only the Bloodlines Immediate can be out of reach (OQ-059).
+    hold_icons = DomainAction(action_id="hold_contract_icons", actor=1)
     actions = (
         take_contract,
         trash_intrigue,
         recall_conflict_privilege,
         recall_conflict_agent_card,
         recall_conflict_contract,
+        hold_icons,
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
@@ -244,9 +279,24 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # recall_conflict_agent_for_contract (+1).
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
+    # v125 (L2): the recall confirms, resolve_imperial_privilege_without_recall
+    # and resolve_contract_without_recall (+2).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
+    # v125 (L2): a Holy War opponent with no unit to lose confirms it
+    # (resolve_unit_loss_without_unit, +1).
+    # v125 (L2): a bank Commander with no choosable Skill is confirmed
+    # (resolve_commander_without_skill, +1).
+    # v125 (L2): Contract icons over a market with nothing takeable are held
+    # by the owner's confirm (hold_contract_icons, +1; OQ-059).
     assert (
         both.size
-        == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1
+        == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
+        + 1
+        + 1
+        + 1
+        + 1
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -254,7 +304,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         with pytest.raises(ValueError, match="not present"):
             choam_only.encode(action)
     bloodlines_only = ActionCodec(RulesetConfig(bloodlines=True))
-    for action in (take_contract, trash_intrigue, recall_conflict_contract):
+    for action in (take_contract, trash_intrigue, recall_conflict_contract, hold_icons):
         with pytest.raises(ValueError, match="not present"):
             bloodlines_only.encode(action)
     # recall_conflict_agent_for_imperial_privilege and
