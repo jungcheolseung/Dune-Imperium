@@ -1,6 +1,28 @@
 # 개발 인수인계
 
-기준일: 2026-10-01 (UI 브랜치; master 기준선은 아래 2026-09-30 기록)
+기준일: 2026-10-02 (WSL UI 가져오기; master 기준선은 아래 2026-09-30 기록)
+
+## 2026-10-02 WSL UI 브랜치 가져오기
+
+- 사용자가 옮겨 온 `dune-ui-transfer-20261001/`의 SHA256SUMS 전 항목과 Git bundle을 검증한 뒤
+  `codex/ui-table-refresh`로 가져와 전환했다. 원본 커밋 `395b772`·`4ad05fe`·`45d1893`을 보존했고,
+  가져온 직후 트리도 전달 묶음의 VERIFIED.json과 같았다. UI 코드는 추가 수정하지 않았다.
+  `git fetch origin` 뒤에도 master와 origin/master는 모두 `659cefb`다. 전달 폴더는 미추적 상태로
+  보존했으며 이 검증 기록만 추가 커밋한다.
+- `uv sync --locked --offline --extra rl --extra ui --extra train` 후 전체 pytest는
+  **2,963 통과·5 건너뜀·1 실패**(1,082초). 실패는 `economic_supremacy`·`control_the_spice`의
+  에셋 연결 누락이고, `/tmp`에 푼 원본 master의 같은 테스트에서도 똑같이 재현했다.
+  5개 건너뜀은 DWGR 추출 자료 부재다. Ruff 통과, mypy 306파일 통과.
+- 전체 브라우저 E2E는 2개씩 실행해 **30종 통과·3종 미통과**(1,160초):
+  `narrow.py`의 600px 영어 관전 화면 가로 넘침, `spectate.py`의 마지막 재생 8초 시간 초과,
+  `scouts.py`의 실행기 600초 제한이다. 앞 두 실패는 원본 master에서도 재현됐다.
+  별도 대조에서 UI 브랜치의 spectate는 통과했다. Scouts 전 구간은 이 PC에서 검증을 마치지 못했다.
+- 이 WSL의 첫 브라우저 실행은 `libasound.so.2`가 없어 시작에 실패했고, 화면 캡처에는 한글 글꼴도
+  없었다. 시스템 설치 없이 `/tmp`에 Ubuntu `libasound2t64`를 풀어 LD_LIBRARY_PATH로 제공하고,
+  기존 Windows의 Arial·Segoe UI·Malgun Gothic을 임시 fontconfig로 연결했다.
+  이 환경에서 **spectate·narrow·setup_layout·table_layout 4종이 모두 통과**(순차 실행 73초).
+  전체 실행의 실패 기록은 위에 유지한다. 에셋·규칙·codec·관측·저장 형식은 변경하지 않았다.
+
 
 ## 2026-10-01 로컬 UI 개선 브랜치
 
