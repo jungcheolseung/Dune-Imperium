@@ -20,6 +20,7 @@ from dune_imperium.core import (
     ChanceResolver,
     DecisionFrame,
     DomainAction,
+    GameEvent,
     GamePhase,
     GameState,
     Influence,
@@ -1653,6 +1654,9 @@ def test_tactical_option_retreating_the_last_units_ends_combat_intrigue() -> Non
     assert done.state.players[0].combat_strength == 0
     assert done.state.combat_intrigue_complete is True
     assert done.state.decision_stack == ()
+    # The emptied loop announces the stage end like its other endings.
+    finished = [e for e in done.events if e.kind == "combat_intrigue_finished"]
+    assert [e.event_id for e in finished] == ["round:1:combat_intrigue:emptied"]
 
 
 def test_tactical_option_partial_retreat_keeps_the_player_in_the_loop() -> None:
@@ -3277,3 +3281,79 @@ def test_battlefield_research_drops_its_player_after_the_tech_window() -> None:
     assert once.combat_intrigue_complete is False
     done = engine.apply(once, _pass(1)).state
     assert done.combat_intrigue_complete is True
+
+
+def _to_next_round(state: GameState) -> GameState:
+    """Give a Combat Intrigue test state the next round's Conflict, so an
+    emptied loop runs on through Combat into round 2 instead of Endgame."""
+
+    return replace(state, conflict_deck=(_conflict(True),), reveal_order=(0, 1, 2, 3))
+
+
+def _finished(events: tuple[GameEvent, ...]) -> list[GameEvent]:
+    return [event for event in events if event.kind == "combat_intrigue_finished"]
+
+
+def test_a_card_that_empties_the_loop_still_announces_the_stage_end() -> None:
+    """OQ-003: the loop ends once its last participant has no unit. That
+    ending emits the same ``combat_intrigue_finished`` as the last pass and a
+    Conflict nobody entered, with an event id ending in ``:emptied`` and no
+    payload (2026-10-02; it used to end silently, and the log missed its
+    "Combat Intrigue stage finished" line). Go to Ground retreats the only
+    participant's troop and finishes its play with the Spy placement. These
+    tests pin the event after the choice's or window's own events; no
+    current card's own reward emits an event on an emptying play, so the
+    order inside ``finish_intrigue_play`` is not exercised."""
+
+    card = _intrigue("go_to_ground")
+    state = _to_next_round(_combat_state(_fighter(0, 1, intrigue_cards=(card,))))
+    engine = UprisingRulesEngine()
+    opened = engine.apply(engine.apply(state, _play(state, card)).state, _retreat(1))
+    assert _finished(opened.events) == []
+    spy = next(
+        a
+        for a in engine.legal_actions(opened.state, 0)
+        if a.action_id == "place_intrigue_spy"
+    )
+    placed = engine.apply(opened.state, spy)
+    kinds = [event.kind for event in placed.events]
+    assert kinds.index("spy_placed") < kinds.index("combat_intrigue_finished")
+    assert kinds.index("combat_intrigue_finished") < kinds.index("combat_cleaned_up")
+    (finished,) = _finished(placed.events)
+    assert finished.event_id == "round:1:combat_intrigue:emptied"
+    assert finished.payload == ()
+
+
+def test_a_loop_emptied_behind_a_window_announces_the_end_when_it_closes() -> (
+    None
+):
+    """The same ending when Reach Agreement's Contract market is still open
+    as the play finishes: the engine drops the seat once the market closes,
+    and the stage-end event follows the Contract's own events (OQ-003)."""
+
+    card = _intrigue("reach_agreement")
+    state = replace(
+        _to_next_round(_combat_state(_fighter(0, 2, intrigue_cards=(card,)))),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=("contract:immediate", "contract:heighliner_ii"),
+        contract_bank=(),
+    )
+    engine = UprisingRulesEngine()
+    play = DomainAction(
+        action_id="play_intrigue", actor=0, arguments=(("card_id", card), ("option", 0))
+    )
+    retreated = engine.apply(engine.apply(state, play).state, _retreat(2))
+    assert retreated.state.decision_stack[-1].kind == "contract_market"
+    assert _finished(retreated.events) == []
+    take = next(
+        a
+        for a in engine.legal_actions(retreated.state, 0)
+        if a.action_id == "take_contract"
+    )
+    taken = engine.apply(retreated.state, take)
+    kinds = [event.kind for event in taken.events]
+    assert kinds.index("contract_taken") < kinds.index("combat_intrigue_finished")
+    assert kinds.index("combat_intrigue_finished") < kinds.index("combat_cleaned_up")
+    (finished,) = _finished(taken.events)
+    assert finished.event_id == "round:1:combat_intrigue:emptied"
+    assert finished.payload == ()

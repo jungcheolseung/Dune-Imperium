@@ -201,8 +201,10 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Combat Intrigue loop (Reach Agreement's Contract market, Battlefield
 # Research's Tech window) still restarts the consecutive passes, and so
 # does Harvest Cells laid face up [Main p. 14]; the loop drops a participant
-# left without units once that window closes (OQ-003). Saves replay
-# differently -- no template change.
+# left without units once that window closes (OQ-003), and a loop that
+# empties so now logs combat_intrigue_finished (event id ``...:emptied``;
+# the event log, so the state hash, gains it). Saves replay differently --
+# no template change.
 ACTION_CODEC_VERSION = 127
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

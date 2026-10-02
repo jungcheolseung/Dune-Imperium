@@ -1825,8 +1825,9 @@ def combat_participants_are_stale(state: GameState) -> bool:
 
     A card's play refreshes the loop as it finishes, but only when the loop
     is on top then; a card that leaves a window of its own (Reach
-    Agreement's Contract market) is refreshed by the engine once that
-    window resolves and the loop is on top again (OQ-003).
+    Agreement's Contract market, Battlefield Research's Tech window) is
+    refreshed by the engine once that window resolves and the loop is on
+    top again (OQ-003).
     """
 
     if not state.decision_stack:
@@ -1842,19 +1843,23 @@ def combat_participants_are_stale(state: GameState) -> bool:
     return any(not _has_conflict_units(state.players[seat]) for seat in participants)
 
 
-def refresh_combat_participants(state: GameState) -> GameState:
+def refresh_combat_participants(state: GameState) -> RuleResult:
     """Drop participants who no longer have units from the priority loop.
 
     Project convention for OQ-003: a player whose last unit leaves the
     Conflict during Combat Intrigue is removed at once, and no player can join
-    the loop after Combat began. If nobody remains the Intrigue step ends.
+    the loop after Combat began. If nobody remains the Intrigue step ends,
+    with the ``combat_intrigue_finished`` event its other two endings emit;
+    the event id ends in ``:emptied`` (no participant has a unit left). It
+    has no payload, so the log line reads like the one for a Conflict
+    nobody entered.
     """
 
     if not state.decision_stack:
-        return state
+        return RuleResult(state=state)
     frame = state.decision_stack[-1]
     if frame.kind != FrameKind.COMBAT_INTRIGUE:
-        return state
+        return RuleResult(state=state)
     context = dict(frame.context)
     participants = _participants_from_mask(
         state.config.players,
@@ -1867,12 +1872,19 @@ def refresh_combat_participants(state: GameState) -> GameState:
         player for player in participants if _has_conflict_units(state.players[player])
     )
     if remaining == participants:
-        return state
+        return RuleResult(state=state)
     if not remaining:
-        return replace(
-            state,
-            combat_intrigue_complete=True,
-            decision_stack=state.decision_stack[:-1],
+        event = GameEvent(
+            event_id=f"round:{state.round_number}:combat_intrigue:emptied",
+            kind="combat_intrigue_finished",
+        )
+        return RuleResult(
+            state=replace(
+                state,
+                combat_intrigue_complete=True,
+                decision_stack=state.decision_stack[:-1],
+            ),
+            events=(event,),
         )
     if current in remaining:
         next_index = remaining.index(current)
@@ -1887,7 +1899,9 @@ def refresh_combat_participants(state: GameState) -> GameState:
         current_index=next_index,
         consecutive_passes=consecutive_passes,
     )
-    return replace(state, decision_stack=(*state.decision_stack[:-1], next_frame))
+    return RuleResult(
+        state=replace(state, decision_stack=(*state.decision_stack[:-1], next_frame))
+    )
 
 
 def _fire_troop_loss_triggers(

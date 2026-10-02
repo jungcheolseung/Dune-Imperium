@@ -1859,8 +1859,10 @@ def finish_intrigue_play(
         ),
         intrigue_discard=(*resolved.intrigue_discard, card_id),
     )
-    next_state = refresh_combat_participants(_reset_combat_passes(next_state))
-    return RuleResult(state=next_state, events=applied.events)
+    refreshed = refresh_combat_participants(_reset_combat_passes(next_state))
+    return RuleResult(
+        state=refreshed.state, events=(*applied.events, *refreshed.events)
+    )
 
 
 def _unit_count_arguments(

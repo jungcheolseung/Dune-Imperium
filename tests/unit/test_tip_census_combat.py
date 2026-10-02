@@ -114,9 +114,10 @@ class GroundTruth:
     # not a summon) -- independent of which event kind caused the increase.
     worms_summoned: list[int] = field(default_factory=lambda: [0] * 4)
     # One entry per Conflict resolution, in order, mirroring self._conflicts'
-    # bookkeeping of *when* to snapshot (combat_intrigue_finished, or a
-    # combat_cleaned_up with no prior snapshot this cycle) but reading the
-    # snapshot itself straight off state, not through the collector.
+    # bookkeeping of *when* to snapshot (combat_intrigue_finished without
+    # ``emptied``, or a combat_cleaned_up with no prior snapshot this cycle)
+    # but reading the snapshot itself straight off state, not through the
+    # collector.
     conflicts: list[dict[str, Any]] = field(default_factory=list)
     # Agent-turn-onto-a-Combat-space visits, read straight off state.
     garrison_visits: list[list[int]] = field(
@@ -177,8 +178,13 @@ def _play_with_ground_truth(
             if kind == "conflict_won":
                 gt.conflict_won_events += 1
             elif kind == "combat_intrigue_finished":
-                gt.conflicts.append(_conflict_snapshot(step.pre))
-                gt_recorded = True
+                if event.event_id.endswith(":emptied"):
+                    # An emptied loop's step.pre can predate the card's last
+                    # retreat; its row is taken at combat_cleaned_up below.
+                    gt_recorded = False
+                else:
+                    gt.conflicts.append(_conflict_snapshot(step.pre))
+                    gt_recorded = True
             elif kind == "combat_cleaned_up":
                 gt.combat_cleaned_up_events += 1
                 if not gt_recorded:
@@ -328,8 +334,9 @@ def test_combat_columns_tie_to_the_engine_ground_truth(full: bool) -> None:
     conflicts: Sequence[dict[str, Any]] = game["conflicts"]
 
     # len(conflicts) equals the number of Conflicts resolved: one
-    # combat_cleaned_up event (finish_combat, combat.py:1347) per Conflict,
-    # win or not, whether or not Combat Intrigue ever emitted its own event.
+    # combat_cleaned_up event (finish_combat) per Conflict, win or not,
+    # including one whose loop emptied (its combat_intrigue_finished, id
+    # ``...:emptied``, takes no snapshot; the row comes at the cleanup).
     assert len(conflicts) == gt.combat_cleaned_up_events
 
     resolved_with_winner = sum(1 for c in conflicts if c["winner"] is not None)
@@ -483,6 +490,64 @@ def test_a_conflict_nobody_entered_is_still_recorded() -> None:
     # Nobody entered round 1's Conflict, so it must not count toward any
     # seat's "entered".
     assert all(seat["entered"] < len(conflicts) for seat in per_seat)
+
+
+def test_a_round_one_loop_that_empties_gets_a_zero_row() -> None:
+    """Tactical Option retreats the only participant's two troops as the
+    card's last choice, so round 1's loop empties in the step whose pre-state
+    still holds them. The Conflict still gets one row, of zeros: before
+    2026-10-02 the collector's starting flag swallowed a round-1 Conflict
+    whose loop emptied, and a snapshot of that pre-state would read two
+    troops."""
+
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.core import PlayerState
+    from dune_imperium.rules.combat import begin_combat_intrigue
+
+    card = "intrigue:tactical_option:0"
+    fighter = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        troops_supply=10,
+        troops_garrison=0,
+        troops_conflict=2,
+        combat_strength=4,
+    )
+    state = begin_combat_intrigue(
+        GameState(
+            config=_spec(False, seed=3).config,
+            seed=1,
+            phase=GamePhase.COMBAT,
+            round_number=1,
+            first_player=0,
+            current_conflict_ids=(CONFLICTS[0].card.card_id,),
+            conflict_deck=(CONFLICTS[1].card.card_id,),
+            reveal_order=(0, 1, 2, 3),
+            players=(fighter, *(PlayerState(player_id=seat) for seat in (1, 2, 3))),
+        )
+    ).state
+    engine = UprisingRulesEngine()
+    collector = CombatCollector(_spec(False, seed=3), 4)
+    play = next(
+        a
+        for a in engine.legal_actions(state, 0)
+        if a.action_id == "play_intrigue" and dict(a.arguments)["option"] == 1
+    )
+    opened = engine.apply(state, play)
+    collector.step(Step(state, opened.state, 0, play, (), tuple(opened.events)))
+    retreat = max(
+        engine.legal_actions(opened.state, 0), key=lambda a: dict(a.arguments)["count"]
+    )
+    done = engine.apply(opened.state, retreat)
+    kinds = [event.kind for event in done.events]
+    assert kinds.index("combat_intrigue_finished") < kinds.index("combat_cleaned_up")
+    collector.step(Step(opened.state, done.state, 0, retreat, (), tuple(done.events)))
+
+    (row,) = collector._conflicts
+    assert row["round"] == 1
+    assert row["troops"] == [0, 0, 0, 0]
+    assert row["strength"] == [0, 0, 0, 0]
+    assert row["winner"] is None
 
 
 @pytest.mark.parametrize("full", [False, True])

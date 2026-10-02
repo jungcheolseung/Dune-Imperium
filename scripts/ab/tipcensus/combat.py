@@ -39,15 +39,21 @@ Engine facts this module relies on (see ``rules/combat.py``):
   does not gate on ``pre.phase`` for that reason -- ``combat_intrigue_finished``
   is only ever emitted from Combat Intrigue itself, so the kind alone is
   enough.
-- A Conflict can also leave Combat Intrigue with **no event at all**:
+- A Conflict can also leave Combat Intrigue because its loop **emptied**:
   ``refresh_combat_participants`` (``rules/combat.py``) ends the priority
-  loop silently once the last remaining participant loses its last unit --
-  when the card's play finishes, or, if the card left a window of its own
-  (Reach Agreement's Contract market, Battlefield Research's Tech window),
-  in the engine's automatic step once that window closes. By the time
-  ``combat_cleaned_up`` fires, every seat is back to 0 units/strength, so
-  this module records a zero row for that Conflict there instead of at a
-  ``combat_intrigue_finished`` it will never see.
+  loop once the last remaining participant loses its last unit -- when the
+  card's play finishes, or, if the card left a window of its own (Reach
+  Agreement's Contract market, Battlefield Research's Tech window), in the
+  engine's automatic step once that window closes. Its
+  ``combat_intrigue_finished`` has an event id ending in ``:emptied`` and
+  lands in the same step as ``combat_cleaned_up``. That step's *pre*-state
+  can still hold the retreating units (when the retreat was the card's last
+  choice: Tactical Option, Spice is Power), so this module does not
+  snapshot it: it records a zero row at that ``combat_cleaned_up`` instead
+  (every seat's units and strength are 0 once the loop emptied; the
+  garrison column is still read off that pre-state). Before 2026-10-02
+  this ending emitted no event at all; the rows are the same either way,
+  except that a round-1 Conflict whose loop empties now gets its row.
 - Sandworms reach ``sandworms_conflict`` through three event kinds, not one:
   ``sandworm_deployed`` (an agent-effect summon; payload key ``count``),
   ``reveal_sandworm_deployed`` (the Desert Power Reveal choice; payload key
@@ -95,8 +101,9 @@ class CombatCollector(Collector):
         self._wall_dropper: int | None = None
         # True once the Conflict currently resolving has a row in
         # self._conflicts (set at combat_intrigue_finished, consumed and
-        # reset at the matching combat_cleaned_up); starts True since no
-        # Conflict is pending before the first one begins.
+        # reset at the matching combat_cleaned_up; an ``:emptied`` finish
+        # clears it so its cleanup writes the zero row); starts True since
+        # no Conflict is pending before the first one begins.
         self._recorded = True
         # Running per-seat totals, kept for the whole game (never reset per
         # round/Conflict).
@@ -134,8 +141,14 @@ class CombatCollector(Collector):
                     # choices, so this only fires on an actual summon.
                     self._worms_summoned[int(info["player"])] += int(info["sandworms"])
             elif kind == "combat_intrigue_finished":
-                self._record_conflict(s)
-                self._recorded = True
+                if event.event_id.endswith(":emptied"):
+                    # Its zero row is written at the combat_cleaned_up
+                    # (module docstring); this also covers round 1, where
+                    # the flag still holds its starting True.
+                    self._recorded = False
+                else:
+                    self._record_conflict(s)
+                    self._recorded = True
             elif kind == "combat_cleaned_up":
                 if not self._recorded:
                     self._record_missing_conflict(s)
@@ -211,14 +224,15 @@ class CombatCollector(Collector):
         )
 
     def _record_missing_conflict(self, s: Step) -> None:
-        """Zero row for a Conflict that closed Combat Intrigue with no
-        ``combat_intrigue_finished`` event: every remaining participant lost
-        its last unit and ``refresh_combat_participants`` (``combat.py``)
-        ended the loop silently. By the time ``combat_cleaned_up``
-        fires here every seat's units and strength are already 0 (nobody
-        stayed a participant, and a seat without a unit has 0 strength even
-        with swords [Main p. 12], combat-and-round-end.md:10), so the
-        pre-state is legitimately all-zero."""
+        """Zero row for a Conflict whose Combat Intrigue loop emptied (its
+        ``combat_intrigue_finished`` event id ends in ``:emptied``, see the
+        module docstring): every remaining participant lost its last unit
+        and ``refresh_combat_participants`` (``combat.py``) ended the loop,
+        so every seat's units and strength are 0 (nobody stayed a
+        participant, and a seat without a unit has 0 strength even with
+        swords [Main p. 12], combat-and-round-end.md:10). The row is those
+        zeros, not a snapshot: the step's pre-state can predate the card's
+        last retreat. Only the garrison is read off that pre-state."""
 
         state = s.pre
         conflict_id = state.current_conflict_ids[-1]

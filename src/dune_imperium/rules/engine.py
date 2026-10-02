@@ -1016,7 +1016,7 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif combat_participants_are_stale(state):
             # A Combat Intrigue card's own window resolved and its play left
             # a participant with no unit: the loop drops them now (OQ-003).
-            automatic = RuleResult(state=refresh_combat_participants(state))
+            automatic = refresh_combat_participants(state)
         elif scouts_effect_can_advance(state):
             # Arrakeen Scouts: the next automatic step of a seat's line.
             automatic = advance_scouts_effect(state)
