@@ -24,7 +24,6 @@ from dune_imperium.core import (
     Resources,
     canonical_state_hash,
 )
-from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import resolve_faction_influence
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -41,6 +40,7 @@ from dune_imperium.rules.board_effects import (
     board_effect_is_implemented,
     board_effects_for,
     board_icons_for,
+    imperial_privilege_recall_targets,
     legal_board_effect_actions,
     legal_desert_tactics_actions,
     legal_espionage_actions,
@@ -49,7 +49,6 @@ from dune_imperium.rules.board_effects import (
     legal_shipping_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
-    skip_impossible_imperial_privilege_recall,
     static_board_effects,
 )
 from dune_imperium.rules.combat_deployment import (
@@ -1212,7 +1211,19 @@ def test_imperial_privilege_recall_returns_agent_and_draws_a_card() -> None:
     assert any(event.kind == "agent_recalled" for event in result.events)
 
 
-def test_imperial_privilege_skips_only_the_recall_without_another_agent() -> None:
+_CONFIRM = DomainAction(
+    action_id="resolve_imperial_privilege_without_recall", actor=0
+)
+
+
+def test_imperial_privilege_confirms_the_skipped_recall_without_another_agent() -> (
+    None
+):
+    # OQ-023 (decided): with no other deployed Agent only the recall is
+    # skipped; the card draw is a separate printed effect and still resolves
+    # [Board Guide p. 2]. User ruling 2026-09-30 ("결정 창 없이 자동으로
+    # 넘어가는 곳도 모두 결정 창을 연다"): the owner confirms the skip
+    # instead of the engine resolving it unasked.
     state = _imperial_privilege_state(intrigue_cards=("intrigue:held",))
     drawn = _instance("reconnaissance")
     owner = replace(state.players[0], deck=(drawn,))
@@ -1223,39 +1234,73 @@ def test_imperial_privilege_skips_only_the_recall_without_another_agent() -> Non
         if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
-    result = apply_imperial_privilege_action(state, action)
+    traded = apply_imperial_privilege_action(state, action)
+
+    assert imperial_privilege_recall_targets(traded.state, 0) == ()
+    assert legal_imperial_privilege_actions(traded.state, 0) == (_CONFIRM,)
+    assert drawn not in traded.state.players[0].hand
+    assert dict(traded.state.decision_stack[-1].context)["pending_board_effect"]
+    assert not legal_agent_turn_finish_actions(traded.state, 0)
+    assert not any(
+        event.kind == "imperial_privilege_recall_skipped" for event in traded.events
+    )
+
+    result = apply_imperial_privilege_action(traded.state, _CONFIRM)
     resolved = result.state
     decision = _finish_open_turn(resolved).decision_stack[-1].decision
 
-    # With no other deployed Agent only the recall is skipped; the card draw
-    # is a separate printed effect and still resolves (OQ-023 decided
-    # ruling, [Board Guide p. 2]).
     assert legal_imperial_privilege_actions(resolved, 0) == ()
+    assert imperial_privilege_recall_targets(resolved, 0) is None
     assert drawn in resolved.players[0].hand
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
-    assert result.events[-1].kind == "board_effect_resolved"
-    assert any(
-        event.kind == "imperial_privilege_recall_skipped" for event in result.events
-    )
-    assert not any(event.kind == "agent_recalled" for event in result.events)
+    kinds = [event.kind for event in result.events]
+    assert kinds[0] == "imperial_privilege_recall_skipped"
+    assert kinds[-1] == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "resolve_imperial_privilege_without_recall",
+        "effect": "imperial_privilege",
+        "player": 0,
+        "space_id": "imperial_privilege",
+    }
+    assert "agent_recalled" not in kinds
 
 
-def test_imperial_privilege_recall_that_lost_its_target_is_skipped_late() -> None:
-    # OQ-023 (decided): "recall 대상 유무는 Intrigue 슬롯이 해결된 뒤의 해결
-    # 시점에 판정한다" and, with no other deployed Agent, only the recall is
-    # skipped while the card draw still resolves [Board Guide p. 2]. The
-    # target may vanish after the slot resolved (a freely ordered recall of
-    # the same turn), so the skip must also fire then; the 2026-09-06
-    # self-play smoke found the deadlock this leaves otherwise.
+def test_imperial_privilege_recall_is_confirmed_only_without_a_target() -> None:
+    # The confirm is offered if and only if the recall has no target: with
+    # another Agent on the board only the recall is offered.
     state = _imperial_privilege_state(other_agent_space="arrakeen")
-    decline = next(
-        candidate
-        for candidate in legal_imperial_privilege_actions(state, 0)
-        if candidate.action_id == "decline_imperial_privilege_intrigue"
+    assert imperial_privilege_recall_targets(state, 0) is None  # slot first
+    declined = apply_imperial_privilege_action(
+        state, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
+    ).state
+
+    assert imperial_privilege_recall_targets(declined, 0) == ("arrakeen",)
+    assert legal_imperial_privilege_actions(declined, 0) == (
+        DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
     )
-    declined = apply_imperial_privilege_action(state, decline).state
-    assert legal_imperial_privilege_actions(declined, 0)
+    with pytest.raises(ValueError, match="not a legal Imperial Privilege"):
+        apply_imperial_privilege_action(declined, _CONFIRM)
+    # Another seat never sees the owner's recall.
+    assert imperial_privilege_recall_targets(declined, 1) is None
+
+
+def test_imperial_privilege_recall_that_lost_its_target_turns_into_the_confirm() -> (
+    None
+):
+    # OQ-023 (decided): "recall 대상 유무는 Intrigue 슬롯이 해결된 뒤의 해결
+    # 시점에 판정한다". The target may vanish after the slot resolved (a
+    # freely ordered recall of the same turn); the provider then offers the
+    # confirm, so the decision is never left without a legal action (the
+    # 2026-09-06 self-play deadlock) and no engine hook skips it unasked.
+    state = _imperial_privilege_state(other_agent_space="arrakeen")
+    declined = apply_imperial_privilege_action(
+        state, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
+    ).state
     drawn = _instance("reconnaissance")
     owner = replace(
         declined.players[0],
@@ -1264,9 +1309,9 @@ def test_imperial_privilege_recall_that_lost_its_target_is_skipped_late() -> Non
         agent_locations=("imperial_privilege",),
     )
     lost = replace(declined, players=(owner, *declined.players[1:]))
-    assert legal_imperial_privilege_actions(lost, 0) == ()
 
-    result = skip_impossible_imperial_privilege_recall(RuleResult(state=lost))
+    assert legal_imperial_privilege_actions(lost, 0) == (_CONFIRM,)
+    result = apply_imperial_privilege_action(lost, _CONFIRM)
 
     decision = _finish_open_turn(result.state).decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
@@ -1275,22 +1320,15 @@ def test_imperial_privilege_recall_that_lost_its_target_is_skipped_late() -> Non
     kinds = [event.kind for event in result.events]
     assert kinds[0] == "imperial_privilege_recall_skipped"
     assert kinds[-1] == "board_effect_resolved"
-    assert dict(result.events[-1].payload)["action_id"] == (
-        "skip_imperial_privilege_recall"
-    )
-    # Nothing to do when the recall still has a target or is not pending.
-    assert skip_impossible_imperial_privilege_recall(RuleResult(state=declined)) == (
-        RuleResult(state=declined)
-    )
 
 
-def test_steersman_recall_after_imperial_privilege_slot_does_not_deadlock() -> None:
+def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> None:
     # The self-play reproduction: Steersman visits Imperial Privilege, the
     # Intrigue slot is declined while another Agent is still on the board,
     # then the Agent box's recall brings that Agent home. OQ-023 judges the
-    # recall target at resolution time, so the impossible recall is skipped
-    # and its card draw resolves instead of leaving a decision with no
-    # legal action.
+    # recall target at resolution time, so the recall turns into the confirm
+    # (user ruling 2026-09-30) instead of leaving a decision with no legal
+    # action; nothing resolves before the owner presses it.
     steersman = next(
         instance
         for instance in imperium_deck_instance_ids(False)
@@ -1341,17 +1379,29 @@ def test_steersman_recall_after_imperial_privilege_slot_does_not_deadlock() -> N
 
     recalled = transition.state
     assert recalled.players[0].agent_locations == ("imperial_privilege",)
-    assert any(
+    assert not any(
         event.kind == "imperial_privilege_recall_skipped" for event in transition.events
     )
     context = dict(recalled.decision_stack[-1].context)
-    assert context["pending_board_effect"] is False
-    assert deck[0] in recalled.players[0].hand
+    assert context["pending_board_effect"] is True
+    legal = engine.legal_actions(recalled, 0)
+    assert _CONFIRM in legal
+    assert not any(
+        action.action_id == "recall_agent_for_imperial_privilege" for action in legal
+    )
     decision = recalled.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
-    # Steersman's own card icon is still the owner's to resolve.
+    # Steersman's own card icon is still the owner's to resolve too.
     assert decision.owner == 0
-    assert engine.legal_actions(recalled, 0)
+
+    confirmed = engine.apply(recalled, _CONFIRM)
+    assert any(
+        event.kind == "imperial_privilege_recall_skipped" for event in confirmed.events
+    )
+    assert dict(confirmed.state.decision_stack[-1].context)[
+        "pending_board_effect"
+    ] is False
+    assert deck[0] in confirmed.state.players[0].hand
 
 
 def test_imperial_privilege_reshuffle_leaves_the_trashed_intrigue_out() -> None:

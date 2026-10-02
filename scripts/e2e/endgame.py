@@ -9,8 +9,12 @@ The sharp one is the Garrison column. The endgame tiebreak counts a garrisoned
 Sardaukar Commander as a troop — `rules/endgame.py` ranks on
 `troops_garrison + commanders_garrison` (OQ-047, 사용자 판정 2026-09-08,
 `docs/rules/open-questions.md`) — so a table printing the troops alone shows a
-number that does not explain the order it stands in. At seed 7 two seats hold a
-Commander in garrison, which is why this check uses that seed.
+number that does not explain the order it stands in. At seed 6 three seats hold
+a Commander in garrison (two of them two each), which is why this check uses
+that seed. It was seed 7 until the Imperial Privilege recall confirm
+(2026-10-02) gave the heuristic seats new decisions and moved that game off
+its garrisoned Commanders; a seed with several seats holding one is less
+likely to lose them all to the next such move.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context
 
 check = Check()
 
-SEED = 7
+SEED = 6
 EXPANSIONS = ("choam", "bloodlines", "tech", "immortality", "promo")
 
 

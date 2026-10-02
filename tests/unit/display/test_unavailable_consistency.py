@@ -14,10 +14,16 @@ ruleset these tests check, at every decision:
 
 The engine's providers were refactored to expose the block predicates the
 rows read (``AcquireBlock``, ``option_unplayable_reason``,
-``intrigue_play_block``, ``agent_box_is_waiting``).
+``intrigue_play_block``, ``agent_box_is_waiting``, and on 2026-10-02
+``reveal_sandworm_block``, ``imperial_privilege_recall_targets``,
+``contract_recall_targets``, ``research_bonus_block`` and
+``combat_reward_influence_block``).
 ``test_the_refactored_providers_offer_what_they_did`` pins that refactor
 against copies of the providers as they were before it (2026-09-29): a later
 rule change to one of them should update or drop the copy on purpose.
+``test_recall_targets_never_grow_while_the_recall_waits`` pins what the
+recall confirms (2026-10-02) rely on: a recall's targets never come back
+while it waits.
 """
 
 import json
@@ -30,12 +36,15 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.determinize import determinize
-from dune_imperium.content.immortality.board import genetic_markers_reached
+from dune_imperium.content.immortality.board import (
+    ResearchBonus,
+    genetic_markers_reached,
+)
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     tleilaxu_card_for_instance,
 )
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
     DestroyShieldWall,
@@ -83,9 +92,23 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
 )
-from dune_imperium.rules.board_effects import legal_board_effect_actions
+from dune_imperium.rules.board_effects import (
+    BOARD_ICON_IMPERIAL_PRIVILEGE,
+    imperial_privilege_recall_targets,
+    legal_board_effect_actions,
+    legal_imperial_privilege_actions,
+)
+from dune_imperium.rules.combat import (
+    legal_combat_reward_influence_actions,
+    legal_combat_reward_spy_actions,
+    legal_distinct_combat_reward_influence_actions,
+)
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
+from dune_imperium.rules.contracts import (
+    contract_recall_targets,
+    legal_contract_recall_actions,
+)
 from dune_imperium.rules.effect_interpreter import (
     applicable_sections,
     can_afford,
@@ -102,14 +125,24 @@ from dune_imperium.rules.effect_interpreter import (
 )
 from dune_imperium.rules.effects import (
     agent_turn_space_id,
+    board_icon_is_pending,
     current_agent_effect_context,
     pending_agent_icons,
+    recallable_conflict_agents,
+    turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.immortality import legal_research_bonus_actions
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.intrigue import PLOT_FRAME_KINDS, legal_intrigue_play_actions
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
-from dune_imperium.rules.reveal_turn import current_reveal_context
+from dune_imperium.rules.planetologist import replaces_sandworms
+from dune_imperium.rules.reveal_turn import (
+    current_reveal_context,
+    reveal_sandworm_block,
+    tech_reveal_pending,
+)
+from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     legal_tleilaxu_acquisitions,
@@ -566,6 +599,315 @@ def _old_agent_box_waits(state: GameState, player: int) -> bool:
     return agent_card_effect_is_unavailable(state)
 
 
+def _old_can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
+    """``reveal_turn._can_summon_reveal_sandworm`` before it became
+    ``reveal_sandworm_block`` (2026-10-02, Desert Power option (B))."""
+
+    owner = state.players[player]
+    return (
+        owner.maker_hooks
+        and owner.resources.water >= 1
+        and bool(state.current_conflict_ids)
+        and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
+    )
+
+
+def _old_imperial_privilege(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``board_effects.legal_imperial_privilege_actions`` before the recall
+    confirm (2026-10-02, user ruling 2026-09-30): with no target it offered
+    nothing, and the engine skipped the recall unasked."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
+        context, BOARD_ICON_IMPERIAL_PRIVILEGE
+    ):
+        return ()
+    owner = state.players[player]
+    if context.get("imperial_privilege_intrigue_resolved") is not True:
+        return (
+            DomainAction(action_id="decline_imperial_privilege_intrigue", actor=player),
+            *(
+                DomainAction(
+                    action_id="trash_intrigue_for_imperial_privilege",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in owner.intrigue_cards
+            ),
+        )
+    conflict = recallable_conflict_agents(
+        owner,
+        sent_this_turn=turn_agent_in_conflict(owner, context, "imperial_privilege"),
+    )
+    return (
+        *(
+            DomainAction(
+                action_id="recall_agent_for_imperial_privilege",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in owner.agent_locations
+            if space_id != "imperial_privilege"
+        ),
+        *(
+            (
+                DomainAction(
+                    action_id="recall_conflict_agent_for_imperial_privilege",
+                    actor=player,
+                ),
+            )
+            if conflict
+            else ()
+        ),
+    )
+
+
+def _old_contract_recall(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``contracts.legal_contract_recall_actions`` before the recall confirm
+    (2026-10-02): with no target the frame never opened."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.CONTRACT_REWARD_RECALL:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    context = dict(frame.context)
+    excluded = context.get("excluded_space_id")
+    owner = state.players[player]
+    return (
+        *(
+            DomainAction(
+                action_id="recall_agent_for_contract",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in owner.agent_locations
+            if space_id != excluded
+        ),
+        *(
+            (
+                DomainAction(
+                    action_id="recall_conflict_agent_for_contract", actor=player
+                ),
+            )
+            if recallable_conflict_agents(
+                owner,
+                sent_this_turn=context.get("turn_agent_in_conflict") is True,
+            )
+            > 0
+            else ()
+        ),
+    )
+
+
+def _old_research_bonus(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``immortality.legal_research_bonus_actions`` before it read
+    ``research_bonus_block`` (2026-10-02). The window it answers for now
+    also opens when the arrow's cost cannot be paid; it then offered, and
+    still offers, only the decline."""
+
+    frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
+    if frame is None:
+        return ()
+    bonus = ResearchBonus(str(dict(frame.context)["bonus"]))
+    owner = state.players[player]
+    if bonus is ResearchBonus.INFLUENCE_ANY:
+        return tuple(
+            DomainAction(
+                action_id="choose_research_influence",
+                actor=player,
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
+    decline = DomainAction(action_id="decline_research_bonus", actor=player)
+    if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
+        return (
+            decline,
+            *(
+                DomainAction(
+                    action_id="trash_intrigue_for_research_bonus",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in owner.intrigue_cards
+            ),
+        )
+    assert bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+    if owner.resources.solari < 7:
+        return (decline,)
+    return (decline, DomainAction(action_id="pay_research_bonus", actor=player))
+
+
+# The recall providers gained a confirm where the old copy offered nothing:
+# (new provider, old copy, target function, confirm action id).
+_RECALLS: list[
+    tuple[
+        Callable[[GameState, int], tuple[DomainAction, ...]],
+        Callable[[GameState, int], tuple[DomainAction, ...]],
+        Callable[[GameState, int], tuple[str, ...] | None],
+        str,
+    ]
+] = [
+    (
+        legal_imperial_privilege_actions,
+        _old_imperial_privilege,
+        imperial_privilege_recall_targets,
+        "resolve_imperial_privilege_without_recall",
+    ),
+    (
+        legal_contract_recall_actions,
+        _old_contract_recall,
+        contract_recall_targets,
+        "resolve_contract_without_recall",
+    ),
+]
+
+
+def _old_combat_reward_influence(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``combat.legal_combat_reward_influence_actions`` before the confirm
+    without a Faction (2026-10-02, user ruling 2026-09-30): with every
+    Faction at the top it offered nothing, and the engine dropped the
+    choice unasked (OQ-060)."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_INFLUENCE:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    influence = state.players[player].influence
+    return tuple(
+        DomainAction(
+            action_id="choose_combat_reward_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+        if influence_amount(influence, faction) < 6
+    )
+
+
+def _old_distinct_combat_reward_influence(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``combat.legal_distinct_combat_reward_influence_actions`` before the
+    confirm without a Faction (2026-10-02)."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    chosen_mask = dict(frame.context)["chosen_mask"]
+    assert isinstance(chosen_mask, int)
+    influence = state.players[player].influence
+    return tuple(
+        DomainAction(
+            action_id="choose_distinct_combat_reward_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for index, faction in enumerate(Faction)
+        if not chosen_mask & (1 << index) and influence_amount(influence, faction) < 6
+    )
+
+
+def _old_combat_reward_spy(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """``combat.legal_combat_reward_spy_actions`` before it offered the
+    decline alone (2026-10-02): with nothing to place or recall it offered
+    nothing, and the engine dropped the Spy unasked."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_REWARD_SPY:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    owner = state.players[player]
+    if dict(frame.context).get("deep_cover") is True:
+        occupied = set(owner.spy_post_ids)
+    else:
+        occupied = {
+            post_id for seat in state.players for post_id in seat.spy_post_ids
+        }
+    targets = tuple(
+        post.post_id for post in OBSERVATION_POSTS if post.post_id not in occupied
+    )
+    if targets and owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_combat_reward_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in targets
+        )
+    if targets and owner.spy_post_ids:
+        return (
+            DomainAction(action_id="decline_combat_reward_spy", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_combat_reward",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in owner.spy_post_ids
+            ),
+        )
+    return ()
+
+
+# Providers that gained a confirm where the old copy offered nothing at all:
+# (new provider, old copy, the frame kind, the confirm's action id).
+_CONFIRMS: list[
+    tuple[
+        Callable[[GameState, int], tuple[DomainAction, ...]],
+        Callable[[GameState, int], tuple[DomainAction, ...]],
+        FrameKind,
+        str,
+    ]
+] = [
+    (
+        legal_combat_reward_influence_actions,
+        _old_combat_reward_influence,
+        FrameKind.COMBAT_REWARD_INFLUENCE,
+        "resolve_combat_influence_without_faction",
+    ),
+    (
+        legal_distinct_combat_reward_influence_actions,
+        _old_distinct_combat_reward_influence,
+        FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE,
+        "resolve_combat_influence_without_faction",
+    ),
+    (
+        legal_combat_reward_spy_actions,
+        _old_combat_reward_spy,
+        FrameKind.COMBAT_REWARD_SPY,
+        "decline_combat_reward_spy",
+    ),
+]
+
+
 _PAIRS: list[
     tuple[
         Callable[[GameState, int], tuple[DomainAction, ...]],
@@ -578,6 +920,7 @@ _PAIRS: list[
     (legal_tleilaxu_acquisitions, _old_tleilaxu),
     (legal_intrigue_play_actions, _old_intrigue_plays),
     (_pending_groups, _old_pending_groups),
+    (legal_research_bonus_actions, _old_research_bonus),
 ]
 _OPTIONS = tuple(
     option
@@ -599,8 +942,35 @@ def test_the_refactored_providers_offer_what_they_did(config: RulesetConfig) -> 
         for step, (state, seat, _) in enumerate(_decisions(config, seed)):
             for new, old in _PAIRS:
                 assert new(state, seat) == old(state, seat), (new.__name__, step)
+            # A recall offers what it did, and the confirm exactly where the
+            # old provider offered nothing for want of a target.
+            for new, old, targets, confirm in _RECALLS:
+                expected = old(state, seat)
+                if targets(state, seat) == ():
+                    assert expected == ()
+                    expected = (DomainAction(action_id=confirm, actor=seat),)
+                assert new(state, seat) == expected, (new.__name__, step)
+            # A provider that gained a confirm offers what it did, and the
+            # confirm exactly where its own frame, the seat's, offered nothing.
+            for new, old, kind, confirm in _CONFIRMS:
+                expected = old(state, seat)
+                if expected == () and owned_top_frame(state, kind, seat):
+                    expected = (DomainAction(action_id=confirm, actor=seat),)
+                assert new(state, seat) == expected, (new.__name__, step)
+            # Panopticon's Spy is offered and holds the Reveal without the
+            # old gate (2026-10-02); the gate never failed in a real game.
+            panopticon = owned_top_frame(state, FrameKind.REVEAL, seat)
+            if panopticon is not None and "panopticon" in tech_reveal_pending(
+                dict(panopticon.context)
+            ):
+                owner = state.players[seat]
+                assert owner.spies_supply > 0 or owner.spy_post_ids, step
             waiting = agent_box_is_waiting(state, seat)
             assert waiting == _old_agent_box_waits(state, seat), step
+            for player in range(state.config.players):
+                assert (
+                    reveal_sandworm_block(state, player) is None
+                ) == _old_can_summon_reveal_sandworm(state, player), step
             boxes += waiting
             if step % 10 == 0:
                 for option in _OPTIONS:
@@ -614,3 +984,99 @@ def test_the_refactored_providers_offer_what_they_did(config: RulesetConfig) -> 
                 compared += 1
     assert compared > 0
     assert boxes > 0  # a withheld Agent box was met (75-149 per ruleset)
+
+
+_PRIVILEGE_RECALLS = frozenset(
+    {
+        "recall_agent_for_imperial_privilege",
+        "recall_conflict_agent_for_imperial_privilege",
+        "resolve_imperial_privilege_without_recall",
+    }
+)
+
+
+def _privilege_decisions(
+    config: RulesetConfig, seed: int
+) -> Iterator[tuple[GameState, int, tuple[DomainAction, ...]]]:
+    """Every player decision of a seeded random game whose seats send an
+    Agent to Imperial Privilege whenever they may, and leave its recall (or
+    the confirm) for up to four other choices first (effects, Plot Intrigue
+    cards, troops), so a visit's recall is asked about again after other
+    things happen."""
+
+    state = ENGINE.reset(config, seed)
+    resolver = ChanceResolver(seed=seed)
+    rng = random.Random(seed)
+    delayed = 0
+    while state.phase is not GamePhase.FINISHED:
+        decision = ENGINE.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = ENGINE.apply(state, resolver.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        legal = ENGINE.legal_actions(state, decision.owner)
+        yield state, decision.owner, legal
+        choices = [
+            action
+            for action in legal
+            if action.action_id == "agent_turn"
+            and dict(action.arguments).get("space_id") == "imperial_privilege"
+        ]
+        waiting = imperial_privilege_recall_targets(state, decision.owner)
+        if not choices and waiting is not None:
+            later = [a for a in legal if a.action_id not in _PRIVILEGE_RECALLS]
+            if later and delayed < 4:
+                choices, delayed = later, delayed + 1
+        else:
+            delayed = 0
+        state = ENGINE.apply(state, rng.choice(choices or legal)).state
+
+
+@pytest.mark.parametrize("config", CONFIGS, ids=IDS)
+def test_recall_targets_never_grow_while_the_recall_waits(
+    config: RulesetConfig,
+) -> None:
+    """The recall confirms are offered as soon as a recall has no target
+    (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    창을 연다"). That gives up nothing only because the targets cannot come
+    back while the recall waits, as ``imperial_privilege_recall_targets``
+    and ``contract_recall_targets`` say; nothing else would fail if a later
+    effect broke it. Over three seeded games per ruleset that go to
+    Imperial Privilege whenever they may:
+
+    - within one Imperial Privilege visit (its Agent-effect frame and played
+      card), every answer is a subset of the one before it, whatever other
+      effects, Plot Intrigue cards or windows above came between; an empty
+      answer, where the confirm is offered, stays empty;
+    - a Contract recall's frame is the only thing its owner may act on (no
+      Plot Intrigue above it), and its answer at the decision is still the
+      one it was opened with (its prompt is fixed when it is pushed);
+    - neither answers for a seat that is not deciding.
+    """
+
+    visits: dict[tuple[int, str, str], frozenset[str]] = {}
+    compared = after_empty = 0
+    for seed in range(3):
+        for step, (state, seat, legal) in enumerate(_privilege_decisions(config, seed)):
+            top = state.decision_stack[-1]
+            for player in range(state.config.players):
+                if player != seat:
+                    assert imperial_privilege_recall_targets(state, player) is None
+                    assert contract_recall_targets(state, player) is None
+            privilege = imperial_privilege_recall_targets(state, seat)
+            if privilege is not None:
+                key = (seed, top.frame_id, str(dict(top.context)["card_id"]))
+                if key in visits:
+                    assert set(privilege) <= visits[key], (key, privilege, step)
+                    compared += 1
+                    after_empty += not visits[key]
+                visits[key] = frozenset(privilege)
+            recall = contract_recall_targets(state, seat)
+            if recall is not None:
+                assert legal == legal_contract_recall_actions(state, seat), step
+                assert isinstance(top.decision, PlayerDecision)
+                opened_empty = top.decision.prompt == "No other Agent to recall"
+                assert opened_empty == (recall == ()), (top.frame_id, recall, step)
+    # 6-14 visits per ruleset, asked again 3-9 times, 2-7 of them after the
+    # confirm was already offered.
+    assert visits and compared > 0 and after_empty > 0

@@ -676,13 +676,17 @@ def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> No
     # Resolving Into the Fray first moves this turn's Agent to the Conflict;
     # it used to be the only (forced) recall target, so Duncan got back the
     # Agent he had just sent. Now the recall is skipped and the card is still
-    # drawn (OQ-023).
-    from dune_imperium.rules.board_effects import legal_imperial_privilege_actions
+    # drawn (OQ-023), once the owner confirms it (user ruling 2026-09-30).
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
 
     declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=0)
 
-    assert legal_imperial_privilege_actions(declined, 0) == ()
-    seat = declined.players[0]
+    confirm = DomainAction("resolve_imperial_privilege_without_recall", 0)
+    assert legal_imperial_privilege_actions(declined, 0) == (confirm,)
+    seat = apply_imperial_privilege_action(declined, confirm).state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
     assert seat.hand == (RECON,)

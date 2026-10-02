@@ -385,14 +385,29 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     both score, making it 10 and the winner; nothing scores after that. The
     buggy collector would read ``end.endgame_vp`` == 0 for seat 2,
     ``end.leader_changed`` == False and ``end.trigger_vp`` == True.
+
+    Re-derived 2026-10-02 for L2 group A decision windows: seed 16 now
+    diverges in round 8, where seat 3's Contract recall with no target
+    opens its confirm window instead of fizzling unasked; seat 2 is then
+    already on 10 VP at the check and leads, so Panopticon no longer changes
+    the leader. The same capture over full seeds 1-200 finds three seeds
+    (2, 56, 66) where the leader after the ``:endgame_tech:`` events differs
+    from the one at the check and goes on to win; the case is seed 2, the
+    first. Endgame opens there in round 10 on the empty Conflict deck with
+    seat 2 (Liet Kynes) on 10 VP leading seat 0 (Gurney Halleck) on 9.
+    Seat 0's CHOAM Transports VP makes it 10 and it ranks first on the tie
+    (8 spice to 1); it then scores a wild battle-icon match and Secure
+    Spice Trade, ending on 12 as the winner. The buggy collector would read
+    ``end.endgame_vp`` == 2 for seat 0 and ``end.leader_changed`` == False
+    (``end.trigger_vp`` is True either way: seat 2 was already on 10).
     """
 
     import dune_imperium.rules.engine as rules_engine
     from dune_imperium.rules.endgame import final_standings as real_final_standings
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
-    saw_seed_16 = False
-    for seed in (*FULL_SEEDS, 16):
+    saw_seed_2 = False
+    for seed in (*FULL_SEEDS, 2):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -427,13 +442,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 16:
-            saw_seed_16 = True
-            assert census["seats"][2]["end.endgame_vp"] == 2
+        if seed == 2:
+            saw_seed_2 = True
+            assert census["seats"][0]["end.endgame_vp"] == 3
             assert census["game"]["end.leader_changed"] is True
-            assert census["game"]["end.trigger_vp"] is False
+            assert census["game"]["end.trigger_vp"] is True
 
-    assert saw_seed_16, "the seed 16 regression case must run"
+    assert saw_seed_2, "the seed 2 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -519,6 +534,16 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     Y'rkoon), the first seat whose only Commander retreat is that loss: in
     round 8 its ``lose_intrigue_troop`` for slot 0 takes the Commander from
     the Conflict back to its supply (``unit_lost`` with one Commander).
+
+    Re-derived 2026-10-02 for L2 group A decision windows: seed 6 now
+    diverges in round 5, where seat 0's Imperial Privilege recall with no
+    target opens its confirm window instead of being skipped unasked. The
+    same listing over full seeds 1-200 still gives seed 2 seat 0 (Gruesome
+    Sacrifice round 6 plus Spice is Power round 10) first and seed 6 seat 1
+    as the first seat whose only Commander retreat is the loss. Its round-8
+    Gruesome Sacrifice now pays a troop for slot 0 and the Commander for
+    slot 1 (``lose_intrigue_troop`` with ``commanders`` 1: ``unit_lost``
+    with one Commander, its Commander supply 0 -> 1).
     """
 
     spec = _spec(True, 6)
@@ -532,7 +557,7 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:8:player:1:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
+        "round:8:player:1:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
     assert census["seats"][1]["bt.commander_retreats"] == 0

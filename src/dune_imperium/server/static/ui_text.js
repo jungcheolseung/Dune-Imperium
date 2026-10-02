@@ -1285,6 +1285,10 @@ const UI_TEXT = {
     "ko": "지금은 살 수 없는 카드",
     "en": "Cards you cannot acquire now"
   },
+  "render.unavailable_choice_heading": {
+    "ko": "지금 고를 수 없는 선택지",
+    "en": "Choices you cannot take now"
+  },
   "render.unavailable_intrigue_heading": {
     "ko": "지금은 쓸 수 없는 책략 카드",
     "en": "Intrigue cards you cannot play now"

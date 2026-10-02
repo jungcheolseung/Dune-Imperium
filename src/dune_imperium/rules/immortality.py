@@ -20,6 +20,7 @@ Rulings the official documents leave open are OQ-048 to OQ-051.
 """
 
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
@@ -35,6 +36,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
@@ -56,6 +58,7 @@ from dune_imperium.rules.scouts_missions import (
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 
 __all__ = [
+    "ResearchBonusBlock",
     "advance_research",
     "advance_tleilaxu",
     "apply_family_atomics",
@@ -68,6 +71,7 @@ __all__ = [
     "legal_research_bonus_actions",
     "legal_specimen_return_actions",
     "move_research_token",
+    "research_bonus_block",
     "spend_specimens",
 ]
 
@@ -410,48 +414,22 @@ def _resolve_research_bonus(
                     ),
                 ),
             )
-        case ResearchBonus.INFLUENCE_ANY:
+        case (
+            ResearchBonus.INFLUENCE_ANY
+            | ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+            | ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+        ):
+            # The window opens even when an arrow's cost cannot be paid
+            # (``research_bonus_block``): its owner then confirms the lapse
+            # with ``decline_research_bonus``, the only legal choice (user
+            # ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두
+            # 결정 창을 연다").
             return RuleResult(
                 state=state.push_decision(
                     _bonus_frame(player, bonus, source)
                 ),
                 events=(),
             )
-        case ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
-            # "Trash an Intrigue card": one from the owner's hand
-            # [Immortality p. 16]; without one the arrow cannot be paid.
-            if not owner.intrigue_cards:
-                return _bonus_unavailable(state, player, bonus, source)
-            return RuleResult(
-                state=state.push_decision(
-                    _bonus_frame(player, bonus, source)
-                ),
-                events=(),
-            )
-        case ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
-            if owner.resources.solari < SEVEN_SOLARI_COST:
-                return _bonus_unavailable(state, player, bonus, source)
-            return RuleResult(
-                state=state.push_decision(
-                    _bonus_frame(player, bonus, source)
-                ),
-                events=(),
-            )
-
-
-def _bonus_unavailable(
-    state: GameState, player: int, bonus: ResearchBonus, source: str
-) -> RuleResult:
-    return RuleResult(
-        state=state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:bonus_unavailable",
-                kind="research_bonus_unavailable",
-                payload=(("bonus", bonus.value), ("player", player)),
-            ),
-        ),
-    )
 
 
 def _bonus_frame(
@@ -473,11 +451,55 @@ def _bonus_frame(
     )
 
 
+class ResearchBonusBlock(StrEnum):
+    """Why a research space's arrow cost cannot be paid right now.
+
+    "Trash an Intrigue card" (c7r3) takes one from the owner's hand
+    [Immortality p. 16], and c8r6 costs 7 Solari [Immortality p. 3 board
+    artwork]; an arrow's cost is the price of its effect ("비용을 지불하지
+    않으면 효과를 얻지 못하며", docs/rules/player-turns.md [Main p. 9]
+    [FAQ p. 3]). ``legal_research_bonus_actions`` offers the payment exactly
+    when ``research_bonus_block`` is None, and the page's greyed-out row
+    reads the same block (``display.unavailable``), so the reason shown can
+    never disagree with the legal list.
+    """
+
+    NO_INTRIGUE = "no_intrigue"  # no Intrigue card in hand to trash
+    SOLARI = "solari"  # fewer than 7 Solari
+
+
+def research_bonus_block(
+    owner: PlayerState, bonus: ResearchBonus
+) -> ResearchBonusBlock | None:
+    """Return why ``owner`` cannot pay ``bonus``'s arrow cost now, or None.
+
+    None for a bonus with no cost. Reads only the owner's own Intrigue hand
+    and Solari.
+    """
+
+    if (
+        bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+        and not owner.intrigue_cards
+    ):
+        return ResearchBonusBlock.NO_INTRIGUE
+    if (
+        bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+        and owner.resources.solari < SEVEN_SOLARI_COST
+    ):
+        return ResearchBonusBlock.SOLARI
+    return None
+
+
 def legal_research_bonus_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the chosen Influence, the optional trash, or the optional payment."""
+    """Offer the chosen Influence, the optional trash, or the optional payment.
+
+    While the arrow's cost cannot be paid (``research_bonus_block``) only
+    ``decline_research_bonus`` is offered: the window still opens, and its
+    owner confirms the lapse (user ruling 2026-09-30).
+    """
 
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
     if frame is None:
@@ -494,6 +516,8 @@ def legal_research_bonus_actions(
             for faction in Faction
         )
     decline = DomainAction(action_id="decline_research_bonus", actor=player)
+    if research_bonus_block(owner, bonus) is not None:
+        return (decline,)
     if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
         return (
             decline,
@@ -507,8 +531,6 @@ def legal_research_bonus_actions(
             ),
         )
     if bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
-        if owner.resources.solari < SEVEN_SOLARI_COST:
-            return (decline,)
         return (decline, DomainAction(action_id="pay_research_bonus", actor=player))
     raise RuntimeError(f"research bonus frame has no choices: {bonus}")
 

@@ -1,7 +1,7 @@
 """Pure four-player Combat ranking rules."""
 
 from dataclasses import dataclass, replace
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
@@ -748,6 +748,13 @@ def legal_combat_reward_spy_actions(
     "you may first recall one of your Spies for no effect" [Main pp. 11,
     20]: the recall can be declined, and once made the Spy is back in the
     supply and must be placed -- on the post it left, if its owner likes.
+    With nothing to place or recall the decline is the only choice ("놓을
+    post가 없으면 거절만 남는다", OQ-057 (14)), so the window never stands
+    without an action. A four-player game never gets there -- thirteen
+    posts for twelve Spies, and Advanced Data Analysis boxes at most one
+    Spy -- but the frame is answered by its owner rather than dropped
+    unasked (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
+    모두 결정 창을 연다").
     """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
@@ -791,61 +798,18 @@ def legal_combat_reward_spy_actions(
                 for post_id in owner.spy_post_ids
             ),
         )
-    return ()
-
-
-def combat_reward_spy_is_unavailable(state: GameState) -> bool:
-    """Return whether the top Conflict reward Spy can no longer be placed.
-
-    With no Spy in the supply and none of its owner's on the board to
-    recall (or no post left to place on), the frame would be left without
-    a legal action.
-    """
-
-    if not state.decision_stack:
-        return False
-    frame = state.decision_stack[-1]
-    if frame.kind is not FrameKind.COMBAT_REWARD_SPY:
-        return False
-    decision = frame.decision
-    if not isinstance(decision, PlayerDecision):
-        return False
-    return not legal_combat_reward_spy_actions(state, decision.owner)
-
-
-def fizzle_combat_reward_spy(state: GameState) -> RuleResult:
-    """Drop the top Conflict reward Spy that cannot be placed, publicly."""
-
-    if not combat_reward_spy_is_unavailable(state):
-        raise ValueError("the top frame is a Conflict reward Spy that can be placed")
-    frame = state.decision_stack[-1]
-    decision = frame.decision
-    if not isinstance(decision, PlayerDecision):
-        raise RuntimeError("Conflict reward Spy frame has no owner")
-    choice_index = context_int(dict(frame.context), "choice_index")
-    remaining = state.decision_stack[:-1]
-    return RuleResult(
-        state=replace(
-            state, decision_stack=remaining, combat_rewards_resolved=not remaining
-        ),
-        events=(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:combat_reward:spy_unavailable:"
-                    f"{choice_index}:{decision.owner}"
-                ),
-                kind="combat_reward_spy_unavailable",
-                payload=(("choice_index", choice_index), ("player", decision.owner)),
-            ),
-        ),
-    )
+    return (DomainAction(action_id="decline_combat_reward_spy", actor=player),)
 
 
 def apply_combat_reward_spy(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Place the reward Spy, or recall one first, or pass up that recall."""
+    """Place the reward Spy, or recall one first, or pass up that recall.
+
+    The decline also answers a Spy with nothing to place or recall; either
+    way the Spy is lost publicly (``combat_reward_spy_unavailable``).
+    """
 
     if action not in legal_combat_reward_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Combat reward Spy placement")
@@ -919,11 +883,73 @@ def apply_combat_reward_spy(
     return RuleResult(state=next_state, events=(event,))
 
 
+class CombatInfluenceBlock(StrEnum):
+    """Why a Conflict reward's "choose a Faction" cannot take a Faction now.
+
+    ``legal_combat_reward_influence_actions`` and
+    ``legal_distinct_combat_reward_influence_actions`` offer a Faction
+    exactly when ``combat_reward_influence_block`` is None, and the page's
+    greyed-out rows read the same block (``display.unavailable``), so the
+    reason shown can never disagree with the legal list.
+    """
+
+    TOP = "top"  # the cube is at the top of its track (6)
+    NAMED = "named"  # already named for this "Choose two" reward
+
+
+def combat_reward_influence_block(
+    frame: DecisionFrame, owner: PlayerState, faction: Faction
+) -> CombatInfluenceBlock | None:
+    """Return why ``faction`` cannot be chosen in ``frame`` now, or None.
+
+    A cube at the top of its track cannot rise (OQ-060), and "Choose two"
+    names two different Factions [Propaganda card], so a distinct group's
+    second pick skips the first one. Reads only public state: the owner's
+    Influence and the Factions this reward already named.
+    """
+
+    if frame.kind is FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE:
+        chosen_mask = context_int(dict(frame.context), "chosen_mask")
+        if chosen_mask & (1 << tuple(Faction).index(faction)):
+            return CombatInfluenceBlock.NAMED
+    if influence_amount(owner.influence, faction) >= MAX_INFLUENCE:
+        return CombatInfluenceBlock.TOP
+    return None
+
+
+def _combat_influence_choices(
+    frame: DecisionFrame, state: GameState, player: int, action_id: str
+) -> tuple[DomainAction, ...]:
+    """One action per Faction that can be chosen, else the confirm.
+
+    With every eligible Faction blocked the reward is lost (OQ-060), but
+    the window still opens and its owner confirms the loss (user ruling
+    2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    연다"); the confirm is never offered beside a Faction, since the gain
+    is mandatory while one can be taken.
+    """
+
+    owner = state.players[player]
+    choices = tuple(
+        DomainAction(
+            action_id=action_id,
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+        if combat_reward_influence_block(frame, owner, faction) is None
+    )
+    confirm = DomainAction(
+        action_id="resolve_combat_influence_without_faction", actor=player
+    )
+    return choices or (confirm,)
+
+
 def legal_combat_reward_influence_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return every Faction whose track is below the top.
+    """Return every Faction whose track is below the top, else the confirm.
 
     "Choose any one of the four Factions" [Main p. 20]. Bene Gesserit at 3
     stays a choice with the Intrigue deck empty: the track's Influence 4
@@ -938,15 +964,8 @@ def legal_combat_reward_influence_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    influence = state.players[player].influence
-    return tuple(
-        DomainAction(
-            action_id="choose_combat_reward_influence",
-            actor=player,
-            arguments=(("faction", faction.value),),
-        )
-        for faction in Faction
-        if influence_amount(influence, faction) < MAX_INFLUENCE
+    return _combat_influence_choices(
+        frame, state, player, "choose_combat_reward_influence"
     )
 
 
@@ -954,7 +973,8 @@ def legal_distinct_combat_reward_influence_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return unchosen factions for one choose-distinct Influence group."""
+    """Return unchosen factions for one choose-distinct Influence group,
+    else the confirm."""
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -964,18 +984,8 @@ def legal_distinct_combat_reward_influence_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    context = dict(frame.context)
-    chosen_mask = context_int(context, "chosen_mask")
-    influence = state.players[player].influence
-    return tuple(
-        DomainAction(
-            action_id="choose_distinct_combat_reward_influence",
-            actor=player,
-            arguments=(("faction", faction.value),),
-        )
-        for index, faction in enumerate(Faction)
-        if not chosen_mask & (1 << index)
-        and influence_amount(influence, faction) < MAX_INFLUENCE
+    return _combat_influence_choices(
+        frame, state, player, "choose_distinct_combat_reward_influence"
     )
 
 
@@ -1089,47 +1099,30 @@ def apply_combat_reward_influence(
     return RuleResult(state=next_state, events=gained.events)
 
 
-_INFLUENCE_CHOICE_FRAMES: frozenset[FrameKind] = frozenset(
-    {FrameKind.COMBAT_REWARD_INFLUENCE, FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE}
-)
-
-
-def combat_influence_choice_is_unavailable(state: GameState) -> bool:
-    """Return whether the top Combat reward Influence choice has no faction left.
-
-    A cube at the top of its track cannot rise, so a "choose a Faction"
-    reward with every eligible Faction at 6 has nothing to offer (OQ-060).
-    """
-
-    if not state.decision_stack:
-        return False
-    frame = state.decision_stack[-1]
-    if frame.kind not in _INFLUENCE_CHOICE_FRAMES:
-        return False
-    decision = frame.decision
-    if not isinstance(decision, PlayerDecision):
-        return False
-    owner = decision.owner
-    if frame.kind is FrameKind.COMBAT_REWARD_INFLUENCE:
-        return not legal_combat_reward_influence_actions(state, owner)
-    return not legal_distinct_combat_reward_influence_actions(state, owner)
-
-
-def fizzle_combat_influence_choice(state: GameState) -> RuleResult:
-    """Drop the top Influence choice no faction can take (OQ-060).
+def apply_combat_influence_without_faction(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Confirm a Conflict reward Influence choice no Faction can take.
 
     The choice is lost the way a plain Influence gain is lost at the top of
-    the track. A "choose two" group still pays the Factions its earlier pick
-    named, since those were chosen before this one ran out of options.
+    the track (OQ-060). A "choose two" group still pays the Factions its
+    earlier pick named, since those were chosen before this one ran out of
+    options. The events are those of the automatic step this confirm
+    replaced (user ruling 2026-09-30).
     """
 
-    if not combat_influence_choice_is_unavailable(state):
-        raise ValueError("the top frame is an Influence choice with a faction to take")
+    offered = (
+        *legal_combat_reward_influence_actions(state, action.actor),
+        *legal_distinct_combat_reward_influence_actions(state, action.actor),
+    )
+    if (
+        action.action_id != "resolve_combat_influence_without_faction"
+        or action not in offered
+    ):
+        raise ValueError("action is not a legal Influence confirm without a Faction")
     frame = state.decision_stack[-1]
-    decision = frame.decision
-    if not isinstance(decision, PlayerDecision):
-        raise RuntimeError("Influence choice frame has no owner")
-    player = decision.owner
+    player = action.actor
     context = dict(frame.context)
     choice_index = context_int(context, "choice_index")
     remaining = state.decision_stack[:-1]

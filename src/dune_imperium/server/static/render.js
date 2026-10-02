@@ -1279,14 +1279,17 @@ function unavailableBadge(line) {
    unavailable_choices) lists what the seat's own decision offers that it
    cannot take right now, with the reason — a card of the Reveal shop it
    cannot afford, one of its Intrigue cards whose cost or condition fails,
-   an effect still waiting on its condition. Each is a row shaped like an
-   action row that takes no click; its action is described like a legal
-   one (describeAction, no index), and `refs` dims the table cards with
-   the reason as their title (visualCard). Every snapshot works them out
-   again, so a row becomes an ordinary action row as soon as the seat can
-   take it, and the reverse. */
+   an effect still waiting on its condition, a branch of an open choice it
+   cannot take ("choice": Desert Power's sandworm without Maker Hooks, a
+   recall with no other Agent to recall).
+   Each is a row shaped like an action row that takes no click; its action
+   is described like a legal one (describeAction, no index), and `refs`
+   dims the table cards with the reason as their title (visualCard). Every
+   snapshot works them out again, so a row becomes an ordinary action row
+   as soon as the seat can take it, and the reverse. */
 const UNAVAILABLE_HEADINGS = {
   acquire: "render.unavailable_acquire_heading",
+  choice: "render.unavailable_choice_heading",
   intrigue: "render.unavailable_intrigue_heading",
   waiting: "render.unavailable_waiting_heading",
 };
@@ -1498,7 +1501,7 @@ function renderRevealPanel(box, actions) {
      `unavailable`): a deferred Reveal choice still waiting on its
      condition, an Intrigue card it cannot play, the cards it cannot
      afford. */
-  appendUnavailableRows(box, ["waiting", "intrigue"]);
+  appendUnavailableRows(box, ["choice", "waiting", "intrigue"]);
   if (buys.length) {
     heading(t("render.buyable_cards_heading"));
     for (const action of buys) {

@@ -720,15 +720,22 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
         DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0),
     )
 
-    seat = declined.state.players[0]
-    assert "recall_conflict_agent_for_imperial_privilege" not in {
-        action.action_id for action in engine.legal_actions(declined.state, 0)
-    }
+    legal = {action.action_id for action in engine.legal_actions(declined.state, 0)}
+    assert "recall_conflict_agent_for_imperial_privilege" not in legal
+    # With no other Agent the owner confirms the skipped recall (user ruling
+    # 2026-09-30); the card is drawn then (OQ-023).
+    assert "resolve_imperial_privilege_without_recall" in legal
+    confirmed = engine.apply(
+        declined.state,
+        DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
+    )
+
+    seat = confirmed.state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
     assert len(seat.hand) == hand_before + 1
     assert "imperial_privilege_recall_skipped" in {
-        event.kind for event in declined.events
+        event.kind for event in confirmed.events
     }
 
 
@@ -811,7 +818,10 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
         apply_agent_card_contract_completion,
         legal_agent_card_contract_completion_actions,
     )
-    from dune_imperium.rules.contracts import legal_contract_recall_actions
+    from dune_imperium.rules.contracts import (
+        apply_contract_recall_action,
+        legal_contract_recall_actions,
+    )
 
     choam_demands = "imperium:choam_demands:0"
     engine = UprisingRulesEngine()
@@ -849,10 +859,17 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
     completion = legal_agent_card_contract_completion_actions(fighting, 0)[0]
     completed = apply_agent_card_contract_completion(fighting, completion)
 
+    # The reward's recall window opens with only the confirm (user ruling
+    # 2026-09-30); confirming fizzles it.
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert completed.state.decision_stack[-1].kind == "contract_reward_recall"
+    assert legal_contract_recall_actions(completed.state, 0) == (confirm,)
+    fizzled = apply_contract_recall_action(completed.state, confirm)
     assert any(
-        event.kind == "contract_recall_unavailable" for event in completed.events
+        event.kind == "contract_recall_unavailable" for event in fizzled.events
     )
-    assert legal_contract_recall_actions(completed.state, 0) == ()
+    assert fizzled.state.decision_stack[-1].kind == "agent_effects"
+    assert fizzled.state.players[0].agent_in_conflict == 1
 
 
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
@@ -2031,19 +2048,33 @@ def test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal() ->
     assert legal_tech_reveal_actions(placed, 0) == ()
     assert legal_finish_reveal_actions(placed, 0) != ()
 
-    # Without any Spy left (all boxed) the effect lapses at the finish.
+    # Without any Spy left (all boxed) the Spy is still offered and its
+    # placement window offers only the decline (OQ-057 (14)), so its owner
+    # answers it rather than it lapsing unasked at the finish (user ruling
+    # 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    # 연다"). Synthetic: Advanced Data Analysis boxes at most one Spy.
     boxed = _tech_owner(
         "panopticon",
         hand=starting_deck_instance_ids(0)[:5],
         spies_supply=0,
         spies_boxed=3,
     )
-    lapsing = _reveal(_turn_state(boxed, stacks=((), (), ()))).state
-    lapsing = apply_reveal_gain(lapsing, legal_reveal_gain_actions(lapsing, 0)[0]).state
-    assert legal_tech_reveal_actions(lapsing, 0) == ()
-    (finish,) = legal_finish_reveal_actions(lapsing, 0)
-    finished = finish_reveal_turn(lapsing, finish)
-    assert any(e.kind == "tech_reveal_unavailable" for e in finished.events)
+    empty = _reveal(_turn_state(boxed, stacks=((), (), ()))).state
+    empty = apply_reveal_gain(empty, legal_reveal_gain_actions(empty, 0)[0]).state
+    (place,) = legal_tech_reveal_actions(empty, 0)
+    assert place.action_id == "place_tech_spy"
+    assert legal_finish_reveal_actions(empty, 0) == ()
+    opened = apply_place_tech_spy(empty, place).state
+    assert opened.decision_stack[-1].kind == "spy_placement"
+    decline = DomainAction(action_id="decline_spy_placement", actor=0)
+    assert legal_spy_placement_actions(opened, 0) == (decline,)
+    declined = apply_spy_placement(opened, decline)
+    assert [event.kind for event in declined.events] == ["spy_placement_unavailable"]
+    assert declined.state.decision_stack[-1].kind == "reveal"
+    assert legal_tech_reveal_actions(declined.state, 0) == ()
+    (finish,) = legal_finish_reveal_actions(declined.state, 0)
+    finished = finish_reveal_turn(declined.state, finish)
+    assert not any("unavailable" in event.kind for event in finished.events)
 
 
 def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> None:

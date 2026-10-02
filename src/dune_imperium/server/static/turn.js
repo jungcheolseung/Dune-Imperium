@@ -345,7 +345,7 @@ function renderActionPanel(box, turnEnd) {
     else appendActionItems(box, actions);
     /* And any decision what else it cannot take now, with the reason
        (render.js appendUnavailableRows). */
-    appendUnavailableRows(box, ["waiting", "intrigue"]);
+    appendUnavailableRows(box, ["choice", "waiting", "intrigue"]);
     return;
   }
   const pick = state.pick || {};
@@ -394,7 +394,7 @@ function renderActionPanel(box, turnEnd) {
     box.appendChild(heading);
     appendActionItems(box, others);
   }
-  appendUnavailableRows(box, ["waiting", "intrigue"]);
+  appendUnavailableRows(box, ["choice", "waiting", "intrigue"]);
   box.appendChild(actionListToggle(true, actions.length));
 }
 

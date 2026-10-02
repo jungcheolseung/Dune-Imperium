@@ -514,17 +514,32 @@ def test_desert_power_deferred_choice_still_commands_i_believe_once_resumed() ->
     assert ("troops", "2", _card("i_believe")) in pending
 
 
-def test_desert_power_without_maker_hooks_commands_i_believe_immediately() -> None:
-    # Without Maker Hooks the sandworm branch can never be taken, so the
-    # card is simply 2 Persuasion counted at the Reveal start (unchanged by
-    # OQ-069): I Believe (1) + Diplomacy (1) + High Council (2) + Desert
-    # Power (2) reaches 6 immediately and Command pays at once. ``_reveal``
-    # takes every pending gain, so the paid-out troops show up on the owner.
+def test_desert_power_without_maker_hooks_commands_i_believe_once_chosen() -> None:
+    # Option (B), user ruling 2026-09-30 (docs/unavailable-options-plan.md
+    # section 5): "REVEAL_CHOICE 창을 열어 '설득 2'만 고르게, 모래벌레 줄은
+    # '메이커 작살 없음' 회색". OQ-069 ("고르기 전에는 설득 2를 세지 않는다")
+    # now holds without Maker Hooks too: I Believe (1) + Diplomacy (1) + High
+    # Council (2) is 4 at the Reveal start, below Command (6+) [Bloodlines
+    # pp. 5, 12], and Desert Power's 2 reach 6 only at the Persuasion branch,
+    # when I Believe's troops pay through the late grant.
     revealed = _reveal(_desert_power_state(maker_hooks=False))
     context = _reveal_context(revealed)
+    assert context["persuasion_generated"] == 4
+    assert revealed.decision_stack[-1].kind == "reveal_choice"
+    assert revealed.players[0].troops_garrison == 3
+    (reveal,) = (f for f in revealed.decision_stack if f.kind == FrameKind.REVEAL)
+    pending = reveal_pending_gains(dict(reveal.context))
+    assert not any(entry[2] == _card("i_believe") for entry in pending)
+
+    engine = UprisingRulesEngine()
+    declined = engine.apply(
+        revealed, DomainAction(action_id="decline_reveal_sandworm", actor=0)
+    ).state
+    context = _reveal_context(declined)
     assert context["persuasion_generated"] == 6
-    assert revealed.decision_stack[-1].kind == "reveal"
-    assert revealed.players[0].troops_garrison == 3 + 2
+    assert context["persuasion"] == 6
+    pending = reveal_pending_gains(dict(declined.decision_stack[-1].context))
+    assert ("troops", "2", _card("i_believe")) in pending
 
 
 def test_desert_power_persuasion_branch_reopens_pointing_the_ways_command() -> None:
@@ -2456,11 +2471,18 @@ def test_choam_demands_recall_reward_never_takes_this_turns_agent(
         result = apply_agent_card_contract_completion(state, action)
         return result.state, tuple(event.kind for event in result.events)
 
+    # With no other Agent the recall window opens with only the confirm
+    # (user ruling 2026-09-30), whose press fizzles the reward.
     alone, kinds = complete()
     assert alone.players[0].agent_locations == ("arrakeen",)
-    assert "contract_recall_unavailable" in kinds
-    assert alone.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert legal_contract_recall_actions(alone, 0) == ()
+    assert "contract_recall_unavailable" not in kinds
+    assert alone.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert legal_contract_recall_actions(alone, 0) == (confirm,)
+    fizzled = apply_contract_recall_action(alone, confirm)
+    assert [event.kind for event in fizzled.events] == ["contract_recall_unavailable"]
+    assert fizzled.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert fizzled.state.players[0].agent_locations == ("arrakeen",)
 
     earlier, _ = complete(agent_locations=("hagga_basin",), agents_available=1)
     assert earlier.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
@@ -3229,9 +3251,14 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # which this catalog lacks.
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
+    # v125 (L2): Imperial Privilege's recall with no target is confirmed
+    # (resolve_imperial_privilege_without_recall, +1).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
     assert codec.size == (
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
-        + 1 + 1 + 1
+        + 1 + 1 + 1 + 1 + 1
     )
     action = DomainAction(
         action_id="trash_agent_card",
@@ -3333,8 +3360,6 @@ def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() ->
     # Spies for no effect" [Main pp. 11, 20], optional (docs/rules/
     # uprising-systems.md, OQ-057 (14)). With all three Spies on the board
     # the reward used to open no frame and the Spy was lost.
-    from dune_imperium.rules.combat import combat_reward_spy_is_unavailable
-
     rival_post = "emperor-sardaukar-dutiful-service"
     own_posts = (
         "choam-shipping-accept-contract",
@@ -3366,7 +3391,6 @@ def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() ->
     frame = rewarded.decision_stack[-1]
     assert frame.kind == FrameKind.COMBAT_REWARD_SPY
     assert dict(frame.context)["deep_cover"] is True
-    assert not combat_reward_spy_is_unavailable(rewarded)
     actions = legal_combat_reward_spy_actions(rewarded, 0)
     assert [action.action_id for action in actions] == [
         "decline_combat_reward_spy",

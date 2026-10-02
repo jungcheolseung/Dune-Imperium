@@ -61,6 +61,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "play_intrigue": 3.0,
     "resolve_agent_card_effect": 2.0,
     "resolve_board_effect": 2.0,
+    # Imperial Privilege's card draw when no Agent can be recalled: drawn
+    # right after the Intrigue slot, as before the confirm existed.
+    "resolve_imperial_privilege_without_recall": 2.0,
     "gather_intelligence": 2.0,
     "resolve_espionage_place_spy": 2.0,
     "advance_feyd_track": 2.0,
@@ -71,6 +74,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "choose_agent_card_influence": 2.0,
     "choose_combat_reward_influence": 2.0,
     "choose_distinct_combat_reward_influence": 2.0,
+    # Every eligible Faction at the top (OQ-060): the confirm is then the
+    # window's only action, so a neutral score.
+    "resolve_combat_influence_without_faction": 0.0,
     "choose_leader_signet_influence": 2.0,
     "choose_intrigue_faction": 2.0,
     # Resource pickups.

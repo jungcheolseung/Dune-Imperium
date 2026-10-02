@@ -437,23 +437,35 @@ def test_bond_plays_and_activations_are_consistent(
 # from trash_chosen). Every bought instance's later hand rounds sum to 19.
 # All of it was recounted by a scratch replay from the card_acquired/
 # card_trashed events, the zone deltas and seat 2's hand after every step.
+# Re-derived 2026-10-02 for L2 group A decision windows: the game now
+# diverges at seat 0's round-6 Reveal, where Desert Power without Maker
+# Hooks opens its choice window (decline_reveal_sandworm) instead of
+# counting its 2 Persuasion unasked. Seat 2 (still Irulan) keeps its role
+# and now makes 17 buys: 16 acquire_imperium/acquire_reserve buys that
+# each draw down its Reveal frame's Persuasion pool (one more than before:
+# Unswerving Loyalty in round 8, never in hand afterwards) and the same
+# free Impress buy (Double Agent, round 6); the Signet Ring
+# Dagger trash (round 7) and the round-1 Seek Allies self-trash are
+# unchanged, and the bought instances' later hand rounds still sum to 19.
+# Recounted by the same scratch replay (events, zone deltas, the Reveal
+# frame's Persuasion before and after each buy, seat 2's hand per step).
 # ---------------------------------------------------------------------------
 
 
 def test_base_seed_3_seat_2_matches_the_hand_trace(tip_census: ModuleType) -> None:
     census = tip_census.play(_spec(False, 3), ("deck",))
     row = census["seats"][2]
-    assert row["deck.buys"] == 16
+    assert row["deck.buys"] == 17
     assert row["deck.buys_r1_3"] == 5
     assert row["deck.buys_r4_6"] == 6
-    assert row["deck.buys_r7p"] == 5
-    assert row["deck.buys_by_payment"] == {"persuasion": 15, "free": 1}
+    assert row["deck.buys_r7p"] == 6
+    assert row["deck.buys_by_payment"] == {"persuasion": 16, "free": 1}
     assert row["deck.trash_chosen"] == 1
     assert row["deck.trash_starters"] == 1
     assert row["deck.self_trashes"] == 1
     assert row["deck.first_trash_round"] == 7
     assert row["deck.trashed"] == {"dagger": 1}
-    assert row["deck.exposure"] == pytest.approx(19 / 16)
+    assert row["deck.exposure"] == pytest.approx(19 / 17)
 
 
 # ---------------------------------------------------------------------------

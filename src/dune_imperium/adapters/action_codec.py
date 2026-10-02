@@ -138,6 +138,24 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # other spend. Saves replay differently -- no template change. The
 # ``turn_closed`` fields (the 4th field of the Skill choice, Navigation play
 # and Scouts offer queues, and the frame-context markers) left the state.
+# Also in v125 (L2, merged with L1): Desert Power's Reveal choice opens for
+# a seat without Maker Hooks too, whose 2 Persuasion now count only from
+# ``decline_reveal_sandworm`` (option (B), user ruling 2026-09-30; OQ-069).
+# Imperial Privilege's recall and a Contract's Recall Agent reward with no
+# target are no longer skipped unasked: the owner confirms them with
+# ``resolve_imperial_privilege_without_recall`` (every catalog) and
+# ``resolve_contract_without_recall`` (CHOAM catalogs), and the engine hook
+# ``skip_impossible_imperial_privilege_recall`` is gone (OQ-023, OQ-068).
+# An Immortality research bonus whose arrow cost cannot be paid opens its
+# window too, offering only ``decline_research_bonus`` (no template change;
+# the ``research_bonus_unavailable`` event is gone).
+# A Conflict reward's "choose a Faction" Influence with every eligible
+# Faction at the top opens its window too, offering only
+# ``resolve_combat_influence_without_faction`` (every catalog; OQ-060); the
+# engine no longer drops it unasked. A Conflict reward Spy and Panopticon's
+# Spy with nothing to place offer only their declines (no template change;
+# unreachable with four players, and the ``tech_reveal_unavailable`` event is
+# gone, OQ-044 (b)).
 ACTION_CODEC_VERSION = 125
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -242,6 +260,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward",
             "decline_combat_reward_spy",
             "decline_combat_reward_trash",
+            # A Conflict reward Influence choice with every eligible Faction
+            # at the top is confirmed (OQ-060).
+            "resolve_combat_influence_without_faction",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
             "decline_corrinth_city_payment",
@@ -350,6 +371,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 # A Contract Spy may pass up the recall-first without a Spy
                 # in supply [Main pp. 11, 20].
                 "decline_contract_spy",
+                # A Contract recall reward with no target is confirmed.
+                "resolve_contract_without_recall",
             )
         )
     templates.extend(_agent_turn_templates(config))
@@ -554,6 +577,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_trigger",
             "decline_intrigue_spy",
             "decline_imperial_privilege_intrigue",
+            # Imperial Privilege's recall with no target is confirmed.
+            "resolve_imperial_privilege_without_recall",
             "resolve_intrigue_rewards",
         )
     )

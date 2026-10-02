@@ -622,17 +622,6 @@ def _reveal_top(state: GameState, player: int) -> DecisionFrame | None:
     return owned_top_frame(state, FrameKind.REVEAL, player)
 
 
-def panopticon_spy_possible(owner: PlayerState) -> bool:
-    """Return whether Panopticon's Spy can still be placed this Reveal.
-
-    Thirteen posts outnumber the twelve Spies, so a Spy in supply or one
-    to recall first [Main pp. 11, 20] always finds a post; only a seat
-    whose Spies all left for the box (Advanced Data Analysis) has none.
-    """
-
-    return owner.spies_supply > 0 or bool(owner.spy_post_ids)
-
-
 def legal_tech_reveal_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
@@ -640,7 +629,12 @@ def legal_tech_reveal_actions(
 
     Reveal effects resolve in any order the owner likes [Main p. 12], so
     Forbidden Weapons' mandatory choice and Panopticon's Spy wait on the
-    Reveal frame until the owner takes them (OQ-044). The strength option
+    Reveal frame until the owner takes them (OQ-044). Panopticon's Spy is
+    always offered: the shared ``spy_placement`` frame it opens offers only
+    its decline when nothing can be placed, so the owner answers even a Spy
+    that cannot be placed (user ruling 2026-09-30, "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다"; with four players it never happens,
+    since Advanced Data Analysis boxes at most one Spy). The strength option
     "must lose one Influence with a Faction where you have at least one
     Influence (if possible)" [Bloodlines p. 12]: one action per such
     Faction (with the Alliance recipient when the loss hands a token to
@@ -686,7 +680,7 @@ def legal_tech_reveal_actions(
             )
         actions.extend(strength)
         actions.append(DomainAction(action_id="choose_tech_trash", actor=player))
-    if "panopticon" in pending and panopticon_spy_possible(owner):
+    if "panopticon" in pending:
         actions.append(DomainAction(action_id="place_tech_spy", actor=player))
     return tuple(actions)
 

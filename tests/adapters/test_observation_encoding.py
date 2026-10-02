@@ -385,6 +385,10 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # ``core/observation.py`` and ``rules/frames.py`` (FrameKind) are byte for
 # byte the files of the previous pin (master 659cefb); only the trajectories
 # moved.
+# Re-pinned 2026-10-02 for L2's decision windows (same codec v125):
+# ``everything`` first moved with the recall confirms (Imperial Privilege
+# or a Contract's recall with no target now asks instead of skipping);
+# the encoder files are still byte for byte the previous pin's.
 _GOLDEN_DIGESTS = {
     "base": ("29cffc270dbad833556587f296a15c4ba853f46da475a8e326b8f5dc1e85f712", 2780),
     "choam": ("06fcbf3c4566799e6ddebfe9d5af972154bc824570f265e4ebcfd5bb3f8b613d", 2840),
@@ -393,8 +397,8 @@ _GOLDEN_DIGESTS = {
         3028,
     ),
     "everything": (
-        "78da89ca89a26f41f8e14c7eeff42394d5a00557b2d709e7a1d7f39704a86e7e",
-        3280,
+        "6eddd06588dc312c64311005f9c92b8157196b28bedb7c8ff2e5a19b29b747ac",
+        3316,
     ),
     "draft": ("a066154c2a3f217f4fb6e4285ad9fa49dd8118a60b73e8419def5f1ce7d74ec0", 2392),
     "scouts": (

@@ -14,6 +14,7 @@ from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import (
     RESEARCH_START_ID,
     TLEILAXU_TRACK_END,
+    ResearchBonus,
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -41,6 +42,7 @@ from dune_imperium.rules.effects import DrawImperiumCardsEffect, ResearchEffect
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.immortality import (
+    ResearchBonusBlock,
     advance_research,
     advance_tleilaxu,
     apply_family_atomics,
@@ -52,6 +54,7 @@ from dune_imperium.rules.immortality import (
     legal_research_advance_actions,
     legal_research_bonus_actions,
     legal_specimen_return_actions,
+    research_bonus_block,
 )
 from dune_imperium.rules.optional_trash import legal_optional_trash_actions
 from dune_imperium.rules.reveal_turn import (
@@ -319,9 +322,27 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     assert declined.state.intrigue_trash == ()
 
 
-def test_trash_intrigue_bonus_without_an_intrigue_card_is_unavailable() -> None:
+def _declined_only(state: GameState) -> GameState:
+    """The research bonus window is on top and offers only the decline,
+    which closes it with the public ``research_bonus_declined`` event."""
+
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    decline = DomainAction(action_id="decline_research_bonus", actor=0)
+    assert legal_research_bonus_actions(state, 0) == (decline,)
+    assert UprisingRulesEngine().legal_actions(state, 0) == (decline,)
+    declined = apply_research_bonus(state, decline)
+    assert [event.kind for event in declined.events] == ["research_bonus_declined"]
+    assert declined.state.decision_stack == state.decision_stack[:-1]
+    return declined.state
+
+
+def test_trash_intrigue_bonus_without_an_intrigue_card_offers_only_the_decline() -> (
+    None
+):
     # The arrow's cost cannot be paid with an empty Intrigue hand, however
-    # many personal cards the owner holds.
+    # many personal cards the owner holds. The window still opens, and its
+    # owner confirms the lapse (user ruling 2026-09-30, "결정 창 없이 자동으로
+    # 넘어가는 곳도 모두 결정 창을 연다"; before, it lapsed unasked).
     state = _at("c6r2")
     assert state.players[0].intrigue_cards == ()
     result = advance_research(state, 0, source="test")
@@ -329,18 +350,29 @@ def test_trash_intrigue_bonus_without_an_intrigue_card_is_unavailable() -> None:
         result.state, _research_choices(result.state)["c7r3"]
     )
 
-    assert chosen.state.decision_stack[-1].kind == "turn"
-    assert "research_bonus_unavailable" in {event.kind for event in chosen.events}
+    block = research_bonus_block(
+        chosen.state.players[0], ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE
+    )
+    assert block is ResearchBonusBlock.NO_INTRIGUE
+    owner_before = chosen.state.players[0]
+    declined = _declined_only(chosen.state)
+    assert declined.decision_stack[-1].kind == "turn"
+    assert declined.players[0] == owner_before
 
 
 def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
-    poor = _at("c7r5", resources=Resources(solari=3))
+    poor = _at("c7r5", resources=Resources(solari=6))
     result = advance_research(poor, 0, source="test")
     chosen = apply_research_advance(
         result.state, _research_choices(result.state)["c8r6"]
     )
-    assert chosen.state.decision_stack[-1].kind == "turn"
-    assert "research_bonus_unavailable" in {event.kind for event in chosen.events}
+    block = research_bonus_block(
+        chosen.state.players[0], ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+    )
+    assert block is ResearchBonusBlock.SOLARI
+    declined = _declined_only(chosen.state)
+    assert declined.players[0].resources.solari == 6
+    assert declined.players[0].tleilaxu_space == 0
 
     rich = _at("c7r5", resources=Resources(solari=7))
     result = advance_research(rich, 0, source="test")

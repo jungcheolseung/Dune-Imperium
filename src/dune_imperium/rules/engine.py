@@ -74,13 +74,13 @@ from dune_imperium.rules.board_effects import (
     board_effect_is_implemented,
     resolve_board_effect,
     secrets_steal_is_pending,
-    skip_impossible_imperial_privilege_recall,
 )
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
     personal_draw_is_pending,
 )
 from dune_imperium.rules.combat import (
+    apply_combat_influence_without_faction,
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
@@ -90,11 +90,7 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
-    combat_influence_choice_is_unavailable,
-    combat_reward_spy_is_unavailable,
     finish_combat,
-    fizzle_combat_influence_choice,
-    fizzle_combat_reward_spy,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -648,6 +644,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_conflict_agent_for_imperial_privilege": apply_imperial_privilege_action,
+    "resolve_imperial_privilege_without_recall": apply_imperial_privilege_action,
     "deploy_troops": _apply_deployment,
     "withdraw_troops": apply_troop_withdrawal,
     "deploy_commanders": _apply_deployment,
@@ -803,6 +800,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_contract_spy": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,
     "recall_conflict_agent_for_contract": apply_contract_recall_action,
+    "resolve_contract_without_recall": apply_contract_recall_action,
     "trash_intrigue_for_contract": apply_contract_intrigue_trash,
     # Round start and Combat
     "deploy_control_defense": apply_control_defense_action,
@@ -820,6 +818,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
+    # Every eligible Faction at the top: the owner confirms the loss (OQ-060).
+    "resolve_combat_influence_without_faction": apply_combat_influence_without_faction,
     # Endgame
     "match_endgame_wild_icon": apply_endgame_intrigue_action,
     "pass_endgame_intrigue": apply_endgame_intrigue_action,
@@ -872,9 +872,7 @@ class UprisingRulesEngine(RulesEngine):
                 grant_hungry_for_spice(_advance_automatic(result), state)
             )
         )
-        result = skip_impossible_imperial_privilege_recall(
-            expire_trashed_card_effects(_advance_automatic(result))
-        )
+        result = expire_trashed_card_effects(_advance_automatic(result))
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
@@ -914,12 +912,7 @@ class UprisingRulesEngine(RulesEngine):
                 grant_leader_reveal_passives(grant_hungry_for_spice(result, state))
             )
         )
-        # A freely ordered recall may have removed Imperial Privilege's last
-        # recall target after its Intrigue slot resolved (OQ-023); the skip
-        # draws a card, so the automatic advance runs once more.
-        result = skip_impossible_imperial_privilege_recall(
-            expire_trashed_card_effects(result)
-        )
+        result = expire_trashed_card_effects(result)
         # Units moved this step: the running strength follows [Main p. 12].
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
@@ -992,15 +985,6 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = begin_track_spy_placement(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
-        elif combat_reward_spy_is_unavailable(state):
-            # A Conflict reward Spy that cannot be placed (no Spy in the
-            # supply and none on the board to recall first, or no free post)
-            # is lost rather than left as a frame without a legal action.
-            automatic = fizzle_combat_reward_spy(state)
-        elif combat_influence_choice_is_unavailable(state):
-            # Every eligible Faction is at the top of its track, so the
-            # choice is lost like any other Influence gain there (OQ-060).
-            automatic = fizzle_combat_influence_choice(state)
         elif scouts_effect_can_advance(state):
             # Arrakeen Scouts: the next automatic step of a seat's line.
             automatic = advance_scouts_effect(state)

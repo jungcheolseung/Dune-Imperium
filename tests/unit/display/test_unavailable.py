@@ -46,8 +46,10 @@ from dune_imperium.display.unavailable import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
+from dune_imperium.rules.combat import resolve_combat_rewards
 from dune_imperium.rules.effect_interpreter import OptionBlock
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.immortality import advance_research
 
 ENGINE = UprisingRulesEngine()
 BASE = RulesetConfig()
@@ -484,6 +486,443 @@ def test_no_waiting_row_while_gather_intelligence_is_the_only_choice() -> None:
     rows = list(_rows(_found(declined), "waiting").values())
     assert [row["key"] for row in rows] == [f"waiting:agent_box:{card}"]
     assert not agent_box_is_waiting(declined, 1)  # only the box's owner's
+
+
+# --- A branch of an open choice that cannot be taken now ---
+
+
+def _desert_power(
+    *, owner_fields: dict[str, Any] | None = None, **fields: Any
+) -> GameState:
+    """Seat 0 reveals Desert Power: its choice window is on top."""
+
+    desert_power = next(
+        i for i in imperium_deck_instance_ids(False) if ":desert_power:" in i
+    )
+    owner = replace(
+        PlayerState(
+            player_id=0,
+            hand=(desert_power,),
+            maker_hooks=True,
+            resources=Resources(water=1),
+        ),
+        **(owner_fields or {}),
+    )
+    state = _state(owner, **{"current_conflict_ids": ("propaganda",), **fields})
+    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    assert revealed.state.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    return revealed.state
+
+
+def test_desert_power_without_maker_hooks_greys_out_the_sandworm_branch() -> None:
+    """Option (B), user ruling 2026-09-30: "REVEAL_CHOICE 창을 열어 '설득 2'만
+    고르게, 모래벌레 줄은 '메이커 작살 없음' 회색". The row sits on the new
+    "choice" surface and names the card; the Persuasion branch is legal."""
+
+    state = _desert_power(owner_fields={"maker_hooks": False})
+    found = _found(state)
+    assert found["frame"] == FrameKind.REVEAL_CHOICE
+    assert [row["surface"] for row in found["rows"]] == ["choice"]
+    row = _rows(found, "choice")["choice:pay_reveal_water_for_sandworm"]
+    assert row["action"]["action_id"] == "pay_reveal_water_for_sandworm"
+    assert row["action"]["arguments"] == {}
+    assert row["card_id"] == dict(state.decision_stack[-1].context)["reveal_card_id"]
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "No Maker Hooks",
+        "{maker_hooks} 없음",
+        "maker_hooks",
+    )
+    assert _legal(state, "decline_reveal_sandworm") == [{}]
+    assert found["refs"] == {}
+
+
+def test_each_sandworm_block_has_its_own_reason() -> None:
+    """Water, a Conflict and the Shield Wall, in the block's order."""
+
+    cases = [
+        (
+            _desert_power(owner_fields={"resources": Resources(water=0)}),
+            ("Needs 1 water (you have 0)", "{water:1} 필요 (보유 0)", "cost"),
+        ),
+        (
+            _desert_power(current_conflict_ids=()),
+            ("No Conflict this round", "이번 라운드에 교전 없음", "no_conflict"),
+        ),
+        (
+            _desert_power(
+                current_conflict_ids=("siege_of_arrakeen",), shield_wall_present=True
+            ),
+            (
+                "The Shield Wall protects this Conflict",
+                "{shield_wall}이 이번 교전을 보호함",
+                "shield_wall",
+            ),
+        ),
+    ]
+    for state, reason in cases:
+        row = _rows(_found(state), "choice")["choice:pay_reveal_water_for_sandworm"]
+        assert (row["reason"], row["reason_ko"], row["code"]) == reason
+
+
+def test_no_sandworm_row_while_the_sandworm_branch_is_legal() -> None:
+    state = _desert_power()
+    assert _legal(state, "pay_reveal_water_for_sandworm") == [{}]
+    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+
+
+def test_a_deferred_desert_power_shows_no_waiting_row() -> None:
+    """The old "waiting" row (a deferred choice whose condition could still
+    come true) is gone: without Maker Hooks the choice is always resumable,
+    since its Persuasion branch can always be taken."""
+
+    deferred = ENGINE.apply(
+        _desert_power(owner_fields={"maker_hooks": False}),
+        DomainAction(action_id="defer_reveal_choice", actor=0),
+    ).state
+    assert deferred.decision_stack[-1].kind == FrameKind.REVEAL
+    assert _legal(deferred, "resume_reveal_choice") == [
+        {"effect": "may_pay_water_for_sandworm"}
+    ]
+    found = unavailable_choices(deferred, 0, ENGINE.legal_actions(deferred, 0))
+    assert found is None or not _rows(found, "waiting")
+
+
+# --- A recall with no other Agent to recall ---
+
+_NO_OTHER_AGENT = (
+    "No other Agent of yours to recall (not the one sent this turn)",
+    "소환할 다른 {agent} 없음 (이번 차례에 보낸 {agent} 제외)",
+    "no_target",
+)
+
+
+def _place(state: GameState, space_id: str) -> GameState:
+    action = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == space_id
+    )
+    return ENGINE.apply(state, action).state
+
+
+def _imperial_owner(**owner_fields: Any) -> PlayerState:
+    return PlayerState(
+        player_id=0,
+        hand=("player:0:starter:dagger:0",),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        **owner_fields,
+    )
+
+
+def _imperial_privilege(**owner_fields: Any) -> GameState:
+    """Seat 0 at Imperial Privilege, its Intrigue slot declined."""
+
+    placed = _place(_state(_imperial_owner(**owner_fields)), "imperial_privilege")
+    return ENGINE.apply(
+        placed, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
+    ).state
+
+
+def test_imperial_privilege_with_no_other_agent_greys_out_the_recall() -> None:
+    """OQ-023: with no other Agent only the recall is skipped and the card
+    still drawn; user ruling 2026-09-30 ("결정 창 없이 자동으로 넘어가는
+    곳도 모두 결정 창을 연다") makes the owner confirm it, with the recall
+    greyed out beside the confirm on the "choice" surface."""
+
+    state = _imperial_privilege()
+    assert _legal(state, "resolve_imperial_privilege_without_recall") == [{}]
+    found = _found(state)
+    assert found["frame"] == FrameKind.AGENT_EFFECTS
+    row = _rows(found, "choice")["choice:imperial_privilege_recall"]
+    assert row["action"]["action_id"] == "recall_agent_for_imperial_privilege"
+    assert row["action"]["arguments"] == {}
+    assert (row["reason"], row["reason_ko"], row["code"]) == _NO_OTHER_AGENT
+    assert row["refs"] == []
+
+    # The confirm draws the card and the row goes with the pending recall.
+    confirmed = ENGINE.apply(
+        state,
+        DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
+    ).state
+    after = unavailable_choices(confirmed, 0, ENGINE.legal_actions(confirmed, 0))
+    assert after is None or not _rows(after, "choice")
+
+
+def test_no_recall_row_while_imperial_privilege_has_a_target() -> None:
+    state = _imperial_privilege(agents_available=1, agent_locations=("arrakeen",))
+    assert _legal(state, "recall_agent_for_imperial_privilege") == [
+        {"space_id": "arrakeen"}
+    ]
+    assert _legal(state, "resolve_imperial_privilege_without_recall") == []
+    found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    assert found is None or not _rows(found, "choice")
+    # Nor before the Intrigue slot, while the recall is not yet the step.
+    slot = _place(_state(_imperial_owner()), "imperial_privilege")
+    found = unavailable_choices(slot, 0, ENGINE.legal_actions(slot, 0))
+    assert found is None or not _rows(found, "choice")
+
+
+def _sardaukar_ii(**owner_fields: Any) -> GameState:
+    """Seat 0 completes Sardaukar II at the Sardaukar space."""
+
+    truthtrance = next(
+        i for i in imperium_deck_instance_ids(True) if ":truthtrance:" in i
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(truthtrance,),
+        resources=Resources(solari=10, spice=10, water=10),
+        active_contract_ids=("contract:sardaukar_ii",),
+        **owner_fields,
+    )
+    placed = _place(
+        _state(owner, config=RulesetConfig(choam_module=True)), "sardaukar"
+    )
+    complete = next(
+        action
+        for action in ENGINE.legal_actions(placed, 0)
+        if action.action_id == "complete_contract"
+    )
+    completed = ENGINE.apply(placed, complete).state
+    assert completed.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    return completed
+
+
+def test_a_contract_recall_with_no_other_agent_greys_out_the_recall() -> None:
+    """Sardaukar II's reward "simply fizzles" with no other Agent (the
+    designer's ruling, OQ-057); its window now opens with only the confirm
+    and the recall greyed out (user ruling 2026-09-30)."""
+
+    state = _sardaukar_ii()
+    assert [
+        action.action_id for action in ENGINE.legal_actions(state, 0)
+    ] == ["resolve_contract_without_recall"]
+    found = _found(state)
+    assert found["frame"] == FrameKind.CONTRACT_REWARD_RECALL
+    assert [row["key"] for row in found["rows"]] == ["choice:contract_recall"]
+    row = found["rows"][0]
+    assert row["action"]["action_id"] == "recall_agent_for_contract"
+    assert row["action"]["arguments"] == {}
+    assert (row["reason"], row["reason_ko"], row["code"]) == _NO_OTHER_AGENT
+
+
+def test_no_contract_recall_row_while_the_reward_has_a_target() -> None:
+    state = _sardaukar_ii(agents_available=1, agent_locations=("arrakeen",))
+    assert _legal(state, "recall_agent_for_contract") == [{"space_id": "arrakeen"}]
+    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
+
+
+# --- A research bonus whose cost cannot be paid ---
+
+
+def _research_bonus(origin: str, target: str, **owner_fields: Any) -> GameState:
+    """Seat 0 advances its research token from ``origin`` to ``target``,
+    whose arrow bonus window is then on top (Immortality)."""
+
+    owner = PlayerState(player_id=0, research_space=origin, **owner_fields)
+    state = _state(owner, config=RulesetConfig(immortality=True))
+    advanced = advance_research(state, 0, source="test").state
+    choice = next(
+        action
+        for action in ENGINE.legal_actions(advanced, 0)
+        if action.action_id == "choose_research_space"
+        and dict(action.arguments)["space_id"] == target
+    )
+    chosen = ENGINE.apply(advanced, choice).state
+    assert chosen.decision_stack[-1].kind == FrameKind.RESEARCH_BONUS
+    return chosen
+
+
+def test_a_research_bonus_without_an_intrigue_card_greys_out_the_trash() -> None:
+    """c7r3's "Trash an Intrigue card" arrow [Immortality p. 16] with an
+    empty Intrigue hand: the window opens anyway with only the decline
+    (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    창을 연다"), and the trash shows greyed out on the "choice" surface,
+    naming no card."""
+
+    state = _research_bonus("c6r2", "c7r3")
+    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
+        "decline_research_bonus"
+    ]
+    found = _found(state)
+    assert found["frame"] == FrameKind.RESEARCH_BONUS
+    assert [row["key"] for row in found["rows"]] == ["choice:research_bonus_trash"]
+    row = found["rows"][0]
+    assert row["action"]["action_id"] == "trash_intrigue_for_research_bonus"
+    assert row["action"]["arguments"] == {}
+    assert row["refs"] == []
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "No Intrigue card to trash",
+        "{trash}할 {intrigue} 없음",
+        "cost",
+    )
+    assert found["refs"] == {}
+
+
+def test_a_research_bonus_short_of_solari_greys_out_the_payment() -> None:
+    """c8r6's "7 Solari -> two Tleilaxu" arrow with 3 Solari."""
+
+    state = _research_bonus("c7r5", "c8r6", resources=Resources(solari=3))
+    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
+        "decline_research_bonus"
+    ]
+    found = _found(state)
+    assert [row["key"] for row in found["rows"]] == ["choice:research_bonus_pay"]
+    row = found["rows"][0]
+    assert row["action"]["action_id"] == "pay_research_bonus"
+    assert row["action"]["arguments"] == {}
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Needs 7 solari (you have 3)",
+        "{solari:7} 필요 (보유 3)",
+        "cost",
+    )
+
+
+def test_no_research_bonus_row_while_its_cost_can_be_paid() -> None:
+    held = "intrigue:ambush:0"
+    cases = [
+        (_research_bonus("c6r2", "c7r3", intrigue_cards=(held,)), "trash"),
+        (
+            _research_bonus("c7r5", "c8r6", resources=Resources(solari=7)),
+            "pay_research_bonus",
+        ),
+    ]
+    for state, offered in cases:
+        legal = ENGINE.legal_actions(state, 0)
+        assert any(offered in action.action_id for action in legal), offered
+        assert unavailable_choices(state, 0, legal) is None
+    # Nor for the Influence bonus, which has no cost.
+    influence = _research_bonus("c5r5", "c6r6")
+    assert unavailable_choices(influence, 0, ENGINE.legal_actions(influence, 0)) is None
+
+
+# --- A Conflict reward's Faction already at the top ---
+
+_AT_THE_TOP = ("Already at the top", "이미 최고치", "top")
+_INFLUENCE_CONFIRM = DomainAction(
+    action_id="resolve_combat_influence_without_faction", actor=0
+)
+
+
+def _combat_reward(conflict_id: str, influence: Influence) -> GameState:
+    """Seat 0 alone wins ``conflict_id``: its reward windows are open."""
+
+    owner = PlayerState(player_id=0, combat_strength=8, influence=influence)
+    state = _state(
+        owner,
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        decision_stack=(),
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        intrigue_deck=("intrigue:0", "intrigue:1"),
+    )
+    return resolve_combat_rewards(state).state
+
+
+def _influence_rows(found: dict[str, Any]) -> dict[str, tuple[str, str, str]]:
+    rows = _rows(found, "choice")
+    for key, row in rows.items():
+        faction = row["action"]["arguments"]["faction"]
+        assert key == f"choice:combat_reward_influence:{faction}"
+    return {
+        row["action"]["arguments"]["faction"]: (
+            row["reason"],
+            row["reason_ko"],
+            row["code"],
+        )
+        for row in rows.values()
+    }
+
+
+def test_a_reward_with_every_faction_at_the_top_greys_them_beside_a_confirm() -> None:
+    """OQ-060: the "choose a Faction" reward is lost when every track is at
+    6, but the window opens (user ruling 2026-09-30, "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다") with only the confirm, and every
+    Faction greyed out "이미 최고치" on the "choice" surface."""
+
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _combat_reward("skirmish_crysknife", full)
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
+    assert ENGINE.legal_actions(state, 0) == (_INFLUENCE_CONFIRM,)
+    found = _found(state)
+    assert found["frame"] == FrameKind.COMBAT_REWARD_INFLUENCE
+    assert {row["action"]["action_id"] for row in found["rows"]} == {
+        "choose_combat_reward_influence"
+    }
+    assert _influence_rows(found) == {
+        "emperor": _AT_THE_TOP,
+        "spacing_guild": _AT_THE_TOP,
+        "bene_gesserit": _AT_THE_TOP,
+        "fremen": _AT_THE_TOP,
+    }
+    assert found["refs"] == {}
+
+    confirmed = ENGINE.apply(state, _INFLUENCE_CONFIRM)
+    assert "combat_reward_influence_unavailable" in {
+        event.kind for event in confirmed.events
+    }
+    assert confirmed.state.players[0].influence == full
+
+
+def test_a_faction_at_the_top_is_greyed_beside_the_ones_it_can_take() -> None:
+    """A track at 6 can come down again (an Influence loss), so it shows
+    greyed out in any reward window, not only the empty one (plan section 4,
+    row 14)."""
+
+    state = _combat_reward("spice_freighters", Influence(emperor=6, fremen=2))
+    offered = _legal(state, "choose_combat_reward_influence")
+    assert [args["faction"] for args in offered] == [
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    ]
+    assert _legal(state, "resolve_combat_influence_without_faction") == []
+    assert _influence_rows(_found(state)) == {"emperor": _AT_THE_TOP}
+
+
+def test_choose_two_greys_the_faction_it_already_named() -> None:
+    """Propaganda's "Choose two" names two different Factions: after the
+    first pick its second window greys that Faction out as named, and the
+    tracks at 6 as at the top; the confirm then pays the named one."""
+
+    state = _combat_reward(
+        "propaganda", Influence(emperor=6, spacing_guild=6, bene_gesserit=6)
+    )
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE
+    first = _found(state)
+    assert {row["action"]["action_id"] for row in first["rows"]} == {
+        "choose_distinct_combat_reward_influence"
+    }
+    assert set(_influence_rows(first)) == {"emperor", "spacing_guild", "bene_gesserit"}
+    named = ENGINE.apply(
+        state,
+        DomainAction(
+            action_id="choose_distinct_combat_reward_influence",
+            actor=0,
+            arguments=(("faction", "fremen"),),
+        ),
+    ).state
+    assert ENGINE.legal_actions(named, 0) == (_INFLUENCE_CONFIRM,)
+    assert _influence_rows(_found(named)) == {
+        "emperor": _AT_THE_TOP,
+        "spacing_guild": _AT_THE_TOP,
+        "bene_gesserit": _AT_THE_TOP,
+        "fremen": (
+            "Already named for this reward",
+            "이 보상에서 이미 고른 진영",
+            "named",
+        ),
+    }
+
+
+def test_no_influence_row_while_every_faction_can_be_taken() -> None:
+    state = _combat_reward("skirmish_crysknife", Influence())
+    assert len(_legal(state, "choose_combat_reward_influence")) == 4
+    assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
 
 
 # --- Whose decision ---

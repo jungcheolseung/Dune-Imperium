@@ -12,6 +12,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contract_tiles import (
@@ -352,40 +353,82 @@ def legal_contract_recall_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return the Agents a Contract recall reward may return to the Leader."""
+    """Return the Agents a Contract recall reward may return to the Leader.
 
-    if not 0 <= player < state.config.players or not state.decision_stack:
+    One action per ``contract_recall_targets`` entry. With none the reward
+    fizzles (the designer's Sardaukar II ruling, OQ-057), through
+    ``resolve_contract_without_recall``: the owner confirms it instead of
+    the engine fizzling it unasked (user ruling 2026-09-30, "결정 창 없이
+    자동으로 넘어가는 곳도 모두 결정 창을 연다").
+    """
+
+    targets = contract_recall_targets(state, player)
+    if targets is None:
         return ()
-    frame = state.decision_stack[-1]
-    if frame.kind != FrameKind.CONTRACT_REWARD_RECALL:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    context = dict(frame.context)
-    excluded = context.get("excluded_space_id")
-    owner = state.players[player]
-    return (
-        *(
-            DomainAction(
-                action_id="recall_agent_for_contract",
-                actor=player,
-                arguments=(("space_id", space_id),),
-            )
-            for space_id in owner.agent_locations
-            if space_id != excluded
-        ),
+    if not targets:
+        return (
+            DomainAction(action_id="resolve_contract_without_recall", actor=player),
+        )
+    return tuple(
         # An earlier turn's Into the Fray Agent in the Conflict is one of
         # "your Agents" too (OQ-037 (d)), extended to every Recall Agent
         # effect by the 2026-09-26 user ruling (OQ-068).
+        DomainAction(action_id="recall_conflict_agent_for_contract", actor=player)
+        if target == "conflict"
+        else DomainAction(
+            action_id="recall_agent_for_contract",
+            actor=player,
+            arguments=(("space_id", target),),
+        )
+        for target in targets
+    )
+
+
+def contract_recall_targets(state: GameState, player: int) -> tuple[str, ...] | None:
+    """Where ``player``'s Contract recall reward may take an Agent from.
+
+    None unless the reward's recall frame is on top and the seat's own.
+    The targets are its board spaces other than this turn's ("Return one of
+    your other Agents on the board to your Leader (not the Agent you sent
+    during this turn)" [Main p. 20]) and "conflict" for an earlier turn's
+    Into the Fray Agent (OQ-068). Nothing else can be done while this frame
+    is on top, so they stay fixed for its whole life. The provider offers
+    one recall per target, or the confirm when there is none, and the page
+    greys the recall out with this same answer (``display.unavailable``).
+    """
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.CONTRACT_REWARD_RECALL:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    context = dict(frame.context)
+    excluded = context.get("excluded_space_id")
+    return _recall_targets(
+        state.players[player],
+        excluded if isinstance(excluded, str) else "",
+        turn_agent_in_conflict=context.get("turn_agent_in_conflict") is True,
+    )
+
+
+def _recall_targets(
+    owner: PlayerState, excluded_space_id: str, *, turn_agent_in_conflict: bool
+) -> tuple[str, ...]:
+    """The owner's other board spaces, then "conflict" for an earlier turn's
+    Into the Fray Agent (``recallable_conflict_agents``)."""
+
+    return (
         *(
-            (
-                DomainAction(
-                    action_id="recall_conflict_agent_for_contract", actor=player
-                ),
-            )
+            space_id
+            for space_id in owner.agent_locations
+            if space_id != excluded_space_id
+        ),
+        *(
+            ("conflict",)
             if recallable_conflict_agents(
-                owner,
-                sent_this_turn=context.get("turn_agent_in_conflict") is True,
+                owner, sent_this_turn=turn_agent_in_conflict
             )
             > 0
             else ()
@@ -405,6 +448,20 @@ def apply_contract_recall_action(
     if not isinstance(source, str):
         raise RuntimeError("Contract recall frame has invalid source")
     owner = state.players[action.actor]
+    if action.action_id == "resolve_contract_without_recall":
+        # No other Agent to recall: the reward simply fizzles (the
+        # designer's Sardaukar II ruling, OQ-057), now confirmed by the
+        # owner rather than skipped unasked (user ruling 2026-09-30).
+        return RuleResult(
+            state=state.pop_decision(),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:reward:recall_unavailable",
+                    kind="contract_recall_unavailable",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
     if action.action_id == "recall_conflict_agent_for_contract":
         next_owner, event = recall_conflict_agent(
             owner,
@@ -1123,36 +1180,28 @@ def _begin_contract_reward_choice(
         # board or, an earlier turn's Into the Fray Agent, in the Conflict
         # (OQ-037 (d), extended to every Recall Agent effect by the
         # 2026-09-26 user ruling, OQ-068) -- the reward does nothing. The
+        # frame opens either way, and with no target it offers only the
+        # confirm ``resolve_contract_without_recall`` (user ruling
+        # 2026-09-30: every automatic skip opens a decision window). The
         # Agent's Conflict status is fixed here because the reward may
         # resolve after the turn has passed (it can be the turn's last
         # effect), so it is carried in the frame's context instead of
         # re-derived from a closed Agent-turn effect frame.
-        owner = state.players[player]
-        board_candidates = tuple(
-            space_id
-            for space_id in owner.agent_locations
-            if space_id != excluded_space_id
+        targets = _recall_targets(
+            state.players[player],
+            excluded_space_id,
+            turn_agent_in_conflict=turn_agent_in_conflict,
         )
-        conflict_recallable = recallable_conflict_agents(
-            owner, sent_this_turn=turn_agent_in_conflict
-        )
-        if not board_candidates and not conflict_recallable:
-            return RuleResult(
-                state=state,
-                events=(
-                    GameEvent(
-                        event_id=f"{source}:reward:recall_unavailable",
-                        kind="contract_recall_unavailable",
-                        payload=(("player", player),),
-                    ),
-                ),
-            )
         frame = DecisionFrame(
             kind=FrameKind.CONTRACT_REWARD_RECALL,
             frame_id=f"{source}:reward:recall",
             decision=PlayerDecision(
                 owner=player,
-                prompt="Choose one of your other Agents to recall",
+                prompt=(
+                    "Choose one of your other Agents to recall"
+                    if targets
+                    else "No other Agent to recall"
+                ),
             ),
             context=(
                 ("excluded_space_id", excluded_space_id),

@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core import (
     DomainAction,
     GamePhase,
@@ -12,12 +13,15 @@ from dune_imperium.core import (
     Influence,
     PlayerDecision,
     PlayerState,
+    RuleResult,
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.combat import (
+    CombatInfluenceBlock,
     CombatRanking,
     CombatReward,
     RewardRank,
+    apply_combat_influence_without_faction,
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
@@ -26,11 +30,8 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_trash,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
-    combat_influence_choice_is_unavailable,
-    combat_reward_spy_is_unavailable,
+    combat_reward_influence_block,
     finish_combat,
-    fizzle_combat_influence_choice,
-    fizzle_combat_reward_spy,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -45,6 +46,8 @@ from dune_imperium.rules.contracts import (
     apply_contract_action,
     legal_contract_actions,
 )
+from dune_imperium.rules.engine import _advance_automatic
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.spy_moves import (
     begin_track_spy_placement,
     track_spy_is_queued,
@@ -570,7 +573,7 @@ def test_bene_gesserit_is_chosen_with_both_intrigue_piles_empty() -> None:
 def test_bene_gesserit_is_the_last_faction_left_with_an_empty_deck() -> None:
     # Spice Freighters 1st place (choose-Influence icon [Main p. 20]) with
     # every other track at the top: Bene Gesserit is still offered, so the
-    # choice is not dropped as unavailable (OQ-060 covers only a full track).
+    # confirm without a Faction is not (OQ-060 covers only a full track).
     # No Intrigue card is drawn below 1st place here, so the deck starts empty.
     state = replace(
         _bene_gesserit_three_with_an_empty_deck("spice_freighters"),
@@ -583,10 +586,12 @@ def test_bene_gesserit_is_the_last_faction_left_with_an_empty_deck() -> None:
 
     actions = legal_combat_reward_influence_actions(rewarded, 0)
 
+    assert [action.action_id for action in actions] == [
+        "choose_combat_reward_influence"
+    ]
     assert [dict(action.arguments)["faction"] for action in actions] == [
         "bene_gesserit"
     ]
-    assert not combat_influence_choice_is_unavailable(rewarded)
 
 
 def test_propaganda_offers_bene_gesserit_when_the_intrigue_deck_is_empty() -> None:
@@ -695,32 +700,65 @@ def _with_influence(state: GameState, player: int, influence: Influence) -> Game
     return replace(state, players=tuple(players))
 
 
-def test_influence_choice_with_no_faction_below_the_top_fizzles() -> None:
+_INFLUENCE_CONFIRM = DomainAction(
+    action_id="resolve_combat_influence_without_faction", actor=0
+)
+
+
+def test_influence_choice_with_no_faction_below_the_top_asks_for_a_confirm() -> None:
     # OQ-060: a cube at the top of its track cannot rise, so Skirmish
     # (Crysknife)'s "choose a Faction" has nothing to offer once every track
-    # is at 6. The choice is lost, like a plain gain at the top, instead of
-    # blocking the Combat phase.
+    # is at 6, and the choice is lost like a plain gain at the top. The
+    # engine no longer drops it unasked: the window opens and its owner
+    # confirms the loss (user ruling 2026-09-30, "결정 창 없이 자동으로
+    # 넘어가는 곳도 모두 결정 창을 연다").
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
     state = _with_influence(_reward_state("skirmish_crysknife"), 0, full)
 
-    resolved = resolve_combat_rewards(state).state
+    resolved = _advance_automatic(RuleResult(state=state)).state
 
-    assert legal_combat_reward_influence_actions(resolved, 0) == ()
-    assert combat_influence_choice_is_unavailable(resolved)
-    result = fizzle_combat_influence_choice(resolved)
+    frame = resolved.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_INFLUENCE
+    assert resolved.combat_rewards_resolved is False
+    assert UprisingRulesEngine().legal_actions(resolved, 0) == (_INFLUENCE_CONFIRM,)
+    assert {
+        combat_reward_influence_block(frame, resolved.players[0], faction)
+        for faction in Faction
+    } == {CombatInfluenceBlock.TOP}
+    result = apply_combat_influence_without_faction(resolved, _INFLUENCE_CONFIRM)
     assert result.state.decision_stack == ()
     assert result.state.combat_rewards_resolved is True
     assert result.state.players[0].influence == full
-    assert [event.kind for event in result.events] == [
-        "combat_reward_influence_unavailable"
+    assert [(event.event_id, event.kind) for event in result.events] == [
+        (
+            "round:1:combat_reward:influence_unavailable:0:0",
+            "combat_reward_influence_unavailable",
+        )
     ]
-    with pytest.raises(ValueError, match="faction to take"):
-        fizzle_combat_influence_choice(result.state)
+    with pytest.raises(ValueError, match="confirm without a Faction"):
+        apply_combat_influence_without_faction(result.state, _INFLUENCE_CONFIRM)
+
+
+def test_the_influence_confirm_is_never_offered_beside_a_faction() -> None:
+    # The gain is mandatory while a Faction can take it: one track below 6
+    # is offered alone, and the confirm cannot be pressed instead.
+    state = _with_influence(
+        _reward_state("skirmish_crysknife"),
+        0,
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=2),
+    )
+    resolved = resolve_combat_rewards(state).state
+
+    actions = legal_combat_reward_influence_actions(resolved, 0)
+
+    assert [dict(action.arguments)["faction"] for action in actions] == ["fremen"]
+    with pytest.raises(ValueError, match="confirm without a Faction"):
+        apply_combat_influence_without_faction(resolved, _INFLUENCE_CONFIRM)
 
 
 def test_propaganda_with_one_faction_below_the_top_pays_that_one() -> None:
     # "Choose two" with only one Faction left below 6: the first pick is
-    # named, the second frame has no Faction to offer, and the fizzle still
+    # named, the second frame has no Faction to offer, and its confirm still
     # pays the named pick (OQ-060 with OQ-057's choose-two atomicity).
     state = _with_influence(
         _reward_state("propaganda"),
@@ -733,9 +771,21 @@ def test_propaganda_with_one_faction_below_the_top_pays_that_one() -> None:
     assert [dict(action.arguments)["faction"] for action in actions] == ["fremen"]
     named = apply_distinct_combat_reward_influence(resolved, actions[0]).state
     assert named.players[0].influence.fremen == 1
-    assert combat_influence_choice_is_unavailable(named)
+    assert legal_distinct_combat_reward_influence_actions(named, 0) == (
+        _INFLUENCE_CONFIRM,
+    )
+    frame = named.decision_stack[-1]
+    assert {
+        faction: combat_reward_influence_block(frame, named.players[0], faction)
+        for faction in Faction
+    } == {
+        Faction.EMPEROR: CombatInfluenceBlock.TOP,
+        Faction.SPACING_GUILD: CombatInfluenceBlock.TOP,
+        Faction.BENE_GESSERIT: CombatInfluenceBlock.TOP,
+        Faction.FREMEN: CombatInfluenceBlock.NAMED,
+    }
 
-    result = fizzle_combat_influence_choice(named)
+    result = apply_combat_influence_without_faction(named, _INFLUENCE_CONFIRM)
 
     assert result.state.players[0].influence.fremen == 2
     # One Victory Point for the tier-III win, one for reaching Fremen 2.
@@ -744,10 +794,11 @@ def test_propaganda_with_one_faction_below_the_top_pays_that_one() -> None:
     assert result.events[0].kind == "combat_reward_influence_unavailable"
 
 
-def test_sandworm_propaganda_second_set_fizzles_once_the_tracks_fill() -> None:
+def test_sandworm_propaganda_second_set_is_confirmed_once_the_tracks_fill() -> None:
     # The second set of a doubled Propaganda is judged after the first set
     # moved the cubes: with Emperor and Guild at 5 and the others at 6, the
-    # first set fills both tracks and the second set has nothing left.
+    # first set fills both tracks and the second set has nothing left, so
+    # each of its two picks is a confirm.
     state = _with_influence(
         _reward_state("propaganda", sandworm_players=(0,)),
         0,
@@ -768,12 +819,16 @@ def test_sandworm_propaganda_second_set_fizzles_once_the_tracks_fill() -> None:
     assert working.players[0].influence.spacing_guild == 6
 
     for _ in range(2):
-        assert combat_influence_choice_is_unavailable(working)
-        working = fizzle_combat_influence_choice(working).state
+        assert legal_distinct_combat_reward_influence_actions(working, 0) == (
+            _INFLUENCE_CONFIRM,
+        )
+        working = apply_combat_influence_without_faction(
+            working, _INFLUENCE_CONFIRM
+        ).state
 
     assert working.decision_stack == ()
     assert working.combat_rewards_resolved is True
-    assert not combat_influence_choice_is_unavailable(working)
+    assert legal_distinct_combat_reward_influence_actions(working, 0) == ()
 
 
 def test_tier_two_resources_troops_and_fixed_influence_resolve() -> None:
@@ -955,7 +1010,6 @@ def test_a_conflict_reward_spy_without_supply_may_recall_first(
     paid = resolve_combat_rewards(state).state
 
     assert paid.decision_stack[-1].kind == "combat_reward_spy"
-    assert not combat_reward_spy_is_unavailable(paid)
     actions = engine.legal_actions(paid, 0)
     assert [action.action_id for action in actions] == [
         "decline_combat_reward_spy",
@@ -1018,10 +1072,13 @@ def test_a_doubled_reward_spy_is_not_capped_by_the_supply_at_payment() -> None:
     ]
 
 
-def test_a_conflict_reward_spy_with_no_spy_to_recall_is_dropped() -> None:
-    # No Spy in the supply and none on the board (a Tech sent them to the
-    # box): nothing can be placed, so the frame is lost publicly instead of
-    # standing without a legal action.
+def test_a_conflict_reward_spy_with_no_spy_to_recall_offers_only_the_decline() -> None:
+    # No Spy in the supply and none on the board: nothing can be placed, so
+    # the decline is the only choice ("놓을 post가 없으면 거절만 남는다",
+    # OQ-057 (14)) and the Spy is lost publicly when its owner answers --
+    # the engine no longer drops the frame unasked (user ruling 2026-09-30).
+    # Synthetic: a four-player game never gets here (thirteen posts for
+    # twelve Spies, and Advanced Data Analysis boxes at most one Spy).
     state = _winner_spies(
         replace(
             _reward_state("seize_spice_refinery"),
@@ -1031,12 +1088,13 @@ def test_a_conflict_reward_spy_with_no_spy_to_recall_is_dropped() -> None:
         (),
         boxed=3,
     )
-    paid = resolve_combat_rewards(state).state
+    paid = _advance_automatic(RuleResult(state=state)).state
     assert paid.decision_stack[-1].kind == "combat_reward_spy"
 
-    assert legal_combat_reward_spy_actions(paid, 0) == ()
-    assert combat_reward_spy_is_unavailable(paid)
-    dropped = fizzle_combat_reward_spy(paid)
+    decline = DomainAction(action_id="decline_combat_reward_spy", actor=0)
+    assert legal_combat_reward_spy_actions(paid, 0) == (decline,)
+    assert UprisingRulesEngine().legal_actions(paid, 0) == (decline,)
+    dropped = apply_combat_reward_spy(paid, decline)
     assert dropped.state.decision_stack == ()
     assert dropped.state.combat_rewards_resolved is True
     assert [event.kind for event in dropped.events] == [
