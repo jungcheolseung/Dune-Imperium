@@ -1820,6 +1820,28 @@ def _rewards(
     )
 
 
+def combat_participants_are_stale(state: GameState) -> bool:
+    """Whether the Combat Intrigue loop on top lists a seat with no unit left.
+
+    A card's play refreshes the loop as it finishes, but only when the loop
+    is on top then; a card that leaves a window of its own (Reach
+    Agreement's Contract market) is refreshed by the engine once that
+    window resolves and the loop is on top again (OQ-003).
+    """
+
+    if not state.decision_stack:
+        return False
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_INTRIGUE:
+        return False
+    participants = _participants_from_mask(
+        state.config.players,
+        context_int(dict(frame.context), "participants_mask"),
+        state.first_player,
+    )
+    return any(not _has_conflict_units(state.players[seat]) for seat in participants)
+
+
 def refresh_combat_participants(state: GameState) -> GameState:
     """Drop participants who no longer have units from the priority loop.
 

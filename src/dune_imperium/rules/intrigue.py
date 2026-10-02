@@ -320,9 +320,13 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 payload=(("card_id", card_id), ("player", player)),
             )
         )
+        # Laying Harvest Cells face up in Combat Intrigue is still a play,
+        # so the passes before it no longer count [Main p. 14].
         return RuleResult(
-            state=replace(
-                played_state, players=replace_player(played_state.players, moved)
+            state=_reset_combat_passes(
+                replace(
+                    played_state, players=replace_player(played_state.players, moved)
+                )
             ),
             events=tuple(events),
         )
@@ -1988,16 +1992,33 @@ def _retreat_units(
 
 
 def _reset_combat_passes(state: GameState) -> GameState:
-    """A played Combat Intrigue restarts the consecutive-pass count [Main p. 14]."""
+    """A played Combat Intrigue restarts the consecutive-pass count.
 
-    frame = top_frame(state)
-    if frame is None or frame.kind != FrameKind.COMBAT_INTRIGUE:
-        return state
-    context = frame_context(frame)
-    if context.get("consecutive_passes") == 0:
-        return state
-    context["consecutive_passes"] = 0
-    return replace_top_frame(state, with_context(frame, context))
+    "전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고
+    Combat를 해결한다." [Main p. 14] (docs/rules/combat-and-round-end.md).
+    The Combat Intrigue frame need not be on top: a card can leave a window
+    of its own above it (Reach Agreement's Contract market, Battlefield
+    Research's Tech window, a reshuffle for a draw) when its play finishes,
+    so the frame is found in the stack.
+    """
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if frame.kind != FrameKind.COMBAT_INTRIGUE:
+            continue
+        context = frame_context(frame)
+        if context.get("consecutive_passes") == 0:
+            return state
+        context["consecutive_passes"] = 0
+        return replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:index],
+                with_context(frame, context),
+                *state.decision_stack[index + 1 :],
+            ),
+        )
+    return state
 
 
 def _deploy_units(

@@ -90,6 +90,7 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
+    combat_participants_are_stale,
     finish_combat,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
@@ -100,6 +101,7 @@ from dune_imperium.rules.combat import (
     legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
     offer_conflict_end_triggers,
+    refresh_combat_participants,
     resolve_combat_rewards,
 )
 from dune_imperium.rules.combat_deployment import (
@@ -1011,6 +1013,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = begin_track_spy_placement(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
+        elif combat_participants_are_stale(state):
+            # A Combat Intrigue card's own window resolved and its play left
+            # a participant with no unit: the loop drops them now (OQ-003).
+            automatic = RuleResult(state=refresh_combat_participants(state))
         elif scouts_effect_can_advance(state):
             # Arrakeen Scouts: the next automatic step of a seat's line.
             automatic = advance_scouts_effect(state)

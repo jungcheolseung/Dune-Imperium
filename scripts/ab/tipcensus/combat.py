@@ -40,11 +40,14 @@ Engine facts this module relies on (see ``rules/combat.py``):
   is only ever emitted from Combat Intrigue itself, so the kind alone is
   enough.
 - A Conflict can also leave Combat Intrigue with **no event at all**:
-  ``refresh_combat_participants`` (``rules/combat.py`` ~1741-1746) ends the
-  priority loop silently once the last remaining participant loses its last
-  unit. By the time ``combat_cleaned_up`` fires, every seat is back to 0
-  units/strength, so this module records a zero row for that Conflict there
-  instead of at a ``combat_intrigue_finished`` it will never see.
+  ``refresh_combat_participants`` (``rules/combat.py``) ends the priority
+  loop silently once the last remaining participant loses its last unit --
+  when the card's play finishes, or, if the card left a window of its own
+  (Reach Agreement's Contract market, Battlefield Research's Tech window),
+  in the engine's automatic step once that window closes. By the time
+  ``combat_cleaned_up`` fires, every seat is back to 0 units/strength, so
+  this module records a zero row for that Conflict there instead of at a
+  ``combat_intrigue_finished`` it will never see.
 - Sandworms reach ``sandworms_conflict`` through three event kinds, not one:
   ``sandworm_deployed`` (an agent-effect summon; payload key ``count``),
   ``reveal_sandworm_deployed`` (the Desert Power Reveal choice; payload key
@@ -210,8 +213,8 @@ class CombatCollector(Collector):
     def _record_missing_conflict(self, s: Step) -> None:
         """Zero row for a Conflict that closed Combat Intrigue with no
         ``combat_intrigue_finished`` event: every remaining participant lost
-        its last unit and ``refresh_combat_participants`` (``combat.py``
-        ~1741-1746) ended the loop silently. By the time ``combat_cleaned_up``
+        its last unit and ``refresh_combat_participants`` (``combat.py``)
+        ended the loop silently. By the time ``combat_cleaned_up``
         fires here every seat's units and strength are already 0 (nobody
         stayed a participant, and a seat without a unit has 0 strength even
         with swords [Main p. 12], combat-and-round-end.md:10), so the

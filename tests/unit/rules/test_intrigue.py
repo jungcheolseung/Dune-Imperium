@@ -3151,3 +3151,129 @@ def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:
     # Without the CHOAM Module the Contract icon has no market to use.
     assert legal_intrigue_play_actions(_combat_state(fighter), 0) == ()
 
+
+def _reach_agreement_after_two_passes(troops: int) -> tuple[GameState, str]:
+    """Seats 0 and 1 have passed (two in a row); seat 2 holds Reach Agreement
+    and ``troops`` troops, and the CHOAM market can pay its Contract."""
+
+    card = _intrigue("reach_agreement")
+    state = replace(
+        _combat_state(
+            _fighter(0, 1), _fighter(1, 1), _fighter(2, troops, intrigue_cards=(card,))
+        ),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=("contract:immediate", "contract:heighliner_ii"),
+        contract_bank=(),
+    )
+    engine = UprisingRulesEngine()
+    state = engine.apply(engine.apply(state, _pass(0)).state, _pass(1)).state
+    assert dict(state.decision_stack[-1].context)["consecutive_passes"] == 2
+    return state, card
+
+
+def _take_first_contract(state: GameState, actor: int) -> GameState:
+    engine = UprisingRulesEngine()
+    take = next(
+        a for a in engine.legal_actions(state, actor) if a.action_id == "take_contract"
+    )
+    return engine.apply(state, take).state
+
+
+def test_a_combat_intrigue_that_opens_a_contract_market_restarts_the_passes() -> None:
+    """ "전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고
+    Combat를 해결한다." [Main p. 14] (docs/rules/combat-and-round-end.md).
+    Reach Agreement leaves its Contract market above the Combat Intrigue
+    loop when its play finishes; the play still restarts the pass count, so
+    the seats that passed before it answer again. Before 2026-10-02 the
+    count stayed at two and seat 2's next pass ended Combat Intrigue."""
+
+    engine = UprisingRulesEngine()
+    state, card = _reach_agreement_after_two_passes(2)
+    play = DomainAction(
+        action_id="play_intrigue", actor=2, arguments=(("card_id", card), ("option", 0))
+    )
+    market = engine.apply(engine.apply(state, play).state, _retreat(1, actor=2)).state
+    assert market.decision_stack[-1].kind == "contract_market"
+    loop = next(f for f in market.decision_stack if f.kind == "combat_intrigue")
+    assert dict(loop.context)["consecutive_passes"] == 0
+
+    after = _take_first_contract(market, 2)
+    assert dict(after.decision_stack[-1].context)["consecutive_passes"] == 0
+    once = engine.apply(after, _pass(2)).state
+    assert once.combat_intrigue_complete is False
+    assert once.decision_stack[-1].decision.owner == 0  # type: ignore[union-attr]
+    twice = engine.apply(once, _pass(0)).state
+    assert twice.combat_intrigue_complete is False
+    done = engine.apply(twice, _pass(1)).state
+    assert done.combat_intrigue_complete is True
+
+
+def test_a_seat_left_without_units_leaves_the_loop_once_its_market_closes() -> (
+    None
+):
+    """OQ-003 (project convention): a player whose last unit leaves the
+    Conflict during Combat Intrigue is removed from the loop at once. When
+    Reach Agreement retreats seat 2's last troops and leaves its Contract
+    market open, the loop drops seat 2 as soon as the market closes and
+    priority passes clockwise to seat 0."""
+
+    engine = UprisingRulesEngine()
+    state, card = _reach_agreement_after_two_passes(2)
+    play = DomainAction(
+        action_id="play_intrigue", actor=2, arguments=(("card_id", card), ("option", 0))
+    )
+    market = engine.apply(engine.apply(state, play).state, _retreat(2, actor=2)).state
+    assert market.players[2].troops_conflict == 0
+
+    after = _take_first_contract(market, 2)
+    top = after.decision_stack[-1]
+    assert top.kind == "combat_intrigue"
+    assert dict(top.context)["participants_mask"] == 0b011
+    assert top.decision.owner == 0  # type: ignore[union-attr]
+    once = engine.apply(after, _pass(0)).state
+    done = engine.apply(once, _pass(1)).state
+    assert done.combat_intrigue_complete is True
+
+
+def test_battlefield_research_drops_its_player_after_the_tech_window() -> None:
+    """The same two rules when the window is Battlefield Research's Tech
+    acquisition ("Retreat one or two of your troops -> Acquire Tech"
+    [card face]): seat 2 retreats its last troop, buys the tile, and the loop
+    then drops it (OQ-003) and counts the passes from zero again [Main p. 14].
+    Before 2026-10-02 seat 2 -- with no unit left -- was offered the next
+    pass, and that one pass ended Combat Intrigue."""
+
+    card = _intrigue("battlefield_research")
+    state = replace(
+        _combat_state(
+            _fighter(0, 1),
+            _fighter(1, 1),
+            _fighter(2, 1, intrigue_cards=(card,), resources=Resources(spice=2)),
+        ),
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+        tech_stacks=(("plasteel_blades",), ("delivery_bay",), ("servo_receivers",)),
+    )
+    engine = UprisingRulesEngine()
+    state = engine.apply(engine.apply(state, _pass(0)).state, _pass(1)).state
+    play = DomainAction(
+        action_id="play_intrigue", actor=2, arguments=(("card_id", card), ("option", 0))
+    )
+    window = engine.apply(engine.apply(state, play).state, _retreat(1, actor=2)).state
+    assert window.decision_stack[-1].kind == "tech_acquisition"
+    assert window.players[2].troops_conflict == 0
+
+    buy = next(
+        a
+        for a in engine.legal_actions(window, 2)
+        if dict(a.arguments).get("tech_id") == "plasteel_blades"
+    )
+    after = engine.apply(window, buy).state
+    top = after.decision_stack[-1]
+    assert top.kind == "combat_intrigue"
+    assert dict(top.context)["participants_mask"] == 0b011
+    assert dict(top.context)["consecutive_passes"] == 0
+    assert top.decision.owner == 0  # type: ignore[union-attr]
+    once = engine.apply(after, _pass(0)).state
+    assert once.combat_intrigue_complete is False
+    done = engine.apply(once, _pass(1)).state
+    assert done.combat_intrigue_complete is True

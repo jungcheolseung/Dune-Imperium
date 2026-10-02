@@ -197,7 +197,13 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # (CHOAM+Bloodlines catalogs: one template, which shifts every later one),
 # and icons held in the Arrakeen Scouts step reopen when an Intrigue card
 # arrives and fizzle as the step ends.
-ACTION_CODEC_VERSION = 126
+# v127: a Combat Intrigue card that leaves a window of its own above the
+# Combat Intrigue loop (Reach Agreement's Contract market, Battlefield
+# Research's Tech window) still restarts the consecutive passes, and so
+# does Harvest Cells laid face up [Main p. 14]; the loop drops a participant
+# left without units once that window closes (OQ-003). Saves replay
+# differently -- no template change.
+ACTION_CODEC_VERSION = 127
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
