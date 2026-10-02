@@ -1,95 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-02 (master 49f5b73와 로컬 UI 브랜치 병합)
-
-## 2026-10-02 추가 master 통합 (WSL, 49f5b73)
-
-- 사용자가 추가로 갱신한 `origin/master` **`49f5b73`**까지 로컬 master를 fast-forward하고,
-  `codex/ui-table-refresh`에 합쳤다. 이전 UI 통합 커밋 `d20ad8c`와 추가 master 여섯 커밋을 보존한다.
-  충돌 없이 자동 병합됐고 엔진·codec·관측·Python 테스트는 최신 master와 같다.
-- L2 뒤 확인 항목의 판정과 계약 아이콘 처리가 반영됐다(`49940bb`·`fc11be7`): 교전 책략의
-  가져갈 수 없는 계약 아이콘은 카드 사용 시 확인하고 불발하며, Scouts 단계의 보류 아이콘은
-  그 단계 안에서 재개하고 단계 종료 때 불발한다. Holy War의 상대 응답 후 되돌리기 판정도 확정됐다.
-- 교전 책략이 별도 선택 창을 남겨도 연속 패스를 초기화하고, 창이 닫힌 뒤 유닛 없는 참여자를
-  순환에서 제거한다(`c0ea3d6`·`f386e99`). 순환이 비어 끝난 경우에도 종료 이벤트를 기록한다
-  (`910de64`·`49f5b73`). codec **v127**, 관측 **v28**이며 다음 codec 번호는 **v128**이다.
-- UI 11단계는 유지한다. **C1·C2는 아직 미착수**이고 L3 후속 학습은 별도 작업이다.
-- 전체 pytest **3,063 통과·5 건너뜀**(916초). 건너뛴 5개는 이 PC에 없는 DWGR 추출 자료
-  검사이며 실패는 없다. Ruff 통과, mypy **307파일 통과**.
-- 관련 브라우저 E2E **9종 전부 통과**(2개씩, 402초):
-  `turn_end`·`unavailable`·`scouts`·`combat_result`·`log_words`·`lang`·`table_layout`·
-  `setup_layout`·`endgame`. UI 배치와 클라이언트 동작 코드는 그대로이므로, 이전 통합의
-  전체 33종 기록을 유지하고 이번에는 바뀐 계약·교전 흐름과 라벨에 관련된 검사를 실행했다.
-- 로컬 검증 자료: `/tmp/dune-ui-master-49f5b73-pytest.log`, `/tmp/dune-ui-master-49f5b73-mypy.log`,
-  `/tmp/dune-e2e-run-0f344pqq/`.
-
-## 2026-10-02 최신 master와 UI 통합 (WSL)
-
-- 사용자가 갱신한 `origin/master` **`8de414b`**까지 로컬 master를 fast-forward한 뒤,
-  `codex/ui-table-refresh`에 합쳤다. 전달 묶음의 세 커밋과 로컬 검증 기록 두 커밋을 보존한다.
-- 최신 master의 **L1(명시적 Agent 턴 종료)·L2(자동 처리 대신 결정 창)**와 UI 11단계의
-  보드 확대·행동/로그 독립 스크롤·시작 화면 개선이 함께 들어 있다. 엔진·codec·관측·Python 테스트는
-  master와 같다. codec **v125**, 관측 **v28**이며 다음 codec 번호는 **v126**이다.
-- 충돌은 이 인수인계 문서 한 곳이었다. 두 세션의 기록을 보존하고 당시 상태임을 명시했다.
-  자동 병합된 UI에서는 master의 부족 경고 배지·턴 종료 대기 표시·선택 불가 줄과,
-  가져온 로그 크기 조절·스크롤 위치 보존이 모두 남아 있는지 검토했다.
-- 다음 작업은 **C1(선택 불가 표시 확대)·C2(Harvest Cells 숨은 정보)**이며 아직 미착수다.
-  L3 후속 학습과 L2의 판정 확인 항목은 아래 master 인수인계 기록을 따른다.
-- 검증: 전체 pytest **3,053 통과·5 건너뜀**(1,099초), **브라우저 E2E 33종 전부 통과**
-  (2개씩, 963초), Ruff 통과, mypy **307파일 통과**. 건너뛴 5개는 이 PC에 없는 DWGR 추출
-  자료 검사다. 에셋 연결 검사도 전체 실행에서 통과해 이미지 누락 실패는 없다.
-- 브라우저는 아래 가져오기 검증에서 준비한 실제 `libasound2t64`와 Windows 글꼴의 임시
-  fontconfig 환경을 사용했다. 이전 미통과였던 Scouts·관전 재생·좁은 창 검사도 모두 통과했다.
-  게임/시작 화면의 1440px 캡처를 직접 검토했고, 레이아웃 검사는 1366·1440·1920px의
-  게임 화면과 600·900·1440px의 시작 화면을 검증했다.
-- 로컬 검증 자료: `/tmp/dune-ui-master-merge-pytest.log`, `/tmp/dune-ui-master-merge-mypy.log`,
-  `/tmp/dune-e2e-run-la4rvfrb/`, `/tmp/dune-ui-master-merge-shots/`.
-
-## 2026-10-02 WSL UI 브랜치 가져오기
-
-- 사용자가 옮겨 온 `dune-ui-transfer-20261001/`의 SHA256SUMS 전 항목과 Git bundle을 검증한 뒤
-  `codex/ui-table-refresh`로 가져와 전환했다. 원본 커밋 `395b772`·`4ad05fe`·`45d1893`을 보존했고,
-  가져온 직후 트리도 전달 묶음의 VERIFIED.json과 같았다. UI 코드는 추가 수정하지 않았다.
-  가져오기 당시 `git fetch origin` 뒤에도 master와 origin/master는 모두 `659cefb`였다. 전달 폴더는 미추적 상태로
-  보존했으며 이 검증 기록만 추가 커밋한다.
-- `uv sync --locked --offline --extra rl --extra ui --extra train` 후 전체 pytest는
-  **2,963 통과·5 건너뜀·1 실패**(1,082초). 실패는 `economic_supremacy`·`control_the_spice`의
-  에셋 연결 누락이고, `/tmp`에 푼 원본 master의 같은 테스트에서도 똑같이 재현했다.
-  5개 건너뜀은 DWGR 추출 자료 부재다. Ruff 통과, mypy 306파일 통과.
-- 후속 확인(같은 날): 사용자가 에셋을 `b1c7dd4`로 업데이트해 Epic 카드 두 장의 연결을 추가했다.
-  `test_the_assets_checkout_resolves_every_content_id`를 다시 실행해 **1개 통과**(0.26초)를 확인했다.
-  위 전체 실행의 유일한 이미지 누락 실패는 해결됐다. 전체 pytest는 이 후속 확인에서 재실행하지 않았다.
-- 전체 브라우저 E2E는 2개씩 실행해 **30종 통과·3종 미통과**(1,160초):
-  `narrow.py`의 600px 영어 관전 화면 가로 넘침, `spectate.py`의 마지막 재생 8초 시간 초과,
-  `scouts.py`의 실행기 600초 제한이다. 앞 두 실패는 원본 master에서도 재현됐다.
-  별도 대조에서 UI 브랜치의 spectate는 통과했다. Scouts 전 구간은 이 PC에서 검증을 마치지 못했다.
-- 이 WSL의 첫 브라우저 실행은 `libasound.so.2`가 없어 시작에 실패했고, 화면 캡처에는 한글 글꼴도
-  없었다. 시스템 설치 없이 `/tmp`에 Ubuntu `libasound2t64`를 풀어 LD_LIBRARY_PATH로 제공하고,
-  기존 Windows의 Arial·Segoe UI·Malgun Gothic을 임시 fontconfig로 연결했다.
-  이 환경에서 **spectate·narrow·setup_layout·table_layout 4종이 모두 통과**(순차 실행 73초).
-  전체 실행의 실패 기록은 위에 유지한다. 에셋·규칙·codec·관측·저장 형식은 변경하지 않았다.
-
-
-## 2026-10-01 로컬 UI 개선 브랜치
-
-- 사용자 요청으로 `master` **`659cefbc0f8e330afea73ab9743479736937f628`**에서
-  `codex/ui-table-refresh`를 만들었다. **사내 환경에서 push 금지.** master는 이동하지 않았다.
-- `395b772`: 보드에 더 많은 폭을 배분하고, 행동 목록과 로그를 독립 스크롤 영역으로 나눴다.
-  현재 안내·턴 종료는 행동 목록 위에 남고, 로그는 크게 보기/줄이기를 브라우저에 기억한다.
-  차콜·황동 색상과 버튼 위계를 정리하고 책략 카드를 손패 옆으로 옮겼다.
-- `4ad05fe`: 시작 화면을 좌석·규칙 옵션·현재 설정 요약으로 구성했다. 체크포인트 입력은
-  해당 AI를 선택할 때만 보이며, 언어 전환과 숨김/다시 표시에서도 입력을 유지한다.
-- 변경은 `server/static/`와 브라우저 검사·문서에 한정한다. 엔진·codec·관측·저장 형식·규칙 기본값은
-  그대로였다. 이 브랜치를 만들 당시 아래 L1/L2/C1/C2 작업은 들어 있지 않았다.
-- 검증: **브라우저 E2E 33종 모두 통과**, Ruff 통과, mypy 306파일 통과.
-  pytest는 **2,963 통과·5 건너뜀·1 실패**(237초). 실패는 이 머신의 에셋에서
-  `economic_supremacy`·`control_the_spice` 이미지가 연결되지 않는 기존 문제이며,
-  별도 디렉터리에 푼 **master 659cefb에서도 같은 단일 테스트 실패를 재현**했다.
-  5개 건너뜀은 이 머신에 DWGR 추출 자료가 없기 때문이다. 에셋은 수정하지 않았다.
-- 상세 변경과 검증은 [`ui-improvement-plan.md`](ui-improvement-plan.md)의 11단계.
-  개인 PC에서는 전달 ZIP의 README대로 로컬 Git bundle을 가져오거나 패치 시리즈를 적용한다.
-  에셋·체크포인트·가상환경은 전달 묶음에 없다. 에셋 링크와 `uv sync --extra rl --extra ui --extra train`은
-  개인 PC 환경에서 준비한다. 이 머신에서는 gitignored `.venv`가 임시 `/tmp/dune-ui-runtime`을 가리킨다.
+기준일: 2026-10-02
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -106,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-10-02(L1 "Agent 턴은 턴 종료로만" + L2 "자동 처리 → 결정 창"을 한 번에 병합한 뒤, Mac mini, master)의 기준 결과는 **pytest 3,068개 통과**(실측 약 180초; 병합 뒤 확인 셋과 codec v127의 Combat Intrigue 연속 pass 수정·순환이 비는 끝의 단계 종료 이벤트까지 — 그 앞 v126에서 3,061), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(4개씩 약 130초), 소크(6개 구성, `--soundness-interval 5 --privacy-interval 50`) 실패 0, Agent 턴 닫힘 census 문제 0. action codec **v125**(L1·L2를 한 번호로 묶음: L1은 템플릿 무변경, L2가 확인 행동 템플릿을 더함 — 옛 저장은 버전 오류, 옛 체크포인트는 새 행 0으로 이관), 관측 **v28 그대로**. 병합(`8de414b8`)이 푸시된 뒤 같은 날 반영한 사용자 확인 셋이 카탈로그와 재생을 바꿔 **v126**이 되었다(CHOAM+Bloodlines에 `resolve_contract_icons_without_contract` 1개). tips-v1은 v125로 다시 캐 110개다(L1 뒤 106 → L2 A 107 → L2 B 110). 그 앞 L1만의 기준(브랜치, 병합 전): pytest 2,985. 그 앞 2026-09-30 저녁(epic-game-mode 병합 `8b3780e`, Scouts AI 좌석 `b7cf49c`, 보드 위 임무 조각 `a195676` 뒤, Mac mini, master `58049f9`)의 기준 결과는 **pytest 2,968개**(병합 master에서 2,967개 실측 통과 + 문구 가드 1), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(4개씩 105초; `scouts.py`가 80초로 가장 길다), 자동 대전 1,150판(Epic·Scouts·Go to 11·전 확장 조합) 실패 0. action codec **v124**(Epic), 관측 **v28**(Epic, 길이 4,611), mlp_slots `SLOT_KEYS` 1,140(`conflict:economic_supremacy`). master의 v121~v123·v26~v27은 Scouts·Round Start·대안 C의 번호이고 Epic이 v124·v28이다(버전 주석에 둘 다 있다). 그 앞 2026-09-30(OQ-076 대안 C 뒤, Mac mini, master)의 기준 결과는 **pytest 2,851개 통과**(실측 약 145초), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(4개씩 93초). action codec **v123**(`choose_subcommittee` 템플릿 추가), 관측 v27 그대로, mlp_slots `SLOT_KEYS` 1,139. **미병합 `epic-game-mode`(v121·v26)는 병합 때 v124·v28로 올린다.** 그 앞 2026-09-29 밤(Round Start 규칙 순서, Scouts D8 3차, 게임 전체 선택 불가 표시 1단계 뒤, Mac mini, master `cd479ba`)의 기준 결과는 **pytest 2,832개 통과**(실측 약 145초), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(`unavailable.py` 추가; 4개씩 86초). action codec **v122**(Round Start 순서와 Scouts 변경으로 저장 재생이 달라짐, 템플릿 무변경), 관측 **v27**(`scouts_top_up` frame 종류 제거, 방어 결정의 벡터가 Round Start로), mlp_slots `SLOT_KEYS` 1,139. **미병합 `epic-game-mode`(v121·v26)는 병합 때 v123·v28로 올린다.** 그 앞 2026-09-29 저녁(Arrakeen Scouts D8 2차 반영 뒤, Mac mini, master `be826d9`)의 기준 결과는 **pytest 2,765개 통과**(실측 약 138초), Ruff 통과, mypy 통과, 브라우저 E2E **30종** 녹색(4개씩 86초); codec·관측은 아래와 같다. 그 앞 2026-09-29(Arrakeen Scouts D8 일괄 검토 1차 반영 뒤, Mac mini, master)의 기준 결과는 **pytest 2,734개 통과**(실측 약 138초), Ruff 통과, mypy 통과, 브라우저 E2E **30종** 녹색(4개씩 94초). action codec **v121**, 관측 **v26**(frame kind `scouts_top_up`을 끝에 덧붙였을 뿐이라 옵션을 끈 게임의 인코딩은 그대로), mlp_slots `SLOT_KEYS` 1,140. **미병합 브랜치 `epic-game-mode`도 codec v121·관측 v26을 쓴다: 병합할 때 한쪽을 v122·v27로 다시 올린다.** 그 앞 2026-09-28(Go to 11 옵션 병합 `1c86685` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,714개 통과**(실측 약 140초), Ruff 통과, mypy 통과, 브라우저 E2E **30종** 녹색(`setup_options.py` 추가; 4개씩 94초). action codec **v120**(새 설정 필드가 모든 state hash를 바꿔 옛 저장이 버전 오류를 받게 한 것뿐, 카탈로그 무변경), 관측 v25 그대로. `ext-v111/C/iteration_07081.pt`는 v120에서도 열리고 Go to 11 게임을 불법 행동 0으로 둔다. 그 앞 2026-09-28(Arrakeen Scouts M15 슬라이스 1~10 뒤, Mac mini, master `01da380` + 문서 커밋)의 기준 결과는 **pytest 2,694개 통과**(실측 약 135초), Ruff 통과, mypy 통과, 브라우저 E2E **29종** 녹색(`scouts.py` 추가; 4개씩 99초). action codec **v119**, 관측 **v25**(길이 4,587; Scouts 칸은 옛 칸 뒤에 붙어 옵션을 끈 게임의 앞 4,327칸은 v21과 바이트 그대로), mlp_slots `SLOT_KEYS` 1,139(slot 관측 v25). 옵션을 끈 룰셋의 base 카탈로그는 4,425 그대로다. 실제 체크포인트 `ext-v111/C/iteration_07081.pt`와 `T/latest.pt`는 새 버전에서 그대로 열린다. 그 앞 2026-09-27 밤(garrison 토큰·배치 조절기 자리 `72fe33f` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,550개 통과**(실측 약 119초), Ruff 통과, mypy 통과, 브라우저 E2E 28종 녹색(4개씩 77초). 그 앞 2026-09-27 저녁(카탈로그 종류 조회·CHOAM 계약 구성 정정·Tleilaxu UI 둘·Conflict 유닛 토큰 병합 `55beed1` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,548개 통과**(실측 약 157초), Ruff 통과, mypy 통과, 브라우저 E2E **28종** 녹색(`catalog_kinds.py` 추가; 4개씩 80초). action codec **v111**, 관측 **v21**(계약 identity 넷 교체, 길이 4,327 불변; 아래 요약). 그 앞 2026-09-27 오후(`repr-slots`·`learner-legal` 병합 `35eb090` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,542개 통과**(2,514 + slot 네트워크 18 + learner 10, 실측 약 119초), Ruff 통과, mypy 통과. 그 앞 2026-09-27 아침(`ui-work` 병합 `08b5003` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,514개 통과**, Ruff 통과, mypy 통과, 브라우저 E2E **27종** 녹색(`rehearsal.py` 제외; UI 7~10단계가 10종을 더했다 — 아래 요약). 2026-09-27 새벽 늦게(Agent box Spy의 거절과 tips-v1 복원 가드 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,379개 통과**(2,374 + 거절 3 + 복원 가드 2, 실측 약 110초), Ruff 통과, mypy 통과, 브라우저 E2E 5종(`log_words`·`turn_end`·`staged_turn`·`lang`·`board_tokens`) 녹색. 그 앞 2026-09-27 새벽(OQ-070 — recruit한 Commander의 배치 몫 — 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,374개 통과**(실측 약 98초), Ruff 통과, mypy 통과. 그 앞 2026-09-26 밤 늦게(OQ-065 판정 고정과 자기 trash 경로의 recruit guard 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,361개 통과**(2,350 + OQ-065 1 + guard 9 + Eliminate Allies 자기 trash 1, 실측 약 120초), Ruff 통과, mypy 통과. 그 앞 2026-09-26 밤(recruit 집계 전수 수정과 OQ-064 판정 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,350개 통과**(실측 약 102초), Ruff 통과, mypy 통과. 그 앞 2026-09-26 저녁(OQ-066·068·069 사용자 판정 반영 뒤)은 **pytest 2,304개 통과**(실측 약 98초), Ruff 통과, mypy 통과. 그 앞 2026-09-26(카드·보드 전사 전수 감사와 통합 리뷰 수정 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,279개 통과**(전사 정정 뒤의 1,975 + 감사·리뷰 수정 304, 실측 약 98초), Ruff 통과, mypy 통과. 그 앞 2026-09-25(Bloodlines 카드면 전사 정정 셋 — Chani·Fenring Signet, Storms in the South — 과 평가 문제집 재채굴 뒤, Mac mini, master)의 기준 결과는 **pytest 1,975개 통과**(expert iteration 병합 뒤의 1,972 + 이 세션 3, 실측 약 87초), Ruff 통과, mypy 통과. 그 앞 2026-09-24(확장 더미의 되돌리기 구멍 수정 뒤, Mac mini, master)의 기준 결과는 **pytest 1,950개 통과**(+12, 실측 약 84초), Ruff 통과, mypy 통과. 그 앞 2026-09-24 새벽(턴 종료 한 번 누르기 통일과 연속 되돌리기 저장 수정 뒤, Mac mini, master)의 기준 결과는 **pytest 1,938개 통과**(이 세션 +29, 실측 약 80초), Ruff 통과, mypy 통과, 브라우저 E2E 16종 녹색(`rehearsal.py` 제외; 새 `turn_end.py` 67). 그 앞 2026-09-24 저녁(expert iteration v1 병합과 탐색 후보 5개 뒤, Mac mini, master)의 기준 결과는 **pytest 1,972개 통과**(실측; 이 세션이 라벨·증류 테스트 20개와 탐색 테스트 2개를 더함), Ruff 통과, mypy 통과. 그 앞 2026-09-24 아침(밤샘 실행과 말단 척도 수정 뒤, Mac mini, master)의 기준 결과는 **pytest 1,939개 통과**(실측; 그 사이 다른 세션의 UI·저장 테스트와 이 세션의 말단 보상 테스트 1개가 더해짐), Ruff 통과, mypy 통과. 그 앞 2026-09-23 저녁(Mac mini의 탐색 비용 세션을 WSL 노트북의 tip census·평가 문제집 작업과 merge한 뒤, Mac mini, master)의 기준 결과는 **pytest 1,909개 통과**(실측, 약 80초; merge 전 Mac mini 쪽은 1,816개, WSL 쪽의 마지막 기록은 1,903개 — 그 뒤 WSL 커밋들과 이 세션의 잘린 head 읽기·효과 순서 스위치·순환 방지 테스트 3개가 더해졌다), Ruff 통과, mypy 통과. 그 앞 2026-09-23(tip census 뒤, WSL 노트북, master)의 기준 결과는 **pytest 1,885개 통과**(tip census 테스트 71개 + Influence 4 재도달 회귀 테스트 1개; 그 앞 `5bbad3a`까지는 1,813개), 실측. 이어서 비교 도구 테스트 1개로 1,886개, 평가 문제집 테스트 17개로 **1,903개 통과**(실측, 약 4분 40초) — 그 전체 실행에서 `tests/server/test_events_app.py::test_a_stream_closed_before_its_first_byte_is_not_a_server_error`가 한 번 실패했고(1,885 통과, 실패 메시지는 남기지 못함) 단독으로는 3회 모두 통과했다: 소켓을 곧바로 닫는 경합 테스트라 부하에서 흔들리는 후보다, Ruff 통과, mypy 통과. census 테스트가 스위트에 약 40초를 더한다(전체 약 4분). 2026-09-22 새벽(패널 문구의 용어집 잔재 뒤, Mac mini, 브랜치 `ui-glossary`)의 기준 결과는 **pytest 1,806개 통과**(같은 날 M10 평가 역전 수정 회귀 테스트 1개 추가, 실측)(한국어 텍스트의 용어집 영어 가드 1개), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색. 그 앞 2026-09-21 밤(보드 위 사다우카 지휘관과 쌓인 Spy 뒤, Mac mini, 브랜치 `ui-commanders`)의 기준 결과는 **pytest 1,804개 통과**(카탈로그 테스트에 단언만 더함), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색(`board_tokens.py` 187 → 203). 그 앞 2026-09-21 밤(UI 잔여 세 항목 세션 뒤, Mac mini, 워크트리 `ui-leftovers`)의 기준 결과는 **pytest 1,804개 통과**(라벨 표를 언어 전환에 등록했는지 보는 가드 1개 추가; 행동·이벤트 라벨 가드는 넓어졌지만 수는 그대로), Ruff 통과, mypy 통과, **브라우저 E2E 15종 녹색**(`log_words.py` 추가, `seats.py` 21 → 31, `remote.py` 57). 그 앞 2026-09-21 밤(Mac mini의 M10 순위 보상·대조군 세션 3커밋을 WSL 노트북의 UI 작업 위로 rebase한 뒤, Mac mini)의 기준 결과는 **pytest 1,803개 통과**(WSL의 1,802개 + 평가 seed 대역 테스트 1개), Ruff 통과, mypy 통과. rebase된 커밋은 UI 파일을 건드리지 않아 브라우저 E2E는 다시 돌리지 않았다. 그 앞 2026-09-21 저녁(보드 칸 테두리 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,802개 통과**(칸 hotspot이 인쇄된 흰 테두리 하나의 크기, 관측소 원판이 칸 테두리와 겹치지 않음 — 레이아웃 테스트 2개 추가), Ruff 통과, mypy 통과, 브라우저 E2E 14종 녹색(`board_tokens.py`에 hotspot 테두리·Agent·Spy 말 검사 추가). 그 앞 2026-09-21 오후(UI 후속 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,800개 통과**(언어 가드 `tests/server/test_i18n.py` 7개; supply 부족 `shortfall` 단언은 기존 테스트에 더함), Ruff 통과, mypy 통과, **브라우저 E2E 14종**(`help.py`·`lang.py` 추가). 그 앞 2026-09-21(UI 개선 세션 뒤)의 기준 결과는 **pytest 1,793개 통과**(UI 세션이 더한 7개: 용어 가드 3, event kind 가드 2, 지원하지 않는 룰셋의 400 1, action label 가드 1), Ruff 통과, mypy 통과. **브라우저 E2E는 8종 → 12종**이다(`endgame.py`·`narrow.py`·`columns.py`·`seats.py` 추가, `scripts/e2e/README.md`). 그 앞 2026-09-20(M10 자 만들기 세션 뒤)은 pytest 1,786개 통과이고 action codec은 **`ACTION_CODEC_VERSION = 107`**(기본 4,439개, CHOAM 4,729개, `promo_cards` 옵션 시 4,539/4,829개, `immortality` 옵션 시 9,324개, `promo_cards`+`bloodlines`는 10,580개, promo+Bloodlines+Tech는 13,828개, CHOAM+Bloodlines는 11,228개, 다섯 옵션을 다 켜면 32,987개 — v106은 Branching Path의 `trash_intrigue_for_agent_card`(Intrigue 사본마다)와 Imperial Privilege 행동의 이름 변경(`trash_intrigue_for_imperial_privilege`)·c7r3의 `trash_intrigue_for_research_bonus`, v107은 공용 `spy_placement` frame의 세 행동을 Bloodlines 없는 카탈로그에도 넣는다(+27); 형식 2 체크포인트는 행동 이름으로 이관된다 — 아래 세션 요약). 그 앞 기준선: 2026-09-19(두 기기의 2026-09-18 작업을 merge한 뒤)의 기준 결과는 pytest 1,768개 통과(같은 날 오후 학습률 재개 테스트 1개가 더해진 값; 그 앞 1,767은 Windows PC의 M10 PPO 슬라이스·A/B 세션 1,752개에 Mac mini의 보드 토큰·원판·보드 조각·에셋 버전 테스트 12개를 더한 값을 merge 뒤 실측했고, 같은 날 카탈로그의 Graft 표시 테스트 1개와 서버의 전투력 미리보기·남은 Persuasion 테스트 2개가 더해졌다; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,767 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-10-02(Codex의 UI 11단계 `codex/ui-table-refresh` 병합 `c5e17ea2` 뒤, Mac mini, master)의 기준 결과는 **pytest 3,068개 통과**(실측 167초), Ruff 통과, mypy 307파일 통과, 브라우저 E2E **33종** 녹색(4개씩 129초; `table_layout`·`setup_layout` 추가). 화면만 바뀌어 codec·관측은 아래 L1·L2 기준 그대로다. 그 앞 2026-10-02(L1 "Agent 턴은 턴 종료로만" + L2 "자동 처리 → 결정 창"을 한 번에 병합한 뒤, Mac mini, master)의 기준 결과는 **pytest 3,068개 통과**(실측 약 180초; 병합 뒤 확인 셋과 codec v127의 Combat Intrigue 연속 pass 수정·순환이 비는 끝의 단계 종료 이벤트까지 — 그 앞 v126에서 3,061), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(4개씩 약 130초), 소크(6개 구성, `--soundness-interval 5 --privacy-interval 50`) 실패 0, Agent 턴 닫힘 census 문제 0. action codec **v125**(L1·L2를 한 번호로 묶음: L1은 템플릿 무변경, L2가 확인 행동 템플릿을 더함 — 옛 저장은 버전 오류, 옛 체크포인트는 새 행 0으로 이관), 관측 **v28 그대로**. 병합(`8de414b8`)이 푸시된 뒤 같은 날 반영한 사용자 확인 셋이 카탈로그와 재생을 바꿔 **v126**이 되었다(CHOAM+Bloodlines에 `resolve_contract_icons_without_contract` 1개). tips-v1은 v125로 다시 캐 110개다(L1 뒤 106 → L2 A 107 → L2 B 110). 그 앞 L1만의 기준(브랜치, 병합 전): pytest 2,985. 그 앞 2026-09-30 저녁(epic-game-mode 병합 `8b3780e`, Scouts AI 좌석 `b7cf49c`, 보드 위 임무 조각 `a195676` 뒤, Mac mini, master `58049f9`)의 기준 결과는 **pytest 2,968개**(병합 master에서 2,967개 실측 통과 + 문구 가드 1), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(4개씩 105초; `scouts.py`가 80초로 가장 길다), 자동 대전 1,150판(Epic·Scouts·Go to 11·전 확장 조합) 실패 0. action codec **v124**(Epic), 관측 **v28**(Epic, 길이 4,611), mlp_slots `SLOT_KEYS` 1,140(`conflict:economic_supremacy`). master의 v121~v123·v26~v27은 Scouts·Round Start·대안 C의 번호이고 Epic이 v124·v28이다(버전 주석에 둘 다 있다). 그 앞 2026-09-30(OQ-076 대안 C 뒤, Mac mini, master)의 기준 결과는 **pytest 2,851개 통과**(실측 약 145초), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(4개씩 93초). action codec **v123**(`choose_subcommittee` 템플릿 추가), 관측 v27 그대로, mlp_slots `SLOT_KEYS` 1,139. **미병합 `epic-game-mode`(v121·v26)는 병합 때 v124·v28로 올린다.** 그 앞 2026-09-29 밤(Round Start 규칙 순서, Scouts D8 3차, 게임 전체 선택 불가 표시 1단계 뒤, Mac mini, master `cd479ba`)의 기준 결과는 **pytest 2,832개 통과**(실측 약 145초), Ruff 통과, mypy 통과, 브라우저 E2E **31종** 녹색(`unavailable.py` 추가; 4개씩 86초). action codec **v122**(Round Start 순서와 Scouts 변경으로 저장 재생이 달라짐, 템플릿 무변경), 관측 **v27**(`scouts_top_up` frame 종류 제거, 방어 결정의 벡터가 Round Start로), mlp_slots `SLOT_KEYS` 1,139. **미병합 `epic-game-mode`(v121·v26)는 병합 때 v123·v28로 올린다.** 그 앞 2026-09-29 저녁(Arrakeen Scouts D8 2차 반영 뒤, Mac mini, master `be826d9`)의 기준 결과는 **pytest 2,765개 통과**(실측 약 138초), Ruff 통과, mypy 통과, 브라우저 E2E **30종** 녹색(4개씩 86초); codec·관측은 아래와 같다. 그 앞 2026-09-29(Arrakeen Scouts D8 일괄 검토 1차 반영 뒤, Mac mini, master)의 기준 결과는 **pytest 2,734개 통과**(실측 약 138초), Ruff 통과, mypy 통과, 브라우저 E2E **30종** 녹색(4개씩 94초). action codec **v121**, 관측 **v26**(frame kind `scouts_top_up`을 끝에 덧붙였을 뿐이라 옵션을 끈 게임의 인코딩은 그대로), mlp_slots `SLOT_KEYS` 1,140. **미병합 브랜치 `epic-game-mode`도 codec v121·관측 v26을 쓴다: 병합할 때 한쪽을 v122·v27로 다시 올린다.** 그 앞 2026-09-28(Go to 11 옵션 병합 `1c86685` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,714개 통과**(실측 약 140초), Ruff 통과, mypy 통과, 브라우저 E2E **30종** 녹색(`setup_options.py` 추가; 4개씩 94초). action codec **v120**(새 설정 필드가 모든 state hash를 바꿔 옛 저장이 버전 오류를 받게 한 것뿐, 카탈로그 무변경), 관측 v25 그대로. `ext-v111/C/iteration_07081.pt`는 v120에서도 열리고 Go to 11 게임을 불법 행동 0으로 둔다. 그 앞 2026-09-28(Arrakeen Scouts M15 슬라이스 1~10 뒤, Mac mini, master `01da380` + 문서 커밋)의 기준 결과는 **pytest 2,694개 통과**(실측 약 135초), Ruff 통과, mypy 통과, 브라우저 E2E **29종** 녹색(`scouts.py` 추가; 4개씩 99초). action codec **v119**, 관측 **v25**(길이 4,587; Scouts 칸은 옛 칸 뒤에 붙어 옵션을 끈 게임의 앞 4,327칸은 v21과 바이트 그대로), mlp_slots `SLOT_KEYS` 1,139(slot 관측 v25). 옵션을 끈 룰셋의 base 카탈로그는 4,425 그대로다. 실제 체크포인트 `ext-v111/C/iteration_07081.pt`와 `T/latest.pt`는 새 버전에서 그대로 열린다. 그 앞 2026-09-27 밤(garrison 토큰·배치 조절기 자리 `72fe33f` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,550개 통과**(실측 약 119초), Ruff 통과, mypy 통과, 브라우저 E2E 28종 녹색(4개씩 77초). 그 앞 2026-09-27 저녁(카탈로그 종류 조회·CHOAM 계약 구성 정정·Tleilaxu UI 둘·Conflict 유닛 토큰 병합 `55beed1` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,548개 통과**(실측 약 157초), Ruff 통과, mypy 통과, 브라우저 E2E **28종** 녹색(`catalog_kinds.py` 추가; 4개씩 80초). action codec **v111**, 관측 **v21**(계약 identity 넷 교체, 길이 4,327 불변; 아래 요약). 그 앞 2026-09-27 오후(`repr-slots`·`learner-legal` 병합 `35eb090` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,542개 통과**(2,514 + slot 네트워크 18 + learner 10, 실측 약 119초), Ruff 통과, mypy 통과. 그 앞 2026-09-27 아침(`ui-work` 병합 `08b5003` 뒤, Mac mini, master)의 기준 결과는 **pytest 2,514개 통과**, Ruff 통과, mypy 통과, 브라우저 E2E **27종** 녹색(`rehearsal.py` 제외; UI 7~10단계가 10종을 더했다 — 아래 요약). 2026-09-27 새벽 늦게(Agent box Spy의 거절과 tips-v1 복원 가드 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,379개 통과**(2,374 + 거절 3 + 복원 가드 2, 실측 약 110초), Ruff 통과, mypy 통과, 브라우저 E2E 5종(`log_words`·`turn_end`·`staged_turn`·`lang`·`board_tokens`) 녹색. 그 앞 2026-09-27 새벽(OQ-070 — recruit한 Commander의 배치 몫 — 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,374개 통과**(실측 약 98초), Ruff 통과, mypy 통과. 그 앞 2026-09-26 밤 늦게(OQ-065 판정 고정과 자기 trash 경로의 recruit guard 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,361개 통과**(2,350 + OQ-065 1 + guard 9 + Eliminate Allies 자기 trash 1, 실측 약 120초), Ruff 통과, mypy 통과. 그 앞 2026-09-26 밤(recruit 집계 전수 수정과 OQ-064 판정 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,350개 통과**(실측 약 102초), Ruff 통과, mypy 통과. 그 앞 2026-09-26 저녁(OQ-066·068·069 사용자 판정 반영 뒤)은 **pytest 2,304개 통과**(실측 약 98초), Ruff 통과, mypy 통과. 그 앞 2026-09-26(카드·보드 전사 전수 감사와 통합 리뷰 수정 병합 뒤, Mac mini, master)의 기준 결과는 **pytest 2,279개 통과**(전사 정정 뒤의 1,975 + 감사·리뷰 수정 304, 실측 약 98초), Ruff 통과, mypy 통과. 그 앞 2026-09-25(Bloodlines 카드면 전사 정정 셋 — Chani·Fenring Signet, Storms in the South — 과 평가 문제집 재채굴 뒤, Mac mini, master)의 기준 결과는 **pytest 1,975개 통과**(expert iteration 병합 뒤의 1,972 + 이 세션 3, 실측 약 87초), Ruff 통과, mypy 통과. 그 앞 2026-09-24(확장 더미의 되돌리기 구멍 수정 뒤, Mac mini, master)의 기준 결과는 **pytest 1,950개 통과**(+12, 실측 약 84초), Ruff 통과, mypy 통과. 그 앞 2026-09-24 새벽(턴 종료 한 번 누르기 통일과 연속 되돌리기 저장 수정 뒤, Mac mini, master)의 기준 결과는 **pytest 1,938개 통과**(이 세션 +29, 실측 약 80초), Ruff 통과, mypy 통과, 브라우저 E2E 16종 녹색(`rehearsal.py` 제외; 새 `turn_end.py` 67). 그 앞 2026-09-24 저녁(expert iteration v1 병합과 탐색 후보 5개 뒤, Mac mini, master)의 기준 결과는 **pytest 1,972개 통과**(실측; 이 세션이 라벨·증류 테스트 20개와 탐색 테스트 2개를 더함), Ruff 통과, mypy 통과. 그 앞 2026-09-24 아침(밤샘 실행과 말단 척도 수정 뒤, Mac mini, master)의 기준 결과는 **pytest 1,939개 통과**(실측; 그 사이 다른 세션의 UI·저장 테스트와 이 세션의 말단 보상 테스트 1개가 더해짐), Ruff 통과, mypy 통과. 그 앞 2026-09-23 저녁(Mac mini의 탐색 비용 세션을 WSL 노트북의 tip census·평가 문제집 작업과 merge한 뒤, Mac mini, master)의 기준 결과는 **pytest 1,909개 통과**(실측, 약 80초; merge 전 Mac mini 쪽은 1,816개, WSL 쪽의 마지막 기록은 1,903개 — 그 뒤 WSL 커밋들과 이 세션의 잘린 head 읽기·효과 순서 스위치·순환 방지 테스트 3개가 더해졌다), Ruff 통과, mypy 통과. 그 앞 2026-09-23(tip census 뒤, WSL 노트북, master)의 기준 결과는 **pytest 1,885개 통과**(tip census 테스트 71개 + Influence 4 재도달 회귀 테스트 1개; 그 앞 `5bbad3a`까지는 1,813개), 실측. 이어서 비교 도구 테스트 1개로 1,886개, 평가 문제집 테스트 17개로 **1,903개 통과**(실측, 약 4분 40초) — 그 전체 실행에서 `tests/server/test_events_app.py::test_a_stream_closed_before_its_first_byte_is_not_a_server_error`가 한 번 실패했고(1,885 통과, 실패 메시지는 남기지 못함) 단독으로는 3회 모두 통과했다: 소켓을 곧바로 닫는 경합 테스트라 부하에서 흔들리는 후보다, Ruff 통과, mypy 통과. census 테스트가 스위트에 약 40초를 더한다(전체 약 4분). 2026-09-22 새벽(패널 문구의 용어집 잔재 뒤, Mac mini, 브랜치 `ui-glossary`)의 기준 결과는 **pytest 1,806개 통과**(같은 날 M10 평가 역전 수정 회귀 테스트 1개 추가, 실측)(한국어 텍스트의 용어집 영어 가드 1개), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색. 그 앞 2026-09-21 밤(보드 위 사다우카 지휘관과 쌓인 Spy 뒤, Mac mini, 브랜치 `ui-commanders`)의 기준 결과는 **pytest 1,804개 통과**(카탈로그 테스트에 단언만 더함), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색(`board_tokens.py` 187 → 203). 그 앞 2026-09-21 밤(UI 잔여 세 항목 세션 뒤, Mac mini, 워크트리 `ui-leftovers`)의 기준 결과는 **pytest 1,804개 통과**(라벨 표를 언어 전환에 등록했는지 보는 가드 1개 추가; 행동·이벤트 라벨 가드는 넓어졌지만 수는 그대로), Ruff 통과, mypy 통과, **브라우저 E2E 15종 녹색**(`log_words.py` 추가, `seats.py` 21 → 31, `remote.py` 57). 그 앞 2026-09-21 밤(Mac mini의 M10 순위 보상·대조군 세션 3커밋을 WSL 노트북의 UI 작업 위로 rebase한 뒤, Mac mini)의 기준 결과는 **pytest 1,803개 통과**(WSL의 1,802개 + 평가 seed 대역 테스트 1개), Ruff 통과, mypy 통과. rebase된 커밋은 UI 파일을 건드리지 않아 브라우저 E2E는 다시 돌리지 않았다. 그 앞 2026-09-21 저녁(보드 칸 테두리 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,802개 통과**(칸 hotspot이 인쇄된 흰 테두리 하나의 크기, 관측소 원판이 칸 테두리와 겹치지 않음 — 레이아웃 테스트 2개 추가), Ruff 통과, mypy 통과, 브라우저 E2E 14종 녹색(`board_tokens.py`에 hotspot 테두리·Agent·Spy 말 검사 추가). 그 앞 2026-09-21 오후(UI 후속 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,800개 통과**(언어 가드 `tests/server/test_i18n.py` 7개; supply 부족 `shortfall` 단언은 기존 테스트에 더함), Ruff 통과, mypy 통과, **브라우저 E2E 14종**(`help.py`·`lang.py` 추가). 그 앞 2026-09-21(UI 개선 세션 뒤)의 기준 결과는 **pytest 1,793개 통과**(UI 세션이 더한 7개: 용어 가드 3, event kind 가드 2, 지원하지 않는 룰셋의 400 1, action label 가드 1), Ruff 통과, mypy 통과. **브라우저 E2E는 8종 → 12종**이다(`endgame.py`·`narrow.py`·`columns.py`·`seats.py` 추가, `scripts/e2e/README.md`). 그 앞 2026-09-20(M10 자 만들기 세션 뒤)은 pytest 1,786개 통과이고 action codec은 **`ACTION_CODEC_VERSION = 107`**(기본 4,439개, CHOAM 4,729개, `promo_cards` 옵션 시 4,539/4,829개, `immortality` 옵션 시 9,324개, `promo_cards`+`bloodlines`는 10,580개, promo+Bloodlines+Tech는 13,828개, CHOAM+Bloodlines는 11,228개, 다섯 옵션을 다 켜면 32,987개 — v106은 Branching Path의 `trash_intrigue_for_agent_card`(Intrigue 사본마다)와 Imperial Privilege 행동의 이름 변경(`trash_intrigue_for_imperial_privilege`)·c7r3의 `trash_intrigue_for_research_bonus`, v107은 공용 `spy_placement` frame의 세 행동을 Bloodlines 없는 카탈로그에도 넣는다(+27); 형식 2 체크포인트는 행동 이름으로 이관된다 — 아래 세션 요약). 그 앞 기준선: 2026-09-19(두 기기의 2026-09-18 작업을 merge한 뒤)의 기준 결과는 pytest 1,768개 통과(같은 날 오후 학습률 재개 테스트 1개가 더해진 값; 그 앞 1,767은 Windows PC의 M10 PPO 슬라이스·A/B 세션 1,752개에 Mac mini의 보드 토큰·원판·보드 조각·에셋 버전 테스트 12개를 더한 값을 merge 뒤 실측했고, 같은 날 카탈로그의 Graft 표시 테스트 1개와 서버의 전투력 미리보기·남은 Persuasion 테스트 2개가 더해졌다; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,767 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -137,7 +48,7 @@ uv run mypy src tests
 
 ## 다음 구현 순서
 
-**현재 위치(2026-10-02).** 작업 배분 표의 **L1(Agent 턴은 "턴 종료"로만 닫기)과 L2(자동 처리 → 결정 창)를 이 Mac의 Claude 세션이 끝내 한 번에 master에 병합했다**(사용자 2026-10-02: "병합은 L2 끝내고 한 번에"; 아래 "2026-10-02 L2" 요약). L1은(워크트리 `explicit-turn-end`, 아래 "2026-10-01~02 L1" 요약; [OQ-095](rules/open-questions.md)). 착수 때의 사용자 답: Q1 턴 넘기기 카드는 카드가 턴을 끝낸다("카드 효과로 턴 넘김 버튼을 눌렀다면 그건 턴 종료를 누른거랑 같으니까"; 서버도 추가 누름 없이 넘긴다), Q2 v111 재적응은 **병합 뒤 돌린다**(L3; 몇 시간 실행 전에 다시 묻는다). 다음 codec 번호는 **v128**(병합 뒤 확인 셋이 v126을, 그 리뷰가 찾은 원래 결함 — Combat Intrigue 카드가 창을 남기면 연속 pass를 다시 세지 않던 것 — 의 수정이 v127을 썼다, [OQ-003](rules/open-questions.md)), 관측은 v28. L2 끝에 물은 확인 셋은 같은 날 반영했다(아래 L2 요약의 "병합 뒤 사용자 확인"). C1·C2(클라우드 몫)는 아직 아무도 시작하지 않았다(2026-10-02 `git fetch` 기준 원격 브랜치 없음).
+**현재 위치(2026-10-02).** 작업 배분 표의 **L1(Agent 턴은 "턴 종료"로만 닫기)과 L2(자동 처리 → 결정 창)를 이 Mac의 Claude 세션이 끝내 한 번에 master에 병합했다**(사용자 2026-10-02: "병합은 L2 끝내고 한 번에"; 아래 "2026-10-02 L2" 요약). L1은(워크트리 `explicit-turn-end`, 아래 "2026-10-01~02 L1" 요약; [OQ-095](rules/open-questions.md)). 착수 때의 사용자 답: Q1 턴 넘기기 카드는 카드가 턴을 끝낸다("카드 효과로 턴 넘김 버튼을 눌렀다면 그건 턴 종료를 누른거랑 같으니까"; 서버도 추가 누름 없이 넘긴다), Q2 v111 재적응은 **병합 뒤 돌린다**(L3; 몇 시간 실행 전에 다시 묻는다). 다음 codec 번호는 **v128**(병합 뒤 확인 셋이 v126을, 그 리뷰가 찾은 원래 결함 — Combat Intrigue 카드가 창을 남기면 연속 pass를 다시 세지 않던 것 — 의 수정이 v127을 썼다, [OQ-003](rules/open-questions.md)), 관측은 v28. L2 끝에 물은 확인 셋은 같은 날 반영했다(아래 L2 요약의 "병합 뒤 사용자 확인"). C1·C2(클라우드 몫)는 아직 아무도 시작하지 않았다(2026-10-02 `git fetch` 기준 원격 브랜치 없음). 같은 날 Codex 세션의 UI 11단계(보드 중심 테이블·행동/기록 따로 스크롤·시작 화면, `codex/ui-table-refresh`)를 master에 병합했다(화면만, 아래 "UI 11단계" 요약).
 
 **현재 위치(2026-09-30 저녁).** Arrakeen Scouts D8 검토 1~3차와 OQ-076 대안 C(소위원회 가입은 원로회 자리를 차지한 turn 안 아무 때나 — 원로회 진입 → "소위원회 선택" → 종류 고르기, 되돌릴 수 있음; Corrinth City는 가입하거나 거절해야 Reveal이 끝남), 기본 엔진의 Round Start 규칙 순서, 게임 전체 선택 불가 표시 1단계를 반영했고, 같은 날 저녁 **epic-game-mode를 병합**했으며(codec v124·관측 v28, OQ-092~094), Scouts 게임에 **체크포인트·탐색 AI 좌석**을 허용했고(학습하지 않은 템플릿만 있는 결정은 heuristic이 답한다), **보드 위 임무 조각**과 Scouts 로그 라벨(`8b8e8b6`)도 들어왔다(아래 요약). **다른 세션에서 할 일(문서와 작업 제안이 있다):** (1) [`explicit-turn-end-plan.md`](explicit-turn-end-plan.md) — 모든 Agent 턴을 "턴 종료"로만 닫는다(사용자 2026-09-30, 세 번째 지적; 지금 엔진은 마지막 효과와 함께 턴을 닫아 그 뒤의 Plot·Family Atomics·표본 반환이 막히고 OQ-076의 spice 한계가 생긴다). (2) [`unavailable-options-plan.md`](unavailable-options-plan.md) — 선택 불가 표시 3단계(18곳 전부; 영향력 6인 진영과 다 떨어진 Reserve 줄도 보인다), 자동 처리 없애기(사막의 힘 (B); 신성한 전쟁은 선택지가 하나여도 잃는 좌석에게 묻는다 — OQ-036 (a) 뒤집음), Harvest Cells 숨은 정보 문제(고위험). **(1)과 (2)의 자동 처리 없애기는 둘 다 턴 흐름과 codec을 바꾸므로 동시에 하지 말고 (1)을 먼저 한다**(다음 codec 번호는 v125). 사용자 결정(2026-09-29): 보드 칸은 갈 수 있는 칸을 이미 밝히므로 갈 수 없는 칸에는 따로 표시하지 않는다. Mercenaries의 단독 양수 입찰자는 전부 후퇴할 수 있다(OQ-074 확인). 2026-09-30 밤 사용자가 푸시했다(`79b14b9`까지). 그 뒤 교전 결과 줄의 "Null" 수정 `127ad51`(지도자 드래프트 없는 게임에서 setup이 공개한 첫 Conflict의 이름을 로그 대신 `conflict_won`·보드에서 읽는다)을 병합했다(`1222dd8`). 아래 "작업 배분"을 적은 커밋까지 푸시했고, 병합을 마친 worktree·브랜치는 모두 정리했다(`epic-game-mode`, `merge-epic-game-mode`, `scouts-ai-seats`, `exciting-brahmagupta-1753f3`, `keen-pasteur-e698d0`). 원문은 `scripts/dwgr/show_text.py <loc 키>`(`--para`로 문단 거르기)로 본다. 푸시는 사용자가 말할 때만 한다(D9).
 
@@ -734,6 +645,102 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-10-01~02 UI 11단계: 보드 중심 테이블과 시작 화면 (Codex, 브랜치 `codex/ui-table-refresh` → master `c5e17ea2`, **화면만** — 엔진·codec·관측·저장 무변경)
+
+- **병합**(2026-10-02, Mac mini Claude 세션): 브랜치가 이미 master `49f5b73f`를 포함해 master 쪽에서 `--no-ff`로 충돌 없이 합쳤다.
+  병합 트리에서 pytest **3,068** 통과(167초), Ruff, mypy 307파일, 브라우저 E2E **33종** 녹색(4개씩 129초; `table_layout`·`setup_layout` 추가).
+  저위험 등급(CSS·레이아웃·문구)이라 리뷰 agent 없이 diff를 읽었다. 눈에 띄는 화면 변화: 갈 수 있는 보드 칸의 깜빡임(`frame-pulse`)을 끄고
+  합법 카드의 빛을 얇은 테두리로 줄였다(`@keyframes frame-pulse`는 이제 쓰이지 않는다), 1700px·1400px 미디어 쿼리를 없애고 오른쪽 열을 340px로 고정했다.
+- 아래 넷은 Codex 세션의 기록이다(원래 이 문서 맨 위에 있었다). `/tmp` 경로는 그 WSL 기기의 것이다.
+
+### 2026-10-02 추가 master 통합 (WSL, 49f5b73)
+
+- 사용자가 추가로 갱신한 `origin/master` **`49f5b73`**까지 로컬 master를 fast-forward하고,
+  `codex/ui-table-refresh`에 합쳤다. 이전 UI 통합 커밋 `d20ad8c`와 추가 master 여섯 커밋을 보존한다.
+  충돌 없이 자동 병합됐고 엔진·codec·관측·Python 테스트는 최신 master와 같다.
+- L2 뒤 확인 항목의 판정과 계약 아이콘 처리가 반영됐다(`49940bb`·`fc11be7`): 교전 책략의
+  가져갈 수 없는 계약 아이콘은 카드 사용 시 확인하고 불발하며, Scouts 단계의 보류 아이콘은
+  그 단계 안에서 재개하고 단계 종료 때 불발한다. Holy War의 상대 응답 후 되돌리기 판정도 확정됐다.
+- 교전 책략이 별도 선택 창을 남겨도 연속 패스를 초기화하고, 창이 닫힌 뒤 유닛 없는 참여자를
+  순환에서 제거한다(`c0ea3d6`·`f386e99`). 순환이 비어 끝난 경우에도 종료 이벤트를 기록한다
+  (`910de64`·`49f5b73`). codec **v127**, 관측 **v28**이며 다음 codec 번호는 **v128**이다.
+- UI 11단계는 유지한다. **C1·C2는 아직 미착수**이고 L3 후속 학습은 별도 작업이다.
+- 전체 pytest **3,063 통과·5 건너뜀**(916초). 건너뛴 5개는 이 PC에 없는 DWGR 추출 자료
+  검사이며 실패는 없다. Ruff 통과, mypy **307파일 통과**.
+- 관련 브라우저 E2E **9종 전부 통과**(2개씩, 402초):
+  `turn_end`·`unavailable`·`scouts`·`combat_result`·`log_words`·`lang`·`table_layout`·
+  `setup_layout`·`endgame`. UI 배치와 클라이언트 동작 코드는 그대로이므로, 이전 통합의
+  전체 33종 기록을 유지하고 이번에는 바뀐 계약·교전 흐름과 라벨에 관련된 검사를 실행했다.
+- 로컬 검증 자료: `/tmp/dune-ui-master-49f5b73-pytest.log`, `/tmp/dune-ui-master-49f5b73-mypy.log`,
+  `/tmp/dune-e2e-run-0f344pqq/`.
+
+### 2026-10-02 최신 master와 UI 통합 (WSL)
+
+- 사용자가 갱신한 `origin/master` **`8de414b`**까지 로컬 master를 fast-forward한 뒤,
+  `codex/ui-table-refresh`에 합쳤다. 전달 묶음의 세 커밋과 로컬 검증 기록 두 커밋을 보존한다.
+- 최신 master의 **L1(명시적 Agent 턴 종료)·L2(자동 처리 대신 결정 창)**와 UI 11단계의
+  보드 확대·행동/로그 독립 스크롤·시작 화면 개선이 함께 들어 있다. 엔진·codec·관측·Python 테스트는
+  master와 같다. codec **v125**, 관측 **v28**이며 다음 codec 번호는 **v126**이다.
+- 충돌은 이 인수인계 문서 한 곳이었다. 두 세션의 기록을 보존하고 당시 상태임을 명시했다.
+  자동 병합된 UI에서는 master의 부족 경고 배지·턴 종료 대기 표시·선택 불가 줄과,
+  가져온 로그 크기 조절·스크롤 위치 보존이 모두 남아 있는지 검토했다.
+- 다음 작업은 **C1(선택 불가 표시 확대)·C2(Harvest Cells 숨은 정보)**이며 아직 미착수다.
+  L3 후속 학습과 L2의 판정 확인 항목은 아래 master 인수인계 기록을 따른다.
+- 검증: 전체 pytest **3,053 통과·5 건너뜀**(1,099초), **브라우저 E2E 33종 전부 통과**
+  (2개씩, 963초), Ruff 통과, mypy **307파일 통과**. 건너뛴 5개는 이 PC에 없는 DWGR 추출
+  자료 검사다. 에셋 연결 검사도 전체 실행에서 통과해 이미지 누락 실패는 없다.
+- 브라우저는 아래 가져오기 검증에서 준비한 실제 `libasound2t64`와 Windows 글꼴의 임시
+  fontconfig 환경을 사용했다. 이전 미통과였던 Scouts·관전 재생·좁은 창 검사도 모두 통과했다.
+  게임/시작 화면의 1440px 캡처를 직접 검토했고, 레이아웃 검사는 1366·1440·1920px의
+  게임 화면과 600·900·1440px의 시작 화면을 검증했다.
+- 로컬 검증 자료: `/tmp/dune-ui-master-merge-pytest.log`, `/tmp/dune-ui-master-merge-mypy.log`,
+  `/tmp/dune-e2e-run-la4rvfrb/`, `/tmp/dune-ui-master-merge-shots/`.
+
+### 2026-10-02 WSL UI 브랜치 가져오기
+
+- 사용자가 옮겨 온 `dune-ui-transfer-20261001/`의 SHA256SUMS 전 항목과 Git bundle을 검증한 뒤
+  `codex/ui-table-refresh`로 가져와 전환했다. 원본 커밋 `395b772`·`4ad05fe`·`45d1893`을 보존했고,
+  가져온 직후 트리도 전달 묶음의 VERIFIED.json과 같았다. UI 코드는 추가 수정하지 않았다.
+  가져오기 당시 `git fetch origin` 뒤에도 master와 origin/master는 모두 `659cefb`였다. 전달 폴더는 미추적 상태로
+  보존했으며 이 검증 기록만 추가 커밋한다.
+- `uv sync --locked --offline --extra rl --extra ui --extra train` 후 전체 pytest는
+  **2,963 통과·5 건너뜀·1 실패**(1,082초). 실패는 `economic_supremacy`·`control_the_spice`의
+  에셋 연결 누락이고, `/tmp`에 푼 원본 master의 같은 테스트에서도 똑같이 재현했다.
+  5개 건너뜀은 DWGR 추출 자료 부재다. Ruff 통과, mypy 306파일 통과.
+- 후속 확인(같은 날): 사용자가 에셋을 `b1c7dd4`로 업데이트해 Epic 카드 두 장의 연결을 추가했다.
+  `test_the_assets_checkout_resolves_every_content_id`를 다시 실행해 **1개 통과**(0.26초)를 확인했다.
+  위 전체 실행의 유일한 이미지 누락 실패는 해결됐다. 전체 pytest는 이 후속 확인에서 재실행하지 않았다.
+- 전체 브라우저 E2E는 2개씩 실행해 **30종 통과·3종 미통과**(1,160초):
+  `narrow.py`의 600px 영어 관전 화면 가로 넘침, `spectate.py`의 마지막 재생 8초 시간 초과,
+  `scouts.py`의 실행기 600초 제한이다. 앞 두 실패는 원본 master에서도 재현됐다.
+  별도 대조에서 UI 브랜치의 spectate는 통과했다. Scouts 전 구간은 이 PC에서 검증을 마치지 못했다.
+- 이 WSL의 첫 브라우저 실행은 `libasound.so.2`가 없어 시작에 실패했고, 화면 캡처에는 한글 글꼴도
+  없었다. 시스템 설치 없이 `/tmp`에 Ubuntu `libasound2t64`를 풀어 LD_LIBRARY_PATH로 제공하고,
+  기존 Windows의 Arial·Segoe UI·Malgun Gothic을 임시 fontconfig로 연결했다.
+  이 환경에서 **spectate·narrow·setup_layout·table_layout 4종이 모두 통과**(순차 실행 73초).
+  전체 실행의 실패 기록은 위에 유지한다. 에셋·규칙·codec·관측·저장 형식은 변경하지 않았다.
+
+### 2026-10-01 로컬 UI 개선 브랜치
+
+- 사용자 요청으로 `master` **`659cefbc0f8e330afea73ab9743479736937f628`**에서
+  `codex/ui-table-refresh`를 만들었다. **사내 환경에서 push 금지.** master는 이동하지 않았다.
+- `395b772`: 보드에 더 많은 폭을 배분하고, 행동 목록과 로그를 독립 스크롤 영역으로 나눴다.
+  현재 안내·턴 종료는 행동 목록 위에 남고, 로그는 크게 보기/줄이기를 브라우저에 기억한다.
+  차콜·황동 색상과 버튼 위계를 정리하고 책략 카드를 손패 옆으로 옮겼다.
+- `4ad05fe`: 시작 화면을 좌석·규칙 옵션·현재 설정 요약으로 구성했다. 체크포인트 입력은
+  해당 AI를 선택할 때만 보이며, 언어 전환과 숨김/다시 표시에서도 입력을 유지한다.
+- 변경은 `server/static/`와 브라우저 검사·문서에 한정한다. 엔진·codec·관측·저장 형식·규칙 기본값은
+  그대로였다. 이 브랜치를 만들 당시 아래 L1/L2/C1/C2 작업은 들어 있지 않았다.
+- 검증: **브라우저 E2E 33종 모두 통과**, Ruff 통과, mypy 306파일 통과.
+  pytest는 **2,963 통과·5 건너뜀·1 실패**(237초). 실패는 이 머신의 에셋에서
+  `economic_supremacy`·`control_the_spice` 이미지가 연결되지 않는 기존 문제이며,
+  별도 디렉터리에 푼 **master 659cefb에서도 같은 단일 테스트 실패를 재현**했다.
+  5개 건너뜀은 이 머신에 DWGR 추출 자료가 없기 때문이다. 에셋은 수정하지 않았다.
+- 상세 변경과 검증은 [`ui-improvement-plan.md`](ui-improvement-plan.md)의 11단계.
+  개인 PC에서는 전달 ZIP의 README대로 로컬 Git bundle을 가져오거나 패치 시리즈를 적용한다.
+  에셋·체크포인트·가상환경은 전달 묶음에 없다. 에셋 링크와 `uv sync --extra rl --extra ui --extra train`은
+  개인 PC 환경에서 준비한다. 이 머신에서는 gitignored `.venv`가 임시 `/tmp/dune-ui-runtime`을 가리킨다.
 
 ## 2026-10-02 L2: 자동 처리 → 결정 창 (Mac mini, 워크트리 `explicit-turn-end`, L1과 한 번에 → master, codec **v125**에 묶음, 관측 v28 그대로)
 
