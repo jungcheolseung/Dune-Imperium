@@ -34,8 +34,9 @@ Second Wave, Treachery — 모두 Rise of Ix 카드).
      1장으로 바꾼다.** Control the Spice는 오른쪽 위에 Epic Game Only 아이콘이 있다.
   3. 각 플레이어는 **Intrigue 카드 1장을 뽑는다.** 원문 괄호: "A player using Viscount
      Hundro Moritani as their Leader should wait until all players have drawn their
-     Intrigue card, then use the Intelligence ability." — 카드를 뽑을 때 Leader는 이미
-     정해져 있다(Hundro 자체는 범위 밖이지만 시점의 근거다).
+     Intrigue card, then use the Intelligence ability." 이 괄호는 Hundro의 Game Start
+     능력이 덱에서 다른 draw와 부딪히지 않게 하는 예외지만, 카드를 뽑을 때 Leader가 이미
+     정해져 있다는 전제를 담는다(Hundro 자체는 범위 밖이지만 시점의 근거다).
   4. 각 플레이어는 **garrison에 troop 5개**(3개가 아니라)를 두고 시작한다.
 - Control the Spice는 색마다 1장씩 있는 시작 카드이고 Epic Game mode에서만 쓴다
   `[Rise of Ix p. 2]`. Epic Game Only 아이콘이 있는 카드는 Epic Game mode에서만
@@ -132,8 +133,10 @@ Second Wave, Treachery — 모두 Rise of Ix 카드).
 - 나누는 **시점**은 모든 Leader가 정해진 뒤다(2절 3의 Hundro 문장 `[Rise of Ix p. 10]`).
   고정 Leader setup은 Leader setup 뒤에, [OQ-007](open-questions.md#oq-007--leader-선택-절차)
   draft는 **마지막 pick 뒤**(Contract 시장을 나누는 때)에 나눈다. 그래서 draft 중에는 아무도
-  Intrigue를 들고 있지 않다. Steersman Y'rkoon의 Navigation 선택은 두 경로 모두 카드를
-  받은 뒤다. 2026-10-02 전에는 draft 경로가 draft 전에 나눠 자기 카드를 보며 Leader를
+  Intrigue를 들고 있지 않다. Leader의 Game Start 선택(Steersman Y'rkoon의 Navigation, Kota
+  Odax of Ix의 Secret Project)은 두 경로 모두 카드를 받은 뒤다 — 공식 문서는 Hundro만 정하고
+  나머지는 침묵하므로 Hundro의 순서로 통일한 사용자 판정이다
+  ([OQ-096](open-questions.md#oq-096--epic-setup-intrigue와-leader의-game-start-선택-순서)). 2026-10-02 전에는 draft 경로가 draft 전에 나눠 자기 카드를 보며 Leader를
   골랐다(사용자 지적과 결정 "고쳐야지", 2026-10-02, codec v128; [lessons](../lessons.md)).
 - 한국어 카드 이름 "스파이스를 지배하라"·"경제적 패권"은 한국어판 룰북 표기를 쓴다
   (사용자 결정 2026-09-28; [glossary-ko.md](glossary-ko.md)). TTS 한글화 모드의 카드면

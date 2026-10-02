@@ -317,10 +317,11 @@ def test_the_draft_deals_the_epic_intrigue_after_the_last_pick(
 
 
 def test_a_drafted_steersman_chooses_navigation_holding_the_epic_card() -> None:
-    # Hundro "should wait until all players have drawn their Intrigue card,
-    # then use the Intelligence ability" [Rise of Ix p. 10]: setup abilities
-    # follow the draw. The fixed-Leader setup deals before Steersman Y'rkoon's
-    # Navigation pick; so must the draft, whose last pick here is Steersman.
+    # Only Hundro's Game Start ability is ordered after the Epic draw
+    # [Rise of Ix p. 10]; for the others the rulebooks are silent, and the
+    # user ruled to follow Hundro (OQ-096). The fixed-Leader setup deals
+    # before Steersman Y'rkoon's Navigation pick; so must the draft, whose
+    # last pick here is Steersman.
     config = RulesetConfig(leader_draft=True, epic_game=True, bloodlines=True)
     setup = create_draft_initial_state(config, seed=9)
     shuffled = _outcome_values(setup, "setup:intrigue_deck")

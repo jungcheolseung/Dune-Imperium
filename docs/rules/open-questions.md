@@ -1174,3 +1174,12 @@
   7. Reveal turn은 이미 `finish_reveal`로만 끝난다(변경 없음).
 - 구현 계획: [explicit-turn-end-plan.md](../explicit-turn-end-plan.md). 구현 `rules/effects.py`(`advance_after_effect`는 닫지 않는다, `close_agent_turn`), `rules/combat_deployment.py`(`finish_agent_turn`), `rules/engine.py`(종료 중 후속을 푼 뒤의 자동 닫기).
 - 재개 조건: 새 공식 룰북·FAQ가 Agent turn의 끝을 직접 정할 때.
+
+## OQ-096 — Epic setup Intrigue와 Leader의 Game Start 선택 순서
+
+- 상태: `DECIDED` (사용자 판정, 2026-10-03)
+- 공식: Epic Game Mode의 setup은 "Each player draws an Intrigue card. (A player using Viscount Hundro Moritani as their Leader should wait until all players have drawn their Intrigue card, then use the Intelligence ability.)" `[Rise of Ix p. 10]`라고만 한다. 이 괄호는 Hundro의 Game Start 능력(Intrigue deck 위 카드를 보고 하나를 되돌림)이 다른 플레이어의 Epic draw와 덱에서 부딪히지 않게 하는 **Hundro만의 예외**로 읽힌다(사용자 2026-10-03). 다만 draw 때 Leader가 이미 정해져 있다는 전제는 목적과 상관없이 남는다 — 그래서 OQ-007 draft는 마지막 pick 뒤에 나눈다(OQ-007 보충, codec v128).
+- 침묵: 다른 Leader의 Game Start 선택 — Steersman Y'rkoon의 Plot Course(Navigation 5장 중 4장을 순서대로) `[Steersman Y'rkoon card]`, Kota Odax of Ix의 Secret Project("Game Start: 각 stack의 맨 아래 Tech tile을 본다…") `[Kota Odax of Ix card]` — 와 Epic draw의 순서는 어느 문서도 정하지 않는다 `[Bloodlines pp. 3, 12]`. 실물 판의 setup은 각자 동시에 해서, 그 플레이어가 자기 Intrigue를 먼저 보고 고를 수 있다.
+- 판정(사용자, 2026-10-03, "hundro랑 통일하지 뭐"): **모든 Leader의 Game Start 선택은 Epic Intrigue를 받은 뒤에 한다**(Hundro의 순서로 통일). 고정 Leader setup과 OQ-007 draft 두 경로가 같다. 보는 정보는 자기 카드뿐이라 상대 정보는 새지 않는다. 고른 뒤에 받는 대안은 룰북에 없는 제한이라 택하지 않았다.
+- 구현: 이미 그렇다 — `setup.deal_setup_intrigue`가 고정 경로의 끝(`create_initial_state`)과 draft의 마지막 pick(`leader_draft._finish_draft_setup`)에서 `assign_navigation_deck`·`assign_secret_project`보다 먼저 불린다. 테스트 `tests/unit/rules/test_epic_game.py::test_a_drafted_steersman_chooses_navigation_holding_the_epic_card`.
+- 재개 조건: 공식 문서가 Game Start 능력과 Epic draw의 순서를 정할 때.

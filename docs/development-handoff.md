@@ -656,7 +656,8 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
   정해져 있다. 공식 PDF를 `scripts/prepare_official_rules.py`로 다시 뽑아 확인했다. 사용자: "고쳐야지".
 - **고침**: draft의 마지막 pick(`leader_draft._finish_draft_setup`)이 Contract 시장과 함께 같은 카드(섞인 덱 맨 위 넷, First
   Player부터)를 나눈다. Navigation·Twisted·Secret Project setup보다 앞이라 두 경로의 순서가 같다(Steersman의 Navigation 선택은
-  카드를 든 채). `setup._deal_setup_intrigue` → 공개 `deal_setup_intrigue`. 문서: [epic-game-mode.md](rules/epic-game-mode.md) 2·7절,
+  카드를 든 채 — 공식 문서는 Hundro만 정하므로 Kota·Steersman의 Game Start 선택도 Hundro처럼 Intrigue를 받은 뒤로 통일한 사용자
+  판정, [OQ-096](rules/open-questions.md), 2026-10-03 "hundro랑 통일하지 뭐"). `setup._deal_setup_intrigue` → 공개 `deal_setup_intrigue`. 문서: [epic-game-mode.md](rules/epic-game-mode.md) 2·7절,
   [OQ-007](rules/open-questions.md) 보충(draft의 "공개 정보만" 전제가 깨졌던 것), [lessons](lessons.md) 2026-10-02.
 - **독립 리뷰**(고위험: 숨은 정보·저장): 버그 0. HEAD와 비교해 draft 뒤 상태 해시·관측이 바이트까지 같고, draft 중에는 아무도
   Intrigue가 없으며 `check_observation_privacy`가 모든 draft 상태에서 통과, 되돌리기 경계(마지막 pick은 이미 공개 스텝)도 그대로.
