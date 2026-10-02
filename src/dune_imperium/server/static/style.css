@@ -444,7 +444,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .hotspot:hover .space-frame polygon,
 .hotspot:focus-visible .space-frame polygon { stroke: rgba(255, 255, 255, 0.7); fill: rgba(255, 255, 255, 0.05); }
-.hotspot.legal .space-frame { animation: none; }
+.hotspot.legal .space-frame { animation: frame-pulse 1.6s ease-in-out infinite; }
 .hotspot.legal .space-frame polygon { stroke: var(--glow); fill: rgba(255, 207, 90, 0.1); }
 .hotspot.legal:hover .space-frame polygon { fill: rgba(255, 207, 90, 0.22); }
 /* A hand card that can be grafted to the picked one: a dashed glow and a
