@@ -22,6 +22,7 @@ from dune_imperium.rules.setup import (
     SARDAUKAR_CONTRACT_IDS,
     apply_leader_setup,
     assign_twisted_deck,
+    deal_setup_intrigue,
     maker_bonus_spice_for,
 )
 from dune_imperium.rules.tech import assign_secret_project
@@ -110,15 +111,23 @@ def apply_leader_draft_pick(state: GameState, action: DomainAction) -> RuleResul
             events=tuple(events),
         )
 
-    return _finish_draft_setup(state, players, events)
+    return _finish_draft_setup(state, players, state.first_player, events)
 
 
 def _finish_draft_setup(
     state: GameState,
     players: tuple[PlayerState, ...],
+    first_player: int,
     events: list[GameEvent],
 ) -> RuleResult:
-    """Deal the Contract market and hand the finished setup to Round Start."""
+    """Deal the Contract market and hand the finished setup to Round Start.
+
+    Epic Game Mode's setup Intrigue card is dealt here, not before the
+    picks: it is drawn once every Leader is known [Rise of Ix p. 10], so no
+    seat picks while holding it. The deck order was fixed by the setup
+    shuffle and nothing draws during the draft, so every seat gets the same
+    card as before -- only when it is seen moves.
+    """
 
     sardaukar_set_aside: tuple[str, ...] = ()
     face_up: tuple[str, ...] = ()
@@ -137,6 +146,9 @@ def _finish_draft_setup(
         )
         face_up, bank = ordered[:2], ordered[2:]
 
+    players, intrigue_deck = deal_setup_intrigue(
+        state.config, players, first_player, state.intrigue_deck
+    )
     unused = tuple(
         leader_id
         for leader_id in state.leader_draft_pool
@@ -157,6 +169,7 @@ def _finish_draft_setup(
                         state,
                         phase=GamePhase.ROUND_START,
                         players=players,
+                        intrigue_deck=intrigue_deck,
                         contract_bank=bank,
                         face_up_contract_ids=face_up,
                         sardaukar_contract_ids=sardaukar_set_aside,

@@ -623,7 +623,7 @@ def create_initial_state(
         )
         for player in players
     )
-    players, intrigue = _deal_setup_intrigue(config, players, first_player, intrigue)
+    players, intrigue = deal_setup_intrigue(config, players, first_player, intrigue)
 
     if recorded_outcomes is not None and not resolver.exhausted:
         raise ChanceReplayError("recorded chance stream has unused outcomes")
@@ -675,7 +675,7 @@ def _unshuffled_players(config: RulesetConfig) -> tuple[PlayerState, ...]:
     )
 
 
-def _deal_setup_intrigue(
+def deal_setup_intrigue(
     config: RulesetConfig,
     players: tuple[PlayerState, ...],
     first_player: int,
@@ -688,6 +688,13 @@ def _deal_setup_intrigue(
     in seat order from the First Player (project convention,
     ``docs/rules/epic-game-mode.md`` section 7). The shuffle already fixed
     every card, so this adds no chance decision.
+
+    Every Leader is already known when it is called: "A player using
+    Viscount Hundro Moritani as their Leader should wait until all players
+    have drawn their Intrigue card" [Rise of Ix p. 10]. The fixed-Leader
+    setup deals after ``apply_leader_setup``; the OQ-007 draft deals after
+    its last pick (``leader_draft._finish_draft_setup``), so nobody picks a
+    Leader while holding the card.
     """
 
     if not config.epic_game:
@@ -746,7 +753,9 @@ def create_draft_initial_state(
     Each pick finalizes its seat — printed starting-card removals filter the
     already-shuffled deck, which leaves the remaining order uniformly random
     — and the final pick deals the Contract market (setting the Sardaukar
-    Contracts aside when Shaddam was picked) and hands off to Round Start.
+    Contracts aside when Shaddam was picked), deals Epic Game Mode's
+    Intrigue cards (``deal_setup_intrigue``: drawn once every Leader is
+    known [Rise of Ix p. 10], so not here) and hands off to Round Start.
     """
 
     if not config.leader_draft:
@@ -800,7 +809,6 @@ def create_draft_initial_state(
         )
         for player in players
     )
-    players, intrigue = _deal_setup_intrigue(config, players, first_player, intrigue)
 
     if recorded_outcomes is not None and not resolver.exhausted:
         raise ChanceReplayError("recorded chance stream has unused outcomes")

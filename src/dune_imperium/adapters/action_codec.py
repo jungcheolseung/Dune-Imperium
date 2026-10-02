@@ -205,7 +205,12 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # empties so now logs combat_intrigue_finished (event id ``...:emptied``;
 # the event log, so the state hash, gains it). Saves replay differently --
 # no template change.
-ACTION_CODEC_VERSION = 127
+# v128: with the OQ-007 Leader draft, Epic Game Mode's setup Intrigue card
+# is dealt after the last pick instead of before the first, since it is
+# drawn once every Leader is known [Rise of Ix p. 10]. Each seat gets the
+# same card; the draft-phase states (hands, Intrigue deck, observations)
+# and so a draft save's hashes move -- no template change.
+ACTION_CODEC_VERSION = 128
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

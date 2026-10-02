@@ -18,6 +18,7 @@ from dune_imperium.content.uprising.starting_cards import starting_card_for_inst
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import ChanceResolver, GamePhase, GameState, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_draft import remaining_draft_pool
 from dune_imperium.rules.phases import resolve_recall_or_endgame
 from dune_imperium.rules.setup import (
@@ -244,7 +245,9 @@ def test_epic_setup_replays_from_its_recorded_chance(config: RulesetConfig) -> N
 
 
 # -- The Leader draft path -----------------------------------------------------
-def _assert_epic_setup(state: GameState, *, immortality: bool) -> None:
+def _assert_epic_setup(
+    state: GameState, *, immortality: bool, intrigue_cards: int = 1
+) -> None:
     # Round 1 may already have revealed the top card.
     deck = (*state.current_conflict_ids, *state.conflict_deck)
     tiers = tuple(CONFLICTS_BY_ID[card_id].tier for card_id in deck)
@@ -253,7 +256,7 @@ def _assert_epic_setup(state: GameState, *, immortality: bool) -> None:
     assert len(state.unused_conflict_ids) == 7
     for player in state.players:
         assert (player.troops_garrison, player.troops_supply) == (5, 7)
-        assert len(player.intrigue_cards) == 1
+        assert len(player.intrigue_cards) == intrigue_cards
         owned = _card_ids((*player.deck, *player.hand, *player.discard_pile))
         assert owned["control_the_spice"] == 1
         assert owned["dune_the_desert_planet"] == (0 if immortality else 1)
@@ -262,30 +265,34 @@ def _assert_epic_setup(state: GameState, *, immortality: bool) -> None:
 
 
 @pytest.mark.parametrize("immortality", (False, True))
-def test_the_draft_setup_deals_the_same_epic_setup(immortality: bool) -> None:
+def test_the_draft_deals_the_epic_intrigue_after_the_last_pick(
+    immortality: bool,
+) -> None:
+    # "A player using Viscount Hundro Moritani as their Leader should wait
+    # until all players have drawn their Intrigue card" [Rise of Ix p. 10]:
+    # every Leader is known when the card is drawn, so nobody picks in the
+    # OQ-007 draft while holding it (docs/rules/epic-game-mode.md section 7).
     config = RulesetConfig(leader_draft=True, immortality=immortality, epic_game=True)
     setup = create_draft_initial_state(config, seed=19)
     state = setup.state
     assert state.phase is GamePhase.SETUP
     # A First Player other than seat 0, so dealing from seat 0 would fail.
     assert state.first_player == 2
-    _assert_epic_setup(state, immortality=immortality)
+    _assert_epic_setup(state, immortality=immortality, intrigue_cards=0)
     shuffled = _outcome_values(setup, "setup:intrigue_deck")
-    for position in range(4):
-        seat = (state.first_player + position) % 4
-        assert state.players[seat].intrigue_cards == (shuffled[position],)
-    assert state.intrigue_deck == shuffled[4:]
+    assert state.intrigue_deck == shuffled
 
     replayed = create_draft_initial_state(
         config, seed=999, recorded_outcomes=setup.chance_outcomes
     )
     assert replace(replayed.state, seed=state.seed) == state
 
-    # The picks keep every seat's Intrigue card and discard pile.
     engine = UprisingRulesEngine()
     live = engine.reset(config, 19)
     assert live == state
     while live.phase is GamePhase.SETUP:
+        assert all(player.intrigue_cards == () for player in live.players)
+        assert live.intrigue_deck == shuffled
         decision = live.decision_stack[-1].decision
         assert isinstance(decision, PlayerDecision)
         pick = remaining_draft_pool(live)[0]
@@ -297,10 +304,54 @@ def test_the_draft_setup_deals_the_same_epic_setup(immortality: bool) -> None:
                 if dict(action.arguments)["leader_id"] == pick
             ),
         ).state
+    # The last pick deals the shuffled deck's top cards from the First
+    # Player, the same cards the fixed-Leader setup would deal; the picks
+    # keep every discard pile (Control the Spice with Immortality).
     assert live.phase is GamePhase.PLAYER_TURNS
+    for position in range(4):
+        seat = (state.first_player + position) % 4
+        assert live.players[seat].intrigue_cards == (shuffled[position],)
+    assert live.intrigue_deck == shuffled[4:]
     for before, after in zip(state.players, live.players, strict=True):
-        assert after.intrigue_cards == before.intrigue_cards
         assert after.discard_pile == before.discard_pile
+
+
+def test_a_drafted_steersman_chooses_navigation_holding_the_epic_card() -> None:
+    # Hundro "should wait until all players have drawn their Intrigue card,
+    # then use the Intelligence ability" [Rise of Ix p. 10]: setup abilities
+    # follow the draw. The fixed-Leader setup deals before Steersman Y'rkoon's
+    # Navigation pick; so must the draft, whose last pick here is Steersman.
+    config = RulesetConfig(leader_draft=True, epic_game=True, bloodlines=True)
+    setup = create_draft_initial_state(config, seed=9)
+    shuffled = _outcome_values(setup, "setup:intrigue_deck")
+    engine = UprisingRulesEngine()
+    live = engine.reset(config, 9)
+    first = 3
+    assert live.first_player == first
+    assert "steersman_y_rkoon" in live.leader_draft_pool
+    while live.phase is GamePhase.SETUP and live.decision_stack[-1].kind is (
+        FrameKind.LEADER_DRAFT
+    ):
+        decision = live.decision_stack[-1].decision
+        assert isinstance(decision, PlayerDecision)
+        last = decision.owner == first
+        live = engine.apply(
+            live,
+            next(
+                action
+                for action in engine.legal_actions(live, decision.owner)
+                if (dict(action.arguments)["leader_id"] == "steersman_y_rkoon")
+                is last
+            ),
+        ).state
+
+    assert live.phase is GamePhase.SETUP
+    assert live.decision_stack[-1].kind is FrameKind.NAVIGATION_SETUP
+    assert live.players[first].leader_id == "steersman_y_rkoon"
+    for position in range(4):
+        seat = (first + position) % 4
+        assert live.players[seat].intrigue_cards == (shuffled[position],)
+    assert live.intrigue_deck == shuffled[4:]
 
 
 def test_the_engine_reset_starts_round_one_with_the_epic_setup() -> None:

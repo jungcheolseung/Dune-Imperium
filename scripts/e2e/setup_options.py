@@ -21,12 +21,15 @@ Control the Spice, one Intrigue card and five garrison troops each
 its box by default too and to make it depend on nothing (OQ-092), so it
 must open checked and enabled whatever the other boxes do, reach the server
 as ``epic_game``, show a badge, and start every seat with five troops in
-its garrison ring and one Intrigue card while the Score discs keep their
-start (0 with Go to 11, 1 without); cleared, the table is the retail setup
-(three troops, no Intrigue card).
+its garrison ring while the Score discs keep their start (0 with Go to 11,
+1 without); cleared, the table is the retail setup (three troops, no
+Intrigue card). Epic's Intrigue card is drawn once every Leader is known
+[Rise of Ix p. 10], so no seat holds one during the Leader draft and each
+holds one after the four picks (2026-10-02, codec v128).
 
 Four human seats keep the table at its first decision (the Leader draft,
-which the draft box leaves on), before any seat could score. With
+which the draft box leaves on), before any seat could score; one scenario
+then makes the four picks. With
 ``E2E_SHOTS_DIR`` set, the script also leaves two screenshots there: the
 setup form (Korean) and the Epic game's header and board.
 """
@@ -173,6 +176,32 @@ def on_level(board: dict, level: int) -> tuple[bool, object]:
     return good, detail
 
 
+def finish_draft(page) -> None:
+    """Make the four Leader picks from one screen.
+
+    A pick waits on the seat's confirmation like a turn end (open_mode.py).
+    Each seat takes the first offered Leader but Piter de Vries, whose
+    Round Start adds a Twisted Intrigue card to the one Epic deals.
+    """
+    for _ in range(12):
+        if page.evaluate("state.summary.phase !== 'setup'"):
+            break
+        if page.evaluate("state.summary.confirmation !== null"):
+            page.evaluate("confirmTurn()")
+        else:
+            page.evaluate(
+                "applyAction(state.actions.actions.find("
+                "(a) => a.action_id === 'pick_leader'"
+                " && a.arguments.leader_id !== 'piter_de_vries').index)"
+            )
+        settled(page)
+    check.ok(
+        page.evaluate("state.summary.phase") != "setup",
+        "the four picks finish the Leader draft",
+        page.evaluate("state.summary.phase"),
+    )
+
+
 def setup_pieces(board: dict, troops: int, intrigue: int) -> None:
     """Every seat's garrison ring and Intrigue count as the setup left them."""
     check.ok(
@@ -299,7 +328,8 @@ def go_to_11_epic_game(base: str, browser) -> None:
     check.ok(scores == [0, 0, 0, 0], "every seat starts at 0 VP", scores)
     good, detail = on_level(board, 0)
     check.ok(good, "four score discs sit on the Score track's 0", detail)
-    setup_pieces(board, troops=5, intrigue=1)
+    # Drawn once every Leader is known [Rise of Ix p. 10]: none in the draft.
+    setup_pieces(board, troops=5, intrigue=0)
     check.ok(
         board["badge"] in board["badges"] and board["epicBadge"] in board["badges"],
         "the header shows the Go to 11 and Epic Game Mode badges",
@@ -337,10 +367,12 @@ def epic_game(base: str, browser) -> None:
     check.ok(scores == [1, 1, 1, 1], "every seat starts at 1 VP", scores)
     good, detail = on_level(board, 1)
     check.ok(good, "four score discs sit on the Score track's 1", detail)
-    setup_pieces(board, troops=5, intrigue=1)
+    setup_pieces(board, troops=5, intrigue=0)
     badges = board["badges"]
     check.ok(board["badge"] not in badges, "no Go to 11 badge", badges)
     check.ok(board["epicBadge"] in badges, "the Epic Game Mode badge", badges)
+    finish_draft(page)
+    setup_pieces(page.evaluate(TABLE_JS), troops=5, intrigue=1)
     context.close()
 
 
