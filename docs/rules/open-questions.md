@@ -262,7 +262,7 @@
 - Duncan Idaho의 Into the Fray는 "take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated"라고만 한다(카드면). 그 Agent가 떠난 board space가 다시 비는지(다른 플레이어가 같은 round에 갈 수 있는지, Makers 단계에 spice가 쌓이는지), Agent가 언제 돌아오는지, 유닛으로서 "lose a troop"·Chani의 Tactics 같은 troop 효과의 대상인지는 공식 문서가 말하지 않는다. `[Bloodlines p. 12]`에는 Duncan 항목이 없다.
 - 판정(2026-09-07, project convention): (a) 문장 그대로 Agent를 board space에서 치운다 — 공간은 비어서 다른 플레이어가 갈 수 있고 Maker space라면 Makers 단계에 spice가 쌓인다. 이미 해결된 방문 효과는 되돌리지 않는다. (b) Agent는 Combat 정리 때 소유자에게 돌아간다(Recall 단계에서 어차피 모두 회수). (c) Agent 유닛은 troop이 아니므로 retreat·"lose a troop"·Tactics의 대상이 아니고, `units_in_conflict`와 strength에는 포함된다(Swordmaster 보유 시 3).
 - 같이 정한 카드면 읽기: Liet Kynes의 대체 아이콘 "[trash][1 spice][1 Intrigue]"에서 trash는 선택(소유자가 거절 가능)으로 읽는다 — 이득 줄에 인쇄된 trash 아이콘은 Uprising의 Desert Tactics처럼 선택이다. Chani의 "troops"에는 Commander가 포함된다(`[Bloodlines p. 4]`).
-- 추가(2026-09-09, 디자이너 판정 채택 — 사용자 지시 "디자이너 판정을 무조건 따른다"): (d) Conflict에 있는 Into the Fray의 Agent는 여전히 "자신의 Agent"이므로 뒤의 turn에 Imperial Privilege("자신의 다른 Agent 1개를 recall" `[Board Guide p. 2]`)로 recall할 수 있다(Message from designer, [designer-rulings-audit.md](designer-rulings-audit.md)). recall된 Agent는 유닛으로서 Conflict를 떠나 Leader로 돌아오고(전투력 갱신), 다른 Agent가 board에 없어도 recall이 불발되지 않는다. 구현: `recall_conflict_agent_for_imperial_privilege`(`rules/board_effects.py`). 같은 turn은 아니다(2026-09-26 보강): Imperial Privilege를 방문한 turn에 Into the Fray(Signet Ring 카드나 Servo-Receivers)를 먼저 해결해 그 turn의 Agent가 Conflict로 갔다면, 그 Agent는 "이번 turn에 보낸 Agent"라 "다른 Agent"가 아니므로 recall 대상이 아니다 — 앞 turn에 보낸 Agent가 Conflict에 함께 있을 때만 하나를 recall하고, 없으면 recall을 건너뛰고 카드만 뽑는다(OQ-023). 이전에는 그 Agent가 유일한 recall 대상으로 강제되었다. 반대로 Twisted Mentat의 "You may recall the Agent you sent this turn." `[Twisted Mentat card]`으로 그 turn의 Agent를 먼저 공급으로 돌려보냈다면 Conflict에 남은 Agent는 모두 앞 turn의 것이라 recall 대상이다(엔진은 Mentat recall을 Agent 효과 context의 `turn_agent_recalled`로 기록해 Into the Fray와 구별한다). `tests/unit/rules/test_bloodlines_leaders.py::test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent`, `tests/unit/rules/test_tech.py::test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent`, `tests/unit/rules/test_graft.py::test_imperial_privilege_recalls_the_fray_agent_after_a_mentat_recall`.
+- 추가(2026-09-09, 디자이너 판정 채택 — 사용자 지시 "디자이너 판정을 무조건 따른다"): (d) Conflict에 있는 Into the Fray의 Agent는 여전히 "자신의 Agent"이므로 뒤의 turn에 Imperial Privilege("자신의 다른 Agent 1개를 recall" `[Board Guide p. 2]`)로 recall할 수 있다(Message from designer, [designer-rulings-audit.md](designer-rulings-audit.md)). recall된 Agent는 유닛으로서 Conflict를 떠나 Leader로 돌아오고(전투력 갱신), 다른 Agent가 board에 없어도 recall이 불발되지 않는다. 구현: `recall_conflict_agent_for_imperial_privilege`(`rules/board_effects.py`). 같은 turn은 아니다(2026-09-26 보강): Imperial Privilege를 방문한 turn에 Into the Fray(Signet Ring 카드나 Servo-Receivers)를 먼저 해결해 그 turn의 Agent가 Conflict로 갔다면, 그 Agent는 "이번 turn에 보낸 Agent"라 "다른 Agent"가 아니므로 recall 대상이 아니다 — 앞 turn에 보낸 Agent가 Conflict에 함께 있을 때만 하나를 recall하고, 없으면 recall을 건너뛰고 카드만 뽑는다(OQ-023; 2026-10-02부터 소유자가 `resolve_imperial_privilege_without_recall`로 확인한다). 이전에는 그 Agent가 유일한 recall 대상으로 강제되었다. 반대로 Twisted Mentat의 "You may recall the Agent you sent this turn." `[Twisted Mentat card]`으로 그 turn의 Agent를 먼저 공급으로 돌려보냈다면 Conflict에 남은 Agent는 모두 앞 turn의 것이라 recall 대상이다(엔진은 Mentat recall을 Agent 효과 context의 `turn_agent_recalled`로 기록해 Into the Fray와 구별한다). `tests/unit/rules/test_bloodlines_leaders.py::test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent`, `tests/unit/rules/test_tech.py::test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent`, `tests/unit/rules/test_graft.py::test_imperial_privilege_recalls_the_fray_agent_after_a_mentat_recall`.
 - 추가(2026-09-26, project convention): (e) Servo-Receivers의 Signet Ring 아이콘([OQ-062](#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력))으로 같은 round의 뒤 Agent turn에 Into the Fray를 다시 쓰면, 카드면 "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated." `[Duncan Idaho card]`의 "이번 turn에 보낸 Agent"는 첫 Agent와 다른 Agent이므로 그것도 Conflict로 간다. 카드면·룰북 어디에도 Conflict의 Agent를 하나로 제한하는 문장이 없으므로 Conflict에 Agent가 여럿 있을 수 있다: 각각 strength 2(Swordmaster가 있으면 3), Imperial Privilege의 recall은 한 번에 하나((d)), Combat 정리 때 모두 돌아온다. 같은 Agent를 두 번 보내지는 않는다(그 turn의 Agent가 이미 공간을 떠났으면 제시하지 않는다). 이전 엔진은 좌석당 Agent 하나(`agent_in_conflict` 0/1)만 모델링해 두 번째 배치에서 Agent 하나가 사라지고 상태 검증이 터졌다(checked sweep bloodlines+tech+leader_draft, game seed 1003). `tests/unit/rules/test_tech.py::test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray`, `tests/unit/rules/test_bloodlines_leaders.py::test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup`.
 - 재개 조건: 공식 FAQ가 Into the Fray의 공간·귀환을 정할 때.
 
@@ -323,7 +323,7 @@
 
 - 상태: `DECIDED` (project convention)
 - (a) Forbidden Weapons의 "검 3 + Influence 1 잃기(가능하면)"에서 어느 진영을 잃는지, Alliance token이 넘어갈 상대가 여럿일 때의 처리; (b) Panopticon의 Reveal Turn Spy 배치 규칙과 배치 불가 시 처리; (c) Plasteel Blades의 "Commander를 recruit할 때"에 획득이 포함되는지와 추가 Skill 선택 시점; (d) Spy Drones의 "이번 turn Spy를 recall했으면"의 범위는 tile 면에 없다 `[Tech tile faces]`.
-- 판정(2026-09-07, 시점은 사용자 지적으로 재판정): Reveal 효과는 소유자가 원하는 순서로 해결하므로(`[Main p. 12]`) 두 tile의 Reveal 효과도 Reveal 시작 시 강제하지 않고 Reveal frame의 행동으로 두어 다른 획득·선택·Plot 사이 어느 시점에든 고르게 한다. (a) Forbidden Weapons: 소유자가 Influence 1 이상인 진영 중 하나를 고르고(`choose_tech_strength`), Alliance 이전 대상이 여럿이면 Intrigue의 `LoseInfluence`와 같은 방식으로 함께 고른다; Influence가 전혀 없으면 손실 없이 검 3만 얻는다("if possible" `[Bloodlines p. 12]`). 검 3은 유닛이 Conflict에 있을 때만 즉시 세고, 없으면 나중에 유닛이 들어올 때 센다(Reveal의 optional sword 처리). trash 선택(`choose_tech_trash`)은 그 시점의 spice를 0으로 만들고 tile을 `tech_trash`로 보내므로 spice를 먼저 써 버린 뒤 골라도 된다. 둘 중 하나를 고르기 전에는 Reveal을 끝낼 수 없다("You must choose"). (b) Panopticon: troop 1은 다른 Reveal troop 아이콘처럼 `recruit_reveal_troops`로 소유자가 시점을 골라 recruit하며(OQ-045) Combat 아이콘 배치 창의 한도에 들고, Spy는 소유자가 `place_tech_spy`를 고른 시점에 일반 Spy 배치 규칙(빈 post, supply가 비면 recall 먼저 `[Main pp. 11, 20]`)의 `spy_placement` frame으로 놓는다 — 다른 효과로 Spy를 먼저 회수·재배치한 뒤 놓을 수 있다. Spy를 놓을 수 있는 동안은 Reveal을 끝낼 수 없고, Spy가 전부 box로 갔으면 Reveal 종료 시 소멸한다(`tech_reveal_unavailable`). (c) 포함한다 — Sardaukar High Command가 "recruit(획득 포함)"라고 적은 것과 `[Bloodlines p. 4]`의 "acquire하고 즉시 recruit"에 따라 획득·지불 recruit·Sardaukar Standard 모두 trigger이며, 추가 Skill 선택은 그 recruit 효과가 끝난 뒤 Skill 선택 대기열(OQ-035와 같은 큐)로 열리고 거절할 수 있다(`decline_skill`); 고를 Skill이 없으면 열리지 않는다. (d) 이번 Agent 또는 Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로(Infiltrate·Gather Intelligence·카드·Signet·acquire 보너스)를 세며(좌석 카운터 `spies_recalled_turn`), Advanced Data Analysis로 box에 보낸 Spy는 recall이 아니다. (2026-09-26 확장) 같은 문구 "If you recalled a Spy this turn:"을 인쇄한 Agent box 다섯 장(Imperial Spymaster·Strike Fleet·Rebel Supplier·Public Spectacle·Corrupt Bureaucrat `[card faces]`)도 같은 카운터로 판정한다 — 이전에는 Infiltrate·Gather Intelligence·Espionage·Signet만 세우던 Agent frame 플래그를 읽어 Plot Intrigue의 Recall Spy 비용(Special Mission·Sleeper Unit)이나 배치 전 recall을 놓쳤다. "When the Recall Spy icon appears on a card, you may return one of your Spies from an observation post to your supply." `[Main p. 11]`. supply가 빈 채 Spy를 놓기 전의 "first recall one of your Spies for no effect" `[Main pp. 11, 20]`도 Spy를 supply로 되돌리는 recall이므로 센다 — 공식 문서는 이 경우를 따로 말하지 않으므로 project convention이다. 카운터는 좌석의 turn이 열릴 때와 Round Start에 0으로 돌아간다(round의 첫 turn은 turn 초기화 없이 열리므로 Round Start에서도 지운다). (2026-09-26 보강) False Orders·Holy War가 상대에게 시키는 강제 이동과 그 이동의 Spy 손실(OQ-065)은 recall이 아니다 — FAQ는 "must move their Spy to an empty observation post" `[FAQ p. 2]`라고 이동으로 적고, 카드를 낸 좌석의 turn에 일어나므로 옮기는 좌석의 카운터를 올리지 않는다(Holy War가 turn의 마지막 효과면 이동은 다음 좌석의 turn이 열린 뒤에 해결되어, 그 좌석의 Rebel Supplier 등이 공짜로 발동하던 버그). `tests/unit/rules/test_bloodlines_cards.py::test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn`. 같은 날 (2026-09-30 OQ-095로 바뀜: Agent turn은 소유자의 "턴 종료"로만 끝나므로 마지막 효과가 남긴 후속은 언제나 열린 turn 안에서 풀리고 그 turn의 것으로 센다. 아래의 "닫힌 turn" 구분은 이력이다.): turn의 마지막 효과로 완료한 Contract의 Spy 보상(Agent 공간 완료와 CHOAM Demands 완료)과 In High Places의 Spy는 turn을 넘긴 뒤 다음 turn frame 위에서 해결되는데, 그 선행 recall은 닫힌 turn의 것이므로 새로 열린 turn(마지막으로 Reveal하지 않은 좌석이면 자기 turn)의 카운터에 넣지 않는다 — "If a contract's condition is sending an Agent to a board space, the contract is another effect of your Agent turn." `[FAQ p. 1]`. Agent turn의 Landsraad 방문으로 turn의 마지막 효과로 산 Spy Drones의 Deep Cover Spy 2개도 같다(`tests/unit/rules/test_tech.py::test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn`); Agent turn 문맥이 없는 Tech frame(Rapid Engineering 같은 Plot)은 자기 turn frame으로 돌아가므로 그 recall은 그 turn의 것으로 센다. 남은 같은 계열: turn의 마지막 효과가 올린 Emperor track Influence 4의 Spy(엔진이 다음 turn frame 위에 연다)는 아직 구분하지 않는다 — 자기 turn frame 위에서 낸 Plot과 구별할 상태가 없다.
+- 판정(2026-09-07, 시점은 사용자 지적으로 재판정): Reveal 효과는 소유자가 원하는 순서로 해결하므로(`[Main p. 12]`) 두 tile의 Reveal 효과도 Reveal 시작 시 강제하지 않고 Reveal frame의 행동으로 두어 다른 획득·선택·Plot 사이 어느 시점에든 고르게 한다. (a) Forbidden Weapons: 소유자가 Influence 1 이상인 진영 중 하나를 고르고(`choose_tech_strength`), Alliance 이전 대상이 여럿이면 Intrigue의 `LoseInfluence`와 같은 방식으로 함께 고른다; Influence가 전혀 없으면 손실 없이 검 3만 얻는다("if possible" `[Bloodlines p. 12]`). 검 3은 유닛이 Conflict에 있을 때만 즉시 세고, 없으면 나중에 유닛이 들어올 때 센다(Reveal의 optional sword 처리). trash 선택(`choose_tech_trash`)은 그 시점의 spice를 0으로 만들고 tile을 `tech_trash`로 보내므로 spice를 먼저 써 버린 뒤 골라도 된다. 둘 중 하나를 고르기 전에는 Reveal을 끝낼 수 없다("You must choose"). (b) Panopticon: troop 1은 다른 Reveal troop 아이콘처럼 `recruit_reveal_troops`로 소유자가 시점을 골라 recruit하며(OQ-045) Combat 아이콘 배치 창의 한도에 들고, Spy는 소유자가 `place_tech_spy`를 고른 시점에 일반 Spy 배치 규칙(빈 post, supply가 비면 recall 먼저 `[Main pp. 11, 20]`)의 `spy_placement` frame으로 놓는다 — 다른 효과로 Spy를 먼저 회수·재배치한 뒤 놓을 수 있다. Spy를 놓을 수 있는 동안은 Reveal을 끝낼 수 없고, Spy가 전부 box로 갔으면 Reveal 종료 시 소멸한다(`tech_reveal_unavailable`; 2026-09-30 사용자 판정으로 바뀜, 2026-10-02 구현 — "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"([unavailable-options-plan.md](../unavailable-options-plan.md) 5절): `place_tech_spy`는 Panopticon이 남아 있는 동안 늘 제시되고 그 전에는 Reveal을 끝낼 수 없으며, 놓을 Spy가 없으면 공용 `spy_placement` frame이 `decline_spy_placement`만 제시해 소유자가 직접 확인한다(OQ-057 (14) "놓을 post가 없으면 거절만 남는다", 이벤트 `spy_placement_unavailable`). Reveal 종료 때의 소멸과 `tech_reveal_unavailable` 이벤트는 없어졌다. 4인 게임에서는 일어나지 않는다 — Spy를 box로 보내는 길은 Advanced Data Analysis의 획득 비용 하나뿐이고 그 tile은 한 장이라 좌석의 box Spy는 많아야 1개다; 합성 상태로 `tests/unit/rules/test_tech.py::test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal`가 고정한다). (c) 포함한다 — Sardaukar High Command가 "recruit(획득 포함)"라고 적은 것과 `[Bloodlines p. 4]`의 "acquire하고 즉시 recruit"에 따라 획득·지불 recruit·Sardaukar Standard 모두 trigger이며, 추가 Skill 선택은 그 recruit 효과가 끝난 뒤 Skill 선택 대기열(OQ-035와 같은 큐)로 열리고 거절할 수 있다(`decline_skill`); 고를 Skill이 없으면 열리지 않는다. (d) 이번 Agent 또는 Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로(Infiltrate·Gather Intelligence·카드·Signet·acquire 보너스)를 세며(좌석 카운터 `spies_recalled_turn`), Advanced Data Analysis로 box에 보낸 Spy는 recall이 아니다. (2026-09-26 확장) 같은 문구 "If you recalled a Spy this turn:"을 인쇄한 Agent box 다섯 장(Imperial Spymaster·Strike Fleet·Rebel Supplier·Public Spectacle·Corrupt Bureaucrat `[card faces]`)도 같은 카운터로 판정한다 — 이전에는 Infiltrate·Gather Intelligence·Espionage·Signet만 세우던 Agent frame 플래그를 읽어 Plot Intrigue의 Recall Spy 비용(Special Mission·Sleeper Unit)이나 배치 전 recall을 놓쳤다. "When the Recall Spy icon appears on a card, you may return one of your Spies from an observation post to your supply." `[Main p. 11]`. supply가 빈 채 Spy를 놓기 전의 "first recall one of your Spies for no effect" `[Main pp. 11, 20]`도 Spy를 supply로 되돌리는 recall이므로 센다 — 공식 문서는 이 경우를 따로 말하지 않으므로 project convention이다. 카운터는 좌석의 turn이 열릴 때와 Round Start에 0으로 돌아간다(round의 첫 turn은 turn 초기화 없이 열리므로 Round Start에서도 지운다). (2026-09-26 보강) False Orders·Holy War가 상대에게 시키는 강제 이동과 그 이동의 Spy 손실(OQ-065)은 recall이 아니다 — FAQ는 "must move their Spy to an empty observation post" `[FAQ p. 2]`라고 이동으로 적고, 카드를 낸 좌석의 turn에 일어나므로 옮기는 좌석의 카운터를 올리지 않는다(Holy War가 turn의 마지막 효과면 이동은 다음 좌석의 turn이 열린 뒤에 해결되어, 그 좌석의 Rebel Supplier 등이 공짜로 발동하던 버그). `tests/unit/rules/test_bloodlines_cards.py::test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn`. 같은 날 (2026-09-30 OQ-095로 바뀜: Agent turn은 소유자의 "턴 종료"로만 끝나므로 마지막 효과가 남긴 후속은 언제나 열린 turn 안에서 풀리고 그 turn의 것으로 센다. 아래의 "닫힌 turn" 구분은 이력이다.): turn의 마지막 효과로 완료한 Contract의 Spy 보상(Agent 공간 완료와 CHOAM Demands 완료)과 In High Places의 Spy는 turn을 넘긴 뒤 다음 turn frame 위에서 해결되는데, 그 선행 recall은 닫힌 turn의 것이므로 새로 열린 turn(마지막으로 Reveal하지 않은 좌석이면 자기 turn)의 카운터에 넣지 않는다 — "If a contract's condition is sending an Agent to a board space, the contract is another effect of your Agent turn." `[FAQ p. 1]`. Agent turn의 Landsraad 방문으로 turn의 마지막 효과로 산 Spy Drones의 Deep Cover Spy 2개도 같다(`tests/unit/rules/test_tech.py::test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn`); Agent turn 문맥이 없는 Tech frame(Rapid Engineering 같은 Plot)은 자기 turn frame으로 돌아가므로 그 recall은 그 turn의 것으로 센다. 남은 같은 계열: turn의 마지막 효과가 올린 Emperor track Influence 4의 Spy(엔진이 다음 turn frame 위에 연다)는 아직 구분하지 않는다 — 자기 turn frame 위에서 낸 Plot과 구별할 상태가 없다.
 - 재개 조건: 공식 FAQ가 해당 tile의 해결을 정할 때.
 
 ## OQ-046 — Treacherous Maneuver를 Faction이 없는 space에서 play할 때
@@ -428,7 +428,8 @@
 - 필요한 답: recall 절이 의무인지, 그리고 recall 대상이 없을 때 card draw만 따로 발생하는지의 공식 판정.
 - 이전 convention(2026-09-01, 폐기): recall 대상이 없으면 절 전체(recall과 draw)를 무효화했다. 같은 날 사용자 재검토로 아래 판정으로 교체됐다.
 - 확정(2026-09-01, 사용자 재판정): 인쇄문 "Recall one of your other Agents from the board, and draw a card"의 recall과 draw는 **별개의 효과**다. recall은 대상이 있으면 의무이고 소유자가 대상을 고르며, 다른 배치된 Agent가 없으면 불가능한 recall만 건너뛰고 card draw는 그대로 해결한다(의무 효과는 수행 가능한 부분을 수행한다는 원칙, `[FAQ p. 3]`의 의무 효과 판정과 정합). recall 대상 유무는 Intrigue 슬롯이 해결된 뒤의 해결 시점에 판정한다(`[Main pp. 9, 20]`). 엔진 반영은 `bce829e`, `tests/unit/rules/test_board_effects.py`로 고정한다.
-- 보강(2026-09-06, 판정 변경 없음): 엔진은 이 판정을 Intrigue 슬롯이 해결되는 순간에만 적용해, 그때는 다른 Agent가 있었다가 같은 turn의 자유 순서 효과(Steersman Agent box의 recall)로 마지막 대상이 사라지면 recall 결정에 합법 행동이 없는 교착이 생겼다(M10 self-play smoke, seed 4000098에서 발견). 이제 매 전이 뒤 hook(`board_effects.skip_impossible_imperial_privilege_recall`)이 대상이 없어진 보류 recall을 건너뛰고 card draw를 해결한다(`d9f11a5`). 같은 파일의 `test_steersman_recall_after_imperial_privilege_slot_does_not_deadlock`로 고정.
+- 보강(2026-09-06, 판정 변경 없음): 엔진은 이 판정을 Intrigue 슬롯이 해결되는 순간에만 적용해, 그때는 다른 Agent가 있었다가 같은 turn의 자유 순서 효과(Steersman Agent box의 recall)로 마지막 대상이 사라지면 recall 결정에 합법 행동이 없는 교착이 생겼다(M10 self-play smoke, seed 4000098에서 발견). 그때의 고침은 매 전이 뒤 hook(`board_effects.skip_impossible_imperial_privilege_recall`)이 대상이 없어진 보류 recall을 묻지 않고 건너뛰고 card draw를 해결하는 것이었다(`d9f11a5`; 2026-09-30 사용자 판정으로 바뀜 — 아래 보강, hook은 없어졌다).
+- 보강(2026-09-30 사용자 판정, 2026-10-02 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"("플레이어가 직접 체크하는게 플레이하는데에는 도움이 될 것 같아"). 위 판정의 결과(대상이 없으면 recall만 건너뛰고 card는 뽑는다, 대상 유무는 Intrigue 슬롯이 해결된 뒤에 판정)는 그대로이고, 건너뛰기를 소유자가 확인한다: Intrigue 슬롯이 해결된 뒤 recall 대상(`board_effects.imperial_privilege_recall_targets`, 이번 turn에 보낸 Agent가 아닌 board의 Agent와 앞 turn의 Into the Fray Agent)이 없으면 provider가 `resolve_imperial_privilege_without_recall`만 제시하고, 그 행동이 전과 같은 `imperial_privilege_recall_skipped`·card draw·`board_effect_resolved`를 낸다. 화면은 recall 줄을 이유 "소환할 다른 에이전트 없음 (이번 차례에 보낸 에이전트 제외)"와 함께 회색으로 보인다("지금 고를 수 없는 선택지"). 같은 turn의 자유 순서 효과가 마지막 대상을 없애도 (Steersman의 recall) provider의 제시가 그대로 확인으로 바뀌므로 교착이 생기지 않고, 매 전이 뒤 hook은 지웠다. recall 대상은 한 Agent turn 안에서 늘지 않는다(board에 Agent를 더하는 것은 그 turn의 배치뿐이고, Into the Fray·Twisted Mentat·Servo-Receivers는 그 turn의 Agent만 옮기거나 돌려보낸다) — 그래서 대상이 없어지자마자 확인해도 잃는 recall이 없고, 자유 순서 문구가 필요 없다. 확인 전에는 `finish_agent_turn`이 제시되지 않으므로(보류 board 효과) card draw를 놓칠 수 없다. codec v125(L2 문장, 모든 catalog에 템플릿 1개). `tests/unit/rules/test_board_effects.py`(`test_imperial_privilege_confirms_the_skipped_recall_without_another_agent`, `test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm`), `tests/unit/display/test_unavailable.py`.
 
 ## OQ-048 — Tleilaxu track 마지막 칸에서의 추가 전진
 
@@ -613,12 +614,35 @@
   맨 위에 있는 cube의 일반 Influence 획득이 버려지는 것과 같은 방향으로, 고를 진영이 없는
   선택 frame은 엔진이 자동으로 걷어내고 공개 이벤트 `combat_reward_influence_unavailable`을
   남긴다(`combat_influence_choice_is_unavailable` →
-  `fizzle_combat_influence_choice`, `_advance_automatic`). "서로 다른 진영 둘"은 OQ-057의
+  `fizzle_combat_influence_choice`, `_advance_automatic`; 2026-09-30 사용자 판정으로 바뀜 —
+  아래 보강, 자동 단계는 없어지고 소유자가 확인한다). "서로 다른 진영 둘"은 OQ-057의
   원자성대로 먼저 이름 붙인 진영은 그대로 지급하고 고를 수 없는 나머지만 소멸한다 — 남은
   진영이 하나면 하나만 오른다. 두 세트(sandworm)는 세트 사이에 첫 세트가 해결되므로 둘째
   세트는 채워진 track을 보고 판정한다. 합법 행동 provider는 이미 6인 진영을 제시하지 않으므로
   선택 자체의 규칙은 바뀌지 않았다. `tests/unit/rules/test_combat.py`의 OQ-060 테스트 3건으로
   고정한다. 새 공식 룰북·FAQ가 답을 주면 그때 다시 연다.
+- 보강(2026-09-30 사용자 판정, 2026-10-02 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md)
+  5절): "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"("플레이어가 직접 체크하는게
+  플레이하는데에는 도움이 될 것 같아"), 그 표의 "교전 보상 영향력 소멸(모든 대상 진영이 6) … 회색
+  진영들 + 확인". 위 판정의 결과(보상 소멸, "서로 다른 진영 둘"은 먼저 이름 붙인 진영을 그대로 지급,
+  두 세트는 첫 세트가 해결된 뒤에 판정)는 그대로이고, 소멸을 묻지 않고 지나가지 않는다: 고를 진영이
+  없어도 선택 frame(`combat_reward_influence`, `combat_reward_distinct_influence`)은 그대로 보상의
+  좌석에게 열리고, provider가 `resolve_combat_influence_without_faction`만 제시한다. 진영을 하나라도
+  고를 수 있으면 확인은 제시하지 않는다(획득은 의무다). 그 누름이 전과 같은
+  `combat_reward_influence_unavailable`과, "서로 다른 진영 둘"이면 먼저 이름 붙인 진영의 Influence를
+  낸다. 엔진의 자동 단계(`combat_influence_choice_is_unavailable` → `fizzle_combat_influence_choice`)는
+  지웠다. 진영마다 고를 수 있는지는 공개 함수 `combat.combat_reward_influence_block`(TOP: 이미 6,
+  NAMED: 이 "둘 고르기"에서 이미 고른 진영)이 두 provider와 화면에 함께 정한다. 화면은 막힌 진영을
+  "이미 최고치"("이 보상에서 이미 고른 진영")로 회색으로 보인다("지금 고를 수 없는 선택지") — 고를
+  진영이 남은 창에서도 같다(Influence를 잃는 효과로 다시 내려갈 수 있어 사용자가 보이길 원함, 계획
+  4절 14번). Combat 보상이라 누구의 turn도 아니고 창은 보상 순서대로 열린다. sandworm 두 세트의
+  Propaganda에서 둘째 세트가 모두 막히면 그 세트의 두 선택을 하나씩 확인한다(이벤트도 전처럼 둘).
+  codec v125(L2 문장, 모든 catalog에 템플릿 1개). `tests/unit/rules/test_combat.py`
+  (`test_influence_choice_with_no_faction_below_the_top_asks_for_a_confirm`,
+  `test_the_influence_confirm_is_never_offered_beside_a_faction`,
+  `test_propaganda_with_one_faction_below_the_top_pays_that_one`,
+  `test_sandworm_propaganda_second_set_is_confirmed_once_the_tracks_fill`),
+  `tests/unit/display/test_unavailable.py`.
 
 ## OQ-061 — Imperial Privilege: 인쇄된 "Trash an Intrigue card" 아이콘과 Board Guide의 "discard"
 
@@ -754,6 +778,16 @@
   있어도 보상이 불발되지 않는다. Twisted Mentat의 "You may recall the Agent you sent this turn." `[Twisted Mentat card]`은
   이번 turn의 Into the Fray로 Conflict에 간 그 Agent도 되돌릴 수 있다. Conflict의 Agent를 되돌리면 유닛으로서 떠나므로
   strength가 2(Swordmaster가 있으면 3) 준다. 구현은 Imperial Privilege와 한 helper를 쓴다. codec v109.
+- 보강(2026-09-30 사용자 판정, 2026-10-02 구현 — [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): recall할 다른 Agent가
+  전혀 없으면 Contract 보상은 여전히 불발한다(디자이너의 Sardaukar II 판정 "the reward simply fizzles, since you have
+  no other agent to recall", [designer-rulings-audit.md](designer-rulings-audit.md)). 다만 "결정 창 없이 자동으로 넘어가는
+  곳도 모두 결정 창을 연다"("플레이어가 직접 체크하는게 플레이하는데에는 도움이 될 것 같아")에 따라 그 불발을 묻지 않고
+  지나가지 않는다: Sardaukar II·Bloodlines High Council token의 보상(CHOAM Demands로 완료할 때 포함)은 recall 창을 늘
+  열고, 대상(`contracts.contract_recall_targets`)이 없으면 `resolve_contract_without_recall`만 제시해 그 누름이 전과 같은
+  `contract_recall_unavailable`을 낸다. 화면은 recall 줄을 "소환할 다른 에이전트 없음 (이번 차례에 보낸 에이전트 제외)"로
+  회색으로 보인다. 이 창이 맨 위에 있는 동안 다른 행동이 없으므로 대상은 창이 열려 있는 동안 바뀌지 않는다. Imperial
+  Privilege도 같은 날 같은 방식으로 바뀌었다(OQ-023). codec v125(L2 문장, CHOAM catalog에 템플릿 1개).
+  `tests/unit/rules/test_contracts.py`(`test_sardaukar_ii_recall_does_nothing_without_another_agent`), `tests/unit/display/test_unavailable.py`.
 
 ## OQ-069 — Desert Power의 선택 전 2 Persuasion과 Command (6+)
 
@@ -783,8 +817,22 @@
   (`decline_reveal_sandworm`)는 늘 고를 수 있으며, 고르기 전에는 Reveal을 끝낼 수 없다. Persuasion을 고르는 순간
   2가 생성·사용 가능해지고, 그때 생성 합계가 6 이상이면 자동 Command 효과가 늦은 지급으로 나오고 미룬 Command 선택이
   열린다. sandworm을 고르면 2는 끝까지 생성되지 않는다. Maker Hooks가 없으면 sandworm 갈래가 없으므로 2는 전처럼
-  Reveal 시작 때 센다. 전의 "2가 구매에 쓰였으면 sandworm을 닫는다"(2026-09-26 오전)는 2를 먼저 쓸 수 없게 되어
-  없어졌다. `tests/unit/rules/test_reveal_turn.py`.
+  Reveal 시작 때 센다(2026-09-30 사용자 판정으로 바뀜 — 아래 보강). 전의 "2가 구매에 쓰였으면 sandworm을
+  닫는다"(2026-09-26 오전)는 2를 먼저 쓸 수 없게 되어 없어졌다. `tests/unit/rules/test_reveal_turn.py`.
+- 보강(2026-09-30 사용자 판정, 2026-10-02 구현 — 사막의 힘 (B),
+  [unavailable-options-plan.md](../unavailable-options-plan.md) 5절): "REVEAL_CHOICE 창을 열어 '설득 2'만 고르게,
+  모래벌레 줄은 '메이커 작살 없음' 회색". 결정 창 없이 자동으로 넘어가던 곳도 모두 결정 창을 연다는 같은 날의 원칙
+  ("플레이어가 직접 체크하는게 플레이하는데에는 도움이 될 것 같아")의 한 예다. 그래서 위 (A)의 "고르기 전에는 설득 2를
+  세지 않는다"가 Maker Hooks 없는 좌석에도 적용된다: 선택 창은 모든 좌석에게 열리고(미룰 수 있고, 고르기 전에는
+  Reveal을 끝낼 수 없다), 2 Persuasion은 `decline_reveal_sandworm`을 고를 때만 생성되며, 그때 생성 합계가 6 이상이면
+  자동 Command 효과가 늦은 지급으로 나오고 미룬 Command 선택이 열린다 — "if you generate 6 Persuasion or more"
+  `[Bloodlines pp. 5, 12]`. Persuasion을 고른 좌석의 끝 결과는 전과 같고 Command (6+) 판정 시점만 그 선택으로
+  옮겨진다. sandworm 줄은 `reveal_sandworm_block`이 막는 동안 이유와 함께 회색으로 보인다(화면 "지금 고를 수 없는
+  선택지"; 판정 순서 Maker Hooks → water → 현재 Conflict → Shield Wall, Arrakis Planetologist는 Shield Wall만
+  예외 `[Liet Kynes card]`). Maker Hooks는 Agent turn의 칸 효과로만 얻으므로(Sietch Tabr, Arrakeen Scouts의
+  Desert Riding) Reveal 중에 생길 수 없고, 예전의 "조건을 기다리는 효과" 회색 줄과 Reveal 끝의 "미룬 Reveal 선택
+  무산" 기록은 없어졌다. codec v125(L2 문장). `tests/unit/rules/test_reveal_turn.py`,
+  `tests/unit/rules/test_bloodlines_cards.py`, `tests/unit/display/test_unavailable.py`.
 
 ## OQ-070 — 이번 turn에 recruit한 Sardaukar Commander의 배치 몫
 
