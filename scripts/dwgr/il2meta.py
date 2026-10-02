@@ -404,7 +404,7 @@ for _k in range(CGM_COUNT):
     _m = u64(CGM_ARRAY + 8 * _k)
     modules[cstring_at(u64(_m)).decode()] = (_m, u32(_m + 8), u64(_m + 16))
 
-method_addr, addr_methods = {}, {}
+method_addr, addr_methods, addr_mis = {}, {}, {}
 for _im in IM:
     _iname = mstr(_im[0])
     if _iname not in modules:
@@ -421,6 +421,7 @@ for _im in IM:
                     method_addr[_mi] = _a
 for _mi, _a in method_addr.items():
     addr_methods.setdefault(_a, []).append(mname(_mi))
+    addr_mis.setdefault(_a, []).append(_mi)
 
 
 # ---------------------------------------------------------------- MetadataRegistration
@@ -593,12 +594,20 @@ def type_fields(ti):
     ]
 
 
-def decode_usage(v):
-    """Lazily initialised metadata globals hold (usageType << 29) | (index << 1) | 1
-    until their first use."""
+def usage_index(v):
+    """(usageType, index) of an encoded metadata usage, or None. Lazily initialised
+    metadata globals hold (usageType << 29) | (index << 1) | 1 until their first use;
+    vtableMethods entries use the same encoding."""
     if not (v & 1) or v > 0xFFFFFFFF:
         return None
-    typ, idx = (v & 0xE0000000) >> 29, (v & 0x1FFFFFFE) >> 1
+    return (v & 0xE0000000) >> 29, (v & 0x1FFFFFFE) >> 1
+
+
+def decode_usage(v):
+    u = usage_index(v)
+    if u is None:
+        return None
+    typ, idx = u
     try:
         if typ == 1:
             return "TypeInfo:" + type_name(idx)
@@ -617,6 +626,86 @@ def decode_usage(v):
             return f"FieldRva:{idx}"
     except Exception:
         return f"usage{typ}:{idx}?"
+    return None
+
+
+# ------------------------------------------- object layouts (il2dis tracking)
+# Il2CppClass.vtable: VirtualInvokeData {methodPtr, method} per slot. Checked on both
+# builds: Steam v39 from System.Object's ToString slot (`call [rax + 0x168]`, slot 3),
+# Game Room v31 from `call [rcx + 0x558]` passing one string with the result unused
+# (TMP_Text slot 66, set_text).
+VTABLE_OFFSET = 0x138
+STATICS_OFFSET = 0xB8  # Il2CppClass.static_fields
+
+
+def type_ptr(idx):
+    return u64(typesPtr + 8 * idx)
+
+
+def ptr_typedef(p, depth=0):
+    """Type definition behind an Il2CppType*: a class or value type, or the generic
+    definition of a generic instance."""
+    if not p or depth > 4:
+        return None
+    data, bits = u64(p), u32(p + 8)
+    t = (bits >> 16) & 0xFF
+    if t in (0x11, 0x12):
+        td = data & 0xFFFFFFFF
+        return td if td < len(TD) else None
+    if t == 0x15:
+        return ptr_typedef(u64(data), depth + 1)
+    return None
+
+
+def type_is_reference(idx):
+    bits = u32(type_ptr(idx) + 8)
+    t = (bits >> 16) & 0xFF
+    return t in (0x0E, 0x12, 0x14, 0x1C, 0x1D) or (t == 0x15 and not bits >> 31)
+
+
+_layouts = {}
+
+
+def layout(td):
+    """({offset: (name, typeIndex)} of instance fields, inherited ones included, and
+    the same for static fields) of a type definition."""
+    if td in _layouts:
+        return _layouts[td]
+    inst, stat = {}, {}
+    t = TD[td]
+    _layouts[td] = (inst, stat)  # guards against cycles
+    if t[4] >= 0:
+        ptd = ptr_typedef(type_ptr(t[4]))
+        if ptd is not None and ptd != td:
+            inst.update(layout(ptd)[0])
+    for j in range(t[TD_FIELD_COUNT]):
+        name_i, tyi, _ = FD[t[TD_FIELD_START] + j]
+        attrs = u32(type_ptr(tyi) + 8) & 0xFFFF
+        off = field_offset(td, j)
+        if attrs & 0x40 or off is None or off < 0:  # literal, or thread static
+            continue
+        (stat if attrs & 0x10 else inst)[off] = (mstr(name_i), tyi)
+    return inst, stat
+
+
+_vtable = []
+
+
+def vtable_method(td, slot):
+    """Name of the method in a type definition's vtable slot, or None."""
+    t = TD[td]
+    if not 0 <= slot < t[21]:
+        return None
+    if not _vtable:
+        _vtable.extend(r[0] for r in table("vtableMethods", "<I"))
+    u = usage_index(_vtable[t[14] + slot])
+    try:
+        if u and u[0] == 3:
+            return mname(u[1])
+        if u and u[0] == 6:
+            return methodspec_name(u[1])
+    except Exception:
+        pass
     return None
 
 
