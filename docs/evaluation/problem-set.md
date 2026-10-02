@@ -218,3 +218,15 @@ CHOAM standard 계약에서 Rise of Ix 전용 타일 4장을 빼고 Spice Refine
 
 5081은 옛 규칙(Agent turn이 마지막 효과에서 저절로 닫히던 때)으로 학습한 정책이다. 위 수치는 새 규칙의 국면에서 그 정책이 어떻게
 두는지를 볼 뿐이다.
+
+## 재채굴 (2026-10-02, L2: 자동 처리 → 결정 창)
+
+L2([unavailable-options-plan.md](../unavailable-options-plan.md) 5절, codec v125에 묶음)는 묶음마다 판의 경로를 바꿔 같은 명령으로 세 번
+다시 캤다(L1 뒤 106 → A묶음 107 → B묶음 110; C묶음은 움직이지 않음). 최종 **110개** — sandworm 80, 마지막 라운드 보유 21, Endgame 9.
+새 문제집의 채점:
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 9) | 마지막 라운드 보유 (tip, 21) |
+|---|---|---|---|
+| random | 0.56 | 0.56 | 0.81 |
+| heuristic | 1.00 | 1.00 | 0.24 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.86 / 0.80 |
