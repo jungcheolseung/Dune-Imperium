@@ -541,10 +541,15 @@ def test_coverage_census_reports_normalized_identities() -> None:
 
 
 def test_coverage_census_records_expansion_components() -> None:
+    # The game must take a Tech tile, a Tleilaxu card and a Skill. Re-derived
+    # 2026-10-01 for OQ-095 (every Agent turn ends only through its owner's
+    # finish_agent_turn; codec v125): seed 61's random game no longer
+    # acquires a Tleilaxu card, and a scratch run of seeds 55-84 (policy seed
+    # 700_000 + seed) gives 62 as the first after 61 that takes all three.
     report = run_checked_game(
         RulesetConfig(bloodlines=True, tech_module=True, immortality=True),
-        game_seed=61,
-        policy_seed=700061,
+        game_seed=62,
+        policy_seed=700062,
         privacy_interval=0,
         verify_replay=False,
         collect_coverage=True,

@@ -368,48 +368,18 @@ def _icon_keys(context: Mapping[str, ActionValue], name: str) -> tuple[str, ...]
     return tuple(key for key in value.split(",") if key)
 
 
-def _closed_for(
-    entry: tuple[int, str, str, bool], owner: int
-) -> tuple[int, str, str, bool]:
-    """Flag one queued ``(player, ..., source, turn_closed)`` entry as closed.
+def _owner_effect_frame(state: GameState, owner: int) -> DecisionFrame:
+    """Return the top frame, checked to be ``owner``'s Agent-turn effect frame."""
 
-    Leaves an entry belonging to another player untouched, and an
-    already-flagged entry unchanged (setting it again is a no-op).
-    """
-
-    queued_player, first, second, closed = entry
-    return (queued_player, first, second, True if queued_player == owner else closed)
-
-
-def mark_queued_turn_closed(state: GameState, owner: int) -> GameState:
-    """Flag ``owner``'s queued Skill choices and Navigation plays as closed.
-
-    ``advance_after_effect``'s own retroactive pass above only reaches an
-    entry already queued at the moment it closes ``owner``'s turn. An entry
-    queued afterward -- later in the very same action's handler (an
-    Influence gain that runs after a post-close acquisition box), or by a *later*
-    action that only resolves a follow-up frame a prior action left marked
-    ``turn_closed`` (a Research bonus's Influence choice reaching 2 with a
-    Faction) -- is queued unmarked by every one of those individual call
-    sites. The engine calls this once per action, right after the action's
-    own handler returns and before ``_advance_automatic`` can open any
-    freshly queued entry, so nothing threading ``turn_closed`` through a
-    particular caller can miss: whatever it recruits or completes must not
-    join the turn that only just reopened, even the same player's own
-    (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. Usurp's end-of-turn trash runs
-    later, in the engine's automatic advance, so ``graft.resolve_usurp_trash``
-    marks its own entry.
-    """
-
-    return replace(
-        state,
-        pending_skill_choices=tuple(
-            _closed_for(entry, owner) for entry in state.pending_skill_choices
-        ),
-        pending_navigation_plays=tuple(
-            _closed_for(entry, owner) for entry in state.pending_navigation_plays
-        ),
-    )
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        frame is None
+        or frame.kind != FrameKind.AGENT_EFFECTS
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != owner
+    ):
+        raise RuntimeError("the owner's Agent-turn effect frame must be on top")
+    return frame
 
 
 def advance_after_effect(
@@ -417,51 +387,60 @@ def advance_after_effect(
     context: dict[str, ActionValue],
     players: tuple[PlayerState, ...] | None = None,
 ) -> GameState:
-    """Keep the effect frame or open the clockwise player's next turn."""
+    """Write the effect frame's context back; the turn stays open.
+
+    An Agent turn ends only through its owner's ``finish_agent_turn``, even
+    when nothing is left to resolve (user ruling OQ-095): until then the
+    owner may still play a Plot Intrigue [Main p. 8], use Family Atomics
+    [Immortality p. 12], return a specimen [Immortality p. 8], flip a Tech
+    tile [Bloodlines pp. 7, 12] or recruit a Commander [Bloodlines p. 4].
+    """
 
     owner = context["turn_owner"]
     if isinstance(owner, bool) or not isinstance(owner, int):
         raise RuntimeError("Agent-turn effect frame has invalid owner")
-    next_players = state.players if players is None else players
-    pending_skill_choices = state.pending_skill_choices
-    pending_navigation_plays = state.pending_navigation_plays
-    if context[
-        "pending_combat_deployment"
-    ] is True or agent_turn_has_other_pending_effects(context, next_players):
-        frame = state.decision_stack[-1]
-        next_frame = replace(frame, context=tuple(sorted(context.items())))
-    else:
-        next_player = next_unrevealed_player(state, owner)
-        next_players = reset_turn_counters(next_players, next_player, closing=owner)
-        next_frame = DecisionFrame(
-            kind=FrameKind.TURN,
-            frame_id=f"round:{state.round_number}:turn:{next_player}",
-            decision=PlayerDecision(
-                owner=next_player,
-                prompt="Choose an Agent turn or Reveal turn",
-            ),
-            context=(("round", state.round_number), ("turn_owner", next_player)),
-        )
-        # A Sardaukar Standard bank-Commander Skill choice, or a Navigation
-        # card's trigger, can already be queued for ``owner`` here: the
-        # trash or the Influence gain that queued it resolved earlier in
-        # this same handler, before this call decided the effect frame was
-        # done. Whichever frame eventually opens the queued item sits on
-        # this fresh "turn" frame (the owner's own again, if every other
-        # seat has revealed), so a troop or credit it resolves must not
-        # join that fresh turn either (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-        pending_skill_choices = tuple(
-            _closed_for(entry, owner) for entry in pending_skill_choices
-        )
-        pending_navigation_plays = tuple(
-            _closed_for(entry, owner) for entry in pending_navigation_plays
-        )
+    frame = _owner_effect_frame(state, owner)
+    next_frame = replace(frame, context=tuple(sorted(context.items())))
     return replace(
         state,
-        players=next_players,
+        players=state.players if players is None else players,
         decision_stack=(*state.decision_stack[:-1], next_frame),
-        pending_skill_choices=pending_skill_choices,
-        pending_navigation_plays=pending_navigation_plays,
+    )
+
+
+def close_agent_turn(state: GameState, owner: int) -> GameState:
+    """End ``owner``'s Agent turn and open the next unrevealed seat's turn.
+
+    The one place an Agent turn closes (OQ-095): ``finish_agent_turn`` calls
+    it once the press's own steps are done. Whatever the turn's effects left
+    behind has been resolved on top of the owner's open frame before the
+    end was offered, so nothing of this turn reaches the next one.
+    """
+
+    _owner_effect_frame(state, owner)
+    seat = state.players[owner]
+    if seat.usurped_row_card_id:
+        raise RuntimeError("the Usurped card is trashed before the turn closes")
+    if (
+        any(entry[0] == owner for entry in state.pending_skill_choices)
+        or any(entry[0] == owner for entry in state.pending_navigation_plays)
+    ):
+        raise RuntimeError("an Agent turn cannot close over its queued choices")
+    next_player = next_unrevealed_player(state, owner)
+    players = reset_turn_counters(state.players, next_player, closing=owner)
+    next_frame = DecisionFrame(
+        kind=FrameKind.TURN,
+        frame_id=f"round:{state.round_number}:turn:{next_player}",
+        decision=PlayerDecision(
+            owner=next_player,
+            prompt="Choose an Agent turn or Reveal turn",
+        ),
+        context=(("round", state.round_number), ("turn_owner", next_player)),
+    )
+    return replace(
+        state,
+        players=players,
+        decision_stack=(*state.decision_stack[:-1], next_frame),
     )
 
 
@@ -471,12 +450,12 @@ def agent_turn_has_other_pending_effects(
     *,
     ignore_agent_effect: bool = False,
 ) -> bool:
-    """Return whether anything besides the Combat deployment is still pending.
+    """Return whether a mandatory group of the turn is still pending.
 
-    The deployment window stays open until the owner finishes the turn
-    (OQ-029); every other group closes on its own resolution. With
-    ``ignore_agent_effect`` a pending Agent box is left out — the explicit
-    turn end asks this when that box can only fizzle (OQ-057).
+    The Combat deployment window is not one: it stays open until the owner
+    finishes the turn (OQ-029, OQ-095). With ``ignore_agent_effect`` a
+    pending Agent box is left out — the explicit turn end asks this when
+    that box can only fizzle (OQ-057).
     """
 
     regular_pending = (

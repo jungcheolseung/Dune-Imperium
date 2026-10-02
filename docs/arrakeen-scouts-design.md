@@ -172,7 +172,7 @@ Immortality 풀은 이 표의 유형에 표본·연구·Tleilaxu 트랙 보상�
 |---|---|---|
 | 차례 순서의 선택형 거래, 판매, 임무 공개 때의 참여 결정 | Endgame window(`rules/endgame.py:100-247`), Leader draft의 주인 교대 | frame 하나, 주인이 First Player부터 시계 방향으로 바뀐다. 각 좌석의 선택지는 자기 차례에 새로 계산한다. 차례 순서는 OQ-002의 "First Player부터"를 따른다(임무 문구는 "각 플레이어는"이라 순서가 OQ다) |
 | 라운드 시작의 분쟁 투입(Mercenaries, Shadow Warfare) | 없음(새 경로) | 턴 밖에서 병력을 분쟁에 넣는다. 병력의 출처, 배치 한도, Combat 참가 자격, Mercenaries 최저 입찰자의 후퇴 결정을 명세하고, 턴 귀속이 없는지 테스트한다 |
-| 양자택일 손실 | `rules/unit_loss.py:112-155` | 선택지가 하나면 자동, 없으면 공개 이벤트. 좌석별 frame |
+| 양자택일 손실 | `rules/unit_loss.py:112-155` | 선택지가 하나면 자동, 없으면 공개 이벤트. 좌석별 frame (2026-10-02부터 Holy War는 선택지가 하나여도·없어도 좌석마다 창을 연다, OQ-036 (a)) |
 | 전원 자동 효과·규칙 변경 | `resolve_makers`, round 한정 필드 초기화(`phases.py:38-64,94-98`) | 결정 없이 공개 상태만 바꾼다. 규칙 변경은 `GameState` 필드로 두고 다음 `begin_round`에서 지운다 |
 | 비밀 선택 | Navigation setup(`rules/navigation.py:38-162`), Kota Odax의 Secret Project | 좌석별 순차 결정. 선택은 `PlayerState`의 좌석 한정 id로 보관(frame context에 두지 않는다). 기한 라운드에는 선택을 공개하는 것만 자동이고, 보상 해결은 차례 순서의 좌석별 결정이다: Spy를 놓을 관측소, 가져올 앞면 계약, 버릴 카드, 영향력 최저 Faction의 동률 선택, Offworld Operation의 Tleilaxu·Helix 조건. 앱처럼 같은 선택끼리 묶어 차례 순서로 처리한다 |
 | 봉인 입찰 | 없음(새 유형) | 좌석별 순차 결정(First Player부터). 입찰액은 공개 전까지 숨긴다. 전원이 확정하면 자동 단계에서 공개·순위·지불. 순위는 앱 코드가 정한다(`[Scouts auction]`): 입찰액 내림차순의 공동 순위, 순위가 보상 칸 수 이내이고 입찰액이 0보다 커야 승자, 1위 동점이면 2위 보상 없음, 2위 동점자는 모두 2위 보상, 진 좌석은 지불하지 않음(Mercenaries만 전원 지불) |

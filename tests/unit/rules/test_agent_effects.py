@@ -1,6 +1,8 @@
 """Tests for Agent-card, Faction, and effect-frame completion."""
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -82,6 +84,11 @@ from dune_imperium.rules.spy_moves import (
     legal_spy_placement_actions,
 )
 from dune_imperium.rules.strength import units_strength
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 
 def _instance(card_id: str) -> str:
@@ -284,6 +291,13 @@ def test_finishing_all_effect_groups_opens_clockwise_players_turn() -> None:
     state = resolve_agent_card_effect(state).state
     state = resolve_faction_influence(state).state
     state = _resolve_board_icons(state)
+
+    # The turn stays open until its owner ends it (user ruling OQ-095 (1)).
+    assert state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)] == [
+        "finish_agent_turn"
+    ]
+    state = finish_agent_turn(state)
 
     decision = state.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
@@ -2934,15 +2948,20 @@ def test_in_high_places_spy_may_pass_on_the_recall_with_an_empty_supply() -> Non
     assert passed.decision_stack[-1].kind == placed.decision_stack[-1].kind
 
 
-def test_in_high_places_spy_recall_after_the_turn_closed_is_not_the_next_turns() -> (
+def test_in_high_places_spy_recall_from_the_turns_last_effect_counts_this_turn() -> (
     None
 ):
-    # Resolved as the turn's last effect, In High Places hands the turn over
-    # before its Spy is placed; for the last seat to reveal the next turn is
-    # its own. A recall-first for that Spy ("you may first recall one of your
-    # Spies for no effect" [Main pp. 11, 20]) belongs to the closed turn and
-    # must not satisfy the next turn's "If you recalled a Spy this turn"
-    # (OQ-044 (d)).
+    # Resolved as the turn's last effect, In High Places used to hand the
+    # turn over before its Spy was placed (for the last seat to reveal, to
+    # its own next turn), and a recall-first for that Spy was kept out of
+    # the fresh turn's counter. Since OQ-095 (3) the turn stays open until
+    # its owner ends it, so the placement resolves on top of it and the
+    # recall ("you may first recall one of your Spies for no effect"
+    # [Main pp. 11, 20]) is this turn's: OQ-044 (d) counts every return of
+    # one's own Spy to the supply "이번 Agent 또는 Reveal turn에", and the
+    # counter "좌석의 turn이 열릴 때 ... 0으로 돌아간다"
+    # (docs/rules/open-questions.md:326), so the press's own next turn
+    # starts at zero.
     posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
     placed, _ = _in_high_places_on_secrets(spies_supply=0, spy_post_ids=posts)
     placed = replace(
@@ -2967,7 +2986,7 @@ def test_in_high_places_spy_recall_after_the_turn_closed_is_not_the_next_turns()
         current, DomainAction(action_id="resolve_agent_card_effect", actor=0)
     ).state
     assert resolved.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
-    assert resolved.decision_stack[-2].kind == FrameKind.TURN
+    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
 
     recall = next(
         action
@@ -2976,8 +2995,16 @@ def test_in_high_places_spy_recall_after_the_turn_closed_is_not_the_next_turns()
     )
     recalled = engine.apply(resolved, recall).state
     spied = engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
-    assert spied.decision_stack[-1].kind == FrameKind.TURN
-    assert spied.players[0].spies_recalled_turn == 0
+    assert spied.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert spied.players[0].spies_recalled_turn == 1
+    assert [action.action_id for action in engine.legal_actions(spied, 0)] == [
+        "finish_agent_turn"
+    ]
+
+    closed = finish_agent_turn(spied)
+    assert closed.decision_stack[-1].kind == FrameKind.TURN
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 0
+    assert closed.players[0].spies_recalled_turn == 0
 
 
 def test_rebel_supplier_recruits_two_after_gathering_intelligence() -> None:
@@ -4773,7 +4800,12 @@ def test_guild_envoy_must_discard_a_card_drawn_later_in_the_turn() -> None:
     assert [dict(action.arguments)["card_id"] for action in discards] == [drawn]
     discarded = engine.apply(drew, discards[0]).state
     assert discarded.players[0].discard_pile == (drawn,)
-    assert discarded.decision_stack[-1].kind == "turn"
+    # The turn stays open until its owner ends it (user ruling OQ-095 (1)).
+    assert discarded.decision_stack[-1].kind == "agent_effects"
+    assert "finish_agent_turn" in {
+        action.action_id for action in engine.legal_actions(discarded, 0)
+    }
+    assert finish_agent_turn(discarded).decision_stack[-1].kind == "turn"
 
 
 def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> None:
@@ -5201,6 +5233,17 @@ def test_covert_operation_resolved_last_still_ends_the_agent_turn() -> None:
     ).state
     current = engine.apply(current, engine.legal_actions(current, 1)[0]).state
     current = engine.apply(current, engine.legal_actions(current, 2)[0]).state
+
+    # Back to the owner's open turn, which only its owner's end closes
+    # (user ruling OQ-095 (1)).
+    top = current.decision_stack[-1]
+    assert top.kind == "agent_effects"
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 0
+    assert [action.action_id for action in engine.legal_actions(current, 0)] == [
+        "finish_agent_turn"
+    ]
+    current = finish_agent_turn(current)
 
     top = current.decision_stack[-1]
     assert top.kind == "turn"

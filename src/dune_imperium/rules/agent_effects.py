@@ -9,7 +9,8 @@ first and then queue the reward icons the same way.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
@@ -47,7 +48,6 @@ from dune_imperium.rules.combat_deployment import (
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_contract_by_effect,
-    mark_contract_spy_after_turn,
 )
 from dune_imperium.rules.effects import (
     active_agent_card,
@@ -73,7 +73,7 @@ from dune_imperium.rules.frames import (
     with_context,
 )
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.leader_abilities import (
@@ -791,12 +791,6 @@ def _apply_stitched_horror_reward(
             players = replace_player(players, recruited_owner)
             events.extend(recruit_shortfall_events(source, player, 1, recruited))
     next_state = advance_after_effect(state, context, players)
-    # Stitched Horror's second pick can be the turn's last effect:
-    # ``advance_after_effect`` may already have reopened a fresh "turn"
-    # frame for this same player (every other seat revealed), and a troop
-    # the trash pick below recruits (Eliminate Allies) must not join it
-    # [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     for index, pick in enumerate(chosen):
         if pick == "tleilaxu":
             advanced = advance_tleilaxu(
@@ -806,9 +800,7 @@ def _apply_stitched_horror_reward(
             events.extend(advanced.events)
         elif pick == "trash":
             next_state = next_state.push_decision(
-                optional_trash_frame(
-                    player, f"{source}:{index + 1}", turn_closed=turn_closed
-                )
+                optional_trash_frame(player, f"{source}:{index + 1}")
             )
     return RuleResult(state=next_state, events=tuple(events))
 
@@ -1143,10 +1135,6 @@ def apply_agent_card_contract_completion(
         completed.state, decision_stack=completed.state.decision_stack[:depth]
     )
     advanced = advance_after_effect(base, context, base.players)
-    if advanced.decision_stack[-1].kind == FrameKind.TURN:
-        # The completion was the turn's last effect: a Spy recalled for its
-        # reward belongs to the closed turn, not the one just opened.
-        follow_up = tuple(mark_contract_spy_after_turn(frame) for frame in follow_up)
     next_state = replace(
         advanced, decision_stack=(*advanced.decision_stack, *follow_up)
     )
@@ -1338,6 +1326,65 @@ def apply_agent_card_spy_action(
     return RuleResult(state=next_state, events=(event,))
 
 
+def _recall_icon_context(
+    state: GameState, player: int
+) -> dict[str, ActionValue] | None:
+    """``player``'s own Agent-effect context while its recall icon is pending."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if context.get("pending_agent_effect") is not True:
+        return None
+    if AGENT_ICON_RECALL not in pending_agent_icons(context):
+        return None
+    return context
+
+
+def agent_card_recall_targets(state: GameState, player: int) -> tuple[str, ...] | None:
+    """Where ``player``'s pending Recall Agent icon (Steersman) may take an Agent.
+
+    None unless that icon is pending on the seat's own Agent-effect frame
+    (Twisted Mentat's optional recall of the Agent sent this turn has its
+    own answer). The targets are the seat's other board spaces ("Return one
+    of your other Agents on the board to your Leader (not the Agent you sent
+    during this turn)." [Main p. 20]) and "conflict" for an earlier turn's
+    Into the Fray Agent (OQ-037 (d), OQ-068). The provider offers one recall
+    per target. With none the icon offers nothing and fizzles at the turn's
+    end (OQ-057 (1)); the page greys it out with this same answer while the
+    turn is open (user ruling 2026-10-02, L2-Q3 (3): "③은 회색 줄만").
+    """
+
+    context = _recall_icon_context(state, player)
+    if (
+        context is None
+        or active_agent_card(context).agent_effect
+        is PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN
+    ):
+        return None
+    _, _, turn_space_id = _effect_subject(context)
+    owner = state.players[player]
+    return (
+        *(
+            space_id
+            for space_id in owner.agent_locations
+            if space_id != turn_space_id
+        ),
+        *(
+            ("conflict",)
+            if recallable_conflict_agents(
+                owner,
+                sent_this_turn=turn_agent_in_conflict(owner, context, turn_space_id),
+            )
+            > 0
+            else ()
+        ),
+    )
+
+
 def legal_agent_card_recall_actions(
     state: GameState,
     player: int,
@@ -1346,15 +1393,8 @@ def legal_agent_card_recall_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("pending_agent_effect") is not True:
-        return ()
-    if AGENT_ICON_RECALL not in pending_agent_icons(context):
+    context = _recall_icon_context(state, player)
+    if context is None:
         return ()
     _, source_card_id, turn_space_id = _effect_subject(context)
     owner = state.players[player]
@@ -1399,31 +1439,17 @@ def legal_agent_card_recall_actions(
     # "other" Agents too (OQ-037 (d)), extended to every Recall Agent effect
     # by the 2026-09-26 user ruling (OQ-068). With nothing recallable the
     # icon offers nothing; the box then waits for the turn's end and fizzles
-    # there (OQ-057 (1)).
-    return (
-        *(
-            DomainAction(
-                action_id="recall_agent_for_agent_card",
-                actor=player,
-                arguments=(("space_id", space_id),),
-            )
-            for space_id in owner.agent_locations
-            if space_id != turn_space_id
-        ),
-        *(
-            (
-                DomainAction(
-                    action_id="recall_conflict_agent_for_agent_card",
-                    actor=player,
-                ),
-            )
-            if recallable_conflict_agents(
-                owner,
-                sent_this_turn=turn_agent_in_conflict(owner, context, turn_space_id),
-            )
-            > 0
-            else ()
-        ),
+    # there (OQ-057 (1)), shown greyed out meanwhile (no window: user ruling
+    # 2026-10-02, L2-Q3 (3)).
+    return tuple(
+        DomainAction(action_id="recall_conflict_agent_for_agent_card", actor=player)
+        if target == "conflict"
+        else DomainAction(
+            action_id="recall_agent_for_agent_card",
+            actor=player,
+            arguments=(("space_id", target),),
+        )
+        for target in agent_card_recall_targets(state, player) or ()
     )
 
 
@@ -2551,17 +2577,9 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         next_state = advance_after_effect(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
-        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
-        # SPECIMEN Research bonus's trash offer must not credit the fresh
-        # "turn" frame this ``advance_after_effect`` call may have already
-        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         researched = (
             advance_research(
-                next_state,
-                action.actor,
-                source=f"{source}:research",
-                turn_closed=turn_closed,
+                next_state, action.actor, source=f"{source}:research"
             )
             if research_owed
             else RuleResult(state=next_state, events=())
@@ -2653,16 +2671,8 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
                 lost_state, action.actor, troops=1
             )
         next_state = advance_after_effect(lost_state, context, lost_state.players)
-        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
-        # SPECIMEN Research bonus's trash offer must not credit the fresh
-        # "turn" frame this ``advance_after_effect`` call may have already
-        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         researched = advance_research(
-            next_state,
-            action.actor,
-            source=f"{source}:research",
-            turn_closed=turn_closed,
+            next_state, action.actor, source=f"{source}:research"
         )
         drawn = draw_or_request_personal_cards(
             researched.state, action.actor, 2, source=f"{source}:draw"
@@ -2891,16 +2901,8 @@ def _apply_arrakis_revolt_payment(
         )
     next_state = advance_after_effect(paid, context, paid.players)
     if replaced:
-        # See ``planetologist.replace_sandworms``: future-proofing only,
-        # since Arrakis Revolt's Combat icon keeps the turn open here today
-        # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         replacement = replace_sandworms(
-            next_state,
-            action.actor,
-            replaced,
-            source=source,
-            turn_closed=turn_closed,
+            next_state, action.actor, replaced, source=source
         )
         return RuleResult(
             state=replacement.state, events=(*events, *replacement.events)
@@ -2953,15 +2955,10 @@ def _apply_control_the_spice_payment(
     next_state = advance_after_effect(
         state, context, replace_player(state.players, recruited_owner)
     )
-    # As the turn's last effect ``advance_after_effect`` already opened the
-    # next "turn" frame (possibly this same player's): a troop the trash
-    # recruits (Eliminate Allies) belongs to the closed turn, as with
-    # Throne Room Politics [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     box_source = f"{source}:{card_instance_id}"
     return RuleResult(
         state=next_state.push_decision(
-            optional_trash_frame(player, box_source, turn_closed=turn_closed)
+            optional_trash_frame(player, box_source)
         ),
         events=(
             GameEvent(
@@ -3088,13 +3085,50 @@ def legal_agent_card_icon_actions(
     )
 
 
-def agent_icon_condition_holds(
+class AgentIconCondition(StrEnum):
+    """What a conditioned Agent-box icon waits for (``agent_icon_block``)."""
+
+    INFLUENCE = "influence"
+    SPICE_GAINED = "spice_gained"
+    GRAFTED = "grafted"
+    GENETIC_MARKERS = "genetic_markers"
+    # The icon belongs to no box that prints it; no card queues one.
+    NOT_PRINTED = "not_printed"
+
+
+@dataclass(frozen=True, slots=True)
+class AgentIconBlock:
+    """Why a conditioned Agent-box icon is not offered now: the printed
+    threshold ``needed`` against what the owner has (``held``), and the
+    Faction of an Influence threshold."""
+
+    condition: AgentIconCondition
+    needed: int = 0
+    held: int = 0
+    faction: Faction | None = None
+
+
+# The printed thresholds: two Influence, two spice this turn, two markers.
+_ICON_THRESHOLD: Final = 2
+_NOT_PRINTED: Final = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
+
+
+def _influence_block(owner: PlayerState, faction: Faction) -> AgentIconBlock | None:
+    held = influence_amount(owner.influence, faction)
+    if held >= _ICON_THRESHOLD:
+        return None
+    return AgentIconBlock(
+        AgentIconCondition.INFLUENCE, _ICON_THRESHOLD, held, faction=faction
+    )
+
+
+def agent_icon_block(
     owner: PlayerState,
     context: Mapping[str, ActionValue],
     effect: PersonalCardAgentEffect | None,
     key: str,
-) -> bool:
-    """Return whether an Agent-box icon's printed condition holds right now.
+) -> AgentIconBlock | None:
+    """Why an Agent-box icon's printed condition fails right now, or None.
 
     Hidden Missive (two Bene Gesserit Influence), Fremen War Name ("If you
     gained [2 spice] or more this turn:" [Fremen War Name card]), Sardaukar
@@ -3104,25 +3138,39 @@ def agent_icon_condition_holds(
     when the icon resolves (OQ-028), and while it is false the icon is not
     offered: a mandatory effect cannot be fired to fizzle, it waits for the
     turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
-    meets the condition makes it resolvable, and then mandatory, again.
+    meets the condition makes it resolvable, and then mandatory, again. The
+    provider offers an icon exactly when this is None
+    (``agent_icon_condition_holds``), and the page greys the others out with
+    it while the turn is open (user ruling 2026-10-02, L2-Q3 (3)).
     """
 
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
         ):
-            return owner.influence.bene_gesserit >= 2
+            return _influence_block(owner, Faction.BENE_GESSERIT)
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
         ):
-            return spice_gained_this_turn(owner) >= 2
+            gained = spice_gained_this_turn(owner)
+            if gained >= _ICON_THRESHOLD:
+                return None
+            return AgentIconBlock(
+                AgentIconCondition.SPICE_GAINED, _ICON_THRESHOLD, gained
+            )
         if effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED:
-            return is_grafted(context)
-        return True
+            if is_grafted(context):
+                return None
+            return AgentIconBlock(AgentIconCondition.GRAFTED)
+        return None
     if key == AGENT_ICON_INTRIGUE:
-        return (
-            effect is not PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
-            or genetic_markers_reached(owner.research_space) >= 2
+        if effect is not PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS:
+            return None
+        markers = genetic_markers_reached(owner.research_space)
+        if markers >= _ICON_THRESHOLD:
+            return None
+        return AgentIconBlock(
+            AgentIconCondition.GENETIC_MARKERS, _ICON_THRESHOLD, markers
         )
     maker_keeper = (
         effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
@@ -3132,16 +3180,32 @@ def agent_icon_condition_holds(
         is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
     )
     if key == AGENT_ICON_SOLARI:
-        return wheels and owner.influence.emperor >= 2
+        return _influence_block(owner, Faction.EMPEROR) if wheels else _NOT_PRINTED
     if key == AGENT_ICON_SPICE:
-        return (
-            effect is _BRANCHING_PATH
-            or (maker_keeper and owner.influence.fremen >= 2)
-            or (wheels and owner.influence.spacing_guild >= 2)
-        )
+        if effect is _BRANCHING_PATH:
+            return None
+        if maker_keeper:
+            return _influence_block(owner, Faction.FREMEN)
+        if wheels:
+            return _influence_block(owner, Faction.SPACING_GUILD)
+        return _NOT_PRINTED
     if key == AGENT_ICON_WATER:
-        return maker_keeper and owner.influence.bene_gesserit >= 2
-    return True
+        if maker_keeper:
+            return _influence_block(owner, Faction.BENE_GESSERIT)
+        return _NOT_PRINTED
+    return None
+
+
+def agent_icon_condition_holds(
+    owner: PlayerState,
+    context: Mapping[str, ActionValue],
+    effect: PersonalCardAgentEffect | None,
+    key: str,
+) -> bool:
+    """Return whether an Agent-box icon's printed condition holds right now
+    (``agent_icon_block`` is None)."""
+
+    return agent_icon_block(owner, context, effect, key) is None
 
 
 def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResult:
@@ -3949,21 +4013,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         context["pending_agent_effect"] = False
         grafted = is_grafted(context)
         next_state = advance_after_effect(state, context)
-        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
-        # SPECIMEN Research bonus's trash offer must not credit the fresh
-        # "turn" frame this ``advance_after_effect`` call may have already
-        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         extra: list[GameEvent] = []
         if grafted:
             generated = generate_specimens(
                 next_state, player, 1, source=f"{event_source}:specimen"
             )
             researched = advance_research(
-                generated.state,
-                player,
-                source=f"{event_source}:research",
-                turn_closed=turn_closed,
+                generated.state, player, source=f"{event_source}:research"
             )
             next_state = researched.state
             extra.extend((*generated.events, *researched.events))
@@ -4008,16 +4064,8 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             (*_researched_boxes(context), card_instance_id)
         )
         next_state = advance_after_effect(state, context)
-        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
-        # SPECIMEN Research bonus's trash offer must not credit the fresh
-        # "turn" frame this ``advance_after_effect`` call may have already
-        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         researched = advance_research(
-            next_state,
-            player,
-            source=f"{event_source}:research",
-            turn_closed=turn_closed,
+            next_state, player, source=f"{event_source}:research"
         )
         return RuleResult(
             state=researched.state,
@@ -4228,16 +4276,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_state = advance_after_effect(
             state, context, replace_player(state.players, next_owner)
         )
-        # As the Agent turn's last effect, ``advance_after_effect`` already
-        # replaced this turn's frame with the next unrevealed player's bare
-        # "turn" frame -- which can be this same player's, if every other
-        # seat has revealed. A troop the trash below recruits (Eliminate
-        # Allies) must not join that fresh frame [Main p. 10] [FAQ p. 4]
-        # (OQ-044 (d)).
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         return RuleResult(
             state=next_state.push_decision(
-                optional_trash_frame(player, event_source, turn_closed=turn_closed)
+                optional_trash_frame(player, event_source)
             ),
             events=(
                 GameEvent(
@@ -4253,14 +4294,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # advance (and its direction choice) follows the frame bookkeeping.
         context["pending_agent_effect"] = False
         next_state = advance_after_effect(state, context)
-        # A TRASH_AND_SPECIMEN bonus's trash offer must not credit the
-        # fresh "turn" frame this ``advance_after_effect`` call may already
-        # have reopened for this same player (every other seat revealed)
-        # [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
-        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
-        advanced = advance_research(
-            next_state, player, source=event_source, turn_closed=turn_closed
-        )
+        advanced = advance_research(next_state, player, source=event_source)
         return RuleResult(
             state=advanced.state,
             events=(
@@ -4612,21 +4646,25 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             player,
             tuple(post.post_id for post in OBSERVATION_POSTS),
             source=event_source,
-            # As the turn's last effect the box handed the turn over already;
-            # a recall-first for this Spy is still this turn's (OQ-044 (d)).
-            turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
         )
         draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
         return RuleResult(state=draw.state, events=(event, *draw.events))
     if effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
         if not isinstance(space_id_value, str):
             raise RuntimeError("Agent-turn effect frame has invalid space")
-        losses = opponent_unit_loss_frames(next_state, player, source=event_source)
+        # The printed order (user ruling 2026-10-02, OQ-036): "Each
+        # opponent loses one troop. Each opponent spying on the board space
+        # where you sent an Agent this turn must move that Spy." [Holy War
+        # card] -- every opponent's loss first, clockwise from the next
+        # seat, then every opponent's Spy moves, each seat moving all of
+        # its Spies in its own go (OQ-036 (b)). The stack is last in, first
+        # out, so the Spy moves go beneath the losses.
         moves = turn_space_spy_frames(
-            losses.state, player, space_id_value, source=event_source
+            next_state, player, space_id_value, source=event_source
         )
+        losses = opponent_unit_loss_frames(moves.state, player, source=event_source)
         return RuleResult(
-            state=moves.state, events=(event, *losses.events, *moves.events)
+            state=losses.state, events=(event, *moves.events, *losses.events)
         )
     if effect in (
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,

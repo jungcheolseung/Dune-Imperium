@@ -428,27 +428,44 @@ def test_bond_plays_and_activations_are_consistent(
 # pin moved from seat 1 to seat 2 (Irulan: one free acquisition, four Signet
 # Ring starter trashes); buys, payments, trashes and exposure were checked
 # against the game's card_acquired/card_trashed events and hands.
+# Re-derived 2026-10-01 for OQ-095 (every Agent turn ends only through its
+# owner's finish_agent_turn; codec v125): the game differs from the first
+# Agent turn on. Seat 2 (still Irulan) now makes 16 buys -- 15 Reveal-frame
+# acquire_imperium/acquire_reserve buys and one free Impress Intrigue buy
+# (Double Agent, round 6) -- one Signet Ring trash (Dagger, round 7) and one
+# mandatory Seek Allies self-trash from its own Agent box (round 1, excluded
+# from trash_chosen). Every bought instance's later hand rounds sum to 19.
+# All of it was recounted by a scratch replay from the card_acquired/
+# card_trashed events, the zone deltas and seat 2's hand after every step.
+# Re-derived 2026-10-02 for L2 group A decision windows: the game now
+# diverges at seat 0's round-6 Reveal, where Desert Power without Maker
+# Hooks opens its choice window (decline_reveal_sandworm) instead of
+# counting its 2 Persuasion unasked. Seat 2 (still Irulan) keeps its role
+# and now makes 17 buys: 16 acquire_imperium/acquire_reserve buys that
+# each draw down its Reveal frame's Persuasion pool (one more than before:
+# Unswerving Loyalty in round 8, never in hand afterwards) and the same
+# free Impress buy (Double Agent, round 6); the Signet Ring
+# Dagger trash (round 7) and the round-1 Seek Allies self-trash are
+# unchanged, and the bought instances' later hand rounds still sum to 19.
+# Recounted by the same scratch replay (events, zone deltas, the Reveal
+# frame's Persuasion before and after each buy, seat 2's hand per step).
 # ---------------------------------------------------------------------------
 
 
 def test_base_seed_3_seat_2_matches_the_hand_trace(tip_census: ModuleType) -> None:
     census = tip_census.play(_spec(False, 3), ("deck",))
     row = census["seats"][2]
-    assert row["deck.buys"] == 15
-    assert row["deck.buys_r1_3"] == 4
-    assert row["deck.buys_r4_6"] == 4
-    assert row["deck.buys_r7p"] == 7
-    assert row["deck.buys_by_payment"] == {"persuasion": 14, "free": 1}
-    assert row["deck.trash_chosen"] == 4
-    assert row["deck.trash_starters"] == 4
-    assert row["deck.first_trash_round"] == 2
-    assert row["deck.trashed"] == {
-        "dagger": 1,
-        "diplomacy": 1,
-        "dune_the_desert_planet": 1,
-        "convincing_argument": 1,
-    }
-    assert row["deck.exposure"] == pytest.approx(27 / 15)
+    assert row["deck.buys"] == 17
+    assert row["deck.buys_r1_3"] == 5
+    assert row["deck.buys_r4_6"] == 6
+    assert row["deck.buys_r7p"] == 6
+    assert row["deck.buys_by_payment"] == {"persuasion": 16, "free": 1}
+    assert row["deck.trash_chosen"] == 1
+    assert row["deck.trash_starters"] == 1
+    assert row["deck.self_trashes"] == 1
+    assert row["deck.first_trash_round"] == 7
+    assert row["deck.trashed"] == {"dagger": 1}
+    assert row["deck.exposure"] == pytest.approx(19 / 17)
 
 
 # ---------------------------------------------------------------------------
@@ -603,11 +620,11 @@ def test_usurps_borrowed_row_card_is_excluded_by_state_not_event_pairing(
     deck_module: ModuleType, base_module: ModuleType
 ) -> None:
     """The borrowed card can trash itself through its own box before the
-    turn closes (``graft.py::resolve_usurp_trash``'s own docstring: "a card
-    that already left every owned zone ... needs nothing more"), with no
-    ``usurped_card_trashed`` event alongside it. The exclusion is keyed off
-    ``usurped_row_card_id`` (module docstring), not event pairing (report
-    finding, high severity)."""
+    owner presses ``finish_agent_turn`` (``graft.py::trash_usurped_card``'s
+    own docstring: "a card that already left every owned zone ... needs
+    nothing more"), with no ``usurped_card_trashed`` event alongside it. The
+    exclusion is keyed off ``usurped_row_card_id`` (module docstring), not
+    event pairing (report finding, high severity)."""
 
     spec = T.MatchSpec(0, 0, ("heuristic",) * 4, immortality=True)
     collector = deck_module.DeckCollector(spec, 4)

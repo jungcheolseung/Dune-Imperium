@@ -370,14 +370,44 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     gains only the Fremen step scores, making it 8. The buggy collector would
     read ``end.endgame_vp`` == 0 for seat 1 and ``end.leader_changed`` ==
     False.
+
+    Re-derived 2026-10-01 for OQ-095 (every Agent turn ends only through its
+    owner's ``finish_agent_turn``; codec v125): the games differ from the
+    first Agent turn on and seed 29 no longer has an Endgame-opening Tech
+    event. A scratch replay of full seeds 1-200 with the same
+    ``resolve_recall_or_endgame`` capture finds three seeds (16, 66, 89)
+    where that Tech alone changes the leader (the leader after the
+    ``:endgame_tech:`` events differs from the one at the check and goes on
+    to win); the case is seed 16, the first. Endgame opens there on the
+    empty Conflict deck in round 10 with no seat at 10 VP: seats 0, 1 and 2
+    tie on 8 with seat 1 (Steersman Y'rkoon) ranked first, and seat 2 (Liet
+    Kynes) holds Panopticon. Its Spacing Guild 1 -> 2 and Fremen 1 -> 2 gains
+    both score, making it 10 and the winner; nothing scores after that. The
+    buggy collector would read ``end.endgame_vp`` == 0 for seat 2,
+    ``end.leader_changed`` == False and ``end.trigger_vp`` == True.
+
+    Re-derived 2026-10-02 for L2 group A decision windows: seed 16 now
+    diverges in round 8, where seat 3's Contract recall with no target
+    opens its confirm window instead of fizzling unasked; seat 2 is then
+    already on 10 VP at the check and leads, so Panopticon no longer changes
+    the leader. The same capture over full seeds 1-200 finds three seeds
+    (2, 56, 66) where the leader after the ``:endgame_tech:`` events differs
+    from the one at the check and goes on to win; the case is seed 2, the
+    first. Endgame opens there in round 10 on the empty Conflict deck with
+    seat 2 (Liet Kynes) on 10 VP leading seat 0 (Gurney Halleck) on 9.
+    Seat 0's CHOAM Transports VP makes it 10 and it ranks first on the tie
+    (8 spice to 1); it then scores a wild battle-icon match and Secure
+    Spice Trade, ending on 12 as the winner. The buggy collector would read
+    ``end.endgame_vp`` == 2 for seat 0 and ``end.leader_changed`` == False
+    (``end.trigger_vp`` is True either way: seat 2 was already on 10).
     """
 
     import dune_imperium.rules.engine as rules_engine
     from dune_imperium.rules.endgame import final_standings as real_final_standings
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
-    saw_seed_29 = False
-    for seed in (*FULL_SEEDS, 29):
+    saw_seed_2 = False
+    for seed in (*FULL_SEEDS, 2):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -412,12 +442,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 29:
-            saw_seed_29 = True
-            assert census["seats"][1]["end.endgame_vp"] == 1
+        if seed == 2:
+            saw_seed_2 = True
+            assert census["seats"][0]["end.endgame_vp"] == 3
             assert census["game"]["end.leader_changed"] is True
+            assert census["game"]["end.trigger_vp"] is True
 
-    assert saw_seed_29, "the seed 29 regression case must run"
+    assert saw_seed_2, "the seed 2 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -492,23 +523,44 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     checks the loss is still there and is seat 2's only Commander retreat
     event, so a count of 0 is the loss being excluded, not a game without
     one.
+
+    Re-derived 2026-10-01 for OQ-095 (every Agent turn ends only through its
+    owner's ``finish_agent_turn``; codec v125): the games differ from the
+    first Agent turn on and seed 24 seat 2 no longer retreats a Commander. A
+    scratch replay of full seeds 1-200 listing every ``troops_retreated``
+    event with Commanders: seed 2 seat 0 is the first seat whose Gruesome
+    Sacrifice pays a Commander (round 6), but it also retreats one through
+    Spice is Power (round 10), so the case is seed 6 seat 1 (Steersman
+    Y'rkoon), the first seat whose only Commander retreat is that loss: in
+    round 8 its ``lose_intrigue_troop`` for slot 0 takes the Commander from
+    the Conflict back to its supply (``unit_lost`` with one Commander).
+
+    Re-derived 2026-10-02 for L2 group A decision windows: seed 6 now
+    diverges in round 5, where seat 0's Imperial Privilege recall with no
+    target opens its confirm window instead of being skipped unasked. The
+    same listing over full seeds 1-200 still gives seed 2 seat 0 (Gruesome
+    Sacrifice round 6 plus Spice is Power round 10) first and seed 6 seat 1
+    as the first seat whose only Commander retreat is the loss. Its round-8
+    Gruesome Sacrifice now pays a troop for slot 0 and the Commander for
+    slot 1 (``lose_intrigue_troop`` with ``commanders`` 1: ``unit_lost``
+    with one Commander, its Commander supply 0 -> 1).
     """
 
-    spec = _spec(True, 24)
+    spec = _spec(True, 6)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
         event.event_id
         for event in events
         if event.kind == "troops_retreated"
-        and dict(event.payload).get("player") == 2
+        and dict(event.payload).get("player") == 1
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:5:player:2:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
+        "round:8:player:1:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
-    assert census["seats"][2]["bt.commander_retreats"] == 0
+    assert census["seats"][1]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(

@@ -38,7 +38,7 @@ import random
 import re
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from typing import Final
@@ -54,6 +54,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
@@ -62,6 +63,7 @@ from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choi
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.access import (
     ANONYMOUS,
     AccessMode,
@@ -96,9 +98,12 @@ from dune_imperium.server.session_log import (
 )
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
+    TURN_PASS_EVENTS,
     TURN_TAKING_EVENTS,
+    agent_turn_end_ready,
     answers_another_unit,
     at_turn_start,
+    finishing_seat,
     turn_start_seat,
     unit_seat,
 )
@@ -106,6 +111,9 @@ from dune_imperium.server.turn_end import (
 _LOGGER: Final = logging.getLogger(__name__)
 
 HUMAN_SEAT: Final = "human"
+# The banner prompt once nothing mandatory is left in an Agent turn
+# (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
+AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): ``random``, ``heuristic``, the
 # determinized-search ``rollout``, a trained policy ``checkpoint:<path>``, or
@@ -1158,11 +1166,16 @@ class GameSessionManager:
 
         One press ends every unit of a human seat, whatever step closed it
         and whether or not it can still be taken back. An explicit turn-end
-        action (``EXPLICIT_TURN_ENDS``) is that press itself, so it seals
-        the turn and hands over at once; any other step that ends an open
-        unit holds the game for ``confirm_turn``. The chance outcomes right
-        after the step are resolved first: a reshuffle in the middle of a
-        turn is not an end, and a turn can end in one.
+        action (``EXPLICIT_TURN_ENDS``) is that press itself, and so is a
+        turn-passing card (``TURN_PASS_EVENTS``, OQ-095 (6)): either seals
+        the turn and hands over at once, unless a Usurp trash's follow-up or
+        a reopen keeps the seat in the same turn. Every Agent turn ends that way
+        (``finish_agent_turn``, OQ-095); a step answering the pressed end's
+        own follow-up (a Usurp trash's Skill choice, ``finishing_seat``) is
+        still that one press and is sealed with it. Any other step that ends
+        an open unit holds the game for ``confirm_turn``. The chance
+        outcomes right after the step are resolved first: a reshuffle in the
+        middle of a turn is not an end, and a turn can end in one.
 
         ``before`` is the state the step was taken from and the step is the
         last live one. Returns whether the step handed the turn over.
@@ -1171,13 +1184,21 @@ class GameSessionManager:
         step_index = len(session.steps) - 1
         self._resolve_chance_locked(session)
         actor = action.actor
+        if finishing_seat(before) == actor:
+            self._seal_locked(session, actor)
+            return finishing_seat(session.state) != actor and not (
+                _agent_turn_is_open(session.state, actor)
+            )
         if not answers_another_unit(before, actor):
-            if action.action_id in EXPLICIT_TURN_ENDS:
-                session.open_units.pop(actor, None)
-                session.awaiting_confirmation = None
-                session.undo_floor = len(session.steps)
-                self._advance_locked(session)
-                return True
+            if action.action_id in EXPLICIT_TURN_ENDS or _passed_turn(
+                session, actor, step_index
+            ):
+                self._seal_locked(session, actor)
+                # A Usurp trash's follow-up or a reopen keeps the seat inside
+                # this same turn: the hand-over comes when the turn closes.
+                return finishing_seat(session.state) != actor and not (
+                    _agent_turn_is_open(session.state, actor)
+                )
             if actor not in session.open_units and not (
                 at_turn_start(before, actor)
                 and not _took_turn(session, actor, step_index)
@@ -1192,6 +1213,14 @@ class GameSessionManager:
         session.awaiting_confirmation = None
         self._advance_locked(session)
         return False
+
+    def _seal_locked(self, session: GameSession, seat: int) -> None:
+        """The seat's one press: seal its steps and let the game play on."""
+
+        session.open_units.pop(seat, None)
+        session.awaiting_confirmation = None
+        session.undo_floor = len(session.steps)
+        self._advance_locked(session)
 
     def _unit_ended_locked(self, session: GameSession, unit: int | None) -> bool:
         """Whether a human seat's open unit is over now.
@@ -1235,9 +1264,10 @@ class GameSessionManager:
     def _advance_locked(self, session: GameSession) -> None:
         """Resolve chance and AI decisions until a human must act or the end.
 
-        An AI seat answering a human seat's interrupt can close that human's
-        turn (its last effect made the AI discard, say); the game then
-        stops at that turn end for the human's press like any other.
+        An AI seat's answer cannot end a human Agent or Reveal turn (both
+        end only through their owner's press, OQ-095), but the check stays
+        for any unit an answer could still close: the game then stops at
+        that unit's end for the human's press like any other.
         """
 
         engine = session.engine
@@ -1337,11 +1367,16 @@ class GameSessionManager:
         pending = session.engine.current_decision(state)
         if isinstance(pending, PlayerDecision):
             frame = state.decision_stack[-1]
+            ready = agent_turn_end_ready(state) == pending.owner
             decision = {
                 "kind": str(frame.kind),
                 "owner": pending.owner,
                 "owner_is_human": session.seats[pending.owner] == HUMAN_SEAT,
-                "prompt": pending.prompt,
+                # Nothing mandatory is left in the seat's Agent turn: it may
+                # still play a Plot, deploy or return a specimen, and ends
+                # the turn with its one press (OQ-095). Public facts only.
+                "prompt": AGENT_TURN_END_PROMPT if ready else pending.prompt,
+                "turn_end_ready": ready,
             }
             # The Persuasion still unspent in a Reveal, for the buyer's
             # panel. It is table knowledge: the reveal and every purchase
@@ -1543,6 +1578,33 @@ def _open_undo_window(session: GameSession, seat: int) -> int:
 
     unsealed = len(session.steps) - session.undo_floor
     return max(0, min(undo_window(session.log, seat), unsealed))
+
+
+def _passed_turn(session: GameSession, seat: int, step_index: int) -> bool:
+    """Whether the live steps from ``step_index`` on passed ``seat``'s turn.
+
+    A turn-passing card (``TURN_PASS_EVENTS``) is the seat's turn end
+    itself (OQ-095 (6)); the caller holds the lock.
+    """
+
+    appended = len(session.steps) - step_index
+    return any(
+        event.kind in TURN_PASS_EVENTS and dict(event.payload).get("player") == seat
+        for entry in session.log[len(session.log) - appended :]
+        if isinstance(entry, LoggedStep)
+        for event in entry.events
+    )
+
+
+def _agent_turn_is_open(state: GameState, seat: int) -> bool:
+    """Whether ``seat``'s Agent-turn effect frame is still on the stack."""
+
+    return any(
+        frame.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == seat
+        for frame in state.decision_stack
+    )
 
 
 def _took_turn(session: GameSession, seat: int, step_index: int) -> bool:
@@ -1856,11 +1918,23 @@ def _serialize_action(
     """
 
     outcome = _dry_run(session, action)
-    # An explicit turn end seals the turn it ends (``_settle_locked``).
-    undoable = action.action_id not in EXPLICIT_TURN_ENDS and _action_is_undoable(
-        session, action, outcome
+    # An explicit turn end, a turn-passing card and a step of a pressed end's
+    # own follow-up seal the turn they end (``_settle_locked``).
+    undoable = (
+        action.action_id not in EXPLICIT_TURN_ENDS
+        and finishing_seat(session.state) != action.actor
+        and not (
+            outcome is not None
+            and any(
+                event.kind in TURN_PASS_EVENTS
+                and dict(event.payload).get("player") == action.actor
+                for event in outcome.events
+            )
+        )
+        and _action_is_undoable(session, action, outcome)
     )
     outcome = preview_outcome(action, outcome)
+    shortfalls = shortfall_outcome(session.engine, outcome)
     serialized: JsonObject = {
         "index": index,
         "action_id": action.action_id,
@@ -1868,8 +1942,8 @@ def _serialize_action(
         "detail": effect_action_text(session.state, action),
         "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
-        "warning": shortfall_warning(outcome),
-        "shortfall": shortfall_details(outcome),
+        "warning": shortfall_warning(shortfalls, action.actor),
+        "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
     revealed = reveal_preview(action, outcome)
@@ -1898,6 +1972,57 @@ def preview_outcome(
     if any(event.kind in SEALED_REVEAL_EVENTS for event in outcome.events):
         return None
     return outcome
+
+
+# More Intrigue reshuffles than one step's draws could ever ask for.
+_PREVIEW_RESHUFFLES: Final = 4
+
+
+def shortfall_outcome(
+    engine: UprisingRulesEngine, outcome: RuleResult | None
+) -> RuleResult | None:
+    """The dry run's outcome with the shortfalls of its Intrigue reshuffles.
+
+    An Intrigue draw the deck cannot cover stops at a chance step that
+    shuffles the discard pile into a new deck, and Suspensor Suits deploys
+    for the cards drawn after it in that chance step's own hook (OQ-042).
+    The shortfall is still this step's, so it is warned before the click
+    (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): the copy runs
+    the reshuffle with the frame's own options as the permutation, since how
+    many cards come off the new deck does not depend on their order, and
+    only the shortfall events of that continuation are added (counts only,
+    from public zones), never a card it drew. Every other preview
+    (``undoable``, ``strength_after``, ``reveal_preview``) stays on the dry
+    run itself.
+    """
+
+    if outcome is None:
+        return None
+    state = outcome.state
+    extra: list[GameEvent] = []
+    for _ in range(_PREVIEW_RESHUFFLES):
+        if not state.decision_stack:
+            break
+        frame = state.decision_stack[-1]
+        decision = frame.decision
+        if frame.kind != FrameKind.INTRIGUE_RESHUFFLE or not isinstance(
+            decision, ChanceDecision
+        ):
+            break
+        shuffle = ChanceOutcome(
+            decision_id=decision.decision_id, values=decision.options
+        )
+        try:
+            transition = engine.apply(state, shuffle)
+        except Exception:  # noqa: BLE001 - the preview just stops here
+            break
+        state = transition.state
+        extra.extend(
+            event for event in transition.events if event.kind in _SHORTFALL_EVENTS
+        )
+    if not extra:
+        return outcome
+    return RuleResult(state=outcome.state, events=(*outcome.events, *extra))
 
 
 def reveal_preview(
@@ -1938,20 +2063,15 @@ def subcommittee_preview(
     the turn: every line (claimed, joinable right after the step, or not
     now with its reason; no ``action_index``, the lines are not this
     list's), and ``joinable`` when at least one could be joined at once.
-    Not ``joinable`` with no lines when nothing is left to join, so the
-    chance would lapse. None for a step that takes no seat, or whose
-    outcome the previews may not read (``preview_outcome``).
+    With every subcommittee already taken every line says so (the offer
+    still opens with only its decline, OQ-076 (c)). None for a step that
+    takes no seat, or whose outcome the previews may not read
+    (``preview_outcome``).
     """
 
     if outcome is None:
         return None
     seat = action.actor
-    if any(
-        event.kind == "scouts_subcommittee_unavailable"
-        and dict(event.payload).get("player") == seat
-        for event in outcome.events
-    ):
-        return {"joinable": False, "lines": []}
     after = outcome.state
     if session.state.players[seat].high_council or not after.players[seat].high_council:
         return None
@@ -2008,60 +2128,107 @@ def _action_is_undoable(
     return not isinstance(session.engine.current_decision(after), ChanceDecision)
 
 
-def shortfall_warning(outcome: RuleResult | None) -> str | None:
-    """Describe a supply shortfall the action would run into, if any.
+def shortfall_warning(
+    outcome: RuleResult | None, player: int | None = None
+) -> str | None:
+    """Describe a shortfall the action would run into, if any.
 
     Specimens and recruits come from the troop supply and a short supply
     simply yields fewer (OQ-030, OQ-049); the choice stays legal, so the
-    player is told beforehand what the action will actually do.
+    player is told beforehand what the action will actually do. The same
+    goes for the shortfalls where nothing can be chosen (user ruling
+    2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): an Intrigue draw the
+    Intrigue deck and discard cannot cover together (both empty, or the
+    discard too small to shuffle in), Suspensor Suits troops that cannot
+    deploy (OQ-042, after such a reshuffle too, ``shortfall_outcome``),
+    and held Contract icons that fizzle as the turn-end press ends the turn
+    (OQ-059; the press itself is the confirmation, this is only the
+    warning). With ``player`` only that seat's shortfalls count -- the
+    step's own seat, as the play server passes it.
     """
 
-    if outcome is None:
-        return None
     notes: list[str] = []
-    for event in outcome.events:
-        payload = dict(event.payload)
-        if event.kind == "specimens_short":
+    for kind, requested, made in _shortfalls(outcome, player):
+        if kind == "specimens":
+            notes.append(f"supply 부족: specimen {requested}개 중 {made}개만 생성")
+        elif kind == "troops":
+            notes.append(f"supply 부족: troop {requested}개 중 {made}개만 recruit")
+        elif kind == "intrigue":
             notes.append(
-                "supply 부족: specimen "
-                f"{payload.get('requested')}개 중 {payload.get('generated')}개만 생성"
+                f"책략 카드 더미와 버림 더미를 합쳐도 {requested - made}장 모자람"
             )
-        elif event.kind == "troops_recruit_short":
-            requested, recruited = payload.get("requested"), payload.get("recruited")
-            notes.append(f"supply 부족: troop {requested}개 중 {recruited}개만 recruit")
+        elif kind == "suspensor":
+            notes.append(f"반중력 의복: 병력 {requested}개 중 {made}개만 배치")
+        else:
+            notes.append(f"계약 아이콘 {requested}개 소멸 — 가져갈 수 있는 계약 없음")
     return " · ".join(notes) if notes else None
 
 
-def shortfall_details(outcome: RuleResult | None) -> list[JsonValue] | None:
+def shortfall_details(
+    outcome: RuleResult | None, player: int | None = None
+) -> list[JsonValue] | None:
     """The same shortfalls as data, for a client that words them itself.
 
     ``warning`` stays the Korean sentence it always was; a browser showing
-    English builds its own from ``kind`` ("specimens" or "troops"),
-    ``requested`` and ``made``.
+    English builds its own from ``kind`` ("specimens", "troops",
+    "intrigue", "suspensor" or "contract"), ``requested`` and ``made``.
+    For "intrigue" ``requested`` is what the draw still asked for once the
+    deck ran out, so ``requested - made`` is the number of cards missing;
+    for "contract" ``requested`` is the number of icons and ``made`` is 0.
+    """
+
+    details: list[JsonValue] = [
+        {"kind": kind, "requested": requested, "made": made}
+        for kind, requested, made in _shortfalls(outcome, player)
+    ]
+    return details or None
+
+
+# Event kind -> (shortfall kind, payload key of what was asked for, payload
+# key of what was made). Suspensor Suits logs what is left over, so what was
+# asked for is the sum; a fizzled Contract icon made nothing.
+_SHORTFALL_EVENTS: Final[Mapping[str, tuple[str, str, str | None]]] = {
+    "specimens_short": ("specimens", "requested", "generated"),
+    "troops_recruit_short": ("troops", "requested", "recruited"),
+    "intrigue_draw_short": ("intrigue", "requested", "drawn"),
+    "suspensor_deployment_unavailable": ("suspensor", "troops", "deployed"),
+    "contract_icons_fizzled": ("contract", "count", None),
+}
+
+
+def _shortfalls(
+    outcome: RuleResult | None, player: int | None
+) -> list[tuple[str, int, int]]:
+    """``(kind, requested, made)`` for each shortfall event of the dry run.
+
+    Every one of these events is public and carries counts only, all of
+    them worked out from public zones (the troop supply, the Intrigue deck
+    and discard sizes, the seat's own held icons), so the warning shows the
+    acting seat nothing it could not see.
     """
 
     if outcome is None:
-        return None
-    details: list[JsonValue] = []
+        return []
+    found: list[tuple[str, int, int]] = []
     for event in outcome.events:
+        entry = _SHORTFALL_EVENTS.get(event.kind)
+        if entry is None:
+            continue
         payload = dict(event.payload)
-        if event.kind == "specimens_short":
-            details.append(
-                {
-                    "kind": "specimens",
-                    "requested": _jsonify(payload.get("requested")),
-                    "made": _jsonify(payload.get("generated")),
-                }
-            )
-        elif event.kind == "troops_recruit_short":
-            details.append(
-                {
-                    "kind": "troops",
-                    "requested": _jsonify(payload.get("requested")),
-                    "made": _jsonify(payload.get("recruited")),
-                }
-            )
-    return details or None
+        if player is not None and payload.get("player") != player:
+            continue
+        kind, asked_key, made_key = entry
+        made = _payload_count(payload, made_key) if made_key else 0
+        requested = _payload_count(payload, asked_key)
+        if kind == "suspensor":
+            requested += made
+        found.append((kind, requested, made))
+    return found
+
+
+def _payload_count(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    return value if type(value) is int else 0
 
 
 def _jsonify(value: object) -> JsonValue:

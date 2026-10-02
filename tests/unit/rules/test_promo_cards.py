@@ -626,12 +626,17 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
+    # v125 (L2): the recall confirms, resolve_imperial_privilege_without_recall
+    # (+1) and, with CHOAM, resolve_contract_without_recall (+1).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
     assert codec.size == (
-        4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1
+        4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1
     )
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
     assert choam_promo.size == (
-        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1
+        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 2 + 1
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

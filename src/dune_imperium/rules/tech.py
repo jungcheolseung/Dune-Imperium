@@ -134,22 +134,16 @@ def push_tech_acquisition(
     discount: int,
     source: str,
 ) -> RuleResult:
-    """Open a card-granted Acquire Tech, or note that nothing can be acquired."""
+    """Open a card-granted Acquire Tech.
+
+    It opens even with no tile left to take (every stack empty and no Secret
+    Project): the owner then confirms with ``decline_tech``, the only action
+    offered (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
+    모두 결정 창을 연다"; OQ-057 (9) "살 수 없으면 거절만").
+    """
 
     if not state.config.tech_module:
         raise ValueError("Acquire Tech requires the Tech Module")
-    owner = state.players[player]
-    if not face_up_tech_ids(state) and not owner.secret_project_tech_id:
-        return RuleResult(
-            state=state,
-            events=(
-                GameEvent(
-                    event_id=f"{source}:tech_unavailable",
-                    kind="tech_acquisition_unavailable",
-                    payload=(("player", player),),
-                ),
-            ),
-        )
     return RuleResult(
         state=state.push_decision(
             tech_acquisition_frame(player, discount=discount, source=source)
@@ -190,10 +184,16 @@ def _offer(state: GameState, player: int) -> tuple[int, str] | None:
     )
 
 
-def _candidate_tiles(
+def tech_candidates(
     state: GameState, owner: PlayerState
 ) -> tuple[tuple[TechTile, bool], ...]:
-    """Return the tiles the owner may choose from: stack tops, then the secret one."""
+    """Return the tiles the owner may choose from: stack tops, then the secret one.
+
+    Each with whether it is the owner's Secret Project. Empty when every
+    stack is empty and the owner keeps no Secret Project: an Acquire Tech
+    then offers only its refusal, and the page says why
+    (``display.unavailable``).
+    """
 
     candidates = [
         (TECH_TILES_BY_ID[tech_id], False) for tech_id in face_up_tech_ids(state)
@@ -238,7 +238,7 @@ def legal_tech_acquisition_actions(
     discount, _ = offer
     owner = state.players[player]
     actions = [DomainAction(action_id="decline_tech", actor=player)]
-    for tile, secret in _candidate_tiles(state, owner):
+    for tile, secret in tech_candidates(state, owner):
         cost = tech_cost(owner, tile, discount=discount, secret_project=secret)
         if owner.resources.spice < cost:
             continue
@@ -417,7 +417,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     working = replace(working, players=players)
 
     # --- frame bookkeeping ------------------------------------------------
-    turn_closed = False
     if context is not None:
         finish_board_icon(context, BOARD_ICON_TECH)
         context["troops_recruited"] = (
@@ -443,11 +442,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             )
         else:
             working = advance_after_effect(working, context, players)
-            # As the Agent turn's last effect the tile handed the turn over
-            # already; a recall-first for its Deep Cover Spies is still this
-            # turn's (OQ-044 (d)). A Tech frame without Agent context (a
-            # Plot) pops back to its own turn, which stays unflagged.
-            turn_closed = working.decision_stack[-1].kind == FrameKind.TURN
     else:
         # A card-granted Acquire Tech (a Plot) returns to the turn it was
         # played in, before or after the placement or in a Reveal: its troops
@@ -490,15 +484,8 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         working = contracts.state
         events.extend(contracts.events)
     if tile.acquire_may_trash_card:
-        # Same closed-turn hole as the Deep Cover Spies below: as the Agent
-        # turn's last effect this tile already handed the turn over, so a
-        # troop Eliminate Allies' trash recruits must not join the fresh
-        # "turn" frame that reopened underneath (OQ-044 (d)) [Main p. 10]
-        # [FAQ p. 4].
         working = working.push_decision(
-            optional_trash_frame(
-                player, f"{source}:{tech_id}", turn_closed=turn_closed
-            )
+            optional_trash_frame(player, f"{source}:{tech_id}")
         )
     for index in range(tile.acquire_deep_cover_spies):
         working = spy_placement_frame(
@@ -507,7 +494,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             ALL_POST_IDS,
             source=f"{source}:{tech_id}:{index}",
             deep_cover=True,
-            turn_closed=turn_closed,
         )
     if intrigue:
         drawn = draw_or_queue_intrigue_cards(
@@ -636,17 +622,6 @@ def _reveal_top(state: GameState, player: int) -> DecisionFrame | None:
     return owned_top_frame(state, FrameKind.REVEAL, player)
 
 
-def panopticon_spy_possible(owner: PlayerState) -> bool:
-    """Return whether Panopticon's Spy can still be placed this Reveal.
-
-    Thirteen posts outnumber the twelve Spies, so a Spy in supply or one
-    to recall first [Main pp. 11, 20] always finds a post; only a seat
-    whose Spies all left for the box (Advanced Data Analysis) has none.
-    """
-
-    return owner.spies_supply > 0 or bool(owner.spy_post_ids)
-
-
 def legal_tech_reveal_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
@@ -654,7 +629,12 @@ def legal_tech_reveal_actions(
 
     Reveal effects resolve in any order the owner likes [Main p. 12], so
     Forbidden Weapons' mandatory choice and Panopticon's Spy wait on the
-    Reveal frame until the owner takes them (OQ-044). The strength option
+    Reveal frame until the owner takes them (OQ-044). Panopticon's Spy is
+    always offered: the shared ``spy_placement`` frame it opens offers only
+    its decline when nothing can be placed, so the owner answers even a Spy
+    that cannot be placed (user ruling 2026-09-30, "결정 창 없이 자동으로
+    넘어가는 곳도 모두 결정 창을 연다"; with four players it never happens,
+    since Advanced Data Analysis boxes at most one Spy). The strength option
     "must lose one Influence with a Faction where you have at least one
     Influence (if possible)" [Bloodlines p. 12]: one action per such
     Faction (with the Alliance recipient when the loss hands a token to
@@ -700,7 +680,7 @@ def legal_tech_reveal_actions(
             )
         actions.extend(strength)
         actions.append(DomainAction(action_id="choose_tech_trash", actor=player))
-    if "panopticon" in pending and panopticon_spy_possible(owner):
+    if "panopticon" in pending:
         actions.append(DomainAction(action_id="place_tech_spy", actor=player))
     return tuple(actions)
 
@@ -816,6 +796,10 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
     hook pays them out after the transition, from the supply, into the
     Conflict (through the Reveal bookkeeping when the Reveal is open), and
     drops what the supply or a blocked deployment cannot honour (OQ-030).
+    What is dropped is logged with ``suspensor_deployment_unavailable``
+    (``troops`` left over, ``deployed`` paid), a partial shortfall included,
+    so the play server's dry run warns about it on the step that draws (user
+    ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
     """
 
     state = result.state
@@ -836,13 +820,7 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
             or not state.current_conflict_ids
             or units_deployment_blocked(state, player)
         ):
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:unavailable",
-                    kind="suspensor_deployment_unavailable",
-                    payload=(("player", player), ("troops", owed)),
-                )
-            )
+            events.append(_suspensor_shortfall_event(source, player, owed, 0))
             continue
         if reveal_is_open_for(state, player):
             staged = replace(
@@ -869,7 +847,27 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
                 payload=(("count", count), ("player", player), ("source", "tech")),
             )
         )
+        if count < owed:
+            # The supply covers only part of what is owed: the rest is lost
+            # (OQ-042 (b)), and logged (L2-Q4).
+            events.append(_suspensor_shortfall_event(source, player, owed, count))
     return RuleResult(state=state, events=tuple(events))
+
+
+def _suspensor_shortfall_event(
+    source: str, player: int, owed: int, deployed: int
+) -> GameEvent:
+    """The public event for Suspensor Suits troops that could not deploy."""
+
+    return GameEvent(
+        event_id=f"{source}:unavailable",
+        kind="suspensor_deployment_unavailable",
+        payload=(
+            ("deployed", deployed),
+            ("player", player),
+            ("troops", owed - deployed),
+        ),
+    )
 
 
 def apply_endgame_tech_effects(state: GameState) -> RuleResult:

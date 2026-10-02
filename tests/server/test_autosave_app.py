@@ -74,9 +74,17 @@ def _admin_client(app: FastAPI) -> TestClient:
 
 
 def _create(client: TestClient, **overrides: object) -> dict[str, object]:
+    """Start a game; a Leader-draft one, so seat 0's first turn end is held.
+
+    An Agent turn ends with its owner's own ``finish_agent_turn`` press and
+    is never held for the confirm press any more (OQ-095); a Leader pick
+    still is, and seat 0 picks first in this seed.
+    """
+
     payload: dict[str, object] = {
         "seats": ["human", "heuristic", "heuristic", "heuristic"],
         "game_seed": 21,
+        "leader_draft": True,
     }
     payload.update(overrides)
     response = client.post("/games", json=payload)
@@ -95,6 +103,12 @@ def _claim_seat0(client: TestClient, game_id: object) -> dict[str, object]:
 def _play_seat0_until_confirmation(
     client: TestClient, game_id: object, summary: dict[str, object]
 ) -> dict[str, object]:
+    """Play seat 0's first legal action until its turn end awaits the press.
+
+    Only a unit with no explicit end is held: the Leader pick of
+    ``_create``'s draft here, never an Agent turn (OQ-095).
+    """
+
     for _ in range(400):
         if summary.get("confirmation") == 0:
             return summary
@@ -119,11 +133,46 @@ def _confirm_seat0(
     return result
 
 
+def _finish_index(client: TestClient, game_id: object) -> int:
+    """Return the index of seat 0's ``finish_agent_turn`` press."""
+
+    response = client.get(f"/games/{game_id}/seats/0/actions")
+    assert response.status_code == 200, response.text
+    actions = _rows(_obj(response.json())["actions"])
+    indexes = [
+        _int(action["index"])
+        for action in actions
+        if action["action_id"] == "finish_agent_turn"
+    ]
+    assert len(indexes) == 1, "a ready Agent turn offers exactly one end press"
+    return indexes[0]
+
+
 def _play_one_hand_over(
     client: TestClient, game_id: object, summary: dict[str, object]
 ) -> dict[str, object]:
-    summary = _play_seat0_until_confirmation(client, game_id, summary)
-    return _confirm_seat0(client, game_id, summary)
+    """Play seat 0 until it hands its turn over once; return the summary after.
+
+    A held unit end (the Leader pick of ``_create``'s draft) waits for the
+    confirm press. An Agent turn is never held: it ends with its owner's own
+    ``finish_agent_turn`` (OQ-095), pressed here once the summary says
+    nothing mandatory is left (``turn_end_ready``); that press hands over.
+    """
+
+    for _ in range(400):
+        if summary.get("confirmation") == 0:
+            return _confirm_seat0(client, game_id, summary)
+        ready = _obj(summary["decision"]).get("turn_end_ready") is True
+        index = _finish_index(client, game_id) if ready else 0
+        response = client.post(
+            f"/games/{game_id}/actions",
+            json={"seat": 0, "revision": summary["revision"], "index": index},
+        )
+        assert response.status_code == 200, response.text
+        summary = response.json()
+        if ready:
+            return summary
+    raise AssertionError("seat 0 never handed its turn over")
 
 
 # --- one file per game, listed with autosave metadata ------------------
@@ -136,7 +185,10 @@ def test_a_confirmed_turn_leaves_exactly_one_autosave_file(tmp_path: Path) -> No
     game_id = summary["game_id"]
     summary = _claim_seat0(admin, game_id)
 
-    _play_one_hand_over(admin, game_id, summary)
+    # The held Leader pick of ``_create``'s draft (OQ-095: no Agent turn is
+    # held), handed over by the confirm press.
+    summary = _play_seat0_until_confirmation(admin, game_id, summary)
+    _confirm_seat0(admin, game_id, summary)
 
     files = list((tmp_path / "saves").glob("*.json"))
     assert [path.name for path in files] == [f"{game_id}.json"]

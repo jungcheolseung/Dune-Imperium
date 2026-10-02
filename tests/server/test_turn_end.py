@@ -1,48 +1,67 @@
-"""Tests for the one-press turn-end convention (2026-09-23).
+"""Tests for the one-press turn-end convention (2026-09-23, OQ-095).
 
-The server holds every turn end of a human seat until that seat presses
-"턴 종료" exactly once (project convention, not a rule; see the module
-docstring of ``dune_imperium.server.turn_end``). Which steps end a turn is a
-reading of the engine's own decision stack, so these tests exercise the
-session layer (``turn_end.py`` + ``sessions.py``), not any card or Main-rules
-behaviour -- the cards used to reach a scenario (Covert Operation, Holy War)
-are exercised for their card text elsewhere (``tests/unit/rules/
-test_agent_effects.py``, ``tests/unit/rules/test_bloodlines_cards.py``); here
-they are only a vehicle to reach a decision-stack shape.
+Every turn end of a human seat is exactly one press of "턴 종료" (project
+convention, not a rule; see the module docstring of
+``dune_imperium.server.turn_end``). Since user ruling OQ-095 an Agent turn
+ends only through its owner's ``finish_agent_turn``, which is that press
+itself, and so is a turn-passing card (Withdrawn, Litany Against Fear;
+OQ-095 (6)); the server still holds the other unit ends (a Leader pick in
+the OQ-007 draft, Conflict rewards, a Control defense, an Arrakeen Scouts
+line) for ``confirm_turn``. Which steps end a turn is a reading of the
+engine's own decision stack, so these tests exercise the session layer
+(``turn_end.py`` + ``sessions.py``), not any card or Main-rules behaviour --
+the cards used to reach a scenario (Covert Operation, Holy War, Usurp) are
+exercised for their card text elsewhere (``tests/unit/rules/
+test_agent_effects.py``, ``tests/unit/rules/test_bloodlines_cards.py``,
+``tests/unit/rules/test_immortality_tleilaxu_cards.py``); here they are only
+a vehicle to reach a decision-stack shape.
 
 Every seed below was found by a scratch search over seeds, not guessed.
 """
 
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
+    DomainAction,
     GamePhase,
     GameState,
     PlayerDecision,
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.combat_deployment import FINISHING_KEY
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.persistence import SaveError
 from dune_imperium.server.session_log import live_steps
 from dune_imperium.server.sessions import (
+    AGENT_TURN_END_PROMPT,
+    GameSession,
     GameSessionManager,
     JsonObject,
     SessionError,
 )
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
+    TURN_PASS_EVENTS,
     TURN_TAKING_EVENTS,
+    agent_turn_end_ready,
     answers_another_unit,
     at_turn_start,
+    finishing_seat,
     turn_start_seat,
     unit_seat,
 )
@@ -59,6 +78,7 @@ HUMAN_FIRST = (
 )
 TWO_HUMANS = ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table")
 HUMAN_VS_RANDOM_AI = ("human", "random", "random", "random")
+_PROMPTS_KO = Path(sessions_module.__file__).with_name("static") / "prompts_ko.js"
 
 
 def _obj(value: object) -> dict[str, object]:
@@ -99,11 +119,17 @@ def _play_until(
 
 
 def _play_until_seat0_offers(
-    manager: GameSessionManager, game_id: str, summary: JsonObject, action_id: str
+    manager: GameSessionManager,
+    game_id: str,
+    summary: JsonObject,
+    action_id: str,
+    *,
+    kind: str | None = None,
 ) -> tuple[JsonObject, int]:
     """Advance like ``_play_until``, stopping right before seat 0 would take
     its default (index-0) action, whenever ``action_id`` is one of its
-    options. Returns the summary and that option's index."""
+    options (and, with ``kind``, the decision is of that frame kind).
+    Returns the summary and that option's index."""
 
     while True:
         if summary["finished"]:
@@ -112,9 +138,10 @@ def _play_until_seat0_offers(
         if isinstance(held, int):
             summary = manager.confirm_turn(game_id, held, _int(summary["revision"]))
             continue
-        owner = _int(_obj(summary["decision"])["owner"])
+        decision = _obj(summary["decision"])
+        owner = _int(decision["owner"])
         actions = _rows(manager.legal_actions(game_id, owner)["actions"])
-        if owner == 0:
+        if owner == 0 and (kind is None or decision["kind"] == kind):
             for entry in actions:
                 if entry["action_id"] == action_id:
                     return summary, _int(entry["index"])
@@ -289,17 +316,319 @@ def test_an_explicit_end_handing_straight_to_a_human_still_seals_the_turn() -> N
         manager.undo(game_id, 0, _int(summary["revision"]))
 
 
+# ------------------------------------------------------- turn-passing cards
+
+_STARTERS = starting_deck_instance_ids(0)
+_DAGGER = next(card for card in _STARTERS if ":dagger:" in card)
+
+
+def _turn_pass_game(owner: PlayerState) -> tuple[GameSessionManager, str]:
+    """Seat 0's fresh turn holding a turn-passing card, human seat 1 next.
+
+    The card-level setup of tests/unit/rules/test_bloodlines_cards.py::
+    test_litany_against_fear_draws_and_passes_the_turn and
+    tests/unit/rules/test_twisted_intrigue.py::
+    test_withdrawn_passes_the_turn_and_only_at_its_start. Seats 2 and 3 (AI)
+    have revealed, so the pass hands the turn straight to human seat 1 and
+    nothing auto-plays past it.
+    """
+
+    state = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=(
+            owner,
+            PlayerState(player_id=1, hand=(_DAGGER.replace("player:0:", "player:1:"),)),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    manager = GameSessionManager()
+    summary = manager.create_game(TWO_HUMANS, game_seed=0, bloodlines=True)
+    game_id = str(summary["game_id"])
+    manager._get(game_id).state = state
+    return manager, game_id
+
+
+@pytest.mark.parametrize(
+    ("owner", "action_id", "event"),
+    [
+        pytest.param(
+            PlayerState(
+                player_id=0,
+                hand=("imperium:litany_against_fear:0",),
+                deck=_STARTERS[1:5],
+            ),
+            "play_turn_start_card",
+            "turn_start_card_played",
+            id="litany_against_fear",
+        ),
+        pytest.param(
+            PlayerState(
+                player_id=0,
+                leader_id="piter_de_vries",
+                intrigue_cards=("intrigue:twisted_withdrawn:0",),
+                hand=(_DAGGER,),
+            ),
+            "play_intrigue",
+            "turn_passed",
+            id="withdrawn",
+        ),
+    ],
+)
+def test_a_turn_passing_card_is_the_press_itself(
+    owner: PlayerState, action_id: str, event: str
+) -> None:
+    # OQ-095 (6): a turn-passing card is the seat's turn end itself -- "카드
+    # 효과로 턴 넘김 버튼을 눌렀다면 그건 턴 종료를 누른거랑 같으니까", "카드
+    # 사용이 곧 턴 종료" (user, 2026-10-01). The play is listed as one that
+    # cannot be taken back (Withdrawn's play alone reveals nothing, so only
+    # this rule seals it), seals the seat's steps and hands over at once:
+    # no confirm_turn follows it.
+    manager, game_id = _turn_pass_game(owner)
+    session = manager._get(game_id)
+    calls: list[str] = []
+    manager.add_hand_over_listener(calls.append)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    entry = next(a for a in actions if a["action_id"] == action_id)
+    assert entry["undoable"] is False
+
+    log_before = len(session.log)
+    summary = manager.apply_action(game_id, 0, 0, _int(entry["index"]))
+
+    assert event in TURN_PASS_EVENTS
+    assert event in {
+        logged.kind
+        for step in live_steps(session.log[log_before:])
+        for logged in step.events
+    }
+    assert summary["confirmation"] is None
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "turn"
+    assert decision["owner"] == 1 and decision["owner_is_human"] is True
+    assert _rows(manager.legal_actions(game_id, 1)["actions"])
+    assert calls == [game_id]
+    assert 0 not in session.open_units
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    with pytest.raises(SessionError, match="at most 0 step"):
+        manager.undo(game_id, 0, _int(summary["revision"]))
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+
+
+# --------------------------------------------------- Usurp's finishing press
+
+_IMMORTALITY_STARTERS = starting_deck_instance_ids(0, immortality=True)
+_USURP = "tleilaxu:usurp:0"
+_STANDARD = "imperium:sardaukar_standard:0"
+
+
+def _usurp_seat(seat: int, **extra: object) -> PlayerState:
+    values: dict[str, object] = {
+        "player_id": seat,
+        "research_space": RESEARCH_START_ID,
+        "family_atomics": True,
+    }
+    values.update(extra)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def _usurp_game(manager: GameSessionManager) -> str:
+    """Seat 0's fresh turn holding Usurp, Sardaukar Standard in the Row.
+
+    The engine-level setup of tests/unit/rules/
+    test_immortality_tleilaxu_cards.py::
+    test_usurped_sardaukar_standard_commander_is_this_turns_and_reopens_it:
+    every other seat has revealed, so seat 0's own next turn follows its
+    turn end and no AI seat plays.
+    """
+
+    experimentation = next(
+        card for card in _IMMORTALITY_STARTERS if "experimentation:0" in card
+    )
+    imperium = imperium_deck_instance_ids(False)
+    skills = skill_tile_instance_ids()
+    hand = (_USURP, experimentation)
+    owner = _usurp_seat(
+        0,
+        hand=hand,
+        deck=tuple(card for card in _IMMORTALITY_STARTERS if card not in hand),
+        resources=Resources(solari=4, spice=2, water=2),
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, immortality=True, promo_cards=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False, immortality=True)[:6],
+        imperium_row=(_STANDARD, *imperium[1:5]),
+        imperium_deck=imperium[5:20],
+        tleilaxu_track_spice=2,
+        sardaukar_commanders_bank=1,
+        skill_face_up=skills[:4],
+        skill_stack=skills[4:],
+        players=(
+            owner,
+            *(_usurp_seat(seat, has_revealed=True) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    summary = manager.create_game(
+        HUMAN_FIRST, game_seed=0, bloodlines=True, immortality=True, promo_cards=True
+    )
+    game_id = str(summary["game_id"])
+    manager._get(game_id).state = state
+    return game_id
+
+
+@pytest.mark.parametrize(
+    ("space_id", "reopens"),
+    [
+        # A Combat space: the Commander the trash recruits may deploy, so
+        # the turn reopens for it [Main p. 10] (OQ-095 (5)).
+        pytest.param("arrakeen", True, id="combat_space_reopens"),
+        # No Combat deployment window: the turn closes after the choice.
+        pytest.param("dutiful_service", False, id="other_space_hands_over"),
+    ],
+)
+def test_a_usurp_trash_after_the_press_is_part_of_that_press(
+    space_id: str, reopens: bool
+) -> None:
+    # OQ-095 (4)-(5): the press trashes the Usurped Sardaukar Standard, and
+    # its Skill choice resolves on top of the owner's waiting ("finishing")
+    # frame. Answering it is still that one press (turn_end.finishing_seat):
+    # it is not held, cannot be taken back, and the turn then either hands
+    # over or reopens (agent_turn_reopened) for a second press of its own --
+    # never a confirm_turn.
+    manager = GameSessionManager()
+    game_id = _usurp_game(manager)
+    session = manager._get(game_id)
+    summary = manager.summary(game_id)
+
+    def take(entry: dict[str, object]) -> JsonObject:
+        taken = manager.apply_action(
+            game_id, 0, _int(manager.summary(game_id)["revision"]), _int(entry["index"])
+        )
+        assert taken["confirmation"] is None
+        return taken
+
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    take(
+        next(
+            a
+            for a in actions
+            if a["action_id"] == "agent_turn"
+            and _obj(a["arguments"]).get("card_id") == _USURP
+            and _obj(a["arguments"]).get("space_id") == space_id
+            and _obj(a["arguments"]).get("graft") is True
+            and "infiltrate_post_id" not in _obj(a["arguments"])
+        )
+    )
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    summary = take(
+        next(
+            a
+            for a in actions
+            if a["action_id"] == "choose_graft_partner"
+            and _obj(a["arguments"])["card_id"] == _STANDARD
+        )
+    )
+    for _ in range(20):
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        if any(a["action_id"] == "finish_agent_turn" for a in actions):
+            break
+        assert _obj(summary["decision"])["turn_end_ready"] is False
+        summary = take(
+            next(a for a in actions if not str(a["action_id"]).startswith("deploy"))
+        )
+    else:
+        raise AssertionError("the turn end was never offered")
+    assert _obj(summary["decision"])["turn_end_ready"] is True
+    assert session.state.players[0].usurped_row_card_id == _STANDARD
+    press = next(a for a in actions if a["action_id"] == "finish_agent_turn")
+    assert press["undoable"] is False
+
+    summary = take(press)
+
+    # The trash left its Skill choice above the waiting frame.
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "skill_choice" and decision["owner"] == 0
+    assert decision["turn_end_ready"] is False
+    assert finishing_seat(session.state) == 0
+    assert agent_turn_end_ready(session.state) is None
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    choices = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert choices and all(a["undoable"] is False for a in choices)
+    log_before = len(session.log)
+
+    summary = take(choices[0])
+
+    assert finishing_seat(session.state) is None
+    owner = session.state.players[0]
+    assert _STANDARD in owner.trashed and owner.usurped_row_card_id == ""
+    assert owner.commanders_garrison == 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    with pytest.raises(SessionError, match="at most 0 step"):
+        manager.undo(game_id, 0, _int(summary["revision"]))
+    reopened = "agent_turn_reopened" in {
+        logged.kind
+        for step in live_steps(session.log[log_before:])
+        for logged in step.events
+    }
+    assert reopened is reopens
+    decision = _obj(summary["decision"])
+    if reopens:
+        # The reopened turn waits for its own second press, with the new
+        # Commander's deployment offered beside it.
+        assert decision["kind"] == "agent_effects" and decision["owner"] == 0
+        assert decision["turn_end_ready"] is True
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        offered = {str(a["action_id"]) for a in actions}
+        assert {"deploy_commanders", "finish_agent_turn"} <= offered
+        summary = take(
+            next(a for a in actions if a["action_id"] == "finish_agent_turn")
+        )
+        decision = _obj(summary["decision"])
+    # Every other seat has revealed: seat 0's own fresh turn, open at once.
+    assert decision["kind"] == "turn" and decision["owner"] == 0
+    assert 0 not in session.open_units
+    assert _rows(manager.legal_actions(game_id, 0)["actions"])
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+
+
 # ------------------------------------------------------------- interrupts
 
 
 def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
-    # Seed 7 (bloodlines, three "random" AI opponents): a Holy War-like
+    # Seed 12 (bloodlines, three "random" AI opponents): a Holy War-like
     # effect from an AI seat forces seat 0 to lose one unit while that AI's
     # own turn is still open. Answering it is not a turn end of seat 0's.
     # (Re-searched 2026-09-26: the card-transcription audit's rules fixes
-    # moved the old seed 12 off this shape; seeds 7 and 16 of 0-16 reach it.)
+    # moved the old seed 12 off this shape. Re-searched again 2026-10-01:
+    # every Agent turn now waits for its owner's finish_agent_turn (OQ-095),
+    # which moved seed 7 off it; seed 12 is the only one of 0-39 reaching
+    # it under this index-0 walk.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=7, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=12, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
@@ -315,6 +644,130 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     before_revision = _int(summary["revision"])
     summary = manager.apply_action(game_id, 0, before_revision, 0)
     assert summary["confirmation"] is None
+
+
+_HOLY_WAR = "imperium:holy_war:0"
+
+
+def _holy_war_game(loser: PlayerState) -> tuple[GameSessionManager, str]:
+    """Human seat 0 has sent Holy War to Assembly Hall, its Agent box still
+    to resolve; human seat 1 is ``loser``, AI seats 2 and 3 hold three
+    garrison troops each. The card-level setup of
+    tests/unit/rules/test_bloodlines_cards.py::
+    test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy."""
+
+    owner = PlayerState(player_id=0, hand=(_HOLY_WAR,), deck=_STARTERS[:4])
+    state = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=(owner, loser, PlayerState(player_id=2), PlayerState(player_id=3)),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    manager = GameSessionManager()
+    summary = manager.create_game(TWO_HUMANS, game_seed=0, bloodlines=True)
+    game_id = str(summary["game_id"])
+    manager._get(game_id).state = state
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    send = next(
+        a
+        for a in actions
+        if a["action_id"] == "agent_turn"
+        and _obj(a["arguments"]).get("card_id") == _HOLY_WAR
+        and _obj(a["arguments"]).get("space_id") == "assembly_hall"
+    )
+    summary = manager.apply_action(game_id, 0, 0, _int(send["index"]))
+    # Assembly Hall's own Intrigue card first, so only the box is left.
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    board = next(a for a in actions if a["action_id"] == "resolve_board_effect")
+    manager.apply_action(game_id, 0, _int(summary["revision"]), _int(board["index"]))
+    return manager, game_id
+
+
+@pytest.mark.parametrize(
+    ("loser", "answer", "event"),
+    [
+        pytest.param(
+            PlayerState(player_id=1), "lose_unit", "unit_lost", id="one_option"
+        ),
+        pytest.param(
+            PlayerState(player_id=1, troops_supply=12, troops_garrison=0),
+            "resolve_unit_loss_without_unit",
+            "unit_loss_unavailable",
+            id="no_unit",
+        ),
+    ],
+)
+def test_the_holy_war_owner_waits_for_a_human_opponents_unit_loss(
+    loser: PlayerState, answer: str, event: str
+) -> None:
+    # User ruling 2026-09-30 (OQ-036 (a)): every opponent is asked, even
+    # with a single option or none ("선택지가 단 하나여도 어쨌든 확인을
+    # 거치는 걸로 통일하는게 깔끔해"). The window sits above the owner's
+    # still-open Agent turn (OQ-095), so the owner's turn end is not offered
+    # until the human opponent has answered (``agent_turn_end_ready``), and
+    # that answer is an interrupt, not a turn end of the opponent's own: it
+    # is not held for confirm_turn.
+    manager, game_id = _holy_war_game(loser)
+    session = manager._get(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in actions] == ["resolve_agent_card_effect"]
+    box = actions[0]
+    summary = manager.apply_action(
+        game_id, 0, _int(manager.summary(game_id)["revision"]), _int(box["index"])
+    )
+
+    assert summary["confirmation"] is None
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "opponent_unit_loss"
+    assert decision["owner"] == 1 and decision["owner_is_human"] is True
+    assert decision["turn_end_ready"] is False
+    assert agent_turn_end_ready(session.state) is None
+    assert manager.legal_actions(game_id, 0)["actions"] == []
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+    payload = manager.legal_actions(game_id, 1)
+    offered = _rows(payload["actions"])
+    assert [a["action_id"] for a in offered] == [answer]
+    # The zones it cannot lose from are shown greyed out with the reason.
+    greyed = _rows(_obj(payload["unavailable"])["rows"])
+    assert {row["surface"] for row in greyed} == {"choice"}
+    assert {row["reason_ko"] for row in greyed} == (
+        {"잃을 유닛 없음"} if answer != "lose_unit" else {"{conflict}에 {troop} 없음"}
+    )
+
+    log_before = len(session.log)
+    summary = manager.apply_action(
+        game_id, 1, _int(summary["revision"]), _int(offered[0]["index"])
+    )
+
+    assert summary["confirmation"] is None
+    assert 1 not in session.open_units
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 1, _int(summary["revision"]))
+    logged = [
+        (entry.kind, dict(entry.payload).get("player"))
+        for step in live_steps(session.log[log_before:])
+        for entry in step.events
+    ]
+    # Seat 1's own answer, then AI seats 2 and 3 answer theirs at once.
+    assert (event, 1) in logged
+    assert ("unit_lost", 2) in logged and ("unit_lost", 3) in logged
+    # Every opponent has answered: the owner's turn end is offered now.
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "agent_effects" and decision["owner"] == 0
+    assert decision["turn_end_ready"] is True
+    offered = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert "finish_agent_turn" in {a["action_id"] for a in offered}
 
 
 def _covert_operation_instance(card_id: str) -> str:
@@ -408,18 +861,17 @@ def test_a_humans_own_covert_operation_does_not_hold_it_mid_turn() -> None:
     assert session.state.players[2].discard_pile == (second_discard,)
 
 
-def test_a_humans_own_effect_that_closes_its_turn_holds_for_that_human() -> None:
-    # The other half of the same clause: when Covert Operation is the human
-    # seat's LAST pending effect (nothing else of the turn still open), the
-    # step that closes the human's unit is an AI seat's own discard, not a
-    # step of the human's at all -- and the hold still falls on the human
-    # (every implicit turn end holds for its owner, whoever's step ended
-    # it), with the pending decision moving on to the next seat, never back
-    # to the human. Built like
-    # test_a_humans_own_covert_operation_does_not_hold_it_mid_turn, but the
-    # board's own Intrigue-draw icon is resolved BEFORE the personal card
-    # effect so nothing is left pending once the last opponent discards
-    # (probe: scratchpad/probe2.py, 2026-09-24 session).
+def _covert_operation_game(
+    manager: GameSessionManager,
+) -> tuple[str, str, str]:
+    """Seat 0's open Covert Operation turn at Assembly Hall, its last effect
+    pending: the fixture of
+    test_a_humans_own_covert_operation_does_not_hold_it_mid_turn, with the
+    board's own Intrigue-draw icon resolved BEFORE the personal card effect
+    so nothing else is left once the last opponent discards (probe:
+    scratchpad/probe2.py, 2026-09-24 session). Returns the game id and the
+    two cards the AI opponents will discard."""
+
     covert_operation = _covert_operation_instance("covert_operation")
     first_discard = _starter_instance("dagger").replace("player:0:", "player:1:")
     second_discard = _covert_operation_instance("spacing_guild_s_favor")
@@ -450,51 +902,133 @@ def test_a_humans_own_effect_that_closes_its_turn_holds_for_that_human() -> None
         ),
     )
 
-    manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
+    manager._get(game_id).state = state
+    summary = manager.summary(game_id)
+    for wanted in ("agent_turn", "decline_gather_intelligence", "resolve_board_effect"):
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        entry = next(
+            a
+            for a in actions
+            if a["action_id"] == wanted
+            and _obj(a["arguments"]).get("space_id", "assembly_hall") == "assembly_hall"
+        )
+        summary = manager.apply_action(
+            game_id, 0, _int(summary["revision"]), _int(entry["index"])
+        )
+        assert summary["confirmation"] is None
+    return game_id, first_discard, second_discard
+
+
+def test_a_humans_own_last_effect_answered_by_ai_seats_keeps_its_turn() -> None:
+    # The other half of the same clause: Covert Operation is the human
+    # seat's LAST pending effect, and the AI opponents' discards are the
+    # last steps of its effects. Before OQ-095 those AI steps closed the
+    # human's unit and held the game for it; now an Agent turn ends only
+    # through its owner's finish_agent_turn, even with nothing left to
+    # resolve, so the decision comes straight back to the human's own open
+    # turn, unheld, and its one press hands over -- no confirm_turn.
+    manager = GameSessionManager()
+    game_id, first_discard, second_discard = _covert_operation_game(manager)
     session = manager._get(game_id)
-    session.state = state
-
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    agent_turn = next(
-        a
-        for a in actions
-        if a["action_id"] == "agent_turn"
-        and _obj(a["arguments"])["space_id"] == "assembly_hall"
-    )
-    summary = manager.apply_action(game_id, 0, 0, _int(agent_turn["index"]))
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    decline = next(
-        a for a in actions if a["action_id"] == "decline_gather_intelligence"
-    )
-    summary = manager.apply_action(
-        game_id, 0, _int(summary["revision"]), _int(decline["index"])
-    )
-
-    # Resolve the space's own Intrigue-draw icon first: once this is done,
-    # Covert Operation is the human's only still-pending effect.
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    board = next(a for a in actions if a["action_id"] == "resolve_board_effect")
-    summary = manager.apply_action(
-        game_id, 0, _int(summary["revision"]), _int(board["index"])
-    )
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
     assert [a["action_id"] for a in actions] == ["resolve_agent_card_effect"]
 
     summary = manager.apply_action(
+        game_id,
+        0,
+        _int(manager.summary(game_id)["revision"]),
+        _int(actions[0]["index"]),
+    )
+
+    # Both AI opponents discarded inside this one call; the decision is back
+    # with the human's still-open Agent turn, which only its press ends.
+    assert summary["confirmation"] is None
+    decision = _obj(summary["decision"])
+    assert decision["owner"] == 0
+    assert decision["kind"] == "agent_effects"
+    assert decision["turn_end_ready"] is True
+    assert session.state.players[1].discard_pile == (first_discard,)
+    assert session.state.players[2].discard_pile == (second_discard,)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in actions] == ["finish_agent_turn"]
+    assert actions[0]["undoable"] is False
+
+    steps_before = len(session.steps)
+    summary = manager.apply_action(
         game_id, 0, _int(summary["revision"]), _int(actions[0]["index"])
     )
 
-    # Both AI opponents discarded inside this one call; the hold falls on
-    # the human (the actor of neither closing step), and the decision has
-    # already moved on to the next seat.
-    assert summary["confirmation"] == 0
+    # The press handed over at once: the AI seats played their turns, and
+    # the decision is seat 0's next turn, open to it without a second press.
+    assert summary["confirmation"] is None
+    assert {
+        step.actor
+        for step in session.steps[steps_before + 1 :]
+        if isinstance(step, DomainAction)
+    } >= {1, 2, 3}
     decision = _obj(summary["decision"])
-    assert decision["owner"] == 1
-    assert manager.legal_actions(game_id, 0)["actions"] == []
-    assert session.state.players[1].discard_pile == (first_discard,)
-    assert session.state.players[2].discard_pile == (second_discard,)
+    assert decision["owner"] == 0 and decision["kind"] == "turn"
+    assert _rows(manager.legal_actions(game_id, 0)["actions"])
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+
+
+def test_the_summary_says_when_only_the_turn_end_and_optional_steps_remain() -> None:
+    # OQ-095: once nothing mandatory is left in an Agent turn, the decision
+    # carries ``turn_end_ready`` and the prompt asks for the press (its
+    # Korean twin is in static/prompts_ko.js); while a mandatory effect is
+    # still pending it does not. Public facts only, so it is the same
+    # summary for every seat.
+    manager = GameSessionManager()
+    game_id, _, _ = _covert_operation_game(manager)
+    summary = manager.summary(game_id)
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "agent_effects" and decision["owner"] == 0
+    assert decision["turn_end_ready"] is False
+    assert decision["prompt"] == "Choose the next Agent-turn effect to resolve"
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert "finish_agent_turn" not in {a["action_id"] for a in actions}
+
+    summary = manager.apply_action(
+        game_id, 0, _int(summary["revision"]), _int(actions[0]["index"])
+    )
+    decision = _obj(summary["decision"])
+    assert decision["turn_end_ready"] is True
+    assert decision["prompt"] == AGENT_TURN_END_PROMPT
+    assert f'"{AGENT_TURN_END_PROMPT}": "' in _PROMPTS_KO.read_text(encoding="utf-8")
+
+    # A seat choosing its turn is never "ready to end" it.
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    summary = manager.apply_action(
+        game_id, 0, _int(summary["revision"]), _int(actions[0]["index"])
+    )
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "turn"
+    assert decision["turn_end_ready"] is False
+    assert decision["prompt"] != AGENT_TURN_END_PROMPT
+
+
+def test_a_ready_turn_end_still_offers_the_optional_steps() -> None:
+    # Seed 0: seat 0's first Agent turn reaches the point where only the
+    # Combat deployment (OQ-029) and the end are left. The deployment stays
+    # offered beside finish_agent_turn, after which the end is listed, and
+    # the summary already says the turn is ready to end.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    summary, _ = _play_until_seat0_offers(
+        manager, game_id, summary, "finish_agent_turn"
+    )
+    decision = _obj(summary["decision"])
+    assert decision["turn_end_ready"] is True
+    assert decision["prompt"] == AGENT_TURN_END_PROMPT
+    offered = [
+        str(a["action_id"]) for a in _rows(manager.legal_actions(game_id, 0)["actions"])
+    ]
+    assert set(offered) == {"deploy_troops", "finish_agent_turn"}
+    assert offered[-1] == "finish_agent_turn"
 
 
 # ------------------------------------------------------- hand-over listener
@@ -508,16 +1042,18 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # already revealed this round. ``_turn_passed`` alone reads that as
     # "still my turn" and would never announce the hand-over a human
     # server's autosave relies on (``add_hand_over_listener``); ``ended``
-    # is exactly what still fires it. Seed 18, three random AI opponents,
-    # found by a scratch random walk (rng seed 18 * 9973 + 1); see
-    # scratchpad/verify_item4.py (2026-09-24 session).
+    # is exactly what still fires it. Seed 33, three random AI opponents,
+    # found by a scratch random walk (rng seed 33 * 9973 + 1): seed 18 of
+    # scratchpad/verify_item4.py (2026-09-24 session) no longer reaches it
+    # once every Agent turn waits for its finish_agent_turn (OQ-095), and
+    # seed 33 is the first of 0-39 whose end is a finish_agent_turn.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=18)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=33)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(18 * 9973 + 1)
+    rng = random.Random(33 * 9973 + 1)
 
     found = False
     for _ in range(6000):
@@ -535,7 +1071,11 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
         summary = manager.apply_action(
             game_id, owner, _int(summary["revision"]), _int(choice["index"])
         )
-        if owner == 0 and choice["action_id"] in EXPLICIT_TURN_ENDS:
+        if (
+            owner == 0
+            and choice["action_id"] == "finish_agent_turn"
+            and not summary["finished"]
+        ):
             decision = _obj(summary["decision"])
             if (
                 decision["owner"] == 0
@@ -554,45 +1094,67 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
 # ------------------------------------------------------------- own turns
 
 
-def test_a_seat_taking_consecutive_turns_is_held_between_them() -> None:
-    # Seed 11 (re-searched 2026-09-26: the s1-card-data icon fixes -- Maker
-    # Keeper's single City icon, Calculus of Power's City icon, Chani's
-    # Fremen icon, and Undercover Asset losing its Spy icon [card faces] --
-    # shift this index-0 policy's path, so the old seed 4 no longer reaches
-    # this shape before the game finishes): at some point seat 0 is the only
-    # seat left unrevealed this round, so its next "turn" decision is its own
-    # again with no other seat's turn in between -- the engine cannot tell
-    # this from a Plot Intrigue return (test_i below) by the frame alone, so
-    # the hold uses the session's own log-based ``_fresh_turn`` check.
+def test_a_seat_taking_consecutive_turns_presses_once_between_them() -> None:
+    # Seed 16 (re-searched 2026-10-01, of 0-29 the only seed this index-0
+    # walk brings there): at some point seat 0 is the only seat left
+    # unrevealed this round, so its finish_agent_turn opens its own next
+    # turn with no other seat's step in between. That press is the turn's
+    # one press (OQ-095): the next turn is open to it at once, never held.
+    # (Before OQ-095 the engine closed the turn on its last effect and the
+    # server held here, telling this from a Plot Intrigue return by the
+    # log; the hold into a seat's own next turn now comes only from units
+    # without an explicit end, e.g. test_the_last_leader_pick_holds_for_its_
+    # own_next_turn.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=11)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=16)
     game_id = str(summary["game_id"])
-    summary = _play_until(
-        manager,
-        game_id,
-        summary,
-        lambda s: s["confirmation"] == 0
-        and _obj(s["decision"])["kind"] == "turn"
-        and _obj(s["decision"])["owner"] == 0,
-    )
-    assert summary["confirmation"] == 0
-    assert manager.legal_actions(game_id, 0)["actions"] == []
+    session = manager._get(game_id)
+    for _ in range(3000):
+        assert not summary["finished"], "seat 0 never took consecutive turns"
+        held = summary["confirmation"]
+        if isinstance(held, int):
+            summary = manager.confirm_turn(game_id, held, _int(summary["revision"]))
+            continue
+        owner = _int(_obj(summary["decision"])["owner"])
+        first = _rows(manager.legal_actions(game_id, owner)["actions"])[0]
+        steps_before = len(session.steps)
+        summary = manager.apply_action(game_id, owner, _int(summary["revision"]), 0)
+        if owner != 0 or first["action_id"] != "finish_agent_turn":
+            continue
+        if summary["finished"]:
+            continue
+        decision = _obj(summary["decision"])
+        others = [
+            step
+            for step in session.steps[steps_before:]
+            if isinstance(step, DomainAction) and step.actor != 0
+        ]
+        if decision["owner"] == 0 and decision["kind"] == "turn" and not others:
+            break
+    else:
+        raise AssertionError("seat 0 never took consecutive turns")
 
-    confirmed = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
-    assert confirmed["confirmation"] is None
+    assert summary["confirmation"] is None
     assert _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
 
 
 def test_a_plot_intrigue_at_turn_start_returns_without_a_hold() -> None:
-    # Seed 0: seat 0 draws Imperium Politics (a Plot-timed Intrigue card) and
-    # can play it right from the "turn" frame, before choosing an Agent or
+    # Seed 6: seat 0 holds Buy Access (a Plot-timed Intrigue card) and can
+    # play it right from the "turn" frame, before choosing an Agent or
     # Reveal turn. Playing it, and resolving its own choice, returns to the
-    # very same turn start -- not a fresh turn, so no hold.
+    # very same turn start -- not a fresh turn, so no hold. (Re-searched
+    # 2026-10-01: Plots are offered after the Agent-turn effects too since
+    # OQ-095, so this index-0 walk plays seed 0's Imperium Politics inside
+    # an Agent turn; the walk now looks for the offer at a "turn" frame
+    # only, and seed 6 is the first of 0-29 to keep a Plot until then.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=6)
     game_id = str(summary["game_id"])
     summary, index = _play_until_seat0_offers(
-        manager, game_id, summary, "play_intrigue"
+        manager, game_id, summary, "play_intrigue", kind="turn"
     )
     decision = _obj(summary["decision"])
     assert decision["kind"] == "turn"
@@ -617,7 +1179,9 @@ def test_undoing_back_to_the_turn_start_closes_the_unit() -> None:
     # them back and the seat is left with nothing pending, exactly as if
     # its turn had never started (``undo``'s own "a unit whose opening step
     # was taken back is not open any more"). A different Agent turn played
-    # afterwards then holds exactly once, like any other fresh turn.
+    # afterwards then ends with exactly one press, its finish_agent_turn,
+    # and is never held (OQ-095; before it, the turn held exactly once --
+    # the held twin is the Leader-pick test below).
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
@@ -638,19 +1202,50 @@ def test_undoing_back_to_the_turn_start_closes_the_unit() -> None:
     assert decision["kind"] == "turn" and decision["owner"] == 0
 
     # A different board space (index 1, not index 0) played to its natural
-    # end holds exactly once.
+    # end: the unit opens again, never holds, and the press closes it.
     summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 1)
-    holds = 0
+    assert session.open_units.get(0) == 0
+    presses = 0
     for _ in range(60):
-        if summary["finished"]:
-            break
-        held = summary["confirmation"]
-        if isinstance(held, int):
-            holds += 1
-            summary = manager.confirm_turn(game_id, held, _int(summary["revision"]))
-            break
+        assert summary["confirmation"] is None
+        first = _rows(manager.legal_actions(game_id, 0)["actions"])[0]
         summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
-    assert holds == 1
+        if first["action_id"] == "finish_agent_turn":
+            presses += 1
+            break
+    assert presses == 1
+    assert summary["confirmation"] is None
+    assert 0 not in session.open_units
+
+
+def test_undoing_a_leader_pick_closes_its_unit_and_a_new_pick_holds_once() -> None:
+    # The held twin of the test above, on a unit that still ends with a
+    # hold (OQ-095 left the Leader draft's hold in place): seed 1, seat 0
+    # picks before an AI seat (test_a_non_last_leader_pick_holds_before_the_
+    # next_picker). Taking the held pick back closes its unit and the hold;
+    # a different pick then holds exactly once.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=1)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    pick_revision = _int(summary["revision"])
+
+    summary = manager.apply_action(game_id, 0, pick_revision, 0)
+    assert summary["confirmation"] == 0
+    assert 0 in session.open_units
+
+    summary = manager.undo(game_id, 0, _int(summary["revision"]))
+    assert summary["confirmation"] is None
+    assert 0 not in session.open_units
+    assert _int(summary["revision"]) == pick_revision
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "leader_draft" and decision["owner"] == 0
+
+    summary = manager.apply_action(game_id, 0, pick_revision, 1)
+    assert summary["confirmation"] == 0
+    summary = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+    assert summary["confirmation"] is None
+    assert 0 not in session.open_units
 
 
 # ------------------------------------------------- turn_end.py decision stacks
@@ -669,8 +1264,10 @@ def _stack_state(*frames: DecisionFrame) -> GameState:
 def test_unit_seat_reads_a_holy_war_shaped_stack() -> None:
     # [turn(C), opponent_unit_loss(X), opponent_unit_loss(C)]: C's own turn
     # is still the running unit even though the top of the stack is C's own
-    # answer to X's Holy War (module docstring: "Holy War can stack [an
-    # interrupt] above the next seat's turn before that turn has started").
+    # answer to X's Holy War. Holy War no longer stacks its windows above
+    # the next seat's turn (they sit above the card player's open Agent turn
+    # since OQ-095), but interrupts are recognised by kind wherever they sit
+    # (``INTERRUPT_KINDS``), which this synthetic stack still pins.
     state = _stack_state(
         _frame(FrameKind.TURN, 2, "turn:2"),
         _frame(FrameKind.OPPONENT_UNIT_LOSS, 1, "loss:1"),
@@ -709,18 +1306,40 @@ def test_turn_start_seat_reads_a_plain_turn_frame() -> None:
     assert turn_start_seat(state) == 2
 
 
+def test_finishing_seat_reads_a_pressed_end_below_its_follow_up() -> None:
+    # [agent_effects(2, finishing), skill_choice(2)]: seat 2 pressed its
+    # end and the Usurp trash left a Skill choice above the waiting frame
+    # (OQ-095 (4)); the whole stack is read, not only its top. Nothing is
+    # "ready to end" while the follow-up is pending.
+    waiting = DecisionFrame(
+        kind=FrameKind.AGENT_EFFECTS,
+        frame_id="agent_effects:2",
+        decision=PlayerDecision(owner=2, prompt="x"),
+        context=((FINISHING_KEY, True),),
+    )
+    follow_up = _frame(FrameKind.SKILL_CHOICE, 2, "skill:2")
+    assert finishing_seat(_stack_state(waiting, follow_up)) == 2
+    assert agent_turn_end_ready(_stack_state(waiting, follow_up)) is None
+    assert agent_turn_end_ready(_stack_state(waiting)) is None
+    unpressed = _frame(FrameKind.AGENT_EFFECTS, 2, "agent_effects:2")
+    assert finishing_seat(_stack_state(unpressed, follow_up)) is None
+
+
 # ------------------------------------------------------------------- saves
 
 
 def test_a_hold_with_an_empty_undo_window_survives_save_and_restore() -> None:
-    # Same scenario as test_undo.py's
-    # test_a_turn_ending_in_a_reveal_still_waits_for_its_press (seed 21):
-    # the reveal closes the undo window to nothing, but the hold and its
-    # empty window both round-trip through save/restore.
+    # Seed 0 with the Leader draft: seat 0 is the First Player and picks
+    # last (test_the_last_leader_pick_holds_for_its_own_next_turn), and its
+    # pick runs into the round-1 draw, which closes the undo window to
+    # nothing -- but the hold and its empty window both round-trip through
+    # save/restore. (Moved 2026-10-01 from seed 21's Agent turn ending in an
+    # Intrigue draw: an Agent turn now ends only through finish_agent_turn,
+    # which is the press itself and never holds (OQ-095).)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=21)
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=0)
     game_id = str(summary["game_id"])
-    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
+    assert _obj(summary["decision"])["kind"] == "leader_draft"
     summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
     assert summary["confirmation"] == 0
     assert summary["undo"] == []
@@ -735,17 +1354,21 @@ def test_a_hold_with_an_empty_undo_window_survives_save_and_restore() -> None:
 
 
 def test_a_confirmed_hand_over_to_a_human_stays_unheld_after_restore() -> None:
-    # Seed 7, two human seats: confirming a hold that hands straight to the
-    # other human (nothing else gets logged in between) used to re-hold on
-    # restore, since the log alone could not tell the window was sealed. The
-    # found hand-over must itself still carry an open undo window right
-    # before the press, or this would not exercise the sealing at all: an
-    # already-empty window (closed by the log alone) looks the same whether
-    # or not ``sealed_steps`` is restored correctly (m3: restoring
-    # ``session.undo_floor = 0`` instead of the saved value).
+    # Seed 0, two human seats, Leader draft: confirming a hold that hands
+    # straight to the other human (nothing else gets logged in between) used
+    # to re-hold on restore, since the log alone could not tell the window
+    # was sealed. The found hand-over must itself still carry an open undo
+    # window right before the press, or this would not exercise the sealing
+    # at all: an already-empty window (closed by the log alone) looks the
+    # same whether or not ``sealed_steps`` is restored correctly (m3:
+    # restoring ``session.undo_floor = 0`` instead of the saved value).
+    # (Moved 2026-10-01 from seed 7's held Agent turns, which OQ-095 ends
+    # with finish_agent_turn instead: seat 1 picks right before seat 0
+    # (draft_pick_order, OQ-007), and a pick that is not the last one can
+    # still be taken back.)
     manager = GameSessionManager()
     seats = ("human", "human", *HUMAN_FIRST[1:3])
-    summary = manager.create_game(seats, game_seed=7)
+    summary = manager.create_game(seats, leader_draft=True, game_seed=0)
     game_id = str(summary["game_id"])
 
     found = False
@@ -785,24 +1408,18 @@ def test_a_confirmed_hand_over_to_a_human_stays_unheld_after_restore() -> None:
 
 
 def test_a_document_without_the_new_fields_restores_by_the_old_rule() -> None:
-    # Reuses test_undo.py's own known hold: seed 14, revision 12, seat 0
-    # ends its turn with an undoable window while the next decision belongs
-    # to another seat -- a hold under both the old rule and the new one, so
-    # stripping the new fields and restoring must still reproduce it.
+    # A known hold under both the old rule and the new one: seed 1 with the
+    # Leader draft, seat 0's pick (not the last, so still undoable) ends its
+    # unit while the next pick belongs to another seat. Stripping the new
+    # fields and restoring must still reproduce it. (Moved 2026-10-01 from
+    # seed 14's held Agent turn, which OQ-095 ends with finish_agent_turn.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=1)
     game_id = str(summary["game_id"])
-    while _int(summary["revision"]) < 12:
-        summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
     summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
-    influence = next(
-        _int(entry["index"])
-        for entry in _rows(manager.legal_actions(game_id, 0)["actions"])
-        if entry["action_id"] == "resolve_faction_influence"
-    )
-    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), influence)
     assert summary["confirmation"] == 0
     assert summary["undo"] != []
+    assert _obj(summary["decision"])["owner"] != 0
 
     document = manager.save_game(game_id)
     legacy = {
@@ -818,17 +1435,28 @@ def test_a_document_without_the_new_fields_restores_by_the_old_rule() -> None:
 def test_a_legacy_document_saved_mid_turn_restores_with_an_open_unit() -> None:
     # A save written before the turn-end state was recorded (no
     # "confirmation"/"sealed_steps"/"open_units" at all) taken well before
-    # any hold, mid-turn: the old rule's own live-log scan
+    # any hold, mid-unit: the old rule's own live-log scan
     # (``_restore_legacy_hand_over_locked``) has to reopen the seat's unit
-    # itself, or the turn's eventual end would never hold at all. It must
-    # hold exactly once, not zero times and not twice.
+    # itself, or the unit's eventual end would never hold at all. It must
+    # hold exactly once, not zero times and not twice. (Moved 2026-10-01
+    # from the middle of seed 0's first Agent turn, which OQ-095 ends with
+    # finish_agent_turn and never holds, to the middle of seat 0's Conflict
+    # rewards: seed 15's index-0 walk, two Influence picks of one reward.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=15)
     game_id = str(summary["game_id"])
-    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
-    assert summary["confirmation"] is None
-    decision = _obj(summary["decision"])
-    assert decision["kind"] == "agent_effects" and decision["owner"] == 0
+    session = manager._get(game_id)
+    summary = _play_until(
+        manager,
+        game_id,
+        summary,
+        lambda s: (
+            s["confirmation"] is None
+            and _obj(s["decision"])["kind"] == "combat_reward_distinct_influence"
+            and _obj(s["decision"])["owner"] == 0
+            and 0 in session.open_units
+        ),
+    )
 
     document = manager.save_game(game_id)
     legacy = {
@@ -874,12 +1502,16 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # rng.Random(seed).choice policy: the s1-card-data icon fixes (Maker
     # Keeper, Calculus of Power, Chani, Undercover Asset [card faces]) moved
     # this path enough that the old seed 0 no longer reaches a seat-0
-    # control_defense decision; seed 13 does.
+    # control_defense decision; seed 13 does. Re-searched again 2026-10-01:
+    # every Agent turn now waits for its owner's finish_agent_turn
+    # (OQ-095), which moved seed 13 off it and seed 0 back on (round 7; 7,
+    # 12, 22 and 23 of 0-39 reach it too). The Control defense is one of
+    # the holds OQ-095 keeps.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=13)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(13)
+    rng = random.Random(0)
 
     found = False
     choice: dict[str, object] = {}
@@ -966,14 +1598,19 @@ def test_open_units_fields_are_rejected_on_restore() -> None:
 
 
 def test_a_remote_hold_with_an_empty_window_still_blocks_the_next_seat() -> None:
-    # Seed 6, two claimed human seats: the same empty-undo-window hold as
-    # the save/restore test above, checked here for the REMOTE-only block
-    # on the next seat's own client (open servers let it act regardless,
+    # Seed 3, two claimed human seats: an empty-undo-window hold like the
+    # save/restore test above, checked here for the REMOTE-only block on the
+    # next seat's own client (open servers let it act regardless,
     # unchanged: test_access.py::
     # test_an_open_server_still_lets_the_next_seat_act_without_the_confirmation).
+    # (Re-searched 2026-10-01: seed 6's hold was an Agent turn's, which
+    # OQ-095 ends with finish_agent_turn instead. In seed 3 the held unit is
+    # seat 1's Conflict reward (placing the reward's Spy), whose end runs
+    # into the next round's chance outcomes, and the next decision is human
+    # seat 0's turn.)
     manager = GameSessionManager(access=AccessMode.REMOTE, admin_key="key")
     admin = Credentials(admin_key="key")
-    summary = manager.create_game(TWO_HUMANS, game_seed=6, credentials=admin)
+    summary = manager.create_game(TWO_HUMANS, game_seed=3, credentials=admin)
     game_id = str(summary["game_id"])
     creds = {
         seat: Credentials(
@@ -984,7 +1621,7 @@ def test_a_remote_hold_with_an_empty_window_still_blocks_the_next_seat() -> None
 
     held = None
     owner = None
-    for _ in range(200):
+    for _ in range(2000):
         held = summary["confirmation"]
         decision = _obj(summary["decision"])
         owner = _int(decision["owner"])
@@ -1022,71 +1659,206 @@ def test_a_remote_hold_with_an_empty_window_still_blocks_the_next_seat() -> None
 # -------------------------------------------------------------- property sweep
 
 
-@dataclass
+@dataclass(frozen=True)
 class _SweepConfig:
     seats: tuple[str, ...]
-    leader_draft: bool
     game_seeds: tuple[int, ...]
+    options: tuple[str, ...] = ()
 
 
+# The rulesets the OQ-095 acceptance invariants are pinned on
+# (docs/explicit-turn-end-plan.md section 5, S4): the base game, the Leader
+# draft (whose picks still hold), Bloodlines with the Tech module,
+# Immortality, Arrakeen Scouts, and every option at once with two humans.
 _SWEEP_CONFIGS = (
-    _SweepConfig(HUMAN_FIRST, False, (0, 1)),
-    _SweepConfig(HUMAN_FIRST, True, (0,)),
+    _SweepConfig(HUMAN_FIRST, (0, 1)),
+    _SweepConfig(HUMAN_FIRST, (0,), ("leader_draft",)),
+    _SweepConfig(HUMAN_FIRST, (0,), ("bloodlines", "tech_module")),
+    _SweepConfig(HUMAN_FIRST, (0,), ("immortality",)),
+    _SweepConfig(HUMAN_FIRST, (0,), ("arrakeen_scouts",)),
+    _SweepConfig(
+        TWO_HUMANS,
+        (0,),
+        (
+            "leader_draft",
+            "choam_module",
+            "bloodlines",
+            "tech_module",
+            "immortality",
+            "arrakeen_scouts",
+        ),
+    ),
 )
 
 
+@dataclass
+class _SweepTally:
+    violations: list[str]
+    holds: int = 0
+    agent_turn_presses: int = 0
+
+
+def _agent_turn_owners(state: GameState) -> set[int]:
+    """The seats whose Agent-turn effect frame is on the stack."""
+
+    return {
+        frame.decision.owner
+        for frame in state.decision_stack
+        if frame.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(frame.decision, PlayerDecision)
+    }
+
+
+def _agent_turn_violations(session: GameSession) -> list[str]:
+    """Replay the game; list every Agent turn not ended by its own press.
+
+    The OQ-095 census (docs/explicit-turn-end-plan.md section 6), for every
+    seat, human or AI: an Agent turn's frame leaves the stack only through
+    its owner's finish_agent_turn, or a step answering that press's own
+    follow-up (a Usurp trash's Skill choice or reshuffle,
+    ``finishing_seat``); and once an Agent goes out, every other seat's step
+    until that seat's finish_agent_turn answers inside its still-open turn.
+    """
+
+    engine = session.engine
+    state = engine.reset(session.config, session.game_seed)
+    awaiting: set[int] = set()
+    violations: list[str] = []
+    for index, step in enumerate(session.steps):
+        result = engine.apply(state, step)
+        action = step if isinstance(step, DomainAction) else None
+        before = _agent_turn_owners(state)
+        after = _agent_turn_owners(result.state)
+        for seat in sorted(before - after):
+            pressed = (
+                action is not None
+                and action.actor == seat
+                and action.action_id == "finish_agent_turn"
+            )
+            if not pressed and finishing_seat(state) != seat:
+                violations.append(
+                    f"step {index} ({step}) closed seat {seat}'s Agent turn"
+                )
+        if action is not None:
+            for seat in sorted(awaiting - before - {action.actor}):
+                violations.append(
+                    f"step {index}: seat {action.actor} acted before seat "
+                    f"{seat}'s finish_agent_turn"
+                )
+        for event in result.events:
+            if event.kind == "agent_placed":
+                seat = _int(dict(event.payload)["player"])
+                awaiting.add(seat)
+                if seat not in after:
+                    violations.append(
+                        f"step {index}: seat {seat}'s Agent went out with no turn"
+                    )
+        if action is not None and action.action_id == "finish_agent_turn":
+            awaiting.discard(action.actor)
+        state = result.state
+    assert state == session.state, "the replay must reproduce the live game"
+    return violations
+
+
 def _run_property_sweep_game(
-    manager: GameSessionManager,
-    seats: tuple[str, ...],
-    leader_draft: bool,
-    game_seed: int,
-) -> None:
+    manager: GameSessionManager, config: _SweepConfig, game_seed: int
+) -> _SweepTally:
+    """Play one game, the human seats at random; tally every violation.
+
+    The OQ-095 acceptance invariants (docs/explicit-turn-end-plan.md
+    section 5, S4) and the one-press rule's own:
+
+    - a human seat takes at most one turn between two presses;
+    - no hold follows a unit in which the seat sent an Agent
+      (``agent_placed``): an Agent turn ends only through its own
+      finish_agent_turn;
+    - an explicit end, a turn-passing card and a step answering a pressed
+      end's follow-up never leave their seat held or with an undo window (no
+      second press), and a hold needs a step of the seat's own unit since
+      its last press;
+    - every human decision has at least one legal action;
+    - the replayed game passes ``_agent_turn_violations``.
+    """
+
+    options = set(config.options)
     summary = manager.create_game(
-        seats, leader_draft=leader_draft, game_seed=game_seed
+        config.seats,
+        game_seed=game_seed,
+        leader_draft="leader_draft" in options,
+        choam_module="choam_module" in options,
+        bloodlines="bloodlines" in options,
+        tech_module="tech_module" in options,
+        immortality="immortality" in options,
+        arrakeen_scouts="arrakeen_scouts" in options,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     rng = random.Random(game_seed * 7 + 1)
-    humans = [seat for seat, kind in enumerate(seats) if kind == "human"]
+    humans = [seat for seat, kind in enumerate(config.seats) if kind == "human"]
     since_press = dict.fromkeys(humans, 0)
+    sent_agent = dict.fromkeys(humans, False)
     # A hold for seat S requires a non-answer step of S since S's last
     # press (a step whose pre-step state has
     # ``not answers_another_unit(state, S)``): that is exactly what opens
     # ``session.open_units[S]`` in the first place, so nothing else could
     # ever make S's unit "over" for ``_unit_ended_locked`` to hold on.
     has_unit_step = dict.fromkeys(humans, False)
-    last_logged = len(live_steps(session.log))
+    tally = _SweepTally(violations=[])
+    logged = len(live_steps(session.log))
 
-    for _ in range(4000):
-        if summary["finished"]:
-            break
+    def scan() -> set[int]:
+        """Count the turns in the newly logged steps; return who pressed."""
+
+        nonlocal logged
         live = live_steps(session.log)
-        for entry in live[last_logged:]:
+        pressed: set[int] = set()
+        for entry in live[logged:]:
             actor = entry.actor
             step_id = getattr(entry.step, "action_id", None)
             if step_id in ("reveal_turn", "pick_leader") and actor in humans:
                 since_press[actor] += 1
-                assert since_press[actor] <= 1, (
-                    f"seat {actor} took two turns without a press "
-                    f"(step {step_id!r})"
-                )
             for event in entry.events:
-                if event.kind in TURN_TAKING_EVENTS:
-                    player = dict(event.payload).get("player")
-                    if player in humans:
-                        since_press[player] += 1
-                        assert since_press[player] <= 1, (
-                            f"seat {player} took two turns without a press "
-                            f"({event.kind})"
-                        )
-        last_logged = len(live)
+                player = dict(event.payload).get("player")
+                if event.kind in TURN_TAKING_EVENTS and player in humans:
+                    assert isinstance(player, int)
+                    since_press[player] += 1
+                    if event.kind == "agent_placed":
+                        sent_agent[player] = True
+            for seat in humans:
+                if since_press[seat] > 1:
+                    tally.violations.append(
+                        f"seat {seat} took two turns without a press ({step_id})"
+                    )
+                    since_press[seat] = 1
+            if actor in humans and (
+                step_id in EXPLICIT_TURN_ENDS
+                or any(
+                    event.kind in TURN_PASS_EVENTS
+                    and dict(event.payload).get("player") == actor
+                    for event in entry.events
+                )
+            ):
+                assert actor is not None
+                pressed.add(actor)
+                since_press[actor] = 0
+                sent_agent[actor] = False
+        logged = len(live)
+        return pressed
 
+    for _ in range(6000):
+        if summary["finished"]:
+            break
         held = summary["confirmation"]
         if isinstance(held, int):
-            assert manager.legal_actions(game_id, held)["actions"] == []
-            assert has_unit_step[held], (
-                f"seat {held} held without a non-answer step since its last press"
-            )
+            tally.holds += 1
+            if manager.legal_actions(game_id, held)["actions"] != []:
+                tally.violations.append(f"held seat {held} was offered actions")
+            if not has_unit_step[held]:
+                tally.violations.append(
+                    f"seat {held} held without a step of its own since its press"
+                )
+            if sent_agent[held]:
+                tally.violations.append(f"seat {held} held after an Agent turn")
             summary = manager.confirm_turn(
                 game_id,
                 held,
@@ -1094,13 +1866,19 @@ def _run_property_sweep_game(
                 undo_count=_int(summary["undo_count"]),
             )
             since_press[held] = 0
+            sent_agent[held] = False
             has_unit_step[held] = False
+            scan()
             continue
         decision = _obj(summary["decision"])
         owner = _int(decision["owner"])
         actions = _rows(manager.legal_actions(game_id, owner)["actions"])
+        if not actions:
+            tally.violations.append(f"seat {owner}'s {decision['kind']} has no action")
+            break
         choice = rng.choice(actions)
         before = session.state
+        finishing = finishing_seat(before) == owner
         summary = manager.apply_action(
             game_id,
             owner,
@@ -1108,22 +1886,74 @@ def _run_property_sweep_game(
             _int(choice["index"]),
             undo_count=_int(summary["undo_count"]),
         )
-        if owner in has_unit_step and not answers_another_unit(before, owner):
-            has_unit_step[owner] = True
-        if choice["action_id"] in EXPLICIT_TURN_ENDS:
-            since_press[owner] = 0
+        if choice["action_id"] == "finish_agent_turn":
+            tally.agent_turn_presses += 1
+        if owner in scan() or finishing:
+            if summary["confirmation"] == owner:
+                tally.violations.append(
+                    f"seat {owner} must press again after {choice['action_id']}"
+                )
+            if [row for row in _rows(summary["undo"]) if row["seat"] == owner]:
+                tally.violations.append(
+                    f"seat {owner}'s {choice['action_id']} left an undo window"
+                )
             has_unit_step[owner] = False
-            assert summary["confirmation"] != owner, (
-                "an explicit turn end must never leave its own seat held"
-            )
+        elif not answers_another_unit(before, owner):
+            has_unit_step[owner] = True
     else:
         raise AssertionError(f"seed {game_seed} did not finish within the step budget")
+    tally.violations.extend(_agent_turn_violations(session))
+    return tally
 
 
-def test_property_sweep_a_human_seat_is_always_pressed_between_turns() -> None:
+@pytest.mark.parametrize(
+    "config",
+    _SWEEP_CONFIGS,
+    ids=lambda config: "+".join(config.options) or "base",
+)
+def test_property_sweep_a_human_seat_is_always_pressed_between_turns(
+    config: _SweepConfig,
+) -> None:
     manager = GameSessionManager()
-    for config in _SWEEP_CONFIGS:
-        for seed in config.game_seeds:
-            _run_property_sweep_game(
-                manager, config.seats, config.leader_draft, seed
-            )
+    tallies = [
+        _run_property_sweep_game(manager, config, seed) for seed in config.game_seeds
+    ]
+    violations = [
+        f"seed {seed}: {violation}"
+        for seed, tally in zip(config.game_seeds, tallies, strict=True)
+        for violation in tally.violations
+    ]
+    assert violations == []
+    # The sweep must have exercised the explicit Agent-turn end, and with
+    # the Leader draft the holds OQ-095 keeps (its picks) as well.
+    assert sum(tally.agent_turn_presses for tally in tallies) > 0
+    if "leader_draft" in config.options:
+        assert sum(tally.holds for tally in tallies) > 0
+
+
+def test_every_copy_of_the_explicit_turn_end_ids_matches_the_server() -> None:
+    """The client draws an explicit turn-end action as the banner's one
+    turn-end row (``render.js`` ``EXPLICIT_TURN_END_IDS``), and two e2e
+    scripts mirror the set to find such decisions. A copy that misses an id
+    renders that end as a plain action -- the e2e copies lacked
+    ``confirm_scouts_bid`` until 2026-10-01 -- so every copy must equal
+    ``EXPLICIT_TURN_ENDS``."""
+
+    import re
+
+    root = Path(sessions_module.__file__).resolve().parents[3]
+    copies = {
+        "render.js": root / "src/dune_imperium/server/static/render.js",
+        "turn_end.py": root / "scripts/e2e/turn_end.py",
+        "remote_fresh.py": root / "scripts/e2e/remote_fresh.py",
+    }
+    for name, path in copies.items():
+        source = path.read_text(encoding="utf-8")
+        match = re.search(
+            r"EXPLICIT_TURN_END_IDS\s*=\s*(?:new Set\(\[|\{)(.*?)(?:\]\)|\})",
+            source,
+            re.S,
+        )
+        assert match, name
+        ids = set(re.findall(r'"([a-z_]+)"', match.group(1)))
+        assert ids == set(EXPLICIT_TURN_ENDS), name

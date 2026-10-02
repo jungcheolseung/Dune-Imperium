@@ -351,15 +351,41 @@ def _wait_for_server(
     raise AssertionError("the server did not start in time")
 
 
-def _play_seat0_until_two_confirms(
+def _finish_index(client: httpx2.Client, game_id: object) -> int:
+    """Return the index of seat 0's ``finish_agent_turn`` press."""
+
+    response = client.get(f"/games/{game_id}/seats/0/actions")
+    assert response.status_code == 200, response.text
+    actions: list[dict[str, object]] = response.json()["actions"]
+    indexes = [
+        action["index"]
+        for action in actions
+        if action["action_id"] == "finish_agent_turn"
+    ]
+    assert len(indexes) == 1, "a ready Agent turn offers exactly one end press"
+    index = indexes[0]
+    assert isinstance(index, int)
+    return index
+
+
+def _play_seat0_until_two_hand_overs(
     client: httpx2.Client, game_id: object
 ) -> dict[str, object]:
+    """Play seat 0 until it has handed its turn over twice.
+
+    The first is its held Leader pick (the game is a Leader draft), handed
+    over by the confirm press. An Agent turn is never held: it ends with its
+    owner's own ``finish_agent_turn`` (OQ-095), pressed here once the summary
+    says nothing mandatory is left (``turn_end_ready``); that press is the
+    second hand-over.
+    """
+
     response = client.get(f"/games/{game_id}")
     assert response.status_code == 200, response.text
     summary: dict[str, object] = response.json()
-    confirms = 0
+    hand_overs = 0
     for _ in range(400):
-        if confirms >= 2:
+        if hand_overs >= 2:
             return summary
         if summary.get("confirmation") == 0:
             response = client.post(
@@ -368,15 +394,21 @@ def _play_seat0_until_two_confirms(
             )
             assert response.status_code == 200, response.text
             summary = response.json()
-            confirms += 1
+            hand_overs += 1
             continue
+        decision = summary["decision"]
+        assert isinstance(decision, dict)
+        ready = decision.get("turn_end_ready") is True
+        index = _finish_index(client, game_id) if ready else 0
         response = client.post(
             f"/games/{game_id}/actions",
-            json={"seat": 0, "revision": summary["revision"], "index": 0},
+            json={"seat": 0, "revision": summary["revision"], "index": index},
         )
         assert response.status_code == 200, response.text
         summary = response.json()
-    raise AssertionError("seat 0 never reached two confirmed turn hand-overs")
+        if ready:
+            hand_overs += 1
+    raise AssertionError("seat 0 never handed its turn over twice")
 
 
 def _server_process(
@@ -439,6 +471,9 @@ def test_a_killed_server_recovers_from_its_autosave(tmp_path: Path) -> None:
             json={
                 "seats": ["human", "heuristic", "heuristic", "heuristic"],
                 "game_seed": 41,
+                # A Leader pick is still held for the confirm press, an
+                # Agent turn never is (OQ-095).
+                "leader_draft": True,
             },
         )
         assert created.status_code == 200, created.text
@@ -447,7 +482,7 @@ def test_a_killed_server_recovers_from_its_autosave(tmp_path: Path) -> None:
         claimed = client.post(f"/games/{game_id}/seats/0/claim", json={"name": "Host"})
         assert claimed.status_code == 200, claimed.text
 
-        summary = _play_seat0_until_two_confirms(client, game_id)
+        summary = _play_seat0_until_two_hand_overs(client, game_id)
         round_before_crash = summary["round_number"]
 
         first.kill()

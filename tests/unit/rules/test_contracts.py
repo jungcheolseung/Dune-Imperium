@@ -35,6 +35,7 @@ from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actio
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     begin_contract_gain,
+    contract_recall_targets,
     legal_contract_actions,
     legal_contract_completion_actions,
 )
@@ -585,7 +586,8 @@ def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
     ).state
 
     # The printed reward recalls one of your Agents, and the just-sent Agent
-    # is not a valid target [Main p. 20].
+    # is not a valid target [Main p. 20]; with a target there is no confirm.
+    assert contract_recall_targets(completed, 0) == ("arrakeen",)
     recall_actions = engine.legal_actions(completed, 0)
     assert [action.action_id for action in recall_actions] == [
         "recall_agent_for_contract"
@@ -603,6 +605,11 @@ def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
 
 
 def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
+    # The designer's Sardaukar II ruling (OQ-057, designer-rulings-audit.md):
+    # with no other Agent "the reward simply fizzles". User ruling
+    # 2026-09-30 ("결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    # 연다"): the recall window opens anyway, offering only the confirm,
+    # and the fizzle comes from that press.
     state = _agent_contract_state(
         _imperium_instance("truthtrance"),
         "contract:sardaukar_ii",
@@ -614,11 +621,24 @@ def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
         legal_contract_completion_actions(placed, 0)[0],
     )
 
-    assert any(
+    frame = transition.state.decision_stack[-1]
+    assert frame.kind == "contract_reward_recall"
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.prompt == "No other Agent to recall"
+    assert not any(
         event.kind == "contract_recall_unavailable" for event in transition.events
     )
-    assert transition.state.decision_stack[-1].kind == "agent_effects"
-    assert transition.state.players[0].completed_contract_ids == (
+    confirm = DomainAction(action_id="resolve_contract_without_recall", actor=0)
+    assert contract_recall_targets(transition.state, 0) == ()
+    assert contract_recall_targets(transition.state, 1) is None
+    assert engine.legal_actions(transition.state, 0) == (confirm,)
+
+    fizzled = engine.apply(transition.state, confirm)
+
+    assert [event.kind for event in fizzled.events] == ["contract_recall_unavailable"]
+    assert fizzled.state.decision_stack[-1].kind == "agent_effects"
+    assert fizzled.state.players[0].agent_locations == ("sardaukar",)
+    assert fizzled.state.players[0].completed_contract_ids == (
         "contract:sardaukar_ii",
     )
 

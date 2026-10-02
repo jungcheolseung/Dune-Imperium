@@ -801,13 +801,20 @@ _NO_SUBCOMMITTEE: Final[Reason] = (
     "지금 가입할 수 있는 소위원회 없음",
     "subcommittee",
 )
+SUBCOMMITTEES_CLAIMED: Final[Reason] = (
+    "Every subcommittee already has a member",
+    "모든 소위원회에 가입한 좌석이 있음",
+    "claimed",
+)
 
 
 def choose_subcommittee_reason(state: GameState, seat: int) -> Reason | None:
     """Why ``choose_subcommittee`` is not offered now, or None.
 
-    None while the seat has no open choice or can join one now. With one
-    subcommittee left open, its name and its own reason
+    None while the seat has no open choice or can join one now. With none
+    left open, that every one already has a member (the choice still
+    opens, offering only its decline; unreachable with four players,
+    OQ-076 (c)); with one, its name and its own reason
     (``line_unavailable_reason``); with several, that none of them can be
     joined now (each one's reason is in the Scouts panel and in the list
     once it opens). The engine offers ``choose_subcommittee`` exactly when
@@ -819,6 +826,8 @@ def choose_subcommittee_reason(state: GameState, seat: int) -> Reason | None:
     if excluded is None or _join_actions(state, seat, excluded):
         return None
     left = open_subcommittees(state, seat)
+    if not left:
+        return SUBCOMMITTEES_CLAIMED
     if len(left) != 1:
         return _NO_SUBCOMMITTEE
     subcommittee_id = left[0]

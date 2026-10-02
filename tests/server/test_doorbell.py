@@ -168,7 +168,9 @@ def test_undo_rings_once_with_the_rolled_back_revision() -> None:
 
 def test_confirm_turn_rings_once_with_the_lifted_confirmation() -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    # A Leader pick is still held for the confirm press; an Agent turn ends
+    # with its own finish_agent_turn press and never is (OQ-095).
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=14)
     game_id = _text(summary["game_id"])
     for _ in range(200):
         if summary["confirmation"] == 0:
@@ -259,7 +261,9 @@ def test_delete_rings_none() -> None:
 
 def test_seq_strictly_increases_across_a_sequence_of_rings() -> None:
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    # Seat 0's held Leader pick, then its confirm press: two rings at least
+    # (OQ-095: an Agent turn is never held for the press).
+    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=14)
     game_id = _text(summary["game_id"])
     recorder = _Recorder()
     manager.add_change_listener(recorder)

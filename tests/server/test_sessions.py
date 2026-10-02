@@ -583,6 +583,210 @@ def test_shortfall_warning_reports_short_supply_outcomes() -> None:
     ]
 
 
+def test_shortfall_warning_reports_shortfalls_with_nothing_to_choose() -> None:
+    """User ruling 2026-10-02 (L2-Q4, "로그 + 클릭 전 경고"): a short Intrigue
+    draw, Suspensor Suits troops that cannot deploy and held Contract icons
+    that fizzle with the turn open no window; the step that causes them
+    warns before the click, from their public events (counts only)."""
+
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.core.events import GameEvent
+    from dune_imperium.server.sessions import shortfall_details, shortfall_warning
+
+    def event(kind: str, *payload: tuple[str, int]) -> GameEvent:
+        return GameEvent(event_id=f"x:{kind}", kind=kind, payload=payload)
+
+    short = RuleResult(
+        state=None,  # type: ignore[arg-type]
+        events=(
+            event(
+                "intrigue_draw_short",
+                ("drawn", 1),
+                ("player", 0),
+                ("requested", 3),
+                ("short", 2),
+            ),
+            event(
+                "suspensor_deployment_unavailable",
+                ("deployed", 1),
+                ("player", 0),
+                ("troops", 2),
+            ),
+            event("contract_icons_fizzled", ("count", 1), ("player", 0)),
+            # Another seat's shortfall is not this step's warning.
+            event(
+                "troops_recruit_short",
+                ("player", 1),
+                ("recruited", 0),
+                ("requested", 2),
+                ("short", 2),
+            ),
+        ),
+    )
+    assert shortfall_warning(short, 0) == (
+        "책략 카드 더미와 버림 더미를 합쳐도 2장 모자람"
+        " · 반중력 의복: 병력 3개 중 1개만 배치"
+        " · 계약 아이콘 1개 소멸 — 가져갈 수 있는 계약 없음"
+    )
+    assert shortfall_details(short, 0) == [
+        {"kind": "intrigue", "requested": 3, "made": 1},
+        {"kind": "suspensor", "requested": 3, "made": 1},
+        {"kind": "contract", "requested": 1, "made": 0},
+    ]
+    assert shortfall_details(short, 1) == [
+        {"kind": "troops", "requested": 2, "made": 0},
+    ]
+    assert shortfall_details(short, 2) is None
+    # Without a seat every shortfall counts.
+    details = shortfall_details(short)
+    assert details is not None and len(details) == 4
+
+
+def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> None:
+    """L2-Q4 through the dry run of the real steps: the Assembly Hall draw
+    with both Intrigue piles empty, the same draw paying Suspensor Suits'
+    troop from an empty supply, and the turn-end press over a held Contract
+    icon (the press itself confirms the fizzle, OQ-059; this is only the
+    warning). The warning reads nothing hidden: a seat-0 determinization
+    of the state words it the same."""
+
+    import random
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.agents.determinize import determinize
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+    from dune_imperium.content.uprising.starting_cards import (
+        starting_deck_instance_ids,
+    )
+    from dune_imperium.core import (
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        PlayerDecision,
+        PlayerState,
+    )
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.server.sessions import _serialize_action
+
+    engine = UprisingRulesEngine()
+    starters = starting_deck_instance_ids(0)
+
+    def placed(config: RulesetConfig, owner: PlayerState, **zones: object) -> GameState:
+        values: dict[str, object] = {
+            "config": config,
+            "seed": 1,
+            "phase": GamePhase.PLAYER_TURNS,
+            "round_number": 1,
+            "current_conflict_ids": (CONFLICTS[0].card.card_id,),
+            "players": (owner, *(PlayerState(player_id=s) for s in range(1, 4))),
+            "sardaukar_commander_space_ids": (),
+            "face_up_contract_ids": ("contract:bloodlines_immediate",),
+            "decision_stack": (
+                DecisionFrame(
+                    kind="turn",
+                    frame_id="round:1:turn:0",
+                    decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+                ),
+            ),
+        }
+        values.update(zones)
+        state = GameState(**values)  # type: ignore[arg-type]
+        place = next(
+            action
+            for action in engine.legal_actions(state, 0)
+            if dict(action.arguments).get("space_id") == "assembly_hall"
+        )
+        return engine.apply(state, place).state
+
+    def warnings(state: GameState) -> dict[str, tuple[object, object]]:
+        session = SimpleNamespace(engine=engine, state=state)
+        entries = (
+            _serialize_action(index, action, session)  # type: ignore[arg-type]
+            for index, action in enumerate(engine.legal_actions(state, 0))
+        )
+        return {
+            str(entry["action_id"]): (entry["warning"], entry["shortfall"])
+            for entry in entries
+        }
+
+    def same_when_determinized(state: GameState) -> None:
+        for seed in range(3):
+            hidden = determinize(state, 0, random.Random(seed))
+            assert warnings(hidden) == warnings(state)
+
+    choam = RulesetConfig(choam_module=True, bloodlines=True)
+    owner = PlayerState(
+        player_id=0, hand=starters[:5], deck=starters[5:], held_contract_icons=1
+    )
+    empty = placed(choam, owner, intrigue_deck=(), intrigue_discard=())
+    assert warnings(empty)["resolve_board_effect"] == (
+        "책략 카드 더미와 버림 더미를 합쳐도 1장 모자람",
+        [{"kind": "intrigue", "requested": 1, "made": 0}],
+    )
+    same_when_determinized(empty)
+    drawn = engine.apply(
+        empty,
+        next(
+            action
+            for action in engine.legal_actions(empty, 0)
+            if action.action_id == "resolve_board_effect"
+        ),
+    )
+    assert "intrigue_draw_short" in [event.kind for event in drawn.events]
+    assert warnings(drawn.state)["finish_agent_turn"] == (
+        "계약 아이콘 1개 소멸 — 가져갈 수 있는 계약 없음",
+        [{"kind": "contract", "requested": 1, "made": 0}],
+    )
+    same_when_determinized(drawn.state)
+
+    tech = RulesetConfig(choam_module=True, bloodlines=True, tech_module=True)
+    suits = PlayerState(
+        player_id=0,
+        hand=starters[:5],
+        deck=starters[5:],
+        tech_ids=("suspensor_suits",),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    intrigue = intrigue_deck_instance_ids(True, bloodlines=True)
+    no_troops = placed(tech, suits, intrigue_deck=intrigue[:3], intrigue_discard=())
+    assert warnings(no_troops)["resolve_board_effect"] == (
+        "반중력 의복: 병력 1개 중 0개만 배치",
+        [{"kind": "suspensor", "requested": 1, "made": 0}],
+    )
+    same_when_determinized(no_troops)
+
+    # A draw that needs a reshuffle: the step stops at the chance frame and
+    # the troop is lost in that chance step's hook, yet it is still warned
+    # on the step that asks for the shuffle (sessions.shortfall_outcome);
+    # the discard is public, so a determinization words it the same.
+    reshuffle = placed(tech, suits, intrigue_deck=(), intrigue_discard=intrigue[:2])
+    assert warnings(reshuffle)["resolve_board_effect"] == (
+        "반중력 의복: 병력 1개 중 0개만 배치",
+        [{"kind": "suspensor", "requested": 1, "made": 0}],
+    )
+    same_when_determinized(reshuffle)
+    shuffled = engine.apply(
+        reshuffle,
+        next(
+            action
+            for action in engine.legal_actions(reshuffle, 0)
+            if action.action_id == "resolve_board_effect"
+        ),
+    )
+    assert "suspensor_deployment_unavailable" not in [
+        event.kind for event in shuffled.events
+    ]
+    assert shuffled.state.decision_stack[-1].kind == "intrigue_reshuffle"
+    # With a troop in the supply the same reshuffled draw warns of nothing.
+    one_troop = replace(suits, troops_supply=1, troops_garrison=11)
+    covered = placed(tech, one_troop, intrigue_deck=(), intrigue_discard=intrigue[:2])
+    assert warnings(covered)["resolve_board_effect"] == (None, None)
+
+
 def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
     """OQ-049 (user request): a specimen the supply cannot provide is flagged
     on the action itself, while the action stays legal."""

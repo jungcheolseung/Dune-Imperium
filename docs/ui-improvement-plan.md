@@ -655,6 +655,14 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
 행동/로그 비중을 살핀다. 모든 Agent 턴을 명시적으로 닫는 엔진 변경과 선택 불가 표시 확대는
 각각 기존 `explicit-turn-end-plan.md`와 `unavailable-options-plan.md`의 별도 작업이다.
 
+### 2026-10-02 WSL 통합 후속
+
+`codex/ui-table-refresh`에 최신 master `8de414b`를 합쳐 11단계 화면과 L1·L2 턴 흐름을 함께 반영했다.
+L1(명시적 Agent 턴 종료)·L2(자동 처리 대신 결정 창)는 완료됐고, 선택 불가 표시 확대(C1)와
+Harvest Cells 숨은 정보 수정(C2)는 남아 있다. Epic 카드 두 장의 에셋 연결 누락은 사용자의
+에셋 업데이트(`b1c7dd4`)로 해결됐다. 이 PC의 전체 검증 결과는
+[`development-handoff.md`](development-handoff.md)의 "2026-10-02 최신 master와 UI 통합"에 기록한다.
+
 ## 감사에서 기각된 것 (다시 꺼내지 않기 위해)
 
 61건 중 29건이 반박 검증에서 기각됐다. 되풀이하기 쉬운 것만 적는다.

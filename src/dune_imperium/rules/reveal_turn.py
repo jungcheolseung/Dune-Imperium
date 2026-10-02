@@ -15,6 +15,7 @@ and the ones still unavailable at the end simply never happen.
 
 from collections.abc import Mapping
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.bloodlines.sardaukar import (
     SkillDefinition,
@@ -600,7 +601,7 @@ def legal_reveal_sandworm_actions(
     actions: list[DomainAction] = [
         DomainAction(action_id="decline_reveal_sandworm", actor=player),
     ]
-    if _can_summon_reveal_sandworm(state, player):
+    if reveal_sandworm_block(state, player) is None:
         actions.append(
             DomainAction(
                 action_id="pay_reveal_water_for_sandworm",
@@ -628,7 +629,8 @@ def apply_reveal_sandworm_action(
         # "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
         # [Main pp. 10, 20]: choosing the Persuasion branch is what gains the
         # 2 Persuasion, so Command (6+) and every other total only count them
-        # from here (user ruling 2026-09-26).
+        # from here (user ruling 2026-09-26), for a seat without Maker Hooks
+        # too (option (B), user ruling 2026-09-30).
         remaining = add_reveal_persuasion(state.decision_stack[:-1], 2)
         return RuleResult(
             state=replace(state, decision_stack=remaining),
@@ -650,7 +652,7 @@ def apply_reveal_sandworm_action(
             ),
         )
 
-    if not _can_summon_reveal_sandworm(state, action.actor):
+    if reveal_sandworm_block(state, action.actor) is not None:
         raise RuntimeError("Desert Power sandworm choice is unavailable")
     owner = state.players[action.actor]
     if replaces_sandworms(owner):
@@ -863,7 +865,6 @@ def apply_corrinth_city_reveal(
     source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     owner = state.players[action.actor]
     remaining = state.decision_stack[:-1]
-    offer_events: tuple[GameEvent, ...] = ()
     if action.action_id == "gain_five_reveal_solari":
         next_owner = replace(
             owner,
@@ -899,8 +900,10 @@ def apply_corrinth_city_reveal(
         # Arrakeen Scouts: the new seat lets the seat join a subcommittee
         # any time in the rest of this Reveal turn (OQ-076 alternative C,
         # user ruling 2026-09-30); no Agent took it, so Contingencies may
-        # recall any other Agent (OQ-075).
-        state, offer_events = queue_reveal_subcommittee_offer(
+        # recall any other Agent (OQ-075). With every subcommittee taken
+        # the offer is still armed and only its decline is offered (user
+        # ruling 2026-09-30; unreachable with four players, OQ-076 (c)).
+        state = queue_reveal_subcommittee_offer(
             state, action.actor, source=f"{source}:high_council"
         )
     return RuleResult(
@@ -909,7 +912,7 @@ def apply_corrinth_city_reveal(
             players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
-        events=(event, *offer_events),
+        events=(event,),
     )
 
 
@@ -2122,57 +2125,72 @@ def add_reveal_optional_sword_strength(
     raise RuntimeError("Reveal choice is missing its Reveal frame")
 
 
-def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
-    """Return whether Desert Power can currently deploy its sandworm.
+class RevealSandwormBlock(StrEnum):
+    """Why Desert Power's sandworm branch cannot be taken right now.
 
-    The 2 Persuasion are no longer counted (and so cannot be "spent") before
-    the owner picks a branch [Desert Power card] (user ruling 2026-09-26), so
-    this only gates the sandworm branch's own standing requirements.
+    "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
+    [Main pp. 10, 20], with Maker Hooks needed to summon a sandworm
+    [Main p. 20]. ``legal_reveal_sandworm_actions`` offers
+    ``pay_reveal_water_for_sandworm`` exactly when ``reveal_sandworm_block``
+    is None, and the page's greyed-out row reads the same block
+    (``display.unavailable``), so the reason shown can never disagree with
+    the legal list.
+    """
+
+    MAKER_HOOKS = "maker_hooks"  # the seat has no Maker Hooks
+    WATER = "water"  # no Water to pay
+    NO_CONFLICT = "no_conflict"  # no Conflict this round to deploy into
+    SHIELD_WALL = "shield_wall"  # the Shield Wall protects this Conflict
+
+
+def reveal_sandworm_block(state: GameState, player: int) -> RevealSandwormBlock | None:
+    """Return why Desert Power cannot deploy its sandworm now, or None.
+
+    Checked in this order: Maker Hooks, Water, a current Conflict, the
+    Shield Wall. Arrakis Planetologist's replacement ignores the Shield Wall
+    [Liet Kynes card]. Every input is public. The 2 Persuasion are not
+    counted (and so cannot be "spent") before the owner picks a branch
+    (user ruling 2026-09-26), so this only gates the sandworm branch's own
+    requirements.
     """
 
     owner = state.players[player]
-    return (
-        owner.maker_hooks
-        and owner.resources.water >= 1
-        and bool(state.current_conflict_ids)
-        # Arrakis Planetologist's replacement ignores the Shield Wall.
-        and (
-            replaces_sandworms(owner)
-            or not current_conflict_is_shield_wall_protected(state)
-        )
-    )
+    if not owner.maker_hooks:
+        return RevealSandwormBlock.MAKER_HOOKS
+    if owner.resources.water < 1:
+        return RevealSandwormBlock.WATER
+    if not state.current_conflict_ids:
+        return RevealSandwormBlock.NO_CONFLICT
+    if not replaces_sandworms(owner) and current_conflict_is_shield_wall_protected(
+        state
+    ):
+        return RevealSandwormBlock.SHIELD_WALL
+    return None
 
 
-def _desert_power_persuasion_pending(
-    card: PersonalCardDefinition,
-    owner: PlayerState,
-) -> bool:
+def _desert_power_persuasion_pending(card: PersonalCardDefinition) -> bool:
     """Return whether a revealed card's Persuasion waits for a Reveal choice.
 
     "[2 Persuasion] -OR- [water] -> [sandworm]" [Desert Power card]
-    [Main pp. 10, 20]: with Maker Hooks the sandworm branch is always
-    choosable, so the 2 Persuasion are not generated -- and cannot fund
-    Command (6+) -- until the owner picks the Persuasion branch
-    (``decline_reveal_sandworm``) (user ruling 2026-09-26). Without Maker
-    Hooks the sandworm branch can never be taken, so the card is simply 2
-    Persuasion counted immediately, unchanged from before.
+    [Main pp. 10, 20]: the 2 Persuasion are not generated -- and cannot
+    fund Command (6+) -- until the owner picks the Persuasion branch
+    (``decline_reveal_sandworm``) (user ruling 2026-09-26). This holds for
+    every seat: one without Maker Hooks also gets the choice window, with
+    only the Persuasion branch to pick (option (B), user ruling 2026-09-30:
+    "REVEAL_CHOICE 창을 열어 '설득 2'만 고르게, 모래벌레 줄은 '메이커 작살
+    없음' 회색").
     """
 
     return (
         PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
         in card.reveal_choice_effects
-        and owner.maker_hooks
     )
 
 
-def _card_reveal_persuasion(card: PersonalCardDefinition, owner: PlayerState) -> int:
+def _card_reveal_persuasion(card: PersonalCardDefinition) -> int:
     """Return a revealed card's own Persuasion, deferring Desert Power's."""
 
-    return (
-        0
-        if _desert_power_persuasion_pending(card, owner)
-        else card.reveal_persuasion
-    )
+    return 0 if _desert_power_persuasion_pending(card) else card.reveal_persuasion
 
 
 def _reveal_frame_context(
@@ -3440,15 +3458,12 @@ def _reveal_choice_effect_is_available(
         )
         or effect
         is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
-        or (
-            # The Persuasion branch is always choosable, so the choice opens
-            # whenever the sandworm branch's standing requirement (Maker
-            # Hooks) holds; ``legal_reveal_sandworm_actions`` gates the
-            # sandworm branch itself on water, a Conflict and Shield Wall
-            # (user ruling 2026-09-26).
-            effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-            and owner.maker_hooks
-        )
+        # The Persuasion branch is always choosable, so the choice always
+        # opens, with or without Maker Hooks (option (B), user ruling
+        # 2026-09-30); ``legal_reveal_sandworm_actions`` gates the sandworm
+        # branch itself through ``reveal_sandworm_block`` (Maker Hooks, water,
+        # a Conflict, the Shield Wall).
+        or effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
         or (
             effect
             in (
@@ -3828,9 +3843,10 @@ def _late_reveal_one_card(
     # Command (6+) counts the card's own Persuasion [Bloodlines p. 5]; the
     # effects paid here are recorded on the same total below, so
     # grant_late_reveal_effects never pays them a second time. Desert Power's
-    # 2 wait for its own Reveal choice like any other card (user ruling
-    # 2026-09-26), so they are excluded here too.
-    card_persuasion = _card_reveal_persuasion(card, owner)
+    # 2 wait for its own Reveal choice like any other card (user rulings
+    # 2026-09-26 and 2026-09-30, with or without Maker Hooks), so they are
+    # excluded here too.
+    card_persuasion = _card_reveal_persuasion(card)
     command_persuasion = (
         None if frame_persuasion is None else frame_persuasion + card_persuasion
     )
@@ -4119,7 +4135,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     def total_persuasion(
         effects: tuple[tuple[str, PersonalCardRevealEffect], ...],
     ) -> int:
-        total = sum(_card_reveal_persuasion(card, owner) for card in cards) + sum(
+        total = sum(_card_reveal_persuasion(card) for card in cards) + sum(
             _reveal_effect_persuasion(
                 effect, cards, len(owner.completed_contract_ids), in_play_cards
             )
@@ -4497,15 +4513,10 @@ def legal_finish_reveal_actions(
         # offered, so this never blocks the turn.
         return ()
     pending_tech = tech_reveal_pending(context)
-    if "forbidden_weapons" in pending_tech or (
-        "panopticon" in pending_tech
-        and (
-            state.players[player].spies_supply > 0
-            or bool(state.players[player].spy_post_ids)
-        )
-    ):
-        # Forbidden Weapons must be chosen; Panopticon's Spy must be placed
-        # while a Spy can still reach a post (OQ-044).
+    if "forbidden_weapons" in pending_tech or "panopticon" in pending_tech:
+        # Forbidden Weapons must be chosen; Panopticon's Spy must be taken
+        # (OQ-044), and its placement window offers only the decline when no
+        # Spy can reach a post, so nothing lapses unasked.
         return ()
     return (DomainAction(action_id="finish_reveal", actor=player),)
 
@@ -4532,21 +4543,6 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for card_id, effect in _deferred_reveal_choices(
             frame_context(state.decision_stack[-1])
         )
-    )
-    # A tile effect nobody could take (Panopticon without a Spy) lapses too.
-    lapsed_events = (
-        *lapsed_events,
-        *(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"reveal:{tech_id}:unavailable"
-                ),
-                kind="tech_reveal_unavailable",
-                payload=(("player", action.actor), ("tech_id", tech_id)),
-            )
-            for tech_id in tech_reveal_pending(frame_context(state.decision_stack[-1]))
-        ),
     )
     # Face-up Intrigue whose window was this Reveal turn expires with it.
     expired = expire_reveal_faceup_intrigue(state, action.actor)

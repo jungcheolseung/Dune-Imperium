@@ -727,14 +727,12 @@ def test_a_reveal_troops_slot_is_not_a_garrison_commanders() -> None:
     assert _counts(offered, "deploy_troops") == [1]
 
 
-def _queued_bank_commander(state: GameState, *, turn_closed: bool) -> GameState:
+def _queued_bank_commander(state: GameState) -> GameState:
     """Acquire Sardaukar Standard's bank Commander from the queued choice."""
 
     queued = replace(
         state,
-        pending_skill_choices=(
-            (0, "imperium:sardaukar_standard:0", "test:standard", turn_closed),
-        ),
+        pending_skill_choices=((0, "imperium:sardaukar_standard:0", "test:standard"),),
     )
     opened = begin_skill_choice(queued).state
     return apply_skill_choice(opened, legal_skill_choice_actions(opened, 0)[0]).state
@@ -745,7 +743,7 @@ def test_a_commander_recruited_before_the_placement_keeps_its_slot() -> None:
         _owner(troops_garrison=5, troops_supply=7, resources=Resources(water=2)),
         spaces=(),
     )
-    acquired = _queued_bank_commander(state, turn_closed=False)
+    acquired = _queued_bank_commander(state)
     turn = acquired.decision_stack[-1]
     assert turn.kind == "turn"
     assert dict(turn.context)["commanders_recruited"] == 1
@@ -766,7 +764,7 @@ def test_a_commander_recruited_before_the_reveal_keeps_its_slot() -> None:
     state = _turn_state(
         _owner(troops_garrison=5, troops_supply=7, combat_icon_turn=True), spaces=()
     )
-    acquired = _queued_bank_commander(state, turn_closed=False)
+    acquired = _queued_bank_commander(state)
     revealed = begin_reveal_turn(acquired, DomainAction("reveal_turn", 0)).state
     context = dict(revealed.decision_stack[-1].context)
     assert context["reveal_commanders_recruited"] == 1
@@ -777,28 +775,31 @@ def test_a_commander_recruited_before_the_reveal_keeps_its_slot() -> None:
     assert _counts(offered, "deploy_commanders") == [1]
 
 
-def test_a_closed_turns_commander_credit_goes_nowhere() -> None:
-    # OQ-044 (d): a Commander whose Skill choice was queued by a turn that
-    # already closed must not join the fresh turn frame underneath, even
-    # the same player's own [Main p. 10] [FAQ p. 4].
+def test_a_commander_acquired_in_another_seats_turn_credits_nothing() -> None:
+    # Troops recruited during the owner's own turn "from any source" join
+    # its deployment [Main p. 10] [FAQ p. 4]; a Commander whose Skill choice
+    # resolves over another seat's turn frame must not join that seat's
+    # turn (the ``turn_owner_of`` guard in ``_acquire_bank_commander``).
     state = _turn_state(
         _owner(troops_garrison=5, troops_supply=7, resources=Resources(water=2)),
         spaces=(),
     )
-    acquired = _queued_bank_commander(state, turn_closed=True)
-    assert acquired.players[0].commanders_garrison == 1
-    assert dict(acquired.decision_stack[-1].context).get("commanders_recruited") in (
-        None,
-        0,
+    others_turn = replace(
+        state,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:1",
+                decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+            ),
+        ),
     )
-    placed = apply_agent_action(
-        acquired, _agent_action_to(acquired, "research_station")
-    ).state
-    # A plain garrison Commander: it takes one of the garrison two.
-    commander = apply_commander_deployment(
-        placed, DomainAction("deploy_commanders", 0, (("count", 1),))
-    ).state
-    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1]
+    acquired = _queued_bank_commander(others_turn)
+    assert acquired.players[0].commanders_garrison == 1
+    turn = acquired.decision_stack[-1]
+    assert isinstance(turn.decision, PlayerDecision)
+    assert turn.decision.owner == 1
+    assert dict(turn.context).get("commanders_recruited") in (None, 0)
 
 
 def test_a_retreated_earlier_troop_leaves_the_commander_share_alone() -> None:
@@ -1270,7 +1271,14 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
     # v110: an Agent-box Spy may pass up the recall-first too, when the box
     # resolves (decline_agent_card_spy, +1).
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1
+    # v125 (L2): Imperial Privilege's recall with no target is confirmed
+    # (resolve_imperial_privilege_without_recall, +1).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
+    assert base.size == (
+        4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1
+    )
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),

@@ -365,11 +365,15 @@ def test_slot_rows_name_what_the_view_shows() -> None:
 # -- T3: nothing real hides behind the pad or the clamp -----------------------------
 def test_every_non_pad_value_of_real_games_has_a_row() -> None:
     # Random play covers the tracks; only the heuristic plays the Intrigue
-    # cards that grant Agent icons (seed 39 does, measured 2026-09-27).
+    # cards that grant Agent icons (seed 46 does, measured 2026-10-02; it was
+    # seed 39 until the Desert Power choice window, option (B), moved the
+    # heuristic's RNG path, then seed 43 until the recall confirms of
+    # Imperial Privilege and the Contract reward moved it again). Re-check
+    # the seed when the heuristic's path moves.
     observations = np.concatenate(
         [
             _selfplay_observations((31, 32, 33, 34)),
-            _selfplay_observations((39,), heuristic=True),
+            _selfplay_observations((46,), heuristic=True),
         ]
     )
     network = MlpSlotsNetwork(8, hidden=(16,))

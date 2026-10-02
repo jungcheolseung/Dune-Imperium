@@ -118,6 +118,7 @@
 - 공간의 비용과 요구조건은 카드나 공간 효과를 해결하기 전에 충족해야 한다. 비용을 즉시 낼 수 없으면 그 공간을 선택할 수 없다. [Main p. 9]
 - 이 turn에는 사용한 카드의 Agent box만 적용하고 Reveal box는 적용하지 않는다. Agent icon이 없는 카드는 Agent turn에 사용할 수 없다. [Main p. 8] [Main p. 9]
 - 공간 효과, 카드의 Agent box, Faction 공간 방문으로 얻는 Influence는 원하는 순서로 해결할 수 있다. [Main p. 9]
+- (프로젝트 판정, OQ-095) Agent turn은 소유자가 "턴 종료"를 누를 때만 끝난다. 공식 문서에는 Agent turn의 종료 단계가 없고, Plot Intrigue는 "at any point during one of your own Agent or Reveal turns" 사용할 수 있다. [Main p. 8]
 
 ### Reveal turn 요약
 

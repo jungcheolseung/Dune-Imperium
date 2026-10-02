@@ -204,7 +204,7 @@ def _spice_this_turn_matters(state: GameState, seat: int) -> bool:
             return True
     # A Harvest-spice Contract counts the spice gained after the Agent was
     # placed (rules/effects.py, ``spice_at_placement``), so it is at risk only
-    # while that Agent turn's effects are resolving.
+    # while that Agent turn is open -- until its owner ends it (OQ-095).
     placing = any(
         frame.kind == FrameKind.AGENT_EFFECTS
         and dict(frame.context).get("turn_owner") == seat

@@ -40,7 +40,7 @@
 | Long Live the Fighters·Imperium Ceremony는 하나의 원자 효과 | `rules/agent_effect_frame.py`, `rules/intrigue_peek.py`, OQ-052 |
 | CHOAM Demands: 이번 turn에 받은 contract도 Agent box로 완료 가능 | `rules/agent_effects.py`(`active_contract_ids` 전부 제시) |
 | CHOAM Transports: 완료 즉시 draw(미룰 수 없음) | `rules/contract_tiles.py` `owe_contract_completion_draw` |
-| Sardaukar II contract: recall 대상이 없으면 불발 | `rules/contracts.py`(`contract_recall_unavailable`) |
+| Sardaukar II contract: recall 대상이 없으면 불발 | `rules/contracts.py`(`contract_recall_unavailable`; 2026-10-02부터 소유자가 recall 창에서 `resolve_contract_without_recall`로 확인한다, OQ-068) |
 | Harvest contract: contract를 받기 전 같은 turn에 얻은 spice도 셈 | `docs/lessons.md` 2026-08-28 |
 | Rapid Dropships는 Agent 배치 뒤에만 | `rules/tech.py` `legal_tech_flip_actions` |
 | Suspensor Suits: 구매 전 draw는 troop 없음, Shaddam Signet turn에는 garrison | `rules/intrigue_deck.py`, OQ-042 |

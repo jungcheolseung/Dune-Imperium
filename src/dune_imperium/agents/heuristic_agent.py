@@ -61,6 +61,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "play_intrigue": 3.0,
     "resolve_agent_card_effect": 2.0,
     "resolve_board_effect": 2.0,
+    # Imperial Privilege's card draw when no Agent can be recalled: drawn
+    # right after the Intrigue slot, as before the confirm existed.
+    "resolve_imperial_privilege_without_recall": 2.0,
     "gather_intelligence": 2.0,
     "resolve_espionage_place_spy": 2.0,
     "advance_feyd_track": 2.0,
@@ -71,6 +74,18 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "choose_agent_card_influence": 2.0,
     "choose_combat_reward_influence": 2.0,
     "choose_distinct_combat_reward_influence": 2.0,
+    # Every eligible Faction at the top (OQ-060): the confirm is then the
+    # window's only action, so a neutral score.
+    "resolve_combat_influence_without_faction": 0.0,
+    # Holy War's unit loss (OQ-036 (a)): every opponent is asked, even with
+    # one option or none. The window holds only these actions, so the agent
+    # always answers; the zones tie and are drawn at random as before, and
+    # the confirm with no unit to lose is the window's only action.
+    "lose_unit": 0.0,
+    "resolve_unit_loss_without_unit": 0.0,
+    # A bank Commander with no choosable Skill (OQ-031, OQ-035 (b)): the
+    # confirm is the Skill choice window's only action.
+    "resolve_commander_without_skill": 0.0,
     "choose_leader_signet_influence": 2.0,
     "choose_intrigue_faction": 2.0,
     # Resource pickups.
@@ -81,6 +96,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "gain_five_reveal_solari": 2.0,
     "keep_contract_reveal_spice": 2.0,
     "take_contract": 2.0,
+    # Nothing in a non-empty market can be taken (OQ-059): the hold is the
+    # Contract window's only action, so a neutral score.
+    "hold_contract_icons": 0.0,
     "gain_leader_signet_troop": 2.0,
     "use_other_memories": 1.0,
     # Reveal choice reordering never changes what the rule-based agent

@@ -83,12 +83,16 @@ LOCAL_SEED = 20260924
 # render" case (b) is about. A turn that closes by a *hold* instead (a
 # separate confirmTurn() press) is a render of its own with no new entry of
 # seat 0's own in it, which is not that case, so (b) prefers one of these
-# whenever a legal action offers it.
+# whenever a legal action offers it. tests/server/test_turn_end.py keeps
+# this copy equal to the server's set (it lacked confirm_scouts_bid until
+# 2026-10-01).
 EXPLICIT_TURN_END_IDS = {
     "finish_agent_turn",
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
+    # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
+    "confirm_scouts_bid",
 }
 
 

@@ -329,7 +329,10 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     if actor in seat_pages:
         waiting = seat_pages[1 - actor]
         banner = waiting.inner_text("#decision-info")
-        expected = "턴 종료를 기다리는 중" if held else "결정 대기 중"
+        # An Agent turn with nothing mandatory left also waits for its
+        # owner's one press (OQ-095), without a server hold.
+        ready = not held and bool(summary["decision"].get("turn_end_ready"))
+        expected = "턴 종료를 기다리는 중" if held or ready else "결정 대기 중"
         check.ok(
             expected in banner,
             "the waiting seat's banner says who it waits for",

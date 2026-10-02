@@ -1,6 +1,8 @@
 """Tests for implemented Leader abilities and Signet Ring resolution."""
 
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -59,6 +61,11 @@ from dune_imperium.rules.leader_abilities import (
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.setup import create_initial_state
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
 
 
 def _signet_instance(player: int = 0) -> str:
@@ -1596,21 +1603,22 @@ def _fake_signet_troop_contract(card_id: str, target: str) -> ContractDefinition
     )
 
 
-def test_chroniclers_insight_troop_reward_does_not_join_the_next_agent_turn(
+def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test gap flagged by mutation testing on ``ce533c4``: forcing
-    # ``apply_leader_signet_acquire``'s ``turn_closed`` to ``False``
-    # survived the rules suite, since no acquisition this Signet reaches
-    # currently recruits a troop (that commit's own note). A monkeypatched
-    # Acquire Contract (as ``test_acquisition.py``'s ``_fake_troop_
-    # contract``) exercises the same shape as a real troop-rewarding
-    # acquisition would: Chronicler's Insight resolved as the turn's last
-    # effect, with every other seat already revealed, closes and reopens a
-    # fresh "turn" frame for this same player; a troop the completed
-    # Contract's reward recruits here must not join that fresh frame
-    # ("credit_turn_recruits=not turn_closed", ``4e29e27``) [Main p. 10]
-    # [FAQ p. 4] (docs/rules/player-turns.md:137).
+    # Test gap flagged by mutation testing on ``ce533c4``: no acquisition
+    # this Signet reaches currently recruits a troop (that commit's own
+    # note). A monkeypatched Acquire Contract (as ``test_acquisition.py``'s
+    # ``_fake_troop_contract``) exercises the same shape as a real
+    # troop-rewarding acquisition would: Chronicler's Insight resolved as
+    # the turn's last effect, with every other seat already revealed. That
+    # used to close and reopen a fresh "turn" frame for this same player,
+    # and the Contract's troop was kept out of it (OQ-044 (d),
+    # ``4e29e27``). Since OQ-095 (3) the turn stays open until its owner
+    # ends it, so the troop the completed Contract recruits is this turn's:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137). The
+    # press then reopens his own next turn with nothing carried over.
     target = "imperium:sardaukar_soldier:0"
     monkeypatch.setitem(
         CONTRACTS_BY_ID,
@@ -1658,6 +1666,16 @@ def test_chroniclers_insight_troop_reward_does_not_join_the_next_agent_turn(
         "contract:fake_troop_acquire_signet",
     )
     top = result.state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context)["troops_recruited"] == 1
+    engine = UprisingRulesEngine()
+    assert [action.action_id for action in engine.legal_actions(result.state, 0)] == [
+        "finish_agent_turn"
+    ]
+
+    closed = finish_agent_turn(result.state)
+    top = closed.decision_stack[-1]
     assert top.kind == FrameKind.TURN
     assert dict(top.context)["turn_owner"] == 0
     assert dict(top.context).get("troops_recruited") in (None, 0)

@@ -180,7 +180,11 @@ def test_the_preview_says_when_nothing_is_joinable_at_once() -> None:
     assert lines["contingencies"]["code"] == "cost"
 
 
-def test_the_preview_says_when_the_chance_would_lapse() -> None:
+def test_the_preview_says_when_every_subcommittee_is_taken() -> None:
+    """With every subcommittee taken the offer still opens with only its
+    decline (user ruling 2026-09-30, OQ-076 (c)); the preview lists every
+    one as claimed by its member, nothing joinable (the page then says none
+    is left). It used to be an empty list, read off the lapse event."""
     # A seat joins once, so three other seats can hold a three-strong display.
     claimed = (("readiness", 1), ("oversight", 2), ("relations", 3))
     serialized = _council_step(
@@ -191,7 +195,14 @@ def test_the_preview_says_when_the_chance_would_lapse() -> None:
         )
     )
 
-    assert serialized["subcommittee_preview"] == {"joinable": False, "lines": []}
+    preview = _obj(serialized["subcommittee_preview"])
+    assert preview["joinable"] is False
+    lines = preview["lines"]
+    assert isinstance(lines, list)
+    assert [(line["subcommittee_id"], line["seat"]) for line in lines] == list(
+        claimed
+    )
+    assert all(line["code"] == "claimed" and not line["enabled"] for line in lines)
 
 
 def test_choosing_a_subcommittee_can_be_taken_back() -> None:

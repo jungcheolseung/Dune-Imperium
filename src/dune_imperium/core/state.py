@@ -106,15 +106,11 @@ class GameState:
     # next player decision: (player, count, event source).
     pending_intrigue_draws: tuple[tuple[int, int, str], ...] = ()
     # Sardaukar Standard: Commander acquisitions owed by a trash trigger
-    # (player, card, source, turn_closed); each opens its Skill choice once
-    # the trashing effect has finished with the decision stack. ``turn_closed``
-    # marks an entry whose owner's turn had already closed -- by the trash
-    # itself opening from an ``optional_trash_frame(turn_closed=...)``, or by
-    # ``advance_after_effect`` closing the turn afterward, before the choice
-    # opened -- so the Commander this credits must not join whatever fresh
-    # "turn" frame reopened underneath, even the same player's own
-    # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
-    pending_skill_choices: tuple[tuple[int, str, str, bool], ...] = ()
+    # (player, card, source); each opens its Skill choice once the trashing
+    # effect has finished with the decision stack. An Agent turn cannot
+    # close over its owner's queued entries (OQ-095), so each one resolves
+    # inside the turn that queued it.
+    pending_skill_choices: tuple[tuple[int, str, str], ...] = ()
     # The shuffled Twisted Intrigue deck dealt at setup, waiting for Piter De
     # Vries' seat (the draft picks Leaders after the shuffle); empty once
     # assigned or when no seat plays him.
@@ -123,14 +119,8 @@ class GameState:
     # Y'rkoon's seat; empty once assigned or when nobody plays him.
     navigation_stock: tuple[str, ...] = ()
     # Navigation plays owed by Influence gains that reached two
-    # (player, faction, source, turn_closed), opened in order by the engine.
-    # ``turn_closed`` marks a trigger that fired after ``advance_after_effect``
-    # had already closed the owner's turn (in the same handler, before this
-    # play could open): its NAVIGATION_CHOICE, and whatever it recruits or
-    # completes, must not join the fresh "turn" frame that reopened
-    # underneath, even the same player's own (OQ-044 (d)) [Main p. 10]
-    # [FAQ p. 4].
-    pending_navigation_plays: tuple[tuple[int, str, str, bool], ...] = ()
+    # (player, faction, source), opened in order by the engine.
+    pending_navigation_plays: tuple[tuple[int, str, str], ...] = ()
     # Spies owed by the Emperor track's Influence 4 bonus (player, source):
     # the engine opens each one's placement as soon as the gaining effect
     # has finished, before any other player decision.
@@ -160,11 +150,11 @@ class GameState:
     # Subcommittee members as (subcommittee id, seat), in joining order, and
     # the choices open for a High Council seat taken through Corrinth City
     # during a Reveal turn (OQ-076), as (player, event source, space of the
-    # Agent that took it: always "", whether that seat's turn had closed:
-    # always False); each lapses when its Reveal turn ends. A board-space
-    # seat's choice is a pending icon of its Agent-turn frame instead.
+    # Agent that took it: always ""); each lapses when its Reveal turn ends.
+    # A board-space seat's choice is a pending icon of its Agent-turn frame
+    # instead.
     scouts_subcommittee_members: tuple[tuple[str, int], ...] = ()
-    scouts_subcommittee_offers: tuple[tuple[int, str, str, bool], ...] = ()
+    scouts_subcommittee_offers: tuple[tuple[int, str, str], ...] = ()
     # Mission pieces (``rules.scouts_missions``): bank goods as (mission,
     # location, resource, amount, seat or -1 for anyone), face-down cards as
     # (mission, location, card id), and parked troops as (mission, seat,

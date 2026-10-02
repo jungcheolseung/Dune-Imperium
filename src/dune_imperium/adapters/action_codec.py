@@ -128,7 +128,70 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``flip_battle_card``. Catalogs without the option are unchanged. (Built
 # as v121 on the epic-game-mode branch; renumbered when it was merged onto
 # the line that had meanwhile used v121..v123.)
-ACTION_CODEC_VERSION = 124
+# v125: every Agent turn ends only through its owner's ``finish_agent_turn``
+# (OQ-095, user ruling 2026-09-30): the last effect no longer hands the turn
+# over, so a Plot Intrigue, Family Atomics, a specimen return, a Tech flip or
+# a Commander recruit stays possible until the press, and what the last
+# effect left behind resolves inside the turn. Usurp's borrowed card is
+# trashed by the press and its results are the turn's own. An Arrakeen
+# Scouts line's spice cost now counts as spice spent this turn, like every
+# other spend. Saves replay differently -- no template change. The
+# ``turn_closed`` fields (the 4th field of the Skill choice, Navigation play
+# and Scouts offer queues, and the frame-context markers) left the state.
+# Also in v125 (L2, merged with L1): Desert Power's Reveal choice opens for
+# a seat without Maker Hooks too, whose 2 Persuasion now count only from
+# ``decline_reveal_sandworm`` (option (B), user ruling 2026-09-30; OQ-069).
+# Imperial Privilege's recall and a Contract's Recall Agent reward with no
+# target are no longer skipped unasked: the owner confirms them with
+# ``resolve_imperial_privilege_without_recall`` (every catalog) and
+# ``resolve_contract_without_recall`` (CHOAM catalogs), and the engine hook
+# ``skip_impossible_imperial_privilege_recall`` is gone (OQ-023, OQ-068).
+# An Immortality research bonus whose arrow cost cannot be paid opens its
+# window too, offering only ``decline_research_bonus`` (no template change;
+# the ``research_bonus_unavailable`` event is gone).
+# A Conflict reward's "choose a Faction" Influence with every eligible
+# Faction at the top opens its window too, offering only
+# ``resolve_combat_influence_without_faction`` (every catalog; OQ-060); the
+# engine no longer drops it unasked. A Conflict reward Spy and Panopticon's
+# Spy with nothing to place offer only their declines (no template change;
+# unreachable with four players, and the ``tech_reveal_unavailable`` event is
+# gone, OQ-044 (b)).
+# Holy War's unit loss asks every opponent, even with one (zone, unit) to
+# lose or none (OQ-036 (a), user ruling 2026-09-30, which reverses the
+# automatic single-option loss and the event-only skip); a seat with no unit
+# confirms with ``resolve_unit_loss_without_unit`` (Bloodlines catalogs).
+# The windows follow the printed order: every opponent's loss, then every
+# opponent's Spy moves (user ruling 2026-10-02).
+# Rare sites that skipped without asking now open their windows too. Per
+# the user ruling of 2026-09-30 (every automatic skip opens a window):
+# Plasteel Blades' extra Skill with nothing to gain offers only
+# ``decline_skill`` (OQ-044 (c)); a Navigation card with no usable line
+# offers only ``decline_navigation`` (OQ-039 (b)); a card's Tech
+# acquisition with no tile left offers only ``decline_tech`` (the
+# ``tech_acquisition_unavailable`` event is gone, OQ-057 (9)); a new High
+# Council seat's subcommittee offer is always armed, offering only
+# ``decline_subcommittee`` when every subcommittee is taken (unreachable
+# with four players; the ``scouts_subcommittee_unavailable`` event is
+# gone, OQ-076 (c)). Per the user ruling of 2026-10-02 (L2-Q3, confirm
+# windows for the old no-window rulings): a bank Commander gained with no
+# choosable Skill is confirmed with ``resolve_commander_without_skill``
+# (Bloodlines catalogs; OQ-031, OQ-035 (b)), and Imperium Ceremony with
+# one Intrigue card left and no discard opens its peek on that card
+# (OQ-052). No other template change.
+# A Contract icon over a market where nothing can be taken (only the
+# Bloodlines Immediate, no Intrigue card to trash) is no longer held
+# unasked: the owner confirms it with ``hold_contract_icons``
+# (CHOAM+Bloodlines catalogs; OQ-059, user ruling 2026-09-30). Such an icon
+# from a Conflict reward is held to the end of its seat's Conflict rewards
+# and then fizzles with ``contract_icons_fizzled`` (user ruling 2026-10-02,
+# L2-Q2); it no longer reaches a later turn nor vanishes silently.
+# Shortfalls with nothing to choose open no window but are logged (user
+# ruling 2026-10-02, L2-Q4): an Intrigue draw the Intrigue deck and
+# discard cannot cover together logs ``intrigue_draw_short``, and
+# Suspensor Suits troops only partly deployed log
+# ``suspensor_deployment_unavailable`` too (no template change; the event
+# log, and so a replay's hashes, moves).
+ACTION_CODEC_VERSION = 125
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -232,6 +295,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward",
             "decline_combat_reward_spy",
             "decline_combat_reward_trash",
+            # A Conflict reward Influence choice with every eligible Faction
+            # at the top is confirmed (OQ-060).
+            "resolve_combat_influence_without_faction",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
             "decline_corrinth_city_payment",
@@ -340,6 +406,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 # A Contract Spy may pass up the recall-first without a Spy
                 # in supply [Main pp. 11, 20].
                 "decline_contract_spy",
+                # A Contract recall reward with no target is confirmed.
+                "resolve_contract_without_recall",
             )
         )
     templates.extend(_agent_turn_templates(config))
@@ -544,6 +612,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_trigger",
             "decline_intrigue_spy",
             "decline_imperial_privilege_intrigue",
+            # Imperial Privilege's recall with no target is confirmed.
+            "resolve_imperial_privilege_without_recall",
             "resolve_intrigue_rewards",
         )
     )
@@ -792,6 +862,12 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # False Orders / Holy War: no empty post off the Agent's space,
             # so the forced-to-move Spy is lost [FAQ p. 2] (OQ-065).
             "lose_moved_spy",
+            # Holy War: an opponent with no unit to lose confirms it
+            # (OQ-036 (a), user ruling 2026-09-30).
+            "resolve_unit_loss_without_unit",
+            # A bank Commander with no choosable Skill is confirmed
+            # (OQ-031, OQ-035 (b), user ruling 2026-10-02).
+            "resolve_commander_without_skill",
         )
     ]
     for action_id in (
@@ -932,6 +1008,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.append(
             ActionTemplate(action_id="recall_conflict_agent_for_contract")
         )
+        # A market whose only token is the Immediate, with no Intrigue card
+        # to trash: the owner confirms its Contract icons are held (OQ-059).
+        templates.append(ActionTemplate(action_id="hold_contract_icons"))
     templates.extend(
         ActionTemplate(
             action_id="give_intrigue_card",

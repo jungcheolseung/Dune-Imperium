@@ -1,6 +1,7 @@
 """Public Contract market choices for the Uprising CHOAM Module."""
 
 from dataclasses import replace
+from enum import StrEnum
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
 from dune_imperium.content.uprising.contracts import (
@@ -12,6 +13,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contract_tiles import (
@@ -36,7 +38,6 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
     update_turn_recruits,
-    with_context,
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -157,9 +158,6 @@ def apply_contract_completion(
         definition,
         source=source,
         excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
-        # The completion was the turn's last effect when the advance replaced
-        # the Agent frame with the next turn's.
-        turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
         turn_agent_in_conflict=reward_turn_agent_in_conflict,
     )
     return RuleResult(
@@ -174,17 +172,8 @@ def complete_acquire_contracts(
     acquired_card_id: str,
     *,
     source: str,
-    credit_turn_recruits: bool = True,
 ) -> RuleResult:
-    """Complete Contracts triggered by acquiring a named card.
-
-    ``credit_turn_recruits`` is false when the caller already closed the
-    owner's turn frame (Tleilaxu Master, the Leader's Signet) before this
-    Contract's reward resolved: ``turn_owner_of`` would then find whatever
-    turn frame opened next, which is never the one this reward belongs to,
-    even when it happens to belong to the same player again (the
-    only-seat-left-unrevealed case) [Main p. 10] [FAQ p. 4].
-    """
+    """Complete Contracts triggered by acquiring a named card."""
 
     if not state.config.choam_module:
         return RuleResult(state=state)
@@ -225,7 +214,7 @@ def complete_acquire_contracts(
         next_state = completed.state
         events = (*events, *completed.events)
         recruited = next_state.players[player].troops_garrison - garrison_before
-        if recruited and credit_turn_recruits and turn_owner_of(next_state) == player:
+        if recruited and turn_owner_of(next_state) == player:
             # Troops recruited during the owner's own turn "from any
             # source" may be deployed [Main p. 10] [FAQ p. 4]; an Acquire
             # Contract completed outside the owner's turn (Combat, another
@@ -325,11 +314,6 @@ def apply_contract_spy_action(
     owner = state.players[action.actor]
     if action.action_id == "recall_spy_for_contract":
         next_owner = recall_spy(owner, post_id)
-        if context.get("turn_closed") is True:
-            # The recall belongs to the closed turn (OQ-044 (d)).
-            next_owner = replace(
-                next_owner, spies_recalled_turn=owner.spies_recalled_turn
-            )
         context["contract_spy_recalled"] = True
         next_frame = replace(frame, context=tuple(sorted(context.items())))
         next_state = replace(
@@ -370,40 +354,82 @@ def legal_contract_recall_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return the Agents a Contract recall reward may return to the Leader."""
+    """Return the Agents a Contract recall reward may return to the Leader.
 
-    if not 0 <= player < state.config.players or not state.decision_stack:
+    One action per ``contract_recall_targets`` entry. With none the reward
+    fizzles (the designer's Sardaukar II ruling, OQ-057), through
+    ``resolve_contract_without_recall``: the owner confirms it instead of
+    the engine fizzling it unasked (user ruling 2026-09-30, "결정 창 없이
+    자동으로 넘어가는 곳도 모두 결정 창을 연다").
+    """
+
+    targets = contract_recall_targets(state, player)
+    if targets is None:
         return ()
-    frame = state.decision_stack[-1]
-    if frame.kind != FrameKind.CONTRACT_REWARD_RECALL:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    context = dict(frame.context)
-    excluded = context.get("excluded_space_id")
-    owner = state.players[player]
-    return (
-        *(
-            DomainAction(
-                action_id="recall_agent_for_contract",
-                actor=player,
-                arguments=(("space_id", space_id),),
-            )
-            for space_id in owner.agent_locations
-            if space_id != excluded
-        ),
+    if not targets:
+        return (
+            DomainAction(action_id="resolve_contract_without_recall", actor=player),
+        )
+    return tuple(
         # An earlier turn's Into the Fray Agent in the Conflict is one of
         # "your Agents" too (OQ-037 (d)), extended to every Recall Agent
         # effect by the 2026-09-26 user ruling (OQ-068).
+        DomainAction(action_id="recall_conflict_agent_for_contract", actor=player)
+        if target == "conflict"
+        else DomainAction(
+            action_id="recall_agent_for_contract",
+            actor=player,
+            arguments=(("space_id", target),),
+        )
+        for target in targets
+    )
+
+
+def contract_recall_targets(state: GameState, player: int) -> tuple[str, ...] | None:
+    """Where ``player``'s Contract recall reward may take an Agent from.
+
+    None unless the reward's recall frame is on top and the seat's own.
+    The targets are its board spaces other than this turn's ("Return one of
+    your other Agents on the board to your Leader (not the Agent you sent
+    during this turn)" [Main p. 20]) and "conflict" for an earlier turn's
+    Into the Fray Agent (OQ-068). Nothing else can be done while this frame
+    is on top, so they stay fixed for its whole life. The provider offers
+    one recall per target, or the confirm when there is none, and the page
+    greys the recall out with this same answer (``display.unavailable``).
+    """
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.CONTRACT_REWARD_RECALL:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    context = dict(frame.context)
+    excluded = context.get("excluded_space_id")
+    return _recall_targets(
+        state.players[player],
+        excluded if isinstance(excluded, str) else "",
+        turn_agent_in_conflict=context.get("turn_agent_in_conflict") is True,
+    )
+
+
+def _recall_targets(
+    owner: PlayerState, excluded_space_id: str, *, turn_agent_in_conflict: bool
+) -> tuple[str, ...]:
+    """The owner's other board spaces, then "conflict" for an earlier turn's
+    Into the Fray Agent (``recallable_conflict_agents``)."""
+
+    return (
         *(
-            (
-                DomainAction(
-                    action_id="recall_conflict_agent_for_contract", actor=player
-                ),
-            )
+            space_id
+            for space_id in owner.agent_locations
+            if space_id != excluded_space_id
+        ),
+        *(
+            ("conflict",)
             if recallable_conflict_agents(
-                owner,
-                sent_this_turn=context.get("turn_agent_in_conflict") is True,
+                owner, sent_this_turn=turn_agent_in_conflict
             )
             > 0
             else ()
@@ -423,6 +449,20 @@ def apply_contract_recall_action(
     if not isinstance(source, str):
         raise RuntimeError("Contract recall frame has invalid source")
     owner = state.players[action.actor]
+    if action.action_id == "resolve_contract_without_recall":
+        # No other Agent to recall: the reward simply fizzles (the
+        # designer's Sardaukar II ruling, OQ-057), now confirmed by the
+        # owner rather than skipped unasked (user ruling 2026-09-30).
+        return RuleResult(
+            state=state.pop_decision(),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:reward:recall_unavailable",
+                    kind="contract_recall_unavailable",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
     if action.action_id == "recall_conflict_agent_for_contract":
         next_owner, event = recall_conflict_agent(
             owner,
@@ -515,13 +555,24 @@ def _holds_set_aside_choice(state: GameState, player: int) -> bool:
     )
 
 
+class ContractTakeBlock(StrEnum):
+    """Why ``player`` cannot take one Contract of the market right now.
 
-def takeable_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
-    """Return the Contracts ``player`` could take from the market right now.
+    The Bloodlines Immediate: "You can't take the new Immediate contract
+    unless you have an Intrigue card to trash." `[Bloodlines p. 2]`.
+    ``takeable_contract_ids`` offers a Contract exactly when
+    ``contract_take_block`` is None, and the page's greyed-out row reads the
+    same block (``display.unavailable``), so the two cannot disagree.
+    """
 
-    The Bloodlines Immediate "cannot be taken without an Intrigue card to
-    trash" `[Bloodlines p. 2]`, so a market can hold face-up tokens and still
-    offer this player nothing.
+    NEEDS_INTRIGUE = "needs_intrigue"
+
+
+def market_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """The Contracts a Contract icon of ``player`` chooses among.
+
+    The face-up tokens, and for Shaddam Corrino IV his set-aside Sardaukar
+    Contracts, taken in place of a generally available one [FAQ p. 3].
     """
 
     set_aside = (
@@ -529,12 +580,38 @@ def takeable_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
         if state.players[player].leader_id == "shaddam_corrino_iv"
         else ()
     )
-    holds_intrigue = bool(state.players[player].intrigue_cards)
+    return (*state.face_up_contract_ids, *set_aside)
+
+
+def contract_take_block(
+    state: GameState, player: int, instance_id: str
+) -> ContractTakeBlock | None:
+    """Return why ``player`` cannot take ``instance_id`` now, or None.
+
+    Only the seat's own Intrigue hand is read, so the answer is the same in
+    any re-deal of the zones the seat cannot see.
+    """
+
+    if (
+        contract_for_instance(instance_id).requires_intrigue_trash
+        and not state.players[player].intrigue_cards
+    ):
+        return ContractTakeBlock.NEEDS_INTRIGUE
+    return None
+
+
+def takeable_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the Contracts ``player`` could take from the market right now.
+
+    The Bloodlines Immediate "cannot be taken without an Intrigue card to
+    trash" `[Bloodlines p. 2]`, so a market can hold face-up tokens and still
+    offer this player nothing (``contract_take_block``).
+    """
+
     return tuple(
         instance_id
-        for instance_id in (*state.face_up_contract_ids, *set_aside)
-        if holds_intrigue
-        or not contract_for_instance(instance_id).requires_intrigue_trash
+        for instance_id in market_contract_ids(state, player)
+        if contract_take_block(state, player, instance_id) is None
     )
 
 
@@ -547,6 +624,13 @@ def legal_contract_actions(
     Shaddam Corrino IV may acquire a set-aside Sardaukar Contract in place
     of one of the generally available Contracts [FAQ p. 3], so his choices
     add the set-aside tiles while the market itself is open.
+
+    When nothing in a non-empty market can be taken (only the Bloodlines
+    Immediate is left and the owner holds no Intrigue card to trash), the
+    icons are held, not converted to Solari (OQ-059), and the owner
+    confirms that with ``hold_contract_icons`` instead of the engine
+    closing the window unasked (user ruling 2026-09-30, "결정 창 없이
+    자동으로 넘어가는 곳도 모두 결정 창을 연다").
     """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
@@ -576,6 +660,8 @@ def legal_contract_actions(
         actions.append(
             DomainAction(action_id="take_exhausted_contract_solari", actor=player)
         )
+    if not actions and contract_icons_must_be_held(state):
+        actions.append(DomainAction(action_id="hold_contract_icons", actor=player))
     return tuple(actions)
 
 
@@ -791,7 +877,8 @@ def contract_icons_must_be_held(state: GameState) -> bool:
     2 Solari" `[Main p. 16]` -- but every face-up token is out of reach, which
     happens when only the Bloodlines Immediate is left and the owner has no
     Intrigue card to trash `[Bloodlines p. 2]`. The icon waits for the rest of
-    the turn instead (OQ-059).
+    the turn instead (OQ-059), or, from a Conflict reward, for the rest of
+    that seat's Conflict rewards (user ruling 2026-10-02, L2-Q2).
     """
 
     player = _contract_frame_owner(state)
@@ -800,8 +887,21 @@ def contract_icons_must_be_held(state: GameState) -> bool:
     return not takeable_contract_ids(state, player)
 
 
+def apply_contract_hold(state: GameState, action: DomainAction) -> RuleResult:
+    """``hold_contract_icons``: the owner confirms the icons wait (OQ-059)."""
+
+    if action not in legal_contract_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract choice")
+    return hold_contract_icons(state)
+
+
 def hold_contract_icons(state: GameState) -> RuleResult:
-    """Close the open choice and keep its icons until the turn ends."""
+    """Close the open choice and keep its icons on the seat.
+
+    They wait for the turn's end (OQ-059) or, from a Conflict reward, for
+    the end of that seat's Conflict rewards (``combat_held_contract_owner``);
+    a token the seat can take meanwhile reopens the market.
+    """
 
     if not contract_icons_must_be_held(state):
         raise ValueError("there is no Contract choice to hold")
@@ -820,11 +920,19 @@ def hold_contract_icons(state: GameState) -> RuleResult:
         raise RuntimeError("Contract choice frame has invalid context")
     owner = state.players[player]
     held = owner.held_contract_icons + remaining
+    remaining_stack = state.decision_stack[:-1]
     next_state = replace(
         state,
-        decision_stack=state.decision_stack[:-1],
+        decision_stack=remaining_stack,
         players=replace_player(
             state.players, replace(owner, held_contract_icons=held)
+        ),
+        # Like every Conflict reward frame: the rewards are resolved once
+        # the last frame closes, or the engine would deal them again.
+        combat_rewards_resolved=(
+            not remaining_stack
+            if state.phase is GamePhase.COMBAT
+            else state.combat_rewards_resolved
         ),
     )
     return RuleResult(
@@ -853,8 +961,69 @@ def held_contract_icons_can_open(state: GameState, player: int) -> bool:
     )
 
 
+def combat_held_contract_owner(state: GameState) -> int | None:
+    """A seat whose Conflict rewards are all resolved with icons still held.
+
+    User ruling 2026-10-02 (L2-Q2, "보상 끝까지 보류 후 불발"): a Contract
+    icon from a Conflict reward that finds nothing it can take is held while
+    that seat resolves the rest of its Conflict rewards -- an Intrigue card
+    gained meanwhile can make the Immediate takeable, and the market then
+    reopens -- and once they are all resolved it fizzles with the public
+    event, never carried into a later turn nor dropped silently. The Combat
+    phase is no turn [Main p. 8], so no turn-end press would close it.
+
+    The rewards' frames are dealt together, each seat's in a block
+    (``resolve_combat_rewards``), and what they set off for the seat (the
+    Immediate's Intrigue trash, an owed Intrigue draw, a queued Navigation
+    play, Skill choice, track Spy or Friends Everywhere bonus) is the seat's
+    too. So the seat is done once it owns no frame on the stack and nothing
+    is queued for it, and no chance step is pending (a reshuffle may still
+    bring it an Intrigue card). None before the rewards are dealt: an icon
+    held earlier in the Combat phase waits for its seat's rewards too.
+    """
+
+    if state.phase is not GamePhase.COMBAT or not state.combat_intrigue_complete:
+        return None
+    if not state.decision_stack and not state.combat_rewards_resolved:
+        return None
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if top is not None and not isinstance(top.decision, PlayerDecision):
+        return None
+    busy = {
+        frame.decision.owner
+        for frame in state.decision_stack
+        if isinstance(frame.decision, PlayerDecision)
+    }
+    for queue in (
+        state.pending_intrigue_draws,
+        state.pending_navigation_plays,
+        state.pending_skill_choices,
+        state.pending_track_spies,
+        state.scouts_four_bonus_choices,
+    ):
+        busy.update(entry[0] for entry in queue)
+    for seat in state.players:
+        if seat.held_contract_icons and seat.player_id not in busy:
+            return seat.player_id
+    return None
+
+
+def fizzle_combat_held_contract_icons(state: GameState) -> RuleResult:
+    """Fizzle the held icons of the seat whose Conflict rewards are done."""
+
+    player = combat_held_contract_owner(state)
+    if player is None:
+        raise ValueError("no seat's Conflict rewards end with icons held")
+    return fizzle_held_contract_icons(
+        state,
+        player,
+        source=f"round:{state.round_number}:combat_reward:{player}",
+    )
+
+
 def open_held_contract_icons(state: GameState, player: int) -> RuleResult:
-    """Reopen the market for icons held earlier this turn."""
+    """Reopen the market for icons held earlier this turn, or earlier in
+    the seat's Conflict rewards."""
 
     if not held_contract_icons_can_open(state, player):
         raise ValueError("there are no held Contract icons to open")
@@ -866,7 +1035,11 @@ def open_held_contract_icons(state: GameState, player: int) -> RuleResult:
             state.players, replace(owner, held_contract_icons=0)
         ),
     )
-    source = f"round:{state.round_number}:player:{player}:held_contract"
+    source = (
+        f"round:{state.round_number}:combat_reward:{player}:held_contract"
+        if state.phase is GamePhase.COMBAT
+        else f"round:{state.round_number}:player:{player}:held_contract"
+    )
     return RuleResult(
         state=cleared.push_decision(
             contract_choice_frame(player, count, source=source)
@@ -891,7 +1064,10 @@ def fizzle_held_contract_icons(
 
     The designer rules consistently that an effect with no valid target
     fizzles, and the two-Solari conversion is a separate printed condition
-    that this market does not meet (OQ-059, user ruling 2026-09-10).
+    that this market does not meet (OQ-059, user ruling 2026-09-10). The
+    owner's turn-end press calls it, and so does the end of the seat's
+    Conflict rewards (``combat_held_contract_owner``, user ruling
+    2026-10-02, L2-Q2).
     """
 
     owner = state.players[player]
@@ -1118,7 +1294,6 @@ def _begin_contract_reward_choice(
     *,
     source: str,
     excluded_space_id: str = "",
-    turn_closed: bool = False,
     turn_agent_in_conflict: bool = False,
 ) -> RuleResult:
     reward = definition.reward
@@ -1142,36 +1317,28 @@ def _begin_contract_reward_choice(
         # board or, an earlier turn's Into the Fray Agent, in the Conflict
         # (OQ-037 (d), extended to every Recall Agent effect by the
         # 2026-09-26 user ruling, OQ-068) -- the reward does nothing. The
+        # frame opens either way, and with no target it offers only the
+        # confirm ``resolve_contract_without_recall`` (user ruling
+        # 2026-09-30: every automatic skip opens a decision window). The
         # Agent's Conflict status is fixed here because the reward may
         # resolve after the turn has passed (it can be the turn's last
         # effect), so it is carried in the frame's context instead of
         # re-derived from a closed Agent-turn effect frame.
-        owner = state.players[player]
-        board_candidates = tuple(
-            space_id
-            for space_id in owner.agent_locations
-            if space_id != excluded_space_id
+        targets = _recall_targets(
+            state.players[player],
+            excluded_space_id,
+            turn_agent_in_conflict=turn_agent_in_conflict,
         )
-        conflict_recallable = recallable_conflict_agents(
-            owner, sent_this_turn=turn_agent_in_conflict
-        )
-        if not board_candidates and not conflict_recallable:
-            return RuleResult(
-                state=state,
-                events=(
-                    GameEvent(
-                        event_id=f"{source}:reward:recall_unavailable",
-                        kind="contract_recall_unavailable",
-                        payload=(("player", player),),
-                    ),
-                ),
-            )
         frame = DecisionFrame(
             kind=FrameKind.CONTRACT_REWARD_RECALL,
             frame_id=f"{source}:reward:recall",
             decision=PlayerDecision(
                 owner=player,
-                prompt="Choose one of your other Agents to recall",
+                prompt=(
+                    "Choose one of your other Agents to recall"
+                    if targets
+                    else "No other Agent to recall"
+                ),
             ),
             context=(
                 ("excluded_space_id", excluded_space_id),
@@ -1215,26 +1382,8 @@ def _begin_contract_reward_choice(
                 ("turn_owner", player),
             ),
         )
-        if turn_closed:
-            frame = mark_contract_spy_after_turn(frame)
         return RuleResult(state=state.push_decision(frame))
     return RuleResult(state=state)
-
-
-def mark_contract_spy_after_turn(frame: DecisionFrame) -> DecisionFrame:
-    """Mark a Contract Spy frame that resolves after its turn has closed.
-
-    A Contract completed by sending an Agent "is another effect of your
-    Agent turn" [FAQ p. 1], so a recall made for its Spy belongs to that
-    turn. When the completion was the turn's last effect the next turn --
-    the same seat's, if it is the last to reveal -- has already opened and
-    reset its counters; the recall must not count as that turn's "If you
-    recalled a Spy this turn" (OQ-044 (d)).
-    """
-
-    if frame.kind != FrameKind.CONTRACT_REWARD_SPY:
-        return frame
-    return with_context(frame, {**dict(frame.context), "turn_closed": True})
 
 
 # --- Bloodlines Immediate: trash an Intrigue card -----------------------------------
@@ -1352,9 +1501,7 @@ def apply_contract_intrigue_trash(
 # --- Bloodlines Earn Any Alliance -----------------------------------------------------
 
 
-def complete_alliance_contracts(
-    result: RuleResult, *, closing_player: int | None = None
-) -> RuleResult:
+def complete_alliance_contracts(result: RuleResult) -> RuleResult:
     """Complete Earn Any Alliance when its holder takes a new Alliance token.
 
     "Earn any Alliance is completed the next time you take an Alliance token
@@ -1366,16 +1513,6 @@ def complete_alliance_contracts(
     visit). Troops recruited during the holder's own turn join that turn's
     deployment allowance like any other mid-turn recruit [Main p. 10]
     [FAQ p. 4].
-
-    ``closing_player`` is the player, if any, whose own-turn frame closed
-    during the automatic advance that produced ``result``
-    (``frames.turn_closing_player``, the engine's caller computes it against
-    the state from before that advance). When the completed contract's
-    recruit and the alliance bump that earned it both happened while that
-    player's turn was still open, ``turn_owner_of`` would otherwise find and
-    credit the fresh "turn" frame the advance reopened for the same
-    player -- the turn that is only just starting, not the one the recruit
-    belongs to (the same reopen ``4e29e27`` guards at the acquisition sites).
     """
 
     state = result.state
@@ -1413,11 +1550,7 @@ def complete_alliance_contracts(
             state = completed.state
             events.extend(completed.events)
             recruited = state.players[player].troops_garrison - garrison_before
-            if (
-                recruited
-                and player != closing_player
-                and turn_owner_of(state) == player
-            ):
+            if recruited and turn_owner_of(state) == player:
                 state = update_turn_recruits(state, troops_recruited=recruited)
     return RuleResult(state=state, events=tuple(events))
 

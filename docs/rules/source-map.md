@@ -64,6 +64,7 @@
 | `[Main p. 9]` | space, Agent box, Faction Influence 효과의 자유로운 처리 순서 | `covered` | [player-turns.md](player-turns.md) |
 | `[Main p. 9]` | arrow 비용은 선택, 미지불 시 결과 없음, 한 turn에 한 번 | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | `[Main p. 9]` | 명시적으로 순서를 허용한 효과 밖에서 여러 의무 효과가 충돌할 때의 우선순위 | `open question` | [OQ-012](open-questions.md#oq-012--자유-순서-그룹-밖-의무-효과의-충돌); [player-turns.md](player-turns.md)에도 미확정으로 표시 |
+| `[Main pp. 8-11]` | Agent turn이 끝나는 시점(Reveal turn의 Clean Up 같은 종료 단계가 없다) | `open question` | [OQ-095](open-questions.md#oq-095--agent-turn은-소유자의-턴-종료로만-끝난다) (`DECIDED`) |
 | `[Main p. 10]` | Arrakeen·Spice Refinery·Imperial Basin control 획득, 방문 bonus, 방어 troop 배치 | `covered` | [uprising-systems.md](uprising-systems.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main pp. 9-10]` | controller bonus와 방문 플레이어의 orderable Agent-turn 효과 사이 처리 순서 | `open question` | [OQ-008](open-questions.md#oq-008--control-bonus와-방문자-효과의-상대-순서) |
 | `[Main p. 10]` | Shield Wall이 세 critical location의 sandworm을 막고 detonation 뒤 영구 제거 | `covered` | [uprising-systems.md](uprising-systems.md) |
