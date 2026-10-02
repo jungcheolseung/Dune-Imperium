@@ -24,7 +24,7 @@ import re
 import sys
 
 import UnityPy
-from il2meta import BIN, DATA_DIR, MD, C, build_guid
+from il2meta import DATA_DIR, MD, RAW, C, build_guid
 from UnityPy.helpers.TypeTreeGenerator import TypeTreeGenerator
 from UnityPy.helpers.TypeTreeNode import TypeTreeNode
 
@@ -128,7 +128,7 @@ class Extractor:
         self.env = UnityPy.load(*files)
         self.unity_version = next(iter(self.env.files.values())).unity_version
         gen = Gen(self.unity_version)
-        gen.load_il2cpp(BIN, MD)
+        gen.load_il2cpp(RAW, MD)
         self.env.typetree_generator = gen
         self.files = {os.path.basename(k): v for k, v in self.env.files.items()}
         self.scripts = {}

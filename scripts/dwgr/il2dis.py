@@ -17,6 +17,7 @@ from il2meta import (
     BIN,
     DATA_END,
     DATA_START,
+    RAW,
     STUBS,
     addr_methods,
     addr_name,
@@ -30,12 +31,12 @@ from il2meta import (
 fstarts = []
 for _cmd, _off, _size in load_commands():
     if _cmd == 0x26:
-        _dataoff, _datasize = struct.unpack_from("<II", BIN, _off + 8)
+        _dataoff, _datasize = struct.unpack_from("<II", RAW, _off + 8)
         _p, _addr = _dataoff, 0
         while _p < _dataoff + _datasize:
             _v = _sh = 0
             while True:
-                _b = BIN[_p]
+                _b = RAW[_p]
                 _p += 1
                 _v |= (_b & 0x7F) << _sh
                 _sh += 7
@@ -48,9 +49,30 @@ for _cmd, _off, _size in load_commands():
 fstarts = sorted(set(fstarts))
 
 # IL2CPP runtime helpers have no metadata names. These labels were identified by hand
-# for build 84d64e1237b54105aee1940811cd9e43 (call patterns and noreturn tails); other
-# builds get no rt: labels until someone re-identifies them.
+# (call patterns, noreturn tails, the exception class names their callees look up) for
+# build 84d64e1237b54105aee1940811cd9e43 (Dire Wolf Game Room) and
+# a6cb3f9216f9489d803b76004ec9af53 (Steam Dune: Imperium 4.1.1.1804); other builds get
+# no rt: labels until someone re-identifies them (README.md, "앱이 업데이트되면").
+# A trailing '?' marks a label inferred from call sites only.
 HELPERS_BY_BUILD = {
+    "a6cb3f9216f9489d803b76004ec9af53": {
+        0x6B53A0: "rt:initialize_runtime_metadata(lazy)",
+        0x6B53B0: "rt:initialize_runtime_metadata(alt)",
+        0x6B52E0: "rt:write_barrier",
+        0x6B5700: "rt:throw_NullReferenceException(noreturn)",
+        0x6B5710: "rt:throw_IndexOutOfRange(noreturn)",
+        0x6B56F0: "rt:throw_exception?(noreturn)",
+        0x6B5580: "rt:raise_exception?(noreturn)",
+        0x6B55A0: "rt:run_class_static_ctor",
+        0x6B56D0: "rt:object_new(klass)",
+        0x6B54E0: "rt:SZArrayNew(klass,len)",
+        0x6B55B0: "rt:IsInst(obj,klass)?",
+        0x6B55C0: "rt:Box(klass,&value)?",
+        0x6B55D0: "rt:Unbox(obj)?",
+        0x6FBF20: "rt:init_class(klass)->klass?",
+        0x6FBFA0: "rt:init_method_rgctx(method)?",
+        0x6FC370: "rt:interface_lookup_slowpath(obj,itf,slot)?",
+    },
     "84d64e1237b54105aee1940811cd9e43": {
         0x39A840: "rt:initialize_runtime_metadata(lazy)",
         0x39A850: "rt:initialize_runtime_metadata(alt)",
@@ -101,7 +123,7 @@ def annotate_addr(t):
 def disasm(a, maxlen=0x6000):
     e = min(func_end(a), a + maxlen)
     out = []
-    for ins in md.disasm(BIN[a:e], a):
+    for ins in md.disasm(bytes(BIN[a:e]), a):
         cm = []
         for op in ins.operands:
             if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP:
