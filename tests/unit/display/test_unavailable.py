@@ -256,9 +256,11 @@ def test_an_intrigue_card_greys_out_with_its_failing_cost_or_condition() -> None
         "backed_by_choam": ("Needs 1 Influence to lose (you have 0)", "cost"),
         "change_allegiances": ("None of its lines can be used now", "no_line"),
         "false_orders": ("Only after you send an Agent this turn", "reward"),
+        # "When you deploy three or more units to the Conflict in a single
+        # turn:" is checked first: a play condition (OQ-016, codec v129).
         "coercive_negotiation": (
-            "Needs 3 Contracts in the bank (there are 0)",
-            "contract_bank",
+            "Only if you have deployed 3 or more units to the Conflict this turn",
+            "condition",
         ),
     }
     assert {
@@ -270,6 +272,17 @@ def test_an_intrigue_card_greys_out_with_its_failing_cost_or_condition() -> None
         assert row["reason_ko"]
         # The card in the Intrigue hand is dimmed with the same reason.
         assert found["refs"][card_id]["reason"] == row["reason"]
+
+    # With the units deployed, the empty bank is what blocks it (OQ-064).
+    deployed = _found(
+        _intrigue_state("coercive_negotiation", units_deployed_turn=3)
+    )
+    (bank_row,) = _rows(deployed, "intrigue").values()
+    assert (bank_row["reason"], bank_row["code"]) == (
+        "Needs 3 Contracts in the bank (there are 0)",
+        "contract_bank",
+    )
+    assert bank_row["reason_ko"]
 
 
 def test_an_intrigue_card_for_another_window_is_only_dimmed() -> None:

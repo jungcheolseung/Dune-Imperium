@@ -397,9 +397,18 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # and seats 0-2 pass again [Main p. 14; OQ-003]. A scratch trace of both
 # versions found that round-9 play as the first difference. The encoder
 # files are byte for byte the previous pin's.
+# Re-pinned 2026-10-03 for codec v129 (OQ-016): Distraction and Coercive
+# Negotiation are played only once three units were deployed this turn.
+# ``choam`` moved at decision 691 of 709 (round 10), where seat 3 used to
+# lay Distraction face up with nothing deployed; a scratch trace of master
+# 9236eb5c and this branch found it as the first difference. The other
+# five games never offer either card that way and keep their digests.
+# ``adapters/observation_encoding.py`` and ``core/observation.py`` are byte
+# for byte the previous pin's; ``rules/frames.py`` only gained a comment on
+# the retired ``INTRIGUE_TRIGGER_SPY`` kind, which keeps its place.
 _GOLDEN_DIGESTS = {
     "base": ("29cffc270dbad833556587f296a15c4ba853f46da475a8e326b8f5dc1e85f712", 2780),
-    "choam": ("06fcbf3c4566799e6ddebfe9d5af972154bc824570f265e4ebcfd5bb3f8b613d", 2840),
+    "choam": ("1caec40a9fdc131987f65bc708700226ce592869f6baee6303421510a59daed6", 2836),
     "promo_bloodlines_tech": (
         "5ff3254f753d95cc95a59ee736ced4c7c5b22e614b8616c076db4c35b8a9996a",
         3028,

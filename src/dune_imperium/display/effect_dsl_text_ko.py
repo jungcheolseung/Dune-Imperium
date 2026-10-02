@@ -80,7 +80,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     OnRevealAcquisitionThisRound,
     OnTroopsLostAtConflictEnd,
-    OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -110,6 +109,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
     Trigger,
     TriggeredByFaction,
+    UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -381,6 +381,12 @@ def condition_text_ko(condition: Condition) -> str:
             # underlying condition, a parenthetical suffix there): "이번
             # 차례에 {spice}를 2 이상 얻었다면".
             return f"이번 차례에 {{spice}}를 {amount} 이상 얻었다면"
+        case UnitsDeployedThisTurnAtLeast(count=count):
+            # "When you deploy 3 or more units to the Conflict in a single
+            # turn" [Distraction card; Coercive Negotiation card] — units
+            # (병력 + 모래벌레) | 부대 [Main p. 10]; worded like Leverage's
+            # "이번 차례에 … 얻었다면" above.
+            return f"이번 차례에 {{conflict}}에 부대를 {count} 이상 배치했다면"
         case SpiceMustFlowCardsAtLeast(count=count):
             name = _reserve_card_name_ko("the_spice_must_flow")
             return f"당신이 {name}{_object_particle(name)} {count} 이상 보유했다면"
@@ -695,11 +701,6 @@ def trigger_text_ko(trigger: Trigger) -> str:
             # ("당신이 게임판 장소에 에이전트를 보낼 때마다", `[Main p. 11]`),
             # the project's only attested "whenever" citation.
             return "이번 라운드에 자기 {reveal_turn} 동안 카드를 획득할 때마다"
-        case OnUnitsDeployedInTurn(minimum=minimum):
-            # "When you deploy 3 or more units to the Conflict in a turn"
-            # [Distraction card; Coercive Negotiation card] — units (병력 +
-            # 모래벌레) | 부대 [Main p. 10].
-            return f"한 차례에 {{conflict}}에 부대를 {minimum} 이상 배치할 때"
         case OnTroopsLostAtConflictEnd(minimum=minimum):
             return f"{{conflict}} 종료 시 {{troop}}을 {minimum} 이상 잃을 때"
         case _:

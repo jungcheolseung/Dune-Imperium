@@ -35,7 +35,7 @@
 | False Orders는 상대 Spy가 없어도 play 가능(Spy 배치 부분만) | `rules/intrigue.py`, `tests/unit/rules/test_bloodlines_cards.py` |
 | Strategic Stockpiling: 조건이 성립한 section만 발동 | `tests/unit/rules/test_intrigue.py` |
 | Sietch Ritual: Reveal 중에는 hand가 비어 play 불가 | `rules/reveal_turn.py`(`hand=()`) |
-| Coercive Negotiation·Distraction: 한 turn 배치 3+는 순배치 기준 | OQ-029, `units_deployed_turn` |
+| Coercive Negotiation·Distraction: 한 turn 배치 3+는 순배치 기준 — "You need to have a moment in time when there are 3 units in the conflict that were deployed to the conflict this turn, then that requirement becomes true." (Message from designer; 같은 큐브를 retreat 후 다시 배치해도 두 번 세지 않는다). 2026-10-03부터 이 조건은 카드를 내는 조건이고 turn의 최고치로 판정한다(OQ-016 재판정) | OQ-029, OQ-016, `units_deployed_turn`·`units_deployed_peak`, `UnitsDeployedThisTurnAtLeast` |
 | Urgent Shigawire의 boost는 배치 시 소비되며 Litany의 turn 시작 pass는 소비하지 않음; Weirding Woman이 hand로 돌아오면 boost 흔적 없음 | `rules/agent_turn.py:324`, `rules/agent_effects.py:3231` |
 | Long Live the Fighters·Imperium Ceremony는 하나의 원자 효과 | `rules/agent_effect_frame.py`, `rules/intrigue_peek.py`, OQ-052 |
 | CHOAM Demands: 이번 turn에 받은 contract도 Agent box로 완료 가능 | `rules/agent_effects.py`(`active_contract_ids` 전부 제시) |

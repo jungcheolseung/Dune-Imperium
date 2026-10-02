@@ -210,7 +210,18 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # drawn once every Leader is known [Rise of Ix p. 10]. Each seat gets the
 # same card; the draft-phase states (hands, Intrigue deck, observations)
 # and so a draft save's hashes move -- no template change.
-ACTION_CODEC_VERSION = 128
+# v129 (user ruling 2026-10-03, OQ-016): "When you deploy three or more
+# units to the Conflict in a single turn" is a condition for playing
+# Distraction and Coercive Negotiation [FAQ p. 2] [Board Guide p. 10], met at
+# the turn's deployment peak (designer ruling), not a trigger they wait face
+# up for. Distraction's Spy now goes through the Intrigue choice
+# (``place_intrigue_spy`` / ``recall_spy_for_intrigue`` /
+# ``decline_intrigue_spy`` with the shared-post targets), so
+# ``decline_intrigue_trigger``, ``place_trigger_spy`` and
+# ``recall_spy_for_trigger`` leave every catalog (-27); Coercive
+# Negotiation keeps ``take_trigger_contract``. The player's offer record
+# became the turn's deployment peak, so every state hash moves.
+ACTION_CODEC_VERSION = 129
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -628,7 +639,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "detonate_shield_wall",
             "keep_shield_wall",
             "decline_intrigue_trash",
-            "decline_intrigue_trigger",
             "decline_intrigue_spy",
             "decline_imperial_privilege_intrigue",
             # Imperial Privilege's recall with no target is confirmed.
@@ -721,11 +731,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "place_agent_card_spy",
         "place_intrigue_spy",
         "place_leader_spy",
-        "place_trigger_spy",
         "recall_spy_for_intrigue",
         "recall_spy_for_leader",
         "recall_spy_for_leader_placement",
-        "recall_spy_for_trigger",
         "place_reveal_spy",
         "recall_spy_for_acquisition",
         "recall_spy_for_agent_card",

@@ -124,6 +124,52 @@ def _state(**players: PlayerState) -> GameState:
     return GameState(config=RulesetConfig(), seed=1, players=seats)
 
 
+def test_playing_coercive_negotiation_is_a_reveal() -> None:
+    # "Reveal three contracts from the bank" [Coercive Negotiation card]: the
+    # bank's top three become known to every seat as the card resolves, so
+    # the play step closes the undo window (the actor saw the bank).
+    # Since codec v129 the card is played once three units were deployed
+    # this turn and resolves at once (OQ-016), so the play itself is the
+    # reveal step.
+    from dune_imperium.core import GamePhase
+    from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+    from dune_imperium.rules import UprisingRulesEngine
+
+    card = "intrigue:coercive_negotiation:0"
+    config = RulesetConfig(choam_module=True, bloodlines=True)
+    owner = PlayerState(player_id=0, intrigue_cards=(card,), units_deployed_turn=3)
+    before = GameState(
+        config=config,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        sardaukar_commander_space_ids=(),
+        sardaukar_commanders_bank=1,
+        contract_bank=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:secrets",
+            "contract:espionage_i",
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", card), ("option", 0)),
+    )
+    after = UprisingRulesEngine().apply(before, play).state
+    assert after.decision_stack[-1].kind == "intrigue_trigger_contract"
+    assert reveals_hidden_information(before, after, actor=0) is True
+
+
 def test_reveal_detection_follows_the_information_flow_rules() -> None:
     # Playing an Intrigue only discloses a card its owner alone knew: the
     # actor's own loss, so it does not close the undo window (user ruling).

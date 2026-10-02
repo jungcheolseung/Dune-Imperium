@@ -19,11 +19,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnRevealAcquisitionThisRound,
-    OnUnitsDeployedInTurn,
     PayResources,
     PlaceSpy,
     SandwormsInConflictAtLeast,
     TrashPersonalCard,
+    UnitsDeployedThisTurnAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
@@ -96,12 +96,13 @@ def test_trigger_text_renders_on_reveal_acquisition() -> None:
     )
 
 
-def test_trigger_text_renders_on_units_deployed() -> None:
+def test_condition_text_renders_units_deployed_this_turn() -> None:
     # "When you deploy three or more units to the Conflict in a single
-    # turn:" [Distraction card; Coercive Negotiation card].
+    # turn:" [Distraction card; Coercive Negotiation card] is a condition
+    # for playing the card (user ruling 2026-10-03, OQ-016).
     assert (
-        trigger_text(OnUnitsDeployedInTurn(3))
-        == "When you deploy 3 or more units to the Conflict in a turn"
+        condition_text(UnitsDeployedThisTurnAtLeast(3))
+        == "you have deployed 3 or more units to the Conflict this turn"
     )
 
 
@@ -145,13 +146,13 @@ def test_option_text_renders_a_reveal_acquisition_trigger() -> None:
     )
 
 
-def test_option_text_renders_a_units_deployed_trigger() -> None:
+def test_option_text_renders_a_units_deployed_condition() -> None:
     entry = INTRIGUE_CARDS_BY_ID["distraction"]
 
     # "You may place this Spy on the same observation post as another
     # player's Spy." [Distraction card]: sharing is allowed, not required.
     assert option_text(entry.options[0]) == (
-        "Plot — When you deploy 3 or more units to the Conflict in a turn: "
+        "Plot — If you have deployed 3 or more units to the Conflict this turn: "
         "Place a Spy (may share another player's Spy's post)"
     )
 
@@ -503,9 +504,9 @@ def test_trigger_text_ko_renders_on_reveal_acquisition() -> None:
     )
 
 
-def test_trigger_text_ko_renders_on_units_deployed() -> None:
-    assert trigger_text_ko(OnUnitsDeployedInTurn(3)) == (
-        "한 차례에 {conflict}에 부대를 3 이상 배치할 때"
+def test_condition_text_ko_renders_units_deployed_this_turn() -> None:
+    assert condition_text_ko(UnitsDeployedThisTurnAtLeast(3)) == (
+        "이번 차례에 {conflict}에 부대를 3 이상 배치했다면"
     )
 
 
@@ -552,11 +553,11 @@ def test_option_text_ko_renders_a_reveal_acquisition_trigger() -> None:
     )
 
 
-def test_option_text_ko_renders_a_units_deployed_trigger() -> None:
+def test_option_text_ko_renders_a_units_deployed_condition() -> None:
     entry = INTRIGUE_CARDS_BY_ID["distraction"]
 
     assert option_text_ko(entry.options[0]) == (
-        "음모 — 한 차례에 {conflict}에 부대를 3 이상 배치할 때: "
+        "음모 — 이번 차례에 {conflict}에 부대를 3 이상 배치했다면: "
         "{spy} 배치 (다른 플레이어의 {spy}와 관측소 공유 가능)"
     )
 

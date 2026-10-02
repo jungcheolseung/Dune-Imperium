@@ -39,6 +39,8 @@ class FrameKind(StrEnum):
     INTRIGUE_RESHUFFLE = "intrigue_reshuffle"
     INTRIGUE_CHOICE = "intrigue_choice"
     INTRIGUE_EFFECTS = "intrigue_effects"
+    # No longer opened: Distraction was a face-up trigger until codec v129
+    # (OQ-016). Kept so every later kind keeps its observation index.
     INTRIGUE_TRIGGER_SPY = "intrigue_trigger_spy"
     LEADER_DRAFT = "leader_draft"
     SECRETS_STEAL = "secrets_steal"
@@ -251,7 +253,7 @@ def reset_turn_counters(
         replace(
             owner,
             units_deployed_turn=0,
-            deploy_trigger_offered_at=0,
+            units_deployed_peak=0,
             units_deployed_committed=0,
             spice_at_turn_start=owner.resources.spice,
             spice_spent_turn=0,

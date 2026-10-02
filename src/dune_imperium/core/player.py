@@ -78,9 +78,13 @@ class PlayerState:
     control_space_ids: tuple[str, ...] = ()
     combat_strength: int = 0
     units_deployed_turn: int = 0
-    deploy_trigger_offered_at: int = 0
-    # Deployed-unit count an effect already consumed as its condition this
-    # turn (Distraction's Spy); a withdrawal may not drop below it (OQ-029).
+    # The most units deployed this turn that stood in the Conflict together:
+    # a retreat leaves it, an OQ-029 withdrawal lowers it (OQ-016; read by
+    # ``UnitsDeployedThisTurnAtLeast``).
+    units_deployed_peak: int = 0
+    # Deployed-unit count a played card already used as its condition this
+    # turn (Distraction, Coercive Negotiation); a withdrawal may not drop
+    # below it (OQ-029).
     units_deployed_committed: int = 0
     spice_at_turn_start: int = 0
     spice_spent_turn: int = 0
@@ -245,7 +249,7 @@ class PlayerState:
             self.spies_supply,
             self.combat_strength,
             self.units_deployed_turn,
-            self.deploy_trigger_offered_at,
+            self.units_deployed_peak,
             self.units_deployed_committed,
             self.spice_at_turn_start,
             self.spice_spent_turn,

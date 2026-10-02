@@ -110,6 +110,7 @@ from dune_imperium.rules.combat_deployment import (
     apply_commander_deployment,
     apply_commander_withdrawal,
     apply_troop_withdrawal,
+    record_deployment_peak,
     settle_finishing_agent_turn,
 )
 from dune_imperium.rules.contracts import (
@@ -181,10 +182,7 @@ from dune_imperium.rules.intrigue_peek import (
 )
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
-    apply_trigger_spy_action,
     legal_trigger_contract_actions,
-    legal_trigger_spy_actions,
-    offer_deployment_triggers,
 )
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
@@ -508,7 +506,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     # frame whose decision is not a PlayerDecision.
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
     FrameKind.INTRIGUE_EFFECTS: (legal_intrigue_effect_actions,),
-    FrameKind.INTRIGUE_TRIGGER_SPY: (legal_trigger_spy_actions,),
+    # Retired with Distraction's face-up trigger (codec v129, OQ-016): the
+    # kind keeps its place so later kinds keep their observation index.
+    FrameKind.INTRIGUE_TRIGGER_SPY: (),
     FrameKind.LEADER_DRAFT: (legal_leader_draft_actions,),
     FrameKind.SKILL_CHOICE: (legal_skill_choice_actions,),
     FrameKind.OPPONENT_SPY_MOVE: (legal_spy_move_actions,),
@@ -618,9 +618,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "manipulate_imperium_row": apply_intrigue_choice,
     "resolve_intrigue_rewards": apply_intrigue_rewards,
     "acquire_manipulated_imperium": apply_manipulated_acquisition,
-    "place_trigger_spy": apply_trigger_spy_action,
-    "recall_spy_for_trigger": apply_trigger_spy_action,
-    "decline_intrigue_trigger": apply_trigger_spy_action,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
     "resolve_board_effect": resolve_board_effect,
@@ -888,7 +885,7 @@ class UprisingRulesEngine(RulesEngine):
             draw_owed_tech_cards(complete_alliance_contracts(advanced))
         )
         return refresh_pre_reveal_strength(
-            _settle_finishing(offer_deployment_triggers(_advance_automatic(result)))
+            _settle_finishing(record_deployment_peak(_advance_automatic(result)))
         )
 
     def legal_actions(
@@ -929,7 +926,7 @@ class UprisingRulesEngine(RulesEngine):
             draw_owed_tech_cards(complete_alliance_contracts(advanced))
         )
         return refresh_pre_reveal_strength(
-            _settle_finishing(offer_deployment_triggers(_advance_automatic(result)))
+            _settle_finishing(record_deployment_peak(_advance_automatic(result)))
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
@@ -941,7 +938,7 @@ def _settle_finishing(result: RuleResult) -> RuleResult:
     """Close or reopen an Agent turn whose end is still resolving.
 
     Only after every hook of the transition has run (Hungry for Spice,
-    Suspensor Suits, Alliance Contracts, deployment triggers), so whatever
+    Suspensor Suits, Alliance Contracts, the deployment peak), so whatever
     the Usurp trash at the turn's end produced is judged inside that turn
     (OQ-095 (5)); the next seat's turn may then need its own automatic steps.
     """

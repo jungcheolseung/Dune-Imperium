@@ -42,7 +42,6 @@ from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
     legal_trigger_contract_actions,
-    offer_deployment_triggers,
 )
 from dune_imperium.rules.reveal_turn import legal_reveal_deployments
 from dune_imperium.rules.setup import create_initial_state
@@ -249,25 +248,34 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
         "contract:arrakeen_ii",
         "contract:secrets",
     )
+    engine = UprisingRulesEngine()
 
-    def offered(owner: PlayerState) -> GameState:
+    def played(owner: PlayerState) -> GameState:
+        # Three units deployed this turn meet the card's condition; the
+        # card resolves at once (user ruling 2026-10-03, OQ-016).
         base = _state(owner, market=(), bank=bank)
-        return offer_deployment_triggers(RuleResult(state=base)).state
+        play = DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", card), ("option", 0)),
+        )
+        return engine.apply(base, play).state
 
-    without = offered(_owner(intrigue_faceup=(card,), units_deployed_turn=3))
-    # The trigger is mandatory [Coercive Negotiation card; FAQ p. 3], so
-    # only the takeable Contracts are offered, with no decline.
+    without = played(_owner(intrigue_cards=(card,), units_deployed_turn=3))
+    assert without.decision_stack[-1].kind == FrameKind.INTRIGUE_TRIGGER_CONTRACT
+    # The played card has left the hand [Main p. 7], so it cannot pay for
+    # the Immediate token [Bloodlines p. 2]; the effect is mandatory
+    # [Coercive Negotiation card; FAQ p. 3], so there is no decline.
+    assert without.players[0].intrigue_cards == ()
+    assert without.intrigue_discard[-1] == card
+    assert without.players[0].units_deployed_committed == 3
     assert [
         dict(action.arguments).get("instance_id")
         for action in legal_trigger_contract_actions(without, 0)
     ] == ["contract:arrakeen_i", "contract:arrakeen_ii"]
 
-    holding = offered(
-        _owner(
-            intrigue_faceup=(card,),
-            intrigue_cards=INTRIGUE[:1],
-            units_deployed_turn=3,
-        )
+    holding = played(
+        _owner(intrigue_cards=(card, INTRIGUE[0]), units_deployed_turn=3)
     )
     actions = legal_trigger_contract_actions(holding, 0)
     assert dict(actions[0].arguments)["instance_id"] == IMMEDIATE
@@ -302,60 +310,36 @@ def _plays_coercive(state: GameState) -> bool:
 def test_coercive_negotiation_cannot_be_played_with_fewer_than_three_contracts(
     bank: tuple[str, ...],
 ) -> None:
-    held = _owner(intrigue_cards=(COERCIVE,))
+    held = _owner(intrigue_cards=(COERCIVE,), units_deployed_turn=3)
     assert not _plays_coercive(_state(held, market=(), bank=bank))
     assert _plays_coercive(_state(held, market=(), bank=THREE_BANK))
 
 
-def test_coercive_negotiation_face_up_never_triggers_with_fewer_than_three() -> None:
-    # Played while the bank still held three, then the bank ran down: the
-    # face-up card cannot be used, even with an Intrigue card in hand for
-    # the Immediate token, and it stays face up.
-    for bank in ((IMMEDIATE,), THREE_BANK[:2]):
-        base = _state(
-            _owner(
-                intrigue_faceup=(COERCIVE,),
-                intrigue_cards=INTRIGUE[:1],
-                units_deployed_turn=3,
-            ),
-            market=(),
-            bank=bank,
-        )
-        waiting = offer_deployment_triggers(RuleResult(state=base)).state
-        assert waiting.decision_stack == base.decision_stack
-        assert waiting.players[0].intrigue_faceup == (COERCIVE,)
-        assert waiting.contract_bank == bank
-    # With three in the bank one is always takeable (the single Immediate
-    # token is the only Contract that needs an Intrigue card [Bloodlines
-    # p. 2]), so the same deployment opens it at once.
-    three = _state(
-        _owner(intrigue_faceup=(COERCIVE,), units_deployed_turn=3),
-        market=(),
-        bank=(IMMEDIATE, *THREE_BANK[:2]),
-    )
-    opened = offer_deployment_triggers(RuleResult(state=three)).state
-    assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_TRIGGER_CONTRACT
-    assert [
-        dict(action.arguments)["instance_id"]
-        for action in legal_trigger_contract_actions(opened, 0)
-    ] == list(THREE_BANK[:2])
+def test_coercive_negotiation_always_reveals_a_takeable_contract() -> None:
+    # The card is playable with three Contracts in the bank (OQ-064), which
+    # guarantees a takeable one only while a single Contract needs an
+    # Intrigue card to trash: "You can't take the new Immediate contract
+    # unless you have an Intrigue card to trash." [Bloodlines p. 2]. New
+    # content adding another such Contract must revisit
+    # ``intrigue_triggers.legal_trigger_contract_actions``.
+    from dune_imperium.content.uprising.contracts import contract_for_instance
+
+    needs_trash = [
+        instance_id
+        for instance_id in contract_instance_ids(bloodlines=True)
+        if contract_for_instance(instance_id).requires_intrigue_trash
+    ]
+    assert needs_trash == [IMMEDIATE]
 
 
-def test_coercive_negotiation_with_three_contracts_opens_beside_distraction() -> None:
-    # Coercive Negotiation is mandatory, so the offer record that stops a
-    # declined Distraction from being offered again at the same count
-    # (OQ-016 (c)) never holds it back; a pending frame is not pushed twice.
-    distraction = next(card for card in INTRIGUE if ":distraction:" in card)
-    base = _state(
-        _owner(intrigue_faceup=(COERCIVE, distraction), units_deployed_turn=3),
-        market=(),
-        bank=THREE_BANK,
-    )
-    opened = offer_deployment_triggers(RuleResult(state=base)).state
-    pushed = opened.decision_stack[len(base.decision_stack) :]
-    assert FrameKind.INTRIGUE_TRIGGER_CONTRACT in [frame.kind for frame in pushed]
-    again = offer_deployment_triggers(RuleResult(state=opened)).state
-    assert again.decision_stack == opened.decision_stack
+def test_coercive_negotiation_needs_three_units_deployed_this_turn() -> None:
+    # "When you deploy three or more units to the Conflict in a single
+    # turn:" [Coercive Negotiation card] is a condition for playing it
+    # [FAQ p. 2] [Board Guide p. 10] (user ruling 2026-10-03, OQ-016).
+    for deployed, playable in ((0, False), (2, False), (3, True)):
+        held = _owner(intrigue_cards=(COERCIVE,), units_deployed_turn=deployed)
+        state = _state(held, market=(), bank=THREE_BANK)
+        assert _plays_coercive(state) is playable
 
 
 def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> None:
