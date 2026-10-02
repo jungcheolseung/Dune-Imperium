@@ -5,6 +5,22 @@
    hole the caller fills, {term} a rule term in the current language (see
    t() and tNode() in i18n.js). */
 const UI_TEXT = {
+  "html.setup_intro": {
+    "ko": "좌석과 규칙을 고르고 아라키스로 떠나세요.",
+    "en": "Choose your seats and rules. Arrakis awaits."
+  },
+  "screens.setup_summary": {
+    "ko": "사람 {{human}}명 · AI {{ai}}명 · 규칙 옵션 {{options}}개 선택",
+    "en": "{{human}} human · {{ai}} AI · {{options}} rule options selected"
+  },
+  "panels.log_compact": {
+    "ko": "기록 줄이기",
+    "en": "Compact history"
+  },
+  "panels.log_expand": {
+    "ko": "기록 크게 보기",
+    "en": "Expand history"
+  },
   "app.admin_link_invalid": {
     "ko": "관리자 링크가 맞지 않습니다 ({{message}})",
     "en": "The admin link is not valid ({{message}})"

@@ -378,13 +378,8 @@ function applySpotlight() {
 
 /* ---------- rendering ---------- */
 
-/* The panes that can scroll on their own; their content is rebuilt on every
-   render, which would throw the reader back to the top. Which of them really
-   scrolls depends on the viewport — `@media (max-width: 1700px)` moves the
-   side column's scrolling from #side-main up to #side — so keepScroll() asks
-   each pane at render time instead of trusting the list. Naming only the
-   panes that scroll at one width is what silently dropped #side on every
-   screen narrower than 1700px. */
+/* Keep every independently scrolling pane when another player acts. The
+   decision header stays in place while #actions scrolls below it. */
 const SCROLL_PANES = [
   "seats",
   "side",
@@ -393,6 +388,7 @@ const SCROLL_PANES = [
   "board",
   "market",
   "private-zone",
+  "actions",
 ];
 
 /* Panes with something to restore, as [element, top, left]. A pane sitting at

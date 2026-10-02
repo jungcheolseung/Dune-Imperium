@@ -965,6 +965,23 @@ function noticeScoutsSkips(entries, from) {
   if (notes.length) note(notes.join(" · "));
 }
 
+const LOG_EXPANDED_KEY = "dune.logExpanded";
+
+function labelLogSize(button) {
+  const expanded = el("side").classList.contains("log-expanded");
+  button.textContent = expanded ? t("panels.log_compact") : t("panels.log_expand");
+  button.setAttribute("aria-expanded", String(expanded));
+}
+
+function toggleLogSize(button) {
+  const list = el("action-log").querySelector(".log-list");
+  const following = list && list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+  const expanded = el("side").classList.toggle("log-expanded");
+  storageSet(LOG_EXPANDED_KEY, expanded ? "1" : "0");
+  labelLogSize(button);
+  if (following) list.scrollTop = list.scrollHeight;
+}
+
 function renderLog() {
   const panel = el("action-log");
   /* The list is rebuilt from scratch, so its scroll offset has to be read
@@ -1016,11 +1033,21 @@ function renderLog() {
     glowFrom = typeof seat === "number" ? ownGlowFrom(seat, log.entries) : arrivedFrom;
   }
 
+  const toolbar = document.createElement("div");
+  toolbar.className = "log-heading";
   const heading = document.createElement("h2");
   heading.textContent = t("panels.log_heading");
-  panel.appendChild(heading);
+  const resize = document.createElement("button");
+  resize.type = "button";
+  resize.className = "log-size-toggle";
+  resize.setAttribute("aria-controls", "turn-history");
+  labelLogSize(resize);
+  resize.addEventListener("click", () => toggleLogSize(resize));
+  toolbar.append(heading, resize);
+  panel.appendChild(toolbar);
   const list = document.createElement("div");
   list.className = "log-list";
+  list.id = "turn-history";
   /* The scroll target is picked from the groups themselves (which card
      first reaches arrivedFrom), not by re-querying the DOM for .fresh --
      that class now tracks glowFrom, which can lag behind arrivedFrom (a

@@ -1,6 +1,95 @@
 # 개발 인수인계
 
-기준일: 2026-10-02
+기준일: 2026-10-02 (master 49f5b73와 로컬 UI 브랜치 병합)
+
+## 2026-10-02 추가 master 통합 (WSL, 49f5b73)
+
+- 사용자가 추가로 갱신한 `origin/master` **`49f5b73`**까지 로컬 master를 fast-forward하고,
+  `codex/ui-table-refresh`에 합쳤다. 이전 UI 통합 커밋 `d20ad8c`와 추가 master 여섯 커밋을 보존한다.
+  충돌 없이 자동 병합됐고 엔진·codec·관측·Python 테스트는 최신 master와 같다.
+- L2 뒤 확인 항목의 판정과 계약 아이콘 처리가 반영됐다(`49940bb`·`fc11be7`): 교전 책략의
+  가져갈 수 없는 계약 아이콘은 카드 사용 시 확인하고 불발하며, Scouts 단계의 보류 아이콘은
+  그 단계 안에서 재개하고 단계 종료 때 불발한다. Holy War의 상대 응답 후 되돌리기 판정도 확정됐다.
+- 교전 책략이 별도 선택 창을 남겨도 연속 패스를 초기화하고, 창이 닫힌 뒤 유닛 없는 참여자를
+  순환에서 제거한다(`c0ea3d6`·`f386e99`). 순환이 비어 끝난 경우에도 종료 이벤트를 기록한다
+  (`910de64`·`49f5b73`). codec **v127**, 관측 **v28**이며 다음 codec 번호는 **v128**이다.
+- UI 11단계는 유지한다. **C1·C2는 아직 미착수**이고 L3 후속 학습은 별도 작업이다.
+- 전체 pytest **3,063 통과·5 건너뜀**(916초). 건너뛴 5개는 이 PC에 없는 DWGR 추출 자료
+  검사이며 실패는 없다. Ruff 통과, mypy **307파일 통과**.
+- 관련 브라우저 E2E **9종 전부 통과**(2개씩, 402초):
+  `turn_end`·`unavailable`·`scouts`·`combat_result`·`log_words`·`lang`·`table_layout`·
+  `setup_layout`·`endgame`. UI 배치와 클라이언트 동작 코드는 그대로이므로, 이전 통합의
+  전체 33종 기록을 유지하고 이번에는 바뀐 계약·교전 흐름과 라벨에 관련된 검사를 실행했다.
+- 로컬 검증 자료: `/tmp/dune-ui-master-49f5b73-pytest.log`, `/tmp/dune-ui-master-49f5b73-mypy.log`,
+  `/tmp/dune-e2e-run-0f344pqq/`.
+
+## 2026-10-02 최신 master와 UI 통합 (WSL)
+
+- 사용자가 갱신한 `origin/master` **`8de414b`**까지 로컬 master를 fast-forward한 뒤,
+  `codex/ui-table-refresh`에 합쳤다. 전달 묶음의 세 커밋과 로컬 검증 기록 두 커밋을 보존한다.
+- 최신 master의 **L1(명시적 Agent 턴 종료)·L2(자동 처리 대신 결정 창)**와 UI 11단계의
+  보드 확대·행동/로그 독립 스크롤·시작 화면 개선이 함께 들어 있다. 엔진·codec·관측·Python 테스트는
+  master와 같다. codec **v125**, 관측 **v28**이며 다음 codec 번호는 **v126**이다.
+- 충돌은 이 인수인계 문서 한 곳이었다. 두 세션의 기록을 보존하고 당시 상태임을 명시했다.
+  자동 병합된 UI에서는 master의 부족 경고 배지·턴 종료 대기 표시·선택 불가 줄과,
+  가져온 로그 크기 조절·스크롤 위치 보존이 모두 남아 있는지 검토했다.
+- 다음 작업은 **C1(선택 불가 표시 확대)·C2(Harvest Cells 숨은 정보)**이며 아직 미착수다.
+  L3 후속 학습과 L2의 판정 확인 항목은 아래 master 인수인계 기록을 따른다.
+- 검증: 전체 pytest **3,053 통과·5 건너뜀**(1,099초), **브라우저 E2E 33종 전부 통과**
+  (2개씩, 963초), Ruff 통과, mypy **307파일 통과**. 건너뛴 5개는 이 PC에 없는 DWGR 추출
+  자료 검사다. 에셋 연결 검사도 전체 실행에서 통과해 이미지 누락 실패는 없다.
+- 브라우저는 아래 가져오기 검증에서 준비한 실제 `libasound2t64`와 Windows 글꼴의 임시
+  fontconfig 환경을 사용했다. 이전 미통과였던 Scouts·관전 재생·좁은 창 검사도 모두 통과했다.
+  게임/시작 화면의 1440px 캡처를 직접 검토했고, 레이아웃 검사는 1366·1440·1920px의
+  게임 화면과 600·900·1440px의 시작 화면을 검증했다.
+- 로컬 검증 자료: `/tmp/dune-ui-master-merge-pytest.log`, `/tmp/dune-ui-master-merge-mypy.log`,
+  `/tmp/dune-e2e-run-la4rvfrb/`, `/tmp/dune-ui-master-merge-shots/`.
+
+## 2026-10-02 WSL UI 브랜치 가져오기
+
+- 사용자가 옮겨 온 `dune-ui-transfer-20261001/`의 SHA256SUMS 전 항목과 Git bundle을 검증한 뒤
+  `codex/ui-table-refresh`로 가져와 전환했다. 원본 커밋 `395b772`·`4ad05fe`·`45d1893`을 보존했고,
+  가져온 직후 트리도 전달 묶음의 VERIFIED.json과 같았다. UI 코드는 추가 수정하지 않았다.
+  가져오기 당시 `git fetch origin` 뒤에도 master와 origin/master는 모두 `659cefb`였다. 전달 폴더는 미추적 상태로
+  보존했으며 이 검증 기록만 추가 커밋한다.
+- `uv sync --locked --offline --extra rl --extra ui --extra train` 후 전체 pytest는
+  **2,963 통과·5 건너뜀·1 실패**(1,082초). 실패는 `economic_supremacy`·`control_the_spice`의
+  에셋 연결 누락이고, `/tmp`에 푼 원본 master의 같은 테스트에서도 똑같이 재현했다.
+  5개 건너뜀은 DWGR 추출 자료 부재다. Ruff 통과, mypy 306파일 통과.
+- 후속 확인(같은 날): 사용자가 에셋을 `b1c7dd4`로 업데이트해 Epic 카드 두 장의 연결을 추가했다.
+  `test_the_assets_checkout_resolves_every_content_id`를 다시 실행해 **1개 통과**(0.26초)를 확인했다.
+  위 전체 실행의 유일한 이미지 누락 실패는 해결됐다. 전체 pytest는 이 후속 확인에서 재실행하지 않았다.
+- 전체 브라우저 E2E는 2개씩 실행해 **30종 통과·3종 미통과**(1,160초):
+  `narrow.py`의 600px 영어 관전 화면 가로 넘침, `spectate.py`의 마지막 재생 8초 시간 초과,
+  `scouts.py`의 실행기 600초 제한이다. 앞 두 실패는 원본 master에서도 재현됐다.
+  별도 대조에서 UI 브랜치의 spectate는 통과했다. Scouts 전 구간은 이 PC에서 검증을 마치지 못했다.
+- 이 WSL의 첫 브라우저 실행은 `libasound.so.2`가 없어 시작에 실패했고, 화면 캡처에는 한글 글꼴도
+  없었다. 시스템 설치 없이 `/tmp`에 Ubuntu `libasound2t64`를 풀어 LD_LIBRARY_PATH로 제공하고,
+  기존 Windows의 Arial·Segoe UI·Malgun Gothic을 임시 fontconfig로 연결했다.
+  이 환경에서 **spectate·narrow·setup_layout·table_layout 4종이 모두 통과**(순차 실행 73초).
+  전체 실행의 실패 기록은 위에 유지한다. 에셋·규칙·codec·관측·저장 형식은 변경하지 않았다.
+
+
+## 2026-10-01 로컬 UI 개선 브랜치
+
+- 사용자 요청으로 `master` **`659cefbc0f8e330afea73ab9743479736937f628`**에서
+  `codex/ui-table-refresh`를 만들었다. **사내 환경에서 push 금지.** master는 이동하지 않았다.
+- `395b772`: 보드에 더 많은 폭을 배분하고, 행동 목록과 로그를 독립 스크롤 영역으로 나눴다.
+  현재 안내·턴 종료는 행동 목록 위에 남고, 로그는 크게 보기/줄이기를 브라우저에 기억한다.
+  차콜·황동 색상과 버튼 위계를 정리하고 책략 카드를 손패 옆으로 옮겼다.
+- `4ad05fe`: 시작 화면을 좌석·규칙 옵션·현재 설정 요약으로 구성했다. 체크포인트 입력은
+  해당 AI를 선택할 때만 보이며, 언어 전환과 숨김/다시 표시에서도 입력을 유지한다.
+- 변경은 `server/static/`와 브라우저 검사·문서에 한정한다. 엔진·codec·관측·저장 형식·규칙 기본값은
+  그대로였다. 이 브랜치를 만들 당시 아래 L1/L2/C1/C2 작업은 들어 있지 않았다.
+- 검증: **브라우저 E2E 33종 모두 통과**, Ruff 통과, mypy 306파일 통과.
+  pytest는 **2,963 통과·5 건너뜀·1 실패**(237초). 실패는 이 머신의 에셋에서
+  `economic_supremacy`·`control_the_spice` 이미지가 연결되지 않는 기존 문제이며,
+  별도 디렉터리에 푼 **master 659cefb에서도 같은 단일 테스트 실패를 재현**했다.
+  5개 건너뜀은 이 머신에 DWGR 추출 자료가 없기 때문이다. 에셋은 수정하지 않았다.
+- 상세 변경과 검증은 [`ui-improvement-plan.md`](ui-improvement-plan.md)의 11단계.
+  개인 PC에서는 전달 ZIP의 README대로 로컬 Git bundle을 가져오거나 패치 시리즈를 적용한다.
+  에셋·체크포인트·가상환경은 전달 묶음에 없다. 에셋 링크와 `uv sync --extra rl --extra ui --extra train`은
+  개인 PC 환경에서 준비한다. 이 머신에서는 gitignored `.venv`가 임시 `/tmp/dune-ui-runtime`을 가리킨다.
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -21,7 +110,7 @@ uv run mypy src tests
 
 ## 현재 구현 기준선
 
-마지막 커밋은 2026-09-20의 **전 좌석 AI 게임 관전**(`ac8cdeb`, 리플레이 검토의 자동 재생; 아래 세션 요약)이고, 그 앞이 같은 날의 **Staban Tuek draft pick 되돌리기 수정**(`8b6454e`, 서버 되돌리기 경계만; 아래 세션 요약)이고, 그 앞의 커밋 묶음은 같은 날 새벽의 **보드 조각의 인쇄 자리 배치·아이콘 전사 정정**(master 직접 커밋 4건 + 문서; 아래 세션 요약: Control·bonus spice·Maker Hooks·Alliance token의 인쇄 자리, Trash-Intrigue 아이콘 세 곳, Spy 배치 의무, Influence 4 보너스 — codec v107)이고, 그 앞의 엔진 커밋 묶음은 2026-09-16의 **공간 표 강등 마감 측정·수준 0.6 채택·OQ-060 확정**(master 직접 커밋 5건; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 18절(g)·(h))이고, 그 앞이 2026-09-11의 **보드 공간 표 상위 세 칸 강등 + OQ-060**(master 직접 커밋 2건: `94545a0` OQ-060 Influence 선택 소멸, 그리고 표 강등·Tech 특례 제거·문서; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 18절; **커밋 트리 확인 셀과 강등 수준 맞대결은 미완**)이고, 그 앞이 같은 날의 **Tech tile 가치표 A/B(기각)**(master 직접 커밋 1건; 코드 변경은 `HeuristicAgent`·`score_action`의 `tech_bonuses` A/B 슬롯과 테스트 1건뿐이고 `_TECH_BONUSES` 표는 그대로다; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 17절)이고, 그 앞이 같은 날의 **Tech Module 공간 표 A/B(기각)**(master 직접 커밋 1건; 코드 변경은 `heuristic_agent.py`·`registry.py`의 주석과 docstring뿐이고 배선은 그대로다; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 16절)이고, 그 앞이 2026-09-10 심야의 **확장 공간 순위·엔진 결함 3건**(master 직접 커밋 `2fa94d1`/`86c634b`/`aa46132`와 문서; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 15절)이고, 그 앞이 같은 날 심야의 **`agent_turn` spent-card 동점**(master 직접 커밋 `69bf880`와 문서; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 14절)이고, 그 앞이 같은 날 심야의 **처리량 회귀 귀인**(master 직접 커밋 `ab48e0c`/`88c0ef7`/`615e7ed`와 문서; 아래 세션 요약, 수치는 [evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md))이고, 그 앞이 같은 날 밤의 **보드 공간 재정비·잠재 결함 3건**(master 직접 커밋 4건, codec v103→v104; 아래 세션 요약)이고, 그 앞이 2026-09-10의 **문서 정정·학습 룰셋 배선·Long Live frame**(master 직접 커밋 `e0e364b`/`8b039dc`/`6c89a56`; 아래 세션 요약)이고, 그 앞이 2026-09-09 저녁의 **baseline agent Immortality 가치·엔진 교착 수정**(master 직접 커밋 3건 `21b5318`/`85bd179`/`3987126`; 아래 세션 요약, 세부는 [implementation-audits/immortality.md](implementation-audits/immortality.md) "baseline agent의 Immortality 가치" 절)이고, 그 앞이 같은 날의 **Bloodlines contract token 8개**(master 직접 커밋 `Play`/`Document` 쌍; 아래 세션 요약, 세부는 [implementation-audits/bloodlines.md](implementation-audits/bloodlines.md) "Contract token" 절)이고, 그 앞이 2026-09-08의 **M13 Immortality**(master 직접 커밋, 슬라이스 1~6의 `Play`/`Document` 쌍과 UI·소크 수정; 아래 세션 요약, 세부는 [implementation-audits/immortality.md](implementation-audits/immortality.md))이고, 그 앞이 같은 날의 **구현 마감 슬라이스**(master 직접 커밋 5건 + 문서)이다: OQ-047(Endgame tiebreaker에 garrison Commander 포함), Bloodlines 프로모 Ruthless Leadership(`promo_cards`+`bloodlines`, 관측 v10·codec v95), 서버 AI 좌석의 `rollout`/`checkpoint:` 연결, UI의 Agent 토큰 이동 애니메이션과 1700px 이하 오른쪽 패널 1열, Bloodlines+Tech 커버리지 census. 그 앞이 2026-09-07 밤의 **M12 슬라이스 7 마감**(master 직접 커밋 5건; 아래 세션 요약)이다: 웹 UI의 Commander·Skill·Ixian Embassy·Tech tile 표시, heuristic의 tile별 가중치와 rollout 자산 가치, `--bloodlines --tech-module` 교차 소크 7,000판 실패 0(적발한 결함 3계열 수정, OQ-046), 관측 v9 기준 학습 smoke, 저장 문서의 모듈 플래그 수정 — 이로써 **M12 완료**. 그 앞이 같은 날 저녁의 **M12 슬라이스 6 Tech Module**(master 직접 커밋 4건 + Navigation 대기열 수정 1건; 아래 세션 요약)이다: Ixian Embassy와 Tech tile 18장의 획득·할인·Flip·획득 효과·능력, Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix(관측 v9, codec v91→같은 날 밤 사용자 검토로 v94, 판정 OQ-040~045). 그 앞이 같은 날의 **Bloodlines 확장 슬라이스 1~5**(`bloodlines` 브랜치를 master 쪽에서 머지, `dbd9b73`; 아래 세션 요약)이다: `RulesetConfig(bloodlines=True, tech_module=True)` 옵션 골격, Sardaukar Commander와 Skill 7종, Bloodlines Conflict 2장, Imperium 25종·Intrigue 16장, Leader 8종(Tuek's Sietch board space, Twisted Intrigue 12장, Navigation 10장 포함). 이로써 Bloodlines 구성물 전부가 play된다. 그 앞이 2026-09-06 밤의 **전투력 단일 값·표시 정리**(`rules/strength.py`의 매 step 갱신, 관측 v5, 전투력 토큰의 0 네모·`+20` 면, 좌석 패널의 검=전투력; 아래 세션 요약)이고, 그 앞이 같은 날 저녁의 **M11 UI 개선 묶음**(`ui-work` 워크트리 브랜치 12건: 호버 팝오버, 정적 파일 재검증, Conflict·Contract·Conflict 덱의 보드 슬롯 표시, garrison·Conflict 병력 칩, 공용 카드 열의 세로 배치, 행동 목록 포커스 정렬, 행동 로그 턴 카드·중립 카드, 오른쪽 패널 2열; 아래 세션 요약)이고, 그 앞이 같은 날의 **M10 슬라이스 1 학습 루프**(`train` extra, `training/network.py`·`torch_policy.py`·`checkpoint.py`·`learner.py`·`loop.py`, `dune-imperium-train`; 아래 세션 요약)이고, 그 앞이 같은 날의 **M9 슬라이스 3 lockstep self-play 러너**(`training/selfplay.py`·`training/policy.py`, `dune-imperium-selfplay`)이며, 그 앞이 같은 날의 **M9 슬라이스 2 rollout baseline**(`agents/rollout_agent.py`, `agents/determinize.py`, `StateAgent` 계약)이며, 그 앞이 같은 날의 **M9 슬라이스 1 대회 도구**(`dune-imperium-tournament`, `evaluation/` 패키지, `agents/registry.py`)이며, 그 앞이 2026-09-05의 **OQ-029 판정 구현**(Combat 배치의 회수·분할과 명시적 Agent turn 종료, codec v89; 아래 세션 요약)이고, 그 앞이 2026-09-04의 **조건 판정 시점 정리**(OQ-028: 미룬 Reveal 선택의 조건 재성립, Agent box 조건의 해결 시점 판정, Reveal 자동 조건부 이득의 늦은 지급; 아래 세션 요약)이고, 그 앞이 같은 날의 Reveal 선택형 효과 순서 자유화(`defer_reveal_choice`/`resume_reveal_choice`, codec v88)이며, 그 앞이 2026-09-03 심야의 자율 작업 5건(카드 Agent box 아이콘 분리 codec v87, 턴 종료 확인·되돌리기 가능 표시·보드 마커 UI)이며, 그 앞이 같은 날 밤의 **보드 공간 아이콘 분리**(인쇄 아이콘마다 `resolve_board_effect(effect=<key>)` 행동 하나, codec v86, OQ-027)이며, 그 앞의 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료, M9 완료(대회 도구·rollout baseline·self-play 러너, 2026-09-06)**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절; Uprising 프로모 3장은 2026-09-03 저녁 `promo_cards` 옵션으로 구현 완료), **M10 진행 중(슬라이스 1 학습 루프 완료)**, **M12 완료(2026-09-07 밤, 슬라이스 7까지)**.
+다음은 2026-09-20 당시의 범위 요약이며, 최신 병합·검증 기준은 문서 상단을 따른다. 그날 마지막 커밋은 **전 좌석 AI 게임 관전**(`ac8cdeb`, 리플레이 검토의 자동 재생; 아래 세션 요약)이고, 그 앞이 같은 날의 **Staban Tuek draft pick 되돌리기 수정**(`8b6454e`, 서버 되돌리기 경계만; 아래 세션 요약)이고, 그 앞의 커밋 묶음은 같은 날 새벽의 **보드 조각의 인쇄 자리 배치·아이콘 전사 정정**(master 직접 커밋 4건 + 문서; 아래 세션 요약: Control·bonus spice·Maker Hooks·Alliance token의 인쇄 자리, Trash-Intrigue 아이콘 세 곳, Spy 배치 의무, Influence 4 보너스 — codec v107)이고, 그 앞의 엔진 커밋 묶음은 2026-09-16의 **공간 표 강등 마감 측정·수준 0.6 채택·OQ-060 확정**(master 직접 커밋 5건; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 18절(g)·(h))이고, 그 앞이 2026-09-11의 **보드 공간 표 상위 세 칸 강등 + OQ-060**(master 직접 커밋 2건: `94545a0` OQ-060 Influence 선택 소멸, 그리고 표 강등·Tech 특례 제거·문서; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 18절; **커밋 트리 확인 셀과 강등 수준 맞대결은 미완**)이고, 그 앞이 같은 날의 **Tech tile 가치표 A/B(기각)**(master 직접 커밋 1건; 코드 변경은 `HeuristicAgent`·`score_action`의 `tech_bonuses` A/B 슬롯과 테스트 1건뿐이고 `_TECH_BONUSES` 표는 그대로다; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 17절)이고, 그 앞이 같은 날의 **Tech Module 공간 표 A/B(기각)**(master 직접 커밋 1건; 코드 변경은 `heuristic_agent.py`·`registry.py`의 주석과 docstring뿐이고 배선은 그대로다; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 16절)이고, 그 앞이 2026-09-10 심야의 **확장 공간 순위·엔진 결함 3건**(master 직접 커밋 `2fa94d1`/`86c634b`/`aa46132`와 문서; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 15절)이고, 그 앞이 같은 날 심야의 **`agent_turn` spent-card 동점**(master 직접 커밋 `69bf880`와 문서; 아래 세션 요약, 수치는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md) 14절)이고, 그 앞이 같은 날 심야의 **처리량 회귀 귀인**(master 직접 커밋 `ab48e0c`/`88c0ef7`/`615e7ed`와 문서; 아래 세션 요약, 수치는 [evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md))이고, 그 앞이 같은 날 밤의 **보드 공간 재정비·잠재 결함 3건**(master 직접 커밋 4건, codec v103→v104; 아래 세션 요약)이고, 그 앞이 2026-09-10의 **문서 정정·학습 룰셋 배선·Long Live frame**(master 직접 커밋 `e0e364b`/`8b039dc`/`6c89a56`; 아래 세션 요약)이고, 그 앞이 2026-09-09 저녁의 **baseline agent Immortality 가치·엔진 교착 수정**(master 직접 커밋 3건 `21b5318`/`85bd179`/`3987126`; 아래 세션 요약, 세부는 [implementation-audits/immortality.md](implementation-audits/immortality.md) "baseline agent의 Immortality 가치" 절)이고, 그 앞이 같은 날의 **Bloodlines contract token 8개**(master 직접 커밋 `Play`/`Document` 쌍; 아래 세션 요약, 세부는 [implementation-audits/bloodlines.md](implementation-audits/bloodlines.md) "Contract token" 절)이고, 그 앞이 2026-09-08의 **M13 Immortality**(master 직접 커밋, 슬라이스 1~6의 `Play`/`Document` 쌍과 UI·소크 수정; 아래 세션 요약, 세부는 [implementation-audits/immortality.md](implementation-audits/immortality.md))이고, 그 앞이 같은 날의 **구현 마감 슬라이스**(master 직접 커밋 5건 + 문서)이다: OQ-047(Endgame tiebreaker에 garrison Commander 포함), Bloodlines 프로모 Ruthless Leadership(`promo_cards`+`bloodlines`, 관측 v10·codec v95), 서버 AI 좌석의 `rollout`/`checkpoint:` 연결, UI의 Agent 토큰 이동 애니메이션과 1700px 이하 오른쪽 패널 1열, Bloodlines+Tech 커버리지 census. 그 앞이 2026-09-07 밤의 **M12 슬라이스 7 마감**(master 직접 커밋 5건; 아래 세션 요약)이다: 웹 UI의 Commander·Skill·Ixian Embassy·Tech tile 표시, heuristic의 tile별 가중치와 rollout 자산 가치, `--bloodlines --tech-module` 교차 소크 7,000판 실패 0(적발한 결함 3계열 수정, OQ-046), 관측 v9 기준 학습 smoke, 저장 문서의 모듈 플래그 수정 — 이로써 **M12 완료**. 그 앞이 같은 날 저녁의 **M12 슬라이스 6 Tech Module**(master 직접 커밋 4건 + Navigation 대기열 수정 1건; 아래 세션 요약)이다: Ixian Embassy와 Tech tile 18장의 획득·할인·Flip·획득 효과·능력, Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix(관측 v9, codec v91→같은 날 밤 사용자 검토로 v94, 판정 OQ-040~045). 그 앞이 같은 날의 **Bloodlines 확장 슬라이스 1~5**(`bloodlines` 브랜치를 master 쪽에서 머지, `dbd9b73`; 아래 세션 요약)이다: `RulesetConfig(bloodlines=True, tech_module=True)` 옵션 골격, Sardaukar Commander와 Skill 7종, Bloodlines Conflict 2장, Imperium 25종·Intrigue 16장, Leader 8종(Tuek's Sietch board space, Twisted Intrigue 12장, Navigation 10장 포함). 이로써 Bloodlines 구성물 전부가 play된다. 그 앞이 2026-09-06 밤의 **전투력 단일 값·표시 정리**(`rules/strength.py`의 매 step 갱신, 관측 v5, 전투력 토큰의 0 네모·`+20` 면, 좌석 패널의 검=전투력; 아래 세션 요약)이고, 그 앞이 같은 날 저녁의 **M11 UI 개선 묶음**(`ui-work` 워크트리 브랜치 12건: 호버 팝오버, 정적 파일 재검증, Conflict·Contract·Conflict 덱의 보드 슬롯 표시, garrison·Conflict 병력 칩, 공용 카드 열의 세로 배치, 행동 목록 포커스 정렬, 행동 로그 턴 카드·중립 카드, 오른쪽 패널 2열; 아래 세션 요약)이고, 그 앞이 같은 날의 **M10 슬라이스 1 학습 루프**(`train` extra, `training/network.py`·`torch_policy.py`·`checkpoint.py`·`learner.py`·`loop.py`, `dune-imperium-train`; 아래 세션 요약)이고, 그 앞이 같은 날의 **M9 슬라이스 3 lockstep self-play 러너**(`training/selfplay.py`·`training/policy.py`, `dune-imperium-selfplay`)이며, 그 앞이 같은 날의 **M9 슬라이스 2 rollout baseline**(`agents/rollout_agent.py`, `agents/determinize.py`, `StateAgent` 계약)이며, 그 앞이 같은 날의 **M9 슬라이스 1 대회 도구**(`dune-imperium-tournament`, `evaluation/` 패키지, `agents/registry.py`)이며, 그 앞이 2026-09-05의 **OQ-029 판정 구현**(Combat 배치의 회수·분할과 명시적 Agent turn 종료, codec v89; 아래 세션 요약)이고, 그 앞이 2026-09-04의 **조건 판정 시점 정리**(OQ-028: 미룬 Reveal 선택의 조건 재성립, Agent box 조건의 해결 시점 판정, Reveal 자동 조건부 이득의 늦은 지급; 아래 세션 요약)이고, 그 앞이 같은 날의 Reveal 선택형 효과 순서 자유화(`defer_reveal_choice`/`resume_reveal_choice`, codec v88)이며, 그 앞이 2026-09-03 심야의 자율 작업 5건(카드 Agent box 아이콘 분리 codec v87, 턴 종료 확인·되돌리기 가능 표시·보드 마커 UI)이며, 그 앞이 같은 날 밤의 **보드 공간 아이콘 분리**(인쇄 아이콘마다 `resolve_board_effect(effect=<key>)` 행동 하나, codec v86, OQ-027)이며, 그 앞의 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료, M9 완료(대회 도구·rollout baseline·self-play 러너, 2026-09-06)**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절; Uprising 프로모 3장은 2026-09-03 저녁 `promo_cards` 옵션으로 구현 완료), **M10 진행 중(슬라이스 1 학습 루프 완료)**, **M12 완료(2026-09-07 밤, 슬라이스 7까지)**.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각, actor-neutral action codec과 PettingZoo AEC 계약이 있다.
 - M5의 주요 시스템은 연결돼 있다. Influence/Friendship/Alliance, Agent와 Reveal, Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상, sandworm·Shield Wall·control, Makers·Recall, Endgame window와 게임 종료까지 실행할 수 있다.
@@ -72,7 +161,7 @@ uv run mypy src tests
 
 병행 규칙:
 
-- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v124, 다음 v125). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
+- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v127, 다음 v128). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
   (epic 병합 때와 같다: 버전 주석에 양쪽 뜻을 모두 남기고 golden digest는 문서화된 절차로 다시 핀한다). 관측 버전도 같다(지금 v28).
 - **충돌.** C1은 여러 `rules/` 공급자 함수에 막힘 판정을 드러내고, L1은 `rules/effects.py`·`combat_deployment.py`·`agent_effect_frame.py`·
   `engine.py`·`server/sessions.py`를 고친다. 함께 진행하면 작게 자주 master에 합친다. 합칠 때는 master 쪽에서 `--no-ff`로 합친다.

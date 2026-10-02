@@ -23,6 +23,7 @@ async function init() {
   loadLanguage();
   loadCollapsedStrips();
   loadExpandedSeats();
+  el("side").classList.toggle("log-expanded", storageGet(LOG_EXPANDED_KEY) === "1");
   state.catalog = await api("/catalog");
   localizeCatalog(state.catalog);
   const adminError = await adoptAdminLink();
@@ -96,6 +97,7 @@ async function init() {
   syncTechOption();
   el("opt-immortality").addEventListener("change", syncGoTo11Option);
   syncGoTo11Option();
+  el("setup-form").addEventListener("change", updateSetupSummary);
   el("leave-game").addEventListener("click", () => leaveGame());
   el("open-lobby").addEventListener("click", () => showLobby());
   el("lobby-enter").addEventListener("click", () => enterTable(state.summary));
