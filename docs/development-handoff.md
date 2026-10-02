@@ -13,6 +13,9 @@
   **2,963 통과·5 건너뜀·1 실패**(1,082초). 실패는 `economic_supremacy`·`control_the_spice`의
   에셋 연결 누락이고, `/tmp`에 푼 원본 master의 같은 테스트에서도 똑같이 재현했다.
   5개 건너뜀은 DWGR 추출 자료 부재다. Ruff 통과, mypy 306파일 통과.
+- 후속 확인(같은 날): 사용자가 에셋을 `b1c7dd4`로 업데이트해 Epic 카드 두 장의 연결을 추가했다.
+  `test_the_assets_checkout_resolves_every_content_id`를 다시 실행해 **1개 통과**(0.26초)를 확인했다.
+  위 전체 실행의 유일한 이미지 누락 실패는 해결됐다. 전체 pytest는 이 후속 확인에서 재실행하지 않았다.
 - 전체 브라우저 E2E는 2개씩 실행해 **30종 통과·3종 미통과**(1,160초):
   `narrow.py`의 600px 영어 관전 화면 가로 넘침, `spectate.py`의 마지막 재생 8초 시간 초과,
   `scouts.py`의 실행기 600초 제한이다. 앞 두 실패는 원본 master에서도 재현됐다.
