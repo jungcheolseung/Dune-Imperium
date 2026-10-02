@@ -59,3 +59,26 @@ of beats: subcommittees, missions, events, auctions, sales.
   44 Beetle 45 Research 48 Sword 49 Contract 50 Recall 51 TrashIntrigue 52 Discard 53 Spy 54 Arrow 55 Persuasion_2
   56 RecallAgent 57 Spice_4. `<sprite name=X>` uses the name directly (e.g. Spice_2 = 2 spice).
 - Board-space names and Uprising rules: the main repository's docs/rules/.
+
+## Steam Dune: Imperium app (`IL2CPP_APP=dune`)
+
+Added 2026-10-03 for build a6cb3f9216f9489d803b76004ec9af53 (app 4.1.1.1804, Unity 6000.3.17f1).
+The longer guide and the subsystem map written for the analysis agents are local only, next to
+the dump in the assets checkout (`reference/dune-steam-app/<build-guid>/analysis/`).
+
+- Binary: universal dylib; the tools read its x86_64 slice and decode chained fixups, so
+  addresses are VM addresses. global-metadata v39 (narrow indices are read for you).
+- Assemblies: `worm-canis.dll` holds the Dune rules (`worm.canis.abilities.*`, `.actions.*`
+  incl. `.actions.phases`, `.archetypes.*`, `.data.*`), `Canis.dll` the generic engine
+  (`Canis.actions` state machines, selections, undo, attributes), `worm-client.dll` the UI.
+- Il2CppClass offsets in this build: static fields `[klass+0xb8]` (as before), cctor-finished
+  flag `[klass+0xe4]` (Game Room: `+0xe0`), vtable from `+0x138` (both builds; 16 bytes per slot).
+- Cards, spaces, leaders and conflicts are archetype classes whose `.ctor` only sets attributes
+  (`ObjectAttributes::Has` with `~static WormAttributes.<Name>` keys), including the ordered
+  list of ability IDs. Effects live in ability classes: `Targets()` (choices), `Cost()`
+  (mostly a can-pay check) and `BeginExecution()` (a coroutine; read its `<BeginExecution>d__N::MoveNext`).
+  The namespace of an ability class is not the card's set; the archetype's `SetList` is.
+- Phases are `Canis.actions.StateMachineAction<TState>` subclasses; each state's behaviour is a
+  coroutine, and the real order is in `DetermineNextTypedState`, not in the enum values.
+- Use the `~` annotations (fields, statics, vtable slots) and the `jump-table case N` lines in
+  `il2dis` output; `il2dump.py --asm` writes the whole disassembly per type for grepping.
