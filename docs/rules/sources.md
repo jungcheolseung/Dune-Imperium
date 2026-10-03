@@ -204,6 +204,13 @@ Objective 카드의 battle icon, 인원 표시, First Player 표시처럼 룰북
 사용한다. 이 글의 설계 설명을 Main·Board Guide·FAQ보다 높은 규칙 판정 근거로
 사용하지 않는다.
 
+Objective 카드의 인쇄 문구와 인원 표시는 2026-10-04 사용자가 제공한 한국어판·영어판 카드
+사진으로 확인했다(인용 `[Objective card]`). 다섯 장 모두 하단에 "This counts as a Conflict
+card you've already won."(한국어판 "이 카드를 당신이 이미 가져온 교전 카드로 간주함.")이
+인쇄돼 있고, 인원 표시는 Crysknife 한 장과 Desert Mouse 한 장이 "4/6P", Ornithopter가 "1-3P"이며
+First Player marker는 표시 없는 Desert Mouse에 있다. Design Diary 이미지만으로는 Crysknife의
+"4/6P"와 하단 문구를 놓쳤다(OQ-005 재판정).
+
 ## 변경 절차
 
 새 FAQ나 룰북이 나오면 다음 순서로 갱신한다.
