@@ -27,9 +27,11 @@ visual reference.
 
 ## Deferred boundaries
 
-- Set-aside access after market exhaustion is decided under OQ-021: Shaddam
-  chooses per icon between two Solari and a remaining set-aside tile (see the
-  [Leader audit](leaders.md)); it reopens only on an official ruling.
+- Set-aside access after market exhaustion is decided under OQ-021: while a
+  set-aside tile remains, Shaddam's icon must take one, because the two-Solari
+  reversion needs every Contract taken [Main p. 16] (user ruling 2026-10-04,
+  codec v130; see the [Leader audit](leaders.md)); it reopens only on an
+  official ruling.
 - An official answer for Gather Intelligence versus Contract completion under
   OQ-011; the implemented project convention remains clearly labeled until then.
 
