@@ -82,7 +82,8 @@ IL2CPP_APP=dune uv run --no-project --with UnityPy --with TypeTreeGeneratorAPI -
 2. 이전 추출과 `diff -r`로 비교한다. 정의(`spice_mb/*Definition.json`)나 일정 풀(`schedules.json`)이 바뀌었으면 엔진 규칙 변경으로 다룬다. Steam 앱의 기록은 그 판정이 근거로 삼은 메서드를 새 빌드에서 다시 확인한다.
 3. 알려진 한계:
    - `il2meta.py`는 metadata v31·v39와 x86_64 dylib(`__TEXT` vmaddr 0, chained fixups 형식 2·6)만 다룬다. 어긋나면 import할 때 분명한 오류로 멈춘다.
-   - `il2dis.py`의 `rt:` 런타임 helper 이름표(`HELPERS_BY_BUILD`)는 build `84d64e1237b54105aee1940811cd9e43`(Game Room)과 `a6cb3f9216f9489d803b76004ec9af53`(Steam 4.1.1.1804)에만 있다. 다른 빌드는 이름표 없이 주소만 보인다.
+   - `il2dis.py`의 `rt:` 런타임 helper 이름표(`HELPERS_BY_BUILD`)는 build `84d64e1237b54105aee1940811cd9e43`(Game Room), `a6cb3f9216f9489d803b76004ec9af53`(Steam 4.1.1.1804), `dad97e2021144d45b5b4f022e07bd3b3`(Steam 4.1.2.1808, 같은 주소)에만 있다. 다른 빌드는 이름표 없이 주소만 보이고, `rt:object_new` 뒤의 `~` 추적도 끊긴다.
+   - 두 build를 비교할 때는 `--asm` 덤프에서 주소·`rt:`·`~` 주석·stub 주소를 지운 뒤 메서드별로 대조한다. 4.1.1.1804 → 4.1.2.1808은 이렇게 바뀐 메서드가 7개(재접속 `Canis.actions.ResumePlayer`, 클라이언트 버전, 카드 드래그·진영 선택 UI)였고 `worm.canis.*` 규칙 코드는 그대로였다.
    - 새 빌드의 helper는 이렇게 다시 찾는다. 이름 없는 호출 대상을 호출 횟수로 줄 세우고, 본문 모양(`call; mfence; ret`, `jmp` 한 줄, `mov esi, esi; jmp`)과 호출부(`test byte [klass+0x135]`, `cmp idx, [arr+0x18]; jae`)를 이전 빌드와 맞춘다. 예외 helper는 호출 사슬이 불러오는 클래스 이름 문자열(`NullReferenceException`, `IndexOutOfRangeException`)로 확인한다.
 
 ## 확인 기록
@@ -95,3 +96,5 @@ IL2CPP_APP=dune uv run --no-project --with UnityPy --with TypeTreeGeneratorAPI -
 - metadata v39, 인덱스 폭: 타입 정의 2바이트, generic container 2바이트, 타입 4바이트, 파라미터 4바이트. CodeRegistration `0x5ab0b20`, codeGenModules `0x5f151a0`(143개), MetadataRegistration `0x5d8f610`. 메서드 181,071개 중 162,549개에 주소가 있다.
 - v39 지원을 넣은 뒤에도 Game Room build의 `il2fields`·`il2xref` 출력이 이전과 같았다. `il2dis` 출력은 bss 바이트 두 줄만 달라졌다(이전에는 파일 밖 바이트를 읽었고 이제 0으로 읽는다).
 - 문자열 기본값의 길이를 부호 있는 압축 정수로 읽게 고쳤다. 전에는 길이가 두 배로 읽혀 뒤 문자열이 붙었다.
+
+2026-10-03 05:13, Steam 앱이 4.1.2.1808, build `dad97e2021144d45b5b4f022e07bd3b3`(Steam buildid 25682137)로 업데이트됐다. 표 위치는 그대로였고 메서드가 하나 늘었다(181,072개 중 162,550개에 주소). helper 주소도 그대로다.

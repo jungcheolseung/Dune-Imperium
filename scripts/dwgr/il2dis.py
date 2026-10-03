@@ -73,7 +73,8 @@ fstarts = sorted(set(fstarts))
 # IL2CPP runtime helpers have no metadata names. These labels were identified by hand
 # (call patterns, noreturn tails, the exception class names their callees look up) for
 # build 84d64e1237b54105aee1940811cd9e43 (Dire Wolf Game Room) and
-# a6cb3f9216f9489d803b76004ec9af53 (Steam Dune: Imperium 4.1.1.1804); other builds get
+# a6cb3f9216f9489d803b76004ec9af53 (Steam Dune: Imperium 4.1.1.1804, reused for
+# 4.1.2.1808 below); other builds get
 # no rt: labels until someone re-identifies them (README.md, "앱이 업데이트되면").
 # A trailing '?' marks a label inferred from call sites only.
 HELPERS_BY_BUILD = {
@@ -107,6 +108,11 @@ HELPERS_BY_BUILD = {
         0x3184B0: "rt:throw_exception?(noreturn)",
     },
 }
+# Steam 4.1.2.1808 (2026-10-03 update): every helper above sits at the same address
+# with the same body, and the exception helpers load the same class names.
+HELPERS_BY_BUILD["dad97e2021144d45b5b4f022e07bd3b3"] = HELPERS_BY_BUILD[
+    "a6cb3f9216f9489d803b76004ec9af53"
+]
 HELPERS = HELPERS_BY_BUILD.get(build_guid(), {})
 
 md = Cs(CS_ARCH_X86, CS_MODE_64)
