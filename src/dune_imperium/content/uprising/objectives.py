@@ -9,7 +9,12 @@ from dune_imperium.content.uprising.types import BattleIcon
 
 @dataclass(frozen=True, slots=True)
 class ObjectiveDefinition:
-    """One physical Objective card."""
+    """One physical Objective card.
+
+    Every Objective prints "This counts as a Conflict card you've already
+    won." [Objective card]: it is a won Conflict card for every effect, not
+    only for battle icon matching (OQ-005).
+    """
 
     objective_id: str
     battle_icon: BattleIcon
@@ -50,9 +55,11 @@ OBJECTIVES: Final = (
         "objective_crysknife_1",
         BattleIcon.CRYSKNIFE,
     ),
+    # Printed "4/6P" (card photos, 2026-10-04); the id keeps its old number.
     ObjectiveDefinition(
         "objective_crysknife_2",
         BattleIcon.CRYSKNIFE,
+        marked_player_counts=(4, 6),
     ),
     ObjectiveDefinition(
         "objective_ornithopter_1_3p",

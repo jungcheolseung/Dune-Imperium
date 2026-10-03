@@ -635,8 +635,10 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # deployment condition holds and places its Spy through the Intrigue
     # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
     # trigger templates leave every catalog (-27).
+    # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
+    # template per Objective, which counts as a won Conflict card (+4).
     assert codec.size == (
-        4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27
+        4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -645,6 +647,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 2 + 1
         - 27
         - 1
+        + 4
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

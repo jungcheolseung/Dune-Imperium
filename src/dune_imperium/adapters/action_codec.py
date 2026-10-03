@@ -225,7 +225,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # exhausted market Shaddam's Contract icon must take a set-aside Sardaukar
 # Contract while one remains -- nobody has taken them, so the two-Solari
 # reversion [Main p. 16] waits until they are gone. ``take_exhausted_contract
-# _solari`` leaves the CHOAM catalogs (-1).
+# _solari`` leaves the CHOAM catalogs (-1). Also v130 (user ruling 2026-10-04,
+# OQ-005): an Objective "counts as a Conflict card you've already won"
+# [Objective card], so the Endgame Intrigue flips and Grasp Arrakis may take
+# it; ``flip_battle_card`` gains one template per Objective of the player
+# count in every catalog (+4).
 ACTION_CODEC_VERSION = 130
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -685,6 +689,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for conflict in CONFLICTS
         if (config.bloodlines or not conflict.bloodlines_only)
         and (config.epic_game or not conflict.epic_only)
+    )
+    # An Objective "counts as a Conflict card you've already won" [Objective
+    # card], so the flip effects may take it too (OQ-005, codec v130).
+    templates.extend(
+        ActionTemplate(
+            action_id="flip_battle_card",
+            arguments=(("card_id", objective.objective_id),),
+        )
+        for objective in objectives_for_players(config.players)
     )
     for action_id in ("manipulate_imperium_row", "acquire_manipulated_imperium"):
         templates.extend(

@@ -73,6 +73,8 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # deployment condition holds and places its Spy through the Intrigue
     # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
     # trigger templates leave every catalog (-27).
+    # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
+    # template per Objective, which counts as a won Conflict card (+4).
     assert first.size == (
         4354
         + 2
@@ -96,8 +98,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 1
         + 1
         - 27
+        + 4
     )
-    assert first.size == 4400
+    assert first.size == 4404
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -121,8 +124,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4400
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4400 + len(
+    assert ActionCodec(RulesetConfig()).size == 4404
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4404 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -193,6 +196,8 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # v130 (OQ-021, user ruling 2026-10-04): Shaddam's icon over an exhausted
     # market takes a set-aside Contract, so take_exhausted_contract_solari
     # leaves the CHOAM catalogs (-1).
+    # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
+    # template per Objective, which counts as a won Conflict card (+4).
     assert codec.size == (
         4640
         + 2
@@ -218,6 +223,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 1
         - 27
         - 1
+        + 4
     )
 
     try:
@@ -316,6 +322,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # trigger templates leave every catalog (-27).
     # v130 (OQ-021): take_exhausted_contract_solari leaves the CHOAM catalogs
     # (-1).
+    # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
+    # template per Objective, which counts as a won Conflict card (+4).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
@@ -326,6 +334,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1
         - 27
         - 1
+        + 4
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

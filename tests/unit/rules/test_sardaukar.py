@@ -1280,8 +1280,10 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # deployment condition holds and places its Spy through the Intrigue
     # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
     # trigger templates leave every catalog (-27).
+    # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
+    # template per Objective, which counts as a won Conflict card (+4).
     assert base.size == (
-        4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27
+        4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
     )
 
     actions = (

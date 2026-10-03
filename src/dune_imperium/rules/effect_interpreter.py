@@ -84,6 +84,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
+from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -137,18 +138,45 @@ type ChoiceSlot = (
 )
 
 
+def _battle_card_icon(card_id: str) -> BattleIcon | None:
+    """The card's printed icon; ``None`` when it prints none (OQ-094)."""
+
+    if card_id in OBJECTIVES_BY_ID:
+        return OBJECTIVES_BY_ID[card_id].battle_icon
+    return CONFLICTS_BY_ID[card_id].battle_icon
+
+
+def face_up_conflict_card_ids(player: PlayerState) -> tuple[str, ...]:
+    """Return the player's face-up Objective and won Conflict cards (any icon).
+
+    Each Objective reads "This counts as a Conflict card you've already won."
+    [Objective card], so every effect on won Conflict cards takes it too
+    (OQ-005, user ruling 2026-10-04). Grasp Arrakis flips "face-up Conflict
+    cards", not battle icons, so a card with no printed icon (Economic
+    Supremacy) counts too (OQ-094 (e)).
+    """
+
+    face_down = set(player.face_down_battle_card_ids)
+    return tuple(
+        card_id
+        for card_id in (*player.objective_ids, *player.won_conflict_ids)
+        if card_id not in face_down
+    )
+
+
 def flippable_battle_card_ids(
     player: PlayerState,
     icon: BattleIcon,
 ) -> tuple[str, ...]:
     """Return the player's face-up won Conflict cards bearing ``icon`` or wild.
 
-    Objective cards are not valid targets for a printed flip effect. A card
-    with no printed icon (Economic Supremacy) is never a target, Ornithopter
-    Fleet or not (OQ-094 (b), (c)).
+    An Objective counts as a Conflict card the player has already won
+    [Objective card], so it is a target too (OQ-005, user ruling 2026-10-04).
+    A card with no printed icon (Economic Supremacy) is never a target,
+    Ornithopter Fleet or not (OQ-094 (b), (c)).
     """
 
-    face_down = set(player.face_down_battle_card_ids)
+    face_up = face_up_conflict_card_ids(player)
     if has_ornithopter_fleet(player):
         # Ornithopter Fleet: every icon is an Ornithopter, so "the Crysknife
         # and Desert Mouse Intrigue cards can't be used to gain a Victory
@@ -157,30 +185,13 @@ def flippable_battle_card_ids(
         if icon is not BattleIcon.ORNITHOPTER:
             return ()
         return tuple(
-            card_id
-            for card_id in player.won_conflict_ids
-            if card_id not in face_down
-            and CONFLICTS_BY_ID[card_id].battle_icon is not None
+            card_id for card_id in face_up if _battle_card_icon(card_id) is not None
         )
     # A no-icon card's ``None`` is never ``icon`` or wild, so it never matches.
     return tuple(
         card_id
-        for card_id in player.won_conflict_ids
-        if card_id not in face_down
-        and CONFLICTS_BY_ID[card_id].battle_icon in (icon, BattleIcon.WILD)
-    )
-
-
-def face_up_conflict_card_ids(player: PlayerState) -> tuple[str, ...]:
-    """Return the player's face-up won Conflict cards (any icon).
-
-    Grasp Arrakis flips "face-up Conflict cards", not battle icons, so a card
-    with no printed icon (Economic Supremacy) counts too (OQ-094 (e)).
-    """
-
-    face_down = set(player.face_down_battle_card_ids)
-    return tuple(
-        card_id for card_id in player.won_conflict_ids if card_id not in face_down
+        for card_id in face_up
+        if _battle_card_icon(card_id) in (icon, BattleIcon.WILD)
     )
 
 
