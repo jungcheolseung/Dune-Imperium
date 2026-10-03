@@ -1910,10 +1910,9 @@ def test_other_players_never_see_the_set_aside_contracts() -> None:
     assert choices == {"contract:immediate"}
 
 
-def test_shaddam_chooses_solari_or_set_aside_over_an_empty_market() -> None:
+def test_shaddam_must_take_a_set_aside_contract_over_an_empty_market() -> None:
     from dune_imperium.rules.contracts import (
         apply_contract_action,
-        apply_exhausted_contract_solari,
         begin_contract_gain,
         legal_contract_actions,
     )
@@ -1927,30 +1926,54 @@ def test_shaddam_chooses_solari_or_set_aside_over_an_empty_market() -> None:
         ),
     )
 
-    # OQ-021 decided ruling: with every generally available Contract taken,
-    # Shaddam's icon still chooses between a set-aside Sardaukar Contract
-    # and the printed two-Solari conversion [Main p. 16].
+    # OQ-021 (user ruling 2026-10-04, following the Steam app): the icon
+    # reverts to two Solari only "If all contracts have been taken by
+    # players" [Main p. 16], and nobody has taken the set-aside Sardaukar
+    # Contracts, so Shaddam's icon must take one of them.
     opened = begin_contract_gain(state, 0, 1, source="test:exhausted").state
     offered = legal_contract_actions(opened, 0)
     assert [action.action_id for action in offered] == [
         "take_contract",
         "take_contract",
-        "take_exhausted_contract_solari",
     ]
-
-    paid = apply_exhausted_contract_solari(opened, offered[2])
-    assert paid.state.players[0].resources.solari == 2
-    assert paid.state.sardaukar_contract_ids == (
-        "contract:sardaukar_i",
-        "contract:sardaukar_ii",
-    )
-    assert paid.state.decision_stack == state.decision_stack
 
     taken = apply_contract_action(opened, offered[0]).state
     assert taken.players[0].active_contract_ids == ("contract:sardaukar_i",)
     assert taken.sardaukar_contract_ids == ("contract:sardaukar_ii",)
     assert taken.players[0].resources.solari == 0
     assert taken.decision_stack == state.decision_stack
+
+
+def test_shaddam_icons_revert_to_solari_once_the_set_aside_runs_out() -> None:
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        begin_contract_gain,
+        exhausted_contract_choice_is_pending,
+        legal_contract_actions,
+        resolve_exhausted_contract_choice,
+    )
+
+    owner = _shaddam_owner()
+    state = replace(
+        _choam_turn_state(owner),
+        sardaukar_contract_ids=("contract:sardaukar_i",),
+    )
+
+    # Two icons over an exhausted market with one set-aside tile left: the
+    # first takes it, then every Contract has been taken and the second
+    # icon reverts to two Solari like anyone else's [Main p. 16] (OQ-021).
+    opened = begin_contract_gain(state, 0, 2, source="test:exhausted").state
+    (only,) = legal_contract_actions(opened, 0)
+    assert dict(only.arguments)["instance_id"] == "contract:sardaukar_i"
+
+    taken = apply_contract_action(opened, only).state
+    assert taken.players[0].active_contract_ids == ("contract:sardaukar_i",)
+    assert taken.sardaukar_contract_ids == ()
+    # The engine settles the second icon without asking.
+    assert exhausted_contract_choice_is_pending(taken)
+    converted = resolve_exhausted_contract_choice(taken).state
+    assert converted.players[0].resources.solari == 2
+    assert converted.decision_stack == state.decision_stack
 
 
 def test_emperor_signet_gains_a_solari_and_a_deployable_free_troop() -> None:

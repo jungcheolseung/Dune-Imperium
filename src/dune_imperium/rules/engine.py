@@ -121,7 +121,6 @@ from dune_imperium.rules.contracts import (
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
     apply_contract_spy_action,
-    apply_exhausted_contract_solari,
     combat_held_contract_owner,
     complete_alliance_contracts,
     exhausted_contract_choice_is_pending,
@@ -325,6 +324,12 @@ from dune_imperium.rules.scouts_secrets import (
     legal_secret_pick_actions,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
+from dune_imperium.rules.shortfall import (
+    drop_stale_shortfalls,
+    refill_shortfall,
+    shortfall_is_stale,
+    shortfall_refill_seat,
+)
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
     apply_spy_move,
@@ -484,10 +489,14 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
     FrameKind.CONTRACT_REWARD_RECALL: (legal_contract_recall_actions,),
     FrameKind.CONTRACT_INTRIGUE_TRASH: (legal_contract_intrigue_trash_actions,),
-    FrameKind.CONTROL_DEFENSE: (legal_control_defense_actions,),
+    FrameKind.CONTROL_DEFENSE: (
+        legal_control_defense_actions,
+        legal_specimen_return_actions,
+    ),
     FrameKind.COMBAT_INTRIGUE: (
         legal_combat_intrigue_actions,
         legal_intrigue_play_actions,
+        legal_specimen_return_actions,
     ),
     FrameKind.COMBAT_REWARD_OPTIONAL: (legal_combat_reward_optional_payment_actions,),
     FrameKind.COMBAT_REWARD_SPY_RECALL: (legal_combat_reward_spy_recall_actions,),
@@ -797,7 +806,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_reveal_troop_sacrifice": apply_reveal_troop_sacrifice,
     # Contracts
     "take_contract": apply_contract_action,
-    "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
     "hold_contract_icons": apply_contract_hold,
     "resolve_contract_icons_without_contract": apply_contract_fizzle,
@@ -984,6 +992,15 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # Arrakeen Scouts: a Spy on a Valued Informants post or a
             # completed CHOAM Escort Contract, by whatever path it got there.
             automatic = claim_due_mission_goods(state)
+        elif (refill_seat := shortfall_refill_seat(state)) is not None:
+            # Troops came back to a seat's supply during a player turn: its
+            # recruit and specimen shortfall is taken from them at once
+            # (OQ-030, OQ-049, user ruling 2026-10-04).
+            automatic = refill_shortfall(state, refill_seat)
+        elif shortfall_is_stale(state):
+            # Outside a player turn nothing makes a shortfall up: a Combat
+            # reward's, or the last turn's once it closed, is dropped.
+            automatic = drop_stale_shortfalls(state)
         elif intrigue_draw_is_queued(state):
             automatic = resolve_pending_intrigue_draw(state)
         elif exhausted_contract_choice_is_pending(state):

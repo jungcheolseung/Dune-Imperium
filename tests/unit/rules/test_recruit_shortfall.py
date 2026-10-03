@@ -34,6 +34,7 @@ from dune_imperium.rules.combat import resolve_combat_rewards
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.shortfall import refill_shortfall, shortfall_refill_seat
 
 
 def _instance(card_id: str, copy: int = 0) -> str:
@@ -337,13 +338,14 @@ def test_stilgar_recruit_two_troops_with_empty_supply_reports_a_shortfall() -> N
     }
 
 
-# ---------- OQ-030: no retroactive recruit once the supply grows later ----------
+# ---------- OQ-030: the shortfall is made up once the supply grows ----------
 
 
-def test_a_later_supply_increase_does_not_revive_the_lost_recruit() -> None:
-    # OQ-030 (docs/rules/player-turns.md, project convention 2026-09-06): the
-    # shortfall expires when the icon resolves; a troop that returns to the
-    # supply later in the same turn is not recruited retroactively.
+def test_a_later_supply_increase_makes_up_the_lost_recruit() -> None:
+    # OQ-030 (user ruling 2026-10-04, following the Steam app): the troop the
+    # icon could not recruit waits on the seat, and a troop that returns to
+    # the supply later in the same turn is recruited then -- and counts
+    # toward this turn's deployment.
     state = _with_troops_supply(_research_station_state(), 0, 0)
     state = apply_agent_action(
         state,
@@ -351,9 +353,10 @@ def test_a_later_supply_increase_does_not_revive_the_lost_recruit() -> None:
     ).state
     resolved = _resolve_troops_icon(state).state
     assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 0
+    assert resolved.players[0].ungained_troops == 2
 
-    # A troop comes back to the supply (as an expansion "lose a troop" effect
-    # would do) while the Agent turn is still open.
+    # A troop comes back to the supply (as a "lose a troop" effect would do)
+    # while the Agent turn is still open.
     owner = resolved.players[0]
     replenished = replace(
         resolved,
@@ -366,15 +369,14 @@ def test_a_later_supply_increase_does_not_revive_the_lost_recruit() -> None:
             *resolved.players[1:],
         ),
     )
+    assert shortfall_refill_seat(replenished) == 0
+    made_up = refill_shortfall(replenished, 0).state
 
-    assert replenished.players[0].troops_garrison == 3
-    assert dict(replenished.decision_stack[-1].context)["troops_recruited"] == 0
-    assert all(
-        dict(action.arguments)["effect"] != "troops"
-        for action in legal_board_effect_actions(replenished, 0)
-    )
+    assert made_up.players[0].troops_garrison == 4
+    assert made_up.players[0].ungained_troops == 1
+    assert dict(made_up.decision_stack[-1].context)["troops_recruited"] == 1
     counts = tuple(
         dict(action.arguments)["count"]
-        for action in legal_combat_deployments(replenished, 0)
+        for action in legal_combat_deployments(made_up, 0)
     )
-    assert counts == (1, 2)
+    assert counts == (1, 2, 3)

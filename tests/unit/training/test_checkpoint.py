@@ -386,13 +386,14 @@ _V28_GROWN_SEGMENTS = frozenset(
 )
 
 
-def test_a_v27_file_migrates_to_v28_and_computes_the_same_outputs(
+def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     tmp_path: Path,
 ) -> None:
-    # A file written under v27 knows neither card nor the flag: each v27
-    # segment's columns keep their place at its start, the 24 new columns
-    # start at zero, and a game without the option (every new column 0)
-    # scores exactly as the v27 network did.
+    # A file written under v27 knows neither the v28 Epic card nor its flag,
+    # nor the v29 shortfall segment: each v27 segment's columns keep their
+    # place at its start, the 24 + 8 new columns start at zero, and a game
+    # without the option and without a waiting shortfall (every new column
+    # 0) scores exactly as the v27 network did.
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)
     current = tmp_path / "current.pt"
@@ -404,13 +405,13 @@ def test_a_v27_file_migrates_to_v28_and_computes_the_same_outputs(
     layout: list[tuple[str, int, int]] = []
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
-        if segment.name == "epic_game":
+        if segment.name in ("epic_game", "shortfall"):
             continue
         length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
         kept.extend(range(segment.offset, segment.offset + length))
         layout.append((segment.name, offset, length))
         offset += length
-    assert offset == 4_587 == OBSERVATION_SIZE - 24
+    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8
     state = dict(document["state_dict"])
     state["body.0.weight"] = state["body.0.weight"][:, torch.tensor(kept)]
     older = tmp_path / "v27.pt"
@@ -438,7 +439,7 @@ def test_a_v27_file_migrates_to_v28_and_computes_the_same_outputs(
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (4_587, 24, 0)
+    ) == (4_587, 24 + 8, 0)
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
         codec.size,
         0,

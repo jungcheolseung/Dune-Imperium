@@ -68,7 +68,8 @@ def test_labelling_seats_play_like_greedy_seats_and_record_aligned_rows(
     Four labelling seats and four plain greedy seats of the same checkpoint
     answer the same decisions; each stored prior must be the network's own
     logits for the stored (ascending) legal set, recomputed from the stored
-    observation, and a LABEL row's first candidate is the move played.
+    observation, and a LABEL row's first candidate is the move played unless
+    the seat's cycle guard steered it off that move.
     """
 
     teacher = _checkpoint(tmp_path)
@@ -117,7 +118,14 @@ def test_labelling_seats_play_like_greedy_seats_and_record_aligned_rows(
         valid = row.candidates >= 0
         assert valid.sum() == 2
         assert set(row.candidates[valid].tolist()) <= set(row.legal.tolist())
-        assert row.candidates[0] == row.played
+        if row.candidates[0] != row.played:
+            # The greedy seat's cycle guard (keyed by the observation alone)
+            # steered it off the top-ranked move it already made here; the
+            # pipeline reports these as played_eq_cand0 < 1. The ranking
+            # itself must still put the higher prior first.
+            legal = row.legal.tolist()
+            top = row.prior_logits[legal.index(int(row.candidates[0]))]
+            assert top >= row.prior_logits[legal.index(int(row.played))]
         assert row.values.shape == (1, 2) and np.all(np.isfinite(row.values))
     for row in anchors:
         assert np.all(row.candidates == -1) and np.all(np.isnan(row.values))

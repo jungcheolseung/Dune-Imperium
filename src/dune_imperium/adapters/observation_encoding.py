@@ -105,7 +105,11 @@ from dune_imperium.rules.frames import FrameKind
 # the file saw and the top-up's value never occurs again. (Built as v26 on
 # the epic-game-mode branch; renumbered when it was merged onto the line
 # that had meanwhile used v26 and v27.)
-OBSERVATION_VERSION: Final = 28
+# v29 (2026-10-04, OQ-030/OQ-049): each relative seat's recruit and specimen
+# shortfall waiting for troops to return to its supply this turn, appended
+# after the epic_game flag (troops then specimens per seat). Every older
+# column keeps its offset.
+OBSERVATION_VERSION: Final = 29
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -348,6 +352,9 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # v28: 1 in an Epic Game Mode game, whose Endgame opens at 12
             # Victory Points instead of 10 [Rise of Ix p. 10].
             ("epic_game", 1),
+            # v29: per relative seat, the troops and then the specimens a
+            # recruit could not take, waiting for the supply this turn.
+            ("shortfall", _SEATS * 2),
         )
     )
     return tuple(lengths)
@@ -572,6 +579,11 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     )
     _write_scouts(values, view, relative)
     values[_OFFSET["epic_game"]] = int(view.epic_game)
+    offset = _OFFSET["shortfall"]
+    for seat_view in view.players:
+        index = offset + (relative(seat_view.player) - 1) * 2
+        values[index] = seat_view.ungained_troops
+        values[index + 1] = seat_view.ungained_specimens
     return tuple(values)
 
 

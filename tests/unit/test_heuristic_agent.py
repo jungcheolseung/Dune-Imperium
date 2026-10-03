@@ -319,6 +319,12 @@ def test_returning_a_specimen_ranks_below_every_decline() -> None:
             _view(), (_action("return_specimen"), _action(decline))
         )
         assert chosen.action_id == decline
+    # At Combat Intrigue priority (OQ-050) a return only empties the tanks,
+    # so the agent passes instead.
+    chosen = HeuristicAgent(seed=1).choose_action(
+        _view(), (_action("pass_combat_intrigue"), _action("return_specimen"))
+    )
+    assert chosen.action_id == "pass_combat_intrigue"
 
 
 def test_a_contract_outranks_the_persuasion_it_is_offered_against() -> None:

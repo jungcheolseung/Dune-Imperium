@@ -3449,6 +3449,7 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
         + 1 + 1 + 1 + 1 + 1 + 1 + 1
         - 27
+        + 4  # v130 (OQ-005): flip_battle_card per Objective
     )
     action = DomainAction(
         action_id="trash_agent_card",

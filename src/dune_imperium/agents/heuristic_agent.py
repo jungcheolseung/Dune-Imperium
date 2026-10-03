@@ -1136,6 +1136,14 @@ class HeuristicAgent:
                 min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
                 for action, s in zip(legal_actions, scored, strict=True)
             )
+        if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
+            # A specimen may be returned at Combat Intrigue priority too
+            # (OQ-050), but nothing then refills from the supply, so it only
+            # empties the tanks: passing ranks above it.
+            scored = tuple(
+                min(scored) - 1.0 if action.action_id == "return_specimen" else s
+                for action, s in zip(legal_actions, scored, strict=True)
+            )
         best = max(scored)
         top = tuple(
             action

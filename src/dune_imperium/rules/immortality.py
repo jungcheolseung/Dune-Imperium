@@ -101,18 +101,42 @@ def legal_specimen_return_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer returning one specimen to the supply during the owner's turn.
+    """Offer returning one specimen to the supply.
 
     "You may return any of your specimens to your supply at any time"
-    [Immortality p. 8]; the engine offers it at every decision of the
-    owner's own Agent or Reveal turn (OQ-050).
+    [Immortality p. 8]. The engine offers it at every decision of the
+    owner's own Agent or Reveal turn, at the owner's Combat Intrigue
+    priority, and -- while the supply has no troop -- at the owner's Round
+    Start Control defense, so the defending troop can come from a specimen
+    (OQ-050; user ruling 2026-10-04 following the Steam app, which converts
+    at most one specimen there).
     """
 
-    if not _owner_in_own_turn(state, player):
+    if not 0 <= player < state.config.players or state.players[player].specimens < 1:
         return ()
-    if state.players[player].specimens < 1:
+    if not (
+        _owner_in_own_turn(state, player)
+        or _owner_at_combat_intrigue(state, player)
+        or _owner_defending_without_troops(state, player)
+    ):
         return ()
     return (DomainAction(action_id="return_specimen", actor=player),)
+
+
+def _owner_at_combat_intrigue(state: GameState, player: int) -> bool:
+    return (
+        state.config.immortality
+        and state.phase is GamePhase.COMBAT
+        and owned_top_frame(state, FrameKind.COMBAT_INTRIGUE, player) is not None
+    )
+
+
+def _owner_defending_without_troops(state: GameState, player: int) -> bool:
+    return (
+        state.config.immortality
+        and state.players[player].troops_supply == 0
+        and owned_top_frame(state, FrameKind.CONTROL_DEFENSE, player) is not None
+    )
 
 
 def apply_specimen_return(state: GameState, action: DomainAction) -> RuleResult:

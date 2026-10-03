@@ -2840,7 +2840,7 @@ def test_crysknife_flips_a_matching_conflict_card_for_a_point() -> None:
     assert done.decision_stack[-1].kind == "endgame_intrigue"
 
 
-def test_endgame_flip_ignores_objective_cards() -> None:
+def test_endgame_flip_takes_a_face_up_objective_card() -> None:
     card = _intrigue("desert_mouse")
     owner = PlayerState(
         player_id=0,
@@ -2848,7 +2848,40 @@ def test_endgame_flip_ignores_objective_cards() -> None:
         objective_ids=("objective_desert_mouse",),
     )
     state = _endgame_window(owner)
-    # An Objective card is not a face-up Conflict card [Desert Mouse card].
+    engine = UprisingRulesEngine()
+
+    # An Objective reads "This counts as a Conflict card you've already
+    # won." [Objective card], so the Desert Mouse flip may take it (OQ-005,
+    # user ruling 2026-10-04).
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 1),)
+    opened = engine.apply(state, _play(state, card, 1)).state
+    targets = [
+        dict(action.arguments)["card_id"] for action in engine.legal_actions(opened, 0)
+    ]
+    assert targets == ["objective_desert_mouse"]
+
+    done = engine.apply(
+        opened,
+        DomainAction(
+            action_id="flip_battle_card",
+            actor=0,
+            arguments=(("card_id", "objective_desert_mouse"),),
+        ),
+    ).state
+    assert done.players[0].victory_points == 2
+    assert done.players[0].face_down_battle_card_ids == ("objective_desert_mouse",)
+
+
+def test_endgame_flip_leaves_a_face_down_objective_alone() -> None:
+    card = _intrigue("crysknife")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        objective_ids=("objective_crysknife_1",),
+        face_down_battle_card_ids=("objective_crysknife_1",),
+    )
+    state = _endgame_window(owner)
+    # Only a face-up card can be flipped face down.
     assert legal_intrigue_play_actions(state, 0) == ()
 
 

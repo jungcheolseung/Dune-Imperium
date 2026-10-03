@@ -519,7 +519,12 @@ def test_ornithopter_fleet_does_not_make_it_an_ornithopter() -> None:
     matched, events = match_all_battle_icons(seat, source="test")
     assert matched == seat
     assert events == ()
-    assert flippable_battle_card_ids(seat, BattleIcon.ORNITHOPTER) == ()
+    # The face-up Objective counts as a won Conflict card [Objective card]
+    # and its icon is an Ornithopter under the Fleet (OQ-005, 2026-10-04);
+    # Economic Supremacy, with no icon, still never is.
+    assert flippable_battle_card_ids(seat, BattleIcon.ORNITHOPTER) == (
+        "objective_crysknife_1",
+    )
     assert face_up_battle_icons(seat) == {BattleIcon.ORNITHOPTER}
     alone = replace(seat, objective_ids=())
     assert face_up_battle_icons(alone) == frozenset()

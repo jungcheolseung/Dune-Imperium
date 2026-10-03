@@ -19,7 +19,8 @@
 - Imperium 카드는 69장이며 이 가운데 CHOAM 표시 4장을 기본 게임에서 제외한다. Intrigue 카드도 44장 가운데 CHOAM 표시 4장을 제외한다. [Main p. 3] [Main p. 4]
 - Reserve는 Prepare the Way 8장과 The Spice Must Flow 10장, 총 18장이다. [Main p. 3]
 - Conflict 카드는 I 3장, II 9장, III 4장으로 총 16장이고, 실제 게임에는 setup에서 고른 10장만 사용한다. [Main p. 3] [Main p. 4]
-- Objective 카드는 5장이다. 네 명에게 맞지 않는 인원수 표시 카드는 setup에서 제외한다. [Main p. 3] [Main p. 5]
+- Objective 카드는 5장이다. 네 명에게 맞지 않는 인원수 표시 카드는 setup에서 제외한다. [Main p. 3] [Main p. 5] 다섯 장은 Crysknife(표시 없음), Crysknife "4/6P", Desert Mouse(First Player marker, 표시 없음), Desert Mouse "4/6P", Ornithopter "1-3P"이므로 4인 게임은 Crysknife 둘과 Desert Mouse 둘을 쓴다 `[Objective card]`.
+- 모든 Objective에는 "This counts as a Conflict card you've already won."이 인쇄돼 있다 `[Objective card]`. 그래서 이긴 Conflict 카드를 다루는 모든 효과(battle icon 매칭, Crysknife·Desert Mouse·Ornithopter Intrigue의 Endgame 뒤집기, Grasp Arrakis 등)가 Objective도 대상으로 삼는다([OQ-005](open-questions.md#oq-005--여러-matching-battle-icon-중-pair-선택) 재판정 2026-10-04).
 
 ### 자원과 sandworm
 

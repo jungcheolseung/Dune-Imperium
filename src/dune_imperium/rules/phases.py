@@ -49,7 +49,12 @@ def begin_round(state: GameState) -> RuleResult:
 
     round_number = state.round_number + 1
     conflict_id = state.conflict_deck[0]
-    defense = _control_defense_frame(state.players, conflict_id, round_number)
+    defense = _control_defense_frame(
+        state.players,
+        conflict_id,
+        round_number,
+        immortality=state.config.immortality,
+    )
     revealed = replace(
         state,
         # Arrakeen Scouts: last round's rule change ends with the round.
@@ -261,9 +266,10 @@ def legal_control_defense_actions(
         return ()
     decline = DomainAction(action_id="decline_control_defense", actor=player)
     if state.players[player].troops_supply < 1:
-        # The frame opens only for a controller with a supply troop, but an
-        # effect resolved in the same step (an Earn Any Alliance completion)
-        # may have emptied that supply since: then only declining is left.
+        # With no supply troop only declining is left: the frame opened
+        # for a controller with Immortality specimens (one can be returned
+        # for the troop first, OQ-050), or an effect resolved in the same
+        # step (an Earn Any Alliance completion) emptied the supply since.
         return (decline,)
     return (decline, DomainAction(action_id="deploy_control_defense", actor=player))
 
@@ -334,14 +340,18 @@ def _control_defense_frame(
     players: tuple[PlayerState, ...],
     conflict_id: str,
     round_number: int,
+    *,
+    immortality: bool = False,
 ) -> DecisionFrame | None:
     """Return the Control defense the revealed Conflict offers, if any.
 
     "When a Conflict card is revealed for a space that you already control,
     you may deploy one troop from your supply to the Conflict." [Main p. 20]
     [Main p. 10]. With no troop in the controller's supply there is nothing
-    to ask. The frame carries no ``turn_owner``: the defense is part of
-    Round Start (Phase 1), before any turn opens [Main p. 8].
+    to ask, unless Immortality's specimens can be returned for one "at any
+    time" [Immortality p. 8] (OQ-050). The frame carries no ``turn_owner``:
+    the defense is part of Round Start (Phase 1), before any turn opens
+    [Main p. 8].
     """
 
     conflict = CONFLICTS_BY_ID[conflict_id]
@@ -355,7 +365,13 @@ def _control_defense_frame(
     )
     if len(controllers) > 1:
         raise RuntimeError("a critical location cannot have multiple controllers")
-    if not controllers or controllers[0].troops_supply == 0:
+    if not controllers:
+        return None
+    if controllers[0].troops_supply == 0 and not (
+        # With Immortality a specimen can be returned to the supply for the
+        # defending troop "at any time" [Immortality p. 8] (OQ-050).
+        immortality and controllers[0].specimens > 0
+    ):
         return None
     return DecisionFrame(
         kind=FrameKind.CONTROL_DEFENSE,

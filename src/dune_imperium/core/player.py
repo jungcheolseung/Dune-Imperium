@@ -117,6 +117,15 @@ class PlayerState:
     # resolving if the owner gains an Intrigue meanwhile and fizzling with no
     # reward otherwise (OQ-059).
     held_contract_icons: int = 0
+    # Troops a recruit and specimens a specimen icon could not take from an
+    # empty supply. When troops come back to this seat's supply later in the
+    # same player turn (a lost troop, a returned or paid specimen, Other
+    # Memories), the engine takes the shortfall from them at once, troops
+    # first (OQ-030, OQ-049; user ruling 2026-10-04 following the Steam app).
+    # Every seat's count clears when a turn opens and is dropped whenever no
+    # turn is open (``rules.shortfall``).
+    ungained_troops: int = 0
+    ungained_specimens: int = 0
     # Turn-scoped Plot modifiers (Bloodlines): Honor Guard's Commander
     # discount, Insider Information's requirement waiver, and the Agent icon
     # Emperor's Invitation grants to the card played this turn ("" = none).
@@ -259,6 +268,8 @@ class PlayerState:
             self.skill_strength_applied,
             self.contracts_completed_turn,
             self.held_contract_icons,
+            self.ungained_troops,
+            self.ungained_specimens,
             self.commander_discount_turn,
             self.spies_boxed,
             self.spies_recalled_turn,

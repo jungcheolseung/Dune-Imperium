@@ -65,6 +65,10 @@ class PublicPlayerView:
     # Contract icons this turn that found nothing they could take, waiting for
     # the turn to end or for a token to become reachable (OQ-059).
     held_contract_icons: int
+    # Recruit and specimen shortfalls waiting for troops to return to this
+    # seat's supply this turn (OQ-030, OQ-049).
+    ungained_troops: int
+    ungained_specimens: int
     commander_discount_turn: int
     ignores_influence_requirements_turn: bool
     granted_agent_icon_turn: str
@@ -718,6 +722,8 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         commander_recruited_turn=player.commander_recruited_turn,
         contracts_completed_turn=player.contracts_completed_turn,
         held_contract_icons=player.held_contract_icons,
+        ungained_troops=player.ungained_troops,
+        ungained_specimens=player.ungained_specimens,
         commander_discount_turn=player.commander_discount_turn,
         ignores_influence_requirements_turn=player.ignores_influence_requirements_turn,
         granted_agent_icon_turn=player.granted_agent_icon_turn,

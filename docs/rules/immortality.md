@@ -112,7 +112,7 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 
 - p. 12의 "Immortality with Epic Game Mode" 문단(Control the Spice를 시작 덱 대신 discard pile에)은 `epic_game` 옵션과 함께 적용한다([epic-game-mode.md](epic-game-mode.md) 4절).
 
-- specimen은 supply의 troop이므로 [player-turns.md](player-turns.md)의 recruit 규칙과 OQ-030(해결 시점의 supply만큼만 recruit, 소급 없음)이 그대로 적용된다. 플레이어는 specimen을 먼저 돌려보내 supply를 채운다 `[Immortality p. 8]`.
+- specimen은 supply의 troop이므로 [player-turns.md](player-turns.md)의 recruit 규칙과 OQ-030이 그대로 적용된다. recruit는 해결 시점의 supply만큼 일어나고, 못 한 수는 같은 player turn 안에서 supply에 troop이 돌아오면 자동으로 채운다(2026-10-04 재판정). specimen 부족분도 같은 방식이다(OQ-049). 플레이어는 specimen을 먼저 돌려보내 supply를 채울 수도 있다 `[Immortality p. 8]`. 반환을 제시하는 창은 OQ-050이다(자기 turn, Combat Intrigue 우선권, supply가 빈 Control 방어).
 - Graft는 [player-turns.md](player-turns.md)의 "카드 1장과 일치하는 Agent 아이콘 하나로 Agent 1개 배치" `[Main p. 9]`를 카드 두 장으로 넓히는 예외이며, 두 카드의 Agent box는 space 효과와 같은 자유 순서 그룹에 들어간다(OQ-027).
 - Bloodlines와 함께 쓸 때 "lose a troop"·retreat 효과의 Commander 취급은 [bloodlines.md](bloodlines.md) 3절을 따른다.
 - 공식 문서가 침묵하는 판정은 [open-questions.md](open-questions.md)에 기록한다.

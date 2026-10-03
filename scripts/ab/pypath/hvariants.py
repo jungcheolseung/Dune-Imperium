@@ -87,6 +87,11 @@ class VariantAgent(HeuristicAgent):
                 min(scored) - 1.0 if a.action_id == "switch_graft_card" else s
                 for a, s in zip(legal_actions, scored, strict=True)
             )
+        if any(a.action_id == "pass_combat_intrigue" for a in legal_actions):
+            scored = tuple(
+                min(scored) - 1.0 if a.action_id == "return_specimen" else s
+                for a, s in zip(legal_actions, scored, strict=True)
+            )
         best = max(scored)
         top = tuple(a for a, s in zip(legal_actions, scored, strict=True) if s == best)
         if len(top) > 1 and self.tie_breaks is not None:
