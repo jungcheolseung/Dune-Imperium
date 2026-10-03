@@ -2134,8 +2134,10 @@ def shortfall_warning(
     """Describe a shortfall the action would run into, if any.
 
     Specimens and recruits come from the troop supply and a short supply
-    simply yields fewer (OQ-030, OQ-049); the choice stays legal, so the
-    player is told beforehand what the action will actually do. The same
+    yields fewer at once (OQ-030, OQ-049; the rest waits on the seat until
+    troops return to its supply in the same player turn,
+    ``rules.shortfall``); the choice stays legal, so the player is told
+    beforehand what the action will actually do. The same
     goes for the shortfalls where nothing can be chosen (user ruling
     2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): an Intrigue draw the
     Intrigue deck and discard cannot cover together (both empty, or the

@@ -76,7 +76,9 @@ SLOT_VERSION: Final = 1
 # can never be in the Imperium Row, the Tleilaxu Row or set aside, whose
 # fields list the Imperium and Tleilaxu cards alone; the new ``epic_game``
 # column is a 0/1 flag, not an identity.
-SLOT_OBSERVATION_VERSION: Final = 28
+# v29 (OQ-030/OQ-049) appends each relative seat's waiting recruit and
+# specimen shortfall: counts, not identities, so no row changes.
+SLOT_OBSERVATION_VERSION: Final = 29
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

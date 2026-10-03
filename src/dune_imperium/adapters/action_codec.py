@@ -229,7 +229,12 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # OQ-005): an Objective "counts as a Conflict card you've already won"
 # [Objective card], so the Endgame Intrigue flips and Grasp Arrakis may take
 # it; ``flip_battle_card`` gains one template per Objective of the player
-# count in every catalog (+4).
+# count in every catalog (+4). Also v130 (user rulings 2026-10-04, OQ-030,
+# OQ-049, OQ-050): a recruit or specimen shortfall waits on the seat
+# (``PlayerState.ungained_troops``/``ungained_specimens``, so every state
+# hash moves) and is made up when troops return to its supply in the same
+# turn, and ``return_specimen`` is also offered at Combat Intrigue priority
+# and at a supply-less Control defense; replays change, no template does.
 ACTION_CODEC_VERSION = 130
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

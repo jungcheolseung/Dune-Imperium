@@ -54,13 +54,14 @@ GAMES = (
     # Random seats wander into what a heuristic never picks (Family Atomics,
     # the Feyd track, Secrets' random steal, an exchanged Influence).
     {"seats": ["random"] * 4, "game_seed": 25, "policy_seed": 25, **EVERY_EXPANSION},
-    # Seed 51 (30 until the 2026-09-26 card-transcription audit, then 38
+    # Seed 71 (30 until the 2026-09-26 card-transcription audit, then 38
     # until OQ-070's Commander deploy slot moved that game off its Secrets
     # steal, then 47 until OQ-095's explicit Agent-turn end did the same,
     # 2026-10-01, then 28 until the Imperial Privilege recall confirm did
-    # it again, 2026-10-02): Family Atomics, the Feyd track and research,
-    # and the only one of the four with a Secrets steal.
-    {"seats": ["random"] * 4, "game_seed": 51, "policy_seed": 51, **EVERY_EXPANSION},
+    # it again, 2026-10-02, then 51 until the 2026-10-04 re-rulings that
+    # follow the Steam app did): Family Atomics, the Feyd track and
+    # research, and the only one of the four with a Secrets steal.
+    {"seats": ["random"] * 4, "game_seed": 71, "policy_seed": 71, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -73,15 +74,15 @@ GAMES = (
     # Korean log, and its draws "Layout:233#1"). Seeds 200 and 152 until
     # OQ-095's explicit Agent-turn end moved both games (2026-10-01); then
     # 8 for the first until the 2026-10-02 decision windows (L2) moved it
-    # off Mating Season. Seed 23: Clear the Market with CHOAM, Mating
-    # Season, a mission's pieces on posts, an auction won and a second
-    # Secrets steal; seed 12: two round modifiers, the Helix spice, Critical
-    # Moment's market, mission troops, Mercenaries and the secret picks
-    # revealed.
+    # off Mating Season, then 23 until the 2026-10-04 re-rulings that
+    # follow the Steam app moved it off Clear the Market. Seed 86: Clear the Market with CHOAM, Mating Season, a
+    # mission's pieces on posts and an auction won; seed 12: two round
+    # modifiers, the Helix spice, Critical Moment's market, mission troops,
+    # Mercenaries and the secret picks revealed.
     {
         "seats": ["random"] * 4,
-        "game_seed": 23,
-        "policy_seed": 23,
+        "game_seed": 86,
+        "policy_seed": 86,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

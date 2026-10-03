@@ -326,6 +326,7 @@ const EVENT_LABELS = {
   troops_deployed: "병력 배치",
   troops_withdrawn: "병력 회수",
   troops_recruit_short: "병력 {recruit} 부족 ({supply} 없음)",
+  shortfall_refilled: "부족분 보충 ({supply}로 돌아온 병력)",
   agent_turn_finished: "{agent_turn} 종료",
   agent_turn_reopened: "{agent_turn} 다시 열림",
   troops_retreated: "병력 후퇴",

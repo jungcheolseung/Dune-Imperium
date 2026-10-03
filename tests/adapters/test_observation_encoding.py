@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 28
+    assert OBSERVATION_VERSION == 29
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -68,7 +68,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # Mode: Control the Spice in the 19 personal-card segments
     # (4 x 4 seat zones, imperium_removed, private_hand, private_peeked_card),
     # Economic Supremacy in the 4 seat battle-card segments, and the
-    # epic_game flag (4,587 -> 4,611).
+    # epic_game flag (4,587 -> 4,611). v29: each relative seat's waiting
+    # recruit and specimen shortfall, 4 x 2 (4,611 -> 4,619; OQ-030, OQ-049).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -95,8 +96,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 19
         + 4
         + 1
+        + 4 * 2
     )
-    assert OBSERVATION_SIZE == 4_611
+    assert OBSERVATION_SIZE == 4_619
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -113,7 +115,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert private_secret_project.stop == segment_slice("scouts_items").start
     # v28 appends the Epic Game Mode flag after the last Scouts segment.
     assert segment_slice("scouts_calls").stop == segment_slice("epic_game").start
-    assert segment_slice("epic_game").stop == OBSERVATION_SIZE
+    assert segment_slice("epic_game").stop == segment_slice("shortfall").start
+    assert segment_slice("shortfall").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -140,6 +143,22 @@ def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
         seat_scalars = encoded[segment_slice("seat0_scalars")]
         assert seat_scalars[23] == 5  # own public hand size
         assert seat_scalars[24] == 5  # own public deck size
+
+
+def test_waiting_shortfalls_use_the_appended_columns_by_relative_seat() -> None:
+    # v29 (OQ-030, OQ-049): troops then specimens for each seat, the observer
+    # first, in seat order after it.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(immortality=True), seed=5)
+    short = replace(state.players[1], ungained_troops=2, ungained_specimens=1)
+    state = replace(state, players=(state.players[0], short, *state.players[2:]))
+    columns = segment_slice("shortfall")
+    assert encode_player_view(engine.observe(state, 0))[columns] == (
+        0, 0, 2, 1, 0, 0, 0, 0,
+    )
+    assert encode_player_view(engine.observe(state, 1))[columns] == (
+        2, 1, 0, 0, 0, 0, 0, 0,
+    )
 
 
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
@@ -406,20 +425,34 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # ``adapters/observation_encoding.py`` and ``core/observation.py`` are byte
 # for byte the previous pin's; ``rules/frames.py`` only gained a comment on
 # the retired ``INTRIGUE_TRIGGER_SPY`` kind, which keeps its place.
+# Re-pinned 2026-10-04 for observation v29 (OQ-030/OQ-049, each relative
+# seat's waiting recruit and specimen shortfall appended last) together with
+# codec v130 (OQ-021, OQ-005, OQ-050). For base, choam, draft,
+# promo_bloodlines_tech and scouts, each vector cut back to the v28 layout
+# (its last 8 columns dropped) reproduces the v28 digests (master 7f5c8164)
+# exactly with the same vector counts, so no trajectory moved -- none of
+# these games refills a shortfall, plays an Objective flip or reaches
+# Shaddam's exhausted market. The new columns are nonzero in 56 (base; a
+# shortfall is dropped once no turn is open), 8 (choam), 24 (draft) and 32
+# (promo_bloodlines_tech) vectors. ``everything`` moved (3,624 -> 3,208
+# vectors) because a specimen may now be returned at Combat Intrigue
+# priority and at a supply-less Control defense (OQ-050): with those two
+# windows patched shut in a scratch run, its cut vectors reproduce the v28
+# digest and count exactly.
 _GOLDEN_DIGESTS = {
-    "base": ("29cffc270dbad833556587f296a15c4ba853f46da475a8e326b8f5dc1e85f712", 2780),
-    "choam": ("1caec40a9fdc131987f65bc708700226ce592869f6baee6303421510a59daed6", 2836),
+    "base": ("f111052d3033574ef685bc9dcb62f8e22e511c347a8f4d33eed4f21767cdc170", 2780),
+    "choam": ("167d24f5554f25de72c1c9b80ab7fb2742d6f612eec38413386e646a2f679e54", 2836),
     "promo_bloodlines_tech": (
-        "5ff3254f753d95cc95a59ee736ced4c7c5b22e614b8616c076db4c35b8a9996a",
+        "d24037732a08c4f2d7ac5597a27998d16039870d6bb06df7b1a7e87b80787859",
         3028,
     ),
     "everything": (
-        "53d3e82c01ce7007ea0623157baba2c6040e77dfb4648a577f0093c8fd1d93ea",
-        3624,
+        "6dff0487bc4aadb394d404cc28ddd63ea6bdc96aaedd257e5f4e3540c0d3766d",
+        3208,
     ),
-    "draft": ("a066154c2a3f217f4fb6e4285ad9fa49dd8118a60b73e8419def5f1ce7d74ec0", 2392),
+    "draft": ("30c7c96e86c9b65788db4a71986badd94c5dd161647cc18f00fb7916370e9c13", 2392),
     "scouts": (
-        "8faa52e54a703af6b4364f2759ced2e7d90f4d86cc6a2ad8fbe9ac7be8f127db",
+        "d3b76fae3c6caa96e63d3d1fc1f3e39014ee90a905c79ec0c850124a3a088b93",
         3516,
     ),
 }

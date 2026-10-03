@@ -26,7 +26,8 @@ def generate_specimens(
     "take a troop from your supply and place it in the Axolotl tanks"
     [Immortality p. 8]; with an empty supply nothing is generated and the
     shortfall is a public event (OQ-049, the shape of OQ-030's recruit
-    shortfall).
+    shortfall). It waits as ``ungained_specimens`` and is generated if troops
+    return to the supply later in the same player turn (``rules.shortfall``).
     """
 
     if count < 1:
@@ -39,6 +40,9 @@ def generate_specimens(
         owner,
         troops_supply=owner.troops_supply - generated,
         specimens=owner.specimens + generated,
+        # Taken later in the turn if troops return to the supply (OQ-049,
+        # user ruling 2026-10-04, ``rules.shortfall``).
+        ungained_specimens=owner.ungained_specimens + count - generated,
     )
     events: list[GameEvent] = [
         GameEvent(

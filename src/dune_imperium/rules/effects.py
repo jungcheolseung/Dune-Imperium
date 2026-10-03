@@ -88,7 +88,12 @@ type AutomaticEffect = (
 
 
 def recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
-    """Move up to ``count`` available troops from supply to garrison."""
+    """Move up to ``count`` available troops from supply to garrison.
+
+    What the supply cannot cover is recorded as ``ungained_troops``; the
+    engine recruits it if troops return to the supply later in the same
+    player turn (OQ-030, user ruling 2026-10-04, ``rules.shortfall``).
+    """
 
     if count < 0:
         raise ValueError("troop recruit count must not be negative")
@@ -98,6 +103,7 @@ def recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
             player,
             troops_supply=player.troops_supply - recruited,
             troops_garrison=player.troops_garrison + recruited,
+            ungained_troops=player.ungained_troops + count - recruited,
         ),
         recruited,
     )

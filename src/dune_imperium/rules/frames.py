@@ -248,6 +248,15 @@ def reset_turn_counters(
     owed = owner.hungry_for_spice_owed or (
         closing == player and hungry_for_spice_is_due(owner)
     )
+    # A recruit or specimen shortfall never outlives the turn it waits in,
+    # whoever's seat it is (OQ-030, OQ-049): every seat's clears here.
+    players = tuple(
+        replace(seat, ungained_troops=0, ungained_specimens=0)
+        if seat.ungained_troops or seat.ungained_specimens
+        else seat
+        for seat in players
+    )
+    owner = players[player]
     return replace_player(
         players,
         replace(
