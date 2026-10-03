@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 129
+    assert ACTION_CODEC_VERSION == 130
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -190,6 +190,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # deployment condition holds and places its Spy through the Intrigue
     # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
     # trigger templates leave every catalog (-27).
+    # v130 (OQ-021, user ruling 2026-10-04): Shaddam's icon over an exhausted
+    # market takes a set-aside Contract, so take_exhausted_contract_solari
+    # leaves the CHOAM catalogs (-1).
     assert codec.size == (
         4640
         + 2
@@ -214,6 +217,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 2
         + 1
         - 27
+        - 1
     )
 
     try:
@@ -310,6 +314,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # deployment condition holds and places its Spy through the Intrigue
     # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
     # trigger templates leave every catalog (-27).
+    # v130 (OQ-021): take_exhausted_contract_solari leaves the CHOAM catalogs
+    # (-1).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
@@ -319,6 +325,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1
         + 1
         - 27
+        - 1
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

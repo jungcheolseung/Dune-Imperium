@@ -175,7 +175,6 @@ const ACTION_LABELS = {
   reveal_turn: "{reveal_turn} 턴 시작",
   summon_maker_sandworms: "{sandworm} 부르기",
   take_contract: "{contract} 획득",
-  take_exhausted_contract_solari: "{contract} 대신 2 {solari}",
   hold_contract_icons: "{contract} 아이콘 보류 — 지금 가져갈 {contract} 없음",
   resolve_contract_icons_without_contract: "{contract} 아이콘 소멸 — 지금 가져갈 {contract} 없음",
   take_high_council_from_reveal: "원로회 자리 차지",

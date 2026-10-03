@@ -221,7 +221,12 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``recall_spy_for_trigger`` leave every catalog (-27); Coercive
 # Negotiation keeps ``take_trigger_contract``. The player's offer record
 # became the turn's deployment peak, so every state hash moves.
-ACTION_CODEC_VERSION = 129
+# v130 (user ruling 2026-10-04, OQ-021, following the Steam app): over an
+# exhausted market Shaddam's Contract icon must take a set-aside Sardaukar
+# Contract while one remains -- nobody has taken them, so the two-Solari
+# reversion [Main p. 16] waits until they are gone. ``take_exhausted_contract
+# _solari`` leaves the CHOAM catalogs (-1).
+ACTION_CODEC_VERSION = 130
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -431,7 +436,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             ActionTemplate(action_id=action_id)
             for action_id in (
                 "keep_contract_reveal_spice",
-                "take_exhausted_contract_solari",
                 "trash_contract_reveal_for_vp",
                 # A Contract Spy may pass up the recall-first without a Spy
                 # in supply [Main pp. 11, 20].

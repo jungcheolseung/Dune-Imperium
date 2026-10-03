@@ -141,7 +141,6 @@ const LABELS_EN = {
     "reveal_turn": "Start {reveal_turn}",
     "summon_maker_sandworms": "Summon {sandworm}",
     "take_contract": "Take {contract}",
-    "take_exhausted_contract_solari": "2 {solari} instead of {contract}",
     "hold_contract_icons": "Hold {contract} icons — no {contract} to take now",
     "resolve_contract_icons_without_contract": "{contract} icons fizzle — no {contract} to take now",
     "take_high_council_from_reveal": "Take High Council",

@@ -638,10 +638,13 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     assert codec.size == (
         4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27
     )
+    # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
+    # take_exhausted_contract_solari (-1).
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
     assert choam_promo.size == (
         4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 2 + 1
         - 27
+        - 1
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

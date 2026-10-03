@@ -983,7 +983,8 @@ def _old_contract_market(state: GameState, player: int) -> tuple[DomainAction, .
     """``contracts.legal_contract_actions`` before ``contract_take_block``
     and the hold confirm (2026-10-02, user ruling 2026-09-30): with nothing
     takeable in a non-empty market it offered nothing, and the engine held
-    the icons unasked (OQ-059)."""
+    the icons unasked (OQ-059). Updated on purpose 2026-10-04 (OQ-021): Shaddam
+    no longer chooses two Solari over an exhausted market."""
 
     frame = owned_top_frame(state, FrameKind.CONTRACT_MARKET, player)
     if frame is None:
@@ -1004,11 +1005,6 @@ def _old_contract_market(state: GameState, player: int) -> tuple[DomainAction, .
             for instance_id in (*state.face_up_contract_ids, *set_aside)
             if holds_intrigue
             or not contract_for_instance(instance_id).requires_intrigue_trash
-        ),
-        *(
-            (DomainAction(action_id="take_exhausted_contract_solari", actor=player),)
-            if set_aside and not state.face_up_contract_ids
-            else ()
         ),
     )
 

@@ -121,7 +121,6 @@ from dune_imperium.rules.contracts import (
     apply_contract_intrigue_trash,
     apply_contract_recall_action,
     apply_contract_spy_action,
-    apply_exhausted_contract_solari,
     combat_held_contract_owner,
     complete_alliance_contracts,
     exhausted_contract_choice_is_pending,
@@ -797,7 +796,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_reveal_troop_sacrifice": apply_reveal_troop_sacrifice,
     # Contracts
     "take_contract": apply_contract_action,
-    "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     # Nothing in a non-empty market can be taken: the icons wait (OQ-059).
     "hold_contract_icons": apply_contract_hold,
     "resolve_contract_icons_without_contract": apply_contract_fizzle,
