@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 카드 사용 플로팅 효과
+
+- 구현 커밋: `030d1504`. 사람·AI가 에이전트 카드, 턴 넘김 카드, 접목 파트너, 책략·항행 카드를 사용하면 보드 오른쪽 위에 카드 이미지·좌석·사용 종류·배치 공간이 잠깐 뜬다. 책략은 선택한 option의 timing을 읽어 전투 사용을 구분한다(Contingency Plan의 음모 선택을 전투로 표시하지 않는다). 평소 2.2초, 밀린 AI 배치는 1.2초씩 순서대로 표시하며, 관전은 재생 속도를 따른다. 클릭은 보드로 통과하고, 동작 줄이기 설정에서는 움직임 없이 표시한다.
+- `static/effects.js`는 좌석에 이미 필터링된 로그의 카드 사용 이벤트만 읽는다. 첫 접속·새로고침은 현재 로그를 기준점으로 삼고, 로컬 사람 좌석 전환은 이어진 사용을 유지한다. 되돌린 사용은 알림·대기열에서 제거하고, 나가기·관전 정지·수동 탐색은 알림을 정리한다. 언어 변경은 현재 이미지와 문구를 갱신한다. 엔진·서버·규칙·codec v134·관측 v30은 그대로다. 정적 파일은 새로고침으로 적용된다.
+- 검증: 관련 pytest **60개**(catalog·i18n·app), Ruff(`src tests` 및 새 E2E)·mypy(313파일) 통과. Chrome 관련 **6종**(`card_effects`·`spectate`·`remote_fresh`·`lang`·`narrow`·`open_mode`) 통과했고, 선택지 timing 표시 보강 뒤 새 `card_effects.py`의 **21개 검사**를 다시 통과했다. 실제 사람 2·AI 2 판에서 음모·전투 사용까지 진행하고, 한 snapshot의 AI 연속 사용·중복 방지·비공개 draw 제외·되돌리기·자동 만료·언어·이미지 대체·클릭 통과·관전을 검사했다. 전체 pytest·전체 E2E는 이번 UI 변경에서 재실행하지 않았다.
+
 ## 2026-10-05 스카웃 경매 카드 이미지
 
 - 구현 커밋: `dbffea01`. 중대한 순간(Critical Moment)의 공개 카드 2장·3장을 스카웃 패널에서 번호·이름과 함께 이미지로 표시한다. 마우스를 올리거나 클릭·키보드로 활성화하면 기존 카드 상세 팝오버가 열린다. 이미지 확인은 결정을 진행하지 않고, 획득은 기존 행동 버튼으로 한다. 좁은 창에서는 줄바꿈하고 로컬 이미지가 없으면 텍스트 카드로 대체한다.

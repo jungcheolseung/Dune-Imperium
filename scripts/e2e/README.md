@@ -42,6 +42,12 @@ UI 변경의 검증 순서는 [`CLAUDE.md`](../../CLAUDE.md)의 "Verifying UI ch
 1366px 창의 줄바꿈, 이미지 없는 환경의 텍스트 대체도 확인한다.
 스크린샷은 기존 `E2E_SHOTS_DIR`에 `market_2_*`·`market_3_*` 이름으로 남긴다.
 
+`card_effects.py`는 사람 2좌석·AI 2좌석의 실제 카드 사용과 음모·전투 책략을
+플로팅 알림으로 표시하는지 검사한다. 한 snapshot의 AI 연속 사용 순서,
+좌석 전환·재렌더의 중복 방지, 비공개 draw·비밀 선택 제외, 되돌리기·새로고침·
+나가기·시간 만료, 언어·이미지 대체·동작 줄이기·클릭 통과, AI 관전 재생·정지·
+수동 탐색을 포함한다. 스크린샷은 `E2E_SHOTS_DIR`의 `combat_card_*`에 남긴다.
+
 ## 하나씩 돌리기
 
 아래 시간은 한 개씩 순서대로 돌린 실측(2026-09-27 Mac mini; `rehearsal.py`만 예전 값)이다.
@@ -63,6 +69,7 @@ cd scripts/e2e
 /tmp/dune-e2e-venv/bin/python columns.py       # 약 3초; 공용 카드 열 접기와 Bene Tleilax 크게 보기
 /tmp/dune-e2e-venv/bin/python seats.py         # 약 4초; 좌석 패널의 자세히 접기, 노트북 1366x768에서 좌석 넷
 /tmp/dune-e2e-venv/bin/python help.py          # 약 2초; 도움말 창과 스크린 리더 알림(aria-live·role·이름)
+/tmp/dune-e2e-venv/bin/python card_effects.py  # 약 12초; 사람·AI의 카드 사용 플로팅 알림, 음모·전투 책략, 수명과 관전
 /tmp/dune-e2e-venv/bin/python scouts.py        # 약 70초; 아라킨 스카웃 판(체크박스 기본 꺼짐·배지·패널·비밀 선택 설명·입찰 스테퍼와 턴 종료 줄·영어 한글 없음), 시드 게임 끝까지 + 보드 위 임무 조각(시드 게임 여섯 판이 임무 16종 전부: 칸의 빈 자리·관측소·나선·Tleilaxu 셋째 칸·계약·Reclaimed Forces에 행마다 조각 하나, 좌석 색 큐브, hotspot·Agent·Spy·Control·bonus spice·지휘관·garrison과 안 겹침, 두 언어 title, 뒷면 카드 id가 페이지에 없음 — 저장본을 엔진으로 재생해 대조; 가장 붐비는 판을 2400·1366px에서, 스크린샷은 E2E_SHOTS_DIR)
 /tmp/dune-e2e-venv/bin/python unavailable.py   # 약 3초 + 사막의 힘 저장 만들기; 지금 고를 수 없는 선택지가 흐리게, 까닭과 함께(Reveal 상점·Intrigue 카드, 2026-09-29; 선택 창의 막힌 갈래·Imperial Privilege 소환 확인, 2026-10-02; 다른 사람 좌석의 Holy War에 답하는 손실 창 — --remote 두 브라우저, 유닛 없는 확인·하나뿐인 손실, 회색 줄의 용어 치환, 답할 때까지 카드 쓴 좌석의 턴 종료 숨김, 2026-10-02 — 모두 합쳐 약 17초)
 /tmp/dune-e2e-venv/bin/python lang.py          # 약 4초; 한국어/English 전환 — 영어에서 한글 0, 왕복 동일, 새로고침 유지, 카드 이름·그림이 언어를 따름
