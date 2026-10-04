@@ -2066,3 +2066,20 @@ kbd {
 #scouts-panel .scouts-own {
   font-weight: 600;
 }
+#scouts-panel .scouts-market-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+#scouts-panel .scouts-market-cards .scouts-row {
+  width: 110px;
+  max-width: 100%;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+#scouts-panel .scouts-market-cards .vcard {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.25rem;
+}

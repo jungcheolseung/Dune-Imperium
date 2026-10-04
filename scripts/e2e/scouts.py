@@ -10,6 +10,9 @@ to the end, and on the way the page must show:
 - a secret pick's four buttons, each naming its line (not a bare index);
 - a sealed bid as the count stepper plus the one turn-end row, which is the
   confirmation itself (D5);
+- Critical Moment's two/three public cards as numbered images; hovering,
+  clicking or keyboard activation opens the matching detail without taking
+  a card, in both languages and at laptop width; text when art is absent;
 - in English, no Hangul anywhere in the panel;
 - a Scouts choice with a line the seat cannot take right now (user request
   2026-09-29) shows it greyed out: one row per such line in the server's
@@ -251,10 +254,99 @@ def inspect_lines(page, seen: dict[str, bool]) -> None:
     seen["lines"] = ok
 
 
+def inspect_market(page, seen: dict[str, bool]) -> None:
+    cards = page.evaluate("state.view.scouts_market_cards")
+    if not cards:
+        return
+    key = f"market_{len(cards)}"
+    taking = page.evaluate(
+        "state.actions.actions.some((a) => a.action_id === 'scouts_take_card')"
+    )
+    if seen.get(key) and (not taking or seen.get("market_take")):
+        return
+    selector = "#scouts-panel .scouts-market-cards .vcard"
+    revision = page.evaluate("state.summary.revision")
+    ok = True
+    viewport = page.viewport_size
+    for lang, width in (("ko", 1600), ("en", 1366)):
+        page.set_viewport_size({"width": width, "height": 1000})
+        page.evaluate("setLanguage", lang)
+        page.locator(selector).first.scroll_into_view_if_needed()
+        page.wait_for_function("""() => [...document.querySelectorAll(
+          '#scouts-panel .scouts-market-cards .vcard img')]
+          .every((img) => img.complete && img.naturalWidth > 0)""")
+        rows = page.evaluate("""() => [...document.querySelectorAll(
+          '#scouts-panel .scouts-market-cards .scouts-row')].map((row) => {
+          const card = row.querySelector('.vcard');
+          const img = card.querySelector('img');
+          const entry = entryOf(row.dataset.card, 'cards');
+          const rect = card.getBoundingClientRect();
+          const panel = el('scouts-panel').getBoundingClientRect();
+          return {id: card.dataset.instance, text: row.innerText,
+            image: img && img.getAttribute('src') === entry.image,
+            alt: img && img.alt === entry.name,
+            fits: rect.left >= panel.left && rect.right <= panel.right};
+        })""")
+        ok &= check.ok(
+            [r["id"] for r in rows] == cards
+            and all(r["image"] and r["alt"] and r["fits"] for r in rows)
+            and all(r["text"].startswith(f"{i + 1}.") for i, r in enumerate(rows)),
+            f"{key}: numbered card images in order ({lang}, {width}px)",
+            rows,
+        )
+        first = page.locator(selector).first
+        first.hover()
+        page.wait_for_selector("#card-popover:not([hidden])")
+        first.click()
+        page.wait_for_function("popoverPinned")
+        image = page.locator("#card-popover > img")
+        expected = page.evaluate("entryOf(state.view.scouts_market_cards[0]).image")
+        ok &= check.ok(
+            image.get_attribute("src") == expected,
+            f"{key}: hover and click inspect the matching card ({lang})",
+        )
+        page.wait_for_function("""() => {
+          const img = el('card-popover').querySelector(':scope > img');
+          return img && img.complete && img.naturalWidth > 0;
+        }""")
+        if not seen.get(key):
+            page.screenshot(path=f"{SHOTS}/{key}_{lang}_{width}.png")
+        page.keyboard.press("Escape")
+        first.focus()
+        page.keyboard.press("Enter")
+        ok &= check.ok(
+            page.evaluate("popoverPinned && !el('card-popover').hidden")
+            and page.evaluate("state.summary.revision") == revision,
+            f"{key}: keyboard inspection leaves the decision unchanged ({lang})",
+        )
+        page.keyboard.press("Escape")
+    # With no local art the same public identities stay inspectable as text.
+    fallback = page.evaluate("""() => {
+      const id = state.view.scouts_market_cards[0];
+      const raw = state.catalog.cards[baseId(id)];
+      const saved = {image: raw.image, image_ko: raw.image_ko};
+      try {
+        raw.image = null; raw.image_ko = null;
+        renderScouts();
+        const card = el('scouts-panel').querySelector('.scouts-market-cards .vcard');
+        card.click();
+        return card.classList.contains('textcard') && !card.querySelector('img')
+          && card.innerText.includes(entryOf(id).name) && popoverPinned;
+      } finally { Object.assign(raw, saved); closePopover(); renderScouts(); }
+    }""")
+    ok &= check.ok(fallback, f"{key}: absent art falls back to inspectable text")
+    page.set_viewport_size(viewport)
+    page.evaluate("setLanguage('ko')")
+    seen[key] = ok
+    if taking:
+        seen["market_take"] = ok
+
+
 def inspect(page, seen: dict[str, bool]) -> None:
     ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
     text = panel_text(page)
     inspect_lines(page, seen)
+    inspect_market(page, seen)
     if not seen.get("subcommittees") and page.evaluate(
         "state.view.scouts_subcommittees.length === 5"
     ):
@@ -995,6 +1087,8 @@ def main() -> None:
         "english",
         "lines",
         "skip_notice",
+        "market_2",
+        "market_3",
     )
     with server() as (base, _server_log), chrome() as browser:
         _, page, _ = open_context(browser, "scouts")

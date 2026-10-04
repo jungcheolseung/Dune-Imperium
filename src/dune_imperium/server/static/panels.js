@@ -1446,15 +1446,20 @@ function renderScouts() {
   }
   if (view.scouts_market_cards.length) {
     const box = scoutsSection(panel, t("panels.scouts_market"));
+    box.classList.add("scouts-market-cards");
     view.scouts_market_cards.forEach((id, slot) => {
       const row = scoutsRow(box, `${slot + 1}. ${nameOf(id)}`);
       row.dataset.card = id;
+      row.prepend(visualCard(id, {
+        /* Inspecting a prize must not submit a card-pick action. */
+        onClick: (entry, card) => { if (entry) pinPopover(entry, card); },
+      }));
     });
     if (view.scouts_calls.length) {
       const calls = view.scouts_calls.map(
         ([seat, amount]) => `${playerLabel(seat)} ${amount ? `{spice:${amount}}` : t("panels.scouts_pass")}`,
       );
-      scoutsRow(box, t("panels.scouts_calls", { calls: calls.join(", ") }));
+      scoutsRow(panel, t("panels.scouts_calls", { calls: calls.join(", ") }));
     }
   }
 
