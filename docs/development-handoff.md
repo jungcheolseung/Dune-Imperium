@@ -4,6 +4,14 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 보드 Spy 선택과 Objective 이미지
+
+- 구현 커밋: `e274c171`(보드 Spy 선택), `7194d4c1`(Objective 이미지 연결), 브랜치 `codex/spy-objective-images`. 서버가 현재 제시한 Spy 배치·이동 목적지의 관측소에 노란 원형 테두리와 발광을 그리고, 클릭·Enter로 그 행동 번호를 전송한다. 여러 효과가 같은 목적지를 제시하면 기존 행동 목록에서 효과를 고른다. 회수·침투의 관측소 참조는 배치 대상으로 켜지지 않는다. Deep Cover의 기존 Spy 토큰은 클릭을 관측소로 통과시키고, busy·관전 상태에서는 새 배치를 실행하지 않는다.
+- `catalog.objectives`에 기존 카드 이미지 매핑을 연결해 좌석의 **배틀 아이콘 카드**에 마우스를 올리거나 클릭하면 Objective 그림도 보인다. 언어 전환·이미지 버전 캐시·없는 파일의 텍스트 대체는 기존 카드 경로를 따른다. 엔진·규칙·codec **v134**·관측 **v30**은 그대로다.
+- 비공개 assets 커밋 `fbb84f3`: 사용자가 넣은 원본 사진 세 장에서 영어 5종+뒷면, 한국어 4종을 각각 **440×680 PNG**로 자르고 perspective·둥근 모서리를 보정했다. `cards/en/uprising/objective/`와 `cards/ko/uprising/objective/`에 저장하고 `cards/manifest.json`에 5개 엔진 ID·출처 파일·원본/결과 SHA-256·crop 좌표를 기록했다. 한국어 사진에 없는 Ornithopter 1-3P는 영어 그림으로 대체한다. 원본 세 장은 변경하지 않고 기존 untracked 상태로 두었으며, crop 도구·작업 파일은 `/tmp/dune-objectives/`에만 있다. 원래 웹 URL은 제공되지 않아 임의로 추정하지 않았다. URL 없는 local crop은 다운로드 도구가 비공개 assets checkout에서 복구하도록 안내한다.
+- 검증: 관련 pytest **69개**, 전체 pytest **3,215개**(268.5초, 기존 PettingZoo 경고 2개), Ruff(`src tests` 및 변경 scripts)·mypy(**314파일**) 통과. 전체 Chrome E2E **36종**(4개씩 158초) 통과; 새 `spy_placement.py` **24개 검사**, `objective_images.py` **35개 검사**를 포함한다. 실제 Espionage 배치·정확한 POST 번호·키보드·occupied post 클릭·언어·1366/1600px·5종 이미지 로딩·텍스트 대체와 원본/결과 체크섬을 확인했다. 첫 샌드박스 전체 실행은 loopback bind 제한으로 중단했으며, 위 전체 결과는 로컬 서버를 열 수 있는 실행 환경의 결과다.
+- 이 워크트리에서 assets는 기존 비공개 checkout을 symlink로 연결했다. Objective catalog는 서버 시작 때 이미지 목록을 읽으므로 이 변경을 반영한 서버를 한 번 재시작한 뒤 브라우저를 새로고침한다.
+
 ## 2026-10-05 카드 사용 플로팅 효과
 
 - 구현 커밋: `030d1504`. 사람·AI가 에이전트 카드, 턴 넘김 카드, 접목 파트너, 책략·항행 카드를 사용하면 보드 오른쪽 위에 카드 이미지·좌석·사용 종류·배치 공간이 잠깐 뜬다. 책략은 선택한 option의 timing을 읽어 전투 사용을 구분한다(Contingency Plan의 음모 선택을 전투로 표시하지 않는다). 평소 2.2초, 밀린 AI 배치는 1.2초씩 순서대로 표시하며, 관전은 재생 속도를 따른다. 클릭은 보드로 통과하고, 동작 줄이기 설정에서는 움직임 없이 표시한다.
