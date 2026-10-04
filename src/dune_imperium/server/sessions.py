@@ -50,6 +50,7 @@ from dune_imperium.agents.registry import (
     is_agent_kind,
 )
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -2156,9 +2157,11 @@ def shortfall_warning(
         elif kind == "troops":
             notes.append(f"supply 부족: troop {requested}개 중 {made}개만 recruit")
         elif kind == "intrigue":
-            notes.append(
-                f"책략 카드 더미와 버림 더미를 합쳐도 {requested - made}장 모자람"
-            )
+            note = f"책략 카드 더미와 버림 더미를 합쳐도 {requested - made}장 모자람"
+            twisted = _unshuffled_twisted(outcome)
+            if twisted:
+                note += f" (버림 더미의 뒤틀린 책략 {twisted}장은 섞지 않음)"
+            notes.append(note)
         elif kind == "suspensor":
             notes.append(f"반중력 의복: 병력 {requested}개 중 {made}개만 배치")
         else:
@@ -2175,15 +2178,39 @@ def shortfall_details(
     English builds its own from ``kind`` ("specimens", "troops",
     "intrigue", "suspensor" or "contract"), ``requested`` and ``made``.
     For "intrigue" ``requested`` is what the draw still asked for once the
-    deck ran out, so ``requested - made`` is the number of cards missing;
+    deck ran out, so ``requested - made`` is the number of cards missing,
+    and ``twisted`` (present only when nonzero) counts the Twisted Intrigue
+    cards left in the discard pile, which a reshuffle never takes (OQ-097);
     for "contract" ``requested`` is the number of icons and ``made`` is 0.
     """
 
-    details: list[JsonValue] = [
-        {"kind": kind, "requested": requested, "made": made}
-        for kind, requested, made in _shortfalls(outcome, player)
-    ]
+    details: list[JsonValue] = []
+    for kind, requested, made in _shortfalls(outcome, player):
+        entry: dict[str, JsonValue] = {
+            "kind": kind,
+            "requested": requested,
+            "made": made,
+        }
+        if kind == "intrigue" and (twisted := _unshuffled_twisted(outcome)):
+            entry["twisted"] = twisted
+        details.append(entry)
     return details or None
+
+
+def _unshuffled_twisted(outcome: RuleResult | None) -> int:
+    """Twisted Intrigue cards the step leaves in the public Intrigue discard.
+
+    They stay there when it is reshuffled (OQ-097, user ruling 2026-10-04),
+    so a short Intrigue draw explains why a discard that shows cards did
+    not cover it (user request 2026-10-04: "경고 문구에 Twisted 제외 설명").
+    """
+
+    state = None if outcome is None else outcome.state
+    if state is None:
+        return 0
+    return sum(
+        is_twisted_intrigue(card_id) for card_id in state.intrigue_discard
+    )
 
 
 # Event kind -> (shortfall kind, payload key of what was asked for, payload
