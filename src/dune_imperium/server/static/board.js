@@ -446,10 +446,27 @@ function renderBoardStage(board, view) {
   renderScoutsBoardPieces(stage, view, spies);
 
   for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
+    const legal = legalSpyPostActions(postId);
+    if (legal.length) {
+      const target = document.createElement("button");
+      target.type = "button";
+      target.className = "spy-post-hotspot legal";
+      target.dataset.post = postId;
+      target.style.width = `${state.catalog.post_size * 1.8}%`;
+      placeAt(target, x, y);
+      const name = postName(postId);
+      target.title = name;
+      target.setAttribute("aria-label", name);
+      target.addEventListener("click", (event) => {
+        event.stopPropagation();
+        tableClick(postId, { name }, target, legalSpyPostActions(postId));
+      });
+      stage.appendChild(target);
+    }
     const seats = stackOrder(postId, spies.get(postId) || [], arrivals);
     if (!seats.length) continue;
     const post = document.createElement("span");
-    post.className = "spy-post";
+    post.className = "spy-post" + (legal.length ? " selectable" : "");
     post.style.left = `${x}%`;
     post.style.top = `${y}%`;
     /* A Spy is as wide as the printed post disc (catalog.post_size, a
