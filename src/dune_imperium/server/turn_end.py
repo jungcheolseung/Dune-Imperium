@@ -25,7 +25,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.combat_deployment import FINISHING_KEY
 from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owes_track_spy
 
 # Engine actions whose whole meaning is "I am done": pressing one is the
 # seat's turn end itself, so no second press follows it.
@@ -167,9 +167,10 @@ def agent_turn_end_ready(state: GameState) -> int | None:
 
     The seat may still take optional steps (a Plot Intrigue, a deployment,
     a specimen return) before its one press. Read from public facts only --
-    the effect frame's pending flags and the Contracts it must complete --
-    so every seat may be told; a stalled Agent box (OQ-057), whose judgment
-    can depend on the owner's hand, counts as not ready here.
+    the effect frame's pending flags, the Contracts it must complete and an
+    Emperor track Spy still owed (placed before the turn ends, user ruling
+    2026-10-04) -- so every seat may be told; a stalled Agent box (OQ-057),
+    whose judgment can depend on the owner's hand, counts as not ready here.
     """
 
     if not state.decision_stack:
@@ -183,5 +184,7 @@ def agent_turn_end_ready(state: GameState) -> int | None:
     if context.get(FINISHING_KEY) is True:
         return None
     if agent_turn_has_other_pending_effects(context, state.players):
+        return None
+    if owes_track_spy(state, top.decision.owner):
         return None
     return top.decision.owner

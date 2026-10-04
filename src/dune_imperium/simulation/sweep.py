@@ -37,6 +37,7 @@ from dune_imperium.simulation.invariants import (
     check_event_visibility,
     check_observation_privacy,
     check_state_invariants,
+    check_track_spy_queue,
 )
 
 # Seed-constructible policies a sweep can drive every seat with.
@@ -149,6 +150,12 @@ def run_checked_game(
                 raise InvariantViolation(
                     f"deadlock: player {decision.owner} has no legal action"
                 )
+            try:
+                check_track_spy_queue(state)
+            except InvariantViolation as violation:
+                raise InvariantViolation(
+                    f"after step {len(steps)}: {violation}"
+                ) from None
             if privacy_interval and player_decisions % privacy_interval == 0:
                 check_observation_privacy(state)
             if soundness_interval and player_decisions % soundness_interval == 0:

@@ -59,6 +59,7 @@ from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import (
     draw_intrigue_cards,
     draw_or_queue_intrigue_cards,
+    with_trashed_intrigue,
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
@@ -1090,8 +1091,10 @@ def legal_imperial_privilege_actions(
     Intrigue card: "Trash an Intrigue card of your choice from your hand"
     [Main p. 20], optional like every arrow cost. The Board Space Guide words
     the same line "You may discard an Intrigue card to draw an Intrigue
-    card" [Board Guide p. 2]; the printed icon decides (OQ-061), so the card
-    leaves the game through ``intrigue_trash``.
+    card" [Board Guide p. 2]. The action stays a trash, but Intrigue cards
+    have no trash pile: the card joins the shared Intrigue discard and is
+    reshuffled with it (``with_trashed_intrigue``, OQ-061, user ruling
+    2026-10-04).
 
     The recall offers one action per ``imperial_privilege_recall_targets``
     entry. With none, only the recall is skipped and the card is still
@@ -1320,16 +1323,18 @@ def apply_imperial_privilege_action(
                 held for held in owner.intrigue_cards if held != card_id
             ),
         )
-        # A trashed Intrigue card is out of the game: the public
-        # ``intrigue_trash`` zone, never reshuffled [Main p. 20] -- so the
-        # draw that follows cannot bring the same card back.
-        effect_state = replace(
-            state,
-            players=tuple(
-                trashing_owner if candidate.player_id == action.actor else candidate
-                for candidate in state.players
+        # The trashed card joins the Intrigue discard before the draw, so an
+        # empty deck's reshuffle can bring it straight back (OQ-061, user
+        # ruling 2026-10-04).
+        effect_state = with_trashed_intrigue(
+            replace(
+                state,
+                players=tuple(
+                    trashing_owner if candidate.player_id == action.actor else candidate
+                    for candidate in state.players
+                ),
             ),
-            intrigue_trash=(*state.intrigue_trash, card_id),
+            card_id,
         )
         events.append(
             GameEvent(

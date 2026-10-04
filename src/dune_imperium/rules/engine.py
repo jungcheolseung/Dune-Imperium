@@ -181,6 +181,8 @@ from dune_imperium.rules.intrigue_peek import (
 )
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
+    deferred_acquisition_trigger_is_due,
+    fire_deferred_acquisition_trigger,
     legal_trigger_contract_actions,
 )
 from dune_imperium.rules.leader_abilities import (
@@ -332,11 +334,13 @@ from dune_imperium.rules.shortfall import (
 )
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
+    apply_place_track_spy,
     apply_spy_move,
     apply_spy_placement,
     begin_track_spy_placement,
     legal_spy_move_actions,
     legal_spy_placement_actions,
+    legal_track_spy_actions,
     track_spy_is_queued,
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
@@ -444,6 +448,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tech_flip_actions,
         legal_specimen_return_actions,
         legal_family_atomics_actions,
+        # The owner's waiting Emperor track Spy, before the Agent or Reveal
+        # too: a Plot is part of the turn (user ruling 2026-10-04).
+        legal_track_spy_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -457,6 +464,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_skill_trash_actions,
         legal_reveal_deployments,
         legal_resume_reveal_choice_actions,
+        # The owner's waiting Emperor track Spy, placed in any order before
+        # the Reveal ends (user ruling 2026-10-04).
+        legal_track_spy_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -684,6 +694,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_tech_strength": apply_tech_choice,
     "choose_tech_trash": apply_tech_choice,
     "place_tech_spy": apply_place_tech_spy,
+    "place_track_spy": apply_place_track_spy,
     "decline_skill": apply_skill_choice,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
@@ -890,7 +901,7 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(complete_alliance_contracts(advanced))
+            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))
@@ -931,7 +942,7 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(complete_alliance_contracts(advanced))
+            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))
@@ -940,6 +951,22 @@ class UprisingRulesEngine(RulesEngine):
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
 
+
+
+def _complete_alliance_contracts(result: RuleResult) -> RuleResult:
+    """Complete Earn Any Alliance, then pay what that Contract opens in a Reveal.
+
+    The completion runs after the step's late-Reveal pass, so the pass runs
+    once more when a Contract was completed: an Interstellar Trade in play
+    pays +1 for it at once rather than a step later, or never when the owner
+    finishes the Reveal next (OQ-028 (c), user ruling 2026-10-04).
+    """
+
+    completed = complete_alliance_contracts(result)
+    if completed.state is result.state:
+        return completed
+    granted = grant_late_reveal_effects(completed)
+    return completed if granted is completed else _advance_automatic(granted)
 
 
 def _settle_finishing(result: RuleResult) -> RuleResult:
@@ -988,7 +1015,15 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
     state = result.state
     events: list[GameEvent] = list(result.events)
     while True:
-        if mission_goods_are_due(state):
+        if deferred_acquisition_trigger_is_due(state):
+            # A face-up Call to Arms waited for the decision frames the
+            # acquired card's own effects opened (a Research direction, a Spy
+            # post, the Contract market); they are answered, so it fires
+            # before the queued steps below, as it does inside an acquisition
+            # that opened none, and before Reveal choices of cards those
+            # effects drew (OQ-012, user ruling 2026-10-04).
+            automatic = fire_deferred_acquisition_trigger(state)
+        elif mission_goods_are_due(state):
             # Arrakeen Scouts: a Spy on a Valued Informants post or a
             # completed CHOAM Escort Contract, by whatever path it got there.
             automatic = claim_due_mission_goods(state)
@@ -1022,8 +1057,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             # first; an Emperor pick then queues its Spy (Arrakeen Scouts).
             automatic = begin_four_bonus_choice(state)
         elif track_spy_is_queued(state):
-            # The Emperor track's Influence 4 Spy [Main p. 7] is placed
-            # before any other player-initiated action (OQ-057).
+            # The Emperor track's Influence 4 Spy [Main p. 7] opens at once
+            # outside its seat's own turn; inside it the entry waits for the
+            # owner's ``place_track_spy`` (user ruling 2026-10-04, overriding
+            # OQ-057 (15)).
             automatic = begin_track_spy_placement(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)

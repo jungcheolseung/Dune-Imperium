@@ -472,10 +472,12 @@ def recall_case(page, base: str, saves: Path) -> bool:
 # straight away (the AI seats answer at once, no Spy to move, nothing else
 # left of that Agent turn), or the seed is passed over. That game is saved
 # before the answer. The seeds are tried in order from HOLY_WAR_SEEDS, as in
-# SAVE_AT_ROW_PY: today seed 5 reaches the single loss and seed 42 the
-# confirm (seat 0's Holy War, seat 1 answers, both); the confirm starts at
-# 40 only to spare the script some 20 seconds of games.
-HOLY_WAR_SEEDS = {"confirm": 40, "single": 0}
+# SAVE_AT_ROW_PY: today seed 5 reaches the single loss and seed 243 the
+# confirm (seat 0's Holy War, seat 1 answers, both; 283, 286 and 300 also
+# do). The confirm starts at 243 only to spare the script the games before
+# it; it was seed 56 until the 2026-10-04 rulings (codec v131) moved that
+# game -- the case is rare (4 of seeds 0-399 qualify).
+HOLY_WAR_SEEDS = {"confirm": 243, "single": 0}
 HOLY_WAR_SAVE_PY = """
 import json, sys
 from pathlib import Path

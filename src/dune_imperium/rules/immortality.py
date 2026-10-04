@@ -47,7 +47,10 @@ from dune_imperium.rules.frames import (
     replace_player,
 )
 from dune_imperium.rules.influence import gain_faction_influence
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_or_queue_intrigue_cards,
+    with_trashed_intrigue,
+)
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.scouts_missions import (
     HELIX,
@@ -592,23 +595,25 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
             event_prefix=f"{source}:influence:{faction.value}",
         )
     if action.action_id == "trash_intrigue_for_research_bonus":
-        # The trashed Intrigue card leaves the game: the public
-        # ``intrigue_trash`` zone, never reshuffled [Main p. 20]
-        # (docs/rules/player-turns.md "Intrigue 카드의 시점").
+        # The trashed Intrigue card joins the shared Intrigue discard before
+        # the draw, so an empty deck's reshuffle can bring it back (OQ-061,
+        # user ruling 2026-10-04).
         card_id = str(arguments["card_id"])
         owner = popped.players[player]
-        trashed_state = replace(
-            popped,
-            players=replace_player(
-                popped.players,
-                replace(
-                    owner,
-                    intrigue_cards=tuple(
-                        held for held in owner.intrigue_cards if held != card_id
+        trashed_state = with_trashed_intrigue(
+            replace(
+                popped,
+                players=replace_player(
+                    popped.players,
+                    replace(
+                        owner,
+                        intrigue_cards=tuple(
+                            held for held in owner.intrigue_cards if held != card_id
+                        ),
                     ),
                 ),
             ),
-            intrigue_trash=(*popped.intrigue_trash, card_id),
+            card_id,
         )
         trashed_event = GameEvent(
             event_id=f"{source}:intrigue_trashed:{card_id}",

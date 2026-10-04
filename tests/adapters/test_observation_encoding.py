@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 29
+    assert OBSERVATION_VERSION == 30
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -70,6 +70,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # Economic Supremacy in the 4 seat battle-card segments, and the
     # epic_game flag (4,587 -> 4,611). v29: each relative seat's waiting
     # recruit and specimen shortfall, 4 x 2 (4,611 -> 4,619; OQ-030, OQ-049).
+    # v30: the 90-column intrigue_trash segment, counted in the 3,038 base,
+    # is gone: Intrigue cards have no trash pile (4,619 -> 4,529; OQ-061);
+    # each relative seat's owed Emperor track Spies are appended, 4 columns
+    # (4,529 -> 4,533; user ruling 2026-10-04).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -97,8 +101,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4
         + 1
         + 4 * 2
+        - 90
+        + 4
     )
-    assert OBSERVATION_SIZE == 4_619
+    assert OBSERVATION_SIZE == 4_533
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -108,6 +114,13 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert offset == OBSERVATION_SIZE
 
     assert segment_slice("global_scalars") == slice(0, 12)
+    names = [segment.name for segment in OBSERVATION_SEGMENTS]
+    assert "intrigue_trash" not in names
+    assert names[names.index("intrigue_discard") + 1] == "imperium_removed"
+    assert (
+        segment_slice("intrigue_discard").stop
+        == segment_slice("imperium_removed").start
+    )
     seat0_in_play = segment_slice("seat0_in_play")
     assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20 + 1
     private_secret_project = segment_slice("private_secret_project")
@@ -116,7 +129,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v28 appends the Epic Game Mode flag after the last Scouts segment.
     assert segment_slice("scouts_calls").stop == segment_slice("epic_game").start
     assert segment_slice("epic_game").stop == segment_slice("shortfall").start
-    assert segment_slice("shortfall").stop == OBSERVATION_SIZE
+    assert segment_slice("shortfall").stop == segment_slice("track_spies_owed").start
+    assert segment_slice("track_spies_owed").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -439,21 +453,34 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # priority and at a supply-less Control defense (OQ-050): with those two
 # windows patched shut in a scratch run, its cut vectors reproduce the v28
 # digest and count exactly.
+# Re-pinned 2026-10-04 (second batch) for observation v30 and codec v131:
+# OQ-061 removed the 90-column intrigue_trash segment and the owed Emperor
+# track Spies (OQ-057 (15)) appended a 4-column track_spies_owed segment.
+# For base, choam, draft, everything and promo_bloodlines_tech, each vector
+# cut back to the v29 layout (the last 4 columns dropped, the 90 columns put
+# back after intrigue_discard with every trashed Intrigue card moved from
+# the discard counts into them -- no reshuffle follows a trash in these
+# games) reproduces the v29 digests above exactly with the same counts, so
+# no trajectory moved; OQ-013, the Interstellar Trade/Stilgar change and
+# OQ-012 move none of the six games. ``scouts`` moved (3,516 -> 3,424
+# vectors) because an owed track Spy now waits in its owner's turn: with
+# that wait patched off in a scratch run its cut vectors reproduce the v29
+# digest and count exactly.
 _GOLDEN_DIGESTS = {
-    "base": ("f111052d3033574ef685bc9dcb62f8e22e511c347a8f4d33eed4f21767cdc170", 2780),
-    "choam": ("167d24f5554f25de72c1c9b80ab7fb2742d6f612eec38413386e646a2f679e54", 2836),
+    "base": ("992d1cc63a5a543c94d08a47aaf2316f9140bb9468107c60bf18f059d7cd1a91", 2780),
+    "choam": ("3be608c2b1fb1948f8c05847e9356e6e6ddec2b03833e06890ab4b0fdbd7b813", 2836),
     "promo_bloodlines_tech": (
-        "d24037732a08c4f2d7ac5597a27998d16039870d6bb06df7b1a7e87b80787859",
+        "d7342d0a6e281f9b68b048bad075ab699974fd250d17b22e8ef9ce80b99575b5",
         3028,
     ),
     "everything": (
-        "6dff0487bc4aadb394d404cc28ddd63ea6bdc96aaedd257e5f4e3540c0d3766d",
+        "dc22b967bbd17e4d3c43bc23a0c7505def8d76da249f77cc00b31059ec38a269",
         3208,
     ),
-    "draft": ("30c7c96e86c9b65788db4a71986badd94c5dd161647cc18f00fb7916370e9c13", 2392),
+    "draft": ("f8a5e7f51dcf216e9022bfc0fe64a0ba3e0265a7e1d3673b070012f6dd8bf73e", 2392),
     "scouts": (
-        "d3b76fae3c6caa96e63d3d1fc1f3e39014ee90a905c79ec0c850124a3a088b93",
-        3516,
+        "3626ddc81a3ab4b957faa18ecfae231f659a02fceeec68b0adec5a51e517f4de",
+        3424,
     ),
 }
 _GOLDEN_CONFIGS = {

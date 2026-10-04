@@ -10,6 +10,7 @@ from dune_imperium.core import (
     ChanceOutcome,
     ChanceResolver,
     DecisionFrame,
+    DomainAction,
     GamePhase,
     GameReplay,
     GameState,
@@ -309,12 +310,14 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
     assert drawn in state.players[player].hand
 
 
-def test_reaching_emperor_influence_four_places_the_tracks_spy_at_once() -> None:
+def test_reaching_emperor_influence_four_owes_the_tracks_spy_inside_the_turn() -> None:
     # "When you reach 4 Influence, you earn the bonus shown on that space of
-    # the track." [Main p. 7] The Emperor strip prints the Spy icon. The
-    # placement opens right after the gain and is finished before any other
-    # player-initiated action (designer ruling on the Emperor track's Spy,
-    # OQ-057); with a Spy in the supply it is mandatory (erratum to p. 11).
+    # the track." [Main p. 7] The Emperor strip prints the Spy icon. User
+    # ruling 2026-10-04 (overriding the designer ruling OQ-057 (15)): "엄연히
+    # agent턴 내에 순서를 정해서 할 수 있는 의무 행동으로 보는거지" -- the
+    # placement waits in the owner's turn, other actions may come first, and
+    # the turn cannot end before it; with a Spy in the supply the placement
+    # itself is mandatory (erratum to p. 11).
     engine = UprisingRulesEngine()
     state = engine.reset(RulesetConfig(), seed=2)
     decision = engine.current_decision(state)
@@ -360,25 +363,46 @@ def test_reaching_emperor_influence_four_places_the_tracks_spy_at_once() -> None
         if event.kind == "influence_track_bonus_gained"
     )
     assert bonus == {"faction": "emperor", "player": player, "spy": 1}
+    # The Spy waits in the turn: the effect frame stays on top and offers
+    # the placement beside the space's own effect, but not the turn end.
+    assert [seat for seat, _ in state.pending_track_spies] == [player]
+    assert state.decision_stack[-1].kind == "agent_effects"
+    offered = {action.action_id for action in engine.legal_actions(state, player)}
+    assert {"place_track_spy", "resolve_board_effect"} <= offered
+    assert "finish_agent_turn" not in offered
+
+    # Another action first: the space's own effect.
+    board = next(
+        action
+        for action in engine.legal_actions(state, player)
+        if action.action_id == "resolve_board_effect"
+    )
+    state = engine.apply(state, board).state
+    assert [action.action_id for action in engine.legal_actions(state, player)] == [
+        "place_track_spy"
+    ]
+
+    state = engine.apply(state, DomainAction("place_track_spy", player)).state
+
     assert state.pending_track_spies == ()
     frame = state.decision_stack[-1]
     assert frame.kind == "spy_placement"
     assert isinstance(frame.decision, PlayerDecision)
     assert frame.decision.owner == player
-    offered = engine.legal_actions(state, player)
-    assert {action.action_id for action in offered} == {"place_spy_on_space"}
-    assert len(offered) == 13
+    offered_posts = engine.legal_actions(state, player)
+    assert {action.action_id for action in offered_posts} == {"place_spy_on_space"}
+    assert len(offered_posts) == 13
 
-    state = engine.apply(state, offered[0]).state
+    state = engine.apply(state, offered_posts[0]).state
 
     assert state.players[player].spies_supply == 2
     assert state.players[player].spy_post_ids == (
-        dict(offered[0].arguments)["post_id"],
+        dict(offered_posts[0].arguments)["post_id"],
     )
-    # The turn goes on where it was: the space's own effect is still owed.
-    assert state.decision_stack[-1].kind != "spy_placement"
-    assert "resolve_board_effect" in {
-        action.action_id for action in engine.legal_actions(state, player)
+    # Back in the turn, which may now end.
+    assert state.decision_stack[-1].kind == "agent_effects"
+    assert {action.action_id for action in engine.legal_actions(state, player)} == {
+        "finish_agent_turn"
     }
 
 

@@ -235,7 +235,18 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # hash moves) and is made up when troops return to its supply in the same
 # turn, and ``return_specimen`` is also offered at Combat Intrigue priority
 # and at a supply-less Control defense; replays change, no template does.
-ACTION_CODEC_VERSION = 130
+# v131 (user rulings 2026-10-04, second batch): the Emperor track's
+# Influence-4 Spy owed inside its owner's turn waits as the freely ordered
+# action ``place_track_spy`` until placed (OQ-057 (15), following the Steam
+# app; +1 template in every catalog); a card discarded straight from a deck
+# fires its discard trigger (OQ-013); Interstellar Trade adds +1 Persuasion
+# per contract completed later in the Reveal and a trashed card's Reveal
+# effects pay nothing late (OQ-028 (c) restored, OQ-022); Call to Arms waits
+# for the decision frames the acquired card's own effects opened (OQ-012);
+# an Intrigue "trash" goes to the Intrigue discard and ``GameState`` no
+# longer has an Intrigue trash zone (OQ-061). Every state hash and many
+# replays change.
+ACTION_CODEC_VERSION = 131
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -398,6 +409,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # The generic Spy placement frame's way out when nothing can be
             # placed (every ruleset since the Emperor track's Spy uses it).
             "decline_spy_placement",
+            # The owner's waiting Emperor track Spy, opened in any order
+            # inside its own turn (user ruling 2026-10-04).
+            "place_track_spy",
             # An acquisition-bonus Spy may pass up the recall-first without a
             # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
             "decline_acquisition_spy",
@@ -604,6 +618,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     # v106: Imperial Privilege trashes the Intrigue card, as its printed icon
     # says (OQ-061); the action was ``discard_intrigue_for_imperial_privilege``.
+    # The id stays a trash, though since the OQ-061 user ruling of 2026-10-04
+    # the trashed card lands on the shared Intrigue discard.
     templates.extend(
         ActionTemplate(
             action_id="trash_intrigue_for_imperial_privilege",

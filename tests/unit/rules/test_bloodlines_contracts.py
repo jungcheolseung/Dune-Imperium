@@ -227,7 +227,8 @@ def test_immediate_trashes_a_chosen_intrigue_card_then_draws_both_rewards() -> N
     owner = result.state.players[0]
     assert owner.active_contract_ids == ()
     assert owner.intrigue_cards == (INTRIGUE[0], INTRIGUE[5])
-    assert result.state.intrigue_trash == (INTRIGUE[1],)
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
+    assert result.state.intrigue_discard == (INTRIGUE[1],)
     assert result.state.intrigue_deck == INTRIGUE[6:8]
     assert len(owner.hand) == len(STARTERS[3:]) + 1
     assert owner.deck == STARTERS[1:3]
@@ -371,12 +372,23 @@ def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> Non
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
     assert owner.resources.solari == 12
     # 3 starting troops + the tile's two; the Emperor track's Influence 4
-    # bonus is a Spy [Main p. 7], placed at once in its own frame.
+    # bonus is a Spy [Main p. 7], which waits in the owner's turn for its
+    # place_track_spy and holds the turn end back until it is placed (user
+    # ruling 2026-10-04, overriding OQ-057 (15)).
     assert owner.troops_garrison == 5
-    assert result.state.decision_stack[-1].kind == "spy_placement"
+    assert [seat for seat, _ in result.state.pending_track_spies] == [0]
+    assert result.state.decision_stack[-1].kind == "agent_effects"
+    offered = {action.action_id for action in engine.legal_actions(result.state, 0)}
+    assert "place_track_spy" in offered
+    assert "finish_agent_turn" not in offered
     assert [
         event.kind for event in result.events if event.kind.startswith("contract")
     ] == ["contract_completed"]
+    opened = engine.apply(
+        result.state, DomainAction(action_id="place_track_spy", actor=0)
+    ).state
+    assert opened.decision_stack[-1].kind == "spy_placement"
+    assert opened.pending_track_spies == ()
 
 
 def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() -> None:

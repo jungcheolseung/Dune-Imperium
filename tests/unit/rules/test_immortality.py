@@ -291,8 +291,9 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     # c7r3 prints "[Trash an Intrigue card] -> [card] [Intrigue card]": the
     # gold Intrigue card under an X, "Trash an Intrigue card" [Immortality
     # p. 16] -- one from the owner's hand, never a personal card (the grey
-    # trash icon it was first transcribed as). The trashed card leaves the
-    # game through ``intrigue_trash`` [Main p. 20].
+    # trash icon it was first transcribed as). Intrigue cards have no trash
+    # pile: the trashed card joins the shared Intrigue discard (OQ-061, user
+    # ruling 2026-10-04).
     held = "intrigue:ambush:1"
     state = _at("c6r2", intrigue_cards=(held,))
     result = advance_research(state, 0, source="test")
@@ -309,8 +310,7 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     paid = apply_research_bonus(chosen.state, actions[1])
     owner = paid.state.players[0]
     assert owner.trashed == ()
-    assert paid.state.intrigue_trash == (held,)
-    assert held not in paid.state.intrigue_discard
+    assert paid.state.intrigue_discard == (*chosen.state.intrigue_discard, held)
     assert len(owner.intrigue_cards) == 1 and held not in owner.intrigue_cards
     # No personal card left the hand; one was drawn.
     assert len(owner.hand) == len(owner_before.hand) + 1
@@ -319,7 +319,7 @@ def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
         chosen.state, DomainAction(action_id="decline_research_bonus", actor=0)
     )
     assert declined.state.players[0].intrigue_cards == (held,)
-    assert declined.state.intrigue_trash == ()
+    assert held not in declined.state.intrigue_discard
 
 
 def _declined_only(state: GameState) -> GameState:

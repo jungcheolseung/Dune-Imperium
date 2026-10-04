@@ -17,7 +17,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import FrameKind, reset_turn_counters
+from dune_imperium.rules.frames import FrameKind, owes_track_spy, reset_turn_counters
 from dune_imperium.rules.strength import conflict_agent_strength
 
 
@@ -157,9 +157,13 @@ def open_next_turn(state: GameState, player: int) -> GameState:
     """Replace ``player``'s turn frame with the next unrevealed seat's turn.
 
     "Pass your turn" (Litany Against Fear, Withdrawn): the seat stays
-    unrevealed and comes around again this round.
+    unrevealed and comes around again this round. An Emperor track Spy the
+    seat still owes is placed before its turn ends (user ruling 2026-10-04),
+    so the turn-passing plays are held back until then.
     """
 
+    if owes_track_spy(state, player):
+        raise RuntimeError("a turn cannot pass over an owed Emperor track Spy")
     next_player = next_unrevealed_player(state, player)
     players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
@@ -432,6 +436,10 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
         or any(entry[0] == owner for entry in state.pending_navigation_plays)
     ):
         raise RuntimeError("an Agent turn cannot close over its queued choices")
+    if owes_track_spy(state, owner):
+        # Placed in any order, but before the turn ends (user ruling
+        # 2026-10-04, overriding OQ-057 (15)).
+        raise RuntimeError("an Agent turn cannot close over an owed track Spy")
     next_player = next_unrevealed_player(state, owner)
     players = reset_turn_counters(state.players, next_player, closing=owner)
     next_frame = DecisionFrame(

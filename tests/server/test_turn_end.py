@@ -37,6 +37,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
@@ -919,6 +920,70 @@ def _covert_operation_game(
         )
         assert summary["confirmation"] is None
     return game_id, first_discard, second_discard
+
+
+def test_an_owed_emperor_track_spy_holds_the_turn_end_ready_flag() -> None:
+    # The Emperor track's Influence 4 Spy [Main p. 7] waits in the owner's
+    # turn and must be placed before it ends (user ruling 2026-10-04,
+    # overriding OQ-057 (15)): until then the page is not told that only
+    # optional steps are left.
+    diplomacy = _starter_instance("diplomacy")
+    owner = PlayerState(
+        player_id=0,
+        hand=(diplomacy,),
+        deck=tuple(c for c in starting_deck_instance_ids(0) if c != diplomacy),
+        influence=Influence(emperor=3),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    session.state = state
+
+    def take(action_id: str, space_id: str | None = None) -> JsonObject:
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        chosen = next(
+            a
+            for a in actions
+            if a["action_id"] == action_id
+            and (space_id is None or _obj(a["arguments"]).get("space_id") == space_id)
+        )
+        revision = _int(manager.summary(game_id)["revision"])
+        return manager.apply_action(game_id, 0, revision, _int(chosen["index"]))
+
+    take("agent_turn", "dutiful_service")
+    take("resolve_faction_influence")
+    summary = take("resolve_board_effect")
+    assert session.state.players[0].influence.emperor == 4
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "agent_effects"
+    assert decision["turn_end_ready"] is False
+    assert agent_turn_end_ready(session.state) is None
+    offered = {
+        a["action_id"] for a in _rows(manager.legal_actions(game_id, 0)["actions"])
+    }
+    assert offered == {"place_track_spy"}
+
+    take("place_track_spy")
+    summary = take("place_spy_on_space")
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "agent_effects"
+    assert decision["turn_end_ready"] is True
+    assert agent_turn_end_ready(session.state) == 0
 
 
 def test_a_humans_own_last_effect_answered_by_ai_seats_keeps_its_turn() -> None:

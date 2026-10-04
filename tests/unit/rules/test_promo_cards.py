@@ -637,8 +637,11 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # trigger templates leave every catalog (-27).
     # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
     # template per Objective, which counts as a won Conflict card (+4).
+    # v131 (user ruling 2026-10-04, overriding OQ-057 (15)): the owner's
+    # waiting Emperor track Spy is opened by place_track_spy (+1).
     assert codec.size == (
         4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
+        + 1
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -648,6 +651,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         - 27
         - 1
         + 4
+        + 1
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

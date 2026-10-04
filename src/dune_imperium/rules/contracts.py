@@ -40,7 +40,10 @@ from dune_imperium.rules.frames import (
     update_turn_recruits,
 )
 from dune_imperium.rules.influence import gain_faction_influence
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_or_queue_intrigue_cards,
+    with_trashed_intrigue,
+)
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
@@ -536,16 +539,27 @@ def begin_contract_gain(
         raise ValueError("Contract gain count must be positive")
     if not source:
         raise ValueError("Contract choice source must not be empty")
-    if state.face_up_contract_ids or _holds_set_aside_choice(state, player):
-        # Over an exhausted market Shaddam Corrino IV's icons still take his
-        # set-aside Sardaukar Contracts, which nobody has taken yet; the
-        # two-Solari reversion waits until they are gone too (OQ-021).
+    if contract_gain_opens_market(state, player):
         return RuleResult(
             state=state.push_decision(
                 contract_choice_frame(player, count, source=source)
             )
         )
     return _gain_exhausted_market_solari(state, player, count, source=source)
+
+
+def contract_gain_opens_market(state: GameState, player: int) -> bool:
+    """Whether ``begin_contract_gain`` opens a market choice for ``player`` now.
+
+    Otherwise the market is exhausted and the icons revert to Solari at once.
+    Over an exhausted market Shaddam Corrino IV's icons still take his
+    set-aside Sardaukar Contracts, which nobody has taken yet; the two-Solari
+    reversion waits until they are gone too (OQ-021).
+    """
+
+    return bool(state.face_up_contract_ids) or _holds_set_aside_choice(
+        state, player
+    )
 
 
 def _holds_set_aside_choice(state: GameState, player: int) -> bool:
@@ -1395,7 +1409,9 @@ def apply_contract_intrigue_trash(
     "Requires an Intrigue card": trash an Intrigue card -> draw an Intrigue
     card and a card [card face] [Bloodlines p. 2]. The tile waits in the
     active zone only while this frame is open; nothing else can act on it
-    there, and it moves to the completed zone here.
+    there, and it moves to the completed zone here. The trashed card joins
+    the shared Intrigue discard before the draw (OQ-061, user ruling
+    2026-10-04).
     """
 
     if action not in legal_contract_intrigue_trash_actions(state, action.actor):
@@ -1427,16 +1443,18 @@ def apply_contract_intrigue_trash(
         )
     )
     remaining = state.decision_stack[:-1]
-    next_state = replace(
-        state,
-        players=replace_player(state.players, next_owner),
-        intrigue_trash=(*state.intrigue_trash, card_id),
-        decision_stack=remaining,
-        combat_rewards_resolved=(
-            not remaining
-            if state.phase is GamePhase.COMBAT
-            else state.combat_rewards_resolved
+    next_state = with_trashed_intrigue(
+        replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=remaining,
+            combat_rewards_resolved=(
+                not remaining
+                if state.phase is GamePhase.COMBAT
+                else state.combat_rewards_resolved
+            ),
         ),
+        card_id,
     )
     events: list[GameEvent] = [
         GameEvent(

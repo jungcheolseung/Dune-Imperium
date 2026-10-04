@@ -34,11 +34,23 @@ from dune_imperium.rules.contract_tiles import (
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
+    frame_context,
     owned_top_frame,
     replace_player,
     reveal_is_open_for,
     update_turn_recruits,
+    with_context,
 )
+
+# Reveal frame context: this Reveal's acquisitions whose face-up Intrigue
+# triggers wait for the decision frames the acquired card's own effects
+# opened (OQ-012, user ruling 2026-10-04), oldest first and comma-separated.
+# Each entry is ``source|anchor``: the acquisition's event source and the id
+# of the frame those decision frames sit on (``_acquisition_frames``). The
+# key is absent while nothing waits.
+DEFERRED_ACQUISITION_TRIGGERS_KEY = "deferred_acquisition_triggers"
+
+type _WaitingTrigger = tuple[str, str]
 
 
 def _faceup_entries_with_trigger(
@@ -60,6 +72,8 @@ def fire_reveal_acquisition_intrigue(
     player: int,
     *,
     source: str,
+    started: GameState,
+    frames_follow: bool = False,
 ) -> RuleResult:
     """Fire each face-up per-acquisition card once for one Reveal acquisition.
 
@@ -69,11 +83,50 @@ def fire_reveal_acquisition_intrigue(
     Reveal-turn recruit: "You may deploy any units you recruit this turn and
     up to two more from your garrison" [Bloodlines p. 5] governs the
     Combat-icon deployment allowance regardless of what recruited them.
+
+    The trigger comes after the acquired card's own acquisition effects
+    (OQ-012), also when those open decision frames (user ruling 2026-10-04,
+    "선택 뒤로 맞춤"). ``started`` is the state the acquisition began in and
+    ``state`` the one the card's own effects left. When those effects opened
+    a decision frame (Spiritual Fervor's Research direction, a Spy post, the
+    Contract market, a reshuffle chance), or ``frames_follow`` says the
+    caller opens the Spy post or the Contract market once this returns, the
+    trigger waits on the owner's Reveal frame, and
+    ``fire_deferred_acquisition_trigger`` fires it exactly as here once the
+    decision frames the card's own effects opened are answered. Only those
+    frames hold it: Reveal choices that were already waiting, and those of
+    cards the effects drew or revealed late (Corrinth City), belong to other
+    cards and come after the troop, as they do when no frame opens.
+    Automatic steps the answers queue (an Intrigue draw, the Emperor track's
+    Spy, a Navigation play) still follow the troop, as the ones an
+    acquisition without frames queues do. A trigger that could fire at once
+    queues behind one already waiting, so troops come in acquisition order.
     """
 
     owner = state.players[player]
     if not owner.intrigue_faceup or not reveal_is_open_for(state, player):
         return RuleResult(state=state)
+    if not _faceup_entries_with_trigger(
+        owner.intrigue_faceup, OnRevealAcquisitionThisRound
+    ):
+        return RuleResult(state=state)
+    anchor, opened = _acquisition_frames(started, state, player)
+    reveal = _owner_reveal_index(state, player)
+    waiting = _waiting_triggers(state.decision_stack[reveal])
+    if (
+        frames_follow
+        or waiting
+        or any(frame.kind != FrameKind.REVEAL_CHOICE for frame in opened)
+    ):
+        queued = (*waiting, (source, anchor))
+        return RuleResult(state=_with_waiting_triggers(state, reveal, queued))
+    return _fire_acquisition_trigger(state, player, source)
+
+
+def _fire_acquisition_trigger(state: GameState, player: int, source: str) -> RuleResult:
+    """Recruit each face-up per-acquisition card's troops now for ``source``."""
+
+    owner = state.players[player]
     events: list[GameEvent] = []
     total_recruited = 0
     for card_id in _faceup_entries_with_trigger(
@@ -119,6 +172,154 @@ def fire_reveal_acquisition_intrigue(
     next_state = replace(state, players=replace_player(state.players, owner))
     next_state = update_turn_recruits(next_state, troops_recruited=total_recruited)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _acquisition_frames(
+    started: GameState, state: GameState, player: int
+) -> tuple[str, tuple[DecisionFrame, ...]]:
+    """Return an acquisition's anchor frame id and the frames above it.
+
+    The anchor is the deepest frame common to the stack the acquisition
+    started from and the one the card's own effects left, never below the
+    owner's Reveal frame; every frame above it is new (OQ-012, user ruling
+    2026-10-04). An Intrigue card resolving the acquisition has its choice
+    frame on top of ``started``: the card closes once its slot is done and
+    its caller restacks the frames the slot pushed (``_lift_pushed_frames``
+    in ``rules.intrigue``), so the anchor is the frame below that choice
+    frame, and the choice frame is not one of the new frames.
+    """
+
+    before = started.decision_stack
+    resolving = ""
+    if before and before[-1].kind == FrameKind.INTRIGUE_CHOICE:
+        resolving = before[-1].frame_id
+        before = before[:-1]
+    after = state.decision_stack
+    depth = 0
+    for earlier, later in zip(before, after, strict=False):
+        if earlier.frame_id != later.frame_id:
+            break
+        depth += 1
+    depth = max(depth, _owner_reveal_index(state, player) + 1)
+    opened = tuple(frame for frame in after[depth:] if frame.frame_id != resolving)
+    return after[depth - 1].frame_id, opened
+
+
+def _owner_reveal_index(state: GameState, player: int) -> int:
+    stack = state.decision_stack
+    for index in range(len(stack) - 1, -1, -1):
+        frame = stack[index]
+        if (
+            frame.kind == FrameKind.REVEAL
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return index
+    raise RuntimeError("an acquisition trigger can wait only on an open Reveal")
+
+
+def _waiting_triggers(frame: DecisionFrame) -> tuple[_WaitingTrigger, ...]:
+    value = dict(frame.context).get(DEFERRED_ACQUISITION_TRIGGERS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid deferred acquisition triggers")
+    waiting: list[_WaitingTrigger] = []
+    for item in value.split(",") if value else ():
+        source, separator, anchor = item.partition("|")
+        if not separator or not source or not anchor:
+            raise RuntimeError(
+                "Reveal frame has invalid deferred acquisition triggers"
+            )
+        waiting.append((source, anchor))
+    return tuple(waiting)
+
+
+def _with_waiting_triggers(
+    state: GameState, index: int, waiting: tuple[_WaitingTrigger, ...]
+) -> GameState:
+    """Store ``waiting`` on the Reveal frame at ``index``, oldest first."""
+
+    for source, anchor in waiting:
+        if not source or not anchor or any(
+            separator in value for value in (source, anchor) for separator in ",|"
+        ):
+            raise ValueError("a deferred acquisition trigger needs plain IDs")
+    stack = state.decision_stack
+    frame = stack[index]
+    context = frame_context(frame)
+    if waiting:
+        context[DEFERRED_ACQUISITION_TRIGGERS_KEY] = ",".join(
+            f"{source}|{anchor}" for source, anchor in waiting
+        )
+    else:
+        del context[DEFERRED_ACQUISITION_TRIGGERS_KEY]
+    return replace(
+        state,
+        decision_stack=(
+            *stack[:index],
+            with_context(frame, context),
+            *stack[index + 1 :],
+        ),
+    )
+
+
+def _waiting_reveal_index(state: GameState) -> int | None:
+    """The stack index of the Reveal frame with waiting triggers, if any."""
+
+    stack = state.decision_stack
+    for index in range(len(stack) - 1, -1, -1):
+        frame = stack[index]
+        if frame.kind == FrameKind.REVEAL and any(
+            key == DEFERRED_ACQUISITION_TRIGGERS_KEY for key, _ in frame.context
+        ):
+            return index
+    return None
+
+
+def deferred_acquisition_trigger_is_due(state: GameState) -> bool:
+    """Whether the oldest waiting acquisition trigger can fire now.
+
+    It can once the decision frames the acquired card's own effects opened
+    are answered: only Reveal choices may remain above its anchor frame,
+    those of cards the effects drew or revealed late, which come after the
+    troop as they do when no frame opens (OQ-012, user ruling 2026-10-04).
+    An anchor gone from the stack closed after everything above it, so the
+    owner's Reveal frame stands in for it. Later triggers wait behind the
+    oldest one.
+    """
+
+    index = _waiting_reveal_index(state)
+    if index is None:
+        return False
+    _, anchor = _waiting_triggers(state.decision_stack[index])[0]
+    stack = state.decision_stack
+    present = any(frame.frame_id == anchor for frame in stack)
+    for frame in reversed(stack):
+        if frame.frame_id == anchor or (
+            not present and frame.kind == FrameKind.REVEAL
+        ):
+            return True
+        if frame.kind != FrameKind.REVEAL_CHOICE:
+            return False
+    return False
+
+
+def fire_deferred_acquisition_trigger(state: GameState) -> RuleResult:
+    """Fire the oldest waiting acquisition's face-up Intrigue triggers.
+
+    The same events, Reveal recruit credit and supply limit as an
+    acquisition whose card opened no frame (``fire_reveal_acquisition_intrigue``);
+    the key leaves the Reveal frame with its last waiting acquisition.
+    """
+
+    index = _waiting_reveal_index(state)
+    if index is None:
+        raise ValueError("no acquisition trigger is waiting on a Reveal")
+    frame = state.decision_stack[index]
+    if not isinstance(frame.decision, PlayerDecision):
+        raise RuntimeError("a Reveal frame must belong to a player")
+    waiting = _waiting_triggers(frame)
+    cleared = _with_waiting_triggers(state, index, waiting[1:])
+    return _fire_acquisition_trigger(cleared, frame.decision.owner, waiting[0][0])
 
 
 def _reveal_count(card_id: str) -> int:

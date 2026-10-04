@@ -109,7 +109,15 @@ from dune_imperium.rules.frames import FrameKind
 # shortfall waiting for troops to return to its supply this turn, appended
 # after the epic_game flag (troops then specimens per seat). Every older
 # column keeps its offset.
-OBSERVATION_VERSION: Final = 29
+# v30 (2026-10-04, OQ-061, user ruling 2026-10-04): Intrigue cards have no
+# trash pile, so the ``intrigue_trash`` segment (one column per Intrigue
+# identity) is gone; a trashed Intrigue card now counts in
+# ``intrigue_discard``. Every later column moves back by its width, and a
+# v29 or older checkpoint migrates by segment name and drops its columns.
+# Also v30 (user ruling 2026-10-04, overriding OQ-057 (15)): the Emperor
+# track Spies each relative seat still owes, which wait inside the owner's
+# turn, appended after the shortfall segment as ``track_spies_owed``.
+OBSERVATION_VERSION: Final = 30
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -292,7 +300,6 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("contract_trash", len(CONTRACT_IDS)),
         ("intrigue_resolving", len(INTRIGUE_IDS)),
         ("intrigue_discard", len(INTRIGUE_IDS)),
-        ("intrigue_trash", len(INTRIGUE_IDS)),
         ("imperium_removed", len(PERSONAL_CARD_IDS)),
         ("reveal_order", _SEATS),
         ("leader_draft_pool", _LEADER_DRAFT_SLOTS),
@@ -355,6 +362,9 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # v29: per relative seat, the troops and then the specimens a
             # recruit could not take, waiting for the supply this turn.
             ("shortfall", _SEATS * 2),
+            # v30: per relative seat, the Emperor track Influence 4 Spies
+            # still owed (they wait in the owner's own turn).
+            ("track_spies_owed", _SEATS),
         )
     )
     return tuple(lengths)
@@ -481,7 +491,6 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         values, _OFFSET["intrigue_resolving"], view.intrigue_resolving
     )
     _write_intrigue_counts(values, _OFFSET["intrigue_discard"], view.intrigue_discard)
-    _write_intrigue_counts(values, _OFFSET["intrigue_trash"], view.intrigue_trash)
     _write_personal_counts(values, _OFFSET["imperium_removed"], view.imperium_removed)
     reveal_slots = [relative(seat) for seat in view.reveal_order]
     _write_fixed(
@@ -584,6 +593,9 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         index = offset + (relative(seat_view.player) - 1) * 2
         values[index] = seat_view.ungained_troops
         values[index + 1] = seat_view.ungained_specimens
+    offset = _OFFSET["track_spies_owed"]
+    for seat_view in view.players:
+        values[offset + relative(seat_view.player) - 1] = seat_view.track_spies_owed
     return tuple(values)
 
 

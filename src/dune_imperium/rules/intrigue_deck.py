@@ -1,8 +1,9 @@
 """Shared Intrigue-deck draw with a replayable discard reshuffle.
 
 When the Intrigue deck runs out, the face-up Intrigue discard pile is shuffled
-into a new deck [FAQ p. 2]. Trashed Intrigue cards live in ``intrigue_trash``
-and are never reshuffled [Main p. 20].
+into a new deck [FAQ p. 2]. Intrigue cards have no trash pile: a trashed one
+joins that discard (``with_trashed_intrigue``, OQ-061) and is reshuffled with
+it.
 """
 
 from dataclasses import replace
@@ -45,6 +46,23 @@ def credit_suspensor_suits(
     ):
         return owner
     return replace(owner, suspensor_owed=owner.suspensor_owed + count)
+
+
+def with_trashed_intrigue(state: GameState, card_id: str) -> GameState:
+    """Put an Intrigue card just trashed from a hand on the Intrigue discard.
+
+    Every Intrigue trash lands here (OQ-061, user ruling 2026-10-04, "책략은
+    따로 trash 더미가 없지", following the Steam app): the shared face-up
+    discard, so the next reshuffle takes it back ("shuffle the discarded
+    Intrigue cards to form a new deck" [FAQ p. 2]) and a draw that follows
+    the trash may draw it again. This is a project convention, not the
+    general trash rule, which removes cards "for the rest of the game"
+    [Main p. 6]; the Intrigue-trash icon itself reads only "Trash an Intrigue
+    card of your choice from your hand." [Main p. 20]. The caller removes the
+    card from the hand and still announces it with ``intrigue_card_trashed``.
+    """
+
+    return replace(state, intrigue_discard=(*state.intrigue_discard, card_id))
 
 
 def draw_intrigue_cards(

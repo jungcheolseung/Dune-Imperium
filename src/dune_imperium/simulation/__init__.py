@@ -13,6 +13,7 @@ from dune_imperium.simulation.invariants import (
     check_event_visibility,
     check_observation_privacy,
     check_state_invariants,
+    check_track_spy_queue,
 )
 from dune_imperium.simulation.runner import (
     GameSimulation,
@@ -42,6 +43,7 @@ __all__ = [
     "check_event_visibility",
     "check_observation_privacy",
     "check_state_invariants",
+    "check_track_spy_queue",
     "collect_game_coverage",
     "merge_coverage",
     "normalize_instance_id",

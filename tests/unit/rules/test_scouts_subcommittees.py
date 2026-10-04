@@ -287,7 +287,8 @@ def test_contingencies_recalls_another_agent_not_the_high_council_one() -> None:
     )
     state = _act(_choose(state), "join_subcommittee", subcommittee_id="contingencies")
     state = _act(state, "scouts_trash_intrigue", card_id="intrigue:9")
-    assert "intrigue:9" in state.intrigue_trash
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
+    assert "intrigue:9" in state.intrigue_discard
     assert _options(state) == {("scouts_recall_agent", "imperial_basin")}
     state = _act(state, "scouts_recall_agent", space_id="imperial_basin")
     assert state.players[0].agent_locations == ("high_council",)

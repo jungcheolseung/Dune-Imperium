@@ -228,6 +228,7 @@ const ACTION_LABELS = {
   choose_tech_strength: "금지된 무기: 검 3 + {influence_any} 1 잃기",
   choose_tech_trash: "금지된 무기: {spice} 전부 잃고 {trash}",
   place_tech_spy: "파놉티콘: {spy} 배치",
+  place_track_spy: "{influence_emperor} 4: {spy} 배치",
   recruit_reveal_troops: "{reveal_turn}: {troop} {recruit}",
   draw_reveal_intrigue: "{reveal_turn}: {intrigue} {draw}",
   generate_reveal_specimens: "{reveal_turn}: {specimen}",

@@ -24,13 +24,21 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
+    owes_track_spy,
     owned_top_frame,
     replace_player,
+    track_spy_waits,
 )
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
     recall_spy,
+)
+
+# The turn's own frames, where the owner's waiting Emperor track Spy is
+# offered (``legal_track_spy_actions``).
+_TURN_FRAME_KINDS = frozenset(
+    {FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL}
 )
 
 
@@ -178,6 +186,21 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def _open_track_spy_index(state: GameState) -> int | None:
+    """Index of the oldest owed Emperor track Spy that does not wait, if any.
+
+    An entry of the seat whose Agent or Reveal turn is open waits in that
+    turn for its owner's ``place_track_spy`` (``track_spy_waits``); every
+    other entry -- another seat's, or any outside a player turn -- opens at
+    once, even when it was queued behind a waiting one.
+    """
+
+    for index, (seat, _) in enumerate(state.pending_track_spies):
+        if not track_spy_waits(state, seat):
+            return index
+    return None
+
+
 def track_spy_is_queued(state: GameState) -> bool:
     """Return whether an Emperor track Spy can open its placement now.
 
@@ -185,10 +208,12 @@ def track_spy_is_queued(state: GameState) -> bool:
     do the choices of a Conflict's rewards: a fixed Emperor Influence reward
     may reach 4 while that Conflict's own Spy rewards are still waiting, and
     the track's Spy follows them. Each of them, the track's included, may
-    first recall a Spy when the supply is empty [Main pp. 11, 20].
+    first recall a Spy when the supply is empty [Main pp. 11, 20]. The turn
+    owner's own entries never open here: they wait for ``place_track_spy``
+    (user ruling 2026-10-04, overriding OQ-057 (15)).
     """
 
-    if not state.pending_track_spies:
+    if _open_track_spy_index(state) is None:
         return False
     frame = state.decision_stack[-1] if state.decision_stack else None
     if frame is None:
@@ -199,28 +224,83 @@ def track_spy_is_queued(state: GameState) -> bool:
 
 
 def begin_track_spy_placement(state: GameState) -> RuleResult:
-    """Open the oldest owed Emperor track Spy: any empty Observation Post.
+    """Open the oldest owed Emperor track Spy that does not wait.
 
     "When you reach 4 Influence, you earn the bonus shown on that space of
     the track" [Main p. 7]; the Emperor strip prints the Spy icon. The
     placement follows the normal rule (an unoccupied post; with an empty
-    supply a Spy may be recalled first [Main pp. 11, 20]) and opens on top
-    of whatever was being resolved, so it is finished before any other
-    player-initiated action (designer ruling, OQ-057).
+    supply a Spy may be recalled first [Main pp. 11, 20]). Outside the
+    owed seat's own turn it opens on top of whatever was being resolved, as
+    the Steam app does in Combat; inside it the entry waits for the owner's
+    ``place_track_spy`` (user ruling 2026-10-04, overriding OQ-057 (15)).
     """
 
-    if not state.pending_track_spies:
-        raise ValueError("there is no pending Influence track Spy")
-    player, source = state.pending_track_spies[0]
-    remaining = replace(state, pending_track_spies=state.pending_track_spies[1:])
-    return RuleResult(
-        state=spy_placement_frame(
-            remaining,
-            player,
-            tuple(post.post_id for post in OBSERVATION_POSTS),
-            source=source,
-        )
+    index = _open_track_spy_index(state)
+    if index is None:
+        raise ValueError("there is no Influence track Spy to open now")
+    return RuleResult(state=_open_track_spy(state, index))
+
+
+def _open_track_spy(state: GameState, index: int) -> GameState:
+    player, source = state.pending_track_spies[index]
+    remaining = replace(
+        state,
+        pending_track_spies=(
+            *state.pending_track_spies[:index],
+            *state.pending_track_spies[index + 1 :],
+        ),
     )
+    return spy_placement_frame(
+        remaining,
+        player,
+        tuple(post.post_id for post in OBSERVATION_POSTS),
+        source=source,
+    )
+
+
+def legal_track_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the owner's waiting Emperor track Spy on its turn's own frames.
+
+    User ruling 2026-10-04 (overrides the adopted designer ruling OQ-057
+    (15), "You need to finish resolving that Spy placement before you move
+    on to other 'player initiated actions.'"): "엄연히 agent턴 내에 순서를
+    정해서 할 수 있는 의무 행동으로 보는거지" -- as in the Steam app, the
+    placement waits in the turn, the owner may do other things first, and
+    must place it before the turn ends. It is offered on the turn frame
+    (before the Agent or Reveal: Plot timing is in the turn), the Agent-turn
+    effect frame and the Reveal frame, never on a frame stacked above them.
+    One press opens the oldest owed entry; the shared ``spy_placement``
+    frame then makes the placement mandatory with a Spy in supply and
+    offers the recall-first or its decline without one [Main pp. 11, 20].
+    """
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        frame is None
+        or frame.kind not in _TURN_FRAME_KINDS
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+    ):
+        return ()
+    if not owes_track_spy(state, player) or not track_spy_waits(state, player):
+        return ()
+    return (DomainAction(action_id="place_track_spy", actor=player),)
+
+
+def apply_place_track_spy(state: GameState, action: DomainAction) -> RuleResult:
+    """Open the placement of the owner's oldest waiting Emperor track Spy."""
+
+    if action not in legal_track_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal Emperor track Spy placement")
+    index = next(
+        index
+        for index, (seat, _) in enumerate(state.pending_track_spies)
+        if seat == action.actor
+    )
+    return RuleResult(state=_open_track_spy(state, index))
 
 
 def spy_placement_frame(

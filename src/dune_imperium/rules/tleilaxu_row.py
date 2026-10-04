@@ -209,10 +209,15 @@ def acquire_tleilaxu_card(
     # them during your Reveal turn" [Immortality p. 8]: acquiring one is
     # acquiring a card, so a face-up Call to Arms ("During your Reveal turn
     # this round, whenever you acquire a card:" [Call to Arms card]) fires,
-    # after the card's own acquire box (OQ-012). It checks the owner's Reveal
-    # itself, so Harvest Cells' offer at the end of a Conflict does not.
+    # after the card's own acquire box (OQ-012), also after a frame that box
+    # opened, once answered (user ruling 2026-10-04). It checks the owner's
+    # Reveal itself, so Harvest Cells' offer at the end of a Conflict does
+    # not.
     fired = fire_reveal_acquisition_intrigue(
-        tracked.state, player, source=f"{source}:{instance_id}"
+        tracked.state,
+        player,
+        source=f"{source}:{instance_id}",
+        started=state,
     )
     return RuleResult(
         state=fired.state,
@@ -263,14 +268,18 @@ def _apply_reclaimed_forces(
     # of going to the discard pile [Immortality p. 9] (user ruling,
     # 2026-09-26, OQ-066): a face-up Call to Arms ("During your Reveal turn
     # this round, whenever you acquire a card:" [Call to Arms card]) fires
-    # after the chosen effect (OQ-012).
+    # after the chosen effect (OQ-012), also after a frame it opened, once
+    # answered (user ruling 2026-10-04); neither choice opens one today.
     if choice == "tleilaxu":
         paid = replace(state, players=replace_player(state.players, owner))
         advanced = advance_tleilaxu(
             paid, player, 1, source=f"{source}:reclaimed_forces"
         )
         fired = fire_reveal_acquisition_intrigue(
-            advanced.state, player, source=f"{source}:reclaimed_forces"
+            advanced.state,
+            player,
+            source=f"{source}:reclaimed_forces",
+            started=state,
         )
         return RuleResult(
             state=fired.state,
@@ -282,7 +291,10 @@ def _apply_reclaimed_forces(
         recruited,
     )
     fired = fire_reveal_acquisition_intrigue(
-        next_state, player, source=f"{source}:reclaimed_forces"
+        next_state,
+        player,
+        source=f"{source}:reclaimed_forces",
+        started=state,
     )
     return RuleResult(
         state=fired.state,

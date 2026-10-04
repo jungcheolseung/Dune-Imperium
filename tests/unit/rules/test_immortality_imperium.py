@@ -15,6 +15,8 @@ from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -24,6 +26,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.engine import Transition
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -42,6 +45,7 @@ from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import apply_graft_partner, legal_graft_partner_actions
 from dune_imperium.rules.reveal_turn import (
@@ -501,6 +505,277 @@ def test_spiritual_fervor_reveals_a_specimen_and_researches_on_acquisition() -> 
     )
     acquired = apply_imperium_acquisition(state, action)
     assert acquired.state.players[0].research_space == "c1r3"
+
+
+CALL_TO_ARMS = "intrigue:call_to_arms:0"
+
+
+def _fervor_reveal(**owner: object) -> tuple[GameState, str]:
+    """A Reveal with 3 Persuasion and Spiritual Fervor in the Row."""
+
+    fervor = _card("spiritual_fervor")
+    state = _reveal(_state(_owner((DAGGER,), **owner)))
+    imperium = imperium_deck_instance_ids(False)
+    state = replace(
+        state,
+        imperium_row=(fervor, *[card for card in imperium[1:6] if card != fervor][:4]),
+    )
+    context = dict(state.decision_stack[-1].context)
+    context["persuasion"] = 3
+    state = replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(state.decision_stack[-1], context=tuple(sorted(context.items()))),
+        ),
+    )
+    return state, fervor
+
+
+def _buy(state: GameState, instance_id: str) -> Transition:
+    return UprisingRulesEngine().apply(
+        state,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", instance_id),),
+        ),
+    )
+
+
+def _research(state: GameState, space_id: str) -> Transition:
+    return UprisingRulesEngine().apply(
+        state,
+        DomainAction(
+            action_id="choose_research_space",
+            actor=0,
+            arguments=(("space_id", space_id),),
+        ),
+    )
+
+
+def test_call_to_arms_waits_for_spiritual_fervor_s_research_direction() -> None:
+    # OQ-012: "획득한 카드 자신의 acquire 보상 → … → face-up trigger
+    # Intrigue(Call to Arms의 troop recruit)", kept when the card's own
+    # acquisition effect opens a choice (user ruling 2026-10-04, "선택 뒤로
+    # 맞춤"). Spiritual Fervor's acquire box researches; from c1r3 the token
+    # may go to c2r2 (specimen) or c2r4 (Tleilaxu). With one troop left in
+    # the supply the specimen takes it, and Call to Arms' troop is short.
+    # It used to be recruited before the choice, leaving the specimen short.
+    state, fervor = _fervor_reveal(
+        research_space="c1r3",
+        intrigue_faceup=(CALL_TO_ARMS,),
+        troops_supply=1,
+        troops_garrison=11,
+    )
+
+    bought = _buy(state, fervor)
+    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert bought.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    owner = bought.state.players[0]
+    assert (owner.troops_supply, owner.troops_garrison) == (1, 11)
+
+    chosen = _research(bought.state, "c2r2")
+    assert [event.kind for event in chosen.events] == [
+        "research_advanced",
+        "specimens_generated",
+        "intrigue_triggered",
+        "troops_recruit_short",
+    ]
+    owner = chosen.state.players[0]
+    assert owner.specimens == 1 and owner.ungained_specimens == 0
+    assert owner.troops_supply == 0 and owner.troops_garrison == 11
+    # The short troop waits for troops to come back this turn (OQ-030,
+    # user ruling 2026-10-04).
+    assert owner.ungained_troops == 1
+    triggered = chosen.events[2]
+    assert dict(triggered.payload)["troops"] == 0
+    reveal = chosen.state.decision_stack[-1]
+    assert reveal.kind == FrameKind.REVEAL
+    assert dict(reveal.context)["reveal_troops_recruited"] == 0
+    assert "deferred_acquisition_triggers" not in dict(reveal.context)
+
+
+def test_call_to_arms_follows_spiritual_fervor_s_research_with_troops_left() -> (
+    None
+):
+    state, fervor = _fervor_reveal(
+        research_space="c1r3", intrigue_faceup=(CALL_TO_ARMS,)
+    )
+    supply = state.players[0].troops_supply
+    garrison = state.players[0].troops_garrison
+
+    bought = _buy(state, fervor)
+    assert "intrigue_triggered" not in [event.kind for event in bought.events]
+    assert bought.state.players[0].troops_garrison == garrison
+
+    chosen = _research(bought.state, "c2r2")
+    assert [event.kind for event in chosen.events] == [
+        "research_advanced",
+        "specimens_generated",
+        "intrigue_triggered",
+    ]
+    triggered = chosen.events[-1]
+    # The event an acquisition without a frame emits.
+    assert triggered.event_id == (
+        f"round:1:player:0:acquire:{fervor}:reveal_trigger:{CALL_TO_ARMS}"
+    )
+    assert dict(triggered.payload)["troops"] == 1
+    owner = chosen.state.players[0]
+    assert owner.specimens == 1 and owner.troops_garrison == garrison + 1
+    assert owner.troops_supply == supply - 2
+    context = dict(chosen.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in context
+
+
+def test_call_to_arms_waits_for_spiritual_fervor_s_research_draw_reshuffle() -> (
+    None
+):
+    # Past the second genetic marker the Research icon draws a card instead
+    # [Immortality p. 6]. With a card in the deck the draw, its reveal and
+    # then Call to Arms all land in the acquisition; with an empty deck the
+    # reshuffle is a chance frame the card's own effect opened, so Call to
+    # Arms waits for it and keeps the same order (OQ-012, user ruling
+    # 2026-10-04).
+    others = tuple(card for card in STARTERS if card != DAGGER)
+    state, fervor = _fervor_reveal(
+        research_space="c8r2", intrigue_faceup=(CALL_TO_ARMS,), deck=others[:3]
+    )
+    assert [event.kind for event in _buy(state, fervor).events] == [
+        "card_acquired",
+        "research_drew_card",
+        "personal_card_late_revealed",
+        "intrigue_triggered",
+    ]
+
+    state, fervor = _fervor_reveal(
+        research_space="c8r2",
+        intrigue_faceup=(CALL_TO_ARMS,),
+        deck=(),
+        discard_pile=others[:3],
+    )
+    garrison = state.players[0].troops_garrison
+    bought = _buy(state, fervor)
+    assert [event.kind for event in bought.events] == [
+        "card_acquired",
+        "research_drew_card",
+    ]
+    frame = bought.state.decision_stack[-1]
+    assert isinstance(frame.decision, ChanceDecision)
+    shuffled = UprisingRulesEngine().apply(
+        bought.state, ChanceResolver(seed=3).resolve(frame.decision)
+    )
+    assert [event.kind for event in shuffled.events] == [
+        "personal_discard_shuffled",
+        "personal_card_late_revealed",
+        "intrigue_triggered",
+    ]
+    assert shuffled.state.players[0].troops_garrison == garrison + 1
+    assert shuffled.state.decision_stack[-1].kind == FrameKind.REVEAL
+
+
+def test_spiritual_fervor_s_single_research_step_keeps_call_to_arms_in_place() -> (
+    None
+):
+    # From the start space the token has one way to go, so no frame opens and
+    # Call to Arms fires inside the acquisition, after the research, as before.
+    state, fervor = _fervor_reveal(intrigue_faceup=(CALL_TO_ARMS,))
+    garrison = state.players[0].troops_garrison
+
+    bought = _buy(state, fervor)
+    kinds = [event.kind for event in bought.events]
+    assert kinds[0] == "card_acquired" and kinds[-1] == "intrigue_triggered"
+    assert kinds.index("research_advanced") < kinds.index("intrigue_triggered")
+    assert bought.state.players[0].research_space == "c1r3"
+    assert bought.state.players[0].troops_garrison == garrison + 1
+    assert bought.state.decision_stack[-1].kind == FrameKind.REVEAL
+
+
+def test_call_to_arms_comes_before_the_choice_of_a_card_fervor_s_research_drew() -> (
+    None
+):
+    # Past the second genetic marker Spiritual Fervor's Research draws a card
+    # [Immortality p. 6], and the drawn Corrinth City is revealed with its
+    # own Reveal choice. That choice belongs to Corrinth City, not to the
+    # acquired card: Call to Arms waits only for the acquired card's own
+    # effects and the decisions they open (OQ-012, user ruling 2026-10-04,
+    # "선택 뒤로 맞춤"), so its troop comes after the research and before
+    # Corrinth City's choice.
+    corrinth = _card("corrinth_city")
+    state, fervor = _fervor_reveal(
+        research_space="c8r2", intrigue_faceup=(CALL_TO_ARMS,), deck=(corrinth,)
+    )
+    garrison = state.players[0].troops_garrison
+
+    bought = _buy(state, fervor)
+    assert [event.kind for event in bought.events] == [
+        "card_acquired",
+        "research_drew_card",
+        "personal_card_late_revealed",
+        "intrigue_triggered",
+    ]
+    assert bought.events[-1].event_id == (
+        f"round:1:player:0:acquire:{fervor}:reveal_trigger:{CALL_TO_ARMS}"
+    )
+    assert bought.state.players[0].troops_garrison == garrison + 1
+    top = bought.state.decision_stack[-1]
+    assert top.kind == FrameKind.REVEAL_CHOICE
+    assert dict(top.context)["reveal_card_id"] == corrinth
+    reveal = bought.state.decision_stack[-2]
+    assert reveal.kind == FrameKind.REVEAL
+    assert dict(reveal.context)["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in dict(reveal.context)
+
+
+def test_call_to_arms_waits_for_an_inspire_awe_fervor_s_research_direction() -> None:
+    # Inspire Awe takes Spiritual Fervor: its Research direction opens inside
+    # the Intrigue card's acquisition slot, above the Intrigue choice frame,
+    # and is still open once the Intrigue card has resolved. Call to Arms
+    # waits for it as on the Row (OQ-012, user ruling 2026-10-04).
+    awe = "intrigue:inspire_awe:0"
+    state, fervor = _fervor_reveal(
+        research_space="c1r3", intrigue_faceup=(CALL_TO_ARMS,), intrigue_cards=(awe,)
+    )
+    garrison = state.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+    opened = engine.apply(
+        state,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", awe), ("option", 0)),
+        ),
+    ).state
+    acquire = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if dict(action.arguments).get("instance_id") == fervor
+    )
+
+    acquired = engine.apply(opened, acquire)
+    assert [event.kind for event in acquired.events] == ["card_acquired"]
+    assert [frame.kind for frame in acquired.state.decision_stack] == [
+        FrameKind.REVEAL,
+        FrameKind.RESEARCH_ADVANCE,
+    ]
+    assert awe in acquired.state.intrigue_discard
+    assert acquired.state.players[0].troops_garrison == garrison
+
+    chosen = _research(acquired.state, "c2r2")
+    assert [event.kind for event in chosen.events] == [
+        "research_advanced",
+        "specimens_generated",
+        "intrigue_triggered",
+    ]
+    assert chosen.events[-1].event_id == (
+        f"round:1:player:0:intrigue:{awe}:slot:0:reveal_trigger:{CALL_TO_ARMS}"
+    )
+    assert chosen.state.players[0].troops_garrison == garrison + 1
+    reveal = chosen.state.decision_stack[-1]
+    assert reveal.kind == FrameKind.REVEAL
+    assert dict(reveal.context)["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in dict(reveal.context)
 
 
 def test_stillsuit_manufacturer_returns_with_the_fremen_alliance() -> None:

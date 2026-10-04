@@ -55,6 +55,7 @@ from dune_imperium.rules.frames import (
     context_int,
     context_str,
     frame_context,
+    owes_track_spy,
     owned_top_frame,
     recruited_commander_count,
     replace_player,
@@ -2958,8 +2959,14 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     purchase. Reveal effects resolve in any order the owner likes
     [Main p. 12], so each such effect pays out the first time its condition
     holds during the Reveal and is recorded on the Reveal frame so it never
-    repeats; per-Contract Persuasion pays the increment for newly completed
-    Contracts (OQ-028).
+    repeats. Interstellar Trade's "[1 Persuasion] for each contract you have
+    completed" [card face] records the count it was paid for and pays +1 for
+    each Contract completed later in the Reveal, whatever completed it (OQ-028
+    (c), user ruling 2026-10-04). Only a card still in play pays: "you can't
+    receive or activate an effect from a card that is already trashed"
+    (designer ruling, OQ-022), and what was paid stays paid. The cards are
+    swept until nothing new pays, so Persuasion paid late by one card opens
+    a "Command (6+)" line on another whatever their order in the hand.
     """
 
     state = result.state
@@ -3045,80 +3052,139 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 )
             },
         )
-    for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
-        for index, effect in enumerate(card.reveal_effects):
-            key = f"{card_id}#{index}"
-            source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
-            if effect.persuasion_per_completed_contract and key in granted:
-                # Interstellar Trade counts its completed Contracts once, when
-                # it resolves (designer ruling "triggers once", OQ-057): a
-                # Contract completed later in the same Reveal adds nothing.
+    # What has paid so far: the record from the Reveal frame plus this pass's
+    # grants, so a repeated sweep never pays an effect or a Contract twice.
+    paid = dict(granted)
+    # "You may resolve Reveal effects in any order you like" [Main p. 12],
+    # and a "Command (6+)" line is used once the Reveal turn has generated 6
+    # or more Persuasion [Bloodlines pp. 5, 12]: Persuasion paid late by a
+    # card visited after a Command card (Interstellar Trade's +1, Southern
+    # Elders' Fremen Bond, Bene Gesserit Operative's two Spies) still opens
+    # it. The sweep repeats until it grants nothing new, so the result never
+    # depends on the hand's order. Nothing in the sweep removes a card from
+    # play or completes a Contract; self-trashes and Combat icons wait until
+    # it has settled.
+    sweeping = True
+    while sweeping:
+        sweeping = False
+        for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
+            if card_id not in next_owner.in_play:
+                # A card trashed earlier in the Reveal pays nothing more: "you
+                # can't receive or activate an effect from a card that is
+                # already trashed" (designer ruling, OQ-022).
                 continue
-            if key in granted or key in newly_granted:
-                continue
-            if not _reveal_effect_is_eligible(
-                next_owner,
-                next_owner.in_play,
-                card_id,
-                card,
-                effect,
-                persuasion=_frame_generated_persuasion(frames),
-            ):
-                continue
-            persuasion = _reveal_effect_persuasion(
-                effect, revealed_cards, completed, _in_play_cards(next_owner)
-            )
-            sword = _reveal_effect_strength(effect, revealed_cards)
-            if persuasion:
-                frames = add_reveal_persuasion(frames, persuasion)
-            if sword:
-                frames = _add_reveal_sword(
-                    frames, sword, counts_toward_combat=units > 0
+            for index, effect in enumerate(card.reveal_effects):
+                key = f"{card_id}#{index}"
+                source = (
+                    f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
                 )
-            next_owner = replace(
-                next_owner,
-                combat_strength=next_owner.combat_strength + (sword if units else 0),
-            )
-            if effect.recruit_troops:
-                late_gains.append(("troops", str(effect.recruit_troops), card_id))
-            if effect.draw_intrigue:
-                late_gains.append(("intrigue", str(effect.draw_intrigue), card_id))
-            if effect.specimens:
-                late_gains.append(("specimens", str(effect.specimens), card_id))
-            if effect.tleilaxu:
-                late_gains.append(("tleilaxu", str(effect.tleilaxu), card_id))
-            if effect.research:
-                late_gains.append(("research", str(effect.research), card_id))
-            resources = resource_gain_entry(
-                card_id, solari=effect.solari, spice=effect.spice, water=effect.water
-            )
-            if resources is not None:
-                late_gains.append(resources)
-            influence = influence_gain_entry(card_id, effect)
-            if influence is not None:
-                late_gains.append(influence)
-            if effect.trashes_self:
-                pending_trashes.append((f"{source}:{index}:late", card_id))
-            if effect.grants_combat_icon:
-                pending_combat_icons += 1
-            newly_granted[key] = None
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:{index}:late",
-                    kind="reveal_effect_granted_late",
-                    payload=(
-                        ("card_id", card_id),
-                        ("effect_index", index),
-                        ("persuasion", persuasion),
-                        ("player", player),
-                        ("solari", effect.solari),
-                        ("spice", effect.spice),
-                        ("strength", sword),
-                        ("troops", effect.recruit_troops),
-                        ("water", effect.water),
-                    ),
+                counted_contracts = paid.get(key)
+                if effect.persuasion_per_completed_contract and (
+                    counted_contracts is not None
+                ):
+                    # Interstellar Trade pays +1 for each Contract completed
+                    # later in this Reveal (OQ-028 (c), user ruling
+                    # 2026-10-04, which overturns the designer ruling that it
+                    # triggers once, adopted as OQ-057 (2)).
+                    if completed > counted_contracts:
+                        delta = effect.persuasion_per_completed_contract * (
+                            completed - counted_contracts
+                        )
+                        frames = add_reveal_persuasion(frames, delta)
+                        newly_granted[key] = paid[key] = completed
+                        sweeping = True
+                        events.append(
+                            GameEvent(
+                                event_id=(
+                                    f"{source}:{index}:late_contracts:{completed}"
+                                ),
+                                kind="reveal_effect_granted_late",
+                                payload=(
+                                    ("card_id", card_id),
+                                    ("effect_index", index),
+                                    ("persuasion", delta),
+                                    ("player", player),
+                                ),
+                            )
+                        )
+                    continue
+                if key in paid:
+                    continue
+                if not _reveal_effect_is_eligible(
+                    next_owner,
+                    next_owner.in_play,
+                    card_id,
+                    card,
+                    effect,
+                    persuasion=_frame_generated_persuasion(frames),
+                ):
+                    continue
+                persuasion = _reveal_effect_persuasion(
+                    effect, revealed_cards, completed, _in_play_cards(next_owner)
                 )
-            )
+                sword = _reveal_effect_strength(effect, revealed_cards)
+                if persuasion:
+                    frames = add_reveal_persuasion(frames, persuasion)
+                if sword:
+                    frames = _add_reveal_sword(
+                        frames, sword, counts_toward_combat=units > 0
+                    )
+                next_owner = replace(
+                    next_owner,
+                    combat_strength=next_owner.combat_strength
+                    + (sword if units else 0),
+                )
+                if effect.recruit_troops:
+                    late_gains.append(("troops", str(effect.recruit_troops), card_id))
+                if effect.draw_intrigue:
+                    late_gains.append(("intrigue", str(effect.draw_intrigue), card_id))
+                if effect.specimens:
+                    late_gains.append(("specimens", str(effect.specimens), card_id))
+                if effect.tleilaxu:
+                    late_gains.append(("tleilaxu", str(effect.tleilaxu), card_id))
+                if effect.research:
+                    late_gains.append(("research", str(effect.research), card_id))
+                resources = resource_gain_entry(
+                    card_id,
+                    solari=effect.solari,
+                    spice=effect.spice,
+                    water=effect.water,
+                )
+                if resources is not None:
+                    late_gains.append(resources)
+                influence = influence_gain_entry(card_id, effect)
+                if influence is not None:
+                    late_gains.append(influence)
+                if effect.trashes_self:
+                    pending_trashes.append((f"{source}:{index}:late", card_id))
+                if effect.grants_combat_icon:
+                    pending_combat_icons += 1
+                # Defensive: no per-Contract effect is gated today (Interstellar
+                # Trade always applies and is recorded with its count when it is
+                # revealed, so it takes the branch above). A gated one would
+                # keep the count it was paid for here, and later Contracts would
+                # add their increment above.
+                newly_granted[key] = paid[key] = (
+                    completed if effect.persuasion_per_completed_contract else None
+                )
+                sweeping = True
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:{index}:late",
+                        kind="reveal_effect_granted_late",
+                        payload=(
+                            ("card_id", card_id),
+                            ("effect_index", index),
+                            ("persuasion", persuasion),
+                            ("player", player),
+                            ("solari", effect.solari),
+                            ("spice", effect.spice),
+                            ("strength", sword),
+                            ("troops", effect.recruit_troops),
+                            ("water", effect.water),
+                        ),
+                    )
+                )
     # Tech tiles whose Command (6+) line opens late pay the same way, on the
     # Persuasion generated so far, spent or not [Bloodlines p. 5].
     late_persuasion = _frame_generated_persuasion(frames)
@@ -3822,9 +3888,9 @@ def _late_reveal_one_card(
     revealed at once and used in that same Reveal turn [FAQ p. 3]: it moves
     to ``in_play``, grants its own Reveal contribution evaluated over the
     now-larger revealed set, adds the increment its arrival causes to other
-    already-revealed cards' cross-scaling effects, and opens its own choice
-    effects. Amounts already granted to other cards are final and are never
-    recomputed here, only added to.
+    already-revealed cards' cross-scaling effects (those still in play), and
+    opens its own choice effects. Amounts already granted to other cards are
+    final and are never recomputed here, only added to.
     """
 
     owner = state.players[player]
@@ -3880,6 +3946,12 @@ def _late_reveal_one_card(
 
     persuasion_increment = 0
     for other_id in previously_revealed_ids:
+        if other_id not in next_owner.in_play:
+            # A Stilgar, The Devoted trashed earlier in the Reveal gains
+            # nothing from a Fremen card arriving after it: "you can't receive
+            # or activate an effect from a card that is already trashed"
+            # (designer ruling, OQ-022). What it paid before stays paid.
+            continue
         other_card = personal_card_for_instance(other_id)
         for effect in other_card.reveal_effects:
             # The arriving card is both revealed and in play, so either
@@ -4530,12 +4602,22 @@ def legal_finish_reveal_actions(
         # (OQ-044), and its placement window offers only the decline when no
         # Spy can reach a post, so nothing lapses unasked.
         return ()
+    if owes_track_spy(state, player):
+        # The Emperor track's Influence 4 Spy waits in the turn and must be
+        # placed before it ends (user ruling 2026-10-04, overriding OQ-057
+        # (15)); its placement window, like Panopticon's, offers only the
+        # decline when nothing can be placed.
+        return ()
     return (DomainAction(action_id="finish_reveal", actor=player),)
 
 
 def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     """Clean up in-play cards and advance or enter Combat."""
 
+    if owes_track_spy(state, action.actor):
+        # Placed in any order, but before the turn ends (user ruling
+        # 2026-10-04, overriding OQ-057 (15)).
+        raise RuntimeError("a Reveal turn cannot end over an owed track Spy")
     if action not in legal_finish_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal cleanup")
     # Deferred choices whose printed condition never came back lapse here.

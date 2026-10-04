@@ -94,12 +94,8 @@ const UI_TEXT = {
     "en": "{intrigue} {discard_pile} {{count}}"
   },
   "board.intrigue_pile_title": {
-    "ko": "지금까지 쓰인 {intrigue} 보기",
-    "en": "See every {intrigue} played so far"
-  },
-  "board.intrigue_trash_count": {
-    "ko": " · {trash} {{count}}장",
-    "en": " · {trash} {{count}}"
+    "ko": "{intrigue} {discard_pile} 보기",
+    "en": "See the {intrigue} {discard_pile}"
   },
   "board.leader_taken": {
     "ko": "선택됨",
@@ -124,10 +120,6 @@ const UI_TEXT = {
   "board.pile_intrigue_discard": {
     "ko": "{intrigue} {discard_pile}",
     "en": "{intrigue} {discard_pile}"
-  },
-  "board.pile_intrigue_trash": {
-    "ko": "폐기된 {intrigue}",
-    "en": "Trashed Intrigue cards"
   },
   "board.post_seats": {
     "ko": "{{post}}: 좌석 {{seats}}",
