@@ -5,7 +5,8 @@ engine path that reads battle icons. The official summaries under
 `docs/rules/` remain the source of truth; card identification (icons,
 player-count marks, the First Player mark) was cross-checked against the
 official Design Diary 2 images as recorded in `docs/rules/sources.md`.
-Re-audited on 2026-08-30.
+Re-audited on 2026-08-30; updated on 2026-10-04 for Bloodlines' wild
+Conflicts and the Objective flip targets (OQ-005 correction).
 
 ## Content and setup
 
@@ -21,7 +22,7 @@ Re-audited on 2026-08-30.
 | --- | --- | --- |
 | Combat immediate matching | `_matching_battle_card` scans the winner's face-up Objectives and won Conflicts uniformly; a same-icon pair is mandatory, flips both cards face down, and gains 1 VP. | The new Conflict card is not yet in `won_conflict_ids` while matching, so it cannot pair with itself [Main p. 14]. |
 | Wild during Combat | A newly won Propaganda never pairs immediately with a printed icon, and a printed win never pairs with a face-up Propaganda. | Immediate matching is defined over the three printed icons; pairing the wild icon is an Endgame action [Main pp. 14, 20]. |
-| Endgame wild matching | Inside the owner's OQ-001 window, every (face-up wild, face-up printed) pair is offered as its own `match_endgame_wild_icon` action; Objectives are valid printed-side candidates. Matching flips both cards and gains 1 VP; the offers are recomputed after every action. | "Supply의 세 종류 중 하나의 battle icon"과 짝짓는다는 문장은 Conflict와 Objective를 구분하지 않으므로 Objective 포함이 맞고, wild-wild pairing은 제시하지 않는다 [Main p. 20]. |
+| Endgame wild matching | Inside the owner's OQ-001 window, every (face-up wild, face-up printed) pair is offered as its own `match_endgame_wild_icon` action; Objectives are valid printed-side candidates. Every pair of two face-up wilds is offered too, once in sorted order (`rules/endgame.py`). Matching flips both cards and gains 1 VP; the offers are recomputed after every action. A card with no printed icon (Economic Supremacy, Epic) is never a partner (OQ-094 (a)). | "Supply의 세 종류 중 하나의 battle icon"과 짝짓는다는 문장은 Conflict와 Objective를 구분하지 않으므로 Objective 포함이 맞다 [Main p. 20]. wild끼리도 짝지을 수 있다 [Bloodlines p. 5]; the offer is not gated on the option, but only Bloodlines adds wild Conflicts (the wild Skirmish I and Storms in the South II), so without Bloodlines Propaganda is the only wild and no wild-wild pair can arise. |
 | Endgame Intrigue flips | Crysknife, Desert Mouse, and Ornithopter pay their Endgame cost through `FlipBattleCard`, which targets the owner's face-up won Conflict cards **and Objectives** bearing the printed icon or the wild icon; Grasp Arrakis's `FlipFaceUpConflictCard` takes face-up Objectives too. | An Objective "counts as a Conflict card you've already won" [Objective card] (OQ-005 correction 2026-10-04; before it, Objectives were wrongly excluded). Pinned by `test_endgame_flip_takes_a_face_up_objective_card`. |
 
 ## OQ-005: multiple matching candidates
@@ -30,10 +31,16 @@ Re-audited on 2026-08-30.
   one face-up battle card per printed icon can exist: setup deals exactly
   one Objective per player, the only later face-up addition is a won
   Conflict that immediately and mandatorily pairs on arrival, and every
-  other transition only flips cards face down. Propaganda is the single
-  wild card, so a wild-wild pair cannot arise either. The
-  `NotImplementedError` guard in `_matching_battle_card` therefore stays
-  as a tripwire for future content, not as a reachable boundary.
+  other transition only flips cards face down. Wild cards never pair on
+  arrival [Main p. 20]: without Bloodlines Propaganda is the single wild
+  card, and Bloodlines' two wild Conflicts (the wild Skirmish I, Storms in
+  the South II) may sit face up beside it, but every wild pair is an
+  Endgame choice [Bloodlines p. 5]. The one exception is an Ornithopter
+  Fleet owner, whose icons (wilds included) all count as Ornithopters
+  [Bloodlines p. 12]: those cards pair off in a fixed order without the
+  guard (`rules/ornithopter.py`). The `NotImplementedError`
+  guard in `_matching_battle_card` therefore stays as a tripwire for future
+  content, not as a reachable boundary.
 - **Endgame side — the owner chooses.** Multiple candidates do occur (for
   example a Crysknife Objective plus a Crysknife won Conflict next to
   Propaganda), and the choice is a real decision: the wild uses up the card
@@ -50,12 +57,17 @@ Re-audited on 2026-08-30.
 ## Action and replay compatibility
 
 The fixed catalog encodes `pass_endgame_intrigue` plus one
-`match_endgame_wild_icon` template per (wild, printed) battle-card pair:
-Propaganda against the fifteen printed-icon Conflicts and the four
-four-player Objectives, 19 templates in total. Flip targets for the three
-Endgame Intrigue cards reuse the `flip_battle_card` choice-slot templates,
-one per Conflict and (since codec v130) one per Objective of the player
-count.
+`match_endgame_wild_icon` template per (wild, printed) battle-card pair and
+one per pair of two wilds (`action_codec._endgame_wild_templates`). Without
+Bloodlines that is Propaganda against the fifteen printed-icon Conflicts and
+the four four-player Objectives, 19 templates. Bloodlines catalogs have three
+wild Conflicts (Propaganda, the wild Skirmish I, Storms in the South II): 3 × 19
+(wild, printed) pairs plus 3 wild-wild pairs, 60 templates. Epic's Economic
+Supremacy prints no icon and adds none (OQ-094). Flip targets for the
+Endgame Intrigue cards (Crysknife, Desert Mouse, Ornithopter, and Grasp
+Arrakis) reuse the `flip_battle_card` choice-slot templates, one per
+Conflict of the catalog and, since codec v130 (OQ-005 correction,
+2026-10-04), one per Objective of the player count.
 
 ## Explicitly retained guards
 

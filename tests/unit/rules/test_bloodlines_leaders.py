@@ -33,7 +33,12 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
-from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.combat_deployment import (
+    apply_combat_deployment,
+    apply_troop_withdrawal,
+    legal_combat_deployments,
+    legal_troop_withdrawals,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import (
@@ -317,6 +322,85 @@ def test_fedaykin_maneuver_draw_shuffles_the_discard_when_the_deck_is_short() ->
     assert isinstance(reshuffle.decision, ChanceDecision)
     assert dict(reshuffle.context)["count"] == 2
     assert paid.players[0].resources.water == 0
+
+
+def _deploy_two_then_fedaykin_retreat(count: int) -> GameState:
+    """Chani at Arrakeen: deploy two garrison troops, then retreat ``count``."""
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        tactics_track_space=2,
+        hand=(SIGNET,),
+        deck=(DAGGER, DUNE, RECON),
+        troops_supply=7,
+        troops_garrison=5,
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    assert [
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(state, 0)
+    ] == [1, 2]
+    deployed = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(deployed, 0) == ()
+    retreat = next(
+        action
+        for action in legal_leader_signet_actions(deployed, 0)
+        if action.action_id == "retreat_leader_troops"
+        and dict(action.arguments) == {"count": count}
+    )
+    return apply_leader_troop_retreat(deployed, retreat).state
+
+
+def test_a_fedaykin_retreat_does_not_reopen_the_garrison_two() -> None:
+    # "You may deploy any or all units recruited during your current turn
+    # ..., plus up to two more units from your garrison." [Main p. 10];
+    # "you can't 're-recruit' troops in your garrison to get around the
+    # limit of deploying up to two troops from your garrison" [FAQ p. 4].
+    # A card retreat leaves the allowance used (OQ-029, user ruling
+    # 2026-10-04, "되돌리지 않음"): deploying two, retreating both with
+    # Fedaykin Maneuver and deploying two again used to bank the Tactics
+    # progress at no cost.
+    retreated = _deploy_two_then_fedaykin_retreat(2)
+    seat = retreated.players[0]
+    assert (seat.troops_garrison, seat.troops_conflict) == (5, 0)
+    assert seat.tactics_track_space == 4
+    assert retreated.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    context = dict(retreated.decision_stack[-1].context)
+    assert context["combat_troops_deployed"] == 2
+    assert context["combat_troops_withdrawable"] == 0
+    assert legal_combat_deployments(retreated, 0) == ()
+    assert legal_troop_withdrawals(retreated, 0) == ()
+
+    # A troop recruited afterwards still deploys in its own slot.
+    recruited = _resolve_board(retreated)
+    assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 1
+    assert [
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(recruited, 0)
+    ] == [1]
+
+
+def test_only_a_withdrawal_gives_deployment_room_back_after_a_retreat() -> None:
+    # The voluntary OQ-029 withdrawal undoes a deployment of this turn and
+    # frees its room; the retreated troop's room stays used (user ruling
+    # 2026-10-04).
+    retreated = _deploy_two_then_fedaykin_retreat(1)
+    seat = retreated.players[0]
+    assert (seat.troops_garrison, seat.troops_conflict) == (4, 1)
+    assert legal_combat_deployments(retreated, 0) == ()
+    withdrawals = legal_troop_withdrawals(retreated, 0)
+    assert [dict(action.arguments)["count"] for action in withdrawals] == [1]
+
+    back = apply_troop_withdrawal(retreated, withdrawals[0]).state
+    seat = back.players[0]
+    assert (seat.troops_garrison, seat.troops_conflict) == (5, 0)
+    assert legal_troop_withdrawals(back, 0) == ()
+    assert [
+        dict(action.arguments)["count"] for action in legal_combat_deployments(back, 0)
+    ] == [1]
 
 
 # --- Count Hasimir Fenring ---------------------------------------------------

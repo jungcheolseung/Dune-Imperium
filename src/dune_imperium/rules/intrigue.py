@@ -63,6 +63,7 @@ from dune_imperium.rules.acquisition import (
     acquisition_spy_frame,
     take_imperium_row_card,
 )
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
     resolve_personal_card_discard_trigger,
@@ -570,6 +571,8 @@ def _play_separate_lines(
             ("option", option_index),
             ("player", player),
             ("source", source),
+            # The lines used so far, cost-free ones resolved now included;
+            # finishing waits for one (``intrigue_effects_finish_is_open``).
             ("used", ",".join(str(index) for index in automatic)),
         ),
     )
@@ -624,30 +627,67 @@ def _settle_effects_frame(state: GameState, player: int, card_id: str) -> RuleRe
     return finish_intrigue_play(state.pop_decision(), player, card_id, (), source)
 
 
+def _usable_lines(
+    state: GameState, player: int, context: dict[str, ActionValue]
+) -> tuple[int, ...]:
+    """Unused arrow lines the owner can use now (condition and cost)."""
+
+    _, _, option = _effects_option(context)
+    used = _used_lines(context)
+    return tuple(
+        index
+        for index, section in enumerate(option.sections)
+        if index not in used
+        and section.costs
+        and section_is_usable(state, player, section)
+    )
+
+
+def intrigue_effects_finish_is_open(state: GameState, player: int) -> bool:
+    """Whether the owner may finish its separate-lines card now (OQ-058).
+
+    At least one line must be used first (OQ-058, user ruling 2026-10-04,
+    "최소 한 줄은 써야 함", as the Steam app does): "To play an Intrigue
+    card, you must meet its conditions and pay its costs" [FAQ pp. 2-3]. A
+    cost-free line resolved as the card was played counts as used; after
+    one line the others stay optional. Finishing is open anyway when no
+    unused line can be used, so the frame never dead-ends; the play gate
+    (one usable line, ``option_unplayable_reason``) keeps that unreachable
+    before a line is used, since nothing acts between the play and the
+    owner's first line choice.
+    """
+
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_EFFECTS, player)
+    if frame is None:
+        return False
+    context = frame_context(frame)
+    return bool(_used_lines(context)) or not _usable_lines(state, player, context)
+
+
 def legal_intrigue_effect_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Use one of the card's unused arrow lines now, or finish the card."""
+    """Use one of the card's unused arrow lines now, or finish the card
+    once a line was used (``intrigue_effects_finish_is_open``)."""
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_EFFECTS, player)
     if frame is None:
         return ()
-    context = frame_context(frame)
-    _, _, option = _effects_option(context)
-    used = _used_lines(context)
+    finish = (
+        (DomainAction(action_id="finish_intrigue_effects", actor=player),)
+        if intrigue_effects_finish_is_open(state, player)
+        else ()
+    )
     return (
-        DomainAction(action_id="finish_intrigue_effects", actor=player),
+        *finish,
         *(
             DomainAction(
                 action_id="use_intrigue_effect",
                 actor=player,
                 arguments=(("section", index),),
             )
-            for index, section in enumerate(option.sections)
-            if index not in used
-            and section.costs
-            and section_is_usable(state, player, section)
+            for index in _usable_lines(state, player, frame_context(frame))
         ),
     )
 
@@ -808,6 +848,9 @@ def legal_intrigue_choice_actions(
         case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
             # The black trash icon is optional [Main p. 20]; Devious's
             # "Trash a card from your hand" is neither optional nor wider.
+            # A Row card borrowed with Usurp is not "in play" (OQ-054,
+            # ``counted_in_play``), so it is no trash target (Navigation
+            # card 5's spice included).
             if not mandatory:
                 actions.append(
                     DomainAction(action_id="decline_intrigue_trash", actor=player)
@@ -815,7 +858,7 @@ def legal_intrigue_choice_actions(
             candidates = (
                 owner.hand
                 if hand_only
-                else (*owner.hand, *owner.discard_pile, *owner.in_play)
+                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
             )
             actions.extend(
                 DomainAction(
@@ -2074,8 +2117,9 @@ def _retreat_units(
 ) -> RuleResult:
     """Return Conflict units to the garrison (see ``rules.units``).
 
-    An Agent-turn retreat also shrinks the turn's deployment counters so
-    the withdrawal window cannot underflow (``combat_deployment``).
+    An Agent-turn retreat also shrinks the turn's withdrawal window so it
+    cannot underflow; the deployment allowance stays used (OQ-029,
+    ``combat_deployment.reconcile_deployment_after_retreat``).
     """
 
     retreated = retreat_units(

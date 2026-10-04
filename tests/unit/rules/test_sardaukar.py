@@ -824,6 +824,11 @@ def test_a_retreated_earlier_troop_leaves_the_commander_share_alone() -> None:
         context["combat_troops_deployed"],
         context["combat_commanders_deployed"],
     ) == (1, 1)
+    # The withdrawal window keeps the Commander too (OQ-029).
+    assert (
+        context["combat_troops_withdrawable"],
+        context["combat_commanders_withdrawable"],
+    ) == (1, 1)
     assert _counts(legal_combat_deployments(retreated, 0), "deploy_troops") == [1, 2]
     troops = apply_combat_deployment(
         retreated, DomainAction("deploy_troops", 0, (("count", 2),))
@@ -855,7 +860,74 @@ def test_a_retreated_earlier_commander_leaves_the_troop_share_alone() -> None:
 
     context = dict(retreated.decision_stack[-1].context)
     assert context["combat_troops_deployed"] == 2
+    assert context["combat_troops_withdrawable"] == 2
     assert legal_combat_deployments(retreated, 0) == ()
+
+
+def test_a_retreated_commander_keeps_its_deployment_used() -> None:
+    # A card retreat leaves the basic deployment allowance used: "You may
+    # deploy any or all units recruited during your current turn ..., plus
+    # up to two more units from your garrison." [Main p. 10] (OQ-029, user
+    # ruling 2026-10-04). The recruited Commander's own slot (OQ-070) stays
+    # filled once it has deployed, even after it is back in the garrison.
+    state = _recruited_commander_at_research_station()
+    state = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    state = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(state, 0) == ()
+    assert legal_commander_deployments(state, 0) == ()
+
+    retreated = retreat_units(state, 0, "test:retreat", troops=0, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(
+        retreated, 0, troops=0, commanders=1
+    )
+    assert retreated.players[0].commanders_garrison == 1
+    assert legal_commander_deployments(retreated, 0) == ()
+    assert legal_combat_deployments(retreated, 0) == ()
+    assert legal_commander_withdrawals(retreated, 0) == ()
+
+    # A withdrawal undoes one garrison troop's deployment: its place among
+    # the garrison two opens again, for either kind of unit.
+    back = apply_troop_withdrawal(
+        retreated, DomainAction("withdraw_troops", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(back, 0), "deploy_troops") == [1]
+    assert _counts(legal_commander_deployments(back, 0), "deploy_commanders") == [1]
+
+
+def test_a_card_retreat_in_a_combat_icon_reveal_reopens_nothing() -> None:
+    # The Reveal turn's Combat-icon deployment counts what it deployed
+    # (``reveal_units_deployed``) and a card retreat never lowers it, the
+    # same as an Agent turn's (OQ-029, user ruling 2026-10-04).
+    state = _turn_state(
+        _owner(
+            commanders_garrison=1,
+            troops_garrison=5,
+            troops_supply=7,
+            combat_icon_turn=True,
+        ),
+        spaces=(),
+    )
+    state = begin_reveal_turn(state, DomainAction("reveal_turn", 0)).state
+    state = apply_reveal_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    state = apply_reveal_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    assert legal_reveal_deployments(state, 0) == ()
+
+    retreated = retreat_units(state, 0, "test:retreat", troops=1, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(
+        retreated, 0, troops=1, commanders=1
+    )
+    owner = retreated.players[0]
+    assert (owner.troops_garrison, owner.commanders_garrison) == (5, 1)
+    assert dict(retreated.decision_stack[-1].context)["reveal_units_deployed"] == 2
+    assert legal_reveal_deployments(retreated, 0) == ()
 
 
 def _seat_with_skills(**overrides: object) -> PlayerState:

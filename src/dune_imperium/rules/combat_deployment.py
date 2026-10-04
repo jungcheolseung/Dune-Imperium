@@ -10,6 +10,10 @@ turn never exceeds "every troop recruited this turn plus two garrison troops"
 unit count below a condition a played card already used (Distraction,
 Coercive Negotiation). A withdrawal undoes the deployment, so it also lowers
 the turn's deployment peak those cards read (``record_deployment_peak``).
+A card or Leader effect that retreats or loses units from the Conflict does
+not undo anything: the units it moves have used their deployment, so only a
+withdrawal gives room back (OQ-029, user ruling 2026-10-04,
+``reconcile_deployment_after_retreat``).
 
 Bloodlines Sardaukar Commanders are "troops" for this purpose [Bloodlines
 p. 4] (``deploy_commanders`` / ``withdraw_commanders``; the frame tracks the
@@ -49,6 +53,18 @@ from dune_imperium.rules.frames import (
 FINISHING_KEY: Final = "finishing"
 FINISH_DEPLOYMENT_KEY: Final = "finish_deployment_window"
 FINISH_RECRUITS_KEY: Final = "finish_recruited_units"
+
+# Agent-turn effect frame keys for the Combat deployment (absent means none).
+# ``combat_troops_deployed`` counts every unit the turn's basic deployment
+# moved (its allowance used) and ``combat_commanders_deployed`` the
+# Commander share of it; only a withdrawal lowers them. The withdrawable
+# pair counts the same units still eligible for a withdrawal, in the same
+# shape, and a card retreat or loss lowers it too (OQ-029, user ruling
+# 2026-10-04).
+DEPLOYED_UNITS_KEY: Final = "combat_troops_deployed"
+DEPLOYED_COMMANDERS_KEY: Final = "combat_commanders_deployed"
+WITHDRAWABLE_UNITS_KEY: Final = "combat_troops_withdrawable"
+WITHDRAWABLE_COMMANDERS_KEY: Final = "combat_commanders_withdrawable"
 
 
 def undeployable_troops(context: dict[str, ActionValue]) -> int:
@@ -148,9 +164,28 @@ class _Deployment:
     """The open Agent-turn deployment window's counters."""
 
     context: dict[str, ActionValue]
-    deployed: int
     troop_room: int
     commander_room: int
+    withdrawable_troops: int
+    withdrawable_commanders: int
+
+
+def _unit_count(context: dict[str, ActionValue], key: str) -> int:
+    """Read one of the deployment counters (absent means none)."""
+
+    value = context.get(key, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Agent-turn effect frame has invalid {key}")
+    return value
+
+
+def _shares(
+    context: dict[str, ActionValue], units_key: str, commanders_key: str
+) -> tuple[int, int]:
+    """Split a (units, Commander share) counter pair into troops and Commanders."""
+
+    commanders = _unit_count(context, commanders_key)
+    return max(0, _unit_count(context, units_key) - commanders), commanders
 
 
 def _deployment_context(
@@ -175,20 +210,28 @@ def _deployment_context(
     existing_limit = context.get("existing_troop_deployment_limit")
     if isinstance(existing_limit, bool) or not isinstance(existing_limit, int):
         raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
-    deployed = context.get("combat_troops_deployed", 0)
-    if isinstance(deployed, bool) or not isinstance(deployed, int):
-        raise RuntimeError("Agent-turn effect frame has invalid deployment count")
-    commanders = _commanders_deployed(context)
+    # The room reads the allowance used, which a card retreat or loss leaves
+    # alone (OQ-029, ``reconcile_deployment_after_retreat``).
+    troops, commanders = _shares(context, DEPLOYED_UNITS_KEY, DEPLOYED_COMMANDERS_KEY)
     troop_room, commander_room = deployment_rooms(
         troops_recruited=recruited,
         commanders_recruited=recruited_commander_count(
             context, COMMANDERS_RECRUITED_KEY
         ),
         existing_limit=existing_limit,
-        troops_deployed=max(0, deployed - commanders),
+        troops_deployed=troops,
         commanders_deployed=commanders,
     )
-    return _Deployment(context, deployed, troop_room, commander_room)
+    withdrawable_troops, withdrawable_commanders = _shares(
+        context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+    )
+    return _Deployment(
+        context,
+        troop_room,
+        commander_room,
+        withdrawable_troops,
+        withdrawable_commanders,
+    )
 
 
 def legal_combat_deployments(
@@ -254,23 +297,19 @@ def legal_commander_deployments(
     )
 
 
-def _commanders_deployed(context: dict[str, ActionValue]) -> int:
-    deployed = context.get("combat_commanders_deployed", 0)
-    if isinstance(deployed, bool) or not isinstance(deployed, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Commander count")
-    return deployed
-
-
 def legal_troop_withdrawals(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Enumerate how many of this turn's deployed troops may return (OQ-029)."""
+    """Enumerate how many of this turn's deployed troops may return (OQ-029).
+
+    Only troops of the turn's basic deployment that no card retreat or loss
+    has taken since (``reconcile_deployment_after_retreat``) are offered.
+    """
 
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    context, deployed = found.context, found.deployed
     owner = state.players[player]
     # A deployment condition a played card used (Distraction, Coercive
     # Negotiation) keeps its minimum deployed.
@@ -282,7 +321,7 @@ def legal_troop_withdrawals(
     # resolves, the way a recruit does (OQ-030); offering more advertised a
     # move that drove the seat's troops negative (2026-09-10 soak, seed 34).
     maximum = min(
-        deployed - _commanders_deployed(context),
+        found.withdrawable_troops,
         owner.units_deployed_turn - owner.units_deployed_committed,
         owner.troops_conflict,
     )
@@ -307,13 +346,12 @@ def legal_commander_withdrawals(
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    context = found.context
     owner = state.players[player]
     # Bounded by the Commanders actually in the Conflict, for the same reason
     # the troop withdrawal is: Bloodlines loses a Commander from the garrison
     # or the Conflict [Bloodlines Rules p. 8].
     maximum = min(
-        _commanders_deployed(context),
+        found.withdrawable_commanders,
         owner.units_deployed_turn - owner.units_deployed_committed,
         owner.commanders_conflict,
     )
@@ -394,8 +432,9 @@ def _move_troops(
 ) -> GameState:
     """Move ``delta`` units garrison→Conflict (negative: back) and keep the frame.
 
-    ``combat_troops_deployed`` counts every unit of the turn's basic
-    deployment; ``combat_commanders_deployed`` the Commander share of it.
+    A deployment adds to both the allowance used and the withdrawable count;
+    a withdrawal undoes the deployment, so it lowers both and gives its room
+    back (OQ-029; the keys are described at ``DEPLOYED_UNITS_KEY``).
     """
 
     owner = state.players[player]
@@ -418,7 +457,8 @@ def _move_troops(
             units_deployed_turn=owner.units_deployed_turn + delta,
             units_deployed_peak=peak,
         )
-        context["combat_commanders_deployed"] = _commanders_deployed(context) + delta
+        for key in (DEPLOYED_COMMANDERS_KEY, WITHDRAWABLE_COMMANDERS_KEY):
+            context[key] = _unit_count(context, key) + delta
     else:
         next_owner = replace(
             owner,
@@ -430,10 +470,8 @@ def _move_troops(
     players = tuple(
         next_owner if seat.player_id == player else seat for seat in state.players
     )
-    deployed = context.get("combat_troops_deployed", 0)
-    if isinstance(deployed, bool) or not isinstance(deployed, int):
-        raise RuntimeError("Agent-turn effect frame has invalid deployment count")
-    context["combat_troops_deployed"] = deployed + delta
+    for key in (DEPLOYED_UNITS_KEY, WITHDRAWABLE_UNITS_KEY):
+        context[key] = _unit_count(context, key) + delta
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
     return replace(
@@ -472,22 +510,28 @@ def reconcile_deployment_after_retreat(
     troops: int,
     commanders: int = 0,
 ) -> GameState:
-    """Shrink the open Agent turn's deployment counters after a retreat.
+    """Follow a card retreat or loss from the Conflict in the turn's counters.
 
-    A Signet Ring or Plot Intrigue may retreat units the turn's basic
-    deployment just moved (Fedaykin Maneuver); the withdrawal window keeps
-    offering the counters it recorded, so they follow the retreat down.
+    A Signet Ring, a Plot Intrigue or an Agent box may retreat or lose units
+    the turn's basic deployment just moved (Fedaykin Maneuver, a Twisted
+    Intrigue cost, Piter, Genius Advisor). The withdrawal window offers only
+    units still there, so its counters follow the retreat down. The basic
+    deployment allowance does not come back: "You may deploy any or all
+    units recruited during your current turn ..., plus up to two more units
+    from your garrison." [Main p. 10]; "you can't 're-recruit' troops in
+    your garrison to get around the limit of deploying up to two troops from
+    your garrison" [FAQ p. 4] (OQ-029, user ruling 2026-10-04, "되돌리지
+    않음"). Only a withdrawal (``_move_troops``) undoes a deployment and
+    frees its room. A Reveal turn's Combat-icon deployment
+    (``reveal_units_deployed``) never shrinks either.
+
     The per-turn deployment count also drops, never below the count a
     played card already used (OQ-029); the turn's peak stays, as the
-    deployment it records did happen (``record_deployment_peak``).
+    deployment it records did happen (``record_deployment_peak``, OQ-016).
 
-    Each kind's share shrinks only by its own retreated units: a retreated
-    troop (perhaps one deployed in an earlier turn) never eats into the
-    Commander share, or the troop share read back as ``deployed -
-    commanders`` would fall short and let extra garrison troops deploy past
-    "garrison의 troop을 최대 두 개 더" [Main p. 10]
-    (docs/rules/player-turns.md:136) and a recruited Commander's own slot
-    (user ruling OQ-070).
+    Each kind's withdrawable share shrinks only by its own retreated units:
+    a retreated troop (perhaps one deployed in an earlier turn) never takes
+    a Commander out of the window (user ruling OQ-070).
     """
 
     total = troops + commanders
@@ -517,16 +561,16 @@ def reconcile_deployment_after_retreat(
         if frame.decision.owner != player:
             continue
         context = dict(frame.context)
-        deployed = context.get("combat_troops_deployed", 0)
-        if isinstance(deployed, bool) or not isinstance(deployed, int):
-            raise RuntimeError("Agent-turn effect frame has invalid deployment count")
-        commander_share = _commanders_deployed(context)
-        troop_share = max(0, deployed - commander_share)
+        troop_share, commander_share = _shares(
+            context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+        )
+        if not troop_share and not commander_share:
+            break
         next_commanders = max(0, commander_share - commanders)
-        context["combat_troops_deployed"] = (
+        context[WITHDRAWABLE_UNITS_KEY] = (
             max(0, troop_share - troops) + next_commanders
         )
-        context["combat_commanders_deployed"] = next_commanders
+        context[WITHDRAWABLE_COMMANDERS_KEY] = next_commanders
         frames[index] = replace(frame, context=tuple(sorted(context.items())))
         break
     return replace(state, players=players, decision_stack=tuple(frames))

@@ -532,6 +532,53 @@ def test_sadistic_shrewd_and_sinister_trade_troops_for_rewards() -> None:
     assert len(working.players[0].intrigue_cards) == 1 + 1
 
 
+def test_a_twisted_loss_from_the_conflict_does_not_reopen_the_deployment() -> None:
+    # Sadistic's "lose a troop" cost taken from the Conflict after the
+    # basic deployment leaves the allowance used: "You may deploy any or all
+    # units recruited during your current turn ..., plus up to two more
+    # units from your garrison." [Main p. 10]; "you can't 're-recruit'
+    # troops in your garrison to get around the limit of deploying up to two
+    # troops from your garrison" [FAQ p. 4] (OQ-029, user ruling 2026-10-04).
+    sadistic = _twisted("sadistic")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(sadistic,),
+        hand=(RECON,),
+        deck=(DAGGER,),
+        troops_supply=7,
+        troops_garrison=5,
+        resources=Resources(water=2),
+    )
+    state = _placed(_turn_state(owner), RECON, "research_station")
+    deploy_two = DomainAction("deploy_troops", 0, (("count", 2),))
+    assert deploy_two in ENGINE.legal_actions(state, 0)
+    deployed = ENGINE.apply(state, deploy_two).state
+    played = ENGINE.apply(deployed, _play(sadistic)).state
+    lost = ENGINE.apply(
+        played,
+        DomainAction(
+            action_id="lose_intrigue_troop", actor=0, arguments=(("zone", "conflict"),)
+        ),
+    ).state
+    seat = lost.players[0]
+    assert (seat.troops_garrison, seat.troops_conflict) == (3, 1)
+    assert DAGGER in seat.hand
+    assert lost.decision_stack[-1].kind == "agent_effects"
+    context = dict(lost.decision_stack[-1].context)
+    assert (
+        context["combat_troops_deployed"],
+        context["combat_troops_withdrawable"],
+    ) == (2, 1)
+    actions = ENGINE.legal_actions(lost, 0)
+    assert not any(action.action_id == "deploy_troops" for action in actions)
+    assert [
+        dict(action.arguments)["count"]
+        for action in actions
+        if action.action_id == "withdraw_troops"
+    ] == [1]
+
+
 def test_unnatural_trashes_an_intrigue_card_and_recruits_for_a_regular_one() -> None:
     card = _twisted("unnatural")
     regular = intrigue_deck_instance_ids(False)[5]

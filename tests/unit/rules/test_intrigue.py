@@ -1,5 +1,6 @@
 """Plot Intrigue play through the composable effect DSL."""
 
+import itertools
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents import HeuristicAgent
 from dune_imperium.content.uprising.effect_dsl import IntrigueTiming
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import (
@@ -29,6 +31,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import IllegalActionError, Transition
+from dune_imperium.core.observation import observe_state
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
@@ -240,7 +243,8 @@ def _finish_lines(actor: int = 0) -> DomainAction:
 
 def test_strategic_stockpiling_lines_are_used_and_paid_separately() -> None:
     # Two arrow lines with no "—OR—" (OQ-058, user ruling): playing the card
-    # opens its lines; each is paid when used and none is mandatory.
+    # opens its lines; each is paid when used. At least one must be used
+    # (OQ-058, user ruling 2026-10-04): the card cannot be finished before.
     card = _intrigue("strategic_stockpiling")
     owner = PlayerState(
         player_id=0, intrigue_cards=(card,), resources=Resources(spice=5)
@@ -249,7 +253,7 @@ def test_strategic_stockpiling_lines_are_used_and_paid_separately() -> None:
     state = _turn_state(owner)
     opened = engine.apply(state, _play(state, card)).state
     assert opened.decision_stack[-1].kind == "intrigue_effects"
-    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
     paid = engine.apply(opened, _use_line(0)).state
     assert paid.players[0].victory_points == 2
     assert paid.players[0].resources.spice == 0
@@ -261,7 +265,7 @@ def test_strategic_stockpiling_lines_are_used_and_paid_separately() -> None:
     # water the owner finishes with the Spice line alone.
     fremen = _turn_state(replace(owner, influence=Influence(fremen=3)))
     opened = engine.apply(fremen, _play(fremen, card)).state
-    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
     paid = engine.apply(opened, _use_line(0)).state
     assert engine.legal_actions(paid, 0) == (_finish_lines(),)
     done = engine.apply(paid, _finish_lines()).state
@@ -276,12 +280,11 @@ def test_strategic_stockpiling_lines_are_used_and_paid_separately() -> None:
         )
     )
     opened = engine.apply(funded, _play(funded, card)).state
-    assert engine.legal_actions(opened, 0) == (
-        _finish_lines(),
-        _use_line(0),
-        _use_line(1),
-    )
-    both = engine.apply(engine.apply(opened, _use_line(1)).state, _use_line(0)).state
+    assert engine.legal_actions(opened, 0) == (_use_line(0), _use_line(1))
+    # After either line the other is optional.
+    water = engine.apply(opened, _use_line(1)).state
+    assert engine.legal_actions(water, 0) == (_finish_lines(), _use_line(0))
+    both = engine.apply(water, _use_line(0)).state
     assert both.players[0].victory_points == 3
     assert both.players[0].resources == Resources(spice=0, water=0)
     assert both.decision_stack[-1].kind == "turn"
@@ -305,6 +308,9 @@ def test_depart_for_arrakis_draws_at_once_and_recruits_on_its_spice_line() -> No
     opened = engine.apply(state, _play(state, card)).state
     assert opened.players[0].hand == deck
     assert opened.decision_stack[-1].kind == "intrigue_effects"
+    # The draw is a line used, so the Spice line is optional (OQ-058, user
+    # ruling 2026-10-04).
+    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
     recruited = engine.apply(opened, _use_line(0)).state
     player = recruited.players[0]
     assert player.troops_garrison == 6
@@ -318,6 +324,104 @@ def test_depart_for_arrakis_draws_at_once_and_recruits_on_its_spice_line() -> No
     drawn = engine.apply(broke, _play(broke, card)).state
     assert drawn.players[0].hand == deck
     assert engine.legal_actions(drawn, 0) == (_finish_lines(),)
+
+
+def test_depart_for_arrakis_below_guild_three_must_use_its_spice_line() -> None:
+    # At least one line must be used (OQ-058, user ruling 2026-10-04, "최소
+    # 한 줄은 써야 함", as the Steam app does): "To play an Intrigue card,
+    # you must meet its conditions and pay its costs" [FAQ pp. 2-3]. Below
+    # Guild 3 nothing resolves at play, so the Spice line is the only one.
+    card = _intrigue("depart_for_arrakis")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(spice=2)
+    )
+    engine = UprisingRulesEngine()
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_effects"
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
+    with pytest.raises(IllegalActionError):
+        engine.apply(opened, _finish_lines())
+    recruited = engine.apply(opened, _use_line(0)).state
+    assert recruited.players[0].troops_garrison == 6
+    assert recruited.players[0].resources.spice == 0
+    # No line can follow: the card closes on its own.
+    assert recruited.decision_stack[-1].kind == "turn"
+    assert card in recruited.intrigue_discard
+
+
+@pytest.mark.parametrize(
+    "card_id", ["change_allegiances", "strategic_stockpiling", "depart_for_arrakis"]
+)
+def test_a_played_lines_card_offers_a_line_before_it_can_be_finished(
+    card_id: str,
+) -> None:
+    # The card is playable only with a usable line (OQ-058), and nothing acts
+    # between the play and the owner's first choice, so before any line is
+    # used a line is always offered and finishing never is (OQ-058, user
+    # ruling 2026-10-04). The heuristic drives every playable case through
+    # without meeting an empty legal list. Find Weakness and Questionable
+    # Methods resolve their sword line at play, so they finish at once.
+    card = _intrigue(card_id)
+    engine = UprisingRulesEngine()
+    played = unused = 0
+    for spice, water, level in itertools.product((0, 2, 3, 5), (0, 3), (0, 1, 3)):
+        owner = PlayerState(
+            player_id=0,
+            intrigue_cards=(card,),
+            resources=Resources(spice=spice, water=water),
+            influence=Influence(emperor=level, spacing_guild=level, fremen=level),
+        )
+        state = _turn_state(owner)
+        plays = legal_intrigue_play_actions(state, 0)
+        if not plays:
+            continue
+        played += 1
+        current = engine.apply(state, plays[0]).state
+        agent = HeuristicAgent(seed=played)
+        for _ in range(20):
+            frame = current.decision_stack[-1]
+            if frame.kind == FrameKind.TURN:
+                break
+            legal = engine.legal_actions(current, 0)
+            assert legal
+            if frame.kind == FrameKind.INTRIGUE_EFFECTS and not dict(
+                frame.context
+            ).get("used"):
+                unused += 1
+                assert legal and all(
+                    action.action_id == "use_intrigue_effect" for action in legal
+                )
+            choice = agent.choose_action(observe_state(current, 0), legal)
+            current = engine.apply(current, choice).state
+        assert current.decision_stack[-1].kind == FrameKind.TURN
+        assert card in current.intrigue_discard
+    assert played and unused
+
+
+def test_finishing_opens_if_no_line_can_be_used_before_any_was() -> None:
+    # Dead-end guard (``intrigue_effects_finish_is_open``): unreachable in
+    # play (above), so the owner's spice is taken away by hand after the
+    # play. With no line left to use the card can still be finished.
+    card = _intrigue("strategic_stockpiling")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(spice=5)
+    )
+    engine = UprisingRulesEngine()
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
+    stripped = replace(
+        opened,
+        players=(
+            replace(opened.players[0], resources=Resources()),
+            *opened.players[1:],
+        ),
+    )
+    assert engine.legal_actions(stripped, 0) == (_finish_lines(),)
+    done = engine.apply(stripped, _finish_lines()).state
+    assert done.decision_stack[-1].kind == "turn"
+    assert card in done.intrigue_discard
 
 
 def test_intelligence_report_draws_more_with_two_spies() -> None:
@@ -678,11 +782,9 @@ def test_change_allegiances_opens_both_lines_and_either_may_be_used() -> None:
     assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
     engine = UprisingRulesEngine()
     opened = engine.apply(state, _play(state, card, 0)).state
-    assert engine.legal_actions(opened, 0) == (
-        _finish_lines(),
-        _use_line(0),
-        _use_line(1),
-    )
+    # At least one line must be used before the card can be finished
+    # (OQ-058, user ruling 2026-10-04).
+    assert engine.legal_actions(opened, 0) == (_use_line(0), _use_line(1))
     losing = engine.apply(opened, _use_line(0)).state
     # Only Factions where the player still has Influence can be lost.
     assert engine.legal_actions(losing, 0) == (_choose_faction("bene_gesserit"),)
@@ -716,7 +818,7 @@ def test_change_allegiances_second_line_may_be_paid_with_spice_the_first_produce
     state = _turn_state(owner)
     engine = UprisingRulesEngine()
     opened = engine.apply(state, _play(state, card, 0)).state
-    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
     losing = engine.apply(opened, _use_line(0)).state
     lost = engine.apply(losing, _choose_faction("fremen")).state
     gained = engine.apply(lost, _choose_faction("bene_gesserit")).state

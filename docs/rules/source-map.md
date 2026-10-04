@@ -63,7 +63,7 @@
 | `[Main p. 9]` | 공간 비용의 선지불과 Imperial Privilege·Shipping·Sietch Tabr Influence requirement | `covered` | [player-turns.md](player-turns.md), [board-spaces.md](board-spaces.md) |
 | `[Main p. 9]` | space, Agent box, Faction Influence 효과의 자유로운 처리 순서 | `covered` | [player-turns.md](player-turns.md) |
 | `[Main p. 9]` | arrow 비용은 선택, 미지불 시 결과 없음, 한 turn에 한 번 | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
-| `[Main p. 9]` | 명시적으로 순서를 허용한 효과 밖에서 여러 의무 효과가 충돌할 때의 우선순위 | `open question` | [OQ-012](open-questions.md#oq-012--자유-순서-그룹-밖-의무-효과의-충돌); [player-turns.md](player-turns.md)에도 미확정으로 표시 |
+| `[Main p. 9]` | 명시적으로 순서를 허용한 효과 밖에서 여러 의무 효과가 충돌할 때의 우선순위 | `open question` | [OQ-012](open-questions.md#oq-012--자유-순서-그룹-밖-의무-효과의-충돌); `DECIDED` |
 | `[Main pp. 8-11]` | Agent turn이 끝나는 시점(Reveal turn의 Clean Up 같은 종료 단계가 없다) | `open question` | [OQ-095](open-questions.md#oq-095--agent-turn은-소유자의-턴-종료로만-끝난다) (`DECIDED`) |
 | `[Main p. 10]` | Arrakeen·Spice Refinery·Imperial Basin control 획득, 방문 bonus, 방어 troop 배치 | `covered` | [uprising-systems.md](uprising-systems.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main pp. 9-10]` | controller bonus와 방문 플레이어의 orderable Agent-turn 효과 사이 처리 순서 | `open question` | [OQ-008](open-questions.md#oq-008--control-bonus와-방문자-효과의-상대-순서) |
@@ -85,7 +85,7 @@
 | `[Main pp. 12, 17]` | Clean Up의 discard-pile 이동이 일반적인 `discard` 반응을 발동하는지(deck discard는 2026-10-04 프로젝트 판정) | `covered` | [player-turns.md](player-turns.md), [OQ-013](open-questions.md#oq-013--clean-up-이동과-일반적인-discard-반응) |
 | `[Main p. 13]` | Persuasion 합산·분할, Row/Reserve acquire, 미사용 Persuasion 소멸 | `covered` | [player-turns.md](player-turns.md) |
 | `[Main p. 13]` | acquire한 카드의 discard 이동과 Imperium Row 즉시 5장 보충 | `covered` | [player-turns.md](player-turns.md) |
-| `[Main p. 13]` | Imperium deck 고갈로 Row를 5장 보충할 수 없는 경우 | `open question` | [OQ-004](open-questions.md#oq-004--imperium-deck-완전-고갈); [setup-and-game-flow.md](setup-and-game-flow.md)에도 미확정으로 표시 |
+| `[Main p. 13]` | Imperium deck 고갈로 Row를 5장 보충할 수 없는 경우 | `open question` | [OQ-004](open-questions.md#oq-004--imperium-deck-완전-고갈); `DECIDED` |
 | `[Main p. 13]` | Reveal 효과 도중 원하는 시점에 strength 설정·갱신 | `covered` | [player-turns.md](player-turns.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 13]` | Reveal turn 진행 예시 | `out of scope` | 설명 예시이며 별도 규칙이 아님 |
 
@@ -98,7 +98,7 @@
 | `[Main p. 14]` | 4인 1·2·3위 보상, 0 strength 무보상, 승자의 Conflict card 획득 | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 14]` | 1·2·3위 동률별 보상과 승자 부재 | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 14]` | 3인 이하와 6인의 보상·동률 분기 | `out of scope` | 현재 4인 규칙셋에서 제외 |
-| `[Main p. 14]` | 같은 순위 여러 플레이어의 보상 처리 순서 | `open question` | [OQ-002](open-questions.md#oq-002--동률-combat-reward-해결-순서); [combat-and-round-end.md](combat-and-round-end.md)에도 미확정으로 표시 |
+| `[Main p. 14]` | 같은 순위 여러 플레이어의 보상 처리 순서 | `open question` | [OQ-002](open-questions.md#oq-002--동률-combat-reward-해결-순서) `DECIDED`; 판정 요약은 [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 14]` | Combat 중 unit 증감에 따른 priority 참가자 변화 시점 | `open question` | [OQ-003](open-questions.md#oq-003--combat-intrigue-도중-참가-자격-변화) |
 | `[Main p. 14]` | battle icon 일치 pair를 뒤집고 VP 획득 | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 14]` | sandworm 보상 2배, control·battle icon 제외, 선택 비용의 두 번째 지불 | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
@@ -108,7 +108,7 @@
 | `[Main p. 15]` | 6인 Maker space Habbanya Erg | `out of scope` | 현재 4인 규칙셋에서 제외 |
 | `[Main p. 15]` | Recall에서 Endgame 조건 확인, 계속하면 Agent 회수와 First Player 교대 | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 15]` | Endgame Intrigue 뒤 VP 비교와 spice·Solari·water·garrison troop tiebreaker | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md), [combat-and-round-end.md](combat-and-round-end.md) |
-| `[Main p. 15]` | Endgame Intrigue의 플레이 순환·재기회와 wild battle icon의 상대적 처리 순서 | `open question` | [OQ-001](open-questions.md#oq-001--endgame-처리-순서와-priority); [combat-and-round-end.md](combat-and-round-end.md)에도 미확정으로 표시 |
+| `[Main p. 15]` | Endgame Intrigue의 플레이 순환·재기회와 wild battle icon의 상대적 처리 순서 | `open question` | [OQ-001](open-questions.md#oq-001--endgame-처리-순서와-priority) (`DECIDED`); 판정 요약은 [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 16]` | CHOAM Module의 선택 적용과 module-off 규칙 | `covered` | [choam-module.md](choam-module.md) |
 | `[Main p. 16]` | standard contract 20개, 추가 Imperium·Intrigue 카드, Shaddam setup | `covered` | [choam-module.md](choam-module.md) |
 | `[Main p. 16]` | contract icon으로 face-up contract 획득·보충, 소진 시 2 Solari | `covered` | [choam-module.md](choam-module.md) |
@@ -155,7 +155,7 @@
 | `[Main p. 20]` | troop recruit | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | `[Main p. 20]` | Uprising set 식별 icon | `covered` | effect 없음은 [uprising-systems.md](uprising-systems.md); content filtering에 사용 |
 | `[Main p. 20]` | Victory Point 증감 | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md) |
-| `[Main p. 20]` | battle icon 후보가 여러 장일 때 pair 선택 | `open question` | [OQ-005](open-questions.md#oq-005--여러-matching-battle-icon-중-pair-선택); [combat-and-round-end.md](combat-and-round-end.md)에도 미확정으로 표시 |
+| `[Main p. 20]` | battle icon 후보가 여러 장일 때 pair 선택 | `open question` | [OQ-005](open-questions.md#oq-005--여러-matching-battle-icon-중-pair-선택) `RESOLVED`; 판정 요약은 [combat-and-round-end.md](combat-and-round-end.md) |
 
 ### Cross-page information visibility
 

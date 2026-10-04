@@ -18,6 +18,7 @@ from dune_imperium.content.uprising.personal_cards import (
 )
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardIconCondition
 from dune_imperium.core.player import PlayerState
+from dune_imperium.rules.card_bonds import counted_in_play
 
 
 def is_ghola(card_instance_id: str) -> bool:
@@ -72,11 +73,12 @@ def effective_agent_icons(
         # is played (Long Reach, Show of Strength) [card faces].
         icon_condition = card.icon_condition
         if icon_condition is PersonalCardIconCondition.BENE_GESSERIT_BOND:
-            # "If you have another Bene Gesserit card in play" [Long Reach card].
+            # "If you have another Bene Gesserit card in play" [Long Reach card];
+            # a Row card borrowed with Usurp is not in play (OQ-054).
             met = bond_partner or any(
                 other != card_instance_id
                 and Faction.BENE_GESSERIT in personal_card_for_instance(other).factions
-                for other in owner.in_play
+                for other in counted_in_play(owner)
             )
         else:
             met = all(

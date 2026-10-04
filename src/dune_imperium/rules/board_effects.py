@@ -23,6 +23,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -1023,7 +1024,9 @@ def legal_desert_tactics_actions(
                 actor=player,
                 arguments=(("card_id", card_id),),
             )
-            for card_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
+            # A Row card borrowed with Usurp is not "in play" (OQ-054,
+            # ``counted_in_play``), so it is no trash target.
+            for card_id in (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
         ),
     )
 

@@ -148,7 +148,10 @@
   Conflict에 넣은 troop은 turn이 끝나기 전까지 원하는 수만큼 garrison으로
   되돌릴 수 있고(`withdraw_troops`), 기본 배치는 여러 번 나눠 하거나 뒤의
   recruit로 늘어난 한도만큼 추가할 수 있다(`deploy_troops`는 추가 배치).
-  한도는 순배치 기준으로 위의 "recruit한 troop 전부 + garrison 2개"다. 이번
+  한도는 순배치 기준으로 위의 "recruit한 troop 전부 + garrison 2개"다. 카드·Leader
+  효과의 retreat나 Conflict에서의 손실은 이 한도를 돌려주지 않는다 — 한도를
+  돌려주는 것은 위의 회수뿐이다(OQ-029 재판정 2026-10-04, `[Main p. 10]`
+  `[FAQ p. 4]`). 이번
   turn의 배치 수를 조건으로 이미 낸 카드(Distraction, Coercive Negotiation)가
   있으면 그 조건 아래로 내리는 회수는 막히며, 로컬 UI의 되돌리기로 그 카드부터
   물려야 한다(Coercive Negotiation은 contract를 공개하므로 되돌릴 수 없다). 기본 배치가 가능한 Agent turn은 다른 보류 효과가 끝난 뒤
@@ -287,9 +290,15 @@
 - Intrigue 카드는 자신의 덱과 분리해 뒷면으로 보관한다. 소유자는 언제든 확인할 수 있지만 플레이할 때만 상대에게 공개하며, 해결한 카드는 Intrigue Deck 옆의 앞면 버림 더미에 놓는다. [Main p. 7]
 - Plot Intrigue 카드는 자신의 Agent 턴 또는 공개 턴 중 어느 때든 플레이할 수 있다. Combat Intrigue 카드는 전투 단계에만, Endgame Intrigue 카드는 게임 종료 때만 플레이할 수 있다. [Main p. 7] [Main p. 8]
 - Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]
-- 구현 convention: 자신의 turn 선택이 제시된 시점부터 Plot을 낼 수 있고, 조건이
-  성립한 모든 비용 줄은 의무다. 공식 문서가 두 점을 명시하지 않으므로 OQ-015로
-  관리한다.
+- 구현 convention: 자신의 turn 선택이 제시된 시점부터 "턴 종료"를 누르기 전까지
+  Plot을 낼 수 있다(OQ-015 (a), OQ-095). "—OR—" 없이 줄이 따로 인쇄된 Intrigue
+  (Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness,
+  Questionable Methods)는 줄마다 별개 행동이고, 각 줄의 비용은 그 줄을 쓸 때 낸다.
+  지금 쓸 수 있는 줄이 하나라도 있으면 낼 수 있고, 2026-10-04부터는 적어도 한 줄을
+  써야 카드를 끝낼 수 있다(낼 때 지불 없이 바로 해결되는 줄은 쓴 것으로 센다). 한
+  줄을 쓴 뒤 나머지 줄은 선택이다. 공식 문서가 이 점들을 명시하지 않으므로 Plot
+  시점은 OQ-015 (a)·OQ-095, 줄 처리는 사용자 판정 OQ-058로 관리한다(이전 OQ-015 (b)의
+  "조건이 성립한 모든 비용 줄은 의무"는 2026-09-09에 폐기).
 - 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]
 - "When you deploy three or more units to the Conflict in a single turn:"(Distraction, Coercive Negotiation)은 앞면 대기가 아니라 플레이 조건이다: 그 turn에 배치한 뒤에 낸다 — "Gurney decides to commit these troops plus two more from his garrison to the Conflict. Muad'Dib may play Distraction because he shared in the deployment of these units." [Board Guide p. 10] [FAQ p. 2]. 조건은 그 turn에 배치한 unit 3개가 동시에 Conflict에 있던 순간이 있으면 성립한다(디자이너 판정, OQ-016 재판정 2026-10-03).
 - Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다. [FAQ p. 2]

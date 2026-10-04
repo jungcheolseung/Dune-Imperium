@@ -71,6 +71,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import acquire_reserve_for_intrigue
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effect_interpreter import apply_rewards
@@ -185,7 +186,7 @@ def option_is_affordable(state: GameState, player: int, option: ScoutsOption) ->
                 zones = (
                     owner.hand
                     if hand_only
-                    else (*owner.hand, *owner.discard_pile, *owner.in_play)
+                    else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
                 )
                 if not zones:
                     return False
@@ -402,7 +403,7 @@ def _is_choice(
             return bool(
                 owner.hand
                 if hand_only
-                else (*owner.hand, *owner.discard_pile, *owner.in_play)
+                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
             )
         case GainInfluence() if step.requires_choice:
             return len(_gainable_factions(owner, step)) > 1
@@ -801,10 +802,12 @@ def legal_scouts_effect_actions(
         case DiscardFromHand():
             return offer("scouts_discard", "card_id", owner.hand)
         case TrashPersonalCard(hand_only=hand_only):
+            # A Row card borrowed with Usurp is not "in play" (OQ-054,
+            # ``counted_in_play``), so it is no trash target.
             zones = (
                 owner.hand
                 if hand_only
-                else (*owner.hand, *owner.discard_pile, *owner.in_play)
+                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
             )
             return offer("scouts_trash_card", "card_id", zones)
         case TrashIntrigueCard():

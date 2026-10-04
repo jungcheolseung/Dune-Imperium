@@ -466,9 +466,16 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # vectors) because an owed track Spy now waits in its owner's turn: with
 # that wait patched off in a scratch run its cut vectors reproduce the v29
 # digest and count exactly.
+# Re-pinned 2026-10-04 (fourth batch, codec v133): base, choam and draft
+# moved (2,780 -> 3,144, 2,836 -> 2,856 and 2,392 -> 2,416 vectors) because a
+# separate-line Intrigue (Depart for Arrakis and the like) can no longer be
+# finished before one of its lines is used (OQ-058, user ruling 2026-10-04):
+# with that gate patched open in a scratch run all six games reproduce the
+# pins above exactly. The OQ-029 deployment allowance, the Usurp in-play
+# change and the OQ-026 prune move none of the six.
 _GOLDEN_DIGESTS = {
-    "base": ("992d1cc63a5a543c94d08a47aaf2316f9140bb9468107c60bf18f059d7cd1a91", 2780),
-    "choam": ("3be608c2b1fb1948f8c05847e9356e6e6ddec2b03833e06890ab4b0fdbd7b813", 2836),
+    "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
+    "choam": ("bbd5f9f833b088970292152899279058ef6f6522fa181e93a926bc8b112c39d6", 2856),
     "promo_bloodlines_tech": (
         "d7342d0a6e281f9b68b048bad075ab699974fd250d17b22e8ef9ce80b99575b5",
         3028,
@@ -477,7 +484,7 @@ _GOLDEN_DIGESTS = {
         "dc22b967bbd17e4d3c43bc23a0c7505def8d76da249f77cc00b31059ec38a269",
         3208,
     ),
-    "draft": ("f8a5e7f51dcf216e9022bfc0fe64a0ba3e0265a7e1d3673b070012f6dd8bf73e", 2392),
+    "draft": ("77f0cb01821137b7d008ec14d4ae1274a962043af16ad081dda388f11a789563", 2416),
     "scouts": (
         "3626ddc81a3ab4b957faa18ecfae231f659a02fceeec68b0adec5a51e517f4de",
         3424,

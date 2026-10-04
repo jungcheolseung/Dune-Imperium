@@ -407,17 +407,17 @@ def test_navigation_gain_is_bucketed_leader_in_a_real_game(
     # listing every Influence gain with a "navigation" token gives seed 27
     # seat 0 first again (round 6, an Emperor visit; the Navigation card's
     # slot 1 gains a Fremen); that game diverges only in round 7. Its other
-    # gains are 9 bare visits (4 on starter cards, 5 on bought ones) and 10
-    # from Reveal gains, Intrigue cards, an acquisition's Contract, an Agent
-    # box and Conflict rewards, 20 in all, recounted from the game's own
-    # events by a scratch replay that does not import the collector.
+    # gains were 9 bare visits and 20 in all; since the 2026-10-04
+    # deployment-allowance ruling (OQ-029) seat 2's Leader retreat no longer
+    # lets it deploy two more troops in round 7, and the game now ends with
+    # 10 bare visits and 18 gains (the round-6 Navigation gain is unchanged).
     game = tip_census.play(_spec(True, 27), ("influence",))
     seat0 = game["seats"][0]
     assert seat0["leader"] == "steersman_y_rkoon"
     sources = seat0["infl.sources"]
     assert sources.get("leader") == 1
-    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 9
-    assert seat0["infl.gained"] == 20
+    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 10
+    assert seat0["infl.gained"] == 18
 
 
 def test_fremen2_round_uses_the_decision_round_not_a_folded_next_round(

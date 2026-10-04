@@ -36,7 +36,7 @@
 | Strategic Stockpiling: 조건이 성립한 section만 발동 | `tests/unit/rules/test_intrigue.py` |
 | Sietch Ritual: Reveal 중에는 hand가 비어 play 불가 | `rules/reveal_turn.py`(`hand=()`) |
 | Coercive Negotiation·Distraction: 한 turn 배치 3+는 순배치 기준 — "You need to have a moment in time when there are 3 units in the conflict that were deployed to the conflict this turn, then that requirement becomes true." (Message from designer; 같은 큐브를 retreat 후 다시 배치해도 두 번 세지 않는다). 2026-10-03부터 이 조건은 카드를 내는 조건이고 turn의 최고치로 판정한다(OQ-016 재판정) | OQ-029, OQ-016, `units_deployed_turn`·`units_deployed_peak`, `UnitsDeployedThisTurnAtLeast` |
-| Urgent Shigawire의 boost는 배치 시 소비되며 Litany의 turn 시작 pass는 소비하지 않음; Weirding Woman이 hand로 돌아오면 boost 흔적 없음 | `rules/agent_turn.py:324`, `rules/agent_effects.py:3231` |
+| Urgent Shigawire의 boost는 배치 시 소비되며 Litany의 turn 시작 pass는 소비하지 않음; Weirding Woman이 hand로 돌아오면 boost 흔적 없음 | `rules/agent_turn.py`(`bene_gesserit_boost_pending` 소비), `rules/agent_effects.py`(`RETURN_SELF_IF_BENE_GESSERIT_BOND`) |
 | Long Live the Fighters·Imperium Ceremony는 하나의 원자 효과 | `rules/agent_effect_frame.py`, `rules/intrigue_peek.py`, OQ-052 |
 | CHOAM Demands: 이번 turn에 받은 contract도 Agent box로 완료 가능 | `rules/agent_effects.py`(`active_contract_ids` 전부 제시) |
 | CHOAM Transports: 완료 즉시 draw(미룰 수 없음) | `rules/contract_tiles.py` `owe_contract_completion_draw` |
@@ -47,9 +47,9 @@
 | Forbidden Weapons: Influence가 있으면 반드시 잃음 | `rules/tech.py` `legal_tech_reveal_actions` |
 | Ornithopter Fleet: Crysknife·Desert Mouse VP 불가, 획득 즉시 매칭 | `rules/effect_interpreter.py:149`, `rules/ornithopter.py` |
 | wild 두 개끼리 Endgame 매칭 | `rules/endgame.py` `_endgame_wild_matches` |
-| Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도 되돌림 | `rules/agent_effects.py:3389`, `rules/reveal_turn.py` `_return_chairdog_cards` |
+| Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도 되돌림 | `rules/agent_effects.py`(Chairdog graft 기록), `rules/reveal_turn.py` `_return_chairdog_cards` |
 | Usurp: hand 카드와도 graft 가능, Row 카드는 turn 종료 시 trash(트리거 발동) | `rules/graft.py`, OQ-054 |
-| Count Hasimir Fenring: Intrigue trash에는 Solari 없음 | `rules/card_trash.py:85` |
+| Count Hasimir Fenring: Intrigue trash에는 Solari 없음 | `rules/card_trash.py` `trash_personal_card`(Assassin 분기; Intrigue trash는 `intrigue_deck.with_trashed_intrigue`로 가고 이 함수를 거치지 않는다) |
 | Feyd(track 끝), Lady Jessica(Spice Agony 1 spice에 둘 다, Reverend Mother 비용 1회·Combat 아이콘 중복 없음), Chani, Esmar Tuek, Y'rkoon(Navigation 자동 trigger), Shaddam(Signet play 시점부터 제한), Kota | `rules/leader_abilities.py`, `rules/navigation.py`, `rules/tactics.py`; `tests/unit/rules/test_leader_abilities.py`, `test_bloodlines_leaders.py`, `test_navigation.py` |
 
 ## 불일치 항목 (영향 큰 순, 13건 전부 반영 완료)
@@ -65,7 +65,7 @@
 | 5 | (2026-09-09 반영: OQ-002 재판정, `rank_combat(first_player=)`) Combat 보상 순서가 결과에 영향을 주면 First Player부터 턴 순서(Message from designer); Harvest Cells 두 명은 턴 순서 | OQ-002: 좌석 번호순 convention(당시 "순서가 관측 불가" 전제) | `rules/combat.py` `rank_combat`/`_rewards` | Immortality의 Imperium Ceremony(Intrigue 덱 상단 열람)와 Harvest Cells로 전제가 깨짐. OQ-002 재개 조건 충족 |
 | 6 | (2026-09-09 반영: OQ-057, `skip_intrigue_acquisition`) Impress는 3 이하 카드가 없어도 play 가능, 획득 부분만 불발(Message from designer) | 획득 대상이 없으면 play 자체 불가(검 2도 못 받음) | `rules/effect_interpreter.py:522` `AcquireCardUpTo` 가드 | Inspire Awe 등 같은 가드를 쓰는 카드도 재검토 |
 | 7 | (2026-09-09 반영: OQ-058 — 줄마다 따로 쓰고 쓸 때 지불; Loyalty 자원으로 두 번째 비용 지불 가능) Change Allegiances는 한 효과만 또는 둘 다 사용 가능; 첫 효과로 얻은 자원(Margot Loyalty spice, Y'rkoon Navigation)으로 두 번째 비용 지불 가능(Message from designer) | 두 효과가 배타 `_plot` 옵션 | `content/uprising/intrigue.py:292` | Strategic Stockpiling처럼 한 옵션 안의 두 section으로 바꾸면 됨 |
-| 8 | (2026-09-09 반영: OQ-054 보강) Usurp로 빌린 Stillsuit Manufacturer는 "in play"가 아니므로 hand로 돌아올 수 없다(BGG) | 빌린 Row 카드가 `in_play`에 들어가 Fremen Alliance면 hand로 이동 | `rules/graft.py:135`, `rules/agent_effects.py:3606` | OQ-054 보강 |
+| 8 | (2026-09-09 반영: OQ-054 보강; **2026-10-04 OQ-054 재판정으로 일반화** — 빌린 카드는 Stillsuit만이 아니라 어떤 in-play 판정에도 세지 않는다: Bond, in play 카드 수, in play trash 후보, hand로 돌아오는 효과(Weirding Woman 포함)) Usurp로 빌린 Stillsuit Manufacturer는 "in play"가 아니므로 hand로 돌아올 수 없다(BGG) | 빌린 Row 카드가 `in_play`에 들어가 Fremen Alliance면 hand로 이동 | 접합: `rules/graft.py` `apply_graft_partner`(`usurped_row_card_id`); 판정: `rules/card_bonds.py` `counted_in_play`, Stillsuit 분기는 `rules/agent_effects.py`의 `GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE`; 테스트 `tests/unit/rules/test_usurp_not_in_play.py` | OQ-054 보강, 2026-10-04 재검토("원래 구현 유지": 빌린 카드는 play 영역, Row는 즉시 채움)와 재판정("세지 않음") |
 | 9 | (2026-09-09 반영: OQ-057) Battlefield Research·Rapid Engineering(·Machine Culture)은 play했으면 반드시 Tech 획득(Message from designer) | Tech 획득 frame에 항상 `decline_tech` | `rules/tech.py:237` | Intrigue 출처 frame에서만 decline 제거 |
 | 10 | (2026-09-09 반영: OQ-057) Imperium Ceremony의 "keep one"은 draw 1 → Suspensor Suits troop 1(Message from designer) | peek keep 경로는 `suspensor_owed`를 올리지 않음 | `rules/intrigue_peek.py:114` | Tech+Immortality 조합 |
 | 11 | (2026-09-09 반영: OQ-057, `conflict_end_trigger` 창) Combat 보상으로 받은 Harvest Cells는 즉시 play 가능(BGG) | trigger는 face-up 카드만 보고, Combat Intrigue 창은 보상 지급보다 앞이라 그 Combat에서는 불가 | `rules/combat.py:1461` `_fire_troop_loss_triggers` | 보상 지급 뒤 troop 손실 전 hand의 Harvest Cells를 play할 창이 필요. 2026-09-26: 창에서 play한 카드는 face-up으로 대기해 정리의 troop 반환 뒤 발동(`[FAQ p. 1]` "lost"는 supply 반환) |

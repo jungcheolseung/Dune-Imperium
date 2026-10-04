@@ -39,7 +39,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     deployment_rooms,
@@ -753,7 +753,11 @@ def legal_reveal_card_trash_actions(
     if effect_value == PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD.value:
         # Shrouded Counsel's "Command: trash a card": the black trash icon
         # targets hand, discard pile or in play and is optional [Main p. 20].
-        candidates: tuple[str, ...] = (*owner.hand, *owner.discard_pile, *owner.in_play)
+        candidates: tuple[str, ...] = (
+            *owner.hand,
+            *owner.discard_pile,
+            *counted_in_play(owner),
+        )
     elif effect_value in (
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS.value,
@@ -765,7 +769,7 @@ def legal_reveal_card_trash_actions(
     else:
         candidates = tuple(
             card_id
-            for card_id in owner.in_play
+            for card_id in counted_in_play(owner)
             if card_id != source_card_id
             and Faction.EMPEROR in personal_card_for_instance(card_id).factions
         )
@@ -3112,7 +3116,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     continue
                 if not _reveal_effect_is_eligible(
                     next_owner,
-                    next_owner.in_play,
+                    counted_in_play(next_owner),
                     card_id,
                     card,
                     effect,
@@ -3298,7 +3302,10 @@ def _reveal_effect_persuasion(
 
 
 def _in_play_cards(owner: PlayerState) -> tuple[PersonalCardDefinition, ...]:
-    return tuple(personal_card_for_instance(card_id) for card_id in owner.in_play)
+    # Only the cards that count as in play (OQ-054, ``counted_in_play``).
+    return tuple(
+        personal_card_for_instance(card_id) for card_id in counted_in_play(owner)
+    )
 
 
 def _reveal_effect_strength(
@@ -3454,7 +3461,7 @@ def _reveal_choice_effect_is_available(
         or (
             effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD
             and command_open
-            and bool((*owner.hand, *owner.discard_pile, *owner.in_play))
+            and bool((*owner.hand, *owner.discard_pile, *counted_in_play(owner)))
         )
         or (
             effect
@@ -3653,7 +3660,7 @@ def _available_deferred_choices(
             state,
             player,
             owner,
-            owner.in_play,
+            counted_in_play(owner),
             card_id,
             PersonalCardRevealChoiceEffect(effect_value),
             persuasion=persuasion,
@@ -3910,7 +3917,7 @@ def _late_reveal_one_card(
         hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
         in_play=(*owner.in_play, card_id),
     )
-    cards_in_play = next_owner.in_play
+    cards_in_play = counted_in_play(next_owner)
     completed_contracts = len(next_owner.completed_contract_ids)
     revealed_cards = tuple(
         personal_card_for_instance(instance_id)
@@ -4194,7 +4201,10 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     owner = state.players[action.actor]
     revealed = owner.hand
     cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
-    cards_in_play = (*owner.in_play, *revealed)
+    # The cards that count as in play: the Row card a Usurp turn borrowed
+    # is trashed when that Agent turn ends, so it never reaches a Reveal,
+    # and it would not count if it did (OQ-054, ``counted_in_play``).
+    cards_in_play = (*counted_in_play(owner), *revealed)
     in_play_cards = (*_in_play_cards(owner), *cards)
 
     def eligible_effects(
