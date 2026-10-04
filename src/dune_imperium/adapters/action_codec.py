@@ -251,7 +251,14 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # action -- the owner's turn frame records that its start is over (OQ-095
 # (6)); Twisted Intrigue cards stay in the Intrigue discard when it is
 # reshuffled (OQ-097). No template change; replays and hashes change.
-ACTION_CODEC_VERSION = 132
+# v133 (user rulings 2026-10-04, fourth batch): a card or Leader retreat or
+# loss no longer gives the basic deployment allowance back (OQ-029; only a
+# voluntary withdrawal does); the Usurp-borrowed Row card is not counted as
+# in play anywhere (OQ-054, [Immortality p. 14]); a separate-line Intrigue
+# must use at least one line before it can be finished (OQ-058); Arrakis
+# Revolt's no-effect keep-wall line is withheld under a deployment block
+# (OQ-026). No template change; replays and hashes change.
+ACTION_CODEC_VERSION = 133
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

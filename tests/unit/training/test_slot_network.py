@@ -308,10 +308,12 @@ def test_slot_keys_are_pinned_by_a_golden_digest() -> None:
 # -- T2: semantics on real views ---------------------------------------------------
 def test_slot_rows_name_what_the_view_shows() -> None:
     network = MlpSlotsNetwork(8, hidden=(16,))
-    # The heuristic game (seed 43) grants Agent icons and sets Imperium cards
-    # aside; the random one covers the tracks (both measured 2026-09-27).
+    # The heuristic game (seed 51) grants Agent icons and sets Imperium cards
+    # aside; the random one covers the tracks (both measured 2026-09-27; the
+    # heuristic seed was 43 until the 2026-10-04 deployment-allowance ruling,
+    # OQ-029, moved that game in round 1).
     views = _game_views(21, _FORCED_LEADERS) + _game_views(
-        43, _FORCED_LEADERS, heuristic=True
+        51, _FORCED_LEADERS, heuristic=True
     )
     observations = np.stack(
         [np.asarray(encode_player_view(view), dtype=np.int32) for view in views]
@@ -365,15 +367,16 @@ def test_slot_rows_name_what_the_view_shows() -> None:
 # -- T3: nothing real hides behind the pad or the clamp -----------------------------
 def test_every_non_pad_value_of_real_games_has_a_row() -> None:
     # Random play covers the tracks; only the heuristic plays the Intrigue
-    # cards that grant Agent icons (seed 46 does, measured 2026-10-02; it was
+    # cards that grant Agent icons (seed 47 does, measured 2026-10-04; it was
     # seed 39 until the Desert Power choice window, option (B), moved the
     # heuristic's RNG path, then seed 43 until the recall confirms of
-    # Imperial Privilege and the Contract reward moved it again). Re-check
+    # Imperial Privilege and the Contract reward moved it again, then 46
+    # until the 2026-10-04 deployment-allowance ruling, OQ-029). Re-check
     # the seed when the heuristic's path moves.
     observations = np.concatenate(
         [
             _selfplay_observations((31, 32, 33, 34)),
-            _selfplay_observations((46,), heuristic=True),
+            _selfplay_observations((47,), heuristic=True),
         ]
     )
     network = MlpSlotsNetwork(8, hidden=(16,))

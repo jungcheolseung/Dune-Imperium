@@ -30,6 +30,10 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.acquisition import (
+    apply_imperium_acquisition,
+    legal_imperium_acquisitions,
+)
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
@@ -553,6 +557,43 @@ def test_family_atomics_redeals_the_row_once_per_game() -> None:
     assert result.state.imperium_deck == state.imperium_deck[5:]
     assert result.state.players[0].family_atomics is False
     assert legal_family_atomics_actions(result.state, 0) == ()
+
+
+def test_family_atomics_on_a_short_deck_deals_what_is_left_for_good() -> None:
+    # "remove all cards from the Imperium Row, then deal a new Imperium Row"
+    # [Immortality p. 12]. OQ-051 (project convention 2026-09-08): the
+    # removed cards leave the game, and "deck이 5장 미만이면 남은 만큼만 새
+    # Row를 만든다" (OQ-004's exhausted deck: nothing reshuffles back).
+    full = _at(RESEARCH_START_ID)
+    state = replace(full, imperium_deck=full.imperium_deck[:3])
+    old_row = state.imperium_row
+
+    used = apply_family_atomics(state, legal_family_atomics_actions(state, 0)[0])
+
+    assert used.state.imperium_row == state.imperium_deck
+    assert used.state.imperium_deck == ()
+    assert used.state.imperium_removed == old_row
+
+    # A later acquisition from the Row finds the deck empty: the Row shrinks
+    # instead of the removed cards coming back.
+    revealed = begin_reveal_turn(
+        used.state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    while gains := legal_reveal_gain_actions(revealed, 0):
+        revealed = apply_reveal_gain(revealed, gains[0]).state
+    acquire = next(
+        action
+        for action in legal_imperium_acquisitions(revealed, 0)
+        if dict(action.arguments)["instance_id"] in revealed.imperium_row
+    )
+    taken = str(dict(acquire.arguments)["instance_id"])
+    acquired = apply_imperium_acquisition(revealed, acquire).state
+    assert acquired.imperium_row == tuple(
+        card for card in used.state.imperium_row if card != taken
+    )
+    assert acquired.imperium_deck == ()
+    assert acquired.imperium_removed == old_row
+    assert not set(old_row) & {*acquired.imperium_row, *acquired.imperium_deck}
 
 
 # --- integration -------------------------------------------------------------

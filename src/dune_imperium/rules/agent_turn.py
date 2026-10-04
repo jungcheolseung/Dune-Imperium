@@ -38,7 +38,7 @@ from dune_imperium.rules.agent_icons import (
     is_bond_partner,
 )
 from dune_imperium.rules.board_effects import board_icons_for
-from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
@@ -866,14 +866,24 @@ def agent_effect_is_available(
         PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
     ):
         return space.maker
+    if (
+        effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND
+        and card_instance_id == owner.usurped_row_card_id
+    ):
+        # Weirding Woman borrowed with Usurp is not "in play" [Immortality p.
+        # 14] (OQ-054, user ruling 2026-10-04), so "Return this card to your
+        # hand" can never happen: the box is not left waiting for it.
+        return False
     if effect in (
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
     ):
+        # A Row card borrowed with Usurp is not "in play" (OQ-054,
+        # ``counted_in_play``), so it never provides another card's Bond.
         return has_faction_bond(
-            (*owner.in_play, card_instance_id),
+            (*counted_in_play(owner), card_instance_id),
             card_instance_id,
             Faction.BENE_GESSERIT,
         )

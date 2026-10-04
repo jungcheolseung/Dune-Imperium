@@ -14,7 +14,8 @@ unit the seat does not have, a Skill the seat already holds, a Navigation
 card's option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
 seat has no Intrigue card to trash for, Litany Against Fear once the seat
-already acted in its turn).
+already acted in its turn, a separate-lines Intrigue card's finish before
+one of its lines is used).
 
 Display only, under four rules:
 
@@ -31,7 +32,8 @@ Display only, under four rules:
   ``research_bonus_block``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
-  ``contract_take_block``, ``turn_start_is_open``), so the two cannot drift.
+  ``contract_take_block``, ``turn_start_is_open``,
+  ``intrigue_effects_finish_is_open``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
   (``shadow_action``). The one dry run is the provider's own:
   ``agent_box_is_waiting`` asks ``agent_card_effect_is_unavailable``, which
@@ -158,6 +160,7 @@ from dune_imperium.rules.immortality import (
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.intrigue import (
     IntriguePlayBlock,
+    intrigue_effects_finish_is_open,
     intrigue_play_block,
     intrigue_window,
 )
@@ -266,6 +269,11 @@ _NO_LINE: Final[Reason] = (
     "None of its lines can be used now",
     "지금 쓸 수 있는 줄이 없음",
     "no_line",
+)
+_LINE_FIRST: Final[Reason] = (
+    "Use at least one of its lines first",
+    "먼저 줄을 하나 이상 써야 함",
+    "line_first",
 )
 _NO_MAKER_HOOKS: Final[Reason] = (
     "No Maker Hooks",
@@ -1191,6 +1199,25 @@ def _navigation(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+def _intrigue_effects(state: GameState, seat: int, found: _Found) -> None:
+    """Finishing a separate-lines Intrigue card before any line is used.
+
+    At least one line must be used (OQ-058, user ruling 2026-10-04): the
+    provider offers ``finish_intrigue_effects`` exactly when
+    ``intrigue_effects_finish_is_open``, so until a line is used the
+    finish shows greyed out beside the lines the seat can use.
+    """
+
+    if intrigue_effects_finish_is_open(state, seat):
+        return
+    found.row(
+        "choice",
+        "finish_intrigue_effects",
+        DomainAction(action_id="finish_intrigue_effects", actor=seat),
+        _LINE_FIRST,
+    )
+
+
 def _tech(state: GameState, seat: int, found: _Found) -> None:
     """A card's Acquire Tech with no tile left to take (Battlefield
     Research, Rapid Engineering).
@@ -1415,6 +1442,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.OPPONENT_UNIT_LOSS: (_unit_loss,),
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),
+    FrameKind.INTRIGUE_EFFECTS: (_intrigue_effects,),
     FrameKind.TECH_ACQUISITION: (_tech,),
     FrameKind.TURN: (_turn_start_card, _intrigue),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),

@@ -418,6 +418,49 @@ def test_an_intrigue_row_becomes_a_play_as_soon_as_the_seat_can_pay() -> None:
     assert unavailable_choices(rich, 0, ENGINE.legal_actions(rich, 0)) is None
 
 
+def test_finishing_a_lines_card_is_greyed_until_one_line_is_used() -> None:
+    """At least one of a separate-lines card's lines must be used (OQ-058,
+    user ruling 2026-10-04): until then the finish shows greyed out beside
+    the lines, and it lights up as soon as one is used."""
+
+    card = "intrigue:strategic_stockpiling:0"
+    state = _intrigue_state(
+        "strategic_stockpiling",
+        influence=Influence(fremen=3),
+        resources=Resources(spice=5, water=3),
+    )
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", card), ("option", 0)),
+    )
+    opened = ENGINE.apply(state, play).state
+    assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_EFFECTS
+    assert _legal(opened, "finish_intrigue_effects") == []
+    found = _found(opened)
+    assert found["frame"] == FrameKind.INTRIGUE_EFFECTS
+    (row,) = found["rows"]
+    assert row["key"] == "choice:finish_intrigue_effects"
+    assert row["surface"] == "choice"
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "Use at least one of its lines first",
+        "먼저 줄을 하나 이상 써야 함",
+        "line_first",
+    )
+    assert row["action"]["action_id"] == "finish_intrigue_effects"
+    assert row["action"]["arguments"] == {}
+
+    used = ENGINE.apply(
+        opened,
+        DomainAction(
+            action_id="use_intrigue_effect", actor=0, arguments=(("section", 0),)
+        ),
+    ).state
+    assert used.decision_stack[-1].kind == FrameKind.INTRIGUE_EFFECTS
+    assert _legal(used, "finish_intrigue_effects") == [{}]
+    assert unavailable_choices(used, 0, ENGINE.legal_actions(used, 0)) is None
+
+
 # --- Effects waiting on their condition ---
 
 

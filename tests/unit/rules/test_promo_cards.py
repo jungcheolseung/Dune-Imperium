@@ -300,6 +300,83 @@ def test_arrakis_revolt_may_keep_the_wall_or_decline() -> None:
     assert declined.events[0].kind == "agent_card_payment_declined"
 
 
+def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
+    """Place Arrakis Revolt after Servo-Receivers used Shaddam's Signet Ring.
+
+    Rapid Engineering (a Plot, "[discard] → [-1] [Tech]" [Rapid Engineering
+    card]) buys Servo-Receivers before the Agent is placed; its Signet Ring
+    icon uses Emperor of the Known Universe, whose "Units can't be deployed
+    to the Conflict this turn" [Shaddam Corrino IV card] covers the Agent
+    turn that follows (OQ-062 (b)).
+    """
+
+    rapid_engineering = "intrigue:rapid_engineering:0"
+    dagger = _starter("dagger")
+    revolt = _promo_instance("arrakis_revolt")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="shaddam_corrino_iv",
+        hand=(revolt, dagger),
+        maker_hooks=True,
+        intrigue_cards=(rapid_engineering,),
+        resources=Resources(solari=4, spice=6),
+    )
+    state = replace(
+        _turn_state(owner, **state_fields),
+        config=RulesetConfig(bloodlines=True, tech_module=True, promo_cards=True),
+        tech_stacks=(("servo_receivers",), (), ()),
+    )
+    engine = UprisingRulesEngine()
+    for action_id, arguments in (
+        ("play_intrigue", (("card_id", rapid_engineering),)),
+        ("choose_intrigue_discard", (("card_id", dagger),)),
+        ("acquire_tech", (("tech_id", "servo_receivers"),)),
+        ("gain_leader_signet_troop", ()),
+        ("agent_turn", (("card_id", revolt), ("space_id", "arrakeen"))),
+    ):
+        action = next(
+            action
+            for action in engine.legal_actions(state, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments)[key] == value for key, value in arguments)
+        )
+        state = engine.apply(state, action).state
+    assert _context(state)["units_deploy_blocked"] is True
+    return state
+
+
+def test_arrakis_revolt_keeps_no_wall_payment_under_the_emperor_ban() -> None:
+    # The summoned worm is withheld while Emperor of the Known Universe
+    # blocks deployment [Main p. 17], so paying 2 spice to keep the wall
+    # would buy nothing (OQ-026: "2 spice로 아무것도 얻지 못하는 선택은
+    # 규칙상 가능하더라도 행동 공간에서 뺀다"). Removing the wall still does
+    # something ("You may remove the Shield Wall" [Main p. 20]) and stays,
+    # like the Maker space withholding its summon under the same ban.
+    placed = _revolt_under_emperor_ban()
+    assert _payment_ids(placed) == [
+        "decline_agent_card_payment",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+    ]
+    removed = apply_agent_card_payment(
+        placed,
+        DomainAction(
+            action_id="pay_agent_card_spice_for_sandworm_and_shield_wall", actor=0
+        ),
+    )
+    assert removed.state.shield_wall_present is False
+    assert removed.state.players[0].sandworms_conflict == 0
+    assert [event.kind for event in removed.events] == [
+        "agent_card_payment_resolved",
+        "shield_wall_destroyed",
+        "sandworm_summon_unavailable",
+    ]
+
+    # Without the wall the payment could only summon, so only declining is
+    # left.
+    no_wall = _revolt_under_emperor_ban(shield_wall_present=False)
+    assert _payment_ids(no_wall) == ["decline_agent_card_payment"]
+
+
 def test_arrakis_revolt_acquisition_recruits_one_troop() -> None:
     cards = tuple(_starter("convincing_argument") for _ in range(1)) + (
         _starter("dune_the_desert_planet"),

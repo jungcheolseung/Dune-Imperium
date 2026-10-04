@@ -39,6 +39,12 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_effect,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import (
+    apply_combat_deployment,
+    grant_combat_icon,
+    legal_combat_deployments,
+    legal_troop_withdrawals,
+)
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -597,6 +603,71 @@ def test_piter_loses_a_troop_for_two_cards_and_research() -> None:
     assert len(owner.hand) == 2
     assert owner.research_space == "c1r3"
     assert "unit_lost" in {event.kind for event in result.events}
+
+
+def test_piters_troop_lost_from_the_conflict_does_not_reopen_the_deployment() -> None:
+    # Piter's own icons reach no Combat space; a Combat icon gained this turn
+    # opens the deployment window [Bloodlines p. 5]. Losing a deployed troop
+    # as the box's cost leaves the allowance used: "You may deploy any or all
+    # units recruited during your current turn ..., plus up to two more units
+    # from your garrison." [Main p. 10] (OQ-029, user ruling 2026-10-04).
+    piter = _tleilaxu("piter_genius_advisor")
+    state = _place(
+        _state(_owner((piter,), troops_garrison=5, troops_supply=7)),
+        piter,
+        "assembly_hall",
+    )
+    state = grant_combat_icon(state, 0)
+    deployed = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(deployed, 0) == ()
+
+    paid = apply_agent_card_payment(
+        deployed, _payment(deployed, "lose_agent_card_troop", zone="conflict")
+    ).state
+    owner = paid.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (3, 1)
+    assert paid.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    _, context = current_agent_effect_context(paid)
+    assert context["pending_agent_effect"] is False
+    # The allowance used stays at two; only the withdrawal window shrinks.
+    assert context["combat_troops_deployed"] == 2
+    assert context["combat_troops_withdrawable"] == 1
+    assert legal_combat_deployments(paid, 0) == ()
+    # The troop still in the Conflict may be withdrawn, which frees its room.
+    assert [
+        dict(action.arguments)["count"] for action in legal_troop_withdrawals(paid, 0)
+    ] == [1]
+
+
+def test_piters_garrison_troop_is_the_undeployable_one() -> None:
+    # Troops are indistinguishable, so a garrison troop lost this turn counts
+    # as Harkonnen Advisor's undeployable one and the deployable count
+    # returns to normal (OQ-038 (b), user ruling). The box's frame used to
+    # be written back over the loss, so the count stayed reduced.
+    piter = _tleilaxu("piter_genius_advisor")
+    state = _place(
+        _state(_owner((piter,), troops_garrison=3, troops_supply=9)),
+        piter,
+        "assembly_hall",
+    )
+    frame, context = current_agent_effect_context(state)
+    context["undeployable_troops"] = 1
+    state = replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+    paid = apply_agent_card_payment(
+        state, _payment(state, "lose_agent_card_troop", zone="garrison")
+    ).state
+    assert paid.players[0].troops_garrison == 2
+    _, context = current_agent_effect_context(paid)
+    assert context["pending_agent_effect"] is False
+    assert context["undeployable_troops"] == 0
 
 
 def test_the_codec_holds_the_tleilaxu_choices() -> None:

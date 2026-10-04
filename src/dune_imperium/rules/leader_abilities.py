@@ -40,6 +40,7 @@ from dune_imperium.rules.acquisition import (
     acquire_reserve_for_intrigue,
     acquisition_spy_frame,
 )
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
@@ -625,6 +626,7 @@ def legal_feyd_track_actions(
         ):
             # The trash icon targets a card in hand, discard pile, or in play
             # [Main p. 20]; the paid space additionally needs its one Solari.
+            # A Row card borrowed with Usurp is not in play (OQ-054).
             can_trash = (
                 stage.reward is FeydTrackReward.OPTIONAL_TRASH
                 or owner.resources.solari >= 1
@@ -641,7 +643,7 @@ def legal_feyd_track_actions(
                         for card_id in (
                             *owner.hand,
                             *owner.discard_pile,
-                            *owner.in_play,
+                            *counted_in_play(owner),
                         )
                     )
                     if can_trash
@@ -1149,7 +1151,8 @@ def legal_leader_signet_actions(
         # included), or a Spy with Deep Cover next to the Emperor: the card
         # prints the Deep Cover icon (a gold Spy behind a grey one, as on
         # Deliver Supplies), so an opponent's Spy there does not block it
-        # [Count Hasimir Fenring card] [Bloodlines pp. 5, 12].
+        # [Count Hasimir Fenring card] [Bloodlines pp. 5, 12]. A Row card
+        # borrowed with Usurp is not in play (OQ-054).
         spy_choices = _leader_spy_placement_actions(
             state,
             player,
@@ -1175,7 +1178,7 @@ def legal_leader_signet_actions(
                     actor=player,
                     arguments=(("card_id", card_id),),
                 )
-                for card_id in owner.in_play
+                for card_id in counted_in_play(owner)
             ),
             *spy_choices,
         )

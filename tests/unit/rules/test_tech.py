@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.starting_cards import starting_deck_instance
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
+    GameEvent,
     GamePhase,
     GameState,
     Influence,
@@ -2206,42 +2207,68 @@ def test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal() ->
 
 
 def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> None:
+    # "When you complete a contract: draw a card"; "Endgame: worth 1 VP if
+    # you have completed four or more contracts" [CHOAM Transports Tech
+    # tile]. Panopticon rides along: "Endgame: gain 1 Influence with each
+    # Faction where you have 1 or less Influence" [Panopticon Tech tile].
+    from dune_imperium.content.uprising.contracts import contract_instance_ids
     from dune_imperium.rules.contract_tiles import receive_contract
     from dune_imperium.rules.phases import resolve_recall_or_endgame
     from dune_imperium.rules.tech import draw_owed_tech_cards
 
     owner = _tech_owner("choam_transports", "panopticon")
-    completed = (
-        receive_contract(owner, "contract:immediate_solari_i") if False else owner
-    )
-    owed = replace(completed, tech_cards_owed=1)
-    state = _turn_state(owed, stacks=((), (), ()), config=TECH_CHOAM)
+    # The Immediate tile completes as it is taken [Main p. 16] and owes the
+    # draw, paid once the step settles.
+    completed = receive_contract(owner, "contract:immediate")
+    assert completed.completed_contract_ids == ("contract:immediate",)
+    assert completed.tech_cards_owed == 1
+    state = _turn_state(completed, stacks=((), (), ()), config=TECH_CHOAM)
     drawn = draw_owed_tech_cards(RuleResult(state=state)).state
     assert len(drawn.players[0].hand) == 5 + 1
+    assert drawn.players[0].tech_cards_owed == 0
 
-    four = replace(
-        owner,
-        completed_contract_ids=tuple(f"contract:test_{i}" for i in range(4))
-        if False
-        else (),
-        influence=Influence(emperor=2, spacing_guild=1),
-        hand=(),
-        deck=(),
-    )
-    endgame = replace(
-        _turn_state(four, stacks=((), (), ()), config=TECH_CHOAM),
-        phase=GamePhase.RECALL_OR_ENDGAME,
-        first_player=0,
-        conflict_deck=(),
-        decision_stack=(),
-        reveal_order=(0, 1, 2, 3),
-    )
-    ended = resolve_recall_or_endgame(endgame).state
-    seat = ended.players[0]
-    assert ended.phase is GamePhase.ENDGAME
-    # Panopticon: Guild 1 -> 2, BG 0 -> 1, Fremen 0 -> 1; Emperor stays at 2.
-    assert (seat.influence.emperor, seat.influence.spacing_guild) == (2, 2)
-    assert (seat.influence.bene_gesserit, seat.influence.fremen) == (1, 1)
+    def endgame(contracts: int) -> RuleResult:
+        seat = replace(
+            owner,
+            completed_contract_ids=contract_instance_ids()[:contracts],
+            influence=Influence(emperor=2, spacing_guild=1),
+            hand=(),
+            deck=(),
+        )
+        return resolve_recall_or_endgame(
+            replace(
+                _turn_state(seat, stacks=((), (), ()), config=TECH_CHOAM),
+                phase=GamePhase.RECALL_OR_ENDGAME,
+                first_player=0,
+                conflict_deck=(),
+                decision_stack=(),
+                reveal_order=(0, 1, 2, 3),
+            )
+        )
+
+    def choam_vp_events(result: RuleResult) -> list[GameEvent]:
+        return [
+            event
+            for event in result.events
+            if event.event_id.endswith(":endgame_tech:choam_transports")
+        ]
+
+    three, four = endgame(3), endgame(4)
+    for result in (three, four):
+        seat = result.state.players[0]
+        assert result.state.phase is GamePhase.ENDGAME
+        # Panopticon: Guild 1 -> 2, BG 0 -> 1, Fremen 0 -> 1; Emperor stays
+        # at 2.
+        assert (seat.influence.emperor, seat.influence.spacing_guild) == (2, 2)
+        assert (seat.influence.bene_gesserit, seat.influence.fremen) == (1, 1)
+    # Three contracts fall short: only Panopticon's Guild 2 point is scored.
+    assert choam_vp_events(three) == []
+    assert three.state.players[0].victory_points == owner.victory_points + 1
+    # Four contracts add CHOAM Transports' point.
+    (scored,) = choam_vp_events(four)
+    assert scored.kind == "victory_points_gained"
+    assert dict(scored.payload) == {"amount": 1, "player": 0, "source": "tech"}
+    assert four.state.players[0].victory_points == owner.victory_points + 2
 
 
 def test_ability_actions_round_trip_in_the_tech_catalog() -> None:

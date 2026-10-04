@@ -16,6 +16,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
@@ -435,7 +436,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         trash_candidates = (
             *next_owner.hand,
             *next_owner.discard_pile,
-            *next_owner.in_play,
+            *counted_in_play(next_owner),
         )
         trash_count = reward.trash_cards * amount if trash_candidates else 0
         for _ in range(trash_count):
@@ -681,7 +682,7 @@ def legal_combat_reward_trash_actions(
                 actor=player,
                 arguments=(("card_id", card_id),),
             )
-            for card_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
+            for card_id in (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
         ),
     )
 

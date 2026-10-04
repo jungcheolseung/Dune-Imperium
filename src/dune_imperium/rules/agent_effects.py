@@ -35,7 +35,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_icons import effective_agent_icons
-from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.card_discard import (
     discard_personal_card_from_hand,
     resolve_personal_card_discard_trigger,
@@ -847,7 +847,9 @@ def legal_agent_card_influence_actions(
         # Southern Faith: the draw is always there; the Influence needs
         # another Bene Gesserit card in play, judged now (OQ-028).
         owner = state.players[player]
-        if not has_faction_bond(owner.in_play, source_card_id, Faction.BENE_GESSERIT):
+        if not has_faction_bond(
+            counted_in_play(owner), source_card_id, Faction.BENE_GESSERIT
+        ):
             return ()
         return (
             DomainAction(action_id="resolve_agent_card_effect", actor=player),
@@ -865,7 +867,9 @@ def legal_agent_card_influence_actions(
         # Influence and the two troops; with it the Influence choice pays
         # both.
         owner = state.players[player]
-        bond = has_faction_bond(owner.in_play, source_card_id, Faction.BENE_GESSERIT)
+        bond = has_faction_bond(
+            counted_in_play(owner), source_card_id, Faction.BENE_GESSERIT
+        )
         return (
             *(
                 ()
@@ -1039,7 +1043,9 @@ def apply_agent_card_influence(
     ):
         # With the Bond the Influence choice also pays the two troops.
         owner = players[action.actor]
-        if has_faction_bond(owner.in_play, source_card_id, Faction.BENE_GESSERIT):
+        if has_faction_bond(
+            counted_in_play(owner), source_card_id, Faction.BENE_GESSERIT
+        ):
             recruited_owner, recruited = recruit_troops(owner, 2)
             previous = context_int(
                 context, "troops_recruited", owner="Agent-turn effect frame"
@@ -1708,7 +1714,10 @@ def legal_agent_card_trash_actions(
         return ()
 
     owner = state.players[player]
-    eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    # A Row card borrowed with Usurp is not "in play" ("A grafted card in
+    # the Imperium Row isn't considered to be 'in play.'" [Immortality
+    # p. 14]), so it is no trash target (OQ-054, user ruling 2026-10-04).
+    eligible = (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
@@ -2679,13 +2688,17 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         # Piter, Genius Advisor: the troop is the cost; the two cards and
         # the research follow once the box has settled.
         zone = str(dict(action.arguments)["zone"])
-        lost = lose_unit(state, action.actor, zone, source=f"{source}:troop")
-        lost_state = lost.state
+        # The box's frame is written first, so what the loss records on it
+        # stays: the shrunk withdrawal window (OQ-029; the deployment
+        # allowance stays used, user ruling 2026-10-04) or Harkonnen
+        # Advisor's undeployable troop given up first (OQ-038 (b)).
+        settled = advance_after_effect(state, context)
+        lost = lose_unit(settled, action.actor, zone, source=f"{source}:troop")
+        next_state = lost.state
         if zone == "conflict":
-            lost_state = reconcile_deployment_after_retreat(
-                lost_state, action.actor, troops=1
+            next_state = reconcile_deployment_after_retreat(
+                next_state, action.actor, troops=1
             )
-        next_state = advance_after_effect(lost_state, context, lost_state.players)
         researched = advance_research(
             next_state, action.actor, source=f"{source}:research"
         )
@@ -2823,7 +2836,13 @@ def _arrakis_revolt_payment_actions(
     against a protected Conflict is not worth two spice (OQ-026). Arrakis
     Planetologist's replacement still pays behind the wall -- "(Even when
     the Conflict is protected by the Shield Wall.)" [Liet Kynes card] -- so
-    Liet may pay and keep the wall there too.
+    Liet may pay and keep the wall there too. Under Emperor of the Known
+    Universe ("Units can't be deployed to the Conflict this turn" [Shaddam
+    Corrino IV card] [Main p. 17]) neither the worm nor Liet's replacement
+    comes, so keeping the wall would buy nothing and is not offered either
+    (OQ-026, project convention 2026-09-03: "2 spice로 아무것도 얻지 못하는
+    선택은 규칙상 가능하더라도 행동 공간에서 뺀다"); removing the wall still
+    does something and stays.
     """
 
     decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
@@ -2842,8 +2861,9 @@ def _arrakis_revolt_payment_actions(
                 actor=player,
             )
         )
-    if replaces_sandworms(owner) or not current_conflict_is_shield_wall_protected(
-        state
+    if not units_deployment_blocked(state, player) and (
+        replaces_sandworms(owner)
+        or not current_conflict_is_shield_wall_protected(state)
     ):
         actions.append(
             DomainAction(action_id="pay_agent_card_spice_for_sandworm", actor=player)
@@ -4203,7 +4223,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # Lisan al Gaib: the Bond is judged when the effect resolves
         # [Main pp. 9, 20] (a grafted partner may provide it).
         context["pending_agent_effect"] = False
-        if not has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT):
+        if not has_faction_bond(
+            counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
+        ):
             return RuleResult(
                 state=advance_after_effect(state, context),
                 events=(
@@ -4260,11 +4282,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
         if (
             Faction.FREMEN.value in owner.alliance_faction_ids
-            and card_instance_id in owner.in_play
             # A Row card borrowed by Usurp is not "in play" and cannot
             # return to a hand (designer ruling, OQ-054); it is trashed
             # when the turn closes.
-            and card_instance_id != owner.usurped_row_card_id
+            and card_instance_id in counted_in_play(owner)
         ):
             # Face up in play, so everyone keeps knowing it (OQ-010).
             next_owner = replace(
@@ -4392,7 +4413,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # The Bond is judged when the effect resolves in the player's chosen
         # order [Main pp. 9, 20]; trashing the bonded card mid-frame (for
         # example through an Intrigue slot) forfeits the conditional gain.
-        if has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT):
+        if has_faction_bond(
+            counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
+        ):
             next_owner, recruited = recruit_troops(owner, 2)
             previous = context.get("troops_recruited")
             if isinstance(previous, bool) or not isinstance(previous, int):
@@ -4408,8 +4431,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND:
         # The Bond is judged when the effect resolves [Main pp. 9, 20]; a
         # trashed card expires before this resolution is offered (OQ-022).
-        if has_faction_bond(
-            owner.in_play,
+        # A Row card borrowed with Usurp is not "in play" ("A grafted
+        # card in the Imperium Row isn't considered to be 'in play.'"
+        # [Immortality p. 14]) and cannot return to a hand, as for
+        # Stillsuit Manufacturer; the turn's end trashes it (OQ-054, user
+        # ruling 2026-10-04).
+        if card_instance_id in counted_in_play(owner) and has_faction_bond(
+            counted_in_play(owner),
             card_instance_id,
             Faction.BENE_GESSERIT,
         ):
@@ -4437,7 +4465,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_owner = owner
         event_kind = (
             "agent_card_effect_resolved"
-            if has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT)
+            if has_faction_bond(
+                counted_in_play(owner), card_instance_id, Faction.BENE_GESSERIT
+            )
             else "agent_card_effect_unavailable"
         )
     elif effect in (
