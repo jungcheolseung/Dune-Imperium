@@ -69,12 +69,10 @@ def test_choices_ignore_hidden_zones() -> None:
         if step % 3 == 0 and len(actions) > 1:
             twin = determinize(state, seat, rng)
             assert engine.observe(twin, seat) == view
-            probe = copy.deepcopy(agents[seat])
-            assert probe.choose_action_with_state(
-                twin, view, actions
-            ) == copy.deepcopy(agents[seat]).choose_action_with_state(
-                state, view, actions
-            )
+            hidden = copy.deepcopy(agents[seat])
+            real = copy.deepcopy(agents[seat])
+            on_twin = hidden.choose_action_with_state(twin, view, actions)
+            assert on_twin == real.choose_action_with_state(state, view, actions)
             checked += 1
         action = agents[seat].choose_action_with_state(state, view, actions)
         state = engine.apply(state, action, legal_actions=actions).state
