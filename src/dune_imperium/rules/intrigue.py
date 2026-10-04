@@ -33,7 +33,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
-    PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -107,13 +106,13 @@ from dune_imperium.rules.frames import (
     context_int,
     context_str,
     frame_context,
-    owes_track_spy,
     owned_top_frame,
     replace_player,
     replace_top_frame,
     reveal_is_open_for,
     top_frame,
     turn_owner_of,
+    turn_start_is_open,
     update_turn_recruits,
     with_context,
 )
@@ -168,9 +167,9 @@ class IntriguePlayBlock(StrEnum):
 
     TIMING = "timing"  # printed for another window (Plot, Combat, Endgame)
     TURN_START = "turn_start"  # "At the start of your turn", after that point
-    # "Pass your turn" (Withdrawn) while the seat owes an Emperor track Spy,
-    # which is placed before the turn ends (user ruling 2026-10-04).
-    TRACK_SPY = "track_spy"
+    # "At the start of your turn" (Withdrawn) on the turn frame after the
+    # seat already acted in the turn (OQ-095 (6), user ruling 2026-10-04).
+    TURN_STARTED = "turn_started"
 
 
 def intrigue_window(state: GameState, player: int) -> IntrigueTiming | None:
@@ -214,20 +213,36 @@ def intrigue_play_block(
         # "At the start of your turn" (Withdrawn): only before the Agent or
         # Reveal choice.
         return IntriguePlayBlock.TURN_START
-    if _passes_turn(option) and owes_track_spy(state, player):
-        # A Plot that reached the Emperor track's Influence 4 left its Spy
-        # owed: a mandatory action of the turn, placed before the turn ends
-        # (user ruling 2026-10-04, "엄연히 agent턴 내에 순서를 정해서 할 수
-        # 있는 의무 행동"), so the turn cannot be passed over it.
-        return IntriguePlayBlock.TRACK_SPY
+    if option.turn_start_only and not turn_start_is_open(state, player):
+        # "At the start of your turn: Pass your turn." [Withdrawn card]: only
+        # as the turn's first action -- once the seat did anything else in
+        # the turn (a Plot, a specimen return, its Emperor track Spy), the
+        # start is over (OQ-095 (6), user ruling 2026-10-04). That also
+        # covers an owed Emperor track Spy, which only an action of the
+        # seat's own turn can leave waiting in it.
+        return IntriguePlayBlock.TURN_STARTED
     return option_unplayable_reason(state, player, option)
 
 
-def _passes_turn(option: IntrigueOption) -> bool:
-    return any(
-        isinstance(reward, PassTurn)
-        for section in option.sections
-        for reward in section.rewards
+def plays_turn_start_option(action: DomainAction) -> bool:
+    """Whether ``action`` plays an "At the start of your turn" Intrigue option.
+
+    Such a play is the turn's first action itself, so it does not end the
+    start of the turn the way any other action does (``end_turn_start``).
+    """
+
+    if action.action_id != "play_intrigue":
+        return False
+    arguments = dict(action.arguments)
+    card_id = arguments.get("card_id")
+    option_index = arguments.get("option")
+    if not isinstance(card_id, str) or not isinstance(option_index, int):
+        return False
+    entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+    return (
+        entry is not None
+        and 0 <= option_index < len(entry.options)
+        and entry.options[option_index].turn_start_only
     )
 
 
@@ -1754,9 +1769,11 @@ def _trash_intrigue_hand_card(
 
     The troop joins the owner's open turn [Main p. 10] [FAQ p. 4], guarded
     by ``turn_owner_of`` like ``_apply_section_rewards``: nothing is
-    credited outside the owner's own turn. The trashed card, a Twisted one
-    included, joins the shared Intrigue discard and is reshuffled with it
-    (OQ-061, user ruling 2026-10-04), as a played Twisted card already is.
+    credited outside the owner's own turn. The trashed card joins the
+    shared Intrigue discard (OQ-061, user ruling 2026-10-04), a Twisted one
+    included as a played Twisted card already does; a Twisted card stays
+    there when the discard is reshuffled (OQ-097, ``shufflable_intrigue_
+    discard``).
     """
 
     owner = state.players[player]

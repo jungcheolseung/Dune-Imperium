@@ -315,6 +315,48 @@ def test_a_start_of_turn_card_is_played_then_only_dimmed_after_that_point() -> N
     )
 
 
+def test_both_start_of_turn_cards_grey_out_once_the_seat_acted() -> None:
+    """Withdrawn and Litany Against Fear are only the turn's first action
+    (OQ-095 (6), user ruling 2026-10-04): after a Plot on the still-open
+    turn frame each is a greyed-out row with the same reason, Withdrawn
+    among the Intrigue cards, Litany beside the Agent and Reveal turns."""
+
+    litany = "imperium:litany_against_fear:0"
+    state = _intrigue_state(
+        "twisted_withdrawn", "contingency_plan", hand=(litany,)
+    )
+    assert _legal(state, "play_turn_start_card") == [{"card_id": litany}]
+    plot = DomainAction(
+        "play_intrigue",
+        0,
+        (("card_id", "intrigue:contingency_plan:0"), ("option", 0)),
+    )
+    plotted = ENGINE.apply(state, plot).state
+    assert plotted.decision_stack[-1].kind == "turn"
+    assert _legal(plotted, "play_turn_start_card") == []
+    assert _legal(plotted, "play_intrigue") == []
+
+    found = _found(plotted)
+    reason = {
+        "reason": "Only at the start of your turn: you already acted this turn",
+        "reason_ko": "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
+        "code": "turn_started",
+    }
+    (withdrawn_row,) = _rows(found, "intrigue").values()
+    assert withdrawn_row["action"]["arguments"] == {
+        "card_id": "intrigue:twisted_withdrawn:0",
+        "option": 0,
+    }
+    assert {key: withdrawn_row[key] for key in reason} == reason
+    assert found["refs"]["intrigue:twisted_withdrawn:0"] == reason
+    (litany_row,) = _rows(found, "choice").values()
+    assert litany_row["action"]["action_id"] == "play_turn_start_card"
+    assert litany_row["card_id"] == litany
+    assert {key: litany_row[key] for key in reason} == reason
+    # The hand card is named, not dimmed.
+    assert litany not in found["refs"]
+
+
 def _detonation(troops: int, undeployable: int) -> GameState:
     """Seat 0 at its turn start with Detonation, ``troops`` in its garrison
     and ``undeployable`` of them barred from deploying this turn."""

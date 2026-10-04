@@ -883,6 +883,91 @@ def test_imperial_privilege_trash_then_draw_is_not_warned_short() -> None:
     assert decision.options == (held,)
 
 
+def test_a_trashed_twisted_card_is_warned_short() -> None:
+    """Twisted cards stay in the discard when it is reshuffled (OQ-097, user
+    ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"): with
+    both Intrigue piles empty, Imperial Privilege trashing a Twisted card
+    cannot draw it back, so the step is warned short before the click (L2-Q4)
+    and a seat-0 determinization words it the same."""
+
+    import random
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.agents.determinize import determinize
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.content.uprising.starting_cards import (
+        starting_deck_instance_ids,
+    )
+    from dune_imperium.core import (
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        Influence,
+        PlayerDecision,
+        PlayerState,
+        Resources,
+    )
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.server.sessions import _serialize_action
+
+    engine = UprisingRulesEngine()
+    starters = starting_deck_instance_ids(0)
+    twisted = "intrigue:twisted_withdrawn:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=starters[:5],
+        deck=starters[5:],
+        influence=Influence(emperor=2),
+        resources=Resources(solari=3),
+        intrigue_cards=(twisted,),
+    )
+    turn = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        players=(owner, *(PlayerState(player_id=s) for s in range(1, 4))),
+        intrigue_deck=(),
+        intrigue_discard=(),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    place = next(
+        action
+        for action in engine.legal_actions(turn, 0)
+        if dict(action.arguments).get("space_id") == "imperial_privilege"
+    )
+    state = engine.apply(turn, place).state
+
+    def warnings(state: GameState) -> dict[str, tuple[object, object]]:
+        session = SimpleNamespace(engine=engine, state=state)
+        entries = (
+            _serialize_action(index, action, session)  # type: ignore[arg-type]
+            for index, action in enumerate(engine.legal_actions(state, 0))
+        )
+        return {
+            str(entry["action_id"]): (entry["warning"], entry["shortfall"])
+            for entry in entries
+        }
+
+    shown = warnings(state)
+    assert shown["trash_intrigue_for_imperial_privilege"] == (
+        "책략 카드 더미와 버림 더미를 합쳐도 1장 모자람",
+        [{"kind": "intrigue", "requested": 1, "made": 0}],
+    )
+    assert shown["decline_imperial_privilege_intrigue"] == (None, None)
+    for seed in range(3):
+        assert warnings(determinize(state, 0, random.Random(seed))) == shown
+
+
 def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
     """OQ-049 (user request): a specimen the supply cannot provide is flagged
     on the action itself, while the action stays legal."""

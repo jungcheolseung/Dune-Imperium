@@ -428,6 +428,45 @@ def test_a_turn_passing_card_is_the_press_itself(
         manager.confirm_turn(game_id, 0, _int(summary["revision"]))
 
 
+def test_a_turn_start_card_goes_once_the_seat_acted() -> None:
+    # "At the start of your turn" [Litany Against Fear card]: only the
+    # turn's first action (OQ-095 (6), user ruling 2026-10-04). A Plot at
+    # the turn start leaves the seat on the same turn frame, with no hold,
+    # and without Litany (greyed out with the reason). (Undo rebuilds by
+    # replaying the engine's steps, which set the same mark; this injected
+    # state cannot be rebuilt from the session's seed, so it is not undone.)
+    plot = "intrigue:contingency_plan:0"
+    owner = PlayerState(
+        player_id=0,
+        hand=("imperium:litany_against_fear:0",),
+        deck=_STARTERS[1:5],
+        intrigue_cards=(plot,),
+    )
+    manager, game_id = _turn_pass_game(owner)
+
+    def offered() -> set[str]:
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        return {str(action["action_id"]) for action in actions}
+
+    assert "play_turn_start_card" in offered()
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    entry = next(a for a in actions if a["action_id"] == "play_intrigue")
+    summary = manager.apply_action(game_id, 0, 0, _int(entry["index"]))
+
+    assert summary["confirmation"] is None
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "turn" and decision["owner"] == 0
+    assert "play_turn_start_card" not in offered()
+    assert "reveal_turn" in offered()
+    payload = _obj(manager.legal_actions(game_id, 0)["unavailable"])
+    (row,) = [
+        row
+        for row in _rows(payload["rows"])
+        if _obj(row["action"])["action_id"] == "play_turn_start_card"
+    ]
+    assert row["code"] == "turn_started"
+
+
 # --------------------------------------------------- Usurp's finishing press
 
 _IMMORTALITY_STARTERS = starting_deck_instance_ids(0, immortality=True)

@@ -3,12 +3,14 @@
 When the Intrigue deck runs out, the face-up Intrigue discard pile is shuffled
 into a new deck [FAQ p. 2]. Intrigue cards have no trash pile: a trashed one
 joins that discard (``with_trashed_intrigue``, OQ-061) and is reshuffled with
-it.
+it. Piter De Vries' Twisted cards are the exception: they stay in the discard
+when it is shuffled (``shufflable_intrigue_discard``, OQ-097).
 """
 
 from dataclasses import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
@@ -60,9 +62,37 @@ def with_trashed_intrigue(state: GameState, card_id: str) -> GameState:
     [Main p. 6]; the Intrigue-trash icon itself reads only "Trash an Intrigue
     card of your choice from your hand." [Main p. 20]. The caller removes the
     card from the hand and still announces it with ``intrigue_card_trashed``.
+    A trashed Twisted card lands here too but is never reshuffled
+    (``shufflable_intrigue_discard``, OQ-097).
     """
 
     return replace(state, intrigue_discard=(*state.intrigue_discard, card_id))
+
+
+def shufflable_intrigue_discard(state: GameState) -> tuple[str, ...]:
+    """Return the discarded Intrigue cards a reshuffle forms a new deck from.
+
+    "In the rare case that you exhaust the Intrigue deck, shuffle the
+    discarded Intrigue cards to form a new deck" [FAQ p. 2] -- all of them
+    but Piter De Vries' Twisted cards, which stay in the discard pile (OQ-097,
+    user ruling 2026-10-04, "Piter의 twisted 카드는 공용 책략 버림 더미로
+    가지만, 나중에 다시 섞을 때는 책략 더미로 가지 않고 계속 버림 더미에
+    남아있게 하자. 다른 사람이 twisted 카드를 뽑는 일은 없도록", project
+    convention). Twisted Genius only says "Game Start: Shuffle the Twisted
+    Intrigue deck and place it face down near you. Round Start: Draw a
+    Twisted Intrigue card. (These count as Intrigue cards and can be
+    stolen.)" [Piter De Vries card]. A discard of Twisted cards alone holds
+    nothing to shuffle, so a draw it cannot cover falls short. The discard is
+    face up, so which cards stay is public. Every reshuffle -- a draw, the
+    Imperium Ceremony peek (OQ-052) and Emperor's Schemes (OQ-078) -- reads
+    the discard through this function.
+    """
+
+    return tuple(
+        card_id
+        for card_id in state.intrigue_discard
+        if not is_twisted_intrigue(card_id)
+    )
 
 
 def draw_intrigue_cards(
@@ -79,7 +109,8 @@ def draw_intrigue_cards(
     pushed and the remaining draw completes when it resolves. If neither pile
     has cards the draw simply stops short; a shortfall is logged with
     ``intrigue_draw_short`` as soon as it is certain, which with a reshuffle
-    is when the shuffle is asked for.
+    is when the shuffle is asked for. The discard's Twisted cards are not
+    shuffled and do not count (``shufflable_intrigue_discard``, OQ-097).
     """
 
     if not 0 <= player < state.config.players:
@@ -94,7 +125,8 @@ def draw_intrigue_cards(
     remaining = count - available
     if remaining <= 0:
         return drawn_now
-    discard = drawn_now.state.intrigue_discard
+    # Twisted cards stay in the discard (OQ-097, user ruling 2026-10-04).
+    discard = shufflable_intrigue_discard(drawn_now.state)
     # Both piles are public, so a draw they cannot cover is known to fall
     # short before any reshuffle: logged here, the shortfall rides the step
     # that causes it, where the play server's dry run warns about it before
@@ -111,8 +143,8 @@ def draw_intrigue_cards(
         decision=ChanceDecision(
             decision_id=decision_id,
             prompt="Shuffle the Intrigue discard pile into a new deck",
-            options=drawn_now.state.intrigue_discard,
-            count=len(drawn_now.state.intrigue_discard),
+            options=discard,
+            count=len(discard),
         ),
         context=(("count", remaining), ("player", player), ("source", source)),
     )
@@ -221,7 +253,9 @@ def apply_intrigue_reshuffle(
 
     A draw the new deck cannot cover was logged when the shuffle was asked
     for (``draw_intrigue_cards``): the shuffled cards are the discard of
-    that moment, beneath a deck the draw had emptied.
+    that moment, beneath a deck the draw had emptied. The frame's options
+    left the discard's Twisted cards out, so they stay where they are
+    (``shufflable_intrigue_discard``, OQ-097).
     """
 
     frame = top_frame_of_kind(state, FrameKind.INTRIGUE_RESHUFFLE)
@@ -234,6 +268,10 @@ def apply_intrigue_reshuffle(
     source = context_str(context, "source", owner=owner_label)
 
     shuffled_ids = set(outcome.values)
+    if any(is_twisted_intrigue(card_id) for card_id in shuffled_ids):
+        # Twisted cards never join the shared deck (OQ-097, user ruling
+        # 2026-10-04): "다른 사람이 twisted 카드를 뽑는 일은 없도록".
+        raise ValueError("a Twisted Intrigue card cannot be shuffled into the deck")
     # The new deck forms beneath whatever still lay face down on top.
     shuffled = replace(
         state.pop_decision(),

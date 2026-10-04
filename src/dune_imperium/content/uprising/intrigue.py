@@ -1557,3 +1557,13 @@ INTRIGUE_CARDS_BY_INSTANCE: Final = {
     for entry in INTRIGUE_CARDS
     for copy in range(entry.copies)
 }
+
+
+def is_twisted_intrigue(instance_id: str) -> bool:
+    """Return whether ``instance_id`` is one of Piter De Vries' Twisted cards.
+
+    An ID outside the catalog (a test stand-in) is not Twisted.
+    """
+
+    entry = INTRIGUE_CARDS_BY_INSTANCE.get(instance_id)
+    return entry is not None and entry.twisted

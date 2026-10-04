@@ -246,7 +246,12 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # an Intrigue "trash" goes to the Intrigue discard and ``GameState`` no
 # longer has an Intrigue trash zone (OQ-061). Every state hash and many
 # replays change.
-ACTION_CODEC_VERSION = 131
+# v132 (user rulings 2026-10-04, third batch): Litany Against Fear and
+# Withdrawn ("At the start of your turn: ...") only as the turn's first
+# action -- the owner's turn frame records that its start is over (OQ-095
+# (6)); Twisted Intrigue cards stay in the Intrigue discard when it is
+# reshuffled (OQ-097). No template change; replays and hashes change.
+ACTION_CODEC_VERSION = 132
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

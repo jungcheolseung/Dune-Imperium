@@ -473,6 +473,64 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     assert "intrigue_draw_short" not in [event.kind for event in lone.events]
 
 
+def test_imperium_ceremony_peek_never_shuffles_twisted_cards_in() -> None:
+    # OQ-052's reshuffle leaves Piter De Vries' Twisted cards in the discard
+    # (OQ-097, user ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은
+    # 없도록").
+    ceremony = _card("imperium_ceremony")
+    twisted = ("intrigue:twisted_withdrawn:0", "intrigue:twisted_controlled:0")
+    engine = UprisingRulesEngine()
+    mixed = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)),
+                intrigue_deck=INTRIGUE[:1],
+                intrigue_discard=(twisted[0], INTRIGUE[1], twisted[1]),
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    decision = engine.current_decision(mixed.state)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == INTRIGUE[1:2]
+    assert decision.count == 1
+    shuffled = engine.apply(mixed.state, ChanceResolver(seed=5).resolve(decision))
+    assert peeked_intrigue_ids(shuffled.state, 0) == INTRIGUE[:2]
+    assert shuffled.state.intrigue_discard == twisted
+    # One card face down and only Twisted cards discarded: nothing to
+    # shuffle, so the peek shows the lone card.
+    lone = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)),
+                intrigue_deck=INTRIGUE[:1],
+                intrigue_discard=twisted,
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert lone.state.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
+    assert peeked_intrigue_ids(lone.state, 0) == INTRIGUE[:1]
+    # Nothing face down and only Twisted cards discarded: no effect, and the
+    # keep-one draw is logged short.
+    nothing = resolve_agent_card_effect(
+        _place(
+            _state(_owner((ceremony,)), intrigue_deck=(), intrigue_discard=twisted),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert nothing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert nothing.state.intrigue_discard == twisted
+    assert [
+        dict(event.payload)
+        for event in nothing.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+
+
 def test_imperium_ceremony_through_the_engine() -> None:
     ceremony = _card("imperium_ceremony")
     engine = UprisingRulesEngine()

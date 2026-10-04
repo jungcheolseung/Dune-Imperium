@@ -1474,6 +1474,44 @@ def test_imperial_privilege_may_draw_back_the_card_it_just_trashed() -> None:
     )
 
 
+def test_imperial_privilege_never_draws_back_a_trashed_twisted_card() -> None:
+    # A trashed Twisted card joins the shared discard (OQ-061) but is never
+    # shuffled into the deck (OQ-097, user ruling 2026-10-04, "다른 사람이
+    # twisted 카드를 뽑는 일은 없도록"): with both piles empty it is not
+    # handed back, and the draw falls short.
+    twisted = "intrigue:twisted_withdrawn:0"
+    state = _imperial_privilege_state(intrigue_cards=(twisted,))
+    assert state.intrigue_deck == ()
+    assert state.intrigue_discard == ()
+    engine = UprisingRulesEngine()
+    action = next(
+        candidate
+        for candidate in engine.legal_actions(state, 0)
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+
+    trashed = engine.apply(state, action)
+
+    assert not isinstance(trashed.next_decision, ChanceDecision)
+    assert trashed.state.players[0].intrigue_cards == ()
+    assert trashed.state.intrigue_deck == ()
+    assert trashed.state.intrigue_discard == (twisted,)
+    assert [
+        dict(event.payload)
+        for event in trashed.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+    # With another discarded card, that one is shuffled and drawn instead.
+    other = replace(state, intrigue_discard=("intrigue:cunning",))
+    pending = engine.apply(other, action)
+    decision = pending.next_decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == ("intrigue:cunning",)
+    resolved = engine.apply(pending.state, ChanceResolver(seed=5).resolve(decision))
+    assert resolved.state.players[0].intrigue_cards == ("intrigue:cunning",)
+    assert resolved.state.intrigue_discard == (twisted,)
+
+
 def _hagga_basin_state(*, wall_present: bool) -> GameState:
     state = _state("dune_the_desert_planet")
     owner = replace(state.players[0], maker_hooks=True)

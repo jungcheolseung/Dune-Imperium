@@ -273,6 +273,41 @@ def test_census_detects_cross_player_duplication() -> None:
         check_state_invariants(corrupted, census)
 
 
+def test_census_detects_a_twisted_card_in_the_shared_intrigue_deck() -> None:
+    # Twisted cards stay in the discard when it is reshuffled (OQ-097, user
+    # ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), so
+    # one in the shared deck is a broken state even though no card is lost.
+    state = UprisingRulesEngine(
+        ("piter_de_vries", "gurney_halleck", "chani", "lady_jessica")
+    ).reset(RulesetConfig(bloodlines=True), seed=69)
+    census = CardCensus.from_state(state)
+    piter = state.players[0]
+    assert piter.twisted_deck
+    card = piter.twisted_deck[0]
+    check_state_invariants(
+        replace(
+            state,
+            intrigue_discard=(card,),
+            players=(
+                replace(piter, twisted_deck=piter.twisted_deck[1:]),
+                *state.players[1:],
+            ),
+        ),
+        census,
+    )
+
+    corrupted = replace(
+        state,
+        intrigue_deck=(*state.intrigue_deck, card),
+        players=(
+            replace(piter, twisted_deck=piter.twisted_deck[1:]),
+            *state.players[1:],
+        ),
+    )
+    with pytest.raises(InvariantViolation, match="Twisted"):
+        check_state_invariants(corrupted, census)
+
+
 def test_census_detects_a_vanished_tech_tile() -> None:
     state = _expansion_state()
     census = CardCensus.from_state(state)

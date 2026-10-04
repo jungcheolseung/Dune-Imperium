@@ -13,7 +13,8 @@ cannot be paid, a Conflict reward's Faction already at the top, a Holy War
 unit the seat does not have, a Skill the seat already holds, a Navigation
 card's option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
-seat has no Intrigue card to trash for).
+seat has no Intrigue card to trash for, Litany Against Fear once the seat
+already acted in its turn).
 
 Display only, under four rules:
 
@@ -30,7 +31,7 @@ Display only, under four rules:
   ``research_bonus_block``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
-  ``contract_take_block``), so the two cannot drift.
+  ``contract_take_block``, ``turn_start_is_open``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
   (``shadow_action``). The one dry run is the provider's own:
   ``agent_box_is_waiting`` asks ``agent_card_effect_is_unavailable``, which
@@ -120,6 +121,7 @@ from dune_imperium.rules.agent_effects import (
     agent_card_recall_targets,
     agent_icon_block,
 )
+from dune_imperium.rules.agent_turn import turn_start_cards
 from dune_imperium.rules.board_effects import imperial_privilege_recall_targets
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
@@ -147,7 +149,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
 )
-from dune_imperium.rules.frames import FrameKind, turn_owner_of
+from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
 from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
@@ -337,12 +339,13 @@ _TURN_START: Final[Reason] = (
     "차례를 시작할 때만 사용",
     "timing",
 )
-# Withdrawn's "pass your turn" while the seat owes the Emperor track's
-# Influence 4 Spy, a mandatory action of the turn (user ruling 2026-10-04).
-_TRACK_SPY_OWED: Final[Reason] = (
-    "Place your Emperor track Spy first: the turn cannot pass before it",
-    "{influence_emperor} 4의 {spy}를 먼저 배치 — 그 전에는 차례를 넘길 수 없음",
-    "track_spy",
+# "At the start of your turn" (Withdrawn, Litany Against Fear) on the turn
+# frame once the seat already acted in the turn (OQ-095 (6), user ruling
+# 2026-10-04, ``frames.turn_start_is_open``).
+_TURN_STARTED: Final[Reason] = (
+    "Only at the start of your turn: you already acted this turn",
+    "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
+    "turn_started",
 )
 
 
@@ -790,13 +793,40 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
                     actor=seat,
                     arguments=(("card_id", card_id), ("option", index)),
                 ),
-                _TRACK_SPY_OWED
-                if block is IntriguePlayBlock.TRACK_SPY
+                _TURN_STARTED
+                if block is IntriguePlayBlock.TURN_STARTED
                 else intrigue_option_reason(state, seat, option, block),
                 dim=card_id,
             )
         if other_window is not None:
             found.refs.setdefault(card_id, other_window)
+
+
+def _turn_start_card(state: GameState, seat: int, found: _Found) -> None:
+    """Litany Against Fear in hand once the start of the seat's turn is over.
+
+    "At the start of your turn: Put this card into play -> Draw a card and
+    pass your turn." [Litany Against Fear card]: only the turn's first
+    action (OQ-095 (6), user ruling 2026-10-04). A branch of the turn
+    frame's choice, beside the Agent and Reveal turns; the row names the
+    card rather than dimming it in the hand, which it leaves only this way
+    or with the Reveal.
+    """
+
+    if turn_start_is_open(state, seat):
+        return
+    for card_id in turn_start_cards(state.players[seat]):
+        found.row(
+            "choice",
+            card_id,
+            DomainAction(
+                action_id="play_turn_start_card",
+                actor=seat,
+                arguments=(("card_id", card_id),),
+            ),
+            _TURN_STARTED,
+            card_id=card_id,
+        )
 
 
 def _deferred(state: GameState, seat: int, found: _Found) -> None:
@@ -1386,7 +1416,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),
     FrameKind.TECH_ACQUISITION: (_tech,),
-    FrameKind.TURN: (_intrigue,),
+    FrameKind.TURN: (_turn_start_card, _intrigue),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),
 }

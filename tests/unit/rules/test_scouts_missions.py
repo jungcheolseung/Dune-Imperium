@@ -14,6 +14,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.arrakeen_scouts import MISSIONS_BY_ID
+from dune_imperium.content.uprising.intrigue import twisted_intrigue_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -542,6 +543,48 @@ def test_emperors_schemes_reshuffles_a_short_intrigue_deck_first() -> None:
     assert state.intrigue_discard == ()
     assert any(e.kind == "intrigue_discard_shuffled" for e in state.event_log)
     assert state.decision_stack[-1].kind == FrameKind.TURN
+
+
+def test_emperors_schemes_reshuffle_leaves_the_twisted_cards_discarded() -> None:
+    """OQ-097, user ruling 2026-10-04 ("다른 사람이 twisted 카드를 뽑는 일은
+    없도록"): OQ-078's reshuffle forms the new deck from the discard's other
+    cards; Piter De Vries' Twisted cards stay in the discard, and a discard
+    of Twisted cards alone has nothing to shuffle."""
+
+    base = _base()
+    deck = base.intrigue_deck
+    top, discard, rest = deck[0], deck[1:4], deck[4:]
+    twisted = twisted_intrigue_instance_ids()[:2]
+    state = replace(
+        base,
+        intrigue_deck=(top,),
+        intrigue_discard=(twisted[0], *discard, twisted[1]),
+        players=_holding_intrigue(base, rest),
+    )
+    state = _reveal(state, "emperors_schemes")
+    shuffle = state.decision_stack[-1].decision
+    assert isinstance(shuffle, ChanceDecision)
+    assert shuffle.options == discard
+    assert shuffle.count == len(discard)
+    order = tuple(reversed(discard))
+    state = ENGINE.apply(
+        state, ChanceOutcome(decision_id=shuffle.decision_id, values=order)
+    ).state
+    assert tuple(card for _, _, card in state.scouts_goods_cards) == (top, order[0])
+    assert state.intrigue_deck == order[1:]
+    assert state.intrigue_discard == twisted
+
+    only_twisted = replace(
+        base,
+        intrigue_deck=(top,),
+        intrigue_discard=twisted,
+        players=_holding_intrigue(base, (*discard, *rest)),
+    )
+    placed = _reveal(only_twisted, "emperors_schemes")
+    assert tuple(card for _, _, card in placed.scouts_goods_cards) == (top,)
+    assert placed.intrigue_discard == twisted
+    assert not any(e.kind == "intrigue_discard_shuffled" for e in placed.event_log)
+    assert placed.decision_stack[-1].kind == FrameKind.TURN
 
 
 @pytest.mark.parametrize("deck_size", [0, 1])

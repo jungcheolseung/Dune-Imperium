@@ -9,7 +9,9 @@ sweep can see across containers and time:
   and the game-wide set never changes after setup (Reserve copies instead
   satisfy a stack-plus-live-count equation because trashed Reserve cards
   return to their stacks and copy IDs are re-issued, and Sardaukar Commanders
-  are counters, so their total is conserved instead of a set);
+  are counters, so their total is conserved instead of a set), and Piter De
+  Vries' Twisted Intrigue cards never sit in the shared Intrigue deck
+  (OQ-097);
 - progress: a pending player decision must offer at least one legal action,
   and an owed Emperor track Spy waits only inside its own seat's turn;
 - visibility: a player's observation must not depend on hidden information
@@ -25,6 +27,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.events import GameEvent
@@ -38,7 +41,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import turn_owner_of
+from dune_imperium.rules.frames import turn_owner_of, turn_start_is_open
 from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 
@@ -243,6 +246,17 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
             f"missing={sorted(census.intrigue - intrigue)} "
             f"new={sorted(intrigue - census.intrigue)}"
         )
+    # Twisted cards stay in the discard when it is reshuffled (OQ-097, user
+    # ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), so
+    # neither the shared deck nor the Scouts board cards dealt from it ever
+    # hold one.
+    stray = sorted(
+        card
+        for card in (*state.intrigue_deck, *_board_cards(state, "intrigue"))
+        if is_twisted_intrigue(card)
+    )
+    if stray:
+        raise InvariantViolation(f"the shared Intrigue deck holds Twisted {stray}")
 
     conflicts = frozenset(_all_conflict_ids(state))
     if conflicts != census.conflicts:
@@ -301,6 +315,14 @@ def check_track_spy_queue(state: GameState) -> None:
         raise InvariantViolation(
             f"Emperor track Spies of seats {stray} wait outside their turn "
             f"(turn owner {owner})"
+        )
+    # Only an owner action can owe a Spy inside the turn, and any owner
+    # action ends the turn start (OQ-095 (6)): the turn-passing cards are
+    # never offered beside an owed Spy, so they need no hold of their own.
+    if owner is not None and turn_start_is_open(state, owner):
+        raise InvariantViolation(
+            f"seat {owner} owes an Emperor track Spy while its turn start "
+            "is still open"
         )
 
 

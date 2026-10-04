@@ -985,8 +985,9 @@ class IntrigueOption:
     timing: IntrigueTiming
     sections: tuple[EffectSection, ...]
     trigger: Trigger | None = None
-    # "At the start of your turn": playable only from the turn frame, before
-    # the Agent or Reveal choice (Withdrawn).
+    # "At the start of your turn": playable only from the turn frame, as the
+    # turn's first action (Withdrawn; OQ-095 (6), user ruling 2026-10-04,
+    # ``frames.turn_start_is_open``).
     turn_start_only: bool = False
     # Separate printed lines with no ``—OR—`` between them (Change
     # Allegiances, Strategic Stockpiling, Find Weakness): playing the card

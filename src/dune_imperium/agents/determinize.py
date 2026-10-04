@@ -16,6 +16,7 @@ import random
 from dataclasses import replace
 
 from dune_imperium.content.uprising.contracts import contract_for_instance
+from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.core.observation import (
     peeked_card_id,
     peeked_intrigue_ids,
@@ -56,6 +57,31 @@ def known_top_card_count(state: GameState, observer: int) -> int:
     if owned_top_frame(state, FrameKind.LONG_LIVE_FIGHTERS, observer) is not None:
         return 3
     return 1 if peeked_card_id(state, observer) else 0
+
+
+def _keep_twisted_in_hands(
+    pool: list[str], start: int, size: int, rng: random.Random
+) -> None:
+    """Move every Twisted card of a shuffled pool into the opponents' hands.
+
+    Twisted Intrigue cards never join the shared deck (OQ-097, user ruling
+    2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), and the
+    board's Scouts cards come off that deck, so a hidden Twisted card is in
+    an opponent's hand: one the shuffle dealt to the deck or the board
+    trades places with a random other card of the hand slots
+    ``pool[start:start + size]``. Without a misplaced Twisted card no random
+    number is drawn, so games without Piter De Vries sample as before.
+    """
+
+    hand = range(start, start + size)
+    for index, card in enumerate(pool):
+        if index in hand or not is_twisted_intrigue(card):
+            continue
+        slots = [slot for slot in hand if not is_twisted_intrigue(pool[slot])]
+        if not slots:
+            return
+        slot = rng.choice(slots)
+        pool[index], pool[slot] = pool[slot], card
 
 
 def determinize(state: GameState, observer: int, rng: random.Random) -> GameState:
@@ -100,6 +126,14 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     ]
     intrigue_pool.extend(row[2] for row in board_intrigue)
     rng.shuffle(intrigue_pool)
+    hidden_held = sum(
+        1
+        for seat, player in enumerate(state.players)
+        if seat != observer
+        for card in player.intrigue_cards
+        if card not in resolving
+    )
+    _keep_twisted_in_hands(intrigue_pool, len(board_intrigue), hidden_held, rng)
     board_cards = {
         row: intrigue_pool[index] for index, row in enumerate(board_intrigue)
     }

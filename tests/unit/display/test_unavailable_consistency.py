@@ -149,7 +149,7 @@ from dune_imperium.rules.effects import (
     recallable_conflict_agents,
     turn_agent_in_conflict,
 )
-from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_start_is_open
 from dune_imperium.rules.immortality import legal_research_bonus_actions
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.intrigue import PLOT_FRAME_KINDS, legal_intrigue_play_actions
@@ -553,6 +553,10 @@ def _old_intrigue_plays(state: GameState, player: int) -> tuple[DomainAction, ..
             if option.timing is not timing:
                 continue
             if option.turn_start_only and frame.kind != FrameKind.TURN:
+                continue
+            # Only the turn's first action (OQ-095 (6), user ruling
+            # 2026-10-04): a rule change made on purpose after the copy.
+            if option.turn_start_only and not turn_start_is_open(state, player):
                 continue
             if _old_option_is_playable(state, player, option):
                 actions.append(

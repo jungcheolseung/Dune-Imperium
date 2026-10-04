@@ -8,7 +8,8 @@ new deck beneath the card(s) still on top and the peek then looks at two
 look at the single remaining card, which the owner then keeps through the
 same window (user ruling 2026-10-02, L2-Q3 (2)). With no card at all the
 box has no effect, and the short draw is logged (``intrigue_draw_short``,
-L2-Q4).
+L2-Q4). The discard's Twisted cards are never shuffled in, so a discard of
+Twisted cards alone counts as empty (OQ-097).
 """
 
 from dataclasses import replace
@@ -27,7 +28,10 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.intrigue_deck import intrigue_draw_short_events
+from dune_imperium.rules.intrigue_deck import (
+    intrigue_draw_short_events,
+    shufflable_intrigue_discard,
+)
 
 PEEK_COUNT = 2
 _FRAME = "Intrigue peek frame"
@@ -37,7 +41,10 @@ def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleRe
     """Open the keep-one choice, shuffling the discard in when short."""
 
     top = state.intrigue_deck[:PEEK_COUNT]
-    if len(top) < PEEK_COUNT and state.intrigue_discard:
+    # Twisted cards stay in the discard (OQ-097, user ruling 2026-10-04,
+    # "다른 사람이 twisted 카드를 뽑는 일은 없도록").
+    discard = shufflable_intrigue_discard(state)
+    if len(top) < PEEK_COUNT and discard:
         # OQ-052 (user ruling): the discard is shuffled into a new deck
         # beneath the remaining top card, then two cards are looked at.
         decision_id = f"{source}:intrigue_shuffle"
@@ -47,8 +54,8 @@ def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleRe
             decision=ChanceDecision(
                 decision_id=decision_id,
                 prompt="Shuffle the Intrigue discard pile into a new deck",
-                options=state.intrigue_discard,
-                count=len(state.intrigue_discard),
+                options=discard,
+                count=len(discard),
             ),
             context=(
                 ("count", 0),
