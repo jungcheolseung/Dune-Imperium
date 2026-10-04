@@ -127,6 +127,9 @@ Second Wave, Treachery — 모두 Rise of Ix 카드).
 - 브라우저 새 게임 화면의 체크박스는 **기본으로 켠다**(사용자 결정 2026-09-28).
   엔진 `RulesetConfig`와 CLI(`--epic`)의 기본값은 꺼짐이라 학습·sweep 기준선은
   바뀌지 않는다. checkpoint·search AI 좌석도 Epic 게임에 앉을 수 있다.
+  2026-10-04 재확인: Steam 디지털판은 Epic Game Mode와 Go to 11을 기본으로 꺼 두지만(보조
+  증거, 공식 규칙 아님), 사용자는 브라우저 기본값을 그대로 두기로 했다("4번은 지금 세팅
+  유지해", OQ-091·OQ-092 (c)).
 - setup Intrigue 1장은 Intrigue deck을 섞은 뒤 First Player부터 좌석 순서로 맨 위에서
   한 장씩 나눈다. 룰북은 순서를 정하지 않으며, 섞인 덱이므로 분포는 같다. 새 우연
   결정은 없다.

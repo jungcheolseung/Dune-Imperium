@@ -106,7 +106,7 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 - 룰북은 Immortality가 덱빌딩 선택지를 늘리므로 조금 더 긴 게임을 원하는 그룹(특히 숙련자와 대회)에 11 Victory Point까지 하는 것을 권하고, 4인 게임은 0에서 시작해 10까지 한다고 적는다. 한국어판 이름은 "11점을 향해"다. `[Immortality p. 12]`
 - 이 엔진은 4인 전용이므로 옵션이 바꾸는 것은 하나다: setup에서 각 플레이어의 Score marker를 1 `[Main p. 5]`이 아니라 0에 놓는다. Endgame 조건(라운드가 끝났을 때 10 Victory Point 이상인 플레이어가 있거나 Conflict deck이 비었다) `[Main p. 15]`은 그대로다. 변형 이름의 11을 종료 조건으로 옮기지 않는다. Epic Game Mode(`epic_game`)를 함께 켜면 0에서 시작해 12점에 Endgame이다([OQ-093](open-questions.md#oq-093--go-to-11과-epic-game-mode를-함께-쓸-때), [epic-game-mode.md](epic-game-mode.md) 5절).
 - Victory Point를 잃는 경우는 Influence가 2 아래로 내려갈 때 `[Main pp. 7, 17]`와 Alliance token을 넘겨줄 때 `[Main p. 7]` `[FAQ p. 1]`뿐이고(카드·확장 효과에 VP를 잃는 것은 없다, 2026-09-28 코드 전수 확인), 둘 다 앞서 얻은 1점을 되돌린다([uprising-systems.md](uprising-systems.md)). 그래서 0에서 시작해도 점수는 0 아래로 내려가지 않는다. 모두 1점을 더 얻어야 하므로 Conflict deck이 비어 끝나는 게임은 늘 수 있다.
-- 원판 Dune: Imperium용 변형을 Uprising에 적용하는 것과 Immortality를 켜야만 고를 수 있게 한 것은 공식 규칙이 아니라 사용자 결정이다([OQ-091](open-questions.md#oq-091--go-to-11-변형을-uprising에-적용하는-방식)). 엔진과 CLI의 기본값은 꺼짐이고, 브라우저 새 게임 화면의 체크박스는 기본으로 켜져 있다.
+- 원판 Dune: Imperium용 변형을 Uprising에 적용하는 것과 Immortality를 켜야만 고를 수 있게 한 것은 공식 규칙이 아니라 사용자 결정이다([OQ-091](open-questions.md#oq-091--go-to-11-변형을-uprising에-적용하는-방식)). 엔진과 CLI의 기본값은 꺼짐이고, 브라우저 새 게임 화면의 체크박스는 기본으로 켜져 있다(Steam 디지털판은 기본으로 꺼 두지만, 사용자가 2026-10-04에 이 기본값을 유지하기로 했다 — OQ-091 (c) 재확인).
 
 ## 9. 기존 명세와의 관계
 
