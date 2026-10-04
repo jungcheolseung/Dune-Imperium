@@ -6,6 +6,8 @@ its owner's ``finish_agent_turn`` (user ruling OQ-095), a Reveal turn
 through ``finish_reveal``, and a turn-passing card is that press itself; the
 server holds the remaining unit ends (a Leader pick, Conflict rewards, a
 Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료".
+The last Leader pick has its own explicit ``finish_leader_draft`` so setup
+cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine
 already keeps, so the server needs no rule logic of its own; this module is
 that reading and nothing else.
@@ -32,6 +34,7 @@ from dune_imperium.rules.frames import FrameKind, owes_track_spy
 EXPLICIT_TURN_ENDS: Final = frozenset(
     {
         "finish_agent_turn",
+        "finish_leader_draft",
         "finish_reveal",
         "pass_combat_intrigue",
         "pass_endgame_intrigue",

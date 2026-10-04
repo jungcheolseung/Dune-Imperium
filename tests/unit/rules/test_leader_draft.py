@@ -22,6 +22,13 @@ def _pick(actor: int, leader_id: str) -> DomainAction:
     )
 
 
+def _finish(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    assert state.first_player is not None
+    return engine.apply(
+        state, DomainAction(action_id="finish_leader_draft", actor=state.first_player)
+    ).state
+
+
 def _draft_reset(
     engine: UprisingRulesEngine,
     *,
@@ -59,6 +66,11 @@ def test_draft_reset_pauses_on_a_public_six_leader_pool() -> None:
     assert isinstance(frame.decision, PlayerDecision)
     assert frame.decision.owner == (state.first_player + 3) % 4
 
+    with pytest.raises(IllegalActionError):
+        engine.apply(
+            state,
+            DomainAction(action_id="finish_leader_draft", actor=frame.decision.owner),
+        )
     offered = engine.legal_actions(state, frame.decision.owner)
     assert {a.action_id for a in offered} == {"pick_leader"}
     assert {dict(a.arguments)["leader_id"] for a in offered} == set(
@@ -91,7 +103,19 @@ def test_picks_run_in_reverse_turn_order_and_finish_setup() -> None:
         picked[expected_owner] = choice
         state = engine.apply(state, _pick(expected_owner, choice)).state
 
-    # The last pick hands off through Round Start into round 1.
+    # OQ-007 (2026-10-05): the last pick also waits for a turn-end press.
+    # No hidden setup cards may be seen while the pick is reversible.
+    assert state.phase is GamePhase.SETUP
+    assert state.first_player is not None
+    assert all(
+        not player.hand and not player.intrigue_cards for player in state.players
+    )
+    assert engine.legal_actions(state, state.first_player) == (
+        DomainAction(action_id="finish_leader_draft", actor=state.first_player),
+    )
+    with pytest.raises(IllegalActionError):
+        engine.apply(state, _pick(state.first_player, remaining_draft_pool(state)[0]))
+    state = _finish(engine, state)
     assert state.phase is GamePhase.PLAYER_TURNS
     assert state.round_number == 1
     for seat, leader_id in picked.items():
@@ -184,6 +208,8 @@ def test_picking_shaddam_sets_the_sardaukar_contracts_aside() -> None:
         choice = remaining_draft_pool(state)[0]
         state = engine.apply(state, _pick(owner, choice)).state
 
+    assert state.face_up_contract_ids == ()
+    state = _finish(engine, state)
     assert state.sardaukar_contract_ids == (
         "contract:sardaukar_i",
         "contract:sardaukar_ii",
@@ -209,6 +235,8 @@ def test_a_draft_without_shaddam_deals_the_full_contract_market() -> None:
         choice = remaining_draft_pool(state)[0]
         state = engine.apply(state, _pick(owner, choice)).state
 
+    assert state.face_up_contract_ids == ()
+    state = _finish(engine, state)
     assert state.sardaukar_contract_ids == ()
     assert len(state.face_up_contract_ids) == 2
     assert len(state.contract_bank) == 18

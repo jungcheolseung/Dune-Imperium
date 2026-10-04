@@ -91,6 +91,7 @@ const LABELS_EN = {
     "pay_reveal_spice_influence": "3 {spice} -> {influence_any}",
     "pay_reveal_water_for_sandworm": "1 {water} -> {sandworm}",
     "pick_leader": "Choose {leader}",
+    "finish_leader_draft": "Confirm Leader choice",
     "place_acquisition_spy": "Place {spy}",
     "place_agent_card_spy": "Place {spy}",
     "place_combat_reward_spy": "Place {spy}",

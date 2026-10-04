@@ -191,8 +191,8 @@ def finish_draft(page) -> None:
         else:
             page.evaluate(
                 "applyAction(state.actions.actions.find("
-                "(a) => a.action_id === 'pick_leader'"
-                " && a.arguments.leader_id !== 'piter_de_vries').index)"
+                "(a) => a.action_id === 'finish_leader_draft' || (a.action_id === 'pick_leader'"
+                " && a.arguments.leader_id !== 'piter_de_vries')).index)"
             )
         settled(page)
     check.ok(

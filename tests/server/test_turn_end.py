@@ -152,37 +152,31 @@ def _play_until_seat0_offers(
 # ------------------------------------------------------------- leader draft
 
 
-def test_the_last_leader_pick_holds_for_its_own_next_turn() -> None:
-    # Seed 0: seat 0 (human) is the First Player, so it picks last (OQ-007,
-    # draft_pick_order). The pick crosses straight from Leader-draft setup
-    # into seat 0's own round-1 turn -- a phase/round change, and per
-    # ``_unit_ended_locked`` that alone ends the unit even though the next
-    # decision is again seat 0's own.
+def test_the_last_leader_pick_waits_for_an_explicit_end_before_round_one() -> None:
+    # OQ-007 (2026-10-05): the last picker gets the same reversible choice
+    # as the first three; its turn-end press precedes all hidden setup.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=0)
     game_id = str(summary["game_id"])
     assert summary["first_player"] == 0
-    decision = _obj(summary["decision"])
-    assert decision["owner"] == 0
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
 
+    assert summary["confirmation"] is None
+    assert summary["phase"] == "setup"
+    assert summary["undo"] == [{"seat": 0, "steps": 1}]
+    assert _obj(summary["decision"])["kind"] == "leader_draft"
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    pick = actions[0]
-    summary = manager.apply_action(
-        game_id, 0, _int(summary["revision"]), _int(pick["index"])
-    )
-
-    assert summary["confirmation"] == 0
-    decision = _obj(summary["decision"])
-    assert decision["owner"] == 0
-    assert decision["kind"] == "turn"
-    assert manager.legal_actions(game_id, 0)["actions"] == []
-    assert manager.snapshot(game_id, 0)["actions"] is None
-    with pytest.raises(SessionError, match="has not confirmed"):
-        manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
-
-    confirmed = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
-    assert confirmed["confirmation"] is None
+    assert [(a["action_id"], a["undoable"]) for a in actions] == [
+        ("finish_leader_draft", False)
+    ]
+    assert manager.snapshot(game_id, 0)["actions"] is not None
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
+    assert summary["confirmation"] is None
+    assert summary["undo"] == []
+    assert _obj(summary["decision"])["kind"] == "turn"
     assert _rows(manager.legal_actions(game_id, 0)["actions"])
+    with pytest.raises(SessionError, match="no turn end"):
+        manager.confirm_turn(game_id, 0, _int(summary["revision"]))
 
 
 def test_a_non_last_leader_pick_holds_before_the_next_picker() -> None:
@@ -1207,7 +1201,7 @@ def test_a_seat_taking_consecutive_turns_presses_once_between_them() -> None:
     # (Before OQ-095 the engine closed the turn on its last effect and the
     # server held here, telling this from a Plot Intrigue return by the
     # log; the hold into a seat's own next turn now comes only from units
-    # without an explicit end, e.g. test_the_last_leader_pick_holds_for_its_
+    # without an explicit end, e.g. test_a_non_last_leader_pick_holds_before_the_
     # own_next_turn.)
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=16)
@@ -1433,29 +1427,31 @@ def test_finishing_seat_reads_a_pressed_end_below_its_follow_up() -> None:
 # ------------------------------------------------------------------- saves
 
 
-def test_a_hold_with_an_empty_undo_window_survives_save_and_restore() -> None:
-    # Seed 0 with the Leader draft: seat 0 is the First Player and picks
-    # last (test_the_last_leader_pick_holds_for_its_own_next_turn), and its
-    # pick runs into the round-1 draw, which closes the undo window to
-    # nothing -- but the hold and its empty window both round-trip through
-    # save/restore. (Moved 2026-10-01 from seed 21's Agent turn ending in an
-    # Intrigue draw: an Agent turn now ends only through finish_agent_turn,
-    # which is the press itself and never holds (OQ-095).)
+def test_the_last_leader_pick_survives_save_restore_and_undo() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=0)
     game_id = str(summary["game_id"])
-    assert _obj(summary["decision"])["kind"] == "leader_draft"
     summary = manager.apply_action(game_id, 0, _int(summary["revision"]), 0)
-    assert summary["confirmation"] == 0
-    assert summary["undo"] == []
-
     document = manager.save_game(game_id)
-    assert document["confirmation"] == 0
-    assert document["sealed_steps"] == 0
     restored = manager.restore_game(document)
-    assert restored["confirmation"] == 0
-    assert restored["undo"] == []
+    restored_id = str(restored["game_id"])
+    assert restored["confirmation"] is None
+    assert restored["phase"] == "setup"
+    assert restored["undo"] == [{"seat": 0, "steps": 1}]
     assert restored["revision"] == summary["revision"]
+    assert manager.view(restored_id, 0) == manager.view(game_id, 0)
+    restored = manager.undo(restored_id, 0, _int(restored["revision"]))
+    assert all(
+        action["action_id"] == "pick_leader"
+        for action in _rows(manager.legal_actions(restored_id, 0)["actions"])
+    )
+    restored = manager.apply_action(restored_id, 0, _int(restored["revision"]), 1)
+    restored = manager.apply_action(restored_id, 0, _int(restored["revision"]), 0)
+    assert restored["phase"] == "player_turns"
+    assert restored["undo"] == []
+    assert (
+        manager.restore_game(manager.save_game(restored_id))["phase"] == "player_turns"
+    )
 
 
 def test_a_confirmed_hand_over_to_a_human_stays_unheld_after_restore() -> None:
@@ -1777,7 +1773,7 @@ class _SweepConfig:
 # Immortality, Arrakeen Scouts, and every option at once with two humans.
 _SWEEP_CONFIGS = (
     _SweepConfig(HUMAN_FIRST, (0, 1)),
-    _SweepConfig(HUMAN_FIRST, (0,), ("leader_draft",)),
+    _SweepConfig(HUMAN_FIRST, (0, 1), ("leader_draft",)),
     _SweepConfig(HUMAN_FIRST, (0,), ("bloodlines", "tech_module")),
     _SweepConfig(HUMAN_FIRST, (0,), ("immortality",)),
     _SweepConfig(HUMAN_FIRST, (0,), ("arrakeen_scouts",)),

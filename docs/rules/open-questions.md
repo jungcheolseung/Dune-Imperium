@@ -81,6 +81,8 @@
 - 확정(2026-09-01): 위 6종 공개 draft convention을 학습·플레이 환경의 최종 ruleset option으로 채택한다. "공식 규칙 아님" 표기와, 공식 draft 절차가 발표될 때만 재검토한다는 단서는 유지한다.
 - 보충(2026-10-02, 사용자 "고쳐야지"): 위의 "두 단계 모두 공개 정보만 다루므로 정보 흐름은 달라지지 않는다"는 Epic Game Mode의 setup Intrigue 1장(비공개)에서 깨졌다 — reset이 그 카드를 draft 전에 나눠, 자기 카드를 보며 Leader를 골랐다. Rise of Ix는 카드를 뽑을 때 Leader가 이미 정해져 있다고 전제한다("A player using Viscount Hundro Moritani as their Leader should wait until all players have drawn their Intrigue card" `[Rise of Ix p. 10]`). 그래서 draft에서는 그 카드를 **마지막 pick 뒤**에 나눈다(같은 카드, 시점만 이동; codec v128, [epic-game-mode.md](epic-game-mode.md) 7절). Leader 선택 전에 비공개 정보를 주는 setup 단계를 새로 더하면 이 draft의 전제를 다시 확인한다.
 
+- 보충(2026-10-05, 사용자 오류 보고): **마지막 플레이어도 지도자 선택 후 턴 종료 전에는 되돌릴 수 있다.** 마지막 `pick_leader`는 공개된 지도자와 인쇄 setup만 반영하고 `leader_draft` 결정에 머문다. 그 좌석의 `finish_leader_draft`("턴 종료")에서 Contract 시장·Epic Intrigue·지도자 전용 더미를 배분하고 Game Start 선택·Round Start로 넘어간다. 앞선 세 좌석은 기존 서버의 턴 종료 확인을 유지한다. 이는 UI의 선택 확정 경계에 관한 project convention이며 공식 규칙이 아니다. 비공개 정보를 본 뒤에는 되돌릴 수 없다는 OQ-010은 그대로다. codec v134; `tests/server/test_undo.py`와 `tests/unit/rules/test_leader_draft.py`로 고정한다.
+
 ## OQ-008 — Control bonus와 방문자 효과의 상대 순서
 
 - 상태: `DECIDED`

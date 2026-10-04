@@ -1356,9 +1356,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # template per Objective, which counts as a won Conflict card (+4).
     # v131 (user ruling 2026-10-04, overriding OQ-057 (15)): the owner's
     # waiting Emperor track Spy is opened by place_track_spy (+1).
+    # v134: finish_leader_draft confirms the last pick (+1).
     assert base.size == (
         4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
         + 1
+        + 1  # v134: finish_leader_draft
     )
 
     actions = (

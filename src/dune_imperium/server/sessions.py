@@ -1229,9 +1229,9 @@ class GameSessionManager:
         Called with the chance outcomes after the step already resolved.
         The unit is over when the pending decision belongs to another
         seat's unit, or when the seat stands at the start of a turn of its
-        own: its last Leader pick ran into its round-1 turn, its Conflict
-        rewards and Control defense into its next round's turn, or every
-        other seat has revealed and its next turn follows. Any other
+        own: its Conflict rewards and Control defense ran into its next
+        round's turn, or every other seat has revealed and its next turn
+        follows. Any other
         decision of the same seat continues the unit, even across a phase
         change (a Conflict win's Intrigue trigger asked once Makers has
         begun); another seat's answer inside it is no end either.

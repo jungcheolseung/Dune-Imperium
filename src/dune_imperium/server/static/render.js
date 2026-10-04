@@ -580,6 +580,7 @@ function renderDisclosure() {
    server/turn_end.py — keep the two lists in step. */
 const EXPLICIT_TURN_END_IDS = new Set([
   "finish_agent_turn",
+  "finish_leader_draft",
   "finish_reveal",
   "pass_combat_intrigue",
   "pass_endgame_intrigue",

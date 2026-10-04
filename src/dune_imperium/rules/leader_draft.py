@@ -51,7 +51,7 @@ def legal_leader_draft_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer every remaining pool Leader to the seat holding the pick."""
+    """Offer a Leader pick, or the last picker's explicit draft end."""
 
     frame = top_frame_of_kind(state, FrameKind.LEADER_DRAFT)
     if (
@@ -60,6 +60,8 @@ def legal_leader_draft_actions(
         or frame.decision.owner != player
     ):
         return ()
+    if all(owner.leader_id is not None for owner in state.players):
+        return (DomainAction(action_id="finish_leader_draft", actor=player),)
     return tuple(
         DomainAction(
             action_id="pick_leader",
@@ -71,9 +73,11 @@ def legal_leader_draft_actions(
 
 
 def apply_leader_draft_pick(state: GameState, action: DomainAction) -> RuleResult:
-    """Assign the picked Leader and pass the pick on, or finish setup."""
+    """Assign the picked Leader without exposing the setup's hidden cards."""
 
-    if action not in legal_leader_draft_actions(state, action.actor):
+    if action.action_id != "pick_leader" or action not in legal_leader_draft_actions(
+        state, action.actor
+    ):
         raise ValueError("action is not a legal Leader draft pick")
     if state.first_player is None:
         raise RuntimeError("the Leader draft requires a decided First Player")
@@ -93,25 +97,42 @@ def apply_leader_draft_pick(state: GameState, action: DomainAction) -> RuleResul
 
     order = draft_pick_order(state.first_player, state.config.players)
     picked_count = sum(1 for player in players if player.leader_id is not None)
-    if picked_count < len(order):
-        frame = state.decision_stack[-1]
-        next_frame = replace(
-            frame,
-            decision=PlayerDecision(
-                owner=order[picked_count],
-                prompt="Pick a Leader from the face-up draft pool",
+    # OQ-007 (2026-10-05): the last pick is reversible until its owner's
+    # turn-end press. Keep setup, including the Epic Intrigue draw and
+    # Leader-specific hidden decks, behind that explicit action.
+    last_pick = picked_count == len(order)
+    frame = state.decision_stack[-1]
+    next_frame = replace(
+        frame,
+        decision=PlayerDecision(
+            owner=picker if last_pick else order[picked_count],
+            prompt=(
+                "Finish Leader draft"
+                if last_pick
+                else "Pick a Leader from the face-up draft pool"
             ),
-        )
-        return RuleResult(
-            state=replace(
-                state,
-                players=players,
-                decision_stack=(*state.decision_stack[:-1], next_frame),
-            ),
-            events=tuple(events),
-        )
+        ),
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=players,
+            decision_stack=(*state.decision_stack[:-1], next_frame),
+        ),
+        events=tuple(events),
+    )
 
-    return _finish_draft_setup(state, players, state.first_player, events)
+
+def finish_leader_draft(state: GameState, action: DomainAction) -> RuleResult:
+    """Confirm the last pick before dealing setup cards and starting play."""
+
+    if action.action_id != "finish_leader_draft" or action not in (
+        legal_leader_draft_actions(state, action.actor)
+    ):
+        raise ValueError("action is not a legal Leader draft end")
+    if state.first_player is None:
+        raise RuntimeError("the Leader draft requires a decided First Player")
+    return _finish_draft_setup(state, state.players, state.first_player, [])
 
 
 def _finish_draft_setup(
@@ -122,9 +143,9 @@ def _finish_draft_setup(
 ) -> RuleResult:
     """Deal the Contract market and hand the finished setup to Round Start.
 
-    Epic Game Mode's setup Intrigue card is dealt here, not before the
-    picks: it is drawn once every Leader is known [Rise of Ix p. 10], so no
-    seat picks while holding it. The deck order was fixed by the setup
+    Epic Game Mode's setup Intrigue card is dealt here, after the final
+    pick is confirmed: it is drawn once every Leader is known [Rise of Ix
+    p. 10], so no seat picks while holding it. The deck order was fixed by the setup
     shuffle and nothing draws during the draft, so every seat gets the same
     card as before -- only when it is seen moves.
     """

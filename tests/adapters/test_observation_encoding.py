@@ -473,6 +473,10 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # with that gate patched open in a scratch run all six games reproduce the
 # pins above exactly. The OQ-029 deployment allowance, the Usurp in-play
 # change and the OQ-026 prune move none of the six.
+# v134 adds the final draft confirmation decision. It consumes one random
+# policy choice, shifting only the draft trace. A scratch run skipping that
+# decision in both encoding and policy RNG exactly reproduces the v133
+# draft pin (77f0cb01..., 2416); the other five pins remain unchanged.
 _GOLDEN_DIGESTS = {
     "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
     "choam": ("bbd5f9f833b088970292152899279058ef6f6522fa181e93a926bc8b112c39d6", 2856),
@@ -484,7 +488,7 @@ _GOLDEN_DIGESTS = {
         "dc22b967bbd17e4d3c43bc23a0c7505def8d76da249f77cc00b31059ec38a269",
         3208,
     ),
-    "draft": ("77f0cb01821137b7d008ec14d4ae1274a962043af16ad081dda388f11a789563", 2416),
+    "draft": ("7b474f809443ba8f2a9519085e44d7cf28a751f7c7f018bdb733f297f90033c4", 2808),
     "scouts": (
         "3626ddc81a3ab4b957faa18ecfae231f659a02fceeec68b0adec5a51e517f4de",
         3424,

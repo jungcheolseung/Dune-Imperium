@@ -6,7 +6,8 @@ One press, EXACTLY one, ends a human seat's turn, whatever step closes it:
   ``confirmTurn()`` (POST /confirm);
 - the seat's own explicit turn-end action (``EXPLICIT_TURN_END_IDS`` in
   render.js, mirroring ``EXPLICIT_TURN_ENDS`` in server/turn_end.py:
-  ``finish_agent_turn``, ``finish_reveal``, ``pass_combat_intrigue``,
+  ``finish_agent_turn``, ``finish_leader_draft``, ``finish_reveal``,
+  ``pass_combat_intrigue``,
   ``pass_endgame_intrigue``, and Arrakeen Scouts' ``confirm_scouts_bid``)
   renders as that SAME row instead, its button
   applying that action directly (POST /actions) -- and never doubles as an
@@ -51,6 +52,7 @@ check = Check()
 # equal to the server's set; it lacked confirm_scouts_bid until 2026-10-01.
 EXPLICIT_TURN_END_IDS = {
     "finish_agent_turn",
+    "finish_leader_draft",
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
@@ -120,35 +122,55 @@ def scenario_last_pick(base, browser, seed: int) -> None:
         page.evaluate("state.summary.confirmation") is None,
         "not held before the pick",
     )
-    action = page.evaluate("state.actions.actions[0]")
-    page.click(f"#actions .action-item[data-index='{action['index']}'] > button")
+    check.ok(
+        page.locator("#actions .irreversible-badge").count() == 0,
+        "every last-pick choice is reversible",
+    )
+    first = page.evaluate("state.actions.actions[0]")
+    page.click(f"#actions .action-item[data-index='{first['index']}'] > button")
     assert settled(page, 20)
-
     check.ok(
-        page.evaluate("state.summary.confirmation === state.viewSeat"),
-        "held after the last pick",
+        page.evaluate("state.summary.phase === 'setup' && state.summary.round_number === 0"),
+        "the last pick stays in setup before dealing cards",
     )
+    check.ok(page.evaluate("state.view.private.hand.length") == 0, "no starting hand is exposed")
+    check.ok(page.evaluate("state.view.private.intrigue_cards.length") == 0, "no setup Intrigue is exposed")
+    check.ok(page.locator("#actions .action-item").count() == 0, "only the turn-end row remains")
+    check.ok(page.locator(".undo-row button").count() == 1, "the last pick has an undo button")
+    page.locator(".undo-row button").click()
+    assert settled(page, 20)
     check.ok(
-        page.evaluate("state.summary.decision.owner === state.viewSeat"),
-        "the pending decision is the seat's own round-1 turn",
+        page.evaluate("state.actions.actions.every((a) => a.action_id === 'pick_leader')"),
+        "undo restores the Leader choices",
     )
-    check.ok(page.evaluate("state.actions") is None, "#actions offers nothing while held")
-    check.ok(page.locator("#actions .action-item").count() == 0, "the panel is empty")
+    other = page.evaluate("state.actions.actions[1]")
+    page.click(f"#actions .action-item[data-index='{other['index']}'] > button")
+    assert settled(page, 20)
+    check.ok(
+        page.evaluate("state.view.players[state.viewSeat].leader_id") == other["arguments"]["leader_id"],
+        "another Leader can be picked",
+    )
+    # A fresh snapshot after reload must keep both the pick and its undo.
+    page.reload()
+    page.wait_for_selector(".undo-row button")
+    assert settled(page, 20)
+    check.ok(page.locator(".undo-row button").count() == 1, "reload preserves undo")
     row = page.locator(".turn-end-row button")
-    check.ok(row.count() == 1, "the turn-end row is shown")
+    check.ok(row.count() == 1, "the turn-end row is shown exactly once")
     check.ok(
         row.inner_text() == page.evaluate("t('render.turn_end_button')"),
         "labelled plainly",
         row.inner_text(),
     )
-
-    confirms = rec.count("POST", "/confirm")
+    posts = rec.count("POST", "/actions")
     row.click()
     assert settled(page, 20)
     check.ok(
-        rec.count("POST", "/confirm") == confirms + 1,
-        "pressing it posts to /confirm exactly once",
+        rec.count("POST", "/actions") == posts + 1,
+        "one turn-end press confirms the draft",
     )
+    check.ok(page.locator(".undo-row button").count() == 0, "the confirmed pick is sealed")
+    check.ok(page.evaluate("state.view.private.hand.length") == 5, "the starting hand is dealt after confirmation")
     check.ok(
         page.evaluate("state.summary.confirmation !== state.viewSeat"),
         "the seat is not held for a second press",
@@ -397,7 +419,7 @@ def check_pass_combat_intrigue(page, rec) -> None:
     )
 
 
-def check_irreversible_hold(page) -> None:
+def check_irreversible_end(page) -> None:
     print("[e] a turn ending in an irreversible step: the row, no undo row")
     check.ok(page.locator(".turn-end-row button").count() == 1, "the turn-end row is shown")
     check.ok(
@@ -416,12 +438,12 @@ def combined_scenarios(page, rec, limit: int = 700) -> None:
     """
 
     print(
-        "[2] one game: finish_agent_turn, an irreversible hold, finish_reveal, "
+        "[2] one game: finish_agent_turn, an irreversible end, finish_reveal, "
         "pass_combat_intrigue"
     )
     done = {
         "finish_agent_turn": False,
-        "irreversible_hold": False,
+        "irreversible_end": False,
         "finish_reveal": False,
         "pass_combat_intrigue": False,
     }
@@ -436,13 +458,14 @@ def combined_scenarios(page, rec, limit: int = 700) -> None:
         assert settled(page, 20)
         if page.evaluate("state.summary.finished") or all(done.values()):
             break
+        if not done["irreversible_end"] and page.evaluate(
+            "!(state.summary.undo || []).some((u) => u.seat === state.viewSeat && u.steps > 0)"
+            " && (state.summary.confirmation === state.viewSeat"
+            " || Boolean(state.actions && turnEndAction(state.actions.actions)))"
+        ):
+            check_irreversible_end(page)
+            done["irreversible_end"] = True
         if page.evaluate("state.summary.confirmation === state.viewSeat"):
-            if not done["irreversible_hold"] and page.evaluate(
-                "!(state.summary.undo || []).some("
-                "(u) => u.seat === state.viewSeat && u.steps > 0)"
-            ):
-                check_irreversible_hold(page)
-                done["irreversible_hold"] = True
             page.click(".turn-end-row button")
             assert settled(page, 20)
             continue
@@ -474,14 +497,14 @@ def combined_scenarios(page, rec, limit: int = 700) -> None:
         )
 
 
-def scenario_english(base, browser) -> None:
+def scenario_english(base, browser, seed: int) -> None:
     """The turn-end row in English, at a hold and at one of the seat's own
     explicit turn-end actions: always ends "End turn ▶", and carries no
     Hangul (lang.py covers the rest of the page)."""
 
     print("[3] the turn-end row in English: 'End turn ▶', no Hangul")
     context, page, rec = open_context(browser, "turn-end-english")
-    create_game(page, base, humans=(0,), seed=SEED)
+    create_game(page, base, humans=(0,), seed=seed)
     switch_language(page, "en")
 
     def check_row(what: str) -> None:
@@ -666,7 +689,8 @@ def main() -> None:
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
 
-            scenario_english(base, browser)
+            if next_seed is not None:
+                scenario_english(base, browser, next_seed)
 
             endgame_seed = find_endgame_intrigue_seed(base)
             if endgame_seed is None:

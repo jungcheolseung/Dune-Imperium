@@ -258,7 +258,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # must use at least one line before it can be finished (OQ-058); Arrakis
 # Revolt's no-effect keep-wall line is withheld under a deployment block
 # (OQ-026). No template change; replays and hashes change.
-ACTION_CODEC_VERSION = 133
+# v134: the final Leader pick waits for finish_leader_draft before setup
+# reveals hidden cards, so the play server can undo every pick (OQ-007).
+ACTION_CODEC_VERSION = 134
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -359,6 +361,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
+            "finish_leader_draft",
             "decline_combat_reward",
             "decline_combat_reward_spy",
             "decline_combat_reward_trash",

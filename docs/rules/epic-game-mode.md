@@ -135,7 +135,7 @@ Second Wave, Treachery — 모두 Rise of Ix 카드).
   결정은 없다.
 - 나누는 **시점**은 모든 Leader가 정해진 뒤다(2절 3의 Hundro 문장 `[Rise of Ix p. 10]`).
   고정 Leader setup은 Leader setup 뒤에, [OQ-007](open-questions.md#oq-007--leader-선택-절차)
-  draft는 **마지막 pick 뒤**(Contract 시장을 나누는 때)에 나눈다. 그래서 draft 중에는 아무도
+  draft는 **마지막 pick을 턴 종료로 확정한 뒤**(Contract 시장을 나누는 때)에 나눈다(OQ-007, 2026-10-05). 그래서 draft 중에는 아무도
   Intrigue를 들고 있지 않다. Leader의 Game Start 선택(Steersman Y'rkoon의 Navigation, Kota
   Odax of Ix의 Secret Project)은 두 경로 모두 카드를 받은 뒤다 — 공식 문서는 Hundro만 정하고
   나머지는 침묵하므로 Hundro의 순서로 통일한 사용자 판정이다

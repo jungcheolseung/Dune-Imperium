@@ -125,6 +125,7 @@ const ACTION_LABELS = {
   pay_reveal_spice_influence: "3 {spice} → {influence_any}",
   pay_reveal_water_for_sandworm: "1 {water} → {sandworm}",
   pick_leader: "{leader} 선택",
+  finish_leader_draft: "지도자 선택 확정",
   place_acquisition_spy: "{spy} 배치",
   place_agent_card_spy: "{spy} 배치",
   place_combat_reward_spy: "{spy} 배치",

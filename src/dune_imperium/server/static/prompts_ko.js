@@ -61,6 +61,7 @@ const PROMPT_KO = {
   "Move your Spy off the watched space": "감시 중인 공간에서 {spy} 이동",
   "Pay three Spice for Influence or decline this Reveal effect": "{spice} 3 지불하고 {influence_any} 획득, 또는 이 {reveal_turn} 효과 거절",
   "Pick a Leader from the face-up draft pool": "공개된 드래프트 풀에서 {leader} 선택",
+  "Finish Leader draft": "지도자를 선택했습니다. 턴 종료로 확정하세요.",
   "Place a Spy on the watched space": "{spy}를 배치할 {observation_post} 선택",
   "Place a Spy with Deep Cover": "잠복 {spy}를 배치할 {observation_post} 선택",
   "Place four Navigation cards face down, in order": "{navigation} 4장을 순서대로 뒷면으로 놓기",

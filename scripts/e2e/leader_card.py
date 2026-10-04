@@ -1790,6 +1790,11 @@ def _drive_to_navigation_setup(owner, other, *, timeout: float = 30.0) -> bool:
     while time.monotonic() < deadline:
         if _confirm_if_held(owner) or _confirm_if_held(other):
             continue
+        if any(
+            _has_actions(page) and _apply_first(page, "finish_leader_draft")
+            for page in (owner, other)
+        ):
+            continue
         if _has_actions(owner):
             if _apply_first(owner, "place_navigation_card"):
                 navigation_done += 1

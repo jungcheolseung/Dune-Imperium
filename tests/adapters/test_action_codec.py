@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 133
+    assert ACTION_CODEC_VERSION == 134
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -77,6 +77,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # template per Objective, which counts as a won Conflict card (+4).
     # v131 (user ruling 2026-10-04, overriding OQ-057 (15)): the owner's
     # waiting Emperor track Spy is opened by place_track_spy (+1).
+    # v134: finish_leader_draft confirms the last reversible pick (+1).
     assert first.size == (
         4354
         + 2
@@ -102,8 +103,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         - 27
         + 4
         + 1
+        + 1
     )
-    assert first.size == 4405
+    assert first.size == 4406
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -127,8 +129,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4405
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4405 + len(
+    assert ActionCodec(RulesetConfig()).size == 4406
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4406 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -203,6 +205,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # template per Objective, which counts as a won Conflict card (+4).
     # v131 (user ruling 2026-10-04, overriding OQ-057 (15)): the owner's
     # waiting Emperor track Spy is opened by place_track_spy (+1).
+    # v134: finish_leader_draft confirms the last reversible pick (+1).
     assert codec.size == (
         4640
         + 2
@@ -229,6 +232,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         - 27
         - 1
         + 4
+        + 1
         + 1
     )
 
@@ -332,6 +336,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # template per Objective, which counts as a won Conflict card (+4).
     # v131 (user ruling 2026-10-04, overriding OQ-057 (15)): the owner's
     # waiting Emperor track Spy is opened by place_track_spy (+1).
+    # v134: finish_leader_draft confirms the last reversible pick (+1).
     assert (
         both.size
         == 11100 + 28 + 28 + 72 + 15 + 5 + 2 - 3 + 1 + 1 - 1 + 1 + 1 + 1 + 1 + 1 + 2
@@ -343,6 +348,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         - 27
         - 1
         + 4
+        + 1
         + 1
     )
 

@@ -336,6 +336,7 @@ def test_a_remote_leader_draft_game_over_http_reaches_round_one(
         assert claimed.status_code == 200, claimed.text
 
     picks = 0
+    finishes = 0
     decision = summary["decision"]
     while isinstance(decision, dict) and decision["kind"] == "leader_draft":
         holder = summary["confirmation"]
@@ -367,6 +368,8 @@ def test_a_remote_leader_draft_game_over_http_reaches_round_one(
         )
         assert forbidden.status_code == 403, forbidden.text
 
+        actions = clients[owner].get(f"/games/{game_id}/seats/{owner}/actions").json()
+        action_id = actions["actions"][0]["action_id"]
         applied = clients[owner].post(
             f"/games/{game_id}/actions",
             json={"seat": owner, "revision": summary["revision"], "index": 0},
@@ -374,9 +377,11 @@ def test_a_remote_leader_draft_game_over_http_reaches_round_one(
         assert applied.status_code == 200, applied.text
         summary = applied.json()
         decision = summary["decision"]
-        picks += 1
+        picks += action_id == "pick_leader"
+        finishes += action_id == "finish_leader_draft"
 
     assert picks == 4
+    assert finishes == 1
     assert summary["round_number"] == 1
 
 

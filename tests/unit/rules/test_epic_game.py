@@ -301,10 +301,11 @@ def test_the_draft_deals_the_epic_intrigue_after_the_last_pick(
             next(
                 action
                 for action in engine.legal_actions(live, decision.owner)
-                if dict(action.arguments)["leader_id"] == pick
+                if action.action_id == "finish_leader_draft"
+                or dict(action.arguments)["leader_id"] == pick
             ),
         ).state
-    # The last pick deals the shuffled deck's top cards from the First
+    # Confirming the last pick deals the shuffled deck's top cards from the First
     # Player, the same cards the fixed-Leader setup would deal; the picks
     # keep every discard pile (Control the Spice with Immortality).
     assert live.phase is GamePhase.PLAYER_TURNS
@@ -341,7 +342,8 @@ def test_a_drafted_steersman_chooses_navigation_holding_the_epic_card() -> None:
             next(
                 action
                 for action in engine.legal_actions(live, decision.owner)
-                if (dict(action.arguments)["leader_id"] == "steersman_y_rkoon")
+                if action.action_id == "finish_leader_draft"
+                or (dict(action.arguments)["leader_id"] == "steersman_y_rkoon")
                 is last
             ),
         ).state

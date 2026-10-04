@@ -78,12 +78,12 @@ def _create(client: TestClient, **overrides: object) -> dict[str, object]:
 
     An Agent turn ends with its owner's own ``finish_agent_turn`` press and
     is never held for the confirm press any more (OQ-095); a Leader pick
-    still is, and seat 0 picks first in this seed.
+    still is for a nonfinal pick, and seat 0 picks before an AI in this seed.
     """
 
     payload: dict[str, object] = {
         "seats": ["human", "heuristic", "heuristic", "heuristic"],
-        "game_seed": 21,
+        "game_seed": 1,
         "leader_draft": True,
     }
     payload.update(overrides)

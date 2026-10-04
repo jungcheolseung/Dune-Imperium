@@ -354,9 +354,12 @@ def test_a_leader_draft_game_over_http_reaches_round_one(
     game_id = summary["game_id"]
 
     picks = 0
+    finishes = 0
     decision = summary["decision"]
     while isinstance(decision, dict) and decision["kind"] == "leader_draft":
         owner = decision["owner"]
+        actions = client.get(f"/games/{game_id}/seats/{owner}/actions").json()
+        action_id = actions["actions"][0]["action_id"]
         applied = client.post(
             f"/games/{game_id}/actions",
             json={"seat": owner, "revision": summary["revision"], "index": 0},
@@ -364,8 +367,10 @@ def test_a_leader_draft_game_over_http_reaches_round_one(
         assert applied.status_code == 200, applied.text
         summary = applied.json()
         decision = summary["decision"]
-        picks += 1
+        picks += action_id == "pick_leader"
+        finishes += action_id == "finish_leader_draft"
     assert picks == 4
+    assert finishes == 1
     assert summary["round_number"] == 1
 
 

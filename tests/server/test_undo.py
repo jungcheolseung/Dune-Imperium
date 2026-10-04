@@ -11,6 +11,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.replay import ReplayStep
+from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.persistence import SAVE_FORMAT_VERSION
 from dune_imperium.server.session_log import (
     LoggedStep,
@@ -217,9 +218,7 @@ def test_a_starting_card_removed_by_a_leader_pick_is_not_a_reveal() -> None:
     diplomacy = "player:0:starter:diplomacy:0"
     dagger = "player:0:starter:dagger:0"
     before = _state(p0=PlayerState(player_id=0, deck=(dagger, diplomacy)))
-    after = _state(
-        p0=PlayerState(player_id=0, leader_id="staban_tuek", deck=(dagger,))
-    )
+    after = _state(p0=PlayerState(player_id=0, leader_id="staban_tuek", deck=(dagger,)))
     assert reveals_hidden_information(before, after, actor=0) is False
 
     # Only the card the printed rule names, and only as that Leader is picked.
@@ -232,9 +231,7 @@ def test_a_starting_card_removed_by_a_leader_pick_is_not_a_reveal() -> None:
     )
     assert reveals_hidden_information(before, other_leader, actor=0) is True
     picked = _state(
-        p0=PlayerState(
-            player_id=0, leader_id="staban_tuek", deck=(dagger, diplomacy)
-        )
+        p0=PlayerState(player_id=0, leader_id="staban_tuek", deck=(dagger, diplomacy))
     )
     assert reveals_hidden_information(picked, after, actor=0) is True
     # Drawing it instead is still the drawer learning their deck top.
@@ -400,30 +397,94 @@ def test_a_turn_ending_in_a_reveal_still_waits_for_its_press() -> None:
         manager.confirm_turn(game_id, 0, _int(pressed["revision"]))
 
 
-def test_a_held_unit_ending_in_a_reveal_still_waits_for_its_press() -> None:
-    # The held twin of the test above, on a unit OQ-095 still holds: seed 0
-    # with the Leader draft, where seat 0 is the First Player and picks last
-    # (OQ-007). Its pick runs into the round-1 draw, which shows the seat its
-    # hand, so no pick can be taken back and the window is empty -- and the
-    # unit still waits for its own press, before the seat's own first turn.
-    manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, leader_draft=True, game_seed=0)
+@pytest.mark.parametrize("remote", (False, True))
+@pytest.mark.parametrize("epic_game", (False, True))
+@pytest.mark.parametrize("expansions", (False, True))
+def test_every_leader_pick_can_be_undone_before_its_turn_end(
+    epic_game: bool,
+    expansions: bool,
+    remote: bool,
+) -> None:
+    # docs/rules/open-questions.md OQ-007: "draft에서는 그 카드를 마지막
+    # pick 뒤에 나눈다" [Rise of Ix p. 10]. The 2026-10-05 user correction
+    # keeps that hidden deal after the last pick's turn-end press as well.
+    # OQ-010's hidden-information boundary itself must remain unchanged.
+    manager = GameSessionManager(
+        access=AccessMode.REMOTE if remote else AccessMode.OPEN,
+        admin_key="draft-test" if remote else None,
+    )
+    credentials = Credentials(admin_key="draft-test" if remote else None)
+    summary = manager.create_game(
+        ("human",) * 4,
+        credentials=credentials,
+        leader_draft=True,
+        game_seed=9,
+        epic_game=epic_game,
+        choam_module=expansions,
+        bloodlines=expansions,
+        tech_module=expansions,
+        immortality=expansions,
+        arrakeen_scouts=expansions,
+    )
     game_id = str(summary["game_id"])
-    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
-    assert actions
-    assert {(entry["action_id"], entry["undoable"]) for entry in actions} == {
-        ("pick_leader", False)
-    }
-    summary = _play_raw(manager, summary)
-
-    assert summary["confirmation"] == 0
-    assert summary["undo"] == []
-    assert _obj(summary["decision"])["kind"] == "turn"
-    assert manager.legal_actions(game_id, 0)["actions"] == []
-
-    confirmed = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
-    assert confirmed["confirmation"] is None
-    assert _rows(manager.legal_actions(game_id, 0)["actions"])
+    if remote:
+        tokens = frozenset(
+            manager.claim_seat(game_id, seat, f"Player {seat}").token
+            for seat in range(4)
+        )
+        credentials = Credentials(seat_tokens=tokens, admin_key="draft-test")
+    for position in range(4):
+        seat = _int(_obj(summary["decision"])["owner"])
+        before = manager._get(game_id).state
+        actions = _rows(
+            manager.legal_actions(game_id, seat, credentials=credentials)["actions"]
+        )
+        assert actions and all(action["undoable"] is True for action in actions)
+        summary = manager.apply_action(
+            game_id, seat, _int(summary["revision"]), 0, credentials=credentials
+        )
+        assert summary["undo"] == [{"seat": seat, "steps": 1}]
+        assert summary["phase"] == "setup"
+        after = manager._get(game_id).state
+        assert all(not p.hand and not p.intrigue_cards for p in after.players)
+        assert not reveals_hidden_information(before, after, seat)
+        assert after.face_up_contract_ids == ()
+        # Every client's view is still pre-deal, including the
+        # last picker's. Replaying an undo restores the exact draft state.
+        for viewer in range(4):
+            snapshot = manager.snapshot(game_id, viewer, credentials=credentials)
+            assert _obj(_obj(snapshot["view"])["private"])["hand"] == []
+            assert _obj(_obj(snapshot["view"])["private"])["intrigue_cards"] == []
+        summary = manager.undo(
+            game_id, seat, _int(summary["revision"]), credentials=credentials
+        )
+        assert manager._get(game_id).state == before
+        assert summary["confirmation"] is None
+        summary = manager.apply_action(
+            game_id, seat, _int(summary["revision"]), 1, credentials=credentials
+        )
+        if position < 3:
+            assert summary["confirmation"] == seat
+            summary = manager.confirm_turn(
+                game_id, seat, _int(summary["revision"]), credentials=credentials
+            )
+        else:
+            finish = _rows(
+                manager.legal_actions(game_id, seat, credentials=credentials)["actions"]
+            )
+            assert [(a["action_id"], a["undoable"]) for a in finish] == [
+                ("finish_leader_draft", False)
+            ]
+            summary = manager.apply_action(
+                game_id, seat, _int(summary["revision"]), 0, credentials=credentials
+            )
+        assert summary["undo"] == []
+        with pytest.raises(SessionError, match="at most 0"):
+            manager.undo(
+                game_id, seat, _int(summary["revision"]), credentials=credentials
+            )
+    assert all(p.leader_id is not None for p in manager._get(game_id).state.players)
+    assert summary["confirmation"] is None
 
 
 def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:

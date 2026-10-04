@@ -211,6 +211,7 @@ from dune_imperium.rules.leader_abilities import (
 )
 from dune_imperium.rules.leader_draft import (
     apply_leader_draft_pick,
+    finish_leader_draft,
     legal_leader_draft_actions,
 )
 from dune_imperium.rules.navigation import (
@@ -565,6 +566,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Setup Leader draft (OQ-007 convention)
     "pick_leader": apply_leader_draft_pick,
+    "finish_leader_draft": finish_leader_draft,
     # Arrakeen Scouts (docs/rules/arrakeen-scouts.md)
     "choose_four_bonus": apply_four_bonus_choice,
     "choose_subcommittee": apply_subcommittee_action,
