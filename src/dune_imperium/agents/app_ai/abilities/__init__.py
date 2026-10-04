@@ -7,7 +7,8 @@ every registered port.
 from dune_imperium.agents.app_ai.abilities import (  # noqa: F401  (registration)
     board,
     generic,
-    imperium,
+    imperium_a,
+    imperium_b,
     intrigue,
     leaders,
 )
