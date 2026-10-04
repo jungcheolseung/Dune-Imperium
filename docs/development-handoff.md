@@ -74,7 +74,7 @@ uv run mypy src tests
 (브랜치 `app-ai`; 설계·근거 [`app-ai-plan.md`](app-ai-plan.md), 결과 [`evaluation/app-ai-2026-10-05.md`](evaluation/app-ai-2026-10-05.md)).
 사용자 결정: 로직·상수 437개·카드표까지 **모두 공개 저장소**에 둔다(2026-10-03의 "앱 상수 금지"를 이 agent에 한해 바꿈), 앱의 버그로
 보이는 동작도 그대로 재현한다. 상수·아키타입 데이터는 `scripts/dwgr/app_ai_constants.py`·`app_archetypes.py`·`app_ai_emit.py`가 로컬
-덤프에서 생성한다. 엔진·codec·관측은 바뀌지 않았다(v133·v30). 기준: **pytest 4,572개 통과**, Ruff·mypy(363파일) 통과. A/B(2:2, base·CHOAM,
+덤프에서 생성한다. 엔진·codec·관측은 바뀌지 않았다(v133·v30). 병합한 master(`776ac574`) 기준: **pytest 4,579개 통과**, Ruff·mypy(363파일) 통과. A/B(2:2, base·CHOAM,
 지도자 회전): app_ai Hard가 heuristic을 좌석당 46.5% 대 3.5%로 이기고(시드 두 묶음 같음), Hard > Medium > Easy, 학습 망 greedy(7081)는
 Hard에 13.5% 대 36.5%로 지고(규칙 변경 전 체크포인트, L3 재적응 안 함), search 1석은 Hard 셋을 상대로 48.5%를 낸다. 다음 후보: UI 좌석에
 app_ai·search 넣기, 학습 상대에 app_ai 넣기(L3와 함께).
