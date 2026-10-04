@@ -1,0 +1,489 @@
+"""The ``turn`` window: the app's turn-start prompt (``DetermineTurn``).
+
+App side (``analysis/ai/12-turn-structure.md`` §1, ``spec/engine-order.md``
+§2.1 and §3.1-3.4). ``PlayerTurnPhase/<DetermineTurn>d__12::MoveNext``
+@0x4a1c0c0 builds one **non-forced** ``SelectTargetsFrom`` whose keys are
+(``WormPlaymat::GetUsablePrePlayerTurnAbilities`` @0x49ad270, in this order):
+
+1. every hand card whose ``AgentAbility`` can run (an agent in supply and at
+   least one legal space); its targets are the card's legal spaces in
+   ``Board.children`` order, and ``MakeChoice`` scores it with
+   ``AgentAbility::Evaluate`` @0x4bd28b0 (the first strictly best space);
+2. every Plot intrigue whose Plot ability can run (``intrigue_play_sources``,
+   shared with the other Plot windows);
+3. leader abilities without Agent/Reveal timing and playmat abilities: our
+   ``turn`` window has no counterpart (``docs/app-ai-plan.md`` §6).
+
+There is no Reveal key: Reveal is the empty answer (no key worth more than 0),
+our ``reveal_turn``. A Plot played here returns the app to the same prompt,
+as our engine re-offers the TURN frame, so each question is answered afresh.
+
+Our engine bakes two post-placement answers into the ``agent_turn`` action:
+the cost option of Gather Support / Spice Refinery (the app's
+``CostFirstSpaceAbility`` prompt, Agent-turn state 220) and the Spy recalled
+to infiltrate an occupied space (``RecallSpyInfiltrateAbility``, state 240).
+Both prompts are forced for an AI seat (``MakeUndoableAbilityResolution``
+@0x49daf70, ``forced = !IsUndoAvailable`` = true). The app asks them only
+after ``MakeChoice`` has picked the placement, so ``turn_window`` first ranks
+the cards on a representative action of the chosen (card, space) and then
+realises it with those two Evaluates, run on the state as it stands at that
+app state (``_after_send`` / ``_after_cost_first``).
+
+``place_track_spy`` (an owed Emperor-4 Spy) is never chosen here: the app
+keeps that Spy for the post-action prompt (agent_effects / reveal windows).
+Non-target actions (Bloodlines' ``play_turn_start_card``, tech or specimen
+actions) are never chosen either.
+
+``HANDLERS`` maps each decision kind this module answers to its handler; a
+kind missing here (or a handler returning None) falls back to the heuristic.
+"""
+
+from collections.abc import Callable, Sequence
+from dataclasses import replace
+
+from dune_imperium.agents.app_ai.abilities.base import (
+    Ability,
+    Answer,
+    Request,
+    TargetInfo,
+    abilities_of,
+)
+from dune_imperium.agents.app_ai.abilities.board import (
+    GatherSupportAbility,
+    RecallSpyInfiltrateAbility,
+    SpiceRefineryAbility,
+)
+from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
+from dune_imperium.agents.app_ai.catalog import (
+    POST_INDEX,
+    SPACE_ARCHETYPES,
+    card_entity,
+    space_entity,
+    spy_entity,
+)
+from dune_imperium.agents.app_ai.context import AppContext
+from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
+from dune_imperium.agents.app_ai.profile import Profile
+from dune_imperium.agents.app_ai.windows.common import (
+    Source,
+    Stage,
+    decide,
+    int_arg,
+    str_arg,
+)
+from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
+from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
+
+#: The board set of a 4-player Uprising game (``SetupPhase/<BeginSetup>``).
+_BOARD_SET = "Uprising"
+#: Space abilities whose ``.ctor`` sets ``CostFirstSpaceAbility``
+#: (engine-order §3.1 state 220: Spice Refinery and Gather Support).
+_COST_FIRST: tuple[type[SpaceAbility], ...] = (
+    GatherSupportAbility,
+    SpiceRefineryAbility,
+)
+
+
+# ---------------------------------------------------------------------------
+# Board order (the app's target order for spaces)
+# ---------------------------------------------------------------------------
+
+
+#: ``AllArchetypes()`` order of the space archetypes a 4-player Uprising game
+#: can deal (with or without CHOAM): their typedef (metadata) order in
+#: ``dump/worm-canis.dll.cs``, typeIndex in the comments. The space
+#: archetypes in between (Rise of Ix 645-648, Immortality 649, the rest of
+#: the base set) carry no ``Uprising``/``CHOAMModule`` set, so ``BeginSetup``
+#: never keeps them.
+_SPACE_ARCHETYPE_ORDER: tuple[str, ...] = (
+    "SpaceArchetypes.Uprising.AcceptContractCHOAM",  # 624
+    "SpaceArchetypes.Uprising.AcceptContractUP",  # 625
+    "SpaceArchetypes.Uprising.AssemblyHall",  # 626
+    "SpaceArchetypes.Uprising.DeepDesert",  # 627
+    "SpaceArchetypes.Uprising.DeliverSupplies",  # 628
+    "SpaceArchetypes.Uprising.DesertTactics",  # 629
+    "SpaceArchetypes.Uprising.DutifulServiceCHOAM",  # 630
+    "SpaceArchetypes.Uprising.DutifulServiceUP",  # 631
+    "SpaceArchetypes.Uprising.Espionage",  # 632
+    "SpaceArchetypes.Uprising.Fremkit",  # 633
+    "SpaceArchetypes.Uprising.GatherSupport",  # 634
+    "SpaceArchetypes.Uprising.HaggaBasinUP",  # 635
+    "SpaceArchetypes.Uprising.HeighlinerUP",  # 636
+    "SpaceArchetypes.Uprising.HighCouncilUP",  # 637
+    "SpaceArchetypes.Uprising.ImperialPrivilege",  # 638
+    "SpaceArchetypes.Uprising.ResearchStationUP",  # 639
+    "SpaceArchetypes.Uprising.Sardaukar",  # 640
+    "SpaceArchetypes.Uprising.Shipping",  # 641
+    "SpaceArchetypes.Uprising.SietchTabrUP",  # 642
+    "SpaceArchetypes.Uprising.SpiceRefinery",  # 643
+    "SpaceArchetypes.Uprising.SwordmasterUP",  # 644
+    "SpaceArchetypes.BaseSet.Arrakeen",  # 650
+    "SpaceArchetypes.BaseSet.ImperialBasin",  # 659
+    "SpaceArchetypes.BaseSet.Secrets",  # 663
+)
+#: Our space id of each app space archetype (both CHOAM variants).
+_SPACE_OF_ARCHETYPE: dict[str, str] = {
+    archetype: space_id
+    for space_id, variants in SPACE_ARCHETYPES.items()
+    for archetype in variants
+}
+
+
+def _set_attr(archetype: str, name: str) -> tuple[str, ...]:
+    """A set-list attribute (``SetList``/``RemovedFromSetList``) of an archetype."""
+
+    value = ARCHETYPES[archetype].attributes.get(name, ())
+    return tuple(str(item) for item in value) if isinstance(value, tuple) else ()
+
+
+def board_space_order(choam: bool) -> tuple[str, ...]:
+    """``Board.children`` space order (``WormBoard::ValidSpaces`` @0x4828890).
+
+    engine-order §7: ``SetupPhase/<BeginSetup>d__6`` @0x4a42600 takes
+    ``AllArchetypes()`` spaces of the board set (``SetList`` holds
+    ``Uprising``), then ``AddRange`` the spaces of the other enabled sets
+    (CHOAM 4001: ``SetList = [CHOAMModule]``), then ``RemoveAll`` the spaces
+    an enabled set removes (``RemovedFromSetList``: the two ``…UP`` spaces
+    CHOAM replaces); no sort on the way. ``AgentAbility::Evaluate``
+    @0x4bd28b0 keeps the first strictly-best space, so this order settles an
+    exact value tie inside one card.
+
+    ``AllArchetypes()`` is ``CanisReflection.MakeArchetypes`` (<>c
+    ``b__17_0`` @0x4ead350): ``<MakeArchetypes>d__3::MoveNext`` @0x2ac96d0
+    walks ``CanisReflection::ExportedTypes`` @0x8e3220 (the assembly's type
+    array, cached, unsorted) in order.
+
+    UNTRACED (engine-order §9): the order of the runtime's type array; the
+    spec's assumption, metadata (typedef) order, is ``_SPACE_ARCHETYPE_ORDER``.
+    Spaces with no app archetype (Tuek's Sietch, Bloodlines) are left out.
+    """
+
+    # UNTRACED: the reflection order (engine-order §9) is taken to be the
+    # typedef order of dump/worm-canis.dll.cs, as the spec assumes.
+    enabled = (_BOARD_SET, *(("CHOAMModule",) if choam else ()))
+    archetypes = [
+        a for a in _SPACE_ARCHETYPE_ORDER if _BOARD_SET in _set_attr(a, "SetList")
+    ]
+    archetypes.extend(
+        a
+        for a in _SPACE_ARCHETYPE_ORDER
+        if any(s in _set_attr(a, "SetList") for s in enabled[1:])
+    )
+    return tuple(
+        _SPACE_OF_ARCHETYPE[a]
+        for a in archetypes
+        if not any(s in _set_attr(a, "RemovedFromSetList") for s in enabled)
+    )
+
+
+# ---------------------------------------------------------------------------
+# The state at the app's post-placement prompts (states 220 and 240)
+# ---------------------------------------------------------------------------
+
+
+def _with_players(state: GameState, players: Sequence[PlayerState]) -> GameState:
+    return replace(state, players=tuple(players))
+
+
+def _after_send(state: GameState, seat: int, card_ref: str, space_id: str) -> GameState:
+    """The state after ``PlayAgentCard`` (100) and ``SendAgentToSpace`` (200).
+
+    The card goes from hand to play, the Agent onto the space, and the
+    space's controller (any seat) takes its control bonus
+    (``ControlSolari``/``ControlSpice``, engine-order §3.1 state 200). The
+    space cost is not paid yet: ``SpaceAbility/<BeginExecution>d__10``
+    (@0x4bb1a50, case 0, ``PayCost`` vslot 82 at 0x4bb1d50) pays it when the
+    space ability runs, at 220 for a cost-first space and at 400 otherwise.
+
+    Judgement: the decision stack (our TURN frame) and the view are kept;
+    none of the Evaluates run on this state (Gather Support, Spice Refinery,
+    ``GetRecallSpy``) reads the turn type or the open frame. Staban's Smuggle
+    Spice (an opponent's spice at a Maker space) is not applied: no read here
+    depends on another seat's spice.
+    """
+
+    players = list(state.players)
+    me = players[seat]
+    players[seat] = replace(
+        me,
+        agents_available=me.agents_available - 1,
+        agent_locations=(*me.agent_locations, space_id),
+        hand=tuple(card for card in me.hand if card != card_ref),
+        in_play=(*me.in_play, card_ref),
+    )
+    space = space_entity(space_id, state.config.choam_module)
+    for attr, field in (("ControlSolari", "solari"), ("ControlSpice", "spice")):
+        amount = space.int_attr(attr)
+        if amount <= 0:
+            continue
+        for index, player in enumerate(players):
+            if space_id in player.control_space_ids:
+                resources = player.resources
+                players[index] = replace(
+                    player,
+                    resources=replace(
+                        resources, **{field: getattr(resources, field) + amount}
+                    ),
+                )
+    return _with_players(state, players)
+
+
+def _after_cost_first(
+    state: GameState, seat: int, ability: Ability, option: int
+) -> GameState:
+    """The state after the cost-first space ability (state 220) ran.
+
+    Gather Support (board §1.4.16): recruit the space's ``Troops`` (2) from
+    the supply; option 1 also pays ``FindSolariCost`` (2) Solari for 1 water
+    (literal). Spice Refinery (board §1.4.19): pay ``option`` spice and gain
+    ``SolariAmount(option)`` Solari. Any other ability: unchanged.
+    """
+
+    players = list(state.players)
+    me = players[seat]
+    resources = me.resources
+    if isinstance(ability, GatherSupportAbility):
+        troops = min(ability.owner.int_attr("Troops"), me.troops_supply)
+        if option == 1:
+            resources = replace(
+                resources,
+                solari=resources.solari - ability.find_solari_cost(),
+                water=resources.water + 1,
+            )
+        me = replace(
+            me,
+            resources=resources,
+            troops_supply=me.troops_supply - troops,
+            troops_garrison=me.troops_garrison + troops,
+        )
+    elif isinstance(ability, SpiceRefineryAbility):
+        resources = replace(
+            resources,
+            spice=resources.spice - option,
+            solari=resources.solari + ability.solari_amount(option),
+        )
+        me = replace(me, resources=resources)
+    players[seat] = me
+    return _with_players(state, players)
+
+
+def _profile_on(run: DecisionRun, state: GameState) -> Profile:
+    """A fresh profile on ``state``: the app starts a new ``MakeChoice``."""
+
+    ctx = AppContext(state, run.ctx.seat, run.ctx.view)
+    return Profile(ctx, run.profile.C, run.rng)
+
+
+def _cost_first_ability(space_id: str, choam: bool) -> Ability | None:
+    """The chosen ``SpaceAbility`` when it is cost-first, else None.
+
+    ``<DetermineAbilities>d__23`` @0x49de650: the space's first
+    ``SpaceAbility`` that can run; state 220 runs only if it carries
+    ``CostFirstSpaceAbility``.
+    """
+
+    for ability in abilities_of(space_entity(space_id, choam)):
+        if isinstance(ability, SpaceAbility):
+            return ability if isinstance(ability, _COST_FIRST) else None
+    return None
+
+
+def _forced_pick[T: (int, str)](
+    run: DecisionRun, answer: Answer, legal: Sequence[T]
+) -> T:
+    """``MakeChoice`` on a forced single-key prompt (12 §3.3-3.4).
+
+    The answer stands when it is worth more than 0 and names a legal target;
+    otherwise ``PlayerEntity::DetermineDefaultRandomChoice`` @0x9b3340 picks
+    the (only) key with random targets: a uniformly random legal target, drawn
+    like ``choice.default_random_choice``.
+    """
+
+    if answer.value > 0.0 and answer.response:
+        item = answer.response[0]
+        for target in legal:
+            if item and item[0] == target:
+                return target
+    return legal[run.rng.randrange(len(legal))]
+
+
+# ---------------------------------------------------------------------------
+# Realising the chosen placement
+# ---------------------------------------------------------------------------
+
+
+def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
+    """The ``agent_turn`` variant the app ends up playing for (card, space).
+
+    State 220 (cost-first spaces): ``GatherSupportAbility::Evaluate``
+    @0x4bba660 / ``SpiceRefineryAbility::Evaluate`` @0x4bbfb90 pick the
+    ``cost_option`` on the state after ``_after_send``. State 240 (occupied
+    space): ``RecallSpyInfiltrateAbility::Evaluate`` @0x4d31d00 picks the Spy
+    (``GetRecallSpy``) on the state after the cost-first ability. Both are
+    forced prompts: a non-positive or empty answer is a random legal one.
+    """
+
+    card_ref = str_arg(chosen, "card_id")
+    space_id = str_arg(chosen, "space_id")
+    if card_ref is None or space_id is None:
+        return chosen
+    variants = [
+        action
+        for action in run.by_id("agent_turn")
+        if str_arg(action, "card_id") == card_ref
+        and str_arg(action, "space_id") == space_id
+    ]
+    if len(variants) <= 1:
+        return chosen
+    seat = run.ctx.seat
+    choam = run.ctx.choam
+    state = _after_send(run.ctx.state, seat, card_ref, space_id)
+
+    options = list(
+        dict.fromkeys(
+            option
+            for option in (int_arg(action, "cost_option") for action in variants)
+            if option is not None
+        )
+    )
+    ability = _cost_first_ability(space_id, choam)
+    cost_first: tuple[Ability, int] | None = None
+    if options:
+        # Only cost-first spaces have several cost options in Uprising; any
+        # other space would keep its first option (legal order).
+        option = options[0]
+        if len(options) > 1 and ability is not None:
+            request = Request(infos=(TargetInfo(options=tuple(options)),), forced=True)
+            answer = ability.evaluate(_profile_on(run, state), request)
+            option = _forced_pick(run, answer, options)
+        variants = [a for a in variants if int_arg(a, "cost_option") == option]
+        if ability is not None:
+            cost_first = (ability, option)
+
+    posts = [
+        post
+        for post in dict.fromkeys(
+            str_arg(action, "infiltrate_post_id") for action in variants
+        )
+        if post is not None
+    ]
+    if len(posts) > 1:
+        # Judgement: the app's spy list follows its observation-post order
+        # (``POST_INDEX``); ``GetRecallSpy`` shuffles it before ranking, so
+        # the order only shifts which equal-valued Spy the shuffle keeps.
+        posts.sort(key=lambda post: POST_INDEX[post])
+        if cost_first is not None:
+            state = _after_cost_first(state, seat, *cost_first)
+        spies = tuple(spy_entity(post, seat) for post in posts)
+        infiltrate = RecallSpyInfiltrateAbility(space_entity(space_id, choam))
+        request = Request(infos=(TargetInfo(entities=spies),), forced=True)
+        answer = infiltrate.evaluate(_profile_on(run, state), request)
+        post = _forced_pick(run, answer, posts)
+        variants = [a for a in variants if str_arg(a, "infiltrate_post_id") == post]
+    return variants[0]
+
+
+# ---------------------------------------------------------------------------
+# Sources: one per hand card with a legal placement
+# ---------------------------------------------------------------------------
+
+
+def _agent_ability(card_ref: str, seat: int) -> AgentAbility | None:
+    """The card's ``AgentAbility``-family ability (MakeChoice's card route)."""
+
+    for ability in abilities_of(card_entity(card_ref, seat)):
+        if isinstance(ability, AgentAbility):
+            return ability
+    return None
+
+
+def _card_evaluate(
+    run: DecisionRun, card_ref: str, actions: Sequence[DomainAction]
+) -> Callable[[], tuple[float, DomainAction | None]]:
+    """``AgentAbility::Evaluate`` of one hand card over its legal spaces.
+
+    The answer's space picks the representative action: the first legal
+    ``agent_turn`` of (card, space); ``_realise`` settles its cost option and
+    infiltrating Spy once the card has won.
+
+    ``MakeChoice`` (02 §2, @0x48fef80) ranks the keys by value first and only
+    then asks the best one for ``GetResponse`` (@0x4933e40); on this
+    non-forced prompt a best key without a space answers the empty answer, so
+    such an answer is a candidate whose action is ``reveal_turn``. The real
+    ``AgentAbility::Evaluate`` never yields one: with no stored space its
+    value is 0.
+    """
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ability = _agent_ability(card_ref, run.ctx.seat)
+        if ability is None:
+            return 0.0, None
+        legal = {str_arg(action, "space_id") for action in actions}
+        choam = run.ctx.choam
+        spaces = tuple(
+            space_entity(space_id, choam)
+            for space_id in board_space_order(choam)
+            if space_id in legal
+        )
+        if not spaces:
+            return 0.0, None
+        answer = ability.evaluate(
+            run.profile, Request(infos=(TargetInfo(entities=spaces),))
+        )
+        if not answer.response or not answer.response[0]:
+            # GetResponse after MakeChoice picked this key: the empty answer.
+            return answer.value, run.first("reveal_turn")
+        space_id = answer.response[0][0]
+        for action in actions:
+            if str_arg(action, "space_id") == space_id:
+                return answer.value, action
+        return answer.value, None
+
+    return evaluate
+
+
+def _card_sources(run: DecisionRun) -> list[Source]:
+    """One PROMPT source per hand card (instance) with ``agent_turn`` actions.
+
+    Identical copies (two Daggers) are separate keys, as in the app, so
+    ``MakeChoice``'s shuffle breaks their tie.
+    """
+
+    by_card: dict[str, list[DomainAction]] = {}
+    for action in run.by_id("agent_turn"):
+        card_ref = str_arg(action, "card_id")
+        if card_ref is not None:
+            by_card.setdefault(card_ref, []).append(action)
+    return [
+        Source(
+            label=card_ref,
+            stage=Stage.PROMPT,
+            actions=tuple(actions),
+            evaluate=_card_evaluate(run, card_ref, actions),
+        )
+        for card_ref, actions in by_card.items()
+    ]
+
+
+def turn_window(run: DecisionRun) -> DomainAction | None:
+    """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer)."""
+
+    # ``place_track_spy`` is never a source. UNTRACED: 12 §1.3 finds nothing in
+    # the playmat ability container (DetermineTurn row 4), while engine-order
+    # §3.6 lists custom abilities there; a custom PlaceSpy (timing None) would
+    # then be a turn-start key. The app's Emperor-4 Spy is taken to wait for
+    # the post-action prompt, as the window brief rules.
+    sources = _card_sources(run)
+    plots = run.by_id("play_intrigue")
+    if plots:
+        sources.extend(intrigue_play_sources(run, plots, combat=False))
+    chosen = decide(run, sources, skip=run.first("reveal_turn"), forced=False)
+    if chosen is not None and chosen.action_id == "agent_turn":
+        return _realise(run, chosen)
+    return chosen
+
+
+HANDLERS: dict[str, Handler] = {"turn": turn_window}
