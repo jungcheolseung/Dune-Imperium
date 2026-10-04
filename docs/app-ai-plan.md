@@ -1,6 +1,6 @@
 # 앱식 AI(app_ai) — 설계와 구현 계획
 
-상태: **구현 중** (2026-10-05 작성, 같은 날 착수). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
+상태: **완료** (2026-10-05 작성·구현·A/B, master 병합). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
 뼈대 커밋 `279dffd8`.
 
 ## 1. 사용자 결정
@@ -105,13 +105,13 @@ registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
 
 | 단계 | 작업 | 상태 |
 |---|---|---|
-| 0 | 뼈대·생성 데이터·registry·기반 테스트 | 완료 `279dffd8` |
-| 1 | `catalog.py` 대응표 + 검사 | 진행 중 |
-| 2 | 프로필 3묶음(economy, influence, combat) + 범용 능력 포트 | |
-| 3 | 카드별 능력 포트(Imperium a/b, 책략, 보드·Conflict·계약, 지도자) | |
-| 4 | 결정 창 어댑터(turn+agent_effects, reveal, combat, intrigue, uprising) | |
-| 5 | 통합: 대체(fallback) 0 확인, 충실도 재검토, 정직성·결정성, 전체 pytest/ruff/mypy | |
-| 6 | A/B (9절) | |
+| 0 | 뼈대·생성 데이터·registry·기반 테스트 | 완료 `279dffd8`, `8b741c18` |
+| 1 | `catalog.py` 대응표 + 검사 | 완료 `e4643ff3` |
+| 2 | 프로필 3묶음(economy, influence, combat) + 범용 능력 포트 | 완료 `0dc83504` |
+| 3 | 카드별 능력 포트(Imperium a/b, 책략, 보드·Conflict·계약, 지도자) — 포트 245개 | 완료 `23feb286` |
+| 4 | 결정 창 어댑터(turn, agent_effects, reveal, combat, intrigue, uprising) | 완료 `3f868f60` |
+| 5 | 통합: app_ai 4좌석 100판(base·CHOAM 각 50, 지도자 회전) — 예외 0, 대체 0, 미포팅 0, 앱 로직 결정 60,361개, 판당 0.9초 | 완료 |
+| 6 | A/B (9절) | 완료: [`evaluation/app-ai-2026-10-05.md`](evaluation/app-ai-2026-10-05.md) |
 
 각 단계는 구현 agent가 코드와 테스트를 쓰고, 다른 agent가 역어셈블과 사양에 대조해 충실도를 반박 검증한 뒤, 메인 세션이 diff를 읽고
 커밋한다. 수식마다 사양의 계산 예(예: `03`의 자원 가치 예)를 단위 테스트로 고정한다.

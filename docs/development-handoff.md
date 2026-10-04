@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-04
+기준일: 2026-10-05
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -47,6 +47,16 @@ uv run mypy src tests
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
+
+**현재 위치(2026-10-05).** 사용자 요청("앱식 heuristic 만들어서 A/B 돌려보자. 앱의 ai와 최대한 동일하게")으로 Steam 앱의 컴퓨터
+상대를 그대로 옮긴 **`app_ai`**(`agents/app_ai/`, registry `app_ai`=Hard·`app_ai_medium`·`app_ai_easy`)를 만들어 master에 병합했다
+(브랜치 `app-ai`; 설계·근거 [`app-ai-plan.md`](app-ai-plan.md), 결과 [`evaluation/app-ai-2026-10-05.md`](evaluation/app-ai-2026-10-05.md)).
+사용자 결정: 로직·상수 437개·카드표까지 **모두 공개 저장소**에 둔다(2026-10-03의 "앱 상수 금지"를 이 agent에 한해 바꿈), 앱의 버그로
+보이는 동작도 그대로 재현한다. 상수·아키타입 데이터는 `scripts/dwgr/app_ai_constants.py`·`app_archetypes.py`·`app_ai_emit.py`가 로컬
+덤프에서 생성한다. 엔진·codec·관측은 바뀌지 않았다(v133·v30). 기준: **pytest 4,572개 통과**, Ruff·mypy(363파일) 통과. A/B(2:2, base·CHOAM,
+지도자 회전): app_ai Hard가 heuristic을 좌석당 46.5% 대 3.5%로 이기고(시드 두 묶음 같음), Hard > Medium > Easy, 학습 망 greedy(7081)는
+Hard에 13.5% 대 36.5%로 지고(규칙 변경 전 체크포인트, L3 재적응 안 함), search 1석은 Hard 셋을 상대로 48.5%를 낸다. 다음 후보: UI 좌석에
+app_ai·search 넣기, 학습 상대에 app_ai 넣기(L3와 함께).
 
 **현재 위치(2026-10-04).** 사용자가 Steam 디지털판 Dune: Imperium(4.1.x, IL2CPP v39)을 열어 OQ를 대조하자고 해서 `scripts/dwgr`로 읽고 OQ 77건을 대조했다(결과는 에셋 체크아웃의 `reference/dune-steam-app/`에만, git 무시; 앱은 공식 규칙이 아니라 보조 증거). 사용자는 다섯 건을 앱 방식으로 재판정했고(OQ-021·OQ-005·OQ-030·OQ-049·OQ-050) 이를 `app-rulings`로 구현해 master에 병합했다(`a55836fc`, 아래 2026-10-04 요약). 브라우저의 Go to 11·Epic 기본값은 그대로 둔다(사용자: "지금 세팅 유지"). 같은 날 저녁 둘째 묶음을 `app-rulings-2`로 구현해 병합했다(`2ad7a262`, 아래 2026-10-04 저녁 요약): OQ-013(deck discard도 발동), OQ-057 (15)(Emperor track Spy는 자기 turn 안의 의무 행동 `place_track_spy`), OQ-057 (2)(Interstellar Trade 증분 복원), OQ-012(Call to Arms는 카드 자신의 선택 뒤), OQ-061(Intrigue trash는 공용 버림 더미로). Usurp는 앱처럼 열에 남기는 안을 검토했지만 사용자가 원래 구현 유지를 골랐다(OQ-054). 밤에 셋째 묶음을 `app-rulings-3`로 병합했다(`57d4d085`): Litany Against Fear·Withdrawn은 turn의 첫 행동으로만(OQ-095 (6) 보강), Twisted 카드는 공용 버림 더미에 남고 다시 섞이지 않는다(OQ-097 확정). 이어서 앱 대조 마무리 점검(OQ 30건 재대조 + 적대 검증)으로 남은 차이를 정리하고 사용자 판정 셋(OQ-029: 효과 retreat·손실은 배치 한도를 돌려주지 않음, OQ-054: Usurp로 빌린 카드는 어디서도 in play가 아님, OQ-058: 줄이 나뉜 Intrigue는 한 줄 이상 써야 끝남)과 오래된 문서를 `app-rulings-4`로 병합했다(`42228e41`). **처음 목적(Steam 앱과 OQ 대조)은 끝났다.** 남은 선택: 앱의 카드·보드 정의와 우리 전사를 전수 대조할지(예상 약 3시간·subagent 토큰 500만~1,000만, 사용자 결정 대기). 다음 codec 번호는 **v134**, 관측은 **v30**. 아직 푸시하지 않았다(사용자 몫). 2026-10-02의 남은 일(C1·C2, L3 재적응)은 그대로다.
 

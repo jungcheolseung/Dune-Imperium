@@ -782,3 +782,15 @@
   다시 연다. 규칙 질문에 답할 때는 공식 문장 인용과 프로젝트 판정을 나눠 말하고, 인용할 공식 문장이 없으면 "공식 문서에 없다"를
   먼저 말한다. 고침: OQ-016 재판정(2026-10-03, codec v129) — 배치 뒤에 내는 play 조건, 디자이너 판정의 "moment in time"은 turn의
   배치 최고치로 판정.
+
+## 2026-10-05 — 역어셈블의 `~` 주석만 보고 "읽는 곳 없는 상수"라고 판정함, 그리고 Python `sum()`의 보정 합산
+
+- 무슨 일: 앱 AI 분석 1차 검증 agent가 Easy·Medium이 덮어쓰는 상수 29개 중 7개(PoorMod, ConsolidationValueMod, 동맹 관련 3개, 교전 태세 2개)를
+  "호출하는 곳이 없다"고 보고했다. 메인 세션이 vtable 오프셋을 직접 찾아보니 5개는 `mov ecx, <off>; call [r8+rcx]` 꼴의 **합쳐진 가상 호출**로
+  쓰이고 있었고, 진짜 죽은 것은 교전 태세 2개뿐이었다(`analysis/ai/01-framework.md` 끝의 판정). 같은 작업에서, 앱의 `Enumerable.Sum`(왼쪽부터 단순
+  누적)을 옮기던 agent가 Python 3.12+의 `sum()`이 실수를 **보정 합산**한다는 것을 찾아 냈다(마지막 비트가 달라 경계 비교가 뒤집힐 수 있다).
+- 원인: 덤프의 `~vslot` 주석은 레지스터 추적 추론이라 합쳐진 호출을 놓친다. "없다"는 주장을 주석 grep만으로 확인했다. `sum()`은 .NET과 같다고 가정했다.
+- 재발 방지: 역어셈블에서 "읽는 곳 없음/호출 없음"을 말하기 전에 호출 오프셋(`0x138 + 16*slot`)과 MethodInfo 오프셋(+8)을 숫자로 찾는다
+  (`scripts/dwgr/app_ai_constants.py`가 이 세 방식을 다 쓴다). 앱 산술을 옮길 때 실수 합은 루프로, `AIProfileAbsUtils::Multiply`는
+  `Sum + (m*Sum − Sum)`으로, `Convert.ToInt32`는 은행가 반올림으로 한다(`agents/app_ai/summer.py`, `profile/economy.py`의 `_dsum`).
+
