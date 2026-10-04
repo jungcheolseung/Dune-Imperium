@@ -126,13 +126,62 @@ class Ability:
     def value_in_pile_for_other_play(
         self, p: Profile, pile: Pile, card: Entity
     ) -> Summer:
-        """``ValueInPileForOtherPlay`` @0x4a88480 (tag synergy by default).
+        """``WormAbilityDefinition::ValueInPileForOtherPlay`` @0x4a88480.
 
-        See ``spec/generic-abilities.md`` §1.1; the default body belongs to the
-        generic-abilities port and is filled in there.
+        Spec ``generic-abilities.md`` §1.1 (re-read in the disassembly). The
+        default tag synergy: ``self.owner`` is the card (intrigue, contract)
+        that carries this ability, ``card`` the candidate. ``GetSynergyMod``
+        calls it with ``Pile.DECK`` once per ability object of every owned
+        card; ``AgentAbility``'s "Imperium Play Bonus" calls it with
+        ``Pile.PLAY_AREA``, where the default adds nothing. The three
+        ``multiply`` calls scale only the terms this call added so far.
         """
 
-        return Summer()
+        s = Summer()
+        if pile is not Pile.DECK:  # vslot 31 ``pile.Is(EntityNames.Deck)``
+            return s
+        c = p.C
+        owner_tags = self.owner.list_attr("Tags")
+        card_tags = card.list_attr("Tags")
+        if "WantTSMF" in owner_tags:
+            # ``WormEntityExtensions::IsTheSpiceMustFlowImperium`` @0x482f1b0:
+            # an Imperium playable whose ArchID is either TSMF archetype.
+            if card.kind == "card" and card.short in (
+                "ImperiumArchetypes.BaseSet.TheSpiceMustFlow",
+                "ImperiumArchetypes.Uprising.TheSpiceMustFlowUP",
+            ):
+                s.add("TSMF CardValue", c.SynergyTSMFCardValue)
+            persuasion = card.int_attr("Persuasion")
+            if persuasion >= 2:  # ``cmp eax, 2; jl`` -> taken when >= 2
+                s.add("CTM High Persuasion Granted", c.SynergyTSMFHighPersuasionValue)
+            # ``cmp eax, 2; jg`` then ``cmp PersuasionCost, 7; jle``: both non-strict.
+            if persuasion <= 2 and card.int_attr("PersuasionCost") <= 7:
+                s.add("CTM Low Persuasion High Cost", -c.SynergyTSMFHighPersuasionValue)
+        if p.is_climax():
+            return s
+        factions = self.owner.list_attr("FactionList")
+        if "Fremen" in factions:
+            if "FremenBond" in card_tags:
+                s.add("Fremen Bond in Deck Synergy", c.SynergyBondWithFremenInDeck)
+            if "WantF" in card_tags:
+                s.add("Fremen in Deck Synergy", c.SynergyWithFactionInDeck)
+        if "BeneGesserit" in factions and "WantBG" in card_tags:
+            s.add("Bene Gesserit in Deck Synergy", c.SynergyWithFactionInDeck)
+        if "SpacingGuild" in factions and "WantSG" in card_tags:
+            s.add("Spacing Guild in Deck Synergy", c.SynergyWithFactionInDeck)
+        if "Emperor" in factions and "WantE" in card_tags:
+            s.add("Emperor in Deck Synergy", c.SynergyWithFactionInDeck)
+        if "DiscardEnabler" in owner_tags and "IncentiveDiscard" in card_tags:
+            s.multiply("Discard Enabler", c.DiscardEnablerMod)
+        if "IncentiveDiscard" in owner_tags and "DiscardEnabler" in card_tags:
+            s.multiply("Discard Incentive", c.DiscardIncentiveMod)
+        if "Graft" in owner_tags and "WantsGraft" in card_tags:  # Immortality
+            s.multiply("Graft Incentive", c.SynergyGraftMod)
+        if "WantsGraft" in owner_tags and "Graft" in card_tags:  # Immortality
+            s.multiply("Wants Graft Incentive", c.SynergyWantsGraftMod)
+        if "Spy" in owner_tags and "WantSpy" in card_tags:
+            s.add("Spy Card Incentive", c.SynergySpyCardMod)
+        return s
 
     def specific_acquire_value(self, p: Profile) -> Summer:
         """``SpecificAcquireValue`` @0x4a88ee0: empty by default."""

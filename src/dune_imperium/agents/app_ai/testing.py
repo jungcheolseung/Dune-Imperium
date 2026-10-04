@@ -1,8 +1,9 @@
-"""Shared helpers for app_ai tests: real game states and profiles.
+"""Helpers for app_ai tests and probes: real game states and profiles.
 
-Port tests build a real ``GameState`` (so ``AppContext`` reads exactly what
-it reads in play), then adjust the fields a formula depends on with
-``with_player``/``with_state`` and evaluate the port on a fresh ``Profile``.
+Port tests (and scratch probes) build a real ``GameState``, so ``AppContext``
+reads exactly what it reads in play, then adjust the fields a formula depends
+on with ``with_player``/``with_state`` and evaluate the port on a fresh
+``Profile``.
 """
 
 import random

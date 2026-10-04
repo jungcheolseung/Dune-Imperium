@@ -41,9 +41,15 @@ class Summer:
         return self
 
     def multiply(self, reason: str, factor: float) -> Summer:
-        """``AIProfileAbsUtils::Multiply``: scale the sum accumulated so far."""
+        """``AIProfileAbsUtils::Multiply`` @0x9cd920: scale the sum so far.
 
-        self.value *= factor
+        The app adds ``factor * Sum - Sum`` rather than storing
+        ``factor * Sum`` (``mulsd; subsd; Add``), which can differ in the last
+        bit; boundary tests such as ``RCV >= 1.0`` depend on it.
+        """
+
+        total = self.value
+        self.value = total + (factor * total - total)
         if self.reasons is not None:
             self.reasons.append(("*", reason, factor))
         return self
