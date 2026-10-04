@@ -434,7 +434,8 @@ def contract_resource_value(p: ProfileCore, contract: Entity) -> Summer:
     ability = contract_ability_class(contract)
     if ability == _DRAW2_CONTRACT:
         s.add("Draw 2", 2 * p.card_draw_value())  # literal 2
-        s.add("Buy Gains Bonus", p.buy_gains(p.possible_persuasion_gain()))
+        # ``lea esi, [rax + rax]`` @0x4d593ac: the gain is doubled for 2 draws.
+        s.add("Buy Gains Bonus", p.buy_gains(2 * p.possible_persuasion_gain()))
     elif ability == _PLACE_SPY_CONTRACT:
         s.add("Place Spy", p.spy_value().sum)
     elif ability == _RECALL_AGENT_CONTRACT:

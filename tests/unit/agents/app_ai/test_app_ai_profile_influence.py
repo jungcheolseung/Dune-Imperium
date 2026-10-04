@@ -860,9 +860,10 @@ def test_tsmf_acquire_contract(
 def test_contract_reward_overrides(mk: Builder) -> None:
     deck = {"Emperor": 2}  # Sardaukar icon term 0
     p = mk(BASE, deck_agent_icons=lambda: deck, abundance_level=lambda a: -1)
-    # Draw 2: 2 x CardDraw + BuyGains(PossiblePersuasionGain = 5).
+    # Draw 2: 2 x CardDraw + BuyGains(2 x PossiblePersuasionGain = 10)
+    # (the app doubles the gain, Draw2ContractAbility @0x4d593ac).
     draw = p.contract_acquire_value(contract("spice_refinery_i")).sum
-    assert draw == pytest.approx(0.5 * (3.0 + 1.0))
+    assert draw == pytest.approx(0.5 * (3.0 + 2.0))
     # Place a spy: Solari(2) + SpyValue.
     spy = p.contract_acquire_value(contract("research_station_i")).sum
     assert spy == pytest.approx(0.5 * (1.2 + SPY_EARLY))
