@@ -82,7 +82,7 @@
 | `[Main p. 12]` | Reveal 효과 자유 순서와 acquire의 전·사이·후 처리 | `covered` | [player-turns.md](player-turns.md) |
 | `[Main p. 12]` | troop 2, sandworm 3, sword 1의 strength와 unit이 없으면 0 | `covered` | [player-turns.md](player-turns.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 12]` | Combat marker 공개, 20 초과 면, Agent/Reveal 카드 cleanup | `covered` | [player-turns.md](player-turns.md), [combat-and-round-end.md](combat-and-round-end.md) |
-| `[Main pp. 12, 17]` | Clean Up의 discard-pile 이동이 일반적인 `discard` 반응을 발동하는지 | `open question` | [OQ-013](open-questions.md#oq-013--clean-up-이동과-일반적인-discard-반응) |
+| `[Main pp. 12, 17]` | Clean Up의 discard-pile 이동이 일반적인 `discard` 반응을 발동하는지(deck discard는 2026-10-04 프로젝트 판정) | `covered` | [player-turns.md](player-turns.md), [OQ-013](open-questions.md#oq-013--clean-up-이동과-일반적인-discard-반응) |
 | `[Main p. 13]` | Persuasion 합산·분할, Row/Reserve acquire, 미사용 Persuasion 소멸 | `covered` | [player-turns.md](player-turns.md) |
 | `[Main p. 13]` | acquire한 카드의 discard 이동과 Imperium Row 즉시 5장 보충 | `covered` | [player-turns.md](player-turns.md) |
 | `[Main p. 13]` | Imperium deck 고갈로 Row를 5장 보충할 수 없는 경우 | `open question` | [OQ-004](open-questions.md#oq-004--imperium-deck-완전-고갈); [setup-and-game-flow.md](setup-and-game-flow.md)에도 미확정으로 표시 |
@@ -118,7 +118,7 @@
 | `[Main p. 17]` | Lady Jessica의 시작 면 | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md), [official-rulings-index.md](official-rulings-index.md); 전환 능력 데이터만 content manifest |
 | `[Main p. 17]` | Lady Margot Fenring·Princess Irulan의 `reach 2 Influence` 판정 | `covered` | [uprising-systems.md](uprising-systems.md); 개별 능력 연결은 content manifest로 이관 |
 | `[Main p. 17]` | Shaddam Signet Ring의 unit 배치 제한은 즉시 발효 | `covered` | [choam-module.md](choam-module.md); 능력 데이터는 content manifest로 이관 |
-| `[Main p. 17]` | Spacing Guild's Favor는 Clean Up 이동이 아니라 hand discard에만 반응 | `covered` | [player-turns.md](player-turns.md), [official-rulings-index.md](official-rulings-index.md), [../implementation-audits/personal-cards.md](../implementation-audits/personal-cards.md) |
+| `[Main p. 17]` | Spacing Guild's Favor는 Clean Up 이동이 아니라 hand discard에만 반응(deck discard는 OQ-013 프로젝트 판정) | `covered` | [player-turns.md](player-turns.md), [official-rulings-index.md](official-rulings-index.md), [../implementation-audits/personal-cards.md](../implementation-audits/personal-cards.md) |
 | `[Main p. 17]` | 자원, Faction, Combat, Spy, sandworm에 관한 전략 팁 | `out of scope` | 전략 조언이며 규칙 상태가 아님 |
 
 ### Main p. 20: Icon Guide and Additional Terms

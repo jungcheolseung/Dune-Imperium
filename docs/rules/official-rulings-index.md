@@ -74,7 +74,7 @@ Main p. 20은 FAQ를 적용하기 전의 일반 용어 기준이다. 아래 항�
 | Lady Jessica | setup은 Reverend Mother Jessica가 아니라 Lady Jessica 면으로 시작한다. [Main p. 17] | `rules/setup.py`의 leader_face_id 배정과 `tests/unit/rules/test_leader_abilities.py` |
 | Lady Margot Fenring / Princess Irulan | 한 번에 여러 Influence를 얻어 2를 지나쳐도 `reach 2`다. Influence를 잃은 뒤 다시 올리면 같은 Faction에서 다시 2에 도달할 수 있고, 내려가는 중에는 `reach`가 발생하지 않는다. [Main p. 17] | [uprising-systems.md](uprising-systems.md)와 `rules/influence.py`의 reach-2 Leader 보너스, `tests/unit/rules/test_leader_abilities.py` |
 | Shaddam Corrino IV | Signet Ring을 play해 Agent를 보낼 때 `Emperor of the Known Universe`의 unit deploy 제한은 즉시 적용된다. [Main p. 17] | `rules/agent_turn.py`의 배치 시점 차단과 [leaders audit](../implementation-audits/leaders.md), `tests/unit/rules/test_leader_abilities.py` |
-| Spacing Guild’s Favor | Clean Up으로 in-play 카드가 discard pile로 이동하는 것은 이 카드의 discard 능력을 발동하지 않는다. hand에서 discard될 때만 발동한다. [Main p. 17] | [player-turns.md](player-turns.md)의 zone-move reason과 card scenario test |
+| Spacing Guild’s Favor | Clean Up으로 in-play 카드가 discard pile로 이동하는 것은 이 카드의 discard 능력을 발동하지 않는다. hand에서 discard될 때만 발동한다. [Main p. 17] (deck에서 곧바로 버릴 때도 발동시키는 것은 공식 규칙이 아니라 OQ-013 프로젝트 판정, 2026-10-04) | [player-turns.md](player-turns.md)의 zone-move reason과 card scenario test |
 
 ## 4. FAQ named-card 판정의 소속 게이트
 

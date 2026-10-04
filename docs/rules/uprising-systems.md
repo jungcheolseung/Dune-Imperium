@@ -14,7 +14,7 @@
 - 각 플레이어는 동일한 10장 starting deck으로 시작한다. 새 Imperium/Reserve 카드를 acquire하면 먼저 자신의 discard pile에 face-up으로 놓는다. `[Main pp. 3, 6, 13]`
 - 카드를 draw해야 하는데 deck이 비어 있으면 자신의 discard pile을 shuffle해 새 deck을 만든 뒤 필요한 수만큼 계속 draw한다. `[Main pp. 6, 20]`
 - 카드를 trash하면 남은 게임 동안 자신의 deck 순환에서 제거한다. 일반 카드는 box로 돌려보내고 Reserve 카드는 해당 Reserve stack으로 돌려보낸다. `[Main pp. 6, 20]`
-- 일반 trash 아이콘은 hand, discard pile, in play 가운데 카드 1장을 대상으로 한다. Intrigue trash 아이콘은 hand의 Intrigue card 1장을 대상으로 한다. `[Main p. 20]`
+- 일반 trash 아이콘은 hand, discard pile, in play 가운데 카드 1장을 대상으로 한다. Intrigue trash 아이콘은 hand의 Intrigue card 1장을 대상으로 한다. `[Main p. 20]` Intrigue card에는 trash 더미가 없어, trash한 Intrigue card는 공용 Intrigue 버림 더미로 가서 다시 섞인다(OQ-061, 2026-10-04 사용자 판정 — 위 일반 trash의 '남은 게임 동안 제외'와 다른 project convention).
 - Agent turn에 play한 카드와 현재 Reveal turn에 reveal한 카드는 Reveal turn의 Clean Up 전까지 face-up `in play`다. 먼저 trash된 카드는 예외다. `[Main p. 20]`
 - 별도 위치를 지정하지 않고 `discard a card`라고 하면 hand의 카드를 뜻한다. 일반 카드 discard 지시는 Intrigue를 명시하지 않는 한 Intrigue card를 대상으로 하지 않는다. `[Main p. 20]` `[FAQ p. 2]`
 
@@ -39,7 +39,7 @@
 - track은 6칸이다. 이미 6인 cube에 대한 추가 Influence 획득과, 고를 진영이 전부 6인 "진영을 골라 Influence" 보상의 처리는 공식 문서가 침묵한다 — [OQ-060](open-questions.md#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상) project convention(획득 소멸).
 - Influence 2에 도달하면 1 VP를 얻는다. 이후 2 아래로 내려가면 그 VP를 잃는다. 여러 Influence를 한 번에 얻으며 2를 지나가는 것도 `reach 2`이고, 내려갈 때가 아니라 올라갈 때만 `reach`로 본다. Influence를 잃었다가 다시 올라오면 다시 도달할 수 있다. `[Main pp. 7, 17]`
 - Influence 4에 도달하면 track에 표시된 보너스를 얻는다("you earn the bonus shown on that space of the track" `[Main p. 7]`). 각 strip의 Influence 4 칸에 인쇄된 아이콘은 **Emperor: Spy 1개 배치, Spacing Guild: 3 Solari, Bene Gesserit: Intrigue card 1장, Fremen: water 1**이다 — 2026-09-19에 보드 스캔을 확대해 룰북 아이콘(회색 원기둥 = Spy, 숫자가 든 회색 동전 = Solari, 금색 카드 = Intrigue, 물방울 = water)과 대조해 다시 전사했다. 그 전의 "Emperor troop 2개, Spacing Guild water 3"은 룰북의 작은 보드 삽화를 잘못 읽은 값이었다([lessons.md](../lessons.md) 2026-09-19). 4 아래로 내려가도 보너스를 반환하지 않으며, 다시 4에 도달하면 같은 보너스를 다시 받을 수 있다. `[Main pp. 4, 7 board artwork]`
-- Emperor track의 Spy는 Influence를 얻은 효과가 끝나는 즉시 놓는다: 다른 player-initiated action으로 넘어가기 전에 그 배치를 끝내야 하며, 뒤의 효과(예: 같은 turn의 Imperial Privilege recall)에 맞춰 미룰 수 없다(디자이너 판정, Message from designer; [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)). 배치 규칙은 일반 Spy 아이콘과 같다(빈 observation post 아무 곳, supply에 Spy가 있으면 의무, supply가 비었으면 먼저 하나를 recall할 수 있다 `[Main pp. 11, 20]`). 구현은 `GameState.pending_track_spies` 대기열과 공용 `spy_placement` frame이다.
+- Emperor track의 Spy는 자기 turn(Agent·Reveal) 안에서 얻으면 그 turn의 의무 행동(`place_track_spy`)으로 남아, 다른 행동을 먼저 하고 turn 종료 전에 놓는다. 자기 turn 밖에서 얻으면 바로 놓는다(2026-10-04 사용자 판정, Steam 앱 방식; 디자이너는 즉시 배치를 판정했다 — [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (15)). 배치 규칙은 일반 Spy 아이콘과 같다(빈 observation post 아무 곳, supply에 Spy가 있으면 의무, supply가 비었으면 먼저 하나를 recall할 수 있다 `[Main pp. 11, 20]`). 구현은 `GameState.pending_track_spies` 대기열과 공용 `spy_placement` frame이다.
 
 ## Alliance
 
