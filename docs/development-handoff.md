@@ -1,8 +1,17 @@
 # 개발 인수인계
 
-기준일: 2026-10-04
+기준일: 2026-10-05
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
+
+## 2026-10-05 마지막 지도자 선택 되돌리기 수정
+
+- 구현 커밋: `7e143969`. 마지막 `pick_leader`가 setup 카드 배분과 Round Start까지 진행해 되돌리기를 막던 문제를 수정했다. 이제 선택은 `leader_draft`에 머무르고, 그 좌석의 `finish_leader_draft`("턴 종료")에서만 준비를 마친다. 앞선 세 선택의 서버 확인은 그대로다(OQ-007 보충; OQ-010 정보 경계 유지).
+- 네 순서의 되돌리기·재선택·확정, base/Epic/전 확장과 open/remote 조합, 마지막 선택의 저장·불러오기·재선택, 브라우저 새로고침 뒤 되돌리기를 검사했다. 턴 종료는 한 번만 누른다.
+- 기준 검증: **pytest 3,211개 통과**(181초, 기존 PettingZoo 경고 2개), Ruff·mypy(313파일) 통과. **브라우저 E2E 33종 통과**(전체 실행 32종 + 새 확정 행동을 반영한 `leader_card` 진행기 재검증). 전 확장·Epic·Go to 11·Scouts·draft, base/CHOAM 각각 20판씩 **40판** heuristic 소크(`--soundness-interval 5 --privacy-interval 25`, replay 포함) 실패 0.
+- action codec **v134**(`finish_leader_draft` 템플릿 +1, base 4,406), 관측 **v30 유지**. 이전 codec 저장은 기존 strict 버전 검사로 거부된다. 현재 실행 중인 플레이 서버는 재시작하지 않았다. 새 서버·새 게임부터 적용한다.
+- golden은 `draft`만 갱신했다. 추가 확정 결정의 인코딩·정책 RNG 소비를 건너뛴 비교 실행에서 v133의 digest와 2,416개 벡터가 그대로 재현됐고 나머지 다섯 golden은 불변이다. tips-v1의 122개 포지션은 전체 복원 검사를 통과해 재채굴하지 않았다(파일의 채굴 당시 codec v133 표기는 유지).
+- 공식 Rise of Ix p. 10은 `scripts/prepare_official_rules.py --source rise-of-ix --output-dir /tmp/dune-draft-official-rules`로 다시 확인했다. 체크섬은 등록값과 일치하며 로컬 개인 PDF는 읽지 않았다.
 
 ## 세션 시작 체크리스트
 
@@ -74,7 +83,7 @@ uv run mypy src tests
 
 병행 규칙:
 
-- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v133, 다음 v134). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
+- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v134, 다음 v135). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
   (epic 병합 때와 같다: 버전 주석에 양쪽 뜻을 모두 남기고 golden digest는 문서화된 절차로 다시 핀한다). 관측 버전도 같다(지금 v30).
 - **충돌.** C1은 여러 `rules/` 공급자 함수에 막힘 판정을 드러내고, L1은 `rules/effects.py`·`combat_deployment.py`·`agent_effect_frame.py`·
   `engine.py`·`server/sessions.py`를 고친다. 함께 진행하면 작게 자주 master에 합친다. 합칠 때는 master 쪽에서 `--no-ff`로 합친다.
