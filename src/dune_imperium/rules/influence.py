@@ -195,10 +195,11 @@ def _grant_four_bonus(
         pending_draws = (*pending_draws, (player, shortfall, source))
     if faction is Faction.EMPEROR:
         # The Emperor track prints the Spy icon: the placement is a
-        # decision, so it is queued and opened by the engine right after
-        # this gain, before any other player-initiated action (designer
-        # ruling on delaying the Emperor track's Spy, Message from designer;
-        # OQ-057).
+        # decision, so it is queued. Inside the seat's own turn it waits for
+        # the owner's ``place_track_spy``, in any order before the turn
+        # ends (user ruling 2026-10-04, overriding the designer ruling
+        # OQ-057 (15)); anywhere else the engine opens it right after this
+        # gain.
         pending_spies = (*pending_spies, (player, source))
     reached_payload: tuple[tuple[str, int | str], ...] = (
         () if reached is None else (("reached_faction", reached.value),)

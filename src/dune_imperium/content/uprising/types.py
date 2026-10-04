@@ -349,7 +349,12 @@ class PersonalCardTurnStartEffect(StrEnum):
 
 
 class PersonalCardDiscardEffect(StrEnum):
-    """Typed effects triggered when a personal card is discarded from hand."""
+    """Typed effects triggered when a personal card is discarded.
+
+    A discard from hand or straight from the owner's deck triggers (the deck
+    case is OQ-013, user ruling 2026-10-04, against "Only discarding it from
+    your hand triggers the ability." [Main p. 17]); Clean Up does not.
+    """
 
     GAIN_TWO_SPICE = "gain_two_spice"
     # Corrupt Bureaucrat (Bloodlines): "When this card is discarded: 3 Solari".

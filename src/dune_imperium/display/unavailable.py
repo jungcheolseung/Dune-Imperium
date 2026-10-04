@@ -337,6 +337,13 @@ _TURN_START: Final[Reason] = (
     "차례를 시작할 때만 사용",
     "timing",
 )
+# Withdrawn's "pass your turn" while the seat owes the Emperor track's
+# Influence 4 Spy, a mandatory action of the turn (user ruling 2026-10-04).
+_TRACK_SPY_OWED: Final[Reason] = (
+    "Place your Emperor track Spy first: the turn cannot pass before it",
+    "{influence_emperor} 4의 {spy}를 먼저 배치 — 그 전에는 차례를 넘길 수 없음",
+    "track_spy",
+)
 
 
 def _acquire_reason(block: AcquireBlock, needed: int | None, held: int) -> Reason:
@@ -783,7 +790,9 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
                     actor=seat,
                     arguments=(("card_id", card_id), ("option", index)),
                 ),
-                intrigue_option_reason(state, seat, option, block),
+                _TRACK_SPY_OWED
+                if block is IntriguePlayBlock.TRACK_SPY
+                else intrigue_option_reason(state, seat, option, block),
                 dim=card_id,
             )
         if other_window is not None:

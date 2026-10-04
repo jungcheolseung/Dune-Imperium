@@ -400,14 +400,30 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     Spice Trade, ending on 12 as the winner. The buggy collector would read
     ``end.endgame_vp`` == 2 for seat 0 and ``end.leader_changed`` == False
     (``end.trigger_vp`` is True either way: seat 2 was already on 10).
+
+    Re-derived 2026-10-04 for the Emperor track Spy as an in-turn action
+    (user ruling 2026-10-04, overriding OQ-057 (15)): seed 2 now diverges in
+    round 7 at seat 0's ``place_track_spy`` (the press is one more heuristic
+    decision, so its random tie-break then picks another post) and its
+    leader no longer changes; the same capture over the pre-change engine
+    still gives seed 2 first. Over full seeds 1-200 it now finds four seeds
+    (62, 136, 167, 169) where the leader after the ``:endgame_tech:``
+    events differs from the one at the check and goes on to win; the case is
+    seed 62, the first. Endgame opens there in round 10 on the empty
+    Conflict deck with no seat at 10 VP: seats 2 (Staban Tuek) and 3 (Piter
+    de Vries) tie on 8 with seat 2 ranked first, and seat 1 (Lady Amber
+    Metulli) on 7 holds Panopticon. Its Spacing Guild 1 -> 2 and Fremen
+    1 -> 2 gains both score, making it 9 and the winner; seat 0 later scores
+    a wild battle-icon match (7). The buggy collector would read
+    ``end.endgame_vp`` == 0 for seat 1 and ``end.leader_changed`` == False.
     """
 
     import dune_imperium.rules.engine as rules_engine
     from dune_imperium.rules.endgame import final_standings as real_final_standings
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
-    saw_seed_2 = False
-    for seed in (*FULL_SEEDS, 2):
+    saw_case = False
+    for seed in (*FULL_SEEDS, 62):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -442,13 +458,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 2:
-            saw_seed_2 = True
-            assert census["seats"][0]["end.endgame_vp"] == 3
+        if seed == 62:
+            saw_case = True
+            assert census["seats"][1]["end.endgame_vp"] == 2
             assert census["game"]["end.leader_changed"] is True
-            assert census["game"]["end.trigger_vp"] is True
+            assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_seed_2, "the seed 2 regression case must run"
+    assert saw_case, "the seed 62 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -544,6 +560,14 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     Gruesome Sacrifice now pays a troop for slot 0 and the Commander for
     slot 1 (``lose_intrigue_troop`` with ``commanders`` 1: ``unit_lost``
     with one Commander, its Commander supply 0 -> 1).
+
+    Re-derived 2026-10-04 for the Emperor track Spy as an in-turn action
+    (user ruling 2026-10-04, overriding OQ-057 (15)): seed 6 now diverges in
+    round 7 at seat 1's own ``place_track_spy`` (one more heuristic decision,
+    so its random tie-break then picks another post). Seat 1 still fills the
+    role -- its only Commander retreat is the round-8 Gruesome Sacrifice
+    loss -- but the Commander now pays slot 0 and a troop slot 1, checked
+    against the game's own events by a scratch replay.
     """
 
     spec = _spec(True, 6)
@@ -557,7 +581,7 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:8:player:1:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
+        "round:8:player:1:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
     assert census["seats"][1]["bt.commander_retreats"] == 0

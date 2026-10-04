@@ -1719,14 +1719,14 @@ function renderMarket() {
   );
 }
 
-/* The public Intrigue piles as one line: the cards themselves only matter
-   when somebody wants to look back, so a click lists them (newest first) —
-   the face-up discard pile beside the deck [Main p. 7] and the Intrigue
-   cards trashed out of the game [Main p. 20]. */
+/* The public Intrigue discard pile as one line: the cards themselves only
+   matter when somebody wants to look back, so a click lists them (newest
+   first) — the face-up discard pile beside the deck [Main p. 7]. Intrigue
+   cards have no trash pile: a trashed one lies here too (OQ-061, user
+   ruling 2026-10-04). */
 function renderIntriguePiles(market, view) {
   const discard = view.intrigue_discard || [];
-  const trash = view.intrigue_trash || [];
-  if (!discard.length && !trash.length) return;
+  if (!discard.length) return;
   const box = document.createElement("div");
   box.className = "strip";
   const pile = document.createElement("button");
@@ -1734,18 +1734,10 @@ function renderIntriguePiles(market, view) {
   pile.className = "pile-button";
   pile.dataset.pile = "intrigue";
   pile.appendChild(tNode("board.intrigue_discard_count", { count: discard.length }));
-  if (trash.length) pile.append(t("board.intrigue_trash_count", { count: trash.length }));
   pile.title = t("board.intrigue_pile_title");
   pile.addEventListener("click", (event) => {
     event.stopPropagation();
-    openPileList(
-      [
-        [t("board.pile_intrigue_discard"), [...discard].reverse()],
-        [t("board.pile_intrigue_trash"), [...trash].reverse()],
-      ],
-      null,
-      pile
-    );
+    openPileList(t("board.pile_intrigue_discard"), [...discard].reverse(), pile);
   });
   box.appendChild(pile);
   market.appendChild(box);

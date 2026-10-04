@@ -78,7 +78,11 @@ SLOT_VERSION: Final = 1
 # column is a 0/1 flag, not an identity.
 # v29 (OQ-030/OQ-049) appends each relative seat's waiting recruit and
 # specimen shortfall: counts, not identities, so no row changes.
-SLOT_OBSERVATION_VERSION: Final = 29
+# v30 (OQ-061) removes the ``intrigue_trash`` count segment, which no slot
+# field reads (fields address the segments by name), so no row changes.
+# It also appends each relative seat's owed Emperor track Spies
+# (``track_spies_owed``): counts, not identities, so no row changes.
+SLOT_OBSERVATION_VERSION: Final = 30
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

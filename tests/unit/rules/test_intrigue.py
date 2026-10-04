@@ -28,7 +28,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.core.engine import IllegalActionError
+from dune_imperium.core.engine import IllegalActionError, Transition
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
@@ -723,6 +723,76 @@ def test_change_allegiances_second_line_may_be_paid_with_spice_the_first_produce
     # Both lines used: the card closes on its own.
     assert second.decision_stack[-1].kind == "turn"
     assert card in second.intrigue_discard
+
+
+def test_an_intrigue_s_emperor_spy_waits_in_the_turn_until_placed() -> None:
+    # User ruling 2026-10-04, overriding the designer ruling OQ-057 (15)
+    # ("You need to finish resolving that Spy placement before you move on
+    # to other 'player initiated actions.'"): "엄연히 agent턴 내에 순서를 정해서
+    # 할 수 있는 의무 행동으로 보는거지". As in the Steam app, the Emperor
+    # track's Influence 4 Spy [Main p. 7] waits in the turn: the card's
+    # remaining line and the turn's other actions come in any order, and
+    # the turn cannot end before the Spy is placed.
+    card = _intrigue("change_allegiances")
+    engine = UprisingRulesEngine()
+
+    def gain_emperor(state: GameState, line: int, lose: str = "") -> GameState:
+        state = engine.apply(state, _use_line(line)).state
+        if lose:
+            state = engine.apply(state, _choose_faction(lose)).state
+        return engine.apply(state, _choose_faction("emperor")).state
+
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(emperor=2, fremen=1),
+        resources=Resources(spice=3),
+    )
+    # The designer's example: from 2, both lines reach 4; the card closes
+    # and the turn frame offers the Spy beside the turn's own choices.
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card, 0)).state
+    reached = gain_emperor(gain_emperor(opened, 0, lose="fremen"), 1)
+    assert reached.players[0].influence.emperor == 4
+    assert reached.decision_stack[-1].kind == FrameKind.TURN
+    assert [seat for seat, _ in reached.pending_track_spies] == [0]
+    assert {"place_track_spy", "reveal_turn"} <= {
+        a.action_id for a in engine.legal_actions(reached, 0)
+    }
+
+    # Reaching 4 with the first line: the second line is still offered, and
+    # the Spy is not (only the turn's own frames offer it).
+    state = _turn_state(replace(owner, influence=Influence(emperor=3, fremen=1)))
+    opened = engine.apply(state, _play(state, card, 0)).state
+    reached = gain_emperor(opened, 0, lose="fremen")
+    assert reached.decision_stack[-1].kind == FrameKind.INTRIGUE_EFFECTS
+    assert [seat for seat, _ in reached.pending_track_spies] == [0]
+    assert engine.legal_actions(reached, 0) == (_finish_lines(), _use_line(1))
+    second = engine.apply(reached, _use_line(1)).state
+    second = engine.apply(second, _choose_faction("bene_gesserit")).state
+    assert second.players[0].influence.bene_gesserit == 1
+    assert second.decision_stack[-1].kind == FrameKind.TURN
+    assert [a.action_id for a in engine.legal_actions(second, 0)] == [
+        "reveal_turn",
+        "place_track_spy",
+    ]
+
+    # The turn goes on; its end waits for the Spy.
+    revealed = engine.apply(second, DomainAction("reveal_turn", 0)).state
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert [a.action_id for a in engine.legal_actions(revealed, 0)] == [
+        "place_track_spy"
+    ]
+    opening = engine.apply(revealed, DomainAction("place_track_spy", 0)).state
+    assert opening.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert opening.pending_track_spies == ()
+    posts = engine.legal_actions(opening, 0)
+    assert {a.action_id for a in posts} == {"place_spy_on_space"}
+    placed = engine.apply(opening, posts[0]).state
+    assert placed.decision_stack[-1].kind == FrameKind.REVEAL
+    assert [a.action_id for a in engine.legal_actions(placed, 0)] == [
+        "finish_reveal"
+    ]
 
 
 def test_losing_influence_for_intrigue_offers_alliance_recipients() -> None:
@@ -2234,6 +2304,271 @@ def test_call_to_arms_trigger_is_supply_limited() -> None:
         event for event in bought.events if event.kind == "intrigue_triggered"
     )
     assert dict(triggered.payload)["troops"] == 0
+
+
+def _revealed_with_persuasion(
+    state: GameState, persuasion: int = 10
+) -> GameState:
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+    frame = revealed.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = persuasion
+    return replace(
+        revealed,
+        decision_stack=(
+            *revealed.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def _assert_call_to_arms_fired_last(
+    result: Transition, call: str, source: str, garrison: int
+) -> None:
+    """The troop came after the frame's answer, with the usual event and credit."""
+
+    assert [event.kind for event in result.events][-1] == "intrigue_triggered"
+    triggered = result.events[-1]
+    # The same event an acquisition without a frame emits.
+    assert triggered.event_id == f"{source}:reveal_trigger:{call}"
+    assert dict(triggered.payload) == {"card_id": call, "player": 0, "troops": 1}
+    done = result.state
+    assert done.players[0].troops_garrison == garrison + 1
+    assert done.decision_stack[-1].kind == FrameKind.REVEAL
+    context = dict(done.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in context
+
+
+def test_call_to_arms_waits_for_the_acquired_card_s_spy_post() -> None:
+    # OQ-012 fixes "획득한 카드 자신의 acquire 보상 → … → face-up trigger
+    # Intrigue(Call to Arms의 troop recruit)", and the user ruling 2026-10-04
+    # ("선택 뒤로 맞춤") keeps that order when the card's own acquire box
+    # opens a decision: Spy Network's Spy post is placed first, and Call to
+    # Arms' troop follows only then.
+    call = _intrigue("call_to_arms")
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(player_id=0, intrigue_faceup=(call,))
+    state = _with_market(_turn_state(owner))
+    state = replace(state, imperium_row=(spy_network, *state.imperium_row))
+    revealed = _revealed_with_persuasion(state)
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", spy_network),),
+        ),
+    )
+    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert bought.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    assert bought.state.players[0].troops_garrison == garrison
+
+    placed = engine.apply(bought.state, engine.legal_actions(bought.state, 0)[0])
+    assert [event.kind for event in placed.events] == [
+        "spy_placed",
+        "intrigue_triggered",
+    ]
+    _assert_call_to_arms_fired_last(
+        placed, call, f"round:1:player:0:acquire:{spy_network}", garrison
+    )
+
+
+def test_call_to_arms_waits_for_a_set_aside_card_s_spy_post() -> None:
+    # Same ruling (OQ-012, user ruling 2026-10-04) on the Manipulate path.
+    call = _intrigue("call_to_arms")
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(
+        player_id=0, intrigue_faceup=(call,), imperium_set_aside=(spy_network,)
+    )
+    revealed = _revealed_with_persuasion(_with_market(_turn_state(owner)))
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_manipulated_imperium",
+            actor=0,
+            arguments=(("instance_id", spy_network),),
+        ),
+    )
+    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert bought.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+
+    placed = engine.apply(bought.state, engine.legal_actions(bought.state, 0)[0])
+    _assert_call_to_arms_fired_last(
+        placed,
+        call,
+        f"round:1:player:0:acquire_manipulated:{spy_network}",
+        garrison,
+    )
+
+
+def test_call_to_arms_waits_for_an_intrigue_acquired_card_s_spy_post() -> None:
+    # Inspire Awe played in the Reveal: Spy Network's Spy post opens only
+    # after the Intrigue card has resolved [Main p. 20], and Call to Arms
+    # waits for that post too (OQ-012, user ruling 2026-10-04).
+    call = _intrigue("call_to_arms")
+    awe = _intrigue("inspire_awe")
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(player_id=0, intrigue_cards=(awe,), intrigue_faceup=(call,))
+    state = _with_market(_turn_state(owner))
+    state = replace(state, imperium_row=(spy_network, *state.imperium_row))
+    revealed = _revealed_with_persuasion(state)
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(revealed, _play(revealed, awe)).state
+    acquired = engine.apply(opened, _acquire_imperium(spy_network))
+    assert "intrigue_triggered" not in [event.kind for event in acquired.events]
+    assert acquired.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    assert awe in acquired.state.intrigue_discard
+
+    placed = engine.apply(
+        acquired.state, engine.legal_actions(acquired.state, 0)[0]
+    )
+    assert [event.kind for event in placed.events] == [
+        "spy_placed",
+        "intrigue_triggered",
+    ]
+    _assert_call_to_arms_fired_last(
+        placed, call, f"round:1:player:0:intrigue:{awe}:slot:0", garrison
+    )
+
+
+def _choam_trade_state(
+    call: str, market: tuple[str, ...]
+) -> tuple[GameState, str]:
+    trade = next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(True)
+        if ":interstellar_trade:" in instance_id
+    )
+    state = replace(
+        _with_market(
+            _turn_state(PlayerState(player_id=0, intrigue_faceup=(call,)))
+        ),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=market,
+    )
+    state = replace(state, imperium_row=(trade, *state.imperium_row))
+    return _revealed_with_persuasion(state), trade
+
+
+def test_call_to_arms_waits_for_the_acquired_card_s_contract_market() -> None:
+    # Interstellar Trade's acquire box takes a Contract: the market choice
+    # comes first, then Call to Arms (OQ-012, user ruling 2026-10-04).
+    call = _intrigue("call_to_arms")
+    revealed, trade = _choam_trade_state(
+        call, ("contract:arrakeen_i", "contract:high_council_ii")
+    )
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", trade),),
+        ),
+    )
+    assert [event.kind for event in bought.events] == ["card_acquired"]
+    assert bought.state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+
+    taken = engine.apply(bought.state, engine.legal_actions(bought.state, 0)[0])
+    assert [event.kind for event in taken.events] == [
+        "contract_taken",
+        "intrigue_triggered",
+    ]
+    _assert_call_to_arms_fired_last(
+        taken, call, f"round:1:player:0:acquire:{trade}", garrison
+    )
+
+
+def test_call_to_arms_fires_in_the_acquisition_when_no_frame_opens() -> None:
+    # An exhausted market opens no frame: the icon turns into Solari and
+    # Call to Arms fires inside the acquisition, in the order it always did.
+    call = _intrigue("call_to_arms")
+    revealed, trade = _choam_trade_state(call, ())
+    engine = UprisingRulesEngine()
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", trade),),
+        ),
+    )
+    assert [event.kind for event in bought.events] == [
+        "card_acquired",
+        "contract_icons_converted_to_solari",
+        "intrigue_triggered",
+    ]
+    assert bought.state.decision_stack[-1].kind == FrameKind.REVEAL
+    context = dict(bought.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in context
+
+
+def test_a_later_call_to_arms_trigger_queues_behind_a_waiting_one() -> None:
+    # Troops come in acquisition order (OQ-012, user ruling 2026-10-04): while
+    # Spy Network's trigger waits for its Spy post, a later acquisition whose
+    # card opened nothing does not fire first but joins the queue behind it.
+    from dune_imperium.rules.intrigue_triggers import (
+        fire_reveal_acquisition_intrigue,
+    )
+
+    call = _intrigue("call_to_arms")
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(player_id=0, intrigue_faceup=(call,))
+    state = _with_market(_turn_state(owner))
+    state = replace(state, imperium_row=(spy_network, *state.imperium_row))
+    revealed = _revealed_with_persuasion(state)
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+    later = "round:1:player:0:later_acquisition"
+    # With nothing waiting, the same acquisition fires at once.
+    alone = fire_reveal_acquisition_intrigue(
+        revealed, 0, source=later, started=revealed
+    )
+    assert [event.kind for event in alone.events] == ["intrigue_triggered"]
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", spy_network),),
+        ),
+    )
+    assert bought.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    queued = fire_reveal_acquisition_intrigue(
+        bought.state, 0, source=later, started=bought.state
+    )
+    assert queued.events == ()
+    assert queued.state.players[0].troops_garrison == garrison
+
+    placed = engine.apply(queued.state, engine.legal_actions(queued.state, 0)[0])
+    assert [event.kind for event in placed.events] == [
+        "spy_placed",
+        "intrigue_triggered",
+        "intrigue_triggered",
+    ]
+    assert [event.event_id for event in placed.events[1:]] == [
+        f"round:1:player:0:acquire:{spy_network}:reveal_trigger:{call}",
+        f"{later}:reveal_trigger:{call}",
+    ]
+    assert placed.state.players[0].troops_garrison == garrison + 2
+    context = dict(placed.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 2
+    assert "deferred_acquisition_triggers" not in context
 
 
 def _post(index: int) -> str:

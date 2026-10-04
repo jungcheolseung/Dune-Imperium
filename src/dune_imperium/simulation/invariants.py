@@ -10,7 +10,8 @@ sweep can see across containers and time:
   satisfy a stack-plus-live-count equation because trashed Reserve cards
   return to their stacks and copy IDs are re-issued, and Sardaukar Commanders
   are counters, so their total is conserved instead of a set);
-- progress: a pending player decision must offer at least one legal action;
+- progress: a pending player decision must offer at least one legal action,
+  and an owed Emperor track Spy waits only inside its own seat's turn;
 - visibility: a player's observation must not depend on hidden information
   (deck orders, opponents' hand and Intrigue identities [Main p. 7], the
   face-down Contract bank [Main p. 16]);
@@ -25,6 +26,7 @@ from typing import Final
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.types import ConflictTier
+from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import (
     known_card_seats,
@@ -36,6 +38,7 @@ from dune_imperium.core.observation import (
 )
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.frames import turn_owner_of
 from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
 
@@ -85,7 +88,6 @@ def _all_intrigue_instances(state: GameState) -> Iterator[str]:
     yield from _board_cards(state, "intrigue")
     yield from state.intrigue_deck
     yield from state.intrigue_discard
-    yield from state.intrigue_trash
     yield from state.twisted_deck_stock
     yield from state.navigation_stock
     for player in state.players:
@@ -273,6 +275,32 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
         raise InvariantViolation(
             f"the Sardaukar Commander count changed: {commanders} "
             f"!= {census.commanders}"
+        )
+
+
+def check_track_spy_queue(state: GameState) -> None:
+    """Fail when an owed Emperor track Spy is left waiting outside its turn.
+
+    Only the turn owner's entries wait for its ``place_track_spy`` (user
+    ruling 2026-10-04); every other entry opens at once, unless a chance
+    frame or a Conflict's own reward choices are on top
+    (``spy_moves.track_spy_is_queued``). Checked at a player decision.
+    """
+
+    if not state.pending_track_spies:
+        return
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if top is not None and (
+        isinstance(top.decision, ChanceDecision)
+        or str(top.kind).startswith("combat_reward")
+    ):
+        return
+    owner = turn_owner_of(state)
+    stray = [seat for seat, _ in state.pending_track_spies if seat != owner]
+    if stray:
+        raise InvariantViolation(
+            f"Emperor track Spies of seats {stray} wait outside their turn "
+            f"(turn owner {owner})"
         )
 
 

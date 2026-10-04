@@ -787,6 +787,102 @@ def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> No
     assert warnings(covered)["resolve_board_effect"] == (None, None)
 
 
+def test_imperial_privilege_trash_then_draw_is_not_warned_short() -> None:
+    """Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04):
+    Imperial Privilege's trashed card joins the Intrigue discard before the
+    slot's draw, so with both Intrigue piles empty the draw reshuffles that
+    card alone and is not short. The L2-Q4 warning used to say "1장
+    모자람" here; it now says nothing."""
+
+    import random
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.agents.determinize import determinize
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+    from dune_imperium.content.uprising.starting_cards import (
+        starting_deck_instance_ids,
+    )
+    from dune_imperium.core import (
+        ChanceDecision,
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        Influence,
+        PlayerDecision,
+        PlayerState,
+        Resources,
+    )
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.rules.frames import FrameKind
+    from dune_imperium.server.sessions import _serialize_action
+
+    engine = UprisingRulesEngine()
+    starters = starting_deck_instance_ids(0)
+    held = intrigue_deck_instance_ids(False)[0]
+    owner = PlayerState(
+        player_id=0,
+        hand=starters[:5],
+        deck=starters[5:],
+        influence=Influence(emperor=2),
+        resources=Resources(solari=3),
+        intrigue_cards=(held,),
+    )
+    turn = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        players=(owner, *(PlayerState(player_id=s) for s in range(1, 4))),
+        intrigue_deck=(),
+        intrigue_discard=(),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    place = next(
+        action
+        for action in engine.legal_actions(turn, 0)
+        if dict(action.arguments).get("space_id") == "imperial_privilege"
+    )
+    state = engine.apply(turn, place).state
+
+    def warnings(state: GameState) -> dict[str, tuple[object, object]]:
+        session = SimpleNamespace(engine=engine, state=state)
+        entries = (
+            _serialize_action(index, action, session)  # type: ignore[arg-type]
+            for index, action in enumerate(engine.legal_actions(state, 0))
+        )
+        return {
+            str(entry["action_id"]): (entry["warning"], entry["shortfall"])
+            for entry in entries
+        }
+
+    shown = warnings(state)
+    assert shown["trash_intrigue_for_imperial_privilege"] == (None, None)
+    assert shown["decline_imperial_privilege_intrigue"] == (None, None)
+    for seed in range(3):
+        assert warnings(determinize(state, 0, random.Random(seed))) == shown
+
+    trash = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+    trashed = engine.apply(state, trash)
+    assert "intrigue_draw_short" not in [event.kind for event in trashed.events]
+    assert trashed.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
+    decision = trashed.next_decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == (held,)
+
+
 def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
     """OQ-049 (user request): a specimen the supply cannot provide is flagged
     on the action itself, while the action stays legal."""

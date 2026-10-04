@@ -29,11 +29,12 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
     draw_or_request_personal_cards,
 )
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -3010,6 +3011,16 @@ def test_four_empty_reveal_turns_follow_seat_order_into_combat() -> None:
 # --- Immediate reveal of cards that arrive during a Reveal turn [FAQ p. 3] --
 
 
+def _reveal_frame_context(state: GameState) -> dict[str, Any]:
+    """Return the Reveal frame's context, wherever the frame sits."""
+
+    return dict(
+        next(
+            frame for frame in reversed(state.decision_stack) if frame.kind == "reveal"
+        ).context
+    )
+
+
 def _with_late_hand(state: GameState, card_id: str) -> GameState:
     """Simulate a card landing in seat 0's hand mid-Reveal, before revealing it."""
 
@@ -3043,6 +3054,119 @@ def test_late_reveal_stilgar_gains_a_persuasion_increment_from_a_fremen_arrival(
     assert context["persuasion"] == 2 + 1 + 2
     assert context["revealed_card_count"] == 2
     assert context["revealed_card_001"] == maula
+
+
+def test_a_trashed_stilgar_gains_nothing_from_a_later_fremen_arrival() -> None:
+    # "you can't receive or activate an effect from a card that is already
+    # trashed" (designer ruling, OQ-022): Cunning's second option trashes
+    # Stilgar, The Devoted itself, then draws Maula Pistol (Fremen), which
+    # is revealed at once [FAQ p. 3]. Stilgar's 2 already paid stay (OQ-022)
+    # but the trashed Stilgar adds no +2 for the arrival; it gave 5 before.
+    engine = UprisingRulesEngine()
+    stilgar = _imperium_instance("stilgar_the_devoted")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(stilgar,),
+            deck=(maula,),
+            intrigue_cards=("intrigue:cunning:0",),
+            resources=Resources(spice=1),
+        )
+    )
+    revealed = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    assert _reveal_frame_context(revealed)["persuasion"] == 2
+    cunning = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "play_intrigue" and ("option", 1) in action.arguments
+    )
+    plotted = engine.apply(revealed, cunning).state
+    trash = next(
+        action
+        for action in engine.legal_actions(plotted, 0)
+        if action.action_id == "trash_intrigue_card"
+        and dict(action.arguments)["card_id"] == stilgar
+    )
+    result = engine.apply(plotted, trash)
+
+    owner = result.state.players[0]
+    assert owner.trashed == (stilgar,)
+    assert owner.in_play == (maula,)
+    # Stilgar's 2 plus Maula Pistol's own 1, nothing for the trashed Stilgar.
+    assert _reveal_frame_context(result.state)["persuasion"] == 2 + 1
+    (late,) = (e for e in result.events if e.kind == "personal_card_late_revealed")
+    assert dict(late.payload)["persuasion"] == 1
+
+
+def test_stilgar_adds_two_for_a_fremen_arrival_after_a_fremen_card_was_trashed() -> (
+    None
+):
+    # Stilgar, The Devoted: "2 Persuasion for each Fremen card you have in
+    # play (including this one)" [Stilgar, The Devoted card]. Stilgar follows
+    # the change while it is in play (user ruling 2026-10-04): each Fremen
+    # card arriving later adds +2, and Persuasion already granted is never
+    # taken back (OQ-022). Unswerving Loyalty, played on an Agent turn, makes
+    # Stilgar 4; Cunning's second option trashes it, then draws Long Live the
+    # Fighters (Fremen), revealed at once [FAQ p. 3]: its own 2 plus
+    # Stilgar's +2 again, and the 4 already paid stay.
+    engine = UprisingRulesEngine()
+    stilgar = _imperium_instance("stilgar_the_devoted")
+    loyalty = _imperium_instance("unswerving_loyalty")
+    fighters = _imperium_instance("long_live_the_fighters")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(stilgar,),
+            in_play=(loyalty,),
+            deck=(fighters,),
+            intrigue_cards=("intrigue:cunning:0",),
+            resources=Resources(spice=1),
+        )
+    )
+    revealed = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    assert _reveal_frame_context(revealed)["persuasion"] == 4
+    cunning = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "play_intrigue" and ("option", 1) in action.arguments
+    )
+    plotted = engine.apply(revealed, cunning).state
+    trash = next(
+        action
+        for action in engine.legal_actions(plotted, 0)
+        if action.action_id == "trash_intrigue_card"
+        and dict(action.arguments)["card_id"] == loyalty
+    )
+    result = engine.apply(plotted, trash)
+
+    owner = result.state.players[0]
+    assert owner.trashed == (loyalty,)
+    assert owner.in_play == (stilgar, fighters)
+    assert _reveal_frame_context(result.state)["persuasion"] == 4 + 2 + 2
+    (late,) = (e for e in result.events if e.kind == "personal_card_late_revealed")
+    assert dict(late.payload)["card_id"] == fighters
+    assert dict(late.payload)["persuasion"] == 2 + 2
+
+
+def test_a_trashed_card_does_not_meet_its_condition_later_in_the_reveal() -> None:
+    # Shishakli's Fremen Bond Influence is unmet at the Reveal; the card is
+    # trashed, then Maula Pistol (Fremen) arrives [FAQ p. 3]. "you can't
+    # receive or activate an effect from a card that is already trashed"
+    # (designer ruling, OQ-022), so the late-met Bond pays nothing.
+    shishakli = _imperium_instance("shishakli")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(PlayerState(player_id=0, hand=(shishakli,)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    trashed = trash_personal_card(revealed, 0, shishakli, source="test").state
+
+    result = grant_late_reveal_effects(
+        reveal_late_arrivals(_with_late_hand(trashed, maula), 0, (maula,))
+    )
+
+    assert result.state.players[0].trashed == (shishakli,)
+    assert reveal_pending_gains(_reveal_frame_context(result.state)) == ()
+    assert not [e for e in result.events if e.kind == "reveal_effect_granted_late"]
 
 
 def test_late_reveal_leadership_gains_strength_from_a_late_sword_card() -> None:
@@ -3518,10 +3642,24 @@ def test_a_late_fremen_arrival_completes_northern_watermasters_bond() -> None:
     assert grant_late_reveal_effects(RuleResult(state=taken.state)).events == ()
 
 
-def test_interstellar_trade_counts_its_contracts_once_at_the_reveal() -> None:
-    # Designer ruling (In person, OQ-057): Interstellar Trade "triggers
-    # once" — a Contract completed later in the same Reveal (an Acquire
-    # Contract met by buying The Spice Must Flow) adds no Persuasion.
+def _complete_one_more_contract(
+    state: GameState, contract_id: str = "contract:x"
+) -> GameState:
+    owner = state.players[0]
+    completing = replace(
+        owner,
+        completed_contract_ids=(*owner.completed_contract_ids, contract_id),
+    )
+    return replace(state, players=(completing, *state.players[1:]))
+
+
+def test_interstellar_trade_adds_each_contract_completed_later_in_the_reveal() -> (
+    None
+):
+    # "[1 Persuasion] for each contract you have completed." [Interstellar
+    # Trade card]: a Contract completed later in the same Reveal adds +1
+    # (OQ-028 (c), user ruling 2026-10-04, overturning the designer ruling
+    # adopted as OQ-057 (2) that Interstellar Trade triggers once).
     interstellar = _imperium_instance("interstellar_trade", choam_module=True)
     owner = PlayerState(
         player_id=0,
@@ -3532,16 +3670,421 @@ def test_interstellar_trade_counts_its_contracts_once_at_the_reveal() -> None:
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
 
-    completing = replace(
-        revealed.players[0],
-        completed_contract_ids=(
-            *revealed.players[0].completed_contract_ids,
-            "contract:x",
-        ),
+    granted = grant_late_reveal_effects(
+        RuleResult(state=_complete_one_more_contract(revealed))
     )
-    completed = replace(revealed, players=(completing, *revealed.players[1:]))
-    granted = grant_late_reveal_effects(RuleResult(state=completed))
+
+    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 3
+    (late,) = granted.events
+    assert late.kind == "reveal_effect_granted_late"
+    assert dict(late.payload)["card_id"] == interstellar
+    assert dict(late.payload)["persuasion"] == 1
+    # Paid once per Contract: the same count pays nothing again.
+    again = grant_late_reveal_effects(RuleResult(state=granted.state))
+    assert again.events == ()
+    assert dict(again.state.decision_stack[-1].context)["persuasion"] == 3
+
+
+def test_a_trashed_interstellar_trade_gains_nothing_for_a_later_contract() -> None:
+    # "you can't receive or activate an effect from a card that is already
+    # trashed" (designer ruling, OQ-022): Interstellar Trade trashed earlier
+    # in the Reveal pays nothing for a Contract completed after it; the 2
+    # already paid stay.
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(interstellar,),
+        completed_contract_ids=("contract:arrakeen_i", "contract:arrakeen_ii"),
+    )
+    state = _state(owner, choam_module=True)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    trashed = trash_personal_card(revealed, 0, interstellar, source="test").state
+    assert trashed.players[0].trashed == (interstellar,)
+
+    granted = grant_late_reveal_effects(
+        RuleResult(state=_complete_one_more_contract(trashed))
+    )
 
     assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
     assert granted.events == ()
 
+
+def test_interstellar_trade_pays_for_the_spice_must_flow_contract_it_helped_buy() -> (
+    None
+):
+    # Through the engine: Interstellar Trade (1 completed Contract) and a
+    # bonus of 9 give 10; buying The Spice Must Flow (9) completes the held
+    # Acquire Contract [Main p. 16], and Interstellar Trade adds +1 (OQ-028
+    # (c), user ruling 2026-10-04), which buys Prepare the Way (2). Under the
+    # designer's "triggers once" ruling (OQ-057 (2)) only 1 was left.
+    engine = UprisingRulesEngine()
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(interstellar,),
+        active_contract_ids=("contract:acquire",),
+        completed_contract_ids=("contract:arrakeen_i",),
+        reveal_persuasion_bonus=9,
+    )
+    state = replace(
+        _state(owner, choam_module=True),
+        reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 10)),
+    )
+
+    def buy(current: GameState, card_id: str) -> Transition:
+        action = next(
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id == "acquire_reserve"
+            and dict(action.arguments)["card_id"] == card_id
+        )
+        return engine.apply(current, action)
+
+    revealed = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    assert _reveal_frame_context(revealed)["persuasion"] == 10
+    bought = buy(revealed, "the_spice_must_flow")
+    assert bought.state.players[0].completed_contract_ids == (
+        "contract:arrakeen_i",
+        "contract:acquire",
+    )
+    assert _reveal_frame_context(bought.state)["persuasion"] == 10 - 9 + 1
+    assert [
+        dict(event.payload)["persuasion"]
+        for event in bought.events
+        if event.kind == "reveal_effect_granted_late"
+    ] == [1]
+
+    spent = buy(bought.state, "prepare_the_way").state
+    assert _reveal_frame_context(spent)["persuasion"] == 0
+
+
+def test_a_late_interstellar_trade_counts_on_arrival_then_adds_later_contracts() -> (
+    None
+):
+    # A card drawn during the Reveal is revealed at once [FAQ p. 3]:
+    # Interstellar Trade counts the Contracts completed so far when it
+    # arrives, then adds +1 for each one completed after it (OQ-028 (c),
+    # user ruling 2026-10-04).
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    state = _state(
+        PlayerState(
+            player_id=0,
+            completed_contract_ids=("contract:arrakeen_i", "contract:arrakeen_ii"),
+        ),
+        choam_module=True,
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 0
+
+    arrived = reveal_late_arrivals(
+        _with_late_hand(revealed, interstellar), 0, (interstellar,)
+    ).state
+    assert dict(arrived.decision_stack[-1].context)["persuasion"] == 2
+
+    granted = grant_late_reveal_effects(
+        RuleResult(state=_complete_one_more_contract(arrived))
+    )
+    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 3
+
+
+def _choam_bloodlines_instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(True, bloodlines=True)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def test_interstellar_trade_adds_an_immediate_contract_from_delivery_logistics() -> (
+    None
+):
+    # Delivery Logistics: "1 Persuasion OR a contract" (Bloodlines, CHOAM
+    # Module). Taking the Immediate contract completes it at once ("The
+    # Immediate contract is completed as soon as you take it." [Main p. 16]),
+    # and Interstellar Trade adds +1 for it whatever the order of the two
+    # Reveal effects [Main p. 12] (OQ-028 (c), user ruling 2026-10-04).
+    engine = UprisingRulesEngine()
+    interstellar = _choam_bloodlines_instance("interstellar_trade")
+    logistics = _choam_bloodlines_instance("delivery_logistics")
+    state = replace(
+        _state(PlayerState(player_id=0, hand=(interstellar, logistics))),
+        config=RulesetConfig(choam_module=True, bloodlines=True),
+        face_up_contract_ids=("contract:immediate", "contract:arrakeen_i"),
+        contract_bank=("contract:arrakeen_ii",),
+    )
+    revealed = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    assert _reveal_frame_context(revealed)["persuasion"] == 0
+
+    take = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "take_reveal_contract"
+    )
+    market = engine.apply(revealed, take).state
+    immediate = next(
+        action
+        for action in engine.legal_actions(market, 0)
+        if action.action_id == "take_contract"
+        and dict(action.arguments)["instance_id"] == "contract:immediate"
+    )
+    result = engine.apply(market, immediate)
+
+    assert result.state.players[0].completed_contract_ids == ("contract:immediate",)
+    assert _reveal_frame_context(result.state)["persuasion"] == 1
+    assert [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "reveal_effect_granted_late"
+    ] == [interstellar]
+
+
+def test_interstellar_trade_adds_an_earn_any_alliance_contract_at_once() -> None:
+    # Earn Any Alliance completes when the owner takes a new Alliance token
+    # [Bloodlines p. 2], here through Shishakli's Fremen Bond Influence taken
+    # during the Reveal. The engine completes it after the step's late-Reveal
+    # pass, so the pass runs again and Interstellar Trade's +1 is there before
+    # the owner's next choice (OQ-028 (c), user ruling 2026-10-04); it used to
+    # wait for the next step and was lost on finishing the Reveal.
+    engine = UprisingRulesEngine()
+    interstellar = _choam_bloodlines_instance("interstellar_trade")
+    shishakli = _choam_bloodlines_instance("shishakli")
+    maula = _choam_bloodlines_instance("maula_pistol")
+    state = replace(
+        _state(
+            PlayerState(
+                player_id=0,
+                hand=(interstellar, shishakli, maula),
+                influence=Influence(fremen=3),
+                active_contract_ids=("contract:bloodlines_earn_any_alliance",),
+            ),
+            choam_module=True,
+        ),
+        config=RulesetConfig(choam_module=True, bloodlines=True),
+    )
+    revealed = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    # Maula Pistol's 1; Interstellar Trade has no completed Contract yet.
+    assert _reveal_frame_context(revealed)["persuasion"] == 1
+
+    influence = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "gain_reveal_faction_influence"
+    )
+    result = engine.apply(revealed, influence)
+
+    owner = result.state.players[0]
+    assert owner.alliance_faction_ids == ("fremen",)
+    assert owner.completed_contract_ids == ("contract:bloodlines_earn_any_alliance",)
+    assert _reveal_frame_context(result.state)["persuasion"] == 2
+
+
+
+@pytest.mark.parametrize(
+    "hand_order",
+    [
+        ("southern_faith", "interstellar_trade", "delivery_logistics"),
+        ("interstellar_trade", "southern_faith", "delivery_logistics"),
+    ],
+    ids=["command_card_first", "interstellar_trade_first"],
+)
+def test_a_late_interstellar_trade_increment_opens_command_in_any_hand_order(
+    hand_order: tuple[str, str, str],
+) -> None:
+    # Southern Faith's "Command (6+): 2 spice" is used once the Reveal turn
+    # has generated 6 or more Persuasion [Bloodlines pp. 5, 12], and "You may
+    # resolve Reveal effects in any order you like" [Main p. 12]. Southern
+    # Faith's 1 and a bonus of 4 make 5; Delivery Logistics takes the
+    # Immediate contract, completed as soon as it is taken [Main p. 16], and
+    # Interstellar Trade adds +1 for it (OQ-028 (c), user ruling 2026-10-04):
+    # 6, so the Command pays in that same step. The late pass used to visit
+    # the cards once in hand order, so with Southern Faith first its gate was
+    # judged at 5 before Interstellar Trade's +1 and the spice was lost.
+    engine = UprisingRulesEngine()
+    faith, interstellar, logistics = (
+        _choam_bloodlines_instance(card_id)
+        for card_id in ("southern_faith", "interstellar_trade", "delivery_logistics")
+    )
+    state = replace(
+        _state(
+            PlayerState(
+                player_id=0,
+                hand=tuple(_choam_bloodlines_instance(card) for card in hand_order),
+                reveal_persuasion_bonus=4,
+            )
+        ),
+        config=RulesetConfig(choam_module=True, bloodlines=True),
+        face_up_contract_ids=("contract:immediate", "contract:arrakeen_ii"),
+        contract_bank=("contract:acquire",),
+    )
+    revealed = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    assert _reveal_frame_context(revealed)["persuasion"] == 5
+    assert reveal_pending_gains(_reveal_frame_context(revealed)) == ()
+
+    take = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "take_reveal_contract"
+    )
+    market = engine.apply(revealed, take).state
+    immediate = next(
+        action
+        for action in engine.legal_actions(market, 0)
+        if action.action_id == "take_contract"
+        and dict(action.arguments)["instance_id"] == "contract:immediate"
+    )
+    result = engine.apply(market, immediate)
+
+    context = _reveal_frame_context(result.state)
+    assert result.state.players[0].completed_contract_ids == ("contract:immediate",)
+    assert context["persuasion"] == 6
+    assert [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "reveal_effect_granted_late"
+    ] == [interstellar, faith]
+    assert reveal_pending_gains(context) == (("resources", "0/2/0", faith),)
+    assert logistics in result.state.players[0].in_play
+    # Paid once: another pass over the same state pays nothing.
+    assert grant_late_reveal_effects(RuleResult(state=result.state)).events == ()
+
+
+def _interstellar_contract_path(path: str) -> tuple[GameState, str, tuple[str, ...]]:
+    """Return a Reveal-ready state, the contract a path completes, and its steps.
+
+    Each step is ``action_id`` or ``action_id=argument value``; the last one
+    completes the contract while Interstellar Trade (one completed Contract)
+    is in play.
+    """
+
+    interstellar = _choam_bloodlines_instance("interstellar_trade")
+    owner = PlayerState(
+        player_id=0,
+        hand=(interstellar,),
+        completed_contract_ids=("contract:arrakeen_i",),
+    )
+    state = replace(
+        _state(owner, choam_module=True),
+        config=RulesetConfig(choam_module=True, bloodlines=True),
+        face_up_contract_ids=("contract:immediate", "contract:arrakeen_ii"),
+        contract_bank=("contract:acquire",),
+    )
+    if path == "mercantile_affairs":
+        # Mercantile Affairs (cost 5) takes a contract on acquisition.
+        mercantile = _choam_bloodlines_instance("mercantile_affairs")
+        return (
+            replace(
+                state,
+                players=(
+                    replace(owner, reveal_persuasion_bonus=4),
+                    *state.players[1:],
+                ),
+                imperium_row=(mercantile,),
+                imperium_deck=(_choam_bloodlines_instance("delivery_logistics"),),
+            ),
+            "contract:immediate",
+            (f"acquire_imperium={mercantile}", "take_contract=contract:immediate"),
+        )
+    # Leverage: "If you gained spice this turn: take a contract and 1 Solari".
+    leveraged = replace(
+        owner,
+        intrigue_cards=("intrigue:leverage:0", "intrigue:cunning:0"),
+        resources=Resources(spice=2),
+        spice_at_turn_start=0,
+    )
+    if path == "leverage":
+        return (
+            replace(state, players=(leveraged, *state.players[1:])),
+            "contract:immediate",
+            ("play_intrigue=intrigue:leverage:0", "take_contract=contract:immediate"),
+        )
+    # The Bloodlines Immediate: trash an Intrigue card from hand, then it is
+    # complete [Bloodlines p. 2].
+    return (
+        replace(
+            state,
+            players=(leveraged, *state.players[1:]),
+            face_up_contract_ids=(
+                "contract:bloodlines_immediate",
+                "contract:arrakeen_ii",
+            ),
+        ),
+        "contract:bloodlines_immediate",
+        (
+            "play_intrigue=intrigue:leverage:0",
+            "take_contract=contract:bloodlines_immediate",
+            "trash_intrigue_for_contract=intrigue:cunning:0",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "path", ["mercantile_affairs", "leverage", "bloodlines_immediate"]
+)
+def test_interstellar_trade_adds_a_contract_completed_by_any_reveal_path(
+    path: str,
+) -> None:
+    # Interstellar Trade pays +1 for each Contract completed later in the
+    # Reveal, whatever completed it (OQ-028 (c), user ruling 2026-10-04):
+    # an acquisition's contract (Mercantile Affairs), an Intrigue's
+    # TakeContract (Leverage), and the Bloodlines Immediate completed by the
+    # Intrigue trash it requires.
+    engine = UprisingRulesEngine()
+    interstellar = _choam_bloodlines_instance("interstellar_trade")
+    state, contract, steps = _interstellar_contract_path(path)
+    current = engine.apply(state, legal_reveal_actions(state, 0)[0]).state
+    for step in steps:
+        action_id, _, value = step.partition("=")
+        action = next(
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id == action_id
+            and (not value or value in dict(action.arguments).values())
+        )
+        before = _reveal_frame_context(current)["persuasion"]
+        last = engine.apply(current, action)
+        current = last.state
+
+    assert current.players[0].completed_contract_ids == (
+        "contract:arrakeen_i",
+        contract,
+    )
+    assert _reveal_frame_context(current)["persuasion"] == before + 1
+    late = [
+        dict(event.payload)
+        for event in last.events
+        if event.kind == "reveal_effect_granted_late"
+    ]
+    assert [(entry["card_id"], entry["persuasion"]) for entry in late] == [
+        (interstellar, 1)
+    ]
+    assert grant_late_reveal_effects(RuleResult(state=current)).events == ()
+
+
+def test_interstellar_trade_paid_then_trashed_adds_nothing_for_a_later_contract() -> (
+    None
+):
+    # Interstellar Trade adds +1 for a Contract completed later in the Reveal
+    # (OQ-028 (c), user ruling 2026-10-04); once trashed it pays nothing more:
+    # "you can't receive or activate an effect from a card that is already
+    # trashed" (designer ruling, OQ-022). What it paid (2 + 1) stays.
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(interstellar,),
+        completed_contract_ids=("contract:arrakeen_i", "contract:arrakeen_ii"),
+    )
+    state = _state(owner, choam_module=True)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    paid = grant_late_reveal_effects(
+        RuleResult(state=_complete_one_more_contract(revealed))
+    ).state
+    assert _reveal_frame_context(paid)["persuasion"] == 3
+    trashed = trash_personal_card(paid, 0, interstellar, source="test").state
+    assert trashed.players[0].trashed == (interstellar,)
+
+    later = grant_late_reveal_effects(
+        RuleResult(state=_complete_one_more_contract(trashed, "contract:y"))
+    )
+
+    assert later.events == ()
+    assert _reveal_frame_context(later.state)["persuasion"] == 3

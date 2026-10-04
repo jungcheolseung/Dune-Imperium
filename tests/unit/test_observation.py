@@ -35,7 +35,6 @@ def _state() -> GameState:
         imperium_row=("imperium_public",),
         intrigue_deck=("intrigue_hidden",),
         intrigue_discard=("intrigue_public",),
-        intrigue_trash=("intrigue_trashed",),
         reserve_stacks=(("prepare_the_way", 8),),
     )
 
@@ -59,7 +58,8 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
         ("imperial_basin", 0),
     )
     assert view.intrigue_discard == ("intrigue_public",)
-    assert view.intrigue_trash == ("intrigue_trashed",)
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
+    assert not hasattr(view, "intrigue_trash")
     # A face-up Intrigue card waiting on its trigger is public [FAQ p. 2].
     assert view.players[1].intrigue_faceup == ("p1:faceup",)
     assert view.players[1].objective_ids == ("objective_1",)

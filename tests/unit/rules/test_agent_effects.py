@@ -24,6 +24,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
     RuleResult,
+    Transition,
 )
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
@@ -1278,8 +1279,8 @@ def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
     assert paid.state.players[0].resources.spice == 0
     assert paid.state.players[0].victory_points == 2
     assert paid.state.players[0].intrigue_cards == (first_intrigue,)
-    assert paid.state.intrigue_discard == ("intrigue:old",)
-    assert paid.state.intrigue_trash == (second_intrigue,)
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
+    assert paid.state.intrigue_discard == ("intrigue:old", second_intrigue)
     assert [event.kind for event in paid.events] == [
         "intrigue_card_trashed",
         "agent_card_payment_resolved",
@@ -4347,36 +4348,110 @@ def test_long_live_the_fighters_returns_a_trashed_reserve_card_to_its_stack() ->
     assert dict(result.state.reserve_stacks)["prepare_the_way"] == 8
 
 
-def test_long_live_the_fighters_top_three_discard_skips_hand_discard_trigger() -> None:
+def _resolve_long_live(
+    state: GameState, draw_card: str, discard_card: str
+) -> Transition:
+    """Place Long Live the Fighters on Arrakeen and pick its draw and discard."""
+
+    engine = UprisingRulesEngine()
+
+    def pick(current: GameState, card_id: str) -> DomainAction:
+        return next(
+            action
+            for action in legal_agent_card_long_live_actions(current, 0)
+            if dict(action.arguments)["card_id"] == card_id
+        )
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = engine.apply(
+        placed, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    selected = engine.apply(ready, pick(ready, draw_card)).state
+    return engine.apply(selected, pick(selected, discard_card))
+
+
+def test_long_live_the_fighters_deck_discard_fires_spacing_guilds_favor() -> None:
+    # A deck discard fires "When this card is discarded" as a project
+    # convention (OQ-013, user ruling 2026-10-04), although the official text
+    # reads "Only discarding it from your hand triggers the ability."
+    # [Main p. 17]. The trigger resolves in the printed "Draw one, discard one,
+    # and trash one" order, before the trash.
     draw_card = _instance("dagger")
     favor = _imperium_instance("spacing_guild_s_favor")
     trash_card = _instance("convincing_argument")
     state = _long_live_state((draw_card, favor, trash_card))
-    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
-    ready = resolve_agent_card_effect(placed).state
-    selected = apply_agent_card_long_live_action(
-        ready,
-        next(
-            action
-            for action in legal_agent_card_long_live_actions(ready, 0)
-            if dict(action.arguments)["card_id"] == draw_card
-        ),
-    ).state
-    result = apply_agent_card_long_live_action(
-        selected,
-        next(
-            action
-            for action in legal_agent_card_long_live_actions(selected, 0)
-            if dict(action.arguments)["card_id"] == favor
-        ),
-    )
 
-    assert result.state.players[0].discard_pile == (favor,)
-    assert result.state.players[0].resources.spice == 0
+    result = _resolve_long_live(state, draw_card, favor)
+
+    owner = result.state.players[0]
+    assert owner.discard_pile == (favor,)
+    assert owner.hand == (draw_card,)
+    assert owner.trashed == (trash_card,)
+    assert owner.resources.spice == 2
     assert [event.kind for event in result.events] == [
         "card_discarded",
+        "personal_card_discard_effect_resolved",
         "card_trashed",
         "agent_card_effect_resolved",
+    ]
+    effect = result.events[1]
+    assert effect.event_id.endswith(f":discard:{favor}:effect")
+    assert dict(effect.payload) == {"card_id": favor, "player": 0, "spice": 2}
+
+
+def test_long_live_the_fighters_drawing_or_trashing_favor_is_not_a_discard() -> None:
+    draw_card = _instance("dagger")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    other = _instance("convincing_argument")
+
+    drawn = _resolve_long_live(
+        _long_live_state((favor, draw_card, other)), favor, draw_card
+    )
+    assert drawn.state.players[0].hand == (favor,)
+    assert drawn.state.players[0].resources.spice == 0
+    assert "personal_card_discard_effect_resolved" not in {
+        event.kind for event in drawn.events
+    }
+
+    trashed = _resolve_long_live(
+        _long_live_state((draw_card, other, favor)), draw_card, other
+    )
+    assert trashed.state.players[0].trashed == (favor,)
+    assert trashed.state.players[0].resources.spice == 0
+    assert "personal_card_discard_effect_resolved" not in {
+        event.kind for event in trashed.events
+    }
+
+
+def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> None:
+    # Steersman Y'rkoon: "Whenever you gain 3 or more spice in a single turn:
+    # draw a card". One spice already gained this turn plus the deck-discarded
+    # Favor's two (OQ-013, user ruling 2026-10-04) earns the draw.
+    draw_card = _instance("dagger")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    trash_card = _instance("convincing_argument")
+    tail = _instance("reconnaissance")
+    state = _long_live_state((draw_card, favor, trash_card, tail))
+    owner = replace(
+        state.players[0],
+        leader_id="steersman_y_rkoon",
+        resources=Resources(spice=1, water=1),
+        spice_at_turn_start=0,
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    result = _resolve_long_live(state, draw_card, favor)
+
+    seat = result.state.players[0]
+    assert seat.resources.spice == 3
+    assert seat.hand == (draw_card, tail)
+    assert seat.deck == ()
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        "personal_card_discard_effect_resolved",
+        "card_trashed",
+        "agent_card_effect_resolved",
+        "leader_ability_resolved",
     ]
 
 
@@ -5539,13 +5614,11 @@ def test_branching_path_alliance_trash_draws_intrigue_and_gains_two_spice() -> N
     context = dict(result.state.decision_stack[-1].context)
 
     # The trash is the arrow cost; the Intrigue draw and 2 spice are
-    # independent reward icons queued for their own actions (OQ-027). The
-    # trashed card goes to the public intrigue_trash zone, never
-    # intrigue_discard, and is never reshuffled back into the Intrigue deck
-    # (docs/rules/player-turns.md lines 257-259) [Main p. 20].
+    # independent reward icons queued for their own actions (OQ-027).
+    # Intrigue cards have no trash pile: the trashed card joins the shared
+    # Intrigue discard (OQ-061, user ruling 2026-10-04).
     assert result.state.players[0].intrigue_cards == ()
-    assert result.state.intrigue_trash == (first_intrigue,)
-    assert result.state.intrigue_discard == ("intrigue:old",)
+    assert result.state.intrigue_discard == ("intrigue:old", first_intrigue)
     assert context["pending_agent_icons"] == "intrigue,spice"
     assert [event.kind for event in result.events] == ["intrigue_card_trashed"]
     assert legal_agent_card_intrigue_payment_actions(result.state, 0) == ()
@@ -5651,7 +5724,7 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
     paid = apply_agent_card_intrigue_payment(allied, trash).state
 
     assert paid.players[0].intrigue_cards == ()
-    assert paid.intrigue_trash == ("intrigue:track_bonus",)
+    assert paid.intrigue_discard == ("intrigue:track_bonus",)
     assert dict(paid.decision_stack[-1].context)["pending_agent_icons"] == (
         "intrigue,spice"
     )

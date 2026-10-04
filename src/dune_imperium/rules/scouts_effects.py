@@ -98,6 +98,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.reveal_turn import add_reveal_strength
 from dune_imperium.rules.scouts_offers import (
@@ -893,11 +894,15 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
                 owner,
                 intrigue_cards=tuple(c for c in owner.intrigue_cards if c != value),
             )
+            # The trashed card joins the shared Intrigue discard (OQ-061,
+            # user ruling 2026-10-04).
             return RuleResult(
-                state=replace(
-                    cursor_state,
-                    players=replace_player(cursor_state.players, next_owner),
-                    intrigue_trash=(*cursor_state.intrigue_trash, value),
+                state=with_trashed_intrigue(
+                    replace(
+                        cursor_state,
+                        players=replace_player(cursor_state.players, next_owner),
+                    ),
+                    value,
                 ),
                 events=(
                     GameEvent(

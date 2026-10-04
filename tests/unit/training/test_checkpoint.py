@@ -21,6 +21,8 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
 )
 from dune_imperium.cli.checkpoint import main as checkpoint_main  # noqa: E402
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID  # noqa: E402
+from dune_imperium.core.engine import Transition  # noqa: E402
+from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
     SelfPlayRunner,
@@ -388,12 +390,17 @@ _V28_GROWN_SEGMENTS = frozenset(
 
 def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # A file written under v27 knows neither the v28 Epic card nor its flag,
-    # nor the v29 shortfall segment: each v27 segment's columns keep their
-    # place at its start, the 24 + 8 new columns start at zero, and a game
-    # without the option and without a waiting shortfall (every new column
-    # 0) scores exactly as the v27 network did.
+    # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, and
+    # still has the 90-column intrigue_trash segment v30 removed (OQ-061):
+    # each v27 segment's columns keep their place at its start, the
+    # 24 + 8 + 4 new columns start at zero, the trash columns are dropped,
+    # and a game without the option, without a waiting shortfall, without
+    # an owed track Spy and without an Intrigue trash (every new and every
+    # dropped column 0; seed 6's 80 steps trash no Intrigue card) scores
+    # exactly as the v27 network did.
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)
     current = tmp_path / "current.pt"
@@ -401,19 +408,29 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         current, network, ruleset=codec.config.identifier, iteration=4, codec=codec
     )
     document = torch.load(current, weights_only=True)
+    state = dict(document["state_dict"])
+    weight = state["body.0.weight"]
     kept: list[int] = []
+    columns: list[Any] = []
     layout: list[tuple[str, int, int]] = []
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
-        if segment.name in ("epic_game", "shortfall"):
+        if segment.name in ("epic_game", "shortfall", "track_spies_owed"):
             continue
         length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
         kept.extend(range(segment.offset, segment.offset + length))
+        columns.append(weight[:, segment.offset : segment.offset + length])
         layout.append((segment.name, offset, length))
         offset += length
-    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8
-    state = dict(document["state_dict"])
-    state["body.0.weight"] = state["body.0.weight"][:, torch.tensor(kept)]
+        if segment.name == "intrigue_discard":
+            # The v29-and-older Intrigue trash pile, weighted so that
+            # keeping any of it would change the outputs.
+            columns.append(torch.full((weight.shape[0], 90), 0.5))
+            layout.append(("intrigue_trash", offset, 90))
+            offset += 90
+    assert ("intrigue_trash", 289, 90) in layout
+    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8 - 4 + 90
+    state["body.0.weight"] = torch.cat(columns, dim=1)
     older = tmp_path / "v27.pt"
     torch.save(
         {
@@ -439,7 +456,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (4_587, 24 + 8, 0)
+    ) == (4_587 - 90, 24 + 8 + 4, 90)
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
         codec.size,
         0,
@@ -457,11 +474,27 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     )
     assert float(first[:, new].abs().sum()) == 0.0
 
+    # The dropped trash columns were 0 in a v27 observation only while no
+    # Intrigue card was trashed, so the game must not trash one.
+    kinds: list[str] = []
+    apply = UprisingRulesEngine.apply
+
+    def recording_apply(
+        engine: UprisingRulesEngine, *args: Any, **kwargs: Any
+    ) -> Transition:
+        transition = apply(engine, *args, **kwargs)
+        kinds.extend(event.kind for event in transition.events)
+        return transition
+
+    monkeypatch.setattr(UprisingRulesEngine, "apply", recording_apply)
     runner = SelfPlayRunner(codec.config, max_steps=80, record=True)
     result = runner.run(
         {"r": RandomBatchPolicy(seed=5)},
         (SelfPlaySpec(game_seed=6, lineup=("r",) * 4),),
     )
+    monkeypatch.undo()
+    assert kinds, "the recording saw no engine step"
+    assert "intrigue_card_trashed" not in kinds
     observations = torch.stack(
         [
             torch.as_tensor(step.observation, dtype=torch.int32)

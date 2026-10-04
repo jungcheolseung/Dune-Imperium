@@ -36,6 +36,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     FrameKind,
+    owes_track_spy,
     own_turn_frame_index,
     recruited_commander_count,
     replace_player,
@@ -349,7 +350,9 @@ def legal_agent_turn_finish_actions(
     group is a mandatory Agent box that can only fizzle (its condition is
     false and nothing else of the turn remains to meet it): the box waits
     for the turn's end rather than fizzling on demand (designer ruling,
-    OQ-057).
+    OQ-057). An Emperor track Spy the owner still owes holds the end back:
+    it is placed in any order but before the turn ends (user ruling
+    2026-10-04, "엄연히 agent턴 내에 순서를 정해서 할 수 있는 의무 행동").
     """
 
     from dune_imperium.rules.agent_effects import graft_boxes_are_stalled
@@ -361,6 +364,8 @@ def legal_agent_turn_finish_actions(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
     if agent_turn_is_finishing(context):
+        return ()
+    if owes_track_spy(state, player):
         return ()
     stalled_box = context["pending_agent_effect"] is True and graft_boxes_are_stalled(
         state
@@ -771,10 +776,11 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
     resolved and the owner's frame is back on top. The trash's results are
     the turn's own (user ruling 2026-10-01, OQ-095 (5)): when they make a
     snapshot Contract's condition true -- a Contract is always completed
-    [FAQ p. 1] -- or recruit units on a turn that could deploy -- "그 turn에
-    recruit한 troop을 원하는 수만큼 deploy" [Main p. 10] -- the turn
-    reopens and the owner presses the end again. Otherwise the next seat's
-    turn opens.
+    [FAQ p. 1] -- recruit units on a turn that could deploy -- "그 turn에
+    recruit한 troop을 원하는 수만큼 deploy" [Main p. 10] -- or reach the
+    Emperor track's Influence 4, whose Spy is a mandatory action of the turn
+    (user ruling 2026-10-04), the turn reopens and the owner presses the end
+    again. Otherwise the next seat's turn opens.
     """
 
     state = result.state
@@ -803,11 +809,15 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
         decision_stack=(*state.decision_stack[:-1], with_context(frame, reopened)),
     )
     recruited_more = _recruited_units(context) > recruited_at_press
-    if agent_turn_has_other_pending_effects(reopened, state.players) or (
-        recruited_more
-        and (
-            legal_combat_deployments(reopened_state, owner)
-            or legal_commander_deployments(reopened_state, owner)
+    if (
+        agent_turn_has_other_pending_effects(reopened, state.players)
+        or owes_track_spy(state, owner)
+        or (
+            recruited_more
+            and (
+                legal_combat_deployments(reopened_state, owner)
+                or legal_commander_deployments(reopened_state, owner)
+            )
         )
     ):
         return replace(

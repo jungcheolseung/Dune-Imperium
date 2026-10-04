@@ -280,6 +280,100 @@ def test_controlled_peeks_the_top_card_privately() -> None:
     assert struck.players[0].combat_strength == 3
 
 
+FAVOR = "imperium:spacing_guild_s_favor:0"
+
+
+def _controlled_choice(
+    state: GameState, action_id: str
+) -> tuple[GameState, list[str]]:
+    result = ENGINE.apply(state, DomainAction(action_id=action_id, actor=0))
+    return result.state, [event.kind for event in result.events]
+
+
+def test_controlled_deck_discard_fires_spacing_guilds_favor() -> None:
+    # A deck discard fires "When this card is discarded" as a project
+    # convention (OQ-013, user ruling 2026-10-04), although the official text
+    # reads "Only discarding it from your hand triggers the ability."
+    # [Main p. 17]. Putting the card back or paying to draw it is no discard.
+    card = _twisted("controlled")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(card,),
+        deck=(FAVOR, RECON),
+        resources=Resources(solari=1),
+    )
+    peeking = ENGINE.apply(_turn_state(owner), _play(card)).state
+
+    result = ENGINE.apply(
+        peeking, DomainAction(action_id="discard_top_card", actor=0)
+    )
+    discarded = result.state
+    kinds = [event.kind for event in result.events]
+    assert discarded.players[0].discard_pile == (FAVOR,)
+    assert discarded.players[0].deck == (RECON,)
+    assert discarded.players[0].resources.spice == 2
+    at = kinds.index("top_card_discarded")
+    assert kinds[at + 1] == "personal_card_discard_effect_resolved"
+    assert kinds.count("personal_card_discard_effect_resolved") == 1
+    top_discarded, trigger = result.events[at], result.events[at + 1]
+    assert top_discarded.event_id.endswith(":top_card_discarded")
+    assert trigger.event_id == top_discarded.event_id.replace(
+        ":top_card_discarded", f":discard:{FAVOR}:effect"
+    )
+    assert dict(trigger.payload) == {"card_id": FAVOR, "player": 0, "spice": 2}
+
+    kept, kinds = _controlled_choice(peeking, "put_back_top_card")
+    assert kept.players[0].deck == (FAVOR, RECON)
+    assert kept.players[0].resources.spice == 0
+    assert "personal_card_discard_effect_resolved" not in kinds
+
+    drawn, kinds = _controlled_choice(peeking, "draw_top_card_for_solari")
+    assert drawn.players[0].hand == (FAVOR,)
+    assert drawn.players[0].resources == Resources()
+    assert "personal_card_discard_effect_resolved" not in kinds
+
+
+def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> None:
+    # "You may play a Plot Intrigue card any time during one of your Agent or
+    # Reveal turns." [Main p. 7]. Played from the Reveal frame, Controlled's
+    # deck discard still fires Favor (OQ-013, user ruling 2026-10-04), and
+    # Steersman Y'rkoon's "Whenever you gain 3 or more spice in a single
+    # turn: draw a card" counts that spice on the Reveal turn; the card drawn
+    # during the Reveal is revealed late.
+    card = _twisted("controlled")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="steersman_y_rkoon",
+        hand=(DAGGER,),
+        intrigue_cards=(card,),
+        deck=(FAVOR, RECON),
+        resources=Resources(spice=1),
+        spice_at_turn_start=0,
+    )
+    revealed = ENGINE.apply(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    peeking = ENGINE.apply(revealed, _play(card)).state
+
+    result = ENGINE.apply(
+        peeking, DomainAction(action_id="discard_top_card", actor=0)
+    )
+    seat = result.state.players[0]
+    assert seat.discard_pile == (FAVOR,)
+    assert seat.resources.spice == 3
+    assert seat.deck == ()
+    assert [
+        (event.kind, dict(event.payload).get("card_id")) for event in result.events
+    ] == [
+        ("top_card_discarded", FAVOR),
+        ("personal_card_discard_effect_resolved", FAVOR),
+        ("leader_ability_resolved", None),
+        ("personal_card_late_revealed", RECON),
+    ]
+
+
 def test_devious_trashes_from_hand_without_a_decline_or_deploys_two() -> None:
     card = _twisted("devious")
     owner = PlayerState(
@@ -450,9 +544,34 @@ def test_unnatural_trashes_an_intrigue_card_and_recruits_for_a_regular_one() -> 
     assert [dict(a.arguments)["card_id"] for a in options] == [regular]
     done = ENGINE.apply(trashing, options[0]).state
     seat = done.players[0]
-    assert regular in done.intrigue_trash
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
+    assert regular in done.intrigue_discard
     assert seat.troops_garrison == 3 + 1
     assert len(seat.intrigue_cards) == 1  # the drawn replacement
+
+
+def test_unnatural_puts_a_trashed_twisted_card_on_the_shared_discard() -> None:
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04): a
+    # Twisted card trashed by Unnatural joins the shared Intrigue discard,
+    # as a played Twisted card already does, and recruits no troop.
+    card = _twisted("unnatural")
+    other = _twisted("withdrawn")
+    owner = PlayerState(
+        player_id=0, leader_id="piter_de_vries", intrigue_cards=(card, other)
+    )
+    trashing = ENGINE.apply(_turn_state(owner), _play(card)).state
+    options = legal_intrigue_choice_actions(trashing, 0)
+    assert [dict(a.arguments)["card_id"] for a in options] == [other]
+    result = ENGINE.apply(trashing, options[0])
+    done = result.state
+
+    trashed = [e for e in result.events if e.kind == "intrigue_card_trashed"]
+    assert [dict(e.payload)["card_id"] for e in trashed] == [other]
+    assert other in done.intrigue_discard
+    assert card in done.intrigue_discard
+    assert other not in done.players[0].intrigue_cards
+    assert done.players[0].troops_garrison == owner.troops_garrison
+    assert len(done.players[0].intrigue_cards) == 1  # the drawn replacement
 
 
 def test_unnatural_troop_joins_only_its_owners_open_turn() -> None:

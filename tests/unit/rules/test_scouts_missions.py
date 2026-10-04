@@ -20,7 +20,7 @@ from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.observation import known_card_seats
-from dune_imperium.core.player import Influence, Resources
+from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
@@ -493,6 +493,22 @@ def test_determinize_never_deals_the_immediate_to_the_research_station() -> None
         assert after == before
 
 
+def _holding_intrigue(
+    state: GameState, cards: tuple[str, ...]
+) -> tuple[PlayerState, ...]:
+    """Park Intrigue cards in seat 3's hand, out of both Intrigue piles.
+
+    Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04), so a
+    held hand is the place that keeps every card accounted for.
+    """
+
+    last = state.players[3]
+    return (
+        *state.players[:3],
+        replace(last, intrigue_cards=(*last.intrigue_cards, *cards)),
+    )
+
+
 def test_emperors_schemes_reshuffles_a_short_intrigue_deck_first() -> None:
     """OQ-078, user ruling 2026-09-29: with fewer than two Intrigue cards in
     the deck the discard pile is shuffled into a new deck first ("shuffle
@@ -504,7 +520,10 @@ def test_emperors_schemes_reshuffles_a_short_intrigue_deck_first() -> None:
     deck = base.intrigue_deck
     top, discard, rest = deck[0], deck[1:6], deck[6:]
     state = replace(
-        base, intrigue_deck=(top,), intrigue_discard=discard, intrigue_trash=rest
+        base,
+        intrigue_deck=(top,),
+        intrigue_discard=discard,
+        players=_holding_intrigue(base, rest),
     )
     state = _reveal(state, "emperors_schemes")
     frame = state.decision_stack[-1]
@@ -535,7 +554,7 @@ def test_emperors_schemes_places_what_there_is_with_both_piles_short(
         base,
         intrigue_deck=deck[:deck_size],
         intrigue_discard=(),
-        intrigue_trash=deck[deck_size:],
+        players=_holding_intrigue(base, deck[deck_size:]),
     )
     state = _reveal(state, "emperors_schemes")
     assert tuple(card for _, _, card in state.scouts_goods_cards) == deck[:deck_size]

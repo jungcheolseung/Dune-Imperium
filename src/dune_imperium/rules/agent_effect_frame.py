@@ -69,6 +69,7 @@ from dune_imperium.rules.sardaukar import (
 from dune_imperium.rules.scouts_effects import legal_subcommittee_choice_actions
 from dune_imperium.rules.scouts_missions import legal_mission_collect_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
+from dune_imperium.rules.spy_moves import legal_track_spy_actions
 from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
@@ -115,6 +116,9 @@ def legal_agent_effect_frame_actions(
 
     return (
         *pending_groups,
+        # The Emperor track's Influence 4 Spy waits in the turn and is
+        # placed in any order before its end (user ruling 2026-10-04).
+        *legal_track_spy_actions(state, player),
         *_graft_switch_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),

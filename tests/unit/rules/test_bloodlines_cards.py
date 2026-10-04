@@ -18,6 +18,7 @@ from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
+    GameEvent,
     GamePhase,
     GameState,
     Influence,
@@ -799,6 +800,83 @@ def test_corrupt_bureaucrat_discard_pays_three_solari() -> None:
     state = _state(_owner(hand=(card,)), CHOAM_BLOODLINES)
     result = discard_personal_card_from_hand(state, 0, card, source="test")
     assert result.state.players[0].resources.solari == 3
+
+
+def test_corrupt_bureaucrat_discarded_from_the_deck_pays_three_solari() -> None:
+    # Corrupt Bureaucrat: "When this card is discarded: 3 Solari". A deck
+    # discard fires it like a hand discard, a project convention (OQ-013,
+    # user ruling 2026-10-04) set against the official Spacing Guild's Favor
+    # sentence "Only discarding it from your hand triggers the ability."
+    # [Main p. 17].
+    card = _card("corrupt_bureaucrat")
+    engine = UprisingRulesEngine()
+
+    # Controlled (Twisted Intrigue): discard the top card of the deck.
+    controlled = "intrigue:twisted_controlled:0"
+    state = _state(
+        _owner(intrigue_cards=(controlled,), deck=(card, STARTERS[0])),
+        CHOAM_BLOODLINES,
+    )
+    peeking = engine.apply(
+        state,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", controlled), ("option", 0)),
+        ),
+    ).state
+    discarded = engine.apply(
+        peeking, DomainAction(action_id="discard_top_card", actor=0)
+    )
+    assert discarded.state.players[0].discard_pile == (card,)
+    assert discarded.state.players[0].resources.solari == 3
+    effect = next(
+        event
+        for event in discarded.events
+        if event.kind == "personal_card_discard_effect_resolved"
+    )
+    assert dict(effect.payload) == {"card_id": card, "player": 0, "solari": 3}
+
+    # Long Live the Fighters: draw one, discard one, and trash one.
+    long_live = _card("long_live_the_fighters")
+    draw_card, trash_card = STARTERS[0], STARTERS[1]
+    state = _state(
+        _owner(hand=(long_live,), deck=(draw_card, card, trash_card)),
+        CHOAM_BLOODLINES,
+    )
+    placed = apply_agent_action(
+        state,
+        next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments)["space_id"] == "arrakeen"
+        ),
+    ).state
+    working = engine.apply(
+        placed, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    events: tuple[GameEvent, ...] = ()
+    for picked in (draw_card, card):
+        step = engine.apply(
+            working,
+            next(
+                action
+                for action in engine.legal_actions(working, 0)
+                if dict(action.arguments).get("card_id") == picked
+            ),
+        )
+        working, events = step.state, step.events
+    owner = working.players[0]
+    assert owner.discard_pile == (card,)
+    assert owner.trashed == (trash_card,)
+    assert owner.resources.solari == 3
+    # The trigger resolves right after its discard, before the trash.
+    assert [event.kind for event in events] == [
+        "card_discarded",
+        "personal_card_discard_effect_resolved",
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
 
 
 def test_corrupt_bureaucrat_takes_a_contract_after_a_spy_recall() -> None:
@@ -2004,6 +2082,62 @@ def test_engineered_miracle_command_self_trash_keeps_its_trash_troops_in_the_rev
         for action in legal_reveal_deployments(result, 0)
         if action.action_id == "deploy_troops"
     } == {1, 2, 3, 4}
+
+
+def test_call_to_arms_follows_a_commanded_spy_post_before_another_reveal_choice() -> (
+    None
+):
+    # OQ-012 (user ruling 2026-10-04, "선택 뒤로 맞춤"): Call to Arms' troop
+    # comes after the acquired card's own acquisition effects and the
+    # decisions they open, not after unrelated choices. Engineered Miracle's
+    # Command takes Spy Network while Shrouded Counsel's Command choice
+    # already waits below it: the troop follows the Spy post at once, and
+    # Shrouded Counsel's choice still waits after it.
+    call = _intrigue("call_to_arms")
+    miracle = _card("engineered_miracle")
+    spy_network = _card("spy_network")
+    owner = replace(
+        _six_persuasion_hand(miracle, _card("shrouded_counsel")),
+        intrigue_faceup=(call,),
+    )
+    revealed = _reveal(replace(_state(owner), imperium_row=(spy_network,)))
+    assert [
+        dict(frame.context).get("reveal_choice_effect")
+        for frame in revealed.decision_stack
+    ] == [None, "command_may_trash_card", "command_may_trash_self_to_acquire_row_card"]
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    acquired = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="command_acquire_row_card",
+            actor=0,
+            arguments=(("instance_id", spy_network),),
+        ),
+    )
+    assert "intrigue_triggered" not in [event.kind for event in acquired.events]
+    assert acquired.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    assert acquired.state.players[0].troops_garrison == garrison
+
+    placed = engine.apply(acquired.state, engine.legal_actions(acquired.state, 0)[0])
+    assert [event.kind for event in placed.events] == [
+        "spy_placed",
+        "intrigue_triggered",
+    ]
+    # The event an acquisition without a frame emits.
+    assert placed.events[-1].event_id == (
+        f"round:1:player:0:reveal_card:{miracle}:command_acquisition"
+        f":reveal_trigger:{call}"
+    )
+    payload = dict(placed.events[-1].payload)
+    assert payload == {"card_id": call, "player": 0, "troops": 1}
+    assert placed.state.players[0].troops_garrison == garrison + 1
+    top = placed.state.decision_stack[-1]
+    assert dict(top.context)["reveal_choice_effect"] == "command_may_trash_card"
+    context = _reveal_context(placed.state)
+    assert context["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in context
 
 
 def test_southern_faith_draws_or_takes_bene_gesserit_influence_with_a_bond() -> None:
@@ -3450,6 +3584,7 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 1 + 1 + 1 + 1 + 1 + 1 + 1
         - 27
         + 4  # v130 (OQ-005): flip_battle_card per Objective
+        + 1  # v131 (user ruling 2026-10-04): place_track_spy
     )
     action = DomainAction(
         action_id="trash_agent_card",

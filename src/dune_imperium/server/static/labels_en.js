@@ -194,6 +194,7 @@ const LABELS_EN = {
     "choose_tech_strength": "Forbidden Weapons: 3 swords + lose 1 {influence_any}",
     "choose_tech_trash": "Forbidden Weapons: lose all {spice} and {trash}",
     "place_tech_spy": "Panopticon: place {spy}",
+    "place_track_spy": "{influence_emperor} 4: place {spy}",
     "recruit_reveal_troops": "{reveal_turn}: {recruit} {troop}",
     "draw_reveal_intrigue": "{reveal_turn}: {draw} {intrigue}",
     "generate_reveal_specimens": "{reveal_turn}: {specimen}",

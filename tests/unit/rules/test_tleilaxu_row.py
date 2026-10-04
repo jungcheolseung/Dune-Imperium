@@ -230,6 +230,60 @@ def test_a_tleilaxu_acquisition_fires_call_to_arms() -> None:
     assert call_to_arms in expired.intrigue_discard
 
 
+def test_a_tleilaxu_acquire_box_choice_holds_call_to_arms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No shipped Tleilaxu acquire box opens a decision (Subject X-137's
+    # advances the Tleilaxu token at once), but Call to Arms comes after the
+    # acquired card's own acquisition effects, also after their choices
+    # (OQ-012, user ruling 2026-10-04, "선택 뒤로 맞춤"): a box that researched
+    # like Spiritual Fervor's would hold it until the direction is chosen.
+    from dune_imperium.content.uprising.imperium import ImperiumCardEntry
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.immortality import advance_research
+
+    def research_box(
+        state: GameState,
+        player: int,
+        definition: ImperiumCardEntry,
+        *,
+        source: str,
+    ) -> RuleResult:
+        return advance_research(state, player, source=f"{source}:acquisition_bonus")
+
+    monkeypatch.setattr(tleilaxu_row, "apply_acquisition_track_effects", research_box)
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), research_space="c1r3")
+    )
+    garrison = state.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    bought = engine.apply(state, _actions(state)[CONTAMINATOR])
+    assert "intrigue_triggered" not in [event.kind for event in bought.events]
+    assert bought.state.decision_stack[-1].kind == "research_advance"
+    assert bought.state.players[0].troops_garrison == garrison
+
+    chosen = engine.apply(
+        bought.state,
+        DomainAction(
+            action_id="choose_research_space",
+            actor=0,
+            arguments=(("space_id", "c2r4"),),
+        ),
+    )
+    kinds = [event.kind for event in chosen.events]
+    assert kinds[0] == "research_advanced" and kinds[-1] == "intrigue_triggered"
+    assert chosen.events[-1].event_id == (
+        f"round:1:player:0:acquire_tleilaxu:{CONTAMINATOR}"
+        f":reveal_trigger:{call_to_arms}"
+    )
+    assert chosen.state.players[0].troops_garrison == garrison + 1
+    context = dict(chosen.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in context
+
+
 def test_past_the_first_marker_the_card_may_go_on_top_of_the_deck() -> None:
     state = _reveal_state(_owner(research_space="c4r4"))
 

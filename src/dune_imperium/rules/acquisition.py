@@ -26,6 +26,7 @@ from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_acquire_contracts,
+    contract_gain_opens_market,
 )
 from dune_imperium.rules.effects import (
     active_agent_card,
@@ -751,10 +752,14 @@ def apply_reserve_acquisition(
         card_id,
         source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
     )
+    # A Reserve card's own acquisition effect is its Victory Points, so no
+    # frame opens on shipped content; one that did would hold Call to Arms
+    # until it closes (OQ-012, user ruling 2026-10-04).
     fired = fire_reveal_acquisition_intrigue(
         completed.state,
         action.actor,
         source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+        started=state,
     )
     return RuleResult(
         state=fired.state,
@@ -906,10 +911,15 @@ def apply_imperium_acquisition(
         )
         next_state = contracts.state
         acquisition_events = (*acquisition_events, *contracts.events)
+    # Call to Arms comes after the card's own acquisition effects (OQ-012),
+    # also after the frames they opened -- the Spy post, the Research
+    # direction, the Contract market -- once those are answered (user
+    # ruling 2026-10-04).
     fired = fire_reveal_acquisition_intrigue(
         next_state,
         action.actor,
         source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+        started=state,
     )
     next_state = fired.state
     acquisition_events = (*acquisition_events, *fired.events)
@@ -1350,8 +1360,13 @@ def apply_manipulated_acquisition(
         )
         next_state = contracts.state
         acquisition_events = (*acquisition_events, *contracts.events)
+    # As on the Row: after the frames the card's own effects opened
+    # (OQ-012, user ruling 2026-10-04).
     fired = fire_reveal_acquisition_intrigue(
-        next_state, action.actor, source=source
+        next_state,
+        action.actor,
+        source=source,
+        started=state,
     )
     next_state = fired.state
     acquisition_events = (*acquisition_events, *fired.events)
@@ -1460,7 +1475,12 @@ def acquire_reserve_for_intrigue(
     completed = complete_acquire_contracts(
         triggered.state, player, card_id, source=source
     )
-    fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
+    fired = fire_reveal_acquisition_intrigue(
+        completed.state,
+        player,
+        source=source,
+        started=state,
+    )
     event = GameEvent(
         event_id=f"{source}:acquired:{instance_id}",
         kind="card_acquired",
@@ -1661,7 +1681,23 @@ def acquire_imperium_for_intrigue(
     completed = complete_acquire_contracts(
         prepared, player, definition.card.card_id, source=source
     )
-    fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
+    # The caller opens the Spy post or the Contract market only after this
+    # returns (after the Intrigue card itself, [Main p. 20]); Call to Arms
+    # waits for those frames too, like for a Research direction opened here
+    # (OQ-012, user ruling 2026-10-04). An exhausted market opens none.
+    fired = fire_reveal_acquisition_intrigue(
+        completed.state,
+        player,
+        source=source,
+        started=state,
+        frames_follow=(
+            bonus.places_spy
+            or (
+                bonus.takes_contract
+                and contract_gain_opens_market(completed.state, player)
+            )
+        ),
+    )
     event = GameEvent(
         event_id=f"{source}:acquired:{instance_id}",
         kind="card_acquired",

@@ -1,6 +1,6 @@
 """Player-scoped, immutable observations with explicit redaction."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
@@ -116,6 +116,10 @@ class PublicPlayerView:
     # announced before it flipped [Main p. 16], so its identity stays public
     # like a flipped battle card (OQ-010 ruling 2).
     completed_contract_ids: tuple[str, ...]
+    # Emperor track Influence 4 Spies this seat still has to place: during
+    # its own turn each waits for the owner's ``place_track_spy`` and holds
+    # the turn end back (user ruling 2026-10-04). Public: the track is.
+    track_spies_owed: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +180,6 @@ class PlayerView:
     # until the last slot resolves, so the public view names them here.
     intrigue_resolving: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
-    intrigue_trash: tuple[str, ...] = ()
     contract_bank_size: int = 0
     face_up_contract_ids: tuple[str, ...] = ()
     sardaukar_contract_ids: tuple[str, ...] = ()
@@ -479,7 +482,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         turn_owner=turn_owner_value,
         reveal_order=state.reveal_order,
         endgame_intrigue_complete=state.endgame_intrigue_complete,
-        players=tuple(_cached_public_player_view(seat) for seat in state.players),
+        players=tuple(_public_view_of(state, seat) for seat in state.players),
         private=PrivatePlayerView(
             deck_size=len(owner.deck),
             hand=owner.hand,
@@ -506,7 +509,6 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         imperium_removed=state.imperium_removed,
         intrigue_resolving=resolving_intrigue_ids(state),
         intrigue_discard=state.intrigue_discard,
-        intrigue_trash=state.intrigue_trash,
         contract_bank_size=len(state.contract_bank),
         face_up_contract_ids=state.face_up_contract_ids,
         sardaukar_contract_ids=state.sardaukar_contract_ids,
@@ -672,6 +674,20 @@ def _own_top_frame(state: GameState, kind: str, player: int) -> DecisionFrame | 
 # long self-play run does not grow it (throughput report, section 7).
 _PUBLIC_VIEW_CACHE: dict[int, tuple[PlayerState, PublicPlayerView]] = {}
 _PUBLIC_VIEW_CACHE_LIMIT = 512
+
+
+def _public_view_of(state: GameState, player: PlayerState) -> PublicPlayerView:
+    """The seat's public view plus what the game state holds for it.
+
+    The cache is keyed by the ``PlayerState`` object alone, so the owed
+    Emperor track Spies (a ``GameState`` queue) are added on top of it.
+    """
+
+    view = _cached_public_player_view(player)
+    owed = sum(
+        1 for seat, _ in state.pending_track_spies if seat == player.player_id
+    )
+    return replace(view, track_spies_owed=owed) if owed else view
 
 
 def _cached_public_player_view(player: PlayerState) -> PublicPlayerView:

@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -63,7 +64,10 @@ from dune_imperium.rules.acquisition import (
     acquisition_spy_frame,
     take_imperium_row_card,
 )
-from dune_imperium.rules.card_discard import discard_personal_card_from_hand
+from dune_imperium.rules.card_discard import (
+    discard_personal_card_from_hand,
+    resolve_personal_card_discard_trigger,
+)
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat import refresh_combat_participants
 from dune_imperium.rules.combat_deployment import (
@@ -103,6 +107,7 @@ from dune_imperium.rules.frames import (
     context_int,
     context_str,
     frame_context,
+    owes_track_spy,
     owned_top_frame,
     replace_player,
     replace_top_frame,
@@ -118,6 +123,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.intrigue_triggers import open_contract_reveal
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
@@ -162,6 +168,9 @@ class IntriguePlayBlock(StrEnum):
 
     TIMING = "timing"  # printed for another window (Plot, Combat, Endgame)
     TURN_START = "turn_start"  # "At the start of your turn", after that point
+    # "Pass your turn" (Withdrawn) while the seat owes an Emperor track Spy,
+    # which is placed before the turn ends (user ruling 2026-10-04).
+    TRACK_SPY = "track_spy"
 
 
 def intrigue_window(state: GameState, player: int) -> IntrigueTiming | None:
@@ -205,7 +214,21 @@ def intrigue_play_block(
         # "At the start of your turn" (Withdrawn): only before the Agent or
         # Reveal choice.
         return IntriguePlayBlock.TURN_START
+    if _passes_turn(option) and owes_track_spy(state, player):
+        # A Plot that reached the Emperor track's Influence 4 left its Spy
+        # owed: a mandatory action of the turn, placed before the turn ends
+        # (user ruling 2026-10-04, "엄연히 agent턴 내에 순서를 정해서 할 수
+        # 있는 의무 행동"), so the turn cannot be passed over it.
+        return IntriguePlayBlock.TRACK_SPY
     return option_unplayable_reason(state, player, option)
+
+
+def _passes_turn(option: IntrigueOption) -> bool:
+    return any(
+        isinstance(reward, PassTurn)
+        for section in option.sections
+        for reward in section.rewards
+    )
 
 
 def legal_intrigue_play_actions(
@@ -1731,7 +1754,9 @@ def _trash_intrigue_hand_card(
 
     The troop joins the owner's open turn [Main p. 10] [FAQ p. 4], guarded
     by ``turn_owner_of`` like ``_apply_section_rewards``: nothing is
-    credited outside the owner's own turn.
+    credited outside the owner's own turn. The trashed card, a Twisted one
+    included, joins the shared Intrigue discard and is reshuffled with it
+    (OQ-061, user ruling 2026-10-04), as a played Twisted card already is.
     """
 
     owner = state.players[player]
@@ -1753,10 +1778,9 @@ def _trash_intrigue_hand_card(
         events.extend(
             recruit_shortfall_events(step_source, player, troops_bonus, recruited)
         )
-    next_state = replace(
-        state,
-        players=replace_player(state.players, next_owner),
-        intrigue_trash=(*state.intrigue_trash, card_id),
+    next_state = with_trashed_intrigue(
+        replace(state, players=replace_player(state.players, next_owner)),
+        card_id,
     )
     if recruited and turn_owner_of(next_state) == player:
         next_state = update_turn_recruits(next_state, troops_recruited=recruited)
@@ -1769,7 +1793,11 @@ def _resolve_peek(
     action_id: str,
     step_source: str,
 ) -> RuleResult:
-    """Controlled: put the top card back, discard it, or pay a Solari to draw it."""
+    """Controlled: put the top card back, discard it, or pay a Solari to draw it.
+
+    The discard branch fires the card's own "When this card is discarded"
+    trigger (OQ-013, user ruling 2026-10-04).
+    """
 
     owner = state.players[player]
     if not owner.deck:
@@ -1787,30 +1815,51 @@ def _resolve_peek(
             ),
         )
     if action_id == "discard_top_card":
-        next_owner = replace(
-            owner, deck=owner.deck[1:], discard_pile=(*owner.discard_pile, top)
+        discarded = replace(
+            state,
+            players=replace_player(
+                state.players,
+                replace(
+                    owner,
+                    deck=owner.deck[1:],
+                    discard_pile=(*owner.discard_pile, top),
+                ),
+            ),
         )
-        kind = "top_card_discarded"
-    else:
-        if owner.resources.solari < 1:
-            raise RuntimeError("drawing the peeked card costs one Solari")
-        next_owner = replace(
-            owner,
-            deck=owner.deck[1:],
-            hand=(*owner.hand, top),
-            resources=replace(owner.resources, solari=owner.resources.solari - 1),
+        # A deck discard fires the card's own "When this card is discarded"
+        # trigger as a project convention (OQ-013, user ruling 2026-10-04),
+        # although the official text reads "Only discarding it from your hand
+        # triggers the ability." [Main p. 17]. Putting the card back or paying
+        # to draw it is not a discard.
+        triggered = resolve_personal_card_discard_trigger(
+            discarded, player, top, source=step_source
         )
-        kind = "top_card_drawn"
+        return RuleResult(
+            state=triggered.state,
+            events=(
+                GameEvent(
+                    event_id=f"{step_source}:top_card_discarded",
+                    kind="top_card_discarded",
+                    payload=(("card_id", top), ("player", player)),
+                ),
+                *triggered.events,
+            ),
+        )
+    if owner.resources.solari < 1:
+        raise RuntimeError("drawing the peeked card costs one Solari")
+    next_owner = replace(
+        owner,
+        deck=owner.deck[1:],
+        hand=(*owner.hand, top),
+        resources=replace(owner.resources, solari=owner.resources.solari - 1),
+    )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),
         events=(
             GameEvent(
-                event_id=f"{step_source}:{kind}",
-                kind=kind,
-                payload=(
-                    *((("card_id", top),) if kind == "top_card_discarded" else ()),
-                    ("player", player),
-                ),
+                event_id=f"{step_source}:top_card_drawn",
+                kind="top_card_drawn",
+                payload=(("player", player),),
             ),
         ),
     )

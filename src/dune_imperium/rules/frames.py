@@ -331,6 +331,32 @@ def own_turn_frame_index(state: GameState, player: int) -> int | None:
     return None
 
 
+def owes_track_spy(state: GameState, seat: int) -> bool:
+    """Whether ``seat`` still has an Emperor track Influence 4 Spy to place.
+
+    "When you reach 4 Influence, you earn the bonus shown on that space of
+    the track" [Main p. 7]; the Emperor strip prints the Spy icon. Each
+    reach queues one entry in ``GameState.pending_track_spies``.
+    """
+
+    return any(entry[0] == seat for entry in state.pending_track_spies)
+
+
+def track_spy_waits(state: GameState, seat: int) -> bool:
+    """Whether an Emperor track Spy owed by ``seat`` waits inside its turn.
+
+    During the seat's own Agent or Reveal turn the placement is a mandatory
+    action of that turn, taken in any order with its other actions and
+    before the turn ends ("엄연히 agent턴 내에 순서를 정해서 할 수 있는 의무
+    행동", user ruling 2026-10-04 following the Steam app, which overrides
+    the designer's "before you move on to other player initiated actions",
+    OQ-057 (15)). Anywhere else -- another seat's turn, Combat, Round Start,
+    the Arrakeen Scouts step, the Endgame -- it opens at once.
+    """
+
+    return turn_owner_of(state) == seat
+
+
 def reveal_is_open_for(state: GameState, player: int) -> bool:
     """Return whether ``player``'s Reveal frame is on the decision stack."""
 

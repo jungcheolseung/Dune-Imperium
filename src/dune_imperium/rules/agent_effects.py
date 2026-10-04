@@ -36,7 +36,10 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import has_faction_bond
-from dune_imperium.rules.card_discard import discard_personal_card_from_hand
+from dune_imperium.rules.card_discard import (
+    discard_personal_card_from_hand,
+    resolve_personal_card_discard_trigger,
+)
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits as _keep_trash_recruits
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -74,7 +77,10 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_or_queue_intrigue_cards,
+    with_trashed_intrigue,
+)
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
@@ -581,9 +587,14 @@ def apply_agent_card_long_live_action(
         if candidate not in (draw_card_id, card_id)
     )
 
-    # Stage the printed draw and discard moves first. The remaining card stays
-    # in the deck for the shared trash transition, so a future trash trigger
-    # observes the same zones as the completed printed order.
+    # Stage the printed draw and discard moves first, then resolve the
+    # discarded card's own discard trigger. A deck discard triggers it as a
+    # project convention (OQ-013, user ruling 2026-10-04), although the
+    # official text reads "Only discarding it from your hand triggers the
+    # ability." [Main p. 17]. The trigger opens no decision, so the whole
+    # printed sentence stays one atomic effect. The remaining card stays in
+    # the deck for the shared trash transition, so a trash trigger observes
+    # the same zones as the completed printed order.
     owner = state.players[player]
     staged_owner = replace(
         owner,
@@ -599,8 +610,11 @@ def apply_agent_card_long_live_action(
         state,
         players=replace_player(state.players, staged_owner),
     )
+    discard_triggered = resolve_personal_card_discard_trigger(
+        staged_state, player, card_id, source=source
+    )
     trashed = trash_personal_card(
-        staged_state,
+        discard_triggered.state,
         player,
         trash_card_id,
         source=source,
@@ -626,7 +640,12 @@ def apply_agent_card_long_live_action(
     )
     return RuleResult(
         state=next_state,
-        events=(discard_event, *trashed.events, resolved_event),
+        events=(
+            discard_event,
+            *discard_triggered.events,
+            *trashed.events,
+            resolved_event,
+        ),
     )
 
 
@@ -2024,9 +2043,9 @@ def apply_agent_card_intrigue_payment(
         # Branching Path: "Trash an Intrigue card of your choice from your
         # hand" [Main p. 20] is the arrow cost; the Intrigue draw and the 2
         # spice are independent reward icons queued for their own actions
-        # (OQ-027). The trashed card goes to the public ``intrigue_trash``
-        # zone, never ``intrigue_discard``, and is never reshuffled
-        # (docs/rules/player-turns.md lines 257-259) [Main p. 20].
+        # (OQ-027). Intrigue cards have no trash pile: the trashed card joins
+        # the shared Intrigue discard and is reshuffled with it (OQ-061,
+        # user ruling 2026-10-04).
         next_owner = replace(
             owner,
             intrigue_cards=tuple(
@@ -2037,10 +2056,7 @@ def apply_agent_card_intrigue_payment(
         )
         arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE))
         next_state = advance_after_effect(
-            replace(
-                state,
-                intrigue_trash=(*state.intrigue_trash, intrigue_card_id),
-            ),
+            with_trashed_intrigue(state, intrigue_card_id),
             context,
             replace_player(state.players, next_owner),
         )
@@ -2076,11 +2092,10 @@ def apply_agent_card_intrigue_payment(
             if card_id != intrigue_card_id
         ),
     )
+    # Junction Headquarters' trashed card joins the Intrigue discard too
+    # (OQ-061, user ruling 2026-10-04).
     next_state = advance_after_effect(
-        replace(
-            state,
-            intrigue_trash=(*state.intrigue_trash, intrigue_card_id),
-        ),
+        with_trashed_intrigue(state, intrigue_card_id),
         context,
         replace_player(state.players, next_owner),
     )

@@ -22,7 +22,6 @@ from torch.utils import _pytree as pytree  # noqa: E402
 from torch.utils._python_dispatch import TorchDispatchMode  # noqa: E402
 
 from dune_imperium import RulesetConfig  # noqa: E402
-from dune_imperium.adapters.observation_encoding import OBSERVATION_SIZE  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     SelfPlayRunner,
     SelfPlaySpec,
@@ -116,6 +115,13 @@ def real() -> tuple[PolicyValueNetwork, TrainingBatch]:
     return network, replace(batch, returns=returns)
 
 
+# The synthetic rows' observation width. It is fixed rather than
+# OBSERVATION_SIZE so that an observation layout change does not redraw the
+# random rows and weights: at v30's 4,529 columns one row's PPO ratio drew
+# 179 and amplified float32 noise past the gradient tolerance (OQ-061).
+_SYNTHETIC_WIDTH = 64
+
+
 def _synthetic() -> tuple[PolicyValueNetwork, TrainingBatch]:
     """Rows of very different legal-set sizes, some sharing no action."""
 
@@ -135,7 +141,7 @@ def _synthetic() -> tuple[PolicyValueNetwork, TrainingBatch]:
     offsets = np.zeros(steps + 1, dtype=np.int64)
     np.cumsum([len(row) for row in legal], out=offsets[1:])
     batch = TrainingBatch(
-        observations=rng.integers(0, 6, size=(steps, OBSERVATION_SIZE)).astype(
+        observations=rng.integers(0, 6, size=(steps, _SYNTHETIC_WIDTH)).astype(
             np.int32
         ),
         legal_indices=np.concatenate([np.asarray(row) for row in legal]).astype(
@@ -149,7 +155,9 @@ def _synthetic() -> tuple[PolicyValueNetwork, TrainingBatch]:
         episode_ids=np.zeros(steps, dtype=np.int32),
     )
     torch.manual_seed(1)
-    network = PolicyValueNetwork(50, hidden=(16,))
+    network = PolicyValueNetwork(
+        50, observation_size=_SYNTHETIC_WIDTH, hidden=(16,)
+    )
     with torch.no_grad():
         # Spread the head so the softmax is far from uniform.
         network.policy_head.bias.normal_(0.0, 2.0)

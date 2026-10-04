@@ -49,6 +49,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     FrameKind,
+    owes_track_spy,
     owned_top_frame,
     recruited_commander_count,
     replace_player,
@@ -757,7 +758,9 @@ def legal_turn_start_card_actions(
 
     "At the start of your turn: put this card into play -> draw a card and
     pass your turn" [Litany Against Fear card]: an alternative to the Agent
-    or Reveal turn, taken from the turn frame.
+    or Reveal turn, taken from the turn frame. Held back while the seat owes
+    an Emperor track Spy (a Plot reached Influence 4 first): the Spy is
+    placed before the turn ends (user ruling 2026-10-04).
     """
 
     if not 0 <= player < state.config.players:
@@ -765,6 +768,8 @@ def legal_turn_start_card_actions(
     if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
         return ()
     if owned_top_frame(state, FrameKind.TURN, player) is None:
+        return ()
+    if owes_track_spy(state, player):
         return ()
     owner = state.players[player]
     return tuple(

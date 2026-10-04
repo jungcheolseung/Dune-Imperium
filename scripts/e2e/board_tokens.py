@@ -594,16 +594,17 @@ def intrigue_pile(page) -> None:
     )
     if not check.ok(len(ids) == 3, "the catalog has Intrigue cards", ids):
         return
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04): a
+    # trashed one lies in the discard, so the line counts that pile alone.
     page.evaluate(
-        "(ids) => { state.view.intrigue_discard = ids.slice(0, 2);"
-        " state.view.intrigue_trash = ids.slice(2); render(); }",
+        "(ids) => { state.view.intrigue_discard = ids; render(); }",
         ids,
     )
     pile = page.locator(".pile-button[data-pile='intrigue']")
     check.ok(pile.count() == 1, "one pile line")
     text = pile.inner_text()
     trash = page.evaluate("phraseText('{trash}')")
-    check.ok("2" in text and f"{trash} 1" in text, "with both counts", text)
+    check.ok("3" in text and trash not in text, "with the discard count", text)
     check.ok(
         page.locator("#market .vcard.intrigue").count() == 0,
         "no Intrigue card faces in the column",
@@ -614,15 +615,15 @@ def intrigue_pile(page) -> None:
         ".map((n) => n.dataset.instance)"
     )
     check.ok(
-        listed == [ids[1], ids[0], ids[2]],
-        "the list: discard newest first, then the trash",
+        listed == [ids[2], ids[1], ids[0]],
+        "the list: the discard, newest first",
         listed,
     )
     titles = page.evaluate(
         "[...document.querySelectorAll('#card-popover .popover-title')]"
         ".map((n) => n.textContent)"
     )
-    check.ok(len(titles) == 2, "two headed piles", titles)
+    check.ok(len(titles) == 1, "one headed pile", titles)
 
 
 # The view fields behind each kind of unit in the Conflict (PublicPlayerView).

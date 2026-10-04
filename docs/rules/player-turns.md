@@ -223,10 +223,12 @@
 - Subversive Advisor는 Reveal에서 Persuasion 1을 얻는다. Reveal box는 파란
   Persuasion 다이아몬드 "1"을 인쇄하며 Solari 코인이 아니다(재판독,
   2026-09-26). `[Subversive Advisor card]`
-- Cargo Runner는 Reveal에서 Persuasion 1을 얻는다. Interstellar Trade는 Reveal을
-  시작할 때 보유한 completed Contract마다 Persuasion 1을 얻으며, 같은 Reveal
-  중 The Spice Must Flow acquire로 Contract를 추가 완료해도 다시 계산하지 않는다.
-  `[Cargo Runner card]` `[Interstellar Trade card]` `[Designer clarification]`
+- Cargo Runner는 Reveal에서 Persuasion 1을 얻는다. Interstellar Trade는 completed
+  Contract마다 Persuasion 1을 얻는다. Reveal을 시작할 때(늦게 도착하면 그때)
+  센 뒤, 같은 Reveal 중 Contract를 더 완료할 때마다 1을 더 받는다(2026-10-04
+  사용자 판정, OQ-057 (2) 재판정 — 디자이너의 "한 번만" 판정을 넘어선 project
+  convention). trash된 뒤에는 더 받지 않는다. `[Cargo Runner card]`
+  `[Interstellar Trade card]`
 - Delivery Agreement와 Priority Contracts는 Reveal에서 각각 Spice 1과 Spice 2를
   얻는다. completed Contract가 4개 이상이면 그 Spice 대신 해당 card를 trash하고
   Victory Point 1을 얻을 수 있다. `[Delivery Agreement card]`
@@ -300,9 +302,10 @@
   reshuffle이 필요한 draw의 모자람도 섞기 전에 정해지므로, 그 기록은 섞기를
   요청하는 단계에 남는다(그래서 경고가 그 단계에 붙는다). Imperium Ceremony의
   빈 peek(OQ-052)도 같다.
-- trash한 Intrigue card는 `intrigue_discard`에 놓지 않고 공개
-  `intrigue_trash` 영역에서 게임이 끝날 때까지 제외한다. 따라서 Intrigue Deck을
-  다시 만들 때 섞이지 않는다. `[Main p. 20]`
+- Intrigue card에는 trash 더미가 없다. trash한 Intrigue card는 공용 Intrigue
+  버림 더미(`intrigue_discard`)에 놓이고, Intrigue Deck을 다시 만들 때 함께
+  섞인다(OQ-061 재판정, 2026-10-04 사용자 판정, project convention — 일반 trash의
+  "for the rest of the game" `[Main p. 6]`와 다르다). `[FAQ p. 2]`
 
 ## `discard`의 의미
 
@@ -312,6 +315,9 @@
 - 현재 ruleset의 Spacing Guild's Favor는 Clean Up에 in-play 상태에서 discard
   pile로 옮기는 것으로 그 card의 `discard` 능력을
   발동하지 않는다. hand에서 discard할 때만 발동한다. [Main p. 17]
+  프로젝트 판정(OQ-013 재판정, 2026-10-04, 공식 규칙이 아닌 convention): deck에서
+  곧바로 버릴 때(Long Live the Fighters, Controlled)도 발동한다. 같은 문구의
+  Corrupt Bureaucrat도 같다. Clean Up은 여전히 발동하지 않는다.
 
 ## 공식 문서가 침묵하는 항목의 판정
 
