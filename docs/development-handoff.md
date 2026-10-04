@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 스카웃 경매 카드 이미지
+
+- 구현 커밋: `dbffea01`. 중대한 순간(Critical Moment)의 공개 카드 2장·3장을 스카웃 패널에서 번호·이름과 함께 이미지로 표시한다. 마우스를 올리거나 클릭·키보드로 활성화하면 기존 카드 상세 팝오버가 열린다. 이미지 확인은 결정을 진행하지 않고, 획득은 기존 행동 버튼으로 한다. 좁은 창에서는 줄바꿈하고 로컬 이미지가 없으면 텍스트 카드로 대체한다.
+- 기존 공개 `view.scouts_market_cards`와 카드 이미지 기능을 재사용한 UI 변경이며, 엔진·규칙·codec v134·관측 v30은 그대로다. 실행 중인 서버도 브라우저 새로고침으로 정적 파일을 다시 받는다.
+- 관련 검증: catalog·i18n pytest **39개 통과**, Ruff(`src tests`)·mypy(313파일) 통과, 스카웃 Chrome E2E **145개 검사 통과**(실제 시드 31의 2장·21의 3장, 한국어·영어, 1600·1366px, 이미지 로딩·확대·결정 유지·텍스트 대체 포함). 전체 pytest·다른 E2E는 이번 UI 수정에서 재실행하지 않았다.
+
 ## 2026-10-05 마지막 지도자 선택 되돌리기 수정
 
 - 구현 커밋: `7e143969`. 마지막 `pick_leader`가 setup 카드 배분과 Round Start까지 진행해 되돌리기를 막던 문제를 수정했다. 이제 선택은 `leader_draft`에 머무르고, 그 좌석의 `finish_leader_draft`("턴 종료")에서만 준비를 마친다. 앞선 세 선택의 서버 확인은 그대로다(OQ-007 보충; OQ-010 정보 경계 유지).
