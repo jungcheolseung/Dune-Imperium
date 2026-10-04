@@ -51,6 +51,7 @@ from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     REVEAL_COMMANDERS_RECRUITED_KEY,
+    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     context_int,
     context_str,
@@ -4438,6 +4439,10 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         (_SKILL_GRANTED_KEY, ",".join(skill.skill_id for skill in active_skills)),
         ("turn_owner", action.actor),
     ]
+    if turn_context.get(TECH_ACQUIRE_PENDING_KEY):
+        context.append(
+            (TECH_ACQUIRE_PENDING_KEY, turn_context[TECH_ACQUIRE_PENDING_KEY])
+        )
     if carried_undeployable:
         context.append(("undeployable_troops", carried_undeployable))
     if carried_commanders:
@@ -4611,6 +4616,8 @@ def legal_finish_reveal_actions(
         # Forbidden Weapons must be chosen; Panopticon's Spy must be taken
         # (OQ-044), and its placement window offers only the decline when no
         # Spy can reach a post, so nothing lapses unasked.
+        return ()
+    if context.get(TECH_ACQUIRE_PENDING_KEY):
         return ()
     if owes_track_spy(state, player):
         # The Emperor track's Influence 4 Spy waits in the turn and must be

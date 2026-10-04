@@ -331,6 +331,7 @@ def _revolt_under_emperor_ban(**state_fields: object) -> GameState:
         ("play_intrigue", (("card_id", rapid_engineering),)),
         ("choose_intrigue_discard", (("card_id", dagger),)),
         ("acquire_tech", (("tech_id", "servo_receivers"),)),
+        ("resolve_tech_acquire_effect", (("effect", "signet"),)),
         ("gain_leader_signet_troop", ()),
         ("agent_turn", (("card_id", revolt), ("space_id", "arrakeen"))),
     ):

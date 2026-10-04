@@ -712,7 +712,7 @@ TECH_STACKS = (
     ("gene_locked_vault", "delivery_bay"),
     ("advanced_data_analysis", "plasteel_blades"),
 )
-GLOWGLOBES = (("faction", "emperor"), ("tech_id", "glowglobes"))
+GLOWGLOBES = (("tech_id", "glowglobes"),)
 
 
 def _tech_visit(spice: int) -> GameState:
@@ -749,12 +749,17 @@ def test_the_seat_buys_a_tech_tile_at_its_discount_then_joins() -> None:
     assert _options(state) == {
         ("choose_subcommittee", ""),
         ("decline_subcommittee", ""),
+        ("resolve_tech_acquire_effect", "influence"),
     }
     state = _act(_choose(state), "join_subcommittee", subcommittee_id="relations")
     assert state.players[0].resources.spice == 4 - discounted - 2
     state = _act(state, "scouts_choose_faction", faction="fremen")
     assert state.scouts_subcommittee_members == (("relations", 0),)
     assert state.players[0].influence.fremen == 1
+    state = _act(
+        state, "resolve_tech_acquire_effect",
+        effect="influence", faction="emperor", tech_id="glowglobes",
+    )
     assert _scouts_frames_done(state)
 
 
@@ -768,11 +773,15 @@ def test_the_seat_joins_first_then_buys_its_tech_tile() -> None:
     offered = _options(state)
     assert ("choose_subcommittee", "") not in offered
     assert ("decline_subcommittee", "") not in offered
-    assert ("acquire_tech", "emperor") in offered
+    assert ("acquire_tech", "glowglobes") in offered
     state = ENGINE.apply(
         state, DomainAction(action_id="acquire_tech", actor=0, arguments=GLOWGLOBES)
     ).state
     assert state.players[0].tech_ids == ("glowglobes",)
+    state = _act(
+        state, "resolve_tech_acquire_effect",
+        effect="influence", faction="emperor", tech_id="glowglobes",
+    )
     assert _scouts_frames_done(state)
 
 

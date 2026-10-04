@@ -13,8 +13,9 @@
 Either way the owner chooses ``acquire_tech(tech_id, ...)`` for a face-up
 tile on top of a stack (or Kota Odax's Secret Project tile), pays its spice
 cost less the discounts (never below zero), puts it in the supply and turns
-the stack's next tile face up; the tile's acquire effect pays once
-[Bloodlines p. 7]. ``decline_tech`` refuses the offer.
+the stack's next tile face up. The tile's acquire effect pays once
+[Bloodlines p. 7]; OQ-098 queues its icons for the owner to order freely
+within the current turn. ``decline_tech`` refuses the offer.
 """
 
 from dataclasses import replace
@@ -46,6 +47,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import (
+    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     context_int,
     context_str,
@@ -53,6 +55,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     reveal_is_open_for,
     update_turn_recruits,
+    with_context,
 )
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -86,6 +89,108 @@ _ACQUISITION_LABEL = "Tech acquisition frame"
 # may choose this one. It costs 1 less" [Kota Odax of Ix card].
 SECRET_PROJECT_DISCOUNT = 1
 ALL_POST_IDS = tuple(post.post_id for post in OBSERVATION_POSTS)
+_ACQUIRE_TURN_KINDS = (FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
+
+
+def tech_acquire_effect_arguments(
+    tile: TechTile, effect: str
+) -> tuple[tuple[tuple[str, ActionValue], ...], ...]:
+    """All legal argument variants for one acquire icon."""
+
+    base: tuple[tuple[str, ActionValue], ...] = (
+        ("effect", effect),
+        ("tech_id", tile.tech_id),
+    )
+    if effect == "influence":
+        return tuple(
+            tuple(sorted((*base, ("faction", faction.value)))) for faction in Faction
+        )
+    if effect == "intrigue_or_card":
+        choices = ("card", "intrigue")
+        return tuple(
+            tuple(sorted((*base, ("choice", choice)))) for choice in choices
+        )
+    if effect == "shield_wall":
+        return (base, tuple(sorted((*base, ("destroy_shield_wall", True)))))
+    return (base,)
+
+
+def pending_tech_acquire_effects(frame: DecisionFrame) -> tuple[str, ...]:
+    """Acquire icons still owed on this turn or Combat acquisition frame."""
+
+    value = dict(frame.context).get(TECH_ACQUIRE_PENDING_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Tech acquire effects must be a string")
+    return tuple(key for key in value.split(",") if key)
+
+
+def _acquire_effect_host(state: GameState, player: int) -> DecisionFrame | None:
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if frame.kind in _ACQUIRE_TURN_KINDS or (
+        frame.kind == FrameKind.TECH_ACQUISITION
+        and dict(frame.context).get("acquire_effects_only") is True
+    ):
+        return frame
+    return None
+
+
+def _queue_acquire_effects(state: GameState, player: int, tile: TechTile) -> GameState:
+    if not tile.acquire_effect_keys:
+        return state
+    frame = _acquire_effect_host(state, player)
+    if frame is None:
+        # Battlefield Research is played in Combat, outside a player's turn.
+        # Reuse the acquisition frame for its purchase's remaining rewards.
+        frame = DecisionFrame(
+            kind=FrameKind.TECH_ACQUISITION,
+            frame_id=f"round:{state.round_number}:player:{player}:tech:{tile.tech_id}:effects",
+            decision=PlayerDecision(
+                owner=player, prompt="Resolve Tech acquire effects"
+            ),
+            context=(("acquire_effects_only", True),),
+        )
+        state = state.push_decision(frame)
+    pending = (
+        *pending_tech_acquire_effects(frame),
+        *(f"{tile.tech_id}:{effect}" for effect in tile.acquire_effect_keys),
+    )
+    context = dict(frame.context)
+    context[TECH_ACQUIRE_PENDING_KEY] = ",".join(pending)
+    return replace(
+        state, decision_stack=(*state.decision_stack[:-1], with_context(frame, context))
+    )
+
+
+def legal_tech_acquire_effect_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Resolve any owed acquire icon in the owner's chosen order (OQ-098)."""
+
+    frame = _acquire_effect_host(state, player)
+    if frame is None:
+        return ()
+    actions: list[DomainAction] = []
+    for key in pending_tech_acquire_effects(frame):
+        tech_id, effect = key.split(":")
+        tile = TECH_TILES_BY_ID[tech_id]
+        for arguments in tech_acquire_effect_arguments(tile, effect):
+            if (
+                dict(arguments).get("destroy_shield_wall")
+                and not state.shield_wall_present
+            ):
+                continue
+            actions.append(
+                DomainAction(
+                    action_id="resolve_tech_acquire_effect",
+                    actor=player,
+                    arguments=arguments,
+                )
+            )
+    return tuple(actions)
 
 
 def tech_cost(
@@ -178,6 +283,8 @@ def _offer(state: GameState, player: int) -> tuple[int, str] | None:
     if frame is None:
         return None
     frame_context = dict(frame.context)
+    if frame_context.get("acquire_effects_only") is True:
+        return None
     return (
         context_int(frame_context, "discount", owner=_ACQUISITION_LABEL),
         context_str(frame_context, "source", owner=_ACQUISITION_LABEL),
@@ -213,12 +320,6 @@ def _acquisition_variants(
     if tile.acquire_requires_spy_trash:
         # "You must trash one of your Spies from the board".
         return tuple((("post_id", post_id),) for post_id in owner.spy_post_ids)
-    if tile.acquire_influence_choice:
-        return tuple((("faction", faction.value),) for faction in Faction)
-    if tile.acquire_intrigue_or_card:
-        return ((("choice", "intrigue"),), (("choice", "card"),))
-    if tile.acquire_may_destroy_shield_wall and state.shield_wall_present:
-        return ((), (("destroy_shield_wall", True),))
     return ((),)
 
 
@@ -302,7 +403,7 @@ def _take_tile(
 
 
 def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult:
-    """Buy the chosen tile with its acquire effect, or decline the offer."""
+    """Buy the tile and queue its acquire icons, or decline (OQ-098)."""
 
     if action not in legal_tech_acquisition_actions(state, action.actor):
         raise ValueError("action is not a legal Tech acquisition choice")
@@ -359,7 +460,7 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         spice_spent_turn=next_owner.spice_spent_turn + cost,
     )
 
-    # --- immediate acquire effects on the owner ---------------------------
+    # --- purchase prerequisite on the owner ---------------------------
     if tile.acquire_requires_spy_trash:
         post_id = str(arguments["post_id"])
         next_owner = replace(
@@ -378,34 +479,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
                 payload=(("player", player), ("post_id", post_id)),
             )
         )
-    if tile.acquire_solari or tile.acquire_victory_points:
-        next_owner = replace(
-            next_owner,
-            resources=replace(
-                next_owner.resources,
-                solari=next_owner.resources.solari + tile.acquire_solari,
-            ),
-            victory_points=next_owner.victory_points + tile.acquire_victory_points,
-        )
-        if tile.acquire_victory_points:
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:{tech_id}:victory_points",
-                    kind="victory_points_gained",
-                    payload=(
-                        ("amount", tile.acquire_victory_points),
-                        ("player", player),
-                    ),
-                )
-            )
-    troops_recruited = 0
-    if tile.acquire_troops:
-        next_owner, troops_recruited = recruit_troops(next_owner, tile.acquire_troops)
-        events.extend(
-            recruit_shortfall_events(
-                f"{source}:{tech_id}", player, tile.acquire_troops, troops_recruited
-            )
-        )
     if has_ornithopter_fleet(next_owner):
         # Acquiring the Fleet (or any tile while holding it) matches at once
         # [Bloodlines p. 12].
@@ -419,29 +492,11 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     # --- frame bookkeeping ------------------------------------------------
     if context is not None:
         finish_board_icon(context, BOARD_ICON_TECH)
-        context["troops_recruited"] = (
-            context_int(context, "troops_recruited", owner=_FRAME_LABEL)
-            + troops_recruited
-        )
         spent = context.get("spice_spent_after_placement", 0)
         if isinstance(spent, bool) or not isinstance(spent, int):
             raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
         context["spice_spent_after_placement"] = spent + cost
-        if tile.acquire_leader_signet:
-            # The Signet Ring ability resolves inside this Agent turn; the
-            # effect frame moves on once it has (``use_leader_signet_for_tech``).
-            working = replace(
-                working,
-                decision_stack=(
-                    *working.decision_stack[:-1],
-                    replace(
-                        working.decision_stack[-1],
-                        context=tuple(sorted(context.items())),
-                    ),
-                ),
-            )
-        else:
-            working = advance_after_effect(working, context, players)
+        working = advance_after_effect(working, context, players)
     else:
         # A card-granted Acquire Tech (a Plot) returns to the turn it was
         # played in, before or after the placement or in a Reveal: its troops
@@ -449,77 +504,135 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         # 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4].
         working = working.pop_decision()
         working = update_turn_recruits(
-            working, troops_recruited=troops_recruited, spice_spent=cost
+            working, spice_spent=cost
         )
 
-    # --- effects that touch shared state or open follow-up frames ---------
-    if arguments.get("destroy_shield_wall") is True:
+    working = _queue_acquire_effects(working, player, tile)
+    return RuleResult(state=working, events=tuple(events))
+
+
+def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleResult:
+    """Pay exactly one already acquired icon, with its choices made now.
+
+    docs/rules/bloodlines.md: "획득 효과의 각 아이콘은 그 turn 안에서 다른
+    효과와 원하는 순서로 해결한다" [Bloodlines p. 7] [Main p. 9], user
+    ruling OQ-098. The purchase's prerequisite and passive ability have
+    already taken effect; the tile need not still be in the owner's supply.
+    """
+
+    if action not in legal_tech_acquire_effect_actions(state, action.actor):
+        raise ValueError("action is not a legal Tech acquire effect")
+    player = action.actor
+    arguments = dict(action.arguments)
+    tech_id = str(arguments["tech_id"])
+    effect = str(arguments["effect"])
+    tile = TECH_TILES_BY_ID[tech_id]
+    frame = state.decision_stack[-1]
+    key = f"{tech_id}:{effect}"
+    pending = tuple(
+        entry for entry in pending_tech_acquire_effects(frame) if entry != key
+    )
+    context = dict(frame.context)
+    if pending:
+        context[TECH_ACQUIRE_PENDING_KEY] = ",".join(pending)
+    else:
+        context.pop(TECH_ACQUIRE_PENDING_KEY, None)
+    working = replace(
+        state, decision_stack=(*state.decision_stack[:-1], with_context(frame, context))
+    )
+    if not pending and context.get("acquire_effects_only") is True:
+        working = working.pop_decision()
+    source = (
+        f"round:{state.round_number}:player:{player}:tech:{tech_id}:acquire:{effect}"
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=source,
+            kind="tech_acquire_effect_resolved",
+            payload=(("effect", effect), ("player", player), ("tech_id", tech_id)),
+        )
+    ]
+    owner = working.players[player]
+    if effect == "solari":
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources, solari=owner.resources.solari + tile.acquire_solari
+            ),
+        )
+    if effect == "victory_points":
+        owner = replace(
+            owner, victory_points=owner.victory_points + tile.acquire_victory_points
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:victory_points",
+                kind="victory_points_gained",
+                payload=(("amount", tile.acquire_victory_points), ("player", player)),
+            )
+        )
+    if effect == "troops":
+        owner, recruited = recruit_troops(owner, tile.acquire_troops)
+        events.extend(
+            recruit_shortfall_events(source, player, tile.acquire_troops, recruited)
+        )
+        working = update_turn_recruits(working, troops_recruited=recruited)
+    working = replace(working, players=replace_player(working.players, owner))
+    if effect == "shield_wall" and arguments.get("destroy_shield_wall") is True:
         destroyed = destroy_shield_wall(
-            working, event_id=f"{source}:{tech_id}:shield_wall", source=tech_id
+            working, event_id=f"{source}:shield_wall", source=tech_id
         )
         working = destroyed.state
         events.extend(destroyed.events)
-    faction_value = arguments.get("faction")
-    if tile.acquire_influence_choice and isinstance(faction_value, str):
+    if effect == "influence":
+        faction_value = str(arguments["faction"])
         gained = gain_faction_influence(
             working,
             player,
             Faction(faction_value),
             1,
-            event_prefix=f"{source}:{tech_id}:influence:{faction_value}",
+            event_prefix=f"{source}:influence:{faction_value}",
         )
         working = gained.state
         events.extend(gained.events)
-    intrigue = tile.acquire_intrigue
-    cards = tile.acquire_cards
-    if tile.acquire_intrigue_or_card:
-        if arguments.get("choice") == "intrigue":
-            intrigue += 1
-        else:
-            cards += 1
-    if tile.acquire_contracts:
+    if effect == "contracts":
         contracts = begin_contract_gain(
-            working, player, tile.acquire_contracts, source=f"{source}:{tech_id}"
+            working, player, tile.acquire_contracts, source=source
         )
         working = contracts.state
         events.extend(contracts.events)
-    if tile.acquire_may_trash_card:
-        working = working.push_decision(
-            optional_trash_frame(player, f"{source}:{tech_id}")
-        )
-    for index in range(tile.acquire_deep_cover_spies):
+    if effect == "trash":
+        working = working.push_decision(optional_trash_frame(player, source))
+    if effect.startswith("spy_"):
         working = spy_placement_frame(
-            working,
-            player,
-            ALL_POST_IDS,
-            source=f"{source}:{tech_id}:{index}",
-            deep_cover=True,
+            working, player, ALL_POST_IDS, source=source, deep_cover=True
         )
+    intrigue = tile.acquire_intrigue if effect == "intrigue" else 0
+    cards = tile.acquire_cards if effect == "cards" else 0
+    if effect == "intrigue_or_card":
+        if arguments["choice"] == "intrigue":
+            intrigue = 1
+        else:
+            cards = 1
     if intrigue:
         drawn = draw_or_queue_intrigue_cards(
-            working, player, intrigue, source=f"{source}:{tech_id}:intrigue"
+            working, player, intrigue, source=f"{source}:intrigue"
         )
         working = drawn.state
         events.extend(drawn.events)
     if cards:
         drawn = draw_or_request_personal_cards(
-            working, player, cards, source=f"{source}:{tech_id}:draw"
+            working, player, cards, source=f"{source}:draw"
         )
         working = drawn.state
         events.extend(drawn.events)
-    if tile.acquire_leader_signet:
-        # Servo-Receivers: the Signet Ring icon uses the Leader's Signet
-        # Ring ability once [Main p. 20] [Servo-Receivers Tech tile].
+    if effect == "signet":
         signet = use_leader_signet_for_tech(
-            working,
-            player,
-            source=f"{source}:{tech_id}",
-            advance_agent_frame=context is not None,
+            working, player, source=source, advance_agent_frame=False
         )
         working = signet.state
         events.extend(signet.events)
     return RuleResult(state=working, events=tuple(events))
-
 
 # --- abilities ----------------------------------------------------------------
 

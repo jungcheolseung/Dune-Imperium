@@ -61,7 +61,9 @@ GAMES = (
     # it again, 2026-10-02, then 51 until the 2026-10-04 re-rulings that
     # follow the Steam app did): Family Atomics, the Feyd track and
     # research, and the only one of the four with a Secrets steal.
-    {"seats": ["random"] * 4, "game_seed": 71, "policy_seed": 71, **EVERY_EXPANSION},
+    # OQ-098 / codec v135 moves the old seed 71 off its Secrets steal.
+    # An engine-log scan over seeds 1-64 finds seed 3 first with that chance.
+    {"seats": ["random"] * 4, "game_seed": 3, "policy_seed": 3, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -75,7 +77,8 @@ GAMES = (
     # OQ-095's explicit Agent-turn end moved both games (2026-10-01); then
     # 8 for the first until the 2026-10-02 decision windows (L2) moved it
     # off Mating Season, then 23 until the 2026-10-04 re-rulings that
-    # follow the Steam app moved it off Clear the Market. Seed 86: Clear the Market with CHOAM, Mating Season, a
+    # follow the Steam app moved it off Clear the Market. Seed 86: Clear
+    # the Market with CHOAM, Mating Season, a
     # mission's pieces on posts and an auction won; seed 12: two round
     # modifiers, the Helix spice, Critical Moment's market, mission troops,
     # Mercenaries and the secret picks revealed.
@@ -88,8 +91,10 @@ GAMES = (
     },
     {
         "seats": ["random"] * 4,
-        "game_seed": 12,
-        "policy_seed": 12,
+        # OQ-098 / codec v135: seed 12 loses the round modifier and Mating
+        # Season. Seed 37 restores both while retaining mission troops.
+        "game_seed": 37,
+        "policy_seed": 37,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -334,7 +339,9 @@ def check_log(records, names, posts) -> None:
         # same exemption lang.py already gives the rest of the page; a
         # source with no DOM element to strip (a payload, a chance line)
         # falls back to its plain text, unaffected.
-        if (words := sorted(set(LATIN.findall(strip(r.get("wordsText", r["text"]), allowed)))))
+        if (words := sorted(set(
+            LATIN.findall(strip(r.get("wordsText", r["text"]), allowed))
+        )))
     ]
     check.ok(
         not latin,

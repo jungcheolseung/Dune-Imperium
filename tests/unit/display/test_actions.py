@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -219,3 +220,27 @@ def test_smugglers_haven_payment_says_what_it_buys() -> None:
     assert effect_action_text_ko(placed, payment) == (
         "{spice:4} 지불 {arrow_right} {victory_point:1}"
     )
+
+
+@pytest.mark.parametrize("tech_id", sorted(TECH_TILES_BY_ID))
+def test_tech_acquire_icons_have_english_and_korean_details(tech_id: str) -> None:
+    from dune_imperium.rules.tech import tech_acquire_effect_arguments
+
+    tile = TECH_TILES_BY_ID[tech_id]
+    state = GameState(config=RulesetConfig(bloodlines=True, tech_module=True), seed=0)
+    terms = terms_keys()
+    for effect in tile.acquire_effect_keys:
+        details: set[str] = set()
+        for arguments in tech_acquire_effect_arguments(tile, effect):
+            action = DomainAction(
+                action_id="resolve_tech_acquire_effect", actor=0, arguments=arguments
+            )
+            en = effect_action_text(state, action)
+            ko = effect_action_text_ko(state, action)
+            assert en and ko, (tech_id, effect)
+            assert_placeholders_are_terms(ko, terms)
+            assert_no_stray_latin(ko)
+            assert_trash_and_discard_match(en, ko)
+            details.add(en)
+        if effect in ("intrigue_or_card", "shield_wall"):
+            assert len(details) == 2

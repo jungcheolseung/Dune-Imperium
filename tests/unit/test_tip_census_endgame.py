@@ -416,6 +416,11 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     1 -> 2 gains both score, making it 9 and the winner; seat 0 later scores
     a wild battle-icon match (7). The buggy collector would read
     ``end.endgame_vp`` == 0 for seat 1 and ``end.leader_changed`` == False.
+
+    Re-traced for OQ-098 (codec v135): full seed 16 seat 2 (Liet Kynes)
+    replaces seed 62. An independent replay captures check VP [6, 6, 7, 7];
+    Panopticon's Spacing Guild and Bene Gesserit gains each cross 1 -> 2,
+    taking seat 2 to 9 and first place. No Endgame Intrigue is played.
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -423,7 +428,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 62):
+    for seed in (*FULL_SEEDS, 16):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -458,13 +463,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 62:
+        if seed == 16:
             saw_case = True
-            assert census["seats"][1]["end.endgame_vp"] == 2
+            assert census["seats"][2]["end.endgame_vp"] == 2
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 62 regression case must run"
+    assert saw_case, "the seed 16 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -568,23 +573,28 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     role -- its only Commander retreat is the round-8 Gruesome Sacrifice
     loss -- but the Commander now pays slot 0 and a troop slot 1, checked
     against the game's own events by a scratch replay.
+
+    Re-traced for OQ-098 (codec v135): seed 6 no longer pays a Commander.
+    Independent full-seed replays find seed 16 seat 2 first in seeds 1-200
+    whose only Commander retreat is the Gruesome Sacrifice loss, round 6,
+    slot 0. The live event assertion below protects that premise.
     """
 
-    spec = _spec(True, 6)
+    spec = _spec(True, 16)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
         event.event_id
         for event in events
         if event.kind == "troops_retreated"
-        and dict(event.payload).get("player") == 1
+        and dict(event.payload).get("player") == 2
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:8:player:1:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
+        "round:6:player:2:intrigue:intrigue:gruesome_sacrifice:0:slot:0:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
-    assert census["seats"][1]["bt.commander_retreats"] == 0
+    assert census["seats"][2]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(

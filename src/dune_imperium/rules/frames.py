@@ -331,6 +331,10 @@ def own_turn_frame_index(state: GameState, player: int) -> int | None:
     return None
 
 
+TECH_ACQUIRE_PENDING_KEY = "pending_tech_acquire_effects"
+"""One-time Tech rewards waiting for free ordering in this turn (OQ-098)."""
+
+
 TURN_START_OVER_KEY = "turn_start_over"
 """Set on the owner's turn frame once the owner has acted in that turn.
 

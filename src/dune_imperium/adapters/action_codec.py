@@ -260,7 +260,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # (OQ-026). No template change; replays and hashes change.
 # v134: the final Leader pick waits for finish_leader_draft before setup
 # reveals hidden cards, so the play server can undo every pick (OQ-007).
-ACTION_CODEC_VERSION = 134
+# v135: Tech purchases queue freely ordered acquire icons (OQ-098);
+# reward choices move from acquire_tech to resolve_tech_acquire_effect.
+ACTION_CODEC_VERSION = 135
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1555,21 +1557,35 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             variants.extend(
                 (("post_id", post.post_id), *base) for post in OBSERVATION_POSTS
             )
-        elif tile.acquire_influence_choice:
-            variants.extend((("faction", faction.value), *base) for faction in Faction)
-        elif tile.acquire_intrigue_or_card:
-            variants.extend(
-                (("choice", choice), *base) for choice in ("card", "intrigue")
-            )
-        elif tile.acquire_may_destroy_shield_wall:
-            variants.append(base)
-            variants.append((("destroy_shield_wall", True), *base))
         else:
             variants.append(base)
         templates.extend(
             ActionTemplate(action_id="acquire_tech", arguments=arguments)
             for arguments in variants
         )
+        for effect in tile.acquire_effect_keys:
+            effect_base = (("effect", effect), *base)
+            if effect == "influence":
+                rewards = tuple(
+                    tuple(sorted((*effect_base, ("faction", faction.value))))
+                    for faction in Faction
+                )
+            elif effect == "intrigue_or_card":
+                rewards = tuple(
+                    tuple(sorted((*effect_base, ("choice", choice))))
+                    for choice in ("card", "intrigue")
+                )
+            elif effect == "shield_wall":
+                rewards = (
+                    effect_base,
+                    tuple(sorted((*effect_base, ("destroy_shield_wall", True)))),
+                )
+            else:
+                rewards = (effect_base,)
+            templates.extend(
+                ActionTemplate(action_id="resolve_tech_acquire_effect", arguments=args)
+                for args in rewards
+            )
         if tile.flips:
             templates.append(ActionTemplate(action_id="flip_tech", arguments=base))
     # Forbidden Weapons' Reveal choice: swords with an Influence loss (and

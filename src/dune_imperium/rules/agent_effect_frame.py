@@ -71,6 +71,7 @@ from dune_imperium.rules.scouts_missions import legal_mission_collect_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.spy_moves import legal_track_spy_actions
 from dune_imperium.rules.tech import (
+    legal_tech_acquire_effect_actions,
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
 )
@@ -137,6 +138,7 @@ def legal_agent_effect_frame_actions(
         *legal_subcommittee_choice_actions(state, player),
         *legal_tech_acquisition_actions(state, player),
         *legal_tech_flip_actions(state, player),
+        *legal_tech_acquire_effect_actions(state, player),
         *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
         *legal_commander_deployments(state, player),

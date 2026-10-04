@@ -3779,6 +3779,15 @@ def test_battlefield_research_drops_its_player_after_the_tech_window() -> None:
         if dict(a.arguments).get("tech_id") == "plasteel_blades"
     )
     after = engine.apply(window, buy).state
+    # OQ-098: the once-only acquire icons [Bloodlines p. 7] are choices
+    # owned by the buyer before Battlefield Research returns to Combat.
+    assert after.decision_stack[-1].kind == "tech_acquisition"
+    reward = next(
+        action
+        for action in engine.legal_actions(after, 2)
+        if action.action_id == "resolve_tech_acquire_effect"
+    )
+    after = engine.apply(after, reward).state
     top = after.decision_stack[-1]
     assert top.kind == "combat_intrigue"
     assert dict(top.context)["participants_mask"] == 0b011

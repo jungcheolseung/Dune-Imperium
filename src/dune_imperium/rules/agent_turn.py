@@ -46,6 +46,7 @@ from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
 from dune_imperium.rules.effects import open_next_turn
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owned_top_frame,
     recruited_commander_count,
@@ -520,6 +521,16 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                                 and card.allows_recruited_troop_deployment
                             )
                         ),
+                    ),
+                    *(
+                        (
+                            (
+                                TECH_ACQUIRE_PENDING_KEY,
+                                turn_context[TECH_ACQUIRE_PENDING_KEY],
+                            ),
+                        )
+                        if turn_context.get(TECH_ACQUIRE_PENDING_KEY)
+                        else ()
                     ),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (

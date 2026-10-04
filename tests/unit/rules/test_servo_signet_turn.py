@@ -106,7 +106,8 @@ def _acquire_servo(state: GameState) -> GameState:
 
     state = _act(state, "play_intrigue", card_id=RAPID_ENGINEERING)
     state = _act(state, "choose_intrigue_discard", card_id=DAGGER)
-    return _act(state, "acquire_tech", tech_id="servo_receivers")
+    bought = _act(state, "acquire_tech", tech_id="servo_receivers")
+    return _act(bought, "resolve_tech_acquire_effect", effect="signet")
 
 
 def _deploy_counts(state: GameState) -> list[object]:
@@ -366,6 +367,7 @@ def _reveal_with_servo(owner: PlayerState) -> GameState:
     assert dict(revealed.decision_stack[-1].context)["combat_deployment"] is True
     opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
     bought = _act(opened, "acquire_tech", tech_id="servo_receivers")
+    bought = _act(bought, "resolve_tech_acquire_effect", effect="signet")
     assert bought.decision_stack[-1].kind == FrameKind.REVEAL
     return bought
 
