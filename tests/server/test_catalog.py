@@ -38,6 +38,46 @@ def test_catalog_is_json_serializable_and_covers_every_card() -> None:
     assert set(intrigue) == set(INTRIGUE_CARDS_BY_ID)
 
 
+def test_objective_images_follow_language_and_versioned_asset_mapping() -> None:
+    from dune_imperium.content.uprising.objectives import OBJECTIVES
+
+    english = frozenset(
+        ("objective", card.objective_id,
+         f"en/uprising/objective/{card.objective_id}.png")
+        for card in OBJECTIVES
+    )
+    korean = frozenset(
+        ("objective", card.objective_id,
+         f"ko/uprising/objective/{card.objective_id}.png")
+        for card in OBJECTIVES
+        if card.objective_id != "objective_ornithopter_1_3p"
+    )
+    first = "objective_desert_mouse"
+    ko_url = f"/card-images/ko/uprising/objective/{first}.png"
+    catalog = build_catalog(
+        english,
+        image_index_ko=korean,
+        asset_versions=frozenset({(ko_url, "objective-v1")}),
+    )["objectives"]
+    assert isinstance(catalog, dict)
+    for card in OBJECTIVES:
+        entry = catalog[card.objective_id]
+        assert isinstance(entry, dict)
+        assert entry["image"] == (
+            f"/card-images/en/uprising/objective/{card.objective_id}.png"
+        )
+    entry = catalog[first]
+    ornithopter = catalog["objective_ornithopter_1_3p"]
+    assert isinstance(entry, dict) and isinstance(ornithopter, dict)
+    assert entry["image_ko"] == f"{ko_url}?v=objective-v1"
+    assert "image_ko" not in ornithopter
+    fallback = build_catalog()["objectives"]
+    assert isinstance(fallback, dict)
+    for entry in fallback.values():
+        assert isinstance(entry, dict)
+        assert entry["image"] is None
+
+
 def test_catalog_serves_the_tleilaxu_deck_and_the_bene_tleilax_board() -> None:
     from dune_imperium.content.immortality.board import RESEARCH_SPACES
     from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID

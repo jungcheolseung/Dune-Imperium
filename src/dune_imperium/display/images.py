@@ -131,6 +131,7 @@ def required_image_keys() -> tuple[ImageKey, ...]:
     from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
     from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
     from dune_imperium.content.uprising.leaders import LEADERS
+    from dune_imperium.content.uprising.objectives import OBJECTIVES
     from dune_imperium.content.uprising.reserve import RESERVE_STACKS
     from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 
@@ -144,6 +145,7 @@ def required_image_keys() -> tuple[ImageKey, ...]:
         if contract.copy_of is None
     ]
     keys += [("conflict", conflict.card.card_id) for conflict in CONFLICTS]
+    keys += [("objective", objective.objective_id) for objective in OBJECTIVES]
     keys += [("location", space.space_id) for space in BOARD_SPACES]
     for leader in LEADERS:
         keys.append(("leader", leader.leader_id))

@@ -415,6 +415,7 @@ def build_catalog(
             objective.objective_id: {
                 "name": objective.objective_id.replace("_", " ").title(),
                 "icon": objective.battle_icon.value,
+                "image": _image_url("objective", objective.objective_id, image_files),
             }
             for objective in OBJECTIVES
         },
