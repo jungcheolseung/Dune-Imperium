@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from typing import Final
 
+from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.base import Agent
 from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_BEFORE_DEMOTION,
@@ -27,6 +28,24 @@ def _random(seed: int) -> Agent:
 
 def _heuristic(seed: int) -> Agent:
     return HeuristicAgent(seed=seed)
+
+
+def _app_ai(seed: int) -> Agent:
+    """The Steam app's computer opponent at Hard (``agents/app_ai``)."""
+
+    return AppAIAgent(seed=seed, level=2)
+
+
+def _app_ai_medium(seed: int) -> Agent:
+    """The Steam app's computer opponent at Medium."""
+
+    return AppAIAgent(seed=seed, level=1)
+
+
+def _app_ai_easy(seed: int) -> Agent:
+    """The Steam app's computer opponent at Easy."""
+
+    return AppAIAgent(seed=seed, level=0)
 
 
 def _heuristic_untuned(seed: int) -> Agent:
@@ -187,6 +206,9 @@ def _rollout_strong(seed: int) -> Agent:
 BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "random": _random,
     "heuristic": _heuristic,
+    "app_ai": _app_ai,
+    "app_ai_medium": _app_ai_medium,
+    "app_ai_easy": _app_ai_easy,
     "heuristic_untuned": _heuristic_untuned,
     "heuristic_flat_cards": _heuristic_flat_cards,
     "heuristic_uprising_table": _heuristic_uprising_table,
