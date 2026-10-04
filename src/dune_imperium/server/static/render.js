@@ -1539,10 +1539,17 @@ const SHORTFALL_TEXT = {
 
 function shortfallText(short) {
   const tile = lookup("suspensor_suits", "tech");
-  return t(SHORTFALL_TEXT[short.kind], {
+  /* An Intrigue shortfall with Twisted Intrigue left in the discard says
+     why the visible discard did not cover it (OQ-097: never reshuffled). */
+  const key =
+    short.kind === "intrigue" && short.twisted
+      ? "render.shortfall_intrigue_twisted"
+      : SHORTFALL_TEXT[short.kind];
+  return t(key, {
     requested: short.requested,
     made: short.made,
     short: short.requested - short.made,
+    twisted: short.twisted || 0,
     tile: tile ? tile.name : "Suspensor Suits",
   });
 }

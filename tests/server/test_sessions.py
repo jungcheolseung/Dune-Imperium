@@ -959,9 +959,12 @@ def test_a_trashed_twisted_card_is_warned_short() -> None:
         }
 
     shown = warnings(state)
+    # The trashed Twisted card sits in the discard but is never reshuffled
+    # (OQ-097); the warning says so (user request 2026-10-04).
     assert shown["trash_intrigue_for_imperial_privilege"] == (
-        "책략 카드 더미와 버림 더미를 합쳐도 1장 모자람",
-        [{"kind": "intrigue", "requested": 1, "made": 0}],
+        "책략 카드 더미와 버림 더미를 합쳐도 1장 모자람"
+        " (버림 더미의 뒤틀린 책략 1장은 섞지 않음)",
+        [{"kind": "intrigue", "requested": 1, "made": 0, "twisted": 1}],
     )
     assert shown["decline_imperial_privilege_intrigue"] == (None, None)
     for seed in range(3):

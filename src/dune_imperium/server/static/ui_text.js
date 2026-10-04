@@ -1241,6 +1241,10 @@ const UI_TEXT = {
     "ko": "{intrigue} 더미와 {discard_pile}를 합쳐도 {{short}}장 모자람",
     "en": "Intrigue deck and {discard_pile} are {{short}} short of the draw"
   },
+  "render.shortfall_intrigue_twisted": {
+    "ko": "{intrigue} 더미와 {discard_pile}를 합쳐도 {{short}}장 모자람 ({discard_pile}의 뒤틀린 책략 {{twisted}}장은 섞지 않음)",
+    "en": "Intrigue deck and {discard_pile} are {{short}} short of the draw (not counting {{twisted}} Twisted Intrigue there, which are never reshuffled)"
+  },
   "render.shortfall_specimens": {
     "ko": "{supply} 부족: {specimen} {{requested}}개 중 {{made}}개만 생성",
     "en": "Short {supply}: only {{made}} of {{requested}} {specimen} made"
