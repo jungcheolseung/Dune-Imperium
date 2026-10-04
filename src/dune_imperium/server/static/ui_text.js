@@ -5,6 +5,12 @@
    hole the caller fills, {term} a rule term in the current language (see
    t() and tNode() in i18n.js). */
 const UI_TEXT = {
+  "effects.agent": { "ko": "에이전트 카드 사용", "en": "Agent card played" },
+  "effects.played": { "ko": "카드 사용", "en": "Card played" },
+  "effects.graft": { "ko": "접목 카드 사용", "en": "Graft card played" },
+  "effects.intrigue": { "ko": "책략 카드 사용", "en": "Intrigue played" },
+  "effects.combat_intrigue": { "ko": "전투 책략 사용", "en": "Combat Intrigue played" },
+  "effects.navigation": { "ko": "항행 카드 사용", "en": "Navigation card played" },
   "html.setup_intro": {
     "ko": "좌석과 규칙을 고르고 아라키스로 떠나세요.",
     "en": "Choose your seats and rules. Arrakis awaits."

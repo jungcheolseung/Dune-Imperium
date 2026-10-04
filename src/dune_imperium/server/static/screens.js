@@ -248,6 +248,7 @@ function isAdmin() {
 }
 
 function showScreen(name) {
+  if (name !== "game-screen") clearPlayEffects();
   for (const id of SCREENS) el(id).hidden = id !== name;
   const atTable = name === "game-screen";
   document.body.classList.toggle("in-game", atTable);
@@ -354,6 +355,7 @@ function presenceDot(info) {
 }
 
 function resetGameState() {
+  resetPlayEffects();
   state.gameId = null;
   state.summary = null;
   state.view = null;

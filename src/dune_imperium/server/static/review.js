@@ -276,6 +276,7 @@ function startPlayback(delay) {
 }
 
 function stopPlayback() {
+  if (state.review) clearPlayEffects();
   playback.playing = false;
   window.clearTimeout(playback.timer);
   renderPlaybackControls();

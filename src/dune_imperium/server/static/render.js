@@ -444,6 +444,7 @@ function render(options) {
     pane.scrollTop = top;
     pane.scrollLeft = left;
   }
+  renderPlayEffects();
 }
 
 /* #header-status in three spans (style.css): the round and phase, the

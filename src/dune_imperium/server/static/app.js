@@ -23,6 +23,7 @@ async function init() {
   loadLanguage();
   loadCollapsedStrips();
   loadExpandedSeats();
+  window.addEventListener("resize", positionPlayEffect);
   el("side").classList.toggle("log-expanded", storageGet(LOG_EXPANDED_KEY) === "1");
   state.catalog = await api("/catalog");
   localizeCatalog(state.catalog);
