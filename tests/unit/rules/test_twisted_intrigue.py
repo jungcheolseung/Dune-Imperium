@@ -573,6 +573,22 @@ def test_unnatural_puts_a_trashed_twisted_card_on_the_shared_discard() -> None:
     assert done.players[0].troops_garrison == owner.troops_garrison
     assert len(done.players[0].intrigue_cards) == 1  # the drawn replacement
 
+    # The shared discard is never shuffled with its Twisted cards (OQ-097,
+    # user ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은
+    # 없도록"): with both piles empty the draw cannot take either back.
+    dry = _turn_state(owner, intrigue_deck=())
+    trashing = ENGINE.apply(dry, _play(card)).state
+    result = ENGINE.apply(trashing, legal_intrigue_choice_actions(trashing, 0)[0])
+    done = result.state
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_deck == ()
+    assert set(done.intrigue_discard) == {card, other}
+    assert [
+        dict(event.payload)
+        for event in result.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+
 
 def test_unnatural_troop_joins_only_its_owners_open_turn() -> None:
     # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
@@ -626,6 +642,14 @@ def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:
     # After an Agent placement the turn has started: not playable.
     placed = _placed(state, DAGGER, "assembly_hall")
     assert _play(card) not in legal_intrigue_play_actions(placed, 0)
+    # "At the start of your turn: Pass your turn." [Withdrawn card]: only the
+    # turn's first action, so not after a Plot either, though the turn frame
+    # is still open (OQ-095 (6), user ruling 2026-10-04).
+    plot = "intrigue:contingency_plan:0"
+    with_plot = _turn_state(replace(owner, intrigue_cards=(card, plot)))
+    plotted = ENGINE.apply(with_plot, _play(plot)).state
+    assert plotted.decision_stack[-1].kind == "turn"
+    assert _play(card) not in legal_intrigue_play_actions(plotted, 0)
 
 
 def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:

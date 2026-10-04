@@ -43,17 +43,14 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
-from dune_imperium.rules.effects import (
-    next_unrevealed_player,
-)
+from dune_imperium.rules.effects import open_next_turn
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     FrameKind,
-    owes_track_spy,
     owned_top_frame,
     recruited_commander_count,
     replace_player,
-    reset_turn_counters,
+    turn_start_is_open,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
@@ -758,9 +755,12 @@ def legal_turn_start_card_actions(
 
     "At the start of your turn: put this card into play -> draw a card and
     pass your turn" [Litany Against Fear card]: an alternative to the Agent
-    or Reveal turn, taken from the turn frame. Held back while the seat owes
-    an Emperor track Spy (a Plot reached Influence 4 first): the Spy is
-    placed before the turn ends (user ruling 2026-10-04).
+    or Reveal turn, taken from the turn frame, and only as the turn's first
+    action -- once the seat did anything else in the turn (a Plot, a
+    specimen return, its Emperor track Spy), the start is over (OQ-095 (6),
+    user ruling 2026-10-04, ``frames.turn_start_is_open``). An Emperor track
+    Spy waits in the turn only after such an action, so the turn is never
+    passed over one.
     """
 
     if not 0 <= player < state.config.players:
@@ -769,15 +769,23 @@ def legal_turn_start_card_actions(
         return ()
     if owned_top_frame(state, FrameKind.TURN, player) is None:
         return ()
-    if owes_track_spy(state, player):
+    if not turn_start_is_open(state, player):
         return ()
-    owner = state.players[player]
     return tuple(
         DomainAction(
             action_id="play_turn_start_card",
             actor=player,
             arguments=(("card_id", card_instance_id),),
         )
+        for card_instance_id in turn_start_cards(state.players[player])
+    )
+
+
+def turn_start_cards(owner: PlayerState) -> tuple[str, ...]:
+    """The seat's hand cards with Litany Against Fear's turn-start effect."""
+
+    return tuple(
+        card_instance_id
         for card_instance_id in owner.hand
         if _turn_start_effect(card_instance_id)
         is PersonalCardTurnStartEffect.PLAY_TO_DRAW_AND_PASS
@@ -801,26 +809,11 @@ def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
         hand=tuple(card_id for card_id in owner.hand if card_id != card_instance_id),
         in_play=(*owner.in_play, card_instance_id),
     )
-    players = replace_player(state.players, next_owner)
     # "Pass your turn": the clockwise unrevealed player's turn opens, as
     # after an Agent turn; this seat stays unrevealed and comes around again.
-    next_player = next_unrevealed_player(replace(state, players=players), action.actor)
-    players = reset_turn_counters(players, next_player, closing=action.actor)
-    passed = replace(
-        state,
-        players=players,
-        decision_stack=(
-            *state.decision_stack[:-1],
-            DecisionFrame(
-                kind=FrameKind.TURN,
-                frame_id=f"round:{state.round_number}:turn:{next_player}",
-                decision=PlayerDecision(
-                    owner=next_player,
-                    prompt="Choose an Agent turn or Reveal turn",
-                ),
-                context=(("round", state.round_number), ("turn_owner", next_player)),
-            ),
-        ),
+    passed = open_next_turn(
+        replace(state, players=replace_player(state.players, next_owner)),
+        action.actor,
     )
     source = (
         f"round:{state.round_number}:player:{action.actor}:"

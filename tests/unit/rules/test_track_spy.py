@@ -49,7 +49,12 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.effects import close_agent_turn, open_next_turn
 from dune_imperium.rules.engine import _advance_automatic
-from dune_imperium.rules.frames import FrameKind, owes_track_spy, with_context
+from dune_imperium.rules.frames import (
+    FrameKind,
+    end_turn_start,
+    owes_track_spy,
+    with_context,
+)
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import finish_reveal_turn
 from dune_imperium.server.turn_end import agent_turn_end_ready
@@ -200,11 +205,13 @@ def test_a_reveal_turn_cannot_end_before_the_spy_is_placed() -> None:
 # --- a Plot on the turn frame, and the designer's own example ------------------------
 
 
-def _change_allegiances_to_four(owner: PlayerState) -> GameState:
+def _change_allegiances_to_four(
+    owner: PlayerState, config: RulesetConfig | None = None
+) -> GameState:
     """From Emperor 2: both Change Allegiances lines reach 4 (OQ-057 (15))."""
 
     card = CHANGE_ALLEGIANCES
-    state = _turn_state(owner)
+    state = _turn_state(owner, config)
     state = _apply(
         state, DomainAction("play_intrigue", 0, (("card_id", card), ("option", 0)))
     )
@@ -398,35 +405,52 @@ def test_friends_everywhere_emperor_pick_leaves_the_spy_owed_in_the_turn() -> No
 # --- the turn cannot pass or close over it --------------------------------------------
 
 
-def test_litany_against_fear_and_withdrawn_wait_for_the_spy() -> None:
+def test_litany_against_fear_and_withdrawn_never_pass_over_an_owed_spy() -> None:
+    # Only an action of the seat's own turn leaves its Emperor track Spy
+    # waiting on the turn frame (here the Plot that reached 4), and any such
+    # action ends the start of the turn, so the two "At the start of your
+    # turn" cards are gone before the Spy is owed and stay gone once it is
+    # placed (OQ-095 (6), user ruling 2026-10-04). Until then the cards had
+    # their own hold for an owed Spy (user ruling 2026-10-04, OQ-057 (15)).
     litany = "imperium:litany_against_fear:0"
     withdrawn = "intrigue:twisted_withdrawn:0"
     owner = PlayerState(
         player_id=0,
         leader_id="piter_de_vries",
         hand=(litany, DAGGER),
-        intrigue_cards=(withdrawn,),
+        intrigue_cards=(CHANGE_ALLEGIANCES, withdrawn),
+        influence=Influence(emperor=2, fremen=1),
+        resources=Resources(spice=3, solari=3),
     )
-    free = _turn_state(owner, RulesetConfig(bloodlines=True))
-    assert {"play_turn_start_card", "play_intrigue"} <= set(_ids(free))
+    bloodlines = RulesetConfig(bloodlines=True)
+    free = _turn_state(owner, bloodlines)
+    assert "play_turn_start_card" in _ids(free)
+    assert DomainAction(
+        "play_intrigue", 0, (("card_id", withdrawn), ("option", 0))
+    ) in ENGINE.legal_actions(free, 0)
 
-    owing = _owed(free, 0)
+    owing = _change_allegiances_to_four(owner, bloodlines)
+    assert owing.decision_stack[-1].kind == FrameKind.TURN
+    assert owes_track_spy(owing, 0)
     legal = ENGINE.legal_actions(owing, 0)
     offered = {action.action_id for action in legal}
     assert "place_track_spy" in offered
     assert "play_turn_start_card" not in offered
     assert "play_intrigue" not in offered
-    # The page greys Withdrawn out with the reason.
+    # The page greys both out: the turn's start is over.
     greyed = unavailable_choices(owing, 0, legal)
     assert greyed is not None
     rows = greyed["rows"]
     assert isinstance(rows, list)
-    (row,) = [row for row in rows if row["surface"] == "intrigue"]
-    assert row["code"] == "track_spy"
-    assert "{influence_emperor} 4" in str(row["reason_ko"])
+    assert {(row["surface"], row["code"]) for row in rows} == {
+        ("intrigue", "turn_started"),
+        ("choice", "turn_started"),
+    }
 
     placed = _place_on(_apply(owing, PLACE), IMPERIAL_PRIVILEGE_POST)
-    assert {"play_turn_start_card", "play_intrigue"} <= set(_ids(placed))
+    assert placed.decision_stack[-1].kind == FrameKind.TURN
+    assert not owes_track_spy(placed, 0)
+    assert not {"play_turn_start_card", "play_intrigue"} & set(_ids(placed))
 
 
 def test_the_turn_closing_paths_refuse_an_owed_spy() -> None:
@@ -531,7 +555,12 @@ def test_place_track_spy_round_trips_in_every_catalog(options: dict[str, bool]) 
 
 
 def test_the_soak_invariant_accepts_only_the_turn_owners_waiting_entries() -> None:
-    state = _turn_state(PlayerState(player_id=0))
+    fresh = _turn_state(PlayerState(player_id=0))
+    # Only an owner action can owe a Spy inside the turn, and any owner
+    # action ends the turn start (OQ-095 (6)).
+    with pytest.raises(InvariantViolation, match="turn start is still open"):
+        check_track_spy_queue(_owed(fresh, 0))
+    state = end_turn_start(fresh, 0)
     check_track_spy_queue(_owed(state, 0, 0))
     with pytest.raises(InvariantViolation, match="outside their turn"):
         check_track_spy_queue(_owed(state, 0, 1))

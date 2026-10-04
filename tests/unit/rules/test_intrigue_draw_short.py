@@ -9,10 +9,15 @@ causes it carries a warning before the click (user ruling 2026-10-02,
 L2-Q4: "로그 + 클릭 전 경고"; the warning is tests/server/test_sessions.py).
 """
 
+import pytest
+
 from dune_imperium import RulesetConfig
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import (
+    intrigue_deck_instance_ids,
+    twisted_intrigue_instance_ids,
+)
 from dune_imperium.core import GamePhase, GameState, PlayerState
-from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -26,6 +31,7 @@ from dune_imperium.rules.intrigue_deck import (
 from dune_imperium.simulation.invariants import check_event_visibility
 
 INTRIGUE = intrigue_deck_instance_ids(False)
+TWISTED = twisted_intrigue_instance_ids()
 
 
 def _state(
@@ -131,3 +137,88 @@ def test_a_queued_draw_logs_its_shortfall_when_it_resolves() -> None:
 
     assert _short(resolved) == [{"drawn": 0, "player": 1, "requested": 1, "short": 1}]
     assert resolved.state.players[1].intrigue_cards == INTRIGUE[:1]
+
+
+# --- OQ-097: Twisted cards stay in the discard -------------------------------
+# User ruling 2026-10-04: "Piter의 twisted 카드는 공용 책략 버림 더미로
+# 가지만, 나중에 다시 섞을 때는 책략 더미로 가지 않고 계속 버림 더미에
+# 남아있게 하자. 다른 사람이 twisted 카드를 뽑는 일은 없도록".
+
+
+def test_a_reshuffle_leaves_the_twisted_cards_in_the_discard() -> None:
+    discard = (INTRIGUE[0], TWISTED[0], INTRIGUE[1], TWISTED[1], INTRIGUE[2])
+    asked = draw_intrigue_cards(_state((), discard), 0, 1, source="probe")
+
+    frame = asked.state.decision_stack[-1]
+    assert frame.kind == FrameKind.INTRIGUE_RESHUFFLE
+    decision = frame.decision
+    assert isinstance(decision, ChanceDecision)
+    # Only the cards that are shuffled are the chance step's options.
+    assert decision.options == INTRIGUE[:3]
+    assert decision.count == 3
+    assert _short(asked) == []
+    order = (INTRIGUE[2], INTRIGUE[0], INTRIGUE[1])
+    finished = apply_intrigue_reshuffle(
+        asked.state, ChanceOutcome(decision_id=decision.decision_id, values=order)
+    )
+
+    assert finished.state.intrigue_discard == TWISTED[:2]
+    assert finished.state.players[0].intrigue_cards == order[:1]
+    assert finished.state.intrigue_deck == order[1:]
+    shuffled = [e for e in finished.events if e.kind == "intrigue_discard_shuffled"]
+    assert [dict(e.payload) for e in shuffled] == [{"count": 3}]
+    check_event_visibility(finished.state, finished.events)
+
+
+def test_a_reshuffle_outcome_naming_a_twisted_card_is_refused() -> None:
+    asked = draw_intrigue_cards(
+        _state((), (INTRIGUE[0], TWISTED[0])), 0, 1, source="probe"
+    )
+    decision = asked.state.decision_stack[-1].decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == INTRIGUE[:1]
+    smuggled = ChanceOutcome(decision_id=decision.decision_id, values=TWISTED[:1])
+
+    with pytest.raises(ValueError, match="unavailable"):
+        UprisingRulesEngine().apply(asked.state, smuggled)
+    with pytest.raises(ValueError, match="Twisted"):
+        apply_intrigue_reshuffle(asked.state, smuggled)
+
+
+def test_twisted_cards_do_not_cover_a_draw() -> None:
+    # The Twisted cards are not shuffled, so they count for nothing: with
+    # one other card a draw of three is two short, logged before the shuffle.
+    discard = (TWISTED[0], INTRIGUE[0], TWISTED[1])
+    asked = draw_intrigue_cards(_state((), discard), 0, 3, source="probe")
+
+    assert _short(asked) == [{"drawn": 1, "player": 0, "requested": 3, "short": 2}]
+    finished = _reshuffled(asked)
+    assert finished.state.players[0].intrigue_cards == INTRIGUE[:1]
+    assert finished.state.intrigue_deck == ()
+    assert finished.state.intrigue_discard == (TWISTED[0], TWISTED[1])
+
+
+def test_a_discard_of_only_twisted_cards_draws_nothing() -> None:
+    # Nothing to shuffle: no chance step, no card, and the shortfall logged.
+    drawn = draw_intrigue_cards(_state((), TWISTED[:2]), 1, 1, source="probe")
+
+    assert drawn.state.decision_stack == ()
+    assert drawn.state.players[1].intrigue_cards == ()
+    assert drawn.state.intrigue_discard == TWISTED[:2]
+    assert [event.kind for event in drawn.events] == ["intrigue_draw_short"]
+    assert _short(drawn) == [{"drawn": 0, "player": 1, "requested": 1, "short": 1}]
+    # The deck's last card is drawn; the Twisted discard is not shuffled.
+    partial = draw_intrigue_cards(
+        _state(INTRIGUE[:1], TWISTED[:1]), 0, 2, source="probe"
+    )
+    assert partial.state.decision_stack == ()
+    assert partial.state.players[0].intrigue_cards == INTRIGUE[:1]
+    assert _short(partial) == [{"drawn": 1, "player": 0, "requested": 2, "short": 1}]
+    # A queued draw resolves the same way.
+    queued = draw_or_queue_intrigue_cards(
+        _state((), TWISTED[:1]), 2, 1, source="probe"
+    )
+    resolved = resolve_pending_intrigue_draw(queued.state)
+    assert resolved.state.decision_stack == ()
+    assert resolved.state.intrigue_discard == TWISTED[:1]
+    assert _short(resolved) == [{"drawn": 0, "player": 2, "requested": 1, "short": 1}]

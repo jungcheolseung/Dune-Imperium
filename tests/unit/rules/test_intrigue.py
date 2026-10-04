@@ -36,7 +36,7 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, end_turn_start
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -87,6 +87,14 @@ def _turn_state(
             ),
         ),
     )
+
+
+def _after_plot(state: GameState) -> tuple[DecisionFrame, ...]:
+    """The stack a Plot played through the engine from ``state``'s turn
+    start returns to: the same turn frame, with the start of the turn over
+    (OQ-095 (6), user ruling 2026-10-04)."""
+
+    return end_turn_start(state, 0).decision_stack
 
 
 def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
@@ -634,7 +642,7 @@ def test_buy_access_opens_two_distinct_faction_choices() -> None:
     second = engine.apply(first.state, _choose_faction("emperor"))
     assert second.state.players[0].influence.fremen == 1
     assert second.state.players[0].influence.emperor == 1
-    assert second.state.decision_stack == state.decision_stack
+    assert second.state.decision_stack == _after_plot(state)
     assert second.state.intrigue_discard == (card,)
     assert second.state.players[0].intrigue_cards == ()
 
@@ -654,7 +662,7 @@ def test_imperium_politics_limits_the_choice_to_emperor_or_guild() -> None:
     )
     done = engine.apply(opened, _choose_faction("spacing_guild")).state
     assert done.players[0].influence.spacing_guild == 1
-    assert done.decision_stack == state.decision_stack
+    assert done.decision_stack == _after_plot(state)
 
 
 def test_change_allegiances_opens_both_lines_and_either_may_be_used() -> None:
@@ -844,7 +852,7 @@ def test_opportunism_loses_two_influence_and_pays_solari_for_a_point() -> None:
     twice = engine.apply(once, _choose_faction("emperor")).state
     assert twice.players[0].influence.emperor == 0
     assert twice.players[0].victory_points == 1
-    assert twice.decision_stack == state.decision_stack
+    assert twice.decision_stack == _after_plot(state)
 
 
 def test_sietch_ritual_discards_a_hand_card_then_chooses_a_faction() -> None:
@@ -1856,7 +1864,7 @@ def test_inspire_awe_acquires_a_cheap_card_to_the_discard_pile() -> None:
     assert done.imperium_deck == ()
     assert done.players[0].intrigue_cards == ()
     assert done.intrigue_discard == (card,)
-    assert done.decision_stack == state.decision_stack
+    assert done.decision_stack == _after_plot(state)
 
 
 def test_inspire_awe_puts_the_card_in_hand_with_a_sandworm_in_the_conflict() -> None:
@@ -1900,7 +1908,7 @@ def test_inspire_awe_without_a_target_is_played_and_its_acquisition_fizzles() ->
     assert done.events[0].kind == "intrigue_acquisition_unavailable"
     assert card in done.state.intrigue_discard
     assert done.state.players[0].discard_pile == ()
-    assert done.state.decision_stack == state.decision_stack
+    assert done.state.decision_stack == _after_plot(state)
 
 
 def test_inspire_awe_to_hand_immediately_reveals_during_the_owners_reveal_turn() -> (
@@ -2100,7 +2108,7 @@ def test_call_to_arms_waits_face_up_when_played() -> None:
         "intrigue_kept_faceup",
     ]
     # The turn frame is untouched: no choice frame opens for a waiting card.
-    assert done.decision_stack == state.decision_stack
+    assert done.decision_stack == _after_plot(state)
 
 
 def test_call_to_arms_recruits_per_reveal_acquisition_then_expires() -> None:

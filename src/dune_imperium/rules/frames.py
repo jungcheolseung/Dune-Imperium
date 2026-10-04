@@ -331,6 +331,62 @@ def own_turn_frame_index(state: GameState, player: int) -> int | None:
     return None
 
 
+TURN_START_OVER_KEY = "turn_start_over"
+"""Set on the owner's turn frame once the owner has acted in that turn.
+
+"At the start of your turn: Put this card into play -> Draw a card and pass
+your turn." [Litany Against Fear card]; "At the start of your turn: Pass
+your turn." [Withdrawn card]. Either is only the turn's first action: any
+other action of the turn's owner -- a Plot Intrigue and its choices, a
+specimen return, Family Atomics, an Emperor track Spy -- ends the start of
+the turn (OQ-095 (6), user ruling 2026-10-04: "턴 시작 후 이 카드를 사용하는
+것 말고 다른 행동을 했으면 이제 턴 시작이 끝났으니 이 카드를 사용할 수 없게
+되는게 맞다고 봐"). Absent means the start is still open. The Agent-turn
+effect and Reveal frames that replace the turn frame never carry it: the
+two cards are not offered there at all."""
+
+
+def turn_start_is_open(state: GameState, player: int) -> bool:
+    """Whether ``player``'s own turn is open and the seat has not acted yet.
+
+    True while the seat's own open turn frame is the turn frame (no Agent
+    sent, no Reveal) without ``TURN_START_OVER_KEY``, whatever is stacked
+    above it (a Plot's choice, another seat's answer).
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return False
+    frame = state.decision_stack[index]
+    return (
+        frame.kind == FrameKind.TURN
+        and dict(frame.context).get(TURN_START_OVER_KEY) is not True
+    )
+
+
+def end_turn_start(state: GameState, player: int) -> GameState:
+    """Mark the start of ``player``'s open turn as over (``TURN_START_OVER_KEY``).
+
+    Unchanged when the seat's own open turn frame is not a turn frame whose
+    start is still open.
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None or not turn_start_is_open(state, player):
+        return state
+    frame = state.decision_stack[index]
+    context = frame_context(frame)
+    context[TURN_START_OVER_KEY] = True
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            with_context(frame, context),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
 def owes_track_spy(state: GameState, seat: int) -> bool:
     """Whether ``seat`` still has an Emperor track Influence 4 Spy to place.
 

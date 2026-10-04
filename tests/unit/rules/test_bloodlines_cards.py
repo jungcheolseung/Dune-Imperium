@@ -2475,6 +2475,22 @@ def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     assert frame.kind == "turn"
     assert dict(frame.context)["turn_owner"] == 1
 
+    # "At the start of your turn": only the turn's first action, so not
+    # after a Plot, though the turn frame is still open (OQ-095 (6), user
+    # ruling 2026-10-04).
+    plot = "intrigue:contingency_plan:0"
+    with_plot = _state(_owner(hand=(card,), intrigue_cards=(plot,)))
+    plotted = (
+        UprisingRulesEngine()
+        .apply(
+            with_plot,
+            DomainAction("play_intrigue", 0, (("card_id", plot), ("option", 0))),
+        )
+        .state
+    )
+    assert plotted.decision_stack[-1].kind == "turn"
+    assert legal_turn_start_card_actions(plotted, 0) == ()
+
 
 def test_delivery_logistics_borrows_its_contract_icons() -> None:
     from dune_imperium.rules.reveal_turn import (
@@ -2939,7 +2955,14 @@ def test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat(
             player_id=3, troops_supply=10, troops_garrison=0, troops_conflict=2
         ),
     )
-    state = replace(_state(seats[0]), players=seats)
+    # The card player's own turn: an answer never comes from its owner, so
+    # the turn's start is untouched (OQ-095 (6)).
+    turn = DecisionFrame(
+        kind="turn",
+        frame_id=f"round:1:turn:{actor}",
+        decision=PlayerDecision(owner=actor, prompt="Choose a turn"),
+    )
+    state = replace(_state(seats[0]), players=seats, decision_stack=(turn,))
     pushed = opponent_unit_loss_frames(state, actor, source="test")
     assert pushed.events == ()
     assert pushed.state.players == state.players

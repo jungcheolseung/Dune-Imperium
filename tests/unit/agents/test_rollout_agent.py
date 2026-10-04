@@ -233,6 +233,64 @@ def test_determinize_keeps_the_observers_view_and_every_card() -> None:
     assert other != world
 
 
+def test_determinize_keeps_twisted_intrigue_in_the_opponents_hands() -> None:
+    # Twisted Intrigue cards never join the shared deck (OQ-097, user ruling
+    # 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), so a sampled
+    # world deals the hidden ones to opponents' hands, never to the deck.
+    setup = create_initial_state(
+        RulesetConfig(bloodlines=True),
+        seed=3,
+        leader_ids=("gurney_halleck", "piter_de_vries", "chani", "lady_jessica"),
+    ).state
+    piter = setup.players[1]
+    twisted = piter.twisted_deck[:3]
+    regular = setup.intrigue_deck[:2]
+    state = replace(
+        setup,
+        intrigue_deck=setup.intrigue_deck[2:],
+        players=(
+            setup.players[0],
+            replace(
+                piter, intrigue_cards=twisted, twisted_deck=piter.twisted_deck[3:]
+            ),
+            replace(setup.players[2], intrigue_cards=regular),
+            setup.players[3],
+        ),
+    )
+
+    homes: set[int] = set()
+    for seed in range(30):
+        world = determinize(state, 0, random.Random(seed))
+        assert not set(twisted) & set(world.intrigue_deck)
+        assert observe_state(world, 0) == observe_state(state, 0)
+        assert _card_census(world) == _card_census(state)
+        held = {
+            card: seat
+            for seat, player in enumerate(world.players)
+            for card in player.intrigue_cards
+        }
+        assert set(twisted) <= set(held)
+        homes.update(held[card] for card in twisted)
+    # The observer cannot tell whose hand holds them.
+    assert homes == {1, 2}
+
+
+def test_twisted_free_intrigue_pools_draw_no_extra_random_numbers() -> None:
+    from dune_imperium.agents.determinize import _keep_twisted_in_hands
+
+    pool = ["intrigue:cunning:0", "intrigue:devour:0", "intrigue:held:0"]
+    rng = random.Random(7)
+    before = rng.getstate()
+    _keep_twisted_in_hands(pool, 1, 1, rng)
+    assert rng.getstate() == before
+    assert pool == ["intrigue:cunning:0", "intrigue:devour:0", "intrigue:held:0"]
+    # A Twisted card dealt outside the hand slots trades places into them.
+    twisted = "intrigue:twisted_withdrawn:0"
+    pool = [twisted, "intrigue:cunning:0", "intrigue:devour:0"]
+    _keep_twisted_in_hands(pool, 1, 2, rng)
+    assert pool[0] != twisted and twisted in pool[1:]
+
+
 def test_determinize_rejects_an_unknown_observer() -> None:
     state = _play_rounds(seed=2, rounds=1)
     with pytest.raises(ValueError, match="observer"):

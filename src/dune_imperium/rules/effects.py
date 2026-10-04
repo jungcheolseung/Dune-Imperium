@@ -158,8 +158,10 @@ def open_next_turn(state: GameState, player: int) -> GameState:
 
     "Pass your turn" (Litany Against Fear, Withdrawn): the seat stays
     unrevealed and comes around again this round. An Emperor track Spy the
-    seat still owes is placed before its turn ends (user ruling 2026-10-04),
-    so the turn-passing plays are held back until then.
+    seat still owes is placed before its turn ends (user ruling 2026-10-04);
+    the turn-passing plays never meet one, since they are only the turn's
+    first action and only an action of the turn leaves a Spy waiting in it
+    (OQ-095 (6), user ruling 2026-10-04), so an owed Spy here is a bug.
     """
 
     if owes_track_spy(state, player):

@@ -142,8 +142,10 @@ from dune_imperium.rules.endgame import (
 )
 from dune_imperium.rules.frames import (
     FrameKind,
+    end_turn_start,
     owned_top_frame,
     turn_owner_of,
+    turn_start_is_open,
 )
 from dune_imperium.rules.graft import (
     apply_graft_partner,
@@ -168,6 +170,7 @@ from dune_imperium.rules.intrigue import (
     legal_intrigue_choice_actions,
     legal_intrigue_effect_actions,
     legal_intrigue_play_actions,
+    plays_turn_start_option,
 )
 from dune_imperium.rules.intrigue_deck import (
     apply_intrigue_reshuffle,
@@ -927,7 +930,9 @@ class UprisingRulesEngine(RulesEngine):
         )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
-        handled = ACTION_HANDLERS[action.action_id](state, action)
+        handled = _end_turn_start(
+            state, action, ACTION_HANDLERS[action.action_id](state, action)
+        )
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs
@@ -951,6 +956,33 @@ class UprisingRulesEngine(RulesEngine):
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
 
+
+
+def _end_turn_start(
+    state: GameState, action: DomainAction, handled: RuleResult
+) -> RuleResult:
+    """End the start of the actor's turn once it acted in that turn.
+
+    "At the start of your turn" [Litany Against Fear card] [Withdrawn card]:
+    any action of the turn's owner taken while its turn frame is open --
+    whatever frame it answers, a Plot's own choices included -- ends the
+    start of the turn (OQ-095 (6), user ruling 2026-10-04: "턴 시작 후 이
+    카드를 사용하는 것 말고 다른 행동을 했으면 이제 턴 시작이 끝났으니 이
+    카드를 사용할 수 없게 되는게 맞다고 봐"). Another seat's answer and the
+    engine's automatic steps do not, by themselves. Playing one of the two
+    cards is the start's own action; it passes the turn, and the next turn
+    frame (the seat's own again when every other seat has revealed) opens
+    with its start still open. Marked on the handler's result, before the
+    automatic steps, so a turn those steps open is a fresh one.
+    """
+
+    if not turn_start_is_open(state, action.actor) or (
+        action.action_id == "play_turn_start_card" or plays_turn_start_option(action)
+    ):
+        return handled
+    return RuleResult(
+        state=end_turn_start(handled.state, action.actor), events=handled.events
+    )
 
 
 def _complete_alliance_contracts(result: RuleResult) -> RuleResult:

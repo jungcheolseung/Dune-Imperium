@@ -43,6 +43,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
+from dune_imperium.rules.intrigue_deck import shufflable_intrigue_discard
 from dune_imperium.rules.specimens import return_specimens
 
 BOARD_ICON_SCOUTS: Final = "scouts_mission"
@@ -130,12 +131,15 @@ def _reshuffle_intrigue_for_goods(state: GameState, *, source: str) -> RuleResul
     The engine's Intrigue reshuffle chance frame [FAQ p. 2]: the new deck
     forms beneath the cards still on top (``intrigue_deck
     .apply_intrigue_reshuffle``), and with a count of 0 it draws nothing.
+    The discard's Twisted cards stay behind (``intrigue_deck
+    .shufflable_intrigue_discard``, OQ-097, user ruling 2026-10-04).
     The ``goods`` task is queued again, so the Scouts step places the new
     top two once the frame resolves.
     """
 
     if state.first_player is None:
         raise ValueError("the Scouts step requires a First Player")
+    discard = shufflable_intrigue_discard(state)
     decision_id = f"{source}:intrigue_shuffle"
     frame = DecisionFrame(
         kind=FrameKind.INTRIGUE_RESHUFFLE,
@@ -143,8 +147,8 @@ def _reshuffle_intrigue_for_goods(state: GameState, *, source: str) -> RuleResul
         decision=ChanceDecision(
             decision_id=decision_id,
             prompt="Shuffle the Intrigue discard pile into a new deck",
-            options=state.intrigue_discard,
-            count=len(state.intrigue_discard),
+            options=discard,
+            count=len(discard),
         ),
         context=(
             ("count", 0),
@@ -168,6 +172,8 @@ def place_mission_goods(
     a new deck first when the deck holds fewer than its two cards (OQ-078,
     user ruling 2026-09-29; "shuffle the discarded Intrigue cards to form a
     new deck" [FAQ p. 2]); with both piles short it places what there is.
+    The discard's Twisted cards are not shuffled (OQ-097), so a discard of
+    Twisted cards alone counts as empty.
     """
 
     mission = MISSIONS_BY_ID[mission_id]
@@ -207,8 +213,10 @@ def place_mission_goods(
             )
         case MissionKind.EMPERORS_SCHEMES:
             assert mission.space_id is not None
+            # Twisted cards stay in the discard (OQ-097, user ruling
+            # 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록").
             if len(state.intrigue_deck) < mission.goods_cards and (
-                state.intrigue_discard
+                shufflable_intrigue_discard(state)
             ):
                 return _reshuffle_intrigue_for_goods(state, source=source)
             taken = state.intrigue_deck[: mission.goods_cards]
