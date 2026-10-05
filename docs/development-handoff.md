@@ -4,6 +4,17 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 app_ai를 모든 선택지로 확장(heuristic 없음)
+
+- 사용자 결정("휴리스틱의 결정이 섞이는 ai면 어차피 그걸로 플레이할 생각은 없어. 2,3으로 가자"): app_ai가 모든 선택지를 heuristic 없이 둔다. 앱에 있는 것(Immortality, Go to 11, Epic, 프로모, 지도자 드래프트)은 충실 포팅했다. 앱에 없는 것(Bloodlines와 Tech 모듈, Arrakeen Scouts)은 앱식으로 확장했다. 새 카드 값은 앱 데이터에 맞춘 규칙으로, 새 결정은 앱식 단순 판단으로 만든다. 대응 안 된 결정은 heuristic 대신 앱의 `DefaultRandomChoice`(무작위 합법 행동)로 답하고 `fallbacks`에 센다. 설계와 결정은 [`app-ai-plan.md`](app-ai-plan.md) 11절, 앱식 사양은 [`app-ai/`](app-ai/)의 세 문서다.
+- 브랜치 `app-ai-expansions`(16커밋)를 병합했다(`89f57fc5`). 엔진·codec·관측은 바뀌지 않았다(**codec v135·관측 v30** 그대로). Bloodlines·Scouts의 합성 아키타입은 `scripts/dwgr/app_ai_synth.py`가 `agents/app_ai/data/synthetic.py`로 만든다.
+- 검증:
+  - 16개 선택지 조합 × 12판(4좌석 app_ai)에서 오류 0, 무작위 대체 0, 미포팅 능력 0.
+  - base·CHOAM 게임은 확장 작업 전후로 같은 시드 40판의 행동 열이 같다.
+  - 축별 A/B(2:2, 칸당 1,000판)에서 app_ai Hard가 heuristic을 좌석당 45.8–47.5% 대 2.5–4.2%로 이긴다. Bloodlines+Tech는 46.7% 대 3.3%, Scouts는 46.5% 대 3.5%, 전부 켬은 47.2% 대 2.8%다. 전부 켠 게임에서도 Hard가 Easy를 이긴다(34.0% 대 15.9%). 결과는 [`evaluation/app-ai-expansions-2026-10-05.md`](evaluation/app-ai-expansions-2026-10-05.md)에 있다.
+  - 병합한 master에서 **pytest 6,389개 통과**, Ruff(`src tests`)·mypy(404파일) 통과. `ruff check scripts`가 잡는 `scripts/e2e/card_labels.py`의 긴 줄 두 개는 이 작업과 무관한 이전 커밋(`42754fac`)의 것이다.
+- 남은 것: UI 좌석에 app_ai(난이도 3개)와 search 넣기, 학습 상대에 app_ai 넣기(L3 재적응과 함께), 대전 도구의 지도자 드래프트 플래그. 이번 작업 중 찾은 교훈(창이 모르는 카드에 조용한 기본값을 골라 측정이 빈 곳을 못 봄)은 [`lessons.md`](lessons.md) 2026-10-05에 있다.
+
 ## 2026-10-05 손패를 보드 열 아래로 한정하고 옆 열의 높이 확보
 
 - 손패·책략 카드 영역을 화면 전체 폭의 마지막 행에서 보드 열 아래로 옮겼다. 공용 카드·확장 게임판 열은 보드와 손패의 두 행을 모두 차지하고, 플레이어 상태·행동 선택·행동 로그 열은 화면 하단까지 이어진다. 남는 보드 폭을 쓰는 로그의 오른쪽 이동, 개별 스크롤과 열 접기는 유지한다.
@@ -180,6 +191,8 @@ uv run mypy src tests
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
+
+**현재 위치(2026-10-05 저녁).** app_ai를 모든 선택지(Immortality·Go to 11·Epic·프로모·드래프트는 충실 포팅, Bloodlines·Tech·Scouts는 앱식 확장)로 넓혀 heuristic 없이 두게 했고 master에 병합했다(`89f57fc5`, 위 2026-10-05 "app_ai를 모든 선택지로 확장"). 16개 조합에서 무작위 대체 0, pytest 6,389개. codec v135·관측 v30 그대로.
 
 **현재 위치(2026-10-05).** 사용자 요청("앱식 heuristic 만들어서 A/B 돌려보자. 앱의 ai와 최대한 동일하게")으로 Steam 앱의 컴퓨터
 상대를 그대로 옮긴 **`app_ai`**(`agents/app_ai/`, registry `app_ai`=Hard·`app_ai_medium`·`app_ai_easy`)를 만들어 master에 병합했다
