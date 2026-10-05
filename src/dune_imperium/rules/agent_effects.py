@@ -82,6 +82,7 @@ from dune_imperium.rules.immortality import (
     tleilaxu_track_finished,
 )
 from dune_imperium.rules.influence import (
+    MAX_INFLUENCE,
     gain_faction_influence,
     influence_amount,
     influence_can_rise,
@@ -1864,7 +1865,15 @@ def legal_agent_card_trash_actions(
         # only while that gain is still pending: an Agent infiltrated onto
         # a space without a Faction [Main p. 11] has no Influence to gain
         # (OQ-046), and once the space's 1 is gained there is nothing left
-        # to replace.
+        # to replace. With the visited Faction at 5 or 6 the track's top
+        # (``MAX_INFLUENCE``) makes two instead of one end where the 1
+        # would, so the two trashed cards would buy nothing: "비용이 있는
+        # 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071,
+        # user decision 2026-09-29).
+        space_id = context.get("space_id")
+        visited_faction = (
+            BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
+        )
         eligible = (
             tuple(
                 card_id
@@ -1873,6 +1882,9 @@ def legal_agent_card_trash_actions(
                 and Faction.EMPEROR in personal_card_for_instance(card_id).factions
             )
             if context.get("pending_faction_influence") is True
+            and visited_faction is not None
+            and influence_amount(owner.influence, visited_faction)
+            <= MAX_INFLUENCE - 2
             else ()
         )
     return (

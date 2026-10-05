@@ -792,6 +792,46 @@ def test_treacherous_maneuver_arrow_needs_the_pending_space_influence() -> None:
     )
 
 
+@pytest.mark.parametrize(("emperor", "offered"), [(4, True), (5, False), (6, False)])
+def test_treacherous_maneuver_arrow_needs_room_for_the_second_influence(
+    emperor: int, offered: bool
+) -> None:
+    # "Gain two Influence instead of one" [Treacherous Maneuver card]: with
+    # the visited Faction at 5 or 6 the track tops at 6, so two instead of
+    # one ends exactly where the space's own 1 would and the two trashed
+    # cards buy nothing. "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수
+    # 있을 때만 제시한다" (OQ-071, user decision 2026-09-29): only the
+    # decline remains. At 4 the arrow still reaches 6 instead of 5.
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(maneuver, sardaukar),
+        influence=Influence(emperor=emperor),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    actions = legal_agent_card_trash_actions(placed, 0)
+
+    assert ("trash_agent_card" in {action.action_id for action in actions}) is offered
+    assert DomainAction(action_id="decline_agent_card_trash", actor=0) in actions
+
+
 def test_treacherous_maneuver_box_expires_when_trashed_mid_frame() -> None:
     # A freely ordered Intrigue trash slot can trash the played card before
     # its trash choice resolves; the un-activated Agent box then expires
