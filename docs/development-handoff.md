@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 멀티플레이 가이드 역할 분리와 줄바꿈 정리
+
+- 사용자 피드백에 따라 문장 중간에 넣었던 수동 줄바꿈을 제거했다. 안내 문서는 문단과 목록 항목을 각각 한 줄로 작성하고, 화면 폭에 따른 줄바꿈은 뷰어에 맡긴다. 코드 블록과 표의 줄 구조는 유지했다.
+- 서버 설치·운영 절차는 [`remote-play-host-guide.md`](remote-play-host-guide.md), 방 링크를 받아 접속하는 절차는 [`remote-play-player-guide.md`](remote-play-player-guide.md)로 분리했다. 플레이어 문서는 서버 설치·실행 옵션을 읽지 않고도 준비·접속·재접속·기기 변경·연결 장애 대응을 할 수 있도록 작성했다. 기존 [`remote-play-guide.md`](remote-play-guide.md)는 두 문서를 선택하는 진입점으로 유지하고 README에도 각각의 링크를 추가했다.
+- 검증: 세 가이드의 문장 중간 줄바꿈 제거, 로컬 파일·제목 링크 **14개**, README의 역할별 진입 링크 **3개**, 코드 블록 경계와 플레이어 문서의 역할 범위, `git diff --check`를 확인했다. 문서 재구성에 해당해 앞선 66개 서버 테스트는 다시 실행하지 않았다.
+
 ## 2026-10-05 멀티플레이 환경 가이드 보강
 
 - 기존 [`remote-play-guide.md`](remote-play-guide.md)를 **멀티플레이 환경·설정·접속 가이드**로 보강하고 README 상단에 진입 링크를 추가했다. 호스트·참가자 준비 사항, uv·Python 3.14 설치, 같은 LAN과 다른 장소의 Tailscale 접속, 관리자·방·머신 공유 링크 구분, 좌석 선택·쿠키 기반 재접속, 저장·종료·복구와 접속 문제 해결을 안내한다. 참가자에게 복사해 보낼 안내도 포함한다.
