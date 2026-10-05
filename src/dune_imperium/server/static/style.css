@@ -318,13 +318,14 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   height: 100%;
 }
 #table {
+  --actions-width: 340px;
   display: grid;
   /* Spend extra desktop width on the board, keeping the reading column
      steady. The board still has its 480px floor on a narrow window. */
   grid-template-columns:
     210px
     minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
-    340px;
+    var(--actions-width);
   gap: 0.5rem;
   min-height: 0;
   padding: 0.5rem 0.5rem 0;
@@ -359,6 +360,21 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   flex: 1;
   min-height: 0;
   margin-bottom: 0;
+}
+/* fitActionLog uses only the board's spare horizontal room. The action
+   column keeps its width; history gets a full-height column beside it. */
+@media (min-width: 1341px) {
+  #table.log-beside {
+    grid-template-columns:
+      210px
+      minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
+      calc(var(--actions-width) + var(--history-width) + 0.5rem);
+  }
+  #table.log-beside #side {
+    grid-template-columns: var(--actions-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  #table.log-beside .log-size-toggle { display: none; }
 }
 /* The board fills the centre; the shared card zones (Imperium Row,
    Reserve, draft pool, ...) stand in a column beside it so a wide screen
@@ -1762,7 +1778,10 @@ kbd {
    scrolling floor (the 2026-09-27 narrow-window convention). */
 @media (max-width: 1340px) {
   #game-screen { --table-min: calc(200px + var(--board-min) + 300px + 2rem); }
-  #table { grid-template-columns: 200px minmax(var(--board-min), 1fr) 300px; }
+  #table {
+    --actions-width: 300px;
+    grid-template-columns: 200px minmax(var(--board-min), 1fr) var(--actions-width);
+  }
   /* The market row was `auto`, so it sized to its content and left the
      board's `1fr` row nothing: with every expansion on, seven strips took
      the whole centre and #board rendered 468x0 — the board simply was not

@@ -444,7 +444,76 @@ function render(options) {
     pane.scrollTop = top;
     pane.scrollLeft = left;
   }
+  fitActionLog();
   renderPlayEffects();
+}
+
+/* A height-limited board can leave broad margins on a wide window. Spend
+   that space on history, keeping the scan at the size it would have with
+   the normal action column. Include the room already lent to history in
+   that baseline, so the observer cannot alternate between two layouts. */
+let tableLogGeometry = null;
+
+function fitActionLog() {
+  const table = el("table");
+  const board = el("board");
+  const stage = board.querySelector(".board-stage");
+  const list = el("action-log").querySelector(".log-list");
+  const previous = tableLogGeometry && tableLogGeometry.list === list
+    ? tableLogGeometry : null;
+  const before = list && { width: list.clientWidth, height: list.clientHeight };
+  const following = list && (
+    list.scrollHeight - list.scrollTop - list.clientHeight < 24 ||
+    (previous && Math.abs(previous.scrollHeight - previous.height - list.scrollTop) < 24)
+  );
+  let historyWidth = 0;
+  if (
+    !el("game-screen").hidden &&
+    !el("action-log").hidden &&
+    stage &&
+    window.matchMedia("(min-width: 1341px)").matches
+  ) {
+    const side = el("side");
+    const actionWidth = parseFloat(
+      getComputedStyle(table).getPropertyValue("--actions-width"),
+    );
+    const gap = parseFloat(getComputedStyle(side).columnGap);
+    const [width, height = 1] = getComputedStyle(stage).aspectRatio.split("/").map(Number);
+    const box = board.getBoundingClientRect();
+    const borrowed = table.classList.contains("log-beside")
+      ? side.getBoundingClientRect().width - actionWidth
+      : 0;
+    const spare = Math.floor(box.width + borrowed - box.height * width / height - gap - 2);
+    /* Keep history at least as readable as the normal 340px column, and
+       cap its width rather than stretching a log card across a monitor. */
+    if (spare >= 340) historyWidth = Math.min(spare, 600);
+  }
+  table.classList.toggle("log-beside", historyWidth > 0);
+  if (historyWidth) table.style.setProperty("--history-width", `${historyWidth}px`);
+  else table.style.removeProperty("--history-width");
+  /* Resizing keeps a reader's offset. A reader at the end stays at the
+     end, even when rewrapping into the narrower vertical history. */
+  if (list) {
+    const width = list.clientWidth;
+    const height = list.clientHeight;
+    const resized = before.width !== width || before.height !== height ||
+      (previous && (previous.width !== width || previous.height !== height));
+    if (resized && following) list.scrollTop = list.scrollHeight;
+    tableLogGeometry = { list, width, height, scrollHeight: list.scrollHeight };
+  } else tableLogGeometry = null;
+  positionPlayEffect();
+}
+
+function watchTableLayout() {
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(fitActionLog);
+    /* The hand's height, window size and folded market all affect how
+       much horizontal space the board actually needs. */
+    observer.observe(el("table"));
+    observer.observe(el("board"));
+  } else {
+    window.addEventListener("resize", fitActionLog);
+  }
 }
 
 /* #header-status in three spans (style.css): the round and phase, the
