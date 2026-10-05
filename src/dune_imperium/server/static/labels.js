@@ -604,6 +604,7 @@ const EFFECT_ICON_LABELS = {
   swordmaster: "소드마스터 획득",
   research: "{research}",
   return_self: "이 카드를 핸드로",
+  trash: "카드 {trash}",
   trash_self: "이 카드 {trash}",
   troops: "{troop} {recruit} ({garrison})",
   water: "{water} 획득",

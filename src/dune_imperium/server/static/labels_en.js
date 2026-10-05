@@ -331,6 +331,7 @@ const LABELS_EN = {
     "solari": "Gain {solari}",
     "spice": "Gain {spice}",
     "swordmaster": "Acquire Swordmaster",
+    "trash": "{trash} card",
     "trash_self": "{trash} this card",
     "troops": "{recruit} {troop} ({garrison})",
     "water": "Gain {water}",
