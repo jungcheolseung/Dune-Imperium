@@ -248,3 +248,38 @@ def test_an_unknown_turn_action_falls_back_instead_of_being_passed_over() -> Non
     extra = DomainAction(action_id="play_turn_start_card", actor=seat)
     widened = DecisionRun(run.ctx, run.profile, (*run.legal, extra), run.rng, Memory())
     assert turn.turn_window(widened) is None
+
+
+def test_tueks_sietch_joins_board_iteration_only_with_esmar_tuek() -> None:
+    """Plan §11.8: Tuek's Sietch is a board space when Esmar Tuek plays,
+    appended after the app's spaces; otherwise the board is the app's."""
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.agents.app_ai.catalog import board_space_ids
+    from dune_imperium.agents.app_ai.context import AppContext, Board
+    from dune_imperium.agents.app_ai.testing import ENGINE, play_until
+    from dune_imperium.agents.app_ai.windows.turn import board_space_order
+
+    def first_turn(leaders: tuple[str, ...]) -> GameState:
+        from dataclasses import replace
+
+        state = play_until(
+            lambda st, owner: st.decision_stack[-1].kind == "turn",
+            config=RulesetConfig(bloodlines=True),
+        )
+        players = tuple(
+            replace(p, leader_id=leader)
+            for p, leader in zip(state.players, leaders, strict=True)
+        )
+        return replace(state, players=players)
+
+    with_esmar = first_turn(
+        ("esmar_tuek", "muad_dib", "gurney_halleck", "lady_jessica")
+    )
+    without = first_turn(("muad_dib", "gurney_halleck", "lady_jessica", "staban_tuek"))
+    board = AppContext(with_esmar, 0, ENGINE.observe(with_esmar, 0)).board
+    plain = AppContext(without, 0, ENGINE.observe(without, 0)).board
+    assert board.tueks_sietch and not plain.tueks_sietch
+    assert board_space_order(board) == (*board_space_order(plain), "tuek_sietch")
+    assert board_space_ids(board) == (*board_space_ids(plain), "tuek_sietch")
+    assert "tuek_sietch" not in board_space_order(Board(True))

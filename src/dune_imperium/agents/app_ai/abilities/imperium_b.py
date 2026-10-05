@@ -49,8 +49,9 @@ from dune_imperium.agents.app_ai.abilities.imperium_a import (
 )
 from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
-    SPACE_ARCHETYPES,
+    board_space_ids,
     card_entity,
+    is_board_space,
     space_entity,
 )
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
@@ -175,7 +176,7 @@ def _active_space(p: Profile) -> Entity | None:
     if context is None:
         return None
     space_id = context.get("space_id")
-    if not isinstance(space_id, str) or space_id not in SPACE_ARCHETYPES:
+    if not isinstance(space_id, str) or not is_board_space(space_id):
         return None
     return space_entity(space_id, p.ctx.board)
 
@@ -183,7 +184,8 @@ def _active_space(p: Profile) -> Entity | None:
 def _board_spaces(p: Profile) -> list[Entity]:
     """``BoardSpaces(match)``: every board space of this game (catalog order)."""
 
-    return [space_entity(space_id, p.ctx.board) for space_id in SPACE_ARCHETYPES]
+    board = p.ctx.board
+    return [space_entity(space_id, board) for space_id in board_space_ids(board)]
 
 
 def _is_maker_space(space: Entity) -> bool:

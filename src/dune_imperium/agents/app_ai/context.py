@@ -88,6 +88,11 @@ class Board(NamedTuple):
     tech_module: bool = False
     scouts: bool = False
     faction_spaces_combat: bool = False
+    #: Esmar Tuek is in the game, so Tuek's Sietch is a board space (plan
+    #: §11.8: appended after the app's spaces, as the app appends an
+    #: expansion's spaces). Public (leaders are public); set by
+    #: ``AppContext.board``.
+    tueks_sietch: bool = False
 
     @staticmethod
     def of(config: RulesetConfig) -> Board:
@@ -147,6 +152,10 @@ class AppContext:
         board = Board.of(self.state.config)
         if self.state.scouts_round_modifier == FACTION_SPACES_ARE_COMBAT:
             board = board._replace(faction_spaces_combat=True)
+        if self.state.config.bloodlines and any(
+            player.leader_id == "esmar_tuek" for player in self.state.players
+        ):
+            board = board._replace(tueks_sietch=True)
         return board
 
     @property

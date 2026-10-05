@@ -60,7 +60,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
 from dune_imperium.agents.app_ai.catalog import (
     LEADER_ARCHETYPES,
     POST_INDEX,
-    SPACE_ARCHETYPES,
+    board_space_ids,
     card_entity,
     conflict_entity,
     space_entity,
@@ -256,7 +256,7 @@ def is_circle_observation_post(post_id: str, board: Board) -> bool:
     """
 
     index = POST_INDEX[post_id]
-    for space_id in SPACE_ARCHETYPES:  # BoardSpaces order
+    for space_id in board_space_ids(board):  # BoardSpaces order
         space = space_entity(space_id, board)
         posts = space.attr("ObservationPosts", ())
         if (

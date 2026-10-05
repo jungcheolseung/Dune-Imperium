@@ -44,8 +44,8 @@ from dune_imperium.agents.app_ai.abilities.base import (
 from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
     LEADER_ARCHETYPES,
-    SPACE_ARCHETYPES,
     archetype,
+    board_space_ids,
     card_entity,
     conflict_entity,
     contract_entity,
@@ -293,10 +293,10 @@ def space_solari_cost(p: Profile, space: Entity) -> int:
 def _space_ids_by_archetype(p: Profile) -> dict[str, str]:
     """Board-space archetype short -> our space id (this game's CHOAM setting)."""
 
-    choam = p.ctx.choam
+    board = p.ctx.board
     return {
-        (with_choam if choam else without): space_id
-        for space_id, (without, with_choam) in SPACE_ARCHETYPES.items()
+        space_archetype(space_id, board): space_id
+        for space_id in board_space_ids(board)
     }
 
 
@@ -319,7 +319,7 @@ def contract_spaces(p: Profile, contract: Entity) -> list[Entity]:
     referenced = set(contract.list_attr("ReferencedArchetypeIDs"))
     board = p.ctx.board
     spaces = []
-    for space_id in SPACE_ARCHETYPES:
+    for space_id in board_space_ids(board):
         if space_archetype(space_id, board) in referenced:
             spaces.append(space_entity(space_id, board))
     return spaces

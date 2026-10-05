@@ -83,6 +83,7 @@ from dune_imperium.agents.app_ai.abilities.board import (
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
 from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluate
 from dune_imperium.agents.app_ai.catalog import (
+    BLOODLINES_SPACE_ORDER,
     IMMORTALITY_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
@@ -219,7 +220,7 @@ def board_space_order(board: Board) -> tuple[str, ...]:
 
     UNTRACED (engine-order §9): the order of the runtime's type array; the
     spec's assumption, metadata (typedef) order, is ``_SPACE_ARCHETYPE_ORDER``.
-    Spaces with no app archetype (Tuek's Sietch, Bloodlines) are left out.
+    Tuek's Sietch (Bloodlines, no app set) comes last when Esmar Tuek plays.
     """
 
     # UNTRACED: the reflection order (engine-order §9) is taken to be the
@@ -237,11 +238,17 @@ def board_space_order(board: Board) -> tuple[str, ...]:
         for a in _SPACE_ARCHETYPE_ORDER
         if any(s in _set_attr(a, "SetList") for s in enabled[1:])
     )
-    return tuple(
+    app_spaces = tuple(
         _SPACE_OF_ARCHETYPE[a]
         for a in archetypes
         if not any(s in _set_attr(a, "RemovedFromSetList") for s in enabled)
     )
+    # App-style (plan §11.8): Tuek's Sietch, a space of no app set, is
+    # appended after the app's spaces when Esmar Tuek is in the game, as the
+    # app appends an enabled expansion's spaces.
+    if board.tueks_sietch:
+        return (*app_spaces, *BLOODLINES_SPACE_ORDER)
+    return app_spaces
 
 
 # ---------------------------------------------------------------------------

@@ -364,6 +364,25 @@ BLOODLINES_SPACE_ARCHETYPES: dict[str, str] = {
 #: comes after every app type (spec silent on the order; app-style choice).
 BLOODLINES_SPACE_ORDER: tuple[str, ...] = ("tuek_sietch",)
 
+
+def board_space_ids(board: Board) -> tuple[str, ...]:
+    """Every board space of this game, in catalog order (``BoardSpaces``).
+
+    The app's spaces, then Tuek's Sietch when Esmar Tuek is in the game
+    (``Board.tueks_sietch``, plan §11.8).
+    """
+
+    if board.tueks_sietch:
+        return (*SPACE_ARCHETYPES, *BLOODLINES_SPACE_ORDER)
+    return tuple(SPACE_ARCHETYPES)
+
+
+def is_board_space(space_id: str) -> bool:
+    """Whether ``space_id`` names a board space of any game (app or Bloodlines)."""
+
+    return space_id in SPACE_ARCHETYPES or space_id in BLOODLINES_SPACE_ARCHETYPES
+
+
 # -- board overlays (see the module docstring) ------------------------------------
 
 _AS_BLOODLINES = "worm.canis.abilities.AppStyle.Bloodlines."

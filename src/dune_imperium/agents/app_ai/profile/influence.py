@@ -38,8 +38,10 @@ from dune_imperium.agents.app_ai.catalog import (
     LEADER_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
+    board_space_ids,
     card_entity,
     intrigue_entity,
+    is_board_space,
     post_entity,
     space_entity,
 )
@@ -319,7 +321,7 @@ def _has_tech_tile(ctx: AppContext, tile: str) -> bool:
 def _board_spaces(board: Board) -> tuple[Entity, ...]:
     """``BoardSpaces(match)`` of the target game (our board order)."""
 
-    return tuple(space_entity(space_id, board) for space_id in SPACE_ARCHETYPES)
+    return tuple(space_entity(space_id, board) for space_id in board_space_ids(board))
 
 
 def _board_space(board: Board, archetype: str) -> Entity | None:
@@ -1417,7 +1419,7 @@ class InfluenceMixin(ProfileCore):
         if not ctx.shield_wall_present:
             return False
         space_id = _active_space_id(ctx)
-        if space_id is None or space_id not in SPACE_ARCHETYPES:
+        if space_id is None or not is_board_space(space_id):
             return False
         space = space_entity(space_id, ctx.board)
         if not any(a in _DESERT_DEFERRED_ABILITIES for a in space.ability_ids):
