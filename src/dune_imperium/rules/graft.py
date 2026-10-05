@@ -338,8 +338,15 @@ def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
         context["graft_pending_effect"],
         context["graft_pending_icons"],
     ) = active
-    # A self-trash flag belongs to the box it was set for.
-    context.pop("agent_card_self_trashed", None)
+    # A self-trash flag belongs to the box it was set for, so it moves with
+    # that box: a card that left play by its own printed icon still pays
+    # its other icons after the owner switches away and back (OQ-022).
+    active_flag = context.pop("agent_card_self_trashed", None)
+    graft_flag = context.pop("graft_card_self_trashed", None)
+    if graft_flag is True:
+        context["agent_card_self_trashed"] = True
+    if active_flag is True:
+        context["graft_card_self_trashed"] = True
     return RuleResult(
         state=replace(
             state,

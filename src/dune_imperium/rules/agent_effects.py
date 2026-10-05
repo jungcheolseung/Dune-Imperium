@@ -3305,6 +3305,10 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     if (
         context.get("graft_pending_effect") is True
         and graft_card_id
+        # The partner's box was switched away from after its card trashed
+        # itself by its own icon (``apply_graft_switch`` moves the flag);
+        # its remaining icons still pay out (OQ-022).
+        and context.get("graft_card_self_trashed") is not True
         and not _still_owned(owner, graft_card_id)
     ):
         # The grafted partner's un-activated box expires the same way

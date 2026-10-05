@@ -1672,3 +1672,86 @@ def test_ghola_borrowing_a_restricted_spy_box_keeps_its_post_limit() -> None:
     assert targets
     assert offered(grafted) == targets
     assert offered(_switch(grafted)) == targets
+
+
+TREAD = "imperium:tread_in_darkness:0"
+TRUTHTRANCE = "imperium:truthtrance:0"
+
+
+def _engine_step(
+    state: GameState, action_id: str, **arguments: object
+) -> tuple[GameState, tuple[str, ...]]:
+    engine = UprisingRulesEngine()
+    action = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == action_id
+        and all(
+            dict(action.arguments).get(key) == value for key, value in arguments.items()
+        )
+    )
+    result = engine.apply(state, action)
+    return result.state, tuple(event.kind for event in result.events)
+
+
+def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_a_graft_switch() -> (
+    None
+):
+    # A card that leaves play by its own printed icon still pays its other
+    # icons (OQ-022 "자기 효과" exception, docs/rules/open-questions.md):
+    # Tread in Darkness's trash icon trashes Tread itself, then the owner
+    # resolves Ghola's box first. Switching away used to drop the
+    # self-trash flag, so Tread's draw expired as if another effect had
+    # trashed it.
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((TREAD, ghola), in_play=(TRUTHTRANCE,))),
+        TREAD,
+        "arrakeen",
+        ghola,
+    )
+    trashed, _ = _engine_step(grafted, "trash_agent_card", card_id=TREAD)
+    assert TREAD in trashed.players[0].trashed
+
+    switched, kinds = _engine_step(trashed, "switch_graft_card")
+
+    assert "agent_card_effect_expired" not in kinds
+    _, context = current_agent_effect_context(switched)
+    assert context["card_id"] == ghola
+    assert context["graft_pending_effect"] is True
+    assert context["graft_pending_icons"] == "cards"
+    back, kinds = _engine_step(switched, "switch_graft_card")
+    assert "agent_card_effect_expired" not in kinds
+    drawn, _ = _engine_step(back, "resolve_agent_card_effect", effect="cards")
+    assert len(drawn.players[0].hand) == len(back.players[0].hand) + 1
+
+
+def test_ghola_copy_trashing_itself_keeps_its_draw_across_a_graft_switch() -> None:
+    # The same for Ghola's copy of Tread's box [Immortality p. 14]: "this
+    # card" is Ghola, so its trash icon may trash Ghola itself, and Ghola's
+    # draw still pays after the owner resolves Tread's box in between.
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((TREAD, ghola), in_play=(TRUTHTRANCE,))),
+        TREAD,
+        "arrakeen",
+        ghola,
+    )
+    on_ghola, _ = _engine_step(grafted, "switch_graft_card")
+    trashed, _ = _engine_step(on_ghola, "trash_agent_card", card_id=ghola)
+    assert ghola in trashed.players[0].trashed
+
+    on_tread, kinds = _engine_step(trashed, "switch_graft_card")
+
+    assert "agent_card_effect_expired" not in kinds
+    _, context = current_agent_effect_context(on_tread)
+    assert context["card_id"] == TREAD
+    assert context["graft_pending_icons"] == "cards"
+    declined, _ = _engine_step(on_tread, "decline_agent_card_trash")
+    tread_drew, kinds = _engine_step(
+        declined, "resolve_agent_card_effect", effect="cards"
+    )
+    assert "agent_card_effect_expired" not in kinds
+    back, _ = _engine_step(tread_drew, "switch_graft_card")
+    ghola_drew, _ = _engine_step(back, "resolve_agent_card_effect", effect="cards")
+    assert len(ghola_drew.players[0].hand) == len(back.players[0].hand) + 1
