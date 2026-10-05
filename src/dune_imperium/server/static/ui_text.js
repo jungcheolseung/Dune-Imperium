@@ -5,6 +5,17 @@
    hole the caller fills, {term} a rule term in the current language (see
    t() and tNode() in i18n.js). */
 const UI_TEXT = {
+  "board.conflict_history_button": { "ko": "교전 이력", "en": "History" },
+  "panels.conflict_history": { "ko": "교전 카드 이력", "en": "Conflict card history" },
+  "panels.conflict_history_open": {
+    "ko": "{{name}} · 클릭하여 교전 카드 이력 보기",
+    "en": "{{name}} · Click to view Conflict card history"
+  },
+  "panels.conflict_history_current": { "ko": "현재", "en": "Current" },
+  "panels.conflict_history_back": {
+    "ko": "← 교전 카드 이력",
+    "en": "← Conflict card history"
+  },
   "effects.agent": { "ko": "에이전트 카드 사용", "en": "Agent card played" },
   "effects.played": { "ko": "카드 사용", "en": "Card played" },
   "effects.graft": { "ko": "접목 카드 사용", "en": "Graft card played" },

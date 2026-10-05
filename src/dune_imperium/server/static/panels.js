@@ -439,6 +439,106 @@ function openPileList(title, ids, anchor) {
   placePopover(pop, anchor, 420);
 }
 
+/* Unlike won Battle cards, this timeline keeps a reveal in its original
+   round even after a tie, an award or a later transfer of the card. The
+   server projects only public reveals, up to the live/reviewed state. */
+function conflictHistoryAnchor() {
+  return document.querySelector("#board .slot-card.conflict") ||
+    document.querySelector("#market .vcard.conflict") ||
+    document.querySelector(".conflict-history-trigger") || el("board");
+}
+
+function openConflictHistory(anchor) {
+  const pop = el("card-popover");
+  clearTimeout(hoverTimer);
+  pop.classList.remove("hover");
+  pop.textContent = "";
+  const history = document.createElement("div");
+  history.className = "conflict-history";
+  history.setAttribute("role", "region");
+  history.setAttribute("aria-label", t("panels.conflict_history"));
+  const head = document.createElement("div");
+  head.className = "conflict-history-heading";
+  const title = document.createElement("div");
+  title.className = "popover-title";
+  title.textContent = t("panels.conflict_history");
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "conflict-history-close";
+  close.textContent = "×";
+  close.setAttribute("aria-label", t("common.close"));
+  close.addEventListener("click", () => {
+    closePopover();
+    if (anchor.isConnected) anchor.focus();
+  });
+  head.append(title, close);
+  history.appendChild(head);
+  const grid = document.createElement("div");
+  grid.className = "conflict-history-grid";
+  const view = state.view;
+  for (const revealed of [...(view.conflict_history || [])].reverse()) {
+    const item = document.createElement("div");
+    item.className = "conflict-history-item";
+    item.dataset.round = revealed.round;
+    const round = document.createElement("div");
+    round.className = "conflict-history-round";
+    round.textContent = t("review.round_label", { round: revealed.round });
+    if (revealed.round === view.round_number) {
+      item.classList.add("current");
+      const badge = document.createElement("span");
+      badge.className = "conflict-history-current";
+      badge.textContent = t("panels.conflict_history_current");
+      round.append(" · ", badge);
+    }
+    const card = visualCard(revealed.conflict_id, {
+      className: "conflict",
+      onClick: (entry, thumb) => {
+        if (!entry) return;
+        pinPopover(entry, thumb);
+        const back = document.createElement("button");
+        back.type = "button";
+        back.className = "conflict-history-back";
+        back.textContent = t("panels.conflict_history_back");
+        back.addEventListener("click", (event) => {
+          event.stopPropagation();
+          openConflictHistory(conflictHistoryAnchor());
+        });
+        pop.prepend(back);
+        placePopover(pop, thumb, 340);
+      },
+    });
+    const name = document.createElement("div");
+    name.className = "conflict-history-name";
+    name.textContent = nameOf(revealed.conflict_id);
+    item.append(round, card, name);
+    grid.appendChild(item);
+  }
+  if (!grid.childNodes.length) {
+    grid.textContent = t("board.conflict_not_revealed");
+  }
+  history.appendChild(grid);
+  pop.appendChild(history);
+  popoverPinned = true;
+  pinnedLeaderSeat = null;
+  placePopover(pop, anchor, 620);
+  for (const image of pop.querySelectorAll("img")) {
+    if (image.complete) continue;
+    image.addEventListener("load", () => {
+      if (history.isConnected && !pop.hidden) placePopover(pop, anchor, 620);
+    }, { once: true });
+  }
+}
+
+/* A foreign move keeps pinned popovers open. Update this timeline when
+   the next round is revealed, preserving the reader's scroll position. */
+function refreshConflictHistory() {
+  const pop = el("card-popover");
+  if (!popoverPinned || !pop.querySelector(".conflict-history")) return;
+  const scroll = pop.scrollTop;
+  openConflictHistory(conflictHistoryAnchor());
+  pop.scrollTop = scroll;
+}
+
 /* ---------- live action log (M11 slice 6) ---------- */
 
 /* Render one event's payload as compact "key: value" pairs. Values keyed by

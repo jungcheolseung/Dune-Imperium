@@ -508,16 +508,46 @@ function renderBoardStage(board, view) {
    his own leader popover instead (core.js leaderSardaukarRow), not here. */
 const CONTRACT_SLOT_SCALE = 1.2;
 
+function conflictHistoryOptions(id, className) {
+  return {
+    className,
+    title: t("panels.conflict_history_open", { name: nameOf(id) }),
+    onClick: (_entry, card) => openConflictHistory(card),
+  };
+}
+
+/* After cleanup awards the last card, keep the history reachable from
+   the empty Conflict slot as well (including at the end of a game). */
+function conflictHistoryTrigger() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "conflict-history-trigger";
+  button.textContent = t("board.conflict_history_button");
+  button.setAttribute("aria-label", t("panels.conflict_history"));
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openConflictHistory(button);
+  });
+  return button;
+}
+
 function renderSlotCards(stage, view) {
   const tracks = state.catalog.tracks;
   if (!tracks || !tracks.conflict_slot) return;
 
   const [cLeft, cTop, cWidth, cHeight] = tracks.conflict_slot;
   for (const id of view.current_conflict_ids) {
-    const card = visualCard(id, { className: "conflict slot-card" });
+    const card = visualCard(id, conflictHistoryOptions(id, "conflict slot-card"));
     card.style.width = `${cWidth}%`;
     placeAt(card, cLeft + cWidth / 2, cTop + cHeight / 2);
     stage.appendChild(card);
+  }
+  if (!view.current_conflict_ids.length && (view.conflict_history || []).length) {
+    const button = conflictHistoryTrigger();
+    button.classList.add("slot-card");
+    button.style.width = `${cWidth}%`;
+    placeAt(button, cLeft + cWidth / 2, cTop + cHeight / 2);
+    stage.appendChild(button);
   }
   if (view.conflict_deck_size > 0 && tracks.conflict_deck_slot) {
     const [dLeft, dTop, dWidth, dHeight] = tracks.conflict_deck_slot;
@@ -1492,7 +1522,8 @@ function visualCard(instanceId, options = {}) {
     card.appendChild(badge);
   }
   const name = entry ? entry.name : nameOf(instanceId);
-  card.title = blocked ? `${name} — ${unavailableText(blocked)}` : name;
+  card.title = blocked ? `${name} — ${unavailableText(blocked)}` : (options.title || name);
+  if (options.title) card.setAttribute("aria-label", card.title);
   card.addEventListener("click", (event) => {
     event.stopPropagation();
     if (options.onClick) options.onClick(entry, card);
@@ -1621,14 +1652,17 @@ function renderMarket() {
      below only cover the text-board fallback. */
   const onBoard = Boolean(state.catalog.board_image);
   if (!onBoard) {
-    cardStrip(
+    const conflicts = cardStrip(
       market,
       phraseText("{conflict}"),
       view.current_conflict_ids,
-      t("board.conflict_not_revealed"),
-      { className: "conflict" },
+      (view.conflict_history || []).length ? "" : t("board.conflict_not_revealed"),
+      (id) => conflictHistoryOptions(id, "conflict"),
       "Conflict",
     );
+    if (!view.current_conflict_ids.length && (view.conflict_history || []).length) {
+      conflicts.appendChild(conflictHistoryTrigger());
+    }
   }
   cardStrip(
     market,

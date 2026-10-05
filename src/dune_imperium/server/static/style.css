@@ -852,6 +852,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 .vcard.slot-card.legal { z-index: 2; }
+.conflict-history-trigger.slot-card { position: absolute; transform: translate(-50%, -50%); font-size: 0.72rem; padding: 0.3rem; }
 /* The face-down Conflict deck drawn as a card back with the count. */
 .slot-deck {
   position: absolute;
@@ -1618,6 +1619,16 @@ kbd {
 }
 .popover.hover { pointer-events: none; }
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
+.conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.conflict-history-close { padding: 0 0.4rem; font-size: 1.2rem; }
+.conflict-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.8rem; margin-top: 0.5rem; }
+.conflict-history-item { min-width: 0; text-align: center; }
+.conflict-history-round { font-weight: 700; margin-bottom: 0.3rem; }
+.conflict-history-current { color: var(--accent); }
+.conflict-history-item .vcard.conflict { width: 100%; max-width: 132px; }
+.conflict-history-item.current .vcard { border-color: var(--accent); }
+.conflict-history-name { margin-top: 0.3rem; overflow-wrap: anywhere; word-break: keep-all; }
+.conflict-history-back { margin-bottom: 0.5rem; }
 .popover .meta { font-size: 0.8rem; opacity: 0.85; margin-bottom: 0.3rem; }
 .popover-line { margin: 0.15rem 0; }
 /* A Leader's printed Korean text (render.js effectNode) carries literal

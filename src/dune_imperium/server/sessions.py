@@ -531,7 +531,7 @@ class GameSessionManager:
         return {
             "summary": summary,
             "you": you,
-            "view": _serialize_view(view, state if finished else None),
+            "view": _serialize_view(view, state, disclose=finished),
             "actions": actions,
             "log": {
                 "seat": seat,
@@ -619,7 +619,7 @@ class GameSessionManager:
             self._authorize_seat_locked(session, seat, credentials)
             state = session.state
             view = session.engine.observe(state, seat)
-        return _serialize_view(view, state if _is_finished(state) else None)
+        return _serialize_view(view, state, disclose=_is_finished(state))
 
     def legal_actions(
         self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
@@ -977,7 +977,7 @@ class GameSessionManager:
             "step": step,
             "round_number": state.round_number,
             "phase": str(state.phase),
-            "view": _serialize_view(engine.observe(state, seat), state),
+            "view": _serialize_view(engine.observe(state, seat), state, disclose=True),
         }
 
     def _get(self, game_id: str) -> GameSession:
@@ -1880,17 +1880,29 @@ def _review_step_label(step: ReplayStep) -> JsonObject:
     }
 
 
-def _serialize_view(view: PlayerView, disclosed: GameState | None) -> JsonObject:
-    """Serialize a view, adding every hidden zone of ``disclosed`` if given.
+def _serialize_view(
+    view: PlayerView, state: GameState, *, disclose: bool = False
+) -> JsonObject:
+    """Serialize a view with the public round-by-round Conflict history.
 
-    ``disclosed`` must only be passed for a game that has finished (OQ-010
-    ruling 4); it may be an earlier state of that finished game.
+    Only public Conflict reveals are projected from the state's event log;
+    reset's first reveal is there even when it predates the session log.
+    Undo/review states already contain only their own applied events.
+    ``disclose`` adds hidden zones only for a finished game (OQ-010 ruling
+    4); ``state`` may be an earlier state of that finished game.
     """
 
     serialized = _jsonify(asdict(view))
     assert isinstance(serialized, dict)
-    if disclosed is not None:
-        serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(disclosed)))
+    serialized["conflict_history"] = _jsonify(
+        [
+            {key: dict(event.payload)[key] for key in ("round", "conflict_id")}
+            for event in state.event_log
+            if event.kind == "conflict_revealed" and event.visible_to is None
+        ]
+    )
+    if disclose:
+        serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))
     return serialized
 
 

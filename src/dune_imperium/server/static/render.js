@@ -447,6 +447,7 @@ function render(options) {
   }
   fitActionLog();
   renderPlayEffects();
+  refreshConflictHistory();
 }
 
 /* A height-limited board can leave broad margins on a wide window. Spend

@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 라운드별 교전 카드 이력
+
+- 보드의 현재 교전 카드는 기존 마우스오버 상세 정보를 유지하고, 클릭·Enter로 **교전 카드 이력 / Conflict card history**를 연다. 최신 라운드부터 카드 이미지·이름·라운드 번호를 모아 보여주며 현재 라운드를 표시한다. 이력 속 카드를 누르면 큰 이미지와 상세 정보로 이동하고, 돌아가기 버튼으로 이력에 복귀한다. Escape·닫기·바깥 클릭으로 닫는다. 마지막 카드가 승자에게 넘어가 보드 자리가 비어도 그 위치의 **교전 이력 / History** 버튼으로 열 수 있으며, 보드·카드 이미지가 없으면 목록·텍스트 카드로 표시한다.
+- 서버 view에 `conflict_history`를 추가하되 코어 관측·codec·저장 형식은 그대로 유지한다. `GameState.event_log`에서 공개 `conflict_revealed`의 round·conflict_id만 가져오므로 일반 session log에 없는 reset의 첫 공개도 포함하고, 승자에게 넘어가거나 동점으로 보드에 남은 카드의 원래 라운드를 유지한다. live snapshot의 로그 증분과 관계없이 전체 공개 이력이 실리며, 저장·복원과 undo·review는 해당 상태의 이벤트만 사용해 이후 공개를 섞지 않는다. 다른 플레이어의 업데이트로 다음 라운드가 공개되면 열린 이력도 갱신한다.
+- 검증: 관련 pytest **96개 통과**(새 이력 5개·snapshot·session·i18n·HTTP snapshot·remote), 새 Chrome `conflict_history.py` **62개 검사**와 관련 E2E **6종**(`conflict_history`, `combat_result`, `columns`, `board_tokens`, `endgame`, `lang`) **17초, 실패 0**, Ruff(`src tests`·새 E2E)·mypy(**366파일**)·`git diff --check` 통과. 한국어·영어의 첫 라운드·과거 카드·상세/돌아가기·종료된 게임·390px 화면·이미지 없는 환경을 확인했다. 새 서버 view를 받으려면 실행 중인 서버를 재시작하고 브라우저를 새로고침해야 한다. 사용자 게임을 메모리에 보관한 서버는 자동 재시작하지 않는다.
+
 ## 2026-10-05 아라킨 스카웃 경매의 입찰 자원 표시
 
 - 솔라리 경매의 기존 설명은 순위별 보상만 보여 주고 숫자 선택·확정에도 통화가 없어, 입찰에 어떤 자원을 쓰는지 알기 어려웠다. `catalog.scouts_items`의 경매 11종에 콘텐츠의 `currency`를 연결했다. 현재 행동칸과 경매 설명에 **입찰 자원: [아이콘] 솔라리/스파이스**를 표시하고, 금액 옆에도 이름·아이콘을 붙였다. 자원 그림이 없는 환경에서도 이름은 남는다.
