@@ -25,10 +25,10 @@ Settled while porting (the spec marks them UNTRACED):
 - ``AIValueSummer<double>.CompareTo @0x2f771c0`` (Shishakli E's
   ``OrderBy(AcquireValue)``): ``Sum.CompareTo(other.Sum)``.
 
-Not in a 4-player Uprising game (the Imperium deck takes ``ImperiumType ==
-Main``; ``data/archetypes.py`` has no Promo archetype): Pivotal Gambit and The
-Beast's Spoils. Their classes are ported for completeness and never
-instantiated through ``catalog``.
+The app never deals Pivotal Gambit and The Beast's Spoils (its Imperium deck
+takes ``ImperiumType == Main``; they are ``Promo``). Our ``promo_cards``
+option deals them, and ``catalog`` maps them to those app archetypes, so
+these ports run in promo games (spec/epic-goto11-promo-draft.md §4).
 """
 
 from collections.abc import Mapping, Sequence
@@ -49,8 +49,9 @@ from dune_imperium.agents.app_ai.abilities.imperium_a import (
 )
 from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
-    SPACE_ARCHETYPES,
+    board_space_ids,
     card_entity,
+    is_board_space,
     space_entity,
 )
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
@@ -175,15 +176,16 @@ def _active_space(p: Profile) -> Entity | None:
     if context is None:
         return None
     space_id = context.get("space_id")
-    if not isinstance(space_id, str) or space_id not in SPACE_ARCHETYPES:
+    if not isinstance(space_id, str) or not is_board_space(space_id):
         return None
-    return space_entity(space_id, p.ctx.choam)
+    return space_entity(space_id, p.ctx.board)
 
 
 def _board_spaces(p: Profile) -> list[Entity]:
     """``BoardSpaces(match)``: every board space of this game (catalog order)."""
 
-    return [space_entity(space_id, p.ctx.choam) for space_id in SPACE_ARCHETYPES]
+    board = p.ctx.board
+    return [space_entity(space_id, board) for space_id in board_space_ids(board)]
 
 
 def _is_maker_space(space: Entity) -> bool:
@@ -432,11 +434,12 @@ class PriceIsNoObjectAbility(g.DeferredAbility):
 
         solari = p.ctx.me.resources.solari
         cards = [card_entity(i) for i in p.ctx.imperium_row]
-        cards += [
-            card_entity(f"reserve:{reserve_id}")
-            for reserve_id, count in p.ctx.reserve_stacks
-            if count > 0
-        ]
+        for reserve_id, count in p.ctx.reserve_stacks:
+            if count > 0:
+                card = card_entity(f"reserve:{reserve_id}")
+                if p.ctx.scouts:  # Market Opening's discount (plan §11.8)
+                    card = p.market_opening_reserve_card(card)
+                cards.append(card)
         return any(c.int_attr("PersuasionCost") <= solari for c in cards)
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
@@ -1551,17 +1554,17 @@ class ShadoutMapesAbility(g.DeferredAbility):
         a troop (even when the targets have no deploy option — app edge case
         kept, the engine's handling is UNTRACED). Else a deployed troop and
         ``GetTroopsToRetreat(1) > 0`` -> retreat at 100. Else
-        ``Upd(0.0, [])``.
+        ``Upd(0.0, [])``. Bloodlines Commanders are troops in both tests
+        (bloodlines-systems.md §1.1, D1, plan §11.8).
         """
 
-        me = p.ctx.me
         retreat_index = 0
-        if me.troops_garrison > 0:
+        if p.garrison_troop_count() > 0:
             units = p.units_to_deploy(1, -1)  # edx = 0xffffffff
             retreat_index = 1
             if units > 0:
                 return Answer(100.0, ((0,),), "Shadout Mapes (Reveal) | Deploy | 100")
-        if me.troops_conflict > 0 and p.troops_to_retreat(1) > 0:  # jle
+        if p.conflict_troop_count() > 0 and p.troops_to_retreat(1) > 0:  # jle
             return Answer(
                 100.0, ((retreat_index,),), "Shadout Mapes (Reveal) | Retreat | 100"
             )

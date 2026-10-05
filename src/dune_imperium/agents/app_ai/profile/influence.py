@@ -32,17 +32,20 @@ from functools import cache
 from typing import TYPE_CHECKING, Final, cast
 
 from dune_imperium.agents.app_ai.catalog import (
+    BLOODLINES_SPACE_ARCHETYPES,
     FACTION_NAMES,
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
+    board_space_ids,
     card_entity,
     intrigue_entity,
+    is_board_space,
     post_entity,
     space_entity,
 )
-from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
+from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, Board, card_id
 from dune_imperium.agents.app_ai.entities import Attr, Entity
 from dune_imperium.agents.app_ai.profile.core import ProfileCore
 from dune_imperium.agents.app_ai.summer import Summer
@@ -72,6 +75,7 @@ _MUAD_DIB: Final = "muad_dib"
 _STABAN: Final = "staban_tuek"
 _JESSICA: Final = "lady_jessica"
 _JESSICA_FLIPPED_FACE: Final = "reverend_mother_jessica"
+_YRKOON: Final = "steersman_y_rkoon"  # Bloodlines (app-style)
 # Base/Rise of Ix leader archetypes the app also tests (never dealt here).
 _GLOSSU_ARCH: Final = "LeaderArchetypes.BaseSet.GlossuTheBeastRabban"
 _TESSIA_ARCH: Final = "LeaderArchetypes.RiseOfIx.TessiaVernius"
@@ -164,7 +168,20 @@ _PLACE_SPY_CONTRACT: Final = _CONTRACT_NS + "PlaceSpyContractAbility"
 _RECALL_AGENT_CONTRACT: Final = _CONTRACT_NS + "RecallAgentContractAbility"
 _BG_CONTRACT: Final = _CONTRACT_NS + "BeneGesseritContractAbility"
 _TSMF_CONTRACT: Final = _CONTRACT_NS + "TSMFContractAbility"
-_CONTRACT_ABILITIES: Final = frozenset(
+# App-style Bloodlines contract tokens (docs/app-ai/bloodlines-cards.md §7);
+# only their synthetic archetypes list these classes. The terms live in
+# ``abilities/bloodlines_cards`` (``appstyle_contract_terms``,
+# ``earn_alliance_acquire_value``).
+_APPSTYLE_CONTRACT_ABILITIES: Final = frozenset(
+    {
+        "worm.canis.abilities.AppStyle.Bloodlines.Draw1ContractAbility",
+        "worm.canis.abilities.AppStyle.Bloodlines.EarnAllianceContractAbility",
+        "worm.canis.abilities.AppStyle.Bloodlines.Harvest3SpyContractAbility",
+        "worm.canis.abilities.AppStyle.Bloodlines.Harvest4SpyContractAbility",
+        "worm.canis.abilities.AppStyle.Bloodlines.ImmediateTrashIntrigueContractAbility",
+    }
+)
+_CONTRACT_ABILITIES: Final = _APPSTYLE_CONTRACT_ABILITIES | frozenset(
     {
         _CONTRACT_ABILITY,
         _CONTRACT_NS + "Harvest3ContractAbility",
@@ -301,16 +318,16 @@ def _has_tech_tile(ctx: AppContext, tile: str) -> bool:
 
 
 @cache
-def _board_spaces(choam: bool) -> tuple[Entity, ...]:
+def _board_spaces(board: Board) -> tuple[Entity, ...]:
     """``BoardSpaces(match)`` of the target game (our board order)."""
 
-    return tuple(space_entity(space_id, choam) for space_id in SPACE_ARCHETYPES)
+    return tuple(space_entity(space_id, board) for space_id in board_space_ids(board))
 
 
-def _board_space(choam: bool, archetype: str) -> Entity | None:
+def _board_space(board: Board, archetype: str) -> Entity | None:
     """``BoardSpaces.FirstOrDefault(s => s.ArchID == archetype)``."""
 
-    for space in _board_spaces(choam):
+    for space in _board_spaces(board):
         if space.short == archetype:
             return space
     return None
@@ -324,10 +341,10 @@ def _post_indices(space: Entity) -> tuple[int, ...]:
 
 
 @cache
-def _observed_spaces(index: int, choam: bool) -> tuple[Entity, ...]:
+def _observed_spaces(index: int, board: Board) -> tuple[Entity, ...]:
     """``WormObservationPost::get_ObservedSpaces @ 0x4837ca0``."""
 
-    return tuple(s for s in _board_spaces(choam) if index in _post_indices(s))
+    return tuple(s for s in _board_spaces(board) if index in _post_indices(s))
 
 
 def _has_observing_spy(player: PlayerState, space: Entity) -> bool:
@@ -411,7 +428,7 @@ def contract_spaces(p: ProfileCore, contract: Entity) -> list[Entity]:
     """
 
     referenced = contract.list_attr("ReferencedArchetypeIDs")
-    return [s for s in _board_spaces(p.ctx.choam) if s.short in referenced]
+    return [s for s in _board_spaces(p.ctx.board) if s.short in referenced]
 
 
 def contract_resource_value(p: ProfileCore, contract: Entity) -> Summer:
@@ -431,6 +448,10 @@ def contract_resource_value(p: ProfileCore, contract: Entity) -> Summer:
     # NegotiateTechValue * (TechNegotiator ?? 0): no Uprising contract has the
     # Rise of Ix negotiator attribute, so the term is 0.
     s.add("Contract Negotiatiors", 0.0)
+    if p.ctx.has_tech("choam_transports"):
+        # Bloodlines CHOAM Transports: a draw per completed contract
+        # (bloodlines-systems.md §9, D57; Draw2ContractAbility's draw term).
+        s.add("CHOAM Transports", p.card_draw_value_with_buy_gains())
     ability = contract_ability_class(contract)
     if ability == _DRAW2_CONTRACT:
         s.add("Draw 2", 2 * p.card_draw_value())  # literal 2
@@ -446,6 +467,12 @@ def contract_resource_value(p: ProfileCore, contract: Entity) -> Summer:
         s.add("SG Influence", p.gain_influence_value("spacing_guild", 1, -1, False).sum)
         # The printed 3 Solari is counted again (app quirk, board.md §3.4).
         s.add("Contract Solari", p.solari_value(3))
+    elif ability in _APPSTYLE_CONTRACT_ABILITIES:  # Bloodlines tokens only
+        from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+            appstyle_contract_terms,
+        )
+
+        s.merge(appstyle_contract_terms(ability, contract, cast("Profile", p)))
     return s
 
 
@@ -471,6 +498,14 @@ def contract_specific_acquire_value(p: ProfileCore, contract: Entity) -> Summer:
     kind = contract.attr("ContractType")
     if kind == "Immediate":
         s.add("Immediate RewardValue", contract_resource_value(p, contract).sum)
+        return s
+    if kind == "Alliance":  # Bloodlines Earn Any Alliance (bloodlines-cards.md §7)
+        from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+            earn_alliance_acquire_value,
+        )
+
+        resource = contract_resource_value(p, contract).sum
+        s.merge(earn_alliance_acquire_value(cast("Profile", p), resource))
         return s
     if kind not in ("Space", "Harvest", "Acquire"):
         return s
@@ -633,7 +668,14 @@ class InfluenceMixin(ProfileCore):
 
         # (C) track bonus when this change crosses into 4.
         if cur <= 3 and new_rank >= 4:
-            if faction == "emperor":
+            if cast("Profile", self).friends_everywhere_active():
+                # App-style Arrakeen Scouts (scouts.md §4.7, D29): Friends
+                # Everywhere lets the seat take any track's bonus.
+                s.add(
+                    "Friends Everywhere",
+                    cast("Profile", self).any_faction_four_bonus_value(),
+                )
+            elif faction == "emperor":
                 if _UPRISING_ENABLED:
                     s.add("Resource Bonus(Spy)", self.spy_value().sum)
                 else:
@@ -703,6 +745,13 @@ class InfluenceMixin(ProfileCore):
             and not self.is_climax()
         ):
             s.multiply("Muad'Dib Fremen Mod", c.MuadDibFremenMod)
+        elif leader == _YRKOON and cur <= 1:
+            # Bloodlines Plot Course (bloodlines-systems.md §9, D43; the
+            # Margot / Irulan shape: × amount, cur <= 1).
+            s.add(
+                "Steersman Y'rkoon Plot Course",
+                cast("Profile", self).plot_course_value(faction, amount),
+            )
         if (
             _has_intrigue(ctx, _DEPART_FOR_ARRAKIS)
             and faction == "spacing_guild"
@@ -804,7 +853,7 @@ class InfluenceMixin(ProfileCore):
                     s.multiply("Gain Alliance Late", c.GainInfluenceAllianceLateMod)
                 else:
                     s.multiply("Gain Alliance", c.GainInfluenceAllianceMod)
-            elif holder.victory_points >= self.ctx.endgame_trigger_score:
+            elif self.ctx.vp(holder) >= self.ctx.endgame_trigger_score:
                 s.multiply(
                     "Steal Alliance Endgame", c.GainInfluenceStealAllianceEndgameMod
                 )
@@ -959,7 +1008,7 @@ class InfluenceMixin(ProfileCore):
         me = ctx.me
         c = self.C
         s = Summer()
-        spaces = _observed_spaces(POST_INDEX[post.ref], ctx.choam)
+        spaces = _observed_spaces(POST_INDEX[post.ref], ctx.board)
         icons = _distinct(str(sp.attr("AgentIcon")) for sp in spaces)
         faction = _distinct(_space_faction(sp) for sp in spaces)[0]
         deck = self.deck_agent_icons()
@@ -1010,12 +1059,14 @@ class InfluenceMixin(ProfileCore):
             and any(_has_bonus_spice_attr(sp) for sp in spaces)
             and not any(
                 _has_observing_spy(me, sp)
-                for sp in _board_spaces(ctx.choam)
+                for sp in _board_spaces(ctx.board)
                 if _has_bonus_spice_attr(sp)
             )
             and not self.is_final_round()
         ):
             s.add("Staban Tuek Maker Post", c.StabanTuekPostMod)
+        if ctx.scouts:  # app-style Arrakeen Scouts: Valued Informants (§4.3)
+            s.merge(cast("Profile", self).valued_informants_post_value(post.ref))
         return s.sum
 
     def best_post(
@@ -1145,10 +1196,18 @@ class InfluenceMixin(ProfileCore):
         app_icon = _app_battle_icon(icon)
         if app_icon == "None":
             return s
+        # Bloodlines Ornithopter Fleet: every battle icon of the owner, wild
+        # ones and the evaluated one included, is an Ornithopter (engine
+        # fact, bloodlines-systems.md §9). Tech Module only.
+        fleet = self.ctx.has_tech("ornithopter_fleet")
+        if fleet:
+            app_icon = "Ornithopter"
         if app_icon == "Wildcard":
             s.multiply("Match Mod Wildcard", c.MatchModWildcard)
             return s
         own = _battle_icon_list(self.ctx.me)
+        if fleet:
+            own = ["Ornithopter" for _ in own]
         crysknife = _has_intrigue(self.ctx, _CRYSKNIFE)
         desert_mouse = _has_intrigue(self.ctx, _DESERT_MOUSE)
         ornithopter = _has_intrigue(self.ctx, _ORNITHOPTER)
@@ -1201,9 +1260,16 @@ class InfluenceMixin(ProfileCore):
     # -- 7. Agent recall --------------------------------------------------------------
 
     def recall_agent_value(self) -> float:
-        """``WormAIProfile::RecallAgentValue @ 0x491c600`` (§7.1)."""
+        """``WormAIProfile::RecallAgentValue @ 0x491c600`` (§7.1).
 
-        if not self.ctx.me.agent_locations:
+        Bloodlines (bloodlines-systems.md D56, plan §11.7): Duncan's Into the
+        Fray Agent in the Conflict counts as a deployed Agent.
+        """
+
+        if (
+            not self.ctx.me.agent_locations
+            and not cast("Profile", self).counts_conflict_agent()
+        ):
             return -3.0  # literal
         c = self.C
         return _arc(
@@ -1224,9 +1290,14 @@ class InfluenceMixin(ProfileCore):
         best = 0.0
         pick: Entity | None = None
         for agent in shuffled:
-            if agent.ref not in SPACE_ARCHETYPES:  # a.Parent is not a WormSpace
+            # a.Parent is not a WormSpace (Duncan's Conflict Agent, D55);
+            # Esmar's Tuek's Sietch is a space (bloodlines-systems.md §6).
+            if (
+                agent.ref not in SPACE_ARCHETYPES
+                and agent.ref not in BLOODLINES_SPACE_ARCHETYPES
+            ):
                 continue
-            space = space_entity(agent.ref, ctx.choam)
+            space = space_entity(agent.ref, ctx.board)
             combat = space.attr("CombatSpace", False) is True
             faction = _space_faction(space)
             if not combat and faction is None and space.short != _HALL_OF_ORATORY:
@@ -1284,8 +1355,8 @@ class InfluenceMixin(ProfileCore):
         )
         s.add("Water count", c.WallModWaterMod * me.resources.water)
         s.add("Spy count", float(len(me.spy_post_ids)))  # raw count
-        hagga = _board_space(ctx.choam, _HAGGA_BASIN)
-        deep = _board_space(ctx.choam, _DEEP_DESERT)
+        hagga = _board_space(ctx.board, _HAGGA_BASIN)
+        deep = _board_space(ctx.board, _DEEP_DESERT)
         if (
             me.agents_available >= 2
             and hagga is not None
@@ -1297,7 +1368,12 @@ class InfluenceMixin(ProfileCore):
         ):
             s.add("Can Play to Desert Space", c.WallModSpaceMod)
         s.add("Has Maker Hooks", c.WallModHooksMod)
-        if _has_intrigue(ctx, _DETONATION) and me.troops_garrison <= 3:
+        # GarrisonTroops: Commanders count (bloodlines-systems.md §1.1 D1; 0
+        # without Bloodlines).
+        if (
+            _has_intrigue(ctx, _DETONATION)
+            and me.troops_garrison + me.commanders_garrison <= 3
+        ):
             s.multiply("Detonation", c.DetonationBlowWallMod)
         s.multiply(
             "Opponent Hook Ratio",
@@ -1316,8 +1392,8 @@ class InfluenceMixin(ProfileCore):
         hook_opponents = [o for o in ctx.opponents if o.maker_hooks]
         if not hook_opponents:
             return True
-        hagga = _board_space(ctx.choam, _HAGGA_BASIN)
-        deep = _board_space(ctx.choam, _DEEP_DESERT)
+        hagga = _board_space(ctx.board, _HAGGA_BASIN)
+        deep = _board_space(ctx.board, _DEEP_DESERT)
         if all(
             hagga is not None
             and not self.can_play_to_desert_space_with_hooks(o.player_id, hagga.ref)
@@ -1348,9 +1424,9 @@ class InfluenceMixin(ProfileCore):
         if not ctx.shield_wall_present:
             return False
         space_id = _active_space_id(ctx)
-        if space_id is None or space_id not in SPACE_ARCHETYPES:
+        if space_id is None or not is_board_space(space_id):
             return False
-        space = space_entity(space_id, ctx.choam)
+        space = space_entity(space_id, ctx.board)
         if not any(a in _DESERT_DEFERRED_ABILITIES for a in space.ability_ids):
             return False
         # IsExhausted: the spice-or-sandworm choice already resolved this turn.

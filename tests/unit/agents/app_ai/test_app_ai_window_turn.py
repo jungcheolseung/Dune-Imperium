@@ -28,7 +28,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
     abilities_of,
 )
 from dune_imperium.agents.app_ai.catalog import card_entity, post_entity, space_entity
-from dune_imperium.agents.app_ai.context import AppContext
+from dune_imperium.agents.app_ai.context import AppContext, Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.data.constants import TABLES
 from dune_imperium.agents.app_ai.entities import Entity, Kind
@@ -182,10 +182,10 @@ TYPEDEF_ORDER = (
 
 
 def test_board_space_order_follows_the_archetype_typedef_order() -> None:
-    assert turn.board_space_order(False) == TYPEDEF_ORDER
+    assert turn.board_space_order(Board(False)) == TYPEDEF_ORDER
     # CHOAM: the board set loses the two replaced ``…UP`` spaces and the
     # CHOAMModule spaces are appended in typedef order (624 before 630).
-    choam = turn.board_space_order(True)
+    choam = turn.board_space_order(Board(True))
     assert choam == (
         *(s for s in TYPEDEF_ORDER if s not in ("accept_contract", "dutiful_service")),
         "accept_contract",
@@ -197,11 +197,31 @@ def test_board_space_order_follows_the_archetype_typedef_order() -> None:
 
 
 def test_space_archetype_order_covers_every_dealt_space_archetype() -> None:
-    dealt = {a for a in ARCHETYPES if a.startswith("SpaceArchetypes.")}
+    dealt = {
+        a
+        for a, arch in ARCHETYPES.items()
+        if a.startswith("SpaceArchetypes.")
+        and (arch.in_uprising or arch.in_uprising_choam)
+    }
+    dealt.add("SpaceArchetypes.Immortality.ResearchStationImmortality")
     listed = turn._SPACE_ARCHETYPE_ORDER
     assert len(set(listed)) == len(listed)
     assert set(listed) == dealt
     assert set(turn._SPACE_OF_ARCHETYPE) == dealt
+
+
+@pytest.mark.parametrize("choam", [False, True])
+def test_immortality_moves_research_station_after_the_board_set(choam: bool) -> None:
+    """``ResearchStationImmortality`` (typeIndex 649, set ``Immortality``) is
+    appended with the other expansion spaces, after the CHOAM ones (624, 630);
+    ``ResearchStationUP`` is removed (spec immortality.md §1.1)."""
+
+    without = turn.board_space_order(Board(choam))
+    order = turn.board_space_order(Board(choam, immortality=True))
+    assert order == (
+        *(s for s in without if s != "research_station"),
+        "research_station",
+    )
 
 
 @pytest.mark.parametrize("choam", [False, True])
@@ -225,7 +245,7 @@ def test_card_spaces_follow_board_order(
     run = _run(state)
     turn.turn_window(run)
     offered = dict(calls)
-    order = turn.board_space_order(choam)
+    order = turn.board_space_order(Board(choam))
     for card in (diplomacy, dune):
         legal = {
             str_arg(a, "space_id")
@@ -276,7 +296,9 @@ def test_real_values_pick_the_best_card_and_space() -> None:
             if str_arg(a, "card_id") == card
         }
         spaces = tuple(
-            space_entity(s, True) for s in turn.board_space_order(True) if s in legal
+            space_entity(s, Board(True))
+            for s in turn.board_space_order(Board(True))
+            if s in legal
         )
         ability = next(
             a
@@ -492,7 +514,7 @@ def test_gather_support_cost_option(
     _stub_agent_values(monkeypatch, _only(dagger, "gather_support"))
     run = _run(state)
     assert len([a for a in run.by_id("agent_turn") if arg(a, "card_id") == dagger]) == 3
-    space = space_entity("gather_support", True)
+    space = space_entity("gather_support", Board(True))
     ability = next(
         a for a in abilities_of(space) if isinstance(a, b.GatherSupportAbility)
     )
@@ -740,7 +762,7 @@ def test_after_cost_first_applies_the_space_effect(
 ) -> None:
     state, seat = _turn_state()
     state = with_player(state, seat, resources=Resources(solari=5, spice=2, water=1))
-    ability = turn._cost_first_ability(space_id, True)
+    ability = turn._cost_first_ability(space_id, Board(True))
     assert ability is not None
     after = turn._after_cost_first(state, seat, ability, option)
     me, before = after.players[seat], state.players[seat]
@@ -758,7 +780,7 @@ def test_gather_support_troops_are_capped_by_the_supply() -> None:
         troops_supply=1,
         troops_garrison=me.troops_garrison + me.troops_supply - 1,
     )
-    ability = turn._cost_first_ability("gather_support", False)
+    ability = turn._cost_first_ability("gather_support", Board(False))
     assert ability is not None
     after = turn._after_cost_first(state, seat, ability, 0).players[seat]
     assert (after.troops_supply, after.troops_garrison) == (
@@ -770,8 +792,8 @@ def test_gather_support_troops_are_capped_by_the_supply() -> None:
 def test_only_spice_refinery_and_gather_support_are_cost_first() -> None:
     cost_first = {
         s
-        for s in turn.board_space_order(True)
-        if turn._cost_first_ability(s, True) is not None
+        for s in turn.board_space_order(Board(True))
+        if turn._cost_first_ability(s, Board(True)) is not None
     }
     assert cost_first == {"gather_support", "spice_refinery"}
 

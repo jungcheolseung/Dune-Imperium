@@ -19,7 +19,7 @@ import pytest
 from dune_imperium.agents.app_ai import testing as _conftest
 from dune_imperium.agents.app_ai.abilities.base import PORTS, Ability
 from dune_imperium.agents.app_ai.catalog import card_entity, space_entity
-from dune_imperium.agents.app_ai.context import card_id
+from dune_imperium.agents.app_ai.context import Board, card_id
 from dune_imperium.agents.app_ai.data.archetypes import Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile, economy
@@ -1423,7 +1423,7 @@ def test_can_agent_ability_be_played_with_space(
 ) -> None:
     solari, spice, water = changes["resources"]
     profile = prof(early(resources=resources(solari, spice, water)), monkeypatch)
-    entity = space_entity(space, True)
+    entity = space_entity(space, Board(True))
     assert (
         profile.can_agent_ability_be_played_with_space(entity, attr, amount) is expected
     )
@@ -1441,7 +1441,7 @@ def test_can_agent_ability_counts_maker_bonus_spice(
         ),
     )
     profile = prof(state, monkeypatch)
-    basin = space_entity("imperial_basin", True)
+    basin = space_entity("imperial_basin", Board(True))
     assert profile.can_agent_ability_be_played_with_space(basin, Attr.SPICE, 3)
     assert not profile.can_agent_ability_be_played_with_space(basin, Attr.SPICE, 4)
     assert profile.can_agent_ability_be_played_with_space(None, Attr.SPICE, 0)

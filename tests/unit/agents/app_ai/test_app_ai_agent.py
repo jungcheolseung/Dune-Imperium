@@ -9,9 +9,11 @@ from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.registry import make_agent
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
-from dune_imperium.core.state import GamePhase
+from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
@@ -77,3 +79,78 @@ def test_choices_ignore_hidden_zones() -> None:
         action = agents[seat].choose_action_with_state(state, view, actions)
         state = engine.apply(state, action, legal_actions=actions).state
     assert checked > 50
+
+
+def _first_choice(
+    config: RulesetConfig,
+) -> tuple[GameState, PlayerView, tuple[DomainAction, ...]]:
+    """The first player decision with more than one legal action."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, 3)
+    chance = ChanceResolver(seed=3)
+    while True:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        if len(actions) > 1:
+            return state, engine.observe(state, decision.owner), actions
+        state = engine.apply(state, actions[0], legal_actions=actions).state
+
+
+def test_an_unmirrored_decision_is_answered_at_random_not_by_a_heuristic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User decision 2026-10-05: no heuristic decision is ever mixed in.
+
+    A decision no window mirrors gets the app's ``DefaultRandomChoice`` (a
+    uniformly random legal action from the agent's seeded RNG) and counts as
+    a fallback.
+    """
+
+    from dune_imperium.agents.app_ai import agent as agent_module
+
+    state, view, actions = _first_choice(RulesetConfig())
+    monkeypatch.setattr(agent_module, "handler_for", lambda kind: None)
+    picks = set()
+    for seed in range(40):
+        app = AppAIAgent(seed=seed)
+        pick = app.choose_action_with_state(state, view, actions)
+        assert pick in actions
+        assert sum(app.fallbacks.values()) == 1
+        assert sum(app.mirrored.values()) == 0
+        picks.add(pick)
+    assert len(picks) > 1
+    assert not hasattr(AppAIAgent(seed=0), "_fallback")
+
+
+@pytest.mark.parametrize(
+    ("go_to_11", "epic", "offset", "trigger"),
+    [
+        (False, False, 0, 10),
+        (True, False, 1, 11),
+        (False, True, 0, 12),
+        (True, True, 1, 13),
+    ],
+)
+def test_go_to_11_reads_vp_on_the_apps_scale(
+    go_to_11: bool, epic: bool, offset: int, trigger: int
+) -> None:
+    """The app's Go to 11 runs from 1 to 11, ours from 0 to 10 (OQ-091):
+    app_ai reads every VP as ours + 1. Epic + Go to 11 (ours 0 to 12) has
+    no app counterpart; the same offset gives 13 (plan §11.2)."""
+
+    from dune_imperium.agents.app_ai.context import AppContext
+
+    config = RulesetConfig(immortality=go_to_11, go_to_11=go_to_11, epic_game=epic)
+    state, view, _ = _first_choice(config)
+    ctx = AppContext(state, view.player, view)
+    assert ctx.vp_offset == offset
+    assert ctx.endgame_trigger_score == trigger
+    player = ctx.state.players[0]
+    assert ctx.vp(player) == player.victory_points + offset
+    # Both games start one app VP in: 1 in the app's 4-player setup.
+    assert ctx.vp(player) == 1

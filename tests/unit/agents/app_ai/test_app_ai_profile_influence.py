@@ -21,6 +21,7 @@ from dune_imperium.agents.app_ai.catalog import (
     space_entity,
     spy_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import Archetype
 from dune_imperium.agents.app_ai.data.constants import HARD
 from dune_imperium.agents.app_ai.entities import Attr, Entity
@@ -1048,7 +1049,7 @@ def test_space_value_for_player_merges_every_ability(
         PORTS, prefix + "ActivatedAbilities.AgentGainIntrigueAbility", raising=False
     )
     p = mk(BASE)
-    total = p.space_value_for_player(space_entity("secrets", True))
+    total = p.space_value_for_player(space_entity("secrets", Board(True)))
     assert total.sum == pytest.approx(3.5)  # the unported intrigue ability adds 0
     assert seen == [("secrets", ()), ("secrets", ())]
 
@@ -1148,8 +1149,8 @@ def test_intrigue_blow_wall_gates_and_the_final_comparison(
 ) -> None:
     real = space_entity
 
-    def with_worm(space_id: str, choam: bool) -> Entity:
-        entity = real(space_id, choam)
+    def with_worm(space_id: str, board: Board) -> Entity:
+        entity = real(space_id, board)
         assert entity.archetype is not None
         attrs = {**entity.archetype.attributes, "SandWorms": 1, "Spice": 2}
         archetype = Archetype(

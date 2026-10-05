@@ -44,6 +44,7 @@ class Timing(IntEnum):
     AGENT = 1
     REVEAL = 2
     COMBAT_RESOLUTION = 3
+    ENDGAME = 4  # ``ChaumurkyAbility..ctor`` (rix-tech.md §8.2); Endgame halves
     COMBAT = 5
 
 

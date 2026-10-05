@@ -44,16 +44,17 @@ from dune_imperium.agents.app_ai.abilities.base import (
 from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
     LEADER_ARCHETYPES,
-    SPACE_ARCHETYPES,
+    archetype,
+    board_space_ids,
     card_entity,
     conflict_entity,
     contract_entity,
     intrigue_entity,
     leader_entity,
+    space_archetype,
     space_entity,
 )
 from dune_imperium.agents.app_ai.context import FACTIONS
-from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
@@ -282,16 +283,20 @@ def space_solari_cost(p: Profile, space: Entity) -> int:
     if space.ref == "swordmaster" and cost == 8:
         if any(pl.swordmaster_acquired for pl in p.ctx.players):
             cost += -2
+    if space.ref == "swordmaster" and p.ctx.me.leader_id == "duncan_idaho":
+        # Bloodlines Ginaz Swordmaster: "costs you 2 less", floor 0
+        # (bloodlines-systems.md §1.7, D35; rules/agent_turn.py).
+        cost = max(cost - 2, 0)
     return cost
 
 
 def _space_ids_by_archetype(p: Profile) -> dict[str, str]:
     """Board-space archetype short -> our space id (this game's CHOAM setting)."""
 
-    choam = p.ctx.choam
+    board = p.ctx.board
     return {
-        (with_choam if choam else without): space_id
-        for space_id, (without, with_choam) in SPACE_ARCHETYPES.items()
+        space_archetype(space_id, board): space_id
+        for space_id in board_space_ids(board)
     }
 
 
@@ -301,7 +306,7 @@ def find_space(p: Profile, arch_id: str) -> Entity | None:
     space_id = _space_ids_by_archetype(p).get(arch_id)
     if space_id is None:
         return None
-    return space_entity(space_id, p.ctx.choam)
+    return space_entity(space_id, p.ctx.board)
 
 
 def contract_spaces(p: Profile, contract: Entity) -> list[Entity]:
@@ -312,11 +317,11 @@ def contract_spaces(p: Profile, contract: Entity) -> list[Entity]:
     """
 
     referenced = set(contract.list_attr("ReferencedArchetypeIDs"))
-    choam = p.ctx.choam
+    board = p.ctx.board
     spaces = []
-    for space_id, (without, with_choam) in SPACE_ARCHETYPES.items():
-        if (with_choam if choam else without) in referenced:
-            spaces.append(space_entity(space_id, choam))
+    for space_id in board_space_ids(board):
+        if space_archetype(space_id, board) in referenced:
+            spaces.append(space_entity(space_id, board))
     return spaces
 
 
@@ -356,8 +361,13 @@ def _this_turn_agent(p: Profile) -> tuple[list[Entity], list[Entity]]:
     and ``BoardSpaces.Where(PlayerAgent(P) is unexhausted)``: [I]
     (engine-order §4.1) the card and space of the current Agent turn. Ours:
     the ``card_id``/``space_id`` of the seat's own open ``agent_effects``
-    frame; none outside an Agent turn. The RoI/Immortality grafted card does
-    not exist in Uprising.
+    frame; none outside an Agent turn.
+
+    ``WormPlayer::DeferredThresholdReached @0x483e470`` adds the grafted
+    card (``GetGraftedCard @0x48360e0``) when exactly one card is listed
+    (Immortality, spec immortality.md §4.1): ours is the frame's graft
+    partner (``AppContext.graft_cards``; a Usurp partner may be a Row card).
+    Without a graft there is none, so this only acts with Immortality.
     """
 
     context = p.ctx.own_frame_context("agent_effects")
@@ -368,9 +378,14 @@ def _this_turn_agent(p: Profile) -> tuple[list[Entity], list[Entity]]:
     card_ref = context.get("card_id")
     if isinstance(card_ref, str) and card_ref:
         cards.append(card_entity(card_ref, p.ctx.seat))
+    pair = p.ctx.graft_cards()
+    if pair is not None and len(cards) == 1:
+        partner = pair[1] if pair[0] == cards[0].ref else pair[0]
+        if partner != cards[0].ref:
+            cards.append(card_entity(partner, p.ctx.seat))
     space_ref = context.get("space_id")
     if isinstance(space_ref, str) and space_ref:
-        spaces.append(space_entity(space_ref, p.ctx.choam))
+        spaces.append(space_entity(space_ref, p.ctx.board))
     return cards, spaces
 
 
@@ -656,21 +671,59 @@ class AcquireAbility(ActivatedAbility):
     def evaluate(self, p: Profile, request: Request) -> Answer:
         """``AcquireAbility::Evaluate`` @0x4cd3c50 (spec §4.1).
 
-        The Tleilaxu branch (Immortality) never applies. The destination
-        picker (``ChooseOne``: option 0 top of deck, 1 hand/discard) is
-        expected never to appear in Uprising (spec §4.2, UNTRACED); a request
-        whose first target info carries custom ``options`` is treated as that
-        picker (judgement).
+        The Tleilaxu lines (immortality.md §3.5 and its Errata; ``cmp eax, 8;
+        jne``: only for a Tleilaxu card, ``EntityType == Tleilaxu``): in the
+        final round the value is *replaced* by ``GetAcquireEffectsValue``
+        (a fresh summer merged with it); otherwise the acquire ability's own
+        ``SpecimenCost`` attribute is added (``SpecimenCost(this)`` reads the
+        ability, which never carries one: 0) and, while some Tleilaxu Row
+        card costs more specimens than P holds (``setg``) and is worth more
+        than this value + ``AcquireTleilaxuReserveThreshold`` (``seta``), the
+        ``AcquireTleilaxuReservePenalty`` "Save Up Specimens".
+
+        The destination picker (``ChooseOne`` or
+        ``ChooseAcquireTleilaxuLocation``: option 0 top of deck, 1
+        hand/discard) is expected never to appear in Uprising (spec §4.2,
+        UNTRACED); a request whose first target info carries custom
+        ``options`` is treated as that picker (judgement).
         """
 
         card = self.owner
-        value = p.acquire_value(card).sum
+        acquire = p.acquire_value(card)
+        if card.attr("EntityType") == "Tleilaxu":
+            acquire = self._tleilaxu_acquire_value(p, acquire)
+        value = acquire.sum
         if request.infos and request.infos[0].options:
             if _in_combat_phase(p):
                 value = 1.0 if value <= 0 else value  # ``cmplesd``
             option = 1 if _is_tsmf(card) else 0
             return Answer(value, ((option,),), f"Acquire {card.ref}")
         return Answer(value, (), f"Acquire {card.ref}")
+
+    def _tleilaxu_acquire_value(self, p: Profile, acquire: Summer) -> Summer:
+        """The Tleilaxu block of ``AcquireAbility::Evaluate`` @0x4cd3ed4.
+
+        ``b__0 @0x4cd4500`` = ``SpecimenCost(row card) > GetSpecimens().
+        Count`` and ``b__1 @0x4cd4570`` = ``row.AcquireValue(P).Sum >
+        acquireValue.Sum + AcquireTleilaxuReserveThreshold``, both against the
+        value after "Specimen Cost". ``Playmat.TleilaxuRow`` holds Reclaimed
+        Forces and the dealt cards (this card included).
+        """
+
+        if p.is_final_round():
+            replaced = Summer()
+            replaced.merge(p.acquire_effects_value(self.owner))
+            return replaced
+        acquire.add("Specimen Cost", 0.0)  # the ability's own SpecimenCost: 0
+        specimens = p.ctx.specimens()
+        threshold = acquire.sum + p.C.AcquireTleilaxuReserveThreshold
+        if any(
+            row.int_attr("SpecimenCost") > specimens
+            and p.acquire_value(row).sum > threshold
+            for row in p.tleilaxu_row_cards()
+        ):
+            acquire.add("Save Up Specimens", p.C.AcquireTleilaxuReservePenalty)
+        return acquire
 
 
 @port("worm.canis.abilities.ActivatedAbilities.DeferredAbility")
@@ -1079,8 +1132,10 @@ class GainIntrigueCustomAbility(GainIntrigueAbility):
         Judgement (unreachable today): no Uprising or CHOAM archetype lists
         this class (``Irulan`` and ``Muad'Dib`` derive from
         ``GainIntrigueAbility`` directly), so no frame of ours grants it; never
-        held, like ``SpacingGuildDiscardDrawAbility.has_run_token``. A port
-        that models the grant overrides this.
+        held, like ``SpacingGuildDiscardDrawAbility.has_run_token``. With
+        Immortality the playmat holds it (spec immortality.md §1.4), but no
+        research space or card of this game grants its id (§3.4, UNTRACED
+        #14). A port that models the grant overrides this.
         """
 
         return False
@@ -1476,6 +1531,12 @@ class ContractAbility(DeferredAbility):
         v.add("Contract Water", p.water_value(o.int_attr("Water")))
         v.add("Contract Solari", p.solari_value(o.int_attr("Solari")))
         v.add("Contract Troops", p.troop_value(o.int_attr("Troops"), False))
+        if p.ctx.scouts:  # app-style Arrakeen Scouts: CHOAM Escort (§4.4)
+            v.merge(p.choam_escort_contract_value(o.ref))
+        if p.ctx.has_tech("choam_transports"):
+            # Bloodlines CHOAM Transports: a draw per completed contract
+            # (bloodlines-systems.md §9, D57; Draw2ContractAbility's draw).
+            v.add("CHOAM Transports", p.card_draw_value_with_buy_gains())
         return v
 
     def value_for_player(
@@ -1805,7 +1866,9 @@ class SpaceAbility(Ability):
         troops = space.int_attr("Troops")
         if troops > 0:
             v.add("Space Troops", p.troop_value(troops, False))
-        spice_cost = space.int_attr("SpiceCost")
+        # ``SpiceDiscount``: Navigation Chamber's −1 (NEW, absent = 0;
+        # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount below.
+        spice_cost = space.int_attr("SpiceCost") + space.int_attr("SpiceDiscount")
         if spice_cost > 0:
             v.add("Space Spice Cost", p.spice_value(-spice_cost))
         water_cost = space.int_attr("WaterCost")
@@ -1819,6 +1882,16 @@ class SpaceAbility(Ability):
         if (cost > 0 and leader == _ILBAN) or ariana:  # ``or al, r15b``
             v.add("Leader Ability Card Draw", p.card_draw_value())
             v.add("Buy Gains Bonus", p.buy_gains(p.possible_persuasion_gain()))
+        if p.ctx.me.leader_id == "steersman_y_rkoon":
+            # Bloodlines Hungry for Spice (bloodlines-systems.md §9, D42; the
+            # Count Ilban precedent above).
+            hungry = p.hungry_for_spice_value(
+                space.int_attr("Spice")
+                + _space_bonus_spice(p, space)
+                + space.int_attr("PossibleSpice")
+            )
+            if hungry > 0:
+                v.add("Hungry for Spice", hungry)
         # Baron (needs BaronHarkonnenSecretFactions) and Archduke Armand Ecaz
         # (Rise of Ix) are never dealt in Uprising: no term.
         # --- Uprising block (IsSetEnabled(4) is true) ---
@@ -1829,9 +1902,12 @@ class SpaceAbility(Ability):
                 v.add("Want Contract Count", float(p.want_contract_count()))
         r = 0
         occupied = any(seat != p.ctx.seat for seat in p.ctx.space_occupants(space.ref))
-        # ``WormSpace::CanInfiltrateWithoutSpy @0x49c1080`` tests Helena Richese
-        # (base leader), RoI ``InfiltrationIconList`` cards and the Tleilaxu
-        # Infiltrator (Immortality): never true in Uprising.
+        # ``WormSpace::CanInfiltrateWithoutSpy(P, null, null, true) @0x49c1080``
+        # tests the player's ``Infiltrate`` attribute (no Uprising or
+        # Immortality effect sets it), Helena Richese (base leader) and the
+        # RoI ``InfiltrationIconList`` of the hand; its Tleilaxu Infiltrator
+        # test needs both card arguments, which this call passes as null:
+        # never true here, with or without Immortality.
         if occupied:
             if _deployed_spies(p) < 3:
                 v.add(
@@ -1850,6 +1926,13 @@ class SpaceAbility(Ability):
                 or _deployed_spies(p) >= 3
             ):
                 v.add("Spy Gather Intelligence", c.SpaceSpyUseIntelligenceMod)
+            elif p.ctx.me.leader_id == "gaius_helen_mohiam":
+                # Bloodlines Clandestine: Mohiam must Gather Intelligence even
+                # when the recall is unwanted (plan §11.7; the comparison the
+                # app uses to want it, added when negative).
+                forced = p.clandestine_recall_value()
+                if forced < 0.0:
+                    v.add("Clandestine Gather Intelligence", forced)
         if (
             leader == _LADY_JESSICA
             and _leader_flipped(p)
@@ -1941,7 +2024,7 @@ def conflict_reward(conflict: Entity, place: int) -> Entity:
     archetype ``ConflictRewardArchetypes[place - 1]`` of the card."""
 
     short = conflict.list_attr("ConflictRewardArchetypes")[place - 1]
-    return Entity(Kind.CONFLICT, conflict.ref, ARCHETYPES[short], conflict.owner)
+    return Entity(Kind.CONFLICT, conflict.ref, archetype(short), conflict.owner)
 
 
 def _custom_reward_ability(ability_id_: str, conflict: Entity) -> Ability:

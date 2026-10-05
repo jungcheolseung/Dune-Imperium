@@ -18,6 +18,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai import agent as agent_module
 from dune_imperium.agents.app_ai.agent import AppAIAgent
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.summer import Summer
 from dune_imperium.agents.app_ai.testing import (
@@ -1803,7 +1804,7 @@ def test_gain_influence_will_clear_undo(
         leader_face_id=leader,
         influence=Influence(emperor=emperor, bene_gesserit=bene_gesserit),
     )
-    found = ae._first_of(space_entity(space, True), GainInfluenceAbility)
+    found = ae._first_of(space_entity(space, Board(True)), GainInfluenceAbility)
     assert found is not None and isinstance(found[0], GainInfluenceAbility)
     profile = make_profile(state, seat)
     assert ae._gain_influence_clears_undo(found[0], profile, extra) is clears

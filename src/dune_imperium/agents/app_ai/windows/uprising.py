@@ -54,6 +54,7 @@ from dune_imperium.agents.app_ai.catalog import (
     card_entity,
     contract_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows.common import (
@@ -267,7 +268,7 @@ def contract_market(run: DecisionRun) -> DomainAction | None:
     )
 
 
-def _in_board_order(spaces: Sequence[str], choam: bool) -> list[str]:
+def _in_board_order(spaces: Sequence[str], board: Board) -> list[str]:
     """``spaces`` in ``Board.Descendents`` order.
 
     ``Entity::buildDescendents @0x9a3ab0`` is a depth-first preorder
@@ -279,7 +280,7 @@ def _in_board_order(spaces: Sequence[str], choam: bool) -> list[str]:
     sort); our engine has at most one Agent of a seat per offered space.
     """
 
-    order = {space_id: i for i, space_id in enumerate(board_space_order(choam))}
+    order = {space_id: i for i, space_id in enumerate(board_space_order(board))}
     return sorted(spaces, key=lambda s: order.get(s, len(order)))
 
 
@@ -304,7 +305,7 @@ def contract_reward_recall(run: DecisionRun) -> DomainAction | None:
     recalls = run.by_id("recall_agent_for_contract")
     seat = run.ctx.seat
     offered = [str_arg(a, "space_id") for a in recalls]
-    spaces = _in_board_order([s for s in offered if s is not None], run.ctx.choam)
+    spaces = _in_board_order([s for s in offered if s is not None], run.ctx.board)
     agents = [agent_entity(s, seat) for s in spaces]
     ability = RecallAgentContractAbility(contract_entity(_SARDAUKAR_II, seat))
     profile: Profile = run.profile
