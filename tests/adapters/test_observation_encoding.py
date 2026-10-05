@@ -480,9 +480,20 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # v135 queues Tech acquire icons as freely ordered actions (OQ-098).
 # Only the two Tech-enabled traces move; the observation layout stays v30.
 # v136 adds scouts_rewards_first (OQ-100); none of the six pins moves.
+# v137 (the Steam app card comparison, 2026-10-06) moves two pins, each
+# because a "zero" count joins a legal list the random seats draw from:
+# draft (2,808 -> 2,732 vectors) from Tactical Option's "Retreat any number
+# of your troops" now allowing 0 [FAQ p. 3] (commit 8a982319), and choam
+# (2,856 -> 2,708) from "Deploy up to two troops" now allowing 0 [FAQ p. 2]
+# (05b285fd). A per-commit run of the batch (scratch, 2026-10-06) gave these
+# exact values at those two commits. On the other branch of the batch the
+# draft trace had moved too (Tread in Darkness's trash and draw as separate
+# icons, 96163929, then Treacherous Maneuver's single gain of 2, 57e6c791),
+# but after the merge it leaves the old path earlier, at the zero retreat, and
+# no later commit of the batch moves any of the six.
 _GOLDEN_DIGESTS = {
     "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
-    "choam": ("bbd5f9f833b088970292152899279058ef6f6522fa181e93a926bc8b112c39d6", 2856),
+    "choam": ("2777d9168a91b30a646404b0b7cd0276476c83fc379d7de596632d5cbbe56efe", 2708),
     "promo_bloodlines_tech": (
         "e97cb2adf5315ca8b5103b820fa8a76192ec1150810b99d6c6110639ea51af79",
         2908,
@@ -491,7 +502,7 @@ _GOLDEN_DIGESTS = {
         "54d4ae98a20e8653a6bd899435be3bb9a0a81899c4c4413f56c21924db7b5097",
         3360,
     ),
-    "draft": ("7b474f809443ba8f2a9519085e44d7cf28a751f7c7f018bdb733f297f90033c4", 2808),
+    "draft": ("33bdd8eee62a5cc91d3e3fea78b659c4b44f350d21069768ff6bb0c3fe35e5e1", 2732),
     "scouts": (
         "3626ddc81a3ab4b957faa18ecfae231f659a02fceeec68b0adec5a51e517f4de",
         3424,
