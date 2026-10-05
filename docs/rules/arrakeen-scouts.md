@@ -153,7 +153,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `smoke_and_mirrors` | Smoke and Mirrors (진실의 왜곡) | 책략 보너스 | 5 | 4~7 | 각자 선택: Spy 1 배치, 또는 Solari 1 → Intrigue 1장 |
 | `rotating_doors` | Rotating Doors (회전문) | 책략 보너스 | 5 | 4~7 | 각자 선택: Intrigue 1장 trash → Intrigue 1장 + 카드 1장 draw, 또는 패스 |
 | `moment_of_revelation` | Moment of Revelation (폭로의 순간) | 단일 | 10 | 4~7 | 각자 원하면 spice 2를 내고 Reserve의 Prepare the Way를 **손으로** 획득. Reserve에 남은 카드가 없으면 제시하지 않고 spice도 받지 않는다(OQ-071) |
-| `water_discipline` | Water Discipline (물 규칙) | 단일 | 10 | 4~7 | 각자 선택: 물 1 → 카드 1장 trash + 카드 1장 draw, 또는 패스 |
+| `water_discipline` | Water Discipline (물 규칙) | 단일 | 10 | 4~7 | 각자 선택: 물 1 → 카드 1장 trash + 카드 1장 draw, 또는 패스. trash와 draw는 원하는 순서(OQ-100) |
 | `royal_delegation` | Royal Delegation (왕실 대표단) | 영향력 증가 | 6 | 4~7 | 각자 선택: Solari 2 → Emperor +1, 또는 패스 |
 | `guild_negotiation` | Guild Negotiation (길드 협상) | 영향력 증가 | 6 | 4~7 | 각자 선택: spice 1 + 손의 카드 1장 버리기 → Spacing Guild +1, 또는 패스 |
 | `covert_assistance` | Covert Assistance (비밀스러운 지원) | 영향력 증가 | 6 | 4~7 | 각자 선택: Spy 1 회수 → Bene Gesserit +1, 또는 패스 |

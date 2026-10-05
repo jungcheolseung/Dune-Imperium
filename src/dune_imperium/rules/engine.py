@@ -311,9 +311,11 @@ from dune_imperium.rules.scouts_effects import (
     advance_scouts_effect,
     apply_scouts_choice_action,
     apply_scouts_effect_action,
+    apply_scouts_rewards_first,
     apply_subcommittee_action,
     legal_scouts_choice_actions,
     legal_scouts_effect_actions,
+    legal_scouts_rewards_first_actions,
     legal_subcommittee_actions,
     legal_subcommittee_choice_actions,
     scouts_effect_can_advance,
@@ -542,7 +544,12 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.OPPONENT_UNIT_LOSS: (legal_unit_loss_actions,),
     FrameKind.SPY_PLACEMENT: (legal_spy_placement_actions,),
     FrameKind.INTRIGUE_TRIGGER_CONTRACT: (legal_trigger_contract_actions,),
-    FrameKind.OPTIONAL_TRASH: (legal_optional_trash_actions,),
+    # Arrakeen Scouts: a line's later rewards may resolve ahead of its trash
+    # icon (Water Discipline's draw, OQ-100).
+    FrameKind.OPTIONAL_TRASH: (
+        legal_optional_trash_actions,
+        legal_scouts_rewards_first_actions,
+    ),
     FrameKind.LONG_LIVE_FIGHTERS: (legal_agent_card_long_live_actions,),
     FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
     FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
@@ -587,6 +594,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_recall_agent": apply_scouts_effect_action,
     "scouts_lose_influence": apply_scouts_effect_action,
     "scouts_lose_influence_to": apply_scouts_effect_action,
+    "scouts_rewards_first": apply_scouts_rewards_first,
     "scouts_choose_option": apply_scouts_choice_action,
     "scouts_pass": apply_scouts_choice_action,
     "scouts_join_mission": apply_mission_join,

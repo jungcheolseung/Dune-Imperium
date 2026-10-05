@@ -246,6 +246,11 @@ def test_oversight_spice_as_the_last_effect_counts_for_hungry_for_spice() -> Non
     assert not state.players[0].hungry_for_spice_granted_turn
     state = _act(state, "join_subcommittee", subcommittee_id="oversight")
     state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
+    # Its spice cannot change what the trash may take, so it is not offered
+    # ahead of the trash icon (OQ-100 needs a card draw among the rewards).
+    assert "scouts_rewards_first" not in {
+        action.action_id for action in ENGINE.legal_actions(state, 0)
+    }
     state = _act(state, "decline_optional_trash")
     seat = state.players[0]
     assert seat.resources.spice == 6

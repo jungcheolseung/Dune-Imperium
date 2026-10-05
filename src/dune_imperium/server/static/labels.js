@@ -289,6 +289,7 @@ const ACTION_LABELS = {
   scouts_decline_card: "사지 않기",
   scouts_decline_mission: "임무 참여 안 함",
   scouts_collect_mission: "임무 보상 받기",
+  scouts_rewards_first: "{trash}보다 먼저 받기",
   take_desert_riding_hooks: "{spice} 대신 {maker_hooks} 받기",
   trash_intrigue_for_research_bonus: "{research} 보너스: {intrigue} {trash} → 카드 + {intrigue}",
   pay_research_bonus: "{research} 보너스: 7 {solari} → {tleilaxu} ×2",

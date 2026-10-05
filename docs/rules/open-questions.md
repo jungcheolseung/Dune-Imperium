@@ -1272,3 +1272,13 @@
 - 현재 구현: `rules/spies.legal_gather_intelligence_actions`는 어느 한 더미에 카드가 있을 때만 회수·draw를 제시하고, 둘 다 비면 `decline_gather_intelligence`만 남긴다. 이번 작업 전부터 있던 가드이며 공식 금지 규칙이나 새 사용자 판정으로 간주하지 않는다. 이 동작은 유지하고 `display/unavailable`에서 연결된 자기 Spy의 정보 수집을 회색으로 표시해 “뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음”을 설명한다. 덱만 비고 버린 더미가 있으면 합법 선택과 reshuffle은 유지된다.
 - 필요한 답: draw할 카드가 없어도 Gather Intelligence를 선택해 Spy만 supply로 회수할 수 있는지. 공식 판정 또는 사용자 판정을 받으면 빈 더미의 선택 가드와 Gaius Helen Mohiam의 의무 회수를 함께 검토한다.
 - 회귀 검증: `tests/unit/display/test_unavailable.py::test_empty_gather_intelligence_explains_its_block_without_waiting_rows`, `tests/unit/rules/test_spies.py`의 기존 draw·reshuffle, 두 언어의 `scripts/e2e/influence_spies.py`. 이번 변경은 규칙·legal action 목록을 바꾸지 않는다.
+
+## OQ-100 — Arrakeen Scouts 줄의 보상 아이콘 순서
+
+- 상태: `DECIDED` (2026-10-05 사용자 판정; project convention)
+- 질문: 아라킨 스카웃 항목의 한 줄(비용 → 보상)에서 보상 아이콘들을 인쇄 순서대로만 해결하는가. 예: Water Discipline(물 규칙)의 "물 1 → 카드 1장 trash + 카드 1장 draw"는 trash를 먼저 해야만 했다.
+- 공식 출처: Scouts는 컴패니언 앱 모드라 공식 규칙서가 없고, 항목이 부르는 trash·draw의 처리는 Main Rulebook을 따른다([arrakeen-scouts.md](arrakeen-scouts.md) 권위 순서 3). 공간과 카드의 효과는 "You may carry out all these effects in any order." `[Main p. 9]` 같은 방향의 기존 사용자 판정: 한 효과 줄에 인쇄된 여러 아이콘은 각각 독립된 효과이며 소유자가 해결 순서를 고르고, 화살표 비용은 먼저 지불한다(OQ-015 (d), 2026-09-02).
+- 사용자 판정: "아라킨 스카웃 효과 결정 때, 순서 자유로. 이벤트 중에 폐기, 드로우 하는 이벤트 있는데, 꼭 폐기를 하고 드로우를 해야되더라" — 비용을 낸 뒤의 보상은 소유자가 순서를 고른다.
+- 구현(codec v136): 줄의 trash 아이콘이 연 선택 trash 창(`optional_trash`)에 `scouts_rewards_first`를 더한다. 누르면 그 줄의 남은 보상을 지금 해결하고(Water Discipline: 카드 1장 draw, 덱이 비면 버린 더미 섞기), trash 창은 그대로 열려 방금 뽑은 카드도 고를 수 있다. 누르지 않고 trash하거나 거절하면 전처럼 그 뒤에 보상이 해결된다. 줄의 남은 보상이 자동 이득(card draw, Intrigue draw, 자원)뿐이고 그중 card draw가 있을 때만 제시한다(`rules/scouts_effects.py` `legal_scouts_rewards_first_actions`).
+- 콘텐츠 감사(2026-10-05): 순서가 결과를 바꾸는 Scouts 줄은 Water Discipline뿐이다(먼저 draw하면 뽑은 카드를 trash할 수 있고, 먼저 trash하면 버린 더미의 카드를 reshuffle 전에 없앨 수 있다). 나머지 여러 보상 줄 — Oversight(trash + spice 1), Rotating Doors(Intrigue 1장 + 카드 1장, trash는 비용), 소위원회의 Influence + Intrigue, 경매의 Spy + Intrigue·Contract + Intrigue — 은 어느 순서든 결과가 같다. 순서를 관측할 수 있는 새 줄이 생기면 다시 연다.
+- 테스트: `tests/unit/rules/test_scouts_choices.py`(`test_water_discipline_may_draw_before_trashing_the_drawn_card`, 기본 순서, 빈 덱의 reshuffle), `tests/unit/rules/test_scouts_subcommittees.py`(Oversight에는 제시하지 않음).

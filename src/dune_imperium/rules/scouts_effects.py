@@ -48,9 +48,12 @@ from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
+    DrawIntrigueCards,
+    DrawPersonalCards,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainInfluence,
+    GainResources,
     GiveIntrigueToOpponent,
     LoseInfluence,
     LoseTroops,
@@ -474,6 +477,106 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
         )
     moved = _moved(state, frame, step=step + 1)
     return _apply_automatic(moved, player, steps[step], source=f"{source}:{step}")
+
+
+# --- Rewards ahead of the trash icon (OQ-100) ----------------------------------------
+
+# Rewards that may resolve while the line's trash icon waits: gains that
+# open no choice of their own. Only a card draw makes the order matter (a
+# drawn card can be trashed, a card trashed from the discard pile misses a
+# reshuffle), so the offer needs one among them.
+_REWARDS_FIRST_KINDS: Final = (DrawPersonalCards, DrawIntrigueCards, GainResources)
+
+
+def _rewards_after_trash(
+    state: GameState, player: int
+) -> tuple[DecisionFrame, int, tuple[ScoutsStep, ...]] | None:
+    """The Scouts line under ``player``'s pending trash icon, and its later rewards.
+
+    That is a ``scouts_effect`` frame of the seat directly beneath the
+    optional trash it opened (``_apply_automatic``), its cursor already past
+    the trash, and the line's remaining rewards all automatic gains with a
+    card draw among them (Water Discipline). Returns the frame, its cursor
+    and those rewards; None when nothing may resolve ahead.
+    """
+
+    if len(state.decision_stack) < 2:
+        return None
+    trash, line = state.decision_stack[-2:][::-1]
+    if trash.kind != FrameKind.OPTIONAL_TRASH or line.kind != FrameKind.SCOUTS_EFFECT:
+        return None
+    for frame in (trash, line):
+        if not (
+            isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return None
+    owner, _, option, step, _ = _cursor(line)
+    source = context_str(dict(line.context), "source", owner=_EFFECT_FRAME)
+    trash_source = dict(trash.context).get("source")
+    if owner != player or trash_source != f"{source}:{step - 1}":
+        return None
+    later = option_steps(option)[step:]
+    if not later or not all(
+        isinstance(reward, _REWARDS_FIRST_KINDS) for reward in later
+    ):
+        return None
+    if not any(isinstance(reward, DrawPersonalCards) for reward in later):
+        return None
+    return line, step, later
+
+
+def rewards_ahead_of_trash(state: GameState, player: int) -> tuple[ScoutsStep, ...]:
+    """The rewards ``scouts_rewards_first`` would resolve now (empty: none)."""
+
+    found = _rewards_after_trash(state, player)
+    return () if found is None else found[2]
+
+
+def legal_scouts_rewards_first_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer the line's later rewards ahead of its pending trash icon.
+
+    Icons of one line are independent effects whose order the owner picks
+    once the arrow cost is paid (OQ-015 (d), [Main p. 9]); for a Scouts line
+    that is the user's ruling of 2026-10-05 (OQ-100): Water Discipline's
+    card may be drawn before the trash, so the drawn card can be trashed.
+    """
+
+    if _rewards_after_trash(state, player) is None:
+        return ()
+    return (DomainAction(action_id="scouts_rewards_first", actor=player),)
+
+
+def apply_scouts_rewards_first(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve the line's later rewards now; the trash icon stays open on top."""
+
+    if action not in legal_scouts_rewards_first_actions(state, action.actor):
+        raise ValueError("action is not a legal Scouts rewards-first choice")
+    found = _rewards_after_trash(state, action.actor)
+    if found is None:  # pragma: no cover - the legality check above
+        raise RuntimeError("no Scouts rewards wait behind the trash icon")
+    line, step, later = found
+    source = context_str(dict(line.context), "source", owner=_EFFECT_FRAME)
+    # The line's cursor moves past these rewards before they apply, so it
+    # closes once the trash icon is settled, and a draw's reshuffle stacks
+    # above the still-open trash.
+    context = dict(line.context)
+    context["step"] = step + len(later)
+    context["picked"] = 0
+    moved = replace(line, context=tuple(sorted(context.items())))
+    trash = state.decision_stack[-1]
+    result = RuleResult(
+        state=replace(state, decision_stack=(*state.decision_stack[:-2], moved, trash))
+    )
+    events: list[GameEvent] = []
+    for index, reward in enumerate(later, start=step):
+        result = _apply_automatic(
+            result.state, action.actor, reward, source=f"{source}:{index}"
+        )
+        events.extend(result.events)
+    return RuleResult(state=result.state, events=tuple(events))
 
 
 def _credit_turn(

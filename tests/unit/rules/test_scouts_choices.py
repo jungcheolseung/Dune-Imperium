@@ -386,3 +386,83 @@ def test_royal_delegation_is_not_offered_at_the_top_of_the_emperor_track() -> No
         if e.kind == "scouts_choice_skipped"
     ]
     assert skipped == [0]
+
+
+def _water_discipline(**seat_fields: Any) -> GameState:
+    """Seat 0 has taken Water Discipline's line and paid its water."""
+
+    state = _reveal(_base(**seat_fields), "water_discipline")
+    assert _owner(state) == 0
+    state = _act(state, "scouts_choose_option", option=0)
+    assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    return state
+
+
+def test_water_discipline_may_draw_before_trashing_the_drawn_card() -> None:
+    """OQ-100 (user ruling 2026-10-05): "아라킨 스카웃 효과 결정 때, 순서
+    자유로". Icons of one line are independent effects whose order the owner
+    picks once the arrow cost is paid (OQ-015 (d), [Main p. 9]): Water
+    Discipline's card is drawn first and the drawn card is then trashed."""
+    before = _base().players[0]
+    state = _water_discipline()
+    assert state.players[0].resources.water == before.resources.water - 1
+    assert ("scouts_rewards_first", ()) in _offered(state)
+    top_card = before.deck[0]
+    state = _act(state, "scouts_rewards_first")
+    seat = state.players[0]
+    assert top_card in seat.hand and len(seat.hand) == len(before.hand) + 1
+    # The trash icon is still open, now with the drawn card among its targets,
+    # and the draw is not offered twice.
+    assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert ("trash_optional_card", (("card_id", top_card),)) in _offered(state)
+    assert ("scouts_rewards_first", ()) not in _offered(state)
+    state = _act(state, "trash_optional_card", card_id=top_card)
+    seat = state.players[0]
+    assert top_card in seat.trashed and top_card not in seat.hand
+    assert len(seat.hand) == len(before.hand)
+    # The line closed with no second draw; the next seat chooses.
+    assert any(
+        e.kind == "scouts_effect_resolved" and dict(e.payload)["player"] == 0
+        for e in state.event_log
+    )
+    assert _owner(state) == 1
+
+
+def test_water_discipline_still_trashes_first_by_default() -> None:
+    before = _base().players[0]
+    state = _water_discipline()
+    discarded = before.hand[0]
+    state = _act(state, "trash_optional_card", card_id=discarded)
+    seat = state.players[0]
+    assert discarded in seat.trashed
+    assert before.deck[0] in seat.hand
+    assert len(seat.hand) == len(before.hand)
+    assert _owner(state) == 1
+
+
+def test_water_discipline_draw_first_reshuffles_under_the_open_trash() -> None:
+    """With the deck empty the early draw shuffles the discard pile into a new
+    deck [Main p. 6]; the trash icon waits above and then offers the drawn
+    card."""
+    base = _base()
+    seat0 = base.players[0]
+    pile = (*seat0.deck, *seat0.discard_pile)
+    state = _water_discipline(**{"0": {"deck": (), "discard_pile": pile}})
+    state = _act(state, "scouts_rewards_first")
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    decision = frame.decision
+    assert isinstance(decision, ChanceDecision)
+    state = ENGINE.apply(
+        state,
+        ChanceOutcome(decision_id=decision.decision_id, values=decision.options),
+    ).state
+    assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    seat = state.players[0]
+    drawn = pile[0]
+    assert seat.discard_pile == () and drawn in seat.hand
+    assert ("trash_optional_card", (("card_id", drawn),)) in _offered(state)
+    assert ("scouts_rewards_first", ()) not in _offered(state)
+    state = _act(state, "decline_optional_trash")
+    assert _owner(state) == 1
+    assert len(state.players[0].hand) == len(seat0.hand) + 1
