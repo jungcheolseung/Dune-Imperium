@@ -2,6 +2,15 @@
 
 구현의 규칙 기준은 [Uprising 4인 규칙 명세](docs/rules/README.md), 구현 순서와 완료 조건은 [구현 계획](docs/implementation-plan.md)을 따른다. 새 개발 세션은 [개발 인수인계](docs/development-handoff.md)에서 현재 구현 범위, 검증 기준, 다음 작업을 먼저 확인한다.
 
+## 멀티플레이 환경·접속 안내
+
+역할에 맞는 문서를 선택한다. 참가자는 게임 저장소나 Python을 설치할 필요가 없다.
+
+- [서버 호스트용 가이드](docs/remote-play-host-guide.md): 서버 설치·실행, LAN·Tailscale 설정, 방 생성·공유, 저장·복구와 서버 문제 해결.
+- [플레이어용 접속 가이드](docs/remote-play-player-guide.md): 필요한 준비, 방 링크로 접속, 플레이어 선택, 재접속·기기 변경과 접속 문제 해결.
+
+전체 진입점은 [멀티플레이 안내](docs/remote-play-guide.md)다.
+
 ## 현재 구현 상태
 
 2026-09-20 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle, 기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어 있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료 조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 보드 공간과 카드 Agent box의 인쇄 아이콘은 각각 별개 행동으로 해결하고, Reveal의 선택형 효과도 미루기/재개로 원하는 순서에 해결하며(OQ-027), 카드의 인쇄 조건은 효과를 해결하는 시점에 판정해 같은 turn의 뒤 선택으로 성립한 조건도 인정한다(OQ-028). Combat space에 배치한 병력은 그 Agent turn 안에서 되돌리거나 나눠 배치할 수 있고(OQ-029), 모든 Agent turn은 마지막 효과 뒤에도 열려 있다가 소유자의 "턴 종료"(`finish_agent_turn`)로만 끝난다 — 누르기 전까지 Plot Intrigue·Family Atomics·표본 반환 같은 자유 시점 행동을 할 수 있다(OQ-095). supply 부족으로 다 못 한 recruit는 해결 시점에 소멸하고 소급하지 않으며 부족분은 공개 이벤트로 로그에 남긴다(OQ-030). Reveal turn의 troop recruit·Intrigue draw·자원·Influence 획득은 소유자가 시점을 고르는 행동이다(OQ-045; Persuasion·검만 시작 시 합산). 현재 action codec은 v107이며 기본 룰셋은 4,439개, CHOAM 룰셋은 4,729개다(`promo_cards` 옵션 시 4,539/4,829개, `bloodlines` 옵션 시 Commander·retreat·wild 템플릿, `tech_module` 옵션 시 Tech tile 획득·Flip·할인 템플릿, `immortality` 옵션 시 research·Tleilaxu·graft 템플릿 추가). 전체 테스트 1,800개, Ruff, mypy가 통과한다(브라우저 E2E 14종은 `scripts/e2e/`)(2026-09-20: 인쇄된 아이콘 전수 대조로 Branching Path·Bene Tleilax c7r3·Imperial Privilege의 Intrigue trash와 Influence 4 보너스(Emperor Spy, Spacing Guild 3 Solari)를 바로잡고, 디자이너 정오표대로 Spy 배치를 의무로 했다 — [교훈](docs/lessons.md)). Immortality 확장은 2026-09-08에 `immortality` 옵션(sweep `--immortality`, UI 체크박스)으로 구현을 마쳤다(슬라이스 1: 출처·[규칙 명세](docs/rules/immortality.md)·Bene Tleilax board 전사·카드 카탈로그, 슬라이스 2: research·Tleilaxu track·specimen·개정 Research Station·Experimentation·Family Atomics, 슬라이스 3: Tleilaxu Row 획득·Reclaimed Forces, 슬라이스 4: Graft와 Graft 카드 8장, 슬라이스 5a: Intrigue 11장, 슬라이스 5b: Imperium 25종 전부 완료(관측 v14, OQ-052~053); 슬라이스 5c: Tleilaxu 18장 + 프로모 Piter — 카드 play data 전부 완결(관측 v15, OQ-052~055), 슬라이스 6: 웹 UI의 Tleilaxu Row와 Bene Tleilax board 스캔 오버레이(`assets/board/bene_tleilax.jpg`; 없으면 합성 grid)와 830판 소크 실패 0·census; [docs/rules/immortality.md](docs/rules/immortality.md), OQ-048~055). Immortality 룰북의 Go to 11 변형("11점을 향해")은 2026-09-28에 `go_to_11` 옵션(Immortality 필요, sweep·tournament `--go-to-11`, UI 체크박스는 기본으로 켜짐)으로 더했다: 4인 게임의 승점 마커가 1이 아니라 0에서 시작하고 종료 조건 10점은 그대로다([immortality.md](docs/rules/immortality.md) 8절, OQ-091). Rise of Ix의 Epic Game Mode("에픽 게임 모드")는 2026-09-28에 Rise of Ix 확장 없이 독립 옵션 `epic_game`(sweep·tournament `--epic`, UI 체크박스는 기본으로 켜짐)으로 더했다: 12점까지 하고, Conflict deck은 I 없이 II 5장 위에 III 5장(Economic Supremacy 포함)이며, 사막 행성 듄 1장이 Control the Spice로 바뀌고(Immortality와 함께면 버린 더미에서 시작), 수비대 5와 Intrigue 1장으로 시작한다. checkpoint·search 좌석은 게임의 action 목록으로 정책 출력층을 옮겨 앉는다([epic-game-mode.md](docs/rules/epic-game-mode.md), OQ-092~094).
