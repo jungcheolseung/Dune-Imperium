@@ -381,6 +381,30 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
     assert not leaks, "; ".join(leaks[:10])
 
 
+def test_korean_prompts_leave_no_english_word_behind() -> None:
+    """A Korean prompt holds {term} tokens and Korean, not stray English.
+
+    User report 2026-10-05: the Arrakeen Scouts call read "spice 호가, 또는
+    패스" -- the one prompt that wrote the currency as a bare English word
+    where the rest use {spice} ("스파이스"); the Mercenaries retreat likewise
+    said "용병 troop 후퇴". Only the words ``_KOREAN_KEEPS_ENGLISH`` lists
+    (the glossary has no row for them yet) may stay English.
+    """
+    texts = list(_json_const("PROMPT_KO", "prompts_ko.js").values())
+    texts += [
+        korean for _, korean in _json_const("PROMPT_KO_PATTERNS", "prompts_ko.js")
+    ]
+    leaks = []
+    for text in texts:
+        bare = re.sub(r"\{[a-z_]+(?::\d+)?\}", " ", text)
+        for name in sorted(_KOREAN_KEEPS_ENGLISH, key=len, reverse=True):
+            bare = bare.replace(name, " ")
+        found = re.findall(r"[A-Za-z]+", bare)
+        if found:
+            leaks.append(f"{found} in {text!r}")
+    assert not leaks, "; ".join(leaks[:10])
+
+
 def test_korean_labels_call_a_sandworm_rather_than_summon_it() -> None:
     """A sandworm is called, "모래벌레를 불러서" [Main p. 10] [Main p. 20]:
     소환 is kept for recalling Agents and Spies (docs/rules/glossary-ko.md).
