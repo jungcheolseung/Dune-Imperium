@@ -447,6 +447,7 @@ function render(options) {
   }
   fitActionLog();
   renderPlayEffects();
+  renderPhaseBanner();
   refreshConflictHistory();
 }
 
@@ -504,6 +505,7 @@ function fitActionLog() {
     tableLogGeometry = { list, width, height, scrollHeight: list.scrollHeight };
   } else tableLogGeometry = null;
   positionPlayEffect();
+  positionPhaseBanner();
 }
 
 function watchTableLayout() {
