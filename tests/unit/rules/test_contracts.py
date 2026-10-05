@@ -67,9 +67,12 @@ def _agent_contract_state(
     spy_post_ids: tuple[str, ...] = (),
     deck: tuple[str, ...] = (),
 ) -> GameState:
+    resources = resources or Resources(solari=10, spice=10, water=10)
     owner = PlayerState(
         player_id=0,
-        resources=resources or Resources(solari=10, spice=10, water=10),
+        resources=resources,
+        # The turn opened holding this spice (``reset_turn_counters``).
+        spice_at_turn_start=resources.spice,
         deck=deck,
         hand=(card_id,),
         spies_supply=3 - len(spy_post_ids),
@@ -453,6 +456,110 @@ def test_harvest_total_survives_spice_spent_later_in_the_agent_turn() -> None:
 
     assert paid.players[0].resources.spice == 4
     assert legal_contract_completion_actions(paid, 0)
+
+
+_DESERT_PLANET = (
+    "player:0:starter:dune_the_desert_planet:0",
+    "player:0:starter:dune_the_desert_planet:1",
+)
+_CRYSKNIFE = "intrigue:crysknife:0"
+
+
+def _plot_spice_turn_state() -> GameState:
+    """Seat 0's turn holding both Harvest Contracts, a +1 spice Plot
+    (Crysknife), and two Spice Trade starters; every other seat has
+    revealed, so closing this turn opens seat 0's next one."""
+
+    state = _agent_contract_state(
+        _DESERT_PLANET[0],
+        "contract:harvest_3",
+        "contract:harvest_4",
+        resources=Resources(water=1),
+    )
+    owner = replace(
+        state.players[0], hand=_DESERT_PLANET, intrigue_cards=(_CRYSKNIFE,)
+    )
+    others = tuple(replace(seat, has_revealed=True) for seat in state.players[1:])
+    return replace(state, players=(owner, *others))
+
+
+def _play_crysknife_plot(state: GameState) -> GameState:
+    engine = UprisingRulesEngine()
+    played = engine.apply(
+        state,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", _CRYSKNIFE), ("option", 0)),
+        ),
+    ).state
+    assert played.players[0].resources.spice == state.players[0].resources.spice + 1
+    return played
+
+
+def _harvest(state: GameState) -> GameState:
+    engine = UprisingRulesEngine()
+    return engine.apply(
+        state,
+        next(
+            action
+            for action in engine.legal_actions(state, 0)
+            if action.action_id == "harvest_maker_spice"
+        ),
+    ).state
+
+
+def _agent_to(state: GameState, card_id: str, space_id: str) -> GameState:
+    return apply_agent_action(
+        state,
+        next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments) == {"card_id": card_id, "space_id": space_id}
+        ),
+    ).state
+
+
+def test_harvest_counts_plot_spice_gained_before_the_placement() -> None:
+    """ "Harvest contract는 Maker space에 Agent를 보내고, 그 turn에 모든 출처를
+    합쳐 contract에 표시된 양의 spice를 얻으면 완료한다." [Main p. 16]
+    (docs/rules/choam-module.md:26). A Plot played on the turn frame before
+    the placement (OQ-015 (a)) is that turn's spice: +1 from Crysknife and
+    +2 from Hagga Basin complete Harvest 3+ (the Steam app agrees), and the
+    exact total of 3 leaves Harvest 4+ waiting."""
+
+    plotted = _play_crysknife_plot(_plot_spice_turn_state())
+    placed = _agent_to(plotted, _DESERT_PLANET[0], "hagga_basin")
+    assert not legal_contract_completion_actions(placed, 0)
+
+    harvested = _harvest(placed)
+
+    assert harvested.players[0].resources.spice == 3
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_completion_actions(harvested, 0)
+    ] == ["contract:harvest_3"]
+
+
+def test_harvest_ignores_spice_gained_on_an_earlier_turn_of_the_round() -> None:
+    """The total is "그 turn에" [Main p. 16] (docs/rules/choam-module.md:26):
+    the owner's earlier turn of the same round does not count. Turn one
+    gains 2 (Crysknife, Imperial Basin) without reaching Harvest 3+; turn
+    two's Hagga Basin brings the seat to 4 spice but gains only 2 itself."""
+
+    engine = UprisingRulesEngine()
+    plotted = _play_crysknife_plot(_plot_spice_turn_state())
+    first = _harvest(_agent_to(plotted, _DESERT_PLANET[0], "imperial_basin"))
+    assert first.players[0].resources.spice == 2
+    assert not legal_contract_completion_actions(first, 0)
+    closed = engine.apply(first, DomainAction("finish_agent_turn", 0)).state
+    assert closed.decision_stack[-1].kind == "turn"
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 0
+
+    second = _harvest(_agent_to(closed, _DESERT_PLANET[1], "hagga_basin"))
+
+    assert second.players[0].resources.spice == 4
+    assert not legal_contract_completion_actions(second, 0)
 
 
 def test_acquiring_the_spice_must_flow_completes_acquire_contract() -> None:

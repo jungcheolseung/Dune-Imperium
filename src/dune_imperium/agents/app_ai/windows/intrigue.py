@@ -421,9 +421,14 @@ def _row_cards(ctx: AppContext) -> tuple[Entity, ...]:
 
 
 def _acquirable(ctx: AppContext, max_cost: int) -> tuple[Entity, ...]:
-    """``MakeAcquireImperiumRowCardTargeting(maxCost)``: Row then Reserve."""
+    """``MakeAcquireImperiumRowCardTargeting(maxCost)``: Row then Reserve.
 
-    row = acquirable_imperium_instance_ids(ctx.state, max_cost)
+    The Row part also holds the seat's own Manipulate set-aside card, which
+    our engine offers at its printed cost [FAQ p. 3], so a lone set-aside
+    target is still weighed rather than left to the fallback.
+    """
+
+    row = acquirable_imperium_instance_ids(ctx.state, max_cost, player=ctx.seat)
     reserve = acquirable_reserve_card_ids(ctx.state, max_cost)
     return (
         *(card_entity(i) for i in row),

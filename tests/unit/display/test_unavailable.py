@@ -457,38 +457,21 @@ def _detonation(troops: int, undeployable: int) -> GameState:
     return _state(owner, decision_stack=(turn,))
 
 
-def test_a_garrison_troop_that_cannot_deploy_this_turn_is_named() -> None:
-    """Detonation's "deploy from your garrison" line (option 1) is judged on
-    the troops that may deploy this turn: Harkonnen Advisor's troop "can't
-    deploy ... this turn" [Piter De Vries card] (OQ-038). With it the only
-    troop in the garrison the reason says so, not that the garrison is
-    empty."""
+def test_a_deploy_line_with_no_deployable_troop_is_still_a_play() -> None:
+    """Detonation's "Deploy up to four troops from your garrison" (option 1)
+    may deploy zero, and a target is no play condition [FAQ p. 2]
+    (OQ-057 (6)): with only Harkonnen Advisor's barred troop ("can't
+    deploy ... this turn" [Piter De Vries card], OQ-038), or with an empty
+    garrison, the line is an ordinary play rather than a greyed-out row."""
 
-    def reason(state: GameState) -> tuple[str, str, str]:
-        rows = _rows(_found(state), "intrigue")
-        row = rows["intrigue:intrigue:detonation:0:1"]
-        assert _legal(state, "play_intrigue") == [
-            {"card_id": "intrigue:detonation:0", "option": 0}
-        ]
-        return row["reason"], row["reason_ko"], row["code"]
-
-    assert reason(_detonation(1, 1)) == (
-        "Your garrison troop cannot be deployed this turn",
-        "{garrison}의 {troop}은 이번 차례에 {conflict}에 배치할 수 없음",
-        "reward",
-    )
-    assert reason(_detonation(2, 2))[0] == (
-        "Your garrison troops cannot be deployed this turn"
-    )
-    assert reason(_detonation(0, 0)) == (
-        "No unit in your garrison to deploy",
-        "{garrison}에 배치할 유닛 없음",
-        "reward",
-    )
-    # One deployable troop beside the barred one: an ordinary play.
-    assert {"card_id": "intrigue:detonation:0", "option": 1} in _legal(
-        _detonation(2, 1), "play_intrigue"
-    )
+    for troops, undeployable in ((1, 1), (2, 2), (0, 0), (2, 1)):
+        state = _detonation(troops, undeployable)
+        assert {"card_id": "intrigue:detonation:0", "option": 1} in _legal(
+            state, "play_intrigue"
+        )
+        found = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+        rows = _rows(found, "intrigue") if found else {}
+        assert "intrigue:intrigue:detonation:0:1" not in rows
 
 
 def test_an_intrigue_row_becomes_a_play_as_soon_as_the_seat_can_pay() -> None:

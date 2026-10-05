@@ -392,7 +392,8 @@ def test_devious_trashes_from_hand_without_a_decline_or_deploys_two() -> None:
     counts = {
         dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(deployed, 0)
     }
-    assert counts == {1, 2}
+    # "Deploy up to two troops" [Devious card face]: zero included.
+    assert counts == {0, 1, 2}
 
 
 def test_discerning_discards_to_draw_or_draws_with_an_alliance() -> None:
@@ -699,11 +700,12 @@ def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:
     assert _play(card) not in legal_intrigue_play_actions(plotted, 0)
 
 
-def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:
-    # Detonation's "deploy up to 4 troops from your garrison" is judged on
+def test_harkonnen_advisor_troop_is_not_offered_to_a_deploy_plot() -> None:
+    # Detonation's "deploy up to 4 troops from your garrison" counts only
     # the troops that may actually deploy this turn: the Signet troop can't
-    # (OQ-038), so alone it neither makes the option playable nor leaves
-    # the choice frame without a legal action (soak seed 138 deadlock).
+    # (OQ-038). "Up to" allows zero and a target is no play condition
+    # [FAQ p. 2] (OQ-057 (6)), so the line plays and offers zero alone,
+    # never a choice frame without a legal action (soak seed 138 deadlock).
     detonation = "intrigue:detonation:0"
     owner = PlayerState(
         player_id=0,
@@ -723,9 +725,13 @@ def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:
         for a in legal_intrigue_play_actions(resolved, 0)
         if dict(a.arguments)["card_id"] == detonation
     ]
-    assert plays == [0]
+    assert plays == [0, 1]
+    alone = ENGINE.apply(resolved, _play(detonation, 1)).state
+    assert [
+        dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(alone, 0)
+    ] == [0]
 
-    # With one more garrison troop the option opens for exactly that troop.
+    # With one more garrison troop the choice reaches exactly that troop.
     two = replace(
         resolved,
         players=(
@@ -736,7 +742,7 @@ def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:
     opened = ENGINE.apply(two, _play(detonation, 1)).state
     assert [
         dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(opened, 0)
-    ] == [1]
+    ] == [0, 1]
 
 
 def test_ambitious_during_the_reveal_keeps_the_frame_strength_in_step() -> None:

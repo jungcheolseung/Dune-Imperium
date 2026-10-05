@@ -65,7 +65,6 @@ from dune_imperium.content.immortality.tleilaxu import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     Cost,
-    DeployFromGarrison,
     DiscardFromHand,
     EffectSection,
     FlipBattleCard,
@@ -141,7 +140,6 @@ from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
     combat_reward_influence_block,
 )
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contracts import (
     ContractTakeBlock,
     contract_recall_targets,
@@ -176,10 +174,7 @@ from dune_imperium.rules.intrigue import (
     intrigue_play_block,
     intrigue_window,
 )
-from dune_imperium.rules.leader_abilities import (
-    signet_influence_withheld,
-    units_deployment_blocked,
-)
+from dune_imperium.rules.leader_abilities import signet_influence_withheld
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
     reveal_influence_choice_blocked,
@@ -545,33 +540,9 @@ def _choice_cost_reason(
 def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason:
     """Why a player-choice reward (``_choice_reward_block``) has no target."""
 
+    # DeployFromGarrison never blocks: "Deploy up to N troops" may deploy
+    # zero (``_choice_reward_block``).
     match reward:
-        case DeployFromGarrison() if units_deployment_blocked(state, seat):
-            return (
-                "Your units cannot be deployed now",
-                "지금은 유닛을 배치할 수 없음",
-                "reward",
-            )
-        case DeployFromGarrison():
-            owner = state.players[seat]
-            if owner.troops_garrison + owner.commanders_garrison == 0:
-                return (
-                    "No unit in your garrison to deploy",
-                    "{garrison}에 배치할 유닛 없음",
-                    "reward",
-                )
-            # Units in the garrison, none of them deployable: Harkonnen
-            # Advisor's troop ("You can't deploy this troop to the Conflict
-            # this turn." [Piter De Vries card], OQ-038), which
-            # ``_choice_reward_block`` subtracts through this same helper.
-            troops = min(
-                undeployable_troops_this_turn(state, seat), owner.troops_garrison
-            )
-            return (
-                f"Your garrison troop{plural_s(troops)} cannot be deployed this turn",
-                "{garrison}의 {troop}은 이번 차례에 {conflict}에 배치할 수 없음",
-                "reward",
-            )
         case PlaceSpy():
             return (
                 "No observation post for a Spy",
@@ -579,7 +550,11 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "reward",
             )
         case RetreatTroops(minimum=minimum):
-            return _in_conflict_reason(minimum, _units(state.players[seat])[1])
+            # The gate asks for one unit even of a zero-minimum retreat
+            # (``_choice_reward_block``).
+            return _in_conflict_reason(
+                max(minimum, 1), _units(state.players[seat])[1]
+            )
         case TakeContract():
             return "No Contracts in this game", "이 게임에는 {contract} 없음", "reward"
         case SetAsideImperiumRowCard():

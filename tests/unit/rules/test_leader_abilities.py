@@ -1793,6 +1793,45 @@ def test_chroniclers_insight_still_acquires_once_the_imperium_deck_is_empty() ->
     assert result.state.imperium_deck == ()
 
 
+def test_chroniclers_insight_reaches_the_owners_set_aside_one_cost_card() -> None:
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: a printed-1 Manipulate
+    # card is in reach, a printed-2 one (1 with the discount) is not.
+    target = "imperium:sardaukar_soldier:0"
+    discounted = "imperium:desert_survival:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+        imperium_set_aside=(target, discounted),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=("imperium:calculus_of_power:0",),
+        imperium_deck=("imperium:overthrow:0",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "acquire_leader_imperium"
+    ]
+    assert offered == [target]
+    result = apply_leader_signet_acquire(
+        placed,
+        DomainAction(
+            action_id="acquire_leader_imperium",
+            actor=0,
+            arguments=(("instance_id", target),),
+        ),
+    )
+    assert target in result.state.players[0].hand
+    assert result.state.players[0].imperium_set_aside == (discounted,)
+    assert result.state.imperium_row == state.imperium_row
+    assert result.state.imperium_deck == state.imperium_deck
+
+
 def test_chroniclers_insight_trash_pays_spice_only_for_costed_cards() -> None:
     costed = "imperium:overthrow:0"
     starter = "player:0:starter:dagger:0"
@@ -2157,7 +2196,11 @@ def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
     assert [action.action_id for action in actions] == ["harvest_maker_spice"]
 
 
-def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
+def test_emperor_restriction_leaves_an_intrigue_deployment_only_zero() -> None:
+    # Emperor of the Known Universe still blocks every unit for the turn
+    # [Main p. 17], but "Deploy up to four troops" may deploy zero and a
+    # target is no play condition [FAQ p. 2] (OQ-057 (6)): the line plays
+    # and offers only a zero deployment.
     from dune_imperium.content.uprising.intrigue import (
         INTRIGUE_CARDS_BY_INSTANCE,
     )
@@ -2187,7 +2230,21 @@ def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
         )
     )
 
-    assert not option_is_playable(placed, 0, card.options[deploy_option])
+    assert option_is_playable(placed, 0, card.options[deploy_option])
+    engine = UprisingRulesEngine()
+    opened = engine.apply(
+        placed,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", detonation), ("option", deploy_option)),
+        ),
+    ).state
+    assert engine.legal_actions(opened, 0) == (
+        DomainAction(
+            action_id="deploy_intrigue_troops", actor=0, arguments=(("count", 0),)
+        ),
+    )
     unrestricted = _choam_turn_state(
         replace(owner, hand=(), intrigue_cards=(detonation,))
     )

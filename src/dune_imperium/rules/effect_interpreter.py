@@ -91,7 +91,6 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
@@ -584,21 +583,22 @@ def _choice_reward_block(
     owner = state.players[player]
     for section in sections:
         for reward in section.rewards:
+            # DeployFromGarrison is never blocked: every card prints "Deploy
+            # up to N troops", so zero is a legal choice, and "Intrigue 카드를
+            # 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을 지불해야
+            # 한다. [FAQ p. 2]" (docs/rules/player-turns.md) makes no target
+            # a play condition (OQ-057 (6)). The deployment limits still
+            # shape the counts offered (``rules.intrigue``).
             match reward:
-                case DeployFromGarrison() if (
-                    # Harkonnen Advisor's troop can't deploy this turn
-                    # (OQ-038), so it doesn't make the option playable.
-                    owner.troops_garrison
-                    - undeployable_troops_this_turn(state, player)
-                    + owner.commanders_garrison
-                    < 1
-                    or units_deployment_blocked(state, player)
-                ):
-                    return reward
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return reward
                 case RetreatTroops(minimum=minimum) if (
-                    owner.troops_conflict + owner.commanders_conflict < minimum
+                    # An "any number" retreat may choose zero [Main p. 20]
+                    # [FAQ p. 3], but stays playable only with a unit in the
+                    # Conflict, as before (the Steam app offers Tactical
+                    # Option's retreat the same way).
+                    owner.troops_conflict + owner.commanders_conflict
+                    < max(minimum, 1)
                 ):
                     return reward
                 case TakeContract() if not state.config.choam_module:

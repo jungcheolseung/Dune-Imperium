@@ -595,7 +595,8 @@ def test_detonation_deploys_the_answered_troops(
     assert W.intrigue_choice(make_run(choice, memory)) == act(
         "deploy_intrigue_troops", count=2
     )
-    # No answer: IntrigueDeployTroops, clamped into our 1..3.
+    # No answer: IntrigueDeployTroops, clamped into our 0..3 ("Deploy up to
+    # four troops" may deploy zero [Detonation card face]).
     fix_answer(monkeypatch, "detonation", Answer(0.0, None))
     monkeypatch.setattr(W, "intrigue_deploy_troops", lambda p, troops: 5)
     assert W.intrigue_choice(make_run(choice, Memory())) == act(
@@ -603,7 +604,7 @@ def test_detonation_deploys_the_answered_troops(
     )
     monkeypatch.setattr(W, "intrigue_deploy_troops", lambda p, troops: 0)
     assert W.intrigue_choice(make_run(choice, Memory())) == act(
-        "deploy_intrigue_troops", count=1
+        "deploy_intrigue_troops", count=0
     )
 
 

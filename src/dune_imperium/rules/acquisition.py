@@ -286,7 +286,7 @@ def legal_agent_card_acquisitions(
                     arguments=(("instance_id", instance_id),),
                 )
                 for instance_id in acquirable_imperium_instance_ids(
-                    state, TLEILAXU_MASTER_COST
+                    state, TLEILAXU_MASTER_COST, player=player
                 )
             ),
         )
@@ -306,21 +306,16 @@ def legal_agent_card_acquisitions(
         for card_id, count in state.reserve_stacks
         if count > 0 and reserve_cost(state, card_id) <= solari
     )
+    # The owner's own Manipulate set-aside card is offered too, for its
+    # printed cost in Solari [FAQ p. 3].
     imperium_actions = tuple(
         DomainAction(
             action_id="acquire_imperium_with_solari",
             actor=player,
             arguments=(("instance_id", instance_id),),
         )
-        for instance_id in state.imperium_row
-        if (
-            (definition := imperium_card_for_instance(instance_id)).acquisition_cost
-            is not None
-            and definition.acquisition_cost <= solari
-            and (
-                not definition.has_acquisition_bonus
-                or definition.acquisition_effect is not None
-            )
+        for instance_id in acquirable_imperium_instance_ids(
+            state, solari, player=player
         )
     )
     return (
@@ -501,10 +496,13 @@ def _acquire_imperium_to_hand_with_solari(
         f"acquire_with_solari:{instance_id}"
     )
 
-    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
+    imperium_row, imperium_deck, set_aside = take_acquired_imperium_card(
+        state, action.actor, instance_id
+    )
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
+        imperium_set_aside=set_aside,
         hand=(*owner.hand, instance_id),
         hand_public=(*owner.hand_public, instance_id),
         resources=replace(
@@ -1406,12 +1404,22 @@ def acquirable_reserve_card_ids(
 def acquirable_imperium_instance_ids(
     state: GameState,
     max_cost: int,
+    *,
+    player: int | None = None,
 ) -> tuple[str, ...]:
-    """Return Imperium Row cards within the cap whose bonus is implemented."""
+    """Return Imperium cards within the cap whose bonus is implemented.
 
+    The Row's cards, then -- when ``player`` is given -- that player's own
+    Manipulate set-aside cards at their printed cost: "You may use other
+    means to acquire the card (for example: Bypass Protocol, Boundless
+    Ambition), though the 1 persuasion discount will not apply" [FAQ p. 3].
+    An opponent's set-aside card is never offered [FAQ p. 3].
+    """
+
+    set_aside = () if player is None else state.players[player].imperium_set_aside
     return tuple(
         instance_id
-        for instance_id in state.imperium_row
+        for instance_id in (*state.imperium_row, *set_aside)
         if (
             (definition := imperium_card_for_instance(instance_id)).acquisition_cost
             is not None
@@ -1422,6 +1430,29 @@ def acquirable_imperium_instance_ids(
             )
         )
     )
+
+
+def take_acquired_imperium_card(
+    state: GameState, player: int, instance_id: str
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Remove a card a non-Reveal acquire effect took from the Row or set-aside.
+
+    Returns the next ``(imperium_row, imperium_deck, imperium_set_aside)``
+    triple for ``player``. A Row card refills its position
+    (``take_imperium_row_card``); the owner's own Manipulate set-aside card
+    simply leaves that zone, since the Row already refilled when it was set
+    aside [Manipulate card] [FAQ p. 3].
+    """
+
+    set_aside = state.players[player].imperium_set_aside
+    if instance_id in set_aside:
+        return (
+            state.imperium_row,
+            state.imperium_deck,
+            tuple(held for held in set_aside if held != instance_id),
+        )
+    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
+    return imperium_row, imperium_deck, set_aside
 
 
 @dataclass(frozen=True, slots=True)
@@ -1614,7 +1645,9 @@ def acquire_imperium_for_intrigue(
     any acquire box resolves immediately [Main p. 20]. Bonuses that need a
     follow-up decision are reported to the caller instead of pushing frames.
     ``from_market`` takes the card from Arrakeen Scouts' Critical Moment
-    cards instead of the Row, with nothing to refill.
+    cards instead of the Row, with nothing to refill. The player's own
+    Manipulate set-aside card is taken from that zone instead, also with
+    nothing to refill (``take_acquired_imperium_card``, [FAQ p. 3]).
     """
 
     definition = imperium_card_for_instance(instance_id)
@@ -1624,16 +1657,20 @@ def acquire_imperium_for_intrigue(
         )
     destination = "hand" if to_hand else "discard"
     market = state.scouts_market_cards
+    owner = state.players[player]
+    set_aside = owner.imperium_set_aside
     if from_market:
         if instance_id not in market:
             raise ValueError("the card is not among the revealed cards")
         imperium_row, imperium_deck = state.imperium_row, state.imperium_deck
         market = tuple(card for card in market if card != instance_id)
     else:
-        imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
-    owner = state.players[player]
+        imperium_row, imperium_deck, set_aside = take_acquired_imperium_card(
+            state, player, instance_id
+        )
     next_owner = replace(
         owner,
+        imperium_set_aside=set_aside,
         hand=(*owner.hand, instance_id) if to_hand else owner.hand,
         hand_public=(
             (*owner.hand_public, instance_id) if to_hand else owner.hand_public

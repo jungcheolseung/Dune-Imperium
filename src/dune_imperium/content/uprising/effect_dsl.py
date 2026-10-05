@@ -386,16 +386,19 @@ class RetreatTroops:
     """Move between ``minimum`` and ``maximum`` of the player's Conflict troops
     back to the garrison (player choice). ``maximum=None`` means any number.
 
-    During Combat the retreated troops' strength leaves the total at once and
-    a player left without units drops out of the priority loop (OQ-003).
+    A printed "any number" retreat takes ``minimum=0``: "효과가 `any number`의
+    troop을 retreat하게 하면 0개도 선택할 수 있다. `[Main p. 20]` `[FAQ p. 3]`"
+    (docs/rules/uprising-systems.md). During Combat the retreated troops'
+    strength leaves the total at once and a player left without units drops
+    out of the priority loop (OQ-003).
     """
 
     minimum: int = 1
     maximum: int | None = None
 
     def __post_init__(self) -> None:
-        if self.minimum < 1:
-            raise ValueError("retreat minimum must be positive")
+        if self.minimum < 0:
+            raise ValueError("retreat minimum must not be negative")
         if self.maximum is not None and self.maximum < self.minimum:
             raise ValueError("retreat maximum must not be below the minimum")
 
@@ -683,9 +686,11 @@ class AcquireCardUpTo:
     """Acquire one Imperium Row or Reserve card costing at most ``max_cost``.
 
     No Persuasion is spent; the printed cost cap limits the choice among the
-    five Row cards and the Reserve stacks [Main p. 13]. The card lands in the
-    owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds when the
-    acquisition resolves, in which case the card text puts it in hand.
+    five Row cards and the Reserve stacks [Main p. 13], plus the owner's own
+    Manipulate set-aside card at its printed cost [FAQ p. 3]. The card lands
+    in the owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds
+    when the acquisition resolves, in which case the card text puts it in
+    hand.
     """
 
     max_cost: int
@@ -701,8 +706,9 @@ class SetAsideImperiumRowCard:
     """Remove and replace one Imperium Row card, setting it aside for the owner.
 
     Until the owner's Reveal turn this round ends, only they may acquire the
-    set-aside card, for ``discount`` less Persuasion; opponents never can, and
-    an unacquired card leaves the game with that Reveal turn [FAQ p. 3].
+    set-aside card, for ``discount`` less Persuasion; their other acquire
+    effects reach it at its printed cost, opponents never can, and an
+    unacquired card leaves the game with that Reveal turn [FAQ p. 3].
     """
 
     discount: int = 1

@@ -3651,6 +3651,8 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 1  # codec bump pending (2026-10-06): the research icon key
         + 1  # codec bump pending (2026-10-06): the return_self icon key
         + 1  # codec bump pending (2026-10-06): the Intrigue Influence confirm
+        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
+        + 1  # codec bump pending (2026-10-06): an "up to" deploy of 0
     )
     action = DomainAction(
         action_id="trash_agent_card",

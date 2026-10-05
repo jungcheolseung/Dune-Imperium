@@ -202,9 +202,12 @@ def _spice_this_turn_matters(state: GameState, seat: int) -> bool:
         effect = personal_card_for_instance(card_id).agent_effect
         if effect is not None and "spice_this_turn" in effect.value:
             return True
-    # A Harvest-spice Contract counts the spice gained after the Agent was
-    # placed (rules/effects.py, ``spice_at_placement``), so it is at risk only
-    # while that Agent turn is open -- until its owner ends it (OQ-095).
+    # A Harvest-spice Contract counts every spice gained this turn, before
+    # the placement too (rules/effects.py, ``eligible_agent_contract_ids``),
+    # but only one held when the Agent went to a Maker space completes, and
+    # only while that Agent turn is open -- until its owner ends it (OQ-095).
+    # A Plot played before the placement could also feed a Maker visit still
+    # to come this turn; this check does not look ahead to that.
     placing = any(
         frame.kind == FrameKind.AGENT_EFFECTS
         and dict(frame.context).get("turn_owner") == seat
