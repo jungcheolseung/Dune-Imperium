@@ -20,8 +20,10 @@ from pathlib import Path
 import httpx2
 import pytest
 
+from dune_imperium.cli import server as server_cli
 from dune_imperium.cli.server import (
     ADMIN_KEY_ENVIRONMENT,
+    SEARCH_CHECKPOINT_ENVIRONMENT,
     _build_parser,
     admin_link,
     bind_problem,
@@ -30,6 +32,7 @@ from dune_imperium.cli.server import (
     resolve_access,
     resolve_autosave,
     resolve_public_url,
+    resolve_search_checkpoint,
 )
 from dune_imperium.server.access import AccessMode
 
@@ -163,6 +166,135 @@ def test_no_autosave_without_remote_is_refused() -> None:
 
     with pytest.raises(ValueError, match="--remote"):
         resolve_autosave(arguments)
+
+
+# --- resolve_search_checkpoint ------------------------------------------------
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty home directory, so the host's own search.pt stays out."""
+
+    directory = tmp_path / "home"
+    directory.mkdir()
+    monkeypatch.setenv("HOME", str(directory))
+    return directory
+
+
+def _network(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"not read before a game seats it")
+    return path
+
+
+def test_no_search_checkpoint_anywhere_leaves_the_search_ai_off(home: Path) -> None:
+    arguments = _build_parser().parse_args([])
+
+    assert resolve_search_checkpoint(arguments, {}) == (
+        None,
+        "search AI: off (no checkpoint; --search-checkpoint or "
+        "~/.dune-imperium/search.pt)",
+    )
+
+
+def test_the_flag_names_the_search_checkpoint_resolved(
+    home: Path, tmp_path: Path
+) -> None:
+    # A symlink is followed now: saves name the file it pointed at on start.
+    real = _network(tmp_path / "checkpoints" / "l3-8081.pt").resolve()
+    link = tmp_path / "search-link.pt"
+    link.symlink_to(real)
+    arguments = _build_parser().parse_args(["--search-checkpoint", str(link)])
+
+    assert resolve_search_checkpoint(arguments, {}) == (real, f"search AI: {real}")
+
+
+def test_the_flag_expands_the_home_directory(home: Path) -> None:
+    real = _network(home / "nets" / "search.pt").resolve()
+    arguments = _build_parser().parse_args(["--search-checkpoint", "~/nets/search.pt"])
+
+    assert resolve_search_checkpoint(arguments, {})[0] == real
+
+
+def test_the_environment_names_the_search_checkpoint_without_the_flag(
+    home: Path, tmp_path: Path
+) -> None:
+    from_environment = _network(tmp_path / "env.pt").resolve()
+    from_flag = _network(tmp_path / "flag.pt").resolve()
+    environment = {SEARCH_CHECKPOINT_ENVIRONMENT: str(from_environment)}
+    parser = _build_parser()
+
+    assert resolve_search_checkpoint(parser.parse_args([]), environment)[0] == (
+        from_environment
+    )
+    flagged = parser.parse_args(["--search-checkpoint", str(from_flag)])
+    assert resolve_search_checkpoint(flagged, environment)[0] == from_flag
+
+
+def test_the_default_search_checkpoint_is_found_in_the_home_directory(
+    home: Path, tmp_path: Path
+) -> None:
+    real = _network(tmp_path / "checkpoints" / "l3-8081.pt").resolve()
+    (home / ".dune-imperium").mkdir()
+    (home / ".dune-imperium" / "search.pt").symlink_to(real)
+    arguments = _build_parser().parse_args([])
+
+    assert resolve_search_checkpoint(arguments, {}) == (real, f"search AI: {real}")
+
+
+def test_a_named_search_checkpoint_that_is_missing_is_reported(
+    home: Path, tmp_path: Path
+) -> None:
+    missing = tmp_path / "missing.pt"
+    arguments = _build_parser().parse_args(["--search-checkpoint", str(missing)])
+
+    checkpoint, line = resolve_search_checkpoint(arguments, {})
+
+    assert checkpoint is None
+    assert line == f"search AI: off (no file at {missing.resolve()})"
+
+
+def test_the_search_ai_is_off_without_torch(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = _network(tmp_path / "search.pt")
+    monkeypatch.setattr(
+        server_cli, "find_spec", lambda name: None if name == "torch" else object()
+    )
+    arguments = _build_parser().parse_args(["--search-checkpoint", str(real)])
+
+    assert resolve_search_checkpoint(arguments, {}) == (
+        None,
+        "search AI: off (torch not installed: uv sync --extra train)",
+    )
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_main_prints_the_search_ai_line_at_startup(
+    configured: bool,
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    uvicorn = pytest.importorskip("uvicorn")
+    pytest.importorskip("fastapi")
+    # Everything but serving: the server returns as soon as it would start.
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self, *args, **kwargs: None)
+    monkeypatch.delenv(SEARCH_CHECKPOINT_ENVIRONMENT, raising=False)
+    real = _network(tmp_path / "search.pt").resolve()
+    flag = ["--search-checkpoint", str(real)] if configured else []
+
+    code = main(
+        ["--port", str(_free_port()), "--saves-dir", str(tmp_path / "saves"), *flag]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0
+    search_lines = [line for line in output.splitlines() if "search AI" in line]
+    expected = f"search AI: {real}" if configured else "search AI: off (no checkpoint;"
+    assert len(search_lines) == 1, output
+    assert search_lines[0].startswith(expected), output
 
 
 # --- admin_link ----------------------------------------------------------

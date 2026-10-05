@@ -228,9 +228,47 @@ function refresh(summary, options) {
       } while (refreshAgain);
     } finally {
       refreshFlight = null;
+      recheckWhileThinking();
     }
   })();
   return refreshFlight;
+}
+
+/* ---------- a seat thinking in the background ---------- */
+
+/* A search seat answers on the server's worker and rings after every step.
+   A ring that lands while this page is busy with its own request is
+   dropped (onDoorbell), and the worker can finish all of its steps in that
+   time: an event stream then never rings again, and the page would show
+   the seat thinking for good. So while the summary on screen names a
+   thinking seat, the summary is asked for again after a pause, and again
+   after each pause that changes nothing. A ring that refreshes the page
+   restarts the pause, so the check only runs where the rings went quiet. */
+const THINKING_RECHECK_MS = 1500;
+let thinkingTimer = 0;
+
+function recheckWhileThinking() {
+  window.clearTimeout(thinkingTimer);
+  thinkingTimer = 0;
+  const gameId = state.gameId;
+  const summary = state.summary;
+  if (!gameId || !doorbell || !summary || summary.finished) return;
+  if (summary.thinking === null || summary.thinking === undefined) return;
+  thinkingTimer = window.setTimeout(async () => {
+    thinkingTimer = 0;
+    if (state.gameId !== gameId || !doorbell) return;
+    try {
+      const fresh = await api(`/games/${gameId}`);
+      if (state.gameId !== gameId || !doorbell) return;
+      onDoorbell(fresh);
+    } catch (error) {
+      /* The doorbell reports a lost server or a deleted game. */
+    }
+    /* A refresh it started schedules the next check when it lands. */
+    if (state.gameId === gameId && !refreshFlight && !thinkingTimer) {
+      recheckWhileThinking();
+    }
+  }, THINKING_RECHECK_MS);
 }
 
 /* ---------- doorbell (M14 slice 3) ---------- */
@@ -322,6 +360,8 @@ function showConnectionLost(lost) {
 function closeDoorbell() {
   const bell = doorbell;
   doorbell = null;
+  window.clearTimeout(thinkingTimer);
+  thinkingTimer = 0;
   showConnectionLost(false);
   if (!bell) return;
   window.clearTimeout(bell.greetTimer);
@@ -339,6 +379,7 @@ function onDoorbell(bell) {
     bell.undo_count !== summary.undo_count ||
     bell.log_count !== summary.log_count ||
     bell.confirmation !== summary.confirmation ||
+    bell.thinking !== summary.thinking ||
     bell.finished !== summary.finished
   ) {
     refresh(null, { foreign: true }).catch(showRefreshError);

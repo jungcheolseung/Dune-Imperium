@@ -638,6 +638,10 @@ const UI_TEXT = {
     "ko": "저장된 게임",
     "en": "Saved Games"
   },
+  "html.search_ai_note": {
+    "ko": "탐색 AI는 학습한 망으로 몇 수 앞을 두어 보고 고릅니다. 한 결정에 보통 1–3초 걸리고, 생각하는 동안에도 화면은 움직입니다.",
+    "en": "The Search AI tries a few moves ahead with its trained network before it picks one. A decision usually takes 1–3 seconds, and the page keeps responding while it thinks."
+  },
   "html.seat_assignment_legend": {
     "ko": "플레이어 배정",
     "en": "Player Assignment"
@@ -1022,6 +1026,10 @@ const UI_TEXT = {
     "ko": "{tech_tile}",
     "en": "Tech"
   },
+  "panels.thinking": {
+    "ko": "생각 중…",
+    "en": "Thinking…"
+  },
   "panels.twisted_deck": {
     "ko": "뒤틀린 책략 카드덱 {{count}}",
     "en": "Twisted Intrigue deck {{count}}"
@@ -1341,6 +1349,10 @@ const UI_TEXT = {
   "render.turn_end_button_with_buys": {
     "ko": "구매 끝 · 턴 종료 ▶",
     "en": "Done acquiring · End turn ▶"
+  },
+  "render.thinking_decision": {
+    "ko": "{{name}} 생각 중…",
+    "en": "{{name}} is thinking…"
   },
   "render.turn_end_prompt": {
     "ko": "이번 차례에 할 일을 마쳤습니다.",

@@ -236,6 +236,18 @@ CHECKPOINT_PREFIX: Final = "checkpoint:"
 SEARCH_PREFIX: Final = "search:"
 
 
+def is_background_agent_kind(kind: str) -> bool:
+    """Return whether a play-server seat of ``kind`` thinks in the background.
+
+    A search seat's decision costs about 1.4s on the browser's default rules
+    (p90 3.3s, up to 7s), so the play server answers it on a worker thread
+    instead of inside the request that handed the decision over; every
+    other kind answers in milliseconds and keeps playing synchronously.
+    """
+
+    return kind.startswith(SEARCH_PREFIX)
+
+
 def is_agent_kind(kind: str) -> bool:
     """Return whether ``make_agent`` can build ``kind``."""
 

@@ -16,6 +16,8 @@ function buildSeatSelects() {
     const select = document.createElement("select");
     select.dataset.seat = String(seat);
     for (const [value, text] of SEAT_KINDS) {
+      /* The search AI needs the server's network (--search-checkpoint). */
+      if (value === "search" && !(state.server && state.server.search_ai)) continue;
       const option = document.createElement("option");
       option.value = value;
       option.textContent = text;
@@ -36,6 +38,7 @@ function buildSeatSelects() {
 function updateSetupSummary() {
   const seats = [...el("seat-selects").querySelectorAll("select")];
   el("opt-checkpoint-row").hidden = !seats.some((select) => select.value === "checkpoint");
+  el("opt-search-note").hidden = !seats.some((select) => select.value === "search");
   const human = seats.filter((select) => select.value === "human").length;
   const options = el("rule-options").querySelectorAll("input:checked:not(:disabled)").length;
   el("setup-summary").textContent = t("screens.setup_summary", {

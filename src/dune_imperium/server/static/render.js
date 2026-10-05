@@ -963,6 +963,15 @@ function renderBanner() {
         waitingHint(summary.confirmation);
       meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
       info.append(prompt, meta);
+    } else if (decision.owner !== state.viewSeat && summary.thinking === decision.owner) {
+      /* A search seat thinks on the server's worker (summary.thinking),
+         whatever it is deciding, an Agent turn's end included. */
+      prompt.textContent = t("render.thinking_decision", { name: playerLabel(decision.owner) });
+      info.append(prompt);
+      if (!decision.turn_end_ready) {
+        meta.textContent = promptText(decision.prompt);
+        info.append(meta);
+      }
     } else if (decision.owner !== state.viewSeat && decision.turn_end_ready) {
       /* Another seat's Agent turn has nothing mandatory left; it ends with
          that seat's own press (OQ-095), optional steps first if it likes. */
