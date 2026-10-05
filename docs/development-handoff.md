@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 플레이어 번호 배지의 원형 유지
+
+- 리더 이름 옆 번호 배지가 flex item으로 줄어들어, 긴 이름이나 좁은 줄에서 가로 폭만 10.44px까지 눌렸다(높이는 14.69px). 번호·리더 이름·언어마다 남는 폭이 달라 플레이어1~4의 원형 크기가 서로 달라 보였다.
+- 공통 `.seat-mark`는 `flex: none`으로 축소를 막고, 너비·높이를 모두 `1.125rem`(기본 글꼴에서 **18px**)로 고정한다. 숫자는 `0.7rem`·line-height 1·tabular numerals로 가운데 표시한다. 긴 리더 이름은 기존 줄임표로 줄어들며, 로그·방 참여자 등의 같은 번호 배지도 같은 크기를 사용한다.
+- 검증: `seats.py`의 독립 DOM 좌표 검사로 수정 전 한국어·영어 데스크톱 및 1366×768의 네 게임 시점에서 원형·동일 크기 검사 **6개 실패**를 재현했다. 수정 후 해당 E2E **54개 검사**와 관련 Chrome E2E **4종**(`seats`, `narrow`, `log_wrap`, `lang`) **10초, 실패 0**, Ruff(`src tests`·변경 E2E)·`git diff --check` 통과. CSS만 변경했으므로 서버 재시작 없이 브라우저 새로고침으로 적용한다.
+
 ## 2026-10-05 베네 틀레이락스 게임판의 표본 큐브
 
 - 베네 틀레이락스 보드 스캔의 왼쪽 아래 Axolotl tanks에 공개 `player.specimens` 수만큼 해당 플레이어 색상의 병력 큐브를 표시한다. 공용 열의 작은 보드와 **크게 보기**는 같은 renderer를 사용하고 표본 생성·지출·반환과 다른 플레이어의 업데이트에 맞춰 다시 그린다. 구역에 포인터를 올리면 플레이어1~4 / Player 1~4와 정확한 표본 수가 표시되며, 보드 이미지가 없으면 색상 범례와 플레이어별 표본 수를 텍스트로 보여준다.

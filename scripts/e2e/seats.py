@@ -141,6 +141,34 @@ def check_compact_stats(page) -> None:
     )
 
 
+def check_number_badges(page, label: str) -> None:
+    marks = page.eval_on_selector_all(
+        "#seats .who-name > .seat-mark",
+        """nodes => nodes.map(n => {
+            const b = n.getBoundingClientRect();
+            const r = document.createRange();
+            r.selectNodeContents(n);
+            const text = r.getBoundingClientRect();
+            return { number: n.textContent, width: b.width, height: b.height,
+                textCentre: (text.left + text.right) / 2,
+                centre: (b.left + b.right) / 2 };
+        })""",
+    )
+    check.ok(
+        len(marks) == 4
+        and all(abs(m["width"] - m["height"]) < 0.1 for m in marks)
+        and all(m["width"] >= 12 for m in marks)
+        and max(m["width"] for m in marks) - min(m["width"] for m in marks) < 0.1,
+        f"{label}: four readable circles of the same size beside the Leader names",
+        marks,
+    )
+    check.ok(
+        all(abs(m["textCentre"] - m["centre"]) < 0.5 for m in marks),
+        f"{label}: the numbers are centred inside their circles",
+        marks,
+    )
+
+
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "seats")
     watched_game(page, base)
@@ -149,6 +177,7 @@ def run(base: str, browser) -> None:
     check.ok(marks == ["1", "2", "3", "4"], "seat badges display 1 through 4", marks)
     for language, prefix in (("ko", "플레이어"), ("en", "Player ")):
         page.evaluate("setLanguage", language)
+        check_number_badges(page, f"{language} desktop")
         numbers = page.evaluate("""() => ({
             marks: [...document.querySelectorAll('#seats .seat-mark')].map(e => ({
                 id: e.dataset.seat, title: e.title, aria: e.getAttribute('aria-label'),
@@ -371,6 +400,7 @@ def run_laptop(base: str, browser) -> None:
     watched_game(page, base)
     for fraction in (0.25, 0.5, 0.75, 0.95):
         seek(page, fraction)
+        check_number_badges(page, f"1366x768 at {fraction:.0%}")
         seats = page.evaluate(SEATS)
         check.ok(
             seats["scroll"] <= seats["client"],

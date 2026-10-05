@@ -1232,7 +1232,15 @@ kbd {
 .seat .who { font-weight: 700; display: flex; flex-wrap: wrap; gap: 0.1rem 0.3rem; align-items: center; flex: 1; min-width: 0; }
 .seat .who-name { flex: 1 0 100%; display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
 .seat .leader-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.seat-mark { font-size: 0.7em; }
+/* Keep numbered player badges round even beside a long Leader name. */
+.seat-mark {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
 .seat .badge {
   display: inline-block;
   font-size: 0.68rem;
