@@ -3609,6 +3609,7 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 4  # v130 (OQ-005): flip_battle_card per Objective
         + 1  # v131 (user ruling 2026-10-04): place_track_spy
         + 1  # v134: finish_leader_draft
+        + 1  # codec bump pending (2026-10-06): the cards_second icon key
     )
     action = DomainAction(
         action_id="trash_agent_card",

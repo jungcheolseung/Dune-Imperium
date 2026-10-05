@@ -1297,6 +1297,12 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
                 f"유전자 마커 {needed}개 필요 (보유 {held}){_LAPSES_KO}",
                 "condition",
             )
+        case AgentIconCondition.CONTRACTS_COMPLETED:
+            return (
+                f"Needs {needed} completed contracts (you have {held}){_LAPSES_EN}",
+                f"완수한 {{contract}} {needed}개 필요 (완수 {held}){_LAPSES_KO}",
+                "condition",
+            )
         case AgentIconCondition.GRAFTED:
             return (
                 "Only when the card is grafted; it lapses when the turn ends",
@@ -1309,14 +1315,16 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
 
 
 # Conditions a later effect of the same turn can still meet (Influence
-# gained, spice gained, a marker reached): such an icon sits with the
-# Agent boxes waiting on theirs (``_agent_box``), under "waiting". A card
-# grafted or not stays so all turn, and an unprinted icon never comes.
+# gained, spice gained, a marker reached, a contract completed): such an
+# icon sits with the Agent boxes waiting on theirs (``_agent_box``), under
+# "waiting". A card grafted or not stays so all turn, and an unprinted icon
+# never comes.
 _ICON_CAN_STILL_BE_MET: Final = frozenset(
     {
         AgentIconCondition.INFLUENCE,
         AgentIconCondition.SPICE_GAINED,
         AgentIconCondition.GENETIC_MARKERS,
+        AgentIconCondition.CONTRACTS_COMPLETED,
     }
 )
 

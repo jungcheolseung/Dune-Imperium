@@ -1096,8 +1096,17 @@ def _old_icon_condition_holds(
     key: str,
 ) -> bool:
     """``agent_effects.agent_icon_condition_holds`` before ``agent_icon_block``
-    (2026-10-02)."""
+    (2026-10-02), with the rule changes made on purpose since then."""
 
+    # 2026-10-06 (Steam app comparison): Cargo Runner's two printed lines
+    # became two icons, judged at two and four completed contracts.
+    if effect is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO:
+        if key == "cards":
+            return len(owner.completed_contract_ids) >= 2
+        if key == "cards_second":
+            return len(owner.completed_contract_ids) >= 4
+    if key == "cards_second":
+        return False
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO

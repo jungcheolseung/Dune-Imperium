@@ -590,6 +590,7 @@ const EVENT_LABELS = {
    that happened to match. */
 const EFFECT_ICON_LABELS = {
   cards: "카드 {draw}",
+  cards_second: "카드 {draw}",
   contract: "{contract} 획득",
   high_council: "원로회 자리",
   intrigue: "{intrigue} {draw}",

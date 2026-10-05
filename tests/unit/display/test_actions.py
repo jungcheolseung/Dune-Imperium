@@ -43,6 +43,7 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
 
 _KEYS = (
     "cards",
+    "cards_second",
     "intrigue",
     "troops",
     "solari",
@@ -65,6 +66,7 @@ _EFFECTS = (
         PersonalCardAgentEffect
         .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
     ),
+    PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
 )
 
 
@@ -136,6 +138,21 @@ def test_agent_card_icon_text_ko_appends_the_spice_this_turn_condition() -> None
     assert (
         agent_card_icon_text_ko(effect, "cards")
         == "{draw:1} (이번 차례에 {spice}를 2 이상 얻었다면)"
+    )
+
+
+def test_agent_card_icon_text_names_each_cargo_runner_line() -> None:
+    # Two printed lines, one icon each (OQ-027): two and four contracts.
+    effect = PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+
+    assert agent_card_icon_text(effect, "cards") == (
+        "Draw 1 card (if you have completed 2 or more contracts)"
+    )
+    assert agent_card_icon_text(effect, "cards_second") == (
+        "Draw 1 card (if you have completed 4 or more contracts)"
+    )
+    assert agent_card_icon_text_ko(effect, "cards_second") == (
+        "{draw:1} ({contract} 넷 이상 완수했다면)"
     )
 
 

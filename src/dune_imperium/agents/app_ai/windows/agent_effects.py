@@ -102,7 +102,7 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   (``PowerPlayAgentAbility``): 500, automatic.
 - Seek Allies, and Dangerous Rhetoric's ``trash_self`` icon:
   ``TrashSelfAbility`` (Implicit, after End Turn): chore.
-- Prepare the Way, Maula Pistol, Spacing Guild's Favor, Cargo Runner: their
+- Prepare the Way, Maula Pistol, Spacing Guild's Favor: their
   ``DrawAbility``, 600 or (E) at ``DeferValue``; Priority Contracts:
   ``GainContractAbility``, likewise.
 - Rebel Supplier, Strike Fleet, Desert Power, Smuggler's Harvester, Fedaykin
@@ -114,7 +114,8 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
 - Long Live the Fighters: ``LongLiveTheFightersStartAbility`` (O), 100.
 - ``effect=`` icons: Hidden Missive ``troops`` / Maker Keeper / Wheels Within
   Wheels -> their ``AlwaysRunImmediately`` riders, 600; Hidden Missive and
-  Steersman ``cards`` -> their draw (600 or E). The reward icons Captured
+  Steersman ``cards`` and Cargo Runner's ``cards`` / ``cards_second`` (two
+  and four contracts) -> their draw (600 or E). The reward icons Captured
   Mentat, Guild Spy and Branching Path arm after their cost: follow-ups.
 - ``trash_agent_card(card)`` / ``decline_agent_card_trash``:
   ``TrashAgentAbility`` (Calculus of Power, Desert Survival; E),
@@ -449,7 +450,6 @@ _BOX_ABILITY: Mapping[str, str] = {
     "prepare_the_way": "BeneGesseritInfluenceDrawAbility",
     "maula_pistol": "DrawAbility",
     "spacing_guild_s_favor": "DrawAbility",
-    "cargo_runner": "CargoRunner2ContractsDrawAbility",
     "leadership": "LeadershipAgentAbility",
     "chani_clever_tactician": "ChaniCleverTacticianAgentAbility",
     "imperial_spymaster": "ImperialSpymasterAbility",
@@ -474,6 +474,9 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("maker_keeper", "spice"): "MakerKeeperFremenAbility",
     ("wheels_within_wheels", "solari"): "WheelsWithinWheelsEmperorAbility",
     ("wheels_within_wheels", "spice"): "WheelsWithinWheelsSpacingGuildAbility",
+    # Cargo Runner's two lines, one app ability each (two and four contracts).
+    ("cargo_runner", "cards"): "CargoRunner2ContractsDrawAbility",
+    ("cargo_runner", "cards_second"): "CargoRunner4ContractsDrawAbility",
     # Immortality multi-icon boxes (``_PLACEMENT_ICONS`` of our engine).
     ("sardaukar_quartermaster", "troops"): "SardaukarQuartermasterTroopAbility",
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",

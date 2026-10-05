@@ -152,6 +152,9 @@ SLIG_FARMER_PRICE: Final = 5
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
 AGENT_ICON_CARDS: Final = "cards"
+# A box's second, separately conditioned card-draw line (Cargo Runner's
+# "If you have completed four or more contracts: [draw 1]").
+AGENT_ICON_CARDS_SECOND: Final = "cards_second"
 AGENT_ICON_INTRIGUE: Final = "intrigue"
 AGENT_ICON_PLEDGE: Final = "pledge"  # Pivotal Gambit's first-place Influence
 AGENT_ICON_SOLARI: Final = "solari"
@@ -164,6 +167,7 @@ AGENT_ICON_TROOPS: Final = "troops"
 AGENT_ICON_WATER: Final = "water"
 AUTOMATIC_AGENT_ICONS: Final = (
     AGENT_ICON_CARDS,
+    AGENT_ICON_CARDS_SECOND,
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
     AGENT_ICON_SOLARI,
@@ -224,6 +228,14 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
             _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED: (
                 AGENT_ICON_TROOPS,
                 AGENT_ICON_CARDS,
+            ),
+            # Cargo Runner: two printed lines, "If you have completed two or
+            # more contracts: [draw 1]" and "If you have completed four or
+            # more contracts: [draw 1]" [Cargo Runner card], each judged
+            # when it resolves (OQ-028).
+            _BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO: (
+                AGENT_ICON_CARDS,
+                AGENT_ICON_CARDS_SECOND,
             ),
         }
     )
@@ -3127,6 +3139,7 @@ class AgentIconCondition(StrEnum):
     SPICE_GAINED = "spice_gained"
     GRAFTED = "grafted"
     GENETIC_MARKERS = "genetic_markers"
+    CONTRACTS_COMPLETED = "contracts_completed"
     # The icon belongs to no box that prints it; no card queues one.
     NOT_PRINTED = "not_printed"
 
@@ -3146,6 +3159,18 @@ class AgentIconBlock:
 # The printed thresholds: two Influence, two spice this turn, two markers.
 _ICON_THRESHOLD: Final = 2
 _NOT_PRINTED: Final = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
+# Cargo Runner's two lines: two and four completed contracts.
+_CARGO_RUNNER = PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+_CARGO_RUNNER_CONTRACTS: Final = MappingProxyType(
+    {AGENT_ICON_CARDS: 2, AGENT_ICON_CARDS_SECOND: 4}
+)
+
+
+def _contracts_block(owner: PlayerState, needed: int) -> AgentIconBlock | None:
+    held = len(owner.completed_contract_ids)
+    if held >= needed:
+        return None
+    return AgentIconBlock(AgentIconCondition.CONTRACTS_COMPLETED, needed, held)
 
 
 def _influence_block(owner: PlayerState, faction: Faction) -> AgentIconBlock | None:
@@ -3168,7 +3193,8 @@ def agent_icon_block(
     Hidden Missive (two Bene Gesserit Influence), Fremen War Name ("If you
     gained [2 spice] or more this turn:" [Fremen War Name card]), Sardaukar
     Quartermaster (grafted), Tleilaxu Infiltrator (two genetic markers),
-    Maker Keeper and Wheels Within Wheels (Influence thresholds) print a
+    Maker Keeper and Wheels Within Wheels (Influence thresholds) and Cargo
+    Runner (two and four completed contracts, one line each) print a
     condition on icons that are otherwise mandatory. The condition is judged
     when the icon resolves (OQ-028), and while it is false the icon is not
     offered: a mandatory effect cannot be fired to fizzle, it waits for the
@@ -3179,6 +3205,10 @@ def agent_icon_block(
     it while the turn is open (user ruling 2026-10-02, L2-Q3 (3)).
     """
 
+    if effect is _CARGO_RUNNER and key in _CARGO_RUNNER_CONTRACTS:
+        return _contracts_block(owner, _CARGO_RUNNER_CONTRACTS[key])
+    if key == AGENT_ICON_CARDS_SECOND:
+        return _NOT_PRINTED
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
@@ -3299,7 +3329,7 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     personal_draw_count = 0
     intrigue_draw_count = 0
     match key:
-        case "cards":
+        case "cards" | "cards_second":
             if available:
                 personal_draw_count = 1
         case "intrigue":
@@ -3617,16 +3647,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
-    elif (
-        effect
-        is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
-    ):
-        next_owner = owner
-        event_kind = (
-            "agent_card_effect_resolved"
-            if len(owner.completed_contract_ids) >= 2
-            else "agent_card_effect_unavailable"
-        )
     elif effect is PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT:
         if any(
             seat.player_id != player and seat.troops_conflict + seat.commanders_conflict
@@ -4716,7 +4736,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
-        PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
         PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN,
         PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
         PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
@@ -4730,11 +4749,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             PersonalCardAgentEffect.DRAW_TWO_CARDS,
         ):
             draw_count = 2
-        elif (
-            effect
-            is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
-        ):
-            draw_count = min(len(owner.completed_contract_ids) // 2, 2)
         else:
             draw_count = 1
         if draw_count == 0 or event_kind == "agent_card_effect_unavailable":

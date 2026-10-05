@@ -320,6 +320,7 @@ const LABELS_EN = {
   },
   "EFFECT_ICON_LABELS": {
     "cards": "{draw} cards",
+    "cards_second": "{draw} cards",
     "contract": "Acquire {contract}",
     "high_council": "High Council seat",
     "intrigue": "{draw} {intrigue}",

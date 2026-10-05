@@ -89,7 +89,10 @@ from dune_imperium.rules.strength import units_strength
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
-from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
+    finish_agent_turn,
+    finish_agent_turn_result,
+)
 
 
 def _instance(card_id: str) -> str:
@@ -5761,82 +5764,171 @@ def test_branching_path_without_an_intrigue_card_only_offers_decline() -> None:
     assert legal_agent_card_trash_actions(placed, 0) == ()
 
 
-def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
+def _cargo_runner_state(
+    completed: tuple[str, ...],
+    *,
+    active: tuple[str, ...] = (),
+    deck: tuple[str, ...] = (),
+) -> GameState:
     cargo_runner = _imperium_instance("cargo_runner", choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(cargo_runner,),
+        deck=deck,
+        active_contract_ids=active,
+        completed_contract_ids=completed,
+    )
+    return GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _offered_icons(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
+def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
+    # Two printed lines, "If you have completed two or more contracts:
+    # [draw 1]" and "If you have completed four or more contracts: [draw 1]"
+    # [Cargo Runner card]: two icons resolved one action each (OQ-027).
     draws = (
         _imperium_instance("truthtrance"),
         _imperium_instance("sardaukar_soldier"),
     )
-    owner = PlayerState(
-        player_id=0,
-        hand=(cargo_runner,),
-        deck=draws,
-        completed_contract_ids=(
+    state = _cargo_runner_state(
+        (
             "contract:arrakeen_i",
             "contract:arrakeen_ii",
             "contract:deliver_supplies",
             "contract:espionage_i",
             "contract:espionage_i_copy_2",
         ),
-    )
-    state = GameState(
-        config=RulesetConfig(choam_module=True),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
+        deck=draws,
     )
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards,cards_second"
+    )
+    assert _offered_icons(placed) == {"cards", "cards_second"}
 
-    result = resolve_agent_card_effect(placed)
+    second = resolve_agent_card_icon(placed, _icon_action(placed, "cards_second"))
+    result = resolve_agent_card_icon(
+        second.state, _icon_action(second.state, "cards")
+    )
 
     assert len(result.state.players[0].hand) == 2
     assert result.state.players[0].deck == ()
     assert result.events[-1].kind == "agent_card_effect_resolved"
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
 
 
 def test_cargo_runner_counts_a_contract_completed_earlier_in_the_turn() -> None:
-    cargo_runner = _imperium_instance("cargo_runner", choam_module=True)
     drawn = _imperium_instance("truthtrance")
-    owner = PlayerState(
-        player_id=0,
-        hand=(cargo_runner,),
+    state = _cargo_runner_state(
+        ("contract:deliver_supplies",),
+        active=("contract:arrakeen_i",),
         deck=(drawn,),
-        active_contract_ids=("contract:arrakeen_i",),
-        completed_contract_ids=("contract:deliver_supplies",),
-    )
-    state = GameState(
-        config=RulesetConfig(choam_module=True),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    # One completed contract: neither line is offered yet; both wait.
+    assert _offered_icons(placed) == set()
     completion = legal_contract_completion_actions(placed, 0)[0]
     completed = apply_contract_completion(placed, completion).state
+    assert _offered_icons(completed) == {"cards"}
 
-    result = resolve_agent_card_effect(completed)
+    result = resolve_agent_card_icon(completed, _icon_action(completed, "cards"))
 
     assert result.state.players[0].completed_contract_ids == (
         "contract:deliver_supplies",
         "contract:arrakeen_i",
     )
     assert result.state.players[0].hand == (drawn,)
+
+
+def test_cargo_runner_second_line_waits_for_a_fourth_contract_in_the_turn() -> None:
+    # Each line is judged when it resolves (OQ-028): the first line drawn at
+    # three contracts leaves the four-contract line waiting (OQ-057 (1)); a
+    # fourth contract completed later in the same Agent turn offers it, and
+    # it is mandatory then.
+    first = _imperium_instance("truthtrance")
+    second = _imperium_instance("sardaukar_soldier")
+    state = _cargo_runner_state(
+        (
+            "contract:deliver_supplies",
+            "contract:espionage_i",
+            "contract:espionage_i_copy_2",
+        ),
+        active=("contract:arrakeen_i",),
+        deck=(first, second),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    assert _offered_icons(placed) == {"cards"}
+
+    drew_one = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    assert drew_one.players[0].hand == (first,)
+    assert dict(drew_one.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards_second"
+    )
+    assert _offered_icons(drew_one) == set()
+    assert agent_card_effect_is_unavailable(drew_one)
+
+    completion = legal_contract_completion_actions(drew_one, 0)[0]
+    fourth = apply_contract_completion(drew_one, completion).state
+    assert len(fourth.players[0].completed_contract_ids) == 4
+    assert _offered_icons(fourth) == {"cards_second"}
+    assert not agent_card_effect_is_unavailable(fourth)
+    # Mandatory now: the turn's end waits for it.
+    assert DomainAction(action_id="finish_agent_turn", actor=0) not in (
+        UprisingRulesEngine().legal_actions(fourth, 0)
+    )
+
+    result = resolve_agent_card_icon(fourth, _icon_action(fourth, "cards_second"))
+
+    assert result.state.players[0].hand == (first, second)
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_cargo_runner_second_line_lapses_at_the_turn_end_below_four() -> None:
+    first = _imperium_instance("truthtrance")
+    second = _imperium_instance("sardaukar_soldier")
+    state = _cargo_runner_state(
+        ("contract:deliver_supplies", "contract:espionage_i"),
+        deck=(first, second),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    drew_one = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    # The space's own Intrigue icon first; only the waiting line is left.
+    board = legal_board_effect_actions(drew_one, 0)
+    assert len(board) == 1
+    drew_one = UprisingRulesEngine().apply(drew_one, board[0]).state
+
+    closed = finish_agent_turn_result(drew_one)
+
+    assert closed.state.players[0].hand == (first,)
+    assert closed.state.players[0].deck == (second,)
+    assert [
+        dict(event.payload)["effect"]
+        for event in closed.events
+        if event.kind == "agent_card_effect_unavailable"
+    ] == ["cards_second"]
 
 
 def test_delivery_agreement_discards_a_card_to_take_a_contract() -> None:

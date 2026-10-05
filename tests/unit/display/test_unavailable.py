@@ -1521,6 +1521,39 @@ def test_an_ungrafted_card_s_icons_are_greyed_among_the_choices() -> None:
     }
 
 
+def test_cargo_runner_s_four_contract_line_waits_with_its_count() -> None:
+    """Cargo Runner's two lines are two icons (OQ-027): at three completed
+    contracts the first is offered and the second ("If you have completed
+    four or more contracts: [draw 1]" [Cargo Runner card]) waits with what
+    is missing; a contract completed later in the turn can still meet it,
+    so it sits under "waiting" (OQ-057 (1))."""
+    cargo = next(
+        i for i in imperium_deck_instance_ids(True) if ":cargo_runner:" in i
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(cargo,),
+        deck=(DAGGER,),
+        completed_contract_ids=(
+            "contract:deliver_supplies",
+            "contract:espionage_i",
+            "contract:espionage_i_copy_2",
+        ),
+    )
+    state = _place(
+        _state(owner, config=RulesetConfig(choam_module=True)), "assembly_hall"
+    )
+    assert _icon_rows(state) == {
+        "waiting:agent_icon:cards_second": (
+            "Needs 4 completed contracts (you have 3);"
+            " it lapses if still unmet when the turn ends",
+            "완수한 {contract} 4개 필요 (완수 3)"
+            " — 차례가 끝날 때까지 못 채우면 사라짐",
+            "condition",
+        ),
+    }
+
+
 # --- A Contract the seat cannot take, and Contract icons held (OQ-059) ---
 
 _IMMEDIATE = "contract:bloodlines_immediate"
