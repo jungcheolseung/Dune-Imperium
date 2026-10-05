@@ -127,8 +127,11 @@ def summarize(report: TournamentReport) -> TournamentSummary:
     by_leader: dict[tuple[str, str], _Accumulator] = defaultdict(_Accumulator)
     rulesets: list[str] = []
     for match in report.matches:
-        if match.ruleset not in rulesets:
-            rulesets.append(match.ruleset)
+        label = match.ruleset
+        if match.leader_draft:
+            label += " (leader draft)"
+        if label not in rulesets:
+            rulesets.append(label)
         for seat in match.seats:
             margin = _vp_margin(match, seat.seat)
             is_first = seat.seat == match.first_player
@@ -238,6 +241,7 @@ def match_rows(report: TournamentReport) -> list[dict[str, Any]]:
             "rounds": match.rounds,
             "steps": match.steps,
             "duration_seconds": match.duration_seconds,
+            "leader_draft": match.leader_draft,
             "seats": [asdict(seat) for seat in match.seats],
         }
         for match in report.matches
