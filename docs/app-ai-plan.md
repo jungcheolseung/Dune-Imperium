@@ -2,7 +2,7 @@
 
 상태: **완료** (2026-10-05 작성·구현·A/B, master 병합). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
 뼈대 커밋 `279dffd8`.
-확장판(Immortality·Epic·Go to 11·프로모·지도자 드래프트·Bloodlines·Arrakeen Scouts): **진행 중**, 브랜치 `app-ai-expansions`(11절).
+확장판(Immortality·Epic·Go to 11·프로모·지도자 드래프트·Bloodlines·Arrakeen Scouts): **구현 완료**, 브랜치 `app-ai-expansions`(11절). 16개 선택지 조합 12판씩 오류 0·무작위 대체 0·미포팅 0.
 
 ## 1. 사용자 결정
 
@@ -34,22 +34,24 @@
 
 재현: `scripts/dwgr/app_archetypes.py`, `scripts/dwgr/app_ai_constants.py`가 덤프에서 JSON을 만들고,
 `scripts/dwgr/app_ai_emit.py`가 `agents/app_ai/data/{constants,archetypes}.py`를 만든다(그 뒤 `ruff format`). 앱이 업데이트되면
-덤프를 다시 뜨고 세 스크립트를 다시 돌린다.
+덤프를 다시 뜨고 세 스크립트를 다시 돌린다. 앱에 없는 Bloodlines·Scouts의 합성 아키타입은 `scripts/dwgr/app_ai_synth.py`가 우리 콘텐츠와
+앱 데이터 규칙(11.3)으로 `agents/app_ai/data/synthetic.py`에 만든다(콘텐츠가 바뀌면 다시 돌린다; 테스트가 재현을 확인한다).
 
 ## 3. 구조 (`src/dune_imperium/agents/app_ai/`)
 
 | 모듈 | 내용 |
 |---|---|
 | `data/constants.py` (생성) | `AIConstants` 437필드(앱 getter 이름 그대로), `HARD`/`MEDIUM`/`EASY`, `TABLES` (AILevel → 표) |
+| `data/synthetic.py` (생성) | 앱식 확장의 합성 아키타입 204개(Bloodlines 카드·책략·Twisted·Navigation·Conflict·계약 토큰·지도자·Commander·Skill·Tech 타일·Tuek's Sietch)와 Scouts 줄 85개. 앱 속성 이름 그대로 |
 | `data/archetypes.py` (생성) | 앱이 정의한 아키타입 508개 전부의 속성과 능력 목록. `in_uprising`/`in_uprising_choam`은 4인 Uprising(±CHOAM)에서 앱이 실제로 나눠 주는지 |
 | `catalog.py` | 우리 id ↔ 앱 아키타입 대응표와 `Entity` 생성 |
 | `entities.py` | `Entity`(우리 id + 앱 아키타입), `Kind`, `Attr` |
 | `context.py` | `AppContext`: 좌석이 읽어도 되는 것만 읽는 상태 접근(정직성 규칙의 유일한 자리) |
 | `summer.py` | `AIValueSummer` 포트(`add`, 누적합에만 곱하는 `multiply`), `app_round`(Convert.ToInt32 = 은행가 반올림) |
 | `choice.py` | `MakeChoice`: 전부 섞고 → 0 초과만 → 값 내림차순 안정 정렬 → 첫째; 없으면 빈 답 |
-| `profile/core.py` | `WormAIProfile` 메서드 선언 전부(계약). 구현은 `economy.py`·`influence.py`·`combat.py` 세 mixin |
-| `abilities/` | 앱 능력 클래스 포트. `@port("<앱 전체 클래스명>")`로 등록, 앱 상속 구조를 그대로 따른다 |
-| `windows/` | 우리 결정 창 → 앱 질문 → 우리 행동. 창별 `HANDLERS` |
+| `profile/core.py` | `WormAIProfile` 메서드 선언 전부(계약). 구현은 `economy.py`·`influence.py`·`combat.py` 세 mixin과 확장 mixin `immortality.py`·`tech.py`(충실 포팅), `bloodlines.py`·`scouts.py`(앱식 확장) |
+| `abilities/` | 앱 능력 클래스 포트. `@port("<앱 전체 클래스명>")`로 등록, 앱 상속 구조를 그대로 따른다. 확장: `immortality.py`, `epic_promo.py`, `tech.py`(충실 포팅), `bloodlines_cards.py`, `bloodlines_systems.py`, `scouts.py`(앱식 확장, `worm.canis.abilities.AppStyle.*`) |
+| `windows/` | 우리 결정 창 → 앱 질문 → 우리 행동. 창별 `HANDLERS`. 확장 전용 창: `setup.py`(지도자 드래프트), `immortality.py`, `bloodlines.py`, `scouts.py`. 모르는 카드·행동 id는 기본값 없이 대체로 넘긴다 |
 | `agent.py` | `AppAIAgent(seed, level)`: `StateAgent`. 대응 안 된 결정은 앱의 `DefaultRandomChoice`처럼 합법 행동 중 무작위로 답하고 `fallbacks`에 센다(heuristic은 섞지 않는다, 11절) |
 
 registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
@@ -116,6 +118,18 @@ Immortality·Epic·프로모(2026-10-05, 창 단계):
 - Harvest Cells: 앱은 교전 해결 창에서, 우리는 보상 뒤 `conflict_end_trigger`에서 묻는다. 교전 때 정한 답을 다시 쓴다.
 - Economic Supremacy의 두 지불은 앱이 한 질문에서 섞은 순서로, 우리는 인쇄 순서의 두 질문으로 묻는다. 자원이 달라 결과는 같다.
 - 창이 모르는 카드·행동 id는 조용한 기본값 대신 대체(무작위, `fallbacks`에 셈)로 넘긴다. 그래야 census가 빈 곳을 보여 준다.
+
+Bloodlines·Scouts(앱식 확장, 창 단계에서 정한 것):
+
+- Endgame: 앱의 `ScoreBattleIconsPairs`는 와일드 둘을 짝짓지 않는다. Bloodlines 규칙([Bloodlines p. 5])대로 앱의 짝을 매긴 뒤
+  남은 와일드끼리 짝짓고, Grasp Arrakis의 Endgame 뒤집기는 짝을 매긴 뒤에 쓴다(cards 사양 D17).
+- Command(6+) 선택은 그 선택 창에서 바로 답한다(구매 전, 11.5). 늦게 열린 Command는 Reveal 자동 단계로 이어 처리한다.
+- Disruption Tactics: 이미 Combat 아이콘이 열려 있거나 배치 여유가 없으면 자기 Trash로 얻는 배치는 0이다(Rapid Dropships D24와 같은 판단).
+- Navigation Chamber의 할인 변형은 변형마다 칸 값을 다시 매겨 가장 좋은 것을 고른다. Spice Refinery에서는 1-spice 교환이 공짜가 된다.
+- Scouts 입찰은 두 단계(`scouts_bid`, `confirm_scouts_bid`) 모두 같은 결정적 평가기로 답한다(의도 기억 없이도 같은 값).
+- 피해자 쪽 결정(`opponent_unit_loss`, `opponent_spy_move`)은 잃는 가치가 가장 작은 것(11.4).
+- 알려진 엔진 차이 아닌 한계: `agents/determinize.py`는 상대의 Navigation 칸·Secret Project를 다시 섞지 않으므로 정직성 테스트가 이
+  부분을 보지 못한다(창 검증 agent가 따로 섞어 본 확인에서는 차이 없음).
 
 ## 7. 구현 순서와 진행 상태
 
@@ -264,8 +278,8 @@ Arrakeen Scouts (R9): 앱에 없으므로 모든 결정이 앱식 확장이다.
 | 2' | 앱식 사양: `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md` | 완료 `38a2e0d6` |
 | 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | 완료: 아키타입 204 + Scouts 줄 85, 능력 89 + 57 + Scouts; 미포팅 0 |
 | 4 | 결정 창: Immortality·Epic·Go to 11·프로모·드래프트(새 창 6개 포함) | 완료 `e88edff4`: 7개 조합 6판씩 대체 0·미포팅 0 |
-| 4' | 결정 창: Bloodlines 10, Scouts 10과 기존 창의 새 id | |
-| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | |
+| 4' | 결정 창: Bloodlines 10, Scouts 10과 기존 창의 새 id; 11.8의 창 밖 결정 | 완료 `6fbe8037`, `110fa5bf`: 16개 조합 12판씩 대체 0·미포팅 0 |
+| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | census 완료; A/B 진행 중 |
 
 검증: 충실 포팅은 지금까지처럼 사양·역어셈블에 대한 독립 반박 검증. 앱식 확장은 앱과 대조할 것이 없으므로 이 절의 규칙에 대한 대조로
 검증한다.
