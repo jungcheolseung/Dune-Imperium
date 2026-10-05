@@ -4,6 +4,13 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 멀티플레이 환경 가이드 보강
+
+- 기존 [`remote-play-guide.md`](remote-play-guide.md)를 **멀티플레이 환경·설정·접속 가이드**로 보강하고 README 상단에 진입 링크를 추가했다. 호스트·참가자 준비 사항, uv·Python 3.14 설치, 같은 LAN과 다른 장소의 Tailscale 접속, 관리자·방·머신 공유 링크 구분, 좌석 선택·쿠키 기반 재접속, 저장·종료·복구와 접속 문제 해결을 안내한다. 참가자에게 복사해 보낼 안내도 포함한다.
+- 기본 서버와 휴리스틱·랜덤·롤아웃 AI는 `ui` extra로 사용할 수 있다. 기존 안내의 롤아웃에 `rl`·`train`이 필요하다는 설명을 바로잡았고, 학습 체크포인트 구성에는 `train`과 호환되는 파일이 필요하다고 구분했다. 기존 개발 환경에서는 전체 extra를 유지하도록 안내한다. 설치·공유 절차는 uv와 Tailscale의 공식 문서를 2026-10-05에 확인했다.
+- 검증: CLI·원격 HTTP·자동 저장 HTTP 관련 pytest **66개 통과**(실제 localhost 서버의 종료·강제 종료 후 복구 포함), 가이드의 파일·제목 링크 **11개**와 README 진입 링크 확인, `git diff --check` 통과. `numpy`·`torch`·`gymnasium`·`pettingzoo` import를 차단한 상태에서도 서버 앱과 휴리스틱·랜덤·롤아웃 agent가 로드되는 것을 확인했다. 기존 주 체크아웃의 Python 환경을 재사용했다.
+- 2026-09-17의 Mac mini Tailscale 리허설과 회선 에뮬레이션 기록을 유지했다. 이번 문서 작업에서 실제 WAN 한 판이나 WSL2 호스트를 새로 검증한 것은 아니며, 실전 접속·장시간 연결·복구 경험은 여전히 확인할 항목이다.
+
 ## 2026-10-05 기술 구매와 획득 효과 분리
 
 - 구현 커밋: `27a1a448`. 사용자 요청 OQ-098에 따라 기술 구매는 비용 지불·소유권 이전·다음 타일 공개를 처리하고, 일회 획득 보상의 각 아이콘을 현재 turn의 별도 행동 `resolve_tech_acquire_effect`로 남긴다. 다른 카드·보드 효과, 다른 기술의 획득 보상과 원하는 순서로 해결한다. 발광구·운항실의 Influence는 구매 시 오르지 않으며, 해결 행동에서 황제·우주항행 길드·베네 게세리트·프레멘 중 하나를 고른다. 한국어·영어 행동 문구를 함께 추가했다.
