@@ -54,7 +54,7 @@ def watched_game(page, base: str) -> None:
     page.wait_for_selector("#seat-selects select")
     setup_labels = page.locator("#seat-selects label > span").all_text_contents()
     check.ok(
-        setup_labels == ["좌석 1", "좌석 2", "좌석 3", "좌석 4"],
+        setup_labels == ["플레이어1", "플레이어2", "플레이어3", "플레이어4"],
         "setup displays seats 1 through 4",
         setup_labels,
     )
@@ -147,7 +147,7 @@ def run(base: str, browser) -> None:
 
     marks = page.locator("#seats .seat-mark").all_text_contents()
     check.ok(marks == ["1", "2", "3", "4"], "seat badges display 1 through 4", marks)
-    for language, prefix in (("ko", "좌석"), ("en", "Seat")):
+    for language, prefix in (("ko", "플레이어"), ("en", "Player ")):
         page.evaluate("setLanguage", language)
         numbers = page.evaluate("""() => ({
             marks: [...document.querySelectorAll('#seats .seat-mark')].map(e => ({
@@ -160,7 +160,7 @@ def run(base: str, browser) -> None:
         check.ok(
             all(
                 mark["id"] == str(seat)
-                and mark["title"] == mark["aria"] == f"{prefix} {seat + 1}"
+                and mark["title"] == mark["aria"] == f"{prefix}{seat + 1}"
                 for seat, mark in enumerate(numbers["marks"])
             ),
             f"{language}: badges use visible seat numbers and stable IDs",
@@ -170,7 +170,7 @@ def run(base: str, browser) -> None:
             len(numbers["review"]) == 4
             and all(
                 option["id"] == str(seat)
-                and option["label"].startswith(f"{prefix} {seat + 1}")
+                and option["label"].startswith(f"{prefix}{seat + 1}")
                 for seat, option in enumerate(numbers["review"])
             ),
             f"{language}: review seat choices display 1 through 4 with original values",

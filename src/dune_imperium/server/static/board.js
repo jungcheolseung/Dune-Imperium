@@ -476,7 +476,7 @@ function renderBoardStage(board, view) {
     post.dataset.count = String(Math.min(seats.length, 4));
     post.title = t("board.post_seats", {
       post: postName(postId),
-      seats: seats.map(seatNumber).join(", "),
+      seats: seats.map((seat) => t("common.seat", { seat })).join(", "),
     });
     /* A Spy sharing a post stands on the one that was there first. */
     seats.forEach((seat, level) => {

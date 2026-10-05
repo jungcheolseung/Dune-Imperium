@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 화면 명칭을 플레이어로 통일
+
+- 사용자 요청에 따라 참여자를 부르는 화면 표현을 한국어 **플레이어1~플레이어4**, 영어 **Player 1~Player 4**로 통일했다. 설정·게임 안내·보드 조각의 툴팁과 접근성 이름·행동 로그·최종 순위·관전/검토·도움말·원격 참여 안내 및 Scouts 표시 문구에 적용했다. 관측소를 함께 쓰는 Spy들의 툴팁도 각각의 플레이어 라벨을 쓴다.
+- 원격 참여 버튼은 “참여 / Join”, 참여 종료는 “참여 종료 / Stop playing”, 호스트의 참여 해제는 “플레이어 해제 / Release player”로 표시한다. 내부 `seat` 식별자·API·0~3 값과 원로회 자리(High Council seat)의 규칙 용어는 유지했다.
+- 검증: i18n·Scouts 표시/서버 pytest **36개**, Ruff(`src tests`와 변경 E2E scripts)·mypy(**314파일**) 통과. 관련 Chrome E2E **8종**(seats·help·spectate·endgame·open_mode·lang·remote·board_tokens)을 확인했다. 참여 종료 문구를 바꾼 뒤 remote/rehearsal 검사의 기존 버튼 텍스트 선택자도 갱신했으며, remote 재검사는 **59개**, board_tokens는 **313개** 검사가 통과했다.
+
 ## 2026-10-05 넓은 창의 행동 로그·좌석 번호·확장 열 순서
 
 - 구현 커밋: `20652b29`(좌석 표시·확장 배치), `159c1e91`(남는 보드 폭으로 행동 로그 확장), `6617f31b`(좌석 설정 초기화 대기 검사); 브랜치 `codex/spy-objective-images`.

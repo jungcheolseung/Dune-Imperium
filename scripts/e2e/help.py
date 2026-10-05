@@ -165,7 +165,7 @@ def names(page) -> None:
     check.ok(
         len(roles["seatMarks"]) == 4
         and all(
-            role == "img" and label == f"좌석 {seat + 1}"
+            role == "img" and label == f"플레이어{seat + 1}"
             for seat, (role, label) in enumerate(roles["seatMarks"])
         ),
         "seat tokens are named images",

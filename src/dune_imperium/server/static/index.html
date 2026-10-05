@@ -14,7 +14,7 @@
     <span id="connection-note" role="status" hidden data-i18n="html.connection_note">서버 연결 끊김 — 다시 연결하는 중…</span>
     <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash" data-i18n="html.open_help" data-i18n-attr="title=html.open_help_title">도움말</button>
     <button id="language-toggle" lang="en">English</button>
-    <button id="open-lobby" hidden data-i18n="html.open_lobby">좌석</button>
+    <button id="open-lobby" hidden data-i18n="html.open_lobby">플레이어</button>
     <button id="save-game" hidden data-i18n="html.save_game">저장</button>
     <button id="leave-game" hidden data-i18n="html.leave_game">나가기</button>
   </header>
@@ -23,13 +23,13 @@
     <section id="setup-screen" class="panel">
       <div class="setup-intro">
         <h2 data-i18n="html.setup_title">새 게임</h2>
-        <p data-i18n="html.setup_intro">좌석과 규칙을 고르고 아라키스로 떠나세요.</p>
+        <p data-i18n="html.setup_intro">플레이어와 규칙을 고르고 아라키스로 떠나세요.</p>
       </div>
       <form id="setup-form">
         <fieldset class="setup-seats">
-          <legend data-i18n="html.seat_assignment_legend">좌석 배정</legend>
+          <legend data-i18n="html.seat_assignment_legend">플레이어 배정</legend>
           <div id="seat-selects"></div>
-          <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (좌석에 "학습 체크포인트"를 고르면 사용; train extra 필요)</span>
+          <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (플레이어 유형에서 "학습 체크포인트"를 고르면 사용; train extra 필요)</span>
             <input type="text" id="opt-checkpoint" placeholder="checkpoints/2026-09-06/champion_iter200.pt"></label>
           <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">시드 (빈칸 = 무작위)</span>
             <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>
@@ -83,7 +83,7 @@
     </section>
 
     <section id="lobby-screen" class="panel" hidden>
-      <h2 data-i18n="html.lobby_title">좌석 고르기</h2>
+      <h2 data-i18n="html.lobby_title">플레이어 고르기</h2>
       <p id="lobby-status" class="muted"></p>
       <label><span data-i18n="html.lobby_name_label">이름 (다른 플레이어에게 보입니다)</span>
         <input type="text" id="lobby-name" maxlength="20" autocomplete="off"></label>
@@ -96,7 +96,7 @@
 
     <section id="game-screen" hidden>
       <div id="table">
-        <aside id="seats" aria-label="좌석" data-i18n-attr="aria-label=html.seats_aria"></aside>
+        <aside id="seats" aria-label="플레이어" data-i18n-attr="aria-label=html.seats_aria"></aside>
         <div id="center">
           <section id="board" aria-label="게임 보드" data-i18n-attr="aria-label=html.board_aria"></section>
           <section id="market" aria-label="공용 카드" data-i18n-attr="aria-label=html.market_aria"></section>
@@ -104,7 +104,7 @@
         <aside id="side">
           <div id="side-main">
             <details id="host-panel" class="panel" hidden>
-              <summary data-i18n="html.host_panel_summary">호스트 · 방 링크와 좌석</summary>
+              <summary data-i18n="html.host_panel_summary">호스트 · 방 링크와 플레이어</summary>
               <div id="host-panel-body"></div>
             </details>
             <section id="decision-banner" class="panel">
@@ -113,7 +113,7 @@
             </section>
             <section id="review-bar" class="panel" hidden>
               <div class="review-controls">
-                <label><span data-i18n="html.review_seat_label">검토 좌석</span> <select id="review-seat"></select></label>
+                <label><span data-i18n="html.review_seat_label">검토 플레이어</span> <select id="review-seat"></select></label>
                 <button id="review-first" aria-label="처음으로" title="처음으로" data-i18n-attr="aria-label=html.review_first;title=html.review_first">⏮</button>
                 <button id="review-prev" aria-label="이전 수" title="이전 수" data-i18n-attr="aria-label=html.review_prev;title=html.review_prev">◀</button>
                 <input type="range" id="review-slider" min="0" max="0" value="0" aria-label="검토 위치" data-i18n-attr="aria-label=html.review_slider_aria">

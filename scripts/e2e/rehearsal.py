@@ -244,7 +244,7 @@ def main() -> None:
             # Free seat 1 for the next profile's visitor.
             guest.click("#open-lobby")
             guest.wait_for_selector("#lobby-screen:not([hidden])")
-            guest.click("#lobby-seats li[data-seat='1'] button:has-text('자리 비우기')")
+            guest.click("#lobby-seats li[data-seat='1'] button:has-text('참여 종료')")
             guest.wait_for_function("state.me.seats.length === 0")
             context.close()
 

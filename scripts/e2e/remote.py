@@ -446,7 +446,7 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     print("[12] the guest leaves its seat by itself")
     guest.click("#open-lobby")
     guest.wait_for_selector("#lobby-screen:not([hidden])")
-    guest.click("#lobby-seats li[data-seat='1'] button:has-text('자리 비우기')")
+    guest.click("#lobby-seats li[data-seat='1'] button:has-text('참여 종료')")
     ok = wait_until(
         guest, "state.me.seats.length === 0", 5, "guest released", (guest_rec,)
     )
