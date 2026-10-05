@@ -594,7 +594,12 @@ def _choice_reward_block(
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return reward
                 case RetreatTroops(minimum=minimum) if (
-                    owner.troops_conflict + owner.commanders_conflict < minimum
+                    # An "any number" retreat may choose zero [Main p. 20]
+                    # [FAQ p. 3], but stays playable only with a unit in the
+                    # Conflict, as before (the Steam app offers Tactical
+                    # Option's retreat the same way).
+                    owner.troops_conflict + owner.commanders_conflict
+                    < max(minimum, 1)
                 ):
                     return reward
                 case TakeContract() if not state.config.choam_module:

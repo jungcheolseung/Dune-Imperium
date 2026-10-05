@@ -386,16 +386,19 @@ class RetreatTroops:
     """Move between ``minimum`` and ``maximum`` of the player's Conflict troops
     back to the garrison (player choice). ``maximum=None`` means any number.
 
-    During Combat the retreated troops' strength leaves the total at once and
-    a player left without units drops out of the priority loop (OQ-003).
+    A printed "any number" retreat takes ``minimum=0``: "효과가 `any number`의
+    troop을 retreat하게 하면 0개도 선택할 수 있다. `[Main p. 20]` `[FAQ p. 3]`"
+    (docs/rules/uprising-systems.md). During Combat the retreated troops'
+    strength leaves the total at once and a player left without units drops
+    out of the priority loop (OQ-003).
     """
 
     minimum: int = 1
     maximum: int | None = None
 
     def __post_init__(self) -> None:
-        if self.minimum < 1:
-            raise ValueError("retreat minimum must be positive")
+        if self.minimum < 0:
+            raise ValueError("retreat minimum must not be negative")
         if self.maximum is not None and self.maximum < self.minimum:
             raise ValueError("retreat maximum must not be below the minimum")
 

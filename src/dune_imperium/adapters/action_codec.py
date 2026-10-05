@@ -703,11 +703,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for count in range(1, MAX_INTRIGUE_DEPLOYMENT + 1)
     )
+    # Tactical Option's "any number" retreat may choose zero [Main p. 20]
+    # [FAQ p. 3], hence ``count`` 0 (codec bump pending, 2026-10-06).
     templates.extend(
         ActionTemplate(
             action_id="retreat_intrigue_troops", arguments=(("count", count),)
         )
-        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+        for count in range(0, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.extend(
         ActionTemplate(

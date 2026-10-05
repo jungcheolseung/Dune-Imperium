@@ -1373,10 +1373,15 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     )
         case RetreatTroops():
             count, commanders = _unit_counts(arguments)
-            result = _retreat_units(
-                state, player, step_source, troops=count, commanders=commanders
-            )
-            result = _follow_reveal_strength(state, result, player)
+            if count + commanders == 0:
+                # Tactical Option's "any number" retreat chose zero [Main
+                # p. 20] [FAQ p. 3]: no unit moves.
+                result = RuleResult(state=state)
+            else:
+                result = _retreat_units(
+                    state, player, step_source, troops=count, commanders=commanders
+                )
+                result = _follow_reveal_strength(state, result, player)
         case LoseTroops():
             zone = str(arguments["zone"])
             result = lose_unit(

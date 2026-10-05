@@ -445,8 +445,12 @@ def _old_choice_rewards_feasible(
                     return False
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
+                # Updated on purpose 2026-10-06: Tactical Option's "any
+                # number" retreat now has minimum 0 [Main p. 20] [FAQ p. 3],
+                # yet stays gated on one unit in the Conflict, as before.
                 case RetreatTroops(minimum=minimum) if (
-                    owner.troops_conflict + owner.commanders_conflict < minimum
+                    owner.troops_conflict + owner.commanders_conflict
+                    < max(minimum, 1)
                 ):
                     return False
                 case TakeContract() if not state.config.choam_module:

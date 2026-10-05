@@ -213,7 +213,7 @@ def _retreat_troops_text_ko(troops: RetreatTroops) -> str:
     """
 
     if troops.maximum is None:
-        if troops.minimum == 1:
+        if troops.minimum <= 1:
             return "{troop} 원하는 수만큼 {retreat}"
         return f"{{troop}} 원하는 수만큼 {{retreat}} ({troops.minimum} 이상)"
     if troops.minimum == troops.maximum:

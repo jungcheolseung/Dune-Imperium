@@ -1361,6 +1361,7 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
         + 1
         + 1  # v134: finish_leader_draft
+        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
     )
 
     actions = (

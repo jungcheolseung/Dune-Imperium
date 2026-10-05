@@ -1826,7 +1826,9 @@ def test_tactical_option_retreating_the_last_units_ends_combat_intrigue() -> Non
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 1)).state
-    assert engine.legal_actions(opened, 0) == (_retreat(1), _retreat(2))
+    # "Retreat any number of your troops." [card face]: zero included
+    # [Main p. 20] [FAQ p. 3].
+    assert engine.legal_actions(opened, 0) == (_retreat(0), _retreat(1), _retreat(2))
     # Resolve the slot without the dispatcher so the round does not run on.
     done = apply_intrigue_choice(opened, _retreat(2))
 
@@ -1853,6 +1855,40 @@ def test_tactical_option_partial_retreat_keeps_the_player_in_the_loop() -> None:
     assert isinstance(frame.decision, PlayerDecision)
     assert frame.decision.owner == 0
     assert dict(frame.context)["consecutive_passes"] == 0
+
+
+def test_tactical_option_may_retreat_no_troops() -> None:
+    # "효과가 `any number`의 troop을 retreat하게 하면 0개도 선택할 수 있다.
+    # `[Main p. 20]` `[FAQ p. 3]`" (docs/rules/uprising-systems.md).
+    card = _intrigue("tactical_option")
+    state = _combat_state(_fighter(0, 2, intrigue_cards=(card,)), _fighter(1, 1))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    result = engine.apply(opened, _retreat(0))
+    done = result.state
+
+    assert "troops_retreated" not in [event.kind for event in result.events]
+    assert done.players[0].troops_conflict == 2
+    assert done.players[0].troops_garrison == 0
+    assert done.players[0].combat_strength == 4
+    assert card in done.intrigue_discard
+    # The card was still played: the pass count restarts and the seat stays.
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    assert dict(frame.context)["consecutive_passes"] == 0
+    assert dict(frame.context)["participants_mask"] == 0b11
+
+
+def test_tactical_option_retreat_still_needs_a_unit_in_the_conflict() -> None:
+    # The Retreat half stays unplayable without a unit in the Conflict (the
+    # Steam app offers it the same way); only the swords half is offered.
+    card = _intrigue("tactical_option")
+    fighter = replace(
+        _fighter(0, 0, intrigue_cards=(card,)), sandworms_conflict=1
+    )
+    state = _combat_state(fighter, _fighter(1, 1))
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
 
 
 def test_spice_is_power_offers_both_halves_when_affordable() -> None:

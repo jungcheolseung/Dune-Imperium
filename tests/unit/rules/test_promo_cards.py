@@ -722,6 +722,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
         + 1
         + 1  # v134: finish_leader_draft
+        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -733,6 +734,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 4
         + 1
         + 1  # v134: finish_leader_draft
+        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

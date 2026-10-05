@@ -520,7 +520,11 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "reward",
             )
         case RetreatTroops(minimum=minimum):
-            return _in_conflict_reason(minimum, _units(state.players[seat])[1])
+            # The gate asks for one unit even of a zero-minimum retreat
+            # (``_choice_reward_block``).
+            return _in_conflict_reason(
+                max(minimum, 1), _units(state.players[seat])[1]
+            )
         case TakeContract():
             return "No Contracts in this game", "이 게임에는 {contract} 없음", "reward"
         case SetAsideImperiumRowCard():
