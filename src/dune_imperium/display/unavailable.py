@@ -10,10 +10,10 @@ its printed threshold and held Contract icons among them), and for the
 branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
 cannot be paid or whose reward would change nothing, an Agent box's arrow
-whose reward would change nothing (OQ-071), a Conflict reward's Faction
-already at the top, a Holy War unit the seat does not have, a Skill the
-seat already holds, a Navigation card's option it cannot play, an Acquire
-Tech with every stack empty, an
+whose reward would change nothing (OQ-071), a Conflict reward's, a research
+space's or Shipping's Faction already at the top, a Holy War unit the
+seat does not have, a Skill the seat already holds, a Navigation card's
+option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
 seat has no Intrigue card to trash for, Litany Against Fear once the seat
 already acted in its turn, a separate-lines Intrigue card's finish before
@@ -31,7 +31,8 @@ Display only, under four rules:
   ``waiting_deferred_choices``, ``agent_box_is_waiting``,
   ``joinable_subcommittees``, ``reveal_sandworm_block``,
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
-  ``research_bonus_block``, ``combat_reward_influence_block``,
+  ``research_bonus_block``, ``research_influence_factions``,
+  ``shipping_influence_factions``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
@@ -135,7 +136,11 @@ from dune_imperium.rules.agent_effects import (
     agent_icon_block,
 )
 from dune_imperium.rules.agent_turn import turn_start_cards
-from dune_imperium.rules.board_effects import imperial_privilege_recall_targets
+from dune_imperium.rules.board_effects import (
+    imperial_privilege_recall_targets,
+    legal_shipping_actions,
+    shipping_influence_factions,
+)
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
     combat_reward_influence_block,
@@ -166,6 +171,7 @@ from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
     research_bonus_block,
+    research_influence_factions,
 )
 from dune_imperium.rules.influence import influence_amount, influence_can_rise
 from dune_imperium.rules.intrigue import (
@@ -1115,12 +1121,26 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
     창을 연다"), exactly when ``research_bonus_block`` is not None; the
     payment shows greyed out beside it with the reason. The trash row names
     no card: with no Intrigue card in hand there is none to name.
+
+    c6r6's "Influence with any Faction" offers exactly the Factions in
+    ``research_influence_factions``; each one at the top shows greyed out,
+    as a Conflict reward's does (OQ-060), and with all four there only the
+    decline is offered.
     """
 
     bonus = dict(state.decision_stack[-1].context).get("bonus")
     if not isinstance(bonus, str):
         return
     owner = state.players[seat]
+    if ResearchBonus(bonus) is ResearchBonus.INFLUENCE_ANY:
+        _influence_at_the_top(
+            found,
+            seat,
+            "research_influence",
+            "choose_research_influence",
+            research_influence_factions(owner),
+        )
+        return
     match research_bonus_block(owner, ResearchBonus(bonus)):
         case ResearchBonusBlock.NO_INTRIGUE:
             found.row(
@@ -1145,6 +1165,49 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
             )
         case None:
             pass
+
+
+def _influence_at_the_top(
+    found: _Found,
+    seat: int,
+    key: str,
+    action_id: str,
+    offered: tuple[Faction, ...],
+) -> None:
+    """Grey out every Faction a "choose a Faction" picker leaves out."""
+
+    for faction in Faction:
+        if faction in offered:
+            continue
+        found.row(
+            "choice",
+            f"{key}:{faction.value}",
+            DomainAction(
+                action_id=action_id,
+                actor=seat,
+                arguments=(("faction", faction.value),),
+            ),
+            _AT_THE_TOP,
+        )
+
+
+def _shipping_influence(state: GameState, seat: int, found: _Found) -> None:
+    """Shipping's "Influence with a chosen Faction": every Faction at the
+    top, greyed out beside the ones offered (OQ-060).
+
+    Only while the icon is pending (``legal_shipping_actions`` offers
+    something); ``shipping_influence_factions`` is the provider's own list.
+    """
+
+    if not legal_shipping_actions(state, seat):
+        return
+    _influence_at_the_top(
+        found,
+        seat,
+        "shipping_influence",
+        "choose_shipping_influence",
+        shipping_influence_factions(state.players[seat]),
+    )
 
 
 def _combat_reward_influence(state: GameState, seat: int, found: _Found) -> None:
@@ -1613,6 +1676,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _agent_box,
         _agent_box_payment,
         _signet_influence,
+        _shipping_influence,
         _agent_icons,
         _imperial_privilege_recall,
         _subcommittee_choice,

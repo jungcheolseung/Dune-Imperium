@@ -1353,6 +1353,96 @@ def test_no_influence_row_while_every_faction_can_be_taken() -> None:
     assert unavailable_choices(state, 0, ENGINE.legal_actions(state, 0)) is None
 
 
+def _faction_rows(
+    found: dict[str, Any], key: str, action_id: str
+) -> dict[str, tuple[str, str, str]]:
+    rows = _rows(found, "choice")
+    assert {row["action"]["action_id"] for row in rows.values()} == {action_id}
+    for row_key, row in rows.items():
+        assert row_key == f"choice:{key}:{row['action']['arguments']['faction']}"
+    return {
+        row["action"]["arguments"]["faction"]: (
+            row["reason"],
+            row["reason_ko"],
+            row["code"],
+        )
+        for row in rows.values()
+    }
+
+
+def test_the_research_influence_bonus_greys_the_factions_at_the_top() -> None:
+    """c6r6's "Influence with any Faction" never offers a Faction at 6 --
+    "합법 행동 provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060) -- and
+    shows it greyed out "이미 최고치" as a Conflict reward does. With every
+    track at 6 the window offers only the decline, the lapse's confirm."""
+
+    some = _research_bonus("c5r5", "c6r6", influence=Influence(emperor=6, fremen=2))
+    assert [args["faction"] for args in _legal(some, "choose_research_influence")] == [
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    ]
+    assert _legal(some, "decline_research_bonus") == []
+    found = _found(some)
+    assert found["frame"] == FrameKind.RESEARCH_BONUS
+    assert _faction_rows(
+        found, "research_influence", "choose_research_influence"
+    ) == {"emperor": _AT_THE_TOP}
+
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    none = _research_bonus("c5r5", "c6r6", influence=full)
+    assert ENGINE.legal_actions(none, 0) == (
+        DomainAction(action_id="decline_research_bonus", actor=0),
+    )
+    assert _faction_rows(
+        _found(none), "research_influence", "choose_research_influence"
+    ) == {faction: _AT_THE_TOP for faction in _FACTION_NAMES}
+
+
+_FACTION_NAMES = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+
+
+def _at_shipping(influence: Influence) -> GameState:
+    """Seat 0 has sent an Agent to Shipping; its Influence icon waits."""
+
+    owner = PlayerState(
+        player_id=0,
+        hand=("player:0:starter:dune_the_desert_planet:0",),
+        resources=Resources(spice=3),
+        influence=influence,
+    )
+    state = _state(owner)
+    place = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "shipping"
+    )
+    return ENGINE.apply(state, place).state
+
+
+def test_shipping_greys_the_factions_at_the_top() -> None:
+    """Shipping's "Influence with a chosen Faction" [Board Guide p. 2]
+    offers only the Factions below 6 (OQ-060); the rest show greyed out."""
+
+    state = _at_shipping(Influence(spacing_guild=6, bene_gesserit=6))
+    assert [args["faction"] for args in _legal(state, "choose_shipping_influence")] == [
+        "emperor",
+        "fremen",
+    ]
+    assert _faction_rows(
+        _found(state), "shipping_influence", "choose_shipping_influence"
+    ) == {"spacing_guild": _AT_THE_TOP, "bene_gesserit": _AT_THE_TOP}
+
+    # Below the top everywhere: no row.
+    open_tracks = _at_shipping(Influence(spacing_guild=2))
+    assert len(_legal(open_tracks, "choose_shipping_influence")) == 4
+    assert (
+        unavailable_choices(open_tracks, 0, ENGINE.legal_actions(open_tracks, 0))
+        is None
+    )
+
+
 # --- Holy War's unit loss ---
 
 _NO_UNIT_TO_LOSE = ("No unit to lose", "잃을 유닛 없음", "no_unit")

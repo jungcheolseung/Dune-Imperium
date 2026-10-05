@@ -56,7 +56,7 @@ from dune_imperium.rules.frames import (
     top_frame_of_kind,
 )
 from dune_imperium.rules.immortality import advance_research
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
     draw_intrigue_cards,
     draw_or_queue_intrigue_cards,
@@ -924,6 +924,22 @@ def apply_sietch_tabr_action(
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def shipping_influence_factions(owner: PlayerState) -> tuple[Faction, ...]:
+    """The Factions Shipping's "Influence with a chosen Faction" offers.
+
+    A "choose a Faction" picker never offers a Faction at the top: "합법 행동
+    provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060, user ruling
+    2026-09-16), the gain there being lost (``influence_can_rise``). With
+    every cube at 6 all four stay on offer and the gain is lost as before:
+    the Agent-turn frame has no confirm for a board icon with nothing to
+    pick, and Shipping's paid line still buys its 5 Solari [Board Guide
+    p. 2], so OQ-071 does not withhold the space.
+    """
+
+    rising = tuple(faction for faction in Faction if influence_can_rise(owner, faction))
+    return rising or tuple(Faction)
+
+
 def legal_shipping_actions(
     state: GameState,
     player: int,
@@ -948,7 +964,7 @@ def legal_shipping_actions(
             actor=player,
             arguments=(("faction", faction.value),),
         )
-        for faction in Faction
+        for faction in shipping_influence_factions(state.players[player])
     )
 
 

@@ -46,7 +46,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
@@ -541,6 +541,19 @@ def research_bonus_block(
     return None
 
 
+def research_influence_factions(owner: PlayerState) -> tuple[Faction, ...]:
+    """The Factions c6r6's "Influence with any Faction" may raise now.
+
+    A "choose a Faction" picker never offers a Faction at the top, where
+    the gain is lost ("합법 행동 provider는 이미 6인 진영을 제시하지
+    않으므로", OQ-060, user ruling 2026-09-16; ``influence_can_rise``).
+    Empty with every cube at 6: the window then offers only
+    ``decline_research_bonus`` (``legal_research_bonus_actions``).
+    """
+
+    return tuple(faction for faction in Faction if influence_can_rise(owner, faction))
+
+
 def legal_research_bonus_actions(
     state: GameState,
     player: int,
@@ -549,7 +562,11 @@ def legal_research_bonus_actions(
 
     While the arrow's cost cannot be paid (``research_bonus_block``) only
     ``decline_research_bonus`` is offered: the window still opens, and its
-    owner confirms the lapse (user ruling 2026-09-30).
+    owner confirms the lapse (user ruling 2026-09-30). So it is for the
+    cost-free Influence with every cube at the top: "고를 진영이 없어도 선택
+    frame은 그대로 ... 열리고", and the gain is offered alone otherwise,
+    "진영을 하나라도 고를 수 있으면 확인은 제시하지 않는다(획득은 의무다)"
+    (OQ-060, 2026-09-30 addition).
     """
 
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
@@ -557,16 +574,19 @@ def legal_research_bonus_actions(
         return ()
     bonus = ResearchBonus(context_str(dict(frame.context), "bonus", owner=_BONUS_LABEL))
     owner = state.players[player]
+    decline = DomainAction(action_id="decline_research_bonus", actor=player)
     if bonus is ResearchBonus.INFLUENCE_ANY:
+        factions = research_influence_factions(owner)
+        if not factions:
+            return (decline,)
         return tuple(
             DomainAction(
                 action_id="choose_research_influence",
                 actor=player,
                 arguments=(("faction", faction.value),),
             )
-            for faction in Faction
+            for faction in factions
         )
-    decline = DomainAction(action_id="decline_research_bonus", actor=player)
     if research_bonus_block(owner, bonus) is not None:
         return (decline,)
     if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:

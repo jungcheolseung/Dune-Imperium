@@ -792,6 +792,29 @@ def test_shipping_offers_all_four_faction_choices() -> None:
     }
 
 
+def test_shipping_never_offers_a_faction_at_the_top() -> None:
+    # "합법 행동 provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060, user
+    # ruling 2026-09-16): a gain on a cube at 6 is lost, so Shipping's
+    # "Influence with a chosen Faction" [Board Guide p. 2] leaves it out.
+    state = _shipping_state(Influence(spacing_guild=6, fremen=6, emperor=1))
+    offered = [
+        dict(action.arguments)["faction"]
+        for action in legal_shipping_actions(state, 0)
+    ]
+    assert offered == ["emperor", "bene_gesserit"]
+
+    # With every cube at 6 the Agent-turn frame has no confirm for this
+    # board icon, and the paid line still buys 5 Solari (OQ-071 does not
+    # withhold the space), so all four stay on offer and the gain is lost.
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _shipping_state(full)
+    actions = legal_shipping_actions(state, 0)
+    assert len(actions) == 4
+    result = apply_shipping_action(state, actions[0])
+    assert result.state.players[0].influence == full
+    assert legal_shipping_actions(result.state, 0) == ()
+
+
 def test_shipping_influence_choice_leaves_the_solari_icon_pending() -> None:
     # "5 Solari, 선택한 Faction 하나의 Influence 1" [Board Guide p. 2] are two
     # printed icons (OQ-027): the Influence choice resolves alone.
