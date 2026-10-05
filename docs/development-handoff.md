@@ -1,8 +1,22 @@
 # 개발 인수인계
 
-기준일: 2026-10-05
+기준일: 2026-10-06
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
+
+## 2026-10-06 플레이 피드백 여섯 가지(단계 연출, 폐기 구역, 스카웃 순서·경매, 덱 내용, 접합 문구)
+
+사용자 피드백 여섯 항목을 한 묶음으로 처리했다. 브랜치 다섯(`scouts-order-auction`에 `ui-trash-zones`·`ui-phase-banner`·`ui-deck-contents`를 병합)을 master에 병합한다. **codec v136**(Scouts 카탈로그 +1), **관측 v30 그대로**.
+
+1. **단계·차례 연출.** 라운드 시작(교전 카드 그림과 이름), 전투 단계, 아라킨 스카웃 공개(종류·이름), 종료 단계, 차례 시작("내 차례"·"플레이어N 차례")에 보드 위로 큰 띠가 1.6초씩 뜬다(`effects.js`의 phase banner, `#phase-banner`). 보는 좌석에 맞게 걸러진 로그 이벤트와 공개 summary만 읽고, 클릭을 막지 않으며, 다시 그리기·언어 전환·새로고침에 다시 뜨지 않는다. AI 묶음이 내 차례로 끝나면 "내 차례"만 보인다. 한계: 지도자 드래프트를 끈 게임은 1라운드 공개가 로그 시작 전이라 1라운드 띠가 없다. 아무도 교전에 참가하지 않은 라운드는 전투 띠가 없다.
+2. **폐기 선택의 구역 구분.** 카드 선택 목록의 카드가 둘 이상의 구역에 걸치면 "핸드 · 4", "버림 더미 · 7", "플레이 영역 · 1" 머리줄로 나누고, 거절 같은 다른 줄 앞에 구분선을 둔다(`render.js` `appendActionItems`).
+3. **스카웃 보상 순서 자유(OQ-100, 사용자 판정 "순서 자유로").** 줄의 보상 하나가 선택을 기다리는 동안(줄 자신의 선택 칸, 또는 그 보상이 연 선택 trash·Spy 배치·Contract·Research 창) 뒤의 자동 보상(draw·Intrigue·자원·specimen)을 `scouts_rewards_first`("남은 보상 먼저 받기")로 먼저 받을 수 있다. Water Discipline은 먼저 뽑은 카드를 trash할 수 있다. 앱 AI는 앱처럼 인쇄 순서로만 풀고(`app_ai/agent.py` `app_offered`), heuristic도 이 행동을 고르지 않는다.
+4. **경매 금액은 턴 종료로 확정.** 두 경매 모두 스테퍼는 금액만 고르고, 배너의 "… · 턴 종료 ▶" 한 번이 보낸다(봉인 입찰은 `scouts_bid` + `confirm_scouts_bid`, Critical Moment는 `scouts_call`). 그래서 `scouts_call`도 명시적 턴 종료다(`server/turn_end.py`). 알려진 변화: Critical Moment의 마지막 호가 좌석이 이기면 호가 한 번, 카드 고르기 뒤 한 번 더 누른다(전에는 둘이 한 단위였다; 한 번 누름 규칙은 그대로 지킨다).
+5. **책략 카드 수와 내 덱 구성.** 모든 좌석의 구역 줄에 "책략 카드 N"을 글자로 더했다. 자기 손패 줄의 덱 숫자를 누르면 "내 카드덱 · N장 (순서 비공개)" 목록이 이름순·×N으로 열린다. 서버는 소유자 자신의 view에만 `private.deck_cards`(카드 id순)를 싣는다(관측·codec 밖). 근거와 판정은 OQ-010 5항과 [`rules/information-visibility.md`](rules/information-visibility.md): 구성은 소유자가 이미 추론할 수 있고 순서는 계속 숨긴다. 사용자는 "섞어서"라고 했지만 순서 정보가 없다는 점은 같고 읽기 쉬워 이름순으로 보였다.
+6. **접합 문구.** "{접합}: 다른 카드의 에이전트 칸 해결"에서 에이전트가 말 조각 아이콘으로 나오던 것을 글자로 고쳤다(TERMS `agent_box`). 같은 김에 한국어 프롬프트 둘의 영어 낱말("spice 호가", "용병 troop 후퇴")을 바로잡았다.
+
+- 검증: **pytest 6,437개 통과**(마지막 수정 `173300e1` 뒤 재실행), Ruff(`src tests`)·mypy(**409파일**) 통과, Chrome **E2E 45종 전부 통과(4개씩 196초)**. 새 E2E `phase_banner.py`(120검사), `deck_contents.py`(1,281검사), 확장한 `trash_zone.py`(169검사)·`scouts_auction_currency.py`·`scouts.py`(실서버에서 봉인 입찰·호가를 배너 한 번으로 보내는 검사). 고위험 두 묶음(3·4, 5)은 독립 리뷰를 거쳤다: 3·4번 리뷰가 처음 조건("card draw가 있을 때만")이 Steersman Y'rkoon의 Oversight 같은 경우를 놓친다고 찾아 일반형으로 고쳤고 재리뷰에서 남은 문제 없음, 5번 리뷰는 유출 경로 없음(변이 검사 5종으로 테스트가 주장을 지키는 것 확인).
+- 서버 view·카탈로그·엔진이 바뀌었으므로 실행 중인 플레이 서버는 재시작한 뒤 브라우저를 새로고침해야 한다. codec이 v136으로 올랐으므로 이전 저장·자동 저장(모든 룰셋)은 불러올 때 버전 불일치로 거부된다(codec을 올릴 때마다의 기존 동작, `server/persistence.py`).
 
 ## 2026-10-05 보드의 계약 잔량·Shield Wall 파괴 문구 제거
 
