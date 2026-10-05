@@ -42,6 +42,7 @@ seat is online while some connection holds its current token.
 
 import itertools
 import logging
+import os
 import random
 import re
 import threading
@@ -50,6 +51,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
+from pathlib import Path
 from typing import Final
 
 from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
@@ -122,6 +124,10 @@ from dune_imperium.server.turn_end import (
 _LOGGER: Final = logging.getLogger(__name__)
 
 HUMAN_SEAT: Final = "human"
+# The bare kind the browser sends for the server's own search AI: the
+# manager seats ``search:<its checkpoint>`` there (``create_game``), so a
+# save records the very file the seat played with.
+SEARCH_SEAT: Final = "search"
 # The banner prompt once nothing mandatory is left in an Agent turn
 # (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
 AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
@@ -267,13 +273,27 @@ class GameSessionManager:
         *,
         access: AccessMode = AccessMode.OPEN,
         admin_key: str | None = None,
+        search_checkpoint: str | os.PathLike[str] | None = None,
     ) -> None:
+        """``search_checkpoint`` is the network of the server's search AI,
+        the seat kind ``search`` (``create_game``); ``None`` offers none.
+        It is resolved here, once: a symlink (``~/.dune-imperium/search.pt``
+        pointing at a training checkpoint) is recorded in every save as the
+        file it named when the server started, so repointing the link later
+        never changes the network an older save plays with.
+        """
+
         if access is AccessMode.REMOTE and not admin_key:
             raise ValueError("remote access needs an admin key")
         if access is AccessMode.OPEN and admin_key is not None:
             raise ValueError("an admin key only applies to remote access")
         self._access = access
         self._admin_key = admin_key
+        self._search_checkpoint = (
+            None
+            if search_checkpoint is None
+            else Path(search_checkpoint).expanduser().resolve()
+        )
         self._sessions: dict[str, GameSession] = {}
         self._registry_lock = threading.Lock()
         self._listeners: list[ChangeListener] = []
@@ -285,6 +305,12 @@ class GameSessionManager:
         """The access mode every request to this manager is judged under."""
 
         return self._access
+
+    @property
+    def search_checkpoint(self) -> Path | None:
+        """The resolved network file of the ``search`` seat kind, if any."""
+
+        return self._search_checkpoint
 
     def is_admin(self, credentials: Credentials = ANONYMOUS) -> bool:
         """Return whether the credentials carry the host's admin key.
@@ -426,7 +452,10 @@ class GameSessionManager:
         Each seat is ``human`` or a registry agent kind: ``app_ai``
         (``app_ai_medium``, ``app_ai_easy``), ``heuristic``, ``random``,
         ``rollout``, ``rollout_strong``, ``checkpoint:<path>`` or
-        ``search:<path>``. The browser offers all but ``search:`` and seats
+        ``search:<path>``; or ``search``, the server's own search AI, which
+        is seated as ``search:<path>`` of the checkpoint the manager was
+        given (refused when it has none). The browser offers ``search``
+        rather than a path, and only where the server has one, and seats
         three ``app_ai`` beside one human by default on an open server.
 
         Host-only on a remote server: a ``checkpoint:<path>`` seat makes the
@@ -434,6 +463,7 @@ class GameSessionManager:
         """
 
         self.require_admin(credentials)
+        seats = tuple(self._seat_assignment(assignment) for assignment in seats)
         try:
             config = RulesetConfig(
                 choam_module=choam_module,
@@ -482,6 +512,18 @@ class GameSessionManager:
             self._sessions[session.game_id] = session
         self._kick_ai(session)
         return summary
+
+    def _seat_assignment(self, assignment: str) -> str:
+        """Seat the server's search AI where ``search`` was asked for."""
+
+        if assignment != SEARCH_SEAT:
+            return assignment
+        if self._search_checkpoint is None:
+            raise SessionError(
+                "this server has no search AI: start it with "
+                "--search-checkpoint PATH"
+            )
+        return f"{SEARCH_PREFIX}{self._search_checkpoint}"
 
     def list_games(self, *, credentials: Credentials = ANONYMOUS) -> list[JsonObject]:
         """Return the summary of every open session.

@@ -535,6 +535,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "admin": False,
         "public_url": None,
         "autosave": True,
+        "search_ai": False,
     }
 
     host = _admin_client(app).get("/whoami")
@@ -543,6 +544,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "admin": True,
         "public_url": "http://100.101.102.103:8000",
         "autosave": True,
+        "search_ai": False,
     }
 
 
@@ -554,4 +556,28 @@ def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> Non
         "admin": True,
         "public_url": None,
         "autosave": False,
+        "search_ai": False,
     }
+
+
+def test_whoami_says_whether_the_server_seats_a_search_ai(tmp_path: Path) -> None:
+    # The browser offers the seat kind ``search`` only where the server has a
+    # network for it; the answer is a flag, never the host's file path.
+    checkpoint = tmp_path / "networks" / "search.pt"
+    manager = GameSessionManager(
+        access=AccessMode.REMOTE, admin_key=ADMIN_KEY, search_checkpoint=checkpoint
+    )
+    app = create_app(
+        manager,
+        saves_dir=tmp_path / "saves",
+        card_images_dir=tmp_path / "no-images",
+        icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
+        board_image=tmp_path / "no-map.jpg",
+        bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
+    )
+
+    for client in (TestClient(app), _admin_client(app)):
+        response = client.get("/whoami")
+        assert response.json()["search_ai"] is True
+        assert "networks" not in response.text

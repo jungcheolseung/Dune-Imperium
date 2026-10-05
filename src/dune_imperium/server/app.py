@@ -183,9 +183,13 @@ class CreateGameRequest(BaseModel):
             "decision, no extra install), "
             "'heuristic', 'random', 'rollout' (determinized search), "
             "'rollout_strong' (the same search at twice the budget), "
-            "'checkpoint:<path>' (a trained policy; needs the train extra), or "
+            "'checkpoint:<path>' (a trained policy; needs the train extra), "
             "'search:<path>' (that policy with determinized search around it: "
-            "much stronger, about 2s a decision)."
+            "much stronger, about 1.4s a searched decision on the browser's "
+            "default rules, 3.3s at the 90th percentile, thought on a "
+            "background worker), or 'search' (the server's own search AI, "
+            "set with --search-checkpoint; GET /whoami says whether it has "
+            "one)."
         ),
     )
     choam_module: bool = False
@@ -455,6 +459,8 @@ def create_app(
             "admin": admin,
             "public_url": public_url if admin else None,
             "autosave": autosaving,
+            # Whether the seat kind ``search`` is offered; never the path.
+            "search_ai": sessions.search_checkpoint is not None,
         }
 
     @app.post("/auth/admin")

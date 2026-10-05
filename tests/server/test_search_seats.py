@@ -54,6 +54,11 @@ def _text(value: object) -> str:
     return value
 
 
+def _list(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return value
+
+
 @pytest.fixture
 def search_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """A ``search:`` seat kind over a small untrained file, searching less."""
@@ -212,6 +217,81 @@ def test_only_search_seats_think_in_the_background() -> None:
     assert summary["thinking"] is None
     assert _obj(summary["decision"])["owner"] == 0
     assert _worker(_text(summary["game_id"])) is None
+
+
+# -- the server's own search AI (the seat kind ``search``) -------------------
+
+
+def test_a_bare_search_seat_plays_the_servers_checkpoint(
+    search_kind: str, tmp_path: Path
+) -> None:
+    """``search`` seats ``search:<the real file>`` of the manager's network.
+
+    The server is handed a symlink (``~/.dune-imperium/search.pt`` is one),
+    resolved when it starts: the game and its save name the file the link
+    pointed at, and repointing the link afterwards changes neither.
+    """
+
+    network = Path(search_kind.removeprefix("search:")).resolve()
+    link = tmp_path / "links" / "search.pt"
+    link.parent.mkdir()
+    link.symlink_to(network)
+    manager = GameSessionManager(search_checkpoint=link)
+    assert manager.search_checkpoint == network
+
+    summary = manager.create_game(
+        ("human", "search", "heuristic", "search"), game_seed=HUMAN_FIRST_SEED
+    )
+    game_id = _text(summary["game_id"])
+    seated = f"search:{network}"
+    assert summary["seats"] == ["human", seated, "heuristic", seated]
+    assert [_obj(player)["kind"] for player in _list(summary["players"])] == [
+        "human",
+        seated,
+        "heuristic",
+        seated,
+    ]
+    assert isinstance(manager._sessions[game_id].agents[1], NetworkSearchAgent)
+    summary = _advance(manager, summary, 12)
+    assert _seat_steps(manager._sessions[game_id].steps, {1, 3}) > 0
+
+    document = _obj(_roundtrip(manager.save_game(game_id)))
+    assert document["seats"] == ["human", seated, "heuristic", seated]
+
+    other = tmp_path / "other.pt"
+    other.write_bytes(network.read_bytes())
+    link.unlink()
+    link.symlink_to(other)
+    restored = manager.restore_game(document)
+    assert restored["seats"] == ["human", seated, "heuristic", seated]
+    manager.wait_for_ai(_text(restored["game_id"]))
+    # Only a restart reads the link again.
+    later = manager.create_game(
+        ("human", "search", "heuristic", "heuristic"), game_seed=HUMAN_FIRST_SEED
+    )
+    assert _list(later["seats"])[1] == seated
+    manager.wait_for_ai(_text(later["game_id"]))
+
+
+def test_a_bare_search_seat_is_refused_without_a_checkpoint() -> None:
+    manager = GameSessionManager()
+    assert manager.search_checkpoint is None
+
+    with pytest.raises(SessionError, match="--search-checkpoint"):
+        manager.create_game(("human", "search", "heuristic", "heuristic"))
+    assert manager.list_games() == []
+
+
+def test_an_explicit_search_path_still_seats_that_file(search_kind: str) -> None:
+    # API users name the file themselves, with or without a server network.
+    manager = GameSessionManager()
+
+    summary = manager.create_game(
+        ("human", search_kind, "heuristic", "heuristic"), game_seed=HUMAN_FIRST_SEED
+    )
+
+    assert _list(summary["seats"])[1] == search_kind
+    manager.wait_for_ai(_text(summary["game_id"]))
 
 
 # -- thinking off the request ------------------------------------------------
