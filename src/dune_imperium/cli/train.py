@@ -60,6 +60,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="play with the Immortality expansion (docs/rules/immortality.md)",
     )
     parser.add_argument(
+        "--go-to-11",
+        action="store_true",
+        help="start every Score marker at 0 (requires --immortality)",
+    )
+    parser.add_argument(
+        "--epic",
+        action="store_true",
+        help="play Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md)",
+    )
+    parser.add_argument(
+        "--arrakeen-scouts",
+        action="store_true",
+        help="play with the Arrakeen Scouts module (docs/rules/arrakeen-scouts.md)",
+    )
+    parser.add_argument(
+        "--leader-draft",
+        action="store_true",
+        help=(
+            "use the OQ-007 six-Leader draft setup, so the learner also learns "
+            "the picks (cannot be combined with --rotate-leaders)"
+        ),
+    )
+    parser.add_argument(
+        "--rotate-leaders",
+        action="store_true",
+        help=(
+            "deal each training game a random four-Leader roster instead of "
+            "the engine's fixed four"
+        ),
+    )
+    parser.add_argument(
         "--hidden",
         default=",".join(str(width) for width in DEFAULT_HIDDEN),
         help="comma-separated hidden widths (default: 512,512)",
@@ -96,6 +127,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "seats the learner holds at each table when --opponent is set "
             "(1-3, default 1); the rest are the opponent"
+        ),
+    )
+    parser.add_argument(
+        "--opponent-games",
+        type=int,
+        default=None,
+        help=(
+            "games per iteration seated against --opponent, spread evenly; "
+            "the rest are pure self-play (default: every game)"
         ),
     )
     parser.add_argument("--temperature", type=float, default=1.0)
@@ -143,6 +183,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resume", type=Path, default=None, help="checkpoint to continue from"
     )
+    parser.add_argument(
+        "--retarget",
+        action="store_true",
+        help=(
+            "let --resume load a checkpoint trained on another ruleset: its "
+            "policy head moves onto this run's catalog by template identity"
+        ),
+    )
     return parser
 
 
@@ -152,6 +200,8 @@ def _print(record: IterationRecord) -> None:
         if record.eval_win_rate is not None and record.eval_mean_rank is not None
         else ""
     )
+    if record.opponent_win_rate is not None:
+        evaluation = f" vs opponent {record.opponent_win_rate:.1%}" + evaluation
     if record.eval_failures:
         evaluation += f" ({record.eval_failures} eval matches FAILED)"
     print(
@@ -183,6 +233,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             bloodlines=arguments.bloodlines,
             tech_module=arguments.tech_module,
             immortality=arguments.immortality,
+            go_to_11=arguments.go_to_11,
+            epic_game=arguments.epic,
+            arrakeen_scouts=arguments.arrakeen_scouts,
+            leader_draft=arguments.leader_draft,
+            rotate_leaders=arguments.rotate_leaders,
             hidden=hidden,
             learner=LearnerConfig(
                 learning_rate=arguments.learning_rate,
@@ -194,6 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             opponent=arguments.opponent,
             learner_seats=arguments.learner_seats,
+            opponent_games=arguments.opponent_games,
             temperature=arguments.temperature,
             rank_rewards=arguments.rank_rewards,
             step_penalty=arguments.step_penalty,
@@ -203,6 +259,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             eval_opponent=arguments.eval_opponent,
             checkpoint_every=arguments.checkpoint_every,
             resume=arguments.resume,
+            retarget=arguments.retarget,
         )
     except ValueError as error:
         parser.error(str(error))

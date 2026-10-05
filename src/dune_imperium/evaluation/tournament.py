@@ -395,7 +395,7 @@ def tournament_specs(
             arrakeen_scouts=arrakeen_scouts,
             leader_draft=leader_draft,
             leader_ids=(
-                _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
+                rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
                 if rotate_leaders
                 else None
             ),
@@ -407,14 +407,19 @@ def tournament_specs(
     )
 
 
-def _rotated_leader_ids(
+def rotated_leader_ids(
     seed: int,
     choam_module: bool,
     bloodlines: bool = False,
     tech_module: bool = False,
 ) -> tuple[str, ...]:
-    # Same derivation as the verification sweep's --rotate-leaders so a
-    # tournament seed reproduces the sweep's roster for that seed.
+    """Return the four-Leader roster a seed deals under --rotate-leaders.
+
+    Same derivation as the verification sweep's --rotate-leaders so a
+    tournament seed reproduces the sweep's roster for that seed; training
+    uses it too (``TrainConfig.rotate_leaders``).
+    """
+
     return tuple(
         random.Random(seed).sample(
             [
