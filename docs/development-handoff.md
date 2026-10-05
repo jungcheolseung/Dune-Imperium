@@ -4,6 +4,23 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-06 탐색 AI 좌석, 대회 도구의 지도자 드래프트, L3 재학습 진행 중
+
+사용자 요청("3개 다 진행하자", 카드 전수 대조는 다른 세션이 워크트리 `card-compare`에서 하므로 안 겹치게 워크트리로). 세 브랜치 중 둘을 병합했고 L3는 학습 중이다. 엔진·codec·관측은 그대로다(**codec v136·관측 v30**).
+
+1. **대회 도구 `--leader-draft`**(브랜치 `tournament-draft`, 병합 `8de02791`). `dune-imperium-tournament --leader-draft`가 OQ-007 드래프트로 각 좌석의 에이전트가 지도자를 직접 고르게 한다. 룰셋 식별자에는 드래프트가 없으므로 match 결과·행에 `leader_draft`를 따로 싣고 요약은 룰셋 이름 뒤에 "(leader draft)"를 붙인다. `--rotate-leaders`와 함께 쓰면 거부한다(sweep과 같다). 이 플래그로 앱 AI 어려움 대 heuristic 드래프트 A/B를 쟀다(250시드 × CHOAM 유무, 1,000판): 좌석당 46.6% 대 3.4%, 차 +86.6%p [+83.6, +89.4], VP 마진 +4.22 — 드래프트 없는 칸과 같다([evaluation/app-ai-expansions-2026-10-05.md](evaluation/app-ai-expansions-2026-10-05.md) 3절 마지막 줄).
+2. **탐색 AI 좌석**(브랜치 `search-seats`, 병합 `9a03ac3e`). 학습 망 + 결정화 탐색(`search:`)을 브라우저 좌석으로 고를 수 있다.
+   - **서버 설정.** `dune-imperium-server --search-checkpoint PATH`(없으면 `DUNE_IMPERIUM_SEARCH_CHECKPOINT`, 그다음 `~/.dune-imperium/search.pt`가 있으면 그것). 시작할 때 실제 파일로 풀어 두므로(`resolve`) 심볼릭 링크를 나중에 바꿔도 옛 저장은 원래 파일을 쓴다. torch(`train` extra)가 없거나 파일이 없으면 끄고 시작 줄 한 줄로 알린다. `/whoami`의 `search_ai`가 참일 때만 설정 화면에 "탐색 AI"/"Search AI"가 나오고, 브라우저가 보낸 `search`를 서버가 `search:<파일>`로 앉힌다. 좌석 라벨·원격 화면에는 경로가 나오지 않는다.
+   - **뒤에서 생각하기(고위험, 독립 리뷰).** `search:` 좌석만 게임별 데몬 작업자 스레드가 답한다(`_kick_ai`·`_run_ai`·`_ai_step`). 요청은 바로 돌아오고, 작업자는 잠금 밖에서 탐색한 뒤 잠금 안에서 상태가 그대로일 때만 적용하며 단계마다 초인종을 울린다. summary·초인종에 `thinking`(생각 중인 좌석)이 실리고, 배지가 "생각 중…"으로 바뀌며, 바쁜 동안 놓친 초인종은 1.5초 재확인으로 따라잡는다. 생각하는 동안에는 되돌리기를 막는다(작업자가 이미 RNG를 움직였을 수 있어서). 다른 AI 종류는 예전처럼 동기다. 작업자 단계가 실패하면 `thinking`을 지우고 초인종을 울려 사람이 되돌리기로 빠져나갈 수 있게 한다. 탐색이 예외를 내면 greedy 망으로 답하고 경고를 남긴다 — 그 판의 저장은 그 단계부터 같은 진행을 보장하지 않는다.
+   - **빠른 불러오기.** 저장 복원이 탐색을 다시 돌리지 않는다: `ReplayableAgent.replay_decision`이 기록된 답을 따라 RNG(세계 결정화·chance seed)와 순환 방지 기록을 탐색과 똑같이 움직이고, 답이 망의 후보 안에 있는지만 본다. 실제 체크포인트·UI 기본 규칙에서 한 라운드 저장의 복원이 10.67초 → 0.33초(3라운드 17.9 → 0.49초). 탐색 경로를 리팩터링했지만 일반 탐색의 선택·RNG는 한 비트도 바뀌지 않음을 리뷰가 60결정 동시 실행으로 확인했다(이전 `search:` 측정 그대로 유효).
+   - 측정: UI 기본 규칙에서 탐색 결정 하나 평균 1.4초(p90 3.3초, 최대 7.3초), 탐색 좌석 하나인 판의 AI 시간 약 134초.
+   - **아직 망을 깔지 않았다.** 지금 체크포인트(7081)는 드래프트·Epic·Go to 11을 배운 적이 없다(지도자 고르기 행이 초기값 잡음). L3가 끝나면 판정에서 고른 체크포인트를 `~/.dune-imperium/checkpoints/` 아래 새 이름으로 두고 `~/.dune-imperium/search.pt` 링크를 건다(호스트 안내서 "탐색 AI 좌석" 절).
+3. **L3 재학습 — 학습 중**(브랜치 `l3-appai`, 아직 병합 안 함; 실행 폴더 `checkpoints/2026-10-06/l3-appai/`, git 무시, 판정 규칙은 결과 전에 그 `README.md`에). 사용자 선택: 규칙 "UI 기본 + Scouts"(드래프트·CHOAM·프로모·Bloodlines·Tech·Immortality·Go to 11·Epic·Scouts), 상대 "반은 앱 AI, 반은 self-play"(iteration당 32판 중 16판이 학습 2석 대 앱 AI 어려움 2석), 길이 1,000 iteration(7081 → 8081, 약 5시간). 학습기에 `--go-to-11`·`--epic`·`--arrakeen-scouts`·`--leader-draft`·`--rotate-leaders`·`--opponent-games`·`--retarget`를 더했다(7081을 새 룰셋 카탈로그로 옮겨 이어 학습; Adam 모멘트도 함께 옮김).
+   - **엔진 결함 하나를 학습이 찾았다.** 약 4,000판에 한 판꼴로 "player decision has no legal actions"(합법 행동 없는 사람 결정)가 나 첫 시도가 iteration 7205에서 죽었다. random 600판·heuristic 300판 소크와 학습 조건 재현 1,296판으로는 다시 나오지 않았다. 학습 러너에 `stall_dir`을 더해(`c42d23d6`) 그런 판의 상태를 `stalls/`에 pickle하고 그 판만 잘린 판으로 끝내게 한 뒤 7249에서 다시 띄웠다. 상태가 잡히면 원인을 찾아 엔진을 고친다(규칙 변경이면 `docs/rules` 인용 먼저).
+
+- 검증(병합한 master): **pytest 6,472개 통과**, Ruff(`src tests`)·mypy(**410파일**) 통과, Chrome **E2E 46종 전부 통과**(3개씩 268초, 학습이 도는 기계). 새 테스트: 대회 드래프트 4개, 학습 옵션 15개 + 막힌 판 보관 1개(브랜치 `l3-appai`, 미병합), `tests/server/test_search_seats.py` 21개(생각 중 반환·초인종·낡은 답 버림·삭제·실패 후 풀림·되돌리기 막기·확정 뒤 넘김·작업자 하나·복원 동일성), 서버 CLI 8개, 탐색 복원 동일성 단위 테스트; 새 E2E `search_seats.py`(61검사). 리뷰가 찾은 다섯 건(실패한 작업자 단계가 판을 멈춤, greedy 대체의 저장 충실도, 테스트 빈칸 둘, 문서 둘)은 고쳤다.
+- 서버 코드가 바뀌었으므로 실행 중인 플레이 서버는 재시작한 뒤 브라우저를 새로고침해야 한다. codec은 그대로라 옛 저장은 그대로 열린다.
+
 ## 2026-10-06 플레이 피드백 여섯 가지(단계 연출, 폐기 구역, 스카웃 순서·경매, 덱 내용, 접합 문구)
 
 사용자 피드백 여섯 항목을 한 묶음으로 처리했다. 브랜치 다섯(`scouts-order-auction`에 `ui-trash-zones`·`ui-phase-banner`·`ui-deck-contents`를 병합)을 master에 병합한다. **codec v136**(Scouts 카탈로그 +1), **관측 v30 그대로**.
@@ -226,6 +243,8 @@ uv run mypy src tests
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
+
+**현재 위치(2026-10-06 새벽).** 대회 도구의 `--leader-draft`와 브라우저의 탐색 AI 좌석을 병합했다(`8de02791`·`9a03ac3e`, 위 2026-10-06 "탐색 AI 좌석"). L3 재학습(UI 기본 + Scouts, 반은 앱 AI 상대)은 `checkpoints/2026-10-06/l3-appai/`에서 학습 중이고, 끝나면 그 README의 판정(J1~J3)을 돌린 뒤 `l3-appai`를 병합하고 탐색 좌석 망을 깐다. 학습이 찾은 엔진 결함(합법 행동 없는 결정, 약 4,000판에 하나)은 상태가 잡히길 기다린다. pytest 6,472개.
 
 **현재 위치(2026-10-05 밤).** 플레이 UI 좌석에 앱 AI(어려움·보통·쉬움)를 넣고 로컬 서버의 AI 기본값으로 삼았다(`e5a2b0d5`, 위 "플레이 UI에 앱 AI 좌석"). pytest 6,421개.
 
