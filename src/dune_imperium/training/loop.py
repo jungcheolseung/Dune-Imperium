@@ -2,7 +2,8 @@
 
 Every iteration plays ``games_per_iteration`` seeded games through the
 lockstep runner with the learner in every seat (or, with an opponent kind,
-the learner rotating through one seat of a table of that baseline), keeps
+the learner rotating through ``learner_seats`` seats of a table of that
+baseline, in every game or in ``opponent_games`` of them), keeps
 the learner's own decisions, applies one learner update, appends a JSON
 line of statistics, and saves ``latest.pt`` plus, every ``checkpoint_every``
 iterations, a numbered checkpoint (78 MB each for the full-expansion
@@ -32,6 +33,7 @@ from dune_imperium.evaluation import (
     summarize,
     tournament_specs,
 )
+from dune_imperium.evaluation.tournament import rotated_leader_ids
 from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
 from dune_imperium.training.collect import Collector
 from dune_imperium.training.learner import Learner, LearnerConfig, UpdateStats
@@ -71,6 +73,19 @@ class TrainConfig:
     tech_module: bool = False
     # Play with the Immortality expansion (docs/rules/immortality.md).
     immortality: bool = False
+    # Immortality's Go to 11 variant; requires immortality.
+    go_to_11: bool = False
+    # Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md).
+    epic_game: bool = False
+    # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
+    arrakeen_scouts: bool = False
+    # The OQ-007 six-Leader draft: every seat picks its Leader, so the
+    # learner learns the picks too. Not part of the ruleset identifier.
+    leader_draft: bool = False
+    # Deal each game a random four-Leader roster (the tournament's
+    # --rotate-leaders derivation) instead of the engine's fixed default
+    # four, so the learner meets every Leader. Not with leader_draft.
+    rotate_leaders: bool = False
     hidden: tuple[int, ...] = DEFAULT_HIDDEN
     learner: LearnerConfig = field(default_factory=LearnerConfig)
     # Baseline kind seated in the non-learner seats during collection; None
@@ -82,6 +97,11 @@ class TrainConfig:
     # 32-game iteration, 2026-09-22), so a fixed opponent is cheaper to
     # learn against at two seats each.
     learner_seats: int = 1
+    # Games per iteration seated against ``opponent``; the others are pure
+    # self-play. None seats every game against it. The opponent games are
+    # spread evenly through the iteration so every collection worker gets
+    # its share (workers deal the specs round-robin).
+    opponent_games: int | None = None
     temperature: float = 1.0
     # Pay the finishing order instead of winner-take-all during collection
     # (training.selfplay.rank_reward); a learning-side reward transform.
@@ -99,6 +119,25 @@ class TrainConfig:
     # rewritten every iteration regardless.
     checkpoint_every: int = 1
     resume: Path | None = None
+    # Let ``resume`` load a checkpoint trained on another ruleset: its
+    # policy head moves onto this run's catalog by template identity and a
+    # template it never saw starts at zero (load_checkpoint's retarget).
+    # Off by default, so a resume with mistyped options still fails loudly.
+    retarget: bool = False
+
+    @property
+    def ruleset(self) -> RulesetConfig:
+        return RulesetConfig(
+            choam_module=self.choam_module,
+            promo_cards=self.promo_cards,
+            bloodlines=self.bloodlines,
+            tech_module=self.tech_module,
+            immortality=self.immortality,
+            go_to_11=self.go_to_11,
+            epic_game=self.epic_game,
+            arrakeen_scouts=self.arrakeen_scouts,
+            leader_draft=self.leader_draft,
+        )
 
     def __post_init__(self) -> None:
         if self.iterations < 1 or self.games_per_iteration < 1:
@@ -121,6 +160,18 @@ class TrainConfig:
             raise ValueError(
                 "learner_seats needs an opponent (self-play seats all four)"
             )
+        if self.opponent_games is not None:
+            if self.opponent is None:
+                raise ValueError("opponent_games needs an opponent")
+            if not 1 <= self.opponent_games <= self.games_per_iteration:
+                raise ValueError(
+                    "opponent_games must be between 1 and games_per_iteration"
+                )
+        if self.rotate_leaders and self.leader_draft:
+            raise ValueError("rotate_leaders cannot be combined with leader_draft")
+        if self.retarget and self.resume is None:
+            raise ValueError("retarget needs a checkpoint to resume")
+        self.ruleset  # noqa: B018 - reject an invalid option mix here
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +193,10 @@ class IterationRecord:
     # cover the finished matches only, so a non-zero count is a defect to
     # look at (the messages go to ``eval_failures.log``), not noise.
     eval_failures: int | None = None
+    # The learner seats' win rate in the games against ``opponent`` alone
+    # (``learner_win_rate`` folds in the self-play games, 25% by design);
+    # None when the iteration had no opponent game.
+    opponent_win_rate: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,17 +223,41 @@ def _iteration_specs(config: TrainConfig, iteration: int) -> tuple[SelfPlaySpec,
         + iteration * config.games_per_iteration
     )
     specs = []
+    opponent_game = 0
     for offset in range(config.games_per_iteration):
-        if config.opponent is None:
-            lineup: tuple[str, ...] = (LEARNER,) * players
-        else:
-            learner = _learner_seats(offset, config.learner_seats, players)
+        seed = first + offset
+        lineup: tuple[str, ...] = (LEARNER,) * players
+        if config.opponent is not None and _is_opponent_game(config, offset):
+            # Counted over the opponent games alone, so the learner seats
+            # still visit every position equally often among them.
+            learner = _learner_seats(opponent_game, config.learner_seats, players)
+            opponent_game += 1
             lineup = tuple(
                 LEARNER if index in learner else config.opponent
                 for index in range(players)
             )
-        specs.append(SelfPlaySpec(game_seed=first + offset, lineup=lineup))
+        leader_ids = (
+            rotated_leader_ids(
+                seed, config.choam_module, config.bloodlines, config.tech_module
+            )
+            if config.rotate_leaders
+            else None
+        )
+        specs.append(SelfPlaySpec(game_seed=seed, lineup=lineup, leader_ids=leader_ids))
     return tuple(specs)
+
+
+def _is_opponent_game(config: TrainConfig, offset: int) -> bool:
+    """Whether the ``offset``-th game of an iteration seats the opponent.
+
+    ``opponent_games`` of the ``games_per_iteration`` games, spread evenly
+    (a line-drawing step): 16 of 32 alternate, 8 of 32 take every fourth.
+    """
+
+    if config.opponent_games is None:
+        return True
+    games, chosen = config.games_per_iteration, config.opponent_games
+    return (offset + 1) * chosen // games > offset * chosen // games
 
 
 def _learner_seats(offset: int, count: int, players: int) -> frozenset[int]:
@@ -194,18 +273,31 @@ def _learner_seats(offset: int, count: int, players: int) -> frozenset[int]:
     return frozenset((offset + index * step) % players for index in range(count))
 
 
-def _learner_outcomes(episodes: tuple[Episode, ...]) -> tuple[float, float]:
-    """Return the learner seats' (win rate, mean reward) over the episodes."""
+def _learner_outcomes(
+    episodes: tuple[Episode, ...],
+) -> tuple[float, float, float | None]:
+    """Return the learner seats' win rate and mean reward over the episodes,
+    and their win rate in the opponent games alone (None without any)."""
 
     rewards: list[float] = []
     wins = 0
+    opponent_seats = opponent_wins = 0
     for episode in episodes:
+        against_opponent = any(name != LEARNER for name in episode.lineup)
         for seat, name in enumerate(episode.lineup):
             if name != LEARNER:
                 continue
+            won = int(episode.ranks[seat] == 1)
             rewards.append(episode.rewards[seat])
-            wins += int(episode.ranks[seat] == 1)
-    return (wins / len(rewards) if rewards else 0.0, float(np.mean(rewards)))
+            wins += won
+            if against_opponent:
+                opponent_seats += 1
+                opponent_wins += won
+    return (
+        wins / len(rewards) if rewards else 0.0,
+        float(np.mean(rewards)),
+        opponent_wins / opponent_seats if opponent_seats else None,
+    )
 
 
 def _evaluate(
@@ -236,11 +328,16 @@ def _evaluate(
         games=config.eval_games,
         rulesets=(config.choam_module,),
         start_seed=EVAL_SEED_BASE + iteration * config.eval_games,
-        rotate_leaders=True,
+        # A drafted run is measured drafting; the draft deals its own pool.
+        rotate_leaders=not config.leader_draft,
+        leader_draft=config.leader_draft,
         promo_cards=config.promo_cards,
         bloodlines=config.bloodlines,
         tech_module=config.tech_module,
         immortality=config.immortality,
+        go_to_11=config.go_to_11,
+        epic_game=config.epic_game,
+        arrakeen_scouts=config.arrakeen_scouts,
     )
     # Collection is finished by the time an evaluation runs, so the same
     # worker budget is free; leaving this at the default of one process
@@ -281,13 +378,7 @@ def train(
     """Run the loop and return every iteration's record."""
 
     device = resolve_device(config.device)
-    ruleset = RulesetConfig(
-        choam_module=config.choam_module,
-        promo_cards=config.promo_cards,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-        immortality=config.immortality,
-    )
+    ruleset = config.ruleset
     codec = SelfPlayRunner(ruleset, record=False).codec
     codec_size = codec.size
     start_iteration = 0
@@ -297,9 +388,19 @@ def train(
         # Resuming keeps the checkpoint's architecture (an ``mlp_slots`` file
         # made by ``dune-imperium-checkpoint widen`` resumes as one); a fresh
         # run is always the plain MLP.
-        network, info = load_checkpoint(config.resume)
+        network, info = load_checkpoint(
+            config.resume, ruleset=ruleset if config.retarget else None
+        )
         if info.ruleset != ruleset.identifier:
-            raise ValueError("resumed checkpoint belongs to a different ruleset")
+            if not config.retarget:
+                raise ValueError(
+                    "resumed checkpoint belongs to a different ruleset "
+                    "(retarget moves it onto this one)"
+                )
+            print(
+                f"retargeted {config.resume} from {info.ruleset} "
+                f"onto {ruleset.identifier}"
+            )
         if info.migration is not None:
             print(f"migrated {config.resume}: {info.migration.describe()}")
         start_iteration = info.iteration
@@ -317,6 +418,10 @@ def train(
         temperature=config.temperature,
         rank_rewards=config.rank_rewards,
         opponent=config.opponent,
+        # A game stuck on a decision without legal actions (an engine
+        # defect) is kept here and ends truncated instead of ending the run;
+        # its count shows in the record's ``truncated``.
+        stall_dir=config.out_dir / "stalls",
     )
 
     config.out_dir.mkdir(parents=True, exist_ok=True)
@@ -337,7 +442,9 @@ def train(
             started = time.perf_counter()
             stats = learner.update(batch)
             update_seconds = time.perf_counter() - started
-            win_rate, mean_reward = _learner_outcomes(result.episodes)
+            win_rate, mean_reward, opponent_win_rate = _learner_outcomes(
+                result.episodes
+            )
             save_checkpoint(
                 latest,
                 learner.network,
@@ -386,6 +493,7 @@ def train(
                 eval_win_rate=eval_win_rate,
                 eval_mean_rank=eval_mean_rank,
                 eval_failures=eval_failures,
+                opponent_win_rate=opponent_win_rate,
             )
             records.append(record)
             log.write(json.dumps(asdict(record)) + "\n")

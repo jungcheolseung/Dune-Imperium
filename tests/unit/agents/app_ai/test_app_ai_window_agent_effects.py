@@ -36,7 +36,7 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.evaluation.tournament import _rotated_leader_ids
+from dune_imperium.evaluation.tournament import rotated_leader_ids
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
@@ -1976,7 +1976,7 @@ def test_full_games_never_fall_back_in_agent_effects(
     )
     choam = game % 2 == 1
     seed = 40 + game
-    engine = UprisingRulesEngine(leader_ids=_rotated_leader_ids(seed, choam))
+    engine = UprisingRulesEngine(leader_ids=rotated_leader_ids(seed, choam))
     agents = tuple(AppAIAgent(seed=500 + 4 * game + seat) for seat in range(4))
     result = run_policy_game(engine, RulesetConfig(choam_module=choam), seed, agents)
     assert result.state.phase is GamePhase.FINISHED
