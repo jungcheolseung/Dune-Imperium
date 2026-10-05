@@ -45,7 +45,7 @@ from functools import cache
 from urllib.parse import quote
 
 from dune_imperium.adapters.observation_encoding import SCOUTS_ITEM_IDS
-from dune_imperium.content.arrakeen_scouts import SUBCOMMITTEES_BY_ID
+from dune_imperium.content.arrakeen_scouts import AUCTIONS_BY_ID, SUBCOMMITTEES_BY_ID
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import (
@@ -504,7 +504,7 @@ def _scouts_items() -> JsonObject:
     items: JsonObject = {}
     for item_id in SCOUTS_ITEM_IDS:
         english, korean = scouts_item_lines(item_id)
-        items[item_id] = {
+        entry: JsonObject = {
             "kind": (
                 "subcommittee" if item_id in SUBCOMMITTEES_BY_ID else item_kind(item_id)
             ),
@@ -513,6 +513,9 @@ def _scouts_items() -> JsonObject:
             "lines": list(english),
             "lines_ko": list(korean),
         }
+        if item_id in AUCTIONS_BY_ID:
+            entry["currency"] = AUCTIONS_BY_ID[item_id].currency
+        items[item_id] = entry
     return items
 
 

@@ -670,6 +670,15 @@ function turnEndAction(actions) {
    same isAcquire test renderRevealPanel uses for its own `buys`, not
    whether anything was already bought) or an Intrigue pass. */
 function turnEndButtonLabel(action, actions) {
+  if (action.action_id === "confirm_scouts_bid") {
+    const currency = scoutsAuctionCurrency();
+    const own = state.view && state.view.private;
+    if (currency && own) {
+      return t("render.scouts_confirm_bid", {
+        resource: termLabel(currency), count: Math.max(0, own.scouts_bid),
+      });
+    }
+  }
   if (action.action_id === "finish_reveal" && actions.some(isAcquire)) {
     return t("render.turn_end_button_with_buys");
   }
@@ -1132,9 +1141,9 @@ function revealTurnPreview() {
    single row with a stepper over the legal counts; the panel and the
    Conflict area share the chosen number. */
 /* Count families shown as a stepper in the panel even with one count left:
-   an Arrakeen Scouts sealed bid is the same control whatever the seat can
-   afford, 0 alone included (D5, docs/arrakeen-scouts-design.md). */
-const SINGLE_COUNT_STEPPERS = new Set(["scouts_bid"]);
+   Scouts bids keep their amount and currency together. A sealed bid keeps
+   the same control even when only 0 is affordable (D5, Scouts design). */
+const SINGLE_COUNT_STEPPERS = new Set(["scouts_bid", "scouts_call"]);
 
 function countFamilies(actions) {
   const byId = new Map();
@@ -1197,6 +1206,9 @@ function countRow(id, family, compact) {
   const value = document.createElement("strong");
   value.className = "stepper-value";
   value.textContent = String(chosen.arguments.count);
+  const currency = (id === "scouts_bid" || id === "scouts_call")
+    ? scoutsAuctionCurrency() : null;
+  if (currency) value.append(" ", scoutsCurrencyNode(currency));
   stepper.append(
     step("−", position - 1, t("render.count_step_down")),
     value,
@@ -1206,11 +1218,17 @@ function countRow(id, family, compact) {
   confirm.type = "button";
   confirm.className = "count-confirm";
   confirm.disabled = state.busy;
-  confirm.append(
-    compact
+  const bidLabel = id === "scouts_bid" ? "render.scouts_choose_bid"
+    : chosen.arguments.count === 0 ? "render.scouts_pass_bid" : "render.scouts_call_bid";
+  const confirmText = currency ? t(
+    bidLabel,
+    { count: chosen.arguments.count, resource: termLabel(currency) },
+  ) : compact
       ? t("render.confirm_short")
-      : t("render.confirm_count_label", { count: chosen.arguments.count, label: label.textContent }),
-  );
+      : t("render.confirm_count_label", {
+        count: chosen.arguments.count, label: label.textContent,
+      });
+  confirm.append(confirmText);
   if (typeof chosen.strength_after === "number") {
     confirm.appendChild(strengthPreview(chosen.strength_after));
   }

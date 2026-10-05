@@ -322,6 +322,12 @@ function renderActionPanel(box, turnEnd) {
     (action) => !turnEnd || action.index !== turnEnd.index
   );
   const placements = placementActions();
+  if (actions.some((action) => action.action_id === "scouts_bid"
+    || action.action_id === "scouts_call")
+    || state.summary.decision?.kind === "scouts_call") {
+    const currency = scoutsAuctionCurrency();
+    if (currency) box.appendChild(scoutsCurrencyLine(currency));
+  }
   if (state.summary.decision && state.summary.decision.kind === "reveal") {
     renderRevealPanel(box, actions);
     return;

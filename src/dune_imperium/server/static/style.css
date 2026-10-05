@@ -2102,6 +2102,18 @@ kbd {
 .pile-button .icon { height: 1.3em; width: auto; }
 
 /* Arrakeen Scouts panel (panels.js renderScouts). */
+.scouts-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.scouts-auction-currency {
+  margin: 0.35em 0;
+  font-weight: 600;
+}
+.stepper-value:has(.scouts-currency) { white-space: nowrap; }
 #scouts-panel h3 {
   margin: 0.5em 0 0.2em;
   font-size: 0.95em;

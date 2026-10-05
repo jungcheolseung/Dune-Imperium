@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 아라킨 스카웃 경매의 입찰 자원 표시
+
+- 솔라리 경매의 기존 설명은 순위별 보상만 보여 주고 숫자 선택·확정에도 통화가 없어, 입찰에 어떤 자원을 쓰는지 알기 어려웠다. `catalog.scouts_items`의 경매 11종에 콘텐츠의 `currency`를 연결했다. 현재 행동칸과 경매 설명에 **입찰 자원: [아이콘] 솔라리/스파이스**를 표시하고, 금액 옆에도 이름·아이콘을 붙였다. 자원 그림이 없는 환경에서도 이름은 남는다.
+- 봉인 입찰의 금액 선택 버튼과 마지막 확정 버튼, 스카웃 패널의 내 입찰액에 같은 자원을 표시한다. 확정 버튼은 실제로 저장한 자기 입찰액(미선택은 기존 기본값 0)을 사용하며 상대의 봉인 금액은 읽지 않는다. 공개 호가의 스테퍼도 통화를 표시하고, 0은 **패스 (스파이스 0)**로 읽힌다. 값이 0 하나뿐인 공개 호가에도 단위가 남도록 같은 컨트롤을 쓴다. 경매 비용·순위·지불·legal actions·codec v135·관측 v30은 그대로다.
+- 검증: 관련 pytest **64개 통과**(Scouts 표시·payload·catalog·i18n), 새 `scouts_auction_currency.py` **192개 검사**와 기존 Scouts 전체 플레이·turn controls·turn end·log words·lang의 Chrome E2E **6종, 92초, 실패 0**, Ruff(`src tests`·새 E2E)·mypy(**365파일**)·`git diff --check` 통과. 카탈로그 생성이 변경됐으므로 실행 중인 서버는 재시작한 뒤 브라우저를 새로고침해야 자원 메타데이터를 받는다. 사용자 게임을 보관 중인 서버는 자동 재시작하지 않는다.
+
 ## 2026-10-05 빈약한 유대의 하락 아이콘과 정보 수집 불가 사유
 
 - 빈약한 유대(Tenuous Bond)의 Influence 감소 비용과 증가 보상은 같은 `choose_intrigue_faction`을 사용하므로 기존 공통 UI 라벨이 감소에도 상승 아이콘을 그렸다. 서버 detail은 실제 Intrigue choice slot의 LoseInfluence/GainInfluence를 읽어 하락/상승 1을 구분하며, 화면은 진영·Alliance 이전 대상 arguments도 함께 유지한다. 과거 로그는 그 행동 자체의 `influence_lost` 이벤트를 읽어 하락 아이콘을 선택하고, 영향력 감소 이벤트의 공통 아이콘도 하락으로 수정했다. 실제 카드 비용·보상 처리와 codec v135·관측 v30은 그대로다.

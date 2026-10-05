@@ -62,6 +62,33 @@ def test_the_catalog_carries_every_item() -> None:
     ]
 
 
+def test_auction_catalog_exposes_the_bid_currency_beside_prize_lines() -> None:
+    # docs/rules/arrakeen-scouts.md 8.1's currency column: these sealed
+    # auctions use Solari; 8.2 Mercenaries and 8.3 Critical Moment use spice.
+    # UI metadata only: the reward lines intentionally do not contain a cost.
+    items = build_catalog()["scouts_items"]
+    assert isinstance(items, dict)
+    expected = {
+        "highest_bidder_mid": "solari",
+        "highest_bidder_late": "solari",
+        "spies_for_hire_mid": "solari",
+        "spies_for_hire_late": "solari",
+        "choam_negotiations_mid": "solari",
+        "choam_negotiations_late": "solari",
+        "competitive_study_mid": "solari",
+        "competitive_study_late": "solari",
+        "mercenaries": "spice",
+        "critical_moment_mid": "spice",
+        "critical_moment_late": "spice",
+    }
+    currencies = {
+        item_id: entry["currency"]
+        for item_id, entry in items.items()
+        if isinstance(entry, dict) and "currency" in entry
+    }
+    assert currencies == expected
+
+
 def _with_frame(kind: FrameKind, **context: str) -> GameState:
     frame = DecisionFrame(
         kind=kind,

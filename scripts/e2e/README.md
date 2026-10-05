@@ -64,6 +64,8 @@ UI 변경의 검증 순서는 [`CLAUDE.md`](../../CLAUDE.md)의 "Verifying UI ch
 
 `influence_spies.py`는 엔진이 실제로 처리한 빈약한 유대의 비용·보상과 Spy가 연결된 Agent 배치의 서버 payload를 두 언어로 그린다. 하락·상승 아이콘, 진영 이름 보존, 현재 선택 단계와 무관한 과거 로그 아이콘, 덱·버린 더미가 모두 비었을 때 정보 수집의 회색 사유와 클릭 불가, 어느 한 더미에 카드가 생겼을 때의 선택 복귀를 확인한다. `E2E_SHOTS_DIR`에 `influence_*.png`·`gather_*.png`를 남긴다.
 
+`scouts_auction_currency.py`는 모든 경매 11종의 실제 서버 payload로 입찰 자원 이름·아이콘을 확인한다. 두 언어의 경매 설명·입찰 금액·선택/확정 버튼·내 입찰액, 금액 변경과 원래 action index 전송, 0만 가능한 봉인 입찰·공개 호가의 패스·한 번만 더 올릴 수 있는 경우, 상대의 봉인 입찰 비공개와 아이콘 없는 텍스트 대체를 포함한다. `E2E_SHOTS_DIR`에 `auction_*.png`를 남긴다.
+
 ## 하나씩 돌리기
 
 아래 시간은 한 개씩 순서대로 돌린 실측(2026-09-27 Mac mini; `rehearsal.py`만 예전 값)이다.

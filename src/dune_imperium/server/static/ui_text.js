@@ -927,6 +927,10 @@ const UI_TEXT = {
     "ko": "내 입찰액: {{count}}",
     "en": "My bid: {{count}}"
   },
+  "panels.scouts_currency": {
+    "ko": "입찰 자원:",
+    "en": "Bid resource:"
+  },
   "panels.scouts_market": {
     "ko": "공개된 카드",
     "en": "Revealed cards"
@@ -1070,6 +1074,22 @@ const UI_TEXT = {
   "render.confirm_short": {
     "ko": "확정",
     "en": "Confirm"
+  },
+  "render.scouts_choose_bid": {
+    "ko": "{{resource}} {{count}} 선택",
+    "en": "Choose {{count}} {{resource}}"
+  },
+  "render.scouts_call_bid": {
+    "ko": "{{resource}} {{count}} 입찰",
+    "en": "Bid {{count}} {{resource}}"
+  },
+  "render.scouts_pass_bid": {
+    "ko": "패스 ({{resource}} 0)",
+    "en": "Pass (0 {{resource}})"
+  },
+  "render.scouts_confirm_bid": {
+    "ko": "{{resource}} {{count}} 입찰 확정",
+    "en": "Confirm {{count}} {{resource}} bid"
   },
   "render.contract_bank": {
     "ko": "남은 계약",

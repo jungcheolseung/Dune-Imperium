@@ -1304,7 +1304,38 @@ function scoutsItem(itemId) {
   return items[itemId] || { kind: "", name: prettify(itemId), lines: [], lines_ko: [] };
 }
 
+function scoutsAuctionCurrency() {
+  const item = scoutsItem(state.view && state.view.scouts_item);
+  return item.kind === "auction" && TERMS[item.currency] ? item.currency : null;
+}
+
+/* A currency needs its visible name as well as its icon: reward lines do
+   not say which resource an auction charges. No art still leaves the name. */
+function scoutsCurrencyNode(currency) {
+  const span = document.createElement("span");
+  span.className = "scouts-currency";
+  span.dataset.resource = currency;
+  const name = termLabel(currency);
+  if (iconUrl(currency)) {
+    const picture = icon(currency, name);
+    picture.setAttribute("aria-hidden", "true");
+    span.append(picture, " ");
+  }
+  span.append(name);
+  return span;
+}
+
+function scoutsCurrencyLine(currency) {
+  const line = document.createElement("div");
+  line.className = "scouts-auction-currency";
+  line.append(t("panels.scouts_currency"), " ", scoutsCurrencyNode(currency));
+  return line;
+}
+
 function scoutsItemLines(item, box) {
+  if (item.kind === "auction" && TERMS[item.currency]) {
+    box.appendChild(scoutsCurrencyLine(item.currency));
+  }
   item.lines.forEach((line, index) => {
     box.appendChild(effectLine(line, item.lines_ko[index], "scouts-line"));
   });
@@ -1460,7 +1491,12 @@ function renderScouts() {
         ? t("panels.scouts_bids", { seats: view.scouts_bids_confirmed.map(playerLabel).join(", ") })
         : t("panels.scouts_no_bids"),
     );
-    if (ownBid >= 0) scoutsRow(box, t("panels.scouts_own_bid", { count: ownBid })).classList.add("scouts-own");
+    if (ownBid >= 0) {
+      const row = scoutsRow(box, t("panels.scouts_own_bid", { count: ownBid }));
+      row.classList.add("scouts-own");
+      const currency = scoutsAuctionCurrency();
+      if (currency) row.append(" ", scoutsCurrencyNode(currency));
+    }
   }
   if (view.scouts_market_cards.length) {
     const box = scoutsSection(panel, t("panels.scouts_market"));
