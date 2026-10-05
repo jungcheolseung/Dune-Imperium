@@ -1488,9 +1488,9 @@ class GameSessionManager:
         except Exception:
             with session.lock:
                 _LOGGER.exception(
-                    "the AI worker of game %s stopped at step %d with seat %s "
-                    "thinking; nothing answers it until a human acts or the "
-                    "game is loaded again",
+                    "the AI worker of game %s stopped at step %d (thinking "
+                    "seat: %s); no seat thinks again until a human acts or "
+                    "the game is loaded again",
                     session.game_id,
                     len(session.steps),
                     session.thinking,
