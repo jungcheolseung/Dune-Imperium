@@ -10,7 +10,6 @@ the rules execute.
 
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
@@ -384,9 +383,11 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     except ValueError:
         return None
     card_id = context.get("card_id")
-    if not isinstance(card_id, str):
+    if not isinstance(card_id, str) or not card_id:
         return None
-    return agent_card_icon_text(personal_card_for_instance(card_id).agent_effect, key)
+    # The box resolving, a Ghola's borrowed one included, as the engine's
+    # own icon actions read it (``legal_agent_card_icon_actions``).
+    return agent_card_icon_text(active_agent_card(context).agent_effect, key)
 
 
 def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
@@ -426,7 +427,6 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     except ValueError:
         return None
     card_id = context.get("card_id")
-    if not isinstance(card_id, str):
+    if not isinstance(card_id, str) or not card_id:
         return None
-    card = personal_card_for_instance(card_id)
-    return agent_card_icon_text_ko(card.agent_effect, key)
+    return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)
