@@ -1,6 +1,7 @@
 """Tests for the policy-guided determinized search agent (``search:<path>``)."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,7 @@ from dune_imperium.adapters.pettingzoo_env import (  # noqa: E402
 from dune_imperium.agents import StateAgent, make_agent  # noqa: E402
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
+    SearchResult,
     finished_reward,
     orders_agent_effects,
 )
@@ -26,6 +28,7 @@ from dune_imperium.core.decisions import (  # noqa: E402
     ChanceDecision,
     PlayerDecision,
 )
+from dune_imperium.core.observation import PlayerView  # noqa: E402
 from dune_imperium.core.state import GamePhase, GameState  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.rules.endgame import final_standings  # noqa: E402
@@ -389,7 +392,6 @@ def test_a_playout_reaching_the_horizon_is_read_after_the_round_start_draw(
 
     from dataclasses import replace
 
-    from dune_imperium.core.observation import PlayerView
     from dune_imperium.rules.phases import prepare_round_start
     from dune_imperium.rules.setup import create_initial_state
 
@@ -596,3 +598,172 @@ def test_search_playouts_hand_untrained_only_decisions_to_a_seeded_heuristic(
     first = agent._playout(state, decision.owner, horizon, 11)
     assert seeds == [11]
     assert agent._playout(state, decision.owner, horizon, 11) == first
+
+
+# -- retracing recorded decisions (a loaded save) ---------------------------
+
+
+@dataclass(frozen=True)
+class _Decided:
+    """One decision of a search seat, its answer, and its memory after it."""
+
+    state: GameState
+    view: PlayerView
+    actions: tuple[DomainAction, ...]
+    result: SearchResult
+    kind: str
+    memory_after: tuple[object, ...]
+
+
+def _memory(agent: NetworkSearchAgent) -> tuple[object, ...]:
+    """Everything a search seat remembers from one decision to the next.
+
+    Its RNG stream and cycle guard, and its greedy agent's guard and lazily
+    built heuristic fallback (whose RNG the untrained-only decisions use).
+    """
+
+    greedy = agent.greedy
+    fallback = greedy._fallback
+    return (
+        agent._rng.getstate(),
+        agent._taken._round,
+        {key: frozenset(taken) for key, taken in agent._taken._taken.items()},
+        agent._taken.breaks,
+        greedy._guard._round,
+        {key: frozenset(taken) for key, taken in greedy._guard._taken.items()},
+        None if fallback is None else fallback._rng.getstate(),
+    )
+
+
+def _search_seat_game(
+    agent: NetworkSearchAgent, config: RulesetConfig, seed: int, seat: int, count: int
+) -> list[_Decided]:
+    """Play ``agent`` in ``seat`` beside heuristics for ``count`` decisions."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    others = [make_agent("heuristic", index) for index in range(config.players)]
+    decided: list[_Decided] = []
+    while len(decided) < count and state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        view = engine.observe(state, decision.owner)
+        if decision.owner != seat:
+            choice = others[decision.owner].choose_action(view, actions)
+            state = engine.apply(state, choice, legal_actions=actions).state
+            continue
+        offered = without_undo_actions(actions)
+        if orders_agent_effects(state):
+            kind = "effect order"
+        elif len(offered) == 1:
+            kind = "forced"
+        elif agent._untrained_only(offered):
+            kind = "untrained"
+        else:
+            kind = "shortlist"
+        result = agent.search_with_state(state, view, actions)
+        if result.searched:
+            kind = "searched"
+        decided.append(_Decided(state, view, actions, result, kind, _memory(agent)))
+        state = engine.apply(state, result.chosen, legal_actions=actions).state
+    return decided
+
+
+@pytest.mark.parametrize("scouts", [False, True], ids=["base", "scouts"])
+def test_a_retraced_search_seat_answers_like_the_one_that_searched(
+    tmp_path: Path, scouts: bool
+) -> None:
+    """Retracing decisions 1..k leaves the seat where searching them did.
+
+    A loaded save tells a fresh search seat its recorded answers instead of
+    running the playouts again (``replay_decision``); its next answers must
+    be the ones the saved seat would have given, so its RNG stream and its
+    cycle guard end where the searching seat's did, and the greedy agent's
+    own guard and heuristic fallback too. The Scouts game seats a file
+    trained without Scouts, so some decisions go to that heuristic.
+    """
+
+    config = RulesetConfig(arrakeen_scouts=scouts)
+    path = _base_checkpoint_with_templates(tmp_path)
+
+    def seat_agent() -> NetworkSearchAgent:
+        return NetworkSearchAgent(
+            path, seed=11, rollouts=2, candidates=2, config=config
+        )
+
+    decided = _search_seat_game(seat_agent(), config, seed=3, seat=1, count=70)
+    assert len(decided) == 70
+    kinds = {entry.kind for entry in decided}
+    assert {"searched", "effect order", "forced"} <= kinds
+    if scouts:
+        assert "untrained" in kinds
+
+    for split in (9, 35, 69):
+        twin = seat_agent()
+        for entry in decided[:split]:
+            assert twin.replay_decision(
+                entry.state, entry.view, entry.actions, entry.result.chosen
+            )
+        assert _memory(twin) == decided[split - 1].memory_after
+        for entry in decided[split:]:
+            answer = twin.choose_action_with_state(
+                entry.state, entry.view, entry.actions
+            )
+            assert answer == entry.result.chosen
+        assert _memory(twin) == decided[-1].memory_after
+    # Each part of the game the splits cut was searched somewhere.
+    assert any(entry.kind == "searched" for entry in decided[:9])
+    assert any(entry.kind == "searched" for entry in decided[35:])
+
+
+def test_retracing_refuses_an_answer_the_seat_could_not_have_given(
+    tmp_path: Path,
+) -> None:
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+
+    def seat_agent() -> NetworkSearchAgent:
+        return NetworkSearchAgent(path, seed=5, rollouts=2, candidates=2)
+
+    decided = _search_seat_game(seat_agent(), config, seed=4, seat=2, count=40)
+
+    def refused(index: int, action: DomainAction) -> bool:
+        twin = seat_agent()
+        for entry in decided[:index]:
+            assert twin.replay_decision(
+                entry.state, entry.view, entry.actions, entry.result.chosen
+            )
+        entry = decided[index]
+        return not twin.replay_decision(entry.state, entry.view, entry.actions, action)
+
+    # A searched decision: an offered action the network did not shortlist.
+    index, entry = next(
+        (index, entry)
+        for index, entry in enumerate(decided)
+        if entry.kind == "searched"
+        and len(without_undo_actions(entry.actions)) > len(entry.result.candidates)
+    )
+    outside = next(
+        action
+        for action in without_undo_actions(entry.actions)
+        if action not in entry.result.candidates
+    )
+    assert refused(index, outside)
+    # The candidate the playouts did not pick is still a possible answer.
+    other = next(
+        action for action in entry.result.candidates if action != entry.result.chosen
+    )
+    assert not refused(index, other)
+    # A decision the greedy network answers: anything but its answer.
+    index, entry = next(
+        (index, entry)
+        for index, entry in enumerate(decided)
+        if entry.kind == "effect order"
+    )
+    wrong = next(action for action in entry.actions if action != entry.result.chosen)
+    assert refused(index, wrong)

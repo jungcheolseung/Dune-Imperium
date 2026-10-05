@@ -45,3 +45,33 @@ class StateAgent(Protocol):
     ) -> DomainAction:
         """Return exactly one of ``legal_actions`` after searching from ``state``."""
         ...
+
+
+@runtime_checkable
+class ReplayableAgent(Protocol):
+    """An agent that can retrace a recorded decision without recomputing it.
+
+    Loading a saved game replays every recorded step against fresh seeded
+    agents, so each AI seat's memory (RNG streams, cycle guards) ends where
+    the saved session's did. Regenerating every decision does that but pays
+    for it again: a search seat's playouts cost about a second a decision.
+    An agent implementing this protocol is told the recorded answer instead
+    and only performs the cheap part of its bookkeeping.
+    """
+
+    def replay_decision(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+        action: DomainAction,
+    ) -> bool:
+        """Retrace ``action`` as this agent's own answer to this decision.
+
+        Bring the agent's memory to exactly where it would be had it chosen
+        ``action`` here itself (``choose_action_with_state`` with the same
+        arguments), without the expensive part. Return ``False`` when
+        ``action`` could not have been its choice; the memory is then
+        unspecified and the agent must not be used further.
+        """
+        ...

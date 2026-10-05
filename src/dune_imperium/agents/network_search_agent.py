@@ -45,10 +45,15 @@ there is no shortlist to search. The seat answers it through its greedy
 agent, which hands it to a heuristic, and every playout does the same with
 a heuristic seeded from the playout's chance seed, so the candidates of one
 decision still meet the same answers (docs/arrakeen-scouts-design.md 4.9).
+
+A loaded save does not search its recorded decisions again: the seat
+retraces each one (``replay_decision``, the ``ReplayableAgent`` protocol),
+drawing the worlds a search would have drawn without playing them out, so
+it resumes with the RNG stream and cycle guard of the seat that was saved.
 """
 
 import random
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -112,6 +117,14 @@ class SearchResult:
         """Each candidate's value summed over the worlds."""
 
         return tuple(sum(column) for column in zip(*self.values, strict=True))
+
+
+@dataclass(frozen=True, slots=True)
+class _Shortlist:
+    """A decision's candidates for the search, best network logit first."""
+
+    key: tuple[object, ...]
+    candidates: tuple[DomainAction, ...]
 
 
 class _Taken:
@@ -270,34 +283,91 @@ class NetworkSearchAgent:
         expert iteration reads the values as training targets.
         """
 
-        if not legal_actions:
-            raise ValueError("a search agent requires at least one legal action")
-        if not self.search_effect_order and orders_agent_effects(state):
-            chosen = self.greedy.choose_action(observation, legal_actions)
-            return SearchResult(chosen=chosen, searched=False)
-        offered = without_undo_actions(legal_actions)
-        if len(offered) == 1:
-            return SearchResult(chosen=offered[0], searched=False)
-        if self._untrained_only(offered):
-            chosen = self.greedy.choose_action(observation, legal_actions)
-            return SearchResult(chosen=chosen, searched=False)
-        seat = observation.player
-        encoded = self._encode(observation)
-        key, fresh = self._taken.untried(state.round_number, seat, encoded, offered)
-        order = np.argsort(-self._scores(encoded, fresh), kind="stable")
-        candidates = tuple(fresh[int(index)] for index in order[: self.candidates])
+        plan = self._shortlist(state, observation, legal_actions)
+        if not isinstance(plan, _Shortlist):
+            return SearchResult(chosen=plan, searched=False)
+        candidates = plan.candidates
         if len(candidates) == 1:
             result = SearchResult(chosen=candidates[0], searched=False)
         else:
-            values = self._search(state, seat, candidates)
+            values = self._search(state, observation.player, candidates)
             totals = [sum(column) for column in zip(*values, strict=True)]
             # Candidates are in the network's own order, so a tie keeps its pick.
             chosen = candidates[totals.index(max(totals))]
             result = SearchResult(
                 chosen=chosen, searched=True, candidates=candidates, values=values
             )
-        self._taken.record(key, result.chosen)
+        self._taken.record(plan.key, result.chosen)
         return result
+
+    def replay_decision(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+        action: DomainAction,
+    ) -> bool:
+        """Retrace a recorded answer without its playouts (``ReplayableAgent``).
+
+        Walks the very branches of ``search_with_state`` (``_shortlist``):
+        a decision the greedy network answers is asked of it again, since
+        that is cheap and moves its cycle guard and heuristic fallback the
+        same way; a searched one draws its worlds (``_worlds``) only to move
+        ``_rng`` on as far as the playouts' decision did, and the cycle
+        guard records ``action``. An agent that retraces decisions 1..k and
+        then answers decision k+1 gives the answer of one that searched all
+        of them. Nothing else in the agent remembers a decision: the playouts
+        keep their own guards and heuristics, and the greedy agent is only
+        asked where ``_shortlist`` asks it.
+
+        Returns ``False`` when ``action`` cannot have been this agent's
+        answer: not the greedy network's or the forced choice, or not among
+        the candidates the network shortlisted. The values the playouts
+        would have produced are not recomputed, so which candidate a
+        searched decision chose is taken on trust.
+        """
+
+        plan = self._shortlist(state, observation, legal_actions)
+        if not isinstance(plan, _Shortlist):
+            return plan == action
+        if len(plan.candidates) > 1:
+            for _ in self._worlds(state, observation.player):
+                pass
+        self._taken.record(plan.key, action)
+        return action in plan.candidates
+
+    def _shortlist(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction | _Shortlist:
+        """Answer a decision that needs no playouts, or shortlist its candidates.
+
+        Shared by ``search_with_state`` and ``replay_decision``, so the two
+        can never walk different branches. A shortlist carries the cycle
+        guard's key for the decision; whoever answers it records the answer
+        under that key.
+        """
+
+        if not legal_actions:
+            raise ValueError("a search agent requires at least one legal action")
+        if not self.search_effect_order and orders_agent_effects(state):
+            return self.greedy.choose_action(observation, legal_actions)
+        offered = without_undo_actions(legal_actions)
+        if len(offered) == 1:
+            return offered[0]
+        if self._untrained_only(offered):
+            return self.greedy.choose_action(observation, legal_actions)
+        encoded = self._encode(observation)
+        key, fresh = self._taken.untried(
+            state.round_number, observation.player, encoded, offered
+        )
+        order = np.argsort(-self._scores(encoded, fresh), kind="stable")
+        return _Shortlist(
+            key=key,
+            candidates=tuple(fresh[int(index)] for index in order[: self.candidates]),
+        )
 
     # -- expert iteration ---------------------------------------------------
     def candidate_order(
@@ -328,11 +398,7 @@ class NetworkSearchAgent:
 
         horizon = state.round_number + self.horizon_rounds
         values: list[tuple[float, ...]] = []
-        for _ in range(self.rollouts):
-            world = determinize(state, seat, self._rng)
-            # Common random numbers: every candidate meets the same world
-            # and the same chance stream, so they differ only by the action.
-            chance_seed = self._rng.randrange(2**31)
+        for world, chance_seed in self._worlds(state, seat):
             values.append(
                 tuple(
                     self._playout(
@@ -345,6 +411,22 @@ class NetworkSearchAgent:
                 )
             )
         return tuple(values)
+
+    def _worlds(self, state: GameState, seat: int) -> Iterator[tuple[GameState, int]]:
+        """Draw a searched decision's worlds and chance seeds from ``_rng``.
+
+        The only use of ``_rng``: ``_search`` plays the candidates in each
+        world, and ``replay_decision`` draws them only to move the stream
+        on exactly as far. Playouts never touch ``_rng``, so drawing the
+        worlds lazily between them or all at once uses it the same way.
+        """
+
+        for _ in range(self.rollouts):
+            world = determinize(state, seat, self._rng)
+            # Common random numbers: every candidate meets the same world
+            # and the same chance stream, so they differ only by the action.
+            chance_seed = self._rng.randrange(2**31)
+            yield world, chance_seed
 
     def _playout(
         self, state: GameState, seat: int, horizon: int, chance_seed: int

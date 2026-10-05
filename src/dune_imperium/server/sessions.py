@@ -12,7 +12,8 @@ after every human action, so a session always rests on a human decision or
 on the finished game. Every applied step is recorded replay-style; saving
 serializes that record (``persistence``), and loading replays it against
 fresh seeded chance and agent streams so a loaded game continues exactly
-like the unsaved session would have.
+like the unsaved session would have. A search seat retraces its recorded
+answers on a load rather than searching them again.
 
 Who may do what is judged here too (``access``, M14). An open manager — the
 default, the local server — trusts every caller as before. A remote manager
@@ -43,7 +44,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from typing import Final
 
-from dune_imperium.agents import Agent, StateAgent, make_agent
+from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
 from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
     SEARCH_PREFIX,
@@ -126,7 +127,9 @@ AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # tournament runner does; their contract keeps them from reading hidden zones.
 # Restore regenerates every AI step (an app AI's memory with it), so any change
 # to an agent's behaviour, an app_ai code or data update included, can make
-# saves and autosaves with that seat kind unloadable.
+# saves and autosaves with that seat kind unloadable. A search seat only
+# retraces its recorded answers (``ReplayableAgent``): it checks that each was
+# among the network's shortlist and moves its RNG on, without the playouts.
 # Matches the sweep's policy seed convention so one game seed names one game.
 _DEFAULT_POLICY_OFFSET: Final = 700_000
 _MAX_AUTO_STEPS: Final = 30_000
@@ -884,12 +887,14 @@ class GameSessionManager:
 
         The recorded steps replay against a fresh seeded ``ChanceResolver``
         and fresh seeded agents: chance and AI decisions are regenerated
-        and must match the record, human actions apply as recorded. That
-        restores every RNG stream to its saved position, so the loaded game
-        continues exactly like the unsaved session would have; a divergence
-        (an edited file, or code that no longer reproduces the record)
-        fails with the offending step index. The final canonical state hash
-        is verified like ``replay_game`` does.
+        and must match the record, human actions apply as recorded. A
+        search seat retraces its recorded answers instead of searching them
+        again (``ReplayableAgent``), and refuses one it could not have
+        given. That restores every RNG stream to its saved position, so the
+        loaded game continues exactly like the unsaved session would have; a
+        divergence (an edited file, or code that no longer reproduces the
+        record) fails with the offending step index. The final canonical
+        state hash is verified like ``replay_game`` does.
         """
 
         self.require_admin(credentials)
@@ -1543,12 +1548,18 @@ def _replay_recorded_steps(
     Caller holds the session lock. Every regenerated step must equal the
     record; that check both validates the save and proves the fresh RNG
     streams sit exactly where the saved session left them.
+
+    A ``ReplayableAgent`` (a ``search:`` seat) is not asked again: it
+    retraces its recorded answer (``replay_decision``), which moves its
+    memory on as answering would have, and refuses an answer it could not
+    have given. A search seat's playouts cost about a second a decision, so
+    regenerating them made a one-seat save take most of a minute to load.
     """
 
     engine = session.engine
     for index, recorded in enumerate(recorded_steps):
         decision = engine.current_decision(session.state)
-        regenerated: ReplayStep
+        regenerated: ReplayStep | None
         if isinstance(recorded, ChanceOutcome):
             if not isinstance(decision, ChanceDecision):
                 raise SaveError(
@@ -1559,7 +1570,12 @@ def _replay_recorded_steps(
         elif (
             isinstance(decision, PlayerDecision) and decision.owner == recorded.actor
         ):
-            if recorded.actor in session.agents:
+            agent = session.agents.get(recorded.actor)
+            if isinstance(agent, ReplayableAgent):
+                regenerated = (
+                    recorded if _agent_retraces(session, agent, recorded) else None
+                )
+            elif agent is not None:
                 regenerated = _agent_action(session, recorded.actor)
             else:
                 regenerated = recorded
@@ -1574,12 +1590,27 @@ def _replay_recorded_steps(
                 "replay as recorded"
             )
         try:
-            _apply_step(session, regenerated)
+            _apply_step(session, recorded)
         except Exception as error:
             raise SaveError(
                 f"save step {index} ({_step_summary(recorded)}) failed to "
                 f"apply: {error}"
             ) from error
+
+
+def _agent_retraces(
+    session: GameSession, agent: ReplayableAgent, recorded: DomainAction
+) -> bool:
+    """Retrace ``recorded`` as the seat's own answer; the caller holds the lock."""
+
+    engine = session.engine
+    seat = recorded.actor
+    return agent.replay_decision(
+        session.state,
+        engine.observe(session.state, seat),
+        engine.legal_actions(session.state, seat),
+        recorded,
+    )
 
 
 def _open_undo_window(session: GameSession, seat: int) -> int:

@@ -1,6 +1,6 @@
 """Baseline agents for simulations and evaluation."""
 
-from dune_imperium.agents.base import Agent, StateAgent
+from dune_imperium.agents.base import Agent, ReplayableAgent, StateAgent
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.agents.random_agent import RandomAgent
@@ -17,6 +17,7 @@ __all__ = [
     "AgentFactory",
     "HeuristicAgent",
     "RandomAgent",
+    "ReplayableAgent",
     "RolloutAgent",
     "StateAgent",
     "determinize",

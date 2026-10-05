@@ -146,6 +146,88 @@ def test_a_search_agent_seat_restores_from_a_save() -> None:
         assert restored[field] == original[field], field
 
 
+def _tiny_search_seat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """A ``search:`` seat kind over a small untrained file, searching less.
+
+    The seat searches two candidates in two worlds instead of five in eight,
+    which keeps a test game fast; everything else is the seat a game builds.
+    """
+
+    torch = pytest.importorskip("torch")
+    from dune_imperium import RulesetConfig
+    from dune_imperium.adapters.action_codec import ActionCodec
+    from dune_imperium.agents import network_search_agent as module
+    from dune_imperium.training.checkpoint import save_checkpoint
+    from dune_imperium.training.network import PolicyValueNetwork
+
+    base = RulesetConfig()
+    codec = ActionCodec(base)
+    torch.manual_seed(0)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path,
+        PolicyValueNetwork(codec.size, hidden=(32,)),
+        ruleset=base.identifier,
+        iteration=1,
+        codec=codec,
+    )
+
+    class _Smaller(module.NetworkSearchAgent):
+        def __init__(
+            self, path: str, *, seed: int, config: RulesetConfig | None = None
+        ) -> None:
+            super().__init__(path, seed=seed, rollouts=2, candidates=2, config=config)
+
+    monkeypatch.setattr(module, "NetworkSearchAgent", _Smaller)
+    return f"search:{path}"
+
+
+def test_a_search_seat_restores_without_searching_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A load retraces the search seat's answers instead of playing them out.
+
+    The restored seat must still resume where the saved one stood: the two
+    sessions answer the same human moves with the same steps afterwards.
+    """
+
+    from dune_imperium.agents.network_search_agent import NetworkSearchAgent
+    from dune_imperium.core.actions import DomainAction
+    from dune_imperium.core.state import canonical_state_hash
+
+    seats = ("human", _tiny_search_seat(tmp_path, monkeypatch), "heuristic", "random")
+    manager = GameSessionManager()
+    original = _advance(manager, manager.create_game(seats, game_seed=34), 30)
+    game_id = _text(original["game_id"])
+    session = manager._sessions[game_id]
+
+    def search_seat_steps(steps: object) -> int:
+        assert isinstance(steps, list)
+        return sum(
+            1 for step in steps if isinstance(step, DomainAction) and step.actor == 1
+        )
+
+    assert search_seat_steps(session.steps) > 10
+    document = manager.save_game(game_id)
+
+    def no_playouts(*_: object) -> float:
+        raise AssertionError("a restore must not search again")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(NetworkSearchAgent, "_playout", no_playouts)
+        restored = manager.restore_game(_roundtrip(document))
+    twin = manager._sessions[_text(restored["game_id"])]
+    assert twin.steps == session.steps
+    assert canonical_state_hash(twin.state) == canonical_state_hash(session.state)
+
+    saved_steps = len(session.steps)
+    original = _advance(manager, original, 30)
+    restored = _advance(manager, restored, 30)
+    assert search_seat_steps(session.steps[saved_steps:]) > 5
+    assert twin.steps == session.steps
+    assert restored["revision"] == original["revision"]
+
+
 def test_a_finished_game_can_be_saved_and_restored(
     finished_game: tuple[GameSessionManager, JsonObject],
 ) -> None:
