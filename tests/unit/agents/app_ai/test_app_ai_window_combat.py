@@ -217,9 +217,10 @@ def test_combat_intrigue_without_plays_passes_unasked(
 
 
 def _recall_state() -> GameState:
-    # Base seed 4, round 10: seat 2 wins Battle for Arrakeen (crysknife) with
-    # three spies out and a face-up crysknife Objective.
-    return _reach("combat_reward_spy_recall", choam=False, seed=4, want="recall")
+    # Base seed 88, round 10: seat 3 wins Battle for Arrakeen (crysknife) with
+    # three spies out and a face-up crysknife Objective. (Seed 4 reached this
+    # until the 2026-10-06 card-comparison batch moved its game.)
+    return _reach("combat_reward_spy_recall", choam=False, seed=88, want="recall")
 
 
 def test_app_reward_run_scores_the_winners_pending_icon_pair() -> None:
@@ -313,15 +314,15 @@ def test_spy_recall_takes_the_vp_with_the_two_worst_posts() -> None:
         for post in run.ctx.me.spy_post_ids
     }
     assert values == {
-        "landsraad-assembly-hall-gather-support": 4.0,
-        "arrakis-hagga-basin": 3.5,
-        "arrakis-imperial-basin": 2.0,
+        "arrakis-research-station-sietch-tabr": 3.5,
+        "bene-gesserit-espionage-secrets": 3.0,
+        "choam-shipping-accept-contract": 0.0,
     }
     assert _args(W.combat_reward_spy_recall(run)) == (
         "recall_spies_for_combat_reward",
         {
-            "first_post_id": "arrakis-hagga-basin",
-            "second_post_id": "arrakis-imperial-basin",
+            "first_post_id": "bene-gesserit-espionage-secrets",
+            "second_post_id": "choam-shipping-accept-contract",
         },
     )
 
@@ -522,9 +523,11 @@ def test_sandworm_spice_freighters_values_each_copy_after_the_previous_one(
 
 
 def _propaganda_state() -> GameState:
-    # Base seed 1, round 9: seat 2 wins Propaganda; Emperor and Spacing Guild
-    # tie at the top (4.4625), Bene Gesserit 3.45, Fremen 1.875.
-    return _reach("combat_reward_distinct_influence", choam=False, seed=1)
+    # Base seed 25, round 8: seat 2 wins Propaganda; Spacing Guild and Bene
+    # Gesserit tie at the top (4.4625), Emperor 3.45, Fremen 1.875. (Seed 1
+    # reached the same values until the 2026-10-06 card-comparison batch
+    # moved its game.)
+    return _reach("combat_reward_distinct_influence", choam=False, seed=25)
 
 
 def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
@@ -538,9 +541,9 @@ def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
     }
     assert values == pytest.approx(
         {
-            "emperor": 4.4625,
+            "emperor": 3.45,
             "spacing_guild": 4.4625,
-            "bene_gesserit": 3.45,
+            "bene_gesserit": 4.4625,
             "fremen": 1.875,
         }
     )
@@ -548,7 +551,7 @@ def test_distinct_influence_names_both_tracks_in_one_answer() -> None:
     key = (W.DISTINCT_INFLUENCE_INTENT, state.round_number, run.ctx.seat, 0)
     plan = memory.intents[key]
     assert isinstance(plan, tuple)
-    assert set(plan) == {"emperor", "spacing_guild"}
+    assert set(plan) == {"spacing_guild", "bene_gesserit"}
     assert _args(first) == (
         "choose_distinct_combat_reward_influence",
         {"faction": plan[0]},
@@ -571,7 +574,8 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
     named = arg(first, "faction")
     second_state = ENGINE.apply(state, first).state
     second = W.combat_reward_distinct_influence(_run(second_state, memory=Memory()))
-    other = ({"emperor", "spacing_guild"} - {named}).pop()
+    assert named in {"spacing_guild", "bene_gesserit"}
+    other = ({"spacing_guild", "bene_gesserit"} - {named}).pop()
     assert _args(second) == (
         "choose_distinct_combat_reward_influence",
         {"faction": other},
@@ -579,10 +583,12 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
 
 
 def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> None:
-    # Base seed 1, round 9, everyone passing: seat 0 wins Propaganda with a
+    # Base seed 0, round 9, everyone passing: seat 0 wins Propaganda with a
     # sandworm. Copy 1 asks frames of group 0, copy 2 frames of group 2; the
-    # app runs copy 2's Evaluate once copy 1's two gains are applied.
-    state = _sandworm_rewards("propaganda", 1)
+    # app runs copy 2's Evaluate once copy 1's two gains are applied. (Seed 1
+    # reached the same shape until the 2026-10-06 card-comparison batch
+    # moved its game.)
+    state = _sandworm_rewards("propaganda", 0)
     seat, round_number = _seat(state), state.round_number
     assert round_number == 9
     assert [dict(f.context)["group"] for f in reversed(state.decision_stack)] == [
@@ -616,28 +622,28 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
     assert isinstance(first, tuple)
     assert isinstance(second, tuple)
     assert taken == [*first, *second]
-    # Copy 1: Spacing Guild best; Emperor and Bene Gesserit tie (shuffled).
+    # Copy 1: Fremen best; Spacing Guild and Bene Gesserit tie (shuffled).
     assert values[0] == pytest.approx(
         {
-            "emperor": 2.7,
-            "spacing_guild": 3.7125,
+            "emperor": 1.125,
+            "spacing_guild": 2.7,
             "bene_gesserit": 2.7,
-            "fremen": 1.125,
+            "fremen": 3.875,
         }
     )
     # The Evaluate's shuffle (rng seed 0) puts Bene Gesserit first of the tie.
-    assert first == ("spacing_guild", "bene_gesserit")
-    # Copy 2 sees copy 1's gains: Bene Gesserit at 3 is now worth the most.
+    assert first == ("fremen", "bene_gesserit")
+    # Copy 2 sees copy 1's gains: Bene Gesserit at 3 is now worth the most,
+    # and Fremen at 4 the least.
     assert values[2] == pytest.approx(
         {
-            "emperor": 2.7,
+            "emperor": 1.125,
             "spacing_guild": 2.7,
-            "bene_gesserit": 6.1375,
-            "fremen": 1.125,
+            "bene_gesserit": 7.375,
+            "fremen": 0.5625,
         }
     )
-    assert second[0] == "bene_gesserit"
-    assert second[1] in {"emperor", "spacing_guild"}
+    assert second == ("bene_gesserit", "spacing_guild")
     assert state.players[seat].influence.bene_gesserit == 4
 
 
@@ -726,6 +732,12 @@ def test_endgame_plays_secure_spice_trade() -> None:
 
 
 def test_endgame_never_takes_a_match_the_app_would_not_score() -> None:
+    # Base seed 1: seat 1 holds Propaganda (wild) beside face-up Secure
+    # Imperial Basin (desert mouse) and Battle for Imperial Basin
+    # (ornithopter); the engine offers both matches, and the app's own pair
+    # order takes Secure Imperial Basin. (Until the 2026-10-06
+    # card-comparison batch moved this game, the seat paired a crysknife
+    # Objective.)
     state = _reach("endgame_intrigue", choam=False, seed=1, want="several")
     seat = _seat(state)
     stray = DomainAction(
@@ -738,9 +750,10 @@ def test_endgame_never_takes_a_match_the_app_would_not_score() -> None:
         "pass_endgame_intrigue",
         {},
     )
+    assert _ids(_run(state).legal).count("match_endgame_wild_icon") == 2
     assert _args(W.endgame_intrigue(_run(state))) == (
         "match_endgame_wild_icon",
-        {"matching_card_id": "objective_crysknife_1", "wild_card_id": "propaganda"},
+        {"matching_card_id": "secure_imperial_basin", "wild_card_id": "propaganda"},
     )
 
 
