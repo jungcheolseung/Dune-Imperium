@@ -63,6 +63,7 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_placement_ability_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
+    signet_influence_withheld,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.setup import create_initial_state
@@ -2100,6 +2101,39 @@ def test_emperor_signet_can_buy_influence_with_three_solari() -> None:
 
     assert resolved.resources.solari == 0
     assert resolved.influence.fremen == 1
+
+
+def test_emperor_signet_never_buys_influence_at_the_top() -> None:
+    """OQ-060: a gain on a cube at 6 is lost, so Emperor of the Known
+    Universe offers no Faction there; with every cube at 6 the three Solari
+    would buy nothing and are not offered (OQ-071), only the Solari and
+    troop."""
+
+    owner = replace(
+        _shaddam_owner(solari=3, hand=(_signet_instance(),)),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=5),
+    )
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert [
+        (action.action_id, dict(action.arguments).get("faction"))
+        for action in legal_leader_signet_actions(placed, 0)
+    ] == [
+        ("gain_leader_signet_troop", None),
+        ("choose_leader_signet_influence", "fremen"),
+    ]
+    assert not signet_influence_withheld(placed, 0)
+
+    full = replace(
+        owner,
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _choam_turn_state(full)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert [action.action_id for action in legal_leader_signet_actions(placed, 0)] == [
+        "gain_leader_signet_troop"
+    ]
+    assert signet_influence_withheld(placed, 0)
 
 
 def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:

@@ -666,6 +666,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_intrigue_imperium": apply_intrigue_choice,
     "acquire_intrigue_reserve": apply_intrigue_choice,
     "skip_intrigue_acquisition": apply_intrigue_choice,
+    "resolve_intrigue_influence_without_faction": apply_intrigue_choice,
     "acquire_intrigue_tleilaxu": apply_intrigue_choice,
     "acquire_intrigue_reclaimed_forces": apply_intrigue_choice,
     "decline_intrigue_tleilaxu": apply_intrigue_choice,

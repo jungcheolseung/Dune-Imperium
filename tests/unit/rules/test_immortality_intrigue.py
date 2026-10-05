@@ -24,6 +24,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
@@ -206,6 +207,37 @@ def test_disguised_bureaucrat_scales_with_the_genetic_markers() -> None:
     done = apply_intrigue_choice(played.state, choice)
     assert done.state.players[0].influence.fremen == 1
     assert done.state.players[0].resources.spice == 1
+
+
+def test_disguised_bureaucrat_confirms_an_influence_no_cube_can_take() -> None:
+    """A cost-free "choose a Faction" gain with every cube at 6: the card
+    stays playable (its play condition is only its printed condition and
+    cost [FAQ p. 2], OQ-057 (6)), the picker offers no Faction at the top,
+    and its owner confirms the lost gain as a Conflict reward's (OQ-060)."""
+
+    card = _intrigue("disguised_bureaucrat")
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _plot_state(
+        _owner(intrigue_cards=(card,), research_space="c8r2", influence=full)
+    )
+    assert _playable(state, card) == {0}
+    played = apply_intrigue_play(state, _play(card)).state
+    confirm = DomainAction(
+        action_id="resolve_intrigue_influence_without_faction", actor=0
+    )
+    assert [
+        action
+        for action in legal_intrigue_choice_actions(played, 0)
+        if action.action_id != "resolve_intrigue_rewards"
+    ] == [confirm]
+    done = apply_intrigue_choice(played, confirm)
+    assert done.state.players[0].influence == full
+    assert done.state.players[0].resources.spice == 1
+    assert card in done.state.intrigue_discard
+    assert "intrigue_influence_unavailable" in {e.kind for e in done.events}
+    assert ActionCodec(IMMORTALITY).decode(
+        ActionCodec(IMMORTALITY).encode(confirm), 0
+    ) == confirm
 
 
 def test_shadowy_bargain_and_study_melange_split_plot_and_endgame() -> None:

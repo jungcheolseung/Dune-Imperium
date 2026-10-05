@@ -769,6 +769,99 @@ def test_imperium_politics_limits_the_choice_to_emperor_or_guild() -> None:
     assert done.decision_stack == _after_plot(state)
 
 
+def test_imperium_politics_never_offers_a_faction_at_the_top() -> None:
+    """OQ-060: a gain on a cube at 6 is lost, so the picker leaves it out;
+    with both printed Factions there the Solari would buy nothing and the
+    card is not offered: "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수
+    있을 때만 제시한다" (OQ-071). Before 2026-10-06 both were offered."""
+
+    card = _intrigue("imperium_politics")
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(solari=1),
+        influence=Influence(emperor=6, spacing_guild=2),
+    )
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (_choose_faction("spacing_guild"),)
+
+    full = _turn_state(
+        replace(owner, influence=Influence(emperor=6, spacing_guild=6))
+    )
+    assert legal_intrigue_play_actions(full, 0) == ()
+
+
+def test_buy_access_pays_the_one_faction_below_the_top_and_loses_the_other() -> (
+    None
+):
+    """"Choose two" with one Faction below the top: that one is named and
+    paid, the second gain is lost and its owner confirms it, as OQ-060
+    rules for a Conflict reward's "two different Factions"; with all four
+    at the top the five Solari are not offered (OQ-071)."""
+
+    card = _intrigue("buy_access")
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(solari=5),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+    )
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (_choose_faction("fremen"),)
+    named = engine.apply(opened, _choose_faction("fremen")).state
+    assert named.players[0].influence.fremen == 3
+    confirm = DomainAction(
+        action_id="resolve_intrigue_influence_without_faction", actor=0
+    )
+    assert engine.legal_actions(named, 0) == (confirm,)
+    done = engine.apply(named, confirm)
+    assert done.state.players[0].influence.fremen == 4
+    assert done.state.players[0].influence.emperor == 6
+    assert "intrigue_influence_unavailable" in {e.kind for e in done.events}
+    assert done.state.intrigue_discard == (card,)
+    assert done.state.decision_stack == _after_plot(state)
+
+    full = _turn_state(
+        replace(
+            owner,
+            influence=Influence(
+                emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6
+            ),
+        )
+    )
+    assert legal_intrigue_play_actions(full, 0) == ()
+
+
+def test_change_allegiances_regains_the_faction_it_lost_at_the_top() -> None:
+    """With every cube at 6 the swap still works: the Faction just lowered
+    is below the top again and is the only one offered; the spice line's
+    gain would be lost, so that line is not offered (OQ-060, OQ-071)."""
+
+    card = _intrigue("change_allegiances")
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(spice=3),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
+    losing = engine.apply(opened, _use_line(0)).state
+    lost = engine.apply(losing, _choose_faction("emperor")).state
+    assert lost.players[0].influence.emperor == 5
+    assert engine.legal_actions(lost, 0) == (_choose_faction("emperor"),)
+    regained = engine.apply(lost, _choose_faction("emperor")).state
+    assert regained.players[0].influence.emperor == 6
+    assert engine.legal_actions(regained, 0) == (_finish_lines(),)
+
+
 def test_change_allegiances_opens_both_lines_and_either_may_be_used() -> None:
     card = _intrigue("change_allegiances")
     poor = PlayerState(player_id=0, intrigue_cards=(card,))

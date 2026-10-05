@@ -309,6 +309,40 @@ def test_long_reach_icons_and_two_distinct_influences() -> None:
 
 
 
+def test_long_reach_with_one_faction_below_the_top_pays_it_at_the_turn_end() -> (
+    None
+):
+    """"Choose two" never names a Faction at the top (OQ-060). With one
+    below it that one is named; no second pick is left, so the box waits
+    (a later effect of the turn may lower a cube, OQ-057 (1)) and the turn's
+    end pays the named Faction and loses the other, as OQ-060 pays a
+    Conflict reward's first named Faction."""
+
+    reach = _card("long_reach")
+    owner = _owner(
+        (reach,),
+        in_play=(_card("planned_coupling"),),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+    )
+    bonded = _place(_state(owner), reach, "assembly_hall")
+    (only,) = legal_agent_card_influence_actions(bonded, 0)
+    assert dict(only.arguments)["faction"] == "fremen"
+    named = apply_agent_card_influence(bonded, only).state
+    assert named.players[0].influence.fremen == 3
+    assert legal_agent_card_influence_actions(named, 0) == ()
+    assert agent_card_effect_is_unavailable(named)
+    engine = UprisingRulesEngine()
+    actions = engine.legal_actions(named, 0)
+    assert DomainAction("resolve_agent_card_effect", 0) not in actions
+    while board := [a for a in actions if a.action_id == "resolve_board_effect"]:
+        named = engine.apply(named, board[0]).state
+        actions = engine.legal_actions(named, 0)
+    finished = engine.apply(named, DomainAction("finish_agent_turn", 0))
+    assert finished.state.players[0].influence.fremen == 4
+    assert finished.state.players[0].influence.emperor == 6
+    assert "agent_card_effect_unavailable" in {e.kind for e in finished.events}
+
+
 def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:
     # Designer ruling (Email, TTS Discord; OQ-057): Long Reach grafted with
     # Ghola has all three icons. With Ghola in hand the graft placement

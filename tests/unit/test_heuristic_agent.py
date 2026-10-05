@@ -897,11 +897,12 @@ def test_faction_tie_break_loses_from_the_track_that_costs_least() -> None:
     assert agent.choose_action(view, gain) == gain[1]
 
 
-def test_faction_tie_break_reads_a_gain_step_that_offers_a_full_track() -> None:
-    # A gain is unrestricted and offers a track at 6 too (the engine lets
-    # that gain fizzle), so a full track among four offered is not a loss:
-    # the step that reaches 4 first (Bene Gesserit at 3) wins, not the
-    # cheapest track to lose (review of 2026-09-16).
+def test_faction_tie_break_reads_a_gain_step_without_a_full_track() -> None:
+    # The gain step offers exactly the tracks below the top (a gain at 6 is
+    # lost, OQ-060; the engine leaves them out since 2026-10-06) and the loss
+    # step exactly the occupied ones, so a full track tells them apart: the
+    # gain step that reaches 4 first (Bene Gesserit at 3) wins, the loss
+    # step drops the cheapest track to lose (review of 2026-09-16).
     from dataclasses import replace
 
     from dune_imperium.agents.heuristic_agent import _intrigue_faction_choice_is_loss
@@ -910,23 +911,29 @@ def test_faction_tie_break_reads_a_gain_step_that_offers_a_full_track() -> None:
         _seated_view(emperor=6, spacing_guild=2, bene_gesserit=3, fremen=0),
         intrigue_resolving=("intrigue:change_allegiances:0",),
     )
-    gain = _faction_choices("emperor", "spacing_guild", "bene_gesserit", "fremen")
-    every = frozenset(("emperor", "spacing_guild", "bene_gesserit", "fremen"))
-    assert _intrigue_faction_choice_is_loss(view, every) is False
-    assert HeuristicAgent(seed=3).choose_action(view, gain) == gain[2]
+    gain = _faction_choices("spacing_guild", "bene_gesserit", "fremen")
+    below_top = frozenset(("spacing_guild", "bene_gesserit", "fremen"))
+    assert _intrigue_faction_choice_is_loss(view, below_top) is False
+    assert HeuristicAgent(seed=3).choose_action(view, gain) == gain[1]
     # The same card's loss step offers only the occupied tracks.
     loss = _faction_choices("emperor", "spacing_guild", "bene_gesserit")
     occupied = frozenset(("emperor", "spacing_guild", "bene_gesserit"))
     assert _intrigue_faction_choice_is_loss(view, occupied) is True
     assert HeuristicAgent(seed=3).choose_action(view, loss) == loss[2]
-    # Every track occupied and all four offered: the steps look alike, so
-    # the tie is left to the draw.
+    # Every track between 1 and 5: both steps offer all four and look
+    # alike, so the tie is left to the draw.
     crowded = replace(
-        _seated_view(emperor=6, spacing_guild=2, bene_gesserit=3, fremen=1),
+        _seated_view(emperor=5, spacing_guild=2, bene_gesserit=3, fremen=1),
         intrigue_resolving=("intrigue:change_allegiances:0",),
     )
+    every = frozenset(("emperor", "spacing_guild", "bene_gesserit", "fremen"))
+    every_choice = _faction_choices(
+        "emperor", "spacing_guild", "bene_gesserit", "fremen"
+    )
     assert _intrigue_faction_choice_is_loss(crowded, every) is None
-    drawn = {HeuristicAgent(seed=s).choose_action(crowded, gain) for s in range(30)}
+    drawn = {
+        HeuristicAgent(seed=s).choose_action(crowded, every_choice) for s in range(30)
+    }
     assert len(drawn) > 1
 
 

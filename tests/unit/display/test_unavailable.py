@@ -711,6 +711,108 @@ def test_empty_gather_intelligence_explains_its_block_without_waiting_rows() -> 
     assert not agent_box_is_waiting(declined, 1)  # only the box's owner's
 
 
+_FULL = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+_ALL_AT_THE_TOP = {
+    "reason": "Every Faction it can raise is already at the top (6)",
+    "reason_ko": "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)",
+    "code": "top",
+}
+
+
+def test_an_influence_cost_line_with_every_cube_at_the_top_is_greyed() -> None:
+    """A cost for Influence no cube can take is not offered (OQ-060,
+    OQ-071): Imperium Politics with Emperor and Guild at 6 greys out with
+    that reason, in both languages."""
+
+    found = _found(
+        _intrigue_state(
+            "imperium_politics",
+            resources=Resources(solari=1),
+            influence=Influence(emperor=6, spacing_guild=6),
+        )
+    )
+    (row,) = _rows(found, "intrigue").values()
+    assert row["action"]["arguments"]["card_id"] == "intrigue:imperium_politics:0"
+    assert {key: row[key] for key in ("reason", "reason_ko", "code")} == (
+        _ALL_AT_THE_TOP
+    )
+
+
+def test_shaddam_s_signet_influence_with_every_cube_at_the_top_is_greyed() -> None:
+    """Emperor of the Known Universe's three Solari buy nothing with every
+    cube at 6 (OQ-060, OQ-071): only the Solari and troop is offered, and
+    the payment shows greyed out beside it."""
+
+    signet = "player:0:starter:signet_ring:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="shaddam_corrino_iv",
+        resources=Resources(solari=3),
+        hand=(signet,),
+        influence=_FULL,
+    )
+    placed = _agent_turn(
+        _state(owner, config=RulesetConfig(choam_module=True)), signet, "arrakeen"
+    )
+    assert "choose_leader_signet_influence" not in {
+        action.action_id for action in ENGINE.legal_actions(placed, 0)
+    }
+    row = _rows(_found(placed), "choice")["choice:leader_signet_influence"]
+    assert row["action"]["action_id"] == "choose_leader_signet_influence"
+    assert {key: row[key] for key in ("reason", "reason_ko", "code")} == (
+        _ALL_AT_THE_TOP
+    )
+
+
+def test_a_choose_a_faction_box_with_every_cube_at_the_top_waits_with_why() -> None:
+    """Interstellar Trade's Influence with every cube at 6 waits for the
+    turn's end (OQ-057 (1), OQ-060); the waiting row names the reason."""
+
+    card = "imperium:interstellar_trade:0"
+    owner = PlayerState(player_id=0, hand=(card,), influence=_FULL)
+    placed = _agent_turn(
+        _state(owner, config=RulesetConfig(choam_module=True)), card, "assembly_hall"
+    )
+    while board := [
+        action
+        for action in ENGINE.legal_actions(placed, 0)
+        if action.action_id == "resolve_board_effect"
+    ]:
+        placed = ENGINE.apply(placed, board[0]).state
+    assert agent_box_is_waiting(placed, 0)
+    row = _rows(_found(placed), "waiting")[f"waiting:agent_box:{card}"]
+    assert row["reason"] == (
+        "Every Faction it can raise is already at the top (6); it lapses if"
+        " still unmet when the turn ends"
+    )
+    assert row["reason_ko"] == (
+        "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)"
+        " — 차례가 끝날 때까지 못 채우면 사라짐"
+    )
+    assert row["code"] == "waiting"
+
+
+def test_a_reveal_influence_choice_with_every_cube_at_the_top_waits_with_why() -> (
+    None
+):
+    """Spacing Guild's Favor's three spice with every cube at 6: the choice
+    waits deferred and lapses with the Reveal (OQ-060, OQ-071)."""
+
+    favor = "imperium:spacing_guild_s_favor:0"
+    owner = PlayerState(
+        player_id=0, hand=(favor,), resources=Resources(spice=3), influence=_FULL
+    )
+    revealed = ENGINE.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    row = _rows(_found(revealed), "waiting")[
+        f"waiting:{favor}:may_pay_three_spice_for_influence"
+    ]
+    assert row["reason"].startswith(_ALL_AT_THE_TOP["reason"])
+    assert row["reason_ko"].startswith(_ALL_AT_THE_TOP["reason_ko"])
+    assert row["code"] == "waiting"
+
+
 def _agent_turn(
     state: GameState, card: str, space: str, **arguments: Any
 ) -> GameState:

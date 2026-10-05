@@ -28,6 +28,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
+    agent_box_influence_blocked,
     agent_card_effect_is_unavailable,
     apply_agent_card_discard,
     apply_agent_card_influence,
@@ -6205,6 +6206,59 @@ def test_interstellar_trade_agent_effect_gains_chosen_influence() -> None:
     result = apply_agent_card_influence(placed, action)
 
     assert result.state.players[0].influence.fremen == 1
+
+
+def test_interstellar_trade_influence_waits_while_every_cube_is_at_the_top() -> (
+    None
+):
+    """OQ-060: a gain on a cube at 6 is lost, so the box's picker offers no
+    Faction there. With every cube at 6 the mandatory box cannot be fired to
+    fizzle while the turn goes on (a later Plot may lower a cube); it waits
+    and fizzles when its owner ends the turn (OQ-057 (1))."""
+
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    owner = PlayerState(player_id=0, hand=(interstellar,), influence=full)
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    assert legal_agent_card_influence_actions(placed, 0) == ()
+    assert agent_card_effect_is_unavailable(placed)
+    assert agent_box_influence_blocked(placed, 0)
+    engine = UprisingRulesEngine()
+    while board := legal_board_effect_actions(placed, 0):
+        placed = engine.apply(placed, board[0]).state
+    assert DomainAction("resolve_agent_card_effect", 0) not in engine.legal_actions(
+        placed, 0
+    )
+    finished = finish_agent_turn_result(placed)
+    assert "agent_card_effect_unavailable" in {e.kind for e in finished.events}
+    assert finished.state.players[0].influence == full
+
+    one_below = replace(
+        placed,
+        players=(
+            replace(placed.players[0], influence=replace(full, fremen=5)),
+            *placed.players[1:],
+        ),
+    )
+    assert [
+        dict(a.arguments)["faction"]
+        for a in legal_agent_card_influence_actions(one_below, 0)
+    ] == ["fremen"]
+    assert not agent_box_influence_blocked(one_below, 0)
 
 
 def test_priority_contracts_takes_a_contract_or_converts_an_empty_market() -> None:

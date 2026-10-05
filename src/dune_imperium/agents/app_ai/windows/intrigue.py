@@ -1490,6 +1490,11 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
     frame = _choice_frame(run)
     if frame is None:
         return None
+    confirm = run.first("resolve_intrigue_influence_without_faction")
+    if confirm is not None:
+        # Every Faction the gain may raise is at the top: the engine offers
+        # only the confirm of its loss (OQ-060), which the app never asks.
+        return confirm
     instance, option, slot, k = frame
     cid = card_id(instance)
     if cid in NAVIGATION_ARCHETYPES:

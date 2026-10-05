@@ -16,6 +16,7 @@ and the ones still unavailable at the end simply never happen.
 from collections.abc import Mapping
 from dataclasses import replace
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.bloodlines.sardaukar import (
     SkillDefinition,
@@ -69,6 +70,7 @@ from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
+    influence_can_rise,
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import (
@@ -278,6 +280,12 @@ def legal_reveal_influence_exchange_actions(
             tuple(recipients) if len(recipients) > 1 else (None,)
         )
         for gained_faction in Faction:
+            # Never a cube already at the top (OQ-060); the one just lowered
+            # is below it again.
+            if gained_faction is not lost_faction and not influence_can_rise(
+                owner, gained_faction
+            ):
+                continue
             for recipient in recipient_options:
                 arguments: tuple[tuple[str, ActionValue], ...] = (
                     ("gained_faction", gained_faction.value),
@@ -419,6 +427,9 @@ def legal_reveal_influence_gain_actions(
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH.value,
     ):
         return ()
+    # Never a cube already at the top (OQ-060); with every cube there the
+    # choice does not open (``reveal_influence_choice_blocked``).
+    owner = state.players[player]
     return tuple(
         DomainAction(
             action_id="gain_reveal_influence",
@@ -426,6 +437,7 @@ def legal_reveal_influence_gain_actions(
             arguments=(("faction", faction.value),),
         )
         for faction in Faction
+        if influence_can_rise(owner, faction)
     )
 
 
@@ -569,8 +581,11 @@ def legal_reveal_spice_influence_actions(
         action_id="decline_reveal_spice_influence",
         actor=player,
     )
-    if state.players[player].resources.spice < 3:
+    owner = state.players[player]
+    if owner.resources.spice < 3:
         return (decline,)
+    # Three spice for Influence no cube can take is not offered (OQ-060,
+    # OQ-071).
     return (
         decline,
         *(
@@ -580,6 +595,7 @@ def legal_reveal_spice_influence_actions(
                 arguments=(("faction", faction.value),),
             )
             for faction in Faction
+            if influence_can_rise(owner, faction)
         ),
     )
 
@@ -3397,6 +3413,34 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     )
 
 
+_INFLUENCE_GAIN_CHOICES: Final = frozenset(
+    {
+        PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE,
+    }
+)
+
+
+def reveal_influence_choice_blocked(
+    owner: PlayerState, effect: PersonalCardRevealChoiceEffect
+) -> bool:
+    """Whether a "choose a Faction" Reveal gain has no cube that can rise.
+
+    A gain on a cube at the top of its track is lost (OQ-060), so with every
+    cube there Pointing the Way's Command, Ixian Ambassador's gain and the
+    "3 spice -> Influence" line do not open: the choice waits deferred like
+    one whose printed condition fails, opens again if a later effect of the
+    Reveal lowers a cube, and lapses at ``finish_reveal`` otherwise [Main
+    p. 12] -- the three spice are never offered for nothing (OQ-071). The
+    page greys the waiting choice out with this test (``display.unavailable``).
+    """
+
+    return effect in _INFLUENCE_GAIN_CHOICES and not any(
+        influence_can_rise(owner, faction) for faction in Faction
+    )
+
+
 def _reveal_choice_effect_is_available(
     state: GameState,
     player: int,
@@ -3446,18 +3490,20 @@ def _reveal_choice_effect_is_available(
             and owner.troops_garrison + owner.troops_conflict >= 2
         )
         or (
-            effect
-            in (
-                PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
-                PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
-            )
+            effect is PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY
             and command_open
+        )
+        or (
+            effect is PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
+            and command_open
+            and not reveal_influence_choice_blocked(owner, effect)
         )
         or (
             # Ixian Ambassador: judged when the choice opens (OQ-028); a
             # Plot acquisition during the Reveal can still meet it.
             effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
             and len(owner.tech_ids) >= 2
+            and not reveal_influence_choice_blocked(owner, effect)
         )
         or (
             effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD
@@ -3503,6 +3549,7 @@ def _reveal_choice_effect_is_available(
         or (
             effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
             and owner.resources.spice >= 3
+            and not reveal_influence_choice_blocked(owner, effect)
         )
         or effect
         in (

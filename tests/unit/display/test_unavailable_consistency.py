@@ -470,6 +470,13 @@ def _old_choice_rewards_feasible(
                     gain.different_from_trigger or gain.minimum_own
                 ) and not influence_gain_candidates(state, player, gain):
                     return False
+                # A cost line for Influence no cube can take (OQ-060,
+                # OQ-071, 2026-10-06): a rule change made on purpose after
+                # the copy.
+                case GainInfluence() if _old_influence_line_buys_nothing(
+                    state, player, section
+                ):
+                    return False
                 case RedirectSpiesOnTurnSpace() if (
                     agent_turn_space_id(state, player) is None
                 ):
@@ -477,6 +484,20 @@ def _old_choice_rewards_feasible(
                 case _:
                     pass
     return True
+
+
+def _old_influence_line_buys_nothing(
+    state: GameState, player: int, section: EffectSection
+) -> bool:
+    if not section.costs:
+        return False
+    loses = any(isinstance(cost, LoseInfluence) for cost in section.costs)
+    return all(
+        isinstance(reward, GainInfluence)
+        and not (loses and reward.factions is None)
+        and not influence_gain_candidates(state, player, reward)
+        for reward in section.rewards
+    )
 
 
 def _old_section_is_usable(

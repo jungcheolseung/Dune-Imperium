@@ -34,7 +34,8 @@ Display only, under four rules:
   ``research_bonus_block``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
-  ``agent_card_payment_block``,
+  ``agent_card_payment_block``, ``signet_influence_withheld``,
+  ``reveal_influence_choice_blocked``,
   ``contract_take_block``, ``turn_start_is_open``,
   ``intrigue_effects_finish_is_open``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
@@ -129,6 +130,7 @@ from dune_imperium.rules.agent_effects import (
     AgentIconBlock,
     AgentIconCondition,
     AgentPaymentBlock,
+    agent_box_influence_blocked,
     agent_card_payment_block,
     agent_card_recall_targets,
     agent_icon_block,
@@ -167,16 +169,20 @@ from dune_imperium.rules.immortality import (
     ResearchBonusBlock,
     research_bonus_block,
 )
-from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.influence import influence_amount, influence_can_rise
 from dune_imperium.rules.intrigue import (
     IntriguePlayBlock,
     intrigue_effects_finish_is_open,
     intrigue_play_block,
     intrigue_window,
 )
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.leader_abilities import (
+    signet_influence_withheld,
+    units_deployment_blocked,
+)
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
+    reveal_influence_choice_blocked,
     reveal_sandworm_block,
     waiting_deferred_choices,
 )
@@ -315,6 +321,13 @@ _NO_INTRIGUE_TO_TRASH: Final[Reason] = (
     "cost",
 )
 _AT_THE_TOP: Final[Reason] = ("Already at the top", "이미 최고치", "top")
+# A cost for Influence no cube can take is not offered, and a "choose a
+# Faction" gain with every cube at the top waits or is lost (OQ-060, OQ-071).
+_ALL_AT_THE_TOP: Final[Reason] = (
+    "Every Faction it can raise is already at the top (6)",
+    "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)",
+    "top",
+)
 _NAMED_FOR_THIS_REWARD: Final[Reason] = (
     "Already named for this reward",
     "이 보상에서 이미 고른 진영",
@@ -337,6 +350,11 @@ _TLEILAXU_TRACK_END: Final[Reason] = (
 )
 _LAPSES_EN: Final = "; it lapses if still unmet when the turn ends"
 _LAPSES_KO: Final = " — 차례가 끝날 때까지 못 채우면 사라짐"
+_ALL_AT_THE_TOP_WAITING: Final[Reason] = (
+    _ALL_AT_THE_TOP[0] + _LAPSES_EN,
+    _ALL_AT_THE_TOP[1] + _LAPSES_KO,
+    "waiting",
+)
 _NO_RECALL_TARGET: Final[Reason] = (
     "No other Agent of yours to recall (not the one sent this turn);"
     " it lapses when the turn ends",
@@ -576,6 +594,11 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "상대가 더 높은 {faction} 없음",
                 "reward",
             )
+        case GainInfluence(factions=factions) if not any(
+            influence_can_rise(state.players[seat], faction)
+            for faction in (factions or tuple(Faction))
+        ):
+            return _ALL_AT_THE_TOP
         case GainInfluence():
             return (
                 "No Faction you may gain Influence with",
@@ -900,6 +923,7 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
     card.
     """
 
+    owner = state.players[seat]
     for card_id, effect in waiting_deferred_choices(state, seat):
         found.row(
             "waiting",
@@ -909,7 +933,13 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
                 actor=seat,
                 arguments=(("effect", effect),),
             ),
-            _WAITING,
+            # A "choose a Faction" gain with every cube at the top (OQ-060),
+            # whatever else it waits on.
+            _ALL_AT_THE_TOP_WAITING
+            if reveal_influence_choice_blocked(
+                owner, PersonalCardRevealChoiceEffect(effect)
+            )
+            else _WAITING,
             card_id=card_id,
         )
 
@@ -1526,6 +1556,26 @@ def _agent_box_payment(state: GameState, seat: int, found: _Found) -> None:
     )
 
 
+def _signet_influence(state: GameState, seat: int, found: _Found) -> None:
+    """Emperor of the Known Universe's "3 Solari -> Influence" withheld
+    because every cube is at the top (OQ-060, OQ-071).
+
+    ``signet_influence_withheld`` holds exactly when
+    ``legal_leader_signet_actions`` drops every Faction for want of a cube
+    below the top (``influence_can_rise``, the filter it applies); the
+    Solari and troop stay on offer beside the greyed row.
+    """
+
+    if not signet_influence_withheld(state, seat):
+        return
+    found.row(
+        "choice",
+        "leader_signet_influence",
+        DomainAction(action_id="choose_leader_signet_influence", actor=seat),
+        _ALL_AT_THE_TOP,
+    )
+
+
 def _agent_box(state: GameState, seat: int, found: _Found) -> None:
     """A mandatory Agent box withheld until its condition holds (OQ-057).
 
@@ -1541,7 +1591,11 @@ def _agent_box(state: GameState, seat: int, found: _Found) -> None:
         "waiting",
         f"agent_box:{card_id}",
         DomainAction(action_id="resolve_agent_card_effect", actor=seat),
-        _WAITING,
+        # A "choose a Faction" box with every cube it may raise at the top
+        # (OQ-060) waits like one whose condition fails.
+        _ALL_AT_THE_TOP_WAITING
+        if agent_box_influence_blocked(state, seat)
+        else _WAITING,
         card_id=card_id if isinstance(card_id, str) else None,
     )
 
@@ -1583,11 +1637,14 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.AGENT_EFFECTS: (
         _agent_box,
         _agent_box_payment,
+        _signet_influence,
         _agent_icons,
         _imperial_privilege_recall,
         _subcommittee_choice,
         _intrigue,
     ),
+    # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
+    FrameKind.LEADER_SIGNET: (_signet_influence,),
     FrameKind.CONTRACT_MARKET: (_contract_market,),
     FrameKind.CONTRACT_REWARD_RECALL: (_contract_recall,),
     FrameKind.RESEARCH_BONUS: (_research_bonus,),

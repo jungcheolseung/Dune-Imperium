@@ -71,6 +71,7 @@ from dune_imperium.rules.reveal_turn import (
     reveal_late_arrivals,
     reveal_pending_gains,
     reveal_sandworm_block,
+    waiting_deferred_choices,
 )
 
 
@@ -887,6 +888,77 @@ def test_captured_mentat_may_exchange_influence_on_reveal() -> None:
         "influence_lost",
         "influence_gained",
     ]
+
+
+def test_captured_mentat_regains_only_below_the_top() -> None:
+    """OQ-060: the gain after the loss never offers a cube at 6, but the
+    Faction just lowered is below the top again and may be taken back."""
+
+    mentat = _imperium_instance("captured_mentat")
+    owner = PlayerState(
+        player_id=0,
+        hand=(mentat,),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=1),
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    pairs = {
+        (arguments["lost_faction"], arguments["gained_faction"])
+        for action in legal_reveal_influence_exchange_actions(revealed, 0)
+        if action.action_id == "exchange_reveal_influence"
+        for arguments in (dict(action.arguments),)
+    }
+    assert pairs == {
+        ("emperor", "emperor"),
+        ("emperor", "bene_gesserit"),
+        ("emperor", "fremen"),
+        ("spacing_guild", "spacing_guild"),
+        ("spacing_guild", "bene_gesserit"),
+        ("spacing_guild", "fremen"),
+        ("bene_gesserit", "bene_gesserit"),
+        ("bene_gesserit", "fremen"),
+    }
+
+
+def test_three_spice_influence_waits_while_every_cube_is_at_the_top() -> None:
+    """"비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
+    제시한다" (OQ-071): Spacing Guild's Favor's three spice are never paid
+    for Influence a cube at 6 cannot take (OQ-060). With one Faction below
+    the top only it is offered; with none the choice waits deferred and
+    lapses with the Reveal [Main p. 12]."""
+
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(favor,),
+        resources=Resources(spice=3),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=4),
+    )
+    revealed = begin_reveal_turn(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert [
+        (action.action_id, dict(action.arguments).get("faction"))
+        for action in legal_reveal_spice_influence_actions(revealed, 0)
+    ] == [
+        ("decline_reveal_spice_influence", None),
+        ("pay_reveal_spice_influence", "fremen"),
+    ]
+
+    full = replace(
+        owner,
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    waiting = begin_reveal_turn(
+        _state(full), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert waiting.decision_stack[-1].kind == "reveal"
+    assert waiting_deferred_choices(waiting, 0) == (
+        (favor, "may_pay_three_spice_for_influence"),
+    )
+    assert legal_finish_reveal_actions(waiting, 0) != ()
 
 
 def test_captured_mentat_skips_influence_choice_with_no_payable_cost() -> None:

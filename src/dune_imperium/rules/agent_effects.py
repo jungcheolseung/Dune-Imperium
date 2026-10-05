@@ -81,7 +81,11 @@ from dune_imperium.rules.immortality import (
     advance_tleilaxu,
     tleilaxu_track_finished,
 )
-from dune_imperium.rules.influence import gain_faction_influence, influence_amount
+from dune_imperium.rules.influence import (
+    gain_faction_influence,
+    influence_amount,
+    influence_can_rise,
+)
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
@@ -904,11 +908,21 @@ def legal_agent_card_influence_actions(
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
     effect = source_card.agent_effect
+    # A gain on a cube at the top of its track is lost (OQ-060), so no
+    # picker below offers such a Faction. With none left the box's plain
+    # resolution pays the rest (Southern Faith's draw, Possible Futures'
+    # troops, Interstellar Conspiracy's spice), or else the box waits for
+    # the turn's end (``resolve_agent_card_effect``, OQ-057 (1)).
+    rising = tuple(
+        faction
+        for faction in Faction
+        if influence_can_rise(state.players[player], faction)
+    )
     if effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
         # Southern Faith: the draw is always there; the Influence needs
         # another Bene Gesserit card in play, judged now (OQ-028).
         owner = state.players[player]
-        if not has_faction_bond(
+        if Faction.BENE_GESSERIT not in rising or not has_faction_bond(
             counted_in_play(owner), source_card_id, Faction.BENE_GESSERIT
         ):
             return ()
@@ -945,7 +959,7 @@ def legal_agent_card_influence_actions(
                     actor=player,
                     arguments=(("faction", faction.value),),
                 )
-                for faction in Faction
+                for faction in rising
             ),
         )
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
@@ -958,7 +972,7 @@ def legal_agent_card_influence_actions(
                 actor=player,
                 arguments=(("faction", faction.value),),
             )
-            for faction in Faction
+            for faction in rising
             if faction.value not in chosen
         )
     if (
@@ -977,7 +991,7 @@ def legal_agent_card_influence_actions(
                 actor=player,
                 arguments=(("faction", faction.value),),
             )
-            for faction in Faction
+            for faction in rising
         )
     if effect not in (
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
@@ -1002,8 +1016,42 @@ def legal_agent_card_influence_actions(
             actor=player,
             arguments=(("faction", faction.value),),
         )
-        for faction in Faction
+        for faction in rising
     )
+
+
+def _any_influence_can_rise(owner: PlayerState) -> bool:
+    return any(influence_can_rise(owner, faction) for faction in Faction)
+
+
+def agent_box_influence_blocked(state: GameState, player: int) -> bool:
+    """Whether the pending Agent box's "choose a Faction" has no cube to raise.
+
+    Interstellar Trade's and For Humanity's Influence, Public Spectacle's
+    once a Spy was recalled, and Long Reach's next pick: every Faction they
+    may raise is at the top, where a gain is lost (OQ-060), so the box
+    waits for the turn's end (OQ-057 (1)). The page names this reason for
+    the waiting box (``display.unavailable``).
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get("pending_agent_effect") is not True:
+        return False
+    effect = active_agent_card(context).agent_effect
+    owner = state.players[player]
+    if effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
+        return not _any_influence_can_rise(owner)
+    if (
+        effect
+        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
+    ):
+        return spy_recalled_this_turn(owner) and not _any_influence_can_rise(owner)
+    if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
+        return not legal_agent_card_influence_actions(state, player)
+    return False
 
 
 def _grafted_with_factions(
@@ -3906,6 +3954,40 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             trashed.state.players,
         )
         return RuleResult(state=next_state, events=trashed.events)
+    if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
+        # Long Reach with no further Faction to name: every other cube is at
+        # the top, where a gain is lost (OQ-060). The box waits for the
+        # turn's end (this resolution reports itself unavailable, OQ-057
+        # (1)), since a later effect of the turn may lower a cube; then the
+        # Faction already named is paid and the rest is lost, as a Conflict
+        # reward's "Choose two" pays its first Faction (OQ-060).
+        if legal_agent_card_influence_actions(state, player):
+            raise RuntimeError("Agent-card Influence effect requires a player choice")
+        chosen_value = context.get("influence_chosen", "")
+        working = state
+        named_events: list[GameEvent] = []
+        for pick in (Faction(value) for value in str(chosen_value).split(",") if value):
+            step = gain_faction_influence(
+                working,
+                player,
+                pick,
+                1,
+                event_prefix=f"{event_source}:influence:{pick.value}",
+            )
+            working = step.state
+            named_events.extend(step.events)
+        context["pending_agent_effect"] = False
+        return RuleResult(
+            state=advance_after_effect(working, context, working.players),
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_unavailable",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *named_events,
+            ),
+        )
     if (
         effect
         is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
@@ -4868,8 +4950,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         effect
         is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
     ):
-        if spy_recalled_this_turn(owner):
+        if spy_recalled_this_turn(owner) and _any_influence_can_rise(owner):
             raise RuntimeError("Agent-card Influence effect requires a player choice")
+        # No Spy recalled yet, or every cube at the top (OQ-060): the box
+        # waits for the turn's end (OQ-057 (1)).
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON:
@@ -4938,7 +5022,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
-        raise RuntimeError("Agent-card Influence effect requires a player choice")
+        if _any_influence_can_rise(owner):
+            raise RuntimeError("Agent-card Influence effect requires a player choice")
+        # Every cube at the top: the gain would be lost (OQ-060), so the box
+        # waits for the turn's end, where it fizzles unless a later effect
+        # of the turn lowered a cube first (OQ-057 (1)).
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     elif effect is _SPICE_FOR_TRASH_AND_TROOP:
         # Control the Spice resolves through its payment choice, which
         # always offers at least the decline.

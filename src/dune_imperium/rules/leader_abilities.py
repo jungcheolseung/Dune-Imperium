@@ -62,7 +62,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
@@ -1009,6 +1009,27 @@ def _leader_spy_placement_actions(
     return recalls
 
 
+def signet_influence_withheld(state: GameState, player: int) -> bool:
+    """Whether Shaddam's "3 Solari -> Influence" is withheld for its reward.
+
+    Emperor of the Known Universe's Influence choice with the three Solari
+    in hand but every cube at the top of its track: the gain would be lost
+    (OQ-060), and "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을
+    때만 제시한다" (OQ-071), so ``legal_leader_signet_actions`` offers only
+    the Solari and troop. The page greys the payment out with this test
+    (``display.unavailable``).
+    """
+
+    if _leader_signet_context(state, player) is None:
+        return False
+    owner = state.players[player]
+    return (
+        owner.leader_id == "shaddam_corrino_iv"
+        and owner.resources.solari >= 3
+        and not any(influence_can_rise(owner, faction) for faction in Faction)
+    )
+
+
 def legal_leader_signet_actions(
     state: GameState,
     player: int,
@@ -1067,7 +1088,10 @@ def legal_leader_signet_actions(
     if owner.leader_id == "shaddam_corrino_iv":
         # Emperor of the Known Universe: choose one Solari and one troop, or
         # pay three Solari for one Influence of your choice; the deployment
-        # restriction already took effect at placement [Main p. 17].
+        # restriction already took effect at placement [Main p. 17]. Never a
+        # Faction already at the top, whose gain is lost (OQ-060), so with
+        # every cube there the three Solari buy nothing and are not offered
+        # (OQ-071, ``signet_influence_withheld``).
         return (
             DomainAction(action_id="gain_leader_signet_troop", actor=player),
             *(
@@ -1078,6 +1102,7 @@ def legal_leader_signet_actions(
                         arguments=(("faction", faction.value),),
                     )
                     for faction in Faction
+                    if influence_can_rise(owner, faction)
                 )
                 if owner.resources.solari >= 3
                 else ()

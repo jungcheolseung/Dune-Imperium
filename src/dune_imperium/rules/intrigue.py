@@ -830,7 +830,8 @@ def legal_intrigue_choice_actions(
         case GainInfluence(distinct=distinct) as gain:
             chosen = _chosen_factions(context)
             # Printed limits: Ambitious's "where an opponent leads",
-            # Navigation card 1's "different Faction where you have 2+".
+            # Navigation card 1's "different Faction where you have 2+";
+            # never a cube already at the top (OQ-060).
             for faction in influence_gain_candidates(state, player, gain):
                 if distinct and faction in chosen:
                     continue
@@ -839,6 +840,17 @@ def legal_intrigue_choice_actions(
                         action_id="choose_intrigue_faction",
                         actor=player,
                         arguments=(("faction", faction.value),),
+                    )
+                )
+            if not actions:
+                # Every Faction it may raise is at the top: the gain is lost
+                # (OQ-060), and its owner confirms it as a Conflict reward's
+                # is (user ruling 2026-09-30); "Choose two" still pays the
+                # Faction already named.
+                actions.append(
+                    DomainAction(
+                        action_id="resolve_intrigue_influence_without_faction",
+                        actor=player,
                     )
                 )
         case DiscardFromHand():
@@ -1285,6 +1297,37 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 event_prefix=f"{step_source}:lost:{faction.value}",
                 alliance_recipient=recipient,
             )
+        case GainInfluence() if (
+            action.action_id == "resolve_intrigue_influence_without_faction"
+        ):
+            # No Faction this gain may raise is below the top: it is lost
+            # (OQ-060), while a "Choose two" Faction named before it is still
+            # paid ("서로 다른 진영 둘"은 먼저 이름 붙인 진영을 그대로 지급).
+            deferred = tuple(
+                Faction(value)
+                for value in str(context.get("deferred_factions", "")).split(",")
+                if value
+            )
+            context["deferred_factions"] = ""
+            working = state
+            lost_events: list[GameEvent] = [
+                GameEvent(
+                    event_id=f"{step_source}:influence_unavailable",
+                    kind="intrigue_influence_unavailable",
+                    payload=(("player", player),),
+                )
+            ]
+            for pick in deferred:
+                gained = gain_faction_influence(
+                    working,
+                    player,
+                    pick,
+                    1,
+                    event_prefix=f"{step_source}:gained:{pick.value}",
+                )
+                working = gained.state
+                lost_events.extend(gained.events)
+            result = RuleResult(state=working, events=tuple(lost_events))
         case GainInfluence(distinct=distinct):
             faction = Faction(str(arguments["faction"]))
             context["chosen_factions"] = ",".join(

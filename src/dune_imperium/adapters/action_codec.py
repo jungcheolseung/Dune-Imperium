@@ -393,6 +393,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_influence_exchange",
             "decline_reveal_card_trash",
             "skip_intrigue_acquisition",
+            # An Intrigue "choose a Faction" Influence with every Faction it
+            # may raise at the top is confirmed (OQ-060).
+            "resolve_intrigue_influence_without_faction",
             "finish_intrigue_effects",
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",

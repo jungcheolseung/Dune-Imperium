@@ -251,7 +251,9 @@ def test_sources_one_per_card_values_actions_and_intents(
 
 
 def test_sources_skip_cards_the_app_cannot_run(turn_state: GameState) -> None:
-    # Imperium Politics' app Cost needs Emperor < 6 or Guild < 6; ours only 1 Solari.
+    # Imperium Politics' app Cost needs Emperor < 6 or Guild < 6; since
+    # 2026-10-06 our engine agrees: one Solari for Influence no cube can take
+    # is not offered (OQ-060, OQ-071), so the card is no source either way.
     state = give(
         turn_state,
         "imperium_politics",
@@ -261,7 +263,7 @@ def test_sources_skip_cards_the_app_cannot_run(turn_state: GameState) -> None:
     )
     run = make_run(state)
     play = act("play_intrigue", card_id=iid("imperium_politics"), option=0)
-    assert play in run.legal
+    assert play not in run.legal
     sources = W.intrigue_play_sources(run, run.legal, combat=False)
     assert [s.label for s in sources] == [f"intrigue {iid('contingency_plan')}"]
 
@@ -1004,7 +1006,8 @@ def test_change_allegiances_spice_gain_skips_tracks_at_the_top(
     turn_state: GameState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # PaySpiceForInfluence's picker starts from GetFactionTrackTargets():
-    # Emperor at 6 is offered by our engine but is no app target.
+    # Emperor at 6 is no app target, and since 2026-10-06 our engine does
+    # not offer it either (OQ-060).
     state = give(
         turn_state,
         "change_allegiances",
@@ -1018,7 +1021,7 @@ def test_change_allegiances_spice_gain_skips_tracks_at_the_top(
     assert line1 == act("use_intrigue_effect", section=1)
     assert line1 is not None
     gain = step(effects, line1)
-    assert act("choose_intrigue_faction", faction="emperor") in (
+    assert act("choose_intrigue_faction", faction="emperor") not in (
         ENGINE.legal_actions(gain, SEAT)
     )
     g = g_values(emperor=5.0, fremen=1.0)
@@ -1031,7 +1034,8 @@ def test_change_allegiances_skips_the_spice_line_when_no_track_can_gain(
 ) -> None:
     # Every track at 6: swap Emperor (6 -> 5, the appended lost track is the
     # only gain target, back to 6); then GetFactionTrackTargets().Any() is
-    # false, so PaySpiceForInfluence does not pay (finish).
+    # false, so PaySpiceForInfluence does not pay (finish). Since 2026-10-06
+    # our engine no longer offers that spice line either (OQ-071).
     state = give(
         turn_state,
         "change_allegiances",
@@ -1054,7 +1058,7 @@ def test_change_allegiances_skips_the_spice_line_when_no_track_can_gain(
     assert pick is not None
     back = step(gain, pick)
     assert kind(back) == "intrigue_effects"
-    assert act("use_intrigue_effect", section=1) in ENGINE.legal_actions(back, SEAT)
+    assert ENGINE.legal_actions(back, SEAT) == (act("finish_intrigue_effects"),)
     assert W.intrigue_effects(make_run(back, memory)) == act("finish_intrigue_effects")
 
 

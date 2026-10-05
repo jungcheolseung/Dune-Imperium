@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.reserve import (
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
+from dune_imperium.rules.influence import MAX_INFLUENCE
 
 # Strategy weights, largest first: direct victory points, then permanent
 # upgrades, then cards, units, and resources. Declines and passes sit below
@@ -730,11 +731,12 @@ def _intrigue_faction_choice_is_loss(
 
     The frame does not say; the resolving card and the offered tracks do. The
     loss step offers exactly the occupied tracks, while the card's gain step
-    is unrestricted and offers all four (a full track too: the engine lets
-    that gain fizzle, ``influence_gain_candidates`` does not filter it). So
-    fewer than four tracks offered is the loss; four offered with an empty
-    track is the gain; ``None`` when every track is occupied and offered,
-    where the two steps look alike.
+    is unrestricted and offers exactly the tracks below the top (a full track
+    is left out since the gain there is lost, OQ-060,
+    ``influence_gain_candidates``). So the set that matches only the occupied
+    tracks is the loss, the one that matches only the tracks below the top is
+    the gain, and ``None`` when the two sets coincide (every track between 1
+    and 5) or the offer matches neither.
     """
 
     lose_cost = False
@@ -751,12 +753,16 @@ def _intrigue_faction_choice_is_loss(
         )
     if not lose_cost:
         return False
-    if len(offered) < len(_FACTIONS):
-        return True
     me = _own_seat(view)
-    if any(_influence_of(me, faction) == 0 for faction in _FACTIONS):
-        return False
-    return None
+    occupied = frozenset(f for f in _FACTIONS if _influence_of(me, f) > 0)
+    below_top = frozenset(
+        f for f in _FACTIONS if _influence_of(me, f) < MAX_INFLUENCE
+    )
+    loss = offered == occupied
+    gain = offered == below_top
+    if loss == gain:
+        return None
+    return loss
 
 
 _FACTIONS: Final = tuple(faction.value for faction in Faction)

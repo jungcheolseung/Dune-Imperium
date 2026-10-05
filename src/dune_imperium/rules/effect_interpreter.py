@@ -101,7 +101,11 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
-from dune_imperium.rules.influence import gain_faction_influence, influence_amount
+from dune_imperium.rules.influence import (
+    gain_faction_influence,
+    influence_amount,
+    influence_can_rise,
+)
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
@@ -615,6 +619,13 @@ def _choice_reward_block(
                     gain.different_from_trigger or gain.minimum_own
                 ) and not influence_gain_candidates(state, player, gain):
                     return reward
+                case GainInfluence() if _influence_line_buys_nothing(
+                    state, player, section
+                ):
+                    # A cost for Influence no cube can take is not offered
+                    # (OQ-060, OQ-071); a cost-free gain stays playable and
+                    # fizzles at its slot (OQ-057 (6)).
+                    return reward
                 case RedirectSpiesOnTurnSpace() if (
                     agent_turn_space_id(state, player) is None
                 ):
@@ -626,15 +637,48 @@ def _choice_reward_block(
     return None
 
 
+def _influence_line_buys_nothing(
+    state: GameState,
+    player: int,
+    section: EffectSection,
+) -> bool:
+    """Whether a cost line's rewards are all Influence no cube can take.
+
+    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만 제시한다"
+    (OQ-071, user decision 2026-09-29), and a gain on a cube at the top of
+    its track is lost (OQ-060). A line that pays a LoseInfluence first
+    (Change Allegiances, Tenuous Bond) always leaves the Faction it lowers
+    free to rise again, so an unrestricted gain after it never buys nothing.
+    """
+
+    if not section.costs:
+        return False
+    loses = any(isinstance(cost, LoseInfluence) for cost in section.costs)
+    for reward in section.rewards:
+        if not isinstance(reward, GainInfluence):
+            return False
+        if loses and reward.factions is None:
+            return False
+        if influence_gain_candidates(state, player, reward):
+            return False
+    return True
+
+
 def influence_gain_candidates(
     state: GameState,
     player: int,
     gain: GainInfluence,
 ) -> tuple[Faction, ...]:
-    """Factions a GainInfluence choice may pick, after its printed limits."""
+    """Factions a GainInfluence choice may pick, after its printed limits.
+
+    Never a Faction whose cube is already at the top of its track: a gain
+    there is lost (OQ-060, user ruling 2026-09-16), so the picker leaves it
+    out like the Conflict-reward picker does (``influence_can_rise``).
+    """
 
     owner = state.players[player]
     candidates = gain.factions if gain.factions is not None else tuple(Faction)
+    candidates = tuple(f for f in candidates if influence_can_rise(owner, f))
     if gain.where_opponent_leads:
         leading = factions_where_opponent_leads(state, player)
         candidates = tuple(f for f in candidates if f in leading)
