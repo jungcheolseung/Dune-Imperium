@@ -1255,3 +1255,12 @@
 - 필요한 답: 쓰거나 trash한 Twisted 카드를 공용 버림 더미에 둘지(현행), Piter의 Twisted 덱이나 별도 더미로 돌릴지.
 - 확정(2026-10-04, 사용자 판정 "Piter의 twisted 카드는 공용 책략 버림 더미로 가지만, 나중에 다시 섞을 때는 책략 더미로 가지 않고 계속 버림 더미에 남아있게 하자. 다른 사람이 twisted 카드를 뽑는 일은 없도록", project convention): 쓰거나 trash한 Twisted 카드는 공용 Intrigue 버림 더미에 놓이지만, 그 더미로 새 Intrigue Deck을 만들 때는 섞이지 않고 버림 더미에 남는다. 그래서 공용 덱에서 Twisted 카드를 뽑는 일은 없다. 버림 더미에 Twisted 카드만 남았으면 섞을 카드가 없는 것으로 보고 draw는 모자란다(`intrigue_draw_short`). Secrets의 절도와 Insidious의 증여로 Twisted 카드가 다른 좌석의 손에 가는 것은 카드 문구("These count as Intrigue cards and can be stolen.")대로 그대로다. 적용 위치: Intrigue draw의 reshuffle, Imperium Ceremony peek의 reshuffle(OQ-052), Arrakeen Scouts의 reshuffle(OQ-078). 탐색 AI의 숨은 정보 표본(`agents/determinize.py`)도 Twisted 카드를 상대의 손에만 둔다. 구현: `rules/intrigue_deck.shufflable_intrigue_discard`, 불변식(Intrigue Deck에 Twisted 카드가 있으면 실패). 테스트: `tests/unit/rules/test_intrigue_draw_short.py`, `tests/unit/rules/test_board_effects.py::test_imperial_privilege_never_draws_back_a_trashed_twisted_card`.
 
+
+## OQ-098 — Tech 획득 효과를 구매 뒤 turn 안에서 자유 순서로 해결
+
+- 상태: `DECIDED` (2026-10-05 사용자 요청; project convention)
+- 공식 출처: tile의 acquire effect는 "획득할 때 한 번" 받는다 `[Bloodlines p. 7]`. 같은 페이지의 Glowglobes 예시는 즉시 원하는 진영의 Influence 1을 얻는다고 한다. Agent turn의 공간·카드 효과는 원하는 순서다 `[Main p. 9]`. 공식 문서는 기술 보상을 구매 뒤 다른 효과와 섞어 보류하는 절차를 정하지 않는다.
+- 사용자 판정: 기술 구매와 획득 효과를 별개 행동으로 하고, 획득 효과도 자신의 Agent turn 안에서 원하는 순서로 해결한다. Influence 진영을 자동으로 정하지 않고 효과를 해결할 때 플레이어가 선택한다.
+- 구현 범위: 구매 시 Spice 지불·tile 이동·다음 tile 공개와 상시 능력 발효(Ornithopter Fleet의 즉시 매칭 포함)만 한다. Advanced Data Analysis의 Spy trash는 구매 조건이므로 함께 지불한다. 획득 보상의 각 인쇄 아이콘은 turn에 대기하며, 같은 turn의 다른 구매로 생긴 보상과도 자유 순서다. Forbidden Weapons의 병력과 Shield Wall, Spy Drones의 두 Spy는 각각 독립 행동이다. 선택 보상도 사용/생략 결정이 필요하고, 남은 보상은 turn 종료를 막는다. 카드·Intrigue draw의 무작위 결과는 그 효과를 선택한 시점에만 발생한다.
+- 경계: Rapid Engineering으로 Agent 배치 전에 산 기술의 보상은 배치 또는 Reveal 전환 뒤에도 같은 turn에 남는다. Reveal 구매도 같은 방식으로 해결하며, Combat의 Battlefield Research에는 다른 turn이 없으므로 별도의 구매 후 효과 창에서 모두 해결한 뒤 Combat으로 돌아간다. 기술 자체를 먼저 trash해도 이미 획득한 일회 보상은 남는다. Servo-Receivers의 Signet을 실제로 해결한 시점의 turn 상태를 OQ-062대로 읽는다.
+- 재개 조건: 공식 FAQ가 기술 구매와 획득 보상의 순서·보류를 정할 때.

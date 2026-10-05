@@ -96,8 +96,8 @@ FACTION_ICONS = frozenset(
 #     1417,1489,1885              reveal_card          (a Reveal card's Command)
 #   reveal_turn.py:2261           reveal_gain           (Reveal's queued-gain choice)
 #   intrigue.py:1127              intrigue
-#   tech.py:438                   inherited (Acquire Tech's opener: board or
-#                                  agent_card)
+#   tech.py (Acquire Influence)   tech (queued acquire icon, OQ-098;
+#                                  formerly inherited the purchase opener)
 #   tech.py:855                   endgame_tech -> tech  (Panopticon, Endgame)
 #   board_effects.py:916          board                 (Shipping's choice)
 #   effect_interpreter.py:877     intrigue              (apply_rewards' only

@@ -6,6 +6,7 @@
    tokens, so the Korean is the glossary's (docs/rules/glossary-ko.md). The
    bodies are JSON so tests/server/test_i18n.py can read them. */
 const PROMPT_KO = {
+  "Resolve Tech acquire effects": "기술 획득 효과를 해결하세요",
   "Acquire a Tech tile or decline": "{tech_tile} 획득 또는 거절",
   "Bene Gesserit Alliance: lose two Influence with one Faction for a Victory Point, or decline": "베네 게세리트 {alliance}: 한 진영의 {influence_any} 2 잃고 {victory_point} 1 획득, 또는 거절",
   "Choose Influence to lose and gain or decline this Reveal effect": "잃을 {influence_any}과 얻을 {influence_any} 선택, 또는 이 {reveal_turn} 효과 거절",

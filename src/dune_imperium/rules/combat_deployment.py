@@ -39,6 +39,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     owes_track_spy,
     own_turn_frame_index,
@@ -403,7 +404,7 @@ def legal_agent_turn_finish_actions(
         return ()
     if agent_turn_is_finishing(context):
         return ()
-    if owes_track_spy(state, player):
+    if owes_track_spy(state, player) or context.get(TECH_ACQUIRE_PENDING_KEY):
         return ()
     stalled_box = context["pending_agent_effect"] is True and graft_boxes_are_stalled(
         state

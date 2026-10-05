@@ -8,6 +8,7 @@ what a payment shared by several Agent boxes buys on the card resolving
 the rules execute.
 """
 
+from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
@@ -232,12 +233,67 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
     return f"{base} ({condition})" if condition else base
 
 
+def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
+    """Describe one queued Tech reward and its currently chosen branch."""
+
+    if action.action_id != "resolve_tech_acquire_effect":
+        return None
+    args = dict(action.arguments)
+    tile = TECH_TILES_BY_ID[str(args["tech_id"])]
+    effect = str(args["effect"])
+    match effect:
+        case "solari":
+            return (
+                f"Gain {tile.acquire_solari} solari",
+                f"{{solari:{tile.acquire_solari}}}",
+            )
+        case "troops":
+            return (
+                f"Recruit {tile.acquire_troops} troops",
+                f"{{troop:{tile.acquire_troops}}}",
+            )
+        case "intrigue":
+            count = tile.acquire_intrigue
+            return f"Draw {count} Intrigue cards", f"{{intrigue:{count}}}"
+        case "cards":
+            return f"Draw {tile.acquire_cards} cards", f"{{draw:{tile.acquire_cards}}}"
+        case "victory_points":
+            count = tile.acquire_victory_points
+            return f"Gain {count} VP", f"{{victory_point:{count}}}"
+        case "contracts":
+            count = tile.acquire_contracts
+            return f"Gain {count} contract", f"{{contract:{count}}}"
+        case "influence":
+            return "Gain 1 Influence", "{influence_any:1}"
+        case "intrigue_or_card":
+            if args["choice"] == "intrigue":
+                return "Draw 1 Intrigue card", "{intrigue:1}"
+            return "Draw 1 card", "{draw:1}"
+        case "shield_wall":
+            if args.get("destroy_shield_wall") is True:
+                return "Destroy the Shield Wall", "{shield_wall} 파괴"
+            return "Keep the Shield Wall", "{shield_wall} 유지"
+        case "signet":
+            return (
+                "Use your Leader's Signet Ring ability",
+                "지도자의 {signet_ring} 능력 사용",
+            )
+        case "trash":
+            return "Trash a card (optional)", "카드 {trash} (선택)"
+        case _:
+            if effect.startswith("spy_"):
+                return "Place a Spy with Deep Cover", "{spy} 배치 (잠복 스파이)"
+            raise ValueError(f"unknown Tech acquire effect: {effect}")
+
 def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     """Describe a keyed icon resolution, a shared payment or a Scouts choice.
 
     None otherwise.
     """
 
+    tech = tech_acquire_action_text(action)
+    if tech is not None:
+        return tech[0]
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[0]
@@ -276,6 +332,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     returns ``None`` (``static/render.js`` ``effectNode``).
     """
 
+    tech = tech_acquire_action_text(action)
+    if tech is not None:
+        return tech[1]
     scouts = scouts_action_text(state, action)
     if scouts is not None:
         return scouts[1]

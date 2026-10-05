@@ -797,7 +797,8 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
 
     visited = act(state, "agent_turn", card_id=dagger, space_id="assembly_hall")
     visited = act(visited, "resolve_board_effect", effect="intrigue")
-    bought = act(visited, "acquire_tech", tech_id="glowglobes", faction="emperor")
+    bought = act(visited, "acquire_tech", tech_id="glowglobes")
+    bought = act(bought, "resolve_tech_acquire_effect", faction="emperor")
 
     assert bought.players[0].influence.emperor == 2
     assert [frame.kind for frame in bought.decision_stack] == [

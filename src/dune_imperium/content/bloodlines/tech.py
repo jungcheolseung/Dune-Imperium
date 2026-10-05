@@ -139,6 +139,27 @@ class TechTile:
             raise ValueError("Tech tile acquire effects must not be negative")
 
     @property
+    def acquire_effect_keys(self) -> tuple[str, ...]:
+        """The independent acquire icons queued after purchase (OQ-098).
+
+        Advanced Data Analysis's Spy trash is a purchase prerequisite,
+        rather than a reward to defer [Advanced Data Analysis Tech tile].
+        """
+
+        counted_icons = (
+            "solari", "troops", "intrigue", "cards", "victory_points", "contracts"
+        )
+        return (
+            *(key for key in counted_icons if getattr(self, f"acquire_{key}")),
+            *(("influence",) if self.acquire_influence_choice else ()),
+            *(("intrigue_or_card",) if self.acquire_intrigue_or_card else ()),
+            *(("shield_wall",) if self.acquire_may_destroy_shield_wall else ()),
+            *(("signet",) if self.acquire_leader_signet else ()),
+            *(("trash",) if self.acquire_may_trash_card else ()),
+            *(f"spy_{index}" for index in range(self.acquire_deep_cover_spies)),
+        )
+
+    @property
     def flips(self) -> bool:
         """Return whether the ability is used by flipping the tile."""
 

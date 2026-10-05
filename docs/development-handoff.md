@@ -4,6 +4,21 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 기술 구매와 획득 효과 분리
+
+- 구현 커밋: `27a1a448`. 사용자 요청 OQ-098에 따라 기술 구매는 비용 지불·소유권 이전·다음 타일 공개를 처리하고, 일회 획득 보상의 각 아이콘을 현재 turn의 별도 행동 `resolve_tech_acquire_effect`로 남긴다. 다른 카드·보드 효과, 다른 기술의 획득 보상과 원하는 순서로 해결한다. 발광구·운항실의 Influence는 구매 시 오르지 않으며, 해결 행동에서 황제·우주항행 길드·베네 게세리트·프레멘 중 하나를 고른다. 한국어·영어 행동 문구를 함께 추가했다.
+- 배치 전 Rapid Engineering의 보상은 Agent/Reveal 전환을 따라가며, 미해결 보상은 turn 종료를 막는다. Spy Drones의 두 Spy와 Forbidden Weapons의 병력·Shield Wall은 각각 독립 행동이다. Advanced Data Analysis의 Spy trash는 구매 조건으로 즉시 지불하고, 상시 능력(Ornithopter Fleet 즉시 매칭 포함)은 소유 시 발효한다. 이미 받은 일회 보상은 타일을 먼저 trash해도 남는다. Combat의 Battlefield Research는 별도 획득 보상 창을 마친 뒤 Combat으로 돌아간다. 공식 문서의 즉시 획득 예시와 사용자 지정 순서를 구분해 `rules/bloodlines.md`와 `rules/open-questions.md`에 기록했다.
+- 검증: 전체 pytest **3,264개 통과**(185초, 기존 PettingZoo 경고 2개), 뒤에 추가한 tile-trash 보상 유지 회귀를 포함한 Tech 테스트 **193개** 및 최종 관련 테스트 **317개** 통과. Ruff(`src tests`, 수정한 E2E·census 스크립트)·mypy(314파일) 통과. Chrome 전체 **35종** 중 34종이 첫 실행에 통과했고, `log_words`의 실제 게임 시드를 새 행동 흐름에 맞게 고른 뒤 **17/17** 통과해 35종 전부 확인했다. 새 `tech_acquire` E2E **26개** 검사는 두 기술의 별도 구매·네 진영·다른 효과 선행·새로고침·선택 진영만 +1·중복 지급 방지를 확인한다. 수정 전 `20347bc5`에서는 구매 버튼 수·구매 후 Influence 불변·별도 진영 행동 검사가 실제로 실패했다.
+- 소크: base/CHOAM 각각 random 30판 및 heuristic 20판, 전 확장·Epic·Go to 11·Scouts·draft **100판** 완주, soundness 5-step·privacy 25-step·replay 검사 실패 0. 자유 순서 효과를 같은 행동 family로 묶을 때 AI의 진영 선호는 Influence-only 선택에만 적용한다(서로 다른 보상이 섞인 tie는 유지).
+- action codec **v135**, 관측 **v30 유지**. Tech 구성의 golden 두 개만 다시 고정했고, 나머지 네 개는 불변이다. tips-v1은 기존 명령대로 재채굴해 **134개**(sandworm 80, 마지막 라운드 보유 38, Endgame 16) 전부 복원 확인했다. census의 바뀐 고정 값은 별도 실제 게임 재생에서 이벤트·상태·합법 집합으로 다시 셌다.
+- 현재 실행 중인 플레이 서버는 재시작하지 않았다. 엔진 변경은 새 서버·새 게임부터 적용되며, 이전 codec 저장은 기존 strict 버전 검사로 거부된다. 공식 Main/Bloodlines PDF는 `prepare_official_rules.py`로 `/tmp/dune-tech-official-rules`에 준비했고 체크섬은 등록값과 일치했다. 개인 읽기용 PDF는 읽지 않았다.
+
+### master 병합 확인 (2026-10-05)
+
+- 앞선 수정 두 커밋(`27a1a448`, `3d29b748`)은 처음에는 Codex 워크트리에만 있었고 master에는 없었다. 사용자 확인 뒤 `app_ai`가 포함된 최신 master `ac9b97d7`를 기준으로 두 커밋을 병합했다. 기존 master 작업을 유지하고, 원래 커밋 이력도 그대로 남겼다. codec v135·관측 v30이며 버전 충돌은 없었다.
+- 병합 상태의 전체 pytest **4,633개 통과**(217초, 기존 PettingZoo 경고 2개), Ruff·mypy(364파일) 통과. 기술 획득 Chrome E2E **26/26** 통과. 원격 푸시와 실행 중 서버 재시작은 하지 않는다.
+- `app_ai`의 검증 범위는 기존 계획대로 Uprising 기본·CHOAM이다. 추가로 시도한 Bloodlines+Tech 게임은 `catalog.conflict_entity`의 `skirmish_wild` 아키타입 조회에서 실패했으며, 병합 전 master에서도 같은 시드·구성·오류를 재현했다. 이번 기술 획득 변경의 회귀가 아니며 확장 지원은 별도 작업이다.
+
 ## 2026-10-05 카드 사용 플로팅 효과
 
 - 구현 커밋: `030d1504`. 사람·AI가 에이전트 카드, 턴 넘김 카드, 접목 파트너, 책략·항행 카드를 사용하면 보드 오른쪽 위에 카드 이미지·좌석·사용 종류·배치 공간이 잠깐 뜬다. 책략은 선택한 option의 timing을 읽어 전투 사용을 구분한다(Contingency Plan의 음모 선택을 전투로 표시하지 않는다). 평소 2.2초, 밀린 AI 배치는 1.2초씩 순서대로 표시하며, 관전은 재생 속도를 따른다. 클릭은 보드로 통과하고, 동작 줄이기 설정에서는 움직임 없이 표시한다.
@@ -105,7 +120,7 @@ app_ai·search 넣기, 학습 상대에 app_ai 넣기(L3와 함께).
 
 병행 규칙:
 
-- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v134, 다음 v135). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
+- **codec 번호.** L1·L2·C2는 `ACTION_CODEC_VERSION`을 올릴 수 있다(지금 v135, 다음 v136). **나중에 master에 합치는 쪽이 번호를 다시 올린다**
   (epic 병합 때와 같다: 버전 주석에 양쪽 뜻을 모두 남기고 golden digest는 문서화된 절차로 다시 핀한다). 관측 버전도 같다(지금 v30).
 - **충돌.** C1은 여러 `rules/` 공급자 함수에 막힘 판정을 드러내고, L1은 `rules/effects.py`·`combat_deployment.py`·`agent_effect_frame.py`·
   `engine.py`·`server/sessions.py`를 고친다. 함께 진행하면 작게 자주 master에 합친다. 합칠 때는 master 쪽에서 `--no-ff`로 합친다.

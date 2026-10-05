@@ -978,6 +978,30 @@ def test_tie_breaks_stay_inside_the_tied_family() -> None:
     assert all(action in same for action in narrowed)
 
 
+def test_tech_acquire_ties_only_compare_factions_for_influence_icons() -> None:
+    from dune_imperium.agents.heuristic_agent import TIE_BREAKS, narrow_family_tie
+
+    view = _seated_view(emperor=1, spacing_guild=0, bene_gesserit=0, fremen=0)
+    choices = tuple(
+        _action(
+            "resolve_tech_acquire_effect",
+            ("effect", "influence"),
+            ("faction", faction),
+            ("tech_id", "glowglobes"),
+        )
+        for faction in ("emperor", "fremen")
+    )
+    assert narrow_family_tie(choices, view, TIE_BREAKS) == (choices[0],)
+    troops = _action(
+        "resolve_tech_acquire_effect",
+        ("effect", "troops"),
+        ("tech_id", "delivery_bay"),
+    )
+    mixed = (*choices, troops)
+    assert narrow_family_tie(mixed, view, TIE_BREAKS) == mixed
+    assert narrow_family_tie((troops,), view, TIE_BREAKS) == (troops,)
+
+
 def test_the_uniform_ties_variant_pins_the_earlier_draw() -> None:
     from dune_imperium.agents.heuristic_agent import UNIFORM_TIES
     from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent

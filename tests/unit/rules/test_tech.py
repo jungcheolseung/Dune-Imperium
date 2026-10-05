@@ -57,7 +57,9 @@ from dune_imperium.rules.spy_moves import (
 )
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tech import (
+    apply_tech_acquire_effect,
     apply_tech_acquisition,
+    legal_tech_acquire_effect_actions,
     legal_tech_acquisition_actions,
     push_tech_acquisition,
     tech_cost,
@@ -152,9 +154,49 @@ def _tech_actions(state: GameState) -> dict[str, DomainAction]:
     return actions
 
 
-def _acquire(state: GameState, key: str) -> GameState:
-    return apply_tech_acquisition(state, _tech_actions(state)[key]).state
+def _purchase_and_resolve(state: GameState, action: DomainAction) -> RuleResult:
+    """Buy, then explicitly resolve the queued icons for reward tests."""
 
+    result = apply_tech_acquisition(state, action)
+    events = list(result.events)
+    while actions := legal_tech_acquire_effect_actions(result.state, 0):
+        resolved = apply_tech_acquire_effect(result.state, actions[0])
+        events.extend(resolved.events)
+        result = resolved
+    return RuleResult(state=result.state, events=tuple(events))
+
+
+def _resolve_acquired(state: GameState, **choices: object) -> GameState:
+    """Take queued rewards before testing their downstream interactions."""
+
+    while actions := legal_tech_acquire_effect_actions(state, 0):
+        action = next(
+            action
+            for action in actions
+            if all(dict(action.arguments).get(k, v) == v for k, v in choices.items())
+        )
+        state = apply_tech_acquire_effect(state, action).state
+    return state
+
+
+def _acquire(state: GameState, key: str) -> GameState:
+    tech_id, *options = key.split(":")
+    choices: dict[str, object] = {
+        k: v for k, v in (option.split("=") for option in options)
+    }
+    if choices.get("destroy_shield_wall") == "True":
+        choices["destroy_shield_wall"] = True
+    purchase = next(
+        action
+        for action in legal_tech_acquisition_actions(state, 0)
+        if dict(action.arguments).get("tech_id") == tech_id
+        and (
+            "post_id" not in choices
+            or dict(action.arguments).get("post_id") == choices["post_id"]
+        )
+    )
+    bought = apply_tech_acquisition(state, purchase).state
+    return _resolve_acquired(bought, **choices)
 
 # --- content -----------------------------------------------------------------
 
@@ -301,7 +343,8 @@ def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() ->
     placed = take(state, "agent_turn", card_id=desert_power, space_id="hagga_basin")
     gained = take(placed, "resolve_agent_card_effect")  # Desert Power: +2 spice
     plotted = take(take(gained, "play_intrigue"), "choose_intrigue_discard")
-    bought = take(plotted, "acquire_tech", tech_id="gene_locked_vault", choice="card")
+    bought = take(plotted, "acquire_tech", tech_id="gene_locked_vault")
+    bought = take(bought, "resolve_tech_acquire_effect", choice="card")
 
     assert bought.decision_stack[-1].kind == "agent_effects"
     context = dict(bought.decision_stack[-1].context)
@@ -319,17 +362,11 @@ def test_a_landsraad_visit_offers_the_face_up_tiles_the_owner_can_afford() -> No
     state = _visit(_turn_state(_owner(resources=Resources(spice=2))), "assembly_hall")
 
     offered = _tech_actions(state)
-    # Glowglobes (2) with any Faction, Gene-Locked Vault (2) either way; the
-    # 3-spice Advanced Data Analysis also needs a placed Spy.
+    # Reward choices wait until after purchase (OQ-098). Advanced Data
+    # Analysis still needs a placed Spy as part of its purchase cost.
     assert "decline_tech" in offered
-    assert {key for key in offered if key.startswith("glowglobes")} == {
-        f"glowglobes:faction={faction}"
-        for faction in ("emperor", "spacing_guild", "bene_gesserit", "fremen")
-    }
-    assert {key for key in offered if key.startswith("gene_locked_vault")} == {
-        "gene_locked_vault:choice=intrigue",
-        "gene_locked_vault:choice=card",
-    }
+    assert "glowglobes" in offered
+    assert "gene_locked_vault" in offered
     assert not any(key.startswith("advanced_data_analysis") for key in offered)
 
 
@@ -380,7 +417,7 @@ def test_every_landsraad_visit_offers_acquire_tech(
     assert icons == f"{printed_key},tech"
     offered = _tech_actions(placed)
     assert "decline_tech" in offered
-    assert "glowglobes:faction=fremen" in offered
+    assert "glowglobes" in offered
 
 
 def test_a_first_high_council_visit_buys_tech_at_the_new_seat_discount() -> None:
@@ -420,7 +457,7 @@ def test_a_high_council_seat_discounts_every_tile_by_one_spice() -> None:
     state = _visit(_turn_state(owner), "assembly_hall")
 
     offered = _tech_actions(state)
-    assert "gene_locked_vault:choice=card" in offered
+    assert "gene_locked_vault" in offered
     assert tech_cost(owner, TECH_TILES_BY_ID["training_depot"]) == 0
     bought = _acquire(state, "gene_locked_vault:choice=card")
     seat = bought.players[0]
@@ -430,7 +467,7 @@ def test_a_high_council_seat_discounts_every_tile_by_one_spice() -> None:
 
 def test_declining_keeps_the_stacks_and_closes_the_offer() -> None:
     state = _visit(_turn_state(_owner()), "assembly_hall")
-    declined = apply_tech_acquisition(state, _tech_actions(state)["decline_tech"])
+    declined = _purchase_and_resolve(state, _tech_actions(state)["decline_tech"])
     assert declined.events[0].kind == "tech_declined"
     assert declined.state.tech_stacks == STACKS
     assert legal_tech_acquisition_actions(declined.state, 0) == ()
@@ -479,20 +516,22 @@ def test_forbidden_weapons_recruits_a_deployable_troop_and_may_drop_the_wall() -
         "assembly_hall",
     )
     offered = _tech_actions(state)
-    assert {"forbidden_weapons", "forbidden_weapons:destroy_shield_wall=True"} <= set(
-        offered
-    )
+    assert "forbidden_weapons" in offered
     kept = _acquire(state, "forbidden_weapons")
     assert kept.shield_wall_present
     assert kept.players[0].troops_garrison == 3 + 1
     # The troop counts as recruited this turn [Bloodlines p. 7] [FAQ p. 4].
     assert dict(kept.decision_stack[-1].context).get("troops_recruited") == 1
 
-    destroyed = apply_tech_acquisition(
-        state, offered["forbidden_weapons:destroy_shield_wall=True"]
+    bought = apply_tech_acquisition(state, offered["forbidden_weapons"]).state
+    destroy = next(
+        action for action in legal_tech_acquire_effect_actions(bought, 0)
+        if dict(action.arguments).get("destroy_shield_wall") is True
     )
+    destroyed = apply_tech_acquire_effect(bought, destroy)
     assert not destroyed.state.shield_wall_present
     assert any(event.kind == "shield_wall_destroyed" for event in destroyed.events)
+
 
 
 def test_a_plot_tiles_troops_join_the_turn_before_the_placement() -> None:
@@ -592,7 +631,7 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
     # No Shield Wall variant, though the wall stands.
     assert state.shield_wall_present
     assert set(_tech_actions(state)) == {"decline_tech", "servo_receivers"}
-    result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
+    result = _purchase_and_resolve(state, _tech_actions(state)["servo_receivers"])
     seat = result.state.players[0]
     # Warmaster: recruit one troop [Gurney Halleck card].
     assert seat.troops_garrison == state.players[0].troops_garrison + 1
@@ -621,7 +660,7 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
     assert ended.decision_stack[-1].kind == "turn"
     assert _decider(ended) == 1
 
-    drawn = apply_tech_acquisition(
+    drawn = _purchase_and_resolve(
         _servo_visit("muad_dib"), _tech_actions(state)["servo_receivers"]
     ).state
     # Lead the Way: draw one card [Muad'Dib card].
@@ -631,7 +670,9 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
 def test_servo_receivers_opens_a_signet_choice_frame() -> None:
     engine = UprisingRulesEngine()
     state = _servo_visit("princess_irulan")
-    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    opened = _resolve_acquired(
+        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    )
     frame = opened.decision_stack[-1]
     assert frame.kind == "leader_signet"
     offered = {action.action_id for action in engine.legal_actions(opened, 0)}
@@ -655,7 +696,7 @@ def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
     # Judge of the Change: "If you sent an Agent this turn to... [Landsraad]:
     # [Emperor] 2 Influence: [water]" [Liet Kynes card].
     liet = _servo_visit("liet_kynes", influence=Influence(emperor=2))
-    bought = apply_tech_acquisition(liet, _tech_actions(liet)["servo_receivers"])
+    bought = _purchase_and_resolve(liet, _tech_actions(liet)["servo_receivers"])
     assert bought.state.players[0].resources.water == 2 + 1
 
 
@@ -669,7 +710,9 @@ def test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray() -> None
     # lost this Agent (checked sweep: bloodlines+tech+draft seed 1003).
     engine = UprisingRulesEngine()
     state = _servo_visit("duncan_idaho", agent_in_conflict=1, agents_available=1)
-    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    opened = _resolve_acquired(
+        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    )
     assert opened.decision_stack[-1].kind == "leader_signet"
     deploy = next(
         action
@@ -706,7 +749,9 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
         ),
         "imperial_privilege",
     )
-    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    opened = _resolve_acquired(
+        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    )
     assert opened.decision_stack[-1].kind == "leader_signet"
     deploy = next(
         action
@@ -776,7 +821,7 @@ def test_steersman_recall_never_offers_its_own_into_the_fray_agent() -> None:
             for action in engine.legal_actions(placed, 0)
             if action.action_id == "acquire_tech"
         )
-        opened = engine.apply(placed, acquire).state
+        opened = _resolve_acquired(engine.apply(placed, acquire).state)
         deploy = next(
             action
             for action in engine.legal_actions(opened, 0)
@@ -847,7 +892,7 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
         for action in engine.legal_actions(placed, 0)
         if action.action_id == "acquire_tech"
     )
-    opened = engine.apply(placed, acquire).state
+    opened = _resolve_acquired(engine.apply(placed, acquire).state)
     deploy = next(
         action
         for action in engine.legal_actions(opened, 0)
@@ -877,7 +922,7 @@ def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
     # [Steersman Y'rkoon card] (OQ-062).
     state = _servo_visit("steersman_y_rkoon")
-    result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
+    result = _purchase_and_resolve(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"
     assert _decider(result.state) == 0
@@ -892,7 +937,7 @@ def test_servo_receivers_signet_outside_an_agent_turn() -> None:
     state = _turn_state(owner, stacks=SERVO_STACKS)
     revealed = _reveal(state).state
     opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
-    bought = apply_tech_acquisition(
+    bought = _purchase_and_resolve(
         opened, _tech_actions(opened)["servo_receivers"]
     ).state
     assert bought.decision_stack[-1].kind == "reveal"
@@ -906,7 +951,7 @@ def test_servo_receivers_signet_outside_an_agent_turn() -> None:
     liet_opened = push_tech_acquisition(
         _reveal(liet).state, 0, discount=1, source="t"
     ).state
-    liet_bought = apply_tech_acquisition(
+    liet_bought = _purchase_and_resolve(
         liet_opened, _tech_actions(liet_opened)["servo_receivers"]
     ).state
     assert liet_bought.players[0].resources.water == 2
@@ -958,7 +1003,9 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         revealed = _reveal(_turn_state(owner, stacks=SERVO_STACKS)).state
         state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
         expected = ("reveal", 0)
-    pending = [engine.apply(state, _tech_actions(state)["servo_receivers"]).state]
+    pending = [_resolve_acquired(
+        engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    )]
     leaves = 0
     while pending:
         current = pending.pop()
@@ -992,7 +1039,7 @@ def test_every_servo_receivers_signet_choice_closes_its_own_frame(
         ("rapid_dropships", lambda seat: seat.troops_garrison == 3 + 2),
     ],
 )
-def test_immediate_acquire_effects(tech_id: str, check: object) -> None:
+def test_resolved_acquire_effects(tech_id: str, check: object) -> None:
     owner = _owner(resources=Resources(solari=4, spice=12))
     state = _visit(_turn_state(owner, stacks=((tech_id,), (), ())), "assembly_hall")
     bought = _acquire(state, tech_id)
@@ -1083,6 +1130,7 @@ def test_spy_drones_place_two_spies_with_deep_cover() -> None:
         bought,
         next(a for a in first if dict(a.arguments)["post_id"] == LANDSRAAD_POST),
     ).state
+    placed = _resolve_acquired(placed)
     second = legal_spy_placement_actions(placed, 0)
     assert LANDSRAAD_POST not in {dict(a.arguments)["post_id"] for a in second}
     done = apply_spy_placement(placed, second[0]).state
@@ -1122,7 +1170,7 @@ def test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn() -> None:
     )
     bought = _acquire(_visit(state, "assembly_hall"), "spy_drones")
     assert bought.decision_stack[-1].kind == "spy_placement"
-    open_turn = bought.decision_stack[-3]
+    open_turn = bought.decision_stack[-2]
     assert open_turn.kind == "agent_effects"
     assert isinstance(open_turn.decision, PlayerDecision)
     assert open_turn.decision.owner == 0
@@ -1136,6 +1184,7 @@ def test_a_spy_drones_recall_as_the_last_effect_counts_for_this_turn() -> None:
     placed = apply_spy_placement(
         recalled, legal_spy_placement_actions(recalled, 0)[0]
     ).state
+    placed = _resolve_acquired(placed)
     decline = next(
         action
         for action in legal_spy_placement_actions(placed, 0)
@@ -1180,7 +1229,7 @@ def test_ornithopter_fleet_matches_every_face_up_battle_card_at_once() -> None:
     state = _visit(
         _turn_state(owner, stacks=(("ornithopter_fleet",), (), ())), "assembly_hall"
     )
-    result = apply_tech_acquisition(state, _tech_actions(state)["ornithopter_fleet"])
+    result = _purchase_and_resolve(state, _tech_actions(state)["ornithopter_fleet"])
     seat = result.state.players[0]
     assert seat.troops_garrison == 3 + 2
     # Three face-up cards pair once; the third stays for the next match.
@@ -1197,7 +1246,7 @@ def test_a_tech_discount_icon_opens_its_own_frame_with_one_spice_off() -> None:
     opened = push_tech_acquisition(state, 0, discount=1, source="test")
     assert opened.state.decision_stack[-1].kind == "tech_acquisition"
     offered = _tech_actions(opened.state)
-    assert "gene_locked_vault:choice=intrigue" in offered  # 2 - 1 = 1 spice
+    assert "gene_locked_vault" in offered  # 2 - 1 = 1 spice
     assert not any(key.startswith("training_depot") for key in offered)
     bought = _acquire(opened.state, "gene_locked_vault:choice=intrigue")
     assert bought.players[0].resources.spice == 0
@@ -1217,7 +1266,7 @@ def test_a_tech_discount_icon_over_empty_stacks_opens_with_only_the_refusal() ->
     assert opened.state.decision_stack[-1].kind == "tech_acquisition"
     legal = UprisingRulesEngine().legal_actions(opened.state, 0)
     assert legal == (DomainAction(action_id="decline_tech", actor=0),)
-    declined = apply_tech_acquisition(opened.state, legal[0])
+    declined = _purchase_and_resolve(opened.state, legal[0])
     assert declined.state.decision_stack == state.decision_stack
     assert declined.state.players == state.players
 
@@ -1252,12 +1301,22 @@ def test_tech_actions_round_trip_only_in_the_tech_catalog() -> None:
         DomainAction("decline_tech", 1),
         DomainAction("acquire_tech", 0, (("tech_id", "training_depot"),)),
         DomainAction(
-            "acquire_tech",
+            "resolve_tech_acquire_effect",
             2,
-            (("faction", "fremen"), ("tech_id", "navigation_chamber")),
+            (
+                ("effect", "influence"),
+                ("faction", "fremen"),
+                ("tech_id", "navigation_chamber"),
+            ),
         ),
         DomainAction(
-            "acquire_tech", 3, (("choice", "card"), ("tech_id", "gene_locked_vault"))
+            "resolve_tech_acquire_effect",
+            3,
+            (
+                ("choice", "card"),
+                ("effect", "intrigue_or_card"),
+                ("tech_id", "gene_locked_vault"),
+            ),
         ),
         DomainAction(
             "acquire_tech",
@@ -1265,16 +1324,19 @@ def test_tech_actions_round_trip_only_in_the_tech_catalog() -> None:
             (("post_id", SIETCH_POST), ("tech_id", "advanced_data_analysis")),
         ),
         DomainAction(
-            "acquire_tech",
+            "resolve_tech_acquire_effect",
             0,
-            (("destroy_shield_wall", True), ("tech_id", "forbidden_weapons")),
+            (
+                ("destroy_shield_wall", True),
+                ("effect", "shield_wall"),
+                ("tech_id", "forbidden_weapons"),
+            ),
         ),
     )
     for action in actions:
         assert codec.decode(codec.encode(action), action.actor) == action
         with pytest.raises(ValueError):
             bloodlines.encode(action)
-
 
 @pytest.mark.parametrize("game_seed", [31, 32])
 def test_random_tech_games_finish_under_every_check(game_seed: int) -> None:
@@ -2424,7 +2486,7 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
     # Gene-Locked Vault costs 2, one spice with the icon's discount.
     affordable = opened(1)
     assert "decline_tech" not in _tech_actions(affordable)
-    assert "gene_locked_vault:choice=card" in _tech_actions(affordable)
+    assert "gene_locked_vault" in _tech_actions(affordable)
 
     # Plasteel Blades (3), Panopticon (5), Spy Drones (5): nothing for one spice.
     broke = opened(1, (("plasteel_blades",), ("panopticon",), ("spy_drones",)))

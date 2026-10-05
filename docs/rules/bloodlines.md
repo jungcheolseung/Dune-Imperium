@@ -98,6 +98,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 - Tech tile의 능력은 Reveal turn, Conflict 승리, 게임 종료 등 여러 시점에 작동한다. Flip 아이콘이 있는 능력은 자신의 turn에 사용하며 라운드당 한 번뿐이다. 사용하면 tile을 face-down으로 뒤집고, 다음 라운드의 Round Start에 다시 face-up으로 돌린다. `[Bloodlines pp. 7, 12]`
 - tile의 구성: spice 비용, 이름, acquire 효과(acquire할 때 한 번만; 없는 tile도 있다), 능력, Rival Tech 표시(솔로 전용). `[Bloodlines p. 7]`
+- 프로젝트 판정(2026-10-05 사용자 요청, OQ-098): 구매는 비용 지불·소유권 이전·다음 tile 공개까지 처리하고, 획득 효과의 각 아이콘은 그 turn 안에서 다른 효과와 원하는 순서로 해결한다. Glowglobes·Navigation Chamber의 Influence 진영과 Gene-Locked Vault의 draw/Intrigue는 구매 뒤 효과를 해결할 때 고른다. 의무 보상 및 선택 아이콘의 사용/생략 결정을 마치기 전에는 turn을 끝낼 수 없다. 공식 룰북의 "획득할 때 한 번"과 Glowglobes 예시의 "immediately"에서 자유 순서 보류까지 도출한 공식 판정은 아니다. `[Bloodlines p. 7]` `[Main p. 9]`
 - Forbidden Weapons에서 strength 3 선택지를 고르면 Influence가 1 이상인 Faction에서 Influence 1을 잃어야 한다(가능하면). `[Bloodlines p. 12]`
 - Ornithopter Fleet을 가진 동안 자신의 모든 battle icon(wild 포함)은 Ornithopter로 취급한다. acquire하는 순간 battle icon 일치가 일어날 수 있고, Crysknife·Desert Mouse Intrigue로 VP를 얻을 수 없다. `[Bloodlines p. 12]`
 

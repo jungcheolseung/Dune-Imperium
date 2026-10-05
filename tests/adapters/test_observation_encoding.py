@@ -477,16 +477,18 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # policy choice, shifting only the draft trace. A scratch run skipping that
 # decision in both encoding and policy RNG exactly reproduces the v133
 # draft pin (77f0cb01..., 2416); the other five pins remain unchanged.
+# v135 queues Tech acquire icons as freely ordered actions (OQ-098).
+# Only the two Tech-enabled traces move; the observation layout stays v30.
 _GOLDEN_DIGESTS = {
     "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
     "choam": ("bbd5f9f833b088970292152899279058ef6f6522fa181e93a926bc8b112c39d6", 2856),
     "promo_bloodlines_tech": (
-        "d7342d0a6e281f9b68b048bad075ab699974fd250d17b22e8ef9ce80b99575b5",
-        3028,
+        "e97cb2adf5315ca8b5103b820fa8a76192ec1150810b99d6c6110639ea51af79",
+        2908,
     ),
     "everything": (
-        "dc22b967bbd17e4d3c43bc23a0c7505def8d76da249f77cc00b31059ec38a269",
-        3208,
+        "54d4ae98a20e8653a6bd899435be3bb9a0a81899c4c4413f56c21924db7b5097",
+        3360,
     ),
     "draft": ("7b474f809443ba8f2a9519085e44d7cf28a751f7c7f018bdb733f297f90033c4", 2808),
     "scouts": (
