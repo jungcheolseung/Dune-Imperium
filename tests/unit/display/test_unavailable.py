@@ -46,7 +46,7 @@ from dune_imperium.display.unavailable import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
-from dune_imperium.rules.combat import resolve_combat_rewards
+from dune_imperium.rules.combat import begin_combat_intrigue, resolve_combat_rewards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import OptionBlock
 from dune_imperium.rules.frames import FrameKind
@@ -343,6 +343,46 @@ def test_an_intrigue_card_for_another_window_is_only_dimmed() -> None:
     assert found["refs"]["intrigue:spice_is_power:0"] == {
         "reason": "Combat Intrigue: played during combat",
         "reason_ko": "전투 책략 카드: 전투 중에 사용",
+        "code": "timing",
+    }
+
+
+def test_harvest_cells_in_combat_intrigue_is_dimmed_until_the_conflict_ends() -> None:
+    """User ruling 2026-10-06 (OQ-057 (11)): Harvest Cells is played only
+    in the window after the Conflict's rewards, never in Combat Intrigue,
+    so there it is only dimmed with when it is played, like a card printed
+    for another window."""
+
+    card = "intrigue:harvest_cells:0"
+    owner = PlayerState(
+        player_id=0,
+        research_space=RESEARCH_START_ID,
+        troops_supply=6,
+        troops_conflict=3,
+        combat_strength=6,
+        has_revealed=True,
+        intrigue_cards=(card, "intrigue:vicious_talents:0"),
+    )
+    state = begin_combat_intrigue(
+        _state(
+            owner,
+            config=RulesetConfig(immortality=True),
+            phase=GamePhase.COMBAT,
+            first_player=0,
+            reveal_order=(0, 1, 2, 3),
+            decision_stack=(),
+            current_conflict_ids=("skirmish_crysknife",),
+        )
+    ).state
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE
+    assert [args["card_id"] for args in _legal(state, "play_intrigue")] == [
+        "intrigue:vicious_talents:0"
+    ]
+    found = _found(state)
+    assert _rows(found, "intrigue") == {}
+    assert found["refs"][card] == {
+        "reason": "Played after the Conflict resolves, if you lose 3 or more troops",
+        "reason_ko": "{conflict}이 끝난 뒤 {troop}을 3 이상 잃었을 때 사용",
         "code": "timing",
     }
 

@@ -372,22 +372,69 @@ def test_economic_positioning_retreats_or_scores() -> None:
     )
 
 
+def test_harvest_cells_is_never_played_in_combat_intrigue() -> None:
+    """User ruling 2026-10-06 (OQ-057 (11)): "This card is played after
+    combat resolves." (designer), and "To play an Intrigue card, you must
+    meet its conditions and pay its costs." [FAQ p. 2]. Harvest Cells used
+    to go face up during Combat Intrigue (restarting the passes) and expire
+    at cleanup when the loss fell short; now neither the Combat Intrigue
+    round nor a Plot turn offers it, only the Conflict-end window."""
+
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(_fighter(3, intrigue_cards=(card,)))
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE
+    assert _playable(state, card) == set()
+    assert all(
+        action.action_id != "play_intrigue" for action in engine.legal_actions(state, 0)
+    )
+    try:
+        apply_intrigue_play(state, _play(card))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Harvest Cells was played in Combat Intrigue")
+    plot = _plot_state(
+        _owner(intrigue_cards=(card,), troops_supply=6, troops_conflict=3)
+    )
+    assert _playable(plot, card) == set()
+
+
+def test_harvest_cells_is_never_offered_below_three_troops_in_the_conflict() -> None:
+    # "When you lose at least three troops at the end of a Conflict:"
+    # [Harvest Cells card]: two troops in the Conflict never open the window
+    # and the card stays in hand -- it no longer waits face up to expire.
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(_fighter(2, intrigue_cards=(card,), specimens=0))
+    assert _playable(state, card) == set()
+    done = _pass_through_combat(engine, state)
+    assert done.phase is not GamePhase.COMBAT
+    assert all(
+        frame.kind != FrameKind.CONFLICT_END_TRIGGER for frame in done.decision_stack
+    )
+    owner = done.players[0]
+    assert card in owner.intrigue_cards
+    assert card not in owner.intrigue_faceup
+    assert card not in done.intrigue_discard
+    assert owner.specimens == 0
+    assert all(event.kind != "intrigue_expired" for event in done.event_log)
+
+
 def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     card = _intrigue("harvest_cells")
     engine = UprisingRulesEngine()
     state = _combat_state(_fighter(3, intrigue_cards=(card,), specimens=0))
-    played = engine.apply(state, _play(card)).state
-    assert card in played.players[0].intrigue_faceup
-    # Everyone passes; rewards resolve; cleanup fires the trigger.
-    while played.phase is GamePhase.COMBAT and played.decision_stack:
-        frame = played.decision_stack[-1]
-        if not isinstance(frame.decision, PlayerDecision):
-            break
-        actions = engine.legal_actions(played, frame.decision.owner)
-        passing = next(
-            (a for a in actions if a.action_id.startswith("pass_")), actions[0]
-        )
-        played = engine.apply(played, passing).state
+    window = _pass_through_combat(engine, state)
+    assert window.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    played = engine.apply(
+        window,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", card),),
+        ),
+    ).state
     owner = played.players[0]
     assert card not in owner.intrigue_faceup
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
@@ -413,62 +460,6 @@ def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     assert CONTAMINATOR in bought.players[0].discard_pile
     assert bought.players[0].specimens == 1
     assert card in bought.intrigue_discard
-
-    short = _combat_state(_fighter(2, intrigue_cards=(card,)))
-    played = engine.apply(short, _play(card)).state
-    while played.phase is GamePhase.COMBAT and played.decision_stack:
-        frame = played.decision_stack[-1]
-        if not isinstance(frame.decision, PlayerDecision):
-            break
-        actions = engine.legal_actions(played, frame.decision.owner)
-        passing = next(
-            (a for a in actions if a.action_id.startswith("pass_")), actions[0]
-        )
-        played = engine.apply(played, passing).state
-    assert played.players[0].specimens == 0
-    assert card in played.intrigue_discard
-
-
-def test_harvest_cells_laid_face_up_restarts_the_combat_passes() -> None:
-    """"전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를
-    끝내고 Combat를 해결한다." [Main p. 14] (docs/rules/combat-and-round-end.md).
-    Harvest Cells waits face up instead of resolving, but it is still played:
-    after seats 0 and 1 pass and seat 2 plays it, both answer again. Before
-    2026-10-02 the count stayed at two and seat 2's next pass ended Combat
-    Intrigue."""
-
-    card = _intrigue("harvest_cells")
-    engine = UprisingRulesEngine()
-    state = _combat_state(
-        _fighter(1),
-        replace(_fighter(1), player_id=1),
-        replace(_fighter(3, intrigue_cards=(card,)), player_id=2),
-    )
-    for seat in (0, 1):
-        state = engine.apply(
-            state, DomainAction(action_id="pass_combat_intrigue", actor=seat)
-        ).state
-    played = engine.apply(
-        state,
-        DomainAction(
-            action_id="play_intrigue",
-            actor=2,
-            arguments=(("card_id", card), ("option", 0)),
-        ),
-    ).state
-    assert card in played.players[2].intrigue_faceup
-    top = played.decision_stack[-1]
-    assert top.kind == FrameKind.COMBAT_INTRIGUE
-    assert dict(top.context)["consecutive_passes"] == 0
-    for seat in (2, 0):
-        played = engine.apply(
-            played, DomainAction(action_id="pass_combat_intrigue", actor=seat)
-        ).state
-        assert played.combat_intrigue_complete is False
-    done = engine.apply(
-        played, DomainAction(action_id="pass_combat_intrigue", actor=1)
-    ).state
-    assert done.combat_intrigue_complete is True
 
 
 def _pass_through_combat(engine: UprisingRulesEngine, state: GameState) -> GameState:

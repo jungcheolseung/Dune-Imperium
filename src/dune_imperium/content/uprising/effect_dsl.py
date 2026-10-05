@@ -938,8 +938,10 @@ class OnTroopsLostAtConflictEnd:
     Conflict (Harvest Cells).
 
     Troops (and Sardaukar Commanders, being troops) that return to the
-    supply at Combat cleanup are "lost" [FAQ p. 1, Chani]; the card waits
-    face up through the Combat and expires at cleanup if the loss is short.
+    supply at Combat cleanup are "lost" [FAQ p. 1, Chani]. The card is
+    played only in the window after the Conflict's rewards and only when
+    the loss will meet ``minimum`` (user ruling 2026-10-06, OQ-057 (11)),
+    then waits face up until the cleanup returns the troops.
     """
 
     minimum: int = 3

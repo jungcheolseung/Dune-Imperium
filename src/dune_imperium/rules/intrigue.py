@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnTroopsLostAtConflictEnd,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -168,6 +169,11 @@ class IntriguePlayBlock(StrEnum):
 
     TIMING = "timing"  # printed for another window (Plot, Combat, Endgame)
     TURN_START = "turn_start"  # "At the start of your turn", after that point
+    # "When you lose at least three troops at the end of a Conflict:"
+    # [Harvest Cells card]: played only in the Conflict-end window once the
+    # rewards resolved, never in an Intrigue window (user ruling 2026-10-06,
+    # OQ-057 (11): "This card is played after combat resolves.").
+    CONFLICT_END = "conflict_end"
     # "At the start of your turn" (Withdrawn) on the turn frame after the
     # seat already acted in the turn (OQ-095 (6), user ruling 2026-10-04).
     TURN_STARTED = "turn_started"
@@ -208,6 +214,13 @@ def intrigue_play_block(
 ) -> IntriguePlayBlock | OptionUnplayable | None:
     """Why ``player`` cannot play ``option`` in the ``timing`` window now."""
 
+    if isinstance(option.trigger, OnTroopsLostAtConflictEnd):
+        # Harvest Cells: "To play an Intrigue card, you must meet its
+        # conditions and pay its costs." [FAQ p. 2], and its condition is
+        # the loss at the Conflict's end, so it waits for the window after
+        # the rewards (``combat.offer_conflict_end_triggers``) instead of
+        # going face up in Combat Intrigue (user ruling 2026-10-06).
+        return IntriguePlayBlock.CONFLICT_END
     if option.timing is not timing:
         return IntriguePlayBlock.TIMING
     if option.turn_start_only and frame_kind != FrameKind.TURN:
@@ -363,7 +376,8 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
 
     if option.trigger is not None:
         # The effect does not apply yet: the card waits face up in front of
-        # its owner until the trigger fires [FAQ p. 2].
+        # its owner until the trigger fires [FAQ p. 2] (Call to Arms; Harvest
+        # Cells is never played here, ``IntriguePlayBlock.CONFLICT_END``).
         waiting_owner = played_state.players[player]
         moved = replace(
             waiting_owner,
@@ -379,13 +393,9 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 payload=(("card_id", card_id), ("player", player)),
             )
         )
-        # Laying Harvest Cells face up in Combat Intrigue is still a play,
-        # so the passes before it no longer count [Main p. 14].
         return RuleResult(
-            state=_reset_combat_passes(
-                replace(
-                    played_state, players=replace_player(played_state.players, moved)
-                )
+            state=replace(
+                played_state, players=replace_player(played_state.players, moved)
             ),
             events=tuple(events),
         )
@@ -402,7 +412,8 @@ def resolve_faceup_trigger_option(
     *,
     source: str,
 ) -> RuleResult:
-    """Fire a face-up trigger card's option now (Harvest Cells at cleanup).
+    """Fire a face-up trigger card's option now (Harvest Cells at cleanup,
+    staged face up by the Conflict-end window).
 
     The card returns from the face-up zone to the owner's hand of played
     cards so the ordinary finish path discards it; its sections then open

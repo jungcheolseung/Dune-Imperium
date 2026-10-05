@@ -62,6 +62,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnTroopsLostAtConflictEnd,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -552,6 +553,11 @@ def _old_intrigue_plays(state: GameState, player: int) -> tuple[DomainAction, ..
         if entry is None or not entry.play_data_complete:
             continue
         for index, option in enumerate(entry.options):
+            # Harvest Cells only in the Conflict-end window (user ruling
+            # 2026-10-06, OQ-057 (11)): a rule change made on purpose after
+            # the copy.
+            if isinstance(option.trigger, OnTroopsLostAtConflictEnd):
+                continue
             if option.timing is not timing:
                 continue
             if option.turn_start_only and frame.kind != FrameKind.TURN:

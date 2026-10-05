@@ -2,7 +2,8 @@
 
 ``graft_partner``, ``research_advance``, ``research_bonus``,
 ``optional_trash`` (every source), ``intrigue_peek`` and
-``conflict_end_trigger`` (Harvest Cells gained as a Conflict reward).
+``conflict_end_trigger`` (Harvest Cells, played only after the Conflict's
+rewards).
 
 ``HANDLERS`` maps each decision kind this module answers to its handler; a
 handler returning None makes the agent answer at random
@@ -65,10 +66,12 @@ dad97e2021144d45b5b4f022e07bd3b3.
   ``KeepIntrigueCard`` picker, ``ImperiumCeremonyAbility::EvaluateIntrigue
   @0x4e0b6f0`` (shuffle, junk 1 / other 50, first strictly best).
 - ``conflict_end_trigger`` (``play_conflict_end_intrigue`` /
-  ``decline_conflict_end_intrigue``): Harvest Cells gained as a Conflict
-  reward. The app offers CombatResolution-timing Intrigue in each reward
-  entry's resolution prompt (``<PlayCombatResolutionIntrigueCards>d__21``,
-  15 §3.4 step 3; non-forced for this key); the key is
+  ``decline_conflict_end_intrigue``): Harvest Cells, held from earlier or
+  gained as a Conflict reward; our engine offers it nowhere else (user
+  ruling 2026-10-06, OQ-057 (11)). The app offers CombatResolution-timing
+  Intrigue in each reward entry's resolution prompt
+  (``<PlayCombatResolutionIntrigueCards>d__21``, 15 §3.4 step 3;
+  non-forced for this key); the key is
   ``HarvestCellsAbility::Evaluate @0x4c75550`` (two specimens, or a Tleilaxu
   card's ``AcquireValue`` + two specimens). Value > 0 -> play, else decline.
   A card whose app ability cannot run (``Cost`` = 3 troops in the Conflict)

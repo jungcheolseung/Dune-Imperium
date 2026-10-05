@@ -1353,8 +1353,8 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_research_bonus",
-            # Harvest Cells gained as a Combat reward, played before the
-            # cleanup (OQ-057).
+            # Harvest Cells, played only after the rewards and before the
+            # cleanup (OQ-057 (11), user ruling 2026-10-06).
             "decline_conflict_end_intrigue",
             "pay_research_bonus",
             "return_specimen",

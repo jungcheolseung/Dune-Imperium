@@ -75,6 +75,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnTroopsLostAtConflictEnd,
     PayResources,
     PeekTopCard,
     PlaceSpy,
@@ -382,6 +383,21 @@ _TURN_STARTED: Final[Reason] = (
     "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
     "turn_started",
 )
+
+
+def _conflict_end_reason(option: IntrigueOption) -> Reason:
+    """Harvest Cells in any Intrigue window: played only in the window after
+    the Conflict's rewards, when its loss holds (user ruling 2026-10-06,
+    ``IntriguePlayBlock.CONFLICT_END``)."""
+
+    trigger = option.trigger
+    assert isinstance(trigger, OnTroopsLostAtConflictEnd)
+    lost = trigger.minimum
+    return (
+        f"Played after the Conflict resolves, if you lose {lost} or more troops",
+        f"{{conflict}}이 끝난 뒤 {{troop}}을 {lost} 이상 잃었을 때 사용",
+        "timing",
+    )
 
 
 def _acquire_reason(block: AcquireBlock, needed: int | None, held: int) -> Reason:
@@ -825,6 +841,9 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
                 continue
             if block is IntriguePlayBlock.TIMING:
                 other_window = other_window or _TIMING[option.timing]
+                continue
+            if block is IntriguePlayBlock.CONFLICT_END:
+                other_window = other_window or _conflict_end_reason(option)
                 continue
             found.row(
                 "intrigue",

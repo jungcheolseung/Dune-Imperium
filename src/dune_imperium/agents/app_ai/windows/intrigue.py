@@ -129,7 +129,7 @@ Immortality (``spec/immortality.md`` §7):
   option of the prompt's timing; Gruesome Sacrifice's two troop losses are
   conflict troops (``lose_intrigue_troop(zone=conflict)``; a Bloodlines
   Commander only when no troop is there, the smaller loss).
-- Harvest Cells: play ``[card]`` / ``[[]]`` (Combat face up, or the
+- Harvest Cells: play ``[card]`` / ``[[]]`` (only the
   ``conflict_end_trigger`` window's play) when ``HarvestCellsAbility`` can
   run; the request is the dealt Tleilaxu Row cards the seat can pay with the
   two harvested specimens. At the Conflict's end the specimens come first
@@ -1344,10 +1344,10 @@ def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction
 
     The harvested specimens are taken first (``resolve_intrigue_rewards``).
     Then the play's recorded answer (``recorded_answer``: the
-    ``combat_intrigue`` or ``conflict_end_trigger`` prompt that played the
-    card) is replayed: its card, or "no acquire" (an empty list) ->
-    ``decline_intrigue_tleilaxu``. Without one, or when its card is not
-    offered, ``HarvestCellsAbility::Evaluate @0x4c75550`` runs now over the
+    ``conflict_end_trigger`` prompt that played the card) is replayed: its
+    card, or "no acquire" (an empty list) -> ``decline_intrigue_tleilaxu``.
+    Without one, or when its card is not offered,
+    ``HarvestCellsAbility::Evaluate @0x4c75550`` runs now over the
     offered cards (two specimens for "no acquire", a card at its
     ``AcquireValue`` + two specimens when strictly better).
     """
