@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 136
+    assert ACTION_CODEC_VERSION == 137
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -104,12 +104,12 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 4
         + 1
         + 1
-        + 1  # codec bump pending (2026-10-06): the cards_second icon key
-        + 1  # codec bump pending (2026-10-06): the research icon key
-        + 1  # codec bump pending (2026-10-06): the return_self icon key
-        + 1  # codec bump pending (2026-10-06): the Intrigue Influence confirm
-        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
-        + 1  # codec bump pending (2026-10-06): an "up to" deploy of 0
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
     )
     assert first.size == 4412
 
@@ -240,12 +240,12 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 4
         + 1
         + 1
-        + 1  # codec bump pending (2026-10-06): the cards_second icon key
-        + 1  # codec bump pending (2026-10-06): the research icon key
-        + 1  # codec bump pending (2026-10-06): the return_self icon key
-        + 1  # codec bump pending (2026-10-06): the Intrigue Influence confirm
-        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
-        + 1  # codec bump pending (2026-10-06): an "up to" deploy of 0
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
     )
 
     try:
@@ -362,12 +362,12 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 4
         + 1
         + 1
-        + 1  # codec bump pending (2026-10-06): the cards_second icon key
-        + 1  # codec bump pending (2026-10-06): the research icon key
-        + 1  # codec bump pending (2026-10-06): the return_self icon key
-        + 1  # codec bump pending (2026-10-06): the Intrigue Influence confirm
-        + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
-        + 1  # codec bump pending (2026-10-06): an "up to" deploy of 0
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
