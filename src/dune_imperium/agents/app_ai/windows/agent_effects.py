@@ -153,7 +153,9 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
 The leader (Signet Ring box and leader abilities):
 
 - ``resolve_agent_card_effect()`` of the Signet Ring: ``WarmasterAbility``
-  (Gurney) and ``FillCoffersAbility`` (Amber), 600; ``LeadTheWayAbility``
+  (Gurney), 600; Amber's Fill Coffers resolves icon by icon: ``solari`` is
+  ``FillCoffersTriggeredAbility`` (paid at once), ``spice`` is
+  ``FillCoffersAbility`` (600) once she holds an Alliance; ``LeadTheWayAbility``
   (Muad'Dib), 600 or (E) (the Signet Ring's ``DeferValue`` 3 always reaches
   the threshold).
 - ``advance_feyd_track(space)``: ``PersonalTrainingAbility`` (E); Feyd's
@@ -668,13 +670,21 @@ _PARTNER_LABEL = "graft partner | "
 #: Signet boxes resolved by ``resolve_agent_card_effect()``, by leader.
 _SIGNET_BOX_ABILITY: Mapping[str, str] = {
     "gurney_halleck": "WarmasterAbility",
-    "lady_amber_metulli": "FillCoffersAbility",
     "muad_dib": "LeadTheWayAbility",
     # Bloodlines (bloodlines-systems.md §4.6, §4.8): Harkonnen Advisor reuses
     # ``WarmasterAbility`` (D41); Judge of the Change runs by itself (D45).
     "piter_de_vries": "WarmasterAbility",
     "liet_kynes": "JudgeOfTheChangeSignetAbility",
 }
+#: Signet boxes resolved icon by icon (``resolve_agent_card_effect(effect=)``):
+#: (leader, our icon key) -> the leader's app ability of that icon. Amber's
+#: Fill Coffers: ``FillCoffersAbility`` is the Alliance spice; the +1 Solari
+#: is ``FillCoffersTriggeredAbility`` (no prompt, no AI hook), paid when the
+#: Signet icon is gained (``_SIGNET_TRIGGER_ICONS``).
+_SIGNET_ICON_ABILITY: Mapping[tuple[str, str], str] = {
+    ("lady_amber_metulli", "spice"): "FillCoffersAbility",
+}
+_SIGNET_TRIGGER_ICONS = frozenset({("lady_amber_metulli", "solari")})
 #: Bloodlines Agent boxes resolved by ``resolve_agent_card_effect()`` and the
 #: card's own ability (bloodlines-cards.md §3), gated by its ``Cost`` (a box
 #: whose Cost fails has no app key: a chore).
@@ -1999,6 +2009,9 @@ def _bloodlines_box(t: _Turn, short: str, action: DomainAction) -> None:
 def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     short = t.card_short or ""
     label = f"{short} {effect}"
+    if short == "signet_ring":
+        _signet_icon(t, action, effect)
+        return
     if effect == "trash_self":
         t.chores.append(action)  # TrashSelfAbility: Implicit, after End Turn
         return
@@ -2022,6 +2035,21 @@ def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
         )
         return
     _ability_source(t, label, found, _ROW_CARD, action)
+
+
+def _signet_icon(t: _Turn, action: DomainAction, effect: str) -> None:
+    """One icon of a Signet box resolved icon by icon (Amber's Fill Coffers):
+    its trigger at once, or the leader's ability of that icon."""
+
+    leader_id = t.run.ctx.me.leader_id or ""
+    label = f"signet {leader_id} {effect}"
+    if (leader_id, effect) in _SIGNET_TRIGGER_ICONS:
+        # Paid when the Signet icon is gained, before any box: no question.
+        _automatic(t, label, _FOLLOW_UP, action, -1)
+        return
+    name = _SIGNET_ICON_ABILITY.get((leader_id, effect))
+    found = _find(t.leader, name) if name is not None else None
+    _ability_source(t, label, found, _ROW_LEADER, action)
 
 
 def _card_choices(t: _Turn) -> None:

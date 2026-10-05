@@ -270,6 +270,20 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
     )
 )
 
+# Leaders whose Signet Ring ability prints several independent icons: the
+# Signet Ring card's box (or a Ghola copying it) queues them like a card's
+# box (OQ-027). A Servo-Receivers use of the ability has no Agent box and
+# keeps resolving at once (``leader_abilities._resolve_leader_signet``).
+_FILL_COFFERS_LEADER: Final = "lady_amber_metulli"
+_SIGNET_ICONS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
+    {
+        # Fill Coffers: "[1 Solari] —AND— If you have an Alliance: [1 spice]"
+        # [Lady Amber Metulli card]; the spice waits for an Alliance formed
+        # later in the turn (OQ-028, OQ-057 (1)).
+        _FILL_COFFERS_LEADER: (AGENT_ICON_SOLARI, AGENT_ICON_SPICE),
+    }
+)
+
 _LONG_LIVE_DRAW_CARD_ID = "long_live_fighters_draw_card_id"
 _LONG_LIVE_DRAW_ACTION_ID = "select_long_live_fighters_draw"
 _LONG_LIVE_DISCARD_ACTION_ID = "select_long_live_fighters_discard"
@@ -3165,15 +3179,19 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
 
 def agent_card_icons_at_placement(
     effect: PersonalCardAgentEffect | None,
+    leader_id: str | None = None,
 ) -> tuple[str, ...]:
     """Return the icon keys an Agent box queues when its card is played.
 
     Empty for single-effect boxes and for arrow boxes, whose reward icons
-    are queued once the cost is paid.
+    are queued once the cost is paid. The Signet Ring's box is its owner's
+    Leader ability, so ``leader_id`` picks its icons (``_SIGNET_ICONS``).
     """
 
     if effect is None:
         return ()
+    if effect is PersonalCardAgentEffect.LEADER_SIGNET:
+        return _SIGNET_ICONS.get(leader_id or "", ())
     return _PLACEMENT_ICONS.get(effect, ())
 
 
@@ -3295,8 +3313,9 @@ def agent_icon_block(
     Runner (two and four completed contracts, one line each) and Tread in
     Darkness (another Bene Gesserit card in play, on its draw and on its
     optional trash), Industrial Espionage (grafted, on its Research and
-    specimen line) and Stillsuit Manufacturer (the Fremen Alliance, on its
-    return) print a condition on their icons. The condition is judged
+    specimen line), Stillsuit Manufacturer (the Fremen Alliance, on its
+    return) and Lady Amber Metulli's Fill Coffers (any Alliance, on its
+    spice) print a condition on their icons. The condition is judged
     when the icon resolves (OQ-028), and while it is false the icon is not
     offered: a mandatory effect cannot be fired to fizzle, it waits for the
     turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
@@ -3371,11 +3390,21 @@ def agent_icon_block(
         effect
         is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
     )
+    fill_coffers = (
+        effect is PersonalCardAgentEffect.LEADER_SIGNET
+        and owner.leader_id == _FILL_COFFERS_LEADER
+    )
     if key == AGENT_ICON_SOLARI:
+        if fill_coffers:
+            return None
         return _influence_block(owner, Faction.EMPEROR) if wheels else _NOT_PRINTED
     if key == AGENT_ICON_SPICE:
         if effect is _BRANCHING_PATH:
             return None
+        if fill_coffers:
+            if owner.alliance_faction_ids:
+                return None
+            return AgentIconBlock(AgentIconCondition.ALLIANCE)
         if maker_keeper:
             return _influence_block(owner, Faction.FREMEN)
         if wheels:
@@ -3469,7 +3498,11 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
                 next_owner = recruit(1)
         case "solari":
             if available:
-                next_owner = gain(solari=2)
+                # Wheels Within Wheels' 2 Solari; Fill Coffers' 1 (the
+                # Signet Ring's box).
+                next_owner = gain(
+                    solari=1 if effect is PersonalCardAgentEffect.LEADER_SIGNET else 2
+                )
         case "spice":
             if available:
                 # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];

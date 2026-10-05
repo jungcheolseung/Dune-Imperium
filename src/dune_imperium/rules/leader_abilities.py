@@ -438,7 +438,10 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         payload = (("card_id", card_id), ("player", player), ("troops", recruited))
     elif owner.leader_id == "lady_amber_metulli":
         # Fill Coffers: gain one Solari, and one Spice while holding any
-        # Faction Alliance [Lady Amber Metulli card].
+        # Faction Alliance [Lady Amber Metulli card]. Reached only through
+        # Servo-Receivers (OQ-062), which has no Agent box to keep the spice
+        # waiting, so the Alliance is judged now; the Signet Ring card's box
+        # resolves the two as icons instead (``agent_effects._SIGNET_ICONS``).
         spice = 1 if owner.alliance_faction_ids else 0
         next_owner = replace(
             owner,

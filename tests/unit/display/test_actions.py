@@ -72,6 +72,7 @@ _EFFECTS = (
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
     PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED,
     PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE,
+    PersonalCardAgentEffect.LEADER_SIGNET,
 )
 
 
@@ -158,6 +159,21 @@ def test_agent_card_icon_text_names_each_cargo_runner_line() -> None:
     )
     assert agent_card_icon_text_ko(effect, "cards_second") == (
         "{draw:1} ({contract} 넷 이상 완수했다면)"
+    )
+
+
+def test_agent_card_icon_text_names_fill_coffers_icons() -> None:
+    # "FILL COFFERS — [1 Solari] —AND— If you have an Alliance: [1 spice]"
+    # [Lady Amber Metulli card], the Signet Ring's two icons.
+    effect = PersonalCardAgentEffect.LEADER_SIGNET
+
+    assert agent_card_icon_text(effect, "solari") == "Gain 1 solari"
+    assert agent_card_icon_text_ko(effect, "solari") == "{solari:1}"
+    assert agent_card_icon_text(effect, "spice") == (
+        "Gain 1 spice (if you have an Alliance)"
+    )
+    assert agent_card_icon_text_ko(effect, "spice") == (
+        "{spice:1} ({alliance}이 있다면)"
     )
 
 

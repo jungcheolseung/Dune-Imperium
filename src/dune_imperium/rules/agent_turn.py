@@ -479,7 +479,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     # A multi-icon Agent box queues its printed icons for their own actions
     # (OQ-027); single-effect boxes keep the plain resolution.
     agent_icons = ",".join(
-        agent_card_icons_at_placement(card.agent_effect) if agent_effect_pending else ()
+        agent_card_icons_at_placement(card.agent_effect, owner.leader_id)
+        if agent_effect_pending
+        else ()
     )
     effect_frame = DecisionFrame(
         kind=FrameKind.AGENT_EFFECTS,

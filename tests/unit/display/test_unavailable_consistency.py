@@ -1123,6 +1123,16 @@ def _old_icon_condition_holds(
             and context.get("card_id") in counted_in_play(owner)
             and Faction.FREMEN.value in owner.alliance_faction_ids
         )
+    # Lady Amber Metulli's Fill Coffers: the Signet Ring's Solari, and its
+    # spice with any Alliance.
+    if (
+        effect is PersonalCardAgentEffect.LEADER_SIGNET
+        and owner.leader_id == "lady_amber_metulli"
+    ):
+        if key == "solari":
+            return True
+        if key == "spice":
+            return bool(owner.alliance_faction_ids)
     # Industrial Espionage's grafted Research line became its own icon.
     if key == "research":
         return (

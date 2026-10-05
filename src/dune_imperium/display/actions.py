@@ -71,6 +71,8 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE, "return_self"): (
         "with the Fremen Alliance"
     ),
+    # Only Lady Amber Metulli's Signet (Fill Coffers) prints icons.
+    (_BOX.LEADER_SIGNET, "spice"): "if you have an Alliance",
 }
 
 # Korean twin of _ICON_CONDITIONS. The Influence-count suffixes use a
@@ -124,6 +126,7 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE, "return_self"): (
         "프레멘 {alliance}이면"
     ),
+    (_BOX.LEADER_SIGNET, "spice"): "{alliance}이 있다면",
 }
 
 
@@ -186,7 +189,10 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "troops":
             base = "Recruit 1 troop"
         case "solari":
-            base = "Gain 2 solari"
+            # Fill Coffers (the Signet Ring's box) pays 1.
+            base = (
+                "Gain 1 solari" if effect is _BOX.LEADER_SIGNET else "Gain 2 solari"
+            )
         case "spice":
             base = (
                 "Gain 2 spice"
@@ -244,7 +250,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
         case "troops":
             base = "{troop:1}"
         case "solari":
-            base = "{solari:2}"
+            base = "{solari:1}" if effect is _BOX.LEADER_SIGNET else "{solari:2}"
         case "spice":
             base = (
                 "{spice:2}"

@@ -1601,6 +1601,25 @@ def test_stillsuit_manufacturer_return_waits_for_the_fremen_alliance() -> None:
     }
 
 
+def test_fill_coffers_spice_waits_for_an_alliance() -> None:
+    """Lady Amber Metulli's Signet: "[1 Solari] —AND— If you have an
+    Alliance: [1 spice]" [Lady Amber Metulli card]. Without an Alliance the
+    spice icon waits; one formed later in the turn can still meet it."""
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=("player:0:starter:signet_ring:0",),
+    )
+    state = _place(_state(owner), "arrakeen")
+    assert _icon_rows(state) == {
+        "waiting:agent_icon:spice": (
+            "Needs an Alliance; it lapses if still unmet when the turn ends",
+            "{alliance} 필요 — 차례가 끝날 때까지 못 채우면 사라짐",
+            "condition",
+        ),
+    }
+
+
 # --- A Contract the seat cannot take, and Contract icons held (OQ-059) ---
 
 _IMMEDIATE = "contract:bloodlines_immediate"

@@ -28,7 +28,12 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult
-from dune_imperium.rules.agent_effects import resolve_agent_card_effect
+from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
+    legal_agent_card_icon_actions,
+    resolve_agent_card_effect,
+    resolve_agent_card_icon,
+)
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     apply_desert_tactics_action,
@@ -149,7 +154,23 @@ def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
     assert dict(result.events[0].payload)["troops"] == 0
 
 
+def _fill_coffers_icon(key: str) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", key),)
+    )
+
+
+def _offered_icons(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
 def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
+    # "FILL COFFERS — [1 Solari] —AND— If you have an Alliance: [1 spice]"
+    # [Lady Amber Metulli card]: two icons of the Signet Ring's box
+    # (OQ-027), the spice judged when it resolves (OQ-028).
     owner = PlayerState(
         player_id=0,
         leader_id="lady_amber_metulli",
@@ -157,13 +178,31 @@ def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
     )
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "solari,spice"
+    )
+    assert _offered_icons(placed) == {"solari"}
 
-    result = resolve_agent_card_effect(placed)
+    result = resolve_agent_card_icon(placed, _fill_coffers_icon("solari"))
     resources = result.state.players[0].resources
 
     assert resources.solari == 1
     assert resources.spice == 0
-    assert dict(result.events[0].payload)["spice"] == 0
+    # Without an Alliance by the turn's end the spice lapses (OQ-057 (1)).
+    working = result.state
+    engine = UprisingRulesEngine()
+    finish = DomainAction("finish_agent_turn", 0)
+    while finish not in (legal := engine.legal_actions(working, 0)):
+        working = engine.apply(
+            working, next(a for a in legal if not a.action_id.startswith("deploy"))
+        ).state
+    closed = engine.apply(working, finish)
+    assert closed.state.players[0].resources.spice == 0
+    assert [
+        dict(event.payload)["effect"]
+        for event in closed.events
+        if event.kind == "agent_card_effect_unavailable"
+    ] == ["spice"]
 
 
 def test_fill_coffers_signet_adds_spice_while_holding_an_alliance() -> None:
@@ -175,14 +214,56 @@ def test_fill_coffers_signet_adds_spice_while_holding_an_alliance() -> None:
     )
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert _offered_icons(placed) == {"solari", "spice"}
 
-    result = resolve_agent_card_effect(placed)
+    spiced = resolve_agent_card_icon(placed, _fill_coffers_icon("spice")).state
+    result = resolve_agent_card_icon(spiced, _fill_coffers_icon("solari"))
     resources = result.state.players[0].resources
 
     # Fill Coffers: one Solari, and one Spice with an Alliance [Lady Amber
     # Metulli card].
     assert resources.solari == 1
     assert resources.spice == 1
+
+
+def test_fill_coffers_spice_waits_for_an_alliance_formed_later_in_the_turn() -> (
+    None
+):
+    # The Signet before the Alliance: the Solari now, and the spice once
+    # Shipping's Fremen Influence takes the Alliance in the same turn; it is
+    # mandatory then (OQ-057 (1)).
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=(_signet_instance(),),
+        resources=Resources(spice=3),
+        influence=Influence(spacing_guild=2, fremen=3),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "shipping")).state
+    solari = resolve_agent_card_icon(placed, _fill_coffers_icon("solari")).state
+    assert solari.players[0].resources.solari == 1
+    assert _offered_icons(solari) == set()
+    assert agent_card_effect_is_unavailable(solari)
+
+    engine = UprisingRulesEngine()
+    allied = engine.apply(
+        solari,
+        DomainAction(
+            "choose_shipping_influence", 0, (("faction", Faction.FREMEN.value),)
+        ),
+    ).state
+    assert allied.players[0].alliance_faction_ids == ("fremen",)
+    assert _offered_icons(allied) == {"spice"}
+    assert DomainAction("finish_agent_turn", 0) not in engine.legal_actions(allied, 0)
+    spice_before = allied.players[0].resources.spice
+
+    result = resolve_agent_card_icon(allied, _fill_coffers_icon("spice"))
+
+    assert result.state.players[0].resources.spice == spice_before + 1
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
 
 
 def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:

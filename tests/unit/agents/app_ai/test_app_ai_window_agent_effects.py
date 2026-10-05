@@ -1379,9 +1379,23 @@ def test_muad_dib_lead_the_way_waits_in_the_prompt() -> None:
 
 
 def test_amber_fill_coffers_runs_immediately() -> None:
+    # Fill Coffers' two icons: the Solari trigger at once; the spice waits
+    # for an Alliance (not offered without one), then runs at 600.
     state, seat = _signet("lady_amber_metulli")
-    (signet,) = (s for s in _sources(state, seat) if s.label.startswith("signet"))
-    assert signet.stage is Stage.IMMEDIATE
+    signets = {
+        s.label: s for s in _sources(state, seat) if s.label.startswith("signet")
+    }
+    assert set(signets) == {"signet lady_amber_metulli solari"}
+    solari = signets["signet lady_amber_metulli solari"]
+    assert (solari.stage, solari.order) == (Stage.COST_FIRST, -1)
+    allied, seat = _signet("lady_amber_metulli", alliance_faction_ids=("fremen",))
+    signets = {
+        s.label: s for s in _sources(allied, seat) if s.label.startswith("signet")
+    }
+    assert signets["signet lady_amber_metulli spice"].stage is Stage.IMMEDIATE
+    assert signets["signet lady_amber_metulli spice"].actions == (
+        _a(seat, "resolve_agent_card_effect", effect="spice"),
+    )
 
 
 @pytest.mark.parametrize(
