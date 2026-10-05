@@ -1532,6 +1532,15 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 arguments=(("instance_id", instance_id), ("to_deck_top", True)),
             )
         )
+    # Reclaimed Forces is a Tleilaxu card Harvest Cells may take too: one
+    # template per effect chosen (user ruling 2026-10-06).
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_intrigue_reclaimed_forces",
+            arguments=(("choice", choice),),
+        )
+        for choice in ("troops", "tleilaxu")
+    )
     templates.append(ActionTemplate(action_id="decline_intrigue_tleilaxu"))
     templates.extend(
         ActionTemplate(

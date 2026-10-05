@@ -866,7 +866,9 @@ class GenerateSpecimens:
 @dataclass(frozen=True, slots=True)
 class AcquireTleilaxuCard:
     """You may acquire a Tleilaxu Row card, paying its specimen cost
-    (Harvest Cells) [Immortality p. 8]."""
+    (Harvest Cells) [Immortality p. 8]: a dealt card, or Reclaimed Forces
+    for one of its effects, the card left in place [Immortality p. 9] (user
+    ruling 2026-10-06)."""
 
 
 @dataclass(frozen=True, slots=True)

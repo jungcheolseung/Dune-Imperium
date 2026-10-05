@@ -158,7 +158,9 @@ def apply_tleilaxu_acquisition(state: GameState, action: DomainAction) -> RuleRe
     arguments = dict(action.arguments)
     source = f"round:{state.round_number}:player:{player}:acquire_tleilaxu"
     if action.action_id == "acquire_reclaimed_forces":
-        return _apply_reclaimed_forces(state, player, str(arguments["choice"]), source)
+        return acquire_reclaimed_forces(
+            state, player, str(arguments["choice"]), source=source
+        )
     return acquire_tleilaxu_card(
         state,
         player,
@@ -258,9 +260,22 @@ def acquire_tleilaxu_card(
     )
 
 
-def _apply_reclaimed_forces(
-    state: GameState, player: int, choice: str, source: str
+def acquire_reclaimed_forces(
+    state: GameState, player: int, choice: str, *, source: str
 ) -> RuleResult:
+    """"Acquire" Reclaimed Forces for its specimens: one of its effects, the
+    card left in the Row [Immortality p. 9] (also for Harvest Cells' offer).
+
+    "When a player 'acquires' it, they choose one of its effects (to recruit
+    two troops, or advance their Tleilaxu token one space on the Tleilaxu
+    track), but leave the card in place." [Immortality p. 9]. Harvest
+    Cells' "You may also acquire a Tleilaxu card (paying its normal cost)"
+    [Harvest Cells card] may take it too (user ruling 2026-10-06, OQ-066's
+    "acquiring it is acquiring a card"); the caller offers ``choice`` only
+    without a ``reclaimed_forces_block``. The troops count toward the
+    owner's Reveal only when acquired in it.
+    """
+
     # Arrakeen Scouts' Back Room Deal: the Solari on the card go to the next
     # seat to acquire it [Scouts mission: Back Room Deal].
     deal = claim_goods_at(
@@ -301,10 +316,12 @@ def _apply_reclaimed_forces(
             events=(event, *deal.events, *advanced.events, *fired.events),
         )
     recruited_owner, recruited = recruit_troops(owner, 2)
-    next_state = _record_reveal_recruits(
-        replace(state, players=replace_player(state.players, recruited_owner)),
-        recruited,
-    )
+    next_state = replace(state, players=replace_player(state.players, recruited_owner))
+    if tleilaxu_shop_is_open(next_state, player):
+        # A Reveal-turn recruit may deploy with a Combat icon [Bloodlines
+        # p. 5]; Harvest Cells' offer after a Conflict recruits to the
+        # garrison and counts toward no turn.
+        next_state = _record_reveal_recruits(next_state, recruited)
     fired = fire_reveal_acquisition_intrigue(
         next_state,
         player,

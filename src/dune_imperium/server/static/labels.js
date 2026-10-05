@@ -258,6 +258,7 @@ const ACTION_LABELS = {
   acquire_tleilaxu: "{tleilaxu} 카드 획득",
   acquire_reclaimed_forces: "되돌아온 병사들",
   acquire_intrigue_tleilaxu: "세포 수확: {tleilaxu} 카드 획득",
+  acquire_intrigue_reclaimed_forces: "세포 수확: 되돌아온 병사들",
   decline_intrigue_tleilaxu: "세포 수확: 획득 안 함",
   choose_graft_partner: "{graft}: 함께 사용할 카드",
   switch_graft_card: "{graft}: 다른 카드의 {agent_box} 해결",

@@ -224,6 +224,7 @@ const LABELS_EN = {
     "acquire_tleilaxu": "Acquire {tleilaxu} card",
     "acquire_reclaimed_forces": "Reclaimed Forces",
     "acquire_intrigue_tleilaxu": "Harvest Cells: Acquire {tleilaxu} card",
+    "acquire_intrigue_reclaimed_forces": "Harvest Cells: Reclaimed Forces",
     "decline_intrigue_tleilaxu": "Harvest Cells: Decline to acquire",
     "choose_graft_partner": "{graft}: card to use together",
     "switch_graft_card": "{graft}: resolve the other card's {agent_box}",

@@ -146,7 +146,12 @@ from dune_imperium.rules.spy_placement import (
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.tech import push_tech_acquisition
-from dune_imperium.rules.tleilaxu_row import acquire_tleilaxu_card
+from dune_imperium.rules.tleilaxu_row import (
+    RECLAIMED_FORCES_CHOICES,
+    acquire_reclaimed_forces,
+    acquire_tleilaxu_card,
+    reclaimed_forces_block,
+)
 from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
@@ -966,6 +971,19 @@ def legal_intrigue_choice_actions(
                             ),
                         )
                     )
+            # "The Tleilaxu Row must always have two cards plus Reclaimed
+            # Forces" [Immortality p. 9], so its "acquire" (one effect, the
+            # card left in place) is a Tleilaxu card to take here too, with
+            # the Reveal shop's blocks (user ruling 2026-10-06; OQ-066).
+            actions.extend(
+                DomainAction(
+                    action_id="acquire_intrigue_reclaimed_forces",
+                    actor=player,
+                    arguments=(("choice", choice),),
+                )
+                for choice in RECLAIMED_FORCES_CHOICES
+                if reclaimed_forces_block(owner, choice) is None
+            )
             actions.append(
                 DomainAction(action_id="decline_intrigue_tleilaxu", actor=player)
             )
@@ -1220,6 +1238,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                             payload=(("player", player),),
                         ),
                     ),
+                )
+            elif action.action_id == "acquire_intrigue_reclaimed_forces":
+                result = acquire_reclaimed_forces(
+                    state, player, str(arguments["choice"]), source=step_source
                 )
             else:
                 result = acquire_tleilaxu_card(

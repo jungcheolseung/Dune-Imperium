@@ -9,7 +9,10 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
-from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.immortality.board import (
+    RESEARCH_START_ID,
+    TLEILAXU_TRACK_END,
+)
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
@@ -571,6 +574,105 @@ def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
     ).state
     assert rewarded.players[0].specimens == 2
     assert rewarded.players[0].troops_supply == 4 - 2
+
+
+def _harvest_cells_offer(specimens: int, **extra: object) -> GameState:
+    """Harvest Cells played in the Conflict-end window, its specimens taken:
+    the "acquire a Tleilaxu card" slot is open."""
+
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    owner = _fighter(
+        3,
+        intrigue_cards=(card,),
+        specimens=specimens,
+        troops_supply=9 - specimens,
+        **extra,
+    )
+    window = _pass_through_combat(engine, _combat_state(owner))
+    played = engine.apply(
+        window,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", card),),
+        ),
+    ).state
+    return engine.apply(
+        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+
+
+def _reclaimed_forces(state: GameState) -> list[str]:
+    return [
+        str(dict(action.arguments)["choice"])
+        for action in legal_intrigue_choice_actions(state, 0)
+        if action.action_id == "acquire_intrigue_reclaimed_forces"
+    ]
+
+
+def test_harvest_cells_may_take_reclaimed_forces_troops() -> None:
+    # "The Tleilaxu Row must always have two cards plus Reclaimed Forces
+    # ... When a player 'acquires' it, they choose one of its effects (to
+    # recruit two troops, or advance their Tleilaxu token one space on the
+    # Tleilaxu track), but leave the card in place" [Immortality p. 9]
+    # (docs/rules/immortality.md 4); Harvest Cells' "You may also acquire a
+    # Tleilaxu card (paying its normal cost)" may take it (user ruling
+    # 2026-10-06). One specimen held plus the two harvested pays its three.
+    card = _intrigue("harvest_cells")
+    offer = _harvest_cells_offer(1)
+    assert offer.players[0].specimens == 3
+    assert _reclaimed_forces(offer) == ["troops", "tleilaxu"]
+    codec = ActionCodec(IMMORTALITY)
+    for action in legal_intrigue_choice_actions(offer, 0):
+        assert codec.decode(codec.encode(action), 0) == action
+    garrison = offer.players[0].troops_garrison
+    taken = UprisingRulesEngine().apply(
+        offer,
+        DomainAction(
+            action_id="acquire_intrigue_reclaimed_forces",
+            actor=0,
+            arguments=(("choice", "troops"),),
+        ),
+    )
+    owner = taken.state.players[0]
+    assert owner.specimens == 0
+    assert owner.troops_garrison == garrison + 2
+    assert owner.troops_conflict == 0
+    # The card stays in place; the two dealt cards are untouched.
+    assert taken.state.tleilaxu_row == offer.tleilaxu_row
+    assert card in taken.state.intrigue_discard
+    assert [
+        dict(event.payload)["choice"]
+        for event in taken.events
+        if event.kind == "reclaimed_forces_acquired"
+    ] == ["troops"]
+
+
+def test_harvest_cells_may_take_reclaimed_forces_tleilaxu_step() -> None:
+    offer = _harvest_cells_offer(1)
+    taken = UprisingRulesEngine().apply(
+        offer,
+        DomainAction(
+            action_id="acquire_intrigue_reclaimed_forces",
+            actor=0,
+            arguments=(("choice", "tleilaxu"),),
+        ),
+    ).state
+    owner = taken.players[0]
+    assert owner.specimens == 0
+    assert owner.tleilaxu_space == 1
+    assert taken.tleilaxu_row == offer.tleilaxu_row
+
+
+def test_harvest_cells_offers_reclaimed_forces_only_when_paid_and_useful() -> None:
+    # No specimen held: the two harvested ones are below its printed three.
+    assert _reclaimed_forces(_harvest_cells_offer(0)) == []
+    # The Reveal shop's block: an advance from the track's last space buys
+    # nothing (OQ-048, OQ-071), so only the troops are offered.
+    assert _reclaimed_forces(
+        _harvest_cells_offer(1, tleilaxu_space=TLEILAXU_TRACK_END)
+    ) == ["troops"]
 
 
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:

@@ -459,10 +459,12 @@ def _research_spaces(ctx: AppContext) -> tuple[Entity, ...]:
 def _harvest_targets(ctx: AppContext) -> tuple[Entity, ...]:
     """``HarvestCellsAbility::GetHarvestCellsTargets @0x4c751c0`` (UNTRACED).
 
-    Judgement: the dealt Tleilaxu Row cards (our engine's acquirable set;
-    Reclaimed Forces is not a card one acquires) whose ``SpecimenCost`` the
+    Judgement: the dealt Tleilaxu Row cards whose ``SpecimenCost`` the
     seat can pay with the two specimens the card harvests
-    (``GetSpecimensAvailable @0x4c75110``, by its name), in Row order.
+    (``GetSpecimensAvailable @0x4c75110``, by its name), in Row order. Our
+    engine also offers Reclaimed Forces there
+    (``acquire_intrigue_reclaimed_forces``, user ruling 2026-10-06); with
+    the target list untraced it is left out, so this port never takes it.
     """
 
     available = ctx.specimens() + 2
