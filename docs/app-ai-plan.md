@@ -102,6 +102,21 @@ registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
 - 앱 AI는 지도자를 무작위로 고른다. 우리 대전은 지도자를 돌려 배정하므로(`--rotate-leaders`) AI 결정이 아니다.
 - 각 창 구현에서 새로 찾은 차이는 이 절에 적는다.
 
+Immortality·Epic·프로모(2026-10-05, 창 단계):
+
+- Graft: 앱은 배치 전(AgentTurnPhase state 50)에 상대 카드를 묻고 우리는 배치 뒤에 묻는다. app_ai는 턴 창에서 앱 답을 계산해
+  `graft_partner` 창으로 넘긴다. 두 Agent 상자의 순서(`switch_graft_card`)는 앱의 `chosenAgentAbilities` 순서를 따른다.
+- Research에서 앱이 "칸 없음"으로 답하면(다음 칸 값이 모두 0 이하) 앱은 카드를 뽑고 움직이지 않는다. 우리 창은 반드시 움직이므로
+  값이 가장 높은 칸을 고른다. c7r3·c8r6 보너스와 연구 칸 Trash는 앱에서는 행동 뒤 질문에 남아 나중에 쓸 수 있지만 우리 엔진은 바로
+  묻는다.
+- 표본 반환은 앱이 묻는 자리(턴 시작, 행동 뒤 질문, 병력 부족)에서만 하고, 우리 엔진이 효과 중간·교전 책략 우선순위에서 더 묻는
+  것은 앱 엔진처럼 넘긴다.
+- Pivotal Gambit + Economic Supremacy: 앱은 추가 영향력을 조용히 잃지만 우리 엔진은 묻는다. `GainAnyInfluenceConflictAbility`의 답
+  (가장 좋은 진영)으로 답한다. Arrakis Revolt(OQ-026): 앱의 "내고 벽 유지" 답에 대응하는 합법 행동이 없으면 거절한다.
+- Harvest Cells: 앱은 교전 해결 창에서, 우리는 보상 뒤 `conflict_end_trigger`에서 묻는다. 교전 때 정한 답을 다시 쓴다.
+- Economic Supremacy의 두 지불은 앱이 한 질문에서 섞은 순서로, 우리는 인쇄 순서의 두 질문으로 묻는다. 자원이 달라 결과는 같다.
+- 창이 모르는 카드·행동 id는 조용한 기본값 대신 대체(무작위, `fallbacks`에 셈)로 넘긴다. 그래야 census가 빈 곳을 보여 준다.
+
 ## 7. 구현 순서와 진행 상태
 
 | 단계 | 작업 | 상태 |
@@ -269,10 +284,11 @@ Arrakeen Scouts (R9): 앱에 없으므로 모든 결정이 앱식 확장이다.
 | 단계 | 작업 | 상태 |
 |---|---|---|
 | 기반 | 모든 앱 아키타입 추출, Go to 11 VP 눈금, heuristic 대체 제거, `Board`, Immortality·Epic·Tleilaxu·프로모 대응표; 지도자 드래프트 창(균등 무작위, 앱 그대로) | 완료 `fca021f2`, `b244047a` |
-| 2 | 충실 포팅: Immortality 프로필(§2)·능력(§3–7), Epic·프로모 능력, Bloodlines Tech의 바탕인 RoI Tech 기계 | 진행 중 |
-| 2' | 앱식 사양: `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md` | 진행 중 |
-| 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | |
-| 4 | 결정 창: 기존 창에 새 id, 새 창(Immortality 6, Bloodlines 10, Scouts 10, `leader_draft`) | |
+| 2 | 충실 포팅: Immortality 프로필(§2)·능력(§3–7), Epic·프로모 능력, Bloodlines Tech의 바탕인 RoI Tech 기계 | 완료 `8f7b6ba0` |
+| 2' | 앱식 사양: `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md` | 완료 `38a2e0d6` |
+| 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | 진행 중 |
+| 4 | 결정 창: Immortality·Epic·Go to 11·프로모·드래프트(새 창 6개 포함) | 완료 `e88edff4`: 7개 조합 6판씩 대체 0·미포팅 0 |
+| 4' | 결정 창: Bloodlines 10, Scouts 10과 기존 창의 새 id | |
 | 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | |
 
 검증: 충실 포팅은 지금까지처럼 사양·역어셈블에 대한 독립 반박 검증. 앱식 확장은 앱과 대조할 것이 없으므로 이 절의 규칙에 대한 대조로
