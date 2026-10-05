@@ -312,7 +312,11 @@ def none(answer: Answer) -> None:
 
 def test_every_intrigue_ability_class_resolves_to_a_registered_port() -> None:
     for short in INTRIGUE_ARCHETYPES.values():
+        if short not in ARCHETYPES:
+            continue  # Bloodlines (app-style): test_app_ai_synthetic.py
         archetype = ARCHETYPES[short]
+        if not (archetype.in_uprising or archetype.in_uprising_choam):
+            continue  # Immortality: covered by the expansion ports.
         ids = archetype.attributes.get("WormAbilityIDs") or archetype.attributes.get(
             "CustomAbilityIDs"
         )

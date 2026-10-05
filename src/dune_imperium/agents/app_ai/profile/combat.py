@@ -10,6 +10,9 @@ Unit counts follow the app's ``WormPlayer`` getters, mapped to our fields
 ``troops_garrison`` (an Uprising garrison holds troops only),
 ``Strength`` = ``combat_strength``, ``RemainingAgents.Count()`` =
 ``agents_available`` (like the app, it is not cleared by revealing).
+Bloodlines (docs/app-ai/bloodlines-systems.md §1.1, D1): Sardaukar Commanders
+count as troops and units, Duncan's Into the Fray Agent as a Conflict unit;
+both are 0 without the option.
 
 Comparisons keep the binary's direction and strictness, so a NaN conflict
 interest (no current Conflict: ``RelativeConflictValue`` divides by an empty
@@ -81,13 +84,22 @@ _CONFLICT_PLACES: dict[str, int] = {
     "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictFirstAbility": 1,
     "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictSecondAbility": 2,
     "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictThirdAbility": 3,
+    # Epic's Economic Supremacy (spec/epic-goto11-promo-draft.md §2.4): the
+    # place ctors 0x4b78db0 / 0x4b7a920 / 0x4b7c980; its Solari and Spice
+    # charges have no ConflictPlace attribute (0).
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyFirstAbility": 1,
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacySecondAbility": 2,
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyThirdAbility": 3,
 }
 
 # Direct subclasses of ``PlayAbilities.StrengthIntrigueAbility`` dealt in an
-# Uprising game (type listing in ``worm-canis.dll.cs``): the abilities
+# Uprising game, with Immortality's two (type listing in
+# ``worm-canis.dll.cs``; none has a subclass): the abilities
 # ``OfType<StrengthIntrigueAbility>()`` keeps.
 _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
     {
+        "worm.canis.abilities.PlayAbilities.Immortality.CounterattackCombatAbility",
+        "worm.canis.abilities.PlayAbilities.Immortality.ViciousTalentsAbility",
         "worm.canis.abilities.PlayAbilities.BaseSet.BackedbyCHOAMCombatAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.ContingencyPlanCombatAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.DevourAbility",
@@ -101,6 +113,25 @@ _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
         "worm.canis.abilities.PlayAbilities.Uprising.TacticalOptionAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.WeirdingCombatAbility",
     }
+) | frozenset(
+    # App-style Bloodlines subclasses of StrengthIntrigueAbility
+    # (docs/app-ai/bloodlines-cards.md §4.1, §5: "Combat cards derive from
+    # StrengthIntrigueAbility"), so ``OfType<StrengthIntrigueAbility>()``
+    # keeps them. Only the Bloodlines synthetic archetypes list these names.
+    "worm.canis.abilities.AppStyle.Bloodlines." + name
+    for name in (
+        "BattlefieldResearchCombatAbility",
+        "DesertSupportAbility",
+        "GraspArrakisCombatAbility",
+        "ReturnTheFavorAbility",
+        "RipplesInTheSandAbility",
+        "TenuousBondCombatAbility",
+        "TheStrongSurviveAbility",
+        "WithdrawalAgreementAbility",
+        "TwistedControlledCombatAbility",
+        "TwistedShrewdAbility",
+        "TwistedSinisterAbility",
+    )
 )
 
 # ``DeployValue``'s "nothing to deploy from" spaces (base-game list; in
@@ -122,6 +153,7 @@ _HEIGHLINER_SPACES: frozenset[str] = frozenset(
 _GURNEY = "LeaderArchetypes.Uprising.GurneyHalleckLeader"
 _CHANI_CLEVER_TACTICIAN = "chani_clever_tactician"
 _GO_TO_GROUND = "go_to_ground"
+_ECONOMIC_POSITIONING = "economic_positioning"  # our Intrigue card id
 # Our ids of the board spaces the potentials look up
 # (``BoardSpaces.FirstOrDefault(IsHeighlinerSpace)`` / ``ArchID ==
 # Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): always on our board.
@@ -183,7 +215,7 @@ def _strings(archetype: Archetype, name: str) -> tuple[str, ...]:
 def _card_archetype(bare_card_id: str) -> Archetype:
     """A personal card's archetype by bare card id."""
 
-    return ARCHETYPES[catalog.CARD_ARCHETYPES[bare_card_id]]
+    return catalog.archetype(catalog.CARD_ARCHETYPES[bare_card_id])
 
 
 def _card_strength(bare_card_id: str) -> int:
@@ -198,16 +230,43 @@ def _has_guild_icon(bare_card_id: str) -> bool:
     return "SpacingGuild" in _strings(_card_archetype(bare_card_id), "IconList")
 
 
-def _conflict_units(p: PlayerState) -> int:
-    """``WormPlayer::get_ConflictUnits @0x4843c40`` (a sandworm is one unit)."""
+def _cs_half(value: int) -> int:
+    """C# ``int / 2``: truncation toward zero."""
 
-    return p.troops_conflict + p.sandworms_conflict
+    return int(value / 2)
+
+
+def _conflict_units(p: PlayerState) -> int:
+    """``WormPlayer::get_ConflictUnits @0x4843c40`` (a sandworm is one unit).
+
+    Bloodlines (docs/app-ai/bloodlines-systems.md §1.1, D1): every
+    ``WormUnit`` counts, so Sardaukar Commanders and Duncan's Into the Fray
+    Agent too (``PlayerState.units_in_conflict``); both are 0 without the
+    option.
+    """
+
+    return p.units_in_conflict
 
 
 def _garrison_units(p: PlayerState) -> int:
-    """``WormPlayer::get_GarrisonUnits @0x4843dc0`` (troops only in Uprising)."""
+    """``WormPlayer::get_GarrisonUnits @0x4843dc0`` (troops only in Uprising;
+    Bloodlines garrison Commanders too, §1.1)."""
 
-    return p.troops_garrison
+    return p.troops_garrison + p.commanders_garrison
+
+
+def _garrison_troops(p: PlayerState) -> int:
+    """``WormPlayer::get_GarrisonTroops @0x4843ac0``: troops, and Bloodlines
+    Commanders ("a 'troop' worth 2 strength", §1.1, D1); never an Agent."""
+
+    return p.troops_garrison + p.commanders_garrison
+
+
+def _conflict_troops(p: PlayerState) -> int:
+    """``GetDeployedTroops`` / ``HasUnitsDeployed<WormTroop>``: troops in the
+    Conflict and Bloodlines Commanders (§1.1); never a sandworm or Agent."""
+
+    return p.troops_conflict + p.commanders_conflict
 
 
 class CombatMixin(ProfileCore):
@@ -355,7 +414,7 @@ class CombatMixin(ProfileCore):
             1 for op in self.ctx.opponents if _conflict_units(op) > 0
         ):
             v = v * 1.5  # f64 1.5 (DeployValue)
-        elif interest >= ub and me.troops_garrison > 0:
+        elif interest >= ub and _garrison_troops(me) > 0:
             v = v + v
         w = v
         if _garrison_units(me) == 0 and owner.kind is Kind.SPACE:
@@ -381,14 +440,20 @@ class CombatMixin(ProfileCore):
                 # f64 1.25 (DeployValue): a guaranteed 3rd place.
                 w += 1.25 * third.value_for_player(self._profile(), ()).sum
         # f64 0.33 and 2.0 (DeployValue): pressure from an overfull garrison.
-        w += min(max(0.0, (me.troops_garrison - 3) * 0.33), 2.0)
+        w += min(max(0.0, (_garrison_troops(me) - 3) * 0.33), 2.0)
         # IsSetEnabled(RiseOfIx) is false: dreadnought, Negotiated Withdrawal
         # and Overpowering Dread terms skipped. Rapid Mobilization and Staged
         # Incident (BaseSet) cannot be held: r = s = 1.0.
         r = 1.0
         s = 1.0
         w = w * (r * s)
-        # Economic Positioning (Immortality) cannot be held.
+        # Economic Positioning (Immortality, spec/immortality.md §2.9): not
+        # gated by the set (the card exists only with it).
+        if (
+            self._holds_intrigue(_ECONOMIC_POSITIONING)
+            and self.solari_value(1) >= self.C.EconomicPositioningDeploySolariThreshold
+        ):
+            w *= self.C.EconomicPositioningDeployMod
         if (
             any(card_id(card) == _CHANI_CLEVER_TACTICIAN for card in me.in_play)
             and 1 <= _conflict_units(me) <= 2  # unsigned ConflictUnits - 1 <= 1
@@ -433,7 +498,11 @@ class CombatMixin(ProfileCore):
         )
 
     def combat_positioning(self) -> float:
-        """``GetCombatPositioning @0x4913ea0`` — spec §4 (unused in Uprising)."""
+        """``GetCombatPositioning @0x4913ea0`` — spec §4.
+
+        Only caller: Immortality's ``HighPriorityTravelAbility``
+        (immortality.md §5.6); unused in a plain Uprising game.
+        """
 
         me = self.ctx.me
         # b__108_0: p != me and its agent supply holds at least as many.
@@ -493,7 +562,10 @@ class CombatMixin(ProfileCore):
 
         The current card's ``ConflictValue`` divided by the average reward value
         of every Uprising conflict card of its level. With no current Conflict
-        the average stays 0 and the result is NaN, as in the app.
+        the average stays 0 and the result is NaN, as in the app. Epic's
+        Economic Supremacy (a Rise of Ix archetype) is never in that pool: as
+        the current card it is divided by the four Uprising level-III cards'
+        average (spec/epic-goto11-promo-draft.md §2.4).
         """
 
         four = self._is_four_player()
@@ -589,6 +661,10 @@ class CombatMixin(ProfileCore):
         _multiply(res, "Avg Conflict Value", _ieee_div(1.0, avg.sum))
         # Demand Respect, To the Victor (BaseSet), Strategic Push and Windtraps
         # (Rise of Ix) cannot be held in an Uprising game.
+        # Bloodlines Planetary Array (bloodlines-systems.md §9, D58; the
+        # Windtraps precedent): a draw on a Conflict win. Tech Module only.
+        if self.ctx.has_tech("planetary_array"):
+            res.add("Planetary Array", self.card_draw_value_with_buy_gains())
         return res
 
     def current_conflict_interest(self) -> Summer:
@@ -623,6 +699,29 @@ class CombatMixin(ProfileCore):
             s.add("Worm Potential", self.C.ConflictInterestWormPotential)
         # Reinforcements (BaseSet) cannot be held in an Uprising game.
         return s
+
+    def _intrigue_troop_value(self) -> int:
+        """``IntrigueHand.OfType<WormIntriguePlayable>().Sum(b__116_2)``.
+
+        ``b__116_2``: ``card.Abilities.OfType<IntrigueAbility>().Sum(a =>
+        a.TroopValue(M, me))`` (vslot 86), over the held Intrigue in hand
+        order. The only override in our games is Immortality's
+        ``CounterattackPlotAbility::TroopValue @0x4c672f0`` (4), spec
+        immortality.md §2.9; the Intrigue port supplies it as
+        ``troop_value(profile)`` (``IntrigueAbility`` default 0). An
+        unported class is worth 0 (``WormAbilityDefinition``).
+        """
+
+        from dune_imperium.agents.app_ai.abilities.intrigue import IntrigueAbility
+
+        profile = self._profile()
+        total = 0
+        for card in self.ctx.intrigue_cards:
+            entity = catalog.intrigue_entity(card, self.ctx.seat)
+            for ability in abilities_of(entity):
+                if isinstance(ability, IntrigueAbility):
+                    total += int(ability.troop_value(profile))
+        return total
 
     def intrigue_hand_strength_value(self) -> int:
         """``IntrigueHandStrengthValue @0x4914170`` — spec §5.3, intrigues §4.4.
@@ -672,7 +771,7 @@ class CombatMixin(ProfileCore):
             s.add("Possible Intrigue Swords", intrigue_swords)
             s.add("Possible Hand Swords", hand_swords)
             s.add("Agents Left", 2 * agents)
-            s.add("Garrison Units", min(3 * agents, op.troops_garrison))
+            s.add("Garrison Units", min(3 * agents, _garrison_troops(op)))
             # f64 1.0 (EstOpponentStrength); RCV from this AI's point of view.
             if is_heighliner and self.relative_conflict_value().sum >= 1.0:
                 s.add("Heighliner Bonus", self.C.ExpectedStrengthHeighlinerPotential)
@@ -702,9 +801,7 @@ class CombatMixin(ProfileCore):
             s.add("Intrigue Swords", self.intrigue_hand_strength_value())
             if _garrison_units(me) > 0:
                 s.add("Agents Left Bonus", 3 * me.agents_available)
-            # IntrigueAbility.TroopValue is overridden only by Base, Rise of Ix
-            # and Immortality intrigues: 0 for every Uprising card (int / 2).
-            s.add("Intrigue Troop Value", 0)
+            s.add("Intrigue Troop Value", _cs_half(self._intrigue_troop_value()))
             if self.heighliner_potential_player() == self.ctx.seat:
                 s.add("Heighliner Bonus", self.C.ExpectedStrengthHeighlinerPotential)
             elif self._worm_potential_a_player() == self.ctx.seat:
@@ -726,7 +823,7 @@ class CombatMixin(ProfileCore):
         s.add("Deployable Bonus", 2 * max_units)
         s.add("Undeployable Bonus", min(_garrison_units(me) - max_units, 2 * agents))
         s.add("Agents Left", 2 * agents)
-        s.add("Intrigue Troop Value", 0)  # 0 in Uprising, as in est_strength
+        s.add("Intrigue Troop Value", _cs_half(self._intrigue_troop_value()))
         if self.heighliner_potential_player() == self.ctx.seat:
             s.add("Heighliner Bonus", self.C.PotentialStrengthHeighlinerPotential)
         elif self.has_worm_potential():
@@ -816,7 +913,7 @@ class CombatMixin(ProfileCore):
         # cannot occur. Go to Ground: keep one troop in to stay playable.
         if (
             self._holds_intrigue(_GO_TO_GROUND)
-            and me.troops_conflict == 0
+            and _conflict_troops(me) == 0
             and deploy == 0
             and units - deploy > 0
         ):
@@ -846,10 +943,13 @@ class CombatMixin(ProfileCore):
             return self.est_opponent_strength(p.player_id).sum
 
         top2 = sorted(self.ctx.players, key=estimate, reverse=True)[:2]
-        max_vp = max(p.victory_points for p in top2)
+        max_vp = max(self.ctx.vp(q) for q in top2)
         trigger = self.ctx.endgame_trigger_score
         conflict = self._current_conflict()
-        # The conflict card's own VictoryPoints: 0 for every Uprising card.
+        # The conflict card's own VictoryPoints: 0 for every Uprising card, 4
+        # for Epic's Economic Supremacy (its Rise of Ix archetype; spec
+        # epic-goto11-promo-draft.md §2.4: the branch fires at max VP >= 8
+        # with T = 12).
         conflict_vp = 0 if conflict is None else conflict.int_attr("VictoryPoints", 0)
         slots = self._conflict_rewards_allowed()
         if conflict_vp + max_vp >= trigger:
@@ -869,7 +969,7 @@ class CombatMixin(ProfileCore):
             ):
                 return min(max_troops, _conflict_units(me) - 1)
             return 0
-        if self.C.TroopRichThreshold <= me.troops_garrison:
+        if self.C.TroopRichThreshold <= _garrison_troops(me):
             return 0
         below = next((s for s in opp_current if current >= s), 0)  # b__4
         excess = current - below
@@ -966,7 +1066,7 @@ class CombatMixin(ProfileCore):
         """
 
         ordered = self.ordered_players()
-        space = catalog.space_entity(_HEIGHLINER, self.ctx.choam)
+        space = catalog.space_entity(_HEIGHLINER, self.ctx.board)
         spice_cost = space.int_attr("SpiceCost", 0)
         occupied = self._space_has_agent(_HEIGHLINER)
         for seat in ordered:
@@ -1047,7 +1147,7 @@ class CombatMixin(ProfileCore):
         """
 
         p = self.ctx.player(seat)
-        space = catalog.space_entity(space_id, self.ctx.choam)
+        space = catalog.space_entity(space_id, self.ctx.board)
         return (
             p.maker_hooks
             and p.agents_available > 0

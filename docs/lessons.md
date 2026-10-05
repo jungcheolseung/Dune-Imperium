@@ -800,3 +800,15 @@
   (`scripts/dwgr/app_ai_constants.py`가 이 세 방식을 다 쓴다). 앱 산술을 옮길 때 실수 합은 루프로, `AIProfileAbsUtils::Multiply`는
   `Sum + (m*Sum − Sum)`으로, `Convert.ToInt32`는 은행가 반올림으로 한다(`agents/app_ai/summer.py`, `profile/economy.py`의 `_dsum`).
 
+## 2026-10-05 — 모르는 카드를 조용히 거절하는 창이 "앱 판단"으로 세여 census가 빈 곳을 못 봄
+
+- 무슨 일: app_ai를 확장판까지 넓히며 "heuristic 0, 무작위 대체 0"을 census(`fallbacks`)로 재기로 했다. 2단계 검증 agent가
+  `windows/agent_effects.py`가 Control the Spice, Arrakis Revolt, Pivotal Gambit, The Beast's Spoils의 Agent 상자 지불을 **늘 거절**하면서
+  그 결정을 `mirrored`(앱 판단)로 세고 있음을 찾았다. 거절은 합법이라 게임은 돌고, 대체 수는 0이었다. 창 단계 검증에서 같은 꼴(모르는 효과를
+  자동 처리, 모르는 선택을 버림, 모르는 id를 End Turn이 지나침)이 열 곳 넘게 더 나왔다.
+- 원인: 처음 창들은 Uprising 카드만 알았고, 모르는 카드·id를 만나면 "가장 무난한 기본값"(거절, 자동 처리)을 골랐다. 측정 도구는 창이 None을
+  돌려줄 때만 대체로 셌으므로, 기본값은 측정에 보이지 않았다.
+- 재발 방지: 창은 모르는 카드·효과·행동 id를 만나면 기본값을 고르지 않고 None을 돌려준다(대체로 세여 census에 보인다). 창 모듈 docstring과
+  `docs/app-ai-plan.md` 3절에 적었고, 창마다 "모르는 id는 대체" 테스트가 있다. 측정이 0이라고 할 때는 그 0을 만드는 경로가 정말 판단을
+  거쳤는지(기본값 분기가 없는지)를 함께 본다.
+

@@ -7,7 +7,10 @@ classes these build on (``SpaceAbility``, ``DeferredAbility``,
 influence, intrigue, deploy, trash, spy, recall-agent and contract-gain
 abilities and the generic conflict rewards) are in ``abilities/generic.py``;
 this module holds the space-, conflict- and contract-specific subclasses and
-the two playmat spy abilities the Agent turn asks about.
+the two playmat spy abilities the Agent turn asks about. Which abilities a
+Conflict reward grants (``granted_reward_abilities``) is read here for every
+card, including Economic Supremacy, whose rewards live on the card's own
+abilities (``abilities/epic_promo.py``) instead of reward archetypes.
 
 App class chains (``dump/worm-canis.dll.cs``):
 
@@ -46,16 +49,22 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, ClassVar
 
 from dune_imperium.agents.app_ai.abilities.base import (
+    Ability,
     Answer,
     Request,
     SelectionMode,
     Timing,
+    abilities_of,
     port,
+)
+from dune_imperium.agents.app_ai.abilities.epic_promo import (
+    EconomicSupremacyFirstAbility,
 )
 from dune_imperium.agents.app_ai.abilities.generic import (
     ConflictAbility,
     ContractAbility,
     DeferredAbility,
+    GenericConflictAbility,
     HighCouncilGainIntrigueAbility,
     SpaceAbility,
     TriggeredAbility,
@@ -65,6 +74,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     _space_bonus_spice,
     _targets,
     collect_first,
+    conflict_reward,
     contract_spaces,
     deferred_threshold_reached,
     gain_any_influence_value,
@@ -499,6 +509,9 @@ class SpiceRefineryAbility(SpaceAbility):
         s2 = p.solari_value(2)  # literal 2
         s1 = p.spice_value(1)  # literal 1
         v.add("2 * SolariValue", s2)
+        if _free_spice_trade(self.owner):
+            v.add("2 SolariValue (free trade)", s2)
+            return v
         if s2 > s1:
             v.add("2 SolariValue > SpiceValue", s2)
             v.add("- SpiceValue", -s1)
@@ -515,15 +528,27 @@ class SpiceRefineryAbility(SpaceAbility):
         """
 
         n = p.spice_for_spice_refinery()
+        if _free_spice_trade(self.owner):
+            n = 1  # the 1-spice trade costs nothing: always sell
         if n < 0:
             return Answer(0.0, None, "SpiceRefinery | no answer")
         s = Summer()
         s.add("Solari", p.solari_value(self.solari_amount(n)))
-        s.add("Spice Cost", p.spice_value(-n))
+        paid = max(0, n + self.owner.int_attr("SpiceDiscount"))
+        s.add("Spice Cost", p.spice_value(-paid))
         if 0.0 >= s.sum:
             s.multiply("Reset", 0.0)
             s.add("Ensure positive value", 1.0)
         return Answer(s.sum, ((n,),), f"SpiceRefinery | sell {n}")
+
+
+def _free_spice_trade(space: Entity) -> bool:
+    """App-style (plan §11.8): Navigation Chamber's −1 spice on this visit
+    (``SpiceDiscount``, set on the space entity of the discounted variant,
+    ``windows/turn``) makes Spice Refinery's 1-spice trade free. Absent
+    without the Bloodlines tile, so app games keep the app's values."""
+
+    return space.int_attr("SpiceDiscount") < 0
 
 
 # -- Sietch Tabr (§1.4.17) ---------------------------------------------------------
@@ -863,6 +888,46 @@ class GainAnyTwoInfluenceConflictAbility(ConflictAbility):
         value = _math_max(0.5, _dsum([s.sum for s, _ in top]))
         refs = tuple(t.ref for _, t in top)
         return Answer(value, (refs,), "GainAnyTwoInfluenceConflict")
+
+
+def place_reward_ability(conflict: Entity, place: int) -> ConflictAbility | None:
+    """``conflict.Abilities.OfType<ConflictAbility>().FirstOrDefault(
+    ConflictPlace == place)`` (``WormConflictPlayable::AbilityForPlacement``
+    @0x4829c40; an ability without the attribute reads 0): the reward
+    ``CombatPhase/<DetermineRewards>d__19`` runs for that place."""
+
+    for ability in abilities_of(conflict):
+        if isinstance(ability, ConflictAbility) and (ability.place or 0) == place:
+            return ability
+    return None
+
+
+def granted_reward_abilities(conflict: Entity, place: int) -> tuple[Ability, ...]:
+    """The custom abilities the ``place`` reward of ``conflict`` grants.
+
+    What the place's ``ConflictAbility.BeginExecution`` hands its taker, in
+    grant order:
+
+    - ``GenericConflictAbility`` (every Uprising card): the reward
+      archetype's ``CustomAbilityIDs`` (``<BeginExecution>d__3``), the same
+      abilities ``catalog.conflict_reward_entities`` reaches;
+    - ``EconomicSupremacyFirstAbility`` (Epic's Conflict III, no reward
+      archetypes): the card's own ``EconomicSupremacySolariAbility`` and
+      ``…SpiceAbility`` (spec/epic-goto11-promo-draft.md §2.4);
+    - anything else (ES 2nd/3rd: plain gains): nothing.
+
+    Static content only: the ``GainAnyInfluenceConflictAbility`` charge a
+    played Pivotal Gambit appends at run time to the
+    ``GenericConflictFirstAbility``'s own ``CustomAbilityIDs``
+    (``epic_promo.pivotal_gambit_reward_ability``) is not listed.
+    """
+
+    reward = place_reward_ability(conflict, place)
+    if isinstance(reward, GenericConflictAbility):
+        return abilities_of(conflict_reward(conflict, place))
+    if isinstance(reward, EconomicSupremacyFirstAbility):
+        return reward.granted_abilities()
+    return ()
 
 
 # ===========================================================================

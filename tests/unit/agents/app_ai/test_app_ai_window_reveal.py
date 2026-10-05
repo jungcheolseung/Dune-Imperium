@@ -715,7 +715,9 @@ def test_shishakli_influence_is_an_explicit_prompt_key() -> None:
     state = apply(state, first)
     run = make_run(state, constants=NO_BUYS)
     influence = find(state, "gain_reveal_faction_influence", faction="fremen")
-    (source,) = [s for s in reveal._gain_sources(run) if influence in s.actions]
+    sources = reveal._gain_sources(run)
+    assert sources is not None
+    (source,) = [s for s in sources if influence in s.actions]
     assert source.stage is Stage.PROMPT
     assert source.extra == {"blocking": True, "explicit": True}
     assert source.evaluate is not None and source.evaluate() == (2.0, influence)
@@ -1108,6 +1110,13 @@ def test_plot_keys_come_from_the_intrigue_window(
 
 
 def test_non_core_reveal_action_is_not_mirrored() -> None:
+    state = take_gains(revealed(["imperium:steersman:0"]))
+    odd = DomainAction(action_id="resolve_command_choice", actor=owner(state))
+    run = make_run(state, actions=(*legal(state), odd))
+    assert reveal.reveal_window(run) is None
+
+
+def test_gain_action_without_its_pending_entry_is_not_mirrored() -> None:
     state = take_gains(revealed(["imperium:steersman:0"]))
     odd = DomainAction(action_id="advance_reveal_research", actor=owner(state))
     run = make_run(state, actions=(*legal(state), odd))

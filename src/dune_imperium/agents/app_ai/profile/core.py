@@ -1,9 +1,10 @@
 """The contract of the ``WormAIProfile`` port: every method, declared once.
 
-``Profile`` (``profile/__init__.py``) combines three mixins that implement
+``Profile`` (``profile/__init__.py``) combines the mixins that implement
 these methods: ``economy.py`` (spec/profile-economy.md), ``influence.py``
-(spec/profile-influence-uprising.md) and ``combat.py``
-(spec/profile-combat.md). Each method here only declares the signature, the
+(spec/profile-influence-uprising.md), ``combat.py``
+(spec/profile-combat.md), ``immortality.py`` (spec/immortality.md §2) and
+``tech.py`` (spec/rix-tech.md). Each method here only declares the signature, the
 app method it ports (with its address in build dad97e20) and the spec file;
 calling an unimplemented one raises ``NotImplementedError``. Mixins call each
 other through these declarations, so a method is always reached by its name
@@ -528,4 +529,34 @@ class ProfileCore:
 
     def trash_intrigue_value(self) -> float:
         """``TrashIntrigueValue`` @0x491b610."""
+        raise NotImplementedError
+
+    # ===========================================================================
+    # Immortality — spec/immortality.md §2 (implemented in immortality.py;
+    # the Immortality terms of GetResourceValue, AcquireValue, GetSynergyMod,
+    # GetAcquireEffectsValue, GetCardToTrash and DeployValue live in the
+    # methods above)
+    # ===========================================================================
+
+    def research_value(self) -> Summer:
+        """``ResearchValue`` @0x490ea70."""
+        raise NotImplementedError
+
+    def tleilaxu_value(self, amount: int) -> Summer:
+        """``TleilaxuValue(int amount)`` @0x490f130."""
+        raise NotImplementedError
+
+    def research_space_value(self, space_id: str) -> Summer:
+        """``WormResearchTrack::SpaceValue(space, forPlayer)`` @0x49b9900.
+
+        ``space_id`` is our research space id (``c<col>r<row>``).
+        """
+        raise NotImplementedError
+
+    def tleilaxu_row_cards(self) -> list[Entity]:
+        """``Playmat.TleilaxuRow.children.OfType<WormImperiumPlayable>()``.
+
+        Not an app method: the row the Immortality readers iterate
+        (Reclaimed Forces first; ``AppContext.tleilaxu_row``).
+        """
         raise NotImplementedError

@@ -60,11 +60,12 @@ from dune_imperium.agents.app_ai.abilities.generic import (
 from dune_imperium.agents.app_ai.catalog import (
     LEADER_ARCHETYPES,
     POST_INDEX,
-    SPACE_ARCHETYPES,
+    board_space_ids,
     card_entity,
     conflict_entity,
     space_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
@@ -196,11 +197,12 @@ def _deployed_units(p: Profile) -> int:
     """``ConflictArea.GetPlayerDeployed(player).children.Count``.
 
     The player's units in the Conflict: troops and sandworms (no dreadnoughts
-    in Uprising).
+    in Uprising), and the Bloodlines Commanders and Into the Fray Agent
+    (``units_in_conflict``; docs/app-ai/bloodlines-systems.md §1.1, read
+    only with the option: ``Profile.conflict_unit_count``).
     """
 
-    me = p.ctx.me
-    return me.troops_conflict + me.sandworms_conflict
+    return p.conflict_unit_count()
 
 
 def _has_trashable_card(p: Profile) -> bool:
@@ -240,12 +242,14 @@ def chroniclers_acquire_targets(p: Profile) -> list[Entity]:
     for reserve_id in _RESERVE_ORDER:
         if remaining.get(reserve_id, 0) > 0:
             card = card_entity(f"reserve:{reserve_id}")
+            if p.ctx.scouts:  # Market Opening's discount (plan §11.8)
+                card = p.market_opening_reserve_card(card)
             if card.int_attr("PersuasionCost", 99) <= max_cost:
                 cards.append(card)
     return cards
 
 
-def is_circle_observation_post(post_id: str, choam: bool) -> bool:
+def is_circle_observation_post(post_id: str, board: Board) -> bool:
     """``ArrakisInformantAbility::IsCircleObservationPost @0x4cebd80``.
 
     ``post.ObservedSpaces.Any(s => s.ActionIcon == Circle (1))`` (``b__3_0
@@ -254,8 +258,8 @@ def is_circle_observation_post(post_id: str, choam: bool) -> bool:
     """
 
     index = POST_INDEX[post_id]
-    for space_id in SPACE_ARCHETYPES:  # BoardSpaces order
-        space = space_entity(space_id, choam)
+    for space_id in board_space_ids(board):  # BoardSpaces order
+        space = space_entity(space_id, board)
         posts = space.attr("ObservationPosts", ())
         if (
             isinstance(posts, tuple)
@@ -742,9 +746,12 @@ class DesertScoutsAbility(DeferredAbility):
         return SelectionMode.OPTIONAL
 
     def meets_cost(self, p: Profile) -> bool:
-        """``Cost`` @0x4d0ab50: ``HasUnitsDeployed<WormTroop>.Any``."""
+        """``Cost`` @0x4d0ab50: ``HasUnitsDeployed<WormTroop>.Any``.
 
-        return p.ctx.me.troops_conflict > 0
+        Bloodlines Commanders are troops (bloodlines-systems.md §1.1, §2.3).
+        """
+
+        return p.conflict_troop_count() > 0
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
@@ -969,7 +976,7 @@ def deployed_faction_space(p: Profile) -> Entity | None:
     space_id = context.get("space_id")
     if not isinstance(space_id, str) or not space_id:
         return None
-    space = space_entity(space_id, p.ctx.choam)
+    space = space_entity(space_id, p.ctx.board)
     if space.attr("AgentIcon") in ("BeneGesserit", "Fremen"):
         return space
     return None
@@ -1076,7 +1083,7 @@ class ArrakisInformantAbility(SignetAbility):
         s = Summer()
         if _deployed_spies(p) > 2:
             return s
-        if any(is_circle_observation_post(post, p.ctx.choam) for post in POST_INDEX):
+        if any(is_circle_observation_post(post, p.ctx.board) for post in POST_INDEX):
             s.add("Place Spy Value", p.spy_value().sum)
             s.multiply("Arrakis Informant Spy", p.C.ArrakisInformantMod)
         return s

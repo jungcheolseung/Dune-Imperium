@@ -104,6 +104,8 @@ if TYPE_CHECKING:
 
 #: ``AbilityTiming`` values (``worm-canis.dll.cs``): Plot abilities set none.
 PLOT_TIMING: Final = 0
+#: Immortality's Harvest Cells (``HarvestCellsAbility`` ``.ctor @0x4c74ee0``).
+COMBAT_RESOLUTION_TIMING: Final = 3
 ENDGAME_TIMING: Final = 4
 COMBAT_TIMING: Final = 5
 
@@ -234,7 +236,7 @@ def _open_to(p: Profile, space_id: str) -> bool:
 def _space_cost(p: Profile, space_id: str) -> int:
     """The space's runtime ``SolariCost`` (Swordmaster drops to 6)."""
 
-    return space_solari_cost(p, space_entity(space_id, p.ctx.choam))
+    return space_solari_cost(p, space_entity(space_id, p.ctx.board))
 
 
 def _persuasion(p: Profile) -> int:
@@ -484,18 +486,26 @@ class IntrigueAbility(PlayAbility):
     def has_matching_timing(self, turn_type: int) -> bool:
         """``WormAbilityDefinition::HasMatchingTiming @0x4a89f30``.
 
-        None matches the turn types {Undetermined, Agent, Reveal} (spec
-        §2.1). UNTRACED for the others: Combat (5) is taken to match the
-        CombatTurn and Endgame (4) the Endgame turn.
+        The jump table (``il2dis``): timing 0 (None) matches the turn types
+        {Undetermined, Agent, Reveal} (spec §2.1); 1 Agent the AgentTurn; 2
+        Reveal the RevealTurn; 3 CombatResolution and 5 Combat the
+        CombatTurn; 4 Endgame the Endgame turn; anything else matches every
+        turn (``cmp ecx, 5; ja`` keeps ``al = 1``). Only Immortality's Harvest
+        Cells uses 3.
         """
 
-        if self.ability_timing == PLOT_TIMING:
+        timing = self.ability_timing
+        if timing == PLOT_TIMING:
             return turn_type in (_UNDETERMINED, _AGENT_TURN, _REVEAL_TURN)
-        if self.ability_timing == COMBAT_TIMING:
+        if timing == Timing.AGENT:
+            return turn_type == _AGENT_TURN
+        if timing == Timing.REVEAL:
+            return turn_type == _REVEAL_TURN
+        if timing in (COMBAT_RESOLUTION_TIMING, COMBAT_TIMING):
             return turn_type == _COMBAT_TURN
-        if self.ability_timing == ENDGAME_TIMING:
+        if timing == ENDGAME_TIMING:
             return turn_type == _ENDGAME_TURN
-        return False
+        return True
 
 
 def ability_for_prompt(card: Entity, combat_turn: bool) -> IntrigueAbility | None:
@@ -579,7 +589,7 @@ class StrengthIntrigueAbility(IntrigueAbility):
         top = sorted(p.ctx.players, key=lambda pl: pl.combat_strength, reverse=True)
         if not top:
             return False
-        return top[0].victory_points + conflict.int_attr("VictoryPoints") >= 10
+        return p.ctx.vp(top[0]) + conflict.int_attr("VictoryPoints") >= 10
 
     def _first_improving_value(self, p: Profile, conflict: Entity, rank: int) -> float:
         """The normal branch: only the first improving combination counts."""
@@ -836,10 +846,10 @@ class SpiceIsPowerAbility(StrengthIntrigueAbility):
 
     def meets_cost(self, p: Profile) -> bool:
         """``Cost @0x4c52d90``: ``GetDeployedTroops(P).Count > 2 || Spice >= 3``
-        (troops only: sandworms are not troops)."""
+        (troops only: sandworms are not troops; Bloodlines Commanders are,
+        bloodlines-systems.md §1.1, D1)."""
 
-        me = p.ctx.me
-        return me.troops_conflict > 2 or me.resources.spice >= 3
+        return p.conflict_troop_count() > 2 or p.ctx.me.resources.spice >= 3
 
     def is_bad_intrigue(self, p: Profile) -> bool:
         """``IsBadIntrigue @0x4c52f40``: false."""
@@ -859,7 +869,7 @@ class SpiceIsPowerAbility(StrengthIntrigueAbility):
             v = self._strength_choice(p).value
             choice.update_responses(v, ((1,),))
         if (
-            me.troops_conflict >= 3  # WormPlayer::get_ConflictTroops
+            p.conflict_troop_count() >= 3  # WormPlayer::get_ConflictTroops
             and p.should_play_retreat_intrigue("Spice Is Power", 6, 10, 3) > 0
         ):
             choice.update_responses(150.0, ((0,),))
@@ -1041,9 +1051,10 @@ class CallToArmsAbility(IntrigueAbility):
     """``BaseSet.CallToArmsAbility`` (spec §7.3); ``Cost @0x4cbff70``: none."""
 
     def is_bad_intrigue(self, p: Profile) -> bool:
-        """``IsBadIntrigue @0x4cc0180``: ``GarrisonTroops >= 6``."""
+        """``IsBadIntrigue @0x4cc0180``: ``GarrisonTroops >= 6`` (Bloodlines
+        Commanders count, bloodlines-systems.md §1.1, D1)."""
 
-        return p.ctx.me.troops_garrison >= 6
+        return p.garrison_troop_count() >= 6
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
         """``CallToArmsAbility::Evaluate @0x4cc0380`` (spec §7.3)."""
@@ -1371,16 +1382,15 @@ def intrigue_deploy_troops(p: Profile, garrison_targets: Sequence[int]) -> int:
     exp = p.est_strength().sum
     lb, ub = p.conflict_posture_bounds()
     interest = p.current_conflict_interest().sum
-    me = p.ctx.me
     if not _in_player_turn(p, _REVEAL_TURN):
         return 0
-    if me.troops_garrison <= 0:
+    if p.garrison_troop_count() <= 0:  # Bloodlines Commanders count (§1.1, D1)
         return 0
     if not interest > lb:  # ucomisd interest, lb; jbe
         return 0
     troops = count  # garrisonTargets.OfType<WormTroop>().Count()
     if not any(  # b__0 @0x4cad820
-        o.troops_conflict + o.sandworms_conflict > 0
+        p.conflict_unit_count(o) > 0  # ConflictUnits (Bloodlines: §1.1, D1)
         and abs(exp - p.est_opponent_strength(o.player_id).sum) <= 2 * troops
         and exp + 3 <= p.est_opponent_strength(o.player_id).sum
         for o in p.ctx.opponents
@@ -1438,9 +1448,8 @@ class DetonationAbility(IntrigueAbility):
         """``IsBadIntrigue @0x4cc5f80``: ``Garrison <= 2 && (!HasShieldWall ||
         !HasMakerHooks)``."""
 
-        me = p.ctx.me
-        return me.troops_garrison <= 2 and (
-            not p.ctx.shield_wall_present or not me.maker_hooks
+        return p.garrison_troop_count() <= 2 and (
+            not p.ctx.shield_wall_present or not p.ctx.me.maker_hooks
         )
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
@@ -1450,7 +1459,7 @@ class DetonationAbility(IntrigueAbility):
         if p.intrigue_blow_wall():
             choice.update_responses(100.0, ((0,),))
             return choice.answer("Detonation | 100 | Blow Wall")
-        if not self._can_deploy_units(p) or p.ctx.me.troops_garrison <= 0:
+        if not self._can_deploy_units(p) or p.garrison_troop_count() <= 0:
             return choice.answer("Detonation")
         both = self._can_blow_shield_wall(p)
         troops = _options(request, 1) if both else _options(request, 0)

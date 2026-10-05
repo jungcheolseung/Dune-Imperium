@@ -37,6 +37,7 @@ from dune_imperium.agents.app_ai.catalog import (
     spy_entity,
     track_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
@@ -178,7 +179,7 @@ def starter(name: str, copy: int = 0) -> Entity:
 
 
 def space(space_id: str) -> Entity:
-    return space_entity(space_id, True)
+    return space_entity(space_id, Board(True))
 
 
 def intrigue(name: str, copy: int = 0) -> Entity:
@@ -492,7 +493,12 @@ def test_every_port_is_registered_under_its_app_name_and_base() -> None:
 
 def _in_scope(arch: Archetype) -> bool:
     title = arch.title or ""
-    return arch.kind in ("imperium", "starter", "reserve") and "A" <= title[:1] <= "L"
+    dealt = arch.in_uprising or arch.in_uprising_choam
+    return (
+        dealt
+        and arch.kind in ("imperium", "starter", "reserve")
+        and "A" <= title[:1] <= "L"
+    )
 
 
 def test_every_ability_of_an_a_to_l_card_resolves_to_a_port() -> None:

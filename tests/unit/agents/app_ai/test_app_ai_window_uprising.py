@@ -17,7 +17,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai import windows as windows_package
 from dune_imperium.agents.app_ai.abilities.base import Answer
-from dune_imperium.agents.app_ai.context import AppContext
+from dune_imperium.agents.app_ai.context import AppContext, Board
 from dune_imperium.agents.app_ai.data.constants import TABLES
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
@@ -475,7 +475,7 @@ def _recall_in_reverse_board_order() -> tuple[GameState, str, str]:
     Returns the state, the board-first and the board-second space.
     """
 
-    order = board_space_order(True)
+    order = board_space_order(Board(True))
     first, second = sorted(("arrakeen", "secrets"), key=order.index)
     seat = _owner(RECALL)
     state = with_player(RECALL, seat, agent_locations=(second, first, "sardaukar"))
@@ -535,9 +535,9 @@ def test_recall_hands_the_agents_to_get_recall_agent_in_board_order() -> None:
 
 
 def test_board_order_keeps_unknown_spaces_last_in_offered_order() -> None:
-    order = board_space_order(True)
+    order = board_space_order(Board(True))
     head, last = order[0], order[-1]
-    assert window._in_board_order(["tueks_sietch", last, "x", head], True) == [
+    assert window._in_board_order(["tueks_sietch", last, "x", head], Board(True)) == [
         head,
         last,
         "tueks_sietch",

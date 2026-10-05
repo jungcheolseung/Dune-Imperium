@@ -30,14 +30,18 @@ def play_until(
     choam: bool = True,
     seed: int = 1,
     max_steps: int = 30_000,
+    config: RulesetConfig | None = None,
 ) -> GameState:
     """Play heuristic seats from a fresh game until ``predicate(state, owner)``.
 
     The predicate sees the state on top of which a player decision waits and
-    the deciding seat. Raises if the game ends first.
+    the deciding seat. Raises if the game ends first. ``config`` (any option
+    set: Immortality, Epic, Bloodlines …) overrides ``choam``. The heuristic
+    seats only advance test games; app_ai never consults them.
     """
 
-    config = RulesetConfig(choam_module=choam)
+    if config is None:
+        config = RulesetConfig(choam_module=choam)
     state = ENGINE.reset(config, seed)
     chance = ChanceResolver(seed=seed)
     agents = [HeuristicAgent(seed=seed * 10 + seat) for seat in range(4)]
@@ -58,13 +62,20 @@ def play_until(
     raise AssertionError("predicate never held before the game ended")
 
 
-def first_decision(kind: str, *, choam: bool = True, seed: int = 1) -> GameState:
+def first_decision(
+    kind: str,
+    *,
+    choam: bool = True,
+    seed: int = 1,
+    config: RulesetConfig | None = None,
+) -> GameState:
     """The first state whose pending decision is of frame kind ``kind``."""
 
     return play_until(
         lambda state, owner: state.decision_stack[-1].kind == kind,
         choam=choam,
         seed=seed,
+        config=config,
     )
 
 

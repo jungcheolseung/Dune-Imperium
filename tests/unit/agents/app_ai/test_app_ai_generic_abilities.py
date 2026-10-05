@@ -34,7 +34,7 @@ from dune_imperium.agents.app_ai.catalog import (
     spy_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.context import AppContext
+from dune_imperium.agents.app_ai.context import AppContext, Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
@@ -230,7 +230,7 @@ def req(
 
 
 def space(space_id: str) -> Entity:
-    return space_entity(space_id, True)
+    return space_entity(space_id, Board(True))
 
 
 def starter(name: str, copy: int = 0) -> Entity:
