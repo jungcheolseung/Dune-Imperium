@@ -771,8 +771,10 @@ class GameSessionManager:
             passed = ended or _turn_passed(session, seat, own_steps)
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
-        self._publish(game_id, bell)
-        self._kick_ai(session)
+        try:
+            self._publish(game_id, bell)
+        finally:
+            self._kick_ai(session)
         if passed:
             self._announce_hand_over(game_id)
         return summary
@@ -806,8 +808,10 @@ class GameSessionManager:
             self._advance_locked(session)
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
-        self._publish(game_id, bell)
-        self._kick_ai(session)
+        try:
+            self._publish(game_id, bell)
+        finally:
+            self._kick_ai(session)
         # A confirmation is the hand-over itself.
         self._announce_hand_over(game_id)
         return summary
@@ -1429,8 +1433,10 @@ class GameSessionManager:
         """Start the game's AI worker if a background seat waits for one.
 
         Every entry point that may leave ``thinking`` set calls this after
-        releasing the lock and ringing; deciding under the lock keeps a
-        game to one worker. Never call it while holding the lock.
+        releasing the lock, and after ringing in a ``finally``, so a change
+        listener that raises cannot leave the seat unanswered; deciding
+        under the lock keeps a game to one worker. Never call it while
+        holding the lock.
         """
 
         with session.lock:

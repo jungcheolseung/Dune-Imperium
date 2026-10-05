@@ -46,6 +46,9 @@ SEARCH_FIRST_SEED = 5  # seat 1 opens it
 # seat 0 discards for it first (step 338), and seat 1 is asked to discard
 # next while seat 0's discard is still in seat 0's undo window.
 COVERT_OPERATION_SEED = 7
+# With the leader draft, seat 0 picks first; its press hands the draft to the
+# heuristic seats 3 and 2 and then to the search seat 1 (``_draft_pick``).
+DRAFT_HAND_OVER_SEED = 5
 
 
 def _obj(value: object) -> dict[str, object]:
@@ -282,6 +285,27 @@ def _unguarded_undo_window(manager: GameSessionManager, game_id: str) -> int:
     with session.lock:
         unsealed = len(session.steps) - session.undo_floor
         return max(0, min(undo_window(session.log, 0), unsealed))
+
+
+def _draft_pick(manager: GameSessionManager, search_kind: str) -> JsonObject:
+    """Seat 0's leader pick, its turn end waiting for the press."""
+
+    summary = manager.create_game(
+        ("human", search_kind, "heuristic", "heuristic"),
+        game_seed=DRAFT_HAND_OVER_SEED,
+        leader_draft=True,
+    )
+    assert summary["thinking"] is None
+    assert _obj(summary["decision"])["kind"] == "leader_draft"
+    picked = manager.apply_action(
+        _text(summary["game_id"]),
+        seat=0,
+        revision=_int(summary["revision"]),
+        index=0,
+    )
+    assert picked["confirmation"] == 0
+    assert picked["thinking"] is None
+    return picked
 
 
 def _seat_steps(steps: object, seats: set[int]) -> int:
@@ -714,6 +738,38 @@ def test_a_worker_step_that_fails_after_it_was_applied_still_rings(
     bell = _obj(rings.payloads[0])
     assert bell["revision"] == stopped["revision"]
     assert bell["thinking"] is None
+
+
+def test_a_failing_change_listener_still_hands_over_to_the_search_seat(
+    search_kind: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The request's ring fails, yet the worker it owed the seat starts.
+
+    The press itself has happened (the error reaches the caller all the
+    same), so the search seat must answer; on the worker a failing ring is
+    logged and the game goes on.
+    """
+
+    manager = GameSessionManager()
+    picked = _draft_pick(manager, search_kind)
+    game_id = _text(picked["game_id"])
+
+    def broken(_: str, payload: JsonObject | None) -> None:
+        raise RuntimeError("the listener exploded")
+
+    manager.add_change_listener(broken)
+    with caplog.at_level(logging.ERROR, logger="dune_imperium.server.sessions"):
+        with pytest.raises(RuntimeError, match="listener exploded"):
+            manager.confirm_turn(game_id, seat=0, revision=_int(picked["revision"]))
+        manager.wait_for_ai(game_id, timeout=10)
+
+    rested = manager.summary(game_id)
+    assert rested["thinking"] is None
+    assert _obj(rested["decision"])["owner"] == 0
+    assert _seat_steps(manager._sessions[game_id].steps, {1}) > 0
+    assert any(
+        "change listener failed" in record.getMessage() for record in caplog.records
+    )
 
 
 def test_the_hand_over_listener_hears_the_search_seats_reach_a_human(
