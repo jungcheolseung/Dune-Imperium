@@ -15,10 +15,13 @@ Faithfulness notes that apply to the whole module:
 - Every number the app takes from an attribute is read from the app
   archetype (``Entity.attr``), never from our card data: Desert Power's
   ``Persuasion`` is 0 there, ours 2.
-- Only the Uprising set (4) is on (``SetOn(4)``); the Rise of Ix (2) and
-  Immortality (3) branches are dead in a 4-player Uprising game and are
-  noted, not ported. BaseSet leaders/intrigues are compared by archetype name
-  so their branches exist but can never be met with our content.
+- The Uprising set (4) is always on (``SetOn(4)``). The Immortality (3)
+  branches are ported and gated on ``AppContext.immortality`` where the app
+  tests ``IsSetEnabled(Immortality)``; the others read Immortality state
+  that stays at its start without the expansion (spec/immortality.md §2).
+  The Rise of Ix (2) branches are dead (no Rise of Ix set in our games) and
+  are noted, not ported. BaseSet leaders/intrigues are compared by archetype
+  name so their branches exist but can never be met with our content.
 - Honesty: the own deck is read only as a multiset (iterated in sorted
   instance-id order), opponents only through public fields.
 """
@@ -37,6 +40,7 @@ from dune_imperium.agents.app_ai.catalog import (
     contract_entity,
     intrigue_entity,
 )
+from dune_imperium.agents.app_ai.choice import first_strictly_best
 from dune_imperium.agents.app_ai.context import card_id
 from dune_imperium.agents.app_ai.entities import Attr, Entity
 from dune_imperium.agents.app_ai.profile.core import ProfileCore
@@ -84,6 +88,18 @@ _DEVOUR = "IntrigueArchetypes.Uprising.Devour"
 _INSPIRE_AWE = "IntrigueArchetypes.Uprising.InspireAwe"
 _SPECIAL_MISSION = "IntrigueArchetypes.Uprising.SpecialMission"
 _SECURE_SPICE_TRADE = "IntrigueArchetypes.Uprising.SecureSpiceTrade"
+_ECONOMIC_POSITIONING = "IntrigueArchetypes.Immortality.EconomicPositioning"
+
+# Immortality cards compared by archetype.
+_REPLACEMENT_EYES = "ImperiumArchetypes.Immortality.ReplacementEyes"
+
+# ``WormConflictPlayable::AbilityForPlacement(1)`` of Epic's Economic
+# Supremacy (Rise of Ix card): ``ConflictAbility`` with ConflictPlace 1
+# (``.ctor @0x4b78db0``), whose ``GetPossibleRewardVP @0x4b792d0`` overrides
+# the generic reward read.
+_ES_FIRST = (
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyFirstAbility"
+)
 
 # Leader archetypes (P.Leader == X).
 _GLOSSU_RABBAN = "LeaderArchetypes.BaseSet.GlossuTheBeastRabban"
@@ -101,8 +117,12 @@ _WANT_SPY_LEADERS = frozenset(
 
 # Ability classes (full app names) whose class derives from
 # ``PlayAbilities.RevealAbility`` / ``PlayAbilities.AgentAbility``, for every
-# personal card of a 4-player Uprising game (worked out from the type
-# listing ``dump/worm-canis.dll.cs``). Each such card has exactly one of each.
+# personal card we deal: Uprising, its promos, Control the Spice, the
+# Immortality Imperium cards, Experimentation and the Tleilaxu cards (worked
+# out from the type listing ``dump/worm-canis.dll.cs``). Each such card has
+# exactly one RevealAbility; Beguiling Pheromones and Chairdog have two
+# AgentAbility boxes (``OfType<AgentAbility>().FirstOrDefault()`` takes the
+# first), Reclaimed Forces none.
 _PLAY = "worm.canis.abilities.PlayAbilities."
 _REVEAL_BASE = _PLAY + "RevealAbility"
 _DESERT_POWER_REVEAL = _PLAY + "Uprising.DesertPowerRevealAbility"
@@ -116,6 +136,10 @@ _LIET_KYNES_REVEAL = _PLAY + "BaseSet.LietKynesRevealAbility"
 _THUFIR_REVEAL = _PLAY + "BaseSet.ThufirHawatRevealAbility"
 _IN_HIGH_PLACES_REVEAL = _PLAY + "BaseSet.InHighPlacesRevealAbility"
 _UNDERCOVER_REVEAL = _PLAY + "BaseSet.UndercoverAssetRevealAbility"
+# Immortality RevealAbility subclasses overriding GetRevealPreviewValue.
+_BT_RESEARCHER_REVEAL = _PLAY + "Immortality.BeneTleilaxResearcherRevealAbility"
+_LISAN_AL_GAIB_PREVIEW = _PLAY + "Immortality.LisanAlGaibRevealPreviewAbility"
+_THRONE_ROOM_REVEAL = _PLAY + "Immortality.ThroneRoomPoliticsRevealAbility"
 _REVEAL_CLASSES = frozenset(
     {
         _REVEAL_BASE,
@@ -130,6 +154,9 @@ _REVEAL_CLASSES = frozenset(
         _THUFIR_REVEAL,
         _IN_HIGH_PLACES_REVEAL,
         _UNDERCOVER_REVEAL,
+        _BT_RESEARCHER_REVEAL,
+        _LISAN_AL_GAIB_PREVIEW,
+        _THRONE_ROOM_REVEAL,
     }
 )
 _AGENT_CLASSES = frozenset(
@@ -138,6 +165,13 @@ _AGENT_CLASSES = frozenset(
         _PLAY + "BaseSet.PowerPlayAgentAbility",
         _PLAY + "BaseSet.SeekAlliesAgentAbility",
         _PLAY + "Uprising.WeirdingWomanAgentAbility",
+        # Immortality: GraftAgentAbility and its subclasses, the specimen boxes.
+        _PLAY + "Immortality.GraftAgentAbility",
+        _PLAY + "Immortality.ChairdogAgentAbility",
+        _PLAY + "Immortality.GholaAgentAbility",
+        _PLAY + "Immortality.UsurpAgentAbility",
+        _PLAY + "Immortality.SpecimenAgentAbility",
+        _PLAY + "Immortality.SpecimenGraftedAgentAbility",
     }
 )
 
@@ -375,6 +409,13 @@ class EconomyMixin(ProfileCore):
             *self._own_cards(me.hand, me.discard_pile, me.in_play),
         ]
 
+    def _owned_with_tag(self, tag: str) -> int:
+        """``P.AllImperiumCards.Count(c => tag in c.Tags)``."""
+
+        return sum(
+            1 for card in self._all_imperium_cards() if tag in card.list_attr("Tags")
+        )
+
     def _row_cards(self) -> list[Entity]:
         """``ImperiumAndReserveRowCards(M, includeFoldspace=false)`` @0x480f380.
 
@@ -490,9 +531,16 @@ class EconomyMixin(ProfileCore):
         The 1st-place reward's ``VictoryPoints`` plus, for each of its custom
         ability ids, ``GetPossibleConflictVP`` of the first ``DeferredAbility``
         of the conflict card with that id (board.md §2.4.2 / §2.4.6).
+
+        ``GetPossibleCombatRewardVP`` dispatches to ``AbilityForPlacement(1)``
+        (``@0x4829c40``); Epic's Economic Supremacy overrides it with
+        ``EconomicSupremacyFirstAbility::GetPossibleRewardVP @0x4b792d0``
+        (spec/epic-goto11-promo-draft.md §2.4).
         """
 
         card = conflict_entity(conflict, self.ctx.choam)
+        if _ES_FIRST in card.ability_ids:
+            return self._economic_supremacy_first_reward_vp(player, double_cost)
         rewards = conflict_reward_entities(conflict, self.ctx.choam)
         if not rewards:
             return 0
@@ -517,6 +565,26 @@ class EconomyMixin(ProfileCore):
             ):
                 vp += 1
         return vp
+
+    @staticmethod
+    def _economic_supremacy_first_reward_vp(
+        player: PlayerState, double_cost: bool
+    ) -> int:
+        """``EconomicSupremacyFirstAbility::GetPossibleRewardVP`` @0x4b792d0.
+
+        ``2 - (Solari < need) + (spice >= need)`` on ``player``'s current
+        resources: 6 Solari / 4 spice, 12 / 8 with ``doubleCost`` (the
+        sandworm copy). The literals are the method's own (``cmovne`` 12/6,
+        ``lea edx, [rbx*4 + 4]``).
+        """
+
+        need_solari = 12 if double_cost else 6
+        need_spice = 4 * int(double_cost) + 4
+        return (
+            2
+            - int(player.resources.solari < need_solari)
+            + int(player.resources.spice >= need_spice)
+        )
 
     def select_for_game_arc(self, choices: Sequence[float]) -> float:
         """``WormAIProfile::SelectForGameArc @0x4908c80`` (spec §1.4)."""
@@ -609,7 +677,11 @@ class EconomyMixin(ProfileCore):
         if attr is Attr.WATER:
             return me.resources.water
         if attr is Attr.SPECIMEN:
-            return me.specimens
+            # The player's ``Specimen`` attribute, which the app never writes:
+            # its specimens are troop entities in the tanks (``GetSpecimens``),
+            # so ``GetAbundanceLevel(Specimen)`` is always Poor (spec
+            # immortality.md §2.3, §9 note 1). Not ``me.specimens``.
+            return 0
         if attr is Attr.VICTORY_POINTS:
             return self.ctx.vp(me)
         return 0
@@ -644,8 +716,8 @@ class EconomyMixin(ProfileCore):
         """``WormAIProfile::GetResourceValue @0x4905940`` (spec §3).
 
         Rise of Ix (Princess Yuna, Advanced Weaponry, War Chest, techs,
-        Dreadnought supply), Immortality (Economic Positioning, Specimen
-        Tleilaxu bonus) branches: dead (sets 2/3 off).
+        Dreadnought supply) branches: dead (set 2 off). Immortality's two
+        branches (spec/immortality.md §2.4) run under ``SetOn(3)``.
         """
 
         s = Summer()
@@ -685,6 +757,13 @@ class EconomyMixin(ProfileCore):
                         _mul(s, c.SolariMissingSwordmasterMod, "Missing Swordmaster")
                 if self._has_intrigue(_CHOAM_SHARES):
                     _mul(s, c.ChoamSharesSolariMod, "Choam Shares")
+                # SetOn(2) (Rise of Ix): dead.
+                if (
+                    self.ctx.immortality  # SetOn(3)
+                    and self.game_arc() >= 2
+                    and self._has_intrigue(_ECONOMIC_POSITIONING)
+                ):
+                    _mul(s, c.EconomicPositioningSolariMod, "Economic Positioning Mod")
                 # SetOn(4):
                 if self._has_intrigue(_BUY_ACCESS):
                     _mul(s, c.BuyAccessSolariMod, "Buy Access Mod")
@@ -755,6 +834,32 @@ class EconomyMixin(ProfileCore):
                     _mul(s, c.StagedIncidentTroopMod, "Staged Incident")
                 # Capped at the troops left in the supply (after the mods).
                 amount = min(amount, me.troops_supply)
+
+            # SetOn(2) and Dreadnought (Rise of Ix): dead.
+            if self.ctx.immortality and attr is Attr.SPECIMEN:  # SetOn(3)
+                # 0x4907940-0x4907c64 (immortality.md §2.4): the row card
+                # with the best AcquireValue (OrderByDescending is stable: row
+                # order on ties). Unaffordable and good: more specimens are
+                # worth a bonus, added before "Amount" so a specimen cost is
+                # penalised by it too. The row always holds Reclaimed Forces
+                # (an empty one would throw in the app).
+                best = first_strictly_best(
+                    [
+                        (row_card, self.acquire_value(row_card).sum)
+                        for row_card in self.tleilaxu_row_cards()
+                    ]
+                )
+                if best is not None:
+                    row_card, best_value = best
+                    if (
+                        best_value > c.SpecimenGoodTleilaxuThreshold  # strict
+                        and row_card.int_attr("SpecimenCost", 0)
+                        > self.ctx.specimens()  # strict
+                    ):
+                        s.add(
+                            "Need More specimens for Good Card",
+                            c.SpecimenGoodTleilaxuBonus,
+                        )
 
             if attr is Attr.SANDWORMS:  # SetOn(4)
                 interest = self.current_conflict_interest().sum  # always computed
@@ -1052,6 +1157,12 @@ class EconomyMixin(ProfileCore):
             return 1
         if ability_class == _UNDERCOVER_REVEAL:  # @0x4cce1c0
             return 0  # only {"OptionalStrength": 2}
+        if ability_class == _BT_RESEARCHER_REVEAL:  # @0x4c637e0
+            return self.ctx.genetic_markers() + 1  # get_GeneticMarkers; inc
+        if ability_class == _LISAN_AL_GAIB_PREVIEW:  # @0x4c790e0
+            return card.int_attr("Persuasion")  # Owner.Persuasion (Strength aside)
+        if ability_class == _THRONE_ROOM_REVEAL:  # @0x4c7c540
+            return 1  # literal (WillClearUndo aside)
         return card.int_attr("Persuasion")  # base RevealAbility
 
     def _reveal_preview_persuasion(self) -> int:
@@ -1062,16 +1173,25 @@ class EconomyMixin(ProfileCore):
         the Reveal turn the hand is already revealed, so: the pool.
         ``SelectableAbilities(false)`` holds every card's Play/Activated
         abilities (@0x4839ac0), so no hand card is filtered out.
+
+        Immortality: outside the Reveal turn the in-play cards Chairdog will
+        return to the hand (``P.ChairdogReturnCards``) are previewed too,
+        after the hand, in play-area order.
         """
 
         me = self.ctx.me
         persuasion = self._persuasion_pool()
-        if not self._in_reveal_turn():
+        in_reveal_turn = self._in_reveal_turn()
+        if not in_reveal_turn:
             if me.high_council:
                 persuasion += 2
             if "assembly_hall" in me.agent_locations:
                 persuasion += 1
-        for card in self._own_cards(self.ctx.hand):
+        cards = list(self.ctx.hand)
+        returning = self.ctx.chairdog_return_card_ids()
+        if returning and not in_reveal_turn:
+            cards += [card for card in me.in_play if card in returning]
+        for card in self._own_cards(tuple(cards)):
             for ability_class in card.ability_ids:
                 if ability_class in _REVEAL_CLASSES:
                     persuasion += self._reveal_preview_value(ability_class, card)
@@ -1190,13 +1310,45 @@ class EconomyMixin(ProfileCore):
     def acquire_value(self, card: Entity) -> Summer:
         """``WormImperiumPlayable::AcquireValue @0x4834650`` (spec §6).
 
-        Immortality's ``EntityType == Tleilaxu`` branch is dead here.
+        A Tleilaxu card (``EntityType == Tleilaxu``) takes the branch of
+        spec/immortality.md §2.5 and returns early.
         """
 
         c = self.C
         me = self.ctx.me
         s = Summer()
         s.add("Archetype Value", card.float_attr("AcquireValue", 0.0))
+
+        if card.attr("EntityType") == "Tleilaxu":  # cmp eax, 8
+            # 0x48349c1-0x48357d6: the specimen cost is *added* as the base;
+            # tag bonuses; no icons, consolidation, synergy, friendship,
+            # acquire effects, arc multiplier or minimum. Counts are
+            # ``K * double(n)``; ``n`` includes the card only if owned.
+            s.merge(self.specific_acquire_bonus(card))
+            s.add("Specimen Cost", float(card.int_attr("SpecimenCost", 0)))
+            tags = card.list_attr("Tags")
+            markers = self.ctx.genetic_markers()
+            if "Shadow" in tags:
+                s.add(
+                    "Shadow Bonus",
+                    c.TleilaxuShadowSynergyMod * float(self._owned_with_tag("Shadow")),
+                )
+            if "Helix" in tags and markers > 0:
+                s.add("Helix Bonus", c.TleilaxuHelixSynergyBonus)
+            if "DoubleHelix" in tags and markers >= 2:
+                s.add("Double Helix Bonus", c.TleilaxuDoubleHelixSynergyBonus)
+            if "WantsGraft" in tags:
+                s.add(
+                    "Graft Cards For WantsGraft",
+                    c.TleilaxuGraftSynergyBonus * float(self._owned_with_tag("Graft")),
+                )
+            if "Graft" in tags:
+                s.add(
+                    "WantsGraft Cards For Graft",
+                    c.TleilaxuGraftSynergyBonus
+                    * float(self._owned_with_tag("WantsGraft")),
+                )
+            return s
 
         # (a) new agent icons
         if not self.is_climax():
@@ -1253,8 +1405,9 @@ class EconomyMixin(ProfileCore):
 
         The deck-pile synergy of every ability of every owned card
         (``ValueInPileForOtherPlay`` with the Deck), plus tag incentives,
-        capped at ``SynergyModMaxValue``. Helix/Double Helix (Immortality):
-        dead.
+        capped at ``SynergyModMaxValue``. The Helix/Double Helix incentives
+        (immortality.md §2.6) multiply the sum so far, the TSMF term
+        included.
         """
 
         c = self.C
@@ -1296,6 +1449,11 @@ class EconomyMixin(ProfileCore):
                             )
                         )
             s.merge(concat)
+            markers = self.ctx.genetic_markers()
+            if markers > 0 and "Helix" in tags:
+                _mul(s, c.SynergyHelixMod, "Helix Incentive")
+            if markers >= 2 and "DoubleHelix" in tags:
+                _mul(s, c.SynergyDoubleHelixMod, "Double Helix Incentive")
             if "WantSpy" in tags:
                 s.add(
                     "WantSpy Spy count incentive",
@@ -1376,8 +1534,10 @@ class EconomyMixin(ProfileCore):
     def acquire_effects_value(self, card: Entity) -> Summer:
         """``WormAIProfile::GetAcquireEffectsValue @0x490e470`` (spec §9).
 
-        Invasion Ships (Rise of Ix), Research and Shadow (Immortality): dead.
-        Unlisted effects (Intrigue, Contract, PlaceSpy, ...) are worth 0.
+        Invasion Ships (Rise of Ix): dead. Research (16) and Shadow (17)
+        (Immortality, immortality.md §2.7): ``ResearchValue`` and
+        ``TleilaxuValue(1)``. Unlisted effects (Intrigue, Contract,
+        PlaceSpy, ...) are worth 0.
         """
 
         value = 0.0
@@ -1393,6 +1553,10 @@ class EconomyMixin(ProfileCore):
                 value += self.resource_value(Attr.WATER, 1, False)
             elif effect == "Troop":
                 value += self.resource_value(Attr.TROOPS, 1, False)
+            elif effect == "Research":
+                value += self.research_value().sum
+            elif effect == "Shadow":
+                value += self.tleilaxu_value(1).sum
             elif effect == "Solari":
                 value += self.resource_value(Attr.SOLARI, 1, False)
             elif effect == "Spice":
@@ -1490,7 +1654,9 @@ class EconomyMixin(ProfileCore):
 
         Shuffles (ListUtil.Shuffle, here ``self.rng``), then keeps the last
         card whose score is ``>=`` the best so far (starting at
-        ``min_trash_value``). Rise of Ix / Immortality card bonuses: dead.
+        ``min_trash_value``). Rise of Ix card bonuses: dead. Replacement
+        Eyes (immortality.md §2.8, not gated by the set): +1.5 in the Late
+        arc unless it is in the hand.
         """
 
         c = self.C
@@ -1523,6 +1689,14 @@ class EconomyMixin(ProfileCore):
                     "Convincing Argument TrashValueMod",
                     c.ConvincingArgumentTrashValueMod,
                 )
+            # 0x4910816-0x49108b8: IsArchetype(ReplacementEyes), arc >= 2,
+            # c.Parent != P.Hand.
+            if (
+                card.short == _REPLACEMENT_EYES
+                and self.game_arc() >= 2
+                and card.ref not in hand
+            ):
+                s.add("Replacement Eyes TrashValueMod", c.ReplacementEyesTrashValueMod)
             if s.sum > 0.0:  # strict >
                 if s.sum > 1.0:  # strict >
                     s.add("TrashValue: x > 1", 10.0)

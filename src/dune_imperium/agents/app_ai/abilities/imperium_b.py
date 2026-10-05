@@ -25,10 +25,10 @@ Settled while porting (the spec marks them UNTRACED):
 - ``AIValueSummer<double>.CompareTo @0x2f771c0`` (Shishakli E's
   ``OrderBy(AcquireValue)``): ``Sum.CompareTo(other.Sum)``.
 
-Not in a 4-player Uprising game (the Imperium deck takes ``ImperiumType ==
-Main``; ``data/archetypes.py`` has no Promo archetype): Pivotal Gambit and The
-Beast's Spoils. Their classes are ported for completeness and never
-instantiated through ``catalog``.
+The app never deals Pivotal Gambit and The Beast's Spoils (its Imperium deck
+takes ``ImperiumType == Main``; they are ``Promo``). Our ``promo_cards``
+option deals them, and ``catalog`` maps them to those app archetypes, so
+these ports run in promo games (spec/epic-goto11-promo-draft.md §4).
 """
 
 from collections.abc import Mapping, Sequence

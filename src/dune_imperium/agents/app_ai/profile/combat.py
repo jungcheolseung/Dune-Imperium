@@ -81,13 +81,22 @@ _CONFLICT_PLACES: dict[str, int] = {
     "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictFirstAbility": 1,
     "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictSecondAbility": 2,
     "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictThirdAbility": 3,
+    # Epic's Economic Supremacy (spec/epic-goto11-promo-draft.md §2.4): the
+    # place ctors 0x4b78db0 / 0x4b7a920 / 0x4b7c980; its Solari and Spice
+    # charges have no ConflictPlace attribute (0).
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyFirstAbility": 1,
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacySecondAbility": 2,
+    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyThirdAbility": 3,
 }
 
 # Direct subclasses of ``PlayAbilities.StrengthIntrigueAbility`` dealt in an
-# Uprising game (type listing in ``worm-canis.dll.cs``): the abilities
+# Uprising game, with Immortality's two (type listing in
+# ``worm-canis.dll.cs``; none has a subclass): the abilities
 # ``OfType<StrengthIntrigueAbility>()`` keeps.
 _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
     {
+        "worm.canis.abilities.PlayAbilities.Immortality.CounterattackCombatAbility",
+        "worm.canis.abilities.PlayAbilities.Immortality.ViciousTalentsAbility",
         "worm.canis.abilities.PlayAbilities.BaseSet.BackedbyCHOAMCombatAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.ContingencyPlanCombatAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.DevourAbility",
@@ -122,6 +131,7 @@ _HEIGHLINER_SPACES: frozenset[str] = frozenset(
 _GURNEY = "LeaderArchetypes.Uprising.GurneyHalleckLeader"
 _CHANI_CLEVER_TACTICIAN = "chani_clever_tactician"
 _GO_TO_GROUND = "go_to_ground"
+_ECONOMIC_POSITIONING = "economic_positioning"  # our Intrigue card id
 # Our ids of the board spaces the potentials look up
 # (``BoardSpaces.FirstOrDefault(IsHeighlinerSpace)`` / ``ArchID ==
 # Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): always on our board.
@@ -196,6 +206,12 @@ def _has_guild_icon(bare_card_id: str) -> bool:
     """``IconList`` contains ``SpacingGuild`` (``b__126_4`` / ``b__126_6``)."""
 
     return "SpacingGuild" in _strings(_card_archetype(bare_card_id), "IconList")
+
+
+def _cs_half(value: int) -> int:
+    """C# ``int / 2``: truncation toward zero."""
+
+    return int(value / 2)
 
 
 def _conflict_units(p: PlayerState) -> int:
@@ -388,7 +404,13 @@ class CombatMixin(ProfileCore):
         r = 1.0
         s = 1.0
         w = w * (r * s)
-        # Economic Positioning (Immortality) cannot be held.
+        # Economic Positioning (Immortality, spec/immortality.md §2.9): not
+        # gated by the set (the card exists only with it).
+        if (
+            self._holds_intrigue(_ECONOMIC_POSITIONING)
+            and self.solari_value(1) >= self.C.EconomicPositioningDeploySolariThreshold
+        ):
+            w *= self.C.EconomicPositioningDeployMod
         if (
             any(card_id(card) == _CHANI_CLEVER_TACTICIAN for card in me.in_play)
             and 1 <= _conflict_units(me) <= 2  # unsigned ConflictUnits - 1 <= 1
@@ -433,7 +455,11 @@ class CombatMixin(ProfileCore):
         )
 
     def combat_positioning(self) -> float:
-        """``GetCombatPositioning @0x4913ea0`` — spec §4 (unused in Uprising)."""
+        """``GetCombatPositioning @0x4913ea0`` — spec §4.
+
+        Only caller: Immortality's ``HighPriorityTravelAbility``
+        (immortality.md §5.6); unused in a plain Uprising game.
+        """
 
         me = self.ctx.me
         # b__108_0: p != me and its agent supply holds at least as many.
@@ -493,7 +519,10 @@ class CombatMixin(ProfileCore):
 
         The current card's ``ConflictValue`` divided by the average reward value
         of every Uprising conflict card of its level. With no current Conflict
-        the average stays 0 and the result is NaN, as in the app.
+        the average stays 0 and the result is NaN, as in the app. Epic's
+        Economic Supremacy (a Rise of Ix archetype) is never in that pool: as
+        the current card it is divided by the four Uprising level-III cards'
+        average (spec/epic-goto11-promo-draft.md §2.4).
         """
 
         four = self._is_four_player()
@@ -624,6 +653,29 @@ class CombatMixin(ProfileCore):
         # Reinforcements (BaseSet) cannot be held in an Uprising game.
         return s
 
+    def _intrigue_troop_value(self) -> int:
+        """``IntrigueHand.OfType<WormIntriguePlayable>().Sum(b__116_2)``.
+
+        ``b__116_2``: ``card.Abilities.OfType<IntrigueAbility>().Sum(a =>
+        a.TroopValue(M, me))`` (vslot 86), over the held Intrigue in hand
+        order. The only override in our games is Immortality's
+        ``CounterattackPlotAbility::TroopValue @0x4c672f0`` (4), spec
+        immortality.md §2.9; the Intrigue port supplies it as
+        ``troop_value(profile)`` (``IntrigueAbility`` default 0). An
+        unported class is worth 0 (``WormAbilityDefinition``).
+        """
+
+        from dune_imperium.agents.app_ai.abilities.intrigue import IntrigueAbility
+
+        profile = self._profile()
+        total = 0
+        for card in self.ctx.intrigue_cards:
+            entity = catalog.intrigue_entity(card, self.ctx.seat)
+            for ability in abilities_of(entity):
+                if isinstance(ability, IntrigueAbility):
+                    total += int(ability.troop_value(profile))
+        return total
+
     def intrigue_hand_strength_value(self) -> int:
         """``IntrigueHandStrengthValue @0x4914170`` — spec §5.3, intrigues §4.4.
 
@@ -702,9 +754,7 @@ class CombatMixin(ProfileCore):
             s.add("Intrigue Swords", self.intrigue_hand_strength_value())
             if _garrison_units(me) > 0:
                 s.add("Agents Left Bonus", 3 * me.agents_available)
-            # IntrigueAbility.TroopValue is overridden only by Base, Rise of Ix
-            # and Immortality intrigues: 0 for every Uprising card (int / 2).
-            s.add("Intrigue Troop Value", 0)
+            s.add("Intrigue Troop Value", _cs_half(self._intrigue_troop_value()))
             if self.heighliner_potential_player() == self.ctx.seat:
                 s.add("Heighliner Bonus", self.C.ExpectedStrengthHeighlinerPotential)
             elif self._worm_potential_a_player() == self.ctx.seat:
@@ -726,7 +776,7 @@ class CombatMixin(ProfileCore):
         s.add("Deployable Bonus", 2 * max_units)
         s.add("Undeployable Bonus", min(_garrison_units(me) - max_units, 2 * agents))
         s.add("Agents Left", 2 * agents)
-        s.add("Intrigue Troop Value", 0)  # 0 in Uprising, as in est_strength
+        s.add("Intrigue Troop Value", _cs_half(self._intrigue_troop_value()))
         if self.heighliner_potential_player() == self.ctx.seat:
             s.add("Heighliner Bonus", self.C.PotentialStrengthHeighlinerPotential)
         elif self.has_worm_potential():
@@ -849,7 +899,10 @@ class CombatMixin(ProfileCore):
         max_vp = max(self.ctx.vp(q) for q in top2)
         trigger = self.ctx.endgame_trigger_score
         conflict = self._current_conflict()
-        # The conflict card's own VictoryPoints: 0 for every Uprising card.
+        # The conflict card's own VictoryPoints: 0 for every Uprising card, 4
+        # for Epic's Economic Supremacy (its Rise of Ix archetype; spec
+        # epic-goto11-promo-draft.md §2.4: the branch fires at max VP >= 8
+        # with T = 12).
         conflict_vp = 0 if conflict is None else conflict.int_attr("VictoryPoints", 0)
         slots = self._conflict_rewards_allowed()
         if conflict_vp + max_vp >= trigger:

@@ -7,7 +7,10 @@ classes these build on (``SpaceAbility``, ``DeferredAbility``,
 influence, intrigue, deploy, trash, spy, recall-agent and contract-gain
 abilities and the generic conflict rewards) are in ``abilities/generic.py``;
 this module holds the space-, conflict- and contract-specific subclasses and
-the two playmat spy abilities the Agent turn asks about.
+the two playmat spy abilities the Agent turn asks about. Which abilities a
+Conflict reward grants (``granted_reward_abilities``) is read here for every
+card, including Economic Supremacy, whose rewards live on the card's own
+abilities (``abilities/epic_promo.py``) instead of reward archetypes.
 
 App class chains (``dump/worm-canis.dll.cs``):
 
@@ -46,16 +49,22 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, ClassVar
 
 from dune_imperium.agents.app_ai.abilities.base import (
+    Ability,
     Answer,
     Request,
     SelectionMode,
     Timing,
+    abilities_of,
     port,
+)
+from dune_imperium.agents.app_ai.abilities.epic_promo import (
+    EconomicSupremacyFirstAbility,
 )
 from dune_imperium.agents.app_ai.abilities.generic import (
     ConflictAbility,
     ContractAbility,
     DeferredAbility,
+    GenericConflictAbility,
     HighCouncilGainIntrigueAbility,
     SpaceAbility,
     TriggeredAbility,
@@ -65,6 +74,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     _space_bonus_spice,
     _targets,
     collect_first,
+    conflict_reward,
     contract_spaces,
     deferred_threshold_reached,
     gain_any_influence_value,
@@ -863,6 +873,46 @@ class GainAnyTwoInfluenceConflictAbility(ConflictAbility):
         value = _math_max(0.5, _dsum([s.sum for s, _ in top]))
         refs = tuple(t.ref for _, t in top)
         return Answer(value, (refs,), "GainAnyTwoInfluenceConflict")
+
+
+def place_reward_ability(conflict: Entity, place: int) -> ConflictAbility | None:
+    """``conflict.Abilities.OfType<ConflictAbility>().FirstOrDefault(
+    ConflictPlace == place)`` (``WormConflictPlayable::AbilityForPlacement``
+    @0x4829c40; an ability without the attribute reads 0): the reward
+    ``CombatPhase/<DetermineRewards>d__19`` runs for that place."""
+
+    for ability in abilities_of(conflict):
+        if isinstance(ability, ConflictAbility) and (ability.place or 0) == place:
+            return ability
+    return None
+
+
+def granted_reward_abilities(conflict: Entity, place: int) -> tuple[Ability, ...]:
+    """The custom abilities the ``place`` reward of ``conflict`` grants.
+
+    What the place's ``ConflictAbility.BeginExecution`` hands its taker, in
+    grant order:
+
+    - ``GenericConflictAbility`` (every Uprising card): the reward
+      archetype's ``CustomAbilityIDs`` (``<BeginExecution>d__3``), the same
+      abilities ``catalog.conflict_reward_entities`` reaches;
+    - ``EconomicSupremacyFirstAbility`` (Epic's Conflict III, no reward
+      archetypes): the card's own ``EconomicSupremacySolariAbility`` and
+      ``…SpiceAbility`` (spec/epic-goto11-promo-draft.md §2.4);
+    - anything else (ES 2nd/3rd: plain gains): nothing.
+
+    Static content only: the ``GainAnyInfluenceConflictAbility`` charge a
+    played Pivotal Gambit appends at run time to the
+    ``GenericConflictFirstAbility``'s own ``CustomAbilityIDs``
+    (``epic_promo.pivotal_gambit_reward_ability``) is not listed.
+    """
+
+    reward = place_reward_ability(conflict, place)
+    if isinstance(reward, GenericConflictAbility):
+        return abilities_of(conflict_reward(conflict, place))
+    if isinstance(reward, EconomicSupremacyFirstAbility):
+        return reward.granted_abilities()
+    return ()
 
 
 # ===========================================================================

@@ -357,8 +357,13 @@ def _this_turn_agent(p: Profile) -> tuple[list[Entity], list[Entity]]:
     and ``BoardSpaces.Where(PlayerAgent(P) is unexhausted)``: [I]
     (engine-order §4.1) the card and space of the current Agent turn. Ours:
     the ``card_id``/``space_id`` of the seat's own open ``agent_effects``
-    frame; none outside an Agent turn. The RoI/Immortality grafted card does
-    not exist in Uprising.
+    frame; none outside an Agent turn.
+
+    ``WormPlayer::DeferredThresholdReached @0x483e470`` adds the grafted
+    card (``GetGraftedCard @0x48360e0``) when exactly one card is listed
+    (Immortality, spec immortality.md §4.1): ours is the frame's graft
+    partner (``AppContext.graft_cards``; a Usurp partner may be a Row card).
+    Without a graft there is none, so this only acts with Immortality.
     """
 
     context = p.ctx.own_frame_context("agent_effects")
@@ -369,6 +374,11 @@ def _this_turn_agent(p: Profile) -> tuple[list[Entity], list[Entity]]:
     card_ref = context.get("card_id")
     if isinstance(card_ref, str) and card_ref:
         cards.append(card_entity(card_ref, p.ctx.seat))
+    pair = p.ctx.graft_cards()
+    if pair is not None and len(cards) == 1:
+        partner = pair[1] if pair[0] == cards[0].ref else pair[0]
+        if partner != cards[0].ref:
+            cards.append(card_entity(partner, p.ctx.seat))
     space_ref = context.get("space_id")
     if isinstance(space_ref, str) and space_ref:
         spaces.append(space_entity(space_ref, p.ctx.board))
@@ -657,21 +667,59 @@ class AcquireAbility(ActivatedAbility):
     def evaluate(self, p: Profile, request: Request) -> Answer:
         """``AcquireAbility::Evaluate`` @0x4cd3c50 (spec §4.1).
 
-        The Tleilaxu branch (Immortality) never applies. The destination
-        picker (``ChooseOne``: option 0 top of deck, 1 hand/discard) is
-        expected never to appear in Uprising (spec §4.2, UNTRACED); a request
-        whose first target info carries custom ``options`` is treated as that
-        picker (judgement).
+        The Tleilaxu lines (immortality.md §3.5 and its Errata; ``cmp eax, 8;
+        jne``: only for a Tleilaxu card, ``EntityType == Tleilaxu``): in the
+        final round the value is *replaced* by ``GetAcquireEffectsValue``
+        (a fresh summer merged with it); otherwise the acquire ability's own
+        ``SpecimenCost`` attribute is added (``SpecimenCost(this)`` reads the
+        ability, which never carries one: 0) and, while some Tleilaxu Row
+        card costs more specimens than P holds (``setg``) and is worth more
+        than this value + ``AcquireTleilaxuReserveThreshold`` (``seta``), the
+        ``AcquireTleilaxuReservePenalty`` "Save Up Specimens".
+
+        The destination picker (``ChooseOne`` or
+        ``ChooseAcquireTleilaxuLocation``: option 0 top of deck, 1
+        hand/discard) is expected never to appear in Uprising (spec §4.2,
+        UNTRACED); a request whose first target info carries custom
+        ``options`` is treated as that picker (judgement).
         """
 
         card = self.owner
-        value = p.acquire_value(card).sum
+        acquire = p.acquire_value(card)
+        if card.attr("EntityType") == "Tleilaxu":
+            acquire = self._tleilaxu_acquire_value(p, acquire)
+        value = acquire.sum
         if request.infos and request.infos[0].options:
             if _in_combat_phase(p):
                 value = 1.0 if value <= 0 else value  # ``cmplesd``
             option = 1 if _is_tsmf(card) else 0
             return Answer(value, ((option,),), f"Acquire {card.ref}")
         return Answer(value, (), f"Acquire {card.ref}")
+
+    def _tleilaxu_acquire_value(self, p: Profile, acquire: Summer) -> Summer:
+        """The Tleilaxu block of ``AcquireAbility::Evaluate`` @0x4cd3ed4.
+
+        ``b__0 @0x4cd4500`` = ``SpecimenCost(row card) > GetSpecimens().
+        Count`` and ``b__1 @0x4cd4570`` = ``row.AcquireValue(P).Sum >
+        acquireValue.Sum + AcquireTleilaxuReserveThreshold``, both against the
+        value after "Specimen Cost". ``Playmat.TleilaxuRow`` holds Reclaimed
+        Forces and the dealt cards (this card included).
+        """
+
+        if p.is_final_round():
+            replaced = Summer()
+            replaced.merge(p.acquire_effects_value(self.owner))
+            return replaced
+        acquire.add("Specimen Cost", 0.0)  # the ability's own SpecimenCost: 0
+        specimens = p.ctx.specimens()
+        threshold = acquire.sum + p.C.AcquireTleilaxuReserveThreshold
+        if any(
+            row.int_attr("SpecimenCost") > specimens
+            and p.acquire_value(row).sum > threshold
+            for row in p.tleilaxu_row_cards()
+        ):
+            acquire.add("Save Up Specimens", p.C.AcquireTleilaxuReservePenalty)
+        return acquire
 
 
 @port("worm.canis.abilities.ActivatedAbilities.DeferredAbility")
@@ -1080,8 +1128,10 @@ class GainIntrigueCustomAbility(GainIntrigueAbility):
         Judgement (unreachable today): no Uprising or CHOAM archetype lists
         this class (``Irulan`` and ``Muad'Dib`` derive from
         ``GainIntrigueAbility`` directly), so no frame of ours grants it; never
-        held, like ``SpacingGuildDiscardDrawAbility.has_run_token``. A port
-        that models the grant overrides this.
+        held, like ``SpacingGuildDiscardDrawAbility.has_run_token``. With
+        Immortality the playmat holds it (spec immortality.md §1.4), but no
+        research space or card of this game grants its id (§3.4, UNTRACED
+        #14). A port that models the grant overrides this.
         """
 
         return False
@@ -1830,9 +1880,12 @@ class SpaceAbility(Ability):
                 v.add("Want Contract Count", float(p.want_contract_count()))
         r = 0
         occupied = any(seat != p.ctx.seat for seat in p.ctx.space_occupants(space.ref))
-        # ``WormSpace::CanInfiltrateWithoutSpy @0x49c1080`` tests Helena Richese
-        # (base leader), RoI ``InfiltrationIconList`` cards and the Tleilaxu
-        # Infiltrator (Immortality): never true in Uprising.
+        # ``WormSpace::CanInfiltrateWithoutSpy(P, null, null, true) @0x49c1080``
+        # tests the player's ``Infiltrate`` attribute (no Uprising or
+        # Immortality effect sets it), Helena Richese (base leader) and the
+        # RoI ``InfiltrationIconList`` of the hand; its Tleilaxu Infiltrator
+        # test needs both card arguments, which this call passes as null:
+        # never true here, with or without Immortality.
         if occupied:
             if _deployed_spies(p) < 3:
                 v.add(

@@ -104,6 +104,8 @@ if TYPE_CHECKING:
 
 #: ``AbilityTiming`` values (``worm-canis.dll.cs``): Plot abilities set none.
 PLOT_TIMING: Final = 0
+#: Immortality's Harvest Cells (``HarvestCellsAbility`` ``.ctor @0x4c74ee0``).
+COMBAT_RESOLUTION_TIMING: Final = 3
 ENDGAME_TIMING: Final = 4
 COMBAT_TIMING: Final = 5
 
@@ -484,18 +486,26 @@ class IntrigueAbility(PlayAbility):
     def has_matching_timing(self, turn_type: int) -> bool:
         """``WormAbilityDefinition::HasMatchingTiming @0x4a89f30``.
 
-        None matches the turn types {Undetermined, Agent, Reveal} (spec
-        §2.1). UNTRACED for the others: Combat (5) is taken to match the
-        CombatTurn and Endgame (4) the Endgame turn.
+        The jump table (``il2dis``): timing 0 (None) matches the turn types
+        {Undetermined, Agent, Reveal} (spec §2.1); 1 Agent the AgentTurn; 2
+        Reveal the RevealTurn; 3 CombatResolution and 5 Combat the
+        CombatTurn; 4 Endgame the Endgame turn; anything else matches every
+        turn (``cmp ecx, 5; ja`` keeps ``al = 1``). Only Immortality's Harvest
+        Cells uses 3.
         """
 
-        if self.ability_timing == PLOT_TIMING:
+        timing = self.ability_timing
+        if timing == PLOT_TIMING:
             return turn_type in (_UNDETERMINED, _AGENT_TURN, _REVEAL_TURN)
-        if self.ability_timing == COMBAT_TIMING:
+        if timing == Timing.AGENT:
+            return turn_type == _AGENT_TURN
+        if timing == Timing.REVEAL:
+            return turn_type == _REVEAL_TURN
+        if timing in (COMBAT_RESOLUTION_TIMING, COMBAT_TIMING):
             return turn_type == _COMBAT_TURN
-        if self.ability_timing == ENDGAME_TIMING:
+        if timing == ENDGAME_TIMING:
             return turn_type == _ENDGAME_TURN
-        return False
+        return True
 
 
 def ability_for_prompt(card: Entity, combat_turn: bool) -> IntrigueAbility | None:
