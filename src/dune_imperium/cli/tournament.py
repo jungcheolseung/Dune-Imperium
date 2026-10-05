@@ -80,6 +80,14 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--leader-draft",
+        action="store_true",
+        help=(
+            "use the OQ-007 six-Leader draft setup: each seat's agent picks "
+            "its own Leader (cannot be combined with --rotate-leaders)"
+        ),
+    )
+    parser.add_argument(
         "--promo-cards",
         action="store_true",
         help=(
@@ -183,6 +191,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             go_to_11=arguments.go_to_11,
             epic_game=arguments.epic,
             arrakeen_scouts=arguments.arrakeen_scouts,
+            leader_draft=arguments.leader_draft,
             max_steps=arguments.max_steps,
         )
     except ValueError as error:

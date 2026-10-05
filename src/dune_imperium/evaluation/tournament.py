@@ -6,7 +6,10 @@ and a contiguous seed range (optionally with a per-seed Leader roster), so a
 lineup meets every seat, Leader, and first-player position the seeds
 produce. Because setup depends only on the game seed, the rotations of one
 seed share the same Leaders, decks, and first player and differ solely in
-which agent sits where.
+which agent sits where. With the OQ-007 Leader draft the seed fixes the
+six-Leader pool and the first player instead, and each seat's agent picks
+its own Leader, so the rotations of a seed may end up with different
+Leaders.
 
 ``play_match`` runs one spec through ``run_policy_game`` with every seat's
 agent metered for decision count, wall-clock decision time, and illegal
@@ -53,6 +56,7 @@ class MatchSpec:
     go_to_11: bool = False
     epic_game: bool = False
     arrakeen_scouts: bool = False
+    leader_draft: bool = False
     leader_ids: tuple[str, ...] | None = None
     max_steps: int = 30_000
 
@@ -67,6 +71,7 @@ class MatchSpec:
             go_to_11=self.go_to_11,
             epic_game=self.epic_game,
             arrakeen_scouts=self.arrakeen_scouts,
+            leader_draft=self.leader_draft,
         )
 
 
@@ -96,6 +101,9 @@ class MatchResult:
     steps: int
     duration_seconds: float
     seats: tuple[SeatResult, ...]
+    # The ruleset identifier leaves the draft out (RulesetConfig.identifier),
+    # so a drafted match says so here.
+    leader_draft: bool = False
 
     @property
     def winner(self) -> SeatResult:
@@ -238,6 +246,7 @@ def play_match(
         steps=len(simulation.replay.steps),
         duration_seconds=duration,
         seats=seats,
+        leader_draft=config.leader_draft,
     )
 
 
@@ -341,6 +350,7 @@ def tournament_specs(
     go_to_11: bool = False,
     epic_game: bool = False,
     arrakeen_scouts: bool = False,
+    leader_draft: bool = False,
     max_steps: int = 30_000,
 ) -> tuple[MatchSpec, ...]:
     """Cross a lineup over seats, rulesets, and a seed range.
@@ -355,6 +365,10 @@ def tournament_specs(
         raise ValueError("a tournament needs at least one game seed")
     if not rulesets:
         raise ValueError("a tournament needs at least one ruleset")
+    if rotate_leaders and leader_draft:
+        # The draft deals its own pool in SETUP and never reads the engine's
+        # fixed leader_ids, so a rotated roster would be silently ignored.
+        raise ValueError("rotate_leaders cannot be combined with leader_draft")
     # Reject an invalid option mix here rather than once per match inside
     # play_match (MatchSpec.config is built lazily).
     RulesetConfig(
@@ -379,6 +393,7 @@ def tournament_specs(
             go_to_11=go_to_11,
             epic_game=epic_game,
             arrakeen_scouts=arrakeen_scouts,
+            leader_draft=leader_draft,
             leader_ids=(
                 _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
                 if rotate_leaders

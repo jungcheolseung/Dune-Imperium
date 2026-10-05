@@ -199,6 +199,83 @@ def test_epic_game_match_runs_to_finished() -> None:
     assert sorted(seat.rank for seat in result.seats) == [1, 2, 3, 4]
 
 
+def test_tournament_specs_forward_the_leader_draft() -> None:
+    specs = tournament_specs(agents=("app_ai", "heuristic"), games=2, leader_draft=True)
+
+    assert specs
+    assert all(spec.leader_draft and spec.config.leader_draft for spec in specs)
+    # The draft deals its own pool, so no fixed roster rides along.
+    assert all(spec.leader_ids is None for spec in specs)
+    with pytest.raises(ValueError, match="rotate_leaders cannot be combined"):
+        tournament_specs(
+            agents=("random",), games=1, leader_draft=True, rotate_leaders=True
+        )
+
+
+def test_a_drafted_match_seats_the_leaders_its_agents_picked() -> None:
+    seed = 5
+    pool = UprisingRulesEngine().reset(
+        RulesetConfig(leader_draft=True), seed
+    ).leader_draft_pool
+    spec = MatchSpec(
+        game_seed=seed,
+        policy_seed=900_000 + seed,
+        seat_agents=("app_ai", "heuristic", "random", "app_ai_easy"),
+        leader_draft=True,
+    )
+
+    result = play_match(spec)
+
+    assert result.leader_draft
+    # The identifier leaves the draft out; the result carries it instead.
+    assert result.ruleset == "uprising-4p-base"
+    leaders = [seat.leader_id for seat in result.seats]
+    assert len(set(leaders)) == 4
+    assert set(leaders) <= set(pool)
+    assert sorted(seat.rank for seat in result.seats) == [1, 2, 3, 4]
+    assert all(seat.illegal_actions == 0 for seat in result.seats)
+    summary = summarize(TournamentReport((result,), (), 0.0))
+    assert summary.rulesets == ("uprising-4p-base (leader draft)",)
+
+
+def test_cli_plays_a_leader_draft_and_marks_its_rows(tmp_path: Path) -> None:
+    written = tmp_path / "matches.jsonl"
+
+    exit_code = tournament_main(
+        [
+            "--agents",
+            "app_ai,random",
+            "--games",
+            "1",
+            "--leader-draft",
+            "--matches",
+            str(written),
+        ]
+    )
+
+    assert exit_code == 0
+    rows = [json.loads(line) for line in written.read_text().splitlines()]
+    assert len(rows) == 2
+    assert all(row["leader_draft"] for row in rows)
+    assert all(len({seat["leader_id"] for seat in row["seats"]}) == 4 for row in rows)
+
+
+def test_cli_rejects_leader_draft_with_rotated_leaders() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        tournament_main(
+            [
+                "--agents",
+                "random",
+                "--games",
+                "1",
+                "--leader-draft",
+                "--rotate-leaders",
+            ]
+        )
+
+    assert excinfo.value.code == 2
+
+
 def test_play_match_meters_every_seat() -> None:
     spec = MatchSpec(
         game_seed=3,
