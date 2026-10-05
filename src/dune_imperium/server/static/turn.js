@@ -423,14 +423,30 @@ function legalActionsFor(ref) {
   );
 }
 
+/* Only destinations offered by the server: recalls and an Agent's
+   Infiltrate argument also name posts, but do not place a Spy there. */
+const SPY_DESTINATION_ACTIONS = new Set([
+  "place_acquisition_spy", "place_agent_card_spy", "place_combat_reward_spy",
+  "place_contract_spy", "place_intrigue_spy", "place_leader_spy",
+  "place_reveal_spy", "place_spy_on_space", "place_tech_spy",
+  "resolve_espionage_place_spy", "move_spy",
+]);
+
+function legalSpyPostActions(postId) {
+  if (state.review || !state.actions) return [];
+  return state.actions.actions.filter((action) =>
+    SPY_DESTINATION_ACTIONS.has(action.action_id) && action.arguments.post_id === postId
+  );
+}
+
 /* Click on a table object: a step of the staged Agent turn, or else one
    legal action applies directly, several focus the action list, none shows
    the detail popover (and why it cannot be taken now, when the server
    says: unavailableRef). */
-function tableClick(ref, entry, anchor) {
+function tableClick(ref, entry, anchor, offered = null) {
   if (state.busy) return;
   if (stagedTurn() && pickStep(ref, entry, anchor)) return;
-  const legal = legalActionsFor(ref);
+  const legal = offered || legalActionsFor(ref);
   if (legal.length === 1) {
     applyAction(legal[0].index);
     return;

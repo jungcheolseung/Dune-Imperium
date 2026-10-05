@@ -244,11 +244,11 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "urban_surveillance": (
         "1 Solari on each empty post by a City space, for the Spy placed there.",
-        "도시 칸 옆 빈 관측소마다 {solari:1}. 거기 {spy}를 놓는 좌석이 가진다.",
+        "도시 칸 옆 빈 관측소마다 {solari:1}. 거기 {spy}를 놓는 플레이어가 가진다.",
     ),
     "planetary_exploration": (
         "1 spice on each empty post by a Maker space, for the Spy placed there.",
-        "{maker} 칸 옆 빈 관측소마다 {spice:1}. 거기 {spy}를 놓는 좌석이 가진다.",
+        "{maker} 칸 옆 빈 관측소마다 {spice:1}. 거기 {spy}를 놓는 플레이어가 가진다.",
     ),
     "choam_research": (
         "2 face-down Contracts at Research Station, one per visit.",
@@ -261,12 +261,12 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "올려 두고 완료할 때 받는다.",
     ),
     "sponsored_research": (
-        "2 spice by the Helix, for the next seat to reach it.",
-        "연구 트랙의 나선 옆 {spice:2}. 다음에 닿는 좌석이 가진다.",
+        "2 spice by the Helix, for the next player to reach it.",
+        "연구 트랙의 나선 옆 {spice:2}. 다음에 닿는 플레이어가 가진다.",
     ),
     "back_room_deal": (
-        "2 Solari on Reclaimed Forces, for the next seat to acquire it.",
-        "Reclaimed Forces 위 {solari:2}. 다음에 획득하는 좌석이 가진다.",
+        "2 Solari on Reclaimed Forces, for the next player to acquire it.",
+        "Reclaimed Forces 위 {solari:2}. 다음에 획득하는 플레이어가 가진다.",
     ),
     "prison_planet": (
         "Each may lose a garrison troop to put a Control marker on Sardaukar "
@@ -296,7 +296,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "the bank under it; their next visit sends the troop into the Conflict "
         "and gains the water.",
         "각자 주둔지 {troop:1}을 Gather Support로 옮길 수 있다. 은행의 {water:1}을 "
-        "그 밑에 둔다. 다음 방문 때 병력은 {conflict}으로 가고 물은 그 좌석이 "
+        "그 밑에 둔다. 다음 방문 때 병력은 {conflict}으로 가고 물은 그 플레이어가 "
         "얻는다.",
     ),
     "coordinate_with_the_emperor": (
@@ -341,8 +341,8 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "이번 라운드 모든 진영 칸이 {combat} 칸이다.",
     ),
     "rebuild_infrastructure": (
-        "If the Shield Wall is gone, two seats may pay 1 spice each to put it back.",
-        "{shield_wall}이 없으면 두 좌석이 각자 {spice:1}를 내서 되돌릴 수 있다.",
+        "If the Shield Wall is gone, two players may pay 1 spice each to put it back.",
+        "{shield_wall}이 없으면 두 플레이어가 각자 {spice:1}를 내서 되돌릴 수 있다.",
     ),
     "friends_everywhere": (
         "This round, an Influence 4 bonus may be any Faction's.",
@@ -432,7 +432,7 @@ def auction_rule_text(item_id: str) -> str:
             + (", the second may buy another." if auction.places > 1 else ".")
         )
     return (
-        "Sealed bids of 0-3 spice: each seat pays and sends one troop per spice "
+        "Sealed bids of 0-3 spice: each player pays and sends one troop per spice "
         "to the Conflict; the lowest bidders may pull theirs back."
     )
 
@@ -737,7 +737,7 @@ def _subcommittee_lines(
         if member is not None:
             reason: Reason | None = (
                 "Already joined",
-                "이미 가입한 좌석이 있음",
+                "이미 가입한 플레이어가 있음",
                 "claimed",
             )
         else:
@@ -803,7 +803,7 @@ _NO_SUBCOMMITTEE: Final[Reason] = (
 )
 SUBCOMMITTEES_CLAIMED: Final[Reason] = (
     "Every subcommittee already has a member",
-    "모든 소위원회에 가입한 좌석이 있음",
+    "모든 소위원회에 가입한 플레이어가 있음",
     "claimed",
 )
 

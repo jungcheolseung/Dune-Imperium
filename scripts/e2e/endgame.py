@@ -76,7 +76,8 @@ def run(base: str, browser) -> None:
     )
     check.ok(
         # The glossary's words: 승점, 스파이스, 솔라리, 물 [Main p. 20], 주둔지 병력.
-        header == ["순위", "좌석", "승점", "스파이스", "솔라리", "물", "주둔지 병력"],
+        header
+        == ["순위", "플레이어", "승점", "스파이스", "솔라리", "물", "주둔지 병력"],
         "the standings header is the seven printed columns",
         header,
     )
@@ -166,7 +167,7 @@ def run(base: str, browser) -> None:
         "#disclosure h3", "els => els.map((e) => e.textContent.trim())"
     )
     check.ok(
-        len([s for s in seats if s.startswith("좌석")]) == 4,
+        len([s for s in seats if s.startswith("플레이어")]) == 4,
         "disclosure has a section per seat",
         seats,
     )
@@ -247,7 +248,7 @@ def check_review_status(page) -> None:
     "좌석 0: [object DocumentFragment]"."""
     status = page.inner_text("#review-status")
     check.ok(
-        "[object" not in status and re.search(r"좌석 \d: \S", status) is not None,
+        "[object" not in status and re.search(r"플레이어\d: \S", status) is not None,
         "the review status names the step's action in words",
         status,
     )
@@ -331,7 +332,7 @@ def expected_margin(first: dict, second: dict) -> str:
     for label, value in TIEBREAK_ORDER:
         if value(first) != value(second):
             return f"{vp} 동점 · 동점 판정 {label} {value(first)} 대 {value(second)}"
-    last = "공개 차례를 더 늦게 마친 좌석이 승리"
+    last = "공개 차례를 더 늦게 마친 플레이어가 승리"
     return f"{vp} 동점 · 동점 판정 항목도 모두 같아 {last}"
 
 

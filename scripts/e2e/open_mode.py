@@ -235,7 +235,8 @@ def scenario_full_game(base, browser) -> str:
                 want.push({ index: entry.index, name: nameOf(id) });
             });
             return want.map((w) => {
-                const head = [...document.querySelectorAll('#action-log .turn-line-head')]
+                const heads = document.querySelectorAll('#action-log .turn-line-head');
+                const head = [...heads]
                     .find((e) => {
                         const tag = e.querySelector('.turn-index');
                         return tag && tag.textContent.trim() === '#' + w.index;
@@ -258,12 +259,15 @@ def scenario_full_game(base, browser) -> str:
         """() => {
             const hits = new Set();
             const add = (text) => {
-                for (const m of String(text || '').matchAll(/\\{[a-z_]+(?::\\d+)?\\}/g)) {
+                const tokens = String(text || '').matchAll(/\\{[a-z_]+(?::\\d+)?\\}/g);
+                for (const m of tokens) {
                     hits.add(m[0]);
                 }
             };
             add(document.getElementById('game-screen').innerText);
-            for (const el of document.querySelectorAll('#game-screen [title], #game-screen img[alt]')) {
+            const nodes = document.querySelectorAll(
+                '#game-screen [title], #game-screen img[alt]');
+            for (const el of nodes) {
                 add(el.getAttribute('title'));
                 add(el.getAttribute('alt'));
             }
@@ -286,7 +290,7 @@ def scenario_full_game(base, browser) -> str:
         "[...document.querySelectorAll('tr.winner td')].map((c) => c.textContent)"
     )
     check.ok(
-        len(rows) == 7 and rows[1].startswith("좌석 "),
+        len(rows) == 7 and rows[1].startswith("플레이어"),
         "winner row drawn from text cells",
         rows,
     )

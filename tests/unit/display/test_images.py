@@ -17,6 +17,7 @@ from dune_imperium.content.uprising.contracts import CONTRACTS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
+from dune_imperium.content.uprising.objectives import OBJECTIVES
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.images import (
@@ -38,6 +39,7 @@ def _all_content_keys() -> set[tuple[str, str]]:
         if contract.copy_of is None
     ]
     keys += [("conflict", conflict.card.card_id) for conflict in CONFLICTS]
+    keys += [("objective", objective.objective_id) for objective in OBJECTIVES]
     keys += [("location", space.space_id) for space in BOARD_SPACES]
     for leader in LEADERS:
         keys.append(("leader", leader.leader_id))
@@ -180,7 +182,7 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # Epic Game Mode: Control the Spice and Economic Supremacy.
     assert len(keys) == (
         173 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1 + 8 + 1
-        + 2
+        + 2 + 5  # Epic Game Mode and the five Objective faces.
     )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()

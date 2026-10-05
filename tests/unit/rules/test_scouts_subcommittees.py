@@ -393,7 +393,7 @@ def test_an_offer_with_every_subcommittee_taken_offers_only_the_decline() -> Non
     [row] = listed
     assert row["surface"] == "choice"
     assert row["code"] == "claimed"
-    assert row["reason_ko"] == "모든 소위원회에 가입한 좌석이 있음"
+    assert row["reason_ko"] == "모든 소위원회에 가입한 플레이어가 있음"
     state = _act(state, "decline_subcommittee")
     assert _scouts_frames_done(state)
 

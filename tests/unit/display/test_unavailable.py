@@ -1255,7 +1255,7 @@ def test_every_subcommittee_taken_greys_the_choice_beside_the_decline() -> None:
     row = _rows(found, "choice")["choice:choose_subcommittee"]
     assert (row["reason"], row["reason_ko"], row["code"]) == (
         "Every subcommittee already has a member",
-        "모든 소위원회에 가입한 좌석이 있음",
+        "모든 소위원회에 가입한 플레이어가 있음",
         "claimed",
     )
 

@@ -12,8 +12,8 @@ const UI_TEXT = {
   "effects.combat_intrigue": { "ko": "전투 책략 사용", "en": "Combat Intrigue played" },
   "effects.navigation": { "ko": "항행 카드 사용", "en": "Navigation card played" },
   "html.setup_intro": {
-    "ko": "좌석과 규칙을 고르고 아라키스로 떠나세요.",
-    "en": "Choose your seats and rules. Arrakis awaits."
+    "ko": "플레이어와 규칙을 고르고 아라키스로 떠나세요.",
+    "en": "Choose your players and rules. Arrakis awaits."
   },
   "screens.setup_summary": {
     "ko": "사람 {{human}}명 · AI {{ai}}명 · 규칙 옵션 {{options}}개 선택",
@@ -44,8 +44,8 @@ const UI_TEXT = {
     "en": "{agent}: {{seats}}"
   },
   "board.alliance_holder": {
-    "ko": "좌석 {{seat}} · {{faction}} {alliance}",
-    "en": "Seat {{seat}} · {{faction}} {alliance}"
+    "ko": "플레이어{{seat}} · {{faction}} {alliance}",
+    "en": "Player {{seat}} · {{faction}} {alliance}"
   },
   "board.board_scan_missing": {
     "ko": "보드 스캔(assets/board/map.jpg)이 없어 목록으로 표시합니다.",
@@ -80,20 +80,20 @@ const UI_TEXT = {
     "en": "Face-down Contract bank"
   },
   "board.control_seat": {
-    "ko": "{control}: 좌석 {{seat}}",
-    "en": "{control}: Seat {{seat}}"
+    "ko": "{control}: 플레이어{{seat}}",
+    "en": "{control}: Player {{seat}}"
   },
   "board.control_seat_space": {
-    "ko": "{control}: 좌석 {{seat}} · {{name}}",
-    "en": "{control}: Seat {{seat}} · {{name}}"
+    "ko": "{control}: 플레이어{{seat}} · {{name}}",
+    "en": "{control}: Player {{seat}} · {{name}}"
   },
   "board.flag_combat_space": {
     "ko": "⚔ 전투 장소",
     "en": "⚔ Combat space"
   },
   "board.influence_cube": {
-    "ko": "좌석 {{seat}} · {{faction}} {influence_any} {{level}}",
-    "en": "Seat {{seat}} · {{faction}} {influence_any} {{level}}"
+    "ko": "플레이어{{seat}} · {{faction}} {influence_any} {{level}}",
+    "en": "Player {{seat}} · {{faction}} {influence_any} {{level}}"
   },
   "board.intrigue_discard_count": {
     "ko": "{intrigue} {discard_pile} {{count}}장",
@@ -120,16 +120,16 @@ const UI_TEXT = {
     "en": "{{space}} · {commander} (2 {solari})"
   },
   "board.no_human_seats": {
-    "ko": "사람 좌석이 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",
-    "en": "This game has no human seats. Use \"Watch the AI game again\" in the final standings to watch it from the start."
+    "ko": "사람 플레이어가 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",
+    "en": "This game has no human players. Use \"Watch the AI game again\" in the final standings to watch it from the start."
   },
   "board.pile_intrigue_discard": {
     "ko": "{intrigue} {discard_pile}",
     "en": "{intrigue} {discard_pile}"
   },
   "board.post_seats": {
-    "ko": "{{post}}: 좌석 {{seats}}",
-    "en": "{{post}}: Seat {{seats}}"
+    "ko": "{{post}}: {{seats}}",
+    "en": "{{post}}: {{seats}}"
   },
   "board.research_start_short": {
     "ko": "시작",
@@ -148,28 +148,28 @@ const UI_TEXT = {
     "en": "{{mission}} · {{goods}} ({{who}})"
   },
   "board.seat_conflict_units": {
-    "ko": "좌석 {{seat}} · {conflict}: {{units}}",
-    "en": "Seat {{seat}} · {conflict}: {{units}}"
+    "ko": "플레이어{{seat}} · {conflict}: {{units}}",
+    "en": "Player {{seat}} · {conflict}: {{units}}"
   },
   "board.seat_garrison_units": {
-    "ko": "좌석 {{seat}} · {garrison}: {{units}}",
-    "en": "Seat {{seat}} · {garrison}: {{units}}"
+    "ko": "플레이어{{seat}} · {garrison}: {{units}}",
+    "en": "Player {{seat}} · {garrison}: {{units}}"
   },
   "board.seat_high_council": {
-    "ko": "좌석 {{seat}} · 원로회",
-    "en": "Seat {{seat}} · High Council"
+    "ko": "플레이어{{seat}} · 원로회",
+    "en": "Player {{seat}} · High Council"
   },
   "board.seat_maker_hooks": {
-    "ko": "좌석 {{seat}} · {maker_hooks}",
-    "en": "Seat {{seat}} · {maker_hooks}"
+    "ko": "플레이어{{seat}} · {maker_hooks}",
+    "en": "Player {{seat}} · {maker_hooks}"
   },
   "board.seat_strength": {
-    "ko": "좌석 {{seat}} · 전투력 {{strength}}",
-    "en": "Seat {{seat}} · strength {{strength}}"
+    "ko": "플레이어{{seat}} · 전투력 {{strength}}",
+    "en": "Player {{seat}} · strength {{strength}}"
   },
   "board.seat_vp": {
-    "ko": "좌석 {{seat}} · {victory_point} {{vp}}",
-    "en": "Seat {{seat}} · {victory_point} {{vp}}"
+    "ko": "플레이어{{seat}} · {victory_point} {{vp}}",
+    "en": "Player {{seat}} · {victory_point} {{vp}}"
   },
   "board.set_aside": {
     "ko": "따로 치워둠",
@@ -264,12 +264,12 @@ const UI_TEXT = {
     "en": "None"
   },
   "common.release_seat": {
-    "ko": "좌석 비우기",
-    "en": "Release seat"
+    "ko": "플레이어 해제",
+    "en": "Release player"
   },
   "common.seat": {
-    "ko": "좌석 {{seat}}",
-    "en": "Seat {{seat}}"
+    "ko": "플레이어{{seat}}",
+    "en": "Player {{seat}}"
   },
   "core.card_cost": {
     "ko": "비용 {{cost}}",
@@ -380,8 +380,8 @@ const UI_TEXT = {
     "en": "{first_player}"
   },
   "help.seat_panel_heading": {
-    "ko": "좌석 패널",
-    "en": "Seat panel"
+    "ko": "플레이어 패널",
+    "en": "Player panel"
   },
   "help.shortcut_cancel": {
     "ko": "고르던 것 취소 · 열린 창 닫기",
@@ -392,8 +392,8 @@ const UI_TEXT = {
     "en": "Collapse / expand all shared card rows"
   },
   "help.shortcut_expand_seats": {
-    "ko": "모든 좌석의 자세히 펴기 / 접기",
-    "en": "Expand / collapse every seat's detail"
+    "ko": "모든 플레이어의 자세히 펴기 / 접기",
+    "en": "Expand / collapse every player's detail"
   },
   "help.shortcut_open_help": {
     "ko": "이 도움말 열기",
@@ -424,8 +424,8 @@ const UI_TEXT = {
     "en": "{reveal_turn}: reveal your cards, acquire highlighted cards with the {persuasion} left, then end."
   },
   "help.turn_scouts": {
-    "ko": "아라킨 스카웃: 각 라운드 첫 턴 전에 그 라운드의 항목을 차례로 처리합니다(오른쪽 패널). 비밀 선택과 봉인 입찰액은 다른 좌석에 보이지 않고, 입찰은 액수를 고른 뒤 \"턴 종료 ▶\"가 곧 확정입니다.",
-    "en": "Arrakeen Scouts: before each round's first turn, the round's item is handled seat by seat (panel on the right). Secret picks and sealed bids stay hidden from the other seats; pick a bid, then \"End turn ▶\" confirms it."
+    "ko": "아라킨 스카웃: 각 라운드 첫 턴 전에 그 라운드의 항목을 차례로 처리합니다(오른쪽 패널). 비밀 선택과 봉인 입찰액은 다른 플레이어에게 보이지 않고, 입찰은 액수를 고른 뒤 \"턴 종료 ▶\"가 곧 확정입니다.",
+    "en": "Arrakeen Scouts: before each round's first turn, each player handles the round's item in turn (panel on the right). Secret picks and sealed bids stay hidden from the other players; pick a bid, then \"End turn ▶\" confirms it."
   },
   "help.turn_undo_limit": {
     "ko": "되돌리기는 자기 연속 행동만 됩니다. 무작위 결과나 숨겨진 정보가 공개된 뒤로는 되돌릴 수 없습니다.",
@@ -436,8 +436,8 @@ const UI_TEXT = {
     "en": "Game board"
   },
   "html.checkpoint_path_label": {
-    "ko": "체크포인트 경로 (좌석에 \"학습 체크포인트\"를 고르면 사용; train extra 필요)",
-    "en": "Checkpoint path (used when a seat picks \"Training Checkpoint\"; requires the train extra)"
+    "ko": "체크포인트 경로 (플레이어 유형에서 \"학습 체크포인트\"를 고르면 사용; train extra 필요)",
+    "en": "Checkpoint path (used when a player selects \"Training Checkpoint\"; requires the train extra)"
   },
   "html.connection_note": {
     "ko": "서버 연결 끊김 — 다시 연결하는 중…",
@@ -452,8 +452,8 @@ const UI_TEXT = {
     "en": "Games in Progress"
   },
   "html.host_panel_summary": {
-    "ko": "호스트 · 방 링크와 좌석",
-    "en": "Host · Room link and seats"
+    "ko": "호스트 · 방 링크와 플레이어",
+    "en": "Host · Room link and players"
   },
   "html.landing_host_note": {
     "ko": "호스트라면 서버를 띄운 콘솔에 찍힌 관리자 링크를 여세요.",
@@ -484,8 +484,8 @@ const UI_TEXT = {
     "en": "Name (visible to other players)"
   },
   "html.lobby_title": {
-    "ko": "좌석 고르기",
-    "en": "Choose a Seat"
+    "ko": "플레이어 고르기",
+    "en": "Choose a Player"
   },
   "html.market_aria": {
     "ko": "공용 카드",
@@ -500,8 +500,8 @@ const UI_TEXT = {
     "en": "Help (?)"
   },
   "html.open_lobby": {
-    "ko": "좌석",
-    "en": "Seats"
+    "ko": "플레이어",
+    "en": "Players"
   },
   "html.opt_bloodlines": {
     "ko": "혈통 확장 (사다우카 지휘관·새 카드·지도자 8종)",
@@ -600,8 +600,8 @@ const UI_TEXT = {
     "en": "Previous move"
   },
   "html.review_seat_label": {
-    "ko": "검토 좌석",
-    "en": "Review seat"
+    "ko": "검토 플레이어",
+    "en": "Review player"
   },
   "html.review_slider_aria": {
     "ko": "검토 위치",
@@ -632,12 +632,12 @@ const UI_TEXT = {
     "en": "Saved Games"
   },
   "html.seat_assignment_legend": {
-    "ko": "좌석 배정",
-    "en": "Seat Assignment"
+    "ko": "플레이어 배정",
+    "en": "Player Assignment"
   },
   "html.seats_aria": {
-    "ko": "좌석",
-    "en": "Seats"
+    "ko": "플레이어",
+    "en": "Players"
   },
   "html.setup_title": {
     "ko": "새 게임",
@@ -920,7 +920,7 @@ const UI_TEXT = {
     "en": "Bids confirmed: {{seats}}"
   },
   "panels.scouts_no_bids": {
-    "ko": "아직 확정한 좌석 없음",
+    "ko": "아직 확정한 플레이어 없음",
     "en": "No bid confirmed yet"
   },
   "panels.scouts_own_bid": {
@@ -956,8 +956,8 @@ const UI_TEXT = {
     "en": "Rank"
   },
   "panels.standings_seat_header": {
-    "ko": "좌석",
-    "en": "Seat"
+    "ko": "플레이어",
+    "en": "Player"
   },
   "panels.standings_solari_header": {
     "ko": "{solari}",
@@ -1000,8 +1000,8 @@ const UI_TEXT = {
     "en": "Twisted Intrigue deck {{count}}"
   },
   "panels.undo_row": {
-    "ko": "↩ 좌석 {{seat}}이(가) {{count}}단계 되돌림",
-    "en": "↩ Seat {{seat}} undid {{count}} step(s)"
+    "ko": "↩ 플레이어{{seat}}이(가) {{count}}단계 되돌림",
+    "en": "↩ Player {{seat}} undid {{count}} step(s)"
   },
   "panels.undone_suffix": {
     "ko": " (되돌림)",
@@ -1144,8 +1144,8 @@ const UI_TEXT = {
     "en": "This action cannot be undone afterward (it reveals hidden information or fixes a random outcome)"
   },
   "render.margin_all_tied": {
-    "ko": "{{vp}} 동점 · 동점 판정 항목도 모두 같아 {reveal_turn}를 더 늦게 마친 좌석이 승리",
-    "en": "{{vp}} tied · every tiebreaker equal too — the seat that finished a {reveal_turn} more recently wins"
+    "ko": "{{vp}} 동점 · 동점 판정 항목도 모두 같아 {reveal_turn}를 더 늦게 마친 플레이어가 승리",
+    "en": "{{vp}} tied · every tiebreaker equal too — the player that finished a {reveal_turn} more recently wins"
   },
   "render.margin_tiebreak": {
     "ko": "{{vp}} 동점 · 동점 판정 {{tiebreak}} {{first}} 대 {{second}}",
@@ -1216,8 +1216,8 @@ const UI_TEXT = {
     "en": "Round {{round}} · {{phase}}"
   },
   "render.seat_you": {
-    "ko": "좌석 {{seat}} (당신)",
-    "en": "Seat {{seat}} (you)"
+    "ko": "플레이어{{seat}} (당신)",
+    "en": "Player {{seat}} (you)"
   },
   "render.second_place": {
     "ko": " · 2위 {{name}}",
@@ -1344,8 +1344,8 @@ const UI_TEXT = {
     "en": "Waiting for {{name}}'s decision…"
   },
   "render.waiting_hint_empty": {
-    "ko": " (아직 아무도 앉지 않은 좌석입니다 — 방 링크를 보내 주세요)",
-    "en": " (nobody has taken this seat yet — send the room link)"
+    "ko": " (아직 참여하지 않은 플레이어입니다 — 방 링크를 보내 주세요)",
+    "en": " (this player hasn't joined yet — send the room link)"
   },
   "render.waiting_hint_offline": {
     "ko": " (접속이 끊겨 있습니다)",
@@ -1408,8 +1408,8 @@ const UI_TEXT = {
     "en": "My"
   },
   "review.own_seat": {
-    "ko": "이 좌석",
-    "en": "This seat's"
+    "ko": "이 플레이어",
+    "en": "This player's"
   },
   "review.pause": {
     "ko": "일시정지",
@@ -1432,8 +1432,8 @@ const UI_TEXT = {
     "en": "Round {{round}}"
   },
   "review.seat_option": {
-    "ko": "좌석 {{seat}} ({{kind}})",
-    "en": "Seat {{seat}} ({{kind}})"
+    "ko": "플레이어{{seat}} ({{kind}})",
+    "en": "Player {{seat}} ({{kind}})"
   },
   "review.span_extra": {
     "ko": "{{opening}} 외 {{extra}}수",
@@ -1448,12 +1448,12 @@ const UI_TEXT = {
     "en": "step {{cursor}}/{{total}}"
   },
   "review.step_label": {
-    "ko": "좌석 {{seat}}: {{action}}",
-    "en": "Seat {{seat}}: {{action}}"
+    "ko": "플레이어{{seat}}: {{action}}",
+    "en": "Player {{seat}}: {{action}}"
   },
   "review.undo_marker": {
-    "ko": " · ↩ 좌석 {{seat}}: 여기서 {{count}}단계 되돌림: ",
-    "en": " · ↩ Seat {{seat}}: rewound {{count}} step(s) here: "
+    "ko": " · ↩ 플레이어{{seat}}: 여기서 {{count}}단계 되돌림: ",
+    "en": " · ↩ Player {{seat}}: rewound {{count}} step(s) here: "
   },
   "review.watch_failed": {
     "ko": "관전 시작 실패 ({{message}})",
@@ -1484,8 +1484,8 @@ const UI_TEXT = {
     "en": "Delete for good?"
   },
   "screens.empty_seat": {
-    "ko": "빈 좌석",
-    "en": "Empty seat"
+    "ko": "참여 가능",
+    "en": "Available"
   },
   "screens.game_fetch_failed": {
     "ko": "게임 조회 실패 ({{message}})",
@@ -1500,8 +1500,8 @@ const UI_TEXT = {
     "en": "Game state fetch failed ({{message}})"
   },
   "screens.leave_seat": {
-    "ko": "자리 비우기",
-    "en": "Leave seat"
+    "ko": "참여 종료",
+    "en": "Stop playing"
   },
   "screens.load_button": {
     "ko": "불러오기",
@@ -1516,16 +1516,16 @@ const UI_TEXT = {
     "en": "Round {{round}} · {{phase}}"
   },
   "screens.my_seat": {
-    "ko": "내 좌석",
-    "en": "My seat"
+    "ko": "내 플레이어",
+    "en": "My player"
   },
   "screens.name_required": {
     "ko": "이름을 먼저 적어 주세요.",
     "en": "Enter your name first."
   },
   "screens.no_free_seats": {
-    "ko": "빈 좌석이 없습니다. 호스트에게 좌석을 비워 달라고 하세요.",
-    "en": "No free seats. Ask the host to free one up."
+    "ko": "모든 플레이어가 참여 중입니다. 호스트에게 자리를 비워 달라고 하세요.",
+    "en": "All players have joined. Ask the host to make room."
   },
   "screens.no_saves_yet": {
     "ko": "아직 이 게임의 저장이 없습니다.",
@@ -1544,16 +1544,16 @@ const UI_TEXT = {
     "en": "Human"
   },
   "screens.player_label": {
-    "ko": "좌석 {{seat}} ({{name}})",
-    "en": "Seat {{seat}} ({{name}})"
+    "ko": "플레이어{{seat}} ({{name}})",
+    "en": "Player {{seat}} ({{name}})"
   },
   "screens.refresh_list_button": {
     "ko": "목록 새로 고침",
     "en": "Refresh list"
   },
   "screens.release_seat_failed": {
-    "ko": "좌석 비우기 실패 ({{message}})",
-    "en": "Couldn't release the seat ({{message}})"
+    "ko": "플레이어 해제 실패 ({{message}})",
+    "en": "Couldn't release the player ({{message}})"
   },
   "screens.request_failed": {
     "ko": "요청 실패 ({{message}})",
@@ -1588,24 +1588,24 @@ const UI_TEXT = {
     "en": "Saves — autosave is off (--no-autosave)"
   },
   "screens.seat_left": {
-    "ko": "좌석에서 내려왔습니다. 다시 앉으려면 좌석을 고르세요.",
-    "en": "You left your seat. Pick a seat to sit again."
+    "ko": "참여를 종료했습니다. 다시 참여하려면 플레이어를 고르세요.",
+    "en": "You stopped playing. Choose a player to join again."
   },
   "screens.seat_taken": {
-    "ko": "방금 다른 사람이 그 좌석에 앉았습니다.",
-    "en": "Someone else just sat in that seat."
+    "ko": "방금 다른 사람이 그 플레이어로 참여했습니다.",
+    "en": "Someone else just joined as that player."
   },
   "screens.server_address_label": {
     "ko": "친구들이 접속하는 서버 주소 (예: http://100.x.y.z:8000)",
     "en": "Server address your friends connect to (e.g. http://100.x.y.z:8000)"
   },
   "screens.sit_button": {
-    "ko": "앉기",
-    "en": "Sit"
+    "ko": "참여",
+    "en": "Join"
   },
   "screens.sit_failed": {
-    "ko": "앉기 실패 ({{message}})",
-    "en": "Sit failed ({{message}})"
+    "ko": "참여 실패 ({{message}})",
+    "en": "Couldn't join ({{message}})"
   },
   "screens.unnamed_save": {
     "ko": "이름 없는 저장",

@@ -75,6 +75,56 @@ def run(base: str, browser) -> None:
     print(f"  .. {len(names)} shared columns: {names}")
     check.ok(len(names) >= 5, "an all-expansion game really has many columns", names)
     check.ok(
+        names[:5]
+        == [
+            "Bene Tleilax board",
+            "Ixian Embassy",
+            "Imperium Row",
+            "Tleilaxu Row",
+            "Reserve",
+        ],
+        "expansion boards lead; Tleilaxu Row sits between Imperium Row and Reserve",
+        names,
+    )
+    variants = page.evaluate("""() => {
+        const summary = state.summary;
+        const names = () => [...document.querySelectorAll('#market .strip[data-strip]')]
+            .map(e => e.dataset.strip);
+        try {
+            state.summary = {...summary, immortality: false};
+            renderMarket();
+            const techOnly = names();
+            state.summary = {...summary, tech_module: false};
+            renderMarket();
+            const immortalityOnly = names();
+            state.summary = {...summary, tech_module: false, immortality: false};
+            renderMarket();
+            return {techOnly, immortalityOnly, neither: names()};
+        } finally {
+            state.summary = summary;
+            renderMarket();
+        }
+    }""")
+    check.ok(
+        variants["techOnly"][:3] == ["Ixian Embassy", "Imperium Row", "Reserve"]
+        and "Tleilaxu Row" not in variants["techOnly"]
+        and "Bene Tleilax board" not in variants["techOnly"],
+        "Ixian Embassy is first when Immortality is off",
+        variants["techOnly"],
+    )
+    check.ok(
+        variants["immortalityOnly"][:4]
+        == ["Bene Tleilax board", "Imperium Row", "Tleilaxu Row", "Reserve"]
+        and "Ixian Embassy" not in variants["immortalityOnly"],
+        "Immortality keeps board and row positions without Tech",
+        variants["immortalityOnly"],
+    )
+    check.ok(
+        variants["neither"][:2] == ["Imperium Row", "Reserve"],
+        "base market begins with Imperium Row and Reserve",
+        variants["neither"],
+    )
+    check.ok(
         all(not s["collapsed"] for s in start["strips"]),
         "every column starts open",
         [s["name"] for s in start["strips"] if s["collapsed"]],

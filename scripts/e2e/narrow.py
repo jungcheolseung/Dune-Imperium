@@ -231,7 +231,8 @@ HEADER_JS = """() => {
         if (!span) return null;
         const b = span.getBoundingClientRect();
         return b.left >= box.left - 0.5 && b.right <= box.right + 0.5
-            && b.right <= innerWidth + 0.5 && span.scrollWidth <= span.clientWidth + 0.5;
+            && b.right <= innerWidth + 0.5
+            && span.scrollWidth <= span.clientWidth + 0.5;
     };
     const badges = status.querySelector('.status-badges');
     return {
@@ -279,13 +280,21 @@ def check_header(browser, base: str) -> None:
                     f"{where}: the header stays one 44px line",
                     g,
                 )
-                check.ok(g["core"], f"{where}: the round and phase are whole", g["text"])
+                check.ok(
+                    g["core"], f"{where}: the round and phase are whole", g["text"]
+                )
                 if mode == "watched":
-                    check.ok(g["label"], f"{where}: the review label is whole", g["text"])
-                check.ok(not g["sideways"], f"{where}: the page does not scroll sideways")
+                    check.ok(
+                        g["label"], f"{where}: the review label is whole", g["text"]
+                    )
+                check.ok(
+                    not g["sideways"], f"{where}: the page does not scroll sideways"
+                )
                 check.ok(g["title"], f"{where}: the full status is in the title")
                 if width >= 1366 and language == "ko" and mode == "live":
-                    check.ok(g["badgesWhole"], f"{where}: nothing is cut when there is room")
+                    check.ok(
+                        g["badgesWhole"], f"{where}: nothing is cut when there is room"
+                    )
         context.close()
 
 
@@ -324,9 +333,18 @@ def check_floor(browser, base: str) -> None:
     context, page, _rec = open_context(browser, "floor", wide)
     live_game(page, base)
     page.wait_for_function("refreshFlight === null")
+    # The API decision can arrive before the board scan finishes loading.
+    # Wait for the image itself, then measure after resize/observer frames.
+    page.wait_for_function("""() => {
+        const map = document.querySelector('#board .board-map');
+        return map && map.complete && map.naturalWidth > 0;
+    }""")
     for width in FLOOR_WIDTHS:
         page.set_viewport_size({"width": width, "height": 1000})
-        page.wait_for_timeout(80)
+        page.evaluate("""async () => {
+            await new Promise(requestAnimationFrame);
+            await new Promise(requestAnimationFrame);
+        }""")
         g = page.evaluate(FLOOR_JS)
         where = f"{width}px"
         # The board's box is its column; the stage inside keeps the scan's

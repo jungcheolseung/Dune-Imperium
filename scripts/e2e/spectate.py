@@ -102,7 +102,7 @@ def opens_playing(page) -> None:
         page.inner_text("#review-play") == "일시정지", "the play button offers a pause"
     )
     own = page.inner_text("#review-next-own")
-    check.ok("이 좌석" in own, "nobody's actions are called mine", own)
+    check.ok("이 플레이어" in own, "nobody's actions are called mine", own)
 
 
 def walks_turn_by_turn(page, rec) -> None:
@@ -348,7 +348,7 @@ def other_eyes(page) -> None:
     )
     hand = page.inner_text("#private-zone .hand-label strong")
     check.ok(
-        "좌석 2" in hand and "내 손패" not in hand,
+        "플레이어3" in hand and "내 손패" not in hand,
         "an AI seat's hand is not called mine",
         hand,
     )

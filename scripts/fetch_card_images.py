@@ -106,7 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         for relative, source in sorted(targets.items()):
             present = (arguments.dest / "en" / relative).is_file()
             marker = "have" if present and not arguments.force else "need"
-            print(f"{marker}  {relative}  <- {source['url']}")
+            origin = source.get("url") or f"local crop of {source['file']}"
+            print(f"{marker}  {relative}  <- {origin}")
         return 0
 
     downloaded = 0
@@ -116,6 +117,12 @@ def main(argv: list[str] | None = None) -> int:
         target = arguments.dest / "en" / relative
         if target.is_file() and not arguments.force:
             skipped += 1
+            continue
+        if not source.get("url"):
+            reason = "restore local crop from private assets checkout"
+            failures.append(f"{relative}: {reason}")
+            print(f"LOCAL {relative}: restore from private assets checkout",
+                  file=sys.stderr)
             continue
         try:
             payload = _fetch(source["url"], source["sha256"])

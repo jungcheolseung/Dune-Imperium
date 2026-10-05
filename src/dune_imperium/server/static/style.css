@@ -318,13 +318,14 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   height: 100%;
 }
 #table {
+  --actions-width: 340px;
   display: grid;
   /* Spend extra desktop width on the board, keeping the reading column
      steady. The board still has its 480px floor on a narrow window. */
   grid-template-columns:
     210px
     minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
-    340px;
+    var(--actions-width);
   gap: 0.5rem;
   min-height: 0;
   padding: 0.5rem 0.5rem 0;
@@ -359,6 +360,21 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   flex: 1;
   min-height: 0;
   margin-bottom: 0;
+}
+/* fitActionLog uses only the board's spare horizontal room. The action
+   column keeps its width; history gets a full-height column beside it. */
+@media (min-width: 1341px) {
+  #table.log-beside {
+    grid-template-columns:
+      210px
+      minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
+      calc(var(--actions-width) + var(--history-width) + 0.5rem);
+  }
+  #table.log-beside #side {
+    grid-template-columns: var(--actions-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  #table.log-beside .log-size-toggle { display: none; }
 }
 /* The board fills the centre; the shared card zones (Imperium Row,
    Reserve, draft pool, ...) stand in a column beside it so a wide screen
@@ -632,12 +648,36 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 /* The post's box is the Spy that stands on the disc (its height is set
    inline); Spies sharing the post stand on top of it, as the cylinders are
    stacked on the table. */
+.spy-post-hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  z-index: 2;
+  padding: 0;
+  border: 2px solid var(--glow);
+  border-radius: 50%;
+  background: rgba(255, 207, 90, 0.15);
+  cursor: pointer;
+  animation: frame-pulse 1.6s ease-in-out infinite;
+}
+.spy-post-hotspot:hover:not(:disabled), .spy-post-hotspot:focus-visible {
+  border-color: #fff;
+  background: rgba(255, 207, 90, 0.3);
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spy-post-hotspot { animation: none; filter: drop-shadow(0 0 3px var(--glow)); }
+}
 .spy-post {
   position: absolute;
   transform: translate(-50%, -50%);
   aspect-ratio: 56 / 80;
   pointer-events: auto;
 }
+/* Deep Cover can select an occupied post; its stacked pieces must let the
+   click reach the destination ring beneath them. */
+.spy-post.selectable { pointer-events: none; }
 /* Each Spy the size of the disc. One on a shared post stands on the one
    below, its base on that one's top face: the faces' centres are 48 of the
    icon's 80 units apart (PIECE_SHAPES.spy), so 60 % of a Spy up a level. */
@@ -1738,7 +1778,10 @@ kbd {
    scrolling floor (the 2026-09-27 narrow-window convention). */
 @media (max-width: 1340px) {
   #game-screen { --table-min: calc(200px + var(--board-min) + 300px + 2rem); }
-  #table { grid-template-columns: 200px minmax(var(--board-min), 1fr) 300px; }
+  #table {
+    --actions-width: 300px;
+    grid-template-columns: 200px minmax(var(--board-min), 1fr) var(--actions-width);
+  }
   /* The market row was `auto`, so it sized to its content and left the
      board's `1fr` row nothing: with every expansion on, seven strips took
      the whole centre and #board rendered 468x0 — the board simply was not

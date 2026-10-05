@@ -4,6 +4,35 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 Spy·Objective·테이블 UI의 master 병합
+
+- 사용자 요청으로 `codex/spy-objective-images`의 8개 커밋(끝 `e0ab0af2`)을 `app_ai`와 기술 획득 순서 변경이 포함된 master `f89f05f3`에 merge commit으로 병합했다. 양쪽의 원래 커밋 이력을 보존했다. 코드는 충돌 없이 합쳐졌고, 인수인계 문서의 한 충돌은 두 작업 기록을 모두 남겨 해결했다. 현재 기준은 **action codec v135·관측 v30**이며, 아래 UI 작업 당시의 v134 표기는 당시 검증 기록이다.
+- 포함된 화면 변경은 보드 관측소에서 Spy 목적지 직접 선택, 한국어·영어 Objective 이미지, 남는 보드 폭으로 행동 로그를 오른쪽에 크게 배치, Bene Tleilax·Ixian Embassy·Imperium·Tleilaxu·Reserve 순서, **플레이어1~플레이어4 / Player 1~Player 4** 표시다. 내부 플레이어 식별자는 0~3을 유지한다. 주 체크아웃의 비공개 assets도 Objective crop 커밋 `fbb84f3`을 사용한다.
+- 통합 검사에서 새 “플레이어” 문구를 옛 “좌석”으로 기대하던 두 pytest 단언을 갱신했다. `narrow.py`는 보드 이미지가 로드되기 전에 0 크기를 읽던 타이밍 가정을 제거하고 이미지 로드·레이아웃 프레임 뒤에 기존 크기 검사를 수행한다. 게임 규칙이나 AI 동작은 바꾸지 않았다.
+- 최종 검증: 전체 pytest **4,637개 통과**(247.4초, 기존 PettingZoo 경고 2개), Chrome 전체 E2E **37종 통과**(4개씩 198초; Spy·Objective·테이블 배치·기술 획득 포함), Ruff(`src tests`와 수정 scripts)·mypy(`src tests`, **365파일**) 통과. 최초 통합 실행의 문구 기대값 두 실패와 이미지 로드 타이밍 한 실패는 위 수정 후 전체 실행으로 다시 확인했다. 병합은 로컬 master에 반영하며 실행 중인 플레이 서버는 재시작하지 않았다.
+
+## 2026-10-05 화면 명칭을 플레이어로 통일
+
+- 사용자 요청에 따라 참여자를 부르는 화면 표현을 한국어 **플레이어1~플레이어4**, 영어 **Player 1~Player 4**로 통일했다. 설정·게임 안내·보드 조각의 툴팁과 접근성 이름·행동 로그·최종 순위·관전/검토·도움말·원격 참여 안내 및 Scouts 표시 문구에 적용했다. 관측소를 함께 쓰는 Spy들의 툴팁도 각각의 플레이어 라벨을 쓴다.
+- 원격 참여 버튼은 “참여 / Join”, 참여 종료는 “참여 종료 / Stop playing”, 호스트의 참여 해제는 “플레이어 해제 / Release player”로 표시한다. 내부 `seat` 식별자·API·0~3 값과 원로회 자리(High Council seat)의 규칙 용어는 유지했다.
+- 검증: i18n·Scouts 표시/서버 pytest **36개**, Ruff(`src tests`와 변경 E2E scripts)·mypy(**314파일**) 통과. 관련 Chrome E2E **8종**(seats·help·spectate·endgame·open_mode·lang·remote·board_tokens)을 확인했다. 참여 종료 문구를 바꾼 뒤 remote/rehearsal 검사의 기존 버튼 텍스트 선택자도 갱신했으며, remote 재검사는 **59개**, board_tokens는 **313개** 검사가 통과했다.
+
+## 2026-10-05 넓은 창의 행동 로그·좌석 번호·확장 열 순서
+
+- 구현 커밋: `20652b29`(좌석 표시·확장 배치), `159c1e91`(남는 보드 폭으로 행동 로그 확장), `6617f31b`(좌석 설정 초기화 대기 검사); 브랜치 `codex/spy-objective-images`.
+- 보드 스캔이 높이에 맞춰져 좌우 여백이 충분하면 행동 로그를 **행동 선택칸 오른쪽의 독립 열**로 배치한다. 행동 선택칸은 340px, 로그는 남는 폭에 맞춰 340~600px이고 보드 높이 전체를 쓴다. 보드의 원래 표시 크기는 유지한다. 창 높이·너비, 손패 높이, 카드 열 접힘에 따라 재계산하며 여백이 부족하면 기존 아래 배치로 돌아간다. 세로 배치의 크게 보기 설정, 기록 읽기 위치와 최신 기록 추적을 유지하고 카드 사용 플로팅 표시도 새 보드 위치를 따른다. 초기 손패 5장인 1920×900 판에서 로그 약 **479×650px**를 확인했다.
+- 화면의 좌석 번호는 **1~4**다. 설정·좌석 배지·보드 조각의 툴팁과 접근성 이름·로그·관전/검토 선택·플레이어 라벨에 같은 표시 변환을 적용했다. 상태·요청·선택 값·`data-seat`는 기존 **0~3**을 사용한다. 엔진·규칙·codec **v134**·관측 **v30**은 그대로다.
+- 공용 열 순서는 **베네 틀레이락스 게임판 → 익스 대사관 → 임페리움 열 → 틀레이락스 열 → 예비 카드**다. 꺼진 확장의 항목은 생략하며, 불멸 없이 기술 모듈만 켜면 익스 대사관이 맨 위다. 각 열의 기존 접힘 식별자를 유지해 저장된 접힘 설정도 그대로 쓴다.
+- 검증: 관련 pytest **61개**, Ruff(`src tests`와 변경 E2E scripts)·mypy(**314파일**) 통과. `table_layout.py` **58개 검사**로 1280~2560px 및 같은 폭의 서로 다른 높이, 카드 열 접힘에 따른 배치 전환, 겹침·가로 넘침·보드 축소 없음, 스크롤·최신 기록 추적·세로 확장 설정·카드 사용 표시를 확인했다. `seats.py` **42개 검사**에 두 언어의 표시 번호와 기존 값 보존이 포함된다. 첫 전체 실행에서 새 설정 라벨 검사가 초기화 전에 DOM을 읽어 실패했으며, 선택 컨트롤 준비를 기다리도록 검사만 수정했다. 수정 후 전체 Chrome E2E **36종**을 4개씩 다시 실행해 **167초, 실패 0**으로 마쳤다.
+
+## 2026-10-05 보드 Spy 선택과 Objective 이미지
+
+- 구현 커밋: `e274c171`(보드 Spy 선택), `7194d4c1`(Objective 이미지 연결), 브랜치 `codex/spy-objective-images`. 서버가 현재 제시한 Spy 배치·이동 목적지의 관측소에 노란 원형 테두리와 발광을 그리고, 클릭·Enter로 그 행동 번호를 전송한다. 여러 효과가 같은 목적지를 제시하면 기존 행동 목록에서 효과를 고른다. 회수·침투의 관측소 참조는 배치 대상으로 켜지지 않는다. Deep Cover의 기존 Spy 토큰은 클릭을 관측소로 통과시키고, busy·관전 상태에서는 새 배치를 실행하지 않는다.
+- `catalog.objectives`에 기존 카드 이미지 매핑을 연결해 좌석의 **배틀 아이콘 카드**에 마우스를 올리거나 클릭하면 Objective 그림도 보인다. 언어 전환·이미지 버전 캐시·없는 파일의 텍스트 대체는 기존 카드 경로를 따른다. 엔진·규칙·codec **v134**·관측 **v30**은 그대로다.
+- 비공개 assets 커밋 `fbb84f3`: 사용자가 넣은 원본 사진 세 장에서 영어 5종+뒷면, 한국어 4종을 각각 **440×680 PNG**로 자르고 perspective·둥근 모서리를 보정했다. `cards/en/uprising/objective/`와 `cards/ko/uprising/objective/`에 저장하고 `cards/manifest.json`에 5개 엔진 ID·출처 파일·원본/결과 SHA-256·crop 좌표를 기록했다. 한국어 사진에 없는 Ornithopter 1-3P는 영어 그림으로 대체한다. 원본 세 장은 변경하지 않고 기존 untracked 상태로 두었으며, crop 도구·작업 파일은 `/tmp/dune-objectives/`에만 있다. 원래 웹 URL은 제공되지 않아 임의로 추정하지 않았다. URL 없는 local crop은 다운로드 도구가 비공개 assets checkout에서 복구하도록 안내한다.
+- 검증: 관련 pytest **69개**, 전체 pytest **3,215개**(268.5초, 기존 PettingZoo 경고 2개), Ruff(`src tests` 및 변경 scripts)·mypy(**314파일**) 통과. 전체 Chrome E2E **36종**(4개씩 158초) 통과; 새 `spy_placement.py` **24개 검사**, `objective_images.py` **35개 검사**를 포함한다. 실제 Espionage 배치·정확한 POST 번호·키보드·occupied post 클릭·언어·1366/1600px·5종 이미지 로딩·텍스트 대체와 원본/결과 체크섬을 확인했다. 첫 샌드박스 전체 실행은 loopback bind 제한으로 중단했으며, 위 전체 결과는 로컬 서버를 열 수 있는 실행 환경의 결과다.
+- 이 워크트리에서 assets는 기존 비공개 checkout을 symlink로 연결했다. Objective catalog는 서버 시작 때 이미지 목록을 읽으므로 이 변경을 반영한 서버를 한 번 재시작한 뒤 브라우저를 새로고침한다.
+
 ## 2026-10-05 기술 구매와 획득 효과 분리
 
 - 구현 커밋: `27a1a448`. 사용자 요청 OQ-098에 따라 기술 구매는 비용 지불·소유권 이전·다음 타일 공개를 처리하고, 일회 획득 보상의 각 아이콘을 현재 turn의 별도 행동 `resolve_tech_acquire_effect`로 남긴다. 다른 카드·보드 효과, 다른 기술의 획득 보상과 원하는 순서로 해결한다. 발광구·운항실의 Influence는 구매 시 오르지 않으며, 해결 행동에서 황제·우주항행 길드·베네 게세리트·프레멘 중 하나를 고른다. 한국어·영어 행동 문구를 함께 추가했다.

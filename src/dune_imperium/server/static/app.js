@@ -25,6 +25,7 @@ async function init() {
   loadExpandedSeats();
   window.addEventListener("resize", positionPlayEffect);
   el("side").classList.toggle("log-expanded", storageGet(LOG_EXPANDED_KEY) === "1");
+  watchTableLayout();
   state.catalog = await api("/catalog");
   localizeCatalog(state.catalog);
   const adminError = await adoptAdminLink();
