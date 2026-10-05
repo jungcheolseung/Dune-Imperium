@@ -2551,6 +2551,42 @@ def test_call_to_arms_waits_for_an_intrigue_acquired_card_s_spy_post() -> None:
     )
 
 
+def test_inspire_awe_on_a_set_aside_card_is_a_full_acquisition() -> None:
+    # Taking the owner's Manipulate card by "other means" [FAQ p. 3] is an
+    # ordinary acquisition: Spy Network's acquire box opens its Spy post and
+    # Call to Arms follows (OQ-012, user ruling 2026-10-04).
+    call = _intrigue("call_to_arms")
+    awe = _intrigue("inspire_awe")
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(awe,),
+        intrigue_faceup=(call,),
+        imperium_set_aside=(spy_network,),
+    )
+    state = _with_market(_turn_state(owner))
+    revealed = _revealed_with_persuasion(state)
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(revealed, _play(revealed, awe)).state
+    assert _acquire_imperium(spy_network) in engine.legal_actions(opened, 0)
+    acquired = engine.apply(opened, _acquire_imperium(spy_network))
+    assert acquired.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    assert acquired.state.players[0].imperium_set_aside == ()
+    assert acquired.state.players[0].discard_pile == (spy_network,)
+    assert acquired.state.imperium_row == state.imperium_row
+    # No discount: the Reveal's Persuasion is untouched by an Intrigue pick.
+    assert dict(acquired.state.decision_stack[-2].context)["persuasion"] == 10
+
+    placed = engine.apply(
+        acquired.state, engine.legal_actions(acquired.state, 0)[0]
+    )
+    _assert_call_to_arms_fired_last(
+        placed, call, f"round:1:player:0:intrigue:{awe}:slot:0", garrison
+    )
+
+
 def _choam_trade_state(
     call: str, market: tuple[str, ...]
 ) -> tuple[GameState, str]:
@@ -3640,6 +3676,49 @@ def test_unacquired_manipulated_card_leaves_the_game_with_the_reveal() -> None:
     assert done.players[0].discard_pile == ()
     assert done.imperium_removed == (cheap,)
     assert "imperium_card_removed" in [event.kind for event in result.events]
+
+
+def test_inspire_awe_reaches_its_owners_set_aside_card_at_the_printed_cost() -> (
+    None
+):
+    # "You may use other means to acquire the card (for example: Bypass
+    # Protocol, Boundless Ambition), though the 1 persuasion discount will
+    # not apply" [FAQ p. 3]: Inspire Awe's cap of 3 reads the printed cost.
+    card = _intrigue("inspire_awe")
+    survival = _imperium_instance("desert_survival")  # costs 2
+    paracompass = _imperium_instance("paracompass")  # costs 4 (3 discounted)
+    rival_card = _imperium_instance("hidden_missive")  # costs 2
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        imperium_set_aside=(survival, paracompass),
+    )
+    state = _with_market(_turn_state(owner))
+    rival = replace(state.players[1], imperium_set_aside=(rival_card,))
+    state = replace(state, players=(state.players[0], rival, *state.players[2:]))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    # The owner's set-aside card follows the Row; Paracompass is over the
+    # cap without the discount, and an opponent's set-aside card is never
+    # offered [FAQ p. 3].
+    assert engine.legal_actions(opened, 0) == (
+        _acquire_reserve("prepare_the_way"),
+        _acquire_imperium(_imperium_instance("sardaukar_soldier")),
+        _acquire_imperium(survival),
+    )
+
+    result = engine.apply(opened, _acquire_imperium(survival))
+    done = result.state
+    assert "card_acquired" in [event.kind for event in result.events]
+    assert done.players[0].discard_pile == (survival,)
+    assert done.players[0].imperium_set_aside == (paracompass,)
+    # The Row refilled when the card was set aside, so nothing refills now.
+    assert done.imperium_row == state.imperium_row
+    assert done.imperium_deck == state.imperium_deck
+    assert done.players[1].imperium_set_aside == (rival_card,)
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack == _after_plot(state)
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

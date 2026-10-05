@@ -738,6 +738,45 @@ def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> Non
     )
 
 
+def test_tleilaxu_master_reaches_its_owners_set_aside_card_at_the_printed_cost() -> (
+    None
+):
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: Desert Power (6) is in
+    # reach of "a card costing 6 or less", Long Live the Fighters (7, 6 with
+    # the discount) is not.
+    master = _card("tleilaxu_master")
+    in_reach = _card("desert_power")
+    over = _card("long_live_the_fighters")
+    state = _place(
+        _state(
+            _owner(
+                (master,), research_space="c4r2", imperium_set_aside=(in_reach, over)
+            )
+        ),
+        master,
+        "assembly_hall",
+    )
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_agent_card_acquisitions(state, 0)
+        if action.action_id == "acquire_imperium_by_card"
+    ]
+    assert in_reach in offered and over not in offered
+    result = apply_agent_card_acquisition(
+        state,
+        DomainAction(
+            action_id="acquire_imperium_by_card",
+            actor=0,
+            arguments=(("instance_id", in_reach),),
+        ),
+    )
+    owner = result.state.players[0]
+    assert in_reach in owner.discard_pile
+    assert owner.imperium_set_aside == (over,)
+    assert result.state.imperium_row == state.imperium_row
+
+
 def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> None:
     # Tleilaxu Master's Agent box may acquire Arrakis Revolt (cost 6, at the
     # "6 or less" cap [card face]) whose own acquire box recruits one troop

@@ -683,9 +683,11 @@ class AcquireCardUpTo:
     """Acquire one Imperium Row or Reserve card costing at most ``max_cost``.
 
     No Persuasion is spent; the printed cost cap limits the choice among the
-    five Row cards and the Reserve stacks [Main p. 13]. The card lands in the
-    owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds when the
-    acquisition resolves, in which case the card text puts it in hand.
+    five Row cards and the Reserve stacks [Main p. 13], plus the owner's own
+    Manipulate set-aside card at its printed cost [FAQ p. 3]. The card lands
+    in the owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds
+    when the acquisition resolves, in which case the card text puts it in
+    hand.
     """
 
     max_cost: int
@@ -701,8 +703,9 @@ class SetAsideImperiumRowCard:
     """Remove and replace one Imperium Row card, setting it aside for the owner.
 
     Until the owner's Reveal turn this round ends, only they may acquire the
-    set-aside card, for ``discount`` less Persuasion; opponents never can, and
-    an unacquired card leaves the game with that Reveal turn [FAQ p. 3].
+    set-aside card, for ``discount`` less Persuasion; their other acquire
+    effects reach it at its printed cost, opponents never can, and an
+    unacquired card leaves the game with that Reveal turn [FAQ p. 3].
     """
 
     discount: int = 1

@@ -16,7 +16,10 @@ from dune_imperium.content.uprising.contracts import (
     ContractDefinition,
     ContractReward,
 )
-from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.imperium import (
+    imperium_card_for_instance,
+    imperium_deck_instance_ids,
+)
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -439,6 +442,85 @@ def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
     assert result.state.players[0].resources.solari == 0
     assert result.state.imperium_row[0] == others[4]
     assert legal_agent_card_acquisitions(result.state, 0) == ()
+
+
+def _with_set_aside(
+    state: GameState, player: int, *instance_ids: str
+) -> GameState:
+    owner = replace(state.players[player], imperium_set_aside=instance_ids)
+    return replace(
+        state,
+        players=tuple(
+            owner if seat.player_id == player else seat for seat in state.players
+        ),
+    )
+
+
+def test_price_is_no_object_buys_its_owners_set_aside_card_at_the_printed_cost() -> (
+    None
+):
+    # "You may use other means to acquire the card (for example: Bypass
+    # Protocol, Boundless Ambition), though the 1 persuasion discount will
+    # not apply" [FAQ p. 3]: Desert Survival costs its printed 2 Solari.
+    survival = _imperium_instance("desert_survival")
+    rival_card = _imperium_instance("hidden_missive")
+    row = tuple(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if instance_id
+        not in {
+            survival,
+            rival_card,
+            _imperium_instance("price_is_no_object"),
+        }
+        and (imperium_card_for_instance(instance_id).acquisition_cost or 0) > 2
+    )
+    short = _with_set_aside(
+        _price_agent_state(solari=1, imperium_row=row[:5], imperium_deck=row[5:]),
+        0,
+        survival,
+    )
+    # One Solari short: the Manipulate discount does not apply here.
+    assert all(
+        dict(action.arguments).get("instance_id") != survival
+        for action in legal_agent_card_acquisitions(short, 0)
+    )
+
+    state = _with_set_aside(
+        _with_set_aside(
+            _price_agent_state(solari=2, imperium_row=row[:5], imperium_deck=row[5:]),
+            0,
+            survival,
+        ),
+        1,
+        rival_card,
+    )
+    offered = [
+        dict(action.arguments).get("instance_id")
+        for action in legal_agent_card_acquisitions(state, 0)
+        if action.action_id == "acquire_imperium_with_solari"
+    ]
+    # Every Row card costs more than 2 here, and an opponent's set-aside
+    # card is never offered [FAQ p. 3].
+    assert offered == [survival]
+
+    result = UprisingRulesEngine().apply(
+        state,
+        DomainAction(
+            action_id="acquire_imperium_with_solari",
+            actor=0,
+            arguments=(("instance_id", survival),),
+        ),
+    )
+    done = result.state
+    assert done.players[0].hand == (survival,)
+    assert done.players[0].resources.solari == 0
+    assert done.players[0].imperium_set_aside == ()
+    # The Row refilled when the card was set aside; nothing refills now.
+    assert done.imperium_row == state.imperium_row
+    assert done.imperium_deck == state.imperium_deck
+    assert done.players[1].imperium_set_aside == (rival_card,)
+    assert "card_acquired" in [event.kind for event in result.events]
 
 
 def test_price_is_no_object_spy_acquisition_does_not_stall_the_agent_turn() -> None:

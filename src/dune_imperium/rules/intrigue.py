@@ -1047,7 +1047,11 @@ def legal_intrigue_choice_actions(
                     actor=player,
                     arguments=(("instance_id", instance_id),),
                 )
-                for instance_id in acquirable_imperium_instance_ids(state, max_cost)
+                # The owner's own Manipulate set-aside card is within reach
+                # at its printed cost, never an opponent's [FAQ p. 3].
+                for instance_id in acquirable_imperium_instance_ids(
+                    state, max_cost, player=player
+                )
             )
             if not acquisitions:
                 # Nothing within the cap: the card is still played and the

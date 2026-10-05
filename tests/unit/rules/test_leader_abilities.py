@@ -1711,6 +1711,45 @@ def test_chroniclers_insight_still_acquires_once_the_imperium_deck_is_empty() ->
     assert result.state.imperium_deck == ()
 
 
+def test_chroniclers_insight_reaches_the_owners_set_aside_one_cost_card() -> None:
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: a printed-1 Manipulate
+    # card is in reach, a printed-2 one (1 with the discount) is not.
+    target = "imperium:sardaukar_soldier:0"
+    discounted = "imperium:desert_survival:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+        imperium_set_aside=(target, discounted),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=("imperium:calculus_of_power:0",),
+        imperium_deck=("imperium:overthrow:0",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "acquire_leader_imperium"
+    ]
+    assert offered == [target]
+    result = apply_leader_signet_acquire(
+        placed,
+        DomainAction(
+            action_id="acquire_leader_imperium",
+            actor=0,
+            arguments=(("instance_id", target),),
+        ),
+    )
+    assert target in result.state.players[0].hand
+    assert result.state.players[0].imperium_set_aside == (discounted,)
+    assert result.state.imperium_row == state.imperium_row
+    assert result.state.imperium_deck == state.imperium_deck
+
+
 def test_chroniclers_insight_trash_pays_spice_only_for_costed_cards() -> None:
     costed = "imperium:overthrow:0"
     starter = "player:0:starter:dagger:0"

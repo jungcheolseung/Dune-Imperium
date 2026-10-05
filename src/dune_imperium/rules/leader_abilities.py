@@ -1096,7 +1096,11 @@ def legal_leader_signet_actions(
                 actor=player,
                 arguments=(("instance_id", instance_id),),
             )
-            for instance_id in acquirable_imperium_instance_ids(state, 1)
+            # The Row's one-cost cards and the owner's own Manipulate
+            # set-aside one, at its printed cost [FAQ p. 3].
+            for instance_id in acquirable_imperium_instance_ids(
+                state, 1, player=player
+            )
             if imperium_card_for_instance(instance_id).acquisition_cost == 1
         )
         actions.extend(
