@@ -23,6 +23,142 @@ def settle_layout(page) -> None:
     }""")
 
 
+def check_hand(base: str, browser) -> None:
+    """Stress the hand projection without inventing or posting engine actions."""
+    context, page, rec = open_context(
+        browser, "hand-layout", {"width": 1366, "height": 768}
+    )
+    page.goto(base)
+    page.wait_for_selector("#seat-selects select")
+    for seat in range(4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "human")
+    page.uncheck("#opt-leader-draft")
+    page.fill("#opt-seed", "11")
+    page.click("#create-game")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    # Only the browser's visible projection is enlarged. The real game and
+    # its legal actions remain intact; staging a card never posts an action.
+    page.evaluate("""() => {
+        window.__originalPrivate = structuredClone(state.view.private);
+        const own = state.view.private;
+        own.hand = Array(4).fill(own.hand).flat();
+        own.intrigue_cards = Array(12).fill(own.intrigue_cards).flat();
+        own.peeked_card_id = own.hand[0];
+        own.peeked_intrigue_ids = own.intrigue_cards.slice(0, 1);
+        render();
+    }""")
+    for language in ("ko", "en"):
+        if page.evaluate("TERM_LANGUAGE") != language:
+            page.click("#language-toggle")
+        settle_layout(page)
+        shape = page.evaluate("""() => {
+            const box = n => n.getBoundingClientRect();
+            const zone = document.getElementById('private-zone');
+            const row = zone.querySelector('.hand-zones');
+            const hand = row.querySelector('.hand-cards');
+            const intrigue = row.querySelector('.intrigue-cards');
+            return {height: box(zone).height,
+                bottom: box(zone).bottom, viewport: innerHeight,
+                handScrolls: hand.scrollWidth > hand.clientWidth + 1,
+                intrigueScrolls: intrigue.scrollWidth > intrigue.clientWidth + 1,
+                sameRow: [...row.querySelectorAll('.hand-cards .vcard')]
+                    .every(n => Math.abs(box(n).top - box(hand.firstChild).top) < 1),
+                labelInside: [...zone.querySelector('.hand-label').children]
+                    .every(n => box(n).left >= box(zone).left
+                        && box(n).right <= box(zone).right),
+                cardCount: hand.querySelectorAll('.vcard').length,
+                intrigueCount: intrigue.querySelectorAll('.vcard').length};
+        }""")
+        check.ok(
+            shape["cardCount"] == 20
+            and shape["intrigueCount"] == 12
+            and shape["handScrolls"]
+            and shape["intrigueScrolls"]
+            and shape["sameRow"]
+            and shape["height"] < 230
+            and shape["bottom"] <= shape["viewport"]
+            and shape["labelInside"],
+            f"{language}: a large hand, Intrigue and peeks keep a compact hand zone",
+            shape,
+        )
+        last = page.locator(".hand-cards .vcard.legal").last
+        card_id = last.get_attribute("data-instance")
+        posts = rec.count("POST", "/actions")
+        last.click()
+        selected = page.evaluate("""() => {
+            const hand = document.querySelector('.hand-cards');
+            const cards = [...hand.querySelectorAll('.picked')];
+            const card = cards.at(-1).getBoundingClientRect();
+            const pane = hand.getBoundingClientRect();
+            return {picked: state.pick.cardId, offset: hand.scrollLeft,
+                visible: card.left >= pane.left - 1 && card.right <= pane.right + 1};
+        }""")
+        check.ok(
+            selected["picked"] == card_id
+            and selected["offset"] > 0
+            and selected["visible"]
+            and rec.count("POST", "/actions") == posts,
+            f"{language}: the last card remains visible when staged after scrolling",
+            selected,
+        )
+        shots = os.environ.get("E2E_SHOTS_DIR")
+        if shots:
+            Path(shots).mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(Path(shots) / f"hand-large-{language}.png"))
+        page.keyboard.press("Escape")
+        last_intrigue = page.locator(".intrigue-cards .vcard").last
+        last_intrigue.hover()
+        page.wait_for_selector("#card-popover:not([hidden])")
+        check.ok(
+            page.evaluate("document.querySelector('.intrigue-cards').scrollLeft > 0"),
+            f"{language}: the last Intrigue card can be reached and inspected",
+        )
+        before = page.evaluate("""() => [...document.querySelectorAll(
+            '#private-zone .strip-cards')].map(n => n.scrollLeft)""")
+        page.evaluate("render({foreign: true})")
+        after = page.evaluate("""() => [...document.querySelectorAll(
+            '#private-zone .strip-cards')].map(n => n.scrollLeft)""")
+        check.ok(
+            before == after,
+            f"{language}: a foreign refresh keeps the hand and Intrigue scroll offsets",
+            (before, after),
+        )
+
+    page.evaluate("state.view.private.hand.reverse(); render({foreign: true})")
+    changed = page.evaluate("""() => [...document.querySelectorAll(
+        '#private-zone .strip-cards')].map(n => n.scrollLeft)""")
+    check.ok(
+        changed[0] == 0 and changed[1:] == after[1:],
+        "a changed hand resets its offset while unchanged Intrigue keeps its position",
+        (after, changed),
+    )
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.evaluate("""() => {
+        state.view.private = structuredClone(window.__originalPrivate);
+        state.view.private.hand = [];
+        state.view.private.intrigue_cards = [];
+        render();
+    }""")
+    settle_layout(page)
+    check.ok(
+        page.locator("#private-zone").bounding_box()["height"] < 100
+        and page.locator("#private-zone .muted").is_visible(),
+        "an empty hand collapses to its heading and empty message",
+    )
+    page.evaluate("state.view.private = null; renderPrivate()")
+    settle_layout(page)
+    check.ok(
+        page.locator("#private-zone").is_hidden()
+        and abs(
+            page.locator("#board").bounding_box()["height"]
+            - page.locator("#market").bounding_box()["height"]
+        )
+        <= 1,
+        "a public view without a private hand lends the entire column to the board",
+    )
+    context.close()
+
+
 def run(base: str, browser) -> None:
     context, page, _ = open_context(
         browser, "table-layout", {"width": 1440, "height": 900}
@@ -172,12 +308,22 @@ def run(base: str, browser) -> None:
                 beside: document.getElementById('table')
                     .classList.contains('log-beside'),
                 actionsRight: box('side-main').right,
+                sideLeft: box('side').left, sideHeight: box('side').height,
+                sideBottom: box('side').bottom,
                 actionsWidth: box('side-main').width,
                 decision: box('decision-info').bottom,
                 history: box('action-log').top, historyLeft: box('action-log').left,
                 historyWidth: box('action-log').width,
                 historyHeight: box('action-log').height,
-                logBottom: box('action-log').bottom, hand: box('private-zone').top,
+                logBottom: box('action-log').bottom,
+                handTop: box('private-zone').top,
+                handLeft: box('private-zone').left,
+                handRight: box('private-zone').right,
+                handBottom: box('private-zone').bottom,
+                boardLeft: box('board').left, boardRight: box('board').right,
+                boardBottom: box('board').bottom,
+                marketLeft: box('market').left, marketBottom: box('market').bottom,
+                viewportHeight: innerHeight,
                 boardHeight: box('board').height, scanHeight: scan.height,
                 toggleVisible: !!document.querySelector('.log-size-toggle')
                     .offsetParent};
@@ -194,8 +340,33 @@ def run(base: str, browser) -> None:
                 if beside
                 else geometry["decision"] <= geometry["history"]
             )
-            and geometry["logBottom"] <= geometry["hand"],
+            and geometry["handRight"] <= geometry["sideLeft"]
+            and geometry["boardBottom"] <= geometry["handTop"],
             f"{label}: controls, history and hand do not overlap",
+            geometry,
+        )
+        check.ok(
+            abs(geometry["handLeft"] - geometry["boardLeft"]) <= 1
+            and abs(geometry["handRight"] - geometry["boardRight"]) <= 1,
+            f"{label}: the hand occupies only the board column",
+            geometry,
+        )
+        check.ok(
+            geometry["viewportHeight"] - 9
+            <= geometry["sideBottom"]
+            <= geometry["viewportHeight"]
+            and abs(geometry["logBottom"] - geometry["sideBottom"]) <= 1,
+            f"{label}: decisions and history reach the bottom beside the hand",
+            geometry,
+        )
+        check.ok(
+            (
+                geometry["handRight"] <= geometry["marketLeft"]
+                and abs(geometry["marketBottom"] - geometry["handBottom"]) <= 1
+                if width > 1340
+                else geometry["marketBottom"] <= geometry["handTop"]
+            ),
+            f"{label}: shared cards use full height beside the hand or stack above it",
             geometry,
         )
         check.ok(
@@ -207,7 +378,7 @@ def run(base: str, browser) -> None:
             check.ok(
                 340 <= geometry["historyWidth"] <= 600
                 and geometry["actionsWidth"] == 340
-                and abs(geometry["historyHeight"] - geometry["boardHeight"]) <= 1
+                and abs(geometry["historyHeight"] - geometry["sideHeight"]) <= 1
                 and abs(geometry["scanHeight"] - geometry["boardHeight"]) <= 2,
                 f"{label}: full-height history preserves board and choice sizes",
                 geometry,
@@ -307,6 +478,7 @@ def run(base: str, browser) -> None:
 
 def main() -> None:
     with server() as (base, _), chrome() as browser:
+        check_hand(base, browser)
         run(base, browser)
     check.finish()
 

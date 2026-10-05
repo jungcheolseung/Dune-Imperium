@@ -4,6 +4,13 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 손패를 보드 열 아래로 한정하고 옆 열의 높이 확보
+
+- 손패·책략 카드 영역을 화면 전체 폭의 마지막 행에서 보드 열 아래로 옮겼다. 공용 카드·확장 게임판 열은 보드와 손패의 두 행을 모두 차지하고, 플레이어 상태·행동 선택·행동 로그 열은 화면 하단까지 이어진다. 남는 보드 폭을 쓰는 로그의 오른쪽 이동, 개별 스크롤과 열 접기는 유지한다.
+- 1340px 이하에서는 보드 → 공용 카드 → 손패 순으로 쌓는다. 손패를 제외한 높이를 보드와 공용 카드에 55:45로 나누어 확장 카드 때문에 보드 높이가 사라지지 않도록 하고, 기존 480px 보드 최소 폭과 머리글 아래의 가로 스크롤을 유지한다. 손패 머리글은 좁은 열 안에서 줄바꿈하며, 카드들은 가로 스크롤하는 한 줄이다. 비공개 손패가 없는 공개 뷰는 보드가 그 높이를 모두 사용한다.
+- 좁아진 손패에서 끝쪽 카드 선택 및 외부 갱신 때 가로 스크롤이 원점으로 돌아가던 문제도 수정했다. `renderPrivate`는 동일한 카드 목록의 손패·책략·미리 본 카드 영역과 바깥 줄의 가로 위치를 복원하며, 목록이 바뀐 영역은 원점으로 시작한다.
+- 검증: 독립 DOM 좌표를 사용하는 `table_layout.py` **99개 검사**(1280~2560px·여러 높이, 손패가 보드 열만 사용하는지·옆 열이 화면 하단까지 도달하는지·겹침 없음, 한글/영어의 손패 20장·책략 12장·미리 본 카드 표시 스트레스, 마지막 카드 선택·책략 상세·스크롤 보존·목록 변경·빈 손패·공개 뷰). 스크롤 수정 전 **4개 실패**를 재현했고 수정 후 통과했다. 관련 Chrome E2E **11종**(`table_layout`, `narrow`, `columns`, `staged_turn`, `turn_controls`, `card_effects`, `turn_end`, `lang`, `seats`, `board_tokens`, `bene_tleilax_specimens`) 실패 0, Ruff(`src tests`·변경 E2E)·`git diff --check` 통과. HTML·CSS·클라이언트 JS만 변경하여 브라우저 새로고침으로 적용한다.
+
 ## 2026-10-05 플레이어 번호 배지의 원형 유지
 
 - 리더 이름 옆 번호 배지가 flex item으로 줄어들어, 긴 이름이나 좁은 줄에서 가로 폭만 10.44px까지 눌렸다(높이는 14.69px). 번호·리더 이름·언어마다 남는 폭이 달라 플레이어1~4의 원형 크기가 서로 달라 보였다.

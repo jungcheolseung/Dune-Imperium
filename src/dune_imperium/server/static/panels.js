@@ -1206,6 +1206,18 @@ function renderLog() {
 
 function renderPrivate() {
   const panel = el("private-zone");
+  /* The board-width hand can scroll even with a normal five-card hand.
+     A staged pick or a foreign update must not hide the card just read.
+     Restore only an unchanged list, so a different hand starts at zero. */
+  const cardIds = pane => [...pane.querySelectorAll(".vcard")]
+    .map(card => card.dataset.instance).join("\n");
+  const scrolled = [...panel.querySelectorAll(".hand-zones, .strip-cards")]
+    .filter(pane => pane.scrollLeft)
+    .map(pane => ({
+      selector: `.${pane.className.split(" ").join(".")}`,
+      cards: cardIds(pane),
+      left: pane.scrollLeft,
+    }));
   panel.textContent = "";
   const view = state.view;
   if (!view || !view.private) {
@@ -1303,6 +1315,10 @@ function renderPrivate() {
     zones.appendChild(peeks);
   }
   panel.appendChild(zones);
+  for (const scroll of scrolled) {
+    const pane = panel.querySelector(scroll.selector);
+    if (pane && cardIds(pane) === scroll.cards) pane.scrollLeft = scroll.left;
+  }
 }
 
 function renderStandings() {

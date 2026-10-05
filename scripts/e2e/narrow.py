@@ -373,9 +373,11 @@ def check_floor(browser, base: str) -> None:
             (g["mainScroll"], g["mainClient"], g["table"]["width"]),
         )
         check.ok(
-            abs(g["hand"]["width"] - g["table"]["width"]) < 1,
-            f"{where}: the hand zone is as wide as the table",
-            (g["hand"]["width"], g["table"]["width"]),
+            abs(g["hand"]["width"] - g["board"]["width"]) < 1
+            and abs(g["hand"]["left"] - g["board"]["left"]) < 1
+            and g["hand"]["right"] <= g["side"]["left"],
+            f"{where}: the hand stays in the board column beside the full-height side",
+            (g["hand"], g["board"], g["side"]),
         )
         beside = width > 1340
         check.ok(

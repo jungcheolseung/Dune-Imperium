@@ -305,7 +305,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    --board-min (with the shared-card column beside it, that plus
    --market-min), and a window too narrow for the three columns at their
    floors scrolls sideways (body.in-game main) instead. --table-min is that
-   floor summed, so the hand zone under the table is as wide as the table. */
+   floor summed. The hand belongs to the board column; the other columns
+   can use the full height of the table. */
 #game-screen {
   --board-min: 480px;
   --market-min: 190px;
@@ -314,7 +315,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   /* The column is the window's width down to the table's floor; its
      min-content would have taken whatever the widest row happened to hold. */
   grid-template-columns: minmax(var(--table-min), 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
 #table {
@@ -328,7 +329,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
     var(--actions-width);
   gap: 0.5rem;
   min-height: 0;
-  padding: 0.5rem 0.5rem 0;
+  padding: 0.5rem;
 }
 #seats {
   min-height: 0;
@@ -376,21 +377,25 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   }
   #table.log-beside .log-size-toggle { display: none; }
 }
-/* The board fills the centre; the shared card zones (Imperium Row,
-   Reserve, draft pool, ...) stand in a column beside it so a wide screen
-   spends its height on the board. The column takes what its widest strip
-   needs, capped at a fifth of the centre, and never less than two cards
-   side by side. Narrow screens (media query at the end) move it back
-   under the board. */
+/* The hand sits directly below the board. Shared cards and expansion
+   boards span both rows beside them, keeping the height that used to be
+   reserved by the full-width hand. Narrow screens stack all three zones. */
 #center {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) fit-content(190px);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "board market" "hand market";
   gap: 0.5rem;
   min-height: 0;
   min-width: 0;
 }
+#center:has(#private-zone[hidden]) {
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "board market";
+}
 #board {
+  grid-area: board;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -915,6 +920,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 /* ---------- card strips ---------- */
 
 #market {
+  grid-area: market;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -965,7 +971,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 /* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the four folded
    seats took 703-738px of a column 519-652px tall at 1366x768 (seed 7, every
-   expansion; the column shrinks when the hand row takes two lines). The
+   expansion; the full-width hand then shortened every column). The
    Leader picture gives way (the name keeps its hover card), the name and
    badges keep one line, and the fold toggle joins the head as its arrow; its
    words stay its accessible name, and its title the folded summary. 171 ->
@@ -1205,11 +1211,19 @@ kbd {
 /* ---------- own hand ---------- */
 
 #private-zone {
+  grid-area: hand;
+  min-width: 0;
   border-top: 1px solid var(--line);
   background: #181c1e;
   padding: 0.45rem 0.8rem 0.5rem;
 }
-.hand-label { display: flex; gap: 1.2rem; align-items: center; margin-bottom: 0.2rem; }
+.hand-label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.8rem;
+  align-items: center;
+  margin-bottom: 0.2rem;
+}
 .hand-counts { display: inline-flex; gap: 0.8rem; }
 .hand-zones { display: flex; gap: 1.2rem; align-items: flex-start; overflow-x: auto; }
 .hand-cards { flex: 0 1 auto; min-width: 0; }
@@ -1809,14 +1823,17 @@ kbd {
     --actions-width: 300px;
     grid-template-columns: 200px minmax(var(--board-min), 1fr) var(--actions-width);
   }
-  /* The market row was `auto`, so it sized to its content and left the
-     board's `1fr` row nothing: with every expansion on, seven strips took
-     the whole centre and #board rendered 468x0 — the board simply was not
-     there. Cap the row and let #market scroll (it is already
-     overflow-y: auto with min-height: 0). */
+  /* Split the room above the hand between board and market. Content-sized
+     market rows previously consumed the entire board row with all the
+     expansions on; both rows keep their independent scrolling instead. */
   #center {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 45%);
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.9fr) auto;
+    grid-template-areas: "board" "market" "hand";
+  }
+  #center:has(#private-zone[hidden]) {
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    grid-template-areas: "board" "market";
   }
   #market {
     flex-direction: row;
