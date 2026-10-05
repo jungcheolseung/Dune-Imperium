@@ -23,6 +23,15 @@ SHOTS = Path(
 
 def seek(page, cursor: int) -> None:
     page.evaluate("async n => { stopPlayback(); await reviewGoto(n); }", cursor)
+    # The snapshot is ready before the board/hand images and the layout
+    # observer settle. A still-moving card can cancel its hover delay.
+    page.wait_for_function("""() => [...document.querySelectorAll(
+        '#board .board-map, .hand-cards .vcard:first-child img')]
+        .every(i => i.complete && i.naturalWidth > 0)""")
+    page.evaluate("""async () => {
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+    }""")
 
 
 def trigger(page):

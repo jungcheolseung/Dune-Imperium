@@ -879,21 +879,6 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .slot-deck .icon { width: 1.6em; height: 1.6em; }
 .slot-deck-count { font-size: 1.1em; line-height: 1; }
-.slot-bank {
-  position: absolute;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2em;
-  padding: 0.1em 0.45em;
-  background: rgba(0, 0, 0, 0.72);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: #fff;
-  font-size: 0.75em;
-  font-weight: 700;
-  white-space: nowrap;
-}
 /* Pieces laid on the scan (boardPiece): the Shield Wall token, and the
    tiles the scan has no print for (a Leader's space, Immortality's
    Research Station overlay). They lie under the hotspots. */
@@ -905,17 +890,6 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .shield-wall-token { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7)); }
 .board-tile { border-radius: 3px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75); }
-.board-note {
-  position: absolute;
-  right: 1%;
-  bottom: 1%;
-  background: rgba(0, 0, 0, 0.75);
-  border: 1px solid var(--bad);
-  border-radius: 6px;
-  padding: 0.1rem 0.5rem;
-  color: var(--bad);
-  font-weight: 700;
-}
 
 /* ---------- card strips ---------- */
 

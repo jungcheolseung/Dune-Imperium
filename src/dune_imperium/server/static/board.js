@@ -487,12 +487,6 @@ function renderBoardStage(board, view) {
     stage.appendChild(post);
   }
 
-  if (!view.shield_wall_present) {
-    const note = document.createElement("span");
-    note.className = "board-note";
-    note.appendChild(tNode("board.shield_wall_destroyed"));
-    stage.appendChild(note);
-  }
   renderSlotCards(stage, view);
   renderTrackMarkers(stage, view);
   board.appendChild(stage);
@@ -574,17 +568,6 @@ function renderSlotCards(stage, view) {
     placeAt(card, left + width / 2, top + height / 2);
     stage.appendChild(card);
   });
-  const [left, top, width, height] = tracks.contract_slots[tracks.contract_slots.length - 1];
-  const bank = document.createElement("span");
-  bank.className = "slot-bank";
-  bank.title = t("board.contract_bank_title");
-  bank.append(
-    icon("contract", phraseText("{contract}")),
-    ` ${t("board.contract_bank_count", { count: view.contract_bank_size })}`,
-  );
-  const overhang = (width * (CONTRACT_SLOT_SCALE - 1)) / 2;
-  placeAt(bank, left + width + overhang + 0.8, top + height / 2);
-  stage.appendChild(bank);
 }
 
 function placeAt(node, x, y) {

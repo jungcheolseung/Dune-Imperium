@@ -4,6 +4,11 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 보드의 계약 잔량·Shield Wall 파괴 문구 제거
+
+- 사용자 요청에 따라 보드 계약 카드 옆의 남은 장수 배지와 오른쪽 아래의 Shield Wall 파괴 문구를 제거했다. 두 표시의 전용 CSS와 사용하지 않는 한글·영어 UI 문구도 정리했다. 계약 카드 이미지와 실제 Shield Wall 토큰은 상태에 따라 계속 표시한다.
+- 검증: 별도 CHOAM 게임의 실제 카드 목록을 기준으로 한국어·영어 × Shield Wall 있음/없음 상태의 화면 검사 **13개** 통과. 관련 Chrome E2E **3종**(`board_tokens`, `lang`, `conflict_history`) **10초, 실패 0**, Ruff(`src tests`·변경 E2E)·`git diff --check` 통과. 교전 이력 E2E는 검토 위치를 옮긴 뒤 보드·첫 손패 카드 이미지와 레이아웃 observer가 정착한 다음 마우스오버 검사를 시작하도록 보강했다. 클라이언트 UI 변경이므로 브라우저 새로고침으로 적용한다.
+
 ## 2026-10-05 손패를 보드 열 아래로 한정하고 옆 열의 높이 확보
 
 - 손패·책략 카드 영역을 화면 전체 폭의 마지막 행에서 보드 열 아래로 옮겼다. 공용 카드·확장 게임판 열은 보드와 손패의 두 행을 모두 차지하고, 플레이어 상태·행동 선택·행동 로그 열은 화면 하단까지 이어진다. 남는 보드 폭을 쓰는 로그의 오른쪽 이동, 개별 스크롤과 열 접기는 유지한다.

@@ -86,14 +86,6 @@ const UI_TEXT = {
     "ko": "아직 공개되지 않음",
     "en": "Not revealed yet"
   },
-  "board.contract_bank_count": {
-    "ko": "남은 {{count}}",
-    "en": "bank {{count}}"
-  },
-  "board.contract_bank_title": {
-    "ko": "뒷면으로 쌓인 남은 {contract}",
-    "en": "Face-down Contract bank"
-  },
   "board.control_seat": {
     "ko": "{control}: 플레이어{{seat}}",
     "en": "{control}: Player {{seat}}"
@@ -189,10 +181,6 @@ const UI_TEXT = {
   "board.set_aside": {
     "ko": "따로 치워둠",
     "en": "set aside"
-  },
-  "board.shield_wall_destroyed": {
-    "ko": "{shield_wall} 파괴됨",
-    "en": "{shield_wall} destroyed"
   },
   "board.spice_first_reacher": {
     "ko": "첫 도달자가 가져가는 {spice}",
