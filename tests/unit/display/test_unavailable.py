@@ -1554,6 +1554,33 @@ def test_cargo_runner_s_four_contract_line_waits_with_its_count() -> None:
     }
 
 
+def test_tread_in_darkness_draw_greys_out_once_its_bond_card_is_trashed() -> None:
+    """Tread in Darkness's [trash] and [draw 1] are two icons (OQ-027), each
+    judged on "another Bene Gesserit card in play" when it resolves
+    (OQ-028). Trashing that card first leaves the draw waiting for a Bond
+    that cannot come back this turn: a "choice" row until the turn's end."""
+    tread = _imperium("tread_in_darkness")
+    bond = _imperium("truthtrance")
+    owner = PlayerState(player_id=0, hand=(tread,), deck=(DAGGER,), in_play=(bond,))
+    state = _place(_state(owner), "arrakeen")
+    assert _icon_rows(state) == {}
+    trash = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "trash_agent_card"
+        and dict(action.arguments)["card_id"] == bond
+    )
+    state = ENGINE.apply(state, trash).state
+    assert _icon_rows(state) == {
+        "choice:agent_icon:cards": (
+            "Needs another Bene Gesserit card in play;"
+            " it lapses when the turn ends",
+            "{in_play}에 다른 베네 게세리트 카드 필요 — 차례가 끝날 때 사라짐",
+            "condition",
+        ),
+    }
+
+
 # --- A Contract the seat cannot take, and Contract icons held (OQ-059) ---
 
 _IMMEDIATE = "contract:bloodlines_immediate"

@@ -835,6 +835,8 @@ def test_tread_in_darkness_trash_is_explicit(junk: bool) -> None:
     taken, _ = _drive(state, seat, patches)
     expected = f"trash_agent_card:{dagger}" if junk else "decline_agent_card_trash"
     assert expected in _ids(taken)
+    # The draw is its own icon (``BeneGesseritDrawAbility``).
+    assert "resolve_agent_card_effect:cards" in _ids(taken)
 
 
 def test_guild_envoy_discards_the_first_of_get_discard_order() -> None:

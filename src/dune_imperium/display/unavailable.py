@@ -117,6 +117,7 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
 from dune_imperium.rules.agent_effects import (
+    AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
     AgentIconBlock,
     AgentIconCondition,
@@ -1303,6 +1304,14 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
                 f"완수한 {{contract}} {needed}개 필요 (완수 {held}){_LAPSES_KO}",
                 "condition",
             )
+        case AgentIconCondition.BOND if block.faction is Faction.BENE_GESSERIT:
+            # Tread in Darkness's words [card face], tokens_ko.py's for KO.
+            return (
+                "Needs another Bene Gesserit card in play;"
+                " it lapses when the turn ends",
+                "{in_play}에 다른 베네 게세리트 카드 필요 — 차례가 끝날 때 사라짐",
+                "condition",
+            )
         case AgentIconCondition.GRAFTED:
             return (
                 "Only when the card is grafted; it lapses when the turn ends",
@@ -1337,13 +1346,15 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
     while the turn is open (user ruling 2026-10-02, L2-Q3: "③은 회색 줄만"
     -- Steersman Y'rkoon's Recall Agent icon with no target, and the other
     conditioned icons). The reasons come from the providers' own answers:
-    ``agent_icon_block`` (an automatic icon is offered exactly when it is
-    None) and ``agent_card_recall_targets`` (the recall is offered once per
-    target). An icon whose condition a later effect of the turn can still
-    meet (Influence, spice gained, genetic markers) sits under "waiting",
+    ``agent_icon_block`` (an automatic icon, or Tread in Darkness's trash
+    icon, is offered exactly when it is None) and
+    ``agent_card_recall_targets`` (the recall is offered once per target).
+    An icon whose condition a later effect of the turn can still meet
+    (Influence, spice gained, genetic markers) sits under "waiting",
     like a single Agent box withheld by the same rule (``_agent_box``); one
-    that cannot come back this turn (an ungrafted card, a recall with no
-    target -- targets never grow within one Agent turn) under "choice".
+    that cannot come back this turn (an ungrafted card, a lost Bond, a
+    recall with no target -- targets never grow within one Agent turn)
+    under "choice".
     """
 
     try:
@@ -1359,7 +1370,7 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
     owner = state.players[seat]
     effect = active_agent_card(context).agent_effect
     for key in pending_agent_icons(context):
-        if key not in AUTOMATIC_AGENT_ICONS:
+        if key not in (*AUTOMATIC_AGENT_ICONS, AGENT_ICON_TRASH):
             continue
         block = agent_icon_block(owner, context, effect, key)
         if block is None:
@@ -1367,7 +1378,10 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         found.row(
             "waiting" if block.condition in _ICON_CAN_STILL_BE_MET else "choice",
             f"agent_icon:{key}",
-            DomainAction(
+            # Tread in Darkness's trash icon is offered as its trash choices.
+            DomainAction(action_id="trash_agent_card", actor=seat)
+            if key == AGENT_ICON_TRASH
+            else DomainAction(
                 action_id="resolve_agent_card_effect",
                 actor=seat,
                 arguments=(("effect", key),),

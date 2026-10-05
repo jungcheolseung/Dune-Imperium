@@ -226,11 +226,12 @@ def _pending_group_actions(
     if context["pending_agent_effect"] is True and pending_agent_icons(context):
         # A multi-icon Agent box: every pending icon is offered at once, the
         # automatic ones through their keyed resolution and the choice icons
-        # (Steersman's recall, Dangerous Rhetoric's Faction) through their
-        # own providers (OQ-027).
+        # (Steersman's recall, Dangerous Rhetoric's Faction, Tread in
+        # Darkness's trash) through their own providers (OQ-027).
         actions.extend(legal_agent_card_icon_actions(state, player))
         actions.extend(legal_agent_card_recall_actions(state, player))
         actions.extend(legal_agent_card_influence_actions(state, player))
+        actions.extend(legal_agent_card_trash_actions(state, player))
     elif context["pending_agent_effect"] is True:
         # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
         actions.extend(_single_box_actions(state, player))

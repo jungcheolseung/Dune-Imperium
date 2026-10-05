@@ -64,6 +64,9 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards_second"): (
         "if you have completed 4 or more contracts"
     ),
+    (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "if you have another Bene Gesserit card in play"
+    ),
 }
 
 # Korean twin of _ICON_CONDITIONS. The Influence-count suffixes use a
@@ -108,6 +111,10 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     ),
     (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards_second"): (
         "{contract} 넷 이상 완수했다면"
+    ),
+    # Tread in Darkness, in tokens_ko.py's words for the same box.
+    (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
     ),
 }
 

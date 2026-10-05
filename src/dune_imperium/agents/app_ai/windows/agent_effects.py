@@ -119,7 +119,8 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   Mentat, Guild Spy and Branching Path arm after their cost: follow-ups.
 - ``trash_agent_card(card)`` / ``decline_agent_card_trash``:
   ``TrashAgentAbility`` (Calculus of Power, Desert Survival; E),
-  ``BeneGesseritTrashAbility`` (Tread in Darkness; E; the draw rides along),
+  ``BeneGesseritTrashAbility`` (Tread in Darkness; E; its draw is its own
+  ``cards`` icon, ``BeneGesseritDrawAbility``),
   ``ShishakliAgentAbility`` (O; targets hand, in play, discard),
   ``TreacherousManeuverAbility`` (O); card -> trash, empty pick or unused ->
   decline.
@@ -201,8 +202,8 @@ Judgement calls (our engine cannot ask the app's question exactly):
   the app may play one before a pending Explicit key worth less.
 - Where one of our actions does two app steps, it takes the stage of the one
   that asks: Imperial Privilege's draw rides on the recall, In High Places'
-  draw on its Spy, Tread in Darkness' draw on its trash, Secrets' steal on its
-  draw, Subversive Advisor's influence and self-trash on its box (500).
+  draw on its Spy, Secrets' steal on its draw, Subversive Advisor's
+  influence and self-trash on its box (500).
 - The app computes the 600 list once; here every decision re-reads
   ``CanRunImmediately`` in the same order, so a card drawn earlier in 600 can
   move a later threshold-gated key into the prompt (it then runs as an
@@ -477,6 +478,8 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     # Cargo Runner's two lines, one app ability each (two and four contracts).
     ("cargo_runner", "cards"): "CargoRunner2ContractsDrawAbility",
     ("cargo_runner", "cards_second"): "CargoRunner4ContractsDrawAbility",
+    # Tread in Darkness's draw icon (its trash is ``_TRASH_ABILITY``'s).
+    ("tread_in_darkness", "cards"): "BeneGesseritDrawAbility",
     # Immortality multi-icon boxes (``_PLACEMENT_ICONS`` of our engine).
     ("sardaukar_quartermaster", "troops"): "SardaukarQuartermasterTroopAbility",
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",

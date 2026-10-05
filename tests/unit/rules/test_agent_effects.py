@@ -4532,15 +4532,20 @@ def test_shishakli_trash_draw_may_be_declined() -> None:
     assert result.state.players[0].trashed == ()
 
 
-def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
+def _tread_in_darkness_placed(
+    *, hand: tuple[str, ...] = (), deck: tuple[str, ...] = ()
+) -> tuple[GameState, str, str]:
+    """Tread in Darkness sent to Arrakeen beside a Bene Gesserit card in play.
+
+    Returns the placed state, Tread in Darkness and the Bond card.
+    """
+
     tread = _imperium_instance("tread_in_darkness")
     bond_card = _imperium_instance("truthtrance")
-    trashed_card = _instance("dagger")
-    drawn_card = _instance("convincing_argument")
     owner = PlayerState(
         player_id=0,
-        hand=(tread, trashed_card),
-        deck=(drawn_card,),
+        hand=(tread, *hand),
+        deck=deck,
         in_play=(bond_card,),
     )
     state = GameState(
@@ -4558,28 +4563,113 @@ def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
         ),
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
-    action = next(
+    return placed, tread, bond_card
+
+
+def _trash_choice(state: GameState, card_id: str | None) -> DomainAction:
+    return next(
         action
-        for action in legal_agent_card_trash_actions(placed, 0)
-        if dict(action.arguments).get("card_id") == trashed_card
+        for action in legal_agent_card_trash_actions(state, 0)
+        if dict(action.arguments).get("card_id") == card_id
     )
 
-    result = apply_agent_card_trash(placed, action)
+
+def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
+    # "If you have another Bene Gesserit card in play: [trash] [draw 1]"
+    # [Tread in Darkness card]: two icons with no arrow, each its own effect
+    # in the owner's order [Main p. 9] (OQ-027).
+    trashed_card = _instance("dagger")
+    drawn_card = _instance("convincing_argument")
+    placed, tread, bond_card = _tread_in_darkness_placed(
+        hand=(trashed_card,), deck=(drawn_card,)
+    )
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "trash,cards"
+    )
+    assert _offered_icons(placed) == {"cards"}
+    engine = UprisingRulesEngine()
+    legal = engine.legal_actions(placed, 0)
+    assert _trash_choice(placed, trashed_card) in legal
+    assert DomainAction(action_id="decline_agent_card_trash", actor=0) in legal
+
+    result = apply_agent_card_trash(placed, _trash_choice(placed, trashed_card))
 
     assert result.state.players[0].trashed == (trashed_card,)
-    assert result.state.players[0].hand == (drawn_card,)
-    assert result.state.players[0].in_play == (bond_card, tread)
+    # The draw is its own icon, still to resolve.
+    assert result.state.players[0].hand == ()
+    assert legal_agent_card_trash_actions(result.state, 0) == ()
+    drawn = resolve_agent_card_icon(
+        result.state, _icon_action(result.state, "cards")
+    ).state
+    assert drawn.players[0].hand == (drawn_card,)
+    assert drawn.players[0].in_play == (bond_card, tread)
+    assert dict(drawn.decision_stack[-1].context)["pending_agent_effect"] is False
 
-    # Two icons, no arrow: declining the optional trash [Main p. 20] still
-    # draws the card (user ruling 2026-09-09, OQ-058).
-    decline = next(
-        action
-        for action in legal_agent_card_trash_actions(placed, 0)
-        if action.action_id == "decline_agent_card_trash"
-    )
-    kept = apply_agent_card_trash(placed, decline)
+    # Declining the optional trash ("검은색 trash 아이콘에 의한 trash는
+    # 선택이지만" [Main p. 20]) still leaves the draw (OQ-058).
+    kept = apply_agent_card_trash(placed, _trash_choice(placed, None))
+    assert kept.events[-1].kind == "agent_card_trash_declined"
     assert kept.state.players[0].trashed == ()
-    assert kept.state.players[0].hand == (trashed_card, drawn_card)
+    assert kept.state.players[0].hand == (trashed_card,)
+    kept_drawn = resolve_agent_card_icon(
+        kept.state, _icon_action(kept.state, "cards")
+    ).state
+    assert kept_drawn.players[0].hand == (trashed_card, drawn_card)
+
+
+def test_tread_in_darkness_draws_first_and_may_trash_the_drawn_card() -> None:
+    drawn_card = _instance("convincing_argument")
+    placed, _, _ = _tread_in_darkness_placed(deck=(drawn_card,))
+
+    drawn = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    assert drawn.players[0].hand == (drawn_card,)
+    assert dict(drawn.decision_stack[-1].context)["pending_agent_icons"] == "trash"
+
+    result = apply_agent_card_trash(drawn, _trash_choice(drawn, drawn_card))
+
+    assert result.state.players[0].trashed == (drawn_card,)
+    assert result.state.players[0].hand == ()
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_tread_in_darkness_draw_waits_once_its_bond_card_is_trashed() -> None:
+    # The Bond is judged per icon when it resolves (OQ-028): trashing the
+    # other Bene Gesserit card first leaves the draw without its condition,
+    # so it is not offered and lapses at the turn's end (OQ-057 (1)). Drawn
+    # first, it would have paid.
+    drawn_card = _instance("convincing_argument")
+    placed, _, bond_card = _tread_in_darkness_placed(deck=(drawn_card,))
+
+    trashed = apply_agent_card_trash(placed, _trash_choice(placed, bond_card)).state
+
+    assert trashed.players[0].trashed == (bond_card,)
+    assert legal_agent_card_icon_actions(trashed, 0) == ()
+    assert agent_card_effect_is_unavailable(trashed)
+    fizzled = fizzle_pending_agent_icons(trashed)
+    assert [
+        dict(event.payload)["effect"] for event in fizzled.events
+    ] == ["cards"]
+    assert fizzled.state.players[0].hand == ()
+
+
+def test_tread_in_darkness_trashing_itself_still_draws() -> None:
+    # The card leaves play by its own icon, so its draw still pays out
+    # (OQ-022, OQ-027); the other Bene Gesserit card keeps the Bond.
+    drawn_card = _instance("convincing_argument")
+    placed, tread, bond_card = _tread_in_darkness_placed(deck=(drawn_card,))
+
+    trashed = apply_agent_card_trash(placed, _trash_choice(placed, tread))
+    expired = expire_trashed_card_effects(trashed)
+
+    assert expired.state.players[0].trashed == (tread,)
+    assert _offered_icons(expired.state) == {"cards"}
+    drawn = resolve_agent_card_icon(
+        expired.state, _icon_action(expired.state, "cards")
+    ).state
+    assert drawn.players[0].hand == (drawn_card,)
+    assert drawn.players[0].in_play == (bond_card,)
 
 
 def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:

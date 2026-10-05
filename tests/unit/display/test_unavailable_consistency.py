@@ -105,6 +105,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
+    legal_agent_card_trash_actions,
     spice_gained_this_turn,
 )
 from dune_imperium.rules.board_effects import (
@@ -113,6 +114,7 @@ from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     legal_imperial_privilege_actions,
 )
+from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
     legal_combat_reward_influence_actions,
     legal_combat_reward_spy_actions,
@@ -593,6 +595,8 @@ def _old_pending_groups(state: GameState, player: int) -> tuple[DomainAction, ..
         actions.extend(legal_agent_card_icon_actions(state, player))
         actions.extend(legal_agent_card_recall_actions(state, player))
         actions.extend(legal_agent_card_influence_actions(state, player))
+        # 2026-10-06: Tread in Darkness's trash became a choice icon.
+        actions.extend(legal_agent_card_trash_actions(state, player))
     elif context["pending_agent_effect"] is True:
         choice_actions = tuple(
             action
@@ -1107,6 +1111,18 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 4
     if key == "cards_second":
         return False
+    # Tread in Darkness's draw became its own icon, judging the Bond.
+    if (
+        effect
+        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+        and key == "cards"
+    ):
+        card_id = context.get("card_id")
+        return has_faction_bond(
+            counted_in_play(owner),
+            card_id if isinstance(card_id, str) else "",
+            Faction.BENE_GESSERIT,
+        )
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO

@@ -179,6 +179,9 @@ AUTOMATIC_AGENT_ICONS: Final = (
 # Icon keys resolved through a card's dedicated choice actions.
 AGENT_ICON_INFLUENCE: Final = "influence"  # Dangerous Rhetoric: chosen Faction
 AGENT_ICON_RECALL: Final = "recall"  # Steersman: one Agent to recall
+# Tread in Darkness: its optional black trash icon (``trash_agent_card`` or
+# ``decline_agent_card_trash``).
+AGENT_ICON_TRASH: Final = "trash"
 
 # Agent boxes whose printed icons are all queued when the card is played,
 # in printed order. Arrow boxes queue their reward icons after the cost.
@@ -236,6 +239,13 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
             _BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO: (
                 AGENT_ICON_CARDS,
                 AGENT_ICON_CARDS_SECOND,
+            ),
+            # Tread in Darkness: "If you have another Bene Gesserit card in
+            # play: [trash] [draw 1]" [Tread in Darkness card], two icons
+            # with no arrow; the trash stays optional [Main p. 20] (OQ-058).
+            _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: (
+                AGENT_ICON_TRASH,
+                AGENT_ICON_CARDS,
             ),
         }
     )
@@ -1690,11 +1700,21 @@ def legal_agent_card_trash_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
-    if pending_agent_icons(context):
-        # The arrow cost is paid; only the queued reward icons remain.
+    icons = pending_agent_icons(context)
+    if icons and AGENT_ICON_TRASH not in icons:
+        # The arrow cost is paid, or Tread in Darkness's trash icon is
+        # resolved; only the queued reward icons remain.
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
+    if source_card.agent_effect is _TRASH_TO_DRAW_IF_BOND and not (
+        agent_icon_condition_holds(
+            state.players[player], context, _TRASH_TO_DRAW_IF_BOND, AGENT_ICON_TRASH
+        )
+    ):
+        # Tread in Darkness's trash icon without the Bond, judged now
+        # (OQ-028): it waits like any conditioned icon (OQ-057 (1)).
+        return ()
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
@@ -1786,8 +1806,10 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     _, context = current_agent_effect_context(state)
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
-    context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card"
+    if AGENT_ICON_TRASH in pending_agent_icons(context):
+        return _resolve_trash_icon(state, action, context, source_card_id, source)
+    context["pending_agent_effect"] = False
     if action.action_id == "decline_agent_card_trash":
         context.pop("trashes_remaining", None)
         next_state = advance_after_effect(state, context)
@@ -1796,14 +1818,6 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             kind="agent_card_trash_declined",
             payload=(("player", action.actor),),
         )
-        if source_card.agent_effect is _TRASH_TO_DRAW_IF_BOND:
-            # Tread in Darkness prints two icons, not an arrow: the trash is
-            # optional [Main p. 20] and the draw still happens (user ruling
-            # 2026-09-09, OQ-058).
-            drawn = draw_or_request_personal_cards(
-                next_state, action.actor, 1, source=f"{source}:trash_draw"
-            )
-            return RuleResult(state=drawn.state, events=(event, *drawn.events))
         return RuleResult(state=next_state, events=(event,))
 
     card_id = dict(action.arguments).get("card_id")
@@ -1925,10 +1939,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     )
     if (
         source_card.agent_effect
-        in (
-            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
-            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        )
+        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE
     ):
         drawn = draw_or_request_personal_cards(
             next_state,
@@ -1941,6 +1952,51 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             events=(*trashed.events, *drawn.events),
         )
     return RuleResult(state=next_state, events=trashed.events)
+
+
+def _resolve_trash_icon(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+    source_card_id: str,
+    source: str,
+) -> RuleResult:
+    """Resolve or decline Tread in Darkness's trash icon on its own.
+
+    "If you have another Bene Gesserit card in play: [trash] [draw 1]"
+    [Tread in Darkness card] prints two icons and no arrow, so each is its
+    own effect in the owner's order [Main p. 9] (OQ-027): the draw may come
+    first and the card drawn may then be trashed. "검은색 trash 아이콘에 의한
+    trash는 선택이지만, 비용으로 trash하거나 카드가 자기 자신을 trash하라고
+    지시하면 선택이 아니다." [Main p. 20] (uprising-systems.md), so the trash
+    may be declined and the draw still happens (OQ-058).
+    """
+
+    finish_agent_icon(context, AGENT_ICON_TRASH)
+    if action.action_id == "decline_agent_card_trash":
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:trash_declined",
+                    kind="agent_card_trash_declined",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card trash choice has invalid card ID")
+    if card_id == source_card_id:
+        # The card left play by its own printed icon, so its draw icon
+        # still pays out (OQ-022, OQ-027).
+        context["agent_card_self_trashed"] = True
+    trashed = trash_personal_card(state, action.actor, card_id, source=source)
+    _keep_trash_recruits(context, trashed)
+    return RuleResult(
+        state=advance_after_effect(trashed.state, context, trashed.state.players),
+        events=trashed.events,
+    )
 
 
 def legal_agent_card_intrigue_payment_actions(
@@ -3140,6 +3196,8 @@ class AgentIconCondition(StrEnum):
     GRAFTED = "grafted"
     GENETIC_MARKERS = "genetic_markers"
     CONTRACTS_COMPLETED = "contracts_completed"
+    # Another card of ``faction`` in play; it can only be lost in a turn.
+    BOND = "bond"
     # The icon belongs to no box that prints it; no card queues one.
     NOT_PRINTED = "not_printed"
 
@@ -3173,6 +3231,22 @@ def _contracts_block(owner: PlayerState, needed: int) -> AgentIconBlock | None:
     return AgentIconBlock(AgentIconCondition.CONTRACTS_COMPLETED, needed, held)
 
 
+def _bond_block(
+    owner: PlayerState, context: Mapping[str, ActionValue], faction: Faction
+) -> AgentIconBlock | None:
+    """Another ``faction`` card in play, other than the box's own card.
+
+    A Row card borrowed with Usurp is not in play (OQ-054,
+    ``counted_in_play``) and so never provides the Bond.
+    """
+
+    card_id = context.get("card_id")
+    source_id = card_id if isinstance(card_id, str) else ""
+    if has_faction_bond(counted_in_play(owner), source_id, faction):
+        return None
+    return AgentIconBlock(AgentIconCondition.BOND, faction=faction)
+
+
 def _influence_block(owner: PlayerState, faction: Faction) -> AgentIconBlock | None:
     held = influence_amount(owner.influence, faction)
     if held >= _ICON_THRESHOLD:
@@ -3193,9 +3267,10 @@ def agent_icon_block(
     Hidden Missive (two Bene Gesserit Influence), Fremen War Name ("If you
     gained [2 spice] or more this turn:" [Fremen War Name card]), Sardaukar
     Quartermaster (grafted), Tleilaxu Infiltrator (two genetic markers),
-    Maker Keeper and Wheels Within Wheels (Influence thresholds) and Cargo
-    Runner (two and four completed contracts, one line each) print a
-    condition on icons that are otherwise mandatory. The condition is judged
+    Maker Keeper and Wheels Within Wheels (Influence thresholds), Cargo
+    Runner (two and four completed contracts, one line each) and Tread in
+    Darkness (another Bene Gesserit card in play, on its draw and on its
+    optional trash) print a condition on their icons. The condition is judged
     when the icon resolves (OQ-028), and while it is false the icon is not
     offered: a mandatory effect cannot be fired to fizzle, it waits for the
     turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
@@ -3207,6 +3282,14 @@ def agent_icon_block(
 
     if effect is _CARGO_RUNNER and key in _CARGO_RUNNER_CONTRACTS:
         return _contracts_block(owner, _CARGO_RUNNER_CONTRACTS[key])
+    if effect is _TRASH_TO_DRAW_IF_BOND and key in (
+        AGENT_ICON_TRASH,
+        AGENT_ICON_CARDS,
+    ):
+        # Judged per icon when it resolves (OQ-028): the trash icon may take
+        # the very card that gave the Bond, and the draw then waits for a
+        # Bond that cannot come back this turn.
+        return _bond_block(owner, context, Faction.BENE_GESSERIT)
     if key == AGENT_ICON_CARDS_SECOND:
         return _NOT_PRINTED
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
@@ -3466,10 +3549,11 @@ def _pending_icons_offer_nothing(
 ) -> bool:
     """Return whether a multi-icon box has icons nothing can resolve.
 
-    A multi-icon box resolves icon by icon through exactly three providers
-    (OQ-027), so when all three are empty the icons cannot be resolved at
-    all. Ghola copying Steersman's "draw a card, recall an Agent" box
-    reaches this: the first box already recalled the seat's last Agent, so
+    A multi-icon box resolves icon by icon through exactly four providers
+    (OQ-027; the trash one for Tread in Darkness's trash icon), so when all
+    four are empty the icons cannot be resolved at all. Ghola copying
+    Steersman's "draw a card, recall an Agent" box reaches this: the first
+    box already recalled the seat's last Agent, so
     the copy's recall icon has no target. Like any other mandatory box
     whose condition is false it now waits for the turn's end instead of
     stalling it (OQ-057), and a later effect that gives the icon a target
@@ -3481,6 +3565,7 @@ def _pending_icons_offer_nothing(
         legal_agent_card_icon_actions(state, player)
         or legal_agent_card_recall_actions(state, player)
         or legal_agent_card_influence_actions(state, player)
+        or legal_agent_card_trash_actions(state, player)
     )
 
 
