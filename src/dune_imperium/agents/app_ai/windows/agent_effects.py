@@ -466,7 +466,7 @@ def _turn(run: DecisionRun) -> _Turn:
     space: Entity | None = None
     if isinstance(space_id, str) and space_id:
         try:
-            space = space_entity(space_id, ctx.choam)
+            space = space_entity(space_id, ctx.board)
         except KeyError:
             space = None
     else:

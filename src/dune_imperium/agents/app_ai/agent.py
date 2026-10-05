@@ -9,8 +9,11 @@ window is translated into the app prompt it corresponds to, answered with
 the ported value functions, and mapped back to one of our legal actions.
 
 Difficulty is the app's: level 0 Easy, 1 Medium, 2 Hard (the constant table
-is the only difference). A window not mirrored yet falls back to
-``HeuristicAgent`` and is counted in ``fallbacks`` so coverage stays visible.
+is the only difference). Every decision is the app's (no heuristic is ever
+mixed in, user decision 2026-10-05): a decision no window mirrors is answered
+the way the app answers a forced prompt it cannot value
+(``PlayerEntity::DefaultRandomChoice``, a uniformly random legal action) and
+is counted in ``fallbacks``; the coverage census requires that count to be 0.
 
 The agent is a ``StateAgent`` because the app reads the open turn's context,
 the Reveal's Persuasion and deck multisets that ``PlayerView`` lacks; every
@@ -20,11 +23,11 @@ read goes through ``AppContext``, which allows only what the seat may know.
 import random
 from collections import Counter
 
+from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import AppContext
 from dune_imperium.agents.app_ai.data.constants import TABLES
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows import DecisionRun, Memory, handler_for
-from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
@@ -43,9 +46,8 @@ class AppAIAgent:
         self.seed = seed
         self.level = level
         self._rng = random.Random(seed)
-        self._fallback = HeuristicAgent(seed=seed)
         self.memory = Memory()
-        # Decisions answered by the fallback, by decision kind.
+        # Decisions no window mirrors (answered at random), by decision kind.
         self.fallbacks: Counter[str] = Counter()
         # Decisions answered by the app mirror, by decision kind.
         self.mirrored: Counter[str] = Counter()
@@ -53,10 +55,10 @@ class AppAIAgent:
     def choose_action(
         self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
     ) -> DomainAction:
-        """View-only fallback: without the state the app cannot be mirrored."""
+        """View-only call: without the state the app cannot be mirrored."""
 
         self.fallbacks[f"view-only:{observation.decision_kind}"] += 1
-        return self._fallback.choose_action(observation, legal_actions)
+        return default_random_choice(legal_actions, self._rng)
 
     def choose_action_with_state(
         self,
@@ -80,7 +82,7 @@ class AppAIAgent:
             action = handler(run)
         if action is None:
             self.fallbacks[str(kind)] += 1
-            return self._fallback.choose_action(observation, legal_actions)
+            return default_random_choice(legal_actions, self._rng)
         if action not in legal_actions:
             raise ValueError(f"app_ai chose an illegal action {action!r} in {kind}")
         self.mirrored[str(kind)] += 1

@@ -65,6 +65,7 @@ from dune_imperium.agents.app_ai.catalog import (
     conflict_entity,
     space_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
@@ -245,7 +246,7 @@ def chroniclers_acquire_targets(p: Profile) -> list[Entity]:
     return cards
 
 
-def is_circle_observation_post(post_id: str, choam: bool) -> bool:
+def is_circle_observation_post(post_id: str, board: Board) -> bool:
     """``ArrakisInformantAbility::IsCircleObservationPost @0x4cebd80``.
 
     ``post.ObservedSpaces.Any(s => s.ActionIcon == Circle (1))`` (``b__3_0
@@ -255,7 +256,7 @@ def is_circle_observation_post(post_id: str, choam: bool) -> bool:
 
     index = POST_INDEX[post_id]
     for space_id in SPACE_ARCHETYPES:  # BoardSpaces order
-        space = space_entity(space_id, choam)
+        space = space_entity(space_id, board)
         posts = space.attr("ObservationPosts", ())
         if (
             isinstance(posts, tuple)
@@ -969,7 +970,7 @@ def deployed_faction_space(p: Profile) -> Entity | None:
     space_id = context.get("space_id")
     if not isinstance(space_id, str) or not space_id:
         return None
-    space = space_entity(space_id, p.ctx.choam)
+    space = space_entity(space_id, p.ctx.board)
     if space.attr("AgentIcon") in ("BeneGesserit", "Fremen"):
         return space
     return None
@@ -1076,7 +1077,7 @@ class ArrakisInformantAbility(SignetAbility):
         s = Summer()
         if _deployed_spies(p) > 2:
             return s
-        if any(is_circle_observation_post(post, p.ctx.choam) for post in POST_INDEX):
+        if any(is_circle_observation_post(post, p.ctx.board) for post in POST_INDEX):
             s.add("Place Spy Value", p.spy_value().sum)
             s.multiply("Arrakis Informant Spy", p.C.ArrakisInformantMod)
         return s

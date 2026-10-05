@@ -234,7 +234,7 @@ def _open_to(p: Profile, space_id: str) -> bool:
 def _space_cost(p: Profile, space_id: str) -> int:
     """The space's runtime ``SolariCost`` (Swordmaster drops to 6)."""
 
-    return space_solari_cost(p, space_entity(space_id, p.ctx.choam))
+    return space_solari_cost(p, space_entity(space_id, p.ctx.board))
 
 
 def _persuasion(p: Profile) -> int:
@@ -579,7 +579,7 @@ class StrengthIntrigueAbility(IntrigueAbility):
         top = sorted(p.ctx.players, key=lambda pl: pl.combat_strength, reverse=True)
         if not top:
             return False
-        return top[0].victory_points + conflict.int_attr("VictoryPoints") >= 10
+        return p.ctx.vp(top[0]) + conflict.int_attr("VictoryPoints") >= 10
 
     def _first_improving_value(self, p: Profile, conflict: Entity, rank: int) -> float:
         """The normal branch: only the first improving combination counts."""

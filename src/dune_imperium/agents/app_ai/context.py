@@ -24,6 +24,7 @@ choice must not change when ``determinize`` re-deals every hidden zone.
 from collections import Counter
 from collections.abc import Mapping
 from functools import cached_property
+from typing import NamedTuple
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import ActionValue
@@ -33,6 +34,24 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import revealer_persuasion
 
 FACTIONS = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+
+
+class Board(NamedTuple):
+    """The enabled sets that decide which space archetypes the app deals.
+
+    CHOAM swaps Accept Contract and Dutiful Service for their ``…CHOAM``
+    archetypes; Immortality swaps Research Station for
+    ``ResearchStationImmortality`` (``RemovedFromSetList``, spec
+    immortality.md §1.1). Every space lookup takes one of these instead of a
+    bare CHOAM flag so no caller can forget Immortality.
+    """
+
+    choam: bool
+    immortality: bool = False
+
+    @staticmethod
+    def of(config: RulesetConfig) -> Board:
+        return Board(config.choam_module, config.immortality)
 
 
 def card_id(instance_id: str) -> str:
@@ -75,16 +94,45 @@ class AppContext:
         return self.state.config.choam_module
 
     @property
+    def board(self) -> Board:
+        """The space-archetype key of this game (see ``Board``)."""
+
+        return Board.of(self.state.config)
+
+    @property
     def round_number(self) -> int:
         """The app's ``Playmat.RoundNumber`` (1 in the first round)."""
 
         return self.state.round_number
 
     @property
-    def endgame_trigger_score(self) -> int:
-        """The app's ``EndgameTriggerScore``: 10, or 12 in Epic Game Mode."""
+    def vp_offset(self) -> int:
+        """App VP minus ours: 1 under Go to 11, else 0.
 
-        return 12 if self.state.config.epic_game else 10
+        The app's Go to 11 keeps every seat's starting VP at 1 and moves the
+        end to 11 (``spec/epic-goto11-promo-draft.md`` §2); our Go to 11 starts
+        at 0 and ends at 10 (OQ-091). Reading every VP as ours + 1 puts the
+        app's absolute thresholds (the literal 10 of GetVictoryPointValue, the
+        decisive-conflict test) at the same distance from the end as in the
+        app. Epic + Go to 11 (ours 0 to 12) has no app counterpart; the same
+        offset gives it a trigger of 13 (app-style extension, plan §11).
+        """
+
+        return 1 if self.state.config.go_to_11 else 0
+
+    def vp(self, player: PlayerState) -> int:
+        """``player``'s victory points on the app's scale (see ``vp_offset``)."""
+
+        return player.victory_points + self.vp_offset
+
+    @property
+    def endgame_trigger_score(self) -> int:
+        """The app's ``EndgameTriggerScore`` on the app's VP scale.
+
+        10, 12 in Epic Game Mode, plus ``vp_offset`` under Go to 11.
+        """
+
+        return self.state.config.endgame_victory_points + self.vp_offset
 
     @property
     def first_player(self) -> int | None:

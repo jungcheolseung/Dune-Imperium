@@ -14,8 +14,11 @@ Intentional differences, listed here so none is silent:
   Mouse)", the app's three archetypes are all titled "Skirmish" and told apart
   by battle icon.
 - The three Uprising promos (Arrakis Revolt, Pivotal Gambit, The Beast's
-  Spoils) are never dealt in the app, so ``data/archetypes.py`` has no entry
-  for them; ``PROMO_SHORT_NAMES`` pins the app's own short names.
+  Spoils) are never dealt in the app; ``PROMO_SHORT_NAMES`` pins the app's
+  own short names.
+- Immortality and Epic Game Mode content (not dealt in the app's Uprising
+  games the ``in_uprising`` flags describe) is checked against the archetypes'
+  ``SetList`` and printed numbers instead.
 - Contracts have no title in the app (the tile shows its condition and reward).
 """
 
@@ -30,6 +33,7 @@ from dune_imperium.agents.app_ai.catalog import (
     CONFLICT_ARCHETYPES,
     CONTRACT_ARCHETYPES,
     FACTION_NAMES,
+    IMMORTALITY_SPACE_ARCHETYPES,
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
     POST_INDEX,
@@ -42,7 +46,12 @@ from dune_imperium.agents.app_ai.catalog import (
     leader_entity,
     space_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES,
+    tleilaxu_cards_for,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -79,6 +88,8 @@ from dune_imperium.content.uprising.reserve import (
     ReserveStackDefinition,
 )
 from dune_imperium.content.uprising.starting_cards import (
+    CONTROL_THE_SPICE,
+    EXPERIMENTATION,
     STARTING_DECK,
     StartingCardEntry,
     starting_deck_instance_ids,
@@ -88,7 +99,7 @@ from dune_imperium.content.uprising.types import AgentIcon, ConflictTier
 CHOAM = pytest.mark.parametrize("choam", [False, True], ids=["no_choam", "choam"])
 
 # The app's own short names for our three promos (``ImperiumType = Promo``);
-# the app never deals them, so they are absent from ``ARCHETYPES``.
+# the app never deals them.
 PROMO_SHORT_NAMES = {
     "arrakis_revolt": "ImperiumArchetypes.Promo.ArrakisRevolt",
     "pivotal_gambit": "ImperiumArchetypes.Promo.PivotalGambit",
@@ -102,6 +113,15 @@ CONFLICT_TITLES = {
     "skirmish_desert_mouse": "Skirmish",
 }
 
+# Blank Slate's "If grafted: this has" icons (``rules/agent_icons.py``).
+BLANK_SLATE_GRAFT_ICONS = frozenset(
+    {
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    }
+)
 # Desert Power prints Persuasion 0 in the app and 2 in ours (see docstring).
 PERSUASION_DIFFERENCES = {"desert_power": (0, 2)}
 
@@ -234,14 +254,34 @@ def _promo_ids() -> set[str]:
     }
 
 
+def _immortality_imperium() -> list[ImperiumCardEntry]:
+    """The 25 Imperium kinds Immortality adds."""
+
+    base = {e.card.card_id for e in imperium_cards_for_choam(True, True)}
+    return [
+        entry
+        for entry in imperium_cards_for_choam(True, True, immortality=True)
+        if entry.card.card_id not in base
+    ]
+
+
+def _tleilaxu() -> list[ImperiumCardEntry]:
+    """The Tleilaxu deck with the promo Piter, and Reclaimed Forces."""
+
+    return [*tleilaxu_cards_for(promo_cards=True), RECLAIMED_FORCES]
+
+
 def test_card_table_has_exactly_the_registered_cards() -> None:
     registered = (
         {entry.card.card_id for entry in STARTING_DECK}
         | {entry.card.card_id for entry in RESERVE_STACKS}
         | {entry.card.card_id for entry in imperium_cards_for_choam(True, True)}
+        | {entry.card.card_id for entry in _immortality_imperium()}
+        | {entry.card.card_id for entry in _tleilaxu()}
+        | {EXPERIMENTATION.card.card_id, CONTROL_THE_SPICE.card.card_id}
     )
     assert set(CARD_ARCHETYPES) == registered
-    assert len(CARD_ARCHETYPES) == 7 + 2 + 54 + 3
+    assert len(CARD_ARCHETYPES) == 7 + 2 + 54 + 3 + 25 + 18 + 1 + 1 + 1 + 1
 
 
 @CHOAM
@@ -286,7 +326,9 @@ def test_promos_map_to_the_apps_names_but_are_never_dealt() -> None:
     assert _promo_ids() == set(PROMO_SHORT_NAMES)
     for card_id, short in PROMO_SHORT_NAMES.items():
         assert CARD_ARCHETYPES[card_id] == short
-        assert short not in ARCHETYPES
+        # Extracted, but never dealt in a 4-player Uprising game.
+        assert not ARCHETYPES[short].in_uprising
+        assert not ARCHETYPES[short].in_uprising_choam
     for choam in (False, True):
         dealt = {e.card.card_id for e in imperium_cards_for_choam(choam)}
         assert not dealt & set(PROMO_SHORT_NAMES)
@@ -300,6 +342,7 @@ def test_the_app_deals_nothing_our_catalog_leaves_unmapped() -> None:
         short
         for short, archetype in ARCHETYPES.items()
         if archetype.kind in {"starter", "reserve", "imperium"}
+        and (archetype.in_uprising or archetype.in_uprising_choam)
     }
     assert app_cards - mapped == {"ImperiumArchetypes.BaseSet.FoldspaceImperium"}
 
@@ -351,6 +394,70 @@ def test_desert_power_is_the_only_persuasion_difference() -> None:
     assert differing == set(PERSUASION_DIFFERENCES)
 
 
+def _immortality_set(short: str) -> tuple[str, ...]:
+    return _tuple_attr(ARCHETYPES[short], "SetList")
+
+
+def _immortality_cards() -> list[ImperiumCardEntry | StartingCardEntry]:
+    return [*_immortality_imperium(), *_tleilaxu(), EXPERIMENTATION]
+
+
+def test_immortality_cards_map_to_the_apps_immortality_archetypes() -> None:
+    for entry in _immortality_cards():
+        short = CARD_ARCHETYPES[entry.card.card_id]
+        archetype = ARCHETYPES[short]
+        where = entry.card.card_id
+        assert "Immortality" in _immortality_set(short), where
+        assert not archetype.in_uprising and not archetype.in_uprising_choam, where
+        assert archetype.title is not None
+        assert _norm(archetype.title) == _norm(entry.card.name), where
+    piter = ARCHETYPES[CARD_ARCHETYPES["piter_genius_advisor"]]
+    assert piter.attributes["ImperiumType"] == "Promo"
+    reclaimed = ARCHETYPES[CARD_ARCHETYPES["reclaimed_forces"]]
+    assert reclaimed.attributes["ImperiumType"] == "Reserve"
+
+
+def test_immortality_printed_numbers_agree() -> None:
+    for entry in _immortality_cards():
+        archetype = ARCHETYPES[CARD_ARCHETYPES[entry.card.card_id]]
+        attrs = archetype.attributes
+        where = entry.card.card_id
+        specimen_cost = getattr(entry, "specimen_cost", None)
+        if specimen_cost is not None:
+            assert attrs.get("SpecimenCost") == specimen_cost, where
+        elif isinstance(entry, ImperiumCardEntry):
+            assert attrs.get("PersuasionCost") == entry.acquisition_cost, where
+        assert _int_attr(archetype, "Persuasion") == entry.reveal_persuasion, where
+        assert _int_attr(archetype, "Strength") == entry.reveal_strength, where
+        # Conditional icons sit in the app's ``ConditionalIconList``: Long
+        # Reach's and Show of Strength's grey icons (ours: ``agent_icons``
+        # with an ``icon_condition``) and Blank Slate's four grafted Faction
+        # icons (ours: ``rules/agent_icons.effective_agent_icons``).
+        app_icons = {
+            APP_ICONS[name]
+            for attr in ("IconList", "ConditionalIconList")
+            for name in _tuple_attr(archetype, attr)
+        }
+        ours = set(entry.agent_icons)
+        if where == "blank_slate":
+            ours |= BLANK_SLATE_GRAFT_ICONS
+        assert app_icons == ours, where
+        app_factions = set(_tuple_attr(archetype, "FactionList"))
+        assert app_factions == {FACTION_NAMES[f.value] for f in entry.factions}, where
+        if isinstance(entry, ImperiumCardEntry):
+            assert _int_attr(archetype, "CardCount") == entry.copies, where
+
+
+def test_control_the_spice_is_the_apps_epic_starter() -> None:
+    short = CARD_ARCHETYPES[CONTROL_THE_SPICE.card.card_id]
+    assert short == "ImperiumArchetypes.RiseOfIx.ControltheSpice"
+    archetype = ARCHETYPES[short]
+    assert archetype.attributes["ImperiumType"] == "Starter"
+    assert _int_attr(archetype, "Persuasion") == CONTROL_THE_SPICE.reveal_persuasion
+    app_icons = {APP_ICONS[name] for name in _tuple_attr(archetype, "IconList")}
+    assert app_icons == set(CONTROL_THE_SPICE.agent_icons)
+
+
 def test_faction_names_cover_our_factions() -> None:
     assert set(FACTION_NAMES) == {faction.value for faction in Faction}
 
@@ -362,12 +469,35 @@ def _dealt_intrigue(choam: bool) -> tuple[IntrigueCardEntry, ...]:
     return intrigue_cards_for_choam(choam)
 
 
-def test_intrigue_table_has_exactly_the_uprising_identities() -> None:
+def _immortality_intrigue() -> list[IntrigueCardEntry]:
+    base = {e.card.card_id for e in intrigue_cards_for_choam(True)}
+    return [
+        entry
+        for entry in intrigue_cards_for_choam(True, immortality=True)
+        if entry.card.card_id not in base
+    ]
+
+
+def test_intrigue_table_has_exactly_the_uprising_and_immortality_identities() -> None:
     assert set(INTRIGUE_ARCHETYPES) == {
-        entry.card.card_id for entry in intrigue_cards_for_choam(True)
+        entry.card.card_id for entry in intrigue_cards_for_choam(True, immortality=True)
     }
-    assert len(INTRIGUE_ARCHETYPES) == 39
-    assert len(set(INTRIGUE_ARCHETYPES.values())) == 39
+    assert len(INTRIGUE_ARCHETYPES) == 39 + 11
+    assert len(set(INTRIGUE_ARCHETYPES.values())) == 39 + 11
+
+
+def test_immortality_intrigue_titles_copies_and_timings_agree() -> None:
+    for entry in _immortality_intrigue():
+        archetype = ARCHETYPES[INTRIGUE_ARCHETYPES[entry.card.card_id]]
+        where = entry.card.card_id
+        assert "Immortality" in _tuple_attr(archetype, "SetList"), where
+        assert archetype.title is not None
+        assert _norm(archetype.title) == _norm(entry.card.name), where
+        assert _int_attr(archetype, "CardCount") == entry.copies, where
+        app_timings = {
+            APP_TIMINGS[t] for t in _tuple_attr(archetype, "IntrigueTypeList")
+        }
+        assert app_timings == set(entry.timings), where
 
 
 @CHOAM
@@ -428,6 +558,23 @@ def test_every_space_maps_to_an_archetype_dealt_with_that_setting(choam: bool) -
         archetype = ARCHETYPES[short]
         assert archetype.kind == "space"
         assert _dealt(archetype, choam), space.space_id
+
+
+@CHOAM
+def test_immortality_swaps_only_research_station(choam: bool) -> None:
+    board = Board(choam, immortality=True)
+    for space in _core_spaces():
+        entity = space_entity(space.space_id, board)
+        if space.space_id == "research_station":
+            assert (
+                entity.short == "SpaceArchetypes.Immortality.ResearchStationImmortality"
+            )
+            # ``ResearchStationUP`` is the archetype Immortality removes.
+            replaced = ARCHETYPES[_pair(SPACE_ARCHETYPES, "research_station", choam)]
+            assert "Immortality" in _tuple_attr(replaced, "RemovedFromSetList")
+        else:
+            assert entity.short == _pair(SPACE_ARCHETYPES, space.space_id, choam)
+    assert set(IMMORTALITY_SPACE_ARCHETYPES) == {"research_station"}
 
 
 def test_only_accept_contract_and_dutiful_service_differ_with_choam() -> None:
@@ -497,10 +644,26 @@ def _dealt_conflicts() -> list[ConflictDefinition]:
     return [conflict for tier in ConflictTier for conflict in conflicts_by_tier(tier)]
 
 
-def test_conflict_table_has_exactly_the_uprising_conflicts() -> None:
+def test_conflict_table_has_exactly_the_uprising_and_epic_conflicts() -> None:
     conflicts = _dealt_conflicts()
     assert len(conflicts) == 16
-    assert set(CONFLICT_ARCHETYPES) == {c.card.card_id for c in conflicts}
+    epic = {
+        c.card.card_id
+        for tier in ConflictTier
+        for c in conflicts_by_tier(tier, epic_game=True)
+    } - {c.card.card_id for c in conflicts}
+    assert epic == {"economic_supremacy"}
+    assert set(CONFLICT_ARCHETYPES) == {c.card.card_id for c in conflicts} | epic
+
+
+def test_economic_supremacy_is_the_apps_rise_of_ix_card() -> None:
+    entity = conflict_entity("economic_supremacy", True)
+    assert entity.short == "ConflictArchetypes.RiseOfIx.EconomicSupremacy"
+    assert entity.archetype is not None
+    assert entity.archetype.title == "Economic Supremacy"
+    assert _int_attr(entity.archetype, "ConflictLevel") == 3
+    # No battle icon: never matched by an Objective (OQ-094).
+    assert "BattleIcon" not in entity.archetype.attributes
 
 
 @CHOAM
@@ -722,7 +885,7 @@ def test_entity_constructors_resolve_every_dealt_instance(choam: bool) -> None:
 @CHOAM
 def test_space_and_conflict_entities_pick_the_setting_variant(choam: bool) -> None:
     for space in _core_spaces():
-        entity = space_entity(space.space_id, choam)
+        entity = space_entity(space.space_id, Board(choam))
         assert entity.short == _pair(SPACE_ARCHETYPES, space.space_id, choam)
     for conflict in _dealt_conflicts():
         entity = conflict_entity(conflict.card.card_id, choam)

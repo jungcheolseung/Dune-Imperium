@@ -5,18 +5,22 @@ id, conflict id, contract id, leader id, post id, faction id) to the app
 archetype whose attributes and abilities the app AI would read. The tables
 are explicit (no fuzzy matching at runtime) and tests check that every id our
 4-player Uprising content can deal maps to an archetype that is dealt in the
-app's game with the same CHOAM setting.
+app's game with the same CHOAM setting, and that the Immortality, Epic Game
+Mode and promo content maps to the app's archetypes of the same cards
+(``ARCHETYPES`` holds every archetype the app defines).
+
+Content the app does not have (Bloodlines, Arrakeen Scouts) gets synthetic
+archetypes built by the app-data rules of ``docs/app-ai-plan.md`` §11.
 
 Known content differences (``scratchpad R5`` / ``spec/archetypes.md``):
 - The app's reserve holds Foldspace x6; our engine has no Foldspace.
-- Our three Uprising promos are not in the app's Imperium deck (keep
-  ``promo_cards`` off); they map to their app archetypes anyway, but those
-  archetypes (``ImperiumArchetypes.Promo.*``) are not in ``ARCHETYPES``.
+- Our three Uprising promos and Piter, Genius Advisor are ``Promo``
+  archetypes the app never deals; app_ai values them with those archetypes.
 - Accept Contract, Dutiful Service, CHOAM Security and Trade Dispute have an
   ``...UP`` archetype (no CHOAM) and a ``...CHOAM`` one; pick by ``choam``.
 """
 
-from dune_imperium.agents.app_ai.context import card_id
+from dune_imperium.agents.app_ai.context import Board, card_id
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 
@@ -98,14 +102,63 @@ CARD_ARCHETYPES: dict[str, str] = {
     "unswerving_loyalty": "ImperiumArchetypes.Uprising.UnswervingLoyalty",
     "weirding_woman": "ImperiumArchetypes.Uprising.WeirdingWoman",
     "wheels_within_wheels": "ImperiumArchetypes.Uprising.WheelsWithinWheels",
-    # Uprising promos. The app deals none of them (``ImperiumType = Promo``),
-    # so ``data/archetypes.py`` (4-player Uprising only) does not hold these
-    # three archetypes: the short names are the app's own, from the full
-    # archetype extraction (``analysis/ai/spec/archetypes.json``). A lookup
-    # raises ``KeyError`` in ``card_entity``; keep ``promo_cards`` off.
+    # Uprising promos. The app deals none of them (``ImperiumType = Promo``);
+    # they map to the app's own archetypes of the same cards.
     "arrakis_revolt": "ImperiumArchetypes.Promo.ArrakisRevolt",
     "pivotal_gambit": "ImperiumArchetypes.Promo.PivotalGambit",
     "the_beast_s_spoils": "ImperiumArchetypes.Promo.TheBeastsSpoils",
+    # Immortality: the starter that replaces Dune, the Desert Planet, and the
+    # 25 Imperium kinds (``imperium_cards_for_choam(..., immortality=True)``).
+    "experimentation": "ImperiumArchetypes.Immortality.Experimentation",
+    "bene_tleilax_lab": "ImperiumArchetypes.Immortality.BeneTleilaxLab",
+    "bene_tleilax_researcher": "ImperiumArchetypes.Immortality.BeneTleilaxResearcher",
+    "blank_slate": "ImperiumArchetypes.Immortality.BlankSlate",
+    "clandestine_meeting": "ImperiumArchetypes.Immortality.ClandestineMeeting",
+    "corrupt_smuggler": "ImperiumArchetypes.Immortality.CorruptSmuggler",
+    "dissecting_kit": "ImperiumArchetypes.Immortality.DissectingKit",
+    "for_humanity": "ImperiumArchetypes.Immortality.ForHumanity",
+    "high_priority_travel": "ImperiumArchetypes.Immortality.HighPriorityTravel",
+    "imperium_ceremony": "ImperiumArchetypes.Immortality.ImperiumCeremony",
+    "interstellar_conspiracy": "ImperiumArchetypes.Immortality.InterstellarConspiracy",
+    "keys_to_power": "ImperiumArchetypes.Immortality.KeystoPower",
+    "lisan_al_gaib": "ImperiumArchetypes.Immortality.LisanalGaib",
+    "long_reach": "ImperiumArchetypes.Immortality.LongReach",
+    "occupation": "ImperiumArchetypes.Immortality.Occupation",
+    "organ_merchants": "ImperiumArchetypes.Immortality.OrganMerchants",
+    "planned_coupling": "ImperiumArchetypes.Immortality.PlannedCoupling",
+    "replacement_eyes": "ImperiumArchetypes.Immortality.ReplacementEyes",
+    "sardaukar_quartermaster": "ImperiumArchetypes.Immortality.SardaukarQuartermaster",
+    "shadout_mapes": "ImperiumArchetypes.Immortality.ShadoutMapes",
+    "show_of_strength": "ImperiumArchetypes.Immortality.ShowofStrength",
+    "spiritual_fervor": "ImperiumArchetypes.Immortality.SpiritualFervor",
+    "stillsuit_manufacturer": "ImperiumArchetypes.Immortality.StillsuitManufacturer",
+    "throne_room_politics": "ImperiumArchetypes.Immortality.ThroneRoomPolitics",
+    "tleilaxu_master": "ImperiumArchetypes.Immortality.TleilaxuMaster",
+    "tleilaxu_surgeon": "ImperiumArchetypes.Immortality.TleilaxuSurgeon",
+    # Immortality Tleilaxu cards (instance ids ``tleilaxu:<id>:<n>``): the 18
+    # deck cards, the fixed Reclaimed Forces slot and the promo Piter.
+    "beguiling_pheromones": "TleilaxuArchetypes.Immortality.BeguilingPheromones",
+    "chairdog": "TleilaxuArchetypes.Immortality.Chairdog",
+    "contaminator": "TleilaxuArchetypes.Immortality.Contaminator",
+    "corrino_genes": "TleilaxuArchetypes.Immortality.CorrinoGenes",
+    "face_dancer": "TleilaxuArchetypes.Immortality.FaceDancer",
+    "face_dancer_initiate": "TleilaxuArchetypes.Immortality.FaceDancerInitiate",
+    "from_the_tanks": "TleilaxuArchetypes.Immortality.FromtheTanks",
+    "ghola": "TleilaxuArchetypes.Immortality.Ghola",
+    "guild_impersonator": "TleilaxuArchetypes.Immortality.GuildImpersonator",
+    "industrial_espionage": "TleilaxuArchetypes.Immortality.IndustrialEspionage",
+    "scientific_breakthrough": "TleilaxuArchetypes.Immortality.ScientificBreakthrough",
+    "slig_farmer": "TleilaxuArchetypes.Immortality.SligFarmer",
+    "stitched_horror": "TleilaxuArchetypes.Immortality.StitchedHorror",
+    "subject_x_137": "TleilaxuArchetypes.Immortality.SubjectX137",
+    "tleilaxu_infiltrator": "TleilaxuArchetypes.Immortality.TleilaxuInfiltrator",
+    "twisted_mentat": "TleilaxuArchetypes.Immortality.TwistedMentat",
+    "unnatural_reflexes": "TleilaxuArchetypes.Immortality.UnnaturalReflexes",
+    "usurp": "TleilaxuArchetypes.Immortality.Usurp",
+    "reclaimed_forces": "TleilaxuArchetypes.Immortality.ReclaimedForces",
+    "piter_genius_advisor": "TleilaxuArchetypes.Promo.PiterGeniusAdvisor",
+    # Epic Game Mode starter (the app's ``Decks.EpicStarterDeck``).
+    "control_the_spice": "ImperiumArchetypes.RiseOfIx.ControltheSpice",
 }
 # intrigue card_id -> app archetype short name.
 INTRIGUE_ARCHETYPES: dict[str, str] = {
@@ -148,6 +201,18 @@ INTRIGUE_ARCHETYPES: dict[str, str] = {
     "tactical_option": "IntrigueArchetypes.Uprising.TacticalOption",
     "unexpected_allies": "IntrigueArchetypes.Uprising.UnexpectedAllies",
     "weirding_combat": "IntrigueArchetypes.Uprising.WeirdingCombat",
+    # Immortality (``intrigue_cards_for_choam(..., immortality=True)``).
+    "breakthrough": "IntrigueArchetypes.Immortality.Breakthrough",
+    "counterattack": "IntrigueArchetypes.Immortality.Counterattack",
+    "disguised_bureaucrat": "IntrigueArchetypes.Immortality.DisguisedBureaucrat",
+    "economic_positioning": "IntrigueArchetypes.Immortality.EconomicPositioning",
+    "gruesome_sacrifice": "IntrigueArchetypes.Immortality.GruesomeSacrifice",
+    "harvest_cells": "IntrigueArchetypes.Immortality.HarvestCells",
+    "illicit_dealings": "IntrigueArchetypes.Immortality.IllicitDealings",
+    "shadowy_bargain": "IntrigueArchetypes.Immortality.ShadowyBargain",
+    "study_melange": "IntrigueArchetypes.Immortality.StudyMelange",
+    "tleilaxu_puppet": "IntrigueArchetypes.Immortality.TleilaxuPuppet",
+    "vicious_talents": "IntrigueArchetypes.Immortality.ViciousTalents",
 }
 # space_id -> (archetype without CHOAM, archetype with CHOAM).
 SPACE_ARCHETYPES: dict[str, tuple[str, str]] = {
@@ -180,6 +245,12 @@ SPACE_ARCHETYPES: dict[str, tuple[str, str]] = {
     "imperial_basin": _both("SpaceArchetypes.BaseSet.ImperialBasin"),
     "shipping": _both("SpaceArchetypes.Uprising.Shipping"),
 }
+# space_id -> the archetype that replaces it when Immortality is on (spec
+# immortality.md §1.1: ``ResearchStationUP`` has ``RemovedFromSetList =
+# [Immortality]``).
+IMMORTALITY_SPACE_ARCHETYPES: dict[str, str] = {
+    "research_station": "SpaceArchetypes.Immortality.ResearchStationImmortality",
+}
 # conflict card_id -> (archetype without CHOAM, archetype with CHOAM).
 CONFLICT_ARCHETYPES: dict[str, tuple[str, str]] = {
     "skirmish_crysknife": _both("ConflictArchetypes.Uprising.SkirmishH"),
@@ -208,6 +279,8 @@ CONFLICT_ARCHETYPES: dict[str, tuple[str, str]] = {
     "battle_for_spice_refinery": _both(
         "ConflictArchetypes.Uprising.BattleforSpiceRefineryUP"
     ),
+    # Epic Game Mode's Conflict III (the app's Rise of Ix card).
+    "economic_supremacy": _both("ConflictArchetypes.RiseOfIx.EconomicSupremacy"),
 }
 # contract card_id -> app archetype short name.
 CONTRACT_ARCHETYPES: dict[str, str] = {
@@ -305,11 +378,19 @@ def contract_entity(instance_id: str, owner: int | None = None) -> Entity:
     )
 
 
-def space_entity(space_id: str, choam: bool) -> Entity:
+def space_archetype(space_id: str, board: Board) -> str:
+    """The app archetype short name of a board space in this game."""
+
+    if board.immortality and space_id in IMMORTALITY_SPACE_ARCHETYPES:
+        return IMMORTALITY_SPACE_ARCHETYPES[space_id]
+    without, with_choam = SPACE_ARCHETYPES[space_id]
+    return with_choam if board.choam else without
+
+
+def space_entity(space_id: str, board: Board) -> Entity:
     """A board space."""
 
-    without, with_choam = SPACE_ARCHETYPES[space_id]
-    return Entity(Kind.SPACE, space_id, _archetype(with_choam if choam else without))
+    return Entity(Kind.SPACE, space_id, _archetype(space_archetype(space_id, board)))
 
 
 def conflict_entity(conflict_id: str, choam: bool) -> Entity:

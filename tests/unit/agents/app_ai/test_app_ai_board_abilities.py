@@ -38,7 +38,7 @@ from dune_imperium.agents.app_ai.catalog import (
     spy_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.context import FACTIONS, AppContext
+from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, Board
 from dune_imperium.agents.app_ai.data.archetypes import Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
@@ -223,7 +223,7 @@ def req(*entities: Entity, options: tuple[int, ...] = ()) -> Request:
 
 
 def space(space_id: str) -> Entity:
-    return space_entity(space_id, True)
+    return space_entity(space_id, Board(True))
 
 
 def contract(name: str) -> Entity:
@@ -335,8 +335,10 @@ def _scope_entities() -> list[Entity]:
 
     entities: list[Entity] = []
     for choam in (False, True):
-        entities.extend(space_entity(s, choam) for s in SPACE_ARCHETYPES)
+        entities.extend(space_entity(s, Board(choam)) for s in SPACE_ARCHETYPES)
         for conflict_id in CONFLICT_ARCHETYPES:
+            if conflict_id == "economic_supremacy":
+                continue  # Epic Game Mode: covered by the expansion ports.
             entities.append(conflict_entity(conflict_id, choam))
             entities.extend(conflict_reward_entities(conflict_id, choam))
     entities.extend(contract_entity(f"contract:{c}") for c in CONTRACT_ARCHETYPES)

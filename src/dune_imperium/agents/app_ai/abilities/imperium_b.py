@@ -177,13 +177,13 @@ def _active_space(p: Profile) -> Entity | None:
     space_id = context.get("space_id")
     if not isinstance(space_id, str) or space_id not in SPACE_ARCHETYPES:
         return None
-    return space_entity(space_id, p.ctx.choam)
+    return space_entity(space_id, p.ctx.board)
 
 
 def _board_spaces(p: Profile) -> list[Entity]:
     """``BoardSpaces(match)``: every board space of this game (catalog order)."""
 
-    return [space_entity(space_id, p.ctx.choam) for space_id in SPACE_ARCHETYPES]
+    return [space_entity(space_id, p.ctx.board) for space_id in SPACE_ARCHETYPES]
 
 
 def _is_maker_space(space: Entity) -> bool:

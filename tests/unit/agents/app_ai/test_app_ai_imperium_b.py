@@ -37,7 +37,7 @@ from dune_imperium.agents.app_ai.catalog import (
     spy_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.context import FACTIONS
+from dune_imperium.agents.app_ai.context import FACTIONS, Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
@@ -148,7 +148,7 @@ def starter(name: str, copy: int = 0) -> Entity:
 
 
 def space(space_id: str) -> Entity:
-    return space_entity(space_id, True)
+    return space_entity(space_id, Board(True))
 
 
 def req(*entities: Entity, options: tuple[int, ...] = ()) -> Request:
@@ -319,12 +319,17 @@ _SHARED_WITH_A_TO_L = frozenset(
 
 
 def _scope_ability_ids() -> list[str]:
-    """Every ability class of the M–Z personal cards dealt in our games."""
+    """Every ability class of the M–Z personal cards the app deals in Uprising.
+
+    Immortality and Epic Game Mode cards are covered by the expansion ports.
+    """
 
     ids: list[str] = []
     for short in CARD_ARCHETYPES.values():
         archetype = ARCHETYPES.get(short)
         if archetype is None or not (archetype.title or "")[:1].upper() >= "M":
+            continue
+        if not (archetype.in_uprising or archetype.in_uprising_choam):
             continue
         entity = Entity(Kind.CARD, short, archetype)
         for ability_id in entity.ability_ids:

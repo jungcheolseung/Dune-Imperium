@@ -425,9 +425,9 @@ class EconomyMixin(ProfileCore):
             return self._is_climax
         trigger = self.ctx.endgame_trigger_score
         players = self.ctx.players
-        if any(p.victory_points >= trigger - 1 for p in players):  # b__0: >=
+        if any(self.ctx.vp(p) >= trigger - 1 for p in players):  # b__0: >=
             result = True
-        elif sum(1 for p in players if p.victory_points >= trigger - 2) > 1:
+        elif sum(1 for p in players if self.ctx.vp(p) >= trigger - 2) > 1:
             result = True  # b__1: >= ; count strict > 1
         elif self.ctx.conflict_deck_size < 2:  # strict <
             result = True
@@ -461,13 +461,13 @@ class EconomyMixin(ProfileCore):
 
         if self.ctx.conflict_deck_size == 0:
             return True
-        return any(p.victory_points >= trigger for p in self.ctx.players)
+        return any(self.ctx.vp(p) >= trigger for p in self.ctx.players)
 
     def possible_end_of_round_score(self, seat: int) -> int:
         """``WormAIProfile::GetPossibleEndOfRoundScore @0x49045d0`` (spec §1.2)."""
 
         player = self.ctx.player(seat)
-        score = player.victory_points
+        score = self.ctx.vp(player)
         conflict = self.ctx.current_conflict_id
         if conflict is None:
             return score
@@ -611,7 +611,7 @@ class EconomyMixin(ProfileCore):
         if attr is Attr.SPECIMEN:
             return me.specimens
         if attr is Attr.VICTORY_POINTS:
-            return me.victory_points
+            return self.ctx.vp(me)
         return 0
 
     def abundance_level(self, attr: Attr) -> int:
@@ -852,7 +852,7 @@ class EconomyMixin(ProfileCore):
             c.VictoryPointValueMid,
             c.VictoryPointValueLate,
         )[self.game_arc()]
-        mult = 1.0 if self.ctx.me.victory_points + amount < 10 else 2.0
+        mult = 1.0 if self.ctx.vp(self.ctx.me) + amount < 10 else 2.0
         return (float(amount) * value) * mult
 
     def card_draw_value(self) -> float:

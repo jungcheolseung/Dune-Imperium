@@ -34,6 +34,7 @@ from dune_imperium.agents.app_ai.catalog import (
     spy_entity,
     track_entity,
 )
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
@@ -542,7 +543,7 @@ def test_signet_value_is_merged_into_a_signet_ring_placement(
 ) -> None:
     gurney = as_leader(turn_state, "gurney_halleck")
     signet = g.AgentAbility(starter("signet_ring"))
-    v = signet.value_for_player(prof(gurney), (space_entity("arrakeen", True),))
+    v = signet.value_for_player(prof(gurney), (space_entity("arrakeen", Board(True)),))
     assert v.sum == pytest.approx(0.9 - 0.5 * 0.75)  # Warmaster troop - reveal
 
 
@@ -550,7 +551,7 @@ def test_reverend_mother_term_is_merged_by_the_generic_space_value(
     turn_state: GameState, prof: ProfileFactory
 ) -> None:
     flipped = with_player(turn_state, SEAT, leader_face_id="reverend_mother_jessica")
-    fremkit = g.SpaceAbility(space_entity("fremkit", True))
+    fremkit = g.SpaceAbility(space_entity("fremkit", Board(True)))
     assert fremkit.value_for_player(prof(flipped), ()).sum == pytest.approx(-1 + 1.8)
     assert fremkit.value_for_player(prof(turn_state), ()).sum == 0.0
 
@@ -960,7 +961,7 @@ def test_water_of_life(effects_state: GameState, prof: ProfileFactory) -> None:
     answer = ability.evaluate(p, req())
     assert answer.value == pytest.approx(0.5)
     assert answer.response == ()
-    espionage = space_entity("espionage", True)
+    espionage = space_entity("espionage", Board(True))
     assert ability.value_for_player(p, (espionage,)).sum == pytest.approx(0.5)
     assert ability.value_for_player(p, ()).sum == pytest.approx(0.5)
     blocked = prof(
@@ -990,7 +991,7 @@ def test_reverend_mother_value(
     turn_state: GameState, prof: ProfileFactory, space_id: str | None, value: float
 ) -> None:
     ability = ld.ReverendMotherAbility(rm_leader())
-    spaces = () if space_id is None else (space_entity(space_id, True),)
+    spaces = () if space_id is None else (space_entity(space_id, Board(True)),)
     assert ability.value_for_player(prof(turn_state), spaces).sum == pytest.approx(
         value
     )
@@ -1002,7 +1003,7 @@ def test_reverend_mother_value_needs_water_beyond_the_space_cost(
     """Real affordability: Desert Tactics costs 1 water; the seat holds 1."""
 
     ability = ld.ReverendMotherAbility(rm_leader())
-    tactics = space_entity("desert_tactics", True)
+    tactics = space_entity("desert_tactics", Board(True))
     assert ability.value_for_player(real(turn_state), (tactics,)).sum == 0.0
     wet = with_player(turn_state, SEAT, resources=Resources(water=2))
     p = real(wet)
@@ -1048,7 +1049,9 @@ def test_reverend_mother_evaluate_counts_the_water_twice(
 
 
 def test_circle_posts() -> None:
-    circle = sorted(p for p in POST_INDEX if ld.is_circle_observation_post(p, True))
+    circle = sorted(
+        p for p in POST_INDEX if ld.is_circle_observation_post(p, Board(True))
+    )
     assert circle == [
         "arrakis-research-station-sietch-tabr",
         "arrakis-research-station-spice-refinery",

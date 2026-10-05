@@ -55,13 +55,14 @@ from dune_imperium.agents.app_ai.abilities.board import (
 )
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
 from dune_imperium.agents.app_ai.catalog import (
+    IMMORTALITY_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
     card_entity,
     space_entity,
     spy_entity,
 )
-from dune_imperium.agents.app_ai.context import AppContext
+from dune_imperium.agents.app_ai.context import AppContext, Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows.common import (
@@ -93,11 +94,13 @@ _COST_FIRST: tuple[type[SpaceAbility], ...] = (
 
 
 #: ``AllArchetypes()`` order of the space archetypes a 4-player Uprising game
-#: can deal (with or without CHOAM): their typedef (metadata) order in
-#: ``dump/worm-canis.dll.cs``, typeIndex in the comments. The space
-#: archetypes in between (Rise of Ix 645-648, Immortality 649, the rest of
-#: the base set) carry no ``Uprising``/``CHOAMModule`` set, so ``BeginSetup``
-#: never keeps them.
+#: can deal (with or without CHOAM and Immortality): their typedef (metadata)
+#: order in ``dump/worm-canis.dll.cs``, typeIndex in the comments. The space
+#: archetypes in between (Rise of Ix 645-648, the rest of the base set) carry
+#: no ``Uprising``/``CHOAMModule``/``Immortality`` set, so ``BeginSetup``
+#: never keeps them. With Immortality, ``ResearchStationImmortality`` (set
+#: ``Immortality``) is appended with the other expansion spaces and
+#: ``ResearchStationUP`` is removed (``RemovedFromSetList``).
 _SPACE_ARCHETYPE_ORDER: tuple[str, ...] = (
     "SpaceArchetypes.Uprising.AcceptContractCHOAM",  # 624
     "SpaceArchetypes.Uprising.AcceptContractUP",  # 625
@@ -120,15 +123,22 @@ _SPACE_ARCHETYPE_ORDER: tuple[str, ...] = (
     "SpaceArchetypes.Uprising.SietchTabrUP",  # 642
     "SpaceArchetypes.Uprising.SpiceRefinery",  # 643
     "SpaceArchetypes.Uprising.SwordmasterUP",  # 644
+    "SpaceArchetypes.Immortality.ResearchStationImmortality",  # 649
     "SpaceArchetypes.BaseSet.Arrakeen",  # 650
     "SpaceArchetypes.BaseSet.ImperialBasin",  # 659
     "SpaceArchetypes.BaseSet.Secrets",  # 663
 )
 #: Our space id of each app space archetype (both CHOAM variants).
 _SPACE_OF_ARCHETYPE: dict[str, str] = {
-    archetype: space_id
-    for space_id, variants in SPACE_ARCHETYPES.items()
-    for archetype in variants
+    **{
+        archetype: space_id
+        for space_id, variants in SPACE_ARCHETYPES.items()
+        for archetype in variants
+    },
+    **{
+        archetype: space_id
+        for space_id, archetype in IMMORTALITY_SPACE_ARCHETYPES.items()
+    },
 }
 
 
@@ -139,7 +149,7 @@ def _set_attr(archetype: str, name: str) -> tuple[str, ...]:
     return tuple(str(item) for item in value) if isinstance(value, tuple) else ()
 
 
-def board_space_order(choam: bool) -> tuple[str, ...]:
+def board_space_order(board: Board) -> tuple[str, ...]:
     """``Board.children`` space order (``WormBoard::ValidSpaces`` @0x4828890).
 
     engine-order §7: ``SetupPhase/<BeginSetup>d__6`` @0x4a42600 takes
@@ -163,7 +173,11 @@ def board_space_order(choam: bool) -> tuple[str, ...]:
 
     # UNTRACED: the reflection order (engine-order §9) is taken to be the
     # typedef order of dump/worm-canis.dll.cs, as the spec assumes.
-    enabled = (_BOARD_SET, *(("CHOAMModule",) if choam else ()))
+    enabled = (
+        _BOARD_SET,
+        *(("CHOAMModule",) if board.choam else ()),
+        *(("Immortality",) if board.immortality else ()),
+    )
     archetypes = [
         a for a in _SPACE_ARCHETYPE_ORDER if _BOARD_SET in _set_attr(a, "SetList")
     ]
@@ -214,7 +228,7 @@ def _after_send(state: GameState, seat: int, card_ref: str, space_id: str) -> Ga
         hand=tuple(card for card in me.hand if card != card_ref),
         in_play=(*me.in_play, card_ref),
     )
-    space = space_entity(space_id, state.config.choam_module)
+    space = space_entity(space_id, Board.of(state.config))
     for attr, field in (("ControlSolari", "solari"), ("ControlSpice", "spice")):
         amount = space.int_attr(attr)
         if amount <= 0:
@@ -277,7 +291,7 @@ def _profile_on(run: DecisionRun, state: GameState) -> Profile:
     return Profile(ctx, run.profile.C, run.rng)
 
 
-def _cost_first_ability(space_id: str, choam: bool) -> Ability | None:
+def _cost_first_ability(space_id: str, board: Board) -> Ability | None:
     """The chosen ``SpaceAbility`` when it is cost-first, else None.
 
     ``<DetermineAbilities>d__23`` @0x49de650: the space's first
@@ -285,7 +299,7 @@ def _cost_first_ability(space_id: str, choam: bool) -> Ability | None:
     ``CostFirstSpaceAbility``.
     """
 
-    for ability in abilities_of(space_entity(space_id, choam)):
+    for ability in abilities_of(space_entity(space_id, board)):
         if isinstance(ability, SpaceAbility):
             return ability if isinstance(ability, _COST_FIRST) else None
     return None
@@ -339,7 +353,7 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
     if len(variants) <= 1:
         return chosen
     seat = run.ctx.seat
-    choam = run.ctx.choam
+    board = run.ctx.board
     state = _after_send(run.ctx.state, seat, card_ref, space_id)
 
     options = list(
@@ -349,7 +363,7 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
             if option is not None
         )
     )
-    ability = _cost_first_ability(space_id, choam)
+    ability = _cost_first_ability(space_id, board)
     cost_first: tuple[Ability, int] | None = None
     if options:
         # Only cost-first spaces have several cost options in Uprising; any
@@ -378,7 +392,7 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
         if cost_first is not None:
             state = _after_cost_first(state, seat, *cost_first)
         spies = tuple(spy_entity(post, seat) for post in posts)
-        infiltrate = RecallSpyInfiltrateAbility(space_entity(space_id, choam))
+        infiltrate = RecallSpyInfiltrateAbility(space_entity(space_id, board))
         request = Request(infos=(TargetInfo(entities=spies),), forced=True)
         answer = infiltrate.evaluate(_profile_on(run, state), request)
         post = _forced_pick(run, answer, posts)
@@ -422,10 +436,10 @@ def _card_evaluate(
         if ability is None:
             return 0.0, None
         legal = {str_arg(action, "space_id") for action in actions}
-        choam = run.ctx.choam
+        board = run.ctx.board
         spaces = tuple(
-            space_entity(space_id, choam)
-            for space_id in board_space_order(choam)
+            space_entity(space_id, board)
+            for space_id in board_space_order(board)
             if space_id in legal
         )
         if not spaces:

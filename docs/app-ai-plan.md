@@ -2,6 +2,7 @@
 
 상태: **완료** (2026-10-05 작성·구현·A/B, master 병합). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
 뼈대 커밋 `279dffd8`.
+확장판(Immortality·Epic·Go to 11·프로모·지도자 드래프트·Bloodlines·Arrakeen Scouts): **진행 중**, 브랜치 `app-ai-expansions`(11절).
 
 ## 1. 사용자 결정
 
@@ -40,7 +41,7 @@
 | 모듈 | 내용 |
 |---|---|
 | `data/constants.py` (생성) | `AIConstants` 437필드(앱 getter 이름 그대로), `HARD`/`MEDIUM`/`EASY`, `TABLES` (AILevel → 표) |
-| `data/archetypes.py` (생성) | 4인 Uprising(±CHOAM)에 나오는 앱 아키타입 227개의 속성과 능력 목록 |
+| `data/archetypes.py` (생성) | 앱이 정의한 아키타입 508개 전부의 속성과 능력 목록. `in_uprising`/`in_uprising_choam`은 4인 Uprising(±CHOAM)에서 앱이 실제로 나눠 주는지 |
 | `catalog.py` | 우리 id ↔ 앱 아키타입 대응표와 `Entity` 생성 |
 | `entities.py` | `Entity`(우리 id + 앱 아키타입), `Kind`, `Attr` |
 | `context.py` | `AppContext`: 좌석이 읽어도 되는 것만 읽는 상태 접근(정직성 규칙의 유일한 자리) |
@@ -49,7 +50,7 @@
 | `profile/core.py` | `WormAIProfile` 메서드 선언 전부(계약). 구현은 `economy.py`·`influence.py`·`combat.py` 세 mixin |
 | `abilities/` | 앱 능력 클래스 포트. `@port("<앱 전체 클래스명>")`로 등록, 앱 상속 구조를 그대로 따른다 |
 | `windows/` | 우리 결정 창 → 앱 질문 → 우리 행동. 창별 `HANDLERS` |
-| `agent.py` | `AppAIAgent(seed, level)`: `StateAgent`. 대응 안 된 창은 `HeuristicAgent`로 넘기고 `fallbacks`에 센다 |
+| `agent.py` | `AppAIAgent(seed, level)`: `StateAgent`. 대응 안 된 결정은 앱의 `DefaultRandomChoice`처럼 합법 행동 중 무작위로 답하고 `fallbacks`에 센다(heuristic은 섞지 않는다, 11절) |
 
 registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
 
@@ -136,3 +137,85 @@ registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
 - 앱 PlaceSpy가 공급이 빈 상태에서 회수한 Spy가 `HasRecalledSpyThisTurn`에 잡히는가(우리는 잡힌다, OQ-044 (d)).
 - Feyd의 Pay-to-Trash를 빈 선택으로 쓰는 앱 동작(1 Solari만 내고 아무것도 안 버림)을 우리 엔진이 표현하지 못한다: 거절로 대응.
 - 이 밖의 미추적 항목은 각 사양 파일의 UNTRACED 절.
+
+## 11. 확장판과 앱에 없는 선택지 (2026-10-05~)
+
+### 11.1 사용자 결정
+
+app_ai가 Bloodlines·Arrakeen Scouts에서 heuristic으로 넘어간다는 보고 뒤:
+
+> "아냐 휴리스틱의 결정이 섞이는 ai면 어차피 그걸로 플레이할 생각은 없어. 2,3으로 가자"
+
+- **(2) 앱에 있는 것은 충실 포팅**: Immortality, Epic Game Mode, Go to 11, Uprising 프로모 3장(과 Immortality 프로모 Piter), 지도자
+  드래프트. 사양은 `analysis/ai/spec/immortality.md`, `spec/epic-goto11-promo-draft.md`(각 파일 끝 Errata 우선).
+- **(3) 앱에 없는 것은 앱식 확장**: Bloodlines 전체(Tech 모듈, Twisted Intrigue, Navigation, Sardaukar Commander와 Skill, 지도자와
+  Signet, 계약 토큰, 프로모 Ruthless Leadership)와 Arrakeen Scouts.
+- 새 카드의 값(AcquireValue·DeferValue·CombatValue 등): **"앱 데이터 규칙으로 자동"** — 앱 자신의 카드 데이터에 맞춘 규칙으로 만든다.
+- 새 결정 종류: **"앱식 단순 판단"** — 얻는 것 − 내는 것 > 0이면 하고, 입찰은 남는 값까지, 상대 모형 없음.
+- **heuristic을 섞지 않는다.** 대응 안 된 결정은 앱 엔진의 `DefaultRandomChoice`(합법 행동 중 무작위)로 답하고 `fallbacks`에 센다.
+  목표는 모든 선택지 조합에서 `fallbacks` 0, `UNPORTED` 0.
+
+### 11.2 충실 포팅 쪽의 매핑 결정
+
+- **Go to 11의 VP 눈금.** 앱의 Go to 11은 1에서 시작해 11에서 끝나고(시작 VP는 4인에서 늘 1), 우리는 0에서 10이다(OQ-091). 순 10점은
+  같으므로 app_ai는 모든 좌석의 VP를 우리 값 + 1로 읽고(`AppContext.vp`, `vp_offset`), 종료 점수를 `endgame_victory_points + 1`로
+  본다. 이렇게 하면 앱 코드의 절대값(GetVictoryPointValue의 리터럴 10, 결정적 교전 판단 등)이 끝에서 앱과 같은 거리에 놓인다.
+- **Epic + Go to 11**(우리 0→12)은 앱 로비가 막는 조합이라 앱 동작이 없다. 같은 +1 규칙으로 종료 점수 13(앱식 확장).
+- **Immortality 보드.** 칸 조회는 `Board(choam, immortality)`를 받는다. Immortality에서 Research Station은
+  `ResearchStationImmortality`이고, 앱의 칸 순서(`board_space_order`)에서는 다른 확장 칸들 뒤(CHOAM 칸 다음, typeIndex 649)로 간다.
+- **Tleilaxu 카드**는 `CARD_ARCHETYPES`에 함께 둔다(인스턴스 id `tleilaxu:<id>:<n>`). Piter, Genius Advisor와 Uprising 프로모는
+  앱의 `Promo` 아키타입 그대로다. 앱은 프로모를 나눠 주지 않아 `AcquireValue`가 비어 있으므로(0), 충실 포팅은 Hard에서 거의 사지 않는다.
+  이것도 그대로 둔다.
+- **Economic Supremacy**는 앱의 Rise of Ix 카드 그대로(`VictoryPoints` 4, battle icon 없음). VictoryPoints를 가진 유일한 Conflict라
+  후퇴 종료 분기와 책략 "버리기" 판단이 달라지는 것도 그대로 재현한다.
+- **지도자 드래프트**: 앱 AI는 남은 지도자 중 균등 무작위로 고른다. 그대로.
+- 앱 엔진은 한 번에 묻고 우리는 여러 단계로 묻는 곳(Graft: 카드 쌍 + 칸을 한 번에 → 우리 `agent_turn(graft=True)` + `graft_partner`,
+  Control the Spice: 지불 + 선택 trash)은 4절 6번(`Memory.intents`)으로 잇는다.
+
+### 11.3 앱식 확장: 값 (앱 데이터 규칙)
+
+앱 데이터에 없는 카드·타일·토큰은 **합성 아키타입**으로 만든다. 앱 아키타입과 같은 속성 이름(`PersuasionCost`, `AcquireValue`,
+`DeferValue`, `IconList`, `FactionList`, `Persuasion`, `Strength`, `Tags`, `WormAbilityIDs` …)을 쓰고, 생성 스크립트가 우리 콘텐츠
+정의에서 인쇄 숫자를 옮기고 아래 규칙으로 앱이 손으로 적는 값을 채운다. 생성 데이터는 앱 추출(`data/archetypes.py`)과 섞지 않고 따로
+둔다. 짧은 이름은 `…Archetypes.AppStyle.<Name>`처럼 앱 이름과 겹치지 않게 한다(R8: Chani·Duncan·Piter·Liet·Esmar Tuek은 앱의 다른
+카드다).
+
+| 값 | 규칙 | 앱 데이터 근거 |
+|---|---|---|
+| Imperium `AcquireValue` | `PersuasionCost` + 비용별 앱 중앙값 차 {1: 0.0, 2: −0.1, 3: 0.0, 4: −0.2, 5: −0.2, 6: −0.2, 7: −0.2, 8: 0.0} | 앱 Main 카드 151장(BaseSet·Uprising·RoI·Immortality)의 `AcquireValue − PersuasionCost` 중앙값 |
+| Tech 타일 `AcquireValue` | `2 × SpiceCost` | 앱 RoI 타일 18장 모두 정확히 2배(`spec/rix-tech.md`) |
+| Tech 타일 `EarlyMod`/`LateMod`, 획득 효과 | 획득 효과가 같은 RoI 타일이 있으면 그 값(`rix-tech.md` §1.2 대응표), 없으면 없음(1.0) | |
+| 그 밖의 값(`DeferValue`, 책략 `CombatValue`·`DeferValue`, `Tags` 등) | 앱 데이터에 맞춘 가장 단순한 규칙을 고르고, 규칙과 맞음 정도를 이 표에 적는다. 맞음이 나쁘면 같은 효과를 가진 앱 카드(가장 가까운 대응)의 값을 쓴다 | 생성 스크립트가 맞춘 결과 |
+
+능력: 새 카드의 효과는 가능한 한 앱의 **범용 능력 클래스**(자원 획득, 뽑기, 병력, 영향력, Spy, 책략 획득, Strength 책략 등 — 이미
+포팅된 `abilities/generic.py`)를 조합해 표현한다. 범용 클래스로 안 되는 효과만 `AppStyle` 능력 클래스를 새로 만들고, 값은 아래 11.4의
+판단과 프로필의 기존 가격(`GetResourceValue`, `CardDrawValue`, `IntrigueValue`, `SpyValue`, 영향력 가치, 병력 가치 …)으로 매긴다.
+
+### 11.4 앱식 확장: 새 결정 (앱식 단순 판단)
+
+- **선택적 효과·지불**: 얻는 것의 가치 − 내는 것의 가치 > 0이면 한다. 가치는 프로필의 기존 가격으로만 잰다.
+- **여러 보기 중 하나**: 각 보기의 가치로 `make_choice`(섞기 → 0 초과 → 내림차순 안정 정렬 → 첫째). 강제 결정에서 0 초과가 없으면
+  `DefaultRandomChoice`.
+- **강제 손실**(Scouts 손실 사건, 피해자 쪽 `opponent_unit_loss`·`opponent_spy_move` 등): 앱 자신의 손실 평가기
+  (`ChooseDiscardEvaluator`, 책략 손실 칸)처럼 **잃는 가치가 가장 작은 것**을 고른다. 동점은 무작위.
+- **입찰**(Scouts 경매): 상품 가치 − 입찰액의 자원 가치 > 0인 가장 큰 입찰액까지(남는 값까지). 상대 입찰 추정 없음. 0 초과인 입찰액이
+  없으면 0을 낸다.
+- **나중에 받는 것**(Scouts 비밀 선택, 임무 물품, 다음 라운드 보상): 지금 받는 것과 같은 가치로 보되, 게임이 그 전에 끝날 수 있으면
+  (`is_final_round` 등 앱의 종료 판단) 0.
+- **Commander**: 병력 가치(`troop_value`)에 Strength 비율을 곱해 병력처럼 보고, 붙은 Skill은 해당 효과의 가격으로 더한다. 재구매
+  (2 Solari)는 위의 지불 규칙.
+- **순서 질문**(우리 엔진만 묻는 효과 순서 등)은 4절 2번처럼 앱 엔진이 하는 순서, 앱에 없으면 우리 엔진이 주는 순서의 첫째.
+
+### 11.5 진행
+
+| 단계 | 작업 | 상태 |
+|---|---|---|
+| 기반 | 모든 앱 아키타입 추출, Go to 11 VP 눈금, heuristic 대체 제거, `Board`, Immortality·Epic·Tleilaxu·프로모 대응표 | 이 커밋 |
+| 2 | 프로필 확장(Immortality §2, RoI Tech), Immortality 능력 75개, Epic·프로모 능력, Bloodlines 합성 아키타입 생성기 | |
+| 3 | Bloodlines 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | |
+| 4 | 결정 창: 기존 창에 새 id, 새 창(Immortality 6, Bloodlines 10, Scouts 10, `leader_draft`) | |
+| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | |
+
+검증: 충실 포팅은 지금까지처럼 사양·역어셈블에 대한 독립 반박 검증. 앱식 확장은 앱과 대조할 것이 없으므로 이 절의 규칙에 대한 대조로
+검증한다.
+

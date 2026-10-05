@@ -18,6 +18,7 @@ from dune_imperium.agents.app_ai import catalog
 from dune_imperium.agents.app_ai import testing as _conftest
 from dune_imperium.agents.app_ai.abilities import UnportedAbility
 from dune_imperium.agents.app_ai.abilities.base import Ability
+from dune_imperium.agents.app_ai.context import Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity
 from dune_imperium.agents.app_ai.profile import Profile, combat
@@ -553,7 +554,7 @@ def deploy_profile(
     )
 
 
-SPACE = catalog.space_entity("sardaukar", True)
+SPACE = catalog.space_entity("sardaukar", Board(True))
 
 
 @pytest.mark.parametrize(
@@ -587,9 +588,9 @@ def test_deploy_value_posture(
 def test_deploy_value_empty_garrison_spaces() -> None:
     state = players(base_state(), p0=troops(0, 0), p1=troops(0, 1), p2=troops(0, 1))
     profile = deploy_profile(state, 10.0)
-    basin = catalog.space_entity("imperial_basin", True)
-    refinery = catalog.space_entity("spice_refinery", True)
-    hagga = catalog.space_entity("hagga_basin", True)  # HaggaBasinUP: not listed
+    basin = catalog.space_entity("imperial_basin", Board(True))
+    refinery = catalog.space_entity("spice_refinery", Board(True))
+    hagga = catalog.space_entity("hagga_basin", Board(True))  # HaggaBasinUP: not listed
     assert profile.deploy_value(basin) == 0.0
     assert profile.deploy_value(refinery) == 0.0
     assert profile.deploy_value(hagga) == pytest.approx(1.125)
@@ -598,7 +599,7 @@ def test_deploy_value_empty_garrison_spaces() -> None:
 def test_deploy_value_heighliner_with_units_in() -> None:
     state = players(base_state(), p0=troops(0, 2), p1=troops(0, 1), p2=troops(0, 1))
     profile = deploy_profile(state, 10.0)
-    heighliner = catalog.space_entity("heighliner", True)
+    heighliner = catalog.space_entity("heighliner", Board(True))
     assert profile.deploy_value(heighliner) == pytest.approx(1.125 - 1.0)
     # With no unit anywhere the Heighliner keeps the plain value.
     state = players(state, p0=troops(0, 0))

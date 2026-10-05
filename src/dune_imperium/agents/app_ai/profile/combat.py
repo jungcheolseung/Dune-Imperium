@@ -846,7 +846,7 @@ class CombatMixin(ProfileCore):
             return self.est_opponent_strength(p.player_id).sum
 
         top2 = sorted(self.ctx.players, key=estimate, reverse=True)[:2]
-        max_vp = max(p.victory_points for p in top2)
+        max_vp = max(self.ctx.vp(q) for q in top2)
         trigger = self.ctx.endgame_trigger_score
         conflict = self._current_conflict()
         # The conflict card's own VictoryPoints: 0 for every Uprising card.
@@ -966,7 +966,7 @@ class CombatMixin(ProfileCore):
         """
 
         ordered = self.ordered_players()
-        space = catalog.space_entity(_HEIGHLINER, self.ctx.choam)
+        space = catalog.space_entity(_HEIGHLINER, self.ctx.board)
         spice_cost = space.int_attr("SpiceCost", 0)
         occupied = self._space_has_agent(_HEIGHLINER)
         for seat in ordered:
@@ -1047,7 +1047,7 @@ class CombatMixin(ProfileCore):
         """
 
         p = self.ctx.player(seat)
-        space = catalog.space_entity(space_id, self.ctx.choam)
+        space = catalog.space_entity(space_id, self.ctx.board)
         return (
             p.maker_hooks
             and p.agents_available > 0

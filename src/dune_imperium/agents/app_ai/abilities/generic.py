@@ -50,6 +50,7 @@ from dune_imperium.agents.app_ai.catalog import (
     contract_entity,
     intrigue_entity,
     leader_entity,
+    space_archetype,
     space_entity,
 )
 from dune_imperium.agents.app_ai.context import FACTIONS
@@ -301,7 +302,7 @@ def find_space(p: Profile, arch_id: str) -> Entity | None:
     space_id = _space_ids_by_archetype(p).get(arch_id)
     if space_id is None:
         return None
-    return space_entity(space_id, p.ctx.choam)
+    return space_entity(space_id, p.ctx.board)
 
 
 def contract_spaces(p: Profile, contract: Entity) -> list[Entity]:
@@ -312,11 +313,11 @@ def contract_spaces(p: Profile, contract: Entity) -> list[Entity]:
     """
 
     referenced = set(contract.list_attr("ReferencedArchetypeIDs"))
-    choam = p.ctx.choam
+    board = p.ctx.board
     spaces = []
-    for space_id, (without, with_choam) in SPACE_ARCHETYPES.items():
-        if (with_choam if choam else without) in referenced:
-            spaces.append(space_entity(space_id, choam))
+    for space_id in SPACE_ARCHETYPES:
+        if space_archetype(space_id, board) in referenced:
+            spaces.append(space_entity(space_id, board))
     return spaces
 
 
@@ -370,7 +371,7 @@ def _this_turn_agent(p: Profile) -> tuple[list[Entity], list[Entity]]:
         cards.append(card_entity(card_ref, p.ctx.seat))
     space_ref = context.get("space_id")
     if isinstance(space_ref, str) and space_ref:
-        spaces.append(space_entity(space_ref, p.ctx.choam))
+        spaces.append(space_entity(space_ref, p.ctx.board))
     return cards, spaces
 
 

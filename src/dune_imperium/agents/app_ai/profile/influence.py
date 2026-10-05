@@ -42,7 +42,7 @@ from dune_imperium.agents.app_ai.catalog import (
     post_entity,
     space_entity,
 )
-from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
+from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, Board, card_id
 from dune_imperium.agents.app_ai.entities import Attr, Entity
 from dune_imperium.agents.app_ai.profile.core import ProfileCore
 from dune_imperium.agents.app_ai.summer import Summer
@@ -301,16 +301,16 @@ def _has_tech_tile(ctx: AppContext, tile: str) -> bool:
 
 
 @cache
-def _board_spaces(choam: bool) -> tuple[Entity, ...]:
+def _board_spaces(board: Board) -> tuple[Entity, ...]:
     """``BoardSpaces(match)`` of the target game (our board order)."""
 
-    return tuple(space_entity(space_id, choam) for space_id in SPACE_ARCHETYPES)
+    return tuple(space_entity(space_id, board) for space_id in SPACE_ARCHETYPES)
 
 
-def _board_space(choam: bool, archetype: str) -> Entity | None:
+def _board_space(board: Board, archetype: str) -> Entity | None:
     """``BoardSpaces.FirstOrDefault(s => s.ArchID == archetype)``."""
 
-    for space in _board_spaces(choam):
+    for space in _board_spaces(board):
         if space.short == archetype:
             return space
     return None
@@ -324,10 +324,10 @@ def _post_indices(space: Entity) -> tuple[int, ...]:
 
 
 @cache
-def _observed_spaces(index: int, choam: bool) -> tuple[Entity, ...]:
+def _observed_spaces(index: int, board: Board) -> tuple[Entity, ...]:
     """``WormObservationPost::get_ObservedSpaces @ 0x4837ca0``."""
 
-    return tuple(s for s in _board_spaces(choam) if index in _post_indices(s))
+    return tuple(s for s in _board_spaces(board) if index in _post_indices(s))
 
 
 def _has_observing_spy(player: PlayerState, space: Entity) -> bool:
@@ -411,7 +411,7 @@ def contract_spaces(p: ProfileCore, contract: Entity) -> list[Entity]:
     """
 
     referenced = contract.list_attr("ReferencedArchetypeIDs")
-    return [s for s in _board_spaces(p.ctx.choam) if s.short in referenced]
+    return [s for s in _board_spaces(p.ctx.board) if s.short in referenced]
 
 
 def contract_resource_value(p: ProfileCore, contract: Entity) -> Summer:
@@ -804,7 +804,7 @@ class InfluenceMixin(ProfileCore):
                     s.multiply("Gain Alliance Late", c.GainInfluenceAllianceLateMod)
                 else:
                     s.multiply("Gain Alliance", c.GainInfluenceAllianceMod)
-            elif holder.victory_points >= self.ctx.endgame_trigger_score:
+            elif self.ctx.vp(holder) >= self.ctx.endgame_trigger_score:
                 s.multiply(
                     "Steal Alliance Endgame", c.GainInfluenceStealAllianceEndgameMod
                 )
@@ -959,7 +959,7 @@ class InfluenceMixin(ProfileCore):
         me = ctx.me
         c = self.C
         s = Summer()
-        spaces = _observed_spaces(POST_INDEX[post.ref], ctx.choam)
+        spaces = _observed_spaces(POST_INDEX[post.ref], ctx.board)
         icons = _distinct(str(sp.attr("AgentIcon")) for sp in spaces)
         faction = _distinct(_space_faction(sp) for sp in spaces)[0]
         deck = self.deck_agent_icons()
@@ -1010,7 +1010,7 @@ class InfluenceMixin(ProfileCore):
             and any(_has_bonus_spice_attr(sp) for sp in spaces)
             and not any(
                 _has_observing_spy(me, sp)
-                for sp in _board_spaces(ctx.choam)
+                for sp in _board_spaces(ctx.board)
                 if _has_bonus_spice_attr(sp)
             )
             and not self.is_final_round()
@@ -1226,7 +1226,7 @@ class InfluenceMixin(ProfileCore):
         for agent in shuffled:
             if agent.ref not in SPACE_ARCHETYPES:  # a.Parent is not a WormSpace
                 continue
-            space = space_entity(agent.ref, ctx.choam)
+            space = space_entity(agent.ref, ctx.board)
             combat = space.attr("CombatSpace", False) is True
             faction = _space_faction(space)
             if not combat and faction is None and space.short != _HALL_OF_ORATORY:
@@ -1284,8 +1284,8 @@ class InfluenceMixin(ProfileCore):
         )
         s.add("Water count", c.WallModWaterMod * me.resources.water)
         s.add("Spy count", float(len(me.spy_post_ids)))  # raw count
-        hagga = _board_space(ctx.choam, _HAGGA_BASIN)
-        deep = _board_space(ctx.choam, _DEEP_DESERT)
+        hagga = _board_space(ctx.board, _HAGGA_BASIN)
+        deep = _board_space(ctx.board, _DEEP_DESERT)
         if (
             me.agents_available >= 2
             and hagga is not None
@@ -1316,8 +1316,8 @@ class InfluenceMixin(ProfileCore):
         hook_opponents = [o for o in ctx.opponents if o.maker_hooks]
         if not hook_opponents:
             return True
-        hagga = _board_space(ctx.choam, _HAGGA_BASIN)
-        deep = _board_space(ctx.choam, _DEEP_DESERT)
+        hagga = _board_space(ctx.board, _HAGGA_BASIN)
+        deep = _board_space(ctx.board, _DEEP_DESERT)
         if all(
             hagga is not None
             and not self.can_play_to_desert_space_with_hooks(o.player_id, hagga.ref)
@@ -1350,7 +1350,7 @@ class InfluenceMixin(ProfileCore):
         space_id = _active_space_id(ctx)
         if space_id is None or space_id not in SPACE_ARCHETYPES:
             return False
-        space = space_entity(space_id, ctx.choam)
+        space = space_entity(space_id, ctx.board)
         if not any(a in _DESERT_DEFERRED_ABILITIES for a in space.ability_ids):
             return False
         # IsExhausted: the spice-or-sandworm choice already resolved this turn.

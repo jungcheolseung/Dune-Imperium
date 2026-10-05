@@ -204,7 +204,7 @@ def _active_space(p: Profile) -> Entity | None:
     space_id = context.get("space_id")
     if not isinstance(space_id, str) or not space_id:
         return None
-    return space_entity(space_id, p.ctx.choam)
+    return space_entity(space_id, p.ctx.board)
 
 
 class _Choice:
@@ -1442,7 +1442,7 @@ def factions_observed(p: Profile) -> list[str]:
     seen: list[str] = []
     for post in p.ctx.me.spy_post_ids:
         for space_id in _POST_SPACES.get(post, ()):
-            app_faction = space_entity(space_id, p.ctx.choam).attr("Faction")
+            app_faction = space_entity(space_id, p.ctx.board).attr("Faction")
             if not isinstance(app_faction, str):
                 continue
             faction = _APP_TO_FACTION.get(app_faction)
