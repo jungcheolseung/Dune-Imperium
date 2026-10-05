@@ -13,6 +13,28 @@ function statNode(name, label, value) {
   return stat;
 }
 
+/* A stat that opens a card list: a button for the mouse and the keyboard
+   (Enter or Space), its title and accessible name saying what it opens.
+   Escape closes the list (app.js). */
+function openerStat(stat, label, open) {
+  stat.classList.add("clickable");
+  stat.tabIndex = 0;
+  stat.setAttribute("role", "button");
+  stat.setAttribute("aria-haspopup", "true");
+  stat.title = label;
+  stat.setAttribute("aria-label", label);
+  stat.addEventListener("click", (event) => {
+    event.stopPropagation();
+    open();
+  });
+  stat.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    open();
+  });
+}
+
 /* Sardaukar Commanders as the board draws them (renderTrackMarkers): "C2",
    with where they stand in the title. `where` is a term template. */
 function commanderChip(count, where) {
@@ -285,10 +307,22 @@ function renderSeats() {
     zones.className = "zones";
     /* The last English line in the seat panel: the zone names are glossary
        terms, so phraseText gives them the same words as everywhere else. */
-    zones.textContent = phraseText(
-      `{hand} ${player.hand_size} · {deck} ${player.deck_size}` +
-        ` · {discard_pile} ${player.discard_pile.length}`,
-    );
+    const zoneCounts = [
+      `{hand} ${player.hand_size}`,
+      `{deck} ${player.deck_size}`,
+      `{discard_pile} ${player.discard_pile.length}`,
+      `{intrigue} ${player.intrigue_card_count}`,
+    ];
+    /* One unbreakable part per count, its "·" included: in the narrow seat
+       column the line then breaks between counts, never inside one. */
+    zoneCounts.forEach((count, index) => {
+      if (index) zones.append(" ");
+      const part = document.createElement("span");
+      part.className = "zone-count";
+      part.textContent =
+        phraseText(count) + (index < zoneCounts.length - 1 ? " ·" : "");
+      zones.appendChild(part);
+    });
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
       zones.title = t("panels.discard_pile_view");
@@ -437,6 +471,67 @@ function openPileList(title, ids, anchor) {
     pop.appendChild(row);
   }
   placePopover(pop, anchor, 420);
+}
+
+/* The owner's draw deck as a pile list: which cards and how many copies,
+   never in what order. The server sends `deck_cards` sorted by card id
+   (sessions.py `_serialize_view`); this groups copies of one card (x N) and
+   sorts the groups by the name on screen, so the list is a function of the
+   deck's contents alone and shows no trace of the draw order (OQ-010
+   ruling 5). A click on a card here does nothing: a deck card is never
+   something to act on from a list. */
+function openDeckList(title, ids, anchor) {
+  const groups = new Map();
+  for (const id of ids) {
+    const ref = instanceRef(id);
+    const key = `${ref.kind}:${ref.id}`;
+    const group = groups.get(key);
+    if (!group) groups.set(key, { id, count: 1, name: nameOf(id) });
+    else {
+      group.count += 1;
+      if (id < group.id) group.id = id;
+    }
+  }
+  const locale = TERM_LANGUAGE === "ko" ? "ko" : "en";
+  const sorted = [...groups.values()].sort(
+    (a, b) => a.name.localeCompare(b.name, locale) || (a.id < b.id ? -1 : 1),
+  );
+  const pop = el("card-popover");
+  pop.textContent = "";
+  const head = document.createElement("div");
+  head.className = "popover-title";
+  head.textContent = title;
+  const note = document.createElement("div");
+  note.className = "popover-note";
+  note.textContent = t("panels.deck_list_note");
+  const row = document.createElement("div");
+  row.className = "strip-cards wrap";
+  for (const group of sorted) {
+    const copies = group.count > 1 ? `×${group.count}` : "";
+    row.appendChild(
+      visualCard(group.id, {
+        className: "small",
+        badge: copies,
+        title: copies ? `${group.name} ${copies}` : group.name,
+        onClick: () => {},
+      }),
+    );
+  }
+  pop.append(head, note, row);
+  placePopover(pop, anchor, 420);
+  /* Card images arrive after the first placement and make the list taller
+     (openPopover does the same): place it again, only while it is still
+     this list's card images, not a later popover's. */
+  for (const image of pop.querySelectorAll("img")) {
+    if (image.complete) continue;
+    image.addEventListener(
+      "load",
+      () => {
+        if (image.isConnected && !pop.hidden) placePopover(pop, anchor, 420);
+      },
+      { once: true },
+    );
+  }
 }
 
 /* Unlike won Battle cards, this timeline keeps a reveal in its original
@@ -1248,26 +1343,43 @@ function renderPrivate() {
   }
   const counts = document.createElement("span");
   counts.className = "hand-counts";
+  const deckStat = statNode("draw", phraseText("{deck}"), view.private.deck_size);
+  const discardStat = statNode("discard", phraseText("{discard_pile}"), own.discard_pile.length);
   counts.append(
-    statNode("draw", phraseText("{deck}"), view.private.deck_size),
-    statNode("discard", phraseText("{discard_pile}"), own.discard_pile.length),
+    deckStat,
+    discardStat,
     statNode("intrigue", phraseText("{intrigue}"), view.private.intrigue_cards.length)
   );
+  /* The deck's contents, never its order, are the owner's to see (OQ-010
+     ruling 5): the server's `deck_cards` is a sorted list of card ids. */
+  const deckCards = view.private.deck_cards || [];
+  if (deckCards.length) {
+    openerStat(deckStat, t("panels.deck_view"), () =>
+      openDeckList(
+        mine
+          ? t("panels.my_deck", { count: deckCards.length })
+          : t("panels.seat_deck", {
+              seat: t("common.seat", { seat: activeSeat() }),
+              count: deckCards.length,
+            }),
+        deckCards,
+        deckStat
+      )
+    );
+  }
   /* Discard piles are public (OQ-010); the owner's copy lives in the seat's
      public block like everyone else's. */
-  counts.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (own.discard_pile.length) {
+  if (own.discard_pile.length) {
+    openerStat(discardStat, t("panels.discard_pile_view"), () =>
       openPileList(
         mine
           ? t("panels.my_discard")
           : t("panels.seat_discard", { seat: t("common.seat", { seat: activeSeat() }) }),
         own.discard_pile,
-        counts
-      );
-    }
-  });
-  counts.classList.add("clickable");
+        discardStat
+      )
+    );
+  }
   label.appendChild(counts);
   panel.appendChild(label);
 

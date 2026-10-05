@@ -682,6 +682,22 @@ const UI_TEXT = {
     "ko": "덱 맨 위",
     "en": "Top of deck"
   },
+  "panels.deck_list_note": {
+    "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
+    "en": "Shown by name, not in draw order."
+  },
+  "panels.deck_view": {
+    "ko": "{deck} 구성 보기 (순서 비공개)",
+    "en": "View {deck} contents (order hidden)"
+  },
+  "panels.my_deck": {
+    "ko": "내 {deck} · {{count}}장 (순서 비공개)",
+    "en": "My deck · {{count}} cards (order hidden)"
+  },
+  "panels.seat_deck": {
+    "ko": "{{seat}}의 {deck} · {{count}}장 (순서 비공개)",
+    "en": "{{seat}}'s deck · {{count}} cards (order hidden)"
+  },
   "panels.discard_pile_view": {
     "ko": "{discard_pile} 보기",
     "en": "View {discard_pile}"
