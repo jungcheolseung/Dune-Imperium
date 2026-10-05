@@ -342,8 +342,6 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     # it resolves and reaches the discard pile only at the end, so a draw it
     # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
-    if cost is not None and cost.spice:
-        played_state = update_turn_recruits(played_state, spice_spent=cost.spice)
     if (
         option.timing is IntrigueTiming.COMBAT
         and state.phase is GamePhase.COMBAT
@@ -744,8 +742,6 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
         replace(state, players=replace_player(state.players, paid_owner)),
         with_context(frame, context),
     )
-    if cost is not None and cost.spice:
-        working = update_turn_recruits(working, spice_spent=cost.spice)
     line_source = f"{source}:line:{index}"
     events: list[GameEvent] = [
         GameEvent(

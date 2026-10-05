@@ -2241,10 +2241,6 @@ def apply_agent_card_intrigue_payment(
             ),
         )
 
-    previous_spent = context.get("spice_spent_after_placement", 0)
-    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-    context["spice_spent_after_placement"] = previous_spent + 2
     next_owner = replace(
         owner,
         resources=replace(
@@ -2974,11 +2970,6 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     )
     resource = "water" if pays_water else "spice"
     spent = 2 if pays_water else 4
-    if not pays_water:
-        previous_spent = context.get("spice_spent_after_placement", 0)
-        if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-        context["spice_spent_after_placement"] = previous_spent + spent
     next_owner = replace(
         owner,
         resources=replace(
@@ -3099,10 +3090,6 @@ def _apply_arrakis_revolt_payment(
     source: str,
 ) -> RuleResult:
     owner = state.players[action.actor]
-    previous_spent = context.get("spice_spent_after_placement", 0)
-    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-    context["spice_spent_after_placement"] = previous_spent + 2
     next_owner = replace(
         owner,
         resources=replace(owner.resources, spice=owner.resources.spice - 2),
@@ -3188,12 +3175,6 @@ def _apply_control_the_spice_payment(
     player = action.actor
     _, card_instance_id, _ = _effect_subject(context)
     owner = state.players[player]
-    context["spice_spent_after_placement"] = (
-        context_int(
-            context, "spice_spent_after_placement", owner="Agent-turn effect frame"
-        )
-        + CONTROL_THE_SPICE_PRICE
-    )
     paid_owner = replace(
         owner,
         resources=replace(

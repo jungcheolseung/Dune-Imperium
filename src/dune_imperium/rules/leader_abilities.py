@@ -130,7 +130,6 @@ SERVO_SIGNET_CARD_ID: Final = "tech:servo_receivers"
 _TURN_COUNTERS: Final = (
     "troops_recruited",
     "undeployable_troops",
-    "spice_spent_after_placement",
 )
 
 
@@ -314,7 +313,6 @@ def use_leader_signet_for_tech(
         "advance_agent_frame": advance_agent_frame,
         "card_id": SERVO_SIGNET_CARD_ID,
         "pending_agent_effect": True,
-        "spice_spent_after_placement": 0,
         "troops_recruited": 0,
         "turn_owner": player,
         "undeployable_troops": 0,
@@ -1351,10 +1349,6 @@ def apply_leader_signet_payment(
 
     if owner.resources.spice < 1:
         raise RuntimeError("the Signet Ring payment requires one Spice")
-    previous_spent = context.get("spice_spent_after_placement", 0)
-    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-    context["spice_spent_after_placement"] = previous_spent + 1
     next_owner = replace(
         owner,
         resources=replace(owner.resources, spice=owner.resources.spice - 1),
@@ -1472,10 +1466,6 @@ def _apply_listeners_payment(
     owner = state.players[player]
     if owner.resources.spice < 1:
         raise RuntimeError("Listeners' payment requires one spice")
-    previous_spent = context.get("spice_spent_after_placement", 0)
-    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-    context["spice_spent_after_placement"] = previous_spent + 1
     context["listeners_paid"] = True
     paid = replace(
         owner,
@@ -1655,10 +1645,6 @@ def _apply_staban_bonus_payment(
         # Next to the Landsraad: one Spice buys three Solari.
         if owner.resources.spice < 1:
             raise RuntimeError("the Landsraad bonus requires one Spice")
-        previous_spent = context.get("spice_spent_after_placement", 0)
-        if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-        context["spice_spent_after_placement"] = previous_spent + 1
         next_owner = replace(
             owner,
             resources=replace(

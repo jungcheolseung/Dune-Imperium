@@ -620,8 +620,6 @@ def _last_effect_agent_effects_state(
         "pending_combat_deployment": False,
         "pending_faction_influence": False,
         "space_id": "dutiful_service",
-        "spice_at_placement": owner.resources.spice,
-        "spice_spent_after_placement": 0,
         "troops_recruited": 0,
         "turn_owner": 0,
     }

@@ -855,7 +855,6 @@ def test_spice_agony_pays_for_an_intrigue_card_and_a_memory() -> None:
     # to the Bene Gesserit area as a memory [Lady Jessica card].
     assert resolved.resources.spice == 0
     assert resolved.spice_spent_turn == 1
-    assert context["spice_spent_after_placement"] == 1
     assert resolved.intrigue_cards == ("intrigue:test",)
     assert resolved.memories == 1
     assert resolved.troops_supply == 8

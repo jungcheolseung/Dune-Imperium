@@ -37,6 +37,7 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
 )
+from dune_imperium.rules.agent_effects import spice_gained_this_turn
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind, end_turn_start
@@ -541,12 +542,15 @@ def test_troops_recruited_before_placing_the_agent_may_still_be_deployed() -> No
 def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
     # Harvest Contracts count Spice gained from every source during the turn
     # [Main p. 16]: paid Spice must not hide a harvest, and gained Spice counts.
+    # The seat's turn counters (spice_at_turn_start, spice_spent_turn) carry
+    # it, read by rules/effects.py ``eligible_agent_contract_ids``.
     card = _intrigue("market_opportunity")
     owner = PlayerState(
         player_id=0,
         hand=(_starter("reconnaissance"),),
         intrigue_cards=(card,),
         resources=Resources(solari=5, spice=2),
+        spice_at_turn_start=2,
     )
     state = _turn_state(owner)
     engine = UprisingRulesEngine()
@@ -557,18 +561,18 @@ def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
         and dict(action.arguments)["space_id"] == "arrakeen"
     )
     placed = engine.apply(state, to_arrakeen).state
-    before = dict(placed.decision_stack[-1].context)
-    assert before["spice_spent_after_placement"] == 0
-    assert before["spice_at_placement"] == 2
+    assert placed.players[0].spice_spent_turn == 0
+    assert spice_gained_this_turn(placed.players[0]) == 0
 
     sold = engine.apply(placed, _play(placed, card, 0)).state
-    context = dict(sold.decision_stack[-1].context)
-    assert context["spice_spent_after_placement"] == 2
+    assert sold.players[0].resources.spice == 0
+    assert sold.players[0].spice_spent_turn == 2
+    assert spice_gained_this_turn(sold.players[0]) == 0
 
     bought = engine.apply(placed, _play(placed, card, 1)).state
-    context = dict(bought.decision_stack[-1].context)
-    assert context["spice_at_placement"] == 2
-    assert context["spice_spent_after_placement"] == 0
+    assert bought.players[0].resources.spice == 7
+    assert bought.players[0].spice_spent_turn == 0
+    assert spice_gained_this_turn(bought.players[0]) == 5
 
 
 def test_reveal_turn_offers_and_immediately_reveals_a_drawn_plot_card() -> None:

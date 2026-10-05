@@ -264,7 +264,6 @@ def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
     assert after.sandworms_conflict == 1
     assert after.units_deployed_turn == 1
     assert _context(result.state)["pending_agent_effect"] is False
-    assert _context(result.state)["spice_spent_after_placement"] == 2
     assert [event.kind for event in result.events] == [
         "agent_card_payment_resolved",
         "shield_wall_destroyed",

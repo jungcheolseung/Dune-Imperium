@@ -598,18 +598,12 @@ def apply_scouts_rewards_first(state: GameState, action: DomainAction) -> RuleRe
     return RuleResult(state=result.state, events=tuple(events))
 
 
-def _credit_turn(
-    state: GameState,
-    player: int,
-    *,
-    troops: int = 0,
-    spice_spent: int = 0,
-) -> GameState:
-    """Count recruits and spice spent toward ``player``'s own open turn only."""
+def _credit_turn(state: GameState, player: int, *, troops: int = 0) -> GameState:
+    """Count recruits toward ``player``'s own open turn only."""
 
-    if turn_owner_of(state) != player or not (troops or spice_spent):
+    if turn_owner_of(state) != player or not troops:
         return state
-    return update_turn_recruits(state, troops_recruited=troops, spice_spent=spice_spent)
+    return update_turn_recruits(state, troops_recruited=troops)
 
 
 def _apply_automatic(
@@ -636,7 +630,6 @@ def _apply_automatic(
                 spice_spent_turn=owner.spice_spent_turn + spice,
             )
             next_state = replace(state, players=replace_player(state.players, paid))
-            next_state = _credit_turn(next_state, player, spice_spent=spice)
             return RuleResult(
                 state=next_state,
                 events=(

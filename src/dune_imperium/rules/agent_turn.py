@@ -570,8 +570,6 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         and owner.leader_face_id == "reverend_mother_jessica",
                     ),
                     ("space_id", space_id),
-                    ("spice_at_placement", next_owner.resources.spice),
-                    ("spice_spent_after_placement", 0),
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
                     *((("undeployable_troops", undeployable),) if undeployable else ()),

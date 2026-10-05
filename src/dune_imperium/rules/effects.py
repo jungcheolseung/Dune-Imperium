@@ -145,8 +145,6 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
         "pending_combat_deployment",
         "pending_faction_influence",
         "space_id",
-        "spice_at_placement",
-        "spice_spent_after_placement",
         "troops_recruited",
         "turn_owner",
     }

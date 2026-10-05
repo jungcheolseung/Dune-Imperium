@@ -211,16 +211,16 @@ def test_appropriations_discards_a_chosen_card_for_water() -> None:
 
 def test_relations_pays_spice_and_lets_the_seat_choose_a_faction() -> None:
     """User ruling OQ-095 (3): the cost is paid inside the still-open turn,
-    so the Agent-turn frame books it as this turn's spice spent, not a later
-    turn's, keeping the "spice gained" Harvest contracts read whole:
+    so the seat books it as this turn's spice spent, not a later turn's,
+    keeping the "spice gained" Harvest contracts read whole:
     "Harvest contract는 ... 그 turn에 모든 출처를 합쳐 contract에 표시된 양의
     spice를 얻으면 완료한다." [Main p. 16] (docs/rules/choam-module.md)."""
     state = _choose(_visit_high_council(_state(_owner())))
     spice = state.players[0].resources.spice
-    spent = _turn_count(state, "spice_spent_after_placement")
+    spent = state.players[0].spice_spent_turn
     state = _act(state, "join_subcommittee", subcommittee_id="relations")
     assert state.players[0].resources.spice == spice - 2
-    assert _turn_count(state, "spice_spent_after_placement") == spent + 2
+    assert state.players[0].spice_spent_turn == spent + 2
     state = _act(state, "scouts_choose_faction", faction="fremen")
     assert state.players[0].influence.fremen == 1
 
