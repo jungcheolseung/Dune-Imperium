@@ -1078,21 +1078,17 @@ const UI_TEXT = {
     "ko": "확정",
     "en": "Confirm"
   },
-  "render.scouts_choose_bid": {
-    "ko": "{{resource}} {{count}} 선택",
-    "en": "Choose {{count}} {{resource}}"
+  "render.turn_end_bid": {
+    "ko": "{{resource}} {{count}} 입찰 · 턴 종료 ▶",
+    "en": "Bid {{count}} {{resource}} · End turn ▶"
   },
-  "render.scouts_call_bid": {
-    "ko": "{{resource}} {{count}} 입찰",
-    "en": "Bid {{count}} {{resource}}"
+  "render.turn_end_call": {
+    "ko": "{{resource}} {{count}} 호가 · 턴 종료 ▶",
+    "en": "Call {{count}} {{resource}} · End turn ▶"
   },
-  "render.scouts_pass_bid": {
-    "ko": "패스 ({{resource}} 0)",
-    "en": "Pass (0 {{resource}})"
-  },
-  "render.scouts_confirm_bid": {
-    "ko": "{{resource}} {{count}} 입찰 확정",
-    "en": "Confirm {{count}} {{resource}} bid"
+  "render.turn_end_pass_call": {
+    "ko": "패스 ({{resource}} 0) · 턴 종료 ▶",
+    "en": "Pass (0 {{resource}}) · End turn ▶"
   },
   "render.contract_bank": {
     "ko": "남은 계약",

@@ -94,6 +94,8 @@ EXPLICIT_TURN_END_IDS = {
     "pass_endgame_intrigue",
     # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
     "confirm_scouts_bid",
+    # Critical Moment's open call, sent with the turn-end press (2026-10-05).
+    "scouts_call",
 }
 
 

@@ -657,13 +657,52 @@ const EXPLICIT_TURN_END_IDS = new Set([
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
   "confirm_scouts_bid",
+  "scouts_call",
 ]);
 
+/* Arrakeen Scouts auction amounts: the stepper only sets the amount, and
+   the turn-end press sends it -- the open call itself, or a sealed bid
+   followed by its confirmation (user, 2026-10-05: "경매 0 누르면 바로
+   확정되버리네. 이거도 턴 종료를 눌러야 확정되게 해줘."). */
+const AUCTION_AMOUNT_IDS = new Set(["scouts_bid", "scouts_call"]);
+
 /* The seat's own explicit turn-end action among its legal actions, if the
-   pending decision offers one. There is at most one: the ids belong to
-   different decision kinds. */
+   pending decision offers one. There is at most one kind: the ids belong to
+   different decision kinds. An open call has one action per amount; the
+   one the stepper holds is the turn's end. */
 function turnEndAction(actions) {
-  return actions.find((action) => EXPLICIT_TURN_END_IDS.has(action.action_id)) || null;
+  const found = actions.find((action) => EXPLICIT_TURN_END_IDS.has(action.action_id));
+  if (!found || found.action_id !== "scouts_call") return found || null;
+  return chosenOf("scouts_call", countFamilies(actions).get("scouts_call"));
+}
+
+/* The sealed bid the stepper holds (a scouts_bid action), or null. */
+function stagedBid(actions) {
+  const family = countFamilies(actions).get("scouts_bid");
+  return family ? chosenOf("scouts_bid", family) : null;
+}
+
+/* The seat's sealed bid as the engine records it (0 when none is chosen:
+   confirming without one confirms 0, rules/scouts_auctions.py). */
+function recordedBid() {
+  const own = state.view && state.view.private;
+  return own ? Math.max(0, own.scouts_bid ?? 0) : 0;
+}
+
+/* The turn-end press of a sealed bid: send the staged amount when it is not
+   the recorded one, then the confirmation, which is the seat's turn end. */
+async function confirmStagedBid(actions) {
+  const bid = stagedBid(actions);
+  if (bid && bid.arguments.count !== recordedBid()) {
+    const count = bid.arguments.count;
+    await applyAction(bid.index);
+    /* A failed or overtaken bid leaves the seat on its decision. */
+    if (recordedBid() !== count || !state.actions) return;
+  }
+  const confirm = state.actions && state.actions.actions.find(
+    (action) => action.action_id === "confirm_scouts_bid",
+  );
+  if (confirm) await applyAction(confirm.index);
 }
 
 /* The turn-end row's label for the seat's own explicit action: plain, or
@@ -671,13 +710,15 @@ function turnEndAction(actions) {
    same isAcquire test renderRevealPanel uses for its own `buys`, not
    whether anything was already bought) or an Intrigue pass. */
 function turnEndButtonLabel(action, actions) {
-  if (action.action_id === "confirm_scouts_bid") {
+  if (action.action_id === "confirm_scouts_bid" || action.action_id === "scouts_call") {
     const currency = scoutsAuctionCurrency();
-    const own = state.view && state.view.private;
-    if (currency && own) {
-      return t("render.scouts_confirm_bid", {
-        resource: termLabel(currency), count: Math.max(0, own.scouts_bid),
-      });
+    const count = action.action_id === "scouts_call"
+      ? action.arguments.count
+      : (stagedBid(actions) || { arguments: { count: recordedBid() } }).arguments.count;
+    if (currency) {
+      const key = action.action_id === "confirm_scouts_bid" ? "render.turn_end_bid"
+        : count === 0 ? "render.turn_end_pass_call" : "render.turn_end_call";
+      return t(key, { resource: termLabel(currency), count });
     }
   }
   if (action.action_id === "finish_reveal" && actions.some(isAcquire)) {
@@ -945,10 +986,13 @@ function renderBanner() {
          list below (renderActionPanel). */
       const turnEnd = state.actions ? turnEndAction(state.actions.actions) : null;
       if (turnEnd) {
+        const actions = state.actions.actions;
         appendTurnEndRow(
           info,
-          turnEndButtonLabel(turnEnd, state.actions.actions),
-          () => applyAction(turnEnd.index),
+          turnEndButtonLabel(turnEnd, actions),
+          turnEnd.action_id === "confirm_scouts_bid"
+            ? () => confirmStagedBid(actions)
+            : () => applyAction(turnEnd.index),
           turnEnd,
         );
       }
@@ -1174,9 +1218,26 @@ function countFamilies(actions) {
 /* The family's action for the chosen count. Sending units defaults to all
    of them, taking them back to one. */
 function chosenOf(id, family) {
-  const found = family.find((action) => action.arguments.count === state.counts[id]);
+  const staged = AUCTION_AMOUNT_IDS.has(id) ? auctionStaged(id) : state.counts[id];
+  const found = family.find((action) => action.arguments.count === staged);
   if (found) return found;
+  if (id === "scouts_bid") {
+    const recorded = family.find((action) => action.arguments.count === recordedBid());
+    if (recorded) return recorded;
+  }
   return id.startsWith("deploy") ? family[family.length - 1] : family[0];
+}
+
+/* An auction amount is staged for the decision it was set in only, so the
+   next auction starts from the recorded bid (or 0), not an old amount. */
+function auctionKey() {
+  const decision = state.summary && state.summary.decision;
+  return decision ? `${state.summary.round_number}:${decision.kind}:${decision.owner}` : "";
+}
+
+function auctionStaged(id) {
+  const staged = state.counts[id];
+  return staged && staged.key === auctionKey() ? staged.count : undefined;
 }
 
 function countRow(id, family, compact) {
@@ -1199,7 +1260,8 @@ function countRow(id, family, compact) {
     button.disabled = state.busy || !family[target];
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      state.counts[id] = family[target].arguments.count;
+      const count = family[target].arguments.count;
+      state.counts[id] = AUCTION_AMOUNT_IDS.has(id) ? { key: auctionKey(), count } : count;
       render();
     });
     return button;
@@ -1215,16 +1277,16 @@ function countRow(id, family, compact) {
     value,
     step("+", position + 1, t("render.count_step_up")),
   );
+  if (AUCTION_AMOUNT_IDS.has(id)) {
+    /* The amount goes in with the banner's turn-end press. */
+    row.append(label, stepper);
+    return row;
+  }
   const confirm = document.createElement("button");
   confirm.type = "button";
   confirm.className = "count-confirm";
   confirm.disabled = state.busy;
-  const bidLabel = id === "scouts_bid" ? "render.scouts_choose_bid"
-    : chosen.arguments.count === 0 ? "render.scouts_pass_bid" : "render.scouts_call_bid";
-  const confirmText = currency ? t(
-    bidLabel,
-    { count: chosen.arguments.count, resource: termLabel(currency) },
-  ) : compact
+  const confirmText = compact
       ? t("render.confirm_short")
       : t("render.confirm_count_label", {
         count: chosen.arguments.count, label: label.textContent,
