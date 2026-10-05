@@ -768,6 +768,81 @@ def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> N
     assert gained.state.players[0].influence.emperor == 2
 
 
+_DESERT_TACTICS_POST = "fremen-desert-tactics-fremkit"
+
+
+def _subversive_ghola_on_desert_tactics() -> GameState:
+    grafted = _graft(
+        _state(
+            _owner(
+                (SUBVERSIVE, _tleilaxu("ghola")),
+                spies_supply=2,
+                spy_post_ids=(_DESERT_TACTICS_POST,),
+            )
+        ),
+        SUBVERSIVE,
+        "desert_tactics",
+        _tleilaxu("ghola"),
+    )
+    _, context = current_agent_effect_context(grafted)
+    # Both boxes are Subversive Advisor's, so both hold the space's 1.
+    assert context["pending_faction_influence"] is False
+    return UprisingRulesEngine().apply(
+        grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
+    ).state
+
+
+def test_a_resolved_subversive_box_keeps_the_space_influence_replaced() -> None:
+    # "일반 Influence 1 대신 해당 Faction Influence 2를 얻고 ... 일반 Faction
+    # Influence를 별도로 더해 총 3을 얻지 않는다" [Subversive Advisor card]
+    # [Main pp. 9, 11, 20] (docs/rules/player-turns.md). Subversive
+    # Advisor's box gains its 2; Desert Tactics then trashes Ghola, whose
+    # copy of that box expires unresolved (OQ-022). The space's 1 was
+    # already replaced, so it does not come back: 2, not 3.
+    engine = UprisingRulesEngine()
+    start = _subversive_ghola_on_desert_tactics()
+    resolved = engine.apply(
+        start, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    assert resolved.players[0].influence.fremen == 2
+    trash = next(
+        action
+        for action in engine.legal_actions(resolved, 0)
+        if action.action_id == "trash_card_for_desert_tactics"
+        and dict(action.arguments).get("card_id") == _tleilaxu("ghola")
+    )
+
+    traded = engine.apply(resolved, trash)
+
+    assert "agent_card_effect_expired" in {event.kind for event in traded.events}
+    _, context = current_agent_effect_context(traded.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is False
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(traded.state, 0)
+    }
+    assert traded.state.players[0].influence.fremen == 2
+
+
+def test_two_resolved_subversive_boxes_each_gain_two() -> None:
+    # Pinned current behaviour: Ghola copies the whole box [Immortality
+    # p. 14], so when both boxes resolve each gains its own 2 (4 in all);
+    # the space's 1 never adds to them.
+    engine = UprisingRulesEngine()
+    first = engine.apply(
+        _subversive_ghola_on_desert_tactics(),
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    ).state
+    second = engine.apply(
+        _switch(first), DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+
+    assert second.players[0].influence.fremen == 4
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(second, 0)
+    }
+
+
 def test_piter_loses_a_troop_for_two_cards_and_research() -> None:
     piter = _tleilaxu("piter_genius_advisor")
     empty = _place(

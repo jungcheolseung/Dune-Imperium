@@ -132,6 +132,10 @@ _RESEARCH_AND_TRASH_FOR_VP = (
 # Research this turn. Keyed by card, not by the frame, because a Ghola
 # grafted to it copies the box and each box researches once.
 _RESEARCHED_BOXES: Final = "research_resolved_card_ids"
+# Set once a box's "gain two Influence instead of one" has replaced the
+# visited space's own Influence (Subversive Advisor, Treacherous Maneuver):
+# the space's 1 never comes back after that (``_release_space_influence``).
+_SPACE_INFLUENCE_REPLACED: Final = "space_influence_replaced"
 _GUILD_INFLUENCE_IF_SPICE = (
     PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
 )
@@ -2006,6 +2010,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         # and Alliance resolve as for any two-step gain and the space's own
         # ``resolve_faction_influence`` step is used up.
         context["pending_faction_influence"] = False
+        context[_SPACE_INFLUENCE_REPLACED] = True
         gained = gain_faction_influence(
             source_trashed.state,
             action.actor,
@@ -3260,8 +3265,14 @@ def _release_space_influence(context: dict[str, ActionValue], *, held: bool) -> 
     expires unresolved (OQ-022), only the card's "instead" lapses: "Faction
     space라면 그 Faction Influence도 1 얻는다." [Main p. 7] [Main p. 9], so
     the space's ordinary ``resolve_faction_influence`` step comes back.
+    Once another box already gained two instead of one, the space's 1 was
+    replaced and stays gone: "일반 Faction Influence를 별도로 더해 총 3을
+    얻지 않는다" [Subversive Advisor card] [Main pp. 9, 11, 20]
+    (docs/rules/player-turns.md).
     """
 
+    if context.get(_SPACE_INFLUENCE_REPLACED) is True:
+        return
     if held and not _waiting_box_holds_space_influence(context):
         context["pending_faction_influence"] = True
 
@@ -3994,6 +4005,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             2,
             event_prefix=f"{source}:influence:{faction.value}",
         )
+        # The 2 replaced the space's 1 for good: a partner box that held it
+        # too and expires later does not bring the 1 back (never 2 + 1).
+        context[_SPACE_INFLUENCE_REPLACED] = True
         trashed = trash_personal_card(
             gained.state,
             player,
