@@ -1382,18 +1382,20 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # already revealed this round. ``_turn_passed`` alone reads that as
     # "still my turn" and would never announce the hand-over a human
     # server's autosave relies on (``add_hand_over_listener``); ``ended``
-    # is exactly what still fires it. Seed 33, three random AI opponents,
-    # found by a scratch random walk (rng seed 33 * 9973 + 1): seed 18 of
+    # is exactly what still fires it. Seed 21, three random AI opponents,
+    # found by a scratch random walk (rng seed 21 * 9973 + 1): seed 18 of
     # scratchpad/verify_item4.py (2026-09-24 session) no longer reaches it
-    # once every Agent turn waits for its finish_agent_turn (OQ-095), and
-    # seed 33 is the first of 0-39 whose end is a finish_agent_turn.
+    # once every Agent turn waits for its finish_agent_turn (OQ-095).
+    # Seed 33 reached it until Tactical Option's zero retreat (2026-10-06)
+    # added a legal option that moves the random walk; re-searched then,
+    # seed 21 is the first of 0-39 whose end is a finish_agent_turn.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=33)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=21)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(33 * 9973 + 1)
+    rng = random.Random(21 * 9973 + 1)
 
     found = False
     for _ in range(6000):
