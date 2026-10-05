@@ -6,12 +6,17 @@ import os
 import socket
 import sys
 from collections.abc import Mapping, Sequence
+from importlib.util import find_spec
 from pathlib import Path
 from types import FrameType
 
 from dune_imperium.server.access import AccessMode, new_token
 
 ADMIN_KEY_ENVIRONMENT = "DUNE_IMPERIUM_ADMIN_KEY"
+SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
+# Where a host keeps the search AI's network, usually a symlink to the
+# training checkpoint of the day; looked for when nothing else names one.
+DEFAULT_SEARCH_CHECKPOINT = Path(".dune-imperium") / "search.pt"
 _GRACEFUL_SHUTDOWN_SECONDS = 3
 
 
@@ -75,6 +80,17 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="save-file directory (default: ~/.dune-imperium/saves)",
+    )
+    parser.add_argument(
+        "--search-checkpoint",
+        default=None,
+        help=(
+            "trained policy file behind the search AI seat the browser "
+            "offers (needs the train extra; default: the "
+            f"{SEARCH_CHECKPOINT_ENVIRONMENT} environment variable, else "
+            "~/.dune-imperium/search.pt if it exists); a symlink is resolved "
+            "at startup, so saves name the real file"
+        ),
     )
     parser.add_argument(
         "--card-images-dir",
@@ -143,6 +159,39 @@ def resolve_autosave(arguments: argparse.Namespace) -> bool:
     if arguments.no_autosave and not arguments.remote:
         raise ValueError("--no-autosave only applies together with --remote")
     return bool(arguments.remote and not arguments.no_autosave)
+
+
+def resolve_search_checkpoint(
+    arguments: argparse.Namespace, environment: Mapping[str, str]
+) -> tuple[Path | None, str]:
+    """Return the search AI's network file, or ``None``, and the startup line.
+
+    The flag wins over the environment variable, which wins over
+    ``~/.dune-imperium/search.pt``. The path is resolved once, here: saves
+    record the file a symlink named when the server started, so pointing
+    the link at a newer checkpoint never changes an older save's network.
+    The seat is offered only when that file exists and torch (the ``train``
+    extra) is installed; the line says which, for the console.
+    """
+
+    named: str | None = arguments.search_checkpoint or environment.get(
+        SEARCH_CHECKPOINT_ENVIRONMENT
+    )
+    if named:
+        candidate = Path(named).expanduser().resolve()
+        if not candidate.is_file():
+            return None, f"search AI: off (no file at {candidate})"
+    else:
+        default = Path.home() / DEFAULT_SEARCH_CHECKPOINT
+        if not default.is_file():
+            return None, (
+                "search AI: off (no checkpoint; --search-checkpoint or "
+                "~/.dune-imperium/search.pt)"
+            )
+        candidate = default.resolve()
+    if find_spec("torch") is None:
+        return None, "search AI: off (torch not installed: uv sync --extra train)"
+    return candidate, f"search AI: {candidate}"
 
 
 def bind_problem(host: str, port: int) -> str | None:
@@ -216,6 +265,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from dune_imperium.server.persistence import default_saves_directory
     from dune_imperium.server.sessions import GameSessionManager
 
+    search_checkpoint, search_line = resolve_search_checkpoint(arguments, os.environ)
     if admin_key is not None:
         print("Remote multiplayer access is on. Host admin link (keep it private):")
         print(f"  {admin_link(arguments.host, arguments.port, admin_key)}", flush=True)
@@ -228,9 +278,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             print("Autosave is off: a game lives only as long as this process.")
-        sys.stdout.flush()
+    print(search_line, flush=True)
     app = create_app(
-        manager=GameSessionManager(access=access, admin_key=admin_key),
+        manager=GameSessionManager(
+            access=access,
+            admin_key=admin_key,
+            search_checkpoint=search_checkpoint,
+        ),
         saves_dir=arguments.saves_dir,
         card_images_dir=arguments.card_images_dir,
         public_url=public_url,
