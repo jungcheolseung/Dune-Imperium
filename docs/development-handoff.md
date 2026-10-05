@@ -9,6 +9,22 @@
 - 사용자 요청에 따라 보드 계약 카드 옆의 남은 장수 배지와 오른쪽 아래의 Shield Wall 파괴 문구를 제거했다. 두 표시의 전용 CSS와 사용하지 않는 한글·영어 UI 문구도 정리했다. 계약 카드 이미지와 실제 Shield Wall 토큰은 상태에 따라 계속 표시한다.
 - 검증: 별도 CHOAM 게임의 실제 카드 목록을 기준으로 한국어·영어 × Shield Wall 있음/없음 상태의 화면 검사 **13개** 통과. 관련 Chrome E2E **3종**(`board_tokens`, `lang`, `conflict_history`) **10초, 실패 0**, Ruff(`src tests`·변경 E2E)·`git diff --check` 통과. 교전 이력 E2E는 검토 위치를 옮긴 뒤 보드·첫 손패 카드 이미지와 레이아웃 observer가 정착한 다음 마우스오버 검사를 시작하도록 보강했다. 클라이언트 UI 변경이므로 브라우저 새로고침으로 적용한다.
 
+## 2026-10-05 플레이 UI에 앱 AI 좌석
+
+- 사용자 요청("이제 app ai를 플레이 ui에 넣자"): 새 게임 화면의 좌석 목록에 **앱 AI·어려움 / 보통 / 쉬움**(App AI·Hard/Medium/Easy, registry `app_ai`·`app_ai_medium`·`app_ai_easy`)을 사람 바로 다음에 넣었다. open(로컬) 서버의 AI 좌석 기본값은 heuristic에서 **앱 AI·어려움**으로 바꿨다. 원격 방은 여전히 네 좌석 모두 사람이고, HTTP API의 기본값(`heuristic`)은 그대로다. 좌석 종류가 보이는 모든 곳(좌석 배지, 로그 머리, 대기실, 게임·저장 목록, 검토 선택, 안내)에 두 언어 라벨이 나온다.
+- 실전 견고성:
+  - app_ai 창이 예외를 내거나 불법 행동을 고르면 게임이 멈추지 않는다. 앱의 `DefaultRandomChoice`로 답하고 `error:<결정 종류>`로 세며 로그를 남긴다. 자기 RNG를 쓰므로 저장 복원도 같은 수를 만든다.
+  - 테스트에서는 `tests/unit/agents/app_ai/conftest.py`가 이런 오류를 실패로 만든다.
+  - 여러 게임이 동시에 돌 때 섞일 수 있던 모듈 전역 상태(Uprising Conflict 목록의 지연 채움, unlock 캐시와 재진입 표시)를 없앴다.
+- app_ai 코드나 데이터가 바뀌면 앱 AI 좌석이 있는 저장과 자동 저장이 "기록대로 재생되지 않음"으로 열리지 않을 수 있다. heuristic 좌석과 같은 한계이며, 저장 형식은 바꾸지 않고 호스트 안내서 6절에 적었다.
+- 병합 `e5a2b0d5`(브랜치 `app-ai-ui`). 엔진·codec·관측은 그대로다(**codec v135·관측 v30**).
+- 검증:
+  - **pytest 6,421개 통과**, Ruff(`src tests`)·mypy(408파일) 통과.
+  - 새 테스트: 서버 좌석 생성, 사람 대 앱 AI 3으로 끝까지(UI 기본 규칙·Scouts), 되돌리기 뒤 저장 복원(에이전트 RNG·기억 일치), 다른 `PYTHONHASHSEED` 프로세스에서 복원, UI 기본 규칙의 정직성, 무작위 상대 견고성, 두 게임 동시 실행.
+  - Chrome E2E 전체 43종 중 42종 통과. `table_layout`은 4개 병렬에서 한 번 타이밍으로 실패했고 단독 재실행에서 통과했다(네 좌석 모두 사람으로 정하는 스크립트라 이번 변경과 무관).
+  - 새 `scripts/e2e/app_ai_seats.py`(63검사): 사람 1 대 세 난이도, 기본 확장 전부, 중간 저장·불러오기, 두 언어 라벨, 1366×768 배지.
+- 남은 것: search 좌석을 UI에 넣을지(결정당 약 2초, 체크포인트 경로 필요), 학습 상대에 app_ai 넣기(L3와 함께), 대전 도구의 드래프트 플래그.
+
 ## 2026-10-05 app_ai를 모든 선택지로 확장(heuristic 없음)
 
 - 사용자 결정("휴리스틱의 결정이 섞이는 ai면 어차피 그걸로 플레이할 생각은 없어. 2,3으로 가자"): app_ai가 모든 선택지를 heuristic 없이 둔다. 앱에 있는 것(Immortality, Go to 11, Epic, 프로모, 지도자 드래프트)은 충실 포팅했다. 앱에 없는 것(Bloodlines와 Tech 모듈, Arrakeen Scouts)은 앱식으로 확장했다. 새 카드 값은 앱 데이터에 맞춘 규칙으로, 새 결정은 앱식 단순 판단으로 만든다. 대응 안 된 결정은 heuristic 대신 앱의 `DefaultRandomChoice`(무작위 합법 행동)로 답하고 `fallbacks`에 센다. 설계와 결정은 [`app-ai-plan.md`](app-ai-plan.md) 11절, 앱식 사양은 [`app-ai/`](app-ai/)의 세 문서다.
@@ -196,6 +212,8 @@ uv run mypy src tests
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
+
+**현재 위치(2026-10-05 밤).** 플레이 UI 좌석에 앱 AI(어려움·보통·쉬움)를 넣고 로컬 서버의 AI 기본값으로 삼았다(`e5a2b0d5`, 위 "플레이 UI에 앱 AI 좌석"). pytest 6,421개.
 
 **현재 위치(2026-10-05 저녁).** app_ai를 모든 선택지(Immortality·Go to 11·Epic·프로모·드래프트는 충실 포팅, Bloodlines·Tech·Scouts는 앱식 확장)로 넓혀 heuristic 없이 두게 했고 master에 병합했다(`89f57fc5`, 위 2026-10-05 "app_ai를 모든 선택지로 확장"). 16개 조합에서 무작위 대체 0, pytest 6,389개. codec v135·관측 v30 그대로.
 
