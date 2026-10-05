@@ -773,8 +773,26 @@ function turnLine(entry) {
   const index = document.createElement("span");
   index.className = "turn-index";
   index.textContent = `#${entry.index}`;
-  head.append(index, describeAction(entry));
-  if (entry.undone) head.append(t("panels.undone_suffix"));
+  /* Keep the phrase's text and icons in one inline flow. Appending its
+     fragment to the flex head makes each piece a separate wrapping column. */
+  const label = document.createElement("span");
+  label.className = "turn-action";
+  label.appendChild(describeAction(entry));
+  if (entry.undone) label.append(t("panels.undone_suffix"));
+  /* A parenthesized icon is one unit, including both punctuation marks. */
+  for (const token of label.querySelectorAll(".icon, .amount, .agent-piece-icon, .term-text")) {
+    const before = token.previousSibling;
+    const after = token.nextSibling;
+    if (before?.nodeType !== Node.TEXT_NODE || after?.nodeType !== Node.TEXT_NODE ||
+        !before.textContent.endsWith("(") || !after.textContent.startsWith(")")) continue;
+    const group = document.createElement("span");
+    group.className = "log-term-group";
+    before.textContent = before.textContent.slice(0, -1);
+    after.textContent = after.textContent.slice(1);
+    token.before(group);
+    group.append("(", token, ")");
+  }
+  head.append(index, label);
   line.appendChild(head);
   for (const event of entry.events) line.appendChild(logEventLine(event));
   return line;

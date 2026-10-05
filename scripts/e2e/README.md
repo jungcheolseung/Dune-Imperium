@@ -60,6 +60,8 @@ UI 변경의 검증 순서는 [`CLAUDE.md`](../../CLAUDE.md)의 "Verifying UI ch
 비공개 assets checkout이 연결돼 있어야 하며, 스크린샷은 `objective_ko.png`·
 `objective_en.png`다. 두 검사의 기본 스크린샷 폴더는 실행마다 생성하는 임시 폴더다.
 
+`log_wrap.py`는 사용자가 보고한 가문 핵 토큰·Tuek's Sietch 로그를 실제 `turnLine`으로 그려 문자 좌표의 읽기 순서, 한글 단어·용어 묶음, 괄호와 인장 반지 아이콘, 가로 넘침을 확인한다. 두 언어·240/300/430px·카드 썸네일 유무와 긴 지휘관 기술 용어를 포함하며 `E2E_SHOTS_DIR`에 `log_wrap_*.png`를 남긴다.
+
 ## 하나씩 돌리기
 
 아래 시간은 한 개씩 순서대로 돌린 실측(2026-09-27 Mac mini; `rehearsal.py`만 예전 값)이다.

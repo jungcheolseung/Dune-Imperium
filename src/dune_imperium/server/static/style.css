@@ -1761,6 +1761,14 @@ kbd {
 .turn-body { display: flex; gap: 0.5rem; align-items: flex-start; }
 .turn-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
 .turn-line-head { display: flex; gap: 0.35rem; align-items: baseline; }
+.turn-action { flex: 1; min-width: 0; }
+.turn-line, .logevent { word-break: keep-all; overflow-wrap: anywhere; }
+.turn-action .term-text, .logevent .term-text {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+.log-term-group { white-space: nowrap; }
 .turn-line .icon { height: 1.25em; }
 .turn-index { font-size: 0.7rem; opacity: 0.5; flex: none; }
 .turn-line.quiet { opacity: 0.5; font-size: 0.75rem; }

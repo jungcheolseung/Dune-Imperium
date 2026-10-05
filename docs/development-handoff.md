@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 행동 로그 문구·아이콘 줄바꿈 수정
+
+- 사용자 화면의 “가문 핵 토큰 소비: 임페리움 열 다시 채우기”와 “Tuek's Sietch에 보너스 스파이스 놓기”가 여러 세로 조각으로 갈라지는 원인은 `describeAction()`의 fragment를 flex 헤더에 직접 넣은 것이었다. 번호와 별도의 본문을 두어 문구·용어·아이콘이 하나의 inline 흐름으로 줄바꿈하도록 수정했다. 되돌림 표시도 같은 본문 안에서 이어진다.
+- 한글 단어는 중간에서 자르지 않고, “임페리움 열” 같은 용어는 한 묶음으로 옮긴다. 용어가 본문 전체 폭보다 길면 그 폭 안에서 줄을 나눠 가로 넘침을 막는다. 괄호로 둘러싼 아이콘·수량은 괄호까지 함께 이동한다. 로그 번호·문구·이벤트·아이콘의 의미와 엔진·규칙·codec v135·관측 v30은 그대로다.
+- 검증: 새 `log_wrap.py` **49개 검사**(두 언어, 240·300·430px, 카드 썸네일 유무, 긴 지휘관 기술 용어), 관련 Chrome E2E **6종**(`log_wrap`, `log_words`, `log_follow`, `log_passes`, `table_layout`, `lang`) **19초, 실패 0**, Ruff(`src tests scripts/e2e/log_wrap.py`)와 `git diff --check` 통과. 수정 전에는 좁은 두 언어의 문자 읽기 순서·용어 묶음·괄호 아이콘 검사 6개가 실패해 첨부 현상을 재현했다.
+
 ## 2026-10-05 지도자 드래프트를 공용 열 맨 위에 배치
 
 - 사용자 피드백에 따라 진행 중인 지도자 드래프트를 모든 확장 게임판보다 먼저 표시한다. 공용 열 순서는 **지도자 드래프트 → 베네 틀레이락스 게임판 → 익스 대사관 → 임페리움 열 → 틀레이락스 열 → 예비 카드**이며, 없는 항목은 생략한다. 드래프트가 끝나면 기존 확장 순서로 이어진다. 접힘 식별자와 드래프트 표시 조건은 유지한다.

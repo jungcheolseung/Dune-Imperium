@@ -184,6 +184,7 @@ function termNode(name, count) {
   const label = term[TERM_LANGUAGE] || term.en;
   if (!term.icon) {
     const span = document.createElement("span");
+    span.className = "term-text";
     span.textContent = count === undefined ? label : `${count} ${label}`;
     return span;
   }
