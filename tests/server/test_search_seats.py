@@ -704,7 +704,7 @@ def test_a_failing_search_falls_back_and_the_game_goes_on(
     monkeypatch.setattr(NetworkSearchAgent, "choose_action_with_state", broken)
     monkeypatch.setattr(NetworkSearchAgent, "choose_action", greedy_once_broken)
     manager = GameSessionManager()
-    with caplog.at_level(logging.ERROR, logger="dune_imperium.server.sessions"):
+    with caplog.at_level(logging.WARNING, logger="dune_imperium.server.sessions"):
         summary = manager.create_game(
             ("human", search_kind, search_kind, search_kind),
             game_seed=SEARCH_FIRST_SEED,
@@ -715,11 +715,28 @@ def test_a_failing_search_falls_back_and_the_game_goes_on(
     rested = manager.summary(game_id)
     assert rested["thinking"] is None
     assert _obj(rested["decision"])["owner"] == 0
-    background = _seat_steps(manager._sessions[game_id].steps, {1, 2, 3})
+    steps = manager._sessions[game_id].steps
+    background = _seat_steps(steps, {1, 2, 3})
     messages = [record.getMessage() for record in caplog.records]
     assert sum("failed to answer" in text for text in messages) == background
     assert sum("failed again" in text for text in messages) == 1
     assert len(view_calls) == background
+    # Each fallback warns that a load may not reproduce the game from its
+    # step on, naming the game and that step.
+    warnings = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+        and "may not reproduce" in record.getMessage()
+    ]
+    assert len(warnings) == background
+    for record in warnings:
+        assert game_id in record.getMessage()
+        assert isinstance(record.args, tuple)
+        named_game, step, seat = record.args
+        assert named_game == game_id
+        answered = steps[_int(step)]
+        assert isinstance(answered, DomainAction) and answered.actor == seat
 
 
 def test_a_failing_worker_step_frees_the_table(

@@ -20,7 +20,8 @@ Every applied step is recorded replay-style; saving serializes that record
 (``persistence``), and loading replays it against fresh seeded chance and
 agent streams so a loaded game continues exactly like the unsaved session
 would have. A search seat retraces its recorded answers on a load rather
-than searching them again.
+than searching them again; ``restore_game`` says what that checks, and
+where a load may not reproduce the game.
 
 Who may do what is judged here too (``access``, M14). An open manager — the
 default, the local server — trusts every caller as before. A remote manager
@@ -145,6 +146,12 @@ AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # saves and autosaves with that seat kind unloadable. A search seat only
 # retraces its recorded answers (``ReplayableAgent``): it checks that each was
 # among the network's shortlist and moves its RNG on, without the playouts.
+# Which shortlisted candidate a searched decision chose is taken on trust, so
+# a change to the search that would choose another one does not fail a load.
+# One gap is known: a search that failed and fell back to the greedy network
+# (``_background_answer``, which logs a warning naming the game and step) is
+# retraced as if it had searched, so a load of that game from that step on
+# may play on differently from the saved session, or refuse the save.
 # Matches the sweep's policy seed convention so one game seed names one game.
 _DEFAULT_POLICY_OFFSET: Final = 700_000
 _MAX_AUTO_STEPS: Final = 30_000
@@ -975,12 +982,22 @@ class GameSessionManager:
         and fresh seeded agents: chance and AI decisions are regenerated
         and must match the record, human actions apply as recorded. A
         search seat retraces its recorded answers instead of searching them
-        again (``ReplayableAgent``), and refuses one it could not have
-        given. That restores every RNG stream to its saved position, so the
-        loaded game continues exactly like the unsaved session would have; a
+        again (``ReplayableAgent``): an answer it gives without playouts
+        (the greedy network's, a forced one) must match like any other,
+        while a searched one need only be among the candidates the network
+        shortlists, and which of them the playouts chose is taken on trust.
+        That restores every RNG stream to its saved position, so the loaded
+        game continues exactly like the unsaved session would have. A
         divergence (an edited file, or code that no longer reproduces the
-        record) fails with the offending step index. The final canonical
-        state hash is verified like ``replay_game`` does.
+        record) fails with the offending step index, except inside a
+        searched decision: a change to the search that would choose another
+        shortlisted candidate does not fail the load. One gap is known: a
+        search that failed and fell back to the greedy network
+        (``_background_answer`` logs a warning naming the game and step) is
+        retraced as if it had searched, so from that step on the loaded game
+        may play on differently from the saved session, or the save may be
+        refused. The final canonical state hash is verified like
+        ``replay_game`` does.
         """
 
         self.require_admin(credentials)
@@ -1547,10 +1564,13 @@ class GameSessionManager:
                 session.ai_worker = False
                 return False
             state = session.state
+            step = len(session.steps)
             observation = session.engine.observe(state, seat)
             actions = session.engine.legal_actions(state, seat)
             agent = session.agents[seat]
-        action = _background_answer(game_id, seat, agent, state, observation, actions)
+        action = _background_answer(
+            game_id, seat, step, agent, state, observation, actions
+        )
         with session.lock:
             if (
                 session.closed
@@ -1818,16 +1838,24 @@ def _agent_action(session: GameSession, seat: int) -> DomainAction:
 def _background_answer(
     game_id: str,
     seat: int,
+    step: int,
     agent: Agent,
     state: GameState,
     observation: PlayerView,
     actions: tuple[DomainAction, ...],
 ) -> DomainAction:
-    """A background seat's answer, computed off the session lock.
+    """A background seat's answer to live step ``step``, computed off the lock.
 
     A game must never stall on a failing search: the error is logged and
     the seat plays its view-only answer (a search seat's greedy network),
-    and if that fails too, its first legal action.
+    and if that fails too, its first legal action. The fallback is there
+    for unexpected bugs only, and it costs the save its fidelity: a load
+    retraces the step as a search (``replay_decision``), while the failed
+    search may have drawn only part of its worlds and recorded nothing in
+    its cycle guard, and the fallback moved the greedy network's guard
+    instead. From that step on a load of the game may play on differently,
+    or refuse the save outright when the answer was not among the network's
+    shortlist, so a warning names the game and the step.
     """
 
     try:
@@ -1840,6 +1868,13 @@ def _background_answer(
             seat,
             game_id,
         )
+    _LOGGER.warning(
+        "game %s step %d: seat %d answers without its search, so a load of "
+        "this game from this step on may not reproduce it",
+        game_id,
+        step,
+        seat,
+    )
     try:
         return agent.choose_action(observation, actions)
     except Exception:
@@ -1883,6 +1918,7 @@ def _replay_recorded_steps(
     memory on as answering would have, and refuses an answer it could not
     have given. A search seat's playouts cost about a second a decision, so
     regenerating them made a one-seat save take most of a minute to load.
+    What such a retrace cannot prove is in ``restore_game``.
     """
 
     engine = session.engine
