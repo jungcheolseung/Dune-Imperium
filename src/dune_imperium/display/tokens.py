@@ -81,9 +81,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If Bene Gesserit Alliance: You may trash an Intrigue card → "
             "Draw 1 Intrigue card, Gain 2 spice"
         ),
+        # "Gain two Influence instead of one" [card face]: the visited
+        # space's single Influence becomes 2, not 1 + 1 more.
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: (
             "You may trash this card and an Emperor card from your hand → "
-            "Gain 1 additional Influence with the visited Faction"
+            "Gain 2 Influence instead of 1 with the visited Faction"
         ),
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: (
             "Trash this card, Gain 1 Influence with a chosen Faction"

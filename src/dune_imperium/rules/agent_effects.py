@@ -1801,14 +1801,13 @@ def legal_agent_card_trash_actions(
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     ):
-        # "Gain 1 additional Influence with the Faction you visited": an
-        # Agent infiltrated onto a space without a Faction [Main p. 11]
-        # has no Influence to gain, so the arrow cost is not offered
-        # (OQ-046).
-        space_id = context.get("space_id")
-        visited_faction = (
-            BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
-        )
+        # "Gain two Influence instead of one" [Treacherous Maneuver card]
+        # replaces the visited space's own single gain, "기본 1 대신 총 2"
+        # [Main p. 9] (docs/rules/player-turns.md). The arrow is offered
+        # only while that gain is still pending: an Agent infiltrated onto
+        # a space without a Faction [Main p. 11] has no Influence to gain
+        # (OQ-046), and once the space's 1 is gained there is nothing left
+        # to replace.
         eligible = (
             tuple(
                 card_id
@@ -1816,7 +1815,7 @@ def legal_agent_card_trash_actions(
                 if card_id != source_card_id
                 and Faction.EMPEROR in personal_card_for_instance(card_id).factions
             )
-            if visited_faction is not None
+            if context.get("pending_faction_influence") is True
             else ()
         )
     return (
@@ -1950,12 +1949,16 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         faction = BOARD_SPACES_BY_ID[space_id].faction
         if faction is None:
             raise RuntimeError("Treacherous Maneuver requires a Faction space")
+        # One gain of 2 replaces the space's pending 1, so its thresholds
+        # and Alliance resolve as for any two-step gain and the space's own
+        # ``resolve_faction_influence`` step is used up.
+        context["pending_faction_influence"] = False
         gained = gain_faction_influence(
             source_trashed.state,
             action.actor,
             faction,
-            1,
-            event_prefix=f"{source}:extra_influence:{faction.value}",
+            2,
+            event_prefix=f"{source}:influence:{faction.value}",
         )
         next_state = advance_after_effect(
             gained.state,

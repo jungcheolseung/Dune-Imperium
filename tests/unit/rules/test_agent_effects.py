@@ -689,7 +689,11 @@ def test_desert_survival_trash_may_be_declined() -> None:
     assert result.events[0].kind == "agent_card_trash_declined"
 
 
-def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
+def test_treacherous_maneuver_pays_both_cards_for_two_influence() -> None:
+    # "Trash this card and an Emperor card from your hand -> Gain two
+    # Influence instead of one." [Treacherous Maneuver card]: the visited
+    # Faction's "기본 1 대신 총 2" [Main p. 9] (docs/rules/player-turns.md),
+    # one gain of 2 that uses up the space's own step.
     maneuver = _imperium_instance("treacherous_maneuver")
     sardaukar = _imperium_instance("sardaukar_soldier")
     non_emperor = _imperium_instance("desert_survival")
@@ -732,17 +736,59 @@ def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
     assert paid.state.players[0].in_play == ()
     assert paid.state.players[0].trashed == (sardaukar, maneuver)
     assert paid.state.players[0].intrigue_cards == ("intrigue:test",)
-    assert paid.state.players[0].influence.emperor == 1
+    # The 2-Influence threshold's VP comes with the single gain of 2.
+    assert paid.state.players[0].influence.emperor == 2
+    assert paid.state.players[0].victory_points == 2
     assert [event.kind for event in paid.events] == [
         "card_trashed",
         "intrigue_card_drawn",
         "card_trashed",
         "influence_gained",
     ]
+    assert (
+        dict(paid.state.decision_stack[-1].context)["pending_faction_influence"]
+        is False
+    )
+    assert "resolve_faction_influence" not in {
+        action.action_id
+        for action in UprisingRulesEngine().legal_actions(paid.state, 0)
+    }
 
-    resolved = resolve_faction_influence(paid.state).state
-    assert resolved.players[0].influence.emperor == 2
-    assert resolved.players[0].victory_points == 2
+
+def test_treacherous_maneuver_arrow_needs_the_pending_space_influence() -> None:
+    # "Instead of one" replaces the space's single gain, so the arrow can
+    # only be chosen while that gain is pending: resolving the space's 1
+    # first leaves only the decline (OQ-071 principle, no cost line that
+    # buys nothing).
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, hand=(maneuver, sardaukar))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    assert "trash_agent_card" in {
+        action.action_id for action in legal_agent_card_trash_actions(placed, 0)
+    }
+
+    gained = resolve_faction_influence(placed).state
+
+    assert gained.players[0].influence.emperor == 1
+    assert legal_agent_card_trash_actions(gained, 0) == (
+        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    )
 
 
 def test_treacherous_maneuver_box_expires_when_trashed_mid_frame() -> None:
