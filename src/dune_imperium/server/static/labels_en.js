@@ -282,6 +282,9 @@ const LABELS_EN = {
   },
   "SEAT_KINDS": {
     "human": "Human",
+    "app_ai": "App AI·Hard",
+    "app_ai_medium": "App AI·Medium",
+    "app_ai_easy": "App AI·Easy",
     "heuristic": "Heuristic AI",
     "rollout": "Rollout Search AI",
     "rollout_strong": "Strong Rollout Search AI (slow)",

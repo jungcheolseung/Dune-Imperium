@@ -16,6 +16,7 @@ import json
 import shutil
 import sys
 import time
+from collections.abc import Sequence
 
 from common import (
     SERVER_LOG_COPY,
@@ -35,7 +36,8 @@ SEED = 20260917
 def check_default_seats(base, browser) -> None:
     """An open server keeps seat 0 human and the rest AI by default -- only
     a remote room (which no stranger should walk into) starts every seat
-    human."""
+    human. Since 2026-10-05 the default AI is the app AI at Hard (app_ai),
+    the port of the Steam app's computer opponent; app_ai_seats.py plays it."""
     print("[D] the open server's setup screen still defaults to human + 3 AI")
     _, page, _ = open_context(browser, "defaults")
     page.goto(base + "/")
@@ -50,21 +52,38 @@ def check_default_seats(base, browser) -> None:
         "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
     )
     check.ok(
-        values == ["human", "heuristic", "heuristic", "heuristic"],
-        "seat 0 defaults to human, seats 1-3 default to heuristic",
+        values == ["human", "app_ai", "app_ai", "app_ai"],
+        "seat 0 defaults to human, seats 1-3 default to the app AI (Hard)",
         values,
     )
 
 
-def create_game(page, base: str, humans=(0, 1), seed: int | None = SEED) -> str:
+def create_game(
+    page,
+    base: str,
+    humans=(0, 1),
+    seed: int | None = SEED,
+    kinds: Sequence[str] | None = None,
+    options: tuple[str, ...] | None = (),
+) -> str:
+    """Create a game from the setup screen and wait for its table.
+
+    Seats in ``humans`` are human and the others heuristic, unless ``kinds``
+    names the kind of all four seats. ``options`` are the rule boxes kept
+    checked (common.set_rule_options; by default none), and None leaves
+    every box as the setup screen opens it.
+    """
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
-    for seat in range(4):
-        page.select_option(
-            f"#seat-selects select[data-seat='{seat}']",
-            "human" if seat in humans else "heuristic",
-        )
-    set_rule_options(page)
+    chosen = (
+        list(kinds)
+        if kinds is not None
+        else ["human" if seat in humans else "heuristic" for seat in range(4)]
+    )
+    for seat, kind in enumerate(chosen):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", kind)
+    if options is not None:
+        set_rule_options(page, *options)
     if seed is not None:
         page.fill("#opt-seed", str(seed))
     page.click("#create-game")

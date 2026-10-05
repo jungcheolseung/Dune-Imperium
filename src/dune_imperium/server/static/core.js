@@ -38,6 +38,9 @@ let noteTimer = 0;
 
 const SEAT_KINDS = [
   ["human", "사람"],
+  ["app_ai", "앱 AI·어려움"],
+  ["app_ai_medium", "앱 AI·보통"],
+  ["app_ai_easy", "앱 AI·쉬움"],
   ["heuristic", "휴리스틱 AI"],
   ["rollout", "롤아웃 탐색 AI"],
   ["rollout_strong", "강한 롤아웃 탐색 AI (느림)"],

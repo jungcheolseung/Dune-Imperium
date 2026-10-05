@@ -23,8 +23,9 @@ function buildSeatSelects() {
     }
     /* Remote games are four friends: an admin who forgets to change three
        dropdowns must not seat AIs where a friend expects to sit. The open
-       (local) server keeps its human + heuristic-AI default. */
-    const defaultKind = isRemote() ? "human" : seat === 0 ? "human" : "heuristic";
+       (local) server seats one human against three app AIs (Hard), the
+       port of the Steam app's computer opponent. */
+    const defaultKind = isRemote() ? "human" : seat === 0 ? "human" : "app_ai";
     select.value = chosen[seat] || defaultKind;
     label.appendChild(select);
     wrap.appendChild(label);

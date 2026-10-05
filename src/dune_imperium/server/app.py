@@ -178,7 +178,10 @@ class CreateGameRequest(BaseModel):
         max_length=4,
         description=(
             "Per-seat assignment: 'human', or an agent kind of the evaluation "
-            "registry: 'heuristic', 'random', 'rollout' (determinized search), "
+            "registry: 'app_ai', 'app_ai_medium', 'app_ai_easy' (the Steam "
+            "app's computer opponent at Hard, Medium and Easy; about 1-2 ms a "
+            "decision, no extra install), "
+            "'heuristic', 'random', 'rollout' (determinized search), "
             "'rollout_strong' (the same search at twice the budget), "
             "'checkpoint:<path>' (a trained policy; needs the train extra), or "
             "'search:<path>' (that policy with determinized search around it: "

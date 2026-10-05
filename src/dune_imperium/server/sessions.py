@@ -116,11 +116,17 @@ HUMAN_SEAT: Final = "human"
 # (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
 AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # Every other seat names an agent of the evaluation registry
-# (``dune_imperium.agents.make_agent``): ``random``, ``heuristic``, the
-# determinized-search ``rollout``, a trained policy ``checkpoint:<path>``, or
-# that same policy with search around it, ``search:<path>``.
-# Search agents receive the authoritative state like the tournament runner
-# does; their contract keeps them from reading hidden zones.
+# (``dune_imperium.agents.make_agent``): the Steam app's computer opponent
+# ``app_ai`` (Hard), ``app_ai_medium`` or ``app_ai_easy`` (about 1-2 ms a
+# decision, standard library only), ``random``, ``heuristic``, the
+# determinized-search ``rollout`` or ``rollout_strong``, a trained policy
+# ``checkpoint:<path>``, or that same policy with search around it,
+# ``search:<path>``.
+# Search and app AI agents receive the authoritative state like the
+# tournament runner does; their contract keeps them from reading hidden zones.
+# Restore regenerates every AI step (an app AI's memory with it), so any change
+# to an agent's behaviour, an app_ai code or data update included, can make
+# saves and autosaves with that seat kind unloadable.
 # Matches the sweep's policy seed convention so one game seed names one game.
 _DEFAULT_POLICY_OFFSET: Final = 700_000
 _MAX_AUTO_STEPS: Final = 30_000
@@ -385,6 +391,12 @@ class GameSessionManager:
         credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
         """Start one game and advance it to the first human decision.
+
+        Each seat is ``human`` or a registry agent kind: ``app_ai``
+        (``app_ai_medium``, ``app_ai_easy``), ``heuristic``, ``random``,
+        ``rollout``, ``rollout_strong``, ``checkpoint:<path>`` or
+        ``search:<path>``. The browser offers all but ``search:`` and seats
+        three ``app_ai`` beside one human by default on an open server.
 
         Host-only on a remote server: a ``checkpoint:<path>`` seat makes the
         server open a file, and search seats spend its CPU.
