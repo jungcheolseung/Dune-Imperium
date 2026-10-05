@@ -37,6 +37,15 @@ App side (``analysis/ai/15-combat-phase.md`` incl. Errata, ``spec/engine-order.m
   Endgame ability that can run for every seat, then ``ScoreBattleIconsPairs
   (includeWildcards = true)`` scores each seat's battle-icon sets; no prompt.
 
+Bloodlines (app-style, ``docs/app-ai/bloodlines-cards.md`` §4.1, §6): the
+Bloodlines Combat intrigues are ordinary keys (their requests and option
+mapping in ``windows.intrigue``); the two Bloodlines Conflicts' rewards are
+answered by the ported classes their synthetic reward archetypes list
+(Skirmish (Wild) 1st: ``TrashConflictCustomAbility``; Storms in the South
+1st: the deep-cover Spy by ``spy_answer``); at the Endgame Grasp Arrakis
+flips after the pairs are scored and two wild icons left over pair with
+each other (``endgame_intrigue``).
+
 The app's reward window sees the sole winner's battle icon already scored
 (``ResolveCombat`` runs it before the place-1 window); ours scores it in
 ``finish_combat`` after every reward frame. ``app_reward_run`` rebuilds the
@@ -53,6 +62,9 @@ from dune_imperium.agents.app_ai.abilities.base import (
     Ability,
     Request,
     TargetInfo,
+)
+from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+    GraspArrakisEndgameAbility,
 )
 from dune_imperium.agents.app_ai.abilities.board import (
     GainAnyTwoInfluenceConflictAbility,
@@ -117,6 +129,8 @@ _PLAYMAT = Entity(Kind.LEADER, "playmat")
 _COMBAT_INTRIGUE_ACTIONS = frozenset(
     {"pass_combat_intrigue", "play_intrigue", "return_specimen"}
 )
+#: The app's ``BattleIcon`` name of the wild icon (``abilities/intrigue``).
+_WILD_ICON = "Wildcard"
 _CONTROL_DEFENSE_ACTIONS = frozenset(
     {"deploy_control_defense", "decline_control_defense", "return_specimen"}
 )
@@ -208,8 +222,11 @@ def _reward_ability[A: Ability](
     (``board.granted_reward_abilities``: an Uprising card's reward archetype
     ``CustomAbilityIDs``, ``GenericConflictAbility/<BeginExecution>d__3``,
     15 §3.3; Economic Supremacy's 1st place its Solari / Spice charges,
-    epic-goto11-promo-draft §2.4); every place if the seat has none. None
-    outside the catalog (Bloodlines Conflicts): not mirrored.
+    epic-goto11-promo-draft §2.4); every place if the seat has none. The
+    Bloodlines Conflicts' synthetic reward archetypes list the same ported
+    classes (``docs/app-ai/bloodlines-cards.md`` §6: Skirmish (Wild) 1st
+    ``TrashConflictCustomAbility``, Storms in the South 1st
+    ``PlaceSpyCustomAbility``). None outside the catalog: not mirrored.
     """
 
     conflict = _conflict(run)
@@ -652,23 +669,56 @@ def endgame_intrigue(run: DecisionRun) -> DomainAction | None:
     else ``pass_endgame_intrigue`` (final, OQ-001). A play or match the app
     would not make is never taken. The Crysknife-family flip target is the
     ``intrigue_choice`` window's (``complete_battle_icon_pair_card``).
+
+    Bloodlines (app-style, ``docs/app-ai/bloodlines-cards.md`` §4.1, §6, D17):
+    Grasp Arrakis' Endgame half runs after the pairs are scored (it flips
+    the cheapest face-up cards left, ``intrigue_choice``); the two wild
+    Conflicts may pair with each other [Bloodlines p. 5], which the app's
+    ``ScoreBattleIconsPairs`` never does (it has no such rule), so the wild
+    icons its sets leave are paired with each other in list order after the
+    app's sets (judgement: the scoring the app engine runs without asking,
+    extended by the Bloodlines rule). Without Bloodlines nothing changes.
     """
 
     p = run.profile
     plays = run.by_id("play_intrigue")
-    for card, _ability in endgame_auto_plays(p):
+    after_pairs: list[Entity] = []
+    for card, ability in endgame_auto_plays(p):
+        if isinstance(ability, GraspArrakisEndgameAbility):
+            after_pairs.append(card)
+            continue
         action = with_arg(plays, "card_id", card.ref)
         if action is not None:
             return action
     matches = run.by_id("match_endgame_wild_icon")
-    for matching, wild in endgame_wild_pairs(p):
+    wild_wild = _wild_wild_pairs(run)
+    for pair in (*endgame_wild_pairs(p), *wild_wild):
         for action in matches:
-            if (
-                str_arg(action, "matching_card_id") == matching
-                and str_arg(action, "wild_card_id") == wild
-            ):
+            offered = (
+                str_arg(action, "matching_card_id"),
+                str_arg(action, "wild_card_id"),
+            )
+            if offered == pair or (pair in wild_wild and set(offered) == set(pair)):
                 return action
+    for card in after_pairs:
+        action = with_arg(plays, "card_id", card.ref)
+        if action is not None:
+            return action
     return run.first("pass_endgame_intrigue")
+
+
+def _wild_wild_pairs(run: DecisionRun) -> list[tuple[str, str]]:
+    """Bloodlines only: the wild icons the app's closing sets leave, paired
+    with each other in ``BattleIconList`` order (our engine lists such a
+    pair once, in sorted order, so it is matched as an unordered pair)."""
+
+    if not run.ctx.bloodlines:
+        return []
+    _sets, left = score_battle_icons_pairs(
+        battle_icon_list(run.ctx.me), include_wildcards=True
+    )
+    wilds = [ref for ref, icon in left if icon == _WILD_ICON]
+    return list(zip(wilds[0::2], wilds[1::2], strict=False))
 
 
 HANDLERS: dict[str, Handler] = {

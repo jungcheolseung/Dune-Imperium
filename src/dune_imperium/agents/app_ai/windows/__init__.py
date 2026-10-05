@@ -2,10 +2,12 @@
 
 from dune_imperium.agents.app_ai.windows import (
     agent_effects,
+    bloodlines,
     combat,
     immortality,
     intrigue,
     reveal,
+    scouts,
     setup,
     turn,
     uprising,
@@ -24,6 +26,8 @@ def _merged() -> dict[str, Handler]:
         uprising,
         setup,
         immortality,
+        scouts,
+        bloodlines,
     ):
         for kind, handler in module.HANDLERS.items():
             if kind in handlers:

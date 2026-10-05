@@ -154,10 +154,11 @@ def _hand_count(p: Profile) -> int:
 
 
 def _conflict_units(p: Profile) -> int:
-    """``P.ConflictUnits`` (R5 §4.5: troops + sandworms in the Conflict)."""
+    """``P.ConflictUnits`` (R5 §4.5: troops + sandworms in the Conflict; with
+    Bloodlines also Commanders and the Into the Fray Agent,
+    bloodlines-systems.md §1.1, D1, plan §11.8)."""
 
-    me = p.ctx.me
-    return me.troops_conflict + me.sandworms_conflict
+    return p.conflict_unit_count()
 
 
 def _deployed_spies(p: Profile) -> int:
@@ -702,11 +703,12 @@ class ChaniCleverTacticianAgentAbility(DeferredAbility):
         """``ChaniCleverTacticianAgentAbility::ValueForPlayer`` @0x4cf30d0.
 
         ``P.ConflictUnits + P.GarrisonUnits >= 3`` (``jl``; the garrison may
-        still deploy) -> ``+ IntrigueValue``.
+        still deploy) -> ``+ IntrigueValue``. Bloodlines Commanders count in
+        both (§1.1, D1).
         """
 
         v = Summer()
-        if _conflict_units(p) + p.ctx.me.troops_garrison >= 3:
+        if _conflict_units(p) + p.garrison_troop_count() >= 3:
             v.add("Chani Clever Tactician Intrigue", p.intrigue_value())
         return v
 
@@ -733,11 +735,12 @@ class ChaniCleverTacticianRevealAbility(DeferredAbility):
 
     def _wants_retreat(self, p: Profile) -> bool:
         """The shared condition of E and V: >= 3 units and >= 2 troops in the
-        Conflict, and not the final round."""
+        Conflict (Bloodlines Commanders are troops, §1.1, D1), and not the
+        final round."""
 
         return (
             _conflict_units(p) >= 3
-            and p.ctx.me.troops_conflict >= 2
+            and p.conflict_troop_count() >= 2
             and not p.is_final_round()
         )
 

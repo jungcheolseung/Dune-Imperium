@@ -261,6 +261,50 @@ Immortality, Epic Game Mode and the promos (``spec/immortality.md`` §4-§8,
   ``FamilyAtomicsAbility`` (E only in a Reveal turn: never here), prompt
   sources like any other key, so a mid-effect offer (our engine offers them
   at every decision) is never taken before the app's prompt opens.
+Bloodlines, the Tech Module and Arrakeen Scouts (app-style extensions,
+``docs/app-ai-plan.md`` §11; ``docs/app-ai/bloodlines-cards.md`` §8,
+``bloodlines-systems.md`` §2.3, §3.4, §4, §6, ``scouts.md`` §3.3, §3.5):
+
+- The space: ``acquire_sardaukar_commander`` / ``decline_sardaukar_commander``
+  is ``AcquireCommanderAbility`` (E; the empty answer at 0.5 declines; no
+  purchase offered: the refusal is a chore); the Landsraad visit's
+  ``acquire_tech`` / ``decline_tech`` is the RoI ``AcquireTechAbility`` (E,
+  likewise; Advanced Data Analysis boxes the worst-post Spy); a bought
+  tile's ``resolve_tech_acquire_effect`` keys are follow-ups in the engine's
+  key order (Memocorders' track, Gene-Locked Vault's choice,
+  ``ShouldBlowWall``; D15); ``take_tuek_sietch_*`` is
+  ``TueksSietchDeferredAbility`` (E); Hagga Basin's ``DesertRidingAbility``
+  answers option 2 with ``take_desert_riding_hooks``;
+  ``scouts_collect_mission`` is ``MissionPiecesSpaceAbility``, automatic at
+  state 400 in its icon's place; ``choose_subcommittee`` is
+  ``SubcommitteeOfferAbility`` (O; its pick kept for the
+  ``scouts_subcommittee`` window, ``SUBCOMMITTEE_INTENT``),
+  ``decline_subcommittee`` the unused key.
+- The card: ``_BLOODLINES_BOX_ABILITY`` boxes gated by their ``Cost``,
+  Ixian Ambassador and Quash Rebellion the generic box (500), the Bond
+  choices of Southern Faith and Possible Futures (``_bond_choice``),
+  Fremen War Name's icons (gated), the trash / discard tables (Ruthless
+  Leadership, Eliminate Allies, Elite Forces whose reward icons follow;
+  Arrakis Observer, whose Spy with Deep Cover follows, Engineered
+  Miracle, I Believe), CHOAM Demands' ``complete_contract_by_card`` and
+  Disruption Tactics' ``retreat_opponent_troop`` (E, forced).
+- The leader: Harkonnen Advisor (``WarmasterAbility``) and Judge of the
+  Change run by themselves; Fedaykin Maneuver, Corrino Liaison, Into the
+  Fray and Listeners (O), Smuggle Spice and Reverse Engineering (E) are
+  their ``SignetAbility`` keys (``_BLOODLINES_SIGNETS``); Duncan's Into the
+  Fray Agent is the last recall candidate (D55: Steersman, Imperial
+  Privilege, and the targets a ``RecallAgentContractAbility`` key is valued
+  with); Mohiam's mandatory Gather Intelligence recalls ``GetRecallSpy``'s
+  Spy even when the app's answer is "no" (§4.5).
+- The playmat: ``flip_tech`` (the tile's Flip key, O) and
+  ``recruit_sardaukar_commander`` (``RecruitCommanderAbility``, O).
+- Deployment: troops and Commanders are the garrison units (D1); the count
+  is split by kind, the other kind kept as a follow-up (D6,
+  ``DEPLOY_SPLIT_INTENT``); off a Combat space a ``DeployUnitsAbility`` key
+  (D61). ``withdraw_commanders``: never.
+- These ids are known only in a game with the option
+  (``_BLOODLINES_ACTION_IDS``, ``_SCOUTS_ACTION_IDS``).
+
 - An action no builder maps (an unknown card or icon) is not guessed:
   the window returns None and the agent falls back (counted). The same
   holds where a builder finds no app ability to rank the action (a leader's
@@ -287,6 +331,10 @@ from dune_imperium.agents.app_ai.abilities.base import (
     abilities_of,
     ability_for,
 )
+from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+    retreat_target_code,
+    retreat_target_of,
+)
 from dune_imperium.agents.app_ai.abilities.board import (
     BeneGesseritContractAbility,
 )
@@ -312,14 +360,19 @@ from dune_imperium.agents.app_ai.abilities.leaders import (
     training_space_entity,
 )
 from dune_imperium.agents.app_ai.catalog import (
+    DEPLOY_UNITS_ABILITY,
     LEADER_ARCHETYPES,
     agent_entity,
     card_entity,
+    commander_entity,
     contract_entity,
     intrigue_entity,
     leader_entity,
+    skill_entity,
+    skill_id_of,
     space_entity,
     spy_entity,
+    tech_entity,
     track_entity,
 )
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
@@ -338,15 +391,22 @@ from dune_imperium.agents.app_ai.windows.common import (
     worst_recall_action,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
-from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, Memory
-from dune_imperium.agents.app_ai.windows.turn import playmat_sources
+from dune_imperium.agents.app_ai.windows.run import (
+    DecisionRun,
+    Handler,
+    Memory,
+    arg,
+)
+from dune_imperium.agents.app_ai.windows.turn import board_space_order, playmat_sources
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import STITCHED_HORROR_REWARDS
+from dune_imperium.rules.frames import COMMANDERS_RECRUITED_KEY
 from dune_imperium.rules.graft import apply_graft_switch
 
 _AU = "worm.canis.abilities.ActivatedAbilities.Uprising."
 _PLACE_SPY_CUSTOM = _AU + "PlaceSpyCustomAbility"
+_RECRUIT_COMMANDER = "worm.canis.abilities.AppStyle.Bloodlines.RecruitCommanderAbility"
 _RECALL_SPY_INTELLIGENCE = _AU + "RecallSpyIntelligenceAbility"
 _IRULAN = "LeaderArchetypes.Uprising.PrincessIrulan"
 
@@ -419,10 +479,19 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",
     ("tleilaxu_infiltrator", "cards"): "DrawAbility",
     ("tleilaxu_infiltrator", "intrigue"): "TleilaxuInfiltratorAbility",
+    # Bloodlines (bloodlines-cards.md §3.12): each icon waits until two spice
+    # were gained (OQ-057 (1)); gated by its Cost (``_GATED_ICON_CARDS``).
+    ("fremen_war_name", "troops"): "FremenWarNameTroopAbility",
+    ("fremen_war_name", "cards"): "FremenWarNameDrawAbility",
 }
+#: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
+#: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
+_GATED_ICON_CARDS = ("fremen_war_name",)
 #: Cards whose reward icons are armed after an arrow cost: the app answered
-#: the whole ability at once, so the icons are follow-ups.
-_ARMED_REWARD_CARDS = ("captured_mentat", "guild_spy", "branching_path")
+#: the whole ability at once, so the icons are follow-ups. Elite Forces
+#: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
+#: troop (and Combat icon) follow.
+_ARMED_REWARD_CARDS = ("captured_mentat", "guild_spy", "branching_path", "elite_forces")
 #: Our trash choice of each card -> its app ability.
 _TRASH_ABILITY: Mapping[str, str] = {
     "calculus_of_power": "TrashAgentAbility",
@@ -434,6 +503,13 @@ _TRASH_ABILITY: Mapping[str, str] = {
     # Crysknife ``TrashAbility`` (Explicit: "nothing" is the decline).
     "replacement_eyes": "ReplacementEyesAgentAbility",
     "the_beast_s_spoils": "TheBeastsSpoilsCrysknifeAbility",
+    # Bloodlines (bloodlines-cards.md §3.1, §3.9, §3.10): Ruthless
+    # Leadership's two keys (one per trash, both ``TrashAbility``: an empty
+    # pick is the decline), Eliminate Allies' generic ``TrashAgentAbility``,
+    # Elite Forces' Optional hand trash.
+    "ruthless_leadership": "RuthlessLeadershipTrashAbility",
+    "eliminate_allies": "TrashAgentAbility",
+    "elite_forces": "EliteForcesAgentAbility",
 }
 _DISCARD_ABILITY: Mapping[str, str] = {
     "captured_mentat": "CapturedMentatAgentAbility",
@@ -441,6 +517,11 @@ _DISCARD_ABILITY: Mapping[str, str] = {
     "space_time_folding": "SpacetimeFoldingAbility",
     "guild_envoy": "GuildEnvoyAbility",
     "delivery_agreement": "DeliveryAgreementAgentAbility",
+    # Bloodlines (bloodlines-cards.md §2.4): ``DiscardForRewardAgentAbility``
+    # (Optional; the unused key is the decline).
+    "arrakis_observer": "ArrakisObserverAgentAbility",
+    "engineered_miracle": "EngineeredMiracleAgentAbility",
+    "i_believe": "IBelieveAgentAbility",
 }
 _PAYMENT_ABILITY: Mapping[str, str] = {
     "ecological_testing_station": "EcologicalTestingStationAbility",
@@ -569,7 +650,55 @@ _SIGNET_BOX_ABILITY: Mapping[str, str] = {
     "gurney_halleck": "WarmasterAbility",
     "lady_amber_metulli": "FillCoffersAbility",
     "muad_dib": "LeadTheWayAbility",
+    # Bloodlines (bloodlines-systems.md §4.6, §4.8): Harkonnen Advisor reuses
+    # ``WarmasterAbility`` (D41); Judge of the Change runs by itself (D45).
+    "piter_de_vries": "WarmasterAbility",
+    "liet_kynes": "JudgeOfTheChangeSignetAbility",
 }
+#: Bloodlines Agent boxes resolved by ``resolve_agent_card_effect()`` and the
+#: card's own ability (bloodlines-cards.md §3), gated by its ``Cost`` (a box
+#: whose Cost fails has no app key: a chore).
+_BLOODLINES_BOX_ABILITY: Mapping[str, str] = {
+    "holy_war": "HolyWarAgentAbility",
+    "urgent_shigawire": "UrgentShigawireAgentAbility",
+    "imperial_throneship": "AgentGainIntrigueAbility",
+    "shrouded_counsel": "AgentGainIntrigueAbility",
+    "command_center": "CommandCenterAgentAbility",
+    "sandwalk": "SandwalkDrawAbility",
+    "mercantile_affairs": "MercantileAffairsAgentAbility",
+    "pointing_the_way": "PointingTheWayAgentAbility",
+    "corrupt_bureaucrat": "CorruptBureaucratAgentAbility",
+    # Without the Bene Gesserit Bond the box is the draw alone (option 0).
+    "southern_faith": "SouthernFaithAgentAbility",
+}
+#: Bloodlines boxes with printed gains only (``AgentSpice`` / ``AgentSolari``):
+#: the generic agent box (state 500).
+_BLOODLINES_GENERIC_BOX_CARDS = ("ixian_ambassador", "quash_rebellion")
+#: Bond choices whose plain resolution is one option of the card's influence
+#: choice (``_bond_choice``): the box action is consumed there.
+_BOND_CHOICE_CARDS: Mapping[str, str] = {
+    "southern_faith": "SouthernFaithAgentAbility",
+    "possible_futures": "PossibleFuturesAgentAbility",
+}
+#: Tech tiles with a Flip activation -> its app-style ability
+#: (bloodlines-systems.md §3.3, D23-D25).
+_FLIP_ABILITY: Mapping[str, str] = {
+    "advanced_data_analysis": "AdvancedDataAnalysisAbility",
+    "spy_drones": "SpyDronesAbility",
+    "rapid_dropships": "RapidDropshipsAbility",
+}
+#: The Into the Fray Agent as a recall candidate (``Kind.AGENT`` whose ref is
+#: no space: ``GetRecallAgent`` skips it, bloodlines-systems.md §8, D55).
+_CONFLICT_AGENT = "conflict"
+#: ``Memory.intents`` keys of the Bloodlines and Scouts answers this window
+#: writes: ``(DEPLOY_SPLIT_INTENT, round, seat, card ref) -> (action id,
+#: count)`` (the other kind of a split deployment, this window) and
+#: ``(SUBCOMMITTEE_INTENT, round, seat) -> subcommittee id`` (the
+#: ``scouts_subcommittee`` window, scouts.md §3.3).
+DEPLOY_SPLIT_INTENT = "agent_effects_deploy_split"
+SUBCOMMITTEE_INTENT = "subcommittee"
+#: An ``on_choose`` value that drops its key (a follow-up used up).
+_DROP: object = object()
 #: Feyd's trash stage -> its custom ability (``PersonalTraining*``).
 _FEYD_TRASH_ABILITY: Mapping[str, str] = {
     "paid_trash": "PersonalTrainingPayToTrashAbility",
@@ -672,6 +801,46 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "use_family_atomics",
         "use_other_memories",
         "withdraw_troops",
+    }
+)
+#: The ids Bloodlines and the Tech Module add (bloodlines-cards.md §8,
+#: bloodlines-systems.md §2.3, §3.4, §4; ``withdraw_commanders``: never),
+#: known only in a Bloodlines game (an unexpected one falls back).
+_BLOODLINES_ACTION_IDS: frozenset[str] = frozenset(
+    {
+        "acquire_sardaukar_commander",
+        "acquire_tech",
+        "complete_contract_by_card",
+        "decline_sardaukar_commander",
+        "decline_tech",
+        "deploy_commanders",
+        "deploy_leader_agent",
+        "flip_tech",
+        "gain_leader_signet_spice",
+        "pay_leader_signet_water",
+        "place_leader_bonus_spice",
+        # Imperial Privilege recalling Duncan's Into the Fray Agent (D55,
+        # ``_imperial_privilege``).
+        "recall_conflict_agent_for_imperial_privilege",
+        "recruit_sardaukar_commander",
+        "resolve_tech_acquire_effect",
+        "retreat_leader_troops",
+        "retreat_opponent_troop",
+        "take_leader_bonus_spice",
+        "take_tuek_sietch_card",
+        "take_tuek_sietch_spice",
+        "trash_leader_tech",
+        "withdraw_commanders",
+    }
+)
+#: The ids Arrakeen Scouts adds here (scouts.md §3.3, §3.5), known only in a
+#: Scouts game.
+_SCOUTS_ACTION_IDS: frozenset[str] = frozenset(
+    {
+        "choose_subcommittee",
+        "decline_subcommittee",
+        "scouts_collect_mission",
+        "take_desert_riding_hooks",
     }
 )
 
@@ -1291,13 +1460,22 @@ def _maker(t: _Turn) -> None:
         if harvest is not None:
             _automatic(t, "Imperial Basin spice", Stage.SPACE, harvest)
         return
-    found = _find(t.space, "HaggaBasinUprisingDeferredAbility") or _find(
-        t.space, "DeepDesertDeferredAbility"
+    # Arrakeen Scouts swaps Hagga Basin's ability for ``DesertRidingAbility``
+    # (a ``HaggaBasinUprisingDeferredAbility``; scouts.md §3.5, §4.2, D27):
+    # its option 2 takes the Desert Riding hooks.
+    found = (
+        _find(t.space, "DesertRidingAbility")
+        or _find(t.space, "HaggaBasinUprisingDeferredAbility")
+        or _find(t.space, "DeepDesertDeferredAbility")
     )
-    uses = tuple(a for a in (harvest, summon) if a is not None)
+    hooks = t.run.first("take_desert_riding_hooks")
+    uses = tuple(a for a in (harvest, summon, hooks) if a is not None)
 
     def answer(ans: Answer) -> DomainAction | None:
-        if _response_ref(ans) == 1 and summon is not None:
+        option = _response_ref(ans)
+        if option == 2 and hooks is not None:
+            return hooks
+        if option == 1 and summon is not None:
             return summon
         return harvest
 
@@ -1367,19 +1545,18 @@ def _imperial_privilege(t: _Turn) -> None:
             decline,
         )
     recall = t.by_id("recall_agent_for_imperial_privilege")
-    if recall:
-        agents = tuple(
-            agent_entity(space, t.seat) for space in _arg_refs(recall, "space_id")
-        )
+    conflict = t.run.first("recall_conflict_agent_for_imperial_privilege")
+    if recall or conflict is not None:
         # UNTRACED order: our engine draws the space's card with the recall;
         # the app draws it at state 600 unless the threshold is reached.
+        # Duncan's Into the Fray Agent is the last candidate (D55).
         _choice_source(
             t,
             "Imperial Privilege recall",
             _find(t.space, "RecallAgentAbility"),
-            recall,
-            Request(infos=(TargetInfo(entities=agents),)),
-            _ref_or(recall, "space_id", None),
+            (*recall, *((conflict,) if conflict is not None else ())),
+            _recall_request(t, recall, conflict),
+            _recall_answer(recall, conflict),
             None,
         )
     without = t.run.first("resolve_imperial_privilege_without_recall")
@@ -1391,6 +1568,248 @@ def _imperial_privilege(t: _Turn) -> None:
             _ROW_SPACE,
             without,
         )
+
+
+# -- Bloodlines and Arrakeen Scouts on the space ---------------------------------------
+
+
+def _tuek_sietch(t: _Turn) -> None:
+    """Tuek's Sietch: ``TueksSietchDeferredAbility`` (Explicit; bloodlines-
+    systems.md §6, D37): option 0 -> ``take_tuek_sietch_spice``, 1 ->
+    ``take_tuek_sietch_card`` (the bonus spice rides on either)."""
+
+    spice = t.run.first("take_tuek_sietch_spice")
+    card = t.run.first("take_tuek_sietch_card")
+    uses = tuple(a for a in (spice, card) if a is not None)
+    if not uses:
+        return
+
+    def answer(ans: Answer) -> DomainAction | None:
+        return card if _response_ref(ans) == 1 else spice
+
+    _choice_source(
+        t,
+        "Tuek's Sietch",
+        _find(t.space, "TueksSietchDeferredAbility"),
+        uses,
+        Request(),
+        answer,
+        None,
+    )
+
+
+def _commander_acquire(t: _Turn) -> None:
+    """The space's Sardaukar Commander: ``AcquireCommanderAbility``
+    (Explicit; bloodlines-systems.md §2.2-2.3, D3) over the offered Skills in
+    face-up order: ``((skill,),)`` -> ``acquire_sardaukar_commander(skill)``,
+    ``((),)`` -> the Commander without a Skill, the empty answer at 0.5 ->
+    ``decline_sardaukar_commander``. With no purchase offered (the cost
+    cannot be paid, the Commander is gone) the app has no key: the refusal
+    is a chore."""
+
+    acquire = t.by_id("acquire_sardaukar_commander")
+    decline = t.run.first("decline_sardaukar_commander")
+    if not acquire:
+        if decline is not None:
+            t.chores.append(decline)
+        return
+    found = _find(t.space, "AcquireCommanderAbility")
+    if found is None:
+        t.unmapped.append("Sardaukar Commander")
+        return
+    ability = found[0]
+    p = t.p
+    skills = tuple(skill_entity(ref) for ref in _arg_refs(acquire, "skill_id"))
+    request = Request(infos=(TargetInfo(entities=skills),))
+    plain = next((a for a in acquire if str_arg(a, "skill_id") is None), None)
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ans = ability.evaluate(p, request)
+        if ans.response is None:
+            return ans.value, None
+        if not ans.response:
+            return ans.value, decline  # the empty answer: no Commander
+        ref = _response_ref(ans)
+        if ref is None:
+            return ans.value, plain
+        return ans.value, with_arg(acquire, "skill_id", skill_id_of(str(ref)))
+
+    uses = (*acquire, *((decline,) if decline is not None else ()))
+    _prompt(t, "Sardaukar Commander", uses, evaluate, explicit=_explicit(ability, p))
+
+
+def _recruit_commander(t: _Turn) -> None:
+    """``recruit_sardaukar_commander``: the playmat's ``RecruitCommanderAbility``
+    (Optional; bloodlines-systems.md §2.2, D5): its net when > 0, 100 while
+    the deployment can still take it; an unused key needs no decline."""
+
+    action = t.run.first("recruit_sardaukar_commander")
+    if action is None:
+        return
+    ability = ability_for(_RECRUIT_COMMANDER, commander_entity())
+    _ability_source(t, "Recruit Commander", (ability, 0), _ROW_PLAYMAT, action)
+
+
+def _tech_acquire(t: _Turn) -> None:
+    """The Landsraad visit's Acquire Tech (bloodlines-systems.md §3.1, §3.4):
+    the space's ``AcquireTechAbility`` (Explicit; TechDiscount 0) over the
+    offered tiles (stack order, then the own Secret Project): ``((tile,),)``
+    -> ``acquire_tech(tile)``, the empty answer at 0.5 -> ``decline_tech``.
+    Advanced Data Analysis boxes the Spy on the worst post
+    (``RecallSpyEvaluator``, D14). Nothing affordable: no app key (its
+    ``Cost`` fails), the refusal is a chore."""
+
+    acquire = t.by_id("acquire_tech")
+    decline = t.run.first("decline_tech")
+    if not acquire:
+        if decline is not None:
+            t.chores.append(decline)
+        return
+    found = _find(t.space, "AcquireTechAbility")
+    if found is None:
+        t.unmapped.append("Acquire Tech")
+        return
+    ability = found[0]
+    p = t.p
+    run = t.run
+    tech_ids = list(dict.fromkeys(_arg_refs(acquire, "tech_id")))
+    request = Request(infos=(TargetInfo(entities=tuple(map(tech_entity, tech_ids))),))
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ans = ability.evaluate(p, request)
+        if ans.response is None:
+            return ans.value, None
+        ref = _response_ref(ans)
+        if ref is None:
+            return ans.value, decline  # the empty answer: no tile
+        variants = [a for a in acquire if str_arg(a, "tech_id") == ref]
+        if len(variants) > 1:  # Advanced Data Analysis: one per own Spy
+            return ans.value, worst_recall_action(run, variants)
+        return ans.value, (variants[0] if variants else None)
+
+    uses = (*acquire, *((decline,) if decline is not None else ()))
+    _prompt(t, "Acquire Tech", uses, evaluate, explicit=_explicit(ability, p))
+
+
+def _tech_acquire_effects(t: _Turn) -> None:
+    """``resolve_tech_acquire_effect``: the bought tile's owed icons resolved
+    at once in the engine's key order (bloodlines-systems.md §3.1, D15), as
+    follow-ups before anything else. The first owed key's variants are the
+    choice: ``influence`` by ``MemocordersAcquiredAbility`` E (FACTIONS
+    order), ``intrigue_or_card`` by ``GeneLockedVaultAcquiredAbility`` E,
+    ``shield_wall`` destroyed iff ``ShouldBlowWall`` (D20)."""
+
+    actions = t.by_id("resolve_tech_acquire_effect")
+    if not actions:
+        return
+    first = actions[0]
+    tech_id = str_arg(first, "tech_id")
+    effect = str_arg(first, "effect")
+    # A key owed twice (Ornithopter Fleet's two troops) is offered twice.
+    variants = list(
+        dict.fromkeys(
+            a
+            for a in actions
+            if str_arg(a, "tech_id") == tech_id and str_arg(a, "effect") == effect
+        )
+    )
+    label = f"tech {tech_id} {effect}"
+    p = t.p
+    chosen: DomainAction | None = None
+    if len(variants) == 1:
+        chosen = variants[0]
+    elif tech_id is not None and effect == "influence":
+        found = _find(tech_entity(tech_id), "MemocordersAcquiredAbility")
+        if found is not None:
+            offered = set(_arg_refs(variants, "faction"))
+            tracks = tuple(track_entity(f) for f in FACTIONS if f in offered)
+            ans = found[0].evaluate(p, Request(infos=(TargetInfo(entities=tracks),)))
+            chosen = with_arg(variants, "faction", _response_ref(ans))
+    elif tech_id is not None and effect == "intrigue_or_card":
+        found = _find(tech_entity(tech_id), "GeneLockedVaultAcquiredAbility")
+        if found is not None:
+            ans = found[0].evaluate(p, Request())
+            option = _response_ref(ans)
+            pick = "intrigue" if option == 0 else "card" if option == 1 else None
+            chosen = with_arg(variants, "choice", pick) if pick else None
+    elif effect == "shield_wall":
+        destroy = next(
+            (a for a in variants if arg(a, "destroy_shield_wall") is True), None
+        )
+        plain = next((a for a in variants if a is not destroy), None)
+        chosen = destroy if destroy is not None and p.should_blow_wall() else plain
+    if chosen is None:
+        t.unmapped.append(label)
+        return
+    _automatic(t, label, _FOLLOW_UP, chosen, -3)
+
+
+def _flips(t: _Turn) -> None:
+    """``flip_tech(tile)``: the tile's Flip activation (Optional; bloodlines-
+    systems.md §3.3, D23-D25), a post-action key at its ``Evaluate``."""
+
+    for action in t.by_id("flip_tech"):
+        tech_id = str_arg(action, "tech_id") or ""
+        name = _FLIP_ABILITY.get(tech_id)
+        found = _find(tech_entity(tech_id), name) if name is not None else None
+        _ability_source(t, f"flip {tech_id}", found, _ROW_PLAYMAT, action)
+
+
+def _mission_collect(t: _Turn) -> None:
+    """``scouts_collect_mission(choice)``: the visit's mission pieces
+    (``MissionPiecesSpaceAbility``; scouts.md §3.5, D26), automatic with the
+    space's own gains (state 400) at its icon's place. With Imperial
+    Reserve's two goods its E picks (spice on ties)."""
+
+    actions = t.by_id("scouts_collect_mission")
+    if not actions:
+        return
+    icons = str(t.context.get("board_icons", "")).split(",")
+    order = icons.index("scouts_mission") if "scouts_mission" in icons else len(icons)
+    chosen: DomainAction | None = actions[0] if len(actions) == 1 else None
+    if chosen is None:
+        found = _find(t.space, "MissionPiecesSpaceAbility")
+        if found is not None:
+            ans = found[0].evaluate(t.p, Request())
+            chosen = with_arg(actions, "choice", _response_ref(ans))
+    if chosen is None:
+        t.unmapped.append("Scouts mission pieces")
+        return
+    _automatic(t, "Scouts mission pieces", Stage.SPACE, chosen, order)
+
+
+def _subcommittee(t: _Turn) -> None:
+    """The new High Council seat's subcommittee (scouts.md §3.3, D23):
+    ``SubcommitteeOfferAbility`` (Optional) realised by
+    ``choose_subcommittee``; the picked id is kept for the
+    ``scouts_subcommittee`` window (``(SUBCOMMITTEE_INTENT, round, seat)``).
+    ``decline_subcommittee`` is the unused key."""
+
+    choose = t.run.first("choose_subcommittee")
+    decline = t.run.first("decline_subcommittee")
+    if choose is None and decline is None:
+        return
+    if decline is not None:
+        t.declines.append(decline)
+    if choose is None:
+        return
+    found = _find(t.space, "SubcommitteeOfferAbility")
+    if found is None:
+        t.unmapped.append("Subcommittee")
+        return
+    ability = found[0]
+    p = t.p
+    key = (SUBCOMMITTEE_INTENT, t.run.ctx.round_number, t.seat)
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ans = ability.evaluate(p, Request())
+        ref = _response_ref(ans)
+        if ans.response is None or ref is None:
+            return ans.value, None
+        t.on_choose[choose] = [(key, ref)]
+        return ans.value, choose
+
+    _prompt(t, "Subcommittee", (choose,), evaluate, explicit=_explicit(ability, p))
 
 
 # -- the card's Agent box -------------------------------------------------------------
@@ -1423,6 +1842,9 @@ def _single_box(t: _Turn, action: DomainAction) -> None:
         return
     if short in _EXPANSION_BOX_CARDS:
         _expansion_box(t, short, action)
+        return
+    if short in _BLOODLINES_BOX_CARDS:
+        _bloodlines_box(t, short, action)
         return
     name = _BOX_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
@@ -1540,6 +1962,42 @@ def _clandestine_meeting(t: _Turn, label: str, action: DomainAction) -> None:
     _ability_source(t, label, first, _ROW_CARD, action)
 
 
+#: Every Bloodlines single box ``_bloodlines_box`` answers.
+_BLOODLINES_BOX_CARDS = frozenset(
+    {*_BLOODLINES_BOX_ABILITY, *_BLOODLINES_GENERIC_BOX_CARDS, *_BOND_CHOICE_CARDS}
+)
+
+
+def _bloodlines_box(t: _Turn, short: str, action: DomainAction) -> None:
+    """``resolve_agent_card_effect()`` of a Bloodlines card (bloodlines-cards.md
+    §3, §8): its own ability gated by its ``Cost`` (Holy War, Urgent
+    Shigawire, Command Center, Fremen-spice and contract riders), the Agent
+    Intrigue (``AgentGainIntrigueAbility``, always immediate), or the generic
+    box (Ixian Ambassador's spice, Quash Rebellion's Solari). A Bond choice's
+    plain resolution is one option of ``_bond_choice`` when its influence
+    pick is offered."""
+
+    label = f"{short} box"
+    if short in _BOND_CHOICE_CARDS and t.by_id("choose_agent_card_influence"):
+        return  # one option of the card's influence choice (_bond_choice)
+    if short in _BLOODLINES_GENERIC_BOX_CARDS:
+        _box_auto(t, label, action)
+        return
+    if short == "possible_futures":
+        # Without an influence pick the box is the two troops alone (option
+        # 1 of ``PossibleFuturesAgentAbility``); our engine always offers the
+        # pick with it, so this is never reached in play: no guess.
+        t.unmapped.append(label)
+        return
+    found = _find(t.card, _BLOODLINES_BOX_ABILITY[short])
+    request = (
+        _contract_request(t)
+        if found is not None and isinstance(found[0], GainContractAbility)
+        else None
+    )
+    _gated_ability_source(t, label, found, _ROW_CARD, action, request)
+
+
 def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     short = t.card_short or ""
     label = f"{short} {effect}"
@@ -1553,6 +2011,9 @@ def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     found = _find(t.card, name) if name is not None else None
     if found is None:
         t.unmapped.append(label)
+        return
+    if short in _GATED_ICON_CARDS:
+        _gated_ability_source(t, label, found, _ROW_CARD, action)
         return
     _ability_source(t, label, found, _ROW_CARD, action)
 
@@ -1573,6 +2034,8 @@ def _card_choices(t: _Turn) -> None:
         _tleilaxu_master(t)
     else:
         _price_is_no_object(t)
+    _choam_demands(t)
+    _disruption_tactics(t)
 
 
 def _card_trash(t: _Turn, short: str) -> None:
@@ -2107,27 +2570,50 @@ def _card_recall(t: _Turn, short: str) -> None:
         _twisted_mentat(t)
         return
     recall = t.by_id("recall_agent_for_agent_card")
-    if t.by_id("recall_conflict_agent_for_agent_card", "decline_agent_card_recall"):
-        t.unmapped.append(f"{short} recall")  # no app twin (Into the Fray, …)
+    conflict = t.run.first("recall_conflict_agent_for_agent_card")
+    if t.run.first("decline_agent_card_recall") is not None:
+        t.unmapped.append(f"{short} recall")  # no app twin of an optional recall
         return
-    if not recall:
+    if not recall and conflict is None:
         return
     found = _find(t.card, "RecallAgentAbility")
     if found is None:
         t.unmapped.append(f"{short} recall")
         return
-    agents = tuple(
-        agent_entity(space, t.seat) for space in _arg_refs(recall, "space_id")
-    )
     _choice_source(
         t,
         "Steersman recall",
         found,
-        recall,
-        Request(infos=(TargetInfo(entities=agents),)),
-        _ref_or(recall, "space_id", None),
+        (*recall, *((conflict,) if conflict is not None else ())),
+        _recall_request(t, recall, conflict),
+        _recall_answer(recall, conflict),
         None,
     )
+
+
+def _recall_request(
+    t: _Turn, recall: Sequence[DomainAction], conflict: DomainAction | None
+) -> Request:
+    """``RecallAgentAbility`` targets: the board Agents in offered order,
+    then Duncan's Into the Fray Agent (bloodlines-systems.md §8, D55: a
+    candidate ``GetRecallAgent`` skips, reached only as the fallback)."""
+
+    agents = [agent_entity(space, t.seat) for space in _arg_refs(recall, "space_id")]
+    if conflict is not None:
+        agents.append(agent_entity(_CONFLICT_AGENT, t.seat))
+    return Request(infos=(TargetInfo(entities=tuple(agents)),))
+
+
+def _recall_answer(
+    recall: Sequence[DomainAction], conflict: DomainAction | None
+) -> Callable[[Answer], DomainAction | None]:
+    def answer(ans: Answer) -> DomainAction | None:
+        ref = _response_ref(ans)
+        if ref == _CONFLICT_AGENT:
+            return conflict
+        return with_arg(recall, "space_id", ref) if ref is not None else None
+
+    return answer
 
 
 def _twisted_mentat(t: _Turn) -> None:
@@ -2155,6 +2641,9 @@ def _card_spy(t: _Turn, short: str) -> None:
     decline = t.run.first("decline_agent_card_spy")
     if not place and not recall and decline is None:
         return
+    if short == "arrakis_observer":
+        _arrakis_observer_spy(t, place, recall, decline)
+        return
     name = _CARD_SPY_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
     if found is None:
@@ -2163,12 +2652,36 @@ def _card_spy(t: _Turn, short: str) -> None:
     _spy_source(t, f"{short} spy", found, place, recall, decline, _CARD_SPY_RECALLED)
 
 
+def _arrakis_observer_spy(
+    t: _Turn,
+    place: Sequence[DomainAction],
+    recall: Sequence[DomainAction],
+    decline: DomainAction | None,
+) -> None:
+    """Arrakis Observer's Spy with Deep Cover (bloodlines-cards.md §3.2): the
+    rest of ``ArrakisObserverAgentAbility``'s discard answer, a follow-up.
+    ``spy_answer`` never declines: the best offered post (``PostValue``
+    ignores occupancy, §1.5 D50), or with an empty supply the recall-first
+    of the worst-post Spy; the decline alone (nothing to place or recall)
+    is a chore."""
+
+    chosen = spy_answer(t.run, place, recall, None)
+    if chosen is None:
+        if decline is not None:
+            t.chores.append(decline)
+        return
+    _automatic(t, "Arrakis Observer spy", _FOLLOW_UP, chosen, -1)
+
+
 def _card_influence(t: _Turn, short: str) -> None:
     actions = t.by_id("choose_agent_card_influence")
     if not actions:
         return
     if short == "long_reach":
         _long_reach(t, actions)
+        return
+    if short in _BOND_CHOICE_CARDS:
+        _bond_choice(t, short, actions)
         return
     name = _CARD_INFLUENCE_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
@@ -2225,6 +2738,114 @@ def _long_reach(t: _Turn, actions: Sequence[DomainAction]) -> None:
     _prompt(t, "Long Reach", actions, evaluate, explicit=_explicit(ability, p))
 
 
+# -- Bloodlines card choices (bloodlines-cards.md §3, §8) ------------------------------
+
+
+def _bond_choice(t: _Turn, short: str, actions: Sequence[DomainAction]) -> None:
+    """Southern Faith and Possible Futures (bloodlines-cards.md §3.21, §3.26;
+    plan §11.5 Agent-box Bond, D15): one Explicit key whose ``Evaluate``
+    picks the option.
+
+    Our engine offers the box's plain resolution (Southern Faith's draw,
+    Possible Futures' two troops) beside the influence picks; with Possible
+    Futures' Bond the influence pick pays both. Answers: option 0 (Southern
+    Faith: draw; Possible Futures: influence on the named track), option 1
+    (Southern Faith: Bene Gesserit influence; Possible Futures: troops),
+    option 2 (Possible Futures with the Bond: both, on the named track).
+    """
+
+    plain = next(
+        (
+            action
+            for action in t.by_id("resolve_agent_card_effect")
+            if str_arg(action, "effect") is None
+        ),
+        None,
+    )
+    offered = set(_arg_refs(actions, "faction"))
+    tracks = tuple(track_entity(f) for f in FACTIONS if f in offered)
+    request = Request(infos=(TargetInfo(entities=tracks),))
+
+    def answer(ans: Answer) -> DomainAction | None:
+        option = _response_ref(ans)
+        if short == "southern_faith":
+            if option == 1:
+                return actions[0]  # the Bene Gesserit pick (the only one)
+            return plain if option == 0 else None
+        if option == 1:
+            return plain
+        if option in (0, 2):
+            return with_arg(actions, "faction", _response_ref(ans, 1))
+        return None
+
+    uses = (*actions, *((plain,) if plain is not None else ()))
+    _choice_source(
+        t,
+        f"{short} choice",
+        _find(t.card, _BOND_CHOICE_CARDS[short]),
+        uses,
+        request,
+        answer,
+        None,
+    )
+
+
+def _choam_demands(t: _Turn) -> None:
+    """``complete_contract_by_card``: ``CHOAMDemandsAgentAbility`` (Explicit,
+    forced; bloodlines-cards.md §3.4) at each own active contract's
+    ``GetResourceValue``, first strictly best."""
+
+    actions = t.by_id("complete_contract_by_card")
+    if not actions:
+        return
+    contracts = tuple(
+        contract_entity(ref, t.seat) for ref in _arg_refs(actions, "instance_id")
+    )
+    _choice_source(
+        t,
+        "CHOAM Demands",
+        _find(t.card, "CHOAMDemandsAgentAbility"),
+        actions,
+        Request(infos=(TargetInfo(entities=contracts),)),
+        _ref_or(actions, "instance_id", None),
+        None,
+    )
+
+
+def _disruption_tactics(t: _Turn) -> None:
+    """``retreat_opponent_troop(player[, commanders])``:
+    ``DisruptionTacticsAgentAbility`` (Explicit, forced; bloodlines-cards.md
+    §3.8, D9) over the victim codes ``retreat_target_code(seat, commander)``
+    of the offered units, in offered order."""
+
+    actions = t.by_id("retreat_opponent_troop")
+    if not actions:
+        return
+    by_code: dict[int, DomainAction] = {}
+    for action in actions:
+        seat = int_arg(action, "player")
+        if seat is not None:
+            commander = int_arg(action, "commanders") == 1
+            by_code.setdefault(retreat_target_code(seat, commander), action)
+
+    def answer(ans: Answer) -> DomainAction | None:
+        code = _response_ref(ans)
+        if not isinstance(code, int):
+            return None
+        seat, commander = retreat_target_of(code)
+        return by_code.get(retreat_target_code(seat, commander))
+
+    _choice_source(
+        t,
+        "Disruption Tactics",
+        _find(t.card, "DisruptionTacticsAgentAbility"),
+        actions,
+        Request(infos=(TargetInfo(options=tuple(by_code)),)),
+        answer,
+        None,
+    )
+
+
 def _price_is_no_object(t: _Turn) -> None:
     row = t.by_id("acquire_imperium_with_solari")
     reserve = t.by_id("acquire_reserve_with_solari")
@@ -2253,10 +2874,15 @@ def _acquire_entities(
 ) -> tuple[Entity, ...]:
     """The offered cards, Row first (UNTRACED, imperium-b §Price Is No
     Object: whether the app's targets include the reserve; ours offers
-    both)."""
+    both). A Reserve The Spice Must Flow reads Market Opening's discounted
+    cost while it holds (``Profile.market_opening_reserve_card``, scouts.md
+    §4.7 D31, plan §11.8; unchanged outside Scouts' Market Opening)."""
 
     entities = [*_cards(t, _arg_refs(row, "instance_id"))]
-    entities += [card_entity(f"reserve:{c}") for c in _arg_refs(reserve, "card_id")]
+    entities += [
+        t.p.market_opening_reserve_card(card_entity(f"reserve:{c}"))
+        for c in _arg_refs(reserve, "card_id")
+    ]
     return tuple(entities)
 
 
@@ -2331,6 +2957,10 @@ def _leader_choices(t: _Turn) -> None:
             else "SpiceAgonyAbility"
         )
         _signet_payment(t, name, "pay_leader_signet_spice")
+    else:
+        bloodlines = _BLOODLINES_SIGNETS.get(leader_id or "")
+        if bloodlines is not None:
+            bloodlines(t)
     _other_memories(t)
     _board_repeat(t)
 
@@ -2536,6 +3166,259 @@ def _board_repeat(t: _Turn) -> None:
     )
 
 
+# -- Bloodlines leaders' Signet Rings (bloodlines-systems.md §4) ----------------------
+#
+# Each Signet is one key of the leader's ``SignetAbility`` port: its branches
+# (the ``ClassVar`` option constants) in ``infos[0].options``, the branch's
+# targets in ``infos[1]``; Optional signets take the unused key as
+# ``decline_leader_signet_payment``, Explicit ones (Smuggle Spice, Reverse
+# Engineering) force the prompt (D29).
+
+
+def _branches(*offered: tuple[int, bool]) -> tuple[int, ...]:
+    return tuple(option for option, present in offered if present)
+
+
+def _fedaykin(t: _Turn) -> None:
+    """Chani's Fedaykin Maneuver (§4.1, D30): ``retreat_leader_troops(count[,
+    commanders])``, troops first (``retreat_split``, §1.4 D7), or
+    ``pay_leader_signet_water``."""
+
+    retreats = t.by_id("retreat_leader_troops")
+    water = t.run.first("pay_leader_signet_water")
+    decline = t.run.first("decline_leader_signet_payment")
+    if not retreats and water is None and decline is None:
+        return
+    counts = tuple(
+        sorted({n for n in (int_arg(a, "count") for a in retreats) if n is not None})
+    )
+    request = Request(
+        infos=(
+            TargetInfo(options=_branches((0, bool(retreats)), (1, water is not None))),
+            TargetInfo(options=counts),
+        )
+    )
+    p = t.p
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) == 1:
+            return water
+        count = _response_ref(ans, 1)
+        if not isinstance(count, int):
+            return None
+        _troops, commanders = p.retreat_split(count)
+        return next(
+            (
+                a
+                for a in retreats
+                if int_arg(a, "count") == count
+                and (int_arg(a, "commanders") or 0) == commanders
+            ),
+            None,
+        )
+
+    uses = (*retreats, *((water,) if water is not None else ()))
+    _choice_source(
+        t,
+        "Fedaykin Maneuver",
+        _find(t.leader, "FedaykinManeuverSignetAbility"),
+        uses,
+        request,
+        answer,
+        decline,
+    )
+
+
+def _corrino_liaison(t: _Turn) -> None:
+    """Count Hasimir Fenring's Corrino Liaison (§4.2, D31, D32):
+    ``trash_leader_card(card)`` (a card in play) or the Spy with Deep Cover
+    next to the Emperor (``spy_answer``; after a recall-first the placement
+    is the rest of the answer)."""
+
+    trash = t.by_id("trash_leader_card")
+    place = t.by_id("place_leader_spy")
+    recall = t.by_id("recall_spy_for_leader_placement")
+    decline = t.run.first("decline_leader_signet_payment")
+    run = t.run
+    if place and t.flag(_LEADER_SPY_RECALLED):
+        chosen = best_place_action(run, place)
+        if chosen is not None:
+            _automatic(t, "Corrino Liaison spy after recall", _FOLLOW_UP, chosen, -1)
+            return
+    if not trash and not place and not recall and decline is None:
+        return
+    cards = _cards(t, _arg_refs(trash, "card_id"))
+    request = Request(
+        infos=(
+            TargetInfo(options=_branches((0, bool(trash)), (1, bool(place or recall)))),
+            TargetInfo(entities=cards),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) == 1:
+            return spy_answer(run, place, recall, None)
+        return with_arg(trash, "card_id", _response_ref(ans, 1))
+
+    _choice_source(
+        t,
+        "Corrino Liaison",
+        _find(t.leader, "CorrinoLiaisonSignetAbility"),
+        (*trash, *place, *recall),
+        request,
+        answer,
+        decline,
+    )
+
+
+def _into_the_fray(t: _Turn) -> None:
+    """Duncan Idaho's Into the Fray (§4.3, D34): ``deploy_leader_agent`` at
+    0.5 when ``GetUnitsToDeploy`` takes the Agent unit."""
+
+    deploy = t.run.first("deploy_leader_agent")
+    decline = t.run.first("decline_leader_signet_payment")
+    if deploy is None and decline is None:
+        return
+    uses = (deploy,) if deploy is not None else ()
+    _choice_source(
+        t,
+        "Into the Fray",
+        _find(t.leader, "IntoTheFraySignetAbility"),
+        uses,
+        Request(),
+        lambda _a: deploy,
+        decline,
+    )
+
+
+def _smuggle_spice(t: _Turn) -> None:
+    """Esmar Tuek's Smuggle Spice (§4.4, D36; Explicit): ``take_leader_bonus_
+    spice(space)`` over the spaces holding bonus spice in board order, or
+    ``place_leader_bonus_spice``. With neither possible only the refusal is
+    offered: no app key, a chore."""
+
+    place = t.run.first("place_leader_bonus_spice")
+    takes = t.by_id("take_leader_bonus_spice")
+    decline = t.run.first("decline_leader_signet_payment")
+    if place is None and not takes:
+        if decline is not None:
+            t.chores.append(decline)
+        return
+    offered = _arg_refs(takes, "space_id")
+    board = t.run.ctx.board
+    order = [s for s in board_space_order(board) if s in offered]
+    order += [s for s in offered if s not in order]
+    request = Request(
+        infos=(
+            TargetInfo(options=_branches((0, place is not None), (1, bool(takes)))),
+            TargetInfo(entities=tuple(space_entity(s, board) for s in order)),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) == 1:
+            return with_arg(takes, "space_id", _response_ref(ans, 1))
+        return place
+
+    _choice_source(
+        t,
+        "Smuggle Spice",
+        _find(t.leader, "SmuggleSpiceSignetAbility"),
+        (*((place,) if place is not None else ()), *takes),
+        request,
+        answer,
+        None,
+    )
+
+
+def _listeners(t: _Turn) -> None:
+    """Gaius Helen Mohiam's Listeners (§4.5, D32, D39): a Spy next to the
+    Landsraad, or ``pay_leader_signet_spice`` for a Spy anywhere. The Spy
+    after the payment (``listeners_paid``) or after a recall-first is the
+    rest of the answer (a follow-up; ``spy_answer`` never declines)."""
+
+    run = t.run
+    place = t.by_id("place_leader_spy")
+    recall = t.by_id("recall_spy_for_leader_placement")
+    pay = run.first("pay_leader_signet_spice")
+    decline = run.first("decline_leader_signet_payment")
+    spy_decline = run.first("decline_leader_spy_placement")
+    if t.flag("listeners_paid") or (place and t.flag(_LEADER_SPY_RECALLED)):
+        chosen = spy_answer(run, place, recall, None)
+        if chosen is not None:
+            _automatic(t, "Listeners spy", _FOLLOW_UP, chosen, -1)
+        elif spy_decline is not None:
+            t.chores.append(spy_decline)
+        return
+    if not place and not recall and pay is None and decline is None:
+        return
+    request = Request(
+        infos=(
+            TargetInfo(
+                options=_branches((0, bool(place or recall)), (1, pay is not None))
+            ),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) == 1:
+            return pay
+        return spy_answer(run, place, recall, None)
+
+    _choice_source(
+        t,
+        "Listeners",
+        _find(t.leader, "ListenersSignetAbility"),
+        (*place, *recall, *((pay,) if pay is not None else ())),
+        request,
+        answer,
+        decline,
+    )
+
+
+def _reverse_engineering(t: _Turn) -> None:
+    """Kota Odax of Ix's Reverse Engineering (§4.9, D28; Explicit):
+    ``gain_leader_signet_spice`` or ``trash_leader_tech(tech)``."""
+
+    spice = t.run.first("gain_leader_signet_spice")
+    trash = t.by_id("trash_leader_tech")
+    if spice is None and not trash:
+        return
+    tiles = tuple(tech_entity(ref) for ref in _arg_refs(trash, "tech_id"))
+    request = Request(
+        infos=(
+            TargetInfo(options=_branches((0, spice is not None), (1, bool(trash)))),
+            TargetInfo(entities=tiles),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) == 1:
+            return with_arg(trash, "tech_id", _response_ref(ans, 1))
+        return spice
+
+    _choice_source(
+        t,
+        "Reverse Engineering",
+        _find(t.leader, "ReverseEngineeringSignetAbility"),
+        (*((spice,) if spice is not None else ()), *trash),
+        request,
+        answer,
+        None,
+    )
+
+
+#: Bloodlines leader -> its Signet Ring choice (``_leader_choices``).
+_BLOODLINES_SIGNETS: Mapping[str, Callable[[_Turn], None]] = {
+    "chani": _fedaykin,
+    "count_hasimir_fenring": _corrino_liaison,
+    "duncan_idaho": _into_the_fray,
+    "esmar_tuek": _smuggle_spice,
+    "gaius_helen_mohiam": _listeners,
+    "kota_odax_of_ix": _reverse_engineering,
+}
+
+
 # -- playmat, contracts, deployment, Plots ---------------------------------------------
 
 
@@ -2567,9 +3450,31 @@ def _contracts(t: _Turn) -> None:
             "RecallAgentContractAbility"
         ):
             others = [s for s in me.agent_locations if s != t.space_id]
-            agents = tuple(agent_entity(s, t.seat) for s in others)
-            request = Request(infos=(TargetInfo(entities=agents),))
+            agents = [agent_entity(s, t.seat) for s in others]
+            if _conflict_agent_recallable(t):
+                # Duncan's earlier Into the Fray Agent, the last candidate of
+                # the reward's recall (D55, ``recall_conflict_agent_for_
+                # contract``).
+                agents.append(agent_entity(_CONFLICT_AGENT, t.seat))
+            request = Request(infos=(TargetInfo(entities=tuple(agents)),))
         _ability_source(t, f"contract {ref}", found, _ROW_CONTRACT, action, request)
+
+
+def _conflict_agent_recallable(t: _Turn) -> bool:
+    """Whether a Recall Agent reward of this turn may take an earlier turn's
+    Into the Fray Agent (Bloodlines; ``rules/effects.py``
+    ``recallable_conflict_agents`` with ``turn_agent_in_conflict``: this
+    turn's Agent, moved to the Conflict, is excluded; OQ-068, D55)."""
+
+    me = t.run.ctx.me
+    if not t.run.ctx.bloodlines or me.agent_in_conflict < 1:
+        return False
+    sent_this_turn = (
+        t.space_id is not None
+        and t.space_id not in me.agent_locations
+        and t.context.get("turn_agent_recalled") is not True
+    )
+    return me.agent_in_conflict - (1 if sent_this_turn else 0) > 0
 
 
 def _first_contract(contract: Entity) -> tuple[Ability, int] | None:
@@ -2587,6 +3492,9 @@ def _deploy(t: _Turn) -> None:
     (``combat_troops_deployed`` > 0) does not deploy again.
     """
 
+    if t.run.ctx.bloodlines:
+        _deploy_units(t)
+        return
     actions = t.by_id("deploy_troops")
     if not actions:
         return
@@ -2657,6 +3565,125 @@ def _card_deploy_ability(
     return None, garrison
 
 
+def _context_int(t: _Turn, key: str) -> int:
+    value = t.context.get(key, 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _max_count(actions: Sequence[DomainAction]) -> int:
+    counts = [n for n in (int_arg(a, "count") for a in actions) if n is not None]
+    return max(counts) if counts else 0
+
+
+def _deploy_room(t: _Turn, troop_max: int, commander_max: int) -> int:
+    """The largest legal ``troops + Commanders`` of one deployment (bloodlines-
+    systems.md §1.3): each kind within its legal maximum, and the units
+    beyond each kind's own recruits within the shared garrison extra
+    (``rules/combat_deployment.py`` ``deployment_rooms``, OQ-070)."""
+
+    recruited_troops = _context_int(t, "troops_recruited")
+    recruited_commanders = _context_int(t, COMMANDERS_RECRUITED_KEY)
+    shared = _context_int(t, "existing_troop_deployment_limit")
+    best = 0
+    for troops in range(troop_max + 1):
+        for commanders in range(commander_max + 1):
+            extra = max(0, troops - recruited_troops) + max(
+                0, commanders - recruited_commanders
+            )
+            if extra <= shared:
+                best = max(best, troops + commanders)
+    return best
+
+
+def _deploy_units(t: _Turn) -> None:
+    """``DeployUnitsAbility`` in a Bloodlines game (bloodlines-systems.md §1.1,
+    §1.3; D1, D6, D61).
+
+    The garrison units are troops and Commanders (D1, plan §11.8); the
+    ``NumberToSelect`` is the largest legal ``t + c`` (``_deploy_room``).
+    ``GetUnitsToDeploy``'s count is split by ``deploy_split`` (Commanders
+    first iff a Skill is held and none fights yet); the first kind is
+    deployed now and the other kept in ``Memory.intents``
+    (``DEPLOY_SPLIT_INTENT``) for the next decision, a follow-up (plan §4.6).
+    Off a Combat space with no card ability that deploys (a Combat icon:
+    Elite Forces, Rapid Dropships, Adaptive Tactics), the key is a
+    ``DeployUnitsAbility`` custom key (D61, Sardaukar Coordination
+    precedent). Used once per turn, as the base window (UNTRACED
+    exhaustion); ``withdraw_*`` never.
+    """
+
+    troops = t.by_id("deploy_troops")
+    commanders = t.by_id("deploy_commanders")
+    run = t.run
+    memory = run.memory.intents
+    key = (DEPLOY_SPLIT_INTENT, run.ctx.round_number, t.seat, t.card_ref)
+    stored = memory.get(key)
+    if _context_int(t, "combat_troops_deployed") > 0:
+        if isinstance(stored, tuple) and len(stored) == 2:
+            kind, count = stored
+            pool = commanders if kind == "deploy_commanders" else troops
+            legal = _max_count(pool)
+            if isinstance(count, int) and legal > 0:
+                action = with_arg(pool, "count", min(count, legal))
+                if action is not None:
+                    _automatic(t, "Deploy Units rest", _FOLLOW_UP, action, -1)
+                    t.on_choose[action] = [(key, _DROP)]
+        return
+    if stored is not None:
+        memory.pop(key, None)  # stale: this turn has not deployed yet
+    if not troops and not commanders:
+        return
+    me = run.ctx.me
+    troop_max = _max_count(troops)
+    commander_max = _max_count(commanders)
+    maximum = _deploy_room(t, troop_max, commander_max)
+    units = me.troops_garrison + me.commanders_garrison
+    found = _first_of(t.space, DeployUnitsAbility)
+    garrison = units
+    if found is None:
+        found = _find(t.card, "SardaukarCoordinationAgentAbility")
+        garrison = maximum
+    if found is None:
+        found, _garrison = _card_deploy_ability(t, maximum)
+        coordination = found is not None and ability_id(found[0]).endswith(
+            "SardaukarCoordinationAgentAbility"
+        )
+        garrison = maximum if coordination else units
+    if found is None:
+        owner = t.card if t.card is not None else t.space
+        if owner is None:
+            t.unmapped.append("deploy off a Combat space")
+            return
+        found = (ability_for(DEPLOY_UNITS_ABILITY, owner), 0)
+        garrison = units
+    ability = found[0]
+    request = Request(
+        infos=(TargetInfo(options=tuple(range(garrison)), max_select=maximum),)
+    )
+    p = t.p
+    by_kind = {"deploy_troops": troops, "deploy_commanders": commanders}
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ans = ability.evaluate(p, request)
+        if ans.response is None or not ans.response[0]:
+            return ans.value, None
+        count = min(len(ans.response[0]), maximum)
+        n_troops, n_commanders = p.deploy_split(count, troop_max, commander_max)
+        order = [("deploy_troops", n_troops), ("deploy_commanders", n_commanders)]
+        if p.commanders_deploy_first():
+            order.reverse()
+        order = [(kind, n) for kind, n in order if n > 0]
+        if not order:
+            return ans.value, None
+        kind, n = order[0]
+        action = with_arg(by_kind[kind], "count", n)
+        if action is not None and len(order) > 1:
+            t.on_choose[action] = [(key, order[1])]
+        return ans.value, action
+
+    _prompt(t, "Deploy Units", (*troops, *commanders), evaluate, explicit=False)
+
+
 def _plots(t: _Turn) -> None:
     """Plots join the post-action prompt only once ``finish_agent_turn`` is
     legal (``docs/app-ai-plan.md`` §4.4)."""
@@ -2695,7 +3722,14 @@ def _gather_intelligence(run: DecisionRun) -> DomainAction | None:
         ref = _response_ref(ans, 1)
         chosen = with_arg(gathers, "post_id", ref) if ref is not None else None
         return chosen or gathers[0]
-    return decline if decline is not None else (gathers[0] if gathers else None)
+    if decline is not None:
+        return decline
+    if not gathers:
+        return None
+    # Gaius Helen Mohiam's Clandestine makes the recall mandatory (no decline
+    # offered): the app's "no" has no legal twin, and the Spy recalled is
+    # ``GetRecallSpy``'s, as in the "yes" answer (bloodlines-systems.md §4.5).
+    return worst_recall_action(run, gathers) or gathers[0]
 
 
 def _explicit_pending(sources: Sequence[Source]) -> bool:
@@ -2707,8 +3741,19 @@ def _explicit_pending(sources: Sequence[Source]) -> bool:
 def _store_on_choose(t: _Turn, chosen: DomainAction | None) -> None:
     if chosen is None:
         return
-    for key, value in t.on_choose.get(chosen, ()):
-        t.run.memory.intents[key] = value
+    _apply_entries(t.run.memory, t.on_choose.get(chosen, ()))
+
+
+def _apply_entries(
+    memory: Memory, entries: Sequence[tuple[tuple[object, ...], object]]
+) -> None:
+    """Write ``on_choose`` entries; ``_DROP`` removes a used follow-up."""
+
+    for key, value in entries:
+        if value is _DROP:
+            memory.intents.pop(key, None)
+        else:
+            memory.intents[key] = value
 
 
 # -- Graft: both cards' boxes in the app's order ----------------------------------
@@ -2915,7 +3960,13 @@ def _decide_with_partner(
 def _unknown_ids(t: _Turn) -> None:
     """A legal id outside ``_KNOWN_ACTION_IDS`` is an unmapped choice."""
 
-    for action_id in sorted({a.action_id for a in t.run.legal} - _KNOWN_ACTION_IDS):
+    known = _KNOWN_ACTION_IDS
+    ctx = t.run.ctx
+    if ctx.bloodlines:
+        known = known | _BLOODLINES_ACTION_IDS
+    if ctx.scouts:
+        known = known | _SCOUTS_ACTION_IDS
+    for action_id in sorted({a.action_id for a in t.run.legal} - known):
         t.unmapped.append(f"unknown action {action_id}")
 
 
@@ -2929,11 +3980,19 @@ def _collect(t: _Turn) -> None:
     _desert_tactics(t)
     _imperial_privilege(t)
     _faction_influence_source(t)
+    _tuek_sietch(t)
+    _mission_collect(t)
+    _commander_acquire(t)
+    _tech_acquire(t)
+    _tech_acquire_effects(t)
+    _subcommittee(t)
     _card_box(t)
     _card_choices(t)
     _leader_choices(t)
     _track_spy(t)
     _contracts(t)
+    _flips(t)
+    _recruit_commander(t)
     _deploy(t)
     _plots(t)
     t.sources.extend(playmat_sources(t.run))
@@ -2948,8 +4007,7 @@ def agent_effects_window(run: DecisionRun) -> DomainAction | None:
     intended = _graft_intent(t)
     if intended is not None:
         action, entries = intended
-        for key, value in entries:
-            run.memory.intents[key] = value
+        _apply_entries(run.memory, entries)
         return action
     _collect(t)
     switch = run.first("switch_graft_card")

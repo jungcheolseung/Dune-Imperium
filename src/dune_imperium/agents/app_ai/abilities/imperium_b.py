@@ -434,11 +434,12 @@ class PriceIsNoObjectAbility(g.DeferredAbility):
 
         solari = p.ctx.me.resources.solari
         cards = [card_entity(i) for i in p.ctx.imperium_row]
-        cards += [
-            card_entity(f"reserve:{reserve_id}")
-            for reserve_id, count in p.ctx.reserve_stacks
-            if count > 0
-        ]
+        for reserve_id, count in p.ctx.reserve_stacks:
+            if count > 0:
+                card = card_entity(f"reserve:{reserve_id}")
+                if p.ctx.scouts:  # Market Opening's discount (plan §11.8)
+                    card = p.market_opening_reserve_card(card)
+                cards.append(card)
         return any(c.int_attr("PersuasionCost") <= solari for c in cards)
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
@@ -1553,17 +1554,17 @@ class ShadoutMapesAbility(g.DeferredAbility):
         a troop (even when the targets have no deploy option — app edge case
         kept, the engine's handling is UNTRACED). Else a deployed troop and
         ``GetTroopsToRetreat(1) > 0`` -> retreat at 100. Else
-        ``Upd(0.0, [])``.
+        ``Upd(0.0, [])``. Bloodlines Commanders are troops in both tests
+        (bloodlines-systems.md §1.1, D1, plan §11.8).
         """
 
-        me = p.ctx.me
         retreat_index = 0
-        if me.troops_garrison > 0:
+        if p.garrison_troop_count() > 0:
             units = p.units_to_deploy(1, -1)  # edx = 0xffffffff
             retreat_index = 1
             if units > 0:
                 return Answer(100.0, ((0,),), "Shadout Mapes (Reveal) | Deploy | 100")
-        if me.troops_conflict > 0 and p.troops_to_retreat(1) > 0:  # jle
+        if p.conflict_troop_count() > 0 and p.troops_to_retreat(1) > 0:  # jle
             return Answer(
                 100.0, ((retreat_index,),), "Shadout Mapes (Reveal) | Retreat | 100"
             )

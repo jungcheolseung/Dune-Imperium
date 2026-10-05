@@ -165,6 +165,7 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
     research_intent,
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
+from dune_imperium.agents.app_ai.windows.scouts import scouts_trash_source
 from dune_imperium.agents.app_ai.windows.turn import GRAFT_PARTNER_INTENT
 from dune_imperium.core.actions import DomainAction
 
@@ -448,7 +449,15 @@ def optional_trash(run: DecisionRun) -> DomainAction | None:
         return None
     seat = run.ctx.seat
     cards = tuple(card_entity(ref, seat) for ref in refs)
-    ability = TrashCustomAbility(Entity(Kind.CARD, granted_by, None, seat))
+    # The Scouts trash icon (Oversight, Water Discipline): the line's own
+    # ``TrashCustomAbility`` (scouts.md §3.13); a Scouts line without one
+    # is not mirrored.
+    from_scouts, line_trash = scouts_trash_source(run, granted_by)
+    if from_scouts and line_trash is None:
+        return None
+    ability = line_trash or TrashCustomAbility(
+        Entity(Kind.CARD, granted_by, None, seat)
+    )
     request = Request((TargetInfo(cards, (), 0, 1),))
 
     def evaluate() -> tuple[float, DomainAction | None]:

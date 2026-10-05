@@ -198,11 +198,11 @@ def _deployed_units(p: Profile) -> int:
 
     The player's units in the Conflict: troops and sandworms (no dreadnoughts
     in Uprising), and the Bloodlines Commanders and Into the Fray Agent
-    (``units_in_conflict``; docs/app-ai/bloodlines-systems.md §1.1, 0
-    without the option).
+    (``units_in_conflict``; docs/app-ai/bloodlines-systems.md §1.1, read
+    only with the option: ``Profile.conflict_unit_count``).
     """
 
-    return p.ctx.me.units_in_conflict
+    return p.conflict_unit_count()
 
 
 def _has_trashable_card(p: Profile) -> bool:
@@ -242,6 +242,8 @@ def chroniclers_acquire_targets(p: Profile) -> list[Entity]:
     for reserve_id in _RESERVE_ORDER:
         if remaining.get(reserve_id, 0) > 0:
             card = card_entity(f"reserve:{reserve_id}")
+            if p.ctx.scouts:  # Market Opening's discount (plan §11.8)
+                card = p.market_opening_reserve_card(card)
             if card.int_attr("PersuasionCost", 99) <= max_cost:
                 cards.append(card)
     return cards
@@ -749,8 +751,7 @@ class DesertScoutsAbility(DeferredAbility):
         Bloodlines Commanders are troops (bloodlines-systems.md §1.1, §2.3).
         """
 
-        me = p.ctx.me
-        return me.troops_conflict + me.commanders_conflict > 0
+        return p.conflict_troop_count() > 0
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()

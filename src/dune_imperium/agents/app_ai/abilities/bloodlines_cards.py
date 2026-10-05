@@ -2723,7 +2723,8 @@ class TwistedDeviousAbility(IntrigueAbility):
             if card is not None:
                 choice.update_responses(value, ((0,), (card.ref,)))
         if _option_open(request, 1):
-            garrison = _options(request, 2) or _unit_indices(p.ctx.me.troops_garrison)
+            # Garrison troops and Commanders (§1.1, D1, plan §11.8).
+            garrison = _options(request, 2) or _unit_indices(_garrison_units(p.ctx.me))
             n = min(2, intrigue_deploy_troops(p, garrison))
             if n > 0:
                 choice.update_responses(100.0, ((1,), tuple(garrison[:n])))

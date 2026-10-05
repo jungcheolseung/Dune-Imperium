@@ -82,6 +82,45 @@ on the ``reveal`` frame as owner actions, and the turn ends with an explicit
    one ``return_specimen`` at a time: ``_RETURN_BATCH``). The Reveal
    choices of For Humanity, Shadout Mapes and Tleilaxu Surgeon are deferred
    and valued like the Uprising ones.
+7. **Bloodlines, the Tech Module and Arrakeen Scouts** (app-style keys:
+   docs/app-ai-plan.md §11.4-11.8, bloodlines-cards.md §2.1-2.2 and §8,
+   bloodlines-systems.md §1.3-1.4, §2.3, §3.4, scouts.md §3.3, §4.7):
+
+   - **Command (6+) choices are answered before buying** (plan §11.5): a
+     Command choice frame (Shrouded Counsel, Intelligence Training, Pointing
+     the Way, Engineered Miracle; ``_COMMAND_EFFECTS``) is never deferred
+     but answered at once by its ability's ``Evaluate``, in the engine's
+     card order; a waiting Command choice that opens later is resumed as an
+     automatic step before the prompt. The other Bloodlines choices (Arrakis
+     Observer, Command Center, Disruption Tactics, CHOAM Demands, Delivery
+     Logistics, Ixian Ambassador) are deferred and valued in the prompt like
+     the Uprising ones. The automatic Command rewards (Bombast, I Believe,
+     Southern Faith: ``AS.CommandRevealAbility``, ``AlwaysRunImmediately``)
+     are state-400 gains (``_immediate_command``).
+   - The Reveal-turn Combat icon (Ruthless Leadership, Holy War, Disruption
+     Tactics, …): one ``DeployUnitsAbility`` key at 0.5 (D5, D61) with
+     ``GetUnitsToDeploy`` over the garrison troops and Commanders; the count
+     is split by kind (``Profile.deploy_split``: Commanders first iff a
+     Skill is held and none fights) and the second kind is deployed at the
+     next decision (``_DEPLOY_INTENT``). Disruption Tactics' trash is the
+     same app answer: its unit count waits in ``_DEPLOY_INTENT`` for the
+     deployment the trash opens. Used once per Reveal, like the Agent-turn
+     key.
+   - Keys: ``recruit_sardaukar_commander`` (``RecruitCommanderAbility``,
+     D5), ``trash_skill_for_strength`` (``DesperateSkillAbility``, D9),
+     ``flip_tech`` (``turn.tech_flip_sources``), Panopticon's
+     ``place_tech_spy`` (``PlaceSpyRevealAbility``, Explicit) and Forbidden
+     Weapons' ``choose_tech_strength``/``choose_tech_trash``
+     (``ForbiddenWeaponsAbility``, Explicit, D26). Desert Scouts retreats a
+     troop while one fights, else a Commander (plan §11.5). An owed Tech
+     acquire icon is resolved at once (``turn.tech_acquire_effect_sources``,
+     D15).
+   - Arrakeen Scouts: Corrinth City is valued by
+     ``CorrinthCityRevealScoutsAbility`` (plan §11.8); its seat's
+     subcommittee offer is a ``SubcommitteeOfferAbility`` key whose pick is
+     kept for the ``scouts_subcommittee`` window (``_SUBCOMMITTEE_INTENT``)
+     and whose decline is the End Turn path's; the Reserve The Spice Must
+     Flow is Market Opening's discounted card (scouts.md §4.7).
 
 Judgements (our engine vs the app):
 
@@ -123,9 +162,29 @@ from dune_imperium.agents.app_ai.abilities import (
     TargetInfo,
     abilities_of,
 )
+from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+    ArrakisObserverRevealAbility,
+    CHOAMDemandsRevealAbility,
+    CommandCenterRevealAbility,
+    CommandRevealAbility,
+    DeliveryLogisticsRevealAbility,
+    DisruptionTacticsRevealAbility,
+    EngineeredMiracleCommandAbility,
+    IntelligenceTrainingCommandAbility,
+    IxianAmbassadorRevealAbility,
+    PointingTheWayCommandAbility,
+    ShroudedCounselCommandAbility,
+    command_center_commanders,
+)
+from dune_imperium.agents.app_ai.abilities.bloodlines_systems import (
+    DesperateSkillAbility,
+    ForbiddenWeaponsAbility,
+    RecruitCommanderAbility,
+)
 from dune_imperium.agents.app_ai.abilities.generic import (
     AcquireAbility,
     DeferredAbility,
+    DeployUnitsAbility,
     PlaceSpyCustomAbility,
     PlaceSpyRevealAbility,
     card_factions,
@@ -161,12 +220,21 @@ from dune_imperium.agents.app_ai.abilities.leaders import (
     DesertScoutsAbility,
     DeviousStrengthAbility,
 )
+from dune_imperium.agents.app_ai.abilities.scouts import (
+    CorrinthCityRevealScoutsAbility,
+    SubcommitteeOfferAbility,
+)
 from dune_imperium.agents.app_ai.catalog import (
     CARD_ARCHETYPES,
     LEADER_ARCHETYPES,
+    SKILL_ARCHETYPES,
     card_entity,
     leader_entity,
+    skill_entity,
+    skill_id_of,
+    space_entity,
     spy_entity,
+    tech_entity,
     track_entity,
 )
 from dune_imperium.agents.app_ai.choice import default_random_choice
@@ -192,10 +260,21 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
     intrigue_play_sources,
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
+from dune_imperium.agents.app_ai.windows.scouts import SUBCOMMITTEE_INTENT
+from dune_imperium.agents.app_ai.windows.turn import (
+    tech_acquire_effect_sources,
+    tech_flip_sources,
+)
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.combat_deployment import (
+    deployment_rooms,
+    undeployable_troops,
+)
+from dune_imperium.rules.frames import REVEAL_COMMANDERS_RECRUITED_KEY
 from dune_imperium.rules.reveal_turn import (
+    REVEAL_COMMANDERS_DEPLOYED_KEY,
     reveal_pending_gains,
     waiting_deferred_choices,
 )
@@ -228,6 +307,17 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     "may_lose_influence_for_vp_if_bene_gesserit_alliance": ForHumanityRevealAbility,
     "may_deploy_or_retreat_one_troop": ShadoutMapesAbility,
     "may_lose_two_troops_for_two_specimens": TleilaxuSurgeonRevealAbility,
+    # Bloodlines (app-style, bloodlines-cards.md §3, §8).
+    "command_may_trash_card": ShroudedCounselCommandAbility,
+    "command_place_spy": IntelligenceTrainingCommandAbility,
+    "command_gain_chosen_influence": PointingTheWayCommandAbility,
+    "command_may_trash_self_to_acquire_row_card": EngineeredMiracleCommandAbility,
+    "may_retreat_two_troops_for_two_persuasion": CommandCenterRevealAbility,
+    "may_trash_self_for_combat_icon": DisruptionTacticsRevealAbility,
+    "may_recall_spy_for_three_strength": ArrakisObserverRevealAbility,
+    "may_trash_self_for_four_influence_if_four_contracts": CHOAMDemandsRevealAbility,
+    "persuasion_or_contract": DeliveryLogisticsRevealAbility,
+    "gain_chosen_influence_if_two_tech": IxianAmbassadorRevealAbility,
 }
 
 #: The decline action of each choice whose app ability is Optional (and of the
@@ -247,9 +337,40 @@ _DECLINES: Mapping[str, str] = {
     "may_trash_other_emperor_for_three_strength": "decline_reveal_card_trash",
     "may_retreat_two_troops_for_four_strength": "decline_reveal_troop_retreat",
     "may_deploy_or_retreat_one_troop_if_fremen_bond": "decline_reveal_troop_move",
+    # Bloodlines.
+    "command_may_trash_card": "decline_reveal_card_trash",
+    "command_place_spy": "decline_reveal_spy_recall",
+    "command_may_trash_self_to_acquire_row_card": "decline_command_acquisition",
+    "may_retreat_two_troops_for_two_persuasion": "decline_reveal_troop_retreat",
+    "may_trash_self_for_combat_icon": "decline_reveal_card_trash",
+    "may_recall_spy_for_three_strength": "decline_reveal_spy_recall",
+    "may_trash_self_for_four_influence_if_four_contracts": (
+        "decline_reveal_card_trash"
+    ),
 }
 
-_SPY_EFFECTS = frozenset({"place_spy", "place_two_spies"})
+_SPY_EFFECTS = frozenset({"place_spy", "place_two_spies", "command_place_spy"})
+
+#: Bloodlines "Command (6+)" choices: answered at their frame, before any buy,
+#: in the engine's card order (docs/app-ai-plan.md §11.5; bloodlines-cards.md
+#: §2.1 "Ordering"), never deferred into the post-reveal prompt.
+_COMMAND_EFFECTS = frozenset(
+    {
+        "command_may_trash_card",
+        "command_place_spy",
+        "command_gain_chosen_influence",
+        "command_may_trash_self_to_acquire_row_card",
+    }
+)
+
+#: The choices whose answer is a Faction track (``gain_reveal_influence``).
+_INFLUENCE_GAIN_EFFECTS = frozenset(
+    {"command_gain_chosen_influence", "gain_chosen_influence_if_two_tech"}
+)
+
+#: Corrinth City's choice: valued by ``CorrinthCityRevealScoutsAbility`` in
+#: Arrakeen Scouts games (plan §11.8; scouts.md §2.3, §4.5).
+_CORRINTH_CITY = "gain_five_solari_or_take_high_council"
 
 #: Our REVEAL-window action ids this adapter mirrors (core Uprising ± CHOAM).
 _REVEAL_ACTIONS = frozenset(
@@ -275,6 +396,20 @@ _REVEAL_ACTIONS = frozenset(
         "advance_reveal_research",
         "return_specimen",
         "use_family_atomics",
+        # Bloodlines / Tech Module
+        "recruit_sardaukar_commander",
+        "trash_skill_for_strength",
+        "retreat_leader_commander",
+        "deploy_troops",
+        "deploy_commanders",
+        "place_tech_spy",
+        "choose_tech_strength",
+        "choose_tech_trash",
+        "flip_tech",
+        "resolve_tech_acquire_effect",
+        # Arrakeen Scouts (Corrinth City's seat)
+        "choose_subcommittee",
+        "decline_subcommittee",
     }
 )
 
@@ -285,6 +420,8 @@ _REVEAL_ACTIONS = frozenset(
 #: Long Reach's Intrigue (``RevealGainIntrigueAbility``) are recognised by
 #: their kind.
 _IMMEDIATE_GAIN_CARDS = frozenset({"smuggler_s_haven", "bene_tleilax_lab"})
+#: The short-name prefix of the app-style (synthetic) Imperium archetypes.
+_APPSTYLE_IMPERIUM = "ImperiumArchetypes.AppStyle."
 
 #: The pending-gain kind each argument-free gain action resolves (the engine
 #: takes the oldest entry of that kind).
@@ -314,6 +451,23 @@ _PLAYMAT = Entity(Kind.LEADER, "playmat")
 #: ``run.memory.intents`` key of a Return Specimen answer still being paid:
 #: ``(_RETURN_BATCH, round, seat)`` -> specimens left to return.
 _RETURN_BATCH = "reveal_return_specimen"
+
+#: ``run.memory.intents`` key of a Reveal-turn Combat-icon answer still being
+#: carried out (plan §4.6; bloodlines-systems.md §1.3): ``(_DEPLOY_INTENT,
+#: round, seat)`` -> an ``int`` (the units ``GetUnitsToDeploy`` chose, not
+#: split yet: Disruption Tactics' trash opens the deployment) or a
+#: ``(action id, count)`` pair (the second kind of a split deployment).
+_DEPLOY_INTENT = "reveal_deploy"
+
+#: ``run.memory.intents`` key the ``scouts_subcommittee`` window reads (the
+#: windows' shared Scouts convention, scouts.md §3.3): ``(_SUBCOMMITTEE_INTENT,
+#: round, seat)`` -> the subcommittee id ``SubcommitteeOfferAbility`` chose.
+#: The reader's own constant, so writer and reader cannot drift apart.
+_SUBCOMMITTEE_INTENT = SUBCOMMITTEE_INTENT
+
+#: "Up to two more from your garrison" of a Reveal-turn Combat icon
+#: ([Bloodlines p. 5]; ``rules/reveal_turn.py`` ``legal_reveal_deployments``).
+_REVEAL_GARRISON_EXTRA = 2
 
 _SHISHAKLI = "shishakli"
 
@@ -457,9 +611,19 @@ def _card_ability[A: Ability](card: Entity, cls: type[A]) -> A:
 
 
 def _choice_ability(run: DecisionRun, effect: str, card_ref: str) -> DeferredAbility:
-    """The app ability behind one of our Reveal choice effects."""
+    """The app ability behind one of our Reveal choice effects.
 
-    return _card_ability(card_entity(card_ref, run.ctx.seat), _CHOICE_ABILITIES[effect])
+    Corrinth City in an Arrakeen Scouts game is valued by
+    ``CorrinthCityRevealScoutsAbility`` (the seat's subcommittee
+    opportunity, plan §11.8), which no archetype carries: the card must still
+    carry ``CorrinthCityRevealAbility``.
+    """
+
+    card = card_entity(card_ref, run.ctx.seat)
+    ability = _card_ability(card, _CHOICE_ABILITIES[effect])
+    if effect == _CORRINTH_CITY and run.ctx.scouts:
+        return CorrinthCityRevealScoutsAbility(card)
+    return ability
 
 
 def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
@@ -531,8 +695,53 @@ def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
     if effect in (
         "keep_spice_or_trash_self_for_vp_if_four_contracts",
         "place_spy_or_gain_two_strength",
+        "persuasion_or_contract",
     ):
         return Request((TargetInfo(options=(0, 1)),))
+    return _bloodlines_request(run, effect, card_ref)
+
+
+def _bloodlines_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
+    """The target infos of the Bloodlines choices (bloodlines_cards encoding).
+
+    - Shrouded Counsel: the engine's trash candidates, hand ⧺ discard ⧺ in
+      play (``counted_in_play``);
+    - Pointing the Way, Ixian Ambassador: the four tracks (``FACTIONS``, the
+      engine's order);
+    - Arrakis Observer: the own Spies;
+    - Engineered Miracle: the Imperium Row (row order);
+    - Disruption Tactics: ``DeployUnitsAbility``'s garrison units with the
+      most a Combat icon would let deploy (``_reveal_deploy_limits``); none
+      when the trash would open nothing (an icon already open, no room);
+    - Command Center, CHOAM Demands, Intelligence Training: none.
+    """
+
+    me = run.ctx.me
+    seat = run.ctx.seat
+    if effect == "command_may_trash_card":
+        cards = tuple(
+            card_entity(instance, seat)
+            for instance in (*me.hand, *me.discard_pile, *counted_in_play(me))
+        )
+        return Request((TargetInfo(entities=cards),))
+    if effect in _INFLUENCE_GAIN_EFFECTS:
+        return Request((TargetInfo(entities=tuple(track_entity(f) for f in FACTIONS)),))
+    if effect == "may_recall_spy_for_three_strength":
+        return Request((TargetInfo(entities=_own_spies(run)),))
+    if effect == "command_may_trash_self_to_acquire_row_card":
+        row = tuple(card_entity(instance) for instance in run.ctx.imperium_row)
+        return Request((TargetInfo(entities=row),))
+    if effect == "may_trash_self_for_combat_icon":
+        units, _troops, _commanders, most = _reveal_deploy_limits(run)
+        if most <= 0 or _reveal_context(run).get("combat_deployment") is True:
+            # The trash opens no deployment: a Combat icon is already open
+            # ("한 turn에 이 아이콘이 둘 이상이어도 garrison에서 deploy하는 수는
+            # 두 개를 넘지 못한다" [Bloodlines pp. 5, 12], docs/rules/
+            # bloodlines.md §4; Rapid Dropships' D24 test), or no room is left.
+            # No unit is offered (``GetUnitsToDeploy`` reads a max of 0 as no
+            # limit), so E stores nothing and the card is not trashed.
+            units = 0
+        return Request((TargetInfo(options=tuple(range(units)), max_select=most),))
     return Request()
 
 
@@ -540,16 +749,184 @@ def _unswerving_options(run: DecisionRun) -> list[str]:
     """``ShadoutMapesAbility`` ``<Targets>d__6 @0x4e1f0b0`` option order.
 
     Deploy when a troop is in the garrison (``P.CanDeploy`` is always true in
-    a 4-player Uprising game), then retreat when a troop is deployed.
+    a 4-player Uprising game), then retreat when a troop is deployed. A
+    Sardaukar Commander is a troop (bloodlines-systems.md §1.1, D1; our
+    engine offers its ``commanders`` form); 0 outside Bloodlines.
     """
 
     me = run.ctx.me
     options: list[str] = []
-    if me.troops_garrison >= 1:
+    if me.troops_garrison + me.commanders_garrison >= 1:
         options.append("deploy_reveal_card_troop")
-    if me.troops_conflict >= 1:
+    if me.troops_conflict + me.commanders_conflict >= 1:
         options.append("retreat_reveal_card_troop")
     return options
+
+
+def _unit_form(
+    run: DecisionRun, action_id: str, *, commander_first: bool
+) -> DomainAction | None:
+    """The troop or Commander form of a one-unit move (bloodlines-systems.md
+    §1.3-1.4): the troop form unless ``commander_first`` or no troop form is
+    legal. Outside Bloodlines only the troop form exists."""
+
+    plain = next((a for a in run.by_id(action_id) if not a.arguments), None)
+    commander = next(
+        (a for a in run.by_id(action_id) if int_arg(a, "commanders") == 1), None
+    )
+    if commander_first and commander is not None:
+        return commander
+    return plain if plain is not None else commander
+
+
+def _retreat_two(run: DecisionRun, commanders: int) -> DomainAction | None:
+    """``retreat_two_troops_for_reveal`` with ``commanders`` of the two (the
+    no-argument form is 0)."""
+
+    for action in run.by_id("retreat_two_troops_for_reveal"):
+        if (int_arg(action, "commanders") or 0) == commanders:
+            return action
+    return None
+
+
+# ---------------------------------------------------------------------------
+# The Reveal-turn Combat icon (bloodlines-cards.md §2.2; systems §1.3, D61)
+# ---------------------------------------------------------------------------
+
+
+def _context_count(context: Mapping[str, ActionValue], key: str) -> int:
+    """A non-negative counter of the Reveal frame (absent: 0)."""
+
+    value = context.get(key, 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _reveal_deploy_limits(run: DecisionRun) -> tuple[int, int, int, int]:
+    """The Combat-icon deployment of this Reveal: (garrison units, the most
+    troops, the most Commanders, the largest legal total).
+
+    The engine's own rule (``rules/reveal_turn.py``
+    ``legal_reveal_deployments``): every unit recruited this turn keeps a
+    slot of its own kind and two more may come from the garrison, shared by
+    both kinds (``deployment_rooms``, OQ-070); Harkonnen Advisor's troop
+    cannot deploy. The garrison units are what ``GetUnitsToDeploy`` is
+    offered (bloodlines-systems.md §1.3: troops and Commanders, strength 2
+    each); the total is its ``NumberToSelect``. Read whether or not the icon
+    is granted yet (Disruption Tactics values the deployment its trash opens).
+    """
+
+    context = dict(_reveal_context(run))
+    me = run.ctx.me
+    troops = max(0, me.troops_garrison - undeployable_troops(context))
+    commanders = me.commanders_garrison
+    recruited = _context_count(context, "reveal_troops_recruited")
+    deployed = _context_count(context, "reveal_units_deployed")
+    commanders_deployed = _context_count(context, REVEAL_COMMANDERS_DEPLOYED_KEY)
+    commanders_recruited = _context_count(context, REVEAL_COMMANDERS_RECRUITED_KEY)
+
+    def rooms(more_troops: int) -> tuple[int, int]:
+        return deployment_rooms(
+            troops_recruited=recruited,
+            commanders_recruited=commanders_recruited,
+            existing_limit=_REVEAL_GARRISON_EXTRA,
+            troops_deployed=max(0, deployed - commanders_deployed) + more_troops,
+            commanders_deployed=commanders_deployed,
+        )
+
+    troop_room, commander_room = rooms(0)
+    troop_max = min(troops, troop_room)
+    commander_max = min(commanders, commander_room)
+    most = max(t + min(commander_max, rooms(t)[1]) for t in range(troop_max + 1))
+    return troops + commanders, troop_max, commander_max, most
+
+
+def _deploy_key(run: DecisionRun) -> tuple[object, ...]:
+    return (_DEPLOY_INTENT, run.ctx.round_number, run.ctx.seat)
+
+
+def _keep_deploy_answer(run: DecisionRun, answer: Answer) -> None:
+    """Disruption Tactics' trash *is* its ``DeployUnitsAbility`` answer
+    (plan §4.6): keep the unit count for the deployment the trash opens."""
+
+    units = answer.response[0] if answer.response else ()
+    if units:
+        run.memory.intents[_deploy_key(run)] = len(units)
+
+
+def _split_deployment(
+    run: DecisionRun, count: int
+) -> tuple[DomainAction | None, tuple[str, int] | None]:
+    """``count`` units as our deploy actions (bloodlines-systems.md §1.3, D6).
+
+    ``Profile.deploy_split`` divides the count by kind (Commanders first iff
+    a Skill is held and none fights, each kind capped by its legal maximum);
+    the first kind is deployed now, the other is returned for the next
+    decision. Outside Bloodlines there are only troops.
+    """
+
+    _units, troop_max, commander_max, _most = _reveal_deploy_limits(run)
+    troops, commanders = run.profile.deploy_split(count, troop_max, commander_max)
+    kinds = [("deploy_troops", troops), ("deploy_commanders", commanders)]
+    if run.profile.commanders_deploy_first():
+        kinds.reverse()
+    kinds = [(action_id, n) for action_id, n in kinds if n > 0]
+    if not kinds:
+        return None, None
+    first = with_arg(run.by_id(kinds[0][0]), "count", kinds[0][1])
+    return first, (kinds[1] if len(kinds) > 1 else None)
+
+
+def _pending_deployment(run: DecisionRun) -> DomainAction | None:
+    """The rest of a Combat-icon answer (``_DEPLOY_INTENT``), before anything
+    else; the intent is dropped once used or when nothing fits any more."""
+
+    key = _deploy_key(run)
+    pending = run.memory.intents.pop(key, None)
+    if isinstance(pending, int) and not isinstance(pending, bool):
+        first, rest = _split_deployment(run, pending)
+        if first is not None and rest is not None:
+            run.memory.intents[key] = rest
+        return first
+    if isinstance(pending, tuple) and len(pending) == 2:
+        action_id, count = pending
+        legal = run.by_id(str(action_id))
+        counts = [n for n in (int_arg(a, "count") for a in legal) if n is not None]
+        if counts and isinstance(count, int):
+            return with_arg(legal, "count", min(count, max(counts)))
+    return None
+
+
+def _deploy_sources(
+    run: DecisionRun, rests: dict[DomainAction, tuple[str, int]]
+) -> list[Source]:
+    """The Reveal-turn Combat icon: one ``DeployUnitsAbility`` key (D5, D61).
+
+    Every card's Reveal Combat icon (``RevealCombatIconAbility``) answers
+    with ``DeployUnitsAbility::Evaluate``: ``GetUnitsToDeploy`` over the
+    garrison units at 0.5 (Optional). Used once per Reveal, as the Agent-turn
+    key (UNTRACED exhaustion, engine-order §9). The second kind of a split is
+    returned in ``rests`` (keyed by the first kind's action).
+    """
+
+    actions = (*run.by_id("deploy_troops"), *run.by_id("deploy_commanders"))
+    if not actions:
+        return []
+    if _context_count(_reveal_context(run), "reveal_units_deployed") > 0:
+        return []
+    units, _troops, _commanders, most = _reveal_deploy_limits(run)
+    ability = DeployUnitsAbility(_PLAYMAT)  # E reads no owner
+    request = Request((TargetInfo(options=tuple(range(units)), max_select=most),))
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(run.profile, request)
+        if answer.response is None or not answer.response[0]:
+            return answer.value, None
+        first, rest = _split_deployment(run, min(len(answer.response[0]), most))
+        if first is not None and rest is not None:
+            rests[first] = rest
+        return answer.value, first
+
+    return [Source("Deploy Units", Stage.PROMPT, actions, evaluate)]
 
 
 def _option(answer: Answer, index: int = 0) -> ActionValue | None:
@@ -559,15 +936,6 @@ def _option(answer: Answer, index: int = 0) -> ActionValue | None:
         return None
     item = answer.response[index]
     return item[0] if item else None
-
-
-def _plain(run: DecisionRun, action_id: str) -> DomainAction | None:
-    """The first legal ``action_id`` without arguments (no Commander form)."""
-
-    for action in run.by_id(action_id):
-        if not action.arguments:
-            return action
-    return run.first(action_id)
 
 
 def _spy_placement(run: DecisionRun, *, may_decline: bool) -> DomainAction | None:
@@ -615,6 +983,21 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             if trash is not None:
                 return trash
         return run.first("keep_contract_reveal_spice")
+    if effect == "persuasion_or_contract":
+        # Delivery Logistics (Explicit): option 1 the contract, else Persuasion.
+        if _option(answer) == 1:
+            contract = run.first("take_reveal_contract")
+            if contract is not None:
+                return contract
+        return run.first("gain_reveal_persuasion")
+    if effect in _INFLUENCE_GAIN_EFFECTS:
+        # Pointing the Way / Ixian Ambassador (Explicit): the chosen track.
+        gains = run.by_id("gain_reveal_influence")
+        chosen_track = _option(answer)
+        gain = (
+            None if chosen_track is None else with_arg(gains, "faction", chosen_track)
+        )
+        return gain if gain is not None else (gains[0] if gains else None)
     decline = run.first(_DECLINES[effect])
     action: DomainAction | None = None
     chosen = _option(answer)
@@ -645,18 +1028,49 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             action = with_arg(
                 run.by_id("pay_reveal_spice_influence"), "faction", chosen
             )
-    elif effect == "may_trash_other_emperor_for_three_strength":
+    elif effect in (
+        "may_trash_other_emperor_for_three_strength",
+        "command_may_trash_card",
+    ):
+        # Shrouded Counsel's "use, trash nothing" (``((),)``) is the decline.
         if chosen is not None:
             action = with_arg(run.by_id("trash_reveal_card"), "card_id", chosen)
     elif effect == "may_retreat_two_troops_for_four_strength":
-        action = _plain(run, "retreat_two_troops_for_reveal")
+        # Troops first, a Commander only for a missing troop (D7; the plain
+        # form outside Bloodlines).
+        action = _retreat_two(run, run.profile.retreat_split(2)[1])
+    elif effect == "may_retreat_two_troops_for_two_persuasion":
+        # Command Center: Commanders only for the troops missing (§3.5).
+        action = _retreat_two(run, command_center_commanders(run.profile))
+    elif effect in (
+        "may_trash_self_for_combat_icon",
+        "may_trash_self_for_four_influence_if_four_contracts",
+    ):
+        # Disruption Tactics / CHOAM Demands trash the card itself.
+        if answer.response is not None:
+            action = run.first("trash_reveal_card")
+            if action is not None and effect == "may_trash_self_for_combat_icon":
+                _keep_deploy_answer(run, answer)
+    elif effect == "may_recall_spy_for_three_strength":
+        if chosen is not None:
+            action = with_arg(run.by_id("recall_spy_for_reveal"), "post_id", chosen)
+    elif effect == "command_may_trash_self_to_acquire_row_card":
+        if chosen is not None:
+            action = with_arg(
+                run.by_id("command_acquire_row_card"), "instance_id", chosen
+            )
     elif effect in (
         "may_deploy_or_retreat_one_troop_if_fremen_bond",
         "may_deploy_or_retreat_one_troop",
     ):
         options = _unswerving_options(run)
         if isinstance(chosen, int) and 0 <= chosen < len(options):
-            action = _plain(run, options[chosen])
+            deploy = options[chosen] == "deploy_reveal_card_troop"
+            action = _unit_form(
+                run,
+                options[chosen],
+                commander_first=deploy and run.profile.commanders_deploy_first(),
+            )
     elif effect == "may_lose_influence_for_vp_if_bene_gesserit_alliance":
         if chosen is not None:
             # Several Alliance recipients: the first offered (UNTRACED in the
@@ -712,6 +1126,9 @@ def reveal_choice_window(run: DecisionRun) -> DomainAction | None:
     generic-abilities §0.2): a value > 0 with a response is used; otherwise
     an Optional ability is declined (the empty answer) and an Explicit one,
     whose prompt is forced, goes to ``DefaultRandomChoice``.
+
+    A Bloodlines Command (6+) choice is never deferred (module rule 7): it is
+    answered at its frame, before any buy (plan §11.5).
     """
 
     context = run.ctx.top_frame_context
@@ -719,7 +1136,7 @@ def reveal_choice_window(run: DecisionRun) -> DomainAction | None:
     card_ref = context.get("reveal_card_id")
     if not isinstance(effect, str) or effect not in _CHOICE_ABILITIES:
         return None  # a non-core choice: not mirrored
-    if not isinstance(card_ref, str):
+    if not isinstance(card_ref, str) or card_id(card_ref) not in CARD_ARCHETYPES:
         return None
     if context.get("reveal_spy_recalled") is True:
         # The recall of the app's ``PlaceSpy`` is done; the move is mandatory.
@@ -727,7 +1144,11 @@ def reveal_choice_window(run: DecisionRun) -> DomainAction | None:
     p = run.profile
     ability = _choice_ability(run, effect, card_ref)
     defer = run.first("defer_reveal_choice")
-    if defer is not None and not ability.can_run_immediately(p):
+    if (
+        defer is not None
+        and effect not in _COMMAND_EFFECTS
+        and not ability.can_run_immediately(p)
+    ):
         return defer
     intent = run.memory.intents.pop(_intent_key(run, effect), None)
     if intent == "decline":
@@ -765,6 +1186,21 @@ def _source_card(source: str) -> Entity | None:
     return card_entity(source)
 
 
+def _immediate_command(source: str) -> bool:
+    """A Bloodlines card whose Reveal gain is an automatic Command reward
+    (Bombast, I Believe, Southern Faith): ``AS.CommandRevealAbility``, which
+    ``AlwaysRunImmediately`` (state 400; bloodlines-cards.md §2.1). Only
+    app-style archetypes are looked at."""
+
+    card = _source_card(source)
+    if card is None or not (card.short or "").startswith(_APPSTYLE_IMPERIUM):
+        return False
+    return any(
+        isinstance(a, CommandRevealAbility) and a.always_run_immediately
+        for a in abilities_of(card)
+    )
+
+
 def _auto_rank(kind: str, source: str, revealed: Sequence[str]) -> int:
     """App order of an automatic Reveal gain: state 300 printed reveal
     abilities before state 400 immediates, then the source card's reveal
@@ -777,7 +1213,11 @@ def _auto_rank(kind: str, source: str, revealed: Sequence[str]) -> int:
     # Ecological Testing Station, Northern Watermaster, Stillsuit
     # Manufacturer) fire (state 200 or 500); taken with the state-300 gains
     # by card position.
-    immediate = kind == "intrigue" or card_id(source) in _IMMEDIATE_GAIN_CARDS
+    immediate = (
+        kind == "intrigue"
+        or card_id(source) in _IMMEDIATE_GAIN_CARDS
+        or _immediate_command(source)
+    )
     index = revealed.index(source) if source in revealed else len(revealed)
     later = 1
     if not immediate:
@@ -983,6 +1423,9 @@ def _acquire_sources(run: DecisionRun) -> list[Source]:
 
     ``AcquireAbility::Evaluate @0x4cd3c50`` = ``AcquireValue`` (no
     destination picker in Uprising, so the request has no target info).
+    Arrakeen Scouts' Market Opening: the Reserve The Spice Must Flow is the
+    discounted card while the discount is unused (scouts.md §4.7,
+    ``Profile.market_opening_reserve_card``; unchanged otherwise).
     """
 
     sources: list[Source] = []
@@ -996,7 +1439,9 @@ def _acquire_sources(run: DecisionRun) -> list[Source]:
             reserve_id = str_arg(action, "card_id")
             if reserve_id is None:
                 continue
-            entity = card_entity(f"reserve:{reserve_id}")
+            entity = run.profile.market_opening_reserve_card(
+                card_entity(f"reserve:{reserve_id}")
+            )
         else:
             continue
         sources.append(_acquire_source(run, action, entity))
@@ -1141,11 +1586,17 @@ def _return_batch(run: DecisionRun) -> DomainAction | None:
 def _leader_sources(run: DecisionRun) -> list[Source]:
     """Leader abilities with Reveal timing (``GetUsableDeferredAbilities`` row
     3: ``HasMatchingTiming && CanBeRun``): Amber's Desert Scouts and Feyd's
-    Devious Strength. A key whose app ``Cost`` fails is not in the list."""
+    Devious Strength. A key whose app ``Cost`` fails is not in the list.
+
+    Desert Scouts retreats ``OfType<WormTroop>().Take(1)``: a troop while one
+    fights, a Sardaukar Commander only without one (plan §11.5,
+    bloodlines-systems.md §2.3)."""
 
     p = run.profile
     sources: list[Source] = []
-    scouts_actions = run.by_id("retreat_leader_troop")
+    scouts_actions = run.by_id("retreat_leader_troop") or run.by_id(
+        "retreat_leader_commander"
+    )
     scouts = _leader_ability(run, DesertScoutsAbility)
     if scouts_actions and scouts is not None and scouts.meets_cost(p):
         sources.append(
@@ -1203,7 +1654,8 @@ def _resume_sources(
     run: DecisionRun, answers: dict[str, Answer]
 ) -> list[Source] | None:
     """One key per deferred choice kind that can open now; None when a kind
-    is not mirrored. Each evaluate stores its answer in ``answers``."""
+    is not mirrored. Each evaluate stores its answer in ``answers``. A
+    Command choice is no key: ``_command_resume_sources`` runs it first."""
 
     p = run.profile
     sources: list[Source] = []
@@ -1211,6 +1663,8 @@ def _resume_sources(
         effect = str_arg(action, "effect")
         if effect is None or effect not in _CHOICE_ABILITIES:
             return None
+        if effect in _COMMAND_EFFECTS:
+            continue
         card_ref = _resumed_card(run, effect)
         if card_ref is None:
             return None
@@ -1245,6 +1699,234 @@ def _resume_evaluate(
         return answer.value, action
 
     return evaluate
+
+
+def _command_resume_sources(run: DecisionRun) -> list[Source] | None:
+    """A Command (6+) choice that opened after the Reveal began (it waited for
+    the sixth Persuasion): resumed before anything is valued, like the other
+    Reveal effects in card order (plan §11.5; module rule 7); its frame then
+    answers it by ``Evaluate``. None when the card is not mirrored."""
+
+    revealed = _revealed_cards(_reveal_context(run))
+    sources: list[Source] = []
+    for action in run.by_id("resume_reveal_choice"):
+        effect = str_arg(action, "effect")
+        if effect not in _COMMAND_EFFECTS:
+            continue
+        card_ref = _resumed_card(run, effect)
+        if card_ref is None or card_id(card_ref) not in CARD_ARCHETYPES:
+            return None
+        _choice_ability(run, effect, card_ref)  # _Unmirrored without the class
+        sources.append(
+            Source(
+                f"Command {effect}",
+                Stage.REVEAL_AUTO,
+                (action,),
+                order=_auto_rank("command", card_ref, revealed),
+            )
+        )
+    return sources
+
+
+def _use_evaluate(
+    run: DecisionRun, ability: Ability, action: DomainAction, request: Request
+) -> Callable[[], tuple[float, DomainAction | None]]:
+    """A key realised by one action: its ``Evaluate`` value, the action when
+    the answer is "use" (any stored response)."""
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(run.profile, request)
+        return answer.value, (None if answer.response is None else action)
+
+    return evaluate
+
+
+def _commander_sources(run: DecisionRun) -> list[Source] | None:
+    """Sardaukar Commanders in the Reveal (bloodlines-systems.md §2.3).
+
+    ``recruit_sardaukar_commander``: ``RecruitCommanderAbility`` (Optional;
+    its net, or 100 while the Combat icon's deployment is open so the recruit
+    comes first, D5). ``trash_skill_for_strength``: Desperate's
+    ``DesperateSkillAbility`` (Optional, 100 under Devious Strength's
+    conditions, D9), one key per tile. None for a Skill without it.
+    """
+
+    p = run.profile
+    sources: list[Source] = []
+    recruit = run.first("recruit_sardaukar_commander")
+    if recruit is not None:
+        ability = RecruitCommanderAbility(_PLAYMAT)  # a playmat row: no owner read
+        if ability.meets_cost(p):
+            sources.append(
+                Source(
+                    "Recruit Commander",
+                    Stage.PROMPT,
+                    (recruit,),
+                    _use_evaluate(run, ability, recruit, Request()),
+                )
+            )
+    for action in run.by_id("trash_skill_for_strength"):
+        skill = str_arg(action, "skill_id")
+        if skill is None or skill_id_of(skill) not in SKILL_ARCHETYPES:
+            return None
+        tile = skill_entity(skill, run.ctx.seat)
+        desperate = next(
+            (a for a in abilities_of(tile) if isinstance(a, DesperateSkillAbility)),
+            None,
+        )
+        if desperate is None:
+            return None
+        if not desperate.meets_cost(p):
+            continue
+        request = Request((TargetInfo(entities=(tile,)),))
+        sources.append(
+            Source(
+                f"Desperate {skill}",
+                Stage.PROMPT,
+                (action,),
+                _use_evaluate(run, desperate, action, request),
+            )
+        )
+    return sources
+
+
+def _tech_reveal_sources(run: DecisionRun) -> list[Source] | None:
+    """The Reveal-turn Tech tiles (bloodlines-systems.md §3.4), both owed
+    (they hold back ``finish_reveal``): Explicit, blocking keys.
+
+    Panopticon's ``place_tech_spy``: the tile's ``PlaceSpyRevealAbility``
+    (``SpyValue``; the post is the ``spy_placement`` window's). Forbidden
+    Weapons: ``ForbiddenWeaponsAbility`` (D20, D26) over the offered branches
+    (0 strength, 1 trash) and the tracks of the strength rows; a track's first
+    row is taken (the first offered Alliance recipient, plan §11.5), the bare
+    row when no track is offered. None for a tile without its ability.
+    """
+
+    p = run.profile
+    seat = run.ctx.seat
+    sources: list[Source] = []
+    spy = run.first("place_tech_spy")
+    if spy is not None:
+        panopticon = next(
+            (
+                a
+                for a in abilities_of(tech_entity("panopticon", seat))
+                if isinstance(a, PlaceSpyRevealAbility)
+            ),
+            None,
+        )
+        if panopticon is None:
+            return None
+        sources.append(
+            Source(
+                "Panopticon Spy",
+                Stage.PROMPT,
+                (spy,),
+                _use_evaluate(run, panopticon, spy, Request()),
+                extra={
+                    "blocking": True,
+                    "explicit": panopticon.selection_mode(p) == SelectionMode.EXPLICIT,
+                },
+            )
+        )
+    strength = run.by_id("choose_tech_strength")
+    trash = run.first("choose_tech_trash")
+    if not strength and trash is None:
+        return sources
+    weapons = next(
+        (
+            a
+            for a in abilities_of(tech_entity("forbidden_weapons", seat))
+            if isinstance(a, ForbiddenWeaponsAbility)
+        ),
+        None,
+    )
+    if weapons is None:
+        return None
+    branches = (
+        *((ForbiddenWeaponsAbility.STRENGTH,) if strength else ()),
+        *((ForbiddenWeaponsAbility.TRASH,) if trash is not None else ()),
+    )
+    factions = [f for f in dict.fromkeys(str_arg(a, "faction") for a in strength) if f]
+    request = Request(
+        (
+            TargetInfo(options=branches),
+            TargetInfo(entities=tuple(track_entity(f) for f in factions)),
+        )
+    )
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = weapons.evaluate(p, request)
+        branch = _option(answer, 0)
+        if branch == ForbiddenWeaponsAbility.TRASH:
+            return answer.value, trash
+        if branch == ForbiddenWeaponsAbility.STRENGTH and strength:
+            faction = _option(answer, 1)
+            if faction is None:
+                bare = next((a for a in strength if not a.arguments), None)
+                return answer.value, bare
+            return answer.value, with_arg(strength, "faction", faction)
+        return answer.value, None
+
+    sources.append(
+        Source(
+            "Forbidden Weapons",
+            Stage.PROMPT,
+            (*strength, *((trash,) if trash is not None else ())),
+            evaluate,
+            extra={
+                "blocking": True,
+                "explicit": weapons.selection_mode(p) == SelectionMode.EXPLICIT,
+            },
+        )
+    )
+    return sources
+
+
+def _subcommittee_sources(
+    run: DecisionRun, answers: dict[str, Answer]
+) -> list[Source] | None:
+    """Corrinth City's seat's subcommittee offer (scouts.md §3.3): the same
+    ``SubcommitteeOfferAbility`` key as at High Council (Optional, never
+    immediate), here with no excluded Agent. Its answer (the subcommittee)
+    is kept in ``answers["subcommittee"]`` for the ``scouts_subcommittee``
+    window. The offer holds back ``finish_reveal``: its decline is the End
+    Turn path's (``extra["decline"]``). None without the overlay ability."""
+
+    choose = run.first("choose_subcommittee")
+    decline = run.first("decline_subcommittee")
+    if choose is None and decline is None:
+        return []
+    if decline is None:
+        return None  # our engine always offers the decline with the offer
+    offer = next(
+        (
+            a
+            for a in abilities_of(space_entity("high_council", run.ctx.board))
+            if isinstance(a, SubcommitteeOfferAbility)
+        ),
+        None,
+    )
+    if offer is None:
+        return None
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        if choose is None:
+            return 0.0, None
+        answer = offer.evaluate(run.profile, Request())
+        answers["subcommittee"] = answer
+        return answer.value, (choose if answer.response else None)
+
+    actions = (*((choose,) if choose is not None else ()), decline)
+    return [
+        Source(
+            "Subcommittee",
+            Stage.PROMPT,
+            actions,
+            evaluate,
+            extra={"blocking": True, "decline": decline},
+        )
+    ]
 
 
 def _track_spy_source(run: DecisionRun) -> list[Source]:
@@ -1282,11 +1964,15 @@ def _end_turn(run: DecisionRun, finish: DomainAction | None) -> DomainAction | N
     engine needs each such choice declined before ``finish_reveal``, so the
     next Optional blocker is resumed with a ``"decline"`` intent, without
     evaluating or shuffling again. None when the state no longer fits (an
-    Explicit or unmirrored blocker): the caller evaluates as usual.
+    Explicit or unmirrored blocker): the caller evaluates as usual. Corrinth
+    City's subcommittee offer (Optional) is declined directly.
     """
 
     if finish is not None:
         return finish
+    subcommittee = run.first("decline_subcommittee")
+    if subcommittee is not None:
+        return subcommittee
     blockers: list[tuple[DomainAction, str]] = []
     for action in run.by_id("resume_reveal_choice"):
         effect = str_arg(action, "effect")
@@ -1314,11 +2000,17 @@ def _note_answer(
     A Return Specimen answer names every specimen to return
     (``_RETURN_BATCH``: the rest follow without a new prompt); a research
     key's answer names the research space (``intrigue.RESEARCH_INTENT``, for
-    the ``research_advance`` window).
+    the ``research_advance`` window); the subcommittee offer's answer names
+    the subcommittee (``_SUBCOMMITTEE_INTENT``, for ``scouts_subcommittee``).
     """
 
     round_number, seat = run.ctx.round_number, run.ctx.seat
-    if choice.action_id == "return_specimen":
+    if choice.action_id == "choose_subcommittee":
+        subcommittee = answers.get("subcommittee")
+        picked = None if subcommittee is None else _option(subcommittee)
+        if isinstance(picked, str):
+            run.memory.intents[(_SUBCOMMITTEE_INTENT, round_number, seat)] = picked
+    elif choice.action_id == "return_specimen":
         answer = answers.get("return_specimen")
         count = len(answer.response[0]) if answer and answer.response else 0
         if count > 1:
@@ -1355,14 +2047,20 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     batch = _return_batch(run)
     if batch is not None:
         return batch
+    deployment = _pending_deployment(run)
+    if deployment is not None:
+        return deployment
     finish = run.first("finish_reveal")
     gain_answers: dict[str, Answer] = {}
     gains = _gain_sources(run, gain_answers)
-    if gains is None:
+    owed = tech_acquire_effect_sources(run)
+    commands = _command_resume_sources(run)
+    if gains is None or owed is None or commands is None:
         return None
-    if any(s.stage < Stage.PROMPT for s in gains):
+    automatic = [*owed, *gains, *commands]
+    if any(s.stage < Stage.PROMPT for s in automatic):
         # States 300/400 run before the prompt is built: nothing is valued.
-        return decide(run, gains, skip=finish)
+        return decide(run, automatic, skip=finish)
     if run.memory.data.get(_END_TURN) == _end_turn_mark(run):
         ending = _end_turn(run, finish)
         if ending is not None:
@@ -1372,8 +2070,19 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     run.memory.data.pop(_END_TURN, None)  # stale, or the state moved on
     answers: dict[str, Answer] = {}
     resumes = _resume_sources(run, answers)
-    if resumes is None:
+    commanders = _commander_sources(run)
+    tiles = _tech_reveal_sources(run)
+    flips = tech_flip_sources(run)
+    subcommittee = _subcommittee_sources(run, gain_answers)
+    if (
+        resumes is None
+        or commanders is None
+        or tiles is None
+        or flips is None
+        or subcommittee is None
+    ):
         return None
+    rests: dict[DomainAction, tuple[str, int]] = {}
     sources: list[Source] = [
         *gains,
         *_acquire_sources(run),
@@ -1384,6 +2093,12 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         *_track_spy_source(run),
         *_family_atomics_source(run),
         *_return_specimen_source(run, gain_answers),
+        # Bloodlines / Tech Module / Arrakeen Scouts (empty without them).
+        *commanders,
+        *_deploy_sources(run, rests),
+        *tiles,
+        *flips,
+        *subcommittee,
     ]
     plots = run.by_id("play_intrigue")
     if plots:
@@ -1395,15 +2110,26 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     elif any(s.extra.get("explicit") for s in blocking):
         skip, forced = None, True
     else:
-        optional = [s for s in blocking if "effect" in s.extra]
+        optional = [s for s in blocking if "effect" in s.extra or "decline" in s.extra]
         if not optional:
             return None  # finish blocked by something the app has no key for
         # The app would End Turn: our engine needs the Optional choice
-        # declined first (resumed, then answered ``"decline"``).
-        skip, forced = optional[0].actions[0], False
+        # declined first (resumed, then answered ``"decline"``; the
+        # subcommittee offer is declined directly).
+        declined = optional[0].extra.get("decline")
+        skip = (
+            declined if isinstance(declined, DomainAction) else optional[0].actions[0]
+        )
+        forced = False
     choice = decide(run, sources, skip=skip, forced=forced)
     if choice is not None:
         _note_answer(run, choice, gain_answers)
+        rest = rests.get(choice)
+        if rest is not None:
+            run.memory.intents[_deploy_key(run)] = rest
+        if choice.action_id == "decline_subcommittee" and choice is skip:
+            # The empty answer (End Turn): the other Optional blockers follow.
+            run.memory.data[_END_TURN] = _end_turn_mark(run)
     if choice is not None and choice.action_id == "resume_reveal_choice":
         effect = str_arg(choice, "effect")
         if effect is not None:

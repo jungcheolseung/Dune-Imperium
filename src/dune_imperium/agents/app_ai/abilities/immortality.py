@@ -1395,9 +1395,10 @@ class HighPriorityTravelAbility(g.DeferredAbility):
         return SelectionMode.EXPLICIT
 
     def meets_cost(self, p: Profile) -> bool:
-        me = p.ctx.me
-        return me.influence.spacing_guild >= 2 and (
-            g._has_drawable_card(p) or me.troops_garrison > 0
+        # A garrisoned unit: Bloodlines Commanders count (bloodlines-systems.md
+        # §1.1, D1, plan §11.8).
+        return p.ctx.me.influence.spacing_guild >= 2 and (
+            g._has_drawable_card(p) or p.garrison_troop_count() > 0
         )
 
     def value_for_player(
@@ -1428,7 +1429,7 @@ class HighPriorityTravelAbility(g.DeferredAbility):
         choice = _Choice()
         _cards, spaces = g._this_turn_agent(p)
         not_combat = all(not s.attr("CombatSpace", False) for s in spaces)
-        if not_combat and p.ctx.me.troops_garrison >= 2:
+        if not_combat and p.garrison_troop_count() >= 2:  # Commanders count
             lower, _upper = p.conflict_posture_bounds()
             if p.current_conflict_interest().sum > lower:
                 choice.update_responses(1.0, ((1,),))
@@ -2122,6 +2123,12 @@ class TleilaxuSurgeonRevealAbility(g.DeferredAbility):
         return SelectionMode.OPTIONAL
 
     def meets_cost(self, p: Profile) -> bool:
+        # Troops only, never a Bloodlines Commander (the exception to D1,
+        # bloodlines-systems.md §1.1): "Sardaukar Commander는 이 비용에 쓰지
+        # 않는다" (OQ-053, specimens come from the troop supply
+        # [Immortality p. 8]); our engine offers the Reveal box only for
+        # ``troops_garrison + troops_conflict >= 2``
+        # (``rules/reveal_turn.py`` ``legal_reveal_troop_sacrifice_actions``).
         me = p.ctx.me
         return me.troops_garrison + me.troops_conflict >= 2
 
@@ -2138,7 +2145,8 @@ class TleilaxuSurgeonRevealAbility(g.DeferredAbility):
 
         When the conflict interest is strictly below the posture's lower
         bound (``Item1``) and at most one unit is garrisoned: 0. Else two
-        troops for two specimens, only if positive.
+        troops for two specimens, only if positive. The garrison count is
+        troops only: a Commander cannot pay this cost (``meets_cost``).
         """
 
         v = Summer()
@@ -2632,6 +2640,10 @@ class PiterGeniusAdvisorAbility(g.DeferredAbility):
         return SelectionMode.OPTIONAL
 
     def meets_cost(self, p: Profile) -> bool:
+        # Troops only, never a Bloodlines Commander (the exception to D1,
+        # bloodlines-systems.md §1.1): our engine's "Lose a troop" box offers
+        # ``lose_agent_card_troop(zone)`` only for a zone with a troop
+        # (``rules/agent_effects.py``, ``_LOSE_TROOP_FOR_CARDS``, OQ-038).
         me = p.ctx.me
         return me.troops_garrison + me.troops_conflict >= 1
 
@@ -2812,7 +2824,8 @@ class _ConflictTroopsIntrigue(IntrigueAbility):
     LATE_HOLD: ClassVar[bool] = False
 
     def meets_cost(self, p: Profile) -> bool:
-        return p.ctx.me.troops_conflict >= 2
+        # Troops: Bloodlines Commanders count (bloodlines-systems.md §1.1, D1).
+        return p.conflict_troop_count() >= 2
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
         """``EconomicPositioningCombatAbility::Evaluate @0x4c69c70`` /
@@ -2829,8 +2842,7 @@ class _ConflictTroopsIntrigue(IntrigueAbility):
         v = 1.0
         r0 = p.current_conflict_rank(0)
         if r0 is not None:
-            me = p.ctx.me
-            if me.troops_conflict + me.sandworms_conflict < 3:  # ConflictUnits
+            if p.conflict_unit_count() < 3:  # ConflictUnits (Bloodlines: §1.1)
                 return choice.answer(f"{type(self).__name__} | units")
             r6 = p.current_conflict_rank(-6)
             if r6 is not None and r6 <= r0:
@@ -2887,7 +2899,8 @@ class HarvestCellsAbility(IntrigueAbility):
     ability_timing: ClassVar[int] = COMBAT_RESOLUTION_TIMING
 
     def meets_cost(self, p: Profile) -> bool:
-        return p.ctx.me.troops_conflict >= 3
+        # Troops: Bloodlines Commanders count (bloodlines-systems.md §1.1, D1).
+        return p.conflict_troop_count() >= 3
 
     def is_bad_intrigue(self, p: Profile) -> bool:
         """``IsBadIntrigue @0x4c75510``: the Late arc."""

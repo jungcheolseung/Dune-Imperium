@@ -486,14 +486,18 @@ class AppContext:
     # Arrakeen Scouts — docs/app-ai/scouts.md §6 (app-style extension)
     # ===========================================================================
     #
-    # The public Scouts table state as the seat's ``PlayerView`` shows it,
+    # The public Scouts table state (what the seat's ``PlayerView`` shows),
     # the seat's own sealed bid, and the engine's own predicates evaluated
     # for this seat (they read public state and this seat's own hand,
-    # Intrigue, resources, Spies and Agents). Never read: another seat's
-    # secret picks or sealed bids, and the identities of the face-down
-    # mission cards (``state.scouts_goods_cards``; only the view's
-    # per-location counts). Everything is empty / False without the
-    # ``arrakeen_scouts`` option, so no game without it reads a Scouts value.
+    # Intrigue, resources, Spies and Agents). Read from ``self.state`` like
+    # every other accessor, so a context built on a hypothetical state
+    # (``AppContext(new_state, seat, old_view)``) sees that state's goods,
+    # parked troops and bids (plan §11.8). Never read: another seat's secret
+    # picks or sealed bids, and the identities of the face-down mission
+    # cards (``state.scouts_goods_cards``: only their per-location counts,
+    # as the view's ``scouts_board_card_counts``). Everything is empty /
+    # False without the ``arrakeen_scouts`` option, so no game without it
+    # reads a Scouts value.
 
     @property
     def scouts(self) -> bool:
@@ -505,31 +509,31 @@ class AppContext:
     def scouts_round_modifier(self) -> str:
         """This round's rule change (``RoundModifier`` value, ``""`` none)."""
 
-        return self.view.scouts_round_modifier
+        return self.state.scouts_round_modifier
 
     @property
     def scouts_discount_used(self) -> bool:
         """Whether Market Opening's discount was used up this round."""
 
-        return self.view.scouts_discount_used
+        return self.state.scouts_discount_used
 
     @property
     def scouts_item(self) -> str:
         """The Scouts item being resolved (``""`` outside the Scouts step)."""
 
-        return self.view.scouts_item
+        return self.state.scouts_item
 
     @property
     def scouts_subcommittees(self) -> tuple[str, ...]:
         """The five subcommittees revealed in round 1 (draw order)."""
 
-        return self.view.scouts_subcommittees
+        return self.state.scouts_subcommittees
 
     @property
     def scouts_subcommittee_members(self) -> tuple[tuple[str, int], ...]:
         """``(subcommittee id, seat)`` in joining order."""
 
-        return self.view.scouts_subcommittee_members
+        return self.state.scouts_subcommittee_members
 
     def joinable_subcommittees(self, exclude_space: str = "") -> tuple[str, ...]:
         """The engine's ``joinable_subcommittees`` for this seat now.
@@ -555,20 +559,31 @@ class AppContext:
         """Bank goods on the board: ``(mission, location, resource, amount,
         seat or -1)`` (public)."""
 
-        return self.view.scouts_goods
+        return self.state.scouts_goods
 
     @property
     def scouts_parked(self) -> tuple[tuple[str, int, str, int], ...]:
         """Parked mission troops: ``(mission, seat, location, troops)``."""
 
-        return self.view.scouts_parked
+        return self.state.scouts_parked
 
     @property
     def scouts_board_card_counts(self) -> tuple[tuple[str, str, int], ...]:
-        """``(mission, location, count)`` of the face-down mission cards (the
-        public view's rows; never the hidden identities)."""
+        """``(mission, location, count)`` of the face-down mission cards.
 
-        return self.view.scouts_board_card_counts
+        The public view's rows (``core/observation.py``
+        ``_board_card_counts``: first-seen order of each mission and
+        location): only the mission and location of each card are read,
+        never its hidden identity.
+        """
+
+        counts: dict[tuple[str, str], int] = {}
+        for mission_id, location, _hidden in self.state.scouts_goods_cards:
+            counts[(mission_id, location)] = counts.get((mission_id, location), 0) + 1
+        return tuple(
+            (mission_id, location, count)
+            for (mission_id, location), count in counts.items()
+        )
 
     def desert_riding_token(self) -> tuple[str, str, str, int, int] | None:
         """Desert Riding's Maker Hooks goods row while the token is out
@@ -580,19 +595,22 @@ class AppContext:
     def scouts_market_cards(self) -> tuple[str, ...]:
         """Critical Moment's revealed Imperium cards (instance ids)."""
 
-        return self.view.scouts_market_cards
+        return self.state.scouts_market_cards
 
     @property
     def scouts_calls(self) -> tuple[tuple[int, int], ...]:
         """Critical Moment's open calls, ``(seat, amount)`` (0 a pass)."""
 
-        return self.view.scouts_calls
+        return self.state.scouts_calls
 
     def own_scouts_bid(self) -> int:
-        """This seat's own bid in the running sealed auction (-1: none yet)."""
+        """This seat's own bid in the running sealed auction (-1: none yet;
+        the private view's ``scouts_bid``). No other seat's bid is read."""
 
-        private = self.view.private
-        return -1 if private is None else private.scouts_bid
+        return next(
+            (amount for seat, amount, _ in self.state.scouts_bids if seat == self.seat),
+            -1,
+        )
 
     def mission_collectable(self, space_id: str) -> bool:
         """Whether this seat's visit to ``space_id`` collects mission pieces

@@ -36,6 +36,7 @@ from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile.core import ProfileCore
 from dune_imperium.agents.app_ai.summer import Summer
 from dune_imperium.content.bloodlines.sardaukar import COMMANDER_STRENGTH
+from dune_imperium.core.player import PlayerState
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.tactics import (
     TACTICS_SPICE_SPACE,
@@ -107,18 +108,65 @@ class BloodlinesMixin(ProfileCore):
         return self.ctx.me.leader_id
 
     # ===========================================================================
+    # §1.1 Units: the app's unit and troop counts (D1; plan §11.8)
+    # ===========================================================================
+    #
+    # The card ports read these instead of our troop fields, so a Commander
+    # (a "troop" worth 2 strength) and Duncan's Into the Fray Agent (a unit,
+    # not a troop) count where the app counts every ``WormUnit`` or
+    # ``WormTroop``. Each count adds the Bloodlines pieces only while the
+    # option is on, so every other game reads exactly the old troop fields.
+    # Supply reads stay troops only (§1.1: a supply Commander cannot be
+    # recruited by a troop icon).
+
+    def conflict_unit_count(self, player: PlayerState | None = None) -> int:
+        """``P.ConflictUnits`` (§1.1): troops and sandworms in the Conflict;
+        with Bloodlines also Commanders and the Into the Fray Agent
+        (``PlayerState.units_in_conflict``). ``player`` defaults to this
+        seat."""
+
+        pl = self.ctx.me if player is None else player
+        if self.ctx.bloodlines:
+            return pl.units_in_conflict
+        return pl.troops_conflict + pl.sandworms_conflict
+
+    def conflict_troop_count(self, player: PlayerState | None = None) -> int:
+        """``ConflictTroops`` / ``GetDeployedTroops`` /
+        ``HasUnitsDeployed<WormTroop>`` (§1.1): troops in the Conflict; with
+        Bloodlines also Commanders. Never a sandworm or the Into the Fray
+        Agent."""
+
+        pl = self.ctx.me if player is None else player
+        if self.ctx.bloodlines:
+            return pl.troops_conflict + pl.commanders_conflict
+        return pl.troops_conflict
+
+    def garrison_troop_count(self, player: PlayerState | None = None) -> int:
+        """``GarrisonTroops`` / ``GarrisonUnits`` (§1.1, the two are the same
+        set): garrison troops; with Bloodlines also garrison Commanders."""
+
+        pl = self.ctx.me if player is None else player
+        if self.ctx.bloodlines:
+            return pl.troops_garrison + pl.commanders_garrison
+        return pl.troops_garrison
+
+    # ===========================================================================
     # §1.2 Commander and Skill prices
     # ===========================================================================
 
     def commander_unit_value(self) -> float:
         """``CommanderUnitValue`` (§1.2): a troop plus the strength above one.
 
-        ``troop_value(1) + strength_value(COMMANDER_STRENGTH - 2)``; the
-        second term is ``GetResourceValue(Strength, 0) = 0`` with our 2-strength
-        Commander (``content/bloodlines/sardaukar.py``).
+        ``uncapped_troop_value(1) + strength_value(COMMANDER_STRENGTH - 2)``;
+        the second term is ``GetResourceValue(Strength, 0) = 0`` with our
+        2-strength Commander (``content/bloodlines/sardaukar.py``). The troop
+        price skips the troop-supply cap (plan §11.8): a Commander does not
+        come from the troop supply, so an empty supply must not price it at
+        0 (``ScoutsMixin.uncapped_troop_value``, scouts.md §2.1; equal to
+        ``troop_value(1)`` while a supply troop is left).
         """
 
-        return self.troop_value(1, False) + self.strength_value(
+        return self._bl_profile().uncapped_troop_value(1) + self.strength_value(
             COMMANDER_STRENGTH - TROOP_STRENGTH, False
         )
 
@@ -528,6 +576,8 @@ class BloodlinesMixin(ProfileCore):
                 if dict(self.ctx.reserve_stacks).get(_TSMF_RESERVE, 0) <= 0:
                     return None
                 tsmf = card_entity(f"reserve:{_TSMF_RESERVE}", self.ctx.seat)
+                if self.ctx.scouts:  # Market Opening's discount (plan §11.8)
+                    tsmf = self._bl_profile().market_opening_reserve_card(tsmf)
                 s.add("Navigation TSMF", self.acquire_value(tsmf).sum)
                 s.add("Navigation Water Cost", self.water_value(-1))
                 return s.sum

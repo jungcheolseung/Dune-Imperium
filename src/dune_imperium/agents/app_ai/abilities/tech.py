@@ -67,6 +67,7 @@ from dune_imperium.agents.app_ai.abilities.leaders import SignetAbility
 from dune_imperium.agents.app_ai.context import FACTIONS
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
+from dune_imperium.content.bloodlines.tech import HIGH_COUNCIL_TECH_DISCOUNT
 
 if TYPE_CHECKING:
     from dune_imperium.agents.app_ai.profile import Profile
@@ -82,6 +83,10 @@ TECH_TILE_ENTITY_TYPE: Final = "TechTile"
 
 #: Our ref for the app's ``Board.TechNegotiationArea`` (the "negotiate" target).
 TECH_NEGOTIATION_AREA: Final = "tech_negotiation_area"
+
+#: Our High Council space id (``catalog.TECH_SPACES``): the Landsraad space
+#: whose first visit grants the Tech discount seat (bloodlines-systems.md §3.1).
+HIGH_COUNCIL_SPACE: Final = "high_council"
 
 
 def is_tech_tile(entity: Entity) -> bool:
@@ -173,22 +178,45 @@ class AcquireTechAbility(DeferredAbility):
 
         return SelectionMode.EXPLICIT
 
+    def _discount(self, p: Profile) -> int:
+        """``TechDiscount``, with the High Council seat assumed on a first
+        visit (app-style, Bloodlines Tech Module only).
+
+        bloodlines-systems.md §3.1 row 2 (D12), plan §11.8: the first High
+        Council visit grants the seat before the Landsraad tile is bought
+        (``[Bloodlines p. 7]`` example), so its placement is valued with the
+        seat's −1 (``HIGH_COUNCIL_TECH_DISCOUNT``). The seat only lowers
+        ``tech_cost``, so one more discount is the same affordability; every
+        other owner, game and seat keeps ``TechDiscount``.
+        """
+
+        if (
+            p.ctx.tech_module
+            and self.owner.kind is Kind.SPACE
+            and self.owner.ref == HIGH_COUNCIL_SPACE
+            and not p.ctx.me.high_council
+        ):
+            return self.tech_discount + HIGH_COUNCIL_TECH_DISCOUNT
+        return self.tech_discount
+
     def meets_cost(self, p: Profile) -> bool:
         """``CanAcquireTechTile::CanBePaid @0x4a75f40``: a face-up tile is
-        affordable with ``TechDiscount``, spice only (spec §7.3)."""
+        affordable with ``TechDiscount``, spice only (spec §7.3); the High
+        Council seat assumed on a first visit (``_discount``)."""
 
-        return bool(p.tech_acquire_targets(self.tech_discount, False))
+        return bool(p.tech_acquire_targets(self._discount(p), False))
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
     ) -> Summer:
         """``AcquireTechAbility::ValueForPlayer`` @0x4d97350.
 
-        The base (empty) summer plus ``BuyTechValue(TechDiscount, false)``.
+        The base (empty) summer plus ``BuyTechValue(TechDiscount, false)``;
+        the High Council seat assumed on a first visit (``_discount``).
         """
 
         v = Summer()
-        v.add("Acquire Tech Value", p.buy_tech_value(self.tech_discount, False))
+        v.add("Acquire Tech Value", p.buy_tech_value(self._discount(p), False))
         return v
 
     def evaluate(self, p: Profile, request: Request) -> Answer:

@@ -31,9 +31,27 @@ app state (``_after_send`` / ``_after_cost_first``).
 
 ``place_track_spy`` (an owed Emperor-4 Spy) is never chosen here: the app
 keeps that Spy for the post-action prompt (agent_effects / reveal windows).
-Any other legal id (Bloodlines' ``play_turn_start_card``, tech actions) has
-no app key here: the decision falls back (counted) rather than the id being
-passed over unseen (``_KNOWN_ACTION_IDS``).
+Any other legal id with no key here makes the decision fall back (counted)
+rather than the id being passed over unseen (``_KNOWN_ACTION_IDS``).
+
+Bloodlines and the Tech Module (app-style keys, docs/app-ai-plan.md §11.4,
+bloodlines-cards.md §3.18 and §8, bloodlines-systems.md §1.7, §3.3-3.4):
+
+- ``play_turn_start_card`` (Litany Against Fear): one key per card,
+  ``LitanyTurnStartAbility::Evaluate`` (draw value + the reveal penalty;
+  D11), competing with the placements and Plots of this prompt.
+- ``flip_tech`` (Advanced Data Analysis, Spy Drones): the tile's Flip ability
+  is a key of the turn-start prompt (D25), E 100 (D23).
+- ``resolve_tech_acquire_effect`` (a tile bought by a Plot at the turn
+  start): resolved at once in the engine's key order (D15), each choice
+  answered by its acquire ability (``tech_acquire_effect_sources``).
+- Navigation Chamber: every ``agent_turn(discount=spice|solari)`` variant of
+  a space is its own target (``space_with_cost_cut``; D60): the plain space,
+  then the spice cut, then the Solari cut (our legal order), and the first
+  strictly best wins.
+- Commander spaces and Tuek's Sietch need nothing here: their abilities are
+  overlays of ``catalog.space_entity`` and Tuek's Sietch is in
+  ``board_space_order`` when Esmar Tuek plays.
 
 Immortality (``spec/immortality.md`` §4, §8):
 
@@ -75,6 +93,15 @@ from dune_imperium.agents.app_ai.abilities.base import (
     abilities_of,
     ability_for,
 )
+from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+    LitanyTurnStartAbility,
+)
+from dune_imperium.agents.app_ai.abilities.bloodlines_systems import (
+    AdvancedDataAnalysisAbility,
+    GeneLockedVaultAcquiredAbility,
+    RapidDropshipsAbility,
+    SpyDronesAbility,
+)
 from dune_imperium.agents.app_ai.abilities.board import (
     GatherSupportAbility,
     RecallSpyInfiltrateAbility,
@@ -82,25 +109,33 @@ from dune_imperium.agents.app_ai.abilities.board import (
 )
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
 from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluate
+from dune_imperium.agents.app_ai.abilities.tech import MemocordersAcquiredAbility
 from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
+    CARD_ARCHETYPES,
     IMMORTALITY_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
+    TECH_ARCHETYPES,
     card_entity,
     space_entity,
     spy_entity,
+    tech_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.context import AppContext, Board
+from dune_imperium.agents.app_ai.choice import default_random_choice
+from dune_imperium.agents.app_ai.context import AppContext, Board, card_id
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
+from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
+from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
 from dune_imperium.agents.app_ai.windows.common import (
     Source,
     Stage,
     decide,
     int_arg,
     str_arg,
+    with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
@@ -130,8 +165,23 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "return_specimen",
         "reveal_turn",
         "use_family_atomics",
+        # Bloodlines / Tech Module (app-style keys).
+        "play_turn_start_card",
+        "flip_tech",
+        "resolve_tech_acquire_effect",
     }
 )
+#: Navigation Chamber's discount variants of one space, in our legal order
+#: (``rules/agent_turn.py`` ``_actions_for_affordable_costs``): the plain
+#: cost, then the spice cut, then the Solari cut.
+_DISCOUNT_ORDER: tuple[str | None, ...] = (None, "spice", "solari")
+#: A tile's Flip activation (bloodlines-systems.md §3.3; D23-D25).
+_FLIP_ABILITIES = (AdvancedDataAnalysisAbility, SpyDronesAbility, RapidDropshipsAbility)
+#: Gene-Locked Vault's branches -> our ``choice`` argument.
+_VAULT_CHOICES: dict[int, str] = {
+    GeneLockedVaultAcquiredAbility.INTRIGUE: "intrigue",
+    GeneLockedVaultAcquiredAbility.CARD: "card",
+}
 #: Space abilities whose ``.ctor`` sets ``CostFirstSpaceAbility``
 #: (engine-order §3.1 state 220: Spice Refinery and Gather Support).
 _COST_FIRST: tuple[type[SpaceAbility], ...] = (
@@ -408,6 +458,9 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
         if str_arg(action, "card_id") == card_ref
         and str_arg(action, "space_id") == space_id
     ]
+    # Navigation Chamber (D60): the discount variant the card's key chose.
+    discount = str_arg(chosen, "discount")
+    variants = [a for a in variants if str_arg(a, "discount") == discount] or variants
     graft = _graft_choice(run, card_ref, variants)
     if graft is not None:
         variants = [a for a in variants if (arg(a, "graft") is True) is graft]
@@ -646,12 +699,17 @@ def _card_evaluate(
         ability = _agent_ability(card_ref, run.ctx.seat)
         if ability is None:
             return 0.0, None
-        legal = {str_arg(action, "space_id") for action in actions}
+        discounts: dict[str | None, set[str | None]] = {}
+        for action in actions:
+            discounts.setdefault(str_arg(action, "space_id"), set()).add(
+                str_arg(action, "discount")
+            )
         board = run.ctx.board
         spaces = tuple(
-            space_entity(space_id, board)
+            target
             for space_id in board_space_order(board)
-            if space_id in legal
+            if space_id in discounts
+            for target in _space_targets(space_id, board, discounts[space_id])
         )
         if not spaces:
             return 0.0, None
@@ -662,12 +720,71 @@ def _card_evaluate(
             # GetResponse after MakeChoice picked this key: the empty answer.
             return answer.value, run.first("reveal_turn")
         space_id = answer.response[0][0]
+        variants = [t for t in spaces if t.ref == space_id]
+        discount = (
+            _best_discount(run, ability, variants)
+            if len(variants) > 1
+            else _discount_of(variants[0])
+            if variants
+            else None
+        )
         for action in actions:
-            if str_arg(action, "space_id") == space_id:
+            if (
+                str_arg(action, "space_id") == space_id
+                and str_arg(action, "discount") == discount
+            ):
                 return answer.value, action
         return answer.value, None
 
     return evaluate
+
+
+def _discount_of(target: Entity) -> str | None:
+    """The Navigation Chamber cut a target space carries (None: the plain
+    space; ``space_with_cost_cut`` sets ``SpiceDiscount``/``SolariDiscount``)."""
+
+    if target.int_attr("SpiceDiscount") < 0:
+        return "spice"
+    if target.int_attr("SolariDiscount") < 0:
+        return "solari"
+    return None
+
+
+def _space_targets(
+    space_id: str, board: Board, discounts: set[str | None]
+) -> tuple[Entity, ...]:
+    """The targets of one legal space: the space itself, or (Navigation
+    Chamber, D60) one target per legal discount variant in our legal order
+    (``_DISCOUNT_ORDER``). Without a discount variant this is the plain space
+    alone, as before."""
+
+    base = space_entity(space_id, board)
+    return tuple(
+        base if kind is None else space_with_cost_cut(base, kind)
+        for kind in _DISCOUNT_ORDER
+        if kind in discounts
+    )
+
+
+def _best_discount(
+    run: DecisionRun, ability: AgentAbility, variants: Sequence[Entity]
+) -> str | None:
+    """Which Navigation Chamber variant of the chosen space won (D60).
+
+    ``AgentAbility::Evaluate`` answers the space ref only; every variant
+    shares it, so each variant is valued alone (the same loop on a one-space
+    target list) and the first strictly best one, in target order, is the one
+    the full evaluation kept.
+    """
+
+    best: tuple[float, str | None] | None = None
+    for target in variants:
+        answer = ability.evaluate(
+            run.profile, Request(infos=(TargetInfo(entities=(target,)),))
+        )
+        if best is None or answer.value > best[0]:
+            best = (answer.value, _discount_of(target))
+    return None if best is None else best[1]
 
 
 def _card_sources(run: DecisionRun) -> list[Source]:
@@ -693,21 +810,194 @@ def _card_sources(run: DecisionRun) -> list[Source]:
     ]
 
 
+def _turn_start_card_sources(run: DecisionRun) -> list[Source] | None:
+    """Litany Against Fear's turn-start play (bloodlines-cards.md §3.18, D11).
+
+    One PROMPT key per ``play_turn_start_card(card_id)``: the card's
+    ``LitanyTurnStartAbility`` (Optional, timing None) valued by its
+    ``Evaluate`` (``CardDrawValueWithBuyGains`` + the reveal penalty), next to
+    the placement and Plot keys of ``DetermineTurn``. None (not mirrored) for
+    a card without that ability.
+    """
+
+    sources: list[Source] = []
+    for action in run.by_id("play_turn_start_card"):
+        ref = str_arg(action, "card_id")
+        if ref is None or card_id(ref) not in CARD_ARCHETYPES:
+            return None
+        card = card_entity(ref, run.ctx.seat)
+        ability = next(
+            (a for a in abilities_of(card) if isinstance(a, LitanyTurnStartAbility)),
+            None,
+        )
+        if ability is None:
+            return None
+        sources.append(
+            Source(
+                f"Turn start {ref}",
+                Stage.PROMPT,
+                (action,),
+                _plain_evaluate(run, ability, action),
+            )
+        )
+    return sources
+
+
+def _plain_evaluate(
+    run: DecisionRun, ability: Ability, action: DomainAction
+) -> Callable[[], tuple[float, DomainAction | None]]:
+    """An ability key with no targets: its ``Evaluate`` value, realised by
+    ``action`` when the answer is "use" (a stored response)."""
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(run.profile, Request())
+        return answer.value, (None if answer.response is None else action)
+
+    return evaluate
+
+
+def tech_flip_sources(run: DecisionRun) -> list[Source] | None:
+    """One PROMPT key per ``flip_tech(tech_id)`` (bloodlines-systems.md §3.3,
+    §3.4; D23-D25): the tile's Flip ability (Optional) while its ``Cost``
+    holds, valued by its ``Evaluate`` (100, or Rapid Dropships' deploy test).
+
+    Shared by the turn-start prompt and the post-reveal prompt (the
+    Agent-turn list is the agent_effects window's). None (not mirrored) for
+    a tile without a Flip ability.
+    """
+
+    sources: list[Source] = []
+    for action in run.by_id("flip_tech"):
+        tech_id = str_arg(action, "tech_id")
+        if tech_id is None or tech_id not in TECH_ARCHETYPES:
+            return None
+        tile = tech_entity(tech_id, run.ctx.seat)
+        ability = next(
+            (a for a in abilities_of(tile) if isinstance(a, _FLIP_ABILITIES)), None
+        )
+        if ability is None:
+            return None
+        if not ability.meets_cost(run.profile):
+            continue  # ``CanBeRun`` fails: no key (our engine agrees)
+        sources.append(
+            Source(
+                f"Flip {tech_id}",
+                Stage.PROMPT,
+                (action,),
+                _plain_evaluate(run, ability, action),
+            )
+        )
+    return sources
+
+
+def tech_acquire_effect_sources(run: DecisionRun) -> list[Source] | None:
+    """The owed acquire icons of a Tech tile bought in this turn (OQ-098).
+
+    bloodlines-systems.md §3.1 / D15: the app resolves a tile's acquire
+    effects at once, right after the purchase (``AcquireTechTile``), so they
+    are an automatic stage (``Stage.IMMEDIATE``) taken in the engine's key
+    order (our legal order). The first owed icon is realised here; a choice
+    inside it is answered by its acquire ability: Memocorders' faction
+    (``MemocordersAcquiredAbility::Evaluate``), Gene-Locked Vault's Intrigue
+    or card (``GeneLockedVaultAcquiredAbility``, D19) and Forbidden Weapons'
+    Shield Wall (destroyed iff ``ShouldBlowWall``, D20). A forced answer
+    that names nothing legal is ``DefaultRandomChoice``. Empty when nothing
+    is owed; None for an icon whose choice has no app answer here.
+    """
+
+    groups: dict[tuple[str, str], list[DomainAction]] = {}
+    for action in run.by_id("resolve_tech_acquire_effect"):
+        tech_id = str_arg(action, "tech_id")
+        effect = str_arg(action, "effect")
+        if tech_id is None or effect is None:
+            return None
+        groups.setdefault((tech_id, effect), []).append(action)
+    if not groups:
+        return []
+    (tech_id, effect), actions = next(iter(groups.items()))
+    chosen = _acquire_effect_action(run, tech_id, effect, actions)
+    if chosen is None:
+        return None
+    return [Source(f"Tech acquire {tech_id} {effect}", Stage.IMMEDIATE, (chosen,))]
+
+
+def _acquire_effect_action(
+    run: DecisionRun, tech_id: str, effect: str, actions: Sequence[DomainAction]
+) -> DomainAction | None:
+    """The app's answer to one owed acquire icon (``tech_acquire_effect_sources``)."""
+
+    if len(actions) == 1:
+        return actions[0]
+    if tech_id not in TECH_ARCHETYPES:
+        return None
+    tile = tech_entity(tech_id, run.ctx.seat)
+    p = run.profile
+    if effect == "influence":
+        memocorders = next(
+            (
+                a
+                for a in abilities_of(tile)
+                if isinstance(a, MemocordersAcquiredAbility)
+            ),
+            None,
+        )
+        factions = [f for f in (str_arg(a, "faction") for a in actions) if f]
+        if memocorders is None or len(factions) != len(actions):
+            return None
+        tracks = tuple(track_entity(f) for f in factions)
+        request = Request(infos=(TargetInfo(entities=tracks),), forced=True)
+        faction = _forced_pick(run, memocorders.evaluate(p, request), factions)
+        return with_arg(actions, "faction", faction)
+    if effect == "intrigue_or_card":
+        vault = next(
+            (
+                a
+                for a in abilities_of(tile)
+                if isinstance(a, GeneLockedVaultAcquiredAbility)
+            ),
+            None,
+        )
+        if vault is None:
+            return None
+        options = list(_VAULT_CHOICES)
+        request = Request(infos=(TargetInfo(options=tuple(options)),), forced=True)
+        option = _forced_pick(run, vault.evaluate(p, request), options)
+        return with_arg(actions, "choice", _VAULT_CHOICES[option])
+    if effect == "shield_wall":
+        destroy = p.should_blow_wall()
+        for action in actions:
+            if (arg(action, "destroy_shield_wall") is True) is destroy:
+                return action
+        return default_random_choice(list(actions), run.rng)
+    return None
+
+
 def turn_window(run: DecisionRun) -> DomainAction | None:
     """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer)."""
 
     if any(action.action_id not in _KNOWN_ACTION_IDS for action in run.legal):
         return None  # an id with no app key: fall back, never pass it over
+    owed = tech_acquire_effect_sources(run)
+    if owed is None:
+        return None
+    if owed:
+        return decide(run, owed, skip=None)
     # ``place_track_spy`` is never a source. UNTRACED: 12 §1.3 finds nothing in
     # the playmat ability container (DetermineTurn row 4), while engine-order
     # §3.6 lists custom abilities there; a custom PlaceSpy (timing None) would
     # then be a turn-start key. The app's Emperor-4 Spy is taken to wait for
     # the post-action prompt, as the window brief rules.
+    starts = _turn_start_card_sources(run)
+    flips = tech_flip_sources(run)
+    if starts is None or flips is None:
+        return None
     sources = _card_sources(run)
     plots = run.by_id("play_intrigue")
     if plots:
         sources.extend(intrigue_play_sources(run, plots, combat=False))
     sources.extend(playmat_sources(run))
+    sources.extend(starts)
+    sources.extend(flips)
     chosen = decide(run, sources, skip=run.first("reveal_turn"), forced=False)
     if chosen is not None and chosen.action_id == "agent_turn":
         return _realise(run, chosen)
