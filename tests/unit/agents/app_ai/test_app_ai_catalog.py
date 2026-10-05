@@ -197,6 +197,18 @@ def _pair(table: Mapping[str, tuple[str, str]], key: str, choam: bool) -> str:
     return with_choam if choam else without
 
 
+def _app_only[V: (str, tuple[str, str])](table: Mapping[str, V]) -> dict[str, V]:
+    """The entries that map to the app's own archetypes. The app-style
+    Bloodlines/Scouts entries (``data/synthetic.py``) are checked in
+    ``test_app_ai_synthetic.py``."""
+
+    return {
+        key: value
+        for key, value in table.items()
+        if (value if isinstance(value, str) else value[0]) in ARCHETYPES
+    }
+
+
 # -- personal cards -----------------------------------------------------------
 
 
@@ -280,8 +292,8 @@ def test_card_table_has_exactly_the_registered_cards() -> None:
         | {entry.card.card_id for entry in _tleilaxu()}
         | {EXPERIMENTATION.card.card_id, CONTROL_THE_SPICE.card.card_id}
     )
-    assert set(CARD_ARCHETYPES) == registered
-    assert len(CARD_ARCHETYPES) == 7 + 2 + 54 + 3 + 25 + 18 + 1 + 1 + 1 + 1
+    assert set(_app_only(CARD_ARCHETYPES)) == registered
+    assert len(_app_only(CARD_ARCHETYPES)) == 7 + 2 + 54 + 3 + 25 + 18 + 1 + 1 + 1 + 1
 
 
 @CHOAM
@@ -479,11 +491,12 @@ def _immortality_intrigue() -> list[IntrigueCardEntry]:
 
 
 def test_intrigue_table_has_exactly_the_uprising_and_immortality_identities() -> None:
-    assert set(INTRIGUE_ARCHETYPES) == {
+    app = _app_only(INTRIGUE_ARCHETYPES)
+    assert set(app) == {
         entry.card.card_id for entry in intrigue_cards_for_choam(True, immortality=True)
     }
-    assert len(INTRIGUE_ARCHETYPES) == 39 + 11
-    assert len(set(INTRIGUE_ARCHETYPES.values())) == 39 + 11
+    assert len(app) == 39 + 11
+    assert len(set(app.values())) == 39 + 11
 
 
 def test_immortality_intrigue_titles_copies_and_timings_agree() -> None:
@@ -653,7 +666,10 @@ def test_conflict_table_has_exactly_the_uprising_and_epic_conflicts() -> None:
         for c in conflicts_by_tier(tier, epic_game=True)
     } - {c.card.card_id for c in conflicts}
     assert epic == {"economic_supremacy"}
-    assert set(CONFLICT_ARCHETYPES) == {c.card.card_id for c in conflicts} | epic
+    assert (
+        set(_app_only(CONFLICT_ARCHETYPES))
+        == {c.card.card_id for c in conflicts} | epic
+    )
 
 
 def test_economic_supremacy_is_the_apps_rise_of_ix_card() -> None:
@@ -728,9 +744,10 @@ def test_conflict_reward_archetypes_are_dealt_in_place_order(choam: bool) -> Non
 
 
 def test_contract_table_has_exactly_the_twenty_standard_tiles() -> None:
-    assert set(CONTRACT_ARCHETYPES) == {c.card.card_id for c in STANDARD_CONTRACTS}
-    assert len(CONTRACT_ARCHETYPES) == 20
-    assert len(set(CONTRACT_ARCHETYPES.values())) == 18
+    app = _app_only(CONTRACT_ARCHETYPES)
+    assert set(app) == {c.card.card_id for c in STANDARD_CONTRACTS}
+    assert len(app) == 20
+    assert len(set(app.values())) == 18
 
 
 def test_contract_archetypes_exist_and_are_dealt_only_with_choam() -> None:
@@ -743,7 +760,7 @@ def test_contract_archetypes_exist_and_are_dealt_only_with_choam() -> None:
 
 def test_two_tiles_share_an_archetype_exactly_when_the_app_has_two_copies() -> None:
     by_archetype: dict[str, list[str]] = {}
-    for card_id, short in CONTRACT_ARCHETYPES.items():
+    for card_id, short in _app_only(CONTRACT_ARCHETYPES).items():
         by_archetype.setdefault(short, []).append(card_id)
     for short, card_ids in by_archetype.items():
         assert _int_attr(ARCHETYPES[short], "CardCount") == len(card_ids), short
@@ -816,9 +833,10 @@ def test_every_leader_maps_to_an_archetype_dealt_with_that_setting(choam: bool) 
 def test_leader_table_has_the_nine_leaders_and_jessicas_flipped_face() -> None:
     expected = {leader.leader_id for leader in leaders_for_choam(True)}
     expected.add("reverend_mother_jessica")
-    assert set(LEADER_ARCHETYPES) == expected
-    assert len(LEADER_ARCHETYPES) == 10
-    assert len(set(LEADER_ARCHETYPES.values())) == 10
+    app = _app_only(LEADER_ARCHETYPES)
+    assert set(app) == expected
+    assert len(app) == 10
+    assert len(set(app.values())) == 10
 
 
 def test_shaddam_is_dealt_only_with_choam() -> None:

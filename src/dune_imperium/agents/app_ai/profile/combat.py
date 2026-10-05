@@ -10,6 +10,9 @@ Unit counts follow the app's ``WormPlayer`` getters, mapped to our fields
 ``troops_garrison`` (an Uprising garrison holds troops only),
 ``Strength`` = ``combat_strength``, ``RemainingAgents.Count()`` =
 ``agents_available`` (like the app, it is not cleared by revealing).
+Bloodlines (docs/app-ai/bloodlines-systems.md §1.1, D1): Sardaukar Commanders
+count as troops and units, Duncan's Into the Fray Agent as a Conflict unit;
+both are 0 without the option.
 
 Comparisons keep the binary's direction and strictness, so a NaN conflict
 interest (no current Conflict: ``RelativeConflictValue`` divides by an empty
@@ -110,6 +113,25 @@ _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
         "worm.canis.abilities.PlayAbilities.Uprising.TacticalOptionAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.WeirdingCombatAbility",
     }
+) | frozenset(
+    # App-style Bloodlines subclasses of StrengthIntrigueAbility
+    # (docs/app-ai/bloodlines-cards.md §4.1, §5: "Combat cards derive from
+    # StrengthIntrigueAbility"), so ``OfType<StrengthIntrigueAbility>()``
+    # keeps them. Only the Bloodlines synthetic archetypes list these names.
+    "worm.canis.abilities.AppStyle.Bloodlines." + name
+    for name in (
+        "BattlefieldResearchCombatAbility",
+        "DesertSupportAbility",
+        "GraspArrakisCombatAbility",
+        "ReturnTheFavorAbility",
+        "RipplesInTheSandAbility",
+        "TenuousBondCombatAbility",
+        "TheStrongSurviveAbility",
+        "WithdrawalAgreementAbility",
+        "TwistedControlledCombatAbility",
+        "TwistedShrewdAbility",
+        "TwistedSinisterAbility",
+    )
 )
 
 # ``DeployValue``'s "nothing to deploy from" spaces (base-game list; in
@@ -193,7 +215,7 @@ def _strings(archetype: Archetype, name: str) -> tuple[str, ...]:
 def _card_archetype(bare_card_id: str) -> Archetype:
     """A personal card's archetype by bare card id."""
 
-    return ARCHETYPES[catalog.CARD_ARCHETYPES[bare_card_id]]
+    return catalog.archetype(catalog.CARD_ARCHETYPES[bare_card_id])
 
 
 def _card_strength(bare_card_id: str) -> int:
@@ -215,15 +237,36 @@ def _cs_half(value: int) -> int:
 
 
 def _conflict_units(p: PlayerState) -> int:
-    """``WormPlayer::get_ConflictUnits @0x4843c40`` (a sandworm is one unit)."""
+    """``WormPlayer::get_ConflictUnits @0x4843c40`` (a sandworm is one unit).
 
-    return p.troops_conflict + p.sandworms_conflict
+    Bloodlines (docs/app-ai/bloodlines-systems.md §1.1, D1): every
+    ``WormUnit`` counts, so Sardaukar Commanders and Duncan's Into the Fray
+    Agent too (``PlayerState.units_in_conflict``); both are 0 without the
+    option.
+    """
+
+    return p.units_in_conflict
 
 
 def _garrison_units(p: PlayerState) -> int:
-    """``WormPlayer::get_GarrisonUnits @0x4843dc0`` (troops only in Uprising)."""
+    """``WormPlayer::get_GarrisonUnits @0x4843dc0`` (troops only in Uprising;
+    Bloodlines garrison Commanders too, §1.1)."""
 
-    return p.troops_garrison
+    return p.troops_garrison + p.commanders_garrison
+
+
+def _garrison_troops(p: PlayerState) -> int:
+    """``WormPlayer::get_GarrisonTroops @0x4843ac0``: troops, and Bloodlines
+    Commanders ("a 'troop' worth 2 strength", §1.1, D1); never an Agent."""
+
+    return p.troops_garrison + p.commanders_garrison
+
+
+def _conflict_troops(p: PlayerState) -> int:
+    """``GetDeployedTroops`` / ``HasUnitsDeployed<WormTroop>``: troops in the
+    Conflict and Bloodlines Commanders (§1.1); never a sandworm or Agent."""
+
+    return p.troops_conflict + p.commanders_conflict
 
 
 class CombatMixin(ProfileCore):
@@ -371,7 +414,7 @@ class CombatMixin(ProfileCore):
             1 for op in self.ctx.opponents if _conflict_units(op) > 0
         ):
             v = v * 1.5  # f64 1.5 (DeployValue)
-        elif interest >= ub and me.troops_garrison > 0:
+        elif interest >= ub and _garrison_troops(me) > 0:
             v = v + v
         w = v
         if _garrison_units(me) == 0 and owner.kind is Kind.SPACE:
@@ -397,7 +440,7 @@ class CombatMixin(ProfileCore):
                 # f64 1.25 (DeployValue): a guaranteed 3rd place.
                 w += 1.25 * third.value_for_player(self._profile(), ()).sum
         # f64 0.33 and 2.0 (DeployValue): pressure from an overfull garrison.
-        w += min(max(0.0, (me.troops_garrison - 3) * 0.33), 2.0)
+        w += min(max(0.0, (_garrison_troops(me) - 3) * 0.33), 2.0)
         # IsSetEnabled(RiseOfIx) is false: dreadnought, Negotiated Withdrawal
         # and Overpowering Dread terms skipped. Rapid Mobilization and Staged
         # Incident (BaseSet) cannot be held: r = s = 1.0.
@@ -618,6 +661,10 @@ class CombatMixin(ProfileCore):
         _multiply(res, "Avg Conflict Value", _ieee_div(1.0, avg.sum))
         # Demand Respect, To the Victor (BaseSet), Strategic Push and Windtraps
         # (Rise of Ix) cannot be held in an Uprising game.
+        # Bloodlines Planetary Array (bloodlines-systems.md §9, D58; the
+        # Windtraps precedent): a draw on a Conflict win. Tech Module only.
+        if self.ctx.has_tech("planetary_array"):
+            res.add("Planetary Array", self.card_draw_value_with_buy_gains())
         return res
 
     def current_conflict_interest(self) -> Summer:
@@ -724,7 +771,7 @@ class CombatMixin(ProfileCore):
             s.add("Possible Intrigue Swords", intrigue_swords)
             s.add("Possible Hand Swords", hand_swords)
             s.add("Agents Left", 2 * agents)
-            s.add("Garrison Units", min(3 * agents, op.troops_garrison))
+            s.add("Garrison Units", min(3 * agents, _garrison_troops(op)))
             # f64 1.0 (EstOpponentStrength); RCV from this AI's point of view.
             if is_heighliner and self.relative_conflict_value().sum >= 1.0:
                 s.add("Heighliner Bonus", self.C.ExpectedStrengthHeighlinerPotential)
@@ -866,7 +913,7 @@ class CombatMixin(ProfileCore):
         # cannot occur. Go to Ground: keep one troop in to stay playable.
         if (
             self._holds_intrigue(_GO_TO_GROUND)
-            and me.troops_conflict == 0
+            and _conflict_troops(me) == 0
             and deploy == 0
             and units - deploy > 0
         ):
@@ -922,7 +969,7 @@ class CombatMixin(ProfileCore):
             ):
                 return min(max_troops, _conflict_units(me) - 1)
             return 0
-        if self.C.TroopRichThreshold <= me.troops_garrison:
+        if self.C.TroopRichThreshold <= _garrison_troops(me):
             return 0
         below = next((s for s in opp_current if current >= s), 0)  # b__4
         excess = current - below

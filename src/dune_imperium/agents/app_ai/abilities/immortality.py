@@ -748,6 +748,8 @@ class ReclaimedForcesAcquireAbility(g.AcquireAbility):
         """
 
         v = p.acquire_value(self.owner).sum
+        if p.ctx.scouts:  # app-style Arrakeen Scouts: Back Room Deal (D36)
+            v += p.back_room_deal_value()
         troops = p.troop_value(2, False)
         tleilaxu = p.tleilaxu_value(1).sum
         option = 0 if troops > tleilaxu else 1

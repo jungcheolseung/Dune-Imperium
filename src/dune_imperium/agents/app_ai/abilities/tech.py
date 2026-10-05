@@ -530,10 +530,11 @@ class ChaumurkyAbility(DeferredAbility):
     """``ActivatedAbilities.ChaumurkyAbility`` (endgame tiebreaker; spec §8.2).
 
     ``Cost @0x4ce4280`` = ``NoCostAction``. ``.ctor @0x4ce4190`` sets
-    ``AbilityTiming = 4`` (Endgame), which ``base.Timing`` has no member for;
-    the endgame phase runs it without asking the AI, so ``timing`` stays the
-    default here.
+    ``AbilityTiming = 4`` (Endgame); the endgame phase runs it without asking
+    the AI.
     """
+
+    timing: ClassVar[Timing] = Timing.ENDGAME  # ``.ctor @0x4ce4190``
 
     #: ``get_AlwaysRunImmediately`` @0x4ce42e0.
     always_run_immediately: ClassVar[bool] = True

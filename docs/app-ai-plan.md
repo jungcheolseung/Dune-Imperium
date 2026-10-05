@@ -255,6 +255,21 @@ Arrakeen Scouts (R9): 앱에 없으므로 모든 결정이 앱식 확장이다.
 - Rebuild Infrastructure: 자원 가격으로 본다. 자원봉사 규칙은 자기 순이익 > 0이면 동의.
 - Scouts 단계에서 뽑은 카드는 이번 라운드에 쓸 수 있으므로 앱의 `CardDrawValue`를 그대로 쓴다.
 
+### 11.6 진행
+
+| 단계 | 작업 | 상태 |
+|---|---|---|
+| 기반 | 모든 앱 아키타입 추출, Go to 11 VP 눈금, heuristic 대체 제거, `Board`, Immortality·Epic·Tleilaxu·프로모 대응표; 지도자 드래프트 창(균등 무작위, 앱 그대로) | 완료 `fca021f2`, `b244047a` |
+| 2 | 충실 포팅: Immortality 프로필(§2)·능력(§3–7), Epic·프로모 능력, Bloodlines Tech의 바탕인 RoI Tech 기계 | 완료 `8f7b6ba0` |
+| 2' | 앱식 사양: `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md` | 완료 `38a2e0d6` |
+| 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | 완료: 아키타입 204 + Scouts 줄 85, 능력 89 + 57 + Scouts; 미포팅 0 |
+| 4 | 결정 창: Immortality·Epic·Go to 11·프로모·드래프트(새 창 6개 포함) | 완료 `e88edff4`: 7개 조합 6판씩 대체 0·미포팅 0 |
+| 4' | 결정 창: Bloodlines 10, Scouts 10과 기존 창의 새 id | |
+| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | |
+
+검증: 충실 포팅은 지금까지처럼 사양·역어셈블에 대한 독립 반박 검증. 앱식 확장은 앱과 대조할 것이 없으므로 이 절의 규칙에 대한 대조로
+검증한다.
+
 ### 11.7 앱식 사양 검토 결정 (2026-10-05)
 
 `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md`(각각 작성 agent + 독립 검증 agent)가 남긴 판단 중 아래만
@@ -279,18 +294,19 @@ Arrakeen Scouts (R9): 앱에 없으므로 모든 결정이 앱식 확장이다.
   추가 Skill(`max(0, SkillValue − HeldTileValue)`)은 Commander 구매·재구매 순이익에 더한다. Into the Fray의 Conflict Agent를
   `RecallAgentValue`가 배치된 것으로 세는 변경은 Bloodlines 게임에서만 켠다.
 
-### 11.6 진행
+### 11.8 3단계 검토 결정 (2026-10-05)
 
-| 단계 | 작업 | 상태 |
-|---|---|---|
-| 기반 | 모든 앱 아키타입 추출, Go to 11 VP 눈금, heuristic 대체 제거, `Board`, Immortality·Epic·Tleilaxu·프로모 대응표; 지도자 드래프트 창(균등 무작위, 앱 그대로) | 완료 `fca021f2`, `b244047a` |
-| 2 | 충실 포팅: Immortality 프로필(§2)·능력(§3–7), Epic·프로모 능력, Bloodlines Tech의 바탕인 RoI Tech 기계 | 완료 `8f7b6ba0` |
-| 2' | 앱식 사양: `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md` | 완료 `38a2e0d6` |
-| 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | 진행 중 |
-| 4 | 결정 창: Immortality·Epic·Go to 11·프로모·드래프트(새 창 6개 포함) | 완료 `e88edff4`: 7개 조합 6판씩 대체 0·미포팅 0 |
-| 4' | 결정 창: Bloodlines 10, Scouts 10과 기존 창의 새 id | |
-| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | |
+Bloodlines·Scouts 데이터와 능력(구현 agent 4 + 검증 agent 4)이 넘긴 판단:
 
-검증: 충실 포팅은 지금까지처럼 사양·역어셈블에 대한 독립 반박 검증. 앱식 확장은 앱과 대조할 것이 없으므로 이 절의 규칙에 대한 대조로
-검증한다.
-
+- **Tuek's Sietch**는 Esmar Tuek이 있는 게임에서 보드 순회(칸 순서, `_board_spaces`, 계약 칸, `find_space`)에 넣는다. 앱이 확장
+  칸을 넣는 방식(기본 칸 뒤에 덧붙임)대로 맨 뒤에 둔다.
+- **Commander 값**은 병력 공급 상한을 거치지 않는 병력 값(`uncapped_troop_value(1)`)으로 본다. Commander는 병력 공급에서 오지 않으므로
+  공급이 비었다고 0이 되면 안 된다.
+- **High Council 첫 방문**의 Tech 값은 자리 할인(−1)을 가정한다(`bloodlines-systems.md` §3.1, `abilities/tech.py`에 Tech 모듈일 때만).
+- **Commander를 병력으로 세는 규칙**(D1)은 카드 포트와 창에도 적용한다(Bloodlines일 때만).
+- 승인: Urgent Shigawire의 `UnlockValue` 하한 0, 피해자 쪽 손실은 systems §1.4의 최소 손실, Scouts 병력 수를 줄 속성
+  `AbilityTroops`로 싣는 것, 강제 Trash의 쓸모없는 카드 판정은 앱의 `GetCardToTrash(hand, 1.0)`, B1이 목록 밖에서 고친
+  `ARCHETYPES[...]` 직접 조회 두 곳.
+- 창 단계에서 할 것: Scouts 게임에서 Corrinth City의 Reveal을 `CorrinthCityRevealScoutsAbility`로 바꿔 평가, Market Opening의
+  할인된 Reserve 카드를 나머지 자리(창·카드 포트)에도 쓰기, Hagga Basin의 Desert Riding 선택, 두 단계 입찰, Litany의
+  `play_turn_start_card`, `AppContext`의 Scouts 읽기를 `view` 대신 `state`에서(가정 상태로 만든 문맥에서도 맞도록).

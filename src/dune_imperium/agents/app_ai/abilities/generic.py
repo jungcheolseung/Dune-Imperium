@@ -45,6 +45,7 @@ from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
     LEADER_ARCHETYPES,
     SPACE_ARCHETYPES,
+    archetype,
     card_entity,
     conflict_entity,
     contract_entity,
@@ -54,7 +55,6 @@ from dune_imperium.agents.app_ai.catalog import (
     space_entity,
 )
 from dune_imperium.agents.app_ai.context import FACTIONS
-from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
@@ -283,6 +283,10 @@ def space_solari_cost(p: Profile, space: Entity) -> int:
     if space.ref == "swordmaster" and cost == 8:
         if any(pl.swordmaster_acquired for pl in p.ctx.players):
             cost += -2
+    if space.ref == "swordmaster" and p.ctx.me.leader_id == "duncan_idaho":
+        # Bloodlines Ginaz Swordmaster: "costs you 2 less", floor 0
+        # (bloodlines-systems.md §1.7, D35; rules/agent_turn.py).
+        cost = max(cost - 2, 0)
     return cost
 
 
@@ -1527,6 +1531,12 @@ class ContractAbility(DeferredAbility):
         v.add("Contract Water", p.water_value(o.int_attr("Water")))
         v.add("Contract Solari", p.solari_value(o.int_attr("Solari")))
         v.add("Contract Troops", p.troop_value(o.int_attr("Troops"), False))
+        if p.ctx.scouts:  # app-style Arrakeen Scouts: CHOAM Escort (§4.4)
+            v.merge(p.choam_escort_contract_value(o.ref))
+        if p.ctx.has_tech("choam_transports"):
+            # Bloodlines CHOAM Transports: a draw per completed contract
+            # (bloodlines-systems.md §9, D57; Draw2ContractAbility's draw).
+            v.add("CHOAM Transports", p.card_draw_value_with_buy_gains())
         return v
 
     def value_for_player(
@@ -1856,7 +1866,9 @@ class SpaceAbility(Ability):
         troops = space.int_attr("Troops")
         if troops > 0:
             v.add("Space Troops", p.troop_value(troops, False))
-        spice_cost = space.int_attr("SpiceCost")
+        # ``SpiceDiscount``: Navigation Chamber's −1 (NEW, absent = 0;
+        # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount below.
+        spice_cost = space.int_attr("SpiceCost") + space.int_attr("SpiceDiscount")
         if spice_cost > 0:
             v.add("Space Spice Cost", p.spice_value(-spice_cost))
         water_cost = space.int_attr("WaterCost")
@@ -1870,6 +1882,16 @@ class SpaceAbility(Ability):
         if (cost > 0 and leader == _ILBAN) or ariana:  # ``or al, r15b``
             v.add("Leader Ability Card Draw", p.card_draw_value())
             v.add("Buy Gains Bonus", p.buy_gains(p.possible_persuasion_gain()))
+        if p.ctx.me.leader_id == "steersman_y_rkoon":
+            # Bloodlines Hungry for Spice (bloodlines-systems.md §9, D42; the
+            # Count Ilban precedent above).
+            hungry = p.hungry_for_spice_value(
+                space.int_attr("Spice")
+                + _space_bonus_spice(p, space)
+                + space.int_attr("PossibleSpice")
+            )
+            if hungry > 0:
+                v.add("Hungry for Spice", hungry)
         # Baron (needs BaronHarkonnenSecretFactions) and Archduke Armand Ecaz
         # (Rise of Ix) are never dealt in Uprising: no term.
         # --- Uprising block (IsSetEnabled(4) is true) ---
@@ -1904,6 +1926,13 @@ class SpaceAbility(Ability):
                 or _deployed_spies(p) >= 3
             ):
                 v.add("Spy Gather Intelligence", c.SpaceSpyUseIntelligenceMod)
+            elif p.ctx.me.leader_id == "gaius_helen_mohiam":
+                # Bloodlines Clandestine: Mohiam must Gather Intelligence even
+                # when the recall is unwanted (plan §11.7; the comparison the
+                # app uses to want it, added when negative).
+                forced = p.clandestine_recall_value()
+                if forced < 0.0:
+                    v.add("Clandestine Gather Intelligence", forced)
         if (
             leader == _LADY_JESSICA
             and _leader_flipped(p)
@@ -1995,7 +2024,7 @@ def conflict_reward(conflict: Entity, place: int) -> Entity:
     archetype ``ConflictRewardArchetypes[place - 1]`` of the card."""
 
     short = conflict.list_attr("ConflictRewardArchetypes")[place - 1]
-    return Entity(Kind.CONFLICT, conflict.ref, ARCHETYPES[short], conflict.owner)
+    return Entity(Kind.CONFLICT, conflict.ref, archetype(short), conflict.owner)
 
 
 def _custom_reward_ability(ability_id_: str, conflict: Entity) -> Ability:

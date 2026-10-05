@@ -12,13 +12,20 @@ entity whose archetype has ``EntityType == "TechTile"`` (the archetypes the
 app instantiates as ``WormTechTilePlayable``; ``abilities.tech.is_tech_tile``),
 whatever its ``Kind``.
 
-State the app reads that ``AppContext`` does not map yet (the Bloodlines
-mapping stage adds it): the face-up tile of each tech stack
-(``tech_face_up_tiles``), the seat's tech negotiators
+State the app reads directly, one overridable method each (tests stub one
+method; ``acquire_tech_tile_targets`` takes the tiles as arguments): the
+face-up tile of each tech stack (``tech_face_up_tiles``: the Bloodlines Tech
+Module's stack tops when the option is on), the seat's tech negotiators
 (``tech_negotiator_count``) and the dreadnoughts in its supply
-(``tech_dreadnoughts_in_supply``). Each is one overridable method here, so the
-mapping changes one body and tests stub one method; ``acquire_tech_tile_targets``
-takes the tiles as arguments.
+(``tech_dreadnoughts_in_supply``), both 0 in every game we play.
+
+The Bloodlines Tech Module buys tiles differently (docs/app-ai/
+bloodlines-systems.md §3.1, the "adaptation" table): ``tech_acquire_targets``
+then offers the face-up tops in stack order and the seat's own Secret Project,
+each affordable by our ``tech_cost`` (the High Council seat's −1 standing for
+the negotiators, the Secret Project's −1 per tile, no Solari; Advanced Data
+Analysis only with an own Spy on the board). The valuation methods below are
+untouched.
 
 Not ported (spec §5, all ``HasTech``/``SetOn(2)``-gated on Rise of Ix tiles our
 games never hold): the tech terms inside ``GetResourceValue``,
@@ -35,12 +42,15 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final, cast
 
 from dune_imperium.agents.app_ai.abilities.tech import is_tech_tile
-from dune_imperium.agents.app_ai.catalog import INTRIGUE_ARCHETYPES
+from dune_imperium.agents.app_ai.catalog import INTRIGUE_ARCHETYPES, tech_entity
+from dune_imperium.agents.app_ai.catalog import archetype as catalog_archetype
 from dune_imperium.agents.app_ai.context import AppContext, card_id
-from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
+from dune_imperium.agents.app_ai.data.archetypes import Archetype
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.profile.core import ProfileCore
 from dune_imperium.agents.app_ai.summer import Summer
+from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
+from dune_imperium.rules.tech import tech_cost
 
 if TYPE_CHECKING:
     from dune_imperium.agents.app_ai.profile import Profile
@@ -52,10 +62,10 @@ INVASION_SHIPS: Final = _TILE + "InvasionShips"
 DETONATION_DEVICES: Final = _TILE + "DetonationDevices"
 MACHINE_CULTURE: Final = "IntrigueArchetypes.RiseOfIx.MachineCulture"
 
-#: The ``Kind`` tile entities are built with. ``entities.Kind`` has no tech-tile
-#: member yet (the Bloodlines mapping stage adds one); nothing here reads the
-#: kind, tiles are recognised by ``is_tech_tile``.
-TECH_TILE_KIND: Final = Kind.CARD
+#: The ``Kind`` tile entities are built with (the catalog's ``tech_entity``
+#: uses the same); nothing here reads the kind, tiles are recognised by
+#: ``is_tech_tile``.
+TECH_TILE_KIND: Final = Kind.TECH
 
 
 # ---------------------------------------------------------------------------
@@ -68,12 +78,12 @@ def tech_tile_entity(
 ) -> Entity:
     """A tile entity for an app (or app-style) tile archetype.
 
-    ``archetype`` is a key of ``ARCHETYPES`` or an ``Archetype`` (the
-    synthetic Bloodlines archetypes of docs/app-ai-plan.md §11.3); ``ref``
-    defaults to the archetype's short name.
+    ``archetype`` is a short name (``catalog.archetype``: the app's, else the
+    synthetic Bloodlines archetypes of docs/app-ai-plan.md §11.3) or an
+    ``Archetype``; ``ref`` defaults to the archetype's short name.
     """
 
-    arch = ARCHETYPES[archetype] if isinstance(archetype, str) else archetype
+    arch = catalog_archetype(archetype) if isinstance(archetype, str) else archetype
     return Entity(TECH_TILE_KIND, arch.short if ref is None else ref, arch, owner)
 
 
@@ -140,25 +150,29 @@ class TechMixin(ProfileCore):
     """The Rise of Ix tech ``WormAIProfile`` methods."""
 
     # ===========================================================================
-    # State the app reads directly (no AppContext mapping yet; see the module)
+    # State the app reads directly (see the module docstring)
     # ===========================================================================
 
     def tech_face_up_tiles(self) -> list[Entity]:
         """The face-up tile of each tech stack, stacks 1, 2, 3 in order.
 
         ``M.WormPlaymat.Board.TechTileStacks`` → ``TechTileTop`` (spec §4.1).
-        Rise of Ix is never in our games and the Bloodlines stacks
-        (``GameState.tech_stacks``, index 0 of each stack face up) have no
-        app-style archetypes yet, so no tile is offered until the Bloodlines
-        mapping stage reads them here.
+        Rise of Ix is never in our games. With the Bloodlines Tech Module the
+        stack tops (``AppContext.tech_face_up_ids``, public) as app-style tile
+        entities (bloodlines-systems.md §3.1); empty without the option.
         """
 
-        return []
+        if not self.ctx.tech_module:
+            return []
+        return [tech_entity(tech_id) for tech_id in self.ctx.tech_face_up_ids]
 
     def tech_negotiator_count(self) -> int:
         """``Board.TechNegotiationArea.GetPlayerNegotiators(P).children.Count``.
 
-        Rise of Ix only (the Tech Negotiation space): 0 in our games.
+        Rise of Ix only (the Tech Negotiation space): 0 in our games. The
+        Bloodlines High Council seat's −1 stands for the negotiators inside
+        the Tech Module's affordability (``tech_acquire_targets``), so this
+        stays 0 there too (bloodlines-systems.md §3.1, D12).
         """
 
         return 0
@@ -166,7 +180,8 @@ class TechMixin(ProfileCore):
     def tech_dreadnoughts_in_supply(self) -> int:
         """``P.Supply.children.OfType<WormDreadnought>().Count()``.
 
-        Rise of Ix only: no dreadnought exists in our games.
+        Rise of Ix only: no dreadnought exists in our games, Bloodlines
+        included.
         """
 
         return 0
@@ -270,8 +285,14 @@ class TechMixin(ProfileCore):
     # ===========================================================================
 
     def tech_acquire_targets(self, discount: int, allow_solari: bool) -> list[Entity]:
-        """``GetAcquireTechTileTargets(M, P, discount, allowSolari)`` for this seat."""
+        """``GetAcquireTechTileTargets(M, P, discount, allowSolari)`` for this seat.
 
+        With the Bloodlines Tech Module: ``bloodlines_tech_acquire_targets``
+        (bloodlines-systems.md §3.1); otherwise the app's helper.
+        """
+
+        if self.ctx.tech_module:
+            return self.bloodlines_tech_acquire_targets(discount)
         me = self.ctx.me
         return acquire_tech_tile_targets(
             self.tech_face_up_tiles(),
@@ -281,6 +302,35 @@ class TechMixin(ProfileCore):
             discount=discount,
             allow_solari=allow_solari,
         )
+
+    def bloodlines_tech_acquire_targets(self, discount: int) -> list[Entity]:
+        """The Tech Module's acquisition model (bloodlines-systems.md §3.1, D12).
+
+        App-style adaptation of ``GetAcquireTechTileTargets``: the face-up tops
+        in stack order (``rules/tech.py`` ``face_up_tech_ids``), then this
+        seat's own Secret Project (``tech_candidates``). A tile qualifies when
+        ``tech_cost(me, tile, discount, secret)`` (the High Council seat's −1
+        for the negotiators, the Secret Project's −1 per tile, floor 0) is at
+        most the seat's spice; ``allowSolari`` is always false. Advanced Data
+        Analysis also needs an own Spy on the board (its ``acquire_tech``
+        variants are one per own Spy, ``_acquisition_variants``).
+        """
+
+        me = self.ctx.me
+        candidates = [(tile, False) for tile in self.tech_face_up_tiles()]
+        secret = self.ctx.secret_project_tech_id
+        if secret:
+            candidates.append((tech_entity(secret), True))
+        targets: list[Entity] = []
+        for tile, is_secret in candidates:
+            printed = TECH_TILES_BY_ID[tile.ref]
+            cost = tech_cost(me, printed, discount=discount, secret_project=is_secret)
+            if cost > me.resources.spice:
+                continue
+            if printed.acquire_requires_spy_trash and not me.spy_post_ids:
+                continue
+            targets.append(tile)
+        return targets
 
     def tech_tile_to_acquire(self, discount: int, allow_solari: bool) -> Entity | None:
         """``WormAIProfile::TechTileToAcquire @0x491b510`` (spec §4.2).

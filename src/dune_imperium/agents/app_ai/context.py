@@ -27,6 +27,7 @@ from functools import cached_property
 from typing import NamedTuple
 
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.arrakeen_scouts.types import RoundModifier
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES,
     genetic_markers_reached,
@@ -37,6 +38,19 @@ from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import revealer_persuasion
+from dune_imperium.rules.agent_effects import spice_gained_this_turn
+from dune_imperium.rules.sardaukar import commander_cost, eligible_face_up_skill_ids
+from dune_imperium.rules.scouts_effects import (
+    joinable_subcommittees as _joinable_subcommittees,
+)
+from dune_imperium.rules.scouts_effects import (
+    pending_subcommittee_exclude as _pending_subcommittee_exclude,
+)
+from dune_imperium.rules.scouts_missions import (
+    mission_collectable as _mission_collectable,
+)
+from dune_imperium.rules.scouts_modifiers import reserve_discount as _reserve_discount
+from dune_imperium.rules.tech import face_up_tech_ids
 
 FACTIONS = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
 
@@ -45,6 +59,9 @@ RESEARCH_SPACE_IDS: tuple[str, ...] = tuple(s.space_id for s in RESEARCH_SPACES)
 #: The entity ref app_ai gives the fixed Reclaimed Forces card of the Tleilaxu
 #: Row (our engine keeps it outside ``tleilaxu_row``, with no instance id).
 RECLAIMED_FORCES_REF = "tleilaxu:reclaimed_forces:0"
+#: ``GameState.scouts_round_modifier`` while Eyes on Arrakis makes the Faction
+#: spaces Combat spaces (``Board.faction_spaces_combat``).
+FACTION_SPACES_ARE_COMBAT = RoundModifier.FACTION_SPACES_ARE_COMBAT.value
 
 
 class Board(NamedTuple):
@@ -55,14 +72,32 @@ class Board(NamedTuple):
     ``ResearchStationImmortality`` (``RemovedFromSetList``, spec
     immortality.md §1.1). Every space lookup takes one of these instead of a
     bare CHOAM flag so no caller can forget Immortality.
+
+    The app-style options add abilities to the app's space archetypes
+    (``catalog.space_entity``): ``bloodlines`` (Commander spaces),
+    ``tech_module`` (Landsraad Acquire Tech), ``scouts`` (mission pieces,
+    subcommittee offer, Desert Riding) and ``faction_spaces_combat`` (this
+    round's Eyes on Arrakis modifier; public, set by ``AppContext.board``).
+    All four are False without their option, so such games keep the app's
+    archetypes unchanged.
     """
 
     choam: bool
     immortality: bool = False
+    bloodlines: bool = False
+    tech_module: bool = False
+    scouts: bool = False
+    faction_spaces_combat: bool = False
 
     @staticmethod
     def of(config: RulesetConfig) -> Board:
-        return Board(config.choam_module, config.immortality)
+        return Board(
+            config.choam_module,
+            config.immortality,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+            scouts=config.arrakeen_scouts,
+        )
 
 
 def card_id(instance_id: str) -> str:
@@ -106,9 +141,13 @@ class AppContext:
 
     @property
     def board(self) -> Board:
-        """The space-archetype key of this game (see ``Board``)."""
+        """The space-archetype key of this game (see ``Board``), with this
+        round's public Scouts modifier (Eyes on Arrakis, scouts.md §4.8)."""
 
-        return Board.of(self.state.config)
+        board = Board.of(self.state.config)
+        if self.state.scouts_round_modifier == FACTION_SPACES_ARE_COMBAT:
+            board = board._replace(faction_spaces_combat=True)
+        return board
 
     @property
     def round_number(self) -> int:
@@ -433,3 +472,243 @@ class AppContext:
         if not isinstance(card, str):
             return None
         return (card, partner)
+
+    # ===========================================================================
+    # Arrakeen Scouts — docs/app-ai/scouts.md §6 (app-style extension)
+    # ===========================================================================
+    #
+    # The public Scouts table state as the seat's ``PlayerView`` shows it,
+    # the seat's own sealed bid, and the engine's own predicates evaluated
+    # for this seat (they read public state and this seat's own hand,
+    # Intrigue, resources, Spies and Agents). Never read: another seat's
+    # secret picks or sealed bids, and the identities of the face-down
+    # mission cards (``state.scouts_goods_cards``; only the view's
+    # per-location counts). Everything is empty / False without the
+    # ``arrakeen_scouts`` option, so no game without it reads a Scouts value.
+
+    @property
+    def scouts(self) -> bool:
+        """The ``arrakeen_scouts`` option."""
+
+        return self.state.config.arrakeen_scouts
+
+    @property
+    def scouts_round_modifier(self) -> str:
+        """This round's rule change (``RoundModifier`` value, ``""`` none)."""
+
+        return self.view.scouts_round_modifier
+
+    @property
+    def scouts_discount_used(self) -> bool:
+        """Whether Market Opening's discount was used up this round."""
+
+        return self.view.scouts_discount_used
+
+    @property
+    def scouts_item(self) -> str:
+        """The Scouts item being resolved (``""`` outside the Scouts step)."""
+
+        return self.view.scouts_item
+
+    @property
+    def scouts_subcommittees(self) -> tuple[str, ...]:
+        """The five subcommittees revealed in round 1 (draw order)."""
+
+        return self.view.scouts_subcommittees
+
+    @property
+    def scouts_subcommittee_members(self) -> tuple[tuple[str, int], ...]:
+        """``(subcommittee id, seat)`` in joining order."""
+
+        return self.view.scouts_subcommittee_members
+
+    def joinable_subcommittees(self, exclude_space: str = "") -> tuple[str, ...]:
+        """The engine's ``joinable_subcommittees`` for this seat now.
+
+        Unclaimed, payable and able to do something
+        (``rules/scouts_effects.py``); ``exclude_space`` is the space of the
+        Agent that takes the seat (``"high_council"``, ``"conflict"``) or
+        ``""`` (Corrinth City). Empty once the seat has joined one.
+        """
+
+        return _joinable_subcommittees(
+            self.state, self.seat, exclude_space=exclude_space
+        )
+
+    def pending_subcommittee_exclude(self) -> str | None:
+        """The ``exclude_space`` of this seat's open subcommittee choice in its
+        own turn frame, or None while that frame offers none."""
+
+        return _pending_subcommittee_exclude(self.state, self.seat)
+
+    @property
+    def scouts_goods(self) -> tuple[tuple[str, str, str, int, int], ...]:
+        """Bank goods on the board: ``(mission, location, resource, amount,
+        seat or -1)`` (public)."""
+
+        return self.view.scouts_goods
+
+    @property
+    def scouts_parked(self) -> tuple[tuple[str, int, str, int], ...]:
+        """Parked mission troops: ``(mission, seat, location, troops)``."""
+
+        return self.view.scouts_parked
+
+    @property
+    def scouts_board_card_counts(self) -> tuple[tuple[str, str, int], ...]:
+        """``(mission, location, count)`` of the face-down mission cards (the
+        public view's rows; never the hidden identities)."""
+
+        return self.view.scouts_board_card_counts
+
+    def desert_riding_token(self) -> tuple[str, str, str, int, int] | None:
+        """Desert Riding's Maker Hooks goods row while the token is out
+        (``rules/scouts_missions.py`` ``desert_riding_token``)."""
+
+        return next((row for row in self.scouts_goods if row[2] == "maker_hooks"), None)
+
+    @property
+    def scouts_market_cards(self) -> tuple[str, ...]:
+        """Critical Moment's revealed Imperium cards (instance ids)."""
+
+        return self.view.scouts_market_cards
+
+    @property
+    def scouts_calls(self) -> tuple[tuple[int, int], ...]:
+        """Critical Moment's open calls, ``(seat, amount)`` (0 a pass)."""
+
+        return self.view.scouts_calls
+
+    def own_scouts_bid(self) -> int:
+        """This seat's own bid in the running sealed auction (-1: none yet)."""
+
+        private = self.view.private
+        return -1 if private is None else private.scouts_bid
+
+    def mission_collectable(self, space_id: str) -> bool:
+        """Whether this seat's visit to ``space_id`` collects mission pieces
+        (``rules/scouts_missions.py`` ``mission_collectable``)."""
+
+        return _mission_collectable(self.state, self.seat, space_id)
+
+    def market_opening_discount(self, card_id: str) -> int:
+        """Market Opening's Reserve discount on ``card_id`` now (0 or 2;
+        ``rules/scouts_modifiers.py`` ``reserve_discount``; public)."""
+
+        return _reserve_discount(self.state, card_id)
+
+    # ===========================================================================
+    # Bloodlines — docs/app-ai/bloodlines-systems.md §1.6 "Private information"
+    # ===========================================================================
+    #
+    # Public table state (the Commander spaces, the face-up Skills, the face-up
+    # Tech tiles, every seat's Skills, Tech tiles, Commanders and played
+    # Navigation cards) for any seat; the private Bloodlines items only for
+    # this seat: Kota Odax's Secret Project tile and Steersman Y'rkoon's
+    # Navigation slots (``PlayerView.secret_project_tech_id`` /
+    # ``navigation_slots`` are the owner's only). The Navigation box and the
+    # Twisted deck order are read by nobody. Without the options every read
+    # is empty (the fields stay at their defaults).
+
+    @property
+    def bloodlines(self) -> bool:
+        """The Bloodlines option (app-style extension, plan §11)."""
+
+        return self.state.config.bloodlines
+
+    @property
+    def tech_module(self) -> bool:
+        """The Bloodlines Tech Module option."""
+
+        return self.state.config.tech_module
+
+    @property
+    def commander_space_ids(self) -> tuple[str, ...]:
+        """The board spaces still holding a Sardaukar Commander (public)."""
+
+        return self.state.sardaukar_commander_space_ids
+
+    @property
+    def skill_face_up(self) -> tuple[str, ...]:
+        """The face-up Skill tiles (instance ids ``skill:<id>:<copy>``, public)."""
+
+        return self.state.skill_face_up
+
+    def eligible_skill_ids(self, seat: int | None = None) -> tuple[str, ...]:
+        """Face-up Skill ids the seat may still choose (row order, public).
+
+        ``rules/sardaukar.py`` ``eligible_face_up_skill_ids``: one entry per
+        distinct face-up Skill the seat does not already hold.
+        """
+
+        return eligible_face_up_skill_ids(self.state, self._seat_state(seat))
+
+    def skill_ids(self, seat: int | None = None) -> tuple[str, ...]:
+        """The bare Skill ids the seat holds, in gain order (public)."""
+
+        return tuple(
+            instance.split(":")[1] for instance in self._seat_state(seat).skill_ids
+        )
+
+    def commander_cost(self, seat: int | None = None) -> int:
+        """The Solari a Commander costs the seat now (``rules`` ``commander_cost``:
+        2 − Honor Guard − Sardaukar High Command, floor 0)."""
+
+        return commander_cost(self._seat_state(seat))
+
+    @property
+    def tech_face_up_ids(self) -> tuple[str, ...]:
+        """The face-up Tech tile on top of each non-empty stack, stack order."""
+
+        return face_up_tech_ids(self.state)
+
+    def tech_ids(self, seat: int | None = None) -> tuple[str, ...]:
+        """The seat's Tech tiles (public, acquisition order)."""
+
+        return self._seat_state(seat).tech_ids
+
+    def tech_flipped(self, seat: int | None = None) -> tuple[str, ...]:
+        """The seat's Tech tiles flipped this round (public)."""
+
+        return self._seat_state(seat).tech_flipped
+
+    def has_tech(self, tech_id: str, seat: int | None = None) -> bool:
+        """Whether the seat owns the Tech tile ``tech_id`` (public)."""
+
+        return tech_id in self._seat_state(seat).tech_ids
+
+    @property
+    def secret_project_tech_id(self) -> str:
+        """This seat's own Secret Project tile (``""`` if none). Owner only."""
+
+        return self.me.secret_project_tech_id
+
+    @property
+    def navigation_slots(self) -> tuple[str, ...]:
+        """This seat's face-down Navigation slots in play order (card ids;
+        owner only)."""
+
+        return self.me.navigation_slots
+
+    def navigation_played(self, seat: int | None = None) -> tuple[str, ...]:
+        """The Navigation cards the seat has played (public)."""
+
+        return self._seat_state(seat).navigation_played
+
+    @property
+    def navigation_active_slot(self) -> int:
+        """The slot (1-4) of this seat's Navigation card being played, else 0."""
+
+        return self.me.navigation_active_slot
+
+    @property
+    def navigation_trigger_faction(self) -> str:
+        """The Faction whose 2nd Influence triggered the card being played."""
+
+        return self.me.navigation_trigger_faction
+
+    def spice_gained_this_turn(self) -> int:
+        """This seat's spice gained since its turn opened (``rules``
+        ``spice_gained_this_turn``; own counters)."""
+
+        return spice_gained_this_turn(self.me)

@@ -259,8 +259,10 @@ def test_every_leader_ability_resolves_to_a_port() -> None:
     """Coverage: every ability id of the leader archetypes (both Jessica
     faces) and of the training-track rewards has a registered port."""
 
+    # The Bloodlines leaders are app-style (test_app_ai_synthetic.py).
+    app = {k: v for k, v in LEADER_ARCHETYPES.items() if v in ARCHETYPES}
     ids: list[str] = []
-    for short in LEADER_ARCHETYPES.values():
+    for short in app.values():
         attrs = ARCHETYPES[short].attributes
         for key in ("WormAbilityIDs", "CustomAbilityIDs"):
             value = attrs.get(key, ())
@@ -271,7 +273,7 @@ def test_every_leader_ability_resolves_to_a_port() -> None:
     assert len(ids) == 32 + 6
     missing = [name for name in ids if name not in PORTS]
     assert missing == []
-    for leader_id in LEADER_ARCHETYPES:
+    for leader_id in app:
         for ability in abilities_of(leader_entity(leader_id)):
             assert not isinstance(ability, UnportedAbility)
 

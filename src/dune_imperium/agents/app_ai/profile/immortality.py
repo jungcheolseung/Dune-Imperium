@@ -196,6 +196,10 @@ class ImmortalityMixin(ProfileCore):
         # of 0x15 (``bt``): cur in {0, 2, 4}.
         if amount == 1 and self.game_arc() >= 2 and current in (0, 2, 4):
             s.multiply("Late Game No Bonus", c.TleilaxuTrackLateGameMod)
+        if self.ctx.scouts:  # app-style Arrakeen Scouts (scouts.md §4.6, D37)
+            offered = self._profile().tleilaxu_offering_specimens(amount)
+            if offered > 0:
+                s.add("Tleilaxu Offering", self.specimen_value(offered))
         return s
 
     # ===========================================================================
@@ -229,6 +233,8 @@ class ImmortalityMixin(ProfileCore):
             for ability_class in definition.abilities:
                 ability = ability_for(ability_class, owner)
                 s.merge(ability.value_for_player(profile, ()))
+        if self.ctx.scouts:  # app-style Arrakeen Scouts: Sponsored Research
+            s.merge(self._profile().sponsored_research_value(space_id))
         return s
 
     # ===========================================================================

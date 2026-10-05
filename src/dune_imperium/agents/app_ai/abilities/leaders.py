@@ -197,11 +197,12 @@ def _deployed_units(p: Profile) -> int:
     """``ConflictArea.GetPlayerDeployed(player).children.Count``.
 
     The player's units in the Conflict: troops and sandworms (no dreadnoughts
-    in Uprising).
+    in Uprising), and the Bloodlines Commanders and Into the Fray Agent
+    (``units_in_conflict``; docs/app-ai/bloodlines-systems.md §1.1, 0
+    without the option).
     """
 
-    me = p.ctx.me
-    return me.troops_conflict + me.sandworms_conflict
+    return p.ctx.me.units_in_conflict
 
 
 def _has_trashable_card(p: Profile) -> bool:
@@ -743,9 +744,13 @@ class DesertScoutsAbility(DeferredAbility):
         return SelectionMode.OPTIONAL
 
     def meets_cost(self, p: Profile) -> bool:
-        """``Cost`` @0x4d0ab50: ``HasUnitsDeployed<WormTroop>.Any``."""
+        """``Cost`` @0x4d0ab50: ``HasUnitsDeployed<WormTroop>.Any``.
 
-        return p.ctx.me.troops_conflict > 0
+        Bloodlines Commanders are troops (bloodlines-systems.md §1.1, §2.3).
+        """
+
+        me = p.ctx.me
+        return me.troops_conflict + me.commanders_conflict > 0
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()

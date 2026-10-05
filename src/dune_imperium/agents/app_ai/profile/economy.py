@@ -140,7 +140,18 @@ _UNDERCOVER_REVEAL = _PLAY + "BaseSet.UndercoverAssetRevealAbility"
 _BT_RESEARCHER_REVEAL = _PLAY + "Immortality.BeneTleilaxResearcherRevealAbility"
 _LISAN_AL_GAIB_PREVIEW = _PLAY + "Immortality.LisanAlGaibRevealPreviewAbility"
 _THRONE_ROOM_REVEAL = _PLAY + "Immortality.ThroneRoomPoliticsRevealAbility"
-_REVEAL_CLASSES = frozenset(
+# App-style Bloodlines RevealAbility subclasses overriding GetRevealPreviewValue
+# (docs/app-ai/bloodlines-cards.md §2.3, §2.6, OPEN-6; plan §11.7). Only the
+# Bloodlines synthetic archetypes list them; the bodies live in
+# ``abilities/bloodlines_cards.reveal_preview_persuasion``.
+_APPSTYLE_PREVIEW_REVEALS = frozenset(
+    {
+        "worm.canis.abilities.AppStyle.Bloodlines.ImperialThroneshipRevealAbility",
+        "worm.canis.abilities.AppStyle.Bloodlines.QuashRebellionRevealAbility",
+        "worm.canis.abilities.AppStyle.Bloodlines.SandwalkRevealAbility",
+    }
+)
+_REVEAL_CLASSES = _APPSTYLE_PREVIEW_REVEALS | frozenset(
     {
         _REVEAL_BASE,
         _DESERT_POWER_REVEAL,
@@ -429,7 +440,10 @@ class EconomyMixin(ProfileCore):
         remaining = dict(self.ctx.reserve_stacks)
         for reserve_id in _RESERVE_ORDER:
             if remaining.get(reserve_id, 0) > 0:
-                cards.append(card_entity(f"reserve:{reserve_id}"))
+                card = card_entity(f"reserve:{reserve_id}")
+                if self.ctx.scouts:  # app-style Arrakeen Scouts: Market Opening
+                    card = self._profile().market_opening_reserve_card(card)
+                cards.append(card)
         return cards
 
     def _abilities(self, card: Entity) -> tuple[Ability, ...]:
@@ -696,7 +710,10 @@ class EconomyMixin(ProfileCore):
         if thresholds is None:
             return -1
         if attr is Attr.TROOPS:
-            have = self.ctx.me.troops_garrison  # GarrisonTroops
+            # GarrisonTroops: Bloodlines garrison Commanders count as troops
+            # (bloodlines-systems.md §1.1, D1); 0 without the option.
+            me = self.ctx.me
+            have = me.troops_garrison + me.commanders_garrison
         elif attr is Attr.INTRIGUE_CARD:
             have = len(self.ctx.intrigue_cards)  # IntrigueHandCount
         else:
@@ -725,11 +742,18 @@ class EconomyMixin(ProfileCore):
             return 0.0
         me = self.ctx.me
         c = self.C
+        if attr is Attr.SANDWORMS and me.leader_id == "liet_kynes":
+            # Bloodlines Liet Kynes summons no sandworms: each is a trash, a
+            # spice and an Intrigue card instead (bloodlines-systems.md §4.8,
+            # D44; Muad'Dib's per-worm add-on precedent).
+            return self._profile().planetologist_value(amount)
         values = self._values_dict().get(attr)
         if values is not None:
             if (
                 attr is Attr.STRENGTH
-                and me.troops_conflict + me.sandworms_conflict == 0  # ConflictUnits
+                # ConflictUnits (Bloodlines Commanders and the Into the Fray
+                # Agent included, bloodlines-systems.md §1.1; 0 without it)
+                and me.units_in_conflict == 0
                 and me.agents_available <= 1  # RemainingAgents.Count()
             ):
                 return s.sum
@@ -995,13 +1019,23 @@ class EconomyMixin(ProfileCore):
             value *= c.RichMod
         elif level == 0:
             value *= c.PoorMod
+        if self._profile().suspensor_suits_active():
+            # Bloodlines Suspensor Suits (bloodlines-systems.md §9, D59): each
+            # Intrigue gained in the own turn deploys a troop.
+            value += self.troop_value(1, False)
         return value
 
     def trash_card_value(self) -> float:
         """``WormAIProfile::get_TrashCardValue @0x49091d0`` (spec §4.3)."""
 
         c = self.C
-        return (c.TrashCardEarly, c.TrashCardMid, c.TrashCardLate)[self.game_arc()]
+        value = (c.TrashCardEarly, c.TrashCardMid, c.TrashCardLate)[self.game_arc()]
+        if self.ctx.me.leader_id == "count_hasimir_fenring":
+            # Bloodlines Assassin: +1 Solari per trashed card
+            # (bloodlines-systems.md §4.2, D33; Count Ilban's leader term
+            # precedent).
+            value += self.solari_value(1)
+        return value
 
     def minimum_acquire_value(self) -> float:
         """``WormAIProfile::get_MinimumAcquireValue @0x49092e0`` (spec §4.3)."""
@@ -1163,6 +1197,12 @@ class EconomyMixin(ProfileCore):
             return card.int_attr("Persuasion")  # Owner.Persuasion (Strength aside)
         if ability_class == _THRONE_ROOM_REVEAL:  # @0x4c7c540
             return 1  # literal (WillClearUndo aside)
+        if ability_class in _APPSTYLE_PREVIEW_REVEALS:  # Bloodlines cards only
+            from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+                reveal_preview_persuasion,
+            )
+
+            return reveal_preview_persuasion(ability_class, card, self._profile())
         return card.int_attr("Persuasion")  # base RevealAbility
 
     def _reveal_preview_persuasion(self) -> int:
@@ -1187,6 +1227,10 @@ class EconomyMixin(ProfileCore):
                 persuasion += 2
             if "assembly_hall" in me.agent_locations:
                 persuasion += 1
+            if self.ctx.bloodlines:
+                # Self-Destroying Messages, Charismatic, Navigation card 3
+                # (bloodlines-systems.md §9, D62; Minimic Film precedent).
+                persuasion += self._profile().reveal_preview_bonus()
         cards = list(self.ctx.hand)
         returning = self.ctx.chairdog_return_card_ids()
         if returning and not in_reveal_turn:
@@ -1298,8 +1342,16 @@ class EconomyMixin(ProfileCore):
         """
 
         icons: dict[str, int] = {}
+        bloodlines = self.ctx.bloodlines
         for card in self._deck_cards():
-            for icon in card.list_attr("IconList"):
+            # Bloodlines: the permanent icon grants (Mohiam, Servo-Receivers;
+            # bloodlines-systems.md §1.7, D40).
+            listed = (
+                self._profile().icon_list(card)
+                if bloodlines
+                else card.list_attr("IconList")
+            )
+            for icon in listed:
                 icons[icon] = icons.get(icon, 0) + 1
         return icons
 
@@ -1353,12 +1405,19 @@ class EconomyMixin(ProfileCore):
         # (a) new agent icons
         if not self.is_climax():
             deck_icons = self.deck_agent_icons()
+            # Bloodlines: the permanent icon grants (bloodlines-systems.md
+            # §1.7, D40).
+            card_icons = (
+                self._profile().icon_list(card)
+                if self.ctx.bloodlines
+                else card.list_attr("IconList")
+            )
             icons = _dsum(
                 [
                     0.0
                     if (icon in deck_icons and deck_icons[icon] > 2)  # strict > 2
                     else c.AcquireNewIconsBonus
-                    for icon in card.list_attr("IconList")
+                    for icon in card_icons
                 ]
             )
             if self._has_intrigue(_PLANS_WITHIN_PLANS):
@@ -1623,7 +1682,9 @@ class EconomyMixin(ProfileCore):
             return 0 if space is None else space.int_attr(name)
 
         if attr is Attr.SPICE:
-            need = attribute("SpiceCost")
+            # ``SpiceDiscount``: Navigation Chamber's −1 (NEW, absent = 0;
+            # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount.
+            need = attribute("SpiceCost") + attribute("SpiceDiscount")
             if space is not None and space.short == _SELL_MELANGE:
                 need = self._spice_for_sell_melange()
             bonus = 0

@@ -25,6 +25,13 @@ class Kind(StrEnum):
     SPY = "spy"  # WormSpy (ref = post_id it stands on)
     AGENT = "agent"  # WormAgent (ref = space_id it stands on)
     TRACK = "track"  # WormFactionTrack (ref = faction id)
+    # App-style extensions (docs/app-ai-plan.md §11.3: synthetic archetypes in
+    # ``data/synthetic.py``; the app has no class for them).
+    TECH = "tech"  # a Bloodlines Tech tile (WormTechTilePlayable; ref = tech_id)
+    COMMANDER = "commander"  # a Sardaukar Commander (ref: see catalog)
+    SKILL = "skill"  # a Commander Skill tile (ref = skill id or tile instance id)
+    NAVIGATION = "navigation"  # Y'rkoon's Navigation card (ref = instance id)
+    SCOUTS = "scouts"  # one Arrakeen Scouts line (ref = "<item id>:<line>")
 
 
 class Attr(StrEnum):
@@ -52,6 +59,8 @@ class Entity:
     controls it where that matters (a card's owner, a spy's or agent's seat).
     ``archetype`` is None only for entities the app has no archetype for
     (spies, agents and faction tracks are plain engine objects in the app).
+    Items the app does not have carry a synthetic archetype
+    (``data/synthetic.py``) with the same attribute names.
     """
 
     kind: Kind
