@@ -339,6 +339,7 @@ function onDoorbell(bell) {
     bell.undo_count !== summary.undo_count ||
     bell.log_count !== summary.log_count ||
     bell.confirmation !== summary.confirmation ||
+    bell.thinking !== summary.thinking ||
     bell.finished !== summary.finished
   ) {
     refresh(null, { foreign: true }).catch(showRefreshError);

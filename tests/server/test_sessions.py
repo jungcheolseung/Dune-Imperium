@@ -606,6 +606,8 @@ def test_arrakeen_scouts_game_seats_checkpoint_and_search_seats(
             seats, game_seed=game_seed, arrakeen_scouts=True
         )
         assert summary["arrakeen_scouts"] is True
+        # A search seat answers on the game's worker after creation returns.
+        manager.wait_for_ai(_text(summary["game_id"]))
         session = manager._sessions[_text(summary["game_id"])]
         from dune_imperium.agents.network_search_agent import NetworkSearchAgent
         from dune_imperium.training.torch_policy import NetworkAgent

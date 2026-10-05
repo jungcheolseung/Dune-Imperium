@@ -8,12 +8,19 @@ own legal actions — both can carry private card identities, so AI seats
 refuse them — keeping ``core.observation`` the single visibility authority.
 
 Chance decisions and AI seats advance automatically after game creation and
-after every human action, so a session always rests on a human decision or
-on the finished game. Every applied step is recorded replay-style; saving
-serializes that record (``persistence``), and loading replays it against
-fresh seeded chance and agent streams so a loaded game continues exactly
-like the unsaved session would have. A search seat retraces its recorded
-answers on a load rather than searching them again.
+after every human action, so a session always rests on a human decision, on
+the finished game, or on a background seat that is thinking. A search seat
+(``is_background_agent_kind``) takes about a second and a half a decision,
+so instead of answering inside the request that handed it the decision, the
+session marks it ``thinking`` and the game's worker thread answers it off
+the lock, one step at a time, ringing the doorbell after each; every other
+AI seat answers inside the request as before.
+
+Every applied step is recorded replay-style; saving serializes that record
+(``persistence``), and loading replays it against fresh seeded chance and
+agent streams so a loaded game continues exactly like the unsaved session
+would have. A search seat retraces its recorded answers on a load rather
+than searching them again.
 
 Who may do what is judged here too (``access``, M14). An open manager — the
 default, the local server — trusts every caller as before. A remote manager
@@ -38,6 +45,7 @@ import logging
 import random
 import re
 import threading
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
@@ -49,6 +57,7 @@ from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
     SEARCH_PREFIX,
     is_agent_kind,
+    is_background_agent_kind,
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
@@ -138,8 +147,9 @@ _MAX_AUTO_STEPS: Final = 30_000
 PLAYER_NAME_MAX_LENGTH: Final = 20
 
 # A doorbell listener gets the game ID and the public payload, or ``None``
-# once the game is gone. It runs on the thread that made the change, after
-# the session lock was released.
+# once the game is gone. It runs on the thread that made the change (a
+# background seat's step: the game's AI worker), after the session lock was
+# released.
 type ChangeListener = Callable[[str, JsonObject | None], None]
 # A hand-over listener gets the ID of a game whose turn has just passed on
 # (or which has just finished). Same thread, same moment: after the lock.
@@ -222,6 +232,17 @@ class GameSession:
     # Open event streams: connection ID -> the seat tokens it presented.
     # A seat is online while one of them still matches the seat's token.
     connections: dict[int, frozenset[str]] = field(default_factory=dict)
+    # Background seat (``is_background_agent_kind``) that owns the pending
+    # decision while the game's worker computes its answer, or None. Set by
+    # ``_advance_locked`` instead of answering, cleared when the answer is
+    # applied; the doorbell carries it so a table can show who is thinking.
+    thinking: int | None = None
+    # Whether the game's AI worker thread runs (``_kick_ai``). Only the
+    # worker clears it, as it decides to stop, so a game has one at most.
+    ai_worker: bool = False
+    # Set once the game is deleted: a running worker drops what it computed
+    # and stops. Like everything above these change only under ``lock``.
+    closed: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -292,7 +313,8 @@ class GameSessionManager:
     def add_change_listener(self, listener: ChangeListener) -> None:
         """Ring ``listener`` after every change to any game of this manager.
 
-        It is called on the thread that made the change, once the session
+        It is called on the thread that made the change (a request's, or
+        the game's AI worker for a background seat's step), once the session
         lock is released, with the game ID and the doorbell payload
         (``doorbell``), or ``None`` when the game was deleted. It must not
         raise and should return quickly; the play server's listener only
@@ -308,7 +330,10 @@ class GameSessionManager:
         game rests on a human decision (or is over), the seat that acted can
         no longer take anything back, and what a crash would lose from here
         is one turn. A step inside a turn, a turn end still awaiting its
-        confirmation, an undo, a claim: none of these calls it.
+        confirmation, an undo, a claim: none of these calls it. A hand-over
+        to a background seat calls it once the turn has passed, and the
+        game's worker calls it again when it has played on to a human's
+        decision or the end.
 
         Like a change listener it runs on the thread that made the change,
         after the session lock was released and after the doorbell rang, so
@@ -395,6 +420,9 @@ class GameSessionManager:
     ) -> JsonObject:
         """Start one game and advance it to the first human decision.
 
+        A background seat (``search:``) that decides before then answers on
+        the game's worker after this returns, with ``thinking`` naming it.
+
         Each seat is ``human`` or a registry agent kind: ``app_ai``
         (``app_ai_medium``, ``app_ai_easy``), ``heuristic``, ``random``,
         ``rollout``, ``rollout_strong``, ``checkpoint:<path>`` or
@@ -452,6 +480,7 @@ class GameSessionManager:
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
+        self._kick_ai(session)
         return summary
 
     def list_games(self, *, credentials: Credentials = ANONYMOUS) -> list[JsonObject]:
@@ -700,6 +729,7 @@ class GameSessionManager:
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
+        self._kick_ai(session)
         if passed:
             self._announce_hand_over(game_id)
         return summary
@@ -734,6 +764,7 @@ class GameSessionManager:
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
+        self._kick_ai(session)
         # A confirmation is the hand-over itself.
         self._announce_hand_over(game_id)
         return summary
@@ -818,13 +849,20 @@ class GameSessionManager:
         }
 
     def delete(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> None:
-        """Forget one session (host-only on a remote server)."""
+        """Forget one session (host-only on a remote server).
+
+        Its AI worker, if one is thinking, finishes that decision, throws
+        the answer away and stops.
+        """
 
         self.require_admin(credentials)
         with self._registry_lock:
-            if game_id not in self._sessions:
-                raise UnknownGameError(f"unknown game: {game_id}")
-            del self._sessions[game_id]
+            session = self._sessions.pop(game_id, None)
+        if session is None:
+            raise UnknownGameError(f"unknown game: {game_id}")
+        with session.lock:
+            # A worker still thinking for the game drops its answer and stops.
+            session.closed = True
         self._publish(game_id, None)
 
     def save_game(
@@ -836,8 +874,9 @@ class GameSessionManager:
     ) -> JsonObject:
         """Serialize one session into a versioned save document.
 
-        Sessions only rest on a human decision or on the finished game, so
-        the recorded steps always end on a state a load can resume from.
+        Sessions only rest on a human decision, on the finished game, or on
+        a background seat's pending decision, so the recorded steps always
+        end on a state a load can resume from (the last one thinks again).
 
         Host-only on a remote server, like ``restore_game``: a loaded save
         is a second session holding the same hidden state with every seat
@@ -934,6 +973,8 @@ class GameSessionManager:
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
+        # A game saved while a background seat was thinking thinks again.
+        self._kick_ai(session)
         return summary
 
     def review(self, game_id: str, seat: int) -> JsonObject:
@@ -1282,6 +1323,11 @@ class GameSessionManager:
     def _advance_locked(self, session: GameSession) -> None:
         """Resolve chance and AI decisions until a human must act or the end.
 
+        A background seat's decision (``is_background_agent_kind``) stops
+        the advance too: the seat is marked ``thinking`` and the caller,
+        once it has released the lock, hands it to the game's worker
+        (``_kick_ai``), which answers it and advances from there.
+
         An AI seat's answer cannot end a human Agent or Reveal turn (both
         end only through their owner's press, OQ-095), but the check stays
         for any unit an answer could still close: the game then stops at
@@ -1307,14 +1353,137 @@ class GameSessionManager:
                 raise RuntimeError(
                     f"seat {decision.owner} has no legal action to auto-play"
                 )
-            unit = unit_seat(session.state)
-            _apply_step(session, _agent_action(session, decision.owner))
-            if unit is not None and unit != decision.owner:
-                self._resolve_chance_locked(session)
-                if self._unit_ended_locked(session, unit):
-                    session.awaiting_confirmation = unit
-                    return
+            if is_background_agent_kind(session.seats[decision.owner]):
+                session.thinking = decision.owner
+                return
+            action = _agent_action(session, decision.owner)
+            if self._agent_step_locked(session, decision.owner, action):
+                return
         raise RuntimeError("auto-advance exceeded the step limit")
+
+    def _agent_step_locked(
+        self, session: GameSession, seat: int, action: DomainAction
+    ) -> bool:
+        """Apply an AI seat's answer to the pending decision; caller holds the lock.
+
+        The one way an AI step enters the game, inside a request or on the
+        worker. An answer given inside another seat's unit resolves the
+        chance outcomes after it and may end that unit; returns whether it
+        did, so the game now waits for that human's press.
+        """
+
+        unit = unit_seat(session.state)
+        _apply_step(session, action)
+        if unit is not None and unit != seat:
+            self._resolve_chance_locked(session)
+            if self._unit_ended_locked(session, unit):
+                session.awaiting_confirmation = unit
+                return True
+        return False
+
+    # -- the AI worker ------------------------------------------------------
+    def _kick_ai(self, session: GameSession) -> None:
+        """Start the game's AI worker if a background seat waits for one.
+
+        Every entry point that may leave ``thinking`` set calls this after
+        releasing the lock and ringing; deciding under the lock keeps a
+        game to one worker. Never call it while holding the lock.
+        """
+
+        with session.lock:
+            if session.closed or session.thinking is None or session.ai_worker:
+                return
+            session.ai_worker = True
+        worker = threading.Thread(
+            target=self._run_ai,
+            args=(session,),
+            name=f"ai-worker-{session.game_id}",
+            daemon=True,
+        )
+        try:
+            worker.start()
+        except BaseException:
+            with session.lock:
+                session.ai_worker = False
+            raise
+
+    def _run_ai(self, session: GameSession) -> None:
+        """Answer the game's background seats until none is thinking.
+
+        A failure outside the agent (the engine refusing the step, the
+        advance after it) is logged and stops the worker, leaving the game
+        where it stood, as the same failure inside a request would.
+        """
+
+        try:
+            while self._ai_step(session):
+                pass
+        except Exception:
+            _LOGGER.exception("the AI worker of game %s stopped", session.game_id)
+            with session.lock:
+                session.ai_worker = False
+
+    def _ai_step(self, session: GameSession) -> bool:
+        """Answer one background decision off the lock; return whether to go on.
+
+        The answer is computed from the state as it stood when the seat was
+        asked. If the game moved meanwhile (it was deleted, or anything
+        else replaced the state), the answer is thrown away. Otherwise it
+        is applied like any AI step (``_agent_step_locked``), the game
+        advances to the next decision someone else must make, and the
+        doorbell rings; resting on a human decision or the finished game,
+        the turn has been handed over (``add_hand_over_listener``).
+        """
+
+        game_id = session.game_id
+        with session.lock:
+            seat = session.thinking
+            if session.closed or seat is None or _is_finished(session.state):
+                session.ai_worker = False
+                return False
+            state = session.state
+            observation = session.engine.observe(state, seat)
+            actions = session.engine.legal_actions(state, seat)
+            agent = session.agents[seat]
+        action = _background_answer(game_id, seat, agent, state, observation, actions)
+        with session.lock:
+            if (
+                session.closed
+                or session.state is not state
+                or session.thinking != seat
+            ):
+                return True
+            ended = self._agent_step_locked(session, seat, action)
+            session.thinking = None
+            if not ended:
+                self._advance_locked(session)
+            summary = self._summary_locked(session)
+            bell = self._ring_locked(session, summary)
+            handed_over = _rests_on_human(session)
+        self._publish(game_id, bell)
+        if handed_over:
+            self._announce_hand_over(game_id)
+        return True
+
+    def wait_for_ai(self, game_id: str, timeout: float = 30.0) -> None:
+        """Block until no background seat of the game is thinking.
+
+        For tests and scripted play: returns once no worker runs and no
+        decision waits for one (or the game was deleted meanwhile), and
+        raises ``TimeoutError`` after ``timeout`` seconds otherwise.
+        """
+
+        session = self._get(game_id)
+        deadline = time.monotonic() + timeout
+        while True:
+            with session.lock:
+                if session.closed or (
+                    not session.ai_worker and session.thinking is None
+                ):
+                    return
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"game {game_id} is still thinking")
+            time.sleep(0.005)
 
     def _restore_hand_over_locked(
         self, session: GameSession, recorded: SavedHandOver
@@ -1434,6 +1603,9 @@ class GameSessionManager:
             "log_count": len(session.log),
             "undo": undo,
             "confirmation": session.awaiting_confirmation,
+            # The background seat whose answer is being computed (public: it
+            # owns the pending decision, which ``decision`` names anyway).
+            "thinking": session.thinking,
             "phase": str(state.phase),
             "round_number": state.round_number,
             "first_player": state.first_player,
@@ -1540,6 +1712,60 @@ def _agent_action(session: GameSession, seat: int) -> DomainAction:
     return agent.choose_action(observation, actions)
 
 
+def _background_answer(
+    game_id: str,
+    seat: int,
+    agent: Agent,
+    state: GameState,
+    observation: PlayerView,
+    actions: tuple[DomainAction, ...],
+) -> DomainAction:
+    """A background seat's answer, computed off the session lock.
+
+    A game must never stall on a failing search: the error is logged and
+    the seat plays its view-only answer (a search seat's greedy network),
+    and if that fails too, its first legal action.
+    """
+
+    try:
+        if isinstance(agent, StateAgent):
+            return agent.choose_action_with_state(state, observation, actions)
+        return agent.choose_action(observation, actions)
+    except Exception:
+        _LOGGER.exception(
+            "seat %d of game %s failed to answer; it plays without searching",
+            seat,
+            game_id,
+        )
+    try:
+        return agent.choose_action(observation, actions)
+    except Exception:
+        _LOGGER.exception(
+            "seat %d of game %s failed again; it plays its first legal action",
+            seat,
+            game_id,
+        )
+    return actions[0]
+
+
+def _rests_on_human(session: GameSession) -> bool:
+    """Whether the game waits for a human's move or is over; caller holds the lock.
+
+    Not while a background seat thinks, nor while a human's turn end
+    awaits its press: neither is a hand-over (``add_hand_over_listener``).
+    """
+
+    if session.thinking is not None or session.awaiting_confirmation is not None:
+        return False
+    if _is_finished(session.state):
+        return True
+    decision = session.engine.current_decision(session.state)
+    return (
+        isinstance(decision, PlayerDecision)
+        and session.seats[decision.owner] == HUMAN_SEAT
+    )
+
+
 def _replay_recorded_steps(
     session: GameSession, recorded_steps: tuple[ReplayStep, ...]
 ) -> None:
@@ -1617,9 +1843,15 @@ def _open_undo_window(session: GameSession, seat: int) -> int:
     """How many steps ``seat`` may take back now; the caller holds the lock.
 
     The log's window (``undo_window``), cut off at the last confirmed turn
-    end: what a seat has handed over stays handed over.
+    end: what a seat has handed over stays handed over. Nothing may be
+    taken back while a background seat thinks: its answer is due, and in a
+    game of synchronous seats it would already stand in the log and close
+    the window. Rewinding under it would also leave its agent's memory past
+    a decision the record never got, which a load could not reproduce.
     """
 
+    if session.thinking is not None:
+        return 0
     unsealed = len(session.steps) - session.undo_floor
     return max(0, min(undo_window(session.log, seat), unsealed))
 
@@ -1803,8 +2035,9 @@ def _doorbell(session: GameSession, summary: JsonObject) -> JsonObject:
 
     Only what every client at the table may see goes in, and only what a
     client needs to decide whether its picture is stale: the counters a
-    snapshot is identified by, whose move it is, and the public ``players``
-    list (names, claims, presence), which a client may adopt as it stands.
+    snapshot is identified by, whose move it is and whether that seat is
+    thinking in the background, and the public ``players`` list (names,
+    claims, presence), which a client may adopt as it stands.
     """
 
     decision = summary["decision"]
@@ -1815,6 +2048,7 @@ def _doorbell(session: GameSession, summary: JsonObject) -> JsonObject:
         "log_count": summary["log_count"],
         "decision_owner": decision["owner"] if isinstance(decision, dict) else None,
         "confirmation": summary["confirmation"],
+        "thinking": summary["thinking"],
         "finished": summary["finished"],
         "players": summary["players"],
     }
