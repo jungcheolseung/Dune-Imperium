@@ -3,6 +3,7 @@
 from dune_imperium.agents.app_ai.windows import (
     agent_effects,
     combat,
+    immortality,
     intrigue,
     reveal,
     setup,
@@ -14,7 +15,16 @@ from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, Memory
 
 def _merged() -> dict[str, Handler]:
     handlers: dict[str, Handler] = {}
-    for module in (turn, agent_effects, reveal, combat, intrigue, uprising, setup):
+    for module in (
+        turn,
+        agent_effects,
+        reveal,
+        combat,
+        intrigue,
+        uprising,
+        setup,
+        immortality,
+    ):
         for kind, handler in module.HANDLERS.items():
             if kind in handlers:
                 raise ValueError(f"two handlers for window {kind!r}")

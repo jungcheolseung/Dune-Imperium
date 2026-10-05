@@ -31,11 +31,37 @@ app state (``_after_send`` / ``_after_cost_first``).
 
 ``place_track_spy`` (an owed Emperor-4 Spy) is never chosen here: the app
 keeps that Spy for the post-action prompt (agent_effects / reveal windows).
-Non-target actions (Bloodlines' ``play_turn_start_card``, tech or specimen
-actions) are never chosen either.
+Any other legal id (Bloodlines' ``play_turn_start_card``, tech actions) has
+no app key here: the decision falls back (counted) rather than the id being
+passed over unseen (``_KNOWN_ACTION_IDS``).
+
+Immortality (``spec/immortality.md`` §4, §8):
+
+- Graft. A Graft card's key is ``GraftAgentAbility::Evaluate`` (every legal
+  space valued with its best partner, ``abilities/immortality.py``); a plain
+  card's key is the plain ``AgentAbility::Evaluate`` over all its legal spaces
+  (with or without a partner). Once a placement wins, the app asks the
+  partner at ``AgentTurnPhase`` state 50, *before* the placement
+  (``GraftCardEvaluator``, ``graft_card_evaluate``): forced when the played
+  card is a Graft card or the space is reachable only with a partner. A
+  plain card never takes an optional partner (the evaluator answers
+  nothing), so it is played alone where it can be; where it cannot, the
+  forced prompt's empty answer is ``DefaultRandomChoice`` (a random legal
+  partner). Our engine asks the partner after the placement
+  (``agent_turn(graft=True)`` then ``graft_partner``), so the partner is
+  computed here on the turn-time state and stored in ``Memory.intents``
+  under ``("graft_partner", round, played card)`` for the ``graft_partner``
+  window. The legal partners are the engine's own list for the realised
+  placement (``legal_graft_partner_actions`` on the placed state).
+- ``return_specimen``: ``ReturnSpecimenAbility`` (playmat; Optional, E = 1.0
+  only for the troop shortfall, else no answer). ``use_family_atomics``:
+  ``FamilyAtomicsAbility`` (E answers only in the seat's Reveal turn, so
+  never here). UNTRACED (immortality.md §12 #9): which playmat abilities
+  the turn-start filter ``b__3`` keeps; both are taken to be turn-start keys.
 
 ``HANDLERS`` maps each decision kind this module answers to its handler; a
-kind missing here (or a handler returning None) falls back to the heuristic.
+kind missing here (or a handler returning None) falls back to a random legal
+action (``DefaultRandomChoice``), counted in ``AppAIAgent.fallbacks``.
 """
 
 from collections.abc import Callable, Sequence
@@ -47,6 +73,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
     Request,
     TargetInfo,
     abilities_of,
+    ability_for,
 )
 from dune_imperium.agents.app_ai.abilities.board import (
     GatherSupportAbility,
@@ -54,6 +81,7 @@ from dune_imperium.agents.app_ai.abilities.board import (
     SpiceRefineryAbility,
 )
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
+from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluate
 from dune_imperium.agents.app_ai.catalog import (
     IMMORTALITY_SPACE_ARCHETYPES,
     POST_INDEX,
@@ -61,6 +89,7 @@ from dune_imperium.agents.app_ai.catalog import (
     card_entity,
     space_entity,
     spy_entity,
+    track_entity,
 )
 from dune_imperium.agents.app_ai.context import AppContext, Board
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
@@ -73,13 +102,35 @@ from dune_imperium.agents.app_ai.windows.common import (
     str_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
-from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
+from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_turn import apply_agent_action
+from dune_imperium.rules.graft import legal_graft_partner_actions
 
 #: The board set of a 4-player Uprising game (``SetupPhase/<BeginSetup>``).
 _BOARD_SET = "Uprising"
+_IMMORTALITY_AA = "worm.canis.abilities.ActivatedAbilities.Immortality."
+#: Playmat abilities (``SetupPhase/<BeginSetup>`` adds them with Immortality,
+#: spec immortality.md §1.4); their owner is never read.
+_RETURN_SPECIMEN = _IMMORTALITY_AA + "ReturnSpecimenAbility"
+_FAMILY_ATOMICS = _IMMORTALITY_AA + "FamilyAtomicsAbility"
+#: The ``Memory.intents`` key the ``graft_partner`` window reads:
+#: ``(GRAFT_PARTNER_INTENT, round, played card ref) -> partner ref``.
+GRAFT_PARTNER_INTENT = "graft_partner"
+#: The action ids this window answers or leaves on purpose
+#: (``place_track_spy``); any other legal id makes it fall back.
+_KNOWN_ACTION_IDS: frozenset[str] = frozenset(
+    {
+        "agent_turn",
+        "place_track_spy",
+        "play_intrigue",
+        "return_specimen",
+        "reveal_turn",
+        "use_family_atomics",
+    }
+)
 #: Space abilities whose ``.ctor`` sets ``CostFirstSpaceAbility``
 #: (engine-order §3.1 state 220: Spice Refinery and Gather Support).
 _COST_FIRST: tuple[type[SpaceAbility], ...] = (
@@ -350,8 +401,26 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
         if str_arg(action, "card_id") == card_ref
         and str_arg(action, "space_id") == space_id
     ]
+    graft = _graft_choice(run, card_ref, variants)
+    if graft is not None:
+        variants = [a for a in variants if (arg(a, "graft") is True) is graft]
+        if len(variants) == 1:
+            if graft:
+                _store_graft_partner(run, variants[0])
+            return variants[0]
     if len(variants) <= 1:
         return chosen
+    realised = _realise_costs(run, card_ref, space_id, variants)
+    if graft:
+        _store_graft_partner(run, realised)
+    return realised
+
+
+def _realise_costs(
+    run: DecisionRun, card_ref: str, space_id: str, variants: list[DomainAction]
+) -> DomainAction:
+    """States 220 and 240 over the variants of one (card, space, graft)."""
+
     seat = run.ctx.seat
     board = run.ctx.board
     state = _after_send(run.ctx.state, seat, card_ref, space_id)
@@ -398,6 +467,141 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
         post = _forced_pick(run, answer, posts)
         variants = [a for a in variants if str_arg(a, "infiltrate_post_id") == post]
     return variants[0]
+
+
+# ---------------------------------------------------------------------------
+# Graft: the state-50 partner question (spec immortality.md §4.1-4.2)
+# ---------------------------------------------------------------------------
+
+
+def _is_graft_card(card_ref: str, seat: int) -> bool:
+    """``Graft (27) in card.Tags`` (``GraftCardEvaluator``'s test)."""
+
+    return "Graft" in card_entity(card_ref, seat).list_attr("Tags")
+
+
+def _graft_choice(
+    run: DecisionRun, card_ref: str, variants: Sequence[DomainAction]
+) -> bool | None:
+    """Whether the app grafts this placement (None: no graft variant).
+
+    ``AgentTurnPhase/<GraftCard>d__22 @0x49df7e0``: the prompt is forced when
+    the played card is a Graft card or the space is reachable only with a
+    partner (no plain variant here); otherwise ``GraftCardEvaluator`` answers
+    nothing for a plain card and the empty answer plays it alone.
+    """
+
+    if not any(arg(action, "graft") is True for action in variants):
+        return None
+    if _is_graft_card(card_ref, run.ctx.seat):
+        return True
+    return not any(arg(action, "graft") is not True for action in variants)
+
+
+def _store_graft_partner(run: DecisionRun, placement: DomainAction) -> None:
+    """The partner ``GraftCardEvaluator`` picks for ``placement`` (state 50).
+
+    Valued on the turn-time state (the app asks before the placement): each
+    legal partner ``c`` at ``GraftCardsValue(A = c, B = played)``, first
+    strictly best; a non-positive or empty answer of this forced prompt is
+    ``DefaultRandomChoice`` (a random legal partner). The legal partners are
+    our engine's for the placed state (judgement: the app's own filters
+    ``b__0``/``b__1`` are the same rules). Stored for the ``graft_partner``
+    window as ``(GRAFT_PARTNER_INTENT, round, played card) -> partner``, but
+    only when that window will be asked: with a single legal partner the
+    agent takes it without a handler, so nothing would ever drop the entry
+    (the pick still runs, keeping the RNG draws the same).
+    """
+
+    card_ref = str_arg(placement, "card_id")
+    space_id = str_arg(placement, "space_id")
+    if card_ref is None or space_id is None:
+        return
+    seat = run.ctx.seat
+    placed = apply_agent_action(run.ctx.state, placement).state
+    partners = [
+        ref
+        for ref in (
+            str_arg(action, "card_id")
+            for action in legal_graft_partner_actions(placed, seat)
+        )
+        if ref is not None
+    ]
+    if not partners:
+        return
+    hand = set(run.ctx.hand)
+    candidates = tuple(
+        card_entity(ref, seat if ref in hand else None) for ref in partners
+    )
+    request = Request(infos=(TargetInfo(entities=candidates),), forced=True)
+    answer = graft_card_evaluate(
+        run.profile,
+        request,
+        card_entity(card_ref, seat),
+        space_entity(space_id, run.ctx.board),
+    )
+    partner = _forced_pick(run, answer, partners)
+    if len(partners) > 1:
+        key = (GRAFT_PARTNER_INTENT, run.ctx.round_number, card_ref)
+        run.memory.intents[key] = partner
+
+
+# ---------------------------------------------------------------------------
+# Playmat abilities offered at the turn start (Immortality)
+# ---------------------------------------------------------------------------
+
+
+def return_specimen_source(run: DecisionRun, action: DomainAction) -> Source:
+    """``ReturnSpecimenAbility`` (playmat, Optional; spec immortality.md §3.4).
+
+    E @0x4e1a610: only the troop shortfall (``UngainedTroops``) is returned,
+    at 1.0; without one nothing is stored and the key is never chosen. One
+    target per specimen (``infos[0].options``); our action returns one, so a
+    shortfall of ``n`` is answered over ``n`` decisions.
+    """
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ability = ability_for(_RETURN_SPECIMEN, track_entity("emperor"))
+        specimens = tuple(range(run.ctx.specimens()))
+        answer = ability.evaluate(
+            run.profile, Request(infos=(TargetInfo(options=specimens),))
+        )
+        return answer.value, (None if answer.response is None else action)
+
+    return Source("Return Specimen", Stage.PROMPT, (action,), evaluate=evaluate)
+
+
+def family_atomics_source(run: DecisionRun, action: DomainAction) -> Source:
+    """``FamilyAtomicsAbility`` (playmat, Optional; spec immortality.md §3.4).
+
+    E @0x4dfd5f0 answers only in the seat's Reveal turn (``[decline,
+    confirm]``, 1 = confirm): in a turn-start or Agent-turn prompt it stores
+    nothing and the key is never chosen.
+    """
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        ability = ability_for(_FAMILY_ATOMICS, track_entity("emperor"))
+        answer = ability.evaluate(
+            run.profile, Request(infos=(TargetInfo(options=(0, 1)),))
+        )
+        response = answer.response
+        confirmed = bool(response) and response is not None and response[0][:1] == (1,)
+        return answer.value, (action if confirmed else None)
+
+    return Source("Family Atomics", Stage.PROMPT, (action,), evaluate=evaluate)
+
+
+def playmat_sources(run: DecisionRun) -> list[Source]:
+    """The Immortality playmat keys of a turn-start or post-action prompt."""
+
+    sources: list[Source] = []
+    returned = run.first("return_specimen")
+    if returned is not None:
+        sources.append(return_specimen_source(run, returned))
+    atomics = run.first("use_family_atomics")
+    if atomics is not None:
+        sources.append(family_atomics_source(run, atomics))
+    return sources
 
 
 # ---------------------------------------------------------------------------
@@ -485,6 +689,8 @@ def _card_sources(run: DecisionRun) -> list[Source]:
 def turn_window(run: DecisionRun) -> DomainAction | None:
     """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer)."""
 
+    if any(action.action_id not in _KNOWN_ACTION_IDS for action in run.legal):
+        return None  # an id with no app key: fall back, never pass it over
     # ``place_track_spy`` is never a source. UNTRACED: 12 §1.3 finds nothing in
     # the playmat ability container (DetermineTurn row 4), while engine-order
     # §3.6 lists custom abilities there; a custom PlaceSpy (timing None) would
@@ -494,6 +700,7 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
     plots = run.by_id("play_intrigue")
     if plots:
         sources.extend(intrigue_play_sources(run, plots, combat=False))
+    sources.extend(playmat_sources(run))
     chosen = decide(run, sources, skip=run.first("reveal_turn"), forced=False)
     if chosen is not None and chosen.action_id == "agent_turn":
         return _realise(run, chosen)

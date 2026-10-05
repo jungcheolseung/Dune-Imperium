@@ -36,10 +36,10 @@ separate lines (OQ-058), the ``intrigue_effects`` window.
   automatic part after its choices (Cunning trashes before it draws,
   ``<RunImmediateEffects>d__11 @0x4c08f00``; Unexpected Allies blows the wall
   before the worm), which our engine does when the last slot finishes.
-- Returns None (heuristic fallback) only for cards and slots outside the
-  4-player Uprising (+CHOAM) game: an intrigue card without an app archetype,
-  or an expansion slot (``lose_intrigue_troop``, ``give_intrigue_card``,
-  ``trash_intrigue_hand_card``, Tleilaxu, peek, discard-pile trash).
+- Returns None (random fallback, counted) only for cards and slots this port
+  has no app answer for: an intrigue card without an app archetype, or a
+  Bloodlines slot (``give_intrigue_card``, ``trash_intrigue_hand_card``,
+  peek, discard-pile trash, the other ``LoseTroops`` costs).
 
 Per card (``spec/intrigues.md`` §6-§8; ours ``R4`` §9). "play" = the app
 answer -> our ``play_intrigue`` option; "then" = our follow-up -> its answer:
@@ -115,6 +115,33 @@ answer -> our ``play_intrigue`` option; "then" = our follow-up -> its answer:
   AIAlwaysUse (detonate).
 - CHOAM Profits, Secure Spice Trade, Shadow Alliance: Endgame only.
 
+Immortality (``spec/immortality.md`` §7):
+
+- Breakthrough: play ``[space]`` -> 0 (``BreakthroughAbility``: each next
+  research space at its ``SpaceValue``); the Research then opens our
+  ``research_advance`` window, whose answer ``research_intent`` reads back
+  from the recorded play.
+- Counterattack: play Plot ``[units]`` -> 0 (one option per garrison unit),
+  Combat ``[]`` -> 1; then deploy -> ``len(units)``.
+- Disguised Bureaucrat: play ``[]`` (one marker) / ``[track]`` (two) -> 0;
+  then gain -> that track.
+- Economic Positioning, Gruesome Sacrifice, Illicit Dealings, Shadowy
+  Bargain, Study Melange, Tleilaxu Puppet, Vicious Talents: play -> the
+  option of the prompt's timing; Gruesome Sacrifice's two troop losses are
+  conflict troops (``lose_intrigue_troop(zone=conflict)``; a Bloodlines
+  Commander only when no troop is there, the smaller loss).
+- Harvest Cells: play ``[card]`` / ``[[]]`` (Combat face up, or the
+  ``conflict_end_trigger`` window's play) when ``HarvestCellsAbility`` can
+  run; the request is the dealt Tleilaxu Row cards the seat can pay with the
+  two harvested specimens. At the Conflict's end the specimens come first
+  (``resolve_intrigue_rewards``; judgement: card-text order, and the app's
+  ``GetSpecimensAvailable`` counts the harvested specimens), then the
+  answer's card is acquired, on top of the deck when the destination is
+  offered (``AcquireAbility``'s ``ChooseAcquireTleilaxuLocation`` option 0;
+  judgement: Harvest Cells uses the same picker), ``[[]]`` ->
+  ``decline_intrigue_tleilaxu``. A card no longer offered: the ability is
+  evaluated again over the offered cards.
+
 Slot fallbacks (no answer for the step): lose -> the least painful
 ``GetGainInfluenceValue(f, -1)`` (Backed by CHOAM's pricing, first strict
 best); gain -> ChooseFactionInfluence over the offered tracks that can still
@@ -143,6 +170,7 @@ first follow-up decision the agent is asked (post-loss when the effect line
 and the loss each had one legal choice).
 """
 
+import re
 from collections.abc import Callable, Sequence
 from typing import Final
 
@@ -154,6 +182,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
     TargetInfo,
 )
 from dune_imperium.agents.app_ai.abilities.generic import TrashAbility
+from dune_imperium.agents.app_ai.abilities.immortality import HarvestCellsAbility
 from dune_imperium.agents.app_ai.abilities.intrigue import (
     IntrigueAbility,
     ability_for_prompt,
@@ -173,6 +202,7 @@ from dune_imperium.agents.app_ai.catalog import (
 from dune_imperium.agents.app_ai.choice import first_strictly_best
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
 from dune_imperium.agents.app_ai.entities import Entity
+from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
 from dune_imperium.agents.app_ai.windows.common import (
     Source,
     Stage,
@@ -185,6 +215,7 @@ from dune_imperium.agents.app_ai.windows.common import (
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireTleilaxuCard,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -193,6 +224,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
+    LoseTroops,
     PlaceSpy,
     RecallSpy,
     RetreatTroops,
@@ -218,8 +250,21 @@ INTENT: Final = "intrigue"
 INTENT_AT: Final = "intrigue_at"
 #: Change Allegiances' swap gain pick, made with the answer (pre-loss state).
 INTENT_SWAP_GAIN: Final = "intrigue_swap_gain"
+#: ``(RESEARCH_INTENT, round, seat)`` -> our research space id: the space the
+#: app answer of a Reveal research key named (``GainResearchRevealAbility``,
+#: Tleilaxu Master), stored by the ``reveal`` window when it takes
+#: ``advance_reveal_research``. Read with ``research_intent``.
+RESEARCH_INTENT: Final = "research_space"
+#: The card instance inside an Intrigue play's event source
+#: (``round:R:player:P:intrigue:<instance>...``, ``rules/intrigue.py``).
+_INTRIGUE_SOURCE: Final = re.compile(r":intrigue:(intrigue:[a-z0-9_]+:\d+)")
+#: The Reveal-gain event source (``rules/reveal_turn.apply_reveal_gain``).
+_REVEAL_GAIN_SOURCE: Final = ":reveal_gain:"
+#: ``WormPlayer::GetTleilaxuInfluence`` rank at the end of the Tleilaxu track.
+TLEILAXU_TRACK_END: Final = 7
 
 _PLAY: Final = "play_intrigue"
+_BREAKTHROUGH: Final = "breakthrough"
 _RESERVE: Final = "reserve:"
 _SHADDAM: Final = "LeaderArchetypes.Uprising.ShaddamCorrinoIV"
 #: ``SpecialMissionAbility::IsCircleObservationPost``: the City posts.
@@ -330,6 +375,27 @@ def _can_deploy_on_circle(ctx: AppContext) -> bool:
     return any(ctx.post_owner(post) is None for post in sorted(_CITY_POSTS))
 
 
+def _research_spaces(ctx: AppContext) -> tuple[Entity, ...]:
+    """``ResearchTrack.SpaceDefs[RR].NextIndices`` as research ``WormSpace``s
+    (Breakthrough's targets, lower index first)."""
+
+    return tuple(research_space_entity(s) for s in ctx.research_next_space_ids())
+
+
+def _harvest_targets(ctx: AppContext) -> tuple[Entity, ...]:
+    """``HarvestCellsAbility::GetHarvestCellsTargets @0x4c751c0`` (UNTRACED).
+
+    Judgement: the dealt Tleilaxu Row cards (our engine's acquirable set;
+    Reclaimed Forces is not a card one acquires) whose ``SpecimenCost`` the
+    seat can pay with the two specimens the card harvests
+    (``GetSpecimensAvailable @0x4c75110``, by its name), in Row order.
+    """
+
+    available = ctx.specimens() + 2
+    cards = (card_entity(i) for i in ctx.state.tleilaxu_row)
+    return tuple(c for c in cards if c.int_attr("SpecimenCost") <= available)
+
+
 def _indices(count: int) -> tuple[int, ...]:
     """One target index per troop (``WormTroop`` targets, abilities/intrigue)."""
 
@@ -409,6 +475,15 @@ def intrigue_request(ctx: AppContext, instance: str, combat: bool) -> Request:
     elif cid == "special_mission":
         spies = _ents(_own_spies(ctx))
         infos = (_opts(0, 1), spies) if _can_deploy_on_circle(ctx) else (spies,)
+    elif cid == "breakthrough":
+        infos = (_ents(_research_spaces(ctx)),)
+    elif cid == "counterattack" and not combat:
+        # ``targets.OfType<WormUnit>()``: one index per garrison unit.
+        infos = (_opts(*_indices(me.troops_garrison)),)
+    elif cid == "disguised_bureaucrat":
+        infos = (_ents(_gain_tracks(ctx)),)
+    elif cid == "harvest_cells":
+        infos = (_ents(_harvest_targets(ctx)),)
     return Request(infos)
 
 
@@ -723,7 +798,7 @@ def _gain_influence(
         refs = _item(intent(), 0) or ()
         ref = refs[k] if k < len(refs) else None
         intended = ref if isinstance(ref, str) else None
-    elif cid == "imperium_politics":
+    elif cid in ("imperium_politics", "disguised_bureaucrat"):
         intended = _first_ref(_item(intent(), 0))
     elif cid == "sietch_ritual":
         intended = _first_ref(_item(intent(), 1))
@@ -798,6 +873,9 @@ def _deploy(
         else:  # [troops]
             troops = _item(answer, 0)
             count = len(troops) if troops else None
+    elif cid == "counterattack":  # [units]: GetUnitsToDeploy(units, <= 2)
+        units = _item(intent(), 0)
+        count = len(units) if units is not None else None
     if count is None:
         garrison = _indices(run.ctx.me.troops_garrison)
         count = intrigue_deploy_troops(run.profile, garrison)
@@ -931,6 +1009,124 @@ def _retreat(
     return _count_action(actions, count)
 
 
+def _lose_troops(run: DecisionRun, cid: str) -> DomainAction | None:
+    """Gruesome Sacrifice's cost: "lose two of your troops in the Conflict".
+
+    ``GruesomeSacrificeAbility`` answers no target (``Upd(v, src, null)``):
+    the app takes two of its Conflict troops. Our engine asks each loss and
+    lets a Bloodlines Commander stand in; the plain troop is taken while one
+    is there (the smaller loss, plan §11.4), else the Commander. Any other
+    ``LoseTroops`` cost is a Bloodlines card: not mirrored here.
+    """
+
+    if cid != "gruesome_sacrifice":
+        return None
+    actions = run.by_id("lose_intrigue_troop")
+    for action in actions:
+        if str_arg(action, "zone") == "conflict" and arg(action, "commanders") is None:
+            return action
+    return with_arg(actions, "zone", "conflict")
+
+
+def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction | None:
+    """Harvest Cells' "you may also acquire a Tleilaxu card" (module table).
+
+    The harvested specimens are taken first (``resolve_intrigue_rewards``).
+    Then the play's recorded answer (``recorded_answer``: the
+    ``combat_intrigue`` or ``conflict_end_trigger`` prompt that played the
+    card) is replayed: its card, or "no acquire" (an empty list) ->
+    ``decline_intrigue_tleilaxu``. Without one, or when its card is not
+    offered, ``HarvestCellsAbility::Evaluate @0x4c75550`` runs now over the
+    offered cards (two specimens for "no acquire", a card at its
+    ``AcquireValue`` + two specimens when strictly better).
+    """
+
+    if cid != "harvest_cells":
+        return None
+    resolve = run.first("resolve_intrigue_rewards")
+    if resolve is not None:
+        return resolve
+    decline = run.first("decline_intrigue_tleilaxu")
+    acquires = run.by_id("acquire_intrigue_tleilaxu")
+    refs = list(
+        dict.fromkeys(
+            ref for a in acquires if (ref := str_arg(a, "instance_id")) is not None
+        )
+    )
+    recorded = recorded_answer(run, instance)
+    item = None if recorded is None else _item(recorded, 0)
+    chosen: str | None
+    if item is not None and (not item or _first_ref(item) in refs):
+        chosen = _first_ref(item)
+    else:
+        entity = intrigue_entity(instance, run.ctx.seat)
+        ability = next(
+            (a for a in abilities_of(entity) if isinstance(a, HarvestCellsAbility)),
+            None,
+        )
+        if ability is None:
+            return None
+        cards = tuple(card_entity(ref) for ref in refs)
+        answer = ability.evaluate(run.profile, Request((TargetInfo(cards),)))
+        chosen = _first_ref(_item(answer, 0))
+    if chosen is None:
+        return decline
+    variants = [a for a in acquires if str_arg(a, "instance_id") == chosen]
+    # ``ChooseAcquireTleilaxuLocation`` (GM > 0): option 0, the top of the deck.
+    for action in variants:
+        if arg(action, "to_deck_top") is True:
+            return action
+    return variants[0] if variants else decline
+
+
+def research_intent(run: DecisionRun) -> str | None:
+    """The research space the app's answer named for the Research icon the
+    ``research_advance`` frame on top resolves, or None.
+
+    For the decision windows that answer ``research_advance`` (the app asks
+    the direction inside the ability that grants the Research, so its answer
+    already names the space):
+
+    - a Breakthrough play (the frame's ``source`` names the Intrigue
+      instance): the space of ``recorded_answer`` (``BreakthroughAbility``'s
+      ``SpaceValue`` pick, which can differ from ``GainResearchAbility``'s
+      floor-1.0 pick when no space is worth more than 0);
+    - a Reveal research key (Tleilaxu Master): the space the ``reveal``
+      window stored under ``(RESEARCH_INTENT, round, seat)`` when it took
+      ``advance_reveal_research`` (``GainResearchRevealAbility``'s answer).
+
+    The stored Reveal intent is consumed by the call. A space that is not
+    among the frame's legal ``choose_research_space`` options gives None.
+    """
+
+    key = (RESEARCH_INTENT, run.ctx.round_number, run.ctx.seat)
+    stored = run.memory.intents.pop(key, None)
+    source = run.ctx.top_frame_context.get("source")
+    if not isinstance(source, str):
+        return None
+    space: str | None = None
+    match = _INTRIGUE_SOURCE.search(source)
+    if match is not None:
+        # Only Breakthrough's answer names a research space; another
+        # Intrigue's research (an acquired card's Research acquire effect,
+        # e.g. Spiritual Fervor through Impress) has no answer to replay.
+        instance = match.group(1)
+        answer = (
+            recorded_answer(run, instance)
+            if card_id(instance) == _BREAKTHROUGH
+            else None
+        )
+        if answer is not None:
+            space = _first_ref(_item(answer, 0))
+    elif _REVEAL_GAIN_SOURCE in source and isinstance(stored, str):
+        space = stored
+    if space is None:
+        return None
+    space = space.removeprefix("research:")
+    offered = {str_arg(a, "space_id") for a in run.by_id("choose_research_space")}
+    return space if space in offered else None
+
+
 def _flip(run: DecisionRun, instance: str) -> DomainAction | None:
     actions = run.by_id("flip_battle_card")
     entity = intrigue_entity(instance, run.ctx.seat)
@@ -1014,6 +1210,10 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
             return _retreat(run, cid, intent)
         case FlipBattleCard():
             return _flip(run, instance)
+        case LoseTroops():
+            return _lose_troops(run, cid)
+        case AcquireTleilaxuCard():
+            return _acquire_tleilaxu(run, cid, instance)
     return None
 
 
