@@ -50,6 +50,7 @@ _KEYS = (
     "spice",
     "water",
     "research",
+    "return_self",
     "trash_self",
     "pledge",
 )
@@ -70,6 +71,7 @@ _EFFECTS = (
     PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
     PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED,
+    PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE,
 )
 
 

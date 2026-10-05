@@ -1363,6 +1363,7 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v134: finish_leader_draft
         + 1  # codec bump pending (2026-10-06): the cards_second icon key
         + 1  # codec bump pending (2026-10-06): the research icon key
+        + 1  # codec bump pending (2026-10-06): the return_self icon key
     )
 
     actions = (

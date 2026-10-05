@@ -1581,6 +1581,26 @@ def test_tread_in_darkness_draw_greys_out_once_its_bond_card_is_trashed() -> Non
     }
 
 
+def test_stillsuit_manufacturer_return_waits_for_the_fremen_alliance() -> None:
+    """Stillsuit Manufacturer's "[Fremen] Alliance: Return this card from
+    play to your hand." is its own icon (OQ-027): without the Alliance it
+    waits, and an Alliance formed later in the turn can still meet it
+    ("waiting", OQ-057 (1))."""
+    stillsuit = "imperium:stillsuit_manufacturer:0"
+    owner = PlayerState(
+        player_id=0, hand=(stillsuit,), research_space=RESEARCH_START_ID
+    )
+    state = _place(_state(owner, config=RulesetConfig(immortality=True)), "arrakeen")
+    assert _icon_rows(state) == {
+        "waiting:agent_icon:return_self": (
+            "Needs the Fremen Alliance;"
+            " it lapses if still unmet when the turn ends",
+            "프레멘 {alliance} 필요 — 차례가 끝날 때까지 못 채우면 사라짐",
+            "condition",
+        ),
+    }
+
+
 # --- A Contract the seat cannot take, and Contract icons held (OQ-059) ---
 
 _IMMEDIATE = "contract:bloodlines_immediate"

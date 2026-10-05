@@ -1111,6 +1111,18 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 4
     if key == "cards_second":
         return False
+    # Stillsuit Manufacturer's water and its Fremen Alliance return.
+    stillsuit = (
+        effect is PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
+    )
+    if stillsuit and key == "water":
+        return True
+    if key == "return_self":
+        return (
+            stillsuit
+            and context.get("card_id") in counted_in_play(owner)
+            and Faction.FREMEN.value in owner.alliance_faction_ids
+        )
     # Industrial Espionage's grafted Research line became its own icon.
     if key == "research":
         return (

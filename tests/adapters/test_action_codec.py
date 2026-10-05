@@ -106,8 +106,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 1
         + 1  # codec bump pending (2026-10-06): the cards_second icon key
         + 1  # codec bump pending (2026-10-06): the research icon key
+        + 1  # codec bump pending (2026-10-06): the return_self icon key
     )
-    assert first.size == 4408
+    assert first.size == 4409
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -131,8 +132,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4408
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4408 + len(
+    assert ActionCodec(RulesetConfig()).size == 4409
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4409 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -238,6 +239,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 1
         + 1  # codec bump pending (2026-10-06): the cards_second icon key
         + 1  # codec bump pending (2026-10-06): the research icon key
+        + 1  # codec bump pending (2026-10-06): the return_self icon key
     )
 
     try:
@@ -356,6 +358,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1
         + 1  # codec bump pending (2026-10-06): the cards_second icon key
         + 1  # codec bump pending (2026-10-06): the research icon key
+        + 1  # codec bump pending (2026-10-06): the return_self icon key
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

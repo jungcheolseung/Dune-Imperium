@@ -332,7 +332,8 @@ const LABELS_EN = {
     "trash_self": "{trash} this card",
     "troops": "{recruit} {troop} ({garrison})",
     "water": "Gain {water}",
-    "research": "{research}"
+    "research": "{research}",
+    "return_self": "Return this card to hand"
   },
   "RESEARCH_BONUS_LABELS": {
     "none": "",

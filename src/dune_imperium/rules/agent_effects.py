@@ -114,6 +114,7 @@ _SPICE_AND_GRAFTED_INFLUENCE = (
 _DRAW_RESEARCH_SPECIMEN = (
     PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
 )
+_STILLSUIT = PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
 _RESEARCH_AND_TRASH_FOR_VP = (
     PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
 )
@@ -159,6 +160,9 @@ AGENT_ICON_INTRIGUE: Final = "intrigue"
 AGENT_ICON_PLEDGE: Final = "pledge"  # Pivotal Gambit's first-place Influence
 # Industrial Espionage's "If grafted: [Research] [specimen]" line.
 AGENT_ICON_RESEARCH: Final = "research"
+# Stillsuit Manufacturer's "[Fremen] Alliance: Return this card from play to
+# your hand."
+AGENT_ICON_RETURN_SELF: Final = "return_self"
 AGENT_ICON_SOLARI: Final = "solari"
 AGENT_ICON_SPICE: Final = "spice"
 AGENT_ICON_TRASH_SELF: Final = "trash_self"
@@ -173,6 +177,7 @@ AUTOMATIC_AGENT_ICONS: Final = (
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
     AGENT_ICON_RESEARCH,
+    AGENT_ICON_RETURN_SELF,
     AGENT_ICON_SOLARI,
     AGENT_ICON_SPICE,
     AGENT_ICON_TRASH_SELF,
@@ -256,6 +261,11 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
             # Research (direction and bonus included) may come before the
             # draw.
             _DRAW_RESEARCH_SPECIMEN: (AGENT_ICON_CARDS, AGENT_ICON_RESEARCH),
+            # Stillsuit Manufacturer (Immortality): "[water] —AND— [Fremen]
+            # Alliance: Return this card from play to your hand."
+            # [Stillsuit Manufacturer card]; the return waits for the
+            # Alliance (OQ-028, OQ-057 (1)).
+            _STILLSUIT: (AGENT_ICON_WATER, AGENT_ICON_RETURN_SELF),
         }
     )
 )
@@ -3207,6 +3217,11 @@ class AgentIconCondition(StrEnum):
     CONTRACTS_COMPLETED = "contracts_completed"
     # Another card of ``faction`` in play; it can only be lost in a turn.
     BOND = "bond"
+    # The Alliance of ``faction`` (any Alliance when None).
+    ALLIANCE = "alliance"
+    # The box's own card is not in play: a Row card borrowed with Usurp
+    # (OQ-054) never is.
+    NOT_IN_PLAY = "not_in_play"
     # The icon belongs to no box that prints it; no card queues one.
     NOT_PRINTED = "not_printed"
 
@@ -3279,8 +3294,9 @@ def agent_icon_block(
     Maker Keeper and Wheels Within Wheels (Influence thresholds), Cargo
     Runner (two and four completed contracts, one line each) and Tread in
     Darkness (another Bene Gesserit card in play, on its draw and on its
-    optional trash) and Industrial Espionage (grafted, on its Research and
-    specimen line) print a condition on their icons. The condition is judged
+    optional trash), Industrial Espionage (grafted, on its Research and
+    specimen line) and Stillsuit Manufacturer (the Fremen Alliance, on its
+    return) print a condition on their icons. The condition is judged
     when the icon resolves (OQ-028), and while it is false the icon is not
     offered: a mandatory effect cannot be fired to fizzle, it waits for the
     turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
@@ -3308,6 +3324,18 @@ def agent_icon_block(
         if is_grafted(context):
             return None
         return AgentIconBlock(AgentIconCondition.GRAFTED)
+    if key == AGENT_ICON_RETURN_SELF:
+        if effect is not _STILLSUIT:
+            return _NOT_PRINTED
+        card_id = context.get("card_id")
+        if card_id not in counted_in_play(owner):
+            # A Row card borrowed by Usurp is not "in play" and cannot
+            # return to a hand (designer ruling, OQ-054); it is trashed
+            # when the turn closes.
+            return AgentIconBlock(AgentIconCondition.NOT_IN_PLAY)
+        if Faction.FREMEN.value in owner.alliance_faction_ids:
+            return None
+        return AgentIconBlock(AgentIconCondition.ALLIANCE, faction=Faction.FREMEN)
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
@@ -3356,6 +3384,8 @@ def agent_icon_block(
     if key == AGENT_ICON_WATER:
         if maker_keeper:
             return _influence_block(owner, Faction.BENE_GESSERIT)
+        if effect is _STILLSUIT:
+            return None
         return _NOT_PRINTED
     return None
 
@@ -3453,6 +3483,22 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
             # below: the Research may open its direction choice and bonus
             # frames above the turn.
             pass
+        case "return_self":
+            if available:
+                # Stillsuit Manufacturer back to the hand, face up in play
+                # so far, so everyone keeps knowing it (OQ-010). It left
+                # play by its own icon, so an icon still queued pays out
+                # (OQ-022).
+                next_owner = replace(
+                    owner,
+                    hand=(*owner.hand, card_instance_id),
+                    hand_public=(*owner.hand_public, card_instance_id),
+                    in_play=tuple(
+                        candidate
+                        for candidate in owner.in_play
+                        if candidate != card_instance_id
+                    ),
+                )
         case "trash_self":
             if card_instance_id in owner.in_play:
                 # The card trashes itself by its own printed icon, so any
@@ -4383,34 +4429,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.DRAW_TWO_CARDS:
         # Show of Strength: draw two cards.
         next_owner = owner
-        event_kind = "agent_card_effect_resolved"
-    elif (
-        effect
-        is PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
-    ):
-        # Stillsuit Manufacturer: water, and with the Fremen Alliance the
-        # card returns from play to the hand (judged now, OQ-028).
-        next_owner = replace(
-            owner, resources=replace(owner.resources, water=owner.resources.water + 1)
-        )
-        if (
-            Faction.FREMEN.value in owner.alliance_faction_ids
-            # A Row card borrowed by Usurp is not "in play" and cannot
-            # return to a hand (designer ruling, OQ-054); it is trashed
-            # when the turn closes.
-            and card_instance_id in counted_in_play(owner)
-        ):
-            # Face up in play, so everyone keeps knowing it (OQ-010).
-            next_owner = replace(
-                next_owner,
-                hand=(*next_owner.hand, card_instance_id),
-                hand_public=(*next_owner.hand_public, card_instance_id),
-                in_play=tuple(
-                    candidate
-                    for candidate in next_owner.in_play
-                    if candidate != card_instance_id
-                ),
-            )
         event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH:
         # Throne Room Politics: a troop and a black trash icon (optional

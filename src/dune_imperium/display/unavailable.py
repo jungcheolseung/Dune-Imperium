@@ -1304,6 +1304,26 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
                 f"완수한 {{contract}} {needed}개 필요 (완수 {held}){_LAPSES_KO}",
                 "condition",
             )
+        case AgentIconCondition.ALLIANCE if block.faction is Faction.FREMEN:
+            # Stillsuit Manufacturer's return; tokens_ko.py's "프레멘 {alliance}".
+            return (
+                f"Needs the Fremen Alliance{_LAPSES_EN}",
+                f"프레멘 {{alliance}} 필요{_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.ALLIANCE if block.faction is None:
+            return (
+                f"Needs an Alliance{_LAPSES_EN}",
+                f"{{alliance}} 필요{_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.NOT_IN_PLAY:
+            return (
+                "A card borrowed with Usurp is not in play;"
+                " it lapses when the turn ends",
+                "찬탈로 빌린 카드는 {in_play}에 있지 않음 — 차례가 끝날 때 사라짐",
+                "condition",
+            )
         case AgentIconCondition.BOND if block.faction is Faction.BENE_GESSERIT:
             # Tread in Darkness's words [card face], tokens_ko.py's for KO.
             return (
@@ -1324,7 +1344,8 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
 
 
 # Conditions a later effect of the same turn can still meet (Influence
-# gained, spice gained, a marker reached, a contract completed): such an
+# gained, spice gained, a marker reached, a contract completed, an
+# Alliance formed): such an
 # icon sits with the Agent boxes waiting on theirs (``_agent_box``), under
 # "waiting". A card grafted or not stays so all turn, and an unprinted icon
 # never comes.
@@ -1334,6 +1355,7 @@ _ICON_CAN_STILL_BE_MET: Final = frozenset(
         AgentIconCondition.SPICE_GAINED,
         AgentIconCondition.GENETIC_MARKERS,
         AgentIconCondition.CONTRACTS_COMPLETED,
+        AgentIconCondition.ALLIANCE,
     }
 )
 

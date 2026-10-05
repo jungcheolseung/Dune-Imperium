@@ -68,6 +68,9 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "if you have another Bene Gesserit card in play"
     ),
     (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "if grafted",
+    (_BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE, "return_self"): (
+        "with the Fremen Alliance"
+    ),
 }
 
 # Korean twin of _ICON_CONDITIONS. The Influence-count suffixes use a
@@ -118,6 +121,9 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
     ),
     (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "{graft}했다면",
+    (_BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE, "return_self"): (
+        "프레멘 {alliance}이면"
+    ),
 }
 
 
@@ -195,6 +201,8 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
             base = "Gain 1 water"
         case "research":
             base = "Research, Generate 1 specimen"
+        case "return_self":
+            base = "Return this card from play to your hand"
         case "trash_self":
             base = "Trash this card"
         case "pledge":
@@ -252,6 +260,9 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
         case "research":
             # tokens_ko.py's words for Industrial Espionage's line.
             base = "{research}, 표본 1개 생성"
+        case "return_self":
+            # tokens_ko.py's words for Stillsuit Manufacturer's return.
+            base = "{in_play}에서 이 카드를 핸드로 되돌림"
         case "trash_self":
             base = "이 카드 {trash}"
         case "pledge":

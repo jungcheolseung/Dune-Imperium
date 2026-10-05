@@ -724,6 +724,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 1  # v134: finish_leader_draft
         + 1  # codec bump pending (2026-10-06): the cards_second icon key
         + 1  # codec bump pending (2026-10-06): the research icon key
+        + 1  # codec bump pending (2026-10-06): the return_self icon key
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -737,6 +738,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 1  # v134: finish_leader_draft
         + 1  # codec bump pending (2026-10-06): the cards_second icon key
         + 1  # codec bump pending (2026-10-06): the research icon key
+        + 1  # codec bump pending (2026-10-06): the return_self icon key
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

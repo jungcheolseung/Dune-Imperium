@@ -1003,7 +1003,11 @@ def test_usurps_borrowed_stillsuit_manufacturer_never_returns_to_hand() -> None:
     grafted = apply_graft_partner(
         placed, DomainAction("choose_graft_partner", 0, (("card_id", stillsuit),))
     ).state
-    resolved = resolve_agent_card_effect(_switch(grafted))
+    switched = _switch(grafted)
+    # The return icon never comes for a card that is not in play: only the
+    # water is offered, and the return lapses at the turn's end.
+    assert _icon_keys(switched) == {"water"}
+    resolved = resolve_agent_card_icon(switched, _icon(switched, "water"))
     owner = resolved.state.players[0]
     assert owner.resources.water == 3
     assert stillsuit in owner.in_play and stillsuit not in owner.hand

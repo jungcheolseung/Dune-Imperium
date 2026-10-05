@@ -744,12 +744,18 @@ def test_contaminator_at_tleilaxu_rank_seven_has_no_app_key() -> None:
 
 def test_stillsuit_manufacturer_returns_only_with_the_fremen_alliance() -> None:
     state, seat, _ref, _ = _place(IMM, "stillsuit_manufacturer", space="desert_tactics")
-    source = _source(_turn(state, seat), "stillsuit_manufacturer box")
-    assert source.stage is Stage.AGENT_BOX  # the AgentWater box alone
+    t = _turn(state, seat)
+    source = _source(t, "stillsuit_manufacturer water")
+    assert source.stage is Stage.AGENT_BOX  # the AgentWater box
+    # Without the Alliance the return is not offered (it waits, OQ-057 (1)).
+    assert "stillsuit_manufacturer return_self" not in [s.label for s in t.sources]
     allied = with_player(state, seat, alliance_faction_ids=("fremen",))
-    source = _source(_turn(allied, seat), "stillsuit_manufacturer box")
+    source = _source(_turn(allied, seat), "stillsuit_manufacturer return_self")
     assert source.stage is Stage.PROMPT
-    assert _evaluate(source) == (100.0, _a(seat, "resolve_agent_card_effect"))
+    assert _evaluate(source) == (
+        100.0,
+        _a(seat, "resolve_agent_card_effect", effect="return_self"),
+    )
 
 
 def test_throne_room_politics_waits_for_its_trash_key() -> None:

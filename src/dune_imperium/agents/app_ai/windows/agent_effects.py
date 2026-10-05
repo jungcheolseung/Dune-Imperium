@@ -241,10 +241,11 @@ Immortality, Epic Game Mode and the promos (``spec/immortality.md`` §4-§8,
   ``Cost`` (a failing Cost has no app key: the box is a chore); boxes with
   only printed gains are the generic box (500). Two app steps in one action
   take the asking one's stage: Clandestine Meeting (intrigue + influence),
-  Stillsuit Manufacturer (water + return), Throne Room Politics (troop +
-  ``TrashAgentAbility``). Industrial Espionage's ``cards`` and ``research``
-  icons are ``DrawAbility`` and ``IndustrialEspionageResearchAbility``
-  (specimen + research, Explicit) on their own.
+  Throne Room Politics (troop + ``TrashAgentAbility``). Industrial
+  Espionage's ``cards`` and ``research`` icons are ``DrawAbility`` and
+  ``IndustrialEspionageResearchAbility`` (specimen + research, Explicit)
+  on their own; Stillsuit Manufacturer's ``water`` is the generic box (500)
+  and its ``return_self`` ``StillsuitManufacturerAgentAbility`` (Explicit).
 - Card choices: Organ Merchants, Tleilaxu Surgeon (never past Tleilaxu rank
   7: the Cost fails), Dissecting Kit, Scientific Breakthrough, Piter (the
   zone of the first troop the app names), Replacement Eyes, Twisted Mentat,
@@ -488,6 +489,10 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     # rides along); the research asks over the next research spaces.
     ("industrial_espionage", "cards"): "DrawAbility",
     ("industrial_espionage", "research"): "IndustrialEspionageResearchAbility",
+    # Stillsuit Manufacturer's return (Explicit, E 100), offered once its
+    # Cost (Fremen Alliance, card in play) holds; its water is the generic
+    # ``AgentWater`` box (``_GENERIC_ICON_BOXES``).
+    ("stillsuit_manufacturer", "return_self"): "StillsuitManufacturerAgentAbility",
     # Immortality multi-icon boxes (``_PLACEMENT_ICONS`` of our engine).
     ("sardaukar_quartermaster", "troops"): "SardaukarQuartermasterTroopAbility",
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",
@@ -500,7 +505,10 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
 }
 #: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
 #: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
-_GATED_ICON_CARDS = ("fremen_war_name",)
+_GATED_ICON_CARDS = ("fremen_war_name", "stillsuit_manufacturer")
+#: Icons that are the card's generic agent box (state 500): printed
+#: ``AgentWater`` and the like, no ability of their own.
+_GENERIC_ICON_BOXES = frozenset({("stillsuit_manufacturer", "water")})
 #: Cards whose reward icons are armed after an arrow cost: the app answered
 #: the whole ability at once, so the icons are follow-ups. Elite Forces
 #: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
@@ -616,7 +624,6 @@ _EXPANSION_BOX_CARDS = frozenset(
         "bene_tleilax_researcher",
         "scientific_breakthrough",
         "clandestine_meeting",
-        "stillsuit_manufacturer",
         "throne_room_politics",
         "the_beast_s_spoils",
     }
@@ -1895,15 +1902,6 @@ def _expansion_box(t: _Turn, short: str, action: DomainAction) -> None:
         _box_auto(t, label, action)  # SpecimenAgentAbility (state 210)
     elif short == "clandestine_meeting":
         _clandestine_meeting(t, label, action)
-    elif short == "stillsuit_manufacturer":
-        # The ``AgentWater`` box (500) and ``StillsuitManufacturerAgentAbility``
-        # (Explicit, E 100) when its Cost (Fremen alliance, card in play) holds.
-        found = _find(t.card, "StillsuitManufacturerAgentAbility")
-        if found is not None and isinstance(found[0], DeferredAbility):
-            if found[0].meets_cost(t.p):
-                _ability_source(t, label, found, _ROW_CARD, action)
-                return
-        _box_auto(t, label, action)
     elif short == "throne_room_politics":
         # The ``AgentTroops`` box (500) and ``TrashAgentAbility`` (Explicit;
         # our engine opens its trash as ``optional_trash`` right after).
@@ -2006,6 +2004,9 @@ def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
         return
     if short in _ARMED_REWARD_CARDS or short in _FOLLOW_UP_ICON_CARDS:
         _automatic(t, label, _FOLLOW_UP, action, -1)
+        return
+    if (short, effect) in _GENERIC_ICON_BOXES:
+        _box_auto(t, label, action)
         return
     name = _ICON_ABILITY.get((short, effect))
     found = _find(t.card, name) if name is not None else None
