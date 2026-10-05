@@ -261,7 +261,7 @@ const ACTION_LABELS = {
   decline_intrigue_tleilaxu: "세포 수확: 획득 안 함",
   choose_graft_partner: "{graft}: 함께 사용할 카드",
   switch_graft_card: "{graft}: 다른 카드의 {agent_box} 해결",
-  decline_agent_card_recall: "{recall_agent} 거절",
+  decline_agent_card_recall: "{agent} 소환 거절",
   choose_research_space: "{research}: 전진할 칸 선택",
   choose_research_influence: "{research} 보너스: {influence_any}",
   choose_four_bonus: "{influence_any} 4 보너스 선택",

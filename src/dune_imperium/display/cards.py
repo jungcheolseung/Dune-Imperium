@@ -231,9 +231,10 @@ def _icon_condition_line_ko(entry: PersonalCardDefinition) -> str | None:
 # — but unlike a line-prefix box label ("Agent:", always plain text via
 # ICON_RULES' colon-gated rule), English's own "the same Agent box" is a
 # MID-SENTENCE mention with no colon, so it falls through to the bare
-# ``\bAgents?\b`` rule and draws the Agent-piece icon there (2026-09-25
-# full-catalog sweep); the bare {agent} term matches that, with "칸을 보유"
-# (box, possess) as plain trailing text.
+# ``\bAgents?\b`` rule (2026-09-25 full-catalog sweep); the bare {agent}
+# term matches that, with "칸을 보유" (box, possess) as plain trailing text.
+# Both render as the word since 2026-10-06 (user: "한글/영어 둘다 글자가
+# 나오는게 맞지").
 _GHOLA_AGENT_LINE_KO: Final = (
     "이 카드는 접합된 다른 카드와 동일한 {agent} 칸을 보유"
 )
@@ -299,8 +300,8 @@ _BLANK_SLATE_GRAFT_ICONS_LINE: Final = (
 # "접합되었다면" (the same underlying word, {graft} = "접합"). The four
 # Faction names stay plain words, not {agent_icon_*} icon placeholders, for
 # the same render-parity reason as ``_AGENT_ICON_NAMES_KO`` above; "Agent
-# icons" bare-matches ICON_RULES' bare Agent-piece rule in English, so the
-# bare {agent} term draws that same piece here.
+# icons" bare-matches ICON_RULES' bare Agent rule in English, so the bare
+# {agent} term renders the same way here (the word, since 2026-10-06).
 _BLANK_SLATE_GRAFT_ICONS_LINE_KO: Final = (
     "{graft}했다면: 이 카드는 황제, 우주 항행 길드, 베네 게세리트, "
     "프레멘의 {agent} 아이콘 보유"
@@ -506,8 +507,8 @@ def personal_card_text_ko(entry: PersonalCardDefinition) -> list[str]:
             # (Delivery Logistics): "contracts" is lower-case in English
             # (ICON_RULES' Contract rule is capital-only, tokens_ko.py's own
             # precedent), so it stays the plain word 계약; the bare {agent}
-            # term matches English's own bare Agent-piece icon for the word
-            # "Agent" (see ``_BLANK_SLATE_GRAFT_ICONS_LINE_KO`` above).
+            # term renders like English's own bare "Agent" (see
+            # ``_BLANK_SLATE_GRAFT_ICONS_LINE_KO`` above).
             lines.append(
                 "당신의 완수하지 않은 모든 계약에 표시된 {agent} 아이콘 보유"
             )

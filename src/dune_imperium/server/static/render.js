@@ -42,16 +42,6 @@ function agentPieceIcon(label) {
   return svg;
 }
 
-/* A count of Agents, drawn with the plain piece like amount() draws the
-   other counts with their icons. */
-function agentAmount(label, count) {
-  const wrap = document.createElement("span");
-  wrap.className = "amount";
-  wrap.title = `${count} ${label}`;
-  wrap.append(String(count), agentPieceIcon(label));
-  return wrap;
-}
-
 function iconUrl(name) {
   const icons = state.catalog && state.catalog.icons;
   return icons && icons[name] ? icons[name] : null;
@@ -100,7 +90,6 @@ function termLabel(term) {
 }
 
 function textIcon(term, words) {
-  if (term === "agent") return agentPieceIcon(termLabel(term));
   return icon(TERMS[term].icon, termLabel(term), words);
 }
 
@@ -161,7 +150,10 @@ const ICON_RULES = [
      words. As an icon it read like part of the card title above it
      ("Double Agent" / "[Agent]: Place a Spy"). */
   [/(?:Agent(?: Turn)?|On discard):/y, (m) => document.createTextNode(m[0])],
-  [/\bAgents?\b/y, (m) => textIcon("agent", m[0])],
+  /* "Agent" inside a sentence stays the word too, in both languages (user,
+     2026-10-06: "한글/영어 둘다 글자가 나오는게 맞지"); the piece figure is
+     for the seat's supply and the board. */
+  [/\bAgents?\b/y, (m) => document.createTextNode(m[0])],
   [/\b[Ss]andworms?\b/y, (m) => textIcon("sandworm", m[0])],
   [/\bMaker Hooks\b/y, () => textIcon("maker_hooks", "Maker Hooks")],
   [/\bShield Wall\b/y, () => textIcon("shield_wall", "Shield Wall")],
@@ -189,7 +181,14 @@ function termNode(name, count) {
     return span;
   }
   if (name === "agent") {
-    return count === undefined ? agentPieceIcon(label) : agentAmount(label, count);
+    /* In a sentence the Agent is the word (user, 2026-10-06), like the
+       text-only terms above; the piece figure stays on the seat panel and
+       the board. */
+    const span = document.createElement("span");
+    span.className = "term-text";
+    span.dataset.term = "agent";
+    span.textContent = count === undefined ? label : `${label} ${count}`;
+    return span;
   }
   return count === undefined ? icon(term.icon, label) : amount(term.icon, label, count);
 }

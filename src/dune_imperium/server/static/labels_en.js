@@ -227,7 +227,7 @@ const LABELS_EN = {
     "decline_intrigue_tleilaxu": "Harvest Cells: Decline to acquire",
     "choose_graft_partner": "{graft}: card to use together",
     "switch_graft_card": "{graft}: resolve the other card's {agent_box}",
-    "decline_agent_card_recall": "Decline {recall_agent}",
+    "decline_agent_card_recall": "Decline the {agent} recall",
     "choose_research_space": "{research}: advance to",
     "choose_research_influence": "{research} bonus: {influence_any}",
     "choose_four_bonus": "Choose the {influence_any} 4 bonus",

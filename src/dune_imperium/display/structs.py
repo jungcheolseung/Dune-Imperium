@@ -96,9 +96,10 @@ def _recall_spy_text_ko(count: int) -> str:
 def _recall_agent_text_ko(count: int) -> str:
     """Korean twin of the ``Recall N Agent(s)`` reward phrase.
 
-    Mirrors ``_spy_placed_text_ko``: English's bare "\\bAgents?\\b" icon
-    rule draws one plain Agent piece regardless of count (no distinct
-    "recall" icon, no numbered amount), so this uses the bare ``{agent}``
+    Mirrors ``_spy_placed_text_ko``: English's bare "\\bAgents?\\b" rule
+    renders one plain "Agent" regardless of count (no distinct "recall"
+    icon, no numbered amount; the word since 2026-10-06), so this uses the
+    bare ``{agent}``
     term — never ``{recall_agent}`` or ``{agent:count}`` — with "소환", this
     project's own established word for the recall verb (``static/
     labels.js`` ``ACTION_LABELS`` ``recall_agent_for_agent_card``: "{agent}
@@ -156,8 +157,9 @@ def contract_condition_text_ko(condition: ContractCondition) -> str:
     """Korean twin of ``contract_condition_text``.
 
     Verbs: Send an Agent 보내다 [Main p. 9], [Main p. 7], written as the
-    bare ``{agent}`` term (not the plain word) so the client draws the same
-    Agent-piece icon ``iconize()`` draws for English's "Agent" — a plain
+    bare ``{agent}`` term (not the plain word) so the client renders it the
+    way ``iconize()`` renders English's "Agent" (the word since 2026-10-06,
+    the Agent-piece icon before) — a plain
     Korean word here has no icon, which was a render-parity blocker
     (2026-09-25 review: 22 BOARD_SPACE/HARVEST conditions drew no icon at
     all where English drew the Agent piece, and Harvest also lost its bare
