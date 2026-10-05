@@ -4,9 +4,9 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
-## 2026-10-06 탐색 AI 좌석, 대회 도구의 지도자 드래프트, L3 재학습 진행 중
+## 2026-10-06 탐색 AI 좌석, 대회 도구의 지도자 드래프트, L3 재학습(앱 AI를 이기는 망)
 
-사용자 요청("3개 다 진행하자", 카드 전수 대조는 다른 세션이 워크트리 `card-compare`에서 하므로 안 겹치게 워크트리로). 세 브랜치 중 둘을 병합했고 L3는 학습 중이다. 엔진·codec·관측은 그대로다(**codec v136·관측 v30**).
+사용자 요청("3개 다 진행하자", 카드 전수 대조는 다른 세션이 워크트리 `card-compare`에서 하므로 안 겹치게 워크트리로). 세 브랜치를 모두 병합했다. 엔진·codec·관측은 그대로다(**codec v136·관측 v30**).
 
 1. **대회 도구 `--leader-draft`**(브랜치 `tournament-draft`, 병합 `8de02791`). `dune-imperium-tournament --leader-draft`가 OQ-007 드래프트로 각 좌석의 에이전트가 지도자를 직접 고르게 한다. 룰셋 식별자에는 드래프트가 없으므로 match 결과·행에 `leader_draft`를 따로 싣고 요약은 룰셋 이름 뒤에 "(leader draft)"를 붙인다. `--rotate-leaders`와 함께 쓰면 거부한다(sweep과 같다). 이 플래그로 앱 AI 어려움 대 heuristic 드래프트 A/B를 쟀다(250시드 × CHOAM 유무, 1,000판): 좌석당 46.6% 대 3.4%, 차 +86.6%p [+83.6, +89.4], VP 마진 +4.22 — 드래프트 없는 칸과 같다([evaluation/app-ai-expansions-2026-10-05.md](evaluation/app-ai-expansions-2026-10-05.md) 3절 마지막 줄).
 2. **탐색 AI 좌석**(브랜치 `search-seats`, 병합 `9a03ac3e`). 학습 망 + 결정화 탐색(`search:`)을 브라우저 좌석으로 고를 수 있다.
@@ -14,11 +14,17 @@
    - **뒤에서 생각하기(고위험, 독립 리뷰).** `search:` 좌석만 게임별 데몬 작업자 스레드가 답한다(`_kick_ai`·`_run_ai`·`_ai_step`). 요청은 바로 돌아오고, 작업자는 잠금 밖에서 탐색한 뒤 잠금 안에서 상태가 그대로일 때만 적용하며 단계마다 초인종을 울린다. summary·초인종에 `thinking`(생각 중인 좌석)이 실리고, 배지가 "생각 중…"으로 바뀌며, 바쁜 동안 놓친 초인종은 1.5초 재확인으로 따라잡는다. 생각하는 동안에는 되돌리기를 막는다(작업자가 이미 RNG를 움직였을 수 있어서). 다른 AI 종류는 예전처럼 동기다. 작업자 단계가 실패하면 `thinking`을 지우고 초인종을 울려 사람이 되돌리기로 빠져나갈 수 있게 한다. 탐색이 예외를 내면 greedy 망으로 답하고 경고를 남긴다 — 그 판의 저장은 그 단계부터 같은 진행을 보장하지 않는다.
    - **빠른 불러오기.** 저장 복원이 탐색을 다시 돌리지 않는다: `ReplayableAgent.replay_decision`이 기록된 답을 따라 RNG(세계 결정화·chance seed)와 순환 방지 기록을 탐색과 똑같이 움직이고, 답이 망의 후보 안에 있는지만 본다. 실제 체크포인트·UI 기본 규칙에서 한 라운드 저장의 복원이 10.67초 → 0.33초(3라운드 17.9 → 0.49초). 탐색 경로를 리팩터링했지만 일반 탐색의 선택·RNG는 한 비트도 바뀌지 않음을 리뷰가 60결정 동시 실행으로 확인했다(이전 `search:` 측정 그대로 유효).
    - 측정: UI 기본 규칙에서 탐색 결정 하나 평균 1.4초(p90 3.3초, 최대 7.3초), 탐색 좌석 하나인 판의 AI 시간 약 134초.
-   - **아직 망을 깔지 않았다.** 지금 체크포인트(7081)는 드래프트·Epic·Go to 11을 배운 적이 없다(지도자 고르기 행이 초기값 잡음). L3가 끝나면 판정에서 고른 체크포인트를 `~/.dune-imperium/checkpoints/` 아래 새 이름으로 두고 `~/.dune-imperium/search.pt` 링크를 건다(호스트 안내서 "탐색 AI 좌석" 절).
-3. **L3 재학습 — 학습 중**(브랜치 `l3-appai`, 아직 병합 안 함; 실행 폴더 `checkpoints/2026-10-06/l3-appai/`, git 무시, 판정 규칙은 결과 전에 그 `README.md`에). 사용자 선택: 규칙 "UI 기본 + Scouts"(드래프트·CHOAM·프로모·Bloodlines·Tech·Immortality·Go to 11·Epic·Scouts), 상대 "반은 앱 AI, 반은 self-play"(iteration당 32판 중 16판이 학습 2석 대 앱 AI 어려움 2석), 길이 1,000 iteration(7081 → 8081, 약 5시간). 학습기에 `--go-to-11`·`--epic`·`--arrakeen-scouts`·`--leader-draft`·`--rotate-leaders`·`--opponent-games`·`--retarget`를 더했다(7081을 새 룰셋 카탈로그로 옮겨 이어 학습; Adam 모멘트도 함께 옮김).
-   - **엔진 결함 하나를 학습이 찾았다.** 약 4,000판에 한 판꼴로 "player decision has no legal actions"(합법 행동 없는 사람 결정)가 나 첫 시도가 iteration 7205에서 죽었다. random 600판·heuristic 300판 소크와 학습 조건 재현 1,296판으로는 다시 나오지 않았다. 학습 러너에 `stall_dir`을 더해(`c42d23d6`) 그런 판의 상태를 `stalls/`에 pickle하고 그 판만 잘린 판으로 끝내게 한 뒤 7249에서 다시 띄웠다. 상태가 잡히면 원인을 찾아 엔진을 고친다(규칙 변경이면 `docs/rules` 인용 먼저).
+   - **이 Mac에 망을 깔았다.** L3의 8081 가중치만 담은 `~/.dune-imperium/checkpoints/l3-appai-08081.pt`(78 MiB)를 `~/.dune-imperium/search.pt`가 가리킨다. 서버를 다시 띄우면 "search AI: …" 줄이 나오고 탐색 AI 좌석이 열린다. 새 망은 새 이름으로 두고 링크만 바꾼다(호스트 안내서 "탐색 AI 좌석" 절).
+3. **L3 재학습 — 끝, 성공**(브랜치 `l3-appai`, 병합 `3e064dd9`; 결과 [evaluation/m10-2026-10-06.md](evaluation/m10-2026-10-06.md); 실행 폴더 `checkpoints/2026-10-06/l3-appai/`, git 무시, 판정 규칙은 결과 전에 그 `README.md`에). 사용자 선택: 규칙 "UI 기본 + Scouts"(드래프트·CHOAM·프로모·Bloodlines·Tech·Immortality·Go to 11·Epic·Scouts), 상대 "반은 앱 AI, 반은 self-play"(iteration당 32판 중 16판이 학습 2석 대 앱 AI 어려움 2석), 길이 1,000 iteration(7081 → 8081, 학습 약 4시간 20분). 학습기에 `--go-to-11`·`--epic`·`--arrakeen-scouts`·`--leader-draft`·`--rotate-leaders`·`--opponent-games`·`--retarget`를 더했다(7081을 새 룰셋 카탈로그로 옮겨 이어 학습; Adam 모멘트도 함께 옮김).
+   - **엔진 결함 하나를 학습이 찾았다.** 약 4,000판에 한 판꼴로 "player decision has no legal actions"(합법 행동 없는 사람 결정)가 나 첫 시도가 iteration 7205에서 죽었다. random 600판·heuristic 300판 소크와 학습 조건 재현 1,296판으로는 다시 나오지 않았다. 학습 러너에 `stall_dir`을 더해(`c42d23d6`) 그런 판의 상태를 `stalls/`에 pickle하고 그 판만 잘린 판으로 끝내게 한 뒤 7249에서 다시 띄웠다. 그 뒤 약 26,000판에서는 다시 나오지 않아 원인은 아직 모른다. 다음에 나오면 `stalls/`의 상태에서 고친다(규칙 변경이면 `docs/rules` 인용 먼저).
+   - **판정(결과 전에 README에 선언, UI 기본 + Scouts + 드래프트, 새 시드):**
+     - J1: 8081 대 7081(2:2, 1,400판)은 +41.1%p [+36.4, +45.7]. 7081이 이 규칙 일부를 배운 적 없는 차이가 섞여 있다.
+     - J2: 8081 망 혼자 대 앱 AI 어려움(2:2, 1,400판)은 **+17.9%p [+12.3, +23.1]**(좌석당 29.5% 대 20.6%). 같은 시드에서 7081은 −22.4%p였다. 학습 망이 처음으로 탐색 없이 앱 AI를 이긴다.
+     - J3: 탐색(8081) 1석 대 앱 AI 어려움 3석(200판)은 **72.0%** [65.0, 78.5]. 같은 시드에서 탐색(7081)은 49.0%였다(+23.0%p [+14.5, +31.5]).
+     - 정보용: Scouts 끈 UI 기본 규칙에서 8081 대 앱 AI는 +32.3%p(좌석당 33.0% 대 17.0%).
+     - **새 학습 기준선은 `checkpoints/2026-10-06/l3-appai/judge/l3-08081.pt`**(옵티마이저 포함; 같은 가중치가 `latest.pt`에도 있다).
 
-- 검증(병합한 master): **pytest 6,472개 통과**, Ruff(`src tests`)·mypy(**410파일**) 통과, Chrome **E2E 46종 전부 통과**(3개씩 268초, 학습이 도는 기계). 새 테스트: 대회 드래프트 4개, 학습 옵션 15개 + 막힌 판 보관 1개(브랜치 `l3-appai`, 미병합), `tests/server/test_search_seats.py` 18개(생각 중 반환·초인종·낡은 답 버림·삭제·실패 후 풀림·되돌리기 막기·확정 뒤 넘김·작업자 하나·복원 동일성), 서버 CLI 8개, 탐색 복원 동일성 단위 테스트; 새 E2E `search_seats.py`(61검사). 리뷰가 찾은 다섯 건(실패한 작업자 단계가 판을 멈춤, greedy 대체의 저장 충실도, 테스트 빈칸 둘, 문서 둘)은 고쳤다.
+- 검증(탐색 좌석 병합 뒤 master): **pytest 6,472개 통과**, Ruff(`src tests`)·mypy(**410파일**) 통과, Chrome **E2E 46종 전부 통과**(3개씩 268초, 학습이 도는 기계). 새 테스트: 대회 드래프트 4개, 학습 옵션 15개 + 막힌 판 보관 1개, `tests/server/test_search_seats.py` 18개(생각 중 반환·초인종·낡은 답 버림·삭제·실패 후 풀림·되돌리기 막기·확정 뒤 넘김·작업자 하나·복원 동일성), 서버 CLI 8개, 탐색 복원 동일성 단위 테스트; 새 E2E `search_seats.py`(61검사). 리뷰가 찾은 다섯 건(실패한 작업자 단계가 판을 멈춤, greedy 대체의 저장 충실도, 테스트 빈칸 둘, 문서 둘)은 고쳤다.
 - 서버 코드가 바뀌었으므로 실행 중인 플레이 서버는 재시작한 뒤 브라우저를 새로고침해야 한다. codec은 그대로라 옛 저장은 그대로 열린다.
 
 ## 2026-10-06 플레이 피드백 여섯 가지(단계 연출, 폐기 구역, 스카웃 순서·경매, 덱 내용, 접합 문구)
@@ -244,7 +250,7 @@ uv run mypy src tests
 
 ## 다음 구현 순서
 
-**현재 위치(2026-10-06 새벽).** 대회 도구의 `--leader-draft`와 브라우저의 탐색 AI 좌석을 병합했다(`8de02791`·`9a03ac3e`, 위 2026-10-06 "탐색 AI 좌석"). L3 재학습(UI 기본 + Scouts, 반은 앱 AI 상대)은 `checkpoints/2026-10-06/l3-appai/`에서 학습 중이고, 끝나면 그 README의 판정(J1~J3)을 돌린 뒤 `l3-appai`를 병합하고 탐색 좌석 망을 깐다. 학습이 찾은 엔진 결함(합법 행동 없는 결정, 약 4,000판에 하나)은 상태가 잡히길 기다린다. pytest 6,472개.
+**현재 위치(2026-10-06 아침).** 탐색 AI 좌석·대회 `--leader-draft`·L3 재학습을 모두 병합했다(`9a03ac3e`, `8de02791`, `3e064dd9`; 위 2026-10-06 첫 요약). L3의 8081이 망 혼자서 앱 AI 어려움을 이기고(2:2 +17.9%p), 탐색 좌석으로는 앱 AI 셋을 상대로 72%를 이긴다. 이 Mac의 플레이 서버는 이 망을 탐색 AI로 쓴다. 학습이 찾은 엔진 결함(합법 행동 없는 결정)은 재현되지 않아 열려 있다. 병합한 master에서 **pytest 6,488개 통과**, Ruff·mypy(411파일) 통과(UI 변경은 탐색 좌석 병합 뒤 E2E 46종으로 확인했고, L3 병합은 학습 코드뿐).
 
 **현재 위치(2026-10-05 밤).** 플레이 UI 좌석에 앱 AI(어려움·보통·쉬움)를 넣고 로컬 서버의 AI 기본값으로 삼았다(`e5a2b0d5`, 위 "플레이 UI에 앱 AI 좌석"). pytest 6,421개.
 
@@ -280,7 +286,7 @@ app_ai·search 넣기, 학습 상대에 app_ai 넣기(L3와 함께).
 |---|---|---|---|---|
 | ~~L1~~ | Agent 턴은 "턴 종료"로만 닫기 — **완료(2026-10-02, 로컬 Claude 세션, OQ-095)** | 로컬 | [`explicit-turn-end-plan.md`](explicit-turn-end-plan.md) | 게임 흐름이 바뀌어 tips-v1을 다시 캐야 한다(5081 체크포인트, [`evaluation/problem-set.md`](evaluation/problem-set.md) "다시 캐는 명령"). 착수 때 사용자에게 8절의 Q1(Withdrawn·Litany Against Fear로 넘긴 턴에서도 누르기 전에 Plot 등을 할 수 있나), Q2(v111 재적응 실행 여부)를 묻는다. |
 | ~~L2~~ | 자동 처리 → 결정 창 — **완료(2026-10-02, 로컬 Claude 세션, L1과 함께 병합)** | 로컬 | [`unavailable-options-plan.md`](unavailable-options-plan.md) 5절 | L1과 같이 턴 흐름·codec을 바꾸므로 동시에 하지 않는다. 사막의 힘은 (B), 신성한 전쟁은 선택지가 하나여도 묻는다(OQ-036 (a), 다시 묻지 않는다). tips-v1 재채굴. |
-| L3 | (나중) v111 재적응, Scouts를 학습 설정에 | 로컬 | 이 문서 M10 절 | 몇 시간짜리 실행은 착수 전에 사용자에게 묻는다. |
+| ~~L3~~ | v111 재적응, Scouts를 학습 설정에 — **완료(2026-10-06, 로컬 Claude 세션; UI 기본 + Scouts, 반은 앱 AI 상대, [evaluation/m10-2026-10-06.md](evaluation/m10-2026-10-06.md))** | 로컬 | 이 문서 M10 절 | 몇 시간짜리 실행은 착수 전에 사용자에게 묻는다. |
 | C1 | 선택 불가 표시 3단계(18곳) | **Claude 클라우드** | [`unavailable-options-plan.md`](unavailable-options-plan.md) 1~4·7절 | 화면만(합법 행동·codec·관측·저장 불변)이라 pytest로 검증된다. 보드 스캔이 필요한 E2E·스크린샷 확인은 병합 전에 로컬에서 한 번. |
 | C2 | Harvest Cells 숨은 정보 문제 | **Claude 클라우드** | [`unavailable-options-plan.md`](unavailable-options-plan.md) 6절 | 고위험(숨은 정보·제시 행동): 독립 리뷰, `--privacy-interval` 소크. tips-v1 테스트가 깨지면 재채굴만 로컬로 넘긴다. |
 
@@ -356,6 +362,15 @@ Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(아라�
 - 숨은 정보: 비밀 선택과 봉인 입찰은 좌석 한정 id로 `known_card_seats`에 들어가 로그 가림·되돌리기 경계·소크 누출 검사·탐색 AI 재추첨이 모두 같은 등록부를 읽는다. 슬라이스 7·8은 독립 리뷰를 거쳤다(7에서 누출 두 건을 고쳤다).
 
 ### 학습(M10) 쪽 순서
+
+**현재 위치(2026-10-06, L3 끝).** 결론과 근거는 **[evaluation/m10-2026-10-06.md](evaluation/m10-2026-10-06.md)**. 요지:
+- **새 기준선은 `checkpoints/2026-10-06/l3-appai/judge/l3-08081.pt`**(룰셋 `uprising-4p-choam+promo+bloodlines+tech+immortality+go11+epic+scouts`, 드래프트로 학습, 옵티마이저 포함). 7081에서 `--retarget`로 이어 1,000 iteration을 돌렸다. 판의 반은 학습 2석 대 앱 AI 어려움 2석이었다.
+- **같은 시드에서 앱 AI 어려움을 상대로 망 혼자 −22.4%p → +17.9%p**(2:2), 탐색 좌석은 49.0% → 72.0%(1대3). 이 설계로는 앱 AI 상대 섞기의 효과와 새 규칙 적응의 효과를 나눌 수 없다. 나누려면 self-play만 쓴 대조 팔이 필요하다.
+- 다음 후보(사용자 결정):
+  - (a) self-play만 쓴 대조 팔로 섞기 효과 분리
+  - (b) 같은 설정 연장: 학습 중 1대3 평가가 뒤 400 iteration에 37.5%로 아직 오르는 듯하다
+  - (c) 탐색 대 탐색 2:2
+  - (d) 앱 AI 대신 탐색 좌석을 학습 상대로(비쌈)
 
 **먼저 볼 것(2026-09-27 저녁) — CHOAM 계약 구성이 바뀌었다(codec v111, 관측 v21).** 아래 요지의 모든 학습·사다리·문제집 수치는
 Rise of Ix 전용 계약 타일 4장이 든 CHOAM 판에서 잰 것이다(학습 룰셋은 CHOAM 포함 전 확장). 기준 체크포인트 `readapt-v110/iteration_05600.pt`는
