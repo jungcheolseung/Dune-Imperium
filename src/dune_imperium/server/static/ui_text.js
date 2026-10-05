@@ -26,6 +26,10 @@ const UI_TEXT = {
   "effects.intrigue": { "ko": "책략 카드 사용", "en": "Intrigue played" },
   "effects.combat_intrigue": { "ko": "전투 책략 사용", "en": "Combat Intrigue played" },
   "effects.navigation": { "ko": "항행 카드 사용", "en": "Navigation card played" },
+  "effects.banner_round": { "ko": "라운드 {{round}}", "en": "Round {{round}}" },
+  "effects.banner_conflict": { "ko": "{conflict}: {{name}}", "en": "{conflict}: {{name}}" },
+  "effects.banner_turn_mine": { "ko": "내 차례", "en": "Your turn" },
+  "effects.banner_turn_other": { "ko": "플레이어{{seat}} 차례", "en": "Player {{seat}}'s turn" },
   "html.setup_intro": {
     "ko": "플레이어와 규칙을 고르고 아라키스로 떠나세요.",
     "en": "Choose your players and rules. Arrakis awaits."

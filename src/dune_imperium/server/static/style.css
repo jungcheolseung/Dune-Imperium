@@ -2217,3 +2217,103 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .play-effect { animation: none; }
 }
+
+/* Phase and turn banners (effects.js): a wide band over the board for a
+   round start, Combat, a Scouts item, the Endgame and a turn start. Above
+   the board and the card-use cues, below the zoom, help and popovers; it
+   never takes a click. JS sets the width and position from the board. */
+#phase-banner {
+  position: fixed;
+  z-index: 36;
+  pointer-events: none;
+}
+#phase-banner * { pointer-events: none; }
+.phase-banner {
+  --banner-color: #d9ab55;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  padding: 0.9rem 1.6rem;
+  overflow: hidden;
+  border-top: 2px solid var(--banner-color);
+  border-bottom: 2px solid var(--banner-color);
+  border-radius: 4px;
+  background:
+    radial-gradient(ellipse at center, color-mix(in srgb, var(--banner-color) 22%, transparent), transparent 70%),
+    linear-gradient(90deg, rgba(14, 16, 18, 0.72), rgba(14, 16, 18, 0.95) 18%, rgba(14, 16, 18, 0.95) 82%, rgba(14, 16, 18, 0.72));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 28px color-mix(in srgb, var(--banner-color) 35%, transparent);
+  color: #f6f1e7;
+  text-align: center;
+  animation: phase-banner-show var(--banner-ms, 1600ms) ease-out both;
+}
+.phase-banner.round { --banner-color: #d9ab55; }
+.phase-banner.combat { --banner-color: #e2483d; }
+.phase-banner.scouts { --banner-color: #a98bff; }
+.phase-banner.endgame { --banner-color: #ef8a3a; }
+/* A light sweeping across the band once, as it arrives. */
+.phase-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--banner-color) 30%, transparent) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: phase-banner-sweep calc(var(--banner-ms, 1600ms) * 0.6) ease-out both;
+  animation-delay: inherit;
+}
+.phase-banner-art { flex: none; position: relative; }
+.phase-banner-art img {
+  display: block;
+  height: 6.5rem;
+  width: auto;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--banner-color) 60%, transparent), 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.phase-banner-words { position: relative; min-width: 0; overflow-wrap: anywhere; }
+.phase-banner-kicker {
+  color: var(--banner-color);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.phase-banner-title {
+  display: block;
+  font-size: 2.4rem;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--banner-color) 70%, transparent), 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+.phase-banner.mine .phase-banner-title { font-size: 2.7rem; color: #fff; }
+.phase-banner.mine {
+  border-width: 3px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 44px color-mix(in srgb, var(--banner-color) 60%, transparent);
+}
+.phase-banner-subtitle { margin-top: 0.2rem; font-size: 1.05rem; opacity: 0.9; }
+@keyframes phase-banner-show {
+  0% { opacity: 0; transform: translateY(-14px) scaleX(0.8); }
+  14% { opacity: 1; transform: translateY(0) scaleX(1); }
+  82% { opacity: 1; transform: translateY(0) scaleX(1); }
+  100% { opacity: 0; transform: translateY(6px) scaleX(1); }
+}
+@keyframes phase-banner-fade {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes phase-banner-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@media (max-width: 700px) {
+  .phase-banner { gap: 0.7rem; padding: 0.7rem 0.9rem; }
+  .phase-banner-art img { height: 4.5rem; }
+  .phase-banner-title, .phase-banner.mine .phase-banner-title { font-size: 1.8rem; }
+  .phase-banner-subtitle { font-size: 0.9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phase-banner { animation-name: phase-banner-fade; }
+  .phase-banner::before { display: none; }
+}
