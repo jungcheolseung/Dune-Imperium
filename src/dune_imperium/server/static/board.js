@@ -55,7 +55,7 @@ function seatToken(seat, className) {
   const token = document.createElement("span");
   token.className = className;
   token.style.background = SEAT_COLORS[seat];
-  token.textContent = String(seat);
+  token.textContent = String(seatNumber(seat));
   token.title = t("common.seat", { seat });
   token.setAttribute("role", "img");
   token.setAttribute("aria-label", t("common.seat", { seat }));
@@ -474,7 +474,10 @@ function renderBoardStage(board, view) {
        is that tall at the icon's proportions. */
     post.style.height = `${(state.catalog.post_size * 80) / 56}%`;
     post.dataset.count = String(Math.min(seats.length, 4));
-    post.title = t("board.post_seats", { post: postName(postId), seats: seats.join(", ") });
+    post.title = t("board.post_seats", {
+      post: postName(postId),
+      seats: seats.map(seatNumber).join(", "),
+    });
     /* A Spy sharing a post stands on the one that was there first. */
     seats.forEach((seat, level) => {
       const piece = seatPiece("spy", seat);
@@ -1592,6 +1595,9 @@ function renderMarket() {
   const view = state.view;
   if (!view) return;
 
+  if (state.summary.immortality) renderBeneTleilax(market, view);
+  if (state.summary.tech_module) renderIxianEmbassy(market, view);
+
   /* The draft pool stays in the view after every seat has picked; the
      chosen Leaders then live on the seat cards, so the strip goes away. */
   const drafting = view.players.some((p) => !p.leader_id);
@@ -1632,6 +1638,7 @@ function renderMarket() {
     {},
     "Imperium Row",
   );
+  if (state.summary.immortality) renderTleilaxuRow(market, view);
   cardStrip(
     market,
     t("board.strip_reserve"),
@@ -1679,29 +1686,6 @@ function renderMarket() {
     );
   }
   if (state.summary.tech_module) {
-    /* The Ixian Embassy's three stacks: the face-up top of each with the
-       stack size; an emptied stack simply offers nothing [Bloodlines p. 7]. */
-    const box = stripBox(
-      t("board.strip_ixian_embassy"),
-      (view.tech_face_up || []).filter(Boolean).length,
-      undefined,
-      "Ixian Embassy",
-    );
-    const row = document.createElement("div");
-    row.className = "strip-cards";
-    (view.tech_face_up || []).forEach((tileId, index) => {
-      const size = (view.tech_stack_sizes || [])[index] || 0;
-      if (!tileId) {
-        const empty = document.createElement("span");
-        empty.className = "stack-empty";
-        empty.textContent = t("board.stack_empty", { index: index + 1 });
-        row.appendChild(empty);
-        return;
-      }
-      row.appendChild(visualCard(tileId, { className: "tile", badge: `×${size}` }));
-    });
-    box.appendChild(row);
-    market.appendChild(box);
     if ((view.tech_trash || []).length) {
       cardStrip(
         market,
@@ -1713,7 +1697,6 @@ function renderMarket() {
       );
     }
   }
-  if (state.summary.immortality) renderBeneTleilax(market, view);
   if (state.summary.choam_module && !onBoard) {
     cardStrip(
       market,
@@ -1734,6 +1717,32 @@ function renderMarket() {
     "all-folded",
     boxes.length > 0 && boxes.every((box) => box.classList.contains("collapsed")),
   );
+}
+
+function renderIxianEmbassy(market, view) {
+  /* The Ixian Embassy's three stacks: the face-up top of each with the
+     stack size; an emptied stack simply offers nothing [Bloodlines p. 7]. */
+  const box = stripBox(
+    t("board.strip_ixian_embassy"),
+    (view.tech_face_up || []).filter(Boolean).length,
+    undefined,
+    "Ixian Embassy",
+  );
+  const row = document.createElement("div");
+  row.className = "strip-cards";
+  (view.tech_face_up || []).forEach((tileId, index) => {
+    const size = (view.tech_stack_sizes || [])[index] || 0;
+    if (!tileId) {
+      const empty = document.createElement("span");
+      empty.className = "stack-empty";
+      empty.textContent = t("board.stack_empty", { index: index + 1 });
+      row.appendChild(empty);
+      return;
+    }
+    row.appendChild(visualCard(tileId, { className: "tile", badge: `×${size}` }));
+  });
+  box.appendChild(row);
+  market.appendChild(box);
 }
 
 /* The public Intrigue discard pile as one line: the cards themselves only
@@ -1796,7 +1805,7 @@ function closeBeneTleilaxZoom() {
   el("bt-zoom-body").textContent = "";
 }
 
-function renderBeneTleilax(market, view) {
+function renderTleilaxuRow(market, view) {
   /* The Tleilaxu Row: two deck cards bought with specimens plus the fixed
      Reclaimed Forces card [Immortality pp. 6, 9]. */
   const rowIds = [...(view.tleilaxu_row || []), "reclaimed_forces"];
@@ -1820,7 +1829,9 @@ function renderBeneTleilax(market, view) {
   const reclaimed = tleilaxuRow.querySelector('.vcard[data-instance="reclaimed_forces"]');
   const tray = reclaimed && scoutsTray("reclaimed_forces", view);
   if (tray) reclaimed.appendChild(tray);
+}
 
+function renderBeneTleilax(market, view) {
   const layout = state.catalog && state.catalog.bene_tleilax;
   if (!layout) return;
   const box = stripBox(

@@ -69,6 +69,17 @@ function textTemplate(key) {
   return entry[TERM_LANGUAGE] || entry.ko;
 }
 
+/* Seat IDs stay zero-based in state, requests and data attributes. Only
+   their visible numbers are one-based. A numeric {{seat}} hole takes an
+   engine ID; a preformatted label (or node) passes through unchanged. */
+function seatNumber(seat) {
+  return seat + 1;
+}
+
+function uiHoleValue(name, value) {
+  return name === "seat" && typeof value === "number" ? seatNumber(value) : value;
+}
+
 /* The string: rule terms as words. */
 function t(key, vars) {
   const template = textTemplate(key);
@@ -77,7 +88,7 @@ function t(key, vars) {
   for (const match of template.matchAll(HOLE)) {
     out += phraseText(template.slice(index, match.index));
     const name = match[1];
-    out += vars && name in vars ? String(vars[name]) : match[0];
+    out += vars && name in vars ? String(uiHoleValue(name, vars[name])) : match[0];
     index = match.index + match[0].length;
   }
   return out + phraseText(template.slice(index));
@@ -91,7 +102,7 @@ function tNode(key, vars) {
   for (const match of template.matchAll(HOLE)) {
     fragment.appendChild(phrase(template.slice(index, match.index)));
     const name = match[1];
-    const value = vars && name in vars ? vars[name] : match[0];
+    const value = vars && name in vars ? uiHoleValue(name, vars[name]) : match[0];
     fragment.append(value instanceof Node ? value : String(value));
     index = match.index + match[0].length;
   }

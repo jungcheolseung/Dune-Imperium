@@ -348,7 +348,7 @@ def other_eyes(page) -> None:
     )
     hand = page.inner_text("#private-zone .hand-label strong")
     check.ok(
-        "좌석 2" in hand and "내 손패" not in hand,
+        "좌석 3" in hand and "내 손패" not in hand,
         "an AI seat's hand is not called mine",
         hand,
     )

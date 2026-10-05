@@ -165,7 +165,7 @@ def names(page) -> None:
     check.ok(
         len(roles["seatMarks"]) == 4
         and all(
-            role == "img" and label == f"좌석 {seat}"
+            role == "img" and label == f"좌석 {seat + 1}"
             for seat, (role, label) in enumerate(roles["seatMarks"])
         ),
         "seat tokens are named images",
@@ -366,7 +366,9 @@ def help_fits_laptop(page) -> None:
             f"{label}: the turn walkthrough heading and list are present",
             g,
         )
-        check.ok(g["scrollTop"] == 0, f"{label}: the panel opens unscrolled", g["scrollTop"])
+        check.ok(
+            g["scrollTop"] == 0, f"{label}: the panel opens unscrolled", g["scrollTop"]
+        )
         check.ok(
             g["listBottom"] is not None and g["listBottom"] <= g["clientHeight"] + 0.5,
             f"{label}: the whole turn walkthrough is inside the visible help body",

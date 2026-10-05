@@ -51,6 +51,12 @@ SEATS = """() => {
 def watched_game(page, base: str) -> None:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
+    setup_labels = page.locator("#seat-selects label > span").all_text_contents()
+    check.ok(
+        setup_labels == ["좌석 1", "좌석 2", "좌석 3", "좌석 4"],
+        "setup displays seats 1 through 4",
+        setup_labels,
+    )
     for seat in range(4):
         page.select_option(f"#seat-selects select[data-seat='{seat}']", "heuristic")
     for option in EXPANSIONS:
@@ -137,6 +143,39 @@ def check_compact_stats(page) -> None:
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "seats")
     watched_game(page, base)
+
+    marks = page.locator("#seats .seat-mark").all_text_contents()
+    check.ok(marks == ["1", "2", "3", "4"], "seat badges display 1 through 4", marks)
+    for language, prefix in (("ko", "좌석"), ("en", "Seat")):
+        page.evaluate("setLanguage", language)
+        numbers = page.evaluate("""() => ({
+            marks: [...document.querySelectorAll('#seats .seat-mark')].map(e => ({
+                id: e.dataset.seat, title: e.title, aria: e.getAttribute('aria-label'),
+            })),
+            review: [...document.querySelectorAll('#review-seat option')].map(e => ({
+                id: e.value, label: e.textContent,
+            })),
+        })""")
+        check.ok(
+            all(
+                mark["id"] == str(seat)
+                and mark["title"] == mark["aria"] == f"{prefix} {seat + 1}"
+                for seat, mark in enumerate(numbers["marks"])
+            ),
+            f"{language}: badges use visible seat numbers and stable IDs",
+            numbers["marks"],
+        )
+        check.ok(
+            len(numbers["review"]) == 4
+            and all(
+                option["id"] == str(seat)
+                and option["label"].startswith(f"{prefix} {seat + 1}")
+                for seat, option in enumerate(numbers["review"])
+            ),
+            f"{language}: review seat choices display 1 through 4 with original values",
+            numbers["review"],
+        )
+    page.evaluate("setLanguage('ko')")
 
     folded = page.evaluate(SEATS)
     check.ok(len(folded["cards"]) == 4, "four seat panels", len(folded["cards"]))
