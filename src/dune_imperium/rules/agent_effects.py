@@ -3310,7 +3310,7 @@ def agent_icon_block(
     gained [2 spice] or more this turn:" [Fremen War Name card]), Sardaukar
     Quartermaster (grafted), Tleilaxu Infiltrator (two genetic markers),
     Maker Keeper and Wheels Within Wheels (Influence thresholds), Cargo
-    Runner (two and four completed contracts, one line each) and Tread in
+    Runner (two and four completed contracts, one line each), Tread in
     Darkness (another Bene Gesserit card in play, on its draw and on its
     optional trash), Industrial Espionage (grafted, on its Research and
     specimen line), Stillsuit Manufacturer (the Fremen Alliance, on its
@@ -3671,11 +3671,10 @@ def _pending_icons_offer_nothing(
     (OQ-027; the trash one for Tread in Darkness's trash icon), so when all
     four are empty the icons cannot be resolved at all. Ghola copying
     Steersman's "draw a card, recall an Agent" box reaches this: the first
-    box already recalled the seat's last Agent, so
-    the copy's recall icon has no target. Like any other mandatory box
-    whose condition is false it now waits for the turn's end instead of
-    stalling it (OQ-057), and a later effect that gives the icon a target
-    makes it resolvable again.
+    box already recalled the seat's last Agent, so the copy's recall icon
+    has no target. Like any other mandatory box whose condition is false it
+    now waits for the turn's end instead of stalling it (OQ-057), and a
+    later effect that gives the icon a target makes it resolvable again.
     """
 
     player = context_int(context, "turn_owner")
