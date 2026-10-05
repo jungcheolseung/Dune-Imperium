@@ -1147,9 +1147,10 @@ def test_usurped_replacement_eyes_spice_completes_a_harvest_contract_in_turn() -
     # The Contract was held when the Agent went out, and this turn has
     # already gained 1 spice: one short of Harvest 3+.
     context["pending_contract_ids"] = harvest
-    context["spice_at_placement"] = owner.resources.spice - 1
+    owner = replace(owner, spice_at_turn_start=owner.resources.spice - 1)
     state = replace(
         state,
+        players=(owner, *state.players[1:]),
         decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
     )
     ready = _resolve_until_finish(state)
@@ -1203,9 +1204,12 @@ def test_a_turn_reopened_for_a_contract_keeps_its_deployment_window() -> None:
     )
     frame, context = current_agent_effect_context(state)
     context["pending_contract_ids"] = harvest
-    context["spice_at_placement"] = state.players[0].resources.spice - 1
+    # This turn has already gained 1 spice (Harvest counts the whole turn).
+    owner = state.players[0]
+    owner = replace(owner, spice_at_turn_start=owner.resources.spice - 1)
     state = replace(
         state,
+        players=(owner, *state.players[1:]),
         decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
     )
     engine = UprisingRulesEngine()
