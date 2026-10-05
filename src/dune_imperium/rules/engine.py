@@ -568,7 +568,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_research_advance_actions,
         legal_scouts_rewards_first_actions,
     ),
-    FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
+    FrameKind.RESEARCH_BONUS: (
+        legal_research_bonus_actions,
+        legal_scouts_rewards_first_actions,
+    ),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.

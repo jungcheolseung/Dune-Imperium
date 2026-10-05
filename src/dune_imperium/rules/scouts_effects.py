@@ -512,7 +512,7 @@ def _rewards_ahead(
     A reward of the line waits on a choice: either the line's own choice
     step (a Faction, a card to trash from hand), or a frame that reward
     opened on top of it (an optional trash, a Spy placement, a Contract
-    pick, a Research advance), recognised by its frame id. The rewards
+    pick, a Research advance or bonus), recognised by its frame id. The rewards
     printed after it must all be automatic gains. Returns the line's stack
     index, the index of its first later reward and those rewards; None when
     nothing may resolve ahead.
