@@ -1323,6 +1323,22 @@ kbd {
   flex: 1;
   border-top: 1px solid var(--line);
 }
+/* A card choice listing the seat's own piles (render.js zoneHeading): a
+   muted label with a rule above it over each run of rows in one pile, and a
+   bare rule before the rows that follow them (a decline). */
+#actions .zone-heading {
+  margin-top: 0.35rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+#actions .zone-divider {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+#actions > .zone-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
 .pick-option .icon { height: 1.1em; }
 .pick-graft { font-weight: 600; }

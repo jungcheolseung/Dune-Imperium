@@ -1351,19 +1351,80 @@ function zoneSuffixNode(zone) {
   return phrase(` ({${zone}})`);
 }
 
-/* A list of legal actions with its count families folded into rows. */
+/* The zone of the card a row names (ownCardZone), or null for a row that
+   names no card of the viewing seat's own piles (a decline or skip row, a
+   count stepper, a board or reserve card). */
+function rowCardZone(action) {
+  const cardId = action.arguments.card_id;
+  return typeof cardId === "string" ? ownCardZone(cardId) : null;
+}
+
+/* A label over a run of card rows that sit in one pile: the pile's word and
+   how many rows follow it ("핸드 · 3" / "Hand · 3"). Not a button and no
+   .action-item, so Tab and focusActions pass it by; the rows keep reading in
+   the list's own order, which is the order the engine offers them in
+   (hand, then discard pile, then in play). Trash, discard and similar
+   candidates list the seat's own piles this way (user request 2026-10-05:
+   "which rows are hand, which are discard pile"). */
+function zoneHeading(zone, count) {
+  const word = phraseText(`{${zone}}`);
+  const heading = document.createElement("div");
+  heading.className = "zone-heading muted";
+  heading.dataset.zone = zone;
+  heading.textContent = t("render.zone_heading", {
+    zone: word.charAt(0).toUpperCase() + word.slice(1),
+    count,
+  });
+  return heading;
+}
+
+/* The line between the card rows and the rows that follow them (a decline
+   or skip). Only drawn, so a screen reader skips it. */
+function zoneDivider() {
+  const divider = document.createElement("div");
+  divider.className = "zone-divider";
+  divider.setAttribute("aria-hidden", "true");
+  return divider;
+}
+
+/* A list of legal actions with its count families folded into rows.
+
+   When the card rows of the list sit in two or more of the viewing seat's
+   own piles (a trash or discard choice offering hand, discard pile and
+   in-play cards), each run of rows in one pile goes under a zone heading
+   and a divider sets the rows that follow (a decline) apart. A list whose
+   card rows share one pile, or that has no card rows, is unchanged. */
 function appendActionItems(box, actions) {
   const families = countFamilies(actions);
   const suffixes = zoneSuffixes(actions);
   const done = new Set();
+  const rows = [];
   for (const action of actions) {
     const family = families.get(action.action_id);
-    if (!family) box.appendChild(actionItem(action, undefined, suffixes.get(action)));
+    if (!family) rows.push({ action, zone: rowCardZone(action) });
     else if (!done.has(action.action_id)) {
       done.add(action.action_id);
-      box.appendChild(countRow(action.action_id, family, false));
+      rows.push({ action, family, zone: null });
     }
   }
+  const grouped = new Set(rows.map((row) => row.zone).filter(Boolean)).size >= 2;
+  let run = null;
+  rows.forEach((row, position) => {
+    if (grouped && row.zone !== run) {
+      if (row.zone) {
+        let length = 0;
+        while (rows[position + length] && rows[position + length].zone === row.zone) {
+          length += 1;
+        }
+        box.appendChild(zoneHeading(row.zone, length));
+      } else {
+        box.appendChild(zoneDivider());
+      }
+      run = row.zone;
+    }
+    if (row.family) box.appendChild(countRow(row.action.action_id, row.family, false));
+    else box.appendChild(actionItem(row.action, undefined, suffixes.get(row.action)));
+  });
 }
 
 /* ---------- Arrakeen Scouts lines ----------
@@ -1817,6 +1878,9 @@ function focusActions(ref, label) {
     item.classList.toggle("action-match", hit);
     item.classList.toggle("action-dim", !hit);
   }
+  // The matches move to the top, so the pile headings no longer sit over
+  // their rows; clearActionFocus brings them back.
+  for (const mark of box.querySelectorAll(".zone-heading, .zone-divider")) mark.hidden = true;
   const header = document.createElement("div");
   header.className = "action-focus";
   const text = document.createElement("span");
@@ -1842,6 +1906,7 @@ function clearActionFocus() {
   for (const item of box.querySelectorAll(".action-item")) {
     item.classList.remove("action-match", "action-dim");
   }
+  for (const mark of box.querySelectorAll(".zone-heading, .zone-divider")) mark.hidden = false;
   // Rows a render has since replaced are gone from the box: skip them.
   const order = (box._rowOrder || []).filter((row) => row.parentNode === box);
   delete box._rowOrder;

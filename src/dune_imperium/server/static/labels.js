@@ -260,7 +260,7 @@ const ACTION_LABELS = {
   acquire_intrigue_tleilaxu: "세포 수확: {tleilaxu} 카드 획득",
   decline_intrigue_tleilaxu: "세포 수확: 획득 안 함",
   choose_graft_partner: "{graft}: 함께 사용할 카드",
-  switch_graft_card: "{graft}: 다른 카드의 {agent} 칸 해결",
+  switch_graft_card: "{graft}: 다른 카드의 {agent_box} 해결",
   decline_agent_card_recall: "{recall_agent} 거절",
   choose_research_space: "{research}: 전진할 칸 선택",
   choose_research_influence: "{research} 보너스: {influence_any}",
@@ -872,6 +872,9 @@ const TERMS = {
   leader: { icon: null, ko: "지도자", en: "Leader" },
   combat: { icon: null, ko: "전투", en: "Combat" },
   agent_turn: { icon: null, ko: "에이전트 차례", en: "Agent turn" },
+  /* The Agent box of a card ([Main p. 8]), a place on the card, not the
+     Agent piece: the word, never the Agent icon. */
+  agent_box: { icon: null, ko: "에이전트 칸", en: "Agent box" },
   reveal_turn: { icon: null, ko: "공개 차례", en: "Reveal turn" },
   endgame: { icon: null, ko: "종료 단계", en: "Endgame" },
   acquire: { icon: null, ko: "획득", en: "Acquire" },

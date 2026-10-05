@@ -109,6 +109,22 @@ POPOVER_KO_JS = """(args) => {
 }"""
 
 
+# The Graft choice "resolve the other card's Agent box" (user report
+# 2026-10-05): {agent} drew the Agent *piece* where the label means the box
+# on the card, so a pawn stood where the word belongs. {agent_box} is the
+# word (glossary "Agent box" 에이전트 칸, [Main p. 8]).
+GRAFT_SWITCH_JS = """() => {
+  const box = document.createElement("span");
+  box.appendChild(describeAction({action_id: "switch_graft_card", arguments: {}}));
+  return {
+    text: box.textContent,
+    wordSpans: [...box.querySelectorAll(".term-text")].map((n) => n.textContent),
+    agentPieces: box.querySelectorAll(".agent-piece-icon").length,
+  };
+}"""
+GRAFT_SWITCH_WORDS = {"ko": "에이전트 칸", "en": "Agent box"}
+
+
 def main() -> None:
     with server() as (base, _log), chrome() as browser:
         context, page, rec = open_context(browser, "card-labels", LAPTOP_VIEWPORT)
@@ -128,6 +144,14 @@ def main() -> None:
         for lang in ("ko", "en"):
             page.evaluate(f"setLanguage('{lang}')")
             settled(page)
+            graft = page.evaluate(GRAFT_SWITCH_JS)
+            check.ok(
+                graft["agentPieces"] == 0
+                and GRAFT_SWITCH_WORDS[lang] in graft["wordSpans"],
+                f"{lang}: the Graft switch names the Agent box in words "
+                f"('{GRAFT_SWITCH_WORDS[lang]}'), not with the Agent piece icon",
+                graft,
+            )
             for item in found["labels"]:
                 korean_label = KOREAN_LABELS.get(item["label"])
                 if lang == "ko" and korean_label is not None:

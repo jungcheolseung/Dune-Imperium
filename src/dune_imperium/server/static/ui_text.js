@@ -1374,6 +1374,10 @@ const UI_TEXT = {
     "ko": "{{name}}의 턴 종료를 기다리는 중…",
     "en": "Waiting for {{name}} to end the turn…"
   },
+  "render.zone_heading": {
+    "ko": "{{zone}} · {{count}}",
+    "en": "{{zone}} · {{count}}"
+  },
   "review.before_game_start": {
     "ko": "게임 시작 전",
     "en": "Before the game started"
