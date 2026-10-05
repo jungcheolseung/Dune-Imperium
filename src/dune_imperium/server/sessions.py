@@ -248,7 +248,7 @@ class GameSession:
     # Background seat (``is_background_agent_kind``) that owns the pending
     # decision while the game's worker computes its answer, or None. Set by
     # ``_advance_locked`` instead of answering, cleared when the answer is
-    # applied or the worker stops on a failure (``_stop_ai_after_failure``);
+    # applied or the worker's step fails (``_end_failed_ai_step``);
     # the doorbell carries it so a table can show who is thinking.
     thinking: int | None = None
     # Whether the game's AI worker thread runs (``_kick_ai``). Only the
@@ -1477,37 +1477,41 @@ class GameSessionManager:
         """Answer the game's background seats until none is thinking.
 
         A failure outside the agent (the engine refusing to observe or
-        apply the step, the advance after it) is logged and stops the
-        worker, leaving the game where the failure found it, as the same
-        failure inside a request would (``_stop_ai_after_failure``).
+        apply the step, the advance after it) is logged and ends that
+        seat's thinking, leaving the game where the failure found it, as
+        the same failure inside a request would (``_end_failed_ai_step``).
+        The worker then stops the way it always does, on finding no seat
+        thinking, so ``wait_for_ai`` returns only once the ring went out,
+        and a decision a human handed over meanwhile is still answered.
         """
 
-        try:
-            while self._ai_step(session):
-                pass
-        except Exception:
-            with session.lock:
-                _LOGGER.exception(
-                    "the AI worker of game %s stopped at step %d (thinking "
-                    "seat: %s); no seat thinks again until a human acts or "
-                    "the game is loaded again",
-                    session.game_id,
-                    len(session.steps),
-                    session.thinking,
-                )
-            self._stop_ai_after_failure(session)
+        while True:
+            try:
+                if not self._ai_step(session):
+                    return
+            except Exception:
+                with session.lock:
+                    _LOGGER.exception(
+                        "the AI worker of game %s failed at step %d (thinking "
+                        "seat: %s); no seat thinks again until a human acts "
+                        "or the game is loaded again",
+                        session.game_id,
+                        len(session.steps),
+                        session.thinking,
+                    )
+                self._end_failed_ai_step(session)
 
-    def _stop_ai_after_failure(self, session: GameSession) -> None:
-        """Stop the game's worker after a failed step and ring for it.
+    def _end_failed_ai_step(self, session: GameSession) -> None:
+        """Clear the thinking a failed worker step leaves and ring for it.
 
-        No seat stays marked ``thinking``: the worker is the only one that
-        answers it, and a thinking seat blocks every undo, so a game whose
-        step failed would leave the humans with neither a move nor a way
-        back. Without it, a human whose undo window holds steps may take
-        them back and play on, which hands the decision over again; nothing
-        retries the failed step by itself. The doorbell rings whether or
-        not the failure came after the step was applied: either way the
-        game is not what the tables last heard.
+        No seat stays marked ``thinking``: only the worker answers it, and a
+        thinking seat blocks every undo, so a game whose step failed would
+        leave the humans with neither a move nor a way back. Without it, a
+        human whose undo window holds steps may take them back and play on,
+        which hands the decision over again; nothing retries the failed
+        step by itself. The doorbell rings whether or not the failure came
+        after the step was applied: either way the game is not what the
+        tables last heard.
         """
 
         game_id = session.game_id
@@ -1515,7 +1519,6 @@ class GameSessionManager:
         handed_over = False
         with session.lock:
             session.thinking = None
-            session.ai_worker = False
             if not session.closed:
                 try:
                     bell = self._ring_locked(session)
