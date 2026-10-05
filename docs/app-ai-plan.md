@@ -279,7 +279,7 @@ Arrakeen Scouts (R9): 앱에 없으므로 모든 결정이 앱식 확장이다.
 | 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | 완료: 아키타입 204 + Scouts 줄 85, 능력 89 + 57 + Scouts; 미포팅 0 |
 | 4 | 결정 창: Immortality·Epic·Go to 11·프로모·드래프트(새 창 6개 포함) | 완료 `e88edff4`: 7개 조합 6판씩 대체 0·미포팅 0 |
 | 4' | 결정 창: Bloodlines 10, Scouts 10과 기존 창의 새 id; 11.8의 창 밖 결정 | 완료 `6fbe8037`, `110fa5bf`: 16개 조합 12판씩 대체 0·미포팅 0 |
-| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | census 완료; A/B 진행 중 |
+| 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | 완료: [`evaluation/app-ai-expansions-2026-10-05.md`](evaluation/app-ai-expansions-2026-10-05.md) |
 
 검증: 충실 포팅은 지금까지처럼 사양·역어셈블에 대한 독립 반박 검증. 앱식 확장은 앱과 대조할 것이 없으므로 이 절의 규칙에 대한 대조로
 검증한다.
