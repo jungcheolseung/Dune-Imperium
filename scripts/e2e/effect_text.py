@@ -28,7 +28,7 @@ and checks, in Korean:
   NOT be skipped, since it is not printed on any card);
 - every ``{term}``/``{term:count}`` placeholder the catalog's ``_ko`` field
   carries is expanded to an icon or a word by the rendered line (no literal
-  ``{`` left, and at least one line draws a real icon element);
+  ``{`` left, and at least one line renders a term as an icon or a word);
 - the rendered line holds no Latin-alphabet text beyond a board-space name
   (glossary "공간 이름" row: always English) or a card with no known Korean
   print;
@@ -181,6 +181,7 @@ OPEN_POPOVER_JS = """(id) => {
       koSpans: line.querySelectorAll(".effect-text-ko").length,
       cardTextSpans: line.querySelectorAll(".card-text").length,
       icons: line.querySelectorAll("img, svg, .icon-text").length,
+      terms: line.querySelectorAll(".term-text").length,
     })),
   };
 }"""
@@ -315,9 +316,12 @@ def check_korean(page, kind: str, entry_id: str, space_names: list[str]) -> None
             line,
         )
         _check_no_stray_latin(f"Korean {kind}", line["text"], space_names)
+    # A term renders as an icon, or as its word for the text-only terms --
+    # the Agent among them since 2026-10-06 (user: "한글/영어 둘다 글자가
+    # 나오는게 맞지"); this Contract's lines name only Agents.
     check.ok(
-        any(line["icons"] > 0 for line in lines),
-        f"Korean {kind}: at least one line draws a real icon element",
+        any(line["icons"] > 0 or line["terms"] > 0 for line in lines),
+        f"Korean {kind}: at least one line renders a term (icon or word)",
         lines,
     )
     # At least one of the raw catalog fields actually carries a {term}

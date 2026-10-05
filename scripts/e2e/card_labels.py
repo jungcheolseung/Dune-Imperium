@@ -104,6 +104,7 @@ POPOVER_KO_JS = """(args) => {
     hasKoTwin: true,
     leadingIcon: isIcon(first),
     icons: node ? node.querySelectorAll("img, svg").length : 0,
+    agentIcons: node ? node.querySelectorAll(".agent-piece-icon").length : 0,
     text: node ? node.textContent : null,
   };
 }"""
@@ -123,6 +124,18 @@ GRAFT_SWITCH_JS = """() => {
   };
 }"""
 GRAFT_SWITCH_WORDS = {"ko": "에이전트 칸", "en": "Agent box"}
+
+# Every {agent} in a label or a Korean card line is the word, in both
+# languages (user, 2026-10-06: "한글/영어 둘다 글자가 나오는게 맞지").
+AGENT_PHRASE_JS = """() => {
+  const box = document.createElement("span");
+  box.appendChild(phrase("{agent} 소환, {agent}를 보냄"));
+  return {
+    pieces: box.querySelectorAll(".agent-piece-icon").length,
+    words: [...box.querySelectorAll(".term-text")].map((n) => n.textContent),
+  };
+}"""
+AGENT_WORDS = {"ko": "에이전트", "en": "Agent"}
 
 
 def main() -> None:
@@ -185,11 +198,20 @@ def main() -> None:
                 )
                 if not shown["hasKoTwin"]:
                     shown = page.evaluate(POPOVER_JS, [inline["id"], inline["line"]])
+                word = "에이전트" if shown.get("hasKoTwin") else "Agent"
                 check.ok(
-                    shown["icons"] > 0,
-                    f"{lang}: Agent inside an effect is still drawn as an icon",
+                    shown["agentIcons"] == 0 and word in (shown["text"] or ""),
+                    f"{lang}: Agent inside an effect reads as the word '{word}'"
+                    " (user, 2026-10-06), not the Agent piece",
                     shown,
                 )
+            agent = page.evaluate(AGENT_PHRASE_JS)
+            check.ok(
+                agent["pieces"] == 0
+                and agent["words"] == [AGENT_WORDS[lang]] * 2,
+                f"{lang}: the {{agent}} term in a label is the word",
+                agent,
+            )
         check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])
         context.close()
     check.finish()
