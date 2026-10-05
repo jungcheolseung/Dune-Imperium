@@ -504,6 +504,105 @@ def test_a_human_hand_over_returns_before_the_search_answers(
     assert rested["finished"] or _obj(rested["decision"])["owner"] == 0
 
 
+def test_nothing_is_taken_back_while_a_search_seat_answers_after_it(
+    search_kind: str, quick_search: _Gate
+) -> None:
+    """A search seat thinking inside another seat's turn keeps undo closed.
+
+    Seat 0 has just discarded for seat 3's Covert Operation, so the log and
+    the press alone would let it take that discard back; seat 1, asked to
+    discard next, would then have its answer due on a state rewound from
+    under it, and its agent's memory would sit past a decision the record
+    never got.
+    """
+
+    manager = GameSessionManager()
+    quick_search.close()
+    summary = manager.create_game(
+        ("human", search_kind, search_kind, search_kind),
+        game_seed=COVERT_OPERATION_SEED,
+    )
+    game_id = _text(summary["game_id"])
+    held = _play_until_held(manager, summary, quick_search)
+
+    assert held["thinking"] == 1
+    decision = _obj(held["decision"])
+    assert decision["kind"] == "opponent_card_discard"
+    assert decision["owner"] == 1
+    last = manager._sessions[game_id].steps[-1]
+    assert isinstance(last, DomainAction) and last.actor == 0
+    assert _unguarded_undo_window(manager, game_id) > 0
+    assert held["undo"] == []
+    snapshot = _within(5, lambda: manager.snapshot(game_id, 0))
+    assert _obj(snapshot["summary"])["undo"] == []
+    with pytest.raises(SessionError, match="take back at most 0"):
+        manager.undo(game_id, 0, revision=_int(held["revision"]))
+
+    quick_search.open()
+    rested = _settled(manager, held)
+    assert rested["thinking"] is None
+    assert _int(rested["revision"]) > _int(held["revision"])
+
+
+def test_a_confirmed_turn_end_hands_over_to_a_search_seat(search_kind: str) -> None:
+    manager = GameSessionManager()
+    picked = _draft_pick(manager, search_kind)
+    game_id = _text(picked["game_id"])
+
+    confirmed = manager.confirm_turn(
+        game_id, seat=0, revision=_int(picked["revision"])
+    )
+
+    # The press handed the draft on, past the heuristic seats, to seat 1.
+    assert confirmed["thinking"] == 1
+    assert _obj(confirmed["decision"])["kind"] == "leader_draft"
+    manager.wait_for_ai(game_id, timeout=10)
+    rested = manager.summary(game_id)
+    assert rested["thinking"] is None
+    assert _obj(rested["decision"])["owner"] == 0
+    assert _int(rested["revision"]) > _int(confirmed["revision"])
+
+
+def test_a_second_kick_starts_no_second_worker(
+    search_kind: str, gate: _Gate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = GameSessionManager._run_ai
+    runs: list[str] = []
+
+    def counted(manager: GameSessionManager, session: GameSession) -> None:
+        runs.append(session.game_id)
+        run(manager, session)
+
+    monkeypatch.setattr(GameSessionManager, "_run_ai", counted)
+    manager = GameSessionManager()
+    gate.close()
+    summary = manager.create_game(
+        ("human", search_kind, search_kind, search_kind),
+        game_seed=SEARCH_FIRST_SEED,
+    )
+    game_id = _text(summary["game_id"])
+    session = manager._sessions[game_id]
+    assert gate.asked.wait(10)
+
+    def workers() -> list[threading.Thread]:
+        return [
+            thread
+            for thread in threading.enumerate()
+            if thread.name == f"ai-worker-{game_id}"
+        ]
+
+    running = workers()
+    assert len(running) == 1
+    manager._kick_ai(session)
+    manager._kick_ai(session)
+    assert workers() == running
+
+    gate.open()
+    manager.wait_for_ai(game_id)
+    assert manager.summary(game_id)["thinking"] is None
+    assert [run_id for run_id in runs if run_id == game_id] == [game_id]
+
+
 def test_an_answer_for_a_state_that_has_moved_on_is_dropped(
     search_kind: str, gate: _Gate, monkeypatch: pytest.MonkeyPatch
 ) -> None:
