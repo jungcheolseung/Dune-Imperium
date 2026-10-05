@@ -41,7 +41,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     with_context,
 )
-from dune_imperium.rules.immortality import advance_tleilaxu
+from dune_imperium.rules.immortality import advance_tleilaxu, tleilaxu_track_finished
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.scouts_missions import (
     RECLAIMED_FORCES as BACK_ROOM_DEAL_GOODS,
@@ -91,15 +91,15 @@ def legal_tleilaxu_acquisitions(
                     arguments=(("instance_id", instance_id), ("to_deck_top", True)),
                 )
             )
-    if reclaimed_forces_block(owner) is None:
-        actions.extend(
-            DomainAction(
-                action_id="acquire_reclaimed_forces",
-                actor=player,
-                arguments=(("choice", choice),),
-            )
-            for choice in RECLAIMED_FORCES_CHOICES
+    actions.extend(
+        DomainAction(
+            action_id="acquire_reclaimed_forces",
+            actor=player,
+            arguments=(("choice", choice),),
         )
+        for choice in RECLAIMED_FORCES_CHOICES
+        if reclaimed_forces_block(owner, choice) is None
+    )
     return tuple(actions)
 
 
@@ -126,11 +126,26 @@ def tleilaxu_acquisition_block(
     return None
 
 
-def reclaimed_forces_block(owner: PlayerState) -> AcquireBlock | None:
-    """Why ``owner`` cannot "acquire" Reclaimed Forces now [Immortality p. 9]."""
+def reclaimed_forces_block(
+    owner: PlayerState, choice: str | None = None
+) -> AcquireBlock | None:
+    """Why ``owner`` cannot "acquire" Reclaimed Forces now [Immortality p. 9].
+
+    With ``choice``, why that effect is not offered: a specimen cost that
+    buys nothing is not offered (OQ-071, user decision 2026-09-29), so the
+    Tleilaxu advance is withheld once the token is on the track's last
+    space (``tleilaxu_track_finished``, OQ-048). The troop choice always
+    recruits: "Whenever you spend a specimen, return it to your supply"
+    [Immortality p. 8], so the three spent specimens are in the supply
+    before the two troops are recruited, and OQ-071's "supply에 troop이
+    없고 되돌릴 specimen도 없는 recruit" cannot arise. The card itself is
+    therefore never blocked by its rewards, only by its cost.
+    """
 
     if owner.specimens < RECLAIMED_FORCES.specimen_cost:
         return AcquireBlock.SPECIMENS
+    if choice == "tleilaxu" and tleilaxu_track_finished(owner):
+        return AcquireBlock.TLEILAXU_TRACK_END
     return None
 
 

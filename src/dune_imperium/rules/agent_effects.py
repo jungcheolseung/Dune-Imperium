@@ -76,7 +76,11 @@ from dune_imperium.rules.frames import (
     replace_player,
     with_context,
 )
-from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
+from dune_imperium.rules.immortality import (
+    advance_research,
+    advance_tleilaxu,
+    tleilaxu_track_finished,
+)
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
@@ -94,6 +98,7 @@ from dune_imperium.rules.shield_wall import (
     destroy_shield_wall,
 )
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
+from dune_imperium.rules.spies import gather_intelligence_draw_available
 from dune_imperium.rules.spy_moves import spy_placement_frame, turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -2238,6 +2243,50 @@ def apply_agent_card_intrigue_payment(
     )
 
 
+class AgentPaymentBlock(StrEnum):
+    """Why an Agent box's arrow is withheld because its reward does nothing.
+
+    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
+    제시한다" (OQ-071, user decision 2026-09-29, generalised from OQ-075;
+    precedent OQ-046): a cost that would buy nothing is not offered.
+    ``legal_agent_card_payment_actions`` withholds the payment exactly when
+    ``agent_card_payment_block`` is not None, and the page's greyed-out row
+    reads the same block (``display.unavailable``).
+    """
+
+    # Ecological Testing Station's draw: deck and discard pile both empty,
+    # the gate Gather Intelligence uses (OQ-099).
+    NO_CARD_TO_DRAW = "no_card_to_draw"
+    # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
+    # track's last space, where it does nothing (OQ-048).
+    TLEILAXU_TRACK_END = "tleilaxu_track_end"
+
+
+def agent_card_payment_block(
+    state: GameState,
+    player: int,
+    effect: PersonalCardAgentEffect | None,
+) -> AgentPaymentBlock | None:
+    """Why ``effect``'s arrow would buy nothing for ``player`` now, or None.
+
+    Judged when the box resolves, like the cost itself (OQ-028): a freely
+    ordered effect of the same turn (a discard filling the discard pile)
+    can still make the reward live.
+    """
+
+    if (
+        effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+        and not gather_intelligence_draw_available(state, player)
+    ):
+        return AgentPaymentBlock.NO_CARD_TO_DRAW
+    if effect in (
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+        _SOLARI_PER_PARTNER_ICON,
+    ) and tleilaxu_track_finished(state.players[player]):
+        return AgentPaymentBlock.TLEILAXU_TRACK_END
+    return None
+
+
 def legal_agent_card_payment_actions(
     state: GameState,
     player: int,
@@ -2278,9 +2327,14 @@ def legal_agent_card_payment_actions(
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU
     ):
-        # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu" [card face].
+        # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu" [card face];
+        # not offered once the advances would do nothing (OQ-071).
         decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
-        if state.players[player].specimens < 2:
+        if (
+            state.players[player].specimens < 2
+            or agent_card_payment_block(state, player, source_card.agent_effect)
+            is not None
+        ):
             return (decline,)
         return (
             decline,
@@ -2333,10 +2387,13 @@ def legal_agent_card_payment_actions(
             DomainAction(action_id="trash_agent_card_self_for_vp", actor=player),
         )
     if source_card.agent_effect is _SOLARI_PER_PARTNER_ICON:
-        # Slig Farmer: the Solari land first, so they may pay the five.
+        # Slig Farmer: the Solari land first, so they may pay the five; the
+        # five are not offered once the advance would do nothing (OQ-071).
         if (
             owner.resources.solari + _partner_icon_count(state, context)
             < SLIG_FARMER_PRICE
+            or agent_card_payment_block(state, player, source_card.agent_effect)
+            is not None
         ):
             return ()
         return (
@@ -2409,13 +2466,20 @@ def legal_agent_card_payment_actions(
         return ()
     owner = state.players[player]
     if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
-        and owner.resources.water < 2
-    ) or (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
-        and owner.resources.spice < 4
+        (
+            source_card.agent_effect
+            is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+            and owner.resources.water < 2
+        )
+        or (
+            source_card.agent_effect
+            is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
+            and owner.resources.spice < 4
+        )
+        # Ecological Testing Station's draw with no card in the deck or the
+        # discard pile would buy nothing (OQ-071).
+        or agent_card_payment_block(state, player, source_card.agent_effect)
+        is not None
     ):
         # The arrow cost is judged again when the player resolves the pending
         # payment in their chosen effect order [Main pp. 9, 20]; once it is

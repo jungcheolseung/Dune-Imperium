@@ -522,6 +522,30 @@ def test_slig_farmer_pays_per_partner_icon_and_may_buy_a_track_step() -> None:
     assert resolved.state.players[0].resources.solari == 7
 
 
+def test_slig_farmer_offers_no_track_step_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space the advance does nothing (OQ-048), so the
+    # five Solari would buy nothing and are not offered (OQ-071, user
+    # decision 2026-09-29): the box keeps its plain per-icon Solari.
+    farmer = _tleilaxu("slig_farmer")
+    at_end = _graft(
+        _state(
+            _owner(
+                (farmer, FACE_DANCER),
+                resources=Resources(solari=5),
+                tleilaxu_space=7,
+            )
+        ),
+        farmer,
+        "assembly_hall",
+        FACE_DANCER,
+    )
+
+    assert legal_agent_card_payment_actions(at_end, 0) == ()
+    resolved = resolve_agent_card_effect(at_end)
+    assert resolved.state.players[0].resources.solari == 5 + 3  # Face Dancer
+    assert resolved.state.players[0].tleilaxu_space == 7
+
+
 def test_slig_farmer_counts_mohiams_clandestine_spy_icon() -> None:
     # Clandestine: "Each card you play has the [Spy] icon" [Gaius Helen
     # Mohiam card]; Slig Farmer counts every Agent icon the other grafted

@@ -404,7 +404,9 @@ def test_tleilaxu_surgeon_never_pays_past_tleilaxu_rank_seven() -> None:
     assert "TleilaxuSurgeonAgentAbility" in labels
     at_end = with_player(state, seat, tleilaxu_space=7)
     t = _turn(at_end, seat)
-    assert "pay_agent_card_two_specimens" in _ids(t)
+    # The engine no longer offers a payment that buys nothing (OQ-071), as
+    # the app drops it there.
+    assert "pay_agent_card_two_specimens" not in _ids(t)
     assert "TleilaxuSurgeonAgentAbility" not in [s.label for s in t.sources]
     assert t.declines == [_a(seat, "decline_agent_card_payment")]
 

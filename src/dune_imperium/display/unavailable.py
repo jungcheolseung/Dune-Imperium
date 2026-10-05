@@ -9,9 +9,11 @@ for the Reveal shop, Intrigue plays and effects waiting on their condition
 its printed threshold and held Contract icons among them), and for the
 branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
-cannot be paid, a Conflict reward's Faction already at the top, a Holy War
-unit the seat does not have, a Skill the seat already holds, a Navigation
-card's option it cannot play, an Acquire Tech with every stack empty, an
+cannot be paid or whose reward would change nothing, an Agent box's arrow
+whose reward would change nothing (OQ-071), a Conflict reward's Faction
+already at the top, a Holy War unit the seat does not have, a Skill the
+seat already holds, a Navigation card's option it cannot play, an Acquire
+Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
 seat has no Intrigue card to trash for, Litany Against Fear once the seat
 already acted in its turn, a separate-lines Intrigue card's finish before
@@ -32,6 +34,7 @@ Display only, under four rules:
   ``research_bonus_block``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
+  ``agent_card_payment_block``,
   ``contract_take_block``, ``turn_start_is_open``,
   ``intrigue_effects_finish_is_open``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
@@ -91,7 +94,10 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
-from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
+from dune_imperium.content.uprising.types import (
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import PlayerState
@@ -121,6 +127,8 @@ from dune_imperium.rules.agent_effects import (
     AUTOMATIC_AGENT_ICONS,
     AgentIconBlock,
     AgentIconCondition,
+    AgentPaymentBlock,
+    agent_card_payment_block,
     agent_card_recall_targets,
     agent_icon_block,
 )
@@ -312,6 +320,20 @@ _NAMED_FOR_THIS_REWARD: Final[Reason] = (
     "named",
 )
 _NO_UNIT_TO_LOSE: Final[Reason] = ("No unit to lose", "잃을 유닛 없음", "no_unit")
+# A reward that would change nothing keeps its cost line off the list
+# (OQ-071): the draw of an empty deck and discard pile (Gather Intelligence,
+# OQ-099; Ecological Testing Station) and a Tleilaxu advance from the
+# track's last space (OQ-048).
+_NO_CARD_TO_DRAW: Final[Reason] = (
+    "No card to draw: your deck and discard pile are both empty",
+    "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
+    "empty",
+)
+_TLEILAXU_TRACK_END: Final[Reason] = (
+    "Your Tleilaxu token is already at the end of its track",
+    "{tleilaxu} 트랙 끝에 이미 도달함",
+    "reward",
+)
 _LAPSES_EN: Final = "; it lapses if still unmet when the turn ends"
 _LAPSES_KO: Final = " — 차례가 끝날 때까지 못 채우면 사라짐"
 _NO_RECALL_TARGET: Final[Reason] = (
@@ -374,6 +396,8 @@ def _acquire_reason(block: AcquireBlock, needed: int | None, held: int) -> Reaso
             return _specimen_cost_reason(needed, held)
         case AcquireBlock.NOT_IMPLEMENTED:
             return _BONUS_NOT_IMPLEMENTED
+        case AcquireBlock.TLEILAXU_TRACK_END:
+            return _TLEILAXU_TRACK_END
     return NOT_NOW
 
 
@@ -754,21 +778,25 @@ def _shop(state: GameState, seat: int, found: _Found) -> None:
                 ),
                 dim=instance_id,
             )
-    block = reclaimed_forces_block(owner)
-    if block is not None:
-        reason = _acquire_reason(block, RECLAIMED_FORCES.specimen_cost, owner.specimens)
-        for choice in RECLAIMED_FORCES_CHOICES:
-            found.row(
-                "acquire",
-                f"reclaimed_forces:{choice}",
-                DomainAction(
-                    action_id="acquire_reclaimed_forces",
-                    actor=seat,
-                    arguments=(("choice", choice),),
-                ),
-                reason,
-                dim="reclaimed_forces",
-            )
+    card_block = reclaimed_forces_block(owner)
+    for choice in RECLAIMED_FORCES_CHOICES:
+        block = reclaimed_forces_block(owner, choice)
+        if block is None:
+            continue
+        found.row(
+            "acquire",
+            f"reclaimed_forces:{choice}",
+            DomainAction(
+                action_id="acquire_reclaimed_forces",
+                actor=seat,
+                arguments=(("choice", choice),),
+            ),
+            _acquire_reason(block, RECLAIMED_FORCES.specimen_cost, owner.specimens),
+            # Only a block of the whole card dims it on the table; one choice
+            # withheld (the Tleilaxu advance at the track's end) leaves the
+            # other to take.
+            dim="reclaimed_forces" if card_block is not None else None,
+        )
 
 
 def _intrigue(state: GameState, seat: int, found: _Found) -> None:
@@ -1083,6 +1111,13 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
                 "research_bonus_pay",
                 DomainAction(action_id="pay_research_bonus", actor=seat),
                 resource_reason("solari", SEVEN_SOLARI_COST, owner.resources.solari),
+            )
+        case ResearchBonusBlock.TLEILAXU_TRACK_END:
+            found.row(
+                "choice",
+                "research_bonus_pay",
+                DomainAction(action_id="pay_research_bonus", actor=seat),
+                _TLEILAXU_TRACK_END,
             )
         case None:
             pass
@@ -1421,6 +1456,57 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+_PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
+    AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
+    AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
+}
+# The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
+_WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {
+    PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO: "pay_agent_card_water",
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
+        "pay_agent_card_two_specimens"
+    ),
+    (
+        PersonalCardAgentEffect
+        .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+    ): "pay_agent_card_five_solari_for_tleilaxu",
+}
+
+
+def _agent_box_payment(state: GameState, seat: int, found: _Found) -> None:
+    """An Agent box's arrow withheld because its reward would do nothing.
+
+    OQ-071: Ecological Testing Station's water with no card left to draw,
+    Tleilaxu Surgeon's specimens and Slig Farmer's Solari with the Tleilaxu
+    token at the track's end. ``agent_card_payment_block`` is the very test
+    ``legal_agent_card_payment_actions`` makes before offering the payment.
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(
+        context
+    ):
+        return
+    effect = active_agent_card(context).agent_effect
+    block = agent_card_payment_block(state, seat, effect)
+    if block is None or effect is None:
+        return
+    action_id = _WITHHELD_PAYMENTS[effect]
+    card_id = context.get("card_id")
+    found.row(
+        "choice",
+        f"agent_payment:{action_id}",
+        DomainAction(action_id=action_id, actor=seat),
+        _PAYMENT_BLOCK_REASONS[block],
+        card_id=card_id if isinstance(card_id, str) else None,
+    )
+
+
 def _agent_box(state: GameState, seat: int, found: _Found) -> None:
     """A mandatory Agent box withheld until its condition holds (OQ-057).
 
@@ -1477,6 +1563,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.REVEAL_CHOICE: (_reveal_choice,),
     FrameKind.AGENT_EFFECTS: (
         _agent_box,
+        _agent_box_payment,
         _agent_icons,
         _imperial_privilege_recall,
         _subcommittee_choice,
@@ -1559,11 +1646,7 @@ def _gather_intelligence(state: GameState, seat: int, found: _Found) -> None:
                 actor=seat,
                 arguments=(("post_id", post_id),),
             ),
-            (
-                "No card to draw: your deck and discard pile are both empty",
-                "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
-                "empty",
-            ),
+            _NO_CARD_TO_DRAW,
         )
 
 

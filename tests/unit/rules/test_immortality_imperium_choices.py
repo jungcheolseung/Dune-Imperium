@@ -1387,6 +1387,30 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     ] == [None, "garrison,conflict"]
 
 
+def test_tleilaxu_surgeon_offers_no_payment_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space a further advance does nothing (OQ-048), so
+    # the two specimens would buy nothing and are not offered (OQ-071, user
+    # decision 2026-09-29); one space short, the first advance still pays.
+    surgeon = _card("tleilaxu_surgeon")
+    at_end = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7, tleilaxu_space=7)),
+        surgeon,
+        "arrakeen",
+    )
+    assert [a.action_id for a in legal_agent_card_payment_actions(at_end, 0)] == [
+        "decline_agent_card_payment"
+    ]
+    near_end = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7, tleilaxu_space=6)),
+        surgeon,
+        "arrakeen",
+    )
+    paid = apply_agent_card_payment(
+        near_end, _payment(near_end, "pay_agent_card_two_specimens")
+    )
+    assert paid.state.players[0].tleilaxu_space == 7
+
+
 def test_tleilaxu_surgeon_advances_chanis_tactics_once() -> None:
     # The two troops Tleilaxu Surgeon loses are one source: "Each different
     # source of retreating or losing troops is handled separately" [FAQ

@@ -221,6 +221,52 @@ def test_set_aside_and_tleilaxu_cards_name_their_own_cost() -> None:
     }
 
 
+_TLEILAXU_TRACK_END = (
+    "Your Tleilaxu token is already at the end of its track",
+    "{tleilaxu} 트랙 끝에 이미 도달함",
+    "reward",
+)
+
+
+def test_reclaimed_forces_greys_out_only_the_tleilaxu_step_at_the_track_end() -> None:
+    """The Tleilaxu choice would do nothing on the track's last space
+    (OQ-048, OQ-071); the troops stay on offer, so the card is not dimmed."""
+
+    supply = PlayerState(player_id=0).troops_supply
+    owner = PlayerState(
+        player_id=0,
+        troops_supply=supply - RECLAIMED_FORCES.specimen_cost,
+        specimens=RECLAIMED_FORCES.specimen_cost,
+        research_space=RESEARCH_START_ID,
+        tleilaxu_space=7,
+    )
+    state = _reveal(
+        _state(
+            owner,
+            config=RulesetConfig(immortality=True),
+            tleilaxu_row=tleilaxu_deck_instance_ids()[:2],
+        ),
+        0,
+    )
+    assert _legal(state, "acquire_reclaimed_forces") == [{"choice": "troops"}]
+    found = _found(state)
+    rows = _rows(found, "acquire")
+    reclaimed = [
+        row
+        for row in rows.values()
+        if row["action"]["action_id"] == "acquire_reclaimed_forces"
+    ]
+    assert [row["action"]["arguments"] for row in reclaimed] == [
+        {"choice": "tleilaxu"}
+    ]
+    assert (
+        reclaimed[0]["reason"],
+        reclaimed[0]["reason_ko"],
+        reclaimed[0]["code"],
+    ) == _TLEILAXU_TRACK_END
+    assert "reclaimed_forces" not in found["refs"]
+
+
 # --- Intrigue cards ---
 
 
@@ -625,6 +671,108 @@ def test_empty_gather_intelligence_explains_its_block_without_waiting_rows() -> 
     assert not agent_box_is_waiting(declined, 1)  # only the box's owner's
 
 
+def _agent_turn(
+    state: GameState, card: str, space: str, **arguments: Any
+) -> GameState:
+    action = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)
+        == {"card_id": card, "space_id": space, **arguments}
+    )
+    return ENGINE.apply(state, action).state
+
+
+def _payment_row(state: GameState) -> dict[str, Any]:
+    (row,) = [
+        row
+        for row in _rows(_found(state), "choice").values()
+        if row["key"].startswith("choice:agent_payment:")
+    ]
+    return row
+
+
+def test_an_agent_box_draw_with_empty_piles_greys_out_its_water() -> None:
+    """Ecological Testing Station's "2 water -> draw 2" with an empty deck
+    and discard pile buys nothing (OQ-071): only the decline is offered and
+    the payment shows greyed out with Gather Intelligence's reason."""
+
+    station = "imperium:ecological_testing_station:0"
+    owner = PlayerState(player_id=0, hand=(station,), resources=Resources(water=2))
+    placed = _agent_turn(_state(owner), station, "fremkit")
+    assert "pay_agent_card_water" not in {
+        action.action_id for action in ENGINE.legal_actions(placed, 0)
+    }
+    row = _payment_row(placed)
+    assert row["action"]["action_id"] == "pay_agent_card_water"
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "No card to draw: your deck and discard pile are both empty",
+        "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
+        "empty",
+    )
+
+    refilled = replace(
+        placed,
+        players=(
+            replace(placed.players[0], discard_pile=("player:0:starter:dagger:0",)),
+            *placed.players[1:],
+        ),
+    )
+    legal = ENGINE.legal_actions(refilled, 0)
+    assert "pay_agent_card_water" in {action.action_id for action in legal}
+    assert unavailable_choices(refilled, 0, legal) is None
+
+
+def test_tleilaxu_agent_payments_grey_out_at_the_track_end() -> None:
+    """Tleilaxu Surgeon's "2 specimens -> 2 Tleilaxu" and Slig Farmer's
+    "5 Solari -> Tleilaxu" with the token on the last space (OQ-048,
+    OQ-071)."""
+
+    config = RulesetConfig(immortality=True)
+    supply = PlayerState(player_id=0).troops_supply
+    surgeon = "imperium:tleilaxu_surgeon:0"
+    owner = PlayerState(
+        player_id=0,
+        hand=(surgeon,),
+        troops_supply=supply - 2,
+        specimens=2,
+        research_space=RESEARCH_START_ID,
+        tleilaxu_space=7,
+    )
+    placed = _agent_turn(_state(owner, config=config), surgeon, "arrakeen")
+    row = _payment_row(placed)
+    assert row["action"]["action_id"] == "pay_agent_card_two_specimens"
+    assert (row["reason"], row["reason_ko"], row["code"]) == _TLEILAXU_TRACK_END
+
+    farmer = "tleilaxu:slig_farmer:0"
+    face_dancer = "tleilaxu:face_dancer:0"
+    owner = PlayerState(
+        player_id=0,
+        hand=(farmer, face_dancer),
+        resources=Resources(solari=5),
+        research_space=RESEARCH_START_ID,
+        tleilaxu_space=7,
+    )
+    placed = _agent_turn(
+        _state(owner, config=config), farmer, "assembly_hall", graft=True
+    )
+    grafted = ENGINE.apply(
+        placed,
+        DomainAction(
+            action_id="choose_graft_partner",
+            actor=0,
+            arguments=(("card_id", face_dancer),),
+        ),
+    ).state
+    assert "pay_agent_card_five_solari_for_tleilaxu" not in {
+        action.action_id for action in ENGINE.legal_actions(grafted, 0)
+    }
+    row = _payment_row(grafted)
+    assert row["action"]["action_id"] == "pay_agent_card_five_solari_for_tleilaxu"
+    assert (row["reason"], row["reason_ko"], row["code"]) == _TLEILAXU_TRACK_END
+
+
 # --- A branch of an open choice that cannot be taken now ---
 
 
@@ -915,6 +1063,24 @@ def test_a_research_bonus_short_of_solari_greys_out_the_payment() -> None:
         "{solari:7} 필요 (보유 3)",
         "cost",
     )
+
+
+def test_a_research_bonus_at_the_tleilaxu_track_end_greys_out_the_payment() -> None:
+    """c8r6's "7 Solari -> two Tleilaxu" arrow with the token on the last
+    space: the advances would do nothing (OQ-048), so the cost is not
+    offered (OQ-071) and shows greyed out with that reason."""
+
+    state = _research_bonus(
+        "c7r5", "c8r6", resources=Resources(solari=9), tleilaxu_space=7
+    )
+    assert [action.action_id for action in ENGINE.legal_actions(state, 0)] == [
+        "decline_research_bonus"
+    ]
+    found = _found(state)
+    assert [row["key"] for row in found["rows"]] == ["choice:research_bonus_pay"]
+    row = found["rows"][0]
+    assert row["action"]["action_id"] == "pay_research_bonus"
+    assert (row["reason"], row["reason_ko"], row["code"]) == _TLEILAXU_TRACK_END
 
 
 def test_no_research_bonus_row_while_its_cost_can_be_paid() -> None:

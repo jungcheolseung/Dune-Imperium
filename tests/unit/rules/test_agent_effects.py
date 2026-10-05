@@ -2180,6 +2180,47 @@ def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
     )
 
 
+def test_ecological_testing_station_has_no_payment_without_a_card_to_draw() -> None:
+    # "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
+    # 제시한다" (OQ-071, user decision 2026-09-29): with the deck and the
+    # discard pile both empty the two water would draw nothing, the gate
+    # Gather Intelligence uses (``gather_intelligence_draw_available``).
+    station = _imperium_instance("ecological_testing_station")
+    owner = PlayerState(player_id=0, hand=(station,), resources=Resources(water=2))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+
+    assert legal_agent_card_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_payment", actor=0),
+    )
+    # One card in the discard pile is enough: the draw reshuffles it.
+    discarded = _instance("dagger")
+    refilled = replace(
+        placed,
+        players=(
+            replace(placed.players[0], discard_pile=(discarded,)),
+            *placed.players[1:],
+        ),
+    )
+    assert "pay_agent_card_water" in {
+        action.action_id for action in legal_agent_card_payment_actions(refilled, 0)
+    }
+
+
 def test_ecological_testing_station_can_pay_with_water_gained_this_turn() -> None:
     # Sietch Tabr's water icon resolved first lifts the owner to two water,
     # after which the arrow payment opens in the same turn [Main pp. 7, 9]

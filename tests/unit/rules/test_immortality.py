@@ -393,6 +393,37 @@ def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
     assert len(owner.intrigue_cards) == 1  # the second space's Intrigue
 
 
+def test_seven_solari_bonus_is_not_offered_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space a further advance does nothing (OQ-048), so
+    # the 7 Solari would buy nothing: "비용이 있는 줄은 보상 중 하나라도
+    # 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user decision
+    # 2026-09-29). Only the decline remains, as when the Solari are short.
+    finished = _at("c7r5", resources=Resources(solari=9), tleilaxu_space=7)
+    result = advance_research(finished, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c8r6"]
+    )
+    block = research_bonus_block(
+        chosen.state.players[0], ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+    )
+    assert block is ResearchBonusBlock.TLEILAXU_TRACK_END
+    declined = _declined_only(chosen.state)
+    assert declined.players[0].resources.solari == 9
+    assert declined.players[0].tleilaxu_space == 7
+
+    # One space short, the first advance still reaches the VP space.
+    near = _at("c7r5", resources=Resources(solari=9), tleilaxu_space=6)
+    result = advance_research(near, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c8r6"]
+    )
+    paid = apply_research_bonus(
+        chosen.state, DomainAction(action_id="pay_research_bonus", actor=0)
+    )
+    assert paid.state.players[0].tleilaxu_space == 7
+    assert paid.state.players[0].resources.solari == 2
+
+
 def test_past_the_second_marker_research_draws_a_card() -> None:
     state = _at("c8r2")
 

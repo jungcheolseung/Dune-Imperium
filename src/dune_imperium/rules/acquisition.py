@@ -77,6 +77,9 @@ class AcquireBlock(StrEnum):
     PERSUASION = "persuasion"  # costs more than the Persuasion left
     SPECIMENS = "specimens"  # costs more specimens than the seat holds
     NOT_IMPLEMENTED = "not_implemented"  # its acquire bonus is not implemented
+    # Reclaimed Forces' Tleilaxu choice with the token on the track's last
+    # space, where the advance does nothing (OQ-048, OQ-071).
+    TLEILAXU_TRACK_END = "tleilaxu_track_end"
 
 
 def take_imperium_row_card(

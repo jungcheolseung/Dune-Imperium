@@ -167,6 +167,19 @@ def apply_specimen_return(state: GameState, action: DomainAction) -> RuleResult:
 # --- Tleilaxu track ------------------------------------------------------
 
 
+def tleilaxu_track_finished(owner: PlayerState) -> bool:
+    """Whether the seat's Tleilaxu token is on the track's last space.
+
+    A further advance there does nothing: "끝까지 가고 나면 뭐 없는 게
+    맞다" (OQ-048, ``advance_tleilaxu``). So a cost line whose only reward
+    is that advance buys nothing and is not offered: "비용이 있는 줄은 보상
+    중 하나라도 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user
+    decision 2026-09-29; precedent OQ-046).
+    """
+
+    return owner.tleilaxu_space >= TLEILAXU_TRACK_END
+
+
 def advance_tleilaxu(
     state: GameState,
     player: int,
@@ -189,7 +202,7 @@ def advance_tleilaxu(
     for step in range(steps):
         owner = working.players[player]
         step_source = f"{source}:tleilaxu:{step}"
-        if owner.tleilaxu_space >= TLEILAXU_TRACK_END:
+        if tleilaxu_track_finished(owner):
             events.append(
                 GameEvent(
                     event_id=f"{step_source}:end",
@@ -479,7 +492,9 @@ def _bonus_frame(
 
 
 class ResearchBonusBlock(StrEnum):
-    """Why a research space's arrow cost cannot be paid right now.
+    """Why a research space's arrow is not offered right now.
+
+    Its cost cannot be paid, or (OQ-071) its reward would change nothing.
 
     "Trash an Intrigue card" (c7r3) takes one from the owner's hand
     [Immortality p. 16], and c8r6 costs 7 Solari [Immortality p. 3 board
@@ -493,6 +508,8 @@ class ResearchBonusBlock(StrEnum):
 
     NO_INTRIGUE = "no_intrigue"  # no Intrigue card in hand to trash
     SOLARI = "solari"  # fewer than 7 Solari
+    # The two advances would do nothing (``tleilaxu_track_finished``).
+    TLEILAXU_TRACK_END = "tleilaxu_track_end"
 
 
 def research_bonus_block(
@@ -500,8 +517,10 @@ def research_bonus_block(
 ) -> ResearchBonusBlock | None:
     """Return why ``owner`` cannot pay ``bonus``'s arrow cost now, or None.
 
-    None for a bonus with no cost. Reads only the owner's own Intrigue hand
-    and Solari.
+    None for a bonus with no cost. Reads only the owner's own Intrigue hand,
+    Solari and Tleilaxu token. c8r6 is not offered once the token is on the
+    track's last space: its reward would change nothing (OQ-071), so only
+    the decline remains, as when the Solari are short.
     """
 
     if (
@@ -509,6 +528,11 @@ def research_bonus_block(
         and not owner.intrigue_cards
     ):
         return ResearchBonusBlock.NO_INTRIGUE
+    if (
+        bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+        and tleilaxu_track_finished(owner)
+    ):
+        return ResearchBonusBlock.TLEILAXU_TRACK_END
     if (
         bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
         and owner.resources.solari < SEVEN_SOLARI_COST
