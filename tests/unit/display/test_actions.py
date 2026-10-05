@@ -49,6 +49,7 @@ _KEYS = (
     "solari",
     "spice",
     "water",
+    "research",
     "trash_self",
     "pledge",
 )
@@ -68,6 +69,7 @@ _EFFECTS = (
     ),
     PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+    PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED,
 )
 
 

@@ -31,12 +31,15 @@ from dune_imperium.core import (
 from dune_imperium.core.observation import observe_state
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_discard,
     apply_agent_card_payment,
     legal_agent_card_discard_actions,
+    legal_agent_card_icon_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
     resolve_agent_card_effect,
+    resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import (
@@ -152,14 +155,36 @@ def _payment(state: GameState, action_id: str, **arguments: object) -> DomainAct
     )
 
 
-def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
-    espionage = _tleilaxu("industrial_espionage")
-    alone = resolve_agent_card_effect(
-        _place(_state(_owner((espionage,))), espionage, "assembly_hall")
+def _icon(state: GameState, key: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_card_icon_actions(state, 0)
+        if dict(action.arguments)["effect"] == key
     )
+
+
+def _icon_keys(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
+def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
+    # "[draw 1]" and, on its own line, "If grafted: [Research] [specimen]"
+    # [Industrial Espionage card]: two icons in the owner's order (OQ-027).
+    espionage = _tleilaxu("industrial_espionage")
+    placed = _place(_state(_owner((espionage,))), espionage, "assembly_hall")
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards,research"
+    )
+    # Not grafted: the line waits and lapses at the turn's end (OQ-057 (1)).
+    assert _icon_keys(placed) == {"cards"}
+    alone = resolve_agent_card_icon(placed, _icon(placed, "cards"))
     owner = alone.state.players[0]
     assert len(owner.hand) == 1 and owner.specimens == 0
     assert owner.research_space == RESEARCH_START_ID
+    assert agent_card_effect_is_unavailable(alone.state)
 
     grafted = _graft(
         _state(_owner((espionage, FACE_DANCER), research_space="c1r3")),
@@ -167,11 +192,77 @@ def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
         "assembly_hall",
         FACE_DANCER,
     )
-    result = resolve_agent_card_effect(grafted)
+    assert _icon_keys(grafted) == {"cards", "research"}
+    result = resolve_agent_card_icon(grafted, _icon(grafted, "research"))
     owner = result.state.players[0]
-    assert len(owner.hand) == 1 and owner.specimens == 1
+    assert len(owner.hand) == 0 and owner.specimens == 1
     # From c1r3 the research forks, so its direction frame sits on top.
     assert result.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+
+
+def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
+    # The grafted line resolved first: its Research direction and the c3r3
+    # bonus ("trash and specimen"; the trash optional [Main p. 20]) are
+    # answered while the draw icon still waits on the Agent box.
+    espionage = _tleilaxu("industrial_espionage")
+    owner = _owner((espionage, FACE_DANCER, DAGGER), research_space="c2r2")
+    deck_size = len(owner.deck)
+    grafted = _graft(_state(owner), espionage, "assembly_hall", FACE_DANCER)
+    engine = UprisingRulesEngine()
+
+    researched = resolve_agent_card_icon(grafted, _icon(grafted, "research")).state
+    direction = DomainAction(
+        action_id="choose_research_space",
+        actor=0,
+        arguments=(("space_id", "c3r3"),),
+    )
+    bonus = engine.apply(researched, direction).state
+    assert bonus.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert bonus.players[0].hand == (DAGGER,)
+    assert len(bonus.players[0].deck) == deck_size
+    trash = DomainAction(
+        action_id="trash_optional_card", actor=0, arguments=(("card_id", DAGGER),)
+    )
+    assert trash in engine.legal_actions(bonus, 0)
+
+    trashed = engine.apply(bonus, trash).state
+    assert trashed.players[0].trashed == (DAGGER,)
+    assert trashed.players[0].specimens == 2
+    assert _icon_keys(trashed) == {"cards"}
+
+    drawn = resolve_agent_card_icon(trashed, _icon(trashed, "cards")).state
+    assert len(drawn.players[0].hand) == 1
+    assert len(drawn.players[0].deck) == deck_size - 1
+    context = dict(drawn.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+
+
+def test_industrial_espionage_draw_first_lets_the_bonus_trash_the_drawn_card() -> (
+    None
+):
+    espionage = _tleilaxu("industrial_espionage")
+    owner = _owner((espionage, FACE_DANCER), research_space="c2r2")
+    grafted = _graft(_state(owner), espionage, "assembly_hall", FACE_DANCER)
+    engine = UprisingRulesEngine()
+
+    drawn = resolve_agent_card_icon(grafted, _icon(grafted, "cards")).state
+    (card,) = drawn.players[0].hand
+    researched = resolve_agent_card_icon(drawn, _icon(drawn, "research")).state
+    bonus = engine.apply(
+        researched,
+        DomainAction(
+            action_id="choose_research_space",
+            actor=0,
+            arguments=(("space_id", "c3r3"),),
+        ),
+    ).state
+    trash = DomainAction(
+        action_id="trash_optional_card", actor=0, arguments=(("card_id", card),)
+    )
+    trashed = engine.apply(bonus, trash).state
+
+    assert trashed.players[0].trashed == (card,)
+    assert trashed.players[0].hand == ()
 
 
 def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers() -> (

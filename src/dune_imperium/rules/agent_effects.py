@@ -157,6 +157,8 @@ AGENT_ICON_CARDS: Final = "cards"
 AGENT_ICON_CARDS_SECOND: Final = "cards_second"
 AGENT_ICON_INTRIGUE: Final = "intrigue"
 AGENT_ICON_PLEDGE: Final = "pledge"  # Pivotal Gambit's first-place Influence
+# Industrial Espionage's "If grafted: [Research] [specimen]" line.
+AGENT_ICON_RESEARCH: Final = "research"
 AGENT_ICON_SOLARI: Final = "solari"
 AGENT_ICON_SPICE: Final = "spice"
 AGENT_ICON_TRASH_SELF: Final = "trash_self"
@@ -170,6 +172,7 @@ AUTOMATIC_AGENT_ICONS: Final = (
     AGENT_ICON_CARDS_SECOND,
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
+    AGENT_ICON_RESEARCH,
     AGENT_ICON_SOLARI,
     AGENT_ICON_SPICE,
     AGENT_ICON_TRASH_SELF,
@@ -247,6 +250,12 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
                 AGENT_ICON_TRASH,
                 AGENT_ICON_CARDS,
             ),
+            # Industrial Espionage (Immortality): "[draw 1]" and, on its own
+            # line, "If grafted: [Research] [specimen]" [Industrial
+            # Espionage card]; the line resolves as one icon, so its
+            # Research (direction and bonus included) may come before the
+            # draw.
+            _DRAW_RESEARCH_SPECIMEN: (AGENT_ICON_CARDS, AGENT_ICON_RESEARCH),
         }
     )
 )
@@ -3270,7 +3279,8 @@ def agent_icon_block(
     Maker Keeper and Wheels Within Wheels (Influence thresholds), Cargo
     Runner (two and four completed contracts, one line each) and Tread in
     Darkness (another Bene Gesserit card in play, on its draw and on its
-    optional trash) print a condition on their icons. The condition is judged
+    optional trash) and Industrial Espionage (grafted, on its Research and
+    specimen line) print a condition on their icons. The condition is judged
     when the icon resolves (OQ-028), and while it is false the icon is not
     offered: a mandatory effect cannot be fired to fizzle, it waits for the
     turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
@@ -3292,6 +3302,12 @@ def agent_icon_block(
         return _bond_block(owner, context, Faction.BENE_GESSERIT)
     if key == AGENT_ICON_CARDS_SECOND:
         return _NOT_PRINTED
+    if key == AGENT_ICON_RESEARCH:
+        if effect is not _DRAW_RESEARCH_SPECIMEN:
+            return _NOT_PRINTED
+        if is_grafted(context):
+            return None
+        return AgentIconBlock(AgentIconCondition.GRAFTED)
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
@@ -3432,6 +3448,11 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
         case "water":
             if available:
                 next_owner = gain(water=1)
+        case "research":
+            # The specimen and the Research follow the frame write-back
+            # below: the Research may open its direction choice and bonus
+            # frames above the turn.
+            pass
         case "trash_self":
             if card_instance_id in owner.in_play:
                 # The card trashes itself by its own printed icon, so any
@@ -3477,6 +3498,18 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
         effect_state = intrigue_draw.state
         intrigue_events = intrigue_draw.events
     next_state = advance_after_effect(effect_state, context)
+    research_events: tuple[GameEvent, ...] = ()
+    if key == AGENT_ICON_RESEARCH and available:
+        # Industrial Espionage's grafted line: a specimen and a Research
+        # step, as one icon (the printed line) [Immortality pp. 6, 8].
+        generated = generate_specimens(
+            next_state, player, 1, source=f"{source}:specimen"
+        )
+        researched = advance_research(
+            generated.state, player, source=f"{source}:research"
+        )
+        next_state = researched.state
+        research_events = (*generated.events, *researched.events)
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(
@@ -3495,7 +3528,13 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     )
     return RuleResult(
         state=next_state,
-        events=(*extra_events, *intrigue_events, *draw_events, event),
+        events=(
+            *extra_events,
+            *intrigue_events,
+            *research_events,
+            *draw_events,
+            event,
+        ),
     )
 
 
@@ -4147,37 +4186,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         else:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
-    elif effect is _DRAW_RESEARCH_SPECIMEN:
-        # Industrial Espionage: the draw always; grafted, a specimen and a
-        # research step whose direction choice opens above the turn.
-        context["pending_agent_effect"] = False
-        grafted = is_grafted(context)
-        next_state = advance_after_effect(state, context)
-        extra: list[GameEvent] = []
-        if grafted:
-            generated = generate_specimens(
-                next_state, player, 1, source=f"{event_source}:specimen"
-            )
-            researched = advance_research(
-                generated.state, player, source=f"{event_source}:research"
-            )
-            next_state = researched.state
-            extra.extend((*generated.events, *researched.events))
-        drawn = draw_or_request_personal_cards(
-            next_state, player, 1, source=f"{event_source}:draw"
-        )
-        return RuleResult(
-            state=drawn.state,
-            events=(
-                GameEvent(
-                    event_id=event_source,
-                    kind="agent_card_effect_resolved",
-                    payload=(("card_id", card_instance_id), ("player", player)),
-                ),
-                *extra,
-                *drawn.events,
-            ),
-        )
     elif effect is _RESEARCH_AND_TRASH_FOR_VP:
         if _box_researched(context, card_instance_id):
             # Scientific Breakthrough's trash line after its Research: an

@@ -761,9 +761,12 @@ def test_throne_room_politics_waits_for_its_trash_key() -> None:
 
 def test_industrial_espionage_alone_is_its_draw() -> None:
     state, seat, _ref, _ = _place(IMM, "industrial_espionage", space="assembly_hall")
-    source = _source(_turn(state, seat), "industrial_espionage box")
+    t = _turn(state, seat)
+    source = _source(t, "industrial_espionage cards")
     assert source.stage in (Stage.IMMEDIATE, Stage.PROMPT)  # DrawAbility
-    assert source.actions == (_a(seat, "resolve_agent_card_effect"),)
+    assert source.actions == (_a(seat, "resolve_agent_card_effect", effect="cards"),)
+    # Ungrafted, the Research line is not offered (it lapses at End Turn).
+    assert "industrial_espionage research" not in [s.label for s in t.sources]
 
 
 def test_industrial_espionage_grafted_asks_its_research() -> None:
@@ -772,8 +775,15 @@ def test_industrial_espionage_grafted_asks_its_research() -> None:
     )
     state = _switched(state, seat)
     t = _turn(state, seat)
-    source = _source(t, "industrial_espionage box")
+    source = _source(t, "industrial_espionage research")
     assert source.stage is Stage.PROMPT and source.extra["explicit"] is True
+    assert source.actions == (
+        _a(seat, "resolve_agent_card_effect", effect="research"),
+    )
+    assert _source(t, "industrial_espionage cards").stage in (
+        Stage.IMMEDIATE,
+        Stage.PROMPT,
+    )
 
 
 def test_clandestine_meeting_influence_asks_once_the_threshold_is_reached(
@@ -1037,7 +1047,8 @@ _EXPANSION_ABILITY_NAMES = (
     *(
         (card, name)
         for (card, _icon), name in ae._ICON_ABILITY.items()
-        if card in ("sardaukar_quartermaster", "tleilaxu_infiltrator")
+        if card
+        in ("sardaukar_quartermaster", "tleilaxu_infiltrator", "industrial_espionage")
     ),
     ("replacement_eyes", ae._TRASH_ABILITY["replacement_eyes"]),
     ("the_beast_s_spoils", ae._TRASH_ABILITY["the_beast_s_spoils"]),

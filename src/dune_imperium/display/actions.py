@@ -67,6 +67,7 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
         "if you have another Bene Gesserit card in play"
     ),
+    (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "if grafted",
 }
 
 # Korean twin of _ICON_CONDITIONS. The Influence-count suffixes use a
@@ -116,6 +117,7 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
         "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
     ),
+    (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "{graft}했다면",
 }
 
 
@@ -191,6 +193,8 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
             )
         case "water":
             base = "Gain 1 water"
+        case "research":
+            base = "Research, Generate 1 specimen"
         case "trash_self":
             base = "Trash this card"
         case "pledge":
@@ -245,6 +249,9 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
             )
         case "water":
             base = "{water:1}"
+        case "research":
+            # tokens_ko.py's words for Industrial Espionage's line.
+            base = "{research}, 표본 1개 생성"
         case "trash_self":
             base = "이 카드 {trash}"
         case "pledge":

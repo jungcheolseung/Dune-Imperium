@@ -1111,6 +1111,13 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 4
     if key == "cards_second":
         return False
+    # Industrial Espionage's grafted Research line became its own icon.
+    if key == "research":
+        return (
+            effect
+            is PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
+            and is_grafted(context)
+        )
     # Tread in Darkness's draw became its own icon, judging the Bond.
     if (
         effect

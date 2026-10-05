@@ -242,7 +242,9 @@ Immortality, Epic Game Mode and the promos (``spec/immortality.md`` §4-§8,
   only printed gains are the generic box (500). Two app steps in one action
   take the asking one's stage: Clandestine Meeting (intrigue + influence),
   Stillsuit Manufacturer (water + return), Throne Room Politics (troop +
-  ``TrashAgentAbility``), Industrial Espionage (specimen + research + draw).
+  ``TrashAgentAbility``). Industrial Espionage's ``cards`` and ``research``
+  icons are ``DrawAbility`` and ``IndustrialEspionageResearchAbility``
+  (specimen + research, Explicit) on their own.
 - Card choices: Organ Merchants, Tleilaxu Surgeon (never past Tleilaxu rank
   7: the Cost fails), Dissecting Kit, Scientific Breakthrough, Piter (the
   zone of the first troop the app names), Replacement Eyes, Twisted Mentat,
@@ -480,6 +482,12 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("cargo_runner", "cards_second"): "CargoRunner4ContractsDrawAbility",
     # Tread in Darkness's draw icon (its trash is ``_TRASH_ABILITY``'s).
     ("tread_in_darkness", "cards"): "BeneGesseritDrawAbility",
+    # Industrial Espionage: ``DrawAbility`` and, grafted,
+    # ``IndustrialEspionageResearchAbility`` (Explicit, never auto) for the
+    # Research and specimen line (``SpecimenGraftedAgentAbility``, 210,
+    # rides along); the research asks over the next research spaces.
+    ("industrial_espionage", "cards"): "DrawAbility",
+    ("industrial_espionage", "research"): "IndustrialEspionageResearchAbility",
     # Immortality multi-icon boxes (``_PLACEMENT_ICONS`` of our engine).
     ("sardaukar_quartermaster", "troops"): "SardaukarQuartermasterTroopAbility",
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",
@@ -610,7 +618,6 @@ _EXPANSION_BOX_CARDS = frozenset(
         "clandestine_meeting",
         "stillsuit_manufacturer",
         "throne_room_politics",
-        "industrial_espionage",
         "the_beast_s_spoils",
     }
 )
@@ -1902,19 +1909,6 @@ def _expansion_box(t: _Turn, short: str, action: DomainAction) -> None:
         # our engine opens its trash as ``optional_trash`` right after).
         found = _find(t.card, "TrashAgentAbility")
         _gated_ability_source(t, label, found, _ROW_CARD, action, _trash_request(t))
-    elif short == "industrial_espionage":
-        # Grafted: ``SpecimenGraftedAgentAbility`` (210),
-        # ``IndustrialEspionageResearchAbility`` (Explicit, never auto) and
-        # ``DrawAbility``; the research asks. Alone: the draw only.
-        if t.partner_ref is not None:
-            found = _find(t.card, "IndustrialEspionageResearchAbility")
-            _gated_ability_source(
-                t, label, found, _ROW_CARD, action, _research_request(t)
-            )
-        else:
-            _gated_ability_source(
-                t, label, _first_of(t.card, DrawAbility), _ROW_CARD, action
-            )
     elif short == "the_beast_s_spoils":
         # ``TheBeastsSpoilsDesertMouseAbility`` / ``…OrnithopterAbility``
         # (always immediate, Cost = the exact face-up battle icon); the
@@ -2020,6 +2014,11 @@ def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
         return
     if short in _GATED_ICON_CARDS:
         _gated_ability_source(t, label, found, _ROW_CARD, action)
+        return
+    if effect == "research":
+        _gated_ability_source(
+            t, label, found, _ROW_CARD, action, _research_request(t)
+        )
         return
     _ability_source(t, label, found, _ROW_CARD, action)
 
