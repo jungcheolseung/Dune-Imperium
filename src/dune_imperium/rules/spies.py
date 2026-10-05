@@ -15,6 +15,13 @@ from dune_imperium.rules.effects import (
 )
 
 
+def gather_intelligence_draw_available(state: GameState, player: int) -> bool:
+    """The existing Gather choice requires a card in either personal pile."""
+
+    owner = state.players[player]
+    return bool(owner.deck or owner.discard_pile)
+
+
 def legal_gather_intelligence_actions(
     state: GameState,
     player: int,
@@ -42,7 +49,7 @@ def legal_gather_intelligence_actions(
         if space_id in post.connected_space_ids
     }
     actions = [DomainAction(action_id="decline_gather_intelligence", actor=player)]
-    if owner.deck or owner.discard_pile:
+    if gather_intelligence_draw_available(state, player):
         actions.extend(
             DomainAction(
                 action_id="gather_intelligence",

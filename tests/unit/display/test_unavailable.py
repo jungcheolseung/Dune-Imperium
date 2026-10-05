@@ -552,10 +552,11 @@ def test_a_withheld_agent_box_waits_greyed_out_until_its_condition_holds() -> No
     assert found is None or not _rows(found, "waiting")
 
 
-def test_no_waiting_row_while_gather_intelligence_is_the_only_choice() -> None:
+def test_empty_gather_intelligence_explains_its_block_without_waiting_rows() -> None:
     """Gather Intelligence replaces the whole Agent-effect list while it is
-    pending (``legal_agent_effect_frame_actions``), so the withheld box is
-    not shown beside it; it is, greyed out, once the seat has declined."""
+    pending (``legal_agent_effect_frame_actions``). With both personal piles
+    empty, explain why it cannot draw, while keeping the waiting box hidden.
+    The box returns, greyed out, once the seat has declined."""
 
     card = "reserve:prepare_the_way:0"
     post = next(
@@ -578,7 +579,44 @@ def test_no_waiting_row_while_gather_intelligence_is_the_only_choice() -> None:
 
     assert [action.action_id for action in legal] == ["decline_gather_intelligence"]
     assert agent_box_is_waiting(placed, 0)  # withheld (OQ-057), behind the choice
-    assert unavailable_choices(placed, 0, legal) is None
+    found = _found(placed)
+    assert not _rows(found, "waiting")
+    rows = list(_rows(found, "choice").values())
+    assert [row["action"]["arguments"] for row in rows] == [
+        {"post_id": post.post_id}
+    ]
+    assert rows[0]["action"]["action_id"] == "gather_intelligence"
+    assert rows[0]["reason"] == (
+        "No card to draw: your deck and discard pile are both empty"
+    )
+    assert rows[0]["reason_ko"] == (
+        "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음"
+    )
+    assert rows[0]["code"] == "empty"
+    assert unavailable_choices(placed, 1, legal) is None
+
+    # docs/rules/uprising-systems.md: "`Gather Intelligence`: Agent를 space에
+    # 놓은 직후, board space와 Agent card의 효과를 받기 전에 연결된 자기
+    # Spy를 recall하면 card 1장을 draw한다." [Main p. 11] [FAQ p. 4].
+    # Reshuffle comes from the discard pile [Main p. 6]; cards still in play
+    # cannot refill it at this point. The existing
+    # empty-piles convention is unchanged, only its explanation is new.
+    for pile in ("deck", "discard_pile"):
+        drawn_cards = ("player:0:starter:dagger:0",)
+        owner = placed.players[0]
+        replenished = (
+            replace(owner, deck=drawn_cards)
+            if pile == "deck"
+            else replace(owner, discard_pile=drawn_cards)
+        )
+        restored = replace(
+            placed,
+            players=(replenished, *placed.players[1:]),
+        )
+        available = ENGINE.legal_actions(restored, 0)
+        assert any(action.action_id == "gather_intelligence" for action in available)
+        assert unavailable_choices(restored, 0, available) is None
+
     declined = ENGINE.apply(
         placed, DomainAction(action_id="decline_gather_intelligence", actor=0)
     ).state

@@ -1139,8 +1139,22 @@ function describeAction(action) {
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
   }
-  fragment.appendChild(phrase(ACTION_LABELS[action.action_id] || prettify(action.action_id)));
-  if (action.detail && !("effect" in action.arguments)) {
+  const factionChoice = action.action_id === "choose_intrigue_faction";
+  let label = ACTION_LABELS[action.action_id] || prettify(action.action_id);
+  if (factionChoice && action.detail) {
+    /* The server reads the current choice slot: Tenuous Bond's cost and
+       reward share the same action id. Keep Faction / Alliance arguments. */
+    fragment.appendChild(effectNode(action.detail, action.detail_ko));
+  } else {
+    /* A logged choice has no live detail. Its own loss event identifies
+       the cost without consulting the current game's later decision. */
+    if (factionChoice && (action.events || []).some((event) =>
+      event.kind === "influence_lost" && event.payload.player === action.actor)) {
+      label = label.replace("{influence_any}", "{influence_lose}");
+    }
+    fragment.appendChild(phrase(label));
+  }
+  if (action.detail && !factionChoice && !("effect" in action.arguments)) {
     /* An Arrakeen Scouts choice (a line, a secret pick, a subcommittee, a
        mission's way in, a revealed card): the server's detail says what it
        does (display/scouts.py), which a bare index or id would not. Only

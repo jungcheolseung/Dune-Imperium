@@ -387,7 +387,7 @@ const LABELS_EN = {
     "agent_turn_reopened": "{agent_turn} Reopened",
     "troops_retreated": "Troops Retreated",
     "influence_gained": "{influence_any} Gained",
-    "influence_lost": "{influence_any} Lost",
+    "influence_lost": "{influence_lose} Lost",
     "alliance_gained": "{alliance} Gained",
     "alliance_lost": "{alliance} Lost",
     "alliance_transferred": "{alliance} Transferred",

@@ -763,6 +763,17 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
+def current_intrigue_choice_slot(state: GameState, player: int) -> ChoiceSlot | None:
+    """Return the deciding player's current slot, including its gain/loss kind.
+
+    Presentation uses the same slot as the legal provider: a shared Faction
+    choice action can pay Influence or gain it on the next step of one card.
+    """
+
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, player)
+    return _current_slot(frame_context(frame)) if frame is not None else None
+
+
 def legal_intrigue_choice_actions(
     state: GameState,
     player: int,

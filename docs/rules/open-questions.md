@@ -1264,3 +1264,11 @@
 - 구현 범위: 구매 시 Spice 지불·tile 이동·다음 tile 공개와 상시 능력 발효(Ornithopter Fleet의 즉시 매칭 포함)만 한다. Advanced Data Analysis의 Spy trash는 구매 조건이므로 함께 지불한다. 획득 보상의 각 인쇄 아이콘은 turn에 대기하며, 같은 turn의 다른 구매로 생긴 보상과도 자유 순서다. Forbidden Weapons의 병력과 Shield Wall, Spy Drones의 두 Spy는 각각 독립 행동이다. 선택 보상도 사용/생략 결정이 필요하고, 남은 보상은 turn 종료를 막는다. 카드·Intrigue draw의 무작위 결과는 그 효과를 선택한 시점에만 발생한다.
 - 경계: Rapid Engineering으로 Agent 배치 전에 산 기술의 보상은 배치 또는 Reveal 전환 뒤에도 같은 turn에 남는다. Reveal 구매도 같은 방식으로 해결하며, Combat의 Battlefield Research에는 다른 turn이 없으므로 별도의 구매 후 효과 창에서 모두 해결한 뒤 Combat으로 돌아간다. 기술 자체를 먼저 trash해도 이미 획득한 일회 보상은 남는다. Servo-Receivers의 Signet을 실제로 해결한 시점의 turn 상태를 OQ-062대로 읽는다.
 - 재개 조건: 공식 FAQ가 기술 구매와 획득 보상의 순서·보류를 정할 때.
+
+## OQ-099 — 덱과 버린 더미가 모두 비었을 때 Gather Intelligence로 Spy만 회수할 수 있는지
+
+- 상태: `OPEN` (2026-10-05, 기존 구현의 경계 기록)
+- 공식 출처: Gather Intelligence는 Agent 배치 직후, 공간·카드 효과 전에 연결된 자기 Spy를 회수해 card 1장을 draw한다 `[Main p. 11]`. 덱이 비면 버린 더미를 섞어 계속 뽑는다 `[Main p. 6]`. Agent turn에 낸 카드는 Reveal turn의 Clean Up 전까지 in play에 남고 `[Main p. 20]`, 정리할 때 버린 더미로 옮긴다 `[Main p. 12]`. 이 문장들은 두 더미가 모두 비어 실제 draw가 0장일 때 Spy 회수 자체를 선택할 수 있는지는 직접 정하지 않는다.
+- 현재 구현: `rules/spies.legal_gather_intelligence_actions`는 어느 한 더미에 카드가 있을 때만 회수·draw를 제시하고, 둘 다 비면 `decline_gather_intelligence`만 남긴다. 이번 작업 전부터 있던 가드이며 공식 금지 규칙이나 새 사용자 판정으로 간주하지 않는다. 이 동작은 유지하고 `display/unavailable`에서 연결된 자기 Spy의 정보 수집을 회색으로 표시해 “뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음”을 설명한다. 덱만 비고 버린 더미가 있으면 합법 선택과 reshuffle은 유지된다.
+- 필요한 답: draw할 카드가 없어도 Gather Intelligence를 선택해 Spy만 supply로 회수할 수 있는지. 공식 판정 또는 사용자 판정을 받으면 빈 더미의 선택 가드와 Gaius Helen Mohiam의 의무 회수를 함께 검토한다.
+- 회귀 검증: `tests/unit/display/test_unavailable.py::test_empty_gather_intelligence_explains_its_block_without_waiting_rows`, `tests/unit/rules/test_spies.py`의 기존 draw·reshuffle, 두 언어의 `scripts/e2e/influence_spies.py`. 이번 변경은 규칙·legal action 목록을 바꾸지 않는다.

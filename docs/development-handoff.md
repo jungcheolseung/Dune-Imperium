@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 빈약한 유대의 하락 아이콘과 정보 수집 불가 사유
+
+- 빈약한 유대(Tenuous Bond)의 Influence 감소 비용과 증가 보상은 같은 `choose_intrigue_faction`을 사용하므로 기존 공통 UI 라벨이 감소에도 상승 아이콘을 그렸다. 서버 detail은 실제 Intrigue choice slot의 LoseInfluence/GainInfluence를 읽어 하락/상승 1을 구분하며, 화면은 진영·Alliance 이전 대상 arguments도 함께 유지한다. 과거 로그는 그 행동 자체의 `influence_lost` 이벤트를 읽어 하락 아이콘을 선택하고, 영향력 감소 이벤트의 공통 아이콘도 하락으로 수정했다. 실제 카드 비용·보상 처리와 codec v135·관측 v30은 그대로다.
+- 최근 완료 게임에서 플레이어1의 8라운드 Imperial Privilege와 High Council 방문은 연결된 자기 Spy가 있었지만 덱·버린 더미가 모두 0장이었다. 기존 Gather Intelligence 가드가 회수·draw를 제외해 거절만 남겼는데, UI가 이유도 숨겼다. 이제 해당 Spy의 정보 수집을 회색 선택지로 보여 “뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음”을 설명한다. 이 창 뒤의 Agent box·Intrigue 등은 계속 숨기고 거절 뒤 복귀시킨다. 어느 한 더미에 카드가 있으면 회색 줄이 사라지고 원래의 회수·draw·reshuffle 선택이 유지된다. 빈 두 더미에서 Spy만 회수할 수 있는지의 공식 판정은 확인한 Main 문장에 없어 기존 동작을 OQ-099의 OPEN 경계로 기록했다.
+- 검증: 관련 pytest **550개 통과**(display 전체·Intrigue·Spy·session·unavailable payload), 새 Chrome `influence_spies.py` **36개 검사**와 관련 E2E **5종**(`influence_spies`, `log_words`, `log_wrap`, `unavailable`, `lang`) **23초, 실패 0**, Ruff(`src tests`·새 E2E)·mypy(**365파일**)·`git diff --check` 통과. Python 서버 detail·unavailable 생성도 변경했으므로 실행 중인 이전 서버는 다음 재시작부터 이 표시를 생성한다. 완료 게임이 메모리에 남은 사용자 서버는 자동으로 재시작하지 않는다.
+
 ## 2026-10-05 행동 로그 문구·아이콘 줄바꿈 수정
 
 - 사용자 화면의 “가문 핵 토큰 소비: 임페리움 열 다시 채우기”와 “Tuek's Sietch에 보너스 스파이스 놓기”가 여러 세로 조각으로 갈라지는 원인은 `describeAction()`의 fragment를 flex 헤더에 직접 넣은 것이었다. 번호와 별도의 본문을 두어 문구·용어·아이콘이 하나의 inline 흐름으로 줄바꿈하도록 수정했다. 되돌림 표시도 같은 본문 안에서 이어진다.

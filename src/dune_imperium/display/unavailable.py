@@ -174,7 +174,11 @@ from dune_imperium.rules.sardaukar import (
     face_up_skill_identities,
     skill_choice_block,
 )
-from dune_imperium.rules.spies import legal_gather_intelligence_actions
+from dune_imperium.rules.spies import (
+    gather_intelligence_draw_available,
+    legal_gather_intelligence_actions,
+)
+from dune_imperium.rules.spy_moves import connected_post_ids
 from dune_imperium.rules.tech import tech_candidates
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
@@ -1490,6 +1494,35 @@ def _why(reason: Reason) -> dict[str, object]:
     return {"reason": reason[0], "reason_ko": reason[1], "code": reason[2]}
 
 
+def _gather_intelligence(state: GameState, seat: int, found: _Found) -> None:
+    """Explain the existing empty-piles block in the immediate Spy window."""
+
+    if gather_intelligence_draw_available(state, seat):
+        return
+    _, context = current_agent_effect_context(state)
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        return
+    posts = connected_post_ids(space_id)
+    for post_id in state.players[seat].spy_post_ids:
+        if post_id not in posts:
+            continue
+        found.row(
+            "choice",
+            f"gather_intelligence:{post_id}",
+            DomainAction(
+                action_id="gather_intelligence",
+                actor=seat,
+                arguments=(("post_id", post_id),),
+            ),
+            (
+                "No card to draw: your deck and discard pile are both empty",
+                "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
+                "empty",
+            ),
+        )
+
+
 def unavailable_choices(
     state: GameState, seat: int, legal: tuple[DomainAction, ...]
 ) -> dict[str, object] | None:
@@ -1504,7 +1537,8 @@ def unavailable_choices(
     set-aside or Intrigue card) to the reason it is dimmed. ``legal`` is the
     list the page numbers: a candidate in it, or a ref one of its actions
     names, is left out. None when nothing is greyed out, for any decision
-    that is not ``seat``'s, and while Gather Intelligence is its only choice.
+    that is not ``seat``'s. Gather Intelligence hides the waiting Agent
+    effects but still explains its own unavailable draw.
     """
 
     frame = state.decision_stack[-1] if state.decision_stack else None
@@ -1519,7 +1553,7 @@ def unavailable_choices(
         # Gather Intelligence replaces the Agent-effect frame's whole list
         # while it is pending (``legal_agent_effect_frame_actions``): the
         # waiting Agent box and the Intrigue cards come back after it.
-        return None
+        collectors = (_gather_intelligence,)
     found = _Found()
     for collect in collectors:
         collect(state, seat, found)

@@ -9,6 +9,7 @@ the rules execute.
 """
 
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
+from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
@@ -25,6 +26,7 @@ from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
 )
+from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
 _BOX = PersonalCardAgentEffect
@@ -285,12 +287,36 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
                 return "Place a Spy with Deep Cover", "{spy} 배치 (잠복 스파이)"
             raise ValueError(f"unknown Tech acquire effect: {effect}")
 
+
+def intrigue_faction_choice_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Distinguish the cost and reward behind the shared Faction choice.
+
+    Each slot resolves one Influence, even when the card has several slots.
+    Faction and any Alliance recipient remain the action's normal arguments.
+    """
+
+    if action.action_id != "choose_intrigue_faction":
+        return None
+    match current_intrigue_choice_slot(state, action.actor):
+        case LoseInfluence():
+            return "Lose 1 Influence", "{influence_lose:1} 하락"
+        case GainInfluence():
+            return "Gain 1 Influence", "{influence_any:1} 상승"
+        case _:
+            return None
+
+
 def effect_action_text(state: GameState, action: DomainAction) -> str | None:
-    """Describe a keyed icon resolution, a shared payment or a Scouts choice.
+    """Describe an icon, a shared payment, a Faction or a Scouts choice.
 
     None otherwise.
     """
 
+    faction = intrigue_faction_choice_text(state, action)
+    if faction is not None:
+        return faction[0]
     tech = tech_acquire_action_text(action)
     if tech is not None:
         return tech[0]
@@ -332,6 +358,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     returns ``None`` (``static/render.js`` ``effectNode``).
     """
 
+    faction = intrigue_faction_choice_text(state, action)
+    if faction is not None:
+        return faction[1]
     tech = tech_acquire_action_text(action)
     if tech is not None:
         return tech[1]

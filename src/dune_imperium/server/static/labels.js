@@ -334,7 +334,7 @@ const EVENT_LABELS = {
   agent_turn_reopened: "{agent_turn} 다시 열림",
   troops_retreated: "병력 후퇴",
   influence_gained: "{influence_any} 상승",
-  influence_lost: "{influence_any} 하락",
+  influence_lost: "{influence_lose} 하락",
   alliance_gained: "{alliance} 획득",
   alliance_lost: "{alliance} 상실",
   alliance_transferred: "{alliance} 이동",

@@ -1,6 +1,7 @@
 """Tests for one printed Agent-box icon's English/Korean detail text."""
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
@@ -220,6 +222,48 @@ def test_smugglers_haven_payment_says_what_it_buys() -> None:
     assert effect_action_text_ko(placed, payment) == (
         "{spice:4} 지불 {arrow_right} {victory_point:1}"
     )
+
+
+def test_tenuous_bond_distinguishes_its_influence_cost_and_reward() -> None:
+    card = "intrigue:tenuous_bond:0"
+    state = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            PlayerState(
+                player_id=0,
+                intrigue_cards=(card,),
+                influence=Influence(fremen=2),
+            ),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    state = _ENGINE.apply(
+        state, DomainAction("play_intrigue", 0, (("card_id", card), ("option", 0)))
+    ).state
+    loss = _ENGINE.legal_actions(state, 0)[0]
+    assert loss.action_id == "choose_intrigue_faction"
+    assert effect_action_text(state, loss) == "Lose 1 Influence"
+    assert effect_action_text_ko(state, loss) == "{influence_lose:1} 하락"
+    assert effect_action_text(state, replace(loss, actor=1)) is None
+
+    gained = _ENGINE.apply(state, loss).state
+    for gain in _ENGINE.legal_actions(gained, 0):
+        # Same action id on the very next step; a global loss label would
+        # fix the cost but incorrectly mark every reward as a loss.
+        assert gain.action_id == loss.action_id
+        assert effect_action_text(gained, gain) == "Gain 1 Influence"
+        assert effect_action_text_ko(gained, gain) == "{influence_any:1} 상승"
+    assert gained.players[0].influence.fremen == 1
 
 
 @pytest.mark.parametrize("tech_id", sorted(TECH_TILES_BY_ID))

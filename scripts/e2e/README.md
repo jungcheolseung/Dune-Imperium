@@ -62,6 +62,8 @@ UI 변경의 검증 순서는 [`CLAUDE.md`](../../CLAUDE.md)의 "Verifying UI ch
 
 `log_wrap.py`는 사용자가 보고한 가문 핵 토큰·Tuek's Sietch 로그를 실제 `turnLine`으로 그려 문자 좌표의 읽기 순서, 한글 단어·용어 묶음, 괄호와 인장 반지 아이콘, 가로 넘침을 확인한다. 두 언어·240/300/430px·카드 썸네일 유무와 긴 지휘관 기술 용어를 포함하며 `E2E_SHOTS_DIR`에 `log_wrap_*.png`를 남긴다.
 
+`influence_spies.py`는 엔진이 실제로 처리한 빈약한 유대의 비용·보상과 Spy가 연결된 Agent 배치의 서버 payload를 두 언어로 그린다. 하락·상승 아이콘, 진영 이름 보존, 현재 선택 단계와 무관한 과거 로그 아이콘, 덱·버린 더미가 모두 비었을 때 정보 수집의 회색 사유와 클릭 불가, 어느 한 더미에 카드가 생겼을 때의 선택 복귀를 확인한다. `E2E_SHOTS_DIR`에 `influence_*.png`·`gather_*.png`를 남긴다.
+
 ## 하나씩 돌리기
 
 아래 시간은 한 개씩 순서대로 돌린 실측(2026-09-27 Mac mini; `rehearsal.py`만 예전 값)이다.
