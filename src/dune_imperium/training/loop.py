@@ -418,6 +418,10 @@ def train(
         temperature=config.temperature,
         rank_rewards=config.rank_rewards,
         opponent=config.opponent,
+        # A game stuck on a decision without legal actions (an engine
+        # defect) is kept here and ends truncated instead of ending the run;
+        # its count shows in the record's ``truncated``.
+        stall_dir=config.out_dir / "stalls",
     )
 
     config.out_dir.mkdir(parents=True, exist_ok=True)

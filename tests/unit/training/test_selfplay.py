@@ -1,6 +1,8 @@
 """Tests for the lockstep self-play runner and batched policies."""
 
+import pickle
 from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -21,6 +23,7 @@ from dune_imperium.training import (
     stack_episodes,
     without_undo_actions,
 )
+from dune_imperium.training.selfplay import NoLegalActionsError
 
 
 def _specs(policy: str, seeds: Sequence[int]) -> tuple[SelfPlaySpec, ...]:
@@ -375,3 +378,44 @@ def test_runner_withholds_undo_actions_from_policies_not_from_the_engine() -> No
         {"p": offered}, _specs("p", (11,))
     )
     assert offered.offered_undo > 0
+
+
+def test_a_decision_without_legal_actions_is_kept_and_truncates_its_game(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An engine defect costs its game, not the run, when a stall_dir is set.
+
+    On 2026-10-06 one game in about 4,000 of a long training run reached a
+    player decision without legal actions and the worker's exception ended
+    the whole attempt, losing the state that would reproduce it.
+    """
+
+    runner = SelfPlayRunner(RulesetConfig(), stall_dir=tmp_path)
+    original = runner._engine(None).legal_actions
+    calls = {"count": 0}
+
+    def flaky(state: object, seat: int) -> tuple[object, ...]:
+        calls["count"] += 1
+        # The 50th request of the run comes back empty, once.
+        if calls["count"] == 50:
+            return ()
+        return original(state, seat)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(runner._engine(None), "legal_actions", flaky)
+    result = runner.run({"r": RandomBatchPolicy(seed=4)}, _specs("r", (1, 2)))
+
+    stuck = [episode for episode in result.episodes if episode.truncated]
+    assert len(stuck) == 1
+    assert stuck[0].rewards == (0.0, 0.0, 0.0, 0.0)
+    dumped = tmp_path / f"stall-{stuck[0].game_seed}.pkl"
+    with dumped.open("rb") as handle:
+        document = pickle.load(handle)
+    assert document["spec"].game_seed == stuck[0].game_seed
+    assert document["state"].round_number >= 1
+    assert f"seed {stuck[0].game_seed}" in (tmp_path / "stalls.log").read_text()
+    # Without a stall_dir the defect still raises, as before.
+    plain = SelfPlayRunner(RulesetConfig())
+    calls["count"] = 0
+    monkeypatch.setattr(plain._engine(None), "legal_actions", flaky)
+    with pytest.raises(NoLegalActionsError):
+        plain.run({"r": RandomBatchPolicy(seed=4)}, _specs("r", (1, 2)))

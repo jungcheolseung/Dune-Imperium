@@ -70,6 +70,7 @@ class _ChunkJob:
     max_steps: int
     rank_rewards: bool
     out_path: str
+    stall_dir: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +124,7 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         record=True,
         undo_actions=False,
         rank_rewards=job.rank_rewards,
+        stall_dir=None if job.stall_dir is None else Path(job.stall_dir),
     )
     policies = _policies(
         network,
@@ -167,9 +169,12 @@ class Collector:
         temperature: float = 1.0,
         opponent: str | None = None,
         rank_rewards: bool = False,
+        stall_dir: Path | None = None,
     ) -> None:
         if workers < 1:
             raise ValueError("workers must be positive")
+        # See SelfPlayRunner.stall_dir.
+        self.stall_dir = stall_dir
         self.config = config
         self.workers = workers
         self.max_steps = max_steps
@@ -217,6 +222,7 @@ class Collector:
                 record=True,
                 undo_actions=False,
                 rank_rewards=self.rank_rewards,
+                stall_dir=self.stall_dir,
             )
             policies = _policies(
                 network,
@@ -259,6 +265,7 @@ class Collector:
                 max_steps=self.max_steps,
                 rank_rewards=self.rank_rewards,
                 out_path=str(self._scratch / f"chunk_{policy_seed}_{index}.npz"),
+                stall_dir=None if self.stall_dir is None else str(self.stall_dir),
             )
             for index, chunk in enumerate(chunks)
             if chunk

@@ -18,9 +18,11 @@ policy (request, mask and recorded trajectory alike, so a learner stays
 on-policy) while the engine still validates against its full legal set.
 """
 
+import pickle
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -63,6 +65,10 @@ def rank_reward(rank: int, players: int) -> float:
     if players < 2:
         raise ValueError("a rank reward needs at least two players")
     return 1.0 - 2.0 * (rank - 1) / (players - 1)
+
+
+class NoLegalActionsError(RuntimeError):
+    """A pending player decision offered no action: an engine defect."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,9 +251,16 @@ class SelfPlayRunner:
         record: bool = True,
         undo_actions: bool = True,
         rank_rewards: bool = False,
+        stall_dir: Path | None = None,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
+        # Where a game that reaches a decision without legal actions (an
+        # engine defect) is pickled before it is ended as truncated. Unset,
+        # such a game raises and takes the run down with it; a long training
+        # run sets it so one rare defect costs one game, not the run, and
+        # leaves the exact state behind to reproduce it from.
+        self.stall_dir = stall_dir
         self.config = config
         self.max_steps = max_steps
         self.record = record
@@ -308,7 +321,14 @@ class SelfPlayRunner:
                 if game.decisions >= self.max_steps:
                     episodes[game.index] = self._finish(game, truncated=True)
                     continue
-                request = self._request(game)
+                try:
+                    request = self._request(game)
+                except NoLegalActionsError:
+                    if self.stall_dir is None:
+                        raise
+                    self._record_stall(game)
+                    episodes[game.index] = self._finish(game, truncated=True)
+                    continue
                 requests.setdefault(game.spec.lineup[request.seat], []).append(
                     (game, request)
                 )
@@ -342,7 +362,7 @@ class SelfPlayRunner:
         seat = decision.owner
         legal_actions = engine.legal_actions(game.state, seat)
         if not legal_actions:
-            raise RuntimeError("current player decision has no legal actions")
+            raise NoLegalActionsError("current player decision has no legal actions")
         game.legal = legal_actions
         if not self.undo_actions:
             legal_actions = without_undo_actions(legal_actions)
@@ -390,6 +410,25 @@ class SelfPlayRunner:
             legal_actions=game.legal,
         ).state
         game.decisions += 1
+
+    def _record_stall(self, game: _Game) -> None:
+        """Pickle a game stuck on a decision without legal actions."""
+
+        assert self.stall_dir is not None
+        self.stall_dir.mkdir(parents=True, exist_ok=True)
+        seed = game.spec.game_seed
+        with (self.stall_dir / f"stall-{seed}.pkl").open("wb") as handle:
+            pickle.dump(
+                {"state": game.state, "spec": game.spec, "config": self.config},
+                handle,
+            )
+        frames = ",".join(str(frame.kind) for frame in game.state.decision_stack)
+        with (self.stall_dir / "stalls.log").open("a") as handle:
+            handle.write(
+                f"seed {seed} round {game.state.round_number} "
+                f"phase {game.state.phase} decisions {game.decisions} "
+                f"frames {frames}\n"
+            )
 
     def _finish(self, game: _Game, *, truncated: bool) -> Episode:
         players = self.config.players
