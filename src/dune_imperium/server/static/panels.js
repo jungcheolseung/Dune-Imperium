@@ -179,10 +179,17 @@ function renderSeats() {
       }
     } else {
       const badge = document.createElement("span");
-      badge.className = "badge ai";
       const kind = summary.seats[seat];
-      badge.textContent = seatKindLabel(kind);
-      /* The label hides a checkpoint's path; its tooltip names the file. */
+      /* A search seat answers on the server's worker after the request that
+         handed it the turn has returned (summary.thinking), and its badge
+         says so meanwhile, in the badge's own place: a mark beside it cut
+         the Leader name to a few pixels at 1366x768 and took a third line
+         in the wider column. The tooltip keeps the kind. */
+      const thinking = !state.review && summary.thinking === seat;
+      badge.className = thinking ? "badge ai thinking" : "badge ai";
+      badge.textContent = thinking ? t("panels.thinking") : seatKindLabel(kind);
+      /* The label hides a checkpoint's path; its tooltip names the file. A
+         search seat's file is the server's own and stays out of sight. */
       badge.title = kind.startsWith("checkpoint:")
         ? kind.slice("checkpoint:".length)
         : seatKindLabel(kind);

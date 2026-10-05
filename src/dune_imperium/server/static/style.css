@@ -188,6 +188,7 @@ fieldset label:has(input:disabled) { opacity: 0.5; }
   font-size: 0.8rem;
 }
 #opt-seed-row input, #opt-checkpoint-row input { margin-top: 0.4rem; }
+#setup-form #opt-search-note { margin: 1rem 0 0; font-size: 0.8rem; line-height: 1.5; }
 #rule-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
 #rule-options label {
   display: flex;
@@ -1242,6 +1243,9 @@ kbd {
   color: #1a140c;
 }
 .seat .badge.ai { background: var(--line); color: var(--ink); }
+/* A search seat working on its answer (summary.thinking): its badge says
+   "thinking" in the badge's own place and size. */
+.seat .badge.ai.thinking { background: var(--accent-soft); color: var(--accent); }
 .seat .stats { margin-top: 0.15rem; gap: 0.15rem 0.55rem; }
 .seat .zones { font-size: 0.75rem; opacity: 0.7; margin-top: 0.15rem; }
 .zone-count { white-space: nowrap; }

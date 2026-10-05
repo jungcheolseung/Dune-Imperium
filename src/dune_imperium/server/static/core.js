@@ -41,6 +41,9 @@ const SEAT_KINDS = [
   ["app_ai", "앱 AI·어려움"],
   ["app_ai_medium", "앱 AI·보통"],
   ["app_ai_easy", "앱 AI·쉬움"],
+  /* The server's own policy-guided search (`search`), offered only where
+     the server has a network for it (`/whoami` search_ai). */
+  ["search", "탐색 AI"],
   ["heuristic", "휴리스틱 AI"],
   ["rollout", "롤아웃 탐색 AI"],
   ["rollout_strong", "강한 롤아웃 탐색 AI (느림)"],
@@ -48,10 +51,15 @@ const SEAT_KINDS = [
   ["checkpoint", "학습 체크포인트 (아래 경로)"],
 ];
 
-/* A seat assignment is "human", a registry agent name, or
-   "checkpoint:<path>"; the label hides the path. */
+/* A seat assignment is "human", a registry agent name, "checkpoint:<path>"
+   or "search:<path>" (what the server seats for "search"); the label hides
+   the path. */
 function seatKindLabel(kind) {
-  const key = kind.startsWith("checkpoint:") ? "checkpoint" : kind;
+  const key = kind.startsWith("checkpoint:")
+    ? "checkpoint"
+    : kind.startsWith("search:")
+      ? "search"
+      : kind;
   const found = SEAT_KINDS.find(([value]) => value === key);
   return found ? found[1] : kind;
 }

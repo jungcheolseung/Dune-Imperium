@@ -37,6 +37,8 @@ SECONDS = {
     "races": 26,
     "open_mode": 25,
     "app_ai_seats": 20,
+    # 2026-10-06 alone, with a training run on 4 cores of the machine.
+    "search_seats": 32,
     "spectate": 16,
     "turn_end": 15,
     "remote_fresh": 14,
