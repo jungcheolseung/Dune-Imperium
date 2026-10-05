@@ -45,6 +45,13 @@ class ProfileCore:
         self._is_climax: bool | None = None
         self._is_final_round: bool | None = None
         self._cached_buy_gains: dict[int, float] = {}
+        # ``abilities.bloodlines_cards.unlock_value``'s per-decision caches
+        # (pair values and finished results) and its re-entrancy flag. They
+        # live here, not at module level, so concurrent games (the server's
+        # threadpool) never share them.
+        self.unlock_pair_values: dict[tuple[str, str], float | None] = {}
+        self.unlock_values: dict[tuple[object, ...], float] = {}
+        self.unlocking = False
 
     # ===========================================================================
     # Economy — spec/profile-economy.md (implemented in economy.py)
@@ -419,7 +426,7 @@ class ProfileCore:
         """``GetCombatPostureMod`` @0x4908080 (dead: every caller passes false)."""
         raise NotImplementedError
 
-    def uprising_conflicts(self) -> list[Archetype]:
+    def uprising_conflicts(self) -> tuple[Archetype, ...]:
         """``GetUprisingConflicts`` @0x4913fb0 (static catalogue)."""
         raise NotImplementedError
 

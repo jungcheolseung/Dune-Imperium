@@ -167,8 +167,6 @@ _APP_FACTION_TO_OURS: dict[str, str] = {
     app: ours for ours, app in catalog.FACTION_NAMES.items()
 }
 
-_UPRISING_CONFLICTS: list[Archetype] = []
-
 
 def _ieee_div(numerator: float, denominator: float) -> float:
     """C# ``double`` division: ``x / 0`` is ±Infinity or NaN, never an error."""
@@ -210,6 +208,22 @@ def _strings(archetype: Archetype, name: str) -> tuple[str, ...]:
     if isinstance(value, tuple):
         return tuple(str(item) for item in value)
     return ()
+
+
+#: ``GetUprisingConflicts @0x4913fb0`` — spec §5.1:
+#: ``AllArchetypes().Where(IsConflictArchetype && IsInSet(Uprising) &&
+#: !HasAttribute(RemovedFromSetList))``: 14 cards, never CHOAM Security or
+#: Trade Dispute. Static content, so it is built once at import (a lazy fill
+#: could be read half-done by a concurrent game in the server's threadpool).
+_UPRISING_CONFLICTS: tuple[Archetype, ...] = tuple(
+    archetype
+    for archetype in ARCHETYPES.values()
+    # IsConflictArchetype @0x4eab3a0: EntityType Conflict, level > 0.
+    if archetype.attributes.get("EntityType") == "Conflict"
+    and _int(archetype, "ConflictLevel") > 0
+    and "Uprising" in _strings(archetype, "SetList")
+    and "RemovedFromSetList" not in archetype.attributes
+)
 
 
 def _card_archetype(bare_card_id: str) -> Archetype:
@@ -535,26 +549,16 @@ class CombatMixin(ProfileCore):
 
     # -- conflict interest --
 
-    def uprising_conflicts(self) -> list[Archetype]:
+    def uprising_conflicts(self) -> tuple[Archetype, ...]:
         """``GetUprisingConflicts @0x4913fb0`` — spec §5.1.
 
         ``AllArchetypes().Where(IsConflictArchetype && IsInSet(Uprising) &&
         !HasAttribute(RemovedFromSetList))``: 14 cards, never CHOAM Security or
         Trade Dispute. Cached for the whole game (``_cachedUprisingConflicts``
-        is never cleared), here for the process: it is static content.
+        is never cleared), here for the process: it is static content, built
+        at import (``_UPRISING_CONFLICTS``).
         """
 
-        if _UPRISING_CONFLICTS:
-            return _UPRISING_CONFLICTS
-        _UPRISING_CONFLICTS.extend(
-            archetype
-            for archetype in ARCHETYPES.values()
-            # IsConflictArchetype @0x4eab3a0: EntityType Conflict, level > 0.
-            if archetype.attributes.get("EntityType") == "Conflict"
-            and _int(archetype, "ConflictLevel") > 0
-            and "Uprising" in _strings(archetype, "SetList")
-            and "RemovedFromSetList" not in archetype.attributes
-        )
         return _UPRISING_CONFLICTS
 
     def relative_conflict_value(self) -> Summer:

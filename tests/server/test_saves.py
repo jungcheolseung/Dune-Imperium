@@ -412,3 +412,272 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
         parse_save_document(
             {**legacy, "ruleset": {**legacy_ruleset, "bloodlines": "yes"}}
         )
+
+
+# --- app_ai seats ------------------------------------------------------------
+#
+# Restore builds fresh app_ai agents and asks them every recorded AI step
+# again (``_replay_recorded_steps``): their memory and RNG are rebuilt only
+# if each answer comes out the same, in this process or after a server
+# restart in a new one.
+
+APP_AI_SEATS = ("human", "app_ai", "app_ai_medium", "app_ai_easy")
+
+
+def _ui_default_game(
+    manager: GameSessionManager,
+    seats: tuple[str, ...],
+    game_seed: int,
+    *,
+    scouts: bool = False,
+) -> JsonObject:
+    """A game with the rule options the browser's setup screen starts with
+    checked (CHOAM, the leader draft, the promo cards, Bloodlines, the Tech
+    Module, Immortality, Go to 11, Epic Game Mode), Arrakeen Scouts if asked."""
+
+    return manager.create_game(
+        seats,
+        game_seed=game_seed,
+        choam_module=True,
+        leader_draft=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+        go_to_11=True,
+        epic_game=True,
+        arrakeen_scouts=scouts,
+    )
+
+
+def _undo_and_branch(manager: GameSessionManager, summary: JsonObject) -> JsonObject:
+    """Play seat 0 until it may take a step back, take it back, then pick
+    its last legal action instead of the first (a different branch)."""
+
+    game_id = _text(summary["game_id"])
+    for _ in range(200):
+        if any(_obj(entry)["seat"] == 0 for entry in _rows(summary["undo"])):
+            undone = manager.undo(game_id, 0, revision=_int(summary["revision"]))
+            assert undone["undo_count"] == _int(summary["undo_count"]) + 1
+            listing = _rows(manager.legal_actions(game_id, 0)["actions"])
+            return manager.apply_action(
+                game_id,
+                seat=0,
+                revision=_int(undone["revision"]),
+                index=len(listing) - 1,
+            )
+        summary = _advance(manager, summary, 1)
+    raise AssertionError("seat 0 never had a step to take back")
+
+
+def _agent_state(manager: GameSessionManager, game_id: str) -> list[object]:
+    """What each app_ai seat carries from decision to decision."""
+
+    from dune_imperium.agents.app_ai import AppAIAgent
+
+    session = manager._sessions[game_id]
+    carried: list[object] = []
+    for seat in sorted(session.agents):
+        agent = session.agents[seat]
+        assert isinstance(agent, AppAIAgent)
+        carried.append(
+            (
+                seat,
+                agent._rng.getstate(),
+                agent.memory,
+                dict(agent.mirrored),
+                dict(agent.fallbacks),
+            )
+        )
+    return carried
+
+
+def _final(manager: GameSessionManager, summary: JsonObject) -> tuple[object, ...]:
+    from dune_imperium.core.state import canonical_state_hash
+
+    session = manager._sessions[_text(summary["game_id"])]
+    return (
+        tuple(session.steps),
+        canonical_state_hash(session.state),
+        summary["standings"],
+        summary["revision"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("scouts", "game_seed"), [(False, 5), (True, 6)], ids=["ui-default", "scouts"]
+)
+def test_an_app_ai_game_restores_and_plays_on_like_the_unsaved_one(
+    scouts: bool, game_seed: int
+) -> None:
+    manager = GameSessionManager()
+    created = _ui_default_game(manager, APP_AI_SEATS, game_seed, scouts=scouts)
+    summary = _advance(manager, created, 25)
+    # A human undo before the save: app_ai never sees the undone branch.
+    summary = _undo_and_branch(manager, summary)
+    original = _advance(manager, summary, 30)
+    assert original["finished"] is False
+    assert _int(original["undo_count"]) == 1
+
+    document = manager.save_game(_text(original["game_id"]))
+    restored = manager.restore_game(_roundtrip(document))
+
+    for field in ("revision", "phase", "round_number", "decision", "seats"):
+        assert restored[field] == original[field], field
+    assert restored["undo_count"] == 1
+    # Every AI step regenerated: memory, RNG and counters are where they were.
+    assert _agent_state(manager, _text(restored["game_id"])) == _agent_state(
+        manager, _text(original["game_id"])
+    )
+    original_end = _final(manager, _finish(manager, original))
+    restored_end = _final(manager, _finish(manager, restored))
+    assert restored_end == original_end
+
+
+_RESTORE_IN_A_NEW_PROCESS = """
+import json, sys
+from dune_imperium.core.state import canonical_state_hash
+from dune_imperium.server.sessions import GameSessionManager
+
+manager = GameSessionManager()
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = manager.restore_game(json.load(handle))
+game_id = summary["game_id"]
+session = manager._sessions[game_id]
+restored = canonical_state_hash(session.state)
+for _ in range(2_000):
+    if summary["finished"]:
+        break
+    if summary["confirmation"] == 0:
+        summary = manager.confirm_turn(game_id, seat=0, revision=summary["revision"])
+    else:
+        summary = manager.apply_action(
+            game_id, seat=0, revision=summary["revision"], index=0
+        )
+print(json.dumps({
+    "string_hash": hash("app_ai"),
+    "restored": restored,
+    "final": canonical_state_hash(session.state),
+    "standings": summary["standings"],
+}))
+"""
+
+
+def test_an_app_ai_save_restores_in_a_process_with_another_hash_seed(
+    tmp_path: Path,
+) -> None:
+    """Restart recovery: the server that loads an autosave is a new process,
+    with another string-hash seed. A decision that followed the iteration
+    order of a set of strings would replay differently there."""
+
+    import os
+    import subprocess
+    import sys
+
+    from dune_imperium.core.state import canonical_state_hash
+
+    manager = GameSessionManager()
+    created = _ui_default_game(manager, APP_AI_SEATS, 7, scouts=True)
+    original = _advance(manager, created, 40)
+    assert original["finished"] is False
+    document = manager.save_game(_text(original["game_id"]))
+    path = tmp_path / "app_ai.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    saved_hash = canonical_state_hash(
+        manager._sessions[_text(original["game_id"])].state
+    )
+    end = _finish(manager, original)
+    final_hash = canonical_state_hash(manager._sessions[_text(end["game_id"])].state)
+
+    reports = []
+    for hash_seed in ("1", "2718"):
+        completed = subprocess.run(
+            [sys.executable, "-c", _RESTORE_IN_A_NEW_PROCESS, str(path)],
+            env={**os.environ, "PYTHONHASHSEED": hash_seed},
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr[-4000:]
+        report = _obj(json.loads(completed.stdout.strip().splitlines()[-1]))
+        assert report["restored"] == saved_hash, hash_seed
+        assert report["final"] == final_hash, hash_seed
+        assert report["standings"] == end["standings"], hash_seed
+        reports.append(report)
+    # The two processes really did hash strings differently.
+    assert reports[0]["string_hash"] != reports[1]["string_hash"]
+
+
+@pytest.mark.parametrize("failure", ["raises", "illegal"])
+def test_a_failing_app_ai_window_never_stalls_a_live_game(
+    failure: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """User decision 2026-10-05: a window that raises, or that answers with
+    an illegal action, gets the app's ``DefaultRandomChoice`` from the
+    agent's own RNG (never a heuristic), counted under ``error:<kind>`` and
+    logged; the game plays on, and a save of it restores and plays on alike.
+    """
+
+    import logging
+
+    from dune_imperium.agents.app_ai import AppAIAgent
+    from dune_imperium.agents.app_ai.windows import turn
+    from dune_imperium.agents.app_ai.windows.run import DecisionRun
+    from dune_imperium.core.actions import DomainAction
+
+    real = turn.HANDLERS["turn"]
+
+    def failing(run: DecisionRun) -> DomainAction | None:
+        # Deterministic, so a restore's replay fails at the same decisions:
+        # the Agent-turn window fails in odd rounds and works in even ones.
+        if run.ctx.state.round_number % 2 == 1:
+            if failure == "raises":
+                raise RuntimeError("probe: the turn window broke")
+            return DomainAction("probe_not_an_action", run.ctx.seat)
+        return real(run)
+
+    monkeypatch.setitem(turn.HANDLERS, "turn", failing)
+    manager = GameSessionManager()
+    with caplog.at_level(logging.WARNING, logger="dune_imperium.agents.app_ai"):
+        created = manager.create_game(
+            APP_AI_SEATS, game_seed=8, choam_module=True, bloodlines=True
+        )
+        original = _advance(manager, created, 60)
+
+    # Not stuck: seat 0 decides or confirms (or the game is over).
+    assert original["finished"] or (
+        original["confirmation"] == 0 or _obj(original["decision"])["owner"] == 0
+    )
+    session = manager._sessions[_text(original["game_id"])]
+    errors = 0
+    for seat in (1, 2, 3):
+        agent = session.agents[seat]
+        assert isinstance(agent, AppAIAgent)
+        assert set(agent.fallbacks) <= {"error:turn"}
+        errors += agent.fallbacks["error:turn"]
+    assert errors > 0
+    records = [r for r in caplog.records if r.name.startswith("dune_imperium")]
+    assert len(records) == errors
+    for record in records:
+        assert record.levelno == logging.ERROR
+        assert "turn decision" in record.getMessage()
+        if failure == "raises":
+            assert record.exc_info is not None
+            assert "the turn window broke" in str(record.exc_info[1])
+        else:
+            assert "illegal action" in record.getMessage()
+            assert "probe_not_an_action" in record.getMessage()
+
+    document = manager.save_game(_text(original["game_id"]))
+    restored = manager.restore_game(_roundtrip(document))
+    for field in ("revision", "phase", "round_number", "decision"):
+        assert restored[field] == original[field], field
+    assert _agent_state(manager, _text(restored["game_id"])) == _agent_state(
+        manager, _text(original["game_id"])
+    )
+    original_end = _final(manager, _finish(manager, original))
+    restored_end = _final(manager, _finish(manager, restored))
+    assert restored_end == original_end

@@ -1,6 +1,7 @@
 """Tests for the framework-neutral game sessions of the play server."""
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.server.sessions import (
     GameSessionManager,
+    JsonObject,
     SeatAccessError,
     SessionError,
     StaleRevisionError,
@@ -407,6 +409,150 @@ def test_a_rollout_seat_acts_between_human_turns() -> None:
         if isinstance(entry.get("actor"), int)
     }
     assert {1, 2, 3} <= actors
+
+
+APP_AI_SEATS = ("human", "app_ai", "app_ai_medium", "app_ai_easy")
+
+
+def _ui_default_game(
+    manager: GameSessionManager,
+    seats: tuple[str, ...],
+    game_seed: int,
+    *,
+    scouts: bool = False,
+) -> JsonObject:
+    """A game with the rule options the browser's setup screen starts with
+    checked (CHOAM, the leader draft, the promo cards, Bloodlines, the Tech
+    Module, Immortality, Go to 11, Epic Game Mode), Arrakeen Scouts if asked."""
+
+    return manager.create_game(
+        seats,
+        game_seed=game_seed,
+        choam_module=True,
+        leader_draft=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+        go_to_11=True,
+        epic_game=True,
+        arrakeen_scouts=scouts,
+    )
+
+
+def _play_seat_zero(
+    manager: GameSessionManager, summary: JsonObject, steps: int
+) -> JsonObject:
+    """Seat 0 confirms its turn ends and otherwise takes legal action 0."""
+
+    game_id = _text(summary["game_id"])
+    for _ in range(steps):
+        if summary["finished"]:
+            break
+        revision = _int(summary["revision"])
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(game_id, seat=0, revision=revision)
+        else:
+            summary = manager.apply_action(
+                game_id, seat=0, revision=revision, index=0
+            )
+    return summary
+
+
+def test_app_ai_seats_build_the_app_agent_at_each_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dune_imperium.agents.app_ai import AppAIAgent
+    from dune_imperium.agents.base import StateAgent
+
+    def view_only(*_: object) -> None:
+        raise AssertionError("the server must hand app_ai the game state")
+
+    # Without the state app_ai cannot mirror the app and plays at random.
+    monkeypatch.setattr(AppAIAgent, "choose_action", view_only)
+    manager = GameSessionManager()
+
+    summary = manager.create_game(APP_AI_SEATS, game_seed=14, policy_seed=500)
+
+    assert summary["seats"] == list(APP_AI_SEATS)
+    session = manager._sessions[_text(summary["game_id"])]
+    assert sorted(session.agents) == [1, 2, 3]
+    for seat, level in ((1, 2), (2, 1), (3, 0)):
+        agent = session.agents[seat]
+        assert isinstance(agent, AppAIAgent)
+        assert isinstance(agent, StateAgent)
+        assert (agent.level, agent.seed) == (level, 500 + seat)
+    # The browser sends no policy seed: it defaults to the offset + game seed.
+    default = manager.create_game(APP_AI_SEATS, game_seed=14)
+    default_agents = manager._sessions[_text(default["game_id"])].agents
+    seeds = []
+    for seat in (1, 2, 3):
+        agent = default_agents[seat]
+        assert isinstance(agent, AppAIAgent)
+        seeds.append(agent.seed)
+    assert seeds == [700_014 + seat for seat in (1, 2, 3)]
+
+    _play_seat_zero(manager, summary, 60)
+    for seat in (1, 2, 3):
+        agent = session.agents[seat]
+        assert isinstance(agent, AppAIAgent)
+        assert sum(agent.mirrored.values()) > 0
+        assert not agent.fallbacks
+
+
+def test_the_same_seed_reproduces_an_app_ai_game() -> None:
+    manager = GameSessionManager()
+    all_app = ("app_ai", "app_ai_medium", "app_ai_easy", "app_ai")
+
+    first = _ui_default_game(manager, all_app, 12)
+    second = _ui_default_game(manager, all_app, 12)
+
+    assert first["finished"] is True
+    assert first["standings"] == second["standings"]
+    assert first["revision"] == second["revision"]
+
+    paused = _ui_default_game(manager, APP_AI_SEATS, 19)
+    again = _ui_default_game(manager, APP_AI_SEATS, 19)
+    assert again["revision"] == paused["revision"]
+    assert again["decision"] == paused["decision"]
+    paused = _play_seat_zero(manager, paused, 40)
+    again = _play_seat_zero(manager, again, 40)
+    assert again["revision"] == paused["revision"]
+    assert again["decision"] == paused["decision"]
+    assert (
+        manager._sessions[_text(again["game_id"])].steps
+        == manager._sessions[_text(paused["game_id"])].steps
+    )
+
+
+@pytest.mark.parametrize("scouts", [False, True], ids=["ui-default", "scouts"])
+def test_a_human_plays_three_app_ai_seats_to_the_end(
+    scouts: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    from dune_imperium.agents.app_ai import AppAIAgent
+
+    manager = GameSessionManager()
+    with caplog.at_level(logging.WARNING, logger="dune_imperium.agents.app_ai"):
+        summary = _ui_default_game(
+            manager,
+            ("human", "app_ai", "app_ai", "app_ai"),
+            3 if scouts else 1,
+            scouts=scouts,
+        )
+        summary = _play_seat_zero(manager, summary, 2_000)
+
+    assert summary["finished"] is True
+    standings = _rows(summary["standings"])
+    assert sorted(_int(entry["rank"]) for entry in standings) == [1, 2, 3, 4]
+    session = manager._sessions[_text(summary["game_id"])]
+    for seat in (1, 2, 3):
+        agent = session.agents[seat]
+        assert isinstance(agent, AppAIAgent)
+        # Every decision the app AI met was the app's: none was answered at
+        # random (unmirrored, or a window that failed).
+        assert dict(agent.fallbacks) == {}
+        assert sum(agent.mirrored.values()) > 100
+    assert caplog.records == []
 
 
 def test_creation_validates_seats_and_seeds() -> None:

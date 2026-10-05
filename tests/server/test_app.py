@@ -666,3 +666,32 @@ def test_the_api_accepts_registry_agent_seats() -> None:
     )
     assert rejected.status_code == 400
     assert "cannot build seat 1" in rejected.json()["detail"]
+
+
+def test_the_api_accepts_and_echoes_the_app_ai_seats() -> None:
+    client = TestClient(create_app(GameSessionManager()))
+    seats = ["human", "app_ai", "app_ai_medium", "app_ai_easy"]
+
+    summary = _create(client, seats=seats)
+
+    assert summary["seats"] == seats
+    players = summary["players"]
+    assert isinstance(players, list)
+    assert [player["kind"] for player in players] == seats
+    game_id = summary["game_id"]
+    assert client.get(f"/games/{game_id}").json()["seats"] == seats
+    # The level is part of the registry name: there is no other spelling.
+    rejected = client.post(
+        "/games", json={"seats": ["human", "app_ai_hard", "random", "random"]}
+    )
+    assert rejected.status_code == 400
+    assert "unknown seat assignment" in rejected.json()["detail"]
+
+
+def test_the_api_default_seats_stay_heuristic() -> None:
+    # The browser's open-server setup seats app_ai by default; a bare API
+    # call keeps its documented default (user decision 2026-10-05).
+    client = TestClient(create_app(GameSessionManager()))
+    response = client.post("/games", json={"game_seed": 21})
+    assert response.status_code == 200, response.text
+    assert response.json()["seats"] == ["human", "heuristic", "heuristic", "heuristic"]

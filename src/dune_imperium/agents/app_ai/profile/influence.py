@@ -315,6 +315,9 @@ def _has_tech_tile(ctx: AppContext, tile: str) -> bool:
 
 
 # -- board spaces and observation posts ---------------------------------------
+# The two caches below are pure functions of a hashable ``Board`` (and an
+# int) returning tuples of frozen entities: ``functools.cache`` is
+# thread-safe, and concurrent games at worst compute an equal value twice.
 
 
 @cache

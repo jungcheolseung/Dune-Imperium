@@ -17,8 +17,11 @@ place:
   Contract or Conflict deck contents, an opponent's hand, deck or Intrigue
   identities individually, another seat's frame context.
 
-``tests/unit/agents/app_ai/test_honesty.py`` enforces this: the agent's
-choice must not change when ``determinize`` re-deals every hidden zone.
+``tests/unit/agents/app_ai/test_app_ai_agent.py``
+(``test_choices_ignore_hidden_zones``, base + CHOAM) and
+``tests/unit/agents/app_ai/test_app_ai_honesty.py`` (the play UI's default
+options, with and without Arrakeen Scouts) enforce this: the agent's choice
+must not change when ``determinize`` re-deals every hidden zone.
 """
 
 from collections import Counter

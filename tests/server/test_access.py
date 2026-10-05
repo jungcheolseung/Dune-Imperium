@@ -601,6 +601,27 @@ def test_public_seat_kind_hides_a_checkpoint_path_when_asked() -> None:
     assert _public_seat_kind("heuristic", hide_path=False) == "heuristic"
 
 
+def test_public_seat_kind_hides_a_search_path_too() -> None:
+    assert (
+        _public_seat_kind("search:/home/host/runs/champion.pt", hide_path=True)
+        == "search:champion.pt"
+    )
+    assert _public_seat_kind("search:D:\\m\\s.pt", hide_path=True) == "search:s.pt"
+    assert (
+        _public_seat_kind("search:/home/host/runs/champion.pt", hide_path=False)
+        == "search:/home/host/runs/champion.pt"
+    )
+
+
+@pytest.mark.parametrize("kind", ["app_ai", "app_ai_medium", "app_ai_easy"])
+@pytest.mark.parametrize("hide_path", [True, False])
+def test_public_seat_kind_passes_app_ai_kinds_through(
+    kind: str, hide_path: bool
+) -> None:
+    # A registry name names no file: every player may see it as it is.
+    assert _public_seat_kind(kind, hide_path=hide_path) == kind
+
+
 # --- save_metadata ------------------------------------------------------
 
 
