@@ -15,11 +15,12 @@ members the AI depends on (``DeferValue``, ``SelectionMode``,
 ``CanRunImmediately``, ``AbilityTiming``).
 """
 
+import threading
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.summer import Summer
@@ -214,8 +215,13 @@ class UnportedAbility(Ability):
         return f"UnportedAbility({self.app_class!r}, {self.owner.ref!r})"
 
 
+#: Filled by ``@port`` while the modules import, read-only afterwards.
 PORTS: dict[str, type[Ability]] = {}
+#: Lookups of an app ability class with no port (coverage diagnostics only:
+#: no decision reads it). Process-wide, so concurrent games in the server's
+#: threadpool update it under ``_UNPORTED_LOCK``.
 UNPORTED: Counter[str] = Counter()
+_UNPORTED_LOCK: Final = threading.Lock()
 
 
 def port[A: Ability](app_class: str) -> Callable[[type[A]], type[A]]:
@@ -236,7 +242,8 @@ def ability_for(app_class: str, owner: Entity) -> Ability:
 
     cls = PORTS.get(app_class)
     if cls is None:
-        UNPORTED[app_class] += 1
+        with _UNPORTED_LOCK:
+            UNPORTED[app_class] += 1
         return UnportedAbility(owner, app_class)
     return cls(owner)
 

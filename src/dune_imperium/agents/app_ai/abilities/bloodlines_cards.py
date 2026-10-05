@@ -85,7 +85,6 @@ dispatches to).
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, ClassVar, Final
-from weakref import WeakKeyDictionary
 
 from dune_imperium.agents.app_ai.abilities import generic as g
 from dune_imperium.agents.app_ai.abilities.base import (
@@ -568,24 +567,18 @@ def grant_bene_gesserit_boost(me: PlayerState) -> PlayerState:
     return replace(me, bene_gesserit_boost_pending=True)
 
 
-#: Per-decision caches (one ``Profile`` per decision): pair values and
-#: finished ``unlock_value`` results.
-_PAIR_CACHE: WeakKeyDictionary[Profile, dict[tuple[str, str], float | None]] = (
-    WeakKeyDictionary()
-)
-_UNLOCK_CACHE: WeakKeyDictionary[Profile, dict[tuple[object, ...], float]] = (
-    WeakKeyDictionary()
-)
-#: Profiles inside an ``unlock_value`` computation (re-entrancy guard: a
-#: placement value that itself asks for an unlock, Urgent Shigawire's V,
-#: answers 0 for the unlock term instead of recursing).
-_UNLOCKING: set[int] = set()
+# ``unlock_value``'s per-decision caches (pair values and finished results)
+# and its re-entrancy flag live on the ``Profile`` (one per decision;
+# ``ProfileCore.unlock_pair_values``, ``unlock_values``, ``unlocking``), never
+# at module level, so concurrent games never share them. The flag: a
+# placement value that itself asks for an unlock (Urgent Shigawire's V)
+# answers 0 for the unlock term instead of recursing.
 
 
 def unlock_active(p: Profile) -> bool:
     """Whether ``p`` is inside an ``unlock_value`` computation."""
 
-    return id(p) in _UNLOCKING
+    return p.unlocking
 
 
 def _card_spaces(p: Profile, owner: PlayerState, card_ref: str) -> list[str]:
@@ -631,7 +624,7 @@ def _pair_value(p: Profile, card: Entity, space_id: str) -> float | None:
     re-entrancy guard produced).
     """
 
-    cache = _PAIR_CACHE.setdefault(p, {})
+    cache = p.unlock_pair_values
     key = (card.ref, space_id)
     if key in cache:
         return cache[key]
@@ -671,15 +664,15 @@ def unlock_value(
     0.
     """
 
-    if id(p) in _UNLOCKING:
+    if p.unlocking:
         return 0.0
     hand = _hand(p)
     candidates = hand if cards is None else list(cards)
     cache_key = (grant, tuple(c.ref for c in candidates))
-    cached = _UNLOCK_CACHE.setdefault(p, {}).get(cache_key)
+    cached = p.unlock_values.get(cache_key)
     if cached is not None:
         return cached
-    _UNLOCKING.add(id(p))
+    p.unlocking = True
     try:
         me = p.ctx.me
         granted = grant(me)
@@ -704,8 +697,8 @@ def unlock_value(
             best_now = _best(now_values)
             result = best_new - (best_now if best_now is not None else 0.0)
     finally:
-        _UNLOCKING.discard(id(p))
-    _UNLOCK_CACHE[p][cache_key] = result
+        p.unlocking = False
+    p.unlock_values[cache_key] = result
     return result
 
 

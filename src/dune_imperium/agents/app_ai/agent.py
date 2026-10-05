@@ -15,13 +15,31 @@ the way the app answers a forced prompt it cannot value
 (``PlayerEntity::DefaultRandomChoice``, a uniformly random legal action) and
 is counted in ``fallbacks``; the coverage census requires that count to be 0.
 
+A live game must never stall on an app_ai bug (user decision 2026-10-05, for
+the play UI): a window that raises, or that answers with an action outside
+the legal set, is answered the same way, counted in ``fallbacks`` under
+``error:<decision kind>`` and logged with the decision kind. The answer
+comes from the agent's own seeded RNG, so a save restore, which asks a fresh
+agent every AI step again, regenerates the same step. Every fallback logs a
+warning (or, for an error, an error) on this module's logger.
+
 The agent is a ``StateAgent`` because the app reads the open turn's context,
 the Reveal's Persuasion and deck multisets that ``PlayerView`` lacks; every
 read goes through ``AppContext``, which allows only what the seat may know.
+
+Concurrent games (the play server's threadpool) each hold their own agents.
+The package keeps no module-level state that a decision writes and a later
+decision reads: per-decision caches live on the ``Profile``, cross-decision
+memory on the agent, and module-level values are either built at import or
+pure ``functools.cache`` lookups of immutable values; ``abilities.UNPORTED``
+is a diagnostic counter updated under a lock
+(``tests/unit/agents/app_ai/test_app_ai_concurrency.py``).
 """
 
+import logging
 import random
 from collections import Counter
+from typing import Final
 
 from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import AppContext
@@ -33,6 +51,10 @@ from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
 
 LEVEL_NAMES = {0: "easy", 1: "medium", 2: "hard"}
+#: The ``fallbacks`` key prefix of a decision a window failed on.
+ERROR_PREFIX: Final = "error:"
+
+_LOGGER: Final = logging.getLogger(__name__)
 
 
 class AppAIAgent:
@@ -47,7 +69,9 @@ class AppAIAgent:
         self.level = level
         self._rng = random.Random(seed)
         self.memory = Memory()
-        # Decisions no window mirrors (answered at random), by decision kind.
+        # Decisions answered at random, by decision kind: no window mirrors
+        # them (``<kind>``, ``view-only:<kind>``) or the window failed
+        # (``error:<kind>``).
         self.fallbacks: Counter[str] = Counter()
         # Decisions answered by the app mirror, by decision kind.
         self.mirrored: Counter[str] = Counter()
@@ -57,8 +81,13 @@ class AppAIAgent:
     ) -> DomainAction:
         """View-only call: without the state the app cannot be mirrored."""
 
-        self.fallbacks[f"view-only:{observation.decision_kind}"] += 1
-        return default_random_choice(legal_actions, self._rng)
+        key = f"view-only:{observation.decision_kind}"
+        _LOGGER.warning(
+            "%s answered a %s decision at random: no state was given",
+            self._name(observation.player),
+            observation.decision_kind,
+        )
+        return self._random_answer(key, legal_actions)
 
     def choose_action_with_state(
         self,
@@ -73,17 +102,55 @@ class AppAIAgent:
         kind = observation.decision_kind
         if len(legal_actions) == 1:
             return legal_actions[0]
-        handler = handler_for(kind)
         action: DomainAction | None = None
-        if handler is not None:
-            ctx = AppContext(state, observation.player, observation)
-            profile = Profile(ctx, TABLES[self.level], self._rng)
-            run = DecisionRun(ctx, profile, legal_actions, self._rng, self.memory)
-            action = handler(run)
+        try:
+            handler = handler_for(kind)
+            if handler is not None:
+                ctx = AppContext(state, observation.player, observation)
+                profile = Profile(ctx, TABLES[self.level], self._rng)
+                run = DecisionRun(ctx, profile, legal_actions, self._rng, self.memory)
+                action = handler(run)
+        except Exception:
+            # The window may have drawn from the RNG and written memory
+            # before it failed; it does so identically on a restore's replay.
+            _LOGGER.exception(
+                "%s failed on a %s decision (round %s); answering at random",
+                self._name(observation.player),
+                kind,
+                state.round_number,
+            )
+            return self._random_answer(f"{ERROR_PREFIX}{kind}", legal_actions)
         if action is None:
-            self.fallbacks[str(kind)] += 1
-            return default_random_choice(legal_actions, self._rng)
+            _LOGGER.warning(
+                "%s answered an unmirrored %s decision at random",
+                self._name(observation.player),
+                kind,
+            )
+            return self._random_answer(str(kind), legal_actions)
         if action not in legal_actions:
-            raise ValueError(f"app_ai chose an illegal action {action!r} in {kind}")
+            _LOGGER.error(
+                "%s chose an illegal action %r in a %s decision (round %s); "
+                "answering at random",
+                self._name(observation.player),
+                action,
+                kind,
+                state.round_number,
+            )
+            return self._random_answer(f"{ERROR_PREFIX}{kind}", legal_actions)
         self.mirrored[str(kind)] += 1
         return action
+
+    def _random_answer(
+        self, key: str, legal_actions: tuple[DomainAction, ...]
+    ) -> DomainAction:
+        """``DefaultRandomChoice`` from the agent's own RNG, counted under ``key``.
+
+        Deterministic given the agent's history, so a restored game asks a
+        fresh agent the same questions and gets the same answers.
+        """
+
+        self.fallbacks[key] += 1
+        return default_random_choice(legal_actions, self._rng)
+
+    def _name(self, seat: int) -> str:
+        return f"app_ai {LEVEL_NAMES.get(self.level, self.level)} seat {seat}"

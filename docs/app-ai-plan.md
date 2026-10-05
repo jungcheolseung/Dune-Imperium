@@ -52,7 +52,7 @@
 | `profile/core.py` | `WormAIProfile` 메서드 선언 전부(계약). 구현은 `economy.py`·`influence.py`·`combat.py` 세 mixin과 확장 mixin `immortality.py`·`tech.py`(충실 포팅), `bloodlines.py`·`scouts.py`(앱식 확장) |
 | `abilities/` | 앱 능력 클래스 포트. `@port("<앱 전체 클래스명>")`로 등록, 앱 상속 구조를 그대로 따른다. 확장: `immortality.py`, `epic_promo.py`, `tech.py`(충실 포팅), `bloodlines_cards.py`, `bloodlines_systems.py`, `scouts.py`(앱식 확장, `worm.canis.abilities.AppStyle.*`) |
 | `windows/` | 우리 결정 창 → 앱 질문 → 우리 행동. 창별 `HANDLERS`. 확장 전용 창: `setup.py`(지도자 드래프트), `immortality.py`, `bloodlines.py`, `scouts.py`. 모르는 카드·행동 id는 기본값 없이 대체로 넘긴다 |
-| `agent.py` | `AppAIAgent(seed, level)`: `StateAgent`. 대응 안 된 결정은 앱의 `DefaultRandomChoice`처럼 합법 행동 중 무작위로 답하고 `fallbacks`에 센다(heuristic은 섞지 않는다, 11절) |
+| `agent.py` | `AppAIAgent(seed, level)`: `StateAgent`. 대응 안 된 결정은 앱의 `DefaultRandomChoice`처럼 합법 행동 중 무작위로 답하고 `fallbacks`에 센다(heuristic은 섞지 않는다, 11절). 창이 예외를 내거나 불법 행동을 고르면 같은 방식으로 답하고 `error:<결정 종류>`로 세며 로그를 남긴다(플레이 UI에서 게임이 멈추지 않게; 자기 RNG라 저장 복원도 같은 수를 만든다). 테스트는 `conftest.py`가 `error:` 대체를 실패로 만든다 |
 
 registry: `app_ai`(Hard), `app_ai_medium`, `app_ai_easy`.
 

@@ -16,6 +16,16 @@ def run(base: str, browser) -> None:
     )
     page.goto(base)
     page.wait_for_selector("#seat-selects select")
+    page.wait_for_function(
+        "document.querySelectorAll('#seat-selects select').length === 4"
+    )
+    check.ok(
+        page.evaluate(
+            "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
+        )
+        == ["human", "app_ai", "app_ai", "app_ai"],
+        "the open server's default seats are one human and three app AIs",
+    )
     check.ok(
         page.is_hidden("#opt-checkpoint-row"), "ordinary AI hides the checkpoint field"
     )
@@ -69,6 +79,7 @@ def run(base: str, browser) -> None:
         "temporarily hiding the path does not erase it",
     )
     # The hidden value must not turn an ordinary AI into a checkpoint seat.
+    # Seats 2-3 keep the open server's default AI, the app AI at Hard.
     page.select_option(seat, "heuristic")
     with page.expect_request(
         lambda request: request.method == "POST" and request.url.endswith("/games")
@@ -76,7 +87,7 @@ def run(base: str, browser) -> None:
         page.click("#create-game")
     payload = sent.value.post_data_json
     check.ok(
-        payload["seats"] == ["human", "heuristic", "heuristic", "heuristic"]
+        payload["seats"] == ["human", "heuristic", "app_ai", "app_ai"]
         and payload["game_seed"] == 42
         and payload["bloodlines"] is False
         and payload["tech_module"] is False,

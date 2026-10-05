@@ -777,12 +777,11 @@ def test_unlock_value_is_zero_without_new_pairs_and_inside_a_nested_call(
     assert bc.unlock_value(p, bc.grant_emperor_icon) == 0.0  # 5 - 5
     nothing = prof(hand(turn_state))
     assert bc.unlock_value(nothing, bc.grant_resourceful_icons) == 0.0
-    bc._UNLOCKING.add(id(p))
-    try:
-        assert bc.unlock_active(p)
-        assert bc.unlock_value(p, bc.grant_ignore_requirements, ()) == 0.0
-    finally:
-        bc._UNLOCKING.discard(id(p))
+    # The re-entrancy flag is the profile's own (never module state).
+    p.unlocking = True
+    assert bc.unlock_active(p)
+    assert not bc.unlock_active(prof(hand(turn_state, starter("dagger"))))
+    assert bc.unlock_value(p, bc.grant_ignore_requirements, ()) == 0.0
 
 
 def test_grants_change_only_the_seat_state(turn_state: GameState) -> None:

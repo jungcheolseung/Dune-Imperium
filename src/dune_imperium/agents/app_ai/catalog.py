@@ -658,6 +658,9 @@ def _space_overlay(space_id: str, board: Board) -> tuple[tuple[str, ...], bool]:
     return tuple(added), combat
 
 
+# A pure function of hashable immutable arguments with an immutable result
+# (frozen Archetype, MappingProxyType attributes): ``functools.cache`` is
+# thread-safe, and concurrent games at worst compute an equal value twice.
 @cache
 def _space_archetype(space_id: str, board: Board) -> Archetype:
     """The space's archetype with this game's overlays (the app's own object

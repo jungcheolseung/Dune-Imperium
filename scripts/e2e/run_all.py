@@ -36,6 +36,7 @@ SECONDS = {
     "scouts": 28,
     "races": 26,
     "open_mode": 25,
+    "app_ai_seats": 20,
     "spectate": 16,
     "turn_end": 15,
     "remote_fresh": 14,
