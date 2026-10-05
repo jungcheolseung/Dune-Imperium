@@ -205,14 +205,73 @@ app_ai가 Bloodlines·Arrakeen Scouts에서 heuristic으로 넘어간다는 보�
 - **Commander**: 병력 가치(`troop_value`)에 Strength 비율을 곱해 병력처럼 보고, 붙은 Skill은 해당 효과의 가격으로 더한다. 재구매
   (2 Solari)는 위의 지불 규칙.
 - **순서 질문**(우리 엔진만 묻는 효과 순서 등)은 4절 2번처럼 앱 엔진이 하는 순서, 앱에 없으면 우리 엔진이 주는 순서의 첫째.
+- **앱에 판단 기계가 없는 효과**: 같은 종류의 효과를 앱이 다른 카드에서 값 매긴 선례가 있으면 그 계산을 그대로 쓴다(선례를 사양에
+  적는다). 선례가 없으면 그 효과가 지금 주는 것의 1회 가격으로 본다. 상대에게 주는 손해와 정보(덱 엿보기)는 선례가 없으면 0.
+  오래 가는 효과(Navigation의 영구 Persuasion 등)는 앱의 남은 라운드 판단(국면·종료 예측)으로 횟수를 셀 수 있으면 1회 가격 × 그
+  횟수, 아니면 1회 가격.
 
-### 11.5 진행
+### 11.5 R8·R9 지도의 열린 문제에 대한 결정
+
+Bloodlines (R8):
+
+- **Tech**: Rise of Ix 타일 기계(`spec/rix-tech.md`)를 충실 포팅해 바탕으로 쓰고(2단계), Bloodlines 타일은 11.3의 합성 아키타입으로
+  그 위에서 값을 매긴다. 효과가 같은 RoI 타일 능력 클래스가 있으면 그대로 쓴다.
+- **Commander**: 병력 1의 `troop_value` + 병력보다 높은 Strength 몫의 `strength_value` + 붙은 Skill 효과의 가격. 다시 사 오기
+  (2 Solari)는 얻는 것 − 2 Solari 가치 > 0.
+- **획득 효과의 0 가격**: 앱의 `GetAcquireEffectsValue`는 Intrigue·Trash·PlaceSpy·Contract 획득 효과를 0으로 본다. 앱은 같은 경우
+  카드별 `SpecificAcquireBonus`로 값을 더했다(Chaumurky: Intrigue 하나당 `IntrigueValue`). 앱식 확장도 그 선례대로 카드별 보너스로
+  그 효과의 가격을 더한다.
+- **Agent 상자의 Bond**(Southern Faith, Possible Futures): In High Places의 Agent 상자 처리 방식을 쓴다.
+- **Desert Scouts 후퇴**: 앱처럼 병력이 있으면 병력을 뺀다(Commander는 병력이 없을 때만).
+- **피해자 쪽 결정**(`opponent_unit_loss`, `opponent_spy_move`): 11.4의 강제 손실 규칙(잃는 가치가 가장 작은 것).
+- **한 번도 합법이 아니었던 id**(`hold_contract_icons` 등): 빈 답 또는 강제 단일 선택이라는 앱 엔진의 처리.
+- **Command(6+)**: 우리 엔진은 Reveal에서 생긴 Persuasion으로 판정하므로(OQ-033) 구매가 Command를 깨지 않는다. Command 선택은 다른
+  Reveal 효과처럼 활성 카드 순서대로 구매 전에 처리한다.
+- **Twisted Intrigue**는 버림 더미에서 다시 섞이지 않으므로(OQ-097) Intrigue 덱 구성 추정에서 뺀다.
+- Kota의 Secret Project와 Y'rkoon의 Navigation 칸은 주인에게만 보인다(`AppContext`가 주인에게만 노출).
+
+Arrakeen Scouts (R9): 앱에 없으므로 모든 결정이 앱식 확장이다.
+
+- 강제 손실 사건과 Political Equilibrium 동점: 잃는 가치가 가장 작은 것(11.4).
+- 경매: 남는 값까지 입찰, 상대 입찰 추정 없음. 규칙의 동점 처리(1위 동점이면 2위 없음, 0 입찰은 이기지 못함)는 엔진이 한다.
+- 지연 보상: 할인 없음. 그 전에 게임이 끝날 수 있으면 0(11.4).
+- 하위 위원회(유일 자리 포함): 가장 좋은 줄이 0 초과면 참여. 상대에게서 자리를 빼앗는 가치는 보지 않는다.
+- `scouts_lose_influence_to`(동맹 받는 이): 기존 app_ai 선례대로 먼저 제시된 이.
+- Rebuild Infrastructure: 자원 가격으로 본다. 자원봉사 규칙은 자기 순이익 > 0이면 동의.
+- Scouts 단계에서 뽑은 카드는 이번 라운드에 쓸 수 있으므로 앱의 `CardDrawValue`를 그대로 쓴다.
+
+### 11.7 앱식 사양 검토 결정 (2026-10-05)
+
+`docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md`(각각 작성 agent + 독립 검증 agent)가 남긴 판단 중 아래만
+바꾸고 나머지는 승인한다. 이 절이 세 문서보다 우선한다.
+
+- **Tech 타일 `EarlyMod`/`LateMod`**: 11.3의 "획득 효과가 같은 RoI 타일" 규칙은 Bloodlines 타일 17/18장을 1–3라운드에 0점으로
+  만든다(앱의 "Not early tech" 절단). 앱 RoI에서 초반 가산은 경제·덱 엔진 타일 8/18장에 붙어 있다. 그래서 **지속 능력이 가장 가까운
+  RoI 타일**(`rix-tech.md` §1.2의 nearest 열; 같거나 같은 꼴의 능력) 것을 먼저 쓰고, 없을 때만 획득 효과가 같은 타일 것을 쓴다:
+  Planetary Array = Windtraps(Conflict 승리 trigger, 1.5/0.5), Self-Destroying Messages = Minimic Film(Reveal +1 Persuasion,
+  1.5/—), Delivery Bay = Disposal Facility(6+ Persuasion 조건, 1.5/0.0), Rapid Dropships = Training Drones(뒤집어 배치,
+  1.1/0.75), CHOAM Transports = Holtzman Engine(조건부 종료 VP, 1.2/—). 나머지는 그대로.
+- **가진 타일의 값(`HeldTileValue`)**: 사는 판단의 두 절단("Game Arc Min", "Not early tech")과 획득 효과 항은 사는 순간의 것이므로
+  빼고, `AcquireValue` × 국면 배율([EarlyMod, 1, LateMod][arc])로 본다.
+- **Urgent Shigawire의 아이콘 부여**: 0이 아니라 대안(손의 가장 좋은 Bene Gesserit 카드의 0.75 × UnlockValue)을 쓴다. 11.4의 "1회
+  가격"에 맞는 쪽이다.
+- **Scouts 강제 Trash(Funeral Rites, Termination Request)**: 손에 쓸모없는 카드(`TrashValue` > 0)가 있으면 그대로(`TrashCardValue`),
+  없으면 `AcquireValue`가 가장 작은 카드를 고르고 그 카드의 `−AcquireValue`를 값으로 본다. 앱의 `TrashValue`는 음수가 없어 좋은
+  카드를 영구히 잃는 것을 값 매기지 못한다. 그 카드를 갖는 값(`AcquireValue`)이 가장 가까운 앱 숫자다.
+- 승인하고 구현 때 지킬 것: 지도자 미리보기(`GetRevealPreviewValue`) 재정의는 만든다. 구현자는 Southern Elders·BG Operative의 앱
+  미리보기 본문을 역어셈블로 읽고 그 꼴을 따른다. 오래 가는 효과(Skill, Navigation 3)는 1회 가격으로 본다(11.4; 앱에 횟수를 세는
+  도우미가 없다). Mohiam의 강제 Gather Intelligence는 회수가 원치 않는 것일 때 `CardDrawValueWithBuyGains − SpyValue`(음수)를 더한다(앱이 회수를 원하는지 가르는 바로 그 비교). Plasteel Blades의
+  추가 Skill(`max(0, SkillValue − HeldTileValue)`)은 Commander 구매·재구매 순이익에 더한다. Into the Fray의 Conflict Agent를
+  `RecallAgentValue`가 배치된 것으로 세는 변경은 Bloodlines 게임에서만 켠다.
+
+### 11.6 진행
 
 | 단계 | 작업 | 상태 |
 |---|---|---|
-| 기반 | 모든 앱 아키타입 추출, Go to 11 VP 눈금, heuristic 대체 제거, `Board`, Immortality·Epic·Tleilaxu·프로모 대응표 | 이 커밋 |
-| 2 | 프로필 확장(Immortality §2, RoI Tech), Immortality 능력 75개, Epic·프로모 능력, Bloodlines 합성 아키타입 생성기 | |
-| 3 | Bloodlines 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | |
+| 기반 | 모든 앱 아키타입 추출, Go to 11 VP 눈금, heuristic 대체 제거, `Board`, Immortality·Epic·Tleilaxu·프로모 대응표; 지도자 드래프트 창(균등 무작위, 앱 그대로) | 완료 `fca021f2`, `b244047a` |
+| 2 | 충실 포팅: Immortality 프로필(§2)·능력(§3–7), Epic·프로모 능력, Bloodlines Tech의 바탕인 RoI Tech 기계 | 진행 중 |
+| 2' | 앱식 사양: `docs/app-ai/bloodlines-cards.md`, `bloodlines-systems.md`, `scouts.md` | 진행 중 |
+| 3 | Bloodlines 합성 아키타입 생성기와 능력(카드·책략·Twisted·Navigation·지도자·Skill·Commander·Tech·계약 토큰·Conflict), Scouts 가격 | |
 | 4 | 결정 창: 기존 창에 새 id, 새 창(Immortality 6, Bloodlines 10, Scouts 10, `leader_draft`) | |
 | 5 | 선택지 조합 전부에서 통합 census(대체 0), 축별 A/B, 문서 | |
 
