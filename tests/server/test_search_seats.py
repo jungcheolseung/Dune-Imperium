@@ -13,6 +13,7 @@ import dataclasses
 import json
 import logging
 import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -29,7 +30,10 @@ from dune_imperium.agents.registry import is_background_agent_kind  # noqa: E402
 from dune_imperium.core.actions import DomainAction  # noqa: E402
 from dune_imperium.core.observation import PlayerView  # noqa: E402
 from dune_imperium.core.state import GameState, canonical_state_hash  # noqa: E402
+from dune_imperium.rules.frames import FrameKind  # noqa: E402
+from dune_imperium.server.session_log import undo_window  # noqa: E402
 from dune_imperium.server.sessions import (  # noqa: E402
+    GameSession,
     GameSessionManager,
     JsonObject,
     SessionError,
@@ -37,6 +41,11 @@ from dune_imperium.server.sessions import (  # noqa: E402
 
 HUMAN_FIRST_SEED = 0  # seat 0 opens the first round
 SEARCH_FIRST_SEED = 5  # seat 1 opens it
+# Base rules, seat 0 taking action 0 against three search seats that answer
+# their first legal action (``quick_search``): seat 3 plays Covert Operation,
+# seat 0 discards for it first (step 338), and seat 1 is asked to discard
+# next while seat 0's discard is still in seat 0's undo window.
+COVERT_OPERATION_SEED = 7
 
 
 def _obj(value: object) -> dict[str, object]:
@@ -134,6 +143,43 @@ def gate(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Gate]:
     held.open()
 
 
+def _covert_operation_player(state: GameState) -> int | None:
+    """The seat whose Covert Operation the pending discard answers, if any."""
+
+    top = state.decision_stack[-1]
+    if top.kind != FrameKind.OPPONENT_CARD_DISCARD:
+        return None
+    player = dict(top.context)["covert_operation_owner"]
+    assert isinstance(player, int)
+    return player
+
+
+@pytest.fixture
+def quick_search(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Gate]:
+    """Search seats that answer their first legal action at once.
+
+    Still background seats, only without the playouts, so a game reaches a
+    late position in a second. The gate holds just the discards a Covert
+    Operation asks of them: answers inside another seat's Agent turn.
+    """
+
+    held = _Gate()
+
+    def first(
+        agent: NetworkSearchAgent,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        if _covert_operation_player(state) is not None:
+            held.pass_through(state)
+        return legal_actions[0]
+
+    monkeypatch.setattr(NetworkSearchAgent, "choose_action_with_state", first)
+    yield held
+    held.open()
+
+
 class _Rings:
     """A change listener that records every ring."""
 
@@ -193,6 +239,49 @@ def _advance(
         else:
             summary = manager.apply_action(game_id, seat=0, revision=revision, index=0)
     return _settled(manager, summary)
+
+
+def _held_or_rested(manager: GameSessionManager, game_id: str, gate: _Gate) -> bool:
+    """Wait until the gate holds a search seat (True) or none thinks (False)."""
+
+    session = manager._sessions[game_id]
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if gate.asked.is_set():
+            return True
+        with session.lock:
+            if not session.ai_worker and session.thinking is None:
+                return False
+        time.sleep(0.002)
+    raise AssertionError("the search seats neither answered nor reached the gate")
+
+
+def _play_until_held(
+    manager: GameSessionManager, summary: JsonObject, gate: _Gate
+) -> JsonObject:
+    """Play seat 0 like ``_advance`` until the gate holds a search seat."""
+
+    game_id = _text(summary["game_id"])
+    for _ in range(1000):
+        if _held_or_rested(manager, game_id, gate):
+            return _within(5, lambda: manager.summary(game_id))
+        summary = manager.summary(game_id)
+        assert not summary["finished"], "the game ended before the gate held"
+        revision = _int(summary["revision"])
+        if summary["confirmation"] == 0:
+            manager.confirm_turn(game_id, seat=0, revision=revision)
+        else:
+            manager.apply_action(game_id, seat=0, revision=revision, index=0)
+    raise AssertionError("the gate never held a search seat")
+
+
+def _unguarded_undo_window(manager: GameSessionManager, game_id: str) -> int:
+    """Seat 0's undo window as the log and the press would leave it."""
+
+    session = manager._sessions[game_id]
+    with session.lock:
+        unsealed = len(session.steps) - session.undo_floor
+        return max(0, min(undo_window(session.log, 0), unsealed))
 
 
 def _seat_steps(steps: object, seats: set[int]) -> int:
@@ -508,6 +597,123 @@ def test_a_failing_search_falls_back_and_the_game_goes_on(
     assert sum("failed to answer" in text for text in messages) == background
     assert sum("failed again" in text for text in messages) == 1
     assert len(view_calls) == background
+
+
+def test_a_failing_worker_step_frees_the_table(
+    search_kind: str,
+    quick_search: _Gate,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A step the engine refuses stops the worker without stranding the game.
+
+    The seat stops thinking and the table hears it, so seat 0 gets back the
+    undo its own discard had (the same failure inside a request would have
+    left it too), takes the discard back and plays on; nothing retried the
+    failed step in between.
+    """
+
+    applied = GameSessionManager._agent_step_locked
+    failed: list[int] = []
+
+    def refused_once(
+        manager: GameSessionManager,
+        session: GameSession,
+        seat: int,
+        action: DomainAction,
+    ) -> bool:
+        if not failed and _covert_operation_player(session.state) is not None:
+            failed.append(seat)
+            raise RuntimeError("the engine refused the discard")
+        return applied(manager, session, seat, action)
+
+    manager = GameSessionManager()
+    rings = _Rings()
+    manager.add_change_listener(rings)
+    quick_search.close()
+    summary = manager.create_game(
+        ("human", search_kind, search_kind, search_kind),
+        game_seed=COVERT_OPERATION_SEED,
+    )
+    game_id = _text(summary["game_id"])
+    held_session = manager._sessions[game_id]
+    held = _play_until_held(manager, summary, quick_search)
+    window = _unguarded_undo_window(manager, game_id)
+    assert window > 0
+    steps = len(held_session.steps)
+    monkeypatch.setattr(GameSessionManager, "_agent_step_locked", refused_once)
+    rings.payloads.clear()
+
+    with caplog.at_level(logging.ERROR, logger="dune_imperium.server.sessions"):
+        quick_search.open()
+        manager.wait_for_ai(game_id, timeout=10)
+
+    assert failed == [_obj(held["decision"])["owner"]]
+    assert any("AI worker" in record.getMessage() for record in caplog.records)
+    worker = _worker(game_id)
+    if worker is not None:
+        worker.join(10)
+    assert not held_session.ai_worker
+    stopped = manager.summary(game_id)
+    assert stopped["thinking"] is None
+    assert stopped["revision"] == held["revision"]
+    assert len(held_session.steps) == steps
+    # The tables heard the seat stop thinking.
+    assert [_obj(bell)["thinking"] for bell in rings.payloads] == [None]
+    assert _obj(rings.payloads[0])["revision"] == held["revision"]
+    # The undo the thinking seat had kept closed is open again.
+    assert stopped["undo"] == [{"seat": 0, "steps": window}]
+    taken_back = manager.undo(
+        game_id, 0, revision=_int(stopped["revision"]), steps=window
+    )
+    assert _obj(taken_back["decision"])["owner"] == 0
+
+    # Playing on hands the discard over again, and this time it goes in.
+    rested = _advance(manager, taken_back, 1)
+    assert failed == [_obj(held["decision"])["owner"]]
+    assert len(held_session.steps) > steps
+    assert rested["thinking"] is None
+
+
+def test_a_worker_step_that_fails_after_it_was_applied_still_rings(
+    search_kind: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    advance = GameSessionManager._advance_locked
+    failed: list[int] = []
+
+    def failing_on_the_worker(
+        manager: GameSessionManager, session: GameSession
+    ) -> None:
+        if not failed and threading.current_thread().name.startswith("ai-worker-"):
+            failed.append(len(session.steps))
+            raise RuntimeError("the advance failed")
+        advance(manager, session)
+
+    manager = GameSessionManager()
+    rings = _Rings()
+    manager.add_change_listener(rings)
+    monkeypatch.setattr(GameSessionManager, "_advance_locked", failing_on_the_worker)
+    summary = manager.create_game(
+        ("human", search_kind, search_kind, search_kind),
+        game_seed=SEARCH_FIRST_SEED,
+    )
+    game_id = _text(summary["game_id"])
+    session = manager._sessions[game_id]
+    manager.wait_for_ai(game_id, timeout=30)
+
+    # Seat 1's answer went in before the advance after it failed.
+    assert failed == [len(session.steps)]
+    last = session.steps[-1]
+    assert isinstance(last, DomainAction) and last.actor == 1
+    stopped = manager.summary(game_id)
+    assert stopped["thinking"] is None
+    assert _int(stopped["revision"]) > _int(summary["revision"])
+    assert not session.ai_worker
+    # ...and the tables heard of it.
+    assert len(rings.payloads) == 1
+    bell = _obj(rings.payloads[0])
+    assert bell["revision"] == stopped["revision"]
+    assert bell["thinking"] is None
 
 
 def test_the_hand_over_listener_hears_the_search_seats_reach_a_human(
