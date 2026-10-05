@@ -319,7 +319,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
-    what each seat's view and choices show).
+    what each seat's view and choices show). It is knowledge of a card's
+    place: a deck card stays known to nobody even though the play server
+    shows the owner its deck's composition, sorted (OQ-010 ruling 5).
     """
 
     nobody: frozenset[int] = frozenset()

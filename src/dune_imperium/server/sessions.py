@@ -1902,10 +1902,19 @@ def _serialize_view(
     Undo/review states already contain only their own applied events.
     ``disclose`` adds hidden zones only for a finished game (OQ-010 ruling
     4); ``state`` may be an earlier state of that finished game.
+
+    The observing seat's own ``private`` block also carries ``deck_cards``,
+    the composition of its draw deck sorted by card id, never its order
+    (OQ-010 ruling 5: the owner can deduce the composition, so showing it
+    reveals nothing new; the order stays hidden). ``view.player`` is the
+    observer, so no other seat's block ever carries it.
     """
 
     serialized = _jsonify(asdict(view))
     assert isinstance(serialized, dict)
+    private = serialized.get("private")
+    if isinstance(private, dict):
+        private["deck_cards"] = [*sorted(state.players[view.player].deck)]
     serialized["conflict_history"] = _jsonify(
         [
             {key: dict(event.payload)[key] for key in ("round", "conflict_id")}

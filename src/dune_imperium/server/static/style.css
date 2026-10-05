@@ -298,6 +298,10 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .stats { display: flex; flex-wrap: wrap; gap: 0.15rem 0.7rem; align-items: center; }
 .stat { white-space: nowrap; }
 .stat .icon { height: 1.35em; margin-right: 0.1em; }
+/* A count that opens its card list (the hand strip's deck and discard pile):
+   a keyboard-reachable control, not a plain number. */
+.stat.clickable:hover { color: var(--accent); }
+.stat.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
 /* ---------- table layout ---------- */
 
@@ -1240,6 +1244,7 @@ kbd {
 .seat .badge.ai { background: var(--line); color: var(--ink); }
 .seat .stats { margin-top: 0.15rem; gap: 0.15rem 0.55rem; }
 .seat .zones { font-size: 0.75rem; opacity: 0.7; margin-top: 0.15rem; }
+.zone-count { white-space: nowrap; }
 
 .cardline { margin: 0.1rem 0; }
 .tag {
@@ -1631,6 +1636,7 @@ kbd {
 }
 .popover.hover { pointer-events: none; }
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
+.popover-note { font-size: 0.75rem; opacity: 0.75; margin-bottom: 0.3rem; }
 .conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .conflict-history-close { padding: 0 0.4rem; font-size: 1.2rem; }
 .conflict-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.8rem; margin-top: 0.5rem; }
