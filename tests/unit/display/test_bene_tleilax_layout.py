@@ -104,3 +104,32 @@ def test_scouts_pieces_have_their_places_on_this_board() -> None:
     spice_width, spice_height = layout["spice_size"]
     assert x + spice_width / 2 < 41.1 and 87.8 < y < 96.6
     assert y + spice_height / 2 < 100
+
+
+def test_specimen_groups_fit_inside_the_printed_axolotl_tanks() -> None:
+    # "supply의 troop 하나를 Bene Tleilax board의 Axolotl tanks에 놓는다."
+    # [Immortality pp. 8, 16] (docs/rules/immortality.md:69). The four
+    # quarters are solely a display arrangement, not additional rules.
+    layout = bene_tleilax_layout()
+    specimens = layout["specimens"]
+    left, top, width, height = specimens["box"]
+    assert 1.6 <= left < left + width <= 26.7
+    assert 74 <= top < top + height <= 96.5
+    boxes = specimens["boxes"]
+    assert len(boxes) == 4
+    for x, y, w, h in boxes:
+        assert left <= x < x + w <= left + width
+        assert top <= y < y + h <= top + height
+    for i, (x, y, w, h) in enumerate(boxes):
+        for bx, by, bw, bh in boxes[i + 1 :]:
+            assert x + w <= bx or bx + bw <= x or y + h <= by or by + bh <= y
+    # The same physical troop cube as the Offering pieces; square pixels
+    # on the rectangular scan and a single cube fits without shrinking.
+    cube_width, cube_height = specimens["sizes"]["troop"]
+    assert specimens["sizes"]["troop"] == layout["scouts"]["sizes"]["troop"]
+    assert abs(cube_width * layout["aspect"] - cube_height) < 0.002
+    assert all(
+        cube_width + 2 * specimens["padding"] <= w
+        and cube_height + 2 * specimens["padding"] <= h
+        for _, _, w, h in boxes
+    )

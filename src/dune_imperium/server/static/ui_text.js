@@ -5,6 +5,10 @@
    hole the caller fills, {term} a rule term in the current language (see
    t() and tNode() in i18n.js). */
 const UI_TEXT = {
+  "board.seat_specimens": {
+    "ko": "플레이어{{seat}} · {specimen} {{count}}",
+    "en": "Player {{seat}} · {specimen} {{count}}"
+  },
   "board.conflict_history_button": { "ko": "교전 이력", "en": "History" },
   "panels.conflict_history": { "ko": "교전 카드 이력", "en": "Conflict card history" },
   "panels.conflict_history_open": {

@@ -805,8 +805,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    printed quadrant or the ring's, and each piece is placed and sized inline
    in percent of it. The pieces never take a click; the box's name (title)
    gives the exact counts. */
-.conflict-units, .garrison-units { position: absolute; }
-:is(.conflict-unit, .garrison-unit) {
+.conflict-units, .garrison-units, .bt-specimen-group { position: absolute; }
+:is(.conflict-unit, .garrison-unit, .bt-specimen) {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
@@ -814,7 +814,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 /* A troop is the seat's cube, exactly like an Influence cube (.track-cube):
    flat colour, the dark edge a ring outside the box. */
-:is(.conflict-unit, .garrison-unit)[data-kind="troop"] {
+:is(.conflict-unit, .garrison-unit, .bt-specimen)[data-kind="troop"] {
   box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 /* The seat's Agent figure (seatPiece), as on a space (.agent-token). */
@@ -1916,6 +1916,9 @@ kbd {
 .bt-hex, .bt-track-cell { position: absolute; }
 .bt-hex:hover, .bt-track-cell:hover { outline: 2px solid var(--glow); border-radius: 8px; }
 .bt-token { pointer-events: none; }
+.bt-specimens-summary { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; margin-top: 0.6rem; }
+.bt-specimens-count { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; }
+.bt-specimen-swatch { width: 0.7rem; height: 0.7rem; flex: none; box-shadow: 0 0 0 1px #111; }
 
 /* Arrakeen Scouts mission pieces (board.js renderScoutsBoardPieces): each
    piece's footprint is set inline in percent of its stage and centred on

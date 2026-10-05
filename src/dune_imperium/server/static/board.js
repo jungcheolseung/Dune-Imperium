@@ -746,6 +746,7 @@ function conflictUnitLayout(counts, box, layout, { fromRight = false, fromBottom
     const rows = [];
     let row = null;
     for (const kind of CONFLICT_UNIT_KINDS) {
+      if (!counts[kind]) continue;
       const [w, h] = sizes[kind].map((value) => value * scale);
       const figure = kind !== "troop";
       for (let index = 0; index < (counts[kind] || 0); index += 1) {
@@ -1966,7 +1967,30 @@ function renderBeneTleilax(market, view) {
   trackHead.textContent = t("board.tleilaxu_track");
   box.appendChild(trackHead);
   box.appendChild(track);
+  box.appendChild(beneTleilaxSpecimenSummary(view));
   market.appendChild(box);
+}
+
+/* Specimens are the player's troop cubes in the Axolotl tanks
+   (docs/rules/immortality.md, "Specimen과 Axolotl tanks",
+   [Immortality pp. 8, 16]). Read the existing public count; no rule or
+   supply conversion is performed by the renderer. */
+function specimenLabel(player) {
+  return t("board.seat_specimens", { seat: player.player, count: player.specimens || 0 });
+}
+
+function beneTleilaxSpecimenSummary(view) {
+  const summary = document.createElement("div");
+  summary.className = "bt-specimens-summary";
+  for (const player of view.players) {
+    const row = document.createElement("div");
+    row.className = "bt-specimens-count";
+    row.dataset.seat = player.player;
+    const cube = unitPiece("troop", player.player, "bt-specimen-swatch");
+    row.append(cube, specimenLabel(player));
+    summary.appendChild(row);
+  }
+  return summary;
 }
 
 function renderBeneTleilaxScan(layout, view) {
@@ -2092,6 +2116,19 @@ function renderBeneTleilaxScan(layout, view) {
     );
     spice.classList.add("bt-spice");
     stage.appendChild(spice);
+  }
+  const specimens = overlay.specimens;
+  if (specimens) {
+    for (const player of view.players) {
+      if (!player.specimens) continue;
+      const box = specimens.boxes[player.player];
+      const placed = conflictUnitLayout({ troop: player.specimens }, box, specimens);
+      stage.appendChild(unitGroup(player.player, box, placed, {
+        className: "bt-specimen-group",
+        pieceClass: "bt-specimen",
+        label: specimenLabel(player),
+      }));
+    }
   }
   return stage;
 }

@@ -4,7 +4,8 @@ The play server can serve one machine-local scan of the printed Bene
 Tleilax board (``assets/board/bene_tleilax.jpg``, or
 ``DUNE_IMPERIUM_BENE_TLEILAX_IMAGE``) and the browser draws the live state
 on top of it: each seat's research token on its hex, the Tleilaxu tokens on
-the track, and the bank's spice on the track's fourth space.
+the track, the bank's spice on the track's fourth space, and each player's
+specimens in the Axolotl tanks at the lower left.
 
 Every value is a percentage of the image's width or height, so any scan
 with the same framing works regardless of resolution. They were measured
@@ -115,6 +116,19 @@ SCOUTS_TROOP_SIZE: Final = (
 )
 SCOUTS_GAP: Final = (round(_GAP_PX / 5551 * 100, 3), round(_GAP_PX / 3952 * 100, 3))
 
+# Axolotl tanks: the outlined lower-left panel (x 1.6..26.7, y 74..96.5
+# on the owner's scan, measured 2026-10-05). Specimens are the player's
+# troop cubes, at the same size as the Offering troops above. The four
+# inset boxes are a UI arrangement within the shared printed tank, not
+# printed player spaces: one colour per quarter, without overlap.
+SPECIMEN_BOX: Final = (2.2, 74.4, 24.0, 21.6)
+SPECIMEN_PLAYER_BOXES: Final = (
+    (3.0, 75.2, 10.5, 9.6),
+    (14.8, 75.2, 10.5, 9.6),
+    (3.0, 85.6, 10.5, 9.6),
+    (14.8, 85.6, 10.5, 9.6),
+)
+
 
 def bene_tleilax_layout() -> dict[str, Any]:
     """Return the overlay layout as plain JSON-ready values."""
@@ -132,6 +146,14 @@ def bene_tleilax_layout() -> dict[str, Any]:
         "aspect": SCAN_ASPECT,
         "track_start_discs": [list(point) for point in TRACK_START_DISCS],
         "research_start_discs": [list(point) for point in RESEARCH_START_DISCS],
+        "specimens": {
+            "box": list(SPECIMEN_BOX),
+            "boxes": [list(box) for box in SPECIMEN_PLAYER_BOXES],
+            "sizes": {"troop": list(SCOUTS_TROOP_SIZE)},
+            "gap": 0.4,
+            "padding": 0.35,
+            "min_scale": 0.5,
+        },
         "scouts": {
             "helix_spice_point": list(SCOUTS_HELIX_SPICE_POINT),
             "offering_space": TLEILAXU_OFFERING_TRACK_SPACE,

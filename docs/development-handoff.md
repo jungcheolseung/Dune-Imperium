@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 베네 틀레이락스 게임판의 표본 큐브
+
+- 베네 틀레이락스 보드 스캔의 왼쪽 아래 Axolotl tanks에 공개 `player.specimens` 수만큼 해당 플레이어 색상의 병력 큐브를 표시한다. 공용 열의 작은 보드와 **크게 보기**는 같은 renderer를 사용하고 표본 생성·지출·반환과 다른 플레이어의 업데이트에 맞춰 다시 그린다. 구역에 포인터를 올리면 플레이어1~4 / Player 1~4와 정확한 표본 수가 표시되며, 보드 이미지가 없으면 색상 범례와 플레이어별 표본 수를 텍스트로 보여준다.
+- 기존 scan의 표본 구역 안에 네 플레이어의 큐브를 서로 겹치지 않는 네 묶음으로 배치한다. 이 구분은 화면 배치이며 인쇄된 플레이어 전용 칸이나 새 규칙이 아니다. 큐브는 기존 병력 조각과 같은 색상·크기·윤곽을 사용하고, 많으면 구역 안에 들어가도록 축소한다. 공통 직사각형 병력 배치 함수는 수가 0인 종류의 크기를 읽지 않도록 해 표본의 troop 전용 배치에도 사용한다. 엔진의 표본 생성·지출·반환·공급처 수와 codec v135·관측 v30은 그대로다.
+- 검증: 관련 pytest **74개 통과**(Bene Tleilax layout·Immortality·catalog·i18n), 새 Chrome `bene_tleilax_specimens.py` **130개 검사**와 관련 E2E **6종**(`bene_tleilax_specimens`, `board_tokens`, `columns`, `endgame`, `narrow`, `lang`) **16초, 실패 0**, Ruff(`src tests`·새 E2E)·mypy(**366파일**)·`git diff --check` 통과. 실제 표본 생성·반환, 열린 확대 화면 갱신, 두 언어·두 창 크기, 플레이어마다 12개인 총 48큐브의 경계·겹침과 이미지 없는 환경을 확인했다. 첫 브라우저 실행의 테스트는 선공을 플레이어1로 가정하고 영어 용어의 대소문자를 잘못 기대했으며, 실제 차례 플레이어와 용어집에 맞게 검사만 고친 뒤 전 검사를 통과했다. 새 보드 위치 정보는 서버 카탈로그에 실리므로 다음 서버 재시작 후 브라우저 새로고침부터 적용한다. 메모리에 사용자 게임을 보관한 서버는 자동 재시작하지 않는다.
+
 ## 2026-10-05 라운드별 교전 카드 이력
 
 - 보드의 현재 교전 카드는 기존 마우스오버 상세 정보를 유지하고, 클릭·Enter로 **교전 카드 이력 / Conflict card history**를 연다. 최신 라운드부터 카드 이미지·이름·라운드 번호를 모아 보여주며 현재 라운드를 표시한다. 이력 속 카드를 누르면 큰 이미지와 상세 정보로 이동하고, 돌아가기 버튼으로 이력에 복귀한다. Escape·닫기·바깥 클릭으로 닫는다. 마지막 카드가 승자에게 넘어가 보드 자리가 비어도 그 위치의 **교전 이력 / History** 버튼으로 열 수 있으며, 보드·카드 이미지가 없으면 목록·텍스트 카드로 표시한다.
