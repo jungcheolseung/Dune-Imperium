@@ -1136,6 +1136,70 @@ def _garrison_units(view: PlayerView) -> int:
     return me.troops_garrison + me.commanders_garrison
 
 
+def demote_pointless_actions(
+    observation: PlayerView,
+    legal_actions: tuple[DomainAction, ...],
+    scored: tuple[float, ...],
+) -> tuple[float, ...]:
+    """Rank last the legal actions that only waste the seat's turn or card.
+
+    Applied after ``score_action`` and before the tie set is fixed, so each
+    demoted action falls below every other offer; the scratch variants under
+    ``scripts/ab`` call it too, so they keep tracking this agent.
+    """
+
+    if any(
+        action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
+    ):
+        # Switching to the other grafted card only reorders the boxes;
+        # whenever the active box (or a decline of it) can be resolved,
+        # that comes first, or two boxes whose offers rank below the
+        # switch loop forever (Ghola copying Corrinth City or CHOAM
+        # Demands, 2026-09-08 seeds 11 and 32).
+        scored = tuple(
+            min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
+        # A specimen may be returned at Combat Intrigue priority too
+        # (OQ-050), but nothing then refills from the supply, so it only
+        # empties the tanks: passing ranks above it.
+        scored = tuple(
+            min(scored) - 1.0 if action.action_id == "return_specimen" else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(
+        action.action_id == "play_intrigue" for action in legal_actions
+    ) and _garrison_units(observation) < 1:
+        # "Deploy up to N troops from your garrison" may be played with
+        # nothing to deploy since codec v137 and then only deploys zero,
+        # so the card is spent for nothing. Before, the engine withheld
+        # the line without a deployable garrison unit; with an empty
+        # garrison it ranks last again. The view does not show the
+        # turn's other deployment limits (Harkonnen Advisor's troop,
+        # OQ-038; Emperor of the Known Universe [Main p. 17]).
+        scored = tuple(
+            min(scored) - 1.0 if _deploys_only_from_garrison(action) else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(
+        action.action_id in _ZERO_COUNT_UNIT_MOVES
+        and _argument(action, "count") == 0
+        for action in legal_actions
+    ):
+        # A zero count moves nothing and was not offered before codec
+        # v137: it ranks below every count that moves a unit, so the
+        # counts of one and more keep the order (and the draw) they had.
+        scored = tuple(
+            min(scored) - 1.0
+            if action.action_id in _ZERO_COUNT_UNIT_MOVES
+            and _argument(action, "count") == 0
+            else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    return scored
+
+
 @dataclass(slots=True)
 class HeuristicAgent:
     """Pick a highest-scoring legal action, breaking ties with a seeded RNG."""
@@ -1187,55 +1251,7 @@ class HeuristicAgent:
             score_action(action, space_bonuses=bonuses, tech_bonuses=tech_bonuses)
             for action in legal_actions
         )
-        if any(
-            action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
-        ):
-            # Switching to the other grafted card only reorders the boxes;
-            # whenever the active box (or a decline of it) can be resolved,
-            # that comes first, or two boxes whose offers rank below the
-            # switch loop forever (Ghola copying Corrinth City or CHOAM
-            # Demands, 2026-09-08 seeds 11 and 32).
-            scored = tuple(
-                min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
-                for action, s in zip(legal_actions, scored, strict=True)
-            )
-        if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
-            # A specimen may be returned at Combat Intrigue priority too
-            # (OQ-050), but nothing then refills from the supply, so it only
-            # empties the tanks: passing ranks above it.
-            scored = tuple(
-                min(scored) - 1.0 if action.action_id == "return_specimen" else s
-                for action, s in zip(legal_actions, scored, strict=True)
-            )
-        if any(
-            action.action_id == "play_intrigue" for action in legal_actions
-        ) and _garrison_units(observation) < 1:
-            # "Deploy up to N troops from your garrison" may be played with
-            # nothing to deploy since codec v137 and then only deploys zero,
-            # so the card is spent for nothing. Before, the engine withheld
-            # the line without a deployable garrison unit; with an empty
-            # garrison it ranks last again. The view does not show the
-            # turn's other deployment limits (Harkonnen Advisor's troop,
-            # OQ-038; Emperor of the Known Universe [Main p. 17]).
-            scored = tuple(
-                min(scored) - 1.0 if _deploys_only_from_garrison(action) else s
-                for action, s in zip(legal_actions, scored, strict=True)
-            )
-        if any(
-            action.action_id in _ZERO_COUNT_UNIT_MOVES
-            and _argument(action, "count") == 0
-            for action in legal_actions
-        ):
-            # A zero count moves nothing and was not offered before codec
-            # v137: it ranks below every count that moves a unit, so the
-            # counts of one and more keep the order (and the draw) they had.
-            scored = tuple(
-                min(scored) - 1.0
-                if action.action_id in _ZERO_COUNT_UNIT_MOVES
-                and _argument(action, "count") == 0
-                else s
-                for action, s in zip(legal_actions, scored, strict=True)
-            )
+        scored = demote_pointless_actions(observation, legal_actions, scored)
         best = max(scored)
         top = tuple(
             action

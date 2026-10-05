@@ -29,13 +29,13 @@ from __future__ import annotations
 
 from dune_imperium.agents.heuristic_agent import (
     _DECLINE_SCORE,
-    _SWITCH_NEUTRAL_ACTIONS,
     UPRISING_SPACE_BONUSES,
     HeuristicAgent,
     TieBreaks,
     _argument,
     card_printed_value,
     cheapest_card_for_the_same_space,
+    demote_pointless_actions,
     influence_step_value,
     narrow_family_tie,
     score_action,
@@ -82,16 +82,7 @@ class VariantAgent(HeuristicAgent):
             )
             for action in legal_actions
         )
-        if any(a.action_id not in _SWITCH_NEUTRAL_ACTIONS for a in legal_actions):
-            scored = tuple(
-                min(scored) - 1.0 if a.action_id == "switch_graft_card" else s
-                for a, s in zip(legal_actions, scored, strict=True)
-            )
-        if any(a.action_id == "pass_combat_intrigue" for a in legal_actions):
-            scored = tuple(
-                min(scored) - 1.0 if a.action_id == "return_specimen" else s
-                for a, s in zip(legal_actions, scored, strict=True)
-            )
+        scored = demote_pointless_actions(observation, legal_actions, scored)
         best = max(scored)
         top = tuple(a for a, s in zip(legal_actions, scored, strict=True) if s == best)
         if len(top) > 1 and self.tie_breaks is not None:
