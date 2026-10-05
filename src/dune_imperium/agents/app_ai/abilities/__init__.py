@@ -5,6 +5,8 @@ every registered port.
 """
 
 from dune_imperium.agents.app_ai.abilities import (  # noqa: F401  (registration)
+    bloodlines_cards,
+    bloodlines_systems,
     board,
     epic_promo,
     generic,
@@ -13,6 +15,7 @@ from dune_imperium.agents.app_ai.abilities import (  # noqa: F401  (registration
     imperium_b,
     intrigue,
     leaders,
+    scouts,
     tech,
 )
 from dune_imperium.agents.app_ai.abilities.base import (
