@@ -51,6 +51,7 @@ SEATS = """() => {
 def watched_game(page, base: str) -> None:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
+    page.wait_for_selector("#seat-selects select")
     setup_labels = page.locator("#seat-selects label > span").all_text_contents()
     check.ok(
         setup_labels == ["좌석 1", "좌석 2", "좌석 3", "좌석 4"],
