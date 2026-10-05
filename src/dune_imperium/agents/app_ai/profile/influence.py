@@ -1368,7 +1368,12 @@ class InfluenceMixin(ProfileCore):
         ):
             s.add("Can Play to Desert Space", c.WallModSpaceMod)
         s.add("Has Maker Hooks", c.WallModHooksMod)
-        if _has_intrigue(ctx, _DETONATION) and me.troops_garrison <= 3:
+        # GarrisonTroops: Commanders count (bloodlines-systems.md §1.1 D1; 0
+        # without Bloodlines).
+        if (
+            _has_intrigue(ctx, _DETONATION)
+            and me.troops_garrison + me.commanders_garrison <= 3
+        ):
             s.multiply("Detonation", c.DetonationBlowWallMod)
         s.multiply(
             "Opponent Hook Ratio",

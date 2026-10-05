@@ -509,6 +509,9 @@ class SpiceRefineryAbility(SpaceAbility):
         s2 = p.solari_value(2)  # literal 2
         s1 = p.spice_value(1)  # literal 1
         v.add("2 * SolariValue", s2)
+        if _free_spice_trade(self.owner):
+            v.add("2 SolariValue (free trade)", s2)
+            return v
         if s2 > s1:
             v.add("2 SolariValue > SpiceValue", s2)
             v.add("- SpiceValue", -s1)
@@ -525,15 +528,27 @@ class SpiceRefineryAbility(SpaceAbility):
         """
 
         n = p.spice_for_spice_refinery()
+        if _free_spice_trade(self.owner):
+            n = 1  # the 1-spice trade costs nothing: always sell
         if n < 0:
             return Answer(0.0, None, "SpiceRefinery | no answer")
         s = Summer()
         s.add("Solari", p.solari_value(self.solari_amount(n)))
-        s.add("Spice Cost", p.spice_value(-n))
+        paid = max(0, n + self.owner.int_attr("SpiceDiscount"))
+        s.add("Spice Cost", p.spice_value(-paid))
         if 0.0 >= s.sum:
             s.multiply("Reset", 0.0)
             s.add("Ensure positive value", 1.0)
         return Answer(s.sum, ((n,),), f"SpiceRefinery | sell {n}")
+
+
+def _free_spice_trade(space: Entity) -> bool:
+    """App-style (plan §11.8): Navigation Chamber's −1 spice on this visit
+    (``SpiceDiscount``, set on the space entity of the discounted variant,
+    ``windows/turn``) makes Spice Refinery's 1-spice trade free. Absent
+    without the Bloodlines tile, so app games keep the app's values."""
+
+    return space.int_attr("SpiceDiscount") < 0
 
 
 # -- Sietch Tabr (§1.4.17) ---------------------------------------------------------

@@ -636,3 +636,62 @@ def test_navigation_four_values_the_market_opening_card(
     assert _navigation_tsmf_cost(opening, monkeypatch) == [7]
     assert _navigation_tsmf_cost(sc_state(), monkeypatch) == [9]
     assert _navigation_tsmf_cost(bl_state(), monkeypatch) == [9]
+
+
+# =================================================================================
+# Main-session follow-ups (verifier findings of the window stage)
+# =================================================================================
+
+
+def test_spice_refinery_trade_is_free_with_navigation_chamber() -> None:
+    """Navigation Chamber's −1 spice on the visit makes the 1-spice trade
+    free: sell even with no spice, at no spice cost; without the discount
+    the app's own value stands."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Request
+    from dune_imperium.agents.app_ai.abilities.board import SpiceRefineryAbility
+    from dune_imperium.agents.app_ai.catalog import space_entity
+    from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
+
+    state = bl_state()
+    seat = seat_of(state)
+    broke = _t.with_player(
+        state, seat, resources=replace(state.players[seat].resources, spice=0)
+    )
+    p = make(broke)
+    plain = space_entity("spice_refinery", p.ctx.board)
+    cut = space_with_cost_cut(plain, "spice")
+    no_discount = SpiceRefineryAbility(plain).evaluate(p, Request())
+    free = SpiceRefineryAbility(cut).evaluate(p, Request())
+    assert no_discount.response == ((0,),)  # holds no spice: sells nothing
+    assert free.response == ((1,),)
+    assert free.value == p.solari_value(4)
+    v_plain = SpiceRefineryAbility(plain).value_for_player(p, ()).sum
+    v_free = SpiceRefineryAbility(cut).value_for_player(p, ()).sum
+    assert v_free > v_plain
+
+
+def test_reveal_recruit_window_closes_once_the_deploy_key_is_used() -> None:
+    from dune_imperium.agents.app_ai.abilities.bloodlines_systems import (
+        deploy_window_open,
+    )
+
+    p = make(bl_state())
+
+    class _Ctx:
+        def __init__(self, ctx: object, reveal: dict[str, object]) -> None:
+            self._ctx = ctx
+            self._reveal = reveal
+
+        def own_frame_context(self, kind: str) -> object:
+            return self._reveal if kind == "reveal" else None
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._ctx, name)
+
+    for deployed, expected in ((0, True), (1, False)):
+        p.ctx = _Ctx(  # type: ignore[assignment]
+            make(bl_state()).ctx,
+            {"combat_deployment": True, "reveal_units_deployed": deployed},
+        )
+        assert deploy_window_open(p) is expected

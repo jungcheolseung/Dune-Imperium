@@ -215,7 +215,12 @@ def deploy_window_open(p: Profile) -> bool:
     if context is not None:
         return context.get("pending_combat_deployment") is True
     reveal = p.ctx.own_frame_context("reveal")
-    return reveal is not None and reveal.get("combat_deployment") is True
+    if reveal is None or reveal.get("combat_deployment") is not True:
+        return False
+    # The Reveal's Combat-icon deploy key is used once (``windows/reveal``):
+    # after it, a Commander recruited now could no longer join.
+    deployed = reveal.get("reveal_units_deployed", 0)
+    return not (isinstance(deployed, int) and deployed > 0)
 
 
 # ---------------------------------------------------------------------------

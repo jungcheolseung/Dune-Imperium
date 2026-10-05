@@ -849,11 +849,15 @@ class EconomyMixin(ProfileCore):
             if attr is Attr.TROOPS:
                 if self._has_intrigue(_RAPID_MOBILIZATION):
                     _mul(s, c.RapidMobilizationTroopMod, "Rapid Mobilization")
+                # ConflictTroops / GarrisonTroops: Commanders are troops there
+                # (bloodlines-systems.md §1.1 D1; 0 without Bloodlines).
+                conflict_troops = me.troops_conflict + me.commanders_conflict
+                garrison_troops = me.troops_garrison + me.commanders_garrison
                 if (
                     self._has_intrigue(_STAGED_INCIDENT)
-                    and c.StagedIncidentDeployedTroopThreshold >= me.troops_conflict
+                    and c.StagedIncidentDeployedTroopThreshold >= conflict_troops
                     and c.StagedIncidentTotalTroopThreshold
-                    >= me.troops_conflict + me.troops_garrison
+                    >= conflict_troops + garrison_troops
                 ):
                     _mul(s, c.StagedIncidentTroopMod, "Staged Incident")
                 # Capped at the troops left in the supply (after the mods).
