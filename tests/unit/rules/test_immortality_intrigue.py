@@ -330,6 +330,41 @@ def test_counterattack_needs_an_opponents_combat_intrigue() -> None:
     assert played.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
 
 
+def _deploy(count: int) -> DomainAction:
+    return DomainAction(
+        action_id="deploy_intrigue_troops", actor=0, arguments=(("count", count),)
+    )
+
+
+def test_counterattack_plot_deploys_up_to_two_including_none() -> None:
+    # "Deploy up to two troops from your garrison to the Conflict."
+    # [Counterattack card face]: zero is a choice, and having a target is no
+    # play condition -- "Intrigue 카드를 플레이하려면 카드의 모든 조건을
+    # 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]" (OQ-057 (6)).
+    card = _intrigue("counterattack")
+    engine = UprisingRulesEngine()
+
+    stocked = _plot_state(
+        _owner(intrigue_cards=(card,), troops_garrison=3, troops_supply=9)
+    )
+    opened = engine.apply(stocked, _play(card)).state
+    assert engine.legal_actions(opened, 0) == (_deploy(0), _deploy(1), _deploy(2))
+    two = engine.apply(opened, _deploy(2)).state
+    assert (two.players[0].troops_garrison, two.players[0].troops_conflict) == (1, 2)
+
+    empty = _plot_state(
+        _owner(intrigue_cards=(card,), troops_garrison=0, troops_supply=12)
+    )
+    assert _playable(empty, card) == {0}
+    nothing = engine.apply(empty, _play(card)).state
+    assert engine.legal_actions(nothing, 0) == (_deploy(0),)
+    result = engine.apply(nothing, _deploy(0))
+    assert "troops_deployed" not in [event.kind for event in result.events]
+    assert result.state.players[0].troops_conflict == 0
+    assert card in result.state.intrigue_discard
+    assert result.state.decision_stack[-1].kind == "turn"
+
+
 def test_gruesome_sacrifice_trades_two_conflict_troops() -> None:
     card = _intrigue("gruesome_sacrifice")
     state = _combat_state(_fighter(3, intrigue_cards=(card,)))

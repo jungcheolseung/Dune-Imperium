@@ -2081,7 +2081,11 @@ def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
     assert [action.action_id for action in actions] == ["harvest_maker_spice"]
 
 
-def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
+def test_emperor_restriction_leaves_an_intrigue_deployment_only_zero() -> None:
+    # Emperor of the Known Universe still blocks every unit for the turn
+    # [Main p. 17], but "Deploy up to four troops" may deploy zero and a
+    # target is no play condition [FAQ p. 2] (OQ-057 (6)): the line plays
+    # and offers only a zero deployment.
     from dune_imperium.content.uprising.intrigue import (
         INTRIGUE_CARDS_BY_INSTANCE,
     )
@@ -2111,7 +2115,21 @@ def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
         )
     )
 
-    assert not option_is_playable(placed, 0, card.options[deploy_option])
+    assert option_is_playable(placed, 0, card.options[deploy_option])
+    engine = UprisingRulesEngine()
+    opened = engine.apply(
+        placed,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", detonation), ("option", deploy_option)),
+        ),
+    ).state
+    assert engine.legal_actions(opened, 0) == (
+        DomainAction(
+            action_id="deploy_intrigue_troops", actor=0, arguments=(("count", 0),)
+        ),
+    )
     unrestricted = _choam_turn_state(
         replace(owner, hand=(), intrigue_cards=(detonation,))
     )

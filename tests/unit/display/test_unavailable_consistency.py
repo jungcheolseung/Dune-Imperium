@@ -50,7 +50,6 @@ from dune_imperium.content.immortality.tleilaxu import (
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
-    DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
     EffectSection,
@@ -118,7 +117,6 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_spy_actions,
     legal_distinct_combat_reward_influence_actions,
 )
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import (
     contract_recall_targets,
@@ -153,7 +151,6 @@ from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_start_is
 from dune_imperium.rules.immortality import legal_research_bonus_actions
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.intrigue import PLOT_FRAME_KINDS, legal_intrigue_play_actions
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -435,14 +432,9 @@ def _old_choice_rewards_feasible(
     for section in sections:
         for reward in section.rewards:
             match reward:
-                case DeployFromGarrison() if (
-                    owner.troops_garrison
-                    - undeployable_troops_this_turn(state, player)
-                    + owner.commanders_garrison
-                    < 1
-                    or units_deployment_blocked(state, player)
-                ):
-                    return False
+                # Updated on purpose 2026-10-06: "Deploy up to N troops" may
+                # deploy zero, so DeployFromGarrison no longer gates a play
+                # [FAQ p. 2] (OQ-057 (6)).
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
                 # Updated on purpose 2026-10-06: Tactical Option's "any

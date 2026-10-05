@@ -1362,6 +1362,7 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1
         + 1  # v134: finish_leader_draft
         + 1  # codec bump pending (2026-10-06): Tactical Option retreats 0
+        + 1  # codec bump pending (2026-10-06): an "up to" deploy of 0
     )
 
     actions = (

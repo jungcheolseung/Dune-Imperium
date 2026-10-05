@@ -1126,19 +1126,35 @@ def test_detonation_deploys_up_to_four_garrison_troops() -> None:
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 1)).state
-    assert engine.legal_actions(opened, 0) == (_deploy(1), _deploy(2), _deploy(3))
+    # "Deploy up to four troops" [card face]: zero is a choice too.
+    assert engine.legal_actions(opened, 0) == (
+        _deploy(0),
+        _deploy(1),
+        _deploy(2),
+        _deploy(3),
+    )
 
     deployed = engine.apply(opened, _deploy(3)).state
     assert deployed.players[0].troops_garrison == 0
     assert deployed.players[0].troops_conflict == 3
     assert deployed.decision_stack[-1].kind == "turn"
 
+    # An empty garrison no longer bars the line: having a target is not a
+    # play condition [FAQ p. 2] (OQ-057 (6)), and "up to" allows zero.
     empty = PlayerState(
         player_id=0, intrigue_cards=(card,), troops_supply=12, troops_garrison=0
     )
-    assert legal_intrigue_play_actions(_turn_state(empty), 0) == (
+    empty_state = _turn_state(empty)
+    assert legal_intrigue_play_actions(empty_state, 0) == (
         _play(state, card, 0),
+        _play(state, card, 1),
     )
+    nothing = engine.apply(empty_state, _play(empty_state, card, 1)).state
+    assert engine.legal_actions(nothing, 0) == (_deploy(0),)
+    result = engine.apply(nothing, _deploy(0))
+    assert "troops_deployed" not in [event.kind for event in result.events]
+    assert result.state.players[0].troops_conflict == 0
+    assert result.state.intrigue_discard == (card,)
 
 
 def test_units_deployed_by_plot_during_reveal_count_toward_strength() -> None:

@@ -125,6 +125,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.intrigue_triggers import open_contract_reveal
+from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -839,8 +840,11 @@ def legal_intrigue_choice_actions(
             actions.append(DomainAction(action_id="detonate_shield_wall", actor=player))
             actions.append(DomainAction(action_id="keep_shield_wall", actor=player))
         case DeployFromGarrison(up_to=up_to):
-            # A Sardaukar Commander in the garrison is a troop for this
-            # purpose [Bloodlines p. 4]; ``commanders`` names its share.
+            # "Deploy up to N troops" [card faces]: zero is always offered,
+            # so the card resolves with nothing deployable. A Sardaukar
+            # Commander in the garrison is a troop for this purpose
+            # [Bloodlines p. 4]; ``commanders`` names its share.
+            blocked = units_deployment_blocked(state, player)
             actions.extend(
                 DomainAction(
                     action_id="deploy_intrigue_troops",
@@ -848,12 +852,19 @@ def legal_intrigue_choice_actions(
                     arguments=arguments,
                 )
                 for arguments in _unit_count_arguments(
-                    minimum=1,
+                    minimum=0,
                     maximum=up_to,
-                    # Harkonnen Advisor's troop is not available this turn.
-                    troops=owner.troops_garrison
-                    - undeployable_troops_this_turn(state, player),
-                    commanders=owner.commanders_garrison,
+                    # Harkonnen Advisor's troop is not available this turn
+                    # (OQ-038), and Emperor of the Known Universe blocks
+                    # every unit for the turn [Main p. 17].
+                    troops=0
+                    if blocked
+                    else max(
+                        owner.troops_garrison
+                        - undeployable_troops_this_turn(state, player),
+                        0,
+                    ),
+                    commanders=0 if blocked else owner.commanders_garrison,
                 )
             )
         case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
@@ -1323,9 +1334,13 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 )
         case DeployFromGarrison():
             count, commanders = _unit_counts(arguments)
-            result = _deploy_units(
-                state, player, step_source, troops=count, commanders=commanders
-            )
+            if count + commanders == 0:
+                # "Deploy up to N troops" chose zero: no unit moves.
+                result = RuleResult(state=state)
+            else:
+                result = _deploy_units(
+                    state, player, step_source, troops=count, commanders=commanders
+                )
         case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
             if action.action_id == "decline_intrigue_trash":
                 result = RuleResult(
