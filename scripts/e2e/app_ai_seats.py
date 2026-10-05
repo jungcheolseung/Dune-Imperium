@@ -647,8 +647,13 @@ def main() -> None:
         )
         # The server configures no handler for its own loggers, so an app AI
         # fallback warning or error reaches the log through logging's last
-        # resort as a bare message line: anything but uvicorn's INFO lines.
-        stray = [line for line in text.splitlines() if not line.startswith("INFO:")]
+        # resort as a bare message line: anything but uvicorn's INFO lines
+        # and the CLI's own startup line about the search AI.
+        stray = [
+            line
+            for line in text.splitlines()
+            if not line.startswith(("INFO:", "search AI:"))
+        ]
         check.ok(
             not stray,
             "the server log holds only uvicorn's INFO lines (no app AI warning)",
