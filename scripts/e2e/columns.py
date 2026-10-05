@@ -66,6 +66,45 @@ def watched_game(page, base: str) -> None:
     )
 
 
+def check_leader_draft(base: str, browser) -> None:
+    context, page, _rec = open_context(browser, "draft-columns")
+    page.goto(base + "/")
+    page.wait_for_selector("#seat-selects select")
+    for seat in range(4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "human")
+    for option in EXPANSIONS:
+        page.check(f"#opt-{option}")
+    page.check("#opt-leader-draft")
+    page.fill("#opt-seed", str(SEED))
+    page.click("#create-game")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    expected = [
+        "Leader draft", "Bene Tleilax board", "Ixian Embassy",
+        "Imperium Row", "Tleilaxu Row", "Reserve",
+    ]
+    for language in ("ko", "en"):
+        if page.evaluate("TERM_LANGUAGE") != language:
+            page.click("#language-toggle")
+        names = [s["name"] for s in page.evaluate(GEOMETRY)["strips"]]
+        check.ok(
+            names[:6] == expected,
+            f"{language}: active Leader draft comes before every expansion board",
+            names,
+        )
+    page.evaluate(
+        "applyAction(state.actions.actions.find("
+        "a => a.action_id === 'pick_leader').index)"
+    )
+    page.wait_for_function("!state.busy && refreshFlight === null")
+    names = [s["name"] for s in page.evaluate(GEOMETRY)["strips"]]
+    check.ok(
+        names[:6] == expected,
+        "Leader draft stays first after a player picks and the market rebuilds",
+        names,
+    )
+    context.close()
+
+
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "columns")
     watched_game(page, base)
@@ -360,6 +399,7 @@ def check_bene_tleilax_zoom(page) -> None:
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
+            check_leader_draft(base, browser)
             run(base, browser)
         errors = [
             line

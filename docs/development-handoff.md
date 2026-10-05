@@ -4,6 +4,12 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-05 지도자 드래프트를 공용 열 맨 위에 배치
+
+- 사용자 피드백에 따라 진행 중인 지도자 드래프트를 모든 확장 게임판보다 먼저 표시한다. 공용 열 순서는 **지도자 드래프트 → 베네 틀레이락스 게임판 → 익스 대사관 → 임페리움 열 → 틀레이락스 열 → 예비 카드**이며, 없는 항목은 생략한다. 드래프트가 끝나면 기존 확장 순서로 이어진다. 접힘 식별자와 드래프트 표시 조건은 유지한다.
+- 최신 master `31a8c011`을 기준으로 UI 렌더 순서만 수정했다. `columns.py`에서 실제 전 확장·4인 사람 플레이의 드래프트가 한국어·영어 화면에서 맨 앞이고, 한 플레이어의 선택 뒤 시장이 다시 그려져도 그 위치를 유지하는지 확인한다.
+- 검증: Chrome 관련 E2E **3종**(`columns`, `turn_end`, `table_layout`) **26초, 실패 0**, Ruff(`src tests scripts/e2e/columns.py`)와 `git diff --check` 통과. 엔진·규칙·action codec v135·관측 v30은 그대로다.
+
 ## 2026-10-05 멀티플레이 가이드의 master 병합
 
 - 사용자 요청으로 멀티플레이 문서 두 커밋(`e5d0c66a`, `fdd866a1`)을 최신 master `9b6e4fe2`에 merge commit으로 병합했다. 인수인계 문서의 충돌은 멀티플레이 문서 기록과 Spy·Objective·테이블 UI 기록을 모두 보존해 해결했다.

@@ -1595,9 +1595,6 @@ function renderMarket() {
   const view = state.view;
   if (!view) return;
 
-  if (state.summary.immortality) renderBeneTleilax(market, view);
-  if (state.summary.tech_module) renderIxianEmbassy(market, view);
-
   /* The draft pool stays in the view after every seat has picked; the
      chosen Leaders then live on the seat cards, so the strip goes away. */
   const drafting = view.players.some((p) => !p.leader_id);
@@ -1615,6 +1612,9 @@ function renderMarket() {
       "Leader draft",
     );
   }
+
+  if (state.summary.immortality) renderBeneTleilax(market, view);
+  if (state.summary.tech_module) renderIxianEmbassy(market, view);
 
   /* With the board scan the Conflict card and the face-up contracts sit
      in their printed slots on the board (renderSlotCards); the strips
