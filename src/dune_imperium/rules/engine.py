@@ -505,7 +505,12 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_troop_move_actions,
         legal_reveal_troop_sacrifice_actions,
     ),
-    FrameKind.CONTRACT_MARKET: (legal_contract_actions,),
+    # Each frame a Scouts line's reward may open also offers the line's
+    # later automatic rewards first (OQ-100).
+    FrameKind.CONTRACT_MARKET: (
+        legal_contract_actions,
+        legal_scouts_rewards_first_actions,
+    ),
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
     FrameKind.CONTRACT_REWARD_RECALL: (legal_contract_recall_actions,),
     FrameKind.CONTRACT_INTRIGUE_TRASH: (legal_contract_intrigue_trash_actions,),
@@ -542,10 +547,11 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.SKILL_CHOICE: (legal_skill_choice_actions,),
     FrameKind.OPPONENT_SPY_MOVE: (legal_spy_move_actions,),
     FrameKind.OPPONENT_UNIT_LOSS: (legal_unit_loss_actions,),
-    FrameKind.SPY_PLACEMENT: (legal_spy_placement_actions,),
+    FrameKind.SPY_PLACEMENT: (
+        legal_spy_placement_actions,
+        legal_scouts_rewards_first_actions,
+    ),
     FrameKind.INTRIGUE_TRIGGER_CONTRACT: (legal_trigger_contract_actions,),
-    # Arrakeen Scouts: a line's later rewards may resolve ahead of its trash
-    # icon (Water Discipline's draw, OQ-100).
     FrameKind.OPTIONAL_TRASH: (
         legal_optional_trash_actions,
         legal_scouts_rewards_first_actions,
@@ -558,7 +564,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tech_acquire_effect_actions,
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
-    FrameKind.RESEARCH_ADVANCE: (legal_research_advance_actions,),
+    FrameKind.RESEARCH_ADVANCE: (
+        legal_research_advance_actions,
+        legal_scouts_rewards_first_actions,
+    ),
     FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
@@ -566,7 +575,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
     FrameKind.SCOUTS_FOUR_BONUS: (legal_four_bonus_actions,),
-    FrameKind.SCOUTS_EFFECT: (legal_scouts_effect_actions,),
+    FrameKind.SCOUTS_EFFECT: (
+        legal_scouts_effect_actions,
+        legal_scouts_rewards_first_actions,
+    ),
     FrameKind.SCOUTS_SUBCOMMITTEE: (legal_subcommittee_actions,),
     FrameKind.SCOUTS_CHOICE: (legal_scouts_choice_actions,),
     FrameKind.SCOUTS_MISSION: (legal_mission_join_actions,),

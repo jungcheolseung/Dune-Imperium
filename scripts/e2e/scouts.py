@@ -196,9 +196,52 @@ def play(page, seen: dict[str, bool], limit: int = 4000) -> bool:
         if not page.evaluate("Boolean(state.actions && state.actions.actions.length)"):
             time.sleep(0.05)
             continue
-        inspect(page, seen)
+        if inspect(page, seen):
+            continue
         page.evaluate(f"applyAction({page.evaluate(CHOOSE_JS)})")
     return False
+
+
+# The seat's own live log entries, oldest first: [action_id, count] pairs.
+OWN_STEPS_JS = """state.log.entries
+  .filter((e) => e.type === 'action' && !e.undone && e.actor === state.viewSeat)
+  .map((e) => [e.action_id, e.arguments.count ?? null])"""
+
+
+def press_auction(page, seen: dict[str, bool], action_id: str) -> bool:
+    """Stage one step up on the auction stepper, then press the turn end once.
+
+    User request 2026-10-05: the stepper only sets the amount and the one
+    turn-end press sends it -- a sealed bid and its confirmation, or the open
+    call -- with no further press. Returns whether it pressed.
+    """
+
+    key = {"scouts_bid": "bid_press", "scouts_call": "call_press"}[action_id]
+    if seen.get(key):
+        return False
+    row = page.locator(f'#actions .count-row[data-action="{action_id}"]')
+    if row.count() != 1:
+        return False
+    plus = row.locator(".stepper button").nth(1)
+    if plus.is_enabled():
+        plus.click()
+    staged = int(row.locator(".stepper-value").inner_text().split()[0])
+    before = len(page.evaluate(OWN_STEPS_JS))
+    page.locator("#decision-banner .turn-end-row button").click()
+    assert settled(page, 30)
+    steps = page.evaluate(OWN_STEPS_JS)[before:]
+    if action_id == "scouts_call":
+        expected = [["scouts_call", staged]]
+    else:
+        expected = [["scouts_bid", staged]] if staged else []
+        expected.append(["confirm_scouts_bid", None])
+    seen[key] = check.ok(
+        steps == expected
+        and page.evaluate("state.summary.confirmation !== state.viewSeat"),
+        f"one turn-end press sends the staged {action_id}, nothing left to press",
+        (staged, steps),
+    )
+    return True
 
 
 def inspect_lines(page, seen: dict[str, bool]) -> None:
@@ -342,7 +385,7 @@ def inspect_market(page, seen: dict[str, bool]) -> None:
         seen["market_take"] = ok
 
 
-def inspect(page, seen: dict[str, bool]) -> None:
+def inspect(page, seen: dict[str, bool]) -> bool:
     ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
     text = panel_text(page)
     inspect_lines(page, seen)
@@ -411,6 +454,9 @@ def inspect(page, seen: dict[str, bool]) -> None:
             "a sealed bid is a count stepper and the turn-end row confirms it",
             (stepper, turn_end),
         )
+    for auction in ("scouts_bid", "scouts_call"):
+        if auction in ids and press_auction(page, seen, auction):
+            return True
     if page.evaluate(
         "state.view.private && state.view.private.scouts_bid >= 0"
     ) and not seen.get("own_bid"):
@@ -446,6 +492,7 @@ def inspect(page, seen: dict[str, bool]) -> None:
         )
         page.evaluate("setLanguage('ko')")
         assert settled(page, 10)
+    return False
 
 
 def council(page, seen: dict[str, bool], limit: int = 3000) -> None:
@@ -1081,6 +1128,8 @@ def main() -> None:
         "subcommittees",
         "pick",
         "bid",
+        "bid_press",
+        "call_press",
         "own_bid",
         "own_pick",
         "pieces",

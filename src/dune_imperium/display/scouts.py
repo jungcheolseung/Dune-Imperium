@@ -60,8 +60,8 @@ from dune_imperium.rules.scouts_effects import (
     joinable_subcommittees,
     line_unavailable_reason,
     pending_subcommittee_exclude,
-    rewards_ahead_of_trash,
     scouts_option,
+    scouts_rewards_ahead,
 )
 from dune_imperium.rules.scouts_missions import join_unavailable_reason
 from dune_imperium.rules.scouts_offers import open_subcommittees
@@ -516,7 +516,7 @@ def scouts_action_text(
                 return "Take the spice", "{spice} 받기"
             return None
         case "scouts_rewards_first":
-            rewards = rewards_ahead_of_trash(state, action.actor)
+            rewards = scouts_rewards_ahead(state, action.actor)
             if not rewards:
                 return None
             return (

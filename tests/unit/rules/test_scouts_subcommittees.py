@@ -246,16 +246,72 @@ def test_oversight_spice_as_the_last_effect_counts_for_hungry_for_spice() -> Non
     assert not state.players[0].hungry_for_spice_granted_turn
     state = _act(state, "join_subcommittee", subcommittee_id="oversight")
     state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
-    # Its spice cannot change what the trash may take, so it is not offered
-    # ahead of the trash icon (OQ-100 needs a card draw among the rewards).
-    assert "scouts_rewards_first" not in {
-        action.action_id for action in ENGINE.legal_actions(state, 0)
-    }
     state = _act(state, "decline_optional_trash")
     seat = state.players[0]
     assert seat.resources.spice == 6
     assert seat.hungry_for_spice_granted_turn
     assert seat.hand == (second_dagger,)
+    assert _scouts_frames_done(state)
+
+
+def test_oversight_spice_first_lets_steersman_trash_the_card_it_draws() -> None:
+    """OQ-100 (user ruling 2026-10-05, "순서 자유로"): Oversight's spice may
+    come before its trash icon. Taken first, it brings Steersman Y'rkoon's
+    turn to 3 spice, so his draw [Steersman Y'rkoon card] lands while the
+    trash is still open and the drawn card can be trashed."""
+    second_dagger = "player:0:starter:dagger:1"
+    owner = _owner(
+        leader_id="steersman_y_rkoon",
+        hand=(DAGGER,),
+        deck=(second_dagger,),
+        resources=Resources(solari=10, spice=5, water=1),
+        spice_at_turn_start=3,
+        spies_supply=2,
+        spy_post_ids=("arrakis-deep-desert",),
+    )
+    state = _choose(_visit_high_council(_state(owner)))
+    state = _act(state, "join_subcommittee", subcommittee_id="oversight")
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
+    assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    state = _act(state, "scouts_rewards_first")
+    seat = state.players[0]
+    assert seat.resources.spice == 6
+    assert seat.hungry_for_spice_granted_turn
+    assert second_dagger in seat.hand
+    assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    state = _act(state, "trash_optional_card", card_id=second_dagger)
+    seat = state.players[0]
+    assert second_dagger in seat.trashed
+    assert seat.resources.spice == 6  # the spice is not paid out twice
+    assert _scouts_frames_done(state)
+
+
+def test_leverage_may_draw_its_intrigue_before_choosing_the_faction() -> None:
+    """OQ-100: the line's own choice step waits while its later Intrigue
+    draw resolves first; the Faction is chosen after, and the draw does not
+    come again."""
+    owner = _owner(
+        spies_supply=1,
+        spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
+    )
+    state = _choose(_visit_high_council(_state(owner)))
+    state = _act(state, "join_subcommittee", subcommittee_id="leverage")
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-hagga-basin")
+    # The recalls are the cost: nothing is taken ahead of a cost.
+    assert "scouts_rewards_first" not in {
+        a.action_id for a in ENGINE.legal_actions(state, 0)
+    }
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
+    intrigue = len(state.players[0].intrigue_cards)
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[0].intrigue_cards) == intrigue + 1
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    assert "scouts_rewards_first" not in {
+        a.action_id for a in ENGINE.legal_actions(state, 0)
+    }
+    state = _act(state, "scouts_choose_faction", faction="emperor")
+    assert state.players[0].influence.emperor == 1
+    assert len(state.players[0].intrigue_cards) == intrigue + 1
     assert _scouts_frames_done(state)
 
 
