@@ -262,7 +262,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # reveals hidden cards, so the play server can undo every pick (OQ-007).
 # v135: Tech purchases queue freely ordered acquire icons (OQ-098);
 # reward choices move from acquire_tech to resolve_tech_acquire_effect.
-ACTION_CODEC_VERSION = 135
+# v136 (user ruling 2026-10-05, OQ-100): an Arrakeen Scouts line's later
+# automatic rewards may resolve ahead of an earlier reward's pending choice
+# (Water Discipline's draw before its trash); ``scouts_rewards_first`` joins
+# the Scouts catalogs (+1).
+ACTION_CODEC_VERSION = 136
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1239,6 +1243,9 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for recipient in range(config.players)
             for faction in Faction
         ),
+        # A line's later automatic rewards taken ahead of an earlier reward's
+        # pending choice (OQ-100).
+        ActionTemplate(action_id="scouts_rewards_first"),
         # The trash icon (Oversight, Water Discipline) opens the generic
         # optional-trash frame, which only the Bloodlines and Immortality
         # catalogs hold otherwise.

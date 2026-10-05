@@ -263,6 +263,43 @@ def test_english_label_tables_mirror_the_korean() -> None:
     assert not problems, "; ".join(problems[:12])
 
 
+def test_an_agent_box_is_written_as_the_word_never_the_agent_icon() -> None:
+    """The Agent *box* of a card is a word ({agent_box}), not the Agent piece.
+
+    User report 2026-10-05: the Graft choice read "다른 카드의 [Agent icon] 칸
+    해결" -- the {agent} term draws the piece, so the box looked like a pawn.
+    The glossary names the place on the card "에이전트 칸" ("Agent box",
+    [Main p. 8]); {agent} stays for the piece itself (place, recall, count).
+    """
+    korean = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    korean += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    korean += [
+        (f"PROMPT_KO.{key}", text)
+        for key, text in _json_const("PROMPT_KO", "prompts_ko.js").items()
+    ]
+    english = [
+        (f"{table}.{key}", text)
+        for table, rows in _json_const("LABELS_EN", "labels_en.js").items()
+        for key, text in rows.items()
+    ]
+    english += [(f"UI_TEXT.{key}", entry["en"]) for key, entry in _ui_text().items()]
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in korean
+        if re.search(r"\{agent(?::\d+)?\}\s*칸", text)
+    ]
+    leaks += [
+        f"{where}: {text!r}"
+        for where, text in english
+        if re.search(r"\{agent(?::\d+)?\}\s+(?:box|slot)", text, re.I)
+    ]
+    assert not leaks, "; ".join(leaks[:10])
+
+
 # English on purpose in Korean text: the glossary has no row for these yet
 # (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a Leader's own
 # name. scripts/e2e/log_words.py keeps the same list for the rendered log.
@@ -341,6 +378,30 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
         )
         if found:
             leaks.append(f"{where}: {found} in {text!r}")
+    assert not leaks, "; ".join(leaks[:10])
+
+
+def test_korean_prompts_leave_no_english_word_behind() -> None:
+    """A Korean prompt holds {term} tokens and Korean, not stray English.
+
+    User report 2026-10-05: the Arrakeen Scouts call read "spice 호가, 또는
+    패스" -- the one prompt that wrote the currency as a bare English word
+    where the rest use {spice} ("스파이스"); the Mercenaries retreat likewise
+    said "용병 troop 후퇴". Only the words ``_KOREAN_KEEPS_ENGLISH`` lists
+    (the glossary has no row for them yet) may stay English.
+    """
+    texts = list(_json_const("PROMPT_KO", "prompts_ko.js").values())
+    texts += [
+        korean for _, korean in _json_const("PROMPT_KO_PATTERNS", "prompts_ko.js")
+    ]
+    leaks = []
+    for text in texts:
+        bare = re.sub(r"\{[a-z_]+(?::\d+)?\}", " ", text)
+        for name in sorted(_KOREAN_KEEPS_ENGLISH, key=len, reverse=True):
+            bare = bare.replace(name, " ")
+        found = re.findall(r"[A-Za-z]+", bare)
+        if found:
+            leaks.append(f"{found} in {text!r}")
     assert not leaks, "; ".join(leaks[:10])
 
 

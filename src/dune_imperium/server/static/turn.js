@@ -316,10 +316,12 @@ function pickStepNode(number, label, ref, part) {
 
    `turnEnd` is the seat's own explicit turn-end action (turnEndAction in
    render.js), already shown as the banner's turn-end row: it is filtered
-   out here so it never doubles as an item in any of the lists below. */
+   out here so it never doubles as an item in any of the lists below. An
+   open call's amount stays in its stepper, which sets what the press sends. */
 function renderActionPanel(box, turnEnd) {
   const actions = state.actions.actions.filter(
     (action) => !turnEnd || action.index !== turnEnd.index
+      || AUCTION_AMOUNT_IDS.has(action.action_id)
   );
   const placements = placementActions();
   if (actions.some((action) => action.action_id === "scouts_bid"

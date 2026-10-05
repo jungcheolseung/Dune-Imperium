@@ -479,6 +479,7 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # draft pin (77f0cb01..., 2416); the other five pins remain unchanged.
 # v135 queues Tech acquire icons as freely ordered actions (OQ-098).
 # Only the two Tech-enabled traces move; the observation layout stays v30.
+# v136 adds scouts_rewards_first (OQ-100); none of the six pins moves.
 _GOLDEN_DIGESTS = {
     "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
     "choam": ("bbd5f9f833b088970292152899279058ef6f6522fa181e93a926bc8b112c39d6", 2856),

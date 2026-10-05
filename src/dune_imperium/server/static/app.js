@@ -24,6 +24,7 @@ async function init() {
   loadCollapsedStrips();
   loadExpandedSeats();
   window.addEventListener("resize", positionPlayEffect);
+  window.addEventListener("resize", positionPhaseBanner);
   el("side").classList.toggle("log-expanded", storageGet(LOG_EXPANDED_KEY) === "1");
   watchTableLayout();
   state.catalog = await api("/catalog");

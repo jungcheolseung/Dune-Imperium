@@ -648,3 +648,30 @@ def test_specimen_top_up_covers_every_scouts_recruit_and_parking_count() -> None
     assert recruit_counts  # the content actually recruits somewhere
     assert MAX_SPECIMEN_TOP_UP >= max(recruit_counts)
     assert MAX_SPECIMEN_TOP_UP >= max(count for _, count in _PARKING.values())
+
+
+def test_spies_for_hire_may_draw_its_intrigue_before_placing_the_spy() -> None:
+    """OQ-100 (user ruling 2026-10-05, "순서 자유로"): the winner's Intrigue
+    draw may come before its Spy placement; the placement waits on top and
+    the draw is not given twice."""
+    base = replace(
+        _base(round_number=8),
+        scouts_mid_auction_round=5,
+        scouts_late_auction_round=8,
+    )
+    state = _draw(base, "spies_for_hire_late")
+    state = _bid_all(state, {0: 0, 1: 3, 2: 1, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert _owner(state) == 1
+    intrigue = len(state.players[1].intrigue_cards)
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[1].intrigue_cards) == intrigue + 1
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    post = next(
+        dict(a.arguments)["post_id"]
+        for a in ENGINE.legal_actions(state, 1)
+        if a.action_id == "place_spy_on_space"
+    )
+    state = _act(state, "place_spy_on_space", post_id=post)
+    assert post in state.players[1].spy_post_ids
+    assert len(state.players[1].intrigue_cards) == intrigue + 1

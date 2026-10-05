@@ -61,6 +61,7 @@ from dune_imperium.rules.scouts_effects import (
     line_unavailable_reason,
     pending_subcommittee_exclude,
     scouts_option,
+    scouts_rewards_ahead,
 )
 from dune_imperium.rules.scouts_missions import join_unavailable_reason
 from dune_imperium.rules.scouts_offers import open_subcommittees
@@ -514,6 +515,14 @@ def scouts_action_text(
             if choice == "spice":
                 return "Take the spice", "{spice} 받기"
             return None
+        case "scouts_rewards_first":
+            rewards = scouts_rewards_ahead(state, action.actor)
+            if not rewards:
+                return None
+            return (
+                ", ".join(_step_text(reward, cost=False) for reward in rewards),
+                ", ".join(_step_text_ko(reward, cost=False) for reward in rewards),
+            )
         case "scouts_take_card":
             slot = arguments.get("slot")
             if type(slot) is not int or slot >= len(state.scouts_market_cards):

@@ -20,7 +20,7 @@ Every seed below was found by a scratch search over seeds, not guessed.
 """
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -33,6 +33,8 @@ from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -42,7 +44,9 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.combat_deployment import FINISHING_KEY
+from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.access import AccessMode, Credentials
@@ -278,6 +282,68 @@ def test_pass_combat_intrigue_is_the_press_itself() -> None:
     assert summary["confirmation"] is None
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
     assert _int(summary["revision"]) > before_revision
+
+
+def _critical_moment_session() -> tuple[GameSessionManager, str]:
+    """Four human seats, seat 0 about to call in Critical Moment (round 5)."""
+
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, game_seed=17, arrakeen_scouts=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    engine = session.engine
+    rich = Resources(solari=6, spice=6, water=2)
+    state = replace(
+        session.state,
+        round_number=5,
+        first_player=0,
+        players=tuple(replace(p, resources=rich) for p in session.state.players),
+        decision_stack=(),
+        scouts_opening=True,
+        scouts_secrets_round=5,
+        scouts_mid_auction_round=5,
+        scouts_late_auction_round=9,
+    )
+    while True:
+        state = _advance_automatic(RuleResult(state=state)).state
+        frame = state.decision_stack[-1]
+        assert frame.kind == FrameKind.SCOUTS_DRAW
+        decision = frame.decision
+        assert isinstance(decision, ChanceDecision)
+        wanted = [o for o in decision.options if o.startswith("critical_moment_mid")]
+        value = wanted[0] if wanted else decision.options[0]
+        state = engine.apply(
+            state, ChanceOutcome(decision_id=decision.decision_id, values=(value,))
+        ).state
+        if wanted:
+            break
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_CALL
+    session.state = state
+    return manager, game_id
+
+
+def test_an_open_auction_call_is_the_press_itself() -> None:
+    """User request 2026-10-05: "아라킨 스카웃 경매 0 누르면 바로
+    확정되버리네. 이거도 턴 종료를 눌러야 확정되게 해줘." The browser now
+    stages the amount on the stepper and sends Critical Moment's open call
+    with the turn-end press, so the call itself seals the seat's unit, like
+    a sealed bid's ``confirm_scouts_bid``: no second press, nothing left to
+    take back, and the next seat calls at once."""
+
+    manager, game_id = _critical_moment_session()
+    summary = manager.summary(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    index = next(
+        _int(a["index"])
+        for a in actions
+        if a["action_id"] == "scouts_call" and _obj(a["arguments"])["count"] == 0
+    )
+    summary = manager.apply_action(game_id, 0, _int(summary["revision"]), index)
+
+    assert summary["confirmation"] is None
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "scouts_call" and decision["owner"] == 1
 
 
 def test_an_explicit_end_handing_straight_to_a_human_still_seals_the_turn() -> None:

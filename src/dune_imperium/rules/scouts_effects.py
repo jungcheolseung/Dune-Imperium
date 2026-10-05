@@ -48,9 +48,13 @@ from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
+    DrawIntrigueCards,
+    DrawPersonalCards,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainInfluence,
+    GainResources,
+    GenerateSpecimens,
     GiveIntrigueToOpponent,
     LoseInfluence,
     LoseTroops,
@@ -377,7 +381,7 @@ def _cursor(frame: DecisionFrame) -> tuple[int, str, ScoutsOption, int, int]:
 
 def _current_step(state: GameState, frame: DecisionFrame) -> ScoutsStep | None:
     player, _, option, step, _ = _cursor(frame)
-    steps = option_steps(option)
+    steps = _line_steps(frame, option)
     if step >= len(steps):
         return None
     current = steps[step]
@@ -460,7 +464,7 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
     player, item, option, step, _ = _cursor(frame)
     context = dict(frame.context)
     source = context_str(context, "source", owner=_EFFECT_FRAME)
-    steps = option_steps(option)
+    steps = _line_steps(frame, option)
     if step >= len(steps):
         return RuleResult(
             state=state.pop_decision(),
@@ -474,6 +478,124 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
         )
     moved = _moved(state, frame, step=step + 1)
     return _apply_automatic(moved, player, steps[step], source=f"{source}:{step}")
+
+
+# --- Rewards ahead of a pending choice (OQ-100) -------------------------------------
+
+# Rewards that may resolve while an earlier reward of the line waits on a
+# choice: gains that open no choice of their own (a draw may still shuffle).
+# Every Scouts line prints its choice rewards before these (Water Discipline,
+# Oversight, Leverage, Spies for Hire, CHOAM Negotiations, Shadow Warfare,
+# Competitive Study), so taking them first opens every order (OQ-100).
+_REWARDS_FIRST_KINDS: Final = (
+    DrawPersonalCards,
+    DrawIntrigueCards,
+    GainResources,
+    GenerateSpecimens,
+)
+_STOP: Final = "stop"
+
+
+def _line_steps(frame: DecisionFrame, option: ScoutsOption) -> tuple[ScoutsStep, ...]:
+    """The line's steps, without the rewards already taken ahead (``stop``)."""
+
+    steps = option_steps(option)
+    stop = dict(frame.context).get(_STOP)
+    return steps[:stop] if isinstance(stop, int) else steps
+
+
+def _rewards_ahead(
+    state: GameState, player: int
+) -> tuple[int, int, tuple[ScoutsStep, ...]] | None:
+    """The seat's Scouts line whose later rewards may resolve now, and those.
+
+    A reward of the line waits on a choice: either the line's own choice
+    step (a Faction, a card to trash from hand), or a frame that reward
+    opened on top of it (an optional trash, a Spy placement, a Contract
+    pick, a Research advance or bonus), recognised by its frame id. The rewards
+    printed after it must all be automatic gains. Returns the line's stack
+    index, the index of its first later reward and those rewards; None when
+    nothing may resolve ahead.
+    """
+
+    stack = state.decision_stack
+    if not stack or not _owned_by(stack[-1], player):
+        return None
+    if stack[-1].kind == FrameKind.SCOUTS_EFFECT:
+        index, line = len(stack) - 1, stack[-1]
+        if _current_step(state, line) is None:
+            return None
+        waiting = _cursor(line)[3]
+    elif len(stack) >= 2 and stack[-2].kind == FrameKind.SCOUTS_EFFECT:
+        index, line = len(stack) - 2, stack[-2]
+        waiting = _cursor(line)[3] - 1
+        source = context_str(dict(line.context), "source", owner=_EFFECT_FRAME)
+        if not stack[-1].frame_id.startswith(f"{source}:{waiting}:"):
+            return None
+    else:
+        return None
+    owner, _, option, _, _ = _cursor(line)
+    if owner != player or waiting < len(option.costs):
+        return None  # a cost is paid first [Main pp. 9, 20]
+    later = _line_steps(line, option)[waiting + 1 :]
+    if not later or not all(isinstance(step, _REWARDS_FIRST_KINDS) for step in later):
+        return None
+    return index, waiting + 1, later
+
+
+def _owned_by(frame: DecisionFrame, player: int) -> bool:
+    return isinstance(frame.decision, PlayerDecision) and frame.decision.owner == player
+
+
+def scouts_rewards_ahead(state: GameState, player: int) -> tuple[ScoutsStep, ...]:
+    """The rewards ``scouts_rewards_first`` would resolve now (empty: none)."""
+
+    found = _rewards_ahead(state, player)
+    return () if found is None else found[2]
+
+
+def legal_scouts_rewards_first_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer a line's later automatic rewards ahead of its pending choice.
+
+    Icons of one line are independent effects whose order the owner picks
+    once the arrow cost is paid (OQ-015 (d), [Main p. 9]); for a Scouts line
+    that is the user's ruling of 2026-10-05 (OQ-100): Water Discipline's
+    card may be drawn before the trash, so the drawn card can be trashed.
+    """
+
+    if _rewards_ahead(state, player) is None:
+        return ()
+    return (DomainAction(action_id="scouts_rewards_first", actor=player),)
+
+
+def apply_scouts_rewards_first(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve the line's later rewards now; the pending choice stays open."""
+
+    if action not in legal_scouts_rewards_first_actions(state, action.actor):
+        raise ValueError("action is not a legal Scouts rewards-first choice")
+    found = _rewards_ahead(state, action.actor)
+    if found is None:  # pragma: no cover - the legality check above
+        raise RuntimeError("no Scouts rewards wait behind a choice")
+    index, first, later = found
+    line = state.decision_stack[index]
+    source = context_str(dict(line.context), "source", owner=_EFFECT_FRAME)
+    # The line drops these rewards before they apply, so it closes once the
+    # choice is settled and a draw's reshuffle stacks above the open choice.
+    # Its cursor stays where it was.
+    context = dict(line.context)
+    context[_STOP] = first
+    stack = list(state.decision_stack)
+    stack[index] = replace(line, context=tuple(sorted(context.items())))
+    result = RuleResult(state=replace(state, decision_stack=tuple(stack)))
+    events: list[GameEvent] = []
+    for step, reward in enumerate(later, start=first):
+        result = _apply_automatic(
+            result.state, action.actor, reward, source=f"{source}:{step}"
+        )
+        events.extend(result.events)
+    return RuleResult(state=result.state, events=tuple(events))
 
 
 def _credit_turn(

@@ -26,6 +26,10 @@ const UI_TEXT = {
   "effects.intrigue": { "ko": "책략 카드 사용", "en": "Intrigue played" },
   "effects.combat_intrigue": { "ko": "전투 책략 사용", "en": "Combat Intrigue played" },
   "effects.navigation": { "ko": "항행 카드 사용", "en": "Navigation card played" },
+  "effects.banner_round": { "ko": "라운드 {{round}}", "en": "Round {{round}}" },
+  "effects.banner_conflict": { "ko": "{conflict}: {{name}}", "en": "{conflict}: {{name}}" },
+  "effects.banner_turn_mine": { "ko": "내 차례", "en": "Your turn" },
+  "effects.banner_turn_other": { "ko": "플레이어{{seat}} 차례", "en": "Player {{seat}}'s turn" },
   "html.setup_intro": {
     "ko": "플레이어와 규칙을 고르고 아라키스로 떠나세요.",
     "en": "Choose your players and rules. Arrakis awaits."
@@ -682,6 +686,22 @@ const UI_TEXT = {
     "ko": "덱 맨 위",
     "en": "Top of deck"
   },
+  "panels.deck_list_note": {
+    "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
+    "en": "Shown by name, not in draw order."
+  },
+  "panels.deck_view": {
+    "ko": "{deck} 구성 보기 (순서 비공개)",
+    "en": "View {deck} contents (order hidden)"
+  },
+  "panels.my_deck": {
+    "ko": "내 {deck} · {{count}}장 (순서 비공개)",
+    "en": "My deck · {{count}} cards (order hidden)"
+  },
+  "panels.seat_deck": {
+    "ko": "{{seat}}의 {deck} · {{count}}장 (순서 비공개)",
+    "en": "{{seat}}'s deck · {{count}} cards (order hidden)"
+  },
   "panels.discard_pile_view": {
     "ko": "{discard_pile} 보기",
     "en": "View {discard_pile}"
@@ -1078,21 +1098,17 @@ const UI_TEXT = {
     "ko": "확정",
     "en": "Confirm"
   },
-  "render.scouts_choose_bid": {
-    "ko": "{{resource}} {{count}} 선택",
-    "en": "Choose {{count}} {{resource}}"
+  "render.turn_end_bid": {
+    "ko": "{{resource}} {{count}} 입찰 · 턴 종료 ▶",
+    "en": "Bid {{count}} {{resource}} · End turn ▶"
   },
-  "render.scouts_call_bid": {
-    "ko": "{{resource}} {{count}} 입찰",
-    "en": "Bid {{count}} {{resource}}"
+  "render.turn_end_call": {
+    "ko": "{{resource}} {{count}} 호가 · 턴 종료 ▶",
+    "en": "Call {{count}} {{resource}} · End turn ▶"
   },
-  "render.scouts_pass_bid": {
-    "ko": "패스 ({{resource}} 0)",
-    "en": "Pass (0 {{resource}})"
-  },
-  "render.scouts_confirm_bid": {
-    "ko": "{{resource}} {{count}} 입찰 확정",
-    "en": "Confirm {{count}} {{resource}} bid"
+  "render.turn_end_pass_call": {
+    "ko": "패스 ({{resource}} 0) · 턴 종료 ▶",
+    "en": "Pass (0 {{resource}}) · End turn ▶"
   },
   "render.contract_bank": {
     "ko": "남은 계약",
@@ -1377,6 +1393,10 @@ const UI_TEXT = {
   "render.waiting_turn_end": {
     "ko": "{{name}}의 턴 종료를 기다리는 중…",
     "en": "Waiting for {{name}} to end the turn…"
+  },
+  "render.zone_heading": {
+    "ko": "{{zone}} · {{count}}",
+    "en": "{{zone}} · {{count}}"
   },
   "review.before_game_start": {
     "ko": "게임 시작 전",

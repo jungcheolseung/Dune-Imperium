@@ -55,6 +55,12 @@ HANGUL_JS = """() => {
 }"""
 
 
+# Engine prompts whose Korean once held an English word (prompts_ko.js).
+PROMPT_KO_SAMPLES = {
+    "Call an amount of spice or pass": "스파이스 호가, 또는 패스",
+    "Retreat any of your Mercenaries troops": "용병 병력 후퇴",
+}
+
 # The text of the main surfaces, to compare one position in two moments.
 SNAPSHOT_JS = """() => Object.fromEntries(
     ['header-status', 'decision-banner', 'seats', 'market', 'private-zone',
@@ -312,6 +318,17 @@ def live_table(base: str, browser) -> None:
         "in Korean the engine's prompt is shown in Korean",
         (prompt, shown),
     )
+    # The Scouts call and the Mercenaries retreat once left a bare English
+    # "spice" / "troop" in their Korean prompt (user report 2026-10-05); the
+    # glossary words are 스파이스 (the {spice} term, as every other prompt
+    # writes it) and 병력.
+    for english, korean in PROMPT_KO_SAMPLES.items():
+        shown_prompt = page.evaluate("(text) => promptText(text)", english)
+        check.ok(
+            shown_prompt == korean,
+            f"Korean prompt {english!r} reads {korean!r}",
+            shown_prompt,
+        )
     # A round trip at one position must give back exactly the Korean it left.
     before = page.evaluate(SNAPSHOT_JS)
     switch(page, "en")

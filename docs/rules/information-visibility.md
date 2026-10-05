@@ -34,7 +34,7 @@
 
 - 일반 hand의 identity는 소유자만 보고, 장수는 전원에게 공개한다. 단, 공개 경로로 hand에 들어온 카드(Corrinth City의 acquire-to-hand, Intrigue의 "put that card in your hand", Bond로 in play에서 돌아온 카드)는 hand를 떠날 때까지 전원이 identity를 본다(`hand_public`).
 - face-up 개인 discard pile의 identity와 장수는 전원에게 공개한다(모든 카드가 face-up으로 들어오므로). reshuffle로 deck이 되는 순간 다시 비공개다.
-- 개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다. 개인 deck의 순서와 구성은 소유자에게도 노출하지 않는다.
+- 개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다. 개인 deck의 **순서**는 소유자를 포함해 누구에게도 노출하지 않는다. 개인 deck의 **구성**(어떤 카드가 몇 장 들었는가)은 소유자에게만, 이름순으로 정렬해 순서가 묻어나지 않게 보여 준다(서버 view의 `private.deck_cards`와 UI의 "내 카드덱" 목록; 관측·인코딩 밖). 사용자 결정(2026-10-05)으로, OQ-010의 재확인 원칙을 적용한 프로젝트 convention이며 공식 규칙이 아니다. 근거: 개인 deck에 카드가 들어오는 모든 경로가 소유자가 보는 존을 거친다 — setup의 starting deck과 draw `[Main pp. 5-6]`, 다시 섞이는 자신의 face-up discard pile `[Main pp. 5-6, 13]`, 소유자가 고른 Tleilaxu 카드를 deck 맨 위에 두는 경우 `[Immortality pp. 6, 16]` — deck에서 나가는 경로(draw, 효과로 본 뒤의 trash·discard, Usurp의 turn 끝 deck trash가 남기는 공개 이벤트, Leader 선택으로 빠지는 인쇄된 starting card)도 마찬가지다. 그래서 구성은 소유자가 이미 추론할 수 있고 보여 줘도 새 정보가 아니다. 상대에게는 구성도 보이지 않는다(소유자의 hand를 모르므로 추론할 수 없다).
 - 보유 Intrigue의 identity는 소유자만 본다 `[Main p. 7]`. play돼 선택 해결 중인 Intrigue는 이미 공개됐으므로 전원이 본다(`intrigue_resolving`).
 - matched Conflict/Objective의 identity는 뒤집힌 뒤에도 공개를 유지하고, completed contract도 identity를 공개한다(완료 사실이 공지됐으므로).
 - 실시간 행동 로그는 엔진 이벤트를 `visible_to`로 걸러 보여 준다. 공개 이벤트는 그 직후 공개 존에 있는 카드만 이름을 담는다(sweep 불변식으로 검사).

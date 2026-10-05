@@ -276,7 +276,10 @@ function startPlayback(delay) {
 }
 
 function stopPlayback() {
-  if (state.review) clearPlayEffects();
+  if (state.review) {
+    clearPlayEffects();
+    clearPhaseBanner();
+  }
   playback.playing = false;
   window.clearTimeout(playback.timer);
   renderPlaybackControls();

@@ -57,6 +57,22 @@ ERROR_PREFIX: Final = "error:"
 _LOGGER: Final = logging.getLogger(__name__)
 
 
+# Choices the project offers that the app has no counterpart for and never
+# takes: the app resolves a Scouts line's steps in printed order
+# (docs/app-ai/scouts.md), never the line's later rewards ahead of a pending
+# choice (OQ-100).
+_PROJECT_ONLY_ACTIONS: Final = frozenset({"scouts_rewards_first"})
+
+
+def app_offered(legal_actions: tuple[DomainAction, ...]) -> tuple[DomainAction, ...]:
+    """The decision as the app has it: without the project-only choices."""
+
+    return (
+        tuple(a for a in legal_actions if a.action_id not in _PROJECT_ONLY_ACTIONS)
+        or legal_actions
+    )
+
+
 class AppAIAgent:
     """The app AI at one difficulty level, seeded for replayable games."""
 
@@ -99,6 +115,7 @@ class AppAIAgent:
 
         if not legal_actions:
             raise ValueError("app_ai requires at least one legal action")
+        legal_actions = app_offered(legal_actions)
         kind = observation.decision_kind
         if len(legal_actions) == 1:
             return legal_actions[0]

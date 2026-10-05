@@ -125,21 +125,27 @@ def main() -> None:
                     f"{where}: controls and prize description name the bid resource",
                 )
                 stepper = page.locator("#actions .count-row")
+                turn_end = page.locator("#decision-banner .turn-end-row button")
                 check.ok(
                     stepper.count() == 1
                     and resource in stepper.locator(".stepper-value").inner_text()
-                    and resource in stepper.locator(".count-confirm").inner_text(),
-                    f"{where}: amount and submit button both show the unit",
+                    and stepper.locator(".count-confirm").count() == 0
+                    and turn_end.count() == 1
+                    and resource in turn_end.inner_text(),
+                    f"{where}: the stepper only sets the amount; the turn-end "
+                    "press names the unit",
                 )
+                end_word = "턴 종료" if language == "ko" else "End turn"
+                pass_word = "패스" if language == "ko" else "Pass"
                 if row["open"] and row["cap"] == 0:
                     check.ok(
-                        ("패스" if language == "ko" else "Pass")
-                        in stepper.locator(".count-confirm").inner_text()
+                        pass_word in turn_end.inner_text()
+                        and end_word in turn_end.inner_text()
                         and all(
                             stepper.locator(".stepper button").nth(i).is_disabled()
                             for i in range(2)
                         ),
-                        f"{where}: the zero-only call says pass and cannot increase",
+                        f"{where}: the zero-only call passes with the turn end",
                     )
                 selected = 0
                 if row["cap"] == 3:
@@ -148,21 +154,29 @@ def main() -> None:
                         selected += 1
                     check.ok(
                         str(selected) in stepper.locator(".stepper-value").inner_text()
-                        and resource in stepper.locator(".count-confirm").inner_text(),
+                        and str(selected) in turn_end.inner_text()
+                        and resource in turn_end.inner_text(),
                         f"{where}: changing the amount keeps the resource",
                     )
-                stepper.locator(".count-confirm").click()
-                expected = row["initial"]["actions"]["actions"]
+                check.ok(
+                    page.evaluate("window.bidRequests") == [],
+                    f"{where}: setting the amount sends nothing",
+                )
+                turn_end.click()
+                legal = row["initial"]["actions"]["actions"]
                 action_id = "scouts_call" if row["open"] else "scouts_bid"
+                if not row["open"] and selected == 0:
+                    # Confirming with no bid chosen confirms 0 (the engine).
+                    action_id = "confirm_scouts_bid"
                 expected = next(
                     a["index"]
-                    for a in expected
+                    for a in legal
                     if a["action_id"] == action_id
-                    and a["arguments"]["count"] == selected
+                    and a["arguments"].get("count", 0) == selected
                 )
                 check.ok(
                     page.evaluate("window.bidRequests") == [expected],
-                    f"{where}: the control sends the original legal index",
+                    f"{where}: the turn-end press sends the original legal index",
                 )
                 if not row["open"]:
                     page.evaluate(
@@ -178,9 +192,20 @@ def main() -> None:
                     check.ok(
                         resource in button.inner_text()
                         and str(count) in button.inner_text()
+                        and end_word in button.inner_text()
                         and own.count() == 1
                         and resource in own.inner_text(),
                         f"{where}: final confirmation and own bid carry the unit",
+                    )
+                    button.click()
+                    confirm = next(
+                        a["index"]
+                        for a in row["selected"]["actions"]["actions"]
+                        if a["action_id"] == "confirm_scouts_bid"
+                    )
+                    check.ok(
+                        page.evaluate("window.bidRequests") == [confirm],
+                        f"{where}: the recorded bid is confirmed by one press",
                     )
                     check.ok(
                         "73" not in page.locator("#scouts-panel").inner_text(),

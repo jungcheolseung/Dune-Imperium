@@ -25,6 +25,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     TrashCustomAbility,
 )
 from dune_imperium.agents.app_ai.abilities.intrigue import choose_faction_influence
+from dune_imperium.agents.app_ai.agent import app_offered
 from dune_imperium.agents.app_ai.catalog import (
     agent_entity,
     card_entity,
@@ -141,7 +142,7 @@ def _run(
     state: GameState, *, rng_seed: int = 0, memory: Memory | None = None
 ) -> DecisionRun:
     profile = make_profile(state, ME, rng_seed=rng_seed)
-    actions = ENGINE.legal_actions(state, ME)
+    actions = app_offered(ENGINE.legal_actions(state, ME))
     return DecisionRun(profile.ctx, profile, actions, profile.rng, memory or Memory())
 
 
