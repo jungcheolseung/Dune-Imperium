@@ -1022,3 +1022,82 @@ def test_the_uniform_ties_variant_pins_the_earlier_draw() -> None:
     choices = _faction_choices("emperor", "spacing_guild", "bene_gesserit", "fremen")
     drawn = {uniform.choose_action(view, choices) for _ in range(40)}
     assert len(drawn) > 1
+
+
+def _garrison_view(troops: int, commanders: int = 0) -> PlayerView:
+    """A real reset view for seat 0 with seat 0's garrison set."""
+
+    from dataclasses import replace
+
+    view = _view_for(bloodlines=True, immortality=True)
+    me = replace(
+        view.players[0], troops_garrison=troops, commanders_garrison=commanders
+    )
+    return replace(view, players=(me, *view.players[1:]))
+
+
+def _play_intrigue(instance_id: str, option: int) -> DomainAction:
+    return _action("play_intrigue", ("card_id", instance_id), ("option", option))
+
+
+def test_a_deploy_up_to_plot_is_not_spent_on_an_empty_garrison() -> None:
+    # Since codec v137 "Deploy up to N troops from your garrison" is
+    # playable with nothing to deploy and then deploys zero. The engine
+    # withheld those lines before; the agent ranks them last again rather
+    # than spend the card, probe: play_intrigue(counterattack, 0) ->
+    # deploy_intrigue_troops{count: 0} -> finish_agent_turn.
+    finish = _action("finish_agent_turn")
+    deploy_only = (
+        _play_intrigue("intrigue:counterattack:0", 0),
+        _play_intrigue("intrigue:detonation:0", 1),
+        _play_intrigue("intrigue:twisted_devious:0", 1),
+    )
+    empty = _garrison_view(troops=0)
+    for seed in range(20):
+        agent = HeuristicAgent(seed=seed)
+        assert agent.choose_action(empty, (*deploy_only, finish)) == finish
+    # Detonation's other Plot, the Shield Wall, is still worth the card.
+    shield_wall = _play_intrigue("intrigue:detonation:0", 0)
+    chosen = HeuristicAgent(seed=1).choose_action(
+        empty, (*deploy_only, shield_wall, finish)
+    )
+    assert chosen == shield_wall
+    # A troop or a Commander in the garrison makes them worth playing.
+    for view in (_garrison_view(troops=1), _garrison_view(troops=0, commanders=1)):
+        chosen = HeuristicAgent(seed=2).choose_action(view, (*deploy_only, finish))
+        assert chosen in deploy_only
+
+
+def test_a_zero_unit_count_never_outranks_moving_a_unit() -> None:
+    # Codec v137 added count 0 to deploy_intrigue_troops ("Deploy up to")
+    # and retreat_intrigue_troops (Tactical Option's "any number"). It ranks
+    # last, so the counts of one and more keep the choice and the seeded
+    # draw they had before zero existed.
+    view = _garrison_view(troops=3)
+    for action_id, counts in (
+        ("deploy_intrigue_troops", range(3)),
+        ("retreat_intrigue_troops", range(4)),
+    ):
+        with_zero = tuple(_action(action_id, ("count", count)) for count in counts)
+        before = with_zero[1:]
+        for seed in range(20):
+            chosen = HeuristicAgent(seed=seed).choose_action(view, with_zero)
+            assert chosen == HeuristicAgent(seed=seed).choose_action(view, before)
+            assert _argument_count(chosen) >= 1
+    # The deploy keeps its largest count first.
+    deploys = tuple(
+        _action("deploy_intrigue_troops", ("count", count)) for count in range(3)
+    )
+    assert HeuristicAgent(seed=4).choose_action(view, deploys) == deploys[2]
+    # A Commander's share still counts as a unit moved.
+    commander = _action("deploy_intrigue_troops", ("commanders", 1), ("count", 1))
+    zero = _action("deploy_intrigue_troops", ("count", 0))
+    assert HeuristicAgent(seed=5).choose_action(view, (zero, commander)) == commander
+    # Zero alone is still answered.
+    assert HeuristicAgent(seed=6).choose_action(view, (zero,)) == zero
+
+
+def _argument_count(action: DomainAction) -> int:
+    count = dict(action.arguments)["count"]
+    assert isinstance(count, int)
+    return count

@@ -27,7 +27,10 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import LoseInfluence
+from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
+    LoseInfluence,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -235,6 +238,14 @@ _RESERVE_ACQUISITIONS: Final = frozenset(
 )
 _COUNT_DEPLOYMENTS: Final = frozenset(
     {"deploy_troops", "deploy_intrigue_troops", "deploy_commanders"}
+)
+# Intrigue unit moves whose ``count`` may be zero since codec v137: "Deploy
+# up to N troops" (Counterattack, Detonation, Twisted Devious) and Tactical
+# Option's "Retreat any number". Zero moves nothing and was not offered
+# before, so it ranks below every count that moves a unit
+# (``HeuristicAgent.choose_action``).
+_ZERO_COUNT_UNIT_MOVES: Final = frozenset(
+    {"deploy_intrigue_troops", "retreat_intrigue_troops"}
 )
 
 # Actions that leave a grafted card's box untouched; when only these
@@ -1090,6 +1101,41 @@ def _acquisition_cost(action: DomainAction) -> int | None:
     return None
 
 
+def _deploys_only_from_garrison(action: DomainAction) -> bool:
+    """Whether a ``play_intrigue`` option's only rewards are garrison deploys.
+
+    Reads the printed option (Counterattack's Plot, Detonation's and Twisted
+    Devious' second Plot): "Deploy up to N troops from your garrison to the
+    Conflict" is all the option does.
+    """
+
+    if action.action_id != "play_intrigue":
+        return False
+    instance_id = _argument(action, "card_id")
+    option = _argument(action, "option")
+    if not isinstance(instance_id, str) or not isinstance(option, int):
+        return False
+    try:
+        options = intrigue_card_for_instance(instance_id).options
+    except ValueError:
+        return False
+    if not 0 <= option < len(options):
+        return False
+    rewards = tuple(
+        reward for section in options[option].sections for reward in section.rewards
+    )
+    return bool(rewards) and all(
+        isinstance(reward, DeployFromGarrison) for reward in rewards
+    )
+
+
+def _garrison_units(view: PlayerView) -> int:
+    """Troops and Commanders in the observer's garrison."""
+
+    me = _own_seat(view)
+    return me.troops_garrison + me.commanders_garrison
+
+
 @dataclass(slots=True)
 class HeuristicAgent:
     """Pick a highest-scoring legal action, breaking ties with a seeded RNG."""
@@ -1159,6 +1205,35 @@ class HeuristicAgent:
             # empties the tanks: passing ranks above it.
             scored = tuple(
                 min(scored) - 1.0 if action.action_id == "return_specimen" else s
+                for action, s in zip(legal_actions, scored, strict=True)
+            )
+        if any(
+            action.action_id == "play_intrigue" for action in legal_actions
+        ) and _garrison_units(observation) < 1:
+            # "Deploy up to N troops from your garrison" may be played with
+            # nothing to deploy since codec v137 and then only deploys zero,
+            # so the card is spent for nothing. Before, the engine withheld
+            # the line without a deployable garrison unit; with an empty
+            # garrison it ranks last again. The view does not show the
+            # turn's other deployment limits (Harkonnen Advisor's troop,
+            # OQ-038; Emperor of the Known Universe [Main p. 17]).
+            scored = tuple(
+                min(scored) - 1.0 if _deploys_only_from_garrison(action) else s
+                for action, s in zip(legal_actions, scored, strict=True)
+            )
+        if any(
+            action.action_id in _ZERO_COUNT_UNIT_MOVES
+            and _argument(action, "count") == 0
+            for action in legal_actions
+        ):
+            # A zero count moves nothing and was not offered before codec
+            # v137: it ranks below every count that moves a unit, so the
+            # counts of one and more keep the order (and the draw) they had.
+            scored = tuple(
+                min(scored) - 1.0
+                if action.action_id in _ZERO_COUNT_UNIT_MOVES
+                and _argument(action, "count") == 0
+                else s
                 for action, s in zip(legal_actions, scored, strict=True)
             )
         best = max(scored)
