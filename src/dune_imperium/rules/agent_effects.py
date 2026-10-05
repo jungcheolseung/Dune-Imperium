@@ -56,6 +56,7 @@ from dune_imperium.rules.effects import (
     active_agent_card,
     advance_after_effect,
     arm_agent_icons,
+    borrowed_agent_card,
     current_agent_effect_context,
     finish_agent_icon,
     is_grafted,
@@ -2638,8 +2639,10 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         # Dissecting Kit: the other grafted card leaves play; its
         # un-activated box expires with it (OQ-022 designer ruling).
         partner = other_grafted_card_id(context)
+        held = _waiting_box_holds_space_influence(context)
         context["graft_pending_effect"] = False
         context["graft_pending_icons"] = ""
+        _release_space_influence(context, held=held)
         next_state = advance_after_effect(state, context)
         trashed = trash_personal_card(
             next_state, action.actor, partner, source=f"{source}:trash"
@@ -2766,8 +2769,10 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         if trashed_id == active_id:
             context["agent_card_self_trashed"] = True
         else:
+            held = _waiting_box_holds_space_influence(context)
             context["graft_pending_effect"] = False
             context["graft_pending_icons"] = ""
+            _release_space_influence(context, held=held)
         faction = BOARD_SPACES_BY_ID[space_id].faction
         if faction is None:
             raise RuntimeError("Beguiling Pheromones needs a Faction space")
@@ -3118,6 +3123,53 @@ def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
     return card_instance_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
 
 
+def holds_space_influence(effect: PersonalCardAgentEffect | None) -> bool:
+    """Return whether a waiting box of this effect holds the space's Influence.
+
+    Subversive Advisor's "gain two Influence instead of one" [Subversive
+    Advisor card] replaces the visited Faction space's own gain, so while
+    its box waits the space's ``resolve_faction_influence`` step is not
+    offered: the two never add up to 3 [Main pp. 9, 11, 20].
+    """
+
+    return (
+        effect
+        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    )
+
+
+def _waiting_box_holds_space_influence(context: dict[str, ActionValue]) -> bool:
+    """Return whether a still-pending box of the frame holds the space's gain."""
+
+    graft_card_id = other_grafted_card_id(context)
+    return (
+        context.get("pending_agent_effect") is True
+        and holds_space_influence(active_agent_card(context).agent_effect)
+    ) or (
+        context.get("graft_pending_effect") is True
+        and bool(graft_card_id)
+        and holds_space_influence(
+            borrowed_agent_card(
+                personal_card_for_instance(graft_card_id),
+                context_str(context, "card_id", owner="Agent-turn effect frame"),
+            ).agent_effect
+        )
+    )
+
+
+def _release_space_influence(context: dict[str, ActionValue], *, held: bool) -> None:
+    """Offer the space's Influence again once no waiting box holds it.
+
+    ``held`` says whether a box held it before the change. When that box
+    expires unresolved (OQ-022), only the card's "instead" lapses: "Faction
+    space라면 그 Faction Influence도 1 얻는다." [Main p. 7] [Main p. 9], so
+    the space's ordinary ``resolve_faction_influence`` step comes back.
+    """
+
+    if held and not _waiting_box_holds_space_influence(context):
+        context["pending_faction_influence"] = True
+
+
 def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     """Expire a pending Agent box whose played card already left play.
 
@@ -3125,6 +3177,10 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     trashed (OQ-022 designer ruling), so when a freely ordered effect
     trashes the played card before its Agent box is activated, the whole
     un-activated box expires instead of resolving.
+
+    Only the card's own effect lapses: when the expired box held the
+    space's Influence (Subversive Advisor), the space's own gain is offered
+    again (``_release_space_influence``).
     """
 
     state = result.state
@@ -3162,6 +3218,9 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         expired.append(graft_card_id)
     if not expired:
         return result
+    _release_space_influence(
+        context, held=_waiting_box_holds_space_influence(dict(frame.context))
+    )
     next_state = advance_after_effect(state, context)
     events = tuple(
         GameEvent(

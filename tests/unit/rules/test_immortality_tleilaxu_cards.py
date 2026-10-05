@@ -661,6 +661,89 @@ def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() ->
     assert context["graft_pending_effect"] is True
 
 
+SUBVERSIVE = "imperium:subversive_advisor:0"
+_DUTIFUL_SERVICE_POST = "emperor-sardaukar-dutiful-service"
+
+
+def test_subversive_advisor_partner_replaces_the_space_influence() -> None:
+    # "Gain two Influence instead of one" [Subversive Advisor card]: grafted
+    # as the partner, its box holds the space's Influence just as when it
+    # is the placed card -- never 1 + 2 (docs/rules/player-turns.md,
+    # "총 3을 얻지 않는다" [Main pp. 9, 11, 20]).
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, SUBVERSIVE))),
+        FACE_DANCER,
+        "dutiful_service",
+        SUBVERSIVE,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["graft_pending_effect"] is True
+    assert context["pending_faction_influence"] is False
+    engine = UprisingRulesEngine()
+    switched = _switch(grafted)
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(switched, 0)
+    }
+
+    resolved = engine.apply(
+        switched, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+
+    owner = resolved.players[0]
+    assert owner.influence.emperor == 2
+    assert SUBVERSIVE in owner.trashed
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(resolved, 0)
+    }
+
+
+def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> None:
+    # Pheromones trashes the grafted Subversive Advisor before its box
+    # resolves, so that box expires (OQ-022, FAQ p. 1); the visited space's
+    # own "Faction Influence도 1" [Main p. 7] [Main p. 9] is still gained,
+    # on top of Pheromones' additional Influence.
+    pheromones = _tleilaxu("beguiling_pheromones")
+    grafted = _graft(
+        _state(
+            _owner(
+                (SUBVERSIVE, pheromones),
+                spies_supply=2,
+                spy_post_ids=(_DUTIFUL_SERVICE_POST,),
+            )
+        ),
+        SUBVERSIVE,
+        "dutiful_service",
+        pheromones,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_faction_influence"] is False
+    engine = UprisingRulesEngine()
+    # The Spy on Dutiful Service's post offers Gather Intelligence first.
+    declined = engine.apply(
+        grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
+    ).state
+    switched = _switch(declined)
+    trash = next(
+        action
+        for action in legal_agent_card_payment_actions(switched, 0)
+        if dict(action.arguments).get("card_id") == SUBVERSIVE
+    )
+
+    traded = engine.apply(switched, trash)
+
+    owner = traded.state.players[0]
+    assert SUBVERSIVE in owner.trashed and owner.influence.emperor == 1
+    _, context = current_agent_effect_context(traded.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is True
+
+    gained = engine.apply(
+        traded.state, DomainAction(action_id="resolve_faction_influence", actor=0)
+    )
+
+    assert gained.state.players[0].influence.emperor == 2
+
+
 def test_piter_loses_a_troop_for_two_cards_and_research() -> None:
     piter = _tleilaxu("piter_genius_advisor")
     empty = _place(

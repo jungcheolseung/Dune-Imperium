@@ -51,7 +51,12 @@ from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.graft import apply_graft_partner, legal_graft_partner_actions
+from dune_imperium.rules.graft import (
+    apply_graft_partner,
+    apply_graft_switch,
+    legal_graft_partner_actions,
+    legal_graft_switch_actions,
+)
 from dune_imperium.rules.intrigue_peek import (
     apply_intrigue_peek,
     legal_intrigue_peek_actions,
@@ -222,6 +227,43 @@ def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
     marked = _reveal(_state(_owner((kit,), research_space="c4r2")))
     gains = dict(marked.decision_stack[-1].context)["reveal_pending_gains"]
     assert str(gains).startswith("tleilaxu|1|")
+
+
+def test_dissecting_kit_trashing_subversive_advisor_keeps_the_space_influence() -> None:
+    # The trashed Subversive Advisor's box expires before it resolves
+    # (OQ-022), so its "gain two Influence instead of one" lapses; the
+    # visited space's own "Faction Influence도 1" [Main p. 7] [Main p. 9]
+    # is offered again.
+    kit = _card("dissecting_kit")
+    subversive = _card("subversive_advisor")
+    grafted = _graft(
+        _state(
+            _owner(
+                (subversive, kit),
+                spies_supply=2,
+                spy_post_ids=("emperor-sardaukar-dutiful-service",),
+            )
+        ),
+        subversive,
+        "dutiful_service",
+        kit,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_agent_effect"] is True
+    assert context["pending_faction_influence"] is False
+    switched = apply_graft_switch(
+        grafted, legal_graft_switch_actions(grafted, 0)[0]
+    ).state
+
+    result = apply_agent_card_payment(
+        switched, _payment(switched, "trash_grafted_card_for_specimen")
+    )
+
+    owner = result.state.players[0]
+    assert subversive in owner.trashed and owner.influence.emperor == 0
+    _, context = current_agent_effect_context(result.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is True
 
 
 def test_for_humanity_chooses_influence_and_trades_influence_for_a_vp() -> None:

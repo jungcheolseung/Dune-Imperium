@@ -31,7 +31,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
+from dune_imperium.rules.agent_effects import (
+    agent_card_icons_at_placement,
+    holds_space_influence,
+)
 from dune_imperium.rules.agent_icons import (
     card_is_boosted,
     effective_agent_icons,
@@ -536,12 +539,12 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (
+                        # Subversive Advisor's waiting box holds the space's
+                        # Influence; it comes back if the box expires
+                        # (``expire_trashed_card_effects``).
                         "pending_faction_influence",
                         space.faction is not None
-                        and card.agent_effect
-                        is not (
-                            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
-                        ),
+                        and not holds_space_influence(card.agent_effect),
                     ),
                     (
                         "pending_gather_intelligence",

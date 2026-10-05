@@ -3729,9 +3729,11 @@ def test_subversive_advisor_replaces_faction_influence_and_trashes_itself() -> N
 
 def test_subversive_advisor_box_expires_after_a_mid_frame_trash() -> None:
     # When a freely ordered Intrigue trash slot already trashed this card,
-    # its un-activated Agent box expires without the Influence gain: you
-    # can't receive or activate an effect from a card that is already
-    # trashed (OQ-022 designer ruling).
+    # its un-activated Agent box expires: you can't receive or activate an
+    # effect from a card that is already trashed (OQ-022 designer ruling).
+    # Only the card's "instead" lapses; the space's own Influence stays:
+    # "Faction space라면 그 Faction Influence도 1 얻는다." [Main p. 7]
+    # [Main p. 9] (docs/rules/player-turns.md).
     state = _subversive_state()
     subversive = state.players[0].hand[0]
     opponent = replace(
@@ -3756,8 +3758,40 @@ def test_subversive_advisor_box_expires_after_a_mid_frame_trash() -> None:
     assert owner.influence.emperor == 0
     assert owner.trashed == (subversive,)
     assert expired.events[-1].kind == "agent_card_effect_expired"
+    context = dict(expired.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert context["pending_faction_influence"] is True
+    engine = UprisingRulesEngine()
+    assert {
+        action.action_id for action in engine.legal_actions(expired.state, 0)
+    } == {"resolve_board_effect", "resolve_faction_influence"}
+
+    gained = engine.apply(
+        expired.state,
+        DomainAction(action_id="resolve_faction_influence", actor=0),
+    )
+
+    assert gained.state.players[0].influence.emperor == 1
     assert (
-        dict(expired.state.decision_stack[-1].context)["pending_agent_effect"]
+        dict(gained.state.decision_stack[-1].context)["pending_faction_influence"]
+        is False
+    )
+
+
+def test_subversive_advisor_expiry_off_a_resolved_box_restores_nothing() -> None:
+    # The space's Influence comes back only from a box that still held it:
+    # once the box has resolved (2 Influence, card trashed), a later
+    # expiry check finds nothing to expire or restore.
+    state = _subversive_state()
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    resolved = resolve_agent_card_effect(placed)
+
+    rechecked = expire_trashed_card_effects(resolved)
+
+    assert rechecked == resolved
+    assert rechecked.state.players[0].influence.emperor == 2
+    assert (
+        dict(rechecked.state.decision_stack[-1].context)["pending_faction_influence"]
         is False
     )
 
