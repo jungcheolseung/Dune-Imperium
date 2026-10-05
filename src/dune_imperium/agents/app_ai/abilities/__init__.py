@@ -6,11 +6,14 @@ every registered port.
 
 from dune_imperium.agents.app_ai.abilities import (  # noqa: F401  (registration)
     board,
+    epic_promo,
     generic,
+    immortality,
     imperium_a,
     imperium_b,
     intrigue,
     leaders,
+    tech,
 )
 from dune_imperium.agents.app_ai.abilities.base import (
     PORTS,
