@@ -134,6 +134,14 @@ def rank_combat(
     return CombatRanking(rewards=tuple(rewards), winner=winner)
 
 
+COMBAT_INTRIGUE_PLAYED_KEY = "played_at_priority"
+"""Set on the Combat Intrigue frame (absent means not) once its owner has
+played a Combat Intrigue card since priority last came to it. Such a seat's
+opportunity was to play cards, so its pass only hands priority on and does
+not count as one of the consecutive passes [Main pp. 14-15]. The frame is
+rebuilt without it whenever priority moves to another seat."""
+
+
 def begin_combat_intrigue(state: GameState) -> RuleResult:
     """Open Combat Intrigue priority at the first eligible seat."""
 
@@ -194,7 +202,12 @@ def apply_combat_intrigue_pass(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Record one pass and finish after every participant passes consecutively."""
+    """Record one pass and finish after every participant passes consecutively.
+
+    A pass by a seat that played a Combat Intrigue card since priority last
+    came to it only hands priority on: it is not one of the consecutive
+    passes (``COMBAT_INTRIGUE_PLAYED_KEY``).
+    """
 
     if action not in legal_combat_intrigue_actions(state, action.actor):
         raise ValueError("action is not a legal Combat Intrigue pass")
@@ -206,7 +219,16 @@ def apply_combat_intrigue_pass(
         state.first_player,
     )
     current_index = context_int(context, "current_index")
-    consecutive_passes = context_int(context, "consecutive_passes") + 1
+    if context.get(COMBAT_INTRIGUE_PLAYED_KEY):
+        # "each player with at least one unit in the Conflict may play any
+        # number of Combat Intrigue cards, or may pass. ... Once all players
+        # involved in Combat pass consecutively, you then resolve the
+        # Combat." [Main p. 14]; in the worked example Abby plays, John
+        # passes again, and Abby still decides last [Main p. 15]. A seat
+        # that played this opportunity hands priority on without passing.
+        consecutive_passes = 0
+    else:
+        consecutive_passes = context_int(context, "consecutive_passes") + 1
     if consecutive_passes == len(participants):
         next_state = replace(
             state,
@@ -1879,6 +1901,8 @@ def _combat_intrigue_frame(
     participants: tuple[int, ...],
     current_index: int,
     consecutive_passes: int,
+    *,
+    played: bool = False,
 ) -> DecisionFrame:
     mask = sum(1 << player for player in participants)
     return DecisionFrame(
@@ -1892,6 +1916,7 @@ def _combat_intrigue_frame(
             ("consecutive_passes", consecutive_passes),
             ("current_index", current_index),
             ("participants_mask", mask),
+            *(((COMBAT_INTRIGUE_PLAYED_KEY, 1),) if played else ()),
         ),
     )
 
@@ -1989,6 +2014,10 @@ def refresh_combat_participants(state: GameState) -> RuleResult:
         participants=remaining,
         current_index=next_index,
         consecutive_passes=consecutive_passes,
+        # A seat that keeps priority keeps its played mark; priority that
+        # moves on reaches a seat that has played nothing yet.
+        played=current in remaining
+        and bool(context.get(COMBAT_INTRIGUE_PLAYED_KEY)),
     )
     return RuleResult(
         state=replace(state, decision_stack=(*state.decision_stack[:-1], next_frame))

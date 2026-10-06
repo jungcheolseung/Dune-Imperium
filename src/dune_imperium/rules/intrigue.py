@@ -70,7 +70,10 @@ from dune_imperium.rules.card_discard import (
     resolve_personal_card_discard_trigger,
 )
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
-from dune_imperium.rules.combat import refresh_combat_participants
+from dune_imperium.rules.combat import (
+    COMBAT_INTRIGUE_PLAYED_KEY,
+    refresh_combat_participants,
+)
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     reconcile_deployment_after_retreat,
@@ -2086,7 +2089,7 @@ def finish_intrigue_play(
         ),
         intrigue_discard=(*resolved.intrigue_discard, card_id),
     )
-    refreshed = refresh_combat_participants(_reset_combat_passes(next_state))
+    refreshed = refresh_combat_participants(_reset_combat_passes(next_state, player))
     final_state = refreshed.state
     if any(
         isinstance(reward, RevealContractsTakeOne)
@@ -2231,7 +2234,7 @@ def _retreat_units(
     )
 
 
-def _reset_combat_passes(state: GameState) -> GameState:
+def _reset_combat_passes(state: GameState, player: int) -> GameState:
     """A played Combat Intrigue restarts the consecutive-pass count.
 
     "전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고
@@ -2239,7 +2242,9 @@ def _reset_combat_passes(state: GameState) -> GameState:
     The Combat Intrigue frame need not be on top: a card can leave a window
     of its own above it (Reach Agreement's Contract market, Battlefield
     Research's Tech window, a reshuffle for a draw) when its play finishes,
-    so the frame is found in the stack.
+    so the frame is found in the stack. The seat holding priority is also
+    marked as having played this opportunity, so its next pass only hands
+    priority on [Main p. 15] (``COMBAT_INTRIGUE_PLAYED_KEY``).
     """
 
     for index in range(len(state.decision_stack) - 1, -1, -1):
@@ -2247,9 +2252,17 @@ def _reset_combat_passes(state: GameState) -> GameState:
         if frame.kind != FrameKind.COMBAT_INTRIGUE:
             continue
         context = frame_context(frame)
-        if context.get("consecutive_passes") == 0:
+        played = (
+            isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        )
+        if context.get("consecutive_passes") == 0 and (
+            not played or context.get(COMBAT_INTRIGUE_PLAYED_KEY)
+        ):
             return state
         context["consecutive_passes"] = 0
+        if played:
+            context[COMBAT_INTRIGUE_PLAYED_KEY] = 1
         return replace(
             state,
             decision_stack=(
