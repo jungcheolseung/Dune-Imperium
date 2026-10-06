@@ -583,12 +583,13 @@ def test_distinct_influence_second_pick_without_a_plan_reevaluates() -> None:
 
 
 def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> None:
-    # Base seed 0, round 9, everyone passing: seat 0 wins Propaganda with a
+    # Base seed 1, round 9, everyone passing: seat 1 wins Propaganda with a
     # sandworm. Copy 1 asks frames of group 0, copy 2 frames of group 2; the
-    # app runs copy 2's Evaluate once copy 1's two gains are applied. (Seed 1
-    # reached the same shape until the 2026-10-06 card-comparison batch
-    # moved its game.)
-    state = _sandworm_rewards("propaganda", 0)
+    # app runs copy 2's Evaluate once copy 1's two gains are applied. (Seed 0
+    # reached the same shape until the 2026-10-06 Intrigue effect gate moved
+    # its game: a seat no longer plays Call to Arms in a Reveal with nothing
+    # left to acquire.)
+    state = _sandworm_rewards("propaganda", 1)
     seat, round_number = _seat(state), state.round_number
     assert round_number == 9
     assert [dict(f.context)["group"] for f in reversed(state.decision_stack)] == [
@@ -622,29 +623,29 @@ def test_distinct_influence_sandworm_plans_each_group_after_the_previous() -> No
     assert isinstance(first, tuple)
     assert isinstance(second, tuple)
     assert taken == [*first, *second]
-    # Copy 1: Fremen best; Spacing Guild and Bene Gesserit tie (shuffled).
+    # Copy 1: Fremen best; Emperor and Spacing Guild tie (shuffled).
     assert values[0] == pytest.approx(
         {
-            "emperor": 1.125,
-            "spacing_guild": 2.7,
+            "emperor": 3.7125,
+            "spacing_guild": 3.7125,
             "bene_gesserit": 2.7,
-            "fremen": 3.875,
+            "fremen": 4.5,
         }
     )
-    # The Evaluate's shuffle (rng seed 0) puts Bene Gesserit first of the tie.
-    assert first == ("fremen", "bene_gesserit")
-    # Copy 2 sees copy 1's gains: Bene Gesserit at 3 is now worth the most,
-    # and Fremen at 4 the least.
+    # The Evaluate's shuffle (rng seed 0) puts Emperor first of the tie.
+    assert first == ("fremen", "emperor")
+    # Copy 2 sees copy 1's gains: Emperor at 2 and Fremen at 5 are worth
+    # less, so Spacing Guild is now worth the most.
     assert values[2] == pytest.approx(
         {
-            "emperor": 1.125,
-            "spacing_guild": 2.7,
-            "bene_gesserit": 7.375,
-            "fremen": 0.5625,
+            "emperor": 2.7,
+            "spacing_guild": 3.7125,
+            "bene_gesserit": 2.7,
+            "fremen": 3.375,
         }
     )
-    assert second == ("bene_gesserit", "spacing_guild")
-    assert state.players[seat].influence.bene_gesserit == 4
+    assert second == ("spacing_guild", "fremen")
+    assert state.players[seat].influence.fremen == 6
 
 
 # -- combat_reward_spy ---------------------------------------------------------------
