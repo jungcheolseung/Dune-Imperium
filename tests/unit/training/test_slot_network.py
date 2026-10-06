@@ -25,6 +25,7 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     encode_player_view,
     segment_slice,
 )
+from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.registry import make_agent  # noqa: E402
 from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END  # noqa: E402
@@ -119,19 +120,19 @@ def _active_keys(network: MlpSlotsNetwork, observation: np.ndarray) -> Counter[s
 
 
 def _game_views(
-    seed: int, leaders: Sequence[str], *, heuristic: bool = False
+    seed: int, leaders: Sequence[str], *, agent: str | None = None
 ) -> list[PlayerView]:
     """All four seats' views at every decision of one seeded full-expansion game.
 
-    Random play covers the tracks; only the heuristic plays the Intrigue
-    cards that grant Agent icons and sets Imperium cards aside.
+    Random play (``agent`` None) covers the tracks; a named baseline plays
+    the Intrigue cards that grant Agent icons and sets Imperium cards aside.
     """
 
     engine = UprisingRulesEngine(leader_ids=tuple(leaders))
     state = engine.reset(_FULL, seed)
     chance = ChanceResolver(seed=seed)
     choices = random.Random(seed)
-    agents = [make_agent("heuristic", seed + seat) for seat in range(4)]
+    agents = [make_agent(agent or "random", seed + seat) for seat in range(4)]
     views: list[PlayerView] = []
     for _ in range(3_000):
         if engine.is_terminal(state):
@@ -146,10 +147,13 @@ def _game_views(
         seat_views = [engine.observe(state, seat) for seat in range(4)]
         views.extend(seat_views)
         actions = engine.legal_actions(state, owner)
-        if heuristic:
-            action = agents[owner].choose_action(seat_views[owner], actions)
-        else:
+        seat = agents[owner]
+        if agent is None:
             action = choices.choice(actions)
+        elif isinstance(seat, StateAgent):
+            action = seat.choose_action_with_state(state, seat_views[owner], actions)
+        else:
+            action = seat.choose_action(seat_views[owner], actions)
         state = engine.apply(state, action).state
     return views
 
@@ -219,7 +223,7 @@ def _expected_keys(view: PlayerView) -> Counter[str]:
 
 
 def _selfplay_observations(
-    seeds: Sequence[int], *, heuristic: bool = False
+    seeds: Sequence[int], *, agent: str | None = None
 ) -> np.ndarray:
     """Observations of seeded full-expansion games, the forced leaders rotated."""
 
@@ -233,7 +237,7 @@ def _selfplay_observations(
         for index, seed in enumerate(seeds)
     )
     policy: BatchPolicy = (
-        AgentBatchPolicy("heuristic", 1) if heuristic else RandomBatchPolicy(seed=11)
+        AgentBatchPolicy(agent, 1) if agent else RandomBatchPolicy(seed=11)
     )
     result = runner.run({"r": policy}, specs)
     return np.stack(
@@ -308,12 +312,16 @@ def test_slot_keys_are_pinned_by_a_golden_digest() -> None:
 # -- T2: semantics on real views ---------------------------------------------------
 def test_slot_rows_name_what_the_view_shows() -> None:
     network = MlpSlotsNetwork(8, hidden=(16,))
-    # The heuristic game (seed 51) grants Agent icons and sets Imperium cards
+    # The app AI game (seed 58) grants Agent icons and sets Imperium cards
     # aside; the random one covers the tracks (both measured 2026-09-27; the
-    # heuristic seed was 43 until the 2026-10-04 deployment-allowance ruling,
-    # OQ-029, moved that game in round 1).
+    # second game was the heuristic's seed 43 until the 2026-10-04
+    # deployment-allowance ruling, OQ-029, moved that game in round 1, then
+    # its seed 51 until the Intrigue effect gate of 2026-10-06: the
+    # heuristic plays its Plot Intrigue after sending the Agent, where an
+    # Agent icon no longer changes anything and is not offered, while the
+    # app AI plays them on its turn frame first).
     views = _game_views(21, _FORCED_LEADERS) + _game_views(
-        51, _FORCED_LEADERS, heuristic=True
+        58, _FORCED_LEADERS, agent="app_ai"
     )
     observations = np.stack(
         [np.asarray(encode_player_view(view), dtype=np.int32) for view in views]
@@ -366,17 +374,17 @@ def test_slot_rows_name_what_the_view_shows() -> None:
 
 # -- T3: nothing real hides behind the pad or the clamp -----------------------------
 def test_every_non_pad_value_of_real_games_has_a_row() -> None:
-    # Random play covers the tracks; only the heuristic plays the Intrigue
-    # cards that grant Agent icons (seed 47 does, measured 2026-10-04; it was
-    # seed 39 until the Desert Power choice window, option (B), moved the
-    # heuristic's RNG path, then seed 43 until the recall confirms of
-    # Imperial Privilege and the Contract reward moved it again, then 46
-    # until the 2026-10-04 deployment-allowance ruling, OQ-029). Re-check
-    # the seed when the heuristic's path moves.
+    # Random play covers the tracks; the app AI plays the Intrigue cards
+    # that grant Agent icons (its seed 47 does, measured 2026-10-06). The
+    # heuristic did until the Intrigue effect gate of 2026-10-06 (its seed
+    # 39, then 43, 46 and 47 as rulings moved its RNG path): it plays its
+    # Plot Intrigue after sending the Agent, where an Agent icon no longer
+    # changes anything and is not offered. Re-check the seed when the app
+    # AI's path moves.
     observations = np.concatenate(
         [
             _selfplay_observations((31, 32, 33, 34)),
-            _selfplay_observations((47,), heuristic=True),
+            _selfplay_observations((47,), agent="app_ai"),
         ]
     )
     network = MlpSlotsNetwork(8, hidden=(16,))

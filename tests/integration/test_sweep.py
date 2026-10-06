@@ -581,10 +581,14 @@ def test_coverage_census_records_expansion_components() -> None:
     # finish_agent_turn; codec v125): seed 61's random game no longer
     # acquires a Tleilaxu card, and a scratch run of seeds 55-84 (policy seed
     # 700_000 + seed) gives 62 as the first after 61 that takes all three.
+    # Re-derived 2026-10-06 for the Intrigue effect gate (an option needs an
+    # effect that can change something; codec v138): seed 62's game no
+    # longer acquires a Tleilaxu card, and 63 is the first after it that
+    # takes all three.
     report = run_checked_game(
         RulesetConfig(bloodlines=True, tech_module=True, immortality=True),
-        game_seed=62,
-        policy_seed=700062,
+        game_seed=63,
+        policy_seed=700063,
         privacy_interval=0,
         verify_replay=False,
         collect_coverage=True,

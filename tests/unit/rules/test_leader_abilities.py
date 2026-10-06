@@ -2195,11 +2195,13 @@ def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
     assert [action.action_id for action in actions] == ["harvest_maker_spice"]
 
 
-def test_emperor_restriction_leaves_an_intrigue_deployment_only_zero() -> None:
-    # Emperor of the Known Universe still blocks every unit for the turn
-    # [Main p. 17], but "Deploy up to four troops" may deploy zero and a
-    # target is no play condition [FAQ p. 2] (OQ-057 (6)): the line plays
-    # and offers only a zero deployment.
+def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
+    # Emperor of the Known Universe blocks every unit for the turn
+    # [Main p. 17], so "Deploy up to four troops" could change nothing and
+    # is not offered: "Intrigue 카드를 플레이하려면 카드의 모든 조건을
+    # 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]", with the user's ruling
+    # of 2026-10-06 that an Intrigue option needs an effect that can change
+    # something.
     from dune_imperium.content.uprising.intrigue import (
         INTRIGUE_CARDS_BY_INSTANCE,
     )
@@ -2229,21 +2231,7 @@ def test_emperor_restriction_leaves_an_intrigue_deployment_only_zero() -> None:
         )
     )
 
-    assert option_is_playable(placed, 0, card.options[deploy_option])
-    engine = UprisingRulesEngine()
-    opened = engine.apply(
-        placed,
-        DomainAction(
-            action_id="play_intrigue",
-            actor=0,
-            arguments=(("card_id", detonation), ("option", deploy_option)),
-        ),
-    ).state
-    assert engine.legal_actions(opened, 0) == (
-        DomainAction(
-            action_id="deploy_intrigue_troops", actor=0, arguments=(("count", 0),)
-        ),
-    )
+    assert not option_is_playable(placed, 0, card.options[deploy_option])
     unrestricted = _choam_turn_state(
         replace(owner, hand=(), intrigue_cards=(detonation,))
     )

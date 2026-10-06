@@ -10,7 +10,15 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainSolariPerUnitType,
+    GrantAgentIconsThisTurn,
+)
 from dune_imperium.content.uprising.intrigue import (
+    intrigue_card_for_instance,
     intrigue_deck_instance_ids,
     twisted_intrigue_instance_ids,
 )
@@ -26,6 +34,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.observation import observe_state
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.intrigue import (
     _trash_intrigue_hand_card,
@@ -100,6 +109,27 @@ def _combat_state(owner: PlayerState) -> GameState:
         players=tuple(replace(seat, has_revealed=True) for seat in seats),
     )
     return begin_combat_intrigue(state).state
+
+
+def _with_turn_context(state: GameState, **context: object) -> GameState:
+    """The owner's turn frame with ``context`` (a deployment block, say)."""
+
+    frame = state.decision_stack[-1]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),  # type: ignore[arg-type]
+        ),
+    )
+
+
+def _options(state: GameState, card: str) -> list[object]:
+    return [
+        dict(action.arguments)["option"]
+        for action in legal_intrigue_play_actions(state, 0)
+        if dict(action.arguments)["card_id"] == card
+    ]
 
 
 # --- Piter De Vries ----------------------------------------------------------
@@ -237,6 +267,26 @@ def test_calculating_pays_per_unit_type_in_the_conflict() -> None:
     )
     done = ENGINE.apply(_turn_state(owner), _play(card)).state
     assert done.players[0].resources.solari == 3
+
+
+
+def test_calculating_is_not_offered_without_a_unit_in_the_conflict() -> None:
+    # No unit of any kind in the Conflict: the Solari per kind add nothing,
+    # so the card changes nothing (user ruling 2026-10-06), in every Plot
+    # frame of the turn.
+    card = _twisted("calculating")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0, leader_id="piter_de_vries", intrigue_cards=(card,), hand=(DAGGER,)
+    )
+    state = _turn_state(owner)
+    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    placed = _placed(state, DAGGER, "assembly_hall")
+    for frame in (state, revealed, placed):
+        assert _options(frame, card) == []
+    assert option_unplayable_reason(state, 0, option) == GainSolariPerUnitType()
+    fighting = _turn_state(replace(owner, troops_garrison=2, troops_conflict=1))
+    assert _options(fighting, card) == [0]
 
 
 def test_controlled_peeks_the_top_card_privately() -> None:
@@ -396,6 +446,40 @@ def test_devious_trashes_from_hand_without_a_decline_or_deploys_two() -> None:
     assert counts == {0, 1, 2}
 
 
+
+def test_devious_deploy_line_needs_a_deployable_garrison_unit() -> None:
+    # "Deploy up to two troops from your garrison" [Devious card face] with
+    # nothing it may deploy changes nothing: an empty garrison, Emperor of
+    # the Known Universe's block [Main p. 17], or only Harkonnen Advisor's
+    # troop (OQ-038). The trash line stays while a hand card is there; with
+    # an empty hand too the whole card stays in hand.
+    card = _twisted("devious")
+    option = intrigue_card_for_instance(card).options[1]
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(card,),
+        hand=(DAGGER,),
+        troops_supply=12,
+        troops_garrison=0,
+    )
+    empty = _turn_state(owner)
+    blocked = _with_turn_context(
+        _turn_state(replace(owner, troops_supply=9, troops_garrison=3)),
+        units_deploy_blocked=True,
+    )
+    advisor = _with_turn_context(
+        _turn_state(replace(owner, troops_supply=11, troops_garrison=1)),
+        undeployable_troops=1,
+    )
+    for state in (empty, blocked, advisor):
+        assert _options(state, card) == [0]
+        assert option_unplayable_reason(state, 0, option) == DeployFromGarrison(
+            up_to=2
+        )
+    assert _options(_turn_state(replace(owner, hand=())), card) == []
+
+
 def test_discerning_discards_to_draw_or_draws_with_an_alliance() -> None:
     card = _twisted("discerning")
     owner = PlayerState(
@@ -428,6 +512,26 @@ def test_discerning_discards_to_draw_or_draws_with_an_alliance() -> None:
     ]
     drew = ENGINE.apply(allied, _play(card, 1)).state
     assert drew.players[0].hand == (DAGGER, RECON)
+
+
+
+def test_discerning_alliance_draw_needs_a_card_to_draw() -> None:
+    # With the deck and discard pile empty the Alliance draw changes nothing
+    # (user ruling 2026-10-06); the discard line can still draw the card it
+    # discards back after the reshuffle.
+    card = _twisted("discerning")
+    option = intrigue_card_for_instance(card).options[1]
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(card,),
+        hand=(DAGGER,),
+        alliance_faction_ids=("fremen",),
+    )
+    state = _turn_state(owner)
+    assert _options(state, card) == [0]
+    assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
+    assert _options(_turn_state(replace(owner, discard_pile=(RECON,))), card) == [0, 1]
 
 
 def test_insidious_gives_a_card_and_pays_extra_for_a_regular_one() -> None:
@@ -477,6 +581,33 @@ def test_resourceful_grants_three_icons_to_the_card_played_this_turn() -> None:
     assert state.players[0].granted_agent_icon_turn == "landsraad,city,spice_trade"
     spaces = {dict(a.arguments)["space_id"] for a in legal_agent_actions(state, 0)}
     assert {"arrakeen", "accept_contract", "assembly_hall"} <= spaces
+
+
+
+def test_resourceful_only_before_the_agent_is_sent() -> None:
+    # The icons help only an Agent placement still ahead this turn: on the
+    # turn frame with an Agent and a card to play (user ruling 2026-10-06).
+    card = _twisted("resourceful")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(card,),
+        hand=(DAGGER, RECON),
+    )
+    state = _turn_state(owner)
+    assert _options(state, card) == [0]
+    placed = _placed(state, DAGGER, "assembly_hall")
+    revealed = ENGINE.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    no_agent = _turn_state(
+        replace(owner, agents_available=0, agent_locations=("arrakeen", "carthag"))
+    )
+    no_card = _turn_state(replace(owner, hand=()))
+    for frame in (placed, revealed, no_agent, no_card):
+        assert _options(frame, card) == []
+    assert option_unplayable_reason(no_card, 0, option) == GrantAgentIconsThisTurn(
+        icons=option.sections[0].rewards[0].icons  # type: ignore[union-attr]
+    )
 
 
 def test_sadistic_shrewd_and_sinister_trade_troops_for_rewards() -> None:
@@ -531,6 +662,30 @@ def test_sadistic_shrewd_and_sinister_trade_troops_for_rewards() -> None:
     assert working.players[0].troops_garrison == 1
     assert working.players[0].resources.solari == 1
     assert len(working.players[0].intrigue_cards) == 1 + 1
+
+
+
+def test_sadistic_is_not_offered_with_deck_and_discard_empty() -> None:
+    # Its only reward draws a card: with nothing to draw no troop is lost
+    # for nothing (user ruling 2026-10-06), wherever the troop is.
+    sadistic = _twisted("sadistic")
+    option = intrigue_card_for_instance(sadistic).options[0]
+    garrison = PlayerState(
+        player_id=0, leader_id="piter_de_vries", intrigue_cards=(sadistic,)
+    )
+    conflict = replace(
+        garrison,
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        combat_strength=6,
+    )
+    for owner in (garrison, conflict):
+        state = _turn_state(owner)
+        assert _options(state, sadistic) == []
+        assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
+    discard = _turn_state(replace(garrison, discard_pile=(RECON,)))
+    assert _options(discard, sadistic) == [0]
 
 
 def test_a_twisted_loss_from_the_conflict_does_not_reopen_the_deployment() -> None:
@@ -623,19 +778,53 @@ def test_unnatural_puts_a_trashed_twisted_card_on_the_shared_discard() -> None:
 
     # The shared discard is never shuffled with its Twisted cards (OQ-097,
     # user ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은
-    # 없도록"): with both piles empty the draw cannot take either back.
+    # 없도록"): with both piles empty, or only Twisted cards discarded, the
+    # draw could take nothing back, so the card changes nothing and is not
+    # offered (user ruling 2026-10-06).
     dry = _turn_state(owner, intrigue_deck=())
-    trashing = ENGINE.apply(dry, _play(card)).state
-    result = ENGINE.apply(trashing, legal_intrigue_choice_actions(trashing, 0)[0])
-    done = result.state
-    assert done.players[0].intrigue_cards == ()
-    assert done.intrigue_deck == ()
-    assert set(done.intrigue_discard) == {card, other}
-    assert [
-        dict(event.payload)
-        for event in result.events
-        if event.kind == "intrigue_draw_short"
-    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+    assert _play(card) not in legal_intrigue_play_actions(dry, 0)
+    twisted_discard = _turn_state(
+        owner, intrigue_deck=(), intrigue_discard=(_twisted("sadistic"),)
+    )
+    assert _play(card) not in legal_intrigue_play_actions(twisted_discard, 0)
+
+
+
+def test_unnatural_is_not_offered_when_nothing_could_be_drawn() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
+    # Intrigue option needs an effect that can change something: no Intrigue
+    # deck, nothing shufflable in the discard (OQ-097), and only Twisted
+    # cards to trash, so the trashed card could not come back either.
+    card = _twisted("unnatural")
+    option = intrigue_card_for_instance(card).options[0]
+    regular = intrigue_deck_instance_ids(False)[5]
+    lone = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(card, _twisted("withdrawn")),
+    )
+    for owner in (
+        lone,
+        replace(
+            lone, intrigue_cards=(card, _twisted("withdrawn"), _twisted("sadistic"))
+        ),
+    ):
+        state = _turn_state(owner, intrigue_deck=())
+        assert _options(state, card) == []
+        assert option_unplayable_reason(state, 0, option) == DrawIntrigueCards(count=1)
+    # A card in the Intrigue deck, a regular card in its discard pile, or a
+    # regular card to trash (shuffled back for the draw) each make it
+    # playable; trashing a Twisted card beside it stays the owner's choice.
+    for state in (
+        _turn_state(lone),
+        _turn_state(lone, intrigue_deck=(), intrigue_discard=(regular,)),
+        _turn_state(
+            replace(lone, intrigue_cards=(card, _twisted("withdrawn"), regular)),
+            intrigue_deck=(),
+        ),
+    ):
+        assert _play(card) in legal_intrigue_play_actions(state, 0)
 
 
 def test_unnatural_troop_joins_only_its_owners_open_turn() -> None:
@@ -700,12 +889,13 @@ def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:
     assert _play(card) not in legal_intrigue_play_actions(plotted, 0)
 
 
-def test_harkonnen_advisor_troop_is_not_offered_to_a_deploy_plot() -> None:
-    # Detonation's "deploy up to 4 troops from your garrison" counts only
+def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:
+    # Detonation's "deploy up to 4 troops from your garrison" is judged on
     # the troops that may actually deploy this turn: the Signet troop can't
-    # (OQ-038). "Up to" allows zero and a target is no play condition
-    # [FAQ p. 2] (OQ-057 (6)), so the line plays and offers zero alone,
-    # never a choice frame without a legal action (soak seed 138 deadlock).
+    # (OQ-038), so alone it leaves the line nothing to change and does not
+    # make the option playable (user ruling 2026-10-06); once played, zero
+    # stays a choice, so the frame never lacks a legal action (soak seed 138
+    # deadlock).
     detonation = "intrigue:detonation:0"
     owner = PlayerState(
         player_id=0,
@@ -725,13 +915,9 @@ def test_harkonnen_advisor_troop_is_not_offered_to_a_deploy_plot() -> None:
         for a in legal_intrigue_play_actions(resolved, 0)
         if dict(a.arguments)["card_id"] == detonation
     ]
-    assert plays == [0, 1]
-    alone = ENGINE.apply(resolved, _play(detonation, 1)).state
-    assert [
-        dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(alone, 0)
-    ] == [0]
+    assert plays == [0]
 
-    # With one more garrison troop the choice reaches exactly that troop.
+    # With one more garrison troop the option opens for exactly that troop.
     two = replace(
         resolved,
         players=(

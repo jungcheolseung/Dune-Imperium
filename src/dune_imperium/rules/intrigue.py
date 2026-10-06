@@ -74,7 +74,6 @@ from dune_imperium.rules.combat import refresh_combat_participants
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     reconcile_deployment_after_retreat,
-    undeployable_troops_this_turn,
 )
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
@@ -86,6 +85,7 @@ from dune_imperium.rules.effect_interpreter import (
     choice_slots,
     condition_holds,
     cost_slots,
+    deployable_garrison_units,
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
     influence_gain_candidates,
@@ -126,7 +126,6 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.intrigue_triggers import open_contract_reveal
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -566,14 +565,14 @@ def _play_separate_lines(
             working,
             combat_intrigue_players=(*working.combat_intrigue_players, player),
         )
+    # A cost-free line resolves at once only if it can change something
+    # (``section_is_usable``, user ruling 2026-10-06): one that cannot is
+    # neither resolved nor counted as used, so the owner still owes a line
+    # (OQ-058, Depart for Arrakis' draw with an empty deck and discard pile).
     automatic = tuple(
         index
         for index, section in enumerate(option.sections)
-        if not section.costs
-        and (
-            section.condition is None
-            or condition_holds(working, player, section.condition)
-        )
+        if not section.costs and section_is_usable(working, player, section)
     )
     frame = DecisionFrame(
         kind=FrameKind.INTRIGUE_EFFECTS,
@@ -864,11 +863,12 @@ def legal_intrigue_choice_actions(
             actions.append(DomainAction(action_id="detonate_shield_wall", actor=player))
             actions.append(DomainAction(action_id="keep_shield_wall", actor=player))
         case DeployFromGarrison(up_to=up_to):
-            # "Deploy up to N troops" [card faces]: zero is always offered,
-            # so the card resolves with nothing deployable. A Sardaukar
-            # Commander in the garrison is a troop for this purpose
-            # [Bloodlines p. 4]; ``commanders`` names its share.
-            blocked = units_deployment_blocked(state, player)
+            # "Deploy up to N troops" [card faces]: zero stays offered once
+            # the card is played. A Sardaukar Commander in the garrison is a
+            # troop for this purpose [Bloodlines p. 4]; ``commanders`` names
+            # its share. The play gate needs one of these units
+            # (``deployable_garrison_units``, user ruling 2026-10-06).
+            troops, commanders = deployable_garrison_units(state, player)
             actions.extend(
                 DomainAction(
                     action_id="deploy_intrigue_troops",
@@ -878,17 +878,8 @@ def legal_intrigue_choice_actions(
                 for arguments in _unit_count_arguments(
                     minimum=0,
                     maximum=up_to,
-                    # Harkonnen Advisor's troop is not available this turn
-                    # (OQ-038), and Emperor of the Known Universe blocks
-                    # every unit for the turn [Main p. 17].
-                    troops=0
-                    if blocked
-                    else max(
-                        owner.troops_garrison
-                        - undeployable_troops_this_turn(state, player),
-                        0,
-                    ),
-                    commanders=0 if blocked else owner.commanders_garrison,
+                    troops=troops,
+                    commanders=commanders,
                 )
             )
         case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):

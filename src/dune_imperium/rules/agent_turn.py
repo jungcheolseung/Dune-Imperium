@@ -265,21 +265,9 @@ def _placements_for_card(
             continue
         if space.space_id == "swordmaster" and owner.swordmaster_acquired:
             continue
-        if (
-            not (
-                isinstance(card, ImperiumCardEntry)
-                and card.ignores_influence_requirements
-            )
-            # Insider Information (Bloodlines) waives them for the turn;
-            # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card];
-            # Unlikely Allies (Arrakeen Scouts) for the round.
-            and not owner.ignores_influence_requirements_turn
-            and not ignores_influence_requirements_this_round(state)
-            and not (
-                owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr"
-            )
-            and not _meets_requirement(owner.influence, space.requirement)
-        ):
+        if not (
+            isinstance(card, ImperiumCardEntry) and card.ignores_influence_requirements
+        ) and influence_requirement_unmet(state, owner, space):
             continue
         occupying_opponents = tuple(
             candidate.player_id
@@ -1041,6 +1029,39 @@ def _can_afford(player: PlayerState, cost: ResourceCost) -> bool:
         and player.resources.spice >= cost.spice
         and player.resources.water >= cost.water
     )
+
+
+def influence_requirement_waived(
+    state: GameState, owner: PlayerState, space: BoardSpace
+) -> bool:
+    """Whether the owner's own effects waive ``space``'s Influence requirement.
+
+    Insider Information (Bloodlines) waives them for the turn; Arrakis
+    Planetologist ignores Sietch Tabr's [Liet Kynes card]; Unlikely Allies
+    (Arrakeen Scouts) for the round. A card that ignores them for its own
+    placement is the caller's to check.
+    """
+
+    return (
+        owner.ignores_influence_requirements_turn
+        or ignores_influence_requirements_this_round(state)
+        or (owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr")
+    )
+
+
+def influence_requirement_unmet(
+    state: GameState, owner: PlayerState, space: BoardSpace
+) -> bool:
+    """Whether ``space``'s printed Influence requirement bars the owner now:
+    unmet and not waived (``influence_requirement_waived``).
+
+    The Agent placement reads it, and so does Insider Information's play
+    gate (``effect_interpreter``), so the two cannot drift.
+    """
+
+    return not influence_requirement_waived(
+        state, owner, space
+    ) and not _meets_requirement(owner.influence, space.requirement)
 
 
 def _meets_requirement(

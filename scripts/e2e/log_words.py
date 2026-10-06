@@ -96,9 +96,13 @@ GAMES = (
     {
         "seats": ["random"] * 4,
         # OQ-098 / codec v135: seed 12 loses the round modifier and Mating
-        # Season. Seed 37 restores both while retaining mission troops.
-        "game_seed": 37,
-        "policy_seed": 37,
+        # Season. Seed 37 restored both while retaining mission troops, until
+        # the codec v138 Intrigue effect gate (2026-10-06) moved it off its
+        # round modifier. An engine-log scan over seeds 1-159 (with seed 86
+        # above) finds seed 80 first that, together with seed 86, reaches
+        # every Scouts surface below again.
+        "game_seed": 80,
+        "policy_seed": 80,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },

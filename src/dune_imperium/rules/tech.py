@@ -323,6 +323,44 @@ def _acquisition_variants(
     return ((),)
 
 
+def _affordable_acquisitions(
+    state: GameState,
+    owner: PlayerState,
+    discount: int,
+) -> tuple[tuple[TechTile, tuple[tuple[str, ActionValue], ...]], ...]:
+    """Return each (tile, extra arguments) the owner can buy now at ``discount``.
+
+    A tile the owner cannot pay for is left out, and so is Advanced Data
+    Analysis while no Spy of the owner's is on the board to trash.
+    """
+
+    return tuple(
+        (tile, variant)
+        for tile, secret in tech_candidates(state, owner)
+        if owner.resources.spice
+        >= tech_cost(owner, tile, discount=discount, secret_project=secret)
+        for variant in _acquisition_variants(state, owner, tile)
+    )
+
+
+def tech_acquisition_possible(
+    state: GameState,
+    owner: PlayerState,
+    discount: int,
+) -> bool:
+    """Whether a card's Acquire Tech at ``discount`` could buy a tile now.
+
+    The play gate of Battlefield Research and Rapid Engineering reads it
+    (``effect_interpreter``), with the owner after the card's own cost; the
+    Acquire Tech frame offers exactly these tiles
+    (``legal_tech_acquisition_actions``).
+    """
+
+    return state.config.tech_module and bool(
+        _affordable_acquisitions(state, owner, discount)
+    )
+
+
 def legal_tech_acquisition_actions(
     state: GameState,
     player: int,
@@ -339,18 +377,14 @@ def legal_tech_acquisition_actions(
     discount, _ = offer
     owner = state.players[player]
     actions = [DomainAction(action_id="decline_tech", actor=player)]
-    for tile, secret in tech_candidates(state, owner):
-        cost = tech_cost(owner, tile, discount=discount, secret_project=secret)
-        if owner.resources.spice < cost:
-            continue
-        actions.extend(
-            DomainAction(
-                action_id="acquire_tech",
-                actor=player,
-                arguments=tuple(sorted((("tech_id", tile.tech_id), *variant))),
-            )
-            for variant in _acquisition_variants(state, owner, tile)
+    actions.extend(
+        DomainAction(
+            action_id="acquire_tech",
+            actor=player,
+            arguments=tuple(sorted((("tech_id", tile.tech_id), *variant))),
         )
+        for tile, variant in _affordable_acquisitions(state, owner, discount)
+    )
     if len(actions) > 1 and _pending_board_context(state, player) is None:
         # A card's Tech Discount icon (Battlefield Research, Rapid
         # Engineering) must be used once the card is played and a tile is

@@ -9,7 +9,17 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents import HeuristicAgent
-from dune_imperium.content.uprising.effect_dsl import IntrigueTiming
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
+    DeployFromGarrison,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    IntrigueTiming,
+    PlaceSpy,
+    RecruitTroops,
+    SummonSandworm,
+    TakeContract,
+)
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
@@ -40,6 +50,7 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_effects import spice_gained_this_turn
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.effect_interpreter import OptionBlock, option_unplayable_reason
 from dune_imperium.rules.frames import FrameKind, end_turn_start
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
@@ -232,6 +243,46 @@ def test_shaddams_favor_conditional_section_applies_independently() -> None:
     assert favored.state.players[0].resources.solari == 3
 
 
+
+# "To play an Intrigue card, you must meet its conditions and pay its costs."
+# [FAQ p. 2] (docs/rules/player-turns.md), and the user's ruling of
+# 2026-10-06 that an Intrigue option also needs an effect that can change
+# something now ("아무 효과 없이 책략을 쓸 수 없는거지"); the option's other
+# effects fizzle when it is played.
+
+
+def test_shaddams_favor_recruit_needs_a_troop_it_can_take() -> None:
+    # A recruit with no troop in the supply changes nothing, in a player turn
+    # too: a recorded shortfall does not count (main-session decision on the
+    # 2026-10-06 ruling, as the Arrakeen Scouts recruit, OQ-071).
+    card = _intrigue("shaddam_s_favor")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), troops_supply=0, troops_garrison=12
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=1)
+
+    # With Emperor 3 its 3 Solari still change something; the troop falls
+    # short.
+    loyal = _turn_state(replace(owner, influence=Influence(emperor=3)))
+    assert legal_intrigue_play_actions(loyal, 0) == (_play(loyal, card),)
+    played = apply_intrigue_play(loyal, _play(loyal, card))
+    assert played.state.players[0].resources.solari == 3
+    assert "troops_recruit_short" in [event.kind for event in played.events]
+
+    # Under Immortality a specimen may be returned to the supply first
+    # [Immortality p. 8].
+    base = _turn_state(owner)
+    immortal = replace(
+        base,
+        config=RulesetConfig(immortality=True),
+        players=(replace(owner, troops_garrison=11, specimens=1), *base.players[1:]),
+    )
+    assert legal_intrigue_play_actions(immortal, 0) == (_play(immortal, card),)
+
+
 def _use_line(section: int, actor: int = 0) -> DomainAction:
     return DomainAction(
         action_id="use_intrigue_effect", actor=actor, arguments=(("section", section),)
@@ -351,6 +402,59 @@ def test_depart_for_arrakis_below_guild_three_must_use_its_spice_line() -> None:
     assert card in recruited.intrigue_discard
 
 
+
+def test_depart_for_arrakis_with_neither_line_live_is_not_offered() -> None:
+    # The Spice line cannot be paid and the Guild draw has no card to draw:
+    # no line can change anything, so the card is not offered (OQ-058).
+    card = _intrigue("depart_for_arrakis")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), influence=Influence(spacing_guild=3)
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert option_unplayable_reason(state, 0, option) is OptionBlock.NO_LINE
+    # A card in the discard pile is enough for the draw.
+    reshuffle = _turn_state(replace(owner, discard_pile=(_starter("dagger"),)))
+    assert legal_intrigue_play_actions(reshuffle, 0) == (_play(reshuffle, card),)
+    # A Spice line with no troop to recruit changes nothing either.
+    empty = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(spice=2),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    assert legal_intrigue_play_actions(_turn_state(empty), 0) == ()
+
+
+def test_depart_for_arrakis_dead_draw_line_is_not_counted_as_used() -> None:
+    # With Guild 3 but nothing to draw, the cost-free line is neither resolved
+    # nor counted as used, so the Spice line must still be used (OQ-058, "최소
+    # 한 줄은 써야 함").
+    card = _intrigue("depart_for_arrakis")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(spice=2),
+        influence=Influence(spacing_guild=3),
+    )
+    engine = UprisingRulesEngine()
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.players[0].hand == ()
+    assert opened.decision_stack[-1].kind == "intrigue_effects"
+    assert dict(opened.decision_stack[-1].context)["used"] == ""
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
+    with pytest.raises(IllegalActionError):
+        engine.apply(opened, _finish_lines())
+    recruited = engine.apply(opened, _use_line(0)).state
+    assert recruited.players[0].troops_garrison == 6
+    assert recruited.players[0].resources.spice == 0
+    assert recruited.decision_stack[-1].kind == "turn"
+    assert card in recruited.intrigue_discard
+
+
 @pytest.mark.parametrize(
     "card_id", ["change_allegiances", "strategic_stockpiling", "depart_for_arrakis"]
 )
@@ -445,6 +549,28 @@ def test_intelligence_report_draws_more_with_two_spies() -> None:
     assert two.state.players[0].hand == deck
 
 
+
+def test_intelligence_report_is_not_offered_with_deck_and_discard_empty() -> None:
+    card = _intrigue("intelligence_report")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    spying = replace(
+        owner,
+        spies_supply=1,
+        spy_post_ids=(
+            "landsraad-assembly-hall-gather-support",
+            "arrakis-research-station-sietch-tabr",
+        ),
+    )
+    for seat in (owner, spying):
+        state = _turn_state(seat)
+        assert legal_intrigue_play_actions(state, 0) == ()
+        assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
+    # One card is enough: the second draw has nothing left and draws nothing.
+    one = _turn_state(replace(spying, discard_pile=(_starter("dagger"),)))
+    assert legal_intrigue_play_actions(one, 0) == (_play(one, card),)
+
+
 def test_mercenaries_draws_intrigue_and_recruits_two() -> None:
     card = _intrigue("mercenaries")
     drawn = _intrigue("cunning")
@@ -461,6 +587,40 @@ def test_mercenaries_draws_intrigue_and_recruits_two() -> None:
     assert player.troops_garrison == 5
     assert result.state.intrigue_deck == ()
     assert result.state.intrigue_discard == (card,)
+
+
+
+def test_mercenaries_with_no_intrigue_to_draw_still_recruits() -> None:
+    # Only Twisted cards in the Intrigue discard pile: they are never shuffled
+    # into a new deck (OQ-097), so the draw is dead, but the recruit counts.
+    card = _intrigue("mercenaries")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(solari=3)
+    )
+    state = _turn_state(owner, intrigue_discard=(_intrigue("twisted_controlled"),))
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+    result = apply_intrigue_play(state, _play(state, card))
+    assert result.state.players[0].troops_garrison == 5
+    assert "intrigue_draw_short" in [event.kind for event in result.events]
+
+
+def test_mercenaries_is_not_offered_when_neither_reward_can_happen() -> None:
+    card = _intrigue("mercenaries")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(solari=3),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    # The first reward in printed order is named; the Solari stay unpaid.
+    assert option_unplayable_reason(state, 0, option) == DrawIntrigueCards(count=1)
+    # An Intrigue card left to draw makes it playable again.
+    drawable = _turn_state(owner, intrigue_deck=(_intrigue("cunning"),))
+    assert legal_intrigue_play_actions(drawable, 0) == (_play(drawable, card),)
 
 
 def test_intrigue_draw_reshuffles_the_discard_through_chance() -> None:
@@ -1236,22 +1396,68 @@ def test_detonation_deploys_up_to_four_garrison_troops() -> None:
     assert deployed.players[0].troops_conflict == 3
     assert deployed.decision_stack[-1].kind == "turn"
 
-    # An empty garrison no longer bars the line: having a target is not a
-    # play condition [FAQ p. 2] (OQ-057 (6)), and "up to" allows zero.
+    # An empty garrison bars the line: it could change nothing (user ruling
+    # 2026-10-06); only the detonation is offered.
     empty = PlayerState(
         player_id=0, intrigue_cards=(card,), troops_supply=12, troops_garrison=0
     )
     empty_state = _turn_state(empty)
-    assert legal_intrigue_play_actions(empty_state, 0) == (
-        _play(state, card, 0),
-        _play(state, card, 1),
+    assert legal_intrigue_play_actions(empty_state, 0) == (_play(state, card, 0),)
+
+
+def _with_turn_context(state: GameState, **context: object) -> GameState:
+    """The owner's turn frame with ``context`` (a deployment block, say)."""
+
+    frame = state.decision_stack[-1]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),  # type: ignore[arg-type]
+        ),
     )
-    nothing = engine.apply(empty_state, _play(empty_state, card, 1)).state
-    assert engine.legal_actions(nothing, 0) == (_deploy(0),)
-    result = engine.apply(nothing, _deploy(0))
-    assert "troops_deployed" not in [event.kind for event in result.events]
-    assert result.state.players[0].troops_conflict == 0
-    assert result.state.intrigue_discard == (card,)
+
+
+def test_detonation_deploy_line_needs_a_deployable_garrison_unit() -> None:
+    # "Deploy up to four troops from your garrison" [card face] with nothing
+    # it may deploy changes nothing: an empty garrison, Emperor of the Known
+    # Universe's block for the turn [Main p. 17], or only Harkonnen
+    # Advisor's troop (OQ-038). Once played, zero stays a choice.
+    card = _intrigue("detonation")
+    option = intrigue_card_for_instance(card).options[1]
+    engine = UprisingRulesEngine()
+    empty = _turn_state(
+        PlayerState(
+            player_id=0, intrigue_cards=(card,), troops_supply=12, troops_garrison=0
+        )
+    )
+    garrisoned = _turn_state(
+        PlayerState(
+            player_id=0, intrigue_cards=(card,), troops_supply=10, troops_garrison=2
+        )
+    )
+    blocked = _with_turn_context(garrisoned, units_deploy_blocked=True)
+    advisor = _with_turn_context(
+        _turn_state(
+            PlayerState(
+                player_id=0, intrigue_cards=(card,), troops_supply=11, troops_garrison=1
+            )
+        ),
+        undeployable_troops=1,
+    )
+    for state in (empty, blocked, advisor):
+        assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
+        assert option_unplayable_reason(state, 0, option) == DeployFromGarrison(
+            up_to=4
+        )
+        # With the Shield Wall gone the card has nothing to play.
+        assert legal_intrigue_play_actions(
+            replace(state, shield_wall_present=False), 0
+        ) == ()
+
+    assert _play(garrisoned, card, 1) in legal_intrigue_play_actions(garrisoned, 0)
+    opened = engine.apply(garrisoned, _play(garrisoned, card, 1)).state
+    assert engine.legal_actions(opened, 0) == (_deploy(0), _deploy(1), _deploy(2))
 
 
 def test_units_deployed_by_plot_during_reveal_count_toward_strength() -> None:
@@ -1332,6 +1538,42 @@ def test_unexpected_allies_without_a_wall_summons_directly() -> None:
     # Sandworm (3) plus the revealed sword (1), no choice frame was needed.
     assert done.players[0].combat_strength == 4
     assert done.decision_stack[-1].kind == "reveal"
+
+
+
+def test_unexpected_allies_without_the_wall_needs_a_deployable_sandworm() -> None:
+    # With the Shield Wall gone only the sandworm is left, and it changes
+    # nothing while Emperor of the Known Universe blocks deployment
+    # [Main p. 17] or with no Conflict this round.
+    card = _intrigue("unexpected_allies")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(water=2)
+    )
+    open_field = replace(
+        _turn_state(owner),
+        shield_wall_present=False,
+        current_conflict_ids=(_conflict(False),),
+    )
+    assert legal_intrigue_play_actions(open_field, 0) == (_play(open_field, card),)
+    blocked = _with_turn_context(open_field, units_deploy_blocked=True)
+    no_conflict = replace(open_field, current_conflict_ids=())
+    for state in (blocked, no_conflict):
+        assert legal_intrigue_play_actions(state, 0) == ()
+        assert option_unplayable_reason(state, 0, option) == SummonSandworm()
+
+    # With the wall standing the detonation is an effect of its own, so the
+    # card is played and the sandworm fizzles.
+    walled = _with_turn_context(
+        replace(_turn_state(owner), current_conflict_ids=(_conflict(False),)),
+        units_deploy_blocked=True,
+    )
+    engine = UprisingRulesEngine()
+    opened = engine.apply(walled, _play(walled, card)).state
+    summoned = engine.apply(opened, _detonate())
+    assert summoned.state.shield_wall_present is False
+    assert summoned.state.players[0].sandworms_conflict == 0
+    assert "sandworm_summon_unavailable" in [e.kind for e in summoned.events]
 
 
 def _trash(card_id: str) -> DomainAction:
@@ -1480,6 +1722,59 @@ def test_cunning_trash_of_eliminate_allies_before_placement_joins_the_combat_tur
     assert {
         dict(a.arguments)["count"] for a in legal_combat_deployments(placed, 0)
     } == {1, 2, 3, 4}
+
+
+
+def test_cunning_free_draw_is_not_offered_with_deck_and_discard_empty() -> None:
+    card = _intrigue("cunning")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(player_id=0, intrigue_cards=(card,), hand=(_starter("dagger"),))
+    state = _turn_state(owner)
+    assert _play(state, card, 0) not in legal_intrigue_play_actions(state, 0)
+    assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
+    # A card in the discard pile is enough: the empty deck reshuffles it.
+    discard = _turn_state(replace(owner, discard_pile=(_starter("diplomacy"),)))
+    assert _play(discard, card, 0) in legal_intrigue_play_actions(discard, 0)
+
+
+def test_cunning_paid_draw_is_offered_while_a_card_can_be_trashed() -> None:
+    # Deck and discard pile empty: the draw fizzles, but the trash can still
+    # take a card from hand or from play.
+    card = _intrigue("cunning")
+    dagger = _starter("dagger")
+    engine = UprisingRulesEngine()
+    for owner in (
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(card,),
+            hand=(dagger,),
+            resources=Resources(spice=1),
+        ),
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(card,),
+            in_play=(dagger,),
+            resources=Resources(spice=1),
+        ),
+    ):
+        state = _turn_state(owner)
+        assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 1),)
+        opened = engine.apply(state, _play(state, card, 1)).state
+        offered = engine.legal_actions(opened, 0)
+        assert offered[0].action_id == "decline_intrigue_trash"
+        assert _trash(dagger) in offered
+
+
+def test_cunning_paid_draw_is_not_offered_with_no_personal_card() -> None:
+    card = _intrigue("cunning")
+    option = intrigue_card_for_instance(card).options[1]
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(spice=1)
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    # The draw is named first; the spice is never paid for nothing.
+    assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
 
 
 _CITY_POSTS = frozenset(
@@ -1671,6 +1966,35 @@ def test_special_mission_slot_declines_after_a_drift_strands_the_placement() -> 
     ).state
     assert declined.intrigue_discard == (card,)
     assert declined.decision_stack[-1].kind == "turn"
+
+
+
+def test_special_mission_city_spy_is_not_offered_after_a_recall_this_turn() -> None:
+    # Supply empty and every City post full, one held by the owner's Spy
+    # alone: recalling that Spy and placing it back changes nothing once a
+    # Spy was already recalled this turn (state A). Before any recall this
+    # turn the counter's 0 -> 1 is the change and the play stays (OQ-101 (b)).
+    card = _intrigue("special_mission")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=0,
+        spy_post_ids=(
+            "arrakis-research-station-spice-refinery",
+            "fremen-desert-tactics-fremkit",
+            "landsraad-assembly-hall-gather-support",
+        ),
+    )
+    fresh = _city_posts_held_by_rivals(_turn_state(owner))
+    assert _play(fresh, card, 0) in legal_intrigue_play_actions(fresh, 0)
+    recalled = _city_posts_held_by_rivals(
+        _turn_state(replace(owner, spies_recalled_turn=1))
+    )
+    assert _play(recalled, card, 0) not in legal_intrigue_play_actions(recalled, 0)
+    assert option_unplayable_reason(recalled, 0, option) == PlaceSpy(
+        agent_icons=option.sections[0].rewards[0].agent_icons  # type: ignore[union-attr]
+    )
 
 
 def test_special_mission_recall_option_pays_out_after_the_detonation_choice() -> None:
@@ -2136,10 +2460,12 @@ def test_inspire_awe_puts_the_card_in_hand_with_a_sandworm_in_the_conflict() -> 
     assert done.intrigue_discard == (card,)
 
 
-def test_inspire_awe_without_a_target_is_played_and_its_acquisition_fizzles() -> None:
-    # Designer ruling (Impress, OQ-057): an Intrigue card may be played when
-    # nothing within its cap is acquirable; only the acquisition part fizzles.
+def test_inspire_awe_without_a_target_is_not_offered() -> None:
+    # With nothing within its cap to acquire, its only effect changes nothing
+    # (user ruling 2026-10-06); Impress keeps the designer's exception
+    # through its swords (OQ-057 (6)).
     card = _intrigue("inspire_awe")
+    option = intrigue_card_for_instance(card).options[0]
     owner = PlayerState(player_id=0, intrigue_cards=(card,))
     state = replace(
         _turn_state(owner),
@@ -2147,19 +2473,21 @@ def test_inspire_awe_without_a_target_is_played_and_its_acquisition_fizzles() ->
         imperium_deck=(_imperium_instance("maula_pistol"),),
         reserve_stacks=(("prepare_the_way", 0), ("the_spice_must_flow", 10)),
     )
-    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
-    engine = UprisingRulesEngine()
-    opened = engine.apply(state, _play(state, card)).state
-    assert [action.action_id for action in engine.legal_actions(opened, 0)] == [
-        "skip_intrigue_acquisition"
-    ]
-    done = engine.apply(
-        opened, DomainAction(action_id="skip_intrigue_acquisition", actor=0)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert option_unplayable_reason(state, 0, option) == AcquireCardUpTo(
+        max_cost=3, to_hand_if=option.sections[0].rewards[0].to_hand_if  # type: ignore[union-attr]
     )
-    assert done.events[0].kind == "intrigue_acquisition_unavailable"
-    assert card in done.state.intrigue_discard
-    assert done.state.players[0].discard_pile == ()
-    assert done.state.decision_stack == _after_plot(state)
+    # An opponent's set-aside card is never within reach [FAQ p. 3] ...
+    survival = _imperium_instance("desert_survival")  # costs 2
+    rival = replace(state.players[1], imperium_set_aside=(survival,))
+    rivalled = replace(state, players=(state.players[0], rival, *state.players[2:]))
+    assert legal_intrigue_play_actions(rivalled, 0) == ()
+    # ... but the owner's own is, at its printed cost.
+    own = replace(
+        state,
+        players=(replace(owner, imperium_set_aside=(survival,)), *state.players[1:]),
+    )
+    assert legal_intrigue_play_actions(own, 0) == (_play(own, card),)
 
 
 def test_inspire_awe_to_hand_immediately_reveals_during_the_owners_reveal_turn() -> (
@@ -2563,6 +2891,91 @@ def test_call_to_arms_trigger_is_supply_limited() -> None:
         event for event in bought.events if event.kind == "intrigue_triggered"
     )
     assert dict(triggered.payload)["troops"] == 0
+
+
+def test_call_to_arms_is_not_offered_in_a_reveal_with_nothing_left_to_acquire() -> (
+    None
+):
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." [FAQ p. 2] (docs/rules/player-turns.md), with the user's
+    # ruling of 2026-10-06 that an Intrigue option needs an effect that can
+    # change something: Call to Arms recruits only "whenever you acquire a
+    # card" in its owner's Reveal turn, so once that Reveal is open with no
+    # Persuasion to spend and nothing else on offer, it would change nothing.
+    card = _intrigue("call_to_arms")
+    option = intrigue_card_for_instance(card).options[0]
+    engine = UprisingRulesEngine()
+    state = _with_market(
+        _turn_state(PlayerState(player_id=0, intrigue_cards=(card,)))
+    )
+    # Before the Reveal the whole Reveal turn is still ahead.
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+
+    broke = _revealed_with_persuasion(state, 0)
+    assert broke.decision_stack[-1].kind == FrameKind.REVEAL
+    assert _play(broke, card) not in engine.legal_actions(broke, 0)
+    assert (
+        option_unplayable_reason(broke, 0, option) is OptionBlock.NO_ACQUISITION_AHEAD
+    )
+    # Two Persuasion buy Prepare the Way (or Sardaukar Soldier).
+    rich = _revealed_with_persuasion(state, 2)
+    assert _play(rich, card) in engine.legal_actions(rich, 0)
+    # Inspire Awe, playable in the same Reveal, still acquires a card
+    # costing 3 or less, and Call to Arms counts it.
+    awe = _intrigue("inspire_awe")
+    holding = _revealed_with_persuasion(
+        _with_market(
+            _turn_state(PlayerState(player_id=0, intrigue_cards=(card, awe)))
+        ),
+        0,
+    )
+    assert _play(holding, card) in engine.legal_actions(holding, 0)
+
+    # Under Immortality a Tleilaxu Row card costs specimens instead of
+    # Persuasion ("Persuasion 대신 specimen을 비용으로 낸다." [Immortality
+    # p. 8]): Shadowy Bargain, playable in the same Reveal, makes the
+    # specimen that buys Contaminator, and Call to Arms counts that
+    # acquisition.
+    def tanks(*held: str) -> GameState:
+        state = _with_market(
+            _turn_state(PlayerState(player_id=0, intrigue_cards=(card, *held)))
+        )
+        return replace(
+            state,
+            config=RulesetConfig(immortality=True),
+            tleilaxu_row=("tleilaxu:contaminator:0", "tleilaxu:corrino_genes:0"),
+            players=tuple(
+                replace(seat, research_space="c0r3") for seat in state.players
+            ),
+        )
+
+    alone = _revealed_with_persuasion(tanks(), 0)
+    assert _play(alone, card) not in engine.legal_actions(alone, 0)
+    bargain = _revealed_with_persuasion(tanks(_intrigue("shadowy_bargain")), 0)
+    assert bargain.players[0].specimens == 0
+    assert _play(bargain, card) in engine.legal_actions(bargain, 0)
+
+
+def test_call_to_arms_needs_a_troop_it_could_recruit() -> None:
+    # The user's ruling of 2026-10-06 reads a recruit as the Arrakeen Scouts
+    # one is (OQ-071): with no troop in the supply and no specimen to return,
+    # the troop it would recruit cannot come, so the card is not offered
+    # even before the Reveal.
+    card = _intrigue("call_to_arms")
+    option = intrigue_card_for_instance(card).options[0]
+    empty = _turn_state(
+        PlayerState(
+            player_id=0, intrigue_cards=(card,), troops_supply=0, troops_garrison=12
+        )
+    )
+    assert legal_intrigue_play_actions(empty, 0) == ()
+    assert option_unplayable_reason(empty, 0, option) == RecruitTroops(1)
+    one = _turn_state(
+        PlayerState(
+            player_id=0, intrigue_cards=(card,), troops_supply=1, troops_garrison=11
+        )
+    )
+    assert legal_intrigue_play_actions(one, 0) == (_play(one, card),)
 
 
 def _revealed_with_persuasion(
@@ -3889,6 +4302,41 @@ def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:
 
     # Without the CHOAM Module the Contract icon has no market to use.
     assert legal_intrigue_play_actions(_combat_state(fighter), 0) == ()
+
+
+
+def test_reach_agreement_needs_a_contract_it_can_take() -> None:
+    # "You can't take the new Immediate contract unless you have an Intrigue
+    # card to trash." [Bloodlines p. 2]: with only that token face up and no
+    # other Intrigue card held, the Contract icon changes nothing.
+    card = _intrigue("reach_agreement")
+    option = intrigue_card_for_instance(card).options[0]
+    choam = RulesetConfig(choam_module=True, bloodlines=True)
+
+    def combat(fighter: PlayerState, **extra: object) -> GameState:
+        return replace(
+            _combat_state(fighter, _fighter(1, 1)),
+            config=choam,
+            face_up_contract_ids=("contract:bloodlines_immediate",),
+            contract_bank=(),
+            **extra,  # type: ignore[arg-type]
+        )
+
+    alone = combat(_fighter(0, 2, intrigue_cards=(card,)))
+    assert legal_intrigue_play_actions(alone, 0) == ()
+    assert option_unplayable_reason(alone, 0, option) == TakeContract()
+
+    # Another Intrigue card to trash, an empty market (2 Solari [Main
+    # p. 16]), or Shaddam's set-aside Sardaukar Contract [FAQ p. 3] each
+    # make it playable.
+    second = combat(_fighter(0, 2, intrigue_cards=(card, _intrigue("cunning"))))
+    empty_market = replace(alone, face_up_contract_ids=())
+    shaddam = combat(
+        _fighter(0, 2, intrigue_cards=(card,), leader_id="shaddam_corrino_iv"),
+        sardaukar_contract_ids=("contract:sardaukar_i",),
+    )
+    for state in (second, empty_market, shaddam):
+        assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
 
 
 def _reach_agreement_after_two_passes(troops: int) -> tuple[GameState, str]:

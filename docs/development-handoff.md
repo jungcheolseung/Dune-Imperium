@@ -4,6 +4,41 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-06 효과 없는 책략 play 금지 (codec v138)
+
+카드 대조 보고를 본 사용자가 짚었다: "비용 없이 효과만 없는 Intrigue play는 OQ-057 (6)대로 유지" → "앱이 맞는 것 같은데?? … 원로회 자리 차지 안 하고 아무 효과 없이 책략을 쓸 수 없는거지" — FAQ p. 2 "To play an Intrigue card, you must meet its conditions and pay its costs."의 예(Councilor's Dispensation, Bribery, Disguised Bureaucrat). 그래서 **책략 선택지는 인쇄된 조건을 갖추고 비용을 낼 수 있고, 효과 중 하나라도 지금 무언가를 바꿀 수 있을 때만 낸다**(나머지 효과는 낸 뒤 불발). v137의 OQ-057 (6) 확장(Inspire Awe, "up to" 배치를 병력 없이 play)은 되돌렸다. 디자이너의 Impress 판정은 칼 2가 남으므로 그대로다. FAQ의 "any number"는 0을 고를 수 있다는 판정도 그대로다(Tactical Option은 Conflict에 유닛이 있어야 내고, 낸 뒤 0을 고를 수 있다). 기록은 OQ-071 "카드 확장 2", OQ-057 (6) 재판정, `docs/lessons.md` 2026-10-06.
+
+- **점검**: 책략 90장·선택지 124개를 전수 점검했다(workflow 44 agent). 효과 없이 낼 수 있던 경우 42건을 실제 상태로 재현해 확인했다. 효과가 있는데 막던 경우는 따로 나오지 않았다. 판정은 `effect_interpreter.reward_can_change_something`(효과 종류별), `_no_effect_block`, `section_is_usable`에 있다. 효과가 하나라도 살아 있으면 낼 수 있다(Impress, 손에 카드가 있는 Cunning #1 등). 비용이 같은 줄의 효과를 살리는 경우도 센다(버린 카드를 다시 뽑기, 버린 Intrigue를 섞어 뽑기, 잃은 troop을 specimen으로, 낮춘 진영을 다시 올리기).
+- **사용자 판정 Q1(2026-10-06 "효과 없음")**: supply가 0인 recruit는 효과로 치지 않는다. 예외는 Immortality에서 되돌릴 수 있는 specimen이 있을 때다. 지금 열린 결정에서 되돌릴 수 있거나, 자기 turn이 열려 있어 나중에 되돌리면 부족분이 채워질 때다(Scouts 기준 OQ-071과 같다). Combat 중 Navigation 선택에서는 세지 않는다.
+- **새로 막히는 예**:
+  - 덱·버린 더미가 비었을 때 Intelligence Report·Breakthrough(두 번째 marker 뒤)·Cunning draw·Emperor's Invitation draw·Twisted Discerning·Sadistic·Navigation 9
+  - 대상이 없는 Inspire Awe
+  - 배치할 병력이 없는 Counterattack·Detonation·Twisted Devious 배치
+  - Tleilaxu 트랙 끝의 Illicit Dealings·Shadowy Bargain Endgame
+  - 살 수 있는 Tech가 없는 Battlefield Research·Rapid Engineering
+  - 모두 6인 진영의 Influence 줄
+  - Agent를 보낸 뒤의 Emperor's Invitation·Twisted Resourceful 아이콘
+  - 못 채운 조건이 없는 Insider Information
+  - 다른 좌석이 모두 공개를 마쳤을 때의 Twisted Withdrawn
+  - 이번 turn에 이미 회수한 뒤의 Special Mission City Spy(OQ-101 상태 A; 상태 B는 그대로)
+  - Reveal에서 더 살 것이 없는 Call to Arms(`OptionBlock.NO_ACQUISITION_AHEAD`)
+  - 바뀔 것이 없는 Harvest Cells 창
+  - 스파이를 옮길 곳이 없는 False Orders
+  - Navigation 4·5·6
+  - 회색 줄에는 막힌 효과마다 이유를 두 언어로 적는다(`display/unavailable.py`).
+- **남긴 경계(기본값 유지)**: Twisted Discerning 한 장 경계, 모든 진영 6에서 Change Allegiances·Tenuous Bond의 6→5→6(그 사이 Alliance가 넘어갈 수 있어 효과 없음이 아니다), Unexpected Allies의 keep_shield_wall 정리는 하지 않음, Tleilaxu Puppet은 막지 않음.
+- **리뷰**: 규칙 일치·엔진 견고성 두 관점의 독립 리뷰가 7건을 찾았다. 4건은 바로 고쳤다(Honor Guard·Adaptive Tactics의 Commander 판정, Call to Arms가 specimen을 만드는 Plot을 셈, 시드 테스트 3개). Navigation 6의 specimen 건은 위 Q1 문장대로 고쳤다. 나머지 2건은 위 경계로 남겼다.
+- **고정값**:
+  - golden은 `promo_bloodlines_tech` 하나만 바뀌었다. 470번째 결정에서 Insider Information 조건 무시가 빠졌다(게이트 커밋 `52007a8b`, 커밋별 실행).
+  - tip census 2건은 `52007a8b` 때문이다. 바로 앞 커밋에서 옛 값이 재현된다.
+  - tips-v1을 다시 캐서 **114개**, 114/114 복원된다. Endgame 문항이 11→3으로 줄었는데, 빠진 판마다 첫 갈림이 이번에 막은 효과 없는 play다(problem-set.md).
+- **codec v138**: 템플릿 변화는 없고 합법 행동만 바뀌었다. v137 저장은 열리지 않는다.
+- **검증**:
+  - pytest **6,618개 통과**, ruff·mypy(411파일) 통과.
+  - Chrome E2E **46종 전부 통과**(3개씩). 처음 실행에서 둘이 실패해 고친 뒤 그 둘만 다시 돌렸다. `log_words`는 Scouts 둘째 판 seed 37이 라운드 modifier를 잃어 seed 80으로 옮겼다. `tech_acquire`는 저장 게임에서 Bene Gesserit가 6에 올라 Tech 아이콘의 획득이 사라지므로, 올릴 수 있는 진영을 고르게 했다.
+  - 소크(soundness 5, privacy 50, worker 4): random 전 옵션+Scouts+리더 회전 100판, heuristic 전 옵션+지도자 드래프트 60판, random 기본·CHOAM 200판, 모두 실패 0.
+- **남은 것**: Glowglobes·Navigation Chamber의 Tech 획득 아이콘은 여전히 6인 진영을 내놓는다(v137 경계 그대로). heuristic은 Plot 책략을 Agent를 보낸 뒤에 내므로 Emperor's Invitation #1·Insider Information #1·Twisted Resourceful을 이제 쓰지 않는다(heuristic은 바꾸지 않았다).
+
 ## 2026-10-06 Steam 앱과 카드·보드 전수 대조 뒤의 규칙 정정 (codec v137)
 
 사용자 요청("카드 전수 대조 진행해줘 … 워크트리로 진행해")으로 Steam 앱의 카드·보드 정의를 우리 엔진과 전부 대조했다. 앱은 보조 증거일 뿐이고 공식 규칙과 인쇄된 카드면이 근거다. 대조 자료와 한국어 보고서는 에셋 저장소 로컬 폴더 `reference/dune-steam-app/dad97e20…/analysis/card-compare-2026-10-06/`에만 있다(git 무시).

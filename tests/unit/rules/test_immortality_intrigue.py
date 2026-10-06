@@ -14,6 +14,12 @@ from dune_imperium.content.immortality.board import (
     TLEILAXU_TRACK_END,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.effect_dsl import (
+    AdvanceTleilaxu,
+    DeployFromGarrison,
+    GenerateSpecimens,
+    Research,
+)
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
     intrigue_deck_instance_ids,
@@ -30,6 +36,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 from dune_imperium.rules.endgame import begin_endgame_intrigue
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -67,9 +74,9 @@ def _owner(**extra: object) -> PlayerState:
     return _seat(0, **values)
 
 
-def _plot_state(owner: PlayerState) -> GameState:
+def _plot_state(owner: PlayerState, config: RulesetConfig = IMMORTALITY) -> GameState:
     return GameState(
-        config=IMMORTALITY,
+        config=config,
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
@@ -100,11 +107,13 @@ def _fighter(troops: int, **extra: object) -> PlayerState:
     return _seat(0, **values)
 
 
-def _combat_state(owner: PlayerState, *others: PlayerState) -> GameState:
+def _combat_state(
+    owner: PlayerState, *others: PlayerState, config: RulesetConfig = IMMORTALITY
+) -> GameState:
     seats = [owner, *others]
     seats.extend(_seat(seat, has_revealed=True) for seat in range(len(seats), 4))
     state = GameState(
-        config=IMMORTALITY,
+        config=config,
         seed=1,
         phase=GamePhase.COMBAT,
         round_number=1,
@@ -188,6 +197,88 @@ def test_breakthrough_and_illicit_dealings_move_the_tokens() -> None:
     assert played.state.players[0].tleilaxu_space == 1
 
 
+
+def test_breakthrough_past_the_second_marker_needs_a_card_to_draw() -> None:
+    # Past the second genetic marker Research draws a card instead
+    # [Immortality p. 6]: with the deck and discard pile both empty it
+    # changes nothing.
+    card = _intrigue("breakthrough")
+    option = INTRIGUE_CARDS_BY_ID["breakthrough"].options[0]
+    everything = starting_deck_instance_ids(0, immortality=True)
+    for space in ("c8r2", "c8r4", "c8r6"):
+        dry = _plot_state(
+            _owner(
+                intrigue_cards=(card,), research_space=space, deck=(), hand=everything
+            )
+        )
+        assert _playable(dry, card) == set()
+        assert option_unplayable_reason(dry, 0, option) == Research()
+        reshuffle = _plot_state(
+            _owner(
+                intrigue_cards=(card,),
+                research_space=space,
+                deck=(),
+                hand=everything[1:],
+                discard_pile=everything[:1],
+            )
+        )
+        assert _playable(reshuffle, card) == {0}
+    # Before the last column the token always has a space to move to.
+    for space in (RESEARCH_START_ID, "c4r4", "c7r3"):
+        moving = _plot_state(
+            _owner(
+                intrigue_cards=(card,), research_space=space, deck=(), hand=everything
+            )
+        )
+        assert _playable(moving, card) == {0}
+
+
+def test_illicit_dealings_is_not_offered_at_the_track_end() -> None:
+    # "끝까지 가고 나면 뭐 없는 게 맞다" (OQ-048).
+    card = _intrigue("illicit_dealings")
+    option = INTRIGUE_CARDS_BY_ID["illicit_dealings"].options[0]
+    finished = _plot_state(
+        _owner(intrigue_cards=(card,), tleilaxu_space=TLEILAXU_TRACK_END)
+    )
+    assert _playable(finished, card) == set()
+    assert option_unplayable_reason(finished, 0, option) == AdvanceTleilaxu(count=1)
+    near = _plot_state(
+        _owner(intrigue_cards=(card,), tleilaxu_space=TLEILAXU_TRACK_END - 1)
+    )
+    assert _playable(near, card) == {0}
+
+
+def test_shadowy_bargain_endgame_advance_is_not_offered_at_the_track_end() -> None:
+    bargain = _intrigue("shadowy_bargain")
+    finished = _endgame_window(
+        _owner(intrigue_cards=(bargain,), tleilaxu_space=TLEILAXU_TRACK_END)
+    )
+    assert _playable(finished, bargain) == set()
+    near = _endgame_window(
+        _owner(intrigue_cards=(bargain,), tleilaxu_space=TLEILAXU_TRACK_END - 1)
+    )
+    assert _playable(near, bargain) == {1}
+    advanced = apply_intrigue_play(near, _play(bargain, 1)).state
+    assert advanced.players[0].tleilaxu_space == TLEILAXU_TRACK_END
+    assert advanced.players[0].victory_points > near.players[0].victory_points
+
+
+def test_shadowy_bargain_plot_specimen_needs_a_troop_in_the_supply() -> None:
+    # A specimen is a troop from the supply put in the tanks [Immortality
+    # p. 8]: with none there, a recorded shortfall does not count
+    # (main-session decision on the user's ruling of 2026-10-06), and a held
+    # specimen returned only to become one again changes nothing.
+    bargain = _intrigue("shadowy_bargain")
+    option = INTRIGUE_CARDS_BY_ID["shadowy_bargain"].options[0]
+    empty = _plot_state(
+        _owner(
+            intrigue_cards=(bargain,), troops_supply=0, troops_garrison=10, specimens=2
+        )
+    )
+    assert _playable(empty, bargain) == set()
+    assert option_unplayable_reason(empty, 0, option) == GenerateSpecimens(count=1)
+
+
 def test_disguised_bureaucrat_scales_with_the_genetic_markers() -> None:
     card = _intrigue("disguised_bureaucrat")
     unmarked = _plot_state(_owner(intrigue_cards=(card,)))
@@ -211,9 +302,9 @@ def test_disguised_bureaucrat_scales_with_the_genetic_markers() -> None:
 
 def test_disguised_bureaucrat_confirms_an_influence_no_cube_can_take() -> None:
     """A cost-free "choose a Faction" gain with every cube at 6: the card
-    stays playable (its play condition is only its printed condition and
-    cost [FAQ p. 2], OQ-057 (6)), the picker offers no Faction at the top,
-    and its owner confirms the lost gain as a Conflict reward's (OQ-060)."""
+    stays playable through its spice, an effect that can change something
+    (user ruling 2026-10-06), the picker offers no Faction at the top, and
+    its owner confirms the lost gain as a Conflict reward's (OQ-060)."""
 
     card = _intrigue("disguised_bureaucrat")
     full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
@@ -373,9 +464,11 @@ def _deploy(count: int) -> DomainAction:
 
 def test_counterattack_plot_deploys_up_to_two_including_none() -> None:
     # "Deploy up to two troops from your garrison to the Conflict."
-    # [Counterattack card face]: zero is a choice, and having a target is no
-    # play condition -- "Intrigue 카드를 플레이하려면 카드의 모든 조건을
-    # 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]" (OQ-057 (6)).
+    # [Counterattack card face]: once played, zero is a choice. With nothing
+    # to deploy the card changes nothing and is not offered: "Intrigue 카드를
+    # 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을 지불해야 한다.
+    # [FAQ p. 2]", with the user's ruling of 2026-10-06 that an Intrigue
+    # option needs an effect that can change something.
     card = _intrigue("counterattack")
     engine = UprisingRulesEngine()
 
@@ -386,18 +479,75 @@ def test_counterattack_plot_deploys_up_to_two_including_none() -> None:
     assert engine.legal_actions(opened, 0) == (_deploy(0), _deploy(1), _deploy(2))
     two = engine.apply(opened, _deploy(2)).state
     assert (two.players[0].troops_garrison, two.players[0].troops_conflict) == (1, 2)
+    none = engine.apply(opened, _deploy(0))
+    assert "troops_deployed" not in [event.kind for event in none.events]
+    assert none.state.players[0].troops_conflict == 0
+    assert card in none.state.intrigue_discard
+    assert none.state.decision_stack[-1].kind == "turn"
 
     empty = _plot_state(
         _owner(intrigue_cards=(card,), troops_garrison=0, troops_supply=12)
     )
-    assert _playable(empty, card) == {0}
-    nothing = engine.apply(empty, _play(card)).state
-    assert engine.legal_actions(nothing, 0) == (_deploy(0),)
-    result = engine.apply(nothing, _deploy(0))
-    assert "troops_deployed" not in [event.kind for event in result.events]
-    assert result.state.players[0].troops_conflict == 0
-    assert card in result.state.intrigue_discard
-    assert result.state.decision_stack[-1].kind == "turn"
+    assert _playable(empty, card) == set()
+
+
+def _with_turn_context(state: GameState, **context: object) -> GameState:
+    """The owner's turn frame with ``context`` (a deployment block, say)."""
+
+    frame = state.decision_stack[-1]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),  # type: ignore[arg-type]
+        ),
+    )
+
+
+def test_counterattack_plot_needs_a_deployable_garrison_unit() -> None:
+    # Nothing it may deploy: an empty garrison, Emperor of the Known
+    # Universe's block for the turn [Main p. 17] (here the Servo-Receivers
+    # form in the turn frame, OQ-062 (b)), or only Harkonnen Advisor's troop
+    # (OQ-038). A Commander in the garrison is a troop for it [Bloodlines
+    # p. 4], and a second troop besides the Advisor's can go.
+    card = _intrigue("counterattack")
+    option = INTRIGUE_CARDS_BY_ID["counterattack"].options[0]
+    engine = UprisingRulesEngine()
+
+    def plot(**extra: object) -> GameState:
+        return _plot_state(
+            _owner(intrigue_cards=(card,), **extra),
+            RulesetConfig(immortality=True, bloodlines=True),
+        )
+
+    empty = plot(troops_garrison=0, troops_supply=12)
+    blocked = _with_turn_context(
+        plot(troops_garrison=3, troops_supply=9), units_deploy_blocked=True
+    )
+    advisor = _with_turn_context(
+        plot(troops_garrison=1, troops_supply=11), undeployable_troops=1
+    )
+    for state in (empty, blocked, advisor):
+        assert _playable(state, card) == set()
+        assert option_unplayable_reason(state, 0, option) == DeployFromGarrison(
+            up_to=2
+        )
+
+    commander = plot(troops_garrison=0, troops_supply=12, commanders_garrison=1)
+    opened = engine.apply(commander, _play(card)).state
+    assert engine.legal_actions(opened, 0) == (
+        _deploy(0),
+        DomainAction(
+            action_id="deploy_intrigue_troops",
+            actor=0,
+            arguments=(("commanders", 1), ("count", 1)),
+        ),
+    )
+    second = _with_turn_context(
+        plot(troops_garrison=2, troops_supply=10), undeployable_troops=1
+    )
+    opened = engine.apply(second, _play(card)).state
+    assert engine.legal_actions(opened, 0) == (_deploy(0), _deploy(1))
 
 
 def test_gruesome_sacrifice_trades_two_conflict_troops() -> None:
@@ -416,6 +566,45 @@ def test_gruesome_sacrifice_trades_two_conflict_troops() -> None:
     assert owner.tleilaxu_space == 1
     assert owner.specimens == 2
     assert owner.troops_supply == 12 - 1 - 2
+
+
+
+def test_gruesome_sacrifice_needs_a_troop_or_a_track_space_to_change() -> None:
+    # Two Commanders the only units in the Conflict, no troop in the supply,
+    # the Tleilaxu token at the track's end: the lost Commanders return to
+    # their own supply [Bloodlines p. 4], so no specimen can be made and the
+    # advance does nothing (OQ-048); the card changes nothing.
+    card = _intrigue("gruesome_sacrifice")
+    option = INTRIGUE_CARDS_BY_ID["gruesome_sacrifice"].options[0]
+
+    def combat(**extra: object) -> GameState:
+        values: dict[str, object] = {
+            "intrigue_cards": (card,),
+            "troops_supply": 0,
+            "troops_garrison": 12,
+            "troops_conflict": 0,
+            "commanders_conflict": 2,
+            "combat_strength": 4,
+            "tleilaxu_space": TLEILAXU_TRACK_END,
+        }
+        values.update(extra)
+        return _combat_state(
+            _fighter(0, **values),
+            config=RulesetConfig(immortality=True, bloodlines=True),
+        )
+
+    finished = combat()
+    assert _playable(finished, card) == set()
+    # The advance is named first.
+    assert option_unplayable_reason(finished, 0, option) == AdvanceTleilaxu(count=1)
+    # The advance can still move, a troop in the supply can become a
+    # specimen, or a troop lost from the Conflict returns to the supply.
+    for state in (
+        combat(tleilaxu_space=3),
+        combat(troops_supply=1, troops_garrison=11),
+        combat(troops_garrison=11, troops_conflict=1, combat_strength=6),
+    ):
+        assert _playable(state, card) == {0}
 
 
 def test_economic_positioning_retreats_or_scores() -> None:
@@ -740,6 +929,85 @@ def test_harvest_cells_offers_reclaimed_forces_only_when_paid_and_useful() -> No
     assert _reclaimed_forces(
         _harvest_cells_offer(1, tleilaxu_space=TLEILAXU_TRACK_END)
     ) == ["troops"]
+
+
+def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
+    # Intrigue option needs an effect that can change something. Its
+    # specimens come from troops back in the supply after the cleanup
+    # [FAQ p. 1]; lost Sardaukar Commanders return to their own supply
+    # [Bloodlines p. 4] and make none.
+    first, second = _intrigue("harvest_cells"), "intrigue:harvest_cells:1"
+    engine = UprisingRulesEngine()
+    blood = RulesetConfig(immortality=True, bloodlines=True)
+    pricey = ("tleilaxu:twisted_mentat:0", "tleilaxu:usurp:0")  # four each
+
+    def window(*cards: str, **extra: object) -> GameState:
+        values: dict[str, object] = {
+            "intrigue_cards": cards,
+            "troops_supply": 0,
+            "troops_garrison": 12,
+            "troops_conflict": 0,
+            "commanders_conflict": 3,
+            "combat_strength": 6,
+            "specimens": 0,
+        }
+        values.update(extra)
+        state = replace(
+            _combat_state(_fighter(0, **values), config=blood), tleilaxu_row=pricey
+        )
+        return _pass_through_combat(engine, state)
+
+    def offered(state: GameState) -> list[object]:
+        if state.decision_stack[-1].kind != FrameKind.CONFLICT_END_TRIGGER:
+            return []
+        return [
+            dict(action.arguments).get("card_id")
+            for action in engine.legal_actions(state, 0)
+            if action.action_id == "play_conflict_end_intrigue"
+        ]
+
+    # Case A: three Commanders lost, no troop to make a specimen of, and no
+    # Tleilaxu card the specimens could pay for: the window does not open.
+    lost_commanders = window(first)
+    assert offered(lost_commanders) == []
+    assert first in lost_commanders.players[0].intrigue_cards
+    # A troop in the supply, or three specimens for Reclaimed Forces, opens it.
+    assert offered(window(first, troops_supply=1, troops_garrison=11)) == [first]
+    assert offered(window(first, specimens=3, troops_garrison=9)) == [first]
+
+    # Case C: two troops and a Commander lost. The first copy takes both
+    # troops; the second could make no specimen, and the two specimens buy
+    # no Tleilaxu card, so the window closes once the first is face up.
+    mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
+    both = window(first, second, **mixed)
+    assert offered(both) == [first, second]
+    played = engine.apply(
+        both,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", first),),
+        ),
+    ).state
+    assert all(
+        frame.kind != FrameKind.CONFLICT_END_TRIGGER for frame in played.decision_stack
+    )
+    assert second in played.players[0].intrigue_cards
+    # A third troop lost leaves the second copy a specimen to make.
+    three = window(
+        first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
+    )
+    staged = engine.apply(
+        three,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", first),),
+        ),
+    ).state
+    assert offered(staged) == [second]
 
 
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:

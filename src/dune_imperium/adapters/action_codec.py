@@ -293,7 +293,25 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Faction at 6 (OQ-060); other acquire effects may take a Manipulate
 # set-aside card at its printed cost [FAQ p. 3]; and Harvest Cells is played
 # only after the Conflict resolves (OQ-057 (11)).
-ACTION_CODEC_VERSION = 137
+# v138 (user ruling 2026-10-06, "아무 효과 없이 책략을 쓸 수 없는거지"): an
+# Intrigue or Navigation option is offered only if one of its effects can
+# change something now, so legal-action sets change with no template
+# change and saves and replays from v137 are refused by the version check.
+# A draw with an empty deck and discard pile (Cunning, Intelligence Report,
+# Emperor's Invitation, Twisted Discerning and Sadistic, Navigation card 9),
+# an "up to" deploy with no deployable garrison unit (Detonation,
+# Counterattack, Twisted Devious: again a play condition, the reverse of
+# v137's), an acquisition with no target (Inspire Awe, Battlefield Research,
+# Rapid Engineering, Navigation card 4), a Tleilaxu advance at the track's
+# end (Illicit Dealings, Shadowy Bargain), a recruit with no troop to take
+# (Shaddam's Favor, Mercenaries, Sleeper Unit, Navigation card 6), a Spy
+# recalled and replaced after an earlier recall that turn (Special
+# Mission), and the agent-turn grants with no Agent placement ahead
+# (Emperor's Invitation, Insider Information, Twisted Resourceful) are no
+# longer offered. Call to Arms is not offered in a Reveal with nothing left
+# to acquire, and Harvest Cells' Conflict-end window skips a copy that
+# could change nothing.
+ACTION_CODEC_VERSION = 138
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

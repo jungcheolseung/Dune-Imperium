@@ -24,7 +24,11 @@ from dune_imperium.content.bloodlines.tech import (
     tech_tiles_for,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.effect_dsl import AcquireTech
+from dune_imperium.content.uprising.intrigue import (
+    INTRIGUE_CARDS_BY_ID,
+    intrigue_deck_instance_ids,
+)
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -2417,11 +2421,14 @@ def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> 
     assert bought.players[0].resources.spice == 0
     assert bought.players[0].tech_ids == ("gene_locked_vault",)
 
+    # A tile left to buy keeps the discard line playable beside the
+    # Influence line (user ruling 2026-10-06: an option needs an effect that
+    # can change something).
     rich = _turn_state(
         _tech_owner(
             "glowglobes", "training_depot", "panopticon", intrigue_cards=(card,)
         ),
-        stacks=((), (), ()),
+        stacks=(("plasteel_blades",), (), ()),
     )
     options = [
         dict(a.arguments)["option"] for a in legal_intrigue_play_actions(rich, 0)
@@ -2487,8 +2494,16 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
     assert "decline_tech" not in _tech_actions(affordable)
     assert "gene_locked_vault" in _tech_actions(affordable)
 
-    # Plasteel Blades (3), Panopticon (5), Spy Drones (5): nothing for one spice.
-    broke = opened(1, (("plasteel_blades",), ("panopticon",), ("spy_drones",)))
+    # Plasteel Blades (3), Panopticon (5), Spy Drones (5): nothing for one
+    # spice, so the card is not offered at all (user ruling 2026-10-06); the
+    # decline-only frame stays as a safety net (OQ-057 (9)).
+    unaffordable = (("plasteel_blades",), ("panopticon",), ("spy_drones",))
+    poor = _turn_state(
+        _owner(intrigue_cards=(card,), resources=Resources(spice=1)),
+        stacks=unaffordable,
+    )
+    assert legal_intrigue_play_actions(poor, 0) == ()
+    broke = push_tech_acquisition(poor, 0, discount=1, source="test").state
     assert list(_tech_actions(broke)) == ["decline_tech"]
 
     visit = _visit(_turn_state(_owner()), "assembly_hall")
@@ -2557,6 +2572,151 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
     assert bought.players[0].resources.spice == 0
     assert "plasteel_blades" in bought.players[0].tech_ids
     assert bought.decision_stack[-1].kind == "combat_intrigue"
+
+
+
+# "To play an Intrigue card, you must meet its conditions and pay its costs."
+# [FAQ p. 2] (docs/rules/player-turns.md), and the user's ruling of
+# 2026-10-06 that an Intrigue option needs an effect that can change
+# something now: an Acquire Tech with no tile the owner can buy changes
+# nothing (``tech.tech_acquisition_possible``).
+
+
+def test_battlefield_research_is_not_offered_without_an_acquirable_tile() -> None:
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+    from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+
+    card = "intrigue:battlefield_research:0"
+    option = INTRIGUE_CARDS_BY_ID["battlefield_research"].options[0]
+
+    def combat(spice: int) -> GameState:
+        owner = _owner(
+            intrigue_cards=(card,),
+            troops_supply=8,
+            troops_garrison=1,
+            troops_conflict=3,
+            combat_strength=6,
+            has_revealed=True,
+            hand=(),
+            resources=Resources(spice=spice),
+        )
+        state = replace(
+            _turn_state(
+                owner,
+                stacks=(("plasteel_blades",), ("panopticon",), ("spy_drones",)),
+            ),
+            phase=GamePhase.COMBAT,
+            first_player=0,
+            decision_stack=(),
+            players=(
+                owner,
+                *(
+                    replace(PlayerState(player_id=seat), has_revealed=True)
+                    for seat in range(1, 4)
+                ),
+            ),
+        )
+        return begin_combat_intrigue(state).state
+
+    # Plasteel Blades costs 3, two with the icon's discount.
+    poor = combat(1)
+    assert legal_intrigue_play_actions(poor, 0) == ()
+    assert option_unplayable_reason(poor, 0, option) == AcquireTech(discount=1)
+    assert [
+        dict(action.arguments)["option"]
+        for action in legal_intrigue_play_actions(combat(2), 0)
+    ] == [0]
+
+
+def test_rapid_engineering_tech_line_is_not_offered_without_an_acquirable_tile() -> (
+    None
+):
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+    from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+
+    card = "intrigue:rapid_engineering:0"
+    option = INTRIGUE_CARDS_BY_ID["rapid_engineering"].options[0]
+
+    def plot(
+        spice: int, stacks: tuple[tuple[str, ...], ...] = STACKS, **extra: object
+    ) -> GameState:
+        owner = _owner(
+            intrigue_cards=(card,), resources=Resources(spice=spice), **extra
+        )
+        return _turn_state(owner, stacks=stacks)
+
+    # The cheapest tops (Glowglobes, Gene-Locked Vault) cost 2, one with the
+    # discount; every stack empty with no Secret Project; or only Advanced
+    # Data Analysis with no Spy of the owner's on the board to trash.
+    lone_analysis = (("advanced_data_analysis",), (), ())
+    for state in (
+        plot(0),
+        plot(6, ((), (), ())),
+        plot(6, lone_analysis),
+    ):
+        assert legal_intrigue_play_actions(state, 0) == ()
+        assert option_unplayable_reason(state, 0, option) == AcquireTech(discount=1)
+    # One spice, a High Council seat (one spice off [Bloodlines p. 7]), a
+    # Secret Project, or a Spy to trash each make it playable.
+    for state in (
+        plot(1),
+        plot(0, high_council=True),
+        plot(0, ((), (), ()), secret_project_tech_id="training_depot"),
+        plot(
+            6,
+            lone_analysis,
+            spies_supply=2,
+            spy_post_ids=(LANDSRAAD_POST,),
+        ),
+    ):
+        assert [
+            dict(action.arguments)["option"]
+            for action in legal_intrigue_play_actions(state, 0)
+        ] == [0]
+
+
+def test_rapid_engineering_influence_line_needs_a_faction_below_six() -> None:
+    from dune_imperium.display.unavailable import intrigue_option_reason
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:rapid_engineering:0"
+    option = INTRIGUE_CARDS_BY_ID["rapid_engineering"].options[1]
+    top = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+
+    def plot(influence: Influence) -> GameState:
+        owner = _tech_owner(
+            "glowglobes",
+            "training_depot",
+            "panopticon",
+            intrigue_cards=(card,),
+            hand=(),
+            influence=influence,
+        )
+        return _turn_state(owner, stacks=((), (), ()))
+
+    full = plot(top)
+    assert legal_intrigue_play_actions(full, 0) == ()
+    block = option_unplayable_reason(full, 0, option)
+    assert block is not None
+    assert intrigue_option_reason(full, 0, option, block)[2] == "top"
+    # One Faction below the top: the first pick takes it, the second fizzles.
+    one = plot(replace(top, fremen=5))
+    play = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 1)))
+    assert legal_intrigue_play_actions(one, 0) == (play,)
+    played = apply_intrigue_play(one, play).state
+    first = legal_intrigue_choice_actions(played, 0)
+    assert [dict(action.arguments).get("faction") for action in first] == ["fremen"]
+    after = apply_intrigue_choice(played, first[0]).state
+    assert [action.action_id for action in legal_intrigue_choice_actions(after, 0)] == [
+        "resolve_intrigue_influence_without_faction"
+    ]
 
 
 def test_battlefield_research_scores_its_point_only_at_the_endgame() -> None:
