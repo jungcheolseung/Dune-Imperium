@@ -4,9 +4,15 @@ from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
-from dune_imperium.content.uprising.effect_dsl import OnTroopsLostAtConflictEnd
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTleilaxuCard,
+    GenerateSpecimens,
+    IntrigueOption,
+    OnTroopsLostAtConflictEnd,
+)
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
@@ -1162,27 +1168,109 @@ def apply_combat_influence_without_faction(
     return RuleResult(state=working, events=tuple(events))
 
 
+def _loss_trigger_option(card_id: str) -> IntrigueOption | None:
+    """The card's Conflict-end loss trigger option (Harvest Cells), if any."""
+
+    entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+    if entry is None:
+        return None
+    return next(
+        (
+            option
+            for option in entry.options
+            if isinstance(option.trigger, OnTroopsLostAtConflictEnd)
+        ),
+        None,
+    )
+
+
+def _trigger_specimens(option: IntrigueOption) -> int:
+    return sum(
+        reward.count
+        for section in option.sections
+        for reward in section.rewards
+        if isinstance(reward, GenerateSpecimens)
+    )
+
+
+def _harvest_cells_has_effect(
+    state: GameState, player: int, option: IntrigueOption
+) -> bool:
+    """Whether one more face-up copy of ``option`` could change something.
+
+    "To play an Intrigue card, you must meet its conditions and pay its
+    costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
+    Intrigue option needs an effect that can change something. Harvest
+    Cells fires after the cleanup has put the Conflict's troops back in the
+    supply ("When resolving combat, troops that return to your supply are
+    considered 'lost.'" [FAQ p. 1]); Sardaukar Commanders go back to their
+    own supply [Bloodlines p. 4], so they make no specimen. Its specimens
+    can be made while those troops and the supply's outnumber what the
+    copies already face up take. Otherwise its Tleilaxu card can still be
+    bought if the specimens the earlier copies made pay for a Row card or a
+    Reclaimed Forces effect -- an upper bound, since an earlier copy may
+    spend them first, so it can only let a copy through, never keep one
+    out. The Row is judged as the window opens.
+    """
+
+    from dune_imperium.rules.tleilaxu_row import (
+        RECLAIMED_FORCES_CHOICES,
+        reclaimed_forces_block,
+    )
+
+    owner = state.players[player]
+    staged = sum(
+        _trigger_specimens(staged_option)
+        for card_id in owner.intrigue_faceup
+        if (staged_option := _loss_trigger_option(card_id)) is not None
+    )
+    returning = owner.troops_supply + owner.troops_conflict
+    if _trigger_specimens(option) and returning - staged >= 1:
+        return True
+    if not any(
+        isinstance(reward, AcquireTleilaxuCard)
+        for section in option.sections
+        for reward in section.rewards
+    ):
+        return False
+    # The earlier copies' specimens, as troops taken from the supply the
+    # cleanup refills (the seat still accounts for all its troops).
+    made = min(staged, returning)
+    from_conflict = min(made, owner.troops_conflict)
+    projected = replace(
+        owner,
+        specimens=owner.specimens + made,
+        troops_conflict=owner.troops_conflict - from_conflict,
+        troops_supply=owner.troops_supply - (made - from_conflict),
+    )
+    return any(
+        tleilaxu_card_for_instance(instance_id).specimen_cost <= projected.specimens
+        for instance_id in state.tleilaxu_row
+    ) or any(
+        reclaimed_forces_block(projected, choice) is None
+        for choice in RECLAIMED_FORCES_CHOICES
+    )
+
+
 def _conflict_end_trigger_cards(
     state: GameState, player: int, lost: int
 ) -> tuple[str, ...]:
-    """Hand Intrigue whose Conflict-end trigger would fire now and is playable."""
+    """Hand Intrigue whose Conflict-end trigger would fire now, is playable,
+    and could change something (``_harvest_cells_has_effect``)."""
 
     from dune_imperium.rules.effect_interpreter import option_is_playable
 
     cards: list[str] = []
     for card_id in state.players[player].intrigue_cards:
-        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
-        if entry is None:
-            continue
-        for option in entry.options:
-            trigger = option.trigger
-            if (
-                isinstance(trigger, OnTroopsLostAtConflictEnd)
-                and lost >= trigger.minimum
-                and option_is_playable(state, player, option)
-            ):
-                cards.append(card_id)
-                break
+        option = _loss_trigger_option(card_id)
+        if (
+            option is not None
+            and isinstance(option.trigger, OnTroopsLostAtConflictEnd)
+            and lost >= option.trigger.minimum
+            and option_is_playable(state, player, option)
+            and _harvest_cells_has_effect(state, player, option)
+        ):
+            cards.append(card_id)
     return tuple(cards)
 
 
@@ -1303,20 +1391,18 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
         )
     card_id = str(dict(action.arguments)["card_id"])
     losses = _conflict_losses(state)
-    others = tuple(
-        held
-        for held in _conflict_end_trigger_cards(state, player, losses[player])
-        if held != card_id
-    )
-    base = state if others else state.pop_decision()
-    owner = base.players[player]
+    owner = state.players[player]
     staged = replace(
         owner,
         intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
         intrigue_faceup=(*owner.intrigue_faceup, card_id),
     )
+    after = replace(state, players=replace_player(state.players, staged))
+    # The window stays open only for another card that could still change
+    # something with this one face up (``_harvest_cells_has_effect``).
+    others = _conflict_end_trigger_cards(after, player, losses[player])
     return RuleResult(
-        state=replace(base, players=replace_player(base.players, staged)),
+        state=after if others else after.pop_decision(),
         events=(
             GameEvent(
                 event_id=f"{frame.frame_id}:played:{card_id}",

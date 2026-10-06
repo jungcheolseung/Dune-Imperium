@@ -56,8 +56,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     InNavigationSlot,
     IntrigueOption,
+    IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnRevealAcquisitionThisRound,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -89,7 +91,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
-from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
+from dune_imperium.content.uprising.intrigue import (
+    INTRIGUE_CARDS_BY_INSTANCE,
+    is_twisted_intrigue,
+)
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -962,34 +967,45 @@ def reward_can_change_something(
     return True
 
 
-def _no_effect_block(
+def rewards_with_no_effect(
     state: GameState,
     player: int,
     sections: tuple[EffectSection, ...],
-) -> Reward | None:
-    """Return a reward to blame when no reward of ``sections`` can change
-    anything now, or None when one can.
+) -> tuple[Reward, ...]:
+    """Every reward of ``sections``, in printed order, when none of them can
+    change anything now; () as soon as one can.
 
     An option is playable as soon as one of its effects can change
     something; the others fizzle when it is played (user ruling 2026-10-06,
-    ``reward_can_change_something``). The reward returned is the first in
-    printed order, skipping a detonation once the Shield Wall is gone
-    (``choice_slots`` drops it), so the page names a reward that applies.
+    ``reward_can_change_something``). A detonation is left out once the
+    Shield Wall is gone (``choice_slots`` drops it), so the page names only
+    rewards that apply.
     """
 
     owner = state.players[player]
     cost = resource_cost(sections)
     owner_after = pay_cost(owner, cost) if can_afford(owner, cost) else owner
-    blamed: Reward | None = None
+    dead: list[Reward] = []
     for section in sections:
         for reward in section.rewards:
             if isinstance(reward, DestroyShieldWall) and not state.shield_wall_present:
                 continue
             if reward_can_change_something(state, player, reward, section, owner_after):
-                return None
-            if blamed is None:
-                blamed = reward
-    return blamed
+                return ()
+            dead.append(reward)
+    return tuple(dead)
+
+
+def _no_effect_block(
+    state: GameState,
+    player: int,
+    sections: tuple[EffectSection, ...],
+) -> Reward | None:
+    """Return the first reward to blame when no reward of ``sections`` can
+    change anything now (``rewards_with_no_effect``), or None when one can."""
+
+    dead = rewards_with_no_effect(state, player, sections)
+    return dead[0] if dead else None
 
 
 def _choice_reward_block(
@@ -1120,9 +1136,104 @@ class OptionBlock(StrEnum):
     COST = "cost"  # the resource cost is more than the owner holds
     NO_LINE = "no_line"  # separate printed lines: none usable now (OQ-058)
     CONTRACT_BANK = "contract_bank"  # too few Contracts to reveal (OQ-064)
+    # Call to Arms in its owner's Reveal turn with nothing left to acquire
+    # (user ruling 2026-10-06, ``_trigger_option_block``).
+    NO_ACQUISITION_AHEAD = "no_acquisition_ahead"
 
 
 type OptionUnplayable = OptionBlock | Cost | Reward
+
+# Rewards of another Plot Intrigue card that can add an acquisition to the
+# Reveal turn it is played in (Inspire Awe, Tleilaxu Puppet).
+_REVEAL_ACQUISITION_REWARDS = (
+    AcquireCardUpTo,
+    AcquireReserveCard,
+    RevealPersuasionThisRound,
+)
+
+
+def _reveal_acquisition_ahead(state: GameState, player: int) -> bool:
+    """Whether the owner's open Reveal turn may still acquire a card.
+
+    Deliberately generous, so it never blocks a play that could still fire:
+    any action the Reveal frame offers besides ending the Reveal and playing
+    an Intrigue card counts -- the shop's own offers (Imperium Row, Reserve,
+    a set-aside card, the Tleilaxu Row), and every other choice that might
+    add Persuasion or change what is on offer (a deferred Reveal choice, a
+    Tech tile, a leader ability). So does another held Plot Intrigue option,
+    playable now, that acquires a card or adds Persuasion; trigger options
+    are skipped, so this never asks itself again.
+    """
+
+    # Function-local: the engine's table and the Intrigue play gate import
+    # this module.
+    from dune_imperium.rules.engine import LEGAL_ACTION_PROVIDERS
+    from dune_imperium.rules.intrigue import (
+        intrigue_play_block,
+        legal_intrigue_play_actions,
+    )
+    from dune_imperium.rules.reveal_turn import legal_finish_reveal_actions
+
+    for provider in LEGAL_ACTION_PROVIDERS[FrameKind.REVEAL]:
+        if provider in (legal_intrigue_play_actions, legal_finish_reveal_actions):
+            continue
+        if provider(state, player):
+            return True
+    for card_id in state.players[player].intrigue_cards:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        if entry is None or not entry.play_data_complete:
+            continue
+        for other in entry.options:
+            if other.trigger is not None or not any(
+                isinstance(reward, _REVEAL_ACQUISITION_REWARDS)
+                for section in other.sections
+                for reward in section.rewards
+            ):
+                continue
+            if (
+                intrigue_play_block(
+                    state, player, FrameKind.REVEAL, IntrigueTiming.PLOT, other
+                )
+                is None
+            ):
+                return True
+    return False
+
+
+def _trigger_option_block(
+    state: GameState,
+    player: int,
+    option: IntrigueOption,
+    sections: tuple[EffectSection, ...],
+) -> OptionUnplayable | None:
+    """Why a triggered option cannot be played now, or None.
+
+    Playing it only sets the card waiting face up, and its rewards resolve
+    when the trigger fires, so the check looks ahead to that firing (user
+    ruling 2026-10-06, "아무 효과 없이 책략을 쓸 수 없는거지"). Call to Arms
+    recruits a troop "whenever you acquire a card" in the owner's Reveal
+    turn this round [Call to Arms card]: its troop must be able to join now
+    (``_troop_can_join``, as every recruit is judged), and once the
+    owner's Reveal turn is open, a card must still be acquirable in it
+    (``_reveal_acquisition_ahead``); before the Reveal the whole Reveal
+    turn is still ahead. Harvest Cells is judged by its Conflict-end window
+    instead (``combat._conflict_end_trigger_cards``), which projects the
+    troops the cleanup returns to the supply.
+    """
+
+    if not isinstance(option.trigger, OnRevealAcquisitionThisRound):
+        return None
+    dead = _no_effect_block(state, player, sections)
+    if dead is not None:
+        return dead
+    frame = _plot_frame(state, player)
+    if (
+        frame is not None
+        and frame.kind == FrameKind.REVEAL
+        and not _reveal_acquisition_ahead(state, player)
+    ):
+        return OptionBlock.NO_ACQUISITION_AHEAD
+    return None
 
 
 def option_is_playable(
@@ -1148,7 +1259,8 @@ def option_unplayable_reason(
     """Why ``option`` cannot be played now, or None when it can.
 
     The checks, in order: a separate-lines card needs one usable line; a
-    triggered card needs an applicable section; any other needs an
+    triggered card needs an applicable section and a firing that can change
+    something (``_trigger_option_block``); any other needs an
     applicable section, the Contracts Coercive Negotiation reveals, its
     resource cost, then each player-choice cost (``_choice_cost_block``), a
     reward that cannot be resolved at all (``_choice_reward_block``), and
@@ -1171,9 +1283,7 @@ def option_unplayable_reason(
     if not sections:
         return OptionBlock.CONDITION
     if option.trigger is not None:
-        # Playing only sets the card waiting face up; its rewards resolve
-        # when the trigger fires, so present feasibility does not gate it.
-        return None
+        return _trigger_option_block(state, player, option, sections)
     if not all(
         contract_reveal_is_possible(state, reward)
         for section in sections

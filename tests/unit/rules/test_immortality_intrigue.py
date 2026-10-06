@@ -931,6 +931,85 @@ def test_harvest_cells_offers_reclaimed_forces_only_when_paid_and_useful() -> No
     ) == ["troops"]
 
 
+def test_harvest_cells_window_skips_a_copy_that_would_change_nothing() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
+    # Intrigue option needs an effect that can change something. Its
+    # specimens come from troops back in the supply after the cleanup
+    # [FAQ p. 1]; lost Sardaukar Commanders return to their own supply
+    # [Bloodlines p. 4] and make none.
+    first, second = _intrigue("harvest_cells"), "intrigue:harvest_cells:1"
+    engine = UprisingRulesEngine()
+    blood = RulesetConfig(immortality=True, bloodlines=True)
+    pricey = ("tleilaxu:twisted_mentat:0", "tleilaxu:usurp:0")  # four each
+
+    def window(*cards: str, **extra: object) -> GameState:
+        values: dict[str, object] = {
+            "intrigue_cards": cards,
+            "troops_supply": 0,
+            "troops_garrison": 12,
+            "troops_conflict": 0,
+            "commanders_conflict": 3,
+            "combat_strength": 6,
+            "specimens": 0,
+        }
+        values.update(extra)
+        state = replace(
+            _combat_state(_fighter(0, **values), config=blood), tleilaxu_row=pricey
+        )
+        return _pass_through_combat(engine, state)
+
+    def offered(state: GameState) -> list[object]:
+        if state.decision_stack[-1].kind != FrameKind.CONFLICT_END_TRIGGER:
+            return []
+        return [
+            dict(action.arguments).get("card_id")
+            for action in engine.legal_actions(state, 0)
+            if action.action_id == "play_conflict_end_intrigue"
+        ]
+
+    # Case A: three Commanders lost, no troop to make a specimen of, and no
+    # Tleilaxu card the specimens could pay for: the window does not open.
+    lost_commanders = window(first)
+    assert offered(lost_commanders) == []
+    assert first in lost_commanders.players[0].intrigue_cards
+    # A troop in the supply, or three specimens for Reclaimed Forces, opens it.
+    assert offered(window(first, troops_supply=1, troops_garrison=11)) == [first]
+    assert offered(window(first, specimens=3, troops_garrison=9)) == [first]
+
+    # Case C: two troops and a Commander lost. The first copy takes both
+    # troops; the second could make no specimen, and the two specimens buy
+    # no Tleilaxu card, so the window closes once the first is face up.
+    mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
+    both = window(first, second, **mixed)
+    assert offered(both) == [first, second]
+    played = engine.apply(
+        both,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", first),),
+        ),
+    ).state
+    assert all(
+        frame.kind != FrameKind.CONFLICT_END_TRIGGER for frame in played.decision_stack
+    )
+    assert second in played.players[0].intrigue_cards
+    # A third troop lost leaves the second copy a specimen to make.
+    three = window(
+        first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
+    )
+    staged = engine.apply(
+        three,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", first),),
+        ),
+    ).state
+    assert offered(staged) == [second]
+
+
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:
     codec = ActionCodec(IMMORTALITY)
     card = _intrigue("gruesome_sacrifice")

@@ -2893,6 +2893,67 @@ def test_call_to_arms_trigger_is_supply_limited() -> None:
     assert dict(triggered.payload)["troops"] == 0
 
 
+def test_call_to_arms_is_not_offered_in_a_reveal_with_nothing_left_to_acquire() -> (
+    None
+):
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." [FAQ p. 2] (docs/rules/player-turns.md), with the user's
+    # ruling of 2026-10-06 that an Intrigue option needs an effect that can
+    # change something: Call to Arms recruits only "whenever you acquire a
+    # card" in its owner's Reveal turn, so once that Reveal is open with no
+    # Persuasion to spend and nothing else on offer, it would change nothing.
+    card = _intrigue("call_to_arms")
+    option = intrigue_card_for_instance(card).options[0]
+    engine = UprisingRulesEngine()
+    state = _with_market(
+        _turn_state(PlayerState(player_id=0, intrigue_cards=(card,)))
+    )
+    # Before the Reveal the whole Reveal turn is still ahead.
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+
+    broke = _revealed_with_persuasion(state, 0)
+    assert broke.decision_stack[-1].kind == FrameKind.REVEAL
+    assert _play(broke, card) not in engine.legal_actions(broke, 0)
+    assert (
+        option_unplayable_reason(broke, 0, option) is OptionBlock.NO_ACQUISITION_AHEAD
+    )
+    # Two Persuasion buy Prepare the Way (or Sardaukar Soldier).
+    rich = _revealed_with_persuasion(state, 2)
+    assert _play(rich, card) in engine.legal_actions(rich, 0)
+    # Inspire Awe, playable in the same Reveal, still acquires a card
+    # costing 3 or less, and Call to Arms counts it.
+    awe = _intrigue("inspire_awe")
+    holding = _revealed_with_persuasion(
+        _with_market(
+            _turn_state(PlayerState(player_id=0, intrigue_cards=(card, awe)))
+        ),
+        0,
+    )
+    assert _play(holding, card) in engine.legal_actions(holding, 0)
+
+
+def test_call_to_arms_needs_a_troop_it_could_recruit() -> None:
+    # The user's ruling of 2026-10-06 reads a recruit as the Arrakeen Scouts
+    # one is (OQ-071): with no troop in the supply and no specimen to return,
+    # the troop it would recruit cannot come, so the card is not offered
+    # even before the Reveal.
+    card = _intrigue("call_to_arms")
+    option = intrigue_card_for_instance(card).options[0]
+    empty = _turn_state(
+        PlayerState(
+            player_id=0, intrigue_cards=(card,), troops_supply=0, troops_garrison=12
+        )
+    )
+    assert legal_intrigue_play_actions(empty, 0) == ()
+    assert option_unplayable_reason(empty, 0, option) == RecruitTroops(1)
+    one = _turn_state(
+        PlayerState(
+            player_id=0, intrigue_cards=(card,), troops_supply=1, troops_garrison=11
+        )
+    )
+    assert legal_intrigue_play_actions(one, 0) == (_play(one, card),)
+
+
 def _revealed_with_persuasion(
     state: GameState, persuasion: int = 10
 ) -> GameState:

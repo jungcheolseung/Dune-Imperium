@@ -127,6 +127,7 @@ from dune_imperium.rules.contracts import (
     legal_contract_recall_actions,
 )
 from dune_imperium.rules.effect_interpreter import (
+    _trigger_option_block,
     applicable_sections,
     can_afford,
     condition_holds,
@@ -550,7 +551,14 @@ def _old_option_is_playable(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
     if option.trigger is not None:
-        return bool(sections)
+        # Updated on purpose 2026-10-06 (user ruling): a triggered option
+        # also needs a firing that can change something (Call to Arms' troop,
+        # and in its owner's Reveal a card still to acquire) -- a rule change
+        # made after the copy.
+        return (
+            bool(sections)
+            and _trigger_option_block(state, player, option, sections) is None
+        )
     # Updated on purpose 2026-10-03 (codec v129, OQ-016): Coercive
     # Negotiation is no longer a face-up trigger but a Plot whose condition
     # is this turn's deployment, so its Contract-bank check (OQ-064) moved

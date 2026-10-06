@@ -581,6 +581,13 @@ _BEFORE_THE_AGENT: Final[Reason] = (
     "이번 차례에 {agent}를 보내기 전에만",
     "reward",
 )
+# Call to Arms in the owner's Reveal turn once nothing is left to acquire in
+# it (``OptionBlock.NO_ACQUISITION_AHEAD``, user ruling 2026-10-06).
+_NO_ACQUISITION_AHEAD: Final[Reason] = (
+    "Nothing left to acquire in this Reveal turn",
+    "이번 공개 차례에 더 획득할 수 있는 카드 없음",
+    "reward",
+)
 
 
 def _deploy_reason(state: GameState, seat: int) -> Reason:
@@ -893,6 +900,8 @@ def intrigue_option_reason(
             return _NO_LINE
         case OptionBlock.CONTRACT_BANK:
             return _contract_bank_reason(state, option)
+        case OptionBlock.NO_ACQUISITION_AHEAD:
+            return _NO_ACQUISITION_AHEAD
         case OptionBlock.COST:
             sections = applicable_sections(
                 state, seat, option, shield_wall_present=state.shield_wall_present
