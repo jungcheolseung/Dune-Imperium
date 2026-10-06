@@ -1,8 +1,32 @@
 # 개발 인수인계
 
-기준일: 2026-10-06
+기준일: 2026-10-07
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
+
+## 2026-10-07 Steam 앱과 일반 규칙 대조 뒤의 정정 (codec v139)
+
+사용자 요청("그래 이제 규칙을 앱 엔진과 대조해보자")으로 OQ 대조(10-03/04)와 카드·보드 대조(10-06)에 이어 세 번째로 일반 규칙을 대조했다. `docs/rules`의 주제 24개를 문장 단위로 공식 원문 → 우리 코드·테스트 → 앱 순으로 비교했고, 앱 엔진 지도의 여섯 영역에서 거꾸로 훑었다. 공식 원문은 `scripts/prepare_official_rules.py`로 받은 `tmp/official-rules/`다. 앱은 보조 증거일 뿐이며, 대조 자료와 한국어 보고서는 에셋 저장소 로컬 폴더 `reference/dune-steam-app/dad97e20…/analysis/rules-compare-2026-10-07/`에만 있다(git 무시).
+
+- **대조 결과.** 문장 1,157개를 확인했다. 차이 주장 104건을 반박 위주로 재검증해 확인 39, 이미 판정 57, 결과 무관 7, 반박 1로 정리했다. 확인된 39건 중 14건(겹치는 보고 포함)은 앱이 규칙과 다르고 우리가 맞는 경우다(지배 칸 방어의 "may", First Player를 Objective와 따로 정함, Long Live the Fighters 의무, 연구·Tleilaxu 보너스 즉시, graft 자유 순서 등). workflow agent 68개, subagent 토큰 약 1,440만(예상 1,000만의 1.4배), 89분.
+- **공식 원문·채택한 판정과 어긋나 고친 것.**
+  - Combat Intrigue: 이번 기회에 카드를 낸 좌석이 우선권을 넘기는 pass는 연속 pass로 세지 않는다 `[Main p. 14]`. 공식 예시대로 Abby가 카드를 낸 뒤 John이 다시 pass해도 마지막 결정은 Abby의 것이다 `[Main p. 15]`. 참여자가 한 명뿐이면 카드를 낸 뒤의 pass가 마지막 pass다(convention). frame context `played_at_priority`.
+  - 다음 Reveal에 적용되는 Plot(Tleilaxu Puppet, Manipulate)은 소유자의 Reveal turn이 끝날 때까지 앞면으로 둔다 `[FAQ p. 2]`. 좌석 패널이 앞면 Intrigue를 처음으로 보인다(Call to Arms 포함, 전에는 그려지지 않았다; E2E `intrigue_faceup.py` 신설).
+  - Usurp를 Row의 Undercover Asset과 graft하면 Influence 요구가 면제된다(“Both played cards are considered to have sent the Agent” `[Immortality p. 10]`).
+  - Chairdog의 되돌림은 graft 시점에 기록한다(채택한 디자이너 판정; 감사표는 일치라 적었지만 코드는 Chairdog box를 해결할 때만 기록했다).
+  - Imperium·Intrigue 덱 남은 장수를 모든 좌석에 보인다(convention, information-visibility.md). AI 관측 인코딩에는 넣지 않았다.
+- **사용자 판정 세 가지(2026-10-07).**
+  - FAQ p. 3 "except when playing an Intrigue card, where paying a cost is required" — "지금대로": OQ-058 유지, 문서에 인용과 읽기만 추가.
+  - 덱과 버린 더미가 모두 빈 Gather Intelligence — "허용 (앱처럼)": recall만 하고 draw 0, "Spy를 회수했다면"에 센다. Gaius Helen Mohiam은 그때도 회수해야 한다(OQ-099 확정).
+  - 서로 다른 순위의 Conflict 보상 순서 — "순위대로 (앱처럼)": 한 수령자씩, 그 수령자의 선택까지 끝낸 뒤 다음 수령자(OQ-102 신설). 보류한 Contract 아이콘은 다음 수령자 전에 불발한다. `GameState.combat_rewards_paid`, `combat.combat_rewards_done`.
+- **문서만 고친 것.** Interstellar Trade "한 번만" 낡은 문장, 자유 순서 범위(Reveal·graft), 아이콘 독립의 출처(OQ-027), Spy 두 번 회수, Espionage 행, FAQ 색인의 낡은 목록·제외 원칙, source-map의 Immortality "out of scope", Alliance 여러 칸 손실을 한 칸씩 처리하는 것은 FAQ 문장이 아니라 프로젝트 해석(OQ-014; 앱도 같은 결과). 교훈은 `docs/lessons.md` 2026-10-07(공식 예시는 좌석별로 그대로 테스트로 옮긴다).
+- **고정값.**
+  - golden 6개 모두 Combat Intrigue pass 커밋 `5654d7f8`에서 처음 움직였고, 보상 순서 커밋 `82b9cddc`가 다시 바꿨다(Scouts만 궤적 변경, 나머지는 선택·합법 집합 크기 같음). 관측 v30 그대로.
+  - tip census·app_ai seed fixture·turn_end·탐색 좌석 정체 테스트·Scouts 줄 테스트를 다시 고정했다(커밋 본문에 커밋별 귀속). combat census 수집기는 보상 이벤트가 여러 step에 나뉘는 것을 읽도록 고쳤다("도구는 게임을 따른다").
+  - tips-v1을 다시 캐서 **131개**(sandworm 80, 마지막 라운드 보유 40, Endgame 11), 131/131 복원. 깨진 92개는 모두 `5654d7f8`에서 깨졌다(problem-set.md).
+- **codec v139**: 템플릿 변화는 없고 합법 행동 순서만 바뀌었다. v138 저장은 열리지 않는다.
+- **검증**: pytest **6,637개 통과**(브랜치), ruff·mypy(414파일) 통과. Chrome E2E **47종 전부 통과**(2개씩, 학습이 도는 기계): 첫 실행에서 `log_words`·`scouts`가 seed 궤적 이동으로 지키는 장면(Secrets 강탈·Mating Season 칸, Scouts 비밀 선택·3장 시장)에 닿지 않아 seed를 다시 고른 뒤(log_words 10→4·80→22, scouts 21·58·31·44→21·58·64) 그 둘만 다시 돌렸다. 소크(soundness 5, privacy 50, worker 2): random 전 옵션(Epic·Go to 11·Scouts 포함)+리더 회전 100판, heuristic 전 옵션+지도자 드래프트 60판, random 기본·CHOAM 200판, 모두 실패 0.
+- **남은 것**: Glowglobes·Navigation Chamber의 Tech 획득 아이콘은 여전히 6인 진영을 내놓는다(v137 경계). Harvest Cells 창은 Reclaimed Forces 비용을 보이지 않는다. Ghola+Subversive Advisor는 2+2=4(convention). 여러 칸 Influence 손실을 직접 고정하는 테스트가 없다(OQ-014). 이로써 Steam 앱과의 대조(OQ·카드·일반 규칙)는 모두 끝났다. 앱에 없는 Bloodlines·Arrakeen Scouts는 대조 대상이 아니다.
 
 ## 2026-10-06 효과 없는 책략 play 금지 (codec v138)
 
