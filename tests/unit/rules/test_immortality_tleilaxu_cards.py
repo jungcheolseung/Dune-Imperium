@@ -1577,6 +1577,116 @@ def test_usurp_is_offered_only_where_a_partner_can_follow() -> None:
     assert occupation in partners and infiltrator in partners
 
 
+UNDERCOVER_ASSET = "imperium:undercover_asset:0"
+STEERSMAN = "imperium:steersman:0"
+
+
+def _usurp_spaces(state: GameState) -> set[str]:
+    return {
+        str(dict(a.arguments)["space_id"])
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["card_id"] == _tleilaxu("usurp")
+    }
+
+
+def _row_without(*cards: str) -> tuple[str, ...]:
+    return tuple(
+        card
+        for card in imperium_deck_instance_ids(False)
+        if card not in cards
+        and not any(
+            card.startswith(prefix)
+            for prefix in ("imperium:undercover_asset:", "imperium:steersman:")
+        )
+    )
+
+
+def test_usurp_with_undercover_asset_ignores_the_influence_requirements() -> None:
+    """ "Both played cards are considered to have “sent” the Agent, no
+    matter which card’s icon you use." and "You gain the effects on both
+    cards, in addition to the board space effects, in any order you
+    choose." [Immortality p. 10] (docs/rules/immortality.md, Graft).
+    Undercover Asset ignores Influence requirements [card face], so Usurp
+    grafted to it from the Imperium Row reaches Imperial Privilege (Emperor
+    2) and Sietch Tabr (Fremen 2) with no Influence, and there only
+    Undercover Asset may be the partner; Steersman reaches the same spaces
+    by icon but waives nothing. Until 2026-10-07 the waiver was read from
+    the placed card (Usurp) only."""
+
+    usurp = _tleilaxu("usurp")
+    rest = _row_without()
+    state = _state(
+        _owner((usurp,)),
+        imperium_row=(UNDERCOVER_ASSET, STEERSMAN, *rest[:3]),
+        imperium_deck=rest[3:18],
+    )
+    assert state.players[0].influence.emperor == 0
+    assert state.players[0].influence.fremen == 0
+    spaces = _usurp_spaces(state)
+    assert {"imperial_privilege", "sietch_tabr", "assembly_hall"} <= spaces
+
+    for space_id in ("imperial_privilege", "sietch_tabr"):
+        placed = _place(state, usurp, space_id, graft=True)
+        partners = [
+            dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+        ]
+        assert partners == [UNDERCOVER_ASSET]
+    # A space without a requirement keeps every partner that reaches it.
+    open_space = _place(state, usurp, "assembly_hall", graft=True)
+    partners = [
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(open_space, 0)
+    ]
+    assert UNDERCOVER_ASSET in partners and STEERSMAN in partners
+
+    grafted = _graft(state, usurp, "imperial_privilege", UNDERCOVER_ASSET)
+    owner = grafted.players[0]
+    assert "imperial_privilege" in owner.agent_locations
+    assert UNDERCOVER_ASSET in owner.in_play
+    assert owner.usurped_row_card_id == UNDERCOVER_ASSET
+
+
+def test_usurp_with_only_partners_that_respect_the_requirements_stays_barred() -> (
+    None
+):
+    """The same [Immortality p. 10] reading with no partner that ignores
+    Influence requirements: Steersman's Landsraad and City icons reach
+    Imperial Privilege and Sietch Tabr, but with no Emperor or Fremen
+    Influence neither space is offered to Usurp."""
+
+    usurp = _tleilaxu("usurp")
+    rest = _row_without()
+    state = _state(
+        _owner((usurp,)),
+        imperium_row=(STEERSMAN, *rest[:4]),
+        imperium_deck=rest[4:19],
+    )
+    spaces = _usurp_spaces(state)
+    assert "imperial_privilege" not in spaces
+    assert "sietch_tabr" not in spaces
+    assert "assembly_hall" in spaces
+
+
+def test_a_hand_graft_with_undercover_asset_places_undercover_asset() -> None:
+    """[Immortality p. 10]: both grafted cards sent the Agent. Two hand
+    cards need no partner rule of their own: Undercover Asset, the one card
+    that ignores Influence requirements, carries the Landsraad, City and
+    Spice Trade icons of every space that has one, so it is placed with the
+    Graft card (Slig Farmer, Landsraad) as its partner. Slig Farmer itself
+    is not placed on Imperial Privilege without Emperor Influence."""
+
+    slig = _tleilaxu("slig_farmer")
+    state = _state(_owner((slig, UNDERCOVER_ASSET)))
+    placements = {
+        (dict(a.arguments)["card_id"], dict(a.arguments).get("graft") is True)
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["space_id"] == "imperial_privilege"
+    }
+    assert (UNDERCOVER_ASSET, True) in placements
+    assert all(card != slig for card, _ in placements)
+    grafted = _graft(state, UNDERCOVER_ASSET, "imperial_privilege", slig)
+    assert slig in grafted.players[0].in_play
+
+
 def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> None:
     """Steersman's box is "draw a card, recall an Agent"; Ghola copies it,
     so the second box's recall icon has no Agent left once the first box

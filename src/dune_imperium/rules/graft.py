@@ -39,8 +39,10 @@ from dune_imperium.rules.agent_icons import (
     is_bond_partner,
 )
 from dune_imperium.rules.agent_turn import (
+    GRAFT_PARTNER_WAIVES_INFLUENCE_KEY,
     agent_effect_is_available,
     card_can_access_space,
+    card_ignores_influence_requirements,
     is_tleilaxu_infiltrator,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -114,6 +116,10 @@ def legal_graft_partner_actions(
     # Only a placed card that cannot reach the space by any means of its own
     # (Usurp, which has no icons) leans on the partner for access.
     partner_must_fit = not placed_reaches and not needs_bond_partner
+    # "Both played cards are considered to have “sent” the Agent"
+    # [Immortality p. 10]: Usurp sent to a space whose Influence requirement
+    # is unmet needs a partner that ignores the requirements.
+    partner_must_waive = context.get(GRAFT_PARTNER_WAIVES_INFLUENCE_KEY) is True
     candidates: tuple[str, ...] = (
         *(card_id for card_id in owner.hand if card_id != placed_id),
         # Usurp: "graft this card with a card from the Imperium Row".
@@ -130,6 +136,10 @@ def legal_graft_partner_actions(
             card_is_graft(placed) or card_is_graft(personal_card_for_instance(card_id))
         )
         and (not needs_bond_partner or is_bond_partner(card_id))
+        and (
+            not partner_must_waive
+            or card_ignores_influence_requirements(personal_card_for_instance(card_id))
+        )
         # An occupied space was entered on Tleilaxu Infiltrator's promise.
         and (
             not occupied
