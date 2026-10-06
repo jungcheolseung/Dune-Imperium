@@ -63,7 +63,11 @@ GAMES = (
     # research, and the only one of the four with a Secrets steal.
     # OQ-098 / codec v135 moves the old seed 71 off its Secrets steal.
     # An engine-log scan over seeds 1-64 finds seed 3 first with that chance.
-    {"seats": ["random"] * 4, "game_seed": 3, "policy_seed": 3, **EVERY_EXPANSION},
+    # The codec v137 card-comparison rulings (2026-10-06) move seed 3 off it
+    # too; a scan of the same games through GameSessionManager over seeds
+    # 1-120 finds seed 10 first (with Family Atomics, the Feyd track and
+    # research as well).
+    {"seats": ["random"] * 4, "game_seed": 10, "policy_seed": 10, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
