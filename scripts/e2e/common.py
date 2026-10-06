@@ -5,7 +5,13 @@ contexts and records every request, console line and page error with a
 monotonic timestamp, so that a hang can be read off the timeline.
 
 Playwright is deliberately not a project dependency: run these scripts with
-a scratch environment that has it (README.md).
+the git-ignored environment in this folder that has it (README.md).
+
+Every temporary file of a run stays inside the project (user decision
+2026-10-06): importing this module points TMPDIR and ``tempfile`` at the
+git-ignored ``tmp/e2e/`` of the checkout the scripts live in, so the
+scripts' screenshot and save folders, the servers they start and the
+browsers' profiles all write there.
 """
 
 from __future__ import annotations
@@ -22,6 +28,10 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
+E2E_TMP = Path(__file__).resolve().parents[2] / "tmp" / "e2e"
+E2E_TMP.mkdir(parents=True, exist_ok=True)
+os.environ["TMPDIR"] = str(E2E_TMP)
+tempfile.tempdir = str(E2E_TMP)
 # The address the server binds and the browsers use. Set it to this machine's
 # Tailscale address (100.x.y.z) to rehearse what friends will really get: a
 # plain-HTTP origin that is not a secure context. Anything but loopback needs
@@ -29,9 +39,7 @@ REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
 HOST = os.environ.get("E2E_HOST", "127.0.0.1")
 # One file per script, so that scripts running side by side (run_all.py) do
 # not overwrite each other's copy.
-SERVER_LOG_COPY = (
-    Path(tempfile.gettempdir()) / f"dune-e2e-server-last-{Path(sys.argv[0]).stem}.log"
-)
+SERVER_LOG_COPY = E2E_TMP / f"dune-e2e-server-last-{Path(sys.argv[0]).stem}.log"
 T0 = time.monotonic()
 
 

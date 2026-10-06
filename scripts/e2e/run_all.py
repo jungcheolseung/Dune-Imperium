@@ -5,10 +5,10 @@ saves directory and its own headless Chrome, so the scripts share no state.
 This runner only schedules them (longest first), keeps each one's output in a
 log file and prints one line per script as it finishes.
 
-    /tmp/dune-e2e-venv/bin/python run_all.py              # every script, 4 at a time
-    /tmp/dune-e2e-venv/bin/python run_all.py -j 6
-    /tmp/dune-e2e-venv/bin/python run_all.py lang narrow  # only these
-    /tmp/dune-e2e-venv/bin/python run_all.py --list
+    .venv/bin/python run_all.py              # every script, 4 at a time
+    .venv/bin/python run_all.py -j 6
+    .venv/bin/python run_all.py lang narrow  # only these
+    .venv/bin/python run_all.py --list
 
 `rehearsal.py` needs a Tailscale address (E2E_HOST) and runs only when named.
 A failure is never retried here: a check that fails only under load is a
@@ -97,7 +97,10 @@ def main() -> int:
         print("\n".join(names))
         return 0
 
-    logs = Path(tempfile.mkdtemp(prefix="dune-e2e-run-"))
+    # Inside the project, like everything the scripts write (common.E2E_TMP).
+    temp = Path(__file__).resolve().parents[2] / "tmp" / "e2e"
+    temp.mkdir(parents=True, exist_ok=True)
+    logs = Path(tempfile.mkdtemp(prefix="dune-e2e-run-", dir=temp))
     print(f"{len(names)} scripts, {options.jobs} at a time; logs in {logs}", flush=True)
     started = time.monotonic()
     failed: list[str] = []

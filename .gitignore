@@ -182,8 +182,12 @@ pyrightconfig.json
 # Trained policy checkpoints and training logs (14-40MB files; kept out of git)
 checkpoints/
 
-# Local play-server save files written by .claude/launch.json's ui-server
+# Local play-server save files (the server's default --saves-dir)
 /saves/
+
+# Temporary files of runs, tests and tools (dune_imperium.paths.TMP_DIR):
+# nothing the project makes lives outside the project directory
+/tmp/
 
 # Output of the A/B, soak and profiling tools under scripts/ab (see its README)
 ab-runs/

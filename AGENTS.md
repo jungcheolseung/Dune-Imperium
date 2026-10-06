@@ -38,7 +38,8 @@ authoritative and update the handoff in the same work unit.
   ambiguous interpretations in project documentation and protect chosen rulings
   with tests.
 - Use `scripts/prepare_official_rules.py` when page-indexed text from an official
-  PDF is needed. Keep its generated PDFs and text outside the repository. Update
+  PDF is needed. Keep its generated PDFs and text in the git-ignored `tmp/`
+  (its default `tmp/official-rules/`), never in tracked files. Update
   `scripts/official-rule-sources.json` and `docs/rules/sources.md` together when
   an official file version or checksum changes.
 - Before implementing a rule, consult `docs/rules/README.md` and its cited source.

@@ -67,7 +67,7 @@ Dune: Imperium을 Python으로 정확하고 재현 가능하게 구현하고, �
 uv run scripts/prepare_official_rules.py
 ```
 
-도구는 [고정된 공식 출처 manifest](scripts/official-rule-sources.json)의 PDF를 검증하고, PDF 페이지 marker가 붙은 text working copy를 기본적으로 `/tmp/dune-imperium-official-rules/`에 만든다. 생성된 PDF와 text는 저장소에 추가하지 않는다. FAQ만 다시 준비하려면 `--source faq`, 기존 working copy만 쓰려면 `--offline`을 사용한다. 공식 파일의 SHA-256이 바뀌면 자동으로 받아들이지 않으며, 공식 리소스 페이지에서 새 버전인지 먼저 확인해야 한다.
+도구는 [고정된 공식 출처 manifest](scripts/official-rule-sources.json)의 PDF를 검증하고, PDF 페이지 marker가 붙은 text working copy를 기본적으로 저장소 안의 git 무시 폴더 `tmp/official-rules/`에 만든다(프로젝트 파일은 프로젝트 폴더 밖에 두지 않는다). 생성된 PDF와 text는 저장소에 커밋하지 않는다. FAQ만 다시 준비하려면 `--source faq`, 기존 working copy만 쓰려면 `--offline`을 사용한다. 공식 파일의 SHA-256이 바뀌면 자동으로 받아들이지 않으며, 공식 리소스 페이지에서 새 버전인지 먼저 확인해야 한다.
 
 ## 카드 및 이미지 자료
 
