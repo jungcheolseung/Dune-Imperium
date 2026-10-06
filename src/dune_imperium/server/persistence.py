@@ -34,6 +34,7 @@ from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.replay import GameReplay, ReplayStep
+from dune_imperium.paths import SAVES_DIR
 from dune_imperium.server.session_log import LogEntry, LoggedUndo
 
 type JsonValue = (
@@ -91,9 +92,10 @@ class ParsedSave:
 
 
 def default_saves_directory() -> Path:
-    """Per-user save location used when the CLI does not override it."""
+    """Save location used when the CLI does not override it: ``saves/`` in
+    the project checkout (``dune_imperium.paths``), git-ignored."""
 
-    return Path.home() / ".dune-imperium" / "saves"
+    return SAVES_DIR
 
 
 def serialize_step(step: ReplayStep) -> JsonObject:

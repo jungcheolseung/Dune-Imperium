@@ -340,7 +340,7 @@ def test_a_bare_search_seat_plays_the_servers_checkpoint(
 ) -> None:
     """``search`` seats ``search:<the real file>`` of the manager's network.
 
-    The server is handed a symlink (``~/.dune-imperium/search.pt`` is one),
+    The server is handed a symlink (``checkpoints/play/search.pt`` is one),
     resolved when it starts: the game and its save name the file the link
     pointed at, and repointing the link afterwards changes neither.
     """

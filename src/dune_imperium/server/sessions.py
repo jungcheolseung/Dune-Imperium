@@ -285,7 +285,7 @@ class GameSessionManager:
     ) -> None:
         """``search_checkpoint`` is the network of the server's search AI,
         the seat kind ``search`` (``create_game``); ``None`` offers none.
-        It is resolved here, once: a symlink (``~/.dune-imperium/search.pt``
+        It is resolved here, once: a symlink (``checkpoints/play/search.pt``
         pointing at a training checkpoint) is recorded in every save as the
         file it named when the server started, so repointing the link later
         never changes the network an older save plays with.
