@@ -226,19 +226,44 @@ def test_another_seats_answer_neither_ends_nor_reopens_the_start() -> None:
 
 
 def test_a_turn_passed_to_the_seat_itself_starts_afresh() -> None:
-    # Every other seat has revealed: passing the turn opens the seat's own
-    # next turn, whose start is open again -- playing a turn-start card is
-    # the start's own action, not one that ends it.
+    # Every other seat has revealed: Litany Against Fear's pass opens the
+    # seat's own next turn, whose start is open again -- playing a
+    # turn-start card is the start's own action, not one that ends it.
     state = _turn_state(_owner(CONTINGENCY_PLAN), others_revealed=True)
+    assert LITANY_PLAY in _offered(state)
 
-    passed = _apply(state, WITHDRAWN_PLAY)
+    passed = _apply(state, LITANY_PLAY)
     turn = passed.decision_stack[-1]
     assert turn.kind == FrameKind.TURN
     assert isinstance(turn.decision, PlayerDecision) and turn.decision.owner == 0
     assert TURN_START_OVER_KEY not in dict(turn.context)
-    assert LITANY_PLAY in _offered(passed)
+    assert turn_start_is_open(passed, 0)
+    assert LITANY in passed.players[0].in_play
 
-    again = _apply(passed, LITANY_PLAY)
-    assert again.decision_stack[-1].kind == FrameKind.TURN
-    assert turn_start_is_open(again, 0)
-    assert LITANY in again.players[0].in_play
+
+def test_withdrawn_is_not_offered_when_every_other_seat_has_revealed() -> None:
+    # "Pass your turn." [Withdrawn card] with every other seat revealed hands
+    # the turn straight back [Main p. 8]: its only effect changes nothing, so
+    # it is not offered ("To play an Intrigue card, you must meet its
+    # conditions and pay its costs." [FAQ p. 2], with the user's ruling of
+    # 2026-10-06 that an Intrigue option needs an effect that can change
+    # something). Litany Against Fear is an Imperium card and keeps its pass.
+    from dune_imperium.content.uprising.effect_dsl import PassTurn
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    option = intrigue_card_for_instance(WITHDRAWN).options[0]
+    alone = _turn_state(_owner(), others_revealed=True)
+    assert WITHDRAWN_PLAY not in _offered(alone)
+    assert LITANY_PLAY in _offered(alone)
+    assert option_unplayable_reason(alone, 0, option) == PassTurn()
+    # One seat still to reveal is enough.
+    waiting = replace(
+        alone,
+        players=(
+            *alone.players[:2],
+            replace(alone.players[2], has_revealed=False),
+            alone.players[3],
+        ),
+    )
+    assert WITHDRAWN_PLAY in _offered(waiting)

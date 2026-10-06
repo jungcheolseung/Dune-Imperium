@@ -65,27 +65,45 @@ from dune_imperium.content.immortality.tleilaxu import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
+    AcquireReserveCard,
+    AcquireTech,
+    AdvanceTleilaxu,
+    CommanderDiscountThisTurn,
     Cost,
+    DeployFromGarrison,
     DiscardFromHand,
+    DrawIntrigueCards,
+    DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainInfluence,
+    GainSolariPerUnitType,
+    GenerateSpecimens,
     GiveIntrigueToOpponent,
+    GrantAgentIconsThisTurn,
+    GrantAgentIconThisTurn,
+    GrantCombatDeployment,
+    IgnoreInfluenceRequirementsThisTurn,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
     OnTroopsLostAtConflictEnd,
+    PassTurn,
     PayResources,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
+    RecruitTroops,
     RedirectSpiesOnTurnSpace,
+    Research,
     RetreatTroops,
     RevealContractsTakeOne,
     Reward,
     SetAsideImperiumRowCard,
+    SummonSandworm,
     TakeContract,
     TrashDiscardPileCard,
     TrashIntrigueCard,
@@ -114,6 +132,7 @@ from dune_imperium.display.effect_dsl_text_ko import (
     cost_text_ko,
     reward_text_ko,
 )
+from dune_imperium.display.leaders_ko import LEADER_FACE_TEXTS_KO
 from dune_imperium.rules.acquisition import (
     AcquireBlock,
     imperium_acquisition_block,
@@ -155,14 +174,18 @@ from dune_imperium.rules.contracts import (
 from dune_imperium.rules.effect_interpreter import (
     OptionBlock,
     OptionUnplayable,
+    agent_placement_ahead,
     applicable_sections,
     condition_holds,
     face_up_conflict_card_ids,
     option_unplayable_reason,
     resource_cost,
+    spy_placement_allowed_post_ids,
+    spy_placement_targets,
 )
 from dune_imperium.rules.effects import (
     active_agent_card,
+    agent_turn_space_id,
     current_agent_effect_context,
     pending_agent_icons,
 )
@@ -180,7 +203,10 @@ from dune_imperium.rules.intrigue import (
     intrigue_play_block,
     intrigue_window,
 )
-from dune_imperium.rules.leader_abilities import signet_influence_withheld
+from dune_imperium.rules.leader_abilities import (
+    signet_influence_withheld,
+    units_deployment_blocked,
+)
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
     reveal_influence_choice_blocked,
@@ -196,6 +222,7 @@ from dune_imperium.rules.spies import (
     legal_gather_intelligence_actions,
 )
 from dune_imperium.rules.spy_moves import connected_post_ids
+from dune_imperium.rules.spy_placement import solo_occupied_post_ids
 from dune_imperium.rules.tech import tech_candidates
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
@@ -543,32 +570,220 @@ def _choice_cost_reason(
     )
 
 
-def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason:
-    """Why a player-choice reward (``_choice_reward_block``) has no target."""
+_DEPLOYMENT_BARRED: Final[Reason] = (
+    "Emperor of the Known Universe bars deploying units this turn",
+    f"{LEADER_FACE_TEXTS_KO['shaddam_corrino_iv'].signet_name}: "
+    "이번 차례에는 유닛을 배치할 수 없음",
+    "reward",
+)
+_BEFORE_THE_AGENT: Final[Reason] = (
+    "Only before you send an Agent this turn",
+    "이번 차례에 {agent}를 보내기 전에만",
+    "reward",
+)
 
-    # DeployFromGarrison never blocks: "Deploy up to N troops" may deploy
-    # zero (``_choice_reward_block``).
+
+def _deploy_reason(state: GameState, seat: int) -> Reason:
+    """Why a "deploy from your garrison" line has nothing it may deploy
+    (``effect_interpreter.deployable_garrison_units``)."""
+
+    if units_deployment_blocked(state, seat):
+        return _DEPLOYMENT_BARRED
+    owner = state.players[seat]
+    if owner.troops_garrison + owner.commanders_garrison == 0:
+        return troops_reason("garrison", 1, 0)
+    # Units in the garrison, none of them deployable: Harkonnen Advisor's
+    # troop ("You can't deploy this troop to the Conflict this turn."
+    # [Piter De Vries card], OQ-038).
+    only = (
+        "Your only garrison troop"
+        if owner.troops_garrison == 1
+        else "Your garrison troops"
+    )
+    return (
+        f"{only} cannot deploy this turn",
+        "{garrison}의 {troop}은 이번 차례에 배치할 수 없음",
+        "reward",
+    )
+
+
+def _sandworm_reward_reason(
+    state: GameState, seat: int, reward: SummonSandworm
+) -> Reason:
+    """Why a summoned sandworm could not land (in the interpreter's order)."""
+
+    owner = state.players[seat]
+    if not state.current_conflict_ids:
+        return _NO_CONFLICT
+    if units_deployment_blocked(state, seat):
+        return _DEPLOYMENT_BARRED
+    if reward.requires_maker_hooks and not owner.maker_hooks:
+        return _NO_MAKER_HOOKS
+    return _SHIELD_WALL
+
+
+def _tech_reward_reason(state: GameState, seat: int, discount: int) -> Reason:
+    """Why a card's Acquire Tech has no tile the owner can buy."""
+
+    owner = state.players[seat]
+    candidates = tech_candidates(state, owner)
+    if not candidates:
+        return _TECH_STACKS_EMPTY
+    if not owner.spy_post_ids and all(
+        tile.acquire_requires_spy_trash for tile, _ in candidates
+    ):
+        return (
+            "Advanced Data Analysis needs a Spy of yours on the board to trash",
+            "Advanced Data Analysis는 보드에 있는 내 {spy}를 {trash}해야 함",
+            "reward",
+        )
+    return (
+        f"No Tech tile you can afford ({discount} spice off)",
+        f"살 수 있는 {{tech_tile}} 없음 ({{spice:{discount}}} 할인 포함)",
+        "reward",
+    )
+
+
+def _spy_reward_reason(state: GameState, seat: int, reward: PlaceSpy) -> Reason:
+    """Why a Spy placement cannot happen (``spy_placement_possible``)."""
+
+    owner = state.players[seat]
+    if (
+        owner.spies_supply == 0
+        and owner.spies_recalled_turn > 0
+        and not spy_placement_targets(state, seat, reward)
+        and solo_occupied_post_ids(
+            state, seat, spy_placement_allowed_post_ids(reward)
+        )
+    ):
+        # OQ-101 (b): the recall-and-replace changes nothing once a Spy was
+        # already recalled this turn.
+        return (
+            "You already recalled a Spy this turn;"
+            " recalling and replacing it would change nothing",
+            "이번 차례에 이미 {spy}를 회수함 — 회수해 다시 놓아도 바뀌는 것 없음",
+            "reward",
+        )
+    return (
+        "No observation post for a Spy",
+        "{spy}를 놓을 {observation_post} 없음",
+        "reward",
+    )
+
+
+def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason:
+    """Why a reward blocks its option: it cannot be resolved at all
+    (``_choice_reward_block``) or it, the first in printed order, cannot
+    change anything while no other reward can either (``_no_effect_block``,
+    user ruling 2026-10-06)."""
+
+    owner = state.players[seat]
     match reward:
-        case PlaceSpy():
+        case DeployFromGarrison():
+            return _deploy_reason(state, seat)
+        case DrawPersonalCards():
+            return _NO_CARD_TO_DRAW
+        case Research():
             return (
-                "No observation post for a Spy",
-                "{spy}를 놓을 {observation_post} 없음",
+                "Past the second genetic marker Research draws a card,"
+                " and your deck and discard pile are both empty",
+                "두 번째 유전자 표지 뒤의 {research}는 카드를 뽑는데"
+                " {deck}과 {discard_pile}이 모두 비었음",
+                "empty",
+            )
+        case DrawIntrigueCards():
+            return (
+                "No Intrigue card to draw: the Intrigue deck is empty"
+                " and its discard pile holds nothing to shuffle",
+                "뽑을 {intrigue} 없음: {intrigue} 더미가 비었고"
+                " 버린 더미에 섞을 카드 없음",
+                "empty",
+            )
+        case RecruitTroops():
+            english, korean, _ = troops_reason("supply", 1, owner.troops_supply)
+            return english, korean, "reward"
+        case GenerateSpecimens():
+            return (
+                "No troop in your supply to make a specimen",
+                "{specimen}로 만들 {troop}이 {supply}에 없음",
                 "reward",
             )
-        case RetreatTroops(minimum=minimum):
-            # The gate asks for one unit even of a zero-minimum retreat
-            # (``_choice_reward_block``).
-            return _in_conflict_reason(
-                max(minimum, 1), _units(state.players[seat])[1]
+        case AdvanceTleilaxu():
+            return _TLEILAXU_TRACK_END
+        case AcquireCardUpTo(max_cost=max_cost):
+            return (
+                f"No card costing {max_cost} or less to acquire",
+                f"획득할 수 있는 비용 {max_cost} 이하 카드 없음",
+                "reward",
             )
-        case TakeContract():
+        case AcquireTech(discount=discount):
+            return _tech_reward_reason(state, seat, discount)
+        case AcquireReserveCard():
+            return _EMPTY_STACK
+        case SummonSandworm():
+            return _sandworm_reward_reason(state, seat, reward)
+        case GainSolariPerUnitType():
+            return (
+                "No unit of yours in the Conflict",
+                "{conflict}에 내 유닛 없음",
+                "reward",
+            )
+        case PassTurn():
+            return (
+                "Every other player has revealed: the turn would come straight"
+                " back to you",
+                "다른 플레이어가 모두 공개를 마쳐 차례가 바로 돌아옴",
+                "reward",
+            )
+        case GrantAgentIconThisTurn() | GrantAgentIconsThisTurn():
+            return _BEFORE_THE_AGENT
+        case IgnoreInfluenceRequirementsThisTurn():
+            if not agent_placement_ahead(state, seat):
+                return _BEFORE_THE_AGENT
+            return (
+                "No board space's Influence requirement is unmet",
+                "못 채운 {influence_any} 조건이 있는 공간 없음",
+                "reward",
+            )
+        case CommanderDiscountThisTurn():
+            return (
+                "No Sardaukar Commander left to recruit this turn",
+                "이번 차례에 고용할 {commander} 없음",
+                "reward",
+            )
+        case GrantCombatDeployment():
+            return (
+                "Nothing could deploy through it this turn",
+                "이번 차례에 이것으로 배치할 유닛 없음",
+                "reward",
+            )
+        case PlaceSpy():
+            return _spy_reward_reason(state, seat, reward)
+        case RetreatTroops(minimum=minimum):
+            # The gate asks for one unit even of a zero-minimum retreat.
+            return _in_conflict_reason(max(minimum, 1), _units(owner)[1])
+        case TakeContract() if not state.config.choam_module:
             return "No Contracts in this game", "이 게임에는 {contract} 없음", "reward"
+        case TakeContract():
+            return (
+                "No Contract you can take: only the Immediate is left and you"
+                " hold no other Intrigue card to trash",
+                "가져갈 {contract} 없음: Immediate만 남았고"
+                " {trash}할 다른 {intrigue} 없음",
+                "reward",
+            )
         case SetAsideImperiumRowCard():
             return "The Imperium Row is empty", "{imperium_row}이 비었음", "reward"
         case PeekTopCard():
             return "Your deck is empty", "{deck}이 비었음", "reward"
-        case TrashPersonalCard():
+        case TrashPersonalCard(hand_only=True):
             return "No card in hand to trash", "{hand}에 {trash}할 카드 없음", "reward"
+        case TrashPersonalCard():
+            return (
+                "No card in hand, discard pile or play to trash",
+                "{hand}·{discard_pile}·{in_play}에 {trash}할 카드 없음",
+                "reward",
+            )
         case GainInfluence(where_opponent_leads=True):
             return (
                 "No Faction where an opponent has more Influence",
@@ -576,7 +791,7 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "reward",
             )
         case GainInfluence(factions=factions) if not any(
-            influence_can_rise(state.players[seat], faction)
+            influence_can_rise(owner, faction)
             for faction in (factions or tuple(Faction))
         ):
             return _ALL_AT_THE_TOP
@@ -586,10 +801,18 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "{influence_any}을 얻을 수 있는 {faction} 없음",
                 "reward",
             )
-        case RedirectSpiesOnTurnSpace():
+        case RedirectSpiesOnTurnSpace() if (
+            agent_turn_space_id(state, seat) is None
+        ):
             return (
                 "Only after you send an Agent this turn",
                 "이번 차례에 {agent}를 보낸 뒤에만",
+                "reward",
+            )
+        case RedirectSpiesOnTurnSpace():
+            return (
+                "No opponent Spy and no empty post connected to that space",
+                "그 공간에 연결된 상대 {spy}도 빈 {observation_post}도 없음",
                 "reward",
             )
     return (

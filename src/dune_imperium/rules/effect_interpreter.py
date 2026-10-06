@@ -11,8 +11,13 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    OBSERVATION_POSTS,
+    Faction,
+)
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
@@ -84,33 +89,52 @@ from dune_imperium.content.uprising.effect_dsl import (
     UnitsDeployedThisTurnAtLeast,
     WaterAtLeast,
 )
+from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
-from dune_imperium.rules.contracts import begin_contract_gain
+from dune_imperium.rules.contracts import (
+    begin_contract_gain,
+    contract_gain_opens_market,
+    market_contract_ids,
+)
 from dune_imperium.rules.effects import (
+    BOARD_ICON_COMMANDER,
     agent_turn_space_id,
+    board_icon_is_pending,
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import replace_player
-from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
+from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.immortality import (
+    advance_research,
+    advance_tleilaxu,
+    tleilaxu_track_finished,
+)
 from dune_imperium.rules.influence import (
     gain_faction_influence,
     influence_amount,
     influence_can_rise,
 )
-from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_intrigue_cards,
+    shufflable_intrigue_discard,
+)
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.specimens import generate_specimens
+from dune_imperium.rules.spies import gather_intelligence_draw_available
+from dune_imperium.rules.spy_moves import connected_post_ids
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_agent_icons,
@@ -559,7 +583,17 @@ def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
 
 
 def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> bool:
-    """A placement is possible now or after recalling one of the owner's Spies."""
+    """A placement is possible now or after recalling one of the owner's Spies.
+
+    With an empty supply and no free allowed post, the recall must free a
+    post the owner's Spy holds alone. Once a Spy was already recalled this
+    turn, recalling it and placing it back on the same post changes nothing,
+    so that placement is not possible (OQ-101 (b): before any recall this
+    turn the counter's 0 -> 1 is the change and the play stays offered;
+    "To play an Intrigue card, you must meet its conditions and pay its
+    costs." [FAQ p. 2] with the user's ruling of 2026-10-06 that an
+    Intrigue option needs an effect that can change something).
+    """
 
     owner = state.players[player]
     if spy_placement_targets(state, player, reward):
@@ -570,7 +604,392 @@ def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> b
     # With an empty supply, one preparatory recall may free an allowed post,
     # but only when the owner's Spy is its sole occupant; a post shared with
     # another player's Spy stays occupied [Main pp. 11, 20].
-    return bool(solo_occupied_post_ids(state, player, allowed))
+    return (
+        bool(solo_occupied_post_ids(state, player, allowed))
+        and owner.spies_recalled_turn == 0
+    )
+
+
+def deployable_garrison_units(state: GameState, player: int) -> tuple[int, int]:
+    """(troops, Commanders) a "deploy from your garrison" effect may move now.
+
+    A Sardaukar Commander in the garrison is a troop for this purpose
+    [Bloodlines p. 4]. Harkonnen Advisor's troop is not available this turn
+    (OQ-038), and Emperor of the Known Universe blocks every unit for the
+    turn [Main p. 17]. The Intrigue deploy slot offers exactly these counts
+    (``rules.intrigue``), and the play gate reads the same pair, so the two
+    cannot drift.
+    """
+
+    if units_deployment_blocked(state, player):
+        return 0, 0
+    owner = state.players[player]
+    return (
+        max(owner.troops_garrison - undeployable_troops_this_turn(state, player), 0),
+        owner.commanders_garrison,
+    )
+
+
+def _plot_frame(state: GameState, player: int) -> DecisionFrame | None:
+    """The owner's own turn frame on top (turn, Agent effects or Reveal).
+
+    None in a Navigation choice, a Combat or Endgame window, or any other
+    frame; no reward that reads the turn appears on the cards played there.
+    """
+
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if (
+        frame.kind in (FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == player
+    ):
+        return frame
+    return None
+
+
+def agent_placement_ahead(state: GameState, player: int) -> bool:
+    """The owner can still send an Agent this turn: its turn frame is on top
+    before the Agent or Reveal choice, with an Agent and a card to play."""
+
+    frame = _plot_frame(state, player)
+    owner = state.players[player]
+    return (
+        frame is not None
+        and frame.kind == FrameKind.TURN
+        and owner.agents_available > 0
+        and bool(owner.hand)
+    )
+
+
+def _troop_can_join(state: GameState, owner: PlayerState) -> bool:
+    """Whether a recruit can take a troop for ``owner`` now.
+
+    A troop in the supply, or under Immortality a specimen the owner may
+    return to the supply first ("You may return any of your specimens to
+    your supply at any time. (This could be useful if you need to recruit
+    troops but have no more in your supply.)" [Immortality p. 8]). A
+    shortfall the engine records and may fill later in the turn (OQ-030
+    re-ruling 2026-10-04) does not count, in a player turn or out of one:
+    the user's ruling of 2026-10-06 that an Intrigue option with no effect
+    cannot be played ("아무 효과 없이 책략을 쓸 수 없는거지"), read as the
+    Arrakeen Scouts recruit already is (``scouts_effects.reward_has_effect``,
+    OQ-071).
+    """
+
+    return owner.troops_supply >= 1 or (
+        state.config.immortality and owner.specimens > 0
+    )
+
+
+def _commander_purchase_ahead(state: GameState, player: int) -> bool:
+    """Honor Guard's discount can still lower a paid Commander this turn."""
+
+    from dune_imperium.rules.sardaukar import commander_cost
+
+    owner = state.players[player]
+    frame = _plot_frame(state, player)
+    if frame is None or commander_cost(owner) <= 0:
+        return False
+    # "Once per turn, Agent or Reveal" [Bloodlines p. 4].
+    recruit_left = owner.commanders_supply > 0 and not owner.commander_recruited_turn
+    if frame.kind == FrameKind.REVEAL:
+        return recruit_left
+    if frame.kind == FrameKind.AGENT_EFFECTS:
+        return recruit_left or board_icon_is_pending(
+            dict(frame.context), BOARD_ICON_COMMANDER
+        )
+    # Before the placement a Commander board space may still be visited.
+    return recruit_left or owner.agents_available > 0
+
+
+def _combat_deployment_ahead(state: GameState, player: int) -> bool:
+    """Adaptive Tactics' Combat icon could still let a unit deploy this turn.
+
+    The icon opens the Agent turn's deployment window (with up to two
+    garrison units) or the Reveal turn's, or waits on the seat for the
+    placement [Bloodlines p. 5] (``combat_deployment.grant_combat_icon``).
+    """
+
+    if units_deployment_blocked(state, player):
+        return False
+    frame = _plot_frame(state, player)
+    if frame is None:
+        return False
+    owner = state.players[player]
+    garrison = sum(deployable_garrison_units(state, player)) >= 1
+    context = dict(frame.context)
+    if frame.kind == FrameKind.AGENT_EFFECTS:
+        limit = context.get("existing_troop_deployment_limit", 0)
+        already_open = (
+            context.get("pending_combat_deployment") is True
+            and isinstance(limit, int)
+            and limit >= 2
+        )
+        return not already_open and garrison
+    if frame.kind == FrameKind.REVEAL:
+        return context.get("combat_deployment") is not True and garrison
+    return not owner.combat_icon_turn and (
+        garrison
+        or owner.troops_supply >= 1
+        or (owner.commanders_supply >= 1 and not owner.commander_recruited_turn)
+    )
+
+
+def _unmet_influence_requirement(state: GameState, player: int) -> bool:
+    """Some board space on the table bars the owner by an unmet, unwaived
+    Influence requirement (``agent_turn.influence_requirement_unmet``)."""
+
+    from dune_imperium.rules.agent_turn import influence_requirement_unmet
+
+    owner = state.players[player]
+    return any(
+        influence_requirement_unmet(state, owner, space)
+        for space in BOARD_SPACES
+        # Tuek's Sietch is on the table only with Esmar Tuek.
+        if space.required_leader_id is None
+        or any(seat.leader_id == space.required_leader_id for seat in state.players)
+    )
+
+
+def _contract_can_be_taken(state: GameState, player: int) -> bool:
+    """A Contract icon of ``player`` can change something now (CHOAM on).
+
+    With the market exhausted the icon becomes 2 Solari [Main p. 16]
+    (``contracts.begin_contract_gain``). Otherwise a token other than the
+    Bloodlines Immediate (Shaddam's set-aside Sardaukar Contracts included)
+    can be taken, or the Immediate can, with another Intrigue card to trash:
+    "You can't take the new Immediate contract unless you have an Intrigue
+    card to trash." [Bloodlines p. 2]. The played Intrigue card is still
+    held while this is judged and leaves the hand before the choice, so a
+    second card is needed.
+    """
+
+    if not contract_gain_opens_market(state, player):
+        return True
+    if any(
+        not contract_for_instance(instance_id).requires_intrigue_trash
+        for instance_id in market_contract_ids(state, player)
+    ):
+        return True
+    return len(state.players[player].intrigue_cards) >= 2
+
+
+def _redirect_has_target(state: GameState, player: int) -> bool:
+    """False Orders can move an opponent's Spy or place the owner's own.
+
+    Judged before the moves: an opponent's Spy on a post connected to this
+    turn's board space (one that has nowhere to go is lost, which still
+    changes something, OQ-065), or an empty connected post for the
+    owner's placement.
+    """
+
+    space_id = agent_turn_space_id(state, player)
+    if space_id is None:
+        return False
+    posts = frozenset(connected_post_ids(space_id))
+    if any(
+        post_id in posts
+        for seat in state.players
+        if seat.player_id != player
+        for post_id in seat.spy_post_ids
+    ):
+        return True
+    return bool(empty_observation_post_ids(state, posts))
+
+
+def reward_can_change_something(
+    state: GameState,
+    player: int,
+    reward: Reward,
+    section: EffectSection,
+    owner_after: PlayerState,
+) -> bool:
+    """Whether ``reward`` of ``section`` can change anything for ``player`` now.
+
+    "Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을
+    지불해야 한다. [FAQ p. 2]" (docs/rules/player-turns.md), and the user's
+    ruling of 2026-10-06 that an Intrigue option needs an effect that can
+    change something ("아무 효과 없이 책략을 쓸 수 없는거지"): the Intrigue
+    form of the Arrakeen Scouts check (``scouts_effects.reward_has_effect``,
+    OQ-071). ``owner_after`` is the owner after the option's resource cost,
+    and a cost that feeds a reward of its own section counts (a discarded
+    card can be reshuffled and drawn, a trashed Intrigue card shuffled back,
+    a lost troop made a specimen, a lowered Faction raised again). Only
+    public state, the owner's own zones and the sizes of hidden piles are
+    read.
+    """
+
+    owner = state.players[player]
+    costs = section.costs
+    match reward:
+        case DrawPersonalCards():
+            return gather_intelligence_draw_available(state, player) or any(
+                isinstance(cost, DiscardFromHand) for cost in costs
+            )
+        case Research():
+            # Past the second genetic marker Research draws a card instead
+            # [Immortality p. 6]; before it the token always has a space to
+            # move to.
+            past_second_marker = bool(owner.research_space) and (
+                genetic_markers_reached(owner.research_space) >= 2
+            )
+            return not past_second_marker or gather_intelligence_draw_available(
+                state, player
+            )
+        case DrawIntrigueCards():
+            # Twisted cards in the discard pile are never shuffled (OQ-097).
+            if state.intrigue_deck or shufflable_intrigue_discard(state):
+                return True
+            # Twisted Unnatural: the trashed card lands on the discard pile
+            # and is shufflable unless it is Twisted (Unnatural itself is).
+            return any(isinstance(cost, TrashIntrigueCard) for cost in costs) and any(
+                not is_twisted_intrigue(held) for held in owner.intrigue_cards
+            )
+        case RecruitTroops():
+            return _troop_can_join(state, owner_after)
+        case GenerateSpecimens():
+            if owner_after.troops_supply >= 1:
+                return True
+            # Gruesome Sacrifice: a troop lost to pay the cost returns to the
+            # supply before the specimens are made (a Commander does not).
+            return any(
+                isinstance(cost, LoseTroops)
+                and (
+                    owner.troops_conflict
+                    if cost.from_conflict
+                    else owner.troops_garrison + owner.troops_conflict
+                )
+                >= 1
+                for cost in costs
+            )
+        case AdvanceTleilaxu():
+            # "끝까지 가고 나면 뭐 없는 게 맞다" (OQ-048).
+            return not tleilaxu_track_finished(owner)
+        case GainInfluence() if not reward.requires_choice:
+            assert reward.factions is not None
+            return influence_can_rise(owner, reward.factions[0])
+        case GainInfluence():
+            # A line that pays a LoseInfluence first (Change Allegiances,
+            # Tenuous Bond) leaves the Faction it lowers free to rise again,
+            # so an unrestricted gain after it always changes something; a
+            # gain on a cube at the top is lost (OQ-060).
+            if reward.factions is None and any(
+                isinstance(cost, LoseInfluence) for cost in costs
+            ):
+                return True
+            return bool(influence_gain_candidates(state, player, reward))
+        case DestroyShieldWall():
+            return state.shield_wall_present
+        case SummonSandworm(requires_maker_hooks=needs_hooks):
+            # No effect without a Conflict, while Emperor of the Known
+            # Universe blocks deployment [Main p. 17], without the Maker
+            # Hooks it asks for, or against a Shield Wall-protected Conflict
+            # [Main p. 20] unless Arrakis Planetologist replaces the
+            # sandworm [Liet Kynes card].
+            return (
+                bool(state.current_conflict_ids)
+                and not units_deployment_blocked(state, player)
+                and not (needs_hooks and not owner.maker_hooks)
+                and (
+                    replaces_sandworms(owner)
+                    or not current_conflict_is_shield_wall_protected(state)
+                )
+            )
+        case DeployFromGarrison():
+            return sum(deployable_garrison_units(state, player)) >= 1
+        case RetreatTroops(minimum=minimum):
+            # An "any number" retreat may choose zero once played [Main
+            # p. 20] [FAQ p. 3], but needs a unit in the Conflict to play.
+            return owner.troops_conflict + owner.commanders_conflict >= max(minimum, 1)
+        case TrashPersonalCard(hand_only=hand_only):
+            # A Row card borrowed with Usurp is not "in play" (OQ-054); a
+            # bonus for the trashed card's cost is not an effect of its own.
+            if hand_only:
+                return bool(owner.hand)
+            return bool(owner.hand or owner.discard_pile or counted_in_play(owner))
+        case PlaceSpy():
+            return spy_placement_possible(state, player, reward)
+        case AcquireCardUpTo(max_cost=max_cost):
+            # The slot's own two lists: the owner's own Manipulate set-aside
+            # card counts, never an opponent's [FAQ p. 3].
+            from dune_imperium.rules.acquisition import (
+                acquirable_imperium_instance_ids,
+                acquirable_reserve_card_ids,
+            )
+
+            return bool(acquirable_reserve_card_ids(state, max_cost)) or bool(
+                acquirable_imperium_instance_ids(state, max_cost, player=player)
+            )
+        case AcquireReserveCard(card_id=card_id):
+            return dict(state.reserve_stacks).get(card_id, 0) > 0
+        case AcquireTech(discount=discount):
+            from dune_imperium.rules.tech import tech_acquisition_possible
+
+            return tech_acquisition_possible(state, owner_after, discount)
+        case TakeContract():
+            return state.config.choam_module and _contract_can_be_taken(state, player)
+        case GainSolariPerUnitType():
+            return owner.units_in_conflict > 0
+        case PassTurn():
+            # With every other seat revealed, the pass hands the turn
+            # straight back [Main p. 8] (``effects.next_unrevealed_player``).
+            return any(
+                not seat.has_revealed
+                for seat in state.players
+                if seat.player_id != player
+            )
+        case RedirectSpiesOnTurnSpace():
+            return _redirect_has_target(state, player)
+        case GrantAgentIconThisTurn() | GrantAgentIconsThisTurn():
+            return agent_placement_ahead(state, player)
+        case IgnoreInfluenceRequirementsThisTurn():
+            return agent_placement_ahead(state, player) and (
+                _unmet_influence_requirement(state, player)
+            )
+        case CommanderDiscountThisTurn():
+            return _commander_purchase_ahead(state, player)
+        case GrantCombatDeployment():
+            return _combat_deployment_ahead(state, player)
+        case SetAsideImperiumRowCard():
+            return bool(state.imperium_row)
+        case PeekTopCard():
+            return bool(owner.deck)
+    # Resources, Victory Points, swords, persuasion and Contract reveals
+    # (the bank check runs first, OQ-064) always change something; Harvest
+    # Cells' Tleilaxu card is judged by its Conflict-end window.
+    return True
+
+
+def _no_effect_block(
+    state: GameState,
+    player: int,
+    sections: tuple[EffectSection, ...],
+) -> Reward | None:
+    """Return a reward to blame when no reward of ``sections`` can change
+    anything now, or None when one can.
+
+    An option is playable as soon as one of its effects can change
+    something; the others fizzle when it is played (user ruling 2026-10-06,
+    ``reward_can_change_something``). The reward returned is the first in
+    printed order, skipping a detonation once the Shield Wall is gone
+    (``choice_slots`` drops it), so the page names a reward that applies.
+    """
+
+    owner = state.players[player]
+    cost = resource_cost(sections)
+    owner_after = pay_cost(owner, cost) if can_afford(owner, cost) else owner
+    blamed: Reward | None = None
+    for section in sections:
+        for reward in section.rewards:
+            if isinstance(reward, DestroyShieldWall) and not state.shield_wall_present:
+                continue
+            if reward_can_change_something(state, player, reward, section, owner_after):
+                return None
+            if blamed is None:
+                blamed = reward
+    return blamed
 
 
 def _choice_reward_block(
@@ -578,53 +997,28 @@ def _choice_reward_block(
     player: int,
     sections: tuple[EffectSection, ...],
 ) -> Reward | None:
-    """Return the first reward that has nothing to act on now, or None."""
+    """Return the first reward that blocks the option whatever else it offers.
+
+    These rewards cannot even be resolved now, or are printed as mandatory,
+    so the option is not playable however its other rewards stand. Every
+    other reward that cannot happen blocks only when no reward can change
+    anything (``_no_effect_block``).
+    """
 
     owner = state.players[player]
     for section in sections:
         for reward in section.rewards:
-            # DeployFromGarrison is never blocked: every card prints "Deploy
-            # up to N troops", so zero is a legal choice, and "Intrigue 카드를
-            # 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을 지불해야
-            # 한다. [FAQ p. 2]" (docs/rules/player-turns.md) makes no target
-            # a play condition (OQ-057 (6)). The deployment limits still
-            # shape the counts offered (``rules.intrigue``).
             match reward:
-                case PlaceSpy() if not spy_placement_possible(state, player, reward):
-                    return reward
-                case RetreatTroops(minimum=minimum) if (
-                    # An "any number" retreat may choose zero [Main p. 20]
-                    # [FAQ p. 3], but stays playable only with a unit in the
-                    # Conflict, as before (the Steam app offers Tactical
-                    # Option's retreat the same way).
-                    owner.troops_conflict + owner.commanders_conflict
-                    < max(minimum, 1)
-                ):
-                    return reward
                 case TakeContract() if not state.config.choam_module:
                     return reward
                 case SetAsideImperiumRowCard() if not state.imperium_row:
                     return reward
                 case PeekTopCard() if not owner.deck:
+                    # "덱이 비어 있으면 낼 수 없다" (OQ-038).
                     return reward
                 case TrashPersonalCard(mandatory=True, hand_only=True) if (
                     not owner.hand
                 ):
-                    return reward
-                case GainInfluence(where_opponent_leads=True) if not (
-                    factions_where_opponent_leads(state, player)
-                ):
-                    return reward
-                case GainInfluence() as gain if (
-                    gain.different_from_trigger or gain.minimum_own
-                ) and not influence_gain_candidates(state, player, gain):
-                    return reward
-                case GainInfluence() if _influence_line_buys_nothing(
-                    state, player, section
-                ):
-                    # A cost for Influence no cube can take is not offered
-                    # (OQ-060, OQ-071); a cost-free gain stays playable and
-                    # fizzles at its slot (OQ-057 (6)).
                     return reward
                 case RedirectSpiesOnTurnSpace() if (
                     agent_turn_space_id(state, player) is None
@@ -635,33 +1029,6 @@ def _choice_reward_block(
                 case _:
                     pass
     return None
-
-
-def _influence_line_buys_nothing(
-    state: GameState,
-    player: int,
-    section: EffectSection,
-) -> bool:
-    """Whether a cost line's rewards are all Influence no cube can take.
-
-    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만 제시한다"
-    (OQ-071, user decision 2026-09-29), and a gain on a cube at the top of
-    its track is lost (OQ-060). A line that pays a LoseInfluence first
-    (Change Allegiances, Tenuous Bond) always leaves the Faction it lowers
-    free to rise again, so an unrestricted gain after it never buys nothing.
-    """
-
-    if not section.costs:
-        return False
-    loses = any(isinstance(cost, LoseInfluence) for cost in section.costs)
-    for reward in section.rewards:
-        if not isinstance(reward, GainInfluence):
-            return False
-        if loses and reward.factions is None:
-            return False
-        if influence_gain_candidates(state, player, reward):
-            return False
-    return True
 
 
 def influence_gain_candidates(
@@ -718,7 +1085,9 @@ def section_is_usable(
     player: int,
     section: EffectSection,
 ) -> bool:
-    """A separate printed line is usable when it applies and its cost is payable now."""
+    """A separate printed line is usable when it applies, its cost is payable
+    now and one of its rewards can change something (user ruling
+    2026-10-06, ``_no_effect_block``)."""
 
     owner = state.players[player]
     if section.condition is not None and not condition_holds(
@@ -734,6 +1103,7 @@ def section_is_usable(
         can_afford(owner, resource_cost(sections))
         and _choice_cost_block(owner, sections) is None
         and _choice_reward_block(state, player, sections) is None
+        and _no_effect_block(state, player, sections) is None
     )
 
 
@@ -760,7 +1130,8 @@ def option_is_playable(
     player: int,
     option: IntrigueOption,
 ) -> bool:
-    """An option is playable when a section applies and every cost is payable.
+    """An option is playable when a section applies, every cost is payable
+    and one of its effects can change something (user ruling 2026-10-06).
 
     Separate printed lines (``separate``) make the card playable as soon as
     one line is usable; each line is paid when it is used (OQ-058).
@@ -779,8 +1150,12 @@ def option_unplayable_reason(
     The checks, in order: a separate-lines card needs one usable line; a
     triggered card needs an applicable section; any other needs an
     applicable section, the Contracts Coercive Negotiation reveals, its
-    resource cost, then each player-choice cost and reward
-    (``_choice_cost_block``, ``_choice_reward_block``).
+    resource cost, then each player-choice cost (``_choice_cost_block``), a
+    reward that cannot be resolved at all (``_choice_reward_block``), and
+    last an effect that can change something (``_no_effect_block``):
+    "Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을
+    지불해야 한다. [FAQ p. 2]" (docs/rules/player-turns.md), with the
+    user's ruling of 2026-10-06, "아무 효과 없이 책략을 쓸 수 없는거지".
     """
 
     owner = state.players[player]
@@ -815,7 +1190,10 @@ def option_unplayable_reason(
     cost = _choice_cost_block(owner, sections)
     if cost is not None:
         return cost
-    return _choice_reward_block(state, player, sections)
+    hard = _choice_reward_block(state, player, sections)
+    if hard is not None:
+        return hard
+    return _no_effect_block(state, player, sections)
 
 
 @dataclass(frozen=True, slots=True)

@@ -536,7 +536,9 @@ def test_card_ten_arrow_cost_may_be_declined_and_the_card_is_spent() -> None:
     assert dict(declined.events[0].payload)["declined"] == 1
     # A card with a cost-free option has no decline: its play is mandatory.
     free = _reach_two(
-        _turn_state(_steersman((_card(9),), influence=Influence(fremen=1))),
+        _turn_state(
+            _steersman((_card(9),), influence=Influence(fremen=1), deck=(DAGGER,))
+        ),
         Faction.FREMEN,
     )
     assert "decline_navigation" not in {
@@ -563,6 +565,91 @@ def test_card_five_pays_spice_for_trashing_a_costed_card() -> None:
     dagger = next(a for a in options if dict(a.arguments).get("card_id") == DAGGER)
     unpaid = ENGINE.apply(trashing, dagger).state
     assert unpaid.players[0].resources.spice == 0
+
+
+
+# A Navigation option is judged as an Intrigue option is: its condition, its
+# cost, and an effect that can change something now ("To play an Intrigue
+# card, you must meet its conditions and pay its costs." [FAQ p. 2], with
+# the user's ruling of 2026-10-06; for Navigation a project convention,
+# OQ-039). A card with no such option is spent through decline_navigation
+# (OQ-039 (b)).
+
+_DECLINE = DomainAction(action_id="decline_navigation", actor=0)
+
+
+def _spent_kind(state: GameState) -> str:
+    """Whether declining spends the card as "fizzled" or as "declined"."""
+
+    [event] = apply_navigation_play(state, _DECLINE).events
+    payload = dict(event.payload)
+    return "fizzled" if payload.get("fizzled") == 1 else "declined"
+
+
+def test_card_four_spice_must_flow_line_is_not_offered_with_the_stack_empty() -> None:
+    owner = _steersman(
+        (_card(4),), influence=Influence(emperor=1), resources=Resources(water=1)
+    )
+    state = _turn_state(
+        owner, reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 0))
+    )
+    opened = _reach_two(state, Faction.EMPEROR)
+    # Option 0 (+1 spice) is cost-free, so it is the card's mandatory play.
+    assert legal_navigation_play_actions(opened, 0) == (
+        DomainAction(action_id="play_navigation", actor=0, arguments=(("option", 0),)),
+    )
+
+
+def test_card_five_with_nothing_to_trash_offers_only_the_spend() -> None:
+    owner = _steersman((_card(5),), influence=Influence(emperor=1))
+    opened = _reach_two(_turn_state(owner), Faction.EMPEROR)
+    assert legal_navigation_play_actions(opened, 0) == (_DECLINE,)
+    assert _spent_kind(opened) == "fizzled"
+
+
+def test_card_six_with_an_empty_supply_offers_only_the_spend() -> None:
+    # Neither option can recruit with no troop in the supply, in Combat or
+    # in a player turn: a recorded shortfall does not count (main-session
+    # decision on the 2026-10-06 ruling).
+    owner = _steersman(
+        (_card(6),),
+        influence=Influence(emperor=1),
+        resources=Resources(solari=3),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    turn = _reach_two(_turn_state(owner), Faction.EMPEROR)
+    combat = _reach_two(
+        _turn_state(owner, phase=GamePhase.COMBAT, decision_stack=()), Faction.EMPEROR
+    )
+    for opened in (turn, combat):
+        assert legal_navigation_play_actions(opened, 0) == (_DECLINE,)
+        assert _spent_kind(opened) == "fizzled"
+    # A troop in the supply: both options play.
+    stocked = replace(owner, troops_supply=1, troops_garrison=11)
+    opened = _reach_two(
+        _turn_state(stocked, phase=GamePhase.COMBAT, decision_stack=()),
+        Faction.EMPEROR,
+    )
+    assert [
+        dict(action.arguments)["option"]
+        for action in legal_navigation_play_actions(opened, 0)
+    ] == [0, 1]
+
+
+def test_card_nine_with_nothing_to_draw_offers_only_the_spend_or_the_vp_line() -> None:
+    owner = _steersman((_card(9),), influence=Influence(fremen=1))
+    poor = _reach_two(_turn_state(owner), Faction.FREMEN)
+    assert legal_navigation_play_actions(poor, 0) == (_DECLINE,)
+    assert _spent_kind(poor) == "fizzled"
+    rich = _reach_two(
+        _turn_state(replace(owner, resources=Resources(spice=5))), Faction.FREMEN
+    )
+    assert legal_navigation_play_actions(rich, 0) == (
+        DomainAction(action_id="play_navigation", actor=0, arguments=(("option", 1),)),
+        _DECLINE,
+    )
+    assert _spent_kind(rich) == "declined"
 
 
 def test_two_triggers_in_one_effect_open_one_play_at_a_time() -> None:

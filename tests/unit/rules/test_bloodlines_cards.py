@@ -1307,6 +1307,46 @@ def test_sleeper_unit_pays_for_a_spy_or_recalls_one_for_troops() -> None:
     assert done.players[0].troops_garrison == 5
 
 
+
+# "To play an Intrigue card, you must meet its conditions and pay its costs."
+# [FAQ p. 2] (docs/rules/player-turns.md), with the user's ruling of
+# 2026-10-06 that an Intrigue option also needs an effect that can change
+# something now. A recruit with no troop in the supply changes nothing, a
+# recorded shortfall included (main-session decision, as the Arrakeen Scouts
+# recruit, OQ-071).
+
+
+def _play_options(state: GameState, card: str) -> list[object]:
+    from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+
+    return [
+        dict(action.arguments)["option"]
+        for action in legal_intrigue_play_actions(state, 0)
+        if dict(action.arguments)["card_id"] == card
+    ]
+
+
+def test_sleeper_unit_recall_for_troops_needs_a_troop_in_the_supply() -> None:
+    from dune_imperium.content.uprising.effect_dsl import RecruitTroops
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("sleeper_unit")
+    option = intrigue_card_for_instance(card).options[1]
+    posted = _owner(
+        intrigue_cards=(card,),
+        spies_supply=2,
+        spy_post_ids=("emperor-sardaukar-dutiful-service",),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    state = _state(posted)
+    assert _play_options(state, card) == []
+    assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=2)
+    stocked = replace(posted, troops_supply=1, troops_garrison=11)
+    assert _play_options(_state(stocked), card) == [1]
+
+
 def test_tenuous_bond_trashes_a_costly_discard_for_four_swords() -> None:
     card = _intrigue("tenuous_bond")
     engine = UprisingRulesEngine()
@@ -1507,6 +1547,40 @@ def test_honor_guard_recruits_and_discounts_the_commander_this_turn() -> None:
     assert dict(bought.events[0].payload)["solari"] == 1
 
 
+
+def test_honor_guard_with_an_empty_supply_needs_a_paid_commander_ahead() -> None:
+    # With no troop to recruit only the discount can change something: a
+    # paid Commander recruit still possible this turn ("Once per turn,
+    # Agent or Reveal" [Bloodlines p. 4]) or, before the placement, a
+    # Commander board space still to visit.
+    from dune_imperium.content.uprising.effect_dsl import RecruitTroops
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("honor_guard")
+    option = intrigue_card_for_instance(card).options[0]
+    diplomacy = STARTERS[4]
+    owner = _owner(
+        intrigue_cards=(card,),
+        hand=(diplomacy,),
+        troops_supply=0,
+        troops_garrison=12,
+        resources=Resources(solari=2),
+    )
+    assert _play_options(_state(owner), card) == [0]
+    sent = replace(owner, agents_available=0, agent_locations=("arrakeen", "carthag"))
+    revealed = _reveal(_state(owner))
+    for state in (_state(sent), revealed):
+        assert _play_options(state, card) == []
+        assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=1)
+    # A Commander in the supply to recruit in the Reveal turn.
+    recruitable = _reveal(_state(replace(owner, commanders_supply=1)))
+    assert _play_options(recruitable, card) == [0]
+    # A troop in the supply: the recruit itself changes something.
+    stocked = replace(sent, troops_supply=1, troops_garrison=11)
+    assert _play_options(_state(stocked), card) == [0]
+
+
 def test_insider_information_waives_influence_requirements_this_turn() -> None:
     card = _intrigue("insider_information")
     engine = UprisingRulesEngine()
@@ -1523,6 +1597,51 @@ def test_insider_information_waives_influence_requirements_this_turn() -> None:
         dict(a.arguments)["space_id"] == "sietch_tabr"
         for a in legal_agent_actions(waived, 0)
     )
+
+
+
+def test_insider_information_waiver_needs_an_agent_ahead_and_an_unmet_requirement() -> (
+    None
+):
+    # The waiver changes something only for an Agent placement still ahead
+    # this turn, and only while some board space's Influence requirement
+    # bars the owner: Imperial Privilege (Emperor 2), Sietch Tabr (Fremen 2,
+    # waived for Arrakis Planetologist [Liet Kynes card]) and Shipping
+    # (Guild 2) [Board Guide p. 1].
+    from dune_imperium.content.uprising.effect_dsl import (
+        IgnoreInfluenceRequirementsThisTurn,
+    )
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("insider_information")
+    option = intrigue_card_for_instance(card).options[1]
+    diplomacy = STARTERS[4]
+    owner = _owner(intrigue_cards=(card,), hand=(diplomacy,))
+    assert _play_options(_state(owner), card) == [1]
+    qualified = Influence(emperor=2, spacing_guild=2, fremen=2)
+    liet = replace(
+        owner, leader_id="liet_kynes", influence=Influence(emperor=2, spacing_guild=2)
+    )
+    blocked = (
+        _state(replace(owner, influence=qualified)),
+        _state(liet),
+        _state(replace(owner, ignores_influence_requirements_turn=True)),
+        _state(
+            replace(owner, agents_available=0, agent_locations=("arrakeen", "carthag"))
+        ),
+        _state(replace(owner, hand=())),
+        _play(_state(owner), diplomacy),
+        _reveal(_state(owner)),
+    )
+    for state in blocked:
+        assert _play_options(state, card) == []
+    assert option_unplayable_reason(
+        _state(replace(owner, influence=qualified)), 0, option
+    ) == IgnoreInfluenceRequirementsThisTurn()
+    # Liet still needs the waiver for an unmet Emperor or Guild requirement.
+    emperor_short = replace(liet, influence=Influence(emperor=2))
+    assert _play_options(_state(emperor_short), card) == [1]
 
 
 def test_insider_information_recalls_a_spy_to_trash_and_draw() -> None:
@@ -1576,6 +1695,46 @@ def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
     assert codec.decode(codec.encode(action), 0) == action
     placed = apply_agent_action(invited, action).state
     assert "dutiful_service" in placed.players[0].agent_locations
+
+
+
+def test_emperors_invitation_draw_needs_a_card_to_draw() -> None:
+    from dune_imperium.content.uprising.effect_dsl import DrawPersonalCards
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("emperor_s_invitation")
+    option = intrigue_card_for_instance(card).options[0]
+    diplomacy = STARTERS[4]
+    owner = _owner(intrigue_cards=(card,), hand=(diplomacy,), deck=())
+    state = _state(owner)
+    assert _play_options(state, card) == [1]
+    assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
+    discard = _state(replace(owner, discard_pile=(STARTERS[0],)))
+    assert _play_options(discard, card) == [0, 1]
+
+
+def test_emperors_invitation_icon_only_before_the_agent_is_sent() -> None:
+    # The Emperor icon helps only an Agent placement still ahead this turn:
+    # the turn frame with an Agent and a card to play.
+    from dune_imperium.content.uprising.effect_dsl import GrantAgentIconThisTurn
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.content.uprising.types import AgentIcon
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("emperor_s_invitation")
+    option = intrigue_card_for_instance(card).options[1]
+    diplomacy = STARTERS[4]
+    owner = _owner(intrigue_cards=(card,), hand=(diplomacy,))
+    assert _play_options(_state(owner), card) == [0, 1]
+    sent = _state(
+        replace(owner, agents_available=0, agent_locations=("arrakeen", "carthag"))
+    )
+    for state in (_play(_state(owner), diplomacy), _reveal(_state(owner)), sent):
+        assert _play_options(state, card) == [0]
+    assert option_unplayable_reason(sent, 0, option) == GrantAgentIconThisTurn(
+        icon=AgentIcon.EMPEROR
+    )
 
 
 # --- Combat icon (slice 4c-2b) ----------------------------------------------
@@ -1677,6 +1836,45 @@ def test_adaptive_tactics_during_the_reveal_deploys_with_strength() -> None:
     assert more.players[0].troops_conflict == 2
     assert _reveal_context(more)["reveal_units_deployed"] == 3
     assert legal_reveal_deployments(more, 0) == ()
+
+
+
+def test_adaptive_tactics_with_an_empty_supply_needs_a_unit_it_could_deploy() -> None:
+    # With no troop to recruit only the Combat icon can change something:
+    # a unit it could still let deploy this turn [Bloodlines p. 5], and not
+    # while Emperor of the Known Universe blocks deployment [Main p. 17].
+    from dune_imperium.content.uprising.effect_dsl import RecruitTroops
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("adaptive_tactics")
+    option = intrigue_card_for_instance(card).options[0]
+    owner = _owner(
+        intrigue_cards=(card,),
+        hand=(STARTERS[4],),
+        resources=Resources(spice=1),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    assert _play_options(_state(owner), card) == [0]
+    fighting = replace(owner, troops_garrison=0, troops_conflict=12, combat_strength=24)
+    turn = _state(owner)
+    blocked = replace(
+        turn,
+        decision_stack=(
+            replace(turn.decision_stack[-1], context=(("units_deploy_blocked", True),)),
+        ),
+    )
+    unplayable = (
+        _state(fighting),
+        _state(replace(owner, combat_icon_turn=True)),
+        blocked,
+    )
+    for state in unplayable:
+        assert _play_options(state, card) == []
+        assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=1)
+    # A Commander still to recruit this turn could deploy.
+    assert _play_options(_state(replace(fighting, commanders_supply=1)), card) == [0]
 
 
 def test_elite_forces_rewards_an_emperor_trash_from_hand() -> None:
@@ -3244,6 +3442,49 @@ def test_false_orders_moves_the_spy_off_every_post_of_the_space() -> None:
     assert {dict(a.arguments)["post_id"] for a in placements} == set(REFINERY_POSTS)
     placed = apply_spy_placement(moved, placements[0]).state
     assert placed.players[0].spy_post_ids == (REFINERY_POSTS[0],)
+
+
+
+def test_false_orders_needs_a_spy_to_move_or_a_post_to_fill() -> None:
+    # Nothing to move and nowhere to place: every post connected to this
+    # turn's space holds the owner's Spy alone, so the card changes nothing
+    # (user ruling 2026-10-06). An opponent's Spy there (moved, or lost with
+    # nowhere to go, OQ-065), or an empty connected post, is enough.
+    from dune_imperium.content.uprising.effect_dsl import RedirectSpiesOnTurnSpace
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    card = _intrigue("false_orders")
+    option = intrigue_card_for_instance(card).options[0]
+    city = STARTERS[7]  # Reconnaissance: the City Agent icon.
+
+    def placed(
+        own_posts: tuple[str, ...], rival_posts: tuple[str, ...] = ()
+    ) -> GameState:
+        owner = _owner(
+            hand=(city,),
+            intrigue_cards=(card,),
+            spies_supply=3 - len(own_posts),
+            spy_post_ids=own_posts,
+        )
+        rival = replace(
+            PlayerState(player_id=1),
+            spies_supply=3 - len(rival_posts),
+            spy_post_ids=rival_posts,
+        )
+        base = _state(owner)
+        base = replace(base, players=(base.players[0], rival, *base.players[2:]))
+        return _play(base, city, "spice_refinery")
+
+    for state in (placed(REFINERY_POSTS),):
+        assert _play_options(state, card) == []
+        assert option_unplayable_reason(state, 0, option) == RedirectSpiesOnTurnSpace()
+    for state in (
+        placed(REFINERY_POSTS[:1]),  # the other post is empty
+        placed(REFINERY_POSTS[:1], REFINERY_POSTS[1:]),  # a rival watches
+        placed(REFINERY_POSTS, REFINERY_POSTS[:1]),  # a rival shares a post
+    ):
+        assert _play_options(state, card) == [0]
 
 
 def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:

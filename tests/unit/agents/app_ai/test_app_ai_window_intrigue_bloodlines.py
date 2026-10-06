@@ -483,6 +483,10 @@ def test_battlefield_research_retreats_its_answer_count_troops_first() -> None:
     state = _combat(instance)
     seat = _seat(state)
     state = _units(state, seat, conflict=1, commanders_conflict=1)
+    # Spice for a tile: an Acquire Tech with nothing to buy would leave the
+    # card unplayable (user ruling 2026-10-06).
+    resources = replace(state.players[seat].resources, spice=10)
+    state = with_player(state, seat, resources=resources)
     memory = Memory()
     W._record(
         _run(state, memory), instance, Answer(2.0, ((0, 1),)), len(state.event_log)

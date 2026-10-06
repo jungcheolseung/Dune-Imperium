@@ -135,7 +135,9 @@ from dune_imperium.rules.effect_interpreter import (
     flippable_battle_card_ids,
     influence_gain_candidates,
     option_is_playable,
+    pay_cost,
     resource_cost,
+    reward_can_change_something,
     section_is_usable,
     spy_placement_possible,
     trashable_discard_pile_ids,
@@ -496,6 +498,24 @@ def _old_influence_line_buys_nothing(
     )
 
 
+def _old_any_effect(
+    state: GameState, player: int, sections: tuple[EffectSection, ...]
+) -> bool:
+    # Updated on purpose 2026-10-06 (user ruling): an Intrigue option also
+    # needs a reward that can change something now, judged after its
+    # resource cost (``reward_can_change_something``) -- a rule change made
+    # after the copy.
+    owner = state.players[player]
+    cost = resource_cost(sections)
+    after = pay_cost(owner, cost) if can_afford(owner, cost) else owner
+    return any(
+        reward_can_change_something(state, player, reward, section, after)
+        for section in sections
+        for reward in section.rewards
+        if state.shield_wall_present or not isinstance(reward, DestroyShieldWall)
+    )
+
+
 def _old_section_is_usable(
     state: GameState, player: int, section: EffectSection
 ) -> bool:
@@ -513,6 +533,7 @@ def _old_section_is_usable(
         can_afford(owner, resource_cost(sections))
         and _old_choice_costs_feasible(owner, sections)
         and _old_choice_rewards_feasible(state, player, sections)
+        and _old_any_effect(state, player, sections)
     )
 
 
@@ -545,6 +566,7 @@ def _old_option_is_playable(
         and can_afford(owner, resource_cost(sections))
         and _old_choice_costs_feasible(owner, sections)
         and _old_choice_rewards_feasible(state, player, sections)
+        and _old_any_effect(state, player, sections)
     )
 
 
