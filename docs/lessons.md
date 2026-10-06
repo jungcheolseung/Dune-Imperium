@@ -812,3 +812,23 @@
   `docs/app-ai-plan.md` 3절에 적었고, 창마다 "모르는 id는 대체" 테스트가 있다. 측정이 0이라고 할 때는 그 0을 만드는 경로가 정말 판단을
   거쳤는지(기본값 분기가 없는지)를 함께 본다.
 
+## 2026-10-06 — 디자이너의 Impress 판정을 효과가 하나뿐인 카드로 넓혀, 아무 효과 없는 Intrigue play를 열었음
+
+- 무슨 일: 같은 날의 Steam 앱 카드 전수 대조 묶음(codec v137)이 두 방향으로 같은 실수를 했다. (1) 앱이 Inspire Awe(대상 없음)와
+  덱·버린 더미가 빈 비용 없는 draw 줄(Intelligence Report, Breakthrough, Cunning)을 막는 것을 보고도 엔진은 그대로 둔다고 적었다(OQ-057 (6)
+  보강). (2) 같은 근거로 "Deploy up to N troops from your garrison to the Conflict." 줄(Detonation, Counterattack, Twisted Devious)을
+  배치할 unit이 없어도 낼 수 있게 바꿨다(커밋 `05b285fd`, "having a target is not a play condition (OQ-057 (6))"; OQ-038 갱신). 같은 날
+  OQ-071을 카드로 넓히면서는 "비용이 없는 play는 이 원칙의 대상이 아니다"라고 적었다. 근거는 "To play an Intrigue card, you must meet its
+  conditions and pay its costs." `[FAQ p. 2]`에 대상 유무가 없다는 것과, 디자이너의 Impress 판정("That part of the effect fizzles")이었다.
+  사용자가 같은 FAQ 문장의 예(원로회 자리가 있어야 Councilor's Dispensation을 낸다)를 짚어 "원로회 자리 차지 안 하고 아무 효과 없이
+  책략을 쓸 수 없는거지"라고 판정했고, 세 가지를 모두 되돌렸다: Intrigue option은 효과 중 하나라도 지금 무언가를 바꿀 수 있어야 낸다
+  (OQ-057 (6) 재판정, OQ-038 재판정, OQ-071 카드 확장 2; codec v138). Impress는 검 2가 남으므로 디자이너 판정 그대로다.
+- 원인: (1) 디자이너 판정의 사실관계를 옮기지 않고 결론만 옮겼다. Impress에는 대상 없는 획득 말고도 검 2가 있어, 판정의 요지는 "남은
+  효과는 받고 그 부분만 불발"이었다. 효과가 그것 하나뿐인 카드(Inspire Awe, deploy 줄)에는 "그 부분만"이 없는데 같은 원칙이라고 넓혔다.
+  (2) FAQ가 대상 유무를 말하지 않는 것을 허락으로 읽었다. 침묵은 `open-questions.md`에 올려 물을 자리다(AGENTS.md "Do not silently fill a
+  gap"). (3) 같은 날 Scouts 쪽에서 사용자가 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"를 이미 확인했는데, 비용 없는 경우는
+  묻지 않고 반대로 정했다. 앱이 반대로 한다는 보조 증거도 차이로만 적고 판정 항목으로 올리지 않았다.
+- 재발 방지: 디자이너·사용자 판정을 다른 카드로 넓힐 때는 원래 판정이 기댄 사실(그 카드에 남는 효과가 있었는지, 비용이 있었는지)이 새
+  카드에도 성립하는지 OQ에 적고, 성립하지 않으면 넓히지 말고 묻는다. 공식 문서가 침묵하는 쪽으로 지금까지 막던 play를 여는 변경은
+  사용자 판정 항목으로 올린다. 보조 증거(앱)와 다른 쪽을 택할 때는 그 차이를 사용자에게 묻는 목록에 넣는다.
+

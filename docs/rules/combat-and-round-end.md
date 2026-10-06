@@ -17,6 +17,7 @@
 - 앞선 기회에 pass했어도 Combat 단계에서 탈락하지 않는다. 전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고 Combat를 해결한다. [Main p. 14]
 - Combat Intrigue가 유닛 수나 strength를 바꾸면 즉시 Combat marker를 갱신한다. 효과가 strength를 낮추는 경우도 marker를 아래로 옮긴다. [Main p. 14] [FAQ p. 4]
 - Intrigue 카드는 명시된 조건을 만족하고 비용을 지불해야 플레이할 수 있다. [FAQ p. 2]
+  - 사용자 판정(2026-10-06, "원로회 자리 차지 안 하고 아무 효과 없이 책략을 쓸 수 없는거지"; 공식 문장에 없는 셋째 조건): 그 option의 효과 중 하나라도 지금 무언가를 바꿀 수 있어야 낸다. Combat에서 이것이 갈리는 예: Impress는 검 2가 있어 늘 내고 대상 없는 획득만 불발한다; Reach Agreement는 가져갈 수 있는 Contract가 없으면(시장에 Bloodlines Immediate만 남고 trash할 다른 Intrigue가 없을 때) 내지 않는다; Battlefield Research는 살 수 있는 Tech tile이 없으면 내지 않는다; Gruesome Sacrifice는 Tleilaxu track이 끝났고 specimen으로 만들 troop도 없으면 내지 않는다. 같은 판정이 Conflict 종료 창의 Harvest Cells에도 적용된다(OQ-016). 세부는 [open-questions.md](open-questions.md)의 OQ-071 카드 확장 2.
 - “When you win a Conflict” Combat Intrigue는 공동 1위로 비긴 경우 플레이할 수 없다. Conflict 승리 보상으로 그런 Intrigue를 새로 뽑았다면 즉시 플레이할 수 있다. [FAQ p. 4]
 
 ## 3. 4인 순위와 보상

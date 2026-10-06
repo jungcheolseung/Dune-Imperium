@@ -63,7 +63,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 - Tleilaxu 아이콘을 얻을 때마다 Tleilaxu token을 한 칸 전진한다. 보너스가 있는 칸에 도달하면 즉시 얻는다. `[Immortality pp. 7, 16]`
 - 칸 0이 시작 칸이다. 칸 2: Intrigue 1, 칸 4: VP 1(각 플레이어가 도달할 때마다; **처음** 도달한 플레이어는 setup 때 놓인 spice 2도 가져간다), 칸 6: Intrigue 1, 칸 7(마지막): VP 1. `[Immortality pp. 4, 7]` `[Immortality p. 3 board artwork]`
 - Bene Tleilax는 Faction이 아니다. "아무 Faction의 Influence"를 주는 효과로 Tleilaxu track을 전진할 수 없다. `[FAQ p. 4]`
-- 마지막 칸(7)에서는 Tleilaxu 아이콘이 아무것도 하지 않으므로(OQ-048) 비용을 내고 Tleilaxu 전진만 얻는 줄 — Slig Farmer의 Solari 5, Tleilaxu Surgeon의 specimen 2, 연구 칸 c8r6의 Solari 7, Reclaimed Forces의 Tleilaxu 선택 — 은 제시하지 않는다(2026-10-06, 사용자 결정 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"의 확장, OQ-071).
+- 마지막 칸(7)에서는 Tleilaxu 아이콘이 아무것도 하지 않으므로(OQ-048) 비용을 내고 Tleilaxu 전진만 얻는 줄 — Slig Farmer의 Solari 5, Tleilaxu Surgeon의 specimen 2, 연구 칸 c8r6의 Solari 7, Reclaimed Forces의 Tleilaxu 선택 — 은 제시하지 않는다(2026-10-06, 사용자 결정 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"의 확장, OQ-071). 같은 날 사용자 판정("아무 효과 없이 책략을 쓸 수 없는거지", OQ-071의 카드 확장 2)으로 비용이 없는 Intrigue의 전진도 같다: Illicit Dealings와 Shadowy Bargain의 Endgame option은 마지막 칸에서 낼 수 없고, Gruesome Sacrifice는 specimen을 만들 troop이 있을 때만 낸다(OQ-048의 2026-10-06 귀결).
 
 ### Specimen과 Axolotl tanks
 
@@ -121,6 +121,7 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 
 ## 10. 구현 상태
 
+- 2026-10-06(책략 효과 판정, codec v138 — 사용자 판정 "아무 효과 없이 책략을 쓸 수 없는거지", OQ-071의 카드 확장 2): Immortality Intrigue도 효과 중 하나라도 지금 무언가를 바꿀 수 있어야 낸다. Breakthrough는 두 genetic marker 뒤에 덱과 버린 더미가 모두 비면, Illicit Dealings와 Shadowy Bargain의 Endgame option은 Tleilaxu track 끝에서, Shadowy Bargain의 specimen은 supply에 troop이 없으면, Counterattack의 Plot은 배치할 garrison unit이 없으면(아래 v137 줄을 되돌림, OQ-038 재판정), Gruesome Sacrifice는 track이 끝났고 specimen으로 만들 troop도 없으면 낼 수 없다. Harvest Cells는 Conflict 종료 창이 무언가를 바꿀 사본만 넣는다(OQ-016). 세부는 [implementation-audits/immortality.md](../implementation-audits/immortality.md).
 - 2026-10-06(Steam 앱과의 카드 전수 대조, codec v137·관측 v30): Harvest Cells는 Conflict 보상 뒤의 창에서만 내고(OQ-016) Reclaimed Forces도 가져갈 수 있다(`acquire_intrigue_reclaimed_forces`, OQ-066). Industrial Espionage(draw와 "If grafted:" 줄)와 Stillsuit Manufacturer(water와 Fremen Alliance 반환)의 Agent box는 아이콘마다 해결한다(OQ-027·OQ-057 (1)). Tleilaxu track 마지막 칸의 비용 줄(위 Tleilaxu track 절)과 c6r6의 6인 진영은 제시하지 않는다(OQ-071·OQ-060). Counterattack의 Plot은 garrison이 비어도 내고 0명을 배치할 수 있다(OQ-057 (6)). Subversive Advisor를 graft 상대로 놓아도 space의 1을 대신한다(OQ-022). Tleilaxu Master는 소유자가 Manipulate로 빼 둔 카드도 인쇄 비용으로 얻을 수 있다(`[FAQ p. 3]`). 세부는 [implementation-audits/immortality.md](../implementation-audits/immortality.md).
 - 2026-10-02: arrow 비용을 낼 수 없는 research 보너스(c7r3의 Intrigue trash, c8r6의 Solari 7)도 보너스 창을 열고 `decline_research_bonus` 하나만 제시한다. 지불 줄은 `research_bonus_block`(NO_INTRIGUE, SOLARI)의 이유와 함께 회색으로 보이고, 이벤트 `research_bonus_unavailable`은 없어졌다(2026-09-30 사용자 판정 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다", 3절). codec v125(L2 문장, 템플릿 변화 없음).
 - 2026-09-26: Twisted Mentat("You may recall the Agent you sent this turn.")이 recall하는 "이번 turn 보낸 Agent"는 Duncan Idaho(Bloodlines)의 Into the Fray가 그 사이 Conflict로 옮겼어도 여전히 그 Agent이므로, Mentat의 recall이 Conflict까지 따라간다(2026-09-26 사용자 판정, OQ-068; `docs/rules/uprising-systems.md` 97행).

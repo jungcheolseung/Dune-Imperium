@@ -303,12 +303,21 @@
 - Intrigue 카드는 자신의 덱과 분리해 뒷면으로 보관한다. 소유자는 언제든 확인할 수 있지만 플레이할 때만 상대에게 공개하며, 해결한 카드는 Intrigue Deck 옆의 앞면 버림 더미에 놓는다. [Main p. 7]
 - Plot Intrigue 카드는 자신의 Agent 턴 또는 공개 턴 중 어느 때든 플레이할 수 있다. Combat Intrigue 카드는 전투 단계에만, Endgame Intrigue 카드는 게임 종료 때만 플레이할 수 있다. [Main p. 7] [Main p. 8]
 - Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]
+  - 사용자 판정(2026-10-06, "원로회 자리 차지 안 하고 아무 효과 없이 책략을 쓸 수
+    없는거지"; 공식 문장에 없는 셋째 조건): 그 option의 효과 중 하나라도 지금 무언가를
+    바꿀 수 있어야 낸다. 일어날 수 없는 나머지 효과는 다른 효과를 위해 낸 option 안에서
+    불발한다(Impress의 검 2와 대상 없는 획득). 비용으로 낸 것이 같은 줄의 보상을 살리면
+    센다(discard한 카드를 다시 뽑는 draw 등). recruit는 supply에 troop이 있거나
+    Immortality에서 되돌릴 specimen이 있을 때만 센다. Navigation option도 같은 판정을
+    쓴다(project convention). 세부와 카드 목록은 OQ-071의 카드 확장 2, OQ-057 (6) 재판정,
+    trigger 카드는 OQ-016; 구현 `effect_interpreter.reward_can_change_something`.
 - 구현 convention: 자신의 turn 선택이 제시된 시점부터 "턴 종료"를 누르기 전까지
   Plot을 낼 수 있다(OQ-015 (a), OQ-095). "—OR—" 없이 줄이 따로 인쇄된 Intrigue
   (Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness,
   Questionable Methods)는 줄마다 별개 행동이고, 각 줄의 비용은 그 줄을 쓸 때 낸다.
   지금 쓸 수 있는 줄이 하나라도 있으면 낼 수 있고, 2026-10-04부터는 적어도 한 줄을
-  써야 카드를 끝낼 수 있다(낼 때 지불 없이 바로 해결되는 줄은 쓴 것으로 센다). 한
+  써야 카드를 끝낼 수 있다(낼 때 지불 없이 바로 해결되는 줄은 쓴 것으로 센다 —
+  2026-10-06부터는 무언가를 바꿀 수 있는 줄만 "쓸 수 있는 줄"이다, 위 사용자 판정). 한
   줄을 쓴 뒤 나머지 줄은 선택이다. 공식 문서가 이 점들을 명시하지 않으므로 Plot
   시점은 OQ-015 (a)·OQ-095, 줄 처리는 사용자 판정 OQ-058로 관리한다(이전 OQ-015 (b)의
   "조건이 성립한 모든 비용 줄은 의무"는 2026-09-09에 폐기).
