@@ -980,7 +980,11 @@ def combat_held_contract_owner(state: GameState) -> int | None:
 
     if state.phase is not GamePhase.COMBAT or not state.combat_intrigue_complete:
         return None
-    if not state.decision_stack and not state.combat_rewards_resolved:
+    if (
+        not state.decision_stack
+        and not state.combat_rewards_resolved
+        and not state.combat_rewards_paid
+    ):
         return None
     top = state.decision_stack[-1] if state.decision_stack else None
     if top is not None and not isinstance(top.decision, PlayerDecision):

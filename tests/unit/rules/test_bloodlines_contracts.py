@@ -1039,6 +1039,70 @@ def test_a_last_conflict_reward_icon_fizzles_at_once_and_pays_once() -> None:
     assert done.state.phase is GamePhase.PLAYER_TURNS
 
 
+def test_a_winner_s_held_icon_fizzles_before_the_second_place_is_paid() -> None:
+    """The winner's held icon ends its reward before the next recipient's.
+
+    "The player with the highest strength wins the Conflict and gains the
+    first reward on the Conflict card. The player with the second highest
+    strength gains the second reward." [Main p. 14] is silent on the order
+    between recipients. User ruling 2026-10-07 ("순위대로 (앱처럼)"): each
+    recipient's whole reward, choices included, before the next recipient
+    is paid. A Conflict reward's Contract icon with nothing to take is held
+    to the end of that seat's rewards and fizzles there (user ruling
+    2026-10-02, L2-Q2, "보상 끝까지 보류 후 불발"), so the winner's icon
+    fizzles before CHOAM Security's 2nd place row (2 Solari, water, two
+    troops) is paid.
+    """
+
+    from dune_imperium.rules.engine import _advance_automatic
+
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(), combat_strength=8, troops_conflict=2, troops_supply=7
+    )
+    plain = PlayerState(player_id=1)
+    second = replace(
+        plain,
+        combat_strength=6,
+        troops_conflict=1,
+        troops_supply=plain.troops_supply - 1,
+    )
+    state = replace(
+        _state(
+            owner,
+            market=(IMMEDIATE,),
+            intrigue_deck=INTRIGUE[:5],
+            opponents=(second,),
+        ),
+        phase=GamePhase.COMBAT,
+        round_number=2,
+        first_player=3,
+        current_conflict_ids=("choam_security",),
+        conflict_deck=("skirmish_desert_mouse",),
+        combat_intrigue_complete=True,
+        decision_stack=(),
+    )
+    rewards = _advance_automatic(RuleResult(state=state)).state
+    assert rewards.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+    assert engine.legal_actions(rewards, 0) == (HOLD,)
+    assert rewards.players[1] == second
+
+    done = engine.apply(rewards, HOLD)
+
+    order = [
+        (event.kind, dict(event.payload).get("player"))
+        for event in done.events
+        if event.kind
+        in ("contract_icons_held", "contract_icons_fizzled", "combat_reward_gained")
+    ]
+    assert order == [
+        ("contract_icons_held", 0),
+        ("contract_icons_fizzled", 0),
+        ("combat_reward_gained", 1),
+    ]
+    assert done.state.players[1].resources.solari == second.resources.solari + 2
+
+
 def test_a_seat_s_rewards_are_not_done_while_its_intrigue_draw_waits() -> None:
     from dune_imperium.rules.contracts import combat_held_contract_owner
 
@@ -1056,7 +1120,7 @@ def test_a_seat_s_rewards_are_not_done_while_its_intrigue_draw_waits() -> None:
     owed = replace(waiting, pending_intrigue_draws=((0, 1, "probe"),))
     assert combat_held_contract_owner(owed) is None
     # Nor before the rewards are dealt.
-    undealt = replace(waiting, combat_rewards_resolved=False)
+    undealt = replace(waiting, combat_rewards_resolved=False, combat_rewards_paid=0)
     assert combat_held_contract_owner(undealt) is None
     # Nor while a frame of the seat is still open.
     open_frame = replace(waiting, decision_stack=rewards.decision_stack)

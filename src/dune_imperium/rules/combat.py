@@ -589,12 +589,10 @@ def _pay_next_combat_reward(
         scouts_four_bonus_choices=pending_four,
         scouts_goods=scouts_goods,
         combat_rewards_paid=paid + 1,
-        # The pledge was folded into the first-place frames above.
-        conflict_first_place_influence_bonus=(
-            0
-            if assignment.rank is RewardRank.FIRST
-            else state.conflict_first_place_influence_bonus
-        ),
+        # The pledge was folded into the first-place frames above; the first
+        # recipient paid is the sole winner when there is one, so a tied
+        # first place leaves the pledge unused and it is cleared here too.
+        conflict_first_place_influence_bonus=0,
         decision_stack=frames,
     )
     return RuleResult(state=next_state, events=tuple(events))
