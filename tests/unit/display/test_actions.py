@@ -43,11 +43,14 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
 
 _KEYS = (
     "cards",
+    "cards_second",
     "intrigue",
     "troops",
     "solari",
     "spice",
     "water",
+    "research",
+    "return_self",
     "trash_self",
     "pledge",
 )
@@ -65,6 +68,11 @@ _EFFECTS = (
         PersonalCardAgentEffect
         .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
     ),
+    PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
+    PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+    PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED,
+    PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE,
+    PersonalCardAgentEffect.LEADER_SIGNET,
 )
 
 
@@ -136,6 +144,36 @@ def test_agent_card_icon_text_ko_appends_the_spice_this_turn_condition() -> None
     assert (
         agent_card_icon_text_ko(effect, "cards")
         == "{draw:1} (이번 차례에 {spice}를 2 이상 얻었다면)"
+    )
+
+
+def test_agent_card_icon_text_names_each_cargo_runner_line() -> None:
+    # Two printed lines, one icon each (OQ-027): two and four contracts.
+    effect = PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+
+    assert agent_card_icon_text(effect, "cards") == (
+        "Draw 1 card (if you have completed 2 or more contracts)"
+    )
+    assert agent_card_icon_text(effect, "cards_second") == (
+        "Draw 1 card (if you have completed 4 or more contracts)"
+    )
+    assert agent_card_icon_text_ko(effect, "cards_second") == (
+        "{draw:1} ({contract} 넷 이상 완수했다면)"
+    )
+
+
+def test_agent_card_icon_text_names_fill_coffers_icons() -> None:
+    # "FILL COFFERS — [1 Solari] —AND— If you have an Alliance: [1 spice]"
+    # [Lady Amber Metulli card], the Signet Ring's two icons.
+    effect = PersonalCardAgentEffect.LEADER_SIGNET
+
+    assert agent_card_icon_text(effect, "solari") == "Gain 1 solari"
+    assert agent_card_icon_text_ko(effect, "solari") == "{solari:1}"
+    assert agent_card_icon_text(effect, "spice") == (
+        "Gain 1 spice (if you have an Alliance)"
+    )
+    assert agent_card_icon_text_ko(effect, "spice") == (
+        "{spice:1} ({alliance}이 있다면)"
     )
 
 
@@ -288,3 +326,90 @@ def test_tech_acquire_icons_have_english_and_korean_details(tech_id: str) -> Non
             details.add(en)
         if effect in ("intrigue_or_card", "shield_wall"):
             assert len(details) == 2
+
+
+_GHOLA = "tleilaxu:ghola:0"
+_SIGNET = "player:0:starter:signet_ring:0"
+_CARGO_RUNNER = "imperium:cargo_runner:0"
+
+
+def _ghola_box(partner: str, **owner: object) -> GameState:
+    """Seat 0 places Ghola grafted to ``partner``; Ghola's box is active."""
+
+    config = RulesetConfig(immortality=True, choam_module=True)
+    seat = PlayerState(
+        player_id=0,
+        hand=(partner, _GHOLA),
+        resources=Resources(solari=4, spice=2, water=2),
+        **owner,  # type: ignore[arg-type]
+    )
+    imperium = imperium_deck_instance_ids(True)
+    state = GameState(
+        config=config,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=("choam_security",),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=(seat, *(PlayerState(player_id=other) for other in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    place = next(
+        action
+        for action in _ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("card_id") == _GHOLA
+        and dict(action.arguments).get("graft") is True
+    )
+    placed = _ENGINE.apply(state, place).state
+    graft = next(
+        action
+        for action in _ENGINE.legal_actions(placed, 0)
+        if action.action_id == "choose_graft_partner"
+        and dict(action.arguments).get("card_id") == partner
+    )
+    grafted = _ENGINE.apply(placed, graft).state
+    assert dict(grafted.decision_stack[-1].context)["card_id"] == _GHOLA
+    return grafted
+
+
+def _icon_text(state: GameState, key: str) -> tuple[str | None, str | None]:
+    action = DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", key),)
+    )
+    return effect_action_text(state, action), effect_action_text_ko(state, action)
+
+
+def test_a_ghola_copy_of_fill_coffers_shows_the_copied_icons() -> None:
+    # "This card has the same Agent box as the other grafted card" [Ghola
+    # card]: copying the Signet Ring's Fill Coffers it pays 1 Solari, as the
+    # engine does, and its spice keeps the Alliance condition. The text read
+    # Ghola's own (empty) box, so it said 2 Solari and lost the condition.
+    state = _ghola_box(_SIGNET, leader_id="lady_amber_metulli")
+
+    assert _icon_text(state, "solari") == ("Gain 1 solari", "{solari:1}")
+    assert _icon_text(state, "spice") == (
+        "Gain 1 spice (if you have an Alliance)",
+        "{spice:1} ({alliance}이 있다면)",
+    )
+
+
+def test_a_ghola_copy_of_cargo_runner_names_each_contract_line() -> None:
+    state = _ghola_box(_CARGO_RUNNER)
+
+    assert _icon_text(state, "cards") == (
+        "Draw 1 card (if you have completed 2 or more contracts)",
+        "{draw:1} ({contract} 둘 이상 완수했다면)",
+    )
+    assert _icon_text(state, "cards_second") == (
+        "Draw 1 card (if you have completed 4 or more contracts)",
+        "{draw:1} ({contract} 넷 이상 완수했다면)",
+    )

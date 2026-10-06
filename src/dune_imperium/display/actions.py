@@ -10,7 +10,6 @@ the rules execute.
 
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
@@ -58,6 +57,21 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "cards"): (
         "if you gained 2 or more spice this turn"
     ),
+    (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards"): (
+        "if you have completed 2 or more contracts"
+    ),
+    (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards_second"): (
+        "if you have completed 4 or more contracts"
+    ),
+    (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "if you have another Bene Gesserit card in play"
+    ),
+    (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "if grafted",
+    (_BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE, "return_self"): (
+        "with the Fremen Alliance"
+    ),
+    # Only Lady Amber Metulli's Signet (Fill Coffers) prints icons.
+    (_BOX.LEADER_SIGNET, "spice"): "if you have an Alliance",
 }
 
 # Korean twin of _ICON_CONDITIONS. The Influence-count suffixes use a
@@ -96,6 +110,22 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "cards"): (
         "이번 차례에 {spice}를 2 이상 얻었다면"
     ),
+    # Cargo Runner's lines, in tokens_ko.py's own words for the same box.
+    (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards"): (
+        "{contract} 둘 이상 완수했다면"
+    ),
+    (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards_second"): (
+        "{contract} 넷 이상 완수했다면"
+    ),
+    # Tread in Darkness, in tokens_ko.py's words for the same box.
+    (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "{graft}했다면",
+    (_BOX.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE, "return_self"): (
+        "프레멘 {alliance}이면"
+    ),
+    (_BOX.LEADER_SIGNET, "spice"): "{alliance}이 있다면",
 }
 
 
@@ -151,14 +181,17 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
     """Render one printed Agent-box icon of a multi-icon card."""
 
     match key:
-        case "cards":
+        case "cards" | "cards_second":
             base = "Draw 1 card"
         case "intrigue":
             base = "Draw 1 Intrigue card"
         case "troops":
             base = "Recruit 1 troop"
         case "solari":
-            base = "Gain 2 solari"
+            # Fill Coffers (the Signet Ring's box) pays 1.
+            base = (
+                "Gain 1 solari" if effect is _BOX.LEADER_SIGNET else "Gain 2 solari"
+            )
         case "spice":
             base = (
                 "Gain 2 spice"
@@ -171,6 +204,10 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
             )
         case "water":
             base = "Gain 1 water"
+        case "research":
+            base = "Research, Generate 1 specimen"
+        case "return_self":
+            base = "Return this card from play to your hand"
         case "trash_self":
             base = "Trash this card"
         case "pledge":
@@ -205,14 +242,14 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
     """
 
     match key:
-        case "cards":
+        case "cards" | "cards_second":
             base = "{draw:1}"
         case "intrigue":
             base = "{intrigue:1}"
         case "troops":
             base = "{troop:1}"
         case "solari":
-            base = "{solari:2}"
+            base = "{solari:1}" if effect is _BOX.LEADER_SIGNET else "{solari:2}"
         case "spice":
             base = (
                 "{spice:2}"
@@ -225,6 +262,12 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
             )
         case "water":
             base = "{water:1}"
+        case "research":
+            # tokens_ko.py's words for Industrial Espionage's line.
+            base = "{research}, 표본 1개 생성"
+        case "return_self":
+            # tokens_ko.py's words for Stillsuit Manufacturer's return.
+            base = "{in_play}에서 이 카드를 핸드로 되돌림"
         case "trash_self":
             base = "이 카드 {trash}"
         case "pledge":
@@ -340,9 +383,11 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     except ValueError:
         return None
     card_id = context.get("card_id")
-    if not isinstance(card_id, str):
+    if not isinstance(card_id, str) or not card_id:
         return None
-    return agent_card_icon_text(personal_card_for_instance(card_id).agent_effect, key)
+    # The box resolving, a Ghola's borrowed one included, as the engine's
+    # own icon actions read it (``legal_agent_card_icon_actions``).
+    return agent_card_icon_text(active_agent_card(context).agent_effect, key)
 
 
 def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
@@ -382,7 +427,6 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     except ValueError:
         return None
     card_id = context.get("card_id")
-    if not isinstance(card_id, str):
+    if not isinstance(card_id, str) or not card_id:
         return None
-    card = personal_card_for_instance(card_id)
-    return agent_card_icon_text_ko(card.agent_effect, key)
+    return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)

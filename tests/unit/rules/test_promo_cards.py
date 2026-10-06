@@ -264,7 +264,6 @@ def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
     assert after.sandworms_conflict == 1
     assert after.units_deployed_turn == 1
     assert _context(result.state)["pending_agent_effect"] is False
-    assert _context(result.state)["spice_spent_after_placement"] == 2
     assert [event.kind for event in result.events] == [
         "agent_card_payment_resolved",
         "shield_wall_destroyed",
@@ -722,6 +721,12 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
         + 1
         + 1  # v134: finish_leader_draft
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -733,6 +738,12 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 4
         + 1
         + 1  # v134: finish_leader_draft
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

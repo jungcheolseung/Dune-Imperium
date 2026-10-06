@@ -9,9 +9,11 @@ for the Reveal shop, Intrigue plays and effects waiting on their condition
 its printed threshold and held Contract icons among them), and for the
 branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
-cannot be paid, a Conflict reward's Faction already at the top, a Holy War
-unit the seat does not have, a Skill the seat already holds, a Navigation
-card's option it cannot play, an Acquire Tech with every stack empty, an
+cannot be paid or whose reward would change nothing, an Agent box's arrow
+whose reward would change nothing (OQ-071), a Conflict reward's, a research
+space's or Shipping's Faction already at the top, a Holy War unit the
+seat does not have, a Skill the seat already holds, a Navigation card's
+option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
 seat has no Intrigue card to trash for, Litany Against Fear once the seat
 already acted in its turn, a separate-lines Intrigue card's finish before
@@ -29,9 +31,12 @@ Display only, under four rules:
   ``waiting_deferred_choices``, ``agent_box_is_waiting``,
   ``joinable_subcommittees``, ``reveal_sandworm_block``,
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
-  ``research_bonus_block``, ``combat_reward_influence_block``,
+  ``research_bonus_block``, ``research_influence_factions``,
+  ``shipping_influence_factions``, ``combat_reward_influence_block``,
   ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
+  ``agent_card_payment_block``, ``signet_influence_withheld``,
+  ``reveal_influence_choice_blocked``,
   ``contract_take_block``, ``turn_start_is_open``,
   ``intrigue_effects_finish_is_open``), so the two cannot drift.
 - No candidate is dry-run: it is described from its arguments alone
@@ -61,7 +66,6 @@ from dune_imperium.content.immortality.tleilaxu import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     Cost,
-    DeployFromGarrison,
     DiscardFromHand,
     EffectSection,
     FlipBattleCard,
@@ -72,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnTroopsLostAtConflictEnd,
     PayResources,
     PeekTopCard,
     PlaceSpy,
@@ -91,7 +96,10 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
-from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
+from dune_imperium.content.uprising.types import (
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import PlayerState
@@ -117,19 +125,26 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_effect_frame import agent_box_is_waiting
 from dune_imperium.rules.agent_effects import (
+    AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
     AgentIconBlock,
     AgentIconCondition,
+    AgentPaymentBlock,
+    agent_box_influence_blocked,
+    agent_card_payment_block,
     agent_card_recall_targets,
     agent_icon_block,
 )
 from dune_imperium.rules.agent_turn import turn_start_cards
-from dune_imperium.rules.board_effects import imperial_privilege_recall_targets
+from dune_imperium.rules.board_effects import (
+    imperial_privilege_recall_targets,
+    legal_shipping_actions,
+    shipping_influence_factions,
+)
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
     combat_reward_influence_block,
 )
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contracts import (
     ContractTakeBlock,
     contract_recall_targets,
@@ -156,17 +171,19 @@ from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
     research_bonus_block,
+    research_influence_factions,
 )
-from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.influence import influence_amount, influence_can_rise
 from dune_imperium.rules.intrigue import (
     IntriguePlayBlock,
     intrigue_effects_finish_is_open,
     intrigue_play_block,
     intrigue_window,
 )
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.leader_abilities import signet_influence_withheld
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
+    reveal_influence_choice_blocked,
     reveal_sandworm_block,
     waiting_deferred_choices,
 )
@@ -305,14 +322,40 @@ _NO_INTRIGUE_TO_TRASH: Final[Reason] = (
     "cost",
 )
 _AT_THE_TOP: Final[Reason] = ("Already at the top", "이미 최고치", "top")
+# A cost for Influence no cube can take is not offered, and a "choose a
+# Faction" gain with every cube at the top waits or is lost (OQ-060, OQ-071).
+_ALL_AT_THE_TOP: Final[Reason] = (
+    "Every Faction it can raise is already at the top (6)",
+    "올릴 수 있는 {faction}의 {influence_any}이 모두 이미 최고치(6)",
+    "top",
+)
 _NAMED_FOR_THIS_REWARD: Final[Reason] = (
     "Already named for this reward",
     "이 보상에서 이미 고른 진영",
     "named",
 )
 _NO_UNIT_TO_LOSE: Final[Reason] = ("No unit to lose", "잃을 유닛 없음", "no_unit")
+# A reward that would change nothing keeps its cost line off the list
+# (OQ-071): the draw of an empty deck and discard pile (Gather Intelligence,
+# OQ-099; Ecological Testing Station) and a Tleilaxu advance from the
+# track's last space (OQ-048).
+_NO_CARD_TO_DRAW: Final[Reason] = (
+    "No card to draw: your deck and discard pile are both empty",
+    "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
+    "empty",
+)
+_TLEILAXU_TRACK_END: Final[Reason] = (
+    "Your Tleilaxu token is already at the end of its track",
+    "{tleilaxu} 트랙 끝에 이미 도달함",
+    "reward",
+)
 _LAPSES_EN: Final = "; it lapses if still unmet when the turn ends"
 _LAPSES_KO: Final = " — 차례가 끝날 때까지 못 채우면 사라짐"
+_ALL_AT_THE_TOP_WAITING: Final[Reason] = (
+    _ALL_AT_THE_TOP[0] + _LAPSES_EN,
+    _ALL_AT_THE_TOP[1] + _LAPSES_KO,
+    "waiting",
+)
 _NO_RECALL_TARGET: Final[Reason] = (
     "No other Agent of yours to recall (not the one sent this turn);"
     " it lapses when the turn ends",
@@ -361,6 +404,21 @@ _TURN_STARTED: Final[Reason] = (
 )
 
 
+def _conflict_end_reason(option: IntrigueOption) -> Reason:
+    """Harvest Cells in any Intrigue window: played only in the window after
+    the Conflict's rewards, when its loss holds (user ruling 2026-10-06,
+    ``IntriguePlayBlock.CONFLICT_END``)."""
+
+    trigger = option.trigger
+    assert isinstance(trigger, OnTroopsLostAtConflictEnd)
+    lost = trigger.minimum
+    return (
+        f"Played after the Conflict resolves, if you lose {lost} or more troops",
+        f"{{conflict}}이 끝난 뒤 {{troop}}을 {lost} 이상 잃었을 때 사용",
+        "timing",
+    )
+
+
 def _acquire_reason(block: AcquireBlock, needed: int | None, held: int) -> Reason:
     match block:
         case AcquireBlock.EMPTY:
@@ -373,6 +431,8 @@ def _acquire_reason(block: AcquireBlock, needed: int | None, held: int) -> Reaso
             return _specimen_cost_reason(needed, held)
         case AcquireBlock.NOT_IMPLEMENTED:
             return _BONUS_NOT_IMPLEMENTED
+        case AcquireBlock.TLEILAXU_TRACK_END:
+            return _TLEILAXU_TRACK_END
     return NOT_NOW
 
 
@@ -486,33 +546,9 @@ def _choice_cost_reason(
 def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason:
     """Why a player-choice reward (``_choice_reward_block``) has no target."""
 
+    # DeployFromGarrison never blocks: "Deploy up to N troops" may deploy
+    # zero (``_choice_reward_block``).
     match reward:
-        case DeployFromGarrison() if units_deployment_blocked(state, seat):
-            return (
-                "Your units cannot be deployed now",
-                "지금은 유닛을 배치할 수 없음",
-                "reward",
-            )
-        case DeployFromGarrison():
-            owner = state.players[seat]
-            if owner.troops_garrison + owner.commanders_garrison == 0:
-                return (
-                    "No unit in your garrison to deploy",
-                    "{garrison}에 배치할 유닛 없음",
-                    "reward",
-                )
-            # Units in the garrison, none of them deployable: Harkonnen
-            # Advisor's troop ("You can't deploy this troop to the Conflict
-            # this turn." [Piter De Vries card], OQ-038), which
-            # ``_choice_reward_block`` subtracts through this same helper.
-            troops = min(
-                undeployable_troops_this_turn(state, seat), owner.troops_garrison
-            )
-            return (
-                f"Your garrison troop{plural_s(troops)} cannot be deployed this turn",
-                "{garrison}의 {troop}은 이번 차례에 {conflict}에 배치할 수 없음",
-                "reward",
-            )
         case PlaceSpy():
             return (
                 "No observation post for a Spy",
@@ -520,7 +556,11 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "reward",
             )
         case RetreatTroops(minimum=minimum):
-            return _in_conflict_reason(minimum, _units(state.players[seat])[1])
+            # The gate asks for one unit even of a zero-minimum retreat
+            # (``_choice_reward_block``).
+            return _in_conflict_reason(
+                max(minimum, 1), _units(state.players[seat])[1]
+            )
         case TakeContract():
             return "No Contracts in this game", "이 게임에는 {contract} 없음", "reward"
         case SetAsideImperiumRowCard():
@@ -535,6 +575,11 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "상대가 더 높은 {faction} 없음",
                 "reward",
             )
+        case GainInfluence(factions=factions) if not any(
+            influence_can_rise(state.players[seat], faction)
+            for faction in (factions or tuple(Faction))
+        ):
+            return _ALL_AT_THE_TOP
         case GainInfluence():
             return (
                 "No Faction you may gain Influence with",
@@ -753,21 +798,25 @@ def _shop(state: GameState, seat: int, found: _Found) -> None:
                 ),
                 dim=instance_id,
             )
-    block = reclaimed_forces_block(owner)
-    if block is not None:
-        reason = _acquire_reason(block, RECLAIMED_FORCES.specimen_cost, owner.specimens)
-        for choice in RECLAIMED_FORCES_CHOICES:
-            found.row(
-                "acquire",
-                f"reclaimed_forces:{choice}",
-                DomainAction(
-                    action_id="acquire_reclaimed_forces",
-                    actor=seat,
-                    arguments=(("choice", choice),),
-                ),
-                reason,
-                dim="reclaimed_forces",
-            )
+    card_block = reclaimed_forces_block(owner)
+    for choice in RECLAIMED_FORCES_CHOICES:
+        block = reclaimed_forces_block(owner, choice)
+        if block is None:
+            continue
+        found.row(
+            "acquire",
+            f"reclaimed_forces:{choice}",
+            DomainAction(
+                action_id="acquire_reclaimed_forces",
+                actor=seat,
+                arguments=(("choice", choice),),
+            ),
+            _acquire_reason(block, RECLAIMED_FORCES.specimen_cost, owner.specimens),
+            # Only a block of the whole card dims it on the table; one choice
+            # withheld (the Tleilaxu advance at the track's end) leaves the
+            # other to take.
+            dim="reclaimed_forces" if card_block is not None else None,
+        )
 
 
 def _intrigue(state: GameState, seat: int, found: _Found) -> None:
@@ -796,6 +845,9 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
                 continue
             if block is IntriguePlayBlock.TIMING:
                 other_window = other_window or _TIMING[option.timing]
+                continue
+            if block is IntriguePlayBlock.CONFLICT_END:
+                other_window = other_window or _conflict_end_reason(option)
                 continue
             found.row(
                 "intrigue",
@@ -852,6 +904,7 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
     card.
     """
 
+    owner = state.players[seat]
     for card_id, effect in waiting_deferred_choices(state, seat):
         found.row(
             "waiting",
@@ -861,7 +914,13 @@ def _deferred(state: GameState, seat: int, found: _Found) -> None:
                 actor=seat,
                 arguments=(("effect", effect),),
             ),
-            _WAITING,
+            # A "choose a Faction" gain with every cube at the top (OQ-060),
+            # whatever else it waits on.
+            _ALL_AT_THE_TOP_WAITING
+            if reveal_influence_choice_blocked(
+                owner, PersonalCardRevealChoiceEffect(effect)
+            )
+            else _WAITING,
             card_id=card_id,
         )
 
@@ -1062,12 +1121,26 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
     창을 연다"), exactly when ``research_bonus_block`` is not None; the
     payment shows greyed out beside it with the reason. The trash row names
     no card: with no Intrigue card in hand there is none to name.
+
+    c6r6's "Influence with any Faction" offers exactly the Factions in
+    ``research_influence_factions``; each one at the top shows greyed out,
+    as a Conflict reward's does (OQ-060), and with all four there only the
+    decline is offered.
     """
 
     bonus = dict(state.decision_stack[-1].context).get("bonus")
     if not isinstance(bonus, str):
         return
     owner = state.players[seat]
+    if ResearchBonus(bonus) is ResearchBonus.INFLUENCE_ANY:
+        _influence_at_the_top(
+            found,
+            seat,
+            "research_influence",
+            "choose_research_influence",
+            research_influence_factions(owner),
+        )
+        return
     match research_bonus_block(owner, ResearchBonus(bonus)):
         case ResearchBonusBlock.NO_INTRIGUE:
             found.row(
@@ -1083,8 +1156,58 @@ def _research_bonus(state: GameState, seat: int, found: _Found) -> None:
                 DomainAction(action_id="pay_research_bonus", actor=seat),
                 resource_reason("solari", SEVEN_SOLARI_COST, owner.resources.solari),
             )
+        case ResearchBonusBlock.TLEILAXU_TRACK_END:
+            found.row(
+                "choice",
+                "research_bonus_pay",
+                DomainAction(action_id="pay_research_bonus", actor=seat),
+                _TLEILAXU_TRACK_END,
+            )
         case None:
             pass
+
+
+def _influence_at_the_top(
+    found: _Found,
+    seat: int,
+    key: str,
+    action_id: str,
+    offered: tuple[Faction, ...],
+) -> None:
+    """Grey out every Faction a "choose a Faction" picker leaves out."""
+
+    for faction in Faction:
+        if faction in offered:
+            continue
+        found.row(
+            "choice",
+            f"{key}:{faction.value}",
+            DomainAction(
+                action_id=action_id,
+                actor=seat,
+                arguments=(("faction", faction.value),),
+            ),
+            _AT_THE_TOP,
+        )
+
+
+def _shipping_influence(state: GameState, seat: int, found: _Found) -> None:
+    """Shipping's "Influence with a chosen Faction": every Faction at the
+    top, greyed out beside the ones offered (OQ-060).
+
+    Only while the icon is pending (``legal_shipping_actions`` offers
+    something); ``shipping_influence_factions`` is the provider's own list.
+    """
+
+    if not legal_shipping_actions(state, seat):
+        return
+    _influence_at_the_top(
+        found,
+        seat,
+        "shipping_influence",
+        "choose_shipping_influence",
+        shipping_influence_factions(state.players[seat]),
+    )
 
 
 def _combat_reward_influence(state: GameState, seat: int, found: _Found) -> None:
@@ -1297,6 +1420,40 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
                 f"유전자 마커 {needed}개 필요 (보유 {held}){_LAPSES_KO}",
                 "condition",
             )
+        case AgentIconCondition.CONTRACTS_COMPLETED:
+            return (
+                f"Needs {needed} completed contracts (you have {held}){_LAPSES_EN}",
+                f"완수한 {{contract}} {needed}개 필요 (완수 {held}){_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.ALLIANCE if block.faction is Faction.FREMEN:
+            # Stillsuit Manufacturer's return; tokens_ko.py's "프레멘 {alliance}".
+            return (
+                f"Needs the Fremen Alliance{_LAPSES_EN}",
+                f"프레멘 {{alliance}} 필요{_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.ALLIANCE if block.faction is None:
+            return (
+                f"Needs an Alliance{_LAPSES_EN}",
+                f"{{alliance}} 필요{_LAPSES_KO}",
+                "condition",
+            )
+        case AgentIconCondition.NOT_IN_PLAY:
+            return (
+                "A card borrowed with Usurp is not in play;"
+                " it lapses when the turn ends",
+                "찬탈로 빌린 카드는 {in_play}에 있지 않음 — 차례가 끝날 때 사라짐",
+                "condition",
+            )
+        case AgentIconCondition.BOND if block.faction is Faction.BENE_GESSERIT:
+            # Tread in Darkness's words [card face], tokens_ko.py's for KO.
+            return (
+                "Needs another Bene Gesserit card in play;"
+                " it lapses when the turn ends",
+                "{in_play}에 다른 베네 게세리트 카드 필요 — 차례가 끝날 때 사라짐",
+                "condition",
+            )
         case AgentIconCondition.GRAFTED:
             return (
                 "Only when the card is grafted; it lapses when the turn ends",
@@ -1309,14 +1466,18 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
 
 
 # Conditions a later effect of the same turn can still meet (Influence
-# gained, spice gained, a marker reached): such an icon sits with the
-# Agent boxes waiting on theirs (``_agent_box``), under "waiting". A card
-# grafted or not stays so all turn, and an unprinted icon never comes.
+# gained, spice gained, a marker reached, a contract completed, an
+# Alliance formed): such an
+# icon sits with the Agent boxes waiting on theirs (``_agent_box``), under
+# "waiting". A card grafted or not stays so all turn, and an unprinted icon
+# never comes.
 _ICON_CAN_STILL_BE_MET: Final = frozenset(
     {
         AgentIconCondition.INFLUENCE,
         AgentIconCondition.SPICE_GAINED,
         AgentIconCondition.GENETIC_MARKERS,
+        AgentIconCondition.CONTRACTS_COMPLETED,
+        AgentIconCondition.ALLIANCE,
     }
 )
 
@@ -1329,13 +1490,15 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
     while the turn is open (user ruling 2026-10-02, L2-Q3: "③은 회색 줄만"
     -- Steersman Y'rkoon's Recall Agent icon with no target, and the other
     conditioned icons). The reasons come from the providers' own answers:
-    ``agent_icon_block`` (an automatic icon is offered exactly when it is
-    None) and ``agent_card_recall_targets`` (the recall is offered once per
-    target). An icon whose condition a later effect of the turn can still
-    meet (Influence, spice gained, genetic markers) sits under "waiting",
+    ``agent_icon_block`` (an automatic icon, or Tread in Darkness's trash
+    icon, is offered exactly when it is None) and
+    ``agent_card_recall_targets`` (the recall is offered once per target).
+    An icon whose condition a later effect of the turn can still meet
+    (Influence, spice gained, genetic markers) sits under "waiting",
     like a single Agent box withheld by the same rule (``_agent_box``); one
-    that cannot come back this turn (an ungrafted card, a recall with no
-    target -- targets never grow within one Agent turn) under "choice".
+    that cannot come back this turn (an ungrafted card, a lost Bond, a
+    recall with no target -- targets never grow within one Agent turn)
+    under "choice".
     """
 
     try:
@@ -1351,7 +1514,7 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
     owner = state.players[seat]
     effect = active_agent_card(context).agent_effect
     for key in pending_agent_icons(context):
-        if key not in AUTOMATIC_AGENT_ICONS:
+        if key not in (*AUTOMATIC_AGENT_ICONS, AGENT_ICON_TRASH):
             continue
         block = agent_icon_block(owner, context, effect, key)
         if block is None:
@@ -1359,7 +1522,10 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         found.row(
             "waiting" if block.condition in _ICON_CAN_STILL_BE_MET else "choice",
             f"agent_icon:{key}",
-            DomainAction(
+            # Tread in Darkness's trash icon is offered as its trash choices.
+            DomainAction(action_id="trash_agent_card", actor=seat)
+            if key == AGENT_ICON_TRASH
+            else DomainAction(
                 action_id="resolve_agent_card_effect",
                 actor=seat,
                 arguments=(("effect", key),),
@@ -1377,6 +1543,77 @@ def _agent_icons(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+_PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
+    AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
+    AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
+}
+# The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
+_WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {
+    PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO: "pay_agent_card_water",
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
+        "pay_agent_card_two_specimens"
+    ),
+    (
+        PersonalCardAgentEffect
+        .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+    ): "pay_agent_card_five_solari_for_tleilaxu",
+}
+
+
+def _agent_box_payment(state: GameState, seat: int, found: _Found) -> None:
+    """An Agent box's arrow withheld because its reward would do nothing.
+
+    OQ-071: Ecological Testing Station's water with no card left to draw,
+    Tleilaxu Surgeon's specimens and Slig Farmer's Solari with the Tleilaxu
+    token at the track's end. ``agent_card_payment_block`` is the very test
+    ``legal_agent_card_payment_actions`` makes before offering the payment.
+    """
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(
+        context
+    ):
+        return
+    effect = active_agent_card(context).agent_effect
+    block = agent_card_payment_block(state, seat, effect)
+    if block is None or effect is None:
+        return
+    action_id = _WITHHELD_PAYMENTS[effect]
+    card_id = context.get("card_id")
+    found.row(
+        "choice",
+        f"agent_payment:{action_id}",
+        DomainAction(action_id=action_id, actor=seat),
+        _PAYMENT_BLOCK_REASONS[block],
+        card_id=card_id if isinstance(card_id, str) else None,
+    )
+
+
+def _signet_influence(state: GameState, seat: int, found: _Found) -> None:
+    """Emperor of the Known Universe's "3 Solari -> Influence" withheld
+    because every cube is at the top (OQ-060, OQ-071).
+
+    ``signet_influence_withheld`` holds exactly when
+    ``legal_leader_signet_actions`` drops every Faction for want of a cube
+    below the top (``influence_can_rise``, the filter it applies); the
+    Solari and troop stay on offer beside the greyed row.
+    """
+
+    if not signet_influence_withheld(state, seat):
+        return
+    found.row(
+        "choice",
+        "leader_signet_influence",
+        DomainAction(action_id="choose_leader_signet_influence", actor=seat),
+        _ALL_AT_THE_TOP,
+    )
+
+
 def _agent_box(state: GameState, seat: int, found: _Found) -> None:
     """A mandatory Agent box withheld until its condition holds (OQ-057).
 
@@ -1392,7 +1629,11 @@ def _agent_box(state: GameState, seat: int, found: _Found) -> None:
         "waiting",
         f"agent_box:{card_id}",
         DomainAction(action_id="resolve_agent_card_effect", actor=seat),
-        _WAITING,
+        # A "choose a Faction" box with every cube it may raise at the top
+        # (OQ-060) waits like one whose condition fails.
+        _ALL_AT_THE_TOP_WAITING
+        if agent_box_influence_blocked(state, seat)
+        else _WAITING,
         card_id=card_id if isinstance(card_id, str) else None,
     )
 
@@ -1433,11 +1674,16 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.REVEAL_CHOICE: (_reveal_choice,),
     FrameKind.AGENT_EFFECTS: (
         _agent_box,
+        _agent_box_payment,
+        _signet_influence,
+        _shipping_influence,
         _agent_icons,
         _imperial_privilege_recall,
         _subcommittee_choice,
         _intrigue,
     ),
+    # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
+    FrameKind.LEADER_SIGNET: (_signet_influence,),
     FrameKind.CONTRACT_MARKET: (_contract_market,),
     FrameKind.CONTRACT_REWARD_RECALL: (_contract_recall,),
     FrameKind.RESEARCH_BONUS: (_research_bonus,),
@@ -1515,11 +1761,7 @@ def _gather_intelligence(state: GameState, seat: int, found: _Found) -> None:
                 actor=seat,
                 arguments=(("post_id", post_id),),
             ),
-            (
-                "No card to draw: your deck and discard pile are both empty",
-                "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
-                "empty",
-            ),
+            _NO_CARD_TO_DRAW,
         )
 
 

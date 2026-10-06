@@ -404,7 +404,9 @@ def test_tleilaxu_surgeon_never_pays_past_tleilaxu_rank_seven() -> None:
     assert "TleilaxuSurgeonAgentAbility" in labels
     at_end = with_player(state, seat, tleilaxu_space=7)
     t = _turn(at_end, seat)
-    assert "pay_agent_card_two_specimens" in _ids(t)
+    # The engine no longer offers a payment that buys nothing (OQ-071), as
+    # the app drops it there.
+    assert "pay_agent_card_two_specimens" not in _ids(t)
     assert "TleilaxuSurgeonAgentAbility" not in [s.label for s in t.sources]
     assert t.declines == [_a(seat, "decline_agent_card_payment")]
 
@@ -744,12 +746,18 @@ def test_contaminator_at_tleilaxu_rank_seven_has_no_app_key() -> None:
 
 def test_stillsuit_manufacturer_returns_only_with_the_fremen_alliance() -> None:
     state, seat, _ref, _ = _place(IMM, "stillsuit_manufacturer", space="desert_tactics")
-    source = _source(_turn(state, seat), "stillsuit_manufacturer box")
-    assert source.stage is Stage.AGENT_BOX  # the AgentWater box alone
+    t = _turn(state, seat)
+    source = _source(t, "stillsuit_manufacturer water")
+    assert source.stage is Stage.AGENT_BOX  # the AgentWater box
+    # Without the Alliance the return is not offered (it waits, OQ-057 (1)).
+    assert "stillsuit_manufacturer return_self" not in [s.label for s in t.sources]
     allied = with_player(state, seat, alliance_faction_ids=("fremen",))
-    source = _source(_turn(allied, seat), "stillsuit_manufacturer box")
+    source = _source(_turn(allied, seat), "stillsuit_manufacturer return_self")
     assert source.stage is Stage.PROMPT
-    assert _evaluate(source) == (100.0, _a(seat, "resolve_agent_card_effect"))
+    assert _evaluate(source) == (
+        100.0,
+        _a(seat, "resolve_agent_card_effect", effect="return_self"),
+    )
 
 
 def test_throne_room_politics_waits_for_its_trash_key() -> None:
@@ -761,9 +769,12 @@ def test_throne_room_politics_waits_for_its_trash_key() -> None:
 
 def test_industrial_espionage_alone_is_its_draw() -> None:
     state, seat, _ref, _ = _place(IMM, "industrial_espionage", space="assembly_hall")
-    source = _source(_turn(state, seat), "industrial_espionage box")
+    t = _turn(state, seat)
+    source = _source(t, "industrial_espionage cards")
     assert source.stage in (Stage.IMMEDIATE, Stage.PROMPT)  # DrawAbility
-    assert source.actions == (_a(seat, "resolve_agent_card_effect"),)
+    assert source.actions == (_a(seat, "resolve_agent_card_effect", effect="cards"),)
+    # Ungrafted, the Research line is not offered (it lapses at End Turn).
+    assert "industrial_espionage research" not in [s.label for s in t.sources]
 
 
 def test_industrial_espionage_grafted_asks_its_research() -> None:
@@ -772,8 +783,15 @@ def test_industrial_espionage_grafted_asks_its_research() -> None:
     )
     state = _switched(state, seat)
     t = _turn(state, seat)
-    source = _source(t, "industrial_espionage box")
+    source = _source(t, "industrial_espionage research")
     assert source.stage is Stage.PROMPT and source.extra["explicit"] is True
+    assert source.actions == (
+        _a(seat, "resolve_agent_card_effect", effect="research"),
+    )
+    assert _source(t, "industrial_espionage cards").stage in (
+        Stage.IMMEDIATE,
+        Stage.PROMPT,
+    )
 
 
 def test_clandestine_meeting_influence_asks_once_the_threshold_is_reached(
@@ -1037,7 +1055,8 @@ _EXPANSION_ABILITY_NAMES = (
     *(
         (card, name)
         for (card, _icon), name in ae._ICON_ABILITY.items()
-        if card in ("sardaukar_quartermaster", "tleilaxu_infiltrator")
+        if card
+        in ("sardaukar_quartermaster", "tleilaxu_infiltrator", "industrial_espionage")
     ),
     ("replacement_eyes", ae._TRASH_ABILITY["replacement_eyes"]),
     ("the_beast_s_spoils", ae._TRASH_ABILITY["the_beast_s_spoils"]),

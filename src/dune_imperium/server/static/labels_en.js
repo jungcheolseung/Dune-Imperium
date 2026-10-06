@@ -125,6 +125,7 @@ const LABELS_EN = {
     "resolve_agent_card_effect": "Resolve card effect",
     "resolve_board_effect": "Resolve board effect",
     "resolve_combat_influence_without_faction": "Confirm without {influence_any} ({combat} reward)",
+    "resolve_intrigue_influence_without_faction": "Confirm without {influence_any} ({intrigue})",
     "resolve_contract_without_recall": "Confirm without recalling {agent} ({contract} Reward)",
     "resolve_desert_tactics_without_trash": "Resolve without {trash}",
     "resolve_espionage_place_spy": "Place {spy} (Espionage)",
@@ -224,6 +225,7 @@ const LABELS_EN = {
     "acquire_tleilaxu": "Acquire {tleilaxu} card",
     "acquire_reclaimed_forces": "Reclaimed Forces",
     "acquire_intrigue_tleilaxu": "Harvest Cells: Acquire {tleilaxu} card",
+    "acquire_intrigue_reclaimed_forces": "Harvest Cells: Reclaimed Forces",
     "decline_intrigue_tleilaxu": "Harvest Cells: Decline to acquire",
     "choose_graft_partner": "{graft}: card to use together",
     "switch_graft_card": "{graft}: resolve the other card's {agent_box}",
@@ -320,6 +322,7 @@ const LABELS_EN = {
   },
   "EFFECT_ICON_LABELS": {
     "cards": "{draw} cards",
+    "cards_second": "{draw} cards",
     "contract": "Acquire {contract}",
     "high_council": "High Council seat",
     "intrigue": "{draw} {intrigue}",
@@ -328,10 +331,12 @@ const LABELS_EN = {
     "solari": "Gain {solari}",
     "spice": "Gain {spice}",
     "swordmaster": "Acquire Swordmaster",
+    "trash": "{trash} card",
     "trash_self": "{trash} this card",
     "troops": "{recruit} {troop} ({garrison})",
     "water": "Gain {water}",
-    "research": "{research}"
+    "research": "{research}",
+    "return_self": "Return this card to hand"
   },
   "RESEARCH_BONUS_LABELS": {
     "none": "",
@@ -438,6 +443,7 @@ const LABELS_EN = {
     "combat_intrigue_started": "{combat} {intrigue} Stage Started",
     "combat_reward_influence_chosen": "{influence_any} Chosen ({combat} Reward)",
     "combat_reward_influence_unavailable": "{influence_any} Unavailable ({combat} Reward)",
+    "intrigue_influence_unavailable": "{influence_any} Unavailable ({intrigue})",
     "combat_reward_spy_unavailable": "{spy} Placement Unavailable ({combat} Reward)",
     "combat_reward_trash_declined": "{trash} Declined",
     "combat_strength_gained": "{strength} Gained",

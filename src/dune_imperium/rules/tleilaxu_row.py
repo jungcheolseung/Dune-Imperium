@@ -41,7 +41,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     with_context,
 )
-from dune_imperium.rules.immortality import advance_tleilaxu
+from dune_imperium.rules.immortality import advance_tleilaxu, tleilaxu_track_finished
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.scouts_missions import (
     RECLAIMED_FORCES as BACK_ROOM_DEAL_GOODS,
@@ -91,15 +91,15 @@ def legal_tleilaxu_acquisitions(
                     arguments=(("instance_id", instance_id), ("to_deck_top", True)),
                 )
             )
-    if reclaimed_forces_block(owner) is None:
-        actions.extend(
-            DomainAction(
-                action_id="acquire_reclaimed_forces",
-                actor=player,
-                arguments=(("choice", choice),),
-            )
-            for choice in RECLAIMED_FORCES_CHOICES
+    actions.extend(
+        DomainAction(
+            action_id="acquire_reclaimed_forces",
+            actor=player,
+            arguments=(("choice", choice),),
         )
+        for choice in RECLAIMED_FORCES_CHOICES
+        if reclaimed_forces_block(owner, choice) is None
+    )
     return tuple(actions)
 
 
@@ -126,11 +126,26 @@ def tleilaxu_acquisition_block(
     return None
 
 
-def reclaimed_forces_block(owner: PlayerState) -> AcquireBlock | None:
-    """Why ``owner`` cannot "acquire" Reclaimed Forces now [Immortality p. 9]."""
+def reclaimed_forces_block(
+    owner: PlayerState, choice: str | None = None
+) -> AcquireBlock | None:
+    """Why ``owner`` cannot "acquire" Reclaimed Forces now [Immortality p. 9].
+
+    With ``choice``, why that effect is not offered: a specimen cost that
+    buys nothing is not offered (OQ-071, user decision 2026-09-29), so the
+    Tleilaxu advance is withheld once the token is on the track's last
+    space (``tleilaxu_track_finished``, OQ-048). The troop choice always
+    recruits: "Whenever you spend a specimen, return it to your supply"
+    [Immortality p. 8], so the three spent specimens are in the supply
+    before the two troops are recruited, and OQ-071's "supply에 troop이
+    없고 되돌릴 specimen도 없는 recruit" cannot arise. The card itself is
+    therefore never blocked by its rewards, only by its cost.
+    """
 
     if owner.specimens < RECLAIMED_FORCES.specimen_cost:
         return AcquireBlock.SPECIMENS
+    if choice == "tleilaxu" and tleilaxu_track_finished(owner):
+        return AcquireBlock.TLEILAXU_TRACK_END
     return None
 
 
@@ -143,7 +158,9 @@ def apply_tleilaxu_acquisition(state: GameState, action: DomainAction) -> RuleRe
     arguments = dict(action.arguments)
     source = f"round:{state.round_number}:player:{player}:acquire_tleilaxu"
     if action.action_id == "acquire_reclaimed_forces":
-        return _apply_reclaimed_forces(state, player, str(arguments["choice"]), source)
+        return acquire_reclaimed_forces(
+            state, player, str(arguments["choice"]), source=source
+        )
     return acquire_tleilaxu_card(
         state,
         player,
@@ -243,9 +260,22 @@ def acquire_tleilaxu_card(
     )
 
 
-def _apply_reclaimed_forces(
-    state: GameState, player: int, choice: str, source: str
+def acquire_reclaimed_forces(
+    state: GameState, player: int, choice: str, *, source: str
 ) -> RuleResult:
+    """"Acquire" Reclaimed Forces for its specimens: one of its effects, the
+    card left in the Row [Immortality p. 9] (also for Harvest Cells' offer).
+
+    "When a player 'acquires' it, they choose one of its effects (to recruit
+    two troops, or advance their Tleilaxu token one space on the Tleilaxu
+    track), but leave the card in place." [Immortality p. 9]. Harvest
+    Cells' "You may also acquire a Tleilaxu card (paying its normal cost)"
+    [Harvest Cells card] may take it too (user ruling 2026-10-06, OQ-066's
+    "acquiring it is acquiring a card"); the caller offers ``choice`` only
+    without a ``reclaimed_forces_block``. The troops count toward the
+    owner's Reveal only when acquired in it.
+    """
+
     # Arrakeen Scouts' Back Room Deal: the Solari on the card go to the next
     # seat to acquire it [Scouts mission: Back Room Deal].
     deal = claim_goods_at(
@@ -286,10 +316,12 @@ def _apply_reclaimed_forces(
             events=(event, *deal.events, *advanced.events, *fired.events),
         )
     recruited_owner, recruited = recruit_troops(owner, 2)
-    next_state = _record_reveal_recruits(
-        replace(state, players=replace_player(state.players, recruited_owner)),
-        recruited,
-    )
+    next_state = replace(state, players=replace_player(state.players, recruited_owner))
+    if tleilaxu_shop_is_open(next_state, player):
+        # A Reveal-turn recruit may deploy with a Combat icon [Bloodlines
+        # p. 5]; Harvest Cells' offer after a Conflict recruits to the
+        # garrison and counts toward no turn.
+        next_state = _record_reveal_recruits(next_state, recruited)
     fired = fire_reveal_acquisition_intrigue(
         next_state,
         player,

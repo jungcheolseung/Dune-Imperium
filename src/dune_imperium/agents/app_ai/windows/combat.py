@@ -314,8 +314,9 @@ def combat_intrigue(run: DecisionRun) -> DomainAction | None:
     never a voluntary return. A combatant without an Intrigue card is not
     prompted at all (auto-passed; a playmat ability alone does not prompt):
     the pass. The Immortality Combat intrigues (Counterattack, Economic
-    Positioning, Gruesome Sacrifice, Harvest Cells, Vicious Talents) are
-    ordinary intrigue keys (``intrigue_play_sources``).
+    Positioning, Gruesome Sacrifice, Vicious Talents) are ordinary intrigue
+    keys (``intrigue_play_sources``); Harvest Cells is played only in the
+    ``conflict_end_trigger`` window (``windows.immortality``).
     """
 
     if any(a.action_id not in _COMBAT_INTRIGUE_ACTIONS for a in run.legal):

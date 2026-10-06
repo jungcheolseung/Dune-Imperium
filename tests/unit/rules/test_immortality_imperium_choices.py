@@ -51,7 +51,12 @@ from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.graft import apply_graft_partner, legal_graft_partner_actions
+from dune_imperium.rules.graft import (
+    apply_graft_partner,
+    apply_graft_switch,
+    legal_graft_partner_actions,
+    legal_graft_switch_actions,
+)
 from dune_imperium.rules.intrigue_peek import (
     apply_intrigue_peek,
     legal_intrigue_peek_actions,
@@ -222,6 +227,43 @@ def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
     marked = _reveal(_state(_owner((kit,), research_space="c4r2")))
     gains = dict(marked.decision_stack[-1].context)["reveal_pending_gains"]
     assert str(gains).startswith("tleilaxu|1|")
+
+
+def test_dissecting_kit_trashing_subversive_advisor_keeps_the_space_influence() -> None:
+    # The trashed Subversive Advisor's box expires before it resolves
+    # (OQ-022), so its "gain two Influence instead of one" lapses; the
+    # visited space's own "Faction Influence도 1" [Main p. 7] [Main p. 9]
+    # is offered again.
+    kit = _card("dissecting_kit")
+    subversive = _card("subversive_advisor")
+    grafted = _graft(
+        _state(
+            _owner(
+                (subversive, kit),
+                spies_supply=2,
+                spy_post_ids=("emperor-sardaukar-dutiful-service",),
+            )
+        ),
+        subversive,
+        "dutiful_service",
+        kit,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_agent_effect"] is True
+    assert context["pending_faction_influence"] is False
+    switched = apply_graft_switch(
+        grafted, legal_graft_switch_actions(grafted, 0)[0]
+    ).state
+
+    result = apply_agent_card_payment(
+        switched, _payment(switched, "trash_grafted_card_for_specimen")
+    )
+
+    owner = result.state.players[0]
+    assert subversive in owner.trashed and owner.influence.emperor == 0
+    _, context = current_agent_effect_context(result.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is True
 
 
 def test_for_humanity_chooses_influence_and_trades_influence_for_a_vp() -> None:
@@ -736,6 +778,45 @@ def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> Non
         dict(revealed.decision_stack[-1].context)["reveal_pending_gains"]
         == "research|2|imperium:tleilaxu_master:0"
     )
+
+
+def test_tleilaxu_master_reaches_its_owners_set_aside_card_at_the_printed_cost() -> (
+    None
+):
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: Desert Power (6) is in
+    # reach of "a card costing 6 or less", Long Live the Fighters (7, 6 with
+    # the discount) is not.
+    master = _card("tleilaxu_master")
+    in_reach = _card("desert_power")
+    over = _card("long_live_the_fighters")
+    state = _place(
+        _state(
+            _owner(
+                (master,), research_space="c4r2", imperium_set_aside=(in_reach, over)
+            )
+        ),
+        master,
+        "assembly_hall",
+    )
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_agent_card_acquisitions(state, 0)
+        if action.action_id == "acquire_imperium_by_card"
+    ]
+    assert in_reach in offered and over not in offered
+    result = apply_agent_card_acquisition(
+        state,
+        DomainAction(
+            action_id="acquire_imperium_by_card",
+            actor=0,
+            arguments=(("instance_id", in_reach),),
+        ),
+    )
+    owner = result.state.players[0]
+    assert in_reach in owner.discard_pile
+    assert owner.imperium_set_aside == (over,)
+    assert result.state.imperium_row == state.imperium_row
 
 
 def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> None:
@@ -1343,6 +1424,30 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
         dict(a.arguments).get("zones")
         for a in legal_reveal_troop_sacrifice_actions(one_each, 0)
     ] == [None, "garrison,conflict"]
+
+
+def test_tleilaxu_surgeon_offers_no_payment_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space a further advance does nothing (OQ-048), so
+    # the two specimens would buy nothing and are not offered (OQ-071, user
+    # decision 2026-09-29); one space short, the first advance still pays.
+    surgeon = _card("tleilaxu_surgeon")
+    at_end = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7, tleilaxu_space=7)),
+        surgeon,
+        "arrakeen",
+    )
+    assert [a.action_id for a in legal_agent_card_payment_actions(at_end, 0)] == [
+        "decline_agent_card_payment"
+    ]
+    near_end = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7, tleilaxu_space=6)),
+        surgeon,
+        "arrakeen",
+    )
+    paid = apply_agent_card_payment(
+        near_end, _payment(near_end, "pay_agent_card_two_specimens")
+    )
+    assert paid.state.players[0].tleilaxu_space == 7
 
 
 def test_tleilaxu_surgeon_advances_chanis_tactics_once() -> None:

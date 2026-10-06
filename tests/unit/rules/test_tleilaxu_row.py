@@ -29,7 +29,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules import tleilaxu_row
-from dune_imperium.rules.acquisition import AcquisitionBonus
+from dune_imperium.rules.acquisition import AcquireBlock, AcquisitionBonus
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -38,6 +38,7 @@ from dune_imperium.rules.setup import create_initial_state
 from dune_imperium.rules.tleilaxu_row import (
     apply_tleilaxu_acquisition,
     legal_tleilaxu_acquisitions,
+    reclaimed_forces_block,
 )
 from dune_imperium.simulation.sweep import run_checked_game
 
@@ -306,6 +307,29 @@ def test_reclaimed_forces_stays_and_offers_troops_or_tleilaxu() -> None:
 
     tleilaxu = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:tleilaxu"])
     assert tleilaxu.state.players[0].tleilaxu_space == 1
+
+
+def test_reclaimed_forces_offers_no_tleilaxu_step_at_the_track_end() -> None:
+    # On the track's last space the advance does nothing (OQ-048), so the
+    # specimens would buy nothing there (OQ-071, user decision 2026-09-29):
+    # only the troops remain. Those always recruit, since the three spent
+    # specimens return to the supply first ("Whenever you spend a specimen,
+    # return it to your supply" [Immortality p. 8]), even from an empty one.
+    state = _reveal_state(
+        _owner(tleilaxu_space=7, troops_supply=0, troops_garrison=9)
+    )
+
+    actions = _actions(state)
+
+    assert "reclaimed:tleilaxu" not in actions
+    assert reclaimed_forces_block(state.players[0], "tleilaxu") is (
+        AcquireBlock.TLEILAXU_TRACK_END
+    )
+    assert reclaimed_forces_block(state.players[0]) is None
+    troops = apply_tleilaxu_acquisition(state, actions["reclaimed:troops"])
+    owner = troops.state.players[0]
+    assert owner.specimens == 0
+    assert owner.troops_garrison == 11 and owner.troops_supply == 1
 
 
 def test_reclaimed_forces_troops_choice_fires_call_to_arms() -> None:

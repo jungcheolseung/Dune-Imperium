@@ -378,6 +378,19 @@ def lose_faction_influence(
     return RuleResult(state=replace(state, players=players), events=tuple(events))
 
 
+def influence_can_rise(owner: PlayerState, faction: Faction) -> bool:
+    """Whether a gain with ``faction`` would move ``owner``'s cube now.
+
+    Each track has six spaces and a gain on a cube already at the top is
+    lost (``MAX_INFLUENCE``, OQ-060, user ruling 2026-09-16), so a "choose a
+    Faction" picker never offers a Faction at 6, and a line that pays a cost
+    for such a gain alone is not offered: "비용이 있는 줄은 보상 중 하나라도
+    무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user decision 2026-09-29).
+    """
+
+    return influence_amount(owner.influence, faction) < MAX_INFLUENCE
+
+
 def influence_amount(influence: Influence, faction: Faction) -> int:
     """Return one faction's position from the fixed Influence record."""
 

@@ -37,6 +37,7 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
 )
+from dune_imperium.rules.agent_effects import spice_gained_this_turn
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind, end_turn_start
@@ -541,12 +542,15 @@ def test_troops_recruited_before_placing_the_agent_may_still_be_deployed() -> No
 def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
     # Harvest Contracts count Spice gained from every source during the turn
     # [Main p. 16]: paid Spice must not hide a harvest, and gained Spice counts.
+    # The seat's turn counters (spice_at_turn_start, spice_spent_turn) carry
+    # it, read by rules/effects.py ``eligible_agent_contract_ids``.
     card = _intrigue("market_opportunity")
     owner = PlayerState(
         player_id=0,
         hand=(_starter("reconnaissance"),),
         intrigue_cards=(card,),
         resources=Resources(solari=5, spice=2),
+        spice_at_turn_start=2,
     )
     state = _turn_state(owner)
     engine = UprisingRulesEngine()
@@ -557,18 +561,18 @@ def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
         and dict(action.arguments)["space_id"] == "arrakeen"
     )
     placed = engine.apply(state, to_arrakeen).state
-    before = dict(placed.decision_stack[-1].context)
-    assert before["spice_spent_after_placement"] == 0
-    assert before["spice_at_placement"] == 2
+    assert placed.players[0].spice_spent_turn == 0
+    assert spice_gained_this_turn(placed.players[0]) == 0
 
     sold = engine.apply(placed, _play(placed, card, 0)).state
-    context = dict(sold.decision_stack[-1].context)
-    assert context["spice_spent_after_placement"] == 2
+    assert sold.players[0].resources.spice == 0
+    assert sold.players[0].spice_spent_turn == 2
+    assert spice_gained_this_turn(sold.players[0]) == 0
 
     bought = engine.apply(placed, _play(placed, card, 1)).state
-    context = dict(bought.decision_stack[-1].context)
-    assert context["spice_at_placement"] == 2
-    assert context["spice_spent_after_placement"] == 0
+    assert bought.players[0].resources.spice == 7
+    assert bought.players[0].spice_spent_turn == 0
+    assert spice_gained_this_turn(bought.players[0]) == 5
 
 
 def test_reveal_turn_offers_and_immediately_reveals_a_drawn_plot_card() -> None:
@@ -767,6 +771,99 @@ def test_imperium_politics_limits_the_choice_to_emperor_or_guild() -> None:
     done = engine.apply(opened, _choose_faction("spacing_guild")).state
     assert done.players[0].influence.spacing_guild == 1
     assert done.decision_stack == _after_plot(state)
+
+
+def test_imperium_politics_never_offers_a_faction_at_the_top() -> None:
+    """OQ-060: a gain on a cube at 6 is lost, so the picker leaves it out;
+    with both printed Factions there the Solari would buy nothing and the
+    card is not offered: "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수
+    있을 때만 제시한다" (OQ-071). Before 2026-10-06 both were offered."""
+
+    card = _intrigue("imperium_politics")
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(solari=1),
+        influence=Influence(emperor=6, spacing_guild=2),
+    )
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (_choose_faction("spacing_guild"),)
+
+    full = _turn_state(
+        replace(owner, influence=Influence(emperor=6, spacing_guild=6))
+    )
+    assert legal_intrigue_play_actions(full, 0) == ()
+
+
+def test_buy_access_pays_the_one_faction_below_the_top_and_loses_the_other() -> (
+    None
+):
+    """"Choose two" with one Faction below the top: that one is named and
+    paid, the second gain is lost and its owner confirms it, as OQ-060
+    rules for a Conflict reward's "two different Factions"; with all four
+    at the top the five Solari are not offered (OQ-071)."""
+
+    card = _intrigue("buy_access")
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(solari=5),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+    )
+    state = _turn_state(owner)
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (_choose_faction("fremen"),)
+    named = engine.apply(opened, _choose_faction("fremen")).state
+    assert named.players[0].influence.fremen == 3
+    confirm = DomainAction(
+        action_id="resolve_intrigue_influence_without_faction", actor=0
+    )
+    assert engine.legal_actions(named, 0) == (confirm,)
+    done = engine.apply(named, confirm)
+    assert done.state.players[0].influence.fremen == 4
+    assert done.state.players[0].influence.emperor == 6
+    assert "intrigue_influence_unavailable" in {e.kind for e in done.events}
+    assert done.state.intrigue_discard == (card,)
+    assert done.state.decision_stack == _after_plot(state)
+
+    full = _turn_state(
+        replace(
+            owner,
+            influence=Influence(
+                emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6
+            ),
+        )
+    )
+    assert legal_intrigue_play_actions(full, 0) == ()
+
+
+def test_change_allegiances_regains_the_faction_it_lost_at_the_top() -> None:
+    """With every cube at 6 the swap still works: the Faction just lowered
+    is below the top again and is the only one offered; the spice line's
+    gain would be lost, so that line is not offered (OQ-060, OQ-071)."""
+
+    card = _intrigue("change_allegiances")
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(spice=3),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (_use_line(0),)
+    losing = engine.apply(opened, _use_line(0)).state
+    lost = engine.apply(losing, _choose_faction("emperor")).state
+    assert lost.players[0].influence.emperor == 5
+    assert engine.legal_actions(lost, 0) == (_choose_faction("emperor"),)
+    regained = engine.apply(lost, _choose_faction("emperor")).state
+    assert regained.players[0].influence.emperor == 6
+    assert engine.legal_actions(regained, 0) == (_finish_lines(),)
 
 
 def test_change_allegiances_opens_both_lines_and_either_may_be_used() -> None:
@@ -1126,19 +1223,35 @@ def test_detonation_deploys_up_to_four_garrison_troops() -> None:
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 1)).state
-    assert engine.legal_actions(opened, 0) == (_deploy(1), _deploy(2), _deploy(3))
+    # "Deploy up to four troops" [card face]: zero is a choice too.
+    assert engine.legal_actions(opened, 0) == (
+        _deploy(0),
+        _deploy(1),
+        _deploy(2),
+        _deploy(3),
+    )
 
     deployed = engine.apply(opened, _deploy(3)).state
     assert deployed.players[0].troops_garrison == 0
     assert deployed.players[0].troops_conflict == 3
     assert deployed.decision_stack[-1].kind == "turn"
 
+    # An empty garrison no longer bars the line: having a target is not a
+    # play condition [FAQ p. 2] (OQ-057 (6)), and "up to" allows zero.
     empty = PlayerState(
         player_id=0, intrigue_cards=(card,), troops_supply=12, troops_garrison=0
     )
-    assert legal_intrigue_play_actions(_turn_state(empty), 0) == (
+    empty_state = _turn_state(empty)
+    assert legal_intrigue_play_actions(empty_state, 0) == (
         _play(state, card, 0),
+        _play(state, card, 1),
     )
+    nothing = engine.apply(empty_state, _play(empty_state, card, 1)).state
+    assert engine.legal_actions(nothing, 0) == (_deploy(0),)
+    result = engine.apply(nothing, _deploy(0))
+    assert "troops_deployed" not in [event.kind for event in result.events]
+    assert result.state.players[0].troops_conflict == 0
+    assert result.state.intrigue_discard == (card,)
 
 
 def test_units_deployed_by_plot_during_reveal_count_toward_strength() -> None:
@@ -1826,7 +1939,9 @@ def test_tactical_option_retreating_the_last_units_ends_combat_intrigue() -> Non
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 1)).state
-    assert engine.legal_actions(opened, 0) == (_retreat(1), _retreat(2))
+    # "Retreat any number of your troops." [card face]: zero included
+    # [Main p. 20] [FAQ p. 3].
+    assert engine.legal_actions(opened, 0) == (_retreat(0), _retreat(1), _retreat(2))
     # Resolve the slot without the dispatcher so the round does not run on.
     done = apply_intrigue_choice(opened, _retreat(2))
 
@@ -1853,6 +1968,40 @@ def test_tactical_option_partial_retreat_keeps_the_player_in_the_loop() -> None:
     assert isinstance(frame.decision, PlayerDecision)
     assert frame.decision.owner == 0
     assert dict(frame.context)["consecutive_passes"] == 0
+
+
+def test_tactical_option_may_retreat_no_troops() -> None:
+    # "효과가 `any number`의 troop을 retreat하게 하면 0개도 선택할 수 있다.
+    # `[Main p. 20]` `[FAQ p. 3]`" (docs/rules/uprising-systems.md).
+    card = _intrigue("tactical_option")
+    state = _combat_state(_fighter(0, 2, intrigue_cards=(card,)), _fighter(1, 1))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    result = engine.apply(opened, _retreat(0))
+    done = result.state
+
+    assert "troops_retreated" not in [event.kind for event in result.events]
+    assert done.players[0].troops_conflict == 2
+    assert done.players[0].troops_garrison == 0
+    assert done.players[0].combat_strength == 4
+    assert card in done.intrigue_discard
+    # The card was still played: the pass count restarts and the seat stays.
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    assert dict(frame.context)["consecutive_passes"] == 0
+    assert dict(frame.context)["participants_mask"] == 0b11
+
+
+def test_tactical_option_retreat_still_needs_a_unit_in_the_conflict() -> None:
+    # The Retreat half stays unplayable without a unit in the Conflict (the
+    # Steam app offers it the same way); only the swords half is offered.
+    card = _intrigue("tactical_option")
+    fighter = replace(
+        _fighter(0, 0, intrigue_cards=(card,)), sandworms_conflict=1
+    )
+    state = _combat_state(fighter, _fighter(1, 1))
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
 
 
 def test_spice_is_power_offers_both_halves_when_affordable() -> None:
@@ -2546,6 +2695,42 @@ def test_call_to_arms_waits_for_an_intrigue_acquired_card_s_spy_post() -> None:
         "spy_placed",
         "intrigue_triggered",
     ]
+    _assert_call_to_arms_fired_last(
+        placed, call, f"round:1:player:0:intrigue:{awe}:slot:0", garrison
+    )
+
+
+def test_inspire_awe_on_a_set_aside_card_is_a_full_acquisition() -> None:
+    # Taking the owner's Manipulate card by "other means" [FAQ p. 3] is an
+    # ordinary acquisition: Spy Network's acquire box opens its Spy post and
+    # Call to Arms follows (OQ-012, user ruling 2026-10-04).
+    call = _intrigue("call_to_arms")
+    awe = _intrigue("inspire_awe")
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(awe,),
+        intrigue_faceup=(call,),
+        imperium_set_aside=(spy_network,),
+    )
+    state = _with_market(_turn_state(owner))
+    revealed = _revealed_with_persuasion(state)
+    garrison = revealed.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(revealed, _play(revealed, awe)).state
+    assert _acquire_imperium(spy_network) in engine.legal_actions(opened, 0)
+    acquired = engine.apply(opened, _acquire_imperium(spy_network))
+    assert acquired.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    assert acquired.state.players[0].imperium_set_aside == ()
+    assert acquired.state.players[0].discard_pile == (spy_network,)
+    assert acquired.state.imperium_row == state.imperium_row
+    # No discount: the Reveal's Persuasion is untouched by an Intrigue pick.
+    assert dict(acquired.state.decision_stack[-2].context)["persuasion"] == 10
+
+    placed = engine.apply(
+        acquired.state, engine.legal_actions(acquired.state, 0)[0]
+    )
     _assert_call_to_arms_fired_last(
         placed, call, f"round:1:player:0:intrigue:{awe}:slot:0", garrison
     )
@@ -3640,6 +3825,49 @@ def test_unacquired_manipulated_card_leaves_the_game_with_the_reveal() -> None:
     assert done.players[0].discard_pile == ()
     assert done.imperium_removed == (cheap,)
     assert "imperium_card_removed" in [event.kind for event in result.events]
+
+
+def test_inspire_awe_reaches_its_owners_set_aside_card_at_the_printed_cost() -> (
+    None
+):
+    # "You may use other means to acquire the card (for example: Bypass
+    # Protocol, Boundless Ambition), though the 1 persuasion discount will
+    # not apply" [FAQ p. 3]: Inspire Awe's cap of 3 reads the printed cost.
+    card = _intrigue("inspire_awe")
+    survival = _imperium_instance("desert_survival")  # costs 2
+    paracompass = _imperium_instance("paracompass")  # costs 4 (3 discounted)
+    rival_card = _imperium_instance("hidden_missive")  # costs 2
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        imperium_set_aside=(survival, paracompass),
+    )
+    state = _with_market(_turn_state(owner))
+    rival = replace(state.players[1], imperium_set_aside=(rival_card,))
+    state = replace(state, players=(state.players[0], rival, *state.players[2:]))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    # The owner's set-aside card follows the Row; Paracompass is over the
+    # cap without the discount, and an opponent's set-aside card is never
+    # offered [FAQ p. 3].
+    assert engine.legal_actions(opened, 0) == (
+        _acquire_reserve("prepare_the_way"),
+        _acquire_imperium(_imperium_instance("sardaukar_soldier")),
+        _acquire_imperium(survival),
+    )
+
+    result = engine.apply(opened, _acquire_imperium(survival))
+    done = result.state
+    assert "card_acquired" in [event.kind for event in result.events]
+    assert done.players[0].discard_pile == (survival,)
+    assert done.players[0].imperium_set_aside == (paracompass,)
+    # The Row refilled when the card was set aside, so nothing refills now.
+    assert done.imperium_row == state.imperium_row
+    assert done.imperium_deck == state.imperium_deck
+    assert done.players[1].imperium_set_aside == (rival_card,)
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack == _after_plot(state)
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

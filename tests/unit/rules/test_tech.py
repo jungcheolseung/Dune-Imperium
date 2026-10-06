@@ -301,10 +301,10 @@ def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() ->
     # A Harvest contract is met by "sending an Agent to a Maker board space
     # and gaining the amount of spice shown during that turn (in total,
     # including from sources other than the space itself)" [Main p. 16]
-    # (docs/rules/choam-module.md). The Agent frame counts the gain as the
-    # Spice now, less the Spice at placement, plus what was spent after it;
-    # a Tech tile bought through Rapid Engineering's frame on top of the
-    # Agent turn must be recorded as spent there, or its price hides gains.
+    # (docs/rules/choam-module.md). The gain is the Spice now, less the Spice
+    # at the turn's start, plus what was spent during it; a Tech tile bought
+    # through Rapid Engineering's frame on top of the Agent turn must be
+    # recorded as spent (``spice_spent_turn``), or its price hides gains.
     from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
     from dune_imperium.rules.contracts import legal_contract_completion_actions
 
@@ -347,8 +347,7 @@ def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() ->
     bought = take(bought, "resolve_tech_acquire_effect", choice="card")
 
     assert bought.decision_stack[-1].kind == "agent_effects"
-    context = dict(bought.decision_stack[-1].context)
-    assert context["spice_spent_after_placement"] == 1
+    assert bought.players[0].spice_spent_turn == 1
     harvested = take(bought, "harvest_maker_spice")
     # 2 + 2 Spice gained this turn, 3 left after the tile.
     assert harvested.players[0].resources.spice == 3

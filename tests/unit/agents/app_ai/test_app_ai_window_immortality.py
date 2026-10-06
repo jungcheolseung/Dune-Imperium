@@ -368,10 +368,13 @@ def test_research_bonus_never_pays_near_the_end_of_the_tleilaxu_track(
     ``PaySolariForTleilaxuInfluence``'s V is 0 above rank 5."""
 
     state = _c8r6(tleilaxu=tleilaxu, solari=9)
-    assert {a.action_id for a in _run(state).legal} == {
-        "pay_research_bonus",
-        "decline_research_bonus",
-    }
+    # At rank 7 the engine no longer offers the payment either: it would buy
+    # nothing (OQ-071, ``ResearchBonusBlock.TLEILAXU_TRACK_END``).
+    assert {a.action_id for a in _run(state).legal} == (
+        {"pay_research_bonus", "decline_research_bonus"}
+        if tleilaxu < 7
+        else {"decline_research_bonus"}
+    )
     action = W.research_bonus(_run(state))
     assert action is not None and action.action_id == "decline_research_bonus"
 

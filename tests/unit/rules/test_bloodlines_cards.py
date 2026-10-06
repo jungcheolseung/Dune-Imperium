@@ -632,6 +632,44 @@ def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
     assert gained.decision_stack[-1].kind == "reveal"
 
 
+def test_pointing_the_way_command_never_offers_a_faction_at_the_top() -> None:
+    """OQ-060: a gain on a cube at 6 is lost, so the Command's picker leaves
+    it out; with every cube there the choice does not open but waits
+    deferred like an unmet condition and lapses with the Reveal [Main
+    p. 12], instead of offering a gain that does nothing."""
+
+    from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
+    from dune_imperium.rules.reveal_turn import (
+        reveal_influence_choice_blocked,
+        waiting_deferred_choices,
+    )
+
+    card = _card("pointing_the_way")
+    one_top = replace(
+        _six_persuasion_hand(card), influence=Influence(emperor=6, fremen=2)
+    )
+    revealed = _reveal(_state(one_top))
+    assert [
+        dict(a.arguments)["faction"]
+        for a in legal_reveal_influence_gain_actions(revealed, 0)
+    ] == ["spacing_guild", "bene_gesserit", "fremen"]
+
+    full = replace(
+        one_top,
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    waiting = _reveal(_state(full))
+    assert waiting.decision_stack[-1].kind == "reveal"
+    assert waiting_deferred_choices(waiting, 0) == (
+        (card, "command_gain_chosen_influence"),
+    )
+    assert reveal_influence_choice_blocked(
+        waiting.players[0], PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
+    )
+    assert legal_resume_reveal_choice_actions(waiting, 0) == ()
+    assert legal_finish_reveal_actions(waiting, 0) != ()
+
+
 # --- Command Center ----------------------------------------------------------
 
 
@@ -3609,6 +3647,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 4  # v130 (OQ-005): flip_battle_card per Objective
         + 1  # v131 (user ruling 2026-10-04): place_track_spy
         + 1  # v134: finish_leader_draft
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
     )
     action = DomainAction(
         action_id="trash_agent_card",

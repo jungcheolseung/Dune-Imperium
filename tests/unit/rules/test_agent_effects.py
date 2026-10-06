@@ -28,6 +28,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
+    agent_box_influence_blocked,
     agent_card_effect_is_unavailable,
     apply_agent_card_discard,
     apply_agent_card_influence,
@@ -89,7 +90,10 @@ from dune_imperium.rules.strength import units_strength
 # tests/support isn't a package pytest or mypy resolve from a dotted import
 # (see tests/support/turn_end.py's module docstring).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
-from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
+    finish_agent_turn,
+    finish_agent_turn_result,
+)
 
 
 def _instance(card_id: str) -> str:
@@ -686,7 +690,11 @@ def test_desert_survival_trash_may_be_declined() -> None:
     assert result.events[0].kind == "agent_card_trash_declined"
 
 
-def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
+def test_treacherous_maneuver_pays_both_cards_for_two_influence() -> None:
+    # "Trash this card and an Emperor card from your hand -> Gain two
+    # Influence instead of one." [Treacherous Maneuver card]: the visited
+    # Faction's "기본 1 대신 총 2" [Main p. 9] (docs/rules/player-turns.md),
+    # one gain of 2 that uses up the space's own step.
     maneuver = _imperium_instance("treacherous_maneuver")
     sardaukar = _imperium_instance("sardaukar_soldier")
     non_emperor = _imperium_instance("desert_survival")
@@ -729,17 +737,99 @@ def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
     assert paid.state.players[0].in_play == ()
     assert paid.state.players[0].trashed == (sardaukar, maneuver)
     assert paid.state.players[0].intrigue_cards == ("intrigue:test",)
-    assert paid.state.players[0].influence.emperor == 1
+    # The 2-Influence threshold's VP comes with the single gain of 2.
+    assert paid.state.players[0].influence.emperor == 2
+    assert paid.state.players[0].victory_points == 2
     assert [event.kind for event in paid.events] == [
         "card_trashed",
         "intrigue_card_drawn",
         "card_trashed",
         "influence_gained",
     ]
+    assert (
+        dict(paid.state.decision_stack[-1].context)["pending_faction_influence"]
+        is False
+    )
+    assert "resolve_faction_influence" not in {
+        action.action_id
+        for action in UprisingRulesEngine().legal_actions(paid.state, 0)
+    }
 
-    resolved = resolve_faction_influence(paid.state).state
-    assert resolved.players[0].influence.emperor == 2
-    assert resolved.players[0].victory_points == 2
+
+def test_treacherous_maneuver_arrow_needs_the_pending_space_influence() -> None:
+    # "Instead of one" replaces the space's single gain, so the arrow can
+    # only be chosen while that gain is pending: resolving the space's 1
+    # first leaves only the decline (OQ-071 principle, no cost line that
+    # buys nothing).
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, hand=(maneuver, sardaukar))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    assert "trash_agent_card" in {
+        action.action_id for action in legal_agent_card_trash_actions(placed, 0)
+    }
+
+    gained = resolve_faction_influence(placed).state
+
+    assert gained.players[0].influence.emperor == 1
+    assert legal_agent_card_trash_actions(gained, 0) == (
+        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    )
+
+
+@pytest.mark.parametrize(("emperor", "offered"), [(4, True), (5, False), (6, False)])
+def test_treacherous_maneuver_arrow_needs_room_for_the_second_influence(
+    emperor: int, offered: bool
+) -> None:
+    # "Gain two Influence instead of one" [Treacherous Maneuver card]: with
+    # the visited Faction at 5 or 6 the track tops at 6, so two instead of
+    # one ends exactly where the space's own 1 would and the two trashed
+    # cards buy nothing. "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수
+    # 있을 때만 제시한다" (OQ-071, user decision 2026-09-29): only the
+    # decline remains. At 4 the arrow still reaches 6 instead of 5.
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(maneuver, sardaukar),
+        influence=Influence(emperor=emperor),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    actions = legal_agent_card_trash_actions(placed, 0)
+
+    assert ("trash_agent_card" in {action.action_id for action in actions}) is offered
+    assert DomainAction(action_id="decline_agent_card_trash", actor=0) in actions
 
 
 def test_treacherous_maneuver_box_expires_when_trashed_mid_frame() -> None:
@@ -2129,6 +2219,47 @@ def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
     assert legal_agent_card_payment_actions(placed, 0) == (
         DomainAction(action_id="decline_agent_card_payment", actor=0),
     )
+
+
+def test_ecological_testing_station_has_no_payment_without_a_card_to_draw() -> None:
+    # "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
+    # 제시한다" (OQ-071, user decision 2026-09-29): with the deck and the
+    # discard pile both empty the two water would draw nothing, the gate
+    # Gather Intelligence uses (``gather_intelligence_draw_available``).
+    station = _imperium_instance("ecological_testing_station")
+    owner = PlayerState(player_id=0, hand=(station,), resources=Resources(water=2))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+
+    assert legal_agent_card_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_payment", actor=0),
+    )
+    # One card in the discard pile is enough: the draw reshuffles it.
+    discarded = _instance("dagger")
+    refilled = replace(
+        placed,
+        players=(
+            replace(placed.players[0], discard_pile=(discarded,)),
+            *placed.players[1:],
+        ),
+    )
+    assert "pay_agent_card_water" in {
+        action.action_id for action in legal_agent_card_payment_actions(refilled, 0)
+    }
 
 
 def test_ecological_testing_station_can_pay_with_water_gained_this_turn() -> None:
@@ -3726,9 +3857,11 @@ def test_subversive_advisor_replaces_faction_influence_and_trashes_itself() -> N
 
 def test_subversive_advisor_box_expires_after_a_mid_frame_trash() -> None:
     # When a freely ordered Intrigue trash slot already trashed this card,
-    # its un-activated Agent box expires without the Influence gain: you
-    # can't receive or activate an effect from a card that is already
-    # trashed (OQ-022 designer ruling).
+    # its un-activated Agent box expires: you can't receive or activate an
+    # effect from a card that is already trashed (OQ-022 designer ruling).
+    # Only the card's "instead" lapses; the space's own Influence stays:
+    # "Faction space라면 그 Faction Influence도 1 얻는다." [Main p. 7]
+    # [Main p. 9] (docs/rules/player-turns.md).
     state = _subversive_state()
     subversive = state.players[0].hand[0]
     opponent = replace(
@@ -3753,8 +3886,40 @@ def test_subversive_advisor_box_expires_after_a_mid_frame_trash() -> None:
     assert owner.influence.emperor == 0
     assert owner.trashed == (subversive,)
     assert expired.events[-1].kind == "agent_card_effect_expired"
+    context = dict(expired.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert context["pending_faction_influence"] is True
+    engine = UprisingRulesEngine()
+    assert {
+        action.action_id for action in engine.legal_actions(expired.state, 0)
+    } == {"resolve_board_effect", "resolve_faction_influence"}
+
+    gained = engine.apply(
+        expired.state,
+        DomainAction(action_id="resolve_faction_influence", actor=0),
+    )
+
+    assert gained.state.players[0].influence.emperor == 1
     assert (
-        dict(expired.state.decision_stack[-1].context)["pending_agent_effect"]
+        dict(gained.state.decision_stack[-1].context)["pending_faction_influence"]
+        is False
+    )
+
+
+def test_subversive_advisor_expiry_off_a_resolved_box_restores_nothing() -> None:
+    # The space's Influence comes back only from a box that still held it:
+    # once the box has resolved (2 Influence, card trashed), a later
+    # expiry check finds nothing to expire or restore.
+    state = _subversive_state()
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    resolved = resolve_agent_card_effect(placed)
+
+    rechecked = expire_trashed_card_effects(resolved)
+
+    assert rechecked == resolved
+    assert rechecked.state.players[0].influence.emperor == 2
+    assert (
+        dict(rechecked.state.decision_stack[-1].context)["pending_faction_influence"]
         is False
     )
 
@@ -4529,15 +4694,20 @@ def test_shishakli_trash_draw_may_be_declined() -> None:
     assert result.state.players[0].trashed == ()
 
 
-def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
+def _tread_in_darkness_placed(
+    *, hand: tuple[str, ...] = (), deck: tuple[str, ...] = ()
+) -> tuple[GameState, str, str]:
+    """Tread in Darkness sent to Arrakeen beside a Bene Gesserit card in play.
+
+    Returns the placed state, Tread in Darkness and the Bond card.
+    """
+
     tread = _imperium_instance("tread_in_darkness")
     bond_card = _imperium_instance("truthtrance")
-    trashed_card = _instance("dagger")
-    drawn_card = _instance("convincing_argument")
     owner = PlayerState(
         player_id=0,
-        hand=(tread, trashed_card),
-        deck=(drawn_card,),
+        hand=(tread, *hand),
+        deck=deck,
         in_play=(bond_card,),
     )
     state = GameState(
@@ -4555,28 +4725,113 @@ def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
         ),
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
-    action = next(
+    return placed, tread, bond_card
+
+
+def _trash_choice(state: GameState, card_id: str | None) -> DomainAction:
+    return next(
         action
-        for action in legal_agent_card_trash_actions(placed, 0)
-        if dict(action.arguments).get("card_id") == trashed_card
+        for action in legal_agent_card_trash_actions(state, 0)
+        if dict(action.arguments).get("card_id") == card_id
     )
 
-    result = apply_agent_card_trash(placed, action)
+
+def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
+    # "If you have another Bene Gesserit card in play: [trash] [draw 1]"
+    # [Tread in Darkness card]: two icons with no arrow, each its own effect
+    # in the owner's order [Main p. 9] (OQ-027).
+    trashed_card = _instance("dagger")
+    drawn_card = _instance("convincing_argument")
+    placed, tread, bond_card = _tread_in_darkness_placed(
+        hand=(trashed_card,), deck=(drawn_card,)
+    )
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "trash,cards"
+    )
+    assert _offered_icons(placed) == {"cards"}
+    engine = UprisingRulesEngine()
+    legal = engine.legal_actions(placed, 0)
+    assert _trash_choice(placed, trashed_card) in legal
+    assert DomainAction(action_id="decline_agent_card_trash", actor=0) in legal
+
+    result = apply_agent_card_trash(placed, _trash_choice(placed, trashed_card))
 
     assert result.state.players[0].trashed == (trashed_card,)
-    assert result.state.players[0].hand == (drawn_card,)
-    assert result.state.players[0].in_play == (bond_card, tread)
+    # The draw is its own icon, still to resolve.
+    assert result.state.players[0].hand == ()
+    assert legal_agent_card_trash_actions(result.state, 0) == ()
+    drawn = resolve_agent_card_icon(
+        result.state, _icon_action(result.state, "cards")
+    ).state
+    assert drawn.players[0].hand == (drawn_card,)
+    assert drawn.players[0].in_play == (bond_card, tread)
+    assert dict(drawn.decision_stack[-1].context)["pending_agent_effect"] is False
 
-    # Two icons, no arrow: declining the optional trash [Main p. 20] still
-    # draws the card (user ruling 2026-09-09, OQ-058).
-    decline = next(
-        action
-        for action in legal_agent_card_trash_actions(placed, 0)
-        if action.action_id == "decline_agent_card_trash"
-    )
-    kept = apply_agent_card_trash(placed, decline)
+    # Declining the optional trash ("검은색 trash 아이콘에 의한 trash는
+    # 선택이지만" [Main p. 20]) still leaves the draw (OQ-058).
+    kept = apply_agent_card_trash(placed, _trash_choice(placed, None))
+    assert kept.events[-1].kind == "agent_card_trash_declined"
     assert kept.state.players[0].trashed == ()
-    assert kept.state.players[0].hand == (trashed_card, drawn_card)
+    assert kept.state.players[0].hand == (trashed_card,)
+    kept_drawn = resolve_agent_card_icon(
+        kept.state, _icon_action(kept.state, "cards")
+    ).state
+    assert kept_drawn.players[0].hand == (trashed_card, drawn_card)
+
+
+def test_tread_in_darkness_draws_first_and_may_trash_the_drawn_card() -> None:
+    drawn_card = _instance("convincing_argument")
+    placed, _, _ = _tread_in_darkness_placed(deck=(drawn_card,))
+
+    drawn = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    assert drawn.players[0].hand == (drawn_card,)
+    assert dict(drawn.decision_stack[-1].context)["pending_agent_icons"] == "trash"
+
+    result = apply_agent_card_trash(drawn, _trash_choice(drawn, drawn_card))
+
+    assert result.state.players[0].trashed == (drawn_card,)
+    assert result.state.players[0].hand == ()
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_tread_in_darkness_draw_waits_once_its_bond_card_is_trashed() -> None:
+    # The Bond is judged per icon when it resolves (OQ-028): trashing the
+    # other Bene Gesserit card first leaves the draw without its condition,
+    # so it is not offered and lapses at the turn's end (OQ-057 (1)). Drawn
+    # first, it would have paid.
+    drawn_card = _instance("convincing_argument")
+    placed, _, bond_card = _tread_in_darkness_placed(deck=(drawn_card,))
+
+    trashed = apply_agent_card_trash(placed, _trash_choice(placed, bond_card)).state
+
+    assert trashed.players[0].trashed == (bond_card,)
+    assert legal_agent_card_icon_actions(trashed, 0) == ()
+    assert agent_card_effect_is_unavailable(trashed)
+    fizzled = fizzle_pending_agent_icons(trashed)
+    assert [
+        dict(event.payload)["effect"] for event in fizzled.events
+    ] == ["cards"]
+    assert fizzled.state.players[0].hand == ()
+
+
+def test_tread_in_darkness_trashing_itself_still_draws() -> None:
+    # The card leaves play by its own icon, so its draw still pays out
+    # (OQ-022, OQ-027); the other Bene Gesserit card keeps the Bond.
+    drawn_card = _instance("convincing_argument")
+    placed, tread, bond_card = _tread_in_darkness_placed(deck=(drawn_card,))
+
+    trashed = apply_agent_card_trash(placed, _trash_choice(placed, tread))
+    expired = expire_trashed_card_effects(trashed)
+
+    assert expired.state.players[0].trashed == (tread,)
+    assert _offered_icons(expired.state) == {"cards"}
+    drawn = resolve_agent_card_icon(
+        expired.state, _icon_action(expired.state, "cards")
+    ).state
+    assert drawn.players[0].hand == (drawn_card,)
+    assert drawn.players[0].in_play == (bond_card,)
 
 
 def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:
@@ -5761,82 +6016,171 @@ def test_branching_path_without_an_intrigue_card_only_offers_decline() -> None:
     assert legal_agent_card_trash_actions(placed, 0) == ()
 
 
-def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
+def _cargo_runner_state(
+    completed: tuple[str, ...],
+    *,
+    active: tuple[str, ...] = (),
+    deck: tuple[str, ...] = (),
+) -> GameState:
     cargo_runner = _imperium_instance("cargo_runner", choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(cargo_runner,),
+        deck=deck,
+        active_contract_ids=active,
+        completed_contract_ids=completed,
+    )
+    return GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _offered_icons(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
+def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
+    # Two printed lines, "If you have completed two or more contracts:
+    # [draw 1]" and "If you have completed four or more contracts: [draw 1]"
+    # [Cargo Runner card]: two icons resolved one action each (OQ-027).
     draws = (
         _imperium_instance("truthtrance"),
         _imperium_instance("sardaukar_soldier"),
     )
-    owner = PlayerState(
-        player_id=0,
-        hand=(cargo_runner,),
-        deck=draws,
-        completed_contract_ids=(
+    state = _cargo_runner_state(
+        (
             "contract:arrakeen_i",
             "contract:arrakeen_ii",
             "contract:deliver_supplies",
             "contract:espionage_i",
             "contract:espionage_i_copy_2",
         ),
-    )
-    state = GameState(
-        config=RulesetConfig(choam_module=True),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
+        deck=draws,
     )
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards,cards_second"
+    )
+    assert _offered_icons(placed) == {"cards", "cards_second"}
 
-    result = resolve_agent_card_effect(placed)
+    second = resolve_agent_card_icon(placed, _icon_action(placed, "cards_second"))
+    result = resolve_agent_card_icon(
+        second.state, _icon_action(second.state, "cards")
+    )
 
     assert len(result.state.players[0].hand) == 2
     assert result.state.players[0].deck == ()
     assert result.events[-1].kind == "agent_card_effect_resolved"
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
 
 
 def test_cargo_runner_counts_a_contract_completed_earlier_in_the_turn() -> None:
-    cargo_runner = _imperium_instance("cargo_runner", choam_module=True)
     drawn = _imperium_instance("truthtrance")
-    owner = PlayerState(
-        player_id=0,
-        hand=(cargo_runner,),
+    state = _cargo_runner_state(
+        ("contract:deliver_supplies",),
+        active=("contract:arrakeen_i",),
         deck=(drawn,),
-        active_contract_ids=("contract:arrakeen_i",),
-        completed_contract_ids=("contract:deliver_supplies",),
-    )
-    state = GameState(
-        config=RulesetConfig(choam_module=True),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    # One completed contract: neither line is offered yet; both wait.
+    assert _offered_icons(placed) == set()
     completion = legal_contract_completion_actions(placed, 0)[0]
     completed = apply_contract_completion(placed, completion).state
+    assert _offered_icons(completed) == {"cards"}
 
-    result = resolve_agent_card_effect(completed)
+    result = resolve_agent_card_icon(completed, _icon_action(completed, "cards"))
 
     assert result.state.players[0].completed_contract_ids == (
         "contract:deliver_supplies",
         "contract:arrakeen_i",
     )
     assert result.state.players[0].hand == (drawn,)
+
+
+def test_cargo_runner_second_line_waits_for_a_fourth_contract_in_the_turn() -> None:
+    # Each line is judged when it resolves (OQ-028): the first line drawn at
+    # three contracts leaves the four-contract line waiting (OQ-057 (1)); a
+    # fourth contract completed later in the same Agent turn offers it, and
+    # it is mandatory then.
+    first = _imperium_instance("truthtrance")
+    second = _imperium_instance("sardaukar_soldier")
+    state = _cargo_runner_state(
+        (
+            "contract:deliver_supplies",
+            "contract:espionage_i",
+            "contract:espionage_i_copy_2",
+        ),
+        active=("contract:arrakeen_i",),
+        deck=(first, second),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    assert _offered_icons(placed) == {"cards"}
+
+    drew_one = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    assert drew_one.players[0].hand == (first,)
+    assert dict(drew_one.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards_second"
+    )
+    assert _offered_icons(drew_one) == set()
+    assert agent_card_effect_is_unavailable(drew_one)
+
+    completion = legal_contract_completion_actions(drew_one, 0)[0]
+    fourth = apply_contract_completion(drew_one, completion).state
+    assert len(fourth.players[0].completed_contract_ids) == 4
+    assert _offered_icons(fourth) == {"cards_second"}
+    assert not agent_card_effect_is_unavailable(fourth)
+    # Mandatory now: the turn's end waits for it.
+    assert DomainAction(action_id="finish_agent_turn", actor=0) not in (
+        UprisingRulesEngine().legal_actions(fourth, 0)
+    )
+
+    result = resolve_agent_card_icon(fourth, _icon_action(fourth, "cards_second"))
+
+    assert result.state.players[0].hand == (first, second)
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_cargo_runner_second_line_lapses_at_the_turn_end_below_four() -> None:
+    first = _imperium_instance("truthtrance")
+    second = _imperium_instance("sardaukar_soldier")
+    state = _cargo_runner_state(
+        ("contract:deliver_supplies", "contract:espionage_i"),
+        deck=(first, second),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    drew_one = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    # The space's own Intrigue icon first; only the waiting line is left.
+    board = legal_board_effect_actions(drew_one, 0)
+    assert len(board) == 1
+    drew_one = UprisingRulesEngine().apply(drew_one, board[0]).state
+
+    closed = finish_agent_turn_result(drew_one)
+
+    assert closed.state.players[0].hand == (first,)
+    assert closed.state.players[0].deck == (second,)
+    assert [
+        dict(event.payload)["effect"]
+        for event in closed.events
+        if event.kind == "agent_card_effect_unavailable"
+    ] == ["cards_second"]
 
 
 def test_delivery_agreement_discards_a_card_to_take_a_contract() -> None:
@@ -5902,6 +6246,59 @@ def test_interstellar_trade_agent_effect_gains_chosen_influence() -> None:
     result = apply_agent_card_influence(placed, action)
 
     assert result.state.players[0].influence.fremen == 1
+
+
+def test_interstellar_trade_influence_waits_while_every_cube_is_at_the_top() -> (
+    None
+):
+    """OQ-060: a gain on a cube at 6 is lost, so the box's picker offers no
+    Faction there. With every cube at 6 the mandatory box cannot be fired to
+    fizzle while the turn goes on (a later Plot may lower a cube); it waits
+    and fizzles when its owner ends the turn (OQ-057 (1))."""
+
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    owner = PlayerState(player_id=0, hand=(interstellar,), influence=full)
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    assert legal_agent_card_influence_actions(placed, 0) == ()
+    assert agent_card_effect_is_unavailable(placed)
+    assert agent_box_influence_blocked(placed, 0)
+    engine = UprisingRulesEngine()
+    while board := legal_board_effect_actions(placed, 0):
+        placed = engine.apply(placed, board[0]).state
+    assert DomainAction("resolve_agent_card_effect", 0) not in engine.legal_actions(
+        placed, 0
+    )
+    finished = finish_agent_turn_result(placed)
+    assert "agent_card_effect_unavailable" in {e.kind for e in finished.events}
+    assert finished.state.players[0].influence == full
+
+    one_below = replace(
+        placed,
+        players=(
+            replace(placed.players[0], influence=replace(full, fremen=5)),
+            *placed.players[1:],
+        ),
+    )
+    assert [
+        dict(a.arguments)["faction"]
+        for a in legal_agent_card_influence_actions(one_below, 0)
+    ] == ["fremen"]
+    assert not agent_box_influence_blocked(one_below, 0)
 
 
 def test_priority_contracts_takes_a_contract_or_converts_an_empty_market() -> None:

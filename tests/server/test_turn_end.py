@@ -22,6 +22,7 @@ Every seed below was found by a scratch search over seeds, not guessed.
 import random
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -46,7 +47,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.combat_deployment import FINISHING_KEY
-from dune_imperium.rules.engine import _advance_automatic
+from dune_imperium.rules.engine import UprisingRulesEngine, _advance_automatic
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.access import AccessMode, Credentials
@@ -1085,6 +1086,181 @@ def test_an_owed_emperor_track_spy_holds_the_turn_end_ready_flag() -> None:
     assert agent_turn_end_ready(session.state) == 0
 
 
+_ENGINE = UprisingRulesEngine()
+_SIGNET = "player:0:starter:signet_ring:0"
+_GHOLA = "tleilaxu:ghola:0"
+_RESOLVING: Final = (
+    "decline_gather_intelligence",
+    "resolve_agent_card_effect",
+    "resolve_board_effect",
+    "resolve_faction_influence",
+)
+
+
+def _resolve_what_is_offered(
+    hand: tuple[str, ...],
+    space_id: str,
+    *,
+    graft_partner: str | None = None,
+    **owner: object,
+) -> GameState:
+    """Seat 0 sends ``hand[0]`` (grafted to ``graft_partner``) to
+    ``space_id`` and resolves every effect the engine offers, both graft
+    boxes included, until only what waits is left."""
+
+    imperium = imperium_deck_instance_ids(True)
+    state = GameState(
+        config=RulesetConfig(choam_module=True, immortality=True, promo_cards=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False, immortality=True)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=(
+            _usurp_seat(
+                0,
+                hand=hand,
+                deck=tuple(c for c in _IMMORTALITY_STARTERS if c not in hand),
+                resources=Resources(solari=4, spice=2, water=2),
+                **owner,
+            ),
+            *(_usurp_seat(seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    place = next(
+        action
+        for action in _ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("card_id") == hand[0]
+        and dict(action.arguments).get("space_id") == space_id
+        and (dict(action.arguments).get("graft") is True) == bool(graft_partner)
+        and "cost_option" not in dict(action.arguments)
+    )
+    state = _ENGINE.apply(state, place).state
+    if graft_partner is not None:
+        partner = DomainAction(
+            action_id="choose_graft_partner",
+            actor=0,
+            arguments=(("card_id", graft_partner),),
+        )
+        state = _ENGINE.apply(state, partner).state
+    switched = False
+    while True:
+        legal = _ENGINE.legal_actions(state, 0)
+        step = next((a for a in legal if a.action_id in _RESOLVING), None)
+        if step is None and not switched:
+            step = next((a for a in legal if a.action_id == "switch_graft_card"), None)
+            switched = True
+        if step is None:
+            return state
+        if step.action_id != "switch_graft_card":
+            switched = False
+        state = _ENGINE.apply(state, step).state
+
+
+@pytest.mark.parametrize(
+    ("hand", "space_id", "graft_partner", "owner", "waiting"),
+    [
+        # FILL COFFERS' spice "If you have an Alliance" [Lady Amber Metulli
+        # card], no Alliance held.
+        pytest.param(
+            (_SIGNET,),
+            "arrakeen",
+            None,
+            {"leader_id": "lady_amber_metulli"},
+            {"spice"},
+            id="signet_without_alliance",
+        ),
+        # Industrial Espionage's "If grafted:" line on an ungrafted play.
+        pytest.param(
+            ("tleilaxu:industrial_espionage:0",),
+            "assembly_hall",
+            None,
+            {},
+            {"research"},
+            id="industrial_espionage_ungrafted",
+        ),
+        # Both graft boxes keep only the blocked Alliance spice: Ghola
+        # copies the Signet's box [Immortality p. 14].
+        pytest.param(
+            (_SIGNET, _GHOLA),
+            "arrakeen",
+            _GHOLA,
+            {"leader_id": "lady_amber_metulli"},
+            {"spice"},
+            id="grafted_signet_and_ghola",
+        ),
+    ],
+)
+def test_a_box_keeping_only_blocked_icons_is_ready_to_end(
+    hand: tuple[str, ...],
+    space_id: str,
+    graft_partner: str | None,
+    owner: dict[str, object],
+    waiting: set[str],
+) -> None:
+    # The box keeps an icon whose printed condition is false: it is not
+    # offered and fizzles at the press (OQ-057 (1)), while finish_agent_turn
+    # is already legal. Every icon condition is public, so the page may say
+    # the turn is ready to end; before, the pending box held the banner off.
+    state = _resolve_what_is_offered(
+        hand, space_id, graft_partner=graft_partner, **owner
+    )
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is True
+    assert set(str(context["pending_agent_icons"]).split(",")) == waiting
+    if graft_partner is not None:
+        assert context["graft_pending_effect"] is True
+        assert set(str(context["graft_pending_icons"]).split(",")) == waiting
+    offered = {action.action_id for action in _ENGINE.legal_actions(state, 0)}
+    assert "finish_agent_turn" in offered
+    assert offered.isdisjoint({*_RESOLVING, "switch_graft_card"})
+
+    assert agent_turn_end_ready(state) == 0
+
+    manager = GameSessionManager()
+    game_id = str(
+        manager.create_game(
+            HUMAN_FIRST,
+            game_seed=0,
+            choam_module=True,
+            immortality=True,
+            promo_cards=True,
+        )["game_id"]
+    )
+    manager._get(game_id).state = state
+    decision = _obj(manager.summary(game_id)["decision"])
+    assert decision["turn_end_ready"] is True
+    assert decision["prompt"] == AGENT_TURN_END_PROMPT
+
+
+def test_a_waiting_single_effect_box_still_holds_the_ready_flag() -> None:
+    # Interstellar Trade's "choose a Faction" box with every cube at 6 waits
+    # for the turn's end (OQ-057 (1), OQ-060) and finish_agent_turn is
+    # legal, but a single-effect box's stall is a dry run that can depend
+    # on the owner's hand, so the public flag stays off for it.
+    card = "imperium:interstellar_trade:0"
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _resolve_what_is_offered((card,), "assembly_hall", influence=full)
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is True
+    assert not context.get("pending_agent_icons")
+    assert "finish_agent_turn" in {
+        action.action_id for action in _ENGINE.legal_actions(state, 0)
+    }
+
+    assert agent_turn_end_ready(state) is None
+
+
 def test_a_humans_own_last_effect_answered_by_ai_seats_keeps_its_turn() -> None:
     # The other half of the same clause: Covert Operation is the human
     # seat's LAST pending effect, and the AI opponents' discards are the
@@ -1206,18 +1382,20 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # already revealed this round. ``_turn_passed`` alone reads that as
     # "still my turn" and would never announce the hand-over a human
     # server's autosave relies on (``add_hand_over_listener``); ``ended``
-    # is exactly what still fires it. Seed 33, three random AI opponents,
-    # found by a scratch random walk (rng seed 33 * 9973 + 1): seed 18 of
+    # is exactly what still fires it. Seed 21, three random AI opponents,
+    # found by a scratch random walk (rng seed 21 * 9973 + 1): seed 18 of
     # scratchpad/verify_item4.py (2026-09-24 session) no longer reaches it
-    # once every Agent turn waits for its finish_agent_turn (OQ-095), and
-    # seed 33 is the first of 0-39 whose end is a finish_agent_turn.
+    # once every Agent turn waits for its finish_agent_turn (OQ-095).
+    # Seed 33 reached it until Tactical Option's zero retreat (2026-10-06)
+    # added a legal option that moves the random walk; re-searched then,
+    # seed 21 is the first of 0-39 whose end is a finish_agent_turn.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=33)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=21)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(33 * 9973 + 1)
+    rng = random.Random(21 * 9973 + 1)
 
     found = False
     for _ in range(6000):

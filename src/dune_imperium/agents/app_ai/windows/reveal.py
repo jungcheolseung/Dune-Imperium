@@ -1502,7 +1502,7 @@ def _reclaimed_forces_source(run: DecisionRun) -> list[Source]:
     """``ReclaimedForcesAcquireAbility`` (immortality.md §3.6): option 0 two
     troops, 1 one Tleilaxu step. At the end of the Tleilaxu track the app
     drops option 1 (R7 §2.4), so the troops are taken there; our engine
-    still offers ``choice=tleilaxu`` (OQ-048 adjacent)."""
+    withholds ``choice=tleilaxu`` there too (OQ-048, OQ-071)."""
 
     actions = run.by_id("acquire_reclaimed_forces")
     if not actions:

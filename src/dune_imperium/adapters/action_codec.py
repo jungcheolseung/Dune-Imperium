@@ -266,7 +266,34 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # automatic rewards may resolve ahead of an earlier reward's pending choice
 # (Water Discipline's draw before its trash); ``scouts_rewards_first`` joins
 # the Scouts catalogs (+1).
-ACTION_CODEC_VERSION = 136
+# v137 (card-transcription comparison batch, 2026-10-06): three automatic
+# Agent-icon keys, one more ``resolve_agent_card_effect`` template each
+# (+3): ``cards_second`` (Cargo Runner's "four or more contracts" draw,
+# judged apart from its "two or more" line), ``research`` (Industrial
+# Espionage's "If grafted: [Research] [specimen]" line, apart from its draw)
+# and ``return_self`` (Stillsuit Manufacturer's return, waiting for a Fremen
+# Alliance apart from its water) (OQ-027, OQ-028, OQ-057 (1)).
+# ``retreat_intrigue_troops`` gains count 0, since Tactical Option's "any
+# number" may be zero [Main p. 20] [FAQ p. 3] (+1); ``deploy_intrigue_troops``
+# gains count 0, since "Deploy up to ..." (Counterattack, Detonation, Twisted
+# Devious) may deploy none and no longer needs a deployable garrison unit to
+# be played (+1). ``resolve_intrigue_influence_without_faction`` confirms an
+# Intrigue "choose a Faction" Influence gain with every cube it may raise at
+# 6 (OQ-060, +1). Immortality catalogs also gain
+# ``acquire_intrigue_reclaimed_forces`` (one template per chosen effect,
+# +2): Harvest Cells may take Reclaimed Forces (user ruling 2026-10-06).
+# Legal-action sets also change without template changes, so saves and
+# replays from v136 are refused by the version check: Harvest contracts
+# count the whole turn's spice; Tread in Darkness's trash and draw are
+# separate icons; Fill Coffers' Alliance spice and Stillsuit Manufacturer's
+# return wait for their conditions; Treacherous Maneuver replaces the
+# space's Influence with two and Subversive Advisor's expired box gives the
+# space's Influence back; cost lines whose reward would change nothing are
+# withheld (OQ-071); card and Leader Influence pickers no longer offer a
+# Faction at 6 (OQ-060); other acquire effects may take a Manipulate
+# set-aside card at its printed cost [FAQ p. 3]; and Harvest Cells is played
+# only after the Conflict resolves (OQ-057 (11)).
+ACTION_CODEC_VERSION = 137
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -393,6 +420,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_influence_exchange",
             "decline_reveal_card_trash",
             "skip_intrigue_acquisition",
+            # An Intrigue "choose a Faction" Influence with every Faction it
+            # may raise at the top is confirmed (OQ-060).
+            "resolve_intrigue_influence_without_faction",
             "finish_intrigue_effects",
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
@@ -697,17 +727,21 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     )
     templates.extend(_trash_templates(config, "trash_intrigue_card"))
+    # "Deploy up to N troops" (Detonation, Counterattack, Devious) may deploy
+    # zero, hence ``count`` 0 (codec v137).
     templates.extend(
         ActionTemplate(
             action_id="deploy_intrigue_troops", arguments=(("count", count),)
         )
-        for count in range(1, MAX_INTRIGUE_DEPLOYMENT + 1)
+        for count in range(0, MAX_INTRIGUE_DEPLOYMENT + 1)
     )
+    # Tactical Option's "any number" retreat may choose zero [Main p. 20]
+    # [FAQ p. 3], hence ``count`` 0 (codec v137).
     templates.extend(
         ActionTemplate(
             action_id="retreat_intrigue_troops", arguments=(("count", count),)
         )
-        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+        for count in range(0, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.extend(
         ActionTemplate(
@@ -1353,8 +1387,8 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_research_bonus",
-            # Harvest Cells gained as a Combat reward, played before the
-            # cleanup (OQ-057).
+            # Harvest Cells, played only after the rewards and before the
+            # cleanup (OQ-057 (11), user ruling 2026-10-06).
             "decline_conflict_end_intrigue",
             "pay_research_bonus",
             "return_specimen",
@@ -1532,6 +1566,15 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 arguments=(("instance_id", instance_id), ("to_deck_top", True)),
             )
         )
+    # Reclaimed Forces is a Tleilaxu card Harvest Cells may take too: one
+    # template per effect chosen (user ruling 2026-10-06).
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_intrigue_reclaimed_forces",
+            arguments=(("choice", choice),),
+        )
+        for choice in ("troops", "tleilaxu")
+    )
     templates.append(ActionTemplate(action_id="decline_intrigue_tleilaxu"))
     templates.extend(
         ActionTemplate(

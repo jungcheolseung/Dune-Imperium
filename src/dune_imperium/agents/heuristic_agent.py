@@ -27,7 +27,10 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import LoseInfluence
+from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
+    LoseInfluence,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -37,6 +40,7 @@ from dune_imperium.content.uprising.reserve import (
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
+from dune_imperium.rules.influence import MAX_INFLUENCE
 
 # Strategy weights, largest first: direct victory points, then permanent
 # upgrades, then cards, units, and resources. Declines and passes sit below
@@ -234,6 +238,14 @@ _RESERVE_ACQUISITIONS: Final = frozenset(
 )
 _COUNT_DEPLOYMENTS: Final = frozenset(
     {"deploy_troops", "deploy_intrigue_troops", "deploy_commanders"}
+)
+# Intrigue unit moves whose ``count`` may be zero since codec v137: "Deploy
+# up to N troops" (Counterattack, Detonation, Twisted Devious) and Tactical
+# Option's "Retreat any number". Zero moves nothing and was not offered
+# before, so it ranks below every count that moves a unit
+# (``HeuristicAgent.choose_action``).
+_ZERO_COUNT_UNIT_MOVES: Final = frozenset(
+    {"deploy_intrigue_troops", "retreat_intrigue_troops"}
 )
 
 # Actions that leave a grafted card's box untouched; when only these
@@ -730,11 +742,12 @@ def _intrigue_faction_choice_is_loss(
 
     The frame does not say; the resolving card and the offered tracks do. The
     loss step offers exactly the occupied tracks, while the card's gain step
-    is unrestricted and offers all four (a full track too: the engine lets
-    that gain fizzle, ``influence_gain_candidates`` does not filter it). So
-    fewer than four tracks offered is the loss; four offered with an empty
-    track is the gain; ``None`` when every track is occupied and offered,
-    where the two steps look alike.
+    is unrestricted and offers exactly the tracks below the top (a full track
+    is left out since the gain there is lost, OQ-060,
+    ``influence_gain_candidates``). So the set that matches only the occupied
+    tracks is the loss, the one that matches only the tracks below the top is
+    the gain, and ``None`` when the two sets coincide (every track between 1
+    and 5) or the offer matches neither.
     """
 
     lose_cost = False
@@ -751,12 +764,16 @@ def _intrigue_faction_choice_is_loss(
         )
     if not lose_cost:
         return False
-    if len(offered) < len(_FACTIONS):
-        return True
     me = _own_seat(view)
-    if any(_influence_of(me, faction) == 0 for faction in _FACTIONS):
-        return False
-    return None
+    occupied = frozenset(f for f in _FACTIONS if _influence_of(me, f) > 0)
+    below_top = frozenset(
+        f for f in _FACTIONS if _influence_of(me, f) < MAX_INFLUENCE
+    )
+    loss = offered == occupied
+    gain = offered == below_top
+    if loss == gain:
+        return None
+    return loss
 
 
 _FACTIONS: Final = tuple(faction.value for faction in Faction)
@@ -1084,6 +1101,105 @@ def _acquisition_cost(action: DomainAction) -> int | None:
     return None
 
 
+def _deploys_only_from_garrison(action: DomainAction) -> bool:
+    """Whether a ``play_intrigue`` option's only rewards are garrison deploys.
+
+    Reads the printed option (Counterattack's Plot, Detonation's and Twisted
+    Devious' second Plot): "Deploy up to N troops from your garrison to the
+    Conflict" is all the option does.
+    """
+
+    if action.action_id != "play_intrigue":
+        return False
+    instance_id = _argument(action, "card_id")
+    option = _argument(action, "option")
+    if not isinstance(instance_id, str) or not isinstance(option, int):
+        return False
+    try:
+        options = intrigue_card_for_instance(instance_id).options
+    except ValueError:
+        return False
+    if not 0 <= option < len(options):
+        return False
+    rewards = tuple(
+        reward for section in options[option].sections for reward in section.rewards
+    )
+    return bool(rewards) and all(
+        isinstance(reward, DeployFromGarrison) for reward in rewards
+    )
+
+
+def _garrison_units(view: PlayerView) -> int:
+    """Troops and Commanders in the observer's garrison."""
+
+    me = _own_seat(view)
+    return me.troops_garrison + me.commanders_garrison
+
+
+def demote_pointless_actions(
+    observation: PlayerView,
+    legal_actions: tuple[DomainAction, ...],
+    scored: tuple[float, ...],
+) -> tuple[float, ...]:
+    """Rank last the legal actions that only waste the seat's turn or card.
+
+    Applied after ``score_action`` and before the tie set is fixed, so each
+    demoted action falls below every other offer; the scratch variants under
+    ``scripts/ab`` call it too, so they keep tracking this agent.
+    """
+
+    if any(
+        action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
+    ):
+        # Switching to the other grafted card only reorders the boxes;
+        # whenever the active box (or a decline of it) can be resolved,
+        # that comes first, or two boxes whose offers rank below the
+        # switch loop forever (Ghola copying Corrinth City or CHOAM
+        # Demands, 2026-09-08 seeds 11 and 32).
+        scored = tuple(
+            min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
+        # A specimen may be returned at Combat Intrigue priority too
+        # (OQ-050), but nothing then refills from the supply, so it only
+        # empties the tanks: passing ranks above it.
+        scored = tuple(
+            min(scored) - 1.0 if action.action_id == "return_specimen" else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(
+        action.action_id == "play_intrigue" for action in legal_actions
+    ) and _garrison_units(observation) < 1:
+        # "Deploy up to N troops from your garrison" may be played with
+        # nothing to deploy since codec v137 and then only deploys zero,
+        # so the card is spent for nothing. Before, the engine withheld
+        # the line without a deployable garrison unit; with an empty
+        # garrison it ranks last again. The view does not show the
+        # turn's other deployment limits (Harkonnen Advisor's troop,
+        # OQ-038; Emperor of the Known Universe [Main p. 17]).
+        scored = tuple(
+            min(scored) - 1.0 if _deploys_only_from_garrison(action) else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(
+        action.action_id in _ZERO_COUNT_UNIT_MOVES
+        and _argument(action, "count") == 0
+        for action in legal_actions
+    ):
+        # A zero count moves nothing and was not offered before codec
+        # v137: it ranks below every count that moves a unit, so the
+        # counts of one and more keep the order (and the draw) they had.
+        scored = tuple(
+            min(scored) - 1.0
+            if action.action_id in _ZERO_COUNT_UNIT_MOVES
+            and _argument(action, "count") == 0
+            else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    return scored
+
+
 @dataclass(slots=True)
 class HeuristicAgent:
     """Pick a highest-scoring legal action, breaking ties with a seeded RNG."""
@@ -1135,26 +1251,7 @@ class HeuristicAgent:
             score_action(action, space_bonuses=bonuses, tech_bonuses=tech_bonuses)
             for action in legal_actions
         )
-        if any(
-            action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
-        ):
-            # Switching to the other grafted card only reorders the boxes;
-            # whenever the active box (or a decline of it) can be resolved,
-            # that comes first, or two boxes whose offers rank below the
-            # switch loop forever (Ghola copying Corrinth City or CHOAM
-            # Demands, 2026-09-08 seeds 11 and 32).
-            scored = tuple(
-                min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
-                for action, s in zip(legal_actions, scored, strict=True)
-            )
-        if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
-            # A specimen may be returned at Combat Intrigue priority too
-            # (OQ-050), but nothing then refills from the supply, so it only
-            # empties the tanks: passing ranks above it.
-            scored = tuple(
-                min(scored) - 1.0 if action.action_id == "return_specimen" else s
-                for action, s in zip(legal_actions, scored, strict=True)
-            )
+        scored = demote_pointless_actions(observation, legal_actions, scored)
         best = max(scored)
         top = tuple(
             action

@@ -28,7 +28,12 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult
-from dune_imperium.rules.agent_effects import resolve_agent_card_effect
+from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
+    legal_agent_card_icon_actions,
+    resolve_agent_card_effect,
+    resolve_agent_card_icon,
+)
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     apply_desert_tactics_action,
@@ -58,6 +63,7 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_placement_ability_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
+    signet_influence_withheld,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.setup import create_initial_state
@@ -149,7 +155,23 @@ def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
     assert dict(result.events[0].payload)["troops"] == 0
 
 
+def _fill_coffers_icon(key: str) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", key),)
+    )
+
+
+def _offered_icons(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
 def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
+    # "FILL COFFERS — [1 Solari] —AND— If you have an Alliance: [1 spice]"
+    # [Lady Amber Metulli card]: two icons of the Signet Ring's box
+    # (OQ-027), the spice judged when it resolves (OQ-028).
     owner = PlayerState(
         player_id=0,
         leader_id="lady_amber_metulli",
@@ -157,13 +179,31 @@ def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
     )
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "solari,spice"
+    )
+    assert _offered_icons(placed) == {"solari"}
 
-    result = resolve_agent_card_effect(placed)
+    result = resolve_agent_card_icon(placed, _fill_coffers_icon("solari"))
     resources = result.state.players[0].resources
 
     assert resources.solari == 1
     assert resources.spice == 0
-    assert dict(result.events[0].payload)["spice"] == 0
+    # Without an Alliance by the turn's end the spice lapses (OQ-057 (1)).
+    working = result.state
+    engine = UprisingRulesEngine()
+    finish = DomainAction("finish_agent_turn", 0)
+    while finish not in (legal := engine.legal_actions(working, 0)):
+        working = engine.apply(
+            working, next(a for a in legal if not a.action_id.startswith("deploy"))
+        ).state
+    closed = engine.apply(working, finish)
+    assert closed.state.players[0].resources.spice == 0
+    assert [
+        dict(event.payload)["effect"]
+        for event in closed.events
+        if event.kind == "agent_card_effect_unavailable"
+    ] == ["spice"]
 
 
 def test_fill_coffers_signet_adds_spice_while_holding_an_alliance() -> None:
@@ -175,14 +215,56 @@ def test_fill_coffers_signet_adds_spice_while_holding_an_alliance() -> None:
     )
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert _offered_icons(placed) == {"solari", "spice"}
 
-    result = resolve_agent_card_effect(placed)
+    spiced = resolve_agent_card_icon(placed, _fill_coffers_icon("spice")).state
+    result = resolve_agent_card_icon(spiced, _fill_coffers_icon("solari"))
     resources = result.state.players[0].resources
 
     # Fill Coffers: one Solari, and one Spice with an Alliance [Lady Amber
     # Metulli card].
     assert resources.solari == 1
     assert resources.spice == 1
+
+
+def test_fill_coffers_spice_waits_for_an_alliance_formed_later_in_the_turn() -> (
+    None
+):
+    # The Signet before the Alliance: the Solari now, and the spice once
+    # Shipping's Fremen Influence takes the Alliance in the same turn; it is
+    # mandatory then (OQ-057 (1)).
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=(_signet_instance(),),
+        resources=Resources(spice=3),
+        influence=Influence(spacing_guild=2, fremen=3),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "shipping")).state
+    solari = resolve_agent_card_icon(placed, _fill_coffers_icon("solari")).state
+    assert solari.players[0].resources.solari == 1
+    assert _offered_icons(solari) == set()
+    assert agent_card_effect_is_unavailable(solari)
+
+    engine = UprisingRulesEngine()
+    allied = engine.apply(
+        solari,
+        DomainAction(
+            "choose_shipping_influence", 0, (("faction", Faction.FREMEN.value),)
+        ),
+    ).state
+    assert allied.players[0].alliance_faction_ids == ("fremen",)
+    assert _offered_icons(allied) == {"spice"}
+    assert DomainAction("finish_agent_turn", 0) not in engine.legal_actions(allied, 0)
+    spice_before = allied.players[0].resources.spice
+
+    result = resolve_agent_card_icon(allied, _fill_coffers_icon("spice"))
+
+    assert result.state.players[0].resources.spice == spice_before + 1
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
 
 
 def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:
@@ -773,7 +855,6 @@ def test_spice_agony_pays_for_an_intrigue_card_and_a_memory() -> None:
     # to the Bene Gesserit area as a memory [Lady Jessica card].
     assert resolved.resources.spice == 0
     assert resolved.spice_spent_turn == 1
-    assert context["spice_spent_after_placement"] == 1
     assert resolved.intrigue_cards == ("intrigue:test",)
     assert resolved.memories == 1
     assert resolved.troops_supply == 8
@@ -1711,6 +1792,45 @@ def test_chroniclers_insight_still_acquires_once_the_imperium_deck_is_empty() ->
     assert result.state.imperium_deck == ()
 
 
+def test_chroniclers_insight_reaches_the_owners_set_aside_one_cost_card() -> None:
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: a printed-1 Manipulate
+    # card is in reach, a printed-2 one (1 with the discount) is not.
+    target = "imperium:sardaukar_soldier:0"
+    discounted = "imperium:desert_survival:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+        imperium_set_aside=(target, discounted),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=("imperium:calculus_of_power:0",),
+        imperium_deck=("imperium:overthrow:0",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "acquire_leader_imperium"
+    ]
+    assert offered == [target]
+    result = apply_leader_signet_acquire(
+        placed,
+        DomainAction(
+            action_id="acquire_leader_imperium",
+            actor=0,
+            arguments=(("instance_id", target),),
+        ),
+    )
+    assert target in result.state.players[0].hand
+    assert result.state.players[0].imperium_set_aside == (discounted,)
+    assert result.state.imperium_row == state.imperium_row
+    assert result.state.imperium_deck == state.imperium_deck
+
+
 def test_chroniclers_insight_trash_pays_spice_only_for_costed_cards() -> None:
     costed = "imperium:overthrow:0"
     starter = "player:0:starter:dagger:0"
@@ -2021,6 +2141,39 @@ def test_emperor_signet_can_buy_influence_with_three_solari() -> None:
     assert resolved.influence.fremen == 1
 
 
+def test_emperor_signet_never_buys_influence_at_the_top() -> None:
+    """OQ-060: a gain on a cube at 6 is lost, so Emperor of the Known
+    Universe offers no Faction there; with every cube at 6 the three Solari
+    would buy nothing and are not offered (OQ-071), only the Solari and
+    troop."""
+
+    owner = replace(
+        _shaddam_owner(solari=3, hand=(_signet_instance(),)),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=5),
+    )
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert [
+        (action.action_id, dict(action.arguments).get("faction"))
+        for action in legal_leader_signet_actions(placed, 0)
+    ] == [
+        ("gain_leader_signet_troop", None),
+        ("choose_leader_signet_influence", "fremen"),
+    ]
+    assert not signet_influence_withheld(placed, 0)
+
+    full = replace(
+        owner,
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _choam_turn_state(full)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert [action.action_id for action in legal_leader_signet_actions(placed, 0)] == [
+        "gain_leader_signet_troop"
+    ]
+    assert signet_influence_withheld(placed, 0)
+
+
 def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
     from dune_imperium.rules.board_effects import legal_maker_space_actions
 
@@ -2042,7 +2195,11 @@ def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
     assert [action.action_id for action in actions] == ["harvest_maker_spice"]
 
 
-def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
+def test_emperor_restriction_leaves_an_intrigue_deployment_only_zero() -> None:
+    # Emperor of the Known Universe still blocks every unit for the turn
+    # [Main p. 17], but "Deploy up to four troops" may deploy zero and a
+    # target is no play condition [FAQ p. 2] (OQ-057 (6)): the line plays
+    # and offers only a zero deployment.
     from dune_imperium.content.uprising.intrigue import (
         INTRIGUE_CARDS_BY_INSTANCE,
     )
@@ -2072,7 +2229,21 @@ def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
         )
     )
 
-    assert not option_is_playable(placed, 0, card.options[deploy_option])
+    assert option_is_playable(placed, 0, card.options[deploy_option])
+    engine = UprisingRulesEngine()
+    opened = engine.apply(
+        placed,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", detonation), ("option", deploy_option)),
+        ),
+    ).state
+    assert engine.legal_actions(opened, 0) == (
+        DomainAction(
+            action_id="deploy_intrigue_troops", actor=0, arguments=(("count", 0),)
+        ),
+    )
     unrestricted = _choam_turn_state(
         replace(owner, hand=(), intrigue_cards=(detonation,))
     )

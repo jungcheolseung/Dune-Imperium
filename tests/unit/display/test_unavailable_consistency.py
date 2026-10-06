@@ -50,7 +50,6 @@ from dune_imperium.content.immortality.tleilaxu import (
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
-    DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
     EffectSection,
@@ -62,6 +61,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnTroopsLostAtConflictEnd,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -105,6 +105,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
+    legal_agent_card_trash_actions,
     spice_gained_this_turn,
 )
 from dune_imperium.rules.board_effects import (
@@ -113,12 +114,12 @@ from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
     legal_imperial_privilege_actions,
 )
+from dune_imperium.rules.card_bonds import counted_in_play, has_faction_bond
 from dune_imperium.rules.combat import (
     legal_combat_reward_influence_actions,
     legal_combat_reward_spy_actions,
     legal_distinct_combat_reward_influence_actions,
 )
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import (
     contract_recall_targets,
@@ -153,7 +154,6 @@ from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_start_is
 from dune_imperium.rules.immortality import legal_research_bonus_actions
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.intrigue import PLOT_FRAME_KINDS, legal_intrigue_play_actions
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -435,18 +435,17 @@ def _old_choice_rewards_feasible(
     for section in sections:
         for reward in section.rewards:
             match reward:
-                case DeployFromGarrison() if (
-                    owner.troops_garrison
-                    - undeployable_troops_this_turn(state, player)
-                    + owner.commanders_garrison
-                    < 1
-                    or units_deployment_blocked(state, player)
-                ):
-                    return False
+                # Updated on purpose 2026-10-06: "Deploy up to N troops" may
+                # deploy zero, so DeployFromGarrison no longer gates a play
+                # [FAQ p. 2] (OQ-057 (6)).
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
+                # Updated on purpose 2026-10-06: Tactical Option's "any
+                # number" retreat now has minimum 0 [Main p. 20] [FAQ p. 3],
+                # yet stays gated on one unit in the Conflict, as before.
                 case RetreatTroops(minimum=minimum) if (
-                    owner.troops_conflict + owner.commanders_conflict < minimum
+                    owner.troops_conflict + owner.commanders_conflict
+                    < max(minimum, 1)
                 ):
                     return False
                 case TakeContract() if not state.config.choam_module:
@@ -467,6 +466,13 @@ def _old_choice_rewards_feasible(
                     gain.different_from_trigger or gain.minimum_own
                 ) and not influence_gain_candidates(state, player, gain):
                     return False
+                # A cost line for Influence no cube can take (OQ-060,
+                # OQ-071, 2026-10-06): a rule change made on purpose after
+                # the copy.
+                case GainInfluence() if _old_influence_line_buys_nothing(
+                    state, player, section
+                ):
+                    return False
                 case RedirectSpiesOnTurnSpace() if (
                     agent_turn_space_id(state, player) is None
                 ):
@@ -474,6 +480,20 @@ def _old_choice_rewards_feasible(
                 case _:
                     pass
     return True
+
+
+def _old_influence_line_buys_nothing(
+    state: GameState, player: int, section: EffectSection
+) -> bool:
+    if not section.costs:
+        return False
+    loses = any(isinstance(cost, LoseInfluence) for cost in section.costs)
+    return all(
+        isinstance(reward, GainInfluence)
+        and not (loses and reward.factions is None)
+        and not influence_gain_candidates(state, player, reward)
+        for reward in section.rewards
+    )
 
 
 def _old_section_is_usable(
@@ -550,6 +570,11 @@ def _old_intrigue_plays(state: GameState, player: int) -> tuple[DomainAction, ..
         if entry is None or not entry.play_data_complete:
             continue
         for index, option in enumerate(entry.options):
+            # Harvest Cells only in the Conflict-end window (user ruling
+            # 2026-10-06, OQ-057 (11)): a rule change made on purpose after
+            # the copy.
+            if isinstance(option.trigger, OnTroopsLostAtConflictEnd):
+                continue
             if option.timing is not timing:
                 continue
             if option.turn_start_only and frame.kind != FrameKind.TURN:
@@ -593,6 +618,8 @@ def _old_pending_groups(state: GameState, player: int) -> tuple[DomainAction, ..
         actions.extend(legal_agent_card_icon_actions(state, player))
         actions.extend(legal_agent_card_recall_actions(state, player))
         actions.extend(legal_agent_card_influence_actions(state, player))
+        # 2026-10-06: Tread in Darkness's trash became a choice icon.
+        actions.extend(legal_agent_card_trash_actions(state, player))
     elif context["pending_agent_effect"] is True:
         choice_actions = tuple(
             action
@@ -1096,8 +1123,58 @@ def _old_icon_condition_holds(
     key: str,
 ) -> bool:
     """``agent_effects.agent_icon_condition_holds`` before ``agent_icon_block``
-    (2026-10-02)."""
+    (2026-10-02), with the rule changes made on purpose since then."""
 
+    # 2026-10-06 (Steam app comparison): Cargo Runner's two printed lines
+    # became two icons, judged at two and four completed contracts.
+    if effect is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO:
+        if key == "cards":
+            return len(owner.completed_contract_ids) >= 2
+        if key == "cards_second":
+            return len(owner.completed_contract_ids) >= 4
+    if key == "cards_second":
+        return False
+    # Stillsuit Manufacturer's water and its Fremen Alliance return.
+    stillsuit = (
+        effect is PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
+    )
+    if stillsuit and key == "water":
+        return True
+    if key == "return_self":
+        return (
+            stillsuit
+            and context.get("card_id") in counted_in_play(owner)
+            and Faction.FREMEN.value in owner.alliance_faction_ids
+        )
+    # Lady Amber Metulli's Fill Coffers: the Signet Ring's Solari, and its
+    # spice with any Alliance.
+    if (
+        effect is PersonalCardAgentEffect.LEADER_SIGNET
+        and owner.leader_id == "lady_amber_metulli"
+    ):
+        if key == "solari":
+            return True
+        if key == "spice":
+            return bool(owner.alliance_faction_ids)
+    # Industrial Espionage's grafted Research line became its own icon.
+    if key == "research":
+        return (
+            effect
+            is PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
+            and is_grafted(context)
+        )
+    # Tread in Darkness's draw became its own icon, judging the Bond.
+    if (
+        effect
+        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+        and key == "cards"
+    ):
+        card_id = context.get("card_id")
+        return has_faction_bond(
+            counted_in_play(owner),
+            card_id if isinstance(card_id, str) else "",
+            Faction.BENE_GESSERIT,
+        )
     if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
         if effect is (
             PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO

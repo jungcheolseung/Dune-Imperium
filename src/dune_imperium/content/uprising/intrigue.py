@@ -747,7 +747,9 @@ INTRIGUE_CARDS: Final = (
         "Tactical Option",
         options=(
             _combat(EffectSection(rewards=(GainCombatStrength(2),))),
-            _combat(EffectSection(rewards=(RetreatTroops(1, None),))),
+            # "Retreat any number of your troops." [card face]: zero may be
+            # chosen [Main p. 20] [FAQ p. 3] (docs/rules/uprising-systems.md).
+            _combat(EffectSection(rewards=(RetreatTroops(0, None),))),
         ),
     ),
     _entry(

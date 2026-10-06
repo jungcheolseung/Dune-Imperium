@@ -29,7 +29,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import take_imperium_row_card
-from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
+from dune_imperium.rules.agent_effects import (
+    agent_card_icons_at_placement,
+    holds_space_influence,
+)
 from dune_imperium.rules.agent_icons import (
     card_is_boosted,
     effective_agent_icons,
@@ -206,7 +209,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
         # It grants no garrison allowance, so the existing-troop limit stays.
         effect_context["pending_combat_deployment"] = True
     effect_context["graft_pending_icons"] = ",".join(
-        agent_card_icons_at_placement(partner.agent_effect) if pending else ()
+        agent_card_icons_at_placement(partner.agent_effect, next_owner.leader_id)
+        if pending
+        else ()
     )
     if effect_context["pending_agent_effect"] is not True:
         # The placed card's Bond-gated box was judged before the partner
@@ -215,8 +220,16 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
         if agent_effect_is_available(placed.agent_effect, next_owner, space, placed_id):
             effect_context["pending_agent_effect"] = True
             effect_context["pending_agent_icons"] = ",".join(
-                agent_card_icons_at_placement(placed.agent_effect)
+                agent_card_icons_at_placement(placed.agent_effect, next_owner.leader_id)
             )
+    if (pending and holds_space_influence(partner.agent_effect)) or (
+        effect_context["pending_agent_effect"] is True
+        and holds_space_influence(placed.agent_effect)
+    ):
+        # Subversive Advisor's "gain two Influence instead of one" holds the
+        # space's Influence on either side of the graft, as for a placed
+        # card (agent_turn): never the space's 1 plus the card's 2.
+        effect_context["pending_faction_influence"] = False
     next_state = replace(
         popped,
         decision_stack=(
@@ -245,7 +258,7 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
 
 
 def trash_usurped_card(state: GameState, player: int) -> RuleResult:
-    """Usurp: "trash that card at the end of the turn" [card face].
+    """Usurp: "trash that card at the end of your turn." [card face].
 
     The owner's ``finish_agent_turn`` trashes the borrowed card, as an
     ordinary trash: it reaches the owner's trash pile and its "when this
@@ -325,8 +338,15 @@ def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
         context["graft_pending_effect"],
         context["graft_pending_icons"],
     ) = active
-    # A self-trash flag belongs to the box it was set for.
-    context.pop("agent_card_self_trashed", None)
+    # A self-trash flag belongs to the box it was set for, so it moves with
+    # that box: a card that left play by its own printed icon still pays
+    # its other icons after the owner switches away and back (OQ-022).
+    active_flag = context.pop("agent_card_self_trashed", None)
+    graft_flag = context.pop("graft_card_self_trashed", None)
+    if graft_flag is True:
+        context["agent_card_self_trashed"] = True
+    if active_flag is True:
+        context["graft_card_self_trashed"] = True
     return RuleResult(
         state=replace(
             state,

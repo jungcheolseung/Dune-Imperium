@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnTroopsLostAtConflictEnd,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -125,6 +126,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.intrigue_triggers import open_contract_reveal
+from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -145,7 +147,12 @@ from dune_imperium.rules.spy_placement import (
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.tech import push_tech_acquisition
-from dune_imperium.rules.tleilaxu_row import acquire_tleilaxu_card
+from dune_imperium.rules.tleilaxu_row import (
+    RECLAIMED_FORCES_CHOICES,
+    acquire_reclaimed_forces,
+    acquire_tleilaxu_card,
+    reclaimed_forces_block,
+)
 from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
@@ -168,6 +175,11 @@ class IntriguePlayBlock(StrEnum):
 
     TIMING = "timing"  # printed for another window (Plot, Combat, Endgame)
     TURN_START = "turn_start"  # "At the start of your turn", after that point
+    # "When you lose at least three troops at the end of a Conflict:"
+    # [Harvest Cells card]: played only in the Conflict-end window once the
+    # rewards resolved, never in an Intrigue window (user ruling 2026-10-06,
+    # OQ-057 (11): "This card is played after combat resolves.").
+    CONFLICT_END = "conflict_end"
     # "At the start of your turn" (Withdrawn) on the turn frame after the
     # seat already acted in the turn (OQ-095 (6), user ruling 2026-10-04).
     TURN_STARTED = "turn_started"
@@ -208,6 +220,13 @@ def intrigue_play_block(
 ) -> IntriguePlayBlock | OptionUnplayable | None:
     """Why ``player`` cannot play ``option`` in the ``timing`` window now."""
 
+    if isinstance(option.trigger, OnTroopsLostAtConflictEnd):
+        # Harvest Cells: "To play an Intrigue card, you must meet its
+        # conditions and pay its costs." [FAQ p. 2], and its condition is
+        # the loss at the Conflict's end, so it waits for the window after
+        # the rewards (``combat.offer_conflict_end_triggers``) instead of
+        # going face up in Combat Intrigue (user ruling 2026-10-06).
+        return IntriguePlayBlock.CONFLICT_END
     if option.timing is not timing:
         return IntriguePlayBlock.TIMING
     if option.turn_start_only and frame_kind != FrameKind.TURN:
@@ -323,8 +342,6 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     # it resolves and reaches the discard pile only at the end, so a draw it
     # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
-    if cost is not None and cost.spice:
-        played_state = update_turn_recruits(played_state, spice_spent=cost.spice)
     if (
         option.timing is IntrigueTiming.COMBAT
         and state.phase is GamePhase.COMBAT
@@ -363,7 +380,8 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
 
     if option.trigger is not None:
         # The effect does not apply yet: the card waits face up in front of
-        # its owner until the trigger fires [FAQ p. 2].
+        # its owner until the trigger fires [FAQ p. 2] (Call to Arms; Harvest
+        # Cells is never played here, ``IntriguePlayBlock.CONFLICT_END``).
         waiting_owner = played_state.players[player]
         moved = replace(
             waiting_owner,
@@ -379,13 +397,9 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 payload=(("card_id", card_id), ("player", player)),
             )
         )
-        # Laying Harvest Cells face up in Combat Intrigue is still a play,
-        # so the passes before it no longer count [Main p. 14].
         return RuleResult(
-            state=_reset_combat_passes(
-                replace(
-                    played_state, players=replace_player(played_state.players, moved)
-                )
+            state=replace(
+                played_state, players=replace_player(played_state.players, moved)
             ),
             events=tuple(events),
         )
@@ -402,7 +416,8 @@ def resolve_faceup_trigger_option(
     *,
     source: str,
 ) -> RuleResult:
-    """Fire a face-up trigger card's option now (Harvest Cells at cleanup).
+    """Fire a face-up trigger card's option now (Harvest Cells at cleanup,
+    staged face up by the Conflict-end window).
 
     The card returns from the face-up zone to the owner's hand of played
     cards so the ordinary finish path discards it; its sections then open
@@ -727,8 +742,6 @@ def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
         replace(state, players=replace_player(state.players, paid_owner)),
         with_context(frame, context),
     )
-    if cost is not None and cost.spice:
-        working = update_turn_recruits(working, spice_spent=cost.spice)
     line_source = f"{source}:line:{index}"
     events: list[GameEvent] = [
         GameEvent(
@@ -814,7 +827,8 @@ def legal_intrigue_choice_actions(
         case GainInfluence(distinct=distinct) as gain:
             chosen = _chosen_factions(context)
             # Printed limits: Ambitious's "where an opponent leads",
-            # Navigation card 1's "different Faction where you have 2+".
+            # Navigation card 1's "different Faction where you have 2+";
+            # never a cube already at the top (OQ-060).
             for faction in influence_gain_candidates(state, player, gain):
                 if distinct and faction in chosen:
                     continue
@@ -823,6 +837,17 @@ def legal_intrigue_choice_actions(
                         action_id="choose_intrigue_faction",
                         actor=player,
                         arguments=(("faction", faction.value),),
+                    )
+                )
+            if not actions:
+                # Every Faction it may raise is at the top: the gain is lost
+                # (OQ-060), and its owner confirms it as a Conflict reward's
+                # is (user ruling 2026-09-30); "Choose two" still pays the
+                # Faction already named.
+                actions.append(
+                    DomainAction(
+                        action_id="resolve_intrigue_influence_without_faction",
+                        actor=player,
                     )
                 )
         case DiscardFromHand():
@@ -839,8 +864,11 @@ def legal_intrigue_choice_actions(
             actions.append(DomainAction(action_id="detonate_shield_wall", actor=player))
             actions.append(DomainAction(action_id="keep_shield_wall", actor=player))
         case DeployFromGarrison(up_to=up_to):
-            # A Sardaukar Commander in the garrison is a troop for this
-            # purpose [Bloodlines p. 4]; ``commanders`` names its share.
+            # "Deploy up to N troops" [card faces]: zero is always offered,
+            # so the card resolves with nothing deployable. A Sardaukar
+            # Commander in the garrison is a troop for this purpose
+            # [Bloodlines p. 4]; ``commanders`` names its share.
+            blocked = units_deployment_blocked(state, player)
             actions.extend(
                 DomainAction(
                     action_id="deploy_intrigue_troops",
@@ -848,12 +876,19 @@ def legal_intrigue_choice_actions(
                     arguments=arguments,
                 )
                 for arguments in _unit_count_arguments(
-                    minimum=1,
+                    minimum=0,
                     maximum=up_to,
-                    # Harkonnen Advisor's troop is not available this turn.
-                    troops=owner.troops_garrison
-                    - undeployable_troops_this_turn(state, player),
-                    commanders=owner.commanders_garrison,
+                    # Harkonnen Advisor's troop is not available this turn
+                    # (OQ-038), and Emperor of the Known Universe blocks
+                    # every unit for the turn [Main p. 17].
+                    troops=0
+                    if blocked
+                    else max(
+                        owner.troops_garrison
+                        - undeployable_troops_this_turn(state, player),
+                        0,
+                    ),
+                    commanders=0 if blocked else owner.commanders_garrison,
                 )
             )
         case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
@@ -955,6 +990,19 @@ def legal_intrigue_choice_actions(
                             ),
                         )
                     )
+            # "The Tleilaxu Row must always have two cards plus Reclaimed
+            # Forces" [Immortality p. 9], so its "acquire" (one effect, the
+            # card left in place) is a Tleilaxu card to take here too, with
+            # the Reveal shop's blocks (user ruling 2026-10-06; OQ-066).
+            actions.extend(
+                DomainAction(
+                    action_id="acquire_intrigue_reclaimed_forces",
+                    actor=player,
+                    arguments=(("choice", choice),),
+                )
+                for choice in RECLAIMED_FORCES_CHOICES
+                if reclaimed_forces_block(owner, choice) is None
+            )
             actions.append(
                 DomainAction(action_id="decline_intrigue_tleilaxu", actor=player)
             )
@@ -1047,7 +1095,11 @@ def legal_intrigue_choice_actions(
                     actor=player,
                     arguments=(("instance_id", instance_id),),
                 )
-                for instance_id in acquirable_imperium_instance_ids(state, max_cost)
+                # The owner's own Manipulate set-aside card is within reach
+                # at its printed cost, never an opponent's [FAQ p. 3].
+                for instance_id in acquirable_imperium_instance_ids(
+                    state, max_cost, player=player
+                )
             )
             if not acquisitions:
                 # Nothing within the cap: the card is still played and the
@@ -1210,6 +1262,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                         ),
                     ),
                 )
+            elif action.action_id == "acquire_intrigue_reclaimed_forces":
+                result = acquire_reclaimed_forces(
+                    state, player, str(arguments["choice"]), source=step_source
+                )
             else:
                 result = acquire_tleilaxu_card(
                     state,
@@ -1252,6 +1308,37 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 event_prefix=f"{step_source}:lost:{faction.value}",
                 alliance_recipient=recipient,
             )
+        case GainInfluence() if (
+            action.action_id == "resolve_intrigue_influence_without_faction"
+        ):
+            # No Faction this gain may raise is below the top: it is lost
+            # (OQ-060), while a "Choose two" Faction named before it is still
+            # paid ("서로 다른 진영 둘"은 먼저 이름 붙인 진영을 그대로 지급).
+            deferred = tuple(
+                Faction(value)
+                for value in str(context.get("deferred_factions", "")).split(",")
+                if value
+            )
+            context["deferred_factions"] = ""
+            working = state
+            lost_events: list[GameEvent] = [
+                GameEvent(
+                    event_id=f"{step_source}:influence_unavailable",
+                    kind="intrigue_influence_unavailable",
+                    payload=(("player", player),),
+                )
+            ]
+            for pick in deferred:
+                gained = gain_faction_influence(
+                    working,
+                    player,
+                    pick,
+                    1,
+                    event_prefix=f"{step_source}:gained:{pick.value}",
+                )
+                working = gained.state
+                lost_events.extend(gained.events)
+            result = RuleResult(state=working, events=tuple(lost_events))
         case GainInfluence(distinct=distinct):
             faction = Faction(str(arguments["faction"]))
             context["chosen_factions"] = ",".join(
@@ -1319,9 +1406,13 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 )
         case DeployFromGarrison():
             count, commanders = _unit_counts(arguments)
-            result = _deploy_units(
-                state, player, step_source, troops=count, commanders=commanders
-            )
+            if count + commanders == 0:
+                # "Deploy up to N troops" chose zero: no unit moves.
+                result = RuleResult(state=state)
+            else:
+                result = _deploy_units(
+                    state, player, step_source, troops=count, commanders=commanders
+                )
         case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
             if action.action_id == "decline_intrigue_trash":
                 result = RuleResult(
@@ -1369,10 +1460,15 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     )
         case RetreatTroops():
             count, commanders = _unit_counts(arguments)
-            result = _retreat_units(
-                state, player, step_source, troops=count, commanders=commanders
-            )
-            result = _follow_reveal_strength(state, result, player)
+            if count + commanders == 0:
+                # Tactical Option's "any number" retreat chose zero [Main
+                # p. 20] [FAQ p. 3]: no unit moves.
+                result = RuleResult(state=state)
+            else:
+                result = _retreat_units(
+                    state, player, step_source, troops=count, commanders=commanders
+                )
+                result = _follow_reveal_strength(state, result, player)
         case LoseTroops():
             zone = str(arguments["zone"])
             result = lose_unit(

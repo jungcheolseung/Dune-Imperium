@@ -129,7 +129,7 @@ Immortality (``spec/immortality.md`` §7):
   option of the prompt's timing; Gruesome Sacrifice's two troop losses are
   conflict troops (``lose_intrigue_troop(zone=conflict)``; a Bloodlines
   Commander only when no troop is there, the smaller loss).
-- Harvest Cells: play ``[card]`` / ``[[]]`` (Combat face up, or the
+- Harvest Cells: play ``[card]`` / ``[[]]`` (only the
   ``conflict_end_trigger`` window's play) when ``HarvestCellsAbility`` can
   run; the request is the dealt Tleilaxu Row cards the seat can pay with the
   two harvested specimens. At the Conflict's end the specimens come first
@@ -421,9 +421,14 @@ def _row_cards(ctx: AppContext) -> tuple[Entity, ...]:
 
 
 def _acquirable(ctx: AppContext, max_cost: int) -> tuple[Entity, ...]:
-    """``MakeAcquireImperiumRowCardTargeting(maxCost)``: Row then Reserve."""
+    """``MakeAcquireImperiumRowCardTargeting(maxCost)``: Row then Reserve.
 
-    row = acquirable_imperium_instance_ids(ctx.state, max_cost)
+    The Row part also holds the seat's own Manipulate set-aside card, which
+    our engine offers at its printed cost [FAQ p. 3], so a lone set-aside
+    target is still weighed rather than left to the fallback.
+    """
+
+    row = acquirable_imperium_instance_ids(ctx.state, max_cost, player=ctx.seat)
     reserve = acquirable_reserve_card_ids(ctx.state, max_cost)
     return (
         *(card_entity(i) for i in row),
@@ -459,10 +464,12 @@ def _research_spaces(ctx: AppContext) -> tuple[Entity, ...]:
 def _harvest_targets(ctx: AppContext) -> tuple[Entity, ...]:
     """``HarvestCellsAbility::GetHarvestCellsTargets @0x4c751c0`` (UNTRACED).
 
-    Judgement: the dealt Tleilaxu Row cards (our engine's acquirable set;
-    Reclaimed Forces is not a card one acquires) whose ``SpecimenCost`` the
+    Judgement: the dealt Tleilaxu Row cards whose ``SpecimenCost`` the
     seat can pay with the two specimens the card harvests
-    (``GetSpecimensAvailable @0x4c75110``, by its name), in Row order.
+    (``GetSpecimensAvailable @0x4c75110``, by its name), in Row order. Our
+    engine also offers Reclaimed Forces there
+    (``acquire_intrigue_reclaimed_forces``, user ruling 2026-10-06); with
+    the target list untraced it is left out, so this port never takes it.
     """
 
     available = ctx.specimens() + 2
@@ -1344,10 +1351,10 @@ def _acquire_tleilaxu(run: DecisionRun, cid: str, instance: str) -> DomainAction
 
     The harvested specimens are taken first (``resolve_intrigue_rewards``).
     Then the play's recorded answer (``recorded_answer``: the
-    ``combat_intrigue`` or ``conflict_end_trigger`` prompt that played the
-    card) is replayed: its card, or "no acquire" (an empty list) ->
-    ``decline_intrigue_tleilaxu``. Without one, or when its card is not
-    offered, ``HarvestCellsAbility::Evaluate @0x4c75550`` runs now over the
+    ``conflict_end_trigger`` prompt that played the card) is replayed: its
+    card, or "no acquire" (an empty list) -> ``decline_intrigue_tleilaxu``.
+    Without one, or when its card is not offered,
+    ``HarvestCellsAbility::Evaluate @0x4c75550`` runs now over the
     offered cards (two specimens for "no acquire", a card at its
     ``AcquireValue`` + two specimens when strictly better).
     """
@@ -1488,6 +1495,11 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
     frame = _choice_frame(run)
     if frame is None:
         return None
+    confirm = run.first("resolve_intrigue_influence_without_faction")
+    if confirm is not None:
+        # Every Faction the gain may raise is at the top: the engine offers
+        # only the confirm of its loss (OQ-060), which the app never asks.
+        return confirm
     instance, option, slot, k = frame
     cid = card_id(instance)
     if cid in NAVIGATION_ARCHETYPES:

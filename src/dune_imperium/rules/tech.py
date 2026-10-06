@@ -492,10 +492,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     # --- frame bookkeeping ------------------------------------------------
     if context is not None:
         finish_board_icon(context, BOARD_ICON_TECH)
-        spent = context.get("spice_spent_after_placement", 0)
-        if isinstance(spent, bool) or not isinstance(spent, int):
-            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-        context["spice_spent_after_placement"] = spent + cost
         working = advance_after_effect(working, context, players)
     else:
         # A card-granted Acquire Tech (a Plot) returns to the turn it was
@@ -503,9 +499,6 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         # join that turn's recruits, since "그 turn에 어떤 출처에서 recruit했든
         # 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4].
         working = working.pop_decision()
-        working = update_turn_recruits(
-            working, spice_spent=cost
-        )
 
     working = _queue_acquire_effects(working, player, tile)
     return RuleResult(state=working, events=tuple(events))

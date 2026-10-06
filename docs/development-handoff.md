@@ -4,6 +4,53 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-06 Steam 앱과 카드·보드 전수 대조 뒤의 규칙 정정 (codec v137)
+
+사용자 요청("카드 전수 대조 진행해줘 … 워크트리로 진행해")으로 Steam 앱의 카드·보드 정의를 우리 엔진과 전부 대조했다. 앱은 보조 증거일 뿐이고 공식 규칙과 인쇄된 카드면이 근거다. 대조 자료와 한국어 보고서는 에셋 저장소 로컬 폴더 `reference/dune-steam-app/dad97e20…/analysis/card-compare-2026-10-06/`에만 있다(git 무시).
+
+- **대조 결과.** 243항목(Imperium 112, Intrigue 50, Conflict 17, Contract 20, Leader 9, 보드 칸 23, 연구·Tleilaxu 트랙, 세팅)을 비교했다.
+  - 같음 170, 다름 69, 불명 3, 앱에 없음 1.
+  - 차이 89건을 반박 위주로 재검증해 확인 52, 이미 판정 22, 결과 무관 10, 반박 5로 정리했다.
+  - Imperium·스타터·Reserve·Tleilaxu 카드 110장의 비용·장수·아이콘·진영·Reveal 수치는 기계 비교로 모두 같았다.
+  - 비용: workflow agent 107개, subagent 토큰 약 2,200만(예상 500만~1,000만의 두 배 이상)이 들었다.
+- **공식 규칙·채택한 판정과 어긋나 고친 것.**
+  - Harvest 계약이 Agent 배치 전에 얻은 spice까지 그 turn의 합계로 센다 `[Main p. 16]`.
+  - Manipulate로 따로 둔 카드를 다른 획득 효과(Inspire Awe·Impress·Price is No Object·Tleilaxu Master·Chronicler's Insight)로 정가에 얻을 수 있다 `[FAQ p. 3]`.
+  - Tactical Option의 "any number" 후퇴에 0을 허용한다 `[FAQ p. 3]`.
+  - "Deploy up to"(Counterattack·Detonation·Twisted Devious)는 배치할 병력이 없어도 play할 수 있고 0도 고를 수 있다 `[FAQ p. 2]`, OQ-057 (6).
+  - Cargo Runner, Tread in Darkness, Industrial Espionage, Stillsuit Manufacturer, Lady Amber의 Fill Coffers(Signet Ring 카드 box)를 아이콘별로 나눴다. 순서는 자유이고, 조건이 거짓인 아이콘은 turn 끝까지 기다린다(OQ-027, OQ-057 (1)). Servo-Receivers 경로의 Fill Coffers는 그 자리에서 판정한다(OQ-062).
+  - Subversive Advisor가 다른 효과로 먼저 trash되면 칸의 기본 Influence 1은 남는다. 해결된 "instead" box 뒤에는 돌아오지 않는다.
+  - Treacherous Maneuver는 칸의 Influence 전에만 쓸 수 있고, 2를 한 번에 준다. 진영이 4 이하일 때만 제시한다. 표시 문구도 인쇄대로 고쳤다.
+- **사용자 원칙(OQ-071)과 OQ-060을 카드·보드에도 적용.**
+  - 받을 게 없는 비용 줄을 제시하지 않는다: 빈 덱의 Ecological Testing Station, Tleilaxu 트랙 끝의 Slig Farmer·c8r6·Tleilaxu Surgeon·Reclaimed Forces Tleilaxu, 6인 진영뿐인 Imperium Politics·Buy Access·Shaddam 3 Solari.
+  - 진영을 고르는 Influence에 6인 진영을 내놓지 않는다(카드·Shipping·연구 c6r6). Shipping은 넷 다 6이면 예전처럼 넷을 내놓는다(OQ-060 경계).
+- **사용자 판정(2026-10-06).**
+  - Harvest Cells는 전투가 끝난 뒤 조건이 성립했을 때만 낸다("앱처럼 전투 후에만"; OQ-016, OQ-057 (11)).
+  - Harvest Cells로 Reclaimed Forces를 얻을 수 있다("허용"; OQ-066).
+  - 빈 supply의 "recall … for no effect"도 "If you recalled a Spy this turn"에 세고, Special Mission은 지금대로 둔다("둘 다 지금대로"; 새 OQ-101).
+- **함께 고친 것.**
+  - heuristic이 배치할 병력이 없는 "up to" 줄과 0명 선택을 고르지 않게 했다(`demote_pointless_actions`).
+  - 서버의 턴 종료 표시는 기다리는 아이콘만 남은 box를 준비된 것으로 본다.
+  - Ghola 복사 아이콘의 표시 문구를 고쳤다.
+  - 쓰지 않는 frame 키 `spice_at_placement`·`spice_spent_after_placement`를 지웠다.
+  - 문서: OQ 16곳 수정(016·022·027·028·030·038·044·046·054·057·060·062·066·071·095 등)과 OQ-101 신설, 감사 문서 정리.
+- **고정값.**
+  - golden 6개 중 draft·choam 두 개만 바뀌었다(Tactical Option의 0 후퇴 `8a982319`, "up to" 배치의 0 `05b285fd`; 커밋별 실행으로 확인).
+  - tips-v1을 다시 캐서 **124개**, 124/124 복원된다.
+  - tip census 테스트 4개를 다시 고정했다(`d5512ad0` Harvest Cells 시점 때문; 그 커밋과 HEAD의 실패 값이 같음을 확인).
+- **codec v137**(템플릿: Agent 아이콘 키 3개, 후퇴 0, 배치 0, Intrigue Influence 확인, Harvest Cells의 Reclaimed Forces 2개). 관측 v30은 그대로다. v136 저장·자동 저장은 버전 불일치로 불러오지 않는다.
+  - L3 망(`l3-08081`, 탐색 AI 좌석의 `~/.dune-imperium/search.pt`)은 v136 규칙으로 학습했다. v137에서 불러오면 행동 이름으로 이관되고(새 템플릿 8개는 새 가중치), 규칙이 조금 바뀐 게임을 둔다. 이어서 학습하면 v137 규칙에 다시 맞춘다.
+- **남은 것.**
+  - Ghola+Subversive Advisor처럼 "instead" box 둘이 모두 해결되면 2+2=4다(project convention, OQ-022 의문으로 기록).
+  - heuristic은 view만 봐서 Harkonnen Advisor의 배치 불가 병력과 Emperor of the Known Universe 차단을 모른다.
+  - Glowglobes·Navigation Chamber의 Tech 획득 아이콘은 6인 진영을 그대로 내놓는다.
+  - Harvest Cells 선택 화면에는 Reclaimed Forces의 specimen 비용 표시가 아직 없다(Reveal 패널에만 있다).
+- **검증.**
+  - pytest **6,553개 통과**, ruff·mypy(410파일) 통과.
+  - 리뷰: 두 줄 모두 독립 리뷰를 거쳤다. 첫 줄 리뷰가 찾은 다섯 가지(Tread의 graft 전환 draw, Ghola+Subversive 3, Treacherous 5·6, Ghola 표시 문구, 턴 종료 표시)를 고쳤다.
+  - Chrome E2E **46종 전부 통과**(2개씩, 311초). 처음 실행에서 `effect_text`(Treacherous Maneuver 영어 문구의 아이콘)와 `log_words`(seed 3이 Secrets 훔치기를 잃음 → seed 10)가 실패해 고친 뒤 둘만 다시 돌려 통과했다.
+  - 소크(soundness 5, privacy 50, worker 2): random 전 옵션+Scouts+리더 회전 100판, heuristic 전 옵션+지도자 드래프트 60판, random 기본·CHOAM 200판, 모두 실패 0.
+
 ## 2026-10-06 탐색 AI 좌석, 대회 도구의 지도자 드래프트, L3 재학습(앱 AI를 이기는 망)
 
 사용자 요청("3개 다 진행하자", 카드 전수 대조는 다른 세션이 워크트리 `card-compare`에서 하므로 안 겹치게 워크트리로). 세 브랜치를 모두 병합했다. 엔진·codec·관측은 그대로다(**codec v136·관측 v30**).

@@ -785,7 +785,7 @@ def test_back_room_deal_pays_the_next_reclaimed_forces_acquisition() -> None:
     """docs/rules/arrakeen-scouts.md 5 (Back Room Deal): "다음에 Reclaimed
     Forces를 "획득"하는 좌석이 가진다"."""
 
-    from dune_imperium.rules.tleilaxu_row import _apply_reclaimed_forces
+    from dune_imperium.rules.tleilaxu_row import acquire_reclaimed_forces
 
     state = replace(
         _immortality_state(),
@@ -795,7 +795,7 @@ def test_back_room_deal_pays_the_next_reclaimed_forces_acquisition() -> None:
     seat = replace(seat, specimens=3, troops_supply=seat.troops_supply - 3)
     state = replace(state, players=(seat, *state.players[1:]))
     solari = seat.resources.solari
-    result = _apply_reclaimed_forces(state, 0, "tleilaxu", "test")
+    result = acquire_reclaimed_forces(state, 0, "tleilaxu", source="test")
     assert result.state.scouts_goods == ()
     assert result.state.players[0].resources.solari == solari + 2
 

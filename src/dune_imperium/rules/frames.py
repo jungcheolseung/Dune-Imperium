@@ -433,7 +433,6 @@ def update_turn_recruits(
     *,
     troops_recruited: int = 0,
     commanders_recruited: int = 0,
-    spice_spent: int = 0,
 ) -> GameState:
     """Keep the turn owner's bookkeeping in step with a mid-turn effect.
 
@@ -442,9 +441,8 @@ def update_turn_recruits(
     (a Reveal turn's recruits feed its Combat-icon deployment
     [Bloodlines p. 5]). Sardaukar Commanders are counted apart from the
     troops (``COMMANDERS_RECRUITED_KEY``): each reserves a deploy slot for a
-    Commander (OQ-070). Spice paid for an effect is recorded as spent so
-    that Harvest Spice Contracts, which count Spice gained from every source
-    during the turn [Main p. 16], still see the full amount gained.
+    Commander (OQ-070). Spice spent is counted on the seat
+    (``PlayerState.spice_spent_turn``), not here.
     """
 
     for index in range(len(state.decision_stack) - 1, -1, -1):
@@ -480,9 +478,6 @@ def update_turn_recruits(
                 recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
                 + commanders_recruited
             )
-        if frame.kind == FrameKind.AGENT_EFFECTS:
-            spent = context_int(context, "spice_spent_after_placement")
-            context["spice_spent_after_placement"] = spent + spice_spent
         updated = with_context(frame, context)
         return replace(
             state,

@@ -169,7 +169,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: (
         "이 카드와 핸드의 황제 카드 {trash} 가능 {arrow_right} "
-        "방문한 팩션 {influence_any} 1 추가"
+        "방문한 팩션 {influence_any:1} 대신 {influence_any:2}"
     ),
     PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: (
         "이 카드 {trash}, {influence_any:1} 선택"

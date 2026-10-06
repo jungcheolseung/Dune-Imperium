@@ -46,7 +46,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
@@ -167,6 +167,19 @@ def apply_specimen_return(state: GameState, action: DomainAction) -> RuleResult:
 # --- Tleilaxu track ------------------------------------------------------
 
 
+def tleilaxu_track_finished(owner: PlayerState) -> bool:
+    """Whether the seat's Tleilaxu token is on the track's last space.
+
+    A further advance there does nothing: "끝까지 가고 나면 뭐 없는 게
+    맞다" (OQ-048, ``advance_tleilaxu``). So a cost line whose only reward
+    is that advance buys nothing and is not offered: "비용이 있는 줄은 보상
+    중 하나라도 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user
+    decision 2026-09-29; precedent OQ-046).
+    """
+
+    return owner.tleilaxu_space >= TLEILAXU_TRACK_END
+
+
 def advance_tleilaxu(
     state: GameState,
     player: int,
@@ -189,7 +202,7 @@ def advance_tleilaxu(
     for step in range(steps):
         owner = working.players[player]
         step_source = f"{source}:tleilaxu:{step}"
-        if owner.tleilaxu_space >= TLEILAXU_TRACK_END:
+        if tleilaxu_track_finished(owner):
             events.append(
                 GameEvent(
                     event_id=f"{step_source}:end",
@@ -479,7 +492,9 @@ def _bonus_frame(
 
 
 class ResearchBonusBlock(StrEnum):
-    """Why a research space's arrow cost cannot be paid right now.
+    """Why a research space's arrow is not offered right now.
+
+    Its cost cannot be paid, or (OQ-071) its reward would change nothing.
 
     "Trash an Intrigue card" (c7r3) takes one from the owner's hand
     [Immortality p. 16], and c8r6 costs 7 Solari [Immortality p. 3 board
@@ -493,6 +508,8 @@ class ResearchBonusBlock(StrEnum):
 
     NO_INTRIGUE = "no_intrigue"  # no Intrigue card in hand to trash
     SOLARI = "solari"  # fewer than 7 Solari
+    # The two advances would do nothing (``tleilaxu_track_finished``).
+    TLEILAXU_TRACK_END = "tleilaxu_track_end"
 
 
 def research_bonus_block(
@@ -500,8 +517,10 @@ def research_bonus_block(
 ) -> ResearchBonusBlock | None:
     """Return why ``owner`` cannot pay ``bonus``'s arrow cost now, or None.
 
-    None for a bonus with no cost. Reads only the owner's own Intrigue hand
-    and Solari.
+    None for a bonus with no cost. Reads only the owner's own Intrigue hand,
+    Solari and Tleilaxu token. c8r6 is not offered once the token is on the
+    track's last space: its reward would change nothing (OQ-071), so only
+    the decline remains, as when the Solari are short.
     """
 
     if (
@@ -511,10 +530,28 @@ def research_bonus_block(
         return ResearchBonusBlock.NO_INTRIGUE
     if (
         bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+        and tleilaxu_track_finished(owner)
+    ):
+        return ResearchBonusBlock.TLEILAXU_TRACK_END
+    if (
+        bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
         and owner.resources.solari < SEVEN_SOLARI_COST
     ):
         return ResearchBonusBlock.SOLARI
     return None
+
+
+def research_influence_factions(owner: PlayerState) -> tuple[Faction, ...]:
+    """The Factions c6r6's "Influence with any Faction" may raise now.
+
+    A "choose a Faction" picker never offers a Faction at the top, where
+    the gain is lost ("합법 행동 provider는 이미 6인 진영을 제시하지
+    않으므로", OQ-060, user ruling 2026-09-16; ``influence_can_rise``).
+    Empty with every cube at 6: the window then offers only
+    ``decline_research_bonus`` (``legal_research_bonus_actions``).
+    """
+
+    return tuple(faction for faction in Faction if influence_can_rise(owner, faction))
 
 
 def legal_research_bonus_actions(
@@ -525,7 +562,11 @@ def legal_research_bonus_actions(
 
     While the arrow's cost cannot be paid (``research_bonus_block``) only
     ``decline_research_bonus`` is offered: the window still opens, and its
-    owner confirms the lapse (user ruling 2026-09-30).
+    owner confirms the lapse (user ruling 2026-09-30). So it is for the
+    cost-free Influence with every cube at the top: "고를 진영이 없어도 선택
+    frame은 그대로 ... 열리고", and the gain is offered alone otherwise,
+    "진영을 하나라도 고를 수 있으면 확인은 제시하지 않는다(획득은 의무다)"
+    (OQ-060, 2026-09-30 addition).
     """
 
     frame = owned_top_frame(state, FrameKind.RESEARCH_BONUS, player)
@@ -533,16 +574,19 @@ def legal_research_bonus_actions(
         return ()
     bonus = ResearchBonus(context_str(dict(frame.context), "bonus", owner=_BONUS_LABEL))
     owner = state.players[player]
+    decline = DomainAction(action_id="decline_research_bonus", actor=player)
     if bonus is ResearchBonus.INFLUENCE_ANY:
+        factions = research_influence_factions(owner)
+        if not factions:
+            return (decline,)
         return tuple(
             DomainAction(
                 action_id="choose_research_influence",
                 actor=player,
                 arguments=(("faction", faction.value),),
             )
-            for faction in Faction
+            for faction in factions
         )
-    decline = DomainAction(action_id="decline_research_bonus", actor=player)
     if research_bonus_block(owner, bonus) is not None:
         return (decline,)
     if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:

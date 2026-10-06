@@ -717,7 +717,7 @@ def apply_agent_turn_finish(
     In order: a mandatory Agent box that could only fizzle fizzles (OQ-057),
     a held Contract icon fizzles (OQ-059), the turn's end is announced, the
     Combat deployment window closes, and a Usurped Row card is trashed
-    ("trash that card at the end of the turn", OQ-054). Then the next seat's
+    ("trash that card at the end of your turn.", OQ-054). Then the next seat's
     turn opens -- unless the trash is still resolving, in which case the
     frame waits as ``FINISHING_KEY`` for ``settle_finishing_agent_turn``.
     """

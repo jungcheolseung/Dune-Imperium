@@ -9,7 +9,10 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
-from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.immortality.board import (
+    RESEARCH_START_ID,
+    TLEILAXU_TRACK_END,
+)
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
@@ -21,6 +24,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
@@ -205,6 +209,37 @@ def test_disguised_bureaucrat_scales_with_the_genetic_markers() -> None:
     assert done.state.players[0].resources.spice == 1
 
 
+def test_disguised_bureaucrat_confirms_an_influence_no_cube_can_take() -> None:
+    """A cost-free "choose a Faction" gain with every cube at 6: the card
+    stays playable (its play condition is only its printed condition and
+    cost [FAQ p. 2], OQ-057 (6)), the picker offers no Faction at the top,
+    and its owner confirms the lost gain as a Conflict reward's (OQ-060)."""
+
+    card = _intrigue("disguised_bureaucrat")
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _plot_state(
+        _owner(intrigue_cards=(card,), research_space="c8r2", influence=full)
+    )
+    assert _playable(state, card) == {0}
+    played = apply_intrigue_play(state, _play(card)).state
+    confirm = DomainAction(
+        action_id="resolve_intrigue_influence_without_faction", actor=0
+    )
+    assert [
+        action
+        for action in legal_intrigue_choice_actions(played, 0)
+        if action.action_id != "resolve_intrigue_rewards"
+    ] == [confirm]
+    done = apply_intrigue_choice(played, confirm)
+    assert done.state.players[0].influence == full
+    assert done.state.players[0].resources.spice == 1
+    assert card in done.state.intrigue_discard
+    assert "intrigue_influence_unavailable" in {e.kind for e in done.events}
+    assert ActionCodec(IMMORTALITY).decode(
+        ActionCodec(IMMORTALITY).encode(confirm), 0
+    ) == confirm
+
+
 def test_shadowy_bargain_and_study_melange_split_plot_and_endgame() -> None:
     bargain = _intrigue("shadowy_bargain")
     plot = _plot_state(_owner(intrigue_cards=(bargain,)))
@@ -330,6 +365,41 @@ def test_counterattack_needs_an_opponents_combat_intrigue() -> None:
     assert played.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
 
 
+def _deploy(count: int) -> DomainAction:
+    return DomainAction(
+        action_id="deploy_intrigue_troops", actor=0, arguments=(("count", count),)
+    )
+
+
+def test_counterattack_plot_deploys_up_to_two_including_none() -> None:
+    # "Deploy up to two troops from your garrison to the Conflict."
+    # [Counterattack card face]: zero is a choice, and having a target is no
+    # play condition -- "Intrigue 카드를 플레이하려면 카드의 모든 조건을
+    # 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]" (OQ-057 (6)).
+    card = _intrigue("counterattack")
+    engine = UprisingRulesEngine()
+
+    stocked = _plot_state(
+        _owner(intrigue_cards=(card,), troops_garrison=3, troops_supply=9)
+    )
+    opened = engine.apply(stocked, _play(card)).state
+    assert engine.legal_actions(opened, 0) == (_deploy(0), _deploy(1), _deploy(2))
+    two = engine.apply(opened, _deploy(2)).state
+    assert (two.players[0].troops_garrison, two.players[0].troops_conflict) == (1, 2)
+
+    empty = _plot_state(
+        _owner(intrigue_cards=(card,), troops_garrison=0, troops_supply=12)
+    )
+    assert _playable(empty, card) == {0}
+    nothing = engine.apply(empty, _play(card)).state
+    assert engine.legal_actions(nothing, 0) == (_deploy(0),)
+    result = engine.apply(nothing, _deploy(0))
+    assert "troops_deployed" not in [event.kind for event in result.events]
+    assert result.state.players[0].troops_conflict == 0
+    assert card in result.state.intrigue_discard
+    assert result.state.decision_stack[-1].kind == "turn"
+
+
 def test_gruesome_sacrifice_trades_two_conflict_troops() -> None:
     card = _intrigue("gruesome_sacrifice")
     state = _combat_state(_fighter(3, intrigue_cards=(card,)))
@@ -372,22 +442,69 @@ def test_economic_positioning_retreats_or_scores() -> None:
     )
 
 
+def test_harvest_cells_is_never_played_in_combat_intrigue() -> None:
+    """User ruling 2026-10-06 (OQ-057 (11)): "This card is played after
+    combat resolves." (designer), and "To play an Intrigue card, you must
+    meet its conditions and pay its costs." [FAQ p. 2]. Harvest Cells used
+    to go face up during Combat Intrigue (restarting the passes) and expire
+    at cleanup when the loss fell short; now neither the Combat Intrigue
+    round nor a Plot turn offers it, only the Conflict-end window."""
+
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(_fighter(3, intrigue_cards=(card,)))
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE
+    assert _playable(state, card) == set()
+    assert all(
+        action.action_id != "play_intrigue" for action in engine.legal_actions(state, 0)
+    )
+    try:
+        apply_intrigue_play(state, _play(card))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Harvest Cells was played in Combat Intrigue")
+    plot = _plot_state(
+        _owner(intrigue_cards=(card,), troops_supply=6, troops_conflict=3)
+    )
+    assert _playable(plot, card) == set()
+
+
+def test_harvest_cells_is_never_offered_below_three_troops_in_the_conflict() -> None:
+    # "When you lose at least three troops at the end of a Conflict:"
+    # [Harvest Cells card]: two troops in the Conflict never open the window
+    # and the card stays in hand -- it no longer waits face up to expire.
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(_fighter(2, intrigue_cards=(card,), specimens=0))
+    assert _playable(state, card) == set()
+    done = _pass_through_combat(engine, state)
+    assert done.phase is not GamePhase.COMBAT
+    assert all(
+        frame.kind != FrameKind.CONFLICT_END_TRIGGER for frame in done.decision_stack
+    )
+    owner = done.players[0]
+    assert card in owner.intrigue_cards
+    assert card not in owner.intrigue_faceup
+    assert card not in done.intrigue_discard
+    assert owner.specimens == 0
+    assert all(event.kind != "intrigue_expired" for event in done.event_log)
+
+
 def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     card = _intrigue("harvest_cells")
     engine = UprisingRulesEngine()
     state = _combat_state(_fighter(3, intrigue_cards=(card,), specimens=0))
-    played = engine.apply(state, _play(card)).state
-    assert card in played.players[0].intrigue_faceup
-    # Everyone passes; rewards resolve; cleanup fires the trigger.
-    while played.phase is GamePhase.COMBAT and played.decision_stack:
-        frame = played.decision_stack[-1]
-        if not isinstance(frame.decision, PlayerDecision):
-            break
-        actions = engine.legal_actions(played, frame.decision.owner)
-        passing = next(
-            (a for a in actions if a.action_id.startswith("pass_")), actions[0]
-        )
-        played = engine.apply(played, passing).state
+    window = _pass_through_combat(engine, state)
+    assert window.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    played = engine.apply(
+        window,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", card),),
+        ),
+    ).state
     owner = played.players[0]
     assert card not in owner.intrigue_faceup
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
@@ -413,62 +530,6 @@ def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     assert CONTAMINATOR in bought.players[0].discard_pile
     assert bought.players[0].specimens == 1
     assert card in bought.intrigue_discard
-
-    short = _combat_state(_fighter(2, intrigue_cards=(card,)))
-    played = engine.apply(short, _play(card)).state
-    while played.phase is GamePhase.COMBAT and played.decision_stack:
-        frame = played.decision_stack[-1]
-        if not isinstance(frame.decision, PlayerDecision):
-            break
-        actions = engine.legal_actions(played, frame.decision.owner)
-        passing = next(
-            (a for a in actions if a.action_id.startswith("pass_")), actions[0]
-        )
-        played = engine.apply(played, passing).state
-    assert played.players[0].specimens == 0
-    assert card in played.intrigue_discard
-
-
-def test_harvest_cells_laid_face_up_restarts_the_combat_passes() -> None:
-    """"전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를
-    끝내고 Combat를 해결한다." [Main p. 14] (docs/rules/combat-and-round-end.md).
-    Harvest Cells waits face up instead of resolving, but it is still played:
-    after seats 0 and 1 pass and seat 2 plays it, both answer again. Before
-    2026-10-02 the count stayed at two and seat 2's next pass ended Combat
-    Intrigue."""
-
-    card = _intrigue("harvest_cells")
-    engine = UprisingRulesEngine()
-    state = _combat_state(
-        _fighter(1),
-        replace(_fighter(1), player_id=1),
-        replace(_fighter(3, intrigue_cards=(card,)), player_id=2),
-    )
-    for seat in (0, 1):
-        state = engine.apply(
-            state, DomainAction(action_id="pass_combat_intrigue", actor=seat)
-        ).state
-    played = engine.apply(
-        state,
-        DomainAction(
-            action_id="play_intrigue",
-            actor=2,
-            arguments=(("card_id", card), ("option", 0)),
-        ),
-    ).state
-    assert card in played.players[2].intrigue_faceup
-    top = played.decision_stack[-1]
-    assert top.kind == FrameKind.COMBAT_INTRIGUE
-    assert dict(top.context)["consecutive_passes"] == 0
-    for seat in (2, 0):
-        played = engine.apply(
-            played, DomainAction(action_id="pass_combat_intrigue", actor=seat)
-        ).state
-        assert played.combat_intrigue_complete is False
-    done = engine.apply(
-        played, DomainAction(action_id="pass_combat_intrigue", actor=1)
-    ).state
-    assert done.combat_intrigue_complete is True
 
 
 def _pass_through_combat(engine: UprisingRulesEngine, state: GameState) -> GameState:
@@ -580,6 +641,105 @@ def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
     ).state
     assert rewarded.players[0].specimens == 2
     assert rewarded.players[0].troops_supply == 4 - 2
+
+
+def _harvest_cells_offer(specimens: int, **extra: object) -> GameState:
+    """Harvest Cells played in the Conflict-end window, its specimens taken:
+    the "acquire a Tleilaxu card" slot is open."""
+
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    owner = _fighter(
+        3,
+        intrigue_cards=(card,),
+        specimens=specimens,
+        troops_supply=9 - specimens,
+        **extra,
+    )
+    window = _pass_through_combat(engine, _combat_state(owner))
+    played = engine.apply(
+        window,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", card),),
+        ),
+    ).state
+    return engine.apply(
+        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+
+
+def _reclaimed_forces(state: GameState) -> list[str]:
+    return [
+        str(dict(action.arguments)["choice"])
+        for action in legal_intrigue_choice_actions(state, 0)
+        if action.action_id == "acquire_intrigue_reclaimed_forces"
+    ]
+
+
+def test_harvest_cells_may_take_reclaimed_forces_troops() -> None:
+    # "The Tleilaxu Row must always have two cards plus Reclaimed Forces
+    # ... When a player 'acquires' it, they choose one of its effects (to
+    # recruit two troops, or advance their Tleilaxu token one space on the
+    # Tleilaxu track), but leave the card in place" [Immortality p. 9]
+    # (docs/rules/immortality.md 4); Harvest Cells' "You may also acquire a
+    # Tleilaxu card (paying its normal cost)" may take it (user ruling
+    # 2026-10-06). One specimen held plus the two harvested pays its three.
+    card = _intrigue("harvest_cells")
+    offer = _harvest_cells_offer(1)
+    assert offer.players[0].specimens == 3
+    assert _reclaimed_forces(offer) == ["troops", "tleilaxu"]
+    codec = ActionCodec(IMMORTALITY)
+    for action in legal_intrigue_choice_actions(offer, 0):
+        assert codec.decode(codec.encode(action), 0) == action
+    garrison = offer.players[0].troops_garrison
+    taken = UprisingRulesEngine().apply(
+        offer,
+        DomainAction(
+            action_id="acquire_intrigue_reclaimed_forces",
+            actor=0,
+            arguments=(("choice", "troops"),),
+        ),
+    )
+    owner = taken.state.players[0]
+    assert owner.specimens == 0
+    assert owner.troops_garrison == garrison + 2
+    assert owner.troops_conflict == 0
+    # The card stays in place; the two dealt cards are untouched.
+    assert taken.state.tleilaxu_row == offer.tleilaxu_row
+    assert card in taken.state.intrigue_discard
+    assert [
+        dict(event.payload)["choice"]
+        for event in taken.events
+        if event.kind == "reclaimed_forces_acquired"
+    ] == ["troops"]
+
+
+def test_harvest_cells_may_take_reclaimed_forces_tleilaxu_step() -> None:
+    offer = _harvest_cells_offer(1)
+    taken = UprisingRulesEngine().apply(
+        offer,
+        DomainAction(
+            action_id="acquire_intrigue_reclaimed_forces",
+            actor=0,
+            arguments=(("choice", "tleilaxu"),),
+        ),
+    ).state
+    owner = taken.players[0]
+    assert owner.specimens == 0
+    assert owner.tleilaxu_space == 1
+    assert taken.tleilaxu_row == offer.tleilaxu_row
+
+
+def test_harvest_cells_offers_reclaimed_forces_only_when_paid_and_useful() -> None:
+    # No specimen held: the two harvested ones are below its printed three.
+    assert _reclaimed_forces(_harvest_cells_offer(0)) == []
+    # The Reveal shop's block: an advance from the track's last space buys
+    # nothing (OQ-048, OQ-071), so only the troops are offered.
+    assert _reclaimed_forces(
+        _harvest_cells_offer(1, tleilaxu_space=TLEILAXU_TRACK_END)
+    ) == ["troops"]
 
 
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:

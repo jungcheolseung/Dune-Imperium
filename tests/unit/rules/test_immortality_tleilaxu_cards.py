@@ -31,12 +31,15 @@ from dune_imperium.core import (
 from dune_imperium.core.observation import observe_state
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_discard,
     apply_agent_card_payment,
     legal_agent_card_discard_actions,
+    legal_agent_card_icon_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
     resolve_agent_card_effect,
+    resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat_deployment import (
@@ -152,14 +155,36 @@ def _payment(state: GameState, action_id: str, **arguments: object) -> DomainAct
     )
 
 
-def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
-    espionage = _tleilaxu("industrial_espionage")
-    alone = resolve_agent_card_effect(
-        _place(_state(_owner((espionage,))), espionage, "assembly_hall")
+def _icon(state: GameState, key: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_card_icon_actions(state, 0)
+        if dict(action.arguments)["effect"] == key
     )
+
+
+def _icon_keys(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
+def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
+    # "[draw 1]" and, on its own line, "If grafted: [Research] [specimen]"
+    # [Industrial Espionage card]: two icons in the owner's order (OQ-027).
+    espionage = _tleilaxu("industrial_espionage")
+    placed = _place(_state(_owner((espionage,))), espionage, "assembly_hall")
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards,research"
+    )
+    # Not grafted: the line waits and lapses at the turn's end (OQ-057 (1)).
+    assert _icon_keys(placed) == {"cards"}
+    alone = resolve_agent_card_icon(placed, _icon(placed, "cards"))
     owner = alone.state.players[0]
     assert len(owner.hand) == 1 and owner.specimens == 0
     assert owner.research_space == RESEARCH_START_ID
+    assert agent_card_effect_is_unavailable(alone.state)
 
     grafted = _graft(
         _state(_owner((espionage, FACE_DANCER), research_space="c1r3")),
@@ -167,11 +192,77 @@ def test_industrial_espionage_draws_and_researches_only_when_grafted() -> None:
         "assembly_hall",
         FACE_DANCER,
     )
-    result = resolve_agent_card_effect(grafted)
+    assert _icon_keys(grafted) == {"cards", "research"}
+    result = resolve_agent_card_icon(grafted, _icon(grafted, "research"))
     owner = result.state.players[0]
-    assert len(owner.hand) == 1 and owner.specimens == 1
+    assert len(owner.hand) == 0 and owner.specimens == 1
     # From c1r3 the research forks, so its direction frame sits on top.
     assert result.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+
+
+def test_industrial_espionage_research_bonus_resolves_before_its_draw() -> None:
+    # The grafted line resolved first: its Research direction and the c3r3
+    # bonus ("trash and specimen"; the trash optional [Main p. 20]) are
+    # answered while the draw icon still waits on the Agent box.
+    espionage = _tleilaxu("industrial_espionage")
+    owner = _owner((espionage, FACE_DANCER, DAGGER), research_space="c2r2")
+    deck_size = len(owner.deck)
+    grafted = _graft(_state(owner), espionage, "assembly_hall", FACE_DANCER)
+    engine = UprisingRulesEngine()
+
+    researched = resolve_agent_card_icon(grafted, _icon(grafted, "research")).state
+    direction = DomainAction(
+        action_id="choose_research_space",
+        actor=0,
+        arguments=(("space_id", "c3r3"),),
+    )
+    bonus = engine.apply(researched, direction).state
+    assert bonus.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert bonus.players[0].hand == (DAGGER,)
+    assert len(bonus.players[0].deck) == deck_size
+    trash = DomainAction(
+        action_id="trash_optional_card", actor=0, arguments=(("card_id", DAGGER),)
+    )
+    assert trash in engine.legal_actions(bonus, 0)
+
+    trashed = engine.apply(bonus, trash).state
+    assert trashed.players[0].trashed == (DAGGER,)
+    assert trashed.players[0].specimens == 2
+    assert _icon_keys(trashed) == {"cards"}
+
+    drawn = resolve_agent_card_icon(trashed, _icon(trashed, "cards")).state
+    assert len(drawn.players[0].hand) == 1
+    assert len(drawn.players[0].deck) == deck_size - 1
+    context = dict(drawn.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+
+
+def test_industrial_espionage_draw_first_lets_the_bonus_trash_the_drawn_card() -> (
+    None
+):
+    espionage = _tleilaxu("industrial_espionage")
+    owner = _owner((espionage, FACE_DANCER), research_space="c2r2")
+    grafted = _graft(_state(owner), espionage, "assembly_hall", FACE_DANCER)
+    engine = UprisingRulesEngine()
+
+    drawn = resolve_agent_card_icon(grafted, _icon(grafted, "cards")).state
+    (card,) = drawn.players[0].hand
+    researched = resolve_agent_card_icon(drawn, _icon(drawn, "research")).state
+    bonus = engine.apply(
+        researched,
+        DomainAction(
+            action_id="choose_research_space",
+            actor=0,
+            arguments=(("space_id", "c3r3"),),
+        ),
+    ).state
+    trash = DomainAction(
+        action_id="trash_optional_card", actor=0, arguments=(("card_id", card),)
+    )
+    trashed = engine.apply(bonus, trash).state
+
+    assert trashed.players[0].trashed == (card,)
+    assert trashed.players[0].hand == ()
 
 
 def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers() -> (
@@ -431,6 +522,30 @@ def test_slig_farmer_pays_per_partner_icon_and_may_buy_a_track_step() -> None:
     assert resolved.state.players[0].resources.solari == 7
 
 
+def test_slig_farmer_offers_no_track_step_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space the advance does nothing (OQ-048), so the
+    # five Solari would buy nothing and are not offered (OQ-071, user
+    # decision 2026-09-29): the box keeps its plain per-icon Solari.
+    farmer = _tleilaxu("slig_farmer")
+    at_end = _graft(
+        _state(
+            _owner(
+                (farmer, FACE_DANCER),
+                resources=Resources(solari=5),
+                tleilaxu_space=7,
+            )
+        ),
+        farmer,
+        "assembly_hall",
+        FACE_DANCER,
+    )
+
+    assert legal_agent_card_payment_actions(at_end, 0) == ()
+    resolved = resolve_agent_card_effect(at_end)
+    assert resolved.state.players[0].resources.solari == 5 + 3  # Face Dancer
+    assert resolved.state.players[0].tleilaxu_space == 7
+
+
 def test_slig_farmer_counts_mohiams_clandestine_spy_icon() -> None:
     # Clandestine: "Each card you play has the [Spy] icon" [Gaius Helen
     # Mohiam card]; Slig Farmer counts every Agent icon the other grafted
@@ -568,6 +683,164 @@ def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() ->
     assert pheromones in owner.trashed and owner.influence.emperor == 1
     _, context = current_agent_effect_context(own.state)
     assert context["graft_pending_effect"] is True
+
+
+SUBVERSIVE = "imperium:subversive_advisor:0"
+_DUTIFUL_SERVICE_POST = "emperor-sardaukar-dutiful-service"
+
+
+def test_subversive_advisor_partner_replaces_the_space_influence() -> None:
+    # "Gain two Influence instead of one" [Subversive Advisor card]: grafted
+    # as the partner, its box holds the space's Influence just as when it
+    # is the placed card -- never 1 + 2 (docs/rules/player-turns.md,
+    # "총 3을 얻지 않는다" [Main pp. 9, 11, 20]).
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, SUBVERSIVE))),
+        FACE_DANCER,
+        "dutiful_service",
+        SUBVERSIVE,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["graft_pending_effect"] is True
+    assert context["pending_faction_influence"] is False
+    engine = UprisingRulesEngine()
+    switched = _switch(grafted)
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(switched, 0)
+    }
+
+    resolved = engine.apply(
+        switched, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+
+    owner = resolved.players[0]
+    assert owner.influence.emperor == 2
+    assert SUBVERSIVE in owner.trashed
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(resolved, 0)
+    }
+
+
+def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> None:
+    # Pheromones trashes the grafted Subversive Advisor before its box
+    # resolves, so that box expires (OQ-022, FAQ p. 1); the visited space's
+    # own "Faction Influence도 1" [Main p. 7] [Main p. 9] is still gained,
+    # on top of Pheromones' additional Influence.
+    pheromones = _tleilaxu("beguiling_pheromones")
+    grafted = _graft(
+        _state(
+            _owner(
+                (SUBVERSIVE, pheromones),
+                spies_supply=2,
+                spy_post_ids=(_DUTIFUL_SERVICE_POST,),
+            )
+        ),
+        SUBVERSIVE,
+        "dutiful_service",
+        pheromones,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_faction_influence"] is False
+    engine = UprisingRulesEngine()
+    # The Spy on Dutiful Service's post offers Gather Intelligence first.
+    declined = engine.apply(
+        grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
+    ).state
+    switched = _switch(declined)
+    trash = next(
+        action
+        for action in legal_agent_card_payment_actions(switched, 0)
+        if dict(action.arguments).get("card_id") == SUBVERSIVE
+    )
+
+    traded = engine.apply(switched, trash)
+
+    owner = traded.state.players[0]
+    assert SUBVERSIVE in owner.trashed and owner.influence.emperor == 1
+    _, context = current_agent_effect_context(traded.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is True
+
+    gained = engine.apply(
+        traded.state, DomainAction(action_id="resolve_faction_influence", actor=0)
+    )
+
+    assert gained.state.players[0].influence.emperor == 2
+
+
+_DESERT_TACTICS_POST = "fremen-desert-tactics-fremkit"
+
+
+def _subversive_ghola_on_desert_tactics() -> GameState:
+    grafted = _graft(
+        _state(
+            _owner(
+                (SUBVERSIVE, _tleilaxu("ghola")),
+                spies_supply=2,
+                spy_post_ids=(_DESERT_TACTICS_POST,),
+            )
+        ),
+        SUBVERSIVE,
+        "desert_tactics",
+        _tleilaxu("ghola"),
+    )
+    _, context = current_agent_effect_context(grafted)
+    # Both boxes are Subversive Advisor's, so both hold the space's 1.
+    assert context["pending_faction_influence"] is False
+    return UprisingRulesEngine().apply(
+        grafted, DomainAction(action_id="decline_gather_intelligence", actor=0)
+    ).state
+
+
+def test_a_resolved_subversive_box_keeps_the_space_influence_replaced() -> None:
+    # "일반 Influence 1 대신 해당 Faction Influence 2를 얻고 ... 일반 Faction
+    # Influence를 별도로 더해 총 3을 얻지 않는다" [Subversive Advisor card]
+    # [Main pp. 9, 11, 20] (docs/rules/player-turns.md). Subversive
+    # Advisor's box gains its 2; Desert Tactics then trashes Ghola, whose
+    # copy of that box expires unresolved (OQ-022). The space's 1 was
+    # already replaced, so it does not come back: 2, not 3.
+    engine = UprisingRulesEngine()
+    start = _subversive_ghola_on_desert_tactics()
+    resolved = engine.apply(
+        start, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    assert resolved.players[0].influence.fremen == 2
+    trash = next(
+        action
+        for action in engine.legal_actions(resolved, 0)
+        if action.action_id == "trash_card_for_desert_tactics"
+        and dict(action.arguments).get("card_id") == _tleilaxu("ghola")
+    )
+
+    traded = engine.apply(resolved, trash)
+
+    assert "agent_card_effect_expired" in {event.kind for event in traded.events}
+    _, context = current_agent_effect_context(traded.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is False
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(traded.state, 0)
+    }
+    assert traded.state.players[0].influence.fremen == 2
+
+
+def test_two_resolved_subversive_boxes_each_gain_two() -> None:
+    # Pinned current behaviour: Ghola copies the whole box [Immortality
+    # p. 14], so when both boxes resolve each gains its own 2 (4 in all);
+    # the space's 1 never adds to them.
+    engine = UprisingRulesEngine()
+    first = engine.apply(
+        _subversive_ghola_on_desert_tactics(),
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    ).state
+    second = engine.apply(
+        _switch(first), DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+
+    assert second.players[0].influence.fremen == 4
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.legal_actions(second, 0)
+    }
 
 
 def test_piter_loses_a_troop_for_two_cards_and_research() -> None:
@@ -912,7 +1185,11 @@ def test_usurps_borrowed_stillsuit_manufacturer_never_returns_to_hand() -> None:
     grafted = apply_graft_partner(
         placed, DomainAction("choose_graft_partner", 0, (("card_id", stillsuit),))
     ).state
-    resolved = resolve_agent_card_effect(_switch(grafted))
+    switched = _switch(grafted)
+    # The return icon never comes for a card that is not in play: only the
+    # water is offered, and the return lapses at the turn's end.
+    assert _icon_keys(switched) == {"water"}
+    resolved = resolve_agent_card_icon(switched, _icon(switched, "water"))
     owner = resolved.state.players[0]
     assert owner.resources.water == 3
     assert stillsuit in owner.in_play and stillsuit not in owner.hand
@@ -1147,9 +1424,10 @@ def test_usurped_replacement_eyes_spice_completes_a_harvest_contract_in_turn() -
     # The Contract was held when the Agent went out, and this turn has
     # already gained 1 spice: one short of Harvest 3+.
     context["pending_contract_ids"] = harvest
-    context["spice_at_placement"] = owner.resources.spice - 1
+    owner = replace(owner, spice_at_turn_start=owner.resources.spice - 1)
     state = replace(
         state,
+        players=(owner, *state.players[1:]),
         decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
     )
     ready = _resolve_until_finish(state)
@@ -1203,9 +1481,12 @@ def test_a_turn_reopened_for_a_contract_keeps_its_deployment_window() -> None:
     )
     frame, context = current_agent_effect_context(state)
     context["pending_contract_ids"] = harvest
-    context["spice_at_placement"] = state.players[0].resources.spice - 1
+    # This turn has already gained 1 spice (Harvest counts the whole turn).
+    owner = state.players[0]
+    owner = replace(owner, spice_at_turn_start=owner.resources.spice - 1)
     state = replace(
         state,
+        players=(owner, *state.players[1:]),
         decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
     )
     engine = UprisingRulesEngine()
@@ -1466,3 +1747,86 @@ def test_ghola_borrowing_a_restricted_spy_box_keeps_its_post_limit() -> None:
     assert targets
     assert offered(grafted) == targets
     assert offered(_switch(grafted)) == targets
+
+
+TREAD = "imperium:tread_in_darkness:0"
+TRUTHTRANCE = "imperium:truthtrance:0"
+
+
+def _engine_step(
+    state: GameState, action_id: str, **arguments: object
+) -> tuple[GameState, tuple[str, ...]]:
+    engine = UprisingRulesEngine()
+    action = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == action_id
+        and all(
+            dict(action.arguments).get(key) == value for key, value in arguments.items()
+        )
+    )
+    result = engine.apply(state, action)
+    return result.state, tuple(event.kind for event in result.events)
+
+
+def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_a_graft_switch() -> (
+    None
+):
+    # A card that leaves play by its own printed icon still pays its other
+    # icons (OQ-022 "자기 효과" exception, docs/rules/open-questions.md):
+    # Tread in Darkness's trash icon trashes Tread itself, then the owner
+    # resolves Ghola's box first. Switching away used to drop the
+    # self-trash flag, so Tread's draw expired as if another effect had
+    # trashed it.
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((TREAD, ghola), in_play=(TRUTHTRANCE,))),
+        TREAD,
+        "arrakeen",
+        ghola,
+    )
+    trashed, _ = _engine_step(grafted, "trash_agent_card", card_id=TREAD)
+    assert TREAD in trashed.players[0].trashed
+
+    switched, kinds = _engine_step(trashed, "switch_graft_card")
+
+    assert "agent_card_effect_expired" not in kinds
+    _, context = current_agent_effect_context(switched)
+    assert context["card_id"] == ghola
+    assert context["graft_pending_effect"] is True
+    assert context["graft_pending_icons"] == "cards"
+    back, kinds = _engine_step(switched, "switch_graft_card")
+    assert "agent_card_effect_expired" not in kinds
+    drawn, _ = _engine_step(back, "resolve_agent_card_effect", effect="cards")
+    assert len(drawn.players[0].hand) == len(back.players[0].hand) + 1
+
+
+def test_ghola_copy_trashing_itself_keeps_its_draw_across_a_graft_switch() -> None:
+    # The same for Ghola's copy of Tread's box [Immortality p. 14]: "this
+    # card" is Ghola, so its trash icon may trash Ghola itself, and Ghola's
+    # draw still pays after the owner resolves Tread's box in between.
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((TREAD, ghola), in_play=(TRUTHTRANCE,))),
+        TREAD,
+        "arrakeen",
+        ghola,
+    )
+    on_ghola, _ = _engine_step(grafted, "switch_graft_card")
+    trashed, _ = _engine_step(on_ghola, "trash_agent_card", card_id=ghola)
+    assert ghola in trashed.players[0].trashed
+
+    on_tread, kinds = _engine_step(trashed, "switch_graft_card")
+
+    assert "agent_card_effect_expired" not in kinds
+    _, context = current_agent_effect_context(on_tread)
+    assert context["card_id"] == TREAD
+    assert context["graft_pending_icons"] == "cards"
+    declined, _ = _engine_step(on_tread, "decline_agent_card_trash")
+    tread_drew, kinds = _engine_step(
+        declined, "resolve_agent_card_effect", effect="cards"
+    )
+    assert "agent_card_effect_expired" not in kinds
+    back, _ = _engine_step(tread_drew, "switch_graft_card")
+    ghola_drew, _ = _engine_step(back, "resolve_agent_card_effect", effect="cards")
+    assert len(ghola_drew.players[0].hand) == len(back.players[0].hand) + 1

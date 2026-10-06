@@ -119,7 +119,9 @@ def _plural(count: int, noun: str) -> str:
 
 def _retreat_troops_text(troops: RetreatTroops) -> str:
     if troops.maximum is None:
-        if troops.minimum == 1:
+        # Zero is a legal choice of an "any number" retreat [Main p. 20]
+        # [FAQ p. 3]; the printed text is the same.
+        if troops.minimum <= 1:
             return "Retreat any number of troops"
         return f"Retreat any number of troops (at least {troops.minimum})"
     if troops.minimum == troops.maximum:

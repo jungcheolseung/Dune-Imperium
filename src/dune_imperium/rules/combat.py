@@ -1195,11 +1195,15 @@ def _conflict_losses(state: GameState) -> tuple[int, ...]:
 def offer_conflict_end_triggers(state: GameState) -> RuleResult:
     """Open the window for Intrigue that triggers at this Conflict's end.
 
-    Harvest Cells received as a Combat reward may be played in this same
-    Combat (designer ruling, OQ-057): after the rewards and before the
-    cleanup each seat, in turn order from the First Player, may play a hand
-    card whose Conflict-end trigger would fire. Without candidates the
-    window closes at once.
+    Harvest Cells is played only here, after the rewards and before the
+    cleanup, and only when its condition holds: "This card is played after
+    combat resolves." (designer ruling, OQ-057 (11)), and "To play an
+    Intrigue card, you must meet its conditions and pay its costs."
+    [FAQ p. 2] (user ruling 2026-10-06; ``IntriguePlayBlock.CONFLICT_END``
+    keeps it out of Combat Intrigue). Each seat, in turn order from the
+    First Player (OQ-002), may play a hand card whose Conflict-end trigger
+    would fire -- one held from earlier or one just received as a reward.
+    Without candidates the window closes at once.
     """
 
     if state.phase is not GamePhase.COMBAT:
@@ -1392,8 +1396,8 @@ def finish_combat(state: GameState) -> RuleResult:
         events.extend(match_events)
 
     # Harvest Cells (Immortality): troops returning to the supply at
-    # cleanup are "lost" [FAQ p. 1]; the face-up card fires when enough
-    # were, and expires otherwise.
+    # cleanup are "lost" [FAQ p. 1]; the card the Conflict-end window laid
+    # face up fires after the return.
     losses = tuple(
         player.troops_conflict + player.commanders_conflict for player in players
     )
@@ -1908,7 +1912,14 @@ def refresh_combat_participants(state: GameState) -> RuleResult:
 def _fire_troop_loss_triggers(
     state: GameState, losses: tuple[int, ...]
 ) -> tuple[GameState, tuple[GameEvent, ...]]:
-    """Resolve or expire face-up Intrigue waiting on a Conflict-end troop loss."""
+    """Resolve face-up Intrigue waiting on a Conflict-end troop loss.
+
+    Only the Conflict-end window lays such a card face up, and only when
+    this loss meets its trigger (``offer_conflict_end_triggers``); nothing
+    changes the troops in the Conflict between that window and the cleanup,
+    so the card always fires. It used to expire when a card laid face up in
+    Combat Intrigue lost too few (gone with the user ruling of 2026-10-06).
+    """
 
     from dune_imperium.rules.intrigue import resolve_faceup_trigger_option
 
@@ -1937,30 +1948,13 @@ def _fire_troop_loss_triggers(
             source = (
                 f"round:{state.round_number}:player:{player}:conflict_end:{card_id}"
             )
-            if lost >= minimum:
-                fired = resolve_faceup_trigger_option(
-                    next_state, player, card_id, source=source
+            if lost < minimum:
+                raise RuntimeError(
+                    "a Conflict-end trigger card waits face up without its loss"
                 )
-                next_state = fired.state
-                events.extend(fired.events)
-                continue
-            owner = next_state.players[player]
-            expired = replace(
-                owner,
-                intrigue_faceup=tuple(
-                    held for held in owner.intrigue_faceup if held != card_id
-                ),
+            fired = resolve_faceup_trigger_option(
+                next_state, player, card_id, source=source
             )
-            next_state = replace(
-                next_state,
-                players=replace_player(next_state.players, expired),
-                intrigue_discard=(*next_state.intrigue_discard, card_id),
-            )
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:expired",
-                    kind="intrigue_expired",
-                    payload=(("card_id", card_id), ("player", player)),
-                )
-            )
+            next_state = fired.state
+            events.extend(fired.events)
     return next_state, tuple(events)

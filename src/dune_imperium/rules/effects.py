@@ -145,8 +145,6 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
         "pending_combat_deployment",
         "pending_faction_influence",
         "space_id",
-        "spice_at_placement",
-        "spice_spent_after_placement",
         "troops_recruited",
         "turn_owner",
     }
@@ -511,18 +509,19 @@ def eligible_agent_contract_ids(
     if not 0 <= owner_value < len(players):
         raise RuntimeError("Agent-turn effect frame owner is outside player state")
     owner = players[owner_value]
-    spice_at_placement = context.get("spice_at_placement", owner.resources.spice)
-    spice_spent = context.get("spice_spent_after_placement", 0)
-    if (
-        isinstance(spice_at_placement, bool)
-        or not isinstance(spice_at_placement, int)
-        or isinstance(spice_spent, bool)
-        or not isinstance(spice_spent, int)
-        or spice_at_placement < 0
-        or spice_spent < 0
-    ):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice tracking")
-    spice_gained = owner.resources.spice - spice_at_placement + spice_spent
+    # "Harvest contract는 Maker space에 Agent를 보내고, 그 turn에 모든 출처를
+    # 합쳐 contract에 표시된 양의 spice를 얻으면 완료한다." [Main p. 16]
+    # (docs/rules/choam-module.md:26). The whole turn counts, so spice gained
+    # before the placement -- a Plot played on the turn frame first (OQ-015
+    # (a)) -- adds to the Maker space's own, as in the Steam app; counting
+    # only from the placement left it out. ``spice_at_turn_start`` is
+    # snapshotted when the owner's turn opens and every spend adds to
+    # ``spice_spent_turn``, so spending later in the turn cannot undo a met
+    # threshold (the reading of ``agent_effects.spice_gained_this_turn``).
+    # Which Contracts may complete is still the placement snapshot below.
+    spice_gained = (
+        owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
+    )
 
     eligible: list[str] = []
     for instance_id in pending_agent_contract_ids(context):

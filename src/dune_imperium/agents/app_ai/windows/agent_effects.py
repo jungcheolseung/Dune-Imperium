@@ -102,7 +102,7 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   (``PowerPlayAgentAbility``): 500, automatic.
 - Seek Allies, and Dangerous Rhetoric's ``trash_self`` icon:
   ``TrashSelfAbility`` (Implicit, after End Turn): chore.
-- Prepare the Way, Maula Pistol, Spacing Guild's Favor, Cargo Runner: their
+- Prepare the Way, Maula Pistol, Spacing Guild's Favor: their
   ``DrawAbility``, 600 or (E) at ``DeferValue``; Priority Contracts:
   ``GainContractAbility``, likewise.
 - Rebel Supplier, Strike Fleet, Desert Power, Smuggler's Harvester, Fedaykin
@@ -114,11 +114,13 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
 - Long Live the Fighters: ``LongLiveTheFightersStartAbility`` (O), 100.
 - ``effect=`` icons: Hidden Missive ``troops`` / Maker Keeper / Wheels Within
   Wheels -> their ``AlwaysRunImmediately`` riders, 600; Hidden Missive and
-  Steersman ``cards`` -> their draw (600 or E). The reward icons Captured
+  Steersman ``cards`` and Cargo Runner's ``cards`` / ``cards_second`` (two
+  and four contracts) -> their draw (600 or E). The reward icons Captured
   Mentat, Guild Spy and Branching Path arm after their cost: follow-ups.
 - ``trash_agent_card(card)`` / ``decline_agent_card_trash``:
   ``TrashAgentAbility`` (Calculus of Power, Desert Survival; E),
-  ``BeneGesseritTrashAbility`` (Tread in Darkness; E; the draw rides along),
+  ``BeneGesseritTrashAbility`` (Tread in Darkness; E; its draw is its own
+  ``cards`` icon, ``BeneGesseritDrawAbility``),
   ``ShishakliAgentAbility`` (O; targets hand, in play, discard),
   ``TreacherousManeuverAbility`` (O); card -> trash, empty pick or unused ->
   decline.
@@ -151,7 +153,9 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
 The leader (Signet Ring box and leader abilities):
 
 - ``resolve_agent_card_effect()`` of the Signet Ring: ``WarmasterAbility``
-  (Gurney) and ``FillCoffersAbility`` (Amber), 600; ``LeadTheWayAbility``
+  (Gurney), 600; Amber's Fill Coffers resolves icon by icon: ``solari`` is
+  ``FillCoffersTriggeredAbility`` (paid at once), ``spice`` is
+  ``FillCoffersAbility`` (600) once she holds an Alliance; ``LeadTheWayAbility``
   (Muad'Dib), 600 or (E) (the Signet Ring's ``DeferValue`` 3 always reaches
   the threshold).
 - ``advance_feyd_track(space)``: ``PersonalTrainingAbility`` (E); Feyd's
@@ -200,8 +204,8 @@ Judgement calls (our engine cannot ask the app's question exactly):
   the app may play one before a pending Explicit key worth less.
 - Where one of our actions does two app steps, it takes the stage of the one
   that asks: Imperial Privilege's draw rides on the recall, In High Places'
-  draw on its Spy, Tread in Darkness' draw on its trash, Secrets' steal on its
-  draw, Subversive Advisor's influence and self-trash on its box (500).
+  draw on its Spy, Secrets' steal on its draw, Subversive Advisor's
+  influence and self-trash on its box (500).
 - The app computes the 600 list once; here every decision re-reads
   ``CanRunImmediately`` in the same order, so a card drawn earlier in 600 can
   move a later threshold-gated key into the prompt (it then runs as an
@@ -239,8 +243,11 @@ Immortality, Epic Game Mode and the promos (``spec/immortality.md`` §4-§8,
   ``Cost`` (a failing Cost has no app key: the box is a chore); boxes with
   only printed gains are the generic box (500). Two app steps in one action
   take the asking one's stage: Clandestine Meeting (intrigue + influence),
-  Stillsuit Manufacturer (water + return), Throne Room Politics (troop +
-  ``TrashAgentAbility``), Industrial Espionage (specimen + research + draw).
+  Throne Room Politics (troop + ``TrashAgentAbility``). Industrial
+  Espionage's ``cards`` and ``research`` icons are ``DrawAbility`` and
+  ``IndustrialEspionageResearchAbility`` (specimen + research, Explicit)
+  on their own; Stillsuit Manufacturer's ``water`` is the generic box (500)
+  and its ``return_self`` ``StillsuitManufacturerAgentAbility`` (Explicit).
 - Card choices: Organ Merchants, Tleilaxu Surgeon (never past Tleilaxu rank
   7: the Cost fails), Dissecting Kit, Scientific Breakthrough, Piter (the
   zone of the first troop the app names), Replacement Eyes, Twisted Mentat,
@@ -449,7 +456,6 @@ _BOX_ABILITY: Mapping[str, str] = {
     "prepare_the_way": "BeneGesseritInfluenceDrawAbility",
     "maula_pistol": "DrawAbility",
     "spacing_guild_s_favor": "DrawAbility",
-    "cargo_runner": "CargoRunner2ContractsDrawAbility",
     "leadership": "LeadershipAgentAbility",
     "chani_clever_tactician": "ChaniCleverTacticianAgentAbility",
     "imperial_spymaster": "ImperialSpymasterAbility",
@@ -474,6 +480,21 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("maker_keeper", "spice"): "MakerKeeperFremenAbility",
     ("wheels_within_wheels", "solari"): "WheelsWithinWheelsEmperorAbility",
     ("wheels_within_wheels", "spice"): "WheelsWithinWheelsSpacingGuildAbility",
+    # Cargo Runner's two lines, one app ability each (two and four contracts).
+    ("cargo_runner", "cards"): "CargoRunner2ContractsDrawAbility",
+    ("cargo_runner", "cards_second"): "CargoRunner4ContractsDrawAbility",
+    # Tread in Darkness's draw icon (its trash is ``_TRASH_ABILITY``'s).
+    ("tread_in_darkness", "cards"): "BeneGesseritDrawAbility",
+    # Industrial Espionage: ``DrawAbility`` and, grafted,
+    # ``IndustrialEspionageResearchAbility`` (Explicit, never auto) for the
+    # Research and specimen line (``SpecimenGraftedAgentAbility``, 210,
+    # rides along); the research asks over the next research spaces.
+    ("industrial_espionage", "cards"): "DrawAbility",
+    ("industrial_espionage", "research"): "IndustrialEspionageResearchAbility",
+    # Stillsuit Manufacturer's return (Explicit, E 100), offered once its
+    # Cost (Fremen Alliance, card in play) holds; its water is the generic
+    # ``AgentWater`` box (``_GENERIC_ICON_BOXES``).
+    ("stillsuit_manufacturer", "return_self"): "StillsuitManufacturerAgentAbility",
     # Immortality multi-icon boxes (``_PLACEMENT_ICONS`` of our engine).
     ("sardaukar_quartermaster", "troops"): "SardaukarQuartermasterTroopAbility",
     ("sardaukar_quartermaster", "cards"): "SardaukarQuartermasterDrawAbility",
@@ -486,7 +507,10 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
 }
 #: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
 #: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
-_GATED_ICON_CARDS = ("fremen_war_name",)
+_GATED_ICON_CARDS = ("fremen_war_name", "stillsuit_manufacturer")
+#: Icons that are the card's generic agent box (state 500): printed
+#: ``AgentWater`` and the like, no ability of their own.
+_GENERIC_ICON_BOXES = frozenset({("stillsuit_manufacturer", "water")})
 #: Cards whose reward icons are armed after an arrow cost: the app answered
 #: the whole ability at once, so the icons are follow-ups. Elite Forces
 #: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
@@ -602,9 +626,7 @@ _EXPANSION_BOX_CARDS = frozenset(
         "bene_tleilax_researcher",
         "scientific_breakthrough",
         "clandestine_meeting",
-        "stillsuit_manufacturer",
         "throne_room_politics",
-        "industrial_espionage",
         "the_beast_s_spoils",
     }
 )
@@ -648,13 +670,21 @@ _PARTNER_LABEL = "graft partner | "
 #: Signet boxes resolved by ``resolve_agent_card_effect()``, by leader.
 _SIGNET_BOX_ABILITY: Mapping[str, str] = {
     "gurney_halleck": "WarmasterAbility",
-    "lady_amber_metulli": "FillCoffersAbility",
     "muad_dib": "LeadTheWayAbility",
     # Bloodlines (bloodlines-systems.md §4.6, §4.8): Harkonnen Advisor reuses
     # ``WarmasterAbility`` (D41); Judge of the Change runs by itself (D45).
     "piter_de_vries": "WarmasterAbility",
     "liet_kynes": "JudgeOfTheChangeSignetAbility",
 }
+#: Signet boxes resolved icon by icon (``resolve_agent_card_effect(effect=)``):
+#: (leader, our icon key) -> the leader's app ability of that icon. Amber's
+#: Fill Coffers: ``FillCoffersAbility`` is the Alliance spice; the +1 Solari
+#: is ``FillCoffersTriggeredAbility`` (no prompt, no AI hook), paid when the
+#: Signet icon is gained (``_SIGNET_TRIGGER_ICONS``).
+_SIGNET_ICON_ABILITY: Mapping[tuple[str, str], str] = {
+    ("lady_amber_metulli", "spice"): "FillCoffersAbility",
+}
+_SIGNET_TRIGGER_ICONS = frozenset({("lady_amber_metulli", "solari")})
 #: Bloodlines Agent boxes resolved by ``resolve_agent_card_effect()`` and the
 #: card's own ability (bloodlines-cards.md §3), gated by its ``Cost`` (a box
 #: whose Cost fails has no app key: a chore).
@@ -1882,33 +1912,11 @@ def _expansion_box(t: _Turn, short: str, action: DomainAction) -> None:
         _box_auto(t, label, action)  # SpecimenAgentAbility (state 210)
     elif short == "clandestine_meeting":
         _clandestine_meeting(t, label, action)
-    elif short == "stillsuit_manufacturer":
-        # The ``AgentWater`` box (500) and ``StillsuitManufacturerAgentAbility``
-        # (Explicit, E 100) when its Cost (Fremen alliance, card in play) holds.
-        found = _find(t.card, "StillsuitManufacturerAgentAbility")
-        if found is not None and isinstance(found[0], DeferredAbility):
-            if found[0].meets_cost(t.p):
-                _ability_source(t, label, found, _ROW_CARD, action)
-                return
-        _box_auto(t, label, action)
     elif short == "throne_room_politics":
         # The ``AgentTroops`` box (500) and ``TrashAgentAbility`` (Explicit;
         # our engine opens its trash as ``optional_trash`` right after).
         found = _find(t.card, "TrashAgentAbility")
         _gated_ability_source(t, label, found, _ROW_CARD, action, _trash_request(t))
-    elif short == "industrial_espionage":
-        # Grafted: ``SpecimenGraftedAgentAbility`` (210),
-        # ``IndustrialEspionageResearchAbility`` (Explicit, never auto) and
-        # ``DrawAbility``; the research asks. Alone: the draw only.
-        if t.partner_ref is not None:
-            found = _find(t.card, "IndustrialEspionageResearchAbility")
-            _gated_ability_source(
-                t, label, found, _ROW_CARD, action, _research_request(t)
-            )
-        else:
-            _gated_ability_source(
-                t, label, _first_of(t.card, DrawAbility), _ROW_CARD, action
-            )
     elif short == "the_beast_s_spoils":
         # ``TheBeastsSpoilsDesertMouseAbility`` / ``…OrnithopterAbility``
         # (always immediate, Cost = the exact face-up battle icon); the
@@ -2001,11 +2009,17 @@ def _bloodlines_box(t: _Turn, short: str, action: DomainAction) -> None:
 def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     short = t.card_short or ""
     label = f"{short} {effect}"
+    if short == "signet_ring":
+        _signet_icon(t, action, effect)
+        return
     if effect == "trash_self":
         t.chores.append(action)  # TrashSelfAbility: Implicit, after End Turn
         return
     if short in _ARMED_REWARD_CARDS or short in _FOLLOW_UP_ICON_CARDS:
         _automatic(t, label, _FOLLOW_UP, action, -1)
+        return
+    if (short, effect) in _GENERIC_ICON_BOXES:
+        _box_auto(t, label, action)
         return
     name = _ICON_ABILITY.get((short, effect))
     found = _find(t.card, name) if name is not None else None
@@ -2015,7 +2029,27 @@ def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     if short in _GATED_ICON_CARDS:
         _gated_ability_source(t, label, found, _ROW_CARD, action)
         return
+    if effect == "research":
+        _gated_ability_source(
+            t, label, found, _ROW_CARD, action, _research_request(t)
+        )
+        return
     _ability_source(t, label, found, _ROW_CARD, action)
+
+
+def _signet_icon(t: _Turn, action: DomainAction, effect: str) -> None:
+    """One icon of a Signet box resolved icon by icon (Amber's Fill Coffers):
+    its trigger at once, or the leader's ability of that icon."""
+
+    leader_id = t.run.ctx.me.leader_id or ""
+    label = f"signet {leader_id} {effect}"
+    if (leader_id, effect) in _SIGNET_TRIGGER_ICONS:
+        # Paid when the Signet icon is gained, before any box: no question.
+        _automatic(t, label, _FOLLOW_UP, action, -1)
+        return
+    name = _SIGNET_ICON_ABILITY.get((leader_id, effect))
+    found = _find(t.leader, name) if name is not None else None
+    _ability_source(t, label, found, _ROW_LEADER, action)
 
 
 def _card_choices(t: _Turn) -> None:

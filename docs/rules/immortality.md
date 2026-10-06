@@ -63,6 +63,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 - Tleilaxu 아이콘을 얻을 때마다 Tleilaxu token을 한 칸 전진한다. 보너스가 있는 칸에 도달하면 즉시 얻는다. `[Immortality pp. 7, 16]`
 - 칸 0이 시작 칸이다. 칸 2: Intrigue 1, 칸 4: VP 1(각 플레이어가 도달할 때마다; **처음** 도달한 플레이어는 setup 때 놓인 spice 2도 가져간다), 칸 6: Intrigue 1, 칸 7(마지막): VP 1. `[Immortality pp. 4, 7]` `[Immortality p. 3 board artwork]`
 - Bene Tleilax는 Faction이 아니다. "아무 Faction의 Influence"를 주는 효과로 Tleilaxu track을 전진할 수 없다. `[FAQ p. 4]`
+- 마지막 칸(7)에서는 Tleilaxu 아이콘이 아무것도 하지 않으므로(OQ-048) 비용을 내고 Tleilaxu 전진만 얻는 줄 — Slig Farmer의 Solari 5, Tleilaxu Surgeon의 specimen 2, 연구 칸 c8r6의 Solari 7, Reclaimed Forces의 Tleilaxu 선택 — 은 제시하지 않는다(2026-10-06, 사용자 결정 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"의 확장, OQ-071).
 
 ### Specimen과 Axolotl tanks
 
@@ -75,6 +76,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 - Tleilaxu 카드는 Imperium 카드와 비슷하다: Reveal turn에 acquire해 discard pile에 놓고, Agent turn에 play하거나 Reveal turn에 reveal한다. 다만 Tleilaxu Row에서 오고 Persuasion 대신 specimen을 비용으로 낸다. `[Immortality p. 8]`
 - Tleilaxu Row는 항상 카드 2장과 Reclaimed Forces를 갖춰야 하며, 모자라면 Tleilaxu deck 맨 위에서 보충한다. Reclaimed Forces는 Row에서 제거되지 않는다: "acquire"하면 효과 하나를 고르고(troop 2 recruit 또는 Tleilaxu 1) 카드는 그 자리에 남긴다. 그 비용은 카드에 인쇄된 specimen 3이다. `[Immortality p. 9]` `[Reclaimed Forces card]`
 - Reclaimed Forces의 "acquire" 역시 다른 Tleilaxu 카드와 마찬가지로 카드를 "acquire"하는 것이며(카드가 Row에 남는 점만 다르다), "whenever you acquire a card" 트리거(예: Call to Arms)의 대상이 된다(사용자 판정, 2026-09-26, OQ-066). `[Immortality p. 9]`
+- Harvest Cells의 "You may also acquire a Tleilaxu card (paying its normal cost)." `[Harvest Cells card]`로도 Reclaimed Forces를 "acquire"할 수 있다 — specimen 3을 내고 효과 하나를 고르며 카드는 Row에 남는다(사용자 판정 2026-10-06 "허용", OQ-066). Harvest Cells 자체는 Conflict가 해결된 뒤의 창에서만 낸다(사용자 판정 2026-10-06, OQ-016·OQ-057 (11)).
 - Imperium Row에서 카드를 acquire하는 효과로는 Tleilaxu 카드를 acquire할 수 없고, Persuasion 비용을 참조·수정하는 효과도 쓸 수 없다. `[Immortality p. 9]`
 - Tleilaxu deck 18장은 [implementation-audits/immortality.md](../implementation-audits/immortality.md)에 카드면 전사로 기록한다. `[Tleilaxu card faces]`
 
@@ -119,6 +121,7 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 
 ## 10. 구현 상태
 
+- 2026-10-06(Steam 앱과의 카드 전수 대조, codec v137·관측 v30): Harvest Cells는 Conflict 보상 뒤의 창에서만 내고(OQ-016) Reclaimed Forces도 가져갈 수 있다(`acquire_intrigue_reclaimed_forces`, OQ-066). Industrial Espionage(draw와 "If grafted:" 줄)와 Stillsuit Manufacturer(water와 Fremen Alliance 반환)의 Agent box는 아이콘마다 해결한다(OQ-027·OQ-057 (1)). Tleilaxu track 마지막 칸의 비용 줄(위 Tleilaxu track 절)과 c6r6의 6인 진영은 제시하지 않는다(OQ-071·OQ-060). Counterattack의 Plot은 garrison이 비어도 내고 0명을 배치할 수 있다(OQ-057 (6)). Subversive Advisor를 graft 상대로 놓아도 space의 1을 대신한다(OQ-022). Tleilaxu Master는 소유자가 Manipulate로 빼 둔 카드도 인쇄 비용으로 얻을 수 있다(`[FAQ p. 3]`). 세부는 [implementation-audits/immortality.md](../implementation-audits/immortality.md).
 - 2026-10-02: arrow 비용을 낼 수 없는 research 보너스(c7r3의 Intrigue trash, c8r6의 Solari 7)도 보너스 창을 열고 `decline_research_bonus` 하나만 제시한다. 지불 줄은 `research_bonus_block`(NO_INTRIGUE, SOLARI)의 이유와 함께 회색으로 보이고, 이벤트 `research_bonus_unavailable`은 없어졌다(2026-09-30 사용자 판정 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다", 3절). codec v125(L2 문장, 템플릿 변화 없음).
 - 2026-09-26: Twisted Mentat("You may recall the Agent you sent this turn.")이 recall하는 "이번 turn 보낸 Agent"는 Duncan Idaho(Bloodlines)의 Into the Fray가 그 사이 Conflict로 옮겼어도 여전히 그 Agent이므로, Mentat의 recall이 Conflict까지 따라간다(2026-09-26 사용자 판정, OQ-068; `docs/rules/uprising-systems.md` 97행).
 - 2026-09-16: 점유된 space로의 graft 배치는 놓는 카드가 Ghola의 약속(OQ-057) 없이 그 space에 닿을 때만(또는 놓는 카드가 Tleilaxu Infiltrator일 때만) 제시한다 — 한 turn에 카드는 두 장뿐이라 `[Immortality p. 10]` "Infiltrator가 partner"와 "Ghola가 partner"를 한 partner가 다 지킬 수 없다. 전 확장 기준선 seed 42에서 Long Reach(BG Bond 아이콘)·Ghola·Infiltrator를 든 좌석이 점유된 Arrakeen에 graft 배치를 받고 partner 선택에 합법 행동이 없던 결함([evaluation/baseline-2026-09-10.md](../evaluation/baseline-2026-09-10.md) 18절(k)).

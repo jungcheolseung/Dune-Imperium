@@ -62,7 +62,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
@@ -130,7 +130,6 @@ SERVO_SIGNET_CARD_ID: Final = "tech:servo_receivers"
 _TURN_COUNTERS: Final = (
     "troops_recruited",
     "undeployable_troops",
-    "spice_spent_after_placement",
 )
 
 
@@ -314,7 +313,6 @@ def use_leader_signet_for_tech(
         "advance_agent_frame": advance_agent_frame,
         "card_id": SERVO_SIGNET_CARD_ID,
         "pending_agent_effect": True,
-        "spice_spent_after_placement": 0,
         "troops_recruited": 0,
         "turn_owner": player,
         "undeployable_troops": 0,
@@ -438,7 +436,10 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         payload = (("card_id", card_id), ("player", player), ("troops", recruited))
     elif owner.leader_id == "lady_amber_metulli":
         # Fill Coffers: gain one Solari, and one Spice while holding any
-        # Faction Alliance [Lady Amber Metulli card].
+        # Faction Alliance [Lady Amber Metulli card]. Reached only through
+        # Servo-Receivers (OQ-062), which has no Agent box to keep the spice
+        # waiting, so the Alliance is judged now; the Signet Ring card's box
+        # resolves the two as icons instead (``agent_effects._SIGNET_ICONS``).
         spice = 1 if owner.alliance_faction_ids else 0
         next_owner = replace(
             owner,
@@ -1006,6 +1007,27 @@ def _leader_spy_placement_actions(
     return recalls
 
 
+def signet_influence_withheld(state: GameState, player: int) -> bool:
+    """Whether Shaddam's "3 Solari -> Influence" is withheld for its reward.
+
+    Emperor of the Known Universe's Influence choice with the three Solari
+    in hand but every cube at the top of its track: the gain would be lost
+    (OQ-060), and "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을
+    때만 제시한다" (OQ-071), so ``legal_leader_signet_actions`` offers only
+    the Solari and troop. The page greys the payment out with this test
+    (``display.unavailable``).
+    """
+
+    if _leader_signet_context(state, player) is None:
+        return False
+    owner = state.players[player]
+    return (
+        owner.leader_id == "shaddam_corrino_iv"
+        and owner.resources.solari >= 3
+        and not any(influence_can_rise(owner, faction) for faction in Faction)
+    )
+
+
 def legal_leader_signet_actions(
     state: GameState,
     player: int,
@@ -1064,7 +1086,10 @@ def legal_leader_signet_actions(
     if owner.leader_id == "shaddam_corrino_iv":
         # Emperor of the Known Universe: choose one Solari and one troop, or
         # pay three Solari for one Influence of your choice; the deployment
-        # restriction already took effect at placement [Main p. 17].
+        # restriction already took effect at placement [Main p. 17]. Never a
+        # Faction already at the top, whose gain is lost (OQ-060), so with
+        # every cube there the three Solari buy nothing and are not offered
+        # (OQ-071, ``signet_influence_withheld``).
         return (
             DomainAction(action_id="gain_leader_signet_troop", actor=player),
             *(
@@ -1075,6 +1100,7 @@ def legal_leader_signet_actions(
                         arguments=(("faction", faction.value),),
                     )
                     for faction in Faction
+                    if influence_can_rise(owner, faction)
                 )
                 if owner.resources.solari >= 3
                 else ()
@@ -1096,7 +1122,11 @@ def legal_leader_signet_actions(
                 actor=player,
                 arguments=(("instance_id", instance_id),),
             )
-            for instance_id in acquirable_imperium_instance_ids(state, 1)
+            # The Row's one-cost cards and the owner's own Manipulate
+            # set-aside one, at its printed cost [FAQ p. 3].
+            for instance_id in acquirable_imperium_instance_ids(
+                state, 1, player=player
+            )
             if imperium_card_for_instance(instance_id).acquisition_cost == 1
         )
         actions.extend(
@@ -1319,10 +1349,6 @@ def apply_leader_signet_payment(
 
     if owner.resources.spice < 1:
         raise RuntimeError("the Signet Ring payment requires one Spice")
-    previous_spent = context.get("spice_spent_after_placement", 0)
-    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-    context["spice_spent_after_placement"] = previous_spent + 1
     next_owner = replace(
         owner,
         resources=replace(owner.resources, spice=owner.resources.spice - 1),
@@ -1440,10 +1466,6 @@ def _apply_listeners_payment(
     owner = state.players[player]
     if owner.resources.spice < 1:
         raise RuntimeError("Listeners' payment requires one spice")
-    previous_spent = context.get("spice_spent_after_placement", 0)
-    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-    context["spice_spent_after_placement"] = previous_spent + 1
     context["listeners_paid"] = True
     paid = replace(
         owner,
@@ -1623,10 +1645,6 @@ def _apply_staban_bonus_payment(
         # Next to the Landsraad: one Spice buys three Solari.
         if owner.resources.spice < 1:
             raise RuntimeError("the Landsraad bonus requires one Spice")
-        previous_spent = context.get("spice_spent_after_placement", 0)
-        if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
-            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
-        context["spice_spent_after_placement"] = previous_spent + 1
         next_owner = replace(
             owner,
             resources=replace(

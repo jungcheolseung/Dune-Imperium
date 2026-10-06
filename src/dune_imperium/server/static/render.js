@@ -1659,8 +1659,10 @@ function boughtThisReveal() {
 }
 
 function acquireCostNode(action) {
-  /* Reclaimed Forces' only argument is the effect chosen, not the card. */
-  const reclaimed = action.action_id === "acquire_reclaimed_forces";
+  /* Reclaimed Forces' only argument is the effect chosen, not the card;
+     Harvest Cells may take it too, for the same specimens. */
+  const reclaimed = action.action_id === "acquire_reclaimed_forces"
+    || action.action_id === "acquire_intrigue_reclaimed_forces";
   const ref = actionRefs(action)[0];
   const entry = reclaimed
     ? lookup("reclaimed_forces", "cards")

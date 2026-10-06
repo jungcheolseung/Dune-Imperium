@@ -32,6 +32,7 @@ from dune_imperium.rules.acquisition import (
     legal_imperium_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_influence,
     apply_agent_card_payment,
     fizzle_pending_agent_icons,
@@ -40,6 +41,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_payment_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
+    resolve_faction_influence,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -305,6 +307,40 @@ def test_long_reach_icons_and_two_distinct_influences() -> None:
     owner = done.players[0]
     assert owner.influence.fremen == 1 and owner.influence.emperor == 1
 
+
+
+def test_long_reach_with_one_faction_below_the_top_pays_it_at_the_turn_end() -> (
+    None
+):
+    """"Choose two" never names a Faction at the top (OQ-060). With one
+    below it that one is named; no second pick is left, so the box waits
+    (a later effect of the turn may lower a cube, OQ-057 (1)) and the turn's
+    end pays the named Faction and loses the other, as OQ-060 pays a
+    Conflict reward's first named Faction."""
+
+    reach = _card("long_reach")
+    owner = _owner(
+        (reach,),
+        in_play=(_card("planned_coupling"),),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+    )
+    bonded = _place(_state(owner), reach, "assembly_hall")
+    (only,) = legal_agent_card_influence_actions(bonded, 0)
+    assert dict(only.arguments)["faction"] == "fremen"
+    named = apply_agent_card_influence(bonded, only).state
+    assert named.players[0].influence.fremen == 3
+    assert legal_agent_card_influence_actions(named, 0) == ()
+    assert agent_card_effect_is_unavailable(named)
+    engine = UprisingRulesEngine()
+    actions = engine.legal_actions(named, 0)
+    assert DomainAction("resolve_agent_card_effect", 0) not in actions
+    while board := [a for a in actions if a.action_id == "resolve_board_effect"]:
+        named = engine.apply(named, board[0]).state
+        actions = engine.legal_actions(named, 0)
+    finished = engine.apply(named, DomainAction("finish_agent_turn", 0))
+    assert finished.state.players[0].influence.fremen == 4
+    assert finished.state.players[0].influence.emperor == 6
+    assert "agent_card_effect_unavailable" in {e.kind for e in finished.events}
 
 
 def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:
@@ -778,24 +814,94 @@ def test_call_to_arms_waits_for_an_inspire_awe_fervor_s_research_direction() -> 
     assert "deferred_acquisition_triggers" not in dict(reveal.context)
 
 
-def test_stillsuit_manufacturer_returns_with_the_fremen_alliance() -> None:
-    stillsuit = _card("stillsuit_manufacturer")
-    plain = resolve_agent_card_effect(
-        _place(_state(_owner((stillsuit,))), stillsuit, "arrakeen")
+def _icon_keys(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
+def _icon(state: GameState, key: str) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", key),)
     )
+
+
+def test_stillsuit_manufacturer_returns_with_the_fremen_alliance() -> None:
+    # "[water] —AND— [Fremen] Alliance: Return this card from play to your
+    # hand." [Stillsuit Manufacturer card]: two icons (OQ-027), the return
+    # judged when it resolves (OQ-028).
+    stillsuit = _card("stillsuit_manufacturer")
+    placed = _place(_state(_owner((stillsuit,))), stillsuit, "arrakeen")
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "water,return_self"
+    )
+    assert _icon_keys(placed) == {"water"}
+    plain = resolve_agent_card_icon(placed, _icon(placed, "water"))
     owner = plain.state.players[0]
     assert owner.resources.water == 3 and stillsuit in owner.in_play
-    allied = resolve_agent_card_effect(
-        _place(
-            _state(_owner((stillsuit,), alliance_faction_ids=("fremen",))),
-            stillsuit,
-            "arrakeen",
-        )
+
+    allied_state = _place(
+        _state(_owner((stillsuit,), alliance_faction_ids=("fremen",))),
+        stillsuit,
+        "arrakeen",
     )
-    owner = allied.state.players[0]
+    assert _icon_keys(allied_state) == {"water", "return_self"}
+    returned = resolve_agent_card_icon(allied_state, _icon(allied_state, "return_self"))
+    owner = returned.state.players[0]
     assert stillsuit in owner.hand and stillsuit in owner.hand_public
+    assert stillsuit not in owner.in_play
+    # Back in hand by its own icon: the water still pays out.
+    allied = resolve_agent_card_icon(returned.state, _icon(returned.state, "water"))
+    assert allied.state.players[0].resources.water == 3
     bonded = _take_gains(_reveal(_state(_owner((stillsuit, _card("lisan_al_gaib"))))))
     assert bonded.players[0].resources.spice == 2 + 2
+
+
+def test_stillsuit_manufacturer_return_waits_for_a_later_fremen_alliance() -> None:
+    # Water first, then the visit's Fremen Influence reaches four and takes
+    # the Alliance: the waiting return is offered, and it is mandatory then
+    # (OQ-057 (1)).
+    stillsuit = _card("stillsuit_manufacturer")
+    owner = _owner((stillsuit,), influence=Influence(fremen=3))
+    placed = _place(_state(owner), stillsuit, "fremkit")
+    watered = resolve_agent_card_icon(placed, _icon(placed, "water")).state
+    assert _icon_keys(watered) == set()
+    assert agent_card_effect_is_unavailable(watered)
+
+    allied = resolve_faction_influence(watered).state
+    assert "fremen" in allied.players[0].alliance_faction_ids
+    assert _icon_keys(allied) == {"return_self"}
+    engine = UprisingRulesEngine()
+    assert DomainAction("finish_agent_turn", 0) not in engine.legal_actions(allied, 0)
+
+    returned = resolve_agent_card_icon(allied, _icon(allied, "return_self")).state
+    assert stillsuit in returned.players[0].hand
+    assert stillsuit not in returned.players[0].in_play
+    assert returned.players[0].resources == allied.players[0].resources
+
+
+def test_stillsuit_manufacturer_return_lapses_without_the_alliance() -> None:
+    stillsuit = _card("stillsuit_manufacturer")
+    placed = _place(_state(_owner((stillsuit,))), stillsuit, "arrakeen")
+    watered = resolve_agent_card_icon(placed, _icon(placed, "water")).state
+    engine = UprisingRulesEngine()
+    finish = DomainAction("finish_agent_turn", 0)
+    while finish not in (legal := engine.legal_actions(watered, 0)):
+        watered = engine.apply(
+            watered,
+            next(a for a in legal if not a.action_id.startswith("deploy")),
+        ).state
+
+    closed = engine.apply(watered, finish)
+
+    assert [
+        dict(event.payload)["effect"]
+        for event in closed.events
+        if event.kind == "agent_card_effect_unavailable"
+    ] == ["return_self"]
+    owner = closed.state.players[0]
+    assert stillsuit in owner.in_play and stillsuit not in owner.hand
 
 
 def test_throne_room_politics_recruits_then_offers_a_trash() -> None:

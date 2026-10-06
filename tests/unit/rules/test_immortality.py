@@ -26,6 +26,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
@@ -291,6 +292,43 @@ def test_influence_bonus_asks_for_a_faction() -> None:
     assert gained.state.decision_stack[-1].kind == "turn"
 
 
+def test_influence_bonus_never_offers_a_faction_at_the_top() -> None:
+    # "합법 행동 provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060, user
+    # ruling 2026-09-16); with a Faction left the gain is mandatory and no
+    # decline is offered: "진영을 하나라도 고를 수 있으면 확인은 제시하지
+    # 않는다(획득은 의무다)" (OQ-060, 2026-09-30 addition).
+    state = _at("c5r5", influence=Influence(emperor=6, bene_gesserit=6, fremen=3))
+    result = advance_research(state, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c6r6"]
+    )
+    assert [
+        (action.action_id, dict(action.arguments))
+        for action in legal_research_bonus_actions(chosen.state, 0)
+    ] == [
+        ("choose_research_influence", {"faction": "spacing_guild"}),
+        ("choose_research_influence", {"faction": "fremen"}),
+    ]
+
+
+def test_influence_bonus_with_every_faction_at_the_top_offers_only_the_decline() -> (
+    None
+):
+    # "고를 진영이 없어도 선택 frame은 그대로 ... 열리고" (OQ-060, 2026-09-30
+    # addition): the window still opens, and its decline confirms the lapse,
+    # as for an arrow whose cost cannot be paid.
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _at("c5r5", influence=full)
+    result = advance_research(state, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c6r6"]
+    )
+    owner_before = chosen.state.players[0]
+    declined = _declined_only(chosen.state)
+    assert declined.players[0] == owner_before
+    assert declined.players[0].influence == full
+
+
 def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
     # c7r3 prints "[Trash an Intrigue card] -> [card] [Intrigue card]": the
     # gold Intrigue card under an X, "Trash an Intrigue card" [Immortality
@@ -391,6 +429,37 @@ def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
     assert owner.resources.solari == 0
     assert owner.tleilaxu_space == 2
     assert len(owner.intrigue_cards) == 1  # the second space's Intrigue
+
+
+def test_seven_solari_bonus_is_not_offered_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space a further advance does nothing (OQ-048), so
+    # the 7 Solari would buy nothing: "비용이 있는 줄은 보상 중 하나라도
+    # 무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user decision
+    # 2026-09-29). Only the decline remains, as when the Solari are short.
+    finished = _at("c7r5", resources=Resources(solari=9), tleilaxu_space=7)
+    result = advance_research(finished, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c8r6"]
+    )
+    block = research_bonus_block(
+        chosen.state.players[0], ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU
+    )
+    assert block is ResearchBonusBlock.TLEILAXU_TRACK_END
+    declined = _declined_only(chosen.state)
+    assert declined.players[0].resources.solari == 9
+    assert declined.players[0].tleilaxu_space == 7
+
+    # One space short, the first advance still reaches the VP space.
+    near = _at("c7r5", resources=Resources(solari=9), tleilaxu_space=6)
+    result = advance_research(near, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c8r6"]
+    )
+    paid = apply_research_bonus(
+        chosen.state, DomainAction(action_id="pay_research_bonus", actor=0)
+    )
+    assert paid.state.players[0].tleilaxu_space == 7
+    assert paid.state.players[0].resources.solari == 2
 
 
 def test_past_the_second_marker_research_draws_a_card() -> None:
