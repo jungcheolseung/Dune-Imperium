@@ -832,3 +832,23 @@
   카드에도 성립하는지 OQ에 적고, 성립하지 않으면 넓히지 말고 묻는다. 공식 문서가 침묵하는 쪽으로 지금까지 막던 play를 여는 변경은
   사용자 판정 항목으로 올린다. 보조 증거(앱)와 다른 쪽을 택할 때는 그 차이를 사용자에게 묻는 목록에 넣는다.
 
+## 2026-10-07 — 공식 예시와 어긋난 Combat Intrigue pass 셈을 우리 테스트가 고정했고, 재판정이 다른 요약에 퍼지지 않았음
+
+- 무슨 일: 일반 규칙을 공식 문서와 다시 대조하다가 Main p. 15의 예시가 엔진의 pass 셈과 어긋난 것을 찾았다. 예시는 John이
+  pass하고, Abby가 "does play an Intrigue card, Contingency Plan.", John이 "He passes again."한 뒤에도 "Abby, satisfied with her
+  victory, also passes."로 Abby가 마지막으로 결정한다 `[Main p. 15]`. 엔진은 카드를 낸 Abby가 우선권을 넘기는 것을 첫 연속 pass로 세어
+  John의 두 번째 pass에서 Combat를 해결했다. 우리 요약([combat-and-round-end.md](rules/combat-and-round-end.md) 2절)은 "전원이
+  **연속으로** pass했을 때만"이라고 규칙을 바르게 옮겼는데, `test_playing_combat_intrigue_restarts_the_consecutive_pass_count`가
+  "Both players must pass again in a row" 주석과 함께 Abby의 넘김을 pass로 센 셈을 기대값으로 고정하고 있었다(codec v139에서 고침).
+  같은 대조에서 뒤의 재판정을 따라가지 않은 요약도 나왔다: player-turns.md의 Interstellar Trade "한 번만 센다"(2026-10-04 증분
+  지급으로 재판정됨), official-rulings-index.md·source-map.md가 Beguiling Pheromones·Chairdog·Ghola·Tleilaxu track을 소속 미확정이나
+  범위 밖으로 둔 것(Immortality 구현 뒤에도), designer-rulings-audit.md의 Chairdog 행이 "일치"로 적혀 있었지만 코드는 Chairdog의 box가
+  해결될 때만 되돌림을 기록해 먼저 trash되면 되돌림이 사라졌던 것.
+- 원인: (1) 테스트를 공식 예시가 아니라 우리 읽기("카드를 내면 pass 셈이 0으로 돌아간다")에서 썼고, 그 읽기가 "카드를 낸 뒤의 넘김도
+  pass다"를 말없이 품고 있었다. 요약 문장이 맞아도 우리 읽기에서 쓴 테스트는 그 오독을 지킨다. (2) 판정을 다시 내릴 때 그 OQ와 바로
+  옆 문서만 고치고, 옛 판정을 적은 다른 문서를 찾지 않았다. (3) 감사 행의 "일치"를 코드를 읽은 인상으로 정했고, 판정이 갈리는
+  경우(Chairdog가 먼저 trash됨)를 고정하는 테스트가 없었다.
+- 재발 방지: 룰북에 worked example이 있으면 좌석별로 문자 그대로 테스트로 옮긴다 — 누가 내고, 누가 pass하고, 마지막 결정이 누구의
+  것인지(고친 테스트는 John·Abby 이름 그대로다). 판정을 다시 내리면 옛 판정의 핵심 말("한 번만", "out of scope", 카드 이름)로
+  `docs/` 전체를 grep해 그 판정을 적은 곳을 모두 고친다. 감사 행에 "일치"라고 적으려면 판정이 갈리는 경우를 고정하는 테스트를 같은
+  행에 적는다.
