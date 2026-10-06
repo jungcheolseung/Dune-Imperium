@@ -18,7 +18,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 ### Lady Amber Metulli
 
 - **Desert Scouts** — "Reveal Turn: You may retreat one of your troops." Reveal frame에서 선택 액션(`retreat_leader_troop`)으로 제시하고, 카드 텍스트가 troop 하나를 대상으로 하므로 Reveal turn당 1회로 고정한다. 마지막 unit이 빠지면 sword strength가 더 이상 세지지 않는 기존 retreat 규칙과 같은 재계산을 쓴다 `[Main pp. 12-13, 20]`.
-- **Fill Coffers(Signet)** — Solari 1, 그리고 "If you have an Alliance:" Spice 1. Alliance 보유는 `alliance_faction_ids` 비어 있지 않음으로 판정한다(임의 Faction).
+- **Fill Coffers(Signet)** — Solari 1, 그리고 "If you have an Alliance:" Spice 1. Alliance 보유는 `alliance_faction_ids` 비어 있지 않음으로 판정한다(임의 Faction). 2026-10-06부터 Signet Ring 카드의 box(또는 그것을 복사한 Ghola)는 둘을 아이콘으로 나눠 대기시킨다(`agent_effects._SIGNET_ICONS`, OQ-027): Solari는 해결할 때 지급하고, spice는 해결할 때 Alliance를 판정해 없으면 그 turn의 늦은 Alliance(예: 같은 turn의 Faction Influence 단계로 얻은 Alliance)를 기다렸다가 끝내 없으면 "턴 종료"에서 소멸한다(OQ-028, OQ-057 (1)). 전에는 Solari와 함께 한 번만 판정해, Alliance를 얻기 전에 Signet을 해결하면 spice를 잃었다. Servo-Receivers로 쓰는 능력(OQ-062)은 기다릴 Agent box가 없어 지금처럼 한 번에 해결하고 Alliance도 그 순간에 판정한다(`leader_abilities._resolve_leader_signet`). `tests/unit/rules/test_leader_abilities.py::test_fill_coffers_spice_waits_for_an_alliance_formed_later_in_the_turn`.
 
 ### Feyd-Rautha Harkonnen
 
@@ -58,7 +58,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 ### Shaddam Corrino IV (CHOAM 전용, 2026-08-30)
 
 - **Sardaukar Commander** — "Set aside both Sardaukar contracts. Only you can acquire them during the game." Shaddam이 선택된 CHOAM setup은 셔플 전에 Sardaukar 2장을 `GameState.sardaukar_contract_ids`로 빼고 남은 18장을 섞는다(6인 보충 규칙의 base-CHOAM setup 지시와 일치). contract 시장 frame이 열려 있는 동안 Shaddam의 선택지에 set-aside가 추가되고, 가져가면 face-up 대신이므로 시장 보충이 없다 `[FAQ p. 3]`. 시장·bank가 모두 소진된 뒤에도 set-aside가 남아 있으면 그의 아이콘은 set-aside 하나를 반드시 가져간다(OQ-021 재판정 2026-10-04, codec v130 — 그 전의 2 Solari 선택 `take_exhausted_contract_solari`는 없어졌다); set-aside까지 소진되면 자동 2 Solari 전환으로 돌아간다.
-- **Emperor of the Known Universe(Signet)** — "Units can't be deployed to the Conflict this turn." + (Solari 1 + troop 1) —OR— (Solari 3 → 임의 Faction Influence 1). 제한은 Signet Ring 배치 즉시 발효되고 `[Main p. 17]` 그 turn에만 적용된다 `[FAQ p. 3]`. frame context의 `units_deploy_blocked`가 Combat 배치(pending 자체를 열지 않음), Maker sandworm 소환, Plot Intrigue의 배치 option(Detonation)을 막고, Intrigue SummonSandworm은 Shield Wall 규칙과 같은 무효 경로로 처리한다. 보상 선택은 의무이며 Solari 3 미만이면 troop 옵션만 제시된다. recruit된 troop은 같은 제한 때문에 그 turn에 배치할 수 없다.
+- **Emperor of the Known Universe(Signet)** — "Units can't be deployed to the Conflict this turn." + (Solari 1 + troop 1) —OR— (Solari 3 → 임의 Faction Influence 1). 제한은 Signet Ring 배치 즉시 발효되고 `[Main p. 17]` 그 turn에만 적용된다 `[FAQ p. 3]`. frame context의 `units_deploy_blocked`가 Combat 배치(pending 자체를 열지 않음), Maker sandworm 소환, Plot Intrigue의 배치 option(Detonation; 2026-10-06부터는 막는 대신 0명만 제시)을 막고, Intrigue SummonSandworm은 Shield Wall 규칙과 같은 무효 경로로 처리한다. 보상 선택은 의무이며 Solari 3 미만이면 troop 옵션만 제시된다. 2026-10-06부터 Influence 선택은 이미 6인 진영을 제시하지 않고(OQ-060), 네 진영이 모두 6이면 Solari 3 → Influence 옵션도 제시하지 않는다 — 비용만 내고 얻는 것이 없기 때문이다(`leader_abilities.signet_influence_withheld`, OQ-071; 화면은 그 지불을 이유와 함께 회색으로 보인다; `test_emperor_signet_never_buys_influence_at_the_top`). recruit된 troop은 같은 제한 때문에 그 turn에 배치할 수 없다. 같은 날부터 Plot Intrigue의 "Deploy up to N troops" 줄(Detonation 등)은 이 turn에도 낼 수 있지만 0명만 제시된다(OQ-057 (6); `test_emperor_restriction_leaves_an_intrigue_deployment_only_zero`).
 
 ## Bloodlines Leader (2026-09-07, `bloodlines` 옵션 전용)
 

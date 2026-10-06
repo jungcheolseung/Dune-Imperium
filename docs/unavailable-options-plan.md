@@ -54,7 +54,7 @@
 | 11 | Reveal 양자택일의 막힌 쪽: Delivery Agreement(배송 협정)·Priority Contracts(우선 계약) "완수 계약 4개면 trash → 1점", 코린트 시티 Reveal의 원로회 자리(솔라리 5 부족/이미 보유), Desert Power(사막의 힘)의 물 → 모래벌레, Captured Mentat(붙잡힌 멘타트) 영향력 교환의 0인 진영 | 가능한 쪽 한 버튼 | "trash → 1점 — 완수 계약 4개 필요 (보유 2)", "원로회 자리 — 이미 있음" | `rules/reveal_turn.py:914-944`, `:814-845`, `:580-605`+`:2123-2140`, `:241-290` | 드묾 |
 | 12 | CHOAM 시장의 Bloodlines Immediate(책략 없음) | 계약 칸 흐림만 | 계약 칸에 이유 + 회색 줄 "폐기할 책략 필요" | `rules/contracts.py:519-538` | 0.26 (Bloodlines+CHOAM) |
 | 13 | Sietch Tabr(시치 타브르) "물 + 방어벽 제거"(방어벽이 이미 없음) | 줄이 없음 | "방어벽이 이미 제거됨" | `rules/board_effects.py:837` | 1.2~1.5 |
-| 14 | 교전 보상 영향력에서 이미 6인 진영 (영향력을 잃는 효과로 다시 내려갈 수 있어 사용자는 보이길 원함) | 진영 버튼이 빠짐 | "이미 최고치" | `rules/combat.py:917-975`. 참고: Shipping 등 다른 '아무 진영' 선택은 6도 제시함(불일치) | 0~0.05 |
+| 14 | 교전 보상 영향력에서 이미 6인 진영 (영향력을 잃는 효과로 다시 내려갈 수 있어 사용자는 보이길 원함) | 진영 버튼이 빠짐 | "이미 최고치" | `rules/combat.py:917-975`. 참고: Shipping 등 다른 '아무 진영' 선택은 6도 제시함(불일치) — **2026-10-06 해소**: 카드·Leader·Intrigue·Shipping·연구 칸 c6r6의 진영 선택도 이미 6인 진영을 제시하지 않고 같은 "이미 최고치" 회색 줄로 보인다(`influence.influence_can_rise`; OQ-060의 2026-10-06 확장). 남은 예외: 네 진영이 모두 6인 Shipping(넷을 그대로 제시, OQ-060의 알려진 경계)과 Tech tile의 획득 아이콘 | 0~0.05 |
 | 15 | 영향력을 잃는 비용에서 0인 진영, Twisted Ambitious(상대가 앞선 진영만), Controlled의 1 솔라리 | 가능한 것만 | 각 이유 | `rules/intrigue.py:678-714`, `:845-856` | 0.43~0.56(0인 진영) |
 | 16 | 항해 카드(Steersman Y'rkoon) 선택지 | 가능한 것만 | 1단계 `option_unplayable_reason` 재사용 | `rules/navigation.py:255-291` | 조타수 좌석만 |
 | 17 | 리더 Reveal 능력: 페이드 로타의 교활한 힘(게임판에 스파이 필요), 레이디 앰버의 사막 정찰대(교전에 유닛 필요) | 아무것도 안 보임 | Reveal 패널 회색 줄 | `rules/leader_abilities.py:2308-2345` | 페이드 Reveal의 57% |

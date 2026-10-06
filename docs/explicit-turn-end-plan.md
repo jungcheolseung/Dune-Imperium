@@ -79,7 +79,7 @@ OQ-076 한계 서술, OQ-044 (d)(:326), OQ-054(:478-481, Usurp trash가 종료 �
   navigation.py:163-177). 합법성 조건으로 걸면 `navigation_active_slot != 0`에 막힌 항목이 종료를 빼앗아 게임이 멈출 수 있다.
 - 누르면 이 순서로: (1) 멈춘 box 불발(OQ-057, 638-667; 641-643·684-687의 try/except는 없앤다), (2) 붙잡힌 Contract 아이콘 불발과
   이벤트(668-675, OQ-059; 지금은 `reset_turn_counters`가 먼저 지워 버리는 순서 버그도 고쳐진다), (3) **Usurp trash를 종료 안에서**
-  ("trash that card at the end of the turn", OQ-054 `open-questions.md:477`), (4) `agent_turn_finished` 이벤트, (5) `close_agent_turn`.
+  ("trash that card at the end of your turn" `[Usurp card]`, OQ-054 `open-questions.md:477`; 2026-10-06 인용 정정 — 카드면은 "your turn"), (4) `agent_turn_finished` 이벤트, (5) `close_agent_turn`.
 - **Usurp가 후속을 남길 때(점검이 찾은 빈틈).** trash가 Sardaukar Standard의 Skill 선택을 대기열에 넣거나(card_trash.py의 troop 2
   recruit ~120-137, Intrigue draw ~161+로 reshuffle chance frame이 생길 수도 있다) 하면, frame에 `finishing=True`를 두고 멈춘다.
   `apply_skill_choice`(sardaukar.py:500)는 frame을 pop만 하고 `advance_after_effect`를 부르지 않으며 `begin_skill_choice`는 frame 없이

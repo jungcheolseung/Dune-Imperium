@@ -24,6 +24,7 @@ CHOAM Module은 Uprising에 포함된 mini-expansion이다. 공식 룰북은 먼
 
 - 특정 board space 이름이 적힌 contract는 해당 space에 Agent를 보내면 완료한다. `[Main p. 16]`
 - Harvest contract는 Maker space에 Agent를 보내고, 그 turn에 모든 출처를 합쳐 contract에 표시된 양의 spice를 얻으면 완료한다. `[Main p. 16]`
+  - 원문: "A Harvest contract is completed by sending an Agent to a Maker board space and gaining the amount of spice shown during that turn (in total, including from sources other than the space itself)." `[Main p. 16]` 그 turn 전체를 세므로 소유자의 turn이 열린 때부터 얻은 spice가 모두 든다 — Agent를 보내기 전에 Plot(예: Crysknife의 spice 1)으로 얻은 spice도 센다. 나중에 spice를 써도 이미 채운 양은 줄지 않는다(획득 총량). 구현은 좌석 카운터 `spice_at_turn_start`·`spice_spent_turn`(`rules/effects.eligible_agent_contract_ids`)이고, 완료할 수 있는 contract는 여전히 Agent 배치 때 보유한 것뿐이다(아래 snapshot). 2026-10-06 전에는 Agent 배치 뒤에 얻은 spice만 셌다(Steam 앱 대조에서 발견; 보조 증거(공식 규칙 아님): 앱은 turn 전체를 센다, 로컬 분석 2026-10-06). 테스트: `tests/unit/rules/test_contracts.py`(`test_harvest_counts_plot_spice_gained_before_the_placement`, `test_harvest_ignores_spice_gained_on_an_earlier_turn_of_the_round`).
 - Immediate contract는 가져오는 즉시 완료한다. `[Main p. 16]`
 - Acquire The Spice Must Flow contract는 다음에 The Spice Must Flow를 acquire할 때 완료한다. `[Main p. 16]`
 - 이미 이번 turn에 Agent를 보낸 space와 관련된 contract를 그 turn 도중 새로 가져와도 소급해 완료하지 않는다. Agent를 보낼 당시 contract를 보유하고 있어야 하며, 아니면 이후 turn까지 기다린다. `[Main p. 16]`

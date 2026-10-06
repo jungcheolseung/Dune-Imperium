@@ -68,11 +68,17 @@
   `[Price is No Object card]` `[Main pp. 6, 9, 20]`
 - Treacherous Maneuver는 Agent box의 화살표를 선택하면 이 카드와 hand의 다른
   Emperor card 한 장을 함께 trash하고, 방문한 Faction의 Influence를 기본 1 대신
-  총 2 얻는다. 비용을 지불하지 않고 생략할 수 있으며 discard pile이나 이미
-  play 영역에 있던 Emperor card는 비용으로 고를 수 없다. Faction이 없는 space에
+  총 2 얻는다("Trash this card and an Emperor card from your hand → Gain two
+  Influence instead of one."). 비용을 지불하지 않고 생략할 수 있으며 discard
+  pile이나 이미 play 영역에 있던 Emperor card는 비용으로 고를 수 없다. 대신할
+  1이 남아 있어야 하므로 화살표는 그 space의 Influence를 아직 얻기 전에만
+  제시하고, 지불하면 2를 한 번에 얻어 space의 Influence 단계를 쓴 것으로 친다
+  (2026-10-06; 전에는 space의 1을 받은 뒤에도 +1로 쓸 수 있었다). 방문한
+  Faction의 Influence가 5 이상이면 2를 얻어도 맨 위(6)에서 멈춰 1과 결과가
+  같으므로 제시하지 않는다(OQ-071, OQ-060). Faction이 없는 space에
   놓였으면(Clandestine 등으로 연결된 Spy를 통해) 얻을 Influence가 없으므로 화살표
   비용을 제시하지 않는다(OQ-046).
-  `[Treacherous Maneuver card]` `[Main p. 9]`
+  `[Treacherous Maneuver card]` `[Main pp. 7, 9]`
 - Chani, Clever Tactician은 Agent box를 처리하는 시점에 Conflict에 troop과
   sandworm을 합쳐 unit이 3개 이상이면 Intrigue card 1장을 얻는다. 같은 Agent
   turn의 병력 배치를 먼저 처리해 세 번째 unit을 보낸 뒤 이 조건을 확인할 수
@@ -110,10 +116,17 @@
   보내면 일반 Influence 1 대신 해당 Faction Influence 2를 얻고 자기 자신을
   trash한다. 이 효과는 의무이며 일반 Faction Influence를 별도로 더해 총 3을
   얻지 않는다. 비-Faction 공간에 Agent를 보내면 이 효과로 Influence를 얻거나
-  카드를 trash하지 않는다. `[Subversive Advisor card]` `[Main pp. 9, 11, 20]`
-- Cargo Runner는 Agent box를 실제 해결할 때 completed Contract가 2개 이상이면
-  card 1장을 draw하고, 4개 이상이면 한 장을 더 draw한다. 같은 Agent turn에
-  contract 완료를 먼저 처리했다면 새 completed Contract도 센다.
+  카드를 trash하지 않는다. graft 상대로 놓여도 같다. 다른 효과가 box보다 먼저
+  이 카드를 trash하면 box는 만료되지만(OQ-022) 사라지는 것은 "instead"뿐이고
+  space의 기본 Influence 1은 그대로 얻는다(2026-10-06, OQ-022 보강).
+  `[Subversive Advisor card]` `[Main pp. 7, 9, 11, 20]`
+- Cargo Runner의 Agent box는 두 줄이다: "If you have completed two or more
+  contracts: [draw 1]"과 "If you have completed four or more contracts: [draw
+  1]". 두 줄은 각각의 효과이고(OQ-027), 각 줄의 completed Contract 수는 그 줄을
+  해결할 때 센다(OQ-028). 그래서 같은 Agent turn에 contract 완료를 먼저 처리했다면
+  새 completed Contract도 세고, 첫 줄을 해결한 뒤 같은 turn에 4번째 Contract를
+  완료하면 둘째 줄이 그때 제시된다. 4번째가 끝까지 없으면 둘째 줄은 turn 종료에
+  소멸한다(OQ-057 (1)). 2026-10-06 전에는 box 하나로 한 번에 판정했다.
   `[Cargo Runner card]` `[FAQ p. 1]`
 - Delivery Agreement는 hand의 다른 card 1장을 discard하면 face-up Contract
   하나를 가져오거나 이 효과를 생략할 수 있다. Priority Contracts는 비용 없이
