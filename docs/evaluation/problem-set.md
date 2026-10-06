@@ -335,3 +335,14 @@ OQ-005로 Objective 카드가 끝판에 뒤집을 수 있는 전투 카드가 �
 그만큼 결정·합법 행동 집합이 바뀌어 위의 tips-v1 재채굴 명령을 같은 시드·구성·5081 체크포인트로 다시 실행했다.
 결과는 **134개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 38, Endgame 16이며,
 `dune-imperium-problems check`가 **134/134** 복원을 확인했다. 앞선 채점 표는 당시 문제집의 결과로 그대로 둔다.
+
+## 재채굴 (2026-10-06, Steam 앱 카드 전수 대조, codec v137)
+
+앱 카드 대조 묶음(Agent box를 아이콘별로 나눔 — Cargo Runner·Tread in Darkness·Industrial Espionage·Stillsuit Manufacturer·Fill Coffers,
+Treacherous Maneuver·Subversive Advisor의 Influence, Tactical Option의 0명 후퇴, "up to" 배치의 0, Harvest Cells는 전투 뒤에만,
+6인 진영 제외 등) 뒤에 커밋된 134개 가운데 다수가 복원되지 않았다. 브랜치마다 커밋별로 센 결과, 많이 움직인 것은 "up to" 배치의 0(53개),
+Harvest Cells를 Combat Intrigue에서 낼 수 없게 한 변경(33개), Tactical Option의 0명 후퇴(12개)와 Agent box 분리(20개)다 — 고를 수 있는
+행동이 늘거나 heuristic이 그 카드를 쓰던 국면이 사라졌다. 위 "다시 캐는 명령"을 같은 시드·구성·5081 체크포인트로 다시 실행했다(worker만
+4 → 2, 학습 세션과 메모리를 나눠 쓰느라). 결과는 **124개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 33(heuristic 32 +
+5081 1), Endgame 11(heuristic 11)이며 `check`가 **124/124** 복원을 확인했다. 포지션 id로 견주면 그대로 98(선택 번호와 지문까지 같은 것
+41), 빠진 것 36, 새것 26이다. 채점은 하지 않았다(앞선 표는 당시 문제집의 결과로 그대로 둔다).
