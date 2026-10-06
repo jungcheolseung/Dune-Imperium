@@ -421,6 +421,19 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     replaces seed 62. An independent replay captures check VP [6, 6, 7, 7];
     Panopticon's Spacing Guild and Bene Gesserit gains each cross 1 -> 2,
     taking seat 2 to 9 and first place. No Endgame Intrigue is played.
+
+    Re-derived 2026-10-06 for d5512ad0 (the heuristic plays Harvest Cells
+    only after the Conflict resolves; codec v137): seed 16 now opens
+    Endgame in round 9 with seat 0 already on 10 VP and leading, so
+    Panopticon no longer changes the leader. The same capture over full
+    seeds 1-200 finds five seeds (34, 41, 52, 142, 175) where the leader
+    after the ``:endgame_tech:`` events differs from the one at the check
+    and goes on to win; the case is seed 34, the first. Endgame opens there
+    in round 10 on the empty Conflict deck with check VP [7, 7, 9, 8] (seat
+    2, Feyd-Rautha Harkonnen, leading); seat 1 (Duncan Idaho) holds
+    Panopticon, and its Emperor, Spacing Guild and Bene Gesserit gains each
+    cross 1 -> 2, taking it to 10 and the win. No Endgame Intrigue is
+    played (independent replay).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -428,7 +441,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 16):
+    for seed in (*FULL_SEEDS, 34):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -463,13 +476,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 16:
+        if seed == 34:
             saw_case = True
-            assert census["seats"][2]["end.endgame_vp"] == 2
+            assert census["seats"][1]["end.endgame_vp"] == 3
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 16 regression case must run"
+    assert saw_case, "the seed 34 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -578,6 +591,14 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     Independent full-seed replays find seed 16 seat 2 first in seeds 1-200
     whose only Commander retreat is the Gruesome Sacrifice loss, round 6,
     slot 0. The live event assertion below protects that premise.
+
+    Re-derived 2026-10-06 for d5512ad0 (the heuristic plays Harvest Cells
+    only after the Conflict resolves; codec v137): seed 16 seat 2 no longer
+    retreats a Commander. The same listing over full seeds 1-200 gives seed
+    16 seat 0 (Duncan Idaho) first: in round 7 its Gruesome Sacrifice pays
+    a troop for slot 0 and the Commander for slot 1 (``lose_intrigue_troop``
+    with ``commanders`` 1: ``unit_lost`` with one Commander, its Commander
+    supply 0 -> 1), its only Commander retreat (independent replay).
     """
 
     spec = _spec(True, 16)
@@ -587,14 +608,14 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
         event.event_id
         for event in events
         if event.kind == "troops_retreated"
-        and dict(event.payload).get("player") == 2
+        and dict(event.payload).get("player") == 0
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:6:player:2:intrigue:intrigue:gruesome_sacrifice:0:slot:0:loss:retreat"
+        "round:7:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
-    assert census["seats"][2]["bt.commander_retreats"] == 0
+    assert census["seats"][0]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(
