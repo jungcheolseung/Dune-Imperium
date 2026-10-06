@@ -216,9 +216,9 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `Archduke Armand Ecaz — Coordination` `[FAQ p. 1]` | `deferred to content manifest` | Leader 데이터와 `official-rulings-index.md` |
 | `Assassination Mission` `[FAQ p. 1]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md` |
 | `Baron Vladimir Harkonnen — Masterstroke` `[FAQ p. 1]` | `deferred to content manifest` | Leader 데이터와 `official-rulings-index.md` |
-| `Beguiling Pheromones` graft/trash `[FAQ p. 1]` | `out of scope` | Immortality의 graft 규칙 제외 |
+| `Beguiling Pheromones` graft/trash `[FAQ p. 1]` | `covered` | [immortality.md](immortality.md) 5절(`immortality` 옵션; 2026-10-07 정정 — 전에는 graft 규칙 제외로 적혀 있었다) |
 | `Carryall`의 Uprising base harvest 수치 `[FAQ p. 1]` | `deferred to content manifest` | card 판정과 `official-rulings-index.md`; 6인 Habbanya Erg는 제외 |
-| `Chairdog`의 grafted card 반환 뒤 Reveal 지속 `[FAQ p. 1]` | `out of scope` | Immortality의 graft 규칙 제외 |
+| `Chairdog`의 grafted card 반환 뒤 Reveal 지속 `[FAQ p. 1]` | `covered` | [immortality.md](immortality.md) 5절(`immortality` 옵션; 2026-10-07 정정 — 전에는 graft 규칙 제외로 적혀 있었다) |
 | `Chani` Imperium card의 Retreat 참조 `[FAQ p. 1]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md`; Retreat 일반 규칙은 [uprising-systems.md](uprising-systems.md) |
 | `Chani` Leader의 Combat 정리 troop `lost` 판정 `[FAQ p. 1]` | `covered` | [bloodlines.md](bloodlines.md) 6절 Chani; 구현은 `combat.finish_combat`의 Tactics 전진과 출처당 1회 전진 |
 | `Charisma`의 Intrigue timing 참조 `[FAQ p. 1]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md`; 일반 timing은 [player-turns.md](player-turns.md) |
@@ -239,11 +239,11 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `Double Cross`의 상대 troop 조건 `[FAQ p. 2]` | `deferred to content manifest` | Intrigue 데이터와 `official-rulings-index.md` |
 | `dreadnoughts`의 strength·Combat Intrigue 참가 `[FAQ p. 2]` | `out of scope` | Rise of Ix unit 제외 |
 | `Endgame` 최종 tiebreaker `[FAQ p. 2]` | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md), [combat-and-round-end.md](combat-and-round-end.md) |
-| `Faction`의 Tleilaxu track 참조 `[FAQ p. 2]` | `out of scope` | Immortality track 제외 |
+| `Faction`의 Tleilaxu track 참조 `[FAQ p. 2]` | `covered` | [immortality.md](immortality.md) 3절(`immortality` 옵션; 2026-10-07 정정) |
 | `False Orders`의 Spy 이동 `[FAQ p. 2]` | `covered` | `rules/spy_moves.py`, [open-questions.md](open-questions.md) OQ-036 (b)·OQ-065, `official-rulings-index.md` |
 | `Foldspace` acquire 제한 `[FAQ p. 2]` | `out of scope` | Uprising setup에는 Foldspace stack이 없음 |
 | `Gather Intelligence` 참조 `[FAQ p. 2]` | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
-| `Ghola`와 grafted card 상호작용 `[FAQ p. 2]` | `out of scope` | Immortality의 graft 규칙 제외 |
+| `Ghola`와 grafted card 상호작용 `[FAQ p. 2]` | `out of scope` | FAQ의 두 예(Carryall, Kwisatz Haderach)가 현재 룰셋에 없는 카드다. Ghola 자체는 `[Immortality p. 14]`대로 [immortality.md](immortality.md) 5절(2026-10-07 정정 — 전에는 graft 규칙 제외로 적혀 있었다) |
 | `Guild Bankers` discount `[FAQ p. 2]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md` |
 | `Guild Envoy`의 의무 discard `[FAQ p. 2]` | `covered` | [../implementation-audits/personal-cards.md](../implementation-audits/personal-cards.md)와 card scenario test |
 | `Gun Thopter`의 opponent garrison 조건 `[FAQ p. 2]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md` |

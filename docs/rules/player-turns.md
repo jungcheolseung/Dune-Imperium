@@ -37,9 +37,10 @@
 - Agent를 보낸 뒤 space 효과와 낸 card의 Agent box 효과를 얻는다. Faction space라면 그 Faction Influence도 1 얻는다. 이 효과들은 원하는 순서로 처리한다. [Main p. 7] [Main p. 9]
 - 한 space에 인쇄된 여러 아이콘(예: Arrakeen의 troop 1 recruit와 card 1 draw)은
   각각 독립된 효과이며, 소유자가 각 아이콘을 별개 행동으로 원하는 순서에
-  해결한다. choose-one 줄과 문장형 효과의 단위 경계는
-  [open-questions.md](open-questions.md)의 OQ-027 `DECIDED` 판정을 따른다.
-  [Main p. 9]
+  해결한다. 아이콘마다 독립이라는 점은 공식 문장이 아니라
+  [open-questions.md](open-questions.md)의 OQ-027 사용자 판정(2026-09-03)이고,
+  choose-one 줄과 문장형 효과의 단위 경계도 그 판정을 따른다. 공식 문장은 효과들의
+  자유 순서뿐이다: "You may carry out all these effects in any order." [Main p. 9]
 - 카드에 인쇄된 조건(Influence 문턱, 자원 비용, Alliance, sandworm 등)은 그
   효과를 실제로 해결하는 시점에 판정한다. 같은 turn의 앞선 자유 순서 효과(예:
   방문한 Faction의 Influence 단계, board의 water 아이콘, Maker sandworm 소환)로
@@ -195,7 +196,7 @@
 2. hand에 남은 card를 모두 face-up으로 reveal해 play 영역에 놓고, 이전 Agent turn에 낸 card와 구분한다. [Main p. 12]
 3. 방금 reveal한 card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸 card의 Reveal box 효과는 얻지 않는다. [Main p. 12]
 4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12] 선택형 Reveal 효과는 미루기/재개로 순서를 고르고(OQ-027), troop recruit·Intrigue draw·자원·고정 진영 Influence 획득은 각각 소유자의 행동(`recruit_reveal_troops`·`draw_reveal_intrigue`·`gain_reveal_resources`·`gain_reveal_faction_influence`)으로 시점을 고르며(OQ-045; Persuasion·검만 시작 시 합산), 조건이 있는 Reveal 효과는 같은 Reveal 안의 뒤 선택(Spy 배치, High Council 구매, 늦게 도착한 카드, 획득으로 완료된 contract)으로 조건이 성립하면 그때 지급된다(OQ-028).
-   - 조건이 거짓인 의무 Agent box(예: 유일한 손패인 Guild Envoy의 discard)는 소유자가 골라 불발시킬 수 없고, turn 종료까지 보류돼 그 사이 조건이 성립하면 해결해야 한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09); OQ-028(a) 재판정). Interstellar Trade의 완료 contract 수는 한 번만 센다(OQ-028(c) 폐기). Guild Spy는 Reveal마다 한 번 발동하고 늦게 공개된 Guild Spy도 이미 산 The Spice Must Flow에 반응한다.
+   - 조건이 거짓인 의무 Agent box(예: 유일한 손패인 Guild Envoy의 discard)는 소유자가 골라 불발시킬 수 없고, turn 종료까지 보류돼 그 사이 조건이 성립하면 해결해야 한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09); OQ-028(a) 재판정). Interstellar Trade는 같은 Reveal 안에서 나중에 완료한 contract마다 Persuasion 1을 더 받는다(2026-10-04 사용자 재판정, OQ-057 (2)·OQ-028 (c) 복원 — 아래 Cargo Runner·Interstellar Trade 항목; 디자이너의 "한 번만" 판정은 넘어섰다). Guild Spy는 Reveal마다 한 번 발동하고 늦게 공개된 Guild Spy도 이미 산 The Spice Must Flow에 반응한다.
 5. Reveal 효과를 처리하는 동안 strength를 설정하고, strength가 바뀌면 갱신한다. strength 설정은 Reveal 효과 처리와 Clean Up 사이의 별도 고정 단계가 아니다. [Main p. 12] [Main p. 13]
 6. Clean Up 때 Agent turn과 Reveal turn에 face-up으로 낸 card를 모두 자신의 discard pile에 놓는다. [Main p. 12]
 
@@ -318,10 +319,17 @@
   지금 쓸 수 있는 줄이 하나라도 있으면 낼 수 있고, 2026-10-04부터는 적어도 한 줄을
   써야 카드를 끝낼 수 있다(낼 때 지불 없이 바로 해결되는 줄은 쓴 것으로 센다 —
   2026-10-06부터는 무언가를 바꿀 수 있는 줄만 "쓸 수 있는 줄"이다, 위 사용자 판정). 한
-  줄을 쓴 뒤 나머지 줄은 선택이다. 공식 문서가 이 점들을 명시하지 않으므로 Plot
-  시점은 OQ-015 (a)·OQ-095, 줄 처리는 사용자 판정 OQ-058로 관리한다(이전 OQ-015 (b)의
-  "조건이 성립한 모든 비용 줄은 의무"는 2026-09-09에 폐기).
-- 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]
+  줄을 쓴 뒤 나머지 줄은 선택이다. 공식 문서가 Plot 시점을 명시하지 않으므로 OQ-015
+  (a)·OQ-095로 관리한다. 줄 처리에 닿는 공식 문장은 하나다 — 화살표 효과는 "if you
+  don't want the effect, you may choose not to pay the cost—except when playing an
+  Intrigue card, where paying a cost is required" [FAQ p. 3]. 이 예외는 낸 Intrigue의
+  비용→효과를 쓸 때 비용을 반드시 낸다는 뜻으로 읽는다(화살표 줄 하나뿐인 Intrigue를
+  내고 그 비용을 거절할 수 없다 — 낼 때의 조건·비용 검사와 "적어도 한 줄"이 이미
+  보장한다). 따로 인쇄된 화살표 줄을 모두 쓰게 하지는 않는다(Change Allegiances의
+  디자이너 판정 "한 효과만 또는 둘 다", [designer-rulings-audit.md](designer-rulings-audit.md) 7).
+  이 읽기는 사용자 판정 OQ-058(2026-10-07 재확인 "지금대로")이다. 이전 OQ-015 (b)의
+  "조건이 성립한 모든 비용 줄은 의무"는 2026-09-09에 폐기됐고 폐기 그대로다.
+- 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2] 2026-10-07부터 Call to Arms 말고도 Tleilaxu Puppet의 Plot(이번 round 자신의 Reveal turn에 Persuasion 1 `[Tleilaxu Puppet card]`)과 Manipulate(빼 둔 Row 카드를 소유자의 Reveal turn 끝까지 할인해 살 수 있다 [FAQ p. 3])가 이렇게 앞면으로 남고, 소유자의 Reveal turn이 끝날 때 버려진다(그 Reveal turn 중에 냈어도 같다). 전에는 곧바로 Intrigue 버림 더미로 갔다. 이벤트 `intrigue_kept_faceup` → `intrigue_expired`; 구현 `intrigue_triggers.waits_for_reveal_turn`·`expire_reveal_faceup_intrigue`(OQ-016의 2026-10-07 보강).
 - "When you deploy three or more units to the Conflict in a single turn:"(Distraction, Coercive Negotiation)은 앞면 대기가 아니라 플레이 조건이다: 그 turn에 배치한 뒤에 낸다 — "Gurney decides to commit these troops plus two more from his garrison to the Conflict. Muad'Dib may play Distraction because he shared in the deployment of these units." [Board Guide p. 10] [FAQ p. 2]. 조건은 그 turn에 배치한 unit 3개가 동시에 Conflict에 있던 순간이 있으면 성립한다(디자이너 판정, OQ-016 재판정 2026-10-03).
 - Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다. [FAQ p. 2]
 - 구현 convention: 버린 더미까지 비어 Intrigue draw가 모자라면 draw는 있는 만큼만
@@ -352,4 +360,4 @@
 
 ## 공식 문서가 침묵하는 항목의 판정
 
-- 여러 의무 효과가 서로 충돌할 때 적용할 일반 우선순위는 지정된 두 문서에서 확인되지 않는다. 확인된 범위에서는 공간 효과, Agent 상자 효과, 세력 영향력 및 조건을 충족한 계약 효과만 원하는 순서로 처리할 수 있다. 그 그룹 밖의 동시 의무 효과는 현재 콘텐츠에서 획득 이벤트 계열뿐이며, 고정 순서(획득 카드 자신의 보상 → in-play acquire trigger → Acquire Contract → face-up trigger Intrigue)를 [open-questions.md](open-questions.md)의 OQ-012 `DECIDED` 판정으로 확정했다. [Main p. 9] [FAQ p. 1] [FAQ p. 3]
+- 여러 의무 효과가 서로 충돌할 때 적용할 일반 우선순위는 지정된 두 문서에서 확인되지 않는다. 확인된 범위에서 원하는 순서로 처리할 수 있는 것은 공간 효과, Agent 상자 효과, 세력 영향력 및 조건을 충족한 계약 효과 [Main p. 9] [FAQ p. 1], Reveal 효과("You may resolve Reveal effects in any order you like." [Main p. 12]), Graft로 함께 낸 두 카드의 효과("You gain the effects on both cards, in addition to the board space effects, in any order you choose." `[Immortality p. 10]`)다. 그 그룹 밖의 동시 의무 효과는 현재 콘텐츠에서 획득 이벤트 계열뿐이며, 고정 순서(획득 카드 자신의 보상 → in-play acquire trigger → Acquire Contract → face-up trigger Intrigue)를 [open-questions.md](open-questions.md)의 OQ-012 `DECIDED` 판정으로 확정했다. [Main p. 9] [FAQ p. 1] [FAQ p. 3]

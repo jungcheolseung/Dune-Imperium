@@ -15,6 +15,8 @@
 
 - First Player marker를 가진 플레이어부터 시계 방향으로, 현재 Conflict에 유닛이 하나 이상 있는 플레이어만 Combat Intrigue 기회를 갖는다. 해당 플레이어는 Combat Intrigue 카드를 원하는 수만큼 플레이하거나 pass한다. [Main p. 14]
 - 앞선 기회에 pass했어도 Combat 단계에서 탈락하지 않는다. 전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고 Combat를 해결한다. [Main p. 14]
+- 한 번의 기회는 카드를 내거나 pass하는 것이다: "each player with at least one unit in the Conflict may play any number of Combat Intrigue cards, or may pass." [Main p. 14] 그래서 이번 기회에 Combat Intrigue 카드를 낸 플레이어가 우선권을 넘기는 것은 연속 pass에 세지 않는다. 공식 예시가 이 셈이다: John이 pass하고, Abby가 "does play an Intrigue card, Contingency Plan."한 뒤, John이 "He passes again."해도 마지막 결정은 Abby의 것이다 — "Abby, satisfied with her victory, also passes." [Main p. 15] 2026-10-07 전에는 Abby의 넘김을 첫 연속 pass로 세어 John의 두 번째 pass에서 Combat를 해결했다(codec v139에서 고침). 구현: `rules/combat.py`의 `COMBAT_INTRIGUE_PLAYED_KEY`(frame context `played_at_priority`), `rules/intrigue.py`. 테스트: `tests/unit/rules/test_intrigue.py`(`test_playing_combat_intrigue_restarts_the_consecutive_pass_count`, `test_a_combat_intrigue_player_decides_again_after_every_other_seat_passes`).
+  - 구현 convention(공식 규칙 아님): 참여자가 한 명뿐이면 카드를 낸 뒤의 pass가 곧 마지막 pass다 — 다음 기회가 사이에 아무도 없이 다시 자기에게 오므로 두 번 묻지 않는다(`test_a_lone_combat_intrigue_participant_passes_once_after_playing`).
 - Combat Intrigue가 유닛 수나 strength를 바꾸면 즉시 Combat marker를 갱신한다. 효과가 strength를 낮추는 경우도 marker를 아래로 옮긴다. [Main p. 14] [FAQ p. 4]
 - Intrigue 카드는 명시된 조건을 만족하고 비용을 지불해야 플레이할 수 있다. [FAQ p. 2]
   - 사용자 판정(2026-10-06, "원로회 자리 차지 안 하고 아무 효과 없이 책략을 쓸 수 없는거지"; 공식 문장에 없는 셋째 조건): 그 option의 효과 중 하나라도 지금 무언가를 바꿀 수 있어야 낸다. Combat에서 이것이 갈리는 예: Impress는 검 2가 있어 늘 내고 대상 없는 획득만 불발한다; Reach Agreement는 가져갈 수 있는 Contract가 없으면(시장에 Bloodlines Immediate만 남고 trash할 다른 Intrigue가 없을 때) 내지 않는다; Battlefield Research는 살 수 있는 Tech tile이 없으면 내지 않는다; Gruesome Sacrifice는 Tleilaxu track이 끝났고 specimen으로 만들 troop도 없으면 내지 않는다. 같은 판정이 Conflict 종료 창의 Harvest Cells에도 적용된다(OQ-016). 세부는 [open-questions.md](open-questions.md)의 OQ-071 카드 확장 2.
@@ -24,6 +26,7 @@
 
 - strength가 가장 높은 플레이어가 Conflict를 이기고 1위 보상을 받는다. 두 번째로 높은 플레이어는 2위 보상, 세 번째로 높은 플레이어는 3위 보상을 받으며, 4위는 보상이 없다. [Main p. 14]
 - strength가 0인 플레이어는 어떤 순위 보상도 받지 못한다. [Main p. 14]
+- 서로 다른 순위의 수령자 사이에서 누구의 보상을 먼저 해결하는지는 공식 문서가 정하지 않는다. 판정은 [OQ-102](open-questions.md#oq-102--서로-다른-순위-사이의-conflict-보상-순서)(2026-10-07 사용자 판정 "순위대로 (앱처럼)", project convention): 순위 순서로(같은 순위는 OQ-002대로 First Player부터) 한 수령자씩, 그 수령자의 보상 전체 — 자동 부분과 선택, sandworm 두 배의 몫까지 — 를 끝낸 뒤 다음 수령자에게 준다.
 - 모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의 supply에 놓고 battle icon 일치를 확인한다. [Main p. 14]
 
 ### Combat 동률

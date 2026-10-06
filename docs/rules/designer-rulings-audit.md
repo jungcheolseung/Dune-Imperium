@@ -47,7 +47,7 @@
 | Forbidden Weapons: Influence가 있으면 반드시 잃음 | `rules/tech.py` `legal_tech_reveal_actions` |
 | Ornithopter Fleet: Crysknife·Desert Mouse VP 불가, 획득 즉시 매칭 | `rules/effect_interpreter.py:149`, `rules/ornithopter.py` |
 | wild 두 개끼리 Endgame 매칭 | `rules/endgame.py` `_endgame_wild_matches` |
-| Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도 되돌림 | `rules/agent_effects.py`(Chairdog graft 기록), `rules/reveal_turn.py` `_return_chairdog_cards` |
+| Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도 되돌림 | `rules/graft.py` `apply_graft_partner`(graft 시점의 `chairdog_return_card_ids` 기록, Ghola의 복사 포함), `rules/reveal_turn.py` `_return_chairdog_cards`. **2026-10-07 정정**: 이 행은 "일치"로 적혀 있었지만 코드는 Chairdog 자신의 Agent box가 해결될 때만 기록해(`rules/agent_effects.py`), 상대 box가 Chairdog를 먼저 trash하면(Dissecting Kit, Beguiling Pheromones) box가 만료돼(OQ-022) 되돌림이 사라졌다. 이제 graft 시점에 기록해 판정과 일치한다(`tests/unit/rules/test_immortality_tleilaxu_cards.py`의 `test_chairdog_trashed_first_by_its_partner_still_returns_the_partner`, `test_ghola_grafted_to_chairdog_returns_both_cards`). |
 | Usurp: hand 카드와도 graft 가능, Row 카드는 turn 종료 시 trash(트리거 발동) | `rules/graft.py`, OQ-054 |
 | Count Hasimir Fenring: Intrigue trash에는 Solari 없음 | `rules/card_trash.py` `trash_personal_card`(Assassin 분기; Intrigue trash는 `intrigue_deck.with_trashed_intrigue`로 가고 이 함수를 거치지 않는다) |
 | Feyd(track 끝), Lady Jessica(Spice Agony 1 spice에 둘 다, Reverend Mother 비용 1회·Combat 아이콘 중복 없음), Chani, Esmar Tuek, Y'rkoon(Navigation 자동 trigger), Shaddam(Signet play 시점부터 제한), Kota | `rules/leader_abilities.py`, `rules/navigation.py`, `rules/tactics.py`; `tests/unit/rules/test_leader_abilities.py`, `test_bloodlines_leaders.py`, `test_navigation.py` |

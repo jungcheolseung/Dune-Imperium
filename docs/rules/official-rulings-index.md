@@ -20,7 +20,7 @@ Leader에만 적용되는 판정은 content manifest 전사 단계까지 이 색
 | Intrigue cards | [FAQ p. 2] | Intrigue를 play하려면 조건과 비용을 충족해야 한다. 다음 Reveal turn에 적용되는 Plot은 그때까지 face-up으로 유지한다. Intrigue deck이 고갈되면 discard pile을 섞어 새 deck을 만든다. | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | maker board space | [FAQ p. 2] | Maker board space는 spice를 harvest하는 공간이라는 용어다. FAQ에 함께 적힌 다른 보드·인원수의 공간을 현재 4인 보드 정의에 자동 추가하지 않는다. | [uprising-systems.md](uprising-systems.md) |
 | Maker hooks | [FAQ p. 2] | sandworm을 소환할 때 Maker Hooks token은 소비하지 않는다. | [uprising-systems.md](uprising-systems.md) |
-| optional effects | [FAQ p. 3] | 효과는 원칙적으로 의무다. `may`, arrow 비용의 지불 여부, 검은색 trash 아이콘은 선택이지만, arrow 없이 카드가 자신을 trash하라고 하면 의무다. | [uprising-systems.md](uprising-systems.md) |
+| optional effects | [FAQ p. 3] | 효과는 원칙적으로 의무다. `may`, arrow 비용의 지불 여부, 검은색 trash 아이콘은 선택이지만, arrow 없이 카드가 자신을 trash하라고 하면 의무다. arrow 비용의 예외: "except when playing an Intrigue card, where paying a cost is required" — 낸 Intrigue의 비용→효과는 쓸 때 비용을 낸다(따로 인쇄된 줄을 모두 쓰라는 뜻으로는 읽지 않는다, OQ-058 사용자 판정 2026-10-07 "지금대로"). | [uprising-systems.md](uprising-systems.md), [player-turns.md](player-turns.md) "Intrigue 카드의 시점", OQ-058 |
 | paying a cost | [FAQ p. 3] | 하나의 arrow 비용-효과는 한 번만 선택할 수 있다. 비용을 배수로 내고 효과를 반복해서는 안 된다. | [uprising-systems.md](uprising-systems.md) |
 | Retreat | [FAQ p. 3] | `any number`의 troop을 retreat할 수 있는 효과에서는 0개를 선택할 수 있다. | [uprising-systems.md](uprising-systems.md) |
 | Reveal turn | [FAQ p. 3] | Reveal turn 도중 draw한 카드는 즉시 reveal해 그 turn에 사용한다. Reveal turn이 끝난 뒤 draw한 카드는 hand에 보관하고 다음 Round Start에 5장을 추가로 draw한다. | [setup-and-game-flow.md](setup-and-game-flow.md), [player-turns.md](player-turns.md) |
@@ -86,16 +86,11 @@ Main p. 20은 FAQ를 적용하기 전의 일반 용어 기준이다. 아래 항�
 | Reverend Mother Jessica | Uprising 기본 Leader인 Lady Jessica의 반대 면. module 전용 Leader는 Shaddam이다. `[Main pp. 4, 16-17]` | 이 면으로 flip한 바로 그 turn에 Reverend Mother 능력을 사용할 수 있다. `[FAQ p. 3]` | `rules/leader_abilities.py`의 Other Memories flip과 [leaders audit](../implementation-audits/leaders.md) |
 | False Orders | Bloodlines Intrigue(`*` 새 항목; observation post는 Uprising·Bloodlines에만 있다). `[Bloodlines p. 2]` | 영향받는 상대는 Agent를 보낸 공간에 연결되지 않은 빈 observation post로 Spy를 옮긴다. 공간을 보는 상대 Spy가 없어도 이 카드를 낼 수 있다. `[FAQ p. 2]` | `rules/spy_moves.py`, OQ-036 (b)(Holy War로 확장, 사용자 판정)·OQ-065 |
 | Shaddam Corrino IV | CHOAM Module 전용 Leader. `[Main pp. 4, 16]` | Sardaukar contract는 처음부터 보유하지 않으며 일반 contract 대신 set-aside contract를 얻는 선택지다. `Emperor of the Known Universe`는 발동한 turn에만 적용된다. `[FAQ p. 3]` | [choam-module.md](choam-module.md), `rules/contracts.py`의 set-aside 선택, [leaders audit](../implementation-audits/leaders.md) |
-
-### content manifest 전사 시 확인: Uprising 연결은 명시됨
-
-아래 FAQ entry는 FAQ가 Uprising card라고 직접 말하지만, 지정된 근거만으로
-기본 룰셋과 CHOAM Module 사이의 소속까지 확정되지 않는다. content manifest
-확인 전에는 활성 규칙으로 등록하지 않는다.
-
-| FAQ entry | 확인 가능한 범위 | 판정 | 상태 |
-| --- | --- | --- | --- |
-| Manipulate | FAQ가 이 이름의 Intrigue card를 Uprising card라고 직접 설명한다. [FAQ p. 3] | 제거한 Imperium Row 카드는 opponent가 acquire할 수 없다. 자신은 다른 효과로 얻을 수 있지만 1 Persuasion 할인은 받지 못하며, 다음 Reveal turn 끝까지 얻지 않으면 게임에서 제거한다. [FAQ p. 3] | 기본 룰셋 카드로 구현; 다른 획득 효과(Inspire Awe·Impress, Price is No Object, Tleilaxu Master, Chronicler's Insight)로 할인 없이 얻는 길은 2026-10-06 구현; [intrigue audit](../implementation-audits/intrigue.md) |
+| Manipulate | Uprising 기본 Intrigue card. FAQ가 Uprising card라고 직접 설명하고 `[FAQ p. 3]`, content manifest(`content/uprising/intrigue.py`)가 기본 Intrigue deck에 둔다. | 제거한 Imperium Row 카드는 opponent가 acquire할 수 없다. 자신은 다른 효과로 얻을 수 있지만 1 Persuasion 할인은 받지 못하며, 다음 Reveal turn 끝까지 얻지 않으면 게임에서 제거한다. `[FAQ p. 3]` | 다른 획득 효과(Inspire Awe·Impress, Price is No Object, Tleilaxu Master, Chronicler's Insight)로 할인 없이 얻는 길은 2026-10-06 구현; 카드는 소유자의 Reveal turn 끝까지 앞면으로 남는다(`[FAQ p. 2]`, 2026-10-07); [intrigue audit](../implementation-audits/intrigue.md) |
+| Guild Envoy | Uprising 기본 Imperium card(content manifest `content/uprising/imperium.py`). `[Guild Envoy card]` | Agent turn에 play하면 반드시 card를 discard한다. `[FAQ p. 2]` | [personal-cards audit](../implementation-audits/personal-cards.md), `tests/unit/rules/test_agent_effects.py::test_guild_envoy_requires_discard_and_only_draws_for_spacing_guild`; 조건이 거짓인 동안의 보류는 OQ-057 (1) |
+| Beguiling Pheromones | Immortality Tleilaxu card(`immortality` 옵션; content manifest `content/immortality/tleilaxu.py`). `[Tleilaxu card faces]` | grafted 상대 카드를 trash할 때 그 카드의 "trash를 비용으로 하는" 효과는 함께 얻지 못하고, 어차피 trash될 카드도 trash 대상으로 고를 수 있다. `[FAQ p. 1]` | [immortality.md](immortality.md) 5절, `expire_trashed_card_effects`(OQ-022) |
+| Chairdog | Immortality Tleilaxu card(`immortality` 옵션). 룰북 예시가 이 카드를 쓴다. `[Immortality p. 11]` | 상대 카드를 hand로 되돌린 뒤에는 Reveal turn을 마쳐야 하며 Agent turn으로 바꿔 그 카드를 낼 수 없다. `[FAQ p. 1]` | [immortality.md](immortality.md) 5절, `reveal_turn._return_chairdog_cards`(되돌린 카드를 그 Reveal에서 바로 공개) |
+| Ghola | Immortality Tleilaxu card(`immortality` 옵션). `[Immortality pp. 11, 14]` | FAQ의 두 예는 Carryall과 Kwisatz Haderach와의 graft라 현재 룰셋에는 적용할 카드가 없다. `[FAQ p. 2]` Ghola 자체는 Immortality p. 14 clarification대로 구현한다. | [immortality.md](immortality.md) 5절 |
 
 ### content manifest 전사 시 확인: 소속 자체가 미확정
 
@@ -105,12 +100,12 @@ Uprising 기본 룰셋 소속을 확정할 수 없다. 따라서 현재 규범 �
 분류한다.
 
 - FAQ p. 1: Missionaria Protectiva, Archduke Armand Ecaz,
-  Assassination Mission, Baron Vladimir Harkonnen, Beguiling Pheromones,
-  Carryall, Chairdog, Chani (Imperium), Chani (Leader), Charisma,
+  Assassination Mission, Baron Vladimir Harkonnen,
+  Carryall, Chani (Imperium), Chani (Leader), Charisma,
   Chaumurky. [FAQ p. 1]
 - FAQ p. 2: Corner the Market, Count Ilban Richese,
   Countess Ariana Thorvald, Demand Respect, Dispatch an Envoy, Double Cross,
-  Foldspace, Ghola, Guild Bankers, Guild Envoy, Gun Thopter,
+  Foldspace, Guild Bankers, Gun Thopter,
   Helena Richese, Ilesa Ecaz, Imperial Spy, Liet Kynes, Litany Against Fear.
   [FAQ p. 2]
 - FAQ p. 3: Plans Within Plans, Poison Snooper, “Princess” Yuna Moritani,
@@ -122,6 +117,10 @@ Uprising 기본 룰셋 소속을 확정할 수 없다. 따라서 현재 규범 �
 
 목록에 있다는 사실은 해당 항목이 Uprising에 속하거나 속하지 않는다는 판정이
 아니다. 오직 현재 허용된 근거만으로 소속을 확정하지 않았다는 뜻이다.
+2026-10-07 정리: Beguiling Pheromones·Chairdog·Ghola(Immortality)와 Guild
+Envoy(Uprising 기본)는 엔진이 FAQ 판정과 함께 구현한 지 오래라 위 활성 표로
+옮겼다. 남은 이름은 이번에 다시 분류하지 않았다(Bloodlines·Immortality를 켠 뒤로
+그중 일부도 낡았을 수 있다).
 
 ## 5. 제외 원칙
 
@@ -133,7 +132,12 @@ Uprising 기본 룰셋 소속을 확정할 수 없다. 따라서 현재 규범 �
   않는다. [FAQ p. 1] [FAQ p. 3] [FAQ p. 4]
 - FAQ entry 안의 6인 전용 문장은 같은 entry의 4인 적용 부분과 분리해 제외한다.
   [FAQ p. 3]
-- Tech tile과 Tleilaxu track처럼 현재 기본 ruleset에 없는 확장 시스템은 이
-  색인에서 실행 규칙으로 승격하지 않는다. named entry의 소속이 불명확하면
-  확장 소속이라고 추정하지 않고 앞의 content-manifest 확인 목록에 유지한다.
+- 확장 시스템의 FAQ 판정은 그 확장을 옵션으로 구현한 문서가 실행 규칙으로
+  삼는다. Tleilaxu track("The Bene Tleilax are not a Faction. Effects that let
+  you gain Influence with any Faction can't be used to advance on the Tleilaxu
+  track." [FAQ p. 4])은 `immortality` 옵션에서 적용한다([immortality.md](immortality.md)
+  3절; 2026-10-07 정정 — 전에는 이 줄이 "현재 ruleset에 없는 확장"이라 했다).
+  Tech tile 항목 [FAQ p. 4]은 Rise of Ix tile(Spy Satellites)을 예로 들어 이
+  색인에서 승격하지 않는다. named entry의 소속이 불명확하면 확장 소속이라고
+  추정하지 않고 앞의 content-manifest 확인 목록에 유지한다.
   [FAQ p. 2] [FAQ p. 3] [FAQ p. 4]
