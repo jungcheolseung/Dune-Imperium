@@ -117,6 +117,17 @@ def main():
                 page.wait_for_function("state.view !== null && refreshFlight === null")
                 assert settled(page, 20)
                 rewards = rows(page, "resolve_tech_acquire_effect")
+                if before[faction] >= 6:
+                    # The Tech icon still offers a Faction at the top (a gain
+                    # there is lost, OQ-060); pick one that can rise so the
+                    # check below still sees a single +1. The saved game is a
+                    # heuristic replay, so rule changes move its Influence
+                    # (the codec v138 Intrigue gate put Bene Gesserit on 6).
+                    faction = next(
+                        f
+                        for f in ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+                        if before[f] < 6
+                    )
                 selected = next(
                     a for a in rewards if a["arguments"].get("faction") == faction
                 )
