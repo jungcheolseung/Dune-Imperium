@@ -10,13 +10,15 @@ from importlib.util import find_spec
 from pathlib import Path
 from types import FrameType
 
+from dune_imperium.paths import SAVES_DIR, SEARCH_CHECKPOINT
 from dune_imperium.server.access import AccessMode, new_token
 
 ADMIN_KEY_ENVIRONMENT = "DUNE_IMPERIUM_ADMIN_KEY"
 SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
-# Where a host keeps the search AI's network, usually a symlink to the
-# training checkpoint of the day; looked for when nothing else names one.
-DEFAULT_SEARCH_CHECKPOINT = Path(".dune-imperium") / "search.pt"
+# Where the search AI's network is looked for when nothing else names one:
+# ``checkpoints/play/search.pt`` in the project checkout, usually a symlink
+# to a weights-only copy beside it (``dune_imperium.paths``).
+DEFAULT_SEARCH_CHECKPOINT = SEARCH_CHECKPOINT
 _GRACEFUL_SHUTDOWN_SECONDS = 3
 
 
@@ -79,7 +81,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--saves-dir",
         type=Path,
         default=None,
-        help="save-file directory (default: ~/.dune-imperium/saves)",
+        help=f"save-file directory (default: {SAVES_DIR})",
     )
     parser.add_argument(
         "--search-checkpoint",
@@ -88,7 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "trained policy file behind the search AI seat the browser "
             "offers (needs the train extra; default: the "
             f"{SEARCH_CHECKPOINT_ENVIRONMENT} environment variable, else "
-            "~/.dune-imperium/search.pt if it exists); a symlink is resolved "
+            f"{SEARCH_CHECKPOINT} if it exists); a symlink is resolved "
             "at startup, so saves name the real file"
         ),
     )
@@ -167,7 +169,8 @@ def resolve_search_checkpoint(
     """Return the search AI's network file, or ``None``, and the startup line.
 
     The flag wins over the environment variable, which wins over
-    ``~/.dune-imperium/search.pt``. The path is resolved once, here: saves
+    ``checkpoints/play/search.pt`` in the project checkout
+    (``DEFAULT_SEARCH_CHECKPOINT``). The path is resolved once, here: saves
     record the file a symlink named when the server started, so pointing
     the link at a newer checkpoint never changes an older save's network.
     The seat is offered only when that file exists and torch (the ``train``
@@ -182,11 +185,11 @@ def resolve_search_checkpoint(
         if not candidate.is_file():
             return None, f"search AI: off (no file at {candidate})"
     else:
-        default = Path.home() / DEFAULT_SEARCH_CHECKPOINT
+        default = DEFAULT_SEARCH_CHECKPOINT
         if not default.is_file():
             return None, (
                 "search AI: off (no checkpoint; --search-checkpoint or "
-                "~/.dune-imperium/search.pt)"
+                f"{default})"
             )
         candidate = default.resolve()
     if find_spec("torch") is None:

@@ -7,7 +7,7 @@ it as the bare kind ``search`` where the server was started with a network
 (``--search-checkpoint``; ``/whoami`` search_ai), and shows which seat is
 thinking. This script writes a tiny untrained network to a temp dir (the
 same file the server tests use, ``tests/server/test_search_seats.py``) and
-links it the way a host links ``~/.dune-imperium/search.pt``. With the full
+links it the way a host links ``checkpoints/play/search.pt``. With the full
 default search (five candidates in eight worlds) one hand-over of three such
 seats takes a few seconds, long enough to watch.
 

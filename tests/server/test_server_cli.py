@@ -173,11 +173,18 @@ def test_no_autosave_without_remote_is_refused() -> None:
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty home directory, so the host's own search.pt stays out."""
+    """An empty home directory, and a default network path in an empty
+    stand-in checkout, so the project's own ``checkpoints/play/search.pt``
+    stays out."""
 
     directory = tmp_path / "home"
     directory.mkdir()
     monkeypatch.setenv("HOME", str(directory))
+    monkeypatch.setattr(
+        server_cli,
+        "DEFAULT_SEARCH_CHECKPOINT",
+        tmp_path / "project" / "checkpoints" / "play" / "search.pt",
+    )
     return directory
 
 
@@ -193,7 +200,7 @@ def test_no_search_checkpoint_anywhere_leaves_the_search_ai_off(home: Path) -> N
     assert resolve_search_checkpoint(arguments, {}) == (
         None,
         "search AI: off (no checkpoint; --search-checkpoint or "
-        "~/.dune-imperium/search.pt)",
+        f"{server_cli.DEFAULT_SEARCH_CHECKPOINT})",
     )
 
 
@@ -231,15 +238,42 @@ def test_the_environment_names_the_search_checkpoint_without_the_flag(
     assert resolve_search_checkpoint(flagged, environment)[0] == from_flag
 
 
-def test_the_default_search_checkpoint_is_found_in_the_home_directory(
-    home: Path, tmp_path: Path
+def test_the_default_search_checkpoint_is_found_in_the_project_checkout(
+    home: Path,
 ) -> None:
-    real = _network(tmp_path / "checkpoints" / "l3-8081.pt").resolve()
-    (home / ".dune-imperium").mkdir()
-    (home / ".dune-imperium" / "search.pt").symlink_to(real)
+    default = server_cli.DEFAULT_SEARCH_CHECKPOINT
+    real = _network(default.parent / "l3-8081.pt").resolve()
+    default.symlink_to(real.name)
     arguments = _build_parser().parse_args([])
 
     assert resolve_search_checkpoint(arguments, {}) == (real, f"search AI: {real}")
+    # Nothing is looked for in the home directory any more.
+    assert not (home / ".dune-imperium").exists()
+
+
+def test_the_project_keeps_its_local_files_inside_the_checkout() -> None:
+    """User decision 2026-10-06: no project file outside the project.
+
+    The defaults name folders of the checkout the package runs from, both
+    git-ignored there.
+    """
+
+    from dune_imperium.paths import PROJECT_ROOT, SAVES_DIR, SEARCH_CHECKPOINT
+    from dune_imperium.server.persistence import default_saves_directory
+
+    assert (PROJECT_ROOT / "pyproject.toml").is_file()
+    assert default_saves_directory() == SAVES_DIR == PROJECT_ROOT / "saves"
+    assert server_cli.DEFAULT_SEARCH_CHECKPOINT == SEARCH_CHECKPOINT
+    assert SEARCH_CHECKPOINT == PROJECT_ROOT / "checkpoints" / "play" / "search.pt"
+    paths = ["saves/x.json", "checkpoints/play/search.pt"]
+    ignored = subprocess.run(
+        ["git", "check-ignore", *paths],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ignored.stdout.split() == paths
 
 
 def test_a_named_search_checkpoint_that_is_missing_is_reported(
