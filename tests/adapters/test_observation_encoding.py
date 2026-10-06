@@ -491,12 +491,19 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # icons, 96163929, then Treacherous Maneuver's single gain of 2, 57e6c791),
 # but after the merge it leaves the old path earlier, at the zero retreat, and
 # no later commit of the batch moves any of the six.
+# v138 (2026-10-06 user ruling: no Intrigue play for no effect, FAQ p. 2)
+# moves only promo_bloodlines_tech (2,908 -> 2,964 vectors): at decision 470
+# seat 1's Insider Information option 1 ("ignore Influence requirements this
+# turn") is no longer offered because no requirement is left unmet, so the
+# random seat draws from a shorter list. A per-commit run of the branch
+# (scratch) moves it at the gate commit 52007a8b and nowhere else; the other
+# five pins hold.
 _GOLDEN_DIGESTS = {
     "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
     "choam": ("2777d9168a91b30a646404b0b7cd0276476c83fc379d7de596632d5cbbe56efe", 2708),
     "promo_bloodlines_tech": (
-        "e97cb2adf5315ca8b5103b820fa8a76192ec1150810b99d6c6110639ea51af79",
-        2908,
+        "690f478ee0915556979753ec31d2ff1112fbe899a883ce2b2342aea7a6aea5e5",
+        2964,
     ),
     "everything": (
         "54d4ae98a20e8653a6bd899435be3bb9a0a81899c4c4413f56c21924db7b5097",
