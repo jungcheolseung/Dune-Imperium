@@ -86,15 +86,21 @@
   - Chrome E2E **46종 전부 통과**(2개씩, 311초). 처음 실행에서 `effect_text`(Treacherous Maneuver 영어 문구의 아이콘)와 `log_words`(seed 3이 Secrets 훔치기를 잃음 → seed 10)가 실패해 고친 뒤 둘만 다시 돌려 통과했다.
   - 소크(soundness 5, privacy 50, worker 2): random 전 옵션+Scouts+리더 회전 100판, heuristic 전 옵션+지도자 드래프트 60판, random 기본·CHOAM 200판, 모두 실패 0.
 
-## 2026-10-06 프로젝트 파일은 프로젝트 폴더 안에
+## 2026-10-06 프로젝트 파일은 프로젝트 폴더 안에(저장·탐색 망·임시 파일)
 
 - 사용자 결정: "이 프로젝트 디렉토리 밖에는 관련 파일이 없었으면 좋겠어." 플레이 서버의 저장 기본 위치를 `~/.dune-imperium/saves`에서 저장소 안의 `saves/`로, 탐색 AI 망 기본 위치를 `~/.dune-imperium/search.pt`에서 `checkpoints/play/search.pt`로 옮겼다. 둘 다 git 무시다(`.gitignore`의 `/saves/`·`checkpoints/`). 경로는 새 모듈 `dune_imperium.paths`(`PROJECT_ROOT`·`SAVES_DIR`·`SEARCH_CHECKPOINT`)가 정한다. 기준은 패키지가 도는 체크아웃이므로 `.claude/worktrees/` 아래 작업 트리는 자기 폴더를 쓴다. 브랜치 `local-files`, 병합 `7fc2431f`.
 - 이 Mac의 파일도 옮겼다: 저장 둘(2026-10-05, codec v135라 지금은 열리지 않는다)은 `saves/`로, 8081 망은 `checkpoints/play/`로 옮겼다. `~/.dune-imperium`은 지웠다.
 - 검증: 서버 테스트 74개(새 테스트는 기본값이 체크아웃 안이고 git이 무시하는지 확인), Ruff·mypy(412파일), E2E `search_seats`·`open_mode`·`save_delete`·`recovery` 통과.
-- 아직 저장소 밖에 남은 것은 다음과 같다. 성격이 달라 사용자에게 물었다.
-  - 비공개 에셋 체크아웃 `../Dune-Imperium-assets`. `assets`는 이 체크아웃을 가리키는 심볼릭 링크다.
-  - 임시 파일(`/tmp`의 E2E 스크린샷·로그·`/tmp/dune-e2e-venv`, 공식 룰북 작업 사본).
-  - 도구의 자체 폴더(`~/.claude`, `~/.codex/worktrees`).
+- **임시 파일도 저장소 안으로**(같은 날 사용자 답 "프로젝트 안 tmp/로", 브랜치 `local-tmp`, 병합 `9ac77b28`): 실행할 때마다 생기는 파일은 git 무시 `tmp/`(`dune_imperium.paths.TMP_DIR`)에 생긴다.
+  - pytest의 `tmp_path`와 `tempfile`은 `tests/conftest.py`가 `tmp/pytest/`로 보낸다. 실행 폴더는 셋까지 남는다.
+  - E2E의 스크린샷·임시 저장·서버 로그·실행기 로그·브라우저 프로필은 `scripts/e2e/common.py`가 TMPDIR을 바꿔 `tmp/e2e/`로 보낸다.
+  - self-play 전송 파일은 `tmp/`에 생긴다.
+  - 공식 룰북 작업 사본은 `tmp/official-rules/`에 둔다. `prepare_official_rules.py`는 저장소 안이면 `tmp/`만 받는다.
+  - 미리보기 서버(`.claude/launch.json`)의 저장은 `tmp/ui-verify-saves`다.
+  - E2E 환경은 `/tmp/dune-e2e-venv`에서 `scripts/e2e/.venv`로 옮겼다(기기마다 한 번 만든다, 새 README). 옛 환경은 지웠다.
+  - CLAUDE.md·AGENTS.md 규칙도 고쳤다. 세션의 스크래치·작업 기록은 `tmp/claude/<세션 id>/`에 둔다.
+  - 검증: 전체 pytest **6,621개 통과**, Ruff·mypy(414파일) 통과, E2E 5종 통과. 전체 pytest와 E2E 전후로 시스템 임시 폴더에 새로 생긴 항목은 0이다.
+- **예외**: 비공개 에셋 체크아웃 `../Dune-Imperium-assets`(`assets` 심볼릭 링크)는 별도 저장소라 그대로 둔다(사용자 답 "예외로 두기"). 도구의 자체 폴더(`~/.claude`, `~/.codex`)는 이 프로젝트 것이 아니다.
 
 ## 2026-10-06 탐색 AI 좌석, 대회 도구의 지도자 드래프트, L3 재학습(앱 AI를 이기는 망)
 
