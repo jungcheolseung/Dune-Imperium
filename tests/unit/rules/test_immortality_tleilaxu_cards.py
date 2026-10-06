@@ -1118,6 +1118,70 @@ def test_chairdog_returns_the_other_grafted_card_when_the_reveal_starts() -> Non
     )
 
 
+def test_chairdog_trashed_first_by_its_partner_still_returns_the_partner() -> None:
+    """Adopted designer ruling (docs/rules/designer-rulings-audit.md):
+    "Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도
+    되돌림" -- the return is recorded on the seat when Chairdog is grafted,
+    so the partner returns even if Chairdog is trashed first. [Immortality
+    p. 11]: "At the start of her Reveal turn that round, she returns Arrakis
+    Liaison to her hand (and then immediately reveals it)." Dissecting Kit's
+    box resolves first and trashes Chairdog, whose own box then expires
+    (OQ-022); Dissecting Kit still comes back at the start of the Reveal
+    turn. Until 2026-10-07 the return was recorded only by Chairdog's box,
+    so nothing came back."""
+
+    chairdog = _tleilaxu("chairdog")
+    kit = "imperium:dissecting_kit:0"
+    grafted = _graft(_state(_owner((kit, chairdog))), kit, "arrakeen", chairdog)
+    # Recorded as the pair is grafted, before either box resolves.
+    assert grafted.players[0].chairdog_return_card_ids == (kit,)
+
+    trashed = apply_agent_card_payment(
+        grafted, _payment(grafted, "trash_grafted_card_for_specimen")
+    ).state
+    owner = trashed.players[0]
+    assert chairdog in owner.trashed and chairdog not in owner.in_play
+    _, context = current_agent_effect_context(trashed)
+    assert context["graft_pending_effect"] is False  # Chairdog's box expired
+    assert owner.chairdog_return_card_ids == (kit,)
+
+    closed = _engine_finish_turn(trashed)
+    state = replace(
+        closed,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0b",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    revealed = begin_reveal_turn(state, DomainAction("reveal_turn", 0))
+    assert revealed.events[0].kind == "card_returned_to_hand"
+    assert dict(revealed.events[0].payload)["card_id"] == kit
+    context = dict(revealed.state.decision_stack[-1].context)
+    assert kit in {
+        value for key, value in context.items() if key.startswith("revealed_card_")
+    }
+    assert revealed.state.players[0].chairdog_return_card_ids == ()
+
+
+def test_ghola_grafted_to_chairdog_returns_both_cards() -> None:
+    """Ghola "has the same Agent box as the other grafted card" [Ghola card
+    face], so grafted to Chairdog its box returns Chairdog as Chairdog's
+    returns Ghola. Both returns are recorded at the graft (adopted designer
+    ruling, docs/rules/designer-rulings-audit.md) and resolving the boxes
+    records nothing twice."""
+
+    chairdog = _tleilaxu("chairdog")
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(_state(_owner((chairdog, ghola))), chairdog, "arrakeen", ghola)
+    assert grafted.players[0].chairdog_return_card_ids == (ghola, chairdog)
+    first = resolve_agent_card_effect(grafted).state
+    resolved = resolve_agent_card_effect(_switch(first))
+    assert resolved.state.players[0].chairdog_return_card_ids == (ghola, chairdog)
+
+
 def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> None:
     usurp = _tleilaxu("usurp")
     occupation = "imperium:occupation:0"
