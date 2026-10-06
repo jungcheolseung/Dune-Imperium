@@ -1388,14 +1388,18 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
     # once every Agent turn waits for its finish_agent_turn (OQ-095).
     # Seed 33 reached it until Tactical Option's zero retreat (2026-10-06)
     # added a legal option that moves the random walk; re-searched then,
-    # seed 21 is the first of 0-39 whose end is a finish_agent_turn.
+    # seed 21 was the first of 0-39 whose end is a finish_agent_turn. Seed
+    # 21 stopped reaching it at 5654d7f8 (a Combat Intrigue pass right after
+    # a card play no longer counts as a consecutive pass, 2026-10-07), which
+    # changes the random walk's games; re-searched then, seed 14 is the
+    # first of 0-39 (round 8; 16, 20, 23, 28 and 36 reach it too).
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=21)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=14)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     calls: list[str] = []
     manager.add_hand_over_listener(calls.append)
-    rng = random.Random(21 * 9973 + 1)
+    rng = random.Random(14 * 9973 + 1)
 
     found = False
     for _ in range(6000):
@@ -1786,9 +1790,13 @@ def test_a_legacy_document_saved_mid_turn_restores_with_an_open_unit() -> None:
     # hold exactly once, not zero times and not twice. (Moved 2026-10-01
     # from the middle of seed 0's first Agent turn, which OQ-095 ends with
     # finish_agent_turn and never holds, to the middle of seat 0's Conflict
-    # rewards: seed 15's index-0 walk, two Influence picks of one reward.)
+    # rewards: seed 15's index-0 walk, two Influence picks of one reward.
+    # Seed 15 stopped reaching it at 5654d7f8, a Combat Intrigue pass right
+    # after a card play no longer counting as a consecutive pass, 2026-10-07;
+    # seed 58 is the first of 0-199 whose walk has seat 0 between the two
+    # picks of Propaganda's reward, round 8.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=15)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=58)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     summary = _play_until(

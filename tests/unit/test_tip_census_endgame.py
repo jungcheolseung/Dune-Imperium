@@ -454,6 +454,23 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     engine, c100ef29, it first reproduced seed 34's case). The buggy
     collector would read ``end.endgame_vp`` == 1 for seat 1 and
     ``end.leader_changed`` == False.
+
+    Re-derived 2026-10-07 for 5654d7f8 (a Combat Intrigue pass right after
+    a card play hands priority on without counting as a consecutive pass;
+    codec v139): seed 52 now opens Endgame with seat 1 already leading and
+    no Endgame-opening Tech changes the leader. The same capture over full
+    seeds 1-200 finds five seeds (1, 24, 97, 141, 160) where the leader
+    after the ``:endgame_tech:`` events differs from the one at the check
+    and goes on to win; the case is seed 1, the first. Endgame opens there
+    in round 10 on the empty Conflict deck with check VP [9, 6, 9, 6]: seat
+    2 (Shaddam Corrino IV) ranks first of its tie with seat 0 (Lady Margot
+    Fenring). Seat 0 holds CHOAM Transports, whose 1 VP takes it to 10 and
+    the lead; it then matches its wild Skirmish with Seize Spice Refinery,
+    ending on 11 as the winner (seat 3 matches Propaganda with its
+    crysknife Objective, 7; seat 0's Shadowy Bargain scores nothing).
+    The buggy collector would read ``end.endgame_vp`` == 1 for seat 0 and
+    ``end.leader_changed`` == False (independent replay of the Endgame
+    steps).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -461,7 +478,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 52):
+    for seed in (*FULL_SEEDS, 1):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -496,13 +513,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 52:
+        if seed == 1:
             saw_case = True
-            assert census["seats"][1]["end.endgame_vp"] == 2
+            assert census["seats"][0]["end.endgame_vp"] == 2
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 52 regression case must run"
+    assert saw_case, "the seed 1 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -619,9 +636,18 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     a troop for slot 0 and the Commander for slot 1 (``lose_intrigue_troop``
     with ``commanders`` 1: ``unit_lost`` with one Commander, its Commander
     supply 0 -> 1), its only Commander retreat (independent replay).
+
+    Re-derived 2026-10-07 for 5654d7f8 (a Combat Intrigue pass right after
+    a card play no longer counts as a consecutive pass; codec v139): seed 16
+    seat 0 no longer retreats a Commander. The same listing over full seeds
+    1-200 gives seed 15 seat 0 (Princess Irulan) first: in round 6 its
+    Gruesome Sacrifice pays a troop for slot 0 and the Commander for slot 1
+    (``lose_intrigue_troop`` with ``commanders`` 1: ``unit_lost`` with one
+    Commander, its Commander supply 0 -> 1), its only Commander retreat
+    (independent replay).
     """
 
-    spec = _spec(True, 16)
+    spec = _spec(True, 15)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
@@ -632,7 +658,7 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:7:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
+        "round:6:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
     assert census["seats"][0]["bt.commander_retreats"] == 0

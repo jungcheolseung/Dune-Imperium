@@ -498,21 +498,38 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # random seat draws from a shorter list. A per-commit run of the branch
 # (scratch) moves it at the gate commit 52007a8b and nowhere else; the other
 # five pins hold.
+# v139 (the general-rules comparison batch, 2026-10-07; observation still
+# v30). A per-commit run of the batch (scratch, ``git archive`` exports,
+# with the action traces compared) gives: 5654d7f8 (a Combat Intrigue pass
+# right after a card play hands priority on without counting as a
+# consecutive pass) moves all six games (base 3,144 -> 3,052 vectors, choam
+# 2,708 -> 2,904, promo_bloodlines_tech 2,964 -> 3,004, everything 3,360 ->
+# 2,988, draft 2,732 -> 2,812, scouts 3,424 -> 3,588). ec4e4db7 (a
+# Reveal-turn Plot stays face up until its owner's Reveal turn ends) changes
+# the vectors of base and everything with the same choices: their
+# Manipulate stays face up longer. c80d719e (a lone participant's pass
+# after playing ends Combat Intrigue) moves draft (2,812 -> 2,808).
+# 82b9cddc (Conflict rewards paid one recipient at a time in rank order)
+# changes all six: five keep every choice and legal-set size (a later
+# recipient is now paid after the winner's choices, so the vectors in
+# between differ), and scouts moves (3,588 -> 3,712 vectors). d70e7be2,
+# aa22c8b7, 445353d5 (its deck sizes are not encoded), a73957bf, 184f923c
+# and d3699046 move none of the six.
 _GOLDEN_DIGESTS = {
-    "base": ("611b73e4bac5331e7247af075612d07830e54effd4e370377ab64e588ab6fc06", 3144),
-    "choam": ("2777d9168a91b30a646404b0b7cd0276476c83fc379d7de596632d5cbbe56efe", 2708),
+    "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
+    "choam": ("cf414bd3f23f711e42d9b33f6f54001cf70435f3872091501b670434a6c34e62", 2904),
     "promo_bloodlines_tech": (
-        "690f478ee0915556979753ec31d2ff1112fbe899a883ce2b2342aea7a6aea5e5",
-        2964,
+        "23337f08fcf35626d22ed6503c1b21922a7bc061ce3244beb429b688823940ee",
+        3004,
     ),
     "everything": (
-        "54d4ae98a20e8653a6bd899435be3bb9a0a81899c4c4413f56c21924db7b5097",
-        3360,
+        "f47adc3660e5079f08aea7d5c9f2b64dd8aac817726f287957cc99b1edb651bc",
+        2988,
     ),
-    "draft": ("33bdd8eee62a5cc91d3e3fea78b659c4b44f350d21069768ff6bb0c3fe35e5e1", 2732),
+    "draft": ("98a71a1ab408346e10573193c4d415db03c1ba0b525527e5d46835ab8f362ebf", 2808),
     "scouts": (
-        "3626ddc81a3ab4b957faa18ecfae231f659a02fceeec68b0adec5a51e517f4de",
-        3424,
+        "f288d4ca32c84ead9b610cb1eb8dd14ad16cab8dd26ec0b1eaa5e62521e769f1",
+        3712,
     ),
 }
 _GOLDEN_CONFIGS = {
