@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -47,9 +46,8 @@ from scipy import ndimage
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCES = REPO / "scripts" / "official-rule-sources.json"
-DEFAULT_PDF = (
-    Path(tempfile.gettempdir()) / "dune-imperium-official-rules" / "di-bloodlines.pdf"
-)
+# prepare_official_rules.py's default working-copy folder.
+DEFAULT_PDF = REPO / "tmp" / "official-rules" / "di-bloodlines.pdf"
 DEFAULT_OUT = REPO / "assets" / "tokens" / "sardaukar_commander.png"
 
 # The figure on p. 2 sits in this box (PDF points, left/bottom/right/top);

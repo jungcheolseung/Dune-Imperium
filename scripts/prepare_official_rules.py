@@ -31,9 +31,8 @@ from pypdf.errors import PdfReadError
 
 MANIFEST_PATH = Path(__file__).with_name("official-rule-sources.json")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = (
-    Path(tempfile.gettempdir()) / "dune-imperium-official-rules"
-)
+# Inside the project (user decision 2026-10-06), in the git-ignored tmp/.
+DEFAULT_OUTPUT_DIR = REPOSITORY_ROOT / "tmp" / "official-rules"
 USER_AGENT = "Dune-Imperium-rules-research/1.0"
 SOURCE_FIELDS = {
     "label",
@@ -291,12 +290,17 @@ def extract_text(
 
 
 def ensure_external_output_dir(output_dir: Path) -> Path:
-    """Prevent generated copyrighted working copies entering the repository."""
+    """Prevent generated copyrighted working copies entering tracked files.
+
+    Inside the repository only the git-ignored ``tmp/`` may hold them.
+    """
     resolved = output_dir.expanduser().resolve()
-    if resolved == REPOSITORY_ROOT or REPOSITORY_ROOT in resolved.parents:
+    ignored = REPOSITORY_ROOT / "tmp"
+    inside = resolved == REPOSITORY_ROOT or REPOSITORY_ROOT in resolved.parents
+    if inside and not (resolved == ignored or ignored in resolved.parents):
         raise RulePreparationError(
-            "--output-dir must be outside the repository; use /tmp or another "
-            "working directory"
+            "--output-dir must be under the repository's git-ignored tmp/ "
+            f"(default {DEFAULT_OUTPUT_DIR}) or outside the repository"
         )
     return resolved
 

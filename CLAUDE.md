@@ -109,7 +109,8 @@ The harness has no "list tasks" tool, so the task list is one you keep yourself:
 
 1. **Right after every launch** that returns a task id (`run_in_background`
    Bash, Monitor, Agent, Workflow), append one line
-   `<task id>  <what it does>` to `<scratchpad>/tasks.md`. No exceptions, no
+   `<task id>  <what it does>` to `tmp/claude/<session id>/tasks.md` (see the
+   temporary-files rule below). No exceptions, no
    "I'll remember it".
 2. **Before saying anything about what is or is not running** -- "정리 완료",
    "남은 작업 없음", the closing recap, an answer to "지금 뭐 돌아가?" -- open
@@ -131,8 +132,14 @@ The harness has no "list tasks" tool, so the task list is one you keep yourself:
 - Card slices follow the `Play <Card>` / `Document <Card>` commit pairing; keep
   code and its tests in the `Play` commit and roadmap/audit updates in the
   `Document` commit.
-- Temporary files (official-rule working copies, scratch scripts) go under the
-  session scratchpad or `/tmp`, never into the repository.
+- No file of this project lives outside the project directory (user decision,
+  2026-10-06). Temporary files (official-rule working copies, scratch scripts,
+  logs, the task ledger) go under the git-ignored `tmp/` at the project root —
+  e.g. `tmp/claude/<session id>/` for a session's scratch work — not the
+  session scratchpad or `/tmp`, and never into tracked files. Saves default to
+  `saves/` and the search AI's network to `checkpoints/play/search.pt`
+  (`dune_imperium.paths`). The one exception is the sibling private assets
+  checkout `../Dune-Imperium-assets` behind the `assets` symlink.
 - `assets/rulebooks/*.pdf` are the user's local reading copies; use
   `scripts/prepare_official_rules.py` and the official URLs instead unless the
   user explicitly asks you to open a local PDF.

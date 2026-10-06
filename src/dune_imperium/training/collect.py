@@ -30,6 +30,7 @@ import torch
 
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX
 from dune_imperium.config import RulesetConfig
+from dune_imperium.paths import TMP_DIR
 from dune_imperium.training.network import PolicyValueNetwork, build_network
 from dune_imperium.training.policy import AgentBatchPolicy, BatchPolicy
 from dune_imperium.training.selfplay import (
@@ -187,7 +188,10 @@ class Collector:
             self._pool = ProcessPoolExecutor(
                 max_workers=workers, mp_context=get_context("spawn")
             )
-            self._scratch = Path(tempfile.mkdtemp(prefix="dune-imperium-selfplay-"))
+            TMP_DIR.mkdir(parents=True, exist_ok=True)
+            self._scratch = Path(
+                tempfile.mkdtemp(prefix="dune-imperium-selfplay-", dir=TMP_DIR)
+            )
 
     def close(self) -> None:
         if self._pool is not None:

@@ -23,7 +23,7 @@
         "--port",
         "8765",
         "--saves-dir",
-        "/tmp/dune-ui-verify-saves"
+        "tmp/ui-verify-saves"
       ],
       "port": 8765
     }

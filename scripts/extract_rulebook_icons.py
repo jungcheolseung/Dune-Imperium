@@ -260,7 +260,9 @@ def main(argv: list[str] | None = None) -> int:
         "main": arguments.pdf,
         "immortality": arguments.immortality_pdf,
     }
-    with tempfile.TemporaryDirectory() as tmp_dir_name:
+    # Inside the project's git-ignored tmp/ (user decision 2026-10-06).
+    (REPOSITORY_ROOT / "tmp").mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT / "tmp") as tmp_dir_name:
         tmp_dir = Path(tmp_dir_name)
         for source_key, icons in pending.items():
             pdf_path = _resolve_pdf(source_key, pdf_arguments.get(source_key), tmp_dir)
