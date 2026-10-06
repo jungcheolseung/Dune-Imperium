@@ -346,3 +346,18 @@ Harvest Cells를 Combat Intrigue에서 낼 수 없게 한 변경(33개), Tactica
 4 → 2, 학습 세션과 메모리를 나눠 쓰느라). 결과는 **124개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 33(heuristic 32 +
 5081 1), Endgame 11(heuristic 11)이며 `check`가 **124/124** 복원을 확인했다. 포지션 id로 견주면 그대로 98(선택 번호와 지문까지 같은 것
 41), 빠진 것 36, 새것 26이다. 채점은 하지 않았다(앞선 표는 당시 문제집의 결과로 그대로 둔다).
+
+## 재채굴 (2026-10-06, 효과 없는 책략 play 금지, codec v138)
+
+사용자 판정(2026-10-06, `[FAQ p. 2]` "To play an Intrigue card, you must meet its conditions and pay its costs." — 효과 중 하나라도 무언가를
+바꿀 수 있어야 낸다) 뒤에 커밋된 124개 가운데 74개가 복원되지 않았다(게이트 커밋 `52007a8b` 하나에서). 위 "다시 캐는 명령"을 그대로
+다시 실행했다(worker 4). 결과는 **114개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 31(heuristic 29 + 5081 2),
+Endgame **3**(heuristic 3)이며 `check`가 **114/114** 복원을 확인했다. 포지션 id로 견주면 그대로 82(선택 번호와 지문까지 같은 것 50),
+빠진 것 42, 새것 32다.
+
+Endgame 문항이 11 → 3으로 줄어 따로 확인했다. 같은 명령으로 Endgame 문항만 상한 없이 캐도 이전 엔진(`7a0cdf3e`) 11개, 새 엔진 3개다.
+빠진 11개는 모두 그 판이 **이번 판정이 막은 효과 없는 play에서 처음 갈린다** — Tech를 살 수 없는 Rapid Engineering·Battlefield Research,
+Agent를 보낸 뒤의 Emperor's Invitation·Twisted Resourceful 아이콘, 못 채운 조건이 없는 Insider Information의 조건 무시, 배치할 병력이 없는
+Detonation의 배치(scratch 비교, 판마다 첫 갈림 결정). 옛 heuristic이 그 카드를 효과 없이 내 버리던 판이 사라진 것이고, 기본 지도자로
+같은 seed 800판을 돌린 비교에서는 좌석의 첫 Endgame 창에서의 문항 사례가 10 대 9로 비슷했다. 엔진의 Endgame 창 처리는 바뀌지 않았다.
+채점은 하지 않았다.
