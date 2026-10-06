@@ -46,7 +46,7 @@
   - Glowglobes·Navigation Chamber의 Tech 획득 아이콘은 6인 진영을 그대로 내놓는다.
   - Harvest Cells 선택 화면에는 Reclaimed Forces의 specimen 비용 표시가 아직 없다(Reveal 패널에만 있다).
 - **검증.**
-  - pytest **6,553개 통과**, ruff·mypy(410파일) 통과.
+  - pytest **6,553개 통과**(브랜치), ruff·mypy(410파일) 통과. 병합한 master(`752c39fe`, L3 병합 포함)에서 다시 돌려 **pytest 6,569개 통과**, ruff·mypy(411파일) 통과. L3 망 `l3-appai-08081.pt`를 v137 좌석으로 불러 모든 옵션 게임 한 판을 끝까지 두는 것도 확인했다.
   - 리뷰: 두 줄 모두 독립 리뷰를 거쳤다. 첫 줄 리뷰가 찾은 다섯 가지(Tread의 graft 전환 draw, Ghola+Subversive 3, Treacherous 5·6, Ghola 표시 문구, 턴 종료 표시)를 고쳤다.
   - Chrome E2E **46종 전부 통과**(2개씩, 311초). 처음 실행에서 `effect_text`(Treacherous Maneuver 영어 문구의 아이콘)와 `log_words`(seed 3이 Secrets 훔치기를 잃음 → seed 10)가 실패해 고친 뒤 둘만 다시 돌려 통과했다.
   - 소크(soundness 5, privacy 50, worker 2): random 전 옵션+Scouts+리더 회전 100판, heuristic 전 옵션+지도자 드래프트 60판, random 기본·CHOAM 200판, 모두 실패 0.
