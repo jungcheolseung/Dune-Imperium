@@ -352,9 +352,12 @@ def test_gather_intelligence_window_precedes_contract_completion() -> None:
     placed = _place_agent(state, "arrakeen")
     engine = UprisingRulesEngine()
 
+    # The window is open and the Contract cannot be completed yet. The
+    # recall is offered even with the deck and discard pile both empty
+    # (OQ-099, user ruling 2026-10-07, "허용 (앱처럼)").
     assert {
         action.action_id for action in engine.legal_actions(placed, 0)
-    } == {"decline_gather_intelligence"}
+    } == {"decline_gather_intelligence", "gather_intelligence"}
 
     declined = engine.apply(
         placed,

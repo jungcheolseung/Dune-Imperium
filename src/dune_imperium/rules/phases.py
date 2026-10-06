@@ -67,6 +67,7 @@ def begin_round(state: GameState) -> RuleResult:
         conflict_first_place_influence_bonus=0,
         combat_intrigue_complete=False,
         combat_rewards_resolved=False,
+        combat_rewards_paid=0,
         combat_end_triggers_offered=False,
         combat_intrigue_players=(),
         decision_stack=() if defense is None else (defense,),

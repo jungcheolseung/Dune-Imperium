@@ -107,6 +107,21 @@ def _answer(state: GameState, *, pay: bool) -> GameState:
     return apply_combat_reward_optional_payment(state, action).state
 
 
+def _settle(state: GameState) -> GameState:
+    """Pay the 2nd and 3rd places once the winner's arrows are answered.
+
+    Conflict rewards are paid one recipient at a time in rank order, each
+    recipient's whole reward, choices included, answered before the next
+    recipient is paid (user ruling 2026-10-07, "순위대로 (앱처럼)"); the
+    engine calls ``resolve_combat_rewards`` again whenever the stack is
+    empty, as this does.
+    """
+
+    while not state.decision_stack and not state.combat_rewards_resolved:
+        state = resolve_combat_rewards(state).state
+    return state
+
+
 def _offered(state: GameState) -> tuple[str, ...]:
     return tuple(
         action.action_id
@@ -153,7 +168,13 @@ def test_economic_supremacy_joins_the_tier_three_pool_only_in_epic_games() -> No
 
 def test_every_place_gains_its_printed_row() -> None:
     before = _combat_state()
-    rewarded = resolve_combat_rewards(before).state
+    state = resolve_combat_rewards(before).state
+    # The winner's two arrows (unaffordable here) are answered before the
+    # 2nd place is paid (user ruling 2026-10-07, "순위대로 (앱처럼)").
+    assert state.players[1] == before.players[1]
+    state = _answer(state, pay=False)
+    state = _answer(state, pay=False)
+    rewarded = _settle(state)
 
     first, second, third, fourth = rewarded.players
     assert first.victory_points == before.players[0].victory_points + 1
@@ -207,7 +228,7 @@ def test_first_place_may_take_both_either_or_neither_arrow(
     assert winner.resources.spice == spice_left
     assert winner.victory_points == before.players[0].victory_points + gained
     assert state.decision_stack == ()
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def test_the_paid_arrows_are_logged_one_event_each() -> None:
@@ -269,7 +290,7 @@ def test_a_sandworm_offers_each_arrow_a_second_time() -> None:
     assert (winner.resources.solari, winner.resources.spice) == (0, 0)
     # 2 doubled base VP + 4 paid arrows.
     assert winner.victory_points == before.players[0].victory_points + 6
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def test_a_sandworm_s_second_arrow_is_judged_on_what_is_left() -> None:
