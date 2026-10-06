@@ -4183,7 +4183,64 @@ def test_manipulate_sets_a_row_card_aside_for_its_owner() -> None:
         _imperium_instance("steersman"),
     )
     assert done.players[0].imperium_set_aside == (cheap,)
-    assert done.intrigue_discard == (card,)
+    # The discount waits for the Reveal turn, so the card stays face up
+    # [FAQ p. 2] (see the next test).
+    assert done.intrigue_discard == ()
+    assert done.players[0].intrigue_faceup == (card,)
+
+
+def test_manipulate_stays_face_up_until_its_owners_reveal_turn_ends() -> None:
+    """ "다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의
+    앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]"
+    (docs/rules/player-turns.md). [FAQ p. 2]: "If the card does something
+    that won't apply until your next Reveal turn (for example: Charisma,
+    Recruitment Mission), keep it face up in front of you until then, then
+    use and discard it." Manipulate's set-aside card is acquirable at a
+    discount until the end of the owner's Reveal turn this round [FAQ p. 3],
+    so the card stays face up through that Reveal and is discarded as it
+    ends. Until 2026-10-07 it went straight to the Intrigue discard."""
+
+    card = _intrigue("manipulate")
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    played = engine.apply(
+        opened,
+        DomainAction(
+            action_id="manipulate_imperium_row",
+            actor=0,
+            arguments=(("instance_id", cheap),),
+        ),
+    )
+    done = played.state
+    assert done.players[0].intrigue_cards == ()
+    assert done.players[0].intrigue_faceup == (card,)
+    assert card not in done.intrigue_discard
+    assert "intrigue_kept_faceup" in [event.kind for event in played.events]
+
+    revealed = engine.apply(done, _reveal(done)).state
+    assert revealed.players[0].intrigue_faceup == (card,)
+    acquire = DomainAction(
+        action_id="acquire_manipulated_imperium",
+        actor=0,
+        arguments=(("instance_id", cheap),),
+    )
+    assert acquire in engine.legal_actions(revealed, 0)
+    acquired = engine.apply(revealed, acquire).state
+    assert acquired.players[0].discard_pile == (cheap,)
+    assert acquired.players[0].intrigue_faceup == (card,)
+
+    finished = engine.apply(
+        acquired, DomainAction(action_id="finish_reveal", actor=0)
+    )
+    after = finished.state
+    assert after.players[0].intrigue_faceup == ()
+    assert after.intrigue_discard == (card,)
+    expired = [e for e in finished.events if e.kind == "intrigue_expired"]
+    assert [dict(e.payload)["card_id"] for e in expired] == [card]
 
 
 def test_manipulate_with_an_empty_deck_shrinks_the_row() -> None:

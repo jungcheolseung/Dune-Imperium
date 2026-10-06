@@ -409,7 +409,69 @@ def test_tleilaxu_puppet_played_in_the_owners_reveal_pays_that_reveal() -> None:
     assert after["persuasion"] == persuasion + 1
     assert after["persuasion_generated"] == persuasion + 1
     assert played.players[0].reveal_persuasion_round_bonus == 0
-    assert puppet in played.intrigue_discard
+    # Kept face up through this Reveal turn and discarded as it ends
+    # [FAQ p. 2] (docs/rules/player-turns.md).
+    assert played.players[0].intrigue_faceup == (puppet,)
+    assert puppet not in played.intrigue_discard
+    finished = UprisingRulesEngine().apply(
+        played, DomainAction(action_id="finish_reveal", actor=0)
+    ).state
+    assert finished.players[0].intrigue_faceup == ()
+    assert puppet in finished.intrigue_discard
+
+
+def test_tleilaxu_puppet_stays_face_up_until_its_owners_reveal_turn_ends() -> None:
+    """ "다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의
+    앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]"
+    (docs/rules/player-turns.md). [FAQ p. 2]: "If the card does something
+    that won't apply until your next Reveal turn (for example: Charisma,
+    Recruitment Mission), keep it face up in front of you until then, then
+    use and discard it." Tleilaxu Puppet: "Gain [1 Persuasion] during your
+    Reveal turn this round" [Tleilaxu Puppet card]. Played before the
+    Reveal, it waits face up, pays its Persuasion when the Reveal begins,
+    and is discarded when that Reveal turn ends. Until 2026-10-07 it went
+    straight to the Intrigue discard. Its Endgame option is used at once and
+    discarded as before."""
+
+    puppet = _intrigue("tleilaxu_puppet")
+    state = _plot_state(_owner(intrigue_cards=(puppet,)))
+    engine = UprisingRulesEngine()
+    result = engine.apply(state, _play(puppet))
+    played = result.state
+    assert played.players[0].intrigue_cards == ()
+    assert played.players[0].intrigue_faceup == (puppet,)
+    assert puppet not in played.intrigue_discard
+    assert "intrigue_kept_faceup" in [event.kind for event in result.events]
+    assert played.players[0].reveal_persuasion_round_bonus == 1
+
+    without = _plot_state(_owner())
+    base = dict(
+        begin_reveal_turn(
+            without, DomainAction(action_id="reveal_turn", actor=0)
+        ).state.decision_stack[-1].context
+    )["persuasion"]
+    assert isinstance(base, int)
+    revealed = engine.apply(
+        played, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == base + 1
+    assert revealed.players[0].intrigue_faceup == (puppet,)
+
+    finished = engine.apply(
+        revealed, DomainAction(action_id="finish_reveal", actor=0)
+    )
+    after = finished.state
+    assert after.players[0].intrigue_faceup == ()
+    assert puppet in after.intrigue_discard
+    expired = [e for e in finished.events if e.kind == "intrigue_expired"]
+    assert [dict(e.payload)["card_id"] for e in expired] == [puppet]
+
+    council = _endgame_window(
+        _owner(intrigue_cards=(puppet,), research_space="c8r2", high_council=True)
+    )
+    ended = apply_intrigue_play(council, _play(puppet, 1)).state
+    assert ended.players[0].intrigue_faceup == ()
+    assert puppet in ended.intrigue_discard
 
 
 def test_vicious_talents_adds_swords_per_marker() -> None:

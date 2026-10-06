@@ -128,7 +128,10 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
-from dune_imperium.rules.intrigue_triggers import open_contract_reveal
+from dune_imperium.rules.intrigue_triggers import (
+    open_contract_reveal,
+    waits_for_reveal_turn,
+)
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -2076,19 +2079,40 @@ def finish_intrigue_play(
             ),
         )
         return RuleResult(state=next_state, events=applied.events)
-    next_state = replace(
-        resolved,
-        players=replace_player(
-            resolved.players,
-            replace(
-                owner,
-                intrigue_cards=tuple(
-                    held for held in owner.intrigue_cards if held != card_id
+    held_cards = tuple(held for held in owner.intrigue_cards if held != card_id)
+    kept_events: tuple[GameEvent, ...] = ()
+    if waits_for_reveal_turn(sections):
+        # "If the card does something that won't apply until your next
+        # Reveal turn (for example: Charisma, Recruitment Mission), keep it
+        # face up in front of you until then, then use and discard it."
+        # [FAQ p. 2] (Tleilaxu Puppet, Manipulate): discarded when the
+        # owner's Reveal turn ends (``expire_reveal_faceup_intrigue``).
+        next_state = replace(
+            resolved,
+            players=replace_player(
+                resolved.players,
+                replace(
+                    owner,
+                    intrigue_cards=held_cards,
+                    intrigue_faceup=(*owner.intrigue_faceup, card_id),
                 ),
             ),
-        ),
-        intrigue_discard=(*resolved.intrigue_discard, card_id),
-    )
+        )
+        kept_events = (
+            GameEvent(
+                event_id=f"{source}:faceup",
+                kind="intrigue_kept_faceup",
+                payload=(("card_id", card_id), ("player", player)),
+            ),
+        )
+    else:
+        next_state = replace(
+            resolved,
+            players=replace_player(
+                resolved.players, replace(owner, intrigue_cards=held_cards)
+            ),
+            intrigue_discard=(*resolved.intrigue_discard, card_id),
+        )
     refreshed = refresh_combat_participants(_reset_combat_passes(next_state, player))
     final_state = refreshed.state
     if any(
@@ -2101,7 +2125,8 @@ def finish_intrigue_play(
         # the Immediate token itself [Bloodlines p. 2] [Main p. 7].
         final_state = open_contract_reveal(final_state, player, card_id, source=source)
     return RuleResult(
-        state=final_state, events=(*applied.events, *refreshed.events)
+        state=final_state,
+        events=(*applied.events, *kept_events, *refreshed.events),
     )
 
 

@@ -2,7 +2,11 @@
 Negotiation's Contract reveal.
 
 A Plot card whose effect does not apply immediately stays face up in front of
-its owner until it does [FAQ p. 2] (Call to Arms). This module fires those
+its owner until it does [FAQ p. 2] (Call to Arms). So does a Plot whose
+effect waits for the owner's Reveal turn: "If the card does something that
+won't apply until your next Reveal turn (for example: Charisma, Recruitment
+Mission), keep it face up in front of you until then, then use and discard
+it." [FAQ p. 2] (Tleilaxu Puppet, Manipulate). This module fires those
 triggers and expires face-up cards whose window has closed. It deliberately
 sits below the acquisition and Reveal modules, so it applies its rewards
 directly instead of going through the effect interpreter.
@@ -13,13 +17,18 @@ not a trigger it waits for (user ruling 2026-10-03, OQ-016); the reveal
 frame Coercive Negotiation opens when played lives here.
 """
 
+from collections.abc import Iterable
 from dataclasses import replace
+from typing import Final
 
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
+    EffectSection,
     OnRevealAcquisitionThisRound,
     RecruitTroops,
     RevealContractsTakeOne,
+    RevealPersuasionThisRound,
+    SetAsideImperiumRowCard,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.core.actions import DomainAction
@@ -51,6 +60,49 @@ from dune_imperium.rules.frames import (
 DEFERRED_ACQUISITION_TRIGGERS_KEY = "deferred_acquisition_triggers"
 
 type _WaitingTrigger = tuple[str, str]
+
+
+_REVEAL_TURN_REWARDS: Final = (RevealPersuasionThisRound, SetAsideImperiumRowCard)
+"""Plot rewards that last until the owner's Reveal turn this round ends:
+Tleilaxu Puppet's "Gain [1 Persuasion] during your Reveal turn this round"
+and Manipulate's set-aside card, acquirable at a discount until the end of
+that Reveal turn [FAQ p. 3]."""
+
+
+def waits_for_reveal_turn(sections: Iterable[EffectSection]) -> bool:
+    """Whether a played option's effect waits for the owner's Reveal turn.
+
+    "If the card does something that won't apply until your next Reveal turn
+    (for example: Charisma, Recruitment Mission), keep it face up in front of
+    you until then, then use and discard it." [FAQ p. 2]
+    (docs/rules/player-turns.md). Such a card is kept face up instead of
+    discarded, and ``expire_reveal_faceup_intrigue`` discards it when the
+    owner's Reveal turn ends -- also when it was played in that Reveal turn.
+    """
+
+    return any(
+        isinstance(reward, _REVEAL_TURN_REWARDS)
+        for section in sections
+        for reward in section.rewards
+    )
+
+
+def _faceup_entries_until_reveal_end(faceup: tuple[str, ...]) -> tuple[str, ...]:
+    """Face-up cards discarded when their owner's Reveal turn ends, in order:
+    per-acquisition triggers and Plots whose effect waits for that turn."""
+
+    matches: list[str] = []
+    for card_id in faceup:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        if entry is None:
+            continue
+        if any(
+            isinstance(option.trigger, OnRevealAcquisitionThisRound)
+            or (option.trigger is None and waits_for_reveal_turn(option.sections))
+            for option in entry.options
+        ):
+            matches.append(card_id)
+    return tuple(matches)
 
 
 def _faceup_entries_with_trigger(
@@ -487,13 +539,12 @@ def expire_reveal_faceup_intrigue(state: GameState, player: int) -> RuleResult:
     """Discard face-up cards whose window was the owner's Reveal turn.
 
     Called when the owner's Reveal turn ends: a per-acquisition card's
-    "this round" window has closed, whether or not it ever fired.
+    "this round" window has closed, whether or not it ever fired, and a
+    Plot whose effect waited for this Reveal turn has been used [FAQ p. 2].
     """
 
     owner = state.players[player]
-    expired = _faceup_entries_with_trigger(
-        owner.intrigue_faceup, OnRevealAcquisitionThisRound
-    )
+    expired = _faceup_entries_until_reveal_end(owner.intrigue_faceup)
     if not expired:
         return RuleResult(state=state)
     next_owner = replace(
