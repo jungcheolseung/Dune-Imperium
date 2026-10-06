@@ -73,6 +73,8 @@ UI 변경의 검증 순서는 [`CLAUDE.md`](../../CLAUDE.md)의 "Verifying UI ch
 
 `scouts_auction_currency.py`는 모든 경매 11종의 실제 서버 payload로 입찰 자원 이름·아이콘을 확인한다. 두 언어의 경매 설명·입찰 금액·선택/확정 버튼·내 입찰액, 금액 변경과 원래 action index 전송, 0만 가능한 봉인 입찰·공개 호가의 패스·한 번만 더 올릴 수 있는 경우, 상대의 봉인 입찰 비공개와 아이콘 없는 텍스트 대체를 포함한다. `E2E_SHOTS_DIR`에 `auction_*.png`를 남긴다.
 
+`intrigue_faceup.py`는 `fixtures/intrigue_faceup_saves.py`가 휴리스틱 좌석으로 실제로 두어 저장한 두 판(기본판의 Call to Arms, Immortality 판의 Manipulate·Tleilaxu Puppet)을 불러, 앞면으로 남은 책략 카드가 그 좌석 패널의 접힘 밖 "공개 대기 책략 카드"/"Face-up Intrigue" 줄에 카드 칩으로 보이는지 검사한다. 기대 소유자·카드는 픽스처 출력에서 읽고 화면 글자에서 읽지 않는다. 네 시점 좌석 각자의 스냅샷으로 다시 그려 소유자가 아닌 좌석에서도 보이는지, 앞면 카드가 없는 좌석에는 줄이 없는지, 칩의 호버 팝오버·클릭 고정·Esc, 한국어·영어(카드 이름은 양쪽 모두 인쇄된 영어), 1366×768의 가로 넘침 없음을 확인한다. 스크린샷은 `E2E_SHOTS_DIR`의 `intrigue_faceup_*`다.
+
 ## 하나씩 돌리기
 
 아래 시간은 한 개씩 순서대로 돌린 실측(2026-09-27 Mac mini; `rehearsal.py`만 예전 값)이다.
@@ -107,6 +109,7 @@ cd scripts/e2e
 .venv/bin/python remote_fresh.py  # 약 14초; 원격 판에서 로그가 내 마지막 수 이후 전부(상대 셋 + 그 사이 중립 카드) 빛나는지, 내 카드 자신은 아닌지
 .venv/bin/python combat_result.py # 약 8초; 전투 해결 뒤 배너에 뜨는 결과 줄(승자·순위·내 보상), 기본판+전 확장+리더 드래프트 없는 스카웃판, 두 언어
 .venv/bin/python intrigue_options.py # 약 2초; 두 선택지를 가진 Intrigue 카드 한 장이 그 카드 이름 뒤에 "선택지: 0/1"이 아니라 카탈로그의 실제 문구를 보이는지, 두 언어
+.venv/bin/python intrigue_faceup.py # 약 8초; 공개 대기 책략(Call to Arms·Reveal 턴 Plot — Manipulate·Tleilaxu Puppet)이 좌석 패널의 접힘 밖 한 줄로 모든 시점 좌석에 보이는지(실제 시드 게임 두 판의 저장, 카드 칩 호버·클릭, 두 언어, 1366x768)
 .venv/bin/python trash_zone.py    # 약 7초; 같은 이름의 트래시 후보 둘이 보는 좌석의 다른 보관 구역(핸드/버림 더미/플레이 영역)에 있을 때 행이 그 구역을 이름으로 구별하는지, 구역 머리글(핸드·버림 더미·플레이 영역 + 행 수)과 구분선, 두 언어
 .venv/bin/python save_delete.py   # 약 11초; 저장 목록의 삭제 버튼 두 번 누르기 확인(ITEM 8d), 두 언어
 .venv/bin/python card_labels.py   # 약 2초; 카드 줄 머리의 "Agent:"·"Agent Turn:"·"On discard:"(또는 한국어 트윈이 있으면 "에이전트 칸:"·"버리면:")가 아이콘이 아니라 글자인지, 두 언어

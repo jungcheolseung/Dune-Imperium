@@ -750,6 +750,10 @@ const UI_TEXT = {
     "ko": "책략 카드덱 맨 위",
     "en": "Top of Intrigue deck"
   },
+  "panels.intrigue_faceup_label": {
+    "ko": "공개 대기 {intrigue} ",
+    "en": "Face-up Intrigue "
+  },
   "panels.intrigue_resolving_label": {
     "ko": "{intrigue} 해결 중 ",
     "en": "Intrigue resolving "

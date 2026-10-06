@@ -356,6 +356,21 @@ function renderSeats() {
     }
     card.appendChild(zones);
 
+    /* Intrigue cards played but kept face up in front of their owner until a
+       later moment (Call to Arms, a Reveal-turn Plot; FAQ p. 2) are public,
+       so every seat shows them. They stay outside the fold below: the line
+       is rare and short-lived, and the other seats must see what is pending. */
+    const faceupIntrigue = player.intrigue_faceup || [];
+    if (faceupIntrigue.length) {
+      const line = document.createElement("div");
+      line.className = "cardline faceup-intrigue";
+      const strong = document.createElement("strong");
+      strong.textContent = t("panels.intrigue_faceup_label");
+      line.appendChild(strong);
+      for (const id of faceupIntrigue) line.appendChild(chip(id));
+      card.appendChild(line);
+    }
+
     const battle = [...player.objective_ids, ...player.won_conflict_ids];
     if (battle.length || player.face_down_battle_card_ids.length) {
       const line = document.createElement("div");
