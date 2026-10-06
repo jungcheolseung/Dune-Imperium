@@ -74,7 +74,7 @@
   - tips-v1을 다시 캐서 **124개**, 124/124 복원된다.
   - tip census 테스트 4개를 다시 고정했다(`d5512ad0` Harvest Cells 시점 때문; 그 커밋과 HEAD의 실패 값이 같음을 확인).
 - **codec v137**(템플릿: Agent 아이콘 키 3개, 후퇴 0, 배치 0, Intrigue Influence 확인, Harvest Cells의 Reclaimed Forces 2개). 관측 v30은 그대로다. v136 저장·자동 저장은 버전 불일치로 불러오지 않는다.
-  - L3 망(`l3-08081`, 탐색 AI 좌석의 `~/.dune-imperium/search.pt`)은 v136 규칙으로 학습했다. v137에서 불러오면 행동 이름으로 이관되고(새 템플릿 8개는 새 가중치), 규칙이 조금 바뀐 게임을 둔다. 이어서 학습하면 v137 규칙에 다시 맞춘다.
+  - L3 망(`l3-08081`, 탐색 AI 좌석의 `checkpoints/play/search.pt`)은 v136 규칙으로 학습했다. v137에서 불러오면 행동 이름으로 이관되고(새 템플릿 8개는 새 가중치), 규칙이 조금 바뀐 게임을 둔다. 이어서 학습하면 v137 규칙에 다시 맞춘다.
 - **남은 것.**
   - Ghola+Subversive Advisor처럼 "instead" box 둘이 모두 해결되면 2+2=4다(project convention, OQ-022 의문으로 기록).
   - heuristic은 view만 봐서 Harkonnen Advisor의 배치 불가 병력과 Emperor of the Known Universe 차단을 모른다.
@@ -86,17 +86,27 @@
   - Chrome E2E **46종 전부 통과**(2개씩, 311초). 처음 실행에서 `effect_text`(Treacherous Maneuver 영어 문구의 아이콘)와 `log_words`(seed 3이 Secrets 훔치기를 잃음 → seed 10)가 실패해 고친 뒤 둘만 다시 돌려 통과했다.
   - 소크(soundness 5, privacy 50, worker 2): random 전 옵션+Scouts+리더 회전 100판, heuristic 전 옵션+지도자 드래프트 60판, random 기본·CHOAM 200판, 모두 실패 0.
 
+## 2026-10-06 프로젝트 파일은 프로젝트 폴더 안에
+
+- 사용자 결정: "이 프로젝트 디렉토리 밖에는 관련 파일이 없었으면 좋겠어." 플레이 서버의 저장 기본 위치를 `~/.dune-imperium/saves`에서 저장소 안의 `saves/`로, 탐색 AI 망 기본 위치를 `~/.dune-imperium/search.pt`에서 `checkpoints/play/search.pt`로 옮겼다. 둘 다 git 무시다(`.gitignore`의 `/saves/`·`checkpoints/`). 경로는 새 모듈 `dune_imperium.paths`(`PROJECT_ROOT`·`SAVES_DIR`·`SEARCH_CHECKPOINT`)가 정한다. 기준은 패키지가 도는 체크아웃이므로 `.claude/worktrees/` 아래 작업 트리는 자기 폴더를 쓴다. 브랜치 `local-files`, 병합 `7fc2431f`.
+- 이 Mac의 파일도 옮겼다: 저장 둘(2026-10-05, codec v135라 지금은 열리지 않는다)은 `saves/`로, 8081 망은 `checkpoints/play/`로 옮겼다. `~/.dune-imperium`은 지웠다.
+- 검증: 서버 테스트 74개(새 테스트는 기본값이 체크아웃 안이고 git이 무시하는지 확인), Ruff·mypy(412파일), E2E `search_seats`·`open_mode`·`save_delete`·`recovery` 통과.
+- 아직 저장소 밖에 남은 것은 다음과 같다. 성격이 달라 사용자에게 물었다.
+  - 비공개 에셋 체크아웃 `../Dune-Imperium-assets`. `assets`는 이 체크아웃을 가리키는 심볼릭 링크다.
+  - 임시 파일(`/tmp`의 E2E 스크린샷·로그·`/tmp/dune-e2e-venv`, 공식 룰북 작업 사본).
+  - 도구의 자체 폴더(`~/.claude`, `~/.codex/worktrees`).
+
 ## 2026-10-06 탐색 AI 좌석, 대회 도구의 지도자 드래프트, L3 재학습(앱 AI를 이기는 망)
 
 사용자 요청("3개 다 진행하자", 카드 전수 대조는 다른 세션이 워크트리 `card-compare`에서 하므로 안 겹치게 워크트리로). 세 브랜치를 모두 병합했다. 엔진·codec·관측은 그대로다(**codec v136·관측 v30**).
 
 1. **대회 도구 `--leader-draft`**(브랜치 `tournament-draft`, 병합 `8de02791`). `dune-imperium-tournament --leader-draft`가 OQ-007 드래프트로 각 좌석의 에이전트가 지도자를 직접 고르게 한다. 룰셋 식별자에는 드래프트가 없으므로 match 결과·행에 `leader_draft`를 따로 싣고 요약은 룰셋 이름 뒤에 "(leader draft)"를 붙인다. `--rotate-leaders`와 함께 쓰면 거부한다(sweep과 같다). 이 플래그로 앱 AI 어려움 대 heuristic 드래프트 A/B를 쟀다(250시드 × CHOAM 유무, 1,000판): 좌석당 46.6% 대 3.4%, 차 +86.6%p [+83.6, +89.4], VP 마진 +4.22 — 드래프트 없는 칸과 같다([evaluation/app-ai-expansions-2026-10-05.md](evaluation/app-ai-expansions-2026-10-05.md) 3절 마지막 줄).
 2. **탐색 AI 좌석**(브랜치 `search-seats`, 병합 `9a03ac3e`). 학습 망 + 결정화 탐색(`search:`)을 브라우저 좌석으로 고를 수 있다.
-   - **서버 설정.** `dune-imperium-server --search-checkpoint PATH`(없으면 `DUNE_IMPERIUM_SEARCH_CHECKPOINT`, 그다음 `~/.dune-imperium/search.pt`가 있으면 그것). 시작할 때 실제 파일로 풀어 두므로(`resolve`) 심볼릭 링크를 나중에 바꿔도 옛 저장은 원래 파일을 쓴다. torch(`train` extra)가 없거나 파일이 없으면 끄고 시작 줄 한 줄로 알린다. `/whoami`의 `search_ai`가 참일 때만 설정 화면에 "탐색 AI"/"Search AI"가 나오고, 브라우저가 보낸 `search`를 서버가 `search:<파일>`로 앉힌다. 좌석 라벨·원격 화면에는 경로가 나오지 않는다.
+   - **서버 설정.** `dune-imperium-server --search-checkpoint PATH`(없으면 `DUNE_IMPERIUM_SEARCH_CHECKPOINT`, 그다음 저장소 안의 `checkpoints/play/search.pt`가 있으면 그것 — 처음에는 `~/.dune-imperium/search.pt`였다가 같은 날 옮겼다, 아래 "프로젝트 파일은 프로젝트 폴더 안에"). 시작할 때 실제 파일로 풀어 두므로(`resolve`) 심볼릭 링크를 나중에 바꿔도 옛 저장은 원래 파일을 쓴다. torch(`train` extra)가 없거나 파일이 없으면 끄고 시작 줄 한 줄로 알린다. `/whoami`의 `search_ai`가 참일 때만 설정 화면에 "탐색 AI"/"Search AI"가 나오고, 브라우저가 보낸 `search`를 서버가 `search:<파일>`로 앉힌다. 좌석 라벨·원격 화면에는 경로가 나오지 않는다.
    - **뒤에서 생각하기(고위험, 독립 리뷰).** `search:` 좌석만 게임별 데몬 작업자 스레드가 답한다(`_kick_ai`·`_run_ai`·`_ai_step`). 요청은 바로 돌아오고, 작업자는 잠금 밖에서 탐색한 뒤 잠금 안에서 상태가 그대로일 때만 적용하며 단계마다 초인종을 울린다. summary·초인종에 `thinking`(생각 중인 좌석)이 실리고, 배지가 "생각 중…"으로 바뀌며, 바쁜 동안 놓친 초인종은 1.5초 재확인으로 따라잡는다. 생각하는 동안에는 되돌리기를 막는다(작업자가 이미 RNG를 움직였을 수 있어서). 다른 AI 종류는 예전처럼 동기다. 작업자 단계가 실패하면 `thinking`을 지우고 초인종을 울려 사람이 되돌리기로 빠져나갈 수 있게 한다. 탐색이 예외를 내면 greedy 망으로 답하고 경고를 남긴다 — 그 판의 저장은 그 단계부터 같은 진행을 보장하지 않는다.
    - **빠른 불러오기.** 저장 복원이 탐색을 다시 돌리지 않는다: `ReplayableAgent.replay_decision`이 기록된 답을 따라 RNG(세계 결정화·chance seed)와 순환 방지 기록을 탐색과 똑같이 움직이고, 답이 망의 후보 안에 있는지만 본다. 실제 체크포인트·UI 기본 규칙에서 한 라운드 저장의 복원이 10.67초 → 0.33초(3라운드 17.9 → 0.49초). 탐색 경로를 리팩터링했지만 일반 탐색의 선택·RNG는 한 비트도 바뀌지 않음을 리뷰가 60결정 동시 실행으로 확인했다(이전 `search:` 측정 그대로 유효).
    - 측정: UI 기본 규칙에서 탐색 결정 하나 평균 1.4초(p90 3.3초, 최대 7.3초), 탐색 좌석 하나인 판의 AI 시간 약 134초.
-   - **이 Mac에 망을 깔았다.** L3의 8081 가중치만 담은 `~/.dune-imperium/checkpoints/l3-appai-08081.pt`(78 MiB)를 `~/.dune-imperium/search.pt`가 가리킨다. 서버를 다시 띄우면 "search AI: …" 줄이 나오고 탐색 AI 좌석이 열린다. 새 망은 새 이름으로 두고 링크만 바꾼다(호스트 안내서 "탐색 AI 좌석" 절).
+   - **이 Mac에 망을 깔았다.** L3의 8081 가중치만 담은 `checkpoints/play/l3-appai-08081.pt`(78 MiB, git 무시)를 `checkpoints/play/search.pt`가 가리킨다. 서버를 다시 띄우면 "search AI: …" 줄이 나오고 탐색 AI 좌석이 열린다. 새 망은 새 이름으로 두고 링크만 바꾼다(호스트 안내서 "탐색 AI 좌석" 절).
 3. **L3 재학습 — 끝, 성공**(브랜치 `l3-appai`, 병합 `3e064dd9`; 결과 [evaluation/m10-2026-10-06.md](evaluation/m10-2026-10-06.md); 실행 폴더 `checkpoints/2026-10-06/l3-appai/`, git 무시, 판정 규칙은 결과 전에 그 `README.md`에). 사용자 선택: 규칙 "UI 기본 + Scouts"(드래프트·CHOAM·프로모·Bloodlines·Tech·Immortality·Go to 11·Epic·Scouts), 상대 "반은 앱 AI, 반은 self-play"(iteration당 32판 중 16판이 학습 2석 대 앱 AI 어려움 2석), 길이 1,000 iteration(7081 → 8081, 학습 약 4시간 20분). 학습기에 `--go-to-11`·`--epic`·`--arrakeen-scouts`·`--leader-draft`·`--rotate-leaders`·`--opponent-games`·`--retarget`를 더했다(7081을 새 룰셋 카탈로그로 옮겨 이어 학습; Adam 모멘트도 함께 옮김).
    - **엔진 결함 하나를 학습이 찾았다.** 약 4,000판에 한 판꼴로 "player decision has no legal actions"(합법 행동 없는 사람 결정)가 나 첫 시도가 iteration 7205에서 죽었다. random 600판·heuristic 300판 소크와 학습 조건 재현 1,296판으로는 다시 나오지 않았다. 학습 러너에 `stall_dir`을 더해(`c42d23d6`) 그런 판의 상태를 `stalls/`에 pickle하고 그 판만 잘린 판으로 끝내게 한 뒤 7249에서 다시 띄웠다. 그 뒤 약 26,000판에서는 다시 나오지 않아 원인은 아직 모른다. 다음에 나오면 `stalls/`의 상태에서 고친다(규칙 변경이면 `docs/rules` 인용 먼저).
    - **판정(결과 전에 README에 선언, UI 기본 + Scouts + 드래프트, 새 시드):**
