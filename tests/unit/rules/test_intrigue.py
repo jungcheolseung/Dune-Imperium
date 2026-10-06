@@ -2187,6 +2187,22 @@ def test_a_combat_intrigue_player_decides_again_after_every_other_seat_passes() 
     assert done.combat_intrigue_complete is True
 
 
+def test_a_lone_combat_intrigue_participant_passes_once_after_playing() -> None:
+    """ "Once all players involved in Combat pass consecutively, you then
+    resolve the Combat." [Main p. 14]. With one participant its next
+    opportunity would be its own again with nothing in between, so the pass
+    after playing ends the Combat Intrigue step at once."""
+
+    card = _intrigue("weirding_combat")
+    state = _combat_state(_fighter(0, 1, intrigue_cards=(card,)))
+    engine = UprisingRulesEngine()
+
+    played = engine.apply(state, _play(state, card)).state
+    assert played.combat_intrigue_complete is False
+    done = engine.apply(played, _pass(0)).state
+    assert done.combat_intrigue_complete is True
+
+
 def test_questionable_methods_sword_is_automatic_and_the_influence_line_optional() -> (
     None
 ):

@@ -206,7 +206,8 @@ def apply_combat_intrigue_pass(
 
     A pass by a seat that played a Combat Intrigue card since priority last
     came to it only hands priority on: it is not one of the consecutive
-    passes (``COMBAT_INTRIGUE_PLAYED_KEY``).
+    passes (``COMBAT_INTRIGUE_PLAYED_KEY``), unless the seat is the only
+    participant.
     """
 
     if action not in legal_combat_intrigue_actions(state, action.actor):
@@ -219,13 +220,15 @@ def apply_combat_intrigue_pass(
         state.first_player,
     )
     current_index = context_int(context, "current_index")
-    if context.get(COMBAT_INTRIGUE_PLAYED_KEY):
+    if context.get(COMBAT_INTRIGUE_PLAYED_KEY) and len(participants) > 1:
         # "each player with at least one unit in the Conflict may play any
         # number of Combat Intrigue cards, or may pass. ... Once all players
         # involved in Combat pass consecutively, you then resolve the
         # Combat." [Main p. 14]; in the worked example Abby plays, John
         # passes again, and Abby still decides last [Main p. 15]. A seat
         # that played this opportunity hands priority on without passing.
+        # A lone participant's next opportunity would be its own again with
+        # nothing in between, so its pass after playing is the final one.
         consecutive_passes = 0
     else:
         consecutive_passes = context_int(context, "consecutive_passes") + 1
