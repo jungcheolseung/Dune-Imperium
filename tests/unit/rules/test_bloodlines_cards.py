@@ -1550,12 +1550,18 @@ def test_honor_guard_recruits_and_discounts_the_commander_this_turn() -> None:
 
 def test_honor_guard_with_an_empty_supply_needs_a_paid_commander_ahead() -> None:
     # With no troop to recruit only the discount can change something: a
-    # paid Commander recruit still possible this turn ("Once per turn,
-    # Agent or Reveal" [Bloodlines p. 4]) or, before the placement, a
-    # Commander board space still to visit.
+    # Commander still to be bought for Solari this turn -- the paid recruit
+    # from the supply, once per turn "Agent 또는 Reveal", or a Commander on
+    # a board space an Agent visits [Bloodlines p. 4]. A bank Commander
+    # costs nothing, so with no token left on the board and no paid recruit
+    # left, the discount lowers nothing.
     from dune_imperium.content.uprising.effect_dsl import RecruitTroops
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+    from dune_imperium.rules.sardaukar import (
+        apply_sardaukar_commander_action,
+        legal_sardaukar_commander_actions,
+    )
 
     card = _intrigue("honor_guard")
     option = intrigue_card_for_instance(card).options[0]
@@ -1567,15 +1573,40 @@ def test_honor_guard_with_an_empty_supply_needs_a_paid_commander_ahead() -> None
         troops_garrison=12,
         resources=Resources(solari=2),
     )
-    assert _play_options(_state(owner), card) == [0]
+    assert owner.commanders_supply == 0
+    on_board = replace(
+        _state(owner), sardaukar_commander_space_ids=("dutiful_service",)
+    )
+    # Before the placement, with a Commander still on a board space.
+    assert _play_options(on_board, card) == [0]
     sent = replace(owner, agents_available=0, agent_locations=("arrakeen", "carthag"))
-    revealed = _reveal(_state(owner))
-    for state in (_state(sent), revealed):
+    used = replace(owner, commanders_supply=1, commander_recruited_turn=True)
+    for state in (
+        # No token left on the board and no Commander in the supply.
+        _state(owner),
+        # The paid recruit already used this turn.
+        _state(used),
+        # A token, but no Agent left to send there.
+        replace(_state(sent), sardaukar_commander_space_ids=("dutiful_service",)),
+        # The Reveal turn buys no board Commander.
+        _reveal(on_board),
+    ):
         assert _play_options(state, card) == []
         assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=1)
     # A Commander in the supply to recruit in the Reveal turn.
     recruitable = _reveal(_state(replace(owner, commanders_supply=1)))
     assert _play_options(recruitable, card) == [0]
+    # The visited space's Commander, until it is bought.
+    visited = _play(on_board, diplomacy, "dutiful_service")
+    assert visited.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert _play_options(visited, card) == [0]
+    buy = next(
+        a
+        for a in legal_sardaukar_commander_actions(visited, 0)
+        if a.action_id == "acquire_sardaukar_commander"
+    )
+    bought = apply_sardaukar_commander_action(visited, buy).state
+    assert _play_options(bought, card) == []
     # A troop in the supply: the recruit itself changes something.
     stocked = replace(sent, troops_supply=1, troops_garrison=11)
     assert _play_options(_state(stocked), card) == [0]
@@ -1875,6 +1906,70 @@ def test_adaptive_tactics_with_an_empty_supply_needs_a_unit_it_could_deploy() ->
         assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=1)
     # A Commander still to recruit this turn could deploy.
     assert _play_options(_state(replace(fighting, commanders_supply=1)), card) == [0]
+
+
+def test_adaptive_tactics_counts_a_commander_still_to_be_bought() -> None:
+    # The Combat icon deploys "이번 turn에 recruit한 유닛 전부와 garrison에서
+    # 최대 두 개" [Bloodlines pp. 5, 12], and a Commander bought this turn
+    # is recruited [Bloodlines p. 4]: with every troop in the Conflict, a
+    # Commander on a board space (before the placement), the visited
+    # space's Commander, or the Reveal turn's paid recruit is a unit the
+    # icon could still deploy.
+    from dune_imperium.rules.combat_deployment import legal_commander_deployments
+    from dune_imperium.rules.sardaukar import (
+        apply_sardaukar_commander_action,
+        legal_sardaukar_commander_actions,
+    )
+
+    card = _intrigue("adaptive_tactics")
+    diplomacy = STARTERS[4]
+    fighting = _owner(
+        intrigue_cards=(card,),
+        hand=(diplomacy,),
+        resources=Resources(spice=1, solari=2),
+        troops_supply=0,
+        troops_garrison=0,
+        troops_conflict=12,
+        combat_strength=24,
+    )
+    on_board = replace(
+        _state(fighting), sardaukar_commander_space_ids=("dutiful_service",)
+    )
+    assert _play_options(on_board, card) == [0]
+    sent = replace(
+        fighting, agents_available=0, agent_locations=("arrakeen", "carthag")
+    )
+    assert (
+        _play_options(
+            replace(_state(sent), sardaukar_commander_space_ids=("dutiful_service",)),
+            card,
+        )
+        == []
+    )
+
+    # The visited space's Commander: played before the purchase, the icon
+    # lets the Commander deploy from a space with no Combat icon.
+    visited = _play(on_board, diplomacy, "dutiful_service")
+    assert _play_options(visited, card) == [0]
+    played = UprisingRulesEngine().apply(visited, _play_intrigue(card)).state
+    buy = next(
+        a
+        for a in legal_sardaukar_commander_actions(played, 0)
+        if a.action_id == "acquire_sardaukar_commander"
+    )
+    bought = apply_sardaukar_commander_action(played, buy).state
+    assert [
+        dict(a.arguments)["count"] for a in legal_commander_deployments(bought, 0)
+    ] == [1]
+    # Without the icon the Commander bought there cannot deploy.
+    unplayed = apply_sardaukar_commander_action(visited, buy).state
+    assert legal_commander_deployments(unplayed, 0) == ()
+
+    # The Reveal turn's paid recruit from the supply, once per turn.
+    stocked = replace(fighting, commanders_supply=1)
+    assert _play_options(_reveal(_state(stocked)), card) == [0]
+    used = replace(stocked, commander_recruited_turn=True)
+    assert _play_options(_reveal(_state(used)), card) == []
 
 
 def test_elite_forces_rewards_an_emperor_trash_from_hand() -> None:

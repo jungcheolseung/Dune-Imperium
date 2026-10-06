@@ -688,16 +688,22 @@ def _troop_can_join(state: GameState, owner: PlayerState) -> bool:
     )
 
 
-def _commander_purchase_ahead(state: GameState, player: int) -> bool:
-    """Honor Guard's discount can still lower a paid Commander this turn."""
+def _paid_commander_ahead(state: GameState, player: int, frame: DecisionFrame) -> bool:
+    """A Commander may still be bought for Solari in the owner's turn.
 
-    from dune_imperium.rules.sardaukar import commander_cost
+    "자신의 turn에 Sardaukar Commander가 있는 board space에 Agent를
+    보내면, 2 Solari를 지불해 그 Commander를 acquire하고 즉시 recruit할 수
+    있다." and "turn(Agent 또는 Reveal)마다 한 번, 2 Solari를 지불해
+    supply의 Commander 하나를 garrison으로 ... recruit할 수 있다."
+    [Bloodlines p. 4] (docs/rules/bloodlines.md 3): the once-per-turn recruit
+    from the supply, the Commander waiting on the space this Agent visits
+    (its icon is queued only while the token is there, ``board_effects``),
+    or, before the placement, a Commander token still on some board space
+    to visit. With no token left and the paid recruit used or the supply
+    empty, no Commander can be bought this turn.
+    """
 
     owner = state.players[player]
-    frame = _plot_frame(state, player)
-    if frame is None or commander_cost(owner) <= 0:
-        return False
-    # "Once per turn, Agent or Reveal" [Bloodlines p. 4].
     recruit_left = owner.commanders_supply > 0 and not owner.commander_recruited_turn
     if frame.kind == FrameKind.REVEAL:
         return recruit_left
@@ -705,8 +711,20 @@ def _commander_purchase_ahead(state: GameState, player: int) -> bool:
         return recruit_left or board_icon_is_pending(
             dict(frame.context), BOARD_ICON_COMMANDER
         )
-    # Before the placement a Commander board space may still be visited.
-    return recruit_left or owner.agents_available > 0
+    return recruit_left or (
+        owner.agents_available > 0 and bool(state.sardaukar_commander_space_ids)
+    )
+
+
+def _commander_purchase_ahead(state: GameState, player: int) -> bool:
+    """Honor Guard's discount can still lower a paid Commander this turn."""
+
+    from dune_imperium.rules.sardaukar import commander_cost
+
+    frame = _plot_frame(state, player)
+    if frame is None or commander_cost(state.players[player]) <= 0:
+        return False
+    return _paid_commander_ahead(state, player, frame)
 
 
 def _combat_deployment_ahead(state: GameState, player: int) -> bool:
@@ -715,6 +733,11 @@ def _combat_deployment_ahead(state: GameState, player: int) -> bool:
     The icon opens the Agent turn's deployment window (with up to two
     garrison units) or the Reveal turn's, or waits on the seat for the
     placement [Bloodlines p. 5] (``combat_deployment.grant_combat_icon``).
+    The icon deploys "이번 turn에 recruit한 유닛 전부와 garrison에서 최대
+    두 개" [Bloodlines pp. 5, 12] (docs/rules/bloodlines.md 4), so a
+    deployable garrison unit counts, and so does a Commander still to be
+    bought this turn (``_paid_commander_ahead``): it is recruited to the
+    garrison and joins the window the icon opens.
     """
 
     if units_deployment_blocked(state, player):
@@ -723,7 +746,9 @@ def _combat_deployment_ahead(state: GameState, player: int) -> bool:
     if frame is None:
         return False
     owner = state.players[player]
-    garrison = sum(deployable_garrison_units(state, player)) >= 1
+    unit_ahead = sum(
+        deployable_garrison_units(state, player)
+    ) >= 1 or _paid_commander_ahead(state, player, frame)
     context = dict(frame.context)
     if frame.kind == FrameKind.AGENT_EFFECTS:
         limit = context.get("existing_troop_deployment_limit", 0)
@@ -732,14 +757,10 @@ def _combat_deployment_ahead(state: GameState, player: int) -> bool:
             and isinstance(limit, int)
             and limit >= 2
         )
-        return not already_open and garrison
+        return not already_open and unit_ahead
     if frame.kind == FrameKind.REVEAL:
-        return context.get("combat_deployment") is not True and garrison
-    return not owner.combat_icon_turn and (
-        garrison
-        or owner.troops_supply >= 1
-        or (owner.commanders_supply >= 1 and not owner.commander_recruited_turn)
-    )
+        return context.get("combat_deployment") is not True and unit_ahead
+    return not owner.combat_icon_turn and (unit_ahead or owner.troops_supply >= 1)
 
 
 def _unmet_influence_requirement(state: GameState, player: int) -> bool:
