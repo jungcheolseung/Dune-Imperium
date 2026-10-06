@@ -258,7 +258,7 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
 
 
 def trash_usurped_card(state: GameState, player: int) -> RuleResult:
-    """Usurp: "trash that card at the end of the turn" [card face].
+    """Usurp: "trash that card at the end of your turn." [card face].
 
     The owner's ``finish_agent_turn`` trashes the borrowed card, as an
     ordinary trash: it reaches the owner's trash pile and its "when this

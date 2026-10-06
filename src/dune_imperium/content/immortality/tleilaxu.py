@@ -348,10 +348,10 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    # Usurp: no Agent icons; GRAFT: "You may graft this card with a card
-    # from the Imperium Row instead of one from your hand. If you do, trash
-    # that card at the end of the turn" (``rules.graft``); Reveal: 1
-    # Persuasion, 1 sword, a specimen [card face].
+    # Usurp: no Agent icons; GRAFT: "You may graft this to a card in the
+    # Imperium Row without acquiring it. If you do, trash that card at the
+    # end of your turn." (``rules.graft``); Reveal: 1 Persuasion, 1 sword,
+    # a specimen [card face].
     _entry(
         421,
         "usurp",
