@@ -2316,7 +2316,8 @@ class AgentPaymentBlock(StrEnum):
     """
 
     # Ecological Testing Station's draw: deck and discard pile both empty,
-    # the gate Gather Intelligence uses (OQ-099).
+    # so the 2 water would buy nothing (OQ-071). Gather Intelligence is not
+    # gated this way: its recall is offered with both piles empty (OQ-099).
     NO_CARD_TO_DRAW = "no_card_to_draw"
     # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
     # track's last space, where it does nothing (OQ-048).
