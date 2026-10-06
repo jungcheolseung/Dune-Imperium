@@ -21,7 +21,7 @@ reviewed without reading the transition code. Official rule summaries under
 | Influence | Friendship VP, printed track bonuses, Alliance acquisition or upward transfer, and Influence loss use shared transitions. A choose-Influence reward (Skirmish (Crysknife), Spice Freighters, Propaganda's "Choose two") offers every Faction below the top of its track, "Choose any one of the four Factions" [Main p. 20]; Bene Gesserit at 3 stays a choice with the Intrigue deck empty, the Influence 4 card being drawn after the discard is reshuffled [FAQ p. 2] (corrected 2026-09-26; an older guard hid it). With every eligible Faction at the top the reward is lost (OQ-060), but the window still opens with only `resolve_combat_influence_without_faction`, which records `combat_reward_influence_unavailable` and pays the Factions a "Choose two" already named; the blocked Factions show greyed out "이미 최고치" through `combat_reward_influence_block` (2026-10-02, user ruling 2026-09-30; until then the engine dropped the choice unasked). | Captured Mentat proves that a legal loss reaches multiple recipients only when they were tied with the holder; the holder explicitly selects one as required by the FAQ. |
 | Shield Wall | Setup begins with the token present; the six printed protected Conflicts remove Maker-space sandworm actions until permanent destruction. | Sietch Tabr exposes explicit keep/destroy choices; the Conflict-card symbol denotes protection, not detonation. |
 | Battle icons | A sole winner takes the Conflict face up and a mandatory same-icon pair with a face-up Objective or won Conflict flips both cards for 1 VP. | Multiple same-icon candidates are unreachable with official content, so the guard against them is a content tripwire; the wild icon never pairs during Combat. See [objectives.md](objectives.md). |
-| Combat Intrigue priority | Participants rotate from First Player order until all pass consecutively, even when they hold Intrigue cards. | Combat-timed options of the transcribed Intrigue deck are offered to the priority holder with units in the Conflict; see [intrigue.md](intrigue.md). |
+| Combat Intrigue priority | Participants rotate from First Player order until all pass consecutively, even when they hold Intrigue cards. A seat that played a Combat Intrigue card since priority last came to it hands priority on with its pass, and that pass is not one of the consecutive passes (frame context `played_at_priority`, `COMBAT_INTRIGUE_PLAYED_KEY`; codec v139, 2026-10-07): in the worked example John passes, Abby plays Contingency Plan, John "passes again", and "Abby, satisfied with her victory, also passes." [Main p. 15]. A lone participant's pass after playing ends the step (project convention). | Combat-timed options of the transcribed Intrigue deck are offered to the priority holder with units in the Conflict; see [intrigue.md](intrigue.md). Before 2026-10-07 the hand-over counted as the first consecutive pass, so John's second pass resolved Combat. Tests: `tests/unit/rules/test_intrigue.py` (`test_playing_combat_intrigue_restarts_the_consecutive_pass_count`, `test_a_combat_intrigue_player_decides_again_after_every_other_seat_passes`, `test_a_lone_combat_intrigue_participant_passes_once_after_playing`). |
 
 ## Explicitly retained guards
 
@@ -31,16 +31,22 @@ reviewed without reading the transition code. Official rule summaries under
 
 ## Project conventions and decided ordering
 
-- Rewards are traversed in rank order and ascending seat order. Official
-  sources do not specify the order among players tied for the same reward row;
-  the seat order is the decided convention recorded as OQ-002 (tied groups
-  only ever take the second and third reward rows, which carry no interacting
-  choices), pinned by the tied-order tests in
-  `tests/unit/rules/test_combat.py`.
-- Intrigue cards are consequently drawn in that deterministic traversal order.
-- Automatic parts of all assigned rewards are applied before queued player
-  choices. Current supported choices do not alter another player's already
-  calculated rank, but future interactive rewards must re-audit this sequencing.
+- Rewards are traversed in rank order; recipients tied for the same reward
+  row go from the First Player in turn order (OQ-002, re-decided 2026-09-09
+  on the designer's ruling; the earlier ascending-seat convention is gone),
+  pinned by the tied-order tests in `tests/unit/rules/test_combat.py`.
+- Recipients are paid one at a time (OQ-102, user ruling 2026-10-07
+  "순위대로 (앱처럼)"; the official text gives rewards by rank [Main p. 14]
+  but not the order between recipients): each recipient's whole reward,
+  automatic parts and choices, sandworm copy included, is answered before
+  the next recipient is paid, and that recipient's held Conflict-reward
+  Contract icons fizzle first. `resolve_combat_rewards` pays one recipient
+  and stops on a choice frame or a queued step; `combat_rewards_done` and
+  `GameState.combat_rewards_paid` track the rest. Before 2026-10-07 every
+  recipient's automatic parts came before all choices, so a 2nd/3rd-place
+  Intrigue draw preceded the winner's Influence-choice draw (Bene Gesserit
+  4 bonus). Intrigue cards are consequently drawn in rank order, each
+  recipient's choices included.
 - A critical-location Control bonus is paid immediately after Agent placement,
   before the visitor resolves freely ordered Agent, board, and Faction effects.
   OQ-008 is decided on the Main p. 11 worked example plus a full content scan
