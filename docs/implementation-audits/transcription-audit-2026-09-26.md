@@ -54,7 +54,7 @@
 | 26 | imperium `stilgar_the_devoted` | reveal_effects[0].per_revealed_faction (Fremen count scope) | 규칙 | s4-reveal-logic |
 | 27 | imperium `strike_fleet` | agent_effect RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN (what counts as a recall) | 규칙 | s3-agent-box-logic |
 | 28 | imperium `subversive_advisor` | reveal_effects / reveal_persuasion | 규칙 | s1-card-data |
-| 29 | imperium `subversive_advisor` | agent_effect when the card is trashed before its box resolves | 불확실 | 제외 (아래) |
+| 29 | imperium `subversive_advisor` | agent_effect when the card is trashed before its box resolves | 불확실 | 제외 → 2026-10-06 해소 (아래) |
 | 30 | imperium `tread_in_darkness` | display text (Agent box) | 표시 | s8-display |
 | 31 | imperium `undercover_asset` | agent_icons | 규칙 | s1-card-data |
 | 32 | imperium `unswerving_loyalty` | reveal_choice_effects (Fremen Bond line) | 규칙 | s2-imperium-effects |
@@ -141,7 +141,11 @@
 | 113 | board `ixian_embassy` | (adjacent, same root cause; not printed on this board) Sardaukar Commander on High Council at a first visit | 규칙 | s7-tech-skill-leader-board |
 
 제외: #29(Subversive Advisor — 다른 효과가 이 카드를 먼저 trash해 box가 풀리지 않을 때 방문한 Faction의 기본 Influence 1도 사라지는지,
-불확실·낮은 확신)는 공식 문서가 답하지 않는 드문 순서 문제라 고치지 않았다.
+불확실·낮은 확신)는 공식 문서가 답하지 않는 드문 순서 문제라 고치지 않았다. **2026-10-06 해소**: Steam 앱과의 카드 전수 대조에서 다시
+올라와 고쳤다. 만료되는 것은 카드의 "instead"뿐이고, space의 1은 board 규칙("When you send an Agent to a Faction's board space, gain one
+Influence with that Faction" `[Main p. 7]`)이라 space의 `resolve_faction_influence` 단계가 다시 제시된다. graft 상대로 놓인 Subversive
+Advisor도 space의 1을 대신한다(전에는 2가 1에 더해졌다). Ghola가 복사해 "instead" box가 둘이면 2 + 2 = 4를 얻는 것은 남은 의문으로 적었다
+([OQ-022](../rules/open-questions.md#oq-022--agent-효과-해결-전에-play된-카드-자체가-trash될-때) 2026-10-06 보강).
 
 ## 통합 리뷰 (2026-09-26)
 
@@ -168,7 +172,7 @@ s4가 계속 읽음, Commander 배치 템플릿이 Immortality 카탈로그에�
 | 12 | Contract | turn이 넘어간 뒤의 Contract Spy 보상 recall-first가 다음 turn에 셈 | r3 |
 | 13 | 보드 | Into the Fray로 Conflict에 간 Agent를 Imperial Privilege가 되돌리게 함 | r3 |
 | 14 | Intrigue | Distraction이 recall-first 뒤에도 거절을 허용함 | r3 |
-| 15 | Tech | Tech 가격이 `spice_spent_after_placement`에 더해지는지 테스트가 없음 | r3 |
+| 15 | Tech | Tech 가격이 `spice_spent_after_placement`에 더해지는지 테스트가 없음(2026-10-06: Harvest가 turn 전체의 `spice_at_turn_start`·`spice_spent_turn`을 읽게 되어, 쓰기만 하고 읽지 않던 frame 문맥 `spice_at_placement`·`spice_spent_after_placement`는 없어졌다; 테스트는 좌석 카운터를 확인한다) | r3 |
 | 16 | 콘텐츠 | Agent box·획득 Spy 아이콘이 빈 supply recall을 여전히 강제함 | r3 |
 | 17 | Intrigue | Distraction이 함께 face up이면 Coercive Negotiation의 대기(OQ-064)가 소모됨 | r3 |
 
