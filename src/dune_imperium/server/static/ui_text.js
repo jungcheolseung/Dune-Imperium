@@ -110,6 +110,10 @@ const UI_TEXT = {
     "ko": "{intrigue} {discard_pile} {{count}}장",
     "en": "{intrigue} {discard_pile} {{count}}"
   },
+  "board.intrigue_deck_count": {
+    "ko": "{intrigue} {deck} {{count}}장",
+    "en": "{intrigue} {deck} {{count}}"
+  },
   "board.intrigue_pile_title": {
     "ko": "{intrigue} {discard_pile} 보기",
     "en": "See the {intrigue} {discard_pile}"
@@ -197,6 +201,10 @@ const UI_TEXT = {
   "board.strip_contracts": {
     "ko": "{contract} · 남은 {{count}}장",
     "en": "Contracts · bank {{count}}"
+  },
+  "board.strip_imperium_row": {
+    "ko": "{imperium_row} · {deck} {{count}}",
+    "en": "{imperium_row} · {deck} {{count}}"
   },
   "board.strip_ixian_embassy": {
     "ko": "익스 대사관 판 · {tech_tile}",

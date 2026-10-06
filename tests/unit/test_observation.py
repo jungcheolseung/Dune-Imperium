@@ -159,6 +159,32 @@ def test_each_player_receives_their_own_private_cards() -> None:
     assert second.players[0].intrigue_card_count == len(first.private.intrigue_cards)
 
 
+def test_every_seat_sees_the_imperium_and_intrigue_deck_sizes() -> None:
+    """ "개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다."
+    (docs/rules/information-visibility.md, project convention; the official
+    text only puts both decks face down [Main p. 4]). Every seat's view
+    carries the face-down Imperium deck's and Intrigue deck's sizes, never
+    their cards or order."""
+
+    state = replace(
+        _state(),
+        imperium_deck=("imperium_hidden_1", "imperium_hidden_2", "imperium_hidden_3"),
+        intrigue_deck=("intrigue_hidden_1", "intrigue_hidden_2"),
+    )
+    reordered = replace(
+        state,
+        imperium_deck=tuple(reversed(state.imperium_deck)),
+        intrigue_deck=tuple(reversed(state.intrigue_deck)),
+    )
+    for seat in range(4):
+        view = observe_state(state, seat)
+        assert view.imperium_deck_size == len(state.imperium_deck) == 3
+        assert view.intrigue_deck_size == len(state.intrigue_deck) == 2
+        assert not hasattr(view, "imperium_deck")
+        assert not hasattr(view, "intrigue_deck")
+        assert observe_state(reordered, seat) == view
+
+
 def test_contract_market_is_public_but_hidden_contract_identities_are_redacted() -> (
     None
 ):

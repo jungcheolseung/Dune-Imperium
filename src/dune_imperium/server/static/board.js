@@ -1648,9 +1648,11 @@ function renderMarket() {
       conflicts.appendChild(conflictHistoryTrigger());
     }
   }
+  /* The face-down Imperium deck's size is public, like every shared deck
+     (docs/rules/information-visibility.md). */
   cardStrip(
     market,
-    phraseText("{imperium_row}"),
+    t("board.strip_imperium_row", { count: view.imperium_deck_size || 0 }),
     view.imperium_row,
     t("common.empty"),
     {},
@@ -1770,9 +1772,19 @@ function renderIxianEmbassy(market, view) {
    ruling 2026-10-04). */
 function renderIntriguePiles(market, view) {
   const discard = view.intrigue_discard || [];
-  if (!discard.length) return;
   const box = document.createElement("div");
   box.className = "strip";
+  /* The face-down Intrigue deck's size is public, like every shared deck
+     (docs/rules/information-visibility.md); its cards stay hidden. */
+  const deck = document.createElement("div");
+  deck.className = "muted";
+  deck.dataset.pile = "intrigue-deck";
+  deck.appendChild(tNode("board.intrigue_deck_count", { count: view.intrigue_deck_size || 0 }));
+  box.appendChild(deck);
+  if (!discard.length) {
+    market.appendChild(box);
+    return;
+  }
   const pile = document.createElement("button");
   pile.type = "button";
   pile.className = "pile-button";
