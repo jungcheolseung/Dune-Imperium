@@ -637,6 +637,36 @@ def test_card_six_with_an_empty_supply_offers_only_the_spend() -> None:
     ] == [0, 1]
 
 
+def test_card_six_counts_a_specimen_only_where_it_can_become_a_troop() -> None:
+    # Immortality: a held specimen may go back to the supply, but only at the
+    # owner's own decisions (OQ-050). In the owner's turn the recorded
+    # shortfall is made up when it does (OQ-030), so both options play; a
+    # Navigation choice opened in Combat has no return and drops the
+    # shortfall at once, so a specimen does not make the recruit count.
+    owner = _steersman(
+        (_card(6),),
+        influence=Influence(emperor=1),
+        resources=Resources(solari=3),
+        troops_supply=0,
+        troops_garrison=11,
+        specimens=1,
+    )
+    immortal = RulesetConfig(bloodlines=True, immortality=True)
+    turn = _reach_two(_turn_state(owner, config=immortal), Faction.EMPEROR)
+    assert [
+        dict(action.arguments)["option"]
+        for action in legal_navigation_play_actions(turn, 0)
+    ] == [0, 1]
+    combat = _reach_two(
+        _turn_state(
+            owner, config=immortal, phase=GamePhase.COMBAT, decision_stack=()
+        ),
+        Faction.EMPEROR,
+    )
+    assert legal_navigation_play_actions(combat, 0) == (_DECLINE,)
+    assert _spent_kind(combat) == "fizzled"
+
+
 def test_card_nine_with_nothing_to_draw_offers_only_the_spend_or_the_vp_line() -> None:
     owner = _steersman((_card(9),), influence=Influence(fremen=1))
     poor = _reach_two(_turn_state(owner), Faction.FREMEN)

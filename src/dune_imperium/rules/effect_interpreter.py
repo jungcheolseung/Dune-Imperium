@@ -118,10 +118,11 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.frames import FrameKind, replace_player, turn_owner_of
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
+    legal_specimen_return_actions,
     tleilaxu_track_finished,
 )
 from dune_imperium.rules.influence import (
@@ -683,9 +684,19 @@ def _troop_can_join(state: GameState, owner: PlayerState) -> bool:
     OQ-071).
     """
 
-    return owner.troops_supply >= 1 or (
-        state.config.immortality and owner.specimens > 0
-    )
+    if owner.troops_supply >= 1:
+        return True
+    if not state.config.immortality or owner.specimens < 1:
+        return False
+    # The specimen must be one the owner can still turn into a troop for
+    # this recruit: returnable at the decision open now (the owner's turn,
+    # Combat Intrigue priority, a troop-less Control defense -- OQ-050), or
+    # later in the owner's own open turn, which makes up the recorded
+    # shortfall (OQ-030 re-ruling 2026-10-04). A Navigation choice opened
+    # in Combat has neither: the shortfall is dropped at once.
+    return bool(
+        legal_specimen_return_actions(state, owner.player_id)
+    ) or turn_owner_of(state) == owner.player_id
 
 
 def _paid_commander_ahead(state: GameState, player: int, frame: DecisionFrame) -> bool:
