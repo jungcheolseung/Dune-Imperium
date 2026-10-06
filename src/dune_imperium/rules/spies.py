@@ -16,7 +16,7 @@ from dune_imperium.rules.effects import (
 
 
 def gather_intelligence_draw_available(state: GameState, player: int) -> bool:
-    """The existing Gather choice requires a card in either personal pile."""
+    """Whether a personal draw can find a card: either pile holds one."""
 
     owner = state.players[player]
     return bool(owner.deck or owner.discard_pile)
@@ -49,16 +49,19 @@ def legal_gather_intelligence_actions(
         if space_id in post.connected_space_ids
     }
     actions = [DomainAction(action_id="decline_gather_intelligence", actor=player)]
-    if gather_intelligence_draw_available(state, player):
-        actions.extend(
-            DomainAction(
-                action_id="gather_intelligence",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in owner.spy_post_ids
-            if post_id in connected_post_ids
+    # The recall is offered even when both personal piles are empty and the
+    # draw finds nothing (OQ-099, user ruling 2026-10-07 "허용 (앱처럼)"):
+    # the Spy still returns, and the recall counts for "If you recalled a
+    # Spy this turn" (OQ-101).
+    actions.extend(
+        DomainAction(
+            action_id="gather_intelligence",
+            actor=player,
+            arguments=(("post_id", post_id),),
         )
+        for post_id in owner.spy_post_ids
+        if post_id in connected_post_ids
+    )
     if owner.leader_id == "gaius_helen_mohiam" and len(actions) > 1:
         # Clandestine: "Whenever you could recall a Spy to Gather
         # Intelligence, you must" [Gaius Helen Mohiam card].

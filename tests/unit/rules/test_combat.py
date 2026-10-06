@@ -299,6 +299,28 @@ def _reward_state(
     )
 
 
+def _settle(state: GameState) -> GameState:
+    """Pay the ranked recipients still owed, as the engine's dispatch does.
+
+    Conflict rewards are paid one recipient at a time in rank order, each
+    recipient's whole reward, choices included, answered before the next
+    recipient is paid (user ruling 2026-10-07, "순위대로 (앱처럼)"). The
+    engine calls ``resolve_combat_rewards`` again whenever the stack is
+    empty and the rewards are not resolved; this does the same, stopping at
+    the next recipient's choice. A queued step (an owed Intrigue draw, a
+    track Spy) is left to the test, as the engine resolves it first.
+    """
+
+    while (
+        not state.decision_stack
+        and not state.combat_rewards_resolved
+        and not state.pending_intrigue_draws
+        and not state.pending_track_spies
+    ):
+        state = resolve_combat_rewards(state).state
+    return state
+
+
 def test_desert_mouse_rewards_apply_by_rank() -> None:
     result = resolve_combat_rewards(_reward_state("skirmish_desert_mouse"))
 
@@ -357,6 +379,63 @@ def test_combat_reward_event_doubles_victory_points_for_a_sandworm() -> None:
     assert dict(first_place.payload)["multiplier"] == 2
 
 
+def test_the_engine_pays_the_next_recipient_only_after_the_winner_answers() -> None:
+    """Rewards go one recipient at a time, the winner's choice first.
+
+    "The player with the highest strength wins the Conflict and gains the
+    first reward on the Conflict card. The player with the second highest
+    strength gains the second reward." [Main p. 14] is silent on the order
+    between recipients. User ruling 2026-10-07 ("순위대로 (앱처럼)"): each
+    recipient's whole reward, choices included, before the next recipient
+    is paid. Skirmish (Crysknife) gives its winner an Influence choice and
+    its 2nd place 1 spice and an Intrigue card, its 3rd place 1 spice.
+    """
+
+    engine = UprisingRulesEngine()
+    state = replace(
+        _reward_state("skirmish_crysknife", strengths=(8, 6, 4, 0)),
+        conflict_deck=("skirmish_desert_mouse",),
+    )
+
+    opened = _advance_automatic(RuleResult(state=state))
+
+    assert opened.state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_INFLUENCE
+    assert [
+        dict(event.payload)["player"]
+        for event in opened.events
+        if event.kind == "combat_reward_gained"
+    ] == [0]
+    assert opened.state.combat_rewards_paid == 1
+    assert opened.state.combat_rewards_resolved is False
+    assert opened.state.players[1] == state.players[1]
+    assert opened.state.players[2] == state.players[2]
+    assert opened.state.intrigue_deck == state.intrigue_deck
+
+    answered = engine.apply(
+        opened.state,
+        DomainAction(
+            action_id="choose_combat_reward_influence",
+            actor=0,
+            arguments=(("faction", "emperor"),),
+        ),
+    )
+
+    kinds = [
+        (event.kind, dict(event.payload).get("player"))
+        for event in answered.events
+        if event.kind in ("influence_gained", "combat_reward_gained")
+    ]
+    assert kinds == [
+        ("influence_gained", 0),
+        ("combat_reward_gained", 1),
+        ("combat_reward_gained", 2),
+    ]
+    assert answered.state.players[0].influence.emperor == 1
+    assert answered.state.players[1].resources.spice == 1
+    assert answered.state.players[1].intrigue_cards == ("intrigue:0",)
+    assert answered.state.players[2].resources.spice == 1
+
+
 def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
     result = resolve_combat_rewards(_reward_state("skirmish_ornithopter"))
 
@@ -383,9 +462,19 @@ def test_tied_reward_group_resolves_in_turn_order_from_the_first_player() -> Non
     assert result.state.intrigue_deck == ("intrigue:3",)
 
 
-def test_tied_trash_choices_open_in_turn_order_from_the_first_player() -> None:
-    # OQ-002 (designer ruling): the tied players' public trash choices open
-    # in turn order too, the First Player's first.
+def test_tied_trash_choices_open_one_seat_at_a_time_from_the_first_player() -> None:
+    """The tied seats' trash choices open one seat at a time.
+
+    "The player with the highest strength wins the Conflict and gains the
+    first reward on the Conflict card. The player with the second highest
+    strength gains the second reward." [Main p. 14] gives each rank its row
+    but not the order between recipients. User ruling 2026-10-07 ("순위대로
+    (앱처럼)"): each recipient's whole reward, choices included, is answered
+    before the next recipient is paid; tied recipients go in turn order from
+    the First Player (OQ-002, designer ruling). Both tied seats' frames used
+    to open together.
+    """
+
     tied = _reward_state("trade_dispute", strengths=(8, 8, 4, 0))
     players = tuple(
         replace(player, hand=(f"p{player.player_id}:hand",))
@@ -395,10 +484,32 @@ def test_tied_trash_choices_open_in_turn_order_from_the_first_player() -> None:
     )
     tied = replace(tied, players=players, first_player=1)
 
-    result = resolve_combat_rewards(tied)
-    stack = result.state.decision_stack
+    state = resolve_combat_rewards(tied).state
 
-    assert tuple(dict(frame.context)["player"] for frame in reversed(stack)) == (1, 0)
+    # The First Player's second-place row is paid and its trash is open;
+    # the other tied seat and the third place wait.
+    assert [dict(frame.context)["player"] for frame in state.decision_stack] == [1]
+    assert state.players[1].resources.spice == 1
+    assert state.players[0].resources.spice == 0
+    assert state.players[2] == tied.players[2]
+    state = apply_combat_reward_trash(
+        state, legal_combat_reward_trash_actions(state, 1)[0]
+    ).state
+
+    state = _settle(state)
+
+    assert [dict(frame.context)["player"] for frame in state.decision_stack] == [0]
+    assert state.players[0].resources.spice == 1
+    assert state.players[2] == tied.players[2]
+    state = apply_combat_reward_trash(
+        state, legal_combat_reward_trash_actions(state, 0)[0]
+    ).state
+
+    state = _settle(state)
+
+    assert state.players[2].troops_garrison == tied.players[2].troops_garrison + 1
+    assert state.decision_stack == ()
+    assert state.combat_rewards_resolved is True
 
 
 def test_rank_combat_lists_tied_recipients_from_the_first_player() -> None:
@@ -446,7 +557,7 @@ def test_crysknife_queues_and_applies_influence_choice() -> None:
     emperor = next(
         action for action in actions if dict(action.arguments)["faction"] == "emperor"
     )
-    resolved = apply_combat_reward_influence(rewarded, emperor).state
+    resolved = _settle(apply_combat_reward_influence(rewarded, emperor).state)
 
     assert resolved.players[0].influence.emperor == 2
     assert resolved.players[0].victory_points == 2
@@ -454,6 +565,18 @@ def test_crysknife_queues_and_applies_influence_choice() -> None:
 
 
 def test_combat_influence_choice_resolves_track_bonus_and_alliance() -> None:
+    """The winner's Influence-choice draw comes before the 2nd place's draw.
+
+    [Main p. 14] gives the rewards by rank ("The player with the highest
+    strength wins the Conflict and gains the first reward on the Conflict
+    card. The player with the second highest strength gains the second
+    reward.") but not the order between recipients. User ruling 2026-10-07
+    ("순위대로 (앱처럼)"): each recipient's whole reward, choices included,
+    before the next recipient is paid. So Bene Gesserit 4's Intrigue card
+    [Main p. 7] takes the deck's top card, and the 2nd place's printed
+    Intrigue card the next one; the 2nd place used to draw first.
+    """
+
     state = _reward_state("skirmish_crysknife")
     players = list(state.players)
     players[0] = replace(players[0], influence=Influence(bene_gesserit=3))
@@ -463,6 +586,7 @@ def test_combat_influence_choice_resolves_track_bonus_and_alliance() -> None:
         intrigue_deck=("track_bonus_intrigue", *state.intrigue_deck),
     )
     rewarded = resolve_combat_rewards(state).state
+    assert rewarded.players[1].intrigue_cards == ()
     action = next(
         candidate
         for candidate in legal_combat_reward_influence_actions(rewarded, 0)
@@ -472,21 +596,73 @@ def test_combat_influence_choice_resolves_track_bonus_and_alliance() -> None:
     resolved = apply_combat_reward_influence(rewarded, action).state
 
     assert resolved.players[0].influence.bene_gesserit == 4
-    assert resolved.players[0].intrigue_cards == ("intrigue:0",)
+    assert resolved.players[0].intrigue_cards == ("track_bonus_intrigue",)
     assert resolved.players[0].alliance_faction_ids == ("bene_gesserit",)
     assert resolved.players[0].victory_points == 2
+    assert resolved.players[1].intrigue_cards == ()
+
+    settled = _settle(resolved)
+
+    assert settled.players[1].intrigue_cards == ("intrigue:0",)
+    assert settled.combat_rewards_resolved is True
+
+
+def test_the_winner_s_influence_draw_takes_the_last_intrigue_card_first() -> None:
+    """With one Intrigue card left, the winner's choice draws it.
+
+    User ruling 2026-10-07 ("순위대로 (앱처럼)"): each recipient's whole
+    reward, choices included, before the next recipient is paid; [Main
+    p. 14] ("The player with the highest strength wins the Conflict and
+    gains the first reward on the Conflict card. The player with the second
+    highest strength gains the second reward.") is silent on that order.
+    Skirmish (Crysknife)'s winner reaches Bene Gesserit 4 and draws the last
+    card [Main p. 7]; the 2nd place's printed Intrigue card then finds the
+    deck empty and the discard is reshuffled [FAQ p. 2].
+    """
+
+    state = replace(
+        _with_influence(
+            _reward_state("skirmish_crysknife"), 0, Influence(bene_gesserit=3)
+        ),
+        intrigue_deck=("intrigue:last",),
+        intrigue_discard=("intrigue:discarded",),
+    )
+    rewarded = resolve_combat_rewards(state).state
+    bene_gesserit = next(
+        action
+        for action in legal_combat_reward_influence_actions(rewarded, 0)
+        if dict(action.arguments)["faction"] == "bene_gesserit"
+    )
+
+    chosen = apply_combat_reward_influence(rewarded, bene_gesserit).state
+
+    assert chosen.players[0].intrigue_cards == ("intrigue:last",)
+    assert chosen.intrigue_deck == ()
+    assert chosen.pending_intrigue_draws == ()
+    assert chosen.players[1].resources.spice == 0
+
+    second = _settle(chosen)
+
+    assert second.players[1].resources.spice == 1
+    assert [(player, count) for player, count, _ in second.pending_intrigue_draws] == [
+        (1, 1)
+    ]
+    drawn = _reshuffle_and_draw(second)
+    assert drawn.players[1].intrigue_cards == ("intrigue:discarded",)
+    assert _settle(drawn).combat_rewards_resolved is True
 
 
 def _bene_gesserit_three_with_an_empty_deck(conflict_id: str) -> GameState:
-    # The second-place Intrigue card takes the deck's last card, so the
-    # first-place winner (Bene Gesserit 3) chooses with the deck empty and
-    # one card in the discard.
+    # The first-place winner (Bene Gesserit 3) chooses with the deck empty
+    # and one card in the discard. The winner's reward is answered before
+    # the 2nd place's Intrigue card is drawn (user ruling 2026-10-07,
+    # "순위대로 (앱처럼)"), so the deck starts empty.
     state = _with_influence(
         _reward_state(conflict_id), 0, Influence(bene_gesserit=3)
     )
     return replace(
         state,
-        intrigue_deck=("intrigue:last",),
+        intrigue_deck=(),
         intrigue_discard=("intrigue:discarded",),
     )
 
@@ -515,10 +691,20 @@ def test_bene_gesserit_stays_a_choice_when_the_intrigue_deck_is_empty() -> None:
     # Gesserit 4 draws an Intrigue card, and "In the rare case that you
     # exhaust the Intrigue deck, shuffle the discarded Intrigue cards to form
     # a new deck" [FAQ p. 2]; an empty deck used to hide the Faction.
+    #
+    # The winner's whole reward is answered before the 2nd place is paid
+    # (user ruling 2026-10-07, "순위대로 (앱처럼)": each recipient's whole
+    # reward, choices included, before the next recipient is paid; [Main
+    # p. 14] "The player with the highest strength wins the Conflict and
+    # gains the first reward on the Conflict card. The player with the
+    # second highest strength gains the second reward." is silent on that
+    # order), so the reshuffled card is the winner's and the 2nd place's
+    # Intrigue card comes up short afterwards.
     rewarded = resolve_combat_rewards(
         _bene_gesserit_three_with_an_empty_deck("skirmish_crysknife")
     ).state
     assert rewarded.intrigue_deck == ()
+    assert rewarded.players[1].resources.spice == 0
     actions = legal_combat_reward_influence_actions(rewarded, 0)
     assert {dict(action.arguments)["faction"] for action in actions} == {
         "emperor",
@@ -542,11 +728,32 @@ def test_bene_gesserit_stays_a_choice_when_the_intrigue_deck_is_empty() -> None:
     drawn = _reshuffle_and_draw(chosen)
     assert drawn.players[0].intrigue_cards == ("intrigue:discarded",)
     assert drawn.intrigue_discard == ()
+    assert drawn.players[1].resources.spice == 0
+
+    from dune_imperium.rules.intrigue_deck import resolve_pending_intrigue_draw
+
+    second = _settle(drawn)
+    assert second.players[1].resources.spice == 1
+    short = resolve_pending_intrigue_draw(second)
+    assert [
+        dict(event.payload)
+        for event in short.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 1, "requested": 1, "short": 1}]
+    assert short.state.players[1].intrigue_cards == ()
+    assert _settle(short.state).combat_rewards_resolved is True
 
 
 def test_bene_gesserit_is_chosen_with_both_intrigue_piles_empty() -> None:
     # With nothing to reshuffle the Influence and the Alliance still apply;
-    # only the Intrigue card is missing [Main p. 20] [FAQ p. 2].
+    # only the Intrigue card is missing [Main p. 20] [FAQ p. 2]. The winner's
+    # draw comes up short before the 2nd place is paid, and the 2nd place's
+    # printed Intrigue card comes up short after it (user ruling 2026-10-07,
+    # "순위대로 (앱처럼)": each recipient's whole reward, choices included,
+    # before the next recipient is paid; [Main p. 14] "The player with the
+    # highest strength wins the Conflict and gains the first reward on the
+    # Conflict card. The player with the second highest strength gains the
+    # second reward." is silent on that order).
     state = replace(
         _bene_gesserit_three_with_an_empty_deck("skirmish_crysknife"),
         intrigue_discard=(),
@@ -575,6 +782,16 @@ def test_bene_gesserit_is_chosen_with_both_intrigue_piles_empty() -> None:
     assert drawn.players[0].influence.bene_gesserit == 4
     assert drawn.players[0].alliance_faction_ids == ("bene_gesserit",)
     assert drawn.players[0].intrigue_cards == ()
+    assert drawn.players[1].resources.spice == 0
+
+    second = resolve_pending_intrigue_draw(_settle(drawn))
+    assert [
+        dict(event.payload)
+        for event in second.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 1, "requested": 1, "short": 1}]
+    assert second.state.players[1].resources.spice == 1
+    assert _settle(second.state).combat_rewards_resolved is True
 
 
 def test_bene_gesserit_is_the_last_faction_left_with_an_empty_deck() -> None:
@@ -604,10 +821,18 @@ def test_bene_gesserit_is_the_last_faction_left_with_an_empty_deck() -> None:
 def test_propaganda_offers_bene_gesserit_when_the_intrigue_deck_is_empty() -> None:
     # Propaganda 1st place: "Choose two:" of the four Faction icons [Propaganda
     # card], with no condition on the Intrigue deck [Main p. 20] [FAQ p. 2].
+    # The winner's two picks, and the Intrigue card Bene Gesserit 4 draws,
+    # come before the 2nd place's reward (user ruling 2026-10-07, "순위대로
+    # (앱처럼)": each recipient's whole reward, choices included, before the
+    # next recipient is paid; [Main p. 14] "The player with the highest
+    # strength wins the Conflict and gains the first reward on the Conflict
+    # card. The player with the second highest strength gains the second
+    # reward." is silent on that order).
     rewarded = resolve_combat_rewards(
         _bene_gesserit_three_with_an_empty_deck("propaganda")
     ).state
     assert rewarded.intrigue_deck == ()
+    assert rewarded.players[1].resources.spice == 0
     first = legal_distinct_combat_reward_influence_actions(rewarded, 0)
     assert "bene_gesserit" in {dict(action.arguments)["faction"] for action in first}
     named = apply_distinct_combat_reward_influence(
@@ -628,9 +853,21 @@ def test_propaganda_offers_bene_gesserit_when_the_intrigue_deck_is_empty() -> No
 
     assert chosen.players[0].influence.bene_gesserit == 4
     assert chosen.players[0].influence.fremen == 1
-    assert chosen.combat_rewards_resolved is True
+    assert chosen.decision_stack == ()
+    assert chosen.combat_rewards_resolved is False
     drawn = _reshuffle_and_draw(chosen)
     assert drawn.players[0].intrigue_cards == ("intrigue:discarded",)
+    assert drawn.players[1].resources.spice == 0
+
+    from dune_imperium.rules.intrigue_deck import resolve_pending_intrigue_draw
+
+    second = _settle(drawn)
+    assert second.players[1].resources.spice == 3
+    short = resolve_pending_intrigue_draw(second).state
+    assert short.players[1].intrigue_cards == ()
+    settled = _settle(short)
+    assert settled.players[2].resources.spice == 3
+    assert settled.combat_rewards_resolved is True
 
 
 def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> None:
@@ -675,7 +912,7 @@ def test_propaganda_requires_two_distinct_factions() -> None:
         )
         == 2
     )
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def test_sandworm_restarts_propaganda_distinct_group() -> None:
@@ -698,7 +935,7 @@ def test_sandworm_restarts_propaganda_distinct_group() -> None:
     assert state.players[0].influence.emperor == 2
     assert state.players[0].influence.spacing_guild == 2
     assert state.players[0].victory_points == 3
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def _with_influence(state: GameState, player: int, influence: Influence) -> GameState:
@@ -734,7 +971,7 @@ def test_influence_choice_with_no_faction_below_the_top_asks_for_a_confirm() -> 
     } == {CombatInfluenceBlock.TOP}
     result = apply_combat_influence_without_faction(resolved, _INFLUENCE_CONFIRM)
     assert result.state.decision_stack == ()
-    assert result.state.combat_rewards_resolved is True
+    assert _settle(result.state).combat_rewards_resolved is True
     assert result.state.players[0].influence == full
     assert [(event.event_id, event.kind) for event in result.events] == [
         (
@@ -797,7 +1034,7 @@ def test_propaganda_with_one_faction_below_the_top_pays_that_one() -> None:
     assert result.state.players[0].influence.fremen == 2
     # One Victory Point for the tier-III win, one for reaching Fremen 2.
     assert result.state.players[0].victory_points == 2
-    assert result.state.combat_rewards_resolved is True
+    assert _settle(result.state).combat_rewards_resolved is True
     assert result.events[0].kind == "combat_reward_influence_unavailable"
 
 
@@ -834,7 +1071,7 @@ def test_sandworm_propaganda_second_set_is_confirmed_once_the_tracks_fill() -> N
         ).state
 
     assert working.decision_stack == ()
-    assert working.combat_rewards_resolved is True
+    assert _settle(working).combat_rewards_resolved is True
     assert legal_distinct_combat_reward_influence_actions(working, 0) == ()
 
 
@@ -924,7 +1161,7 @@ def test_conflict_spy_reward_lists_empty_observation_posts() -> None:
     assert placed.players[0].spy_post_ids == (dict(actions[0].arguments)["post_id"],)
     assert placed.players[0].resources.spice == 2
     assert placed.players[0].control_space_ids == ("spice_refinery",)
-    assert placed.combat_rewards_resolved is True
+    assert _settle(placed).combat_rewards_resolved is True
 
 
 def test_sandworm_repeats_spy_placement_but_not_control() -> None:
@@ -941,7 +1178,7 @@ def test_sandworm_repeats_spy_placement_but_not_control() -> None:
     assert len(set(state.players[0].spy_post_ids)) == 2
     assert state.players[0].resources.spice == 4
     assert state.players[0].control_space_ids == ("spice_refinery",)
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def test_the_emperor_tracks_spy_follows_the_conflicts_own_spy_rewards() -> None:
@@ -1025,7 +1262,7 @@ def test_a_conflict_reward_spy_without_supply_may_recall_first(
 
     declined = apply_combat_reward_spy(paid, actions[0])
     assert declined.state.decision_stack == ()
-    assert declined.state.combat_rewards_resolved is True
+    assert _settle(declined.state).combat_rewards_resolved is True
     assert declined.state.players[0].spy_post_ids == _ALL_SPIES_PLACED
     assert [event.kind for event in declined.events] == [
         "combat_reward_spy_unavailable"
@@ -1052,7 +1289,7 @@ def test_a_conflict_reward_spy_without_supply_may_recall_first(
         *_ALL_SPIES_PLACED[1:],
         "arrakis-spice-refinery-arrakeen",
     )
-    assert placed.combat_rewards_resolved is True
+    assert _settle(placed).combat_rewards_resolved is True
 
 
 def test_a_doubled_reward_spy_is_not_capped_by_the_supply_at_payment() -> None:
@@ -1103,7 +1340,7 @@ def test_a_conflict_reward_spy_with_no_spy_to_recall_offers_only_the_decline() -
     assert UprisingRulesEngine().legal_actions(paid, 0) == (decline,)
     dropped = apply_combat_reward_spy(paid, decline)
     assert dropped.state.decision_stack == ()
-    assert dropped.state.combat_rewards_resolved is True
+    assert _settle(dropped.state).combat_rewards_resolved is True
     assert [event.kind for event in dropped.events] == [
         "combat_reward_spy_unavailable"
     ]
@@ -1131,7 +1368,7 @@ def test_choam_conflict_reward_opens_and_resolves_contract_selection() -> None:
         "contract:arrakeen_i",
         "contract:research_station_i",
     )
-    assert resolved.combat_rewards_resolved is True
+    assert _settle(resolved).combat_rewards_resolved is True
 
 
 def test_spice_freighters_reward_can_be_paid_after_influence_choice() -> None:
@@ -1154,7 +1391,7 @@ def test_spice_freighters_reward_can_be_paid_after_influence_choice() -> None:
     paid = apply_combat_reward_optional_payment(rewarded, actions[1]).state
     assert paid.players[0].resources.spice == 0
     assert paid.players[0].victory_points == 2
-    assert paid.combat_rewards_resolved is True
+    assert _settle(paid).combat_rewards_resolved is True
 
 
 def test_unaffordable_spice_freighters_reward_can_only_be_declined() -> None:
@@ -1167,7 +1404,7 @@ def test_unaffordable_spice_freighters_reward_can_only_be_declined() -> None:
     assert tuple(action.action_id for action in actions) == ("decline_combat_reward",)
     declined = apply_combat_reward_optional_payment(state, actions[0])
     assert declined.state.players[0].victory_points == 1
-    assert declined.state.combat_rewards_resolved is True
+    assert _settle(declined.state).combat_rewards_resolved is True
     assert declined.events[0].kind == "combat_reward_declined"
 
 
@@ -1189,7 +1426,7 @@ def test_sandworm_repeats_spice_freighters_payment_choice() -> None:
     assert state.players[0].resources.spice == 0
     assert state.players[0].influence.emperor == 2
     assert state.players[0].victory_points == 4
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def test_trade_dispute_trashes_from_hand_discard_and_in_play() -> None:
@@ -1218,9 +1455,14 @@ def test_trade_dispute_trashes_from_hand_discard_and_in_play() -> None:
         "p0:played",
     )
     state = apply_combat_reward_trash(state, first_actions[2]).state
+    # The 2nd place is paid once the winner's trash is answered (user ruling
+    # 2026-10-07, "순위대로 (앱처럼)").
+    assert legal_combat_reward_trash_actions(state, 1) == ()
+    state = _settle(state)
 
     second_actions = legal_combat_reward_trash_actions(state, 1)
     state = apply_combat_reward_trash(state, second_actions[1]).state
+    state = _settle(state)
 
     assert state.players[0].hand == ("p0:hand",)
     assert state.players[0].discard_pile == ()
@@ -1259,7 +1501,7 @@ def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
 
     assert state.players[0].trashed == ("only_card",)
     assert state.decision_stack == ()
-    assert state.combat_rewards_resolved is True
+    assert _settle(state).combat_rewards_resolved is True
 
 
 def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
@@ -1273,7 +1515,7 @@ def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
 
     assert result.state.players[0].discard_pile == ("keep_me",)
     assert result.state.players[0].trashed == ()
-    assert result.state.combat_rewards_resolved is True
+    assert _settle(result.state).combat_rewards_resolved is True
     assert result.events[0].kind == "combat_reward_trash_declined"
 
 
@@ -1335,12 +1577,16 @@ def test_tier_three_base_vp_control_and_spice_payment_resolve() -> None:
 
     assert rewarded.players[0].victory_points == 2
     assert rewarded.players[0].control_space_ids == ("imperial_basin",)
-    assert rewarded.players[1].resources.spice == 5
-    assert rewarded.players[2].resources.spice == 3
     actions = legal_combat_reward_optional_payment_actions(rewarded, 0)
     paid = apply_combat_reward_optional_payment(rewarded, actions[1]).state
     assert paid.players[0].resources.spice == 0
     assert paid.players[0].victory_points == 3
+    # The 2nd and 3rd places are paid after the winner's payment choice
+    # (user ruling 2026-10-07, "순위대로 (앱처럼)").
+    settled = _settle(paid)
+    assert settled.players[1].resources.spice == 5
+    assert settled.players[2].resources.spice == 3
+    assert settled.combat_rewards_resolved is True
 
 
 def test_tier_three_solari_payment_uses_solari_not_spice() -> None:
@@ -1400,7 +1646,7 @@ def test_arrakeen_reward_recalls_two_selected_placed_spies() -> None:
     assert paid.players[0].spies_supply == 2
     assert len(paid.players[0].spy_post_ids) == 1
     assert paid.players[0].victory_points == 3
-    assert paid.combat_rewards_resolved is True
+    assert _settle(paid).combat_rewards_resolved is True
 
 
 def test_arrakeen_spy_recall_can_be_declined_when_unaffordable() -> None:

@@ -134,6 +134,14 @@ def rank_combat(
     return CombatRanking(rewards=tuple(rewards), winner=winner)
 
 
+COMBAT_INTRIGUE_PLAYED_KEY = "played_at_priority"
+"""Set on the Combat Intrigue frame (absent means not) once its owner has
+played a Combat Intrigue card since priority last came to it. Such a seat's
+opportunity was to play cards, so its pass only hands priority on and does
+not count as one of the consecutive passes [Main pp. 14-15]. The frame is
+rebuilt without it whenever priority moves to another seat."""
+
+
 def begin_combat_intrigue(state: GameState) -> RuleResult:
     """Open Combat Intrigue priority at the first eligible seat."""
 
@@ -194,7 +202,13 @@ def apply_combat_intrigue_pass(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Record one pass and finish after every participant passes consecutively."""
+    """Record one pass and finish after every participant passes consecutively.
+
+    A pass by a seat that played a Combat Intrigue card since priority last
+    came to it only hands priority on: it is not one of the consecutive
+    passes (``COMBAT_INTRIGUE_PLAYED_KEY``), unless the seat is the only
+    participant.
+    """
 
     if action not in legal_combat_intrigue_actions(state, action.actor):
         raise ValueError("action is not a legal Combat Intrigue pass")
@@ -206,7 +220,18 @@ def apply_combat_intrigue_pass(
         state.first_player,
     )
     current_index = context_int(context, "current_index")
-    consecutive_passes = context_int(context, "consecutive_passes") + 1
+    if context.get(COMBAT_INTRIGUE_PLAYED_KEY) and len(participants) > 1:
+        # "each player with at least one unit in the Conflict may play any
+        # number of Combat Intrigue cards, or may pass. ... Once all players
+        # involved in Combat pass consecutively, you then resolve the
+        # Combat." [Main p. 14]; in the worked example Abby plays, John
+        # passes again, and Abby still decides last [Main p. 15]. A seat
+        # that played this opportunity hands priority on without passing.
+        # A lone participant's next opportunity would be its own again with
+        # nothing in between, so its pass after playing is the final one.
+        consecutive_passes = 0
+    else:
+        consecutive_passes = context_int(context, "consecutive_passes") + 1
     if consecutive_passes == len(participants):
         next_state = replace(
             state,
@@ -239,7 +264,7 @@ def apply_combat_intrigue_pass(
 
 
 def resolve_combat_rewards(state: GameState) -> RuleResult:
-    """Apply supported Conflict rewards and open any Influence choices."""
+    """Pay the next ranked recipient's Conflict reward and open its choices."""
 
     if state.phase is not GamePhase.COMBAT:
         raise ValueError("Combat rewards can resolve only during Combat")
@@ -258,8 +283,82 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         raise NotImplementedError(
             f"Conflict rewards are not transcribed: {conflict_id}"
         )
+    rewards = conflict.rewards
 
+    events: list[GameEvent] = []
+    while True:
+        ranking = rank_combat(state.players, first_player=state.first_player)
+        if state.combat_rewards_paid >= len(ranking.rewards):
+            # Every recipient's reward, with its choices, is handed out.
+            state = replace(
+                state,
+                combat_rewards_resolved=True,
+                conflict_first_place_influence_bonus=0,
+            )
+            break
+        # One recipient at a time, in rank order (tied recipients from the
+        # First Player, OQ-002): its whole reward, automatic parts and
+        # choices alike, sandworm copy included, is answered before the next
+        # recipient is paid (user ruling 2026-10-07, "순위대로 (앱처럼)"; the
+        # official text gives the rewards by rank [Main p. 14] but not the
+        # order between them). A recipient that opens a choice or queues a
+        # step (an owed Intrigue draw, a track Spy) stops here; the engine
+        # calls again once those are answered.
+        queued = _reward_queues(state)
+        paid = _pay_next_combat_reward(
+            state, rewards, ranking.rewards[state.combat_rewards_paid]
+        )
+        state = paid.state
+        events.extend(paid.events)
+        if state.decision_stack or _reward_queues(state) != queued:
+            break
+    return RuleResult(state=state, events=tuple(events))
+
+
+def combat_rewards_done(
+    state: GameState, remaining: tuple[DecisionFrame, ...]
+) -> bool:
+    """``combat_rewards_resolved`` once ``remaining`` is the whole stack.
+
+    The rewards are resolved when no frame is left and every ranked
+    recipient has been paid (``resolve_combat_rewards`` pays them one at a
+    time, user ruling 2026-10-07); a recipient's last frame closing before
+    that leaves the next recipient for the engine to pay.
+    """
+
+    if state.combat_rewards_resolved:
+        return True
+    if (
+        remaining
+        or state.phase is not GamePhase.COMBAT
+        or not state.combat_intrigue_complete
+        or not state.current_conflict_ids
+    ):
+        return False
     ranking = rank_combat(state.players, first_player=state.first_player)
+    return state.combat_rewards_paid >= len(ranking.rewards)
+
+
+def _reward_queues(state: GameState) -> tuple[object, ...]:
+    """The queued steps a Conflict reward can add to (compared, not read)."""
+
+    return (
+        state.pending_intrigue_draws,
+        state.pending_navigation_plays,
+        state.pending_track_spies,
+        state.pending_skill_choices,
+        state.scouts_four_bonus_choices,
+    )
+
+
+def _pay_next_combat_reward(
+    state: GameState,
+    rewards: tuple[ConflictReward, ConflictReward, ConflictReward],
+    assignment: CombatReward,
+) -> RuleResult:
+    """Pay one ranked recipient's reward and push its choice frames."""
+
+    paid = state.combat_rewards_paid
     players = list(state.players)
     scouts_goods = state.scouts_goods
     intrigue_deck = state.intrigue_deck
@@ -272,213 +371,212 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
     pending_four = state.scouts_four_bonus_choices
     frames_in_order: list[DecisionFrame] = []
     events: list[GameEvent] = []
-    for assignment in ranking.rewards:
-        reward = conflict.rewards[assignment.rank - 1]
-        if (
-            assignment.rank is RewardRank.FIRST
-            and state.conflict_first_place_influence_bonus
-        ):
-            # Pivotal Gambit (promo) adds "gain 1 Influence of your choice"
-            # to this Conflict's first-place reward (OQ-025); like the
-            # printed reward it is doubled by a sandworm [Main p. 14].
-            reward = replace(
-                reward,
-                choose_influence=(
-                    reward.choose_influence + state.conflict_first_place_influence_bonus
-                ),
-            )
-        amount = assignment.multiplier
-        owner = players[assignment.player]
-        drawn = intrigue_deck[: reward.intrigue * amount]
-        intrigue_deck = intrigue_deck[len(drawn) :]
-        if reward.intrigue * amount > len(drawn):
-            # Deck exhausted: the dispatcher reshuffles the discard [FAQ p. 2].
-            pending_draws = (
-                *pending_draws,
-                (
-                    assignment.player,
-                    reward.intrigue * amount - len(drawn),
-                    (
-                        f"round:{state.round_number}:combat_reward:intrigue:"
-                        f"{assignment.player}:{assignment.rank.value}"
-                    ),
-                ),
-            )
-        contract_solari = 0 if state.config.choam_module else reward.contracts * 2
-        recruited_owner, recruited = recruit_troops(owner, reward.troops * amount)
-        next_owner = replace(
-            recruited_owner,
-            resources=Resources(
-                solari=(
-                    recruited_owner.resources.solari
-                    + reward.solari * amount
-                    + contract_solari * amount
-                ),
-                spice=recruited_owner.resources.spice + reward.spice * amount,
-                water=recruited_owner.resources.water + reward.water * amount,
-            ),
-            intrigue_cards=(*recruited_owner.intrigue_cards, *drawn),
-            victory_points=(
-                recruited_owner.victory_points + reward.victory_points * amount
+    reward = rewards[assignment.rank - 1]
+    if (
+        assignment.rank is RewardRank.FIRST
+        and state.conflict_first_place_influence_bonus
+    ):
+        # Pivotal Gambit (promo) adds "gain 1 Influence of your choice"
+        # to this Conflict's first-place reward (OQ-025); like the
+        # printed reward it is doubled by a sandworm [Main p. 14].
+        reward = replace(
+            reward,
+            choose_influence=(
+                reward.choose_influence + state.conflict_first_place_influence_bonus
             ),
         )
-        players[assignment.player] = next_owner
-        if reward.influence_faction is not None:
-            influence_result = gain_faction_influence(
-                replace(
-                    state,
-                    players=tuple(players),
-                    intrigue_deck=intrigue_deck,
-                    pending_intrigue_draws=pending_draws,
-                    pending_navigation_plays=pending_navigation,
-                    pending_track_spies=pending_spies,
-                    scouts_four_bonus_choices=pending_four,
-                ),
+    amount = assignment.multiplier
+    owner = players[assignment.player]
+    drawn = intrigue_deck[: reward.intrigue * amount]
+    intrigue_deck = intrigue_deck[len(drawn) :]
+    if reward.intrigue * amount > len(drawn):
+        # Deck exhausted: the dispatcher reshuffles the discard [FAQ p. 2].
+        pending_draws = (
+            *pending_draws,
+            (
                 assignment.player,
-                reward.influence_faction,
-                reward.faction_influence * amount,
-                event_prefix=(
-                    f"round:{state.round_number}:combat_reward:fixed_influence:"
+                reward.intrigue * amount - len(drawn),
+                (
+                    f"round:{state.round_number}:combat_reward:intrigue:"
+                    f"{assignment.player}:{assignment.rank.value}"
+                ),
+            ),
+        )
+    contract_solari = 0 if state.config.choam_module else reward.contracts * 2
+    recruited_owner, recruited = recruit_troops(owner, reward.troops * amount)
+    next_owner = replace(
+        recruited_owner,
+        resources=Resources(
+            solari=(
+                recruited_owner.resources.solari
+                + reward.solari * amount
+                + contract_solari * amount
+            ),
+            spice=recruited_owner.resources.spice + reward.spice * amount,
+            water=recruited_owner.resources.water + reward.water * amount,
+        ),
+        intrigue_cards=(*recruited_owner.intrigue_cards, *drawn),
+        victory_points=(
+            recruited_owner.victory_points + reward.victory_points * amount
+        ),
+    )
+    players[assignment.player] = next_owner
+    if reward.influence_faction is not None:
+        influence_result = gain_faction_influence(
+            replace(
+                state,
+                players=tuple(players),
+                intrigue_deck=intrigue_deck,
+                pending_intrigue_draws=pending_draws,
+                pending_navigation_plays=pending_navigation,
+                pending_track_spies=pending_spies,
+                scouts_four_bonus_choices=pending_four,
+            ),
+            assignment.player,
+            reward.influence_faction,
+            reward.faction_influence * amount,
+            event_prefix=(
+                f"round:{state.round_number}:combat_reward:fixed_influence:"
+                f"{assignment.player}:{assignment.rank.value}"
+            ),
+        )
+        players = list(influence_result.state.players)
+        intrigue_deck = influence_result.state.intrigue_deck
+        pending_draws = influence_result.state.pending_intrigue_draws
+        pending_navigation = influence_result.state.pending_navigation_plays
+        pending_spies = influence_result.state.pending_track_spies
+        pending_four = influence_result.state.scouts_four_bonus_choices
+        events.extend(influence_result.events)
+        next_owner = players[assignment.player]
+    if (
+        reward.control_space_id is not None
+        and reward.control_space_id
+        not in players[assignment.player].control_space_ids
+    ):
+        # Arrakeen Scouts' Prison Planet may hold this seat's last marker.
+        scouts_goods, released = free_prison_marker(
+            scouts_goods,
+            assignment.player,
+            len(players[assignment.player].control_space_ids),
+            source=f"round:{state.round_number}:combat_reward",
+        )
+        events.extend(released)
+    if reward.control_space_id is not None:
+        players = list(
+            _apply_control(
+                tuple(players),
+                assignment.player,
+                reward.control_space_id,
+            )
+        )
+    if reward.contracts and state.config.choam_module:
+        frames_in_order.append(
+            contract_choice_frame(
+                assignment.player,
+                reward.contracts * amount,
+                source=(
+                    f"round:{state.round_number}:combat_reward:"
                     f"{assignment.player}:{assignment.rank.value}"
                 ),
             )
-            players = list(influence_result.state.players)
-            intrigue_deck = influence_result.state.intrigue_deck
-            pending_draws = influence_result.state.pending_intrigue_draws
-            pending_navigation = influence_result.state.pending_navigation_plays
-            pending_spies = influence_result.state.pending_track_spies
-            pending_four = influence_result.state.scouts_four_bonus_choices
-            events.extend(influence_result.events)
-            next_owner = players[assignment.player]
-        if (
-            reward.control_space_id is not None
-            and reward.control_space_id
-            not in players[assignment.player].control_space_ids
-        ):
-            # Arrakeen Scouts' Prison Planet may hold this seat's last marker.
-            scouts_goods, released = free_prison_marker(
-                scouts_goods,
-                assignment.player,
-                len(players[assignment.player].control_space_ids),
-                source=f"round:{state.round_number}:combat_reward",
-            )
-            events.extend(released)
-        if reward.control_space_id is not None:
-            players = list(
-                _apply_control(
-                    tuple(players),
-                    assignment.player,
-                    reward.control_space_id,
-                )
-            )
-        if reward.contracts and state.config.choam_module:
-            frames_in_order.append(
-                contract_choice_frame(
-                    assignment.player,
-                    reward.contracts * amount,
-                    source=(
-                        f"round:{state.round_number}:combat_reward:"
-                        f"{assignment.player}:{assignment.rank.value}"
-                    ),
-                )
-            )
-        for _ in range(amount):
-            for _ in range(reward.choose_influence):
-                frames_in_order.append(
-                    _influence_choice_frame(
-                        state,
-                        assignment.player,
-                        len(frames_in_order),
-                    )
-                )
-            # Each optional cost is its own arrow, paid or declined on its
-            # own and at most once per reward [Main p. 9] [FAQ p. 3];
-            # Economic Supremacy prints two (6 Solari, then 4 spice) and
-            # they are offered in that printed order. A sandworm offers
-            # each arrow a second time [Main p. 14].
-            if reward.optional_solari_cost:
-                frames_in_order.append(
-                    _optional_payment_frame(
-                        state,
-                        assignment.player,
-                        len(frames_in_order),
-                        "solari",
-                        reward.optional_solari_cost,
-                        reward.optional_victory_points,
-                    )
-                )
-            if reward.optional_spice_cost:
-                frames_in_order.append(
-                    _optional_payment_frame(
-                        state,
-                        assignment.player,
-                        len(frames_in_order),
-                        "spice",
-                        reward.optional_spice_cost,
-                        reward.optional_victory_points,
-                    )
-                )
-            if reward.optional_recall_spies:
-                frames_in_order.append(
-                    _optional_spy_recall_frame(
-                        state,
-                        assignment.player,
-                        len(frames_in_order),
-                        reward.optional_recall_spies,
-                        reward.optional_victory_points,
-                    )
-                )
-            if reward.choose_distinct_influence:
-                group = len(frames_in_order)
-                for _ in range(reward.choose_distinct_influence):
-                    frames_in_order.append(
-                        _distinct_influence_frame(
-                            state,
-                            assignment.player,
-                            len(frames_in_order),
-                            group,
-                        )
-                    )
-        trash_candidates = (
-            *next_owner.hand,
-            *next_owner.discard_pile,
-            *counted_in_play(next_owner),
         )
-        trash_count = reward.trash_cards * amount if trash_candidates else 0
-        for _ in range(trash_count):
+    for _ in range(amount):
+        for _ in range(reward.choose_influence):
             frames_in_order.append(
-                _trash_card_frame(
+                _influence_choice_frame(
                     state,
                     assignment.player,
                     len(frames_in_order),
                 )
             )
-        # One frame per printed Spy, repeated by a sandworm [Main p. 14],
-        # each judged when it resolves: with the supply empty its owner may
-        # first recall a Spy [Main pp. 11, 20], so the supply at payment
-        # does not cap them. A Spy with Deep Cover ignores opponents' Spies
-        # [Bloodlines pp. 5, 12].
-        for deep_cover in (False,) * (reward.place_spies * amount) + (True,) * (
-            reward.deep_cover_spies * amount
-        ):
+        # Each optional cost is its own arrow, paid or declined on its
+        # own and at most once per reward [Main p. 9] [FAQ p. 3];
+        # Economic Supremacy prints two (6 Solari, then 4 spice) and
+        # they are offered in that printed order. A sandworm offers
+        # each arrow a second time [Main p. 14].
+        if reward.optional_solari_cost:
             frames_in_order.append(
-                _spy_placement_frame(
+                _optional_payment_frame(
                     state,
                     assignment.player,
                     len(frames_in_order),
-                    deep_cover=deep_cover,
+                    "solari",
+                    reward.optional_solari_cost,
+                    reward.optional_victory_points,
                 )
             )
-        reward_event = _combat_reward_event(state, assignment, reward)
-        events.append(reward_event)
-        events.extend(
-            recruit_shortfall_events(
-                reward_event.event_id,
+        if reward.optional_spice_cost:
+            frames_in_order.append(
+                _optional_payment_frame(
+                    state,
+                    assignment.player,
+                    len(frames_in_order),
+                    "spice",
+                    reward.optional_spice_cost,
+                    reward.optional_victory_points,
+                )
+            )
+        if reward.optional_recall_spies:
+            frames_in_order.append(
+                _optional_spy_recall_frame(
+                    state,
+                    assignment.player,
+                    len(frames_in_order),
+                    reward.optional_recall_spies,
+                    reward.optional_victory_points,
+                )
+            )
+        if reward.choose_distinct_influence:
+            group = len(frames_in_order)
+            for _ in range(reward.choose_distinct_influence):
+                frames_in_order.append(
+                    _distinct_influence_frame(
+                        state,
+                        assignment.player,
+                        len(frames_in_order),
+                        group,
+                    )
+                )
+    trash_candidates = (
+        *next_owner.hand,
+        *next_owner.discard_pile,
+        *counted_in_play(next_owner),
+    )
+    trash_count = reward.trash_cards * amount if trash_candidates else 0
+    for _ in range(trash_count):
+        frames_in_order.append(
+            _trash_card_frame(
+                state,
                 assignment.player,
-                reward.troops * amount,
-                recruited,
+                len(frames_in_order),
             )
         )
+    # One frame per printed Spy, repeated by a sandworm [Main p. 14],
+    # each judged when it resolves: with the supply empty its owner may
+    # first recall a Spy [Main pp. 11, 20], so the supply at payment
+    # does not cap them. A Spy with Deep Cover ignores opponents' Spies
+    # [Bloodlines pp. 5, 12].
+    for deep_cover in (False,) * (reward.place_spies * amount) + (True,) * (
+        reward.deep_cover_spies * amount
+    ):
+        frames_in_order.append(
+            _spy_placement_frame(
+                state,
+                assignment.player,
+                len(frames_in_order),
+                deep_cover=deep_cover,
+            )
+        )
+    reward_event = _combat_reward_event(state, assignment, reward)
+    events.append(reward_event)
+    events.extend(
+        recruit_shortfall_events(
+            reward_event.event_id,
+            assignment.player,
+            reward.troops * amount,
+            recruited,
+        )
+    )
 
     frames = tuple(reversed(frames_in_order))
     next_state = replace(
@@ -490,8 +588,10 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         pending_track_spies=pending_spies,
         scouts_four_bonus_choices=pending_four,
         scouts_goods=scouts_goods,
-        combat_rewards_resolved=not frames,
-        # The pledge was folded into the first-place frames above.
+        combat_rewards_paid=paid + 1,
+        # The pledge was folded into the first-place frames above; the first
+        # recipient paid is the sole winner when there is one, so a tied
+        # first place leaves the pledge unused and it is cleared here too.
         conflict_first_place_influence_bonus=0,
         decision_stack=frames,
     )
@@ -557,7 +657,7 @@ def apply_combat_reward_optional_payment(
             for player in state.players
         ),
         decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     event = GameEvent(
         event_id=(
@@ -648,7 +748,7 @@ def apply_combat_reward_spy_recall(
             for player in state.players
         ),
         decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     event = GameEvent(
         event_id=(
@@ -738,7 +838,7 @@ def apply_combat_reward_trash(
     next_state = replace(
         working_state,
         decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     return RuleResult(state=next_state, events=events)
 
@@ -826,7 +926,9 @@ def apply_combat_reward_spy(
         remaining = state.decision_stack[:-1]
         return RuleResult(
             state=replace(
-                state, decision_stack=remaining, combat_rewards_resolved=not remaining
+                state,
+                decision_stack=remaining,
+                combat_rewards_resolved=combat_rewards_done(state, remaining),
             ),
             events=(
                 GameEvent(
@@ -877,7 +979,7 @@ def apply_combat_reward_spy(
             for player in state.players
         ),
         decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     event = GameEvent(
         event_id=(
@@ -1043,7 +1145,7 @@ def apply_distinct_combat_reward_influence(
             state=replace(
                 state,
                 decision_stack=remaining,
-                combat_rewards_resolved=not remaining,
+                combat_rewards_resolved=combat_rewards_done(state, remaining),
             ),
             events=(
                 GameEvent(
@@ -1054,7 +1156,9 @@ def apply_distinct_combat_reward_influence(
             ),
         )
     working = replace(
-        state, decision_stack=remaining, combat_rewards_resolved=not remaining
+        state,
+        decision_stack=remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     events: list[GameEvent] = []
     for pick in (*previous, faction):
@@ -1101,7 +1205,7 @@ def apply_combat_reward_influence(
     next_state = replace(
         gained.state,
         decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     return RuleResult(state=next_state, events=gained.events)
 
@@ -1134,7 +1238,9 @@ def apply_combat_influence_without_faction(
     choice_index = context_int(context, "choice_index")
     remaining = state.decision_stack[:-1]
     working = replace(
-        state, decision_stack=remaining, combat_rewards_resolved=not remaining
+        state,
+        decision_stack=remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
     )
     prefix = (
         f"round:{state.round_number}:combat_reward:influence_unavailable:"
@@ -1879,6 +1985,8 @@ def _combat_intrigue_frame(
     participants: tuple[int, ...],
     current_index: int,
     consecutive_passes: int,
+    *,
+    played: bool = False,
 ) -> DecisionFrame:
     mask = sum(1 << player for player in participants)
     return DecisionFrame(
@@ -1892,6 +2000,7 @@ def _combat_intrigue_frame(
             ("consecutive_passes", consecutive_passes),
             ("current_index", current_index),
             ("participants_mask", mask),
+            *(((COMBAT_INTRIGUE_PLAYED_KEY, 1),) if played else ()),
         ),
     )
 
@@ -1989,6 +2098,10 @@ def refresh_combat_participants(state: GameState) -> RuleResult:
         participants=remaining,
         current_index=next_index,
         consecutive_passes=consecutive_passes,
+        # A seat that keeps priority keeps its played mark; priority that
+        # moves on reaches a seat that has played nothing yet.
+        played=current in remaining
+        and bool(context.get(COMBAT_INTRIGUE_PLAYED_KEY)),
     )
     return RuleResult(
         state=replace(state, decision_stack=(*state.decision_stack[:-1], next_frame))

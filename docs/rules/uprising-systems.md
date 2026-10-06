@@ -46,7 +46,8 @@
 - Card의 Alliance 조건은 해당 Faction Influence가 4 이상인지가 아니라 현재 그 Faction의 Alliance token을 보유하는지 확인한다. Branching Path는 Bene Gesserit Alliance를 보유할 때만 Agent box의 선택형 비용(hand의 **Intrigue 카드 1장 trash** — Trash an Intrigue card 아이콘 `[Main p. 20]`)과 보상(Intrigue 1장 draw, spice 2)을 사용할 수 있다. `[Main p. 7]` `[Branching Path card]`
 - 한 Faction에서 처음 Influence 4에 도달한 플레이어는 Alliance token과 그 token의 1 VP를 얻는다. 다른 플레이어가 현재 보유자보다 **높은** 칸으로 올라가면 token과 그 VP가 새 플레이어에게 이전된다. 동률만으로는 Main의 일반 이전 조건을 충족하지 않는다. `[Main p. 7]`
 - Alliance 보유자가 Influence를 잃기 전에 다른 플레이어와 이미 동률이었다면, 그 동률 플레이어가 token을 즉시 가져간다. 동률 플레이어가 여러 명이면 기존 보유자가 받을 한 명을 정한다. `[FAQ p. 1]`
-- 보유자가 Influence 3 이하로 내려가면 Alliance token을 잃는다. 다른 어느 플레이어도 Influence 4 이상이 아니면 token을 board로 돌려놓는다. 이때 4 이상인 후보가 여러 명이면 감소 직전 보유자와 Influence 4에서 동률이므로, 기존 보유자가 그중 한 명을 정한다. 한 칸씩 처리하는 유효한 track 전이에서는 직전 동률이 아닌 복수 후보가 발생하지 않는다. `[FAQ p. 1]`
+- 보유자가 Influence 3 이하로 내려가면 Alliance token을 잃는다. 다른 어느 플레이어도 Influence 4 이상이 아니면 token을 board로 돌려놓는다. `[FAQ p. 1]` 이때 4 이상인 후보가 여러 명이면 감소 직전 보유자와 Influence 4에서 동률이므로, 기존 보유자가 그중 한 명을 정한다. 한 칸씩 처리하는 track 전이에서는 직전 동률이 아닌 복수 후보가 발생하지 않는다.
+- 여러 칸을 한 번에 잃는 경우(Opportunism, For Humanity의 Influence 2 손실)는 **한 칸씩** 처리한다 — project convention이며 공식 규칙이 아니다(OQ-014 보강 2026-10-07). FAQ의 두 경우("You were previously tied for Influence with another player", "If you have fallen to 3 Influence or lower" `[FAQ p. 1]`)는 한 번의 손실을 전제로 쓰였고, 손실 전체를 한 번에 읽으면 결과가 다를 수 있다: Guild 6인 보유자가 5인 상대를 두고 2를 잃으면 4로 끝나 token을 지키지만, 한 칸씩 처리하면 6→5에서 동률이 되고 5→4에서 상대가 token을 가져간다. 구현 `rules/influence.lose_faction_influence`("Lose Influence one space at a time"). 보조 증거(공식 규칙 아님): 앱도 같은 결과다(로컬 분석, 2026-10-07).
 
 ## Critical location과 Control
 
@@ -79,7 +80,8 @@
 - Recall Spy 아이콘은 observation post의 자기 Spy 하나를 supply로 돌려보낼 수 있게 한다. `[Main pp. 11, 20]`
 - `Infiltrate`: 다른 플레이어의 Agent가 있는 space로 Agent를 보내려 할 때, 연결된 자기 Spy를 recall하면 그 Agent의 점유를 무시하고 같은 space에 Agent를 보낼 수 있다. 이 경우에도 Agent turn에 card를 play해야 한다. `[Main p. 11]` `[FAQ p. 4]`
 - `Gather Intelligence`: Agent를 space에 놓은 직후, board space와 Agent card의 효과를 받기 전에 연결된 자기 Spy를 recall하면 card 1장을 draw한다. 이 경우에도 실제 Agent card play가 필요하다. `[Main p. 11]` `[FAQ p. 4]`
-- 하나의 Spy를 Infiltrate와 Gather Intelligence 양쪽에 사용할 수 없다. 한 turn에 Spy 두 개를 recall할 수 있는 경우는 하나를 Infiltrate에, 다른 하나를 Gather Intelligence에 쓰는 경우뿐이다. 두 개를 모두 Gather Intelligence에 쓸 수는 없다. `[Main p. 11]` `[FAQ p. 4]`
+- 하나의 Spy를 Infiltrate와 Gather Intelligence 양쪽에 사용할 수 없다. 한 turn에 Spy 두 개를 recall하려면 각각 서로 다른 효과에 써야 한다 — "You may recall two Spies in one turn if each is used for a different effect. For example: … you can recall one to Infiltrate and one to Gather Intelligence, but not both to Gather Intelligence." `[FAQ p. 4]` 조건은 "서로 다른 효과"이고, Infiltrate + Gather Intelligence는 FAQ가 든 예다. `[Main p. 11]`
+- Gather Intelligence는 덱과 버린 더미가 모두 비어 뽑을 카드가 없어도 고를 수 있다: Spy는 supply로 돌아오고 draw는 아무것도 찾지 못하며, 그 recall은 "If you recalled a Spy this turn"에 센다(OQ-101). Gaius Helen Mohiam도 그때 회수해야 한다("Whenever you could recall a Spy to Gather Intelligence, you must." `[Gaius Helen Mohiam card]`). 공식 문서가 침묵하는 지점의 사용자 판정이다(2026-10-07 "허용 (앱처럼)", [OQ-099](open-questions.md#oq-099--덱과-버린-더미가-모두-비었을-때-gather-intelligence로-spy만-회수할-수-있는지)).
 - Spy Agent icon은 현재 자기 Spy가 있는 observation post와 연결된 board space를 Agent 목적지로 허용한다. 이 사용 자체로 Spy를 recall하지 않는다. `[Main pp. 9, 11]`
 
 Observation post 13개의 공식 board 연결선 전사는 [`observation-posts.md`](observation-posts.md)에 따로 둔다. `[Main pp. 4-5 board artwork]`

@@ -361,3 +361,21 @@ Agent를 보낸 뒤의 Emperor's Invitation·Twisted Resourceful 아이콘, 못 
 Detonation의 배치(scratch 비교, 판마다 첫 갈림 결정). 옛 heuristic이 그 카드를 효과 없이 내 버리던 판이 사라진 것이고, 기본 지도자로
 같은 seed 800판을 돌린 비교에서는 좌석의 첫 Endgame 창에서의 문항 사례가 10 대 9로 비슷했다. 엔진의 Endgame 창 처리는 바뀌지 않았다.
 채점은 하지 않았다.
+
+## 재채굴 (2026-10-07, 일반 규칙 대조, codec v139)
+
+일반 규칙 대조 묶음(Combat Intrigue에서 카드를 낸 직후의 pass는 우선권만 넘기고 연속 pass로 세지 않음 — `5654d7f8`,
+Reveal-turn Plot은 소유자의 Reveal turn이 끝날 때까지 앞면, Usurp의 Undercover Asset 짝, Chairdog 반환 기록, 덱 크기 공개,
+두 개인 더미가 비었을 때의 Gather Intelligence, 혼자 남은 참가자의 pass, Conflict 보상을 순위대로 한 사람씩, 쥔 Contract
+아이콘의 소멸 시점) 뒤에 커밋된 114개 가운데 92개가 복원되지 않았다. 옛 파일을 브랜치의 커밋마다(`git archive`로 꺼낸 엔진)
+복원해 보면 92개가 모두 `5654d7f8`에서 처음 깨지고, 그때 복원되던 나머지 22개는 이후 어느 커밋에서도 깨지지 않는다. 위
+"다시 캐는 명령"을 같은 시드·구성·5081 체크포인트로 다시 실행했다(worker만 4 → 2, 학습 세션과 메모리를 나눠 쓰느라). 결과는
+**131개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 40(heuristic 38 + 5081 2), Endgame 11(heuristic 11)이며
+`check`가 **131/131** 복원을 확인했다. 포지션 id로 견주면 그대로 63(선택 번호와 지문까지 같은 것 19, 지문은 같고 선택 번호만
+바뀐 것 26, 지문까지 바뀐 것 18), 빠진 것 51, 새것 68이다. 문항별로는 sandworm 58 그대로·22 빠짐·22 새것, 마지막 라운드
+보유 5·26·35, Endgame 0·3·11이다.
+
+Endgame 문항이 3 → 11로 늘어 따로 확인했다. 같은 heuristic 800판에서 Endgame 문항만 상한 없이 캐면 브랜치 시작
+(`381f2e42`) 3개, `5654d7f8` 10개, 브랜치 끝 11개다 — 늘어난 사례는 대부분 그 pass 규칙이 바꾼 판에서 나온다. 채점은
+하지 않았다.
+`tests/unit/test_problem_set.py`는 고칠 것이 없었다(문항마다 첫 포지션과 표본만 쓴다).

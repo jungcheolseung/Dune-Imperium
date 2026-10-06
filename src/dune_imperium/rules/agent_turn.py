@@ -265,9 +265,14 @@ def _placements_for_card(
             continue
         if space.space_id == "swordmaster" and owner.swordmaster_acquired:
             continue
-        if not (
-            isinstance(card, ImperiumCardEntry) and card.ignores_influence_requirements
-        ) and influence_requirement_unmet(state, owner, space):
+        requirement_unmet = not card_ignores_influence_requirements(
+            card
+        ) and influence_requirement_unmet(state, owner, space)
+        if requirement_unmet and not usurp:
+            # A plain graft's other card waives it only as the placed card:
+            # the one card that ignores the requirements (Undercover Asset)
+            # carries the icon of every space that has one, so placing it
+            # with the other card as its partner covers the pair.
             continue
         occupying_opponents = tuple(
             candidate.player_id
@@ -280,10 +285,21 @@ def _placements_for_card(
             # The partner choice must have something to offer: a partner
             # whose icons reach the space and, on an occupied space entered
             # on Tleilaxu Infiltrator's promise, the Infiltrator itself.
+            # "Both played cards are considered to have “sent” the Agent, no
+            # matter which card’s icon you use." [Immortality p. 10]: a
+            # partner that ignores Influence requirements (Undercover Asset)
+            # waives the space's for the pair, and only such a partner fits
+            # a space whose requirement is unmet.
             fitting = tuple(
                 partner_id
                 for partner_id, partner_icons, boosted in usurp_partners
                 if card_can_access_space(partner_icons, space, owner, any_icon=boosted)
+                and (
+                    not requirement_unmet
+                    or card_ignores_influence_requirements(
+                        personal_card_for_instance(partner_id)
+                    )
+                )
             )
             if not fitting:
                 continue
@@ -604,6 +620,16 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                             for seat in state.players
                             if seat.player_id != action.actor
                         ),
+                    ),
+                    # The placed card (Usurp) went to a space whose Influence
+                    # requirement it cannot meet, on the promise of a partner
+                    # that ignores the requirements [Immortality p. 10]: only
+                    # such a partner may follow (absent otherwise).
+                    *(
+                        ((GRAFT_PARTNER_WAIVES_INFLUENCE_KEY, True),)
+                        if not card_ignores_influence_requirements(card)
+                        and influence_requirement_unmet(state, owner, space)
+                        else ()
                     ),
                     # Whether the placed card reached this space on its own,
                     # decided here because the partner choice cannot re-derive
@@ -1029,6 +1055,19 @@ def _can_afford(player: PlayerState, cost: ResourceCost) -> bool:
         and player.resources.spice >= cost.spice
         and player.resources.water >= cost.water
     )
+
+
+GRAFT_PARTNER_WAIVES_INFLUENCE_KEY = "partner_waives_influence"
+"""Graft partner frame key: the partner must ignore Influence requirements,
+since the placed card reached a space whose requirement is unmet only on
+that promise (Usurp with Undercover Asset, [Immortality p. 10])."""
+
+
+def card_ignores_influence_requirements(card: PersonalCardDefinition) -> bool:
+    """Whether the card's placement ignores Influence requirements
+    (Undercover Asset [card face])."""
+
+    return isinstance(card, ImperiumCardEntry) and card.ignores_influence_requirements
 
 
 def influence_requirement_waived(

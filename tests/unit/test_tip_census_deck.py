@@ -453,19 +453,26 @@ def test_bond_plays_and_activations_are_consistent(
 
 
 def test_base_seed_3_seat_2_matches_the_hand_trace(tip_census: ModuleType) -> None:
+    # Re-traced 2026-10-07 for 5654d7f8 (a Combat Intrigue pass right after
+    # a card play no longer counts as a consecutive pass): seat 2 (Princess
+    # Irulan) buys 4, 6 and 7 cards in rounds 1-3, 4-6 and 7+, all with
+    # Persuasion (the free one is gone); Seek Allies trashes itself in round
+    # 1 and the Signet Ring trashes a Dagger in round 7; the 17 bought cards
+    # come back to hand in 26 later rounds. An independent replay recounted
+    # these from the acquire and trash events and the hands, step by step.
     census = tip_census.play(_spec(False, 3), ("deck",))
     row = census["seats"][2]
     assert row["deck.buys"] == 17
-    assert row["deck.buys_r1_3"] == 5
+    assert row["deck.buys_r1_3"] == 4
     assert row["deck.buys_r4_6"] == 6
-    assert row["deck.buys_r7p"] == 6
-    assert row["deck.buys_by_payment"] == {"persuasion": 16, "free": 1}
+    assert row["deck.buys_r7p"] == 7
+    assert row["deck.buys_by_payment"] == {"persuasion": 17}
     assert row["deck.trash_chosen"] == 1
     assert row["deck.trash_starters"] == 1
     assert row["deck.self_trashes"] == 1
     assert row["deck.first_trash_round"] == 7
     assert row["deck.trashed"] == {"dagger": 1}
-    assert row["deck.exposure"] == pytest.approx(19 / 17)
+    assert row["deck.exposure"] == pytest.approx(26 / 17)
 
 
 # ---------------------------------------------------------------------------

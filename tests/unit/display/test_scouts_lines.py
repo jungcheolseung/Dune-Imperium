@@ -300,7 +300,12 @@ def test_enabled_lines_are_exactly_the_legal_line_actions(
 ) -> None:
     seen: set[str] = set()
     disabled = 0
-    for seed in range(4):
+    # Seeds 0-4. With Immortality, seed 0's random walk reached a High Council
+    # subcommittee until 5654d7f8 (a Combat Intrigue pass right after a card
+    # play no longer counts as a consecutive pass, 2026-10-07); seed 2's then
+    # did until c80d719e (a lone participant's pass after playing ends Combat
+    # Intrigue), and seed 4 is the first that reaches one now.
+    for seed in range(5):
         state = ENGINE.reset(config, seed)
         resolver = ChanceResolver(seed=seed)
         rng = random.Random(seed)

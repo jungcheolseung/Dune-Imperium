@@ -66,7 +66,18 @@ from common import REPO, Check, chrome, open_context, server, set_rule_options
 from open_mode import settled
 
 check = Check()
-SEEDS = (21, 58, 31, 44)
+# Seed 21: unpayable lines, skipped choices, Critical Moment's two cards and
+# the open call; seed 58: the sealed bid. The secret pick (its four buttons
+# and the seat's own waiting pick) and Critical Moment's three cards came
+# from seeds 31 and 44 until the codec v139 general-rules rulings
+# (2026-10-07: Combat Intrigue pass counting, Conflict rewards paid one
+# recipient at a time) moved both games off them (seed 31 now shows two
+# cards, seed 44 offers no pick). A scan of seeds 1-120 through
+# GameSessionManager (one human seat playing CHOOSE_JS's policy against three
+# heuristic seats, CHOAM only) finds seed 64 first with all three: its seat is
+# offered the four pick buttons, holds its own pick for the next 27 views,
+# and meets a three-card market.
+SEEDS = (21, 58, 64)
 # COUNCIL_JS's walk takes a council seat with a subcommittee still to join
 # (round 4; the list then offers two joins and the decline). Seed 21 until
 # OQ-095's explicit Agent-turn end moved its seat to round 7, when every

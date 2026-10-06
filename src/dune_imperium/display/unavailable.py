@@ -222,10 +222,8 @@ from dune_imperium.rules.sardaukar import (
     skill_choice_block,
 )
 from dune_imperium.rules.spies import (
-    gather_intelligence_draw_available,
     legal_gather_intelligence_actions,
 )
-from dune_imperium.rules.spy_moves import connected_post_ids
 from dune_imperium.rules.spy_placement import solo_occupied_post_ids
 from dune_imperium.rules.tech import tech_candidates
 from dune_imperium.rules.tleilaxu_row import (
@@ -2005,31 +2003,6 @@ def _why(reason: Reason) -> dict[str, object]:
     return {"reason": reason[0], "reason_ko": reason[1], "code": reason[2]}
 
 
-def _gather_intelligence(state: GameState, seat: int, found: _Found) -> None:
-    """Explain the existing empty-piles block in the immediate Spy window."""
-
-    if gather_intelligence_draw_available(state, seat):
-        return
-    _, context = current_agent_effect_context(state)
-    space_id = context.get("space_id")
-    if not isinstance(space_id, str):
-        return
-    posts = connected_post_ids(space_id)
-    for post_id in state.players[seat].spy_post_ids:
-        if post_id not in posts:
-            continue
-        found.row(
-            "choice",
-            f"gather_intelligence:{post_id}",
-            DomainAction(
-                action_id="gather_intelligence",
-                actor=seat,
-                arguments=(("post_id", post_id),),
-            ),
-            _NO_CARD_TO_DRAW,
-        )
-
-
 def unavailable_choices(
     state: GameState, seat: int, legal: tuple[DomainAction, ...]
 ) -> dict[str, object] | None:
@@ -2059,8 +2032,10 @@ def unavailable_choices(
     if legal_gather_intelligence_actions(state, seat):
         # Gather Intelligence replaces the Agent-effect frame's whole list
         # while it is pending (``legal_agent_effect_frame_actions``): the
-        # waiting Agent box and the Intrigue cards come back after it.
-        collectors = (_gather_intelligence,)
+        # waiting Agent box and the Intrigue cards come back after it. Its
+        # recall is offered even with both personal piles empty (OQ-099), so
+        # nothing in the window is greyed out.
+        collectors = ()
     found = _Found()
     for collect in collectors:
         collect(state, seat, found)

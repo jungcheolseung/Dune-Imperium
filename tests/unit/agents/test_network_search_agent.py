@@ -305,7 +305,18 @@ def test_a_reversible_move_cannot_stall_a_search_seat(
     config = RulesetConfig(immortality=True)
     path = _checkpoint(tmp_path, config)
     engine = UprisingRulesEngine()
-    state = _switch_offered(config, seed=1)
+    # Seed 4 (round 8, seat 2: Experimentation grafted). Seed 1 served until
+    # 5654d7f8 (a Combat Intrigue pass right after a card play no longer
+    # counts as a consecutive pass, 2026-10-07) moved its game to a For
+    # Humanity / Face Dancer pair whose two lead cards offer different moves
+    # (an Influence choice against a single effect): the observation is the
+    # same after a switch but the legal set is not, so the guard lets the
+    # switch back through, refuses the repeat, and a later decision of the
+    # same turn offers the switch once more -- 3 switches, still no stall.
+    # Seeds 2 and 3 are the same kind; 4 is the first from 1 whose switch
+    # leaves both the observation and the legal set unchanged, the case the
+    # assertion below describes.
+    state = _switch_offered(config, seed=4)
     decision = engine.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     seat = decision.owner

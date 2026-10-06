@@ -8,6 +8,7 @@ from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
     DecisionFrame,
+    DomainAction,
     GamePhase,
     GameState,
     PlayerDecision,
@@ -134,6 +135,51 @@ def test_unconnected_spy_does_not_open_gather_intelligence_window() -> None:
     state = apply_agent_action(state, action).state
 
     assert legal_gather_intelligence_actions(state, 0) == ()
+
+
+def test_gather_intelligence_recalls_with_both_piles_empty() -> None:
+    """docs/rules/uprising-systems.md: "`Gather Intelligence`: Agent를 space에
+    놓은 직후, board space와 Agent card의 효과를 받기 전에 연결된 자기 Spy를
+    recall하면 card 1장을 draw한다." [Main p. 11]. With both personal piles
+    empty the recall is still offered and the draw finds nothing (OQ-099,
+    user ruling 2026-10-07 "허용 (앱처럼)"); the recall counts for "If you
+    recalled a Spy this turn" (OQ-101)."""
+
+    state, _ = _placed_state()
+    owner = replace(state.players[0], deck=(), discard_pile=())
+    state = replace(state, players=(owner, *state.players[1:]))
+    engine = UprisingRulesEngine()
+
+    gather = DomainAction(
+        action_id="gather_intelligence",
+        actor=0,
+        arguments=(("post_id", ASSEMBLY_POST),),
+    )
+    assert gather in legal_gather_intelligence_actions(state, 0)
+    finished = engine.apply(state, gather).state
+
+    assert finished.players[0].hand == ()
+    assert finished.players[0].spy_post_ids == ()
+    assert finished.players[0].spies_supply == 3
+    assert finished.players[0].spies_recalled_turn == 1
+    assert not legal_gather_intelligence_actions(finished, 0)
+
+
+def test_gaius_helen_mohiam_must_gather_with_both_piles_empty() -> None:
+    """Clandestine: "Whenever you could recall a Spy to Gather Intelligence,
+    you must" [Gaius Helen Mohiam card]. An empty deck and discard pile no
+    longer stop the recall (OQ-099, user ruling 2026-10-07), so she must
+    make it then too."""
+
+    state, _ = _placed_state()
+    owner = replace(
+        state.players[0], leader_id="gaius_helen_mohiam", deck=(), discard_pile=()
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    assert [
+        action.action_id for action in legal_gather_intelligence_actions(state, 0)
+    ] == ["gather_intelligence"]
 
 
 def test_gather_intelligence_reshuffles_discard_before_drawing() -> None:

@@ -765,11 +765,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
         face_up_contract_ids=tuple(market),
         sardaukar_contract_ids=sardaukar_set_aside,
         decision_stack=remaining_stack,
-        combat_rewards_resolved=(
-            not remaining_stack
-            if state.phase is GamePhase.COMBAT
-            else state.combat_rewards_resolved
-        ),
+        combat_rewards_resolved=_combat_rewards_done(state, remaining_stack),
     )
     events = [
         GameEvent(
@@ -917,13 +913,8 @@ def hold_contract_icons(state: GameState) -> RuleResult:
         players=replace_player(
             state.players, replace(owner, held_contract_icons=held)
         ),
-        # Like every Conflict reward frame: the rewards are resolved once
-        # the last frame closes, or the engine would deal them again.
-        combat_rewards_resolved=(
-            not remaining_stack
-            if state.phase is GamePhase.COMBAT
-            else state.combat_rewards_resolved
-        ),
+        # Like every Conflict reward frame (``combat_rewards_done``).
+        combat_rewards_resolved=_combat_rewards_done(state, remaining_stack),
     )
     return RuleResult(
         state=next_state,
@@ -951,6 +942,19 @@ def held_contract_icons_can_open(state: GameState, player: int) -> bool:
     )
 
 
+def _combat_rewards_done(
+    state: GameState, remaining: tuple[DecisionFrame, ...]
+) -> bool:
+    """``combat_rewards_resolved`` after a frame closes (Combat only)."""
+
+    if state.phase is not GamePhase.COMBAT:
+        return state.combat_rewards_resolved
+    # Imported here: ``combat`` imports this module for its contract frames.
+    from dune_imperium.rules.combat import combat_rewards_done
+
+    return combat_rewards_done(state, remaining)
+
+
 def combat_held_contract_owner(state: GameState) -> int | None:
     """A seat whose Conflict rewards are all resolved with icons still held.
 
@@ -962,20 +966,25 @@ def combat_held_contract_owner(state: GameState) -> int | None:
     event, never carried into a later turn nor dropped silently. The Combat
     phase is no turn [Main p. 8], so no turn-end press would close it.
 
-    The rewards' frames are dealt together, each seat's in a block
-    (``resolve_combat_rewards``), and what they set off for the seat (the
-    Immediate's Intrigue trash, an owed Intrigue draw, a queued Navigation
-    play, Skill choice, track Spy or Friends Everywhere bonus) is the seat's
-    too. So the seat is done once it owns no frame on the stack and nothing
-    is queued for it, and no chance step is pending (a reshuffle may still
-    bring it an Intrigue card). None before the rewards are dealt. A Combat
+    The rewards are dealt one recipient at a time (``resolve_combat_rewards``),
+    and what a recipient's frames set off for the seat (the Immediate's
+    Intrigue trash, an owed Intrigue draw, a queued Navigation play, Skill
+    choice, track Spy or Friends Everywhere bonus) is the seat's too. So the
+    seat is done once it owns no frame on the stack and nothing is queued
+    for it, and no chance step is pending (a reshuffle may still bring it an
+    Intrigue card); its icons then fizzle before the next recipient is paid.
+    None before the first reward is dealt. A Combat
     Intrigue's icons are never held: they fizzle as the card resolves
     (``apply_contract_fizzle``).
     """
 
     if state.phase is not GamePhase.COMBAT or not state.combat_intrigue_complete:
         return None
-    if not state.decision_stack and not state.combat_rewards_resolved:
+    if (
+        not state.decision_stack
+        and not state.combat_rewards_resolved
+        and not state.combat_rewards_paid
+    ):
         return None
     top = state.decision_stack[-1] if state.decision_stack else None
     if top is not None and not isinstance(top.decision, PlayerDecision):
@@ -1146,11 +1155,7 @@ def _gain_exhausted_market_solari(
     next_state = replace(
         state,
         players=players,
-        combat_rewards_resolved=(
-            not state.decision_stack
-            if state.phase is GamePhase.COMBAT
-            else state.combat_rewards_resolved
-        ),
+        combat_rewards_resolved=_combat_rewards_done(state, state.decision_stack),
     )
     event = GameEvent(
         event_id=f"{source}:contract_market_exhausted:{player}:{count}",
@@ -1448,11 +1453,7 @@ def apply_contract_intrigue_trash(
             state,
             players=replace_player(state.players, next_owner),
             decision_stack=remaining,
-            combat_rewards_resolved=(
-                not remaining
-                if state.phase is GamePhase.COMBAT
-                else state.combat_rewards_resolved
-            ),
+            combat_rewards_resolved=_combat_rewards_done(state, remaining),
         ),
         card_id,
     )

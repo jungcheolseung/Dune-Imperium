@@ -162,9 +162,9 @@ def app_reward_run(run: DecisionRun) -> DecisionRun:
     card is then both the current Conflict (the app's ``CurrentConflict``
     until cleanup) and in the winner's icon list, a mid-window state ours
     never holds, so the copy is built without ``GameState``'s zone check.
-    Not mirrored: the app pays 2nd/3rd-place fixed rewards only after the
-    place-1 window (ours before); Uprising's 2nd/3rd rows carry no VP or
-    Influence.
+    The app pays 2nd/3rd-place rewards only after the place-1 window, and
+    so does ours since 2026-10-07 (OQ-102: one recipient at a time in rank
+    order); Uprising's 2nd/3rd rows carry no VP or Influence anyway.
     """
 
     state = run.ctx.state

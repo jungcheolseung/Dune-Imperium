@@ -75,6 +75,23 @@ def test_a_human_game_pauses_on_the_human_decision() -> None:
     assert manager.summary(_text(summary["game_id"])) == summary
 
 
+def test_every_seat_view_serializes_the_shared_deck_sizes() -> None:
+    """ "개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다."
+    (docs/rules/information-visibility.md, project convention): the browser
+    shows the face-down Imperium and Intrigue decks' sizes to every seat."""
+
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, game_seed=13)
+    game_id = _text(summary["game_id"])
+    state = manager._get(game_id).state
+    assert state.imperium_deck and state.intrigue_deck
+    for seat in range(4):
+        view = manager.view(game_id, seat)
+        assert view["imperium_deck_size"] == len(state.imperium_deck)
+        assert view["intrigue_deck_size"] == len(state.intrigue_deck)
+        assert "imperium_deck" not in view and "intrigue_deck" not in view
+
+
 def test_only_human_seats_expose_views_and_actions() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)

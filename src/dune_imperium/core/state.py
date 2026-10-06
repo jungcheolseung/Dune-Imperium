@@ -44,6 +44,11 @@ class GameState:
     current_conflict_ids: tuple[str, ...] = ()
     combat_intrigue_complete: bool = False
     combat_rewards_resolved: bool = False
+    # Ranked Conflict reward recipients already paid in the current Combat.
+    # Rewards are handed out one recipient at a time in rank order, each
+    # recipient's choices answered before the next is paid (user ruling
+    # 2026-10-07); ``combat_rewards_resolved`` follows the last one.
+    combat_rewards_paid: int = 0
     # Whether the Conflict-end trigger window (Harvest Cells, played only
     # after the rewards, OQ-057 (11)) has been offered for the current Combat.
     combat_end_triggers_offered: bool = False

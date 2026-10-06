@@ -174,6 +174,13 @@ class PlayerView:
     combat_intrigue_complete: bool = False
     combat_rewards_resolved: bool = False
     imperium_row: tuple[str, ...] = ()
+    # Cards left in the face-down Imperium deck and Intrigue deck: their
+    # order and identity stay hidden, but every shared deck's count is public
+    # ("개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다."
+    # docs/rules/information-visibility.md, a project convention; the decks
+    # are face down [Main p. 4]). Shown to the server and the UI; not encoded.
+    imperium_deck_size: int = 0
+    intrigue_deck_size: int = 0
     imperium_removed: tuple[str, ...] = ()
     # Intrigue cards already played (hence revealed [Main p. 7]) whose
     # choices are still being resolved; they stay in the owner's held set
@@ -508,6 +515,8 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         combat_intrigue_complete=state.combat_intrigue_complete,
         combat_rewards_resolved=state.combat_rewards_resolved,
         imperium_row=state.imperium_row,
+        imperium_deck_size=len(state.imperium_deck),
+        intrigue_deck_size=len(state.intrigue_deck),
         imperium_removed=state.imperium_removed,
         intrigue_resolving=resolving_intrigue_ids(state),
         intrigue_discard=state.intrigue_discard,

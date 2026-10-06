@@ -1,4 +1,4 @@
-"""Influence cost/reward icons and an empty Gather Intelligence explanation.
+"""Influence cost/reward icons and Gather Intelligence with empty piles.
 
 The checkout's engine plays Tenuous Bond and places an Agent watched by a
 Spy. Its real server payloads are rendered in both languages. Render-only
@@ -191,40 +191,23 @@ def main() -> None:
                     "fixture": fixtures[pile], "language": language, "logs": None,
                 })
                 grey = page.locator("#choice-probe .unavailable-item")
+                # OQ-099 (user ruling 2026-10-07): the recall is offered even
+                # when both piles are empty, so every pile shows Decline and
+                # the connected Spy's Gather, nothing greyed out.
+                check.ok(
+                    grey.count() == 0
+                    and page.locator("#choice-probe > .action-item").count() == 2,
+                    f"{language} {pile}: Gather is offered beside Decline",
+                )
                 if pile == "empty":
-                    reason = ("덱과 버린 카드 더미가 모두 비었음" if language == "ko"
-                              else "your deck and discard pile are both empty")
-                    check.ok(
-                        grey.count() == 1
-                        and grey.get_attribute("aria-disabled") == "true"
-                        and reason in grey.inner_text(),
-                        f"{language}: the Spy's draw explains both empty piles",
-                    )
-                    check.ok(
-                        len(fixtures[pile]["actions"]["actions"]) == 1
-                        and page.locator(
-                            "#choice-probe > .action-item:not(.unavailable-item)"
-                        )
-                        .count() == 1,
-                        f"{language}: only Decline remains selectable",
-                    )
-                    posts = page.evaluate("""state.actions.unavailable.rows.map(
-                        row => row.action.arguments.post_id)""")
+                    posts = [
+                        action["arguments"].get("post_id")
+                        for action in fixtures[pile]["actions"]["actions"]
+                        if action["action_id"] == "gather_intelligence"
+                    ]
                     check.ok(
                         posts == ["landsraad-assembly-hall-gather-support"],
                         f"{language}: the unrelated Spy is not offered",
-                    )
-                    before = len(recorder.requests)
-                    grey.click(force=True)
-                    check.ok(
-                        len(recorder.requests) == before,
-                        f"{language}: the disabled choice sends no request",
-                    )
-                else:
-                    check.ok(
-                        grey.count() == 0
-                        and page.locator("#choice-probe > .action-item").count() == 2,
-                        f"{language} {pile}: Gather returns with a card in either pile",
                     )
                 page.locator("#choice-probe").screenshot(
                     path=str(SHOTS / f"gather_{language}_{pile}.png")

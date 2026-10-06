@@ -1118,6 +1118,70 @@ def test_chairdog_returns_the_other_grafted_card_when_the_reveal_starts() -> Non
     )
 
 
+def test_chairdog_trashed_first_by_its_partner_still_returns_the_partner() -> None:
+    """Adopted designer ruling (docs/rules/designer-rulings-audit.md):
+    "Chairdog: graft 시점에 좌석에 기록되므로 Chairdog가 먼저 trash돼도
+    되돌림" -- the return is recorded on the seat when Chairdog is grafted,
+    so the partner returns even if Chairdog is trashed first. [Immortality
+    p. 11]: "At the start of her Reveal turn that round, she returns Arrakis
+    Liaison to her hand (and then immediately reveals it)." Dissecting Kit's
+    box resolves first and trashes Chairdog, whose own box then expires
+    (OQ-022); Dissecting Kit still comes back at the start of the Reveal
+    turn. Until 2026-10-07 the return was recorded only by Chairdog's box,
+    so nothing came back."""
+
+    chairdog = _tleilaxu("chairdog")
+    kit = "imperium:dissecting_kit:0"
+    grafted = _graft(_state(_owner((kit, chairdog))), kit, "arrakeen", chairdog)
+    # Recorded as the pair is grafted, before either box resolves.
+    assert grafted.players[0].chairdog_return_card_ids == (kit,)
+
+    trashed = apply_agent_card_payment(
+        grafted, _payment(grafted, "trash_grafted_card_for_specimen")
+    ).state
+    owner = trashed.players[0]
+    assert chairdog in owner.trashed and chairdog not in owner.in_play
+    _, context = current_agent_effect_context(trashed)
+    assert context["graft_pending_effect"] is False  # Chairdog's box expired
+    assert owner.chairdog_return_card_ids == (kit,)
+
+    closed = _engine_finish_turn(trashed)
+    state = replace(
+        closed,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0b",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    revealed = begin_reveal_turn(state, DomainAction("reveal_turn", 0))
+    assert revealed.events[0].kind == "card_returned_to_hand"
+    assert dict(revealed.events[0].payload)["card_id"] == kit
+    context = dict(revealed.state.decision_stack[-1].context)
+    assert kit in {
+        value for key, value in context.items() if key.startswith("revealed_card_")
+    }
+    assert revealed.state.players[0].chairdog_return_card_ids == ()
+
+
+def test_ghola_grafted_to_chairdog_returns_both_cards() -> None:
+    """Ghola "has the same Agent box as the other grafted card" [Ghola card
+    face], so grafted to Chairdog its box returns Chairdog as Chairdog's
+    returns Ghola. Both returns are recorded at the graft (adopted designer
+    ruling, docs/rules/designer-rulings-audit.md) and resolving the boxes
+    records nothing twice."""
+
+    chairdog = _tleilaxu("chairdog")
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(_state(_owner((chairdog, ghola))), chairdog, "arrakeen", ghola)
+    assert grafted.players[0].chairdog_return_card_ids == (ghola, chairdog)
+    first = resolve_agent_card_effect(grafted).state
+    resolved = resolve_agent_card_effect(_switch(first))
+    assert resolved.state.players[0].chairdog_return_card_ids == (ghola, chairdog)
+
+
 def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> None:
     usurp = _tleilaxu("usurp")
     occupation = "imperium:occupation:0"
@@ -1575,6 +1639,116 @@ def test_usurp_is_offered_only_where_a_partner_can_follow() -> None:
         dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
     }
     assert occupation in partners and infiltrator in partners
+
+
+UNDERCOVER_ASSET = "imperium:undercover_asset:0"
+STEERSMAN = "imperium:steersman:0"
+
+
+def _usurp_spaces(state: GameState) -> set[str]:
+    return {
+        str(dict(a.arguments)["space_id"])
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["card_id"] == _tleilaxu("usurp")
+    }
+
+
+def _row_without(*cards: str) -> tuple[str, ...]:
+    return tuple(
+        card
+        for card in imperium_deck_instance_ids(False)
+        if card not in cards
+        and not any(
+            card.startswith(prefix)
+            for prefix in ("imperium:undercover_asset:", "imperium:steersman:")
+        )
+    )
+
+
+def test_usurp_with_undercover_asset_ignores_the_influence_requirements() -> None:
+    """ "Both played cards are considered to have “sent” the Agent, no
+    matter which card’s icon you use." and "You gain the effects on both
+    cards, in addition to the board space effects, in any order you
+    choose." [Immortality p. 10] (docs/rules/immortality.md, Graft).
+    Undercover Asset ignores Influence requirements [card face], so Usurp
+    grafted to it from the Imperium Row reaches Imperial Privilege (Emperor
+    2) and Sietch Tabr (Fremen 2) with no Influence, and there only
+    Undercover Asset may be the partner; Steersman reaches the same spaces
+    by icon but waives nothing. Until 2026-10-07 the waiver was read from
+    the placed card (Usurp) only."""
+
+    usurp = _tleilaxu("usurp")
+    rest = _row_without()
+    state = _state(
+        _owner((usurp,)),
+        imperium_row=(UNDERCOVER_ASSET, STEERSMAN, *rest[:3]),
+        imperium_deck=rest[3:18],
+    )
+    assert state.players[0].influence.emperor == 0
+    assert state.players[0].influence.fremen == 0
+    spaces = _usurp_spaces(state)
+    assert {"imperial_privilege", "sietch_tabr", "assembly_hall"} <= spaces
+
+    for space_id in ("imperial_privilege", "sietch_tabr"):
+        placed = _place(state, usurp, space_id, graft=True)
+        partners = [
+            dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+        ]
+        assert partners == [UNDERCOVER_ASSET]
+    # A space without a requirement keeps every partner that reaches it.
+    open_space = _place(state, usurp, "assembly_hall", graft=True)
+    partners = [
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(open_space, 0)
+    ]
+    assert UNDERCOVER_ASSET in partners and STEERSMAN in partners
+
+    grafted = _graft(state, usurp, "imperial_privilege", UNDERCOVER_ASSET)
+    owner = grafted.players[0]
+    assert "imperial_privilege" in owner.agent_locations
+    assert UNDERCOVER_ASSET in owner.in_play
+    assert owner.usurped_row_card_id == UNDERCOVER_ASSET
+
+
+def test_usurp_with_only_partners_that_respect_the_requirements_stays_barred() -> (
+    None
+):
+    """The same [Immortality p. 10] reading with no partner that ignores
+    Influence requirements: Steersman's Landsraad and City icons reach
+    Imperial Privilege and Sietch Tabr, but with no Emperor or Fremen
+    Influence neither space is offered to Usurp."""
+
+    usurp = _tleilaxu("usurp")
+    rest = _row_without()
+    state = _state(
+        _owner((usurp,)),
+        imperium_row=(STEERSMAN, *rest[:4]),
+        imperium_deck=rest[4:19],
+    )
+    spaces = _usurp_spaces(state)
+    assert "imperial_privilege" not in spaces
+    assert "sietch_tabr" not in spaces
+    assert "assembly_hall" in spaces
+
+
+def test_a_hand_graft_with_undercover_asset_places_undercover_asset() -> None:
+    """[Immortality p. 10]: both grafted cards sent the Agent. Two hand
+    cards need no partner rule of their own: Undercover Asset, the one card
+    that ignores Influence requirements, carries the Landsraad, City and
+    Spice Trade icons of every space that has one, so it is placed with the
+    Graft card (Slig Farmer, Landsraad) as its partner. Slig Farmer itself
+    is not placed on Imperial Privilege without Emperor Influence."""
+
+    slig = _tleilaxu("slig_farmer")
+    state = _state(_owner((slig, UNDERCOVER_ASSET)))
+    placements = {
+        (dict(a.arguments)["card_id"], dict(a.arguments).get("graft") is True)
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["space_id"] == "imperial_privilege"
+    }
+    assert (UNDERCOVER_ASSET, True) in placements
+    assert all(card != slig for card, _ in placements)
+    grafted = _graft(state, UNDERCOVER_ASSET, "imperial_privilege", slig)
+    assert slig in grafted.players[0].in_play
 
 
 def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> None:

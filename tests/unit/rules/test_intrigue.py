@@ -2104,12 +2104,27 @@ def test_weirding_combat_adds_two_more_with_three_bene_gesserit() -> None:
 
 
 def test_playing_combat_intrigue_restarts_the_consecutive_pass_count() -> None:
+    """ "전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고
+    Combat를 해결한다." [Main p. 14] (docs/rules/combat-and-round-end.md §2).
+    "each player with at least one unit in the Conflict may play any number
+    of Combat Intrigue cards, or may pass. ... Once all players involved in
+    Combat pass consecutively, you then resolve the Combat." [Main p. 14]
+
+    The worked example [Main p. 15]: "John ... passes on the chance to play a
+    Combat Intrigue card. Abby is next, and does play an Intrigue card,
+    Contingency Plan. ... It's now back to John. Even though he passed
+    earlier in this phase, he could now decide to play an Intrigue card. ...
+    He passes again. Abby, satisfied with her victory, also passes."
+    Abby's hand-over after playing is not a pass, so John's second pass
+    leaves her the last decision. Until codec v139 the hand-over counted as
+    the first consecutive pass and John's second pass resolved Combat."""
+
     card = _intrigue("weirding_combat")
-    first = PlayerState(
+    john = PlayerState(
         player_id=0, troops_supply=11, troops_garrison=0, troops_conflict=1,
         combat_strength=2,
     )
-    second = PlayerState(
+    abby = PlayerState(
         player_id=1,
         intrigue_cards=(card,),
         troops_supply=11,
@@ -2117,21 +2132,75 @@ def test_playing_combat_intrigue_restarts_the_consecutive_pass_count() -> None:
         troops_conflict=1,
         combat_strength=2,
     )
-    state = _combat_state(first, second)
+    state = _combat_state(john, abby)
     engine = UprisingRulesEngine()
 
     passed = engine.apply(state, _pass(0)).state
     assert dict(passed.decision_stack[-1].context)["consecutive_passes"] == 1
-    play_as_second = DomainAction(
+    play_as_abby = DomainAction(
         action_id="play_intrigue", actor=1, arguments=(("card_id", card), ("option", 0))
     )
-    played = engine.apply(passed, play_as_second).state
+    played = engine.apply(passed, play_as_abby).state
     assert dict(played.decision_stack[-1].context)["consecutive_passes"] == 0
-    # Both players must pass again in a row before Combat resolves.
-    once = engine.apply(played, _pass(1)).state
-    assert once.decision_stack[-1].kind == "combat_intrigue"
-    twice = engine.apply(once, _pass(0)).state
-    assert twice.combat_intrigue_complete is True
+    # Abby hands priority back to John: not a pass.
+    handed = engine.apply(played, _pass(1)).state
+    assert handed.combat_intrigue_complete is False
+    assert dict(handed.decision_stack[-1].context)["consecutive_passes"] == 0
+    assert handed.decision_stack[-1].decision.owner == 0  # type: ignore[union-attr]
+    # John passes again; Abby still decides.
+    john_again = engine.apply(handed, _pass(0)).state
+    assert john_again.combat_intrigue_complete is False
+    assert john_again.decision_stack[-1].kind == "combat_intrigue"
+    assert john_again.decision_stack[-1].decision.owner == 1  # type: ignore[union-attr]
+    assert engine.legal_actions(john_again, 1) == (_pass(1),)
+    done = engine.apply(john_again, _pass(1)).state
+    assert done.combat_intrigue_complete is True
+
+
+def test_a_combat_intrigue_player_decides_again_after_every_other_seat_passes() -> (
+    None
+):
+    """ "Once all players involved in Combat pass consecutively, you then
+    resolve the Combat." [Main p. 14] (docs/rules/combat-and-round-end.md
+    §2: "전투 참여자 전원이 **연속으로** pass했을 때만 ..."). With three
+    participants, seat 0 plays and hands priority on; seats 1 and 2 pass,
+    and seat 0 still gets a decision before Combat resolves, as Abby does
+    in the worked example [Main p. 15]."""
+
+    card = _intrigue("weirding_combat")
+    state = _combat_state(
+        _fighter(0, 1, intrigue_cards=(card,)), _fighter(1, 1), _fighter(2, 1)
+    )
+    engine = UprisingRulesEngine()
+
+    played = engine.apply(state, _play(state, card)).state
+    handed = engine.apply(played, _pass(0)).state
+    assert handed.decision_stack[-1].decision.owner == 1  # type: ignore[union-attr]
+    once = engine.apply(handed, _pass(1)).state
+    twice = engine.apply(once, _pass(2)).state
+    assert twice.combat_intrigue_complete is False
+    top = twice.decision_stack[-1]
+    assert top.kind == "combat_intrigue"
+    assert top.decision.owner == 0  # type: ignore[union-attr]
+    assert dict(top.context)["consecutive_passes"] == 2
+    done = engine.apply(twice, _pass(0)).state
+    assert done.combat_intrigue_complete is True
+
+
+def test_a_lone_combat_intrigue_participant_passes_once_after_playing() -> None:
+    """ "Once all players involved in Combat pass consecutively, you then
+    resolve the Combat." [Main p. 14]. With one participant its next
+    opportunity would be its own again with nothing in between, so the pass
+    after playing ends the Combat Intrigue step at once."""
+
+    card = _intrigue("weirding_combat")
+    state = _combat_state(_fighter(0, 1, intrigue_cards=(card,)))
+    engine = UprisingRulesEngine()
+
+    played = engine.apply(state, _play(state, card)).state
+    assert played.combat_intrigue_complete is False
+    done = engine.apply(played, _pass(0)).state
+    assert done.combat_intrigue_complete is True
 
 
 def test_questionable_methods_sword_is_automatic_and_the_influence_line_optional() -> (
@@ -4130,7 +4199,64 @@ def test_manipulate_sets_a_row_card_aside_for_its_owner() -> None:
         _imperium_instance("steersman"),
     )
     assert done.players[0].imperium_set_aside == (cheap,)
-    assert done.intrigue_discard == (card,)
+    # The discount waits for the Reveal turn, so the card stays face up
+    # [FAQ p. 2] (see the next test).
+    assert done.intrigue_discard == ()
+    assert done.players[0].intrigue_faceup == (card,)
+
+
+def test_manipulate_stays_face_up_until_its_owners_reveal_turn_ends() -> None:
+    """ "다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의
+    앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]"
+    (docs/rules/player-turns.md). [FAQ p. 2]: "If the card does something
+    that won't apply until your next Reveal turn (for example: Charisma,
+    Recruitment Mission), keep it face up in front of you until then, then
+    use and discard it." Manipulate's set-aside card is acquirable at a
+    discount until the end of the owner's Reveal turn this round [FAQ p. 3],
+    so the card stays face up through that Reveal and is discarded as it
+    ends. Until 2026-10-07 it went straight to the Intrigue discard."""
+
+    card = _intrigue("manipulate")
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    played = engine.apply(
+        opened,
+        DomainAction(
+            action_id="manipulate_imperium_row",
+            actor=0,
+            arguments=(("instance_id", cheap),),
+        ),
+    )
+    done = played.state
+    assert done.players[0].intrigue_cards == ()
+    assert done.players[0].intrigue_faceup == (card,)
+    assert card not in done.intrigue_discard
+    assert "intrigue_kept_faceup" in [event.kind for event in played.events]
+
+    revealed = engine.apply(done, _reveal(done)).state
+    assert revealed.players[0].intrigue_faceup == (card,)
+    acquire = DomainAction(
+        action_id="acquire_manipulated_imperium",
+        actor=0,
+        arguments=(("instance_id", cheap),),
+    )
+    assert acquire in engine.legal_actions(revealed, 0)
+    acquired = engine.apply(revealed, acquire).state
+    assert acquired.players[0].discard_pile == (cheap,)
+    assert acquired.players[0].intrigue_faceup == (card,)
+
+    finished = engine.apply(
+        acquired, DomainAction(action_id="finish_reveal", actor=0)
+    )
+    after = finished.state
+    assert after.players[0].intrigue_faceup == ()
+    assert after.intrigue_discard == (card,)
+    expired = [e for e in finished.events if e.kind == "intrigue_expired"]
+    assert [dict(e.payload)["card_id"] for e in expired] == [card]
 
 
 def test_manipulate_with_an_empty_deck_shrinks_the_row() -> None:
@@ -4372,7 +4498,10 @@ def test_a_combat_intrigue_that_opens_a_contract_market_restarts_the_passes() ->
     Reach Agreement leaves its Contract market above the Combat Intrigue
     loop when its play finishes; the play still restarts the pass count, so
     the seats that passed before it answer again. Before 2026-10-02 the
-    count stayed at two and seat 2's next pass ended Combat Intrigue."""
+    count stayed at two and seat 2's next pass ended Combat Intrigue.
+    Seat 2's pass after its play only hands priority on, so seat 2 decides
+    once more after seats 0 and 1 pass ("Abby, satisfied with her victory,
+    also passes." [Main p. 15]; until codec v139 seat 1's pass ended it)."""
 
     engine = UprisingRulesEngine()
     state, card = _reach_agreement_after_two_passes(2)
@@ -4391,7 +4520,10 @@ def test_a_combat_intrigue_that_opens_a_contract_market_restarts_the_passes() ->
     assert once.decision_stack[-1].decision.owner == 0  # type: ignore[union-attr]
     twice = engine.apply(once, _pass(0)).state
     assert twice.combat_intrigue_complete is False
-    done = engine.apply(twice, _pass(1)).state
+    thrice = engine.apply(twice, _pass(1)).state
+    assert thrice.combat_intrigue_complete is False
+    assert thrice.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+    done = engine.apply(thrice, _pass(2)).state
     assert done.combat_intrigue_complete is True
 
 

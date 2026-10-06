@@ -2316,7 +2316,8 @@ class AgentPaymentBlock(StrEnum):
     """
 
     # Ecological Testing Station's draw: deck and discard pile both empty,
-    # the gate Gather Intelligence uses (OQ-099).
+    # so the 2 water would buy nothing (OQ-071). Gather Intelligence is not
+    # gated this way: its recall is offered with both piles empty (OQ-099).
     NO_CARD_TO_DRAW = "no_card_to_draw"
     # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
     # track's last space, where it does nothing (OQ-048).
@@ -4471,17 +4472,24 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is (
         PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START
     ):
-        # Chairdog: the return is scheduled for the owner's Reveal turn
-        # (``begin_reveal_turn``); without a partner in play nothing is.
+        # Chairdog: the return to the hand at the start of the owner's Reveal
+        # turn (``begin_reveal_turn``) was already recorded on the seat when
+        # the pair was grafted (``graft.apply_graft_partner``; adopted
+        # designer ruling, docs/rules/designer-rulings-audit.md), so the box
+        # records nothing twice. Without a partner in play nothing returns.
         partner = other_grafted_card_id(context)
+        next_owner = owner
         if partner and partner in owner.in_play:
-            next_owner = replace(
-                owner,
-                chairdog_return_card_ids=(*owner.chairdog_return_card_ids, partner),
-            )
+            if partner not in owner.chairdog_return_card_ids:
+                next_owner = replace(
+                    owner,
+                    chairdog_return_card_ids=(
+                        *owner.chairdog_return_card_ids,
+                        partner,
+                    ),
+                )
             event_kind = "agent_card_effect_resolved"
         else:
-            next_owner = owner
             event_kind = "agent_card_effect_unavailable"
     elif effect is _RESEARCH_AND_TRASH_FOR_VP:
         if _box_researched(context, card_instance_id):

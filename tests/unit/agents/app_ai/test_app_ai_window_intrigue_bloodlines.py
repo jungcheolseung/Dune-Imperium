@@ -571,9 +571,18 @@ def test_twisted_shrewd_loses_a_conflict_unit() -> None:
 
 def _endgame(seat_cards: Sequence[str], *instances: str) -> GameState:
     """The first Endgame window, its seat holding ``instances`` and exactly
-    ``seat_cards`` face up (Objectives face down)."""
+    ``seat_cards`` face up (Objectives face down).
 
-    state = first_decision("endgame_intrigue", config=BLOODLINES, seed=3)
+    Seed 208. Seed 3 served until 5654d7f8 (a Combat Intrigue pass right
+    after a card play no longer counts as a consecutive pass, 2026-10-07)
+    moved its game: its Endgame now opens with Test of Loyalty unwon on the
+    Conflict stack, so no seat can hold it face up. Most seeds set some of
+    these tests' five Conflict cards aside at setup or leave one in the
+    deck or on the stack; 208 is the first from 3 where none is in a shared
+    zone.
+    """
+
+    state = first_decision("endgame_intrigue", config=BLOODLINES, seed=208)
     seat = _seat(state)
     for other in state.players:
         if other.player_id == seat:

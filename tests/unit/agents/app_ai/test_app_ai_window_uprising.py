@@ -187,20 +187,37 @@ SPY = _first("spy_placement", 1)
 # Seat 1 (Gurney), supply 3: Landsraad (High Council) 3.0, Fremen 3.0,
 # Emperor/Guild/BG 2.0, Assembly Hall 1.0, the rest 0.0.
 CONTRACT_SPY = _first("contract_reward_spy", 2)
-# Seat 3 (Jessica), supply 0, spies on Fremen 5.0, Shipping 4.0, BG 6.0;
-# empty Emperor post 7.0 (the best).
+# Round 7, seat 2 (Lady Amber Metulli), supply 0, spies on Hagga Basin 5.0,
+# Deep Desert 5.0, Emperor 3.0 (the worst); empty Landsraad (High Council)
+# post 6.0 (the best). Seed 14 reached this until 5654d7f8 (a Combat Intrigue
+# pass right after a card play no longer counts as a consecutive pass,
+# 2026-10-07) moved its game; of seeds 14-413 only 23, 262 and 356 reach it,
+# and 23 and 356 tie their worst spies (23 its best free posts too), which
+# would leave both answers to the shuffle.
 CONTRACT_SPY_RECALL = _first(
-    "contract_reward_spy", 14, lambda s, o: s.players[o].spies_supply == 0
+    "contract_reward_spy", 262, lambda s, o: s.players[o].spies_supply == 0
 )
 # Round 1, seat 0 (Feyd) at Dutiful Service: Arrakeen I 1.40625, Immediate 2.86.
 MARKET = _first("contract_market", 1)
-# Seat 3 completed Sardaukar II at Sardaukar: Arrakeen (combat, value 6.78)
-# and Secrets (BG; seat 3 has 1, seat 2 has 4) are offered.
+# Round 5, seat 1 (Gurney Halleck) completed Sardaukar II at Sardaukar, its
+# other Agents on Imperial Privilege and the Deep Desert; it has Bene
+# Gesserit 1, seat 0 has 3. The recall tests put those two Agents on Arrakeen
+# (combat, value 6.1581) and Secrets (BG, value 5.6581). Seed 7 reached
+# Arrakeen and Secrets themselves until 5654d7f8 (a Combat Intrigue pass
+# right after a card play no longer counts as a consecutive pass,
+# 2026-10-07) moved its game; of seeds 7-299 only 60 and 123 complete
+# Sardaukar II with two Agents to recall, neither on those two spaces, and
+# 60's top Bene Gesserit opponent (6) would still be three ahead of the BG
+# 3 that test_recall_otherwise_takes_the_lowest_space_value sets.
 RECALL = _first(
-    "contract_reward_recall", 7, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
+    "contract_reward_recall", 123, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
 )
-# Seat 2, one Agent left, hand: Weirding Woman, Dune, Steersman, Dune, TSMF.
-DISCARD = _first("opponent_card_discard", 7)
+# Round 10, seat 2 (Lady Amber Metulli), one Agent left, hand: Dune, Dune,
+# Convincing Argument, Leadership. Seed 7 reached a Covert Operation victim
+# with two Dunes until 5654d7f8 moved its game; 57 is the first seed from 7
+# whose victim has one Agent left, two Dunes leading its discard order and
+# room for the two-card hand below (37's victim holds a single Dune).
+DISCARD = _first("opponent_card_discard", 57)
 # Seat 1: top three Weirding Woman (1), Unswerving Loyalty (1), Signet Ring (0).
 LLTF = _first("long_live_fighters", 1)
 
@@ -292,10 +309,10 @@ def test_contract_spy_with_an_empty_supply_never_declines() -> None:
     _, legal = _run(CONTRACT_SPY_RECALL)
     assert _act("decline_contract_spy", seat) in legal
     recall = _answer(CONTRACT_SPY_RECALL)
-    assert recall == _act("recall_spy_for_contract", seat, post_id=POST_SHIPPING)
+    assert recall == _act("recall_spy_for_contract", seat, post_id=POST_EMPEROR)
     after = ENGINE.apply(CONTRACT_SPY_RECALL, recall).state
     assert after.decision_stack[-1].kind == "contract_reward_spy"
-    assert _answer(after) == _act("place_contract_spy", seat, post_id=POST_EMPEROR)
+    assert _answer(after) == _act("place_contract_spy", seat, post_id=POST_LANDSRAAD)
 
 
 # -- contract_market -------------------------------------------------------------------
@@ -436,11 +453,25 @@ def test_contract_market_without_a_positive_answer_picks_at_random() -> None:
 # -- contract_reward_recall ------------------------------------------------------------
 
 
-def test_recall_takes_the_trailing_faction_space_over_a_combat_space() -> None:
+def _arrakeen_and_secrets() -> GameState:
+    """RECALL with the two other Agents on Arrakeen and Secrets."""
+
     seat = _owner(RECALL)
-    assert RECALL.players[seat].agent_locations == ("arrakeen", "secrets", "sardaukar")
-    # Secrets: BG 1 vs 4 -> 75; Arrakeen: 50 - 6.78.
-    assert _answer(RECALL) == _act(
+    assert RECALL.players[seat].agent_locations == (
+        "imperial_privilege",
+        "deep_desert",
+        "sardaukar",
+    )
+    return with_player(
+        RECALL, seat, agent_locations=("arrakeen", "secrets", "sardaukar")
+    )
+
+
+def test_recall_takes_the_trailing_faction_space_over_a_combat_space() -> None:
+    state = _arrakeen_and_secrets()
+    seat = _owner(state)
+    # Secrets: BG 1 vs 3 -> 75; Arrakeen: 50 - 6.1581.
+    assert _answer(state) == _act(
         "recall_agent_for_contract", seat, space_id="secrets"
     )
 
@@ -457,10 +488,10 @@ def test_recall_prefers_a_factionless_non_combat_space() -> None:
 
 def test_recall_otherwise_takes_the_lowest_space_value() -> None:
     seat = _owner(RECALL)
-    # BG 3 vs 4: no longer trailing by 2. Secrets 50 - 4.75, Arrakeen
-    # 50 - 4.0979: the lower-valued Arrakeen scores higher.
+    # BG 3 vs 3: no longer trailing by 2. Secrets 50 - 9.9081, Arrakeen
+    # 50 - 6.1581: the lower-valued Arrakeen scores higher.
     state = with_player(
-        RECALL,
+        _arrakeen_and_secrets(),
         seat,
         influence=Influence(emperor=3, spacing_guild=1, bene_gesserit=3, fremen=2),
     )
@@ -504,7 +535,7 @@ def test_recall_with_nothing_positive_takes_the_first_agent_in_board_order() -> 
 
         profile.space_value_for_player = value  # type: ignore[method-assign]
 
-    # BG 3 vs 4: Secrets is no longer trailing; both 50 - 60 < 0.
+    # BG 3 vs 3: Secrets is no longer trailing; both 50 - 60 < 0.
     state = with_player(
         state,
         seat,

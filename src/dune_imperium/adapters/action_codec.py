@@ -311,7 +311,14 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # longer offered. Call to Arms is not offered in a Reveal with nothing left
 # to acquire, and Harvest Cells' Conflict-end window skips a copy that
 # could change nothing.
-ACTION_CODEC_VERSION = 138
+# v139 (Combat Intrigue hand-over, [Main pp. 14-15]): a seat that played a
+# Combat Intrigue card since priority last came to it hands priority on with
+# ``pass_combat_intrigue`` without that pass counting as one of the
+# consecutive passes, so in the rulebook's example Abby still decides after
+# John passes again. The Combat Intrigue frame marks such a seat
+# (``played_at_priority``); legal-action sequences change with no template
+# change, so saves and replays from v138 are refused by the version check.
+ACTION_CODEC_VERSION = 139
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

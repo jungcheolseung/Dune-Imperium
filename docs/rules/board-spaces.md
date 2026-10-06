@@ -13,9 +13,10 @@ troop 최대 2개를 Conflict에 deploy할 수 있다. 아래 각 행은 이 공
 반복하지 않는다. `[Board Guide p. 1]`
 
 한 space에 인쇄된 여러 아이콘은 각각 독립된 효과로, 방문자가 원하는 순서에
-하나씩 해결한다(`[Main p. 9]`; choose-one 줄과 문장형 효과의 단위 경계는
-[open-questions.md](open-questions.md)의 OQ-027). 아래 표의 "space 결과"는
-인쇄 순서대로 적는다.
+하나씩 해결한다. 아이콘마다 독립이라는 점과 choose-one 줄·문장형 효과의 단위
+경계는 [open-questions.md](open-questions.md)의 OQ-027 사용자 판정(2026-09-03)이고,
+공식 문장은 효과들의 자유 순서뿐이다("You may carry out all these effects in any
+order." `[Main p. 9]`). 아래 표의 "space 결과"는 인쇄 순서대로 적는다.
 
 ## Emperor
 
@@ -35,7 +36,7 @@ troop 최대 2개를 Conflict에 deploy할 수 있다. 아래 각 행은 이 공
 
 | space | 속성·진입 조건 | space 결과 | 출처 |
 | --- | --- | --- | --- |
-| Espionage | Bene Gesserit; cost 1 spice | Bene Gesserit Influence 1, card 1장 draw, Spy 1개를 배치할 수 있음. | `[Board Guide p. 1]` `[Main p. 11]` |
+| Espionage | Bene Gesserit; cost 1 spice | Bene Gesserit Influence 1, card 1장 draw, Spy 1개 배치("Draw a card and place a Spy."). supply에 Spy가 있고 빈 post가 있으면 배치는 의무다 — Main p. 11의 "may"는 디자이너가 오기로 정정했다([OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (14), [uprising-systems.md](uprising-systems.md)). supply가 비었을 때의 선행 recall만 선택이다. | `[Board Guide p. 1]` `[Main p. 11]` |
 | Secrets | Bene Gesserit | Bene Gesserit Influence 1, Intrigue 1장 draw. Intrigue를 4장 이상 가진 각 opponent에게서 무작위로 1장씩 받는다. | `[Board Guide p. 2]` |
 
 ## Fremen
