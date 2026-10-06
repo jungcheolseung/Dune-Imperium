@@ -12,12 +12,20 @@ Engine facts this module relies on (see ``rules/combat.py``):
   ``combat_reward_gained``/``conflict_won``/``combat_cleaned_up`` can all land
   in a single ``Step`` -- or be split across several when a reward or
   Conflict-end trigger opens a further player decision.
-- ``resolve_combat_rewards`` always appends one ``combat_reward_gained`` event
-  per reward recipient *before* it pushes any decision frames the reward
-  needs (Influence choice, trash, Spy placement, ...), so those events are
-  always in the same step as the ``combat_intrigue_finished`` that precedes
-  them, even when ``conflict_won``/``combat_cleaned_up`` are delayed to a
-  later step waiting on those decisions.
+- The reward recipients are paid one at a time in rank order (user ruling
+  2026-10-07, commit 82b9cddc): each recipient's ``combat_reward_gained``
+  event comes as that recipient is paid, and every choice its reward opens
+  (Influence choice, trash, Spy placement, ...) is answered before the next
+  recipient is paid. So a later recipient's event can land in a later step
+  than the ``combat_intrigue_finished`` that precedes it -- the one
+  answering the previous recipient's last choice -- and
+  ``combat_cleaned_up`` always comes after the last of them. The
+  Conflict's row is therefore written at
+  ``combat_intrigue_finished`` and stays open until ``combat_cleaned_up``:
+  each ``combat_reward_gained`` in between fills its seat's rank and
+  multiplier (and the winner and margin, for rank 1). Before that ruling
+  every recipient's event came before any reward choice opened, all in the
+  ``combat_intrigue_finished`` step.
 - ``finish_combat`` zeroes ``combat_strength``/``troops_conflict`` and pops
   ``current_conflict_ids`` only in its own *post*-state, so the units/strength
   snapshot must come from the *pre*-state of the step whose events contain
@@ -105,6 +113,10 @@ class CombatCollector(Collector):
         # clears it so its cleanup writes the zero row); starts True since
         # no Conflict is pending before the first one begins.
         self._recorded = True
+        # The row of the Conflict whose rewards are being paid (set at its
+        # combat_intrigue_finished, closed at its combat_cleaned_up): every
+        # combat_reward_gained in between fills it (module docstring).
+        self._paying: Columns | None = None
         # Running per-seat totals, kept for the whole game (never reset per
         # round/Conflict).
         self._worms_summoned: list[int] = [0] * seats
@@ -149,10 +161,13 @@ class CombatCollector(Collector):
                 else:
                     self._record_conflict(s)
                     self._recorded = True
+            elif kind == "combat_reward_gained":
+                self._record_reward(payload(event))
             elif kind == "combat_cleaned_up":
                 if not self._recorded:
                     self._record_missing_conflict(s)
                 self._recorded = False
+                self._paying = None
         if (
             s.owner is not None
             and s.action is not None
@@ -168,60 +183,62 @@ class CombatCollector(Collector):
         state = s.pre
         conflict_id = state.current_conflict_ids[-1]
         conflict = CONFLICTS_BY_ID[conflict_id]
-        # combat_reward_gained is always emitted in this same step (see
-        # module docstring), one per rank-1/2/3 recipient; rank 0 = no
-        # reward, multiplier 1 unless the seat's own sandworm doubled it
-        # [Main p. 14] (combat-and-round-end.md:38).
-        ranks: dict[int, tuple[int, int]] = {}
-        for event in s.events:
-            if event.kind == "combat_reward_gained":
-                info = payload(event)
-                ranks[int(info["player"])] = (
-                    int(info["rank"]),
-                    int(info["multiplier"]),
-                )
-        winner = next(
-            (seat for seat, (rank, _mult) in ranks.items() if rank == 1), None
-        )
         strengths = [player.combat_strength for player in state.players]
         pre_intrigue = (
             self._pre_intrigue if self._pre_intrigue is not None else list(strengths)
         )
         self._pre_intrigue = None
-        margin: int | None = None
-        if winner is not None:
-            others = [strengths[i] for i in range(self.seats) if i != winner]
+        # rank, multiplier, winner and margin start empty and are filled by
+        # the combat_reward_gained events up to this Conflict's
+        # combat_cleaned_up (``_record_reward``, module docstring).
+        row: Columns = {
+            "round": state.round_number,
+            "conflict_id": conflict_id,
+            "tier": int(conflict.tier),
+            # Sandworms cannot enter a Shield Wall-protected Conflict
+            # while the Wall still stands [Main p. 20].
+            "protected_and_wall_standing": bool(
+                conflict.shield_wall_protected and state.shield_wall_present
+            ),
+            "strength": strengths,
+            "troops": [player.troops_conflict for player in state.players],
+            "sandworms": [player.sandworms_conflict for player in state.players],
+            "commanders": [player.commanders_conflict for player in state.players],
+            # Into the Fray: 0/1, Duncan Idaho's Agent fighting as a unit
+            # in the Conflict (PlayerState.units_in_conflict includes it)
+            # [Duncan Idaho card].
+            "agents": [player.agent_in_conflict for player in state.players],
+            "garrison": [player.troops_garrison for player in state.players],
+            # rank 0 = no reward; multiplier 0 until paid, then 1 unless the
+            # seat's own sandworm doubled it [Main p. 14]
+            # (combat-and-round-end.md:38).
+            "rank": [0] * self.seats,
+            "multiplier": [0] * self.seats,
+            "pre_intrigue_strength": pre_intrigue,
+            "winner": None,
+            "margin": None,
+        }
+        self._conflicts.append(row)
+        self._paying = row
+
+    def _record_reward(self, info: Columns) -> None:
+        """One rank-1/2/3 recipient paid (``combat_reward_gained``), filled
+        into the open Conflict row; the rank-1 recipient is the winner."""
+
+        row = self._paying
+        if row is None:
+            return
+        seat = int(info["player"])
+        rank = int(info["rank"])
+        row["rank"][seat] = rank
+        row["multiplier"][seat] = int(info["multiplier"])
+        if rank == 1:
+            strengths = row["strength"]
+            others = [strengths[i] for i in range(self.seats) if i != seat]
+            row["winner"] = seat
             # Strictly the highest strength among the four [Main p. 14]
             # (combat-and-round-end.md:24): "the reward auction" margin.
-            margin = strengths[winner] - max(others)
-        self._conflicts.append(
-            {
-                "round": state.round_number,
-                "conflict_id": conflict_id,
-                "tier": int(conflict.tier),
-                # Sandworms cannot enter a Shield Wall-protected Conflict
-                # while the Wall still stands [Main p. 20].
-                "protected_and_wall_standing": bool(
-                    conflict.shield_wall_protected and state.shield_wall_present
-                ),
-                "strength": [player.combat_strength for player in state.players],
-                "troops": [player.troops_conflict for player in state.players],
-                "sandworms": [player.sandworms_conflict for player in state.players],
-                "commanders": [player.commanders_conflict for player in state.players],
-                # Into the Fray: 0/1, Duncan Idaho's Agent fighting as a unit
-                # in the Conflict (PlayerState.units_in_conflict includes it)
-                # [Duncan Idaho card].
-                "agents": [player.agent_in_conflict for player in state.players],
-                "garrison": [player.troops_garrison for player in state.players],
-                "rank": [ranks.get(seat, (0, 0))[0] for seat in range(self.seats)],
-                "multiplier": [
-                    ranks.get(seat, (0, 0))[1] for seat in range(self.seats)
-                ],
-                "pre_intrigue_strength": pre_intrigue,
-                "winner": winner,
-                "margin": margin,
-            }
-        )
+            row["margin"] = strengths[seat] - max(others)
 
     def _record_missing_conflict(self, s: Step) -> None:
         """Zero row for a Conflict whose Combat Intrigue loop emptied (its

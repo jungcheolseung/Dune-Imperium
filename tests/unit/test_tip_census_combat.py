@@ -154,6 +154,10 @@ def _play_with_ground_truth(
     chance = ChanceResolver(seed=spec.game_seed)
     gt = GroundTruth()
     gt_recorded = True  # mirrors CombatCollector._recorded
+    # The reward ranking rank_combat gives at the Conflict's
+    # combat_intrigue_finished, and the recipients paid since then.
+    expected_rewards: dict[int, tuple[int, int]] | None = None
+    paid_rewards: dict[int, tuple[int, int]] = {}
     for _ in range(spec.max_steps):
         if state.phase is GamePhase.FINISHED:
             break
@@ -185,33 +189,37 @@ def _play_with_ground_truth(
                 else:
                     gt.conflicts.append(_conflict_snapshot(step.pre))
                     gt_recorded = True
+                    # step.pre is the state the engine's own rank_combat
+                    # ran against as Combat Intrigue closed; recomputing it
+                    # here and comparing it to the emitted events checks
+                    # C2.1's "reward auction" independently of anything
+                    # CombatCollector does with those same events.
+                    ranking = rank_combat(
+                        step.pre.players, first_player=step.pre.first_player
+                    )
+                    expected_rewards = {
+                        reward.player: (int(reward.rank), reward.multiplier)
+                        for reward in ranking.rewards
+                    }
+                    paid_rewards = {}
+            elif kind == "combat_reward_gained":
+                # The recipients are paid one at a time in rank order, each
+                # one's choices answered before the next is paid (82b9cddc),
+                # so a later recipient's event can come in a later step.
+                info = dict(event.payload)
+                paid_rewards[int(info["player"])] = (
+                    int(info["rank"]),
+                    int(info["multiplier"]),
+                )
             elif kind == "combat_cleaned_up":
                 gt.combat_cleaned_up_events += 1
                 if not gt_recorded:
                     gt.conflicts.append(_conflict_snapshot(step.pre))
                 gt_recorded = False
-
-        # combat_reward_gained is always in the same step as the
-        # combat_intrigue_finished that precedes it (tipcensus.combat's
-        # module docstring), so step.pre is the exact state the engine's own
-        # rank_combat ran against; recomputing it here and comparing to the
-        # emitted events checks C2.1's "reward auction" independently of
-        # anything CombatCollector does with those same events.
-        reward_events = [e for e in step.events if e.kind == "combat_reward_gained"]
-        if reward_events:
-            ranking = rank_combat(step.pre.players, first_player=step.pre.first_player)
-            expected = {
-                reward.player: (int(reward.rank), reward.multiplier)
-                for reward in ranking.rewards
-            }
-            actual = {
-                int(dict(e.payload)["player"]): (
-                    int(dict(e.payload)["rank"]),
-                    int(dict(e.payload)["multiplier"]),
-                )
-                for e in reward_events
-            }
-            assert actual == expected
+                if expected_rewards is not None:
+                    assert paid_rewards == expected_rewards
+                expected_rewards = None
+                paid_rewards = {}
 
         if not any(e.kind == "combat_cleaned_up" for e in step.events):
             for seat_index in range(seats):
