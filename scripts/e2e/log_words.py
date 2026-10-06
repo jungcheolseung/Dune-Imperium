@@ -67,7 +67,11 @@ GAMES = (
     # too; a scan of the same games through GameSessionManager over seeds
     # 1-120 finds seed 10 first (with Family Atomics, the Feyd track and
     # research as well).
-    {"seats": ["random"] * 4, "game_seed": 10, "policy_seed": 10, **EVERY_EXPANSION},
+    # The codec v139 general-rules rulings (2026-10-07: Combat Intrigue pass
+    # counting, Conflict rewards paid one recipient at a time) move seed 10
+    # off its Secrets steal too; the same scan over seeds 1-100 finds seed 4
+    # first (again with Family Atomics, the Feyd track and research).
+    {"seats": ["random"] * 4, "game_seed": 4, "policy_seed": 4, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -101,8 +105,13 @@ GAMES = (
         # round modifier. An engine-log scan over seeds 1-159 (with seed 86
         # above) finds seed 80 first that, together with seed 86, reaches
         # every Scouts surface below again.
-        "game_seed": 80,
-        "policy_seed": 80,
+        # The codec v139 general-rules rulings (2026-10-07) move seed 80 off
+        # Mating Season; a scan through GameSessionManager over seeds 1-120
+        # finds seed 22 first that, with seed 86, reaches every Scouts
+        # surface again (a round modifier, Mating Season, mission troops, an
+        # auction won).
+        "game_seed": 22,
+        "policy_seed": 22,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
