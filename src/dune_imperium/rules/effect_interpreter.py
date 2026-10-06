@@ -1171,6 +1171,11 @@ _REVEAL_ACQUISITION_REWARDS = (
     AcquireReserveCard,
     RevealPersuasionThisRound,
 )
+# Under Immortality, rewards that can add a specimen, which pays for a
+# Tleilaxu Row card in the Reveal turn: "Tleilaxu Row에서 오고 Persuasion
+# 대신 specimen을 비용으로 낸다." [Immortality p. 8] (Shadowy Bargain's
+# specimen, Breakthrough's Research onto a specimen space).
+_REVEAL_SPECIMEN_REWARDS = (GenerateSpecimens, Research)
 
 
 def _reveal_acquisition_ahead(state: GameState, player: int) -> bool:
@@ -1182,7 +1187,8 @@ def _reveal_acquisition_ahead(state: GameState, player: int) -> bool:
     a set-aside card, the Tleilaxu Row), and every other choice that might
     add Persuasion or change what is on offer (a deferred Reveal choice, a
     Tech tile, a leader ability). So does another held Plot Intrigue option,
-    playable now, that acquires a card or adds Persuasion; trigger options
+    playable now, that acquires a card, adds Persuasion or, under
+    Immortality, may add a specimen for the Tleilaxu Row; trigger options
     are skipped, so this never asks itself again.
     """
 
@@ -1200,13 +1206,16 @@ def _reveal_acquisition_ahead(state: GameState, player: int) -> bool:
             continue
         if provider(state, player):
             return True
+    feeders = _REVEAL_ACQUISITION_REWARDS + (
+        _REVEAL_SPECIMEN_REWARDS if state.config.immortality else ()
+    )
     for card_id in state.players[player].intrigue_cards:
         entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
         if entry is None or not entry.play_data_complete:
             continue
         for other in entry.options:
             if other.trigger is not None or not any(
-                isinstance(reward, _REVEAL_ACQUISITION_REWARDS)
+                isinstance(reward, feeders)
                 for section in other.sections
                 for reward in section.rewards
             ):

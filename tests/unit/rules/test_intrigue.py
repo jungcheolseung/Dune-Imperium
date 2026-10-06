@@ -2931,6 +2931,30 @@ def test_call_to_arms_is_not_offered_in_a_reveal_with_nothing_left_to_acquire() 
     )
     assert _play(holding, card) in engine.legal_actions(holding, 0)
 
+    # Under Immortality a Tleilaxu Row card costs specimens instead of
+    # Persuasion ("Persuasion 대신 specimen을 비용으로 낸다." [Immortality
+    # p. 8]): Shadowy Bargain, playable in the same Reveal, makes the
+    # specimen that buys Contaminator, and Call to Arms counts that
+    # acquisition.
+    def tanks(*held: str) -> GameState:
+        state = _with_market(
+            _turn_state(PlayerState(player_id=0, intrigue_cards=(card, *held)))
+        )
+        return replace(
+            state,
+            config=RulesetConfig(immortality=True),
+            tleilaxu_row=("tleilaxu:contaminator:0", "tleilaxu:corrino_genes:0"),
+            players=tuple(
+                replace(seat, research_space="c0r3") for seat in state.players
+            ),
+        )
+
+    alone = _revealed_with_persuasion(tanks(), 0)
+    assert _play(alone, card) not in engine.legal_actions(alone, 0)
+    bargain = _revealed_with_persuasion(tanks(_intrigue("shadowy_bargain")), 0)
+    assert bargain.players[0].specimens == 0
+    assert _play(bargain, card) in engine.legal_actions(bargain, 0)
+
 
 def test_call_to_arms_needs_a_troop_it_could_recruit() -> None:
     # The user's ruling of 2026-10-06 reads a recruit as the Arrakeen Scouts
