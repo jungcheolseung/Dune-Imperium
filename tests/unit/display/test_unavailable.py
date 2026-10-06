@@ -13,7 +13,10 @@ from dataclasses import replace
 from typing import Any
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.immortality.board import (
+    RESEARCH_START_ID,
+    TLEILAXU_TRACK_END,
+)
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     tleilaxu_card_for_instance,
@@ -497,6 +500,289 @@ def test_a_deploy_line_with_nothing_to_deploy_is_greyed_with_its_reason() -> Non
     assert {"card_id": "intrigue:detonation:0", "option": 1} in _legal(
         _detonation(2, 1), "play_intrigue"
     )
+
+
+# User ruling 2026-10-06 ("아무 효과 없이 책략을 쓸 수 없는거지"): an Intrigue
+# option none of whose effects could change anything now is greyed out.
+
+_NO_CARD_TO_DRAW = (
+    "No card to draw: your deck and discard pile are both empty",
+    "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
+    "empty",
+)
+_NO_SUPPLY_TROOP = (
+    "Needs 1 troop in your supply (you have 0)",
+    "{supply}에 {troop:1} 필요 (보유 0)",
+    "reward",
+)
+_EMPTY_SUPPLY: dict[str, Any] = {"troops_supply": 0, "troops_garrison": 12}
+_SENT: dict[str, Any] = {
+    "agents_available": 0,
+    "agent_locations": ("arrakeen", "carthag"),
+}
+_DAGGER = "player:0:starter:dagger:0"
+
+
+def _seat_with(
+    *cards: str, config: RulesetConfig = BASE, **owner_fields: Any
+) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=tuple(f"intrigue:{card}:0" for card in cards),
+        **owner_fields,
+    )
+    return _state(owner, config=config)
+
+
+def _intrigue_reason(
+    state: GameState, card: str, option: int = 0
+) -> tuple[str, str, str]:
+    """The greyed row of ``card``'s ``option``, which the engine withholds."""
+
+    assert {"card_id": f"intrigue:{card}:0", "option": option} not in _legal(
+        state, "play_intrigue"
+    )
+    row = _rows(_found(state), "intrigue")[f"intrigue:intrigue:{card}:0:{option}"]
+    return row["reason"], row["reason_ko"], row["code"]
+
+
+def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None:
+    immortality = RulesetConfig(immortality=True)
+    bloodlines = RulesetConfig(bloodlines=True)
+    alone = replace(
+        _seat_with("twisted_withdrawn", config=bloodlines, hand=(_DAGGER,)),
+        players=(
+            PlayerState(
+                player_id=0,
+                intrigue_cards=("intrigue:twisted_withdrawn:0",),
+                hand=(_DAGGER,),
+            ),
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
+        ),
+    )
+    cases: list[tuple[GameState, str, int, tuple[str, str, str]]] = [
+        (_seat_with("cunning"), "cunning", 0, _NO_CARD_TO_DRAW),
+        (
+            _seat_with("shaddam_s_favor", **_EMPTY_SUPPLY),
+            "shaddam_s_favor",
+            0,
+            _NO_SUPPLY_TROOP,
+        ),
+        (
+            _seat_with("inspire_awe"),
+            "inspire_awe",
+            0,
+            (
+                "No card costing 3 or less to acquire",
+                "획득할 수 있는 비용 3 이하 카드 없음",
+                "reward",
+            ),
+        ),
+        (
+            replace(
+                _seat_with("unexpected_allies", resources=Resources(water=2)),
+                shield_wall_present=False,
+            ),
+            "unexpected_allies",
+            0,
+            ("No Conflict this round", "이번 라운드에 교전 없음", "no_conflict"),
+        ),
+        (
+            _seat_with(
+                "breakthrough",
+                config=immortality,
+                research_space="c8r2",
+            ),
+            "breakthrough",
+            0,
+            (
+                "Past the second genetic marker Research draws a card,"
+                " and your deck and discard pile are both empty",
+                "두 번째 유전자 표지 뒤의 {research}는 카드를 뽑는데"
+                " {deck}과 {discard_pile}이 모두 비었음",
+                "empty",
+            ),
+        ),
+        (
+            _seat_with(
+                "illicit_dealings",
+                config=immortality,
+                research_space=RESEARCH_START_ID,
+                tleilaxu_space=TLEILAXU_TRACK_END,
+            ),
+            "illicit_dealings",
+            0,
+            _TLEILAXU_TRACK_END,
+        ),
+        (
+            _seat_with(
+                "shadowy_bargain",
+                config=immortality,
+                research_space=RESEARCH_START_ID,
+                **_EMPTY_SUPPLY,
+            ),
+            "shadowy_bargain",
+            0,
+            (
+                "No troop in your supply to make a specimen",
+                "{specimen}로 만들 {troop}이 {supply}에 없음",
+                "reward",
+            ),
+        ),
+        (
+            _seat_with(
+                "emperor_s_invitation", config=bloodlines, hand=(_DAGGER,), **_SENT
+            ),
+            "emperor_s_invitation",
+            1,
+            (
+                "Only before you send an Agent this turn",
+                "이번 차례에 {agent}를 보내기 전에만",
+                "reward",
+            ),
+        ),
+        (
+            _seat_with(
+                "insider_information",
+                config=bloodlines,
+                hand=(_DAGGER,),
+                influence=Influence(emperor=2, spacing_guild=2, fremen=2),
+            ),
+            "insider_information",
+            1,
+            (
+                "No board space's Influence requirement is unmet",
+                "못 채운 {influence_any} 조건이 있는 공간 없음",
+                "reward",
+            ),
+        ),
+        (
+            _seat_with("twisted_calculating", config=bloodlines),
+            "twisted_calculating",
+            0,
+            ("No unit of yours in the Conflict", "{conflict}에 내 유닛 없음", "reward"),
+        ),
+        (
+            alone,
+            "twisted_withdrawn",
+            0,
+            (
+                "Every other player has revealed: the turn would come straight"
+                " back to you",
+                "다른 플레이어가 모두 공개를 마쳐 차례가 바로 돌아옴",
+                "reward",
+            ),
+        ),
+    ]
+    for state, card, option, expected in cases:
+        assert _intrigue_reason(state, card, option) == expected, card
+
+
+def test_a_city_spy_after_a_recall_this_turn_is_greyed_with_why() -> None:
+    """Special Mission's [Spy] on [City] with the supply empty and every
+    City post full, one held by the seat's Spy alone: once a Spy was
+    recalled this turn, recalling and replacing it changes nothing (OQ-101
+    (b))."""
+
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=("intrigue:special_mission:0",),
+        spies_supply=0,
+        spies_recalled_turn=1,
+        spy_post_ids=(
+            "arrakis-research-station-spice-refinery",
+            "fremen-desert-tactics-fremkit",
+            "landsraad-assembly-hall-gather-support",
+        ),
+    )
+    rivals = (
+        PlayerState(
+            player_id=1,
+            spies_supply=2,
+            spy_post_ids=("arrakis-research-station-sietch-tabr",),
+        ),
+        PlayerState(
+            player_id=2,
+            spies_supply=2,
+            spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+        ),
+        PlayerState(player_id=3),
+    )
+    state = _state(owner, players=(owner, *rivals))
+    assert _intrigue_reason(state, "special_mission") == (
+        "You already recalled a Spy this turn;"
+        " recalling and replacing it would change nothing",
+        "이번 차례에 이미 {spy}를 회수함 — 회수해 다시 놓아도 바뀌는 것 없음",
+        "reward",
+    )
+    # Before any recall this turn the play stays (OQ-101 (b)).
+    fresh = replace(owner, spies_recalled_turn=0)
+    assert {"card_id": "intrigue:special_mission:0", "option": 0} in _legal(
+        _state(fresh, players=(fresh, *rivals)), "play_intrigue"
+    )
+
+
+def test_an_option_with_every_effect_dead_explains_each_of_them() -> None:
+    """When no effect of a card could change anything, the row names every
+    distinct one, joined, so neither half is left unexplained."""
+
+    bloodlines = RulesetConfig(bloodlines=True)
+    mercenaries = _seat_with(
+        "mercenaries", resources=Resources(solari=3), **_EMPTY_SUPPLY
+    )
+    assert _intrigue_reason(mercenaries, "mercenaries") == (
+        "No Intrigue card to draw: the Intrigue deck is empty and its discard"
+        " pile holds nothing to shuffle; Needs 1 troop in your supply (you have 0)",
+        "뽑을 {intrigue} 없음: {intrigue} 더미가 비었고 버린 더미에 섞을 카드 없음"
+        " · {supply}에 {troop:1} 필요 (보유 0)",
+        "reward",
+    )
+    honor_guard = _seat_with(
+        "honor_guard",
+        config=bloodlines,
+        hand=(_DAGGER,),
+        **_EMPTY_SUPPLY,
+        **_SENT,
+    )
+    assert _intrigue_reason(honor_guard, "honor_guard") == (
+        "Needs 1 troop in your supply (you have 0);"
+        " No Sardaukar Commander left to recruit this turn",
+        "{supply}에 {troop:1} 필요 (보유 0) · 이번 차례에 고용할 {commander} 없음",
+        "reward",
+    )
+    cunning = _seat_with("cunning", resources=Resources(spice=1))
+    assert _intrigue_reason(cunning, "cunning", 1) == (
+        _NO_CARD_TO_DRAW[0] + "; No card in hand, discard pile or play to trash",
+        _NO_CARD_TO_DRAW[1]
+        + " · {hand}·{discard_pile}·{in_play}에 {trash}할 카드 없음",
+        "reward",
+    )
+    # One effect left that can change something: an ordinary play.
+    drawable = replace(mercenaries, intrigue_deck=("intrigue:bribery:0",))
+    assert {"card_id": "intrigue:mercenaries:0", "option": 0} in _legal(
+        drawable, "play_intrigue"
+    )
+
+
+def test_call_to_arms_row_explains_nothing_left_to_acquire() -> None:
+    """Call to Arms in the seat's own Reveal turn with nothing it could
+    still acquire there would recruit nothing (user ruling 2026-10-06)."""
+
+    state = _state(
+        PlayerState(player_id=0, intrigue_cards=("intrigue:call_to_arms:0",)),
+        imperium_row=ROW,
+        reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 0)),
+    )
+    assert _intrigue_reason(_reveal(state, 0), "call_to_arms") == (
+        "Nothing left to acquire in this Reveal turn",
+        "이번 공개 차례에 더 획득할 수 있는 카드 없음",
+        "reward",
+    )
+    # Two Persuasion buy Prepare the Way: the play is offered.
+    assert {"card_id": "intrigue:call_to_arms:0", "option": 0} in _legal(
+        _reveal(state, 2), "play_intrigue"
+    )
+
 
 def test_an_intrigue_row_becomes_a_play_as_soon_as_the_seat_can_pay() -> None:
     poor = _intrigue_state("imperium_politics")

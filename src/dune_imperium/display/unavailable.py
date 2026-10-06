@@ -4,10 +4,12 @@ User request 2026-09-29: an option that cannot be taken right now is shown
 but not selectable, with the reason, and it becomes selectable as soon as it
 can be taken (and the reverse), for the whole game. Arrakeen Scouts choices
 already do this (``display.scouts.scouts_choice_lines``); this module does it
-for the Reveal shop, Intrigue plays and effects waiting on their condition
-(a new High Council seat's subcommittee choice, an Agent-box icon below
-its printed threshold and held Contract icons among them), and for the
-branch of an open choice that cannot be taken ("choice": Desert Power's
+for the Reveal shop, Intrigue plays (one none of whose effects could
+change anything now among them, user ruling 2026-10-06; Call to Arms in a
+Reveal with nothing left to acquire) and effects waiting on their
+condition (a new High Council seat's subcommittee choice, an Agent-box
+icon below its printed threshold and held Contract icons among them), and
+for the branch of an open choice that cannot be taken ("choice": Desert Power's
 sandworm, a recall with no Agent to recall, a research bonus whose cost
 cannot be paid or whose reward would change nothing, an Agent box's arrow
 whose reward would change nothing (OQ-071), a Conflict reward's, a research
@@ -27,7 +29,8 @@ Display only, under four rules:
   grey out something the seat may do.
 - A reason is worked out only for a candidate that is not legal, from the
   block predicate the legal provider itself uses (``AcquireBlock``,
-  ``option_unplayable_reason``, ``intrigue_play_block``,
+  ``option_unplayable_reason``, ``rewards_with_no_effect``,
+  ``intrigue_play_block``,
   ``waiting_deferred_choices``, ``agent_box_is_waiting``,
   ``joinable_subcommittees``, ``reveal_sandworm_block``,
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
@@ -180,6 +183,7 @@ from dune_imperium.rules.effect_interpreter import (
     face_up_conflict_card_ids,
     option_unplayable_reason,
     resource_cost,
+    rewards_with_no_effect,
     spy_placement_allowed_post_ids,
     spy_placement_targets,
 )
@@ -918,8 +922,36 @@ def intrigue_option_reason(
                 return _choice_cost_reason(owner, sections, cost)
         for reward in section.rewards:
             if reward is block:
-                return _choice_reward_reason(state, seat, reward)
+                return _no_effect_reason(state, seat, sections, reward)
     return NOT_NOW
+
+
+def _no_effect_reason(
+    state: GameState, seat: int, sections: tuple[EffectSection, ...], blamed: Reward
+) -> Reason:
+    """The blamed reward's reason, or, when no reward of the option can
+    change anything (``rewards_with_no_effect``), each distinct reward's
+    reason joined, so a card with two dead halves explains both (Mercenaries'
+    Intrigue draw and recruit, Honor Guard's troop and discount)."""
+
+    dead = rewards_with_no_effect(state, seat, sections)
+    if not any(reward is blamed for reward in dead):
+        return _choice_reward_reason(state, seat, blamed)
+    reasons: list[Reason] = []
+    for reward in dead:
+        reason = _choice_reward_reason(state, seat, reward)
+        if reason not in reasons:
+            reasons.append(reason)
+    if len(reasons) == 1:
+        return reasons[0]
+    return (
+        "; ".join(english for english, _, _ in reasons),
+        " · ".join(korean for _, korean, _ in reasons),
+        # A fallback among them keeps its code, so the tests still catch it.
+        NOT_NOW_CODE
+        if any(code == NOT_NOW_CODE for _, _, code in reasons)
+        else "reward",
+    )
 
 
 # --- Collecting the candidates ---
@@ -1054,9 +1086,10 @@ def _shop(state: GameState, seat: int, found: _Found) -> None:
 def _intrigue(state: GameState, seat: int, found: _Found) -> None:
     """The seat's own Intrigue cards in an open Intrigue window.
 
-    An option failing on its cost or condition is a row; one printed for
-    another window is not (it would be noise every turn), only its card's
-    dim (``intrigue_play_block``'s timing blocks).
+    An option failing on its cost or condition, or with no effect that
+    could change anything now, is a row; one printed for another window is
+    not (it would be noise every turn), only its card's dim
+    (``intrigue_play_block``'s timing blocks).
     """
 
     timing = intrigue_window(state, seat)
