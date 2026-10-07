@@ -944,16 +944,19 @@ function renderBanner() {
     }
   } else {
     const decision = summary.decision;
-    if (!decision) {
-      prompt.textContent = t("render.in_progress");
-      info.append(prompt);
-    } else if (summary.confirmation === state.viewSeat) {
+    /* A held unit end may sit before a chance outcome (the next round's
+       draw, the next Arrakeen Scouts card), which the press resolves: then
+       no seat owns a decision yet and there is no next seat to name. */
+    if (summary.confirmation === state.viewSeat) {
       /* The viewing seat's turn has ended: nothing advances until it
-         presses the turn-end row (confirmTurn), whether or not the steps
-         that ended it can still be taken back. */
+         presses the turn-end row (confirmTurn); until then its steps can
+         be taken back (the undo row below). */
       prompt.textContent = t("render.turn_end_prompt");
-      meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
-      info.append(prompt, meta);
+      info.append(prompt);
+      if (decision) {
+        meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
+        info.append(meta);
+      }
       appendTurnEndRow(info, t("render.turn_end_button"), () => confirmTurn());
     } else if (typeof summary.confirmation === "number") {
       /* Another seat's turn has ended; nobody moves until that seat
@@ -961,8 +964,14 @@ function renderBanner() {
       prompt.textContent =
         t("render.waiting_turn_end", { name: playerLabel(summary.confirmation) }) +
         waitingHint(summary.confirmation);
-      meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
-      info.append(prompt, meta);
+      info.append(prompt);
+      if (decision) {
+        meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
+        info.append(meta);
+      }
+    } else if (!decision) {
+      prompt.textContent = t("render.in_progress");
+      info.append(prompt);
     } else if (decision.owner !== state.viewSeat && summary.thinking === decision.owner) {
       /* A search seat thinks on the server's worker (summary.thinking),
          whatever it is deciding, an Agent turn's end included. */

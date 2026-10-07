@@ -100,5 +100,9 @@ def test_a_human_defender_answers_before_the_draw_and_cannot_undo_it() -> None:
     assert drawn.current_conflict_ids == state.current_conflict_ids
     assert drawn.players[0].troops_conflict == defender.troops_conflict + 1
     assert len(drawn.players[0].hand) == min(5, len(defender.deck))
-    # The defense is still the defender's own unit: one press ends it.
-    assert after["confirmation"] == 0
+    # The defense was the defender's own unit, but the draw left nothing of
+    # it to take back, so no press confirms it: the answer itself did, as its
+    # "cannot be undone" mark said ("되돌리기 기회도 없는데, 턴 종료 버튼은
+    # 또 남아버려서 이상해진거네", user, 2026-10-08). The unit is closed.
+    assert after["confirmation"] is None
+    assert 0 not in session.open_units
