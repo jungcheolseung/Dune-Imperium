@@ -51,9 +51,24 @@ STEAM_DATA = Path(
     "~/Library/Application Support/Steam/steamapps/common/Dune Imperium/"
     "DuneImperium.app/Contents/Resources/Data"
 ).expanduser()
+# Korean faces: the retail cards print body text in a regular gothic and titles
+# in a bold one; NanumBarunGothic at the text size matches both (checked against
+# the photos).
 KOREAN_FONT = Path("~/Library/Fonts/NanumBarunGothic.otf").expanduser()
 KOREAN_FONT_BOLD = Path("~/Library/Fonts/NanumBarunGothicBold.otf").expanduser()
 CANVAS = (556, 776)
+
+
+def korean_face(latin_font):
+    """The Korean face beside an app font: bold where the print sets the
+    English in Gotham Medium (Intrigue, Conflict) or Interstate (labels),
+    regular where it sets Gotham Book (the Imperium and Tleilaxu boxes)."""
+    return (
+        KOREAN_FONT_BOLD
+        if re.search(r"Medium|Bold|Black|Interstate", latin_font or "")
+        else KOREAN_FONT
+    )
+
 
 FACTIONS = {
     "Emperor": ("UI_crd_SubHeader_Emperor", "EMPEROR", "황제"),
@@ -195,6 +210,7 @@ def imperium_spec(inp, content_id, catalog_kind="imperium"):
     slug = at["Name"].rsplit(".", 1)[0]  # card.imperium.<slug>
     last = short.rsplit(".", 1)[1]
     art = inp.art.get(slug.rsplit(".", 1)[1]) or inp.art.get(last.lower())
+    prefab = inp.prefabs.get(re.sub(r"[^a-z0-9]", "", last.lower()))
     path = next(
         (
             inp.manifest[(k, content_id)]
@@ -208,7 +224,10 @@ def imperium_spec(inp, content_id, catalog_kind="imperium"):
         "id": content_id,
         "arch": short,
         "slug": slug,
-        "prefab": inp.prefabs.get(re.sub(r"[^a-z0-9]", "", last.lower())),
+        "prefab": prefab,
+        "texts": prefab_texts(inp, prefab_text_nodes(inp.tree(prefab), prefab))
+        if prefab
+        else [],
         "title": {
             "en": inp.text_en(at["Name"]),
             "ko": KOREAN_CARD_NAMES["cards"].get(content_id),
@@ -229,6 +248,16 @@ def imperium_spec(inp, content_id, catalog_kind="imperium"):
     }
 
 
+def text_key(inp, keys):
+    """The card's own key: the first candidate the app or our tables know.
+
+    Skirmish cards share a title key but each has its own reward keys, so the
+    key must follow the text, not the title."""
+    return next(
+        (k for k in keys if k in inp.loc or k in inp.en or k in inp.ko), keys[0]
+    )
+
+
 def card_text(inp, slug, last, field):
     """English from the print overrides, else the app string (under the title's
     slug or the archetype's name); Korean from the Korean edition table."""
@@ -237,7 +266,7 @@ def card_text(inp, slug, last, field):
     if en is None:
         en = next((inp.text_en(k) for k in keys if inp.loc.get(k)), None)
     ko = next((inp.ko[k] for k in keys if k in inp.ko), None)
-    return {"en": en, "ko": ko, "key": keys[0]}
+    return {"en": en, "ko": ko, "key": text_key(inp, keys)}
 
 
 # -------------------------------------------------------- print-style text boxes
@@ -365,6 +394,7 @@ class PrintBox:
         self, inp, font, color, lang, icon_h, text_max, text_min=14.0, gap=10.0
     ):
         self.inp, self.font, self.color, self.lang = inp, font, color, lang
+        self.korean = str(korean_face(font))
         self.icon_h, self.text_max, self.text_min, self.gap = (
             icon_h,
             text_max,
@@ -385,7 +415,8 @@ class PrintBox:
             "m_characterSpacing": -1.5,
             "m_lineSpacing": 0.0,
             "m_paragraphSpacing": 0.0,
-            "_fallback": str(KOREAN_FONT),
+            "_fallback": self.korean,
+            "_force_tt": self.lang == "ko",
         }
 
     def icon_size(self, name, H):
@@ -402,12 +433,14 @@ class PrintBox:
 
     def plan(self, text, width, height, text_scale, icon_scale):
         paras = [
-            p.strip()
+            # a "+" before an icon stays with the word before it, as printed
+            re.sub(r" \+(?=<sprite)", "\u00a0+", p.strip())
             for p in split_paragraphs(IGNORED_TAGS.sub("", text))
             if strip_tags(p).strip() or re.search(SPRITE_TAG, p)
         ]
         fs = max(self.text_min, self.text_max * text_scale)
-        self.inp.text.cur_fallback = str(KOREAN_FONT)
+        self.inp.text.cur_fallback = self.korean
+        self.inp.text.force_tt = self.lang == "ko"
         parsed = []
         for para in paras:
             lead, rest = take_cluster(para)
@@ -702,7 +735,12 @@ def bind_card_prefab(inp, spec, lang):
             title["fallback"] = str(KOREAN_FONT_BOLD)
     if R.find(t, "UI_crd_Element_ActionColumn_Dynamic") is not None:
         bind_icons(t, inp.tree("ActionIcon_obj.json"), spec)
-    return bind_prefab_texts(inp, t, lang)
+    if spec.get("cost") is not None:
+        # the prefab bakes a cost the app overwrites at run time
+        # (Imperium Ceremony's says 5, the card 6)
+        for n in R.find_all(t, "PersuasionText"):
+            n["text"] = str(spec["cost"])
+    return bind_prefab_texts(inp, t, lang, spec["prefab"])
 
 
 def bind_dynamic(inp, spec, lang):
@@ -965,7 +1003,13 @@ def bind_icons(t, icon_tpl, spec):
             hl["active"] = False
         col["children"].append(node)
     if n == 0:
-        R.find(t, "ActionColumn_HorizontalContainer")["active"] = False
+        box = R.find(t, "ActionColumn_HorizontalContainer")
+        if R.find(box, "GraftTextElement") is None:
+            box["active"] = False
+        else:
+            # Usurp grafts with no Agent icon: the GRAFT tab still prints, at
+            # the box's left edge where the empty column ends
+            col["active"] = False
 
 
 # ---------------------------------------------------------------- intrigue
@@ -1001,12 +1045,19 @@ def intrigue_spec(inp, content_id):
             en = next((inp.text_en(k) for k in keys if inp.loc.get(k)), None)
         ko = next((inp.ko[k] for k in keys if k in inp.ko), None)
         if en or ko:
-            texts.append({"en": en, "ko": ko, "key": keys[0]})
+            texts.append({"en": en, "ko": ko, "key": text_key(inp, keys)})
+    prefab = f"UI_crd_Intrigue_{short.rsplit('.', 1)[1]}.prefab.json"
+    if (inp.prefab_dir / prefab).exists():
+        # the app lays this card out by hand
+        texts = prefab_texts(inp, prefab_text_nodes(inp.tree(prefab), prefab))
+    else:
+        prefab = None
     return {
         "kind": "intrigue",
         "id": content_id,
         "arch": short,
         "slug": slug,
+        "prefab": prefab,
         "title": {
             "en": inp.text_en(at["Name"]),
             "ko": KOREAN_CARD_NAMES["intrigue"].get(content_id),
@@ -1019,7 +1070,50 @@ def intrigue_spec(inp, content_id):
     }
 
 
+def bind_intrigue_prefab(inp, spec, lang):
+    t = copy.deepcopy(inp.tree(spec["prefab"]))
+    title = spec["title"].get(lang) or spec["title"]["en"]
+    head = R.find(t, "HeaderText")
+    head["text"] = title
+    head["tmp_patch"] = {
+        "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
+        "m_fontStyle": 16,
+        "m_fontSize": 40.0,
+        "m_fontSizeMax": 40.0,
+        "m_characterSpacing": 1.0,
+    }
+    R.comp(head, "RT")["size"][1] = 196.0
+    words_ = INTRIGUE_TYPE_WORD[lang]
+    for tnode in R.find_all(t, "CardTypeText_Anchor")[0]["children"]:
+        tnode["text"] = " <color=#FFFCE7>/ ".join(
+            f"<color={INTRIGUE_TYPE_COLOR[x]}>{words_[x]}" for x in spec["types"]
+        )
+        tnode["tmp_patch"] = {
+            "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
+            "m_fontStyle": 16,
+            "m_fontSize": 30.0,
+            "m_fontSizeMax": 30.0,
+            "m_enableAutoSizing": 0,
+            "m_characterSpacing": 1.0,
+        }
+    R.comp(R.find(t, "CardTypeText_Anchor"), "RT")["size"][1] = 92.0
+    for n in R.find_all(t, "FrameText"):
+        n["text"] = "—또는—" if lang == "ko" else "—OR—"
+    for n in R.find_all(t, "SetIndicator"):
+        n["active"] = False
+    if lang == "ko":
+        head["fallback"] = str(KOREAN_FONT_BOLD)
+        for n in (
+            R.find_all(t, "FrameText")
+            + R.find_all(t, "CardTypeText_Anchor")[0]["children"]
+        ):
+            n["fallback"] = str(KOREAN_FONT_BOLD)
+    return bind_prefab_texts(inp, t, lang, spec["prefab"])
+
+
 def bind_intrigue(inp, spec, lang):
+    if spec.get("prefab"):
+        return bind_intrigue_prefab(inp, spec, lang)
     types = spec["types"]
     if len(types) > 1:
         name = "UI_crd_Intrigue_Dynamic_SplitTypes.prefab.json"
@@ -1162,7 +1256,7 @@ def conflict_spec(inp, content_id):
         if en is None:
             en = next((inp.text_en(k) for k in keys if inp.loc.get(k)), None)
         ko = next((inp.ko[k] for k in keys if k in inp.ko), None)
-        rewards.append({"en": en, "ko": ko, "key": keys[0]})
+        rewards.append({"en": en, "ko": ko, "key": text_key(inp, keys)})
     ours = CONFLICTS_BY_ID.get(content_id)
     return {
         "kind": "conflict",
@@ -1171,7 +1265,11 @@ def conflict_spec(inp, content_id):
         "slug": slug,
         "title": {
             "en": inp.text_en(slug),
-            "ko": KOREAN_CARD_NAMES["conflicts"].get(content_id),
+            # our names add the battle icon in brackets; the card prints only the name
+            "ko": re.sub(
+                r"\s*\(.*\)$", "", KOREAN_CARD_NAMES["conflicts"].get(content_id) or ""
+            )
+            or None,
         },
         "level": at.get("ConflictLevel"),
         "battle": at.get("BattleIcon"),
@@ -1240,21 +1338,52 @@ def bind_conflict(inp, spec, lang):
 
 
 # ---------------------------------------------------------------- whole prefabs
-def bind_prefab_texts(inp, t, lang):
-    """A per-card prefab carries its own texts: draw them, Korean by loc key."""
+# names come from names_ko and type lines from INTRIGUE_TYPE_WORD, not the text table
+TITLE_NODES = ("TitleText", "HeaderRoot", "HeaderText")
+
+
+def prefab_text_nodes(t, prefab):
+    """[(key, node)] for the texts a per-card prefab shows: its loc key, or
+    ``<prefab>#<node path>`` for baked text; bare numbers and marks are skipped."""
+    out = []
+
+    def walk(n, path, active):
+        active = active and n.get("active", True)
+        p = f"{path}/{n['name']}" if path else n["name"]
+        tmp = R.comp(n, "TextMeshProUGUI")
+        if (
+            tmp is not None
+            and active
+            and n["name"] not in TITLE_NODES
+            and not n["name"].startswith("UI_crd_Element_IntrigueType")
+        ):
+            text = tmp.get("m_text") or ""
+            if re.search(r"[A-Za-z]{2,}", strip_tags(text)):
+                key = next(
+                    (c.get("locKey") for c in n["comps"] if c.get("locKey")), None
+                )
+                out.append((key or f"{prefab}#{p}", n))
+        for ch in n["children"]:
+            walk(ch, p, active)
+
+    walk(t, "", True)
+    return out
+
+
+def bind_prefab_texts(inp, t, lang, prefab=""):
+    """A per-card prefab carries its own texts: draw them, printed English and
+    Korean from the text tables by the node's key."""
+    keyed = {id(n): k for k, n in prefab_text_nodes(t, prefab)}
 
     def walk(n):
         tmp = R.comp(n, "TextMeshProUGUI")
         if tmp is not None and n.get("text") is None:
-            key = next((c.get("locKey") for c in n["comps"] if c.get("locKey")), None)
+            key = keyed.get(id(n))
             text = tmp.get("m_text") or ""
             if lang == "ko":
-                text = (
-                    inp.ko.get(key or "", inp.ko.get(f"{key}.ko", text))
-                    if key
-                    else text
-                )
-                n["fallback"] = str(KOREAN_FONT_BOLD)
+                n["fallback"] = str(korean_face(tmp.get("m_fontAsset")))
+                if key and key in inp.ko:
+                    text = inp.ko[key]
             elif key and key in inp.en:
                 text = inp.en[key]
             n["text"] = text
@@ -1265,29 +1394,37 @@ def bind_prefab_texts(inp, t, lang):
     return t
 
 
+def prefab_texts(inp, nodes):
+    return [
+        {
+            "key": k,
+            "en": inp.en.get(k) or R.comp(n, "TextMeshProUGUI").get("m_text"),
+            "ko": inp.ko.get(k),
+        }
+        for k, n in nodes
+    ]
+
+
 def contract_spec(inp, content_id):
     short = catalog.CONTRACT_ARCHETYPES[content_id]
     number = short.rsplit("_", 1)[1]
     prefab = f"UI_crd_Contract_Base_{number}.prefab.json"
     tree = inp.tree(prefab) if (inp.prefab_dir / prefab).exists() else None
-    keys = []
-    if tree:
-
-        def walk(n):
-            for c in n["comps"]:
-                if c.get("locKey"):
-                    keys.append(c["locKey"])
-            for ch in n["children"]:
-                walk(ch)
-
-        walk(tree)
+    nodes = prefab_text_nodes(tree, prefab) if tree else []
     return {
         "kind": "contract",
         "id": content_id,
         "arch": short,
         "prefab": prefab if tree else None,
-        "title": {"en": None, "ko": KOREAN_CARD_NAMES["contracts"].get(content_id)},
-        "texts": [{"en": inp.text_en(k), "ko": inp.ko.get(k), "key": k} for k in keys],
+        # our names number the copies (원로회 I/II); the card prints only the name
+        "title": {
+            "en": None,
+            "ko": re.sub(
+                r"\s+[IVX]+$", "", KOREAN_CARD_NAMES["contracts"].get(content_id) or ""
+            )
+            or None,
+        },
+        "texts": prefab_texts(inp, nodes),
         "art": "contract" if tree else None,
         "path": inp.manifest.get(("contract", content_id)),
     }
@@ -1300,7 +1437,7 @@ def bind_contract(inp, spec, lang):
         if head:
             head["text"] = spec["title"]["ko"]
             head["fallback"] = str(KOREAN_FONT_BOLD)
-    return bind_prefab_texts(inp, t, lang)
+    return bind_prefab_texts(inp, t, lang, spec["prefab"])
 
 
 # ---------------------------------------------------------------- render
@@ -1360,7 +1497,7 @@ def card_ids(args):
 
 
 def text_fields(spec):
-    if spec["kind"] == "imperium":
+    if spec["kind"] == "imperium" and not spec.get("prefab"):
         return [spec[f] for f in ("agent", "reveal", "static")]
     return spec["texts"]
 

@@ -332,6 +332,70 @@ def cmd_icons(args):
     print("icons:", len(rows), "->", out)
 
 
+# Seat pieces on the board (dune_imperium.display.token_images.SEAT_PIECE_KINDS)
+# -> app sprite, {C} = the app's colour name. The Agent is the Swordmaster
+# sprite: the same figure as hud_Icon_Player_Agent_{C} (mask overlap 98 %) at
+# three times the pixels. The app has no coloured Spy, only its grey cylinder,
+# which is tinted with that colour's troop cube (the "tint" column).
+APP_PIECE_SOURCES = {
+    "agent": "SwordMasterIcon_{C}",
+    "spy": "Spy",
+    "control": "ControlMarker{C}",
+    "troop": "Icon_Resource_Cube_{C}",
+    "sandworm": "Icon_Resource_Worm_{C}",
+}
+# Seat order of display.token_images.STRENGTH_TOKEN_COLORS -> app colour name.
+APP_PIECE_COLORS = {"blue": "Blue", "red": "Red", "green": "Green", "yellow": "Yellow"}
+
+
+def cube_color(path):
+    """The saturated colour of a troop cube picture (median of its coloured pixels)."""
+    from PIL import Image
+
+    raw = Image.open(path).convert("RGBA").tobytes()
+    px = [raw[i : i + 4] for i in range(0, len(raw), 4)]
+    px = [p for p in px if p[3] > 200 and max(p[:3]) - min(p[:3]) > 60]
+    return tuple(sorted(c[i] for c in px)[len(px) // 2] for i in range(3))
+
+
+def cmd_pieces(args):
+    from PIL import Image, ImageChops
+
+    app = App()
+    out = args.out or os.path.join(ASSETS, "tokens")
+    os.makedirs(out, exist_ok=True)
+    rows = {}
+    for kind, pattern in APP_PIECE_SOURCES.items():
+        for color, app_color in APP_PIECE_COLORS.items():
+            sprite = pattern.format(C=app_color)
+            path = os.path.join(out, f"{kind}_{color}.png")
+            if app.save_picture(sprite, path) is None:
+                print("missing", kind, sprite)
+                continue
+            im = Image.open(path).convert("RGBA")
+            row = {"sprite": sprite}
+            if "{C}" not in pattern:
+                cube = os.path.join(out, f"troop_{color}.png")
+                if not os.path.exists(cube):
+                    app.save_picture(f"Icon_Resource_Cube_{app_color}", cube)
+                tint = cube_color(cube)
+                alpha = im.getchannel("A")
+                im = ImageChops.multiply(im, Image.new("RGBA", im.size, tint + (255,)))
+                im.putalpha(alpha)
+                row["tint"] = "#{:02x}{:02x}{:02x}".format(*tint)
+            im = im.crop(im.getchannel("A").getbbox())  # the figure fills its box
+            im.save(path)
+            row["sha256"] = sha256(path)
+            rows[f"{kind}_{color}"] = row
+    json.dump(
+        {"build_guid": build_guid(), "pieces": rows},
+        open(os.path.join(out, "app_sources.json"), "w"),
+        indent=1,
+        sort_keys=True,
+    )
+    print("pieces:", len(rows), "->", out)
+
+
 # ---------------------------------------------------------------- prefabs
 SKIP_KEYS = {
     "m_GameObject",
@@ -744,6 +808,9 @@ def main():
     p = sub.add_parser("icons")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_icons)
+    p = sub.add_parser("pieces")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_pieces)
     p = sub.add_parser("prefabs")
     p.add_argument("out")
     p.add_argument("names", nargs="*")

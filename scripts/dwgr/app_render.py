@@ -72,6 +72,11 @@ class SDFFont:
         return (gi, self.glyphs[gi]) if gi is not None else (None, None)
 
 
+# Hangul has no glyphs in the app's SDF fonts; it comes from a local TTF/OTF at
+# this fraction of the text size (Hangul looks smaller than Latin at one size).
+KOREAN_SCALE = 1.0
+
+
 # ---------------------------------------------------------------- geometry
 def resolve(parent, rt):
     if rt is None:  # a plain Transform (particles, anchors): the parent's rect
@@ -238,7 +243,7 @@ class TextRenderer:
             ch = ch.upper()
             sz = size * 0.8
         s = sz / font.point
-        if font.has(ch):
+        if font.has(ch) and not getattr(self, "force_tt", False):
             gi, g = font.glyph(ch)
             m = g["m_Metrics"]
             adv = m["m_HorizontalAdvance"] * s + char_spacing * size * 0.01
@@ -258,7 +263,7 @@ class TextRenderer:
         # TTF fallback (e.g. Hangul): size the em to the SDF font's cap height ratio
         fb = getattr(self, "cur_fallback", None) or self.fallback_path
         if fb:
-            px = sz * 0.92
+            px = sz * KOREAN_SCALE
             f = ImageFont.truetype(fb, max(1, int(round(px * 4))))  # 4x for measuring
             adv = f.getlength(ch) / 4 + char_spacing * size * 0.01
             return {
@@ -341,6 +346,7 @@ class TextRenderer:
         out = []
         y = 0.0
         prev_desc = None
+        prev_vis = []
         prev_brk = False
         maxw = 0.0
         for ln in lines:
@@ -362,12 +368,18 @@ class TextRenderer:
             else:
                 step = max(font.line_h * base_size / font.point, asc - prev_desc)
                 step += line_spacing * base_size * 0.01
+                # Hangul from the fallback face is taller than the SDF font's
+                # tight negative spacing allows; keep its lines apart
+                tt = [i["size"] for i in vis + prev_vis if i["kind"] == "tt"]
+                if tt:
+                    step = max(step, 1.18 * max(tt))
                 if prev_brk:
                     step += para_spacing * base_size * 0.01
                 base = y + step
             out.append({"items": vis, "base": base, "asc": asc, "desc": desc, "w": w})
             y = base
             prev_desc = desc
+            prev_vis = vis
             prev_brk = bool(ln and ln[-1].get("kind") == "brk")
         height = (out[-1]["base"] - out[-1]["desc"]) if out else 0.0
         return out, maxw, height
@@ -403,6 +415,8 @@ class TextRenderer:
         y += m.get("w", 0)
         fname = override_font or tmp["m_fontAsset"].split(":", 1)[1]
         self.cur_fallback = tmp.get("_fallback") or self.fallback_path
+        # Korean text: digits and marks from the same Korean face, not the SDF font
+        self.force_tt = bool(tmp.get("_force_tt"))
         style = int(tmp.get("m_fontStyle", 0))
         kw = dict(
             smallcaps=bool(style & 32),
@@ -519,6 +533,8 @@ class TextRenderer:
         layer[..., 2] = color[2]
         layer[..., 3] = a * color[3]
         tile = Image.fromarray((layer * 255).astype(np.uint8), "RGBA")
+        if it["st"].get("italic"):
+            tile = slant(tile)
         composite(canvas, tile, int(round(X0)), int(round(Y0)), clip, S, top_left_y)
 
     def _ttf(self, canvas, S, it, pen, base, color, clip, top_left_y):
@@ -534,9 +550,28 @@ class TextRenderer:
         im.paste(Image.frombytes("L", mask.size, bytes(mask)), (bbox[0], bbox[1]))
         rgba = Image.new("RGBA", im.size, tuple(int(c * 255) for c in color[:3]) + (0,))
         rgba.putalpha(im.point(lambda v: int(v * color[3])))
+        if it["st"].get("italic"):
+            rgba = slant(rgba)
         X0 = pen * S
         Y0 = (top_left_y - base) * S - asc
         composite(canvas, rgba, int(round(X0)), int(round(Y0)), clip, S, top_left_y)
+
+
+# <i>: the print sets these words in Gotham's italic, about 11 degrees.
+ITALIC_SHEAR = 0.2
+
+
+def slant(tile):
+    """Shear a glyph tile to the right above its bottom edge (TMP fakes italic
+    the same way; the app fonts have no italic face)."""
+    w, h = tile.size
+    k = ITALIC_SHEAR
+    return tile.transform(
+        (w + int(math.ceil(k * h)), h),
+        Image.AFFINE,
+        (1, k, -k * h, 0, 1, 0),
+        resample=Image.BILINEAR,
+    )
 
 
 def hex_color(h, alpha):
@@ -758,6 +793,9 @@ class CardRenderer:
             t2 = dict(tmp)
             if node.get("fallback"):
                 t2["_fallback"] = node["fallback"]
+                t2["_force_tt"] = (
+                    True  # a Korean node: its digits and marks in the same face
+                )
             if node.get("font_override"):
                 t2["m_fontAsset"] = "MonoBehaviour:" + node["font_override"]
             t2.update(node.get("tmp_patch") or {})
