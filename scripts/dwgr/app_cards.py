@@ -742,6 +742,14 @@ def bind_card_prefab(inp, spec, lang):
     """Cards the app lays out by hand (base set, Immortality, Tleilaxu): its own
     prefab, with the printed faction face, the Agent icons and our texts."""
     t = copy.deepcopy(inp.tree(spec["prefab"]))
+    for box in R.find_all_nodes(t):
+        if R.comp(box, "WormSignetDescriptionRenderer") is not None:
+            # Signet Ring: in play the app writes the owner's leader's signet
+            # ability beside the ring; the printed card shows the ring alone,
+            # centred, so the description element goes
+            for n in box["children"]:
+                if n["name"] == "UI_crd_Element_Agent_Text":
+                    n["active"] = False
     for n in R.find_all(t, "SubHeaderText"):
         n["tmp_patch"] = {
             "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
