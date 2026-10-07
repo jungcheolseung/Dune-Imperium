@@ -38,7 +38,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "comma-separated agent kinds for the table, cycled to four seats "
             f"(choices: {', '.join(sorted(BASELINE_AGENT_FACTORIES))}, or "
-            "checkpoint:<path> for a trained policy; default: heuristic,random)"
+            "checkpoint:<path> for a trained policy, search:<path> for it with "
+            "determinized search, search:<path>::value=<path> to search with "
+            "another file's value head; default: heuristic,random)"
         ),
     )
     parser.add_argument(

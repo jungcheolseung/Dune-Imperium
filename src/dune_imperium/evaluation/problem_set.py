@@ -42,7 +42,7 @@ from typing import Any
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.adapters.observation_encoding import OBSERVATION_VERSION
 from dune_imperium.agents import Agent, StateAgent
-from dune_imperium.agents.registry import make_agent
+from dune_imperium.agents.registry import SEARCH_VALUE_SEPARATOR, make_agent
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
@@ -431,13 +431,23 @@ def _spec_from_json(data: dict[str, Any]) -> MatchSpec:
 
 
 def _seating(spec: MatchSpec) -> str:
-    """The table in seat order (``checkpoint:<path>`` -> the file's stem)."""
+    """The table in seat order (``checkpoint:<path>`` -> the file's stem).
 
-    names = [
-        Path(kind.partition(":")[2]).stem if ":" in kind else kind
-        for kind in spec.seat_agents
-    ]
+    A split search seat (``search:<policy>::value=<value>``) names both
+    files, ``<policy stem>+<value stem>``, so it never takes a plain seat's
+    label on its value file.
+    """
+
+    names = [_seat_label(kind) for kind in spec.seat_agents]
     return names[0] if len(set(names)) == 1 else ".".join(names)
+
+
+def _seat_label(kind: str) -> str:
+    if ":" not in kind:
+        return kind
+    policy, separator, value = kind.partition(":")[2].partition(SEARCH_VALUE_SEPARATOR)
+    label = Path(policy).stem
+    return f"{label}+{Path(value).stem}" if separator else label
 
 
 def _engine(spec: MatchSpec) -> UprisingRulesEngine:

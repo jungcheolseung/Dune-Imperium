@@ -78,6 +78,8 @@ def test_a_search_seat_enters_by_file_like_a_checkpoint(tmp_path: Path) -> None:
     # The runner must hand it the state, or it would only play greedily.
     assert isinstance(agent, StateAgent)
     assert isinstance(agent, NetworkSearchAgent)
+    # A plain seat reads its leaves from its own network.
+    assert agent.value_network is agent.greedy.network
     # The measured defaults: effect ordering left to the network, five
     # candidates, eight worlds.
     assert agent.search_effect_order is False
@@ -86,6 +88,81 @@ def test_a_search_seat_enters_by_file_like_a_checkpoint(tmp_path: Path) -> None:
         NetworkSearchAgent(_checkpoint(tmp_path, config), seed=-1)
     with pytest.raises(ValueError, match="positive"):
         NetworkSearchAgent(_checkpoint(tmp_path, config), seed=0, rollouts=0)
+
+
+def _other_checkpoint(tmp_path: Path, config: RulesetConfig) -> str:
+    """A second file of the same shape with different weights."""
+
+    from dune_imperium.adapters.action_codec import ActionCodec
+
+    torch.manual_seed(1)
+    network = PolicyValueNetwork(ActionCodec(config).size, hidden=(32,))
+    path = tmp_path / "value.pt"
+    save_checkpoint(path, network, ruleset=config.identifier, iteration=1)
+    return str(path)
+
+
+def _searched_decision(
+    config: RulesetConfig, seed: int
+) -> tuple[GameState, PlayerView, tuple[DomainAction, ...]]:
+    """A mid-game decision that offers a choice."""
+
+    engine = UprisingRulesEngine()
+    state = _mid_game(config, seed=seed, rounds=2)
+    decision = engine.current_decision(state)
+    while isinstance(decision, ChanceDecision):
+        state = engine.apply(state, ChanceResolver(seed=seed).resolve(decision)).state
+        decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    actions = engine.legal_actions(state, decision.owner)
+    assert len(without_undo_actions(actions)) > 1
+    return state, engine.observe(state, decision.owner), actions
+
+
+def test_a_search_seat_can_read_its_leaves_from_another_file(tmp_path: Path) -> None:
+    """``search:P::value=V`` plays P's policy and scores leaves with V's value."""
+
+    config = RulesetConfig()
+    policy, value = _checkpoint(tmp_path, config), _other_checkpoint(tmp_path, config)
+    kind = f"{SEARCH_PREFIX}{policy}::value={value}"
+
+    assert is_agent_kind(kind)
+    agent = make_agent(kind, 0)
+    assert isinstance(agent, NetworkSearchAgent)
+    plain = NetworkSearchAgent(policy, seed=0)
+    other = NetworkSearchAgent(value, seed=0)
+    state, view, actions = _searched_decision(config, seed=5)
+
+    # The policy is the first file's: same shortlist logits.
+    assert np.array_equal(agent._logits(view, actions), plain._logits(view, actions))
+    # The leaves are the second file's value head, not the first's.
+    assert agent._leaf_value(view) == other._leaf_value(view)
+    assert agent._leaf_value(view) != plain._leaf_value(view)
+    assert not is_agent_kind(f"{SEARCH_PREFIX}{policy}::value=")
+    assert not is_agent_kind(f"{SEARCH_PREFIX}::value={value}")
+    with pytest.raises(ValueError, match="after ::value="):
+        make_agent(f"{SEARCH_PREFIX}{policy}::value=", 0)
+    with pytest.raises(ValueError, match="needs a path"):
+        make_agent(f"{SEARCH_PREFIX}::value={value}", 0)
+
+
+def test_a_seat_reading_its_own_file_as_value_searches_like_the_plain_seat(
+    tmp_path: Path,
+) -> None:
+    """The option changes nothing when both parts come from one file."""
+
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    state, view, actions = _searched_decision(config, seed=5)
+
+    plain = NetworkSearchAgent(path, seed=3, candidates=3, rollouts=2)
+    same = make_agent(f"{SEARCH_PREFIX}{path}::value={path}", 3)
+    assert isinstance(same, NetworkSearchAgent)
+    same.candidates, same.rollouts = 3, 2
+
+    expected = plain.search_with_state(state, view, actions)
+    assert expected.searched
+    assert same.search_with_state(state, view, actions) == expected
 
 
 def test_search_picks_among_the_network_s_own_best_actions(tmp_path: Path) -> None:

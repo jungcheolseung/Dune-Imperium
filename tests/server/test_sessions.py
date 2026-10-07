@@ -581,6 +581,10 @@ def test_creation_validates_seats_and_seeds() -> None:
         manager.create_game(("human", "alien", "random", "random"))
     with pytest.raises(SessionError, match="unknown seat assignment"):
         manager.create_game(("human", "checkpoint:", "random", "random"))
+    # The measurement-only split search seat never reaches a table.
+    split = "search:/a/policy.pt::value=/a/value.pt"
+    with pytest.raises(SessionError, match="not a table seat"):
+        manager.create_game(("human", split, "random", "random"))
     # A checkpoint seat loads its file when the game is created.
     with pytest.raises(SessionError, match="cannot build seat 1"):
         manager.create_game(("human", "checkpoint:/nonexistent.pt", "random", "random"))

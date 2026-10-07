@@ -234,6 +234,9 @@ CHECKPOINT_PREFIX: Final = "checkpoint:"
 # section 12). It costs about 2s a decision against 4ms, and wins 58% of a
 # one-against-three table against three greedy copies of its own checkpoint.
 SEARCH_PREFIX: Final = "search:"
+# ``search:<policy path>::value=<value path>`` searches with one file's policy
+# and another file's value head at the leaves (``NetworkSearchAgent``).
+SEARCH_VALUE_SEPARATOR: Final = "::value="
 
 
 def is_background_agent_kind(kind: str) -> bool:
@@ -251,9 +254,13 @@ def is_background_agent_kind(kind: str) -> bool:
 def is_agent_kind(kind: str) -> bool:
     """Return whether ``make_agent`` can build ``kind``."""
 
-    return kind in BASELINE_AGENT_FACTORIES or any(
-        kind.startswith(prefix) and len(kind) > len(prefix)
-        for prefix in (CHECKPOINT_PREFIX, SEARCH_PREFIX)
+    if kind.startswith(SEARCH_PREFIX):
+        path, separator, value_path = kind[len(SEARCH_PREFIX) :].partition(
+            SEARCH_VALUE_SEPARATOR
+        )
+        return bool(path) and (not separator or bool(value_path))
+    return kind in BASELINE_AGENT_FACTORIES or (
+        kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX)
     )
 
 
@@ -275,11 +282,19 @@ def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Age
 
         return load_network_agent(path, config, seed=seed)
     if kind.startswith(SEARCH_PREFIX):
-        path = kind[len(SEARCH_PREFIX) :]
+        path, separator, value_path = kind[len(SEARCH_PREFIX) :].partition(
+            SEARCH_VALUE_SEPARATOR
+        )
         if not path:
             raise ValueError("search agent kind needs a path")
+        if separator and not value_path:
+            raise ValueError("search agent kind needs a path after ::value=")
         from dune_imperium.agents.network_search_agent import NetworkSearchAgent
 
+        if separator:
+            return NetworkSearchAgent(
+                path, seed=seed, config=config, value_path=value_path
+            )
         return NetworkSearchAgent(path, seed=seed, config=config)
     try:
         factory = BASELINE_AGENT_FACTORIES[kind]

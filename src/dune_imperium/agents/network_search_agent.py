@@ -37,6 +37,11 @@ head rated that stalled mid-turn position above finishing the turn, so the
 seat switched forever (docs/evaluation/m10-2026-09-22.md section 13).
 
 Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
+``search:<policy path>::value=<value path>`` reads the leaves of unfinished
+playouts from another file's value head and keeps everything else -- the
+shortlist, every playout move, the greedy answers -- on the first file; it
+splits a network's policy from its value when two files search differently
+(the 2026-10-07 reversal, docs/evaluation/m10-2026-10-07.md section 4).
 
 A decision whose legal actions are all templates the checkpoint was never
 trained on (``NetworkAgent.untrained``: an Arrakeen Scouts bid, pick or
@@ -190,6 +195,7 @@ class NetworkSearchAgent:
         max_rollout_steps: int = 3_000,
         search_effect_order: bool = DEFAULT_SEARCH_EFFECT_ORDER,
         config: RulesetConfig | None = None,
+        value_path: str | None = None,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
@@ -201,6 +207,14 @@ class NetworkSearchAgent:
         # game's, for ``config``), and answers decisions the search cannot
         # branch from.
         self.greedy = load_network_agent(path, config, seed=seed)
+        # The leaves' value head: the same network unless ``value_path`` names
+        # another file (observation encodings migrate on load, so any file of
+        # this observation version reads the same views).
+        self.value_network = (
+            self.greedy.network
+            if value_path is None
+            else load_network_agent(value_path, config, seed=seed).network
+        )
         self.rollouts = rollouts
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds
@@ -247,8 +261,10 @@ class NetworkSearchAgent:
         )
 
     def _leaf_value(self, view: PlayerView) -> float:
+        network = self.value_network
+        encoded = torch.from_numpy(self._encode(view)).unsqueeze(0)
         with torch.no_grad():
-            value = self.greedy.network.value_head(self._hidden(self._encode(view)))
+            value = network.value_head(network.trunk(encoded))
         return float(value[0, 0])
 
     # -- the agent contract -------------------------------------------------
