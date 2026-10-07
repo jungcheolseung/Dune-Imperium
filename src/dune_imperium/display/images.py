@@ -21,19 +21,23 @@ Manifest entries look like::
 ``path`` is language neutral; the language directory is chosen here, per
 file, in the order given: the play server resolves once for each UI
 language, English first (``en/<path>``, else ``ko/<path>``) and Korean
-first, and the page shows the picture of its language. Only entries of
-the indexed sets (Uprising, and Bloodlines for the ``bloodlines`` option)
-that carry a ``content_id`` are indexed (Rise of Ix: only Epic Game
-Mode's two cards carry one); the other sets in the manifest are archived
-for future expansions. The
-manifest's ``starting`` and ``reserve`` kinds both map to the catalog's
-``other`` kind (starting and Reserve cards), and its ``promo`` kind (the
-three Uprising promo Imperium cards) to ``imperium``.
+first, and the page shows the picture of its language. Within a language
+the face drawn from the Steam app's card templates
+(``app/<language>/<path>`` with a ``.webp`` suffix, written by
+``scripts/dwgr/app_cards.py``) comes before the scan, because it is
+sharper; so the Korean order is ``app/ko``, ``ko``, ``app/en``, ``en``.
+Only entries of the indexed sets (Uprising, and Bloodlines for the
+``bloodlines`` option) that carry a ``content_id`` are indexed (Rise of
+Ix: only Epic Game Mode's two cards carry one); the other sets in the
+manifest are archived for future expansions. The manifest's ``starting``
+and ``reserve`` kinds both map to the catalog's ``other`` kind (starting
+and Reserve cards), and its ``promo`` kind (the three Uprising promo
+Imperium cards) to ``imperium``.
 """
 
 import json
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Final
 
@@ -45,6 +49,8 @@ INDEXED_SETS: Final = frozenset(
     {UPRISING_SET, "bloodlines", "immortality", "rise-of-ix"}
 )
 DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
+# Faces drawn from the Steam app's templates, preferred over the scans.
+APP_RENDER_DIR: Final = "app"
 
 # Manifest kind -> catalog kind. Every other kind keeps its name.
 _CATALOG_KIND: Final[Mapping[str, str]] = MappingProxyType(
@@ -92,7 +98,8 @@ def resolve_card_images(
     """Return ``{key: "<language>/<path>"}`` for every image file present.
 
     ``languages`` is tried in order per file (by default the Korean
-    picture first, the English one as fallback), and keys whose file
+    picture first, the English one as fallback), each language's app
+    render before its scan, and keys whose file
     exists in no language are dropped so
     the catalog never links to a missing file. A missing directory or
     manifest yields an empty mapping.
@@ -103,9 +110,21 @@ def resolve_card_images(
         return MappingProxyType({})
     resolved: dict[ImageKey, str] = {}
     for key, relative in load_card_manifest(manifest).items():
+        rendered = PurePosixPath(relative).with_suffix(".webp").as_posix()
         for language in languages:
-            if (cards_dir / language / relative).is_file():
-                resolved[key] = f"{language}/{relative}"
+            found = next(
+                (
+                    candidate
+                    for candidate in (
+                        f"{APP_RENDER_DIR}/{language}/{rendered}",
+                        f"{language}/{relative}",
+                    )
+                    if (cards_dir / candidate).is_file()
+                ),
+                None,
+            )
+            if found is not None:
+                resolved[key] = found
                 break
     return MappingProxyType(resolved)
 

@@ -166,6 +166,42 @@ def test_resolve_prefers_korean_scans_and_drops_missing_files(tmp_path: Path) ->
     assert resolve_card_images(tmp_path / "nowhere") == {}
 
 
+def test_resolve_prefers_app_renders_within_each_language(tmp_path: Path) -> None:
+    _write_manifest(
+        tmp_path,
+        [
+            _entry("uprising/imperium/Drawn.jpg", kind="imperium", content_id="drawn"),
+            _entry("uprising/intrigue/Only.webp", kind="intrigue", content_id="only"),
+        ],
+    )
+    for relative in (
+        "en/uprising/imperium/Drawn.jpg",
+        "ko/uprising/imperium/Drawn.jpg",
+        # the app render is always .webp, whatever the scan's suffix
+        "app/en/uprising/imperium/Drawn.webp",
+        "app/ko/uprising/imperium/Drawn.webp",
+        # no Korean text for this one: the English render beats no picture
+        "app/en/uprising/intrigue/Only.webp",
+    ):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"img")
+
+    assert dict(resolve_card_images(tmp_path, ("ko", "en"))) == {
+        ("imperium", "drawn"): "app/ko/uprising/imperium/Drawn.webp",
+        ("intrigue", "only"): "app/en/uprising/intrigue/Only.webp",
+    }
+    assert dict(resolve_card_images(tmp_path, ("en", "ko"))) == {
+        ("imperium", "drawn"): "app/en/uprising/imperium/Drawn.webp",
+        ("intrigue", "only"): "app/en/uprising/intrigue/Only.webp",
+    }
+    # A Korean scan still beats an English render in the Korean order.
+    (tmp_path / "app/ko/uprising/imperium/Drawn.webp").unlink()
+    assert resolve_card_images(tmp_path, ("ko", "en"))[("imperium", "drawn")] == (
+        "ko/uprising/imperium/Drawn.jpg"
+    )
+
+
 def test_required_image_keys_cover_every_displayable_content_id() -> None:
     keys = required_image_keys()
     # 57 imperium (54 + 3 promo) + 39 intrigue + 18 contract faces (20
@@ -181,8 +217,26 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # Immortality's Research Station overlay tile.
     # Epic Game Mode: Control the Spice and Economic Supremacy.
     assert len(keys) == (
-        173 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1 + 8 + 1
-        + 2 + 5  # Epic Game Mode and the five Objective faces.
+        173
+        + 44
+        + 1
+        + 12
+        + 10
+        + 8
+        + 1
+        + 1
+        + 7
+        + 18
+        + 1
+        + 25
+        + 11
+        + 19
+        + 1
+        + 1
+        + 8
+        + 1
+        + 2
+        + 5  # Epic Game Mode and the five Objective faces.
     )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()
@@ -202,6 +256,8 @@ def test_the_assets_checkout_resolves_every_content_id() -> None:
     # its own directory (copies of the base-game scans), never the
     # six-player "Commander" variants -- in either language directory.
     for content_id in ("dagger", "signet_ring", "convincing_argument"):
-        language, path = resolved[("other", content_id)].split("/", 1)
+        language, path = (
+            resolved[("other", content_id)].removeprefix("app/").split("/", 1)
+        )
         assert language in ("en", "ko")
         assert path.startswith("uprising/starting/"), path
