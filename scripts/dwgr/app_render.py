@@ -19,19 +19,37 @@ from PIL import Image, ImageFont
 
 # ---------------------------------------------------------------- assets
 class Sprites:
-    def __init__(self, folder):
+    def __init__(self, folder, stretched=()):
         self.folder = folder
         meta = os.path.join(folder, "_meta.json")
         self.meta = json.load(open(meta)) if os.path.exists(meta) else {}
+        # sprites drawn the way the print sizes them: the trimmed texture over
+        # the whole rect (see app_cards.PRINT_STRETCHED_SPRITES)
+        self.stretched = set(stretched)
         self.cache = {}
 
-    def get(self, name):
-        if name not in self.cache:
+    def get(self, name, stretch=False):
+        stretch = stretch or name in self.stretched
+        key = (name, stretch)
+        if key not in self.cache:
             path = os.path.join(self.folder, name + ".png")
-            self.cache[name] = (
-                Image.open(path).convert("RGBA") if os.path.exists(path) else None
-            )
-        return self.cache[name]
+            img = Image.open(path).convert("RGBA") if os.path.exists(path) else None
+            self.cache[key] = img if stretch else untrim(img, self.meta.get(name, {}))
+        return self.cache[key]
+
+
+def untrim(img, meta):
+    """Put an atlas-trimmed texture back at its place in the sprite's full
+    rect (``offset`` from the rect's bottom-left), as Unity draws it."""
+    if img is None or "offset" not in meta or "rect" not in meta:
+        return img
+    rw, rh = (int(round(v)) for v in meta["rect"])
+    if (rw, rh) == img.size or rw < img.width or rh < img.height:
+        return img
+    ox, oy = meta["offset"]
+    full = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+    full.paste(img, (int(round(ox)), int(round(rh - oy - img.height))))
+    return full
 
 
 class SDFFont:
@@ -759,7 +777,7 @@ class CardRenderer:
                 if node.get("inline") and getattr(self, "alt", None)
                 else self.sp
             )
-            sprite = source.get(name)
+            sprite = source.get(name, stretch=bool(node.get("stretch_sprite")))
             col = list(img.get("m_Color") or [1, 1, 1, 1])
             col[3] *= alpha
             if sprite is not None and col[3] > 0.001:
@@ -982,6 +1000,15 @@ def find_shown(node, name):
         if r:
             return r
     return None
+
+
+def find_all_nodes(node, acc=None):
+    """Every node of the tree, depth first."""
+    acc = [] if acc is None else acc
+    acc.append(node)
+    for ch in node["children"]:
+        find_all_nodes(ch, acc)
+    return acc
 
 
 def find_all(node, name, acc=None):

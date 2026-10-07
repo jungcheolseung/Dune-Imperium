@@ -283,14 +283,41 @@ class App:
                     self.load(dep)
                     continue
                 raise
-            if kind != "S":
-                return {}
-            b = d.m_Border
-            return {
-                "border": [b.x, b.y, b.z, b.w],
-                "rect": [d.m_Rect.width, d.m_Rect.height],
-                "pivot": [d.m_Pivot.x, d.m_Pivot.y],
-            }
+            return sprite_meta(d) if kind == "S" else {}
+
+
+def sprite_meta(d):
+    """What drawing a sprite needs besides its pixels. ``offset`` places the
+    saved texture inside ``rect``: the atlas trims transparent margins, and
+    Unity still lays the whole rect over the RectTransform (the Tleilaxu
+    header mask is 808x1154 of a 955x1301 sprite, inset to the card border)."""
+    b = d.m_Border
+    off = d.m_RD.textureRectOffset
+    return {
+        "border": [b.x, b.y, b.z, b.w],
+        "rect": [d.m_Rect.width, d.m_Rect.height],
+        "pivot": [d.m_Pivot.x, d.m_Pivot.y],
+        "offset": [off.x, off.y],
+    }
+
+
+def cmd_sprite_meta(args):
+    """Refresh _meta.json for the sprites already saved in a folder, without
+    decoding any texture."""
+    app = App()
+    meta_path = os.path.join(args.out, "_meta.json")
+    meta = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
+    done = 0
+    for f in sorted(os.listdir(args.out)):
+        name = f[:-4]
+        if not f.endswith(".png") or name.startswith("_"):
+            continue
+        obj, kind = app.picture(name)
+        if obj is not None and kind == "S":
+            meta[name] = sprite_meta(obj.read())
+            done += 1
+    json.dump(meta, open(meta_path, "w"), indent=0)
+    print("sprite meta:", done)
 
 
 def cmd_sprites(args):
@@ -816,6 +843,9 @@ def main():
     p = sub.add_parser("icons")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_icons)
+    p = sub.add_parser("sprite-meta")
+    p.add_argument("out")
+    p.set_defaults(fn=cmd_sprite_meta)
     p = sub.add_parser("pieces")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_pieces)
