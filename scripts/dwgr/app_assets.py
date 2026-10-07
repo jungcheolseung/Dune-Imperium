@@ -403,6 +403,12 @@ def dump_component(app, c):
             "amax": [r.m_AnchorMax.x, r.m_AnchorMax.y],
             "pivot": [r.m_Pivot.x, r.m_Pivot.y],
             "scale": [r.m_LocalScale.x, r.m_LocalScale.y],
+            "rot": [
+                r.m_LocalRotation.x,
+                r.m_LocalRotation.y,
+                r.m_LocalRotation.z,
+                r.m_LocalRotation.w,
+            ],
         }
     if t == "CanvasGroup":
         return {"_": "CanvasGroup", "alpha": c.read_typetree().get("m_Alpha")}
@@ -508,7 +514,14 @@ def find_go(go_reader, name):
 
 # ---------------------------------------------------------------- card inputs
 INLINE_BUNDLE = "bfceeebef0fc453d153f5c466493ae23.bundle"  # TMP sprite glyph pictures
-CARD_SPRITE_PREFIXES = ("UI_ill_", "UI_crd_", "Icon_cost_", "UI_icon_Research")
+CARD_SPRITE_PREFIXES = (
+    "UI_ill_",
+    "UI_crd_",
+    "Icon_cost_",
+    "UI_icon_Research",
+    "hud_Icon_Conflict",
+    "hud_Icon_ShieldWall",
+)
 
 
 def cmd_card_inputs(_args):

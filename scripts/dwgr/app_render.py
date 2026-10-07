@@ -74,6 +74,8 @@ class SDFFont:
 
 # ---------------------------------------------------------------- geometry
 def resolve(parent, rt):
+    if rt is None:  # a plain Transform (particles, anchors): the parent's rect
+        return parent
     px, py, pw, ph = parent
     ax0 = px + rt["amin"][0] * pw
     ax1 = px + rt["amax"][0] * pw
@@ -390,6 +392,9 @@ class TextRenderer:
 
     def draw(self, canvas, S, rect, text, tmp, clip, top_left_y, override_font=None):
         """rect in Unity coords; canvas top-left y = top_left_y - unity_y."""
+        text = text.rstrip("\n ")  # a trailing break only nudges the app's own layout
+        if text.startswith(".") and not text.startswith(".."):
+            text = text[1:]  # the app's prefabs hide a leading "." from view
         x, y, w, h = rect
         m = tmp.get("m_margin") or {}
         x += m.get("x", 0)
@@ -666,13 +671,52 @@ class CardRenderer:
     def walk(self, canvas, node, rect, clip, top, alpha):
         if not node.get("active", True):
             return
+        rt = comp(node, "RT")
+        angle = z_angle(rt.get("rot")) if rt else 0.0
+        if abs(angle) > 0.5 and not node.get("_rotated"):
+            # draw the subtree upright on its own layer, then turn the layer
+            # about the rect's pivot (Unity's z rotation is anticlockwise)
+            # on a square layer large enough for any turn, pivot at its centre
+            side = int(math.ceil(2.2 * max(rect[2], rect[3]) * self.S)) + 4
+            layer = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+            half = side / 2.0 / self.S
+            ltop = side / self.S
+            lrect = (
+                half - rt["pivot"][0] * rect[2],
+                ltop - half - rt["pivot"][1] * rect[3],
+                rect[2],
+                rect[3],
+            )
+            node["_rotated"] = True
+            saved_top = self.top
+            self.top = ltop
+            self.walk(layer, node, lrect, None, ltop, alpha)
+            self.top = saved_top
+            del node["_rotated"]
+            px = (rect[0] + rt["pivot"][0] * rect[2]) * self.S
+            py = (top - (rect[1] + rt["pivot"][1] * rect[3])) * self.S
+            turned = layer.rotate(angle, resample=Image.BICUBIC)
+            composite(
+                canvas,
+                turned,
+                int(round(px - side / 2)),
+                int(round(py - side / 2)),
+                None,
+                self.S,
+                top,
+            )
+            return
         cg = comp(node, "CanvasGroup")
         if cg and cg.get("alpha") is not None:
             alpha *= cg["alpha"]
         if alpha <= 0.001:
             return
         img = comp(node, "Image")
-        if img and img.get("m_Sprite") and not node.get("hide_image"):
+        mask = comp(node, "Mask")
+        hide = node.get("hide_image") or (
+            mask is not None and not mask.get("m_ShowMaskGraphic", 1)
+        )
+        if img and img.get("m_Sprite") and not hide:
             name = img["m_Sprite"].split(":", 1)[1]
             source = (
                 self.alt
@@ -725,8 +769,44 @@ class CardRenderer:
             clip = intersect(clip, rect)
         kids = [ch for ch in node["children"] if ch.get("active", True)]
         rects = self.layout_children(node, rect, kids)
+        target = canvas
+        if mask is not None and img and img.get("m_Sprite") and kids:
+            # Unity Mask: children show only where the mask graphic is opaque
+            target = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
         for ch, r in zip(kids, rects, strict=False):
-            self.walk(canvas, ch, r, clip, top, alpha)
+            self.walk(target, ch, r, clip, top, alpha)
+        if target is not canvas:
+            shape = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+            sprite = self.sp.get(img["m_Sprite"].split(":", 1)[1])
+            if sprite is not None:
+                if img.get("m_Type") == 1:
+                    meta = self.sp.meta.get(img["m_Sprite"].split(":", 1)[1], {})
+                    paste_sliced(
+                        shape,
+                        self.S,
+                        sprite,
+                        meta.get("border", [0, 0, 0, 0]),
+                        rect,
+                        None,
+                        None,
+                        top,
+                        img.get("m_PixelsPerUnitMultiplier", 1.0) or 1.0,
+                    )
+                else:
+                    paste(
+                        shape,
+                        self.S,
+                        sprite,
+                        rect,
+                        None,
+                        None,
+                        top,
+                        preserve=bool(img.get("m_PreserveAspect")),
+                    )
+            a = np.asarray(target).astype(np.float32)
+            m = np.asarray(shape.getchannel("A")).astype(np.float32) / 255.0
+            a[..., 3] *= m
+            canvas.alpha_composite(Image.fromarray(a.astype(np.uint8), "RGBA"))
 
     def layout_children(self, node, rect, kids):
         out = [resolve(rect, comp(ch, "RT")) for ch in kids]
@@ -773,22 +853,33 @@ class CardRenderer:
         else:
             start = y1 - (avail_h - total) * [0, 0.5, 1][row]
         cur = start
-        res = []
-        for (_ch, r), p in zip(zip(kids, out, strict=False), parts, strict=False):
+        res = [None] * len(kids)
+        order = list(range(len(kids)))
+        if lg.get("m_ReverseArrangement"):
+            order.reverse()  # the last child is laid out first
+        for i in order:
+            r, p = out[i], parts[i]
             if p is None:
-                res.append(r)
+                res[i] = r
                 continue
             w, h = p
             if horiz:
                 cy = y1 - (avail_h - h) * [0, 0.5, 1][row]
-                res.append((cur, cy - h, w, h))
+                res[i] = (cur, cy - h, w, h)
                 cur += w + sp
             else:
                 cx = x0 + (avail_w - w) * [0, 0.5, 1][col]
-                res.append((cx, cur - h, w, h))
+                res[i] = (cx, cur - h, w, h)
                 cur -= h + sp
         # nested rects of a re-laid child must be recomputed relative to its new rect
         return res
+
+
+def z_angle(q):
+    """Rotation about z, in degrees, of a quaternion [x, y, z, w]."""
+    if not q:
+        return 0.0
+    return math.degrees(2.0 * math.atan2(q[2], q[3]))
 
 
 def find(node, name):
