@@ -7,7 +7,10 @@ ends only through its owner's ``finish_agent_turn``, which is that press
 itself, and so is a turn-passing card (Withdrawn, Litany Against Fear;
 OQ-095 (6)); the server still holds the other unit ends (a Leader pick in
 the OQ-007 draft, Conflict rewards, a Control defense, an Arrakeen Scouts
-line) for ``confirm_turn``. Which steps end a turn is a reading of the
+line) for ``confirm_turn`` -- since 2026-10-08 only while the seat has a
+step to take back, before the chance outcomes after the unit; a step it
+could not take back is sent with the browser's "확정 ▶" instead
+(``sent_by_turn_end``). Which steps end a turn is a reading of the
 engine's own decision stack, so these tests exercise the session layer
 (``turn_end.py`` + ``sessions.py``), not any card or Main-rules behaviour --
 the cards used to reach a scenario (Covert Operation, Holy War, Usurp) are
@@ -1665,8 +1668,11 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     # The row told the seat it could take the Spy back, and it can: nothing
     # was logged after the Spy, the reshuffle waits, and no seat owns a
     # decision yet. So the browser sends it at once, not with the press.
+    # Its dry run ran on through the round's end, which resets every seat's
+    # strength: no strength preview is drawn from it.
     assert choice["undoable"] is True
     assert choice["sent_by_turn_end"] is False
+    assert choice["strength_after"] is None
     assert session.state.decision_stack[-1].kind == FrameKind.ROUND_START_RESHUFFLE
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
@@ -1684,6 +1690,7 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
         and row["arguments"] != choice["arguments"]
     ]
     assert posts, "seed 19 offers the reward Spy another post"
+    assert all(row["strength_after"] is None for row in posts)
     summary = manager.apply_action(
         game_id, 0, _int(summary["revision"]), _int(posts[0]["index"])
     )
@@ -2347,7 +2354,9 @@ def _run_property_sweep_game(
     - every human decision has at least one legal action;
     - a hold always leaves its seat a step to take back, and exactly the
       steps outside the turns that cannot be taken back are sent with the
-      press instead (``sent_by_turn_end``; user, 2026-10-08);
+      browser's "확정 ▶" instead (``sent_by_turn_end``; user, 2026-10-08);
+    - a unit outside the turns never closes unconfirmed: by a hold, or by
+      a step sent with "확정 ▶";
     - the replayed game passes ``_agent_turn_violations``.
     """
 
@@ -2492,6 +2501,19 @@ def _run_property_sweep_game(
             has_unit_step[owner] = False
         elif not answers_another_unit(before, owner):
             has_unit_step[owner] = True
+        # A unit outside the turns never closes unconfirmed: its end is a
+        # hold (the press, with a step to take back), or its last step went
+        # out with the browser's "확정 ▶" (sent_by_turn_end; user, 2026-10-08).
+        if (
+            own_unit_outside_turns(before, owner)
+            and owner not in session.open_units
+            and summary["confirmation"] != owner
+            and choice["action_id"] not in EXPLICIT_TURN_ENDS
+            and not choice["sent_by_turn_end"]
+        ):
+            tally.violations.append(
+                f"seat {owner}'s unit closed unconfirmed after {choice['action_id']}"
+            )
     else:
         raise AssertionError(f"seed {game_seed} did not finish within the step budget")
     tally.violations.extend(_agent_turn_violations(session))

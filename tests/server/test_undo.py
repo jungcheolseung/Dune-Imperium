@@ -984,11 +984,10 @@ def test_a_confirmed_turn_end_stays_handed_over_to_the_next_human() -> None:
     # the seat that confirmed could take the turn back from under them
     # (found by the slice 5 review; two browsers make it visible).
     #
-    # A hold's undo window is not always open to begin with (2026-09-23:
-    # every turn end waits for its press, whether or not it left anything
-    # undoable) -- only a hold that *does* start with an open window
-    # exercises the sealing this test is about, so the others are skipped
-    # rather than asserted on.
+    # A hold's undo window was not always open to begin with (2026-09-23:
+    # every turn end waited for its press, whether or not it left anything
+    # undoable); since 2026-10-08 every hold leaves its seat a step to take
+    # back (test_turn_end's sweep). The skip below stays harmless.
     #
     # Seed 0 with the Leader draft (moved 2026-10-01 from seed 7's held
     # Agent turns, which OQ-095 ends with the explicit finish_agent_turn

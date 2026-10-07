@@ -5,7 +5,10 @@ not a rule; ``docs/rules/player-turns.md``). An Agent turn ends only through
 its owner's ``finish_agent_turn`` (user ruling OQ-095), a Reveal turn
 through ``finish_reveal``, and a turn-passing card is that press itself; the
 server holds the remaining unit ends (a Leader pick, Conflict rewards, a
-Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료".
+Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료",
+as long as the seat still has a step of the unit to take back; a step it
+could not take back is instead held by the browser and sent with "확정 ▶"
+(``sent_by_turn_end``, see below).
 The last Leader pick has its own explicit ``finish_leader_draft`` so setup
 cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine

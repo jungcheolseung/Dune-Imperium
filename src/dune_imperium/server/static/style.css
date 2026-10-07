@@ -694,6 +694,13 @@ img.control-marker.pictured { object-fit: fill; }
 @media (prefers-reduced-motion: reduce) {
   .spy-post-hotspot { animation: none; filter: drop-shadow(0 0 3px var(--glow)); }
 }
+/* The post a held choice names (turn.js chooseAction). */
+.spy-post-hotspot.picked {
+  animation: none;
+  border-color: #fff;
+  background: rgba(255, 207, 90, 0.6);
+  box-shadow: 0 0 12px 3px rgba(255, 207, 90, 0.7);
+}
 .spy-post {
   position: absolute;
   transform: translate(-50%, -50%);

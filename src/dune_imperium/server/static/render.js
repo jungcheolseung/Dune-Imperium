@@ -741,9 +741,9 @@ function turnEndButtonLabel(action, actions) {
    on the last Combat Intrigue pass, warned before the press (user ruling
    2026-10-02, L2-Q4: "로그 + 클릭 전 경고"). A hold has no action, and no
    badge: its step was already taken. */
-function appendTurnEndRow(container, label, onClick, action = null) {
+function appendTurnEndRow(container, label, onClick, action = null, kind = "turn-end-row") {
   const row = document.createElement("div");
-  row.className = "confirm-row turn-end-row";
+  row.className = `confirm-row ${kind}`;
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
@@ -999,10 +999,10 @@ function renderBanner() {
       meta.textContent = t("render.seat_you", { seat: decision.owner });
       info.append(prompt, meta);
 
-      /* A choice held for the press (turn.js chooseAction) takes the row:
-         the press sends it. Until then the seat may pick another one, and
-         an explicit end the decision also offers (a Combat Intrigue pass)
-         goes back into the list below. */
+      /* A choice held for the press (turn.js chooseAction) takes the row,
+         as "확정 ▶": the press sends it. Until then the seat may pick
+         another one, and an explicit end the decision also offers (a Combat
+         Intrigue pass) goes back into the list below. */
       const held = heldChoice();
       /* The seat's own explicit turn-end action (EXPLICIT_TURN_END_IDS),
          when the pending decision offers one, IS this turn's end: it
@@ -1014,7 +1014,9 @@ function renderBanner() {
         hint.className = "meta held-hint";
         hint.textContent = t("render.held_choice_hint");
         info.append(hint);
-        appendTurnEndRow(info, t("render.turn_end_button"), () => applyAction(held.index), held);
+        appendTurnEndRow(
+          info, t("render.held_send_button"), () => applyAction(held.index), held, "held-send-row",
+        );
       } else if (turnEnd) {
         const actions = state.actions.actions;
         appendTurnEndRow(
@@ -1292,6 +1294,9 @@ function countRow(id, family, compact) {
       event.stopPropagation();
       const count = family[target].arguments.count;
       state.counts[id] = AUCTION_AMOUNT_IDS.has(id) ? { key: auctionKey(), count } : count;
+      /* A count held for the press is the old one: let it go. */
+      const held = heldChoice();
+      if (held && held.action_id === id) state.held = null;
       render();
     });
     return button;

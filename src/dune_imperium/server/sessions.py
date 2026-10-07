@@ -1293,8 +1293,10 @@ class GameSessionManager:
     ) -> bool:
         """After a human step: hold its turn end for the press, or play on.
 
-        One press ends every unit of a human seat, whatever step closed it
-        and whether or not it can still be taken back. An explicit turn-end
+        One press ends every unit of a human seat, and the press is its
+        confirmation: a held unit end leaves the seat its steps to take back
+        (a unit whose last step cannot be taken back was confirmed by that
+        step, which the browser sends with "확정 ▶"). An explicit turn-end
         action (``EXPLICIT_TURN_ENDS``) is that press itself, and so is a
         turn-passing card (``TURN_PASS_EVENTS``, OQ-095 (6)): either seals
         the turn and hands over at once, unless a Usurp trash's follow-up or
@@ -2596,9 +2598,16 @@ def strength_preview(
     off) rather than "2 per troop" worked out in the browser. Steps that
     cannot be taken back are left out: they reveal hidden information or
     hand over to chance, and their outcome is not the player's to preview.
+    So is a step whose dry run ran past the seat's unit to a chance outcome
+    held after it (the last Conflict reward before the next round's
+    reshuffle): that run went through the round's end, which resets every
+    seat's strength, so its figure is not the step's own.
     """
 
     if outcome is None or not undoable:
+        return None
+    stack = outcome.state.decision_stack
+    if stack and isinstance(stack[-1].decision, ChanceDecision):
         return None
     after = outcome.state.players[action.actor].combat_strength
     return after if after != before.players[action.actor].combat_strength else None
