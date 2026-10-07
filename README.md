@@ -92,7 +92,7 @@ clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 
   스캔보다 먼저 쓴다.
   `uv run scripts/fetch_card_images.py`는 manifest가 기록한 출처에서 빠진
   파일만 내려받는다.
-- `assets/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 게임 아이콘 투명 PNG 45장.
+- `assets/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 게임 아이콘 투명 PNG 46장.
   공식 Uprising Main Rulebook의 Icon Guide(20쪽)와 Agent 아이콘(9쪽)에서
   `uv run --with pymupdf --with pillow scripts/extract_rulebook_icons.py`로 잘라낸 뒤,
   설치된 Steam 앱이 있으면 `scripts/dwgr/app_assets.py icons`가 같은 그림의 앱판으로
