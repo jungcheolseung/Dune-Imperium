@@ -4,6 +4,17 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-07 Steam 앱 그림: 아이콘·카드 앞면·보드 말 (codec 그대로 v139)
+
+사용자 요청("앱에서 쓰는 아이콘이나 카드 이미지가 화질도 더 좋고 깔끔할거란 말이야… dunecardshub에 있더라도 앱의 이미지를 쓸 수 있으면 좋겠어")과 세 결정(카드는 "앱 조각으로 조립", 보드 말은 "앱 그림으로 교체", 저장은 "비공개 에셋 저장소에 커밋")에 따랐다. 함께 정한 원칙: **앱의 한국어 번역은 쓰지 않는다**(공식 한글판과 다르다). 앱 분석 자료와 중간 산출물은 에셋 저장소의 로컬 `reference/dune-steam-app/<build>/render/`(git 무시)에만 두고, UI가 보이는 그림만 에셋 저장소에 커밋한다. 앱 코드는 옮기지 않았다.
+
+- **아이콘**: `scripts/dwgr/app_assets.py icons`가 45개 중 44개를 앱판으로 덮어쓴다(같은 그림, 2~3배 픽셀). `steal_intrigue`만 룰북 crop이다.
+- **카드 앞면**: 앱은 완성된 앞면을 갖고 있지 않고 런타임에 조립한다. `scripts/dwgr/app_cards.py render`(배치·SDF 글자는 `app_render.py`)가 앱의 프리팹·그림·글꼴로 다시 그려 에셋 `cards/app/<언어>/<manifest 경로>.webp`(695×970)에 쓴다. 영어 196장(Uprising·Immortality·프로모 Imperium/Tleilaxu, Intrigue, Conflict, 계약), 한국어 156장이다. 칸 안 배치는 실물 카드 규칙을 따른다(아이콘 줄, 문장 앞뒤 아이콘, —OR— 구분, 아이콘은 실물처럼 크게). 영어는 앱 문구에 인쇄판 교정 13칸(`cards/app/en_text.json`)을 덮는다. 한국어 문구 215칸(`ko_text.json`)은 한글판 카드 사진에서 받아 적었다: 두 agent가 따로 읽어 같은 것만 쓰고, 다른 5칸은 사진을 보고 골랐다. 한글은 NanumBarunGothic이다(`~/Library/Fonts`에 있어야 다시 그릴 수 있다). Gotham Book 옆은 보통, Gotham Medium·Interstate 옆은 굵게 쓴다.
+- **서버**: `display.images.resolve_card_images`가 언어마다 앱 앞면을 스캔보다 먼저 고른다(한국어 UI: app/ko → ko → app/en → en). 한국어 문구가 없는 34장(Intrigue, 한글 사진 없음)과 Conflict 2장·프로모 2장은 한국어 UI에서 영어 앱 앞면으로 보인다. Subject X-137은 앱 그림이 없어 스캔 그대로다.
+- **보드 말**: `app_assets.py pieces`가 Agent(Swordmaster 스프라이트, Agent 그림과 같은 모양 98%)·Spy(앱의 회색 원통에 좌석 큐브 색을 곱함, 색 있는 Spy가 앱에 없다)·Control 깃발·병력 큐브·모래벌레를 네 색으로 에셋 `tokens/<말>_<색>.png`에 쓴다. `catalog.seat_pieces`는 네 색이 다 있는 종류만 내놓는다. `board.js`는 그 종류를 그림(`img.pictured`)으로 그리고, 없는 종류는 예전 단색 도형을 그대로 쓴다. 영향력 큐브와 player disc는 단색 그대로다(질문에 들지 않았다; 메모리 ui-token-style의 덮어쓰기). 앱 그림은 앱의 색(짙은 남색 등)이라 `SEAT_COLORS`와 색조가 조금 다르다.
+- **검증**: pytest **6,644개 통과**, ruff·mypy(415파일) 통과. Chrome E2E 47종 중 46종 통과(3개씩)했다. 실패한 `table_layout`의 "the last card remains visible when staged after scrolling"(클릭 직후 `.picked`를 바로 읽음)은 따로 돌리면 통과한다. 동시에 4~6개 돌리면 master 코드에서도, 앱 앞면을 뺀 카드 폴더에서도 같은 자리에서 깨진다(앱 앞면 없이 6개 중 6개). 이 브랜치와 무관한 부하 타이밍 가정이라 고치지 않고 남긴다. 그림 말 검사는 `board_tokens.py`(510), `bene_tleilax_specimens.py`, `scouts.py`에 들어갔다. `board_tokens.py` [3g]는 그림을 뺀 판에서 단색 검사를 다시 돌린다.
+- **남은 것**: Alliance token·Shield Wall·Maker Hooks는 TTS 그림 그대로다(앱에 `hud_Player_AllianceToken_*_Large` 256px 등이 있다; 바꾸려면 먼저 묻는다). 한국어 사진이 없는 Intrigue 34장은 한글판 문구를 얻을 출처가 없다. 원격 fetch가 이 세션에서 막혀(ssh timeout) master `38d38fa3` 기준으로 작업했다.
+
 ## 2026-10-07 학습: 앱 AI 섞기 대 self-play만 (8081에서 두 팔, 코드 변경 없음)
 
 사용자 선택("(b)+(a) 두 실행 동시"): L3 설정 연장(M, 판의 반은 앱 AI 어려움 상대)과 self-play만 한 대조 팔(S)을 같은 8081·v138 규칙·시드에서 1,000 iteration씩 돌렸다. 16 GB 기계라 한 chain으로 차례로 돌렸다(M 4시간 24분, S 3시간 53분, 판정 4시간 19분). 결과는 [evaluation/m10-2026-10-07.md](evaluation/m10-2026-10-07.md), 실행 폴더는 git 무시 `checkpoints/2026-10-07/mix-vs-self/`(판정 규칙은 결과 전에 그 `README.md`에)다. 학습과 판정은 master `381f2e42`(v138)에 고정한 분리 작업 트리 `.claude/worktrees/mix-vs-self`에서 돌았다(실험 폴더의 `pair2.py`가 그 경로를 쓴다).
