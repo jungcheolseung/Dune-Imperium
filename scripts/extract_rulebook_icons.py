@@ -15,6 +15,10 @@ The icons are copyrighted Dire Wolf Digital artwork extracted for
 machine-local UI use; the output directory is gitignored and must never be
 committed, the same policy as the Dune Cards Hub card image cache
 (``scripts/fetch_card_images.py``).
+
+Since 2026-10-07 the play UI prefers the app's sharper copies of the same
+icons: run this script first, then ``scripts/dwgr/app_assets.py icons``,
+which overwrites every icon the app has (all but ``steal_intrigue``).
 """
 
 from __future__ import annotations
