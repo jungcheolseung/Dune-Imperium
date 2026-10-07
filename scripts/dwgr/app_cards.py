@@ -690,7 +690,11 @@ def custom_draw(inp):
 
 # ---------------------------------------------------------------- binding
 def set_sprite(node, name):
-    R.comp(node, "Image")["m_Sprite"] = "Sprite:" + name
+    """Show `name` in the node's Image, switching it on as the app's view code
+    does (the Agent icon template ships with its Image off)."""
+    image = R.comp(node, "Image", disabled=True)
+    image["m_Sprite"] = "Sprite:" + name
+    image.pop("enabled", None)
 
 
 def bind_card_prefab(inp, spec, lang):
@@ -989,11 +993,38 @@ def pick_frame(inp, text, lang):
     return AGENT_FRAMES[-1]
 
 
+# The GRAFT tab as printed (Chairdog, Usurp, Ghola, Dissecting Kit scans at
+# 556 px): its curved end stops at x 405 with or without a faction icon, and
+# the label starts at x 110 beside an icon. The app's own layout (icon column
+# 80 wide, label element 330) ends it at 432 beside an icon and at 352
+# without one, so the renderer sets the printed widths instead.
+PRINT_GRAFT_TAB_WIDTH = 383.0  # the tab from the box's left edge (x 22)
+PRINT_GRAFT_ICON_COLUMN = 66.0
+
+
 def bind_icons(t, icon_tpl, spec):
     col = R.find(t, "UI_crd_Element_ActionColumn_Dynamic")
     icons = spec["icons"] + spec["infiltrate"]
     n = len(icons)
     col["pref_w"], col["pref_h"] = 80, n * 58 + max(0, n - 1) * 5
+    label = R.find_shown(t, "GraftTextElement")  # graft cards only
+    if label is not None:
+        if n:
+            col["pref_w"] = PRINT_GRAFT_ICON_COLUMN
+        le = R.comp(label, "LayoutElement")
+        le["m_MinWidth"] = le["m_PreferredWidth"] = PRINT_GRAFT_TAB_WIDTH - (
+            PRINT_GRAFT_ICON_COLUMN if n else 0.0
+        )
+        # the column's black backer stays dark between the icons, as printed,
+        # but stops at the tab's top edge: hanging 7 px below the icons it
+        # would cut a dark notch into the tab, which the print runs unbroken
+        # (tab 43 px tall from the container's foot, the column 8 px above
+        # it); it keeps the app column's 80 px width behind the narrower one
+        backer = R.find(col, "BackerImage")
+        if backer is not None and n:
+            rt = R.comp(backer, "RT")
+            rt["pos"][1], rt["size"][1] = 35.0, -42.0
+            rt["size"][0] = 80.0 - PRINT_GRAFT_ICON_COLUMN
     for ic in icons:
         node = copy.deepcopy(icon_tpl)
         node["active"] = True
@@ -1004,7 +1035,7 @@ def bind_icons(t, icon_tpl, spec):
         col["children"].append(node)
     if n == 0:
         box = R.find(t, "ActionColumn_HorizontalContainer")
-        if R.find(box, "GraftTextElement") is None:
+        if R.find_shown(box, "GraftTextElement") is None:
             box["active"] = False
         else:
             # Usurp grafts with no Agent icon: the GRAFT tab still prints, at

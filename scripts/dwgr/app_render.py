@@ -95,9 +95,10 @@ def resolve(parent, rt):
     return (cx - rt["pivot"][0] * w, cy - rt["pivot"][1] * h, w, h)
 
 
-def comp(node, kind):
+def comp(node, kind, disabled=False):
+    """The node's component of this kind; a switched-off one only on request."""
     for c in node["comps"]:
-        if c["_"] == kind:
+        if c["_"] == kind and (disabled or c.get("enabled", True)):
             return c
     return None
 
@@ -847,7 +848,7 @@ class CardRenderer:
             canvas.alpha_composite(Image.fromarray(a.astype(np.uint8), "RGBA"))
 
     def layout_children(self, node, rect, kids):
-        out = [resolve(rect, comp(ch, "RT")) for ch in kids]
+        out = [fit_content(ch, resolve(rect, comp(ch, "RT"))) for ch in kids]
         hl = comp(node, "HorizontalLayoutGroup")
         vl = comp(node, "VerticalLayoutGroup")
         lg = hl or vl
@@ -913,6 +914,46 @@ class CardRenderer:
         return res
 
 
+def min_width(node):
+    """A layout child's minimum width as a HorizontalLayoutGroup counts it:
+    its LayoutElement's min (else preferred) width, else the width a binder
+    gave it (``pref_w``)."""
+    le = comp(node, "LayoutElement")
+    if le and le.get("m_IgnoreLayout"):
+        return None
+    for key in ("m_MinWidth", "m_PreferredWidth"):
+        if le and (le.get(key) or -1) > 0:
+            return le[key]
+    return node.get("pref_w") or 0.0
+
+
+def fit_content(node, rect):
+    """ContentSizeFitter, horizontal only (the only fit the card prefabs use
+    besides AcquireFrame's vertical one, which stays unimplemented): a node
+    whose HorizontalLayoutGroup fits its width to its children keeps its pivot
+    and takes their summed width. The Graft tab behind the Agent icons and the
+    GRAFT label is stretched across exactly that width."""
+    csf = comp(node, "ContentSizeFitter")
+    hl = comp(node, "HorizontalLayoutGroup")
+    if not csf or not hl or not csf.get("m_HorizontalFit"):
+        return rect
+    widths = [
+        w
+        for ch in node["children"]
+        if ch.get("active", True) and (w := min_width(ch)) is not None
+    ]
+    pad = hl["m_Padding"]
+    w = (
+        sum(widths)
+        + hl["m_Spacing"] * max(0, len(widths) - 1)
+        + pad["m_Left"]
+        + pad["m_Right"]
+    )
+    pivot_x = comp(node, "RT")["pivot"][0]
+    x = rect[0] + pivot_x * rect[2] - pivot_x * w
+    return (x, rect[1], w, rect[3])
+
+
 def z_angle(q):
     """Rotation about z, in degrees, of a quaternion [x, y, z, w]."""
     if not q:
@@ -925,6 +966,19 @@ def find(node, name):
         return node
     for ch in node["children"]:
         r = find(ch, name)
+        if r:
+            return r
+    return None
+
+
+def find_shown(node, name):
+    """Like find, but only through active nodes (what the card shows)."""
+    if not node.get("active", True):
+        return None
+    if node["name"] == name:
+        return node
+    for ch in node["children"]:
+        r = find_shown(ch, name)
         if r:
             return r
     return None
