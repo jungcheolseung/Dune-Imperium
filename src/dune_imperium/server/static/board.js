@@ -91,11 +91,41 @@ function pieceSprite() {
   document.body.appendChild(sprite);
 }
 
-/* A seat's Agent on a space or Spy on a post: the rulebook icon's shape,
-   flat in the seat's colour like every other player piece and without a
-   seat number, with the icon's light rim inside a dark edge (and a Spy's
-   lighter top face). */
+/* The Steam app's picture of a seat's piece (catalog.seat_pieces: agent,
+   spy, control, troop, sandworm), or null when the assets lack that kind
+   and the piece is drawn flat. */
+function seatPieceUrl(kind, seat) {
+  const pieces = state.catalog.seat_pieces;
+  return (pieces && pieces[kind] && pieces[kind][seat]) || null;
+}
+
+/* A piece's picture as an <img> with `className` plus "pictured", which
+   the stylesheet keeps at the picture's proportions inside its box. */
+function pieceImage(url, className) {
+  const picture = document.createElement("img");
+  picture.className = `${className} pictured`;
+  picture.src = url;
+  picture.alt = "";
+  picture.draggable = false;
+  return picture;
+}
+
+/* A seat's Agent on a space or Spy on a post: the app's figure in the
+   seat's colour (seatPieceUrl), else the rulebook icon's shape, flat in the
+   seat's colour like every other player piece and without a seat number,
+   with the icon's light rim inside a dark edge (and a Spy's lighter top
+   face). */
 function seatPiece(kind, seat) {
+  const url = seatPieceUrl(kind, seat);
+  if (url) {
+    const label = t("common.seat", { seat });
+    const picture = pieceImage(url, `${kind}-token`);
+    picture.title = label;
+    picture.setAttribute("role", "img");
+    picture.setAttribute("aria-label", label);
+    picture.dataset.seat = String(seat);
+    return picture;
+  }
   pieceSprite();
   const svgNs = "http://www.w3.org/2000/svg";
   const shape = PIECE_SHAPES[kind];
@@ -224,11 +254,25 @@ function controlFlagBox(spaceId) {
 }
 
 /* A seat's Control marker: "place your Control marker on the flag below
-   that space" [Main p. 20]. It is the printed pennant's own shape and size,
-   flat in the seat's colour like every other player token. */
+   that space" [Main p. 20]. It is the app's banner in the seat's colour, or
+   without it the printed pennant's own shape and size, flat in the seat's
+   colour like every other player token. */
 function controlMarker(seat, spaceId, box) {
   const svgNs = "http://www.w3.org/2000/svg";
   const [left, top, width, height] = box;
+  const url = seatPieceUrl("control", seat);
+  if (url) {
+    /* The app's banner fills the printed flag's box. */
+    const picture = pieceImage(url, "control-marker");
+    picture.dataset.seat = String(seat);
+    picture.dataset.space = spaceId;
+    picture.title = t("board.control_seat_space", { seat, name: spaceName(spaceId) });
+    picture.style.left = `${left}%`;
+    picture.style.top = `${top}%`;
+    picture.style.width = `${width}%`;
+    picture.style.height = `${height}%`;
+    return picture;
+  }
   const dip = 100 * (1 - state.catalog.tracks.control_flags.notch);
   const marker = document.createElementNS(svgNs, "svg");
   marker.setAttribute("class", "control-marker");
@@ -979,16 +1023,21 @@ function ringUnitLayout(counts, ring, layout, avoid = []) {
   return { scale, pieces };
 }
 
-/* One unit's piece: a troop is the seat's cube (the Influence cube's
-   colour, size and edge), an Agent the seat's Agent figure; a Sardaukar
-   Commander and a sandworm are the neutral pieces everyone shares, their
-   own pictures (catalog.commander_token, the Icon Guide's worm) or a drawn
-   shape without them. The quadrant or the garrison ring says whose they
+/* One unit's piece: the app's picture in the seat's colour where the
+   assets have it (troop cube, Agent, sandworm; seatPieceUrl). Otherwise a
+   troop is the seat's cube (the Influence cube's colour, size and edge), an
+   Agent the seat's Agent figure, and a sandworm the neutral worm everyone
+   shares; a Sardaukar Commander is always the neutral figure. Neutral pieces
+   are their own pictures (catalog.commander_token, the Icon Guide's worm) or
+   a drawn shape without them. The quadrant or the garrison ring says whose they
    are, as on the table. `className` is the piece's class where it stands
    (conflict-unit, garrison-unit). */
 function unitPiece(kind, seat, className) {
   let piece;
-  if (kind === "agent") {
+  const url = kind === "commander" ? null : seatPieceUrl(kind, seat);
+  if (url) {
+    piece = pieceImage(url, className);
+  } else if (kind === "agent") {
     piece = seatPiece("agent", seat);
     piece.removeAttribute("role");
     piece.removeAttribute("aria-label");
@@ -2342,7 +2391,9 @@ function scoutsPiece(row, box, { inline = false } = {}) {
       const n = Math.max(1, row.count);
       for (let index = 0; index < n; index += 1) {
         let part;
-        if (row.kind === "troop") {
+        if (row.kind === "troop" && seatPieceUrl("troop", row.seat)) {
+          part = pieceImage(seatPieceUrl("troop", row.seat), "scouts-cube");
+        } else if (row.kind === "troop") {
           part = document.createElement("span");
           part.className = "scouts-cube";
           part.style.background = SEAT_COLORS[row.seat];
@@ -2367,6 +2418,10 @@ function scoutsPiece(row, box, { inline = false } = {}) {
       piece.appendChild(count(row.count));
       break;
     case "marker": {
+      if (seatPieceUrl("control", row.seat)) {
+        piece.appendChild(pieceImage(seatPieceUrl("control", row.seat), "scouts-pennant"));
+        break;
+      }
       const dip = 100 * (1 - ((state.catalog.tracks.control_flags || {}).notch || 0.2));
       const pennant = document.createElementNS(svgNs, "svg");
       pennant.setAttribute("class", "scouts-pennant");

@@ -13,10 +13,14 @@ If either pinned PDF is updated, its xrefs must be re-extracted, not reused.
 
 ``scripts/extract_rulebook_icons.py`` uses this table to crop each icon out
 of its rulebook and key out its background, producing one transparent PNG per
-name in the gitignored ``assets/icons`` directory. The icons are copyrighted
-Dire Wolf Digital artwork; they are extracted for machine-local UI use only
-and are never committed to this repository, the same policy as the Dune Cards
-Hub card images in ``dune_imperium.display.images``.
+name in the gitignored ``assets/icons`` directory. Since 2026-10-07 (user
+decision) ``scripts/dwgr/app_assets.py icons`` then overwrites every name it
+maps with the same artwork from the installed Steam Dune: Imperium app, at two
+to three times the pixels; only ``steal_intrigue`` has no app picture and
+keeps its rulebook crop. Run the rulebook script first, then the app one. The
+icons are copyrighted Dire Wolf Digital artwork; they live in the owner's
+private assets repository and are never committed to this repository, the
+same policy as the card images in ``dune_imperium.display.images``.
 """
 
 from collections.abc import Mapping

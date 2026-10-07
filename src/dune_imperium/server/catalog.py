@@ -132,6 +132,7 @@ from dune_imperium.display.token_images import (
     SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
     available_alliance_tokens,
+    available_seat_pieces,
 )
 from dune_imperium.rules.scouts import item_kind
 from dune_imperium.server.sessions import JsonObject, JsonValue
@@ -473,6 +474,13 @@ def build_catalog(
         "alliance_tokens": {
             faction: versioned(f"/tokens/{filename}")
             for faction, filename in available_alliance_tokens(token_files).items()
+        },
+        # The app's pictures of each seat's pieces by kind (agent, spy,
+        # control, troop, sandworm), one URL per seat; a kind without all
+        # four pictures is absent and the client draws it flat.
+        "seat_pieces": {
+            kind: [versioned(f"/tokens/{name}") for name in names]
+            for kind, names in available_seat_pieces(token_files).items()
         },
         # A Sardaukar Commander on a board space [Bloodlines p. 3]: the
         # rulebook figure's picture (null without the local file; the client

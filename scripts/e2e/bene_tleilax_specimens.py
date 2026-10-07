@@ -89,17 +89,32 @@ def pieces_match(page, selector: str, counts: list[int], label: str) -> None:
         ),
         f"{label}: cubes and players' groups do not overlap",
     )
-    check.ok(
-        page.eval_on_selector_all(
-            f"{selector} .bt-specimen",
-            "nodes => nodes.every(n => getComputedStyle(n).backgroundColor "
-            "=== (() => { const s = document.createElement('span'); "
-            "s.style.color = SEAT_COLORS[n.dataset.seat]; "
-            "document.body.appendChild(s); const c = getComputedStyle(s).color; "
-            "s.remove(); return c; })())",
-        ),
-        f"{label}: each cube wears its player's colour",
-    )
+    # The app's troop picture of the cube's seat when the assets have it
+    # (catalog.seat_pieces.troop), else the flat cube in the seat's colour.
+    if page.evaluate("Boolean((state.catalog.seat_pieces || {}).troop)"):
+        check.ok(
+            page.eval_on_selector_all(
+                f"{selector} .bt-specimen",
+                "nodes => nodes.every(n => n.tagName === 'IMG' "
+                "&& n.classList.contains('pictured') "
+                "&& n.getAttribute('src') "
+                "=== state.catalog.seat_pieces.troop[Number(n.dataset.seat)] "
+                "&& n.complete && n.naturalWidth > 0)",
+            ),
+            f"{label}: each cube is its player's troop picture, loaded",
+        )
+    else:
+        check.ok(
+            page.eval_on_selector_all(
+                f"{selector} .bt-specimen",
+                "nodes => nodes.every(n => getComputedStyle(n).backgroundColor "
+                "=== (() => { const s = document.createElement('span'); "
+                "s.style.color = SEAT_COLORS[n.dataset.seat]; "
+                "document.body.appendChild(s); const c = getComputedStyle(s).color; "
+                "s.remove(); return c; })())",
+            ),
+            f"{label}: each cube wears its player's colour",
+        )
     labels = page.eval_on_selector_all(
         f"{selector} .bt-specimen-group",
         "nodes => nodes.map(n => ({seat: Number(n.dataset.seat), "

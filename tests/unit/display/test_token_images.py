@@ -8,6 +8,7 @@ from dune_imperium.display.token_images import (
     STRENGTH_TOKEN_COLORS,
     alliance_token_filename,
     available_alliance_tokens,
+    available_seat_pieces,
     available_strength_tokens,
     strength_token_filenames,
 )
@@ -77,7 +78,6 @@ def test_the_shield_wall_token_has_its_own_picture() -> None:
     assert SHIELD_WALL_TOKEN_FILENAME not in names
 
 
-
 def test_every_faction_has_an_alliance_token_picture_name() -> None:
     # One Alliance token per Faction [Main p. 4], named by the engine's
     # Faction value so the browser can look a picture up by faction key.
@@ -94,3 +94,21 @@ def test_alliance_pictures_are_offered_one_by_one() -> None:
     assert available_alliance_tokens(frozenset()) == {}
     files = frozenset({"alliance_fremen.jpg", "alliance_emperor.png", "other.jpg"})
     assert available_alliance_tokens(files) == {"fremen": "alliance_fremen.jpg"}
+
+
+def test_seat_pieces_need_all_four_colours() -> None:
+    # A kind with a missing colour stays drawn for every seat, so no seat's
+    # Agent looks different from another's.
+    files = frozenset(
+        [f"agent_{color}.png" for color in ("blue", "red", "green", "yellow")]
+        + ["spy_blue.png", "spy_red.png", "spy_green.png"]
+    )
+    assert available_seat_pieces(files) == {
+        "agent": (
+            "agent_blue.png",
+            "agent_red.png",
+            "agent_green.png",
+            "agent_yellow.png",
+        )
+    }
+    assert available_seat_pieces(frozenset()) == {}
