@@ -4,6 +4,16 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-07 학습: 앱 AI 섞기 대 self-play만 (8081에서 두 팔, 코드 변경 없음)
+
+사용자 선택("(b)+(a) 두 실행 동시"): L3 설정 연장(M, 판의 반은 앱 AI 어려움 상대)과 self-play만 한 대조 팔(S)을 같은 8081·v138 규칙·시드에서 1,000 iteration씩 돌렸다. 16 GB 기계라 한 chain으로 차례로 돌렸다(M 4시간 24분, S 3시간 53분, 판정 4시간 19분). 결과는 [evaluation/m10-2026-10-07.md](evaluation/m10-2026-10-07.md), 실행 폴더는 git 무시 `checkpoints/2026-10-07/mix-vs-self/`(판정 규칙은 결과 전에 그 `README.md`에)다. 학습과 판정은 master `381f2e42`(v138)에 고정한 분리 작업 트리 `.claude/worktrees/mix-vs-self`에서 돌았다(실험 폴더의 `pair2.py`가 그 경로를 쓴다).
+
+- **섞기가 낫다.** M@9081 대 8081은 +13.1%p [+8.0, +18.1]이다. S@9081 대 8081은 +4.9%p [−0.3, +9.9]로 경계에 있다. M 대 S 직접 대결은 **+5.9%p [+2.2, +9.5]**(2,800판, 순위도 M 쪽)다. 앱 AI 어려움 상대 판 몫은 8081 60.1%, S 63.8%, M 67.8%다(M − S +4.0%p).
+- **그러나 탐색 좌석은 8081이 낫다.** 탐색 1석 대 앱 AI 어려움 3석(같은 50시드, 200판)에서 탐색(8081)은 79.5%, 탐색(M)은 69.0%로 **−10.5%p [−17.5, −3.5]**다. 선언한 권고 조건에 따라 플레이 서버 망(`checkpoints/play/search.pt` → 8081)은 바꾸지 않는다. 원인(가치 head가 섞인 상대를 배움, 정책이 앱 AI 착취 쪽으로 날카로워짐, 작은 표본)은 재지 않았다.
+- **학습 계보의 머리는 M@9081**(`checkpoints/2026-10-07/mix-vs-self/M/iteration_09081.pt`, 옵티마이저 포함; v138로 배움)이다. 단, 탐색 좌석에는 8081이 더 강하다.
+- 엔진 결함("합법 행동 없음")은 두 팔 약 64,000판에서 다시 나오지 않았다. 잘린 판도 0이다.
+- 판정 전 리뷰가 찾은 도구 한계: `scripts/ab/cross_paired.py`는 2:2 칸을 짝짓지 못한다(작업 제안으로 남김).
+
 ## 2026-10-07 Steam 앱과 일반 규칙 대조 뒤의 정정 (codec v139)
 
 사용자 요청("그래 이제 규칙을 앱 엔진과 대조해보자")으로 OQ 대조(10-03/04)와 카드·보드 대조(10-06)에 이어 세 번째로 일반 규칙을 대조했다. `docs/rules`의 주제 24개를 문장 단위로 공식 원문 → 우리 코드·테스트 → 앱 순으로 비교했고, 앱 엔진 지도의 여섯 영역에서 거꾸로 훑었다. 공식 원문은 `scripts/prepare_official_rules.py`로 받은 `tmp/official-rules/`다. 앱은 보조 증거일 뿐이며, 대조 자료와 한국어 보고서는 에셋 저장소 로컬 폴더 `reference/dune-steam-app/dad97e20…/analysis/rules-compare-2026-10-07/`에만 있다(git 무시).
@@ -484,6 +494,8 @@ Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(아라�
 - 숨은 정보: 비밀 선택과 봉인 입찰은 좌석 한정 id로 `known_card_seats`에 들어가 로그 가림·되돌리기 경계·소크 누출 검사·탐색 AI 재추첨이 모두 같은 등록부를 읽는다. 슬라이스 7·8은 독립 리뷰를 거쳤다(7에서 누출 두 건을 고쳤다).
 
 ### 학습(M10) 쪽 순서
+
+**현재 위치(2026-10-07, 섞기 대 self-play 두 팔 끝).** 결론과 근거는 **[evaluation/m10-2026-10-07.md](evaluation/m10-2026-10-07.md)**. 8081에서 1,000 iteration: 앱 AI 섞기(M)가 self-play만(S)을 직접 +5.9%p로 이기고 8081을 +13.1%p로 이긴다. 탐색 좌석으로는 M이 8081보다 −10.5%p라 플레이 서버는 8081을 계속 쓴다. 학습 계보의 머리는 M@9081이다. 다음 후보(사용자 결정): (a) 탐색 반전 확인 — 새 시드로 탐색(M)·탐색(8081)을 다시 재고 탐색(S)을 더함, (b) 정책 M + 가치 8081 탐색으로 가치 head 가설 시험(코드 필요), (c) M 연장, (d) v139 규칙 재적응.
 
 **현재 위치(2026-10-06, L3 끝).** 결론과 근거는 **[evaluation/m10-2026-10-06.md](evaluation/m10-2026-10-06.md)**. 요지:
 - **새 기준선은 `checkpoints/2026-10-06/l3-appai/judge/l3-08081.pt`**(룰셋 `uprising-4p-choam+promo+bloodlines+tech+immortality+go11+epic+scouts`, 드래프트로 학습, 옵티마이저 포함). 7081에서 `--retarget`로 이어 1,000 iteration을 돌렸다. 판의 반은 학습 2석 대 앱 AI 어려움 2석이었다.
