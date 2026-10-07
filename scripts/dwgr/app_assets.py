@@ -475,11 +475,19 @@ def dump_component(app, c):
             ],
         }
     if t == "CanvasGroup":
-        return {"_": "CanvasGroup", "alpha": c.read_typetree().get("m_Alpha")}
+        tt = c.read_typetree()
+        out = {"_": "CanvasGroup", "alpha": tt.get("m_Alpha")}
+        if tt.get("m_Enabled") == 0:
+            out["enabled"] = False
+        return out
     if t != "MonoBehaviour":
         return {"_": t}
     tt = c.read_typetree()
     out = {"_": app.script_name(c, tt)}
+    if tt.get("m_Enabled") == 0:
+        # a switched-off component draws, masks and lays out nothing
+        # (Tleilaxu cards switch off the Imperium title band)
+        out["enabled"] = False
     for k, v in tt.items():
         if k in SKIP_KEYS:
             continue
