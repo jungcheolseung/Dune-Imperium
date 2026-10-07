@@ -437,6 +437,113 @@ def test_a_navigation_play_queued_by_the_turn_end_payment_resolves_in_the_turn()
     assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
 
 
+def _long_reach_ready_to_end(
+    influence: Influence, *, owner_extra: dict[str, object], **overrides: object
+) -> GameState:
+    """Long Reach named its one Faction below the top; the turn may end now."""
+
+    reach = _card("long_reach")
+    owner = _owner(
+        (reach,),
+        in_play=(_card("planned_coupling"),),
+        influence=influence,
+        **owner_extra,
+    )
+    bonded = _place(_state(owner, **overrides), reach, "assembly_hall")
+    (only,) = legal_agent_card_influence_actions(bonded, 0)
+    named = apply_agent_card_influence(bonded, only).state
+    engine = UprisingRulesEngine()
+    actions = engine.legal_actions(named, 0)
+    # The board effect, and the Tech module's purchase it may offer.
+    while steps := [
+        a for a in actions if a.action_id in ("resolve_board_effect", "decline_tech")
+    ]:
+        named = engine.apply(named, steps[0]).state
+        actions = engine.legal_actions(named, 0)
+    assert DomainAction("finish_agent_turn", 0) in actions
+    return named
+
+
+def test_a_friends_everywhere_choice_from_the_turn_end_payment_stays_in_the_turn() -> (
+    None
+):
+    """OQ-095 (3): the choice resolves inside the pressed turn.
+
+    It used to open over the next seat's turn, so an Emperor pick's Spy
+    opened there at once instead of being owed in the owner's turn.
+    """
+
+    scouts = RulesetConfig(immortality=True, arrakeen_scouts=True)
+    ready = _long_reach_ready_to_end(
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+        owner_extra={},
+        config=scouts,
+        scouts_round_modifier="any_faction_four_bonus",
+    )
+    engine = UprisingRulesEngine()
+    pressed = engine.apply(ready, DomainAction("finish_agent_turn", 0)).state
+    assert pressed.players[0].influence.fremen == 4
+    top = pressed.decision_stack[-1]
+    assert top.kind == FrameKind.SCOUTS_FOUR_BONUS
+    below = pressed.decision_stack[-2]
+    assert below.kind == FrameKind.AGENT_EFFECTS
+    assert agent_turn_is_finishing(dict(below.context))
+
+    def pick(faction: str) -> GameState:
+        action = next(
+            a
+            for a in engine.legal_actions(pressed, 0)
+            if dict(a.arguments)["faction"] == faction
+        )
+        return engine.apply(pressed, action).state
+
+    # The Emperor bonus owes its Spy in the owner's turn, which reopens.
+    emperor = pick("emperor")
+    assert owes_track_spy(emperor, 0)
+    assert emperor.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert "place_track_spy" in [a.action_id for a in engine.legal_actions(emperor, 0)]
+    # Any other bonus is taken and the turn closes.
+    fremen = pick("fremen")
+    nxt = fremen.decision_stack[-1].decision
+    assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
+
+
+def test_a_reshuffled_intrigue_draw_from_the_turn_end_payment_counts_for_suspensor_suits() -> (  # noqa: E501
+    None
+):
+    """OQ-095 (3)-(4): "Suspensor Suits도 마지막 효과 뒤의 draw까지 센다".
+
+    Bene Gesserit 4 draws an Intrigue card [Main p. 7]; with the deck empty
+    the draw waits for a reshuffle, which used to run in the next seat's
+    turn, where Suspensor Suits does not count it.
+    """
+
+    tech = RulesetConfig(immortality=True, bloodlines=True, tech_module=True)
+    ready = _long_reach_ready_to_end(
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=3, fremen=6),
+        owner_extra={"tech_ids": ("suspensor_suits",)},
+        config=tech,
+    )
+    # Empty the deck only now: the Assembly Hall drew its own Intrigue card.
+    ready = replace(
+        ready,
+        intrigue_deck=(),
+        intrigue_discard=(*ready.intrigue_deck, *ready.intrigue_discard),
+    )
+    before = ready.players[0].troops_conflict
+    engine = UprisingRulesEngine()
+    state = engine.apply(ready, DomainAction("finish_agent_turn", 0)).state
+    chance = ChanceResolver(seed=3)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    assert state.players[0].influence.bene_gesserit == 4
+    drawn = len(state.players[0].intrigue_cards) - len(ready.players[0].intrigue_cards)
+    assert drawn == 1
+    assert state.players[0].troops_conflict == before + 1
+    nxt = state.decision_stack[-1].decision
+    assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
+
+
 def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:
     # Designer ruling (Email, TTS Discord; OQ-057): Long Reach grafted with
     # Ghola has all three icons. With Ghola in hand the graft placement

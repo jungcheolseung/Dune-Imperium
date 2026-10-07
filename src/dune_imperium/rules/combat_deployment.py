@@ -822,14 +822,19 @@ def _press_left_follow_ups(state: GameState, player: int) -> bool:
     A box the press resolves can pay Influence (Long Reach pays its first
     named Faction when no second one can be chosen, OQ-071), and a reach
     queues what that Faction's track gives: the Emperor's Influence 4 Spy,
-    Steersman Y'rkoon's Navigation play, a Friends Everywhere choice. They
-    are this turn's (OQ-095 (3): "마지막 효과가 남긴 Skill·Navigation 선택
-    ... Emperor track Influence 4의 Spy ... 등은 소유자의 열린 turn 위에서
-    풀리고"), so the turn waits as finishing, like a Usurp trash's
-    follow-ups: they resolve on top of it and ``settle_finishing_agent_turn``
-    closes the turn or, for an owed Spy, reopens it (OQ-057 (15) re-ruling:
-    "turn 종료를 누른 뒤 그 결과로 빚이 생기면 OQ-095 (5)처럼 turn이 다시
-    열린다"). Before, the press closed the turn over them and raised.
+    Steersman Y'rkoon's Navigation play, a Friends Everywhere choice, an
+    Intrigue draw from an empty deck (Bene Gesserit 4). They are this
+    turn's (OQ-095 (3): "마지막 효과가 남긴 Skill·Navigation 선택 ...
+    Emperor track Influence 4의 Spy ... 등은 소유자의 열린 turn 위에서
+    풀리고", and Suspensor Suits counts "마지막 효과 뒤의 draw까지"; (4)
+    names "덱이 빈 Intrigue draw의 reshuffle"), so the turn waits as
+    finishing, like a Usurp trash's follow-ups: they resolve on top of it
+    and ``settle_finishing_agent_turn`` closes the turn or, for an owed
+    Spy, reopens it (OQ-057 (15) re-ruling: "turn 종료를 누른 뒤 그 결과로
+    빚이 생기면 OQ-095 (5)처럼 turn이 다시 열린다"). Before, an owed Spy or
+    a Navigation play made the press raise as it closed the turn, and a
+    Friends Everywhere choice or a reshuffled draw resolved after the turn
+    had closed, in the next seat's turn.
     """
 
     return (
@@ -837,6 +842,7 @@ def _press_left_follow_ups(state: GameState, player: int) -> bool:
         or any(entry[0] == player for entry in state.pending_skill_choices)
         or any(entry[0] == player for entry in state.pending_navigation_plays)
         or any(entry[0] == player for entry in state.scouts_four_bonus_choices)
+        or any(entry[0] == player for entry in state.pending_intrigue_draws)
     )
 
 
