@@ -16,6 +16,7 @@ from dune_imperium.evaluation.problem_set import (
     Position,
     _icon_play,
     _placement,
+    _seat_label,
     agent_seed,
     answer,
     load_suite,
@@ -334,3 +335,12 @@ def test_the_cli_scores_a_suite(
     assert (
         f"{len(PROBLEMS)}/{len(PROBLEMS)} positions restore" in capsys.readouterr().out
     )
+
+
+def test_a_split_search_seat_is_labelled_by_both_files() -> None:
+    """``search:P::value=V`` never takes the label of a plain seat on V."""
+
+    assert _seat_label("heuristic") == "heuristic"
+    assert _seat_label("checkpoint:/x/v.pt") == "v"
+    assert _seat_label("search:/x/v.pt") == "v"
+    assert _seat_label("search:/x/p.pt::value=/x/v.pt") == "p+v"

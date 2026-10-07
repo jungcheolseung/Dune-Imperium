@@ -59,6 +59,7 @@ from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
 from dune_imperium.agents.registry import (
     CHECKPOINT_PREFIX,
     SEARCH_PREFIX,
+    SEARCH_VALUE_SEPARATOR,
     is_agent_kind,
     is_background_agent_kind,
 )
@@ -1799,6 +1800,12 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
+        # A split search seat is a measurement tool; a table seat names one
+        # file, which is what the players are shown (``_public_seat_kind``).
+        if SEARCH_VALUE_SEPARATOR in assignment:
+            raise SessionError(
+                f"a split search seat is not a table seat: {assignment!r}"
+            )
 
 
 def _build_agents(
