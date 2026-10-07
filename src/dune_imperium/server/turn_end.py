@@ -5,7 +5,10 @@ not a rule; ``docs/rules/player-turns.md``). An Agent turn ends only through
 its owner's ``finish_agent_turn`` (user ruling OQ-095), a Reveal turn
 through ``finish_reveal``, and a turn-passing card is that press itself; the
 server holds the remaining unit ends (a Leader pick, Conflict rewards, a
-Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료".
+Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료",
+as long as the seat still has a step of the unit to take back; a step it
+could not take back is instead held by the browser and sent with "확정 ▶"
+(``sent_by_turn_end``, see below).
 The last Leader pick has its own explicit ``finish_leader_draft`` so setup
 cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine
@@ -19,12 +22,22 @@ seat's decision inside a unit is an answer, not a unit of its own: the
 engine stacks it above the running unit and returns there once it is
 answered. That is every other seat's frame above a started Agent or Reveal
 turn, and the three opponent-decision frames anywhere.
+
+The press is the seat's confirmation, and until it the seat may take its
+unit's steps back. So a held unit end comes before the chance outcomes that
+follow the unit (the next round's reshuffles and draws, the next Arrakeen
+Scouts card): those reveal hidden information, which closes the undo window
+(OQ-010), and a press after them would confirm nothing ("전투 보상으로 받은
+스파이 둘 위치를 골랐다가 … 확정 전에 다른 곳에 두고 싶을 수 있잖아",
+user, 2026-10-08). A chance outcome inside the unit (a reshuffle in the
+middle of an Agent turn, whose frame waits below it) resolves at once, as
+the effect that drew the card.
 """
 
 from typing import Final
 
 from dune_imperium.core.actions import ActionValue
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.combat_deployment import (
     FINISHING_KEY,
@@ -121,6 +134,18 @@ def answers_another_unit(state: GameState, seat: int) -> bool:
     return (top is not None and top.kind in INTERRUPT_KINDS) or unit_seat(state) != seat
 
 
+def own_unit_outside_turns(state: GameState, seat: int) -> bool:
+    """Whether ``seat``'s pending decision is its own unit outside the turns.
+
+    A Leader pick, a Combat or Endgame Intrigue go, its Conflict rewards, a
+    Control defense, an Arrakeen Scouts line: no Agent or Reveal turn (nor
+    the start of one) is on the stack, and the decision is no answer inside
+    another seat's unit. Read from the stack alone.
+    """
+
+    return _turn_frame(state) is None and not answers_another_unit(state, seat)
+
+
 def at_turn_start(state: GameState, seat: int) -> bool:
     """Whether ``seat``'s turn is open but not yet taken.
 
@@ -153,6 +178,28 @@ def turn_start_seat(state: GameState) -> int | None:
     if top.kind == FrameKind.TURN and isinstance(top.decision, PlayerDecision):
         return top.decision.owner
     return None
+
+
+def unit_over(state: GameState, unit: int) -> bool:
+    """Whether ``unit``'s run of decisions is over in ``state``.
+
+    With a player decision pending, the unit is over once that decision
+    belongs to another seat's unit, or when the seat stands at the start
+    of a turn of its own (its Conflict rewards ran into its next turn, or
+    every other seat has revealed and its next turn follows). With a chance
+    outcome pending, it is over once no decision of the unit is left on the
+    stack below the outcome: the outcome comes after the unit and waits for
+    the press. That reading uses only the stack the outcome sits on, never
+    the outcome itself, so whether a seat is held tells it nothing about
+    the card about to be revealed. Not over when nothing is pending.
+    """
+
+    if not state.decision_stack:
+        return False
+    pending = state.decision_stack[-1].decision
+    if isinstance(pending, ChanceDecision):
+        return unit_seat(state) != unit
+    return unit_seat(state) != unit or turn_start_seat(state) == unit
 
 
 def finishing_seat(state: GameState) -> int | None:

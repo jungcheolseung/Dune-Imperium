@@ -23,7 +23,7 @@
 - 4좌석 전부 `human`으로 만들 수 있고, 한 브라우저에서 결정 소유자를 따라 시점을 바꿔 가며 끝까지 둘 수 있다(`tests/server/test_app.py`의 4-human leader draft).
 - 결정은 항상 한 좌석 소유다(`core/decisions.py`의 `PlayerDecision.owner`). 여러 좌석이 동시에 입력하는 구간이 없어서 "지금 누구 차례인가"가 값 하나다.
 - 가시성의 단일 권위는 `core/observation.py`이고 서버는 좌석별 `PlayerView`, `visible_to`로 거른 이벤트, `hidden_arguments` 가림(`server/sessions.py`의 `_log_entry_json`)만 내보낸다.
-- 낙관적 동시성(`revision` + `undo_count` → 409), 되돌리기 창(`server/session_log.py`의 `undo_window`), 턴 종료 확인(`awaiting_confirmation`)이 이미 다인 전제로 설계돼 있다 — 다른 좌석이 행동하면 창이 닫히고, 되돌릴 수 있는 동안은 턴이 넘어가지 않는다. (2026-09-23 갱신: 이제 사람 좌석의 **모든** 턴 끝이 그 좌석의 "턴 종료" 한 번을 기다린다 — 되돌릴 것이 남았는지와 무관하고, 명시적 종료 행동(`finish_agent_turn`·`finish_reveal`·`pass_*_intrigue`)은 그 한 번 자체다. 판정은 `server/turn_end.py`와 세션의 `open_units`, 저장 문서에 `confirmation`·`sealed_steps`·`open_units`를 적는다.)
+- 낙관적 동시성(`revision` + `undo_count` → 409), 되돌리기 창(`server/session_log.py`의 `undo_window`), 턴 종료 확인(`awaiting_confirmation`)이 이미 다인 전제로 설계돼 있다 — 다른 좌석이 행동하면 창이 닫히고, 되돌릴 수 있는 동안은 턴이 넘어가지 않는다. (2026-09-23 갱신: 이제 사람 좌석의 **모든** 턴 끝이 그 좌석의 "턴 종료" 한 번을 기다린다 — 되돌릴 것이 남았는지와 무관하고, 명시적 종료 행동(`finish_agent_turn`·`finish_reveal`·`pass_*_intrigue`)은 그 한 번 자체다. 판정은 `server/turn_end.py`와 세션의 `open_units`, 저장 문서에 `confirmation`·`sealed_steps`·`open_units`를 적는다.) (2026-10-08 갱신: 누름은 확정이다. 턴 밖 단위의 끝은 그 좌석에 되돌릴 단계가 남아 있을 때만, 그리고 단위 뒤의 chance 앞에서 붙잡는다. 보내면 되돌릴 수 없는 턴 밖 선택은 브라우저가 고르기만 해 두었다가 "확정 ▶"으로 보낸다(`sent_by_turn_end`). 저장은 chance 앞에서 붙잡힌 상태로도 남고, 불러오면 그 붙잡힌 상태로 이어진다.)
 - 저장은 서버 디스크에만 있고 HTTP로는 메타데이터만 나간다(`server/persistence.py`).
 - 누구나 받는 summary의 `decision.prompt`에는 비공개 정보가 없다. 2026-09-17에 `rules/`·`core/`의 prompt 55곳을 전수 확인했다: 전부 고정 문자열이거나 좌석 번호·비용·VP·Conflict tier만 보간한다. 새 `PlayerDecision` prompt에도 손패·덱의 카드 이름을 넣지 않는다(원격에서는 그대로 전원에게 보인다).
 

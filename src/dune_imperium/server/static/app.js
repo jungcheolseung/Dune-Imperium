@@ -55,7 +55,7 @@ async function init() {
       if (!el("help").hidden) closeHelp();
       else if (!el("bt-zoom").hidden) closeBeneTleilaxZoom();
       else if (state.pick) clearPick();
-      else closePopover();
+      else if (!clearHeldChoice()) closePopover();
       return;
     }
     /* Shortcuts are matched on event.code, the physical key, not event.key.

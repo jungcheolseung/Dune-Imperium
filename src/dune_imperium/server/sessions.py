@@ -119,7 +119,8 @@ from dune_imperium.server.turn_end import (
     answers_another_unit,
     at_turn_start,
     finishing_seat,
-    turn_start_seat,
+    own_unit_outside_turns,
+    unit_over,
     unit_seat,
 )
 
@@ -216,10 +217,12 @@ class GameSession:
     # state; a client that also sends this generation number can never act
     # on a state that has been taken back under it.
     undo_count: int = 0
-    # Human seat whose turn has ended: the session waits for that seat to
-    # press "턴 종료" (``confirm_turn``) before anyone acts on, whether or
-    # not its steps can still be taken back. A seat never passes a turn
-    # without pressing once, and never presses twice (``turn_end``).
+    # Human seat whose unit has ended: the session waits for that seat to
+    # press "턴 종료" (``confirm_turn``) before anything else happens, the
+    # chance outcomes after the unit included, so its steps can still be
+    # taken back until then. A seat never passes a turn without pressing
+    # once, and never presses twice (``turn_end``); a unit outside the
+    # turns with nothing left to take back is not held at all.
     awaiting_confirmation: int | None = None
     # How many live steps a turn end has sealed, by that press or by an
     # explicit turn-end action. The log alone closes a seat's undo window
@@ -929,9 +932,11 @@ class GameSessionManager:
     ) -> JsonObject:
         """Serialize one session into a versioned save document.
 
-        Sessions only rest on a human decision, on the finished game, or on
-        a background seat's pending decision, so the recorded steps always
-        end on a state a load can resume from (the last one thinks again).
+        Sessions only rest on a human decision, on the finished game, on
+        a background seat's pending decision, or on a human's held unit end
+        (possibly before a chance outcome, which the press resolves), so
+        the recorded steps always end on a state a load can resume from
+        (the last one thinks again).
 
         Host-only on a remote server, like ``restore_game``: a loaded save
         is a second session holding the same hidden state with every seat
@@ -1288,8 +1293,10 @@ class GameSessionManager:
     ) -> bool:
         """After a human step: hold its turn end for the press, or play on.
 
-        One press ends every unit of a human seat, whatever step closed it
-        and whether or not it can still be taken back. An explicit turn-end
+        One press ends every unit of a human seat, and the press is its
+        confirmation: a held unit end leaves the seat its steps to take back
+        (a unit whose last step cannot be taken back was confirmed by that
+        step, which the browser sends with "확정 ▶"). An explicit turn-end
         action (``EXPLICIT_TURN_ENDS``) is that press itself, and so is a
         turn-passing card (``TURN_PASS_EVENTS``, OQ-095 (6)): either seals
         the turn and hands over at once, unless a Usurp trash's follow-up or
@@ -1297,16 +1304,16 @@ class GameSessionManager:
         (``finish_agent_turn``, OQ-095); a step answering the pressed end's
         own follow-up (a Usurp trash's Skill choice, ``finishing_seat``) is
         still that one press and is sealed with it. Any other step that ends
-        an open unit holds the game for ``confirm_turn``. The chance
-        outcomes right after the step are resolved first: a reshuffle in the
-        middle of a turn is not an end, and a turn can end in one.
+        an open unit holds the game for ``confirm_turn``, before the chance
+        outcomes that come after the unit (``_unit_ends_locked``): a
+        reshuffle in the middle of a turn is not an end, and is resolved
+        at once.
 
         ``before`` is the state the step was taken from and the step is the
         last live one. Returns whether the step handed the turn over.
         """
 
         step_index = len(session.steps) - 1
-        self._resolve_chance_locked(session)
         actor = action.actor
         if finishing_seat(before) == actor:
             self._seal_locked(session, actor)
@@ -1330,13 +1337,48 @@ class GameSessionManager:
                 session.open_units[actor] = step_index
         # The actor's own unit, or for an answer the unit it answered in,
         # which the answer may just have closed.
-        unit = unit_seat(before)
-        if self._unit_ended_locked(session, unit):
-            session.awaiting_confirmation = unit
+        if self._hold_unit_end_locked(session, unit_seat(before)):
             return False
         session.awaiting_confirmation = None
         self._advance_locked(session)
         return False
+
+    def _hold_unit_end_locked(self, session: GameSession, unit: int | None) -> bool:
+        """Hold ``unit``'s end for its press if the step just applied ended it.
+
+        Returns whether the game now waits for the press. The press is the
+        seat's confirmation, before which it may take the unit's steps
+        back. A unit end with nothing left to take back (its last step drew
+        a card, or only the answer of another seat followed) confirms
+        nothing, so it is not held: the step itself was the confirmation,
+        as its "되돌리기 불가" mark said ("되돌리기 기회도 없는데, 턴 종료
+        버튼은 또 남아버려서 이상해진거네", user, 2026-10-08). Every Agent and
+        Reveal turn still ends with its own explicit press (OQ-095).
+        """
+
+        if not self._unit_ends_locked(session, unit):
+            return False
+        assert unit is not None
+        if _open_undo_window(session, unit) > 0:
+            session.awaiting_confirmation = unit
+            return True
+        session.open_units.pop(unit, None)
+        session.undo_floor = len(session.steps)
+        return False
+
+    def _unit_ends_locked(self, session: GameSession, unit: int | None) -> bool:
+        """Whether the step just applied ended ``unit``, its own chance resolved.
+
+        A chance outcome that comes after the unit is left pending: the
+        seat presses before it, while its steps can still be taken back
+        (``turn_end.unit_over``). One inside the unit (a reshuffle in the
+        middle of an Agent turn) resolves now, and the unit can end in it.
+        """
+
+        if self._unit_ended_locked(session, unit):
+            return True
+        self._resolve_chance_locked(session)
+        return self._unit_ended_locked(session, unit)
 
     def _seal_locked(self, session: GameSession, seat: int) -> None:
         """The seat's one press: seal its steps and let the game play on."""
@@ -1349,7 +1391,6 @@ class GameSessionManager:
     def _unit_ended_locked(self, session: GameSession, unit: int | None) -> bool:
         """Whether a human seat's open unit is over now.
 
-        Called with the chance outcomes after the step already resolved.
         The unit is over when the pending decision belongs to another
         seat's unit, or when the seat stands at the start of a turn of its
         own: its Conflict rewards and Control defense ran into its next
@@ -1357,7 +1398,9 @@ class GameSessionManager:
         follows. Any other
         decision of the same seat continues the unit, even across a phase
         change (a Conflict win's Intrigue trigger asked once Makers has
-        begun); another seat's answer inside it is no end either.
+        begun); another seat's answer inside it is no end either. With a
+        chance outcome pending, the unit is over once none of its decisions
+        is left below that outcome (``turn_end.unit_over``).
         """
 
         if (
@@ -1369,9 +1412,7 @@ class GameSessionManager:
         after = session.state
         if _is_finished(after):
             return False
-        if not isinstance(session.engine.current_decision(after), PlayerDecision):
-            return False
-        return unit_seat(after) != unit or turn_start_seat(after) == unit
+        return unit_over(after, unit)
 
     def _resolve_chance_locked(self, session: GameSession) -> None:
         """Resolve the chance decisions pending right now, and nothing else."""
@@ -1395,8 +1436,7 @@ class GameSessionManager:
 
         An AI seat's answer cannot end a human Agent or Reveal turn (both
         end only through their owner's press, OQ-095), but the check stays
-        for any unit an answer could still close: the game then stops at
-        that unit's end for the human's press like any other.
+        for any unit an answer could still close (``_agent_step_locked``).
         """
 
         engine = session.engine
@@ -1432,19 +1472,20 @@ class GameSessionManager:
         """Apply an AI seat's answer to the pending decision; caller holds the lock.
 
         The one way an AI step enters the game, inside a request or on the
-        worker. An answer given inside another seat's unit resolves the
-        chance outcomes after it and may end that unit; returns whether it
-        did, so the game now waits for that human's press.
+        worker. An answer given inside another seat's unit may end that
+        unit; returns whether the game now waits for that human's press.
+        It never does today: the answer closes the human's undo window, so
+        its unit end has nothing left to confirm and only closes the unit
+        (``_hold_unit_end_locked``).
         """
 
         unit = unit_seat(session.state)
         _apply_step(session, action)
-        if unit is not None and unit != seat:
-            self._resolve_chance_locked(session)
-            if self._unit_ended_locked(session, unit):
-                session.awaiting_confirmation = unit
-                return True
-        return False
+        return (
+            unit is not None
+            and unit != seat
+            and self._hold_unit_end_locked(session, unit)
+        )
 
     # -- the AI worker ------------------------------------------------------
     def _kick_ai(self, session: GameSession) -> None:
@@ -2357,6 +2398,13 @@ def _serialize_action(
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
+    ``sent_by_turn_end`` marks a step outside the seat's turns that cannot
+    be taken back (a Conflict reward that runs straight into the next
+    round's draw, a Scouts line that draws a card): the browser only holds
+    it and sends it with the seat's "턴 종료" press, so the seat may still
+    pick another one before that ("확정 전에 다른 곳에 두고 싶을 수
+    있잖아", user, 2026-10-08) -- it is read from the stack and ``undoable``
+    alone, so it tells nothing the mark did not;
     ``strength_after`` is the acting seat's running combat strength once the
     step is taken, when the step changes it (``strength_preview``);
     ``reveal_preview`` sums up a Reveal the step would start; and
@@ -2390,6 +2438,11 @@ def _serialize_action(
         "detail": effect_action_text(session.state, action),
         "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
+        "sent_by_turn_end": (
+            not undoable
+            and action.action_id not in EXPLICIT_TURN_ENDS
+            and own_unit_outside_turns(session.state, action.actor)
+        ),
         "warning": shortfall_warning(shortfalls, action.actor),
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
@@ -2545,9 +2598,16 @@ def strength_preview(
     off) rather than "2 per troop" worked out in the browser. Steps that
     cannot be taken back are left out: they reveal hidden information or
     hand over to chance, and their outcome is not the player's to preview.
+    So is a step whose dry run ran past the seat's unit to a chance outcome
+    held after it (the last Conflict reward before the next round's
+    reshuffle): that run went through the round's end, which resets every
+    seat's strength, so its figure is not the step's own.
     """
 
     if outcome is None or not undoable:
+        return None
+    stack = outcome.state.decision_stack
+    if stack and isinstance(stack[-1].decision, ChanceDecision):
         return None
     after = outcome.state.players[action.actor].combat_strength
     return after if after != before.players[action.actor].combat_strength else None
@@ -2566,14 +2626,27 @@ def _dry_run(session: GameSession, action: DomainAction) -> RuleResult | None:
 def _action_is_undoable(
     session: GameSession, action: DomainAction, outcome: RuleResult | None
 ) -> bool:
-    """Apply the undo-window rules to a dry run's outcome."""
+    """Apply the undo-window rules to a dry run's outcome.
+
+    A chance outcome right after the step closes the window when it
+    resolves at once, inside the unit (a reshuffle mid-turn); one that
+    comes after a human seat's unit waits behind that seat's press
+    (``turn_end.unit_over``), so the step can be taken back until then.
+    """
 
     if outcome is None:
         return False
     after = outcome.state
     if reveals_hidden_information(session.state, after, action.actor):
         return False
-    return not isinstance(session.engine.current_decision(after), ChanceDecision)
+    if not isinstance(session.engine.current_decision(after), ChanceDecision):
+        return True
+    # Only the seat's own unit (the actions served are a human seat's): an
+    # answer inside another seat's unit is never held for
+    # (``_hold_unit_end_locked``), so the outcome resolves.
+    return not answers_another_unit(session.state, action.actor) and unit_over(
+        after, action.actor
+    )
 
 
 def shortfall_warning(

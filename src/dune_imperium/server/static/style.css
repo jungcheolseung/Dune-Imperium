@@ -694,6 +694,13 @@ img.control-marker.pictured { object-fit: fill; }
 @media (prefers-reduced-motion: reduce) {
   .spy-post-hotspot { animation: none; filter: drop-shadow(0 0 3px var(--glow)); }
 }
+/* The post a held choice names (turn.js chooseAction). */
+.spy-post-hotspot.picked {
+  animation: none;
+  border-color: #fff;
+  background: rgba(255, 207, 90, 0.6);
+  box-shadow: 0 0 12px 3px rgba(255, 207, 90, 0.7);
+}
 .spy-post {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -1548,6 +1555,15 @@ kbd {
 .confirm-row button:hover:not(:disabled) { background: var(--good); color: #111; }
 
 .action-item.irreversible > button:first-child { border-style: dashed; }
+/* A choice held for the turn-end press (turn.js chooseAction): lit like a
+   picked step of the staged Agent turn until the press sends it. */
+.action-item.held-choice > button:first-child {
+  background: var(--glow);
+  border-color: var(--glow);
+  color: #1a140c;
+  box-shadow: 0 0 12px 2px rgba(255, 207, 90, 0.55);
+}
+.held-hint { margin-top: 0.3rem; }
 .shortfall-badge {
   display: inline-block;
   margin-left: 0.4em;

@@ -441,8 +441,9 @@ function renderBoardStage(board, view) {
     hotspot.appendChild(spaceFrame());
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
-    if (state.pick && state.pick.spaceId === spaceId) hotspot.classList.add("picked");
-    else if (pickAlternative(spaceId, "spaceId")) hotspot.classList.add("alternative");
+    if ((state.pick && state.pick.spaceId === spaceId) || isHeldRef(spaceId)) {
+      hotspot.classList.add("picked");
+    } else if (pickAlternative(spaceId, "spaceId")) hotspot.classList.add("alternative");
     if (!spaceImplementedFor(entry)) hotspot.classList.add("unimplemented");
     const seats = occupants.get(spaceId) || [];
     if (seats.length) {
@@ -495,6 +496,8 @@ function renderBoardStage(board, view) {
       const target = document.createElement("button");
       target.type = "button";
       target.className = "spy-post-hotspot legal";
+      /* The post a held choice names (turn.js chooseAction). */
+      if (isHeldRef(postId)) target.classList.add("picked");
       target.dataset.post = postId;
       target.style.width = `${state.catalog.post_size * 1.8}%`;
       placeAt(target, x, y);
@@ -1443,7 +1446,9 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const row = document.createElement("div");
   row.className = "space-row";
   if (legalActionsFor(spaceId).length) row.classList.add("legal");
-  if (state.pick && state.pick.spaceId === spaceId) row.classList.add("picked");
+  if ((state.pick && state.pick.spaceId === spaceId) || isHeldRef(spaceId)) {
+    row.classList.add("picked");
+  }
   row.dataset.space = spaceId;
 
   const title = document.createElement("div");
@@ -1520,7 +1525,10 @@ function visualCard(instanceId, options = {}) {
   if (legal.length) card.classList.add("legal");
   const blocked = legal.length ? null : unavailableRef(instanceId);
   if (blocked) card.classList.add("blocked");
-  if (state.pick && (state.pick.cardId === instanceId || state.pick.partnerId === instanceId)) {
+  if (
+    (state.pick && (state.pick.cardId === instanceId || state.pick.partnerId === instanceId))
+    || isHeldRef(instanceId)
+  ) {
     card.classList.add("picked");
   } else if (partnerCandidate(instanceId)) {
     card.classList.add("partner");

@@ -1,5 +1,68 @@
 "use strict";
 
+/* ---------- choices sent with the turn-end press ----------
+
+   The turn-end press is the seat's confirmation: until it, the seat may
+   change its mind ("전투 보상으로 받은 스파이 둘 위치를 골랐다가, 혹시 맘에
+   안 들면 확정 전에 다른 곳에 두고 싶을 수 있잖아", user, 2026-10-08). A
+   step it could take back is sent at once and taken back with the undo row
+   if need be. Outside its turns, a step it could not take back (a Conflict
+   reward that runs straight into the next round's draw, a Scouts line that
+   draws a card) is marked sent_by_turn_end by the server: a click only holds
+   it here, and the banner's "확정 ▶" row sends it. That row does not say
+   "턴 종료": whether the seat's unit goes on after the step can hang on the
+   very card it reveals, which nobody may know before. A second click on the
+   held row in the list, or Escape, lets it go; a click on its table object
+   keeps it. It belongs to the decision it was picked in (heldKey) and never
+   reaches the server before the press. */
+function heldKey() {
+  const summary = state.summary;
+  return summary ? `${summary.revision}:${summary.undo_count}:${state.viewSeat}` : "";
+}
+
+/* The held choice, if it still belongs to the decision on screen. */
+function heldChoice() {
+  const held = state.held;
+  if (!held || held.key !== heldKey() || !state.actions) return null;
+  return state.actions.actions.find(
+    (action) => action.index === held.index && action.sent_by_turn_end,
+  ) || null;
+}
+
+/* Every click on one of the seat's choices (an action row, a table object,
+   a stepper's confirm) goes through here. */
+function chooseAction(action) {
+  if (state.busy) return;
+  if (!action.sent_by_turn_end) {
+    applyAction(action.index);
+    return;
+  }
+  const held = heldChoice();
+  state.held = held && held.index === action.index
+    ? null
+    : { key: heldKey(), index: action.index };
+  render();
+}
+
+/* Whether a table object (a space, a Spy post, a card) is what the held
+   choice names: the board lights it like a picked step (board.js). */
+function isHeldRef(ref) {
+  const held = heldChoice();
+  return Boolean(held) && actionRefs(held).includes(ref);
+}
+
+/* Escape: let a live held choice go. A stale one (an undo or another seat's
+   step moved the decision on) is dropped without taking the key. */
+function clearHeldChoice() {
+  if (!heldChoice()) {
+    state.held = null;
+    return false;
+  }
+  state.held = null;
+  render();
+  return true;
+}
+
 /* ---------- staged Agent turn ----------
 
    The server offers an Agent turn as one flat list: every legal
@@ -456,7 +519,10 @@ function tableClick(ref, entry, anchor, offered = null) {
   if (stagedTurn() && pickStep(ref, entry, anchor)) return;
   const legal = offered || legalActionsFor(ref);
   if (legal.length === 1) {
-    applyAction(legal[0].index);
+    /* A second click on the held object keeps it held; the list row or
+       Escape lets it go. */
+    const held = heldChoice();
+    if (!held || held.index !== legal[0].index) chooseAction(legal[0]);
     return;
   }
   if (legal.length > 1) {

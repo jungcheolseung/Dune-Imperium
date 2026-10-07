@@ -32,6 +32,10 @@ const state = {
   pick: null,
   /* The count chosen on each count stepper, by action id (countRow). */
   counts: {},
+  /* A choice held for the turn-end press, {key, index} (turn.js
+     chooseAction): outside its turns a step that cannot be taken back is
+     sent only with the seat's "턴 종료". Page-only, like `pick`. */
+  held: null,
 };
 
 let noteTimer = 0;

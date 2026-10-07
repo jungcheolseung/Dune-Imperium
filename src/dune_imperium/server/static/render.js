@@ -741,9 +741,9 @@ function turnEndButtonLabel(action, actions) {
    on the last Combat Intrigue pass, warned before the press (user ruling
    2026-10-02, L2-Q4: "로그 + 클릭 전 경고"). A hold has no action, and no
    badge: its step was already taken. */
-function appendTurnEndRow(container, label, onClick, action = null) {
+function appendTurnEndRow(container, label, onClick, action = null, kind = "turn-end-row") {
   const row = document.createElement("div");
-  row.className = "confirm-row turn-end-row";
+  row.className = `confirm-row ${kind}`;
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
@@ -944,16 +944,19 @@ function renderBanner() {
     }
   } else {
     const decision = summary.decision;
-    if (!decision) {
-      prompt.textContent = t("render.in_progress");
-      info.append(prompt);
-    } else if (summary.confirmation === state.viewSeat) {
+    /* A held unit end may sit before a chance outcome (the next round's
+       draw, the next Arrakeen Scouts card), which the press resolves: then
+       no seat owns a decision yet and there is no next seat to name. */
+    if (summary.confirmation === state.viewSeat) {
       /* The viewing seat's turn has ended: nothing advances until it
-         presses the turn-end row (confirmTurn), whether or not the steps
-         that ended it can still be taken back. */
+         presses the turn-end row (confirmTurn); until then its steps can
+         be taken back (the undo row below). */
       prompt.textContent = t("render.turn_end_prompt");
-      meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
-      info.append(prompt, meta);
+      info.append(prompt);
+      if (decision) {
+        meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
+        info.append(meta);
+      }
       appendTurnEndRow(info, t("render.turn_end_button"), () => confirmTurn());
     } else if (typeof summary.confirmation === "number") {
       /* Another seat's turn has ended; nobody moves until that seat
@@ -961,8 +964,14 @@ function renderBanner() {
       prompt.textContent =
         t("render.waiting_turn_end", { name: playerLabel(summary.confirmation) }) +
         waitingHint(summary.confirmation);
-      meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
-      info.append(prompt, meta);
+      info.append(prompt);
+      if (decision) {
+        meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
+        info.append(meta);
+      }
+    } else if (!decision) {
+      prompt.textContent = t("render.in_progress");
+      info.append(prompt);
     } else if (decision.owner !== state.viewSeat && summary.thinking === decision.owner) {
       /* A search seat thinks on the server's worker (summary.thinking),
          whatever it is deciding, an Agent turn's end included. */
@@ -990,12 +999,25 @@ function renderBanner() {
       meta.textContent = t("render.seat_you", { seat: decision.owner });
       info.append(prompt, meta);
 
+      /* A choice held for the press (turn.js chooseAction) takes the row,
+         as "확정 ▶": the press sends it. Until then the seat may pick
+         another one, and an explicit end the decision also offers (a Combat
+         Intrigue pass) goes back into the list below. */
+      const held = heldChoice();
       /* The seat's own explicit turn-end action (EXPLICIT_TURN_END_IDS),
          when the pending decision offers one, IS this turn's end: it
          renders as the same banner row and is pulled out of every action
          list below (renderActionPanel). */
-      const turnEnd = state.actions ? turnEndAction(state.actions.actions) : null;
-      if (turnEnd) {
+      const turnEnd = !held && state.actions ? turnEndAction(state.actions.actions) : null;
+      if (held) {
+        const hint = document.createElement("div");
+        hint.className = "meta held-hint";
+        hint.textContent = t("render.held_choice_hint");
+        info.append(hint);
+        appendTurnEndRow(
+          info, t("render.held_send_button"), () => applyAction(held.index), held, "held-send-row",
+        );
+      } else if (turnEnd) {
         const actions = state.actions.actions;
         appendTurnEndRow(
           info,
@@ -1272,6 +1294,9 @@ function countRow(id, family, compact) {
       event.stopPropagation();
       const count = family[target].arguments.count;
       state.counts[id] = AUCTION_AMOUNT_IDS.has(id) ? { key: auctionKey(), count } : count;
+      /* A count held for the press is the old one: let it go. */
+      const held = heldChoice();
+      if (held && held.action_id === id) state.held = null;
       render();
     });
     return button;
@@ -1307,7 +1332,7 @@ function countRow(id, family, compact) {
   }
   confirm.addEventListener("click", (event) => {
     event.stopPropagation();
-    applyAction(chosen.index);
+    chooseAction(chosen);
   });
   row.append(label, stepper, confirm);
   return row;
@@ -1815,9 +1840,16 @@ function actionItem(action, onApply, zone) {
   if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>
-    onApply ? onApply(action) : applyAction(action.index)
+    onApply ? onApply(action) : chooseAction(action)
   );
-  if (action.undoable === false) {
+  if (action.sent_by_turn_end) {
+    /* Held, not sent, until the turn-end press (turn.js chooseAction): the
+       seat can still change it, so it carries no "cannot undo" badge. */
+    const chosen = heldChoice();
+    const held = Boolean(chosen && chosen.index === action.index);
+    wrap.classList.toggle("held-choice", held);
+    button.setAttribute("aria-pressed", held ? "true" : "false");
+  } else if (action.undoable === false) {
     /* The server dry-ran the step: it reveals hidden information or hands
        the game to a chance outcome, so it cannot be taken back afterwards. */
     wrap.classList.add("irreversible");
