@@ -205,9 +205,11 @@ def unit_over(state: GameState, unit: int) -> bool:
 def finishing_seat(state: GameState) -> int | None:
     """Return the seat whose pressed Agent-turn end is still resolving.
 
-    Only Usurp's trash at the turn's end leaves follow-ups (a Skill choice, a
-    reshuffle) after the press; the engine then closes the turn, or reopens
-    it for what the trash produced (OQ-095 (4)-(5)). The flagged frame sits
+    Usurp's trash at the turn's end, and a box the press itself resolves (Long
+    Reach's payment reaching a Faction's bonus), leave follow-ups (a Skill or
+    Navigation choice, a reshuffle, an owed Emperor track Spy) after the
+    press; the engine then closes the turn, or reopens it for what they
+    produced (OQ-095 (3)-(5)). The flagged frame sits
     below those follow-ups, so the whole stack is read.
     """
 

@@ -46,6 +46,7 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat_deployment import agent_turn_is_finishing
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, owes_track_spy
@@ -375,10 +376,12 @@ def test_long_reach_s_turn_end_payment_reaching_emperor_four_reopens_the_turn() 
     reopened = pressed.state
     assert reopened.players[0].influence.emperor == 4
     assert owes_track_spy(reopened, 0)
+    # The press runs its steps (OQ-095 (4)), then the owed Spy reopens the
+    # turn as after a Usurp trash (OQ-095 (5)).
     assert pressed.events[-1].kind == "agent_turn_reopened"
-    assert "agent_turn_finished" not in {e.kind for e in pressed.events}
     top = reopened.decision_stack[-1]
     assert top.kind == FrameKind.AGENT_EFFECTS
+    assert not agent_turn_is_finishing(dict(top.context))
     offered = [a.action_id for a in engine.legal_actions(reopened, 0)]
     assert "place_track_spy" in offered
     assert "finish_agent_turn" not in offered
@@ -388,10 +391,49 @@ def test_long_reach_s_turn_end_payment_reaching_emperor_four_reopens_the_turn() 
     while placing.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT:
         placing = engine.apply(placing, engine.legal_actions(placing, 0)[0]).state
     assert not owes_track_spy(placing, 0)
-    assert "finish_agent_turn" in [a.action_id for a in engine.legal_actions(placing, 0)]
+    offered = [a.action_id for a in engine.legal_actions(placing, 0)]
+    assert "finish_agent_turn" in offered
     closed = engine.apply(placing, DomainAction("finish_agent_turn", 0))
     assert "agent_turn_finished" in {e.kind for e in closed.events}
     nxt = closed.state.decision_stack[-1].decision
+    assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
+
+
+def test_a_navigation_play_queued_by_the_turn_end_payment_resolves_in_the_turn() -> (
+    None
+):
+    """Steersman Y'rkoon's Plot Course, reached by the turn end's payment.
+
+    OQ-095 (3): "마지막 효과가 남긴 Skill·Navigation 선택 ... 소유자의 열린
+    turn 위에서 풀리고". The press used to close the turn over the queued
+    play and raise ("an Agent turn cannot close over its queued choices").
+    """
+
+    reach = _card("long_reach")
+    owner = _owner(
+        (reach,),
+        in_play=(_card("planned_coupling"),),
+        leader_id="steersman_y_rkoon",
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=1),
+    )
+    bonded = _place(_state(owner), reach, "assembly_hall")
+    (only,) = legal_agent_card_influence_actions(bonded, 0)
+    assert dict(only.arguments)["faction"] == "fremen"
+    named = apply_agent_card_influence(bonded, only).state
+    engine = UprisingRulesEngine()
+    actions = engine.legal_actions(named, 0)
+    while board := [a for a in actions if a.action_id == "resolve_board_effect"]:
+        named = engine.apply(named, board[0]).state
+        actions = engine.legal_actions(named, 0)
+
+    pressed = engine.apply(named, DomainAction("finish_agent_turn", 0))
+    assert pressed.state.players[0].influence.fremen == 2
+    # The play resolved inside the pressed turn -- here with no Navigation
+    # card to play -- before the next seat's turn opened.
+    kinds = [event.kind for event in pressed.events]
+    assert kinds.index("agent_turn_finished") < kinds.index("navigation_exhausted")
+    assert pressed.state.pending_navigation_plays == ()
+    nxt = pressed.state.decision_stack[-1].decision
     assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
 
 
