@@ -58,6 +58,47 @@ KOREAN_FONT = Path("~/Library/Fonts/NanumBarunGothic.otf").expanduser()
 KOREAN_FONT_BOLD = Path("~/Library/Fonts/NanumBarunGothicBold.otf").expanduser()
 CANVAS = (556, 776)
 
+# The atlas trims transparent margins off many sprites; Unity lays the full
+# original rect over the RectTransform, and so does the renderer (app_render
+# untrim). For these icons the print draws the picture as large as that rect,
+# so they keep the trimmed texture stretched over it. Chosen icon by icon
+# from scan / stretched / untrimmed comparisons of every face they change
+# (2026-10-08): the battle icon tab, the reveal Persuasion diamond, specimen
+# cubes, research icons, VP, the small DNA markers, swords, Solari coins, the
+# contracts' water drops and the card icons all print larger than the app
+# draws them. The Tleilaxu header mask, the Agent column's backer, the reveal
+# watermark, faction tiles and badges, troop cubes, the no-sandworm mark and
+# the Intrigue DNA diamonds print as Unity draws them.
+PRINT_STRETCHED_SPRITES = frozenset(
+    {
+        "hud_Icon_Conflict_TokenBacker",
+        "UI_crd_ActionIcon_Persuasion",
+        "UI_icon_Specimen",
+        "UI_icon_Research",
+        "UI_crd_CostIcon_Research",
+        "UI_crd_ActionIcon_VictoryPoint",
+        "Genetic Marker 1",
+        "Genetic Marker 2",
+        "UI_icon_ActionLog_Sword",
+        "UI_icon_ActionLog_BeneGesseritUP",
+        "UI_icon_ActionLog_BeneGesserit",
+        "UI_icon_ActionLog_VP",
+        "UI_icon_ActionLog_Troop",
+        "UI_icon_ActionLog_CardDrawn",
+        "Solari",
+        "UI_crd_ActionIcon_ResourceCoin",
+        "UI_crd_CostIcon_Water",
+        "Solari_2",
+        "Solari_3",
+        "Solari_4",
+        "Solari_5",
+        "Spice_1",
+        "TrashCard",
+        "IntrigueCard",
+        "Tleilax",
+    }
+)
+
 
 def korean_face(latin_font):
     """The Korean face beside an app font: bold where the print sets the
@@ -172,7 +213,7 @@ class Inputs:
             raise SystemExit("run `app_assets.py card-inputs` first")
         self.loc = json.loads((rd / "loc_en_US.json").read_text())
         self.prefab_dir = rd / "prefabs"
-        self.sprites = R.Sprites(str(rd / "sprites"))
+        self.sprites = R.Sprites(str(rd / "sprites"), PRINT_STRETCHED_SPRITES)
         self.inline = R.Sprites(str(rd / "inline"))
         self.inline.meta = {}
         assets = json.loads((rd / "fonts" / "sprite_assets.json").read_text())
@@ -1103,6 +1144,13 @@ def intrigue_spec(inp, content_id):
 
 def bind_intrigue_prefab(inp, spec, lang):
     t = copy.deepcopy(inp.tree(spec["prefab"]))
+    # the Tleilaxu beetle prints as large as its full sprite rect on Intrigue
+    # cards (Illicit Dealings, Shadowy Bargain, Gruesome Sacrifice) but as
+    # Unity draws it on Tleilaxu cards, so only here is it stretched
+    for n in R.find_all_nodes(t):
+        image = R.comp(n, "Image")
+        if image and image.get("m_Sprite") == "Sprite:UI_icon_Tleilax":
+            n["stretch_sprite"] = True
     title = spec["title"].get(lang) or spec["title"]["en"]
     head = R.find(t, "HeaderText")
     head["text"] = title
