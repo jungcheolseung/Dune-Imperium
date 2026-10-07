@@ -1769,8 +1769,11 @@ def _confirm_if_held(page) -> bool:
     owner stays seat 0 throughout, `server/sessions.py`
     `_unit_ended_locked`), so nothing holds between them."""
 
+    # typeof: before a page has picked its seat both are null, and
+    # null === null sent a press with no turn end to confirm (400).
     if not page.evaluate(
-        "Boolean(state.summary) && state.summary.confirmation === state.viewSeat"
+        "Boolean(state.summary) && typeof state.summary.confirmation === 'number'"
+        " && state.summary.confirmation === state.viewSeat"
     ):
         return False
     page.evaluate("confirmTurn()")
