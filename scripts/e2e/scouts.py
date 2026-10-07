@@ -33,7 +33,9 @@ to the end, and on the way the page must show:
   Tleilax board's Helix spot or third Tleilaxu space, in its seat's
   Contract chip or on Reclaimed Forces; a seat's pieces (or one mission's
   bank goods) in one region of their space, its goods on its marker or
-  troop; a cube per parked troop in the seat's colour; nothing on a hotspot, Agent, Spy, Control marker, bonus
+  troop; a cube per parked troop in the seat's colour (the seat's troop
+  picture, and the seat's Control picture for a marker, when the catalog's
+  seat_pieces has them); nothing on a hotspot, Agent, Spy, Control marker, bonus
   spice, Commander or garrison ring, and a click at each hotspot's, Agent's
   and Spy's centre still reaches it; titles in Korean and, in English,
   without Hangul; and no face-down card's id (read off the game's save,
@@ -565,6 +567,12 @@ PIECES_JS = """(() => {
       width: r.width / s.width * 100, height: r.height / s.height * 100 };
   };
   const spies = new Set(view.players.flatMap((p) => p.spy_post_ids));
+  // What a piece drawn from the app's picture (class "pictured") is.
+  const picture = (n) => ({
+    tag: n.tagName, pictured: n.classList.contains('pictured'),
+    src: n.getAttribute('src'),
+    loaded: n.tagName === 'IMG' ? n.complete && n.naturalWidth > 0 : null,
+  });
   const out = rows.map((row) => {
     const all = [...document.querySelectorAll(`.scouts-piece[data-row="${row.key}"]`)]
       .filter(outside);
@@ -599,6 +607,8 @@ PIECES_JS = """(() => {
       label: node ? node.getAttribute('aria-label') : null,
       cubes: node ? [...node.querySelectorAll('.scouts-cube')]
         .map((c) => getComputedStyle(c).backgroundColor) : [],
+      cubePictures: node ? [...node.querySelectorAll('.scouts-cube')].map(picture) : [],
+      pennants: node ? [...node.querySelectorAll('.scouts-pennant')].map(picture) : [],
     };
   });
   return {
@@ -607,6 +617,7 @@ PIECES_JS = """(() => {
     scan: Boolean(stage),
     btScan: Boolean(btStage),
     colors: SEAT_COLORS,
+    seatPieces: state.catalog.seat_pieces || {},
   };
 })()"""
 
@@ -687,7 +698,9 @@ def check_pieces(page, label: str) -> set[str]:
     """Every Scouts piece in the view is exactly one DOM piece at its place:
     inside its space's regions, on (or beside a Spy on) its post, on the
     Helix spot or the third Tleilaxu space, in its seat's Contract chip or on
-    Reclaimed Forces; parked troops are a cube each in the seat's colour; no
+    Reclaimed Forces; parked troops are a cube each in the seat's colour (its
+    troop picture, and a marker its Control picture, when the catalog's
+    seat_pieces has them); no
     piece stands on a hotspot, Agent, Spy, Control marker, bonus spice,
     Commander or garrison ring; every piece is titled. Returns the missions
     whose pieces were checked (or rightly left to the panel without a
@@ -724,8 +737,30 @@ def check_pieces(page, label: str) -> set[str]:
         checked.add(row["mission"])
         if not row["title"] or row["title"] != row["label"]:
             problems.append((name, "untitled", row["title"]))
-        if row["kind"] == "troop" and row["cubes"] != [_rgb(colors[row["seat"]])] * row["count"]:
-            problems.append((name, "cubes", row["cubes"], row["count"]))
+        pictures = found["seatPieces"]
+        if row["kind"] == "troop":
+            if "troop" in pictures:
+                # The app's cube picture of the row's seat, a loaded <img> each.
+                wanted = [pictures["troop"][row["seat"]]] * row["count"]
+                cubes = row["cubePictures"]
+                if (
+                    [c["src"] for c in cubes] != wanted
+                    or not all(c["pictured"] and c["tag"] == "IMG" for c in cubes)
+                    or not all(c["loaded"] for c in cubes)
+                ):
+                    problems.append((name, "cube pictures", cubes, row["count"]))
+            elif row["cubes"] != [_rgb(colors[row["seat"]])] * row["count"]:
+                problems.append((name, "cubes", row["cubes"], row["count"]))
+        if row["kind"] == "marker" and "control" in pictures:
+            # A mission marker is the seat's Control picture (a pennant).
+            pennants = row["pennants"]
+            if len(pennants) != 1 or not (
+                pennants[0]["pictured"]
+                and pennants[0]["tag"] == "IMG"
+                and pennants[0]["src"] == pictures["control"][row["seat"]]
+                and pennants[0]["loaded"]
+            ):
+                problems.append((name, "pennant picture", pennants))
         rect = row["rect"]
         location = row["location"]
         if row["where"] in ("contract", "card"):

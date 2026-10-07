@@ -61,6 +61,7 @@ def available_alliance_tokens(files: frozenset[str]) -> dict[str, str]:
         if alliance_token_filename(faction) in files
     }
 
+
 # The token colour of each seat, in seat order. The browser UI tints
 # everything else a seat owns with ``SEAT_COLORS`` in ``server/static/app.js``
 # (blue, red, green, yellow); keep the two tables in step.
@@ -89,3 +90,41 @@ def available_strength_tokens(
         front, plus20 = strength_token_filenames(color)
         result.append((front, plus20) if front in files and plus20 in files else None)
     return tuple(result)
+
+
+# The seat pieces on the board, drawn from the Steam app's sprites by
+# ``scripts/dwgr/app_assets.py pieces`` (``<kind>_<colour>.png``, colours as
+# ``STRENGTH_TOKEN_COLORS``): an Agent on a space or in a Conflict, a Spy on
+# an observation post, a Control marker on a space's flag, a troop cube and a
+# sandworm in a Conflict or garrison. Without a kind's four pictures the UI
+# keeps its flat drawn piece for that kind.
+SEAT_PIECE_KINDS: Final[tuple[str, ...]] = (
+    "agent",
+    "spy",
+    "control",
+    "troop",
+    "sandworm",
+)
+
+
+def seat_piece_filename(kind: str, color: str) -> str:
+    """Return the filename of one seat colour's picture of a piece."""
+
+    return f"{kind}_{color}.png"
+
+
+def available_seat_pieces(files: frozenset[str]) -> dict[str, tuple[str, ...]]:
+    """Return ``{kind: per-seat filenames}`` for the kinds pictured in ``files``.
+
+    A kind counts only when all four colours are there, so the seats never
+    mix a picture with a drawn piece of the same kind.
+    """
+
+    result: dict[str, tuple[str, ...]] = {}
+    for kind in SEAT_PIECE_KINDS:
+        names = tuple(
+            seat_piece_filename(kind, color) for color in STRENGTH_TOKEN_COLORS
+        )
+        if all(name in files for name in names):
+            result[kind] = names
+    return result

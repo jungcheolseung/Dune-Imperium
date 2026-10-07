@@ -18,7 +18,12 @@ seat's Agent figure, the neutral Commander and sandworm pictures, and no
 number; so is every unit in a garrison, inside its printed ring's circle
 (`catalog.tracks.garrison_units`) and clear of a Maker Hooks token in the
 ring's slot, and a busy Conflict area is laid out without overlaps at three
-window sizes down to a 268 px board. A Bloodlines table then checks the
+window sizes down to a 268 px board. Where the private assets have the Steam
+app's pictures of the seat pieces (`catalog.seat_pieces`: agent, spy,
+control, troop, sandworm) each of those pieces is checked to be the loaded
+`<img>` of its kind for its seat; section [3g] runs the same sections with the
+pictures taken away, so the flat drawing's colour checks keep running. A
+Bloodlines table then checks the
 Sardaukar Commanders that stand on their setup spaces, the rulebook's figure
 on each frame's top-right corner [Bloodlines p. 3].
 """
@@ -84,6 +89,26 @@ def box_matches(rect: dict, box: list[float], tolerance: float = TOLERANCE) -> b
 def images_loaded(page) -> None:
     page.wait_for_function(
         "[...document.querySelectorAll('.board-stage img')].every((i) => i.complete)"
+    )
+
+
+def seat_pictures(page) -> dict[str, list[str]]:
+    """catalog.seat_pieces: the kinds the assets draw as pictures, each with
+    its four seats' URLs (empty when the assets lack them: the flat drawing)."""
+    return page.evaluate("state.catalog.seat_pieces || {}")
+
+
+def is_seat_picture(
+    piece: dict, pictures: dict[str, list[str]], kind: str, seat: int
+) -> bool:
+    """Whether `piece` (a dict with tag, pictured, src, loaded) is the loaded
+    picture of `kind` for `seat`: an <img> whose src is the catalog's URL.
+    Only meaningful when the catalog has pictures of that kind."""
+    return bool(
+        piece["pictured"]
+        and piece["tag"].lower() == "img"
+        and piece["src"] == pictures[kind][seat]
+        and piece["loaded"]
     )
 
 
@@ -189,10 +214,25 @@ def reveal_preview(page) -> None:
     check.ok(button.count() == 1, "and so does the Reveal button")
 
 
+# One Control marker by its space: a pictured <img> or the flat pennant.
+CONTROL_MARKER_JS = """(space) => {
+  const node = document.querySelector(`.control-marker[data-space='${space}']`);
+  const polygon = node.querySelector("polygon");
+  return {
+    tag: node.tagName,
+    pictured: node.classList.contains("pictured"),
+    src: node.getAttribute("src"),
+    loaded: node.tagName === "IMG" ? node.complete && node.naturalWidth > 0 : null,
+    fill: polygon ? polygon.getAttribute("fill") : null,
+  };
+}"""
+
+
 def printed_places(page) -> None:
     print("[3] Control, bonus spice, Maker Hooks, a held Alliance (edited view)")
     tracks = page.evaluate("state.catalog.tracks")
     colors = page.evaluate("SEAT_COLORS")
+    pictures = seat_pictures(page)
     page.evaluate(
         """() => {
           const v = state.view;
@@ -223,15 +263,21 @@ def printed_places(page) -> None:
             f"{space_id}: the marker is the printed flag's box",
             rect,
         )
-        fill = page.evaluate(
-            "(space) => document.querySelector(`.control-marker[data-space='${space}']"
-            " polygon`).getAttribute('fill')",
-            space_id,
-        )
-        check.ok(
-            rect["seat"] == str(seat) and fill == colors[seat],
-            f"{space_id}: seat colour",
-        )
+        marker = page.evaluate(CONTROL_MARKER_JS, space_id)
+        if "control" in pictures:
+            check.ok(
+                rect["seat"] == str(seat)
+                and is_seat_picture(marker, pictures, "control", seat),
+                f"{space_id}: the seat's Control picture, loaded",
+                (rect["seat"], marker),
+            )
+        else:
+            check.ok(
+                rect["seat"] == str(seat)
+                and not marker["pictured"]
+                and marker["fill"] == colors[seat],
+                f"{space_id}: seat colour",
+            )
     check.ok(
         page.locator(".hotspot .control-flag").count() == 0,
         "no Control mark left inside the hotspots",
@@ -299,6 +345,7 @@ def printed_places(page) -> None:
 def agent_pieces(page) -> None:
     print("[3b] Agents: the Agent icon's figure in the seat's colour (edited view)")
     colors = page.evaluate("SEAT_COLORS")
+    pictures = seat_pictures(page)
     placed = {
         "sardaukar": [0],
         "arrakeen": [0, 1, 2],
@@ -339,11 +386,16 @@ def agent_pieces(page) -> None:
             rect: pct(token.getBoundingClientRect()),
             seat: Number(token.dataset.seat),
             tag: token.tagName,
+            pictured: token.classList.contains("pictured"),
+            src: token.getAttribute("src"),
+            loaded: token.tagName === "IMG"
+              ? token.complete && token.naturalWidth > 0 : null,
             role: token.getAttribute("role"),
             label: token.getAttribute("aria-label"),
             wantedLabel: t("common.seat", { seat: Number(token.dataset.seat) }),
             fill: body ? getComputedStyle(body).fill : null,
-            drawnText: token.querySelectorAll("text").length + (body ? 0 : 1),
+            drawnText: token.querySelectorAll("text").length
+              + (body || token.tagName === "IMG" ? 0 : 1),
             outline: body ? body.getAttribute("href") : null,
           }));
         }"""
@@ -357,10 +409,11 @@ def agent_pieces(page) -> None:
         "one Agent per placement, in seat order",
         {space: [t["seat"] for t in group] for space, group in by_space.items()},
     )
-    check.ok(
-        page.evaluate("document.querySelectorAll('#agent-outline').length") == 1,
-        "one shared Agent outline",
-    )
+    if "agent" not in pictures:
+        check.ok(
+            page.evaluate("document.querySelectorAll('#agent-outline').length") == 1,
+            "one shared Agent outline",
+        )
 
     def rgb(hex_color: str) -> str:
         value = hex_color.lstrip("#")
@@ -369,16 +422,23 @@ def agent_pieces(page) -> None:
 
     for token in tokens:
         name = f"{token['space']} seat {token['seat']}"
-        check.ok(
-            token["tag"] == "svg" and token["outline"] == "#agent-outline",
-            f"{name}: drawn from the Agent outline",
-            token,
-        )
-        check.ok(
-            token["fill"] == rgb(colors[token["seat"]]),
-            f"{name}: in the seat's colour",
-            (token["fill"], colors[token["seat"]]),
-        )
+        if "agent" in pictures:
+            check.ok(
+                is_seat_picture(token, pictures, "agent", token["seat"]),
+                f"{name}: the seat's Agent picture, loaded",
+                token,
+            )
+        else:
+            check.ok(
+                token["tag"] == "svg" and token["outline"] == "#agent-outline",
+                f"{name}: drawn from the Agent outline",
+                token,
+            )
+            check.ok(
+                token["fill"] == rgb(colors[token["seat"]]),
+                f"{name}: in the seat's colour",
+                (token["fill"], colors[token["seat"]]),
+            )
         check.ok(token["drawnText"] == 0, f"{name}: no seat number drawn", token)
         check.ok(
             token["role"] == "img" and token["label"] == token["wantedLabel"],
@@ -438,10 +498,14 @@ SPIES_JS = """() => {
         rect: pct(spy.getBoundingClientRect()),
         seat: Number(spy.dataset.seat),
         tag: spy.tagName,
+        pictured: spy.classList.contains("pictured"),
+        src: spy.getAttribute("src"),
+        loaded: spy.tagName === "IMG" ? spy.complete && spy.naturalWidth > 0 : null,
         outline: body ? body.getAttribute("href") : null,
         fill: body ? getComputedStyle(body).fill : null,
         top: spy.querySelectorAll(".piece-top").length,
-        drawnText: spy.querySelectorAll("text").length + (body ? 0 : 1),
+        drawnText: spy.querySelectorAll("text").length
+          + (body || spy.tagName === "IMG" ? 0 : 1),
         role: spy.getAttribute("role"),
         label: spy.getAttribute("aria-label"),
         wantedLabel: t("common.seat", { seat: Number(spy.dataset.seat) }),
@@ -469,6 +533,7 @@ def spy_pieces(page) -> None:
         "({ posts: state.catalog.posts, size: state.catalog.post_size })"
     )
     colors = page.evaluate("SEAT_COLORS")
+    pictures = seat_pictures(page)
     page.evaluate(
         """(placed) => {
           for (const player of state.view.players) player.spy_post_ids = [];
@@ -489,6 +554,7 @@ def spy_pieces(page) -> None:
         if turn < len(seats)
     ]
     page.evaluate(LOG_PLACEMENTS_JS, placements)
+    images_loaded(page)  # a picture the render just made is still loading
     shown = page.evaluate(SPIES_JS)
 
     def rgb(hex_color: str) -> str:
@@ -513,17 +579,24 @@ def spy_pieces(page) -> None:
     for post_id, group in by_post.items():
         for spy in group["spies"]:
             name = f"{post_id} seat {spy['seat']}"
-            check.ok(
-                spy["tag"] == "svg" and spy["outline"] == "#spy-outline",
-                f"{name}: drawn from the Spy outline",
-                spy,
-            )
-            check.ok(
-                spy["fill"] == rgb(colors[spy["seat"]]),
-                f"{name}: in the seat's colour",
-                (spy["fill"], colors[spy["seat"]]),
-            )
-            check.ok(spy["top"] == 1, f"{name}: the cylinder's top face", spy)
+            if "spy" in pictures:
+                check.ok(
+                    is_seat_picture(spy, pictures, "spy", spy["seat"]),
+                    f"{name}: the seat's Spy picture, loaded",
+                    spy,
+                )
+            else:
+                check.ok(
+                    spy["tag"] == "svg" and spy["outline"] == "#spy-outline",
+                    f"{name}: drawn from the Spy outline",
+                    spy,
+                )
+                check.ok(
+                    spy["fill"] == rgb(colors[spy["seat"]]),
+                    f"{name}: in the seat's colour",
+                    (spy["fill"], colors[spy["seat"]]),
+                )
+                check.ok(spy["top"] == 1, f"{name}: the cylinder's top face", spy)
             check.ok(spy["drawnText"] == 0, f"{name}: no seat number drawn", spy)
             check.ok(
                 spy["role"] == "img" and spy["label"] == spy["wantedLabel"],
@@ -581,10 +654,11 @@ def spy_pieces(page) -> None:
         "a Spy placed again stands on top",
         again.get("fremen-desert-tactics-fremkit"),
     )
-    check.ok(
-        page.evaluate("document.querySelectorAll('#spy-outline').length") == 1,
-        "one shared Spy outline",
-    )
+    if "spy" not in pictures:
+        check.ok(
+            page.evaluate("document.querySelectorAll('#spy-outline').length") == 1,
+            "one shared Spy outline",
+        )
 
 
 def intrigue_pile(page) -> None:
@@ -674,6 +748,7 @@ UNITS_JS = """() => {
         seat: Number(piece.dataset.seat),
         kind: piece.dataset.kind,
         tag: piece.tagName.toLowerCase(),
+        pictured: piece.classList.contains("pictured"),
         rect: pct(piece.getBoundingClientRect()),
         background: getComputedStyle(piece).backgroundColor,
         fill: body ? getComputedStyle(body).fill : null,
@@ -724,6 +799,8 @@ def conflict_units(page) -> None:
     tracks = page.evaluate("state.catalog.tracks")
     layout = tracks["conflict_units"] if "conflict_units" in tracks else None
     colors = page.evaluate("SEAT_COLORS")
+    seat_art = seat_pictures(page)
+    seat_art_saved = page.evaluate("state.catalog.seat_pieces ?? null")
     pictures = page.evaluate(
         "({ commander: state.catalog.commander_token,"
         " sandworm: (state.catalog.icons || {}).sandworm || null })"
@@ -768,11 +845,18 @@ def conflict_units(page) -> None:
             f"seat {seat}: the pieces never take a click",
         )
         troops = [p for p in group["pieces"] if p["kind"] == "troop"]
-        check.ok(
-            all(p["background"] == rgb(colors[seat]) for p in troops),
-            f"seat {seat}: troops are cubes in the seat's colour",
-            {p["background"] for p in troops},
-        )
+        if "troop" in seat_art:
+            check.ok(
+                all(is_seat_picture(p, seat_art, "troop", seat) for p in troops),
+                f"seat {seat}: troops are the seat's cube picture, loaded",
+                [(p["src"], p["loaded"]) for p in troops][:3],
+            )
+        else:
+            check.ok(
+                all(p["background"] == rgb(colors[seat]) for p in troops),
+                f"seat {seat}: troops are cubes in the seat's colour",
+                {p["background"] for p in troops},
+            )
         cube = tracks["influence"]["cube_size"]
         check.ok(
             all(near(p["rect"]["width"], cube) for p in troops),
@@ -780,16 +864,35 @@ def conflict_units(page) -> None:
             [round(p["rect"]["width"], 3) for p in troops][:3],
         )
         agents = [p for p in group["pieces"] if p["kind"] == "agent"]
-        check.ok(
-            all(p["tag"] == "svg" and p["fill"] == rgb(colors[seat]) for p in agents),
-            f"seat {seat}: an Agent is the seat's Agent figure",
-            [(p["tag"], p["fill"]) for p in agents],
-        )
+        if "agent" in seat_art:
+            check.ok(
+                all(is_seat_picture(p, seat_art, "agent", seat) for p in agents),
+                f"seat {seat}: an Agent is the seat's Agent picture, loaded",
+                [(p["src"], p["loaded"]) for p in agents],
+            )
+        else:
+            check.ok(
+                all(
+                    p["tag"] == "svg" and p["fill"] == rgb(colors[seat])
+                    for p in agents
+                ),
+                f"seat {seat}: an Agent is the seat's Agent figure",
+                [(p["tag"], p["fill"]) for p in agents],
+            )
         for kind in ("commander", "sandworm"):
             figures = [p for p in group["pieces"] if p["kind"] == kind]
             if not figures:
                 continue
-            if pictures[kind]:
+            if kind == "sandworm" and "sandworm" in seat_art:
+                check.ok(
+                    all(
+                        is_seat_picture(p, seat_art, "sandworm", seat)
+                        for p in figures
+                    ),
+                    f"seat {seat}: a sandworm is the seat's sandworm picture, loaded",
+                    [(p["src"], p["loaded"]) for p in figures],
+                )
+            elif pictures[kind]:
                 check.ok(
                     all(p["src"] == pictures[kind] and p["loaded"] for p in figures),
                     f"seat {seat}: a {kind} is its own picture, loaded",
@@ -889,10 +992,13 @@ def conflict_units(page) -> None:
             "crowded: every piece stays inside the quadrant",
         )
 
-    # Without the pictures the drawn pieces take their places.
+    # Without the pictures the drawn pieces take their places (a sandworm is
+    # also the seat's own picture when the assets have it).
     page.evaluate(
         "state.catalog.commander_token = null;"
         " if (state.catalog.icons) delete state.catalog.icons.sandworm;"
+        " if (state.catalog.seat_pieces) state.catalog.seat_pieces ="
+        " { ...state.catalog.seat_pieces, sandworm: undefined };"
     )
     page.evaluate(SET_UNITS_JS, [CONFLICT_UNITS, UNIT_FIELDS])
     drawn = {group["seat"]: group for group in page.evaluate(UNITS_JS)}
@@ -908,11 +1014,12 @@ def conflict_units(page) -> None:
             [(p["tag"], p["rect"]) for p in pieces],
         )
     page.evaluate(
-        """([pictures]) => {
+        """([pictures, seatPieces]) => {
           state.catalog.commander_token = pictures.commander;
           if (pictures.sandworm) state.catalog.icons.sandworm = pictures.sandworm;
+          state.catalog.seat_pieces = seatPieces;
         }""",
-        [pictures],
+        [pictures, seat_art_saved],
     )
     page.evaluate(SET_UNITS_JS, [[{}, {}, {}, {}], UNIT_FIELDS])
 
@@ -965,6 +1072,7 @@ GROUPS_JS = """([groupSelector, pieceSelector]) => {
         seat: Number(piece.dataset.seat),
         kind: piece.dataset.kind,
         tag: piece.tagName.toLowerCase(),
+        pictured: piece.classList.contains("pictured"),
         rect: pct(piece.getBoundingClientRect()),
         background: getComputedStyle(piece).backgroundColor,
         src: piece.getAttribute("src"),
@@ -1023,6 +1131,7 @@ def garrison_units(page) -> None:
         return
     rings, line = layout["rings"], layout["line"]
     colors = page.evaluate("SEAT_COLORS")
+    pictures = seat_pictures(page)
     commander_picture = page.evaluate("state.catalog.commander_token")
     page.evaluate(SET_GARRISONS_JS, [GARRISON_UNITS, GARRISON_FIELDS, GARRISON_HOOKS])
     images_loaded(page)
@@ -1067,11 +1176,18 @@ def garrison_units(page) -> None:
             f"seat {seat}: the pieces never take a click",
         )
         troops = [p for p in group["pieces"] if p["kind"] == "troop"]
-        check.ok(
-            all(p["background"] == rgb(colors[seat]) for p in troops),
-            f"seat {seat}: troops are cubes in the seat's colour",
-            {p["background"] for p in troops},
-        )
+        if "troop" in pictures:
+            check.ok(
+                all(is_seat_picture(p, pictures, "troop", seat) for p in troops),
+                f"seat {seat}: troops are the seat's cube picture, loaded",
+                [(p["src"], p["loaded"]) for p in troops][:3],
+            )
+        else:
+            check.ok(
+                all(p["background"] == rgb(colors[seat]) for p in troops),
+                f"seat {seat}: troops are cubes in the seat's colour",
+                {p["background"] for p in troops},
+            )
         commanders = [p for p in group["pieces"] if p["kind"] == "commander"]
         if commanders and commander_picture:
             check.ok(
@@ -1574,11 +1690,29 @@ def tleilaxu_spice(base: str, browser) -> None:
     context.close()
 
 
+def flat_pieces(base: str, browser) -> None:
+    """The pieces again as the flat drawing, which the assets without the
+    app's pictures (catalog.seat_pieces) get: the colour checks of the
+    sections above, not the picture checks."""
+    print("[3g] the same pieces drawn flat, as without the app's pictures")
+    context, page, rec = open_context(browser, "flat-pieces")
+    create_game(page, base, humans=(0,), seed=11)
+    page.evaluate("state.catalog.seat_pieces = null; render();")
+    printed_places(page)
+    agent_pieces(page)
+    spy_pieces(page)
+    conflict_units(page)
+    garrison_units(page)
+    check.ok(not rec.js_errors, "no JS exceptions (flat pieces)", rec.js_errors[:5])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
             context, page, rec = open_context(browser, "player")
             create_game(page, base, humans=(0,), seed=11)
+            pictured = bool(seat_pictures(page))
             fresh_table(page)
             space_frames(page)
             reveal_preview(page)
@@ -1593,6 +1727,8 @@ def main() -> None:
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
             overlap_sweep(base, browser)
+            if pictured:
+                flat_pieces(base, browser)
             commander_pieces(base, browser)
             tleilaxu_spice(base, browser)
         finally:

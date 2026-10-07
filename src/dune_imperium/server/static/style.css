@@ -546,6 +546,21 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .agent-tokens[data-count="3"] .agent-token { height: 60%; }
 .agent-tokens[data-count="4"] .agent-token { height: 46%; }
+/* A piece drawn from the app's picture (pieceImage) keeps the picture's
+   proportions inside the box the layout gives it; its glossy edge needs no
+   drawn ring, only the shadow every piece on the scan casts. */
+img.pictured {
+  object-fit: contain;
+  box-shadow: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+img.control-marker.pictured { object-fit: fill; }
+:is(.conflict-unit, .garrison-unit, .bt-specimen)[data-kind="troop"].pictured {
+  box-shadow: none;
+}
 /* The layers of a seat's piece (seatPiece): the icon's light rim inside
    the outline, the dark edge, and a Spy's lighter top face. */
 .piece-rim { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 5; }

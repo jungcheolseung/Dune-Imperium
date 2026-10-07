@@ -865,6 +865,7 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     assert catalog["icons"] == {}
     assert catalog["board_image"] is None
     assert catalog["strength_tokens"] == [None, None, None, None]
+    assert catalog["seat_pieces"] == {}
 
     with_assets = build_catalog(
         frozenset(),
@@ -876,6 +877,7 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
                 "strength_red_plus20.png",
                 # A lone face does not make a token (display.token_images).
                 "strength_yellow.png",
+                *(f"troop_{c}.png" for c in ("blue", "red", "green", "yellow")),
             }
         ),
     )
@@ -894,6 +896,9 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
         None,
         None,
     ]
+    assert with_assets["seat_pieces"] == {
+        "troop": [f"/tokens/troop_{c}.png" for c in ("blue", "red", "green", "yellow")]
+    }
 
 
 def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
