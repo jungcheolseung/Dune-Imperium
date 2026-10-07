@@ -8,16 +8,21 @@
 
 ``paired.py`` compares two agents seated in the same matches. This compares
 two agents that each ran a cell of their own against the same opponents on
-the same seeds -- the one-against-three cells a search seat is judged in.
+the same seeds -- the one-against-three cells a search seat is judged in, or
+two-against-two cells such as ``--agents checkpoint:X,app_ai,checkpoint:X,app_ai``
+against the same lineup with ``checkpoint:Y``.
 A match of cell A is paired with the match of cell B that has the same game
-seed and puts the tested agent in the same seat: the same Leaders, decks,
+seed and puts the tested agent in the same seats: the same Leaders, decks,
 first player and opponents, so the pair differs only by the tested agent
-(and whatever the games do differently once its choices diverge). The
-difference is bootstrapped over seeds, since the rotations of one seed are
-one deal.
+(and whatever the games do differently once its choices diverge). When the
+tested agent holds several seats, its outcome in a match is ``per_match``'s
+over those seats together (a win if any of them took rank 1, the mean rank and
+margin). The difference is bootstrapped over seeds, since the rotations of one
+seed are one deal.
 
-Each cell's own share is also reported against the one-against-three null
-of 25%, with the same seed-clustered interval.
+Each cell's own share is also reported against the share agents of equal
+strength would take -- the tested seats' part of the table: 25% for one seat
+of four, 50% for two -- with the same seed-clustered interval.
 """
 
 from __future__ import annotations
@@ -33,20 +38,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paired import bootstrap, per_match  # noqa: E402
 
 
-def cell(path: Path, name: str) -> dict[tuple[int, int], dict[str, float]]:
-    """Map (game seed, tested seat) to the tested agent's outcome."""
+def cell(path: Path, name: str) -> dict[tuple[int, tuple[int, ...]], dict[str, float]]:
+    """Map (game seed, tested seats) to the tested agent's outcome.
 
-    outcomes: dict[tuple[int, int], dict[str, float]] = {}
+    The outcome is ``per_match``'s plus ``null``, the part of the table the
+    tested seats hold: the win share it would take if every agent were equal.
+    """
+
+    outcomes: dict[tuple[int, tuple[int, ...]], dict[str, float]] = {}
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
         row = json.loads(line)
-        seats = [seat["seat"] for seat in row["seats"] if seat["agent"] == name]
-        if len(seats) != 1:
+        seats = tuple(
+            sorted(seat["seat"] for seat in row["seats"] if seat["agent"] == name)
+        )
+        if not seats:
             continue
         outcome = per_match(row, name)
         assert outcome is not None
-        outcomes[(row["game_seed"], seats[0])] = outcome
+        outcome["null"] = len(seats) / len(row["seats"])
+        outcomes[(row["game_seed"], seats)] = outcome
     return outcomes
 
 
@@ -64,7 +76,7 @@ def main() -> int:
     second = cell(arguments.b_rows, arguments.b)
     keys = sorted(first.keys() & second.keys())
     if not keys:
-        parser.error("the two cells share no (seed, seat) match")
+        parser.error("the two cells share no (seed, seats) match")
     by_seed: dict[int, list[tuple[dict, dict]]] = defaultdict(list)
     for key in keys:
         by_seed[key[0]].append((first[key], second[key]))
@@ -77,12 +89,18 @@ def main() -> int:
     print(f"  B = {arguments.b}  ({arguments.b_rows})")
     print()
     seeds = list(by_seed.values())
+    held = " or ".join(str(size) for size in sorted({len(key[1]) for key in keys}))
+    held += " seat" if held == "1" else " seats"
     for label, index in (("A", 0), ("B", 1)):
         clusters = [[pair[index]["win"] for pair in pairs] for pairs in seeds]
         low, high = bootstrap(clusters, arguments.draws, arguments.seed)
         share = statistics.fmean([v for c in clusters for v in c])
+        null = statistics.fmean([pair[index]["null"] for p in seeds for pair in p])
         interval = f"[{100 * low:.1f}, {100 * high:.1f}]"
-        print(f"{label} win share {100 * share:5.1f}%  {interval}")
+        print(
+            f"{label} win share {100 * share:5.1f}%  {interval}  "
+            f"({held}, equal-strength share {100 * null:.0f}%)"
+        )
     print()
     header = f"{'statistic':>10} {'A':>9} {'B':>9} {'A-B':>9} {'95% CI of A-B':>22}"
     print(header)
