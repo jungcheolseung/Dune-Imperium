@@ -274,8 +274,11 @@ class App:
             try:
                 d.image.save(path)
             except FileNotFoundError as e:
-                m = re.search(r"File (\S+) not found", str(e))
-                dep = self.index["cab"].get(m.group(1).lower()) if m else None
+                m = re.search(r"(?:Resource )?[Ff]ile (\S+) not found", str(e))
+                name_ = m.group(1) if m else ""
+                dep = self.index["cab"].get(name_.lower())
+                if dep is None and os.path.exists(os.path.join(DATA_DIR, name_)):
+                    dep = name_  # a loose .resS beside resources.assets
                 if dep and dep not in self.loaded:
                     self.load(dep)
                     continue
@@ -503,6 +506,100 @@ def find_go(go_reader, name):
     return None
 
 
+# ---------------------------------------------------------------- card inputs
+INLINE_BUNDLE = "bfceeebef0fc453d153f5c466493ae23.bundle"  # TMP sprite glyph pictures
+CARD_SPRITE_PREFIXES = ("UI_ill_", "UI_crd_", "Icon_cost_", "UI_icon_Research")
+
+
+def cmd_card_inputs(_args):
+    """Everything app_cards.py reads: prefab trees, fonts, loc, sprites."""
+    out = cache_dir()
+    app = App()
+    prefabs = os.path.join(out, "prefabs")
+    cmd_prefabs(argparse.Namespace(out=prefabs, names=[], all_cards=True))
+    cmd_fonts(argparse.Namespace(out=os.path.join(out, "fonts")))
+    cmd_loc(None)
+    names = set()
+    for f in os.listdir(prefabs):
+        walk_sprites(json.load(open(os.path.join(prefabs, f))), names)
+    for rows in app.index["pictures"].values():
+        for kind, n, _w, _h in rows:
+            if kind == "S" and n.startswith(CARD_SPRITE_PREFIXES):
+                names.add(n)
+    assets = json.load(open(os.path.join(out, "fonts", "sprite_assets.json")))
+    cmd_sprites(
+        argparse.Namespace(
+            out=os.path.join(out, "sprites"),
+            names=sorted(names),
+            list=None,
+            prefer=None,
+        )
+    )
+    # Inline glyph pictures, cut from each sprite asset's sheet by glyph rect
+    # and saved under the glyph (character) name the card strings use.
+    from PIL import Image  # UnityPy depends on Pillow
+
+    inline_dir = os.path.join(out, "inline")
+    os.makedirs(inline_dir, exist_ok=True)
+    sheets = {}
+    missing = []
+    for asset in assets.values():
+        for char, glyph in asset.items():
+            sheet = glyph["sheet"]
+            if sheet not in sheets:
+                path = os.path.join(out, f"_sheet_{sheet}.png")
+                saved = app.save_picture(sheet, path, "resources.assets")
+                sheets[sheet] = Image.open(path) if saved is not None else None
+            img = sheets[sheet]
+            if img is None:
+                missing.append(char)
+                continue
+            x, y, w, h = glyph["rect"]
+            box = (x, img.height - y - h, x + w, img.height - y)
+            img.crop(box).save(os.path.join(inline_dir, char + ".png"))
+    print("inline glyphs missing:", missing)
+
+
+def walk_sprites(node, acc):
+    for c in node["comps"]:
+        v = c.get("m_Sprite")
+        if isinstance(v, str) and v.startswith("Sprite:"):
+            acc.add(v.split(":", 1)[1])
+    for ch in node["children"]:
+        walk_sprites(ch, acc)
+
+
+# ---------------------------------------------------------------- loc
+def cmd_loc(args):
+    """The app's English strings (key=value TextAssets) as render/loc_en_US.json.
+
+    Only English: the app's Korean translation differs from the official
+    Korean edition and is not used (user decision, 2026-10-07).
+    """
+    env = UnityPy.load(
+        os.path.join(DATA_DIR, "StreamingAssets", "Localization", "osx", "localization")
+    )
+    for obj in env.objects:
+        if obj.type.name != "TextAsset":
+            continue
+        d = obj.read()
+        if d.m_Name != "en_US":
+            continue
+        text = (
+            d.m_Script
+            if isinstance(d.m_Script, str)
+            else bytes(d.m_Script).decode("utf-8")
+        )
+        table = {}
+        for line in text.splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                table[k.strip()] = v
+        out = os.path.join(cache_dir(), "loc_en_US.json")
+        json.dump(table, open(out, "w"), ensure_ascii=False, indent=0)
+        print("loc:", len(table), "strings ->", out)
+
+
 # ---------------------------------------------------------------- fonts
 FONTS = (
     "Gotham-Book SDF",
@@ -518,8 +615,14 @@ def cmd_fonts(args):
     """TextMeshPro SDF fonts (tables, atlas) and TMP sprite asset glyph metrics."""
     app = App()
     os.makedirs(args.out, exist_ok=True)
+    readers = {}
+    app.load(INLINE_BUNDLE)
+    for sf in app.serialized_files(INLINE_BUNDLE):
+        for obj in sf.objects.values():
+            if obj.type.name == "MonoBehaviour" and obj.peek_name() in FONTS:
+                readers[obj.peek_name()] = obj
     for name in FONTS:
-        reader = app.container(name + ".asset")
+        reader = readers[name]
         tt = reader.read_typetree()
         atlases = []
         for i, p in enumerate(tt["m_AtlasTextures"]):
@@ -596,7 +699,19 @@ def sprite_assets():
                 struct.unpack_from("<I5f4ifiiiq", b, o)
             )
             o += 64
-            glyphs[idx] = {"w": w, "h": h, "bx": bx, "by": by, "adv": adv, "scale": gs}
+            # The picture is the glyph rect on the asset's sprite sheet (a
+            # texture of the asset's own name); the sprite PPtr is often a
+            # placeholder shared by many glyphs.
+            glyphs[idx] = {
+                "w": w,
+                "h": h,
+                "bx": bx,
+                "by": by,
+                "adv": adv,
+                "scale": gs,
+                "rect": [rx, ry, rw, rh],
+                "sheet": name,
+            }
         out[name] = {
             nm: dict(glyphs[gi], cscale=sc) for nm, gi, sc in chars if gi in glyphs
         }
@@ -621,6 +736,8 @@ def main():
     p.add_argument("names", nargs="*")
     p.add_argument("--all-cards", action="store_true")
     p.set_defaults(fn=cmd_prefabs)
+    sub.add_parser("loc").set_defaults(fn=cmd_loc)
+    sub.add_parser("card-inputs").set_defaults(fn=cmd_card_inputs)
     p = sub.add_parser("fonts")
     p.add_argument("out")
     p.set_defaults(fn=cmd_fonts)
