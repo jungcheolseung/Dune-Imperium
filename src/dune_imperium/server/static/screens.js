@@ -375,6 +375,7 @@ function resetGameState() {
   state.review = null;
   state.pick = null;
   state.counts = {};
+  state.held = null;
   myTurnBefore = null;
   announcedTurn = undefined;
   document.title = baseTitle();

@@ -1,5 +1,53 @@
 "use strict";
 
+/* ---------- choices sent with the turn-end press ----------
+
+   The turn-end press is the seat's confirmation: until it, the seat may
+   change its mind ("전투 보상으로 받은 스파이 둘 위치를 골랐다가, 혹시 맘에
+   안 들면 확정 전에 다른 곳에 두고 싶을 수 있잖아", user, 2026-10-08). A
+   step it could take back is sent at once and taken back with the undo row
+   if need be. Outside its turns, a step it could not take back (a Conflict
+   reward that runs straight into the next round's draw, a Scouts line that
+   draws a card) is marked sent_by_turn_end by the server: a click only holds
+   it here, and the banner's turn-end row sends it. A second click on the
+   held choice, or Escape, lets it go. It belongs to the decision it was
+   picked in (heldKey) and never reaches the server before the press. */
+function heldKey() {
+  const summary = state.summary;
+  return summary ? `${summary.revision}:${summary.undo_count}:${state.viewSeat}` : "";
+}
+
+/* The held choice, if it still belongs to the decision on screen. */
+function heldChoice() {
+  const held = state.held;
+  if (!held || held.key !== heldKey() || !state.actions) return null;
+  return state.actions.actions.find(
+    (action) => action.index === held.index && action.sent_by_turn_end,
+  ) || null;
+}
+
+/* Every click on one of the seat's choices (an action row, a table object,
+   a stepper's confirm) goes through here. */
+function chooseAction(action) {
+  if (state.busy) return;
+  if (!action.sent_by_turn_end) {
+    applyAction(action.index);
+    return;
+  }
+  const held = heldChoice();
+  state.held = held && held.index === action.index
+    ? null
+    : { key: heldKey(), index: action.index };
+  render();
+}
+
+function clearHeldChoice() {
+  if (!state.held) return false;
+  state.held = null;
+  render();
+  return true;
+}
+
 /* ---------- staged Agent turn ----------
 
    The server offers an Agent turn as one flat list: every legal
@@ -456,7 +504,7 @@ function tableClick(ref, entry, anchor, offered = null) {
   if (stagedTurn() && pickStep(ref, entry, anchor)) return;
   const legal = offered || legalActionsFor(ref);
   if (legal.length === 1) {
-    applyAction(legal[0].index);
+    chooseAction(legal[0]);
     return;
   }
   if (legal.length > 1) {

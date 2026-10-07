@@ -439,6 +439,7 @@ async function applyAction(index) {
   if (state.busy) return;
   state.busy = true;
   state.pick = null;
+  state.held = null;
   render();
   try {
     hideGameError();

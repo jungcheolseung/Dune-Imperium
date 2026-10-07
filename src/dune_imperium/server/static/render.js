@@ -999,12 +999,23 @@ function renderBanner() {
       meta.textContent = t("render.seat_you", { seat: decision.owner });
       info.append(prompt, meta);
 
+      /* A choice held for the press (turn.js chooseAction) takes the row:
+         the press sends it. Until then the seat may pick another one, and
+         an explicit end the decision also offers (a Combat Intrigue pass)
+         goes back into the list below. */
+      const held = heldChoice();
       /* The seat's own explicit turn-end action (EXPLICIT_TURN_END_IDS),
          when the pending decision offers one, IS this turn's end: it
          renders as the same banner row and is pulled out of every action
          list below (renderActionPanel). */
-      const turnEnd = state.actions ? turnEndAction(state.actions.actions) : null;
-      if (turnEnd) {
+      const turnEnd = !held && state.actions ? turnEndAction(state.actions.actions) : null;
+      if (held) {
+        const hint = document.createElement("div");
+        hint.className = "meta held-hint";
+        hint.textContent = t("render.held_choice_hint");
+        info.append(hint);
+        appendTurnEndRow(info, t("render.turn_end_button"), () => applyAction(held.index), held);
+      } else if (turnEnd) {
         const actions = state.actions.actions;
         appendTurnEndRow(
           info,
@@ -1316,7 +1327,7 @@ function countRow(id, family, compact) {
   }
   confirm.addEventListener("click", (event) => {
     event.stopPropagation();
-    applyAction(chosen.index);
+    chooseAction(chosen);
   });
   row.append(label, stepper, confirm);
   return row;
@@ -1824,9 +1835,16 @@ function actionItem(action, onApply, zone) {
   if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>
-    onApply ? onApply(action) : applyAction(action.index)
+    onApply ? onApply(action) : chooseAction(action)
   );
-  if (action.undoable === false) {
+  if (action.sent_by_turn_end) {
+    /* Held, not sent, until the turn-end press (turn.js chooseAction): the
+       seat can still change it, so it carries no "cannot undo" badge. */
+    const chosen = heldChoice();
+    const held = Boolean(chosen && chosen.index === action.index);
+    wrap.classList.toggle("held-choice", held);
+    button.setAttribute("aria-pressed", held ? "true" : "false");
+  } else if (action.undoable === false) {
     /* The server dry-ran the step: it reveals hidden information or hands
        the game to a chance outcome, so it cannot be taken back afterwards. */
     wrap.classList.add("irreversible");

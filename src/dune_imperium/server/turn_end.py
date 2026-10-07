@@ -131,6 +131,18 @@ def answers_another_unit(state: GameState, seat: int) -> bool:
     return (top is not None and top.kind in INTERRUPT_KINDS) or unit_seat(state) != seat
 
 
+def own_unit_outside_turns(state: GameState, seat: int) -> bool:
+    """Whether ``seat``'s pending decision is its own unit outside the turns.
+
+    A Leader pick, a Combat or Endgame Intrigue go, its Conflict rewards, a
+    Control defense, an Arrakeen Scouts line: no Agent or Reveal turn (nor
+    the start of one) is on the stack, and the decision is no answer inside
+    another seat's unit. Read from the stack alone.
+    """
+
+    return _turn_frame(state) is None and not answers_another_unit(state, seat)
+
+
 def at_turn_start(state: GameState, seat: int) -> bool:
     """Whether ``seat``'s turn is open but not yet taken.
 

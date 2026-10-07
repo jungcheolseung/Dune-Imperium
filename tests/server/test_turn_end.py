@@ -69,6 +69,7 @@ from dune_imperium.server.turn_end import (
     answers_another_unit,
     at_turn_start,
     finishing_seat,
+    own_unit_outside_turns,
     turn_start_seat,
     unit_over,
     unit_seat,
@@ -1636,7 +1637,9 @@ def _walk_to_held_end_before_chance(
         if (
             choice["action_id"] == action_id
             and summary["confirmation"] == 0
-            and isinstance(session.engine.current_decision(session.state), ChanceDecision)
+            and isinstance(
+                session.engine.current_decision(session.state), ChanceDecision
+            )
         ):
             return summary, choice, logged
     raise AssertionError(f"no held {action_id} before a chance outcome")
@@ -1661,8 +1664,9 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
 
     # The row told the seat it could take the Spy back, and it can: nothing
     # was logged after the Spy, the reshuffle waits, and no seat owns a
-    # decision yet.
+    # decision yet. So the browser sends it at once, not with the press.
     assert choice["undoable"] is True
+    assert choice["sent_by_turn_end"] is False
     assert session.state.decision_stack[-1].kind == FrameKind.ROUND_START_RESHUFFLE
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
@@ -1846,7 +1850,8 @@ def test_unit_over_reads_only_the_stack_below_a_chance_outcome() -> None:
     # whose frame waits below it; the next round's reshuffle, or the next
     # Arrakeen Scouts card, comes after every unit and waits for the press.
     reshuffle = _chance_frame(FrameKind.PERSONAL_DRAW_RESHUFFLE, "draw:0")
-    mid_turn = _stack_state(_frame(FrameKind.AGENT_EFFECTS, 0, "agent_effects:0"), reshuffle)
+    turn = _frame(FrameKind.AGENT_EFFECTS, 0, "agent_effects:0")
+    mid_turn = _stack_state(turn, reshuffle)
     assert unit_over(mid_turn, 0) is False
     next_round = _stack_state(_chance_frame(FrameKind.ROUND_START_RESHUFFLE, "round:0"))
     assert unit_over(next_round, 0) is True
@@ -2190,7 +2195,7 @@ def test_a_remote_hold_blocks_the_next_human_seat() -> None:
                     undo_rows = [
                         row for row in _rows(summary["undo"]) if row["seat"] == held
                     ]
-                    assert undo_rows, "a hold always leaves its seat a step to take back"
+                    assert undo_rows, "a hold leaves its seat a step to take back"
                     break
             summary = manager.confirm_turn(
                 game_id, held, _int(summary["revision"]), credentials=creds[held]
@@ -2340,6 +2345,9 @@ def _run_property_sweep_game(
       second press), and a hold needs a step of the seat's own unit since
       its last press;
     - every human decision has at least one legal action;
+    - a hold always leaves its seat a step to take back, and exactly the
+      steps outside the turns that cannot be taken back are sent with the
+      press instead (``sent_by_turn_end``; user, 2026-10-08);
     - the replayed game passes ``_agent_turn_violations``.
     """
 
@@ -2444,6 +2452,22 @@ def _run_property_sweep_game(
         if not actions:
             tally.violations.append(f"seat {owner}'s {decision['kind']} has no action")
             break
+        # Only a step outside the turns that cannot be taken back waits in
+        # the browser for the press (user, 2026-10-08).
+        outside = own_unit_outside_turns(session.state, owner)
+        for row in actions:
+            if row["sent_by_turn_end"] and (
+                row["undoable"] or row["action_id"] in EXPLICIT_TURN_ENDS or not outside
+            ):
+                tally.violations.append(
+                    f"seat {owner}'s {row['action_id']} waits for a press it need not"
+                )
+            if outside and not row["undoable"] and row["action_id"] not in (
+                EXPLICIT_TURN_ENDS
+            ) and not row["sent_by_turn_end"]:
+                tally.violations.append(
+                    f"seat {owner}'s {row['action_id']} is sent unconfirmed"
+                )
         choice = rng.choice(actions)
         before = session.state
         finishing = finishing_seat(before) == owner

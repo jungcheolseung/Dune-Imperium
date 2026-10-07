@@ -119,6 +119,7 @@ from dune_imperium.server.turn_end import (
     answers_another_unit,
     at_turn_start,
     finishing_seat,
+    own_unit_outside_turns,
     unit_over,
     unit_seat,
 )
@@ -2395,6 +2396,13 @@ def _serialize_action(
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
+    ``sent_by_turn_end`` marks a step outside the seat's turns that cannot
+    be taken back (a Conflict reward that runs straight into the next
+    round's draw, a Scouts line that draws a card): the browser only holds
+    it and sends it with the seat's "턴 종료" press, so the seat may still
+    pick another one before that ("확정 전에 다른 곳에 두고 싶을 수
+    있잖아", user, 2026-10-08) -- it is read from the stack and ``undoable``
+    alone, so it tells nothing the mark did not;
     ``strength_after`` is the acting seat's running combat strength once the
     step is taken, when the step changes it (``strength_preview``);
     ``reveal_preview`` sums up a Reveal the step would start; and
@@ -2428,6 +2436,11 @@ def _serialize_action(
         "detail": effect_action_text(session.state, action),
         "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
+        "sent_by_turn_end": (
+            not undoable
+            and action.action_id not in EXPLICIT_TURN_ENDS
+            and own_unit_outside_turns(session.state, action.actor)
+        ),
         "warning": shortfall_warning(shortfalls, action.actor),
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),

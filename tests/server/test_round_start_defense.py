@@ -87,8 +87,12 @@ def test_a_human_defender_answers_before_the_draw_and_cannot_undo_it() -> None:
         "deploy_control_defense",
     }
     # Either answer runs straight on into the draw, which shows each seat its
-    # new hand, so neither can be taken back (hidden information).
+    # new hand, so neither can be taken back (hidden information). The
+    # browser therefore holds the answer and sends it with the seat's
+    # turn-end press, so the seat may still change it before (user,
+    # 2026-10-08).
     assert all(row["undoable"] is False for row in actions)
+    assert all(row["sent_by_turn_end"] is True for row in actions)
 
     (deploy,) = (row for row in actions if row["action_id"] == "deploy_control_defense")
     after = manager.apply_action(

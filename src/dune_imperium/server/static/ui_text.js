@@ -427,8 +427,8 @@ const UI_TEXT = {
     "en": "{agent_turn}: ① a highlighted card in hand → ② a highlighted space → ③ any choice left. You can also click the space first; Esc cancels."
   },
   "help.turn_confirm": {
-    "ko": "차례는 \"턴 종료 ▶\"를 한 번 눌러야 넘어갑니다. 누르기 전에는 되돌릴 수 있는 행동을 되돌릴 수 있습니다.",
-    "en": "A turn passes only when you press \"End turn ▶\" once. Until then you can take back what can still be undone."
+    "ko": "차례는 \"턴 종료 ▶\"를 한 번 눌러야 넘어갑니다. 누르기 전에는 되돌릴 수 있는 행동을 되돌릴 수 있습니다. 턴 밖에서 한 번 보내면 되돌릴 수 없는 선택(곧바로 다음 라운드로 이어지는 보상 등)은 고르기만 해 두었다가 \"턴 종료 ▶\"로 보냅니다.",
+    "en": "A turn passes only when you press \"End turn ▶\" once. Until then you can take back what can still be undone. Outside your turns, a choice that could not be taken back once sent (a reward that runs straight into the next round, say) is only picked first and sent with \"End turn ▶\"."
   },
   "help.turn_heading": {
     "ko": "한 턴 진행",
@@ -1365,6 +1365,10 @@ const UI_TEXT = {
   "render.thinking_decision": {
     "ko": "{{name}} 생각 중…",
     "en": "{{name}} is thinking…"
+  },
+  "render.held_choice_hint": {
+    "ko": "고른 선택은 \"턴 종료 ▶\"를 눌러야 확정됩니다. 그 전에는 다른 것을 고르거나, 한 번 더 눌러 취소할 수 있습니다.",
+    "en": "Your choice is sent only with \"End turn ▶\". Until then you can pick another one, or click it again to cancel."
   },
   "render.turn_end_prompt": {
     "ko": "이번 차례에 할 일을 마쳤습니다.",
