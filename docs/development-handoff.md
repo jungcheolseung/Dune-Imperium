@@ -47,6 +47,17 @@
 - **후속 2(2026-10-08, 사용자 지적 "틀레이락스 카드는 다른 임페리움 카드랑 다르게 4면의 검정 테두리가 윗테두리에서는 끊기는데")**: 앱 아틀라스는 그림의 투명한 가장자리를 잘라 저장한다. Unity는 원래 크기 틀(`m_Rect`)을 RectTransform에 깔고, 잘린 텍스처를 `textureRectOffset` 자리에 그린다. 렌더러는 잘린 텍스처를 틀 전체에 늘려 왔다. 그래서 Tleilaxu 머리 띠의 마스크(955×1301 중 808×1154)가 검은 테두리까지 덮었다. 이제 `_meta.json`에 offset을 적고(`app_assets.py sprite-meta`), 그림을 원래 자리로 되돌려 그린다(`app_render.untrim`). 카드 앞면에 쓰이는 여백 잘린 그림 58종의 판정은 바뀐 영어 앞면 155장(계약 17장은 비율을 바로잡은 표로 다시)을 스캔과 대조한 workflow 15 agent의 결과로 정했다. 실물이 Unity대로인 것(머리 마스크 26:0, 아이콘 열 바탕 68:1, Reveal 장식 55:0, 진영 타일·배지, 병력 큐브, 모래벌레 금지 표시, Intrigue DNA 마름모)은 되돌려 그린다. 실물이 틀만큼 큰 것(전투 아이콘 탭 16:0, Reveal Persuasion 마름모 9:1, 표본 큐브 10:3, 연구·승점·칼·솔라리·물방울·카드 아이콘)은 `PRINT_STRETCHED_SPRITES`로 예전처럼 늘린다. Tleilaxu 딱정벌레는 Intrigue에서만 늘린다(Tleilaxu 카드에서는 Unity대로가 실물에 맞다).
 - **남은 것**: Alliance token·Shield Wall·Maker Hooks는 TTS 그림 그대로다(앱에 `hud_Player_AllianceToken_*_Large` 256px 등이 있다; 바꾸려면 먼저 묻는다). 한국어 사진이 없는 Intrigue 34장은 한글판 문구를 얻을 출처가 없다. 원격 fetch가 이 세션에서 막혀(ssh timeout) master `38d38fa3` 기준으로 작업했다.
 
+## 2026-10-08 턴 종료 누름이 남긴 후속을 그 turn 안에서 (엔진 결함 수정, codec 그대로)
+
+학습 판정(`mix-v139` S-L3 칸, 시드 3950002)에서 탐색 좌석 플레이아웃이 엔진 결함을 찾았다: `RuntimeError: an Agent turn cannot close over an owed track Spy`. 브랜치 `track-spy-turn-end`.
+
+- **원인.** "턴 종료"(`finish_agent_turn`)의 누름이 기다리던 Agent box를 스스로 푼다. Long Reach는 둘째 진영을 고를 수 없으면 턴 종료에 먼저 이름 붙인 진영을 지급한다(OQ-071 보강). 그 지급이 진영 보너스에 닿으면 소유자의 후속이 생기는데, 누름은 Usurp가 없으면 그대로 turn을 닫았다. Emperor 4의 track Spy와 Steersman Y'rkoon의 Plot Course(Navigation)는 그때 오류로 멈췄다. Friends Everywhere 선택과 빈 덱의 Bene Gesserit 4 Intrigue draw(reshuffle)는 다음 좌석의 turn에서 풀렸다. 그래서 Emperor를 고른 Spy가 거기서 바로 열렸고, Suspensor Suits가 그 draw를 세지 않았다. 공개 정보만으로 생기는 상태라 실제 게임에서도 난다(국면: 황제 3, 나머지 셋 6).
+- **규칙 근거(이미 문서에 있던 판정).** OQ-095 (3) "마지막 효과가 남긴 Skill·Navigation 선택 ... Emperor track Influence 4의 Spy ... 등은 소유자의 열린 turn 위에서 풀리고", (4) "덱이 빈 Intrigue draw의 reshuffle", OQ-057 (15) 재판정 "turn 종료를 누른 뒤 그 결과로 빚이 생기면 OQ-095 (5)처럼 turn이 다시 열린다". 구현이 Usurp 경로(`settle_finishing_agent_turn`)에만 있었다.
+- **수정.** 누름이 소유자에게 후속을 남기면(`combat_deployment._press_left_follow_ups`: track Spy, Skill·Navigation, Friends Everywhere, Intrigue draw 대기) turn을 Usurp처럼 `FINISHING_KEY`로 세워 둔다. 후속은 그 위에서 풀리고, `settle_finishing_agent_turn`이 닫거나 Spy 빚이면 다시 연다. 후속이 없는 누름과 Usurp 누름은 예전과 같다. codec·관측·golden 그대로다.
+- **리뷰.** 독립 리뷰 두 관점과 설계를 바꾼 뒤의 재리뷰를 거쳤다. 첫 리뷰가 Navigation 경우를 더 찾아 구조를 바꿨고(첫 수정은 Spy만 일찍 다시 열어 Usurp와 겹치는 순서를 바꿨다), 재리뷰가 Intrigue draw 경우와 Friends Everywhere 기록의 오류를 찾았다.
+- **테스트.** `tests/unit/rules/test_immortality_imperium.py`에 넷을 더했다. 모두 고치기 전 코드에서 실패한다. pytest **6,653개 통과**, Ruff·mypy(415파일). 서버 코드는 설명만 바뀌었다(`turn_end.finishing_seat`; 서버는 이미 다시 열린 turn을 같은 좌석의 turn으로 다룬다). 그래서 E2E는 돌리지 않았다.
+- **남은 것.** 리뷰 제안: 후속 목록 대신 모든 비Usurp 누름을 `FINISHING_KEY`로 보내는 방법이 있다(목록이 또 빠질 위험이 없다). 지금은 오류 없이 돌던 상태를 바꾸지 않으려고 목록을 썼다. 서버 수준 테스트(누름 뒤 Navigation·Friends Everywhere 창에서 턴 넘김)도 아직 없다.
+
 ## 2026-10-07 학습: 앱 AI 섞기 대 self-play만 (8081에서 두 팔, 코드 변경 없음)
 
 사용자 선택("(b)+(a) 두 실행 동시"): L3 설정 연장(M, 판의 반은 앱 AI 어려움 상대)과 self-play만 한 대조 팔(S)을 같은 8081·v138 규칙·시드에서 1,000 iteration씩 돌렸다. 16 GB 기계라 한 chain으로 차례로 돌렸다(M 4시간 24분, S 3시간 53분, 판정 4시간 19분). 결과는 [evaluation/m10-2026-10-07.md](evaluation/m10-2026-10-07.md), 실행 폴더는 git 무시 `checkpoints/2026-10-07/mix-vs-self/`(판정 규칙은 결과 전에 그 `README.md`에)다. 학습과 판정은 master `381f2e42`(v138)에 고정한 분리 작업 트리 `.claude/worktrees/mix-vs-self`에서 돌았다(실험 폴더의 `pair2.py`가 그 경로를 쓴다).
