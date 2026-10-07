@@ -773,6 +773,24 @@ def apply_agent_turn_finish(
         context.get("graft_pending_effect") is True
     ):
         raise RuntimeError("the turn end left a mandatory Agent box unresolved")
+    if owes_track_spy(working, player):
+        # The press itself reached the Emperor track's Influence 4: a box that
+        # resolves at the turn's end paid it (Long Reach pays its first named
+        # Faction when no second one can be chosen, OQ-071). That Spy is a
+        # mandatory action of this turn, so the turn reopens and the owner
+        # places it and presses the end again (user ruling 2026-10-04, OQ-057
+        # (15): "turn 종료를 누른 뒤 그 결과로 빚이 생기면 OQ-095 (5)처럼 turn이
+        # 다시 열린다"), as after a Usurp trash (``settle_finishing_agent_turn``).
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:agent_turn_reopened"
+                ),
+                kind="agent_turn_reopened",
+                payload=(("player", player),),
+            )
+        )
+        return RuleResult(state=working, events=tuple(events))
     source = f"round:{state.round_number}:player:{player}:finish_agent_turn"
     # A Contract icon that never found a token it could take fizzles with the
     # turn, without the two-Solari conversion (OQ-059).
