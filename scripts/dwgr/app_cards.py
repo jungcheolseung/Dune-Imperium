@@ -220,10 +220,10 @@ class Inputs:
         self.text = R.TextRenderer(
             str(rd / "fonts"), self.inline, assets, fallback_path=str(KOREAN_FONT)
         )
-        self.art = {}
+        self.art = {}  # keyed without punctuation: UI_ill_SubjectX-137
         for f in os.listdir(rd / "sprites"):
             if f.startswith("UI_ill_") and f.endswith(".png"):
-                self.art.setdefault(f[7:-4].lower(), f[:-4])
+                self.art.setdefault(art_key(f[7:-4]), f[:-4])
         self.prefabs = {}
         for f in os.listdir(self.prefab_dir):
             m = re.match(r"UI_crd_(Imperium|Tleilaxu)_(.+)\.prefab\.json$", f)
@@ -244,13 +244,17 @@ class Inputs:
         return v.replace("\\n", "\n") if v else v
 
 
+def art_key(name):
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
 def imperium_spec(inp, content_id, catalog_kind="imperium"):
     short = catalog.CARD_ARCHETYPES[content_id]
     arch = ARCHETYPES[short]
     at = arch.attributes
     slug = at["Name"].rsplit(".", 1)[0]  # card.imperium.<slug>
     last = short.rsplit(".", 1)[1]
-    art = inp.art.get(slug.rsplit(".", 1)[1]) or inp.art.get(last.lower())
+    art = inp.art.get(art_key(slug.rsplit(".", 1)[1])) or inp.art.get(art_key(last))
     prefab = inp.prefabs.get(re.sub(r"[^a-z0-9]", "", last.lower()))
     path = next(
         (
@@ -270,7 +274,7 @@ def imperium_spec(inp, content_id, catalog_kind="imperium"):
         if prefab
         else [],
         "title": {
-            "en": inp.text_en(at["Name"]),
+            "en": inp.en.get(at["Name"]) or inp.text_en(at["Name"]),
             "ko": KOREAN_CARD_NAMES["cards"].get(content_id),
         },
         "factions": list(at.get("FactionList", ())),
@@ -772,7 +776,13 @@ def bind_card_prefab(inp, spec, lang):
             )
             if faction:
                 n["text"] = FACTIONS[faction][2]
-    for off in ("SetIndicator", "EpicIcon"):
+    # the Epic badge prints only on Epic Game Mode's own card (Control the Spice)
+    offs = (
+        ("SetIndicator",)
+        if spec["id"] in EPIC_GAME_MODE_IDS
+        else ("SetIndicator", "EpicIcon")
+    )
+    for off in offs:
         for n in R.find_all(t, off):
             n["active"] = False
     agent = R.find(t, "Agent_Anchor")
@@ -781,11 +791,15 @@ def bind_card_prefab(inp, spec, lang):
         if rt["amin"][1] == 0 and rt["amax"][1] == 1 and rt["size"][1] > 0:
             # a few starter prefabs give the box its height as if top-anchored
             rt["size"][1] -= CANVAS[1]
+    title = R.find(t, "TitleText")
     if lang == "ko":
-        title = R.find(t, "TitleText")
         if title is not None and spec["title"].get("ko"):
             title["text"] = spec["title"]["ko"]
             title["fallback"] = str(KOREAN_FONT_BOLD)
+    elif title is not None and spec["title"].get("en"):
+        # the app localises the title at run time; the baked text is a
+        # placeholder (Control the Spice bakes "ControltheSpice")
+        title["text"] = spec["title"]["en"]
     if R.find(t, "UI_crd_Element_ActionColumn_Dynamic") is not None:
         bind_icons(t, inp.tree("ActionIcon_obj.json"), spec)
     if spec.get("cost") is not None:
@@ -1345,8 +1359,12 @@ def conflict_spec(inp, content_id):
         ko = next((inp.ko[k] for k in keys if k in inp.ko), None)
         rewards.append({"en": en, "ko": ko, "key": text_key(inp, keys)})
     ours = CONFLICTS_BY_ID.get(content_id)
+    # a few Conflicts are laid out by hand (Economic Supremacy): icons only
+    prefab = f"UI_crd_Conflict_{short.rsplit('.', 1)[1]}.prefab.json"
+    prefab = prefab if (inp.prefab_dir / prefab).exists() else None
     return {
         "kind": "conflict",
+        "prefab": prefab,
         "id": content_id,
         "arch": short,
         "slug": slug,
@@ -1361,14 +1379,42 @@ def conflict_spec(inp, content_id):
         "level": at.get("ConflictLevel"),
         "battle": at.get("BattleIcon"),
         "shield": bool(ours and ours.shield_wall_protected),
-        "texts": [r for r in rewards if r["en"] or r["ko"]],
+        "texts": [] if prefab else [r for r in rewards if r["en"] or r["ko"]],
         "rewards": rewards,
         "art": "conflict",
         "path": inp.manifest.get(("conflict", content_id)),
     }
 
 
+def bind_conflict_prefab(inp, spec, lang):
+    t = copy.deepcopy(inp.tree(spec["prefab"]))
+    head = R.find(t, "Conflict Header")
+    head["text"] = spec["title"].get(lang) or spec["title"]["en"]
+    if lang == "ko":
+        head["fallback"] = str(KOREAN_FONT_BOLD)
+    for off in ("crd_3rd_greyout", "Crd_Flash", "SetIndicator"):
+        for n in R.find_all(t, off):
+            n["active"] = False
+    # the face and its contents fade in at run time from alpha 0
+    R.comp(t, "Image")["m_Color"][3] = 1.0
+    for n in R.find_all(t, "Root"):
+        cg = R.comp(n, "CanvasGroup")
+        if cg:
+            cg["alpha"] = 1.0
+    places = PLACE_WORDS[lang]
+    for i, anchor_name in enumerate(("1st_Anchor", "2nd_Anchor", "3rd_Anchor")):
+        a = R.find(t, anchor_name)
+        suffix = R.find(a, ("stText", "ndText", "rdText")[i])
+        suffix["text"] = places[i]
+        if lang == "ko":
+            suffix["fallback"] = str(KOREAN_FONT_BOLD)
+        R.find(a, f"{i + 1}Text")["text"] = str(i + 1)
+    return bind_prefab_texts(inp, t, lang, spec["prefab"])
+
+
 def bind_conflict(inp, spec, lang):
+    if spec.get("prefab"):
+        return bind_conflict_prefab(inp, spec, lang)
     t = copy.deepcopy(inp.tree("UI_crd_Conflict_Dynamic.prefab.json"))
     # cards about a board space ("Battle for ...") print on the orange front
     first = spec["rewards"][0]["en"] or ""
@@ -1540,11 +1586,15 @@ SPECS = {
     "conflict": lambda inp, cid: conflict_spec(inp, cid),
     "contract": lambda inp, cid: contract_spec(inp, cid),
 }
+# Rise of Ix cards in play: Epic Game Mode's starting card and Conflict III.
+EPIC_GAME_MODE_IDS = frozenset({"control_the_spice", "economic_supremacy"})
+
 KIND_IDS = {
     "imperium": lambda: [
         cid
         for cid, short in catalog.CARD_ARCHETYPES.items()
         if short.split(".")[1] in ("Uprising", "Promo", "Immortality", "BaseSet")
+        or cid in EPIC_GAME_MODE_IDS
     ],
     "intrigue": lambda: [
         cid
@@ -1555,7 +1605,7 @@ KIND_IDS = {
     "conflict": lambda: [
         cid
         for cid, (short, _six) in catalog.CONFLICT_ARCHETYPES.items()
-        if short in ARCHETYPES and ".Uprising." in short
+        if short in ARCHETYPES and (".Uprising." in short or cid in EPIC_GAME_MODE_IDS)
     ],
     "contract": lambda: [
         cid
