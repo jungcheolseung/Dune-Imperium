@@ -21,8 +21,6 @@ from dune_imperium.agents.rollout_agent import (
     player_value,
     position_value,
 )
-from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
-from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -59,9 +57,7 @@ def _card_census(state: GameState) -> Counter[str]:
     cards.update(state.imperium_deck)
     cards.update(state.intrigue_deck)
     cards.update(state.contract_bank)
-    # The determinizer re-deals the deck with the boxed cards of each tier.
     cards.update(state.conflict_deck)
-    cards.update(state.unused_conflict_ids)
     for player in state.players:
         cards.update(player.hand)
         cards.update(player.deck)
@@ -293,53 +289,6 @@ def test_twisted_free_intrigue_pools_draw_no_extra_random_numbers() -> None:
     pool = [twisted, "intrigue:cunning:0", "intrigue:devour:0"]
     _keep_twisted_in_hands(pool, 1, 2, rng)
     assert pool[0] != twisted and twisted in pool[1:]
-
-
-def _tiers(conflict_ids: tuple[str, ...]) -> list[ConflictTier]:
-    return [CONFLICTS_BY_ID[conflict_id].tier for conflict_id in conflict_ids]
-
-
-def test_determinize_deals_the_boxed_conflicts_back_in_within_their_tier() -> None:
-    # The deck is built by back, "위에서부터 I 1장, II 5장, III 4장", and the
-    # unused I and II cards go to the box "앞면을 보지 않고" [Main p. 4]
-    # (docs/rules/setup-and-game-flow.md): the tier at every depth is public,
-    # but which cards of a tier were boxed is not, so a sampled world draws
-    # each tier from the deck and the box together.
-    state = _play_rounds(seed=5, rounds=2)
-    boxed = frozenset(state.unused_conflict_ids)
-    assert ConflictTier.TWO in _tiers(state.conflict_deck)
-    assert ConflictTier.TWO in _tiers(tuple(boxed))
-    hidden = frozenset((*state.conflict_deck, *boxed))
-    swapped = 0
-    for seed in range(20):
-        world = determinize(state, 0, random.Random(seed))
-        assert _tiers(world.conflict_deck) == _tiers(state.conflict_deck)
-        assert len(world.unused_conflict_ids) == len(boxed)
-        assert frozenset((*world.conflict_deck, *world.unused_conflict_ids)) == hidden
-        assert observe_state(world, 0) == observe_state(state, 0)
-        swapped += bool(set(world.conflict_deck) & boxed)
-    # A boxed card is in most sampled decks, never in the real one.
-    assert swapped > 10
-
-
-def test_determinize_keeps_a_tier_with_nothing_boxed_to_its_own_cards() -> None:
-    # Epic Game Mode puts all five Conflict III in the deck and boxes every
-    # Conflict I [Rise of Ix p. 10]: the III cards only change order and no
-    # I card ever enters the deck.
-    state = UprisingRulesEngine().reset(RulesetConfig(epic_game=True), 4)
-    threes = sorted(
-        card
-        for card in state.conflict_deck
-        if CONFLICTS_BY_ID[card].tier is ConflictTier.THREE
-    )
-    orders = set()
-    for seed in range(10):
-        world = determinize(state, 0, random.Random(seed))
-        assert _tiers(world.conflict_deck) == _tiers(state.conflict_deck)
-        assert ConflictTier.ONE not in _tiers(world.conflict_deck)
-        assert sorted(world.conflict_deck[-5:]) == threes
-        orders.add(world.conflict_deck[-5:])
-    assert len(orders) > 1
 
 
 def test_determinize_rejects_an_unknown_observer() -> None:
