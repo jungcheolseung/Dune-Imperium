@@ -106,6 +106,8 @@ cd scripts/e2e
 [E2E_SHOTS_DIR=<경로>] .venv/bin/python deck_contents.py # 약 18초; 내 카드덱 구성 목록(순서 없이 이름순·×N, 두 언어, 키보드)과 좌석 존 줄의 책략 카드 수, 다른 페이로드에 덱이 새지 않는지
 .venv/bin/python help.py          # 약 2초; 도움말 창과 스크린 리더 알림(aria-live·role·이름)
 .venv/bin/python card_effects.py  # 약 12초; 사람·AI의 카드 사용 플로팅 알림, 음모·전투 책략, 수명과 관전
+.venv/bin/python ai_pace.py       # 약 40초; AI 진행 속도 — `--ai-pace normal` 서버에서 AI 좌석이 한 수씩(생각 중 좌석·로그가 여러 번에 걸쳐 늚·AI 차례 띠가 그 좌석의 차례 시작에 뜸), 머리글의 "즉시" 전환, e2e 기본(즉시) 서버. 다른 스크립트의 서버는 `common.py`가 `--ai-pace instant`로 띄운다
+.venv/bin/python table_effects.py # 약 30초; 좌석 패널의 숫자 변화(+n·−n이 단계마다 뷰의 차이와 합이 맞는지, 되돌리기·새로고침엔 없음)와 Agent 카드 알림 동안 그 칸의 반짝임(다시 그려도 유지)
 .venv/bin/python scouts.py        # 약 70초; 아라킨 스카웃 판(체크박스 기본 꺼짐·배지·패널·비밀 선택 설명·입찰 스테퍼와 턴 종료 줄·영어 한글 없음), 시드 게임 끝까지 + 보드 위 임무 조각(시드 게임 여섯 판이 임무 16종 전부: 칸의 빈 자리·관측소·나선·Tleilaxu 셋째 칸·계약·Reclaimed Forces에 행마다 조각 하나, 좌석 색 큐브, hotspot·Agent·Spy·Control·bonus spice·지휘관·garrison과 안 겹침, 두 언어 title, 뒷면 카드 id가 페이지에 없음 — 저장본을 엔진으로 재생해 대조; 가장 붐비는 판을 2400·1366px에서, 스크린샷은 E2E_SHOTS_DIR)
 .venv/bin/python unavailable.py   # 약 3초 + 사막의 힘 저장 만들기; 지금 고를 수 없는 선택지가 흐리게, 까닭과 함께(Reveal 상점·Intrigue 카드, 2026-09-29; 선택 창의 막힌 갈래·Imperial Privilege 소환 확인, 2026-10-02; 다른 사람 좌석의 Holy War에 답하는 손실 창 — --remote 두 브라우저, 유닛 없는 확인·하나뿐인 손실, 회색 줄의 용어 치환, 답할 때까지 카드 쓴 좌석의 턴 종료 숨김, 2026-10-02 — 모두 합쳐 약 17초)
 .venv/bin/python lang.py          # 약 4초; 한국어/English 전환 — 영어에서 한글 0, 왕복 동일, 새로고침 유지, 카드 이름·그림이 언어를 따름
