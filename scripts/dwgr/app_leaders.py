@@ -7,17 +7,25 @@ the scans, 0.96-0.99):
 - ``leader_ConflictWinner_<id>``: the figure cut out on a transparent ground,
   with 1.1-1.6x the scan's pixels;
 - ``frame_DeferredAbility_BG<id>``: the painting without the figure, 256x139,
-  scaled about 5.5-6x into place (soft at 1:1).
+  scaled about 5.5-6x into place (smoothed, sharpened and given the print's
+  grain, still softer than the print at 1:1).
 
 This script lays the two layers where the scan has them (``PLACEMENT``,
-measured once with ``inputs --measure``) and draws the printed frame itself,
+measured once with ``inputs --measure``), grades each to the print's colours
+(the app's art is lighter and greyer; ``print_grade`` fits a transform to the
+English scan where it shows that layer), carries a cut-out on where it ends
+in a hard edge in view (``extend_bottom``, ``extend_right``), and draws the
+printed frame itself,
 measured off the 1460x1020 scans so that the percentages in
 ``dune_imperium.display.leader_layout`` (Feyd's ``FEYD_TRACK_BOXES``) stay
 valid: name band and complexity hexes, house band, DECK/DISCARD tabs, the
 gold ability box, the black Signet box with the app's ring
 (``UI_crd_ActionIcon_SignetRing``), Shaddam's red ring, Staban's red Limited
 Allies box, Feyd's Training track, and the app's topographic lines
-(``bg_TopoLines_1``) faint over the art as on the print. Icons are the app's
+(``bg_TopoLines_1``) faint in the upper painting as on the print. The tabs'
+shades are read off each card's English scan (``print_shades``). The only
+pixels taken from the scans are those measurements; the pictures are the
+app's. Icons are the app's
 (the card renderer's ``HIRES`` pictures, else its TextMeshPro glyphs) and
 are laid out as printed: icon rows, big icons beside text, small icons in
 the text.
@@ -93,7 +101,16 @@ SIGNET_RING = "UI_crd_ActionIcon_SignetRing"
 # print's exact lines are not in the app.
 TOPO_LINES = "bg_TopoLines_1"
 TOPO_ALPHA = 0.22  # of the texture's own alpha (at most 102)
+TOPO_FADE = (220, 480)  # full above the first y, gone below the second
 UNCOVERED_SHADE = 0.45
+# The background is the app's 256x139 picture scaled about 6x: smoothed so
+# its pixel grid and compression blocks do not show as steps, sharpened (PIL
+# UnsharpMask radius, percent, threshold), and given the print's fine grain
+# (its standard deviation in levels; the scans' flat areas show about 1.7-1.9
+# under a 2 px high-pass, the bare upscale 0.4).
+BG_SMOOTH = 2.0
+BG_SHARPEN = (6, 120, 1)
+BG_GRAIN = 2.2
 FRAME_SPRITES = (SIGNET_RING, TOPO_LINES)
 
 # Figure and background placement against the 1460x1020 scan:
@@ -218,7 +235,9 @@ COLORS = {
     "red_bottom": (104, 32, 18),
     "red_line": (88, 32, 26),
     "octagon_line": (104, 114, 132),
-    "hex": (242, 242, 240),
+    "hex": (228, 226, 227),
+    "hex_edge": (140, 138, 138),
+    "hex_rim": (52, 50, 45),
     "ring": (205, 30, 22),
     "set_mark": (74, 76, 80),
     "dots": (150, 148, 138),
@@ -230,14 +249,31 @@ COLORS = {
 }
 
 
-# Reverend Mother Jessica's card prints its tabs and ability box greyer.
-FRAME_COLORS = {
-    "reverend_mother_jessica": {
-        "discard": (71, 71, 68),
-        "deck": (62, 58, 50),
-        "gold": (95, 76, 54),
-    }
+# Reverend Mother Jessica's card prints its ability box greyer. (The side
+# tabs' shades are read off each card's scan: see print_shades.)
+FRAME_COLORS = {"reverend_mother_jessica": {"gold": (95, 76, 54)}}
+
+# The printed tabs are shaded from top to bottom, their shade differing a
+# little from card to card (Feyd's greener, Reverend Mother Jessica's grey):
+# (x0, x1, y0, y1) patches beside the tab words where each card's English
+# scan is sampled, and the rows between which the shade turns from the top
+# colour to the bottom one. The DECK tab is also darker towards its left
+# edge (by this factor there).
+SHADE_PATCHES = {
+    "discard_top": (1350, 1368, 32, 52),
+    "discard_bottom": (1350, 1368, 235, 260),
+    "deck_top": (100, 118, 596, 616),
+    "deck_bottom": (100, 118, 880, 985),
 }
+SHADE_ROWS = {"discard": (30, 255), "deck": (590, 830)}
+DECK_LEFT_SHADE = 0.82
+# The gold box is lit from a spot low in its left half (the scans' median
+# over all ten cards: about 101 grey there, 72 at the right, 80 on average):
+# (base, gain, centre x, centre y, radius x, radius y) of
+# base + gain * exp(-(dx/rx)^2 - (dy/ry)^2), divided by the average.
+GOLD_LIGHT = (72.0, 28.0, 320.0, 1000.0, 145.0, 163.0, 80.0)
+# The print's paper grain on the tabs and the gold box (levels).
+FRAME_GRAIN = 1.6
 
 
 def build_guid():
@@ -462,11 +498,15 @@ HOUSE_KO = {
 }
 TABS_EN = {"deck": "DECK", "discard": "DISCARD"}
 # (DISCARD, DECK) word centres on the tabs, as printed
-TAB_CENTRES = {"en": ((1391, 189), (76, 788)), "ko": ((1384, 191), (77, 779))}
-TABS_KO = {"deck": "카드 덱", "discard": "버림 더미"}
-# Where a cut-out ends in a hard edge above the boxes, its last rows are
-# carried down behind the gap between the two boxes.
-EXTEND_FIGURE_BOTTOM = {"princess_irulan", "staban_tuek"}
+TAB_CENTRES = {"en": ((1391, 189), (76, 788)), "ko": ((1384, 191), (77, 783))}
+# "카드덱" as one word, as on the tab and in the edition's card texts
+TABS_KO = {"deck": "카드덱", "discard": "버림 더미"}
+# A cut-out that ends in a hard edge above the card's bottom (seven of the
+# ten) has its last rows carried down behind the boxes, so the strip between
+# the gold and the Signet box shows art down to the bottom as printed. Where
+# a cut-out ends in a hard vertical edge in view, it is closed with a rounded
+# cap of its last columns, this many pixels wide (Staban's chair cushion).
+EXTEND_FIGURE_RIGHT = {"staban_tuek": 30}
 
 # Icon tokens of display.leaders_ko -> the app's sprite names.
 KO_TOKENS = {
@@ -494,8 +534,11 @@ HIRES_EXTRA = {"Water": "UI_crd_CostIcon_Water"}
 ICON_SCALE = {"IfThenArrow": 0.62}
 
 DEBUG = False
-# The Korean edition's Feyd sets his box titles higher.
+# The Korean edition's Feyd sets his box titles higher, and the rules under
+# them about 9 px higher than the English card (the photo: gold rule near
+# y 864, Signet rule near 866; the body text keeps its place below them).
 KO_TITLE_RAISE = {"feyd_rautha_harkonnen": 6}
+KO_RULE_RAISE = {"feyd_rautha_harkonnen": 9}
 # The print's names leave more room between words than the tracking gives.
 NAME_WORD_GAP = {"en": 8.0, "ko": 9.0}
 KO_BODY_SPACING = -3.0  # the Korean edition sets its text a little tight
@@ -643,6 +686,7 @@ BOXES = {
         "pitch": 1.22,
         "align": "left",
         "x0": 902,
+        "dy": 4,
     },
     ("feyd_rautha_harkonnen", "signet", "ko"): {
         "size": 31.4,
@@ -761,6 +805,8 @@ class Inputs:
             raise SystemExit(f"cards/app/en_text.json lacks the print text {missing}")
         self.entries = manifest_entries()
         self.pictures = {}
+        self.grades = {}  # content id -> (background, figure) print grades
+        self.shades = {}  # content id -> the side tabs' printed colours
 
     def leader_picture(self, name):
         return self.leader_sprites.get(name, stretch=True)
@@ -1426,6 +1472,80 @@ def dots(d, a, b, step=9.0, r=1.3, color=COLORS["dots"]):
         )
 
 
+def print_shades(inp, cid):
+    """The side tabs' colours sampled off the card's English scan (median
+    of each SHADE_PATCHES patch), cached."""
+    from PIL import Image
+
+    if cid not in inp.shades:
+        scan = Image.open(CARDS / "en" / inp.entries[cid]["path"]).convert("RGB")
+        a = np.asarray(scan.resize((W, H), Image.LANCZOS), float)
+        inp.shades[cid] = {
+            k: np.median(a[y0:y1, x0:x1].reshape(-1, 3), 0)
+            for k, (x0, x1, y0, y1) in SHADE_PATCHES.items()
+        }
+    return inp.shades[cid]
+
+
+def tab_shade(shades, tab):
+    """colour(x, y) of a side tab: top colour to bottom colour over its
+    SHADE_ROWS; the DECK tab darker towards its left edge."""
+    top, bottom = shades[f"{tab}_top"], shades[f"{tab}_bottom"]
+    y0, y1 = SHADE_ROWS[tab]
+
+    def colour(x, y):
+        f = np.clip((y - y0) / (y1 - y0), 0, 1)[..., None]
+        rgb = top + (bottom - top) * f
+        if tab == "deck":
+            patch = SHADE_PATCHES["deck_top"]
+            left = DECK_TAB[0][0]
+
+            def k(xx):
+                t = np.clip((xx - left) / (BOX_LEFT - left), 0, 1)
+                return DECK_LEFT_SHADE + (1 - DECK_LEFT_SHADE) * t
+
+            rgb = rgb * (k(x) / k((patch[0] + patch[1]) / 2))[..., None]
+        return rgb
+
+    return colour
+
+
+def gold_shade(gold):
+    base, gain, cx, cy, rx, ry, mean = GOLD_LIGHT
+
+    def colour(x, y):
+        light = base + gain * np.exp(-(((x - cx) / rx) ** 2) - ((y - cy) / ry) ** 2)
+        return np.asarray(gold, float) * (light / mean)[..., None]
+
+    return colour
+
+
+def shaded_fill(p, poly, colour_at, alpha, key):
+    """Fill a polygon of the 2x canvas with colour_at(x, y) (card pixels)
+    and the print's grain (one pattern per key)."""
+    from PIL import Image, ImageDraw
+
+    x0 = math.floor(min(x for x, _ in poly)) - 1
+    y0 = math.floor(min(y for _, y in poly)) - 1
+    x1 = math.ceil(max(x for x, _ in poly)) + 1
+    y1 = math.ceil(max(y for _, y in poly)) + 1
+    yy, xx = np.mgrid[0 : (y1 - y0) * SS, 0 : (x1 - x0) * SS]
+    rgb = colour_at(x0 + (xx + 0.5) / SS, y0 + (yy + 0.5) / SS)
+    grain = noise((y1 - y0, x1 - x0), key).repeat(SS, 0).repeat(SS, 1)
+    rgb = rgb + grain[..., None] * FRAME_GRAIN
+    img = np.dstack(
+        [
+            np.clip(np.round(rgb), 0, 255).astype(np.uint8),
+            np.full(xx.shape, alpha, np.uint8),
+        ]
+    )
+    mask = Image.new("L", (xx.shape[1], xx.shape[0]), 0)
+    ImageDraw.Draw(mask).polygon(
+        [((x - x0) * SS, (y - y0) * SS) for x, y in poly], fill=255
+    )
+    p.canvas.paste(Image.fromarray(img, "RGBA"), (x0 * SS, y0 * SS), mask)
+
+
 def draw_frame(p, cid):
     from PIL import Image, ImageDraw
 
@@ -1445,8 +1565,9 @@ def draw_frame(p, cid):
         )
         d.polygon(poly2x(HOUSE_BAND), fill=COLORS["band"] + (238,))
     # side tabs and their dotted edges
-    d.polygon(poly2x(DISCARD_TAB), fill=colors["discard"] + (255,))
-    d.polygon(poly2x(DECK_TAB), fill=colors["deck"] + (244,))
+    shades = print_shades(p.inp, cid)
+    shaded_fill(p, DISCARD_TAB, tab_shade(shades, "discard"), 255, cid + "/discard")
+    shaded_fill(p, DECK_TAB, tab_shade(shades, "deck"), 244, cid + "/deck")
     dots(d, (1339, 36), (1339, 312))
     dots(d, (1341, 323), (1433, 415))
     dots(d, (34, 488), (126, 580))
@@ -1484,8 +1605,9 @@ def draw_frame(p, cid):
             fill=COLORS["red_line"] + (255,),
             width=3 * SS // 2,
         )
-    d.polygon(poly2x(gold_polygon(top)), fill=colors["gold"] + (250,))
-    ty = top + lay["gold_title"]
+    shaded_fill(p, gold_polygon(top), gold_shade(colors["gold"]), 250, cid + "/gold")
+    rule_raise = KO_RULE_RAISE.get(cid, 0) if p.lang == "ko" else 0
+    ty = top + lay["gold_title"] - rule_raise
     d.line(
         [(BOX_LEFT * SS, ty * SS), (gold_edge(ty) * SS, ty * SS)],
         fill=COLORS["gold_line"] + (255,),
@@ -1525,7 +1647,7 @@ def draw_frame(p, cid):
         fill=COLORS["signet_line"] + (200,),
         width=SS,
     )
-    sy = st + lay["signet_title"]
+    sy = st + lay["signet_title"] - rule_raise
     d.line(
         [(signet_edge(sy) * SS, sy * SS), (ART[2] * SS, sy * SS)],
         fill=COLORS["signet_line"] + (255,),
@@ -1577,12 +1699,12 @@ TYPE = {
             "size": 35,
             "spacing": 1.0,
             "upper": True,
-            "squeeze": 0.89,
+            "squeeze": 0.911,  # the scans' titles are 2.4% wider than at 0.89
         },
     },
     "ko": {
-        "name": {"size": 51, "bold": True, "ko_spacing": 18.0, "ko_stroke": 0.5},
-        "house": {"size": 30.5, "ko_spacing": 22.0},
+        "name": {"size": 51, "ko_spacing": 18.0, "ko_stroke": 0.6},
+        "house": {"size": 30.5, "ko_spacing": 22.0, "ko_stroke": 0.5},
         "tab": {"size": 35, "ko_spacing": 20.0, "ko_stroke": 0.4},
         "title": {"size": 34, "bold": True},
     },
@@ -1593,6 +1715,23 @@ def type_style(p, kind, **kw):
     t = dict(TYPE[p.lang][kind])
     t.update(kw)
     return p.style(**t)
+
+
+# Complexity hexes after the name: (gap from the name's end to the first
+# centre, centre y, centre distance), measured on the scans and photos.
+HEXES = {"en": (61, 83.5, 55), "ko": (63, 75.5, 53)}
+
+
+def complexity_hex(d, cx, cy):
+    """The printed hex: a white hex with a grey bevelled edge inside a dark
+    gap and a thin dark-gold rim (circumradii 23, 20.3, 18.2, 16.9 px)."""
+    for r, colour in (
+        (23.0, COLORS["hex_rim"]),
+        (20.3, COLORS["band"]),
+        (18.2, COLORS["hex_edge"]),
+        (16.9, COLORS["hex"]),
+    ):
+        d.polygon(poly2x(hexagon(cx, cy, r)), fill=colour + (255,))
 
 
 def draw_header(p, cid, texts):
@@ -1635,14 +1774,9 @@ def draw_header(p, cid, texts):
                 end += p.width(part.upper(), st)
             end += p.space(big) + NAME_WORD_GAP["en"]
         end -= p.space(big) + NAME_WORD_GAP["en"] + tracking
-    hx = end + (46 if p.lang == "en" else 36) + 15
+    gap, cy, step = HEXES[p.lang]
     for i in range(spec["hexes"]):
-        d.polygon(
-            poly2x(hexagon(hx + i * 55, 82, 17.5)),
-            fill=COLORS["hex"] + (255,),
-            outline=(150, 150, 146, 255),
-            width=SS,
-        )
+        complexity_hex(d, end + gap + i * step, cy)
     if texts["house"]:
         st = type_style(p, "house", color=COLORS["house"])
         p.run(
@@ -1743,15 +1877,27 @@ TRACK_LINKS = (  # (from, to, y offset of the link from the source box centre)
     ("mid_trash", "late_trash", -41),
     ("mid_trash", "second_spy", 39),
     ("second_spy", "double_spice", 2),
-    ("late_trash", "final", -5),
-    ("double_spice", "final", 6),
+    ("late_trash", "final", 3),
+    ("double_spice", "final", 1),
 )
+# The links into the final plate are printed as half rings, arching up from
+# the upper space and down from the lower one (half their height, px).
+TRACK_ARCS = {"late_trash": -12, "double_spice": 12}
+TRACK_COLORS = {
+    "link": (236, 238, 240),
+    "space": (20, 29, 35),  # the print's spaces: dark blue-green, textured
+    "space_rim": (96, 106, 118),
+    "space_lines": (74, 90, 100),
+    "plate": (16, 24, 38),
+    "plate_rim": (78, 90, 102),
+    "plate_light": (106, 117, 139),
+}
 
 
 def draw_track(p):
     """Feyd's Training track exactly at leader_layout.FEYD_TRACK_BOXES, so the
     play UI's token lands on the printed spaces."""
-    from PIL import ImageDraw
+    from PIL import Image, ImageDraw
 
     from dune_imperium.display.leader_layout import FEYD_TRACK_BOXES
 
@@ -1773,27 +1919,49 @@ def draw_track(p):
         """x of the plate's pointed left side at height y."""
         return x0 + 47 * abs(y - cy) / (cy - y0)
 
+    link = TRACK_COLORS["link"] + (255,)
     for a, b, dy in TRACK_LINKS:
         ax0, ay0, ax1, ay1 = boxes[a]
         bx0, by0, bx1, by1 = boxes[b]
         y = (ay0 + ay1) / 2 + dy
         y = min(max(y, by0 + 14), by1 - 14)
         end = plate_edge(y) if b == "final" else bx0
+        if b == "final" and a in TRACK_ARCS:
+            h = TRACK_ARCS[a]
+            box = ((ax1 - 3) * SS, (y - abs(h)) * SS, (end + 3) * SS, (y + abs(h)) * SS)
+            d.arc(box, 180 if h < 0 else 0, 360 if h < 0 else 180, link, 6 * SS)
+            continue
         d.rounded_rectangle(
             ((ax1 - 4) * SS, (y - 4) * SS, (end + 4) * SS, (y + 4) * SS),
             radius=4 * SS,
-            fill=(236, 238, 240, 255),
+            fill=link,
         )
+    spaces = Image.new("L", p.canvas.size, 0)
     for k, (bx0, by0, bx1, by1) in boxes.items():
         if k == "final":
             continue
         d.rounded_rectangle(
             (bx0 * SS, by0 * SS, bx1 * SS, by1 * SS),
             radius=17 * SS,
-            fill=(13, 19, 30, 245),
-            outline=(96, 106, 118, 255),
+            fill=TRACK_COLORS["space"] + (245,),
+            outline=TRACK_COLORS["space_rim"] + (255,),
             width=3 * SS,
         )
+        ImageDraw.Draw(spaces).rounded_rectangle(
+            ((bx0 + 3) * SS, (by0 + 3) * SS, (bx1 - 3) * SS, (by1 - 3) * SS),
+            radius=14 * SS,
+            fill=255,
+        )
+    # the spaces' fine contour lines, as printed (the app's topographic lines)
+    topo = p.inp.leader_picture(TOPO_LINES)
+    topo = topo.resize(
+        (p.canvas.width, round(topo.height * p.canvas.width / topo.width)),
+        Image.LANCZOS,
+    ).crop((0, 0, p.canvas.width, p.canvas.height))
+    lines = Image.new("RGBA", p.canvas.size, TRACK_COLORS["space_lines"] + (0,))
+    a = np.asarray(topo.getchannel("A"), float) * np.asarray(spaces, float) / 255
+    lines.putalpha(Image.fromarray(np.clip(a * 0.6, 0, 255).astype(np.uint8)))
+    p.canvas.alpha_composite(lines)
     # the start square
     bx0, by0, bx1, by1 = boxes["start"]
     scx, scy = (bx0 + bx1) / 2, (by0 + by1) / 2
@@ -1801,18 +1969,18 @@ def draw_track(p):
         ((scx - 20) * SS, (scy - 20) * SS, (scx + 20) * SS, (scy + 20) * SS),
         fill=(52, 57, 63, 255),
     )
-    d.polygon(poly2x(outer), fill=(16, 24, 38, 255))
+    d.polygon(poly2x(outer), fill=TRACK_COLORS["plate"] + (255,))
     d.line(
         poly2x([outer[2], outer[1], outer[0], outer[4], outer[3]]),
-        fill=(96, 106, 118, 255),
-        width=4 * SS,
+        fill=TRACK_COLORS["plate_rim"] + (255,),
+        width=8 * SS,
         joint="curve",
     )
-    d.polygon(poly2x(inner), fill=(132, 147, 178, 255))
+    d.polygon(poly2x(inner), fill=TRACK_COLORS["plate_light"] + (255,))
     # the light area's dark teeth along its edge
     for a, b in zip(inner, inner[1:] + inner[:1], strict=False):
         if a[0] < right - 1 or b[0] < right - 1:
-            dots(d, a, b, step=7.0, r=2.2, color=(16, 24, 38))
+            dots(d, a, b, step=7.0, r=2.2, color=TRACK_COLORS["plate"])
     for k, icons in TRACK_ICONS.items():
         x0, y0, x1, y1 = boxes[k]
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
@@ -1823,46 +1991,191 @@ def draw_track(p):
 
 
 # -- the art
-def art_layer(inp, cid):
-    """The app's background scaled into place (its uncovered edges carried
-    out and blurred), the cut-out figure over it, the topographic lines."""
+def placed_background(inp, cid):
+    """The app's background scaled into place on the card: (RGB array, the
+    columns it covers). Below and above it the picture is mirrored on (the
+    strip between the boxes shows art to the card's bottom); beside it (Lady
+    Margot's left strip) its edge column is carried out."""
     from PIL import Image, ImageFilter
 
-    sprite_id = APP_IDS[cid][0]
-    pl = PLACEMENT[cid]
-    bg = inp.leader_picture(BACKGROUND.format(sprite_id)).convert("RGB")
-    s, x, y = pl["background"]
+    bg = inp.leader_picture(BACKGROUND.format(APP_IDS[cid][0])).convert("RGB")
+    s, x, y = PLACEMENT[cid]["background"]
     bw, bh = round(bg.width * s), round(bg.height * s)
-    big = np.asarray(bg.resize((bw, bh), Image.LANCZOS))
-    pad = ((max(0, y), max(0, H - (y + bh))), (max(0, x), max(0, W - (x + bw))), (0, 0))
-    full = np.pad(big, pad, mode="edge")
-    ox, oy = pad[1][0] - x, pad[0][0] - y
+    big = bg.resize((bw, bh), Image.BICUBIC).filter(ImageFilter.GaussianBlur(BG_SMOOTH))
+    big = np.asarray(big.filter(ImageFilter.UnsharpMask(*BG_SHARPEN)))
+    vert = ((max(0, y), max(0, H - (y + bh))), (0, 0), (0, 0))
+    horiz = ((0, 0), (max(0, x), max(0, W - (x + bw))), (0, 0))
+    full = np.pad(np.pad(big, vert, mode="symmetric"), horiz, mode="edge")
+    ox, oy = horiz[1][0] - x, vert[0][0] - y
     full = full[oy : oy + H, ox : ox + W]
-    covered = np.zeros((H, W), np.uint8)
-    covered[max(0, y) : y + bh, max(0, x) : x + bw] = 255
-    # where the app's picture stops short of the window (Lady Margot's left
-    # strip) its edge is carried out, blurred, and darkened like the print's
-    soft = Image.fromarray(full).filter(ImageFilter.GaussianBlur(10))
-    soft = Image.eval(soft, lambda v: int(v * UNCOVERED_SHADE))
-    keep = Image.fromarray(covered).filter(ImageFilter.GaussianBlur(14))
-    art = Image.composite(Image.fromarray(full), soft, keep).convert("RGBA")
-    fig = inp.leader_picture(FIGURE.format(sprite_id))
-    s, fx, fy = pl["figure"]
+    covered = np.zeros((H, W), bool)
+    covered[:, max(0, x) : x + bw] = True
+    return np.ascontiguousarray(full), covered
+
+
+def placed_figure(inp, cid):
+    """The cut-out at its place on a transparent card-size layer, carried on
+    where it ends in a hard edge in view. Also returns its unextended alpha."""
+    from PIL import Image
+
+    fig = inp.leader_picture(FIGURE.format(APP_IDS[cid][0]))
+    s, fx, fy = PLACEMENT[cid]["figure"]
     fw, fh = round(fig.width * s), round(fig.height * s)
     fig = fig.resize((fw, fh), Image.LANCZOS)
-    if cid in EXTEND_FIGURE_BOTTOM and fy + fh < BOX_BOTTOM:
+    own = Image.new("L", (W, H), 0)
+    own.paste(fig.getchannel("A"), (fx, fy))
+    if cid in EXTEND_FIGURE_RIGHT:
+        fig = extend_right(fig, EXTEND_FIGURE_RIGHT[cid])
+    if fy + fh < BOX_BOTTOM:
         fig = extend_bottom(fig, BOX_BOTTOM - (fy + fh) + 4)
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     layer.paste(fig, (fx, fy), fig)
-    art.alpha_composite(layer)
+    return layer, np.asarray(own) > 128
+
+
+# The app's art is graded lighter and greyer than the print (blacks lifted:
+# Shaddam's robe prints at about 13 grey, the app has 41). Each layer gets a
+# colour transform fitted to the English scan over the pixels where the scan
+# shows that layer: per channel a + b*c + c*c', from all three channels.
+GRADE_BLUR = 3  # both images are blurred this much before the fit
+GRADE_STEP = 3  # every third masked pixel
+
+
+def grade_features(rgb):
+    """[r, g, b, r^2, g^2, b^2, 1] per pixel of an (N, 3) array in 0..1."""
+    return np.c_[rgb, rgb * rgb, np.ones(len(rgb))]
+
+
+def fit_grade(app, scan, mask):
+    """Least-squares transform (7x3) taking app colours to the scan's."""
+    a = app[mask][::GRADE_STEP].astype(float) / 255
+    t = scan[mask][::GRADE_STEP].astype(float) / 255
+    m, *_ = np.linalg.lstsq(grade_features(a), t, rcond=None)
+    return m
+
+
+def apply_grade(rgb, m):
+    flat = rgb.reshape(-1, 3).astype(float) / 255
+    out = np.clip(grade_features(flat) @ m, 0, 1) * 255
+    return np.round(out).reshape(rgb.shape).astype(np.uint8)
+
+
+def print_grade(inp, cid, bg, covered, fig, own):
+    """(background, figure) transforms fitted to the English scan, cached."""
+    from PIL import Image, ImageFilter
+
+    if cid in inp.grades:
+        return inp.grades[cid]
+
+    def blur(a):
+        return np.asarray(
+            Image.fromarray(a).filter(ImageFilter.GaussianBlur(GRADE_BLUR))
+        )
+
+    def grow(mask, size):
+        im = Image.fromarray(mask.astype(np.uint8) * 255)
+        f = ImageFilter.MaxFilter(size) if size > 0 else ImageFilter.MinFilter(-size)
+        return np.asarray(im.filter(f)) > 127
+
+    scan_img = Image.open(CARDS / "en" / inp.entries[cid]["path"]).convert("RGB")
+    scan = blur(np.asarray(scan_img.resize((W, H), Image.LANCZOS)))
+    view = ~frame_mask(cid, pad=10)
+    s, x, y = PLACEMENT[cid]["background"]
+    bh = round(inp.leader_picture(BACKGROUND.format(APP_IDS[cid][0])).height * s)
+    rows = np.zeros((H, W), bool)
+    rows[max(0, y) : y + bh] = True
+    fig_rgb = np.asarray(fig.convert("RGB"))
+    grades = (
+        fit_grade(blur(bg), scan, view & covered & rows & ~grow(own, 31)),
+        fit_grade(blur(fig_rgb), scan, view & grow(own, -15)),
+    )
+    inp.grades[cid] = grades
+    return grades
+
+
+def noise(shape, key):
+    """Unit normal noise, the same for the same key on every render."""
+    seed = int(hashlib.sha256(key.encode()).hexdigest()[:8], 16)
+    return np.random.default_rng(seed).normal(0, 1, shape)
+
+
+def add_grain(rgb, cid):
+    """The print's fine grain on the upscaled background (the same pattern
+    on every render of a leader)."""
+    from PIL import Image, ImageFilter
+
+    field = np.clip(128 + 64 * noise(rgb.shape[:2], cid), 0, 255).astype(np.uint8)
+    n = np.asarray(Image.fromarray(field).filter(ImageFilter.GaussianBlur(0.6)), float)
+    n -= 128
+    out = rgb.astype(float) + n[..., None] * (BG_GRAIN / max(1e-6, n.std()))
+    return np.clip(np.round(out), 0, 255).astype(np.uint8)
+
+
+def art_layer(inp, cid):
+    """The app's background in place (its uncovered side strips carried out,
+    blurred and darkened) with the topographic lines, and the cut-out figure
+    over it, both layers graded to the print."""
+    from PIL import Image, ImageFilter
+
+    bg, covered = placed_background(inp, cid)
+    fig, own = placed_figure(inp, cid)
+    bg_grade, fig_grade = print_grade(inp, cid, bg, covered, fig, own)
+    bg = add_grain(apply_grade(bg, bg_grade), cid)
+    f = np.array(fig)
+    f[..., :3] = apply_grade(f[..., :3], fig_grade)
+    fig = Image.fromarray(f, "RGBA")
+    # where the app's picture stops short of the window (Lady Margot's left
+    # strip) its edge is carried out, blurred, and darkened like the print's
+    full = Image.fromarray(bg)
+    soft = full.filter(ImageFilter.GaussianBlur(10))
+    soft = Image.eval(soft, lambda v: int(v * UNCOVERED_SHADE))
+    keep = Image.fromarray(covered.astype(np.uint8) * 255).filter(
+        ImageFilter.GaussianBlur(14)
+    )
+    art = Image.composite(full, soft, keep).convert("RGBA")
+    # the print's lines lie in the painting behind the figure, and mostly in
+    # its upper part: they fade out downwards
     topo = inp.leader_picture(TOPO_LINES)
     topo = topo.resize((W, round(topo.height * W / topo.width)), Image.LANCZOS)
+    top, bottom = TOPO_FADE
+    fade = np.clip((bottom - np.arange(H, dtype=float)) / (bottom - top), 0, 1)
     alpha = np.asarray(topo.getchannel("A"), float)[:H] * TOPO_ALPHA
     lines = np.zeros((H, W, 4), np.uint8)
     lines[..., :3] = 235
-    lines[..., 3] = np.clip(alpha, 0, 255).astype(np.uint8)
+    lines[..., 3] = np.clip(alpha * fade[:, None], 0, 255).astype(np.uint8)
     art.alpha_composite(Image.fromarray(lines, "RGBA"))
+    art.alpha_composite(fig)
     return art
+
+
+def extend_right(fig, width):
+    """Close a cut-out's hard right edge: its last `width` columns mirrored
+    beyond it, kept inside a half ellipse over each opaque run of the edge,
+    so the shape ends round instead of straight."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageOps
+
+    a = np.asarray(fig.getchannel("A"))
+    out = Image.new("RGBA", (fig.width + width, fig.height), (0, 0, 0, 0))
+    out.paste(fig, (0, 0))
+    cap = ImageOps.mirror(fig.crop((fig.width - width, 0, fig.width, fig.height)))
+    edge = a[:, -1] > 200
+    mask = Image.new("L", (width, fig.height), 0)
+    d = ImageDraw.Draw(mask)
+    y = 0
+    while y < len(edge):
+        if not edge[y]:
+            y += 1
+            continue
+        y1 = y
+        while y1 < len(edge) and edge[y1]:
+            y1 += 1
+        d.ellipse((-width, y, width - 1, y1 - 1), fill=255)
+        y = y1
+    mask = mask.filter(ImageFilter.GaussianBlur(1.2))
+    alpha = np.minimum(np.asarray(cap.getchannel("A")), np.asarray(mask))
+    cap.putalpha(Image.fromarray(alpha.astype(np.uint8)))
+    out.alpha_composite(cap, (fig.width, 0))
+    return out
 
 
 def extend_bottom(fig, rows, band=48):
