@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.pauses import through_pauses
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
@@ -1005,7 +1006,8 @@ def test_a_conflict_reward_icon_fizzles_when_the_seat_s_rewards_end() -> None:
     engine = UprisingRulesEngine()
     held = engine.apply(_choam_security_rewards(influence_bonus=1), HOLD).state
 
-    done = engine.apply(held, _choose_influence("fremen"))
+    # Through the pause before the next round (rules/pauses.py).
+    done = through_pauses(engine, engine.apply(held, _choose_influence("fremen")))
 
     kinds = [event.kind for event in done.events]
     # Fizzled with the public event as the seat's last reward resolves,
@@ -1026,7 +1028,7 @@ def test_a_last_conflict_reward_icon_fizzles_at_once_and_pays_once() -> None:
     rewards = _choam_security_rewards(influence_bonus=0)
     seat = rewards.players[0]
 
-    done = engine.apply(rewards, HOLD)
+    done = through_pauses(engine, engine.apply(rewards, HOLD))
 
     kinds = [event.kind for event in done.events]
     assert kinds[:2] == ["contract_icons_held", "contract_icons_fizzled"]
@@ -1087,7 +1089,11 @@ def test_a_winner_s_held_icon_fizzles_before_the_second_place_is_paid() -> None:
     assert engine.legal_actions(rewards, 0) == (HOLD,)
     assert rewards.players[1] == second
 
-    done = engine.apply(rewards, HOLD)
+    # The winner's last choice stops at the pause before the 2nd place is
+    # paid (rules/pauses.py), with the icon already fizzled.
+    held = engine.apply(rewards, HOLD)
+    assert held.state.decision_stack[-1].kind == FrameKind.PAUSE
+    done = through_pauses(engine, held)
 
     order = [
         (event.kind, dict(event.payload).get("player"))

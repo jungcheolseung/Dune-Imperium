@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import replace
 
 import pytest
+from tests.support.pauses import pause_outcome
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents import (
@@ -550,7 +551,12 @@ def test_the_horizon_is_not_reached_before_the_round_start_draw() -> None:
     assert not past_horizon(state, state.round_number)
 
     engine = UprisingRulesEngine()
-    drawn = engine.apply(state, engine.legal_actions(state, 2)[0]).state
+    defended = engine.apply(state, engine.legal_actions(state, 2)[0]).state
+    # The defense stops at the engine's pause before the draw
+    # (rules/pauses.py): still Round Start, still no hand, no leaf yet.
+    assert defended.decision_stack[-1].kind == FrameKind.PAUSE
+    assert not past_horizon(defended, defended.round_number)
+    drawn = engine.apply(defended, pause_outcome(defended)).state
     assert drawn.phase is GamePhase.PLAYER_TURNS
     assert past_horizon(drawn, drawn.round_number)
     assert not past_horizon(drawn, drawn.round_number + 1)

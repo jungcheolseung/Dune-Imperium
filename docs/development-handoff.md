@@ -4,6 +4,50 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-08 엔진의 공개 앞 멈춤: 턴 밖 선택은 모두 "놓고 → 턴 종료 + 되돌리기" (codec v140, OQ-103)
+
+사용자 질문("엔진이 '보상 적용 → 다음 교전 공개 → 손패 뽑기'를 한 단계 안에서 이어서 처리합니다. 왜 이렇게 되는거야?", "그럼 이 방법으로 하면 괜찮은거야?")에 조사로 답했고, 결정은 "추천대로 해봐. 저장한거는 안 쓸 플레이야"였다. 브랜치 `engine-pause`.
+
+- **문제**:
+  - 턴 밖 선택(보상, Conflict 끝 Intrigue 창, Control 방어)의 마지막 단계가 같은 엔진 단계 안에서 공개로 이어졌다. 공개는 다음 수령자의 Intrigue draw, 다음 라운드의 교전·손패, Round Start draw다.
+  - 덱 섞기 chance가 끼면 서버가 "턴 종료 + 되돌리기"로 붙잡았고, 아니면 브라우저가 "확정 ▶"으로 잡아 두었다. 같은 선택이 두 모양이었다.
+  - 그 구분이 다른 좌석이 손에 쥔 Harvest Cells에 따라 달라져 숨은 손패를 드러냈다(시드 70, Immortality, 8라운드). 조사 workflow가 찾았고, 메인 세션이 재현했다.
+- **조사**(workflow: 관점 5 + 반박 1, subagent 토큰 약 125만):
+  - 새 "계속" 행동: 모든 좌석이 라운드마다 강제 선택에 답한다. 휴리스틱·무작위 AI는 하나뿐인 선택지에도 난수를 써서 시드 게임이 모두 달라진다. 그래서 기각했다.
+  - 화면만 바꾸기: 단순한 판은 유출을 넓히고, 유출 없는 판은 클릭이 는다. 그래서 기각했다.
+  - 결과가 하나뿐인 chance 멈춤: 서버 코드는 그대로이고, 난수를 쓰지 않으면 학습·AI 결정이 그대로다. 이것을 골랐다.
+- **엔진** (`rules/pauses.py`, OQ-103):
+  - `FrameKind.PAUSE` chance decision으로 멈춘다. 자리는 공개된 사실로만 정한다.
+    1. 두 번째 이후 각 보상 수령자 지급 전(`combat.resolve_combat_rewards` → `pay_combat_rewards`).
+    2. 보상을 다 준 뒤, Conflict 끝 Intrigue 창을 열기 전(엔진의 Combat 분기). 리뷰가 찾은 마지막 라운드 유출을 막는다.
+    3. 첫 라운드 뒤 모든 Round Start의 섞기·공개 전(엔진의 Round Start 분기).
+    4. Control 방어 뒤 draw 전(`phases.apply_control_defense_action`).
+  - 멈춤의 답이 미뤄 둔 단계를 직접 부르므로(`_resume_pause`), 상태 필드나 남는 이벤트가 없다.
+  - 결과는 바뀌지 않는다. 단계 끝의 Earn Any Alliance 완료는 그 단계의 Alliance 이벤트로 판정하므로, 단계가 멈춤에서 끊기면 그 좌석들을 멈춤 frame에 실어 멈춤을 푸는 단계에서 완료한다(전과 같은 자리).
+  - `ChanceResolver`는 이름이 `:pause`로 끝나는 결정을 난수 없이 답한다(`FIXED_OUTCOME_SUFFIX`).
+  - codec **v140**(단계 순서만 바뀜, 템플릿 그대로)이다. v139 저장(1007 포함)은 열리지 않는다(사용자 동의).
+- **학습·망**:
+  - 플레이 서버의 `search.pt`(MLP)는 v139 → v140으로 자동 이전된다(행동 33,979개 그대로).
+  - mlp_slots의 식별자 표에서는 멈춤 종류를 뺐다. 표·고정 해시·슬롯 체크포인트가 그대로다.
+  - 관측 형식(v30)도 그대로다.
+- **서버·화면**:
+  - 서버 붙잡기 코드는 바꾸지 않았다. 보상 선택·Conflict 끝 창·지배 방어가 모두 그 멈춤 앞에서 붙잡혀 되돌릴 수 있다.
+  - "확정 ▶"은 선택 자체가 공개하는 경우에만 남는다(Imperium Row 카드 획득의 보충, 카드를 뽑는 Scouts 줄 등). 공개된 사실로 정해진다.
+  - 행동 기록은 멈춤 단계의 줄은 숨기되, 그 단계에 실린 이벤트는 보인다. 다른 chance 단계도 이제 자기 이벤트(섞기 뒤 이어진 라운드 공개 등)를 줄 아래에 보인다(`panels.js`). 다시보기 타임라인은 멈춤을 "공개 전 멈춤"으로 부른다.
+  - 디버그 콘솔(`dune-imperium-debug`)은 chance 결정을 시드로 답한다.
+- **리뷰**(workflow: 관점 4 + 관점별 반박 4, subagent 토큰 약 130만):
+  - 확인된 결함을 모두 고쳤다.
+    1. 멈춤이 Earn Any Alliance 완료를 앞당겨 옛 엔진과 결과가 달라졌다(344판 중 3판).
+    2. 마지막 라운드에는 Round Start가 없어 Harvest Cells 유출이 남았다.
+    3. 행동 기록이 멈춤 단계에 실린 이벤트(다음 수령자 보상, 교전 승리, 다음 라운드)를 숨겼다.
+    4. 디버그 콘솔이 멈춤에서 멈췄다.
+    5. 다시보기가 멈춤을 "기타"로 보였다.
+  - 리뷰의 옛·새 엔진 대조 도구로 다시 확인했다. 무작위 200판, 드래프트 120판, 휴리스틱 24판에서 모든 플레이어 결정의 상태(revision 제외), 행동, 멈춤 아닌 chance 결과, 최종 상태, 이벤트 기록, 승점이 같았다.
+  - 남은 사용자 결정 둘(OQ-103에 적음):
+    - (a) Conflict 끝 창은 쓸 수 있는 Harvest Cells를 쥔 좌석에만 공개적으로 열린다(전부터 그랬다).
+    - (b) Earn Any Alliance 완료가 보상 순서·창 여부에 따라 정리 전/후로 갈린다(전부터 그랬다). [Bloodlines p. 2]대로 늘 정리 전에 완료할지.
+- **검증**: pytest **6,709개 통과**, ruff·mypy(425파일) 통과. Chrome E2E 50종을 2개씩 돌려 49종이 통과했다. `log_words` 하나가 멈춤 단계의 우연 줄을 "기타 — Continue"로 읽어 실패했고, 줄 도우미가 멈춤을 직접 부르게 고쳤다(`544e67e1`). 그 뒤 기록 관련 6종(log_words·log_follow·log_passes·spectate·remote_fresh·held_choice)을 다시 돌려 모두 통과했다. `held_choice.py`는 "확정 ▶" 장면을 책략의 Imperium Row 카드 획득으로, 지배 방어 장면을 서버 붙잡기로 옮겼다. 교훈은 `docs/lessons.md` 2026-10-08(단계 끝 훅).
+
 ## 2026-10-08 보드의 계약 카드를 인쇄된 칸 크기로 (codec 그대로 v139)
 
 - 사용자 보고: 보드의 앞면 계약 두 장 가운데 오른쪽이 왼쪽을 덮었다. 원인은 `board.js`가 계약 카드를 칸의 1.2배(`CONTRACT_SLOT_SCALE`)로 그린 것이다. 두 칸은 보드 폭의 0.7 %만 떨어져 있어 1.2배면 1.4 %가 겹친다.

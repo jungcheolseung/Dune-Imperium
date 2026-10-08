@@ -11,6 +11,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
 
 
@@ -26,7 +27,8 @@ def begin_round(state: GameState) -> RuleResult:
     [Main p. 20]. So the controller answers between the reveal and the draw
     (docs/rules/setup-and-game-flow.md section 5): with a defender this
     returns in Round Start with only the ``CONTROL_DEFENSE`` frame on the
-    stack, and ``apply_control_defense_action`` draws; without one the draw
+    stack, and the answer (``apply_control_defense_action``) pauses before
+    the draw (``rules/pauses.py``), whose answer draws; without one the draw
     (``draw_round_hands``) follows in this same transition. A Round Start
     state with an empty stack is therefore always before the reveal.
 
@@ -279,12 +281,14 @@ def apply_control_defense_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve the optional deployment, then draw the round's hands.
+    """Resolve the optional deployment, then pause before the round's draw.
 
     The defense answers the reveal, before the draw [Main p. 8] [Main p. 20]
-    (``begin_round``), so deploying or declining both run straight on into
-    the Round Start draw (``draw_round_hands``), which opens the First
-    Player's turn or the Arrakeen Scouts step.
+    (``begin_round``). Deploying or declining both stop at a pause
+    (``rules/pauses.py``) whose answer runs the Round Start draw
+    (``draw_round_hands``), which opens the First Player's turn or the
+    Arrakeen Scouts step: the draw reveals hands, and the defender may take
+    its answer back before it at the play server.
     """
 
     if action not in legal_control_defense_actions(state, action.actor):
@@ -325,8 +329,8 @@ def apply_control_defense_action(
             ("troops", int(deployed)),
         ),
     )
-    drawn = draw_round_hands(defended)
-    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+    paused = push_pause(defended, ROUND_DRAW, f"round:{state.round_number}")
+    return RuleResult(state=paused.state, events=(event, *paused.events))
 
 
 def _draw_cards(player: PlayerState, count: int) -> PlayerState:

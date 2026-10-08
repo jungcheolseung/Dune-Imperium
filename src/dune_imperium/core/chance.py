@@ -2,8 +2,25 @@
 
 import random
 from dataclasses import dataclass
+from typing import Final
 
 from dune_imperium.core.decisions import ChanceDecision
+
+# A chance decision whose id ends with this has one fixed outcome: a pause
+# the rules put where a table must be able to stop before something hidden
+# is revealed (``rules/pauses.py``). It is resolved without drawing from the
+# random stream, so adding one moves no other outcome of a seeded game.
+FIXED_OUTCOME_SUFFIX: Final = ":pause"
+
+
+def is_fixed_outcome(decision: ChanceDecision) -> bool:
+    """Whether ``decision`` is a pause with its one fixed outcome."""
+
+    return (
+        decision.decision_id.endswith(FIXED_OUTCOME_SUFFIX)
+        and decision.count == 1
+        and len(decision.options) == 1
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +98,9 @@ class ChanceResolver:
                 validate_chance_outcome(decision, outcome)
             except ValueError as error:
                 raise ChanceReplayError(str(error)) from error
+        elif is_fixed_outcome(decision):
+            values = decision.options
+            outcome = ChanceOutcome(decision_id=decision.decision_id, values=values)
         else:
             if decision.with_replacement:
                 values = tuple(

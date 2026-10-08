@@ -30,6 +30,7 @@ from typing import Final
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.registry import make_agent
 from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -50,6 +51,11 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.state import canonical_state_hash
+from dune_imperium.rules.combat import (
+    _conflict_end_trigger_cards,
+    _conflict_losses,
+    rank_combat,
+)
 from dune_imperium.rules.combat_deployment import FINISHING_KEY
 from dune_imperium.rules.engine import UprisingRulesEngine, _advance_automatic
 from dune_imperium.rules.frames import FrameKind
@@ -1673,7 +1679,9 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     assert choice["undoable"] is True
     assert choice["sent_by_turn_end"] is False
     assert choice["strength_after"] is None
-    assert session.state.decision_stack[-1].kind == FrameKind.ROUND_START_RESHUFFLE
+    # Held at the engine's pause before the next round (rules/pauses.py),
+    # whose answer asks for the reshuffle.
+    assert session.state.decision_stack[-1].kind == FrameKind.PAUSE
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
     assert _seat0_undo(summary) == [{"seat": 0, "steps": 1}]
@@ -2067,11 +2075,10 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # control_defense decision; seed 13 does. Re-searched again 2026-10-01:
     # every Agent turn now waits for its owner's finish_agent_turn
     # (OQ-095), which moved seed 13 off it and seed 0 back on (round 7; 7,
-    # 12, 22 and 23 of 0-39 reach it too). Since 2026-10-08 the answer
-    # here is not held at all: it runs straight on into the Round Start
-    # draw, which leaves nothing of the defense to take back, and a press
-    # with nothing to take back confirms nothing (``_hold_unit_end_locked``).
-    # Live and restored sessions must still agree.
+    # 12, 22 and 23 of 0-39 reach it too). Since the engine pauses before
+    # the Round Start draw (rules/pauses.py, codec v140) the answer is held
+    # there for the defender's press, as every unit end with something left
+    # to take back. Live and restored sessions must agree.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
@@ -2110,11 +2117,12 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     twin = manager.apply_action(
         restored_id, 0, _int(restored["revision"]), _int(choice["index"])
     )
-    assert live["confirmation"] is None
-    assert twin["confirmation"] is None
+    assert live["confirmation"] == 0
+    assert twin["confirmation"] == 0
     assert twin["decision"] == live["decision"]
-    assert 0 not in session.open_units
-    assert 0 not in manager._get(restored_id).open_units
+    assert live["undo"] == twin["undo"]
+    assert 0 in session.open_units
+    assert 0 in manager._get(restored_id).open_units
 
 
 def test_bad_hand_over_fields_are_rejected_on_restore() -> None:
@@ -2571,3 +2579,234 @@ def test_every_copy_of_the_explicit_turn_end_ids_matches_the_server() -> None:
         assert match, name
         ids = set(re.findall(r'"([a-z_]+)"', match.group(1)))
         assert ids == set(EXPLICIT_TURN_ENDS), name
+
+
+# --- the pauses tell no seat anything (rules/pauses.py) ---------------------
+
+
+def _reward_marks(manager: GameSessionManager, game_id: str, seat: int) -> list[object]:
+    return [
+        (row["undoable"], row["sent_by_turn_end"], row["strength_after"])
+        for row in _rows(manager.legal_actions(game_id, seat)["actions"])
+    ]
+
+
+def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> None:
+    # Seed 70, Immortality, seats 0 and 1 human: in round 8 seat 0 chooses
+    # its optional Conflict reward while seat 2 has enough troops in the
+    # Conflict for Harvest Cells. Before the engine's pauses, whether seat
+    # 0's rows were marked "can't be taken back, send with 확정 ▶" depended
+    # on whether seat 2 secretly held a playable Harvest Cells: with one,
+    # the dry run stopped at seat 2's Conflict-end window; without, it ran
+    # on into the next round's reveal. The pauses (after the rewards, before
+    # the next round) stand whatever the seats hold, so the marks, previews
+    # included, are the same either way; also when this is the last round
+    # (a seat at the endgame score), which has no Round Start and ran on
+    # into the Endgame Intrigue windows (2026-10-08 review).
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
+        game_seed=70,
+        immortality=True,
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    rng = random.Random(70)
+    compared = 0
+    for _ in range(9000):
+        if summary["finished"]:
+            break
+        held = summary["confirmation"]
+        if isinstance(held, int):
+            summary = manager.confirm_turn(
+                game_id, held, _int(summary["revision"]), undo_count=_int(
+                    summary["undo_count"]
+                )
+            )
+            continue
+        owner = _int(_obj(summary["decision"])["owner"])
+        live = session.state
+        top = live.decision_stack[-1]
+        harvest = [card for card in live.intrigue_deck if "harvest" in card]
+        fighters = [
+            player.player_id
+            for player in live.players
+            if player.player_id != owner and player.troops_conflict >= 3
+        ]
+        if str(top.kind).startswith("combat_reward") and harvest and fighters:
+            seat = fighters[0]
+            holder = live.players[seat]
+            players = list(live.players)
+            players[seat] = replace(
+                holder, intrigue_cards=(*holder.intrigue_cards, harvest[0])
+            )
+            fake = replace(
+                live,
+                players=tuple(players),
+                intrigue_deck=tuple(c for c in live.intrigue_deck if c != harvest[0]),
+            )
+            leader = max(
+                (p for p in live.players if p.player_id != owner),
+                key=lambda p: p.victory_points,
+            )
+            ending = list(live.players)
+            ending[leader.player_id] = replace(leader, victory_points=10)
+            last = replace(live, players=tuple(ending))
+            ending_fake = list(fake.players)
+            ending_fake[leader.player_id] = replace(
+                fake.players[leader.player_id], victory_points=10
+            )
+            last_fake = replace(fake, players=tuple(ending_fake))
+            marks = []
+            for world in (live, fake, last, last_fake):
+                session.state = world
+                try:
+                    marks.append(_reward_marks(manager, game_id, owner))
+                finally:
+                    session.state = live
+            assert marks[0] == marks[1], (live.round_number, owner, seat)
+            assert marks[2] == marks[3], ("last round", live.round_number, owner, seat)
+            compared += 1
+        rows = _rows(manager.legal_actions(game_id, owner)["actions"])
+        summary = manager.apply_action(
+            game_id,
+            owner,
+            _int(summary["revision"]),
+            _int(rng.choice(rows)["index"]),
+            undo_count=_int(summary["undo_count"]),
+        )
+    assert compared >= 1, "the walk met a reward choice beside a Harvest Cells seat"
+
+
+def _last_recipient_rows(session: GameSession, owner: int) -> list[object]:
+    rows: list[object] = []
+    for index, action in enumerate(session.engine.legal_actions(session.state, owner)):
+        row = sessions_module._serialize_action(index, action, session)
+        dry = sessions_module._dry_run(session, action)
+        held = dry is not None and unit_over(dry.state, owner)
+        rows.append(
+            (row["undoable"], row["sent_by_turn_end"], row["strength_after"], held)
+        )
+    return rows
+
+
+def _holding(
+    state: GameState, seat: int, card: str, deck: tuple[str, ...]
+) -> GameState:
+    """``seat`` holds ``card`` in place of its first Intrigue card; the deck
+    holds every other card of ``deck``."""
+
+    players = list(state.players)
+    players[seat] = replace(
+        players[seat], intrigue_cards=(card, *players[seat].intrigue_cards[1:])
+    )
+    return replace(
+        state,
+        players=tuple(players),
+        intrigue_deck=tuple(c for c in deck if c != card),
+    )
+
+
+def _at_endgame_score(state: GameState, seat: int) -> GameState:
+    """The same state with ``seat`` at the endgame score: the last round."""
+
+    players = list(state.players)
+    players[seat] = replace(
+        players[seat], victory_points=state.config.endgame_victory_points
+    )
+    return replace(state, players=tuple(players))
+
+
+def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> None:
+    # The 2026-10-08 review's construction: seed 12, Immortality, four human
+    # seats answered by the pinned table heuristic. At the last reward
+    # recipient's choice, another seat with three units in the Conflict
+    # holds one Intrigue card: a Harvest Cells in one world, another card in
+    # the other (the same count either way). Without the pause after the
+    # rewards, the dry run stopped at that seat's Conflict-end window in one
+    # world and ran on in the other; in the last round (no Round Start) it
+    # ran into the Endgame, so the rows' strength previews and whether the
+    # seat was held differed. Now both worlds stop at the pause.
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, game_seed=12, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    config = session.state.config
+    agents = [
+        make_agent("heuristic_uprising_table", 120 + seat, config) for seat in range(4)
+    ]
+    checked = 0
+    for _ in range(20_000):
+        if summary["finished"] or checked:
+            break
+        held = summary["confirmation"]
+        if isinstance(held, int):
+            summary = manager.confirm_turn(
+                game_id,
+                held,
+                _int(summary["revision"]),
+                undo_count=_int(summary["undo_count"]),
+            )
+            continue
+        live = session.state
+        owner = _int(_obj(summary["decision"])["owner"])
+        ranking = rank_combat(live.players, first_player=live.first_player)
+        recipients = len(ranking.rewards)
+        harvest = [card for card in live.intrigue_deck if "harvest_cells" in card]
+        if (
+            str(live.decision_stack[-1].kind).startswith("combat_reward")
+            and live.combat_rewards_paid == recipients
+            and harvest
+        ):
+            for seat, player in enumerate(live.players):
+                units = player.troops_conflict + player.commanders_conflict
+                if seat == owner or units < 3:
+                    continue
+                if any("harvest_cells" in card for card in player.intrigue_cards):
+                    continue
+                # The seat holds one Intrigue card either way: its own first
+                # card (or one from the deck) in the plain world, a Harvest
+                # Cells in the other; the deck holds the card it does not.
+                if player.intrigue_cards:
+                    card = player.intrigue_cards[0]
+                    deck = live.intrigue_deck
+                else:
+                    card = next(
+                        c for c in live.intrigue_deck if "harvest_cells" not in c
+                    )
+                    deck = (*live.intrigue_deck, card)
+                plain = _holding(live, seat, card, deck)
+                swapped = _holding(live, seat, harvest[0], deck)
+                if not _conflict_end_trigger_cards(
+                    swapped, seat, _conflict_losses(swapped)[seat]
+                ):
+                    continue
+                bystander = next(s for s in range(4) if s not in (owner, seat))
+                worlds = []
+                for state in (
+                    plain,
+                    swapped,
+                    _at_endgame_score(plain, bystander),
+                    _at_endgame_score(swapped, bystander),
+                ):
+                    session.state = state
+                    try:
+                        worlds.append(_last_recipient_rows(session, owner))
+                    finally:
+                        session.state = live
+                assert worlds[0] == worlds[1], (live.round_number, owner, seat)
+                assert worlds[2] == worlds[3], ("last", live.round_number, owner, seat)
+                checked += 1
+                break
+        actions = session.engine.legal_actions(live, owner)
+        action = sessions_module._choose(
+            agents[owner], live, session.engine.observe(live, owner), actions
+        )
+        summary = manager.apply_action(
+            game_id,
+            owner,
+            _int(summary["revision"]),
+            actions.index(action),
+            undo_count=_int(summary["undo_count"]),
+        )
+    assert checked, "the walk met a last recipient beside a Harvest Cells seat"

@@ -103,6 +103,11 @@ class FrameKind(StrEnum):
     SCOUTS_RETREAT = "scouts_retreat"
     SCOUTS_CALL = "scouts_call"
     SCOUTS_MARKET = "scouts_market"
+    # A pause before a reveal that follows a seat's choices outside the
+    # turns (rules/pauses.py): a chance decision with one fixed outcome.
+    # Appended last, like every kind. It is never on top at a player
+    # decision, so no observation shows it.
+    PAUSE = "pause"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

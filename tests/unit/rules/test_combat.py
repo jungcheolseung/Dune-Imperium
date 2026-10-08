@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import pytest
+from tests.support.pauses import answer_pause, pause_outcome
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import Faction
@@ -49,6 +50,7 @@ from dune_imperium.rules.contracts import (
 )
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.pauses import pause_is_pending
 from dune_imperium.rules.spy_moves import (
     begin_track_spy_placement,
     track_spy_is_queued,
@@ -307,18 +309,24 @@ def _settle(state: GameState) -> GameState:
     recipient's whole reward, choices included, answered before the next
     recipient is paid (user ruling 2026-10-07, "순위대로 (앱처럼)"). The
     engine calls ``resolve_combat_rewards`` again whenever the stack is
-    empty and the rewards are not resolved; this does the same, stopping at
-    the next recipient's choice. A queued step (an owed Intrigue draw, a
-    track Spy) is left to the test, as the engine resolves it first.
+    empty and the rewards are not resolved, which pauses before the next
+    recipient (rules/pauses.py) and pays it once the pause is answered;
+    this does the same, stopping at the next recipient's choice. A queued
+    step (an owed Intrigue draw, a track Spy) is left to the test, as the
+    engine resolves it first.
     """
 
     while (
-        not state.decision_stack
-        and not state.combat_rewards_resolved
+        not state.combat_rewards_resolved
         and not state.pending_intrigue_draws
         and not state.pending_track_spies
     ):
-        state = resolve_combat_rewards(state).state
+        if pause_is_pending(state):
+            state = answer_pause(state).state
+        elif not state.decision_stack:
+            state = resolve_combat_rewards(state).state
+        else:
+            break
     return state
 
 
@@ -513,9 +521,18 @@ def test_the_engine_pays_the_next_recipient_only_after_the_winner_answers() -> N
         ),
     )
 
+    # The winner's answer stops at a pause before the 2nd place is paid
+    # (rules/pauses.py): that payment draws an Intrigue card, a reveal, and
+    # the play server lets the winner take its choice back until then.
+    assert answered.state.players[0].influence.emperor == 1
+    assert answered.state.decision_stack[-1].kind == FrameKind.PAUSE
+    assert answered.state.players[1] == state.players[1]
+    assert answered.state.intrigue_deck == state.intrigue_deck
+    paid = engine.apply(answered.state, pause_outcome(answered.state))
+
     kinds = [
         (event.kind, dict(event.payload).get("player"))
-        for event in answered.events
+        for event in (*answered.events, *paid.events)
         if event.kind in ("influence_gained", "combat_reward_gained")
     ]
     assert kinds == [
@@ -523,10 +540,9 @@ def test_the_engine_pays_the_next_recipient_only_after_the_winner_answers() -> N
         ("combat_reward_gained", 1),
         ("combat_reward_gained", 2),
     ]
-    assert answered.state.players[0].influence.emperor == 1
-    assert answered.state.players[1].resources.spice == 1
-    assert answered.state.players[1].intrigue_cards == ("intrigue:0",)
-    assert answered.state.players[2].resources.spice == 1
+    assert paid.state.players[1].resources.spice == 1
+    assert paid.state.players[1].intrigue_cards == ("intrigue:0",)
+    assert paid.state.players[2].resources.spice == 1
 
 
 def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:

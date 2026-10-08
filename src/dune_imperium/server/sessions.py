@@ -2596,12 +2596,17 @@ def _serialize_action(
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
     ``sent_by_turn_end`` marks a step outside the seat's turns that cannot
-    be taken back (a Conflict reward that runs straight into the next
-    round's draw, a Scouts line that draws a card): the browser only holds
-    it and sends it with the seat's "턴 종료" press, so the seat may still
-    pick another one before that ("확정 전에 다른 곳에 두고 싶을 수
-    있잖아", user, 2026-10-08) -- it is read from the stack and ``undoable``
-    alone, so it tells nothing the mark did not;
+    be taken back because it reveals something itself (an Imperium Row
+    acquisition that refills the Row, a Scouts line that draws a card): the
+    browser only holds it and sends it with the seat's "확정 ▶" press, so
+    the seat may still pick another one before that ("확정 전에 다른 곳에
+    두고 싶을 수 있잖아", user, 2026-10-08) -- it is read from the stack and
+    ``undoable`` alone. A unit's last step that only runs into a reveal
+    after it stops at the engine's pause before that reveal instead
+    (rules/pauses.py), whatever the seats hold, and is held by the server
+    with its undo, so neither mark depends on another seat's hidden cards
+    (it did before the pauses: a Harvest Cells in another hand stopped the
+    dry run at its Conflict-end window, OQ-103);
     ``strength_after`` is the acting seat's running combat strength once the
     step is taken, when the step changes it (``strength_preview``);
     ``reveal_preview`` sums up a Reveal the step would start; and

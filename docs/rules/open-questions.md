@@ -1447,3 +1447,26 @@
 - 구현: `rules/combat.resolve_combat_rewards`(수령자 하나를 지급하고, 선택 frame이나 대기열(Intrigue draw, track Spy 등)이 생기면 멈춘다 — 그것들이 답해지면 엔진이 다시 부른다), `_pay_next_combat_reward`, `combat_rewards_done`(frame이 닫힐 때 `contracts`도 이것으로 판정), `GameState.combat_rewards_paid`(Conflict 공개 때 0), 보류 아이콘의 불발은 `contracts.combat_held_contract_owner`.
 - 테스트: `tests/unit/rules/test_combat.py`(`test_the_engine_pays_the_next_recipient_only_after_the_winner_answers`, `test_the_winner_s_influence_draw_takes_the_last_intrigue_card_first`, `test_tied_trash_choices_open_one_seat_at_a_time_from_the_first_player`), `tests/unit/rules/test_bloodlines_contracts.py::test_a_winner_s_held_icon_fizzles_before_the_second_place_is_paid`.
 - 재개 조건: 공식 FAQ가 순위가 다른 수령자 사이의 보상 순서를 정할 때.
+
+## OQ-103 — 턴 밖 선택 뒤 공개 앞의 멈춤
+
+- 상태: `DECIDED` (2026-10-08 사용자 결정 "추천대로 해봐"; project convention, 규칙 아님)
+- 공식 출처: 공식 규칙에는 Conflict 보상 선택이나 Control 방어 답이 언제 확정되는지가 없다. 되돌리기와 "턴 종료" 누름은 프로젝트 관례다(OQ-010의 공개 경계, OQ-095의 명시적 턴 종료). Round Start 순서(공개 → 방어 → draw `[Main p. 8]` `[Main p. 20]`, OQ-072)와 보상 순서(OQ-102)는 바뀌지 않는다.
+- 문제: 턴 밖 단위(보상 선택, Conflict 끝 Intrigue 창, Control 방어)의 마지막 선택이 같은 엔진 단계 안에서 숨은 정보 공개(다음 수령자의 Intrigue draw, 다음 라운드의 교전·손패, Round Start draw)로 이어졌다. 그래서 덱 섞기 chance가 마침 끼면 서버가 "턴 종료 + 되돌리기"로 붙잡았고, 아니면 브라우저가 "확정 ▶"으로 잡아 두었다. 같은 선택이 두 모양으로 보였다. 또 그 구분이 다른 좌석이 손에 쥔 Harvest Cells에 따라 달라져, 표시가 숨은 손패를 드러냈다(시드 70, Immortality, 8라운드; 2026-10-08 조사).
+- 결정: 엔진이 결과가 하나뿐인 chance decision("pause")으로 멈춘다. 자리는 공개된 사실로만 정한다.
+  1. 두 번째 이후 각 보상 수령자에게 지급하기 전.
+  2. 보상을 다 준 뒤(수령자가 있었다면), Conflict 끝 Intrigue 창을 열기 전. Harvest Cells를 쓸 수 있는 좌석에만 창이 열리므로, 마지막 수령자의 선택은 그것이 알려지기 전에 멈춘다. Round Start가 없는 마지막 라운드도 같다(2026-10-08 리뷰가 찾음).
+  3. 첫 라운드 뒤 모든 Round Start의 섞기·공개 전. Conflict 끝 Intrigue 창의 답이 여기서 멈춘다.
+  4. Control 방어 뒤, 그 라운드의 draw 전.
+- 결과는 바뀌지 않는다. 멈춤이 미룬 단계는 같은 순서로 그대로 일어난다.
+  - 엔진은 단계 끝에, 그 단계에서 Alliance를 얻은 좌석의 Earn Any Alliance를 완료한다. 단계가 멈춤에서 끊기면 그 좌석들을 멈춤에 실어, 멈춤을 푸는 단계 끝에서 완료한다. 전과 같은 자리다(`rules/engine.py` `_complete_alliance_contracts`).
+  - 리뷰의 옛·새 엔진 대조(무작위 200판, 지도자 드래프트 120판, 휴리스틱 24판)에서, 처음에는 이 완료가 앞당겨져 공급이 모자란 좌석의 징집 수가 달라졌다(3판).
+  - 고친 뒤 344판 모두에서 같았다. 모든 플레이어 결정의 상태(revision 제외), 행동, 멈춤 아닌 chance 결과, 최종 상태, 이벤트 기록, 승점이 일치했다.
+  - 별개의 규칙 질문: 이 완료 시점은 전부터 보상을 받는 순서와 Harvest Cells 창 여부에 따라 정리 전/후로 갈렸다. [Bloodlines p. 2] "completed the next time you take an Alliance token"대로 늘 정리 전에 완료할지는 사용자 결정 대기다.
+- 서버는 단위 뒤의 chance 앞에서 이미 붙잡으므로(`server/turn_end.py` `unit_over`), 이 선택들은 모두 "놓고 → 턴 종료(되돌리기 가능)" 한 모양이 된다. AI 좌석·학습·시뮬레이션에서는 결정기가 난수를 쓰지 않고 바로 답한다(`core/chance.py` `FIXED_OUTCOME_SUFFIX`). 그래서 같은 시드의 게임에서 모든 플레이어 결정이 그대로다.
+- 알려진 공개(전부터, 이 결정 밖): Conflict 끝 Intrigue 창은 쓸 수 있는 Harvest Cells를 쥔 좌석에만 열리고, 그 사실이 공개 이벤트(`conflict_end_trigger_offered`)로 남는다. 그 좌석이 쓰지 않아도 탁자는 그 카드를 쥐었음을 안다(실물 게임이라면 쓰지 않는 사람은 아무것도 드러내지 않는다). 창을 공개된 사실(유닛 3개 이상, 책략 카드 1장 이상)로 열고 쓸 수 없는 좌석에는 "쓰지 않음"만 주는 방법이 있다. 다만 규칙 표현의 문제라 사용자 결정 대기다(OQ-057 (11) 참고).
+- 남는 것: 선택 자체가 무언가를 공개하는 경우(Imperium Row 카드 획득의 Row 보충, 카드를 뽑는 Scouts 줄, Bene Gesserit 4에 닿는 Influence 선택의 Intrigue draw)는 여전히 브라우저가 "확정 ▶"으로 잡아 둔다. 이것은 공개된 사실로 정해져, 같은 선택이 상황 따라 모양을 바꾸지 않는다.
+- codec v140(단계 순서가 바뀐다). v139 저장은 열리지 않는다(사용자: 저장 1007은 쓰지 않는다).
+- 구현: `rules/pauses.py`, `rules/combat.resolve_combat_rewards`/`pay_combat_rewards`, `rules/phases.apply_control_defense_action`, `rules/engine.py`(`_resume_pause`, Round Start 분기), `core/chance.py`.
+- 테스트: `tests/unit/rules/test_pauses.py`, `tests/unit/rules/test_combat.py::test_the_engine_pays_the_next_recipient_only_after_the_winner_answers`, `tests/unit/rules/test_phases.py`(`_defend`), `tests/server/test_round_start_defense.py`, `tests/server/test_turn_end.py::test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand`(master에서 실패, 이 변경으로 통과), `scripts/e2e/held_choice.py`.
+- 재개 조건: 공식 규칙이 선택의 확정 시점을 정하거나, 사용자가 되돌리기 관례를 바꿀 때.

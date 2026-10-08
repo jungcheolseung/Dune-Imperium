@@ -101,6 +101,7 @@ from dune_imperium.rules.combat import (
     legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
     offer_conflict_end_triggers,
+    pay_combat_rewards,
     refresh_combat_participants,
     resolve_combat_rewards,
 )
@@ -114,6 +115,7 @@ from dune_imperium.rules.combat_deployment import (
     settle_finishing_agent_turn,
 )
 from dune_imperium.rules.contracts import (
+    alliance_recipients,
     apply_contract_action,
     apply_contract_completion,
     apply_contract_fizzle,
@@ -226,9 +228,18 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.pauses import (
+    CONFLICT_END,
+    REWARDS,
+    ROUND_START,
+    pause_is_pending,
+    pending_pause_point,
+    push_pause,
+)
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     apply_round_start_reshuffle,
+    draw_round_hands,
     legal_control_defense_actions,
     prepare_round_start,
     resolve_makers,
@@ -926,7 +937,11 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         outcome: ChanceOutcome,
     ) -> RuleResult:
-        if personal_draw_is_pending(state):
+        carried: tuple[int, ...] = ()
+        if pause_is_pending(state):
+            carried = _carried_alliances(state)
+            result = _resume_pause(state)
+        elif personal_draw_is_pending(state):
             result = apply_personal_draw_reshuffle(state, outcome)
         elif intrigue_reshuffle_is_pending(state):
             result = apply_intrigue_reshuffle(state, outcome)
@@ -947,7 +962,7 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            draw_owed_tech_cards(_complete_alliance_contracts(advanced, carried))
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))
@@ -1028,7 +1043,21 @@ def _end_turn_start(
     )
 
 
-def _complete_alliance_contracts(result: RuleResult) -> RuleResult:
+# The pause frame's context key for the seats whose Alliance was taken in the
+# step that stopped there, completed once the run the pause cut goes on.
+_CARRIED_ALLIANCES: Final = "alliance_recipients"
+
+
+def _carried_alliances(state: GameState) -> tuple[int, ...]:
+    carried = dict(state.decision_stack[-1].context).get(_CARRIED_ALLIANCES)
+    if not isinstance(carried, str) or not carried:
+        return ()
+    return tuple(int(seat) for seat in carried.split(","))
+
+
+def _complete_alliance_contracts(
+    result: RuleResult, carried: tuple[int, ...] = ()
+) -> RuleResult:
     """Complete Earn Any Alliance, then pay what that Contract opens in a Reveal.
 
     The completion runs after the step's late-Reveal pass, so the pass runs
@@ -1037,7 +1066,31 @@ def _complete_alliance_contracts(result: RuleResult) -> RuleResult:
     finishes the Reveal next (OQ-028 (c), user ruling 2026-10-04).
     """
 
-    completed = complete_alliance_contracts(result)
+    if pause_is_pending(result.state):
+        # The step stopped at a pause (rules/pauses.py) in the middle of a
+        # run of automatic steps. The Contract completes where that run
+        # ends, as it did before the pauses, so a pause changes no outcome
+        # (a short supply recruits what it did): the seats that took an
+        # Alliance ride on the pause to the step that resumes it.
+        seats = tuple(
+            dict.fromkeys((*carried, *alliance_recipients(result.events)))
+        )
+        if not seats:
+            return result
+        top = result.state.decision_stack[-1]
+        context = (
+            *(item for item in top.context if item[0] != _CARRIED_ALLIANCES),
+            (_CARRIED_ALLIANCES, ",".join(str(seat) for seat in seats)),
+        )
+        frame = replace(top, context=tuple(sorted(context)))
+        return RuleResult(
+            state=replace(
+                result.state,
+                decision_stack=(*result.state.decision_stack[:-1], frame),
+            ),
+            events=result.events,
+        )
+    completed = complete_alliance_contracts(result, carried)
     if completed.state is result.state:
         return completed
     granted = grant_late_reveal_effects(completed)
@@ -1085,6 +1138,20 @@ def _held_contract_owner(state: GameState) -> int | None:
     if player is None or not held_contract_icons_can_open(state, player):
         return None
     return player
+
+
+def _resume_pause(state: GameState) -> RuleResult:
+    """Answer the pause on top: run the step it held back (rules/pauses.py)."""
+
+    point = pending_pause_point(state)
+    resumed = state.pop_decision()
+    if point == REWARDS:
+        return pay_combat_rewards(resumed)
+    if point == CONFLICT_END:
+        return offer_conflict_end_triggers(resumed)
+    if point == ROUND_START:
+        return prepare_round_start(resumed)
+    return draw_round_hands(resumed)
 
 
 def _advance_automatic(result: RuleResult) -> RuleResult:
@@ -1164,7 +1231,14 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             elif not state.combat_rewards_resolved:
                 automatic = resolve_combat_rewards(state)
             elif not state.combat_end_triggers_offered:
-                automatic = offer_conflict_end_triggers(state)
+                # A pause after the rewards, before anyone learns who holds a
+                # playable Conflict-end Intrigue (rules/pauses.py); its answer
+                # offers the windows.
+                automatic = (
+                    push_pause(state, CONFLICT_END, f"round:{state.round_number}")
+                    if state.combat_rewards_paid > 0
+                    else offer_conflict_end_triggers(state)
+                )
             else:
                 automatic = finish_combat(state)
         elif state.phase is GamePhase.MAKERS:
@@ -1172,7 +1246,16 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif state.phase is GamePhase.RECALL_OR_ENDGAME:
             automatic = resolve_recall_or_endgame(state)
         elif state.phase is GamePhase.ROUND_START:
-            automatic = prepare_round_start(state)
+            # After a round, its last choices (a reward recipient's, a
+            # Conflict-end Intrigue window's) are held at a pause before the
+            # next round's reshuffles and reveal (rules/pauses.py); the
+            # pause's answer prepares the round. The first round follows the
+            # setup (and its explicit last Leader pick) with no pause.
+            automatic = (
+                prepare_round_start(state)
+                if state.round_number == 0
+                else push_pause(state, ROUND_START, f"round:{state.round_number + 1}")
+            )
         elif state.phase is GamePhase.ENDGAME:
             if can_finish_endgame_automatically(state):
                 automatic = finish_endgame_without_pending_effects(state)

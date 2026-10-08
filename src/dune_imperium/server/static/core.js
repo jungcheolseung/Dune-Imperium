@@ -386,8 +386,15 @@ function fieldWord(key, text, siblings) {
    (rules/card_draw.py, intrigue_deck.py, board_effects.py) is a provenance
    path, "round:4:player:1:board:arrakeen:discard_shuffle"; only its shape is
    read, and it never reaches the screen. */
+/* The engine's pause before a reveal (rules/pauses.py, core/chance.py
+   FIXED_OUTCOME_SUFFIX): a chance step with one outcome that draws nothing. */
+function isPauseChance(decisionId) {
+  return String(decisionId).endsWith(":pause");
+}
+
 function describeChance(decisionId) {
   const id = String(decisionId);
+  if (isPauseChance(id)) return t("core.pause_step");
   const owner = id.match(/(?:^|:)player:(\d+)(?=:|$)/);
   const seat = owner ? t("common.seat", { seat: Number(owner[1]) }) : null;
   const steal = id.match(/:secrets:steal:(\d+)$/);

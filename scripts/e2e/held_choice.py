@@ -2,23 +2,27 @@
 
 The turn-end press is the seat's confirmation; before it the seat may change
 its decision. A step of the seat's own unit outside its Agent and Reveal
-turns that cannot be taken back carries ``sent_by_turn_end`` from the server
-(sessions.py), and the browser does not send a click on it (turn.js
-``chooseAction``): it holds it (``.held-choice``, aria-pressed, the table
-object ``.picked``), shows a hint and a banner row "확정 ▶" / "Confirm ▶"
-(``.held-send-row``) that sends it with one POST /actions. Another row moves
-the hold, a second click on the held row or Escape lets it go, a second click
-on the held table object keeps it. A step that CAN be taken back is sent at
-once, and its unit end is held by the server (``summary.confirmation``) before
-the chance outcome after it, with the turn-end row and the undo row.
+turns that CAN be taken back is sent at once, and the server holds its unit
+end (``summary.confirmation``) before the reveal that follows: the engine
+pauses there (rules/pauses.py), so the turn-end row and the undo row show.
+A step that cannot be taken back because it reveals something itself (an
+Imperium Row acquisition refills the Row) carries ``sent_by_turn_end`` from
+the server (sessions.py), and the browser does not send a click on it
+(turn.js ``chooseAction``): it holds it (``.held-choice``, aria-pressed, the
+table object ``.picked``), shows a hint and a banner row "확정 ▶" /
+"Confirm ▶" (``.held-send-row``) that sends it with one POST /actions.
+Another row moves the hold, a second click on the held row or Escape lets
+it go, a second click on the held table object keeps it.
 
 The positions are real: ``fixtures/held_choice_saves.py`` plays seat 0 by a
 seeded random policy against the pinned table heuristic and saves
-- ``held-defense``: a seat-0 Control defense whose two answers are held [A];
+- ``held-defense``: a seat-0 Control defense, answered at once and held
+  before the round's draw, where it can be taken back [A];
 - ``held-reward-spy``: a seat-0 Conflict reward Spy that can be taken back,
-  before the next round's reshuffle [B];
-- ``held-spy-post``: a seat-0 Conflict reward Spy whose posts are held, so a
-  click on a board Spy post holds it too [C].
+  held before the next round [B];
+- ``held-acquire``: an Intrigue card's acquisition in Combat whose Imperium
+  Row cards are held for "확정 ▶" while its Reserve card is sent at once;
+  a click on a Row card on the table holds it too [C].
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ check = Check()
 
 HANGUL = re.compile("[가-힣]")
 SPY_POST = "place_combat_reward_spy"
+ACQUIRE = "acquire_intrigue_imperium"
 
 # What the page shows of a hold, read in one go.
 HELD_JS = """() => ({
@@ -52,6 +57,8 @@ HELD_JS = """() => ({
   turnEnd: document.querySelectorAll('.turn-end-row').length,
   picked: [...document.querySelectorAll('.spy-post-hotspot.picked')]
     .map((n) => n.dataset.post),
+  cards: [...document.querySelectorAll('#market .vcard.picked')]
+    .map((n) => n.dataset.instance),
   revision: state.summary.revision,
   confirmation: state.summary.confirmation,
 })"""
@@ -63,22 +70,6 @@ LAST_SEAT0_JS = """() => {
   const last = own[own.length - 1];
   return last ? { action_id: last.action_id, arguments: last.arguments } : null;
 }"""
-
-# The first of `posts` whose board hotspot is the element a click at its
-# centre reaches (scrolled into view first), so the click is a real one.
-CLICKABLE_POST_JS = """(posts) => {
-  for (const post of posts) {
-    const node = document.querySelector(`.spy-post-hotspot[data-post='${post}']`);
-    if (!node) continue;
-    node.scrollIntoView({ block: 'center', inline: 'center' });
-    const r = node.getBoundingClientRect();
-    if (document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === node) {
-      return post;
-    }
-  }
-  return null;
-}"""
-
 
 def record_posts(page) -> list[tuple[str, object]]:
     """Every POST the page makes to a game, as (endpoint, body), from the
@@ -121,7 +112,10 @@ def rows(page, action_id: str) -> list[dict]:
 
 
 def row_button(page, index: int):
-    return page.locator(f"#actions .action-item[data-index='{index}'] > button")
+    # The row's own button, not a card row's "ⓘ" preview beside it.
+    return page.locator(
+        f"#actions .action-item[data-index='{index}'] > button:not(.action-info)"
+    )
 
 
 def click_row(page, index: int) -> None:
@@ -137,7 +131,7 @@ def finish_page(context, rec, what: str) -> None:
 
 
 def scenario_defense(browser, base: str) -> None:
-    print("[A] a Control defense: both answers are held for the press")
+    print("[A] a Control defense: sent at once, held before the draw, undoable")
     context, page, rec, posts = open_save(browser, base, "held-defense", "defense")
     decision = page.evaluate("state.summary.decision")
     check.ok(
@@ -148,8 +142,11 @@ def scenario_defense(browser, base: str) -> None:
     (deploy,) = rows(page, "deploy_control_defense")
     (decline,) = rows(page, "decline_control_defense")
     check.ok(
-        deploy["sent_by_turn_end"] and decline["sent_by_turn_end"],
-        "both answers are marked sent_by_turn_end",
+        deploy["undoable"]
+        and decline["undoable"]
+        and not deploy["sent_by_turn_end"]
+        and not decline["sent_by_turn_end"],
+        "both answers can be taken back and are sent at once",
     )
     deploy_text = row_button(page, deploy["index"]).inner_text()
     decline_text = row_button(page, decline["index"]).inner_text()
@@ -164,104 +161,85 @@ def scenario_defense(browser, base: str) -> None:
         page.locator("#actions .irreversible-badge").count() == 0,
         "A1: neither answer carries the 되돌리기 불가 badge",
     )
-    revision = page.evaluate("state.summary.revision")
+    hand = "(state.view.private && state.view.private.hand || []).length"
+    check.ok(page.evaluate(hand) == 0, "A1: no hand is drawn before the answer")
 
     click_row(page, deploy["index"])
-    shown = held(page)
-    check.ok(shown["held"] == [deploy["index"]], "A1: 방어 배치 is .held-choice", shown)
-    check.ok(shown["pressed"] == [deploy["index"]], "A1: aria-pressed", shown)
+    summary = page.evaluate("state.summary")
     check.ok(
-        page.locator(".held-hint").is_visible()
-        and shown["hints"] == [page.evaluate("t('render.held_choice_hint')")],
-        "A1: the hint says how the choice is sent",
-        shown["hints"],
+        len(bodies(posts, "actions")) == 1
+        and summary["confirmation"] == 0
+        and summary["decision"] is None,
+        "A1: 방어 배치 is sent at once and held before the draw",
+        (posts, summary["confirmation"], summary["decision"]),
     )
-    check.ok(shown["send"] == ["확정 ▶"], "A1: the banner row reads 확정 ▶", shown)
-    check.ok(shown["turnEnd"] == 0, "A1: and there is no turn-end row", shown)
-    check.ok(not bodies(posts, "actions"), "A1: no POST /actions for the click", posts)
-    check.ok(shown["revision"] == revision, "A1: the game did not move", shown)
-
-    click_row(page, decline["index"])
-    shown = held(page)
+    row = page.locator(".turn-end-row button")
     check.ok(
-        shown["held"] == [decline["index"]] and shown["pressed"] == [decline["index"]],
-        "A2: a click on 방어 배치 안 함 moves the hold to it (one .held-choice)",
-        shown,
+        row.count() == 1 and row.inner_text() == "턴 종료 ▶",
+        "A1: the turn-end row reads 턴 종료 ▶",
+        row.all_inner_texts(),
     )
-    click_row(page, decline["index"])
-    shown = held(page)
+    check.ok(page.locator(".held-send-row").count() == 0, "A1: no 확정 ▶ row")
+    check.ok(page.evaluate(hand) == 0, "A1: still no hand before the press")
+    undo = [u for u in summary["undo"] if u["seat"] == 0]
     check.ok(
-        not shown["held"] and not shown["send"] and not shown["hints"],
-        "A2: a second click on the held row lets it go",
-        shown,
-    )
-    click_row(page, decline["index"])
-    check.ok(held(page)["held"] == [decline["index"]], "A2: held again")
-    page.keyboard.press("Escape")
-    assert settled(page, 20)
-    shown = held(page)
-    check.ok(
-        not shown["held"] and not shown["send"] and not shown["hints"],
-        "A2: Escape lets the hold go",
-        shown,
-    )
-    check.ok(
-        not posts and shown["revision"] == revision,
-        "A2: nothing was sent while the hold moved",
-        posts,
+        undo == [{"seat": 0, "steps": 1}]
+        and page.locator(".undo-row button").count() == 1,
+        "A1: the undo row offers one step",
+        undo,
     )
 
-    click_row(page, deploy["index"])
-    page.locator(".held-send-row button").click()
+    page.locator(".undo-row button").click()
     assert settled(page, 20)
-    sent = bodies(posts, "actions")
+    summary = page.evaluate("state.summary")
     check.ok(
-        len(sent) == 1 and sent[0]["index"] == deploy["index"],
-        "A2: 확정 ▶ sends exactly one POST /actions, the held answer",
-        posts,
+        summary["confirmation"] is None
+        and summary["decision"] is not None
+        and summary["decision"]["kind"] == "control_defense",
+        "A2: the undo is back at the defense",
+        (summary["confirmation"], summary["decision"]),
     )
-    check.ok(not bodies(posts, "confirm"), "A2: and no POST /confirm", posts)
-    after = page.evaluate("state.summary")
+    (decline,) = rows(page, "decline_control_defense")
+    click_row(page, decline["index"])
     check.ok(
-        after["decision"] is None or after["decision"]["kind"] != "control_defense",
-        "A2: the game moved on past the defense",
-        after["decision"],
+        page.evaluate("state.summary.confirmation") == 0,
+        "A2: 방어 배치 안 함 is held in its place",
     )
-    check.ok(
-        after["confirmation"] != 0,
-        "A2: the seat is not held for an extra press",
-        after["confirmation"],
-    )
+    page.locator(".turn-end-row button").click()
+    assert settled(page, 20)
+    summary = page.evaluate("state.summary")
+    check.ok(len(bodies(posts, "confirm")) == 1, "A2: one POST /confirm", posts)
+    check.ok(summary["confirmation"] != 0, "A2: the press clears the hold", summary)
+    check.ok(page.evaluate(hand) > 0, "A2: the press drew the round's hand")
     last = page.evaluate(LAST_SEAT0_JS)
     check.ok(
-        last is not None and last["action_id"] == "deploy_control_defense",
-        "A2: the live log's last seat-0 action is deploy_control_defense",
+        last is not None and last["action_id"] == "decline_control_defense",
+        "A2: the live log's last seat-0 action is decline_control_defense",
         last,
     )
     finish_page(context, rec, "A")
 
 
 def scenario_defense_english(browser, base: str) -> None:
-    print("[A3] the same hold in English: 'Confirm ▶'")
+    print("[A3] the same hold in English")
     context, page, rec, posts = open_save(browser, base, "held-defense", "defense-en")
     switch_language(page, "en")
     (deploy,) = rows(page, "deploy_control_defense")
     click_row(page, deploy["index"])
-    shown = held(page)
-    check.ok(shown["held"] == [deploy["index"]], "A3: held in English", shown)
-    check.ok(shown["send"] == ["Confirm ▶"], "A3: the row reads Confirm ▶", shown)
+    row = page.locator(".turn-end-row button")
     check.ok(
-        len(shown["hints"]) == 1 and not HANGUL.search(shown["hints"][0]),
-        "A3: the hint is in English",
-        shown["hints"],
+        page.evaluate("state.summary.confirmation") == 0
+        and row.count() == 1
+        and not HANGUL.search(row.inner_text()),
+        "A3: held, with the turn-end row in English",
+        row.all_inner_texts(),
     )
-    check.ok(shown["turnEnd"] == 0, "A3: and there is no turn-end row", shown)
-    check.ok(not posts, "A3: nothing was sent", posts)
+    check.ok(page.locator(".held-send-row").count() == 0, "A3: no Confirm ▶ row")
     finish_page(context, rec, "A3")
 
 
 def scenario_reward_spy(browser, base: str) -> None:
-    print("[B] a reward Spy that can be taken back: sent, held before the reshuffle")
+    print("[B] a reward Spy that can be taken back: sent, held before the next round")
     context, page, rec, posts = open_save(
         browser, base, "held-reward-spy", "reward-spy"
     )
@@ -363,66 +341,127 @@ def scenario_reward_spy(browser, base: str) -> None:
     finish_page(context, rec, "B")
 
 
-def scenario_spy_post(browser, base: str) -> None:
-    print("[C] a reward Spy that cannot be taken back: a board post click holds it")
-    context, page, rec, posts = open_save(browser, base, "held-spy-post", "spy-post")
-    offers = rows(page, SPY_POST)
+def scenario_acquire(browser, base: str) -> None:
+    print("[C] an Intrigue acquisition: Row cards held for 확정, the Reserve sent")
+    context, page, rec, posts = open_save(browser, base, "held-acquire", "acquire")
+    decision = page.evaluate("state.summary.decision")
+    offers = rows(page, ACQUIRE)
+    reserve = rows(page, "acquire_intrigue_reserve")
     check.ok(
-        page.evaluate("state.summary.decision.kind") == "combat_reward_spy"
-        and offers
-        and all(a["sent_by_turn_end"] for a in offers),
-        "the save rests at seat 0's reward Spy, every post sent by the press",
+        decision["owner"] == 0
+        and len(offers) >= 3
+        and all(a["sent_by_turn_end"] and not a["undoable"] for a in offers)
+        and reserve
+        and all(a["undoable"] and not a["sent_by_turn_end"] for a in reserve),
+        "the save rests at seat 0's acquisition: Row cards held, Reserve sent",
+        decision,
     )
     check.ok(
         page.locator("#actions .irreversible-badge").count() == 0,
-        "C1: no post row carries the 되돌리기 불가 badge",
+        "C1: no row carries the 되돌리기 불가 badge",
     )
-    post = page.evaluate(CLICKABLE_POST_JS, [a["arguments"]["post_id"] for a in offers])
-    check.ok(post is not None, "C1: a lit Spy post can be clicked on the board")
-    if post is None:
-        finish_page(context, rec, "C")
-        return
-    (offer,) = [a for a in offers if a["arguments"]["post_id"] == post]
-    hotspot = page.locator(f".spy-post-hotspot[data-post='{post}']")
-    hotspot.click()
-    assert settled(page, 20)
+    revision = page.evaluate("state.summary.revision")
+    first, second, third = offers[:3]
+
+    click_row(page, first["index"])
     shown = held(page)
-    check.ok(shown["picked"] == [post], "C1: the clicked post is .picked", shown)
-    check.ok(shown["held"] == [offer["index"]], "C1: its row is .held-choice", shown)
+    check.ok(shown["held"] == [first["index"]], "C1: the row is .held-choice", shown)
+    check.ok(shown["pressed"] == [first["index"]], "C1: aria-pressed", shown)
+    check.ok(
+        page.locator(".held-hint").is_visible()
+        and shown["hints"] == [page.evaluate("t('render.held_choice_hint')")],
+        "C1: the hint says how the choice is sent",
+        shown["hints"],
+    )
     check.ok(shown["send"] == ["확정 ▶"], "C1: the banner row reads 확정 ▶", shown)
-    check.ok(not posts, "C1: no POST for the board click", posts)
-    hotspot.click()
+    check.ok(shown["turnEnd"] == 0, "C1: and there is no turn-end row", shown)
+    check.ok(not bodies(posts, "actions"), "C1: no POST /actions for the click", posts)
+    check.ok(shown["revision"] == revision, "C1: the game did not move", shown)
+
+    click_row(page, second["index"])
+    shown = held(page)
+    check.ok(
+        shown["held"] == [second["index"]] and shown["pressed"] == [second["index"]],
+        "C2: another row moves the hold (one .held-choice)",
+        shown,
+    )
+    click_row(page, second["index"])
+    shown = held(page)
+    check.ok(
+        not shown["held"] and not shown["send"] and not shown["hints"],
+        "C2: a second click on the held row lets it go",
+        shown,
+    )
+    click_row(page, second["index"])
+    page.keyboard.press("Escape")
     assert settled(page, 20)
     shown = held(page)
     check.ok(
-        shown["picked"] == [post]
-        and shown["held"] == [offer["index"]]
-        and shown["send"] == ["확정 ▶"]
-        and not posts,
-        "C1: a second click on the post keeps it held",
+        not shown["held"] and not shown["send"] and not shown["hints"],
+        "C2: Escape lets the hold go",
         shown,
+    )
+
+    instance = third["arguments"]["instance_id"]
+    card = page.locator(f"#market .vcard[data-instance='{instance}']")
+    card.scroll_into_view_if_needed()
+    card.click()
+    assert settled(page, 20)
+    shown = held(page)
+    check.ok(
+        shown["cards"] == [instance] and shown["held"] == [third["index"]],
+        "C3: a click on the Row card holds it (.picked, its row .held-choice)",
+        shown,
+    )
+    card.click()
+    assert settled(page, 20)
+    shown = held(page)
+    check.ok(
+        shown["cards"] == [instance] and shown["send"] == ["확정 ▶"],
+        "C3: a second click on the card keeps it held",
+        shown,
+    )
+    check.ok(
+        not posts and shown["revision"] == revision,
+        "C3: nothing was sent while the hold moved",
+        posts,
     )
     page.locator(".held-send-row button").click()
     assert settled(page, 20)
     sent = bodies(posts, "actions")
     check.ok(
-        len(sent) == 1 and sent[0]["index"] == offer["index"],
-        "C1: 확정 ▶ sends exactly one POST /actions, the held post",
+        len(sent) == 1 and sent[0]["index"] == third["index"],
+        "C3: 확정 ▶ sends exactly one POST /actions, the held card",
         posts,
     )
-    check.ok(
-        page.evaluate("state.summary.confirmation") != 0,
-        "C1: the seat is not held for an extra press",
-    )
+    check.ok(not bodies(posts, "confirm"), "C3: and no POST /confirm", posts)
     last = page.evaluate(LAST_SEAT0_JS)
     check.ok(
         last is not None
-        and last["action_id"] == SPY_POST
-        and last["arguments"] == offer["arguments"],
-        "C1: the log shows the Spy on the held post",
+        and last["action_id"] == ACQUIRE
+        and last["arguments"] == third["arguments"],
+        "C3: the log shows the held card acquired",
         last,
     )
     finish_page(context, rec, "C")
+
+
+def scenario_acquire_english(browser, base: str) -> None:
+    print("[C4] the same hold in English: 'Confirm ▶'")
+    context, page, rec, posts = open_save(browser, base, "held-acquire", "acquire-en")
+    switch_language(page, "en")
+    first = rows(page, ACQUIRE)[0]
+    click_row(page, first["index"])
+    shown = held(page)
+    check.ok(shown["held"] == [first["index"]], "C4: held in English", shown)
+    check.ok(shown["send"] == ["Confirm ▶"], "C4: the row reads Confirm ▶", shown)
+    check.ok(
+        len(shown["hints"]) == 1 and not HANGUL.search(shown["hints"][0]),
+        "C4: the hint is in English",
+        shown["hints"],
+    )
+    check.ok(not posts, "C4: nothing was sent", posts)
+    finish_page(context, rec, "C4")
 
 
 def main() -> None:
@@ -447,7 +486,8 @@ def main() -> None:
             scenario_defense(browser, server.base)
             scenario_defense_english(browser, server.base)
             scenario_reward_spy(browser, server.base)
-            scenario_spy_post(browser, server.base)
+            scenario_acquire(browser, server.base)
+            scenario_acquire_english(browser, server.base)
     finally:
         server.stop()
         shutil.copy(server.log_path, SERVER_LOG_COPY)

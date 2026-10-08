@@ -252,7 +252,8 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         "phase": len(_PHASES) - 1,
         "first_player": 4,
         "turn_owner": 4,
-        "decision_kind": len(_FRAME_KINDS),
+        # Less the engine's pause, which no observation shows (slots.py).
+        "decision_kind": len(_FRAME_KINDS) - 1,
         "conflict": len(CONFLICT_IDS),
         "imperium_row": len(IMPERIUM_CARDS_BY_ID),
         "tech_face_up": len(TECH_IDS),

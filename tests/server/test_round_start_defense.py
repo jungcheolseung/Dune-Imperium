@@ -6,8 +6,9 @@ draws five cards from their own deck, forming their hand for the round."
 control, you receive a defensive bonus: you may deploy one troop from your
 supply to the Conflict." [Main p. 10] [Main p. 20]. The defense is asked
 between the reveal and the draw (user ruling 2026-09-29), so a human
-defender answers in Round Start, before any hand is drawn, and the answer
-runs straight on into the draw.
+defender answers in Round Start, before any hand is drawn. The answer stops
+at the engine's pause before the draw (rules/pauses.py, 2026-10-08), where
+the play server holds it until the defender's turn-end press.
 """
 
 from __future__ import annotations
@@ -38,12 +39,17 @@ def _rows(value: object) -> list[dict[str, object]]:
     return [_obj(item) for item in value]
 
 
+def _list(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return value
+
+
 def _int(value: object) -> int:
     assert isinstance(value, int)
     return value
 
 
-def test_a_human_defender_answers_before_the_draw_and_cannot_undo_it() -> None:
+def test_a_human_defender_answers_before_the_draw_and_may_take_it_back() -> None:
     # Same walk as test_turn_end's restore test: seed 0 reaches a seat-0
     # Control defense (round 7) under an rng.Random(0).choice policy.
     # (Re-searched 2026-10-01: every Agent turn now waits for its owner's
@@ -86,27 +92,49 @@ def test_a_human_defender_answers_before_the_draw_and_cannot_undo_it() -> None:
         "decline_control_defense",
         "deploy_control_defense",
     }
-    # Either answer runs straight on into the draw, which shows each seat its
-    # new hand, so neither can be taken back (hidden information). The
-    # browser therefore holds the answer and sends it with the seat's
-    # turn-end press, so the seat may still change it before (user,
-    # 2026-10-08).
-    assert all(row["undoable"] is False for row in actions)
-    assert all(row["sent_by_turn_end"] is True for row in actions)
+    # Either answer stops at the engine's pause before the draw
+    # (rules/pauses.py), so the play server holds it there: the defender may
+    # take it back and answer again until its turn-end press draws the
+    # hands ("확정 전에 다른 곳에 두고 싶을 수 있잖아 ... 되돌리기 기회를 줘야",
+    # user, 2026-10-08). No row is held by the browser any more.
+    assert all(row["undoable"] is True for row in actions)
+    assert all(row["sent_by_turn_end"] is False for row in actions)
 
     (deploy,) = (row for row in actions if row["action_id"] == "deploy_control_defense")
-    after = manager.apply_action(
+    held = manager.apply_action(
         game_id, 0, _int(summary["revision"]), _int(deploy["index"])
     )
+    assert held["confirmation"] == 0
+    assert session.state.decision_stack[-1].kind == FrameKind.PAUSE
+    assert session.state.players[0].troops_conflict == defender.troops_conflict + 1
+    assert all(player.hand == () for player in session.state.players)
+    assert {"seat": 0, "steps": 1} in _list(held["undo"])
 
+    # Taken back: the defense is asked again, and declined this time.
+    back = manager.undo(game_id, 0, _int(held["revision"]), 1)
+    assert session.state.decision_stack[-1].kind == FrameKind.CONTROL_DEFENSE
+    assert session.state.players[0] == defender
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    (decline,) = (
+        row for row in actions if row["action_id"] == "decline_control_defense"
+    )
+    held = manager.apply_action(
+        game_id,
+        0,
+        _int(back["revision"]),
+        _int(decline["index"]),
+        undo_count=_int(back["undo_count"]),
+    )
+    assert held["confirmation"] == 0
+
+    # The press draws the hands; the round goes on.
+    after = manager.confirm_turn(
+        game_id, 0, _int(held["revision"]), undo_count=_int(held["undo_count"])
+    )
     drawn = session.state
-    assert drawn.round_number == state.round_number
-    assert drawn.current_conflict_ids == state.current_conflict_ids
-    assert drawn.players[0].troops_conflict == defender.troops_conflict + 1
-    assert len(drawn.players[0].hand) == min(5, len(defender.deck))
-    # The defense was the defender's own unit, but the draw left nothing of
-    # it to take back, so no press confirms it: the answer itself did, as its
-    # "cannot be undone" mark said ("되돌리기 기회도 없는데, 턴 종료 버튼은
-    # 또 남아버려서 이상해진거네", user, 2026-10-08). The unit is closed.
     assert after["confirmation"] is None
     assert 0 not in session.open_units
+    assert drawn.round_number == state.round_number
+    assert drawn.current_conflict_ids == state.current_conflict_ids
+    assert drawn.players[0].troops_conflict == defender.troops_conflict
+    assert len(drawn.players[0].hand) == min(5, len(defender.deck))

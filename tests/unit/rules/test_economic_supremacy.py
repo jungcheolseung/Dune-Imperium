@@ -12,6 +12,7 @@ Solari -> 1 VP, 4 spice -> 1 VP), second place 1 VP, third place 2 spice and
 from dataclasses import replace
 
 import pytest
+from tests.support.pauses import answer_pause
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import (
@@ -51,6 +52,7 @@ from dune_imperium.rules.endgame import (
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.ornithopter import match_all_battle_icons
+from dune_imperium.rules.pauses import pause_is_pending
 
 EPIC = RulesetConfig(epic_game=True)
 EPIC_BLOODLINES = RulesetConfig(bloodlines=True, epic_game=True)
@@ -114,11 +116,17 @@ def _settle(state: GameState) -> GameState:
     recipient's whole reward, choices included, answered before the next
     recipient is paid (user ruling 2026-10-07, "순위대로 (앱처럼)"); the
     engine calls ``resolve_combat_rewards`` again whenever the stack is
-    empty, as this does.
+    empty, which pauses before the next recipient (rules/pauses.py) and
+    pays it once the pause is answered, as this does.
     """
 
-    while not state.decision_stack and not state.combat_rewards_resolved:
-        state = resolve_combat_rewards(state).state
+    while not state.combat_rewards_resolved:
+        if pause_is_pending(state):
+            state = answer_pause(state).state
+        elif not state.decision_stack:
+            state = resolve_combat_rewards(state).state
+        else:
+            break
     return state
 
 

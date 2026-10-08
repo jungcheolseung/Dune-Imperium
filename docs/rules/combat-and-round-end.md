@@ -27,6 +27,7 @@
 - strength가 가장 높은 플레이어가 Conflict를 이기고 1위 보상을 받는다. 두 번째로 높은 플레이어는 2위 보상, 세 번째로 높은 플레이어는 3위 보상을 받으며, 4위는 보상이 없다. [Main p. 14]
 - strength가 0인 플레이어는 어떤 순위 보상도 받지 못한다. [Main p. 14]
 - 서로 다른 순위의 수령자 사이에서 누구의 보상을 먼저 해결하는지는 공식 문서가 정하지 않는다. 판정은 [OQ-102](open-questions.md#oq-102--서로-다른-순위-사이의-conflict-보상-순서)(2026-10-07 사용자 판정 "순위대로 (앱처럼)", project convention): 순위 순서로(같은 순위는 OQ-002대로 First Player부터) 한 수령자씩, 그 수령자의 보상 전체 — 자동 부분과 선택, sandworm 두 배의 몫까지 — 를 끝낸 뒤 다음 수령자에게 준다.
+- 두 번째 이후의 수령자에게 지급하기 전, 보상을 다 준 뒤 Conflict 끝 Intrigue 창을 열기 전, 다음 라운드의 Round Start 앞에서 엔진은 결과가 하나뿐인 chance로 멈춘다([OQ-103](open-questions.md#oq-103--턴-밖-선택-뒤-공개-앞의-멈춤), project convention). 앞 좌석이 공개 전에 선택을 되돌릴 수 있게 하려는 것이며, 누가 무엇을 받는지와 순서는 바뀌지 않는다.
 - 모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의 supply에 놓고 battle icon 일치를 확인한다. [Main p. 14]
 
 ### Combat 동률

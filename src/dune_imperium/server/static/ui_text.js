@@ -1493,6 +1493,10 @@ const UI_TEXT = {
     "ko": "경매 라운드",
     "en": "Auction round"
   },
+  "core.pause_step": {
+    "ko": "공개 전 멈춤 (앞 좌석이 되돌릴 수 있던 자리)",
+    "en": "Pause before a reveal (where the last choice could be taken back)"
+  },
   "core.chance_scouts_contracts": {
     "ko": "앞면 {contract} 교체",
     "en": "Face-up {contract} replacement"

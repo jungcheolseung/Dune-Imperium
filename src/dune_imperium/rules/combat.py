@@ -42,6 +42,7 @@ from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
 )
+from dune_imperium.rules.pauses import REWARDS, push_pause
 from dune_imperium.rules.scouts_missions import free_prison_marker
 from dune_imperium.rules.spy_placement import recall_spy
 from dune_imperium.rules.tactics import advance_tactics_token
@@ -264,8 +265,24 @@ def apply_combat_intrigue_pass(
 
 
 def resolve_combat_rewards(state: GameState) -> RuleResult:
-    """Pay the next ranked recipient's Conflict reward and open its choices."""
+    """Pay the next ranked recipient's Conflict reward and open its choices.
 
+    The engine calls this whenever the stack is empty and the rewards are
+    not resolved. A call after a recipient has been paid, before the next
+    one is, pauses first (``rules/pauses.py``): the previous recipient's
+    choices are done, and paying the next one can reveal a card (its
+    Intrigue draw). The pause's answer runs ``pay_combat_rewards``.
+    """
+
+    _check_combat_rewards(state)
+    ranking = rank_combat(state.players, first_player=state.first_player)
+    if 0 < state.combat_rewards_paid < len(ranking.rewards):
+        where = f"round:{state.round_number}:reward:{state.combat_rewards_paid}"
+        return push_pause(state, REWARDS, where)
+    return pay_combat_rewards(state)
+
+
+def _check_combat_rewards(state: GameState) -> None:
     if state.phase is not GamePhase.COMBAT:
         raise ValueError("Combat rewards can resolve only during Combat")
     if not state.combat_intrigue_complete:
@@ -277,6 +294,14 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
     if not state.current_conflict_ids:
         raise ValueError("Combat rewards require a current Conflict")
 
+
+def pay_combat_rewards(state: GameState) -> RuleResult:
+    """Pay the ranked recipients from the next one on, until one stops.
+
+    The first payment logs the whole standing (``combat_standing``).
+    """
+
+    _check_combat_rewards(state)
     conflict_id = state.current_conflict_ids[-1]
     conflict = CONFLICTS_BY_ID[conflict_id]
     if conflict.rewards is None:

@@ -318,7 +318,16 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # John passes again. The Combat Intrigue frame marks such a seat
 # (``played_at_priority``); legal-action sequences change with no template
 # change, so saves and replays from v138 are refused by the version check.
-ACTION_CODEC_VERSION = 139
+# v140 (user decision 2026-10-08, "추천대로"; rules/pauses.py, OQ-103): the
+# engine pauses with a one-outcome chance decision before each Conflict
+# reward recipient after the first, once the rewards are paid before the
+# Conflict-end Intrigue windows, before every Round Start after the first,
+# and after a Control defense, so the play server can hold a seat's
+# last choice before the reveal that follows it. No template or legal
+# action changes and the pause draws nothing from the random stream, but
+# every recorded step sequence gains those chance steps, so saves and
+# replays from v139 are refused by the version check.
+ACTION_CODEC_VERSION = 140
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

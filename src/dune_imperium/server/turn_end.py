@@ -6,9 +6,9 @@ its owner's ``finish_agent_turn`` (user ruling OQ-095), a Reveal turn
 through ``finish_reveal``, and a turn-passing card is that press itself; the
 server holds the remaining unit ends (a Leader pick, Conflict rewards, a
 Control defense, an Arrakeen Scouts line) until the seat presses "턴 종료",
-as long as the seat still has a step of the unit to take back; a step it
-could not take back is instead held by the browser and sent with "확정 ▶"
-(``sent_by_turn_end``, see below).
+as long as the seat still has a step of the unit to take back; a step that
+reveals something itself cannot be taken back and is instead held by the
+browser and sent with "확정 ▶" (``sent_by_turn_end``, see below).
 The last Leader pick has its own explicit ``finish_leader_draft`` so setup
 cannot reveal hidden cards before that press (OQ-007).
 Which steps end a turn is a reading of the decision stack the engine
@@ -25,13 +25,15 @@ turn, and the three opponent-decision frames anywhere.
 
 The press is the seat's confirmation, and until it the seat may take its
 unit's steps back. So a held unit end comes before the chance outcomes that
-follow the unit (the next round's reshuffles and draws, the next Arrakeen
-Scouts card): those reveal hidden information, which closes the undo window
-(OQ-010), and a press after them would confirm nothing ("전투 보상으로 받은
-스파이 둘 위치를 골랐다가 … 확정 전에 다른 곳에 두고 싶을 수 있잖아",
-user, 2026-10-08). A chance outcome inside the unit (a reshuffle in the
-middle of an Agent turn, whose frame waits below it) resolves at once, as
-the effect that drew the card.
+follow the unit (the next Arrakeen Scouts card, a reshuffle, and the
+engine's pauses before a reveal: before each Conflict reward recipient
+after the first, before every Round Start after the first, after a Control
+defense, rules/pauses.py): those reveal hidden information or stand right
+before it, the reveal closes the undo window (OQ-010), and a press after
+it would confirm nothing ("전투 보상으로 받은 스파이 둘 위치를 골랐다가 …
+확정 전에 다른 곳에 두고 싶을 수 있잖아", user, 2026-10-08). A chance
+outcome inside the unit (a reshuffle in the middle of an Agent turn, whose
+frame waits below it) resolves at once, as the effect that drew the card.
 """
 
 from typing import Final
