@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum
+from typing import TYPE_CHECKING
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
@@ -46,6 +47,11 @@ from dune_imperium.rules.pauses import REWARDS, push_pause
 from dune_imperium.rules.scouts_missions import free_prison_marker
 from dune_imperium.rules.spy_placement import recall_spy
 from dune_imperium.rules.tactics import advance_tactics_token
+
+if TYPE_CHECKING:
+    # Typing only: effect_interpreter's own imports reach this module, so
+    # its functions are imported where they are called.
+    from dune_imperium.rules.effect_interpreter import OptionUnplayable
 
 
 class RewardRank(IntEnum):
@@ -1436,23 +1442,73 @@ def _harvest_cells_has_effect(
     )
 
 
+class ConflictEndTriggerBlock(StrEnum):
+    """Why a held Conflict-end trigger card is not offered in its window.
+
+    ``conflict_end_trigger_block`` returns one of these, or the option's own
+    reason (``option_unplayable_reason``); the window offers exactly the
+    cards without a block (``_conflict_end_trigger_cards``), and the page
+    greys out the others with that reason (``display.unavailable``, user
+    request 2026-09-29).
+    """
+
+    # Fewer units leave the Conflict than the trigger names.
+    LOSS = "loss"
+    # One more copy could change nothing (``_harvest_cells_has_effect``):
+    # no Tleilaxu card its specimens could pay for, and no troop in the
+    # supply once the Conflict's troops are back there ...
+    NO_TROOP = "no_troop"
+    # ... or the copies already face up take every such troop.
+    TROOPS_TAKEN = "troops_taken"
+
+
+def conflict_end_trigger_block(
+    state: GameState, player: int, option: IntrigueOption, lost: int | None = None
+) -> ConflictEndTriggerBlock | OptionUnplayable | None:
+    """Why ``player`` may not play ``option``, a Conflict-end loss trigger,
+    in its Conflict-end window now, or None when it may.
+
+    In order: the trigger's loss ("When you lose at least three troops at
+    the end of a Conflict:" [Harvest Cells card]; ``lost`` defaults to the
+    units in the Conflict, ``_conflict_losses``), the play's own conditions
+    and costs (``option_unplayable_reason``), then an effect that could
+    change something (``_harvest_cells_has_effect``, user ruling
+    2026-10-06).
+    """
+
+    from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+
+    trigger = option.trigger
+    if not isinstance(trigger, OnTroopsLostAtConflictEnd):
+        raise ValueError("not a Conflict-end loss trigger")
+    if lost is None:
+        lost = _conflict_losses(state)[player]
+    if lost < trigger.minimum:
+        return ConflictEndTriggerBlock.LOSS
+    unplayable = option_unplayable_reason(state, player, option)
+    if unplayable is not None:
+        return unplayable
+    if _harvest_cells_has_effect(state, player, option):
+        return None
+    # The troops ``_harvest_cells_has_effect`` counts as back in the supply.
+    owner = state.players[player]
+    if owner.troops_supply + owner.troops_conflict == 0:
+        return ConflictEndTriggerBlock.NO_TROOP
+    return ConflictEndTriggerBlock.TROOPS_TAKEN
+
+
 def _conflict_end_trigger_cards(
     state: GameState, player: int, lost: int
 ) -> tuple[str, ...]:
     """Hand Intrigue whose Conflict-end trigger would fire now, is playable,
-    and could change something (``_harvest_cells_has_effect``)."""
-
-    from dune_imperium.rules.effect_interpreter import option_is_playable
+    and could change something (``conflict_end_trigger_block``)."""
 
     cards: list[str] = []
     for card_id in state.players[player].intrigue_cards:
         option = _loss_trigger_option(card_id)
         if (
             option is not None
-            and isinstance(option.trigger, OnTroopsLostAtConflictEnd)
-            and lost >= option.trigger.minimum
-            and option_is_playable(state, player, option)
-            and _harvest_cells_has_effect(state, player, option)
+            and conflict_end_trigger_block(state, player, option, lost) is None
         ):
             cards.append(card_id)
     return tuple(cards)
@@ -1464,18 +1520,60 @@ def _conflict_losses(state: GameState) -> tuple[int, ...]:
     )
 
 
+def _loss_triggers() -> tuple[tuple[str, int], ...]:
+    """Every Intrigue instance with a Conflict-end loss trigger, and its
+    minimum loss (Harvest Cells' two copies, three troops)."""
+
+    return tuple(
+        (instance_id, option.trigger.minimum)
+        for instance_id, entry in INTRIGUE_CARDS_BY_INSTANCE.items()
+        for option in entry.options
+        if isinstance(option.trigger, OnTroopsLostAtConflictEnd)
+    )
+
+
+def _conflict_end_window_opens(state: GameState, player: int, lost: int) -> bool:
+    """Whether ``player`` gets a Conflict-end window, on public facts only.
+
+    Every seat sees the units in the Conflict, how many Intrigue cards a
+    seat holds, the Intrigue discard and the cards face up; none sees a
+    hand. So the window opens with the Immortality module for a seat that
+    loses at least the smallest loss any such card names and holds an
+    Intrigue card, unless every copy of those cards is already public.
+    """
+
+    triggers = _loss_triggers()
+    if not state.config.immortality or not triggers:
+        return False
+    if lost < min(minimum for _, minimum in triggers):
+        return False
+    if not state.players[player].intrigue_cards:
+        return False
+    public = {
+        *state.intrigue_discard,
+        *(card for seat in state.players for card in seat.intrigue_faceup),
+    }
+    return any(instance_id not in public for instance_id, _ in triggers)
+
+
 def offer_conflict_end_triggers(state: GameState) -> RuleResult:
     """Open the window for Intrigue that triggers at this Conflict's end.
 
     Harvest Cells is played only here, after the rewards and before the
-    cleanup, and only when its condition holds: "This card is played after
-    combat resolves." (designer ruling, OQ-057 (11)), and "To play an
-    Intrigue card, you must meet its conditions and pay its costs."
-    [FAQ p. 2] (user ruling 2026-10-06; ``IntriguePlayBlock.CONFLICT_END``
-    keeps it out of Combat Intrigue). Each seat, in turn order from the
-    First Player (OQ-002), may play a hand card whose Conflict-end trigger
-    would fire -- one held from earlier or one just received as a reward.
-    Without candidates the window closes at once.
+    cleanup: "This card is played after combat resolves." (designer ruling,
+    OQ-057 (11); ``IntriguePlayBlock.CONFLICT_END`` keeps it out of Combat
+    Intrigue). Each seat, in turn order from the First Player (OQ-002), may
+    play a hand card whose Conflict-end trigger would fire -- one held from
+    earlier or one just received as a reward.
+
+    Whether a seat's window opens is decided on public facts only
+    (``_conflict_end_window_opens``), the same frame, prompt and event for
+    every seat, so a window no longer tells the table that its seat holds
+    Harvest Cells (OQ-103, user decision 2026-10-09: "1번은 A안으로 가자").
+    A seat that can play nothing gets only the decline. The play itself
+    keeps its condition: "To play an Intrigue card, you must meet its
+    conditions and pay its costs." [FAQ p. 2] (user ruling 2026-10-06,
+    ``legal_conflict_end_trigger_actions``).
     """
 
     if state.phase is not GamePhase.COMBAT:
@@ -1489,7 +1587,7 @@ def offer_conflict_end_triggers(state: GameState) -> RuleResult:
     frames: list[DecisionFrame] = []
     for offset in range(state.config.players):
         player = (first + offset) % state.config.players
-        if not _conflict_end_trigger_cards(state, player, losses[player]):
+        if not _conflict_end_window_opens(state, player, losses[player]):
             continue
         frames.append(
             DecisionFrame(
@@ -1574,7 +1672,6 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
             ),
         )
     card_id = str(dict(action.arguments)["card_id"])
-    losses = _conflict_losses(state)
     owner = state.players[player]
     staged = replace(
         owner,
@@ -1582,11 +1679,13 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
         intrigue_faceup=(*owner.intrigue_faceup, card_id),
     )
     after = replace(state, players=replace_player(state.players, staged))
-    # The window stays open only for another card that could still change
-    # something with this one face up (``_harvest_cells_has_effect``).
-    others = _conflict_end_trigger_cards(after, player, losses[player])
+    # The window stays open while the seat holds an Intrigue card, a public
+    # fact: closing it only when no other copy could change something would
+    # tell the table whether a second Harvest Cells is in the hand (OQ-103).
+    # Its play actions still offer only a copy that would change something
+    # (``_harvest_cells_has_effect``).
     return RuleResult(
-        state=after if others else after.pop_decision(),
+        state=after if staged.intrigue_cards else after.pop_decision(),
         events=(
             GameEvent(
                 event_id=f"{frame.frame_id}:played:{card_id}",
@@ -2192,9 +2291,9 @@ def _fire_troop_loss_triggers(
     """Resolve face-up Intrigue waiting on a Conflict-end troop loss.
 
     Only the Conflict-end window lays such a card face up, and only when
-    this loss meets its trigger (``offer_conflict_end_triggers``); nothing
-    changes the troops in the Conflict between that window and the cleanup,
-    so the card always fires. It used to expire when a card laid face up in
+    this loss meets its trigger (``legal_conflict_end_trigger_actions``);
+    nothing changes the troops in the Conflict between that window and the
+    cleanup, so the card always fires. It used to expire when a card laid face up in
     Combat Intrigue lost too few (gone with the user ruling of 2026-10-06).
     """
 

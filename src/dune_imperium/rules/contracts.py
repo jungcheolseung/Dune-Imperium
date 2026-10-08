@@ -1515,9 +1515,7 @@ def alliance_recipients(events: tuple[GameEvent, ...]) -> tuple[int, ...]:
     return tuple(recipients)
 
 
-def complete_alliance_contracts(
-    result: RuleResult, carried: tuple[int, ...] = ()
-) -> RuleResult:
+def complete_alliance_contracts(result: RuleResult) -> RuleResult:
     """Complete Earn Any Alliance when its holder takes a new Alliance token.
 
     "Earn any Alliance is completed the next time you take an Alliance token
@@ -1529,11 +1527,6 @@ def complete_alliance_contracts(
     visit). Troops recruited during the holder's own turn join that turn's
     deployment allowance like any other mid-turn recruit [Main p. 10]
     [FAQ p. 4].
-
-    ``carried`` are the seats whose Alliance was taken in an earlier step
-    that stopped at the engine's pause (rules/pauses.py): the run of
-    automatic steps the pause cut in two ends here, where the completion
-    always came.
     """
 
     state = result.state
@@ -1541,7 +1534,7 @@ def complete_alliance_contracts(
         return result
     recipients = [
         player
-        for player in dict.fromkeys((*carried, *alliance_recipients(result.events)))
+        for player in alliance_recipients(result.events)
         if 0 <= player < state.config.players
     ]
     if not recipients:

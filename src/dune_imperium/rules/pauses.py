@@ -25,21 +25,25 @@ seat anything:
 - ``REWARDS`` before each Conflict reward recipient after the first is paid
   (``rules/combat.py``);
 - ``CONFLICT_END`` once a Combat's rewards are paid, before the Conflict-end
-  Intrigue windows are offered (``rules/engine.py``): only seats holding a
-  playable Harvest Cells get a window, so the last recipient's choice must
-  stop before that is known, in the last round too, which has no Round Start;
+  Intrigue windows are offered (``rules/engine.py``). The windows open on
+  public facts and tell nothing of a hand (OQ-103, user decision
+  2026-10-09); the pause keeps the last recipient's choice open to undo
+  before them, like the earlier recipients' choices, in the last round
+  too, which has no Round Start;
 - ``ROUND_START`` before every round's reshuffles and reveal after the first
   round (``rules/engine.py``), after any Conflict-end Intrigue window;
 - ``ROUND_DRAW`` after a Control defense, before the round's draw
   (``rules/phases.py``).
 
-A pause changes no outcome. Every step it holds back runs as it did, in the
-same order. The one hook the engine runs at the end of a step on that
-step's own events, Earn Any Alliance's completion, would have moved: the
-seats that took an Alliance ride on the pause and complete where the run of
-automatic steps ends, as before (``rules/engine.py``
-``_complete_alliance_contracts``; an old-vs-new differential over 344
-seeded games found every state, action and outcome the same).
+Every step a pause holds back runs as it did, in the same order. The one
+hook the engine runs at the end of a step on that step's own events, Earn
+Any Alliance's completion, runs at the end of the step that took the
+Alliance, also when that step stopped at a pause (``rules/engine.py``
+``_complete_alliance_contracts``). In Combat every reward step ends at a
+pause or a choice before the cleanup, so the Contract always completes
+before the Conflict's troops go back to the supply, and its troops come
+only from the supply, a shortfall dropped like any Conflict reward's
+(OQ-056, user decision 2026-10-09).
 """
 
 from typing import Final
