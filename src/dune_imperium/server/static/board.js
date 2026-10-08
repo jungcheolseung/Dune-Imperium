@@ -1476,10 +1476,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
 
   const title = document.createElement("div");
   title.appendChild(chip(spaceId, "spaces"));
-  const flags = [];
-  if (entry.combat) flags.push(t("board.flag_combat_space"));
-  if (entry.maker) flags.push(phraseText("{maker}"));
-  if (entry.critical) flags.push(phraseText("{control}"));
+  const flags = spaceFlagWords(entry);
   if (flags.length) {
     const flagLine = document.createElement("div");
     flagLine.className = "muted";
@@ -1496,7 +1493,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
 
   const detail = document.createElement("div");
   if (entry.requirement) detail.appendChild(requirementNode(entry.requirement));
-  for (const option of spaceOptionsFor(entry)) detail.appendChild(spaceOptionLine(option));
+  for (const line of spaceOptionNodes(entry)) detail.appendChild(line);
   const notesKo = entry.notes_ko || [];
   entry.notes.forEach((noteText, i) => {
     detail.appendChild(effectLine(noteText, notesKo[i], "muted"));

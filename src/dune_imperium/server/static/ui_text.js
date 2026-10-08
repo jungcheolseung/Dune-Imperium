@@ -102,6 +102,14 @@ const UI_TEXT = {
     "ko": "⚔ 전투 장소",
     "en": "⚔ Combat space"
   },
+  "board.space_agent_icon": {
+    "ko": "에이전트 아이콘: {{icon}}",
+    "en": "Agent icon: {{icon}}"
+  },
+  "board.space_cost_now": {
+    "ko": "지금 적용",
+    "en": "applies now"
+  },
   "board.influence_cube": {
     "ko": "플레이어{{seat}} · {{faction}} {influence_any} {{level}}",
     "en": "Player {{seat}} · {{faction}} {influence_any} {{level}}"
