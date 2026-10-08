@@ -376,6 +376,9 @@ APP_PIECE_SOURCES = {
     # the High Council seat token (a disc with the council chair; the texture
     # has black corners, cut to the circle)
     "council": "T_Icon_CouncilSeat_{C}",
+    # the plain glossy player disc: the app's marker on both Bene Tleilax
+    # tracks (also the Ix shipping track), drawn on the Score track too
+    "disc": "T_icon_ShippingTrack_PlayerPip_{C}",
 }
 APP_PIECE_ROUND = {"council"}
 # The four Alliance tokens (display.token_images.ALLIANCE_TOKEN_FACTIONS) ->

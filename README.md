@@ -106,7 +106,8 @@ clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 
   넘으면 `+20` 면으로 뒤집힌다[Main p. 12]. 한 색의 두 면이 다 있어야 그 좌석에
   적용된다. 같은 폴더의 `shield_wall.png`는 Shield Wall 토큰으로, 제거되기 전까지
   Spice Refinery 아래의 표시된 위치에 놓인다[Main p. 4]. 보드의 좌석 말(Agent·Spy·
-  Control marker·병력·모래벌레)은 `<말>_<색>.png` 그림이 네 색 다 있으면 그 그림으로,
+  Control marker·병력과 영향력 큐브·모래벌레·High Council 원판, 점수와 Bene Tleilax
+  트랙의 player disc)은 `<말>_<색>.png` 그림이 네 색 다 있으면 그 그림으로,
   없으면 단색 도형으로 그린다(`scripts/dwgr/app_assets.py pieces`). 출처는 에셋 저장소 README 참고.
 - `assets/board/map.jpg` (또는 `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
   좌표(`dune_imperium.display.board_layout`)는 소유자의 6012×6005 정사각형

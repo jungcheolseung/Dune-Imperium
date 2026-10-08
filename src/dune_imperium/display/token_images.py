@@ -104,8 +104,9 @@ def available_strength_tokens(
 # ``STRENGTH_TOKEN_COLORS``): an Agent on a space or in a Conflict, a Spy on
 # an observation post, a Control marker on a space's flag, a troop cube (also
 # drawn as the Influence cube on the Faction tracks), a sandworm in a Conflict
-# or garrison, and the High Council seat token. Without a kind's four pictures
-# the UI keeps its flat drawn piece for that kind.
+# or garrison, the High Council seat token, and the plain player disc (the
+# Score marker and both Bene Tleilax track markers). Without a kind's four
+# pictures the UI keeps its flat drawn piece for that kind.
 SEAT_PIECE_KINDS: Final[tuple[str, ...]] = (
     "agent",
     "spy",
@@ -113,6 +114,7 @@ SEAT_PIECE_KINDS: Final[tuple[str, ...]] = (
     "troop",
     "sandworm",
     "council",
+    "disc",
 )
 
 
