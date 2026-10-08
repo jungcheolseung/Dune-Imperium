@@ -37,10 +37,11 @@ import sys
 from pathlib import Path
 
 import app_render as R
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from dune_imperium.agents.app_ai import catalog
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
+from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.display.images import load_card_manifest
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
@@ -1573,18 +1574,234 @@ def bind_contract(inp, spec, lang):
     return bind_prefab_texts(inp, t, lang, spec["prefab"])
 
 
+# ---------------------------------------------------------------- tech tiles
+# Bloodlines' 18 Tech tiles on the app's Tech tile template, the Rise of Ix
+# tiles' prefabs: frame, cost hexagon, acquire strip, TextMeshPro title and
+# body, and the House Hagal watermark that marks a Rival tile. The app has no
+# Bloodlines content, so the printed English comes from en_text.json
+# (card.techtile.<slug>.ability) and the Korean from ko_text.json; the acquire
+# strip is derived from the engine's tile definition with the app's own icons.
+TECH_BY_ID = {tile.tech_id: tile for tile in TECH_TILES}
+TECH_TEMPLATES = {
+    "none": "UI_crd_TechTile_Artillery.prefab.json",  # the cost hexagon alone
+    "small": "UI_crd_TechTile_Windtraps.prefab.json",  # short strip, one icon
+    "large": "UI_crd_TechTile_Chaumurky.prefab.json",  # long strip, two icons
+}
+# strip icon -> (sprite, from the inline set?, width, height) in template units;
+# sizes follow the Ix tiles that print the same icon (Memocorders' ?, Flagship's
+# VP, Sonic Snoopers' Intrigue card, Disposal Facility's trash card) and the
+# Bloodlines prints for the rest
+TECH_STRIP_ICONS = {
+    "ShieldWallBreak": ("UI_crd_ActionIcon_BlowWall", False, 96, 110),
+    "SignetRing": ("UI_crd_ActionIcon_SignetRing", False, 100, 88),
+    "VictoryPoint": ("UI_crd_ActionIcon_VictoryPoint", False, 92, 92),
+    "Solari": ("Solari_{n}", True, 96, 96),
+    "Contract": ("UI_crd_ActionIcon_CHOAMContract", False, 108, 70),
+    "WildRankUp": ("WildRankUp", False, 92, 104),
+    "DrawCard": ("DrawCard", True, 90, 126),
+    "IntrigueCard": ("IntrigueCard", False, 84, 124),
+    "TrashCard": ("TrashCard", False, 84, 124),
+    "Troop": ("Troop", False, 88, 94),
+    "SuperSpy": ("SuperSpy", True, 112, 118),
+}
+# the print sets the title and the cost in a bold face, larger than the app's
+# Gotham Book 52 / Gotham Medium 115
+TECH_TITLE = {"font": "Gotham-Bold SDF", "max": 46.0}
+TECH_COST = {"font": "Gotham-Bold SDF", "size": 128.0}
+# the print sets the body in a narrower column than the app's 560-unit box,
+# with tighter lines than the app's line spacing of 75
+TECH_BODY = {"min": 24.0, "max": 36.0, "line_spacing": 15.0}
+TECH_BODY_WIDTH = 450.0
+# the CHOAM Module tiles print the CHOAM mark before the name
+TECH_CHOAM_MARK = "<sprite name=CHOAMSet> "
+# an icon-only line is marked <size=150%> in the text tables (the app's own
+# convention); the print draws those icons larger still
+TECH_ICON_LINE = ("<size=150%>", "<size=195%>")
+TECH_OR = {"en": "—OR—", "ko": "—또는—"}
+# the set mark printed in the bottom-right corner: four small dots, above the
+# Hagal shell on a Rival tile and in its place otherwise (template units from
+# the tile's top-left corner, measured on the scans)
+TECH_SET_MARK = (747.0, 443.0)
+TECH_SET_MARK_ABOVE_SHELL = 33.0
+
+
+def tech_strip(tile):
+    """The acquire strip's icons top to bottom as the tiles print them."""
+    out = []
+    if tile.acquire_may_destroy_shield_wall:
+        out.append("ShieldWallBreak")
+    if tile.acquire_leader_signet:
+        out.append("SignetRing")
+    out += ["VictoryPoint"] * tile.acquire_victory_points
+    if tile.acquire_solari:
+        out.append(f"Solari_{tile.acquire_solari}")
+    out += ["Contract"] * tile.acquire_contracts
+    if tile.acquire_influence_choice:
+        out.append("WildRankUp")
+    if tile.acquire_intrigue_or_card:
+        out += ["IntrigueCard", "OR", "DrawCard"]
+    out += ["DrawCard"] * tile.acquire_cards
+    out += ["IntrigueCard"] * tile.acquire_intrigue
+    if tile.acquire_may_trash_card:
+        out.append("TrashCard")
+    out += ["Troop"] * tile.acquire_troops
+    out += ["SuperSpy"] * tile.acquire_deep_cover_spies
+    return out
+
+
+def tech_spec(inp, content_id):
+    tile = TECH_BY_ID[content_id]
+    key = f"card.techtile.{content_id.replace('_', '')}.ability"
+    en = inp.en.get(key)
+    return {
+        "kind": "tech",
+        "id": content_id,
+        "title": {"en": tile.name, "ko": KOREAN_CARD_NAMES["tech"].get(content_id)},
+        "cost": tile.cost,
+        "rival": tile.rival,
+        "choam": tile.choam_only,
+        "strip": tech_strip(tile),
+        "texts": [{"key": key, "en": en, "ko": inp.ko.get(key)}],
+        "art": "tech" if en else None,
+        "skip": None if en else "no English text (en_text.json)",
+        "path": inp.manifest.get(("tech", content_id)),
+    }
+
+
+def tech_set_icon(node, name):
+    base, _, n = name.partition("_")
+    sprite, inline, w, h = TECH_STRIP_ICONS[base]
+    set_sprite(node, sprite.format(n=n))
+    node["inline"] = inline
+    R.comp(node, "Image")["m_PreserveAspect"] = 1
+    R.comp(node, "RT")["size"] = [float(w), float(h)]
+
+
+def tech_or_node(icon, lang):
+    """The printed —OR— between two strip icons (Gene-Locked Vault)."""
+    rt = copy.deepcopy(R.comp(icon, "RT"))
+    rt["pos"] = [-1.0, 0.0]
+    rt["size"] = [92.0, 30.0]
+    node = {
+        "name": "OrText",
+        "active": True,
+        "comps": [
+            rt,
+            {"_": "CanvasRenderer"},
+            {
+                "_": "TextMeshProUGUI",
+                "m_text": TECH_OR[lang],
+                "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
+                "m_fontSize": 19.0,
+                "m_fontSizeMin": 10.0,
+                "m_fontSizeMax": 19.0,
+                "m_enableAutoSizing": 0,
+                "m_fontColor": [1.0, 1.0, 1.0, 1.0],
+                "m_Color": [1.0, 1.0, 1.0, 1.0],
+                "m_HorizontalAlignment": 2,
+                "m_VerticalAlignment": 512,
+                "m_fontStyle": 1,
+                "m_characterSpacing": 0.0,
+                "m_lineSpacing": 0.0,
+            },
+        ],
+        "children": [],
+        "text": TECH_OR[lang],
+    }
+    if lang == "ko":
+        node["fallback"] = str(KOREAN_FONT_BOLD)
+    return node
+
+
+def tech_set_mark(spec):
+    """Draw the four-dot set mark after rendering (no app sprite for it)."""
+
+    def post(img, scale):
+        draw = ImageDraw.Draw(img)
+        cx, cy = TECH_SET_MARK
+        if spec["rival"]:
+            cy -= TECH_SET_MARK_ABOVE_SHELL
+        r, gap = 2.7 * scale, 9.5 * scale
+        for dx in (-gap / 2, gap / 2):
+            for dy in (-gap / 2, gap / 2):
+                x, y = cx * scale + dx, cy * scale + dy
+                draw.ellipse((x - r, y - r, x + r, y + r), fill=(208, 212, 196, 150))
+        return img
+
+    return post
+
+
+def bind_tech(inp, spec, lang):
+    strip = spec["strip"]
+    layout = "none" if not strip else ("small" if len(strip) == 1 else "large")
+    t = copy.deepcopy(inp.tree(TECH_TEMPLATES[layout]))
+    # the frame's own size, so its rounded corners are not clipped, and no
+    # drop shadow beyond it; the prefab root also carries a stray Intrigue front
+    R.comp(t, "RT")["size"] = [794.0, 520.0]
+    t["hide_image"] = True
+    R.find(t, "Shadow")["active"] = False
+    head = R.find(t, "HeaderRoot")
+    head["text"] = spec["title"].get(lang) or spec["title"]["en"]
+    if spec["choam"]:
+        head["text"] = TECH_CHOAM_MARK + head["text"]
+    head["font_override"] = TECH_TITLE["font"]
+    head["tmp_patch"] = {"m_fontSizeMax": TECH_TITLE["max"]}
+    if lang == "ko":
+        head["fallback"] = str(KOREAN_FONT_BOLD)
+    cost = R.find(t, "CostText")
+    cost["text"] = str(spec["cost"])
+    cost["font_override"] = TECH_COST["font"]
+    cost["tmp_patch"] = {"m_fontSize": TECH_COST["size"]}
+    body_root = R.find(t, "BodyRoot")
+    R.comp(body_root, "RT")["size"][0] = TECH_BODY_WIDTH
+    body = next(n for n in R.find_all_nodes(body_root) if R.comp(n, "TextMeshProUGUI"))
+    body["text"] = pick(spec["texts"][0], lang).replace(*TECH_ICON_LINE)
+    # the app sets 36 pt and never shrinks; the long Bloodlines texts print smaller
+    body["tmp_patch"] = {
+        "m_enableAutoSizing": 1,
+        "m_fontSizeMin": TECH_BODY["min"],
+        "m_fontSizeMax": TECH_BODY["max"],
+        "m_lineSpacing": TECH_BODY["line_spacing"],
+    }
+    if lang == "ko":
+        # the Korean tiles print the body in a bold gothic
+        body["fallback"] = str(KOREAN_FONT_BOLD)
+    R.find(t, "HagalIcon")["active"] = bool(spec["rival"])
+    if layout == "small":
+        elem = R.find(t, "UI_crd_Element_TechTile_Side_OneIcon")
+        R.comp(elem, "RT")["pos"] = [10.3, 20.4]
+        R.comp(elem, "RT")["size"] = [100.0, 100.0]
+        icon = R.find(elem, "CostIcon_0")
+        R.comp(icon, "RT")["pos"] = [0.0, 0.0]
+        tech_set_icon(icon, strip[0])
+    elif layout == "large":
+        elem = R.find(t, "UI_crd_Element_TechTile_TwoIcons")
+        icons = [R.find(elem, "CostIcon_0"), R.find(elem, "CostIcon_1")]
+        names = [n for n in strip if n != "OR"]
+        for icon, name in zip(icons, names, strict=True):
+            tech_set_icon(icon, name)
+        if "OR" in strip:
+            for icon, y in zip(icons, (74.0, -74.0), strict=True):
+                R.comp(icon, "RT")["pos"] = [-1.0, y]
+            elem["children"].append(tech_or_node(icons[0], lang))
+    t["_post"] = [tech_set_mark(spec)]
+    return t
+
+
 # ---------------------------------------------------------------- render
 BINDERS = {
     "imperium": lambda inp, spec, lang: bind_dynamic(inp, spec, lang),
     "intrigue": lambda inp, spec, lang: bind_intrigue(inp, spec, lang),
     "conflict": lambda inp, spec, lang: bind_conflict(inp, spec, lang),
     "contract": lambda inp, spec, lang: bind_contract(inp, spec, lang),
+    "tech": lambda inp, spec, lang: bind_tech(inp, spec, lang),
 }
 SPECS = {
     "imperium": lambda inp, cid: imperium_spec(inp, cid),
     "intrigue": lambda inp, cid: intrigue_spec(inp, cid),
     "conflict": lambda inp, cid: conflict_spec(inp, cid),
     "contract": lambda inp, cid: contract_spec(inp, cid),
+    "tech": lambda inp, cid: tech_spec(inp, cid),
 }
 # Rise of Ix cards in play: Epic Game Mode's starting card and Conflict III.
 EPIC_GAME_MODE_IDS = frozenset({"control_the_spice", "economic_supremacy"})
@@ -1612,6 +1829,7 @@ KIND_IDS = {
         for cid, short in catalog.CONTRACT_ARCHETYPES.items()
         if ".Uprising." in short
     ],
+    "tech": lambda: [tile.tech_id for tile in TECH_TILES],
 }
 
 
@@ -1620,7 +1838,10 @@ def render_card(inp, spec, lang, scale):
     size = R.comp(tree, "RT")["size"]
     r = R.CardRenderer(inp.sprites, inp.text, scale, custom=custom_draw(inp))
     r.alt = inp.inline
-    return r.render(tree, int(size[0]), int(size[1]))
+    img = r.render(tree, int(size[0]), int(size[1]))
+    for post in tree.get("_post", ()):
+        img = post(img, scale)
+    return img
 
 
 def card_ids(args):
@@ -1652,7 +1873,13 @@ def cmd_render(args):
     for kind, cid in card_ids(args):
         spec = SPECS[kind](inp, cid)
         if not spec["art"] or not spec["path"]:
-            skipped.append((cid, "no art" if not spec["art"] else "no manifest path"))
+            skipped.append(
+                (
+                    cid,
+                    spec.get("skip")
+                    or ("no art" if not spec["art"] else "no manifest path"),
+                )
+            )
             continue
         for lang in langs:
             if lang == "ko" and not korean_complete(spec) and not args.allow_missing_ko:
