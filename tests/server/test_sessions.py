@@ -2,11 +2,14 @@
 
 import json
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.core.state import GameState
 from dune_imperium.server.sessions import (
     GameSessionManager,
     JsonObject,
@@ -14,6 +17,7 @@ from dune_imperium.server.sessions import (
     SessionError,
     StaleRevisionError,
     UnknownGameError,
+    _serialize_view,
 )
 
 ALL_AI = ("heuristic", "random", "heuristic", "random")
@@ -90,6 +94,67 @@ def test_every_seat_view_serializes_the_shared_deck_sizes() -> None:
         assert view["imperium_deck_size"] == len(state.imperium_deck)
         assert view["intrigue_deck_size"] == len(state.intrigue_deck)
         assert "imperium_deck" not in view and "intrigue_deck" not in view
+
+
+@pytest.mark.parametrize("epic_game", [False, True])
+def test_every_view_names_the_tier_on_the_conflict_deck_back(epic_game: bool) -> None:
+    """ "Conflict 카드를 I, II, III 뒷면별로 나눈다." and "완성된 덱은
+    위에서부터 I 1장, II 5장, III 4장이다." [Main p. 4]; Epic Game Mode puts
+    "II 5장을 III 5장(Economic Supremacy 포함) 위에" with no Conflict I
+    [Rise of Ix p. 10] [Main p. 18] (docs/rules/setup-and-game-flow.md). The
+    deck lies face down [Main p. 4] (docs/rules/information-visibility.md),
+    so the back of its top card is public: the view names that tier, and
+    0 once the deck is empty, at every size the deck takes in a game. The
+    Leader draft (OQ-007) shows the whole deck before round 1 reveals its
+    first card, Conflict I on top."""
+
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        ALL_AI, game_seed=21, leader_draft=True, epic_game=epic_game
+    )
+    session = manager._get(_text(summary["game_id"]))
+    engine = session.engine
+    # The tier by deck size, as the setup builds the deck.
+    by_size = (
+        {size: 2 if size > 5 else 3 for size in range(1, 11)}
+        if epic_game
+        else {size: 1 if size == 10 else 2 if size > 4 else 3 for size in range(1, 11)}
+    )
+    by_size[0] = 0
+
+    def tier_shown(state: GameState) -> int:
+        view = _serialize_view(engine.observe(state, 0), state)
+        return _int(view["conflict_deck_top_tier"])
+
+    state = engine.reset(session.config, session.game_seed)
+    seen: dict[int, int] = {}
+    for step in (None, *session.steps):
+        if step is not None:
+            state = engine.apply(state, step).state
+        size = len(state.conflict_deck)
+        if size in seen:
+            continue
+        top = CONFLICTS_BY_ID[state.conflict_deck[0]].tier.value if size else 0
+        seen[size] = tier_shown(state)
+        assert seen[size] == top == by_size[size], (size, seen[size], top)
+    # The game ran through every tier its deck holds.
+    assert set(seen.values()) >= ({2, 3} if epic_game else {1, 2, 3})
+    assert tier_shown(replace(state, conflict_deck=())) == 0
+
+
+def test_a_seat_view_carries_the_conflict_deck_top_tier() -> None:
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=13)
+    game_id = _text(summary["game_id"])
+    state = manager._get(game_id).state
+    assert state.conflict_deck
+    view = manager.view(game_id, 0)
+    assert view["conflict_deck_top_tier"] == (
+        CONFLICTS_BY_ID[state.conflict_deck[0]].tier.value
+    )
+    # Only the tier: no card of the deck is named.
+    assert "conflict_deck" not in view
+    assert not set(state.conflict_deck) & set(json.dumps(view).split('"'))
 
 
 def test_only_human_seats_expose_views_and_actions() -> None:
