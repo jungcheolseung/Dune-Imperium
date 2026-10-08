@@ -115,6 +115,14 @@ def _run_in_thread(name: str, work: Callable[[], None]) -> None:
 
 
 class Controller:
+    """The launcher's state, changed only under ``_lock``.
+
+    Every start gets a generation number. A start called off during its
+    checks keeps running on its worker until the checks end, but by then
+    its generation is stale and it changes nothing: a second start made in
+    the meantime is not overwritten by the first one's result.
+    """
+
     def __init__(
         self,
         settings_path: Path,
@@ -137,8 +145,13 @@ class Controller:
         self._ready_timeout = ready_timeout
         self._spawn = spawn
         self._lock = threading.Lock()
+        # Read-modify-write of the settings, from the window and the workers.
+        self._save_lock = threading.Lock()
         self._phase = Phase.IDLE
+        self._generation = 0
         self._server: ServerProcess | None = None
+        # Run once the stop under way has ended (a close during a stop).
+        self._after_stop: list[Callable[[], None]] = []
         self.plan: LaunchPlan | None = None
 
     @property
@@ -149,22 +162,35 @@ class Controller:
     def server(self) -> ServerProcess | None:
         return self._server
 
-    def _set_phase(self, phase: Phase) -> None:
-        with self._lock:
-            self._phase = phase
-        self._emit(PhaseChanged(phase))
+    def _update(self, change: Callable[[LauncherSettings], LauncherSettings]) -> None:
+        """Change the settings and write them, one change at a time."""
 
-    def _save(self, settings: LauncherSettings) -> None:
-        self.settings = settings
-        try:
-            save(settings, self.settings_path)
-        except OSError as error:
-            self._emit(LogLine(f"[launcher] 설정을 저장하지 못했습니다: {error}"))
+        with self._save_lock:
+            self.settings = change(self.settings)
+            try:
+                save(self.settings, self.settings_path)
+            except OSError as error:
+                self._emit(LogLine(f"[launcher] 설정을 저장하지 못했습니다: {error}"))
 
     def remember(self, settings: LauncherSettings) -> None:
-        """Keep what the form shows (the window calls this as it closes)."""
+        """Keep what the form shows (the window calls this as it closes).
 
-        self._save(settings)
+        The form carries the hidden fields it was given; the ones a worker
+        may have changed since (the last good start, the last error) are
+        taken from the current settings.
+        """
+
+        self._update(
+            lambda current: replace(
+                settings,
+                last_good=current.last_good,
+                last_error=current.last_error,
+                admin_key=settings.admin_key or current.admin_key,
+            )
+        )
+
+    def renew_admin_key(self) -> None:
+        self._update(lambda current: replace(current, admin_key=None))
 
     def find_addresses(self) -> None:
         def work() -> None:
@@ -184,57 +210,68 @@ class Controller:
             if self._phase is not Phase.IDLE:
                 return False
             self._phase = Phase.CHECKING
+            self._generation += 1
+            generation = self._generation
         self._emit(PhaseChanged(Phase.CHECKING))
-        self._spawn("launcher-start", lambda: self._start(settings))
+        self._spawn("launcher-start", lambda: self._start(settings, generation))
         return True
 
-    def _start(self, settings: LauncherSettings) -> None:
+    def _current(self, generation: int) -> bool:
+        return generation == self._generation
+
+    def _start(self, settings: LauncherSettings, generation: int) -> None:
         settings, admin_key = with_admin_key(settings)
-        self._save(settings)
+        with self._lock:
+            if not self._current(generation):
+                return
+        self._update(lambda current: replace(settings, last_good=current.last_good))
         try:
             plan = build_plan(settings, admin_key)
             problems = preflight(settings, plan, check_torch=self._check_torch)
         except Exception as error:  # a bug must not leave the window stuck
             problems = [Problem("error", f"시작 전 검사가 실패했습니다: {error!r}")]
             plan = None
-        self._emit(ChecksDone(tuple(problems)))
-        if plan is None or has_errors(problems):
-            with self._lock:
-                called_off = self._phase is not Phase.CHECKING
-                self._phase = Phase.IDLE
-            if not called_off:
-                self._emit(PhaseChanged(Phase.IDLE))
-            return
+        failed = plan is None or has_errors(problems)
         with self._lock:
-            if self._phase is not Phase.CHECKING:
-                return  # called off during the checks
+            if not self._current(generation) or self._phase is not Phase.CHECKING:
+                return  # called off during the checks; later state is not ours
+            self._emit(ChecksDone(tuple(problems)))
+            if failed or plan is None:
+                self._phase = Phase.IDLE
+                self._emit(PhaseChanged(Phase.IDLE))
+                return
             self.plan = plan
             server = self._server_factory(plan)
             self._server = server
             self._phase = Phase.STARTING
-        self._emit(PhaseChanged(Phase.STARTING))
+            self._emit(PhaseChanged(Phase.STARTING))
         try:
             server.start()
             info = server.wait_ready(self._ready_timeout)
         except StartupCancelled:
             return  # stop() reports the end
         except StartupFailed as failure:
+            message, tail = failure.message, tuple(failure.tail)
             server.stop(grace=2.0, term_grace=2.0)
             with self._lock:
+                if self._server is not server:
+                    return
+                self._pass_on_lines(server)
                 self._server = None
-            self._save(replace(self.settings, last_error=failure.message))
-            self._emit(
-                StartFailed(failure.message, tuple(failure.tail), self.last_good())
-            )
-            self._set_phase(Phase.IDLE)
+                self._phase = Phase.IDLE
+            self._update(lambda current: replace(current, last_error=message))
+            self._emit(StartFailed(message, tail, self.last_good()))
+            self._emit(PhaseChanged(Phase.IDLE))
             return
-        self._save(
-            replace(self.settings, last_good=snapshot(settings), last_error=None)
-        )
         with self._lock:
-            if self._phase is not Phase.STARTING:
+            if self._server is not server or self._phase is not Phase.STARTING:
                 return  # stopped while it came up
             self._phase = Phase.RUNNING
+        self._update(
+            lambda current: replace(
+                current, last_good=snapshot(settings), last_error=None
+            )
+        )
         self._emit(Started(plan, info, server.log_path, server.pid))
         self._emit(PhaseChanged(Phase.RUNNING))
 
@@ -242,17 +279,25 @@ class Controller:
         """Stop the server on a worker; ``then`` runs after (on that worker).
 
         During the checks there is no server yet: the start is called off.
+        During a stop already under way ``then`` waits for that one.
         """
 
         with self._lock:
             phase = self._phase
             server = self._server
+            if phase is Phase.STOPPING:
+                if then is not None:
+                    self._after_stop.append(then)
+                return True
             if phase is Phase.CHECKING:
                 self._phase = Phase.IDLE
-            elif server is None or phase in (Phase.STOPPING, Phase.IDLE):
+                self._generation += 1
+            elif server is None or phase is Phase.IDLE:
                 return False
             else:
                 self._phase = Phase.STOPPING
+                if then is not None:
+                    self._after_stop.append(then)
         if phase is Phase.CHECKING:
             self._emit(PhaseChanged(Phase.IDLE))
             if then is not None:
@@ -260,19 +305,41 @@ class Controller:
             return True
         assert server is not None
         self._emit(PhaseChanged(Phase.STOPPING))
+        self._spawn("launcher-stop", lambda: self._stop_worker(server, None))
+        return True
 
-        def work() -> None:
-            result = server.stop()
+    def _stop_worker(self, server: ServerProcess, why: str | None) -> None:
+        """Stop ``server`` and report it, whatever goes wrong on the way."""
+
+        result: Stopped | None = None
+        reason = why
+        try:
+            if why is None:
+                result = server.stop()
+            else:
+                result = server.stop(grace=0.5, term_grace=0.5)
+                reason = explain_failure(server.tail(), result.exit_code)
+        except Exception as error:  # a bug must not leave the window stuck
+            reason = f"서버를 끄다가 오류가 났습니다: {error!r}"
+        finally:
             with self._lock:
-                self._server = None
-                self._phase = Phase.IDLE
-            self._emit(ServerStopped(result))
+                self._pass_on_lines(server)
+                if self._server is server:
+                    self._server = None
+                    self._phase = Phase.IDLE
+                waiting, self._after_stop = self._after_stop, []
+            stopped = result or Stopped("already", 0.0, server.exit_code(), False)
+            self._emit(ServerStopped(stopped, unexpected=reason))
             self._emit(PhaseChanged(Phase.IDLE))
-            if then is not None:
+            for then in waiting:
                 then()
 
-        self._spawn("launcher-stop", work)
-        return True
+    def _pass_on_lines(self, server: ServerProcess) -> None:
+        """The server's last lines and the launcher's notes on the stop,
+        which ``poll`` can no longer reach once the server is dropped."""
+
+        while not server.lines.empty():
+            self._emit(LogLine(server.lines.get_nowait()))
 
     def refresh_games(self) -> None:
         """List the server's games on a worker (the window asks every 3 s)."""
@@ -305,17 +372,8 @@ class Controller:
             if self._phase is not Phase.RUNNING or self._server is not server:
                 return
             self._phase = Phase.STOPPING
-
-        def work() -> None:
-            result = server.stop(grace=0.5, term_grace=0.5)
-            reason = explain_failure(server.tail(), result.exit_code)
-            with self._lock:
-                self._server = None
-                self._phase = Phase.IDLE
-            self._emit(ServerStopped(result, unexpected=reason))
-            self._emit(PhaseChanged(Phase.IDLE))
-
-        self._spawn("launcher-died", work)
+        self._emit(PhaseChanged(Phase.STOPPING))
+        self._spawn("launcher-died", lambda: self._stop_worker(server, "died"))
 
     def shutdown(self) -> None:
         """Stop the server and wait for it (the launcher is closing)."""
@@ -324,5 +382,6 @@ class Controller:
         if server is not None:
             server.stop()
             with self._lock:
-                self._server = None
-                self._phase = Phase.IDLE
+                if self._server is server:
+                    self._server = None
+                    self._phase = Phase.IDLE

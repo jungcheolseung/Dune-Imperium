@@ -327,7 +327,9 @@ def test_torch_that_does_not_import_is_a_warning(tmp_path: Path) -> None:
     if find_spec("torch") is None:
         pytest.skip("torch is not installed here")
     problems = preflight(settings, plan, check_torch=True, run=broken_torch)
-    assert calls == [[plan.python, "-c", "import torch"]]
+    assert calls == [
+        [plan.python, "-c", "import dune_imperium.agents.network_search_agent"]
+    ]
     assert any(p.level == "warning" and "WinError 126" in p.text for p in problems)
     assert not has_errors(problems)
 

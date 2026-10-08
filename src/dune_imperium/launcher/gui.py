@@ -24,7 +24,7 @@ from types import TracebackType
 from typing import Final
 
 from dune_imperium.launcher.addresses import best_remote_address
-from dune_imperium.launcher.command import find_free_port
+from dune_imperium.launcher.command import bind_host, find_free_port
 from dune_imperium.launcher.controller import (
     AddressesFound,
     ChecksDone,
@@ -42,6 +42,7 @@ from dune_imperium.launcher.controller import (
 from dune_imperium.launcher.instance import InstanceLock
 from dune_imperium.launcher.keepawake import KeepAwake
 from dune_imperium.launcher.settings import (
+    DEFAULT_PORT,
     SETTINGS_FILE,
     KeyMode,
     LauncherSettings,
@@ -51,7 +52,7 @@ from dune_imperium.launcher.settings import (
     stored_path,
 )
 from dune_imperium.launcher.shortcuts import ShortcutError, make_shortcut
-from dune_imperium.launcher.supervisor import LOG_DIR
+from dune_imperium.launcher.supervisor import LOG_DIR, mask_admin_key
 from dune_imperium.launcher.view import (
     AI_PACE_LABELS,
     GameRow,
@@ -90,6 +91,14 @@ class _Close:
     """Sent to the pump once the server is down and the window may go."""
 
 
+class _ShortcutDone:
+    """The shortcut a worker made, or why it could not."""
+
+    def __init__(self, made: Path | None, error: str | None) -> None:
+        self.made = made
+        self.error = error
+
+
 def launcher_log(text: str) -> None:
     """Append to ``tmp/launcher/launcher.log``: the windowless launcher's
     only output (``pythonw`` has no console). Rotated once at 1 MB."""
@@ -121,6 +130,28 @@ def _open_in_browser(url: str) -> None:
     threading.Thread(
         target=webbrowser.open, args=(url,), name="launcher-browser", daemon=True
     ).start()
+
+
+def _screen_bounds(root: tk.Misc) -> tuple[int, int, int, int]:
+    """Left, top, width and height of the desktop the window may sit on.
+
+    Windows reports the virtual screen of every monitor (a monitor left of
+    or above the main one has negative coordinates); elsewhere Tk's screen.
+    """
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            metrics = ctypes.windll.user32.GetSystemMetrics
+            # SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN,
+            # SM_CYVIRTUALSCREEN
+            left, top, width, height = (metrics(index) for index in (76, 77, 78, 79))
+            if width > 0 and height > 0:
+                return int(left), int(top), int(width), int(height)
+        except (AttributeError, OSError):
+            pass
+    return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
 
 
 def _windows_dpi_awareness() -> None:
@@ -163,11 +194,15 @@ class LauncherWindow:
         self.root = root
         # Held on Tk's thread: Windows ties the request to the calling thread.
         self.keep_awake = keep_awake or KeepAwake()
-        self._events: queue.Queue[Event | _Close] = queue.Queue()
+        self._events: queue.Queue[Event | _Close | _ShortcutDone] = queue.Queue()
         self.controller = make_controller(settings_path, self._events.put)
         self._phase = Phase.IDLE
         self._error: str | None = None
         self._closing = False
+        self._asking = False
+        # The link the host opens, admin key included; the entry shows it
+        # with the key masked (plan 2), copy and open use this.
+        self._open_url_value = ""
         self._games: list[GameRow] = []
         self._pumps = 0
         self._retry: LauncherSettings | None = None
@@ -179,6 +214,10 @@ class LauncherWindow:
             self._show_problem(f"[참고] {note}", "plain")
         self._refresh()
         root.protocol("WM_DELETE_WINDOW", self.close)
+        if root.tk.call("tk", "windowingsystem") == "aqua":
+            # Cmd+Q, the Dock's Quit and logging out arrive here; without the
+            # hook Tk exits at once: no question, no settings kept.
+            root.tk.createcommand("::tk::mac::Quit", self.close)
         root.after(_PUMP_MS, self._pump)
         self.controller.find_addresses()
 
@@ -321,6 +360,7 @@ class LauncherWindow:
             tools, text="바로가기 만들기", command=self._make_shortcut
         )
         shortcut.grid(row=0, column=0)
+        self.shortcut_button = shortcut
         ttk.Button(
             tools, text="설정 폴더 열기", command=lambda: reveal(LOCAL_DIR)
         ).grid(row=0, column=1, padx=(6, 0))
@@ -362,11 +402,11 @@ class LauncherWindow:
         self.open_entry = ttk.Entry(links, textvariable=self.open_url, state="readonly")
         self.open_entry.grid(row=0, column=1, sticky="ew")
         self.copy_open = ttk.Button(
-            links, text="복사", command=lambda: self.copy(self.open_url.get())
+            links, text="복사", command=lambda: self.copy(self._open_url_value)
         )
         self.copy_open.grid(row=0, column=2, padx=(6, 0))
         self.open_button = ttk.Button(
-            links, text="열기", command=lambda: _open_in_browser(self.open_url.get())
+            links, text="열기", command=self._open_link
         )
         self.open_button.grid(row=0, column=3, padx=(6, 0))
         ttk.Label(links, text="방 링크 앞부분").grid(
@@ -503,8 +543,13 @@ class LauncherWindow:
 
     def start(self) -> None:
         self._error = None
+        self._retry = None
         self._clear_problems()
         self.controller.start(self.read_form())
+
+    def _open_link(self) -> None:
+        if self._open_url_value:
+            _open_in_browser(self._open_url_value)
 
     def stop(self) -> None:
         self.controller.stop()
@@ -530,7 +575,9 @@ class LauncherWindow:
         try:
             start = int(self.port.get())
         except ValueError:
-            start = 8000
+            start = DEFAULT_PORT
+        if not 1 <= start <= 65535:
+            start = DEFAULT_PORT
         try:
             self.port.set(str(find_free_port(host, start)))
         except OSError as error:
@@ -543,24 +590,29 @@ class LauncherWindow:
             "예전 관리자 링크는 다음 시작부터 쓸 수 없습니다.",
             parent=self.root,
         ):
-            self.controller.remember(replace(self.read_form(), admin_key=None))
+            self.controller.renew_admin_key()
 
     def close(self) -> None:
         """Close the window; a running server is stopped first, on a yes."""
 
-        if self._closing:
+        if self._closing or self._asking:
             return
         if self._phase is Phase.IDLE:
             self._finish_close()
             return
         playing = sum(1 for row in self._games if not row.finished)
         games = f"진행 중인 게임이 {playing}개 있습니다. " if playing else ""
-        if not messagebox.askyesno(
-            TITLE,
-            f"서버를 끄고 런처를 닫을까요?\n\n{games}진행 중이던 턴은 사라질 수 "
-            "있습니다. 먼저 게임 화면에서 '지금 저장'을 누르면 안전합니다.",
-            parent=self.root,
-        ):
+        self._asking = True
+        try:
+            sure = messagebox.askyesno(
+                TITLE,
+                f"서버를 끄고 런처를 닫을까요?\n\n{games}진행 중이던 턴은 사라질 "
+                "수 있습니다. 먼저 게임 화면에서 '지금 저장'을 누르면 안전합니다.",
+                parent=self.root,
+            )
+        finally:
+            self._asking = False
+        if not sure:
             return
         self._closing = True
         self.controller.remember(self.read_form())
@@ -573,18 +625,32 @@ class LauncherWindow:
         self.root.destroy()
 
     def _make_shortcut(self) -> None:
-        try:
-            made = make_shortcut()
-        except ShortcutError as error:
-            self._show_problem(f"[오류] {error}", "bad", replace_all=True)
+        """Make the shortcut on a worker: on Windows PowerShell takes seconds
+        to start, and the window must not freeze meanwhile."""
+
+        self.shortcut_button.state(["disabled"])
+        self._show_problem("[참고] 바로가기를 만드는 중…", "plain", replace_all=True)
+
+        def work() -> None:
+            try:
+                self._events.put(_ShortcutDone(make_shortcut(), None))
+            except ShortcutError as error:
+                self._events.put(_ShortcutDone(None, str(error)))
+
+        threading.Thread(target=work, name="launcher-shortcut", daemon=True).start()
+
+    def _shortcut_done(self, done: _ShortcutDone) -> None:
+        self.shortcut_button.state(["!disabled"])
+        if done.made is None:
+            self._show_problem(f"[오류] {done.error}", "bad", replace_all=True)
             return
         self._show_problem(
-            f"[참고] 바로가기를 만들었습니다: {made.name} (프로젝트 폴더). "
+            f"[참고] 바로가기를 만들었습니다: {done.made.name} (프로젝트 폴더). "
             "Dock이나 작업 표시줄에 끌어다 놓으면 더 편합니다.",
             "plain",
             replace_all=True,
         )
-        reveal(made.parent)
+        reveal(done.made.parent)
 
     # --- events from the controller --------------------------------------
 
@@ -603,6 +669,9 @@ class LauncherWindow:
                     self.keep_awake.release()
                     self.root.destroy()
                     return
+                if isinstance(event, _ShortcutDone):
+                    self._shortcut_done(event)
+                    continue
                 self.apply(event)
         except Exception:  # keep pumping: one bad event must not freeze the window
             launcher_log(traceback.format_exc())
@@ -621,7 +690,8 @@ class LauncherWindow:
             self.open_label.configure(
                 text="관리자 링크" if event.plan.remote else "게임 화면"
             )
-            self.open_url.set(event.plan.open_url)
+            self._open_url_value = event.plan.open_url
+            self.open_url.set(mask_admin_key(event.plan.open_url, event.plan.admin_key))
             self.room_base.set(event.plan.room_base)
             if self.keep_awake_on.get() and event.pid is not None:
                 note = self.keep_awake.hold(event.pid)
@@ -635,6 +705,7 @@ class LauncherWindow:
             self._offer_retry(event.last_good)
         elif isinstance(event, ServerStopped):
             self.keep_awake.release()
+            self._open_url_value = ""
             self.open_url.set("")
             self.room_base.set("")
             self._show_games([])
@@ -689,26 +760,24 @@ class LauncherWindow:
         """Offer the last settings that came up, if they differ from now."""
 
         self._retry = None
-        self.retry_button.grid_remove()
         if last_good is None:
             return
         now = self.read_form()
-        where = (last_good.mode, last_good.host, last_good.port)
-        if where == (now.mode, now.host, now.port):
+        # Where the server would listen: a local start is 127.0.0.1 whatever
+        # remote address the settings remember.
+        where = (last_good.mode, bind_host(last_good), last_good.port)
+        if where == (now.mode, bind_host(now), now.port):
             return
         address = last_good.host if last_good.mode == "remote" else "이 PC"
         self._retry = last_good
         self.retry_button.configure(
             text=f"이전 설정({address}:{last_good.port})으로 다시 시도"
         )
-        self.retry_button.grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
     def _start_last_good(self) -> None:
         if self._retry is None:
             return
         self.fill_form(self._retry)
-        self._retry = None
-        self.retry_button.grid_remove()
         self.start()
 
     def _show_addresses(self, event: AddressesFound) -> None:
@@ -747,7 +816,12 @@ class LauncherWindow:
             widget.state(["!disabled"] if shown.links else ["disabled"])
         has_games = shown.links and bool(self._games)
         self.copy_game.state(["!disabled"] if has_games else ["disabled"])
-        if shown.can_start is False:
+        # Shown from the failed start until the next start; only while idle.
+        if self._retry is not None and shown.can_start:
+            self.retry_button.grid(
+                row=3, column=0, columnspan=4, sticky="w", pady=(6, 0)
+            )
+        else:
             self.retry_button.grid_remove()
         text, tone = status(self._phase, error=self._error)
         self.status_text.set(text)
@@ -812,12 +886,27 @@ def main(settings_path: Path = SETTINGS_FILE) -> int:
         )
 
     root.report_callback_exception = report
+
+    def thread_failed(failure: threading.ExceptHookArgs) -> None:
+        # pythonw has no stderr: a worker's crash goes to the launcher log.
+        launcher_log(
+            "".join(
+                traceback.format_exception(
+                    failure.exc_type, failure.exc_value, failure.exc_traceback
+                )
+            )
+        )
+
+    threading.excepthook = thread_failed
     window = LauncherWindow(root, settings_path)
+    # What the widgets need, in this display's pixels: on a 125-200 % Windows
+    # display the fonts grow, and a fixed size would cut the window off.
+    root.update_idletasks()
+    required = (root.winfo_reqwidth(), root.winfo_reqheight())
+    root.minsize(*required)
     root.geometry(
         window_geometry(
-            window.controller.settings.window,
-            root.winfo_screenwidth(),
-            root.winfo_screenheight(),
+            window.controller.settings.window, _screen_bounds(root), required
         )
     )
     try:

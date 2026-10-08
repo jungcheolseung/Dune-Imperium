@@ -41,10 +41,12 @@ ASSET_ENVIRONMENT: Final = (
     ("DUNE_IMPERIUM_BENE_TLEILAX_IMAGE", "board/bene_tleilax.jpg"),
 )
 DEFAULT_ASSETS_DIR: Final = PROJECT_ROOT / "assets"
+SEARCH_AI_MODULE: Final = "dune_imperium.agents.network_search_agent"
 # The sync commands the messages name: --inexact, so that a sync for the
 # server never removes the rl/train packages a development checkout has.
 SYNC_UI: Final = "uv sync --locked --inexact --extra ui"
-SYNC_TRAIN: Final = "uv sync --locked --inexact --extra ui --extra train"
+# The search AI needs torch (train) and numpy, gymnasium, pettingzoo (rl).
+SYNC_TRAIN: Final = "uv sync --locked --inexact --extra ui --extra rl --extra train"
 _WILDCARDS: Final = {"0.0.0.0": "127.0.0.1", "::": "::1"}
 # CREATE_NO_WINDOW: a console program started without a console window. The
 # literal value, so that the flag can be computed (and tested) off Windows.
@@ -374,12 +376,14 @@ def _search_checkpoint_problems(
     arguments = _build_parser().parse_args(list(plan.server_args))
     checkpoint, line = resolve_search_checkpoint(arguments, plan.env)
     if checkpoint is None:
-        if "torch not installed" in line:
+        if "not installed" in line:
             # A network is there, so the host probably meant to use it.
+            missing = line.split("(", 1)[1].split(" not installed", 1)[0]
             return [
                 Problem(
                     "warning",
-                    f"탐색 AI 꺼짐: torch가 없습니다 (탐색 AI를 쓰려면 `{SYNC_TRAIN}`)",
+                    f"탐색 AI 꺼짐: {missing}이(가) 없습니다 "
+                    f"(탐색 AI를 쓰려면 `{SYNC_TRAIN}`)",
                 )
             ]
         if "no file at" in line:
@@ -397,7 +401,9 @@ def _search_checkpoint_problems(
         ]
     if not check_torch:
         return []
-    result = run([plan.python, "-c", "import torch"], 180.0)
+    # The module the search seat imports, in a child as the server would:
+    # find_spec cannot see a torch whose DLL does not load ([WinError 126]).
+    result = run([plan.python, "-c", f"import {SEARCH_AI_MODULE}"], 180.0)
     if result is None or result.returncode != 0:
         detail = ""
         if result is not None:
@@ -411,7 +417,8 @@ def _search_checkpoint_problems(
         return [
             Problem(
                 "warning",
-                "torch를 불러오지 못해, 탐색 AI 좌석을 고르면 서버가 오류를 냅니다"
+                "탐색 AI 모듈(torch·numpy·gymnasium·pettingzoo)을 불러오지 못해, "
+                "탐색 AI 좌석을 고르면 서버가 오류를 냅니다"
                 + (f": {detail}" if detail else "")
                 + f".{windows}",
             )

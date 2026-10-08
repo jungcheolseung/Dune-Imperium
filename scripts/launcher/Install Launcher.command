@@ -21,11 +21,12 @@ fi
 
 extras=(--extra ui)
 if read -q "answer?탐색 AI(학습한 망, 처음 한 번 약 125 MB를 내려받음)도 쓸까요? [y/N] "; then
-  extras+=(--extra train)
+  extras+=(--extra rl --extra train)
 fi
 echo
 
-# --inexact: 이미 있는 개발·학습 패키지(rl, train)는 지우지 않는다.
+# --inexact: 이미 있는 개발·학습 패키지는 지우지 않는다. 탐색 AI는 torch
+# (train)와 numpy·gymnasium·pettingzoo(rl)가 모두 있어야 한다.
 if ! uv sync --locked --inexact "${extras[@]}"; then
   echo "의존성 설치에 실패했습니다. 위의 메시지를 확인하세요."
   pause

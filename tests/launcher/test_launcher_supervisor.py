@@ -31,6 +31,7 @@ from dune_imperium.launcher.supervisor import (
     ServerProcess,
     StartupCancelled,
     StartupFailed,
+    Stopped,
     mask_admin_key,
 )
 
@@ -401,3 +402,40 @@ def test_a_stop_before_the_start_cancels_it(tmp_path: Path) -> None:
     server.stop()
     with pytest.raises(StartupCancelled):
         server.start()
+
+
+def test_a_stop_during_the_popen_stops_what_the_popen_made(tmp_path: Path) -> None:
+    # The controller publishes the server before start() runs; a stop that
+    # came in between the cancel check and the Popen used to find no
+    # process, report "already", and leave the new server running.
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_popen(argv: list[str], **options: Any) -> subprocess.Popen[str]:
+        entered.set()
+        assert release.wait(10)
+        return subprocess.Popen(argv, **options)
+
+    plan = _local_plan(tmp_path)
+    server = ServerProcess(
+        plan,
+        argv=[sys.executable, str(FAKE_SERVER), "polite"],
+        popen=slow_popen,
+        log_dir=tmp_path,
+    )
+    starter = threading.Thread(target=server.start)
+    starter.start()
+    assert entered.wait(10)
+    results: list[Stopped] = []
+    stopper = threading.Thread(target=lambda: results.append(server.stop()))
+    stopper.start()
+    stopper.join(0.5)
+    assert stopper.is_alive(), "the stop did not wait for the Popen"
+    release.set()
+    starter.join(10)
+    stopper.join(30)
+    [stopped] = results
+    assert stopped.how != "already"
+    assert not server.is_alive()
+    with pytest.raises(StartupCancelled):
+        server.wait_ready(timeout=1)

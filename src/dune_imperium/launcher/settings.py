@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import sys
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -340,15 +341,22 @@ def save(settings: LauncherSettings, path: Path = SETTINGS_FILE) -> None:
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    scratch = path.with_name(f"{path.name}.tmp")
     text = json.dumps(to_json(settings), ensure_ascii=False, indent=2) + "\n"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    descriptor = os.open(scratch, flags, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(text)
-    if sys.platform != "win32":
-        os.chmod(scratch, 0o600)
-    os.replace(scratch, path)
+    # A scratch file of its own (mkstemp: mode 0600), so two saves at once
+    # never write into the same one.
+    descriptor, scratch_name = tempfile.mkstemp(
+        prefix=f"{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    scratch = Path(scratch_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        if sys.platform != "win32":
+            os.chmod(scratch, 0o600)
+        os.replace(scratch, path)
+    except BaseException:
+        scratch.unlink(missing_ok=True)
+        raise
 
 
 def snapshot(settings: LauncherSettings) -> dict[str, object]:

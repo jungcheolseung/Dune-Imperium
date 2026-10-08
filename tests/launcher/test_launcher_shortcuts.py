@@ -168,10 +168,14 @@ def test_other_systems_get_no_shortcut(tmp_path: Path) -> None:
         make_shortcut(tmp_path, platform="linux")
 
 
-def test_the_encoded_script_is_what_powershell_expects() -> None:
+def test_the_encoded_script_says_its_errors_in_plain_utf8() -> None:
+    # Redirected, PowerShell 5.1 writes errors as CLIXML in the console's
+    # code page; the script catches them and writes the message instead.
     argv = powershell_command()
     encoded = argv[argv.index("-EncodedCommand") + 1]
-    assert base64.b64decode(encoded).decode("utf-16-le").startswith("$shell")
+    script = base64.b64decode(encoded).decode("utf-16-le")
+    assert script.startswith("[Console]::OutputEncoding = [Text.Encoding]::UTF8")
+    assert "catch {" in script and "$_.Exception.Message" in script
 
 
 # --- first-install scripts ---------------------------------------------------
@@ -204,6 +208,14 @@ def test_the_windows_install_script_is_ascii_with_crlf_in_checkouts() -> None:
         check=True,
     ).stdout
     assert attributes.strip().endswith("eol: crlf")
+
+
+@pytest.mark.parametrize("script", [INSTALL_COMMAND, INSTALL_CMD])
+def test_the_search_ai_choice_installs_everything_it_imports(script: Path) -> None:
+    # torch (train) and numpy, gymnasium, pettingzoo (rl); torch alone left
+    # the search seat offered and then failing to build.
+    text = script.read_text(encoding="utf-8")
+    assert "--extra rl --extra train" in text
 
 
 @pytest.mark.parametrize("script", [INSTALL_COMMAND, INSTALL_CMD])

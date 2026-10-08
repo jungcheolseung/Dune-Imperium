@@ -57,5 +57,16 @@ class InstanceLock:
     def release(self) -> None:
         handle = self._handle
         self._handle = None
-        if handle is not None:
-            handle.close()  # closing drops the lock on both systems
+        if handle is None:
+            return
+        if sys.platform == "win32":
+            # Windows frees a lock left to close() only "eventually"; a
+            # double-click right after closing would find it still held.
+            import msvcrt
+
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        handle.close()

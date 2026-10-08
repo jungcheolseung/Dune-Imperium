@@ -5,7 +5,8 @@ rem "Dune Imperium Server" shortcut in the project folder and opens the
 rem launcher. After that, double-click the shortcut instead.
 rem ASCII only: cmd.exe reads this file in the console code page.
 setlocal
-cd /d "%~dp0..\.."
+rem pushd also maps a network (UNC) folder to a drive letter; cd cannot.
+pushd "%~dp0..\.." || (echo Cannot open the project folder: "%~dp0..\.." & pause & exit /b 1)
 
 where uv >nul 2>nul
 if errorlevel 1 if exist "%USERPROFILE%\.local\bin\uv.exe" set "PATH=%USERPROFILE%\.local\bin;%PATH%"
@@ -22,7 +23,7 @@ if errorlevel 1 (
 set "EXTRAS=--extra ui"
 choice /c YN /n /m "Also install the search AI (downloads about 125 MB once)? [Y/N] "
 if errorlevel 2 goto sync
-set "EXTRAS=--extra ui --extra train"
+set "EXTRAS=--extra ui --extra rl --extra train"
 :sync
 rem --inexact keeps the development and training packages already installed.
 uv sync --locked --inexact %EXTRAS%

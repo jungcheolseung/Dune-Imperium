@@ -129,24 +129,33 @@ def address_from_choice(text: str) -> str:
 
 
 def window_geometry(
-    window: Window | None, screen_width: int, screen_height: int
+    window: Window | None,
+    bounds: tuple[int, int, int, int],
+    required: tuple[int, int] = (0, 0),
 ) -> str:
     """A Tk geometry that puts the window back where it was, on screen.
 
-    A window saved on a larger screen (or another machine) is pulled back
-    so that at least a corner of it shows; with nothing saved the window
-    opens centred at its default size.
+    ``bounds`` is the desktop (left, top, width, height): on Windows the
+    virtual screen of all monitors, so a window kept on a monitor left of
+    the main one (negative x) stays there. A window saved off it (a
+    monitor since unplugged, another machine) is pulled back so that a
+    corner shows. The size is never below what the widgets ``required``
+    (fonts grow on a scaled display); with nothing saved the window opens
+    centred at its default size.
     """
 
-    width, height = DEFAULT_SIZE
+    left, top, screen_width, screen_height = bounds
+    need_width, need_height = required
     if window is not None:
-        width = max(320, min(window.width, screen_width))
-        height = max(240, min(window.height, screen_height))
-        x = min(max(window.x, 0), max(screen_width - _MIN_VISIBLE, 0))
-        y = min(max(window.y, 0), max(screen_height - _MIN_VISIBLE, 0))
+        width, height = window.width, window.height
     else:
-        width = min(width, screen_width)
-        height = min(height, screen_height)
-        x = max((screen_width - width) // 2, 0)
-        y = max((screen_height - height) // 3, 0)
-    return f"{width}x{height}+{x}+{y}"
+        width, height = DEFAULT_SIZE
+    width = min(max(width, need_width, 320), screen_width)
+    height = min(max(height, need_height, 240), screen_height)
+    if window is not None:
+        x = min(max(window.x, left), max(left + screen_width - _MIN_VISIBLE, left))
+        y = min(max(window.y, top), max(top + screen_height - _MIN_VISIBLE, top))
+    else:
+        x = left + max((screen_width - width) // 2, 0)
+        y = top + max((screen_height - height) // 3, 0)
+    return f"{width}x{height}{x:+d}{y:+d}"

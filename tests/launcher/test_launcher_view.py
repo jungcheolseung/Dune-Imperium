@@ -76,19 +76,37 @@ def test_a_label_and_its_address_round_trip() -> None:
     assert address_from_choice(address_choice("LAN", "10.0.0.2")) == "10.0.0.2"
 
 
+SCREEN = (0, 0, 1920, 1080)
+
+
 def test_a_saved_window_comes_back_where_it_was() -> None:
-    assert window_geometry(Window(100, 50, 700, 600), 1920, 1080) == "700x600+100+50"
+    assert window_geometry(Window(100, 50, 700, 600), SCREEN) == "700x600+100+50"
 
 
 def test_a_window_off_the_screen_is_pulled_back() -> None:
     # Saved on a wider screen, or on another machine.
-    geometry = window_geometry(Window(3000, 2000, 900, 900), 1280, 800)
+    geometry = window_geometry(Window(3000, 2000, 900, 900), (0, 0, 1280, 800))
     size, x, y = geometry.split("+")
     assert size == "900x800" and int(x) <= 1280 - 80 and int(y) <= 800 - 80
 
 
 def test_without_a_saved_window_it_opens_centred() -> None:
-    assert window_geometry(None, 1920, 1080) == "1000x640+460+146"
+    assert window_geometry(None, SCREEN) == "1000x640+460+146"
+
+
+def test_a_window_on_a_monitor_left_of_the_main_one_stays_there() -> None:
+    # Windows' virtual screen starts at -1920 with a monitor on the left.
+    desktop = (-1920, 0, 3840, 1080)
+    assert window_geometry(Window(-1700, 100, 1000, 640), desktop) == (
+        "1000x640-1700+100"
+    )
+
+
+def test_the_window_is_never_smaller_than_its_widgets_need() -> None:
+    # A 150 % Windows display: the fonts grow, the saved size does not.
+    geometry = window_geometry(Window(10, 10, 1000, 640), SCREEN, (1180, 720))
+    assert geometry.startswith("1180x720")
+    assert window_geometry(None, SCREEN, (1180, 720)).startswith("1180x720")
 
 
 def test_each_open_game_gets_a_line_and_a_room_link() -> None:

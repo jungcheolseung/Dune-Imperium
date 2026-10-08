@@ -24,6 +24,9 @@ SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
 # to a weights-only copy beside it (``dune_imperium.paths``).
 DEFAULT_SEARCH_CHECKPOINT = SEARCH_CHECKPOINT
 _GRACEFUL_SHUTDOWN_SECONDS = 3
+# What the search AI imports besides torch (agents/network_search_agent.py:
+# numpy directly, gymnasium and pettingzoo through the PettingZoo adapter).
+SEARCH_AI_RL_PACKAGES = ("numpy", "gymnasium", "pettingzoo")
 # How much of standard input the --exit-when-stdin-closes watch reads at a
 # time; nothing is expected on it, so this only bounds a stray writer.
 _STDIN_CHUNK = 64 * 1024
@@ -205,8 +208,9 @@ def resolve_search_checkpoint(
     (``DEFAULT_SEARCH_CHECKPOINT``). The path is resolved once, here: saves
     record the file a symlink named when the server started, so pointing
     the link at a newer checkpoint never changes an older save's network.
-    The seat is offered only when that file exists and torch (the ``train``
-    extra) is installed; the line says which, for the console.
+    The seat is offered only when that file exists and what the search AI
+    imports is installed: torch (the ``train`` extra) and numpy, gymnasium
+    and pettingzoo (the ``rl`` extra); the line says which, for the console.
     """
 
     named: str | None = arguments.search_checkpoint or environment.get(
@@ -226,6 +230,12 @@ def resolve_search_checkpoint(
         candidate = default.resolve()
     if find_spec("torch") is None:
         return None, "search AI: off (torch not installed: uv sync --extra train)"
+    missing = [name for name in SEARCH_AI_RL_PACKAGES if find_spec(name) is None]
+    if missing:
+        return None, (
+            f"search AI: off ({', '.join(missing)} not installed: "
+            "uv sync --extra rl --extra train)"
+        )
     return candidate, f"search AI: {candidate}"
 
 

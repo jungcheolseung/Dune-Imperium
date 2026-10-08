@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium.launcher.addresses import Discovery
-from dune_imperium.launcher.command import LaunchPlan
+from dune_imperium.launcher.command import LaunchPlan, build_plan
 from dune_imperium.launcher.controller import (
     ChecksDone,
     Controller,
@@ -30,7 +30,7 @@ from dune_imperium.launcher.controller import (
     StartFailed,
 )
 from dune_imperium.launcher.settings import LauncherSettings, load, save
-from dune_imperium.launcher.supervisor import ServerProcess
+from dune_imperium.launcher.supervisor import ServerProcess, Stopped
 
 FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 
@@ -147,6 +147,8 @@ def test_a_server_that_dies_is_noticed_and_explained(tmp_path: Path) -> None:
     [stopped] = [event for event in events if isinstance(event, ServerStopped)]
     assert stopped.unexpected and "종료 코드 -9" in stopped.unexpected
     assert controller.phase is Phase.IDLE
+    # The window hears at once that the server is going.
+    assert _phases(events)[-2:] == [Phase.STOPPING, Phase.IDLE]
 
 
 def test_a_start_still_in_its_checks_can_be_called_off(tmp_path: Path) -> None:
@@ -243,3 +245,173 @@ def test_the_host_sees_the_open_games_of_a_remote_server(tmp_path: Path) -> None
         assert list_games(plan.host, plan.port) is None
     finally:
         controller.stop()
+
+
+# --- review fixes (2026-10-09, stages 3-5) -----------------------------------
+
+
+def _polite(tmp_path: Path, made: list[int]) -> Callable[[LaunchPlan], ServerProcess]:
+    def factory(plan: LaunchPlan) -> ServerProcess:
+        made.append(plan.port)
+        return ServerProcess(
+            plan,
+            argv=[sys.executable, str(FAKE_SERVER), "polite"],
+            log_dir=tmp_path / "logs",
+        )
+
+    return factory
+
+
+def test_a_start_called_off_cannot_take_over_the_next_one(tmp_path: Path) -> None:
+    # [시작] on port A, [중지] during the checks, [시작] on port B: A's checks
+    # end later, and must change nothing (no server on A, no problem list).
+    events: list[Event] = []
+    waiting: list[Callable[[], None]] = []
+    made: list[int] = []
+    controller = _controller(
+        tmp_path,
+        events,
+        server_factory=_polite(tmp_path, made),
+        spawn=lambda name, work: waiting.append(work),
+        ready_timeout=0.3,
+    )
+    first, second = _local(tmp_path), _local(tmp_path)
+    assert controller.start(first)
+    assert controller.stop()
+    assert controller.start(second)
+    called_off, current = waiting
+    called_off()
+    assert made == [] and not any(isinstance(e, ChecksDone) for e in events)
+    assert _phases(events)[-1] is Phase.CHECKING
+    current()
+    assert made == [second.port]
+
+
+def test_a_failed_check_called_off_does_not_end_the_next_start(
+    tmp_path: Path,
+) -> None:
+    events: list[Event] = []
+    waiting: list[Callable[[], None]] = []
+    made: list[int] = []
+    controller = _controller(
+        tmp_path,
+        events,
+        server_factory=_polite(tmp_path, made),
+        spawn=lambda name, work: waiting.append(work),
+        ready_timeout=0.3,
+    )
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        assert controller.start(_local(tmp_path, taken.getsockname()[1]))
+        assert controller.stop()
+        second = _local(tmp_path)
+        assert controller.start(second)
+        waiting[0]()  # the busy-port checks fail, for a start called off
+    assert _phases(events)[-1] is Phase.CHECKING
+    waiting[1]()
+    assert made == [second.port]
+
+
+def _running(
+    tmp_path: Path, controller: Controller, server: ServerProcess
+) -> None:
+    """Put a started fake server into the controller as if it came up."""
+
+    server.start()
+    controller._server = server
+    controller._phase = Phase.RUNNING
+
+
+def test_closing_during_a_stop_waits_for_that_stop(tmp_path: Path) -> None:
+    events: list[Event] = []
+    waiting: list[Callable[[], None]] = []
+    controller = _controller(
+        tmp_path, events, spawn=lambda name, work: waiting.append(work)
+    )
+    plan_server = ServerProcess(
+        build_plan(_local(tmp_path), None),
+        argv=[sys.executable, str(FAKE_SERVER), "polite"],
+        log_dir=tmp_path / "logs",
+    )
+    _running(tmp_path, controller, plan_server)
+    closed: list[bool] = []
+    assert controller.stop()
+    assert controller.stop(then=lambda: closed.append(True))
+    assert closed == []
+    [work] = waiting
+    work()
+    assert closed == [True]
+    assert controller.phase is Phase.IDLE
+
+
+def test_a_stop_that_fails_still_returns_the_window_to_idle(tmp_path: Path) -> None:
+    class Broken(ServerProcess):
+        def stop(self, *, grace: float = 10.0, term_grace: float = 5.0) -> Stopped:
+            raise RuntimeError("boom")
+
+    events: list[Event] = []
+    waiting: list[Callable[[], None]] = []
+    controller = _controller(
+        tmp_path, events, spawn=lambda name, work: waiting.append(work)
+    )
+    broken = Broken(
+        build_plan(_local(tmp_path), None),
+        argv=[sys.executable, str(FAKE_SERVER), "polite"],
+        log_dir=tmp_path / "logs",
+    )
+    _running(tmp_path, controller, broken)
+    try:
+        closed: list[bool] = []
+        assert controller.stop(then=lambda: closed.append(True))
+        waiting[0]()
+        [stopped] = [e for e in events if isinstance(e, ServerStopped)]
+        assert stopped.unexpected and "오류" in stopped.unexpected
+        assert controller.phase is Phase.IDLE and closed == [True]
+    finally:
+        ServerProcess.stop(broken)
+
+
+def test_the_last_server_lines_reach_the_window(tmp_path: Path) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    events: list[Event] = []
+    controller = _controller(tmp_path, events)
+    controller.start(_local(tmp_path))
+    controller.stop()
+    # The server's shutdown lines arrive after the window stopped polling.
+    lines = [e.text for e in events if isinstance(e, LogLine)]
+    assert any("Finished server process" in line for line in lines), lines[-5:]
+
+
+def test_settings_saved_from_two_threads_stay_a_valid_file(tmp_path: Path) -> None:
+    import json
+    import threading
+
+    events: list[Event] = []
+    controller = _controller(tmp_path, events)
+
+    def port(value: int) -> Callable[[LauncherSettings], LauncherSettings]:
+        return lambda current: replace(current, port=value)
+
+    def bump(offset: int) -> None:
+        for number in range(50):
+            controller._update(port(8000 + offset + number))
+
+    threads = [threading.Thread(target=bump, args=(i * 100,)) for i in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    json.loads((tmp_path / "launcher.json").read_text(encoding="utf-8"))
+    assert list(tmp_path.glob("launcher.json.*.tmp")) == []
+
+
+def test_closing_keeps_what_a_worker_saved(tmp_path: Path) -> None:
+    events: list[Event] = []
+    controller = _controller(tmp_path, events)
+    form = controller.settings
+    controller._update(lambda current: replace(current, last_good={"port": 8123}))
+    controller.remember(replace(form, port=8124))
+    kept = load(tmp_path / "launcher.json").settings
+    assert kept.port == 8124 and kept.last_good == {"port": 8123}

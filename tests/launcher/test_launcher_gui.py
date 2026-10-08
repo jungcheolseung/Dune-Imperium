@@ -181,7 +181,8 @@ def test_a_started_server_shows_its_links_and_opens_the_browser(
         plan = build_plan(settings, "k" * 32, python="py", environ={})
         window.apply(Started(plan, {"access": "remote"}, None))
         window.apply(PhaseChanged(Phase.RUNNING))
-        assert window.open_url.get() == plan.open_url
+        # Shown with the key masked; opened whole.
+        assert window.open_url.get() == "http://127.0.0.1:8124/#admin=…"
         assert window.room_base.get() == "http://127.0.0.1:8124"
         assert opened == [plan.open_url]
         assert _enabled(window.copy_open) and _enabled(window.copy_room)
@@ -350,12 +351,21 @@ def test_a_failed_start_offers_the_last_settings_that_worked(
     window = _window(tk_root, tmp_path, LauncherSettings(port=8130))
     try:
         good = LauncherSettings(mode="remote", host="192.168.0.64", port=8000)
+        # The order the controller really sends.
+        window.apply(PhaseChanged(Phase.CHECKING))
+        window.apply(PhaseChanged(Phase.STARTING))
         window.apply(StartFailed("포트가 이미 쓰이고 있습니다", (), good))
+        assert window.retry_button.winfo_manager() == ""
+        window.apply(PhaseChanged(Phase.IDLE))
         assert window.retry_button.winfo_manager() == "grid"
         assert "192.168.0.64:8000" in str(window.retry_button.cget("text"))
         window.retry_button.invoke()
         assert window.read_form().port == 8000
         assert window.controller.phase is Phase.CHECKING
+        # Gone once a new start is under way, and not back after it.
+        window.apply(PhaseChanged(Phase.CHECKING))
+        window.apply(PhaseChanged(Phase.IDLE))
+        assert window.retry_button.winfo_manager() == ""
     finally:
         window.root.destroy()
 
@@ -367,5 +377,119 @@ def test_no_retry_is_offered_for_the_same_settings(
     try:
         window.apply(StartFailed("실패", (), LauncherSettings(port=8131)))
         assert window.retry_button.winfo_manager() == ""
+    finally:
+        window.root.destroy()
+
+
+def test_no_retry_for_a_local_start_on_the_same_port(
+    tk_root: tk.Tk, tmp_path: Path
+) -> None:
+    # A local start listens on 127.0.0.1 whatever remote address is kept.
+    window = _window(tk_root, tmp_path, LauncherSettings(port=8132, host="10.0.0.9"))
+    try:
+        window.apply(PhaseChanged(Phase.STARTING))
+        window.apply(
+            StartFailed("실패", (), LauncherSettings(port=8132, host="192.168.0.64"))
+        )
+        window.apply(PhaseChanged(Phase.IDLE))
+        assert window.retry_button.winfo_manager() == ""
+    finally:
+        window.root.destroy()
+
+
+def test_the_admin_link_is_shown_masked_but_copied_and_opened_whole(
+    tk_root: tk.Tk,
+    tmp_path: Path,
+    opened: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window = _window(tk_root, tmp_path, LauncherSettings(open_browser=False))
+    copied: list[str] = []
+    monkeypatch.setattr(window, "copy", copied.append)
+    try:
+        key = "k" * 32
+        plan = build_plan(
+            LauncherSettings(mode="remote", host="127.0.0.1", port=8133),
+            key,
+            python="py",
+            environ={},
+        )
+        window.apply(Started(plan, {"access": "remote"}, None, None))
+        window.apply(PhaseChanged(Phase.RUNNING))
+        assert window.open_url.get() == "http://127.0.0.1:8133/#admin=…"
+        assert key not in window.open_url.get()
+        window.copy_open.invoke()
+        window.open_button.invoke()
+        assert copied == [plan.open_url] and opened == [plan.open_url]
+    finally:
+        window.root.destroy()
+
+
+def test_cmd_q_asks_like_closing_the_window(
+    tk_root: tk.Tk, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if tk_root.tk.call("tk", "windowingsystem") != "aqua":
+        pytest.skip("macOS only")
+    asked: list[str] = []
+
+    def no(title: str, message: str, **options: object) -> bool:
+        asked.append(message)
+        return False
+
+    monkeypatch.setattr("tkinter.messagebox.askyesno", no)
+    window = _window(tk_root, tmp_path, LauncherSettings(open_browser=False))
+    try:
+        _running(window)
+        window.root.tk.call("::tk::mac::Quit")
+        assert asked and "서버를 끄고" in asked[0]
+        assert window.root.winfo_exists()
+    finally:
+        window.root.destroy()
+
+
+def test_the_shortcut_is_made_off_the_window_thread(
+    tk_root: tk.Tk, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    made_on: list[str] = []
+    revealed: list[Path] = []
+
+    def make() -> Path:
+        made_on.append(threading.current_thread().name)
+        return tmp_path / "Dune Imperium Server.app"
+
+    monkeypatch.setattr(gui, "make_shortcut", make)
+    monkeypatch.setattr(gui, "reveal", revealed.append)
+    window = _window(tk_root, tmp_path)
+    try:
+        window._make_shortcut()
+        assert not _enabled(window.shortcut_button)
+        event = window._events.get(timeout=10)
+        assert isinstance(event, gui._ShortcutDone)
+        window._shortcut_done(event)
+        assert made_on == ["launcher-shortcut"]
+        assert revealed == [tmp_path]
+        assert _enabled(window.shortcut_button)
+        assert "바로가기를 만들었습니다" in window.problems.get("1.0", "end")
+    finally:
+        window.root.destroy()
+
+
+def test_a_free_port_search_from_a_bad_number_starts_at_8000(
+    tk_root: tk.Tk, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    starts: list[int] = []
+
+    def find(host: str, start: int = 8000, count: int = 100) -> int:
+        starts.append(start)
+        return 8001
+
+    monkeypatch.setattr(gui, "find_free_port", find)
+    window = _window(tk_root, tmp_path)
+    try:
+        window.port.set("0")
+        window._free_port()
+        assert starts == [8000] and window.port.get() == "8001"
     finally:
         window.root.destroy()

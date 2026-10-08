@@ -296,7 +296,7 @@ macOS: 서버 Popen 직후 `subprocess.Popen(["caffeinate", "-i", "-w", str(pid)
 
 ## 13. 구현 기록 (2026-10-09)
 
-1~6단계를 이 순서로 커밋했다. 테스트는 `tests/launcher/`(175개; 창 테스트는 디스플레이가 없거나 `DUNE_IMPERIUM_SKIP_GUI_TESTS=1`이면 skip)와 `tests/server/test_server_cli.py`, 브라우저 E2E는 `scripts/e2e/launcher_link.py`(16개 확인).
+1~6단계를 이 순서로 커밋했다. 테스트는 `tests/launcher/`(192개; 창 테스트는 디스플레이가 없거나 `DUNE_IMPERIUM_SKIP_GUI_TESTS=1`이면 skip)와 `tests/server/test_server_cli.py`, 브라우저 E2E는 `scripts/e2e/launcher_link.py`(16개 확인). 1~6단계를 마친 뒤 3~5단계(창·컨트롤러·잠자기 방지·바로가기·설치 스크립트·잠금)도 독립 리뷰(2관점 + 반박)를 거쳤다 — 아래 12.
 
 | 단계 | 커밋 | 검증 |
 |---|---|---|
@@ -321,6 +321,15 @@ macOS: 서버 Popen 직후 `subprocess.Popen(["caffeinate", "-i", "-w", str(pid)
 9. **창 배치**: 한 열로는 요구 높이가 945px라 1280×800 노트북에서 로그 칸이 사라졌다. 설정은 왼쪽, 실행·링크·게임 목록·로그는 오른쪽의 두 열, 기본 1000×640.
 10. **`last_good`**은 버튼("이전 설정(주소:포트)으로 다시 시도")으로만 쓴다. 방 링크가 몰래 바뀌면 안 된다(계획 리뷰).
 11. **Windows `pythonw` 확인**: uv venv에는 `pythonw.exe`가 늘 생기므로 `ShowWindow` 대체 경로는 만들지 않았다.
+12. **3~5단계 리뷰가 잡은 결함**(모두 회귀 테스트; 앞의 셋은 수정을 되돌려 테스트가 실패하는 것도 확인):
+    - **탐색 AI는 `train`(torch)만이 아니라 `rl`(numpy·gymnasium·pettingzoo)도 있어야 불러와진다.** 설치 스크립트와 호스트 가이드 표가 `--extra train`만 넣어, 새 호스트의 탐색 AI 좌석이 목록에는 나오고 앉히면 실패했다. 서버도 torch만 보고 좌석을 내놓았다(`resolve_search_checkpoint`가 이제 rl 패키지도 본다), 런처 사전 검사는 탐색 AI 모듈 자체를 별도 프로세스에서 불러 본다.
+    - 시작에 세대 번호가 없어, 검사 중 [중지] 뒤 바로 다른 설정으로 [시작]하면 버려진 검사가 새 시작을 덮어썼다(옛 포트로 서버가 뜨거나, 새 시작이 사라지거나, 끌 수 없는 서버가 남음).
+    - 컨트롤러가 서버를 알린 뒤 Popen이 끝나기 전에 [중지]가 끼면 아무도 끄지 않는 서버가 남았다 → 감독자의 `start()` 전체를 잠금 안에서.
+    - "이전 설정으로 다시 시도" 버튼이 실제 이벤트 순서(시작 실패 → 꺼짐)에서는 한 번도 보이지 않았다.
+    - macOS Cmd+Q·Dock 종료·로그아웃이 확인 창과 설정 저장을 건너뛰었다 → `::tk::mac::Quit`가 창 닫기와 같은 길.
+    - 원격 관리자 링크가 창에 키째 보였다 → `#admin=…`로 가려 보이고, 복사·열기만 실제 값.
+    - Windows 125% 이상 배율에서 고정 1000×640 창이 잘렸다 → 위젯이 요구하는 크기 이상, `minsize`; 주 모니터 왼쪽·위의 보조 모니터 좌표(음수)도 Windows 가상 화면 범위 안이면 그대로.
+    - 그 밖에: 설정 저장의 경쟁(저장 잠금, 저장마다 고유 임시 파일), 서버가 죽었을 때 '끄는 중'을 바로 알림, 중지 중 창을 닫으면 그 중지를 기다림, 작업 스레드 예외에도 창이 '꺼짐'으로 돌아옴(pythonw의 스레드 예외는 `launcher.log`로), 마지막 서버 줄이 창에 옴, 바로가기 만들기는 작업 스레드에서, PowerShell 오류는 읽을 수 있는 UTF-8 문장으로, Windows 잠금은 닫기 전에 명시적으로 해제, `.cmd`는 `pushd`(UNC 경로), 빈 포트 찾기의 범위 밖 시작값.
 
 **7단계에 더할 확인(8절 Windows 체크리스트에 덧붙임):** 파이프를 연 채 서버 콘솔에 Ctrl+C/CTRL_BREAK가 가도 `Fatal Python error` 없이 끝나는지; 시스템 프록시를 켠 채 런처가 시작·게임 목록을 정상으로 하는지; `mypy --platform win32 src/dune_imperium/launcher`(이 Mac에서는 통과); Job Object 구조체가 실제로 붙는지(`AssignProcessToJobObject` 실패 시 로그에 "Job Object를 만들지 못했습니다"); `Install Launcher.cmd`가 CRLF로 체크아웃되는지; `.lnk`가 한글·공백 경로에서 만들어지는지.
 

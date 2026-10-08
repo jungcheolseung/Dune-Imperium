@@ -317,6 +317,26 @@ def test_the_search_ai_is_off_without_torch(
     )
 
 
+def test_the_search_ai_is_off_without_the_rl_packages(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The search AI imports numpy and the PettingZoo adapter: with torch
+    # alone the seat used to be offered and then fail to build.
+    real = _network(tmp_path / "search.pt")
+    monkeypatch.setattr(
+        server_cli,
+        "find_spec",
+        lambda name: None if name in ("numpy", "pettingzoo") else object(),
+    )
+    arguments = _build_parser().parse_args(["--search-checkpoint", str(real)])
+
+    assert resolve_search_checkpoint(arguments, {}) == (
+        None,
+        "search AI: off (numpy, pettingzoo not installed: "
+        "uv sync --extra rl --extra train)",
+    )
+
+
 @pytest.mark.parametrize("configured", [True, False])
 def test_main_prints_the_search_ai_line_at_startup(
     configured: bool,

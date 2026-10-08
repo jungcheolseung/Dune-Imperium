@@ -148,48 +148,52 @@ class ServerProcess:
         return list(self._tail)[-count:]
 
     def start(self) -> None:
-        if self._process is not None:
-            raise RuntimeError("a ServerProcess starts once")
-        if self._stopping:
-            raise StartupCancelled("시작을 멈췄습니다.", [], None)
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            self._open_log()
-        except OSError as error:
-            raise StartupFailed(
-                f"로그 폴더를 만들지 못했습니다: {error}", [], None
-            ) from error
-        posix = self._platform != "win32"
-        try:
-            self._process = self._popen(
-                list(self.argv),
-                cwd=PROJECT_ROOT,
-                env=dict(self.plan.env),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                creationflags=no_window_flags(self._platform),
-                # Its own session on POSIX: a terminal's Ctrl+C or hang-up
-                # reaches the launcher only, and the server ends the one way,
-                # through its closed input (uvicorn has no SIGHUP handler).
-                start_new_session=posix,
-            )
-        except OSError as error:
-            self._note(f"could not run {self.argv[0]}: {error}")
-            self._finish()
-            raise StartupFailed(
-                f"서버를 실행하지 못했습니다: {error}", self.tail(), None
-            ) from error
-        if self._platform == "win32":
-            self._job = _Job.for_process(self._process.pid, self._note)
-        self._reader_started = True
-        threading.Thread(
-            target=self._read_output, name="server-output", daemon=True
-        ).start()
+        # A stop waits here for the Popen, then stops what it made: without
+        # the lock a stop between the check and the Popen left a server
+        # nobody would stop.
+        with self._lock:
+            if self._process is not None:
+                raise RuntimeError("a ServerProcess starts once")
+            if self._stopping:
+                raise StartupCancelled("시작을 멈췄습니다.", [], None)
+            try:
+                self.log_dir.mkdir(parents=True, exist_ok=True)
+                self._open_log()
+            except OSError as error:
+                raise StartupFailed(
+                    f"로그 폴더를 만들지 못했습니다: {error}", [], None
+                ) from error
+            posix = self._platform != "win32"
+            try:
+                self._process = self._popen(
+                    list(self.argv),
+                    cwd=PROJECT_ROOT,
+                    env=dict(self.plan.env),
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    bufsize=1,
+                    creationflags=no_window_flags(self._platform),
+                    # Its own session on POSIX: a terminal's Ctrl+C or hang-up
+                    # reaches the launcher only, and the server ends the one way,
+                    # through its closed input (uvicorn has no SIGHUP handler).
+                    start_new_session=posix,
+                )
+            except OSError as error:
+                self._note(f"could not run {self.argv[0]}: {error}")
+                self._finish()
+                raise StartupFailed(
+                    f"서버를 실행하지 못했습니다: {error}", self.tail(), None
+                ) from error
+            if self._platform == "win32":
+                self._job = _Job.for_process(self._process.pid, self._note)
+            self._reader_started = True
+            threading.Thread(
+                target=self._read_output, name="server-output", daemon=True
+            ).start()
 
     def wait_ready(
         self, timeout: float = 30.0, *, interval: float = 0.2

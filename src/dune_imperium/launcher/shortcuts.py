@@ -40,19 +40,27 @@ if [[ ! -x ./.venv/bin/python ]]; then
 fi
 exec ./.venv/bin/python -m dune_imperium.launcher
 """
+# Errors go to standard output as plain UTF-8 text: redirected, PowerShell
+# 5.1 writes its error stream as CLIXML in the console's code page.
 _LNK_SCRIPT: Final = """\
-$shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut($env:DUNE_LNK_PATH)
-$link.TargetPath = $env:DUNE_LNK_TARGET
-$link.Arguments = $env:DUNE_LNK_ARGUMENTS
-$link.WorkingDirectory = $env:DUNE_LNK_WORKDIR
-$link.Description = $env:DUNE_LNK_DESCRIPTION
-$link.Save()
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+try {
+    $shell = New-Object -ComObject WScript.Shell
+    $link = $shell.CreateShortcut($env:DUNE_LNK_PATH)
+    $link.TargetPath = $env:DUNE_LNK_TARGET
+    $link.Arguments = $env:DUNE_LNK_ARGUMENTS
+    $link.WorkingDirectory = $env:DUNE_LNK_WORKDIR
+    $link.Description = $env:DUNE_LNK_DESCRIPTION
+    $link.Save()
+} catch {
+    [Console]::Out.WriteLine($_.Exception.Message)
+    exit 1
+}
 """
 
 Run = Callable[[Sequence[str], float, Mapping[str, str]], tuple[int, str]]
 """Run a command with a timeout and extra environment variables; return
-its exit code (-1 if it could not run) and its error output."""
+its exit code (-1 if it could not run or timed out) and what it said."""
 
 
 class ShortcutError(Exception):
@@ -151,8 +159,8 @@ def _run_quiet(
 
     result = run_quiet(argv, timeout, env=env)
     if result is None:
-        return -1, "PowerShell을 실행하지 못했습니다"
-    return result.returncode, result.stderr
+        return -1, "PowerShell이 실행되지 않았거나 응답이 없습니다"
+    return result.returncode, f"{result.stdout}\n{result.stderr}"
 
 
 def make_shortcut(
