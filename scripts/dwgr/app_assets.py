@@ -384,6 +384,12 @@ APP_PIECE_SOURCES = {
 }
 APP_PIECE_ROUND = {"council", "disc"}
 APP_PIECE_NO_EMBLEM = {"disc"}
+# The council token's green is the app picture's own yellowish green, unlike
+# every other green piece (cube, Agent, banner: teal) and the seats' green
+# (the app's player colour #006e4a, render.js SEAT_COLORS); its hue is turned
+# to that green so the seat reads as one colour (owner, 2026-10-08). The other
+# colours already share their hue with the seat colour.
+APP_PIECE_HUE_TO = {("council", "green"): (0, 110, 74), ("disc", "green"): (0, 110, 74)}
 # The four Alliance tokens (display.token_images.ALLIANCE_TOKEN_FACTIONS) ->
 # app sprite: the round 1-VP token, cropped to the disc.
 APP_ALLIANCE_SOURCES = {
@@ -417,6 +423,36 @@ def clear_emblem(im):
     )
     a[r < rim - 0.02, :3] = face
     return Image.fromarray(a, "RGBA"), tuple(int(c) for c in face)
+
+
+def token_face(im):
+    """The commonest colour inside a round token (its face)."""
+    import numpy as np
+
+    a = np.asarray(im.convert("RGBA"))
+    h, w = a.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot(xx + 0.5 - w / 2, yy + 0.5 - h / 2) / (min(w, h) / 2)
+    colours, counts = np.unique(a[r < 0.75][:, :3], axis=0, return_counts=True)
+    return tuple(int(c) for c in colours[counts.argmax()])
+
+
+def turn_hue(im, target):
+    """`im` with every pixel's hue turned so that its face takes the hue of
+    `target` (saturation and value kept)."""
+    import colorsys
+
+    from PIL import Image
+
+    face = colorsys.rgb_to_hsv(*(c / 255 for c in token_face(im)))[0]
+    want = colorsys.rgb_to_hsv(*(c / 255 for c in target))[0]
+    step = round((want - face) * 256) % 256
+    alpha = im.getchannel("A")
+    h, s, v = im.convert("RGB").convert("HSV").split()
+    h = h.point(lambda x: (x + step) % 256)
+    out = Image.merge("HSV", (h, s, v)).convert("RGB").convert("RGBA")
+    out.putalpha(alpha)
+    return out, round((want - face) * 360) % 360
 
 
 def cube_color(path):
@@ -457,6 +493,9 @@ def cmd_pieces(args):
             if kind in APP_PIECE_NO_EMBLEM:
                 im, face = clear_emblem(im)
                 row["emblem_cleared"] = "#{:02x}{:02x}{:02x}".format(*face)
+            if (kind, color) in APP_PIECE_HUE_TO:
+                im, turn = turn_hue(im, APP_PIECE_HUE_TO[(kind, color)])
+                row["hue_turned_deg"] = turn
             if kind in APP_PIECE_ROUND:
                 mask = Image.new("L", im.size, 0)
                 box = (0, 0, im.width - 1, im.height - 1)
