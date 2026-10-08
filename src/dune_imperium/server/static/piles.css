@@ -19,3 +19,97 @@
    the 1px seat-colour rim style.css draws round the picture only doubled
    the tile's edge. The box keeps its shadow, rounded like the tile. */
 .strength-token.pictured { border: none; border-radius: 12%; }
+
+/* ---------- card backs (piles.js) ---------- */
+
+/* A face-down deck: its back at the width of a card in the column, the
+   count on its corner and the edge of the next card under it, flat like
+   the print. The thin light rim keeps the dark backs (Intrigue, Conflict
+   I) apart from the dark column at small sizes. */
+.deck-pile {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: 76px;
+  margin: 0 3px 3px 0;
+  line-height: 0;
+  user-select: none;
+}
+.deck-pile-back {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(243, 230, 208, 0.55);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #14100b, 3px 3px 0 rgba(243, 230, 208, 0.4);
+}
+.deck-pile.empty .deck-pile-back { opacity: 0.25; box-shadow: none; }
+.deck-pile-count {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 1.6em;
+  box-sizing: border-box;
+  padding: 0.1em 0.3em;
+  border: 1px solid rgba(243, 230, 208, 0.7);
+  border-radius: 999px;
+  background: #1a140c;
+  color: #f3e6d0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* The Intrigue deck line: a smaller pile before its count. Only the
+   label stays muted (style.css .muted), which would fade the back too. */
+[data-pile="intrigue-deck"].with-deck-pile {
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.3rem;
+}
+[data-pile="intrigue-deck"].with-deck-pile > .deck-pile-label { opacity: 0.65; }
+[data-pile="intrigue-deck"] .deck-pile { width: 46px; }
+
+/* The Conflict deck in its printed slot (piles.js showConflictDeckBack):
+   the top card's back fills the drawn box, and the count sits in the band
+   above the blades where the print reads CONFLICT. */
+.slot-deck.pictured {
+  justify-content: flex-start;
+  padding-top: 0.45em; /* not a percent: that would be of the stage's width */
+  border: none;
+  background: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+.slot-deck.pictured > .icon { display: none; }
+.slot-deck-back {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(243, 230, 208, 0.45);
+  border-radius: 6px;
+}
+.slot-deck.pictured .slot-deck-count {
+  position: relative;
+  padding: 0.12em 0.45em;
+  border: 1px solid rgba(243, 230, 208, 0.6);
+  border-radius: 999px;
+  background: rgba(20, 14, 10, 0.88);
+}
+
+/* Kota Odax's face-down Secret Project tile (piles.js showTechBack). */
+.tile-back.pictured { border: none; background: none; }
+.tile-back-image {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid rgba(243, 230, 208, 0.45);
+  border-radius: 8px;
+}

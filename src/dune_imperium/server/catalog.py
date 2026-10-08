@@ -123,6 +123,7 @@ from dune_imperium.display.board_layout import (
     SPACE_FRAME_CUT,
     marker_layout,
 )
+from dune_imperium.display.card_backs import available_card_backs
 from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
@@ -511,6 +512,12 @@ def build_catalog(
             if FIRST_PLAYER_TOKEN_FILENAME in token_files
             else None
         ),
+        # The app's card backs by kind (imperium, intrigue, conflict_1-3,
+        # tech) for the face-down decks; an absent kind keeps its drawing.
+        "card_backs": {
+            kind: versioned(f"/tokens/{filename}")
+            for kind, filename in available_card_backs(token_files).items()
+        },
         # The app's pictures of each seat's pieces by kind (agent, spy,
         # control, troop, sandworm), one URL per seat; a kind without all
         # four pictures is absent and the client draws it flat.

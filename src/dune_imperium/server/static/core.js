@@ -727,8 +727,8 @@ function leaderNavigationRow(entry, seatState) {
    same "Face down" badge a face-down Navigation slot uses above
    (`leaderNavigationRow`); every other viewer, knowing only
    `has_secret_project`, gets a Tech-tile-shaped (737x479, landscape)
-   placeholder with no identity, since no back art
-   exists for a Tech tile either. Nothing once the tile is acquired --
+   placeholder with no identity, which shows the app's Tech back where the
+   assets have it (piles.js showTechBack). Nothing once the tile is acquired --
    `has_secret_project` turns false the moment `_take_tile` clears it
    (rules/tech.py). Returns `null` for every leader but Kota, a seat with
    no tile kept, or no seat context. */
@@ -748,7 +748,7 @@ function leaderSecretProjectBox(seatState) {
   row.appendChild(
     techId
       ? eagerCard(techId, { className: "tile flipped", badge: t("panels.face_down_badge") })
-      : Object.assign(document.createElement("div"), { className: "tile-back" }),
+      : showTechBack(Object.assign(document.createElement("div"), { className: "tile-back" })),
   );
   return row;
 }
