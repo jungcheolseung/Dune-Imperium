@@ -421,10 +421,12 @@ def advance_after_effect(
 def close_agent_turn(state: GameState, owner: int) -> GameState:
     """End ``owner``'s Agent turn and open the next unrevealed seat's turn.
 
-    The one place an Agent turn closes (OQ-095): ``finish_agent_turn`` calls
-    it once the press's own steps are done. Whatever the turn's effects left
-    behind has been resolved on top of the owner's open frame before the
-    end was offered, so nothing of this turn reaches the next one.
+    The one place an Agent turn closes (OQ-095): ``finish_agent_turn``'s press
+    leaves the turn finishing, and ``settle_finishing_agent_turn`` calls this
+    once the press's own steps and their follow-ups are done. Whatever the
+    turn's effects left behind has been resolved on top of the owner's open
+    frame before the end was offered, so nothing of this turn reaches the
+    next one.
     """
 
     _owner_effect_frame(state, owner)

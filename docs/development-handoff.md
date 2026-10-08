@@ -49,6 +49,19 @@
 - **후속 4(2026-10-08, 사용자 결정)**: Subject X-137(앱 그림 이름의 하이픈 때문에 렌더러가 그림을 못 찾았다), Epic Game Mode의 Control the Spice와 Economic Supremacy(Conflict도 카드별 틀이면 그 틀로 그린다)를 앱 앞면으로 그렸다. Alliance 토큰 넷은 앱의 둥근 1점 토큰(`hud_Player_AllianceToken_*_Large`)으로 바꿨다(`alliance_<진영>.png`; 그림이 없는 옛 체크아웃은 TTS `.jpg`를 대신 쓴다).
 - **남은 것**: Shield Wall·Maker Hooks는 TTS 그림 그대로다(앱에 `hud_Player_AllianceToken_*_Large` 256px 등이 있다; 바꾸려면 먼저 묻는다). 한국어 사진이 없는 Intrigue 34장은 한글판 문구를 얻을 출처가 없다. 원격 fetch가 이 세션에서 막혀(ssh timeout) master `38d38fa3` 기준으로 작업했다.
 
+## 2026-10-08 모든 턴 종료 누름이 "끝내는 중" 한 길로 (codec 그대로 v139)
+
+같은 날의 결함 수정(아래 절)을 사용자 결정("B가 나을 거 같다")으로 일반화했다. 브랜치 `turn-end-always-finishing`.
+
+- **바뀐 것.** `combat_deployment.apply_agent_turn_finish`는 더 이상 turn을 직접 닫지 않는다. 모든 누름이 turn을 `FINISHING_KEY`로 세워 둔다(Usurp 카드가 있으면 trash도 한다). 누름이 남긴 후속은 그 위에서 풀리고, 엔진 전이 끝의 `settle_finishing_agent_turn`이 닫거나 다시 연다. 아무것도 남기지 않은 누름은 같은 전이 안에서 닫힌다. 후속 종류 목록(`_press_left_follow_ups`)은 없어졌다. 처음 목록은 리뷰에서 한 종류(빈 덱 Intrigue draw)를 빠뜨렸다.
+- **같은 것을 확인한 방법.** 옛 엔진(`7119cee6`)으로 200판(무작위 120, heuristic 40, 앱 AI·혼합 40; 전 확장·Immortality·기본)을 두어 매 단계 상태 hash와 이벤트 종류를 기록했다. 새 엔진에 같은 수순을 다시 두니 190,107단계(누름 15,487번)가 모두 같았다. 도구는 git 무시 `tmp/claude/<세션>/diff/`의 `trace.py`·`replay.py`이고, 옛 소스를 `git archive`로 풀어 `PYTHONPATH`로 바꿔 끼운다. pytest **6,656개 통과**, golden 그대로다.
+- **달라지는 드문 누름**(독립 리뷰가 찾았다. 모두 OQ-095 (3)·(5) 쪽으로 바뀐다. 회귀 테스트는 이전 master에서 실패한다):
+  - Long Reach의 턴 종료 지급이 완료한 Earn Any Alliance의 troop 2는 이 turn의 recruit다. Combat 칸이면 turn이 다시 열려 배치할 수 있다. 전에는 garrison에 남았다.
+  - 다른 좌석이 모두 공개해 같은 좌석의 다음 turn이 바로 열리면, 누름이 뽑은 Intrigue의 Suspensor troop이 배치된다. 전에는 다음 turn의 카운터 초기화가 지웠다.
+  - 누름의 지급이 graft 짝 box의 조건을 채우면 그 box가 다시 의무가 되어 turn이 다시 열린다(OQ-057 (1)). 전에는 `RuntimeError`였다. 실제로 닿는 카드 짝은 찾지 못해 테스트는 다시 여는 처리만 고정한다.
+- **저장.** codec은 올리지 않았다(저장 "1007" 등이 그대로 열린다). 위 드문 누름을 지난 옛 저장은 불러올 때 진행이 달라질 수 있다. 위 결함 수정과 같은 판단이다.
+- 기록: OQ-095 (5)를 한 길로 다시 썼다. `close_agent_turn`·`_settle_finishing`·`turn_end.finishing_seat` 설명도 고쳤다. 아래 절의 "후속이 없는 누름과 Usurp 누름은 예전과 같다"와 "남은 것"의 일반화 제안은 이 절로 끝났다.
+
 ## 2026-10-08 턴 종료 누름이 남긴 후속을 그 turn 안에서 (엔진 결함 수정, codec 그대로)
 
 학습 판정(`mix-v139` S-L3 칸, 시드 3950002)에서 탐색 좌석 플레이아웃이 엔진 결함을 찾았다: `RuntimeError: an Agent turn cannot close over an owed track Spy`. 브랜치 `track-spy-turn-end`.

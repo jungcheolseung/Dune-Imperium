@@ -26,7 +26,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.core.engine import Transition
+from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     legal_imperium_acquisitions,
@@ -438,7 +438,12 @@ def test_a_navigation_play_queued_by_the_turn_end_payment_resolves_in_the_turn()
 
 
 def _long_reach_ready_to_end(
-    influence: Influence, *, owner_extra: dict[str, object], **overrides: object
+    influence: Influence,
+    *,
+    owner_extra: dict[str, object],
+    space: str = "assembly_hall",
+    others: tuple[PlayerState, ...] = (),
+    **overrides: object,
 ) -> GameState:
     """Long Reach named its one Faction below the top; the turn may end now."""
 
@@ -449,7 +454,7 @@ def _long_reach_ready_to_end(
         influence=influence,
         **owner_extra,
     )
-    bonded = _place(_state(owner, **overrides), reach, "assembly_hall")
+    bonded = _place(_state(owner, *others, **overrides), reach, space)
     (only,) = legal_agent_card_influence_actions(bonded, 0)
     named = apply_agent_card_influence(bonded, only).state
     engine = UprisingRulesEngine()
@@ -542,6 +547,106 @@ def test_a_reshuffled_intrigue_draw_from_the_turn_end_payment_counts_for_suspens
     assert state.players[0].troops_conflict == before + 1
     nxt = state.decision_stack[-1].decision
     assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
+
+
+def test_earn_any_alliance_completed_by_the_turn_end_payment_reopens_to_deploy() -> (
+    None
+):
+    """OQ-095 (3), (5): the Contract's troops are this turn's recruits.
+
+    "그 recruit·spice·Spy 회수는 이 turn의 것으로 센다", and "Combat 배치가
+    가능한 turn에 새로 recruit한 유닛이 생기면 turn은 다시 열리고". The press
+    used to close the turn at once, leaving the two troops in the garrison.
+    """
+
+    contracts = RulesetConfig(immortality=True, bloodlines=True, choam_module=True)
+    ready = _long_reach_ready_to_end(
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+        owner_extra={"active_contract_ids": ("contract:bloodlines_earn_any_alliance",)},
+        space="arrakeen",
+        config=contracts,
+    )
+    engine = UprisingRulesEngine()
+    pressed = engine.apply(ready, DomainAction("finish_agent_turn", 0))
+    kinds = [event.kind for event in pressed.events]
+    assert kinds.index("alliance_gained") < kinds.index("contract_completed")
+    assert kinds[-1] == "agent_turn_reopened"
+    reopened = pressed.state
+    offered = engine.legal_actions(reopened, 0)
+    deploys = [a for a in offered if a.action_id == "deploy_troops"]
+    assert deploys
+    assert DomainAction("finish_agent_turn", 0) in offered
+    before = reopened.players[0].troops_conflict
+    deployed = engine.apply(reopened, deploys[-1]).state
+    assert deployed.players[0].troops_conflict > before
+    closed = engine.apply(deployed, DomainAction("finish_agent_turn", 0)).state
+    nxt = closed.decision_stack[-1].decision
+    assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
+
+
+def test_the_same_seat_s_next_turn_keeps_the_press_s_suspensor_troop() -> None:
+    """Every other seat has revealed, so the press opens the owner's next turn.
+
+    OQ-095 (3): "Suspensor Suits도 마지막 효과 뒤의 draw까지 센다". The
+    Bene Gesserit 4 Intrigue drawn by the press owes a troop; it used to be
+    wiped when the next turn's counters were reset.
+    """
+
+    tech = RulesetConfig(immortality=True, bloodlines=True, tech_module=True)
+    ready = _long_reach_ready_to_end(
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=3, fremen=6),
+        owner_extra={"tech_ids": ("suspensor_suits",)},
+        others=tuple(_seat(seat, has_revealed=True) for seat in (1, 2, 3)),
+        config=tech,
+    )
+    before = ready.players[0].troops_conflict
+    engine = UprisingRulesEngine()
+    pressed = engine.apply(ready, DomainAction("finish_agent_turn", 0))
+    state = pressed.state
+    assert state.players[0].influence.bene_gesserit == 4
+    assert "troops_deployed" in {event.kind for event in pressed.events}
+    assert state.players[0].troops_conflict == before + 1
+    nxt = state.decision_stack[-1]
+    assert nxt.kind == FrameKind.TURN
+    assert isinstance(nxt.decision, PlayerDecision) and nxt.decision.owner == 0
+
+
+def test_a_finishing_turn_whose_agent_box_is_pending_again_reopens() -> None:
+    """A box the press's own payment revived is this turn's again.
+
+    OQ-057 (1): "뒤에 뽑은 카드로 조건이 성립하면 box가 다시 의무가 된다". The
+    press used to raise "the turn end left a mandatory Agent box unresolved"
+    when that happened (the first grafted box paying a condition of its
+    partner's). No card pair is known to reach it, so this pins the reopen
+    the press now relies on rather than a whole game path.
+    """
+
+    from dune_imperium.rules.combat_deployment import (
+        FINISH_DEPLOYMENT_KEY,
+        FINISH_RECRUITS_KEY,
+        FINISHING_KEY,
+        settle_finishing_agent_turn,
+    )
+    from dune_imperium.rules.frames import with_context
+
+    reach = _card("long_reach")
+    owner = _owner((reach,), in_play=(_card("planned_coupling"),))
+    placed = _place(_state(owner), reach, "assembly_hall")
+    frame = placed.decision_stack[-1]
+    context = dict(frame.context)
+    assert context["pending_agent_effect"] is True
+    context.update(
+        {FINISHING_KEY: True, FINISH_DEPLOYMENT_KEY: False, FINISH_RECRUITS_KEY: 0}
+    )
+    finishing = replace(
+        placed,
+        decision_stack=(*placed.decision_stack[:-1], with_context(frame, context)),
+    )
+    settled = settle_finishing_agent_turn(RuleResult(state=finishing))
+    assert [event.kind for event in settled.events] == ["agent_turn_reopened"]
+    top = settled.state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert not agent_turn_is_finishing(dict(top.context))
 
 
 def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:

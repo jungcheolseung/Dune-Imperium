@@ -29,6 +29,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
     legal_troop_withdrawals,
 )
+from dune_imperium.rules.engine import UprisingRulesEngine
 
 
 def _instance(card_id: str, copy: int = 0) -> str:
@@ -152,7 +153,8 @@ def test_finishing_without_deploying_hands_the_turn_over() -> None:
     ).state
     state = _resolve_board_icons(state)
 
-    state = apply_agent_turn_finish(state, _finish()).state
+    # The turn closes at the end of the press's transition.
+    state = UprisingRulesEngine().apply(state, _finish()).state
 
     decision = state.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
@@ -198,7 +200,7 @@ def test_deployed_troops_may_be_withdrawn_after_a_later_draw() -> None:
     assert owner.units_deployed_turn == 1
     assert dict(back.decision_stack[-1].context)["combat_troops_deployed"] == 1
 
-    finished = apply_agent_turn_finish(back, _finish()).state
+    finished = UprisingRulesEngine().apply(back, _finish()).state
     decision = finished.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
@@ -345,8 +347,6 @@ def test_running_strength_follows_deployment_before_the_reveal() -> None:
     long before the Reveal sets the marker in the printed rule
     [Main p. 12]; see the implementation note in combat-and-round-end.md.
     """
-
-    from dune_imperium.rules.engine import UprisingRulesEngine
 
     engine = UprisingRulesEngine()
     state = _research_station_state()

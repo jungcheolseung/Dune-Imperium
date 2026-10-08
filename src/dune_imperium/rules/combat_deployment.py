@@ -369,12 +369,12 @@ def legal_commander_withdrawals(
 def agent_turn_is_finishing(context: dict[str, ActionValue]) -> bool:
     """Whether the owner already pressed the end and its own steps still run.
 
-    A Usurp trash puts a turn in this state (``FINISHING_KEY``), and so does a
-    press whose own steps queued a follow-up for the owner
-    (``_press_left_follow_ups``): what they leave behind (a Skill or
-    Navigation choice, a reshuffle, an owed Emperor track Spy) resolves on top
-    of the frame, and ``settle_finishing_agent_turn`` then closes or reopens
-    it.
+    Every ``finish_agent_turn`` press puts its turn in this state
+    (``FINISHING_KEY``): what the press leaves behind (a Usurp trash's
+    follow-ups, a Skill or Navigation choice, a reshuffle, an owed Emperor
+    track Spy) resolves on top of the frame, and
+    ``settle_finishing_agent_turn`` then closes or reopens it. A press that
+    leaves nothing is settled in the same transition.
     """
 
     return context.get(FINISHING_KEY) is True
@@ -720,11 +720,10 @@ def apply_agent_turn_finish(
     In order: a mandatory Agent box that could only fizzle fizzles (OQ-057),
     a held Contract icon fizzles (OQ-059), the turn's end is announced, the
     Combat deployment window closes, and a Usurped Row card is trashed
-    ("trash that card at the end of your turn.", OQ-054). Then the next seat's
-    turn opens -- unless the trash, or a follow-up the press's own steps
-    queued for the owner (``_press_left_follow_ups``), is still resolving, in
-    which case the frame waits as ``FINISHING_KEY`` for
-    ``settle_finishing_agent_turn``.
+    ("trash that card at the end of your turn.", OQ-054). The frame then waits
+    as ``FINISHING_KEY``: ``settle_finishing_agent_turn`` closes the turn, or
+    reopens it, once whatever the press left behind has resolved -- in the
+    same transition when it left nothing.
     """
 
     from dune_imperium.rules.agent_effects import (
@@ -773,11 +772,10 @@ def apply_agent_turn_finish(
             events.extend(switched.events)
             continue
         break
-    _, context = current_agent_effect_context(working)
-    if context["pending_agent_effect"] is True or (
-        context.get("graft_pending_effect") is True
-    ):
-        raise RuntimeError("the turn end left a mandatory Agent box unresolved")
+    # A box left pending here was revived by the press itself: the first
+    # grafted box's payment met the partner's condition. It is a mandatory
+    # effect of this turn again (OQ-057 (1): "뒤에 뽑은 카드로 조건이 성립하면
+    # box가 다시 의무가 된다"), so the settle below reopens the turn for it.
     source = f"round:{state.round_number}:player:{player}:finish_agent_turn"
     # A Contract icon that never found a token it could take fizzles with the
     # turn, without the two-Solari conversion (OQ-059).
@@ -791,18 +789,23 @@ def apply_agent_turn_finish(
             payload=(("player", player),),
         )
     )
-    usurped = bool(working.players[player].usurped_row_card_id)
-    if not usurped and not _press_left_follow_ups(working, player):
-        return RuleResult(
-            state=close_agent_turn(working, player), events=tuple(events)
-        )
+    # The turn does not close here. It waits as finishing, and whatever the
+    # press's own steps leave behind -- a Usurp trash's results (user ruling
+    # 2026-10-01, OQ-095 (5)), the follow-ups of a box the press resolved
+    # (Long Reach paying a Faction to a track bonus: an owed Emperor Spy, a
+    # Skill or Navigation choice, a Friends Everywhere pick, a reshuffled
+    # Intrigue draw) -- resolves on top of it, inside this turn (OQ-095 (3):
+    # "마지막 효과가 남긴 Skill·Navigation 선택 ... Emperor track Influence 4의
+    # Spy ... 등은 소유자의 열린 turn 위에서 풀리고"). Once the frame is back
+    # on top, ``settle_finishing_agent_turn`` closes the turn or reopens it
+    # (OQ-057 (15) re-ruling: "turn 종료를 누른 뒤 그 결과로 빚이 생기면
+    # OQ-095 (5)처럼 turn이 다시 열린다"). A press that leaves nothing closes in
+    # the same transition. Every press takes this one path, so no list of
+    # follow-up kinds can fall behind the rules again (2026-10-08: the list
+    # this replaced first missed the reshuffled draw).
     frame, context = current_agent_effect_context(working)
     deployment_window = context["pending_combat_deployment"] is True
     context["pending_combat_deployment"] = False
-    # Usurp: the borrowed card goes at the end of the turn, as an ordinary
-    # trash whose results are still this turn's (user ruling 2026-10-01,
-    # OQ-095 (5)); its follow-ups resolve on top of the waiting frame. So do
-    # the follow-ups of a box the press itself resolved (OQ-095 (3)-(4)).
     context[FINISHING_KEY] = True
     context[FINISH_DEPLOYMENT_KEY] = deployment_window
     context[FINISH_RECRUITS_KEY] = _recruited_units(context)
@@ -810,40 +813,13 @@ def apply_agent_turn_finish(
         working,
         decision_stack=(*working.decision_stack[:-1], with_context(frame, context)),
     )
-    if not usurped:
+    if not working.players[player].usurped_row_card_id:
         return RuleResult(state=working, events=tuple(events))
+    # Usurp: the borrowed card goes at the end of the turn, as an ordinary
+    # trash whose results are still this turn's.
     trashed = trash_usurped_card(working, player)
     return RuleResult(state=trashed.state, events=(*events, *trashed.events))
 
-
-def _press_left_follow_ups(state: GameState, player: int) -> bool:
-    """Whether the turn-end press itself queued a follow-up for its owner.
-
-    A box the press resolves can pay Influence (Long Reach pays its first
-    named Faction when no second one can be chosen, OQ-071), and a reach
-    queues what that Faction's track gives: the Emperor's Influence 4 Spy,
-    Steersman Y'rkoon's Navigation play, a Friends Everywhere choice, an
-    Intrigue draw from an empty deck (Bene Gesserit 4). They are this
-    turn's (OQ-095 (3): "마지막 효과가 남긴 Skill·Navigation 선택 ...
-    Emperor track Influence 4의 Spy ... 등은 소유자의 열린 turn 위에서
-    풀리고", and Suspensor Suits counts "마지막 효과 뒤의 draw까지"; (4)
-    names "덱이 빈 Intrigue draw의 reshuffle"), so the turn waits as
-    finishing, like a Usurp trash's follow-ups: they resolve on top of it
-    and ``settle_finishing_agent_turn`` closes the turn or, for an owed
-    Spy, reopens it (OQ-057 (15) re-ruling: "turn 종료를 누른 뒤 그 결과로
-    빚이 생기면 OQ-095 (5)처럼 turn이 다시 열린다"). Before, an owed Spy or
-    a Navigation play made the press raise as it closed the turn, and a
-    Friends Everywhere choice or a reshuffled draw resolved after the turn
-    had closed, in the next seat's turn.
-    """
-
-    return (
-        owes_track_spy(state, player)
-        or any(entry[0] == player for entry in state.pending_skill_choices)
-        or any(entry[0] == player for entry in state.pending_navigation_plays)
-        or any(entry[0] == player for entry in state.scouts_four_bonus_choices)
-        or any(entry[0] == player for entry in state.pending_intrigue_draws)
-    )
 
 
 def _recruited_units(context: dict[str, ActionValue]) -> int:
@@ -856,9 +832,11 @@ def _recruited_units(context: dict[str, ActionValue]) -> int:
 def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
     """Close a finishing Agent turn, or reopen it for what its end produced.
 
-    Runs after every transition, once the Usurp trash and its follow-ups have
-    resolved and the owner's frame is back on top. The trash's results are
-    the turn's own (user ruling 2026-10-01, OQ-095 (5)): when they make a
+    Runs after every transition, once the press's own steps (a Usurp trash, a
+    box the press resolved) and their follow-ups have resolved and the
+    owner's frame is back on top -- in the press's own transition when they
+    left nothing. Their results are the turn's own (user ruling 2026-10-01,
+    OQ-095 (5)): when they make a
     snapshot Contract's condition true -- a Contract is always completed
     [FAQ p. 1] -- recruit units on a turn that could deploy -- "그 turn에
     recruit한 troop을 원하는 수만큼 deploy" [Main p. 10] -- or reach the

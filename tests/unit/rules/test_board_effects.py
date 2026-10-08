@@ -52,7 +52,6 @@ from dune_imperium.rules.board_effects import (
     static_board_effects,
 )
 from dune_imperium.rules.combat_deployment import (
-    apply_agent_turn_finish,
     legal_agent_turn_finish_actions,
     legal_combat_deployments,
 )
@@ -1024,7 +1023,7 @@ def test_desert_tactics_can_trash_the_just_played_card_itself() -> None:
     # Combat deployment window then closes with the explicit turn end
     # (OQ-029).
     influenced = resolve_faction_influence(trashed_state).state
-    finished = apply_agent_turn_finish(
+    finished = UprisingRulesEngine().apply(
         influenced, DomainAction(action_id="finish_agent_turn", actor=0)
     ).state
     decision = finished.decision_stack[-1].decision
