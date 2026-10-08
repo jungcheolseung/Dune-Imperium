@@ -121,8 +121,8 @@ function describeReviewStep(label) {
   if (!label) return t("review.before_game_start");
   /* The engine's pause before a reveal (rules/pauses.py): one outcome,
      nothing drawn, so its name alone. */
-  if (label.type === "chance" && String(label.decision_id).endsWith(":pause")) {
-    return t("review.pause_step");
+  if (label.type === "chance" && isPauseChance(label.decision_id)) {
+    return t("core.pause_step");
   }
   if (label.type === "chance") {
     const values = label.values || [];

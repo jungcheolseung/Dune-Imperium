@@ -765,9 +765,6 @@ const QUIET_ACTIONS = new Set([
   "pass_endgame_intrigue",
 ]);
 
-/* A pause's chance step (core/chance.py FIXED_OUTCOME_SUFFIX). */
-const PAUSE_CHANCE = /:pause$/;
-
 /* Steps that stand as a card of their own (setup picks). */
 const SOLO_ACTIONS = new Set(["pick_leader"]);
 
@@ -869,7 +866,7 @@ function logGroups(entries) {
          held back (the next recipient's reward, the Conflict's winner, the
          next round). The pause itself has one outcome and changes nothing:
          the record keeps its line, the log does not. */
-      const lines = PAUSE_CHANCE.test(String(entry.decision_id)) ? [] : [{ chance: entry }];
+      const lines = isPauseChance(entry.decision_id) ? [] : [{ chance: entry }];
       for (const event of entry.events || []) lines.push({ event, index: entry.index });
       addNeutral(entry.index, lines);
       continue;
@@ -983,6 +980,10 @@ function neutralCard(group, glowFrom) {
 function chanceLine(entry) {
   const line = document.createElement("div");
   line.className = "turn-line chance";
+  if (isPauseChance(entry.decision_id)) {
+    line.textContent = t("core.pause_step");
+    return line;
+  }
   let text = t("core.chance_label", { decision: describeChance(entry.decision_id) });
   if (entry.values) {
     const valueName = (value) => chanceValueName(entry.decision_id, value);
