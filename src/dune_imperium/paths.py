@@ -21,3 +21,6 @@ SEARCH_CHECKPOINT: Final = PROJECT_ROOT / "checkpoints" / "play" / "search.pt"
 # folders, official-rule working copies) go here instead of the system
 # temp folder; delete it whenever nothing is running.
 TMP_DIR: Final = PROJECT_ROOT / "tmp"
+# Files of this machine that have to outlive a run, unlike ``tmp/``: the
+# server launcher's settings (docs/server-launcher-plan.md 5.4).
+LOCAL_DIR: Final = PROJECT_ROOT / "local"

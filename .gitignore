@@ -189,5 +189,9 @@ checkpoints/
 # nothing the project makes lives outside the project directory
 /tmp/
 
+# This machine's own files that outlive a run (dune_imperium.paths.LOCAL_DIR):
+# the server launcher's settings, admin key included
+/local/
+
 # Output of the A/B, soak and profiling tools under scripts/ab (see its README)
 ab-runs/
