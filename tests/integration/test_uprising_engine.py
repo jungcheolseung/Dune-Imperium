@@ -11,6 +11,7 @@ from dune_imperium.core import (
     ChanceResolver,
     DecisionFrame,
     DomainAction,
+    GameEvent,
     GamePhase,
     GameReplay,
     GameState,
@@ -428,6 +429,28 @@ def test_four_seeded_random_players_finish_one_round() -> None:
         "combat_cleaned_up",
         "agents_recalled",
     } <= event_kinds
+
+
+def test_the_combat_standing_is_reported_but_never_kept_in_the_state() -> None:
+    # combat_standing restates for the tables what the state holds when
+    # the rewards begin (rules/combat.py). It reaches the session log
+    # through the transition, but the state, whose canonical hash every
+    # save records, stays as it was before the event existed, so saves
+    # written earlier still load (2026-10-08).
+    engine = UprisingRulesEngine()
+    first = run_random_round(engine, RulesetConfig(), 0, 1000)
+    state = engine.reset(RulesetConfig(), 0)
+    reported: list[GameEvent] = []
+    for step in first.replay.steps:
+        transition = engine.apply(state, step)
+        reported.extend(
+            event for event in transition.events if event.kind == "combat_standing"
+        )
+        state = transition.state
+        assert all(event.kind != "combat_standing" for event in state.event_log)
+
+    assert reported
+    assert state == first.state
 
 
 def test_same_game_and_policy_seeds_reproduce_the_round() -> None:

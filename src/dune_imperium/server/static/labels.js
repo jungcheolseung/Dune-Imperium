@@ -348,6 +348,7 @@ const EVENT_LABELS = {
   reveal_finished: "{reveal_turn} 종료",
   conflict_revealed: "{conflict} 공개",
   conflict_won: "{conflict} 승리",
+  combat_standing: "{combat} 순위",
   combat_reward_gained: "{combat} 보상",
   contract_taken: "{contract} 획득",
   contract_completed: "{contract} 완료",

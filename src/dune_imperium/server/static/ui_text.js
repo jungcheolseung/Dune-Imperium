@@ -30,6 +30,10 @@ const UI_TEXT = {
   "effects.banner_conflict": { "ko": "{conflict}: {{name}}", "en": "{conflict}: {{name}}" },
   "effects.banner_turn_mine": { "ko": "내 차례", "en": "Your turn" },
   "effects.banner_turn_other": { "ko": "플레이어{{seat}} 차례", "en": "Player {{seat}}'s turn" },
+  "effects.result_title": { "ko": "전투 결과", "en": "Combat Result" },
+  "effects.result_unranked": { "ko": "보상 없음", "en": "No reward" },
+  "effects.result_double": { "ko": "모래벌레: 보상 2배", "en": "Sandworm: reward doubled" },
+  "effects.result_close": { "ko": "누르면 닫힙니다", "en": "Click to close" },
   "html.setup_intro": {
     "ko": "플레이어와 규칙을 고르고 아라키스로 떠나세요.",
     "en": "Choose your players and rules. Arrakis awaits."

@@ -40,7 +40,9 @@ CHOOSE = """() => {
 
 
 def freeze(page) -> None:
-    page.evaluate("clearTimeout(playEffects.timer)")
+    # Banners and cards take turns on screen (effects.js advanceEffects):
+    # holding both keeps a banner's end from starting the next card.
+    page.evaluate("clearTimeout(playEffects.timer); clearTimeout(phaseBanner.timer)")
 
 
 def live(page, base: str) -> None:
@@ -194,6 +196,10 @@ def boundaries(page, base: str) -> None:
     }""")
     check.ok(mixed, "a dual Plot/Combat card names the option actually played")
     # The first play can be undone before any effects draw hidden information.
+    # The round and turn banners go first; a card waits for the one on screen.
+    page.wait_for_function(
+        "phaseBanner.current === null && !phaseBanner.queue.length", timeout=10000
+    )
     page.evaluate("applyAction", page.evaluate(CHOOSE))
     assert settled(page)
     freeze(page)

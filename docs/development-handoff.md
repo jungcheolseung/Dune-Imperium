@@ -4,6 +4,42 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-08 게임다운 연출 1~3단계: AI 차례 띠, 연출 한 줄 세우기, 전투 결과판 (codec 그대로 v139)
+
+사용자 요청("이런 식으로 이제 진짜 게임처럼 비주얼 효과가 추가되면 좋겠어", "전투 단계 종료 때 전투 최종 순위도 그렇게
+보여지면 좋겠고", "AI 차례가 될 때도 플레이어 차례처럼 안내 이펙트가 있어야 해")에 계획을 세웠고, 결정은 "추천대로"였다.
+계획 전체(1~5단계, 고른 추가 연출, 미룬 것)는 [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계에 있다.
+브랜치 `visual-effects`.
+
+- **원인**: 차례 띠는 summary의 "지금 기다리는 결정"을 보고 떴다. heuristic·앱 AI는 사람 요청 안에서 한꺼번에 두므로
+  화면에는 AI 차례가 "지금"인 순간이 없었다. 전투 순위도 화면이 다시 계산할 수 없었다. 보상은 한 명씩 주고, AI 묶음은
+  정리(전투력 0)까지 지나간 뒤에 화면에 온다.
+- **엔진(이벤트만)**: `rules/combat.py` `_combat_standing_events`가 보상이 시작될 때 한 번, 교전에 있는 좌석마다 공개
+  `combat_standing`(player, rank, strength, multiplier, conflict_id)을 낸다.
+  - 보상 받는 좌석은 `rank_combat` 순서다. 나머지(전투력이나 유닛이 있는 좌석)는 순위 0으로, 전투력 순 다음 차례 순이다.
+  - 이 이벤트는 "보고만 하는 이벤트"다(`RulesEngine.report_only_event_kinds`). 전환으로 서버 로그에는 가지만 상태의
+    `event_log`에는 남지 않는다. 그래서 상태와 canonical hash가 전과 같고, 옛 저장(진행 중인 "1007")도 그대로 열린다.
+    처음에는 `event_log`에 넣었다가 병합 직전 `saves/`를 불러 보고 1007이 해시 대조에 막힌 것을 찾았다(`docs/lessons.md`
+    2026-10-08).
+  - 규칙·codec·관측·저장 형식은 바뀌지 않았다.
+  - 행동 기록에는 "전투 순위" 줄로 보이고, 전투 정리의 중립 카드에 묶인다.
+- **화면** (`static/effects.js`):
+  - 카드 알림과 띠를 `advanceEffects` 하나가 로그 순서로 한 번에 하나씩 올린다. 순서는 차례 띠 → 그 차례의 카드 →
+    다음 차례 띠다.
+  - 차례 띠의 출처는 둘이다. summary는 지금 시작하는 차례를, 로그는 그 뒤 두어진 모든 차례
+    (`agent_turn`·`reveal_turn`·`play_turn_start_card`)를 준다. 둘 다 "<좌석>:<마지막 턴 종료 위치>"로 열쇠를 만들어
+    한 번만 뜬다. 다시보기도 모든 차례를 "플레이어N 차례"로 보인다.
+  - summary가 알린 차례는 그 좌석이 움직이면 바로 내려가서, 사람의 첫 카드가 곧장 뜬다.
+  - 전투 결과판은 교전 카드와 좌석별 줄(순위·리더·플레이어·전투력·모래벌레 ×2, 내 줄 강조)이다. 3.2초(붐비면 2.4초)
+    머물고, 결과판만 클릭을 받는다. 누르거나 Esc로 닫는다.
+- **검증**:
+  - pytest **6,665개 통과**(새 테스트 4개: 순위 셋, 상태에 남지 않음 하나), ruff·mypy(415파일) 통과. 지금 열리는 저장(`saves/`의 1007)이
+    새 코드에서도 열린다.
+  - Chrome E2E **48종 전부 통과**(학습이 돌아 2개씩, 546초). `phase_banner.py`는 시드 판에서 AI 차례 95번과 결과판을
+    로그와 독립 대조하고, 결과판의 줄·두 언어·세 창 크기·클릭/Esc 닫기를 본다. `card_effects.py`는 두 타이머를 함께 멈춘다.
+- **한계**: AI 묶음은 여전히 한 요청에 끝난다. 그래서 띠와 카드는 이미 끝난 보드 위에서 순서대로 지나간다. 이것은
+  4단계(AI 진행 속도)가 고친다. 사람이 빨리 두면 앞선 AI 연출이 밀려서 늦게 보일 수 있다.
+
 ## 2026-10-08 턴 종료는 확정: 공개 앞에서 붙잡고, 되돌릴 수 없는 턴 밖 선택은 "확정 ▶" (codec 그대로 v139)
 
 사용자 지적(저장 게임 "1007": "내가 턴 종료할 차례가 아닌데 턴 종료가 뜨는 경우가 있었어. 1라운드 전투 끝나고, 아라킨스카웃 시작할 때, 그리고 아라킨 스카웃 끝날 때")과 그 뒤의 정리("전투 보상으로 받은 스파이 둘 위치를 골랐다가, 혹시 맘에 안 들면 확정 전에 다른 곳에 두고 싶을 수 있잖아. 그니까 되돌리기 기회를 줘야하는데, 지금 그 기회도 없는데, 턴 종료 버튼은 또 남아버려서 이상해진거네")에 따랐다. 엔진·codec·관측·학습은 바꾸지 않았다. 바뀐 것은 서버(`server/sessions.py`, `server/turn_end.py`)와 브라우저뿐이다. 교훈은 `docs/lessons.md` 2026-10-08.

@@ -408,6 +408,7 @@ const LABELS_EN = {
     "reveal_finished": "{reveal_turn} Finished",
     "conflict_revealed": "{conflict} Revealed",
     "conflict_won": "{conflict} Won",
+    "combat_standing": "{combat} Standing",
     "combat_reward_gained": "{combat} Reward",
     "contract_taken": "{contract} Taken",
     "contract_completed": "{contract} Completed",

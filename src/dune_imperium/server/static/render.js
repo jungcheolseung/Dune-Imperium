@@ -452,8 +452,7 @@ function render(options) {
     pane.scrollLeft = left;
   }
   fitActionLog();
-  renderPlayEffects();
-  renderPhaseBanner();
+  renderEffects();
   refreshConflictHistory();
 }
 

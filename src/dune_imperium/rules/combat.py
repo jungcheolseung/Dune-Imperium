@@ -286,6 +286,8 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
     rewards = conflict.rewards
 
     events: list[GameEvent] = []
+    if state.combat_rewards_paid == 0:
+        events.extend(_combat_standing_events(state, conflict_id))
     while True:
         ranking = rank_combat(state.players, first_player=state.first_player)
         if state.combat_rewards_paid >= len(ranking.rewards):
@@ -313,6 +315,57 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         if state.decision_stack or _reward_queues(state) != queued:
             break
     return RuleResult(state=state, events=tuple(events))
+
+
+def _combat_standing_events(
+    state: GameState, conflict_id: str
+) -> tuple[GameEvent, ...]:
+    """The Combat's final standing, one public event per seat in it.
+
+    Emitted once, as the rewards begin: the reward rows are paid one
+    recipient at a time, and the strengths are gone after cleanup, so the
+    log carries the whole standing here for the table to show ("전투 단계
+    종료 때 전투 최종 순위도 그렇게 보여지면 좋겠고", user, 2026-10-08).
+    Recipients come in ``rank_combat``'s order with their rank and
+    sandworm multiplier; every other seat with strength or units in the
+    Conflict follows with rank 0, by strength and then in turn order from
+    the First Player. Strength and units in the Conflict are public, so the
+    events tell no seat anything new.
+    """
+
+    players = state.players
+    ranking = rank_combat(players, first_player=state.first_player)
+    rewarded = {reward.player for reward in ranking.rewards}
+    first = state.first_player or 0
+    seats = len(players)
+    turn_order = tuple((first + offset) % seats for offset in range(seats))
+    others = sorted(
+        (
+            seat
+            for seat in turn_order
+            if seat not in rewarded
+            and (players[seat].combat_strength or players[seat].units_in_conflict)
+        ),
+        key=lambda seat: -players[seat].combat_strength,
+    )
+    standing = [
+        (reward.player, reward.rank.value, reward.multiplier)
+        for reward in ranking.rewards
+    ] + [(seat, 0, 1) for seat in others]
+    return tuple(
+        GameEvent(
+            event_id=f"round:{state.round_number}:combat_standing:{seat}",
+            kind="combat_standing",
+            payload=(
+                ("conflict_id", conflict_id),
+                ("multiplier", multiplier),
+                ("player", seat),
+                ("rank", rank),
+                ("strength", players[seat].combat_strength),
+            ),
+        )
+        for seat, rank, multiplier in standing
+    )
 
 
 def combat_rewards_done(
