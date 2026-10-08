@@ -17,8 +17,7 @@ Steam에 설치된 Dire Wolf Digital의 Unity 앱 두 개를 읽는 도구다.
 - 앱의 코드를 이 저장소의 코드나 AI로 옮기지 않는다. 디스어셈블에서 읽은 판정은 의역해 기록한다.
 - 다른 기기에서는 앱을 설치하고 다시 추출한다(약 5초).
 - 2026-09-27~28 분석 결과는 Mac mini의 그 폴더 `analysis/`에만 있다: 코드 분석, 항목별 해석, 반박 검증, 확률 스크립트, 한국어 요약 `report-ko.md`.
-- 예외: 플레이 UI가 실제로 보여 주는 그림(아이콘, 보드 말, 앱 조각으로 조립한 카드 앞면)은 `app_assets.py`(`icons`·`pieces`·`strength`·`backs`), `app_cards.py`(`render`), `app_board.py`(`render`, 보드 칸 그림)가 에셋 저장소의 `icons/`·`tokens/`·`cards/app/`에 쓰고 에셋 저장소에 커밋한다(2026-10-07 사용자 결정, "게임에 쓰이는 에셋"). 색인·스프라이트·폰트 같은 중간 자료는 위 규칙대로 `reference/dune-steam-app/<build-guid>/render/`에만 둔다.
-- 예외: 플레이 UI가 실제로 보여 주는 그림(아이콘, 보드 말, 앱 조각으로 조립한 카드 앞면)은 `app_assets.py`(`icons`·`pieces`), `app_cards.py`(`render`), `app_board.py`(`render`, 보드 칸 그림), `app_leaders.py`(`render`, 지도자 카드)가 에셋 저장소의 `icons/`·`tokens/`·`cards/app/`에 쓰고 에셋 저장소에 커밋한다(2026-10-07 사용자 결정, "게임에 쓰이는 에셋"). 색인·스프라이트·폰트 같은 중간 자료는 위 규칙대로 `reference/dune-steam-app/<build-guid>/render/`에만 둔다.
+- 예외: 플레이 UI가 실제로 보여 주는 그림(아이콘, 보드 말, 앱 조각으로 조립한 카드 앞면)은 `app_assets.py`(`icons`·`pieces`·`strength`·`backs`), `app_cards.py`(`render`), `app_board.py`(`render`, 보드 칸 그림), `app_leaders.py`(`render`, 지도자 카드), `app_log_icons.py`(행동 로그 그림)가 에셋 저장소의 `icons/`·`tokens/`·`cards/app/`에 쓰고 에셋 저장소에 커밋한다(2026-10-07 사용자 결정, "게임에 쓰이는 에셋"). 색인·스프라이트·폰트 같은 중간 자료는 위 규칙대로 `reference/dune-steam-app/<build-guid>/render/`에만 둔다.
 
 ## 준비
 
