@@ -37,6 +37,13 @@ INSTALL_CMD = PROJECT_ROOT / "scripts" / "launcher" / "Install Launcher.cmd"
 # --- macOS app ---------------------------------------------------------------
 
 
+def test_the_missing_environment_alert_is_one_quoted_applescript() -> None:
+    from dune_imperium.launcher.shortcuts import launch_script
+
+    [line] = [line for line in launch_script().splitlines() if "osascript" in line]
+    assert 'display alert \\"Dune Imperium 서버\\" message \\"$hint\\""' in line
+
+
 def test_the_app_bundle_names_its_executable() -> None:
     info = plistlib.loads(info_plist())
     assert info["CFBundleExecutable"] == "launch"
@@ -52,8 +59,12 @@ def test_the_app_opens_the_launcher_of_the_checkout_it_sits_in(tmp_path: Path) -
     python = root / ".venv" / "bin" / "python"
     python.parent.mkdir(parents=True)
     record = tmp_path / "ran.txt"
+    # Only the launcher's call is recorded: an editor may probe any new
+    # .venv/bin/python it finds (python -c ...) while the test runs.
     python.write_text(
-        f'#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" > "{record}"\n', encoding="utf-8"
+        '#!/bin/sh\n[ "$1" = "-m" ] || exit 0\n'
+        f'printf "%s\\n" "$PWD" "$@" > "{record}"\n',
+        encoding="utf-8",
     )
     python.chmod(0o755)
 

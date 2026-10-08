@@ -1,9 +1,13 @@
 """The server command and the checks before a start (plan 5.2, 5.7)."""
 
+import http.server
+import json
 import os
 import socket
 import subprocess
 import sys
+import threading
+import urllib.request
 from collections.abc import Sequence
 from importlib.util import find_spec
 from pathlib import Path
@@ -370,3 +374,243 @@ def test_the_newest_cause_wins() -> None:
 def test_the_plan_runs_on_this_interpreter_by_default() -> None:
     plan = build_plan(LauncherSettings(), None, environ=os.environ)
     assert plan.python == server_python()
+
+
+# --- review fixes (2026-10-09) -----------------------------------------------
+
+
+class _RecordingProxy:
+    """A listening socket that records whatever reaches it and answers 502."""
+
+    def __init__(self) -> None:
+        self.received: list[bytes] = []
+        self.socket = socket.socket()
+        self.socket.bind(("127.0.0.1", 0))
+        self.socket.listen()
+        self.url = f"http://127.0.0.1:{self.socket.getsockname()[1]}"
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        while True:
+            try:
+                connection, _ = self.socket.accept()
+            except OSError:
+                return
+            with connection:
+                self.received.append(connection.recv(65536))
+                connection.sendall(
+                    b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+                )
+
+
+class _TinyServer:
+    """Answers /whoami and /games like a play server; records the cookies."""
+
+    def __init__(self, whoami: dict[str, object]) -> None:
+        self.cookies: list[str | None] = []
+        cookies = self.cookies
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 - the http.server name
+                cookies.append(self.headers.get("Cookie"))
+                body = json.dumps(
+                    whoami if self.path == "/whoami" else [{"game_id": "g1"}]
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port: int = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_the_admin_key_never_goes_through_a_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # urllib's default opener follows http_proxy and the system settings;
+    # the admin cookie must reach the server and nothing else.
+    proxy = _RecordingProxy()
+    server = _TinyServer({"access": "remote", "admin": True})
+    for name in ("http_proxy", "HTTP_PROXY"):
+        monkeypatch.setenv(name, proxy.url)
+    for name in ("no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: {"http": proxy.url})
+    try:
+        assert command.whoami("127.0.0.1", server.port, KEY) == {
+            "access": "remote",
+            "admin": True,
+        }
+        assert command.list_games("127.0.0.1", server.port, KEY) == [
+            {"game_id": "g1"}
+        ]
+    finally:
+        server.close()
+        proxy.socket.close()
+    assert server.cookies == [f"dune_admin={KEY}", f"dune_admin={KEY}"]
+    assert proxy.received == []
+
+
+@pytest.mark.parametrize(
+    "greeting", [b"SSH-2.0-OpenSSH_9.6\r\n", b"-ERR unknown command\r\n"]
+)
+def test_something_that_is_not_http_on_the_port_is_no_crash(greeting: bytes) -> None:
+    taken = socket.socket()
+    taken.bind(("127.0.0.1", 0))
+    taken.listen()
+    port: int = taken.getsockname()[1]
+
+    def answer() -> None:
+        while True:
+            try:
+                connection, _ = taken.accept()
+            except OSError:
+                return
+            with connection:
+                connection.sendall(greeting)
+
+    threading.Thread(target=answer, daemon=True).start()
+    try:
+        assert command.whoami("127.0.0.1", port) is None
+        lines = _check(LauncherSettings(port=port))
+    finally:
+        taken.close()
+    assert any(line.startswith("error:") and "다른 프로그램" in line for line in lines)
+
+
+def test_a_port_another_dune_server_holds_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(command, "whoami", lambda *args, **kw: {"access": "open"})
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        lines = _check(LauncherSettings(port=taken.getsockname()[1]))
+    assert any(line.startswith("error:") and "Dune 서버" in line for line in lines)
+    assert not any("다른 프로그램" in line for line in lines)
+
+
+def test_a_busy_port_on_an_address_this_machine_has_is_not_a_missing_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "dune_imperium.cli.server.bind_problem",
+        lambda host, port, **_: None if port == 0 else "in use",
+    )
+    monkeypatch.setattr(command, "whoami", lambda *args, **kw: None)
+    lines = _check(LauncherSettings(mode="remote", host="192.0.2.1", port=8765))
+    assert any(line.startswith("error:") and "다른 프로그램" in line for line in lines)
+    assert not any("Tailscale" in line for line in lines)
+
+
+def test_errors_come_before_warnings_and_notes() -> None:
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        settings = LauncherSettings(
+            mode="remote", host="127.0.0.1", port=taken.getsockname()[1]
+        )
+        problems = preflight(settings, build_plan(settings, KEY), check_torch=False)
+    levels = [problem.level for problem in problems]
+    assert levels[0] == "error" and "warning" in levels
+    assert levels == sorted(levels, key=["error", "warning", "note"].index)
+
+
+def test_a_wildcard_bind_beside_a_server_on_loopback_is_refused() -> None:
+    # On macOS SO_REUSEADDR lets 0.0.0.0:P bind beside 127.0.0.1:P, and the
+    # loopback one would answer the launcher.
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port: int = taken.getsockname()[1]
+        lines = _check(
+            LauncherSettings(
+                mode="remote",
+                host="0.0.0.0",
+                port=port,
+                public_url="http://192.168.0.5:1",
+            )
+        )
+    assert any(line.startswith("error:") and str(port) in line for line in lines)
+
+
+def test_a_wildcard_bind_without_a_room_link_base_warns() -> None:
+    lines = _check(LauncherSettings(mode="remote", host="0.0.0.0", port=_free_port()))
+    assert any(line.startswith("warning:") and "방 링크" in line for line in lines)
+
+
+def test_a_tunnel_on_loopback_is_not_told_nobody_can_come_in() -> None:
+    lines = _check(
+        LauncherSettings(
+            mode="remote",
+            host="127.0.0.1",
+            port=_free_port(),
+            public_url="https://mac-mini.tail1234.ts.net",
+        )
+    )
+    assert not any("이 PC에서만" in line for line in lines)
+
+
+def test_a_local_start_passes_no_remote_only_options() -> None:
+    settings = LauncherSettings(
+        port=8123, autosave=False, public_url="http://192.168.0.5:8123"
+    )
+    arguments = _parsed(build_plan(settings, None, python="py", environ={}))
+    assert server_cli.resolve_public_url(arguments) is None
+    assert server_cli.resolve_autosave(arguments) is False
+
+
+def test_a_chosen_network_that_is_missing_is_a_warning(tmp_path: Path) -> None:
+    lines = _check(
+        LauncherSettings(port=_free_port(), search_checkpoint=str(tmp_path / "x.pt"))
+    )
+    assert any(line.startswith("warning:") and "x.pt" in line for line in lines)
+
+
+def test_the_plan_does_not_show_the_admin_key() -> None:
+    plan = build_plan(
+        LauncherSettings(mode="remote", host="127.0.0.1"),
+        KEY,
+        python="py",
+        environ={},
+    )
+    assert KEY not in repr(plan)
+
+
+@pytest.mark.parametrize(
+    ("line", "words"),
+    [
+        (
+            "dune-imperium-server: cannot resolve --host nowhere.invalid: "
+            "[Errno 8] nodename nor servname provided",
+            ["nowhere.invalid을"],
+        ),
+        (
+            "dune-imperium-server: cannot listen on ::1:8000: Address already in use",
+            ["::1:8000"],
+        ),
+        ("dune-imperium-server: no usable address for --host foo", ["foo에서"]),
+        (
+            "dune-imperium-server: cannot listen on 100.1.2.3:8000: "
+            "Can't assign requested address (is that address up",
+            ["100.1.2.3:8000", "주소가 없습니다"],
+        ),
+        (
+            "ERROR:    [Errno 49] error while attempting to bind on address",
+            ["주소가 없습니다"],
+        ),
+    ],
+)
+def test_more_failures_are_explained(line: str, words: list[str]) -> None:
+    message = explain_failure([line], 1)
+    for word in words:
+        assert word in message, message

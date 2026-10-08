@@ -11,6 +11,7 @@ The messages are Korean, for the host; the command and file names in them
 stay as typed.
 """
 
+import http.client
 import os
 import re
 import socket
@@ -18,7 +19,7 @@ import subprocess
 import sys
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Final, Literal
@@ -64,13 +65,14 @@ class LaunchPlan:
 
     python: str
     server_args: tuple[str, ...]
-    env: Mapping[str, str]
+    # The three that hold the admin key stay out of repr.
+    env: Mapping[str, str] = field(repr=False)
     host: str
     port: int
     remote: bool
-    admin_key: str | None
+    admin_key: str | None = field(repr=False)
     # What the host opens: the admin link, or the table of a local server.
-    open_url: str
+    open_url: str = field(repr=False)
     # What the room links start with (``<base>/#game=<id>``).
     room_base: str
 
@@ -218,19 +220,63 @@ def build_plan(
     )
 
 
+def _answers(host: str, port: int) -> bool:
+    """Whether something already accepts connections at the address the
+    launcher would reach ``host:port`` by.
+
+    On macOS and other BSDs SO_REUSEADDR lets a wildcard bind (0.0.0.0:P)
+    succeed beside a server on 127.0.0.1:P, and the more specific socket
+    then gets the launcher's own connections.
+    """
+
+    try:
+        with socket.create_connection((_WILDCARDS.get(host, host), port), 0.5):
+            return True
+    except OSError:
+        return False
+
+
 def find_free_port(host: str, start: int = 8000, count: int = 100) -> int:
     """The first port from ``start`` the server could listen on, else any."""
 
     from dune_imperium.cli.server import bind_problem
 
     for port in range(start, min(start + count, 65536)):
-        if bind_problem(host, port) is None:
+        if bind_problem(host, port) is None and not _answers(host, port):
             return port
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as probe:
         probe.bind((_WILDCARDS.get(host, host), 0))
         port_found: int = probe.getsockname()[1]
         return port_found
+
+
+def get_json(url: str, admin_key: str | None = None, timeout: float = 1.0) -> object:
+    """``GET url`` straight to the server, never through an HTTP proxy.
+
+    urllib's default opener follows ``http_proxy`` and the system proxy
+    settings: the admin cookie would reach the proxy, and a proxy cannot
+    reach this machine's loopback or Tailscale address anyway. Every HTTP
+    request of the launcher goes through here. ``None`` when nothing (or
+    something that is not HTTP, or not JSON) answered.
+    """
+
+    import json
+
+    request = urllib.request.Request(url)
+    if admin_key is not None:
+        request.add_header("Cookie", f"dune_admin={admin_key}")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            data: object = json.loads(response.read())
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+    return data
+
+
+def server_url(host: str, port: int, path: str) -> str:
+    return f"http://{url_host(_WILDCARDS.get(host, host))}:{port}{path}"
 
 
 def whoami(
@@ -242,18 +288,7 @@ def whoami(
     the key travels as the admin cookie, so no login request is needed.
     """
 
-    import json
-
-    request = urllib.request.Request(
-        f"http://{url_host(_WILDCARDS.get(host, host))}:{port}/whoami"
-    )
-    if admin_key is not None:
-        request.add_header("Cookie", f"dune_admin={admin_key}")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read())
-    except (OSError, ValueError):
-        return None
+    data = get_json(server_url(host, port, "/whoami"), admin_key, timeout)
     return data if isinstance(data, dict) and "access" in data else None
 
 
@@ -264,18 +299,7 @@ def list_games(
     did not answer. On a remote server only the host may list them; the
     admin key travels as the admin cookie, as for ``whoami``."""
 
-    import json
-
-    request = urllib.request.Request(
-        f"http://{url_host(_WILDCARDS.get(host, host))}:{port}/games"
-    )
-    if admin_key is not None:
-        request.add_header("Cookie", f"dune_admin={admin_key}")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read())
-    except (OSError, ValueError):
-        return None
+    data = get_json(server_url(host, port, "/games"), admin_key, timeout)
     if not isinstance(data, list):
         return None
     return [item for item in data if isinstance(item, dict)]
@@ -337,11 +361,12 @@ def _search_checkpoint_problems(
         if settings.search_checkpoint
         else SEARCH_CHECKPOINT
     )
+    chosen = settings.search_checkpoint is not None
     if named.is_symlink() and not named.exists():
         target = os.readlink(named).removeprefix("\\\\?\\")
         return [
             Problem(
-                "note",
+                "warning",
                 "탐색 AI 꺼짐: 링크가 가리키는 파일이 없습니다 "
                 f"({named.name} → {target})",
             )
@@ -350,14 +375,20 @@ def _search_checkpoint_problems(
     checkpoint, line = resolve_search_checkpoint(arguments, plan.env)
     if checkpoint is None:
         if "torch not installed" in line:
+            # A network is there, so the host probably meant to use it.
             return [
                 Problem(
-                    "note",
+                    "warning",
                     f"탐색 AI 꺼짐: torch가 없습니다 (탐색 AI를 쓰려면 `{SYNC_TRAIN}`)",
                 )
             ]
         if "no file at" in line:
-            return [Problem("note", f"탐색 AI 꺼짐: 고른 파일이 없습니다 ({named})")]
+            return [
+                Problem(
+                    "warning" if chosen else "note",
+                    f"탐색 AI 꺼짐: 고른 파일이 없습니다 ({named})",
+                )
+            ]
         return [
             Problem(
                 "note",
@@ -393,7 +424,10 @@ def _port_problems(plan: LaunchPlan) -> list[Problem]:
 
     problem = bind_problem(plan.host, plan.port)
     if problem is None:
-        return []
+        if plan.host not in _WILDCARDS or not _answers(plan.host, plan.port):
+            return []
+        # A wildcard bind would succeed beside another server (BSD), which
+        # would then answer the launcher at the loopback address.
     if (
         not is_loopback(plan.host)
         and plan.host not in _WILDCARDS
@@ -476,15 +510,28 @@ def preflight(
             )
         )
     if settings.mode == "remote":
+        tunnel = bool(settings.public_url) and not _is_loopback_url(
+            settings.public_url or ""
+        )
         if not plan.host:
             problems.append(
                 Problem("error", "원격 모드에서 서버를 열 주소를 고르세요.")
             )
-        elif is_loopback(plan.host):
+        elif is_loopback(plan.host) and not tunnel:
+            # With a non-loopback room-link base this is a tunnel
+            # (tailscale serve): it reaches the server over loopback.
             problems.append(
                 Problem(
                     "warning",
                     "이 주소로는 다른 사람이 들어올 수 없습니다(이 PC에서만 접속).",
+                )
+            )
+        elif plan.host in _WILDCARDS and not settings.public_url:
+            problems.append(
+                Problem(
+                    "warning",
+                    f"방 링크가 {plan.room_base}(으)로 만들어집니다: 다른 사람이 "
+                    "쓸 수 있게 공개 주소를 정하세요.",
                 )
             )
         if settings.public_url and not settings.public_url.startswith(
@@ -516,24 +563,53 @@ def preflight(
     return sorted(problems, key=lambda problem: order[problem.level])
 
 
+def _is_loopback_url(url: str) -> bool:
+    from urllib.parse import urlsplit
+
+    host = urlsplit(url).hostname or ""
+    return not host or is_loopback(host)
+
+
 def has_errors(problems: Sequence[Problem]) -> bool:
     return any(problem.level == "error" for problem in problems)
 
 
 _FAILURES: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
     (
-        re.compile(r"cannot resolve --host (\S+)"),
+        re.compile(r"cannot resolve --host (\S+?):\s"),
         "주소 {0}을(를) 해석할 수 없습니다. 주소를 다시 고르세요.",
     ),
     (
-        re.compile(r"cannot listen on (\S+?):(\d+)"),
+        re.compile(r"no usable address for --host (\S+)"),
+        "주소 {0}에서 쓸 수 있는 네트워크 주소가 없습니다. 주소를 다시 고르세요.",
+    ),
+    (
+        # bind_problem: "cannot listen on HOST:PORT: reason"; the greedy host
+        # keeps an IPv6 address whole.
+        re.compile(
+            r"cannot listen on (\S+):(\d+): .*(?:assign requested address|"
+            r"not available|Errno 49|WinError 10049)",
+            re.IGNORECASE,
+        ),
+        "{0}:{1}에서 연결을 받을 수 없습니다: 이 PC에 그 주소가 없습니다"
+        "(Tailscale 연결과 LAN 주소를 확인하세요).",
+    ),
+    (
+        re.compile(r"cannot listen on (\S+):(\d+):"),
         "{0}:{1}에서 연결을 받을 수 없습니다: 포트가 이미 쓰이고 있거나, 이 PC에 "
         "그 주소가 없습니다(Tailscale 연결과 LAN 주소를 확인하세요).",
     ),
     (
         re.compile(
-            r"WinError 10048|Errno 48\b|Errno 98\b|address already in use|"
-            r"error while attempting to bind",
+            r"can.t assign requested address|Errno 49\b|WinError 10049",
+            re.IGNORECASE,
+        ),
+        "서버가 그 주소에서 연결을 받을 수 없습니다: 이 PC에 그 주소가 없습니다"
+        "(Tailscale 연결과 LAN 주소를 확인하세요).",
+    ),
+    (
+        re.compile(
+            r"address already in use|Errno (?:48|98|10048)\b|WinError 10048",
             re.IGNORECASE,
         ),
         "포트가 이미 쓰이고 있습니다. 다른 포트를 고르세요.",

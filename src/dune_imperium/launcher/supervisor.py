@@ -16,13 +16,14 @@ the end (``--exit-when-stdin-closes``) and the launcher holds the write end:
 
 On Windows the ``python.exe`` of a uv virtual environment is a redirector
 that runs the base interpreter as its own child, inside its own job; the
-process the launcher holds (and whose pid it records) is the redirector.
+process the launcher holds is the redirector. On POSIX the server gets a
+session of its own, so a terminal's Ctrl+C or hang-up reaches only the
+launcher, which then stops the server the one way.
 
 Server output goes to a queue for the window and to a log file in
 ``tmp/launcher/``; the admin key is masked in both.
 """
 
-import json
 import os
 import queue
 import re
@@ -46,17 +47,18 @@ from dune_imperium.launcher.command import (
 from dune_imperium.paths import PROJECT_ROOT, TMP_DIR
 
 LOG_DIR: Final = TMP_DIR / "launcher"
-PID_FILE_NAME: Final = "server.pid"
 KEEP_LOGS: Final = 10
 _TAIL_LINES: Final = 200
 _ADMIN_FRAGMENT: Final = re.compile(r"(#admin=)\S+")
 
 
 def mask_admin_key(line: str, admin_key: str | None) -> str:
-    masked = _ADMIN_FRAGMENT.sub(r"\1…", line)
+    """The line with the admin key replaced: the literal key first (it may
+    sit anywhere), then whatever follows ``#admin=``."""
+
     if admin_key:
-        masked = masked.replace(admin_key, "…")
-    return masked
+        line = line.replace(admin_key, "…")
+    return _ADMIN_FRAGMENT.sub(r"\1…", line)
 
 
 class StartupFailed(Exception):
@@ -86,6 +88,16 @@ class Stopped:
 Popen = Callable[..., "subprocess.Popen[str]"]
 
 
+def _modified(path: Path) -> float:
+    """A file's modification time; a file another launcher just removed
+    sorts first."""
+
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 class ServerProcess:
     """One run of the server. Not restartable: make a new one per start."""
 
@@ -108,8 +120,13 @@ class ServerProcess:
         self._process: subprocess.Popen[str] | None = None
         self._tail: deque[str] = deque(maxlen=_TAIL_LINES)
         self._log: IO[str] | None = None
+        self._log_lock = threading.Lock()
+        self._reader_started = False
         self._reader_done = threading.Event()
         self._lock = threading.Lock()
+        # One stop at a time: the window's stop and its closing can overlap.
+        self._stop_lock = threading.Lock()
+        self._stopped: Stopped | None = None
         self._stopping = False
         self._job: _Job | None = None
 
@@ -133,8 +150,16 @@ class ServerProcess:
     def start(self) -> None:
         if self._process is not None:
             raise RuntimeError("a ServerProcess starts once")
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self._open_log()
+        if self._stopping:
+            raise StartupCancelled("시작을 멈췄습니다.", [], None)
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self._open_log()
+        except OSError as error:
+            raise StartupFailed(
+                f"로그 폴더를 만들지 못했습니다: {error}", [], None
+            ) from error
+        posix = self._platform != "win32"
         try:
             self._process = self._popen(
                 list(self.argv),
@@ -148,6 +173,10 @@ class ServerProcess:
                 errors="replace",
                 bufsize=1,
                 creationflags=no_window_flags(self._platform),
+                # Its own session on POSIX: a terminal's Ctrl+C or hang-up
+                # reaches the launcher only, and the server ends the one way,
+                # through its closed input (uvicorn has no SIGHUP handler).
+                start_new_session=posix,
             )
         except OSError as error:
             self._note(f"could not run {self.argv[0]}: {error}")
@@ -157,7 +186,7 @@ class ServerProcess:
             ) from error
         if self._platform == "win32":
             self._job = _Job.for_process(self._process.pid, self._note)
-        self._write_pid_file()
+        self._reader_started = True
         threading.Thread(
             target=self._read_output, name="server-output", daemon=True
         ).start()
@@ -165,48 +194,77 @@ class ServerProcess:
     def wait_ready(
         self, timeout: float = 30.0, *, interval: float = 0.2
     ) -> dict[str, object]:
-        """Wait until the server answers ``/whoami``; return its answer.
+        """Wait until this server answers ``/whoami``; return its answer.
 
-        In remote mode the answer has to come back as the admin's: proof
-        that the admin link the launcher shows is the right one.
+        The access it reports has to be the plan's (``open`` or ``remote``):
+        another server answering at the same address (a wildcard bind can
+        come up beside one on 127.0.0.1 on macOS) is not taken for ours.
+        The admin key is sent only to a server that says it is remote, and
+        it has to answer as to its host: proof that the admin link the
+        launcher shows is the right one.
         """
 
         process = self._require_process()
+        expected = "remote" if self.plan.remote else "open"
+        foreign = False
         deadline = time.monotonic() + timeout
         while True:
             code = process.poll()
-            if code is not None:
-                self._reader_done.wait(2.0)
+            if code is not None or self._stopping:
+                if code is not None:
+                    self._reader_done.wait(2.0)
                 tail = self.tail()
                 if self._stopping:
                     raise StartupCancelled("시작을 멈췄습니다.", tail, code)
                 raise StartupFailed(explain_failure(tail, code), tail, code)
-            info = whoami(self.plan.host, self.plan.port, self.plan.admin_key)
-            if info is not None:
-                if self.plan.remote and info.get("admin") is not True:
-                    raise StartupFailed(
-                        "서버가 떴지만 관리자 키를 받아들이지 않았습니다.",
-                        self.tail(),
-                        None,
-                    )
-                return info
+            info = whoami(self.plan.host, self.plan.port)
+            if info is not None and info.get("access") != expected:
+                foreign = True
+            elif info is not None:
+                if self.plan.remote:
+                    info = whoami(self.plan.host, self.plan.port, self.plan.admin_key)
+                if info is not None:
+                    if self.plan.remote and info.get("admin") is not True:
+                        raise StartupFailed(
+                            "서버가 떴지만 관리자 키를 받아들이지 않았습니다.",
+                            self.tail(),
+                            None,
+                        )
+                    return info
             if time.monotonic() >= deadline:
-                raise StartupFailed(
-                    f"서버가 {timeout:g}초 안에 응답하지 않았습니다. "
-                    "로그를 확인하세요.",
-                    self.tail(),
-                    None,
+                message = (
+                    f"포트 {self.plan.port}에서 이 런처가 띄운 서버가 아닌 다른 "
+                    "서버가 답합니다. 그 서버를 끄거나 다른 포트를 고르세요."
+                    if foreign
+                    else f"서버가 {timeout:g}초 안에 응답하지 않았습니다. "
+                    "로그를 확인하세요."
                 )
+                raise StartupFailed(message, self.tail(), None)
             time.sleep(interval)
 
     def stop(self, *, grace: float = 10.0, term_grace: float = 5.0) -> Stopped:
-        """Close the server's input, then escalate; return how it ended."""
+        """Close the server's input, then escalate; return how it ended.
 
+        Calls overlap when the window is closed while a stop runs: the
+        second one waits for the first and returns its result.
+        """
+
+        with self._lock:
+            self._stopping = True
+        with self._stop_lock:
+            if self._stopped is not None:
+                return self._stopped
+            try:
+                result = self._stop(grace, term_grace)
+            finally:
+                self._finish()
+            self._stopped = result
+            return result
+
+    def _stop(self, grace: float, term_grace: float) -> Stopped:
         process = self._process
         if process is None:
             return Stopped("already", 0.0, None, True)
-        with self._lock:
-            self._stopping = True
         begun = time.monotonic()
         how: Literal["already", "stdin", "terminate", "kill"]
         if process.poll() is not None:
@@ -225,13 +283,21 @@ class ServerProcess:
                     process.kill()
                     if self._job is not None:
                         self._job.terminate()
-                    process.wait(10.0)
                     how = "kill"
+                    try:
+                        process.wait(10.0)
+                    except subprocess.TimeoutExpired:
+                        self._note("서버 프로세스가 kill 뒤에도 끝나지 않았습니다")
         seconds = time.monotonic() - begun
-        self._reader_done.wait(2.0)
+        if self._reader_started and not self._reader_done.wait(2.0):
+            # Another process still holds the output pipe: a child the
+            # server started. Its port may stay taken.
+            self._note(
+                "서버 출력이 아직 열려 있습니다: "
+                "서버가 띄운 프로세스가 남았을 수 있습니다"
+            )
         port_free = self._port_released(3.0)
-        self._finish()
-        return Stopped(how, seconds, process.returncode, port_free)
+        return Stopped(how, seconds, process.poll(), port_free)
 
     # --- internals ------------------------------------------------------
 
@@ -278,15 +344,23 @@ class ServerProcess:
         line = mask_admin_key(line, self.plan.admin_key)
         self._tail.append(line)
         self.lines.put(line)
-        log = self._log
-        if log is not None:
-            try:
-                log.write(line + "\n")
-                log.flush()
-            except (OSError, ValueError):
-                pass
+        with self._log_lock:
+            log = self._log
+            if log is not None:
+                try:
+                    log.write(line + "\n")
+                    log.flush()
+                except (OSError, ValueError):
+                    pass
 
     def _read_output(self) -> None:
+        """Pass the server's lines on; close the pipe here, once read.
+
+        Only this thread closes it: closing a pipe another thread is
+        blocked reading would wait for that read, which lasts as long as
+        any process holds the pipe's other end.
+        """
+
         stream = self._require_process().stdout
         try:
             if stream is not None:
@@ -295,6 +369,11 @@ class ServerProcess:
         except (OSError, ValueError):
             pass
         finally:
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
             self._reader_done.set()
 
     def _open_log(self) -> None:
@@ -314,68 +393,29 @@ class ServerProcess:
             except OSError:
                 pass
 
-    def _write_pid_file(self) -> None:
-        process = self._require_process()
-        record = {
-            "pid": process.pid,
-            "host": self.plan.host,
-            "port": self.plan.port,
-            "checkout": str(PROJECT_ROOT),
-            "started": datetime.now().isoformat(timespec="seconds"),
-        }
-        try:
-            (self.log_dir / PID_FILE_NAME).write_text(
-                json.dumps(record) + "\n", encoding="utf-8"
-            )
-        except OSError:
-            pass
-
     def _finish(self) -> None:
-        pid_file = self.log_dir / PID_FILE_NAME
-        try:
-            record = json.loads(pid_file.read_text(encoding="utf-8"))
-            if isinstance(record, dict) and record.get("pid") == self.pid:
-                pid_file.unlink()
-        except (OSError, ValueError):
-            pass
         if self._job is not None:
             self._job.close()
             self._job = None
         process = self._process
         if process is not None:
-            for stream in (process.stdin, process.stdout):
+            streams = [process.stdin]
+            if not self._reader_started:
+                streams.append(process.stdout)
+            for stream in streams:
                 if stream is not None:
                     try:
                         stream.close()
                     except OSError:
                         pass
-        log = self._log
-        self._log = None
-        if log is not None:
-            try:
-                log.close()
-            except OSError:
-                pass
-
-
-def _modified(path: Path) -> float:
-    """A file's modification time; a file another launcher just removed
-    sorts first."""
-
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return 0.0
-
-
-def read_pid_file(log_dir: Path = LOG_DIR) -> dict[str, object] | None:
-    """The record a launcher left of the server it started, if any."""
-
-    try:
-        record = json.loads((log_dir / PID_FILE_NAME).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return record if isinstance(record, dict) else None
+        with self._log_lock:
+            log = self._log
+            self._log = None
+            if log is not None:
+                try:
+                    log.close()
+                except OSError:
+                    pass
 
 
 class _Job:

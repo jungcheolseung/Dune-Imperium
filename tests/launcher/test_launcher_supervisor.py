@@ -7,9 +7,11 @@ server prints and accepts, and that a start that cannot listen says why.
 The stop ladder runs against ``fake_server.py``.
 """
 
+import http.server
 import io
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -26,12 +28,10 @@ from dune_imperium.launcher.command import CREATE_NO_WINDOW, LaunchPlan, build_p
 from dune_imperium.launcher.settings import LauncherSettings, with_admin_key
 from dune_imperium.launcher.supervisor import (
     KEEP_LOGS,
-    PID_FILE_NAME,
     ServerProcess,
     StartupCancelled,
     StartupFailed,
     mask_admin_key,
-    read_pid_file,
 )
 
 FAKE_SERVER = Path(__file__).with_name("fake_server.py")
@@ -100,8 +100,6 @@ def test_a_local_server_stops_on_its_closed_input_with_a_stream_open(
     try:
         info = server.wait_ready()
         assert info["access"] == "open"
-        record = read_pid_file(tmp_path / "logs")
-        assert record is not None and record["pid"] == server.pid
         ended = _hold_a_stream_open(plan.room_base)
         stopped = server.stop()
     finally:
@@ -112,7 +110,6 @@ def test_a_local_server_stops_on_its_closed_input_with_a_stream_open(
     assert stopped.port_free
     assert stopped.seconds < 2.0, f"stop took {stopped.seconds:.1f}s"
     assert ended.wait(5), "the browser's stream was not ended"
-    assert not (tmp_path / "logs" / PID_FILE_NAME).exists()
     assert server.log_path is not None
     log = server.log_path.read_text(encoding="utf-8")
     assert "search AI:" in log and "Traceback" not in log
@@ -295,3 +292,112 @@ def test_the_server_gets_a_pipe_and_no_console_window_on_windows(
     assert seen["creationflags"] == CREATE_NO_WINDOW
     assert seen["stdin"] == subprocess.PIPE
     assert seen["env"] == dict(plan.env)
+
+
+# --- review fixes (2026-10-09) -----------------------------------------------
+
+
+def test_another_server_on_the_port_is_not_taken_for_ours(tmp_path: Path) -> None:
+    # A wildcard bind can come up beside a server on 127.0.0.1 (macOS); that
+    # one then answers the launcher. Its /whoami says "open", and it never
+    # gets the admin cookie.
+    cookies: list[str | None] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - the http.server name
+            cookies.append(self.headers.get("Cookie"))
+            body = json.dumps({"access": "open", "admin": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    other = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=other.serve_forever, daemon=True).start()
+    port: int = other.server_address[1]
+    settings, key = with_admin_key(
+        LauncherSettings(mode="remote", host="0.0.0.0", port=port)
+    )
+    plan = build_plan(settings, key)
+    server = ServerProcess(
+        plan, argv=[sys.executable, str(FAKE_SERVER), "polite"], log_dir=tmp_path
+    )
+    server.start()
+    try:
+        with pytest.raises(StartupFailed) as failure:
+            server.wait_ready(timeout=1.0)
+    finally:
+        server.stop()
+        other.shutdown()
+        other.server_close()
+    assert "다른" in failure.value.message and str(port) in failure.value.message
+    assert cookies and all(cookie is None for cookie in cookies)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX kill of the leftover")
+def test_a_child_holding_the_output_pipe_does_not_hang_the_stop(
+    tmp_path: Path,
+) -> None:
+    plan = _local_plan(tmp_path)
+    server = ServerProcess(
+        plan, argv=[sys.executable, str(FAKE_SERVER), "grandchild"], log_dir=tmp_path
+    )
+    server.start()
+    _wait_for_line(server, "fake server up")
+    [line] = [line for line in server.tail() if line.startswith("grandchild ")]
+    leftover = int(line.split()[1])
+    try:
+        stopped = server.stop(grace=1.0, term_grace=1.0)
+        assert stopped.how == "stdin"
+        assert stopped.seconds < 3.0
+        assert any("출력이 아직 열려" in line for line in server.tail())
+    finally:
+        os.kill(leftover, signal.SIGKILL)
+
+
+def test_two_stops_at_once_share_one_result(tmp_path: Path) -> None:
+    plan = _local_plan(tmp_path)
+    server = ServerProcess(
+        plan, argv=[sys.executable, str(FAKE_SERVER), "polite"], log_dir=tmp_path
+    )
+    server.start()
+    _wait_for_line(server, "fake server up")
+    results: list[object] = []
+    stoppers = [
+        threading.Thread(target=lambda: results.append(server.stop())) for _ in range(2)
+    ]
+    for stopper in stoppers:
+        stopper.start()
+    for stopper in stoppers:
+        stopper.join(30)
+    assert len(results) == 2 and results[0] is results[1]
+
+
+@pytest.mark.parametrize(
+    ("platform", "own_session"), [("darwin", True), ("win32", False)]
+)
+def test_the_server_gets_its_own_session_on_posix(
+    tmp_path: Path, platform: str, own_session: bool
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_popen(argv: list[str], **options: Any) -> subprocess.Popen[str]:
+        seen.update(options)
+        return cast("subprocess.Popen[str]", _FinishedProcess())
+
+    server = ServerProcess(
+        _local_plan(tmp_path), popen=fake_popen, platform=platform, log_dir=tmp_path
+    )
+    server.start()
+    server.stop()
+    assert seen["start_new_session"] is own_session
+
+
+def test_a_stop_before_the_start_cancels_it(tmp_path: Path) -> None:
+    server = ServerProcess(_local_plan(tmp_path), log_dir=tmp_path)
+    server.stop()
+    with pytest.raises(StartupCancelled):
+        server.start()

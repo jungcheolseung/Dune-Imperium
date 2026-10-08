@@ -40,7 +40,8 @@ def _read_line(process: subprocess.Popen[str], timeout: float = 60) -> str:
     return box[0]
 
 
-def _launcher(path: Path) -> subprocess.Popen[str]:
+def _launcher(path: Path, logs: Path) -> subprocess.Popen[str]:
+    # stderr is a pipe nobody reads: the launcher must not stall on it.
     return subprocess.Popen(
         [
             sys.executable,
@@ -49,6 +50,8 @@ def _launcher(path: Path) -> subprocess.Popen[str]:
             "--start",
             "--settings",
             str(path),
+            "--log-dir",
+            str(logs),
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -77,9 +80,12 @@ def test_start_runs_a_server_until_its_input_ends(tmp_path: Path) -> None:
     path = _settings_file(
         tmp_path, LauncherSettings(port=port, saves_dir=str(tmp_path / "saves"))
     )
-    launcher = _launcher(path)
+    logs = tmp_path / "logs"
+    launcher = _launcher(path, logs)
     try:
         started = json.loads(_read_line(launcher))
+        # The test's logs stay out of the host's tmp/launcher.
+        assert Path(started["log"]).parent == logs
         assert started["open_url"] == f"http://127.0.0.1:{port}/"
         assert started["access"] == "open"
         whoami = json.load(
@@ -114,7 +120,7 @@ def test_a_remote_start_keeps_its_fixed_key_and_hands_out_the_admin_link(
             saves_dir=str(tmp_path / "saves"),
         ),
     )
-    launcher = _launcher(path)
+    launcher = _launcher(path, tmp_path / "logs")
     try:
         started = json.loads(_read_line(launcher))
         key = load(path).settings.admin_key
@@ -157,3 +163,29 @@ def test_start_refuses_a_busy_port_before_starting(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "[오류]" in result.stderr and str(port) in result.stderr
     assert result.stdout == ""
+
+
+def test_a_caller_that_never_reads_stderr_can_still_stop_it(tmp_path: Path) -> None:
+    # A busy server writes a lot (an access line per request); none of it
+    # may block the launcher between it and its stdin.
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    port = _free_port()
+    path = _settings_file(
+        tmp_path, LauncherSettings(port=port, saves_dir=str(tmp_path / "saves"))
+    )
+    launcher = _launcher(path, tmp_path / "logs")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        json.loads(_read_line(launcher))
+        for _ in range(1500):
+            opener.open(f"http://127.0.0.1:{port}/whoami", timeout=5).read()
+        assert launcher.stdin is not None
+        launcher.stdin.close()
+        stopped = json.loads(_read_line(launcher, timeout=30))
+        assert launcher.wait(timeout=20) == 0
+    finally:
+        if launcher.poll() is None:
+            launcher.kill()
+            launcher.wait(timeout=10)
+    assert stopped["stopped"] == "stdin"

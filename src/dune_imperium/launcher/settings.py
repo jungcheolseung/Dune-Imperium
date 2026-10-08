@@ -11,6 +11,7 @@ do not fit the new one.
 
 import json
 import os
+import re
 import secrets
 import sys
 from collections.abc import Mapping
@@ -27,6 +28,10 @@ DEFAULT_PORT: Final = 8000
 # The server's --ai-pace choices (dune_imperium.server.pacing.AI_PACES),
 # repeated so that reading the settings imports no server code.
 AI_PACES: Final = ("normal", "fast", "instant")
+
+# What an admin key may hold: the server mints URL-safe tokens, and the key
+# travels in a URL fragment and a cookie.
+_ADMIN_KEY: Final = re.compile(r"[A-Za-z0-9_-]{16,}")
 
 Mode = Literal["local", "remote"]
 KeyMode = Literal["fixed", "fresh"]
@@ -55,7 +60,8 @@ class LauncherSettings:
     port: int = DEFAULT_PORT
     public_url: str | None = None
     admin_key_mode: KeyMode = "fixed"
-    admin_key: str | None = None
+    # Out of repr: a settings object in an error message must not show it.
+    admin_key: str | None = field(default=None, repr=False)
     saves_dir: str | None = None
     autosave: bool = True
     search_checkpoint: str | None = None
@@ -70,6 +76,9 @@ class LauncherSettings:
     last_error: str | None = None
     # Keys a newer launcher wrote; kept so that saving does not drop them.
     unknown: Mapping[str, object] = field(default_factory=dict)
+    # The file's format: a newer launcher's number is kept on saving, so it
+    # never reads its own data as an older format.
+    version: int = SETTINGS_VERSION
 
 
 @dataclass(frozen=True)
@@ -120,7 +129,7 @@ def to_json(settings: LauncherSettings) -> dict[str, object]:
     data: dict[str, object] = dict(settings.unknown)
     data.update(
         {
-            "version": SETTINGS_VERSION,
+            "version": max(settings.version, SETTINGS_VERSION),
             "mode": settings.mode,
             "host": settings.host,
             "port": settings.port,
@@ -234,6 +243,18 @@ def from_json(data: Mapping[str, object]) -> tuple[LauncherSettings, list[str]]:
             if width > 0 and height > 0:
                 window = Window(x, y, width, height)
 
+    admin_key = optional_text("admin_key")
+    if admin_key is not None and not _ADMIN_KEY.fullmatch(admin_key):
+        notes.append("설정의 관리자 키가 올바르지 않아 새 키를 만듭니다")
+        admin_key = None
+
+    raw_version = data.get("version", SETTINGS_VERSION)
+    version = (
+        raw_version
+        if isinstance(raw_version, int) and not isinstance(raw_version, bool)
+        else SETTINGS_VERSION
+    )
+
     raw_last_good = data.get("last_good")
     last_good = (
         dict(cast(Mapping[str, object], raw_last_good))
@@ -249,7 +270,7 @@ def from_json(data: Mapping[str, object]) -> tuple[LauncherSettings, list[str]]:
         admin_key_mode=cast(
             KeyMode, choice("admin_key_mode", _KEY_MODES, defaults.admin_key_mode)
         ),
-        admin_key=optional_text("admin_key"),
+        admin_key=admin_key,
         saves_dir=optional_text("saves_dir"),
         autosave=flag("autosave", defaults.autosave),
         search_checkpoint=optional_text("search_checkpoint"),
@@ -261,6 +282,7 @@ def from_json(data: Mapping[str, object]) -> tuple[LauncherSettings, list[str]]:
         last_good=last_good,
         last_error=optional_text("last_error"),
         unknown={key: value for key, value in data.items() if key not in _KNOWN_KEYS},
+        version=version,
     )
     return settings, notes
 
@@ -268,13 +290,13 @@ def from_json(data: Mapping[str, object]) -> tuple[LauncherSettings, list[str]]:
 def load(path: Path = SETTINGS_FILE) -> Loaded:
     """Read the settings file; a missing one gives the defaults.
 
-    A file that is not a JSON object is moved aside (never deleted) and the
-    defaults are used, so a broken file cannot keep the launcher from
-    opening.
+    A file that is not UTF-8 or not a JSON object is moved aside (never
+    deleted) and the defaults are used, so a broken file cannot keep the
+    launcher from opening.
     """
 
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_bytes()
     except FileNotFoundError:
         return Loaded(LauncherSettings())
     except OSError as error:
@@ -283,8 +305,9 @@ def load(path: Path = SETTINGS_FILE) -> Loaded:
             (f"설정 파일을 읽지 못해 기본값으로 시작합니다: {error}",),
         )
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
+        # A BOM is allowed (Notepad writes one); saving drops it.
+        data = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
         data = None
     if not isinstance(data, dict):
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")

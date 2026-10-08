@@ -12,6 +12,7 @@ the list.
 import ipaddress
 import json
 import os
+import re
 import socket
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -147,8 +148,18 @@ def parse_ifconfig(text: str) -> list[tuple[str, bool]]:
     return found
 
 
-def parse_get_netipaddress_json(text: str) -> list[str]:
-    """The addresses in ``Get-NetIPAddress ... | ConvertTo-Json`` output.
+# Windows adapters that are not the LAN a friend in the room is on: virtual
+# switches and machines, VPN clients, loopback and Bluetooth networking.
+_VIRTUAL_ADAPTER: Final = re.compile(
+    r"vEthernet|VirtualBox|VMware|Hyper-V|WSL|Loopback|Bluetooth|ZeroTier|"
+    r"OpenVPN|WireGuard|TAP-|Npcap|Docker",
+    re.IGNORECASE,
+)
+
+
+def parse_get_netipaddress_json(text: str) -> list[tuple[str, bool]]:
+    """The addresses in ``Get-NetIPAddress ... | ConvertTo-Json`` output,
+    each with whether its adapter is a virtual or VPN one (by its alias).
 
     PowerShell writes one object for a single result and a list otherwise.
     """
@@ -158,12 +169,16 @@ def parse_get_netipaddress_json(text: str) -> list[str]:
     except json.JSONDecodeError:
         return []
     items = data if isinstance(data, list) else [data]
-    found: list[str] = []
+    found: list[tuple[str, bool]] = []
     for item in items:
         if isinstance(item, dict):
             value = item.get("IPAddress")
+            alias = item.get("InterfaceAlias")
             if isinstance(value, str):
-                found.append(value)
+                virtual = isinstance(alias, str) and bool(
+                    _VIRTUAL_ADAPTER.search(alias)
+                )
+                found.append((value, virtual))
     return found
 
 
@@ -240,12 +255,13 @@ def tailscale_status(run: Runner, cli: str | None) -> TailscaleStatus | None:
     return None if output is None else parse_tailscale_status(output)
 
 
-def interface_addresses(run: Runner, platform: str = sys.platform) -> list[str]:
-    """The IPv4 addresses of the machine's interfaces, best effort.
-
-    On macOS the point-to-point tunnels are left out unless they are
-    Tailscale's; Windows reports no such flag, so all are kept.
-    """
+def interface_addresses(
+    run: Runner, platform: str = sys.platform
+) -> list[tuple[str, bool]]:
+    """Every IPv4 address of the machine's interfaces, best effort, each
+    with whether it is a tunnel or a virtual adapter rather than the LAN:
+    macOS marks VPN tunnels point-to-point; on Windows the adapter's alias
+    tells (Tailscale's own address is never counted as one)."""
 
     if platform == "win32":
         output = run(
@@ -255,18 +271,16 @@ def interface_addresses(run: Runner, platform: str = sys.platform) -> list[str]:
                 "-NonInteractive",
                 "-Command",
                 "Get-NetIPAddress -AddressFamily IPv4 | "
-                "Select-Object IPAddress | ConvertTo-Json",
+                "Select-Object IPAddress, InterfaceAlias | ConvertTo-Json",
             ],
             10.0,
         )
-        return parse_get_netipaddress_json(output) if output else []
-    output = run(["/sbin/ifconfig"], 3.0)
-    if not output:
-        return []
+        found = parse_get_netipaddress_json(output) if output else []
+    else:
+        output = run(["/sbin/ifconfig"], 3.0)
+        found = parse_ifconfig(output) if output else []
     return [
-        ip
-        for ip, point_to_point in parse_ifconfig(output)
-        if not point_to_point or classify(ip) == "tailscale"
+        (ip, virtual and classify(ip) != "tailscale") for ip, virtual in found
     ]
 
 
@@ -288,13 +302,26 @@ def discover(
     source_address: Callable[[str], str | None] = route_source_address,
     own_addresses: Callable[[], list[str]] = hostname_addresses,
 ) -> Discovery:
-    """Collect the labelled candidates, best first, each address once."""
+    """Collect the labelled candidates, best first, each address once.
+
+    The LAN addresses are the machine's own (its host name and its non-
+    virtual interfaces); the one the default route uses comes first among
+    them. An address only the default route names (a VPN owning it) is
+    labelled as such, not as the LAN.
+    """
 
     found: dict[str, Candidate] = {}
     status = tailscale_status(run, tailscale_cli())
     # A tunnel can keep its address after Tailscale was switched off; when
-    # the CLI says so, that address is not offered.
-    tailscale_off = status is not None and not status.running
+    # the CLI says so, that address is not offered (an unreadable answer
+    # says nothing either way).
+    tailscale_off = (
+        status is not None and status.state is not None and not status.running
+    )
+    interfaces = interface_addresses(run, platform)
+    virtual = {ip for ip, is_virtual in interfaces if is_virtual}
+    own = [ip for ip in own_addresses() if ip not in virtual]
+    lan = set(own) | {ip for ip, is_virtual in interfaces if not is_virtual}
 
     def offer(ip: str, source: str, kind: Kind | None = None) -> None:
         kind = kind or classify(ip)
@@ -307,17 +334,18 @@ def discover(
     tailscale_route = source_address(TAILSCALE_PROBE)
     if tailscale_route and classify(tailscale_route) == "tailscale":
         offer(tailscale_route, "route to 100.100.100.100")
-    for ip in own_addresses():
-        offer(ip, "host name")
-    # Before the interface list: an address that only the default route
-    # names (a VPN owning it) is labelled as such, not as the LAN.
     outbound = source_address(OUTBOUND_PROBE)
+    if outbound and outbound in lan:
+        offer(outbound, "route to 8.8.8.8")
+    for ip in own:
+        offer(ip, "host name")
+    for ip, is_virtual in interfaces:
+        if not is_virtual and classify(ip) != "loopback":
+            offer(ip, "interfaces")
     if outbound and outbound not in found:
         kind = classify(outbound)
         if kind is not None and kind != "loopback":
             found[outbound] = Candidate(outbound, "outbound", "route to 8.8.8.8")
-    for ip in interface_addresses(run, platform):
-        offer(ip, "interfaces")
     offer(LOOPBACK, "loopback")
     ordered = sorted(found.values(), key=lambda c: _ORDER[c.kind])
     return Discovery(tuple(ordered), status, outbound is not None)

@@ -84,10 +84,20 @@ def test_ifconfig_marks_the_point_to_point_tunnels() -> None:
 
 
 def test_powershell_writes_one_object_or_a_list() -> None:
-    one = json.dumps({"IPAddress": "192.168.1.20"})
-    many = json.dumps([{"IPAddress": "192.168.1.20"}, {"IPAddress": "127.0.0.1"}])
-    assert parse_get_netipaddress_json(one) == ["192.168.1.20"]
-    assert parse_get_netipaddress_json(many) == ["192.168.1.20", "127.0.0.1"]
+    one = json.dumps({"IPAddress": "192.168.1.20", "InterfaceAlias": "Wi-Fi"})
+    many = json.dumps(
+        [
+            {"IPAddress": "192.168.1.20", "InterfaceAlias": "Ethernet"},
+            {"IPAddress": "172.20.48.1", "InterfaceAlias": "vEthernet (WSL)"},
+            {"IPAddress": "127.0.0.1", "InterfaceAlias": "Loopback Pseudo-Interface 1"},
+        ]
+    )
+    assert parse_get_netipaddress_json(one) == [("192.168.1.20", False)]
+    assert parse_get_netipaddress_json(many) == [
+        ("192.168.1.20", False),
+        ("172.20.48.1", True),
+        ("127.0.0.1", True),
+    ]
     assert parse_get_netipaddress_json("") == []
 
 
@@ -193,3 +203,65 @@ def test_a_lan_without_internet_still_offers_the_lan() -> None:
     )
     assert not found.internet_route
     assert found.tailscale is None
+
+
+def _windows_adapters() -> str:
+    return json.dumps(
+        [
+            {"IPAddress": "172.20.48.1", "InterfaceAlias": "vEthernet (WSL)"},
+            {"IPAddress": "192.168.56.1", "InterfaceAlias": "VirtualBox Host-Only"},
+            {"IPAddress": "192.168.1.20", "InterfaceAlias": "Wi-Fi"},
+            {"IPAddress": "100.70.1.2", "InterfaceAlias": "Tailscale"},
+        ]
+    )
+
+
+def test_windows_virtual_adapters_are_not_offered_as_the_lan() -> None:
+    # getaddrinfo(hostname) on Windows names every adapter, virtual ones
+    # first; the friend in the room is on the Wi-Fi.
+    run = FakeRunner(
+        {
+            "tailscale": _status("Running", ["100.70.1.2"]),
+            "powershell": _windows_adapters(),
+        }
+    )
+    found = discover(
+        run,
+        platform="win32",
+        tailscale_cli=lambda: r"C:\Program Files\Tailscale\tailscale.exe",
+        source_address=_routes({"8.8.8.8": "192.168.1.20"}),
+        own_addresses=lambda: ["172.20.48.1", "192.168.56.1", "192.168.1.20"],
+    )
+    assert [(c.kind, c.ip) for c in found.candidates] == [
+        ("tailscale", "100.70.1.2"),
+        ("lan", "192.168.1.20"),
+        ("loopback", "127.0.0.1"),
+    ]
+
+
+def test_the_lan_address_the_default_route_uses_comes_first() -> None:
+    run = FakeRunner({"ifconfig": IFCONFIG})
+    found = discover(
+        run,
+        platform="darwin",
+        tailscale_cli=lambda: None,
+        source_address=_routes({"8.8.8.8": "192.168.0.64"}),
+        # A Mac whose name resolves elsewhere first (a second network).
+        own_addresses=lambda: ["10.0.5.5"],
+    )
+    lan = [c.ip for c in found.candidates if c.kind == "lan"]
+    assert lan == ["192.168.0.64", "10.0.5.5"]
+
+
+def test_an_unreadable_tailscale_answer_keeps_the_tailscale_address() -> None:
+    run = FakeRunner({"tailscale": "not json", "ifconfig": IFCONFIG})
+    found = discover(
+        run,
+        platform="darwin",
+        tailscale_cli=lambda: "/opt/tailscale",
+        source_address=_routes({"100.100.100.100": "100.87.236.12"}),
+        own_addresses=lambda: ["192.168.0.64"],
+    )
+    assert found.candidates[0] == Candidate(
+        "100.87.236.12", "tailscale", "route to 100.100.100.100"
+    )

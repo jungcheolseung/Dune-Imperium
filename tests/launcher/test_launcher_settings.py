@@ -23,6 +23,8 @@ from dune_imperium.launcher.settings import (
 )
 from dune_imperium.paths import LOCAL_DIR, PROJECT_ROOT
 
+KEY = "Abc-def_0123456789xyzXYZ"
+
 
 def test_the_settings_live_in_an_ignored_folder_of_the_checkout() -> None:
     # User decision 2026-10-06: no project file outside the project. tmp/ is
@@ -143,7 +145,7 @@ def test_a_fresh_admin_key_is_never_stored() -> None:
 
 def test_the_last_good_start_is_offered_back_without_the_key_or_window() -> None:
     good = LauncherSettings(
-        mode="remote", host="192.168.0.5", port=8000, admin_key="secret"
+        mode="remote", host="192.168.0.5", port=8000, admin_key=KEY
     )
     taken = snapshot(good)
     assert "admin_key" not in taken and "window" not in taken
@@ -151,12 +153,57 @@ def test_the_last_good_start_is_offered_back_without_the_key_or_window() -> None
         mode="remote",
         host="100.1.2.3",
         port=8123,
-        admin_key="secret",
+        admin_key=KEY,
         window=Window(1, 2, 3, 4),
         last_good=taken,
         last_error="실패",
     )
     back = restore(later, taken)
     assert (back.host, back.port) == ("192.168.0.5", 8000)
-    assert back.window == later.window and back.admin_key == "secret"
+    assert back.window == later.window and back.admin_key == KEY
     assert back.last_error is None and back.last_good == taken
+
+
+def test_a_file_with_a_bom_is_read(tmp_path: Path) -> None:
+    # Notepad writes one; moving the file aside would lose the fixed key.
+    path = tmp_path / "launcher.json"
+    path.write_bytes(
+        b"\xef\xbb\xbf"
+        + json.dumps({"mode": "remote", "admin_key": KEY}).encode("utf-8")
+    )
+    loaded = load(path)
+    assert loaded.notes == ()
+    assert loaded.settings.admin_key == KEY and loaded.settings.mode == "remote"
+    assert path.exists()
+
+
+def test_a_file_that_is_not_utf8_is_moved_aside(tmp_path: Path) -> None:
+    path = tmp_path / "launcher.json"
+    path.write_bytes('{"host": "집", "port": 8001}'.encode("cp949"))
+    loaded = load(path)
+    assert loaded.settings == LauncherSettings()
+    assert not path.exists()
+    assert len(list(tmp_path.glob("launcher.json.broken-*"))) == 1
+
+
+def test_a_newer_format_number_is_kept_on_saving(tmp_path: Path) -> None:
+    path = tmp_path / "launcher.json"
+    path.write_text(json.dumps({"version": 2, "port": 8002}), encoding="utf-8")
+    save(load(path).settings, path)
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 2
+
+
+def test_a_malformed_admin_key_is_replaced() -> None:
+    settings, notes = from_json({"admin_key": "has spaces in it, oops"})
+    assert settings.admin_key is None and notes
+
+
+def test_the_settings_do_not_show_the_admin_key() -> None:
+    assert KEY not in repr(LauncherSettings(admin_key=KEY))
+
+
+def test_the_ai_paces_are_the_servers() -> None:
+    from dune_imperium.launcher import settings
+    from dune_imperium.server.pacing import AI_PACES
+
+    assert settings.AI_PACES == tuple(AI_PACES)

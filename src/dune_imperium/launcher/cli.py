@@ -41,7 +41,12 @@ from dune_imperium.launcher.settings import (
     snapshot,
     with_admin_key,
 )
-from dune_imperium.launcher.supervisor import ServerProcess, StartupFailed
+from dune_imperium.launcher.supervisor import (
+    LOG_DIR,
+    ServerProcess,
+    StartupFailed,
+    Stopped,
+)
 from dune_imperium.paths import PROJECT_ROOT
 
 _LEVELS = {"error": "오류", "warning": "주의", "note": "참고"}
@@ -137,8 +142,13 @@ def check(settings_path: Path) -> int:
     return 1 if has_errors(problems) else 0
 
 
-def start(settings_path: Path) -> int:
-    """Run the server without a window until standard input ends."""
+def start(settings_path: Path, log_dir: Path = LOG_DIR) -> int:
+    """Run the server without a window until standard input ends.
+
+    Its own messages go to standard error; the server's lines go only to
+    the log file named in the JSON line, so a caller that never reads
+    standard error cannot stall the launcher on a full pipe.
+    """
 
     loaded = load(settings_path)
     for note in loaded.notes:
@@ -151,34 +161,66 @@ def start(settings_path: Path) -> int:
     if has_errors(problems):
         return 1
     save(settings, settings_path)
-    server = ServerProcess(plan)
+    server = ServerProcess(plan, log_dir=log_dir)
+    code = 0
+    announced = False
     try:
-        server.start()
-        info = server.wait_ready()
-    except StartupFailed as failure:
-        server.stop(grace=2.0, term_grace=2.0)
-        _error(f"[오류] {failure.message}")
-        for line in failure.tail:
-            _error(f"  {line}")
-        save(replace(settings, last_error=failure.message), settings_path)
-        return 1
-    save(
-        replace(settings, last_good=snapshot(settings), last_error=None), settings_path
-    )
-    _write(
-        json.dumps(
-            {
-                "open_url": plan.open_url,
-                "room_base": plan.room_base,
-                "pid": server.pid,
-                "port": plan.port,
-                "access": info.get("access"),
-                "search_ai": info.get("search_ai"),
-                "log": None if server.log_path is None else str(server.log_path),
-            },
-            ensure_ascii=False,
+        try:
+            server.start()
+            info = server.wait_ready()
+        except StartupFailed as failure:
+            _error(f"[오류] {failure.message}")
+            for line in failure.tail:
+                _error(f"  {line}")
+            save(replace(settings, last_error=failure.message), settings_path)
+            return 1
+        save(
+            replace(settings, last_good=snapshot(settings), last_error=None),
+            settings_path,
         )
-    )
+        _write(
+            json.dumps(
+                {
+                    "open_url": plan.open_url,
+                    "room_base": plan.room_base,
+                    "pid": server.pid,
+                    "port": plan.port,
+                    "access": info.get("access"),
+                    "search_ai": info.get("search_ai"),
+                    "log": None if server.log_path is None else str(server.log_path),
+                },
+                ensure_ascii=False,
+            )
+        )
+        announced = True
+        if not _wait_for_end_of_input(server):
+            code = 1
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Every way out stops the server the same way, Ctrl+C included.
+        stopped = _stop_quietly(server)
+    if code:
+        from dune_imperium.launcher.command import explain_failure
+
+        _error(f"[오류] {explain_failure(server.tail(), stopped.exit_code)}")
+    if announced:
+        _write(
+            json.dumps(
+                {
+                    "stopped": stopped.how,
+                    "seconds": round(stopped.seconds, 2),
+                    "port_free": stopped.port_free,
+                }
+            )
+        )
+    return code
+
+
+def _wait_for_end_of_input(server: ServerProcess) -> bool:
+    """Wait until this program's standard input ends (``True``) or the
+    server dies (``False``)."""
+
     ended = threading.Event()
     try:
         descriptor = sys.stdin.fileno() if sys.stdin is not None else None
@@ -195,36 +237,20 @@ def start(settings_path: Path) -> int:
             name="launcher-stdin-watch",
             daemon=True,
         ).start()
-    code = 0
-    try:
-        while not ended.wait(0.2):
-            _drain(server)
-            if not server.is_alive():
-                code = 1
-                break
-    except KeyboardInterrupt:
-        pass
-    stopped = server.stop()
-    _drain(server)
-    if code:
-        from dune_imperium.launcher.command import explain_failure
-
-        _error(f"[오류] {explain_failure(server.tail(), stopped.exit_code)}")
-    _write(
-        json.dumps(
-            {
-                "stopped": stopped.how,
-                "seconds": round(stopped.seconds, 2),
-                "port_free": stopped.port_free,
-            }
-        )
-    )
-    return code
+    while not ended.wait(0.2):
+        if not server.is_alive():
+            return False
+    return True
 
 
-def _drain(server: ServerProcess) -> None:
-    while not server.lines.empty():
-        _error(server.lines.get_nowait())
+def _stop_quietly(server: ServerProcess) -> Stopped:
+    """Stop the server; a second Ctrl+C during the stop is not obeyed."""
+
+    while True:
+        try:
+            return server.stop()
+        except KeyboardInterrupt:
+            continue
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -263,6 +289,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=SETTINGS_FILE,
         help=f"settings file (default: {SETTINGS_FILE})",
     )
+    # For the tests and the browser checks: keep their logs out of the
+    # host's tmp/launcher.
+    parser.add_argument("--log-dir", type=Path, default=LOG_DIR, help=argparse.SUPPRESS)
     return parser
 
 
@@ -271,7 +300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.check:
         return check(arguments.settings)
     if arguments.start:
-        return start(arguments.settings)
+        return start(arguments.settings, arguments.log_dir)
     if arguments.make_shortcut:
         from dune_imperium.launcher.shortcuts import ShortcutError, make_shortcut
 

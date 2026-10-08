@@ -28,8 +28,7 @@ from dune_imperium.paths import PROJECT_ROOT
 
 NAME: Final = "Dune Imperium Server"
 BUNDLE_ID: Final = "local.dune-imperium.launcher"
-_LAUNCH_SCRIPT: Final = """\
-#!/bin/zsh
+_LAUNCH_SCRIPT: Final = r"""#!/bin/zsh
 # Opens the Dune Imperium server launcher of the checkout this app sits in
 # (docs/server-launcher-plan.md 5.10). Made by
 # `python -m dune_imperium.launcher.cli --make-shortcut`.
