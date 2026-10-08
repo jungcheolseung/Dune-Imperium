@@ -89,3 +89,33 @@ def test_a_window_off_the_screen_is_pulled_back() -> None:
 
 def test_without_a_saved_window_it_opens_centred() -> None:
     assert window_geometry(None, 1920, 1080) == "1000x640+460+146"
+
+
+def test_each_open_game_gets_a_line_and_a_room_link() -> None:
+    from dune_imperium.launcher.view import game_rows, room_link
+
+    rows = game_rows(
+        [
+            {
+                "game_id": "abcdef1234567890",
+                "round_number": 3,
+                "finished": False,
+                "players": [
+                    {"seat": 0, "kind": "human", "online": True},
+                    {"seat": 1, "kind": "human", "online": False},
+                    {"seat": 2, "kind": "app_ai", "online": False},
+                ],
+            },
+            {"game_id": "ffff0000ffff0000", "finished": True, "players": []},
+            {"no": "id"},
+        ]
+    )
+    assert [row.text for row in rows] == [
+        "3라운드 · 사람 2명(접속 1) · abcdef12",
+        "끝남 · 사람 0명(접속 0) · ffff0000",
+    ]
+    assert rows[1].finished and not rows[0].finished
+    assert (
+        room_link("http://100.1.2.3:8000/", "abc")
+        == "http://100.1.2.3:8000/#game=abc"
+    )

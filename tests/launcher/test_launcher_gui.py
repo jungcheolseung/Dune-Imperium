@@ -22,11 +22,13 @@ from dune_imperium.launcher.controller import (  # noqa: E402
     ChecksDone,
     Controller,
     Emit,
+    GamesListed,
     LogLine,
     Phase,
     PhaseChanged,
     ServerStopped,
     Started,
+    StartFailed,
 )
 from dune_imperium.launcher.gui import LauncherWindow  # noqa: E402
 from dune_imperium.launcher.keepawake import KeepAwake  # noqa: E402
@@ -276,5 +278,94 @@ def test_keep_awake_can_be_switched_off(tk_root: tk.Tk, tmp_path: Path) -> None:
         plan = build_plan(LauncherSettings(port=8128), None, python="py", environ={})
         window.apply(Started(plan, {"access": "open"}, None, 4242))
         assert ("hold", 4242) not in awake.calls
+    finally:
+        window.root.destroy()
+
+
+def _running(window: LauncherWindow, port: int = 8129) -> None:
+    settings = LauncherSettings(mode="remote", host="127.0.0.1", port=port)
+    plan = build_plan(settings, "k" * 32, python="py", environ={})
+    window.apply(Started(plan, {"access": "remote"}, None, None))
+    window.apply(PhaseChanged(Phase.RUNNING))
+
+
+def test_the_open_games_give_room_links(tk_root: tk.Tk, tmp_path: Path) -> None:
+    window = _window(tk_root, tmp_path, LauncherSettings(open_browser=False))
+    try:
+        _running(window)
+        assert not _enabled(window.copy_game)
+        window.apply(
+            GamesListed(
+                (
+                    {"game_id": "aaaa1111", "round_number": 2, "players": []},
+                    {"game_id": "bbbb2222", "finished": True, "players": []},
+                )
+            )
+        )
+        assert window.games_list.size() == 2
+        assert _enabled(window.copy_game)
+        assert window.selected_room_link() == "http://127.0.0.1:8129/#game=aaaa1111"
+        window.games_list.selection_clear(0, "end")
+        window.games_list.selection_set(1)
+        # A refresh keeps the host's pick.
+        window.apply(
+            GamesListed(
+                (
+                    {"game_id": "aaaa1111", "round_number": 3, "players": []},
+                    {"game_id": "bbbb2222", "finished": True, "players": []},
+                )
+            )
+        )
+        assert window.selected_game() == "bbbb2222"
+    finally:
+        window.root.destroy()
+
+
+def test_closing_a_running_server_asks_with_the_games_in_play(
+    tk_root: tk.Tk, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def no(title: str, message: str, **options: object) -> bool:
+        asked.append(message)
+        return False
+
+    monkeypatch.setattr("tkinter.messagebox.askyesno", no)
+    window = _window(tk_root, tmp_path, LauncherSettings(open_browser=False))
+    try:
+        _running(window)
+        window.apply(
+            GamesListed(({"game_id": "aaaa1111", "round_number": 2, "players": []},))
+        )
+        window.close()
+        assert "진행 중인 게임이 1개" in asked[0] and "지금 저장" in asked[0]
+        assert window.root.winfo_exists()
+    finally:
+        window.root.destroy()
+
+
+def test_a_failed_start_offers_the_last_settings_that_worked(
+    tk_root: tk.Tk, tmp_path: Path
+) -> None:
+    window = _window(tk_root, tmp_path, LauncherSettings(port=8130))
+    try:
+        good = LauncherSettings(mode="remote", host="192.168.0.64", port=8000)
+        window.apply(StartFailed("포트가 이미 쓰이고 있습니다", (), good))
+        assert window.retry_button.winfo_manager() == "grid"
+        assert "192.168.0.64:8000" in str(window.retry_button.cget("text"))
+        window.retry_button.invoke()
+        assert window.read_form().port == 8000
+        assert window.controller.phase is Phase.CHECKING
+    finally:
+        window.root.destroy()
+
+
+def test_no_retry_is_offered_for_the_same_settings(
+    tk_root: tk.Tk, tmp_path: Path
+) -> None:
+    window = _window(tk_root, tmp_path, LauncherSettings(port=8131))
+    try:
+        window.apply(StartFailed("실패", (), LauncherSettings(port=8131)))
+        assert window.retry_button.winfo_manager() == ""
     finally:
         window.root.destroy()

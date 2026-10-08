@@ -257,6 +257,30 @@ def whoami(
     return data if isinstance(data, dict) and "access" in data else None
 
 
+def list_games(
+    host: str, port: int, admin_key: str | None = None, timeout: float = 2.0
+) -> list[dict[str, object]] | None:
+    """``GET /games``: the open games' summaries, or ``None`` if the server
+    did not answer. On a remote server only the host may list them; the
+    admin key travels as the admin cookie, as for ``whoami``."""
+
+    import json
+
+    request = urllib.request.Request(
+        f"http://{url_host(_WILDCARDS.get(host, host))}:{port}/games"
+    )
+    if admin_key is not None:
+        request.add_header("Cookie", f"dune_admin={admin_key}")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, list):
+        return None
+    return [item for item in data if isinstance(item, dict)]
+
+
 def run_quiet(
     argv: Sequence[str],
     timeout: float,

@@ -4,7 +4,7 @@ The window asks these functions what to enable and what to say, so the
 rules are tested without a display (docs/server-launcher-plan.md 7).
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -72,6 +72,47 @@ def problem_lines(problems: Sequence[Problem]) -> list[tuple[str, Tone]]:
         (f"[{_PROBLEM_WORDS[p.level]}] {p.text}", _PROBLEM_TONES[p.level])
         for p in problems
     ]
+
+
+@dataclass(frozen=True)
+class GameRow:
+    game_id: str
+    text: str
+    finished: bool
+
+
+def room_link(base: str, game_id: str) -> str:
+    """The link the players of one game open (``#game=<id>``)."""
+
+    return f"{base.rstrip('/')}/#game={game_id}"
+
+
+def game_rows(summaries: Sequence[Mapping[str, object]]) -> list[GameRow]:
+    """One line per open game: round, people in it, the start of its ID."""
+
+    rows: list[GameRow] = []
+    for summary in summaries:
+        game_id = summary.get("game_id")
+        if not isinstance(game_id, str):
+            continue
+        players = summary.get("players")
+        humans = online = 0
+        if isinstance(players, list):
+            for player in players:
+                if isinstance(player, Mapping) and player.get("kind") == "human":
+                    humans += 1
+                    online += player.get("online") is True
+        finished = summary.get("finished") is True
+        round_number = summary.get("round_number")
+        where = "끝남" if finished else f"{round_number}라운드"
+        rows.append(
+            GameRow(
+                game_id,
+                f"{where} · 사람 {humans}명(접속 {online}) · {game_id[:8]}",
+                finished,
+            )
+        )
+    return rows
 
 
 def address_choice(label: str, ip: str) -> str:

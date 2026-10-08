@@ -21,6 +21,7 @@ from dune_imperium.launcher.controller import (
     ChecksDone,
     Controller,
     Event,
+    GamesListed,
     LogLine,
     Phase,
     PhaseChanged,
@@ -197,3 +198,48 @@ def test_a_server_that_never_answers_is_a_failed_start(tmp_path: Path) -> None:
     assert failed.last_good is not None and failed.last_good.port == 8123
     assert controller.phase is Phase.IDLE and controller.server is None
     assert load(path).settings.last_error == failed.message
+
+
+def _create_game(base: str, key: str | None = None) -> str:
+    import json
+    import urllib.request
+
+    request = urllib.request.Request(
+        f"{base}/games",
+        data=json.dumps(
+            {"seats": ["human", "heuristic", "heuristic", "heuristic"]}
+        ).encode(),
+        headers={"content-type": "application/json"},
+    )
+    if key is not None:
+        request.add_header("Cookie", f"dune_admin={key}")
+    game_id: str = json.load(urllib.request.urlopen(request, timeout=10))["game_id"]
+    return game_id
+
+
+def test_the_host_sees_the_open_games_of_a_remote_server(tmp_path: Path) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    from dune_imperium.launcher.command import list_games
+
+    events: list[Event] = []
+    controller = _controller(tmp_path, events)
+    controller.start(
+        LauncherSettings(
+            mode="remote",
+            host="127.0.0.1",
+            port=_free_port(),
+            saves_dir=str(tmp_path / "saves"),
+        )
+    )
+    plan = controller.plan
+    try:
+        assert plan is not None and plan.admin_key is not None
+        game_id = _create_game(plan.room_base, plan.admin_key)
+        controller.refresh_games()
+        [listed] = [event for event in events if isinstance(event, GamesListed)]
+        assert [game["game_id"] for game in listed.games] == [game_id]
+        # Only the host may list a remote server's games.
+        assert list_games(plan.host, plan.port) is None
+    finally:
+        controller.stop()

@@ -31,6 +31,7 @@ from dune_imperium.launcher.controller import (
     Controller,
     Emit,
     Event,
+    GamesListed,
     LogLine,
     Phase,
     PhaseChanged,
@@ -38,6 +39,7 @@ from dune_imperium.launcher.controller import (
     Started,
     StartFailed,
 )
+from dune_imperium.launcher.instance import InstanceLock
 from dune_imperium.launcher.keepawake import KeepAwake
 from dune_imperium.launcher.settings import (
     SETTINGS_FILE,
@@ -52,10 +54,13 @@ from dune_imperium.launcher.shortcuts import ShortcutError, make_shortcut
 from dune_imperium.launcher.supervisor import LOG_DIR
 from dune_imperium.launcher.view import (
     AI_PACE_LABELS,
+    GameRow,
     Tone,
     address_from_choice,
     controls,
+    game_rows,
     problem_lines,
+    room_link,
     status,
     window_geometry,
 )
@@ -66,6 +71,8 @@ LAUNCHER_LOG: Final = LOG_DIR / "launcher.log"
 _LOG_LIMIT: Final = 2000
 _LAUNCHER_LOG_BYTES: Final = 1_000_000
 _PUMP_MS: Final = 100
+# The game list is asked for every 30 pumps (3 s) while the server runs.
+_GAMES_EVERY: Final = 30
 # Readable on the light and the dark theme alike; the status line also
 # always says its state in words.
 _TONE_COLOURS: Final[dict[Tone, str]] = {
@@ -161,6 +168,9 @@ class LauncherWindow:
         self._phase = Phase.IDLE
         self._error: str | None = None
         self._closing = False
+        self._games: list[GameRow] = []
+        self._pumps = 0
+        self._retry: LauncherSettings | None = None
         self._edit_widgets: list[ttk.Widget] = []
         self._remote_widgets: list[ttk.Widget] = []
         self._build()
@@ -336,6 +346,7 @@ class LauncherWindow:
         self.stop_button.grid(row=1, column=1, padx=(6, 0), pady=(6, 0))
         self.status_label = ttk.Label(run, textvariable=self.status_text)
         self.status_label.grid(row=1, column=3, sticky="w", padx=(12, 0), pady=(6, 0))
+        self.retry_button = ttk.Button(run, command=self._start_last_good)
         self.problems = tk.Text(run, height=5, width=48, wrap="word", relief="flat")
         self.problems.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 0))
         for tone, colour in _TONE_COLOURS.items():
@@ -368,6 +379,19 @@ class LauncherWindow:
             links, text="복사", command=lambda: self.copy(self.room_base.get())
         )
         self.copy_room.grid(row=1, column=2, padx=(6, 0), pady=(6, 0))
+        ttk.Label(links, text="진행 중인 게임").grid(
+            row=2, column=0, sticky="nw", pady=(6, 0)
+        )
+        self.games_list = tk.Listbox(links, height=3, exportselection=False)
+        self.games_list.grid(row=2, column=1, sticky="ew", pady=(6, 0))
+        self.copy_game = ttk.Button(
+            links, text="방 링크 복사", command=self._copy_game_link
+        )
+        self.copy_game.grid(row=2, column=2, columnspan=2, sticky="n", pady=(6, 0))
+        self.games_hint = ttk.Label(
+            links, text="게임은 관리자 링크(게임 화면)에서 만듭니다"
+        )
+        self.games_hint.grid(row=3, column=1, columnspan=3, sticky="w")
 
         logs = ttk.LabelFrame(side, text="서버 로그", padding=8)
         logs.grid(row=2, column=0, sticky="nsew", pady=(10, 0))
@@ -529,10 +553,12 @@ class LauncherWindow:
         if self._phase is Phase.IDLE:
             self._finish_close()
             return
+        playing = sum(1 for row in self._games if not row.finished)
+        games = f"진행 중인 게임이 {playing}개 있습니다. " if playing else ""
         if not messagebox.askyesno(
             TITLE,
-            "서버를 끄고 런처를 닫을까요?\n\n진행 중이던 턴은 사라질 수 있습니다. "
-            "먼저 게임 화면에서 '지금 저장'을 누르면 안전합니다.",
+            f"서버를 끄고 런처를 닫을까요?\n\n{games}진행 중이던 턴은 사라질 수 "
+            "있습니다. 먼저 게임 화면에서 '지금 저장'을 누르면 안전합니다.",
             parent=self.root,
         ):
             return
@@ -565,6 +591,9 @@ class LauncherWindow:
     def _pump(self) -> None:
         try:
             self.controller.poll()
+            self._pumps += 1
+            if self._phase is Phase.RUNNING and self._pumps % _GAMES_EVERY == 0:
+                self.controller.refresh_games()
             while True:
                 try:
                     event = self._events.get_nowait()
@@ -603,10 +632,12 @@ class LauncherWindow:
         elif isinstance(event, StartFailed):
             self._error = event.message
             self._show_problem(f"[오류] {event.message}", "bad")
+            self._offer_retry(event.last_good)
         elif isinstance(event, ServerStopped):
             self.keep_awake.release()
             self.open_url.set("")
             self.room_base.set("")
+            self._show_games([])
             if event.unexpected:
                 self._error = event.unexpected
                 self._show_problem(f"[오류] {event.unexpected}", "bad")
@@ -616,7 +647,69 @@ class LauncherWindow:
                 )
         elif isinstance(event, LogLine):
             self._append_log(event.text)
+        elif isinstance(event, GamesListed):
+            self._show_games(game_rows(event.games))
         self._refresh()
+
+    def _show_games(self, rows: list[GameRow]) -> None:
+        chosen = self.selected_game()
+        self._games = rows
+        self.games_list.delete(0, "end")
+        for index, row in enumerate(rows):
+            self.games_list.insert("end", row.text)
+            if row.game_id == chosen:
+                self.games_list.selection_set(index)
+        if rows and not self._selection():
+            self.games_list.selection_set(0)
+
+    def _selection(self) -> tuple[int, ...]:
+        # typeshed leaves Listbox.curselection untyped.
+        chosen = self.games_list.curselection()  # type: ignore[no-untyped-call]
+        return tuple(int(index) for index in chosen)
+
+    def selected_game(self) -> str | None:
+        selection = self._selection()
+        if not selection or selection[0] >= len(self._games):
+            return None
+        return self._games[selection[0]].game_id
+
+    def selected_room_link(self) -> str | None:
+        game_id = self.selected_game()
+        base = self.room_base.get()
+        if game_id is None or not base:
+            return None
+        return room_link(base, game_id)
+
+    def _copy_game_link(self) -> None:
+        link = self.selected_room_link()
+        if link:
+            self.copy(link)
+
+    def _offer_retry(self, last_good: LauncherSettings | None) -> None:
+        """Offer the last settings that came up, if they differ from now."""
+
+        self._retry = None
+        self.retry_button.grid_remove()
+        if last_good is None:
+            return
+        now = self.read_form()
+        where = (last_good.mode, last_good.host, last_good.port)
+        if where == (now.mode, now.host, now.port):
+            return
+        address = last_good.host if last_good.mode == "remote" else "이 PC"
+        self._retry = last_good
+        self.retry_button.configure(
+            text=f"이전 설정({address}:{last_good.port})으로 다시 시도"
+        )
+        self.retry_button.grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+
+    def _start_last_good(self) -> None:
+        if self._retry is None:
+            return
+        self.fill_form(self._retry)
+        self._retry = None
+        self.retry_button.grid_remove()
+        self.start()
 
     def _show_addresses(self, event: AddressesFound) -> None:
         found = event.discovery
@@ -652,6 +745,10 @@ class LauncherWindow:
         self.stop_button.state(["!disabled"] if shown.can_stop else ["disabled"])
         for widget in (self.copy_open, self.open_button, self.copy_room):
             widget.state(["!disabled"] if shown.links else ["disabled"])
+        has_games = shown.links and bool(self._games)
+        self.copy_game.state(["!disabled"] if has_games else ["disabled"])
+        if shown.can_start is False:
+            self.retry_button.grid_remove()
         text, tone = status(self._phase, error=self._error)
         self.status_text.set(text)
         self.status_label.configure(foreground=_TONE_COLOURS[tone])
@@ -691,6 +788,17 @@ def main(settings_path: Path = SETTINGS_FILE) -> int:
             sys.stderr.write(f"dune-imperium-launcher: cannot open a window: {error}\n")
         return 1
     _korean_fonts(root)
+    instance = InstanceLock()
+    if not instance.acquire():
+        root.withdraw()
+        messagebox.showinfo(
+            TITLE,
+            "이 프로젝트 폴더의 런처가 이미 실행 중입니다.\n"
+            "Dock이나 작업 표시줄에서 그 창을 찾아 쓰세요.",
+            parent=root,
+        )
+        root.destroy()
+        return 0
     launcher_log(
         f"start: Python {sys.version.split()[0]}, Tk {tk.TkVersion}, {sys.executable}"
     )
@@ -717,4 +825,5 @@ def main(settings_path: Path = SETTINGS_FILE) -> int:
     finally:
         window.controller.shutdown()
         window.keep_awake.release()
+        instance.release()
     return 0

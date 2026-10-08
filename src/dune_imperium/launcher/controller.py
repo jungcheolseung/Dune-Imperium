@@ -20,6 +20,7 @@ from dune_imperium.launcher.command import (
     build_plan,
     explain_failure,
     has_errors,
+    list_games,
     preflight,
     run_output,
 )
@@ -90,6 +91,11 @@ class LogLine:
     text: str
 
 
+@dataclass(frozen=True)
+class GamesListed:
+    games: tuple[dict[str, object], ...]
+
+
 Event = (
     AddressesFound
     | PhaseChanged
@@ -98,6 +104,7 @@ Event = (
     | StartFailed
     | ServerStopped
     | LogLine
+    | GamesListed
 )
 Emit = Callable[[Event], None]
 ServerFactory = Callable[[LaunchPlan], ServerProcess]
@@ -266,6 +273,20 @@ class Controller:
 
         self._spawn("launcher-stop", work)
         return True
+
+    def refresh_games(self) -> None:
+        """List the server's games on a worker (the window asks every 3 s)."""
+
+        plan = self.plan
+        if plan is None or self._phase is not Phase.RUNNING:
+            return
+
+        def work() -> None:
+            games = list_games(plan.host, plan.port, plan.admin_key)
+            if games is not None and self._phase is Phase.RUNNING:
+                self._emit(GamesListed(tuple(games)))
+
+        self._spawn("launcher-games", work)
 
     def poll(self) -> None:
         """Pass on the server's new output; notice a server that died.
