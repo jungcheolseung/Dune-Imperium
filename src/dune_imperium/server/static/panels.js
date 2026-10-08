@@ -752,6 +752,7 @@ function logEventLine(event) {
   line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
   const payload = logEventPayload(event.payload, event.kind);
   if (payload) line.append(` — ${payload}`);
+  addLogEventIcon(line, event);
   return line;
 }
 
@@ -935,7 +936,9 @@ function neutralCard(group, glowFrom) {
   head.className = "turn-head";
   const mark = document.createElement("span");
   mark.className = "neutral-mark";
-  mark.textContent = "⚙";
+  const picture = neutralLogIcon(group);
+  if (picture) mark.appendChild(picture);
+  else mark.textContent = "⚙";
   const who = document.createElement("strong");
   who.textContent = neutralTitle(group);
   head.append(mark, who);
