@@ -1,5 +1,8 @@
 """Tests for the pictured Combat marker filenames and their availability."""
 
+import re
+from pathlib import Path
+
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.display.token_images import (
     ALLIANCE_TOKEN_FACTIONS,
@@ -118,3 +121,20 @@ def test_seat_pieces_need_all_four_colours() -> None:
         )
     }
     assert available_seat_pieces(frozenset()) == {}
+
+
+def test_the_strength_faces_are_built_in_the_seat_colours() -> None:
+    # scripts/dwgr/app_assets.py `strength` paints each Combat marker's tile
+    # in its seat's colour; the browser tints everything else a seat owns
+    # with render.js SEAT_COLORS, so the two tables must agree (the tool
+    # imports UnityPy, so it is read here as text).
+    repo = Path(__file__).resolve().parents[3]
+    render_js = (repo / "src/dune_imperium/server/static/render.js").read_text()
+    seat_colors = re.search(r"const SEAT_COLORS = \[([^\]]*)\]", render_js)
+    assert seat_colors is not None
+    tool = (repo / "scripts/dwgr/app_assets.py").read_text()
+    table = re.search(r"STRENGTH_TILE_COLORS = \{([^}]*)\}", tool)
+    assert table is not None
+    tiles = dict(re.findall(r'"(\w+)": "(#[0-9a-f]{6})"', table.group(1)))
+    assert tuple(tiles) == STRENGTH_TOKEN_COLORS
+    assert list(tiles.values()) == re.findall(r'"(#[0-9a-f]{6})"', seat_colors.group(1))

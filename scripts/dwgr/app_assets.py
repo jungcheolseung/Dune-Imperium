@@ -13,6 +13,9 @@ Usage (from ``scripts/dwgr``)::
 
     uv run --no-project --with UnityPy python app_assets.py index
     uv run --no-project --with UnityPy python app_assets.py icons
+    uv run --no-project --with UnityPy python app_assets.py pieces [--only NAME...]
+    uv run --no-project --with UnityPy --with numpy python app_assets.py strength
+    uv run --no-project --with UnityPy python app_assets.py backs
     uv run --no-project --with UnityPy python app_assets.py sprites OUT NAME...
     uv run --no-project --with UnityPy python app_assets.py prefabs OUT NAME...
     uv run --no-project --with UnityPy python app_assets.py fonts OUT
@@ -398,6 +401,11 @@ APP_ALLIANCE_SOURCES = {
     "bene_gesserit": "hud_Player_AllianceToken_BeneGesserit_Large",
     "fremen": "hud_Player_AllianceToken_Fremen_Large",
 }
+# The First Player marker (display.token_images.FIRST_PLAYER_TOKEN_FILENAME,
+# [Main p. 5]): the app's player-HUD token, a coiled sandworm on a round
+# token, flat painted; its pixels match the marker printed on the Desert Mouse
+# Objective. 128x128 is the only size the app has. Cropped to the disc.
+APP_FIRST_PLAYER_SPRITE = "hud_Icon_FirstPlayerToken"
 # Seat order of display.token_images.STRENGTH_TOKEN_COLORS -> app colour name.
 APP_PIECE_COLORS = {"blue": "Blue", "red": "Red", "green": "Green", "yellow": "Yellow"}
 
@@ -465,15 +473,34 @@ def cube_color(path):
     return tuple(sorted(c[i] for c in px)[len(px) // 2] for i in range(3))
 
 
+def write_sources(out, section, rows, merge):
+    """Record `rows` as `section` of ``<out>/app_sources.json``, keeping the
+    file's other sections: all of the section's rows (a full run), or merged
+    over the rows already there (a run limited with ``--only``)."""
+    path = os.path.join(out, "app_sources.json")
+    doc = json.load(open(path)) if os.path.exists(path) else {}
+    doc["build_guid"] = build_guid()
+    doc[section] = {**doc.get(section, {}), **rows} if merge else rows
+    json.dump(doc, open(path, "w"), indent=1, sort_keys=True)
+
+
+def wanted(name, only):
+    """Whether a run limited to the names/prefixes `only` makes `name`."""
+    return not only or any(name.startswith(prefix) for prefix in only)
+
+
 def cmd_pieces(args):
     from PIL import Image, ImageChops, ImageDraw
 
     app = App()
     out = args.out or os.path.join(ASSETS, "tokens")
     os.makedirs(out, exist_ok=True)
+    only = args.only or []
     rows = {}
     for kind, pattern in APP_PIECE_SOURCES.items():
         for color, app_color in APP_PIECE_COLORS.items():
+            if not wanted(f"{kind}_{color}", only):
+                continue
             sprite = pattern.format(C=app_color)
             path = os.path.join(out, f"{kind}_{color}.png")
             if app.save_picture(sprite, path) is None:
@@ -505,21 +532,207 @@ def cmd_pieces(args):
             im.save(path)
             row["sha256"] = sha256(path)
             rows[f"{kind}_{color}"] = row
-    for faction, sprite in APP_ALLIANCE_SOURCES.items():
-        path = os.path.join(out, f"alliance_{faction}.png")
+    cropped = {
+        f"alliance_{faction}": sprite
+        for faction, sprite in APP_ALLIANCE_SOURCES.items()
+    }
+    cropped["first_player"] = APP_FIRST_PLAYER_SPRITE
+    for name, sprite in cropped.items():
+        if not wanted(name, only):
+            continue
+        path = os.path.join(out, f"{name}.png")
         if app.save_picture(sprite, path) is None:
-            print("missing", faction, sprite)
+            print("missing", name, sprite)
             continue
         im = Image.open(path).convert("RGBA")
         im.crop(im.getchannel("A").getbbox()).save(path)
-        rows[f"alliance_{faction}"] = {"sprite": sprite, "sha256": sha256(path)}
-    json.dump(
-        {"build_guid": build_guid(), "pieces": rows},
-        open(os.path.join(out, "app_sources.json"), "w"),
-        indent=1,
-        sort_keys=True,
-    )
+        rows[name] = {"sprite": sprite, "sha256": sha256(path)}
+    write_sources(out, "pieces", rows, merge=bool(only))
     print("pieces:", len(rows), "->", out)
+
+
+# The Combat marker's two faces (display.token_images.STRENGTH_TOKEN_COLORS):
+# "20을 넘으면 marker의 `+20` 면을 사용해 track 처음부터 남은 수치를 센다"
+# [Main p. 12]. The app shows strength as a number and has no marker, so the
+# faces are a project composition of app parts: a flat tile in the seat's
+# colour, a dark inner square, and on the front the printed strength icon
+# UI_crd_ActionIcon_Strength (icons/sword.png, written by `icons`), on the
+# back "+20" in the app's Gotham-Bold SDF (render/fonts, written by `fonts`).
+# The tile colours are the seats' colours, SEAT_COLORS in
+# src/dune_imperium/server/static/render.js: keep the two tables in step and
+# run `strength` again when that one changes (a test compares them).
+STRENGTH_TILE_COLORS = {
+    "blue": "#1c49ac",
+    "red": "#c01326",
+    "green": "#006e4a",
+    "yellow": "#d59d18",
+}
+STRENGTH_INNER = "#231b18"  # the dark inner square, as on the physical marker
+STRENGTH_SIZE = 256  # px; the board shows the token at about 30 px
+STRENGTH_ICON = "sword"  # the play UI icon (APP_ICON_SOURCES) on the front
+STRENGTH_FONT = "Gotham-Bold SDF"
+
+
+def hex_rgb(value):
+    return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
+
+
+def sdf_text(font, text, cap_px, color=(255, 255, 255), ss=4):
+    """`text` in one of the app's SDF fonts (an app_render.SDFFont) as an
+    RGBA picture cut to its ink, its capitals `cap_px` tall."""
+    import numpy as np
+    from PIL import Image
+
+    s = cap_px * ss / font.cap  # supersampled px per font unit
+    p = font.pad
+    parts, pen, prev = [], 0.0, None
+    for ch in text:
+        index, g = font.glyph(ch)
+        if g is None or g.get("m_AtlasIndex", 0):
+            raise SystemExit(f"{font.name}: no first-atlas glyph for {ch!r}")
+        if prev is not None:
+            pen += font.kern.get((prev, index), 0)
+        r, m = g["m_GlyphRect"], g["m_Metrics"]
+        y0 = int(font.H - (r["m_Y"] + r["m_Height"] + p))
+        x0 = int(r["m_X"] - p)
+        crop = font.atlas[
+            max(y0, 0) : int(font.H - (r["m_Y"] - p)),
+            max(x0, 0) : int(r["m_X"] + r["m_Width"] + p),
+        ]
+        size = (max(1, round(crop.shape[1] * s)), max(1, round(crop.shape[0] * s)))
+        grey = Image.fromarray((crop * 255).astype(np.uint8), "L")
+        d = np.asarray(grey.resize(size, Image.BILINEAR)).astype(np.float32) / 255
+        # the distance runs 0..1 across 2 * pad atlas pixels: a one-pixel edge
+        alpha = np.clip((d - 0.5) * 2 * p * s + 0.5, 0, 1)
+        left = (pen + m["m_HorizontalBearingX"] - p) * s
+        top = -(m["m_HorizontalBearingY"] + p) * s  # the baseline is y 0
+        parts.append((left, top, alpha))
+        pen += m["m_HorizontalAdvance"]
+        prev = index
+    x_min = min(left for left, _t, _a in parts)
+    y_min = min(top for _l, top, _a in parts)
+    width = max(left + a.shape[1] for left, _t, a in parts) - x_min
+    height = max(top + a.shape[0] for _l, top, a in parts) - y_min
+    ink = np.zeros((int(height) + 2, int(width) + 2), np.float32)
+    for left, top, a in parts:
+        y, x = int(round(top - y_min)), int(round(left - x_min))
+        window = ink[y : y + a.shape[0], x : x + a.shape[1]]
+        np.maximum(window, a[: window.shape[0], : window.shape[1]], out=window)
+    ys, xs = np.nonzero(ink > 0.02)
+    ink = ink[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+    mask = Image.fromarray((ink * 255).astype(np.uint8), "L")
+    mask = mask.resize(
+        (max(1, mask.width // ss), max(1, mask.height // ss)), Image.LANCZOS
+    )
+    out = Image.new("RGBA", mask.size, tuple(color) + (255,))
+    out.putalpha(mask)
+    return out
+
+
+def strength_face(tile_hex, picture):
+    """One face of the Combat marker: the seat-colour tile, the inner
+    square, `picture` centred on it."""
+    from PIL import Image, ImageDraw
+
+    n, ss = STRENGTH_SIZE, 4
+    inset = n * 0.15
+    big = Image.new("RGBA", (n * ss, n * ss), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(big)
+    draw.rounded_rectangle(
+        (0, 0, n * ss - 1, n * ss - 1),
+        radius=round(n * 0.12 * ss),
+        fill=hex_rgb(tile_hex) + (255,),
+    )
+    draw.rounded_rectangle(
+        (inset * ss, inset * ss, (n - inset) * ss - 1, (n - inset) * ss - 1),
+        radius=round(n * 0.09 * ss),
+        fill=hex_rgb(STRENGTH_INNER) + (255,),
+    )
+    face = big.resize((n, n), Image.LANCZOS)
+    face.alpha_composite(picture, ((n - picture.width) // 2, (n - picture.height) // 2))
+    return face
+
+
+def cmd_strength(args):
+    """The Combat marker faces (no UnityPy run: the icon and the font are
+    already saved by `icons` and `fonts`)."""
+    import app_render
+    from PIL import Image
+
+    out = args.out or os.path.join(ASSETS, "tokens")
+    os.makedirs(out, exist_ok=True)
+    icon_path = os.path.join(ASSETS, "icons", f"{STRENGTH_ICON}.png")
+    icon = Image.open(icon_path).convert("RGBA")
+    room = STRENGTH_SIZE * 0.7  # the inner square
+    icon.thumbnail((int(room * 0.9), int(room * 0.9)), Image.LANCZOS)
+    font = app_render.SDFFont(
+        os.path.join(cache_dir(), "fonts", f"{STRENGTH_FONT}.json")
+    )
+    plus20 = sdf_text(font, "+20", STRENGTH_SIZE * 0.17)
+    rows = {}
+    for color, tile in STRENGTH_TILE_COLORS.items():
+        for name, picture, part in (
+            (
+                f"strength_{color}",
+                icon,
+                f"{APP_ICON_SOURCES[STRENGTH_ICON]} (icons/{STRENGTH_ICON}.png)",
+            ),
+            (f"strength_{color}_plus20", plus20, f'"+20" in {STRENGTH_FONT}'),
+        ):
+            path = os.path.join(out, f"{name}.png")
+            strength_face(tile, picture).save(path)
+            rows[name] = {
+                "composition": "seat-colour tile, inner square, " + part,
+                "inner": STRENGTH_INNER,
+                "sha256": sha256(path),
+                "tile": tile,
+            }
+    write_sources(out, "compositions", rows, merge=True)
+    print("strength faces:", len(rows), "->", out)
+
+
+# The card backs the play UI lays face down (display.card_backs.CARD_BACK_KINDS)
+# -> app sprite. Each matches its physical back (compared with the Tabletop
+# Simulator decks); the app's copies carry no printed word ("INTRIGUE",
+# "CONFLICT"), so the one picture serves both languages. The app has no back
+# for a Contract, a Navigation card or a Skill tile.
+APP_BACK_SOURCES = {
+    # Imperium, starting, Reserve and Tleilaxu cards: Arrakis and two moons
+    "imperium": "UI_crd_CardBack",
+    "intrigue": "UI_crd_CardBack_Intrigue",
+    # the Conflict deck is built I/II/III by back [Main p. 4]
+    "conflict_1": "UI_crd_CardBack_Conflict1",
+    "conflict_2": "UI_crd_CardBack_Conflict2",
+    "conflict_3": "UI_crd_CardBack_Conflict3",
+    # the Tech tile back (gear in a ring of hexes), landscape
+    "tech": "UI_crd_CardBack_Tech",
+}
+BACK_WEBP_QUALITY = 88  # 35-73 KB each, against 230-467 KB as PNG
+
+
+def cmd_backs(args):
+    from PIL import Image
+
+    app = App()
+    out = args.out or os.path.join(ASSETS, "tokens")
+    os.makedirs(out, exist_ok=True)
+    rows = {}
+    for kind, sprite in APP_BACK_SOURCES.items():
+        png = os.path.join(out, f"_back_{kind}.png")
+        if app.save_picture(sprite, png) is None:
+            print("missing", kind, sprite)
+            continue
+        path = os.path.join(out, f"back_{kind}.webp")
+        im = Image.open(png).convert("RGBA")
+        im.save(path, "WEBP", quality=BACK_WEBP_QUALITY, method=6)
+        os.remove(png)
+        rows[f"back_{kind}"] = {
+            "sprite": sprite,
+            "size": list(im.size),
+            "sha256": sha256(path),
+        }
+    write_sources(out, "backs", rows, merge=False)
+    print("backs:", len(rows), "->", out)
 
 
 # ---------------------------------------------------------------- prefabs
@@ -947,7 +1160,18 @@ def main():
     p.set_defaults(fn=cmd_sprite_meta)
     p = sub.add_parser("pieces")
     p.add_argument("--out")
+    p.add_argument(
+        "--only",
+        nargs="+",
+        help="make only the pictures whose names start so (first_player, troop_)",
+    )
     p.set_defaults(fn=cmd_pieces)
+    p = sub.add_parser("strength")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_strength)
+    p = sub.add_parser("backs")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_backs)
     p = sub.add_parser("prefabs")
     p.add_argument("out")
     p.add_argument("names", nargs="*")
