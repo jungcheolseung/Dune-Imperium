@@ -197,12 +197,16 @@ KOREAN_LATIN_JS = r"""({keep}) => {
 # English names here before). The product title is the Korean edition's,
 # 듄 임페리움: 봉기 (2026-09-22). The Epic Game Mode box names the Conflict
 # tiers by the Roman numerals printed on the card backs, which the Korean
-# edition keeps too (2026-09-28): "교전 I 없이 II·III 5장씩".
+# edition keeps too (2026-09-28): "교전 I 없이 II·III 5장씩". The face-down
+# Conflict deck's title names its top card's tier the same way, as the back
+# in the slot prints it (2026-10-08): "교전 II".
 KOREAN_CHROME_ENGLISH = (
     "train extra",
     "AI",
     "Esc",
     "II·III",
+    "교전 III",
+    "교전 II",
 )
 
 
