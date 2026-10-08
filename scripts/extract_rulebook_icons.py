@@ -18,7 +18,7 @@ committed, the same policy as the Dune Cards Hub card image cache
 
 Since 2026-10-07 the play UI prefers the app's sharper copies of the same
 icons: run this script first, then ``scripts/dwgr/app_assets.py icons``,
-which overwrites every icon the app has (all but ``steal_intrigue``).
+which overwrites every icon with the app's picture.
 """
 
 from __future__ import annotations
