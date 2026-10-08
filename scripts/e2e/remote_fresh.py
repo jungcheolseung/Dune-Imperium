@@ -92,6 +92,8 @@ EXPLICIT_TURN_END_IDS = {
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
+    # The Conflict-end window's "쓰지 않음" (OQ-103, 2026-10-09).
+    "decline_conflict_end_intrigue",
     # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
     "confirm_scouts_bid",
     # Critical Moment's open call, sent with the turn-end press (2026-10-05).
@@ -138,12 +140,18 @@ class HttpSeat:
 # just replaying the production code against itself; logGroups() is reused
 # only to find card boundaries (which entries share a card), which is not
 # what this bug is about. logGroups() renders cards in this same order, so
-# a positional zip against the DOM is exact.
+# a positional zip against the DOM is exact. With one human seat, that
+# seat's own Conflict-end decline is no boundary (the server may have
+# answered it, OQ-103); these games have several humans and no Immortality,
+# so it never applies here.
 GLOW_CHECK_JS = """(seat) => {
   const entries = state.log.entries;
+  const lone = state.summary.seats.filter((k) => k === "human").length === 1;
   let lastOwn = -1;
   for (const e of entries) {
-    if (e.type === "action" && e.actor === seat && !e.undone) lastOwn = e.index;
+    const own = e.type === "action" && e.actor === seat && !e.undone;
+    const skipped = lone && e.action_id === "decline_conflict_end_intrigue";
+    if (own && !skipped) lastOwn = e.index;
     else if (e.type === "undo" && e.seat === seat) lastOwn = e.index;
   }
   const groups = logGroups(entries).filter((g) => g.kind !== "undo");

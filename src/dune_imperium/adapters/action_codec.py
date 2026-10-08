@@ -327,7 +327,16 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # action changes and the pause draws nothing from the random stream, but
 # every recorded step sequence gains those chance steps, so saves and
 # replays from v139 are refused by the version check.
-ACTION_CODEC_VERSION = 140
+# v141 (user decisions 2026-10-09, OQ-103, OQ-056): the Conflict-end
+# Intrigue window opens on public facts (Immortality, at least three units
+# in the Conflict, an Intrigue card held, a Harvest Cells copy not yet
+# public), with only the decline for a seat that can play nothing, and
+# stays open after a play while the seat holds an Intrigue card; Earn Any
+# Alliance completes at the end of the step that took the Alliance, also
+# when that step stopped at a pause, so in Combat before the cleanup.
+# Legal-action sequences change with no template change, so saves and
+# replays from v140 are refused by the version check.
+ACTION_CODEC_VERSION = 141
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

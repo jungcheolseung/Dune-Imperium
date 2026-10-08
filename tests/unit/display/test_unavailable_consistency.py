@@ -23,6 +23,9 @@ rows read (``AcquireBlock``, ``option_unplayable_reason``,
 ``test_the_refactored_providers_offer_what_they_did`` pins that refactor
 against copies of the providers as they were before it (2026-09-29): a later
 rule change to one of them should update or drop the copy on purpose.
+``combat.conflict_end_trigger_block`` (2026-10-09, the Conflict-end
+window's Harvest Cells) has no copy here: the window tests of
+``tests/unit/rules/test_immortality_intrigue.py`` pin what it offers.
 ``test_recall_targets_never_grow_while_the_recall_waits`` pins what the
 recall confirms (2026-10-02) rely on: a recall's targets never come back
 while it waits.
@@ -35,6 +38,11 @@ from collections.abc import Callable, Iterator
 from typing import Any, cast
 
 import pytest
+from tests.unit.display.test_unavailable import (
+    HARVEST_CELLS,
+    _conflict_end_window,
+    _play_conflict_end,
+)
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.determinize import determinize
@@ -267,6 +275,38 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
             assert unavailable_choices(hidden, seat, hidden_legal) == found
     assert checked > 0
     assert "acquire" in surfaces and "intrigue" in surfaces
+
+
+def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
+    """The Conflict-end window opens on public facts for every seat
+    (OQ-103), and a held Harvest Cells it does not offer greys out
+    (``display.unavailable._conflict_end_trigger``). The seeded games above
+    seldom meet it, so the two windows of
+    ``test_harvest_cells_window_skips_a_copy_that_would_change_nothing``
+    are re-dealt here: for the deciding seat the rows stay the same; for
+    any other seat, re-dealing the deciding seat's hand shows nothing."""
+
+    first, second = HARVEST_CELLS
+    lone = _conflict_end_window(first)
+    mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
+    played = ENGINE.apply(
+        _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
+    ).state
+    rng = random.Random(7)
+    for state in (lone, played):
+        legal = ENGINE.legal_actions(state, 0)
+        found = unavailable_choices(state, 0, legal)
+        assert found is not None and found["rows"]
+        for _ in range(20):
+            hidden = determinize(state, 0, rng)
+            hidden_legal = ENGINE.legal_actions(hidden, 0)
+            assert hidden_legal == legal
+            assert unavailable_choices(hidden, 0, hidden_legal) == found
+        for seat in range(1, 4):
+            other = determinize(state, seat, rng)
+            assert other.decision_stack[-1] == state.decision_stack[-1]
+            assert ENGINE.legal_actions(other, seat) == ()
+            assert unavailable_choices(other, seat, ()) is None
 
 
 # --- The providers before the refactor (2026-09-29) --------------------------

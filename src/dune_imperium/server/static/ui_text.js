@@ -849,6 +849,10 @@ const UI_TEXT = {
     "ko": "게임 준비",
     "en": "Game setup"
   },
+  "panels.pass_fold_conflict_end_intrigue": {
+    "ko": "{conflict} 종료 발동 {intrigue} 쓰지 않음",
+    "en": "{conflict} End Trigger {intrigue} Declined"
+  },
   "panels.pass_fold_endgame_intrigue": {
     "ko": "{endgame} {intrigue} 패스",
     "en": "{endgame} {intrigue} Passed"
@@ -1384,6 +1388,10 @@ const UI_TEXT = {
   "render.turn_end_button_pass": {
     "ko": "패스 · 턴 종료 ▶",
     "en": "Pass · End turn ▶"
+  },
+  "render.turn_end_button_decline": {
+    "ko": "쓰지 않음 · 턴 종료 ▶",
+    "en": "Decline · End turn ▶"
   },
   "render.turn_end_button_with_buys": {
     "ko": "구매 끝 · 턴 종료 ▶",

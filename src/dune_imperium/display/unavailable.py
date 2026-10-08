@@ -6,7 +6,8 @@ can be taken (and the reverse), for the whole game. Arrakeen Scouts choices
 already do this (``display.scouts.scouts_choice_lines``); this module does it
 for the Reveal shop, Intrigue plays (one none of whose effects could
 change anything now among them, user ruling 2026-10-06; Call to Arms in a
-Reveal with nothing left to acquire) and effects waiting on their
+Reveal with nothing left to acquire; a Harvest Cells its Conflict-end
+window does not offer) and effects waiting on their
 condition (a new High Council seat's subcommittee choice, an Agent-box
 icon below its printed threshold and held Contract icons among them), and
 for the branch of an open choice that cannot be taken ("choice": Desert Power's
@@ -36,7 +37,8 @@ Display only, under four rules:
   ``imperial_privilege_recall_targets``, ``contract_recall_targets``,
   ``research_bonus_block``, ``research_influence_factions``,
   ``shipping_influence_factions``, ``combat_reward_influence_block``,
-  ``unit_loss_block``, ``skill_choice_block``, ``tech_candidates``,
+  ``unit_loss_block``, ``conflict_end_trigger_block``,
+  ``skill_choice_block``, ``tech_candidates``,
   ``agent_icon_block``, ``agent_card_recall_targets``,
   ``agent_card_payment_block``, ``signet_influence_withheld``,
   ``reveal_influence_choice_blocked``,
@@ -165,7 +167,9 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.combat import (
     CombatInfluenceBlock,
+    ConflictEndTriggerBlock,
     combat_reward_influence_block,
+    conflict_end_trigger_block,
 )
 from dune_imperium.rules.contracts import (
     ContractTakeBlock,
@@ -445,6 +449,68 @@ def _conflict_end_reason(option: IntrigueOption) -> Reason:
         f"Played after the Conflict resolves, if you lose {lost} or more troops",
         f"{{conflict}}이 끝난 뒤 {{troop}}을 {lost} 이상 잃었을 때 사용",
         "timing",
+    )
+
+
+# Harvest Cells in its own window when one more copy could change nothing
+# (``ConflictEndTriggerBlock``): its specimens come from troops back in the
+# supply after the cleanup, and lost Sardaukar Commanders go back to their
+# own supply and make none (``combat._harvest_cells_has_effect``).
+_NO_TROOP_FOR_A_SPECIMEN: Final[Reason] = (
+    "No troop in your supply or the Conflict to make a specimen",
+    "{specimen}으로 만들 {troop}이 {supply}에도 {conflict}에도 없음",
+    "reward",
+)
+_TROOPS_TAKEN_FOR_SPECIMENS: Final[Reason] = (
+    "The copy already played takes every troop left to make a specimen",
+    "먼저 쓴 카드가 {specimen}으로 만들 {troop}을 모두 가져감",
+    "reward",
+)
+_COMMANDERS_MAKE_NONE: Final = (
+    " (Sardaukar Commanders make none)",
+    " ({commander}은 {specimen}이 되지 않음)",
+)
+_NO_TLEILAXU_CARD_TO_ACQUIRE: Final[Reason] = (
+    "No Tleilaxu card your specimens could acquire",
+    "{specimen}으로 획득할 수 있는 {tleilaxu} 카드 없음",
+    "reward",
+)
+
+
+def _conflict_end_trigger_reason(
+    state: GameState,
+    seat: int,
+    option: IntrigueOption,
+    block: ConflictEndTriggerBlock | OptionUnplayable,
+) -> Reason:
+    """Word ``conflict_end_trigger_block``'s answer for a held Harvest Cells
+    the Conflict-end window does not offer."""
+
+    if not isinstance(block, ConflictEndTriggerBlock):
+        return intrigue_option_reason(state, seat, option, block)
+    owner = state.players[seat]
+    if block is ConflictEndTriggerBlock.LOSS:
+        english, korean, _ = _conflict_end_reason(option)
+        lost = _units(owner)[1]
+        return (
+            f"{english} (you lose {lost} unit{plural_s(lost)})",
+            f"{korean} (잃는 유닛 {lost})",
+            "condition",
+        )
+    english, korean, code = (
+        _NO_TROOP_FOR_A_SPECIMEN
+        if block is ConflictEndTriggerBlock.NO_TROOP
+        else _TROOPS_TAKEN_FOR_SPECIMENS
+    )
+    if owner.commanders_conflict:
+        english += _COMMANDERS_MAKE_NONE[0]
+        korean += _COMMANDERS_MAKE_NONE[1]
+    # Both of its effects are dead, each explained, as ``_no_effect_reason``
+    # joins them.
+    return (
+        f"{english}; {_NO_TLEILAXU_CARD_TO_ACQUIRE[0]}",
+        f"{korean} · {_NO_TLEILAXU_CARD_TO_ACQUIRE[1]}",
+        code,
     )
 
 
@@ -1127,6 +1193,48 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
             )
         if other_window is not None:
             found.refs.setdefault(card_id, other_window)
+
+
+def _conflict_end_trigger(state: GameState, seat: int, found: _Found) -> None:
+    """A held Harvest Cells the Conflict-end window does not offer.
+
+    The window opens on public facts (OQ-103, user decision 2026-10-09), so
+    a seat may sit in it holding a copy it cannot play: the window then
+    offers only the decline, or, once a first copy is face up, no second.
+    The provider offers ``play_conflict_end_intrigue`` for a hand card
+    exactly when ``conflict_end_trigger_block`` is None; any other shows
+    greyed out among the Intrigue cards with that block, and dims in the
+    hand, as it does in a Combat Intrigue window (``_conflict_end_reason``).
+    Only the first such option of a card counts, as for the provider
+    (``combat._loss_trigger_option``).
+    """
+
+    for card_id in state.players[seat].intrigue_cards:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        option = next(
+            (
+                option
+                for option in (entry.options if entry is not None else ())
+                if isinstance(option.trigger, OnTroopsLostAtConflictEnd)
+            ),
+            None,
+        )
+        if option is None:
+            continue
+        block = conflict_end_trigger_block(state, seat, option)
+        if block is None:
+            continue
+        found.row(
+            "intrigue",
+            card_id,
+            DomainAction(
+                action_id="play_conflict_end_intrigue",
+                actor=seat,
+                arguments=(("card_id", card_id),),
+            ),
+            _conflict_end_trigger_reason(state, seat, option, block),
+            dim=card_id,
+        )
 
 
 def _turn_start_card(state: GameState, seat: int, found: _Found) -> None:
@@ -1959,6 +2067,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.TECH_ACQUISITION: (_tech,),
     FrameKind.TURN: (_turn_start_card, _intrigue),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
+    FrameKind.CONFLICT_END_TRIGGER: (_conflict_end_trigger,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),
 }
 

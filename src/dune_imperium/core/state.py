@@ -49,8 +49,10 @@ class GameState:
     # recipient's choices answered before the next is paid (user ruling
     # 2026-10-07); ``combat_rewards_resolved`` follows the last one.
     combat_rewards_paid: int = 0
-    # Whether the Conflict-end trigger window (Harvest Cells, played only
-    # after the rewards, OQ-057 (11)) has been offered for the current Combat.
+    # Whether the Conflict-end trigger windows have been offered for the
+    # current Combat: after the rewards, on public facts only, to every seat
+    # with three or more units in the Conflict and an Intrigue card, while
+    # not both Harvest Cells are public (Immortality, OQ-057 (11), OQ-103).
     combat_end_triggers_offered: bool = False
     # Seats that played a Combat Intrigue card in the current Conflict
     # (Counterattack, Immortality); cleared when the Combat phase resets.

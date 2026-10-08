@@ -515,6 +515,16 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # between differ), and scouts moves (3,588 -> 3,712 vectors). d70e7be2,
 # aa22c8b7, 445353d5 (its deck sizes are not encoded), a73957bf, 184f923c
 # and d3699046 move none of the six.
+# v141 (2026-10-09; observation still v30): the Conflict-end Intrigue window
+# opens on public facts (OQ-103: Immortality, at least three units in the
+# Conflict, an Intrigue card held, a Harvest Cells copy not yet public), so
+# a seat that can only decline gets the window too. Only "everything"
+# (Immortality on) moves (2,988 -> 3,620 vectors): at decision 264, the end
+# of round 4's Conflict, seat 3 gets a decline-only window and its random
+# seat draws for it. With the previous window rule patched back in (open
+# only for a playable card, close after a play unless another copy is
+# playable) a scratch run reproduces the old pin exactly; the Earn Any
+# Alliance timing of the same change moves none of the six.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("cf414bd3f23f711e42d9b33f6f54001cf70435f3872091501b670434a6c34e62", 2904),
@@ -523,8 +533,8 @@ _GOLDEN_DIGESTS = {
         3004,
     ),
     "everything": (
-        "f47adc3660e5079f08aea7d5c9f2b64dd8aac817726f287957cc99b1edb651bc",
-        2988,
+        "40104687a06f0898476d74e4b00588f893a5a53457631162cc92f91bd4e6fd0f",
+        3620,
     ),
     "draft": ("98a71a1ab408346e10573193c4d415db03c1ba0b525527e5d46835ab8f362ebf", 2808),
     "scouts": (

@@ -7,7 +7,14 @@ reading as their own full-weight turn card -- 14-19% of all log cards, 3-4
 cards per round in a 448px log, and each card saying "pass" twice (the head
 line from ACTION_LABELS plus the muted event line). The design folds a run
 of chained passes of the same action_id into ONE compact .turn-card.passes:
-the pass label once, then the passing seats in order.
+the pass label once, then the passing seats in order. Since 2026-10-09 a
+chain of declined Conflict-end windows (decline_conflict_end_intrigue) folds
+the same way: that window opens on public facts, mostly with nothing to play
+(OQ-103), and its per-seat "offered" lines are left out of the cards. A
+chance step whose lines are all left out (the CONFLICT_END pause before the
+windows) still closes the open turn card, so the last reward recipient's
+decline right after it starts a fold instead of joining its reward card: a
+third game reaches that shape (reward_then_decline).
 
 The seat-order check below does NOT ask panels.js's own logGroups() what a
 run is: a mutation that disables the fold-join branch (so every pass again
@@ -23,15 +30,18 @@ cards exactly across five finished games (heuristic seeds 7 base/all-expansion
 and 3 all-expansion, random seeds 25 base and 30 all-expansion): 70 runs, 52
 of them multi-seat, 12 Endgame, and 25 passes that end a seat's own card.
 
-A base-game and an all-expansion all-AI game (heuristic seats hold few
+A base-game and two all-expansion all-AI games (heuristic seats hold few
 Intrigue cards, so most Combat/Endgame Intrigue windows end in a chain of
-passes), both reviewed to the end, in both languages:
+passes), all reviewed to the end, in both languages:
 
 - for every run of consecutive foldable pass entries found by runs_of, there
   is exactly one .turn-card.passes whose seats, in DOM order, are exactly
   that run's actors, in order, with the same count;
 - at least one fold holds two or more seats (a chain actually chained, not
-  just a run of one-seat folds);
+  just a run of one-seat folds), and so do the Conflict-end declines of an
+  Immortality game;
+- in the third game, every decline right after its own seat's reward card
+  and a pause that shows nothing is in a fold, and there is one;
 - no two DOM-adjacent fold cards (nothing else rendered between them) share
   an action_id (the shape a disabled join leaves: many one-seat folds of the
   same window back to back);
@@ -66,15 +76,36 @@ VIEWPORT = {"width": 1440, "height": 900}
 
 # heuristic seed 7 with every expansion is the same game log_words.py already
 # verified reaches a Combat/Endgame Intrigue pass (check_coverage there); the
-# base game reuses it with every expansion box off.
+# base game reuses it with every expansion box off. Of 60 seeds scanned with
+# every expansion (2026-10-09, codec v141), 16, 36 and 41 have a seat's
+# Conflict reward choice followed by the CONFLICT_END pause, which shows
+# nothing, and then by that seat's own decline (reward_then_decline): the
+# decline must start a fold, not join the reward card. 36 also folds two
+# seats' declines (16 does not).
 GAMES = (
     {"label": "base game", "seed": 7, "expansions": ()},
     {"label": "all-expansion game", "seed": 7, "expansions": RULE_OPTIONS},
+    {
+        "label": "all-expansion game, a decline after its own reward",
+        "seed": 36,
+        "expansions": RULE_OPTIONS,
+        "reward_then_decline": True,
+    },
 )
 
 HANGUL = re.compile(r"[가-힣]")
 LATIN = re.compile(r"[A-Za-z][A-Za-z'\-]*")
-PASS_WORD = {"ko": "패스", "en": "Passed"}
+# The word a fold card says once, by its action id; a declined Conflict-end
+# window says "쓰지 않음" (OQ-103, 2026-10-09).
+PASS_WORDS = {
+    "pass_combat_intrigue": {"ko": "패스", "en": "Passed"},
+    "pass_endgame_intrigue": {"ko": "패스", "en": "Passed"},
+    "decline_conflict_end_intrigue": {"ko": "쓰지 않음", "en": "Declined"},
+}
+# What marks a lone pass line in a seat's own card: the fold words, except
+# that many English event labels end in "Declined", so a declined window's
+# line is told by its action label instead.
+LONE_PASS_WORDS = {"ko": ["패스", "쓰지 않음"], "en": ["Passed", "Decline to use"]}
 
 # English on purpose in the Korean page (mirrors log_words.py's own list,
 # docs/rules/glossary-ko.md, "아직 채우지 않은 것"): a stray Leader or card
@@ -98,8 +129,18 @@ KOREAN_KEEPS_ENGLISH = (
 # PASS_ACTION_IDS does the same kind of mirroring). Reimplemented here, not
 # read off the page, so runs_of's idea of a "run" does not run through
 # logGroups() at all -- see the module docstring.
-PASS_ACTION_IDS = {"pass_combat_intrigue", "pass_endgame_intrigue"}
-PASS_MARKER_KINDS = {"combat_intrigue_passed", "endgame_intrigue_passed"}
+PASS_ACTION_IDS = {
+    "pass_combat_intrigue",
+    "pass_endgame_intrigue",
+    "decline_conflict_end_intrigue",
+}
+PASS_MARKER_KINDS = {
+    "combat_intrigue_passed",
+    "endgame_intrigue_passed",
+    "conflict_end_trigger_declined",
+}
+# Mirrors UNLOGGED_EVENT_KINDS (static/panels.js): left out of every card.
+UNLOGGED_EVENT_KINDS = {"conflict_end_trigger_offered"}
 QUIET_ACTIONS = {"finish_agent_turn", "finish_reveal", *PASS_ACTION_IDS}
 SOLO_ACTIONS = {"pick_leader"}
 
@@ -113,6 +154,8 @@ def split_entry_events(entry: dict, neutral_kinds: set[str]) -> tuple[list, list
     flow: list = []
     switched = False
     for event in entry.get("events") or []:
+        if event["kind"] in UNLOGGED_EVENT_KINDS:
+            continue
         if not switched and event["kind"] in neutral_kinds:
             switched = True
         payload = event.get("payload")
@@ -121,6 +164,18 @@ def split_entry_events(entry: dict, neutral_kinds: set[str]) -> tuple[list, list
         about_other = is_seat and target != entry["actor"]
         (flow if switched or about_other else own).append(event)
     return own, flow
+
+
+def shows_a_line(chance: dict) -> bool:
+    """Whether a chance step puts anything in the log cards: its own line
+    (every chance step but a pause, isPauseChance in static/core.js) or an
+    event that is not left out -- mirrors logGroups()'s chance branch."""
+    if not str(chance["decision_id"]).endswith(":pause"):
+        return True
+    return any(
+        event["kind"] not in UNLOGGED_EVENT_KINDS
+        for event in chance.get("events") or []
+    )
 
 
 def runs_of(entries: list[dict], neutral_kinds: set[str]) -> list[dict]:
@@ -132,14 +187,25 @@ def runs_of(entries: list[dict], neutral_kinds: set[str]) -> list[dict]:
     step, and produced no flow events of its own -- same as the "no open
     turn card of the same actor" condition logGroups() folds on. Its own
     events must be only the pass's marker event(s) (PASS_MARKER_KINDS) or
-    none. Runs break at an undo marker or a chance step (a log entry whose
-    type isn't "action"), at any step with a flow event, and whenever the
-    action id changes.
+    none. Runs break at an undo marker, at a chance step that shows a line,
+    at any step with a flow event, and whenever the action id changes.
+
+    A chance step always closes the open card, also one that shows nothing
+    (a pause whose only events are UNLOGGED_EVENT_KINDS, like the
+    CONFLICT_END pause before the windows): the seat whose reward card came
+    right before it starts a new card with its decline, which so folds. It
+    breaks a run only when it shows a line, as logGroups() puts a card
+    between the passes only then.
     """
     runs: list[dict] = []
     current: dict | None = None
     previous: dict | None = None
     for entry in entries:
+        if entry["type"] == "chance":
+            previous = None
+            if shows_a_line(entry):
+                current = None
+            continue
         if entry["type"] != "action":
             current = None
             previous = None
@@ -158,8 +224,13 @@ def runs_of(entries: list[dict], neutral_kinds: set[str]) -> list[dict]:
         if foldable:
             if current is not None and current["action_id"] == entry["action_id"]:
                 current["actors"].append(entry["actor"])
+                current["indexes"].append(entry["index"])
             else:
-                current = {"action_id": entry["action_id"], "actors": [entry["actor"]]}
+                current = {
+                    "action_id": entry["action_id"],
+                    "actors": [entry["actor"]],
+                    "indexes": [entry["index"]],
+                }
                 runs.append(current)
         else:
             current = None
@@ -169,6 +240,30 @@ def runs_of(entries: list[dict], neutral_kinds: set[str]) -> list[dict]:
         else:
             previous = entry
     return runs
+
+
+def reward_then_decline(entries: list[dict]) -> list[int]:
+    """Log indexes of the Conflict-end declines that come right after a
+    pause showing nothing (only UNLOGGED_EVENT_KINDS) that itself comes
+    right after the same seat's step that leaves its card open (not quiet
+    or solo): a Conflict reward choice before the CONFLICT_END pause. Such
+    a decline must fold (runs_of); a pause that did not close the card
+    left it as the reward card's last line and split the decline chain
+    (2026-10-09 review)."""
+
+    found = []
+    for before, pause, after in zip(entries, entries[1:], entries[2:], strict=False):
+        if (
+            pause["type"] == "chance"
+            and not shows_a_line(pause)
+            and before["type"] == "action"
+            and after["type"] == "action"
+            and after["action_id"] == "decline_conflict_end_intrigue"
+            and before["actor"] == after["actor"]
+            and before["action_id"] not in QUIET_ACTIONS | SOLO_ACTIONS
+        ):
+            found.append(after["index"])
+    return found
 
 
 def adjacent_fold_pairs(card_is_passes: list[bool]) -> list[int]:
@@ -183,10 +278,10 @@ def adjacent_fold_pairs(card_is_passes: list[bool]) -> list[int]:
 
 # Every non-undo-marker .turn-card in DOM order, tagged with whether it is a
 # fold and (for a fold) its seats and full text; a non-fold, non-neutral card
-# left holding a single pass-labelled line is the old bug's shape. `word` is
-# the current language's word for "pass" (PASS_WORD), passed in so this stays
-# text-based rather than reaching for an action id.
-COLLECT_JS = """(word) => {
+# left holding a single pass-labelled line is the old bug's shape. `words`
+# are the current language's words for "pass" (LONE_PASS_WORDS), passed in so
+# this stays text-based rather than reaching for an action id.
+COLLECT_JS = """(words) => {
   const cards = [...document.querySelectorAll("#action-log .turn-card")].filter(
     (card) => !card.classList.contains("undo-marker")
   );
@@ -201,7 +296,8 @@ COLLECT_JS = """(word) => {
       passCards.push({ domSeats, text: card.textContent });
     } else if (!card.classList.contains("neutral")) {
       const lines = card.querySelectorAll(".turn-line");
-      if (lines.length === 1 && lines[0].textContent.includes(word)) {
+      const text = lines.length === 1 ? lines[0].textContent : "";
+      if (words.some((word) => text.includes(word))) {
         lonelyPasses.push(lines[0].textContent);
       }
     }
@@ -264,10 +360,12 @@ def strip(text: str, phrases: list[str]) -> str:
     return text
 
 
-def check_game(page, label: str) -> None:
+def check_game(page, config: dict) -> None:
+    label = config["label"]
+    immortality = "immortality" in config["expansions"]
     for lang in ("ko", "en"):
         switch_language(page, lang)
-        result = page.evaluate(COLLECT_JS, PASS_WORD[lang])
+        result = page.evaluate(COLLECT_JS, LONE_PASS_WORDS[lang])
         tag = f"{label} [{lang}]"
         runs = runs_of(result["entries"], set(result["neutralKinds"]))
         pass_cards = result["passCards"]
@@ -289,6 +387,26 @@ def check_game(page, label: str) -> None:
             f"{tag}: at least one fold holds two or more seats",
             [len(actors) for actors in run_actors][:8],
         )
+        if immortality:
+            declines = [
+                run["actors"]
+                for run in runs
+                if run["action_id"] == "decline_conflict_end_intrigue"
+            ]
+            check.ok(
+                any(len(actors) >= 2 for actors in declines),
+                f"{tag}: Conflict-end declines fold too, two seats or more",
+                declines[:4],
+            )
+        if config.get("reward_then_decline"):
+            shaped = reward_then_decline(result["entries"])
+            folded = {index for run in runs for index in run["indexes"]}
+            check.ok(
+                bool(shaped) and all(index in folded for index in shaped),
+                f"{tag}: a decline right after its own reward card and a pause"
+                " that shows nothing starts a fold",
+                {"declines": shaped, "folded": sorted(folded)[:12]},
+            )
         same_id_adjacent = [
             runs[j]["action_id"]
             for j in adjacent_fold_pairs(result["cardIsPasses"])
@@ -299,9 +417,10 @@ def check_game(page, label: str) -> None:
             f"{tag}: no two DOM-adjacent fold cards share an action id",
             same_id_adjacent[:4],
         )
-        word = PASS_WORD[lang]
         miscounted = [
-            card["text"][:80] for card in pass_cards if card["text"].count(word) != 1
+            card["text"][:80]
+            for card, run in zip(pass_cards, runs, strict=True)
+            if card["text"].count(PASS_WORDS[run["action_id"]][lang]) != 1
         ]
         check.ok(
             not miscounted,
@@ -337,7 +456,7 @@ def main() -> None:
             print(f"[{config['label']}] seed {config['seed']}")
             _, page, _rec = open_context(browser, config["label"], VIEWPORT)
             create_ai_game(page, base, config["seed"], config["expansions"])
-            check_game(page, config["label"])
+            check_game(page, config)
         errors = [
             line
             for line in log_path.read_text().splitlines()

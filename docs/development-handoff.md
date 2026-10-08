@@ -1,8 +1,39 @@
 # 개발 인수인계
 
-기준일: 2026-10-08
+기준일: 2026-10-09
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
+
+## 2026-10-09 Conflict 끝 창은 공개된 사실로, Earn Any Alliance는 얻는 순간 완료 (codec v141, OQ-103·OQ-056)
+
+전날 남긴 사용자 결정 둘(OQ-103)을 앱 확인 뒤 정했다. 사용자: "1번은 A안으로 가자", "2번-A: 늘 정리 전". 브랜치 `conflict-end-window`.
+
+- **앱 확인**(보조 증거, 로컬 `analysis/conflict-end-2026-10-09/report.md`):
+  - 앱은 보상 수령자마다 순서대로 처리한다. 보상을 주고, 그 좌석의 Conflict troop을 곧바로 supply로 돌린 뒤(`[Main p. 14]`과 다름), 그 좌석의 창을 연다. 보상 없는 좌석은 첫 무리의 첫 좌석이 Harvest Cells를 쥐었을 때만 창과 빈 순위 로그 줄을 받는다. 그래서 앱도 손패를 드러낸다.
+  - To the Victor...(base 전용)는 승자 자신의 보상 창에서만 쓴다. 그 창은 카드가 없어도 열리므로 새지 않는다. 같은 원리로 A안을 골랐다.
+  - 전투 보상의 병력 부족분은 앱도 버린다.
+- **사용자 질문**("교전 칸 병력이 돌아갈 거면 보상 병력 받을 수 있지 않나"): 받을 수 없다. 모집은 supply에서만 한다 `[Main p. 10]` `[FAQ p. 4]`. 회수는 모든 보상 뒤다 `[Main p. 14]`(p. 15 예시도 같다). 부족분은 OQ-030의 2026-10-04 재판정대로 버린다. 디자이너 판정은 못 찾았다.
+- **엔진**:
+  - 창은 공개된 사실로 연다: Immortality, Conflict 유닛 3 이상, 책략 1장 이상, Harvest Cells 두 장이 모두 공개 구역에 있지는 않음(`combat._conflict_end_window_opens`). 쓸 수 없으면 "쓰지 않음"만 받는다. 한 장을 쓴 뒤에는 책략을 쥐고 있는 동안 창이 남는다(전에는 둘째 사본이 있을 때만 남아 그것을 드러냈다).
+  - 창은 낼 수 없는 Harvest Cells를 이유와 함께 흐리게 보인다(`display/unavailable.py`; 제공 함수와 같은 `conflict_end_trigger_block`).
+  - Earn Any Alliance는 Alliance를 가져간 단계 끝에서 완료한다. 멈춤에 싣던 장치는 없앴다. Combat에서는 늘 정리 전이라 Contract troop은 supply에 있는 만큼만 받는다.
+  - codec **v141**(템플릿 그대로, 행동 순서만 바뀜). v140 저장은 열리지 않는다. 플레이 서버 `search.pt`는 v139 → v141로 자동 이전된다(행동 33,979개 그대로). 관측 v30 그대로.
+- **서버·화면**:
+  - "쓰지 않음"은 한 번 누르면 끝난다(명시적 턴 종료).
+  - 사람 좌석이 하나뿐이면 서버가 "쓰지 않음"만 있는 창에 대신 답한다(봉인, 붙잡지 않음). 그 창에서 이미 카드를 냈으면 대신 답하지 않는다. 사람이 여럿이면 기다림이 단서가 되므로 대신 답하지 않는다.
+  - 로그: "쓰지 않음"은 패스처럼 접힌다. 좌석별 "제안" 줄은 카드에서 뺐다. 사람이 혼자면 자기 "쓰지 않음"은 "새로 온 것"의 경계가 아니다.
+- **재고정**:
+  - tips-v1을 다시 캐 **124개**가 됐다.
+  - census 셋, golden `everything`, app_ai Graft 시드(137 → 107), `log_words` Scouts 시드(22 → 107)를 다시 고정했다.
+  - 모두 새 "쓰지 않음" 창 때문이다(heuristic·random이 하나뿐인 선택지에도 난수를 쓴다). 옛 창 규칙을 되돌린 스크래치 엔진으로 옛 값이 그대로 나오는 것을 확인했다.
+- **리뷰**(workflow: 관점 3 + 반박 3, 고침 2 + 재검토 1):
+  - 확인된 7건을 모두 고쳤다. 흐린 줄 없음, 자동 답이 "새로 온 것" 표시를 끊음, 로그 접힘이 갈라짐, 문서 셋.
+  - 재검토가 찾은 "새로 온 것" 예외가 사람 여럿인 판에도 걸리던 것도 고쳤다.
+- **검증**:
+  - pytest **6,726개 통과**, ruff·mypy(425파일) 통과, Chrome E2E **53종** 통과(재검토의 전체 실행).
+  - 마지막 `panels.js` 수정 뒤에는 관련 6종(`turn_end`·`remote_fresh`·`log_passes`·`spectate`·`log_words`·`unavailable`)을 다시 돌려 통과했다.
+  - 첫 커밋(`e7eef001`, 엔진·표시·재고정)만 떼어 낸 트리에서도 전체 pytest가 **6,720개** 통과했다(서버 테스트 6개는 다음 커밋).
+- 교훈은 `docs/lessons.md` 2026-10-09(창을 숨은 손패로 엶, 자동 답의 기다림을 실물과 같다고 단정).
 
 ## 2026-10-08 엔진의 공개 앞 멈춤: 턴 밖 선택은 모두 "놓고 → 턴 종료 + 되돌리기" (codec v140, OQ-103)
 

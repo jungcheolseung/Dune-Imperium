@@ -19,9 +19,10 @@ prettify() wrapped, and asserts:
   (docs/rules/glossary-ko.md has no row for them, e.g. Secret Project);
 - in English, no Hangul, and nowhere an engine id's shape: snake_case, a
   colon path, a research coordinate, a post id;
-- every pass_combat_intrigue / pass_endgame_intrigue turn-line renders quiet
-  (panels.js QUIET_ACTIONS), the class that keeps a Combat/Endgame Intrigue
-  pass from reading as a full-weight turn card.
+- every pass_combat_intrigue / pass_endgame_intrigue /
+  decline_conflict_end_intrigue turn-line renders quiet (panels.js
+  QUIET_ACTIONS), the class that keeps an Intrigue window's pass from
+  reading as a full-weight turn card.
 
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
@@ -44,10 +45,15 @@ EVERY_EXPANSION = {
     "immortality": True,
     "promo_cards": True,
 }
-# Declining a Combat or Endgame Intrigue window (rules/combat.py,
-# rules/endgame.py) — the engine never emits a bare "pass". Mirrors
-# QUIET_ACTIONS/PASS_ACTION_IDS in static/panels.js and static/review.js.
-PASS_ACTION_IDS = {"pass_combat_intrigue", "pass_endgame_intrigue"}
+# Declining a Combat, Conflict-end or Endgame Intrigue window
+# (rules/combat.py, rules/endgame.py) — the engine never emits a bare
+# "pass". Mirrors QUIET_ACTIONS/PASS_ACTION_IDS in static/panels.js and
+# static/review.js.
+PASS_ACTION_IDS = {
+    "pass_combat_intrigue",
+    "pass_endgame_intrigue",
+    "decline_conflict_end_intrigue",
+}
 
 GAMES = (
     {"seats": ["heuristic"] * 4, "game_seed": 7, **EVERY_EXPANSION},
@@ -110,8 +116,13 @@ GAMES = (
         # finds seed 22 first that, with seed 86, reaches every Scouts
         # surface again (a round modifier, Mating Season, mission troops, an
         # auction won).
-        "game_seed": 22,
-        "policy_seed": 22,
+        # The codec v141 Conflict-end window, which opens on public facts
+        # (OQ-103, 2026-10-09), moves seed 22 off Mating Season; the same
+        # scan over seeds 1-159 finds seed 107 first that, with the other
+        # five games, reaches every surface again (a round modifier, Mating
+        # Season, mission troops).
+        "game_seed": 107,
+        "policy_seed": 107,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -326,8 +337,9 @@ def check_coverage(records: list[dict]) -> None:
 
 
 def check_pass_quiet(records: list[dict]) -> None:
-    """Every pass_combat_intrigue / pass_endgame_intrigue turn-line renders
-    quiet (panels.js QUIET_ACTIONS) — it never gets the full-weight card."""
+    """Every pass_combat_intrigue / pass_endgame_intrigue /
+    decline_conflict_end_intrigue turn-line renders quiet (panels.js
+    QUIET_ACTIONS) — it never gets the full-weight card."""
     passes = [
         r
         for r in records

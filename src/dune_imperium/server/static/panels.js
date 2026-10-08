@@ -754,15 +754,18 @@ function logEventLine(event) {
 }
 
 /* Steps that only close a window; kept in the record but muted:
-   finish_agent_turn and finish_reveal end an Agent or Reveal turn, and
+   finish_agent_turn and finish_reveal end an Agent or Reveal turn,
    pass_combat_intrigue / pass_endgame_intrigue decline a Combat or Endgame
    Intrigue window (rules/combat.py, rules/endgame.py) — the engine never
-   emits a bare "pass". */
+   emits a bare "pass" — and decline_conflict_end_intrigue a Conflict-end
+   window, which opens on public facts, mostly with nothing to play
+   (OQ-103). */
 const QUIET_ACTIONS = new Set([
   "finish_agent_turn",
   "finish_reveal",
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
+  "decline_conflict_end_intrigue",
 ]);
 
 /* Steps that stand as a card of their own (setup picks). */
@@ -808,6 +811,7 @@ function splitEntryEvents(entry) {
   const neutral = [];
   let flow = false;
   for (const event of entry.events) {
+    if (UNLOGGED_EVENT_KINDS.has(event.kind)) continue;
     if (!flow && NEUTRAL_EVENT_KINDS.has(event.kind)) flow = true;
     const target = event.payload ? event.payload.player : undefined;
     const other = typeof target === "number" && target !== entry.actor;
@@ -819,18 +823,30 @@ function splitEntryEvents(entry) {
 /* Events a folded pass's own line (below) may carry and still fold: the
    window's own "declined" marker, or nothing at all (the pass that closes
    the window reads as flow instead, see splitEntryEvents/NEUTRAL_EVENT_KINDS
-   and combat_intrigue_finished). */
-const PASS_MARKER_KINDS = new Set(["combat_intrigue_passed", "endgame_intrigue_passed"]);
+   and combat_intrigue_finished; the last Conflict-end decline runs on into
+   conflict_won). */
+const PASS_MARKER_KINDS = new Set([
+  "combat_intrigue_passed",
+  "endgame_intrigue_passed",
+  "conflict_end_trigger_declined",
+]);
+
+/* Events the log cards leave out; the record keeps them. The Conflict-end
+   window opens on public facts for every seat with enough units in the
+   Conflict and an Intrigue card (OQ-103), so one "offered" line per seat
+   would only repeat what the declines and plays after it already say. */
+const UNLOGGED_EVENT_KINDS = new Set(["conflict_end_trigger_offered"]);
 
 /* Group the log into cards. A turn card holds consecutive steps by one
    seat (with only their own events) until a step closes the turn
-   (finish_agent_turn, finish_reveal, pass_combat_intrigue,
-   pass_endgame_intrigue); a Leader pick is a card of
+   (QUIET_ACTIONS: finish_agent_turn, finish_reveal and the Intrigue
+   windows' passes); a Leader pick is a card of
    its own. Everything the game does by itself — the neutral events above
    and every chance step — goes into a "게임 진행" card between them, so
    the round change never reads as the last actor's move.
 
-   A pass_combat_intrigue / pass_endgame_intrigue that would otherwise start
+   A pass (PASS_ACTION_IDS: a Combat or Endgame Intrigue pass, a declined
+   Conflict-end window) that would otherwise start
    a brand new, single-entry card of its own (nothing of that seat's own is
    open to continue) instead folds into the run of chained passes right
    before it, one "passes" group per unbroken chain of the same action_id:
@@ -867,7 +883,16 @@ function logGroups(entries) {
          next round). The pause itself has one outcome and changes nothing:
          the record keeps its line, the log does not. */
       const lines = isPauseChance(entry.decision_id) ? [] : [{ chance: entry }];
-      for (const event of entry.events || []) lines.push({ event, index: entry.index });
+      for (const event of entry.events || []) {
+        if (!UNLOGGED_EVENT_KINDS.has(event.kind)) lines.push({ event, index: entry.index });
+      }
+      /* Every chance step closes the open turn card, also one whose lines
+         are all left out (the CONFLICT_END pause carries only the windows'
+         "offered" events), so a Conflict-end decline does not join the
+         same seat's reward card before the pause and split the chain of
+         declines. A pass chain right before such a step may still go on,
+         as nothing shows between them. */
+      open = null;
       addNeutral(entry.index, lines);
       continue;
     }
@@ -1118,11 +1143,15 @@ function turnCard(group, glowFrom) {
    endgame_intrigue_passed) -- and so is the action label next to it
    (ACTION_LABELS.pass_endgame_intrigue is just "패스"/"Pass" too, nothing on
    an unfolded pass names the window either) -- so a fold needs a label of
-   its own that does name it (panels.pass_fold_endgame_intrigue, UI_TEXT). */
+   its own that does name it (panels.pass_fold_endgame_intrigue, UI_TEXT).
+   A chain of Conflict-end declines has its own too
+   (panels.pass_fold_conflict_end_intrigue). */
 function passFoldLabel(actionId) {
-  return actionId === "pass_endgame_intrigue"
-    ? tNode("panels.pass_fold_endgame_intrigue")
-    : phrase(EVENT_LABELS.combat_intrigue_passed);
+  if (actionId === "pass_endgame_intrigue") return tNode("panels.pass_fold_endgame_intrigue");
+  if (actionId === "decline_conflict_end_intrigue") {
+    return tNode("panels.pass_fold_conflict_end_intrigue");
+  }
+  return phrase(EVENT_LABELS.combat_intrigue_passed);
 }
 
 /* One compact card for a run of chained Combat/Endgame Intrigue passes
@@ -1186,12 +1215,32 @@ let logAutoTop = { gameId: null, top: 0 };
    arrived in one render or many -- which is what a remote table needs,
    since there every opponent step is its own render and "since the
    previous render" (logSeen.freshFrom) would only ever show the last one.
-   0 when the seat has not acted yet, so its whole log is new. */
-function ownGlowFrom(seat, entries) {
+   0 when the seat has not acted yet, so its whole log is new.
+
+   In a game with one human seat, that seat's own Conflict-end declines
+   (decline_conflict_end_intrigue) are not a boundary: the server answers
+   a decline-only window for it there (sessions.py _auto_decline_locked),
+   logged as the seat's own step, so the AI moves and the Combat result
+   before it would stop glowing although the seat never saw them. The page
+   cannot tell that decline from a pressed one, and a pressed one adds
+   nothing the seat had not already seen when it pressed: at worst what it
+   read at its window keeps glowing until its next move. With two or more
+   human seats the server never answers, so every decline is a press and
+   stays a boundary (OQ-103). */
+const LONE_HUMAN_GLOW_SKIPPED = new Set(["decline_conflict_end_intrigue"]);
+
+function ownGlowFrom(seat, entries, seats) {
+  const loneHuman = seats.filter((kind) => kind === "human").length === 1;
   let last = -1;
   for (const entry of entries) {
-    if (entry.type === "action" && entry.actor === seat && !entry.undone) last = entry.index;
-    else if (entry.type === "undo" && entry.seat === seat) last = entry.index;
+    if (
+      entry.type === "action" &&
+      entry.actor === seat &&
+      !entry.undone &&
+      !(loneHuman && LONE_HUMAN_GLOW_SKIPPED.has(entry.action_id))
+    ) {
+      last = entry.index;
+    } else if (entry.type === "undo" && entry.seat === seat) last = entry.index;
   }
   return last + 1;
 }
@@ -1282,7 +1331,9 @@ function renderLog() {
     }
     arrivedFrom = logSeen.freshFrom;
     const seat = activeSeat();
-    glowFrom = typeof seat === "number" ? ownGlowFrom(seat, log.entries) : arrivedFrom;
+    glowFrom = typeof seat === "number"
+      ? ownGlowFrom(seat, log.entries, state.summary.seats)
+      : arrivedFrom;
   }
 
   const toolbar = document.createElement("div");

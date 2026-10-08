@@ -36,6 +36,20 @@ Imperial Privilege with no other Agent to recall: the recall greys out,
 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"), and goes once the
 confirm is taken.
 
+A fifth case covers the "intrigue" surface in the Conflict-end window,
+which opens on public facts (OQ-103), so a seat may sit in it holding a
+Harvest Cells it cannot play: one that lost only Sardaukar Commanders
+(no troop to make a specimen of, nothing its specimens could buy), and a
+second copy once the first has taken every troop. Seeded games almost
+never meet either, so this checkout's engine builds the two windows of
+the rules test (`CONFLICT_END_PY`) and the server's own payload code
+describes them; the page renders those payloads (render only, as
+influence_spies.py does) and must show the copy greyed out under the
+Intrigue heading with both dead effects explained, the terms substituted,
+the card dimmed in the hand with the reason in its title, "쓰지 않음" as
+the turn-end row, and a click on the row sending nothing; with a troop in
+the supply the same copy is an ordinary, lit play.
+
 The last case is the first "choice" window a human answers inside another
 seat's open Agent turn: Holy War's unit loss (user ruling 2026-09-30,
 OQ-036 (a), "선택지가 단 하나여도 어쨌든 확인을 거치는 걸로 통일하는게
@@ -463,6 +477,225 @@ def recall_case(page, base: str, saves: Path) -> bool:
     return ok
 
 
+# The Conflict-end windows of test_immortality_intrigue.py's
+# test_harvest_cells_window_skips_a_copy_that_would_change_nothing (its
+# fixture lives in tests/unit/display/test_unavailable.py), described by
+# the server's own payload code for seat 0 of an all-human game whose state
+# is swapped in: "commanders" (three Commanders lost, no troop anywhere),
+# "second" (two troops and a Commander lost, the first copy already played)
+# and "lit" (a troop in the supply: the copy is playable).
+CONFLICT_END_PY = """
+import json
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.server.sessions import GameSessionManager
+from tests.unit.display.test_unavailable import (
+    HARVEST_CELLS, _conflict_end_window, _play_conflict_end,
+)
+first, second = HARVEST_CELLS
+mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
+states = {
+    "commanders": _conflict_end_window(first),
+    "second": UprisingRulesEngine().apply(
+        _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
+    ).state,
+    "lit": _conflict_end_window(first, troops_supply=1, troops_garrison=11),
+}
+manager = GameSessionManager()
+created = manager.create_game(
+    ("human",) * 4, game_seed=1, immortality=True, bloodlines=True
+)
+game_id = str(created["game_id"])
+session = manager._get(game_id)
+fixtures = {}
+for name, state in states.items():
+    session.state = state
+    fixtures[name] = {
+        "summary": manager.summary(game_id),
+        "view": manager.view(game_id, 0),
+        "actions": manager.legal_actions(game_id, 0),
+    }
+print(json.dumps(fixtures))
+"""
+
+CONFLICT_END_RENDER_JS = """({fixture, language}) => {
+  setLanguage(language, false);
+  Object.assign(state, {summary: fixture.summary, view: fixture.view,
+    actions: fixture.actions, viewSeat: 0, playSeat: 0, review: null,
+    busy: false, pick: null});
+  el('setup-screen').hidden = true;
+  el('game-screen').hidden = false;
+  renderBanner();
+  renderPrivate();
+}"""
+
+# The actions panel, the turn-end row and the hand card, icons read as
+# their names.
+CONFLICT_END_READ_JS = """(card) => {
+  const walk = (n) => n.nodeType === 3 ? n.textContent
+    : n.tagName === 'IMG' ? n.alt : [...n.childNodes].map(walk).join('');
+  const words = (n) => n ? walk(n).replace(/\\s+/g, ' ').trim() : null;
+  const box = document.getElementById('actions');
+  const hand = document.querySelector(
+    `#private-zone .vcard[data-instance="${card}"]`);
+  return {
+    rows: [...box.querySelectorAll('.unavailable-item')].map((r) => ({
+      key: r.dataset.key,
+      surface: r.dataset.surface,
+      body: words(r.querySelector('.unavailable-body')),
+      badge: words(r.querySelector('.unavailable-badge')),
+      disabled: r.getAttribute('aria-disabled') === 'true'
+        && r.getAttribute('role') === 'button' && !r.closest('.action-item'),
+    })),
+    heading: words(box.querySelector('.unavailable-heading')),
+    items: [...box.querySelectorAll('.action-item')].map(words),
+    turnEnd: [...document.querySelectorAll(
+      '#decision-info .turn-end-row button')].map(words),
+    hand: hand && {
+      blocked: hand.classList.contains('blocked'),
+      legal: hand.classList.contains('legal'),
+      title: hand.title,
+    },
+    english: box.innerText,
+  };
+}"""
+
+# What each window must show, in each language: the greyed copy, its
+# reason with the terms substituted, the heading and the turn-end row.
+CONFLICT_END_EXPECTED = {
+    "ko": {
+        "heading": "지금은 쓸 수 없는 책략 카드",
+        "body": "교전 종료 발동 책략 카드 사용 (세포 수확) — 세포 수확",
+        "turn_end": "쓰지 않음 · 턴 종료 ▶",
+        "commanders": "표본으로 만들 병력이 개인 공급처에도 교전에도 없음"
+        " (사다우카 지휘관은 표본이 되지 않음)"
+        " · 표본으로 획득할 수 있는 틀레이락스 카드 없음",
+        "second": "먼저 쓴 카드가 표본으로 만들 병력을 모두 가져감"
+        " (사다우카 지휘관은 표본이 되지 않음)"
+        " · 표본으로 획득할 수 있는 틀레이락스 카드 없음",
+    },
+    "en": {
+        "heading": "Intrigue cards you cannot play now",
+        "body": "Use Conflict-end trigger Intrigue card (Harvest Cells)"
+        " — Harvest Cells",
+        "turn_end": "Decline · End turn ▶",
+        "commanders": "No troop in your supply or the Conflict to make a"
+        " specimen (Sardaukar Commanders make none); No Tleilaxu card your"
+        " specimens could acquire",
+        "second": "The copy already played takes every troop left to make a"
+        " specimen (Sardaukar Commanders make none); No Tleilaxu card your"
+        " specimens could acquire",
+    },
+}
+
+
+def conflict_end_case(browser, base: str) -> bool:
+    """A held Harvest Cells the Conflict-end window does not offer."""
+
+    print("[intrigue] Harvest Cells the Conflict-end window does not offer")
+    result = subprocess.run(
+        [str(REPO / ".venv/bin/python"), "-c", CONFLICT_END_PY],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO,
+    )
+    fixtures = json.loads(result.stdout.strip().splitlines()[-1])
+    _, page, _ = open_context(browser, "unavailable-conflict-end")
+    posts: list[str] = []
+    page.on(
+        "request",
+        lambda request: posts.append(request.url) if request.method == "POST" else None,
+    )
+    page.goto(base)
+    page.wait_for_function("state.catalog !== null")
+    ok = True
+    first, second = "intrigue:harvest_cells:0", "intrigue:harvest_cells:1"
+    for language in ("ko", "en"):
+        expected = CONFLICT_END_EXPECTED[language]
+        for name, card in (("commanders", first), ("second", second)):
+            label = f"Conflict end ({name}, {language})"
+            fixture = fixtures[name]
+            page.evaluate(
+                CONFLICT_END_RENDER_JS, {"fixture": fixture, "language": language}
+            )
+            shown = page.evaluate(CONFLICT_END_READ_JS, card)
+            payload = fixture["actions"]["unavailable"] or {"rows": []}
+            ok &= check.ok(
+                [a["action_id"] for a in fixture["actions"]["actions"]]
+                == ["decline_conflict_end_intrigue"]
+                and shown["items"] == []
+                and shown["turnEnd"] == [expected["turn_end"]],
+                f"{label}: only the decline, as the turn-end row",
+                [shown["items"], shown["turnEnd"]],
+            )
+            ok &= check.ok(
+                [row["key"] for row in shown["rows"]]
+                == [row["key"] for row in payload["rows"]]
+                == [f"intrigue:{card}"]
+                and all(
+                    row["surface"] == "intrigue" and row["disabled"]
+                    for row in shown["rows"]
+                ),
+                f"{label}: the copy is one greyed-out row, a disabled button",
+                shown["rows"],
+            )
+            row = shown["rows"][0] if shown["rows"] else {}
+            ok &= check.ok(
+                (shown["heading"], row.get("body"), row.get("badge"))
+                == (expected["heading"], expected["body"], expected[name]),
+                f"{label}: under the Intrigue heading, with both effects' reason",
+                [shown["heading"], row.get("body"), row.get("badge")],
+            )
+            hand = shown["hand"] or {}
+            ok &= check.ok(
+                hand.get("blocked") is True
+                and hand.get("legal") is False
+                and str(hand.get("title", "")).endswith(f" — {expected[name]}"),
+                f"{label}: the card is dimmed in the hand, the reason its title",
+                hand,
+            )
+            if language == "en":
+                ok &= check.ok(
+                    not HANGUL.search(shown["english"]),
+                    f"{label}: in English the panel carries no Hangul",
+                    HANGUL.findall(shown["english"])[:10],
+                )
+        page.evaluate(
+            CONFLICT_END_RENDER_JS,
+            {"fixture": fixtures["commanders"], "language": language},
+        )
+        before = len(posts)
+        greyed = page.locator("#actions .unavailable-item")
+        clicked = greyed.count() > 0
+        if clicked:
+            greyed.first.click(force=True)
+            time.sleep(0.3)
+        ok &= check.ok(
+            clicked
+            and len(posts) == before
+            and page.evaluate("document.getElementById('game-error').hidden"),
+            f"Conflict end ({language}): a click on the greyed row sends nothing",
+            posts[before:],
+        )
+        page.evaluate(
+            CONFLICT_END_RENDER_JS, {"fixture": fixtures["lit"], "language": language}
+        )
+        lit = page.evaluate(CONFLICT_END_READ_JS, first)
+        ok &= check.ok(
+            lit["rows"] == []
+            and lit["heading"] is None
+            and len(lit["items"]) == 1
+            and lit["items"][0].startswith(expected["body"])
+            and (lit["hand"] or {}).get("legal") is True
+            and (lit["hand"] or {}).get("blocked") is False,
+            f"Conflict end (lit, {language}): with a troop in the supply the copy"
+            " is an ordinary, lit play",
+            [lit["rows"], lit["items"], lit["hand"]],
+        )
+    page.evaluate("setLanguage('ko', false)")
+    return ok
+
+
 # Seats 0 and 1 (human) played by heuristics in this checkout, seats 2 and
 # 3 by the server's own, on the Bloodlines ruleset, until one human seat
 # must answer the Holy War the other human seat played, with the offer
@@ -717,6 +950,8 @@ def main() -> None:
         check.ok(seen["choice"], "met and checked: choice")
         seen["recall"] = recall_case(page, base, saves)
         check.ok(seen["recall"], "met and checked: the recall confirm")
+        seen["conflict_end"] = conflict_end_case(browser, base)
+        check.ok(seen["conflict_end"], "met and checked: Harvest Cells, Conflict end")
         with server("--remote", "--admin-key", KEY) as (remote, remote_log):
             for want in ("confirm", "single"):
                 saves = Path(remote_log).parent

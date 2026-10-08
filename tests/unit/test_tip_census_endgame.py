@@ -471,6 +471,24 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     The buggy collector would read ``end.endgame_vp`` == 1 for seat 0 and
     ``end.leader_changed`` == False (independent replay of the Endgame
     steps).
+
+    Re-derived 2026-10-09 for the Conflict-end window on public facts
+    (OQ-103, codec v141: a seat with at least three units in the Conflict
+    and an Intrigue card gets the window even when it can only decline, and
+    a heuristic seat draws for that one-action decision): seed 1 first
+    diverges at round 6's Conflict end, where seats 3 and 0 now get a
+    decline-only window, and still fills the role -- the same capture over
+    full seeds 1-200 finds it alone. Endgame opens there in round 10 on the
+    empty Conflict deck with check VP [8, 8, 8, 5]: seat 2 (Shaddam Corrino
+    IV) ranks first of its tie with seats 0 and 1. Seat 0 (Lady Margot
+    Fenring) holds CHOAM Transports, whose 1 VP takes it to 9 and the lead;
+    it then matches its wild Skirmish with its Desert Mouse Objective and
+    its wild Propaganda with Seize Spice Refinery, ending on 11 as the
+    winner (seat 3's Secure Spice Trade takes it to 6). The buggy collector
+    would read ``end.endgame_vp`` == 2 for seat 0 and
+    ``end.leader_changed`` == False (independent replay of the Endgame
+    steps; with the previous window rule patched back in, the replay gives
+    the values pinned before).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -515,7 +533,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
 
         if seed == 1:
             saw_case = True
-            assert census["seats"][0]["end.endgame_vp"] == 2
+            assert census["seats"][0]["end.endgame_vp"] == 3
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
@@ -645,23 +663,36 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     (``lose_intrigue_troop`` with ``commanders`` 1: ``unit_lost`` with one
     Commander, its Commander supply 0 -> 1), its only Commander retreat
     (independent replay).
+
+    Re-derived 2026-10-09 for the Conflict-end window on public facts
+    (OQ-103, codec v141: a decline-only window is one more heuristic
+    decision): seed 15 first diverges at round 1's Conflict end, where seat
+    3 now gets a decline-only window, and seat 0 no longer retreats a
+    Commander. The same listing over full seeds 1-200 gives seed 16 seat 3
+    first, but it also retreats one through Spice is Power (round 10), so
+    the case is seed 23 seat 2 (Feyd-Rautha Harkonnen), the first seat
+    whose only Commander retreat is the loss: in round 10 its Gruesome
+    Sacrifice pays the Commander for slot 0 (``lose_intrigue_troop`` with
+    ``commanders`` 1: ``unit_lost`` with one Commander) and a troop for
+    slot 1 (independent replay; with the previous window rule patched back
+    in, it gives seed 15 seat 0's retreat pinned before).
     """
 
-    spec = _spec(True, 15)
+    spec = _spec(True, 23)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
         event.event_id
         for event in events
         if event.kind == "troops_retreated"
-        and dict(event.payload).get("player") == 0
+        and dict(event.payload).get("player") == 2
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:6:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
+        "round:10:player:2:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
-    assert census["seats"][0]["bt.commander_retreats"] == 0
+    assert census["seats"][2]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(

@@ -665,53 +665,79 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # replay, not importing the collectors, recounted every column below
     # from the games' own events, decision action sets and state, and
     # matched the collectors exactly.
-    game = tip_census.play(_spec(True, 287), ("influence",))
+    # Re-derived 2026-10-09 for the Conflict-end window on public facts
+    # (OQ-103, codec v141: a seat with at least three units in the Conflict
+    # and an Intrigue card gets the window even when it can only decline,
+    # and a heuristic seat draws for that one-action decision): seed 287
+    # first diverges at round 4's Conflict end (seat 3 gets a decline-only
+    # window) and seed 64 at round 1's (seat 0 does), and neither seat fills
+    # its role any more; with the previous window rule patched back in, the
+    # same recount reproduces the values pinned before. No seat of full
+    # seeds 1-200 fills either role. Seeds 201-600 give seeds 264 (seat 3)
+    # and 597 (seat 0) in the first role and seed 345 seat 2 alone in the
+    # second; the pins are the first of each. Seed 264 seat 3 (Steersman
+    # Y'rkoon): two Endgame Panopticon Tech gains, Intrigue from Buy Access,
+    # Agent-card from Dangerous Rhetoric, two Conflict-reward gains; its
+    # Landsraad Spy is trashed for Advanced Data Analysis (bought with Rapid
+    # Engineering) and two are recalled by Spring the Trap; Infiltrates
+    # taken in rounds 7, 8 and 10, declined in round 8; Maker Hooks in round
+    # 10; three Spy uses at a 2/3 lag. Seed 345 seat 2 (Muad'Dib): Spiritual
+    # Fervor's acquisition research step is the acquisition source and
+    # Captured Mentat's Influence exchange (three times) the Reveal-card
+    # source; Maker Hooks in round 3; Gather Intelligence and Infiltrate
+    # used twice each at a fractional 1/2 lag; one Spy recalled by Sleeper
+    # Unit; Infiltrate declined in round 7, taken in rounds 4 and 9; no Spy
+    # left on the board. An independent replay, not importing the
+    # collectors, recounted every column below from the games' own events,
+    # decision action sets and state, and matched the collectors exactly.
+    game = tip_census.play(_spec(True, 264), ("influence",))
     seat = game["seats"][3]
+    assert seat["infl.sources"] == {
+        "visit:starter": 3,
+        "visit:bought": 2,
+        "combat_reward": 2,
+        "intrigue": 2,
+        "agent_card": 1,
+        "tech": 2,
+    }
+    assert seat["infl.gained"] == 12
+    assert seat["infl.lost"] == 4
+    assert seat["infl.fremen2_round"] == 8
+    assert seat["infl.hooks_round"] == 10
+    assert seat["lands.reveal_cards"] == pytest.approx(3.2)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(6.0)
+    assert seat["spy.placed"] == 8
+    assert seat["spy.used_gather"] == 0
+    assert seat["spy.recalled_other"] == 2
+    assert seat["spy.trashed"] == 1
+    assert seat["spy.on_board_end"] == 2
+    assert seat["spy.use_lag"] == pytest.approx(2 / 3)
+    assert seat["spy.infiltrate_offered"] == 4
+    assert seat["spy.infiltrate_taken"] == 3
+
+    game = tip_census.play(_spec(True, 345), ("influence",))
+    seat = game["seats"][2]
     assert seat["infl.sources"] == {
         "visit:starter": 4,
         "visit:bought": 2,
         "combat_reward": 1,
         "intrigue": 1,
-        "agent_card": 1,
-        "tech": 2,
-    }
-    assert seat["infl.gained"] == 11
-    assert seat["infl.lost"] == 2
-    assert seat["infl.fremen2_round"] == 6
-    assert seat["infl.hooks_round"] is None
-    assert seat["lands.reveal_cards"] == pytest.approx(3.5)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(6.2)
-    assert seat["spy.placed"] == 12
-    assert seat["spy.used_gather"] == 1
-    assert seat["spy.recalled_other"] == 6
-    assert seat["spy.trashed"] == 1
-    assert seat["spy.on_board_end"] == 1
-    assert seat["spy.use_lag"] == pytest.approx(5 / 4)
-    assert seat["spy.infiltrate_offered"] == 5
-    assert seat["spy.infiltrate_taken"] == 3
-
-    game = tip_census.play(_spec(True, 64), ("influence",))
-    seat = game["seats"][3]
-    assert seat["infl.sources"] == {
-        "visit:starter": 5,
-        "visit:bought": 3,
-        "combat_reward": 1,
         "acquisition": 1,
-        "reveal_card": 1,
+        "reveal_card": 3,
     }
-    assert seat["infl.gained"] == 11
-    assert seat["infl.lost"] == 0
-    assert seat["infl.fremen2_round"] == 4
-    assert seat["infl.hooks_round"] == 4
-    assert seat["lands.reveal_cards"] == pytest.approx(13 / 3)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(17 / 3)
-    assert seat["spy.placed"] == 6
-    assert seat["spy.used_gather"] == 3
+    assert seat["infl.gained"] == 12
+    assert seat["infl.lost"] == 5
+    assert seat["infl.fremen2_round"] == 2
+    assert seat["infl.hooks_round"] == 3
+    assert seat["lands.reveal_cards"] == pytest.approx(3.8)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(5.8)
+    assert seat["spy.placed"] == 5
+    assert seat["spy.used_gather"] == 2
     assert seat["spy.recalled_other"] == 1
-    assert seat["spy.on_board_end"] == 1
-    assert seat["spy.use_lag"] == pytest.approx(7 / 4)
-    assert seat["spy.infiltrate_offered"] == 2
-    assert seat["spy.infiltrate_taken"] == 1
+    assert seat["spy.on_board_end"] == 0
+    assert seat["spy.use_lag"] == pytest.approx(1 / 2)
+    assert seat["spy.infiltrate_offered"] == 3
+    assert seat["spy.infiltrate_taken"] == 2
 
 
 def test_subversive_advisor_credits_the_visit_and_the_card_effect(
