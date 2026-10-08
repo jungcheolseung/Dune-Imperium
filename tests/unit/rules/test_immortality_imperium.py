@@ -9,6 +9,7 @@ from dataclasses import replace
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -310,14 +311,12 @@ def test_long_reach_icons_and_two_distinct_influences() -> None:
 
 
 
-def test_long_reach_with_one_faction_below_the_top_pays_it_at_the_turn_end() -> (
-    None
-):
+def test_long_reach_with_one_faction_below_the_top_pays_it_at_once() -> None:
     """"Choose two" never names a Faction at the top (OQ-060). With one
-    below it that one is named; no second pick is left, so the box waits
-    (a later effect of the turn may lower a cube, OQ-057 (1)) and the turn's
-    end pays the named Faction and loses the other, as OQ-060 pays a
-    Conflict reward's first named Faction."""
+    below it, picking that one pays it at once and the second is lost
+    (user ruling 2026-10-08, "앱처럼 즉시"), so the gain can be used in the
+    rest of the turn. It used to wait for the turn's end in case a later
+    effect lowered a cube."""
 
     reach = _card("long_reach")
     owner = _owner(
@@ -328,20 +327,45 @@ def test_long_reach_with_one_faction_below_the_top_pays_it_at_the_turn_end() -> 
     bonded = _place(_state(owner), reach, "assembly_hall")
     (only,) = legal_agent_card_influence_actions(bonded, 0)
     assert dict(only.arguments)["faction"] == "fremen"
-    named = apply_agent_card_influence(bonded, only).state
-    assert named.players[0].influence.fremen == 3
-    assert legal_agent_card_influence_actions(named, 0) == ()
-    assert agent_card_effect_is_unavailable(named)
+    picked = apply_agent_card_influence(bonded, only)
+    named = picked.state
+    assert named.players[0].influence.fremen == 4
+    assert named.players[0].influence.emperor == 6
+    assert "influence_gained" in {e.kind for e in picked.events}
+    _, context = current_agent_effect_context(named)
+    assert context["pending_agent_effect"] is False
     engine = UprisingRulesEngine()
     actions = engine.legal_actions(named, 0)
-    assert DomainAction("resolve_agent_card_effect", 0) not in actions
+    assert not [a for a in actions if a.action_id == "choose_agent_card_influence"]
     while board := [a for a in actions if a.action_id == "resolve_board_effect"]:
         named = engine.apply(named, board[0]).state
         actions = engine.legal_actions(named, 0)
     finished = engine.apply(named, DomainAction("finish_agent_turn", 0))
     assert finished.state.players[0].influence.fremen == 4
-    assert finished.state.players[0].influence.emperor == 6
-    assert "agent_card_effect_unavailable" in {e.kind for e in finished.events}
+    assert "influence_gained" not in {e.kind for e in finished.events}
+
+
+def test_long_reach_s_only_faction_reaching_emperor_four_owes_the_spy_at_once() -> (
+    None
+):
+    """The pick pays Emperor 3 -> 4 at once: the Spy is owed in the turn
+    before the end can be pressed (OQ-057 (15) re-ruling)."""
+
+    reach = _card("long_reach")
+    owner = _owner(
+        (reach,),
+        in_play=(_card("planned_coupling"),),
+        influence=Influence(emperor=3, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    bonded = _place(_state(owner), reach, "assembly_hall")
+    (only,) = legal_agent_card_influence_actions(bonded, 0)
+    named = apply_agent_card_influence(bonded, only).state
+    assert named.players[0].influence.emperor == 4
+    assert owes_track_spy(named, 0)
+    engine = UprisingRulesEngine()
+    offered = [a.action_id for a in engine.legal_actions(named, 0)]
+    assert "place_track_spy" in offered
+    assert "finish_agent_turn" not in offered
 
 
 def test_long_reach_s_turn_end_payment_reaching_emperor_four_reopens_the_turn() -> (
@@ -355,22 +379,12 @@ def test_long_reach_s_turn_end_payment_reaching_emperor_four_reopens_the_turn() 
     track Spy"; found by a search seat's playout, 2026-10-08).
     """
 
-    reach = _card("long_reach")
-    owner = _owner(
-        (reach,),
-        in_play=(_card("planned_coupling"),),
-        influence=Influence(emperor=3, spacing_guild=6, bene_gesserit=6, fremen=6),
+    named = _long_reach_ready_to_end(
+        Influence(emperor=3, spacing_guild=6, bene_gesserit=6, fremen=6),
+        owner_extra={},
     )
-    bonded = _place(_state(owner), reach, "assembly_hall")
-    (only,) = legal_agent_card_influence_actions(bonded, 0)
-    assert dict(only.arguments)["faction"] == "emperor"
-    named = apply_agent_card_influence(bonded, only).state
-    engine = UprisingRulesEngine()
-    actions = engine.legal_actions(named, 0)
-    while board := [a for a in actions if a.action_id == "resolve_board_effect"]:
-        named = engine.apply(named, board[0]).state
-        actions = engine.legal_actions(named, 0)
     assert not owes_track_spy(named, 0)
+    engine = UprisingRulesEngine()
 
     pressed = engine.apply(named, DomainAction("finish_agent_turn", 0))
     reopened = pressed.state
@@ -409,22 +423,11 @@ def test_a_navigation_play_queued_by_the_turn_end_payment_resolves_in_the_turn()
     play and raise ("an Agent turn cannot close over its queued choices").
     """
 
-    reach = _card("long_reach")
-    owner = _owner(
-        (reach,),
-        in_play=(_card("planned_coupling"),),
-        leader_id="steersman_y_rkoon",
-        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=1),
+    named = _long_reach_ready_to_end(
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=1),
+        owner_extra={"leader_id": "steersman_y_rkoon"},
     )
-    bonded = _place(_state(owner), reach, "assembly_hall")
-    (only,) = legal_agent_card_influence_actions(bonded, 0)
-    assert dict(only.arguments)["faction"] == "fremen"
-    named = apply_agent_card_influence(bonded, only).state
     engine = UprisingRulesEngine()
-    actions = engine.legal_actions(named, 0)
-    while board := [a for a in actions if a.action_id == "resolve_board_effect"]:
-        named = engine.apply(named, board[0]).state
-        actions = engine.legal_actions(named, 0)
 
     pressed = engine.apply(named, DomainAction("finish_agent_turn", 0))
     assert pressed.state.players[0].influence.fremen == 2
@@ -445,18 +448,41 @@ def _long_reach_ready_to_end(
     others: tuple[PlayerState, ...] = (),
     **overrides: object,
 ) -> GameState:
-    """Long Reach named its one Faction below the top; the turn may end now."""
+    """Long Reach named a Faction, then the last other one reached the top.
 
+    ``influence`` has one Faction below the top. At the pick a second one
+    is still possible (one of the others is lowered to 5), so the pick only
+    names its Faction; then a later effect of the turn -- set directly here
+    -- raises that other Faction back to 6, no second pick is left, and the
+    box waits for the turn's end, which pays the named Faction (OQ-057 (1),
+    OQ-060). A pick with no second possible from the start pays at once
+    (``test_long_reach_with_one_faction_below_the_top_pays_it_at_once``).
+    """
+
+    target = next(f for f in Faction if getattr(influence, f.value) < 6)
+    spare = next(f for f in Faction if f is not target)
     reach = _card("long_reach")
     owner = _owner(
         (reach,),
         in_play=(_card("planned_coupling"),),
-        influence=influence,
+        influence=replace(influence, **{spare.value: 5}),
         **owner_extra,
     )
     bonded = _place(_state(owner, *others, **overrides), reach, space)
-    (only,) = legal_agent_card_influence_actions(bonded, 0)
-    named = apply_agent_card_influence(bonded, only).state
+    pick = next(
+        a
+        for a in legal_agent_card_influence_actions(bonded, 0)
+        if dict(a.arguments)["faction"] == target.value
+    )
+    named = apply_agent_card_influence(bonded, pick).state
+    assert getattr(named.players[0].influence, target.value) == getattr(
+        influence, target.value
+    )
+    named = replace(
+        named,
+        players=(replace(named.players[0], influence=influence), *named.players[1:]),
+    )
+    assert legal_agent_card_influence_actions(named, 0) == ()
     engine = UprisingRulesEngine()
     actions = engine.legal_actions(named, 0)
     # The board effect, and the Tech module's purchase it may offer.
@@ -684,6 +710,65 @@ def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:
     assert not any(
         dict(a.arguments)["card_id"] == reach for a in legal_agent_actions(plain, 0)
     )
+
+
+def test_ghola_s_copy_of_long_reach_names_its_own_two_factions() -> None:
+    """Ghola copies Long Reach's box (OQ-057 (12)), so the turn has two
+    "Choose two" boxes; each names its own two Factions. The copy used to
+    see the first box's picks: it could not name them again and paid them a
+    second time (review of the 2026-10-08 Long Reach change)."""
+
+    reach = _card("long_reach")
+    ghola = "tleilaxu:ghola:0"
+    engine = UprisingRulesEngine()
+
+    def grafted(influence: Influence) -> GameState:
+        state = _state(_owner((reach, ghola, DAGGER), influence=influence))
+        placed = _place(state, reach, "assembly_hall", graft=True)
+        partner = legal_graft_partner_actions(placed, 0)[0]
+        return apply_graft_partner(placed, partner).state
+
+    def pick(state: GameState, faction: str) -> GameState:
+        action = next(
+            a
+            for a in legal_agent_card_influence_actions(state, 0)
+            if dict(a.arguments)["faction"] == faction
+        )
+        return apply_agent_card_influence(state, action).state
+
+    def switched(state: GameState) -> GameState:
+        (switch,) = [
+            a
+            for a in engine.legal_actions(state, 0)
+            if a.action_id == "switch_graft_card"
+        ]
+        return engine.apply(state, switch).state
+
+    # All four below the top: two distinct Factions per box, any of the four.
+    start = grafted(Influence(emperor=1, spacing_guild=1, bene_gesserit=1, fremen=1))
+    both = pick(pick(start, "emperor"), "fremen")
+    assert both.players[0].influence == Influence(
+        emperor=2, spacing_guild=1, bene_gesserit=1, fremen=2
+    )
+    copy = switched(both)
+    offered = {
+        dict(a.arguments)["faction"]
+        for a in legal_agent_card_influence_actions(copy, 0)
+    }
+    assert offered == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+    once = pick(copy, "emperor")
+    assert once.players[0].influence.emperor == 2  # named, not yet paid
+    twice = pick(once, "spacing_guild")
+    assert twice.players[0].influence == Influence(
+        emperor=3, spacing_guild=2, bene_gesserit=1, fremen=2
+    )
+
+    # Only the Emperor below the top: each box pays it at once.
+    top = grafted(Influence(emperor=4, spacing_guild=6, bene_gesserit=6, fremen=6))
+    lone = pick(top, "emperor")
+    assert lone.players[0].influence.emperor == 5
+    lone_copy = switched(lone)
+    assert pick(lone_copy, "emperor").players[0].influence.emperor == 6
 
 
 def test_long_reach_grafted_with_a_bene_gesserit_card_has_its_icons() -> None:

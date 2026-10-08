@@ -376,6 +376,14 @@ def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
         context["agent_card_self_trashed"] = True
     if active_flag is True:
         context["graft_card_self_trashed"] = True
+    # So does a "Choose two" box's first pick (Long Reach and the Ghola that
+    # copies it, OQ-057 (12)): each box names its own two Factions.
+    active_picks = context.pop("influence_chosen", None)
+    graft_picks = context.pop("graft_influence_chosen", None)
+    if graft_picks:
+        context["influence_chosen"] = graft_picks
+    if active_picks:
+        context["graft_influence_chosen"] = active_picks
     return RuleResult(
         state=replace(
             state,
