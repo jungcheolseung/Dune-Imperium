@@ -827,7 +827,8 @@ function popoverNodes(entry) {
   }
   if (entry.options) {
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
-    for (const option of spaceOptionsFor(entry)) nodes.push(spaceOptionLine(option));
+    /* space_text.js: the cost that applies now, the bonus spice there. */
+    nodes.push(...spaceOptionNodes(entry), ...spaceStatusNodes(entry));
   }
   if (entry.ability_text) {
     const abilityEn = entry.ability_en !== undefined ? entry.ability_en : entry.ability;
@@ -909,6 +910,8 @@ function openPopover(entry, anchor, seatState) {
     /* As the rulebook numbers the decks: 교전 I / Conflict I [Main p. 4]. */
     words.push(t("core.conflict_tier", { tier: ["I", "II", "III"][entry.tier - 1] || entry.tier }));
   }
+  /* A space's Agent icon and combat/Maker/Control marks (space_text.js). */
+  if (entry.options) words.push(...spaceMetaWords(entry));
   if (entry.options && !spaceImplementedFor(entry)) words.push(t("core.not_implemented"));
   if (words.length) meta.append(words.join(" · "));
   if (meta.childNodes.length) pop.appendChild(meta);

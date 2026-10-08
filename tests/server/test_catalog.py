@@ -507,6 +507,31 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     options = swordmaster["options"]
     assert isinstance(options, list)
     assert len(options) == 2
+    # Both printed costs stay listed (the client indexes them by the
+    # action's cost_option); the note says which applies when: "아무도
+    # Swordmaster를 얻지 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는
+    # 6 Solari" `[Board Guide p. 2]` (docs/rules/board-spaces.md).
+    assert [
+        {"solari": 8, "spice": 0, "water": 0},
+        {"solari": 6, "spice": 0, "water": 0},
+    ] == [option["cost"] for option in options if isinstance(option, dict)]
+    assert swordmaster["notes"] == [
+        "Cost: 8 solari if no player has their Swordmaster;"
+        " 6 solari once any player does"
+    ]
+    assert swordmaster["notes_ko"] == [
+        "비용: 아무도 소드마스터가 없다면 {solari:8}, 누군가가 소드마스터를"
+        " 얻었다면 {solari:6}"
+    ]
+
+    sietch_tabr = spaces["sietch_tabr"]
+    assert isinstance(sietch_tabr, dict)
+    notes = sietch_tabr["notes"]
+    notes_ko = sietch_tabr["notes_ko"]
+    assert isinstance(notes, list) and isinstance(notes_ko, list)
+    assert len(notes) == len(notes_ko) == 1
+    assert str(notes[0]).startswith("Shield Wall: ")
+    assert str(notes_ko[0]).startswith("{shield_wall}: ")
 
 
 def test_catalog_image_urls_follow_the_resolved_index() -> None:
