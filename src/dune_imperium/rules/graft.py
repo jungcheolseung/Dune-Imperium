@@ -14,6 +14,7 @@ and ``switch_graft_card`` swaps them so either box resolves through the
 ordinary Agent-box machinery in the owner's order.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
@@ -347,6 +348,22 @@ def legal_graft_switch_actions(
     return (DomainAction(action_id="switch_graft_card", actor=player),)
 
 
+def _both_boxes_choose_two(context: Mapping[str, object]) -> bool:
+    """Whether both grafted boxes are Long Reach's "Choose two" Influence."""
+
+    card_id, graft_card_id = context.get("card_id"), context.get("graft_card_id")
+    if not isinstance(card_id, str) or not isinstance(graft_card_id, str):
+        return False
+    if not card_id or not graft_card_id:
+        return False
+    two = PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE
+    return all(
+        borrowed_agent_card(personal_card_for_instance(card), partner).agent_effect
+        is two
+        for card, partner in ((card_id, graft_card_id), (graft_card_id, card_id))
+    )
+
+
 def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
     """Make the other grafted card the active one of the effect frame."""
 
@@ -376,6 +393,16 @@ def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
         context["agent_card_self_trashed"] = True
     if active_flag is True:
         context["graft_card_self_trashed"] = True
+    # So do a "Choose two" box's picks when both boxes are one: Long Reach
+    # and the Ghola that copies it (OQ-057 (12)) each name their own two
+    # Factions. With any other partner only one box reads them.
+    if _both_boxes_choose_two(context):
+        active_picks = context.pop("influence_chosen", None)
+        graft_picks = context.pop("graft_influence_chosen", None)
+        if graft_picks:
+            context["influence_chosen"] = graft_picks
+        if active_picks:
+            context["graft_influence_chosen"] = active_picks
     return RuleResult(
         state=replace(
             state,

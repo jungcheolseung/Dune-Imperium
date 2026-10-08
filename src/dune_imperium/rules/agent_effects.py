@@ -1099,15 +1099,29 @@ def apply_agent_card_influence(
     ):
         # Long Reach: "Choose two" names both Factions before either
         # Influence moves (designer ruling, OQ-057); the box stays pending
-        # until the second, different Faction is chosen.
+        # until the second, different Faction is chosen. When no second
+        # Faction can rise any more (every other cube at the top, OQ-060),
+        # the one named is paid at once and the second is lost, so the owner
+        # can use the gain in the rest of the turn (user ruling 2026-10-08,
+        # "앱처럼 즉시"; the Steam app gives that one track its +1 as soon as
+        # the ability is used -- secondary evidence, not an official rule).
         chosen_value = context.get("influence_chosen", "")
         chosen = [
             *(str(chosen_value).split(",") if chosen_value else []),
             faction.value,
         ]
+        owner_now = state.players[action.actor]
+        second_possible = any(
+            influence_can_rise(owner_now, other) and other.value not in chosen
+            for other in Faction
+        )
+        waiting = len(chosen) < 2 and second_possible
+        # The picks belong to this box; a graft switch carries them with it
+        # (``graft.apply_graft_switch``), so a second Long Reach box of the
+        # turn (Ghola copying it, OQ-057 (12)) names its own two Factions.
         context["influence_chosen"] = ",".join(chosen)
-        context["pending_agent_effect"] = len(chosen) < 2
-        if len(chosen) < 2:
+        context["pending_agent_effect"] = waiting
+        if waiting:
             gained = RuleResult(
                 state=state,
                 events=(
@@ -3964,12 +3978,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
         return RuleResult(state=next_state, events=trashed.events)
     if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
-        # Long Reach with no further Faction to name: every other cube is at
-        # the top, where a gain is lost (OQ-060). The box waits for the
-        # turn's end (this resolution reports itself unavailable, OQ-057
-        # (1)), since a later effect of the turn may lower a cube; then the
-        # Faction already named is paid and the rest is lost, as a Conflict
-        # reward's "Choose two" pays its first Faction (OQ-060).
+        # Long Reach with no further Faction to name. A first pick made with
+        # no second possible is paid at once (``apply_agent_card_influence``,
+        # user ruling 2026-10-08), so this is reached only when the second
+        # became impossible after the first pick -- a later effect of the
+        # turn raised the last other cube to the top -- or with no Faction
+        # named at all. The box then waits for the turn's end (this
+        # resolution reports itself unavailable, OQ-057 (1)), and the Faction
+        # already named is paid and the rest is lost, as a Conflict reward's
+        # "Choose two" pays its first Faction (OQ-060).
         if legal_agent_card_influence_actions(state, player):
             raise RuntimeError("Agent-card Influence effect requires a player choice")
         chosen_value = context.get("influence_chosen", "")

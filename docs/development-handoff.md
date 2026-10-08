@@ -49,6 +49,21 @@
 - **후속 4(2026-10-08, 사용자 결정)**: Subject X-137(앱 그림 이름의 하이픈 때문에 렌더러가 그림을 못 찾았다), Epic Game Mode의 Control the Spice와 Economic Supremacy(Conflict도 카드별 틀이면 그 틀로 그린다)를 앱 앞면으로 그렸다. Alliance 토큰 넷은 앱의 둥근 1점 토큰(`hud_Player_AllianceToken_*_Large`)으로 바꿨다(`alliance_<진영>.png`; 그림이 없는 옛 체크아웃은 TTS `.jpg`를 대신 쓴다).
 - **남은 것**: Shield Wall·Maker Hooks는 TTS 그림 그대로다(앱에 `hud_Player_AllianceToken_*_Large` 256px 등이 있다; 바꾸려면 먼저 묻는다). 한국어 사진이 없는 Intrigue 34장은 한글판 문구를 얻을 출처가 없다. 원격 fetch가 이 세션에서 막혀(ssh timeout) master `38d38fa3` 기준으로 작업했다.
 
+## 2026-10-08 Long Reach: 올릴 진영이 하나뿐이면 즉시 (사용자 재판정, codec 그대로 v139)
+
+사용자 질문("2개를 안 고르면 확정이 안 되서 처음 고른 1개도 안 올라가는 상태야?? 게임 앱도 그래?")과 이유("영향력 하나만 올리더라도 올린 다음 다음 행동을 하고 싶을 수 있어서")에 따라 앱을 추적하고 판정을 받았다("앱처럼 즉시"). 브랜치 `long-reach-immediate`.
+
+- **앱(보조 증거, 디스어셈블 추적 — workflow 독립 추적 2 + 대조 1, 요약은 에셋 로컬 `analysis/long-reach-2026-10-08/`).** 사람 좌석 기준이다.
+  - 오를 트랙 3~4개: 두 트랙을 한 번에 고르고 바로 +1씩.
+  - 1~2개: 선택 창 없이 쓰는 즉시 그 트랙들에 +1.
+  - 0개: 쓸 수 없고 사라짐.
+  - 쓸 수 있으면 턴 종료 전에 반드시 써야 한다. 앱 AI는 트랙 1개면 이 능력을 못 쓰는 비대칭이 있다.
+- **바뀐 것.** 첫 진영을 고를 때 둘째로 오를 진영이 없으면(나머지 모두 6) 그 진영을 곧바로 올리고 둘째는 잃는다(`agent_effects.apply_agent_card_influence`, OQ-071 재판정). 보통 경우(두 진영을 하나씩 고르면 둘째에서 둘 다 +1)는 그대로다. 턴 종료 지급은 첫 선택 뒤 다른 효과가 남은 진영을 6으로 올렸을 때만 남는다.
+- **리뷰가 찾은 원래 결함(함께 고침).** Ghola를 Long Reach에 graft하면 두 box가 고른 진영 기록을 같이 써서, Ghola box가 첫 box의 진영을 다시 못 고르고 한 번 더 지급했다. 이제 두 box가 모두 Long Reach일 때만 graft 전환이 기록을 box별로 바꿔 끼운다(`graft._both_boxes_choose_two`). 보통 게임의 상태 모양은 그대로다. 처음에는 지급 뒤 기록을 지웠는데, 그러자 모든 Long Reach 판의 상태가 달라져 되돌렸다.
+- **tips-v1 재채굴.** Ghola 수정이 heuristic 판 하나(s352, 9라운드 Ghola + Long Reach)의 진행을 바꿔 국면 하나가 복원되지 않았다. 문서의 명령으로 다시 캐니 **130개**였다(그 하나만 빠짐; [evaluation/problem-set.md](evaluation/problem-set.md)).
+- **테스트.** 즉시 지급 둘과 Ghola 하나를 더했다. 모두 이전 master에서 실패한다. 오늘의 턴 종료 후속 테스트들은 "첫 선택 뒤 남은 진영이 6이 됨" 경로로 상황을 만들게 바꿨다. pytest **6,658개 통과**, Ruff·mypy(415파일).
+- **남은 것.** 오를 진영이 정확히 둘이면 앱은 한 번에 둘을 주지만 우리는 두 번 고른다(결과는 같다). 앱 AI 창의 Long Reach 둘째 선택 판정(`len(offered) < 4`)은 원래부터 어림이다. codec은 올리지 않았다. 이런 선택을 지난 옛 저장은 불러올 때 진행이 달라질 수 있다.
+
 ## 2026-10-08 모든 턴 종료 누름이 "끝내는 중" 한 길로 (codec 그대로 v139)
 
 같은 날의 결함 수정(아래 절)을 사용자 결정("B가 나을 거 같다")으로 일반화했다. 브랜치 `turn-end-always-finishing`.
