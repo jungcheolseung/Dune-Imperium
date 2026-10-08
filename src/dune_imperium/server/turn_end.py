@@ -57,6 +57,10 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         "finish_reveal",
         "pass_combat_intrigue",
         "pass_endgame_intrigue",
+        # The Conflict-end Intrigue window opens on public facts, often
+        # with nothing to play (OQ-103, user decision 2026-10-09): "쓰지
+        # 않음" ends the seat's part with one press, like a pass.
+        "decline_conflict_end_intrigue",
         # Arrakeen Scouts: confirming a sealed bid is the seat's turn end;
         # until then it may change the bid (D5, docs/arrakeen-scouts-design.md).
         "confirm_scouts_bid",

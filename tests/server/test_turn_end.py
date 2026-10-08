@@ -62,7 +62,7 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.persistence import SaveError
-from dune_imperium.server.session_log import LoggedStep, live_steps
+from dune_imperium.server.session_log import LoggedStep, live_steps, log_step
 from dune_imperium.server.sessions import (
     AGENT_TURN_END_PROMPT,
     GameSession,
@@ -2279,6 +2279,7 @@ class _SweepTally:
     violations: list[str]
     holds: int = 0
     agent_turn_presses: int = 0
+    server_declines: int = 0
 
 
 def _agent_turn_owners(state: GameState) -> set[int]:
@@ -2365,6 +2366,9 @@ def _run_property_sweep_game(
       browser's "확정 ▶" instead (``sent_by_turn_end``; user, 2026-10-08);
     - a unit outside the turns never closes unconfirmed: by a hold, or by
       a step sent with "확정 ▶";
+    - a Conflict-end decline the server takes for a human seat (a lone
+      human's decline-only window, OQ-103) is sealed like a press, holds
+      nothing, and never happens with two human seats;
     - the replayed game passes ``_agent_turn_violations``.
     """
 
@@ -2393,6 +2397,32 @@ def _run_property_sweep_game(
     has_unit_step = dict.fromkeys(humans, False)
     tally = _SweepTally(violations=[])
     logged = len(live_steps(session.log))
+    # The steps the walker's own requests sent; any other human step is the
+    # server's Conflict-end decline (``_auto_decline_locked``).
+    sent: set[int] = set()
+    checked = 0
+
+    def check_server_declines() -> None:
+        nonlocal checked
+        for index in range(checked, len(session.steps)):
+            step = session.steps[index]
+            if index in sent or not isinstance(step, DomainAction):
+                continue
+            if step.actor not in humans:
+                continue
+            if step.action_id != "decline_conflict_end_intrigue":
+                tally.violations.append(f"step {index} ({step}) was sent by nobody")
+                continue
+            tally.server_declines += 1
+            if len(humans) != 1:
+                tally.violations.append(
+                    f"the server declined for seat {step.actor} beside another human"
+                )
+            if session.undo_floor <= index:
+                tally.violations.append(f"the server's decline at {index} is unsealed")
+            if summary["confirmation"] == step.actor:
+                tally.violations.append(f"the server's decline at {index} holds")
+        checked = len(session.steps)
 
     def scan() -> set[int]:
         """Count the turns in the newly logged steps; return who pressed."""
@@ -2462,6 +2492,7 @@ def _run_property_sweep_game(
             sent_agent[held] = False
             has_unit_step[held] = False
             scan()
+            check_server_declines()
             continue
         decision = _obj(summary["decision"])
         owner = _int(decision["owner"])
@@ -2488,6 +2519,7 @@ def _run_property_sweep_game(
         choice = rng.choice(actions)
         before = session.state
         finishing = finishing_seat(before) == owner
+        sent.add(len(session.steps))
         summary = manager.apply_action(
             game_id,
             owner,
@@ -2497,6 +2529,7 @@ def _run_property_sweep_game(
         )
         if choice["action_id"] == "finish_agent_turn":
             tally.agent_turn_presses += 1
+        check_server_declines()
         if owner in scan() or finishing:
             if summary["confirmation"] == owner:
                 tally.violations.append(
@@ -2592,17 +2625,20 @@ def _reward_marks(manager: GameSessionManager, game_id: str, seat: int) -> list[
 
 
 def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> None:
-    # Seed 70, Immortality, seats 0 and 1 human: in round 8 seat 0 chooses
-    # its optional Conflict reward while seat 2 has enough troops in the
-    # Conflict for Harvest Cells. Before the engine's pauses, whether seat
-    # 0's rows were marked "can't be taken back, send with 확정 ▶" depended
-    # on whether seat 2 secretly held a playable Harvest Cells: with one,
-    # the dry run stopped at seat 2's Conflict-end window; without, it ran
-    # on into the next round's reveal. The pauses (after the rewards, before
-    # the next round) stand whatever the seats hold, so the marks, previews
-    # included, are the same either way; also when this is the last round
-    # (a seat at the endgame score), which has no Round Start and ran on
-    # into the Endgame Intrigue windows (2026-10-08 review).
+    # Seed 70, Immortality, seats 0 and 1 human: seat 0 chooses its optional
+    # Conflict reward while another seat has enough troops in the Conflict
+    # for Harvest Cells. Before the engine's pauses, whether seat 0's rows
+    # were marked "can't be taken back, send with 확정 ▶" depended on
+    # whether that seat secretly held a playable Harvest Cells: with one,
+    # the dry run stopped at its Conflict-end window, which then opened only
+    # for a seat that could play one; without, it ran on into the next
+    # round's reveal. The pauses (after the rewards, before the next round)
+    # stand whatever the seats hold, and since 2026-10-09 the window opens
+    # on public facts too (OQ-103), so the marks, previews included, are the
+    # same whether the seat's first Intrigue card is a Harvest Cells or the
+    # card it really holds (the same count either way); also when this is
+    # the last round (a seat at the endgame score), which has no Round Start
+    # and ran on into the Endgame Intrigue windows (2026-10-08 review).
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
@@ -2631,20 +2667,15 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
         fighters = [
             player.player_id
             for player in live.players
-            if player.player_id != owner and player.troops_conflict >= 3
+            if player.player_id != owner
+            and player.troops_conflict >= 3
+            and player.intrigue_cards
+            and not any("harvest" in card for card in player.intrigue_cards)
         ]
         if str(top.kind).startswith("combat_reward") and harvest and fighters:
             seat = fighters[0]
-            holder = live.players[seat]
-            players = list(live.players)
-            players[seat] = replace(
-                holder, intrigue_cards=(*holder.intrigue_cards, harvest[0])
-            )
-            fake = replace(
-                live,
-                players=tuple(players),
-                intrigue_deck=tuple(c for c in live.intrigue_deck if c != harvest[0]),
-            )
+            card = live.players[seat].intrigue_cards[0]
+            fake = _holding(live, seat, harvest[0], (*live.intrigue_deck, card))
             leader = max(
                 (p for p in live.players if p.player_id != owner),
                 key=lambda p: p.victory_points,
@@ -2723,10 +2754,12 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
     # recipient's choice, another seat with three units in the Conflict
     # holds one Intrigue card: a Harvest Cells in one world, another card in
     # the other (the same count either way). Without the pause after the
-    # rewards, the dry run stopped at that seat's Conflict-end window in one
-    # world and ran on in the other; in the last round (no Round Start) it
-    # ran into the Endgame, so the rows' strength previews and whether the
-    # seat was held differed. Now both worlds stop at the pause.
+    # rewards, and while the Conflict-end window opened only for a seat that
+    # could play one, the dry run stopped at that seat's window in one world
+    # and ran on in the other; in the last round (no Round Start) it ran
+    # into the Endgame, so the rows' strength previews and whether the seat
+    # was held differed. Now both worlds stop at the pause, and past it the
+    # window opens in both, on public facts (OQ-103, 2026-10-09).
     manager = GameSessionManager()
     summary = manager.create_game(("human",) * 4, game_seed=12, immortality=True)
     game_id = str(summary["game_id"])
@@ -2810,3 +2843,332 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
             undo_count=_int(summary["undo_count"]),
         )
     assert checked, "the walk met a last recipient beside a Harvest Cells seat"
+
+
+# --- the Conflict-end window (OQ-103, user decision 2026-10-09) ------------
+#
+# The window opens on public facts: every seat with at least three units in
+# the Conflict and an Intrigue card is asked, and one that can play nothing
+# gets only "쓰지 않음" ("1번은 A안으로 가자", user, 2026-10-09). The decline
+# is the seat's press itself, like a Combat Intrigue pass; a lone human
+# seat's decline-only window is answered by the server, but never with two
+# human seats at the table, where the wait itself would tell.
+
+_DECLINE: Final = "decline_conflict_end_intrigue"
+_PLAY: Final = "play_conflict_end_intrigue"
+_WINDOW_PROMPT: Final = (
+    "Play an Intrigue card that triggers at this Conflict's end, or decline"
+)
+
+
+def _server_declines(session: GameSession, sent: set[int]) -> list[int]:
+    """The live decline steps of human seats that no request sent."""
+
+    return [
+        index
+        for index, step in enumerate(session.steps)
+        if isinstance(step, DomainAction)
+        and step.action_id == _DECLINE
+        and session.seats[step.actor] == "human"
+        and index not in sent
+    ]
+
+
+def _window_actions(session: GameSession, seat: int) -> list[str] | None:
+    """The seat's legal action ids when its Conflict-end window is on top."""
+
+    state = session.state
+    if not state.decision_stack:
+        return None
+    top = state.decision_stack[-1]
+    if top.kind != FrameKind.CONFLICT_END_TRIGGER:
+        return None
+    return [action.action_id for action in session.engine.legal_actions(state, seat)]
+
+
+def _walk_first_actions(
+    manager: GameSessionManager,
+    game_id: str,
+    summary: JsonObject,
+    sent: set[int],
+    stop: object,
+) -> JsonObject:
+    """Answer each human decision with its first legal action, confirming
+    any hold at once, until ``stop(summary)`` holds. The index of every step
+    a request sent goes into ``sent``. A lone human seat is never shown a
+    decline-only Conflict-end window."""
+
+    session = manager._get(game_id)
+    alone = sum(1 for kind in session.seats if kind == "human") == 1
+    while not stop(summary):  # type: ignore[operator]
+        if summary["finished"]:
+            raise AssertionError("the game finished before the condition was met")
+        held = summary["confirmation"]
+        if isinstance(held, int):
+            summary = manager.confirm_turn(
+                game_id,
+                held,
+                _int(summary["revision"]),
+                undo_count=_int(summary["undo_count"]),
+            )
+            continue
+        owner = _int(_obj(summary["decision"])["owner"])
+        if alone:
+            assert _window_actions(session, owner) != [_DECLINE], len(session.steps)
+        sent.add(len(session.steps))
+        summary = manager.apply_action(
+            game_id,
+            owner,
+            _int(summary["revision"]),
+            0,
+            undo_count=_int(summary["undo_count"]),
+        )
+    return summary
+
+
+def test_a_lone_human_seats_decline_only_window_is_answered_for_it() -> None:
+    # Seed 7, Immortality, one human seat: in round 2 seat 0 has three units
+    # in the Conflict and an Intrigue card it cannot play there. The server
+    # declines for it, exactly as the seat's own press would have: the same
+    # step and log entry, sealed (nothing to take back, no hold, no unit).
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=7, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    sent: set[int] = set()
+    summary = _walk_first_actions(
+        manager, game_id, summary, sent, lambda _: _server_declines(session, sent)
+    )
+    [index] = _server_declines(session, sent)
+    step = session.steps[index]
+    assert step == DomainAction(action_id=_DECLINE, actor=0)
+    before = sessions_module._state_after(session, index)
+    assert before.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert session.engine.legal_actions(before, 0) == (step,)
+    transition = session.engine.apply(before, step)
+    entry = live_steps(session.log)[index]
+    assert entry == log_step(before, transition.state, step, transition.events)
+    assert [event.kind for event in entry.events][0] == "conflict_end_trigger_declined"
+    assert session.undo_floor > index
+    assert summary["confirmation"] is None
+    assert _rows(summary["undo"]) == []
+    assert 0 not in session.open_units
+    # The game moved on to the next human decision past the Combat.
+    assert _obj(summary["decision"])["owner"] == 0
+    assert session.state.round_number > before.round_number
+
+
+def test_an_auto_decline_replays_and_stays_sealed_after_a_load() -> None:
+    # The same seed 7 game, saved right before the request that runs into
+    # the auto-decline and right after it: a load of the first regenerates
+    # the decline when that request is repeated, a load of the second
+    # replays it as recorded and keeps it sealed.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=7, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    sent: set[int] = set()
+    saves: list[tuple[JsonObject, JsonObject]] = []
+
+    def stop(current: JsonObject) -> bool:
+        if _server_declines(session, sent):
+            return True
+        saves.append((manager.save_game(game_id), current))
+        return False
+
+    summary = _walk_first_actions(manager, game_id, summary, sent, stop)
+    [index] = _server_declines(session, sent)
+    document, earlier = saves[-1]
+    assert earlier["confirmation"] is None
+
+    restored = manager.restore_game(document)
+    restored_id = str(restored["game_id"])
+    replayed = manager._get(restored_id)
+    owner = _int(_obj(restored["decision"])["owner"])
+    restored = manager.apply_action(
+        restored_id,
+        owner,
+        _int(restored["revision"]),
+        0,
+        undo_count=_int(restored["undo_count"]),
+    )
+    assert replayed.steps == session.steps
+    assert replayed.undo_floor == session.undo_floor
+    assert restored["revision"] == summary["revision"]
+    assert restored["undo"] == summary["undo"]
+
+    again = manager.restore_game(manager.save_game(game_id))
+    reloaded = manager._get(str(again["game_id"]))
+    assert reloaded.steps == session.steps
+    assert reloaded.undo_floor == session.undo_floor > index
+    assert again["confirmation"] is None
+    assert again["undo"] == summary["undo"] == []
+    assert canonical_state_hash(reloaded.state) == canonical_state_hash(session.state)
+
+
+def test_undo_never_reaches_back_to_an_auto_declined_window() -> None:
+    # After the seed 7 auto-decline, seat 0's next steps can be taken back,
+    # but never past the decline: the window is not offered again.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=7, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    sent: set[int] = set()
+    summary = _walk_first_actions(
+        manager, game_id, summary, sent, lambda _: _server_declines(session, sent)
+    )
+    [index] = _server_declines(session, sent)
+    summary = _walk_first_actions(
+        manager, game_id, summary, sent, lambda current: _rows(current["undo"])
+    )
+    [row] = _rows(summary["undo"])
+    window = _int(row["steps"])
+    assert row["seat"] == 0
+    with pytest.raises(SessionError):
+        manager.undo(
+            game_id,
+            0,
+            _int(summary["revision"]),
+            window + 1,
+            undo_count=_int(summary["undo_count"]),
+        )
+    summary = manager.undo(
+        game_id,
+        0,
+        _int(summary["revision"]),
+        window,
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert len(session.steps) > index
+    assert _window_actions(session, 0) is None
+    assert session.steps[index] == DomainAction(action_id=_DECLINE, actor=0)
+
+
+def test_with_two_humans_a_decline_only_window_waits_for_one_press() -> None:
+    # Seed 7, Immortality, seats 0 and 1 human: in round 1 seat 0 has three
+    # units in the Conflict and an Intrigue card it cannot play there. Two
+    # humans share the table, so the server never answers for either: the
+    # window waits, offering only "쓰지 않음", whose one press ends the
+    # seat's part (no hold, nothing to take back, no second press).
+    manager = GameSessionManager()
+    summary = manager.create_game(TWO_HUMANS, game_seed=7, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    sent: set[int] = set()
+
+    def decline_only(current: JsonObject) -> bool:
+        if current["finished"] or isinstance(current["confirmation"], int):
+            return False
+        owner = _int(_obj(current["decision"])["owner"])
+        return _window_actions(session, owner) == [_DECLINE]
+
+    summary = _walk_first_actions(manager, game_id, summary, sent, decline_only)
+    assert _server_declines(session, sent) == []
+    decision = _obj(summary["decision"])
+    owner = _int(decision["owner"])
+    assert decision["kind"] == "conflict_end_trigger"
+    assert decision["prompt"] == _WINDOW_PROMPT
+    [row] = _rows(manager.legal_actions(game_id, owner)["actions"])
+    assert row["action_id"] == _DECLINE
+    assert row["undoable"] is False
+    assert row["sent_by_turn_end"] is False
+
+    index = len(session.steps)
+    summary = manager.apply_action(
+        game_id,
+        owner,
+        _int(summary["revision"]),
+        _int(row["index"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert session.steps[index] == DomainAction(action_id=_DECLINE, actor=owner)
+    assert summary["confirmation"] is None
+    assert [r for r in _rows(summary["undo"]) if r["seat"] == owner] == []
+    assert owner not in session.open_units
+    assert session.undo_floor > index
+    with pytest.raises(SessionError):
+        manager.confirm_turn(
+            game_id,
+            owner,
+            _int(summary["revision"]),
+            undo_count=_int(summary["undo_count"]),
+        )
+    assert _server_declines(session, sent | {index}) == []
+
+
+def test_a_holder_sees_its_play_beside_the_decline() -> None:
+    # Seed 18, one human seat: in round 2 seat 0 holds a playable Harvest
+    # Cells. The window offers the play and "쓰지 않음" (the press itself),
+    # and the server does not answer it.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=18, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    sent: set[int] = set()
+    summary = _walk_first_actions(
+        manager,
+        game_id,
+        summary,
+        sent,
+        lambda current: not isinstance(current["confirmation"], int)
+        and _window_actions(session, _int(_obj(current["decision"])["owner"]))
+        is not None,
+    )
+    assert _server_declines(session, sent) == []
+    decision = _obj(summary["decision"])
+    assert decision["owner"] == 0
+    assert decision["prompt"] == _WINDOW_PROMPT
+    rows = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [row["action_id"] for row in rows] == [_DECLINE, _PLAY]
+    assert rows[0]["undoable"] is False
+    assert rows[0]["sent_by_turn_end"] is False
+    assert "harvest_cells" in str(_obj(rows[1]["arguments"])["card_id"])
+
+
+def test_a_play_in_the_window_is_confirmed_by_the_seats_own_decline() -> None:
+    # Seed 33, one human seat: in round 4 seat 0 plays its Harvest Cells and
+    # still holds another Intrigue card, so the window stays open with only
+    # "쓰지 않음" (a public fact, OQ-103). The play can still be taken back,
+    # so the server does not answer the window: the seat's own decline is
+    # the press that confirms the play, and seals it.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=33, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    sent: set[int] = set()
+    summary = _walk_first_actions(
+        manager,
+        game_id,
+        summary,
+        sent,
+        lambda current: not isinstance(current["confirmation"], int)
+        and _PLAY
+        in (_window_actions(session, _int(_obj(current["decision"])["owner"])) or ()),
+    )
+    rows = _rows(manager.legal_actions(game_id, 0)["actions"])
+    play = next(row for row in rows if row["action_id"] == _PLAY)
+    played = len(session.steps)
+    summary = manager.apply_action(
+        game_id,
+        0,
+        _int(summary["revision"]),
+        _int(play["index"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert len(session.steps) == played + 1
+    assert _window_actions(session, 0) == [_DECLINE]
+    assert summary["confirmation"] is None
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    [row] = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert row["action_id"] == _DECLINE
+    summary = manager.apply_action(
+        game_id,
+        0,
+        _int(summary["revision"]),
+        _int(row["index"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert session.steps[played + 1] == DomainAction(action_id=_DECLINE, actor=0)
+    assert summary["confirmation"] is None
+    assert _rows(summary["undo"]) == []
+    assert session.undo_floor > played + 1

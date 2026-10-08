@@ -27,10 +27,14 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 check = Check()
 
-# Declining a Combat or Endgame Intrigue window (rules/combat.py,
-# rules/endgame.py) — the engine never emits a bare "pass". Mirrors
-# PASS_ACTION_IDS in static/review.js.
-PASS_ACTION_IDS = {"pass_combat_intrigue", "pass_endgame_intrigue"}
+# Declining a Combat, Conflict-end or Endgame Intrigue window
+# (rules/combat.py, rules/endgame.py) — the engine never emits a bare
+# "pass". Mirrors PASS_ACTION_IDS in static/review.js.
+PASS_ACTION_IDS = {
+    "pass_combat_intrigue",
+    "pass_endgame_intrigue",
+    "decline_conflict_end_intrigue",
+}
 
 REVIEW_JS = """() => state.review && ({
   seat: state.review.seat,

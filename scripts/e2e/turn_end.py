@@ -8,7 +8,9 @@ One press, EXACTLY one, ends a human seat's turn, whatever step closes it:
   render.js, mirroring ``EXPLICIT_TURN_ENDS`` in server/turn_end.py:
   ``finish_agent_turn``, ``finish_leader_draft``, ``finish_reveal``,
   ``pass_combat_intrigue``,
-  ``pass_endgame_intrigue``, and Arrakeen Scouts' ``confirm_scouts_bid``)
+  ``pass_endgame_intrigue``, the Conflict-end window's
+  ``decline_conflict_end_intrigue``, and Arrakeen Scouts'
+  ``confirm_scouts_bid``)
   renders as that SAME row instead, its button
   applying that action directly (POST /actions) -- and never doubles as an
   item in any action list (the staged Agent turn's steps, its "or" list,
@@ -25,7 +27,16 @@ finish_agent_turn, pass_combat_intrigue and the English explicit end it
 also checks that the row carries the shortfall badge of a warning on the
 action (held Contract icons that fizzle with the turn, user ruling
 2026-10-02, L2-Q4), worded from the payload in either language, with the
-label unchanged (TURN_END_BADGE_JS).
+label unchanged (TURN_END_BADGE_JS). Last, (h) a Conflict-end window that
+offers only "쓰지 않음" to one of two human seats (it opens on public facts,
+OQ-103, 2026-10-09): the prompt reads for a seat with nothing to play, the
+decline is the row "쓰지 않음 · 턴 종료 ▶" / "Decline · End turn ▶", one
+click hands over, and the log shows no per-seat "offered" line. Then (i)
+the same window for the one human seat of a game, which the server answers
+for it (sessions.py _auto_decline_locked): at the seat's next decision the
+Combat result and the AI moves after its last press still glow as new
+(panels.js ownGlowFrom does not stop at the seat's own declines), and the
+server's decline sits in a fold card.
 """
 
 from __future__ import annotations
@@ -56,6 +67,8 @@ EXPLICIT_TURN_END_IDS = {
     "finish_reveal",
     "pass_combat_intrigue",
     "pass_endgame_intrigue",
+    # The Conflict-end window's "쓰지 않음" (OQ-103, 2026-10-09).
+    "decline_conflict_end_intrigue",
     # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
     "confirm_scouts_bid",
     # Critical Moment's open call, sent with the turn-end press (2026-10-05).
@@ -669,6 +682,356 @@ def scenario_endgame_intrigue(base, browser, seed: int) -> None:
     context.close()
 
 
+# The Conflict-end decline (h): two human seats, so the server never
+# answers it for them (sessions.py _auto_decline_locked).
+DECLINE = "decline_conflict_end_intrigue"
+TWO_HUMANS = ["human", "human", "heuristic", "heuristic"]
+
+
+def find_conflict_end_seed(
+    base: str, *, limit: int = 20, step_cap: int = 300
+) -> int | None:
+    """A game_seed of an Immortality game with seats 0 and 1 human (and the
+    setup screen's Leader draft) where, each human always taking its first
+    legal action (confirming a hold at once), one of them reaches a
+    Conflict-end window that offers only the decline -- raw HTTP, like
+    find_endgame_intrigue_seed."""
+
+    for seed in range(limit):
+        game = _api_post(
+            base,
+            "/games",
+            {
+                "seats": TWO_HUMANS,
+                "leader_draft": True,
+                "immortality": True,
+                "game_seed": seed,
+            },
+        )
+        game_id = game["game_id"]
+        for _ in range(step_cap):
+            if game["finished"]:
+                break
+            held = game["confirmation"]
+            if isinstance(held, int):
+                game = _api_post(
+                    base,
+                    f"/games/{game_id}/confirm",
+                    {
+                        "seat": held,
+                        "revision": game["revision"],
+                        "undo_count": game["undo_count"],
+                    },
+                )
+                continue
+            decision = game["decision"]
+            if decision is None or decision["owner"] not in (0, 1):
+                break
+            owner = decision["owner"]
+            actions = _api_get(base, f"/games/{game_id}/seats/{owner}/actions")[
+                "actions"
+            ]
+            if not actions:
+                break
+            if decision["kind"] == "conflict_end_trigger" and [
+                a["action_id"] for a in actions
+            ] == [DECLINE]:
+                return seed
+            game = _api_post(
+                base,
+                f"/games/{game_id}/actions",
+                {
+                    "seat": owner,
+                    "revision": game["revision"],
+                    "undo_count": game["undo_count"],
+                    "index": actions[0]["index"],
+                },
+            )
+    return None
+
+
+def check_conflict_end_decline(page, rec) -> None:
+    print("[h] a decline-only Conflict-end window: '쓰지 않음 · 턴 종료 ▶'")
+    seat = page.evaluate("state.viewSeat")
+    prompt = page.inner_text("#decision-info .prompt")
+    check.ok(
+        "쓸 수 있으면 사용, 아니면 쓰지 않음" in prompt,
+        "the prompt reads for a seat with nothing to play",
+        prompt,
+    )
+    check.ok(
+        page.locator("#actions .action-item").count() == 0,
+        "the decline is no item in #actions",
+    )
+    row = page.locator(".turn-end-row button")
+    check.ok(
+        row.count() == 1
+        and row.inner_text() == page.evaluate("t('render.turn_end_button_decline')"),
+        "labelled 쓰지 않음 · 턴 종료",
+        row.inner_text() if row.count() else None,
+    )
+    check.ok(page.locator(".undo-row").count() == 0, "nothing to take back")
+    offered = page.evaluate(
+        "state.log.entries.some((entry) => (entry.events || []).some("
+        "(event) => event.kind === 'conflict_end_trigger_offered'))"
+    )
+    check.ok(
+        offered and "제안" not in page.inner_text("#action-log"),
+        "the log records the offers but shows no per-seat 'offered' line",
+        offered,
+    )
+    switch_language(page, "en")
+    text = page.locator(".turn-end-row button").inner_text()
+    check.ok(
+        text == "Decline · End turn ▶" and not HANGUL.search(text),
+        "in English: 'Decline · End turn ▶'",
+        text,
+    )
+    switch_language(page, "ko")
+
+    posts = rec.count("POST", "/actions")
+    page.locator(".turn-end-row button").click()
+    assert settled(page, 20)
+    check.ok(rec.count("POST", "/actions") == posts + 1, "one click, one request")
+    check.ok(
+        page.evaluate(f"state.summary.confirmation !== {seat}"),
+        "and hands over without holding the seat",
+    )
+    check.ok(
+        page.evaluate(
+            f"!(state.summary.decision && state.summary.decision.owner === {seat}"
+            " && state.summary.decision.kind === 'conflict_end_trigger')"
+        ),
+        "the window does not come back",
+    )
+
+
+def scenario_conflict_end_decline(base, browser, seed: int) -> None:
+    """Replay find_conflict_end_seed's policy through the browser (the page
+    follows the deciding human seat), to the same decline-only window."""
+
+    context, page, rec = open_context(browser, "conflict-end-decline")
+    create_game(page, base, humans=(0, 1), seed=seed, options=("immortality",))
+    found = False
+    for _ in range(2000):
+        assert settled(page, 20)
+        if page.evaluate("state.summary.finished"):
+            break
+        if page.evaluate("state.summary.confirmation === state.viewSeat"):
+            page.evaluate("confirmTurn()")
+            continue
+        if not page.evaluate("Boolean(state.actions && state.actions.actions.length)"):
+            time.sleep(0.05)
+            continue
+        ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
+        if (
+            page.evaluate("state.summary.decision.kind") == "conflict_end_trigger"
+            and ids == [DECLINE]
+        ):
+            check_conflict_end_decline(page, rec)
+            found = True
+            break
+        page.evaluate("applyAction(0)")
+    check.ok(found, f"a decline-only Conflict-end window was reached (seed {seed})")
+
+    failed = [r for r in rec.requests if r[3] >= 400]
+    check.ok(not failed, "no failed requests", failed[:5])
+    check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
+    context.close()
+
+
+# The lone human's Conflict-end window (i): one human seat, so the server
+# answers a decline-only window for it (sessions.py _auto_decline_locked).
+# Seeds that reach one with the policy below, in the order of how few of the
+# seat's requests they take (scanned 2026-10-09 over seeds 0-119, codec
+# v141): 97 in round 1 after 19 requests, then 48, 49, 114, 98, 96.
+LONE_HUMAN = ["human", "heuristic", "heuristic", "heuristic"]
+AUTO_DECLINE_SEEDS = (97, 48, 49, 114, 98, 96)
+
+
+def _server_declined(entries: list[dict[str, Any]], last_press: int) -> int | None:
+    """The log index of a decline of seat 0's after its press at
+    ``last_press`` (the page never sends one under this policy, see
+    scenario_auto_decline), when the Combat was resolved in between."""
+
+    resolved = False
+    for entry in entries:
+        if entry["index"] <= last_press:
+            continue
+        kinds = {event["kind"] for event in entry.get("events") or []}
+        resolved = resolved or "combat_standing" in kinds
+        if (
+            entry["type"] == "action"
+            and entry["actor"] == 0
+            and entry["action_id"] == DECLINE
+        ):
+            return entry["index"] if resolved else None
+    return None
+
+
+def find_auto_decline_seed(base: str, *, request_cap: int = 60) -> int | None:
+    """The first of AUTO_DECLINE_SEEDS where seat 0, the one human seat of
+    an Immortality game with the setup screen's Leader draft, always taking
+    its first legal action (confirming a hold at once, never offered a
+    lone decline before), has a Conflict-end window declined for it by the
+    server after a Combat it did not see resolved -- raw HTTP, like
+    find_endgame_intrigue_seed."""
+
+    for seed in AUTO_DECLINE_SEEDS:
+        game = _api_post(
+            base,
+            "/games",
+            {
+                "seats": LONE_HUMAN,
+                "leader_draft": True,
+                "immortality": True,
+                "game_seed": seed,
+            },
+        )
+        game_id = game["game_id"]
+        log = f"/games/{game_id}/log?seat=0"
+        last_press = -1
+        for _ in range(request_cap):
+            if game["finished"]:
+                break
+            body = {
+                "seat": 0,
+                "revision": game["revision"],
+                "undo_count": game["undo_count"],
+            }
+            count = _api_get(base, log)["count"]
+            if game["confirmation"] == 0:
+                game = _api_post(base, f"/games/{game_id}/confirm", body)
+            else:
+                decision = game["decision"]
+                if decision is None or decision["owner"] != 0:
+                    break
+                actions = _api_get(base, f"/games/{game_id}/seats/0/actions")[
+                    "actions"
+                ]
+                if not actions or actions[0]["action_id"] == DECLINE:
+                    break
+                game = _api_post(
+                    base,
+                    f"/games/{game_id}/actions",
+                    {**body, "index": actions[0]["index"]},
+                )
+                # The seat's own step is the first new entry (a confirm
+                # adds none of its own).
+                last_press = count
+            entries = _api_get(base, f"{log}&after={count}")["entries"]
+            if _server_declined(entries, last_press) is not None:
+                return seed
+    return None
+
+
+# Which cards glow, worked out from the request this page last sent rather
+# than from ownGlowFrom: every card holding a log entry after that press
+# (`lastPress`), and none before. logGroups() only says which entries share
+# a card, in the DOM's order (remote_fresh.py's GLOW_CHECK_JS does the same).
+AUTO_DECLINE_GLOW_JS = """([lastPress, declined]) => {
+  const groups = logGroups(state.log.entries).filter((g) => g.kind !== "undo");
+  const indexes = (g) =>
+    g.kind === "neutral"
+      ? g.items.map((item) => item.index ?? item.chance.index)
+      : g.entries.map((entry) => entry.index);
+  const cards = [...document.querySelectorAll("#action-log .turn-card")].filter(
+    (card) => !card.classList.contains("undo-marker")
+  );
+  const expected = groups.map((g) => indexes(g).some((index) => index > lastPress));
+  const actual = cards.map((card) => card.classList.contains("fresh"));
+  const resolved = groups.findIndex(
+    (g) =>
+      g.kind === "neutral" &&
+      g.items.some((item) => item.event && item.event.kind === "combat_standing") &&
+      indexes(g).some((index) => index > lastPress)
+  );
+  const declineCard = groups.findIndex((g) => indexes(g).includes(declined));
+  return {
+    expected, actual,
+    resolvedTitle:
+      resolved >= 0 ? cards[resolved].querySelector("strong").textContent : null,
+    resolvedFresh: resolved >= 0 && actual[resolved],
+    declineFolded: declineCard >= 0 && groups[declineCard].kind === "passes",
+    declineFresh: declineCard >= 0 && actual[declineCard],
+  };
+}"""
+
+
+def scenario_auto_decline(base, browser, seed: int) -> None:
+    """Replay find_auto_decline_seed's policy through the browser up to the
+    seat's first decision after the server declined for it, then read the
+    log's glow: the Combat result and the AI moves the seat never saw are
+    new to it although the log holds a later step of its own (panels.js
+    ownGlowFrom leaves the seat's Conflict-end declines out)."""
+
+    print("[i] a lone human's decline-only window, answered by the server")
+    context, page, rec = open_context(browser, "auto-decline")
+    create_game(page, base, humans=(0,), seed=seed, options=("immortality",))
+    last_press = -1
+    declined = None
+    for _ in range(200):
+        assert settled(page, 20)
+        if page.evaluate("state.summary.finished"):
+            break
+        held = page.evaluate("state.summary.confirmation === 0")
+        acting = page.evaluate(
+            "Boolean(state.actions && state.actions.actions.length)"
+        )
+        if not held and not acting:
+            time.sleep(0.05)
+            continue
+        entries = page.evaluate("state.log.entries")
+        declined = _server_declined(entries, last_press)
+        if declined is not None:
+            break
+        if held:
+            page.evaluate("confirmTurn()")
+            continue
+        if page.evaluate("state.actions.actions[0].action_id") == DECLINE:
+            break
+        before = max((entry["index"] for entry in entries), default=-1)
+        page.evaluate("applyAction(0)")
+        assert settled(page, 20)
+        last_press = page.evaluate(
+            f"state.log.entries.find((e) => e.index > {before}"
+            " && e.type === 'action' && e.actor === 0).index"
+        )
+    if not check.ok(
+        declined is not None,
+        f"the server declined a window for the lone human (seed {seed})",
+    ):
+        context.close()
+        return
+    check.ok(
+        page.evaluate("state.summary.confirmation !== 0")
+        and page.evaluate("state.summary.decision.owner === 0")
+        and page.evaluate("state.summary.decision.kind !== 'conflict_end_trigger'"),
+        "the seat's next decision is not the window",
+    )
+    glow = page.evaluate(AUTO_DECLINE_GLOW_JS, [last_press, declined])
+    check.ok(
+        glow["resolvedFresh"],
+        "the Combat result, resolved after the seat's last press, is new to it",
+        glow["resolvedTitle"],
+    )
+    check.ok(
+        glow["declineFolded"] and glow["declineFresh"],
+        "the server's decline is folded with the others and new to the seat",
+        glow,
+    )
+    check.ok(
+        glow["expected"] == glow["actual"],
+        "exactly the cards holding entries after the seat's last press glow",
+        glow,
+    )
+
+    failed = [r for r in rec.requests if r[3] >= 400]
+    check.ok(not failed, "no failed requests", failed[:5])
+    check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
@@ -702,6 +1065,22 @@ def main() -> None:
                 )
             else:
                 scenario_endgame_intrigue(base, browser, endgame_seed)
+
+            conflict_end_seed = find_conflict_end_seed(base)
+            if conflict_end_seed is None:
+                check.ok(False, "a seed reached a decline-only Conflict-end window")
+            else:
+                scenario_conflict_end_decline(base, browser, conflict_end_seed)
+
+            auto_decline_seed = find_auto_decline_seed(base)
+            if auto_decline_seed is None:
+                check.ok(
+                    False,
+                    "one of AUTO_DECLINE_SEEDS reached a server decline"
+                    " (rescan with that policy)",
+                )
+            else:
+                scenario_auto_decline(base, browser, auto_decline_seed)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

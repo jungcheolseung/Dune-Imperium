@@ -664,6 +664,7 @@ const EXPLICIT_TURN_END_IDS = new Set([
   "finish_reveal",
   "pass_combat_intrigue",
   "pass_endgame_intrigue",
+  "decline_conflict_end_intrigue",
   "confirm_scouts_bid",
   "scouts_call",
 ]);
@@ -716,7 +717,8 @@ async function confirmStagedBid(actions) {
 /* The turn-end row's label for the seat's own explicit action: plain, or
    with the prefix that marks a Reveal that still offers buyable cards (the
    same isAcquire test renderRevealPanel uses for its own `buys`, not
-   whether anything was already bought) or an Intrigue pass. */
+   whether anything was already bought), an Intrigue pass, or a declined
+   Conflict-end window ("쓰지 않음"). */
 function turnEndButtonLabel(action, actions) {
   if (action.action_id === "confirm_scouts_bid" || action.action_id === "scouts_call") {
     const currency = scoutsAuctionCurrency();
@@ -734,6 +736,9 @@ function turnEndButtonLabel(action, actions) {
   }
   if (action.action_id === "pass_combat_intrigue" || action.action_id === "pass_endgame_intrigue") {
     return t("render.turn_end_button_pass");
+  }
+  if (action.action_id === "decline_conflict_end_intrigue") {
+    return t("render.turn_end_button_decline");
   }
   return t("render.turn_end_button");
 }

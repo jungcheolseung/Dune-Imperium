@@ -168,6 +168,8 @@ AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # Matches the sweep's policy seed convention so one game seed names one game.
 _DEFAULT_POLICY_OFFSET: Final = 700_000
 _MAX_AUTO_STEPS: Final = 30_000
+# The Conflict-end window's "쓰지 않음" (``_auto_decline_locked``).
+_CONFLICT_END_DECLINE: Final = "decline_conflict_end_intrigue"
 # Names are shown to every player at the table; the limit keeps them on one
 # line of a seat panel.
 PLAYER_NAME_MAX_LENGTH: Final = 20
@@ -1520,6 +1522,9 @@ class GameSessionManager:
         An AI seat's answer cannot end a human Agent or Reveal turn (both
         end only through their owner's press, OQ-095), but the check stays
         for any unit an answer could still close (``_agent_step_locked``).
+
+        A lone human seat's Conflict-end window with nothing to play but
+        "쓰지 않음" is answered here too (``_auto_decline_locked``).
         """
 
         engine = session.engine
@@ -1536,6 +1541,8 @@ class GameSessionManager:
             if not isinstance(decision, PlayerDecision):
                 raise RuntimeError(f"unknown decision type: {decision!r}")
             if session.seats[decision.owner] == HUMAN_SEAT:
+                if self._auto_decline_locked(session, decision.owner):
+                    continue
                 return
             if not engine.legal_actions(session.state, decision.owner):
                 raise RuntimeError(
@@ -1550,6 +1557,39 @@ class GameSessionManager:
             if self._agent_step_locked(session, decision.owner, action):
                 return
         raise RuntimeError("auto-advance exceeded the step limit")
+
+    def _auto_decline_locked(self, session: GameSession, seat: int) -> bool:
+        """Decline a lone human seat's Conflict-end window it can only decline.
+
+        The window opens on public facts, for every seat with enough units
+        in the Conflict and an Intrigue card (OQ-103, user decision
+        2026-10-09: "1번은 A안으로 가자"), so most of them offer nothing but
+        "쓰지 않음". With one human seat nobody at the table reads how long
+        the game waited (the AI seats never read timing), so the server
+        answers it as the seat's own one-press decline: recorded and logged
+        like a pressed one, so a load replays it as it stands; sealed like
+        an explicit turn end, so no undo lands back on the window; opening
+        no unit and holding nothing. With two or more human seats it never
+        answers: the other players would see the game wait only when the
+        seat had something to play. Nor once the seat has played a card in
+        the window (its unit is open): that play can still be taken back,
+        and the seat's own "쓰지 않음" press is what confirms it, as a
+        pass confirms a Combat Intrigue play. Returns whether it answered.
+        """
+
+        if sum(1 for assignment in session.seats if assignment == HUMAN_SEAT) != 1:
+            return False
+        if seat in session.open_units:
+            return False
+        stack = session.state.decision_stack
+        if not stack or stack[-1].kind != FrameKind.CONFLICT_END_TRIGGER:
+            return False
+        actions = session.engine.legal_actions(session.state, seat)
+        if [action.action_id for action in actions] != [_CONFLICT_END_DECLINE]:
+            return False
+        _apply_step(session, actions[0])
+        session.undo_floor = len(session.steps)
+        return True
 
     def _agent_step_locked(
         self, session: GameSession, seat: int, action: DomainAction
@@ -2606,7 +2646,8 @@ def _serialize_action(
     (rules/pauses.py), whatever the seats hold, and is held by the server
     with its undo, so neither mark depends on another seat's hidden cards
     (it did before the pauses: a Harvest Cells in another hand stopped the
-    dry run at its Conflict-end window, OQ-103);
+    dry run at its Conflict-end window, which then opened only for a seat
+    that could play one, OQ-103);
     ``strength_after`` is the acting seat's running combat strength once the
     step is taken, when the step changes it (``strength_preview``);
     ``reveal_preview`` sums up a Reveal the step would start; and
