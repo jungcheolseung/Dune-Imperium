@@ -82,7 +82,7 @@ PENDING_JS = """() => {
     type: c.type, round: c.round ?? null, conflict: c.conflictId ?? null,
     item: c.itemId ?? null, seat: c.seat ?? null,
     rows: c.rows ? c.rows.map((r) => [r.seat, r.rank, r.strength, r.multiplier])
-      : null}));
+      : null, count: c.count ?? null}));
 }"""
 
 # The same cues, read from the log and the view without the page's helpers,
@@ -93,8 +93,9 @@ PENDING_JS = """() => {
 # last entry that opened a phase.
 EXPECTED_JS = """(from) => {
   const out = [];
-  const cue = (at, type, round, conflict, item, seat = null, rows = null) =>
-    out.push({at, cue: {type, round, conflict, item, seat, rows}});
+  const cue = (at, type, round, conflict, item, seat = null, rows = null,
+    count = null) => out.push({at, cue: {type, round, conflict, item, seat, rows,
+    count}});
   const live = state.log.entries.filter((e) => !e.undone && e.type !== 'undo');
   const fresh = live.filter((e) => e.index >= from);
   const events = fresh.flatMap((e) => (e.events || []).map((event, position) =>
@@ -140,6 +141,16 @@ EXPECTED_JS = """(from) => {
       cue(at, 'scouts', p.round, null, p.item_id);
     } else if (event.kind === 'endgame_started') {
       cue(at, 'endgame', null, null, null);
+    } else if (['sandworm_deployed', 'reveal_sandworm_deployed'].includes(event.kind)) {
+      const count = p.count ?? p.amount ?? 1;
+      const last = out[out.length - 1];
+      if (last && last.cue.type === 'sandworm' && last.at[0] === at[0]
+          && last.cue.seat === p.player) last.cue.count += count;
+      else cue(at, 'sandworm', null, null, null, p.player, null, count);
+    } else if (event.kind === 'shield_wall_destroyed') {
+      cue(at, 'shield_wall', null, null, null);
+    } else if (event.kind === 'game_finished') {
+      cue(at, 'final', null, null, null);
     }
   });
   out.sort((a, b) => a.at[0] - b.at[0] || a.at[1] - b.at[1]);
@@ -229,6 +240,13 @@ TITLES = {
         "conflict": "교전: {name}",
         "result": "전투 결과",
         "ranks": {1: "1위", 2: "2위", 3: "3위", 0: "보상 없음"},
+        "final_ranks": {1: "1위", 2: "2위", 3: "3위", 4: "4위"},
+        "sandworm": "모래벌레 소환!",
+        "sandworms": "모래벌레 {count}마리 소환!",
+        "shield_wall": "방어벽 파괴!",
+        "final": "최종 순위",
+        "winner": "승자: {name}",
+        "game_over": "게임 종료",
     },
     "en": {
         "round": "Round {round}",
@@ -241,6 +259,13 @@ TITLES = {
         "conflict": "Conflict: {name}",
         "result": "Combat Result",
         "ranks": {1: "1st", 2: "2nd", 3: "3rd", 0: "No reward"},
+        "final_ranks": {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"},
+        "sandworm": "Sandworm summoned!",
+        "sandworms": "{count} sandworms summoned!",
+        "shield_wall": "Shield Wall destroyed!",
+        "final": "Final Standings",
+        "winner": "Winner: {name}",
+        "game_over": "Game over",
     },
 }
 SCOUTS_KINDS = {
@@ -313,7 +338,34 @@ def expected_words(page, cue: dict, lang: str) -> dict:
             "subtitle": words["conflict"].format(name=conflict["name"]),
             "image": conflict["image"],
         }
+    if cue["type"] == "shield_wall":
+        return {
+            "kicker": None,
+            "title": words["shield_wall"],
+            "subtitle": None,
+            "image": page.evaluate("iconUrl('shield_wall')"),
+        }
+    if cue["type"] == "final":
+        winner = page.evaluate("state.summary.standings[0].player")
+        leader = leader_of(page, winner)
+        label = page.evaluate("(seat) => playerLabel(seat)", winner)
+        return {
+            "kicker": words["game_over"],
+            "title": words["final"],
+            "subtitle": words["winner"].format(name=f"{leader['name']} · {label}"),
+            "image": leader["image"],
+        }
     leader = leader_of(page, cue["seat"])
+    if cue["type"] == "sandworm":
+        count = cue["count"]
+        return {
+            "kicker": page.evaluate("(seat) => playerLabel(seat)", cue["seat"]),
+            "title": words["sandworm"]
+            if count == 1
+            else words["sandworms"].format(count=count),
+            "subtitle": leader["name"],
+            "image": page.evaluate("iconUrl('sandworm')"),
+        }
     if cue["seat"] != 0:
         name = page.evaluate("(seat) => playerName(seat)", cue["seat"])
         return {
@@ -338,7 +390,9 @@ def verify_drawn(page, pair: tuple[dict, dict], label: str) -> dict:
     width = page.evaluate("document.documentElement.scrollWidth")
     page.evaluate(SHOW_JS, full)
     lang = page.evaluate("TERM_LANGUAGE")
-    if cue["type"] in ("round", "combat", "result", "turn"):
+    if cue["type"] in (
+        "round", "combat", "result", "final", "sandworm", "shield_wall", "turn"
+    ):
         page.wait_for_function(
             "() => { const i = el('phase-banner').querySelector('img');"
             " return !i || (i.complete && i.naturalWidth > 0); }"
@@ -368,11 +422,28 @@ def verify_drawn(page, pair: tuple[dict, dict], label: str) -> dict:
             f"{label}: the result board lists the logged standing ({lang})",
             (info["rows"], want_rows),
         )
-    clicks = ("through", "hitOutside") if cue["type"] != "result" else ()
+    if cue["type"] == "final":
+        ranks = TITLES[lang]["final_ranks"]
+        standings = page.evaluate("state.summary.standings")
+        want_rows = [
+            {"seat": e["player"], "rank": e["rank"], "rankText": ranks[e["rank"]],
+             "strength": str(e["victory_points"]), "mine": e["player"] == 0}
+            for e in standings
+        ]
+        got_rows = [
+            {**row, "strength": row["strength"].split(" ")[0]} for row in info["rows"]
+        ]
+        check.ok(
+            got_rows == want_rows,
+            f"{label}: the final board lists the standings ({lang})",
+            (info["rows"], want_rows),
+        )
+    boards = ("result", "final")
+    clicks = ("through", "hitOutside") if cue["type"] not in boards else ()
     placed = {
         key: info[key] for key in ("fits", "overBoard", "clearOfSide", *clicks)
     }
-    if cue["type"] == "result":
+    if cue["type"] in boards:
         placed["takesClicks"] = info["takesClicks"]
     placed["noOverflow"] = (
         page.evaluate("document.documentElement.scrollWidth") == width
@@ -418,6 +489,7 @@ def walk(page) -> dict:
                     "item": None,
                     "seat": 0,
                     "rows": None,
+                    "count": None,
                 }
             )
             turn_end_due = False
@@ -460,8 +532,11 @@ def walk(page) -> dict:
     check.ok(rerendered, "a turn start was re-rendered without queueing it again")
     check.ok(turns >= 5, f"seat 0's turn starts were announced ({turns})")
     check.ok(others >= 30, f"the AI seats' turns were announced ({others})")
-    for kind in ("round", "combat", "result", "scouts", "endgame", "turn", "other"):
+    for kind in (
+        "round", "combat", "result", "scouts", "endgame", "final", "turn", "other"
+    ):
         check.ok(kind in seen, f"the walk met a {kind} banner")
+    print(f"  (the walk also met: {sorted(set(seen) & {'sandworm', 'shield_wall'})})")
     return seen
 
 
@@ -518,6 +593,12 @@ def turn_lifecycle(page) -> None:
     )
 
 
+KINDS_TO_LOOK = (
+    "round", "combat", "result", "scouts", "endgame", "final", "sandworm",
+    "shield_wall", "turn", "other",
+)
+
+
 def look(page, seen: dict, tag: str) -> None:
     """Every banner kind in both languages and three window sizes."""
     for lang in ("ko", "en"):
@@ -526,7 +607,7 @@ def look(page, seen: dict, tag: str) -> None:
         for size in SIZES:
             page.set_viewport_size(size)
             page.evaluate("fitActionLog()")
-            kinds = ("round", "combat", "result", "scouts", "endgame", "turn", "other")
+            kinds = [kind for kind in KINDS_TO_LOOK if kind in seen]
             for kind in kinds:
                 width = f"{size['width']}x{size['height']}"
                 info = verify_drawn(page, seen[kind], f"{tag} {width}")

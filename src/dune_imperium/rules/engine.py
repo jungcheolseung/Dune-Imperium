@@ -894,10 +894,11 @@ class UprisingRulesEngine(RulesEngine):
 
     # The Combat's final standing (``combat_standing``) is the strengths
     # and reward rows the state already holds, logged for the tables when
-    # the rewards begin. Kept in the state, it would change the hash of
-    # every game past its first Combat, and no save written before it
-    # existed would load (2026-10-08).
-    report_only_event_kinds = frozenset({"combat_standing"})
+    # the rewards begin, and a Reveal's hand (``cards_revealed``) is the
+    # cards the state then holds in play. Kept in the state, either would
+    # change the hash of every game past it, and no save written before
+    # they existed would load (2026-10-08).
+    report_only_event_kinds = frozenset({"combat_standing", "cards_revealed"})
 
     def __init__(self, leader_ids: tuple[str, ...] = DEFAULT_LEADER_IDS) -> None:
         self._leader_ids = leader_ids

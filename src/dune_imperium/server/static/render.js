@@ -446,6 +446,7 @@ function render(options) {
   renderDisclosure();
   el("host-panel").hidden = !(isRemote() && isAdmin());
   renderHostBlock(el("host-panel-body"));
+  renderPaceControl();
   applySpotlight();
   for (const [pane, top, left] of kept) {
     pane.scrollTop = top;

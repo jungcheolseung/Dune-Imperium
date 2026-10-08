@@ -15,6 +15,7 @@
     <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash" data-i18n="html.open_help" data-i18n-attr="title=html.open_help_title">도움말</button>
     <button id="language-toggle" lang="en">English</button>
     <button id="open-lobby" hidden data-i18n="html.open_lobby">플레이어</button>
+    <select id="ai-pace" hidden data-i18n-attr="title=html.ai_pace_title;aria-label=html.ai_pace_title" title="AI 진행 속도" aria-label="AI 진행 속도"></select>
     <button id="save-game" hidden data-i18n="html.save_game">저장</button>
     <button id="leave-game" hidden data-i18n="html.leave_game">나가기</button>
   </header>
@@ -34,6 +35,8 @@
           <p id="opt-search-note" class="muted" hidden data-i18n="html.search_ai_note">탐색 AI는 학습한 망으로 몇 수 앞을 두어 보고 고릅니다. 한 결정에 보통 1–3초 걸리고, 생각하는 동안에도 화면은 움직입니다.</p>
           <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">시드 (빈칸 = 무작위)</span>
             <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>
+          <label id="opt-ai-pace-row"><span data-i18n="html.opt_ai_pace_label">AI 진행 속도</span>
+            <select id="opt-ai-pace"></select></label>
         </fieldset>
         <fieldset class="setup-rules">
           <legend data-i18n="html.rule_options_legend">규칙 옵션</legend>
@@ -161,6 +164,7 @@
 
   <div id="card-popover" class="popover" hidden></div>
   <div id="play-effects" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <div id="stat-floats" aria-hidden="true"></div>
   <div id="phase-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
   <div id="help" hidden>
     <div id="help-body" role="dialog" aria-modal="true" aria-labelledby="help-title"></div>

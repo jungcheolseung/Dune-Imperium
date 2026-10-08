@@ -34,6 +34,21 @@ const UI_TEXT = {
   "effects.result_unranked": { "ko": "보상 없음", "en": "No reward" },
   "effects.result_double": { "ko": "모래벌레: 보상 2배", "en": "Sandworm: reward doubled" },
   "effects.result_close": { "ko": "누르면 닫힙니다", "en": "Click to close" },
+  "effects.banner_sandworm": { "ko": "{sandworm} 소환!", "en": "Sandworm summoned!" },
+  "effects.banner_sandworms": { "ko": "{sandworm} {{count}}마리 소환!", "en": "{{count}} sandworms summoned!" },
+  "effects.banner_shield_wall": { "ko": "{shield_wall} 파괴!", "en": "{shield_wall} destroyed!" },
+  "effects.final_title": { "ko": "최종 순위", "en": "Final Standings" },
+  "effects.final_winner": { "ko": "승자: {{name}}", "en": "Winner: {{name}}" },
+  "effects.rank_4": { "ko": "4위", "en": "4th" },
+  "screens.ai_pace_normal": { "ko": "보통", "en": "Normal" },
+  "screens.ai_pace_fast": { "ko": "빠르게", "en": "Fast" },
+  "screens.ai_pace_instant": { "ko": "즉시", "en": "Instant" },
+  "screens.ai_pace_header": { "ko": "AI: {{pace}}", "en": "AI: {{pace}}" },
+  "html.opt_ai_pace_label": { "ko": "AI 진행 속도", "en": "AI pace" },
+  "html.ai_pace_title": {
+    "ko": "AI 진행 속도 — 보통은 AI의 차례와 카드를 하나씩 보여 주고, 즉시는 기다리지 않습니다",
+    "en": "AI pace — Normal shows each AI turn and card in turn; Instant does not wait"
+  },
   "html.setup_intro": {
     "ko": "플레이어와 규칙을 고르고 아라키스로 떠나세요.",
     "en": "Choose your players and rules. Arrakis awaits."
@@ -1709,6 +1724,10 @@ const UI_TEXT = {
   "session.my_turn_title": {
     "ko": "▶ 내 차례 — {{title}}",
     "en": "▶ My turn — {{title}}"
+  },
+  "session.ai_pace_failed": {
+    "ko": "AI 진행 속도를 바꾸지 못했습니다 ({{message}})",
+    "en": "Could not change the AI pace ({{message}})"
   },
   "session.save_failed": {
     "ko": "저장 실패 ({{message}})",

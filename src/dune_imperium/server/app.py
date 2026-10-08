@@ -219,6 +219,16 @@ class CreateGameRequest(BaseModel):
     arrakeen_scouts: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
+    # How the AI seats pace their answers for the tables: 'normal', 'fast'
+    # or 'instant' (server/pacing.py). Omitted means the server's default,
+    # which GET /whoami reports (the play server's --ai-pace).
+    ai_pace: str | None = None
+
+
+class AiPaceRequest(BaseModel):
+    """A running game's new AI pace (server/pacing.py)."""
+
+    pace: str
 
 
 class ApplyActionRequest(BaseModel):
@@ -483,6 +493,8 @@ def create_app(
             "autosave": autosaving,
             # Whether the seat kind ``search`` is offered; never the path.
             "search_ai": sessions.search_checkpoint is not None,
+            # The AI pace a new game starts with (server/pacing.py).
+            "ai_pace": sessions.default_ai_pace,
         }
 
     @app.post("/auth/admin")
@@ -515,7 +527,15 @@ def create_app(
                 arrakeen_scouts=body.arrakeen_scouts,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,
+                ai_pace=body.ai_pace,
                 credentials=_credentials(request),
+            )
+
+    @app.post("/games/{game_id}/ai-pace")
+    def set_ai_pace(game_id: str, body: AiPaceRequest, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.set_ai_pace(
+                game_id, body.pace, credentials=_credentials(request)
             )
 
     @app.get("/games")

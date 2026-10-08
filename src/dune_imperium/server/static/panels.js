@@ -5,6 +5,7 @@
 function statNode(name, label, value) {
   const stat = document.createElement("span");
   stat.className = "stat";
+  stat.dataset.stat = name;
   stat.title = label;
   stat.append(
     name === "agent" ? agentPieceIcon(label) : icon(name, label),

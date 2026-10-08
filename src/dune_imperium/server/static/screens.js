@@ -32,7 +32,57 @@ function buildSeatSelects() {
     label.appendChild(select);
     wrap.appendChild(label);
   }
+  buildPaceSelect();
   updateSetupSummary();
+}
+
+/* The AI paces a game can run at (server/pacing.py AI_PACES), in the
+   page's language; `header` labels them for the table's header select. */
+const AI_PACE_LABELS = {
+  normal: "screens.ai_pace_normal",
+  fast: "screens.ai_pace_fast",
+  instant: "screens.ai_pace_instant",
+};
+const AI_PACES = Object.keys(AI_PACE_LABELS);
+
+function fillPaceOptions(select, value, header) {
+  select.textContent = "";
+  for (const pace of AI_PACES) {
+    const option = document.createElement("option");
+    option.value = pace;
+    const name = t(AI_PACE_LABELS[pace]);
+    option.textContent = header ? t("screens.ai_pace_header", { pace: name }) : name;
+    select.appendChild(option);
+  }
+  select.value = AI_PACES.includes(value) ? value : "normal";
+}
+
+/* The setup screen's pace: kept across a language switch, else the
+   server's default (GET /whoami, the play server's --ai-pace). */
+function buildPaceSelect() {
+  const select = el("opt-ai-pace");
+  const kept = select.value;
+  fillPaceOptions(select, kept || (state.server && state.server.ai_pace), false);
+}
+
+/* The table's header select: the running game's pace, for whoever may set
+   it (the host of a remote game), when the game has an AI seat to pace
+   and a human seat to watch. */
+function renderPaceControl() {
+  const select = el("ai-pace");
+  const summary = state.summary;
+  const kinds = (summary && summary.seats) || [];
+  /* A render lands whatever screen shows (the lobby of a running game). */
+  const shown = Boolean(summary) && !el("game-screen").hidden && !summary.finished
+    && !state.review && isAdmin()
+    && kinds.includes("human") && kinds.some((kind) => kind !== "human");
+  select.hidden = !shown;
+  if (!shown) return;
+  if (select.dataset.language !== TERM_LANGUAGE || !select.options.length) {
+    fillPaceOptions(select, summary.ai_pace, true);
+    select.dataset.language = TERM_LANGUAGE;
+  }
+  if (document.activeElement !== select) select.value = summary.ai_pace;
 }
 
 function updateSetupSummary() {
@@ -216,6 +266,7 @@ async function createGame(event) {
     // Epic Game Mode depends on no other box and opens checked (OQ-092 user
     // decision); the engine and the CLIs keep it off.
     epic_game: el("opt-epic-game").checked,
+    ai_pace: el("opt-ai-pace").value,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
@@ -261,6 +312,7 @@ function showScreen(name) {
   document.body.classList.toggle("in-game", atTable);
   el("leave-game").hidden = !(atTable || name === "lobby-screen");
   el("save-game").hidden = !(atTable && isAdmin());
+  if (!atTable) el("ai-pace").hidden = true;
   el("open-lobby").hidden = !(atTable && isRemote());
 }
 
@@ -363,6 +415,7 @@ function presenceDot(info) {
 
 function resetGameState() {
   resetPlayEffects();
+  resetStatFloats();
   resetPhaseBanner();
   state.gameId = null;
   state.summary = null;

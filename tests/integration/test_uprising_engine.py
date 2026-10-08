@@ -431,25 +431,38 @@ def test_four_seeded_random_players_finish_one_round() -> None:
     } <= event_kinds
 
 
-def test_the_combat_standing_is_reported_but_never_kept_in_the_state() -> None:
-    # combat_standing restates for the tables what the state holds when
-    # the rewards begin (rules/combat.py). It reaches the session log
-    # through the transition, but the state, whose canonical hash every
-    # save records, stays as it was before the event existed, so saves
-    # written earlier still load (2026-10-08).
+def test_report_only_events_reach_the_transition_but_never_the_state() -> None:
+    # combat_standing (rules/combat.py) and cards_revealed (rules/
+    # reveal_turn.py) restate for the tables what the state holds: the
+    # Combat's standing as the rewards begin, a Reveal's hand. They reach
+    # the session log through the transition, but the state, whose
+    # canonical hash every save records, stays as it was before they
+    # existed, so saves written earlier still load (2026-10-08).
     engine = UprisingRulesEngine()
+    assert engine.report_only_event_kinds == {"combat_standing", "cards_revealed"}
     first = run_random_round(engine, RulesetConfig(), 0, 1000)
     state = engine.reset(RulesetConfig(), 0)
     reported: list[GameEvent] = []
     for step in first.replay.steps:
+        before = state
         transition = engine.apply(state, step)
-        reported.extend(
-            event for event in transition.events if event.kind == "combat_standing"
-        )
+        shown = [
+            event
+            for event in transition.events
+            if event.kind in engine.report_only_event_kinds
+        ]
+        for event in shown:
+            if event.kind == "cards_revealed":
+                payload = dict(event.payload)
+                player = before.players[int(payload["player"])]
+                assert str(payload["card_ids"]).split(",") == list(player.hand)
+        reported.extend(shown)
         state = transition.state
-        assert all(event.kind != "combat_standing" for event in state.event_log)
+        assert not any(
+            event.kind in engine.report_only_event_kinds for event in state.event_log
+        )
 
-    assert reported
+    assert {event.kind for event in reported} == {"combat_standing", "cards_revealed"}
     assert state == first.state
 
 

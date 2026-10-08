@@ -29,6 +29,7 @@ function clearPlayEffects() {
     box.hidden = true;
     box.textContent = "";
   }
+  applyCueSpace();
 }
 
 function resetPlayEffects() {
@@ -37,11 +38,35 @@ function resetPlayEffects() {
   playEffects.count = 0;
 }
 
+/* A Reveal: the hand the seat revealed (cards_revealed, a public event
+   the engine reports without keeping) and its Persuasion and strength
+   (reveal_started), as one cue. */
+const REVEAL_EVENTS = new Set(["reveal_started", "cards_revealed"]);
+
 function cardPlayCues(entries) {
   const cues = [];
   for (const entry of entries) {
     if (entry.undone || entry.type === "undo") continue;
+    let reveal = null;
     for (const [position, event] of (entry.events || []).entries()) {
+      if (REVEAL_EVENTS.has(event.kind)) {
+        const payload = event.payload || {};
+        if (!Number.isInteger(payload.player) || payload.player < 0 || payload.player > 3) {
+          continue;
+        }
+        if (!reveal) {
+          reveal = { index: entry.index, order: position, kind: "reveal",
+            seat: payload.player, cards: [], persuasion: null, strength: null };
+          cues.push(reveal);
+        }
+        if (event.kind === "reveal_started") {
+          reveal.persuasion = payload.persuasion;
+          reveal.strength = payload.strength;
+        } else if (typeof payload.card_ids === "string") {
+          reveal.cards = payload.card_ids.split(",").filter((id) => entryOf(id, "cards"));
+        }
+        continue;
+      }
       const label = CARD_PLAY_EVENTS[event.kind];
       const payload = event.payload || {};
       if (!label || !Number.isInteger(payload.player) || payload.player < 0 || payload.player > 3) continue;
@@ -81,9 +106,68 @@ function positionPlayEffect() {
     window.innerHeight - box.offsetHeight - 12))}px`;
 }
 
+/* The revealed hand fanned out under the seat's name, with what it adds
+   up to. */
+function drawRevealEffect(cue) {
+  const box = el("play-effects");
+  box.textContent = "";
+  box.hidden = false;
+  const toast = document.createElement("div");
+  toast.className = "play-effect reveal";
+  toast.dataset.seat = String(cue.seat);
+  toast.style.setProperty("--play-color", SEAT_COLORS[cue.seat]);
+  const words = document.createElement("div");
+  words.className = "play-effect-words";
+  const player = document.createElement("div");
+  player.className = "play-effect-player";
+  player.textContent = playerLabel(cue.seat);
+  const type = document.createElement("div");
+  type.className = "play-effect-type";
+  type.textContent = termLabel("reveal_turn");
+  words.append(player, type);
+  const fan = document.createElement("div");
+  fan.className = "reveal-fan";
+  fan.style.setProperty("--fan-count", String(Math.max(1, cue.cards.length)));
+  cue.cards.forEach((id, position) => {
+    const entry = entryOf(id, "cards");
+    const card = document.createElement("div");
+    card.className = "reveal-card";
+    card.dataset.card = id;
+    card.style.setProperty("--fan-at", String(position - (cue.cards.length - 1) / 2));
+    if (entry.image) {
+      const img = document.createElement("img");
+      img.src = entry.image;
+      img.alt = entry.name;
+      img.draggable = false;
+      card.appendChild(img);
+    } else {
+      card.classList.add("textcard");
+      card.textContent = entry.name;
+    }
+    fan.appendChild(card);
+  });
+  const totals = document.createElement("div");
+  totals.className = "reveal-totals";
+  if (Number.isInteger(cue.persuasion)) {
+    totals.appendChild(amount("persuasion", termLabel("persuasion"), cue.persuasion));
+  }
+  if (Number.isInteger(cue.strength)) {
+    if (totals.childNodes.length) totals.append(" · ");
+    totals.appendChild(amount("sword", phraseText("{strength}"), cue.strength));
+  }
+  toast.append(words, fan, totals);
+  box.appendChild(toast);
+  positionPlayEffect();
+  applyCueSpace();
+}
+
 function drawPlayEffect() {
   const cue = playEffects.current;
   if (!cue) return;
+  if (cue.kind === "reveal") {
+    drawRevealEffect(cue);
+    return;
+  }
   const entry = entryOf(cue.cardId, cue.kind);
   const box = el("play-effects");
   box.textContent = "";
@@ -126,6 +210,25 @@ function drawPlayEffect() {
   toast.append(art, words);
   box.appendChild(toast);
   positionPlayEffect();
+  applyCueSpace();
+}
+
+/* While an Agent card's cue is on screen, the space it went to glows in
+   the seat's colour, so the eye finds the Agent on the board. The board
+   is drawn again on every render, so renderEffects applies it again. */
+function applyCueSpace() {
+  for (const node of document.querySelectorAll("#board .hotspot.cue-space")) {
+    node.classList.remove("cue-space");
+    node.style.removeProperty("--cue-color");
+  }
+  const cue = playEffects.current;
+  if (!cue || !cue.spaceId) return;
+  const hotspot = document.querySelector(
+    `#board .hotspot[data-space="${CSS.escape(cue.spaceId)}"]`,
+  );
+  if (!hotspot) return;
+  hotspot.classList.add("cue-space");
+  hotspot.style.setProperty("--cue-color", SEAT_COLORS[cue.seat]);
 }
 
 /* Show the next card cue now, whatever else is on screen (advanceEffects
@@ -142,7 +245,7 @@ function nextPlayEffect() {
   const waiting = effectsWaiting();
   const duration = state.review
     ? Math.max(200, Math.min(2200, playback.intervalMs / (waiting + 1)))
-    : waiting > 4 ? 1200 : 2200;
+    : (waiting > 4 ? 1200 : 2200) * cueScale();
   playEffects.timer = setTimeout(endPlayEffect, duration);
 }
 
@@ -155,6 +258,7 @@ function hidePlayEffect() {
     box.hidden = true;
     box.textContent = "";
   }
+  applyCueSpace();
 }
 
 function endPlayEffect() {
@@ -192,8 +296,9 @@ function renderPlayEffects() {
   if (playEffects.current) {
     // A language switch updates the current art and caption, without requeueing.
     const shown = el("play-effects").querySelector(".play-effect-art img");
-    const entry = entryOf(playEffects.current.cardId, playEffects.current.kind);
-    if ((shown && shown.getAttribute("src") !== entry.image)
+    const entry = playEffects.current.kind === "reveal" ? null
+      : entryOf(playEffects.current.cardId, playEffects.current.kind);
+    if ((shown && entry && shown.getAttribute("src") !== entry.image)
       || el("play-effects").dataset.language !== TERM_LANGUAGE) drawPlayEffect();
     positionPlayEffect();
   }
@@ -223,11 +328,19 @@ function renderPlayEffects() {
    (combat_standing, one public event per seat in the Conflict) and a
    result board shows it ("전투 단계 종료 때 전투 최종 순위도 그렇게
    보여지면 좋겠고", user, 2026-10-08). It stays longer than a band, and a
-   click or Escape closes it. */
+   click or Escape closes it. So does the final standings board when the
+   game ends. A summoned sandworm and a destroyed Shield Wall get a band of
+   their own. */
 const PHASE_BANNER_MS = 1600;
 const PHASE_BANNER_BUSY_MS = 900;
 const RESULT_BOARD_MS = 3200;
 const RESULT_BOARD_BUSY_MS = 2400;
+const FINAL_BOARD_MS = 6000;
+const FINAL_BOARD_BUSY_MS = 4000;
+
+/* The boards that list seats, stay longer and close on a click. */
+const BOARD_CUES = new Set(["result", "final"]);
+const SANDWORM_EVENTS = new Set(["sandworm_deployed", "reveal_sandworm_deployed"]);
 
 /* The steps that end a turn (panels.js QUIET_ACTIONS lists them too). A
    seat's turn frame after one of them is a new turn, even its own again;
@@ -386,6 +499,18 @@ function phaseBannerCues(entries, from) {
         });
       } else if (event.kind === "endgame_started") {
         cues.push({ type: "endgame", ...at });
+      } else if (SANDWORM_EVENTS.has(event.kind) && Number.isInteger(payload.player)) {
+        /* Several worms of one seat in one step are one band. */
+        const count = Number.isInteger(payload.count) ? payload.count
+          : Number.isInteger(payload.amount) ? payload.amount : 1;
+        const last = cues[cues.length - 1];
+        if (last && last.type === "sandworm" && last.index === entry.index
+          && last.seat === payload.player) last.count += count;
+        else cues.push({ type: "sandworm", ...at, seat: payload.player, count });
+      } else if (event.kind === "shield_wall_destroyed") {
+        cues.push({ type: "shield_wall", ...at });
+      } else if (event.kind === "game_finished") {
+        cues.push({ type: "final", ...at });
       }
     }
     if (entry.type === "action" && TURN_END_ACTION_IDS.has(entry.action_id)) {
@@ -435,7 +560,21 @@ function phaseBannerWords(cue) {
       `${scoutsKindName(item.kind || cue.itemKind)} · ${item.name}`, null];
   }
   if (cue.type === "endgame") return [null, PHASE_LABELS.endgame, null, null];
+  if (cue.type === "shield_wall") return [null, t("effects.banner_shield_wall"), null, null];
+  if (cue.type === "final") {
+    const winner = finalRows()[0];
+    const named = winner ? seatLeader(winner.seat) : { leader: null, name: null };
+    const who = winner ? [named.name, playerLabel(winner.seat)].filter(Boolean).join(" · ") : null;
+    return [t("common.game_over"), t("effects.final_title"),
+      who ? t("effects.final_winner", { name: who }) : null, named.leader];
+  }
   const { leader, name: leaderName } = seatLeader(cue.seat);
+  if (cue.type === "sandworm") {
+    return [playerLabel(cue.seat),
+      cue.count > 1 ? t("effects.banner_sandworms", { count: cue.count })
+        : t("effects.banner_sandworm"),
+      leaderName, null];
+  }
   if (ownTurnCue(cue)) {
     /* One screen can hold several seats: then "your turn" says which. */
     const parts = [leaderName];
@@ -475,45 +614,75 @@ const RESULT_RANK_KEYS = {
   3: "render.combat_result_rank_3",
 };
 
+/* The final standings (the finished summary's), best first. */
+function finalRows() {
+  const standings = (state.summary && state.summary.standings) || [];
+  return standings.map((entry) => ({ seat: entry.player, rank: entry.rank,
+    points: entry.victory_points }));
+}
+
+const FINAL_RANK_KEYS = { ...RESULT_RANK_KEYS, 4: "effects.rank_4" };
+
+/* One row per seat, as a board lists them: rank, colour, Leader and
+   player, and `value` (its nodes). */
+function boardRow(seat, rankText, ranked, value) {
+  const line = document.createElement("div");
+  line.className = "phase-result-row";
+  line.dataset.seat = String(seat);
+  line.style.setProperty("--seat-color", SEAT_COLORS[seat]);
+  line.classList.toggle("mine", !state.review && isMine(seat));
+  line.classList.toggle("unranked", !ranked);
+  const rank = document.createElement("span");
+  rank.className = "phase-result-rank";
+  rank.textContent = rankText;
+  const chip = document.createElement("span");
+  chip.className = "phase-result-chip";
+  /* The Leader is who a seat is on the table (the seat panels lead with
+     it); the player follows, smaller. */
+  const who = document.createElement("span");
+  who.className = "phase-result-player";
+  const leader = seatLeader(seat).name;
+  const small = document.createElement("small");
+  small.textContent = playerLabel(seat);
+  if (leader) who.append(leader, " ", small);
+  else who.textContent = playerLabel(seat);
+  const amountBox = document.createElement("span");
+  amountBox.className = "phase-result-strength";
+  amountBox.append(...value);
+  line.append(rank, chip, who, amountBox);
+  return line;
+}
+
+function finalBoardRows() {
+  const list = document.createElement("div");
+  list.className = "phase-result-rows";
+  for (const row of finalRows()) {
+    const line = boardRow(row.seat, t(FINAL_RANK_KEYS[row.rank] || "effects.rank_4"),
+      true, [amount("victory_point", phraseText("{victory_point}"), row.points)]);
+    line.dataset.rank = String(row.rank);
+    list.appendChild(line);
+  }
+  return list;
+}
+
 /* The standing, one row per seat in the Conflict, as the engine lists it:
    reward rows in rank order, then the seats left without one. */
 function resultRows(cue) {
   const list = document.createElement("div");
   list.className = "phase-result-rows";
   for (const row of cue.rows) {
-    const line = document.createElement("div");
-    line.className = "phase-result-row";
-    line.dataset.seat = String(row.seat);
-    line.dataset.rank = String(row.rank);
-    line.style.setProperty("--seat-color", SEAT_COLORS[row.seat]);
-    line.classList.toggle("mine", !state.review && isMine(row.seat));
-    line.classList.toggle("unranked", !RESULT_RANK_KEYS[row.rank]);
-    const rank = document.createElement("span");
-    rank.className = "phase-result-rank";
-    rank.textContent = RESULT_RANK_KEYS[row.rank]
-      ? t(RESULT_RANK_KEYS[row.rank]) : t("effects.result_unranked");
-    const chip = document.createElement("span");
-    chip.className = "phase-result-chip";
-    /* The Leader is who a seat is on the table (the seat panels lead with
-       it); the player follows, smaller. */
-    const who = document.createElement("span");
-    who.className = "phase-result-player";
-    const leader = seatLeader(row.seat).name;
-    const small = document.createElement("small");
-    small.textContent = playerLabel(row.seat);
-    if (leader) who.append(leader, " ", small);
-    else who.textContent = playerLabel(row.seat);
-    const strength = document.createElement("span");
-    strength.className = "phase-result-strength";
-    strength.appendChild(amount("sword", phraseText("{strength}"), row.strength));
+    const ranked = Boolean(RESULT_RANK_KEYS[row.rank]);
+    const value = [amount("sword", phraseText("{strength}"), row.strength)];
     if (row.multiplier > 1) {
       const doubled = document.createElement("span");
       doubled.className = "phase-result-double";
       doubled.title = t("effects.result_double");
       doubled.append(termNode("sandworm"), ` ×${row.multiplier}`);
-      strength.append(" ", doubled);
+      value.push(" ", doubled);
     }
-    line.append(rank, chip, who, strength);
+    const line = boardRow(row.seat,
+      ranked ? t(RESULT_RANK_KEYS[row.rank]) : t("effects.result_unranked"), ranked, value);
+    line.dataset.rank = String(row.rank);
     list.appendChild(line);
   }
   return list;
@@ -530,6 +699,10 @@ function drawPhaseBanner() {
   const band = document.createElement("div");
   band.className = `phase-banner ${cue.type}`;
   band.dataset.cue = cue.type;
+  if (cue.type === "sandworm") {
+    band.dataset.seat = String(cue.seat);
+    band.style.setProperty("--seat-color", SEAT_COLORS[cue.seat]);
+  }
   if (cue.type === "turn") {
     band.dataset.seat = String(cue.seat);
     band.style.setProperty("--banner-color", SEAT_COLORS[cue.seat]);
@@ -540,7 +713,12 @@ function drawPhaseBanner() {
   band.style.setProperty("--banner-ms", `${phaseBanner.duration}ms`);
   /* A redraw (a language switch) carries on from where the band was. */
   band.style.animationDelay = `${-Math.round(performance.now() - phaseBanner.shownAt)}ms`;
-  if (art && art.image) {
+  if (cue.type === "sandworm" || cue.type === "shield_wall") {
+    const frame = document.createElement("div");
+    frame.className = "phase-banner-art phase-banner-icon";
+    frame.appendChild(icon(cue.type, termLabel(cue.type)));
+    band.appendChild(frame);
+  } else if (art && art.image) {
     const frame = document.createElement("div");
     frame.className = "phase-banner-art";
     const img = document.createElement("img");
@@ -568,8 +746,8 @@ function drawPhaseBanner() {
     line.textContent = subtitle;
     words.appendChild(line);
   }
-  if (cue.type === "result") {
-    words.appendChild(resultRows(cue));
+  if (BOARD_CUES.has(cue.type)) {
+    words.appendChild(cue.type === "result" ? resultRows(cue) : finalBoardRows());
     const hint = document.createElement("div");
     hint.className = "phase-result-hint";
     hint.textContent = t("effects.result_close");
@@ -593,11 +771,13 @@ function nextPhaseBanner() {
     return;
   }
   const waiting = effectsWaiting();
-  const result = phaseBanner.current.type === "result";
-  const full = result ? RESULT_BOARD_MS : PHASE_BANNER_MS;
+  const type = phaseBanner.current.type;
+  const [full, busy] = type === "result" ? [RESULT_BOARD_MS, RESULT_BOARD_BUSY_MS]
+    : type === "final" ? [FINAL_BOARD_MS, FINAL_BOARD_BUSY_MS]
+    : [PHASE_BANNER_MS, PHASE_BANNER_BUSY_MS];
   phaseBanner.duration = state.review
     ? Math.max(300, Math.min(full, playback.intervalMs / (waiting + 1)))
-    : waiting >= 2 ? (result ? RESULT_BOARD_BUSY_MS : PHASE_BANNER_BUSY_MS) : full;
+    : (waiting >= 2 ? busy : full) * cueScale();
   phaseBanner.shownAt = performance.now();
   drawPhaseBanner();
   phaseBanner.timer = setTimeout(endPhaseBanner, phaseBanner.duration);
@@ -619,9 +799,9 @@ function endPhaseBanner() {
   advanceEffects();
 }
 
-/* Escape closes a result board on screen; returns whether it did. */
+/* Escape closes a result or final board on screen; returns whether it did. */
 function closeResultBoard() {
-  if (!phaseBanner.current || phaseBanner.current.type !== "result") return false;
+  if (!phaseBanner.current || !BOARD_CUES.has(phaseBanner.current.type)) return false;
   endPhaseBanner();
   return true;
 }
@@ -692,7 +872,81 @@ function renderPhaseBanner() {
   } else positionPhaseBanner();
 }
 
+/* ---------- changes on the seat panels ----------
+
+   When a seat's Victory Points, Solari, spice or water change, the change
+   rises over that number on its seat panel ("+2", "−1"), so a gain made on
+   the board is seen where it lands. Read from the view the page holds,
+   whose numbers every seat sees; a new game, an undo, a reload or a review
+   is a new baseline, and a review shows none. */
+const STAT_READERS = {
+  victory_point: (player) => player.victory_points,
+  solari: (player) => player.resources.solari,
+  spice: (player) => player.resources.spice,
+  water: (player) => player.resources.water,
+};
+const statFloats = { context: null, values: null };
+
+function statValues(view) {
+  return ((view && view.players) || []).map((player) => Object.fromEntries(
+    Object.entries(STAT_READERS).map(([key, read]) => [key, read(player)]),
+  ));
+}
+
+function floatStat(seat, key, delta) {
+  const stat = document.querySelector(
+    `#seats .seat[data-seat="${seat}"] .stat[data-stat="${key}"]`,
+  );
+  const rect = stat && stat.getBoundingClientRect();
+  if (!rect || !rect.width) return;
+  const chip = document.createElement("div");
+  chip.className = `stat-float ${delta > 0 ? "gain" : "loss"}`;
+  chip.dataset.seat = String(seat);
+  chip.dataset.stat = key;
+  chip.textContent = `${delta > 0 ? "+" : "\u2212"}${Math.abs(delta)}`;
+  chip.style.left = `${rect.left + rect.width / 2}px`;
+  chip.style.top = `${rect.top}px`;
+  el("stat-floats").appendChild(chip);
+  const drop = () => chip.remove();
+  chip.addEventListener("animationend", drop, { once: true });
+  setTimeout(drop, 2500);
+}
+
+function resetStatFloats() {
+  statFloats.context = null;
+  statFloats.values = null;
+  const box = el("stat-floats");
+  if (box) box.textContent = "";
+}
+
+function renderStatFloats() {
+  if (!state.gameId || !state.view || state.review || el("game-screen").hidden) {
+    resetStatFloats();
+    return;
+  }
+  const context = `${state.gameId}:${state.summary ? state.summary.undo_count : 0}`;
+  const values = statValues(state.view);
+  const before = statFloats.context === context ? statFloats.values : null;
+  statFloats.context = context;
+  statFloats.values = values;
+  if (!before) return;
+  values.forEach((now, seat) => {
+    for (const [key, value] of Object.entries(now)) {
+      const was = before[seat] ? before[seat][key] : value;
+      if (typeof was === "number" && value !== was) floatStat(seat, key, value - was);
+    }
+  });
+}
+
 /* ---------- one order for every cue ---------- */
+
+/* A fast-paced game (server/pacing.py PACE_SCALE) shows every cue for the
+   share of its length the server waits for it. */
+const PACE_CUE_SCALE = { fast: 0.6 };
+
+function cueScale() {
+  return (state.summary && PACE_CUE_SCALE[state.summary.ai_pace]) || 1;
+}
 
 function effectsWaiting() {
   return playEffects.queue.length + phaseBanner.queue.length;
@@ -715,4 +969,7 @@ function renderEffects() {
   renderPlayEffects();
   renderPhaseBanner();
   advanceEffects();
+  /* The board and the seat panels were drawn again before this. */
+  applyCueSpace();
+  renderStatFloats();
 }

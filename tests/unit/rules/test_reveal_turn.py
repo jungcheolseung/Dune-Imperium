@@ -1169,7 +1169,11 @@ def test_treacherous_maneuver_reveal_draws_intrigue() -> None:
 
     # The draw waits for the owner's order in the Reveal (OQ-045).
     assert result.state.players[0].intrigue_cards == ()
-    assert [event.kind for event in result.events] == ["reveal_started"]
+    # cards_revealed shows the hand to the tables (report-only, 2026-10-08).
+    assert [event.kind for event in result.events] == [
+        "reveal_started",
+        "cards_revealed",
+    ]
     (gain,) = legal_reveal_gain_actions(result.state, 0)
     assert gain.action_id == "draw_reveal_intrigue"
     drawn = apply_reveal_gain(result.state, gain)
@@ -2391,6 +2395,7 @@ def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
     assert with_result.state.players[0].combat_strength == 5
     assert tuple(event.kind for event in with_result.events) == (
         "reveal_started",
+        "cards_revealed",
         "influence_gained",
     )
 

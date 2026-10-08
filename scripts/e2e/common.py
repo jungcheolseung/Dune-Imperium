@@ -81,6 +81,10 @@ class ServerProcess:
             str(self.port),
             "--saves-dir",
             self.saves,
+            # The play server paces its AI seats for the tables by default;
+            # the checks here want every AI answer inside the request, as
+            # before, unless a script asks for a pace (ai_pace.py).
+            *(() if "--ai-pace" in self._extra else ("--ai-pace", "instant")),
             *self._extra,
         ]
         self._process = subprocess.Popen(
