@@ -65,6 +65,10 @@ took 47% of about 20 agent-hours (running the tests themselves took only about
 - **High risk.** Remote sync and polling, hidden information (what a seat may
   see), engine events and their payloads, undo/save/replay, and the list of
   actions a seat is offered. Keep an independent review agent for these.
+- The server launcher (`src/dune_imperium/launcher/`, docs/server-launcher-plan.md):
+  its window (`gui.py`, `view.py`) is low risk; how it starts and stops the
+  server (`supervisor.py`, the server's `--exit-when-stdin-closes`) and what
+  it does with the admin key are high risk.
 - Fix a review finding directly, either the reviewer or the main session.
   Send it back for re-review only when the fix changes the design.
 - For each item, run only the tests that cover it. Run the full pytest, ruff,

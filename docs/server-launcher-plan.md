@@ -1,6 +1,6 @@
 # 플레이 서버 런처(GUI) 계획
 
-기준일: 2026-10-08 (master `717f88be` 기준 코드 위치). 이 문서는 다른 세션에서 이어 구현하기 위한 인계서다. 계획만 세웠고 코드는 아직 없다. 조사 원자료(설계안 5건, 사실 검증 5묶음, 심사 3건, 초안 리뷰 4건과 반박 15건)는 세션의 `tmp/claude/<세션>/panel/`에 남겼다(git 무시).
+기준일: 2026-10-08 계획(master `717f88be` 기준 코드 위치), 2026-10-09 1~6단계 구현(브랜치 `claude/server-gui-plan-aca18e`). 이 문서는 다른 세션에서 이어 작업하기 위한 인계서다. **남은 것은 7단계(Windows 네이티브 실기 검증)뿐이다.** 구현하면서 계획과 달라진 점은 13절에 모았다(아래 5절 본문은 계획 당시 그대로이고, 다른 곳은 13절이 우선한다). 조사 원자료(설계안 5건, 사실 검증 5묶음, 심사 3건, 초안 리뷰 4건과 반박 15건, 1·2단계 독립 리뷰)는 세션의 `tmp/claude/<세션>/panel/`에 남겼다(git 무시).
 
 ## 1. 목적과 원칙
 
@@ -234,7 +234,7 @@ macOS: 서버 Popen 직후 `subprocess.Popen(["caffeinate", "-i", "-w", str(pid)
 
 **Windows(14700K, PowerShell 네이티브, 7단계)**: `uv --version`(≥ 0.12.2 권장 → Tk 9.0.4; 아니면 8.6.14도 지원), `uv python install 3.14`, `uv sync --locked --inexact --extra ui --extra train`; `uv run python -m tkinter`와 `tkinter.TkVersion`; `dir .venv\Scripts\pythonw.exe`와 `dune-imperium-launcher.exe`(확인용); exe 더블클릭으로 콘솔 없이 창이 뜸(**`uv run`으로 띄우지 말 것**); `.venv\Scripts\python.exe -m dune_imperium.launcher.cli --check`가 콘솔에 출력하고 `dune-imperium-launcher.exe --check`는 출력 없이 종료 코드만 주는지 기록; 150% 배율에서 선명함; 한글 라벨·IME 입력; `import torch`; 서버 시작 뒤 `Get-CimInstance Win32_Process | ? ParentProcessId -eq <server.pid>`로 리디렉터 → 기반 `python.exe` 사슬과 `sys.executable` 값을 기록, 리디렉터만 `Stop-Process`했을 때 기반 프로세스가 따라 죽는지; 로컬 모드 시작 때 방화벽 팝업 없음(예상)·원격 모드 첫 시작 때 팝업 → 허용 후 **다른 기기** 접속; `Get-NetFirewallRule -Direction Inbound | Get-NetFirewallApplicationFilter`로 규칙의 Program 경로 기록(`.venv`가 아니라 `uv python dir` 아래여야 함; junction 경로인지 풀린 패치 폴더인지), `.venv`를 지우고 `uv sync`한 뒤 팝업이 다시 뜨지 않는지(예상: 안 뜸); `where tailscale`과 후보 목록이 `Get-NetIPAddress`와 맞는지, 보조 자식 호출 때 콘솔이 번쩍이지 않는지; [중지]가 3초 안에 끝나고 포트가 풀림, 실제 종료 코드 기록; SSE 탭이 열린 채 중지; 작업 관리자로 런처 `pythonw.exe`를 강제 종료 → 몇 초 안에 서버 두 프로세스가 사라지고(Job Object 하드 킬; 정상 종료 메시지는 기대하지 않는다) 포트가 풀리며 `saves/`에 `*.tmp`가 없음, 재시작 후 자동 저장을 불러올 수 있음; `powercfg /requests`에 SYSTEM 항목, 중지 뒤 사라짐; `test_a_port_somebody_listens_on_is_a_bind_problem`이 Windows에서 통과; 한글·공백이 든 체크아웃 경로; 비관리자 프롬프트에서 `mklink /J assets ..\Dune-Imperium-assets`가 되는지(가이드용); `uv run pytest -q`, `ruff`, `mypy`; 브라우저 탭 여러 개 열고 닫기·잠자기 복귀 뒤 재접속(`[WinError 64]` 재현 여부).
 
-## 9. 사용자 결정 거리 (추천 포함)
+## 9. 사용자 결정 (2026-10-09 확정: "추천대로 가자" — 아래 15개 모두 추천안)
 
 1. **형태**: tkinter 창(추천, 3절). 트레이·웹 런처·Qt 번들·GUI 없는 안은 기각 사유와 함께 10절에 남긴다.
 2. **설정 파일 위치**: `local/launcher.json`(추천; 기기별 파일 한 폴더, `.gitignore` 한 줄) vs `settings/launcher.json`.
@@ -293,3 +293,34 @@ macOS: 서버 Popen 직후 `subprocess.Popen(["caffeinate", "-i", "-w", str(pid)
 - `CLAUDE.md` "Verifying UI changes" 절에 런처 한 줄(tkinter 런처는 낮음, `supervisor`의 서버 종료 경로는 고위험).
 - [`multiplayer-design.md`](multiplayer-design.md) 8.3 호스트 머신에 런처 한 줄.
 - [`implementation-plan.md`](implementation-plan.md) M14 뒤에 "M14+ 런처" 항목(병합 때), [`development-handoff.md`](development-handoff.md)는 병합 때만.
+
+## 13. 구현 기록 (2026-10-09)
+
+1~6단계를 이 순서로 커밋했다. 테스트는 `tests/launcher/`(175개; 창 테스트는 디스플레이가 없거나 `DUNE_IMPERIUM_SKIP_GUI_TESTS=1`이면 skip)와 `tests/server/test_server_cli.py`, 브라우저 E2E는 `scripts/e2e/launcher_link.py`(16개 확인).
+
+| 단계 | 커밋 | 검증 |
+|---|---|---|
+| 1. 서버 CLI | `7f546a71` | 독립 리뷰(3관점 + 반박) — 아래 1 |
+| 2. 런처 코어 | `58e09008`, 리뷰 반영 `ec60096c` | 독립 리뷰(2관점 + 반박) — 아래 2 |
+| 3. 창 | `4f70c976`, `fa4019c3` | 숨긴 창으로 실제 기동·중지; 화면 캡처는 이 기기에 화면 기록 권한이 없어 못 함 |
+| 4. 잠자기 방지·바로가기·설치 스크립트 | `f69f8f76` | `.app`을 LaunchServices(`open`)로 열어 이 체크아웃의 창이 뜨는 것까지 확인 |
+| 5. 게임 목록·다시 시도·중복 실행 | `b70039c6` | — |
+| 6. 문서·E2E | 이 문서와 같은 커밋 | `launcher_link.py` 16/16 |
+| 7. Windows 실기 검증 | **남음** | 8절 체크리스트(아래 추가 항목 포함) |
+
+**계획과 달라진 점:**
+
+1. **1단계 리뷰가 잡은 결함.** 감시 스레드가 `sys.stdin.buffer.read()`로 막혀 있으면 BufferedReader 락을 쥔 채라, 파이프가 열린 채 Ctrl+C·시작 실패로 끝날 때 인터프리터가 종료 중 `Fatal Python error: _enter_buffered_busy`로 abort했다(-6, 재현함). 감시는 `os.read(fd)`로 읽는다. bind 프로브는 `SO_REUSEADDR`만이 아니라 asyncio `create_server`와 같은 방식(이름의 모든 주소를 한꺼번에, IPv6는 `V6ONLY`, 없는 주소는 건너뜀)으로 바꿨다: `localhost`는 127.0.0.1과 ::1 중 하나만 비어 있어도 통과했었다.
+2. **2단계 리뷰가 잡은 결함.** 런처의 HTTP 요청이 `http_proxy`·시스템 프록시를 따라 관리자 키 쿠키가 프록시로 갈 수 있었다 → 모든 요청을 프록시 없이(`ProxyHandler({})`). 준비 확인이 같은 포트의 다른 서버(macOS는 0.0.0.0 bind가 127.0.0.1 서버 옆에서도 된다)를 자기 서버로 믿을 수 있었다 → 쿠키 없이 먼저 묻고 `access`가 모드와 맞을 때만 키를 보낸다. 서버가 띄운 손자 프로세스가 출력 파이프를 쥐면 중지가 끝나지 않았다 → 파이프는 리더 스레드만 닫는다. stderr를 읽지 않는 호출자 아래서 `--start`가 멈출 수 있었다 → 서버 줄은 로그 파일로만. 그 밖에 BOM 붙은 설정 파일, HTTP가 아닌 응답, 동시 `stop()`, Windows 가상 어댑터를 LAN으로 보이는 문제를 고쳤다. 커밋 `ec60096c`에 목록이 있다.
+3. **`/whoami`는 바꾸지 않았다.** 탐색 AI가 꺼진 까닭은 런처가 같은 venv에서 `resolve_search_checkpoint`를 불러 얻는다(계획 리뷰가 경로 노출을 막았다).
+4. **콘솔 옵션**: `--check`, `--start`(준비되면 `{"open_url", "room_base", "pid", "port", "access", "search_ai", "log"}` JSON 한 줄, stdin이 끝나면 `{"stopped", "seconds", "port_free"}` 한 줄; `--print-link`는 따로 두지 않았다), `--make-shortcut`, `--settings`, 숨은 `--log-dir`(테스트·E2E가 호스트의 `tmp/launcher`를 건드리지 않게). `--no-browser`는 두지 않았다.
+5. **모듈**: 계획의 표에 `controller.py`(작업 스레드·상태 전이·이벤트; Tk 없이 테스트), `view.py`(무엇을 켜고 무엇이라 말할지; 순수 함수), `instance.py`(중복 실행 잠금)가 더해졌고, `texts.py`는 만들지 않았다(문구는 각 모듈 안에 한국어로).
+6. **"이전 서버에 붙기/끄기"와 `server.pid`는 뺐다.** 런처가 띄운 서버는 런처보다 오래 살 수 없다(stdin 파이프, Windows Job Object). 그래서 포트에 떠 있는 서버는 남의 것이고, 시작 전 검사가 그렇게 말한다. 두 번째 더블클릭은 `tmp/launcher/launcher.lock`의 배타 잠금(프로세스가 어떻게 끝나든 시스템이 푼다)으로 막는다. pid 파일은 재사용된 pid를 가리킬 수 있고, Windows의 `os.kill(pid, 0)`은 그 프로세스를 끝내 버린다.
+7. **서버 자식은 POSIX에서 자기 세션**(`start_new_session`)을 갖는다: 터미널의 Ctrl+C·창 닫기(SIGHUP; uvicorn은 처리하지 않는다)는 런처만 받고, 서버는 stdin이 닫히는 한 길로만 끝난다.
+8. **잠자기 방지 기본값**은 두 모드 모두 켬(원격만이 아니라).
+9. **창 배치**: 한 열로는 요구 높이가 945px라 1280×800 노트북에서 로그 칸이 사라졌다. 설정은 왼쪽, 실행·링크·게임 목록·로그는 오른쪽의 두 열, 기본 1000×640.
+10. **`last_good`**은 버튼("이전 설정(주소:포트)으로 다시 시도")으로만 쓴다. 방 링크가 몰래 바뀌면 안 된다(계획 리뷰).
+11. **Windows `pythonw` 확인**: uv venv에는 `pythonw.exe`가 늘 생기므로 `ShowWindow` 대체 경로는 만들지 않았다.
+
+**7단계에 더할 확인(8절 Windows 체크리스트에 덧붙임):** 파이프를 연 채 서버 콘솔에 Ctrl+C/CTRL_BREAK가 가도 `Fatal Python error` 없이 끝나는지; 시스템 프록시를 켠 채 런처가 시작·게임 목록을 정상으로 하는지; `mypy --platform win32 src/dune_imperium/launcher`(이 Mac에서는 통과); Job Object 구조체가 실제로 붙는지(`AssignProcessToJobObject` 실패 시 로그에 "Job Object를 만들지 못했습니다"); `Install Launcher.cmd`가 CRLF로 체크아웃되는지; `.lnk`가 한글·공백 경로에서 만들어지는지.
+
