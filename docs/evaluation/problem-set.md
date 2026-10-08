@@ -379,3 +379,14 @@ Endgame 문항이 3 → 11로 늘어 따로 확인했다. 같은 heuristic 800�
 (`381f2e42`) 3개, `5654d7f8` 10개, 브랜치 끝 11개다 — 늘어난 사례는 대부분 그 pass 규칙이 바꾼 판에서 나온다. 채점은
 하지 않았다.
 `tests/unit/test_problem_set.py`는 고칠 것이 없었다(문항마다 첫 포지션과 표본만 쓴다).
+
+## 재채굴 (2026-10-08, Ghola가 복사한 Long Reach, codec v139)
+
+Ghola를 Long Reach에 graft하면 Ghola box도 Long Reach의 "Choose two"인데(OQ-057 (12)), 두 box가 고른 진영 기록을
+같이 써서 Ghola box가 첫 box의 선택을 다시 고를 수 없고 한 번 더 지급했다. graft 전환이 두 box가 모두 Long Reach일 때
+그 기록을 box별로 바꿔 끼우게 고치자(`graft.apply_graft_switch`) 커밋된 131개 가운데 하나
+(`last_round_hold_battle_icon/heuristic/…/s352/p3`)가 복원되지 않았다 — 그 heuristic 판의 9라운드에 Ghola + Long Reach
+(Bene Gesserit·Spacing Guild를 고른 뒤 전환)가 있다. 같은 날의 Long Reach 즉시 지급(OQ-071 재판정)만으로는 131/131이
+그대로 복원됐다. 위 "다시 캐는 명령"을 그대로 실행했다(약 4분). 결과는 **130개** — sandworm 80, 마지막 라운드 보유 39,
+Endgame 11 — 이고 `check`가 **130/130** 복원을 확인했다. 포지션 id로 견주면 130개가 그대로이고 그 하나만 빠졌다. 채점은 하지
+않았다.

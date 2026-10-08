@@ -1116,13 +1116,10 @@ def apply_agent_card_influence(
             for other in Faction
         )
         waiting = len(chosen) < 2 and second_possible
-        # The picks belong to this box: once it pays they are cleared, so a
-        # second Long Reach box of the turn (Ghola copying it, OQ-057 (12))
-        # starts its own "Choose two" from nothing.
-        if waiting:
-            context["influence_chosen"] = ",".join(chosen)
-        else:
-            context.pop("influence_chosen", None)
+        # The picks belong to this box; a graft switch carries them with it
+        # (``graft.apply_graft_switch``), so a second Long Reach box of the
+        # turn (Ghola copying it, OQ-057 (12)) names its own two Factions.
+        context["influence_chosen"] = ",".join(chosen)
         context["pending_agent_effect"] = waiting
         if waiting:
             gained = RuleResult(
@@ -4005,7 +4002,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             )
             working = step.state
             named_events.extend(step.events)
-        context.pop("influence_chosen", None)
         context["pending_agent_effect"] = False
         return RuleResult(
             state=advance_after_effect(working, context, working.players),
