@@ -558,6 +558,10 @@ img.pictured {
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
 }
 img.control-marker.pictured { object-fit: fill; }
+/* The app's cube picture draws a light outline around the cube: the cube
+   body, not the outline, takes the printed square. */
+img.track-cube.pictured { transform: translate(-50%, -50%) scale(1.15); }
+img.seat-disc.pictured { border-radius: 50%; }
 :is(.conflict-unit, .garrison-unit, .bt-specimen)[data-kind="troop"].pictured {
   box-shadow: none;
 }

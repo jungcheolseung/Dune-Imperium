@@ -1285,11 +1285,16 @@ function renderTrackMarkers(stage, view) {
       if (offset === undefined) continue;
       const level = Math.max(0, Math.min(6, player.influence[key] || 0));
       /* The cube is exactly the square the strip prints for it (its
-         width is a percent of the stage, like the player disc). */
-      const cube = document.createElement("span");
-      cube.className = "track-cube";
+         width is a percent of the stage, like the player disc): the app's
+         cube picture of the seat (the troop's) where the assets have it,
+         else flat in the seat's colour. */
+      const url = seatPieceUrl("troop", seat);
+      const cube = url ? pieceImage(url, "track-cube") : document.createElement("span");
+      if (!url) {
+        cube.className = "track-cube";
+        cube.style.background = color;
+      }
       cube.style.width = `${tracks.influence.cube_size}%`;
-      cube.style.background = color;
       cube.title = t("board.influence_cube", {
         seat,
         faction: FACTION_LABELS[key],
@@ -1405,7 +1410,16 @@ function renderTrackMarkers(stage, view) {
     if (player.high_council && councilSlot < tracks.council_seats.length) {
       const [cx, cy] = tracks.council_seats[councilSlot];
       councilSlot += 1;
-      const token = seatDisc(seat, "council-token", tracks.disc_size);
+      /* The app's High Council seat token where the assets have it, else
+         the flat player disc. */
+      const url = seatPieceUrl("council", seat);
+      const token = url
+        ? pieceImage(url, "council-token seat-disc")
+        : seatDisc(seat, "council-token", tracks.disc_size);
+      if (url) {
+        token.dataset.seat = String(seat);
+        token.style.width = `${tracks.disc_size}%`;
+      }
       token.title = t("board.seat_high_council", { seat });
       placeAt(token, cx, cy);
       stage.appendChild(token);
