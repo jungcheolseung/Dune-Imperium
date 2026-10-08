@@ -58,6 +58,7 @@ from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.core.state import GamePhase
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.tactics import TACTICS_TRACK_END, TACTICS_TRACK_START
 
 SLOT_VERSION: Final = 1
@@ -103,6 +104,15 @@ _SEATS: Final = 4
 # reference level: it gets no row, like the dropped level of a dummy code.
 _REFERENCE_PHASE: Final = GamePhase.PLAYER_TURNS
 
+
+# The decision kinds a player can be asked under. The engine's pause
+# (rules/pauses.py) is a chance decision, never on top when a seat is
+# observed, so it has no row: the table, and every slot checkpoint written
+# before the pause existed, stays as it was (observation v30's kind index
+# appends it last, so no listed kind moves).
+_DECIDED_FRAME_KINDS: Final = tuple(
+    kind for kind in _FRAME_KINDS if kind != FrameKind.PAUSE.value
+)
 
 @dataclass(frozen=True, slots=True)
 class SlotField:
@@ -209,7 +219,7 @@ def _build_fields() -> tuple[SlotField, ...]:
             "decision_kind",
             "global_scalars",
             _scalar("global_scalars", _GLOBAL_DECISION_KIND),
-            _FRAME_KINDS,
+            _DECIDED_FRAME_KINDS,
         ),
         _identity(
             "conflict",
