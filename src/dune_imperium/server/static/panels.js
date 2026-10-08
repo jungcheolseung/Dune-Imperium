@@ -195,13 +195,7 @@ function renderSeats() {
         : seatKindLabel(kind);
       who.appendChild(badge);
     }
-    if (summary.first_player === seat) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = t("panels.first_badge");
-      badge.title = phraseText("{first_player}");
-      who.appendChild(badge);
-    }
+    if (summary.first_player === seat) who.appendChild(firstPlayerMark());
     head.appendChild(who);
     card.appendChild(head);
 

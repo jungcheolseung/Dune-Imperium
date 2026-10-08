@@ -135,6 +135,7 @@ from dune_imperium.display.scouts import (
     scouts_item_name,
 )
 from dune_imperium.display.token_images import (
+    FIRST_PLAYER_TOKEN_FILENAME,
     MAKER_HOOKS_TOKEN_FILENAME,
     SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
@@ -503,6 +504,13 @@ def build_catalog(
             faction: versioned(f"/tokens/{filename}")
             for faction, filename in available_alliance_tokens(token_files).items()
         },
+        # The First Player marker on the holder's seat panel [Main p. 5]
+        # (null without the local file: the panel keeps a text badge).
+        "first_player_token": (
+            versioned(f"/tokens/{FIRST_PLAYER_TOKEN_FILENAME}")
+            if FIRST_PLAYER_TOKEN_FILENAME in token_files
+            else None
+        ),
         # The app's pictures of each seat's pieces by kind (agent, spy,
         # control, troop, sandworm), one URL per seat; a kind without all
         # four pictures is absent and the client draws it flat.

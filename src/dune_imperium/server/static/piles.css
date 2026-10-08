@@ -1,0 +1,15 @@
+/* The table's loose pieces drawn from the Steam app's pictures (piles.js).
+   Loaded after style.css, so a rule here may restate one of its rules. */
+
+/* The First Player marker (piles.js firstPlayerMark): the app's round
+   token at about the height of the badges it sits among. The negative
+   block margin keeps the badge row its own height. */
+.first-player-token {
+  flex: none;
+  height: 1.2rem;
+  width: auto;
+  margin-block: -0.1rem;
+  vertical-align: middle;
+  user-select: none;
+}
+.help-mark .first-player-token { height: 1.5em; margin-block: 0; }

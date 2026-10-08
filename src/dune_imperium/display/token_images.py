@@ -34,6 +34,14 @@ MAKER_HOOKS_TOKEN_FILENAME: Final = "maker_hooks.png"
 # ``board_layout.COMMANDER_PICTURE_BASE``.
 SARDAUKAR_COMMANDER_TOKEN_FILENAME: Final = "sardaukar_commander.png"
 
+# The First Player marker, beside the holder's name on the seat panel: "첫
+# 라운드의 First Player는 공개된 Objective로 결정한다" [Main p. 5], and it passes
+# clockwise in Recall [Main p. 15] (docs/rules/setup-and-game-flow.md). The
+# picture is the Steam app's HUD token, a sandworm on a round token (written
+# by ``scripts/dwgr/app_assets.py pieces``); without it the panel keeps its
+# text badge.
+FIRST_PLAYER_TOKEN_FILENAME: Final = "first_player.png"
+
 # The four Alliance tokens, one per Faction (``Faction`` values): on the marked
 # area of the Faction's Influence track until a player earns the Alliance,
 # then in that player's supply [Main pp. 4, 7]. The pictures are the Steam

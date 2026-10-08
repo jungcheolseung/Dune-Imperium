@@ -6,7 +6,9 @@ from pathlib import Path
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.display.token_images import (
     ALLIANCE_TOKEN_FACTIONS,
+    FIRST_PLAYER_TOKEN_FILENAME,
     MAKER_HOOKS_TOKEN_FILENAME,
+    SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
     STRENGTH_TOKEN_COLORS,
     alliance_token_filename,
@@ -138,3 +140,17 @@ def test_the_strength_faces_are_built_in_the_seat_colours() -> None:
     tiles = dict(re.findall(r'"(\w+)": "(#[0-9a-f]{6})"', table.group(1)))
     assert tuple(tiles) == STRENGTH_TOKEN_COLORS
     assert list(tiles.values()) == re.findall(r'"(#[0-9a-f]{6})"', seat_colors.group(1))
+
+
+def test_the_first_player_marker_has_its_own_picture() -> None:
+    # One First Player marker in the game [Main p. 3], shown on the holder's
+    # seat panel; its picture shares no name with another token's.
+    assert FIRST_PLAYER_TOKEN_FILENAME == "first_player.png"
+    others = {
+        SHIELD_WALL_TOKEN_FILENAME,
+        MAKER_HOOKS_TOKEN_FILENAME,
+        SARDAUKAR_COMMANDER_TOKEN_FILENAME,
+        *(alliance_token_filename(f) for f in ALLIANCE_TOKEN_FACTIONS),
+        *(n for c in STRENGTH_TOKEN_COLORS for n in strength_token_filenames(c)),
+    }
+    assert FIRST_PLAYER_TOKEN_FILENAME not in others
