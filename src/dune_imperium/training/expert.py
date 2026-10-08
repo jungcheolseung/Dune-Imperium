@@ -9,6 +9,12 @@ values next to the network's own logits; the search never chooses the move.
 Agent-effect ordering, which the shipped search leaves to the network, is
 sampled as ANCHOR rows that keep the network's own distribution there.
 
+A table may be mixed (exit-v2): ``collection_specs`` can seat the teacher
+at two seats and another agent kind (``app_ai``) at the others. Only the
+teacher's seats label; the others play as they would in a tournament of the
+same lineup and seed, so a mixed game is the game ``play_match`` plays.
+Every row records the decision frame it was taken in.
+
 A labelled game is written as one ``.npz`` file, so a game that stalls or
 fails costs only itself. ``read_shards`` stacks many files into one
 ``ExpertData`` with CSR legal sets for ``training.distill``.
@@ -45,11 +51,14 @@ from dune_imperium.agents.network_search_agent import (
     _Taken,
     orders_agent_effects,
 )
+from dune_imperium.agents.registry import is_agent_kind, make_agent
+from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
 from dune_imperium.evaluation.tournament import (
     MatchSpec,
+    _MeteredAgent,
     _single_threaded_worker,
     tournament_specs,
 )
@@ -58,13 +67,18 @@ from dune_imperium.simulation.runner import run_policy_game
 from dune_imperium.training.policy import without_undo_actions
 from dune_imperium.training.torch_policy import load_network_agent
 
-EXPERT_FORMAT: Final = 1
+# Format 2 adds the per-row decision ``frame``, the per-seat ``g_labelled``
+# flags and the header's ``seat_agents``; format 1 shards still read.
+EXPERT_FORMAT: Final = 2
+READABLE_FORMATS: Final = (1, 2)
 LABEL: Final = 0
 ANCHOR: Final = 1
 # A greedy full-expansion game takes 675-874 steps; the RL collector's cap.
 # A game that loops fails at the cap instead of stalling its worker.
 COLLECTION_MAX_STEPS: Final = 4_000
 OBSERVATION_LIMIT: Final = 255
+# How ``collection_specs`` draws a seed's table; recorded in every shard header.
+TABLE_RULE: Final = "random.Random('exit-v2-table:<seed>')"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +108,9 @@ class LabelRow:
     removed) in ascending order and ``prior_logits`` the network's logits in
     that same order. ``candidates`` are catalog indices in the teacher's
     ranking, padded with -1 to K; ``values[world][candidate]`` is padded with
-    NaN. ANCHOR rows carry no candidates.
+    NaN. ANCHOR rows carry no candidates. ``frame`` names the decision the
+    row was taken in: the kind of the top decision frame, or ``phase:<phase>``
+    when no frame is open (see ``decision_frame``).
     """
 
     kind: int
@@ -107,21 +123,49 @@ class LabelRow:
     candidates: np.ndarray
     values: np.ndarray
     played: int
+    frame: str = ""
+
+
+def decision_frame(state: GameState) -> str:
+    """The pending decision's frame kind, or ``phase:<phase>`` outside frames.
+
+    ``DecisionFrame.kind`` is typed ``str`` (the rules push ``FrameKind``
+    members, a ``StrEnum``); ``str()`` of either is the kind's value.
+    """
+
+    if state.decision_stack:
+        return str(state.decision_stack[-1].kind)
+    return f"phase:{state.phase.value}"
 
 
 class LabellingAgent:
-    """A greedy network seat that records search labels as it plays."""
+    """A greedy network seat that records search labels as it plays.
 
-    def __init__(self, teacher: str, *, seed: int, config: LabelConfig) -> None:
+    ``game_config`` is the game the seat plays. The greedy player is built as
+    a tournament ``checkpoint:`` seat is (``load_network_agent`` for that
+    game's catalog, seeded with ``seed``), so a labelling seat and a
+    ``checkpoint:`` seat of the same seed choose alike; without it the seat
+    answers for the file's own ruleset.
+    """
+
+    def __init__(
+        self,
+        teacher: str,
+        *,
+        seed: int,
+        config: LabelConfig,
+        game_config: RulesetConfig | None = None,
+    ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
         self.config = config
-        self.player = load_network_agent(teacher)
+        self.player = load_network_agent(teacher, game_config, seed=seed)
         self.codec = self.player.codec
         self.network = self.player.network
         self.search = NetworkSearchAgent(
             teacher,
             seed=seed,
+            config=game_config,
             rollouts=config.rollouts,
             candidates=config.candidates,
             horizon_rounds=config.horizon_rounds,
@@ -131,6 +175,7 @@ class LabellingAgent:
         self.rows: list[LabelRow] = []
         self.decisions = 0
         self.guard_skips = 0
+        self.untrained_skips = 0
         self.played_is_first = 0
 
     def choose_action(
@@ -152,6 +197,12 @@ class LabellingAgent:
         self.decisions += 1
         offered = without_undo_actions(legal_actions)
         if len(offered) < 2:
+            return played
+        if self.search._untrained_only(offered):
+            # Only templates the teacher never trained on: the search answers
+            # these through its greedy agent without searching (tied zero
+            # logits, no shortlist), so there is nothing to label.
+            self.untrained_skips += 1
             return played
         encoded = np.asarray(encode_player_view(observation), dtype=np.int32)
         seat = observation.player
@@ -194,6 +245,7 @@ class LabellingAgent:
                 candidates=padded,
                 values=table,
                 played=self.codec.encode(played),
+                frame=row.frame,
             )
         )
         return played
@@ -228,6 +280,7 @@ class LabellingAgent:
             prior_logits=logits[0].numpy().astype(np.float32),
             width=self.config.candidates,
             worlds=self.config.rollouts,
+            frame=decision_frame(state),
         )
 
 
@@ -242,6 +295,7 @@ class _PartialRow:
     prior_logits: np.ndarray
     width: int
     worlds: int
+    frame: str
 
     def _replace_played(self, played: int) -> LabelRow:
         return LabelRow(
@@ -255,12 +309,18 @@ class _PartialRow:
             candidates=np.full(self.width, -1, dtype=np.int32),
             values=np.full((self.worlds, self.width), np.nan, dtype=np.float32),
             played=played,
+            frame=self.frame,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class LabelledGame:
-    """One finished game: its rows and every seat's outcome."""
+    """One finished game: its rows and every seat's outcome.
+
+    ``seat_agents`` are the spec's agent kinds and ``labelled`` marks the
+    seats that labelled (the teacher's own); a game built without them
+    (``()``) is read as one whose every seat labelled.
+    """
 
     game_seed: int
     rows: tuple[LabelRow, ...]
@@ -273,51 +333,132 @@ class LabelledGame:
     seconds: float
     guard_skips: int
     played_is_first: int
+    seat_agents: tuple[str, ...] = ()
+    labelled: tuple[bool, ...] = ()
+    untrained_skips: int = 0
+
+    @property
+    def mixed(self) -> bool:
+        """Whether some seat played an agent other than the teacher."""
+
+        return bool(self.labelled) and not all(self.labelled)
 
 
 def collection_specs(
-    teacher: str, *, start_seed: int, games: int
+    teacher: str,
+    *,
+    start_seed: int,
+    games: int,
+    choam: bool = True,
+    promo_cards: bool = True,
+    bloodlines: bool = True,
+    tech_module: bool = True,
+    immortality: bool = True,
+    go_to_11: bool = False,
+    epic_game: bool = False,
+    arrakeen_scouts: bool = False,
+    leader_draft: bool = False,
+    opponent: str | None = None,
+    mixed_share: float = 0.5,
 ) -> tuple[MatchSpec, ...]:
-    """All-expansion specs with rotating Leaders, one per game seed."""
+    """One spec per game seed ``start_seed .. start_seed + games - 1``.
 
-    return tournament_specs(
-        agents=(f"checkpoint:{teacher}",) * 4,
-        games=games,
-        rulesets=(True,),
-        start_seed=start_seed,
-        rotate_seats=False,
-        rotate_leaders=True,
-        promo_cards=True,
-        bloodlines=True,
-        tech_module=True,
-        immortality=True,
-        max_steps=COLLECTION_MAX_STEPS,
-    )
+    The defaults are the all-expansion tables of the first collection:
+    rotating Leaders, the teacher in every seat. With the Leader draft the
+    seed fixes the pool instead and each seat picks its own Leader.
+
+    With an ``opponent`` agent kind, a share ``mixed_share`` of the seeds
+    (drawn per seed from ``random.Random(f"exit-v2-table:{seed}")``, see
+    ``TABLE_RULE``) seat the teacher at two seats -- {0, 2} or {1, 3}, the
+    same draw's second number -- and the opponent at the other two. Every
+    spec is built by ``tournament_specs`` for its own lineup, so the policy
+    seeds and the Leader rosters are those of a tournament of that lineup and
+    seed.
+    """
+
+    if games < 1:
+        raise ValueError("a collection needs at least one game seed")
+    if not 0.0 <= mixed_share <= 1.0:
+        raise ValueError("mixed_share must lie in [0, 1]")
+    if opponent is not None and not is_agent_kind(opponent):
+        raise ValueError(f"unknown opponent agent kind: {opponent!r}")
+    teacher_kind = f"checkpoint:{teacher}"
+    specs: list[MatchSpec] = []
+    for seed in range(start_seed, start_seed + games):
+        rng = random.Random(f"exit-v2-table:{seed}")
+        mixed = opponent is not None and rng.random() < mixed_share
+        pattern = rng.randrange(2)
+        if mixed and opponent is not None:
+            learners = (0, 2) if pattern == 0 else (1, 3)
+            lineup = tuple(
+                teacher_kind if seat in learners else opponent for seat in range(4)
+            )
+        else:
+            lineup = (teacher_kind,) * 4
+        built = tournament_specs(
+            agents=lineup,
+            games=1,
+            rulesets=(choam,),
+            start_seed=seed,
+            rotate_seats=False,
+            rotate_leaders=not leader_draft,
+            promo_cards=promo_cards,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
+            immortality=immortality,
+            go_to_11=go_to_11,
+            epic_game=epic_game,
+            arrakeen_scouts=arrakeen_scouts,
+            leader_draft=leader_draft,
+            max_steps=COLLECTION_MAX_STEPS,
+        )
+        if len(built) != 1 or built[0].seat_agents != lineup:
+            raise RuntimeError(
+                f"seed {seed}: tournament_specs did not return the lineup {lineup}"
+            )
+        specs.append(built[0])
+    return tuple(specs)
 
 
 def label_game(spec: MatchSpec, teacher: str, config: LabelConfig) -> LabelledGame:
-    """Play one spec with four labelling seats and return its rows."""
+    """Play one spec; the teacher's seats label, every other seat just plays.
+
+    A seat labels when its agent kind is the teacher's ``checkpoint:`` seat.
+    Any other kind is built as ``play_match`` builds it and wrapped the same
+    way (``_MeteredAgent``), so the game is the one a tournament plays.
+    """
 
     started = time.perf_counter()
+    players = spec.config.players
+    if len(spec.seat_agents) != players:
+        raise ValueError("exactly one agent kind per seat is required")
     engine = (
         UprisingRulesEngine(leader_ids=spec.leader_ids)
         if spec.leader_ids is not None
         else UprisingRulesEngine()
     )
-    agents = [
-        LabellingAgent(teacher, seed=spec.policy_seed + seat, config=config)
-        for seat in range(spec.config.players)
-    ]
+    teacher_kind = f"checkpoint:{teacher}"
+    agents: list[LabellingAgent | _MeteredAgent] = []
+    for seat, kind in enumerate(spec.seat_agents):
+        seed = spec.policy_seed + seat
+        if kind == teacher_kind:
+            agents.append(
+                LabellingAgent(
+                    teacher, seed=seed, config=config, game_config=spec.config
+                )
+            )
+        else:
+            agents.append(_MeteredAgent(make_agent(kind, seed, spec.config)))
     simulation = run_policy_game(
         engine, spec.config, spec.game_seed, agents, max_steps=spec.max_steps
     )
     ranks = {standing.player: standing for standing in simulation.standings}
-    players = spec.config.players
     rewards = tuple(
         WINNER_REWARD if ranks[seat].rank == 1 else LOSER_REWARD
         for seat in range(players)
     )
-    rows = tuple(row for agent in agents for row in agent.rows)
+    labellers = [agent for agent in agents if isinstance(agent, LabellingAgent)]
+    rows = tuple(row for agent in labellers for row in agent.rows)
     return LabelledGame(
         game_seed=spec.game_seed,
         rows=rows,
@@ -328,8 +469,11 @@ def label_game(spec: MatchSpec, teacher: str, config: LabelConfig) -> LabelledGa
         rounds=simulation.state.round_number,
         decisions=tuple(agent.decisions for agent in agents),
         seconds=time.perf_counter() - started,
-        guard_skips=sum(agent.guard_skips for agent in agents),
-        played_is_first=sum(agent.played_is_first for agent in agents),
+        guard_skips=sum(agent.guard_skips for agent in labellers),
+        played_is_first=sum(agent.played_is_first for agent in labellers),
+        seat_agents=tuple(spec.seat_agents),
+        labelled=tuple(isinstance(agent, LabellingAgent) for agent in agents),
+        untrained_skips=sum(agent.untrained_skips for agent in labellers),
     )
 
 
@@ -375,6 +519,7 @@ def game_arrays(game: LabelledGame) -> dict[str, np.ndarray]:
             else np.zeros((0, worlds, width), dtype=np.float32)
         ),
         "played": np.asarray([r.played for r in rows], dtype=np.int32),
+        "frame": np.asarray([r.frame for r in rows], dtype=np.str_),
         "z": np.asarray([game.rewards[r.seat] for r in rows], dtype=np.float32),
         "seat_decisions": np.asarray(
             [game.decisions[r.seat] for r in rows], dtype=np.int32
@@ -383,6 +528,10 @@ def game_arrays(game: LabelledGame) -> dict[str, np.ndarray]:
         "g_ranks": np.asarray(game.ranks, dtype=np.int8),
         "g_vp": np.asarray(game.victory_points, dtype=np.int16),
         "g_decisions": np.asarray(game.decisions, dtype=np.int32),
+        "g_labelled": np.asarray(
+            game.labelled if game.labelled else (True,) * len(game.rewards),
+            dtype=np.bool_,
+        ),
     }
 
 
@@ -392,6 +541,8 @@ def validate_game(game: LabelledGame, action_size: int) -> None:
     if sum(reward == WINNER_REWARD for reward in game.rewards) != 1:
         raise ValueError(f"game {game.game_seed}: not exactly one winner")
     for row in game.rows:
+        if game.labelled and not game.labelled[row.seat]:
+            raise ValueError(f"game {game.game_seed}: row from an unlabelled seat")
         legal = row.legal
         if len(legal) < 2 or np.any(np.diff(legal) <= 0):
             raise ValueError(f"game {game.game_seed}: legal set not ascending")
@@ -424,10 +575,12 @@ def write_game(path: Path, game: LabelledGame, meta: Mapping[str, object]) -> No
         {
             "format": EXPERT_FORMAT,
             "game_seed": game.game_seed,
+            "seat_agents": list(game.seat_agents),
             "leader_ids": list(game.leader_ids),
             "rounds": game.rounds,
             "seconds": game.seconds,
             "guard_skips": game.guard_skips,
+            "untrained_skips": game.untrained_skips,
             "played_is_first": game.played_is_first,
         }
     )
@@ -451,9 +604,20 @@ def shard_paths(directory: Path) -> list[Path]:
 
 
 def run_meta(
-    teacher: str, config: LabelConfig, action_size: int, ruleset: str
+    teacher: str,
+    config: LabelConfig,
+    action_size: int,
+    ruleset: str,
+    *,
+    opponent: str | None = None,
+    mixed_share: float = 0.5,
+    leader_draft: bool = False,
 ) -> dict[str, object]:
-    """The header every shard of a collection shares."""
+    """The header every shard of a collection shares.
+
+    ``leader_draft`` is recorded on its own: the ruleset identifier leaves it
+    out, and ``read_shards`` must not stack draft and fixed-roster games.
+    """
 
     return {
         "teacher": str(teacher),
@@ -463,6 +627,10 @@ def run_meta(
         "action_codec_version": ACTION_CODEC_VERSION,
         "action_size": action_size,
         "label_config": asdict(config),
+        "opponent": opponent,
+        "mixed_share": mixed_share,
+        "table_rule": TABLE_RULE,
+        "leader_draft": leader_draft,
     }
 
 
@@ -484,25 +652,57 @@ def collect_to_directory(
     games: int,
     workers: int,
     config: LabelConfig,
+    choam: bool = True,
+    promo_cards: bool = True,
+    bloodlines: bool = True,
+    tech_module: bool = True,
+    immortality: bool = True,
+    go_to_11: bool = False,
+    epic_game: bool = False,
+    arrakeen_scouts: bool = False,
+    leader_draft: bool = False,
+    opponent: str | None = None,
+    mixed_share: float = 0.5,
 ) -> dict[str, object]:
     """Label ``games`` seeds and write each finished game as ``g<seed>.npz``.
 
+    The ruleset options and the table mix are those of ``collection_specs``.
     Seeds whose file already exists are skipped, so a killed collection can
     be rerun over the same range. Returns a summary for the caller to log.
     """
 
-    agent = load_network_agent(teacher)
-    action_size = agent.codec.size
+    planned = collection_specs(
+        teacher,
+        start_seed=start_seed,
+        games=games,
+        choam=choam,
+        promo_cards=promo_cards,
+        bloodlines=bloodlines,
+        tech_module=tech_module,
+        immortality=immortality,
+        go_to_11=go_to_11,
+        epic_game=epic_game,
+        arrakeen_scouts=arrakeen_scouts,
+        leader_draft=leader_draft,
+        opponent=opponent,
+        mixed_share=mixed_share,
+    )
+    # The rows index the game's catalog, which may be wider than the file's.
+    game_config = planned[0].config
+    action_size = load_network_agent(teacher, game_config).codec.size
     out.mkdir(parents=True, exist_ok=True)
     for stale in [*out.glob(".g*.partial"), *out.glob("g*.npz.tmp.npz")]:
         stale.unlink()  # a write interrupted by an earlier kill
-    specs = [
-        spec
-        for spec in collection_specs(teacher, start_seed=start_seed, games=games)
-        if not (out / f"g{spec.game_seed}.npz").exists()
-    ]
-    ruleset = specs[0].config.identifier if specs else ""
-    meta = run_meta(teacher, config, action_size, ruleset)
+    specs = [spec for spec in planned if not (out / f"g{spec.game_seed}.npz").exists()]
+    meta = run_meta(
+        teacher,
+        config,
+        action_size,
+        game_config.identifier,
+        opponent=opponent,
+        mixed_share=mixed_share,
+        leader_draft=leader_draft,
+    )
     started = time.perf_counter()
     written: list[LabelledGame] = []
     failures: list[tuple[int, str]] = []
@@ -537,12 +737,15 @@ def collect_to_directory(
     return {
         "games": len(written),
         "skipped_existing": games - len(specs),
+        "mixed_games": sum(1 for g in written if g.mixed),
+        "search_shape": [config.rollouts, config.candidates],
         "failures": len(failures),
         "failure_messages": [f"{seed}: {message}" for seed, message in failures[:10]],
         "labels": labels,
         "anchors": anchors,
         "played_eq_cand0": (first / labels) if labels else None,
         "guard_skips": sum(g.guard_skips for g in written),
+        "untrained_skips": sum(g.untrained_skips for g in written),
         "distinct_leaders": len(leaders),
         "wall_seconds": time.perf_counter() - started,
         "s_per_game": (
@@ -572,6 +775,17 @@ class ExpertData:
     game_seed: np.ndarray
     action_size: int
     teachers: tuple[str, ...] = field(default=())
+    # The decision frame of each row (``decision_frame``); empty strings for
+    # rows of a format 1 shard, which did not record it.
+    frame: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.str_))
+
+    def __post_init__(self) -> None:
+        rows = int(self.kind.shape[0])
+        if self.frame.shape == (rows,):
+            return
+        if self.frame.size:
+            raise ValueError("one frame per row is required")
+        object.__setattr__(self, "frame", np.zeros(rows, dtype=np.str_))
 
     @property
     def rows(self) -> int:
@@ -589,8 +803,10 @@ def read_shards(
 ) -> ExpertData:
     """Stack game shards into one ``ExpertData``.
 
-    Refuses mixed formats, versions, rulesets or search shapes, and
-    duplicate game seeds (the same seed replays the same game).
+    Reads formats 1 and 2 (format 1 has no ``frame``, read as empty strings)
+    but refuses a mix of the two. Also refuses mixed versions, rulesets or
+    search shapes, and duplicate game seeds (the same seed replays the same
+    game).
     """
 
     if not paths:
@@ -601,12 +817,20 @@ def read_shards(
     keys: dict[str, object] | None = None
     shape: tuple[tuple[int, ...], tuple[int, ...]] | None = None
     seeds: set[int] = set()
+    shard_format: int | None = None
     for position, path in enumerate(paths):
         with np.load(path, allow_pickle=False) as handle:
             meta = json.loads(str(handle["meta_json"]))
             arrays = {key: handle[key] for key in handle.files if key != "meta_json"}
-        if meta.get("format") != EXPERT_FORMAT:
+        if meta.get("format") not in READABLE_FORMATS:
             raise ValueError(f"{path}: unsupported format {meta.get('format')}")
+        if shard_format is None:
+            shard_format = int(meta["format"])
+        elif int(meta["format"]) != shard_format:
+            raise ValueError(
+                f"{path}: format {meta['format']} cannot be mixed with "
+                f"format {shard_format} shards"
+            )
         these = {
             name: meta[name]
             for name in (
@@ -617,6 +841,8 @@ def read_shards(
                 "action_size",
             )
         }
+        # Format 1 shards predate the key; their collections had no draft.
+        these["leader_draft"] = bool(meta.get("leader_draft", False))
         if keys is None:
             keys = these
         elif these != keys:
@@ -662,6 +888,7 @@ def read_shards(
     }
     weight_parts: list[np.ndarray] = []
     seed_parts: list[np.ndarray] = []
+    frame_parts: list[np.ndarray] = []
     row_at = legal_at = 0
     for arrays, seed, weight, _ in loaded:
         count = arrays["kind"].shape[0]
@@ -674,6 +901,9 @@ def read_shards(
         )
         for name, parts in columns.items():
             parts.append(arrays[name])
+        frame_parts.append(
+            arrays["frame"] if "frame" in arrays else np.zeros(count, dtype=np.str_)
+        )
         weight_parts.append(np.full(count, weight, dtype=np.float32))
         seed_parts.append(np.full(count, seed, dtype=np.int64))
         row_at += count
@@ -702,4 +932,9 @@ def read_shards(
         game_seed=np.concatenate(seed_parts) if seed_parts else np.zeros(0, np.int64),
         action_size=int(str(keys["action_size"])),
         teachers=tuple(sorted({teacher for _, _, _, teacher in loaded})),
+        frame=(
+            np.concatenate(frame_parts).astype(np.str_)
+            if frame_parts
+            else np.zeros(0, dtype=np.str_)
+        ),
     )

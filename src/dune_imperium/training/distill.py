@@ -19,6 +19,9 @@ The value head is regressed on the game outcome z (winner +1, others
 -1/3). The loss is the row-weighted cross-entropy to pi plus
 ``value_coefficient`` times the value MSE; training starts from the
 incumbent, stops early on the held-out objective and keeps its best epoch.
+A network with a ``slot_embed`` (``MlpSlotsNetwork``) trains it at
+``slot_lr_multiplier`` times the learning rate of every other parameter, the
+warm-up scaling both alike (``make_optimizer``, ``set_warmup_rates``).
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -58,12 +62,17 @@ class DistillConfig:
     heldout_modulus: int = 10
     seed: int = 0
     threads: int = 4
+    # The learning rate of ``slot_embed`` relative to ``learning_rate``;
+    # networks without that embedding ignore it.
+    slot_lr_multiplier: float = 1.0
 
     def __post_init__(self) -> None:
         if self.mode not in ("tilt", "hard", "clearhard"):
             raise ValueError("mode is 'tilt', 'hard' or 'clearhard'")
         if self.tau <= 0.0:
             raise ValueError("tau must be positive")
+        if not self.slot_lr_multiplier > 0.0:
+            raise ValueError("slot_lr_multiplier must be positive")
 
 
 # -- targets ---------------------------------------------------------------
@@ -292,6 +301,15 @@ class HoldoutStats:
     explained_variance: float = float("nan")
     objective: float = float("nan")
     prior_max_abs_diff: float = float("nan")
+    # LABEL rows whose search choice is clear (``is_clear`` at ``clear_margin``)
+    # and differs from the prior's argmax, and the share of them where the
+    # student's argmax is the search's choice.
+    clear_override_rows: int = 0
+    clear_flip_taken: float = float("nan")
+    # LABEL rows whose search choice is not clear, and the share of them where
+    # the student's argmax differs from the prior's argmax.
+    unclear_rows: int = 0
+    unclear_changed: float = float("nan")
     per_game: dict[str, list[float]] = field(default_factory=dict)
 
 
@@ -343,6 +361,11 @@ def evaluate(
     ``check_prior``): the largest difference between this network's logits
     and the stored prior logits -- the pipeline check when ``network`` is
     the teacher.
+    ``clear_override_rows`` / ``clear_flip_taken``: on LABEL rows where the
+    search's choice is clear at ``config.clear_margin`` and not the prior's
+    argmax, how often the student's argmax is the search's choice.
+    ``unclear_rows`` / ``unclear_changed``: on the other LABEL rows, how often
+    the student's argmax is not the prior's.
     """
 
     stats = HoldoutStats()
@@ -356,13 +379,10 @@ def evaluate(
     target_best = np.where(padded.valid, padded.target, -1.0).argmax(axis=1)
     kind = data.kind[rows]
     is_label = kind == LABEL
+    clear = clear_rows(data, rows, config.clear_margin)
     # Rows whose target teaches something beyond the prior: every LABEL row,
     # or with clearhard only the clear ones (the rest target the prior).
-    taught = (
-        is_label & clear_rows(data, rows, config.clear_margin)
-        if config.mode == "clearhard"
-        else is_label
-    )
+    taught = is_label & clear if config.mode == "clearhard" else is_label
     is_anchor = kind == ANCHOR
     ce = -(padded.target * np.where(padded.valid, log_probs, 0.0)).sum(axis=1)
     choice = search_choice(data.candidates[rows], data.values[rows])
@@ -409,11 +429,23 @@ def evaluate(
                 np.mean(student[overrode] == search_index[overrode])
             )
         stats.label_ce = float(np.mean(ce[is_label]))
+        flips = clear & (search_index != prior_best) & (search_index >= 0)
+        stats.clear_override_rows = int(flips.sum())
+        if stats.clear_override_rows:
+            stats.clear_flip_taken = float(
+                np.mean(student[flips] == search_index[flips])
+            )
+        unclear = is_label & ~clear
+        stats.unclear_rows = int(unclear.sum())
+        if stats.unclear_rows:
+            stats.unclear_changed = float(
+                np.mean(student[unclear] != prior_best[unclear])
+            )
     if stats.anchor_rows:
-        clear = is_anchor & prior_clear
-        if clear.any():
+        anchor_clear = is_anchor & prior_clear
+        if anchor_clear.any():
             stats.anchor_agree_clear = float(
-                np.mean(student[clear] == prior_best[clear])
+                np.mean(student[anchor_clear] == prior_best[anchor_clear])
             )
         stats.anchor_kl = float(np.mean(kl[is_anchor]))
     stats.value_mse = float(np.mean(error))
@@ -520,8 +552,59 @@ def _row_weights(
     return weights
 
 
+def make_optimizer(
+    network: PolicyValueNetwork, config: DistillConfig
+) -> torch.optim.Adam:
+    """Adam over ``network``, with the slot embedding at its own rate.
+
+    A network with a ``slot_embed`` gets two parameter groups: every other
+    parameter at ``learning_rate`` and the embedding at ``learning_rate *
+    slot_lr_multiplier``. Any other network keeps the single group of a plain
+    ``Adam(network.parameters())``. Each group records its ``base_lr`` for
+    ``set_warmup_rates``.
+    """
+
+    embedding = getattr(network, "slot_embed", None)
+    if embedding is None:
+        groups: list[dict[str, Any]] = [
+            {"params": list(network.parameters()), "lr": config.learning_rate}
+        ]
+    else:
+        slot_ids = {id(parameter) for parameter in embedding.parameters()}
+        rest = [p for p in network.parameters() if id(p) not in slot_ids]
+        groups = [
+            {"params": rest, "lr": config.learning_rate},
+            {
+                "params": list(embedding.parameters()),
+                "lr": config.learning_rate * config.slot_lr_multiplier,
+            },
+        ]
+    optimizer = torch.optim.Adam(groups, lr=config.learning_rate)
+    for group in optimizer.param_groups:
+        group["base_lr"] = group["lr"]
+    return optimizer
+
+
+def set_warmup_rates(
+    optimizer: torch.optim.Optimizer, step: int, warmup_steps: int
+) -> None:
+    """Scale every group's ``base_lr`` by the warm-up at (0-based) ``step``."""
+
+    scale = min(1.0, (step + 1) / warmup_steps)
+    for group in optimizer.param_groups:
+        group["lr"] = group["base_lr"] * scale
+
+
 @dataclass
 class DistillReport:
+    """What a distillation did.
+
+    ``before`` / ``per_epoch`` are measured on the held-out games.
+    ``train_before`` / ``train_after`` measure the incoming network and the
+    kept (best-epoch) network on a deterministic sample of training rows as
+    large as the held-out set, so train and held-out figures are comparable.
+    """
+
     before: HoldoutStats
     per_epoch: list[HoldoutStats]
     best_epoch: int
@@ -529,6 +612,8 @@ class DistillReport:
     heldout_rows: int
     seconds: float
     epoch_seconds: list[float]
+    train_before: HoldoutStats = field(default_factory=HoldoutStats)
+    train_after: HoldoutStats = field(default_factory=HoldoutStats)
 
 
 def distill(
@@ -555,10 +640,14 @@ def distill(
     padded = _pad(data, train_rows, targets, target_offsets)
     weights = _row_weights(data, train_rows, config)
     before = evaluate(network, data, test_rows, config)
+    sample = np.random.default_rng(config.seed).choice(
+        train_rows, size=min(len(train_rows), len(test_rows)), replace=False
+    )
+    train_before = evaluate(network, data, sample, config)
     best_objective = before.objective
     best_state = {k: v.clone() for k, v in network.state_dict().items()}
     best_epoch = 0
-    optimizer = torch.optim.Adam(network.parameters(), lr=config.learning_rate)
+    optimizer = make_optimizer(network, config)
     step = 0
     per_epoch: list[HoldoutStats] = []
     epoch_seconds: list[float] = []
@@ -592,10 +681,7 @@ def distill(
                 raise FloatingPointError(
                     f"non-finite loss at epoch {epoch}, step {step}"
                 )
-            for group in optimizer.param_groups:
-                group["lr"] = config.learning_rate * min(
-                    1.0, (step + 1) / config.warmup_steps
-                )
+            set_warmup_rates(optimizer, step, config.warmup_steps)
             optimizer.zero_grad()
             loss.backward()  # type: ignore[no-untyped-call]
             torch.nn.utils.clip_grad_norm_(network.parameters(), config.max_grad_norm)
@@ -614,6 +700,7 @@ def distill(
             break
     network.load_state_dict(best_state)
     network.eval()
+    train_after = evaluate(network, data, sample, config)
     return DistillReport(
         before=before,
         per_epoch=per_epoch,
@@ -622,6 +709,8 @@ def distill(
         heldout_rows=len(test_rows),
         seconds=time.perf_counter() - started,
         epoch_seconds=epoch_seconds,
+        train_before=train_before,
+        train_after=train_after,
     )
 
 

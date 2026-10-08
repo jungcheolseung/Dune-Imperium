@@ -5,10 +5,18 @@
 
 ``collect`` labels greedy self-play games with the teacher's search and
 writes one ``g<seed>.npz`` per game (``training.expert``); it prints one
-JSON summary line and exits 2 when more than 5% of the games failed.
-``train`` distils the labels into a candidate checkpoint
-(``training.distill``) and ``metrics`` runs the offline gate G0 of a
-student against its reference on the held-out games.
+JSON summary line and exits 2 when more than 5% of the games failed. The
+ruleset is chosen with ``--choam --promo-cards --bloodlines --tech-module
+--immortality --go-to-11 --epic --arrakeen-scouts --leader-draft``: with none
+of them the first collection's set (CHOAM, promos, Bloodlines, Tech Module,
+Immortality) is played, with any the given ones exactly. ``--opponent KIND``
+seats that agent kind (say ``app_ai``) at two seats of a ``--mixed-share``
+of the games; only the teacher's seats label. The search shape defaults to
+the shipped one (``--rollouts``, ``--candidates``). ``train`` distils the
+labels into a candidate checkpoint (``training.distill``; the slot embedding
+of an ``mlp_slots`` network trains at ``--slot-lr-multiplier`` times the
+learning rate) and ``metrics`` runs the offline gate G0 of a student against
+its reference on the held-out games.
 """
 
 from __future__ import annotations
@@ -24,9 +32,55 @@ import numpy as np
 FAILURE_LIMIT = 0.05
 
 
+RULESET_FLAGS = (
+    ("choam", "choam"),
+    ("promo_cards", "promo_cards"),
+    ("bloodlines", "bloodlines"),
+    ("tech_module", "tech_module"),
+    ("immortality", "immortality"),
+    ("go_to_11", "go_to_11"),
+    ("epic", "epic_game"),
+    ("arrakeen_scouts", "arrakeen_scouts"),
+    ("leader_draft", "leader_draft"),
+)
+# What ``collect`` plays when no ruleset flag is given (the first collection).
+DEFAULT_RULESET = frozenset(
+    {"choam", "promo_cards", "bloodlines", "tech_module", "immortality"}
+)
+
+
+def _ruleset_options(arguments: argparse.Namespace) -> dict[str, bool]:
+    """The ``collect_to_directory`` keywords the ruleset flags select."""
+
+    given = {option for flag, option in RULESET_FLAGS if getattr(arguments, flag)}
+    chosen = given or DEFAULT_RULESET
+    return {option: option in chosen for _, option in RULESET_FLAGS}
+
+
 def _collect(arguments: argparse.Namespace) -> int:
+    from dune_imperium.agents.registry import is_agent_kind
+    from dune_imperium.config import RulesetConfig
     from dune_imperium.training.expert import LabelConfig, collect_to_directory
 
+    options = _ruleset_options(arguments)
+    try:
+        RulesetConfig(
+            choam_module=options["choam"],
+            promo_cards=options["promo_cards"],
+            bloodlines=options["bloodlines"],
+            tech_module=options["tech_module"],
+            immortality=options["immortality"],
+            go_to_11=options["go_to_11"],
+            epic_game=options["epic_game"],
+            arrakeen_scouts=options["arrakeen_scouts"],
+            leader_draft=options["leader_draft"],
+        )
+    except ValueError as error:
+        raise SystemExit(f"collect: {error}") from error
+    if arguments.opponent is not None and not is_agent_kind(arguments.opponent):
+        raise SystemExit(f"collect: unknown --opponent kind {arguments.opponent!r}")
+    if not 0.0 <= arguments.mixed_share <= 1.0:
+        raise SystemExit("collect: --mixed-share must lie in [0, 1]")
     config = LabelConfig(
         label_probability=arguments.label_probability,
         anchor_probability=arguments.anchor_probability,
@@ -40,6 +94,9 @@ def _collect(arguments: argparse.Namespace) -> int:
         games=arguments.games,
         workers=arguments.workers,
         config=config,
+        opponent=arguments.opponent,
+        mixed_share=arguments.mixed_share,
+        **options,
     )
     print(json.dumps(summary), flush=True)
     attempted = int(summary["games"]) + int(summary["failures"])  # type: ignore[call-overload]
@@ -75,9 +132,11 @@ def _config(arguments: argparse.Namespace):  # type: ignore[no-untyped-def]
         mode=arguments.mode,
         tau=arguments.tau,
         max_epochs=arguments.epochs,
+        learning_rate=arguments.learning_rate,
         seed=arguments.seed,
         threads=arguments.threads,
         value_coefficient=arguments.value_coefficient,
+        slot_lr_multiplier=arguments.slot_lr_multiplier,
     )
 
 
@@ -131,7 +190,16 @@ def _train(arguments: argparse.Namespace) -> int:
         "noise": noise,
         "before": stats_summary(report.before),
         "per_epoch": [stats_summary(s) for s in report.per_epoch],
-        "config": {"mode": config.mode, "tau": config.tau, "epochs": config.max_epochs},
+        "train_before": stats_summary(report.train_before),
+        "train_after": stats_summary(report.train_after),
+        "slot_lr_multiplier": config.slot_lr_multiplier,
+        "config": {
+            "mode": config.mode,
+            "tau": config.tau,
+            "epochs": config.max_epochs,
+            "slot_lr_multiplier": config.slot_lr_multiplier,
+            "learning_rate": config.learning_rate,
+        },
     }
     Path(arguments.report).write_text(json.dumps(summary, indent=1))
     print(
@@ -198,12 +266,25 @@ def _add_distill_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--mode", choices=("tilt", "hard", "clearhard"), default="tilt")
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--epochs", type=int, default=4)
+    parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--value-coefficient", type=float, default=0.5)
+    parser.add_argument(
+        "--slot-lr-multiplier",
+        type=float,
+        default=1.0,
+        help="learning rate of an mlp_slots network's slot embedding, "
+        "relative to the rest",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from dune_imperium.agents.network_search_agent import (
+        DEFAULT_CANDIDATES,
+        DEFAULT_ROLLOUTS,
+    )
+
     parser = argparse.ArgumentParser(prog="dune_imperium.cli.expert")
     commands = parser.add_subparsers(dest="command", required=True)
     collect = commands.add_parser("collect", help="label greedy self-play games")
@@ -214,8 +295,38 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--out", required=True, help="directory for g<seed>.npz")
     collect.add_argument("--label-probability", type=float, default=0.5)
     collect.add_argument("--anchor-probability", type=float, default=0.25)
-    collect.add_argument("--rollouts", type=int, default=4)
-    collect.add_argument("--candidates", type=int, default=3)
+    collect.add_argument("--rollouts", type=int, default=DEFAULT_ROLLOUTS)
+    collect.add_argument("--candidates", type=int, default=DEFAULT_CANDIDATES)
+    rules = collect.add_argument_group(
+        "ruleset",
+        "none given: CHOAM, promo cards, Bloodlines, Tech Module, Immortality; "
+        "any given: exactly the given ones",
+    )
+    rules.add_argument("--choam", action="store_true", help="the CHOAM module")
+    rules.add_argument("--promo-cards", action="store_true", help="promo cards")
+    rules.add_argument("--bloodlines", action="store_true", help="Bloodlines")
+    rules.add_argument("--tech-module", action="store_true", help="Tech Module")
+    rules.add_argument("--immortality", action="store_true", help="Immortality")
+    rules.add_argument("--go-to-11", action="store_true", help="the Go to 11 variant")
+    rules.add_argument("--epic", action="store_true", help="Epic Game Mode")
+    rules.add_argument(
+        "--arrakeen-scouts", action="store_true", help="the Arrakeen Scouts module"
+    )
+    rules.add_argument(
+        "--leader-draft", action="store_true", help="the OQ-007 Leader draft"
+    )
+    collect.add_argument(
+        "--opponent",
+        default=None,
+        metavar="KIND",
+        help="agent kind seated beside the teacher at mixed tables (say app_ai)",
+    )
+    collect.add_argument(
+        "--mixed-share",
+        type=float,
+        default=0.5,
+        help="share of the games that are mixed tables (with --opponent)",
+    )
     collect.set_defaults(handler=_collect)
     train = commands.add_parser("train", help="distil labels into a candidate")
     train.add_argument("--init", required=True, help="incumbent checkpoint")
