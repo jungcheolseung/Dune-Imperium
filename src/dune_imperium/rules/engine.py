@@ -1041,8 +1041,9 @@ def _settle_finishing(result: RuleResult) -> RuleResult:
 
     Only after every hook of the transition has run (Hungry for Spice,
     Suspensor Suits, Alliance Contracts, the deployment peak), so whatever
-    the Usurp trash at the turn's end produced is judged inside that turn
-    (OQ-095 (5)); the next seat's turn may then need its own automatic steps.
+    the press produced -- a Usurp trash, a box it resolved -- is judged
+    inside that turn (OQ-095 (3), (5)); the next seat's turn may then need its
+    own automatic steps.
     """
 
     settled = settle_finishing_agent_turn(result)

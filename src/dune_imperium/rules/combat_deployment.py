@@ -772,11 +772,10 @@ def apply_agent_turn_finish(
             events.extend(switched.events)
             continue
         break
-    _, context = current_agent_effect_context(working)
-    if context["pending_agent_effect"] is True or (
-        context.get("graft_pending_effect") is True
-    ):
-        raise RuntimeError("the turn end left a mandatory Agent box unresolved")
+    # A box left pending here was revived by the press itself: the first
+    # grafted box's payment met the partner's condition. It is a mandatory
+    # effect of this turn again (OQ-057 (1): "뒤에 뽑은 카드로 조건이 성립하면
+    # box가 다시 의무가 된다"), so the settle below reopens the turn for it.
     source = f"round:{state.round_number}:player:{player}:finish_agent_turn"
     # A Contract icon that never found a token it could take fizzles with the
     # turn, without the two-Solari conversion (OQ-059).
