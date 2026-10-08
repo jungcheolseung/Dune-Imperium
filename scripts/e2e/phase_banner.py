@@ -1,4 +1,4 @@
-"""Phase and turn banners (effects.js, user request 2026-10-05).
+"""Phase and turn banners (effects.js, user requests 2026-10-05 and 2026-10-08).
 
 A: a real seeded Arrakeen Scouts game (seat 0 human, three heuristic seats,
    Leader draft on so round 1's Conflict reveal reaches the log) is walked
@@ -8,17 +8,20 @@ A: a real seeded Arrakeen Scouts game (seat 0 human, three heuristic seats,
    banner names the summary's round and the revealed Conflict (with its card
    image), the combat banner the Conflict of that round (the view's own
    history), a Scouts banner the item's kind and name, the Endgame banner
-   the phase, and "내 차례" comes exactly when seat 0's turn starts. A
+   the phase, every AI turn its own "플레이어N 차례" at its seat's first step
+   since the last turn end, the Combat result board the logged standing
+   (combat_standing), and "내 차례" comes exactly when seat 0's turn starts. A
    re-render, a language switch and a reload never show it again; the
    switch redraws the banner on screen in the other language without
    queueing anything. Every banner keeps clear of clicks and inside the
    window at 1366x768, 1920x1080 and a narrow 1100x800, in both languages
-   and with reduced motion (opacity only).
+   and with reduced motion (opacity only). The result board alone takes a
+   click, and a click or Escape closes it.
 B: a remote room (host seat 0, guest seat 1): the guest's turn start reads
    "플레이어2 차례" (seats are numbered from one) on the host's screen and
    "내 차례" on the guest's.
-C: AI-only playback shows phase banners (never a turn banner); pausing and
-   seeking clear them.
+C: AI-only playback shows phase banners and every seat's turn as another
+   player's; pausing and seeking clear them.
 
 Screenshots of every banner in both languages go to E2E_SHOTS_DIR (a
 temporary folder by default).
@@ -77,36 +80,70 @@ PENDING_JS = """() => {
   clearTimeout(phaseBanner.timer);
   return [phaseBanner.current, ...phaseBanner.queue].filter(Boolean).map((c) => ({
     type: c.type, round: c.round ?? null, conflict: c.conflictId ?? null,
-    item: c.itemId ?? null, seat: c.seat ?? null}));
+    item: c.itemId ?? null, seat: c.seat ?? null,
+    rows: c.rows ? c.rows.map((r) => [r.seat, r.rank, r.strength, r.multiplier])
+      : null}));
 }"""
 
-# The same cues, read from the log and the view without the page's helpers.
-# A combat's Conflict is the view's history entry of the round it ran in:
-# the summary's round, or the round before a reveal later in the batch.
+# The same cues, read from the log and the view without the page's helpers,
+# in the order they go on screen. A combat's Conflict is the view's history
+# entry of the round it ran in: the summary's round, or the round before a
+# reveal later in the batch. An AI seat's turn (seat 0 is announced from the
+# summary) stands at that seat's first step since the last turn end or the
+# last entry that opened a phase.
 EXPECTED_JS = """(from) => {
   const out = [];
-  const cue = (type, round, conflict, item) =>
-    out.push({type, round, conflict, item, seat: null});
-  const events = state.log.entries.slice(from)
-    .filter((e) => !e.undone && e.type !== 'undo').flatMap((e) => e.events || []);
+  const cue = (at, type, round, conflict, item, seat = null, rows = null) =>
+    out.push({at, cue: {type, round, conflict, item, seat, rows}});
+  const live = state.log.entries.filter((e) => !e.undone && e.type !== 'undo');
+  const fresh = live.filter((e) => e.index >= from);
+  const events = fresh.flatMap((e) => (e.events || []).map((event, position) =>
+    ({event, at: [e.index, position]})));
   const history = state.view.conflict_history;
-  events.forEach((event, position) => {
+  const boundary = ['conflict_revealed', 'combat_intrigue_started',
+    'combat_intrigue_finished', 'combat_standing', 'scouts_item_revealed',
+    'endgame_started', 'turn_passed'];
+  let ended = -1;
+  let opened = -1;
+  for (const e of live) {
+    const taking = ['agent_turn', 'reveal_turn', 'play_turn_start_card'];
+    if (e.index >= from && e.type === 'action' && e.actor !== 0
+        && taking.includes(e.action_id)) {
+      const since = Math.max(ended, opened);
+      const first = live.find((x) => x.type === 'action' && x.actor === e.actor
+        && x.index > since);
+      cue([first.index, -1], 'turn', null, null, null, e.actor);
+    }
+    if ((e.events || []).some((v) => boundary.includes(v.kind))) opened = e.index;
+    const ends = ['finish_agent_turn', 'finish_reveal'];
+    if (e.type === 'action' && ends.includes(e.action_id)) ended = e.index;
+  }
+  let standing = null;
+  events.forEach(({event, at}, position) => {
     const p = event.payload || {};
     if (event.kind === 'conflict_revealed') {
-      cue('round', p.round, p.conflict_id, null);
+      cue(at, 'round', p.round, p.conflict_id, null);
     } else if (event.kind === 'combat_intrigue_started') {
       const later = events.slice(position)
-        .find((e) => e.kind === 'conflict_revealed');
-      const round = later ? later.payload.round - 1 : state.summary.round_number;
+        .find((e) => e.event.kind === 'conflict_revealed');
+      const round = later ? later.event.payload.round - 1 : state.summary.round_number;
       const row = history.find((h) => h.round === round);
-      cue('combat', round, row ? row.conflict_id : null, null);
+      cue(at, 'combat', round, row ? row.conflict_id : null, null);
+    } else if (event.kind === 'combat_standing') {
+      if (!standing || standing.at[0] !== at[0]) {
+        const row = history.find((h) => h.conflict_id === p.conflict_id);
+        cue(at, 'result', row ? row.round : null, p.conflict_id, null, null, []);
+        standing = out[out.length - 1];
+      }
+      standing.cue.rows.push([p.player, p.rank, p.strength, p.multiplier]);
     } else if (event.kind === 'scouts_item_revealed') {
-      cue('scouts', p.round, null, p.item_id);
+      cue(at, 'scouts', p.round, null, p.item_id);
     } else if (event.kind === 'endgame_started') {
-      cue('endgame', null, null, null);
+      cue(at, 'endgame', null, null, null);
     }
   });
-  return out;
+  out.sort((a, b) => a.at[0] - b.at[0] || a.at[1] - b.at[1]);
+  return out.map((item) => item.cue);
 }"""
 
 # Turn ends since `from`, and whether seat 0 stands at its own turn frame.
@@ -171,6 +208,12 @@ READ_JS = """() => {
     live: box.getAttribute('aria-live'),
     hidden: band.getAttribute('aria-hidden'),
     z: Number(getComputedStyle(box).zIndex),
+    rows: [...band.querySelectorAll('.phase-result-row')].map((r) => ({
+      seat: Number(r.dataset.seat), rank: Number(r.dataset.rank),
+      rankText: r.querySelector('.phase-result-rank').textContent,
+      strength: r.querySelector('.phase-result-strength').textContent.trim(),
+      mine: r.classList.contains('mine')})),
+    takesClicks: getComputedStyle(band).pointerEvents !== 'none',
   };
 }"""
 
@@ -184,6 +227,8 @@ TITLES = {
         "other": "플레이어{seat} 차례",
         "round_start": "라운드 시작",
         "conflict": "교전: {name}",
+        "result": "전투 결과",
+        "ranks": {1: "1위", 2: "2위", 3: "3위", 0: "보상 없음"},
     },
     "en": {
         "round": "Round {round}",
@@ -194,6 +239,8 @@ TITLES = {
         "other": "Player {seat}'s turn",
         "round_start": "Round Start",
         "conflict": "Conflict: {name}",
+        "result": "Combat Result",
+        "ranks": {1: "1st", 2: "2nd", 3: "3rd", 0: "No reward"},
     },
 }
 SCOUTS_KINDS = {
@@ -258,7 +305,23 @@ def expected_words(page, cue: dict, lang: str) -> dict:
             "subtitle": None,
             "image": None,
         }
+    if cue["type"] == "result":
+        conflict = catalog(page, "conflicts", cue["conflict"])
+        return {
+            "kicker": words["round"].format(round=cue["round"]),
+            "title": words["result"],
+            "subtitle": words["conflict"].format(name=conflict["name"]),
+            "image": conflict["image"],
+        }
     leader = leader_of(page, cue["seat"])
+    if cue["seat"] != 0:
+        name = page.evaluate("(seat) => playerName(seat)", cue["seat"])
+        return {
+            "kicker": None,
+            "title": words["other"].format(seat=cue["seat"] + 1),
+            "subtitle": f"{leader['name']} · {name}",
+            "image": leader["image"],
+        }
     return {
         "kicker": None,
         "title": words["mine"],
@@ -275,7 +338,7 @@ def verify_drawn(page, pair: tuple[dict, dict], label: str) -> dict:
     width = page.evaluate("document.documentElement.scrollWidth")
     page.evaluate(SHOW_JS, full)
     lang = page.evaluate("TERM_LANGUAGE")
-    if cue["type"] in ("round", "combat") or cue["type"] == "turn":
+    if cue["type"] in ("round", "combat", "result", "turn"):
         page.wait_for_function(
             "() => { const i = el('phase-banner').querySelector('img');"
             " return !i || (i.complete && i.naturalWidth > 0); }"
@@ -288,10 +351,29 @@ def verify_drawn(page, pair: tuple[dict, dict], label: str) -> dict:
         f"{label}: {cue['type']} banner words and art ({lang})",
         (got, want),
     )
+    if cue["type"] == "result":
+        words = TITLES[lang]["ranks"]
+        want_rows = [
+            {"seat": seat, "rank": rank, "rankText": words[rank],
+             "strength": str(strength), "mine": seat == 0}
+            for seat, rank, strength, _ in cue["rows"]
+        ]
+        got_rows = [
+            {**row, "strength": row["strength"].split(" ")[0]} for row in info["rows"]
+        ]
+        doubled = [row[3] == 2 for row in cue["rows"]]
+        check.ok(
+            got_rows == want_rows
+            and [("×2" in row["strength"]) for row in info["rows"]] == doubled,
+            f"{label}: the result board lists the logged standing ({lang})",
+            (info["rows"], want_rows),
+        )
+    clicks = ("through", "hitOutside") if cue["type"] != "result" else ()
     placed = {
-        key: info[key]
-        for key in ("fits", "overBoard", "clearOfSide", "through", "hitOutside")
+        key: info[key] for key in ("fits", "overBoard", "clearOfSide", *clicks)
     }
+    if cue["type"] == "result":
+        placed["takesClicks"] = info["takesClicks"]
     placed["noOverflow"] = (
         page.evaluate("document.documentElement.scrollWidth") == width
     )
@@ -305,6 +387,7 @@ def walk(page) -> dict:
     rerendered = False
     turn_end_due = True
     turns = 0
+    others = 0
     mismatches = 0
     for _ in range(3000):
         assert settled(page, 30)
@@ -334,6 +417,7 @@ def walk(page) -> dict:
                     "conflict": None,
                     "item": None,
                     "seat": 0,
+                    "rows": None,
                 }
             )
             turn_end_due = False
@@ -353,8 +437,12 @@ def walk(page) -> dict:
                     cue["round"] == page.evaluate("state.summary.round_number"),
                     f"round banner {cue['round']} is the summary's round",
                 )
-            if cue["type"] not in seen:
-                seen[cue["type"]] = (full, cue)
+            other = cue["type"] == "turn" and cue["seat"] != 0
+            kind = "other" if other else cue["type"]
+            if kind == "other":
+                others += 1
+            if kind not in seen:
+                seen[kind] = (full, cue)
                 verify_drawn(page, (full, cue), "live 1366x768")
         if pending and pending[-1]["type"] == "turn" and not rerendered:
             rerendered = True
@@ -371,17 +459,25 @@ def walk(page) -> dict:
     check.ok(mismatches == 0, "every step's banners matched its public events")
     check.ok(rerendered, "a turn start was re-rendered without queueing it again")
     check.ok(turns >= 5, f"seat 0's turn starts were announced ({turns})")
-    for kind in ("round", "combat", "scouts", "endgame", "turn"):
+    check.ok(others >= 30, f"the AI seats' turns were announced ({others})")
+    for kind in ("round", "combat", "result", "scouts", "endgame", "turn", "other"):
         check.ok(kind in seen, f"the walk met a {kind} banner")
     return seen
 
 
 def turn_lifecycle(page) -> None:
     """A real turn start: language switch, reload and leaving."""
-    # Play on to the next own turn start and catch its banner live.
+    # Play on to the next own turn start and catch its banner live (the AI
+    # turns queued before it are dropped, to put it on screen now).
+    own = "(c) => c && c.type === 'turn' && c.source === 'summary'"
     for _ in range(400):
         assert settled(page, 30)
-        if page.evaluate("phaseBanner.current && phaseBanner.current.type === 'turn'"):
+        if page.evaluate(f"[phaseBanner.current, ...phaseBanner.queue].some({own})"):
+            page.evaluate(f"""() => {{
+              phaseBanner.queue = phaseBanner.queue.filter({own});
+              if (!({own})(phaseBanner.current)) hidePhaseBanner();
+              playEffects.queue = []; hidePlayEffect(); advanceEffects();
+            }}""")
             break
         page.evaluate("clearPhaseBanner()")
         if page.evaluate("state.summary.confirmation === state.viewSeat"):
@@ -424,34 +520,28 @@ def turn_lifecycle(page) -> None:
 
 def look(page, seen: dict, tag: str) -> None:
     """Every banner kind in both languages and three window sizes."""
-    other = dict(seen["turn"][0], seat=2)
     for lang in ("ko", "en"):
         page.evaluate("(lang) => setLanguage(lang)", lang)
         settled(page)
         for size in SIZES:
             page.set_viewport_size(size)
             page.evaluate("fitActionLog()")
-            for kind in ("round", "combat", "scouts", "endgame", "turn", "other"):
+            kinds = ("round", "combat", "result", "scouts", "endgame", "turn", "other")
+            for kind in kinds:
                 width = f"{size['width']}x{size['height']}"
+                info = verify_drawn(page, seen[kind], f"{tag} {width}")
                 if kind == "other":
-                    page.evaluate(SHOW_JS, other)
-                    info = page.evaluate(READ_JS)
                     # Visible seat numbers are one-based (i18n.js seatNumber).
-                    seat = TITLES[lang]["other"].format(seat=3)
+                    seat = seen[kind][1]["seat"]
                     check.ok(
-                        info["title"] == seat
-                        and info["seat"] == "2"
+                        info["seat"] == str(seat)
                         and not info["mine"]
+                        and info["hidden"] == "true"
                         and info["color"].lower()
-                        == page.evaluate("SEAT_COLORS[2]").lower()
-                        and info["fits"]
-                        and info["through"]
-                        and info["hitOutside"],
-                        f"another seat's turn banner ({lang} {width})",
+                        == page.evaluate(f"SEAT_COLORS[{seat}]").lower(),
+                        f"an AI seat's turn banner in its colour ({lang} {width})",
                         info,
                     )
-                else:
-                    info = verify_drawn(page, seen[kind], f"{tag} {width}")
                 if kind == "turn":
                     check.ok(
                         info["mine"]
@@ -489,6 +579,24 @@ def look(page, seen: dict, tag: str) -> None:
     )
     page.emulate_media(reduced_motion="no-preference")
     page.evaluate("clearPhaseBanner()")
+    # The result board closes on a click on it, or on Escape; a band never
+    # takes the click.
+    for how in ("click", "Escape"):
+        page.evaluate(
+            """(cue) => { phaseBanner.queue = [cue]; hidePhaseBanner();
+              playEffects.queue = []; hidePlayEffect(); advanceEffects(); }""",
+            seen["result"][0],
+        )
+        check.ok(page.is_visible("#phase-banner .phase-banner.result"), "result shows")
+        if how == "click":
+            page.click("#phase-banner .phase-banner.result")
+        else:
+            page.keyboard.press("Escape")
+        check.ok(
+            page.is_hidden("#phase-banner")
+            and page.evaluate("phaseBanner.current === null"),
+            f"the result board closes on {how}",
+        )
 
 
 def live(browser, base: str) -> None:
@@ -569,12 +677,11 @@ def remote(browser) -> None:
                     arg=wanted,
                 )
         check.ok(found, "the walk reached the guest's turn start")
+        guests = "window.__banners.filter((b) => b.cue === 'turn' && b.seat === '1')"
         for page in pages.values():
-            page.wait_for_function(
-                "() => window.__banners.some((b) => b.cue === 'turn')", timeout=5000
-            )
-        host_turns = host.evaluate("window.__banners.filter((b) => b.cue === 'turn')")
-        guest_turns = guest.evaluate("window.__banners.filter((b) => b.cue === 'turn')")
+            page.wait_for_function(f"() => {guests}.length > 0", timeout=15000)
+        host_turns = host.evaluate(guests)
+        guest_turns = guest.evaluate(guests)
         check.ok(
             host_turns[-1]["seat"] == "1"
             and host_turns[-1]["title"] == "플레이어2 차례"
@@ -605,10 +712,15 @@ def playback(browser, base: str) -> None:
     page.wait_for_function("state.review !== null && playback.playing")
     page.wait_for_selector("#phase-banner:not([hidden])", timeout=30000)
     kinds = page.evaluate("window.__banners.map((b) => b.cue)")
+    check.ok(kinds and kinds[0] == "round", "AI-only playback opens on a round", kinds)
+    page.wait_for_function(
+        "() => window.__banners.some((b) => b.cue === 'turn')", timeout=30000
+    )
+    turns = page.evaluate("window.__banners.filter((b) => b.cue === 'turn')")
     check.ok(
-        kinds and "turn" not in kinds and kinds[0] == "round",
-        "AI-only playback shows the round banner and no turn banner",
-        kinds,
+        all(not b["mine"] and b["title"].endswith("차례") for b in turns),
+        "AI-only playback announces each turn as another player's",
+        turns,
     )
     page.evaluate("stopPlayback()")
     check.ok(page.is_hidden("#phase-banner"), "pausing playback clears the banners")

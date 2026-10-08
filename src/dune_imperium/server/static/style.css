@@ -2304,6 +2304,42 @@ kbd {
 .phase-banner.combat { --banner-color: #e2483d; }
 .phase-banner.scouts { --banner-color: #a98bff; }
 .phase-banner.endgame { --banner-color: #ef8a3a; }
+/* The Combat result board: the band's look with the standing below the
+   title. It alone takes a click, which closes it. */
+.phase-banner.result { --banner-color: #e2483d; cursor: pointer; }
+#phase-banner .phase-banner.result,
+#phase-banner .phase-banner.result * { pointer-events: auto; }
+.phase-banner.result .phase-banner-words { text-align: left; }
+.phase-result-rows { display: grid; gap: 0.2rem; margin-top: 0.55rem; }
+.phase-result-row {
+  display: grid;
+  grid-template-columns: 4.6rem 0.8rem minmax(0, 1fr) 6.6rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  font-size: 1.05rem;
+}
+.phase-result-row.mine {
+  background: color-mix(in srgb, var(--seat-color) 38%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seat-color), #fff 35%);
+  font-weight: 700;
+}
+.phase-result-row.unranked { opacity: 0.65; }
+.phase-result-rank { color: var(--banner-color); font-weight: 700; white-space: nowrap; }
+.phase-result-chip {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  background: var(--seat-color);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.phase-result-player { min-width: 0; overflow-wrap: anywhere; }
+.phase-result-player small { opacity: 0.75; font-weight: 400; white-space: nowrap; }
+.phase-result-strength { white-space: nowrap; text-align: right; }
+.phase-result-strength .icon { height: 1.1em; vertical-align: -0.2em; }
+.phase-result-double { color: #ffcf7a; }
+.phase-result-hint { margin-top: 0.4rem; font-size: 0.75rem; opacity: 0.6; }
 /* A light sweeping across the band once, as it arrives. */
 .phase-banner::before {
   content: "";
@@ -2363,6 +2399,7 @@ kbd {
   .phase-banner { gap: 0.7rem; padding: 0.7rem 0.9rem; }
   .phase-banner-art img { height: 4.5rem; }
   .phase-banner-title, .phase-banner.mine .phase-banner-title { font-size: 1.8rem; }
+  .phase-result-row { grid-template-columns: 3.4rem 0.7rem minmax(0, 1fr) 5.2rem; font-size: 0.9rem; gap: 0.4rem; }
   .phase-banner-subtitle { font-size: 0.9rem; }
 }
 @media (prefers-reduced-motion: reduce) {
