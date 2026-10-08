@@ -26,6 +26,11 @@ the face drawn from the Steam app's card templates
 (``app/<language>/<path>`` with a ``.webp`` suffix, written by
 ``scripts/dwgr/app_cards.py``) comes before the scan, because it is
 sharper; so the Korean order is ``app/ko``, ``ko``, ``app/en``, ``en``.
+Leader faces have no app template: ``scripts/dwgr/app_leaders.py``
+assembles them from the app's two layers of the printed painting and a
+frame drawn to the scans' 1460x1020, so ``display.leader_layout``'s
+percentages hold for either picture (Reverend Mother Jessica, with no
+Korean card, has only an English face).
 A picture laid on the printed board scan (a Leader's own tile such as
 Tuek's Sietch, Immortality's Research Station overlay) must keep the
 printed tile's shape, which the app's board-space renders do not have
