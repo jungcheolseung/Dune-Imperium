@@ -82,7 +82,7 @@ def test_every_faction_has_an_alliance_token_picture_name() -> None:
     # One Alliance token per Faction [Main p. 4], named by the engine's
     # Faction value so the browser can look a picture up by faction key.
     assert ALLIANCE_TOKEN_FACTIONS == tuple(faction.value for faction in Faction)
-    assert alliance_token_filename("bene_gesserit") == "alliance_bene_gesserit.jpg"
+    assert alliance_token_filename("bene_gesserit") == "alliance_bene_gesserit.png"
     names = {alliance_token_filename(faction) for faction in ALLIANCE_TOKEN_FACTIONS}
     assert len(names) == 4
     assert MAKER_HOOKS_TOKEN_FILENAME not in names
@@ -93,7 +93,13 @@ def test_alliance_pictures_are_offered_one_by_one() -> None:
     # one; the others keep theirs.
     assert available_alliance_tokens(frozenset()) == {}
     files = frozenset({"alliance_fremen.jpg", "alliance_emperor.png", "other.jpg"})
-    assert available_alliance_tokens(files) == {"fremen": "alliance_fremen.jpg"}
+    assert available_alliance_tokens(files) == {
+        "fremen": "alliance_fremen.jpg",
+        "emperor": "alliance_emperor.png",
+    }
+    # the app's picture wins over an older checkout's photo
+    both = frozenset({"alliance_fremen.jpg", "alliance_fremen.png"})
+    assert available_alliance_tokens(both) == {"fremen": "alliance_fremen.png"}
 
 
 def test_seat_pieces_need_all_four_colours() -> None:
