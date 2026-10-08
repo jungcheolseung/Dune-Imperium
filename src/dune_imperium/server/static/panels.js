@@ -789,6 +789,7 @@ const NEUTRAL_EVENT_KINDS = new Set([
   "cards_drawn",
   "combat_intrigue_started",
   "combat_intrigue_finished",
+  "combat_standing",
   "combat_reward_gained",
   "conflict_won",
   "battle_icons_matched",
@@ -902,7 +903,11 @@ function neutralTitle(group) {
     parts.push(t("panels.neutral_setup"));
   }
   if (kinds.has("combat_intrigue_started")) parts.push(t("panels.neutral_combat_intrigue"));
-  if (kinds.has("conflict_won") || kinds.has("combat_reward_gained")) {
+  if (
+    kinds.has("conflict_won") ||
+    kinds.has("combat_standing") ||
+    kinds.has("combat_reward_gained")
+  ) {
     parts.push(t("panels.neutral_combat_resolved"));
   }
   // cards_drawn is the Round Start draw; after a Control defense it lands

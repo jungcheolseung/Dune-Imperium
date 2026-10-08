@@ -8,6 +8,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core import (
     DomainAction,
+    GameEvent,
     GamePhase,
     GameState,
     Influence,
@@ -377,6 +378,98 @@ def test_combat_reward_event_doubles_victory_points_for_a_sandworm() -> None:
     )
     assert dict(first_place.payload)["victory_points"] == 2
     assert dict(first_place.payload)["multiplier"] == 2
+
+
+def _standing(events: tuple[GameEvent, ...]) -> list[tuple[int, int, int, int]]:
+    """(player, rank, strength, multiplier) of each combat_standing event."""
+
+    rows = []
+    for event in events:
+        if event.kind != "combat_standing":
+            continue
+        payload = dict(event.payload)
+        assert event.visible_to is None
+        rows.append(
+            (
+                int(payload["player"]),
+                int(payload["rank"]),
+                int(payload["strength"]),
+                int(payload["multiplier"]),
+            )
+        )
+    return rows
+
+
+def test_the_rewards_open_with_the_whole_public_standing() -> None:
+    # UI (user request 2026-10-08, "전투 단계 종료 때 전투 최종 순위도 그렇게
+    # 보여지면 좋겠고"): the rewards are paid one recipient at a time and the
+    # strengths are cleared at cleanup, so the standing is logged once, up
+    # front. A fourth seat with strength but no reward row comes after the
+    # recipients with rank 0.
+    state = _reward_state("skirmish_desert_mouse", strengths=(8, 6, 4, 2))
+
+    result = resolve_combat_rewards(state)
+
+    assert _standing(result.events) == [
+        (0, 1, 8, 1),
+        (1, 2, 6, 1),
+        (2, 3, 4, 1),
+        (3, 0, 2, 1),
+    ]
+    first = next(event for event in result.events if event.kind == "combat_standing")
+    assert dict(first.payload)["conflict_id"] == "skirmish_desert_mouse"
+    assert result.events.index(first) == 0
+
+
+def test_the_standing_follows_ties_sandworms_and_units_without_strength() -> None:
+    # A first-place tie shares the second reward and the next seat takes the
+    # third (rank_combat, [Main p. 14]); tied recipients are listed in turn
+    # order from the First Player (OQ-002). A sandworm's doubled row says so,
+    # a seat with units but no strength is in the standing with rank 0, and
+    # a seat with neither is not.
+    players = list(_players((5, 7, 7, 0), sandworm_players=(2,)))
+    for seat, troops in ((0, 2), (3, 1)):
+        players[seat] = replace(
+            players[seat],
+            troops_conflict=troops,
+            troops_supply=players[seat].troops_supply - troops,
+        )
+    state = replace(
+        _reward_state("skirmish_desert_mouse"), players=tuple(players), first_player=2
+    )
+
+    assert _standing(resolve_combat_rewards(state).events) == [
+        (2, 2, 7, 2),
+        (1, 2, 7, 1),
+        (0, 3, 5, 1),
+        (3, 0, 0, 1),
+    ]
+
+    nobody = replace(state, players=_players((0, 0, 0, 0)))
+    assert _standing(resolve_combat_rewards(nobody).events) == []
+
+
+def test_the_standing_is_logged_once_however_the_rewards_are_paid() -> None:
+    # Skirmish (Crysknife) stops at its winner's Influence choice; the
+    # engine's next call pays the others without a second standing.
+    engine = UprisingRulesEngine()
+    state = replace(
+        _reward_state("skirmish_crysknife", strengths=(8, 6, 4, 0)),
+        conflict_deck=("skirmish_desert_mouse",),
+    )
+
+    opened = _advance_automatic(RuleResult(state=state))
+    answered = engine.apply(
+        opened.state,
+        DomainAction(
+            action_id="choose_combat_reward_influence",
+            actor=0,
+            arguments=(("faction", "emperor"),),
+        ),
+    )
+
+    assert _standing(opened.events) == [(0, 1, 8, 1), (1, 2, 6, 1), (2, 3, 4, 1)]
+    assert _standing(answered.events) == []
 
 
 def test_the_engine_pays_the_next_recipient_only_after_the_winner_answers() -> None:
