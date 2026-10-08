@@ -4,12 +4,6 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
-## 2026-10-08 보드의 계약 카드를 인쇄된 칸 크기로 (codec 그대로 v139)
-
-- 사용자 보고: 보드의 앞면 계약 두 장 가운데 오른쪽이 왼쪽을 덮었다. 원인은 `board.js`가 계약 카드를 칸의 1.2배(`CONTRACT_SLOT_SCALE`)로 그린 것이다. 두 칸은 보드 폭의 0.7 %만 떨어져 있어 1.2배면 1.4 %가 겹친다.
-- 스캔(6012×6005)에서 두 칸의 밝은 판 윤곽을 밝기 프로파일로 다시 쟀다(`board_layout.CONTRACT_SLOTS`: 좌 29.16/21.49/10.44/6.66, 우 40.33/21.49/10.45/6.65; x 1753–2381·2425–3053, y 1291–1690 px). 카드는 칸 폭 그대로 그린다. 계약 카드 그림(780×496)의 비율이 칸과 같아 높이도 칸에 맞는다. 스카웃의 계약 더미 조각(칸의 1/3)도 새 측정을 따른다(3.48×2.22).
-- 검증: `test_board_layout`이 칸 비율과 간격을 고정(19개 통과), 전체 pytest **6,699개 통과**, ruff·mypy(422파일) 통과, Chrome E2E **4종**(`board_tokens`, `conflict_history`, `lang`, `turn_controls`) **15초, 실패 0**(worktree에는 `scripts/e2e/.venv`가 없어 본 체크아웃의 venv에서 `E2E_REPO`로 돌렸다). 브라우저 실측: 두 카드 상자가 칸 좌표와 일치하고 간격 0.73 %. 클라이언트 변경이므로 새로고침으로 적용한다. 브랜치 `claude/board-contract-card-sizing-6ebb29`.
-
 ## 2026-10-08 엔진의 공개 앞 멈춤: 턴 밖 선택은 모두 "놓고 → 턴 종료 + 되돌리기" (codec v140, OQ-103)
 
 사용자 질문("엔진이 '보상 적용 → 다음 교전 공개 → 손패 뽑기'를 한 단계 안에서 이어서 처리합니다. 왜 이렇게 되는거야?", "그럼 이 방법으로 하면 괜찮은거야?")에 조사로 답했고, 결정은 "추천대로 해봐. 저장한거는 안 쓸 플레이야"였다. 브랜치 `engine-pause`.
@@ -53,6 +47,12 @@
     - (a) Conflict 끝 창은 쓸 수 있는 Harvest Cells를 쥔 좌석에만 공개적으로 열린다(전부터 그랬다).
     - (b) Earn Any Alliance 완료가 보상 순서·창 여부에 따라 정리 전/후로 갈린다(전부터 그랬다). [Bloodlines p. 2]대로 늘 정리 전에 완료할지.
 - **검증**: pytest **6,709개 통과**, ruff·mypy(425파일) 통과. Chrome E2E 50종을 2개씩 돌려 49종이 통과했다. `log_words` 하나가 멈춤 단계의 우연 줄을 "기타 — Continue"로 읽어 실패했고, 줄 도우미가 멈춤을 직접 부르게 고쳤다(`544e67e1`). 그 뒤 기록 관련 6종(log_words·log_follow·log_passes·spectate·remote_fresh·held_choice)을 다시 돌려 모두 통과했다. `held_choice.py`는 "확정 ▶" 장면을 책략의 Imperium Row 카드 획득으로, 지배 방어 장면을 서버 붙잡기로 옮겼다. 교훈은 `docs/lessons.md` 2026-10-08(단계 끝 훅).
+
+## 2026-10-08 보드의 계약 카드를 인쇄된 칸 크기로 (codec 그대로 v139)
+
+- 사용자 보고: 보드의 앞면 계약 두 장 가운데 오른쪽이 왼쪽을 덮었다. 원인은 `board.js`가 계약 카드를 칸의 1.2배(`CONTRACT_SLOT_SCALE`)로 그린 것이다. 두 칸은 보드 폭의 0.7 %만 떨어져 있어 1.2배면 1.4 %가 겹친다.
+- 스캔(6012×6005)에서 두 칸의 밝은 판 윤곽을 밝기 프로파일로 다시 쟀다(`board_layout.CONTRACT_SLOTS`: 좌 29.16/21.49/10.44/6.66, 우 40.33/21.49/10.45/6.65; x 1753–2381·2425–3053, y 1291–1690 px). 카드는 칸 폭 그대로 그린다. 계약 카드 그림(780×496)의 비율이 칸과 같아 높이도 칸에 맞는다. 스카웃의 계약 더미 조각(칸의 1/3)도 새 측정을 따른다(3.48×2.22).
+- 검증: `test_board_layout`이 칸 비율과 간격을 고정(19개 통과), 전체 pytest **6,699개 통과**, ruff·mypy(422파일) 통과, Chrome E2E **4종**(`board_tokens`, `conflict_history`, `lang`, `turn_controls`) **15초, 실패 0**(worktree에는 `scripts/e2e/.venv`가 없어 본 체크아웃의 venv에서 `E2E_REPO`로 돌렸다). 브라우저 실측: 두 카드 상자가 칸 좌표와 일치하고 간격 0.73 %. 클라이언트 변경이므로 새로고침으로 적용한다. 브랜치 `claude/board-contract-card-sizing-6ebb29`.
 
 ## 2026-10-08 게임다운 연출 4~5단계: AI 진행 속도, Reveal·모래벌레·방어벽·숫자 변화·최종 순위판 (codec 그대로 v139)
 
