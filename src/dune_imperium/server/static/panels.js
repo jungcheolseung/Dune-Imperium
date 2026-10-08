@@ -195,7 +195,9 @@ function renderSeats() {
         : seatKindLabel(kind);
       who.appendChild(badge);
     }
-    if (summary.first_player === seat) who.appendChild(firstPlayerMark());
+    /* A review step shows who held the marker at that step. */
+    const firstPlayer = state.review ? view.first_player : summary.first_player;
+    if (firstPlayer === seat) who.appendChild(firstPlayerMark());
     head.appendChild(who);
     card.appendChild(head);
 

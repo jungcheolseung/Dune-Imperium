@@ -13,7 +13,8 @@ folds, and the fold still says what it is holding rather than going blank. `s`
 folds or opens all four, and the choice is remembered per browser.
 
 The holder of the First Player marker shows the app's token beside its
-name (`catalog.first_player_token`), or the text badge without the picture.
+name (`catalog.first_player_token`), or the text badge without the picture;
+a review step marks that step's holder, not the game's last one.
 
 Also guards the last English line in the panel: the zone counts used to read
 `hand 5 · deck 5 · discard 0`, which the label de-mixing never reached
@@ -196,7 +197,9 @@ def check_first_player(page, label: str) -> None:
     page.wait_for_function(
         "[...document.querySelectorAll('#seats img')].every((i) => i.complete)"
     )
-    holder = page.evaluate("state.summary.first_player")
+    holder = page.evaluate(
+        "state.review ? state.view.first_player : state.summary.first_player"
+    )
     name = page.evaluate("phraseText('{first_player}')")
     url = page.evaluate("state.catalog.first_player_token")
     marks = page.evaluate(FIRST_PLAYER_MARKS)
@@ -229,6 +232,27 @@ def check_first_player(page, label: str) -> None:
         "state.catalog.first_player_token = state.firstPlayerUrl;"
         " delete state.firstPlayerUrl; render();"
     )
+
+
+def check_first_player_in_review(page) -> None:
+    """A review step marks the seat that held the First Player marker at
+    that step (``view.first_player``), not the game's last holder in the
+    summary: the marker passes clockwise in every Recall [Main p. 15]."""
+    final = page.evaluate("state.summary.first_player")
+    held = final
+    for fraction in (0.5, 0.35, 0.65, 0.2, 0.8):
+        seek(page, fraction)
+        held = page.evaluate("state.view.first_player")
+        if held != final:
+            break
+    marks = page.evaluate(FIRST_PLAYER_MARKS)
+    marked = [m["seat"] for m in marks if m["token"] or m["badges"]]
+    check.ok(
+        held != final and marked == [held],
+        "review: the step's holder carries the First Player marker, not the last one",
+        {"step holder": held, "last holder": final, "marks": marks},
+    )
+    seek(page, 0.95)
 
 
 def run(base: str, browser) -> None:
@@ -269,6 +293,7 @@ def run(base: str, browser) -> None:
         )
         check_first_player(page, language)
     page.evaluate("setLanguage('ko')")
+    check_first_player_in_review(page)
 
     folded = page.evaluate(SEATS)
     check.ok(len(folded["cards"]) == 4, "four seat panels", len(folded["cards"]))
