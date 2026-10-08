@@ -122,7 +122,7 @@ ENGLISH_TERMS_JS = r"""() => {
 # status line is read too. The name-free check above missed "· seed … ·
 # CHOAM · Bloodlines" in the header, the Alliance and troop tooltips and
 # "Family Atomics" (2026-09-22).
-KOREAN_LATIN_JS = r"""({keep}) => {
+KOREAN_LATIN_JS = r"""({keep, scoped}) => {
     const names = new Set(keep);
     const NAME_FIELDS = new Set(['name', 'ability', 'signet']);
     const walk = (value, key) => {
@@ -144,9 +144,14 @@ KOREAN_LATIN_JS = r"""({keep}) => {
     const opened = [...document.querySelectorAll('.action-detail[hidden]')];
     for (const detail of opened) detail.hidden = false;
     const sorted = [...names].sort((a, b) => b.length - a.length);
-    const left = (text) => {
+    const left = (text, host) => {
         let bare = String(text || '');
         if (!/[A-Za-z]{2}/.test(bare)) return [];
+        /* A phrase allowed only inside its own element (scoped). */
+        for (const [selector, phrases] of scoped) {
+            if (!host || !host.closest(selector)) continue;
+            for (const phrase of phrases) bare = bare.split(phrase).join(' ');
+        }
         /* Names first: "Arrakeen/Spice Refinery" joins two with a slash. */
         for (const name of sorted) {
             if (bare.includes(name)) bare = bare.split(name).join(' ');
@@ -156,8 +161,8 @@ KOREAN_LATIN_JS = r"""({keep}) => {
     };
     const skip = '#language-toggle, .card-text, kbd, code, #help-body .muted';
     const found = [];
-    const note = (text, where) => {
-        const words = left(text);
+    const note = (text, where, host) => {
+        const words = left(text, host);
         if (!words.length) return;
         found.push([words.join(' '), String(text).slice(0, 80), where]);
     };
@@ -166,7 +171,7 @@ KOREAN_LATIN_JS = r"""({keep}) => {
         const host = node.parentElement;
         if (!host || host.closest('[hidden]') || host.closest(skip)) continue;
         if (getComputedStyle(host).display === 'none') continue;
-        note(node.textContent, host.id || host.className || host.tagName);
+        note(node.textContent, host.id || host.className || host.tagName, host);
     }
     const named = '[title], [alt], [aria-label], [placeholder]';
     for (const el of document.querySelectorAll(named)) {
@@ -175,7 +180,7 @@ KOREAN_LATIN_JS = r"""({keep}) => {
             if (!el.hasAttribute(name)) continue;
             const kind = String(el.className.baseVal ?? el.className);
             const where = el.id || kind || el.tagName;
-            note(el.getAttribute(name), `${where}@${name}`);
+            note(el.getAttribute(name), `${where}@${name}`, el);
         }
     }
     note(document.title, 'document.title');
@@ -197,17 +202,19 @@ KOREAN_LATIN_JS = r"""({keep}) => {
 # English names here before). The product title is the Korean edition's,
 # 듄 임페리움: 봉기 (2026-09-22). The Epic Game Mode box names the Conflict
 # tiers by the Roman numerals printed on the card backs, which the Korean
-# edition keeps too (2026-09-28): "교전 I 없이 II·III 5장씩". The face-down
-# Conflict deck's title names its top card's tier the same way, as the back
-# in the slot prints it (2026-10-08): "교전 II".
+# edition keeps too (2026-09-28): "교전 I 없이 II·III 5장씩".
 KOREAN_CHROME_ENGLISH = (
     "train extra",
     "AI",
     "Esc",
     "II·III",
-    "교전 III",
-    "교전 II",
 )
+
+# Chrome English allowed only inside one element, as (selector, phrases):
+# the face-down Conflict deck's title names its top card's tier by the Roman
+# numeral its back prints, like the Epic box above (2026-10-08): "교전 II".
+# Longest first, so "교전 III" is not left as "교전 II" plus a stray "I".
+KOREAN_SCOPED_ENGLISH = ((".slot-deck", ("교전 III", "교전 II")),)
 
 
 # The seat status line, every seat opened: in Korean the High Council seat
@@ -240,7 +247,9 @@ def hangul(page) -> list:
 
 def english_left(page) -> list:
     keep = [*KOREAN_KEEPS_ENGLISH, *KOREAN_CHROME_ENGLISH]
-    return page.evaluate(KOREAN_LATIN_JS, {"keep": keep})
+    return page.evaluate(
+        KOREAN_LATIN_JS, {"keep": keep, "scoped": KOREAN_SCOPED_ENGLISH}
+    )
 
 
 # Cards whose Korean print is known carry name_ko (and, with the assets
