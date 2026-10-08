@@ -441,6 +441,11 @@ QUAD = {  # Unity's built-in Quad: 1x1 in XY, centred
 COMBAT_ICON = "G_icon_Combat"
 HIDDEN_NODES = frozenset({"G_icon_Reward_WormSlash", "UI_icon_Bonus_Spice"})
 REWARD_ICON_MATERIAL = "M_icon_BoardSpaces_1"  # the reward icons' atlas
+# Where every space but Swordmaster centres its rewards (Reward_Anchor at x 0.2,
+# y -0.04 in Root, a lone icon on it). Swordmaster's anchor sits at x -0.174
+# and the app fills it at run time with a view we do not have, so its icon is
+# placed on this centre instead.
+REWARD_CENTRE = (0.2, -0.04)
 
 
 class Inputs:
@@ -882,11 +887,16 @@ def fix_static_state(inp, tree, content_id):
     if content_id == "swordmaster":
         for anchor in find_node(tree, "Reward_Anchor"):
             if not anchor["children"]:
+                (ax, ay, _az), scale = anchor["pos"], anchor["scale"][0]
                 anchor["children"].append(
                     {
                         "name": "G_icon_SwordMaster",
                         "active": True,
-                        "pos": [0.0, 0.0, 0.0],
+                        "pos": [
+                            (REWARD_CENTRE[0] - ax) / scale,
+                            (REWARD_CENTRE[1] - ay) / scale,
+                            0.0,
+                        ],
                         "rot": [0.0, 0.0, 0.0, 1.0],
                         "scale": [1.0, 1.0, 1.0],
                         "mesh": inp.scene["extra_meshes"]["G_icon_SwordMaster"],

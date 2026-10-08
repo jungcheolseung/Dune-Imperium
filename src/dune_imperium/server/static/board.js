@@ -652,9 +652,10 @@ function strengthPicture(seat, src, size) {
 
 /* The player disc: the one common round token in a seat's colour — the
    Score marker and the Councilor token on the board, the research and
-   Tleilaxu track tokens on the Bene Tleilax board. The app's glossy
-   player disc (the marker it lays on both Bene Tleilax tracks) where the
-   assets have it, else flat colour; no seat number either way. `size` is
+   Tleilaxu track tokens on the Bene Tleilax board. The app's High Council
+   seat token with its chair cleared where the assets have it (flat like
+   the print of the board scans), else flat colour; no seat number either
+   way. `size` is
    its diameter as a percent of the stage it lies on (the diameter of the
    spot that board prints for it); without a size it is an inline disc for
    the text layouts. */
