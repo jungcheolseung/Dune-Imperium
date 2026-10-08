@@ -545,12 +545,13 @@ function renderBoardStage(board, view) {
 /* The Conflict card and the face-up CHOAM contracts drawn in their printed
    slots (catalog.tracks.conflict_slot / contract_slots, percent boxes).
    Every card is centred on its slot and drawn before the live markers so
-   the units stay on top. The Conflict card fills its portrait frame;
-   the landscape contracts are drawn a little larger than their slot
-   because the dark band around it is empty. Shaddam's set-aside Sardaukar
-   contracts have no printed home on the board either; they are drawn on
-   his own leader popover instead (core.js leaderSardaukarRow), not here. */
-const CONTRACT_SLOT_SCALE = 1.2;
+   the units stay on top. The Conflict card fills its portrait frame and
+   each landscape contract its own slot: the card picture has the slot's
+   proportions, so the slot's width sets the whole card and the pair never
+   overlaps (until 2026-10-08 they were drawn 1.2 times the slot and the
+   right card lay over the left one). Shaddam's set-aside Sardaukar
+   contracts have no printed home on the board; they are drawn on his own
+   leader popover instead (core.js leaderSardaukarRow), not here. */
 
 function conflictHistoryOptions(id, className) {
   return {
@@ -615,7 +616,7 @@ function renderSlotCards(stage, view) {
     if (!box) return;
     const [left, top, width, height] = box;
     const card = visualCard(id, { className: "contract slot-card" });
-    card.style.width = `${width * CONTRACT_SLOT_SCALE}%`;
+    card.style.width = `${width}%`;
     placeAt(card, left + width / 2, top + height / 2);
     stage.appendChild(card);
   });
