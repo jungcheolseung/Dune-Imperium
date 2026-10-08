@@ -376,11 +376,14 @@ APP_PIECE_SOURCES = {
     # the High Council seat token (a disc with the council chair; the texture
     # has black corners, cut to the circle)
     "council": "T_Icon_CouncilSeat_{C}",
-    # the plain glossy player disc: the app's marker on both Bene Tleilax
-    # tracks (also the Ix shipping track), drawn on the Score track too
-    "disc": "T_icon_ShippingTrack_PlayerPip_{C}",
+    # the plain player disc (Score marker, both Bene Tleilax tracks): the
+    # council seat token with its chair cleared, which suits the flat print
+    # of the board scans better than the app's glossy track pip
+    # T_icon_ShippingTrack_PlayerPip_{C} (owner, 2026-10-08)
+    "disc": "T_Icon_CouncilSeat_{C}",
 }
-APP_PIECE_ROUND = {"council"}
+APP_PIECE_ROUND = {"council", "disc"}
+APP_PIECE_NO_EMBLEM = {"disc"}
 # The four Alliance tokens (display.token_images.ALLIANCE_TOKEN_FACTIONS) ->
 # app sprite: the round 1-VP token, cropped to the disc.
 APP_ALLIANCE_SOURCES = {
@@ -391,6 +394,29 @@ APP_ALLIANCE_SOURCES = {
 }
 # Seat order of display.token_images.STRENGTH_TOKEN_COLORS -> app colour name.
 APP_PIECE_COLORS = {"blue": "Blue", "red": "Red", "green": "Green", "yellow": "Yellow"}
+
+
+def clear_emblem(im):
+    """A round token with its emblem painted over in the face colour: the
+    face is the commonest colour inside the token, and everything inside
+    the first ring of another colour (the rim) takes it."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(im.convert("RGBA")).copy()
+    h, w = a.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot(xx + 0.5 - w / 2, yy + 0.5 - h / 2) / (min(w, h) / 2)
+    inner = a[r < 0.75][:, :3]
+    colours, counts = np.unique(inner, axis=0, return_counts=True)
+    face = colours[counts.argmax()]
+    off = np.abs(a[..., :3].astype(int) - face).max(axis=2) > 30
+    # the rim: the first ring outside the emblem where most pixels are not face
+    rim = next(
+        t for t in np.arange(0.72, 1.0, 0.01) if off[np.abs(r - t) < 0.01].mean() > 0.5
+    )
+    a[r < rim - 0.02, :3] = face
+    return Image.fromarray(a, "RGBA"), tuple(int(c) for c in face)
 
 
 def cube_color(path):
@@ -428,6 +454,9 @@ def cmd_pieces(args):
                 im = ImageChops.multiply(im, Image.new("RGBA", im.size, tint + (255,)))
                 im.putalpha(alpha)
                 row["tint"] = "#{:02x}{:02x}{:02x}".format(*tint)
+            if kind in APP_PIECE_NO_EMBLEM:
+                im, face = clear_emblem(im)
+                row["emblem_cleared"] = "#{:02x}{:02x}{:02x}".format(*face)
             if kind in APP_PIECE_ROUND:
                 mask = Image.new("L", im.size, 0)
                 box = (0, 0, im.width - 1, im.height - 1)
