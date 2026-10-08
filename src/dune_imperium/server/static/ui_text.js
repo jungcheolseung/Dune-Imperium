@@ -1725,6 +1725,10 @@ const UI_TEXT = {
     "ko": "▶ 내 차례 — {{title}}",
     "en": "▶ My turn — {{title}}"
   },
+  "session.ai_pace_failed": {
+    "ko": "AI 진행 속도를 바꾸지 못했습니다 ({{message}})",
+    "en": "Could not change the AI pace ({{message}})"
+  },
   "session.save_failed": {
     "ko": "저장 실패 ({{message}})",
     "en": "Save failed ({{message}})"

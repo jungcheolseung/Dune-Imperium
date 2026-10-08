@@ -121,6 +121,7 @@ async function init() {
   });
   el("ai-pace").addEventListener("change", (event) => {
     setAiPace(event.target.value).catch(showRefreshError);
+    event.target.blur();
   });
   el("review-exit").addEventListener("click", exitReview);
   el("review-first").addEventListener("click", () => reviewSeek(0));

@@ -53,15 +53,24 @@ function note(text) {
   }, 4000);
 }
 
-/* The header's AI pace select (screens.js renderPaceControl). */
+/* The header's AI pace select (screens.js renderPaceControl). A change
+   that fails puts the select back on the game's pace and says so. */
 async function setAiPace(pace) {
   const gameId = state.gameId;
   if (!gameId || !state.summary || state.summary.ai_pace === pace) return;
-  await api(`/games/${gameId}/ai-pace`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pace }),
-  });
+  try {
+    await api(`/games/${gameId}/ai-pace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pace }),
+    });
+  } catch (error) {
+    const select = el("ai-pace");
+    select.blur();
+    if (state.summary) select.value = state.summary.ai_pace;
+    note(t("session.ai_pace_failed", { message: error.message }));
+    return;
+  }
   if (state.gameId === gameId) await refresh(null, { foreign: true });
 }
 

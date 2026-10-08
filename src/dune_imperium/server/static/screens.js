@@ -72,7 +72,9 @@ function renderPaceControl() {
   const select = el("ai-pace");
   const summary = state.summary;
   const kinds = (summary && summary.seats) || [];
-  const shown = Boolean(summary) && !summary.finished && !state.review && isAdmin()
+  /* A render lands whatever screen shows (the lobby of a running game). */
+  const shown = Boolean(summary) && !el("game-screen").hidden && !summary.finished
+    && !state.review && isAdmin()
     && kinds.includes("human") && kinds.some((kind) => kind !== "human");
   select.hidden = !shown;
   if (!shown) return;

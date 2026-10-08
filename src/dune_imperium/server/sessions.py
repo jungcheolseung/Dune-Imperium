@@ -979,10 +979,11 @@ class GameSessionManager:
     ) -> JsonObject:
         """Change how the game's AI seats pace themselves; return the summary.
 
-        Host-only on a remote server, like the other game settings. A seat
-        thinking when the game turns instant still answers on the worker,
-        without waiting for the tables; the next AI decision is answered
-        inside the request again.
+        Host-only on a remote server, like the other game settings. The
+        worker's current wait ends at once, whatever the new pace: a seat
+        thinking then answers without waiting for the tables, and the next
+        AI decision waits at the new pace, or is answered inside the
+        request again when the game turned instant.
         """
 
         self.require_admin(credentials)
@@ -1702,10 +1703,18 @@ class GameSessionManager:
             observation = session.engine.observe(state, seat)
             actions = session.engine.legal_actions(state, seat)
             agent = session.agents[seat]
+            searching = is_background_agent_kind(session.seats[seat])
             ready = _pace_ready_locked(session, seat)
             session.pace_wake.clear()
-        action = _background_answer(
-            game_id, seat, step, agent, state, observation, actions
+        # A search seat falls back on its view-only answer when its search
+        # fails (a load retraces it). Any other seat paced onto the worker
+        # answers as it would inside a request: a failure is the step's
+        # failure (``_run_ai``), never a substitute answer, which a load
+        # would regenerate differently and so refuse the game's saves.
+        action = (
+            _background_answer(game_id, seat, step, agent, state, observation, actions)
+            if searching
+            else _choose(agent, state, observation, actions)
         )
         # A paced game applies the answer once the tables have shown what
         # came before it; a deletion or a new pace cuts the wait short.
@@ -1977,9 +1986,19 @@ def _agent_action(session: GameSession, seat: int) -> DomainAction:
     engine = session.engine
     actions = engine.legal_actions(session.state, seat)
     observation = engine.observe(session.state, seat)
-    agent = session.agents[seat]
+    return _choose(session.agents[seat], session.state, observation, actions)
+
+
+def _choose(
+    agent: Agent,
+    state: GameState,
+    observation: PlayerView,
+    actions: tuple[DomainAction, ...],
+) -> DomainAction:
+    """The agent's answer, from the state if it can branch from one."""
+
     if isinstance(agent, StateAgent):
-        return agent.choose_action_with_state(session.state, observation, actions)
+        return agent.choose_action_with_state(state, observation, actions)
     return agent.choose_action(observation, actions)
 
 

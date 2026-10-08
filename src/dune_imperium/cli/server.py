@@ -102,7 +102,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "how the AI seats of a new game, and of a loaded save that "
             "records none, pace their answers: 'normal' gives the tables the "
-            "time to show each AI turn and card, 'fast' about half of it, "
+            "time to show each AI turn and card, 'fast' 0.6 of it, "
             "'instant' answers inside the request (default: normal; the "
             "setup screen can choose another per game)"
         ),

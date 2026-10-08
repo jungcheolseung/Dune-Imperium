@@ -26,6 +26,7 @@ from dune_imperium.server.pacing import (
     cue_seconds,
 )
 from dune_imperium.server.persistence import SaveError
+from dune_imperium.server.session_log import LoggedStep
 from dune_imperium.server.sessions import (
     AdminAccessError,
     GameSessionManager,
@@ -186,3 +187,92 @@ def test_only_the_host_sets_the_pace_of_a_remote_game() -> None:
     with pytest.raises(AdminAccessError):
         manager.set_ai_pace(game_id, "fast")
     assert manager.set_ai_pace(game_id, "fast", credentials=host)["ai_pace"] == "fast"
+
+
+class _Wake:
+    """A stand-in for a session's ``pace_wake``: records, never blocks."""
+
+    def __init__(self) -> None:
+        self.waits: list[float] = []
+        self.sets = 0
+
+    def clear(self) -> None:
+        pass
+
+    def set(self) -> None:
+        self.sets += 1
+
+    def wait(self, timeout: float) -> bool:
+        self.waits.append(timeout)
+        return False
+
+
+def test_the_worker_waits_for_the_tables_and_every_step_adds_its_cues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sessions_module, "_monotonic", lambda: 100.0)
+    manager = GameSessionManager(pace_unit=1.0)
+    # The worker is driven by hand here, one answer at a time.
+    monkeypatch.setattr(manager, "_kick_ai", lambda session: None)
+    summary = manager.create_game(SEATS, game_seed=SEED, ai_pace="normal")
+    game_id = _text(summary["game_id"])
+    session = manager._sessions[game_id]
+    wake = _Wake()
+    session.pace_wake = wake  # type: ignore[assignment]
+
+    for _ in range(2):
+        with session.lock:
+            seat = session.thinking
+            assert seat is not None
+            turn = sessions_module._turn_start_key(session, seat)
+            new_turn = turn not in (None, session.paced_turn)
+            banner = TURN_BANNER_SECONDS if new_turn else 0
+            cap = 100.0 + MAX_WAIT_SECONDS
+            ready = min(max(100.0, session.cue_clock) + banner, cap)
+            logged = len(session.log)
+        assert manager._ai_step(session) is True
+        # The answer waited for the cues on the tables and its turn banner...
+        assert wake.waits[-1] == pytest.approx(ready - 100.0)
+        assert wake.waits[-1] > 0
+        # ...and what it logged is on the tables after it.
+        with session.lock:
+            shown = sum(
+                (
+                    cue_seconds(entry.events)
+                    for entry in session.log[logged:]
+                    if isinstance(entry, LoggedStep)
+                ),
+                0.0,
+            )
+            assert session.cue_clock == pytest.approx(ready + shown)
+
+    manager.set_ai_pace(game_id, "fast")
+    assert wake.sets == 1
+    manager.delete(game_id)
+    assert wake.sets == 2
+
+
+def test_a_failing_paced_ai_seat_fails_its_step_and_the_game_still_loads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Only a search seat falls back on another answer (a load retraces it);
+    # a paced heuristic seat that fails records nothing, as inside a request.
+    def fail(*args: object) -> object:
+        raise RuntimeError("the agent failed")
+
+    monkeypatch.setattr(sessions_module, "_choose", fail)
+    manager = GameSessionManager(pace_unit=0.0)
+    summary = manager.create_game(SEATS, game_seed=SEED, ai_pace="normal")
+    game_id = _text(summary["game_id"])
+    manager.wait_for_ai(game_id)
+
+    after = manager.summary(game_id)
+    assert after["thinking"] is None
+    assert after["log_count"] == summary["log_count"]
+    decision = after["decision"]
+    assert isinstance(decision, dict) and decision["owner"] == 1
+    monkeypatch.undo()
+    restored = manager.restore_game(manager.save_game(game_id))
+    manager.wait_for_ai(_text(restored["game_id"]))
+    later = manager.summary(_text(restored["game_id"]))
+    assert _int(later["log_count"]) > _int(summary["log_count"])
