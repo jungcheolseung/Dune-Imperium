@@ -2547,9 +2547,10 @@ def _serialize_view(
     Conflict deck's top card, 0 once the deck is empty: the deck is built
     by back, I on II on III, and lies face down [Main p. 4], so every seat
     sees the next card's back (docs/rules/information-visibility.md). It is
-    added here and not to ``PlayerView``: the observation encodes no tier,
-    and the search AI's determinizer still shuffles the Conflict deck
-    across tiers, which a tier in the view would contradict.
+    added here and not to ``PlayerView``, so the AI observation's encoding
+    stays as it was; the search AI's determinizer re-deals the deck within
+    each tier (with the boxed cards of that tier), so a sampled world
+    already shows the same top tier.
 
     The observing seat's own ``private`` block also carries ``deck_cards``,
     the composition of its draw deck sorted by card id, never its order

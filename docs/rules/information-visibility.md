@@ -19,7 +19,7 @@
 - Intrigue Deck과 Imperium Deck은 setup 때 shuffle한 뒤 face-down으로 둔다. `[Main p. 4]`
 - 개인 starting deck은 shuffle한 뒤 face-down으로 둔다. deck이 비어 discard를 새 deck으로 만들 때도 shuffle한다. `[Main pp. 5-6]`
 - Conflict Deck은 tier별로 shuffle하고 face-down으로 쌓는다. 사용하지 않는 Conflict 카드는 정체를 보지 않고 box로 돌려보낸다. `[Main p. 4]`
-  - **규칙 문장의 직접 귀결, 프로젝트 판단**(규칙서에 이 문장 자체는 없다): Conflict 카드는 "I, II, III 뒷면별로" 나뉘고 face-down으로 쌓이므로(`[Main p. 4]`, [setup-and-game-flow.md](setup-and-game-flow.md)) 덱 맨 위 카드의 tier는 뒷면으로 모든 좌석에게 보인다. 서버 view JSON의 `conflict_deck_top_tier`(1–3, 덱이 비면 0)가 그것만 싣고(카드 identity는 싣지 않음) 화면은 보드의 인쇄된 덱 자리에 그 tier의 뒷면을 그린다(2026-10-08). `PlayerView`·AI 관측에는 넣지 않았다: 탐색 AI의 determinizer가 아직 Conflict 덱을 tier를 가로질러 섞고 box의 카드를 섞지 않는다(고치는 변경은 AI 수를 바꾸므로 따로 측정한 뒤 들인다, 브랜치 `determinize-boxed-conflicts-wip`).
+  - **규칙 문장의 직접 귀결, 프로젝트 판단**(규칙서에 이 문장 자체는 없다): Conflict 카드는 "I, II, III 뒷면별로" 나뉘고 face-down으로 쌓이므로(`[Main p. 4]`, [setup-and-game-flow.md](setup-and-game-flow.md)) 덱 맨 위 카드의 tier는 뒷면으로 모든 좌석에게 보인다. 서버 view JSON의 `conflict_deck_top_tier`(1–3, 덱이 비면 0)가 그것만 싣고(카드 identity는 싣지 않음) 화면은 보드의 인쇄된 덱 자리에 그 tier의 뒷면을 그린다(2026-10-08). `PlayerView`·AI 관측에는 넣지 않아 관측 인코딩은 그대로다. 탐색 AI의 determinizer는 각 깊이의 tier를 그대로 두고, 덱과 box에 있는 같은 tier의 카드를 한 묶음으로 다시 나눈다(2026-10-08 사용자 결정 "규칙이 이게 맞으니까 넣는게 맞지", 측정 없이 반영; 그 전에는 덱만 tier를 가로질러 섞어, 표본 세계가 늘 덱의 실제 카드 구성을 담았다 — box로 간 카드를 모르는 실제 좌석은 알 수 없는 정보다).
 - 보유한 Intrigue card는 개인 deck과 분리해 face-down으로 둔다. 소유자는 언제든 볼 수 있지만 opponent에게는 play할 때만 공개한다. `[Main p. 7]`
 - CHOAM Module의 미공개 contract 18개는 face-down bank에 둔다. 완료된 contract도 reward를 받은 뒤 face-down으로 유지한다. `[Main p. 16]`
 - battle icon pair를 만들면 해당 두 face-up Conflict/Objective를 face-down으로 뒤집는다. `[Main pp. 14, 20]`
