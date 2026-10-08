@@ -252,7 +252,7 @@ def whoami(
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read())
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) and "access" in data else None
 

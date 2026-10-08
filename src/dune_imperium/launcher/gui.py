@@ -127,7 +127,7 @@ def _windows_dpi_awareness() -> None:
             import ctypes
 
             ctypes.OleDLL("shcore").SetProcessDpiAwareness(1)
-        except ImportError, AttributeError, OSError:
+        except (ImportError, AttributeError, OSError):
             pass
 
 

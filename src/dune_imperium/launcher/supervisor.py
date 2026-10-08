@@ -283,7 +283,7 @@ class ServerProcess:
             try:
                 log.write(line + "\n")
                 log.flush()
-            except OSError, ValueError:
+            except (OSError, ValueError):
                 pass
 
     def _read_output(self) -> None:
@@ -292,7 +292,7 @@ class ServerProcess:
             if stream is not None:
                 for raw in stream:
                     self._emit(raw.rstrip("\r\n"))
-        except OSError, ValueError:
+        except (OSError, ValueError):
             pass
         finally:
             self._reader_done.set()
@@ -336,7 +336,7 @@ class ServerProcess:
             record = json.loads(pid_file.read_text(encoding="utf-8"))
             if isinstance(record, dict) and record.get("pid") == self.pid:
                 pid_file.unlink()
-        except OSError, ValueError:
+        except (OSError, ValueError):
             pass
         if self._job is not None:
             self._job.close()
@@ -373,7 +373,7 @@ def read_pid_file(log_dir: Path = LOG_DIR) -> dict[str, object] | None:
 
     try:
         record = json.loads((log_dir / PID_FILE_NAME).read_text(encoding="utf-8"))
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return None
     return record if isinstance(record, dict) else None
 

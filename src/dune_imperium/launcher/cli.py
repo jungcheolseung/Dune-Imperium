@@ -54,7 +54,7 @@ def _write(text: str, stream: TextIO | None = None) -> None:
     try:
         target.write(text + "\n")
         target.flush()
-    except OSError, ValueError:
+    except (OSError, ValueError):
         pass
 
 
@@ -182,7 +182,7 @@ def start(settings_path: Path) -> int:
     ended = threading.Event()
     try:
         descriptor = sys.stdin.fileno() if sys.stdin is not None else None
-    except OSError, ValueError:
+    except (OSError, ValueError):
         descriptor = None
     if descriptor is not None:
         from dune_imperium.cli.server import stop_when_stream_ends
