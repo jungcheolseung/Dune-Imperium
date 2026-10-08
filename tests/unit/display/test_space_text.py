@@ -15,6 +15,7 @@ from dune_imperium.core import (
     GameState,
     PlayerDecision,
     PlayerState,
+    Resources,
 )
 from dune_imperium.display.spaces import (
     _AUTHORED_OPTION_EFFECTS,
@@ -240,7 +241,7 @@ def test_board_effect_action_text_names_the_icon_of_the_current_visit() -> None:
     assert board_effect_action_text(state, actions[0]) is None
 
 
-def test_notes_cover_the_persuasion_and_control_passives() -> None:
+def test_notes_cover_the_passives_and_the_printed_conditions() -> None:
     noted = {
         space.space_id for space in BOARD_SPACES if space_notes(space.space_id)
     }
@@ -249,9 +250,83 @@ def test_notes_cover_the_persuasion_and_control_passives() -> None:
         "arrakeen",
         "spice_refinery",
         "imperial_basin",
+        "swordmaster",
+        "sietch_tabr",
     }
     assert "Persuasion" in space_notes("assembly_hall")[0]
     assert "controller" in space_notes("imperial_basin")[0]
+
+
+def _swordmaster_visit_cost(*, other_has_swordmaster: bool) -> int:
+    dagger = next(
+        instance_id
+        for instance_id in starting_deck_instance_ids(0)
+        if ":dagger:" in instance_id
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(
+            PlayerState(player_id=0, hand=(dagger,), resources=Resources(solari=10)),
+            PlayerState(
+                player_id=1,
+                swordmaster_acquired=other_has_swordmaster,
+                agents_available=3 if other_has_swordmaster else 2,
+            ),
+            *(PlayerState(player_id=seat) for seat in range(2, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    visit = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "swordmaster"
+    )
+    placed = apply_agent_action(state, visit).state
+    return 10 - placed.players[0].resources.solari
+
+
+def test_the_swordmaster_note_says_when_each_printed_cost_applies() -> None:
+    # docs/rules/board-spaces.md, Swordmaster: "아무도 Swordmaster를 얻지
+    # 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는 6 Solari"
+    # `[Board Guide p. 2]`. The popover lists both printed costs (options 0
+    # and 1); the note says which applies when, and the engine charges it.
+    assert space_notes("swordmaster") == (
+        "Cost: 8 solari if no player has their Swordmaster;"
+        " 6 solari once any player does",
+    )
+    assert space_notes_ko("swordmaster") == (
+        "비용: 아무도 소드마스터가 없다면 {solari:8}, 누군가가 소드마스터를"
+        " 얻었다면 {solari:6}",
+    )
+    swordmaster = BOARD_SPACES_BY_ID["swordmaster"]
+    assert [cost.solari for cost in swordmaster.cost_options] == [8, 6]
+    assert _swordmaster_visit_cost(other_has_swordmaster=False) == 8
+    assert _swordmaster_visit_cost(other_has_swordmaster=True) == 6
+
+
+def test_the_sietch_tabr_note_says_what_the_shield_wall_does() -> None:
+    # docs/rules/uprising-systems.md, Shield Wall: "token이 있는 동안
+    # Arrakeen, Spice Refinery, Imperial Basin의 Conflict에는 sandworm을
+    # 소환할 수 없다. `[Main pp. 4, 10]`" and "제거된 뒤에는 어느 Conflict에도
+    # Shield Wall로 인한 sandworm 금지가 없다." `[Main pp. 10, 20]`
+    (english,) = space_notes("sietch_tabr")
+    assert english.startswith("Shield Wall: ")
+    for name in ("Arrakeen", "Spice Refinery", "Imperial Basin"):
+        assert name in english
+    assert "summoned to any Conflict" in english
+    (korean,) = space_notes_ko("sietch_tabr")
+    assert korean.startswith("{shield_wall}: ")
+    assert korean.count("{sandworm}를") == 2
+    assert "부를 수 없음" in korean and "부를 수 있음" in korean
+    assert_no_summon_for_sandworm(english, korean)
 
 
 # ---------- Korean twins (Step K4, 2026-09-25) ----------
@@ -426,5 +501,6 @@ def test_notes_ko_cover_the_same_spaces_as_english() -> None:
             assert_placeholders_are_terms(korean, terms)
             assert_no_stray_latin(korean, _ALLOWED_LATIN)
             assert_trash_and_discard_match(english, korean)
+            assert_no_summon_for_sandworm(english, korean)
     assert "{persuasion:1}" in space_notes_ko("assembly_hall")[0]
     assert "지배권을 가진 플레이어" in space_notes_ko("imperial_basin")[0]

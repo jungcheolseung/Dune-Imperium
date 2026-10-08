@@ -93,7 +93,7 @@ function announceTurn(summary) {
    the mark, and what it means (a phrase template). */
 const HELP_SEAT_MARKS = [
   [() => commanderChip(2, "{garrison}"), "help.seat_mark_commander"],
-  [() => t("panels.first_badge"), "help.seat_mark_first_player"],
+  [() => firstPlayerMark(), "help.seat_mark_first_player"],
 ];
 
 const HELP_SHORTCUTS = [

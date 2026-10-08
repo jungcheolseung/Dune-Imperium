@@ -232,9 +232,34 @@ _AUTHORED_OPTION_EFFECTS_KO: Mapping[
 
 # Printed facts outside the automatic-effects channel, each verified against
 # its implementing rules module (reveal_turn.py persuasion passives,
-# agent_turn.py control visit bonus).
+# agent_turn.py control visit bonus and Swordmaster cost option).
+#
+# - swordmaster: the space prints two costs and its option lines show both,
+#   so the note says when each applies, worded after the Board Guide's own
+#   line ("Cost: 8 Solari if no player has their Swordmaster; 6 Solari once
+#   any player does." [Board Guide p. 2]; docs/rules/board-spaces.md:
+#   "아무도 Swordmaster를 얻지 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는
+#   6 Solari" `[Board Guide p. 2]`). agent_turn.py charges option 1 once
+#   any player's swordmaster_acquired is set. Lower-case "solari" is what
+#   the client's ICON_RULES turns into the Solari icon.
+# - sietch_tabr: the space's second choice may remove the Shield Wall; the
+#   note says what the wall does, worded after [Main p. 10]
+#   (docs/rules/uprising-systems.md: "token이 있는 동안 Arrakeen, Spice
+#   Refinery, Imperial Basin의 Conflict에는 sandworm을 소환할 수 없다.
+#   `[Main pp. 4, 10]`" and "제거된 뒤에는 어느 Conflict에도 Shield Wall로
+#   인한 sandworm 금지가 없다. `[Main pp. 10, 20]`").
 SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
+        "swordmaster": (
+            "Cost: 8 solari if no player has their Swordmaster;"
+            " 6 solari once any player does",
+        ),
+        "sietch_tabr": (
+            "Shield Wall: while its token is on the board, no sandworms can"
+            " be summoned to a Conflict at Arrakeen, Spice Refinery or"
+            " Imperial Basin. Once it is removed, sandworms may be summoned"
+            " to any Conflict",
+        ),
         "assembly_hall": (
             "While your Agent is here: +1 Persuasion at your Reveal turn",
         ),
@@ -264,8 +289,28 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
 # 플레이어는 1 솔라리를 얻습니다" [Board Guide p. 1], "제국 분지 지배권을
 # 가진 플레이어는 1 스파이스를 얻습니다" [Board Guide p. 2] (Spice
 # Refinery's printed line matches Arrakeen's verbatim per the same guide).
+#
+# The Swordmaster note is the Korean Board Guide's own cost line ("비용:
+# 아무도 소드마스터가 없다면 8 솔라리, 누군가가 소드마스터를 얻었다면 6
+# 솔라리" [Board Guide p. 2]); 소드마스터 is the glossary's word for the
+# piece a player gains ([Main p. 17]; the board space keeps its English
+# name). The Shield Wall note follows the Korean rulebook's own sentences
+# ("이 토큰이 놓여 있는 동안, 이렇게 보호받는 세 장소 중 어딘가에서 일어나는
+# 교전에서는 모래벌레를 부를 수 없습니다", "방어벽 토큰이 한번 제거되고
+# 나면, 이제 아무 교전에서든 모래벌레를 부를 수 있게 됩니다" [Main p. 10]):
+# a sandworm is called (부르다), never 소환, which recalls Agents and Spies.
 SPACE_NOTES_KO: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
+        "swordmaster": (
+            "비용: 아무도 소드마스터가 없다면 {solari:8}, 누군가가 소드마스터를"
+            " 얻었다면 {solari:6}",
+        ),
+        "sietch_tabr": (
+            "{shield_wall}: 토큰이 게임판에 놓여 있는 동안 Arrakeen,"
+            " Spice Refinery, Imperial Basin {conflict}에서는 {sandworm}를"
+            " 부를 수 없음. 토큰이 제거되고 나면 아무 {conflict}에서든"
+            " {sandworm}를 부를 수 있음",
+        ),
         "assembly_hall": (
             "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
             " +{persuasion:1}",

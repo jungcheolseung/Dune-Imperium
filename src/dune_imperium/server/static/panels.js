@@ -196,13 +196,9 @@ function renderSeats() {
         : seatKindLabel(kind);
       who.appendChild(badge);
     }
-    if (summary.first_player === seat) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = t("panels.first_badge");
-      badge.title = phraseText("{first_player}");
-      who.appendChild(badge);
-    }
+    /* A review step shows who held the marker at that step. */
+    const firstPlayer = state.review ? view.first_player : summary.first_player;
+    if (firstPlayer === seat) who.appendChild(firstPlayerMark());
     head.appendChild(who);
     card.appendChild(head);
 
@@ -753,6 +749,7 @@ function logEventLine(event) {
   line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
   const payload = logEventPayload(event.payload, event.kind);
   if (payload) line.append(` — ${payload}`);
+  addLogEventIcon(line, event);
   return line;
 }
 
@@ -941,7 +938,9 @@ function neutralCard(group, glowFrom) {
   head.className = "turn-head";
   const mark = document.createElement("span");
   mark.className = "neutral-mark";
-  mark.textContent = "⚙";
+  const picture = neutralLogIcon(group);
+  if (picture) mark.appendChild(picture);
+  else mark.textContent = "⚙";
   const who = document.createElement("strong");
   who.textContent = neutralTitle(group);
   head.append(mark, who);

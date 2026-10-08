@@ -1,0 +1,17 @@
+/* A board space in words (space_text.js). */
+
+/* The printed cost that applies now (Swordmaster) and the one that does
+   not; both stay listed. */
+.space-cost-later { opacity: 0.5; }
+.space-cost-tag {
+  display: inline-block;
+  margin-left: 0.45em;
+  padding: 0 0.4em;
+  border: 1px solid var(--accent);
+  border-radius: 0.6em;
+  color: var(--accent);
+  font-size: 0.75em;
+  line-height: 1.4;
+  white-space: nowrap;
+  vertical-align: middle;
+}

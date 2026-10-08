@@ -1,0 +1,42 @@
+/* The action log's pictures (log_icons.js). Each sits on the dark tile the
+   Steam app's Action Log puts behind its icons (UI_frm_ActionLogEntry_
+   IconContainer, sampled #10161e), on every theme: the app draws its icons
+   for that ground, and its white Round numerals vanish on a light page. */
+.log-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 1px;
+  border-radius: 3px;
+  background: #10161e;
+}
+.log-icon img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* An event line with a picture: the picture takes the line's 1.4rem
+   indent (1.15rem + 0.25rem gap), so its words start where a line without
+   one starts. The words keep the event line's muted look; the picture
+   stays at full strength. */
+.logevent.has-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0;
+  opacity: 1;
+}
+.logevent.has-icon > .log-text { flex: 1; min-width: 0; opacity: 0.65; }
+/* A "game" card indents its lines by 0.3rem; once one has a picture, the
+   others move over to start their words in the same column. */
+.turn-card.neutral .logevent.has-icon { margin-left: 0.3rem; }
+.turn-card.neutral:has(.logevent.has-icon) .logevent:not(.has-icon) { margin-left: 1.7rem; }
+
+/* A "game" card's head picture, in place of its text mark. */
+.neutral-mark:has(.log-icon) { display: inline-flex; opacity: 1; }
+.neutral-mark .log-icon { width: 1.5rem; height: 1.5rem; padding: 2px; border-radius: 4px; }

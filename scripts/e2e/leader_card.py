@@ -250,8 +250,12 @@ def _is_language_image(image: str | None, lang: str) -> bool:
     # "/card-images/en/..." or "/card-images/ko/...". This is what actually
     # proves the switch took effect, rather than trusting a value computed
     # ahead of time from a catalog snapshot `localizeCatalog` may since have
-    # mutated in place.
-    return bool(image) and f"/card-images/{lang}/" in image
+    # mutated in place. The faces drawn from the Steam app's art
+    # (scripts/dwgr/app_leaders.py) come first within a language and live
+    # under "/card-images/app/<lang>/".
+    return bool(image) and any(
+        f"/card-images/{folder}{lang}/" in image for folder in ("", "app/")
+    )
 
 
 def feyd_geometry(page, lang: str) -> None:
@@ -934,8 +938,8 @@ def kota_secret_project(page, lang: str) -> None:
     """Kota Odax of Ix's kept Secret Project tile [Bloodlines p. 6]: below
     the leader image, the owner's own muted face with the same "Face down"
     badge a face-down Navigation slot uses (`leaderNavigationRow`), a
-    non-owner's identity-free `.tile-back` placeholder (no back art exists
-    for a Tech tile either), and nothing at all once
+    non-owner's identity-free `.tile-back` placeholder (the app's Tech tile
+    back where the assets have it), and nothing at all once
     `has_secret_project` turns false (the tile acquired,
     `rules/tech.py` `_take_tile`). Owner/non-owner mirrors
     `navigation_geometry`'s own seat-0-viewer technique: Kota at seat 0 is
@@ -963,9 +967,15 @@ def kota_secret_project(page, lang: str) -> None:
 
     _set_kota(page, 1, has_secret_project=True, tech_id=None)
     shown = page.evaluate(KOTA_JS)
+    # The Tech tile back where the assets have it (catalog.card_backs.tech,
+    # piles.js showTechBack), else no picture: no tile's face either way.
+    tech_back = page.evaluate("(state.catalog.card_backs || {}).tech || null")
     check.ok(
-        shown["row"] and shown["back"] and not shown["flipped"] and not shown["image"],
-        f"{lang}: non-owner: a plain placeholder with no identity",
+        shown["row"]
+        and shown["back"]
+        and not shown["flipped"]
+        and shown["image"] == tech_back,
+        f"{lang}: non-owner: a placeholder with no identity (the Tech back)",
         shown,
     )
 

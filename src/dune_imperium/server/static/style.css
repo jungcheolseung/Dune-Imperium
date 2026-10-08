@@ -1754,9 +1754,10 @@ kbd {
    block, left-aligned by default, not positioned like the Navigation
    row's per-slot boxes above. */
 .popover-secret-project-row { margin-top: 0.5rem; }
-/* No back art exists for a Tech tile either: a
-   landscape placeholder (737x479) at the width `.vcard.tile` draws its
-   own face at, flat-filled like `.nav-card-back`. */
+/* The face-down tile: a landscape placeholder (737x479) at the width
+   `.vcard.tile` draws its own face at, flat-filled like `.nav-card-back`.
+   Where the assets have the app's Tech back, piles.js showTechBack puts
+   it inside and piles.css drops this fill and border. */
 .tile-back {
   display: block;
   width: 118px;

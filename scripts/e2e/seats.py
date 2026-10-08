@@ -12,6 +12,10 @@ remain as an icon count. Head, compact stats and the zone counts stay. The rest
 folds, and the fold still says what it is holding rather than going blank. `s`
 folds or opens all four, and the choice is remembered per browser.
 
+The holder of the First Player marker shows the app's token beside its
+name (`catalog.first_player_token`), or the text badge without the picture;
+a review step marks that step's holder, not the game's last one.
+
 Also guards the last English line in the panel: the zone counts used to read
 `hand 5 · deck 5 · discard 0`, which the label de-mixing never reached
 because it is built by concatenation rather than from a label table.
@@ -169,6 +173,88 @@ def check_number_badges(page, label: str) -> None:
     )
 
 
+FIRST_PLAYER_MARKS = """() => [...document.querySelectorAll('#seats article.seat')]
+    .map((card) => {
+        const token = card.querySelector('.who img.first-player-token');
+        const badges = [...card.querySelectorAll('.who .badge')]
+            .filter((b) => b.textContent === t('panels.first_badge'));
+        return {
+            seat: Number(card.dataset.seat),
+            token: token ? {
+                src: token.getAttribute('src'), alt: token.alt, title: token.title,
+                loaded: token.complete && token.naturalWidth > 0,
+                height: token.getBoundingClientRect().height,
+            } : null,
+            badges: badges.map((b) => b.title),
+        };
+    })"""
+
+
+def check_first_player(page, label: str) -> None:
+    """The First Player marker beside its holder's name [Main p. 5]: the
+    app's token where the assets have it (catalog.first_player_token), the
+    text badge without it, named by the glossary's term either way."""
+    page.wait_for_function(
+        "[...document.querySelectorAll('#seats img')].every((i) => i.complete)"
+    )
+    holder = page.evaluate(
+        "state.review ? state.view.first_player : state.summary.first_player"
+    )
+    name = page.evaluate("phraseText('{first_player}')")
+    url = page.evaluate("state.catalog.first_player_token")
+    marks = page.evaluate(FIRST_PLAYER_MARKS)
+    marked = [m["seat"] for m in marks if m["token"] or m["badges"]]
+    check.ok(marked == [holder], f"{label}: only the holder's seat is marked", marks)
+    mine = next((m for m in marks if m["seat"] == holder), None)
+    if url:
+        token = mine and mine["token"]
+        check.ok(
+            bool(token)
+            and token["src"] == url
+            and token["loaded"]
+            and token["alt"] == token["title"] == name
+            and 14 <= token["height"] <= 30
+            and not mine["badges"],
+            f"{label}: the app's First Player token, named {name!r}",
+            mine,
+        )
+    page.evaluate(
+        "state.firstPlayerUrl = state.catalog.first_player_token;"
+        " state.catalog.first_player_token = null; render();"
+    )
+    mine = next(m for m in page.evaluate(FIRST_PLAYER_MARKS) if m["seat"] == holder)
+    check.ok(
+        mine["token"] is None and mine["badges"] == [name],
+        f"{label}: without the picture, the text badge named {name!r}",
+        mine,
+    )
+    page.evaluate(
+        "state.catalog.first_player_token = state.firstPlayerUrl;"
+        " delete state.firstPlayerUrl; render();"
+    )
+
+
+def check_first_player_in_review(page) -> None:
+    """A review step marks the seat that held the First Player marker at
+    that step (``view.first_player``), not the game's last holder in the
+    summary: the marker passes clockwise in every Recall [Main p. 15]."""
+    final = page.evaluate("state.summary.first_player")
+    held = final
+    for fraction in (0.5, 0.35, 0.65, 0.2, 0.8):
+        seek(page, fraction)
+        held = page.evaluate("state.view.first_player")
+        if held != final:
+            break
+    marks = page.evaluate(FIRST_PLAYER_MARKS)
+    marked = [m["seat"] for m in marks if m["token"] or m["badges"]]
+    check.ok(
+        held != final and marked == [held],
+        "review: the step's holder carries the First Player marker, not the last one",
+        {"step holder": held, "last holder": final, "marks": marks},
+    )
+    seek(page, 0.95)
+
+
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "seats")
     watched_game(page, base)
@@ -205,7 +291,9 @@ def run(base: str, browser) -> None:
             f"{language}: review seat choices display 1 through 4 with original values",
             numbers["review"],
         )
+        check_first_player(page, language)
     page.evaluate("setLanguage('ko')")
+    check_first_player_in_review(page)
 
     folded = page.evaluate(SEATS)
     check.ok(len(folded["cards"]) == 4, "four seat panels", len(folded["cards"]))

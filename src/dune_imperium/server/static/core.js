@@ -727,8 +727,8 @@ function leaderNavigationRow(entry, seatState) {
    same "Face down" badge a face-down Navigation slot uses above
    (`leaderNavigationRow`); every other viewer, knowing only
    `has_secret_project`, gets a Tech-tile-shaped (737x479, landscape)
-   placeholder with no identity, since no back art
-   exists for a Tech tile either. Nothing once the tile is acquired --
+   placeholder with no identity, which shows the app's Tech back where the
+   assets have it (piles.js showTechBack). Nothing once the tile is acquired --
    `has_secret_project` turns false the moment `_take_tile` clears it
    (rules/tech.py). Returns `null` for every leader but Kota, a seat with
    no tile kept, or no seat context. */
@@ -748,7 +748,7 @@ function leaderSecretProjectBox(seatState) {
   row.appendChild(
     techId
       ? eagerCard(techId, { className: "tile flipped", badge: t("panels.face_down_badge") })
-      : Object.assign(document.createElement("div"), { className: "tile-back" }),
+      : showTechBack(Object.assign(document.createElement("div"), { className: "tile-back" })),
   );
   return row;
 }
@@ -827,7 +827,8 @@ function popoverNodes(entry) {
   }
   if (entry.options) {
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
-    for (const option of spaceOptionsFor(entry)) nodes.push(spaceOptionLine(option));
+    /* space_text.js: the cost that applies now, the bonus spice there. */
+    nodes.push(...spaceOptionNodes(entry), ...spaceStatusNodes(entry));
   }
   if (entry.ability_text) {
     const abilityEn = entry.ability_en !== undefined ? entry.ability_en : entry.ability;
@@ -909,6 +910,8 @@ function openPopover(entry, anchor, seatState) {
     /* As the rulebook numbers the decks: 교전 I / Conflict I [Main p. 4]. */
     words.push(t("core.conflict_tier", { tier: ["I", "II", "III"][entry.tier - 1] || entry.tier }));
   }
+  /* A space's Agent icon and combat/Maker/Control marks (space_text.js). */
+  if (entry.options) words.push(...spaceMetaWords(entry));
   if (entry.options && !spaceImplementedFor(entry)) words.push(t("core.not_implemented"));
   if (words.length) meta.append(words.join(" · "));
   if (meta.childNodes.length) pop.appendChild(meta);

@@ -123,11 +123,13 @@ from dune_imperium.display.board_layout import (
     SPACE_FRAME_CUT,
     marker_layout,
 )
+from dune_imperium.display.card_backs import available_card_backs
 from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
 )
 from dune_imperium.display.leader_layout import leader_layout
+from dune_imperium.display.log_icons import available_log_icons
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import (
     SCOUTS_ITEM_NAMES_KO,
@@ -135,6 +137,7 @@ from dune_imperium.display.scouts import (
     scouts_item_name,
 )
 from dune_imperium.display.token_images import (
+    FIRST_PLAYER_TOKEN_FILENAME,
     MAKER_HOOKS_TOKEN_FILENAME,
     SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
@@ -467,6 +470,12 @@ def build_catalog(
             name: versioned(f"/icons/{filename}")
             for name, filename in available_icons(icon_files).items()
         },
+        # The action log's own pictures from the same folder
+        # (display.log_icons); without them the log shows text alone.
+        "log_icons": {
+            name: versioned(f"/icons/{filename}")
+            for name, filename in available_log_icons(icon_files).items()
+        },
         "board_image": versioned("/board-image") if board_image else None,
         # Each seat's pictured Combat marker (sword face and "+20" face), or
         # null where the local token directory lacks either face: the client
@@ -502,6 +511,19 @@ def build_catalog(
         "alliance_tokens": {
             faction: versioned(f"/tokens/{filename}")
             for faction, filename in available_alliance_tokens(token_files).items()
+        },
+        # The First Player marker on the holder's seat panel [Main p. 5]
+        # (null without the local file: the panel keeps a text badge).
+        "first_player_token": (
+            versioned(f"/tokens/{FIRST_PLAYER_TOKEN_FILENAME}")
+            if FIRST_PLAYER_TOKEN_FILENAME in token_files
+            else None
+        ),
+        # The app's card backs by kind (imperium, intrigue, conflict_1-3,
+        # tech) for the face-down decks; an absent kind keeps its drawing.
+        "card_backs": {
+            kind: versioned(f"/tokens/{filename}")
+            for kind, filename in available_card_backs(token_files).items()
         },
         # The app's pictures of each seat's pieces by kind (agent, spy,
         # control, troop, sandworm), one URL per seat; a kind without all
