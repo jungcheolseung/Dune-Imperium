@@ -1582,32 +1582,34 @@ def bind_contract(inp, spec, lang):
 # (card.techtile.<slug>.ability) and the Korean from ko_text.json; the acquire
 # strip is derived from the engine's tile definition with the app's own icons.
 TECH_BY_ID = {tile.tech_id: tile for tile in TECH_TILES}
-TECH_TEMPLATES = {
-    "none": "UI_crd_TechTile_Artillery.prefab.json",  # the cost hexagon alone
-    "small": "UI_crd_TechTile_Windtraps.prefab.json",  # short strip, one icon
-    "large": "UI_crd_TechTile_Chaumurky.prefab.json",  # long strip, two icons
-}
-# strip icon -> (sprite, from the inline set?, width, height) in template units;
-# sizes follow the Ix tiles that print the same icon (Memocorders' ?, Flagship's
-# VP, Sonic Snoopers' Intrigue card, Disposal Facility's trash card) and the
-# Bloodlines prints for the rest
+# Every tile is drawn on the Windtraps prefab, whose acquire root holds both
+# strip pictures (short and long); the binder places the icons itself.
+TECH_TEMPLATE = "UI_crd_TechTile_Windtraps.prefab.json"
+# strip icon -> (sprite, from the inline set?, printed ink box w x h): each
+# icon is drawn so its visible ink fills the box measured on the scans
 TECH_STRIP_ICONS = {
-    "ShieldWallBreak": ("UI_crd_ActionIcon_BlowWall", False, 96, 110),
-    "SignetRing": ("UI_crd_ActionIcon_SignetRing", False, 100, 88),
-    "VictoryPoint": ("UI_crd_ActionIcon_VictoryPoint", False, 92, 92),
-    "Solari": ("Solari_{n}", True, 96, 96),
-    "Contract": ("UI_crd_ActionIcon_CHOAMContract", False, 108, 70),
-    "WildRankUp": ("WildRankUp", False, 92, 104),
-    "DrawCard": ("DrawCard", True, 90, 126),
-    "IntrigueCard": ("IntrigueCard", False, 84, 124),
-    "TrashCard": ("TrashCard", False, 84, 124),
-    "Troop": ("Troop", False, 88, 94),
-    "SuperSpy": ("SuperSpy", True, 112, 118),
+    "ShieldWallBreak": ("UI_crd_ActionIcon_BlowWall", False, (54.0, 61.0)),
+    "SignetRing": ("UI_crd_ActionIcon_SignetRing", False, (62.0, 52.0)),
+    "VictoryPoint": ("UI_crd_ActionIcon_VictoryPoint", False, (58.0, 59.0)),
+    "Solari": ("Solari_{n}", True, (65.0, 66.0)),
+    "Contract": ("UI_crd_ActionIcon_CHOAMContract", False, (65.0, 44.0)),
+    "WildRankUp": ("WildRankUp", False, (53.0, 58.0)),
+    "DrawCard": ("DrawCard", True, (66.0, 100.0)),
+    "IntrigueCard": ("IntrigueCard", False, (66.0, 100.0)),
+    "TrashCard": ("TrashCard", False, (66.0, 100.0)),
+    "Troop": ("Troop", False, (57.0, 60.0)),
+    "SuperSpy": ("SuperSpy", True, (65.0, 78.0)),
 }
-# the print sets the title and the cost in a bold face, larger than the app's
-# Gotham Book 52 / Gotham Medium 115
+TECH_STRIP_PAIR = 0.86  # two like cards stacked print smaller (Self-Destroying)
+TECH_STRIP_TOP = 241.0  # the icons' top, just below the chevron (tile's top)
+TECH_STRIP_X = 62.5  # the icons' centre (from the tile's left)
+TECH_STRIP_GAPS = (7.0, 34.0)  # between icons; across a printed -OR-
+TECH_STRIP_SHORT = 136.0  # icons up to this tall fit the short strip
+# the print sets the title in a bold face, smaller than the app's Gotham Book 52
 TECH_TITLE = {"font": "Gotham-Bold SDF", "max": 46.0}
-TECH_COST = {"font": "Gotham-Bold SDF", "size": 128.0}
+# the cost: the app's Gotham Medium, smaller than its 115 and moved to where
+# the scans print it in the hexagon (measured against the hexagon's tip)
+TECH_COST = {"font": "Gotham-Medium SDF", "size": 108.0, "shift": (-4.0, -2.5)}
 # the gold title band covers the frame's top 81 units; the title's ink is
 # centred on it
 TECH_BAND_MIDDLE = 40.5
@@ -1711,25 +1713,75 @@ def tech_spec(inp, content_id):
     }
 
 
-def tech_set_icon(node, name):
+def tech_image_node(sprite, inline, w, h, name="Icon"):
+    """A root-level Image node (place it with tech_place)."""
+    return {
+        "name": name,
+        "active": True,
+        "children": [],
+        "inline": inline,
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [w, h],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            },
+            {"_": "CanvasRenderer"},
+            {
+                "_": "Image",
+                "m_Color": [1.0, 1.0, 1.0, 1.0],
+                "m_Sprite": "Sprite:" + sprite,
+                "m_Type": 0,
+                "m_PreserveAspect": 1,
+            },
+        ],
+    }
+
+
+def tech_strip_icon(inp, name, scale=1.0):
+    """Strip icon `name` drawn so its ink fills the printed box; returns the
+    node and its ink (w, h, offset from the ink's centre to the node's)."""
     base, _, n = name.partition("_")
-    sprite, inline, w, h = TECH_STRIP_ICONS[base]
-    set_sprite(node, sprite.format(n=n))
-    node["inline"] = inline
-    R.comp(node, "Image")["m_PreserveAspect"] = 1
-    R.comp(node, "RT")["size"] = [float(w), float(h)]
+    sprite, inline, (bw, bh) = TECH_STRIP_ICONS[base]
+    sprite = sprite.format(n=n)
+    img = (inp.inline if inline else inp.sprites).get(sprite)
+    alpha = img.getchannel("A").point(lambda v: 255 if v > 40 else 0)
+    x0, y0, x1, y1 = alpha.getbbox()
+    k = min(bw / (x1 - x0), bh / (y1 - y0)) * scale
+    node = tech_image_node(sprite, inline, img.width * k, img.height * k)
+    ink = (
+        (x1 - x0) * k,
+        (y1 - y0) * k,
+        (img.width - x0 - x1) / 2 * k,
+        (img.height - y0 - y1) / 2 * k,
+    )
+    return node, ink
 
 
-def tech_or_node(icon, lang):
-    """The printed —OR— between two strip icons (Gene-Locked Vault)."""
-    rt = copy.deepcopy(R.comp(icon, "RT"))
-    rt["pos"] = [-1.0, 0.0]
-    rt["size"] = [92.0, 30.0]
+def tech_place(node, cx, cy):
+    """Centre a root-level node at (cx, cy), measured from the tile's top left."""
+    R.comp(node, "RT")["pos"] = [cx - 397.0, 260.0 - cy]
+
+
+def tech_or_node(lang):
+    """The printed -OR- between two strip icons (Gene-Locked Vault)."""
     node = {
         "name": "OrText",
         "active": True,
         "comps": [
-            rt,
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [92.0, 30.0],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            },
             {"_": "CanvasRenderer"},
             {
                 "_": "TextMeshProUGUI",
@@ -1754,6 +1806,32 @@ def tech_or_node(icon, lang):
     if lang == "ko":
         node["fallback"] = str(KOREAN_FONT_BOLD)
     return node
+
+
+def tech_strip_nodes(inp, strip, lang):
+    """The acquire strip's icons and -OR- as root-level nodes, stacked from
+    just below the chevron, and whether they need the long strip."""
+    pair = len(strip) == 2 and strip[0] == strip[1] and strip[0].endswith("Card")
+    nodes, y, bottom, after_or = [], TECH_STRIP_TOP, None, False
+    for name in strip:
+        if name == "OR":
+            y += TECH_STRIP_GAPS[1] - TECH_STRIP_GAPS[0]
+            after_or = True
+            continue
+        node, (w, h, dx, dy) = tech_strip_icon(
+            inp, name, TECH_STRIP_PAIR if pair else 1.0
+        )
+        if after_or:
+            label = tech_or_node(lang)
+            tech_place(label, TECH_STRIP_X, (bottom + y) / 2)
+            nodes.append(label)
+            after_or = False
+        tech_place(node, TECH_STRIP_X + dx, y + h / 2 + dy)
+        nodes.append(node)
+        bottom = y + h
+        y = bottom + TECH_STRIP_GAPS[0]
+    height = (bottom or TECH_STRIP_TOP) - TECH_STRIP_TOP
+    return nodes, height > TECH_STRIP_SHORT
 
 
 def tech_set_mark(spec):
@@ -1964,30 +2042,7 @@ def tech_agent_row(row):
     names = re.findall(r"<sprite name=([A-Za-z]+)>", row)
     parts, x = [], 0.0
     for name in names:
-        node = {
-            "name": "AgentIcon",
-            "active": True,
-            "children": [],
-            "comps": [
-                {
-                    "_": "RT",
-                    "pos": [0.0, 0.0],
-                    "size": [w, h],
-                    "amin": [0.5, 0.5],
-                    "amax": [0.5, 0.5],
-                    "pivot": [0.5, 0.5],
-                    "scale": [1.0, 1.0],
-                },
-                {"_": "CanvasRenderer"},
-                {
-                    "_": "Image",
-                    "m_Color": [1.0, 1.0, 1.0, 1.0],
-                    "m_Sprite": "Sprite:" + AGENT_ICONS[name],
-                    "m_Type": 0,
-                    "m_PreserveAspect": 1,
-                },
-            ],
-        }
+        node = tech_image_node(AGENT_ICONS[name], False, w, h, "AgentIcon")
         parts.append([node, x + w / 2, 0.0, w, h])
         x += w + TECH_AGENT_GAPS[0]
     return {"w": x - TECH_AGENT_GAPS[0], "h": h, "parts": parts, "agents": True}
@@ -2053,9 +2108,7 @@ def tech_body(inp, t, spec, lang):
 
 
 def bind_tech(inp, spec, lang):
-    strip = spec["strip"]
-    layout = "none" if not strip else ("small" if len(strip) == 1 else "large")
-    t = copy.deepcopy(inp.tree(TECH_TEMPLATES[layout]))
+    t = copy.deepcopy(inp.tree(TECH_TEMPLATE))
     # the frame's own size, so its rounded corners are not clipped, and no
     # drop shadow beyond it; the prefab root also carries a stray Intrigue front
     R.comp(t, "RT")["size"] = [794.0, 520.0]
@@ -2073,26 +2126,17 @@ def bind_tech(inp, spec, lang):
     cost["text"] = str(spec["cost"])
     cost["font_override"] = TECH_COST["font"]
     cost["tmp_patch"] = {"m_fontSize": TECH_COST["size"]}
+    pos = R.comp(cost, "RT")["pos"]
+    pos[0] += TECH_COST["shift"][0]
+    pos[1] += TECH_COST["shift"][1]
     tech_centre_title(inp, head)
     tech_body(inp, t, spec, lang)
     R.find(t, "HagalIcon")["active"] = bool(spec["rival"])
-    if layout == "small":
-        elem = R.find(t, "UI_crd_Element_TechTile_Side_OneIcon")
-        R.comp(elem, "RT")["pos"] = [10.3, 20.4]
-        R.comp(elem, "RT")["size"] = [100.0, 100.0]
-        icon = R.find(elem, "CostIcon_0")
-        R.comp(icon, "RT")["pos"] = [0.0, 0.0]
-        tech_set_icon(icon, strip[0])
-    elif layout == "large":
-        elem = R.find(t, "UI_crd_Element_TechTile_TwoIcons")
-        icons = [R.find(elem, "CostIcon_0"), R.find(elem, "CostIcon_1")]
-        names = [n for n in strip if n != "OR"]
-        for icon, name in zip(icons, names, strict=True):
-            tech_set_icon(icon, name)
-        if "OR" in strip:
-            for icon, y in zip(icons, (74.0, -74.0), strict=True):
-                R.comp(icon, "RT")["pos"] = [-1.0, y]
-            elem["children"].append(tech_or_node(icons[0], lang))
+    icons, long_strip = tech_strip_nodes(inp, spec["strip"], lang)
+    R.find(t, "AcquireSmall")["active"] = bool(icons) and not long_strip
+    R.find(t, "AcquireLarge")["active"] = bool(icons) and long_strip
+    R.find(t, "UI_crd_Element_TechTile_Side_OneIcon")["active"] = False
+    t["children"] += icons
     t["_post"] = [tech_set_mark(spec)]
     return t
 
