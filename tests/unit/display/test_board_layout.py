@@ -20,6 +20,7 @@ from dune_imperium.display.board_layout import (
     CONFLICT_UNIT_MIN_SCALE,
     CONFLICT_UNIT_PADDING,
     CONFLICT_UNIT_SIZES,
+    CONTRACT_SLOTS,
     CONTROL_FLAG_BOXES,
     FORCE_STEPPER_BAND,
     GARRISON_POINTS,
@@ -736,6 +737,17 @@ def test_pieces_laid_on_the_scan_keep_their_pictures_shape() -> None:
     tuek_frame = frame_in(tuek, (550, 310), (36.5, 65.5, 297.5, 264.5))
     assert close(tuek_frame, SPACE_BOXES["tuek_sietch"])
 
+    # The two face-up CHOAM contracts fill their printed slots: a contract
+    # card picture (780 x 496) drawn at a slot's width is the slot's height
+    # too, and the slots stand apart, so the cards never overlap (until
+    # 2026-10-08 they were drawn 1.2 times the slot and the right one lay
+    # over the left one).
+    for slot in CONTRACT_SLOTS:
+        assert abs(box_aspect(slot) - 780 / 496) < 0.01
+    assert _apart(*CONTRACT_SLOTS)
+    first_left, _, first_width, _ = CONTRACT_SLOTS[0]
+    assert CONTRACT_SLOTS[1][0] - (first_left + first_width) > 0.5
+
 
 
 # --- Arrakeen Scouts mission pieces -------------------------------------------------
@@ -823,17 +835,9 @@ def test_scouts_regions_lie_on_free_print() -> None:
         ("conflict deck", CONFLICT_DECK_SLOT),
         ("conflict", CONFLICT_SLOT),
     ]
-    # The face-up Contracts are drawn 1.2 times their slot (board.js
-    # CONTRACT_SLOT_SCALE), centred on it.
-    from dune_imperium.display.board_layout import CONTRACT_SLOTS
-
-    for index, (left, top, width, height) in enumerate(CONTRACT_SLOTS):
-        taken.append(
-            (
-                f"contract {index}",
-                (left - width * 0.1, top - height * 0.1, width * 1.2, height * 1.2),
-            )
-        )
+    # The face-up Contracts fill their slots (board.js renderSlotCards).
+    for index, box in enumerate(CONTRACT_SLOTS):
+        taken.append((f"contract {index}", box))
     regions = [
         (space_id, region[:4])
         for space_id, entries in SCOUTS_SPACE_REGIONS.items()
@@ -912,5 +916,5 @@ def test_scouts_pieces_are_the_size_of_the_board_print() -> None:
     # Face-down piles are a card back at a third of the card.
     assert SCOUTS_CARD_SCALE == 1 / 3
     assert sizes["intrigue"] == (2.8, 4.27)
-    assert sizes["contract"] == (3.5, 2.17)
+    assert sizes["contract"] == (3.48, 2.22)
     assert 0 < SCOUTS_MIN_SCALE < 1

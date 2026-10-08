@@ -436,10 +436,15 @@ SEAT_DISC_SIZE: Final = 2.93
 # legend: the upper one holds the face-down Conflict deck and the lower one
 # the current round's Conflict card. The two face-up CHOAM contracts sit in
 # the pair of slots under the Landsraad Council (the left one carries the
-# "contract = 2 Solari" legend) [Main p. 16].
+# "contract = 2 Solari" legend) [Main p. 16]. The contract slots are the
+# outlines of those two lighter panels, re-measured on 2026-10-08 from
+# brightness profiles across their edges (x 1753-2381 and 2425-3053,
+# y 1291-1690 of the 6012 x 6005 scan). A contract card picture (780 x 496)
+# drawn at a slot's width is the slot's height too, so the card fills its
+# slot exactly and the pair stays 0.7 % apart.
 CONFLICT_DECK_SLOT: Final = (29.1, 65.7, 8.4, 12.9)
 CONFLICT_SLOT: Final = (29.1, 79.5, 8.4, 12.8)
-CONTRACT_SLOTS: Final = ((29.1, 21.5, 10.5, 6.5), (40.3, 21.5, 10.6, 6.5))
+CONTRACT_SLOTS: Final = ((29.16, 21.49, 10.44, 6.66), (40.33, 21.49, 10.45, 6.65))
 
 
 # Arrakeen Scouts mission pieces (docs/rules/arrakeen-scouts.md 5): the bank
