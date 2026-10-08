@@ -8,7 +8,8 @@ from typing import Any
 
 from dune_imperium import RulesetConfig
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.engine import RulesEngine
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
@@ -63,14 +64,22 @@ def run_interactive_session(
     write: Callable[[str], None] = print,
     max_steps: int = 500,
 ) -> GameState:
-    """Let a user inspect and choose actions until the current round ends."""
+    """Let a user inspect and choose actions until the current round ends.
+
+    Chance decisions (a reshuffle, the engine's pause before a reveal) are
+    resolved from the session's seed, as a game's runner does.
+    """
 
     state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
     for _ in range(max_steps):
         if state.phase in (GamePhase.ROUND_START, GamePhase.ENDGAME):
             write(_completion_summary(state))
             return state
         decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
         if not isinstance(decision, PlayerDecision):
             raise RuntimeError("debug session requires a pending player decision")
         actions = engine.legal_actions(state, decision.owner)

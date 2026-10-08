@@ -10,7 +10,11 @@ game's outcomes and every agent's answers stay what they were.
 
 from dataclasses import replace
 
+from tests.support.pauses import answer_pause
+from tests.unit.rules.test_combat import _reward_state
+
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.random_agent import RandomAgent
 from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
@@ -20,6 +24,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.chance import FIXED_OUTCOME_SUFFIX, is_fixed_outcome
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.rules.combat import resolve_combat_rewards
 from dune_imperium.rules.engine import UprisingRulesEngine, _advance_automatic
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.pauses import CONTINUE, ROUND_START, push_pause
@@ -126,3 +131,71 @@ def test_the_first_round_start_does_not_pause() -> None:
 
     assert started.round_number == 1
     assert all(frame.kind != FrameKind.PAUSE for frame in started.decision_stack)
+
+
+def test_the_rewards_end_at_a_pause_before_the_conflict_end_windows() -> None:
+    # Only a seat holding a playable Harvest Cells gets a Conflict-end window
+    # (rules/combat.py offer_conflict_end_triggers), so the last recipient's
+    # choice stops before anyone learns whether one opens -- in every round,
+    # the last one too (2026-10-08 review).
+    paid = resolve_combat_rewards(_reward_state("skirmish_desert_mouse")).state
+    assert paid.combat_rewards_resolved and not paid.decision_stack
+
+    paused = _advance_automatic(RuleResult(state=paid)).state
+
+    top = paused.decision_stack[-1]
+    assert top.kind == FrameKind.PAUSE
+    assert isinstance(top.decision, ChanceDecision)
+    assert top.decision.decision_id == f"round:1:conflict_end{FIXED_OUTCOME_SUFFIX}"
+    assert not paused.combat_end_triggers_offered
+    # Its answer offers the windows (none here) and nothing else.
+    offered = answer_pause(paused).state
+    assert offered.combat_end_triggers_offered
+    assert offered.phase is GamePhase.COMBAT
+
+
+def test_a_pause_does_not_move_where_earn_any_alliance_completes() -> None:
+    # The 2026-10-08 review's old-vs-new differential: seed 20, CHOAM +
+    # Bloodlines + Tech + Immortality + Go to 11, random seats. At decision
+    # 738 seat 1 takes the Fremen Alliance with a Conflict reward choice
+    # while it holds Earn Any Alliance (2 Solari and 2 troops) and has a
+    # troop in the Conflict. Before the pauses, the step ran on through the
+    # other recipients, the cleanup (the troop back to the supply) and the
+    # recall, and the Contract completed there with both troops. The pause
+    # before the next recipient cut that run; the Alliance rides on the
+    # pause to where the run ends, so both troops are still recruited.
+    config = RulesetConfig.from_identifier(
+        "uprising-4p-choam+bloodlines+tech+immortality+go11"
+    )
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, 20)
+    chance = ChanceResolver(seed=20)
+    agents = [RandomAgent(seed=20 * 7 + seat) for seat in range(4)]
+    completed = None
+    for _ in range(5000):
+        if state.phase is GamePhase.FINISHED:
+            break
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            transition = engine.apply(state, chance.resolve(decision))
+        else:
+            assert isinstance(decision, PlayerDecision)
+            legal = engine.legal_actions(state, decision.owner)
+            action = agents[decision.owner].choose_action(
+                engine.observe(state, decision.owner), legal
+            )
+            transition = engine.apply(state, action, legal_actions=legal)
+        if any(
+            event.kind == "contract_completed"
+            and "earn_any_alliance" in str(dict(event.payload).get("contract_id"))
+            for event in transition.events
+        ):
+            completed = transition.state
+            break
+        state = transition.state
+
+    assert completed is not None
+    seat = completed.players[1]
+    assert completed.round_number == 9
+    troops = (seat.troops_garrison, seat.troops_supply, seat.troops_conflict)
+    assert troops == (12, 0, 0)

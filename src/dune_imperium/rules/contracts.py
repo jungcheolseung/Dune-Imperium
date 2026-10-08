@@ -1498,7 +1498,26 @@ def apply_contract_intrigue_trash(
 # --- Bloodlines Earn Any Alliance -----------------------------------------------------
 
 
-def complete_alliance_contracts(result: RuleResult) -> RuleResult:
+def alliance_recipients(events: tuple[GameEvent, ...]) -> tuple[int, ...]:
+    """The seats that took an Alliance token in ``events``, in order."""
+
+    recipients: list[int] = []
+    for event in events:
+        if event.kind not in ("alliance_gained", "alliance_transferred"):
+            continue
+        to_player = dict(event.payload).get("to_player")
+        if (
+            isinstance(to_player, int)
+            and not isinstance(to_player, bool)
+            and to_player not in recipients
+        ):
+            recipients.append(to_player)
+    return tuple(recipients)
+
+
+def complete_alliance_contracts(
+    result: RuleResult, carried: tuple[int, ...] = ()
+) -> RuleResult:
     """Complete Earn Any Alliance when its holder takes a new Alliance token.
 
     "Earn any Alliance is completed the next time you take an Alliance token
@@ -1510,23 +1529,21 @@ def complete_alliance_contracts(result: RuleResult) -> RuleResult:
     visit). Troops recruited during the holder's own turn join that turn's
     deployment allowance like any other mid-turn recruit [Main p. 10]
     [FAQ p. 4].
+
+    ``carried`` are the seats whose Alliance was taken in an earlier step
+    that stopped at the engine's pause (rules/pauses.py): the run of
+    automatic steps the pause cut in two ends here, where the completion
+    always came.
     """
 
     state = result.state
     if not state.config.choam_module or not state.config.bloodlines:
         return result
-    recipients: list[int] = []
-    for event in result.events:
-        if event.kind not in ("alliance_gained", "alliance_transferred"):
-            continue
-        to_player = dict(event.payload).get("to_player")
-        if (
-            isinstance(to_player, int)
-            and not isinstance(to_player, bool)
-            and 0 <= to_player < state.config.players
-            and to_player not in recipients
-        ):
-            recipients.append(to_player)
+    recipients = [
+        player
+        for player in dict.fromkeys((*carried, *alliance_recipients(result.events)))
+        if 0 <= player < state.config.players
+    ]
     if not recipients:
         return result
     events = list(result.events)

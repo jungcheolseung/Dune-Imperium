@@ -863,11 +863,15 @@ function logGroups(entries) {
       continue;
     }
     if (entry.type === "chance") {
-      /* The engine's pause before a reveal (rules/pauses.py) has one
-         outcome and changes nothing: the record keeps it, the log does not. */
-      if (!PAUSE_CHANCE.test(String(entry.decision_id))) {
-        addNeutral(entry.index, [{ chance: entry }]);
-      }
+      /* A chance step's own line, then what its step went on to do: a
+         reshuffle can run on into the round's reveal and draw, and the
+         engine's pause before a reveal (rules/pauses.py) carries whatever it
+         held back (the next recipient's reward, the Conflict's winner, the
+         next round). The pause itself has one outcome and changes nothing:
+         the record keeps its line, the log does not. */
+      const lines = PAUSE_CHANCE.test(String(entry.decision_id)) ? [] : [{ chance: entry }];
+      for (const event of entry.events || []) lines.push({ event, index: entry.index });
+      addNeutral(entry.index, lines);
       continue;
     }
     const { own, neutral: flow } = splitEntryEvents(entry);

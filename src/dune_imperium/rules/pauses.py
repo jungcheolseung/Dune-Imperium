@@ -24,11 +24,22 @@ The points are fixed by public facts only, so where a pause stands tells no
 seat anything:
 - ``REWARDS`` before each Conflict reward recipient after the first is paid
   (``rules/combat.py``);
+- ``CONFLICT_END`` once a Combat's rewards are paid, before the Conflict-end
+  Intrigue windows are offered (``rules/engine.py``): only seats holding a
+  playable Harvest Cells get a window, so the last recipient's choice must
+  stop before that is known, in the last round too, which has no Round Start;
 - ``ROUND_START`` before every round's reshuffles and reveal after the first
-  round (``rules/engine.py``), after the last reward recipient's choices and
-  any Conflict-end Intrigue window;
+  round (``rules/engine.py``), after any Conflict-end Intrigue window;
 - ``ROUND_DRAW`` after a Control defense, before the round's draw
   (``rules/phases.py``).
+
+A pause changes no outcome. Every step it holds back runs as it did, in the
+same order. The one hook the engine runs at the end of a step on that
+step's own events, Earn Any Alliance's completion, would have moved: the
+seats that took an Alliance ride on the pause and complete where the run of
+automatic steps ends, as before (``rules/engine.py``
+``_complete_alliance_contracts``; an old-vs-new differential over 344
+seeded games found every state, action and outcome the same).
 """
 
 from typing import Final
@@ -40,9 +51,10 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind
 
 REWARDS: Final = "rewards"
+CONFLICT_END: Final = "conflict_end"
 ROUND_START: Final = "round_start"
 ROUND_DRAW: Final = "round_draw"
-PAUSE_POINTS: Final = frozenset({REWARDS, ROUND_START, ROUND_DRAW})
+PAUSE_POINTS: Final = frozenset({REWARDS, CONFLICT_END, ROUND_START, ROUND_DRAW})
 CONTINUE: Final = "continue"
 
 

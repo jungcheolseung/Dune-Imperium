@@ -1,5 +1,7 @@
 """Tests for the human-readable engine debug interface."""
 
+import random
+
 import pytest
 
 from dune_imperium import RulesetConfig
@@ -59,3 +61,21 @@ def test_random_cli_mode_prints_a_round_summary(
     assert '"round": 2' in output
     assert '"phase": "player_turns"' in output
     assert '"steps":' in output
+
+
+def test_interactive_session_answers_chance_decisions_on_its_own() -> None:
+    # Seed 13: the first reward recipient stops on a choice, so the engine
+    # pauses before the second one is paid (rules/pauses.py); the session
+    # answers that chance decision itself and plays on to the round's end.
+    rng = random.Random(13)
+    lines: list[str] = []
+    state = run_interactive_session(
+        UprisingRulesEngine(),
+        RulesetConfig(),
+        13,
+        read=lambda prompt: str(rng.randrange(4)),
+        write=lines.append,
+    )
+
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 1
