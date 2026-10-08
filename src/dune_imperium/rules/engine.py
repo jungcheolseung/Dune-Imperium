@@ -892,6 +892,13 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
 class UprisingRulesEngine(RulesEngine):
     """Connect the implemented rule modules into one multi-round state machine."""
 
+    # The Combat's final standing (``combat_standing``) is the strengths
+    # and reward rows the state already holds, logged for the tables when
+    # the rewards begin. Kept in the state, it would change the hash of
+    # every game past its first Combat, and no save written before it
+    # existed would load (2026-10-08).
+    report_only_event_kinds = frozenset({"combat_standing"})
+
     def __init__(self, leader_ids: tuple[str, ...] = DEFAULT_LEADER_IDS) -> None:
         self._leader_ids = leader_ids
 

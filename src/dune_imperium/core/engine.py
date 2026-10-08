@@ -47,6 +47,12 @@ class RulesEngine(ABC):
 
     verify_input_immutability: bool = False
 
+    # Event kinds a transition reports without keeping them in the state's
+    # ``event_log``: they restate for the tables what the state already
+    # holds, so the state, and every state hash a save recorded before they
+    # existed, stays exactly as it was.
+    report_only_event_kinds: frozenset[str] = frozenset()
+
     def reset(self, config: RulesetConfig, seed: int) -> GameState:
         """Create and validate an initial state."""
 
@@ -176,7 +182,14 @@ class RulesEngine(ABC):
         next_state = replace(
             result.state,
             revision=state.revision + 1,
-            event_log=(*state.event_log, *result.events),
+            event_log=(
+                *state.event_log,
+                *(
+                    event
+                    for event in result.events
+                    if event.kind not in self.report_only_event_kinds
+                ),
+            ),
         )
         return Transition(
             state=next_state,
