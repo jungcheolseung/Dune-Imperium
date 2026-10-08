@@ -2251,7 +2251,14 @@ kbd {
   text-align: center;
 }
 .play-effect-words { min-width: 0; align-self: center; overflow-wrap: anywhere; }
-.play-effect-player { color: var(--play-color); font-size: 0.8rem; margin-bottom: 0.45rem; }
+/* The seat colours are the app's deep player colours, made for fills and
+   outlines; as text on this dark card the name takes the same hue lifted
+   toward white so that blue stays readable. */
+.play-effect-player {
+  color: color-mix(in srgb, var(--play-color), #fff 45%);
+  font-size: 0.8rem;
+  margin-bottom: 0.45rem;
+}
 .play-effect-type { opacity: 0.7; font-size: 0.75rem; margin-bottom: 0.25rem; }
 .play-effect-words strong { display: block; font-size: 0.95rem; }
 .play-effect-space { font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8; }
