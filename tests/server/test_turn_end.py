@@ -1673,7 +1673,9 @@ def test_a_conflict_reward_spy_holds_before_the_next_rounds_reshuffle() -> None:
     assert choice["undoable"] is True
     assert choice["sent_by_turn_end"] is False
     assert choice["strength_after"] is None
-    assert session.state.decision_stack[-1].kind == FrameKind.ROUND_START_RESHUFFLE
+    # Held at the engine's pause before the next round (rules/pauses.py),
+    # whose answer asks for the reshuffle.
+    assert session.state.decision_stack[-1].kind == FrameKind.PAUSE
     assert len(session.log) == logged + 1
     assert summary["decision"] is None
     assert _seat0_undo(summary) == [{"seat": 0, "steps": 1}]
@@ -2067,11 +2069,10 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # control_defense decision; seed 13 does. Re-searched again 2026-10-01:
     # every Agent turn now waits for its owner's finish_agent_turn
     # (OQ-095), which moved seed 13 off it and seed 0 back on (round 7; 7,
-    # 12, 22 and 23 of 0-39 reach it too). Since 2026-10-08 the answer
-    # here is not held at all: it runs straight on into the Round Start
-    # draw, which leaves nothing of the defense to take back, and a press
-    # with nothing to take back confirms nothing (``_hold_unit_end_locked``).
-    # Live and restored sessions must still agree.
+    # 12, 22 and 23 of 0-39 reach it too). Since the engine pauses before
+    # the Round Start draw (rules/pauses.py, codec v140) the answer is held
+    # there for the defender's press, as every unit end with something left
+    # to take back. Live and restored sessions must agree.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=0)
     game_id = str(summary["game_id"])
@@ -2110,11 +2111,12 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     twin = manager.apply_action(
         restored_id, 0, _int(restored["revision"]), _int(choice["index"])
     )
-    assert live["confirmation"] is None
-    assert twin["confirmation"] is None
+    assert live["confirmation"] == 0
+    assert twin["confirmation"] == 0
     assert twin["decision"] == live["decision"]
-    assert 0 not in session.open_units
-    assert 0 not in manager._get(restored_id).open_units
+    assert live["undo"] == twin["undo"]
+    assert 0 in session.open_units
+    assert 0 in manager._get(restored_id).open_units
 
 
 def test_bad_hand_over_fields_are_rejected_on_restore() -> None:
@@ -2571,3 +2573,83 @@ def test_every_copy_of_the_explicit_turn_end_ids_matches_the_server() -> None:
         assert match, name
         ids = set(re.findall(r'"([a-z_]+)"', match.group(1)))
         assert ids == set(EXPLICIT_TURN_ENDS), name
+
+
+# --- the pauses tell no seat anything (rules/pauses.py) ---------------------
+
+
+def _reward_marks(manager: GameSessionManager, game_id: str, seat: int) -> list[object]:
+    return [
+        (row["undoable"], row["sent_by_turn_end"])
+        for row in _rows(manager.legal_actions(game_id, seat)["actions"])
+    ]
+
+
+def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> None:
+    # Seed 70, Immortality, seats 0 and 1 human: in round 8 seat 0 chooses
+    # its optional Conflict reward while seat 2 has enough troops in the
+    # Conflict for Harvest Cells. Before the engine's pauses, whether seat
+    # 0's rows were marked "can't be taken back, send with 확정 ▶" depended
+    # on whether seat 2 secretly held a playable Harvest Cells: with one,
+    # the dry run stopped at seat 2's Conflict-end window; without, it ran
+    # on into the next round's reveal. The pause before the next round
+    # stands whatever the seats hold, so the marks are the same either way.
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
+        game_seed=70,
+        immortality=True,
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    rng = random.Random(70)
+    compared = 0
+    for _ in range(9000):
+        if summary["finished"]:
+            break
+        held = summary["confirmation"]
+        if isinstance(held, int):
+            summary = manager.confirm_turn(
+                game_id, held, _int(summary["revision"]), undo_count=_int(
+                    summary["undo_count"]
+                )
+            )
+            continue
+        owner = _int(_obj(summary["decision"])["owner"])
+        live = session.state
+        top = live.decision_stack[-1]
+        harvest = [card for card in live.intrigue_deck if "harvest" in card]
+        fighters = [
+            player.player_id
+            for player in live.players
+            if player.player_id != owner and player.troops_conflict >= 3
+        ]
+        if str(top.kind).startswith("combat_reward") and harvest and fighters:
+            seat = fighters[0]
+            holder = live.players[seat]
+            players = list(live.players)
+            players[seat] = replace(
+                holder, intrigue_cards=(*holder.intrigue_cards, harvest[0])
+            )
+            fake = replace(
+                live,
+                players=tuple(players),
+                intrigue_deck=tuple(c for c in live.intrigue_deck if c != harvest[0]),
+            )
+            without = _reward_marks(manager, game_id, owner)
+            session.state = fake
+            try:
+                with_card = _reward_marks(manager, game_id, owner)
+            finally:
+                session.state = live
+            assert without == with_card, (live.round_number, owner, seat)
+            compared += 1
+        rows = _rows(manager.legal_actions(game_id, owner)["actions"])
+        summary = manager.apply_action(
+            game_id,
+            owner,
+            _int(summary["revision"]),
+            _int(rng.choice(rows)["index"]),
+            undo_count=_int(summary["undo_count"]),
+        )
+    assert compared >= 1, "the walk met a reward choice beside a Harvest Cells seat"

@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import pytest
+from tests.support.pauses import answer_pause, pause_outcome
 
 from dune_imperium import RulesetConfig
 from dune_imperium.core import (
@@ -13,6 +14,7 @@ from dune_imperium.core import (
     GameState,
     PlayerDecision,
     PlayerState,
+    RuleResult,
     canonical_state_hash,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
@@ -141,6 +143,22 @@ def _controlled_round_start(
     )
 
 
+def _defend(state: GameState, action: DomainAction) -> RuleResult:
+    """The defense answer, then its pause's answer: the round's draw.
+
+    The answer stops at a pause before the draw (rules/pauses.py), with no
+    hand drawn yet; the pause's answer draws. The events of both steps.
+    """
+
+    defended = apply_control_defense_action(state, action)
+    assert defended.state.decision_stack[-1].kind == FrameKind.PAUSE
+    assert [player.hand for player in defended.state.players] == [
+        player.hand for player in state.players
+    ]
+    drawn = answer_pause(defended.state)
+    return RuleResult(state=drawn.state, events=(*defended.events, *drawn.events))
+
+
 def test_controlled_conflict_opens_defense_before_first_turn() -> None:
     state = begin_round(_controlled_round_start()).state
     decision = state.decision_stack[-1].decision
@@ -156,7 +174,7 @@ def test_control_defense_deploys_one_troop_then_opens_first_turn() -> None:
     state = begin_round(_controlled_round_start()).state
     deploy = legal_control_defense_actions(state, 2)[1]
 
-    result = apply_control_defense_action(state, deploy)
+    result = _defend(state, deploy)
     owner = result.state.players[2]
     decision = result.state.decision_stack[-1].decision
 
@@ -171,7 +189,7 @@ def test_control_defense_can_be_declined_and_skips_when_supply_is_empty() -> Non
     state = begin_round(_controlled_round_start()).state
     decline = legal_control_defense_actions(state, 2)[0]
 
-    declined = apply_control_defense_action(state, decline)
+    declined = _defend(state, decline)
     decision = declined.state.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 0
@@ -251,9 +269,7 @@ def test_the_round_start_draw_follows_the_control_defense(
     start = _controlled_round_start()
     state = begin_round(start).state
 
-    result = apply_control_defense_action(
-        state, DomainAction(action_id=action_id, actor=2)
-    )
+    result = _defend(state, DomainAction(action_id=action_id, actor=2))
 
     drawn = result.events[1:]
     assert [event.kind for event in result.events] == [event_kind, *["cards_drawn"] * 4]
@@ -325,9 +341,9 @@ def test_a_round_start_with_a_reshuffle_and_a_defender_keeps_the_rules_order() -
     shuffled = (*short.deck, *reversed(short.discard_pile))
     assert revealed.state.players[1].deck == shuffled
 
-    # 3. The defense, then the draw.
+    # 3. The defense, then (past its pause) the draw.
     deploy = legal_control_defense_actions(revealed.state, 2)[1]
-    drawn = apply_control_defense_action(revealed.state, deploy)
+    drawn = _defend(revealed.state, deploy)
     assert [event.kind for event in drawn.events] == [
         "control_defense_deployed",
         *["cards_drawn"] * 4,
@@ -355,13 +371,18 @@ def test_the_engine_reveals_once_and_draws_after_the_defense() -> None:
     assert state.phase is GamePhase.ROUND_START
     assert all(player.hand == () for player in state.players)
 
-    transition = engine.apply(state, engine.legal_actions(state, 2)[0])
+    answered = engine.apply(state, engine.legal_actions(state, 2)[0])
+    # The answer stops at the pause before the draw (rules/pauses.py).
+    assert answered.state.decision_stack[-1].kind == FrameKind.PAUSE
+    assert all(player.hand == () for player in answered.state.players)
+    transition = engine.apply(answered.state, pause_outcome(answered.state))
+    events = (*answered.events, *transition.events)
 
-    assert [event.kind for event in transition.events][:2] == [
+    assert [event.kind for event in events][:2] == [
         "control_defense_declined",
         "cards_drawn",
     ]
-    assert "conflict_revealed" not in [event.kind for event in transition.events]
+    assert "conflict_revealed" not in [event.kind for event in events]
     assert transition.state.round_number == 1
     assert transition.state.current_conflict_ids == ("siege_of_arrakeen",)
     assert transition.state.phase is GamePhase.PLAYER_TURNS
@@ -382,7 +403,7 @@ def test_the_scouts_step_waits_for_the_draw_after_the_control_defense() -> None:
     assert not state.scouts_opening
 
     decline = legal_control_defense_actions(state, 2)[0]
-    result = apply_control_defense_action(state, decline)
+    result = _defend(state, decline)
 
     assert result.state.phase is GamePhase.PLAYER_TURNS
     assert result.state.scouts_opening
@@ -401,7 +422,7 @@ def test_a_defending_twisted_genius_draws_its_twisted_intrigue_with_the_hand() -
     assert state.players[2].twisted_deck == twisted
 
     deploy = legal_control_defense_actions(state, 2)[1]
-    result = apply_control_defense_action(state, deploy)
+    result = _defend(state, deploy)
 
     assert result.state.players[2].intrigue_cards == ("intrigue:twisted_a",)
     assert result.state.players[2].twisted_deck == ("intrigue:twisted_b",)
@@ -464,10 +485,11 @@ def test_an_owed_card_draw_waits_for_the_round_start_draw(
 
     # The defense answer draws the hands; the owed card follows, from seat
     # 1's discard pile once it is reshuffled.
-    answered = engine.apply(
+    declined = engine.apply(
         revealed, DomainAction(action_id="decline_control_defense", actor=2)
     )
-    kinds = [event.kind for event in answered.events]
+    answered = engine.apply(declined.state, pause_outcome(declined.state))
+    kinds = [event.kind for event in (*declined.events, *answered.events)]
     assert kinds[:5] == ["control_defense_declined", *["cards_drawn"] * 4]
     drawn = answered.state
     assert drawn.phase is GamePhase.PLAYER_TURNS

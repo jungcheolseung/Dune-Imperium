@@ -765,6 +765,9 @@ const QUIET_ACTIONS = new Set([
   "pass_endgame_intrigue",
 ]);
 
+/* A pause's chance step (core/chance.py FIXED_OUTCOME_SUFFIX). */
+const PAUSE_CHANCE = /:pause$/;
+
 /* Steps that stand as a card of their own (setup picks). */
 const SOLO_ACTIONS = new Set(["pick_leader"]);
 
@@ -860,7 +863,11 @@ function logGroups(entries) {
       continue;
     }
     if (entry.type === "chance") {
-      addNeutral(entry.index, [{ chance: entry }]);
+      /* The engine's pause before a reveal (rules/pauses.py) has one
+         outcome and changes nothing: the record keeps it, the log does not. */
+      if (!PAUSE_CHANCE.test(String(entry.decision_id))) {
+        addNeutral(entry.index, [{ chance: entry }]);
+      }
       continue;
     }
     const { own, neutral: flow } = splitEntryEvents(entry);

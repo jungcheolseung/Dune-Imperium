@@ -6,14 +6,15 @@ hold is confirmed at once: the walk of tests/server/test_round_start_defense.py
 and tests/server/test_turn_end.py (``_walk_to_held_end_before_chance``), base
 game, no edited state.
 
-- ``held-spy-post`` (seed 0, round 4): a Conflict reward Spy whose every post
-  is marked ``sent_by_turn_end`` (the next round opens without a reshuffle,
-  so the step runs straight into the next Conflict reveal and draw);
-- ``held-defense`` (seed 0, round 7, the same walk): seat 0's Control
-  defense in Round Start, both answers marked ``sent_by_turn_end``;
+- ``held-defense`` (seed 0, round 7): seat 0's Control defense in Round
+  Start, both answers undoable: the engine pauses before the round's draw
+  (rules/pauses.py), where the server holds the answer for the press;
+- ``held-acquire`` (seed 0, the same walk): an Intrigue card's acquisition
+  outside the turns, every row marked ``sent_by_turn_end`` (the acquisition
+  refills the Imperium Row, a reveal inside the step itself);
 - ``held-reward-spy`` (seed 19, round 4): a Conflict reward Spy whose posts
   can be taken back, saved right before seat 0 places it; placing it holds
-  the seat's unit end before the next round's reshuffle (a chance outcome).
+  the seat's unit end before the next round (the engine's pause).
 
 Prints {name: save_id} as JSON.
 """
@@ -34,6 +35,7 @@ SEATS = (
     "heuristic_uprising_table",
 )
 SPY_POST = "place_combat_reward_spy"
+ACQUIRE = "acquire_intrigue_imperium"
 STEPS = 40_000
 
 store = SaveStore(Path(sys.argv[1]))
@@ -57,7 +59,8 @@ def seat_0_decision(manager, gid, summary):
     return summary
 
 
-# Seed 0: the reward Spy sent with the press, then the Control defense.
+# Seed 0: the Control defense held by the server, then an Intrigue card's
+# acquisition held by the browser.
 manager, gid, summary, rng = start(0)
 for _step in range(STEPS):
     summary = seat_0_decision(manager, gid, summary)
@@ -65,21 +68,25 @@ for _step in range(STEPS):
         break
     kind = summary["decision"]["kind"]
     actions = manager.legal_actions(gid, 0)["actions"]
-    posts = [a for a in actions if a["action_id"] == SPY_POST]
     if (
-        "held-spy-post" not in found
-        and kind == "combat_reward_spy"
-        and posts
-        and all(a["sent_by_turn_end"] for a in posts)
+        "held-defense" not in found
+        and kind == "control_defense"
+        and len(actions) == 2
+        and all(a["undoable"] and not a["sent_by_turn_end"] for a in actions)
     ):
-        found["held-spy-post"] = store.write(
-            manager.save_game(gid, name="held-spy-post")
+        found["held-defense"] = store.write(
+            manager.save_game(gid, name="held-defense")
         )["save_id"]
-    if kind == "control_defense":
-        if len(actions) == 2 and all(a["sent_by_turn_end"] for a in actions):
-            found["held-defense"] = store.write(
-                manager.save_game(gid, name="held-defense")
-            )["save_id"]
+    acquire = [a for a in actions if a["action_id"] == ACQUIRE]
+    if (
+        "held-acquire" not in found
+        and len(acquire) >= 2
+        and all(a["sent_by_turn_end"] for a in acquire)
+    ):
+        found["held-acquire"] = store.write(
+            manager.save_game(gid, name="held-acquire")
+        )["save_id"]
+    if {"held-defense", "held-acquire"} <= set(found):
         break
     choice = rng.choice(actions)
     summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])
@@ -114,7 +121,7 @@ for _step in range(STEPS):
         found["held-reward-spy"] = store.write(document)["save_id"]
         break
 
-missing = {"held-defense", "held-reward-spy", "held-spy-post"} - set(found)
+missing = {"held-defense", "held-reward-spy", "held-acquire"} - set(found)
 if missing:
     raise RuntimeError(f"Could not find every fixture: {sorted(missing)} ({found})")
 print(json.dumps(found))

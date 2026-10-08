@@ -101,6 +101,7 @@ from dune_imperium.rules.combat import (
     legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
     offer_conflict_end_triggers,
+    pay_combat_rewards,
     refresh_combat_participants,
     resolve_combat_rewards,
 )
@@ -226,9 +227,17 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.pauses import (
+    REWARDS,
+    ROUND_START,
+    pause_is_pending,
+    pending_pause_point,
+    push_pause,
+)
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     apply_round_start_reshuffle,
+    draw_round_hands,
     legal_control_defense_actions,
     prepare_round_start,
     resolve_makers,
@@ -926,7 +935,9 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         outcome: ChanceOutcome,
     ) -> RuleResult:
-        if personal_draw_is_pending(state):
+        if pause_is_pending(state):
+            result = _resume_pause(state)
+        elif personal_draw_is_pending(state):
             result = apply_personal_draw_reshuffle(state, outcome)
         elif intrigue_reshuffle_is_pending(state):
             result = apply_intrigue_reshuffle(state, outcome)
@@ -1087,6 +1098,18 @@ def _held_contract_owner(state: GameState) -> int | None:
     return player
 
 
+def _resume_pause(state: GameState) -> RuleResult:
+    """Answer the pause on top: run the step it held back (rules/pauses.py)."""
+
+    point = pending_pause_point(state)
+    resumed = state.pop_decision()
+    if point == REWARDS:
+        return pay_combat_rewards(resumed)
+    if point == ROUND_START:
+        return prepare_round_start(resumed)
+    return draw_round_hands(resumed)
+
+
 def _advance_automatic(result: RuleResult) -> RuleResult:
     state = result.state
     events: list[GameEvent] = list(result.events)
@@ -1172,7 +1195,16 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif state.phase is GamePhase.RECALL_OR_ENDGAME:
             automatic = resolve_recall_or_endgame(state)
         elif state.phase is GamePhase.ROUND_START:
-            automatic = prepare_round_start(state)
+            # After a round, its last choices (a reward recipient's, a
+            # Conflict-end Intrigue window's) are held at a pause before the
+            # next round's reshuffles and reveal (rules/pauses.py); the
+            # pause's answer prepares the round. The first round follows the
+            # setup (and its explicit last Leader pick) with no pause.
+            automatic = (
+                prepare_round_start(state)
+                if state.round_number == 0
+                else push_pause(state, ROUND_START, f"round:{state.round_number + 1}")
+            )
         elif state.phase is GamePhase.ENDGAME:
             if can_finish_endgame_automatically(state):
                 automatic = finish_endgame_without_pending_effects(state)

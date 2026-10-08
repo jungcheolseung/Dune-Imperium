@@ -21,6 +21,7 @@ from dune_imperium.core import (
     canonical_state_hash,
     replay_game,
 )
+from dune_imperium.core.chance import FIXED_OUTCOME_SUFFIX
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.rules import UprisingRulesEngine
@@ -505,9 +506,18 @@ def test_two_rounds_replay_through_third_round_discard_shuffles() -> None:
         raise AssertionError("two rounds exceeded the transition limit")
 
     chance_steps = tuple(step for step in steps if isinstance(step, ChanceOutcome))
+    pauses = tuple(
+        step for step in chance_steps if step.decision_id.endswith(FIXED_OUTCOME_SUFFIX)
+    )
     assert state.phase is GamePhase.PLAYER_TURNS
     assert state.round_number == 3
-    assert len(chance_steps) == 4
+    # Four discard reshuffles, and the pause before rounds 2 and 3
+    # (rules/pauses.py), which the resolver answers without a draw.
+    assert len(chance_steps) - len(pauses) == 4
+    assert [step.decision_id for step in pauses] == [
+        "round:2:round_start:pause",
+        "round:3:round_start:pause",
+    ]
     assert all(player.discard_pile == () for player in state.players)
 
     replay = GameReplay(

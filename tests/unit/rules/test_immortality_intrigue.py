@@ -7,6 +7,8 @@ sections 3-4 [Immortality pp. 6-8].
 
 from dataclasses import replace
 
+from tests.support.pauses import pause_outcome
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import (
@@ -786,6 +788,11 @@ def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
 def _pass_through_combat(engine: UprisingRulesEngine, state: GameState) -> GameState:
     while state.phase is GamePhase.COMBAT and state.decision_stack:
         frame = state.decision_stack[-1]
+        if frame.kind == FrameKind.PAUSE:
+            # The engine's pause between reward recipients (rules/pauses.py)
+            # has one outcome, which a chance resolver gives at once.
+            state = engine.apply(state, pause_outcome(state)).state
+            continue
         if not isinstance(frame.decision, PlayerDecision):
             break
         if frame.kind == FrameKind.CONFLICT_END_TRIGGER:

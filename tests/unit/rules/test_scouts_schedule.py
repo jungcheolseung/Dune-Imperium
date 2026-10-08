@@ -12,6 +12,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
+from tests.support.pauses import answer_pause
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.arrakeen_scouts import (
@@ -603,9 +604,13 @@ def test_the_scouts_step_follows_the_control_defense() -> None:
     )
     state = replace(start, players=undrawn, decision_stack=(defense,))
 
-    result = apply_control_defense_action(
+    declined = apply_control_defense_action(
         state, DomainAction(action_id="decline_control_defense", actor=1)
     )
+    # The answer pauses before the draw (rules/pauses.py); its answer draws.
+    assert declined.state.decision_stack[-1].kind == FrameKind.PAUSE
+    drawn = answer_pause(declined.state)
+    result = RuleResult(state=drawn.state, events=(*declined.events, *drawn.events))
 
     assert [event.kind for event in result.events] == [
         "control_defense_declined",
