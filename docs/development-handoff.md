@@ -124,7 +124,7 @@
   - **행동 기록 아이콘**: 앱 Action Log 그림 26개(`icons/log_*.png`, `scripts/dwgr/app_log_icons.py`)와 기존 아이콘으로 이벤트 136종에 아이콘을 붙이고 라운드 카드 머리에 라운드 숫자를 단다(`log_icons.js`, 짙은 남색 타일). 그림이 없으면 예전 기록 그대로다.
   - **칸 팝오버 문구**: 앱 칸 설명(`tooltip.space.*`)과 22칸을 대조했다. 비용·조건·보상은 모두 같았다. Swordmaster 두 비용의 조건(한글판 Board Guide 문장)과 지금 적용되는 쪽 표시, 구역·교전·Maker·Control 낱말, Maker 칸의 현재 보너스 스파이스, Sietch Tabr의 Shield Wall 설명을 더했다(`space_text.js`, `SPACE_NOTES`).
   - **지도자 카드**: 앱에는 지도자 카드 틀이 없다. 앱의 두 그림 층(오려 낸 인물 `leader_ConflictWinner_*` + 배경 `frame_DeferredAbility_BG*`, 약 6배 확대 후 스캔 색에 맞춤)에 스캔에서 잰 틀을 그려 영어 10장·한국어 9장을 만들었다(`scripts/dwgr/app_leaders.py`). 대모 제시카는 공식 한글 문구가 없어 영어만 있다. 판정 agent의 13가지 지적 중 10개를 고쳤다. 배경이 인쇄판보다 부드럽고 Feyd 트랙의 연결선 일부가 직선인 것은 남았다. Feyd 토큰 상자(`FEYD_TRACK_BOXES`)는 그대로 맞는다.
-  - **넣지 않은 것**: 리뷰 수정 중 나온 탐색 AI determinizer 수정(표본 세계가 box의 Conflict 카드를 모르는 문제)은 AI 수를 바꾸므로 되돌려 `determinize-boxed-conflicts-wip` 브랜치에 두었다. 들이려면 쌍 비교 측정이 먼저다. Shield Wall과 Maker Hooks는 앱 그림이 인쇄판보다 못해 TTS 그림 그대로다.
+  - **탐색 AI determinizer**: 리뷰 수정 중 나온 수정(표본 세계가 box의 Conflict 카드를 섞지 않고 tier를 가로질러 섞던 문제)은 처음에 AI 수를 바꾼다는 이유로 빼 두었다. 사용자 결정("규칙이 이게 맞으니까 넣는게 맞지. 측정 굳이 안 해도 수정해야할 방향")으로 측정 없이 넣었다. 근거는 "완성된 덱은 위에서부터 I 1장, II 5장, III 4장이다. 사용하지 않는 I와 II 카드는 앞면을 보지 않고 상자로 돌려보낸다. [Main p. 4]"(setup-and-game-flow.md)이다. 각 깊이의 tier는 그대로 두고, 같은 tier의 덱 카드와 box 카드를 한 묶음으로 다시 나눈다. 같은 시드에서도 탐색 AI의 수가 바뀌므로, 이 앞뒤의 탐색 AI 측정은 직접 비교하지 않는다. 앞으로 측정할 때는 이 커밋 뒤의 결과끼리 비교한다. Shield Wall과 Maker Hooks는 앱 그림이 인쇄판보다 못해 TTS 그림 그대로다.
 - **남은 것**: Shield Wall·Maker Hooks는 TTS 그림 그대로다(앱 그림은 조사 결과 인쇄판에 못 미친다). 한국어 사진이 없는 Intrigue 34장은 한글판 문구를 얻을 출처가 없다. 원격 fetch가 이 세션에서 막혀(ssh timeout) master `38d38fa3` 기준으로 작업했다.
 
 ## 2026-10-08 Long Reach: 올릴 진영이 하나뿐이면 즉시 (사용자 재판정, codec 그대로 v139)
