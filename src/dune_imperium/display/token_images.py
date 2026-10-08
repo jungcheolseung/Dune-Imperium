@@ -36,8 +36,11 @@ SARDAUKAR_COMMANDER_TOKEN_FILENAME: Final = "sardaukar_commander.png"
 
 # The four Alliance tokens, one per Faction (``Faction`` values): on the marked
 # area of the Faction's Influence track until a player earns the Alliance,
-# then in that player's supply [Main pp. 4, 7]. The pictures are round tokens
-# on a black square; the UI cuts the circle out.
+# then in that player's supply [Main pp. 4, 7]. The pictures are the Steam
+# app's round tokens (``alliance_<faction>.png``, cropped to the disc, written
+# by ``scripts/dwgr/app_assets.py pieces``); an older checkout's Tabletop
+# Simulator photos (``.jpg``, a round token on a black square) still work. The
+# UI cuts the circle out either way.
 ALLIANCE_TOKEN_FACTIONS: Final[tuple[str, ...]] = (
     "emperor",
     "spacing_guild",
@@ -46,20 +49,24 @@ ALLIANCE_TOKEN_FACTIONS: Final[tuple[str, ...]] = (
 )
 
 
-def alliance_token_filename(faction: str) -> str:
+def alliance_token_filename(faction: str, suffix: str = ".png") -> str:
     """Return the filename of one Faction's Alliance token picture."""
 
-    return f"alliance_{faction}.jpg"
+    return f"alliance_{faction}{suffix}"
 
 
 def available_alliance_tokens(files: frozenset[str]) -> dict[str, str]:
-    """Return ``{faction: filename}`` for the Alliance pictures in ``files``."""
+    """Return ``{faction: filename}`` for the Alliance pictures in ``files``,
+    the app's ``.png`` before an old ``.jpg``."""
 
-    return {
-        faction: alliance_token_filename(faction)
-        for faction in ALLIANCE_TOKEN_FACTIONS
-        if alliance_token_filename(faction) in files
-    }
+    found: dict[str, str] = {}
+    for faction in ALLIANCE_TOKEN_FACTIONS:
+        for suffix in (".png", ".jpg"):
+            name = alliance_token_filename(faction, suffix)
+            if name in files:
+                found[faction] = name
+                break
+    return found
 
 
 # The token colour of each seat, in seat order. The browser UI tints

@@ -374,6 +374,14 @@ APP_PIECE_SOURCES = {
     "troop": "Icon_Resource_Cube_{C}",
     "sandworm": "Icon_Resource_Worm_{C}",
 }
+# The four Alliance tokens (display.token_images.ALLIANCE_TOKEN_FACTIONS) ->
+# app sprite: the round 1-VP token, cropped to the disc.
+APP_ALLIANCE_SOURCES = {
+    "emperor": "hud_Player_AllianceToken_Emperor_Large",
+    "spacing_guild": "hud_Player_AllianceToken_SpacingGuild_Large",
+    "bene_gesserit": "hud_Player_AllianceToken_BeneGesserit_Large",
+    "fremen": "hud_Player_AllianceToken_Fremen_Large",
+}
 # Seat order of display.token_images.STRENGTH_TOKEN_COLORS -> app colour name.
 APP_PIECE_COLORS = {"blue": "Blue", "red": "Red", "green": "Green", "yellow": "Yellow"}
 
@@ -417,6 +425,14 @@ def cmd_pieces(args):
             im.save(path)
             row["sha256"] = sha256(path)
             rows[f"{kind}_{color}"] = row
+    for faction, sprite in APP_ALLIANCE_SOURCES.items():
+        path = os.path.join(out, f"alliance_{faction}.png")
+        if app.save_picture(sprite, path) is None:
+            print("missing", faction, sprite)
+            continue
+        im = Image.open(path).convert("RGBA")
+        im.crop(im.getchannel("A").getbbox()).save(path)
+        rows[f"alliance_{faction}"] = {"sprite": sprite, "sha256": sha256(path)}
     json.dump(
         {"build_guid": build_guid(), "pieces": rows},
         open(os.path.join(out, "app_sources.json"), "w"),
