@@ -70,7 +70,7 @@ def available_alliance_tokens(files: frozenset[str]) -> dict[str, str]:
 
 
 # The token colour of each seat, in seat order. The browser UI tints
-# everything else a seat owns with ``SEAT_COLORS`` in ``server/static/app.js``
+# everything else a seat owns with ``SEAT_COLORS`` in ``server/static/render.js``
 # (blue, red, green, yellow); keep the two tables in step.
 STRENGTH_TOKEN_COLORS: Final[tuple[str, ...]] = ("blue", "red", "green", "yellow")
 

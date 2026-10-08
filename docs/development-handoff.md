@@ -53,6 +53,7 @@
   - **말**: 영향력 큐브는 병력 큐브 그림, High Council 원판은 앱의 `T_Icon_CouncilSeat_<색>`이다. 점수 트랙과 Bene Tleilax 두 트랙의 원판(`tokens/disc_<색>.png`, `seatDisc`)은 처음에 앱이 Bene Tleilax 트랙에 쓰는 유광 원판 `T_icon_ShippingTrack_PlayerPip_<색>`으로 했다. 사용자가 "좀 짜친다… 스캔 보드라 궁합이 안 맞는 듯… 원로회 토큰과 같은데 의자 그림만 없는 걸로"라고 해서, 원로회 토큰의 의자를 면 색으로 지운 그림(`app_assets.clear_emblem`)으로 바꿨다.
   - **Swordmaster 아이콘**: 앱은 이 칸의 보상 자리를 다른 칸(x 0.2)과 달리 x −0.174에 두고 게임 중에 채운다. 그 자리에 그대로 넣어 왼쪽으로 쏠렸던 것을 다른 칸의 보상 중심(`REWARD_CENTRE`)으로 옮겼다(사용자 지적).
   - **비용 두 줄 칸**: Imperial Privilege의 동전 "3"과 Shipping의 스파이스 "3"은 액자 아래로 조금 나온다. 앱 장면의 배치 그대로다. 비용 아이콘을 옮기는 스크립트나 애니메이션도 없다(칸의 Animator 클립 59개를 모두 확인). 사용자 질문("게임 앱에서도 그래?")에 그렇게 답했다.
+- **후속 6(2026-10-08, 사용자 요청 "앱에서 쓰는 4인 플레이어의 4가지 색으로 기존 우리 4가지 색을 대체하자")**: `render.js`의 `SEAT_COLORS`를 앱의 플레이어 색 Blue `#1c49ac`, Red `#c01326`, Green `#006e4a`, Yellow `#d59d18`로 바꿨다. 앱 데이터에서 플레이어 색과 RGB를 짝지은 부품 2,375개를 훑어 찾았다. 지도자 색 띠, Action Log 테두리, 대기실 항목이 쓰는 값이고(`WormImageColorRenderer`·`WormGraphicColorSubscriber`), 병력 큐브 그림의 색과도 거의 같다. 더 밝은 벌(`#2a6cff` `#ff001d` `#2bba71` `#ffc438`)은 Agent가 갈 수 있는 칸을 비추는 힌트 빛에만 쓰여 고르지 않았다. 앱 색은 짙어서 어두운 카드 위 글자로 쓰면 파랑이 잘 안 읽힌다. 유일하게 글자에 쓰는 곳(행동 알림의 플레이어 이름)만 같은 색을 흰색 쪽으로 45% 섞는다. 원로회 토큰과 원판의 초록(`#269913`)은 앱 그림 자체의 색이라 좌석 초록(청록)과 다르다.
 - **남은 것**: Shield Wall·Maker Hooks는 TTS 그림 그대로다(앱에 `hud_Player_AllianceToken_*_Large` 256px 등이 있다; 바꾸려면 먼저 묻는다). 한국어 사진이 없는 Intrigue 34장은 한글판 문구를 얻을 출처가 없다. 원격 fetch가 이 세션에서 막혀(ssh timeout) master `38d38fa3` 기준으로 작업했다.
 
 ## 2026-10-08 Long Reach: 올릴 진영이 하나뿐이면 즉시 (사용자 재판정, codec 그대로 v139)
