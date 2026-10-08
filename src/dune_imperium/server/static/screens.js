@@ -413,6 +413,7 @@ function presenceDot(info) {
 
 function resetGameState() {
   resetPlayEffects();
+  resetStatFloats();
   resetPhaseBanner();
   state.gameId = null;
   state.summary = null;

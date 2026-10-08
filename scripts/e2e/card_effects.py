@@ -20,14 +20,44 @@ SHOTS = os.environ.get("E2E_SHOTS_DIR") or tempfile.mkdtemp(
 )
 
 PENDING = """() => [playEffects.current, ...playEffects.queue].filter(Boolean)
-  .map((c) => ({index: c.index, card: c.cardId, seat: c.seat}))"""
+  .map((c) => ({index: c.index, card: c.cardId ?? null, seat: c.seat,
+    cards: c.cards ?? null, totals: c.kind === 'reveal'
+      ? [c.persuasion, c.strength] : null}))"""
 
-EXPECTED = """(from) => state.log.entries.slice(from).flatMap((entry) =>
-  entry.undone ? [] : entry.events.flatMap((event) =>
-    ['agent_placed', 'turn_start_card_played', 'card_grafted',
-     'intrigue_played', 'navigation_card_played'].includes(event.kind)
-      ? [{index: entry.index, card: event.payload.card_id,
-          seat: event.payload.player}] : []))"""
+# A Reveal is one cue for its two events (reveal_started, cards_revealed).
+EXPECTED = """(from) => state.log.entries.slice(from).flatMap((entry) => {
+  if (entry.undone) return [];
+  const out = [];
+  let reveal = null;
+  for (const event of entry.events) {
+    const p = event.payload;
+    if (['reveal_started', 'cards_revealed'].includes(event.kind)) {
+      if (!reveal) {
+        reveal = {index: entry.index, card: null, seat: p.player, cards: [],
+          totals: [null, null]};
+        out.push(reveal);
+      }
+      if (event.kind === 'reveal_started') reveal.totals = [p.persuasion, p.strength];
+      else reveal.cards = p.card_ids.split(',');
+    } else if (['agent_placed', 'turn_start_card_played', 'card_grafted',
+        'intrigue_played', 'navigation_card_played'].includes(event.kind)) {
+      out.push({index: entry.index, card: p.card_id, seat: p.player, cards: null,
+        totals: null});
+    }
+  }
+  return out;
+})"""
+
+# The Reveal toast on screen: its seat, its fanned cards and its totals.
+REVEAL_DRAWN = """() => {
+  const toast = el('play-effects').querySelector('.play-effect.reveal');
+  if (!toast) return null;
+  return {seat: Number(toast.dataset.seat),
+    cards: [...toast.querySelectorAll('.reveal-card')].map((c) => c.dataset.card),
+    images: [...toast.querySelectorAll('.reveal-card img')]
+      .every((i) => i.complete && i.naturalWidth > 0),
+    totals: toast.querySelector('.reveal-totals').textContent.trim()};
+}"""
 
 CHOOSE = """() => {
   const rows = state.actions.actions;
@@ -51,6 +81,7 @@ def live(page, base: str) -> None:
     people: set[int] = set()
     kinds: set[str] = set()
     saw_batch = False
+    reveal_checked = False
     for _ in range(1800):
         assert settled(page, 20)
         if page.evaluate("state.summary.finished"):
@@ -86,7 +117,48 @@ def live(page, base: str) -> None:
             )
         )
         saw_batch |= len(arrived) > 1
-        if len(people) == 4 and {"plot", "combat"} <= kinds and saw_batch:
+        reveals = [c for c in arrived if c["cards"] is not None]
+        if reveals and not reveal_checked:
+            reveal_checked = True
+            want = reveals[0]
+            # Draw that cue on its own for a moment, then put back what was on.
+            page.evaluate(
+                """(index) => {
+                  window.__kept = playEffects.current;
+                  playEffects.current = [playEffects.current, ...playEffects.queue]
+                    .find((c) => c && c.kind === 'reveal' && c.index === index);
+                  drawPlayEffect();
+                }""",
+                want["index"],
+            )
+            page.wait_for_function(
+                "[...el('play-effects').querySelectorAll('.reveal-card img')]"
+                ".every((i) => i.complete)"
+            )
+            drawn = page.evaluate(REVEAL_DRAWN)
+            page.wait_for_timeout(700)
+            page.screenshot(path=f"{SHOTS}/reveal_cue.png")
+            page.evaluate(
+                "playEffects.current = window.__kept;"
+                " if (playEffects.current) drawPlayEffect(); else hidePlayEffect();"
+            )
+            totals = f"{want['totals'][0]} · {want['totals'][1]}"
+            check.ok(
+                drawn is not None
+                and drawn["seat"] == want["seat"]
+                and drawn["cards"] == want["cards"]
+                and len(want["cards"]) > 0
+                and drawn["images"]
+                and drawn["totals"] == totals,
+                "a Reveal shows the revealed hand fanned out and its totals",
+                (drawn, want),
+            )
+        if (
+            len(people) == 4
+            and {"plot", "combat"} <= kinds
+            and saw_batch
+            and reveal_checked
+        ):
             break
     check.ok(
         people == {0, 1, 2, 3},
@@ -99,6 +171,7 @@ def live(page, base: str) -> None:
         kinds,
     )
     check.ok(saw_batch, "multiple plays arriving together remain ordered")
+    check.ok(reveal_checked, "the walk met a Reveal")
     before = page.evaluate(PENDING)
     page.evaluate("render(); render({foreign:true})")
     check.ok(page.evaluate(PENDING) == before, "ordinary renders never duplicate cues")

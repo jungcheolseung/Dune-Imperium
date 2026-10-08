@@ -4564,7 +4564,15 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             ("strength", strength),
         ),
     )
-    events: list[GameEvent] = [event]
+    # The revealed hand, for the tables to show (report-only: the engine
+    # keeps it out of the state, ``UprisingRulesEngine``). Revealed cards
+    # are public from here on [Main p. 12]; the view lists them in play.
+    shown = GameEvent(
+        event_id=f"round:{state.round_number}:player:{action.actor}:revealed",
+        kind="cards_revealed",
+        payload=(("card_ids", ",".join(revealed)), ("player", action.actor)),
+    )
+    events: list[GameEvent] = [event, shown]
     for card_id, effect in reveal_effects:
         if effect.trashes_self:
             # Bombast: "3 Solari and trash this card" — the card leaves play

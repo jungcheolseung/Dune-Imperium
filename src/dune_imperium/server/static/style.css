@@ -518,6 +518,19 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   stroke-dasharray: none;
   fill: rgba(127, 215, 255, 0.18);
 }
+/* The space an Agent card cue names, in the playing seat's colour
+   (effects.js applyCueSpace). */
+.hotspot.cue-space .space-frame { animation: frame-cue 0.9s ease-in-out infinite alternate; }
+.hotspot.cue-space .space-frame polygon {
+  stroke: color-mix(in srgb, var(--cue-color, #fff), #fff 35%);
+  stroke-width: 3px;
+  stroke-dasharray: none;
+  fill: color-mix(in srgb, var(--cue-color, #fff) 22%, transparent);
+}
+@keyframes frame-cue {
+  from { filter: drop-shadow(0 0 3px var(--cue-color, #fff)); }
+  to { filter: drop-shadow(0 0 6px var(--cue-color, #fff)) drop-shadow(0 0 14px var(--cue-color, #fff)); }
+}
 @keyframes frame-spotlight {
   0%, 100% { filter: drop-shadow(0 0 3px rgba(127, 215, 255, 0.8)) drop-shadow(0 0 7px rgba(127, 215, 255, 0.5)); }
   50% { filter: drop-shadow(0 0 4px rgba(127, 215, 255, 1)) drop-shadow(0 0 12px rgba(127, 215, 255, 0.85)); }
@@ -525,6 +538,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .hotspot.legal .space-frame { animation: none; filter: drop-shadow(0 0 3px rgba(255, 207, 90, 0.85)); }
   .hotspot.spotlight .space-frame { animation: none; filter: drop-shadow(0 0 4px rgba(127, 215, 255, 0.9)); }
+  .hotspot.cue-space .space-frame { animation: none; filter: drop-shadow(0 0 5px var(--cue-color, #fff)); }
 }
 /* Agents stand on the space's picture, in the middle of its frame, sized
    to the frame so they scale with the board; up to four share a space
@@ -2262,12 +2276,72 @@ kbd {
 .play-effect-type { opacity: 0.7; font-size: 0.75rem; margin-bottom: 0.25rem; }
 .play-effect-words strong { display: block; font-size: 0.95rem; }
 .play-effect-space { font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8; }
+/* A Reveal: the seat's revealed hand fanned out, then its totals. */
+.play-effect.reveal { flex-direction: column; gap: 0.5rem; }
+.reveal-fan {
+  --card-width: clamp(34px, calc(250px / var(--fan-count)), 70px);
+  display: flex;
+  justify-content: center;
+  padding: 0.3rem 0.4rem 0.2rem;
+}
+.reveal-card {
+  flex: none;
+  width: var(--card-width);
+  margin: 0 calc(var(--card-width) * -0.12);
+  transform: rotate(calc(var(--fan-at) * 4deg)) translateY(calc(var(--fan-at) * var(--fan-at) * 1.5px));
+  transform-origin: 50% 120%;
+  animation: reveal-card-in 380ms ease-out both;
+  animation-delay: calc((var(--fan-at) + 3) * 40ms);
+}
+.reveal-card img { display: block; width: 100%; border-radius: 4px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6); }
+.reveal-card.textcard {
+  min-height: calc(var(--card-width) * 1.4);
+  display: grid;
+  place-items: center;
+  padding: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #23282b;
+  font-size: 0.6rem;
+  text-align: center;
+}
+.reveal-totals { text-align: center; font-size: 1.05rem; font-weight: 700; }
+.reveal-totals .icon { height: 1.2em; vertical-align: -0.25em; }
+@keyframes reveal-card-in {
+  from { opacity: 0; transform: rotate(0) translateY(18px) scale(0.85); }
+}
 @keyframes card-play-arrive {
   from { opacity: 0; transform: translateY(16px) scale(0.92) rotate(-2deg); }
   to { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .play-effect { animation: none; }
+  .play-effect, .reveal-card { animation: none; }
+}
+
+/* A change of a seat's Victory Points or resources rising over the number
+   on its seat panel (effects.js renderStatFloats). */
+#stat-floats { position: fixed; inset: 0; z-index: 34; pointer-events: none; }
+.stat-float {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  font-size: 1rem;
+  font-weight: 800;
+  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, 0.85);
+  animation: stat-float 1.6s ease-out forwards;
+}
+.stat-float.gain { color: #9cf29c; }
+.stat-float.loss { color: #ff958a; }
+@keyframes stat-float {
+  0% { opacity: 0; transform: translate(-50%, -60%) scale(0.8); }
+  15% { opacity: 1; transform: translate(-50%, -100%) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -230%) scale(1); }
+}
+@keyframes stat-fade {
+  0%, 100% { opacity: 0; }
+  15%, 70% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat-float { animation-name: stat-fade; }
 }
 
 /* Phase and turn banners (effects.js): a wide band over the board for a
@@ -2308,8 +2382,19 @@ kbd {
    title. It alone takes a click, which closes it. */
 .phase-banner.result { --banner-color: #e2483d; cursor: pointer; }
 #phase-banner .phase-banner.result,
-#phase-banner .phase-banner.result * { pointer-events: auto; }
-.phase-banner.result .phase-banner-words { text-align: left; }
+#phase-banner .phase-banner.result *,
+#phase-banner .phase-banner.final,
+#phase-banner .phase-banner.final * { pointer-events: auto; }
+.phase-banner.result .phase-banner-words,
+.phase-banner.final .phase-banner-words { text-align: left; }
+/* The final standings when the game ends, in the winner's gold. */
+.phase-banner.final { --banner-color: #e7c35c; cursor: pointer; }
+/* A summoned sandworm in the summoning seat's colour, the Shield Wall's
+   fall in the wall's steel blue; the term's icon stands for the art. */
+.phase-banner.sandworm { --banner-color: color-mix(in srgb, var(--seat-color, #d8a35a), #e3b15c 45%); }
+.phase-banner.shield_wall { --banner-color: #6fb3e0; }
+.phase-banner-icon .icon,
+.phase-banner-icon .icon-text { display: block; height: 4.6rem; width: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6)); }
 .phase-result-rows { display: grid; gap: 0.2rem; margin-top: 0.55rem; }
 .phase-result-row {
   display: grid;

@@ -405,6 +405,7 @@ const LABELS_EN = {
     "spy_recalled": "{spy} Recalled",
     "spy_lost": "{spy} Lost",
     "reveal_started": "{reveal_turn} Started",
+    "cards_revealed": "{reveal_turn}: Cards Revealed",
     "reveal_finished": "{reveal_turn} Finished",
     "conflict_revealed": "{conflict} Revealed",
     "conflict_won": "{conflict} Won",

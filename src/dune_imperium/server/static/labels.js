@@ -345,6 +345,7 @@ const EVENT_LABELS = {
   spy_recalled: "{spy} 소환",
   spy_lost: "{spy} 잃음",
   reveal_started: "{reveal_turn} 시작",
+  cards_revealed: "{reveal_turn}: 공개한 카드",
   reveal_finished: "{reveal_turn} 종료",
   conflict_revealed: "{conflict} 공개",
   conflict_won: "{conflict} 승리",
