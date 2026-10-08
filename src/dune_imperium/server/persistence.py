@@ -35,6 +35,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.paths import SAVES_DIR
+from dune_imperium.server.pacing import AI_PACES
 from dune_imperium.server.session_log import LogEntry, LoggedUndo
 
 type JsonValue = (
@@ -89,6 +90,10 @@ class ParsedSave:
     # ``None`` for a document written before the turn-end state was
     # recorded (2026-09-23).
     hand_over: SavedHandOver | None = None
+    # The game's AI pace (``pacing.AI_PACES``); ``None`` for a document
+    # written before it was recorded (2026-10-08), which the server paces
+    # at its default.
+    ai_pace: str | None = None
 
 
 def default_saves_directory() -> Path:
@@ -217,6 +222,7 @@ def build_save_document(
     confirmation: int | None = None,
     sealed_steps: int = 0,
     open_units: tuple[tuple[int, int], ...] = (),
+    ai_pace: str = "instant",
 ) -> JsonObject:
     """Serialize one resting session as a save document."""
 
@@ -260,6 +266,7 @@ def build_save_document(
         "confirmation": confirmation,
         "sealed_steps": sealed_steps,
         "open_units": [[seat, opened] for seat, opened in open_units],
+        "ai_pace": ai_pace,
     }
 
 
@@ -361,6 +368,12 @@ def parse_save_document(document: object) -> ParsedSave:
     # Optional: documents written before the turn-end state was recorded
     # leave it out and resume by the pause rule of their time.
     hand_over = _parse_hand_over(document)
+    raw_pace = document.get("ai_pace")
+    if raw_pace is not None and (
+        not isinstance(raw_pace, str) or raw_pace not in AI_PACES
+    ):
+        raise SaveError(f"save ai_pace must be one of {list(AI_PACES)}")
+    ai_pace = raw_pace if isinstance(raw_pace, str) else None
 
     try:
         replay = GameReplay(
@@ -388,6 +401,7 @@ def parse_save_document(document: object) -> ParsedSave:
         name=name,
         log=log,
         hand_over=hand_over,
+        ai_pace=ai_pace,
     )
 
 

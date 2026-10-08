@@ -56,6 +56,15 @@ def test_is_loopback_host(host: str, expected: bool) -> None:
 # --- resolve_access ----------------------------------------------------
 
 
+def test_the_play_server_paces_its_ai_seats_unless_told_otherwise() -> None:
+    # A game created in the browser shows each AI turn and card in turn
+    # (server/pacing.py; user decision 2026-10-08, "추천대로": "normal").
+    assert _build_parser().parse_args([]).ai_pace == "normal"
+    assert _build_parser().parse_args(["--ai-pace", "instant"]).ai_pace == "instant"
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["--ai-pace", "slow"])
+
+
 def test_default_arguments_resolve_to_open_access() -> None:
     arguments = _build_parser().parse_args([])
 
@@ -593,6 +602,10 @@ def _server_process(
             str(port),
             "--saves-dir",
             str(saves_dir),
+            # Every AI answer inside the request, as the drive below expects
+            # (the play server paces its AI seats by default).
+            "--ai-pace",
+            "instant",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

@@ -13,8 +13,10 @@ the finished game, or on a background seat that is thinking. A search seat
 (``is_background_agent_kind``) takes about a second and a half a decision,
 so instead of answering inside the request that handed it the decision, the
 session marks it ``thinking`` and the game's worker thread answers it off
-the lock, one step at a time, ringing the doorbell after each; every other
-AI seat answers inside the request as before.
+the lock, one step at a time, ringing the doorbell after each. In a paced
+game (``pacing``) every AI seat answers that way, each answer applied once
+the tables have had the time to show what came before; in an instant game
+every other AI seat answers inside the request as before.
 
 Every applied step is recorded replay-style; saving serializes that record
 (``persistence``), and loading replays it against fresh seeded chance and
@@ -86,6 +88,13 @@ from dune_imperium.server.access import (
     new_token,
     token_matches,
 )
+from dune_imperium.server.pacing import (
+    AI_PACES,
+    MAX_WAIT_SECONDS,
+    PACE_SCALE,
+    TURN_BANNER_SECONDS,
+    cue_seconds,
+)
 from dune_imperium.server.persistence import (
     JsonObject as JsonObject,
 )
@@ -120,6 +129,7 @@ from dune_imperium.server.turn_end import (
     at_turn_start,
     finishing_seat,
     own_unit_outside_turns,
+    turn_start_seat,
     unit_over,
     unit_seat,
 )
@@ -261,6 +271,20 @@ class GameSession:
     # Set once the game is deleted: a running worker drops what it computed
     # and stops. Like everything above these change only under ``lock``.
     closed: bool = False
+    # How the game's AI seats pace their answers (``pacing.AI_PACES``) and
+    # the seconds of one full-length cue at that pace (the pace's scale
+    # times the manager's ``pace_unit``; 0 never waits).
+    ai_pace: str = "instant"
+    pace_seconds: float = 0.0
+    # Monotonic time until which the tables are presumed busy showing the
+    # public events logged so far (``_apply_step``), and the AI turn start
+    # whose banner the worker last waited for, keyed like the browser's
+    # turn banners ("<seat>:<step of the last turn end>").
+    cue_clock: float = 0.0
+    paced_turn: str | None = None
+    # Set to cut short the worker's wait for the tables: the game was
+    # deleted or its pace changed.
+    pace_wake: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -286,6 +310,8 @@ class GameSessionManager:
         access: AccessMode = AccessMode.OPEN,
         admin_key: str | None = None,
         search_checkpoint: str | os.PathLike[str] | None = None,
+        default_ai_pace: str = "instant",
+        pace_unit: float = 1.0,
     ) -> None:
         """``search_checkpoint`` is the network of the server's search AI,
         the seat kind ``search`` (``create_game``); ``None`` offers none.
@@ -293,12 +319,23 @@ class GameSessionManager:
         pointing at a training checkpoint) is recorded in every save as the
         file it named when the server started, so repointing the link later
         never changes the network an older save plays with.
+
+        ``default_ai_pace`` paces a game created without a pace and a save
+        that records none (the play server's command line passes
+        ``normal``); ``pace_unit`` scales every wait of a paced game (tests
+        pass 0 to keep the worker's answers without waiting).
         """
 
         if access is AccessMode.REMOTE and not admin_key:
             raise ValueError("remote access needs an admin key")
         if access is AccessMode.OPEN and admin_key is not None:
             raise ValueError("an admin key only applies to remote access")
+        if default_ai_pace not in AI_PACES:
+            raise ValueError(f"unknown AI pace {default_ai_pace!r}")
+        if pace_unit < 0:
+            raise ValueError("the pace unit must not be negative")
+        self._default_ai_pace = default_ai_pace
+        self._pace_unit = pace_unit
         self._access = access
         self._admin_key = admin_key
         self._search_checkpoint = (
@@ -323,6 +360,12 @@ class GameSessionManager:
         """The resolved network file of the ``search`` seat kind, if any."""
 
         return self._search_checkpoint
+
+    @property
+    def default_ai_pace(self) -> str:
+        """The pace a new game starts with unless it asks for another."""
+
+        return self._default_ai_pace
 
     def is_admin(self, credentials: Credentials = ANONYMOUS) -> bool:
         """Return whether the credentials carry the host's admin key.
@@ -454,12 +497,15 @@ class GameSessionManager:
         arrakeen_scouts: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
+        ai_pace: str | None = None,
         credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
         """Start one game and advance it to the first human decision.
 
         A background seat (``search:``) that decides before then answers on
-        the game's worker after this returns, with ``thinking`` naming it.
+        the game's worker after this returns, with ``thinking`` naming it;
+        so does every AI seat of a paced game (``ai_pace``, by default the
+        manager's ``default_ai_pace``).
 
         Each seat is ``human`` or a registry agent kind: ``app_ai``
         (``app_ai_medium``, ``app_ai_easy``), ``heuristic``, ``random``,
@@ -504,6 +550,9 @@ class GameSessionManager:
             policy_seed = _DEFAULT_POLICY_OFFSET + game_seed
         if policy_seed < 0:
             raise SessionError("policy seed must not be negative")
+        pace = self._default_ai_pace if ai_pace is None else ai_pace
+        if pace not in AI_PACES:
+            raise SessionError(f"unknown AI pace {pace!r}")
 
         engine = UprisingRulesEngine()
         session = GameSession(
@@ -518,6 +567,7 @@ class GameSessionManager:
             agents=_build_agents(seats, policy_seed, config),
         )
         with session.lock:
+            self._set_pace_locked(session, pace)
             self._advance_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
@@ -921,7 +971,31 @@ class GameSessionManager:
         with session.lock:
             # A worker still thinking for the game drops its answer and stops.
             session.closed = True
+            session.pace_wake.set()
         self._publish(game_id, None)
+
+    def set_ai_pace(
+        self, game_id: str, pace: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Change how the game's AI seats pace themselves; return the summary.
+
+        Host-only on a remote server, like the other game settings. A seat
+        thinking when the game turns instant still answers on the worker,
+        without waiting for the tables; the next AI decision is answered
+        inside the request again.
+        """
+
+        self.require_admin(credentials)
+        if pace not in AI_PACES:
+            raise SessionError(f"unknown AI pace {pace!r}")
+        session = self._get(game_id)
+        with session.lock:
+            self._set_pace_locked(session, pace)
+            session.pace_wake.set()
+            summary = self._summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._ring_out(game_id, bell, False)
+        return summary
 
     def save_game(
         self,
@@ -973,6 +1047,7 @@ class GameSessionManager:
                 confirmation=session.awaiting_confirmation,
                 sealed_steps=session.undo_floor,
                 open_units=tuple(sorted(session.open_units.items())),
+                ai_pace=session.ai_pace,
             )
 
     def restore_game(
@@ -1034,6 +1109,11 @@ class GameSessionManager:
                 session.undo_count = sum(
                     1 for entry in session.log if isinstance(entry, LoggedUndo)
                 )
+            # Paced from here on: the replay itself shows the tables nothing.
+            self._set_pace_locked(
+                session,
+                self._default_ai_pace if parsed.ai_pace is None else parsed.ai_pace,
+            )
             # A game saved while a human's turn end awaited its press resumes
             # at that pause, and a turn already handed over stays handed over.
             if parsed.hand_over is not None:
@@ -1430,8 +1510,9 @@ class GameSessionManager:
         """Resolve chance and AI decisions until a human must act or the end.
 
         A background seat's decision (``is_background_agent_kind``) stops
-        the advance too: the seat is marked ``thinking`` and the caller,
-        once it has released the lock, hands it to the game's worker
+        the advance too, and so does every AI seat's in a paced game
+        (``_paced``): the seat is marked ``thinking`` and the caller, once
+        it has released the lock, hands it to the game's worker
         (``_kick_ai``), which answers it and advances from there.
 
         An AI seat's answer cannot end a human Agent or Reveal turn (both
@@ -1458,7 +1539,9 @@ class GameSessionManager:
                 raise RuntimeError(
                     f"seat {decision.owner} has no legal action to auto-play"
                 )
-            if is_background_agent_kind(session.seats[decision.owner]):
+            if is_background_agent_kind(session.seats[decision.owner]) or _paced(
+                session
+            ):
                 session.thinking = decision.owner
                 return
             action = _agent_action(session, decision.owner)
@@ -1488,6 +1571,12 @@ class GameSessionManager:
         )
 
     # -- the AI worker ------------------------------------------------------
+    def _set_pace_locked(self, session: GameSession, pace: str) -> None:
+        """Set the game's AI pace; caller holds the lock."""
+
+        session.ai_pace = pace
+        session.pace_seconds = PACE_SCALE[pace] * self._pace_unit
+
     def _kick_ai(self, session: GameSession) -> None:
         """Start the game's AI worker if a background seat waits for one.
 
@@ -1613,9 +1702,16 @@ class GameSessionManager:
             observation = session.engine.observe(state, seat)
             actions = session.engine.legal_actions(state, seat)
             agent = session.agents[seat]
+            ready = _pace_ready_locked(session, seat)
+            session.pace_wake.clear()
         action = _background_answer(
             game_id, seat, step, agent, state, observation, actions
         )
+        # A paced game applies the answer once the tables have shown what
+        # came before it; a deletion or a new pace cuts the wait short.
+        wait = ready - _monotonic()
+        if wait > 0:
+            session.pace_wake.wait(wait)
         with session.lock:
             if (
                 session.closed
@@ -1774,6 +1870,7 @@ class GameSessionManager:
             # The background seat whose answer is being computed (public: it
             # owns the pending decision, which ``decision`` names anyway).
             "thinking": session.thinking,
+            "ai_pace": session.ai_pace,
             "phase": str(state.phase),
             "round_number": state.round_number,
             "first_player": state.first_player,
@@ -2126,6 +2223,69 @@ def _require_current(
         )
 
 
+# The clock the pace is measured on (a test may stand in its own).
+_monotonic: Callable[[], float] = time.monotonic
+
+# The steps that end a turn (static/effects.js TURN_END_ACTION_IDS): a turn
+# start after one of them is a new turn, even the same seat's again.
+_TURN_END_ACTION_IDS: Final = frozenset({"finish_agent_turn", "finish_reveal"})
+
+
+def _paced(session: GameSession) -> bool:
+    """Whether the game's AI seats pace their answers; caller holds the lock.
+
+    A game without a human seat never does: nobody watches it live, and
+    the browser replays it afterwards.
+    """
+
+    return session.ai_pace != "instant" and HUMAN_SEAT in session.seats
+
+
+def _turn_start_key(session: GameSession, seat: int) -> str | None:
+    """Key ``seat``'s turn start, if it stands at one, as the browser does.
+
+    "<seat>:<step of the last turn end>", the step counted among the live
+    steps; ``None`` when the seat is not choosing its Agent or Reveal turn.
+    """
+
+    if turn_start_seat(session.state) != seat:
+        return None
+    ended = next(
+        (
+            index
+            for index in range(len(session.steps) - 1, -1, -1)
+            if isinstance(step := session.steps[index], DomainAction)
+            and step.action_id in _TURN_END_ACTION_IDS
+        ),
+        -1,
+    )
+    return f"{seat}:{ended}"
+
+
+def _pace_ready_locked(session: GameSession, seat: int) -> float:
+    """When the worker may apply ``seat``'s answer; caller holds the lock.
+
+    At once in an instant game. In a paced one, once the tables have shown
+    the public events logged so far (``cue_clock``) and, at the start of the
+    seat's turn, its turn banner, which the tables show from the summary
+    while the seat waits there; never more than ``MAX_WAIT_SECONDS`` from
+    now. The banner's time goes on the clock, so the next answer waits for
+    what is on the tables then.
+    """
+
+    now = _monotonic()
+    if not _paced(session) or session.pace_seconds <= 0:
+        return now
+    ready = max(now, session.cue_clock)
+    turn = _turn_start_key(session, seat)
+    if turn is not None and turn != session.paced_turn:
+        session.paced_turn = turn
+        ready += TURN_BANNER_SECONDS * session.pace_seconds
+    ready = min(ready, now + MAX_WAIT_SECONDS)
+    session.cue_clock = ready
+    return ready
+
+
 def _apply_step(session: GameSession, step: ReplayStep) -> None:
     """Apply one step to the session and record it in steps and log."""
 
@@ -2134,6 +2294,10 @@ def _apply_step(session: GameSession, step: ReplayStep) -> None:
     session.state = transition.state
     session.steps.append(step)
     session.log.append(log_step(before, transition.state, step, transition.events))
+    if _paced(session):
+        seconds = cue_seconds(transition.events) * session.pace_seconds
+        if seconds:
+            session.cue_clock = max(session.cue_clock, _monotonic()) + seconds
 
 
 def _state_after(session: GameSession, count: int) -> GameState:
@@ -2240,6 +2404,7 @@ def _doorbell(session: GameSession, summary: JsonObject) -> JsonObject:
         "confirmation": summary["confirmation"],
         "thinking": summary["thinking"],
         "finished": summary["finished"],
+        "ai_pace": summary["ai_pace"],
         "players": summary["players"],
     }
 

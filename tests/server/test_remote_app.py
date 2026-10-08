@@ -536,6 +536,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "public_url": None,
         "autosave": True,
         "search_ai": False,
+        "ai_pace": "instant",
     }
 
     host = _admin_client(app).get("/whoami")
@@ -545,6 +546,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "public_url": "http://100.101.102.103:8000",
         "autosave": True,
         "search_ai": False,
+        "ai_pace": "instant",
     }
 
 
@@ -557,6 +559,7 @@ def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> Non
         "public_url": None,
         "autosave": False,
         "search_ai": False,
+        "ai_pace": "instant",
     }
 
 

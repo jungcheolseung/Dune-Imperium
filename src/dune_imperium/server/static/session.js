@@ -53,6 +53,18 @@ function note(text) {
   }, 4000);
 }
 
+/* The header's AI pace select (screens.js renderPaceControl). */
+async function setAiPace(pace) {
+  const gameId = state.gameId;
+  if (!gameId || !state.summary || state.summary.ai_pace === pace) return;
+  await api(`/games/${gameId}/ai-pace`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pace }),
+  });
+  if (state.gameId === gameId) await refresh(null, { foreign: true });
+}
+
 async function saveGame() {
   if (!state.gameId) return;
   const name = window.prompt(t("session.save_name_prompt"), "");
@@ -380,7 +392,8 @@ function onDoorbell(bell) {
     bell.log_count !== summary.log_count ||
     bell.confirmation !== summary.confirmation ||
     bell.thinking !== summary.thinking ||
-    bell.finished !== summary.finished
+    bell.finished !== summary.finished ||
+    bell.ai_pace !== summary.ai_pace
   ) {
     refresh(null, { foreign: true }).catch(showRefreshError);
   } else if (

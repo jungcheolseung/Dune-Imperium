@@ -12,6 +12,7 @@ from types import FrameType
 
 from dune_imperium.paths import SAVES_DIR, SEARCH_CHECKPOINT
 from dune_imperium.server.access import AccessMode, new_token
+from dune_imperium.server.pacing import AI_PACES
 
 ADMIN_KEY_ENVIRONMENT = "DUNE_IMPERIUM_ADMIN_KEY"
 SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
@@ -92,6 +93,18 @@ def _build_parser() -> argparse.ArgumentParser:
             f"{SEARCH_CHECKPOINT_ENVIRONMENT} environment variable, else "
             f"{SEARCH_CHECKPOINT} if it exists); a symlink is resolved "
             "at startup, so saves name the real file"
+        ),
+    )
+    parser.add_argument(
+        "--ai-pace",
+        choices=AI_PACES,
+        default="normal",
+        help=(
+            "how the AI seats of a new game, and of a loaded save that "
+            "records none, pace their answers: 'normal' gives the tables the "
+            "time to show each AI turn and card, 'fast' about half of it, "
+            "'instant' answers inside the request (default: normal; the "
+            "setup screen can choose another per game)"
         ),
     )
     parser.add_argument(
@@ -287,6 +300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             access=access,
             admin_key=admin_key,
             search_checkpoint=search_checkpoint,
+            default_ai_pace=arguments.ai_pace,
         ),
         saves_dir=arguments.saves_dir,
         card_images_dir=arguments.card_images_dir,

@@ -142,7 +142,7 @@ function nextPlayEffect() {
   const waiting = effectsWaiting();
   const duration = state.review
     ? Math.max(200, Math.min(2200, playback.intervalMs / (waiting + 1)))
-    : waiting > 4 ? 1200 : 2200;
+    : (waiting > 4 ? 1200 : 2200) * cueScale();
   playEffects.timer = setTimeout(endPlayEffect, duration);
 }
 
@@ -597,7 +597,8 @@ function nextPhaseBanner() {
   const full = result ? RESULT_BOARD_MS : PHASE_BANNER_MS;
   phaseBanner.duration = state.review
     ? Math.max(300, Math.min(full, playback.intervalMs / (waiting + 1)))
-    : waiting >= 2 ? (result ? RESULT_BOARD_BUSY_MS : PHASE_BANNER_BUSY_MS) : full;
+    : (waiting >= 2 ? (result ? RESULT_BOARD_BUSY_MS : PHASE_BANNER_BUSY_MS) : full)
+      * cueScale();
   phaseBanner.shownAt = performance.now();
   drawPhaseBanner();
   phaseBanner.timer = setTimeout(endPhaseBanner, phaseBanner.duration);
@@ -693,6 +694,14 @@ function renderPhaseBanner() {
 }
 
 /* ---------- one order for every cue ---------- */
+
+/* A fast-paced game (server/pacing.py PACE_SCALE) shows every cue for the
+   share of its length the server waits for it. */
+const PACE_CUE_SCALE = { fast: 0.6 };
+
+function cueScale() {
+  return (state.summary && PACE_CUE_SCALE[state.summary.ai_pace]) || 1;
+}
 
 function effectsWaiting() {
   return playEffects.queue.length + phaseBanner.queue.length;

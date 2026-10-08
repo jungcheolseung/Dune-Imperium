@@ -28,6 +28,7 @@ _DOORBELL_KEYS = {
     "confirmation",
     "thinking",
     "finished",
+    "ai_pace",
     "players",
 }
 
@@ -73,6 +74,7 @@ def _assert_mirrors_summary(bell: JsonObject, summary: JsonObject) -> None:
     assert bell["confirmation"] == summary["confirmation"]
     assert bell["thinking"] == summary["thinking"]
     assert bell["finished"] == summary["finished"]
+    assert bell["ai_pace"] == summary["ai_pace"]
     assert bell["players"] == summary["players"]
     assert isinstance(bell["seq"], int)
 

@@ -34,6 +34,15 @@ const UI_TEXT = {
   "effects.result_unranked": { "ko": "보상 없음", "en": "No reward" },
   "effects.result_double": { "ko": "모래벌레: 보상 2배", "en": "Sandworm: reward doubled" },
   "effects.result_close": { "ko": "누르면 닫힙니다", "en": "Click to close" },
+  "screens.ai_pace_normal": { "ko": "보통", "en": "Normal" },
+  "screens.ai_pace_fast": { "ko": "빠르게", "en": "Fast" },
+  "screens.ai_pace_instant": { "ko": "즉시", "en": "Instant" },
+  "screens.ai_pace_header": { "ko": "AI: {{pace}}", "en": "AI: {{pace}}" },
+  "html.opt_ai_pace_label": { "ko": "AI 진행 속도", "en": "AI pace" },
+  "html.ai_pace_title": {
+    "ko": "AI 진행 속도 — 보통은 AI의 차례와 카드를 하나씩 보여 주고, 즉시는 기다리지 않습니다",
+    "en": "AI pace — Normal shows each AI turn and card in turn; Instant does not wait"
+  },
   "html.setup_intro": {
     "ko": "플레이어와 규칙을 고르고 아라키스로 떠나세요.",
     "en": "Choose your players and rules. Arrakis awaits."

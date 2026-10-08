@@ -119,6 +119,9 @@ async function init() {
   el("save-game").addEventListener("click", () => {
     saveGame().catch(() => {});
   });
+  el("ai-pace").addEventListener("change", (event) => {
+    setAiPace(event.target.value).catch(showRefreshError);
+  });
   el("review-exit").addEventListener("click", exitReview);
   el("review-first").addEventListener("click", () => reviewSeek(0));
   el("review-last").addEventListener("click", () => {
