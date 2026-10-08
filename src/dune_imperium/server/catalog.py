@@ -128,6 +128,7 @@ from dune_imperium.display.images import (
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
 )
 from dune_imperium.display.leader_layout import leader_layout
+from dune_imperium.display.log_icons import available_log_icons
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import (
     SCOUTS_ITEM_NAMES_KO,
@@ -466,6 +467,12 @@ def build_catalog(
         "icons": {
             name: versioned(f"/icons/{filename}")
             for name, filename in available_icons(icon_files).items()
+        },
+        # The action log's own pictures from the same folder
+        # (display.log_icons); without them the log shows text alone.
+        "log_icons": {
+            name: versioned(f"/icons/{filename}")
+            for name, filename in available_log_icons(icon_files).items()
         },
         "board_image": versioned("/board-image") if board_image else None,
         # Each seat's pictured Combat marker (sword face and "+20" face), or

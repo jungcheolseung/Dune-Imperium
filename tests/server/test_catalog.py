@@ -738,6 +738,26 @@ def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:
     assert scan["image"] == "/bene-tleilax-image?v=s1"
 
 
+def test_catalog_carries_the_log_pictures_only_with_their_files() -> None:
+    """The action log's own pictures (display.log_icons) come from the icon
+    folder too; without them the block is empty and the log is text only."""
+    assert build_catalog()["log_icons"] == {}
+
+    catalog = build_catalog(
+        frozenset(),
+        frozenset(
+            {"troop.png", "log_conflict.png", "log_round_3.png", "log_other.png"}
+        ),
+        asset_versions=frozenset({("/icons/log_conflict.png", "l1")}),
+    )
+    assert catalog["log_icons"] == {
+        "conflict": "/icons/log_conflict.png?v=l1",
+        "round_3": "/icons/log_round_3.png",
+    }
+    # A log picture is not a rulebook icon, and a rulebook icon not a log one.
+    assert catalog["icons"] == {"troop": "/icons/troop.png"}
+
+
 def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
     bare = build_catalog()
     # The Shield Wall token on its marked position [Main p. 4]: always a
