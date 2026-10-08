@@ -164,6 +164,7 @@ HTTP 주소에서 **복사** 버튼이 클립보드에 복사하지 못하면, �
 | `--no-autosave` | 원격 모드에서 기본으로 켜지는 자동 저장을 끔 |
 | `--card-images-dir <경로>` | 카드 이미지와 `manifest.json`이 있는 호스트 PC의 디렉터리 지정 |
 | `--search-checkpoint <경로>` | 좌석 목록의 **탐색 AI**가 쓸 학습 체크포인트. 생략 시 `DUNE_IMPERIUM_SEARCH_CHECKPOINT` 환경 변수, 그것도 없으면 저장소 폴더 안의 `checkpoints/play/search.pt`가 있을 때 그 파일 |
+| `--exit-when-stdin-closes` | 표준 입력(파이프)이 닫히면 `Ctrl+C`처럼 정상 종료한다. 서버 런처([계획](server-launcher-plan.md))가 쓰는 옵션이라 터미널에서 직접 줄 일은 없다. 런처의 파이프를 전제한다: 표준 입력이 `/dev/null`이면 뜨자마자 꺼지고, 터미널이면 `Ctrl+D`에 꺼지며, 대화형 셸에서 `&`로 백그라운드에 두면 터미널을 읽다가 프로세스 전체가 멈춘다(macOS의 `nohup`은 표준 입력을 바꾸지 않는다) |
 
 `--public-url`은 **공유할 링크의 주소만 정한다.** 네트워크 연결을 만들거나 서버를 공개하지 않으므로 `--host`와 연결 환경도 맞아야 한다. 위 예제는 주소 혼동을 줄이기 위해 명시했다. `--remote`만 주고 `--host`를 생략하면 여전히 호스트 PC에서만 접속할 수 있다. loopback이 아닌 주소에 `--remote` 없이 실행하면 서버가 시작을 거부한다.
 

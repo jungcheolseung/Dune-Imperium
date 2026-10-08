@@ -1,13 +1,16 @@
-"""Tests for the play-server CLI (M14 slices 1, 3 and 5).
+"""Tests for the play-server CLI (M14 slices 1, 3 and 5; launcher stage 1).
 
 Most exercise the pure argument-resolution helpers without starting a server
-(``docs/multiplayer-design.md`` sections 4.2-4.4, 5, 6). The last two start
-the real command, because what they pin only shows in a real process: how
-long the server takes to stop while an event stream is open (section 4.5),
-and whether a killed server's autosave survives it (section 4.7).
+(``docs/multiplayer-design.md`` sections 4.2-4.4, 5, 6). The ones under
+"stopping the real server" and "crash recovery" start the real command,
+because what they pin only shows in a real process: how long the server
+takes to stop while an event stream is open (section 4.5), on a signal or
+once a launcher closes its standard input (``docs/server-launcher-plan.md``
+5.3), and whether a killed server's autosave survives it (section 4.7).
 """
 
 import json
+import os
 import signal
 import socket
 import subprocess
@@ -15,6 +18,7 @@ import sys
 import threading
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx2
@@ -33,6 +37,7 @@ from dune_imperium.cli.server import (
     resolve_autosave,
     resolve_public_url,
     resolve_search_checkpoint,
+    stop_when_stream_ends,
 )
 from dune_imperium.server.access import AccessMode
 
@@ -406,6 +411,71 @@ def test_a_port_somebody_listens_on_is_a_bind_problem() -> None:
     assert "Tailscale" not in problem
 
 
+@pytest.mark.parametrize(
+    ("platform", "reuses_the_address"),
+    [("darwin", True), ("linux", True), ("win32", False)],
+)
+def test_the_bind_probe_sets_the_options_the_servers_own_socket_gets(
+    monkeypatch: pytest.MonkeyPatch, platform: str, reuses_the_address: bool
+) -> None:
+    # asyncio's create_server, which uvicorn binds with, sets SO_REUSEADDR on
+    # POSIX only. On Windows the option would let the probe bind a port that
+    # another socket listens on, so a busy port would pass the check there.
+    options: list[int] = []
+
+    class Probe:
+        def __init__(self, *args: object) -> None:
+            pass
+
+        def __enter__(self) -> Probe:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def setsockopt(self, level: int, option: int, value: int) -> None:
+            options.append(option)
+
+        def bind(self, address: object) -> None:
+            pass
+
+    # The CLI looks ``socket.socket`` up at call time.
+    monkeypatch.setattr(socket, "socket", Probe)
+
+    assert bind_problem("127.0.0.1", 8000, platform=platform) is None
+    assert (socket.SO_REUSEADDR in options) is reuses_the_address
+
+
+def _localhost_has_both_families() -> bool:
+    try:
+        infos = socket.getaddrinfo("localhost", 0, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
+    return {info[4][0] for info in infos} >= {"127.0.0.1", "::1"}
+
+
+@pytest.mark.skipif(
+    not _localhost_has_both_families(),
+    reason="localhost does not resolve to both 127.0.0.1 and ::1 here",
+)
+@pytest.mark.parametrize("taken_family", ["ipv4", "ipv6"])
+def test_a_name_is_busy_when_any_of_its_addresses_is(taken_family: str) -> None:
+    # uvicorn binds every address a name resolves to, all at once, so a
+    # server already on either half of localhost keeps it from starting.
+    if taken_family == "ipv4":
+        taken = socket.socket(socket.AF_INET)
+        taken.bind(("127.0.0.1", 0))
+    else:
+        taken = socket.socket(socket.AF_INET6)
+        taken.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        taken.bind(("::1", 0))
+    with taken:
+        taken.listen()
+        port: int = taken.getsockname()[1]
+        problem = bind_problem("localhost", port)
+    assert problem is not None and f"localhost:{port}" in problem
+
+
 def test_an_address_this_machine_does_not_have_is_refused_before_any_link(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -422,7 +492,7 @@ def test_an_address_this_machine_does_not_have_is_refused_before_any_link(
     assert "Tailscale" in captured.err
 
 
-# --- shutdown with an open event stream -----------------------------------
+# --- --exit-when-stdin-closes: the watch and the flag ------------------------
 
 
 def _free_port() -> int:
@@ -432,15 +502,88 @@ def _free_port() -> int:
         return port
 
 
-def test_the_server_exits_at_once_while_an_event_stream_is_open(
-    tmp_path: Path,
+def test_the_flag_is_off_unless_asked_for() -> None:
+    assert _build_parser().parse_args([]).exit_when_stdin_closes is False
+    arguments = _build_parser().parse_args(["--exit-when-stdin-closes"])
+    assert arguments.exit_when_stdin_closes is True
+
+
+def test_the_stdin_watch_stops_only_once_the_pipe_is_closed() -> None:
+    read_end, write_end = os.pipe()
+    stopped = threading.Event()
+    watch = threading.Thread(
+        target=stop_when_stream_ends, args=(read_end, stopped.set), daemon=True
+    )
+    watch.start()
+    try:
+        # Whatever a launcher might write is read and ignored.
+        os.write(write_end, b"anything at all\n")
+        assert not stopped.wait(0.3)
+        os.close(write_end)
+        assert stopped.wait(5)
+        watch.join(5)
+        assert not watch.is_alive()
+    finally:
+        os.close(read_end)
+
+
+def test_an_unreadable_standard_input_stops_the_server_and_says_why(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # An event stream never ends by itself and uvicorn waits for open
-    # responses, so without ``hub.close()`` on the exit signal the server sat
-    # out its whole graceful-shutdown timeout (3 s) and logged an error.
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    os.close(write_end)
+    stopped: list[bool] = []
+    stop_when_stream_ends(read_end, lambda: stopped.append(True))
+    assert stopped == [True]
+    assert "cannot read standard input" in capsys.readouterr().err
+
+
+def test_without_a_standard_input_the_flag_is_ignored_with_a_warning(
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # pythonw and some service managers start the process with no stdin
+    # (docs/server-launcher-plan.md 5.3): the server still starts, says the
+    # flag does nothing, and starts no watch.
+    uvicorn = pytest.importorskip("uvicorn")
     pytest.importorskip("fastapi")
-    pytest.importorskip("uvicorn")
-    base = f"http://127.0.0.1:{(port := _free_port())}"
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self, *args, **kwargs: None)
+    monkeypatch.delenv(SEARCH_CHECKPOINT_ENVIRONMENT, raising=False)
+    monkeypatch.setattr(sys, "stdin", None)
+    started: list[str] = []
+    real_start = threading.Thread.start
+
+    def recording_start(thread: threading.Thread) -> None:
+        started.append(thread.name)
+        real_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", recording_start)
+
+    code = main(
+        [
+            "--port",
+            str(_free_port()),
+            "--saves-dir",
+            str(tmp_path / "saves"),
+            "--exit-when-stdin-closes",
+        ]
+    )
+
+    assert code == 0
+    assert "--exit-when-stdin-closes is ignored" in capsys.readouterr().err
+    assert "stdin-watch" not in started
+
+
+# --- stopping the real server: a signal or a closed standard input ----------
+
+
+def _start_server(
+    tmp_path: Path, *extra: str, stdin: int | None = None
+) -> tuple[subprocess.Popen[str], str]:
+    port = _free_port()
     server = subprocess.Popen(
         [
             sys.executable,
@@ -450,60 +593,183 @@ def test_the_server_exits_at_once_while_an_event_stream_is_open(
             str(port),
             "--saves-dir",
             str(tmp_path / "saves"),
+            *extra,
         ],
+        stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
-    try:
-        deadline = time.monotonic() + 30
-        while True:
-            try:
-                urllib.request.urlopen(f"{base}/catalog", timeout=1).read()
-                break
-            except OSError:
-                assert server.poll() is None, "the server exited during startup"
-                assert time.monotonic() < deadline, "the server did not start"
-                time.sleep(0.05)
-        request = urllib.request.Request(
-            f"{base}/games",
-            data=json.dumps(
-                {"seats": ["human", "heuristic", "heuristic", "heuristic"]}
-            ).encode(),
-            headers={"content-type": "application/json"},
+    return server, f"http://127.0.0.1:{port}"
+
+
+def _wait_until_serving(server: subprocess.Popen[str], base: str) -> None:
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            urllib.request.urlopen(f"{base}/catalog", timeout=1).read()
+            return
+        except OSError:
+            assert server.poll() is None, "the server exited during startup"
+            assert time.monotonic() < deadline, "the server did not start"
+            time.sleep(0.05)
+
+
+def _hold_a_stream_open(base: str) -> threading.Event:
+    """Create a game and keep its event stream open; the event is set once
+    the server ends the stream."""
+
+    request = urllib.request.Request(
+        f"{base}/games",
+        data=json.dumps(
+            {"seats": ["human", "heuristic", "heuristic", "heuristic"]}
+        ).encode(),
+        headers={"content-type": "application/json"},
+    )
+    game_id = json.load(urllib.request.urlopen(request, timeout=5))["game_id"]
+
+    greeted = threading.Event()
+    ended = threading.Event()
+
+    def hold() -> None:
+        with urllib.request.urlopen(
+            f"{base}/games/{game_id}/events", timeout=30
+        ) as stream:
+            for line in stream:
+                if line.startswith(b"event: hello"):
+                    greeted.set()
+        ended.set()
+
+    threading.Thread(target=hold, daemon=True).start()
+    assert greeted.wait(5), "the stream never greeted"
+    return ended
+
+
+def _stop(
+    server: subprocess.Popen[str], ask: Callable[[], None]
+) -> tuple[int, float, str]:
+    """Ask the server to stop; return its exit code, the seconds it took and
+    everything it printed."""
+
+    asked = time.monotonic()
+    ask()
+    code = server.wait(timeout=10)
+    took = time.monotonic() - asked
+    output = server.stdout.read() if server.stdout is not None else ""
+    return code, took, output
+
+
+def _kill_if_running(server: subprocess.Popen[str]) -> None:
+    if server.poll() is None:
+        server.kill()
+        server.wait(timeout=10)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Popen.send_signal on Windows takes no SIGINT",
+)
+@pytest.mark.parametrize("watching_stdin", [False, True])
+def test_the_server_exits_at_once_while_an_event_stream_is_open(
+    tmp_path: Path, watching_stdin: bool
+) -> None:
+    # An event stream never ends by itself and uvicorn waits for open
+    # responses, so without ``hub.close()`` on the exit signal the server sat
+    # out its whole graceful-shutdown timeout (3 s) and logged an error.
+    # With the stdin watch running on a pipe that stays open, Ctrl+C has to
+    # end the process just as cleanly: a watch blocked in a buffered read
+    # made the interpreter abort at shutdown (code -6).
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    if watching_stdin:
+        server, base = _start_server(
+            tmp_path, "--exit-when-stdin-closes", stdin=subprocess.PIPE
         )
-        game_id = json.load(urllib.request.urlopen(request, timeout=5))["game_id"]
-
-        greeted = threading.Event()
-        ended = threading.Event()
-
-        def hold_a_stream_open() -> None:
-            with urllib.request.urlopen(
-                f"{base}/games/{game_id}/events", timeout=30
-            ) as stream:
-                for line in stream:
-                    if line.startswith(b"event: hello"):
-                        greeted.set()
-            ended.set()
-
-        threading.Thread(target=hold_a_stream_open, daemon=True).start()
-        assert greeted.wait(5), "the stream never greeted"
-
-        asked = time.monotonic()
-        server.send_signal(signal.SIGINT)
-        code = server.wait(timeout=10)
-        took = time.monotonic() - asked
-        output = server.stdout.read() if server.stdout is not None else ""
+    else:
+        server, base = _start_server(tmp_path)
+    try:
+        _wait_until_serving(server, base)
+        ended = _hold_a_stream_open(base)
+        code, took, output = _stop(
+            server, lambda: server.send_signal(signal.SIGINT)
+        )
     finally:
-        if server.poll() is None:
-            server.kill()
-            server.wait(timeout=10)
+        _kill_if_running(server)
+
+    assert code == 0, output
+    assert took < 2.0, f"shutdown took {took:.1f}s with a stream open"
+    assert ended.wait(5), "the client's stream was not ended"
+    assert "Traceback" not in output
+    assert "Fatal Python error" not in output
+    assert "timeout graceful shutdown exceeded" not in output
+
+
+def test_closing_the_standard_input_stops_the_server_like_ctrl_c(
+    tmp_path: Path,
+) -> None:
+    # The launcher's stop button and the launcher's death both end the pipe
+    # the server reads (docs/server-launcher-plan.md 5.2-5.3). The server has
+    # to take the same graceful path as a signal, open stream included, and,
+    # since no signal is involved, return 0: uvicorn re-raises a signal it
+    # shut down on, which would end the process by that signal instead.
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    server, base = _start_server(
+        tmp_path, "--exit-when-stdin-closes", stdin=subprocess.PIPE
+    )
+    try:
+        _wait_until_serving(server, base)
+        ended = _hold_a_stream_open(base)
+        assert server.stdin is not None
+        stdin = server.stdin
+        code, took, output = _stop(server, stdin.close)
+    finally:
+        _kill_if_running(server)
 
     assert code == 0, output
     assert took < 2.0, f"shutdown took {took:.1f}s with a stream open"
     assert ended.wait(5), "the client's stream was not ended"
     assert "Traceback" not in output
     assert "timeout graceful shutdown exceeded" not in output
+
+
+def test_without_the_flag_a_closed_standard_input_changes_nothing(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    server, base = _start_server(tmp_path, stdin=subprocess.PIPE)
+    try:
+        _wait_until_serving(server, base)
+        assert server.stdin is not None
+        server.stdin.close()
+        time.sleep(1.0)
+        assert server.poll() is None, "the server stopped on a closed stdin"
+        urllib.request.urlopen(f"{base}/catalog", timeout=5).read()
+    finally:
+        _kill_if_running(server)
+
+
+def test_with_the_flag_an_empty_standard_input_stops_the_server_at_once(
+    tmp_path: Path,
+) -> None:
+    # The documented condition of the flag: from /dev/null the input is
+    # already at its end, so the server shuts down right after it starts,
+    # cleanly. (GNU nohup gives a terminal stdin that cannot be read, which
+    # ends the same way; macOS nohup leaves the terminal in place.)
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    server, _base = _start_server(
+        tmp_path, "--exit-when-stdin-closes", stdin=subprocess.DEVNULL
+    )
+    try:
+        code = server.wait(timeout=30)
+        output = server.stdout.read() if server.stdout is not None else ""
+    finally:
+        _kill_if_running(server)
+
+    assert code == 0, output
+    assert "Traceback" not in output
 
 
 # --- crash recovery via the autosave (M14 slice 5) -------------------------
