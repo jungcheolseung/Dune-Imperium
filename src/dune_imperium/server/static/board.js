@@ -604,6 +604,7 @@ function renderSlotCards(stage, view) {
     count.className = "slot-deck-count";
     count.textContent = String(view.conflict_deck_size);
     deck.append(icon("sword", phraseText("{conflict}")), count);
+    showConflictDeckBack(deck, view);
     placeAt(deck, dLeft + dWidth / 2, dTop + dHeight / 2);
     stage.appendChild(deck);
   }
@@ -1727,14 +1728,16 @@ function renderMarket() {
   }
   /* The face-down Imperium deck's size is public, like every shared deck
      (docs/rules/information-visibility.md). */
-  cardStrip(
+  const imperiumTitle = t("board.strip_imperium_row", { count: view.imperium_deck_size || 0 });
+  const imperiumRow = cardStrip(
     market,
-    t("board.strip_imperium_row", { count: view.imperium_deck_size || 0 }),
+    imperiumTitle,
     view.imperium_row,
     t("common.empty"),
     {},
     "Imperium Row",
   );
+  prependDeckPile(imperiumRow, "imperium", view.imperium_deck_size || 0, imperiumTitle);
   if (state.summary.immortality) renderTleilaxuRow(market, view);
   cardStrip(
     market,
@@ -1856,7 +1859,9 @@ function renderIntriguePiles(market, view) {
   const deck = document.createElement("div");
   deck.className = "muted";
   deck.dataset.pile = "intrigue-deck";
-  deck.appendChild(tNode("board.intrigue_deck_count", { count: view.intrigue_deck_size || 0 }));
+  const deckCount = { count: view.intrigue_deck_size || 0 };
+  deck.appendChild(tNode("board.intrigue_deck_count", deckCount));
+  prependDeckPile(deck, "intrigue", deckCount.count, t("board.intrigue_deck_count", deckCount));
   box.appendChild(deck);
   if (!discard.length) {
     market.appendChild(box);
@@ -1916,9 +1921,10 @@ function renderTleilaxuRow(market, view) {
   /* The Tleilaxu Row: two deck cards bought with specimens plus the fixed
      Reclaimed Forces card [Immortality pp. 6, 9]. */
   const rowIds = [...(view.tleilaxu_row || []), "reclaimed_forces"];
+  const tleilaxuTitle = t("board.strip_tleilaxu_row", { count: view.tleilaxu_deck_size || 0 });
   const tleilaxuRow = cardStrip(
     market,
-    t("board.strip_tleilaxu_row", { count: view.tleilaxu_deck_size || 0 }),
+    tleilaxuTitle,
     rowIds,
     "",
     (id) => {
@@ -1931,6 +1937,7 @@ function renderTleilaxuRow(market, view) {
     },
     "Tleilaxu Row",
   );
+  prependDeckPile(tleilaxuRow, "imperium", view.tleilaxu_deck_size || 0, tleilaxuTitle);
   /* Back Room Deal's Solari lie on Reclaimed Forces until someone next
      acquires it. */
   const reclaimed = tleilaxuRow.querySelector('.vcard[data-instance="reclaimed_forces"]');

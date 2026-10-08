@@ -64,6 +64,7 @@ from dune_imperium.agents.registry import (
     is_background_agent_kind,
 )
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -2358,6 +2359,14 @@ def _serialize_view(
     ``disclose`` adds hidden zones only for a finished game (OQ-010 ruling
     4); ``state`` may be an earlier state of that finished game.
 
+    ``conflict_deck_top_tier`` is the tier (1-3) printed on the back of the
+    Conflict deck's top card, 0 once the deck is empty: the deck is built
+    by back, I on II on III, and lies face down [Main p. 4], so every seat
+    sees the next card's back (docs/rules/information-visibility.md). It is
+    added here and not to ``PlayerView``: the observation encodes no tier,
+    and the search AI's determinizer still shuffles the Conflict deck
+    across tiers, which a tier in the view would contradict.
+
     The observing seat's own ``private`` block also carries ``deck_cards``,
     the composition of its draw deck sorted by card id, never its order
     (OQ-010 ruling 5: the owner can deduce the composition, so showing it
@@ -2376,6 +2385,9 @@ def _serialize_view(
             for event in state.event_log
             if event.kind == "conflict_revealed" and event.visible_to is None
         ]
+    )
+    serialized["conflict_deck_top_tier"] = (
+        CONFLICTS_BY_ID[state.conflict_deck[0]].tier.value if state.conflict_deck else 0
     )
     if disclose:
         serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))

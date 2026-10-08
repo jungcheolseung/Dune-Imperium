@@ -5,11 +5,16 @@ The Combat marker is a two-sided token in each player's colour: "strength를
 `+20` 면을 사용해 track 처음부터 남은 수치를 센다." [Main p. 12]
 (``docs/rules/combat-and-round-end.md``). The UI shows a picture of each
 face when the owner's private assets checkout carries them under
-``tokens/`` (``strength_<colour>.png`` and ``strength_<colour>_plus20.png``);
-the pictures are copyrighted artwork and never live in this repository,
-the same policy as the card scans in ``dune_imperium.display.images`` and
-the rulebook icons in ``dune_imperium.display.icons``. Without them the UI
-keeps its drawn seat token.
+``tokens/`` (``strength_<colour>.png`` and ``strength_<colour>_plus20.png``).
+The Steam app has no such marker (it shows strength as a number), so the
+faces are composed from its parts by ``scripts/dwgr/app_assets.py
+strength``: a tile in the seat's colour, a dark inner square, and the
+printed strength icon or "+20" in the app's font. Like every other picture
+there they are built from copyrighted artwork and never live in this
+repository, the same policy as the card scans in
+``dune_imperium.display.images`` and the rulebook icons in
+``dune_imperium.display.icons``. Without them the UI keeps its drawn seat
+token.
 """
 
 from typing import Final
@@ -33,6 +38,14 @@ MAKER_HOOKS_TOKEN_FILENAME: Final = "maker_hooks.png"
 # ``scripts/cut_commander_token.py``; where its base lies is
 # ``board_layout.COMMANDER_PICTURE_BASE``.
 SARDAUKAR_COMMANDER_TOKEN_FILENAME: Final = "sardaukar_commander.png"
+
+# The First Player marker, beside the holder's name on the seat panel: "첫
+# 라운드의 First Player는 공개된 Objective로 결정한다" [Main p. 5], and it passes
+# clockwise in Recall [Main p. 15] (docs/rules/setup-and-game-flow.md). The
+# picture is the Steam app's HUD token, a sandworm on a round token (written
+# by ``scripts/dwgr/app_assets.py pieces``); without it the panel keeps its
+# text badge.
+FIRST_PLAYER_TOKEN_FILENAME: Final = "first_player.png"
 
 # The four Alliance tokens, one per Faction (``Faction`` values): on the marked
 # area of the Faction's Influence track until a player earns the Alliance,

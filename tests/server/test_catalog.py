@@ -1026,6 +1026,10 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     assert catalog["board_image"] is None
     assert catalog["strength_tokens"] == [None, None, None, None]
     assert catalog["seat_pieces"] == {}
+    # No First Player picture: the seat panel keeps its text badge.
+    assert catalog["first_player_token"] is None
+    # No card backs: every deck keeps its drawing.
+    assert catalog["card_backs"] == {}
 
     with_assets = build_catalog(
         frozenset(),
@@ -1038,6 +1042,9 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
                 # A lone face does not make a token (display.token_images).
                 "strength_yellow.png",
                 *(f"troop_{c}.png" for c in ("blue", "red", "green", "yellow")),
+                "first_player.png",
+                "back_imperium.webp",
+                "back_conflict_2.webp",
             }
         ),
     )
@@ -1058,6 +1065,13 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     ]
     assert with_assets["seat_pieces"] == {
         "troop": [f"/tokens/troop_{c}.png" for c in ("blue", "red", "green", "yellow")]
+    }
+    assert with_assets["first_player_token"] == "/tokens/first_player.png"
+    # Each back stands alone: the Conflict II deck shows its back while
+    # the other tiers keep the drawn box.
+    assert with_assets["card_backs"] == {
+        "imperium": "/tokens/back_imperium.webp",
+        "conflict_2": "/tokens/back_conflict_2.webp",
     }
 
 

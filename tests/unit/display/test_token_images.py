@@ -1,9 +1,14 @@
 """Tests for the pictured Combat marker filenames and their availability."""
 
+import re
+from pathlib import Path
+
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.display.token_images import (
     ALLIANCE_TOKEN_FACTIONS,
+    FIRST_PLAYER_TOKEN_FILENAME,
     MAKER_HOOKS_TOKEN_FILENAME,
+    SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
     STRENGTH_TOKEN_COLORS,
     alliance_token_filename,
@@ -118,3 +123,34 @@ def test_seat_pieces_need_all_four_colours() -> None:
         )
     }
     assert available_seat_pieces(frozenset()) == {}
+
+
+def test_the_strength_faces_are_built_in_the_seat_colours() -> None:
+    # scripts/dwgr/app_assets.py `strength` paints each Combat marker's tile
+    # in its seat's colour; the browser tints everything else a seat owns
+    # with render.js SEAT_COLORS, so the two tables must agree (the tool
+    # imports UnityPy, so it is read here as text).
+    repo = Path(__file__).resolve().parents[3]
+    render_js = (repo / "src/dune_imperium/server/static/render.js").read_text()
+    seat_colors = re.search(r"const SEAT_COLORS = \[([^\]]*)\]", render_js)
+    assert seat_colors is not None
+    tool = (repo / "scripts/dwgr/app_assets.py").read_text()
+    table = re.search(r"STRENGTH_TILE_COLORS = \{([^}]*)\}", tool)
+    assert table is not None
+    tiles = dict(re.findall(r'"(\w+)": "(#[0-9a-f]{6})"', table.group(1)))
+    assert tuple(tiles) == STRENGTH_TOKEN_COLORS
+    assert list(tiles.values()) == re.findall(r'"(#[0-9a-f]{6})"', seat_colors.group(1))
+
+
+def test_the_first_player_marker_has_its_own_picture() -> None:
+    # One First Player marker in the game [Main p. 3], shown on the holder's
+    # seat panel; its picture shares no name with another token's.
+    assert FIRST_PLAYER_TOKEN_FILENAME == "first_player.png"
+    others = {
+        SHIELD_WALL_TOKEN_FILENAME,
+        MAKER_HOOKS_TOKEN_FILENAME,
+        SARDAUKAR_COMMANDER_TOKEN_FILENAME,
+        *(alliance_token_filename(f) for f in ALLIANCE_TOKEN_FACTIONS),
+        *(n for c in STRENGTH_TOKEN_COLORS for n in strength_token_filenames(c)),
+    }
+    assert FIRST_PLAYER_TOKEN_FILENAME not in others
