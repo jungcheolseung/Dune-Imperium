@@ -93,9 +93,14 @@ DECKS_JS = """() => ({
   intrigue: state.view.intrigue_deck_size,
 })"""
 
+# The pictures loaded and the board stage laid out: under load (run_all -j 4)
+# the stage could still be 0 px when the slot was measured (NaN box).
 LOADED_JS = (
     "[...document.querySelectorAll('.deck-pile img, .slot-deck img, .tile-back img')]"
     ".every((i) => i.complete)"
+    " && (() => { const s = document.querySelector('.board-stage');"
+    " if (!s) return true; const r = s.getBoundingClientRect();"
+    " return r.width > 0 && r.height > 0; })()"
 )
 
 
