@@ -6,17 +6,20 @@ hidden zones. ``determinize`` keeps everything the observer knows and
 re-deals every hidden card ordering with the supplied RNG — the observer's
 deck order, each opponent's secret hand cards together with their deck, the
 opponents' held Intrigue together with the Intrigue deck, the Imperium deck,
-the Contract bank, and the Conflict deck — so the result is one plausible
-world the observer cannot distinguish from the real one. The observer's own
-``observe_state`` view of the sampled state equals its view of the real
-state, which the tests pin.
+the Contract bank, and the Conflict deck together with the boxed Conflict
+cards of each tier — so the result is one plausible world the observer
+cannot distinguish from the real one. The observer's own ``observe_state``
+view of the sampled state equals its view of the real state, which the
+tests pin.
 """
 
 import random
 from dataclasses import replace
 
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
+from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.observation import (
     peeked_card_id,
     peeked_intrigue_ids,
@@ -82,6 +85,36 @@ def _keep_twisted_in_hands(
             return
         slot = rng.choice(slots)
         pool[index], pool[slot] = pool[slot], card
+
+
+def _redeal_conflicts(
+    state: GameState, rng: random.Random
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Re-deal the Conflict deck within each tier, the boxed cards included.
+
+    The deck is built by back -- "Conflict 카드를 I, II, III 뒷면별로 나눈다",
+    and the finished deck is "위에서부터 I 1장, II 5장, III 4장" [Main p. 4] --
+    so the tier at each depth is public and stays put. Which card of that
+    tier lies there is not, and the unused I and II cards go to the box
+    "앞면을 보지 않고" [Main p. 4], so no seat knows which cards of a tier
+    were boxed either: the deck's and the box's cards of one tier are one
+    hidden pool (the observation-leak sweep's
+    ``simulation.invariants._scramble_conflicts`` treats them the same way).
+    A tier with no boxed card (Epic Game Mode's Conflict III, every card of
+    which is in the deck [Rise of Ix p. 10]) only changes its order.
+    """
+
+    pools: dict[ConflictTier, list[str]] = {}
+    for conflict_id in (*state.conflict_deck, *state.unused_conflict_ids):
+        pools.setdefault(CONFLICTS_BY_ID[conflict_id].tier, []).append(conflict_id)
+    for pool in pools.values():
+        rng.shuffle(pool)
+    deck = tuple(
+        pools[CONFLICTS_BY_ID[conflict_id].tier].pop()
+        for conflict_id in state.conflict_deck
+    )
+    unused = tuple(sorted(card for pool in pools.values() for card in pool))
+    return deck, unused
 
 
 def determinize(state: GameState, observer: int, rng: random.Random) -> GameState:
@@ -175,8 +208,7 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         )
         board_cards[row] = contract_bank.pop(index)
     contract_bank = [*revealed, *contract_bank]
-    conflict_deck = list(state.conflict_deck)
-    rng.shuffle(conflict_deck)
+    conflict_deck, unused_conflicts = _redeal_conflicts(state, rng)
     # Below each face-up top the Tech stacks are face down [Bloodlines p. 6].
     # Kota Odax's Secret Project is the exception while its frame is open:
     # "Game Start: 각 stack의 맨 아래 Tech tile을 본다" [Bloodlines p. 6], so
@@ -226,6 +258,7 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         intrigue_deck=(*peeked_intrigue, *intrigue_pool[cursor:]),
         imperium_deck=tuple(imperium_deck),
         contract_bank=tuple(contract_bank),
-        conflict_deck=tuple(conflict_deck),
+        conflict_deck=conflict_deck,
+        unused_conflict_ids=unused_conflicts,
         tech_stacks=tuple(tech_stacks),
     )
