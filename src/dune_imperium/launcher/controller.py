@@ -67,6 +67,7 @@ class Started:
     plan: LaunchPlan
     info: dict[str, object]
     log_path: Path | None
+    pid: int | None = None
 
 
 @dataclass(frozen=True)
@@ -227,7 +228,7 @@ class Controller:
             if self._phase is not Phase.STARTING:
                 return  # stopped while it came up
             self._phase = Phase.RUNNING
-        self._emit(Started(plan, info, server.log_path))
+        self._emit(Started(plan, info, server.log_path, server.pid))
         self._emit(PhaseChanged(Phase.RUNNING))
 
     def stop(self, then: Callable[[], None] | None = None) -> bool:

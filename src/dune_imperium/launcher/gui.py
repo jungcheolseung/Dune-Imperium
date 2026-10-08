@@ -38,6 +38,7 @@ from dune_imperium.launcher.controller import (
     Started,
     StartFailed,
 )
+from dune_imperium.launcher.keepawake import KeepAwake
 from dune_imperium.launcher.settings import (
     SETTINGS_FILE,
     KeyMode,
@@ -47,6 +48,7 @@ from dune_imperium.launcher.settings import (
     resolved_path,
     stored_path,
 )
+from dune_imperium.launcher.shortcuts import ShortcutError, make_shortcut
 from dune_imperium.launcher.supervisor import LOG_DIR
 from dune_imperium.launcher.view import (
     AI_PACE_LABELS,
@@ -57,7 +59,7 @@ from dune_imperium.launcher.view import (
     status,
     window_geometry,
 )
-from dune_imperium.paths import PROJECT_ROOT
+from dune_imperium.paths import LOCAL_DIR, PROJECT_ROOT
 
 TITLE: Final = "Dune Imperium 서버"
 LAUNCHER_LOG: Final = LOG_DIR / "launcher.log"
@@ -149,8 +151,11 @@ class LauncherWindow:
         settings_path: Path = SETTINGS_FILE,
         *,
         make_controller: MakeController = lambda path, emit: Controller(path, emit),
+        keep_awake: KeepAwake | None = None,
     ) -> None:
         self.root = root
+        # Held on Tk's thread: Windows ties the request to the calling thread.
+        self.keep_awake = keep_awake or KeepAwake()
         self._events: queue.Queue[Event | _Close] = queue.Queue()
         self.controller = make_controller(settings_path, self._events.put)
         self._phase = Phase.IDLE
@@ -197,6 +202,7 @@ class LauncherWindow:
         self.ai_pace = tk.StringVar(master=root)
         self.assets_dir = tk.StringVar(master=root)
         self.open_browser = tk.BooleanVar(master=root)
+        self.keep_awake_on = tk.BooleanVar(master=root)
         self.status_text = tk.StringVar(master=root)
         self.open_url = tk.StringVar(master=root)
         self.room_base = tk.StringVar(master=root)
@@ -299,14 +305,31 @@ class LauncherWindow:
             row=6, column=1, columnspan=2, sticky="w"
         )
 
+        tools = ttk.Frame(frame)
+        tools.grid(row=2, column=0, sticky="w", pady=(10, 0))
+        shortcut = ttk.Button(
+            tools, text="바로가기 만들기", command=self._make_shortcut
+        )
+        shortcut.grid(row=0, column=0)
+        ttk.Button(
+            tools, text="설정 폴더 열기", command=lambda: reveal(LOCAL_DIR)
+        ).grid(row=0, column=1, padx=(6, 0))
+        self._edit_widgets.append(shortcut)
+
         run = ttk.Frame(side)
         run.grid(row=0, column=0, sticky="ew")
         run.columnconfigure(3, weight=1)
         browser = ttk.Checkbutton(
             run, text="시작하면 브라우저로 열기", variable=self.open_browser
         )
-        browser.grid(row=0, column=0, columnspan=4, sticky="w")
-        self._edit_widgets.append(browser)
+        browser.grid(row=0, column=0, columnspan=2, sticky="w")
+        awake = ttk.Checkbutton(
+            run,
+            text="서버가 켜져 있는 동안 잠자기 방지",
+            variable=self.keep_awake_on,
+        )
+        awake.grid(row=0, column=2, columnspan=2, sticky="w", padx=(12, 0))
+        self._edit_widgets += [browser, awake]
         self.start_button = ttk.Button(run, text="시작", command=self.start)
         self.start_button.grid(row=1, column=0, pady=(6, 0))
         self.stop_button = ttk.Button(run, text="중지", command=self.stop)
@@ -406,6 +429,7 @@ class LauncherWindow:
         self.ai_pace.set(AI_PACE_LABELS.get(settings.ai_pace, AI_PACE_LABELS["normal"]))
         self.assets_dir.set(settings.assets_dir or "")
         self.open_browser.set(settings.open_browser)
+        self.keep_awake_on.set(settings.keep_awake)
 
     def read_form(self) -> LauncherSettings:
         """The settings the form shows, on top of what it does not show."""
@@ -437,6 +461,7 @@ class LauncherWindow:
             ai_pace=pace,
             assets_dir=self.assets_dir.get().strip() or None,
             open_browser=self.open_browser.get(),
+            keep_awake=self.keep_awake_on.get(),
             window=self._geometry(),
         )
 
@@ -518,7 +543,22 @@ class LauncherWindow:
 
     def _finish_close(self) -> None:
         self.controller.remember(self.read_form())
+        self.keep_awake.release()
         self.root.destroy()
+
+    def _make_shortcut(self) -> None:
+        try:
+            made = make_shortcut()
+        except ShortcutError as error:
+            self._show_problem(f"[오류] {error}", "bad", replace_all=True)
+            return
+        self._show_problem(
+            f"[참고] 바로가기를 만들었습니다: {made.name} (프로젝트 폴더). "
+            "Dock이나 작업 표시줄에 끌어다 놓으면 더 편합니다.",
+            "plain",
+            replace_all=True,
+        )
+        reveal(made.parent)
 
     # --- events from the controller --------------------------------------
 
@@ -531,6 +571,7 @@ class LauncherWindow:
                 except queue.Empty:
                     break
                 if isinstance(event, _Close):
+                    self.keep_awake.release()
                     self.root.destroy()
                     return
                 self.apply(event)
@@ -553,12 +594,17 @@ class LauncherWindow:
             )
             self.open_url.set(event.plan.open_url)
             self.room_base.set(event.plan.room_base)
+            if self.keep_awake_on.get() and event.pid is not None:
+                note = self.keep_awake.hold(event.pid)
+                if note:
+                    self._show_problem(f"[주의] {note}", "warn")
             if self.open_browser.get():
                 _open_in_browser(event.plan.open_url)
         elif isinstance(event, StartFailed):
             self._error = event.message
             self._show_problem(f"[오류] {event.message}", "bad")
         elif isinstance(event, ServerStopped):
+            self.keep_awake.release()
             self.open_url.set("")
             self.room_base.set("")
             if event.unexpected:
@@ -670,4 +716,5 @@ def main(settings_path: Path = SETTINGS_FILE) -> int:
         root.mainloop()
     finally:
         window.controller.shutdown()
+        window.keep_awake.release()
     return 0

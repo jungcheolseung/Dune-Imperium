@@ -29,6 +29,7 @@ from dune_imperium.launcher.controller import (  # noqa: E402
     Started,
 )
 from dune_imperium.launcher.gui import LauncherWindow  # noqa: E402
+from dune_imperium.launcher.keepawake import KeepAwake  # noqa: E402
 from dune_imperium.launcher.settings import (  # noqa: E402
     LauncherSettings,
     load,
@@ -57,8 +58,24 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return urls
 
 
+class RecordingKeepAwake(KeepAwake):
+    def __init__(self) -> None:
+        super().__init__(platform="none")
+        self.calls: list[tuple[str, int | None]] = []
+
+    def hold(self, server_pid: int) -> str | None:
+        self.calls.append(("hold", server_pid))
+        return None
+
+    def release(self) -> None:
+        self.calls.append(("release", None))
+
+
 def _window(
-    tk_root: tk.Tk, tmp_path: Path, settings: LauncherSettings | None = None
+    tk_root: tk.Tk,
+    tmp_path: Path,
+    settings: LauncherSettings | None = None,
+    keep_awake: KeepAwake | None = None,
 ) -> LauncherWindow:
     path = tmp_path / "launcher.json"
     if settings is not None:
@@ -75,7 +92,9 @@ def _window(
             spawn=lambda name, work: None,
         )
 
-    return LauncherWindow(top, path, make_controller=make)
+    return LauncherWindow(
+        top, path, make_controller=make, keep_awake=keep_awake or RecordingKeepAwake()
+    )
 
 
 def _enabled(widget: tk.Misc) -> bool:
@@ -232,3 +251,30 @@ def test_closing_an_idle_window_keeps_the_form(tk_root: tk.Tk, tmp_path: Path) -
     window.port.set("8126")
     window.close()
     assert load(tmp_path / "launcher.json").settings.port == 8126
+
+
+def test_the_machine_stays_awake_only_while_the_server_runs(
+    tk_root: tk.Tk, tmp_path: Path
+) -> None:
+    awake = RecordingKeepAwake()
+    window = _window(tk_root, tmp_path, LauncherSettings(keep_awake=True), awake)
+    try:
+        plan = build_plan(LauncherSettings(port=8127), None, python="py", environ={})
+        window.apply(Started(plan, {"access": "open"}, None, 4242))
+        assert awake.calls == [("hold", 4242)]
+        window.apply(ServerStopped(Stopped("stdin", 0.3, 0, True)))
+        assert awake.calls[-1] == ("release", None)
+    finally:
+        window.root.destroy()
+
+
+def test_keep_awake_can_be_switched_off(tk_root: tk.Tk, tmp_path: Path) -> None:
+    awake = RecordingKeepAwake()
+    window = _window(tk_root, tmp_path, LauncherSettings(keep_awake=False), awake)
+    try:
+        assert window.read_form().keep_awake is False
+        plan = build_plan(LauncherSettings(port=8128), None, python="py", environ={})
+        window.apply(Started(plan, {"access": "open"}, None, 4242))
+        assert ("hold", 4242) not in awake.calls
+    finally:
+        window.root.destroy()

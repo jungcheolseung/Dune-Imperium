@@ -242,6 +242,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print versions, address candidates and the pre-start checks",
     )
     action.add_argument(
+        "--make-shortcut",
+        action="store_true",
+        help=(
+            "make the double-click shortcut in the project folder "
+            "(macOS: Dune Imperium Server.app, Windows: Dune Imperium Server.lnk)"
+        ),
+    )
+    action.add_argument(
         "--start",
         action="store_true",
         help=(
@@ -264,6 +272,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return check(arguments.settings)
     if arguments.start:
         return start(arguments.settings)
+    if arguments.make_shortcut:
+        from dune_imperium.launcher.shortcuts import ShortcutError, make_shortcut
+
+        try:
+            made = make_shortcut()
+        except ShortcutError as error:
+            _error(f"[오류] {error}")
+            return 1
+        _write(f"바로가기를 만들었습니다: {made}")
+        return 0
     try:
         from dune_imperium.launcher.gui import main as open_window
     except ImportError as error:  # a Python built without tkinter
