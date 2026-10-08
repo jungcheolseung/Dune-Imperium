@@ -192,7 +192,7 @@ class ServerProcess:
                 return info
             if time.monotonic() >= deadline:
                 raise StartupFailed(
-                    f"서버가 {timeout:.0f}초 안에 응답하지 않았습니다. "
+                    f"서버가 {timeout:g}초 안에 응답하지 않았습니다. "
                     "로그를 확인하세요.",
                     self.tail(),
                     None,

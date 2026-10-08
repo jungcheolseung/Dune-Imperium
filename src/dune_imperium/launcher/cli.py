@@ -182,7 +182,7 @@ def start(settings_path: Path) -> int:
     ended = threading.Event()
     try:
         descriptor = sys.stdin.fileno() if sys.stdin is not None else None
-    except (OSError, ValueError):
+    except OSError, ValueError:
         descriptor = None
     if descriptor is not None:
         from dune_imperium.cli.server import stop_when_stream_ends
@@ -264,9 +264,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return check(arguments.settings)
     if arguments.start:
         return start(arguments.settings)
-    # The window comes with stage 3 of the plan.
-    _build_parser().print_help(sys.stdout)
-    return 2
+    try:
+        from dune_imperium.launcher.gui import main as open_window
+    except ImportError as error:  # a Python built without tkinter
+        _error(f"dune-imperium-launcher: no window toolkit (tkinter): {error}")
+        return 1
+    return open_window(arguments.settings)
 
 
 if __name__ == "__main__":
