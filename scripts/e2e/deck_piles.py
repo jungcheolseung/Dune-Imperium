@@ -14,7 +14,10 @@ earlier drawing, which the script checks by taking the pictures away.
 A drafted game shows the whole deck before round 1 (Conflict I on top),
 the first round the second tier, and Epic Game Mode Conflict II on top of
 the whole deck [Rise of Ix p. 10]; deeper states are made by editing the
-view in the page (the view is the render's only input).
+view in the page (the view is the render's only input). The live round
+is also checked after an undo and in English ("Conflict II"), and a
+finished all-AI game under review shows each step's own tier and counts,
+not the last step's.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from common import (
     server,
     set_rule_options,
 )
+from lang import switch
 from turn_controls import play_until
 
 check = Check()
@@ -169,6 +173,33 @@ def check_conflict(page, label: str, backs: dict, tier: int, size: int) -> None:
         )
 
 
+def check_view_piles(page, label: str, backs: dict) -> dict:
+    """Every deck as `state.view` (the live or the reviewed step) counts it."""
+    view = page.evaluate(DECKS_JS)
+    check_conflict(page, label, backs, view["tier"], view["size"])
+    shown = piles(page)
+    check_pile(
+        f"{label}: Imperium Row",
+        shown["imperium"],
+        backs.get("imperium"),
+        view["imperium"],
+    )
+    if view["tleilaxu"] is not None:
+        check_pile(
+            f"{label}: Tleilaxu Row",
+            shown["tleilaxu"],
+            backs.get("imperium"),
+            view["tleilaxu"],
+        )
+    check_pile(
+        f"{label}: Intrigue deck",
+        shown["intrigue"],
+        backs.get("intrigue"),
+        view["intrigue"],
+    )
+    return view
+
+
 def check_pile(label: str, pile: dict | None, url: str | None, count: int) -> None:
     if url is None:
         check.ok(pile is None, f"{label}: no pile without the picture", pile)
@@ -253,6 +284,33 @@ def standard_game(base: str, browser) -> None:
         check.ok(live == 2, "the server names tier II for the deck of 9", live)
         check_conflict(page, "round 1", backs, 2, 9)
 
+    print("[3b] an undo keeps the deck the server names")
+    if reached:
+        before = page.evaluate(DECKS_JS)
+        page.evaluate("applyAction(0)")
+        page.wait_for_function("!state.busy && refreshFlight === null")
+        undo = page.locator(".undo-row button").first
+        if check.ok(undo.count() == 1, "seat 0's first step can be taken back"):
+            count = page.evaluate("state.summary.undo_count")
+            undo.click()
+            page.wait_for_function(
+                f"state.summary.undo_count === {count + 1}"
+                " && !state.busy && refreshFlight === null"
+            )
+            after = check_view_piles(page, "after the undo", backs)
+            check.ok(
+                after == before,
+                "the undo is back at the same decks (an undo never crosses a reveal)",
+                (before, after),
+            )
+
+    print("[3c] in English the title names Conflict II")
+    switch(page, "en")
+    check_conflict(page, "English", backs, 2, 9)
+    title = piles(page)["conflict"]["title"]
+    check.ok("Conflict II" in title, "the English title says 'Conflict II'", title)
+    switch(page, "ko")
+
     print("[4] the same table without the pictures: the earlier drawing")
     page.evaluate("state.catalog.card_backs = {}; render();")
     check_conflict(page, "no pictures", {}, 2, 9)
@@ -273,6 +331,44 @@ def standard_game(base: str, browser) -> None:
         "the Intrigue deck line is plain text again",
     )
     check.ok(not rec.js_errors, "no JS errors (standard)", rec.js_errors[:3])
+    context.close()
+
+
+def seek(page, step: int) -> None:
+    page.evaluate(f"stopPlayback(); reviewSeek({step})")
+    page.wait_for_function(f"state.review.cursor === {step} && refreshFlight === null")
+
+
+def review_game(base: str, browser) -> None:
+    print("[7] a finished all-AI game under review: each step's own decks")
+    context, page, rec = open_context(browser, "deck-piles-review")
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "heuristic")
+    set_rule_options(page, "immortality")
+    page.set_checked("#opt-leader-draft", False)
+    page.fill("#opt-seed", "11")
+    page.click("#create-game")
+    page.wait_for_function("state.review !== null && state.view !== null")
+    backs = page.evaluate("state.catalog.card_backs || {}")
+    steps = page.evaluate("state.review.meta.step_count")
+    seek(page, steps)
+    last = check_view_piles(page, "the last step", backs)
+    tiers = set()
+    differs = 0
+    for fraction in (0.0, 0.15, 0.4, 0.7):
+        step = int(steps * fraction)
+        seek(page, step)
+        shown = check_view_piles(page, f"step {step} of {steps}", backs)
+        tiers.add(shown["tier"])
+        differs += shown != last
+    check.ok(
+        differs == 4 and len(tiers) >= 2,
+        "the reviewed steps show their own decks, more than one tier",
+        (sorted(tiers), differs, last),
+    )
+    check.ok(not rec.js_errors, "no JS errors (review)", rec.js_errors[:3])
     context.close()
 
 
@@ -350,6 +446,7 @@ def main() -> None:
             standard_game(base, browser)
             epic_game(base, browser)
             kota_tile(base, browser)
+            review_game(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()
