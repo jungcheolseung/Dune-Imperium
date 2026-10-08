@@ -202,6 +202,71 @@ def test_resolve_prefers_app_renders_within_each_language(tmp_path: Path) -> Non
     )
 
 
+def test_resolve_without_app_renders_keeps_to_the_scans(tmp_path: Path) -> None:
+    """The board pieces laid on the printed scan (a Leader's tile, the
+    Research Station overlay) keep the printed tile's shape, so the server
+    resolves them a second time from the scans alone, in the same language
+    order; the default resolution is unchanged."""
+
+    _write_manifest(
+        tmp_path,
+        [
+            _entry(
+                "bloodlines/location/Tuek's Sietch.png",
+                kind="location",
+                content_id="tuek_sietch",
+                set_name="bloodlines",
+            ),
+            _entry(
+                "immortality/location/Research Station.jpg",
+                kind="location",
+                content_id="research_station_overlay",
+                set_name="immortality",
+            ),
+            _entry(
+                "uprising/location/Arrakeen.webp",
+                kind="location",
+                content_id="arrakeen",
+            ),
+        ],
+    )
+    for relative in (
+        "en/bloodlines/location/Tuek's Sietch.png",
+        "ko/bloodlines/location/Tuek's Sietch.png",
+        "app/en/bloodlines/location/Tuek's Sietch.webp",
+        "app/ko/bloodlines/location/Tuek's Sietch.webp",
+        # an English scan only: the Korean order falls back to it
+        "en/immortality/location/Research Station.jpg",
+        "app/ko/immortality/location/Research Station.webp",
+        # an app render only: no scan to lay on the board
+        "app/en/uprising/location/Arrakeen.webp",
+    ):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"img")
+
+    assert dict(resolve_card_images(tmp_path, ("ko", "en"), app_renders=False)) == {
+        ("location", "tuek_sietch"): "ko/bloodlines/location/Tuek's Sietch.png",
+        ("location", "research_station_overlay"): (
+            "en/immortality/location/Research Station.jpg"
+        ),
+    }
+    assert dict(resolve_card_images(tmp_path, ("en", "ko"), app_renders=False)) == {
+        ("location", "tuek_sietch"): "en/bloodlines/location/Tuek's Sietch.png",
+        ("location", "research_station_overlay"): (
+            "en/immortality/location/Research Station.jpg"
+        ),
+    }
+    # The popovers' resolution still prefers each language's app render.
+    assert dict(resolve_card_images(tmp_path, ("ko", "en"))) == {
+        ("location", "tuek_sietch"): "app/ko/bloodlines/location/Tuek's Sietch.webp",
+        ("location", "research_station_overlay"): (
+            "app/ko/immortality/location/Research Station.webp"
+        ),
+        ("location", "arrakeen"): "app/en/uprising/location/Arrakeen.webp",
+    }
+
+
 def test_required_image_keys_cover_every_displayable_content_id() -> None:
     keys = required_image_keys()
     # 57 imperium (54 + 3 promo) + 39 intrigue + 18 contract faces (20

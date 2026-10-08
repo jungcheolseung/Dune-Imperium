@@ -157,6 +157,9 @@ function promptText(prompt) {
 const LOCALIZED_FIELDS = [
   ["name", "name_ko"],
   ["image", "image_ko"],
+  /* The scan a board piece is laid from (a Leader's tile, the Research
+     Station overlay), beside the space's popover picture. */
+  ["tile_image", "tile_image_ko"],
   ["ability", "ability_ko"],
   ["signet", "signet_ko"],
 ];

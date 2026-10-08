@@ -102,15 +102,19 @@ def available_strength_tokens(
 # The seat pieces on the board, drawn from the Steam app's sprites by
 # ``scripts/dwgr/app_assets.py pieces`` (``<kind>_<colour>.png``, colours as
 # ``STRENGTH_TOKEN_COLORS``): an Agent on a space or in a Conflict, a Spy on
-# an observation post, a Control marker on a space's flag, a troop cube and a
-# sandworm in a Conflict or garrison. Without a kind's four pictures the UI
-# keeps its flat drawn piece for that kind.
+# an observation post, a Control marker on a space's flag, a troop cube (also
+# drawn as the Influence cube on the Faction tracks), a sandworm in a Conflict
+# or garrison, the High Council seat token, and the plain player disc (the
+# Score marker and both Bene Tleilax track markers). Without a kind's four
+# pictures the UI keeps its flat drawn piece for that kind.
 SEAT_PIECE_KINDS: Final[tuple[str, ...]] = (
     "agent",
     "spy",
     "control",
     "troop",
     "sandworm",
+    "council",
+    "disc",
 )
 
 

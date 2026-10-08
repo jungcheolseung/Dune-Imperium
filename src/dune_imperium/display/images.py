@@ -26,6 +26,12 @@ the face drawn from the Steam app's card templates
 (``app/<language>/<path>`` with a ``.webp`` suffix, written by
 ``scripts/dwgr/app_cards.py``) comes before the scan, because it is
 sharper; so the Korean order is ``app/ko``, ``ko``, ``app/en``, ``en``.
+A picture laid on the printed board scan (a Leader's own tile such as
+Tuek's Sietch, Immortality's Research Station overlay) must keep the
+printed tile's shape, which the app's board-space renders do not have
+(about 2.37:1 against the print's 1.84:1 and 1.77:1), so the play server
+resolves those a second time with ``app_renders=False``: scans only, in
+the same language order (``ko``, ``en`` for the Korean UI).
 Only entries of the indexed sets (Uprising, and Bloodlines for the
 ``bloodlines`` option) that carry a ``content_id`` are indexed (Rise of
 Ix: only Epic Game Mode's two cards carry one); the other sets in the
@@ -94,6 +100,8 @@ def load_card_manifest(path: Path) -> Mapping[ImageKey, str]:
 def resolve_card_images(
     cards_dir: Path,
     languages: tuple[str, ...] = DEFAULT_LANGUAGES,
+    *,
+    app_renders: bool = True,
 ) -> Mapping[ImageKey, str]:
     """Return ``{key: "<language>/<path>"}`` for every image file present.
 
@@ -101,8 +109,10 @@ def resolve_card_images(
     picture first, the English one as fallback), each language's app
     render before its scan, and keys whose file
     exists in no language are dropped so
-    the catalog never links to a missing file. A missing directory or
-    manifest yields an empty mapping.
+    the catalog never links to a missing file. ``app_renders=False``
+    skips the ``app/`` renders and resolves the scans alone (the board
+    pieces laid on the printed scan; see the module docstring). A
+    missing directory or manifest yields an empty mapping.
     """
 
     manifest = cards_dir / MANIFEST_FILENAME
@@ -112,13 +122,13 @@ def resolve_card_images(
     for key, relative in load_card_manifest(manifest).items():
         rendered = PurePosixPath(relative).with_suffix(".webp").as_posix()
         for language in languages:
+            candidates = [f"{language}/{relative}"]
+            if app_renders:
+                candidates.insert(0, f"{APP_RENDER_DIR}/{language}/{rendered}")
             found = next(
                 (
                     candidate
-                    for candidate in (
-                        f"{APP_RENDER_DIR}/{language}/{rendered}",
-                        f"{language}/{relative}",
-                    )
+                    for candidate in candidates
                     if (cards_dir / candidate).is_file()
                 ),
                 None,

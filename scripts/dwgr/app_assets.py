@@ -373,7 +373,14 @@ APP_PIECE_SOURCES = {
     "control": "ControlMarker{C}",
     "troop": "Icon_Resource_Cube_{C}",
     "sandworm": "Icon_Resource_Worm_{C}",
+    # the High Council seat token (a disc with the council chair; the texture
+    # has black corners, cut to the circle)
+    "council": "T_Icon_CouncilSeat_{C}",
+    # the plain glossy player disc: the app's marker on both Bene Tleilax
+    # tracks (also the Ix shipping track), drawn on the Score track too
+    "disc": "T_icon_ShippingTrack_PlayerPip_{C}",
 }
+APP_PIECE_ROUND = {"council"}
 # The four Alliance tokens (display.token_images.ALLIANCE_TOKEN_FACTIONS) ->
 # app sprite: the round 1-VP token, cropped to the disc.
 APP_ALLIANCE_SOURCES = {
@@ -397,7 +404,7 @@ def cube_color(path):
 
 
 def cmd_pieces(args):
-    from PIL import Image, ImageChops
+    from PIL import Image, ImageChops, ImageDraw
 
     app = App()
     out = args.out or os.path.join(ASSETS, "tokens")
@@ -421,6 +428,11 @@ def cmd_pieces(args):
                 im = ImageChops.multiply(im, Image.new("RGBA", im.size, tint + (255,)))
                 im.putalpha(alpha)
                 row["tint"] = "#{:02x}{:02x}{:02x}".format(*tint)
+            if kind in APP_PIECE_ROUND:
+                mask = Image.new("L", im.size, 0)
+                box = (0, 0, im.width - 1, im.height - 1)
+                ImageDraw.Draw(mask).ellipse(box, fill=255)
+                im.putalpha(mask)
             im = im.crop(im.getchannel("A").getbbox())  # the figure fills its box
             im.save(path)
             row["sha256"] = sha256(path)

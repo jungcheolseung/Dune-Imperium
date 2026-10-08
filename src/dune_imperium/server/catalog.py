@@ -13,7 +13,14 @@ manifest (``display.images``) for files that actually exist — so a
 machine without the assets checkout serves the same catalog with every
 ``image`` field null. It is the English UI's (English picture first);
 ``image_index_ko`` is the Korean UI's, and wherever the two differ an entry
-carries ``image_ko`` beside ``image``. Cards whose Korean print is known
+carries ``image_ko`` beside ``image``. ``tile_index``/``tile_index_ko`` are
+the same for board spaces resolved from the scans alone (``display.images``'
+``app_renders=False``): a space laid on the board scan in its own box (a
+Leader's tile, ``spaces[].tile_box``) and Immortality's Research Station
+overlay (``spaces[].immortality.tile_box``) carry ``tile_image`` (and
+``tile_image_ko``) for that board piece, which must keep the printed
+tile's shape, while ``image`` (the app render where there is one) is what
+the popovers show. Cards whose Korean print is known
 (``display.names_ko``) carry ``name_ko`` beside ``name``; the page shows
 the pair of its language. An entry's engine-*generated* effect text (as
 opposed to printed card wording, which stays English) carries its Korean
@@ -148,6 +155,8 @@ def build_catalog(
     token_files: frozenset[str] = frozenset(),
     asset_versions: frozenset[tuple[str, str]] = frozenset(),
     image_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
+    tile_index: frozenset[tuple[str, str, str]] = frozenset(),
+    tile_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID.
 
@@ -164,22 +173,41 @@ def build_catalog(
         version = versions.get(url)
         return f"{url}?v={version}" if version else url
 
+    def final_urls(
+        index: frozenset[tuple[str, str, str]],
+    ) -> dict[tuple[str, str], str]:
+        return {
+            (kind, content_id): versioned(card_image_url(path))
+            for kind, content_id, path in index
+        }
+
+    def korean_pairs(
+        english_files: dict[tuple[str, str], str],
+        korean_index: frozenset[tuple[str, str, str]],
+    ) -> dict[str, str]:
+        # The Korean UI's picture by the English one's URL, where they
+        # differ. Two entries sharing an English picture must share the
+        # Korean one too, or pairing by URL would give one of them the
+        # other's picture.
+        pairs: dict[str, str] = {}
+        for kind, content_id, path in korean_index:
+            english = english_files.get((kind, content_id))
+            korean = versioned(card_image_url(path))
+            if english is None or english == korean:
+                continue
+            if pairs.setdefault(english, korean) != korean:
+                raise ValueError(f"{english} pairs with two Korean pictures")
+        return pairs
+
     # Card pictures as final URLs, so every ``_image_url`` below is versioned.
-    image_files: dict[tuple[str, str], str] = {
-        (kind, content_id): versioned(card_image_url(path))
-        for kind, content_id, path in image_index
-    }
-    # The Korean UI's picture by the English one's URL, where they differ.
-    # Two entries sharing an English picture must share the Korean one too,
-    # or pairing by URL would give one of them the other's picture.
-    korean_images: dict[str, str] = {}
-    for kind, content_id, path in image_index_ko:
-        english = image_files.get((kind, content_id))
-        korean = versioned(card_image_url(path))
-        if english is None or english == korean:
-            continue
-        if korean_images.setdefault(english, korean) != korean:
-            raise ValueError(f"{english} pairs with two Korean pictures")
+    image_files = final_urls(image_index)
+    korean_images = korean_pairs(image_files, image_index_ko)
+    # The scan-only board-space pictures, paired apart from the others: an
+    # English scan is also the ``image`` of a space without an English app
+    # render, and there its Korean partner can be the Korean render, while
+    # as ``tile_image`` it pairs with the Korean scan.
+    tile_files = final_urls(tile_index)
+    korean_tiles = korean_pairs(tile_files, tile_index_ko)
     cards: dict[str, JsonValue] = {}
     for card_id, starter in STARTING_CARDS_BY_ID.items():
         cards[card_id] = _personal_card(
@@ -409,7 +437,7 @@ def build_catalog(
         },
         "leaders": leaders,
         "spaces": {
-            space_id: _space(space_id, image_files)
+            space_id: _space(space_id, image_files, tile_files)
             for space_id in BOARD_SPACES_BY_ID
         },
         "objectives": {
@@ -504,7 +532,7 @@ def build_catalog(
         # lines each offers, in English and Korean.
         "scouts_items": _scouts_items(),
     }
-    _add_korean(catalog, korean_images)
+    _add_korean(catalog, korean_images, korean_tiles)
     return catalog
 
 
@@ -527,13 +555,18 @@ def _scouts_items() -> JsonObject:
     return items
 
 
-def _add_korean(catalog: JsonObject, korean_images: dict[str, str]) -> None:
+def _add_korean(
+    catalog: JsonObject,
+    korean_images: dict[str, str],
+    korean_tiles: dict[str, str],
+) -> None:
     """Give entries their Korean name and picture beside the English ones.
 
     Names come by section and id (``display.names_ko``). Pictures come by
     URL: every ``image`` anywhere in the catalog (a card, a Leader, a
     space, an overlay tile) whose Korean UI picture differs gets
-    ``image_ko``, so no section can be left out.
+    ``image_ko``, so no section can be left out; every ``tile_image`` (a
+    board piece's scan) gets ``tile_image_ko`` the same way.
     """
 
     for section, names in KOREAN_CARD_NAMES.items():
@@ -555,9 +588,13 @@ def _add_korean(catalog: JsonObject, korean_images: dict[str, str]) -> None:
 
     def visit(node: JsonValue) -> None:
         if isinstance(node, dict):
-            image = node.get("image")
-            if isinstance(image, str) and image in korean_images:
-                node["image_ko"] = korean_images[image]
+            for field, pairs in (
+                ("image", korean_images),
+                ("tile_image", korean_tiles),
+            ):
+                picture = node.get(field)
+                if isinstance(picture, str) and picture in pairs:
+                    node[f"{field}_ko"] = pairs[picture]
             for value in list(node.values()):
                 visit(value)
         elif isinstance(node, list):
@@ -640,7 +677,11 @@ def _leader_face(
     return entry
 
 
-def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject:
+def _space(
+    space_id: str,
+    image_files: dict[tuple[str, str], str],
+    tile_files: dict[tuple[str, str], str],
+) -> JsonObject:
     space = BOARD_SPACES_BY_ID[space_id]
     base_effects = space_option_effects(space_id, choam_module=False)
     base_effects_ko = space_option_effects_ko(space_id, choam_module=False)
@@ -684,7 +725,9 @@ def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject
         ),
         "options": options,
         "choam_options": choam_options,
-        "immortality": _immortality_overlay(space_id, costs, base_effects, image_files),
+        "immortality": _immortality_overlay(
+            space_id, costs, base_effects, image_files, tile_files
+        ),
         "notes": list(space_notes(space_id)),
         "notes_ko": list(space_notes_ko(space_id)),
         "box": list(SPACE_BOXES[space_id]),
@@ -700,6 +743,13 @@ def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject
             if space.required_leader_id is not None
             else None
         ),
+        # The picture laid in that box: the scan, whose shape the box has
+        # (``image`` may be the app's board-space render, a wider shape).
+        "tile_image": (
+            _image_url("location", space_id, tile_files)
+            if space.required_leader_id is not None
+            else None
+        ),
     }
 
 
@@ -708,13 +758,16 @@ def _immortality_overlay(
     costs: list[JsonObject],
     base_effects: tuple[str, ...],
     image_files: dict[tuple[str, str], str],
+    tile_files: dict[tuple[str, str], str],
 ) -> JsonObject | None:
     """Return what Immortality lays over the space, or ``None``.
 
     Only the Research Station has an overlay tile: its own effect text (from
-    the engine's table for that ruleset), its picture and the box where the
-    tile covers the print. No space differs under both CHOAM and
-    Immortality, so the client needs no combined variant (a test pins it).
+    the engine's table for that ruleset), its picture, the box where the
+    tile covers the print and the scan laid in that box (``tile_image``:
+    the box has the scan's shape, not the app render's). No space differs
+    under both CHOAM and Immortality, so the client needs no combined
+    variant (a test pins it).
     """
 
     effects = space_option_effects(space_id, choam_module=False, immortality=True)
@@ -729,6 +782,9 @@ def _immortality_overlay(
         ],
         "image": _image_url("location", RESEARCH_STATION_OVERLAY_IMAGE_ID, image_files),
         "tile_box": list(RESEARCH_STATION_OVERLAY_BOX),
+        "tile_image": _image_url(
+            "location", RESEARCH_STATION_OVERLAY_IMAGE_ID, tile_files
+        ),
     }
 
 

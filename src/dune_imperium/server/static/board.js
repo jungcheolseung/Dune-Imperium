@@ -402,7 +402,10 @@ function renderBoardStage(board, view) {
   /* Pieces that lie on the board, under the hotspots and the tokens. The
      Shield Wall token stays on its marked position until a player removes
      it [Main pp. 4, 10]; a Leader's tile in play and Immortality's overlay
-     tile are pictures the scan does not have. */
+     tile are pictures the scan does not have. Those two are laid from the
+     scan alone (tile_image), whose shape their box has, never from image:
+     that may be the app's board-space render, which only the popovers
+     show. */
   const wall = state.catalog.shield_wall;
   if (view.shield_wall_present && wall && wall.image) {
     const token = boardPiece(wall.image, wall.box, "shield-wall-token");
@@ -413,10 +416,10 @@ function renderBoardStage(board, view) {
   for (const entry of Object.values(state.catalog.spaces)) {
     if (!spaceInPlay(entry, view)) continue;
     const overlay = spaceOverlayFor(entry);
-    if (overlay && overlay.image) {
-      stage.appendChild(boardPiece(overlay.image, overlay.tile_box, "board-tile"));
-    } else if (entry.tile_box && entry.image) {
-      stage.appendChild(boardPiece(entry.image, entry.tile_box, "board-tile"));
+    if (overlay && overlay.tile_image) {
+      stage.appendChild(boardPiece(overlay.tile_image, overlay.tile_box, "board-tile"));
+    } else if (entry.tile_box && entry.tile_image) {
+      stage.appendChild(boardPiece(entry.tile_image, entry.tile_box, "board-tile"));
     }
   }
 
@@ -649,16 +652,21 @@ function strengthPicture(seat, src, size) {
 
 /* The player disc: the one common round token in a seat's colour — the
    Score marker and the Councilor token on the board, the research and
-   Tleilaxu track tokens on the Bene Tleilax board. Flat colour, no seat
-   number. `size` is its diameter as a percent of the stage it lies on
-   (the diameter of the spot that board prints for it); without a size it
-   is an inline disc for the text layouts. */
+   Tleilaxu track tokens on the Bene Tleilax board. The app's glossy
+   player disc (the marker it lays on both Bene Tleilax tracks) where the
+   assets have it, else flat colour; no seat number either way. `size` is
+   its diameter as a percent of the stage it lies on (the diameter of the
+   spot that board prints for it); without a size it is an inline disc for
+   the text layouts. */
 function seatDisc(seat, className, size) {
-  const disc = document.createElement("span");
-  disc.className = `seat-disc ${className}`;
+  const url = seatPieceUrl("disc", seat);
+  const disc = url ? pieceImage(url, `seat-disc ${className}`) : document.createElement("span");
+  if (!url) {
+    disc.className = `seat-disc ${className}`;
+    disc.style.backgroundColor = SEAT_COLORS[seat];
+  }
   disc.dataset.seat = String(seat);
   if (size !== undefined) disc.style.width = `${size}%`;
-  disc.style.backgroundColor = SEAT_COLORS[seat];
   return disc;
 }
 
@@ -1285,11 +1293,16 @@ function renderTrackMarkers(stage, view) {
       if (offset === undefined) continue;
       const level = Math.max(0, Math.min(6, player.influence[key] || 0));
       /* The cube is exactly the square the strip prints for it (its
-         width is a percent of the stage, like the player disc). */
-      const cube = document.createElement("span");
-      cube.className = "track-cube";
+         width is a percent of the stage, like the player disc): the app's
+         cube picture of the seat (the troop's) where the assets have it,
+         else flat in the seat's colour. */
+      const url = seatPieceUrl("troop", seat);
+      const cube = url ? pieceImage(url, "track-cube") : document.createElement("span");
+      if (!url) {
+        cube.className = "track-cube";
+        cube.style.background = color;
+      }
       cube.style.width = `${tracks.influence.cube_size}%`;
-      cube.style.background = color;
       cube.title = t("board.influence_cube", {
         seat,
         faction: FACTION_LABELS[key],
@@ -1405,7 +1418,16 @@ function renderTrackMarkers(stage, view) {
     if (player.high_council && councilSlot < tracks.council_seats.length) {
       const [cx, cy] = tracks.council_seats[councilSlot];
       councilSlot += 1;
-      const token = seatDisc(seat, "council-token", tracks.disc_size);
+      /* The app's High Council seat token where the assets have it, else
+         the flat player disc. */
+      const url = seatPieceUrl("council", seat);
+      const token = url
+        ? pieceImage(url, "council-token seat-disc")
+        : seatDisc(seat, "council-token", tracks.disc_size);
+      if (url) {
+        token.dataset.seat = String(seat);
+        token.style.width = `${tracks.disc_size}%`;
+      }
       token.title = t("board.seat_high_council", { seat });
       placeAt(token, cx, cy);
       stage.appendChild(token);
