@@ -447,6 +447,35 @@ def tleilaxu_shop(base: str, browser) -> None:
     page.click("#create-game")
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.view !== null && refreshFlight === null")
+    # The overlay tile lies on the board scan in a box of the printed tile's
+    # shape: it is laid from the scan (tile_image), never from the app's
+    # board-space render that the popover shows (2026-10-08).
+    # Until the app's board-space tiles are in the assets both fields name
+    # the scan, so the second look puts a stand-in render in ``image``.
+    tile = page.evaluate(
+        """() => {
+          const overlay = state.catalog.spaces.research_station.immortality;
+          const srcs = () => [...document.querySelectorAll(
+            '.board-stage .board-tile')].map((piece) => piece.getAttribute('src'));
+          const shown = srcs();
+          const image = overlay.image;
+          overlay.image = '/card-images/app/en/immortality/location/Stand-in.webp';
+          renderBoard();
+          const withRender = srcs();
+          overlay.image = image;
+          renderBoard();
+          return {want: overlay.tile_image, shown, withRender};
+        }"""
+    )
+    if tile["want"] and page.evaluate("Boolean(state.catalog.board_image)"):
+        check.ok(
+            tile["want"] in tile["shown"]
+            and tile["want"] in tile["withRender"]
+            and not tile["want"].startswith("/card-images/app/"),
+            "the Research Station overlay is laid from its scan (tile_image),"
+            " not from the popover's picture",
+            tile,
+        )
     reached = play_until(
         page,
         "state.actions.actions.some((a) => a.action_id === 'acquire_tleilaxu')",

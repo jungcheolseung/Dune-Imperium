@@ -417,6 +417,75 @@ def test_card_images_are_served_from_a_manifest_checkout(tmp_path: Path) -> None
         assert served.content == b"not-really-webp"
 
 
+def test_board_pieces_are_laid_from_the_scans_beside_the_app_tiles(
+    tmp_path: Path,
+) -> None:
+    """Tuek's Sietch is laid on the board scan in a box of the printed
+    tile's shape: the catalog gives it the scan as ``tile_image`` (and the
+    Korean scan as ``tile_image_ko``), versioned and served, while its
+    popover picture ``image`` is the app's render."""
+
+    cards = tmp_path / "cards"
+    relative = "bloodlines/location/Tuek's Sietch.png"
+    rendered = "bloodlines/location/Tuek's Sietch.webp"
+    files = {
+        f"en/{relative}": b"en-scan",
+        f"ko/{relative}": b"ko-scan",
+        f"app/en/{rendered}": b"en-render",
+        f"app/ko/{rendered}": b"ko-render",
+    }
+    for path, content in files.items():
+        (cards / path).parent.mkdir(parents=True, exist_ok=True)
+        (cards / path).write_bytes(content)
+    (cards / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "path": relative,
+                        "set": "bloodlines",
+                        "kind": "location",
+                        "name": "Tuek's Sietch",
+                        "name_source": "engine",
+                        "content_id": "tuek_sietch",
+                        "source": {
+                            "site": "dunecardshub",
+                            "file": "x",
+                            "url": "u",
+                            "sha256": "0",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    with TestClient(
+        create_app(saves_dir=tmp_path / "saves", card_images_dir=cards)
+    ) as image_client:
+        tuek = image_client.get("/catalog").json()["spaces"]["tuek_sietch"]
+        assert _unversioned(tuek["image"]) == (
+            "/card-images/app/en/bloodlines/location/Tuek%27s%20Sietch.webp"
+        )
+        assert _unversioned(tuek["image_ko"]) == (
+            "/card-images/app/ko/bloodlines/location/Tuek%27s%20Sietch.webp"
+        )
+        assert _unversioned(tuek["tile_image"]) == (
+            "/card-images/en/bloodlines/location/Tuek%27s%20Sietch.png"
+        )
+        assert _unversioned(tuek["tile_image_ko"]) == (
+            "/card-images/ko/bloodlines/location/Tuek%27s%20Sietch.png"
+        )
+        for field, content in (
+            ("image", b"en-render"),
+            ("tile_image", b"en-scan"),
+            ("tile_image_ko", b"ko-scan"),
+        ):
+            served = image_client.get(tuek[field])
+            assert served.status_code == 200, field
+            assert served.content == content, field
+
+
 def test_card_images_degrade_to_text_without_the_cache(
     client: TestClient,
 ) -> None:

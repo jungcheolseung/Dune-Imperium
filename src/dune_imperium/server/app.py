@@ -41,7 +41,11 @@ from pydantic import BaseModel, Field
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from dune_imperium.display.images import resolve_card_images
+from dune_imperium.display.board_layout import LEADER_TILE_BOXES
+from dune_imperium.display.images import (
+    RESEARCH_STATION_OVERLAY_IMAGE_ID,
+    resolve_card_images,
+)
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.autosave import Autosaver
 from dune_imperium.server.catalog import build_catalog, card_image_url
@@ -371,6 +375,20 @@ def create_app(
             images_dir, ("ko", "en")
         ).items()
     )
+    # The board pieces laid on the printed scan (a Leader's tile, the
+    # Research Station overlay) keep the printed tile's shape: their scans
+    # alone, without the app renders the popovers show.
+    board_pieces = {*LEADER_TILE_BOXES, RESEARCH_STATION_OVERLAY_IMAGE_ID}
+    tile_index, tile_index_ko = (
+        frozenset(
+            (kind, content_id, path)
+            for (kind, content_id), path in resolve_card_images(
+                images_dir, languages, app_renders=False
+            ).items()
+            if kind == "location" and content_id in board_pieces
+        )
+        for languages in (("en", "ko"), ("ko", "en"))
+    )
     icon_dir = icons_dir if icons_dir is not None else default_icons_directory()
     icon_files = (
         frozenset(path.name for path in icon_dir.iterdir() if path.is_file())
@@ -394,7 +412,9 @@ def create_app(
     asset_versions = asset_url_versions(
         {
             card_image_url(path): images_dir / path
-            for _, _, path in image_index | image_index_ko
+            for _, _, path in (
+                image_index | image_index_ko | tile_index | tile_index_ko
+            )
         }
         | {f"/icons/{name}": icon_dir / name for name in icon_files}
         | {f"/tokens/{name}": token_dir / name for name in token_files}
@@ -424,6 +444,8 @@ def create_app(
             token_files=token_files,
             asset_versions=asset_versions,
             image_index_ko=image_index_ko,
+            tile_index=tile_index,
+            tile_index_ko=tile_index_ko,
         )
 
     @app.get("/board-image", include_in_schema=False)

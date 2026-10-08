@@ -402,7 +402,10 @@ function renderBoardStage(board, view) {
   /* Pieces that lie on the board, under the hotspots and the tokens. The
      Shield Wall token stays on its marked position until a player removes
      it [Main pp. 4, 10]; a Leader's tile in play and Immortality's overlay
-     tile are pictures the scan does not have. */
+     tile are pictures the scan does not have. Those two are laid from the
+     scan alone (tile_image), whose shape their box has, never from image:
+     that may be the app's board-space render, which only the popovers
+     show. */
   const wall = state.catalog.shield_wall;
   if (view.shield_wall_present && wall && wall.image) {
     const token = boardPiece(wall.image, wall.box, "shield-wall-token");
@@ -413,10 +416,10 @@ function renderBoardStage(board, view) {
   for (const entry of Object.values(state.catalog.spaces)) {
     if (!spaceInPlay(entry, view)) continue;
     const overlay = spaceOverlayFor(entry);
-    if (overlay && overlay.image) {
-      stage.appendChild(boardPiece(overlay.image, overlay.tile_box, "board-tile"));
-    } else if (entry.tile_box && entry.image) {
-      stage.appendChild(boardPiece(entry.image, entry.tile_box, "board-tile"));
+    if (overlay && overlay.tile_image) {
+      stage.appendChild(boardPiece(overlay.tile_image, overlay.tile_box, "board-tile"));
+    } else if (entry.tile_box && entry.tile_image) {
+      stage.appendChild(boardPiece(entry.tile_image, entry.tile_box, "board-tile"));
     }
   }
 

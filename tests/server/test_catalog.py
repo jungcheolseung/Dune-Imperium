@@ -839,6 +839,121 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
     arrakeen = spaces["arrakeen"]
     assert isinstance(arrakeen, dict)
     assert arrakeen["tile_box"] is None
+    # Without the scan-only index no board piece has a picture of its own.
+    assert tuek["tile_image"] is None
+    assert overlay["tile_image"] is None
+    assert arrakeen["tile_image"] is None
+
+
+def test_catalog_lays_board_pieces_from_the_scans_and_pops_the_app_tiles() -> None:
+    """A Leader's tile (Tuek's Sietch) and the Research Station overlay are
+    laid on the printed board in boxes of the printed tiles' shape, which
+    the app's board-space renders do not have: those pieces carry the scan
+    as ``tile_image`` (paired with its Korean twin like ``image``), and the
+    popovers keep ``image``, the app render where there is one."""
+
+    tuek_en = "en/bloodlines/location/Tuek's Sietch.png"
+    tuek_ko = "ko/bloodlines/location/Tuek's Sietch.png"
+    overlay_en = "en/immortality/location/Research Station.jpg"
+    overlay_ko = "ko/immortality/location/Research Station.jpg"
+    english = frozenset(
+        {
+            (
+                "location",
+                "tuek_sietch",
+                "app/en/bloodlines/location/Tuek's Sietch.webp",
+            ),
+            # no English render: the English scan is the popover picture too
+            ("location", "research_station_overlay", overlay_en),
+            ("location", "arrakeen", "app/en/uprising/location/Arrakeen.webp"),
+        }
+    )
+    korean = frozenset(
+        {
+            (
+                "location",
+                "tuek_sietch",
+                "app/ko/bloodlines/location/Tuek's Sietch.webp",
+            ),
+            (
+                "location",
+                "research_station_overlay",
+                "app/ko/immortality/location/Research Station.webp",
+            ),
+            ("location", "arrakeen", "app/ko/uprising/location/Arrakeen.webp"),
+        }
+    )
+    tiles = frozenset(
+        {
+            ("location", "tuek_sietch", tuek_en),
+            ("location", "research_station_overlay", overlay_en),
+            ("location", "arrakeen", "en/uprising/location/Arrakeen.webp"),
+        }
+    )
+    tiles_ko = frozenset(
+        {
+            ("location", "tuek_sietch", tuek_ko),
+            ("location", "research_station_overlay", overlay_ko),
+            ("location", "arrakeen", "ko/uprising/location/Arrakeen.webp"),
+        }
+    )
+    tuek_ko_url = "/card-images/ko/bloodlines/location/Tuek%27s%20Sietch.png"
+    catalog = build_catalog(
+        english,
+        image_index_ko=korean,
+        tile_index=tiles,
+        tile_index_ko=tiles_ko,
+        asset_versions=frozenset({(tuek_ko_url, "t1")}),
+    )
+    spaces = catalog["spaces"]
+    assert isinstance(spaces, dict)
+
+    tuek = spaces["tuek_sietch"]
+    assert isinstance(tuek, dict)
+    assert tuek["image"] == (
+        "/card-images/app/en/bloodlines/location/Tuek%27s%20Sietch.webp"
+    )
+    assert tuek["image_ko"] == (
+        "/card-images/app/ko/bloodlines/location/Tuek%27s%20Sietch.webp"
+    )
+    assert tuek["tile_image"] == (
+        "/card-images/en/bloodlines/location/Tuek%27s%20Sietch.png"
+    )
+    # Versioned like every other picture URL.
+    assert tuek["tile_image_ko"] == f"{tuek_ko_url}?v=t1"
+
+    station = spaces["research_station"]
+    assert isinstance(station, dict)
+    # The overlay carries the board piece; the printed space has no box.
+    assert station["tile_box"] is None and station["tile_image"] is None
+    overlay = station["immortality"]
+    assert isinstance(overlay, dict)
+    overlay_en_url = "/card-images/en/immortality/location/Research%20Station.jpg"
+    assert overlay["image"] == overlay_en_url
+    assert overlay["tile_image"] == overlay_en_url
+    # One English scan, two Korean partners: the render for the popover,
+    # the Korean scan for the board piece.
+    assert overlay["image_ko"] == (
+        "/card-images/app/ko/immortality/location/Research%20Station.webp"
+    )
+    assert overlay["tile_image_ko"] == (
+        "/card-images/ko/immortality/location/Research%20Station.jpg"
+    )
+
+    # A printed space is part of the scan: no board piece, whatever the
+    # scan-only index holds for it.
+    arrakeen = spaces["arrakeen"]
+    assert isinstance(arrakeen, dict)
+    assert arrakeen["tile_image"] is None
+    assert "tile_image_ko" not in arrakeen
+    assert arrakeen["image"] == "/card-images/app/en/uprising/location/Arrakeen.webp"
+
+    # Without a Korean scan-only index the board pieces have one picture.
+    plain = build_catalog(english, tile_index=tiles)["spaces"]
+    assert isinstance(plain, dict)
+    plain_tuek = plain["tuek_sietch"]
+    assert isinstance(plain_tuek, dict)
+    assert "tile_image_ko" not in plain_tuek
 
 
 def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:

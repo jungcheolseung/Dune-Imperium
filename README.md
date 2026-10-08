@@ -89,7 +89,9 @@ clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 
   content ID를 잇는 유일한 매핑이고, 서버가 시작 시 읽어 존재하는 파일만
   연결한다(`ko/` 스캔이 있으면 파일 단위로 우선, 없으면 `en/`). 같은 언어 안에서는
   Steam 앱의 카드 틀로 그린 `app/<언어>/` 앞면(`scripts/dwgr/app_cards.py render`)을
-  스캔보다 먼저 쓴다.
+  스캔보다 먼저 쓴다. 다만 보드 스캔 위에 놓는 조각(Tuek's Sietch 같은 지도자
+  타일, Immortality의 Research Station 덮개)은 인쇄 타일 모양의 상자에 맞아야 해서
+  스캔만 쓴다(카탈로그 `tile_image`, 팝오버는 그대로 `image`).
   `uv run scripts/fetch_card_images.py`는 manifest가 기록한 출처에서 빠진
   파일만 내려받는다.
 - `assets/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 게임 아이콘 투명 PNG 46장.
