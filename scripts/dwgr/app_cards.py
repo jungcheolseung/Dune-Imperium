@@ -153,7 +153,7 @@ HIRES = {
     "MakerHook": "UI_crd_ActionIcon_MakerHook",
     "Persuasion": "UI_crd_ActionIcon_Persuasion",
     "PlayAreaCard": "UI_crd_ActionIcon_PlayAreaCard",
-    "IntrigueTrash": "UI_crd_ActionIcon_IntrigueTrash",
+    # "IntrigueTrash" is the steal icon despite its name (no larger copy)
     "Trash an Intrigue": "UI_crd_ActionIcon_IntrigueTrash",
     "Discard": "UI_crd_Discard",
     "IfThenArrow": "UI_crd_CostIcon_IfThenArrow_Large",

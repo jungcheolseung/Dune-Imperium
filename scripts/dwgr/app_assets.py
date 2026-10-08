@@ -47,7 +47,7 @@ MAX_BUNDLE_BYTES = 100_000_000
 
 # Play UI icon name (dune_imperium.display.icons.ICON_NAMES) -> app sprite.
 # Same artwork as the rulebook icons, 2-3x the pixels. Names missing here keep
-# the rulebook crop (scripts/extract_rulebook_icons.py).
+# the rulebook crop (scripts/extract_rulebook_icons.py); none is missing now.
 APP_ICON_SOURCES = {
     "agent": "Agent",
     "battle_crysknife": "hud_Icon_Conflict_Knife",
@@ -82,6 +82,9 @@ APP_ICON_SOURCES = {
     "spy": "UI_crd_ActionIcon_Spy",
     "sword": "UI_crd_ActionIcon_Strength",
     "trash_intrigue": "UI_crd_ActionIcon_IntrigueTrash",
+    # the app's inline sprite "IntrigueTrash" is, despite its name, the steal
+    # icon (cards fanned under an Intrigue card), used by Secrets' text
+    "steal_intrigue": "IntrigueTrash",
     "trash": "UI_crd_ActionIcon_TrashCard",
     "troop": "Troop",
     "victory_point": "UI_crd_ActionIcon_VictoryPoint",
