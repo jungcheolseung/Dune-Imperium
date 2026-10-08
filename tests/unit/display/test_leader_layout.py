@@ -1,5 +1,11 @@
 """Tests for the leader-card overlay coordinates behind the browser UI."""
 
+import json
+import struct
+from pathlib import Path
+
+import pytest
+
 from dune_imperium.content.uprising.leaders import FEYD_TRAINING_TRACK
 from dune_imperium.display.leader_layout import (
     CHANI_TACTICS_BOXES,
@@ -7,6 +13,9 @@ from dune_imperium.display.leader_layout import (
     YRKOON_NAVIGATION_SLOT_BOXES,
     leader_layout,
 )
+
+APP_CARDS_DIR = Path(__file__).resolve().parents[3] / "assets" / "cards" / "app"
+LEADER_SOURCES = APP_CARDS_DIR / "leader_sources.json"
 
 
 def _inside_image(box: tuple[float, float, float, float]) -> bool:
@@ -68,3 +77,40 @@ def test_leader_layout_serves_the_same_tables() -> None:
     assert layout["steersman_y_rkoon"]["navigation_slots"] == [
         list(box) for box in YRKOON_NAVIGATION_SLOT_BOXES
     ]
+
+
+def _webp_size(path: Path) -> tuple[int, int]:
+    """Canvas size from a WebP header (VP8X, VP8 or VP8L), without Pillow."""
+    data = path.read_bytes()[:30]
+    assert data[:4] == b"RIFF" and data[8:12] == b"WEBP", path
+    chunk = data[12:16]
+    if chunk == b"VP8X":
+        width = int.from_bytes(data[24:27], "little") + 1
+        height = int.from_bytes(data[27:30], "little") + 1
+        return width, height
+    if chunk == b"VP8 ":
+        width, height = struct.unpack("<HH", data[26:30])
+        return width & 0x3FFF, height & 0x3FFF
+    assert chunk == b"VP8L", (path, chunk)
+    bits = int.from_bytes(data[21:25], "little")
+    return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+
+
+@pytest.mark.skipif(
+    not LEADER_SOURCES.is_file(),
+    reason="no leader faces drawn from the app in the assets checkout",
+)
+def test_app_leader_faces_keep_the_scan_geometry() -> None:
+    """The leader faces scripts/dwgr/app_leaders.py draws keep the scans'
+    1460x1020, and Feyd's Training track is drawn at FEYD_TRACK_BOXES: a
+    change to the boxes needs the face re-rendered (``render --ids
+    feyd_rautha_harkonnen``) so the play UI's token still lands on it."""
+    faces = json.loads(LEADER_SOURCES.read_text())["faces"]
+    for face_id, source in faces.items():
+        assert source["size"] == [1460, 1020], face_id
+        for language in source["sha256"]:
+            path = APP_CARDS_DIR / language / source["path"]
+            assert _webp_size(path) == (1460, 1020), path
+    assert faces["feyd_rautha_harkonnen"]["track_boxes"] == {
+        space_id: list(box) for space_id, box in FEYD_TRACK_BOXES.items()
+    }

@@ -22,6 +22,13 @@ applying the English boxes unchanged still lands on the same printed
 spaces on all three Korean scans, so one table
 drives both languages. A differently cropped scan needs a re-measure, not
 a rules change, exactly as ``board_layout`` notes for the shared board.
+
+The play UI prefers the leader faces drawn from the Steam app's art
+(``scripts/dwgr/app_leaders.py``, ``cards/app/<lang>/uprising/leader/``)
+over the scans. Those keep the scans' 1460x1020 and draw Feyd's Training
+track at ``FEYD_TRACK_BOXES`` itself, so the same table serves both; the
+face's ``leader_sources.json`` records the boxes it was drawn at, and a test
+asks for a re-render when they change.
 """
 
 from collections.abc import Mapping

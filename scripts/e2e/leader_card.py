@@ -250,8 +250,12 @@ def _is_language_image(image: str | None, lang: str) -> bool:
     # "/card-images/en/..." or "/card-images/ko/...". This is what actually
     # proves the switch took effect, rather than trusting a value computed
     # ahead of time from a catalog snapshot `localizeCatalog` may since have
-    # mutated in place.
-    return bool(image) and f"/card-images/{lang}/" in image
+    # mutated in place. The faces drawn from the Steam app's art
+    # (scripts/dwgr/app_leaders.py) come first within a language and live
+    # under "/card-images/app/<lang>/".
+    return bool(image) and any(
+        f"/card-images/{folder}{lang}/" in image for folder in ("", "app/")
+    )
 
 
 def feyd_geometry(page, lang: str) -> None:
