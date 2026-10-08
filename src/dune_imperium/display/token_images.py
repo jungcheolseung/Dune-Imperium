@@ -5,11 +5,16 @@ The Combat marker is a two-sided token in each player's colour: "strength를
 `+20` 면을 사용해 track 처음부터 남은 수치를 센다." [Main p. 12]
 (``docs/rules/combat-and-round-end.md``). The UI shows a picture of each
 face when the owner's private assets checkout carries them under
-``tokens/`` (``strength_<colour>.png`` and ``strength_<colour>_plus20.png``);
-the pictures are copyrighted artwork and never live in this repository,
-the same policy as the card scans in ``dune_imperium.display.images`` and
-the rulebook icons in ``dune_imperium.display.icons``. Without them the UI
-keeps its drawn seat token.
+``tokens/`` (``strength_<colour>.png`` and ``strength_<colour>_plus20.png``).
+The Steam app has no such marker (it shows strength as a number), so the
+faces are composed from its parts by ``scripts/dwgr/app_assets.py
+strength``: a tile in the seat's colour, a dark inner square, and the
+printed strength icon or "+20" in the app's font. Like every other picture
+there they are built from copyrighted artwork and never live in this
+repository, the same policy as the card scans in
+``dune_imperium.display.images`` and the rulebook icons in
+``dune_imperium.display.icons``. Without them the UI keeps its drawn seat
+token.
 """
 
 from typing import Final

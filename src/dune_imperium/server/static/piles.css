@@ -13,3 +13,9 @@
   user-select: none;
 }
 .help-mark .first-player-token { height: 1.5em; margin-block: 0; }
+
+/* The pictured Combat marker (board.js strengthPicture): its faces are now
+   tiles in the seat's own colour (scripts/dwgr/app_assets.py strength), so
+   the 1px seat-colour rim style.css draws round the picture only doubled
+   the tile's edge. The box keeps its shadow, rounded like the tile. */
+.strength-token.pictured { border: none; border-radius: 12%; }
