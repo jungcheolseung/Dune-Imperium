@@ -544,32 +544,39 @@ function openPileList(title, ids, anchor) {
    The one exception is the top card when a card effect lets the owner see
    it (`top`: `{id, source}`, the view's own `peeked_card_id` and the name
    of what shows it -- Glowglobes, or Controlled while its choice is up).
-   The group holding it is marked "Top" ("맨 위 · ×3" with copies) and
-   outlined, and a second note says where the mark comes from. The group's
-   place in the name order and its representative card (the smallest
-   instance id) stay as they were, so the list still says nothing about
-   the cards below the top. */
+   That one copy is split off as its own entry, badged "Top" ("맨 위") and
+   outlined, right before the rest of the same card, which keep their group
+   ("×2", or no count for one copy left); a card with a single copy is just
+   that entry. A second note says where the mark comes from. The groups'
+   name order is as before and each remaining group's card is its smallest
+   instance id, so the list still says nothing about the cards below the
+   top (user decision 2026-10-10). */
 function openDeckList(title, ids, anchor, top = null) {
   unpinPopover();
   const groupKey = (id) => {
     const ref = instanceRef(id);
     return `${ref.kind}:${ref.id}`;
   };
-  const topKey = top && top.id && ids.includes(top.id) ? groupKey(top.id) : "";
+  const topId = top && top.id && ids.includes(top.id) ? top.id : "";
   const groups = new Map();
   for (const id of ids) {
     const key = groupKey(id);
-    const group = groups.get(key);
-    if (!group) groups.set(key, { key, id, count: 1, name: nameOf(id) });
-    else {
-      group.count += 1;
-      if (id < group.id) group.id = id;
-    }
+    const group = groups.get(key) || { key, ids: [], name: nameOf(id) };
+    group.ids.push(id);
+    groups.set(key, group);
   }
   const locale = TERM_LANGUAGE === "ko" ? "ko" : "en";
+  const first = (list) => list.reduce((low, id) => (id < low ? id : low));
   const sorted = [...groups.values()].sort(
-    (a, b) => a.name.localeCompare(b.name, locale) || (a.id < b.id ? -1 : 1),
+    (a, b) => a.name.localeCompare(b.name, locale) || (first(a.ids) < first(b.ids) ? -1 : 1),
   );
+  /* One entry per group, the top copy split off before its group. */
+  const entries = [];
+  for (const group of sorted) {
+    const rest = group.ids.filter((id) => id !== topId);
+    if (rest.length < group.ids.length) entries.push({ id: topId, name: group.name, top: true });
+    if (rest.length) entries.push({ id: first(rest), name: group.name, count: rest.length });
+  }
   const pop = el("card-popover");
   pop.textContent = "";
   const head = document.createElement("div");
@@ -579,7 +586,7 @@ function openDeckList(title, ids, anchor, top = null) {
   note.className = "popover-note";
   note.textContent = t("panels.deck_list_note");
   const notes = [note];
-  if (topKey) {
+  if (topId) {
     const topNote = document.createElement("div");
     topNote.className = "popover-note deck-top-note";
     topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
@@ -587,19 +594,22 @@ function openDeckList(title, ids, anchor, top = null) {
   }
   const row = document.createElement("div");
   row.className = "strip-cards wrap";
-  for (const group of sorted) {
-    const copies = group.count > 1 ? `×${group.count}` : "";
-    const named = copies ? `${group.name} ${copies}` : group.name;
-    const isTop = group.key === topKey;
+  for (const entry of entries) {
+    const copies = entry.count > 1 ? `×${entry.count}` : "";
     row.appendChild(
-      visualCard(group.id, {
-        className: isTop ? "small deck-top" : "small",
-        badge: isTop
-          ? [t("panels.deck_list_top_badge"), copies].filter(Boolean).join(" · ")
-          : copies,
-        title: isTop ? `${named} · ${t("panels.deck_list_top_title")}` : named,
-        onClick: () => {},
-      }),
+      visualCard(entry.id, entry.top
+        ? {
+            className: "small deck-top",
+            badge: t("panels.deck_list_top_badge"),
+            title: `${entry.name} · ${t("panels.deck_list_top_title")}`,
+            onClick: () => {},
+          }
+        : {
+            className: "small",
+            badge: copies,
+            title: copies ? `${entry.name} ${copies}` : entry.name,
+            onClick: () => {},
+          }),
     );
   }
   pop.append(head, ...notes, row);
@@ -1506,18 +1516,57 @@ function renderLog() {
 
 /* Controlled's choice on the deck's top card (rules/intrigue.py, the
    PeekTopCard choice): these actions are offered exactly while that choice
-   is up for the seat, and none of them names the card. */
-const DECK_TOP_CHOICES = new Set([
-  "put_back_top_card",
-  "discard_top_card",
-  "draw_top_card_for_solari",
-]);
+   is up for the seat. Their live buttons name the card the seat is looking
+   at (deckTopChoiceLabel, the text keyed here); the logged step keeps its
+   plain label (ACTION_LABELS), since the log is everyone's to read. */
+const DECK_TOP_CHOICE_TEXT = {
+  put_back_top_card: "panels.deck_top_put_back",
+  discard_top_card: "panels.deck_top_discard",
+  draw_top_card_for_solari: "panels.deck_top_draw",
+};
+const DECK_TOP_CHOICES = new Set(Object.keys(DECK_TOP_CHOICE_TEXT));
 
 function deckTopChoiceOffered() {
   return Boolean(
     !state.review && state.actions &&
       state.actions.actions.some((action) => DECK_TOP_CHOICES.has(action.action_id)),
   );
+}
+
+/* The card Controlled's choice is about while it is offered to the seat:
+   the seat's own view's peeked_card_id (only the owner's view carries it,
+   core/observation.py), or "" -- no such choice, a review (no actions), or
+   nothing peeked. The view and the actions are one seat's snapshot
+   (session.js adoptSnapshot), so the card is the deciding seat's own. */
+function deckTopChoiceCard() {
+  if (!deckTopChoiceOffered()) return "";
+  const own = state.view && state.view.private;
+  return (own && own.peeked_card_id) || "";
+}
+
+/* One of those live buttons naming the card ("덱 맨 위 카드(Dagger)
+   {discard}"), by its name on screen; null for any other action, or when
+   no card is known (the plain label then stands). Only actionItem (render.js),
+   which draws the seat's offered actions, asks for it. */
+function deckTopChoiceLabel(action) {
+  if (!DECK_TOP_CHOICES.has(action.action_id)) return null;
+  const card = deckTopChoiceCard();
+  return card ? tNode(DECK_TOP_CHOICE_TEXT[action.action_id], { card: nameOf(card) }) : null;
+}
+
+/* The card itself above those buttons in the decision panel
+   (renderActionPanel, turn.js): its picture like any card on the table,
+   enlarged on hover or click, badged as the deck's top. null when the
+   choice is not up for the seat. */
+function deckTopChoicePicture() {
+  const card = deckTopChoiceCard();
+  if (!card) return null;
+  const box = document.createElement("div");
+  box.className = "deck-top-choice";
+  box.appendChild(
+    visualCard(card, { className: "deck-top-choice-card", badge: t("panels.deck_top_badge") }),
+  );
+  return box;
 }
 
 /* What shows the seat its deck's top card, by its name on screen: the
@@ -1644,26 +1693,18 @@ function renderPrivate() {
     }
     zones.appendChild(intrigue);
   }
-  /* Owner-only peeks: the deck's top card and peeked Intrigue. Kota
-     Odax's Secret Project tile is on his leader popover (core.js
-     leaderSecretProjectBox). Glowglobes' standing look at the top card is
-     the deck list's "Top" mark (openDeckList), not a card here; the strip
-     still shows the top card while Controlled's choice is up, since its
-     put back / discard / draw buttons name no card. Without Glowglobes a
-     top card can only be Controlled's, so the strip is as it always was. */
+  /* Owner-only peeks beside the Intrigue cards: the Intrigue deck's top
+     cards Imperium Ceremony shows while one is kept. Kota Odax's Secret
+     Project tile is on his leader popover (core.js
+     leaderSecretProjectBox). The seat's own deck's top card is never
+     here (user decision 2026-10-10): Glowglobes' standing look is the deck
+     list's "Top" entry (openDeckList), and Controlled's is its picture
+     above the put back / discard / draw buttons, which name it
+     (deckTopChoicePicture, deckTopChoiceLabel). */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
-  const deckTop = peeked && (!glowglobes || deckTopChoiceOffered()) ? peeked : "";
-  if (deckTop || peekedIntrigue.length) {
+  if (peekedIntrigue.length) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
-    if (deckTop) {
-      peeks.appendChild(
-        visualCard(deckTop, {
-          className: "small",
-          badge: t("panels.deck_top_badge"),
-        })
-      );
-    }
     for (const cardId of peekedIntrigue) {
       peeks.appendChild(
         visualCard(cardId, { className: "small", badge: t("panels.intrigue_deck_top_badge") })

@@ -831,7 +831,11 @@ img.seat-disc.pictured { border-radius: 50%; }
    board's own numeral style (.bonus-spice-count): a box as large as the
    disc laid over its centre (the disc may be a picture, which cannot hold
    it), above the discs that share its cell. The one number on a board
-   token, at the user's request (2026-10-10). */
+   token, at the user's request (2026-10-10). The text stays on the disc's
+   face, inside the app picture's bevel and dark rim (about 0.78 of its
+   width): at most three quarters of the disc wide (board_tokens.py [3h]),
+   so the figures are 40cqh and a weight lighter than that style (700, not
+   800) and the "+" is 0.7 of them. */
 .vp-lap {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -845,13 +849,14 @@ img.seat-disc.pictured { border-radius: 50%; }
 }
 .vp-lap-text {
   color: #fff;
-  font-weight: 800;
-  font-size: 44cqh;
+  font-weight: 700;
+  font-size: 40cqh;
   line-height: 1;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.06em;
   white-space: nowrap;
   text-shadow: 0 0 2px #000, 0 1px 2px #000;
 }
+.vp-lap-plus { font-size: 0.7em; }
 /* The strength token's "+20" face: inverted colours and the printed +20. */
 .strength-token { position: absolute; }
 .strength-token.flipped {
@@ -1434,6 +1439,11 @@ kbd {
   border-top: 1px solid var(--line);
 }
 #actions > .zone-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* Controlled's choice: the deck's top card it is about, above its buttons
+   (panels.js deckTopChoicePicture), a little smaller than a hand card. */
+.deck-top-choice { display: flex; flex: none; padding: 2px 0; }
+.vcard.deck-top-choice-card { width: 92px; }
+.vcard.deck-top-choice-card .vcard-badge { white-space: nowrap; }
 .pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
 .pick-option .icon { height: 1.1em; }
 .pick-graft { font-weight: 600; }
@@ -1740,8 +1750,9 @@ kbd {
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover-note { font-size: 0.75rem; opacity: 0.75; margin-bottom: 0.3rem; }
 /* The deck list's top card, when a card effect shows it (panels.js
-   openDeckList): outlined, its "Top · ×3" badge on one line across the
-   list's 60px cards. The outline sits inside the strip's 3px padding. */
+   openDeckList): its own entry, outlined, its "Top" / "맨 위" badge on one
+   line on the list's 60px cards. The outline sits inside the strip's 3px
+   padding. */
 .vcard.deck-top { outline: 2px solid var(--accent); outline-offset: 1px; }
 .vcard.deck-top .vcard-badge { white-space: nowrap; }
 .conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }

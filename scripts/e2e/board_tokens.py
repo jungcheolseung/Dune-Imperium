@@ -20,10 +20,11 @@ number; so is every unit in a garrison, inside its printed ring's circle
 ring's slot, and a busy Conflict area is laid out without overlaps at three
 window sizes down to a 268 px board. A score past 12 [FAQ p. 4] counts on
 from cell 0 of the 13 printed cells with its lap ("+13") in white on the
-disc, nothing left on the emblem above 12 and no two marks touching where
-discs share a cell (section [3h], a display convention the user asked for
-on 2026-10-10). Where the private assets have the Steam
-app's pictures of the seat pieces (`catalog.seat_pieces`: agent, spy,
+disc, inside the disc's face (at most three quarters of its width), nothing
+left on the emblem above 12 and no two marks touching where discs share a
+cell (section [3h], a display convention the user asked for on 2026-10-10).
+Where the private assets have the Steam app's pictures of the seat pieces
+(`catalog.seat_pieces`: agent, spy,
 control, troop, sandworm) each of those pieces is checked to be the loaded
 `<img>` of its kind for its seat; section [3g] runs the same sections with the
 pictures taken away, so the flat drawing's colour checks keep running. A
@@ -1304,8 +1305,8 @@ SET_SCORES_JS = """(scores) => {
 }"""
 
 # The Score discs and lap marks as drawn: centres in percent of the board
-# stage, the marks' text boxes in pixels, and each disc's title beside the
-# title its real score should give.
+# stage, the discs' and the marks' text boxes in pixels, and each disc's
+# title beside the title its real score should give.
 SCORE_DISCS_JS = """() => {
   const stage = document.querySelector(".board-stage").getBoundingClientRect();
   const centre = (r) => ({
@@ -1319,6 +1320,8 @@ SCORE_DISCS_JS = """() => {
     return {
       seat, ...centre(r),
       top: ((r.top - stage.top) / stage.height) * 100,
+      px: { left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+            width: r.width, height: r.height },
       tag: disc.tagName.toLowerCase(),
       title: disc.title,
       want: t("board.seat_vp", { seat, vp }),
@@ -1423,6 +1426,25 @@ def score_laps(page, flat: bool = False) -> None:
                 and near(mark["textCentre"]["y"], disc["y"], 0.15),
                 f"{where}: seat {seat}'s mark is centred on its disc",
                 (mark, disc),
+            )
+            # The mark sits on the disc's face, inside the app picture's
+            # bevel and dark rim (about 0.78 of its width): the text box at
+            # most three quarters of the disc wide and half of it tall, and
+            # never past the disc's own box. The first "+13" (44cqh) was
+            # 0.86 of the disc and ran onto the rim.
+            box = mark["box"]
+            square = disc["px"] if disc else None
+            check.ok(
+                square is not None
+                and box is not None
+                and box["right"] - box["left"] <= 0.75 * square["width"]
+                and box["bottom"] - box["top"] <= 0.5 * square["height"]
+                and box["left"] >= square["left"]
+                and box["right"] <= square["right"]
+                and box["top"] >= square["top"]
+                and box["bottom"] <= square["bottom"],
+                f"{where}: seat {seat}'s +{laps[seat]} fits inside its disc",
+                (box, square),
             )
         meeting = [
             (a, b)
