@@ -795,7 +795,7 @@ TOP_SETUP_JS = """() => {
     const pair = [...groupsOf(view.private.deck_cards).values()]
       .find((ids) => ids.length === 2);
     if (pair) {
-      const extra = pair[1].replace(/:(\d+)$/, (whole, n) => `:${Number(n) + 50}`);
+      const extra = pair[1].replace(/:(\\d+)$/, (whole, n) => `:${Number(n) + 50}`);
       view.private.deck_cards = [...view.private.deck_cards, extra].sort();
       view.private.deck_size += 1;
       view.players[view.player].deck_size += 1;
