@@ -4,6 +4,31 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-09 학습 정리: expert iteration v2는 수집 도중 마무리 (코드 병합, codec 그대로 v141)
+
+사용자 결정("지금 단계로 마무리 하고 master 반영"): master의 codec이 v141로 올랐고 학습은 나중에 다시 한다. 그래서 ExIt v2를 판정 전 단계에서 멈추고 병합했다(`0747caec`). 경위와 숫자는 [evaluation/exit-v2-2026-10-08.md](evaluation/exit-v2-2026-10-08.md)에 있다.
+
+- **설계:** 선언과 독립 검토를 마쳤다. 원자료는 git 무시 `checkpoints/2026-10-08/exit-v2/`에 있다.
+  - 교사는 탐색(X, 후보 5 × 세계 8)이다.
+  - 국면은 학습 룰셋 + 드래프트이고, 판의 반은 X 둘 + 앱 AI 둘이다.
+  - 학생은 X와 slot으로 넓힌 X다.
+  - 학습한 판과 처음 보는 판의 일치율을 나란히 재는 진단을 넣었다.
+  - 탐색 판정은 X의 가치 head로 한다.
+- **시범 32판:**
+  - 시간당 122판, 판당 레이블 134개.
+  - 레이블 잡음은 v1과 비슷하다: 뒤집기 45.5%, 뚜렷함 35.9%, 세계 반쪽 갈림 24.5%.
+  - 탐색의 몫은 Agent 턴의 칸 선택에 몰려 있다.
+- **c0 수집:** 510판(v139)에서 멈췄다. 판정 단계는 돌지 않았고, 선언한 규칙은 결과를 보지 않은 채 남아 있다.
+- **코드:**
+  - `training/expert.py`: 섞인 판, 전체 룰셋, frame 열, 샤드 형식 2, 드래프트 헤더, 배운 적 없는 결정은 레이블하지 않음.
+  - `training/distill.py`: slot 학습률 배수, 학습한 판과 처음 보는 판의 진단.
+  - `cli/expert.py`: 룰셋·상대 플래그, 탐색 기본 8 × 5, `--learning-rate`.
+- **이어 하려면:**
+  - (가) `b71d1045`에 분리 작업 트리를 다시 만들고 `collect_loop.sh '<마감>'` + `day.sh`를 띄운다. 옛 엔진(v139)에서 마저 하는 길이다.
+  - (나) 새 codec에서 시범부터 다시 시작한다. c0 샤드는 codec이 달라 새 샤드와 섞이지 않는다.
+- **검증:** 병합한 master에서 pytest **6,947개 통과**, Ruff 통과, mypy(449파일) 통과.
+- `exit-v2`·`exit-v2-run` worktree와 `exit-v2` 브랜치는 지웠다.
+
 ## 2026-10-08 Bloodlines Tech 타일을 앱의 Rise of Ix 타일 틀로 (codec 그대로)
 
 사용자 제안 "Rise of Ix의 tech tile 애셋으로 Bloodlines 타일도". 브랜치 `claude/worktree-branch-status-6d27d9`.
@@ -775,6 +800,8 @@ Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(아라�
 - 숨은 정보: 비밀 선택과 봉인 입찰은 좌석 한정 id로 `known_card_seats`에 들어가 로그 가림·되돌리기 경계·소크 누출 검사·탐색 AI 재추첨이 모두 같은 등록부를 읽는다. 슬라이스 7·8은 독립 리뷰를 거쳤다(7에서 누출 두 건을 고쳤다).
 
 ### 학습(M10) 쪽 순서
+
+**현재 위치(2026-10-09, 학습 일시 정리).** 플레이 서버 탐색 망은 X@10081(`mix-v139-10081.pt`)이다. 다음 학습 후보였던 expert iteration v2는 c0 수집 510판에서 사용자 결정으로 멈췄고, 코드와 기록은 master에 있다([evaluation/exit-v2-2026-10-08.md](evaluation/exit-v2-2026-10-08.md) 5절에 이어 하는 두 길). 학습을 다시 시작할 때는 그 사이 올라간 codec(v141~)으로 X를 이관해야 한다.
 
 **현재 위치(2026-10-08 오후, 플레이 서버 망 교체).** [evaluation/m10-2026-10-07.md](evaluation/m10-2026-10-07.md) 7절. 새 시드로 다시 잰 탐색(X) − 탐색(8081)은 +8.5%p [+0.5, +16.5], 앞 묶음과 합친 100시드는 +11.3%p [+5.3, +17.3](순위·마진도 분해)이다. 사용자 결정으로 `checkpoints/play/search.pt`가 X의 가중치 사본 `mix-v139-10081.pt`를 가리킨다(8081 파일은 옛 저장용으로 남김). 다음 학습 후보는 expert iteration v2(설계·시범은 git 무시 `checkpoints/2026-10-08/exit-v2/`, 코드는 브랜치 `exit-v2`).
 
