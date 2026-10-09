@@ -304,14 +304,25 @@ class Check:
         sys.exit(1 if self.failed else 0)
 
 
+# Chrome talks to Google on its own: the autofill server for every page with
+# a form, new-tab warm-up, push registration, component updates. One
+# leader_card.py made 231 such requests in 32 s, and four browsers at a time
+# left so many connections hanging that every other program on the machine
+# lost the internet for up to 43 s (2026-10-09). The pages need nothing but
+# the play server, so no other name resolves.
+BROWSER_ARGS = [
+    f"--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE {HOST}, EXCLUDE localhost"
+]
+
+
 def launch_options() -> dict[str, object]:
     """System Chrome by default; `E2E_CHROMIUM` names another executable
     (e.g. a cached `chromium_headless_shell` on a box without Chrome)."""
 
     executable = os.environ.get("E2E_CHROMIUM")
     if executable:
-        return {"executable_path": executable, "headless": True}
-    return {"channel": "chrome", "headless": True}
+        return {"executable_path": executable, "headless": True, "args": BROWSER_ARGS}
+    return {"channel": "chrome", "headless": True, "args": BROWSER_ARGS}
 
 
 # The size every script has used since these checks were written. A check

@@ -16,6 +16,9 @@ uv pip install --python .venv/bin/python playwright
 브라우저는 시스템 Chrome(`channel="chrome"`)을 쓴다. Chrome이 없는 기기(WSL 등)는 실행 파일을 지정한다:
 `E2E_CHROMIUM=~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell`
 (WSL에서는 버전 심볼을 갖춘 `libasound.so.2` stub을 `LD_LIBRARY_PATH`에 둬야 했다 — handoff 2026-09-17).
+브라우저는 플레이 서버 말고는 어떤 이름도 찾지 못하게 띄운다(`common.BROWSER_ARGS`의 `--host-resolver-rules`). Chrome이
+스스로 Google에 보내는 요청(자동완성 서버·새 탭 준비·푸시 등록·구성요소 업데이트)이 4개씩 돌 때 쌓여서, 기계의 다른
+프로그램까지 새 연결을 최대 43초 못 열었다(2026-10-09).
 서버는 이 체크아웃의 `.venv/bin/dune-imperium-server`를 빈 포트에 직접 띄우고 끝나면 내린다(`common.ServerProcess`; `kill()`은 SIGKILL이다)
 (`uv sync --extra ui`가 돼 있어야 한다). 다른 체크아웃을 검사하려면 `E2E_REPO=<경로>`.
 
