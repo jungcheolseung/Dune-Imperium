@@ -336,7 +336,13 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # when that step stopped at a pause, so in Combat before the cleanup.
 # Legal-action sequences change with no template change, so saves and
 # replays from v140 are refused by the version check.
-ACTION_CODEC_VERSION = 141
+# v142 (user decision 2026-10-10, OQ-104): Navigation Chamber's cut ("Board
+# spaces cost you [1 spice] or [1 Solari] less." [Tech tile face]) is
+# mandatory, so its holder is no longer offered the undiscounted
+# ``agent_turn`` beside the discounted one on a costed space. Legal-action
+# sequences change with no template change, so saves and replays from v141
+# are refused by the version check.
+ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

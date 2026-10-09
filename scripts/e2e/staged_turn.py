@@ -7,16 +7,29 @@ exactly what the list allows, a pick costs no request, either order works,
 a pick can be swapped or cancelled, a complete pick plays the very action it
 names, the chooser offers exactly the remaining ones, and the flat list is
 one toggle away.
+
+A saved game (fixtures/navigation_chamber_saves.py) checks Navigation
+Chamber's cut, which is mandatory (OQ-104, codec v142): no costed space is
+offered at full price, the chooser names the cut ("1 spice discount") on the
+Spice Refinery line that carries it, with the printed cost struck through
+and the paid one after it, and never says "no discount" on the free line.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 
 from common import (
+    REPO,
     SERVER_LOG_COPY,
     Check,
+    ServerProcess,
     chrome,
     open_context,
     server,
@@ -365,11 +378,169 @@ def graft_scenario(base, browser) -> None:
     context.close()
 
 
+# Board spaces with a spice or Solari cost [Board Guide pp. 1-2]: with
+# Navigation Chamber each is offered only with the cut (OQ-104).
+COSTED_SPACES = [
+    "sardaukar",
+    "heighliner",
+    "espionage",
+    "shipping",
+    "high_council",
+    "imperial_privilege",
+    "swordmaster",
+]
+REFINERY_CARD = """() => {
+  const byCard = {};
+  for (const a of placementActions()) {
+    if (a.arguments.space_id !== "spice_refinery" || a.arguments.graft) continue;
+    (byCard[a.arguments.card_id] ||= []).push(a);
+  }
+  return Object.keys(byCard).find((card) => byCard[card].length === 2
+    && byCard[card].some((a) => a.arguments.discount === "spice")) || null;
+}"""
+CHOOSER_LINES = """() => [...document.querySelectorAll("#card-popover .action-item")]
+  .map((node) => {
+    const action = state.actions.actions[Number(node.dataset.index)];
+    const cut = node.querySelector(".pick-option > .pick-discount");
+    const printed = node.querySelector(".pick-option > .cost-printed");
+    return {
+      index: action.index,
+      option: action.arguments.cost_option ?? null,
+      discount: action.arguments.discount ?? null,
+      text: node.innerText,
+      cut: cut ? cut.textContent : null,
+      cutTitle: cut && cut.querySelector(".amount")
+        ? cut.querySelector(".amount").title : null,
+      printed: printed ? printed.textContent : null,
+      paid: [...node.querySelectorAll(".pick-option > .cost:not(.cost-printed)")]
+        .map((c) => c.textContent),
+    };
+  })"""
+
+
+def navigation_chamber_scenario(browser) -> None:
+    print("[8] Navigation Chamber: the cut is named on the line that carries it")
+    saves = tempfile.mkdtemp(prefix="dune-staged-nav-")
+    produced = subprocess.run(
+        [
+            str(REPO / ".venv/bin/python"),
+            str(Path(__file__).parent / "fixtures/navigation_chamber_saves.py"),
+            saves,
+        ],
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    fixture = json.loads(produced.stdout.strip().splitlines()[-1])
+    process = ServerProcess(saves=saves).start()
+    try:
+        context, page, rec = open_context(browser, "navigator")
+        page.goto(process.base + "/")
+        page.wait_for_function(
+            "document.querySelectorAll('#save-list li').length === 1"
+        )
+        page.locator(
+            "#save-list li:has-text('navigation-chamber') button"
+        ).first.click()
+        page.wait_for_function("state.view !== null && refreshFlight === null")
+        assert settled(page, 20)
+        check.ok(
+            page.evaluate("state.viewSeat") == fixture["seat"],
+            "the saved game opens on the seat holding Navigation Chamber",
+            (page.evaluate("state.viewSeat"), fixture["seat"]),
+        )
+        check.ok(
+            "navigation_chamber"
+            in page.evaluate("state.view.players[state.viewSeat].tech_ids || []"),
+            "the seat holds Navigation Chamber",
+        )
+        check.ok(page.evaluate("stagedTurn()"), "its Agent turn is staged")
+        full_price = page.evaluate(
+            "(costed) => placementActions().filter((a) =>"
+            " costed.includes(a.arguments.space_id) && !a.arguments.discount).length",
+            COSTED_SPACES,
+        )
+        check.ok(
+            full_price == 0, "no costed space is offered at full price", full_price
+        )
+        card = page.evaluate(REFINERY_CARD)
+        check.ok(card is not None, "a card reaches both Spice Refinery options")
+        if card is None:
+            context.close()
+            return
+        spice = page.evaluate("state.view.players[state.viewSeat].resources.spice")
+        for lang, free, suffix, no_cut in (
+            ("ko", "무료", "할인", "할인 없이"),
+            ("en", "Free", "discount", "No discount"),
+        ):
+            page.evaluate("lang => setLanguage(lang)", lang)
+            page.evaluate("clearPick()")
+            page.click(f".hand-cards .vcard[data-instance='{card}']")
+            page.click(".hotspot[data-space='spice_refinery']")
+            lines = page.evaluate(CHOOSER_LINES)
+            check.ok(len(lines) == 2, f"{lang}: the chooser offers both options", lines)
+            plain = next((line for line in lines if line["option"] == 0), None)
+            cut = next((line for line in lines if line["option"] == 1), None)
+            if plain is None or cut is None:
+                continue
+            check.ok(
+                plain["discount"] is None
+                and plain["cut"] is None
+                and plain["printed"] is None
+                and no_cut not in plain["text"],
+                f"{lang}: the free option names no cut and no missing one",
+                plain,
+            )
+            spice_word = page.evaluate("termLabel('spice')")
+            check.ok(
+                cut["discount"] == "spice"
+                and cut["cut"] is not None
+                and cut["cut"].strip().endswith(suffix)
+                and cut["cutTitle"] == f"1 {spice_word}",
+                f"{lang}: the cut option names the 1 spice cut",
+                cut,
+            )
+            check.ok(
+                cut["printed"] == "1" and cut["paid"] == [free],
+                f"{lang}: the printed 1 spice is struck through, then what is paid",
+                cut,
+            )
+            shots = os.environ.get("E2E_SHOTS_DIR")
+            if shots:
+                Path(shots).mkdir(parents=True, exist_ok=True)
+                page.screenshot(
+                    path=str(Path(shots) / f"staged_turn_navigation_chamber_{lang}.png")
+                )
+        before = page.evaluate("state.summary.revision")
+        page.click(f"#card-popover .action-item[data-index='{cut['index']}'] > button")
+        check.ok(
+            wait_for(page, f"state.summary.revision === {before + 1} && !state.busy"),
+            "the cut option was played",
+        )
+        after = page.evaluate("state.view.players[state.viewSeat].resources.spice")
+        check.ok(after == spice, "the trade cost no spice", (spice, after))
+        failed = [r for r in rec.requests if r[3] >= 400]
+        check.ok(not failed, "no failed requests in the saved game", failed[:5])
+        check.ok(
+            not rec.js_errors, "no JS exceptions in the saved game", rec.js_errors[:5]
+        )
+        context.close()
+        text = process.log_path.read_text()
+        check.ok(
+            "Traceback" not in text and "ERROR" not in text,
+            "no server errors in the saved game",
+        )
+    finally:
+        process.stop()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
             scenario(base, browser)
             graft_scenario(base, browser)
+            navigation_chamber_scenario(browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

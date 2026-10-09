@@ -587,12 +587,13 @@ def cheapest_card_for_the_same_space(
         return chosen
     winners = tuple(action for cost, action in priced if cost == cheapest)
     # Swap the card and nothing else. One card reaches one space once per cost
-    # option, once more per Navigation Chamber discount, and again for a Graft
-    # or an Infiltrate, and every one of those forfeits the same Reveal box --
-    # so taking the first cheapest would quietly move the cost option the draw
-    # made, drop a discount that costs nothing to keep (97 of 6,198 separating
-    # swaps over a 40-game all-option probe, and 777 with several cost
-    # options), or spend a Spy on an Infiltrate the draw did not ask for.
+    # option (each carrying its Navigation Chamber cut, which is mandatory
+    # since codec v142, OQ-104) and again for a Graft or an Infiltrate, and
+    # every one of those forfeits the same Reveal box -- so taking the first
+    # cheapest would quietly move the cost option the draw made (777 of the
+    # separating swaps over a 40-game all-option probe) or spend a Spy on an
+    # Infiltrate the draw did not ask for. Before v142 it could also drop an
+    # optional discount (97 of 6,198 separating swaps).
     terms = _placement_terms(chosen)
     return next(
         (action for action in winners if _placement_terms(action) == terms),

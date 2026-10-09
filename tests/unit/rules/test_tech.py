@@ -1434,6 +1434,92 @@ def test_navigation_chamber_offers_a_spice_or_solari_discount_on_placements() ->
     assert placed.players[0].agent_locations == ("high_council",)
 
 
+def test_navigation_chamber_cut_is_mandatory_on_every_costed_space() -> None:
+    """The cut always applies; the full price is never offered (OQ-104).
+
+    Tile face: "Board spaces cost you [1 spice] or [1 Solari] less." -- no
+    "may", no Flip icon, no once-per-round mark. docs/rules/bloodlines.md:
+    "| Navigation Chamber | 5 | Influence 1 선택 | board space 비용이 spice 1
+    또는 Solari 1 줄어든다 |" [Tech tile faces] [Bloodlines p. 7], applied
+    without a choice like the rulebook's "the Tech tile costs him 1 less
+    Spice" [Bloodlines p. 7]; docs/rules/README.md: "원문이 선택 여부를
+    명시하지 않으면 이 문서가 임의로 선택 여부를 만들지 않는다." The FAQ's
+    "Most effects from a board space or card you play are mandatory"
+    [FAQ p. 3] supports this only by analogy (a Tech tile is neither).
+    Spice Refinery's and Gather Support's arrow payments are costs
+    ("cost로 0 또는 1 spice 선택", "cost로 0 또는 2 Solari 선택"
+    [Board Guide pp. 1-2], board-spaces.md), so the cut reaches their
+    option 1; their free option 0 and water costs carry no cut.
+    """
+
+    owner = _tech_owner(
+        "navigation_chamber",
+        hand=starting_deck_instance_ids(0),
+        deck=(),
+        resources=Resources(solari=9, spice=9, water=9),
+        influence=Influence(emperor=3, spacing_guild=3, bene_gesserit=3, fremen=3),
+    )
+    state = _turn_state(owner)
+    placements = [
+        dict(action.arguments)
+        for action in legal_agent_actions(state, 0)
+        if action.action_id == "agent_turn"
+    ]
+    costed = {
+        "sardaukar": "spice",
+        "heighliner": "spice",
+        "espionage": "spice",
+        "shipping": "spice",
+        "high_council": "solari",
+        "imperial_privilege": "solari",
+        "swordmaster": "solari",
+    }
+    cost_options = {"spice_refinery": "spice", "gather_support": "solari"}
+    water = {"desert_tactics", "research_station", "deep_desert", "hagga_basin"}
+    seen = {str(arguments["space_id"]) for arguments in placements}
+    assert set(costed) | set(cost_options) | water <= seen
+    for arguments in placements:
+        space_id = str(arguments["space_id"])
+        discount = arguments.get("discount")
+        if space_id in costed:
+            assert discount == costed[space_id], arguments
+        elif space_id in cost_options:
+            option = arguments["cost_option"]
+            assert discount == (cost_options[space_id] if option == 1 else None), (
+                arguments
+            )
+        else:
+            assert discount is None, arguments
+
+    def placement(space_id: str, **extra: str | int) -> DomainAction:
+        return next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments)["space_id"] == space_id
+            and all(dict(action.arguments).get(k) == v for k, v in extra.items())
+        )
+
+    council = placement("high_council")
+    full_price = DomainAction(
+        action_id="agent_turn",
+        actor=0,
+        arguments=tuple(item for item in council.arguments if item[0] != "discount"),
+    )
+    with pytest.raises(ValueError, match="not a legal Agent turn"):
+        apply_agent_action(state, full_price)
+    paid = apply_agent_action(state, council).state.players[0]
+    assert paid.resources.solari == 9 - 4
+
+    refinery = placement("spice_refinery", cost_option=1)
+    traded = apply_agent_action(state, refinery).state
+    assert traded.players[0].resources.spice == 9
+    assert traded.players[0].spice_spent_turn == 0
+    for board_action in legal_board_effect_actions(traded, 0):
+        traded = resolve_board_effect(traded, board_action).state
+    assert traded.players[0].resources.spice == 9
+    assert traded.players[0].resources.solari == 9 + 4
+
+
 def test_servo_receivers_give_the_signet_ring_the_faction_icons() -> None:
     signet = "player:0:starter:signet_ring:0"
     owner = _tech_owner("servo_receivers", hand=(signet,), deck=())
