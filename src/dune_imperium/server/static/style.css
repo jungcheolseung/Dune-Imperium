@@ -834,7 +834,8 @@ img.seat-disc.pictured { border-radius: 50%; }
    token, at the user's request (2026-10-10). The text stays on the disc's
    face, inside the app picture's bevel and dark rim (about 0.78 of its
    width): at most three quarters of the disc wide (board_tokens.py [3h]),
-   so the "+" is smaller than the figures, which keep the size. */
+   so the figures are 40cqh and a weight lighter than that style (700, not
+   800) and the "+" is 0.7 of them. */
 .vp-lap {
   position: absolute;
   transform: translate(-50%, -50%);
