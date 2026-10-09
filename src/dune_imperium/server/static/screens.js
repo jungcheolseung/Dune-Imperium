@@ -89,6 +89,7 @@ function updateSetupSummary() {
   const seats = [...el("seat-selects").querySelectorAll("select")];
   el("opt-checkpoint-row").hidden = !seats.some((select) => select.value === "checkpoint");
   el("opt-search-note").hidden = !seats.some((select) => select.value === "search");
+  el("opt-shuffle-seats-note").hidden = !el("opt-shuffle-seats").checked;
   const human = seats.filter((select) => select.value === "human").length;
   const options = el("rule-options").querySelectorAll("input:checked:not(:disabled)").length;
   el("setup-summary").textContent = t("screens.setup_summary", {
@@ -246,13 +247,41 @@ function syncGoTo11Option() {
   if (!immortality) el("opt-go-to-11").checked = false;
 }
 
+/* A uniform integer in [0, n), from the browser's cryptographic source
+   (available on plain http too); words past the last whole multiple of n
+   are drawn again so that no value is favoured. */
+function randomBelow(n) {
+  const limit = Math.floor(0x100000000 / n) * n;
+  const word = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(word);
+  } while (word[0] >= limit);
+  return word[0] % n;
+}
+
+/* The configured seats in a uniformly random order (Fisher-Yates). The
+   rules do not seat players -- the First Player comes from the Objective
+   deal [Main p. 5] whatever the order -- so this is a table convention
+   (server/seating.py, user request 2026-10-10): who sits where, and so
+   who plays after whom and in which colour. The server creates the game
+   from the seats as posted; its saves keep them in that order. */
+function shuffledSeats(seats) {
+  const order = [...seats];
+  for (let last = order.length - 1; last > 0; last -= 1) {
+    const pick = randomBelow(last + 1);
+    [order[last], order[pick]] = [order[pick], order[last]];
+  }
+  return order;
+}
+
 async function createGame(event) {
   event.preventDefault();
   const checkpoint = el("opt-checkpoint").value.trim();
-  const seats = [...el("seat-selects").querySelectorAll("select")].map(
+  const configured = [...el("seat-selects").querySelectorAll("select")].map(
     (select) =>
       select.value === "checkpoint" ? `checkpoint:${checkpoint}` : select.value
   );
+  const seats = el("opt-shuffle-seats").checked ? shuffledSeats(configured) : configured;
   const payload = {
     seats,
     choam_module: el("opt-choam").checked,

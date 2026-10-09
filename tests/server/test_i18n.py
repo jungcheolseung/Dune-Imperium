@@ -616,6 +616,22 @@ def test_static_page_keys_exist_and_match_the_korean() -> None:
     assert not unmarked, f"Korean text in index.html without data-i18n: {unmarked[:8]}"
 
 
+def test_the_seat_shuffle_box_is_no_rule_option() -> None:
+    # The box that shuffles the configured seats (server/seating.py) is a
+    # table convention, not a rule: docs/rules does not seat players and the
+    # First Player comes from the Objective deal [Main p. 5]. It sits with
+    # the seats, outside the rule options the setup summary counts, and
+    # speaks both languages.
+    table = _ui_text()
+    for key in ("html.opt_shuffle_seats", "html.shuffle_seats_note"):
+        assert table[key]["ko"] and table[key]["en"], key
+    html = (_STATIC / "index.html").read_text()
+    seats = html.index('<fieldset class="setup-seats">')
+    box = html.index('id="opt-shuffle-seats"')
+    rules = html.index('<fieldset class="setup-rules">')
+    assert seats < box < rules
+
+
 def _prompts() -> set[str]:
     """Every prompt literal a PlayerDecision can carry, f-strings as patterns.
 

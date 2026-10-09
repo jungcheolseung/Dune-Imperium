@@ -30,13 +30,28 @@ holds one after the four picks (2026-10-02, codec v128).
 Four human seats keep the table at its first decision (the Leader draft,
 which the draft box leaves on), before any seat could score; one scenario
 then makes the four picks. With
-``E2E_SHOTS_DIR`` set, the script also leaves two screenshots there: the
-setup form (Korean) and the Epic game's header and board.
+``E2E_SHOTS_DIR`` set, the script also leaves screenshots there: the
+setup form (Korean), the Epic game's header and board, and the seat column
+with the shuffle box checked.
+
+The rules do not seat players: the First Player comes from the Objective
+deal [Main p. 5] whatever the order. On the user's request (2026-10-10) the
+setup screen shuffles the configured seats, and with them turn order and
+colours, before ``POST /games`` when its "자리 무작위 배치" box is checked; the
+server's ``--seating`` only says whether the box opens checked
+(``server/seating.py``). On the e2e default server (``--seating fixed``,
+``common.py``) the box opens cleared and row N plays seat N; on a
+``--seating random`` server it opens checked, survives a language switch
+either way, every posted seat list is a permutation of the rows, the human
+does not always land on seat 0, and the table opens on the human's seat in
+that seat's colour.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from pathlib import Path
 
 from common import Check, chrome, open_context, server
@@ -112,6 +127,52 @@ TABLE_JS = """() => {
     epicBadge: t("render.badge_epic_game"),
   };
 }"""
+
+
+# The seat shuffle box, its note and the rows it leaves alone.
+SEATING_JS = """() => {
+  const box = document.getElementById("opt-shuffle-seats");
+  const note = document.getElementById("opt-shuffle-seats-note");
+  return {
+    checked: box.checked,
+    noteShown: !note.hidden,
+    note: note.textContent.trim(),
+    want: t("html.shuffle_seats_note"),
+    label: box.parentElement.textContent.trim(),
+    wantLabel: t("html.opt_shuffle_seats"),
+    rows: [...document.querySelectorAll("#seat-selects label > span")].map(
+      (span) => span.textContent),
+    kinds: [...document.querySelectorAll("#seat-selects select")].map(
+      (select) => select.value),
+  };
+}"""
+
+# The seat the table opens on, and its panel's colour against the seat's.
+TABLE_SEAT_JS = """() => {
+  const rgb = (color) => {
+    const probe = document.createElement("i");
+    probe.style.color = color;
+    document.body.appendChild(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  };
+  const seat = state.viewSeat;
+  const card = document.querySelector(`#seats article.seat[data-seat="${seat}"]`);
+  return {
+    seats: state.summary.seats,
+    viewSeat: seat,
+    mine: mySeats(),
+    panel: card ? getComputedStyle(card).borderLeftColor : null,
+    want: seat === null ? null : rgb(SEAT_COLORS[seat]),
+  };
+}"""
+
+# One human against three heuristic AIs: a permutation moves the human.
+SHUFFLE_KINDS = ["human", "heuristic", "heuristic", "heuristic"]
+# Held-back creations sampled before one is let through; the human stays on
+# seat 0 in all of them with probability (1/4)^8, about 1.5e-5.
+SAMPLES = 8
 
 
 def shot(page, name: str, selector: str | None = None) -> None:
@@ -407,11 +468,179 @@ def retail_game(base: str, browser) -> None:
     context.close()
 
 
+def open_rows(page, base: str) -> None:
+    """The setup screen once its rows are drawn (after GET /whoami)."""
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    page.wait_for_function(
+        "document.querySelectorAll('#seat-selects select').length === 4"
+    )
+
+
+def seat_rows(page, kinds: list[str]) -> None:
+    for seat, kind in enumerate(kinds):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", kind)
+
+
+def table_seat(page, seats: list[str], label: str) -> None:
+    """The table holds ``seats`` and opens on the human's, in its colour."""
+    human = seats.index("human")
+    table = page.evaluate(TABLE_SEAT_JS)
+    check.ok(table["seats"] == seats, f"{label}: the game seats what was posted", table)
+    check.ok(
+        table["viewSeat"] == human and table["mine"] == [human],
+        f"{label}: the table opens on the human's seat {human + 1}",
+        table,
+    )
+    check.ok(
+        table["panel"] is not None and table["panel"] == table["want"],
+        f"{label}: the human's panel wears SEAT_COLORS[{human}]",
+        table,
+    )
+
+
+def fixed_seating(base: str, browser) -> None:
+    print("[5] --seating fixed: the box opens cleared and row N plays seat N")
+    context, page, rec = open_context(browser, "setup-seating-fixed")
+    open_rows(page, base)
+    form = page.evaluate(SEATING_JS)
+    check.ok(
+        not form["checked"] and not form["noteShown"],
+        "the shuffle box opens cleared and its note hidden",
+        form,
+    )
+    # The human on row 2, so that a kept order is told from seat 0.
+    kinds = ["heuristic", "human", "heuristic", "heuristic"]
+    seat_rows(page, kinds)
+    page.fill("#opt-seed", str(SEED))
+    body = create(page)
+    check.ok(body.get("seats") == kinds, "POST /games keeps the rows' order", body)
+    table_seat(page, kinds, "fixed")
+    context.close()
+
+
+def random_seating(base: str, browser) -> None:
+    print("[6] --seating random: the box opens checked and shuffles the seats")
+    context, page, rec = open_context(browser, "setup-seating-random")
+    open_rows(page, base)
+    form = page.evaluate(SEATING_JS)
+    check.ok(
+        form["checked"] and form["noteShown"],
+        "the shuffle box opens checked with its note shown",
+        form,
+    )
+    check.ok(
+        form["label"] == form["wantLabel"] == "자리 무작위 배치"
+        and form["note"] == form["want"],
+        "Korean: the box and its note are the table's text",
+        form,
+    )
+    check.ok(
+        form["rows"] == ["플레이어1", "플레이어2", "플레이어3", "플레이어4"],
+        "the rows keep their 플레이어1-4 labels",
+        form["rows"],
+    )
+    shot(page, "setup_seating_random_ko.png", ".setup-seats")
+    page.uncheck("#opt-shuffle-seats")
+    check.ok(
+        page.is_hidden("#opt-shuffle-seats-note"), "clearing the box hides its note"
+    )
+    switch(page, "en")
+    form = page.evaluate(SEATING_JS)
+    check.ok(
+        not form["checked"]
+        and not form["noteShown"]
+        and form["label"] == "Random seating",
+        "English: the cleared box stays cleared across the switch",
+        form,
+    )
+    page.check("#opt-shuffle-seats")
+    form = page.evaluate(SEATING_JS)
+    check.ok(
+        form["checked"]
+        and form["noteShown"]
+        and form["note"] == form["want"]
+        and not re.search("[\uac00-\ud7a3]", form["note"] + form["label"]),
+        "English: the box and its note carry no Hangul",
+        form,
+    )
+    switch(page, "ko")
+    check.ok(
+        page.is_checked("#opt-shuffle-seats"),
+        "back in Korean the checked box stays checked",
+    )
+
+    seat_rows(page, SHUFFLE_KINDS)
+    page.fill("#opt-seed", str(SEED))
+    posted: list[list[str]] = []
+
+    def hold(route) -> None:
+        # Sample SAMPLES shuffles without creating a game, then let the first
+        # one through that seats the human off seat 0.
+        if route.request.method != "POST":
+            route.continue_()
+            return
+        seats = route.request.post_data_json["seats"]
+        posted.append(seats)
+        if len(posted) <= SAMPLES or seats.index("human") == 0:
+            route.fulfill(
+                status=409,
+                content_type="application/json",
+                body=json.dumps({"detail": "held back by the e2e"}),
+            )
+        else:
+            route.continue_()
+
+    page.route(re.compile(r"/games$"), hold)
+    created = False
+    for _ in range(SAMPLES + 24):
+        with page.expect_response(
+            lambda r: r.request.method == "POST" and r.url.endswith("/games")
+        ) as answer:
+            page.click("#create-game")
+        if answer.value.status == 200:
+            created = True
+            break
+        page.wait_for_selector("#setup-error:not([hidden])")
+    page.unroute(re.compile(r"/games$"))
+    check.ok(
+        bool(posted)
+        and all(sorted(seats) == sorted(SHUFFLE_KINDS) for seats in posted),
+        "every POST /games carries a permutation of the rows",
+        posted,
+    )
+    sampled = [seats.index("human") for seats in posted[:SAMPLES]]
+    check.ok(
+        len(sampled) == SAMPLES and any(seat != 0 for seat in sampled),
+        f"the human does not land on seat 1 in all {SAMPLES} shuffles",
+        sampled,
+    )
+    check.ok(created, "a shuffled game seating the human off seat 1 starts", posted)
+    if not created:
+        context.close()
+        return
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    settled(page)
+    table_seat(page, posted[-1], "random")
+    form = page.evaluate(SEATING_JS)
+    check.ok(
+        form["kinds"] == SHUFFLE_KINDS,
+        "the setup rows themselves keep the configured order",
+        form["kinds"],
+    )
+    context.close()
+
+
 def main() -> None:
-    with server() as (base, _log), chrome() as browser:
-        go_to_11_epic_game(base, browser)
-        epic_game(base, browser)
-        retail_game(base, browser)
+    with chrome() as browser:
+        with server() as (base, _log):
+            go_to_11_epic_game(base, browser)
+            epic_game(base, browser)
+            retail_game(base, browser)
+            fixed_seating(base, browser)
+        with server("--seating", "random") as (base, _log):
+            random_seating(base, browser)
     check.finish()
 
 
