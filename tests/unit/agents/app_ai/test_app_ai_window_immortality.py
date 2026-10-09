@@ -208,16 +208,19 @@ def test_graft_partner_of_a_plain_card_is_the_default_random_choice(
     """``GraftCardEvaluator`` answers nothing for a non-Graft played card: the
     forced prompt falls to ``DefaultRandomChoice`` (a uniform legal partner)."""
 
-    # Seed 107, round 5: seat 1 placed Experimentation at Imperial Basin with
-    # two Graft partners in hand (Chairdog, Beguiling Pheromones). Seed 3
+    # Seed 193, round 4: seat 3 placed its Signet Ring at Arrakeen with two
+    # Graft partners in hand (Planned Coupling, Face Dancer Initiate). Seed 3
     # reached such a window until 5654d7f8 (a Combat Intrigue pass right
     # after a card play no longer counts as a consecutive pass, 2026-10-07),
-    # and seed 137 until the Conflict-end window opened on public facts
-    # (OQ-103, codec v141) moved its game; of seeds 1-106 every first Graft
-    # window has a Graft card placed or a plain card with one partner.
-    state = _graft(107)
+    # seed 137 until the Conflict-end window opened on public facts (OQ-103,
+    # codec v141) moved its game, and seed 107 until Imperial Privilege's
+    # card draw became its own icon (2026-10-10, OQ-027 (d)) moved its game
+    # at round 3 seat 3's Imperial Privilege visit; of seeds 1-192 every
+    # first Graft window now has a Graft card placed or a plain card with one
+    # partner.
+    state = _graft(193)
     placed, _space = _graft_parts(state)
-    assert placed.endswith("experimentation:0")
+    assert placed.endswith("signet_ring:0")
     assert _evaluator_partner(state, rng_seed)[0] is None
     run = _run(state, rng_seed=rng_seed)
     legal = run.by_id("choose_graft_partner")

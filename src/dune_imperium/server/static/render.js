@@ -1583,16 +1583,6 @@ function unavailableText(why) {
   return TERM_LANGUAGE === "ko" && why.reason_ko ? phraseText(why.reason_ko) : why.reason;
 }
 
-/* A greyed-out row whose action's own label says more than is unavailable:
-   Imperial Privilege's recall also draws a card (labels.js
-   recall_agent_for_imperial_privilege), but with no other Agent to recall
-   (display/unavailable.py _imperial_privilege_recall) only the recall is
-   missing; the draw is still offered beside it
-   (resolve_imperial_privilege_without_recall). */
-const UNAVAILABLE_ROW_TEXT = {
-  recall_agent_for_imperial_privilege: "render.unavailable_imperial_privilege_recall",
-};
-
 /* One greyed-out row: like unavailableLineItem, not an .action-item (which
    focusActions matches by its refs) and not a disabled button (which means
    "busy" on this page). */
@@ -1606,8 +1596,7 @@ function unavailableRow(row) {
   item.title = t("render.unavailable_title");
   const body = document.createElement("span");
   body.className = "unavailable-body";
-  const own = UNAVAILABLE_ROW_TEXT[row.action.action_id];
-  body.appendChild(own ? tNode(own) : describeAction(row.action));
+  body.appendChild(describeAction(row.action));
   /* A waiting effect names the card it sits on. A card that cannot be
      bought shows no cost of its own: its reason names the cost and what
      the seat holds ("Needs 5 Persuasion (you have 3)"). */

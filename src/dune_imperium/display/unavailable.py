@@ -1342,10 +1342,12 @@ def _imperial_privilege_recall(state: GameState, seat: int, found: _Found) -> No
     """Imperial Privilege's recall when no other Agent can be recalled.
 
     The provider then offers only ``resolve_imperial_privilege_without_recall``
-    (the recall is skipped and the card still drawn, OQ-023), exactly when
+    (the recall is skipped, OQ-023; the card draw is the space's own
+    ``cards`` icon, user ruling 2026-10-10), exactly when
     ``imperial_privilege_recall_targets`` is empty; the recall shows greyed
-    out beside it with the reason. Targets never grow within one Agent turn,
-    so the row cannot light up again.
+    out beside it with the reason, its plain label naming the recall alone.
+    Targets never grow within one Agent turn, so the row cannot light up
+    again.
     """
 
     if imperial_privilege_recall_targets(state, seat) != ():

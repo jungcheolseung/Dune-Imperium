@@ -342,6 +342,13 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``agent_turn`` beside the discounted one on a costed space. Legal-action
 # sequences change with no template change, so saves and replays from v141
 # are refused by the version check.
+# Also in v142 (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
+# recall and its card draw are two steps. The draw is the space's own
+# ``resolve_board_effect(effect=cards)`` icon, ordered freely with the
+# Intrigue slot and the recall; ``recall_agent_for_imperial_privilege``,
+# ``recall_conflict_agent_for_imperial_privilege`` and
+# ``resolve_imperial_privilege_without_recall`` no longer draw. No template
+# change.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -770,7 +777,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_trash",
             "decline_intrigue_spy",
             "decline_imperial_privilege_intrigue",
-            # Imperial Privilege's recall with no target is confirmed.
+            # Imperial Privilege's recall with no target is confirmed (the
+            # card draw is the space's own ``cards`` icon, codec v142).
             "resolve_imperial_privilege_without_recall",
             "resolve_intrigue_rewards",
         )

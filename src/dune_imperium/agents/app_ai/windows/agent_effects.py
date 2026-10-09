@@ -89,9 +89,11 @@ The space:
 - ``trash_intrigue_for_imperial_privilege(card)`` /
   ``decline_imperial_privilege_intrigue``: ``ImperialPrivilegeAbility`` (O);
   card -> trash, unused -> decline.
-- ``recall_agent_for_imperial_privilege(space)``: ``RecallAgentAbility`` (E)
-  (the space's draw rides along); ``resolve_imperial_privilege_without_recall``:
-  the space's ``DrawAbility`` (600 or E).
+- ``recall_agent_for_imperial_privilege(space)``: ``RecallAgentAbility`` (E);
+  the space's draw is its own ``resolve_board_effect(cards)``, the
+  ``DrawAbility`` (600 or E), as in the app (user ruling 2026-10-10, OQ-027
+  (d)); ``resolve_imperial_privilege_without_recall`` (no Agent to recall)
+  confirms the skipped recall only: a chore, no app question.
 - ``resolve_faction_influence``: ``GainInfluenceAbility`` (space), 600 or (E)
   at its ``DeferValue``.
 
@@ -1577,9 +1579,11 @@ def _imperial_privilege(t: _Turn) -> None:
     recall = t.by_id("recall_agent_for_imperial_privilege")
     conflict = t.run.first("recall_conflict_agent_for_imperial_privilege")
     if recall or conflict is not None:
-        # UNTRACED order: our engine draws the space's card with the recall;
-        # the app draws it at state 600 unless the threshold is reached.
-        # Duncan's Into the Fray Agent is the last candidate (D55).
+        # The recall only recalls: the space's card is its own
+        # ``resolve_board_effect(cards)`` (``_board_icons``), the app's
+        # ``DrawAbility`` at state 600 unless the threshold is reached (user
+        # ruling 2026-10-10, OQ-027 (d)). Duncan's Into the Fray Agent is the
+        # last candidate (D55).
         _choice_source(
             t,
             "Imperial Privilege recall",
@@ -1591,13 +1595,10 @@ def _imperial_privilege(t: _Turn) -> None:
         )
     without = t.run.first("resolve_imperial_privilege_without_recall")
     if without is not None:
-        _ability_source(
-            t,
-            "Imperial Privilege draw",
-            _first_of(t.space, DrawAbility),
-            _ROW_SPACE,
-            without,
-        )
+        # No Agent to recall: the confirm has no app question (the app's
+        # ``RecallAgentAbility`` cannot run), so it is a chore taken when the
+        # app would End Turn; the draw is ``_board_icons``' own.
+        t.chores.append(without)
 
 
 # -- Bloodlines and Arrakeen Scouts on the space ---------------------------------------

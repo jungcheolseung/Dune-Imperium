@@ -65,8 +65,11 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "play_intrigue": 3.0,
     "resolve_agent_card_effect": 2.0,
     "resolve_board_effect": 2.0,
-    # Imperial Privilege's card draw when no Agent can be recalled: drawn
-    # right after the Intrigue slot, as before the confirm existed.
+    # Imperial Privilege's skipped recall when no Agent can be recalled:
+    # confirmed as soon as offered, like the icon resolutions. Its card draw
+    # is the space's own ``resolve_board_effect(cards)`` (user ruling
+    # 2026-10-10, OQ-027 (d)), which at 2.0 the agent takes before the
+    # Intrigue slot and the recall (1.0 each, or a decline).
     "resolve_imperial_privilege_without_recall": 2.0,
     "gather_intelligence": 2.0,
     "resolve_espionage_place_spy": 2.0,
