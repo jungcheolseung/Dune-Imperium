@@ -471,9 +471,11 @@ def test_no_other_reader_learns_the_glowglobes_top_card() -> None:
                 seen = _obj(payload)["view"]
             assert top not in json.dumps(seen), name
 
-    # The live game opens no review, for the owner's seat or any other.
+    # The live game opens no review, for the owner's seat or any other: it is
+    # refused because the game is not over (sessions.py _require_finished),
+    # not for some other reason a broader SessionError would also accept.
     for seat in range(4):
-        with pytest.raises(SessionError):
+        with pytest.raises(SessionError, match="opens after the game finishes"):
             manager.review_state(game_id, seat, 0)
 
 
