@@ -4,6 +4,22 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-08 Bloodlines Tech 타일을 앱의 Rise of Ix 타일 틀로 (codec 그대로)
+
+사용자 제안 "Rise of Ix의 tech tile 애셋으로 Bloodlines 타일도". 브랜치 `claude/worktree-branch-status-6d27d9`.
+
+- `scripts/dwgr/app_cards.py render --kind tech`가 Bloodlines Tech 타일 18장(영어·한국어, `--scale 1.25`로 992×650)을 에셋 `cards/app/<언어>/bloodlines/tech/`에 그린다. 플레이 UI는 앱 앞면을 스캔보다 먼저 쓰므로(`display/images.py`) 코드 변경 없이 이 타일을 띄운다.
+- 앱의 타일은 그림 없는 틀(프레임·비용 육각·획득 띠·Hagal 조개 워터마크)이라 그대로 쓴다.
+  - 본문은 `en_text.json`/`ko_text.json`의 `card.techtile.<slug>.ability`(agent 둘이 따로 받아 적고 판정).
+  - 획득 띠는 엔진 `TechTile`의 획득 효과를 앱 아이콘으로 바꾼다. 오니솝터는 교전 카드의 배틀 아이콘(`Conflict_Thopter`)이다(사용자 지적).
+- 실물에 맞춘 것(사용자 요청 셋 포함):
+  - 제목 잉크는 금색 띠 가운데(실물은 아래쪽이지만 사용자가 가운데를 원함).
+  - 본문은 자동 줄바꿈 없이 인쇄된 줄마다 한 줄(텍스트 표의 `<br>`, 41.4pt·줄 간격 1.27배), `<stack>a<br>b</stack>나머지`로 "Command / (6+) : 아이콘" 모양. 타일별 세로 위치는 영어 스캔에서 잰 표(`TECH_BODY_SHIFT`).
+  - 획득 띠의 아이콘과 비용 숫자는 스캔에서 잰 인쇄 크기.
+- 받아 적다 찾은 실수: Forbidden Weapons의 넷째 아이콘은 영향력 잃기(`WildRankDown`)다(처음엔 얻기로 넣었다).
+- 에셋 저장소 커밋 `f101779`·`3a0921f`·`86ca4e8`(그 master에 직접)과 함께 푸시해야 한다.
+- 문구를 고치면 `--kind tech --all --lang en,ko --scale 1.25`로 다시 그리고 `compare`로 스캔과 대조한다. E2E `tech_acquire.py`가 타일을 띄운다.
+
 ## 2026-10-09 서버 런처: 터미널 없이 창에서 플레이 서버 켜고 끄기 (codec 그대로)
 
 사용자 요청(2026-10-08) "서버를 터미널 명령 대신 GUI로, Mac과 Windows에서" → 계획 [`server-launcher-plan.md`](server-launcher-plan.md)(다섯 안 중 tkinter 창). 결정은 "추천대로 가자, 1단계부터 시작해"(9절 15개 모두 추천안). 브랜치 `claude/server-gui-plan-aca18e`, 1~6단계.

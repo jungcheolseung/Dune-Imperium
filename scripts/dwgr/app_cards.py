@@ -37,10 +37,11 @@ import sys
 from pathlib import Path
 
 import app_render as R
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from dune_imperium.agents.app_ai import catalog
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
+from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.display.images import load_card_manifest
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
@@ -1573,18 +1574,587 @@ def bind_contract(inp, spec, lang):
     return bind_prefab_texts(inp, t, lang, spec["prefab"])
 
 
+# ---------------------------------------------------------------- tech tiles
+# Bloodlines' 18 Tech tiles on the app's Tech tile template, the Rise of Ix
+# tiles' prefabs: frame, cost hexagon, acquire strip, TextMeshPro title and
+# body, and the House Hagal watermark that marks a Rival tile. The app has no
+# Bloodlines content, so the printed English comes from en_text.json
+# (card.techtile.<slug>.ability) and the Korean from ko_text.json; the acquire
+# strip is derived from the engine's tile definition with the app's own icons.
+TECH_BY_ID = {tile.tech_id: tile for tile in TECH_TILES}
+# Every tile is drawn on the Windtraps prefab, whose acquire root holds both
+# strip pictures (short and long); the binder places the icons itself.
+TECH_TEMPLATE = "UI_crd_TechTile_Windtraps.prefab.json"
+# strip icon -> (sprite, from the inline set?, printed ink box w x h): each
+# icon is drawn so its visible ink fills the box measured on the scans
+TECH_STRIP_ICONS = {
+    "ShieldWallBreak": ("UI_crd_ActionIcon_BlowWall", False, (54.0, 61.0)),
+    "SignetRing": ("UI_crd_ActionIcon_SignetRing", False, (62.0, 52.0)),
+    "VictoryPoint": ("UI_crd_ActionIcon_VictoryPoint", False, (58.0, 59.0)),
+    "Solari": ("Solari_{n}", True, (65.0, 66.0)),
+    "Contract": ("UI_crd_ActionIcon_CHOAMContract", False, (65.0, 44.0)),
+    "WildRankUp": ("WildRankUp", False, (53.0, 58.0)),
+    "DrawCard": ("DrawCard", True, (66.0, 100.0)),
+    "IntrigueCard": ("IntrigueCard", False, (66.0, 100.0)),
+    "TrashCard": ("TrashCard", False, (66.0, 100.0)),
+    "Troop": ("Troop", False, (57.0, 60.0)),
+    "SuperSpy": ("SuperSpy", True, (65.0, 78.0)),
+}
+TECH_STRIP_PAIR = 0.86  # two like cards stacked print smaller (Self-Destroying)
+TECH_STRIP_TOP = 241.0  # the icons' top, just below the chevron (tile's top)
+TECH_STRIP_X = 62.5  # the icons' centre (from the tile's left)
+TECH_STRIP_GAPS = (7.0, 34.0)  # between icons; across a printed -OR-
+TECH_STRIP_SHORT = 136.0  # icons up to this tall fit the short strip
+# the print sets the title in a bold face, smaller than the app's Gotham Book 52
+TECH_TITLE = {"font": "Gotham-Bold SDF", "max": 46.0}
+# the cost: the app's Gotham Medium, smaller than its 115 and moved to where
+# the scans print it in the hexagon (measured against the hexagon's tip)
+TECH_COST = {"font": "Gotham-Medium SDF", "size": 108.0, "shift": (-4.0, -2.5)}
+# the gold title band covers the frame's top 81 units; the title's ink is
+# centred on it
+TECH_BAND_MIDDLE = 40.5
+# The body as printed: one TextMeshPro line per printed row (the text tables
+# give the rows, separated by <br>; an empty row is a paragraph gap), at the
+# print's size and line pitch, each row centred. "<stack>a<br>b</stack>rest"
+# sets rows a and b as one block with `rest` (a colon, icons) beside it,
+# centred on the block's ink, as the prints set "Command / (6+) : [2]".
+TECH_BODY_SIZE = 41.4  # the printed rows' widths match the scans at this size
+TECH_BODY_MIN = 26.0
+TECH_ROW_GAP = 0.27  # x size between row boxes: the print's pitch is 1.27 x size
+TECH_PARA_GAP = 0.38  # x size more for an empty row
+TECH_BODY_CENTRE = (40.0, -30.0)  # from the tile's centre, Unity axes
+# The prints do not centre every body alike; each tile's body is moved down
+# (+) or up (-) by these units, measured on the English scans by pairing the
+# printed text rows with the rendered ones (the Korean photos are too uneven
+# to measure, and their layout is the same)
+TECH_BODY_SHIFT = {
+    "choam_transports": 7.0,
+    "delivery_bay": 11.0,
+    "forbidden_weapons": 3.0,
+    "gene_locked_vault": -9.5,
+    "glowglobes": -7.0,
+    "navigation_chamber": 13.0,
+    "panopticon": -3.0,
+    "planetary_array": 3.0,
+    "plasteel_blades": -12.0,
+    "rapid_dropships": 7.0,
+    "sardaukar_high_command": 14.0,
+    "self_destroying_messages": -4.0,
+    "servo_receivers": 3.0,
+    "spy_drones": -5.0,
+    "suspensor_suits": -3.0,
+    "training_depot": -3.0,
+}
+TECH_BODY_BOX = (600.0, 420.0)  # the rows shrink when the body outgrows this
+TECH_SIDE_GAPS = (0.25, 0.45)  # x size: block to colon, colon (or block) to icons
+TECH_STACK = re.compile(r"<stack>(.*?)</stack>(.*)$", re.S)
+# a row of faction symbols alone prints them as framed Agent icons (Servo-
+# Receivers), the app's Agent icon pictures; consecutive such rows sit close
+TECH_AGENT_ROW = re.compile(
+    r"^(?:\s*(?:<size=[^>]*>|</size>)*\s*"
+    r"<sprite name=(?:Emperor|SpacingGuild|BeneGesserit|Fremen)>)+"
+    r"\s*(?:</size>)?\s*$"
+)
+TECH_AGENT_ICON = (134.0, 98.0)  # width, height as printed
+TECH_AGENT_GAPS = (46.0, 2.0)  # between icon rects (the art leaves ~10 of shadow below)
+# the CHOAM Module tiles print the CHOAM mark before the name
+TECH_CHOAM_MARK = "<sprite name=CHOAMSet> "
+# an icon-only line is marked <size=150%> in the text tables (the app's own
+# convention); the print draws those icons a little larger
+TECH_ICON_LINE = ("<size=150%>", "<size=170%>")
+TECH_OR = {"en": "—OR—", "ko": "—또는—"}
+# the set mark printed in the bottom-right corner: four small dots, above the
+# Hagal shell on a Rival tile and in its place otherwise (template units from
+# the tile's top-left corner, measured on the scans)
+TECH_SET_MARK = (747.0, 443.0)
+TECH_SET_MARK_ABOVE_SHELL = 33.0
+
+
+def tech_strip(tile):
+    """The acquire strip's icons top to bottom as the tiles print them."""
+    out = []
+    if tile.acquire_may_destroy_shield_wall:
+        out.append("ShieldWallBreak")
+    if tile.acquire_leader_signet:
+        out.append("SignetRing")
+    out += ["VictoryPoint"] * tile.acquire_victory_points
+    if tile.acquire_solari:
+        out.append(f"Solari_{tile.acquire_solari}")
+    out += ["Contract"] * tile.acquire_contracts
+    if tile.acquire_influence_choice:
+        out.append("WildRankUp")
+    if tile.acquire_intrigue_or_card:
+        out += ["IntrigueCard", "OR", "DrawCard"]
+    out += ["DrawCard"] * tile.acquire_cards
+    out += ["IntrigueCard"] * tile.acquire_intrigue
+    if tile.acquire_may_trash_card:
+        out.append("TrashCard")
+    out += ["Troop"] * tile.acquire_troops
+    out += ["SuperSpy"] * tile.acquire_deep_cover_spies
+    return out
+
+
+def tech_spec(inp, content_id):
+    tile = TECH_BY_ID[content_id]
+    key = f"card.techtile.{content_id.replace('_', '')}.ability"
+    en = inp.en.get(key)
+    return {
+        "kind": "tech",
+        "id": content_id,
+        "title": {"en": tile.name, "ko": KOREAN_CARD_NAMES["tech"].get(content_id)},
+        "cost": tile.cost,
+        "rival": tile.rival,
+        "choam": tile.choam_only,
+        "strip": tech_strip(tile),
+        "texts": [{"key": key, "en": en, "ko": inp.ko.get(key)}],
+        "art": "tech" if en else None,
+        "skip": None if en else "no English text (en_text.json)",
+        "path": inp.manifest.get(("tech", content_id)),
+    }
+
+
+def tech_image_node(sprite, inline, w, h, name="Icon"):
+    """A root-level Image node (place it with tech_place)."""
+    return {
+        "name": name,
+        "active": True,
+        "children": [],
+        "inline": inline,
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [w, h],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            },
+            {"_": "CanvasRenderer"},
+            {
+                "_": "Image",
+                "m_Color": [1.0, 1.0, 1.0, 1.0],
+                "m_Sprite": "Sprite:" + sprite,
+                "m_Type": 0,
+                "m_PreserveAspect": 1,
+            },
+        ],
+    }
+
+
+def tech_strip_icon(inp, name, scale=1.0):
+    """Strip icon `name` drawn so its ink fills the printed box; returns the
+    node and its ink (w, h, offset from the ink's centre to the node's)."""
+    base, _, n = name.partition("_")
+    sprite, inline, (bw, bh) = TECH_STRIP_ICONS[base]
+    sprite = sprite.format(n=n)
+    img = (inp.inline if inline else inp.sprites).get(sprite)
+    alpha = img.getchannel("A").point(lambda v: 255 if v > 40 else 0)
+    x0, y0, x1, y1 = alpha.getbbox()
+    k = min(bw / (x1 - x0), bh / (y1 - y0)) * scale
+    node = tech_image_node(sprite, inline, img.width * k, img.height * k)
+    ink = (
+        (x1 - x0) * k,
+        (y1 - y0) * k,
+        (img.width - x0 - x1) / 2 * k,
+        (img.height - y0 - y1) / 2 * k,
+    )
+    return node, ink
+
+
+def tech_place(node, cx, cy):
+    """Centre a root-level node at (cx, cy), measured from the tile's top left."""
+    R.comp(node, "RT")["pos"] = [cx - 397.0, 260.0 - cy]
+
+
+def tech_or_node(lang):
+    """The printed -OR- between two strip icons (Gene-Locked Vault)."""
+    node = {
+        "name": "OrText",
+        "active": True,
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [92.0, 30.0],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            },
+            {"_": "CanvasRenderer"},
+            {
+                "_": "TextMeshProUGUI",
+                "m_text": TECH_OR[lang],
+                "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
+                "m_fontSize": 19.0,
+                "m_fontSizeMin": 10.0,
+                "m_fontSizeMax": 19.0,
+                "m_enableAutoSizing": 0,
+                "m_fontColor": [1.0, 1.0, 1.0, 1.0],
+                "m_Color": [1.0, 1.0, 1.0, 1.0],
+                "m_HorizontalAlignment": 2,
+                "m_VerticalAlignment": 512,
+                "m_fontStyle": 1,
+                "m_characterSpacing": 0.0,
+                "m_lineSpacing": 0.0,
+            },
+        ],
+        "children": [],
+        "text": TECH_OR[lang],
+    }
+    if lang == "ko":
+        node["fallback"] = str(KOREAN_FONT_BOLD)
+    return node
+
+
+def tech_strip_nodes(inp, strip, lang):
+    """The acquire strip's icons and -OR- as root-level nodes, stacked from
+    just below the chevron, and whether they need the long strip."""
+    pair = len(strip) == 2 and strip[0] == strip[1] and strip[0].endswith("Card")
+    nodes, y, bottom, after_or = [], TECH_STRIP_TOP, None, False
+    for name in strip:
+        if name == "OR":
+            y += TECH_STRIP_GAPS[1] - TECH_STRIP_GAPS[0]
+            after_or = True
+            continue
+        node, (w, h, dx, dy) = tech_strip_icon(
+            inp, name, TECH_STRIP_PAIR if pair else 1.0
+        )
+        if after_or:
+            label = tech_or_node(lang)
+            tech_place(label, TECH_STRIP_X, (bottom + y) / 2)
+            nodes.append(label)
+            after_or = False
+        tech_place(node, TECH_STRIP_X + dx, y + h / 2 + dy)
+        nodes.append(node)
+        bottom = y + h
+        y = bottom + TECH_STRIP_GAPS[0]
+    height = (bottom or TECH_STRIP_TOP) - TECH_STRIP_TOP
+    return nodes, height > TECH_STRIP_SHORT
+
+
+def tech_set_mark(spec):
+    """Draw the four-dot set mark after rendering (no app sprite for it)."""
+
+    def post(img, scale):
+        draw = ImageDraw.Draw(img)
+        cx, cy = TECH_SET_MARK
+        if spec["rival"]:
+            cy -= TECH_SET_MARK_ABOVE_SHELL
+        r, gap = 2.7 * scale, 9.5 * scale
+        for dx in (-gap / 2, gap / 2):
+            for dy in (-gap / 2, gap / 2):
+                x, y = cx * scale + dx, cy * scale + dy
+                draw.ellipse((x - r, y - r, x + r, y + r), fill=(208, 212, 196, 150))
+        return img
+
+    return post
+
+
+def tech_probe(inp, node, w, h, pad=60.0, scale=2.0):
+    """Render one node alone; its ink's top and bottom from the rect's top."""
+    probe = copy.deepcopy(node)
+    R.comp(probe, "RT").update(pos=[0.0, 0.0], size=[w, h])
+    W, H = w + 2 * pad, h + 2 * pad
+    root = {
+        "name": "Probe",
+        "active": True,
+        "children": [probe],
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [W, H],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            }
+        ],
+    }
+    img = R.CardRenderer(inp.sprites, inp.text, scale).render(root, W, H)
+    box = img.getchannel("A").point(lambda v: 255 if v > 60 else 0).getbbox()
+    if not box:
+        return 0.0, h
+    return box[1] / scale - pad, box[3] / scale - pad
+
+
+def tech_centre_title(inp, head):
+    """Move the title so its ink sits in the middle of the gold band."""
+    probe = copy.deepcopy(head)
+    root = {
+        "name": "Probe",
+        "active": True,
+        "children": [probe],
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [794.0, 520.0],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            }
+        ],
+    }
+    img = R.CardRenderer(inp.sprites, inp.text, 2.0).render(root, 794, 520)
+    box = img.getchannel("A").point(lambda v: 255 if v > 60 else 0).getbbox()
+    if box:
+        R.comp(head, "RT")["pos"][1] += (box[1] + box[3]) / 4.0 - TECH_BAND_MIDDLE
+
+
+def tech_rows(text):
+    """The printed rows: <br> outside a <stack> block ends a row."""
+    rows, buf, depth = [], "", 0
+    for part in re.split(r"(<stack>|</stack>|<br>)", text):
+        if part == "<br>" and depth == 0:
+            rows.append(buf)
+            buf = ""
+            continue
+        depth += {"<stack>": 1, "</stack>": -1}.get(part, 0)
+        buf += part
+    rows.append(buf)
+    return rows
+
+
+def tech_text_node(base, text, size, lang):
+    tmp = copy.deepcopy(base)
+    tmp.update(
+        {
+            "m_fontSize": size,
+            "m_fontSizeMin": size,
+            "m_fontSizeMax": size,
+            "m_enableAutoSizing": 0,
+            "m_HorizontalAlignment": 2,
+            "m_VerticalAlignment": 256,
+            "m_lineSpacing": 0.0,
+            "m_paragraphSpacing": 0.0,
+            "m_margin": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0},
+        }
+    )
+    node = {
+        "name": "Row",
+        "active": True,
+        "children": [],
+        "text": text,
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [0.0, 0.0],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            },
+            {"_": "CanvasRenderer"},
+            tmp,
+        ],
+    }
+    if lang == "ko":
+        # the Korean tiles print the body in a bold gothic
+        node["fallback"] = str(KOREAN_FONT_BOLD)
+    return node
+
+
+def tech_measure(inp, node):
+    """A one-row text node: (width, height) as the renderer lays it out, the
+    span it takes in the column and its ink, both from the rect's top. The
+    span is the font's line box where the row has words, so text rows keep
+    the printed pitch, joined with the ink, so a big icon takes only the room
+    it shows (an icon's line box carries its sprite's empty margin)."""
+    tmp = R.comp(node, "TextMeshProUGUI")
+    tx = inp.text
+    tx.cur_fallback = node.get("fallback") or tx.fallback_path
+    tx.force_tt = bool(node.get("fallback"))
+    size = float(tmp["m_fontSize"])
+    style = int(tmp.get("m_fontStyle", 0))
+    font_name = tmp["m_fontAsset"].split(":", 1)[1]
+    _, lines, w, h = tx.fit(
+        node["text"].rstrip("\n "),
+        font_name,
+        1e5,
+        1e5,
+        size,
+        size,
+        size,
+        False,
+        smallcaps=bool(style & 32),
+        upper=bool(style & 16),
+        char_spacing=float(tmp.get("m_characterSpacing", 0.0)),
+        line_spacing=0.0,
+        para_spacing=0.0,
+    )
+    ink = tech_probe(inp, node, w, h)
+    top, bottom = ink
+    sizes = [i["size"] for i in lines[0]["items"] if i["kind"] in ("ch", "tt")]
+    if sizes:
+        # the line box of the row's own type size (a small aside takes less)
+        font, sz, asc = tx.font(font_name), max(sizes), lines[0]["asc"]
+        top = min(top, asc - font.asc * sz / font.point)
+        bottom = max(bottom, asc - font.desc * sz / font.point)
+    return w, h, (top, bottom), ink
+
+
+def tech_line(inp, base, text, size, lang):
+    node = tech_text_node(base, text, size, lang)
+    w, h, (top, bottom), _ = tech_measure(inp, node)
+    return {"w": w, "h": bottom - top, "parts": [[node, w / 2, -top, w, h]]}
+
+
+def tech_stack(inp, base, inner, rest, size, lang):
+    """Rows `inner` as one centred block, `rest` beside it on the block's ink."""
+    gap = TECH_ROW_GAP * size
+    parts, span, ink, y = [], [], [], 0.0
+    lines = [tech_text_node(base, t, size, lang) for t in inner.split("<br>")]
+    dims = [tech_measure(inp, n) for n in lines]
+    block_w = max(d[0] for d in dims)
+    for node, (w, h, (t0, t1), (i0, i1)) in zip(lines, dims, strict=True):
+        rect_top = y - t0
+        parts.append([node, block_w / 2, rect_top, w, h])
+        span += [y, y + t1 - t0]
+        ink += [rect_top + i0, rect_top + i1]
+        y += t1 - t0 + gap
+    middle = (min(ink) + max(ink)) / 2
+    m = re.match(r"\s*([^<]*?)\s*(<.*)?$", rest, re.S)
+    x = block_w
+    for text, g in ((m.group(1), TECH_SIDE_GAPS[0]), (m.group(2), TECH_SIDE_GAPS[1])):
+        if not (text or "").strip():
+            continue
+        node = tech_text_node(base, text, size, lang)
+        w, h, (t0, t1), (i0, i1) = tech_measure(inp, node)
+        rect_top = middle - (i0 + i1) / 2
+        x += g * size
+        parts.append([node, x + w / 2, rect_top, w, h])
+        span += [rect_top + t0, rect_top + t1]
+        x += w
+    top = min(span)
+    for p in parts:
+        p[2] -= top
+    return {"w": x, "h": max(span) - top, "parts": parts}
+
+
+def tech_agent_row(row):
+    """Framed Agent icons, side by side, for a row of faction symbols."""
+    w, h = TECH_AGENT_ICON
+    names = re.findall(r"<sprite name=([A-Za-z]+)>", row)
+    parts, x = [], 0.0
+    for name in names:
+        node = tech_image_node(AGENT_ICONS[name], False, w, h, "AgentIcon")
+        parts.append([node, x + w / 2, 0.0, w, h])
+        x += w + TECH_AGENT_GAPS[0]
+    return {"w": x - TECH_AGENT_GAPS[0], "h": h, "parts": parts, "agents": True}
+
+
+def tech_layout(inp, base, rows, size, lang):
+    blocks = []
+    for row in rows:
+        m = TECH_STACK.match(row)
+        if not row.strip():
+            blocks.append(None)
+        elif TECH_AGENT_ROW.match(row):
+            blocks.append(tech_agent_row(row))
+        elif m:
+            blocks.append(tech_stack(inp, base, m.group(1), m.group(2), size, lang))
+        else:
+            blocks.append(tech_line(inp, base, row, size, lang))
+    real = [b for b in blocks if b]
+    para = TECH_PARA_GAP * size
+    gaps = [
+        TECH_AGENT_GAPS[1]
+        if a.get("agents") and b.get("agents")
+        else TECH_ROW_GAP * size
+        for a, b in zip(real, real[1:], strict=False)
+    ]
+    height = sum(b["h"] for b in real) + sum(gaps) + para * blocks.count(None)
+    nodes, top, seen = [], height / 2, 0
+    for b in blocks:
+        if b is None:
+            top -= para
+            continue
+        if seen:
+            top -= gaps[seen - 1]
+        seen += 1
+        for node, x, y, w, h in b["parts"]:
+            rt = R.comp(node, "RT")
+            rt["pos"] = [x - b["w"] / 2, top - y - h / 2]
+            rt["size"] = [w if b.get("agents") else w + 8.0, h]
+            nodes.append(node)
+        top -= b["h"]
+    return nodes, max(b["w"] for b in real), height
+
+
+def tech_body(inp, t, spec, lang):
+    body_root = R.find(t, "BodyRoot")
+    template = next(
+        n for n in R.find_all_nodes(body_root) if R.comp(n, "TextMeshProUGUI")
+    )
+    base = copy.deepcopy(R.comp(template, "TextMeshProUGUI"))
+    rt = R.comp(body_root, "RT")
+    x, y = TECH_BODY_CENTRE
+    rt["pos"] = [x, y - TECH_BODY_SHIFT.get(spec["id"], 0.0)]
+    rt["size"] = list(TECH_BODY_BOX)
+    rows = tech_rows(pick(spec["texts"][0], lang).replace(*TECH_ICON_LINE))
+    size = TECH_BODY_SIZE
+    while True:
+        nodes, w, h = tech_layout(inp, base, rows, size, lang)
+        fits = w <= TECH_BODY_BOX[0] and h <= TECH_BODY_BOX[1]
+        if fits or size <= TECH_BODY_MIN:
+            break
+        size -= 0.5
+    body_root["children"] = nodes
+
+
+def bind_tech(inp, spec, lang):
+    t = copy.deepcopy(inp.tree(TECH_TEMPLATE))
+    # the frame's own size, so its rounded corners are not clipped, and no
+    # drop shadow beyond it; the prefab root also carries a stray Intrigue front
+    R.comp(t, "RT")["size"] = [794.0, 520.0]
+    t["hide_image"] = True
+    R.find(t, "Shadow")["active"] = False
+    head = R.find(t, "HeaderRoot")
+    head["text"] = spec["title"].get(lang) or spec["title"]["en"]
+    if spec["choam"]:
+        head["text"] = TECH_CHOAM_MARK + head["text"]
+    head["font_override"] = TECH_TITLE["font"]
+    head["tmp_patch"] = {"m_fontSizeMax": TECH_TITLE["max"]}
+    if lang == "ko":
+        head["fallback"] = str(KOREAN_FONT_BOLD)
+    cost = R.find(t, "CostText")
+    cost["text"] = str(spec["cost"])
+    cost["font_override"] = TECH_COST["font"]
+    cost["tmp_patch"] = {"m_fontSize": TECH_COST["size"]}
+    pos = R.comp(cost, "RT")["pos"]
+    pos[0] += TECH_COST["shift"][0]
+    pos[1] += TECH_COST["shift"][1]
+    tech_centre_title(inp, head)
+    tech_body(inp, t, spec, lang)
+    R.find(t, "HagalIcon")["active"] = bool(spec["rival"])
+    icons, long_strip = tech_strip_nodes(inp, spec["strip"], lang)
+    R.find(t, "AcquireSmall")["active"] = bool(icons) and not long_strip
+    R.find(t, "AcquireLarge")["active"] = bool(icons) and long_strip
+    R.find(t, "UI_crd_Element_TechTile_Side_OneIcon")["active"] = False
+    t["children"] += icons
+    t["_post"] = [tech_set_mark(spec)]
+    return t
+
+
 # ---------------------------------------------------------------- render
 BINDERS = {
     "imperium": lambda inp, spec, lang: bind_dynamic(inp, spec, lang),
     "intrigue": lambda inp, spec, lang: bind_intrigue(inp, spec, lang),
     "conflict": lambda inp, spec, lang: bind_conflict(inp, spec, lang),
     "contract": lambda inp, spec, lang: bind_contract(inp, spec, lang),
+    "tech": lambda inp, spec, lang: bind_tech(inp, spec, lang),
 }
 SPECS = {
     "imperium": lambda inp, cid: imperium_spec(inp, cid),
     "intrigue": lambda inp, cid: intrigue_spec(inp, cid),
     "conflict": lambda inp, cid: conflict_spec(inp, cid),
     "contract": lambda inp, cid: contract_spec(inp, cid),
+    "tech": lambda inp, cid: tech_spec(inp, cid),
 }
 # Rise of Ix cards in play: Epic Game Mode's starting card and Conflict III.
 EPIC_GAME_MODE_IDS = frozenset({"control_the_spice", "economic_supremacy"})
@@ -1612,6 +2182,7 @@ KIND_IDS = {
         for cid, short in catalog.CONTRACT_ARCHETYPES.items()
         if ".Uprising." in short
     ],
+    "tech": lambda: [tile.tech_id for tile in TECH_TILES],
 }
 
 
@@ -1620,7 +2191,10 @@ def render_card(inp, spec, lang, scale):
     size = R.comp(tree, "RT")["size"]
     r = R.CardRenderer(inp.sprites, inp.text, scale, custom=custom_draw(inp))
     r.alt = inp.inline
-    return r.render(tree, int(size[0]), int(size[1]))
+    img = r.render(tree, int(size[0]), int(size[1]))
+    for post in tree.get("_post", ()):
+        img = post(img, scale)
+    return img
 
 
 def card_ids(args):
@@ -1652,7 +2226,13 @@ def cmd_render(args):
     for kind, cid in card_ids(args):
         spec = SPECS[kind](inp, cid)
         if not spec["art"] or not spec["path"]:
-            skipped.append((cid, "no art" if not spec["art"] else "no manifest path"))
+            skipped.append(
+                (
+                    cid,
+                    spec.get("skip")
+                    or ("no art" if not spec["art"] else "no manifest path"),
+                )
+            )
             continue
         for lang in langs:
             if lang == "ko" and not korean_complete(spec) and not args.allow_missing_ko:
