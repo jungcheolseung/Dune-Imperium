@@ -28,7 +28,13 @@ SCOUTS = RulesetConfig(arrakeen_scouts=True)
 def _base(**seat_fields: Any) -> GameState:
     """Round 4's Scouts step about to draw its event; seat 0 is First Player."""
 
-    state = ENGINE.reset(SCOUTS, 21)
+    return _base_for(SCOUTS, seat_fields)
+
+
+def _base_for(config: RulesetConfig, seat_fields: dict[str, Any]) -> GameState:
+    """``_base`` under ``config``."""
+
+    state = ENGINE.reset(config, 21)
     resolver = ChanceResolver(seed=21)
     while isinstance(ENGINE.current_decision(state), ChanceDecision):
         decision = ENGINE.current_decision(state)
@@ -466,3 +472,87 @@ def test_water_discipline_draw_first_reshuffles_under_the_open_trash() -> None:
     state = _act(state, "decline_optional_trash")
     assert _owner(state) == 1
     assert len(state.players[0].hand) == len(seat0.hand) + 1
+
+
+# OQ-105, user ruling 2026-10-10: "3은 그럼 통일해야지. 지휘관도 낼 수 있게
+# 해야지". docs/rules/bloodlines.md 3: "Commander는 Conflict에서 strength 2인
+# "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는
+# Commander에도 적용된다." [Bloodlines p. 4]; a garrison Commander is one of
+# the garrison's "up to two" units [Bloodlines p. 4]. Bene Gesserit
+# Treachery: "각자 선택: garrison의 troop 1 잃기, 또는 Bene Gesserit −1"
+# (docs/rules/arrakeen-scouts.md 6).
+SCOUTS_BLOODLINES = RulesetConfig(arrakeen_scouts=True, bloodlines=True)
+
+
+def _treachery(**seat0: Any) -> GameState:
+    """Bene Gesserit Treachery revealed; no seat holds Bene Gesserit
+    Influence, so the garrison troop is each seat's only line."""
+
+    others = {str(seat): {"influence": Influence()} for seat in (1, 2, 3)}
+    state = _base_for(
+        SCOUTS_BLOODLINES, {"0": {"influence": Influence(), **seat0}, **others}
+    )
+    return _reveal(state, "bene_gesserit_treachery")
+
+
+def test_bene_gesserit_treachery_takes_a_garrison_commander_alone() -> None:
+    """A garrison holding only a Sardaukar Commander pays the troop line; the
+    Commander goes back to its owner's supply (OQ-105)."""
+
+    state = _treachery(troops_garrison=0, troops_supply=12, commanders_garrison=1)
+    assert _owner(state) == 0
+    assert _offered(state) == [("scouts_choose_option", (("option", 0),))]
+    state = _act(state, "scouts_choose_option", option=0)
+    seat = state.players[0]
+    assert (seat.commanders_garrison, seat.commanders_supply) == (0, 1)
+    assert (seat.troops_garrison, seat.troops_supply) == (0, 12)
+    assert [
+        dict(e.payload)
+        for e in state.event_log
+        if e.kind == "unit_lost" and dict(e.payload)["player"] == 0
+    ] == [{"commanders": 1, "player": 0, "zone": "garrison"}]
+    assert _owner(state) == 1
+
+
+def test_bene_gesserit_treachery_asks_troop_or_commander_when_both() -> None:
+    state = _treachery(troops_garrison=2, troops_supply=10, commanders_garrison=1)
+    state = _act(state, "scouts_choose_option", option=0)
+    assert _owner(state) == 0
+    assert _offered(state) == [
+        ("scouts_lose_garrison_unit", ()),
+        ("scouts_lose_garrison_unit", (("commanders", 1),)),
+    ]
+    commander = _act(state, "scouts_lose_garrison_unit", commanders=1)
+    seat = commander.players[0]
+    assert (seat.troops_garrison, seat.commanders_garrison) == (2, 0)
+    assert seat.commanders_supply == 1
+    assert _owner(commander) == 1
+    troop = _act(state, "scouts_lose_garrison_unit")
+    seat = troop.players[0]
+    assert (seat.troops_garrison, seat.commanders_garrison) == (1, 1)
+    assert seat.troops_supply == 11
+    assert _owner(troop) == 1
+
+
+def test_bene_gesserit_treachery_with_troops_only_takes_a_troop_unasked() -> None:
+    state = _treachery(troops_garrison=2, troops_supply=10)
+    state = _act(state, "scouts_choose_option", option=0)
+    assert state.players[0].troops_garrison == 1
+    assert _owner(state) == 1  # no unit choice: the next seat is asked
+
+
+def test_bene_gesserit_treachery_skips_a_seat_with_no_garrison_unit() -> None:
+    from dune_imperium.display.scouts import scouts_choice_lines
+
+    state = _treachery(troops_garrison=0, troops_supply=12)
+    assert _owner(state) == 1
+    assert any(
+        e.kind == "scouts_choice_skipped" and dict(e.payload)["player"] == 0
+        for e in state.event_log
+    )
+    # Seat 1 has troops: its troop line is enabled.
+    info = scouts_choice_lines(state, 1, ENGINE.legal_actions(state, 1))
+    assert info is not None
+    lines = info["lines"]
+    assert isinstance(lines, list)
+    assert lines[0]["enabled"]

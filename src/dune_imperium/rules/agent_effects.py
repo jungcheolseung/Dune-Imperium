@@ -2498,19 +2498,30 @@ def legal_agent_card_payment_actions(
         )
     if source_card.agent_effect is _LOSE_TROOP_FOR_CARDS:
         # Piter, Genius Advisor: "Lose a troop -> draw two cards and
-        # Research"; the owner picks the zone like an Intrigue loss (OQ-038).
-        return (
-            DomainAction(action_id="decline_agent_card_payment", actor=player),
-            *(
-                DomainAction(
-                    action_id="lose_agent_card_troop",
-                    actor=player,
-                    arguments=(("zone", zone),),
+        # Research"; the owner picks the zone and, for a Sardaukar
+        # Commander, the kind, like an Intrigue loss (OQ-038): "troop을
+        # 대상으로 하는 효과는 Commander에도 적용된다" [Bloodlines p. 4]
+        # (OQ-105, user ruling 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼
+        # 수 있게 해야지"). In each zone the troop comes first.
+        actions = [DomainAction(action_id="decline_agent_card_payment", actor=player)]
+        for zone in ("garrison", "conflict"):
+            if getattr(owner, f"troops_{zone}") >= 1:
+                actions.append(
+                    DomainAction(
+                        action_id="lose_agent_card_troop",
+                        actor=player,
+                        arguments=(("zone", zone),),
+                    )
                 )
-                for zone in ("garrison", "conflict")
-                if getattr(owner, f"troops_{zone}") >= 1
-            ),
-        )
+            if getattr(owner, f"commanders_{zone}") >= 1:
+                actions.append(
+                    DomainAction(
+                        action_id="lose_agent_card_troop",
+                        actor=player,
+                        arguments=(("commanders", 1), ("zone", zone)),
+                    )
+                )
+        return tuple(actions)
     if source_card.agent_effect is _CHOOSE_TWO_REWARDS:
         # Stitched Horror: "Choose two" of the four rewards, one at a time.
         chosen = _chosen_rewards(context)
@@ -2934,19 +2945,31 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
             state=gained.state, events=(*trashed.events, *gained.events)
         )
     if action.action_id == "lose_agent_card_troop":
-        # Piter, Genius Advisor: the troop is the cost; the two cards and
-        # the research follow once the box has settled.
-        zone = str(dict(action.arguments)["zone"])
+        # Piter, Genius Advisor: the troop (or a Sardaukar Commander, OQ-105)
+        # is the cost; the two cards and the research follow once the box
+        # has settled.
+        arguments = dict(action.arguments)
+        zone = str(arguments["zone"])
+        commander = arguments.get("commanders") == 1
         # The box's frame is written first, so what the loss records on it
         # stays: the shrunk withdrawal window (OQ-029; the deployment
         # allowance stays used, user ruling 2026-10-04) or Harkonnen
         # Advisor's undeployable troop given up first (OQ-038 (b)).
         settled = advance_after_effect(state, context)
-        lost = lose_unit(settled, action.actor, zone, source=f"{source}:troop")
+        lost = lose_unit(
+            settled,
+            action.actor,
+            zone,
+            commander=commander,
+            source=f"{source}:troop",
+        )
         next_state = lost.state
         if zone == "conflict":
             next_state = reconcile_deployment_after_retreat(
-                next_state, action.actor, troops=1
+                next_state,
+                action.actor,
+                troops=int(not commander),
+                commanders=int(commander),
             )
         researched = advance_research(
             next_state, action.actor, source=f"{source}:research"

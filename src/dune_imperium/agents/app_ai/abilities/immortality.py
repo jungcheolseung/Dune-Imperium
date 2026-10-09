@@ -2640,12 +2640,19 @@ class PiterGeniusAdvisorAbility(g.DeferredAbility):
         return SelectionMode.OPTIONAL
 
     def meets_cost(self, p: Profile) -> bool:
-        # Troops only, never a Bloodlines Commander (the exception to D1,
-        # bloodlines-systems.md §1.1): our engine's "Lose a troop" box offers
-        # ``lose_agent_card_troop(zone)`` only for a zone with a troop
-        # (``rules/agent_effects.py``, ``_LOSE_TROOP_FOR_CARDS``, OQ-038).
+        # A garrisoned or deployed troop, a Bloodlines Commander included
+        # (D1, bloodlines-systems.md §1.1): our engine's "Lose a troop" box
+        # offers ``lose_agent_card_troop(zone[, commanders])`` for a zone
+        # holding either (``rules/agent_effects.py``,
+        # ``_LOSE_TROOP_FOR_CARDS``; OQ-105, user ruling 2026-10-10).
         me = p.ctx.me
-        return me.troops_garrison + me.troops_conflict >= 1
+        return (
+            me.troops_garrison
+            + me.troops_conflict
+            + me.commanders_garrison
+            + me.commanders_conflict
+            >= 1
+        )
 
     def _terms(self, p: Profile) -> Summer:
         s = Summer()

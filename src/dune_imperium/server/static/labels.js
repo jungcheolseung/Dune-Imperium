@@ -278,6 +278,7 @@ const ACTION_LABELS = {
   scouts_recall_agent: "{agent} 소환",
   scouts_lose_influence: "{influence_any} 잃음",
   scouts_lose_influence_to: "{influence_any} 잃음 ({alliance} 이동 대상 선택)",
+  scouts_lose_garrison_unit: "{garrison}에서 잃기",
   scouts_choose_option: "선택",
   scouts_pass: "패스",
   scouts_join_mission: "임무 참여",

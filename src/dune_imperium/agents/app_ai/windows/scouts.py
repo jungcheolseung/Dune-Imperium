@@ -134,6 +134,7 @@ from dune_imperium.content.arrakeen_scouts import (
 from dune_imperium.content.arrakeen_scouts.types import (
     GainLowestInfluence,
     LoseFactionInfluence,
+    LoseGarrisonTroops,
     LoseHighestInfluence,
     RecallOtherAgent,
     RecruitToConflict,
@@ -148,6 +149,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.scouts_effects import option_steps, scouts_option
+from dune_imperium.rules.scouts_missions import PRISON_PLANET_COMMANDER
 
 #: ``Memory.intents`` keys. ``(SUBCOMMITTEE_INTENT, round, seat) ->
 #: subcommittee id`` (or the ``Answer`` naming it) is written by the windows
@@ -165,6 +167,7 @@ _MISSION_IDS: Final = frozenset(
 _BID_IDS: Final = frozenset({"scouts_bid", "confirm_scouts_bid"})
 _MARKET_IDS: Final = frozenset({"scouts_take_card", "scouts_decline_card"})
 _LOSS_IDS: Final = frozenset({"scouts_lose_influence", "scouts_lose_influence_to"})
+_GARRISON_LOSS_IDS: Final = frozenset({"scouts_lose_garrison_unit"})
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +426,17 @@ def scouts_effect(run: DecisionRun) -> DomainAction | None:
                 return None
             answer = sc.line_top_up_answer(_ints(top_ups, "count"))
             return _answer_action(answer, top_ups, "count")
+        case LoseGarrisonTroops():
+            # A troop or a Bloodlines Commander from the garrison (OQ-105):
+            # the app's ``LoseGarrisonTroopsCostAbility`` names no unit, so
+            # the troop goes before the Commander (D14, plan §11.5).
+            if not _only(run, _GARRISON_LOSS_IDS):
+                return None
+            losses = run.by_id("scouts_lose_garrison_unit")
+            return next(
+                (a for a in losses if int_arg(a, "commanders") is None),
+                losses[0] if losses else None,
+            )
     return None
 
 
@@ -491,6 +505,13 @@ def scouts_mission(run: DecisionRun) -> DomainAction | None:
     counts = _ints(top_ups, "count")
     if len(targets) != len(joins) or len(counts) != len(top_ups):
         return None
+    if "" in targets and PRISON_PLANET_COMMANDER in targets:
+        # Prison Planet: a garrison troop is paid before a Commander (D14,
+        # OQ-105); the Commander way stays for a garrison without troops.
+        joins = tuple(
+            j for j in joins if str_arg(j, "target") != PRISON_PLANET_COMMANDER
+        )
+        targets = [t for t in targets if t != PRISON_PLANET_COMMANDER]
     lines = {sc.mission_join_line(mission_id, t) for t in targets}
     if counts:
         lines.add(sc.mission_join_line(mission_id, _troop_target(mission_id)))

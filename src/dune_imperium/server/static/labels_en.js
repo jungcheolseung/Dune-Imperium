@@ -244,6 +244,7 @@ const LABELS_EN = {
     "scouts_recall_agent": "Recall {agent}",
     "scouts_lose_influence": "Lose {influence_any}",
     "scouts_lose_influence_to": "Lose {influence_any} (choose who takes the {alliance})",
+    "scouts_lose_garrison_unit": "Lose from your {garrison}",
     "scouts_choose_option": "Choose",
     "scouts_pass": "Pass",
     "scouts_join_mission": "Take Part in the Mission",

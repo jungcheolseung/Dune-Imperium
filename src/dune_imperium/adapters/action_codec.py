@@ -12,9 +12,11 @@ from dune_imperium.content.arrakeen_scouts import (
     MAX_MERCENARIES_BID,
     MAX_SPECIMEN_TOP_UP,
     SALES,
+    missions_for,
     scouts_pool,
     subcommittees_for,
 )
+from dune_imperium.content.arrakeen_scouts.types import MissionKind
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import (
@@ -342,6 +344,14 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``agent_turn`` beside the discounted one on a costed space. Legal-action
 # sequences change with no template change, so saves and replays from v141
 # are refused by the version check.
+# Also in v142 (user ruling 2026-10-10, OQ-105): a Sardaukar Commander pays
+# the self-paid troop costs too. Bloodlines catalogs with Immortality add
+# ``lose_agent_card_troop(commanders=1, zone)`` (Piter, Genius Advisor);
+# Bloodlines Scouts catalogs add ``scouts_lose_garrison_unit`` and its
+# ``commanders=1`` twin (Bene Gesserit Treachery's garrison troop, picked
+# when the garrison holds both kinds) and, with Prison Planet in the pool,
+# ``scouts_join_mission(target="commander")``. New templates; the other
+# catalogs are unchanged.
 # Also in v142 (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
 # recall and its card draw are two steps. The draw is the space's own
 # ``resolve_board_effect(effect=cards)`` icon, ordered freely with the
@@ -1334,6 +1344,19 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for recipient in range(config.players)
             for faction in Faction
         ),
+        # A "lose a garrison troop" cost with a troop and a Sardaukar
+        # Commander in the garrison: the seat picks which (OQ-105, codec v142).
+        *(
+            (
+                ActionTemplate(action_id="scouts_lose_garrison_unit"),
+                ActionTemplate(
+                    action_id="scouts_lose_garrison_unit",
+                    arguments=(("commanders", 1),),
+                ),
+            )
+            if config.bloodlines
+            else ()
+        ),
         # A line's later automatic rewards taken ahead of an earlier reward's
         # pending choice (OQ-100).
         ActionTemplate(action_id="scouts_rewards_first"),
@@ -1359,6 +1382,20 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 *(
                     ("recruit", *contract_instance_ids(bloodlines=config.bloodlines))
                     if config.choam_module
+                    else ()
+                ),
+                # Prison Planet paid with a garrison Sardaukar Commander
+                # (OQ-105, codec v142; the mission is in the Uprising pool).
+                *(
+                    ("commander",)
+                    if config.bloodlines
+                    and any(
+                        mission.kind is MissionKind.PRISON_PLANET
+                        for mission in missions_for(
+                            scouts_pool(immortality=config.immortality),
+                            choam=config.choam_module,
+                        )
+                    )
                     else ()
                 ),
             )
@@ -1479,6 +1516,15 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="lose_agent_card_troop", arguments=(("zone", zone),))
         for zone in ("garrison", "conflict")
     )
+    if config.bloodlines:
+        # A Sardaukar Commander may pay Piter's troop (OQ-105, codec v142).
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_agent_card_troop",
+                arguments=(("commanders", 1), ("zone", zone)),
+            )
+            for zone in ("garrison", "conflict")
+        )
     templates.extend(
         ActionTemplate(
             action_id="choose_agent_card_reward", arguments=(("reward", reward),)

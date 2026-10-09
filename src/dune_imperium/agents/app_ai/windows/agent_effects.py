@@ -2424,6 +2424,8 @@ def _piter(t: _Turn) -> None:
     Targets: one zone code per troop, garrison first (``0`` garrison, ``1``
     Conflict; ``GetTroopTargets``). With exactly two targets the app answers
     both (a quirk): the first names our zone (the nearest legal action).
+    A Bloodlines Commander is a troop target too (D1; OQ-105): the zone's
+    troop is paid before its Commander (D14, the engine lists it first).
     """
 
     lose = t.by_id("lose_agent_card_troop")
@@ -2435,8 +2437,16 @@ def _piter(t: _Turn) -> None:
     me = t.run.ctx.me
     zones = set(_arg_refs(lose, "zone"))
     options = (
-        *((0,) * me.troops_garrison if "garrison" in zones else ()),
-        *((1,) * me.troops_conflict if "conflict" in zones else ()),
+        *(
+            (0,) * (me.troops_garrison + me.commanders_garrison)
+            if "garrison" in zones
+            else ()
+        ),
+        *(
+            (1,) * (me.troops_conflict + me.commanders_conflict)
+            if "conflict" in zones
+            else ()
+        ),
     )
     request = Request(infos=(TargetInfo(options=options),))
 
