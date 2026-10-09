@@ -38,6 +38,7 @@
   - `tests/launcher/` 192개(창 테스트는 디스플레이가 없거나 `DUNE_IMPERIUM_SKIP_GUI_TESTS=1`이면 skip).
   - E2E `launcher_link.py` 16/16, mypy는 macOS와 `--platform win32` 모두 통과.
   - 화면 캡처는 이 Mac에 화면 기록 권한이 없어 하지 못했다.
+- **병합한 master**(`29305441`, Tech 타일 병합 포함)에서 pytest **6,932개**, ruff·mypy(449파일), E2E **54종** 모두 통과.
 - **남은 것**: 7단계 Windows 실기 검증(계획 8절 체크리스트 + 13절 끝의 추가 항목).
 
 ## 2026-10-09 Conflict 끝 창은 공개된 사실로, Earn Any Alliance는 얻는 순간 완료 (codec v141, OQ-103·OQ-056)
