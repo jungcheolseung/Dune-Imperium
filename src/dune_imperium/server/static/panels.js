@@ -544,32 +544,39 @@ function openPileList(title, ids, anchor) {
    The one exception is the top card when a card effect lets the owner see
    it (`top`: `{id, source}`, the view's own `peeked_card_id` and the name
    of what shows it -- Glowglobes, or Controlled while its choice is up).
-   The group holding it is marked "Top" ("맨 위 · ×3" with copies) and
-   outlined, and a second note says where the mark comes from. The group's
-   place in the name order and its representative card (the smallest
-   instance id) stay as they were, so the list still says nothing about
-   the cards below the top. */
+   That one copy is split off as its own entry, badged "Top" ("맨 위") and
+   outlined, right before the rest of the same card, which keep their group
+   ("×2", or no count for one copy left); a card with a single copy is just
+   that entry. A second note says where the mark comes from. The groups'
+   name order is as before and each remaining group's card is its smallest
+   instance id, so the list still says nothing about the cards below the
+   top (user decision 2026-10-10). */
 function openDeckList(title, ids, anchor, top = null) {
   unpinPopover();
   const groupKey = (id) => {
     const ref = instanceRef(id);
     return `${ref.kind}:${ref.id}`;
   };
-  const topKey = top && top.id && ids.includes(top.id) ? groupKey(top.id) : "";
+  const topId = top && top.id && ids.includes(top.id) ? top.id : "";
   const groups = new Map();
   for (const id of ids) {
     const key = groupKey(id);
-    const group = groups.get(key);
-    if (!group) groups.set(key, { key, id, count: 1, name: nameOf(id) });
-    else {
-      group.count += 1;
-      if (id < group.id) group.id = id;
-    }
+    const group = groups.get(key) || { key, ids: [], name: nameOf(id) };
+    group.ids.push(id);
+    groups.set(key, group);
   }
   const locale = TERM_LANGUAGE === "ko" ? "ko" : "en";
+  const first = (list) => list.reduce((low, id) => (id < low ? id : low));
   const sorted = [...groups.values()].sort(
-    (a, b) => a.name.localeCompare(b.name, locale) || (a.id < b.id ? -1 : 1),
+    (a, b) => a.name.localeCompare(b.name, locale) || (first(a.ids) < first(b.ids) ? -1 : 1),
   );
+  /* One entry per group, the top copy split off before its group. */
+  const entries = [];
+  for (const group of sorted) {
+    const rest = group.ids.filter((id) => id !== topId);
+    if (rest.length < group.ids.length) entries.push({ id: topId, name: group.name, top: true });
+    if (rest.length) entries.push({ id: first(rest), name: group.name, count: rest.length });
+  }
   const pop = el("card-popover");
   pop.textContent = "";
   const head = document.createElement("div");
@@ -579,7 +586,7 @@ function openDeckList(title, ids, anchor, top = null) {
   note.className = "popover-note";
   note.textContent = t("panels.deck_list_note");
   const notes = [note];
-  if (topKey) {
+  if (topId) {
     const topNote = document.createElement("div");
     topNote.className = "popover-note deck-top-note";
     topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
@@ -587,19 +594,22 @@ function openDeckList(title, ids, anchor, top = null) {
   }
   const row = document.createElement("div");
   row.className = "strip-cards wrap";
-  for (const group of sorted) {
-    const copies = group.count > 1 ? `×${group.count}` : "";
-    const named = copies ? `${group.name} ${copies}` : group.name;
-    const isTop = group.key === topKey;
+  for (const entry of entries) {
+    const copies = entry.count > 1 ? `×${entry.count}` : "";
     row.appendChild(
-      visualCard(group.id, {
-        className: isTop ? "small deck-top" : "small",
-        badge: isTop
-          ? [t("panels.deck_list_top_badge"), copies].filter(Boolean).join(" · ")
-          : copies,
-        title: isTop ? `${named} · ${t("panels.deck_list_top_title")}` : named,
-        onClick: () => {},
-      }),
+      visualCard(entry.id, entry.top
+        ? {
+            className: "small deck-top",
+            badge: t("panels.deck_list_top_badge"),
+            title: `${entry.name} · ${t("panels.deck_list_top_title")}`,
+            onClick: () => {},
+          }
+        : {
+            className: "small",
+            badge: copies,
+            title: copies ? `${entry.name} ${copies}` : entry.name,
+            onClick: () => {},
+          }),
     );
   }
   pop.append(head, ...notes, row);

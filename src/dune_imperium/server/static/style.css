@@ -1740,8 +1740,9 @@ kbd {
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover-note { font-size: 0.75rem; opacity: 0.75; margin-bottom: 0.3rem; }
 /* The deck list's top card, when a card effect shows it (panels.js
-   openDeckList): outlined, its "Top · ×3" badge on one line across the
-   list's 60px cards. The outline sits inside the strip's 3px padding. */
+   openDeckList): its own entry, outlined, its "Top" / "맨 위" badge on one
+   line on the list's 60px cards. The outline sits inside the strip's 3px
+   padding. */
 .vcard.deck-top { outline: 2px solid var(--accent); outline-offset: 1px; }
 .vcard.deck-top .vcard-badge { white-space: nowrap; }
 .conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }

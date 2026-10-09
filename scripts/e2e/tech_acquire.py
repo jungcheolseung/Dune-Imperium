@@ -7,8 +7,10 @@ refreshes, and chooses a specific faction in Korean and English.
 
 Right after the Glowglobes purchase the seat sees its deck's top card
 (``private.peeked_card_id``; user decision 2026-10-10, feedback item 3): it is
-marked "맨 위" in the deck list, the count's title says so, and nothing is left
-beside the Intrigue cards. The Navigation Chamber buyer's list marks nothing.
+its own entry marked "맨 위" in the deck list, right before the rest of its
+card (user decision 2026-10-10, option (나)), the count's title says so, and
+nothing is left beside the Intrigue cards. The Navigation Chamber buyer's list
+marks nothing.
 """
 
 from __future__ import annotations
@@ -59,10 +61,21 @@ DECK_LIST_JS = """() => {
   const pop = document.getElementById('card-popover');
   return {
     hidden: pop.hidden,
+    peeked: state.view.private.peeked_card_id || null,
     topKey: state.view.private.peeked_card_id
       ? key(state.view.private.peeked_card_id) : null,
+    copies: (state.view.private.deck_cards || []).filter((id) =>
+      state.view.private.peeked_card_id
+      && key(id) === key(state.view.private.peeked_card_id)).length,
+    order: [...pop.querySelectorAll('.vcard')].map((card) => ({
+      key: key(card.dataset.instance),
+      top: card.classList.contains('deck-top'),
+      badge: card.querySelector('.vcard-badge')
+        ? card.querySelector('.vcard-badge').textContent : null,
+    })),
     notes: [...pop.querySelectorAll('.popover-note')].map((node) => node.textContent),
     marked: [...pop.querySelectorAll('.vcard.deck-top')].map((card) => ({
+      instance: card.dataset.instance,
       key: key(card.dataset.instance),
       badge: card.querySelector('.vcard-badge').textContent,
     })),
@@ -108,10 +121,25 @@ def check_deck_top(page, tech_id):
         marked = listing["marked"]
         check.ok(
             len(marked) == 1
-            and marked[0]["key"] == listing["topKey"]
-            and marked[0]["badge"].startswith("맨 위"),
-            f"{tech_id}: exactly the top card's group is marked 맨 위",
+            and marked[0]["instance"] == listing["peeked"]
+            and marked[0]["badge"] == "맨 위",
+            f"{tech_id}: exactly the top card is its own entry marked 맨 위",
             listing,
+        )
+        order = listing["order"]
+        at = [entry["top"] for entry in order].index(True) if marked else -1
+        rest = listing["copies"] - 1
+        following = order[at + 1] if 0 <= at < len(order) - 1 else None
+        check.ok(
+            rest == 0
+            or (
+                following is not None
+                and following["key"] == listing["topKey"]
+                and not following["top"]
+                and following["badge"] == (f"×{rest}" if rest > 1 else None)
+            ),
+            f"{tech_id}: the other {rest} copies of it follow as their own group",
+            (rest, order[at : at + 2]),
         )
         check.ok(
             len(listing["notes"]) == 2 and "발광구" in listing["notes"][1],

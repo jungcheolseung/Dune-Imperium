@@ -22,10 +22,11 @@ checks, in Korean and English at 1366x768:
 
 Scenario A also checks the top card a card effect shows the owner
 (``private.peeked_card_id``: Glowglobes, or Controlled while its choice is
-up): one group is marked "Top" exactly when the view names a deck card, the
-list then carries a second note and the count's title says the top card is
-marked, and the peek strip beside the Intrigue cards shows it only without
-Glowglobes or while Controlled's choice is offered.
+up): exactly when the view names a deck card, that copy is its own entry
+marked "Top" right before the rest of its card (user decision 2026-10-10,
+option (나)), the list carries a second note and the count's title says the
+top card is marked, and the peek strip beside the Intrigue cards shows it
+only without Glowglobes or while Controlled's choice is offered.
 
 Scenario B plays a four-human game through the HTTP API and, at many
 checkpoints, reads every seat's snapshot: each seat's own private block
@@ -34,12 +35,14 @@ payload (another seat's view, the seatless snapshot, the summary) carries the
 key or any of that deck's cards.
 
 Scenario C edits a four-human game's view in the browser (user decision
-2026-10-10, feedback item 3). With Glowglobes and the top card inside a xN
-group, in Korean and English: the group reads "맨 위 · ×N" / "Top · ×N", is
-outlined, keeps its place and its representative card, the second note names
-Glowglobes, the count's title says the top is marked, and nothing is left
-beside the Intrigue cards; Controlled's offered choice brings the strip back,
-and without Glowglobes the strip is as before. It also opens the deck list
+2026-10-10, feedback item 3, and option (나) of the same day). With
+Glowglobes and the top card one of N copies, in Korean and English: the top
+copy is its own outlined entry badged "맨 위" / "Top" right before the other
+copies' group (×(N-1), or no count for one), the list is otherwise as it was,
+a single copy on top is one entry marked "Top" in its place, the second note
+names Glowglobes, the count's title says the top is marked, and nothing is
+left beside the Intrigue cards; Controlled's offered choice brings the strip
+back, and without Glowglobes the strip is as before. It also opens the deck list
 and a pile list while a card or a leader popover is pinned and checks that a
 foreign render closes them (the pin used to carry over).
 
@@ -398,33 +401,36 @@ def check_deck_list(
         f"{label} a second note explains the top mark exactly when it is shown",
         opened["notes"],
     )
+    # The top copy is its own entry ("Top", no count) right before the rest
+    # of its card, which keep their group (user decision 2026-10-10).
     top_key = group_key(peeked) if marked else None
     expected_groups: dict[str, int] = {}
     for instance in deck_cards:
         key = group_key(instance)
         expected_groups[key] = expected_groups.get(key, 0) + 1
-    shown_groups: dict[str, int] = {}
+    entries: dict[str, int] = {}
+    copies_shown: dict[str, int] = {}
     badges_ok = True
     names = []
     for card in opened["cards"]:
         key = group_key(card["instance"])
-        count = expected_groups.get(key, 0)
-        shown_groups[key] = shown_groups.get(key, 0) + 1
-        is_top = key == top_key
-        copies = f"×{count}" if count > 1 else ""
-        badge = " · ".join(
-            part for part in (words["top_badge"] if is_top else "", copies) if part
-        )
-        badges_ok &= card["badge"] == (badge or None)
-        badges_ok &= card["top"] == is_top
+        entries[key] = entries.get(key, 0) + 1
         title = card["title"]
-        if is_top:
+        if card["top"]:
+            badges_ok &= key == top_key and card["instance"] == peeked
+            badges_ok &= card["badge"] == words["top_badge"]
             badges_ok &= title.endswith(f" · {words['top_title']}")
             title = title.removesuffix(f" · {words['top_title']}")
-        if count > 1:
-            badges_ok &= title.endswith(f" ×{count}")
-        else:
             badges_ok &= "×" not in title
+            count = 1
+        else:
+            count = expected_groups.get(key, 0) - (1 if key == top_key else 0)
+            badges_ok &= card["badge"] == (f"×{count}" if count > 1 else None)
+            if count > 1:
+                badges_ok &= title.endswith(f" ×{count}")
+            else:
+                badges_ok &= "×" not in title
+        copies_shown[key] = copies_shown.get(key, 0) + count
         badges_ok &= card["aria"] == card["title"]
         names.append(re.sub(r" ×\d+$", "", title))
     check.ok(
@@ -433,11 +439,24 @@ def check_deck_list(
         [card for card in opened["cards"] if card["top"]],
     )
     check.ok(
-        set(shown_groups) == set(expected_groups)
-        and all(value == 1 for value in shown_groups.values()),
-        f"{label} one card per distinct deck card, none missing or extra",
-        (sorted(shown_groups), sorted(expected_groups)),
+        set(entries) == set(expected_groups)
+        and all(
+            value == (2 if key == top_key and expected_groups[key] > 1 else 1)
+            for key, value in entries.items()
+        ),
+        f"{label} one entry per distinct deck card (the top copy apart), "
+        "none missing or extra",
+        (entries, expected_groups),
     )
+    if marked:
+        at = [card["top"] for card in opened["cards"]].index(True)
+        after = opened["cards"][at + 1 : at + 2]
+        check.ok(
+            expected_groups[top_key] == 1
+            or (bool(after) and group_key(after[0]["instance"]) == top_key),
+            f"{label} the top copy stands right before the rest of its card",
+            opened["cards"][at : at + 2],
+        )
     check.ok(
         any(count > 1 for count in expected_groups.values()),
         f"{label} the deck has copies, so grouping is exercised",
@@ -445,12 +464,13 @@ def check_deck_list(
     )
     check.ok(
         badges_ok,
-        f"{label} copies show xN (Top · xN on the top card), single cards no badge",
+        f"{label} copies show xN, the top copy Top alone, single cards no badge",
         opened["cards"][:3],
     )
     check.ok(
-        sum(expected_groups.values()) == deck_size,
-        f"{label} the xN figures add up to the deck size",
+        copies_shown == expected_groups and sum(copies_shown.values()) == deck_size,
+        f"{label} the entries add up to each card's copies and the deck size",
+        (copies_shown, expected_groups),
     )
     check.ok(
         page.evaluate(
@@ -680,22 +700,38 @@ def check_leak(
 # the hand. Seed 13 starts with the first seat's deck holding copies of a card.
 TOP_SEED = 13
 
-# The real view, kept once, and a group of copies in its deck: the top card
-# is put on the group's largest instance id, so the list's representative
-# (the smallest) differs from it.
+# The real view, kept once (with a third copy added to a card the deck holds
+# twice), the deck's largest group of copies and a card with a single copy:
+# the top card is put on the group's largest instance id, so the rest of the
+# group keeps its representative (the smallest).
 TOP_SETUP_JS = """() => {
-  if (!window.__deckTop) {
-    window.__deckTop = { view: structuredClone(state.view), actions: state.actions };
-  }
   const key = (id) => { const ref = instanceRef(id); return `${ref.kind}:${ref.id}`; };
-  const groups = new Map();
-  for (const id of window.__deckTop.view.private.deck_cards) {
-    groups.set(key(id), [...(groups.get(key(id)) || []), id]);
+  const groupsOf = (cards) => {
+    const groups = new Map();
+    for (const id of cards) groups.set(key(id), [...(groups.get(key(id)) || []), id]);
+    return groups;
+  };
+  if (!window.__deckTop) {
+    const view = structuredClone(state.view);
+    /* A third copy of a card the deck holds twice, so the copies left under
+       the top keep a "×2" group. */
+    const pair = [...groupsOf(view.private.deck_cards).values()]
+      .find((ids) => ids.length === 2);
+    if (pair) {
+      const extra = pair[1].replace(/:(\d+)$/, (whole, n) => `:${Number(n) + 50}`);
+      view.private.deck_cards = [...view.private.deck_cards, extra].sort();
+      view.private.deck_size += 1;
+      view.players[view.player].deck_size += 1;
+    }
+    window.__deckTop = { real: state.view, view, actions: state.actions };
   }
-  const group = [...groups.values()].find((ids) => ids.length > 1);
-  if (!group) return null;
+  const groups = groupsOf(window.__deckTop.view.private.deck_cards);
+  const group = [...groups.values()].sort((a, b) => b.length - a.length)[0];
+  if (!group || group.length < 2) return null;
   const ids = [...group].sort();
-  return { top: ids[ids.length - 1], representative: ids[0], count: ids.length };
+  const single = [...groups.values()].find((ids) => ids.length === 1);
+  return { top: ids[ids.length - 1], representative: ids[0], count: ids.length,
+           single: single ? single[0] : null };
 }"""
 
 # One variant of the kept view: whether the seat owns Glowglobes, the card the
@@ -717,7 +753,7 @@ TOP_VARIANT_JS = """([glowglobes, peeked, controlled]) => {
 }"""
 
 TOP_RESTORE_JS = """() => {
-  state.view = window.__deckTop.view;
+  state.view = window.__deckTop.real;
   state.actions = window.__deckTop.actions;
   render();
 }"""
@@ -770,23 +806,39 @@ def check_top_mark(page: Any, lang: str) -> None:
     )
     marked = open_deck_list(page, "click")
     tops = [card for card in marked["cards"] if card["top"]]
+    name = page.evaluate("(id) => nameOf(id)", top)
     check.ok(
         len(tops) == 1
-        and tops[0]["instance"] == representative
-        and tops[0]["badge"] == f"{words['top_badge']} · ×{count}"
-        and tops[0]["title"].endswith(f" ×{count} · {words['top_title']}")
+        and tops[0]["instance"] == top
+        and tops[0]["badge"] == words["top_badge"]
+        and tops[0]["title"] == f"{name} · {words['top_title']}"
         and tops[0]["aria"] == tops[0]["title"]
         and tops[0]["outline"] == "solid"
         and tops[0]["badgeFits"],
-        f"{label} the copies' group is marked '{words['top_badge']} · ×{count}', "
+        f"{label} the top copy is its own entry marked '{words['top_badge']}', "
         "outlined, badge on one line",
         tops,
     )
+    rest = count - 1
+    at = [card["instance"] for card in marked["cards"]].index(top)
+    following = marked["cards"][at + 1] if at + 1 < len(marked["cards"]) else {}
+    check.ok(
+        following.get("instance") == representative
+        and following.get("badge") == (f"×{rest}" if rest > 1 else None)
+        and following.get("title") == (f"{name} ×{rest}" if rest > 1 else name)
+        and not following.get("top"),
+        f"{label} the other {rest} copies follow it as their own group"
+        f" ({'×' + str(rest) if rest > 1 else 'no count'})",
+        following,
+    )
+    plain_order = [card["instance"] for card in plain["cards"]]
+    at_plain = plain_order.index(representative)
     check.ok(
         [card["instance"] for card in marked["cards"]]
-        == [card["instance"] for card in plain["cards"]]
+        == [*plain_order[:at_plain], top, *plain_order[at_plain:]]
         and marked["title"] == plain["title"],
-        f"{label} the mark leaves the order and every representative card as they were",
+        f"{label} the split adds the top entry before its card and leaves the rest"
+        " of the list as it was",
     )
     check.ok(
         marked["notes"]
@@ -797,6 +849,30 @@ def check_top_mark(page: Any, lang: str) -> None:
     page.screenshot(path=str(SHOTS / f"top_mark_{lang}.png"))
     page.keyboard.press("Escape")
 
+    # A card with one copy: its one entry is the top, with no group after it.
+    single = group["single"]
+    if check.ok(single is not None, f"{label} the deck holds a single copy too"):
+        page.evaluate(TOP_VARIANT_JS, [True, single, False])
+        alone = open_deck_list(page, "click")
+        page.keyboard.press("Escape")
+        name = page.evaluate("(id) => nameOf(id)", single)
+        entries = [
+            card
+            for card in alone["cards"]
+            if group_key(card["instance"]) == group_key(single)
+        ]
+        check.ok(
+            [card["instance"] for card in alone["cards"]]
+            == [card["instance"] for card in plain["cards"]]
+            and len(entries) == 1
+            and entries[0]["top"]
+            and entries[0]["badge"] == words["top_badge"]
+            and entries[0]["title"] == f"{name} · {words['top_title']}",
+            f"{label} a single copy on top is one entry marked "
+            f"'{words['top_badge']}' in its place",
+            entries,
+        )
+
     page.evaluate(TOP_VARIANT_JS, [True, top, True])
     check.ok(
         page.evaluate(STRIP_JS, strip) == [top],
@@ -806,8 +882,7 @@ def check_top_mark(page: Any, lang: str) -> None:
     during = open_deck_list(page, "click")
     page.keyboard.press("Escape")
     check.ok(
-        [card["instance"] for card in during["cards"] if card["top"]]
-        == [representative],
+        [card["instance"] for card in during["cards"] if card["top"]] == [top],
         f"{label} the list keeps its mark during Controlled's choice",
     )
 
