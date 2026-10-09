@@ -8,7 +8,11 @@ function statNode(name, label, value) {
   stat.dataset.stat = name;
   stat.title = label;
   stat.append(
-    name === "agent" ? agentPieceIcon(label) : icon(name, label),
+    name === "agent"
+      ? agentPieceIcon(label)
+      : name === "commander"
+        ? commanderStatIcon(label)
+        : icon(name, label),
     String(value),
   );
   return stat;
@@ -36,14 +40,28 @@ function openerStat(stat, label, open) {
   });
 }
 
-/* Sardaukar Commanders as the board draws them (renderTrackMarkers): "C2",
-   with where they stand in the title. `where` is a term template. */
-function commanderChip(count, where) {
-  const chip = document.createElement("span");
-  chip.className = "commander-count";
-  chip.textContent = `C${count}`;
-  chip.title = t("panels.commander_where", { where: phraseText(where), count });
-  return chip;
+/* A Sardaukar Commander as the board draws one (unitPiece): the rulebook's
+   neutral figure (catalog.commander_token), or without the picture the drawn
+   mark in the plastic's grey (.commander-piece.drawn). The rule term has
+   no icon of its own (TERMS.commander), so the piece itself is the icon. */
+function commanderStatIcon(label) {
+  const picture = state.catalog && state.catalog.commander_token;
+  if (picture) {
+    const img = document.createElement("img");
+    img.className = "icon commander-stat-icon";
+    img.src = picture;
+    img.alt = label;
+    img.title = label;
+    img.draggable = false;
+    return img;
+  }
+  const mark = document.createElement("span");
+  mark.className = "commander-stat-icon drawn";
+  mark.textContent = "C";
+  mark.title = label;
+  mark.setAttribute("role", "img");
+  mark.setAttribute("aria-label", label);
+  return mark;
 }
 
 function seatLine(container, label, content) {
@@ -227,6 +245,16 @@ function renderSeats() {
       statNode("agent", t("panels.agent_remaining"), player.agents_available),
       statNode("spy", t("panels.supply_spy"), player.spies_supply),
     );
+    /* Commanders in the supply: the board draws the ones in the garrison
+       and the Conflict, but nothing on it shows the ones that went home
+       after a Combat [Bloodlines p. 4], and the supply is public
+       [Main p. 5]. Always shown in a Bloodlines game, 0 included, like the
+       Specimens above. */
+    if (summary.bloodlines) {
+      pieces.appendChild(
+        statNode("commander", t("panels.supply_commander"), player.commanders_supply || 0),
+      );
+    }
     card.appendChild(pieces);
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons. The

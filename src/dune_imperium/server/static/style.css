@@ -1940,11 +1940,29 @@ kbd {
   font-size: 0.7rem;
   font-weight: 700;
 }
-.seat .commander-count, .help-mark .commander-count {
-  font-size: 0.72rem;
+/* A seat's Commanders in its supply (panels.js commanderStatIcon): the same
+   figure, at a stat icon's height, with the same hairline; without the
+   picture, the drawn mark scaled down to that height. */
+.commander-stat-icon { filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)); }
+.commander-stat-icon.drawn {
+  display: inline-flex;
+  box-sizing: border-box;
+  /* 1.35em, -0.3em and 0.1em of the stat's text (.stat .icon), divided
+     by this mark's own smaller letter. */
+  height: calc(1.35em / 0.7);
+  aspect-ratio: 130 / 195;
+  align-items: center;
+  justify-content: center;
+  vertical-align: calc(-0.3em / 0.7);
+  margin-right: calc(0.1em / 0.7);
+  border: 1px solid #111;
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  color: #111;
+  font-size: 0.7em;
   font-weight: 700;
-  color: #ffb3b3;
-  margin-left: 0.25em;
+  line-height: 1;
+  filter: none;
 }
 
 /* Immortality: the Bene Tleilax board panel (research hexes as a grid, the
