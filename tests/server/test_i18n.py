@@ -507,6 +507,47 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
     assert not leaks, "; ".join(leaks[:40])
 
 
+_IMPERIAL_PRIVILEGE_RECALLS = (
+    "recall_agent_for_imperial_privilege",
+    "recall_conflict_agent_for_imperial_privilege",
+)
+
+
+def test_imperial_privilege_recall_labels_name_the_card_draw() -> None:
+    """The recall button says it also draws a card.
+
+    User question 2026-10-10: "에이전트 소환은 왜 되돌리기 불가야?" Imperial
+    Privilege's printed sentence recalls an Agent and draws a card, kept as
+    one step (OQ-027 (d), docs/rules/open-questions.md), and a draw from the
+    hidden deck cannot be taken back (OQ-010's related design), so the
+    button carries the "cannot undo" badge. It read only "{agent} 소환",
+    so nothing on it showed what made it irreversible; both labels now name
+    the draw, as resolve_imperial_privilege_without_recall already did.
+
+    The greyed-out recall (no other Agent to recall) keeps a recall-only
+    text, render.js UNAVAILABLE_ROW_TEXT: the draw is still offered beside it.
+    """
+    korean = _korean_tables()["ACTION_LABELS"]
+    english = _json_const("LABELS_EN", "labels_en.js")["ACTION_LABELS"]
+    for action_id in _IMPERIAL_PRIVILEGE_RECALLS:
+        for table in (korean, english):
+            assert "{draw}" in table[action_id], (action_id, table[action_id])
+            assert "{agent}" in table[action_id], (action_id, table[action_id])
+    grey = _ui_text()["render.unavailable_imperial_privilege_recall"]
+    assert all("{agent}" in text and "{draw}" not in text for text in grey.values())
+    render = (_STATIC / "render.js").read_text()
+    block = re.search(
+        r"^const UNAVAILABLE_ROW_TEXT = \{(.*?)\n\};", render, re.S | re.M
+    )
+    assert block, "no UNAVAILABLE_ROW_TEXT block in render.js"
+    assert re.search(
+        r'^\s+recall_agent_for_imperial_privilege:\s*'
+        r'"render\.unavailable_imperial_privilege_recall"',
+        block.group(1),
+        re.M,
+    )
+
+
 def test_every_label_table_switches_language() -> None:
     """A table left out of ``LABEL_TABLES`` stays Korean in English.
 

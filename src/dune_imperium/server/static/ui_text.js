@@ -857,6 +857,18 @@ const UI_TEXT = {
     "ko": "게임 진행",
     "en": "Game in progress"
   },
+  "panels.neutral_leader_ability": {
+    "ko": "{leader} 능력",
+    "en": "{leader} ability"
+  },
+  "panels.log_leader_ability_spice_gained": {
+    "ko": "{{ability}}({{leader}})로 {spice} 획득",
+    "en": "{spice} Gained from {{ability}} ({{leader}})"
+  },
+  "panels.log_bonus_spice_taken": {
+    "ko": "보너스 {spice} {{count}} 가져와 획득",
+    "en": "Took {{count}} bonus {spice} and gained it"
+  },
   "panels.neutral_round_started": {
     "ko": "라운드 {{round}} 시작",
     "en": "Round {{round}} started"
@@ -1460,6 +1472,10 @@ const UI_TEXT = {
   "render.unavailable_intrigue_heading": {
     "ko": "지금은 쓸 수 없는 책략 카드",
     "en": "Intrigue cards you cannot play now"
+  },
+  "render.unavailable_imperial_privilege_recall": {
+    "ko": "{agent} 소환 (Imperial Privilege)",
+    "en": "Recall {agent} (Imperial Privilege)"
   },
   "render.unavailable_title": {
     "ko": "지금은 고를 수 없습니다. 할 수 있게 되면 바로 고를 수 있습니다",

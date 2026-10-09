@@ -1474,7 +1474,15 @@ def test_smuggle_spice_pays_staban_for_spied_maker_visits() -> None:
     # Smuggle Spice: another player's Agent on a spied Maker space pays one
     # Spice [Staban Tuek card].
     assert result.state.players[1].resources.spice == 1
-    assert any(event.kind == "leader_ability_spice_gained" for event in result.events)
+    # The log reads this payload as it is: the seat paid, the visited space,
+    # the amount and the visitor. It names no Leader, so panels.js
+    # EVENT_IMPLIED_LEADER names Staban Tuek and Smuggle Spice from the
+    # catalog; the payload stays put (it is in saved games' state hashes).
+    smuggled = [e for e in result.events if e.kind == "leader_ability_spice_gained"]
+    assert [dict(event.payload) for event in smuggled] == [
+        {"player": 1, "space_id": "hagga_basin", "spice": 1, "visitor": 0}
+    ]
+    assert smuggled[0].visible_to is None
 
 
 def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:

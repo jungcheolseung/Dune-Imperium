@@ -752,6 +752,20 @@ function logEventPayload(payload, eventKind) {
     ) {
       continue;
     }
+    /* Esmar Tuek's Signet Ring, Smuggle Spice, taking a bonus spice off a
+       Maker space (rules/leader_abilities.py apply_leader_bonus_spice): the
+       payload writes the space's loss, -1, and the spice goes to the
+       Signet's player, so the line says so rather than "Bonus spice: -1".
+       Placing one on Tuek's Sietch (+1) keeps the plain pair. */
+    if (
+      key === "bonus_spice" &&
+      eventKind === "leader_signet_resolved" &&
+      typeof value === "number" &&
+      value < 0
+    ) {
+      parts.push(t("panels.log_bonus_spice_taken", { count: -value }));
+      continue;
+    }
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
     if (SEAT_PAYLOAD_KEYS.has(key)) {
@@ -807,12 +821,40 @@ function logEventPayload(payload, eventKind) {
   return parts.join(" · ");
 }
 
+/* Event kinds only one Leader's ability emits, so their payload names no
+   Leader: the line names the ability and the Leader from the catalog
+   (lookup(id, "leaders"), localized by i18n.js) through its own text, whose
+   holes are {{ability}} and {{leader}}, in place of the bare "{leader}" of
+   EVENT_LABELS (kept for a catalog without the Leader).
+   tests/server/test_action_labels.py checks that each kind here has one
+   emitter in the engine and that it names this Leader, so a row cannot go
+   stale silently.
+   - leader_ability_spice_gained: rules/leader_abilities.py
+     apply_smuggle_spice pays only staban_tuek, Smuggle Spice [Staban Tuek
+     card]. Its Korean particle, 로, follows that ability's name. */
+const EVENT_IMPLIED_LEADER = {
+  leader_ability_spice_gained: {
+    leader: "staban_tuek",
+    text: "panels.log_leader_ability_spice_gained",
+  },
+};
+
+/* An event line's words before the payload. */
+function logEventHead(event) {
+  const implied = EVENT_IMPLIED_LEADER[event.kind];
+  const leader = implied ? lookup(implied.leader, "leaders") : null;
+  if (leader && leader.ability) {
+    return tNode(implied.text, { ability: leader.ability, leader: leader.name });
+  }
+  /* phrase(), not textContent: an event label may name a term, and the
+     braces must never reach the screen. */
+  return phrase(EVENT_LABELS[event.kind] || prettify(event.kind));
+}
+
 function logEventLine(event) {
   const line = document.createElement("div");
   line.className = "logevent";
-  /* phrase(), not textContent: an event label may name a term, and the
-     braces must never reach the screen. */
-  line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
+  line.appendChild(logEventHead(event));
   const payload = logEventPayload(event.payload, event.kind);
   if (payload) line.append(` — ${payload}`);
   addLogEventIcon(line, event);
@@ -1023,6 +1065,13 @@ function neutralTitle(group) {
         ? t("panels.neutral_round_started", { round })
         : t("panels.neutral_round_started_generic")
     );
+  }
+  /* A Leader's ability paying out on another seat's step: Staban Tuek's
+     Smuggle Spice, Esmar Tuek's Tuek's Sietch, Steersman Y'rkoon's Hungry
+     for Spice (an event aimed at a seat other than the actor's lands here,
+     splitEntryEvents). */
+  if (kinds.has("leader_ability_spice_gained") || kinds.has("leader_ability_resolved")) {
+    parts.push(t("panels.neutral_leader_ability"));
   }
   if (kinds.has("endgame_started")) parts.push(phraseText("{endgame}"));
   if (kinds.has("game_finished")) parts.push(t("common.game_over"));

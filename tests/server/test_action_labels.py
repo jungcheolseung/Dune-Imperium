@@ -13,6 +13,7 @@ script rather than naming one file, so splitting the client further does not
 silently turn the guard off.
 """
 
+import ast
 import re
 from pathlib import Path
 
@@ -117,3 +118,105 @@ def test_every_engine_event_kind_has_a_label() -> None:
 def test_labels_do_not_reference_removed_event_kinds() -> None:
     stale = _labelled_event_kinds() - _engine_event_kinds()
     assert not stale, f"labels for unknown event kinds: {sorted(stale)}"
+
+
+def _event_emitters(kind: str) -> list[tuple[Path, ast.FunctionDef, set[str]]]:
+    """(file, innermost function, payload keys) of every ``kind="<kind>"``
+    call in the engine sources; the keys are the literal ones of a
+    ``payload=((key, value), ...)`` tuple."""
+
+    found: list[tuple[Path, ast.FunctionDef, set[str]]] = []
+
+    def visit(node: ast.AST, path: Path, owner: ast.FunctionDef | None) -> None:
+        if isinstance(node, ast.FunctionDef):
+            owner = node
+        if isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if (
+                    keyword.arg == "kind"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value == kind
+                ):
+                    assert owner is not None, f"{path}: {kind} outside a function"
+                    payload = next(
+                        (k.value for k in node.keywords if k.arg == "payload"), None
+                    )
+                    keys = {
+                        pair.elts[0].value
+                        for pair in getattr(payload, "elts", ())
+                        if isinstance(pair, ast.Tuple)
+                        and pair.elts
+                        and isinstance(pair.elts[0], ast.Constant)
+                        and isinstance(pair.elts[0].value, str)
+                    }
+                    found.append((path, owner, keys))
+        for child in ast.iter_child_nodes(node):
+            visit(child, path, owner)
+
+    for directory in _SOURCE_DIRS:
+        for path in sorted(directory.rglob("*.py")):
+            visit(ast.parse(path.read_text()), path, None)
+    return found
+
+
+def _implied_leaders() -> dict[str, str]:
+    """panels.js EVENT_IMPLIED_LEADER: {event kind: the Leader it names}."""
+    source = (_STATIC_DIR / "panels.js").read_text()
+    block = re.search(
+        r"^const EVENT_IMPLIED_LEADER = \{(.*?)\n\};", source, re.S | re.M
+    )
+    assert block, "no EVENT_IMPLIED_LEADER block in panels.js"
+    rows = dict(
+        re.findall(r'^\s{2}([a-z_]+): \{\s*leader: "([a-z_]+)"', block.group(1), re.M)
+    )
+    assert rows, "no EVENT_IMPLIED_LEADER row read: the pattern is broken"
+    return rows
+
+
+def test_an_implied_leader_event_has_one_emitter_naming_that_leader() -> None:
+    """The log names a Leader for an event whose payload names none.
+
+    User report 2026-10-10: Staban Tuek's Smuggle Spice payout read "지도자
+    능력으로 스파이스 획득" with neither the Leader nor the ability named. The
+    payload stays as it is (it is in every saved game's state hash), so the
+    client names them from a table, panels.js EVENT_IMPLIED_LEADER. That
+    table is right only while the kind has one emitter in the engine and the
+    emitter pays that Leader alone: Smuggle Spice, "Whenever another player
+    sends an Agent to a Maker board space you are spying on: Spice 1."
+    [Staban Tuek card] (docs/implementation-audits/leaders.md).
+    """
+    implied = _implied_leaders()
+    assert implied["leader_ability_spice_gained"] == "staban_tuek"
+    for kind, leader in implied.items():
+        emitters = _event_emitters(kind)
+        assert len(emitters) == 1, (
+            f"{kind}: {len(emitters)} emitters "
+            f"{[(p.name, f.name) for p, f, _ in emitters]}; panels.js "
+            "EVENT_IMPLIED_LEADER can name only one Leader"
+        )
+        path, function, _ = emitters[0]
+        named = {
+            node.value
+            for node in ast.walk(function)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        assert leader in named, (
+            f"{kind}: {path.name} {function.name} never names {leader}"
+        )
+    path, function, _ = _event_emitters("leader_ability_spice_gained")[0]
+    assert (path.name, function.name) == ("leader_abilities.py", "apply_smuggle_spice")
+
+
+def test_only_esmar_s_signet_writes_bonus_spice_on_a_signet_event() -> None:
+    """panels.js logEventPayload reads a negative ``bonus_spice`` of
+    ``leader_signet_resolved`` as a bonus spice taken into the Signet
+    player's supply (Esmar Tuek's Smuggle Spice, "Take 1 bonus spice from a
+    Maker board space" [Esmar Tuek card], tests/unit/rules/
+    test_bloodlines_leaders.py pins the payload). Another writer of that
+    pair would need its own reading."""
+    writers = [
+        (path.name, function.name)
+        for path, function, keys in _event_emitters("leader_signet_resolved")
+        if "bonus_spice" in keys
+    ]
+    assert writers == [("leader_abilities.py", "apply_leader_bonus_spice")]
