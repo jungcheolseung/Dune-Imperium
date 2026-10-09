@@ -1,8 +1,32 @@
 # 개발 인수인계
 
-기준일: 2026-10-09
+기준일: 2026-10-10
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
+
+## 2026-10-10 사람이 둔 판: 옛 저장본을 지금 엔진으로 옮기기, 첫 진단 (codec 그대로 v141)
+
+사용자 질문 "사람이 플레이했던 기록을 학습에 반영하기 위한 데이터로 쓸 수 있을까?"에서 시작했다. 고른 일은 둘이다. (1) 진단, (2) 엔진이 바뀌어도 기보가 살아남게 하기. 누가 뒀는지·무르기 기록은 쓰지 않기로 했다(누가 잘하는지 판단하기 어렵고, 물렀다가 같은 수를 다시 두기도 한다). 브랜치 `human-records`, 병합 `54d57be7`(미푸시).
+
+- **기보 이전**([human-records.md](human-records.md)):
+  - 저장본은 수를 뜻으로 적어서 codec 번호만으로는 깨지지 않는다. 깨지는 것은 엔진 흐름이 바뀔 때다. v140의 멈춤 때문에 v135·v139 저장본이 2라운드에서 멈췄었다.
+  - `records.migration`이 다리로 옮긴다. 멈춤, v141 전 Conflict 끝 창 거절, v139 전 전투 책략 pass, v137 전 이름 없는 `resolve_agent_card_effect`다.
+  - 결정의 답이던 수에는 다리가 끼어들지 않는다. 규칙 변경으로 불법이 된 수는 `Divergence`로 멈춘다.
+  - 서버의 불러오기는 그대로 엄격하다. 바뀐 것은 `parse_save_document(check_versions=False)` 하나뿐이다.
+  - `uv run dune-imperium-records check`: 로컬 네 판 중 2판은 그대로 재생(exact), 2판은 옮김(migrated)이다.
+  - 옛 엔진(v135 `37727846`·v139 `5a2dfc19`·v140 `6b033158`) worktree로 같은 기보를 재생해 공개 상태를 한 수씩 대조했다. v135의 Conflict 보상 지급 도중을 빼면 모두 같았다. 테스트 기보도 이 커밋들로 만들었다(`scripts/records/old_engine_record.py`).
+  - 독립 리뷰가 실제 결함 둘을 찾았고 고쳤다. 처음의 일반 인자 다시 쓰기는 빠진 인자가 곧 선택인 경우(`graft`·`discount`)를 바꿔 썼다. 안전장치는 그 종류의 행동이 모두 사라진 경우에 뚫렸다.
+- **진단**([evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md), 도구 `scripts/records/human_diagnosis.py`):
+  - 10-09의 끝난 두 판(사람 둘 + 탐색 X 둘)에서 사람이 이겼다. 0번 자리 16 VP·14 VP였다.
+  - 선택이 있는 사람 결정 1,030개 중 796개가 X의 1순위와 달랐다.
+  - X 탐색(세계 32)과 Y 탐색(세계 64)이 모두 사람 쪽을 낫다고 본 곳이 59곳이다(Agent 턴 24, X 상위 5 밖 18). 망 쪽을 낫다고 본 곳은 53곳이다.
+  - 효과 순서 차이 442곳은 90%가 차이 없음이다. 모방학습이 낮다는 판단은 그대로다.
+- **다음(사용자 몫)**:
+  - 확인된 59곳을 문제집으로 고정한다.
+  - 사람 판 상태에서 ExIt 레이블을 매긴다.
+  - 판이 쌓이면 진단을 다시 돌린다.
+- **검증**(병합 전 브랜치): pytest **6,970개 통과**, Ruff 통과, mypy(455파일) 통과, E2E 54개 통과.
+  - 첫 전체 실행에서 `tests/launcher/test_launcher_supervisor.py::test_a_local_server_stops_on_its_closed_input_with_a_stream_open`(종료 2초 단정)이 한 번 실패했다. 리뷰 에이전트가 동시에 테스트를 돌리던 때였고, 혼자 세 번·전체 재실행 모두 통과했다.
 
 ## 2026-10-09 앱 AI: Navigation Chamber로 공짜가 된 Spice Refinery 거래에서 음수 spice 오류 (codec 그대로 v141)
 
