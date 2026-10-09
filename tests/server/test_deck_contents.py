@@ -12,12 +12,17 @@ The list rides only in the observing seat's own ``private`` block as
 ``deck_cards``, sorted by card id, so these tests pin: it equals the owner's
 sorted deck through reshuffles and draws; it cannot encode the order; and
 no other view, log or summary changes when another seat's deck does.
+
+The one exception to the hidden order is the top card a card effect shows
+its owner (Glowglobes, section (d)); the owner's deck list marks it, and the
+tests there pin that only the owner's payload ever names it.
 """
 
 from __future__ import annotations
 
 import json
 import random
+import re
 from collections.abc import Mapping
 from dataclasses import replace
 
@@ -29,6 +34,7 @@ from dune_imperium.server.access import ANONYMOUS, AccessMode, Credentials
 from dune_imperium.server.sessions import (
     GameSessionManager,
     SeatAccessError,
+    SessionError,
     _serialize_view,
     _state_after,
 )
@@ -290,3 +296,205 @@ def test_remote_seats_cannot_reach_another_seats_list() -> None:
         text = json.dumps(payload)
         assert "deck_cards" not in text
         assert not [card for card in starters if card in text]
+
+
+# --- (d) Glowglobes: the one deck card below the top stays hidden ---------
+#
+# "| Glowglobes | 2 | Influence 1 선택 | 언제든 자기 덱 맨 위 카드를 볼 수 있다 |"
+# (docs/rules/bloodlines.md, [Tech tile faces] [Bloodlines p. 7]). The engine
+# puts that card in the owner's own ``private.peeked_card_id``
+# (core/observation.py ``peeked_card_id``), and the client marks it in the
+# owner's deck list (static/panels.js ``openDeckList``; a display convention
+# on top of OQ-010 ruling 5, not a rule change). The list adds nothing the
+# payload did not already carry, so these tests pin the payload: the owner
+# sees the top card and nothing about the order below it, and no other
+# reader -- another seat, a seatless spectator, a remote stranger, a review
+# of the live game -- learns which card is on top.
+
+
+def _give_glowglobes(state: GameState, seat: int) -> GameState:
+    """Hand ``seat`` the Glowglobes tile from wherever it lies (a tile is in
+    exactly one zone, core/state.py)."""
+
+    players = state.players
+    for other in range(len(players)):
+        tiles = players[other].tech_ids
+        if "glowglobes" in tiles:
+            kept = tuple(tile for tile in tiles if tile != "glowglobes")
+            players = replace_player(players, replace(players[other], tech_ids=kept))
+    owner = players[seat]
+    players = replace_player(
+        players, replace(owner, tech_ids=(*owner.tech_ids, "glowglobes"))
+    )
+    return replace(
+        state,
+        tech_stacks=tuple(
+            tuple(tile for tile in stack if tile != "glowglobes")
+            for stack in state.tech_stacks
+        ),
+        tech_trash=tuple(tile for tile in state.tech_trash if tile != "glowglobes"),
+        players=players,
+    )
+
+
+def _group(card: str) -> str:
+    """A deck card's catalog card: copies of one card share it."""
+
+    return re.sub(r"^player:\d+:starter:", "", card).rsplit(":", 1)[0]
+
+
+def _glowglobes_midgame(
+    *, access: AccessMode = AccessMode.OPEN
+) -> tuple[GameSessionManager, str, dict[int, Credentials]]:
+    """A Bloodlines + Tech game walked until every deck holds four cards,
+    seat 0 then given Glowglobes. Remote games also seat holders 0 and 1."""
+
+    remote = access is AccessMode.REMOTE
+    manager = (
+        GameSessionManager(access=access, admin_key=ADMIN_KEY)
+        if remote
+        else GameSessionManager()
+    )
+    game_id = str(
+        manager.create_game(
+            FOUR_HUMANS,
+            bloodlines=True,
+            tech_module=True,
+            game_seed=7,
+            credentials=Credentials(admin_key=ADMIN_KEY) if remote else ANONYMOUS,
+        )["game_id"]
+    )
+    holders: dict[int, Credentials] = {}
+    if remote:
+        for seat in (0, 1):
+            token = manager.claim_seat(game_id, seat, f"P{seat}").token
+            holders[seat] = Credentials(seat_tokens=frozenset({token}))
+    session = manager._get(game_id)
+    if not remote:
+        rng = random.Random(7)
+        for _ in range(800):
+            if all(len(player.deck) >= 4 for player in session.state.players):
+                break
+            assert _step(manager, game_id, rng)
+    session.state = _give_glowglobes(session.state, 0)
+    assert len(session.state.players[0].deck) >= 4
+    return manager, game_id, holders
+
+
+def test_glowglobes_owner_sees_the_top_card_and_nothing_below_it() -> None:
+    manager, game_id, _ = _glowglobes_midgame()
+    session = manager._get(game_id)
+    state = session.state
+    deck = state.players[0].deck
+    view = manager.view(game_id, 0)
+    private = _obj(view["private"])
+    assert private["peeked_card_id"] == deck[0]
+    assert deck[0] in _deck_cards(view)
+    assert _deck_cards(view) == sorted(deck)
+    assert _obj(manager.snapshot(game_id, 0)["view"])["private"] == private
+
+    # Below the top: any order serializes the owner's view identically.
+    baseline = _serialize_view(session.engine.observe(state, 0), state)
+    below = deck[1:]
+    for order in (
+        tuple(reversed(below)),
+        (*below[1:], below[0]),
+        tuple(random.Random(3).sample(below, len(below))),
+    ):
+        if order == below:
+            continue
+        variant = _with_deck(state, 0, (deck[0], *order))
+        assert _serialize_view(session.engine.observe(variant, 0), variant) == baseline
+
+    # A different top card (same cards, so the same list) moves exactly one
+    # field of the owner's view: the peeked card itself.
+    swaps = [index for index in range(1, len(deck)) if deck[index] != deck[0]]
+    assert swaps
+    for index in swaps:
+        swapped = list(deck)
+        swapped[0], swapped[index] = swapped[index], swapped[0]
+        variant = _with_deck(state, 0, tuple(swapped))
+        changed = _serialize_view(session.engine.observe(variant, 0), variant)
+        before, after = _obj(baseline["private"]), _obj(changed["private"])
+        assert {key for key in before if before[key] != after[key]} == {
+            "peeked_card_id"
+        }
+        assert after["peeked_card_id"] == deck[index]
+        assert {key: value for key, value in changed.items() if key != "private"} == {
+            key: value for key, value in baseline.items() if key != "private"
+        }
+
+
+def test_no_other_reader_learns_the_glowglobes_top_card() -> None:
+    manager, game_id, _ = _glowglobes_midgame()
+    session = manager._get(game_id)
+    original = session.state
+    deck = original.players[0].deck
+    # A top card of another card (not just another copy), same multiset.
+    index = next(i for i in range(1, len(deck)) if _group(deck[i]) != _group(deck[0]))
+    swapped = list(deck)
+    swapped[0], swapped[index] = swapped[index], swapped[0]
+    changed = _with_deck(original, 0, tuple(swapped))
+
+    def everything_but_the_owner() -> dict[str, object]:
+        seen: dict[str, object] = {
+            "summary": manager.summary(game_id),
+            "seatless snapshot": manager.snapshot(game_id),
+            "identify": manager.identify(game_id),
+        }
+        for seat in (1, 2, 3):
+            seen[f"view {seat}"] = manager.view(game_id, seat)
+            seen[f"snapshot {seat}"] = manager.snapshot(game_id, seat)
+            seen[f"log {seat}"] = manager.log(game_id, seat)
+        return seen
+
+    session.state = original
+    before = everything_but_the_owner()
+    session.state = changed
+    after = everything_but_the_owner()
+    owner_after = manager.view(game_id, 0)
+    session.state = original
+
+    assert after == before
+    assert _obj(owner_after["private"])["peeked_card_id"] == deck[index]
+    # No other seat holds a peek of its own, and the owner's top card is in
+    # no other reader's payload (the logs may name it from before a
+    # reshuffle; the equality above covers them).
+    for seat in (1, 2, 3):
+        assert _obj(_obj(before[f"view {seat}"])["private"])["peeked_card_id"] == ""
+    for top in (deck[0], deck[index]):
+        for name, payload in before.items():
+            if name.startswith("log"):
+                continue
+            seen = payload
+            if name.startswith("snapshot"):
+                seen = _obj(payload)["view"]
+            assert top not in json.dumps(seen), name
+
+    # The live game opens no review, for the owner's seat or any other.
+    for seat in range(4):
+        with pytest.raises(SessionError):
+            manager.review_state(game_id, seat, 0)
+
+
+def test_remote_strangers_cannot_reach_the_glowglobes_top_card() -> None:
+    manager, game_id, holders = _glowglobes_midgame(access=AccessMode.REMOTE)
+    state = manager._get(game_id).state
+    top = state.players[0].deck[0]
+
+    own = manager.view(game_id, 0, credentials=holders[0])
+    assert _obj(own["private"])["peeked_card_id"] == top
+    for stranger in (holders[1], ANONYMOUS):
+        with pytest.raises(SeatAccessError):
+            manager.view(game_id, 0, credentials=stranger)
+        with pytest.raises(SeatAccessError):
+            manager.snapshot(game_id, 0, credentials=stranger)
+    holder = manager.view(game_id, 1, credentials=holders[1])
+    assert _obj(holder["private"])["peeked_card_id"] == ""
+    assert top not in json.dumps(holder)
+    for payload in (
+        manager.snapshot(game_id, credentials=holders[1]),
+        manager.snapshot(game_id, credentials=ANONYMOUS),
+        manager.summary(game_id),
+    ):
+        assert top not in json.dumps(payload)

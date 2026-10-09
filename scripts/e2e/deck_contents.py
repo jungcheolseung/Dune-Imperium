@@ -20,19 +20,32 @@ checks, in Korean and English at 1366x768:
   it posts no action;
 - the discard pile count still opens its list, by mouse and keyboard.
 
+Scenario A also checks the top card a card effect shows the owner
+(``private.peeked_card_id``: Glowglobes, or Controlled while its choice is
+up): one group is marked "Top" exactly when the view names a deck card, the
+list then carries a second note and the count's title says the top card is
+marked, and the peek strip beside the Intrigue cards shows it only without
+Glowglobes or while Controlled's choice is offered.
+
 Scenario B plays a four-human game through the HTTP API and, at many
 checkpoints, reads every seat's snapshot: each seat's own private block
 carries a sorted deck_cards consistent with its other zones, and no other
 payload (another seat's view, the seatless snapshot, the summary) carries the
 key or any of that deck's cards.
 
-Scenario C opens the deck list and a pile list in a four-human game while
-a card or a leader popover is pinned, and checks that a foreign render
-closes them: the opener's click never reached the document's close, so the
-pin used to carry over and keep the list open, unrefreshed.
+Scenario C edits a four-human game's view in the browser (user decision
+2026-10-10, feedback item 3). With Glowglobes and the top card inside a xN
+group, in Korean and English: the group reads "맨 위 · ×N" / "Top · ×N", is
+outlined, keeps its place and its representative card, the second note names
+Glowglobes, the count's title says the top is marked, and nothing is left
+beside the Intrigue cards; Controlled's offered choice brings the strip back,
+and without Glowglobes the strip is as before. It also opens the deck list
+and a pile list while a card or a leader popover is pinned and checks that a
+foreign render closes them (the pin used to carry over).
 
-E2E_SHOTS_DIR optionally names where the screenshots go ({start,mid}_deck_{ko,en}.png
-and {start,mid}_zones_{ko,en}.png); otherwise a temporary folder.
+E2E_SHOTS_DIR optionally names where the screenshots go ({start,mid}_deck_{ko,en}.png,
+{start,mid}_zones_{ko,en}.png and top_mark_{ko,en}.png); otherwise a
+temporary folder.
 """
 
 from __future__ import annotations
@@ -68,6 +81,14 @@ TEXT = {
         "title": "내 카드덱 · {n}장 (순서 비공개)",
         "note": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
         "deck_button": "카드덱 구성 보기 (순서 비공개)",
+        "deck_button_top": "카드덱 구성 보기 (순서 비공개, 맨 위 카드 표시)",
+        "top_badge": "맨 위",
+        "top_title": "카드덱 맨 위 카드",
+        "top_note": (
+            "맨 위로 표시한 카드는 {source} 효과로 확인한 카드덱 맨 위 카드입니다."
+        ),
+        "glowglobes": "발광구",
+        "strip_badge": "덱 맨 위",
         "discard_button": "버림 더미 보기",
         "discard_title": "내 버림 더미 ({n})",
         "zones": (
@@ -78,6 +99,14 @@ TEXT = {
         "title": "My deck · {n} cards (order hidden)",
         "note": "Shown by name, not in draw order.",
         "deck_button": "View deck contents (order hidden)",
+        "deck_button_top": "View deck contents (order hidden, top card marked)",
+        "top_badge": "Top",
+        "top_title": "top card of the deck",
+        "top_note": (
+            "The card marked Top is the top card of the deck, seen through {source}."
+        ),
+        "glowglobes": "Glowglobes",
+        "strip_badge": "Top of deck",
         "discard_button": "View discard pile",
         "discard_title": "My discard pile ({n})",
         "zones": (
@@ -103,17 +132,38 @@ POPOVER_JS = """() => {
     hidden: pop.hidden,
     title: text('.popover-title'),
     note: text('.popover-note'),
+    notes: [...pop.querySelectorAll('.popover-note')].map((node) => node.textContent),
     pinned: popoverPinned,
     rect: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
-    cards: [...pop.querySelectorAll('.vcard')].map((card) => ({
-      instance: card.dataset.instance,
-      title: card.title,
-      aria: card.getAttribute('aria-label'),
-      badge: card.querySelector('.vcard-badge')
-        ? card.querySelector('.vcard-badge').textContent : null,
-    })),
+    cards: [...pop.querySelectorAll('.vcard')].map((card) => {
+      const badge = card.querySelector('.vcard-badge');
+      const own = card.getBoundingClientRect();
+      const mark = badge ? badge.getBoundingClientRect() : null;
+      return {
+        instance: card.dataset.instance,
+        title: card.title,
+        aria: card.getAttribute('aria-label'),
+        badge: badge ? badge.textContent : null,
+        top: card.classList.contains('deck-top'),
+        outline: getComputedStyle(card).outlineStyle,
+        badgeFits: !badge || (badge.getClientRects().length === 1
+          && mark.height < 20 && mark.left >= own.left - 0.5
+          && mark.right <= own.right + 0.5),
+      };
+    }),
   };
 }"""
+
+# The deck's top card outside the list: the hand zone's peek strip.
+STRIP_JS = """(badge) => [...document.querySelectorAll('#private-zone .vcard')]
+  .filter((card) => {
+    const mark = card.querySelector('.vcard-badge');
+    return mark && mark.textContent === badge;
+  })
+  .map((card) => card.dataset.instance)"""
+
+# Controlled's choice on the top card (rules/intrigue.py PeekTopCard).
+DECK_TOP_CHOICES = ("put_back_top_card", "discard_top_card", "draw_top_card_for_solari")
 
 SEATS_JS = """() => state.view.players.map((player) => {
   const card = document.querySelector(`#seats .seat[data-seat='${player.player}']`);
@@ -283,6 +333,34 @@ def check_deck_list(
         deck_cards == sorted(deck_cards) and len(set(deck_cards)) == len(deck_cards),
         f"{label} the server's list is sorted by card id, no card twice",
     )
+    # The top card a card effect shows the owner (Glowglobes; Controlled
+    # while its choice is up) is marked in the list exactly when the view
+    # names it; the peek strip beside the Intrigue cards keeps it only
+    # without Glowglobes or while Controlled's choice is offered.
+    seat = snapshot["view"]["player"]
+    peeked = private.get("peeked_card_id") or ""
+    marked = bool(peeked) and peeked in deck_cards
+    glowglobes = "glowglobes" in snapshot["view"]["players"][seat]["tech_ids"]
+    offered = page.evaluate(
+        "ids => Boolean(state.actions && state.actions.actions.some("
+        "(a) => ids.includes(a.action_id)))",
+        list(DECK_TOP_CHOICES),
+    )
+    print(
+        f"  .. {label} glowglobes={glowglobes} peeked={peeked!r} controlled={offered}"
+    )
+    check.ok(
+        page.evaluate("state.view.private.peeked_card_id || ''") == peeked,
+        f"{label} the client holds the server's peeked card",
+    )
+    check.ok(
+        page.evaluate(STRIP_JS, words["strip_badge"])
+        == ([peeked] if peeked and (not glowglobes or offered) else []),
+        f"{label} the peek strip shows the top card only outside Glowglobes or "
+        "during Controlled's choice",
+        page.evaluate(STRIP_JS, words["strip_badge"]),
+    )
+    button = words["deck_button_top" if marked else "deck_button"]
     attributes = (
         stat.get_attribute("role"),
         stat.get_attribute("tabindex"),
@@ -290,7 +368,7 @@ def check_deck_list(
         stat.get_attribute("aria-label"),
     )
     check.ok(
-        attributes == ("button", "0", words["deck_button"], words["deck_button"]),
+        attributes == ("button", "0", button, button),
         f"{label} the deck count is a labelled, focusable button",
         attributes,
     )
@@ -306,22 +384,54 @@ def check_deck_list(
         f"{label} the list says how it is ordered",
         opened["note"],
     )
+    source = (
+        words["glowglobes"]
+        if glowglobes
+        else page.evaluate("lookup('twisted_controlled', 'intrigue').name")
+    )
+    check.ok(
+        opened["notes"]
+        == [
+            words["note"],
+            *([words["top_note"].format(source=source)] if marked else []),
+        ],
+        f"{label} a second note explains the top mark exactly when it is shown",
+        opened["notes"],
+    )
+    top_key = group_key(peeked) if marked else None
     expected_groups: dict[str, int] = {}
     for instance in deck_cards:
         key = group_key(instance)
         expected_groups[key] = expected_groups.get(key, 0) + 1
     shown_groups: dict[str, int] = {}
     badges_ok = True
+    names = []
     for card in opened["cards"]:
         key = group_key(card["instance"])
         count = expected_groups.get(key, 0)
         shown_groups[key] = shown_groups.get(key, 0) + 1
+        is_top = key == top_key
+        copies = f"×{count}" if count > 1 else ""
+        badge = " · ".join(
+            part for part in (words["top_badge"] if is_top else "", copies) if part
+        )
+        badges_ok &= card["badge"] == (badge or None)
+        badges_ok &= card["top"] == is_top
+        title = card["title"]
+        if is_top:
+            badges_ok &= title.endswith(f" · {words['top_title']}")
+            title = title.removesuffix(f" · {words['top_title']}")
         if count > 1:
-            badges_ok &= card["badge"] == f"×{count}"
-            badges_ok &= card["title"].endswith(f" ×{count}")
+            badges_ok &= title.endswith(f" ×{count}")
         else:
-            badges_ok &= card["badge"] is None and "×" not in card["title"]
+            badges_ok &= "×" not in title
         badges_ok &= card["aria"] == card["title"]
+        names.append(re.sub(r" ×\d+$", "", title))
+    check.ok(
+        sum(card["top"] for card in opened["cards"]) == (1 if marked else 0),
+        f"{label} one card is marked Top exactly when the view names the top card",
+        [card for card in opened["cards"] if card["top"]],
+    )
     check.ok(
         set(shown_groups) == set(expected_groups)
         and all(value == 1 for value in shown_groups.values()),
@@ -335,14 +445,13 @@ def check_deck_list(
     )
     check.ok(
         badges_ok,
-        f"{label} copies show xN, single cards no badge",
+        f"{label} copies show xN (Top · xN on the top card), single cards no badge",
         opened["cards"][:3],
     )
     check.ok(
         sum(expected_groups.values()) == deck_size,
         f"{label} the xN figures add up to the deck size",
     )
-    names = [re.sub(r" ×\d+$", "", card["title"]) for card in opened["cards"]]
     check.ok(
         page.evaluate(
             "([names, lang]) => names.every((name, i) => i === 0"
@@ -566,14 +675,163 @@ def check_leak(
         )
 
 
-# Scenario C: a four-human game (nothing moves unless this script acts).
+# Scenario C: a four-human game (nothing moves unless this script acts), so
+# the browser's view can be edited in place, the way table_layout.py stresses
+# the hand. Seed 13 starts with the first seat's deck holding copies of a card.
 TOP_SEED = 13
+
+# The real view, kept once, and a group of copies in its deck: the top card
+# is put on the group's largest instance id, so the list's representative
+# (the smallest) differs from it.
+TOP_SETUP_JS = """() => {
+  if (!window.__deckTop) {
+    window.__deckTop = { view: structuredClone(state.view), actions: state.actions };
+  }
+  const key = (id) => { const ref = instanceRef(id); return `${ref.kind}:${ref.id}`; };
+  const groups = new Map();
+  for (const id of window.__deckTop.view.private.deck_cards) {
+    groups.set(key(id), [...(groups.get(key(id)) || []), id]);
+  }
+  const group = [...groups.values()].find((ids) => ids.length > 1);
+  if (!group) return null;
+  const ids = [...group].sort();
+  return { top: ids[ids.length - 1], representative: ids[0], count: ids.length };
+}"""
+
+# One variant of the kept view: whether the seat owns Glowglobes, the card the
+# view names as the top (peeked_card_id), and whether Controlled's choice on
+# it is offered (its put-back action stands in for the three).
+TOP_VARIANT_JS = """([glowglobes, peeked, controlled]) => {
+  const saved = window.__deckTop;
+  state.view = structuredClone(saved.view);
+  const own = state.view.players[state.view.player];
+  own.tech_ids = [...(own.tech_ids || []).filter((id) => id !== 'glowglobes'),
+                  ...(glowglobes ? ['glowglobes'] : [])];
+  state.view.private.peeked_card_id = peeked;
+  state.actions = controlled
+    ? { actions: [{ index: 0, action_id: 'put_back_top_card', arguments: {},
+                    detail: null, detail_ko: null, undoable: false }],
+        scouts_lines: null, unavailable: null }
+    : saved.actions;
+  render();
+}"""
+
+TOP_RESTORE_JS = """() => {
+  state.view = window.__deckTop.view;
+  state.actions = window.__deckTop.actions;
+  render();
+}"""
+
+
+def deck_stat_title(page: Any) -> str | None:
+    title: str | None = page.locator(
+        "#private-zone .hand-counts .stat"
+    ).first.get_attribute("title")
+    return title
+
+
+def check_top_mark(page: Any, lang: str) -> None:
+    words = TEXT[lang]
+    label = f"[C {lang}]"
+    group = page.evaluate(TOP_SETUP_JS)
+    if not check.ok(
+        group is not None, f"{label} the deck holds copies of a card (seed {TOP_SEED})"
+    ):
+        return
+    top, representative, count = group["top"], group["representative"], group["count"]
+    strip = words["strip_badge"]
+
+    page.evaluate(TOP_VARIANT_JS, [False, "", False])
+    check.ok(
+        page.evaluate(STRIP_JS, strip) == []
+        and deck_stat_title(page) == words["deck_button"],
+        f"{label} no peek: no strip, the plain deck count title",
+        deck_stat_title(page),
+    )
+    plain = open_deck_list(page, "click")
+    page.keyboard.press("Escape")
+    check.ok(
+        not any(card["top"] for card in plain["cards"])
+        and plain["notes"] == [words["note"]],
+        f"{label} no peek: nothing marked, one note",
+        plain["notes"],
+    )
+
+    page.evaluate(TOP_VARIANT_JS, [True, top, False])
+    check.ok(
+        page.evaluate(STRIP_JS, strip) == [],
+        f"{label} Glowglobes alone puts no card beside the Intrigue cards",
+        page.evaluate(STRIP_JS, strip),
+    )
+    check.ok(
+        deck_stat_title(page) == words["deck_button_top"],
+        f"{label} the deck count's title says the top card is marked",
+        deck_stat_title(page),
+    )
+    marked = open_deck_list(page, "click")
+    tops = [card for card in marked["cards"] if card["top"]]
+    check.ok(
+        len(tops) == 1
+        and tops[0]["instance"] == representative
+        and tops[0]["badge"] == f"{words['top_badge']} · ×{count}"
+        and tops[0]["title"].endswith(f" ×{count} · {words['top_title']}")
+        and tops[0]["aria"] == tops[0]["title"]
+        and tops[0]["outline"] == "solid"
+        and tops[0]["badgeFits"],
+        f"{label} the copies' group is marked '{words['top_badge']} · ×{count}', "
+        "outlined, badge on one line",
+        tops,
+    )
+    check.ok(
+        [card["instance"] for card in marked["cards"]]
+        == [card["instance"] for card in plain["cards"]]
+        and marked["title"] == plain["title"],
+        f"{label} the mark leaves the order and every representative card as they were",
+    )
+    check.ok(
+        marked["notes"]
+        == [words["note"], words["top_note"].format(source=words["glowglobes"])],
+        f"{label} a second note says the mark is the top card seen through Glowglobes",
+        marked["notes"],
+    )
+    page.screenshot(path=str(SHOTS / f"top_mark_{lang}.png"))
+    page.keyboard.press("Escape")
+
+    page.evaluate(TOP_VARIANT_JS, [True, top, True])
+    check.ok(
+        page.evaluate(STRIP_JS, strip) == [top],
+        f"{label} Controlled's choice brings the top card back beside Intrigue",
+        page.evaluate(STRIP_JS, strip),
+    )
+    during = open_deck_list(page, "click")
+    page.keyboard.press("Escape")
+    check.ok(
+        [card["instance"] for card in during["cards"] if card["top"]]
+        == [representative],
+        f"{label} the list keeps its mark during Controlled's choice",
+    )
+
+    page.evaluate(TOP_VARIANT_JS, [False, top, False])
+    controlled = page.evaluate("lookup('twisted_controlled', 'intrigue').name")
+    check.ok(
+        page.evaluate(STRIP_JS, strip) == [top],
+        f"{label} without Glowglobes the strip shows a peeked top card as before",
+        page.evaluate(STRIP_JS, strip),
+    )
+    shown = open_deck_list(page, "click")
+    page.keyboard.press("Escape")
+    check.ok(
+        shown["notes"] == [words["note"], words["top_note"].format(source=controlled)],
+        f"{label} without Glowglobes the note names Controlled",
+        shown["notes"],
+    )
+    page.evaluate(TOP_RESTORE_JS)
 
 
 def check_stale_pin(page: Any) -> None:
     """A list opened while another popover is pinned is not pinned itself:
     the opener's click never reaches the document's click-elsewhere close,
-    so the old pin used to carry over and keep the list
+    so the old pin used to carry over and keep the list (and its top mark)
     open, unrefreshed, through every foreign update."""
 
     label = "[C pin]"
@@ -632,12 +890,19 @@ def check_stale_pin(page: Any) -> None:
 
 
 def scenario_c(base: str, browser: Any) -> None:
-    print("[C] a list opened over a pinned popover (four humans)")
-    context, page, rec = open_context(browser, "deck-pin", LAPTOP_VIEWPORT)
+    print("[C] the deck list's top card mark and a stale pin (view edits, four humans)")
+    context, page, rec = open_context(browser, "deck-top", LAPTOP_VIEWPORT)
     create_game(page, base, humans=4, seed=TOP_SEED)
     posts = rec.count("POST", "/actions")
     check_stale_pin(page)
-    check.ok(rec.count("POST", "/actions") == posts, "[C] the checks post no action")
+    for lang in ("ko", "en"):
+        if page.evaluate("TERM_LANGUAGE") != lang:
+            page.click("#language-toggle")
+            page.wait_for_function(f"TERM_LANGUAGE === '{lang}'")
+        check_top_mark(page, lang)
+    check.ok(
+        rec.count("POST", "/actions") == posts, "[C] the view edits post no action"
+    )
     failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not failed, "[C] no failed requests", failed[:5])
     check.ok(not rec.js_errors, "[C] no JS exceptions", rec.js_errors[:5])
