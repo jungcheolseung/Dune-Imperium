@@ -70,6 +70,8 @@
 2. 각 플레이어는 Objective를 무작위로 한 장 받아 자기 supply에 앞면으로 공개한다. [Main p. 5]
 3. Objective에 First Player marker가 표시된 플레이어가 그 marker를 가져간다. [Main p. 5]
 
+자리 배치(누가 어느 좌석에 앉는가)는 규칙서가 정하지 않는다. First Player는 위의 Objective 배분으로 정해진다. [Main p. 5] 플레이 UI는 기본으로, 설정 화면에서 고른 좌석들을 게임을 만들 때 무작위로 섞는다. 차례 순서와 색은 좌석을 따른다. 서버 `--seating fixed`로 기본을 끌 수 있고, 설정 화면의 "자리 무작위 배치" 칸으로 판마다 고를 수 있다(`server/seating.py`). (project convention, user request 2026-10-10, not an official rule)
+
 ## 3. 일반 개념
 
 ### 자원과 Victory Point
