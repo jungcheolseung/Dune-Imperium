@@ -217,18 +217,19 @@ MAKER_SPICE_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
 )
 MAKER_SPICE_SIZE: Final = (2.79, 2.4)
 
-# Victory Point track: the numbered column on the right edge, 0 at the
-# bottom and 12 at the top; higher scores share the emblem above 12. The
+# Victory Point track: the numbered column on the right edge, 13 cells with
+# 0 at the bottom and 12 at the top (the emblem above 12 is not a cell). The
 # values are the centres of the printed cells (re-measured 2026-09-18 from
 # the divider diamonds at x 94.25 and 98.75: cell 0 spans y 91.92..97.19 and
 # the pitch is 5.275), because a Score marker now fills a quarter of its
-# cell instead of being a dot somewhere on it. The emblem's centre is about
-# 27.3; the overflow row sits a little higher to stay clear of cell 12.
+# cell instead of being a dot somewhere on it. A score can pass 12 [FAQ
+# p. 4]; the board then counts on from 0 with the lap ("+13") marked on the
+# disc, so the number of cells is the modulus (a display convention the
+# user asked for on 2026-10-10, not a rule).
 VICTORY_POINT_X: Final = 96.5
 VICTORY_POINT_Y: Final = tuple(round(94.56 - 5.275 * level, 2) for level in range(13))
-VICTORY_POINT_OVERFLOW_Y: Final = 27.0
 # One cell of the track, (width, height): the diamonds stand 4.5 apart and
-# the cells are 5.275 tall. Discs that share a score overlap to stay inside.
+# the cells are 5.275 tall. Discs that share a cell overlap to stay inside.
 VICTORY_POINT_CELL: Final = (4.5, 5.275)
 
 # Combat strength track: two numbered rows along the bottom edge, cells
@@ -572,7 +573,6 @@ def marker_layout() -> dict[str, Any]:
         "victory_points": {
             "x": VICTORY_POINT_X,
             "levels": list(VICTORY_POINT_Y),
-            "overflow_y": VICTORY_POINT_OVERFLOW_Y,
             "cell": list(VICTORY_POINT_CELL),
         },
         "strength": {
