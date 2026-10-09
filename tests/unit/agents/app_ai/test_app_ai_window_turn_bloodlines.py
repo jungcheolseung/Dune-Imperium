@@ -236,7 +236,7 @@ def test_an_unknown_choice_icon_falls_back() -> None:
 
 
 # ===========================================================================
-# Navigation Chamber: each discount variant is its own target (D60)
+# Navigation Chamber: the cut space is the target (D60)
 # ===========================================================================
 
 
@@ -244,9 +244,16 @@ def test_an_unknown_choice_icon_falls_back() -> None:
     ("card", "space_id", "kind"),
     [("dagger", "high_council", "solari"), ("diplomacy", "sardaukar", "spice")],
 )
-def test_navigation_chamber_takes_the_first_strictly_best_variant(
+def test_navigation_chamber_targets_and_prices_the_cut_space(
     card: str, space_id: str, kind: str
 ) -> None:
+    """The engine offers only the cut placement (OQ-104, codec v142: "Board
+    spaces cost you [1 spice] or [1 Solari] less." [Tech tile face] has no
+    "may"), so the window sees one variant here and prices the cut cost.
+    Before v142 the undiscounted variant came first and ``_best_discount``
+    chose between the two; it now separates only Spice Refinery's and Gather
+    Support's free option 0 from their cut option 1."""
+
     state, seat = _turn()
     state = _give_tech(state, seat, "navigation_chamber")
     me = state.players[seat]
@@ -260,14 +267,15 @@ def test_navigation_chamber_takes_the_first_strictly_best_variant(
         for a in run.by_id("agent_turn")
         if arg(a, "card_id") == ref and arg(a, "space_id") == space_id
     ]
-    assert [arg(a, "discount") for a in variants] == [None, kind]
+    assert [arg(a, "discount") for a in variants] == [kind]
     reveal = run.first("reveal_turn")
     assert reveal is not None
     narrowed = _run(state, seat, (*variants, reveal))
     (source,) = turn._card_sources(narrowed)
     assert source.evaluate is not None
     value, action = source.evaluate()
-    # The same AgentAbility over each variant alone; the first strictly best.
+    # The same AgentAbility over the printed and the cut space: the cut
+    # cost is what the window prices.
     profile = make_profile(state, seat)
     agent = next(
         a for a in abilities_of(card_entity(ref, seat)) if isinstance(a, AgentAbility)

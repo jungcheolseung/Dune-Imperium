@@ -1817,10 +1817,6 @@ const UI_TEXT = {
     "ko": "{{name}}: 선택지가 {{count}}개입니다. 오른쪽 행동 목록에서 고르세요.",
     "en": "{{name}}: {{count}} choices available. Choose from the action list on the right."
   },
-  "turn.no_discount": {
-    "ko": "할인 없이",
-    "en": "No discount"
-  },
   "turn.no_route": {
     "ko": "{{from}} → {{to}}: 갈 수 없습니다.",
     "en": "{{from}} → {{to}}: not possible."

@@ -1391,6 +1391,9 @@ kbd {
 .pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
 .pick-option .icon { height: 1.1em; }
 .pick-graft { font-weight: 600; }
+/* Navigation Chamber's cut: the printed cost struck through, then the paid one. */
+.pick-option .cost-printed { text-decoration: line-through; opacity: 0.6; }
+.pick-discount { font-weight: 600; }
 #actions .action-list-toggle {
   align-self: flex-end;
   margin-top: 0.4rem;

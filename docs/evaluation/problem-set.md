@@ -406,3 +406,13 @@ Conflict 끝 Intrigue 창을 모두가 아는 사실(Immortality, Conflict의 �
 Endgame 문항이 11 → 17로 늘어 따로 확인했다. 같은 heuristic 판을 seed 800-1599로 돌려 Endgame 문항만 상한 없이 캐면 옛 창
 규칙 10개, 새 규칙 11개다 — 늘어난 것은 판이 바뀐 데서 온 흔들림이다(heuristic은 행동이 하나뿐인 결정에서도 난수를 쓰므로 창
 하나가 그 뒤의 판을 바꾼다). 채점은 하지 않았다. `tests/unit/test_problem_set.py`는 고칠 것이 없었다.
+
+## 재채굴 (2026-10-10, Navigation Chamber 할인은 의무, codec v142)
+
+Navigation Chamber를 가진 좌석이 비용이 있는 칸에서 할인한 placement만 받게 되자([OQ-104](../rules/open-questions.md), 사용자 결정
+2026-10-10) 커밋된 124개 가운데 25개가 복원되지 않았다. 정가 placement를 scratch로 되돌려 끼우면 124/124가 그대로 복원된다. 행동
+목록이 짧아지면 heuristic이 그 결정에서 뽑는 난수가 바뀌어 판이 갈린다. 위 "다시 캐는 명령"을 그대로 실행했다(worker 4, 5081은 메인
+체크아웃의 절대 경로로). 결과는 **126개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 29(heuristic 27 + 5081 2),
+Endgame 17(heuristic 17)이며 `check`가 **126/126** 복원을 확인했다. 포지션 id로 견주면 그대로 118(선택 번호와 지문까지 같은 것 99,
+지문은 같고 선택 번호만 바뀐 것 16, 지문까지 바뀐 것 3), 빠진 것 6, 새것 8이다. 문항별로는 sandworm 78 그대로·2 빠짐·2 새것,
+마지막 라운드 보유 25·2·4, Endgame 15·2·2다. 채점은 하지 않았다. `tests/unit/test_problem_set.py`는 고칠 것이 없었다.

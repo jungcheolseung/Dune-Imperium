@@ -278,46 +278,73 @@ function followWithPartner(partnerId) {
   note(t("turn.partner_not_allowed", { name: nameOf(partnerId) }));
 }
 
+/* What a placement pays for its space: the printed cost less Navigation
+   Chamber's cut (`discount`, rules/agent_turn.py apply_agent_action). */
+function paidCost(cost, discount) {
+  if (!discount || !cost[discount]) return cost;
+  return { ...cost, [discount]: cost[discount] - 1 };
+}
+
 /* What still tells two placements of one card on one space apart: the
-   space's cost option and whether the card is grafted. */
+   space's cost option, the Spy an Infiltrate recalls and whether the card is
+   grafted. Navigation Chamber's cut is mandatory (OQ-104), so it never
+   tells two lines apart; it is named on every line that carries it, and a
+   cost shown there is the printed one struck through, then what the seat
+   pays with the cut beside it in brackets, before the arrow, so the cut
+   reads as the reason for that cost and not as something the space gives. */
 function placementOptionNode(action, candidates) {
   const line = document.createElement("span");
   line.className = "pick-option";
   const space = state.catalog.spaces[action.arguments.space_id];
   const option = space && spaceOptionsFor(space)[action.arguments.cost_option || 0];
+  const discount = action.arguments.discount;
+  const cutNode = (bracketed) => {
+    const cut = document.createElement("span");
+    cut.className = "pick-discount";
+    if (bracketed) cut.append("(");
+    cut.append(amount(discount, termLabel(discount), 1), t("turn.discount_suffix"));
+    if (bracketed) cut.append(")");
+    return cut;
+  };
+  const costParts = [];
   if (option && candidates.some((other) => other.arguments.cost_option !== action.arguments.cost_option)) {
-    line.append(
-      costNode(option.cost),
+    if (discount) {
+      const printed = costNode(option.cost);
+      printed.classList.add("cost-printed");
+      costParts.push(printed);
+    }
+    costParts.push(costNode(paidCost(option.cost, discount)));
+    if (discount) costParts.push(cutNode(true));
+    costParts.push(
       icon("arrow_right", "→"),
       effectNode(option.effect, option.effect_ko),
     );
   }
+  const otherParts = [];
   const differs = (key) =>
     candidates.some((other) => other.arguments[key] !== action.arguments[key]);
-  if (differs("discount")) {
-    const discount = document.createElement("span");
-    discount.append(
-      action.arguments.discount
-        ? amount(action.arguments.discount, action.arguments.discount, 1)
-        : t("turn.no_discount"),
-      action.arguments.discount ? t("turn.discount_suffix") : ""
-    );
-    line.appendChild(discount);
-  }
   if (differs("infiltrate_post_id")) {
     const spy = document.createElement("span");
     spy.textContent = action.arguments.infiltrate_post_id
       ? t("turn.spy_recall", { post: postName(action.arguments.infiltrate_post_id) })
       : t("turn.spy_recall_none");
-    line.appendChild(spy);
+    otherParts.push(spy);
   }
   if (candidates.some((other) => Boolean(other.arguments.graft) !== Boolean(action.arguments.graft))) {
     const graft = document.createElement("span");
     graft.className = "pick-graft";
     graft.textContent = action.arguments.graft ? t("turn.graft_pending") : t("turn.graft_solo");
-    line.appendChild(graft);
+    otherParts.push(graft);
   }
-  if (!line.childNodes.length) line.appendChild(describeAction(action));
+  /* Nothing told the line apart: the action's own words, which already
+     name the cut among its arguments. */
+  if (!costParts.length && !otherParts.length) {
+    line.appendChild(describeAction(action));
+    return line;
+  }
+  line.append(...costParts);
+  if (discount && !costParts.length) line.appendChild(cutNode(false));
+  line.append(...otherParts);
   return line;
 }
 
