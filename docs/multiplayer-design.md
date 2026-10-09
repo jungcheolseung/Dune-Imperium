@@ -204,6 +204,7 @@ Tailscale 인터페이스에만 bind하므로 집 LAN에도 열리지 않는다.
 
 - Mac mini 또는 14700K PC. 서버 부하는 app_ai·heuristic·checkpoint 좌석이면 무시할 수준이다(9절; app_ai는 결정당 약 1~2 ms, 4.8절). rollout 좌석은 결정당 CPU 60~90 ms를 쓰므로 같은 머신에서 M10 학습(worker 8개)이 돌면 서로 느려진다.
 - **WSL2 주의.** WSL2 안에서 띄운 서버는 NAT 뒤라 다른 기기에서 들어오는 연결을 기본으로는 받지 못한다. 가장 단순한 호스트는 이미 네이티브로 쓰고 있는 Mac mini다. Windows PC라면 WSL 안에 Tailscale을 설치해 WSL 인스턴스를 tailnet 노드로 만들거나 WSL의 mirrored networking을 쓴다(둘 다 이 프로젝트에서 아직 해 보지 않았다 — 슬라이스 6에서 확인).
+- 2026-10-09: 터미널 대신 창으로 서버를 띄우고 끄는 서버 런처를 더했다([계획](server-launcher-plan.md)). 서버는 그대로 별도 프로세스이고, 런처는 그 stdin 파이프를 쥐어 닫는 것으로 끈다(`--exit-when-stdin-closes`).
 - 호스트 자신은 콘솔에 찍힌 관리자 링크로 들어가 자기 좌석도 방 링크에서 claim한다. Tailscale IP에만 bind했으면 호스트의 주소도 `http://100.x.y.z:8000`이라 보안 컨텍스트가 아니므로, 호스트 패널의 링크 복사는 `navigator.clipboard` 대신 선택 가능한 입력 칸으로 만든다.
 
 ### 8.4 에셋(카드·보드 스캔)

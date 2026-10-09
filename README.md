@@ -6,7 +6,7 @@
 
 역할에 맞는 문서를 선택한다. 참가자는 게임 저장소나 Python을 설치할 필요가 없다.
 
-- [서버 호스트용 가이드](docs/remote-play-host-guide.md): 서버 설치·실행, LAN·Tailscale 설정, 방 생성·공유, 저장·복구와 서버 문제 해결.
+- [서버 호스트용 가이드](docs/remote-play-host-guide.md): 서버 설치·실행, LAN·Tailscale 설정, 방 생성·공유, 저장·복구와 서버 문제 해결. 터미널 대신 창으로 서버를 띄우고 끄려면 그 문서의 **서버 런처로 실행** 절(`scripts/launcher/Install Launcher.command`·`.cmd`를 한 번 더블클릭).
 - [플레이어용 접속 가이드](docs/remote-play-player-guide.md): 필요한 준비, 방 링크로 접속, 플레이어 선택, 재접속·기기 변경과 접속 문제 해결.
 
 전체 진입점은 [멀티플레이 안내](docs/remote-play-guide.md)다.
@@ -126,6 +126,8 @@ uv run pytest
 uv run ruff check src tests
 uv run mypy src tests
 ```
+
+서버 런처(`dune-imperium-launcher`, 또는 `uv run python -m dune_imperium.launcher`)는 플레이 서버를 자식 프로세스로 띄우고 끄는 tkinter 창이다([계획](docs/server-launcher-plan.md)). 설정은 git 무시 `local/launcher.json`, 로그는 `tmp/launcher/`에 둔다. 창 없이 진단만 보려면 `uv run python -m dune_imperium.launcher.cli --check`.
 
 `uv sync`는 `.python-version`에 지정된 Python 3.14로 `.venv`를 만들고 `uv.lock`에 고정된 의존성을 설치한다. 주의: `uv sync`는 환경을 나열한 extras와 정확히 일치시키므로, extra를 빼고 실행하면 그 extra의 패키지가 제거된다(예: `--extra ui`만 주면 rl의 gymnasium·pettingzoo가 지워진다). 이 저장소의 표준 동기화 명령은 `uv sync --extra rl --extra ui --extra train`이다(`train`은 PyTorch; 없으면 `tests/unit/training/test_torch_policy.py`가 skip된다). 새 구현은 `src/dune_imperium/`에 두며, 기존 `dune/` 패키지는 이전 구현의 참고 자료일 뿐 새 코드에서 import하지 않는다.
 

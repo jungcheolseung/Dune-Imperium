@@ -1,11 +1,14 @@
 """CLI launching the local play server (requires the ``ui`` extra)."""
 
 import argparse
+import contextlib
+import errno
 import ipaddress
 import os
 import socket
 import sys
-from collections.abc import Mapping, Sequence
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from importlib.util import find_spec
 from pathlib import Path
 from types import FrameType
@@ -21,6 +24,12 @@ SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
 # to a weights-only copy beside it (``dune_imperium.paths``).
 DEFAULT_SEARCH_CHECKPOINT = SEARCH_CHECKPOINT
 _GRACEFUL_SHUTDOWN_SECONDS = 3
+# What the search AI imports besides torch (agents/network_search_agent.py:
+# numpy directly, gymnasium and pettingzoo through the PettingZoo adapter).
+SEARCH_AI_RL_PACKAGES = ("numpy", "gymnasium", "pettingzoo")
+# How much of standard input the --exit-when-stdin-closes watch reads at a
+# time; nothing is expected on it, so this only bounds a stray writer.
+_STDIN_CHUNK = 64 * 1024
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -116,6 +125,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "DUNE_IMPERIUM_CARD_IMAGE_DIR or the repository's assets/cards)"
         ),
     )
+    parser.add_argument(
+        "--exit-when-stdin-closes",
+        action="store_true",
+        help=(
+            "stop the server, as gracefully as Ctrl+C, once its standard "
+            "input reaches end of file: a launcher keeps the write end of a "
+            "pipe, so closing it, or the launcher dying, ends the server "
+            "(docs/server-launcher-plan.md). Meant for a launcher's pipe: "
+            "from /dev/null the server stops at once, on a terminal it stops "
+            "at Ctrl+D, and as a background job of an interactive shell its "
+            "first read of the terminal suspends it"
+        ),
+    )
     return parser
 
 
@@ -186,8 +208,9 @@ def resolve_search_checkpoint(
     (``DEFAULT_SEARCH_CHECKPOINT``). The path is resolved once, here: saves
     record the file a symlink named when the server started, so pointing
     the link at a newer checkpoint never changes an older save's network.
-    The seat is offered only when that file exists and torch (the ``train``
-    extra) is installed; the line says which, for the console.
+    The seat is offered only when that file exists and what the search AI
+    imports is installed: torch (the ``train`` extra) and numpy, gymnasium
+    and pettingzoo (the ``rl`` extra); the line says which, for the console.
     """
 
     named: str | None = arguments.search_checkpoint or environment.get(
@@ -207,16 +230,33 @@ def resolve_search_checkpoint(
         candidate = default.resolve()
     if find_spec("torch") is None:
         return None, "search AI: off (torch not installed: uv sync --extra train)"
+    missing = [name for name in SEARCH_AI_RL_PACKAGES if find_spec(name) is None]
+    if missing:
+        return None, (
+            f"search AI: off ({', '.join(missing)} not installed: "
+            "uv sync --extra rl --extra train)"
+        )
     return candidate, f"search AI: {candidate}"
 
 
-def bind_problem(host: str, port: int) -> str | None:
+def bind_problem(
+    host: str, port: int, *, platform: str = sys.platform
+) -> str | None:
     """Say why the server could not listen on ``host:port``, or ``None``.
 
     Asked before anything is printed: uvicorn reports a failed bind among
     its own log lines and the process would already have shown an admin
     link for a server that never came up. The usual cause on a host's
     machine is a Tailscale address while Tailscale is not connected.
+
+    The probe binds the way uvicorn's own bind does, which is asyncio's
+    ``create_server``: every address ``host`` resolves to, all held at once
+    (``localhost`` is 127.0.0.1 and ::1, and a server already on either
+    stops it); ``IPV6_V6ONLY`` on IPv6; an address the machine lacks
+    (EADDRNOTAVAIL) skipped unless none is left; and ``SO_REUSEADDR`` on
+    POSIX only (so a port lingering in TIME_WAIT is no problem there),
+    never on Windows, where that option would let the probe bind a port
+    another socket is listening on and so miss the busy port.
     """
 
     try:
@@ -225,21 +265,76 @@ def bind_problem(host: str, port: int) -> str | None:
         )
     except OSError as error:
         return f"cannot resolve --host {host}: {error}"
-    problem = f"no usable address for --host {host}"
-    for family, kind, protocol, _name, address in candidates:
-        try:
-            with socket.socket(family, kind, protocol) as probe:
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # asyncio: reuse_address = os.name == "posix" and sys.platform != "cygwin"
+    reuse = platform not in ("win32", "cygwin")
+    failure: str | None = None
+    unavailable: str | None = None
+    bound = 0
+    with contextlib.ExitStack() as held:
+        for family, kind, protocol, _name, address in dict.fromkeys(candidates):
+            try:
+                probe = held.enter_context(socket.socket(family, kind, protocol))
+            except OSError:
+                continue  # a family the system cannot open; asyncio skips it
+            try:
+                if reuse:
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if family == socket.AF_INET6 and hasattr(socket, "IPPROTO_IPV6"):
+                    probe.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
                 probe.bind(address)
-            return None
-        except OSError as error:
-            problem = f"cannot listen on {host}:{port}: {error.strerror or error}"
+                bound += 1
+            except OSError as error:
+                message = f"cannot listen on {host}:{port}: {error.strerror or error}"
+                if error.errno == errno.EADDRNOTAVAIL:
+                    unavailable = message
+                    continue
+                failure = message
+                break
+    if failure is not None:
+        return failure
+    if bound:
+        return None
+    problem = unavailable or f"no usable address for --host {host}"
     if not is_loopback_host(host) and host not in ("0.0.0.0", "::"):
         problem += (
             " (is that address up on this machine? a Tailscale address only "
             "exists while Tailscale is connected)"
         )
     return problem
+
+
+def stop_when_stream_ends(descriptor: int, stop: Callable[[], None]) -> None:
+    """Read file ``descriptor`` to its end, then call ``stop``.
+
+    The body of the --exit-when-stdin-closes watch thread. A launcher holds
+    the write end of the server's standard input; it closes it to stop the
+    server, and the operating system closes it when the launcher dies, so
+    either way the read ends here: a pipe whose writers are all gone reads
+    as end of file on POSIX and on Windows alike (the C runtime turns the
+    broken pipe into an empty read).
+
+    It reads the descriptor itself, not ``sys.stdin.buffer``: a thread
+    blocked in ``BufferedReader.read`` holds that buffer's lock, and when
+    the process ends some other way (Ctrl+C with the pipe still open, a
+    failed start) the interpreter's shutdown waits a second for the lock
+    and then aborts ("Fatal Python error: _enter_buffered_busy", code -6).
+
+    A read that fails means standard input was never readable (descriptor
+    0 opened for writing only, as GNU nohup leaves a terminal): the watch
+    cannot work, which is said on standard error, and the server stops.
+    """
+
+    try:
+        while os.read(descriptor, _STDIN_CHUNK):
+            pass
+    except OSError as error:
+        print(
+            f"dune-imperium-server: cannot read standard input ({error}); "
+            "--exit-when-stdin-closes stops the server",
+            file=sys.stderr,
+            flush=True,
+        )
+    stop()
 
 
 def admin_link(host: str, port: int, admin_key: str) -> str:
@@ -321,6 +416,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             hub.close()
             super().handle_exit(sig, frame)
 
+        def shut_down(self) -> None:
+            """Begin the same graceful shutdown as a signal, from any thread.
+
+            Not through ``handle_exit``: uvicorn records the signal it was
+            handed and raises it again once the server has stopped, which
+            would end the process by that signal (code -15 for SIGTERM)
+            instead of returning 0. The main loop polls ``should_exit``
+            every 0.1 s, and ``hub.close`` is safe from any thread.
+            """
+
+            hub.close()
+            self.should_exit = True
+
     server = PlayServer(
         uvicorn.Config(
             app,
@@ -330,6 +438,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_SECONDS,
         )
     )
+    if arguments.exit_when_stdin_closes:
+        try:
+            descriptor = sys.stdin.fileno() if sys.stdin is not None else None
+        except (OSError, ValueError):  # io.UnsupportedOperation is both
+            descriptor = None
+        if descriptor is None:
+            # pythonw and some service managers start a process without one.
+            print(
+                "dune-imperium-server: no standard input to watch; "
+                "--exit-when-stdin-closes is ignored",
+                file=sys.stderr,
+                flush=True,
+            )
+        else:
+            threading.Thread(
+                target=stop_when_stream_ends,
+                args=(descriptor, server.shut_down),
+                name="stdin-watch",
+                daemon=True,
+            ).start()
     try:
         server.run()
     except KeyboardInterrupt:

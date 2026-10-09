@@ -4,6 +4,26 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-09 서버 런처: 터미널 없이 창에서 플레이 서버 켜고 끄기 (codec 그대로)
+
+사용자 요청(2026-10-08) "서버를 터미널 명령 대신 GUI로, Mac과 Windows에서" → 계획 [`server-launcher-plan.md`](server-launcher-plan.md)(다섯 안 중 tkinter 창). 결정은 "추천대로 가자, 1단계부터 시작해"(9절 15개 모두 추천안). 브랜치 `claude/server-gui-plan-aca18e`, 1~6단계.
+
+- **창**: `dune-imperium-launcher`(gui-script; Windows에서는 콘솔 없이 뜸) 또는 `python -m dune_imperium.launcher`. 한국어 tkinter 창 하나.
+  - 왼쪽은 설정(모드, 주소 후보, 포트, 방 링크 앞부분, 관리자 키, 저장 폴더, 탐색 망, AI 속도, 그림), 오른쪽은 시작·중지, 시작 전 검사, 관리자(가려 보임)·방 링크의 복사·열기, 열린 게임 목록과 "방 링크 복사", 서버 로그.
+  - 서버가 도는 동안 잠자기 방지(macOS `caffeinate -w`, Windows `SetThreadExecutionState`). 체크아웃마다 런처 하나(`tmp/launcher/launcher.lock`).
+  - 더블클릭 바로가기(macOS `.app`, Windows `.lnk`)를 체크아웃 안에 만든다(git 무시). 처음 한 번은 `scripts/launcher/Install Launcher.{command,cmd}`.
+- **설정**은 git 무시 `local/`(`paths.LOCAL_DIR`)에 관리자 키째 둔다. 호스트 가이드에 "서버 런처로 실행" 절이 생겼다.
+- **서버 쪽 변경**(옵트인):
+  - `--exit-when-stdin-closes`: 런처가 띄운 서버는 런처보다 오래 살지 못한다(Windows는 Job Object도).
+  - 탐색 AI 좌석은 이제 `rl` 패키지(numpy·gymnasium·pettingzoo)까지 있어야 제공된다. torch만 보고 좌석을 내놓았다가 앉히면 실패했었다. 설치 스크립트·가이드도 `--extra rl --extra train`.
+- **위험 구분**: 창(`gui.py`, `view.py`)은 저위험이다. 서버 띄우기·내리기(`supervisor.py`, `--exit-when-stdin-closes`)와 관리자 키 처리는 고위험이다(`CLAUDE.md`).
+- **검증**(브랜치):
+  - 단계마다 독립 리뷰(1·2·3~5단계 모두 실제 결함을 찾아 고침, 계획 13절).
+  - `tests/launcher/` 192개(창 테스트는 디스플레이가 없거나 `DUNE_IMPERIUM_SKIP_GUI_TESTS=1`이면 skip).
+  - E2E `launcher_link.py` 16/16, mypy는 macOS와 `--platform win32` 모두 통과.
+  - 화면 캡처는 이 Mac에 화면 기록 권한이 없어 하지 못했다.
+- **남은 것**: 7단계 Windows 실기 검증(계획 8절 체크리스트 + 13절 끝의 추가 항목).
+
 ## 2026-10-09 Conflict 끝 창은 공개된 사실로, Earn Any Alliance는 얻는 순간 완료 (codec v141, OQ-103·OQ-056)
 
 전날 남긴 사용자 결정 둘(OQ-103)을 앱 확인 뒤 정했다. 사용자: "1번은 A안으로 가자", "2번-A: 늘 정리 전". 브랜치 `conflict-end-window`.
