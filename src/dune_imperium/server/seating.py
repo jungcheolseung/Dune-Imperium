@@ -9,7 +9,7 @@ configured is therefore a project convention, not a rule (user request
 The shuffle happens in the browser, before ``POST /games``: the server's
 game creation, its saves and their restore never see a difference. The
 server only tells the setup screen (``GET /whoami`` ``seating``) whether its
-"shuffle the seats" box opens checked, from the play server's
+"Random seating" ("자리 무작위 배치") box opens checked, from the play server's
 ``--seating`` flag.
 """
 

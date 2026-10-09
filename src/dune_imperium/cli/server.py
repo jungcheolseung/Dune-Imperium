@@ -122,7 +122,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=SEATINGS,
         default=DEFAULT_SEATING,
         help=(
-            "whether the setup screen's 'shuffle the seats' box opens "
+            "whether the setup screen's 'Random seating' box opens "
             "checked ('random': the browser shuffles the configured seats, "
             "and with them turn order and colours, when it creates a game) "
             "or unchecked ('fixed': row N plays seat N); a project "
