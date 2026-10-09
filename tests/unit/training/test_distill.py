@@ -34,10 +34,13 @@ from dune_imperium.training.distill import (  # noqa: E402
     evaluate,
     is_clear,
     legal_log_probs,
+    make_optimizer,
     policy_targets,
     row_target,
     save_candidate,
     search_choice,
+    set_warmup_rates,
+    stats_summary,
 )
 from dune_imperium.training.expert import (  # noqa: E402
     ANCHOR,
@@ -601,11 +604,24 @@ def test_cli_train_and_metrics_round_trip_on_synthetic_shards(tmp_path: Path) ->
             "1",
             "--threads",
             "1",
+            "--slot-lr-multiplier",
+            "3.0",
         ]
     )
     assert train_code == 0
     assert candidate_path.exists()
     assert report_path.exists()
+    report = json.loads(report_path.read_text())
+    assert report["slot_lr_multiplier"] == 3.0
+    assert report["config"]["slot_lr_multiplier"] == 3.0
+    for key in ("train_before", "train_after"):
+        # Seeds 11 and 12 train, seed 10 is held out: the sample of training
+        # rows is as large as the held-out game (three LABEL, two ANCHOR rows).
+        sample = report[key]
+        assert (
+            sample["label_rows"] + sample["anchor_rows"] == report["heldout_rows"] == 5
+        )
+        assert "clear_flip_taken" in sample and "unclear_changed" in sample
 
     metrics_path = tmp_path / "metrics.json"
     metrics_code = main(
@@ -721,3 +737,196 @@ def test_clearhard_agreement_counts_only_the_rows_it_teaches() -> None:
     stats = evaluate(network, data, rows, DistillConfig(mode="clearhard"))
     # Only the clear row counts; its target is the search's choice, action 6.
     assert stats.agree_target == float(student == 6)
+
+
+# -- exit-v2: separate slot learning rate -------------------------------------
+def test_make_optimizer_gives_the_slot_embedding_its_own_rate() -> None:
+    config = DistillConfig(learning_rate=1e-3, slot_lr_multiplier=10.0, warmup_steps=4)
+    network = MlpSlotsNetwork(12, hidden=(16,))
+    optimizer = make_optimizer(network, config)
+
+    rest, slots = optimizer.param_groups
+    assert [group["base_lr"] for group in (rest, slots)] == [
+        pytest.approx(1e-3),
+        pytest.approx(1e-2),
+    ]
+    assert len(slots["params"]) == 1
+    assert slots["params"][0] is network.slot_embed.weight
+    in_groups = [p for group in optimizer.param_groups for p in group["params"]]
+    assert sorted(id(p) for p in in_groups) == sorted(
+        id(p) for p in network.parameters()
+    )
+
+    for step in range(7):
+        set_warmup_rates(optimizer, step, config.warmup_steps)
+        scale = min(1.0, (step + 1) / config.warmup_steps)
+        assert rest["lr"] == pytest.approx(1e-3 * scale)
+        assert slots["lr"] == pytest.approx(1e-2 * scale)
+
+    plain = make_optimizer(PolicyValueNetwork(12, hidden=(16,)), config)
+    assert len(plain.param_groups) == 1
+    assert plain.param_groups[0]["base_lr"] == pytest.approx(1e-3)
+    with pytest.raises(ValueError, match="slot_lr_multiplier"):
+        DistillConfig(slot_lr_multiplier=0.0)
+
+
+def test_distill_keeps_the_slot_rate_through_the_warm_up() -> None:
+    """The warm-up must scale each group's own rate, not overwrite it.
+
+    With a vanishing multiplier the embedding barely moves while the rest of
+    the network trains; at multiplier 1 the same run moves it.
+    """
+
+    def slot_movement(multiplier: float) -> tuple[float, float]:
+        data = _bit_flip_data(np.random.default_rng(2), games=20, rows_per_game=20)
+        data.observations[:, 13] = 1 + data.observations[:, 0]
+        torch.manual_seed(1)
+        network = MlpSlotsNetwork(12, hidden=(16,))
+        head_before = network.policy_head.weight.detach().clone()
+        distill(
+            network,
+            data,
+            DistillConfig(
+                max_epochs=1,
+                minibatch_size=64,
+                learning_rate=1e-2,
+                warmup_steps=3,
+                slot_lr_multiplier=multiplier,
+            ),
+        )
+        moved_head = float(
+            (network.policy_head.weight.detach() - head_before).abs().sum()
+        )
+        return float(network.slot_embed.weight.detach().abs().sum()), moved_head
+
+    frozen_slots, frozen_head = slot_movement(1e-9)
+    free_slots, free_head = slot_movement(1.0)
+    assert frozen_slots < 1e-5 < 0.1 < free_slots
+    assert frozen_head > 0.0 and free_head > 0.0  # the rest trains either way
+
+
+# -- exit-v2: the held-out statistics ----------------------------------------
+def _always_picks_four() -> PolicyValueNetwork:
+    """A network whose argmax over legal actions (1, 4, 6) is always action 4."""
+
+    network = PolicyValueNetwork(32, hidden=(8,))
+    with torch.no_grad():
+        for parameter in network.parameters():
+            parameter.zero_()
+        network.policy_head.bias[4] = 1.0
+        network.policy_head.bias[6] = 0.5
+    return network
+
+
+def _known_stats_data() -> ExpertData:
+    """Six rows over the legal actions (1, 4, 6) with known student flips.
+
+    The student always picks action 4. Rows: 0 a clear override the student
+    takes (search 4 over the prior's 1); 1 a clear override it does not
+    (search 6); 2 a clear row that merely confirms the prior's 4 (not an
+    override); 3 an unclear row whose prior is 1, so the student changes it;
+    4 an unclear row whose prior is already 4, so it stays; 5 an ANCHOR row.
+    """
+
+    nan = float("nan")
+    clearly_second = [[0.0, 0.2, nan]] * 4
+    split = [[0.3, 0.1, nan], [0.3, 0.1, nan], [0.0, 0.4, nan], [0.0, 0.4, nan]]
+    prefers_one = [1.0, 0.0, 0.0]
+    prefers_four = [0.0, 1.0, 0.0]
+    return _stack_rows(
+        legal=[[1, 4, 6]] * 6,
+        prior_logits=[
+            prefers_one,
+            prefers_one,
+            prefers_four,
+            prefers_one,
+            prefers_four,
+            prefers_one,
+        ],
+        kind=[LABEL, LABEL, LABEL, LABEL, LABEL, ANCHOR],
+        candidates=[
+            [1, 4, -1],
+            [1, 6, -1],
+            [1, 4, -1],
+            [1, 4, -1],
+            [1, 4, -1],
+            [-1, -1, -1],
+        ],
+        values=[
+            clearly_second,
+            clearly_second,
+            clearly_second,
+            split,
+            split,
+            [[nan, nan, nan]] * 4,
+        ],
+        game_seed=[10, 10, 20, 20, 30, 30],
+        action_size=32,
+    )
+
+
+def test_holdout_stats_count_clear_flips_taken_and_unclear_rows_changed() -> None:
+    data = _known_stats_data()
+    assert data.frame.shape == (6,) and not data.frame.any()  # no frames recorded
+    network = _always_picks_four()
+    rows = np.arange(data.rows)
+
+    stats = evaluate(network, data, rows, DistillConfig())
+    assert (stats.label_rows, stats.anchor_rows) == (5, 1)
+    assert stats.clear_override_rows == 2
+    assert stats.clear_flip_taken == 0.5  # row 0 taken, row 1 not
+    assert stats.unclear_rows == 2
+    assert stats.unclear_changed == 0.5  # row 3 changed, row 4 kept
+    summary = stats_summary(stats)
+    assert summary["clear_override_rows"] == 2 and summary["unclear_changed"] == 0.5
+
+    # The margin decides which rows are clear: at 0.5 none is.
+    strict = evaluate(network, data, rows, DistillConfig(clear_margin=0.5))
+    assert strict.clear_override_rows == 0 and np.isnan(strict.clear_flip_taken)
+    assert strict.unclear_rows == 5
+    assert strict.unclear_changed == pytest.approx(3 / 5)  # rows 0, 1, 3 change
+
+    # An empty set reads NaN: only the clear row that confirms the prior, and
+    # only the ANCHOR row.
+    for subset in ([2], [5]):
+        empty = evaluate(network, data, np.asarray(subset), DistillConfig())
+        assert empty.clear_override_rows == 0 and np.isnan(empty.clear_flip_taken)
+        assert empty.unclear_rows == 0 and np.isnan(empty.unclear_changed)
+    assert (
+        evaluate(network, data, np.zeros(0, dtype=np.int64), DistillConfig()).label_rows
+        == 0
+    )
+
+
+def test_distill_report_measures_a_training_sample_as_large_as_the_heldout_set() -> (
+    None
+):
+    data = _bit_flip_data(np.random.default_rng(0), games=20, rows_per_game=50)
+    torch.manual_seed(1)
+    network = PolicyValueNetwork(12, hidden=(16,))
+    config = DistillConfig(
+        max_epochs=3,
+        minibatch_size=64,
+        learning_rate=1e-2,
+        warmup_steps=1,
+        threads=1,
+    )
+    report = distill(network, data, config)
+
+    assert (report.train_rows, report.heldout_rows) == (900, 100)
+    assert report.train_before.label_rows == report.heldout_rows == 100
+    assert report.train_after.label_rows == 100
+    assert report.best_epoch >= 1
+    assert report.train_after.objective < report.train_before.objective
+    assert report.train_after.agree_target > report.train_before.agree_target
+
+    # The sample is the seed's draw without replacement from the training
+    # rows; the kept network scores it exactly as the report says.
+    train_rows = np.flatnonzero(~data.heldout(config.heldout_modulus))
+    sample = np.random.default_rng(config.seed).choice(
+        train_rows, size=100, replace=False
+    )
+    assert len(set(sample.tolist())) == 100
+    assert not data.heldout(config.heldout_modulus)[sample].any()
+    replayed = evaluate(network, data, sample, config)
+    assert replayed.objective == pytest.approx(report.train_after.objective, abs=1e-6)
