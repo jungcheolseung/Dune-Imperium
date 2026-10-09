@@ -817,6 +817,31 @@ img.seat-disc.pictured { border-radius: 50%; }
   position: absolute;
   transform: translate(-50%, -50%);
 }
+/* A Score disc past 12 counts on from 0 and carries its lap, "+13", in the
+   board's own numeral style (.bonus-spice-count): a box as large as the
+   disc laid over its centre (the disc may be a picture, which cannot hold
+   it), above the discs that share its cell. The one number on a board
+   token, at the user's request (2026-10-10). */
+.vp-lap {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  pointer-events: none;
+  z-index: 1;
+}
+.vp-lap-text {
+  color: #fff;
+  font-weight: 800;
+  font-size: 44cqh;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+}
 /* The strength token's "+20" face: inverted colours and the printed +20. */
 .strength-token { position: absolute; }
 .strength-token.flipped {

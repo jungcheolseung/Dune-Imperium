@@ -673,10 +673,60 @@ function seatDisc(seat, className, size) {
   return disc;
 }
 
-/* The cell of the Score track a score is shown on: its printed number, or
-   one shared place on the emblem above the last number for anything higher. */
-function scoreLevel(vp, tracks) {
-  return Math.max(0, Math.min(vp, tracks.victory_points.levels.length));
+/* Where a score is shown on the Score track: `cell` is the printed number
+   it lies on and `lap` the whole rounds of the track it has passed. A score
+   can pass 12 [FAQ p. 4], and the track prints the 13 cells 0..12; past 12
+   the disc counts on from 0 with its lap marked on it ("+13"), like the
+   Combat marker's "+20" face [Main p. 12]. So 13 is cell 0 "+13", 14 is
+   cell 1 "+13", 25 is cell 12 "+13" and 26 is cell 0 "+26" (a display
+   convention the user asked for on 2026-10-10, not a rule). */
+function scorePlace(vp, tracks) {
+  const cells = tracks.victory_points.levels.length;
+  const score = Math.max(0, vp);
+  const cell = score % cells;
+  return { cell, lap: score - cell };
+}
+
+/* The places of the Score discs that share a cell (`seats` in seat order),
+   as offsets from the cell's centre keyed by seat. Without a lapped disc
+   it is the usual cluster. A lapped disc carries its "+13" mark, which is
+   wider than two discs that lie side by side are apart, so lapped discs
+   never share a row: a pair stands one above the other, and in a triangle
+   or a 2×2 the lapped discs take places that are not side by side (the
+   other seats fill the rest in seat order). Three or more lapped discs on
+   one cell (three seats tied past 12) cannot all keep apart: some then
+   share a row and their marks meet. */
+function scoreCluster(seats, lapOf, halfX, halfY) {
+  const lapped = seats.filter((seat) => lapOf(seat) > 0);
+  const offsets = new Map();
+  if (!lapped.length) {
+    const places = discCluster(seats.length, halfX, halfY);
+    seats.forEach((seat, index) => offsets.set(seat, places[index]));
+    return offsets;
+  }
+  const places = discCluster(seats.length, halfX, halfY, { upright: seats.length === 2 });
+  const prefer = seats.length === 3 ? [0, 2, 1] : seats.length >= 4 ? [0, 3, 1, 2] : [0, 1];
+  const queue = [...lapped, ...seats.filter((seat) => lapOf(seat) === 0)];
+  queue.forEach((seat, index) => {
+    offsets.set(seat, places[index < prefer.length ? prefer[index] : index]);
+  });
+  return offsets;
+}
+
+/* The lap of a Score disc past 12 ("+13"): the board's own white numeral
+   centred on the disc, a sibling laid over it (the disc may be a picture).
+   The disc's title keeps the real score. */
+function scoreLapMark(seat, lap, size) {
+  const mark = document.createElement("span");
+  mark.className = "vp-lap";
+  mark.dataset.seat = String(seat);
+  mark.setAttribute("aria-hidden", "true");
+  mark.style.width = `${size}%`;
+  const text = document.createElement("span");
+  text.className = "vp-lap-text";
+  text.textContent = `+${lap}`;
+  mark.appendChild(text);
+  return mark;
 }
 
 /* Half the distance between two discs of `size` that share `room`: side by
@@ -1253,18 +1303,31 @@ function renderTrackMarkers(stage, view) {
   const factions = Object.keys(FACTION_LABELS);
   let councilSlot = 0;
   /* The seats on each cell of the combat track and of the Score track, in
-     seat order. */
+     seat order, and each seat's lap of the Score track (scorePlace). */
   const strengthStacks = new Map();
   const scoreStacks = new Map();
+  const seatLaps = new Map();
   view.players.forEach((player, index) => {
     const seat = typeof player.player_id === "number" ? player.player_id : index;
     const shown = strengthCell(player.combat_strength || 0);
     if (!strengthStacks.has(shown)) strengthStacks.set(shown, []);
     strengthStacks.get(shown).push(seat);
-    const level = scoreLevel(player.victory_points || 0, tracks);
-    if (!scoreStacks.has(level)) scoreStacks.set(level, []);
-    scoreStacks.get(level).push(seat);
+    const { cell, lap } = scorePlace(player.victory_points || 0, tracks);
+    if (!scoreStacks.has(cell)) scoreStacks.set(cell, []);
+    scoreStacks.get(cell).push(seat);
+    seatLaps.set(seat, lap);
   });
+  /* Each Score disc's offset from its cell's centre, by cell and seat. */
+  const [scoreCellWidth, scoreCellHeight] = tracks.victory_points.cell;
+  const scoreOffsets = new Map([...scoreStacks].map(([cell, seats]) => [
+    cell,
+    scoreCluster(
+      seats,
+      (seat) => seatLaps.get(seat),
+      discHalfGap(tracks.disc_size, scoreCellWidth),
+      discHalfGap(tracks.disc_size, scoreCellHeight),
+    ),
+  ]));
   /* An Alliance token lies on the marked ring of its Faction's strip until a
      player earns it and takes it into their supply [Main pp. 4, 7]; the
      vacated ring takes the holder's colour. */
@@ -1317,24 +1380,21 @@ function renderTrackMarkers(stage, view) {
 
     /* A Score marker alone on its score lies on the centre of the cell, so
        its height reads as the score. The disc is as large as on the table
-       (a cell holds one), so seats that share a score cluster around that
-       centre and overlap just enough to stay inside the cell. */
+       (a cell holds one), so seats that share a cell cluster around that
+       centre and overlap just enough to stay inside the cell. Past 12 the
+       disc counts on from 0 and carries its lap (scorePlace). */
     const vp = player.victory_points || 0;
     const vpToken = seatDisc(seat, "vp-token", tracks.disc_size);
     vpToken.title = t("board.seat_vp", { seat, vp });
-    const level = scoreLevel(vp, tracks);
-    const vpY = level < tracks.victory_points.levels.length
-      ? tracks.victory_points.levels[level]
-      : tracks.victory_points.overflow_y;
-    const together = scoreStacks.get(level);
-    const [cellWidth, cellHeight] = tracks.victory_points.cell;
-    const [vpDx, vpDy] = discCluster(
-      together.length,
-      discHalfGap(tracks.disc_size, cellWidth),
-      discHalfGap(tracks.disc_size, cellHeight),
-    )[together.indexOf(seat)];
-    placeAt(vpToken, tracks.victory_points.x + vpDx, vpY + vpDy);
+    const { cell: vpCell, lap: vpLap } = scorePlace(vp, tracks);
+    const [vpDx, vpDy] = scoreOffsets.get(vpCell).get(seat);
+    const vpX = tracks.victory_points.x + vpDx;
+    const vpY = tracks.victory_points.levels[vpCell] + vpDy;
+    placeAt(vpToken, vpX, vpY);
     stage.appendChild(vpToken);
+    if (vpLap > 0) {
+      stage.appendChild(placeAt(scoreLapMark(seat, vpLap, tracks.disc_size), vpX, vpY));
+    }
 
     /* Every seat's strength token is always on the track: in the framed
        square left of 1/11 at strength 0 (four tokens in a 2×2), on the
