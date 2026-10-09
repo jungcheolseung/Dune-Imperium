@@ -26,6 +26,11 @@ carries a sorted deck_cards consistent with its other zones, and no other
 payload (another seat's view, the seatless snapshot, the summary) carries the
 key or any of that deck's cards.
 
+Scenario C opens the deck list and a pile list in a four-human game while
+a card or a leader popover is pinned, and checks that a foreign render
+closes them: the opener's click never reached the document's close, so the
+pin used to carry over and keep the list open, unrefreshed.
+
 E2E_SHOTS_DIR optionally names where the screenshots go ({start,mid}_deck_{ko,en}.png
 and {start,mid}_zones_{ko,en}.png); otherwise a temporary folder.
 """
@@ -98,6 +103,7 @@ POPOVER_JS = """() => {
     hidden: pop.hidden,
     title: text('.popover-title'),
     note: text('.popover-note'),
+    pinned: popoverPinned,
     rect: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
     cards: [...pop.querySelectorAll('.vcard')].map((card) => ({
       instance: card.dataset.instance,
@@ -170,17 +176,17 @@ def group_key(instance: str) -> str:
     return match.group("starter") or f"{match.group('shared')}:{match.group('id')}"
 
 
-def create_game(page: Any, base: str) -> None:
+def create_game(page: Any, base: str, humans: int = 1, seed: int = SEED) -> None:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
     for seat in range(4):
         page.select_option(
             f"#seat-selects select[data-seat='{seat}']",
-            "human" if seat == 0 else "heuristic",
+            "human" if seat < humans else "heuristic",
         )
     set_rule_options(page, *RULE_OPTIONS)
     page.set_checked("#opt-leader-draft", False)
-    page.fill("#opt-seed", str(SEED))
+    page.fill("#opt-seed", str(seed))
     page.click("#create-game")
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.view !== null && refreshFlight === null")
@@ -560,11 +566,92 @@ def check_leak(
         )
 
 
+# Scenario C: a four-human game (nothing moves unless this script acts).
+TOP_SEED = 13
+
+
+def check_stale_pin(page: Any) -> None:
+    """A list opened while another popover is pinned is not pinned itself:
+    the opener's click never reaches the document's click-elsewhere close,
+    so the old pin used to carry over and keep the list
+    open, unrefreshed, through every foreign update."""
+
+    label = "[C pin]"
+    title = TEXT[page.evaluate("TERM_LANGUAGE")]["title"].format(
+        n=page.evaluate("state.view.private.deck_size")
+    )
+    pins = {
+        "a card": """() => {
+          const card = document.querySelector('#private-zone .hand-cards .vcard');
+          pinPopover(entryOf(card.dataset.instance), card);
+          return popoverPinned;
+        }""",
+        "a leader": """() => {
+          const seat = state.view.players.find(
+            (p) => p.player !== state.view.player);
+          const anchor = document.querySelector(
+            `.seat[data-seat="${seat.player}"] .leader-name`);
+          const leader = lookup(seat.leader_face_id || seat.leader_id, 'leaders');
+          pinPopover(leader, anchor, seat);
+          return popoverPinned && pinnedLeaderSeat === seat.player;
+        }""",
+    }
+    opens = {
+        "deck list": (
+            "document.querySelector('#private-zone .hand-counts .stat').click()"
+        ),
+        "pile list": (
+            "openPileList(t('panels.my_discard'), state.view.private.hand,"
+            " document.querySelector('#private-zone .hand-counts .stat'))"
+        ),
+    }
+    for pin_name, pin_js in pins.items():
+        for list_name, open_js in opens.items():
+            page.keyboard.press("Escape")
+            where = f"{label} {list_name} over {pin_name}"
+            if not check.ok(
+                page.evaluate(pin_js), f"{where}: the popover is pinned first"
+            ):
+                continue
+            page.evaluate(open_js)
+            opened = popover(page)
+            check.ok(
+                not opened["hidden"]
+                and not opened["pinned"]
+                and page.evaluate("pinnedLeaderSeat === null")
+                and (list_name != "deck list" or opened["title"] == title),
+                f"{where}: the list opens unpinned",
+                (opened["title"], opened["pinned"]),
+            )
+            page.evaluate("render({ foreign: true })")
+            check.ok(
+                popover(page)["hidden"],
+                f"{where}: a foreign update closes it",
+                popover(page)["title"],
+            )
+
+
+def scenario_c(base: str, browser: Any) -> None:
+    print("[C] a list opened over a pinned popover (four humans)")
+    context, page, rec = open_context(browser, "deck-pin", LAPTOP_VIEWPORT)
+    create_game(page, base, humans=4, seed=TOP_SEED)
+    posts = rec.count("POST", "/actions")
+    check_stale_pin(page)
+    check.ok(rec.count("POST", "/actions") == posts, "[C] the checks post no action")
+    failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
+    check.ok(not failed, "[C] no failed requests", failed[:5])
+    check.ok(not rec.js_errors, "[C] no JS exceptions", rec.js_errors[:5])
+    if check.failed:
+        rec.dump()
+    context.close()
+
+
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
             scenario_a(base, browser)
             scenario_b(base, browser)
+            scenario_c(base, browser)
         errors = [
             line
             for line in log_path.read_text().splitlines()

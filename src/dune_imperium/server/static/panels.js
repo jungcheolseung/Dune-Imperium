@@ -471,10 +471,23 @@ function skillIdOf(instanceId) {
   return match ? match[1] : String(instanceId);
 }
 
+/* A list drawn into the popover is never pinned, whatever was pinned
+   before it: the opener's click stops at the opener (openerStat), so the
+   document's click-elsewhere close never ran and a pin left from another
+   popover (a clicked card, a leader, the Conflict history) would otherwise
+   carry over. render() closes an unpinned popover on every update,
+   foreign ones included, so a list never outlives the state it was drawn
+   from. */
+function unpinPopover() {
+  popoverPinned = false;
+  pinnedLeaderSeat = null;
+}
+
 /* A pile listing (discard, Intrigue piles) in the popover: one pile as
    `(title, ids, anchor)`, or several as `([[title, ids], ...], null, anchor)`
    (empty piles are left out). */
 function openPileList(title, ids, anchor) {
+  unpinPopover();
   const piles = Array.isArray(title) ? title : [[title, ids]];
   const pop = el("card-popover");
   pop.textContent = "";
@@ -500,6 +513,7 @@ function openPileList(title, ids, anchor) {
    ruling 5). A click on a card here does nothing: a deck card is never
    something to act on from a list. */
 function openDeckList(title, ids, anchor) {
+  unpinPopover();
   const groups = new Map();
   for (const id of ids) {
     const ref = instanceRef(id);
