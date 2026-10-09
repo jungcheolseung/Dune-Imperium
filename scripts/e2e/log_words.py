@@ -28,6 +28,7 @@ A few synthetic lines whose words come from elsewhere than their own label
 (user report 2026-10-10) render too: Staban Tuek's Smuggle Spice payout names
 the ability and the Leader by the catalog's names, under a "Leader ability"
 card title, and Esmar Tuek's Signet taking a bonus spice says it was gained.
+Imperial Privilege's recall step names the card it also draws.
 
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
@@ -486,6 +487,42 @@ def check_named_lines(page, posts: list[str], names: list[str]) -> None:
     print(f"  .. {shown['ko']['taken']}")
 
 
+# Imperial Privilege's recall also draws a card in the same step, which is
+# why it cannot be undone (OQ-027 (d), OQ-010); its log line and button say
+# so (user question 2026-10-10), the board and the Into the Fray recall alike.
+RECALL_JS = r"""() => {
+  const out = {};
+  const steps = [
+    {action_id: "recall_agent_for_imperial_privilege",
+     arguments: {space_id: "arrakeen"}},
+    {action_id: "recall_conflict_agent_for_imperial_privilege", arguments: {}},
+  ];
+  try {
+    for (const lang of ["ko", "en"]) {
+      setLanguage(lang, false);
+      // describeActionText: the label's icons as their words (alt, title).
+      out[lang] = steps.map((step) => describeActionText({type: "action", index: 9,
+        actor: 0, events: [], ...step}));
+    }
+  } finally {
+    setLanguage("ko", false);
+  }
+  return out;
+}"""
+
+
+def check_recall_draw(page, posts: list[str], names: list[str]) -> None:
+    shown = page.evaluate(RECALL_JS)
+    for lang, draw in (("ko", "카드 1장 뽑기"), ("en", "Draw 1 card")):
+        for text in shown[lang]:
+            check.ok(
+                draw in text and not engine_ids(strip(text, names), posts),
+                f"{lang}: the Imperial Privilege recall names its card draw",
+                text,
+            )
+    print(f"  .. {shown['ko'][0]} | {shown['en'][0]}")
+
+
 def check_page(page, base: str, game_id: str, posts: list[str], names) -> None:
     page.goto(f"{base}/#game={game_id}")
     page.wait_for_function("state.review !== null && state.view !== null")
@@ -532,6 +569,7 @@ def main() -> None:
         check_pass_quiet(records)
         print("[1b] lines named from elsewhere than their own label")
         check_named_lines(page, posts, names)
+        check_recall_draw(page, posts, names)
         print("[2] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)

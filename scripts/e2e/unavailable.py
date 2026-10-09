@@ -34,7 +34,9 @@ Imperial Privilege with no other Agent to recall: the recall greys out,
 "소환할 다른 {agent} 없음", beside the confirm the seat now takes itself
 (`resolve_imperial_privilege_without_recall`, user ruling 2026-09-30,
 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"), and goes once the
-confirm is taken.
+confirm is taken. The greyed-out row reads as the recall alone, in both
+languages: the live recall's label also names the card draw (2026-10-10),
+which the confirm beside it still offers.
 
 A fifth case covers the "intrigue" surface in the Conflict-end window,
 which opens on public facts (OQ-103), so a seat may sit in it holding a
@@ -313,6 +315,7 @@ WORDS_OF_JS = """(selector) => {
   return node ? walk(node).replace(/ +/g, ' ').trim() : null;
 }"""
 BADGE = '#actions .unavailable-item[data-surface="choice"] .unavailable-badge'
+BODY = '#actions .unavailable-item[data-surface="choice"] .unavailable-body'
 
 
 def save_at_row(saves: Path, key: str) -> dict | None:
@@ -447,6 +450,15 @@ def recall_case(page, base: str, saves: Path) -> bool:
         "Imperial Privilege: the row sits under the choice heading, with its reason",
         korean,
     )
+    # The live recall's label names the card draw too (it is why the step
+    # cannot be undone); greyed out, only the recall is missing, so the row
+    # says only that, beside the confirm that still draws the card.
+    body = page.evaluate(WORDS_OF_JS, BODY)
+    ok &= check.ok(
+        body == "에이전트 소환 (Imperial Privilege)",
+        "Imperial Privilege: the greyed-out row reads as the recall alone",
+        body,
+    )
     ok &= inspect_surface(page, "choice", "Imperial Privilege")
     page.evaluate("setLanguage('en')")
     assert settled(page, 10)
@@ -459,6 +471,12 @@ def recall_case(page, base: str, saves: Path) -> bool:
         ),
         "Imperial Privilege: in English the heading and the reason",
         english,
+    )
+    body = page.evaluate(WORDS_OF_JS, BODY)
+    ok &= check.ok(
+        body == "Recall Agent (Imperial Privilege)",
+        "Imperial Privilege: in English the greyed-out row is the recall alone",
+        body,
     )
     page.evaluate("setLanguage('ko')")
     assert settled(page, 10)
