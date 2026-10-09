@@ -1034,3 +1034,126 @@ def test_a_confirmed_turn_end_stays_handed_over_to_the_next_human() -> None:
         if not summary["finished"] and own:
             assert _int(own[0]["steps"]) == 1
     assert checked >= 1, "no human-to-human confirmation was reached"
+
+
+# ------------------------------------------------ Imperial Privilege
+
+
+def _play_seat0_to_imperial_privilege(
+    manager: GameSessionManager, summary: JsonObject
+) -> JsonObject:
+    """Play seat 0 by its first action, sending an Agent to Imperial
+    Privilege whenever it can while another of its Agents is on the board,
+    until that visit's choices are served."""
+
+    game_id = str(summary["game_id"])
+    for _ in range(1_000):
+        assert not summary["finished"], "Imperial Privilege was never reached"
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id,
+                seat=0,
+                revision=_int(summary["revision"]),
+                undo_count=_int(summary["undo_count"]),
+            )
+            continue
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        if any(
+            row["action_id"] == "decline_imperial_privilege_intrigue" for row in actions
+        ):
+            return summary
+        index = 0
+        if manager._get(game_id).state.players[0].agent_locations:
+            index = next(
+                (
+                    _int(row["index"])
+                    for row in actions
+                    if row["action_id"] == "agent_turn"
+                    and _obj(row["arguments"]).get("space_id") == "imperial_privilege"
+                ),
+                0,
+            )
+        summary = _play_raw(manager, summary, index=index)
+    raise AssertionError("Imperial Privilege was never reached")
+
+
+def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> None:
+    """ "4번은 소환과 뽑기가 당연히 두 단계로 나눠야지. 이건 정말 기본적인
+    원칙인데" (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
+    recall is a step of its own, which reveals nothing and so stays in the
+    seat's undo window, while the card draw beside it comes from the hidden
+    deck and closes the window (OQ-010). Before the split the recall drew
+    the card in the same step and could never be taken back.
+
+    Seed 0: seat 0, playing its first action, reaches Imperial Privilege in
+    round 7 with another Agent on Accept Contract; the placement itself is
+    the one step its undo window holds there.
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    summary = _play_seat0_to_imperial_privilege(manager, summary)
+
+    def served() -> dict[str, dict[str, object]]:
+        return {
+            str(row["action_id"]): row
+            for row in _rows(manager.legal_actions(game_id, 0)["actions"])
+        }
+
+    rows = served()
+    draw = rows["resolve_board_effect"]
+    assert draw["arguments"] == {"effect": "cards"}
+    assert draw["undoable"] is False
+    assert rows["decline_imperial_privilege_intrigue"]["undoable"] is True
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+
+    summary = _play_raw(
+        manager,
+        summary,
+        index=_int(rows["decline_imperial_privilege_intrigue"]["index"]),
+    )
+    rows = served()
+    recall = rows["recall_agent_for_imperial_privilege"]
+    assert recall["undoable"] is True
+    assert rows["resolve_board_effect"]["undoable"] is False
+    space = str(_obj(recall["arguments"])["space_id"])
+    hand_before = manager._get(game_id).state.players[0].hand
+    actions_before = manager.legal_actions(game_id, 0)
+
+    summary = _play_raw(manager, summary, index=_int(recall["index"]))
+    owner = manager._get(game_id).state.players[0]
+    assert space not in owner.agent_locations
+    assert owner.hand == hand_before  # the recall draws nothing
+    # The placement, the declined slot and the recall.
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+
+    rewound = manager.undo(
+        game_id,
+        seat=0,
+        revision=_int(summary["revision"]),
+        undo_count=_int(summary["undo_count"]),
+    )
+    assert space in manager._get(game_id).state.players[0].agent_locations
+    assert manager.legal_actions(game_id, 0) == actions_before
+    assert _rows(rewound["undo"]) == [{"seat": 0, "steps": 2}]
+
+    # Recalled again, then drawn: the draw seals the window.
+    rows = served()
+    summary = _play_raw(
+        manager,
+        rewound,
+        index=_int(rows["recall_agent_for_imperial_privilege"]["index"]),
+    )
+    summary = _play_raw(
+        manager, summary, index=_int(served()["resolve_board_effect"]["index"])
+    )
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before) + 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    with pytest.raises(SessionError, match="at most 0"):
+        manager.undo(
+            game_id,
+            seat=0,
+            revision=_int(summary["revision"]),
+            undo_count=_int(summary["undo_count"]),
+        )

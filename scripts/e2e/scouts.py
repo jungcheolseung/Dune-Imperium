@@ -82,8 +82,11 @@ check = Check()
 # GameSessionManager (one human seat playing CHOOSE_JS's policy against three
 # heuristic seats, CHOAM only) finds seed 64 first with all three: its seat is
 # offered the four pick buttons, holds its own pick for the next 27 views,
-# and meets a three-card market.
-SEEDS = (21, 58, 64)
+# and meets a three-card market. Imperial Privilege's card draw as its own
+# icon (user ruling 2026-10-10, OQ-027 (d)) moves seed 64 at seat 3's first
+# Imperial Privilege visit off all three (the previous commit's engine
+# still gives them); the same scan finds seed 84 first with all three.
+SEEDS = (21, 58, 84)
 # COUNCIL_JS's walk takes a council seat with a subcommittee still to join
 # (round 4; the list then offers two joins and the decline). Seed 21 until
 # OQ-095's explicit Agent-turn end moved its seat to round 7, when every

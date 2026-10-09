@@ -392,7 +392,9 @@ def test_a_non_landsraad_visit_offers_no_tile() -> None:
     ("space_id", "printed_key"),
     [
         ("high_council", "high_council"),
-        ("imperial_privilege", "imperial_privilege"),
+        # The written-sentence key and its own card draw (user ruling
+        # 2026-10-10, OQ-027 (d)).
+        ("imperial_privilege", "imperial_privilege,cards"),
         ("swordmaster", "swordmaster"),
     ],
 )
@@ -401,9 +403,9 @@ def test_every_landsraad_visit_offers_acquire_tech(
 ) -> None:
     # "The Ixian Embassy board gives you this option each time you send an
     # Agent to a [Landsraad] board space" [Bloodlines p. 12]; the spaces
-    # whose printed effect is one special key (a first High Council seat,
-    # Imperial Privilege's sentences, the Swordmaster) are Landsraad spaces
-    # too.
+    # whose printed effect is a special key (a first High Council seat,
+    # Imperial Privilege's Intrigue slot and recall beside its card draw,
+    # the Swordmaster) are Landsraad spaces too.
     owner = _owner(
         resources=Resources(solari=10, spice=6, water=2),
         influence=Influence(emperor=2),
@@ -772,7 +774,10 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     legal = {action.action_id for action in engine.legal_actions(declined.state, 0)}
     assert "recall_conflict_agent_for_imperial_privilege" not in legal
     # With no other Agent the owner confirms the skipped recall (user ruling
-    # 2026-09-30); the card is drawn then (OQ-023).
+    # 2026-09-30); the card is still drawn (OQ-023), by the space's own icon
+    # since the user ruling of 2026-10-10 (OQ-027 (d)), which ``_visit``
+    # resolved with the visit's other automatic icons, so the confirm draws
+    # nothing more.
     assert "resolve_imperial_privilege_without_recall" in legal
     confirmed = engine.apply(
         declined.state,
@@ -782,9 +787,12 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     seat = confirmed.state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
-    assert len(seat.hand) == hand_before + 1
+    assert len(seat.hand) == hand_before
     assert "imperial_privilege_recall_skipped" in {
         event.kind for event in confirmed.events
+    }
+    assert "resolve_board_effect" not in {
+        action.action_id for action in engine.legal_actions(confirmed.state, 0)
     }
 
 

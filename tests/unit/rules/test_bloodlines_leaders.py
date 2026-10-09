@@ -702,7 +702,10 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     assert seat.units_in_conflict == 0
     assert seat.agents_available == 1
     assert seat.agent_locations == ("imperial_privilege",)
-    assert seat.hand == (RECON,)
+    # The recall only recalls; the space's card is its own icon ("4번은
+    # 소환과 뽑기가 당연히 두 단계로 나눠야지", user ruling 2026-10-10,
+    # OQ-027 (d)).
+    assert seat.hand == ()
     recalled = next(event for event in result.events if event.kind == "agent_recalled")
     assert dict(recalled.payload)["space_id"] == "conflict"
     # The recall was available, so nothing was skipped.
@@ -711,12 +714,14 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     )
     engine = UprisingRulesEngine()
     assert result.state.players[0].combat_strength == 0
+    draw = DomainAction("resolve_board_effect", 0, (("effect", "cards"),))
+    assert engine.legal_actions(result.state, 0) == (draw,)
+    drew = engine.apply(result.state, draw).state
+    assert drew.players[0].hand == (RECON,)
     # Nothing is left but the owner's own end of the turn (user ruling
     # OQ-095 (1)): the turn stays open until it is pressed.
-    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
-    assert engine.legal_actions(result.state, 0) == (
-        DomainAction("finish_agent_turn", 0),
-    )
+    assert drew.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert engine.legal_actions(drew, 0) == (DomainAction("finish_agent_turn", 0),)
 
 
 def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> GameState:
@@ -759,8 +764,10 @@ def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> No
     # recalling an Into the Fray Agent only "뒤의 turn에" (on a later turn).
     # Resolving Into the Fray first moves this turn's Agent to the Conflict;
     # it used to be the only (forced) recall target, so Duncan got back the
-    # Agent he had just sent. Now the recall is skipped and the card is still
-    # drawn (OQ-023), once the owner confirms it (user ruling 2026-09-30).
+    # Agent he had just sent. Now the recall is skipped (OQ-023) once the
+    # owner confirms it (user ruling 2026-09-30); the card is still drawn,
+    # by the space's own icon since the user ruling of 2026-10-10 (OQ-027
+    # (d)).
     from dune_imperium.rules.board_effects import (
         apply_imperial_privilege_action,
         legal_imperial_privilege_actions,
@@ -770,10 +777,15 @@ def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> No
 
     confirm = DomainAction("resolve_imperial_privilege_without_recall", 0)
     assert legal_imperial_privilege_actions(declined, 0) == (confirm,)
-    seat = apply_imperial_privilege_action(declined, confirm).state.players[0]
+    confirmed = apply_imperial_privilege_action(declined, confirm).state
+    seat = confirmed.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
-    assert seat.hand == (RECON,)
+    assert seat.hand == ()
+    engine = UprisingRulesEngine()
+    draw = DomainAction("resolve_board_effect", 0, (("effect", "cards"),))
+    assert draw in engine.legal_actions(confirmed, 0)
+    assert engine.apply(confirmed, draw).state.players[0].hand == (RECON,)
 
 
 def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> None:

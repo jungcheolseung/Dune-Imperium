@@ -7,8 +7,8 @@
    seat's −1 assumed (bloodlines-systems.md §3.1 row 2, D12; Tech Module only).
 3. Commanders and the Into the Fray Agent count as units in the card ports
    (bloodlines-systems.md §1.1, D1; Bloodlines only), except where our engine
-   refuses a Commander as payment: Tleilaxu Surgeon (OQ-053) and Piter,
-   Genius Advisor stay troops only.
+   refuses a Commander as payment: Tleilaxu Surgeon (OQ-053) stays troops
+   only (Piter, Genius Advisor takes a Commander since OQ-105).
 4. Market Opening's discounted Reserve The Spice Must Flow at the ability sites
    that build the Reserve card themselves (scouts.md §4.7, D31; Scouts only).
 
@@ -510,16 +510,20 @@ def test_tleilaxu_surgeon_gate_reads_garrison_troops_only(
     assert card.value_for_player(commanders).sum == 0.0
 
 
-def test_piter_genius_advisor_cost_counts_troops_only() -> None:
-    """Our engine's "Lose a troop" box offers ``lose_agent_card_troop`` only
-    for a zone holding a troop (``legal_agent_card_payment_actions``): a
-    Commander alone cannot pay."""
+def test_piter_genius_advisor_cost_counts_commanders() -> None:
+    """Our engine's "Lose a troop" box offers ``lose_agent_card_troop`` for a
+    zone holding a troop or a Sardaukar Commander
+    (``legal_agent_card_payment_actions``): "3은 그럼 통일해야지. 지휘관도
+    낼 수 있게 해야지" (OQ-105, user ruling 2026-10-10), so a Commander alone
+    pays (D1)."""
 
     card = PiterGeniusAdvisorAbility(card_entity("tleilaxu:piter_genius_advisor:0"))
-    assert not card.meets_cost(make(units(bl_state(), cmd_conflict=1, cmd_garrison=1)))
-    assert card.value_for_player(make(units(bl_state(), cmd_conflict=1))).sum == 0.0
+    assert card.meets_cost(make(units(bl_state(), cmd_conflict=1, cmd_garrison=1)))
+    assert card.meets_cost(make(units(bl_state(), cmd_garrison=1)))
+    assert card.meets_cost(make(units(bl_state(), cmd_conflict=1)))
     assert card.meets_cost(make(units(bl_state(), conflict=1)))
     assert card.meets_cost(make(units(bl_state(), garrison=1)))
+    assert not card.meets_cost(make(units(bl_state())))
 
 
 def test_gruesome_sacrifice_cost_counts_conflict_commanders() -> None:

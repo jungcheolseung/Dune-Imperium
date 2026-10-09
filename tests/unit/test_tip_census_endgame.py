@@ -512,6 +512,28 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     the Endgame steps; with the optional full-price variant patched back
     in, seed 1 gives the values pinned before and seed 199 opens Endgame in
     round 9 with seat 2 already leading).
+
+    Re-derived 2026-10-10 for Imperial Privilege's card draw as its own
+    icon (user ruling 2026-10-10, OQ-027 (d), codec v142: the legal list
+    after an Imperial Privilege placement holds the draw beside the Intrigue
+    slot, and the heuristic takes it before the slot): seed 199 first
+    diverges at round 6, seat 1's Imperial Privilege visit, and no longer
+    has an Endgame-opening Tech change the leader. The same capture over
+    full seeds 1-200 finds one seed (183) where the leader after the
+    ``:endgame_tech:`` events differs from the one at the check and goes on
+    to win; it is the case. Its game first diverges at round 3, seat 3's
+    Imperial Privilege visit. Endgame opens there in round 10 on the empty
+    Conflict deck with check VP [7, 7, 6, 6]: seat 0 (Lady Jessica) ranks
+    first of its tie with seat 1 (Lady Amber Metulli) on spice (3 to 1).
+    Seat 1 holds Panopticon; its Fremen 1 -> 2 gain scores, taking it to 8
+    and the lead. Seat 3 (Muad'Dib) then matches its wild Storms in the
+    South with its Crysknife Objective (7) and seat 1 its wild Propaganda
+    with its own Crysknife Objective, ending on 9 as the winner. The buggy
+    collector would read ``end.endgame_vp`` == 1 for seat 1 and
+    ``end.leader_changed`` == False (independent replay of the Endgame
+    steps; with the bundled recall-and-draw patched back in, a scratch
+    checkout of the previous commit, the capture finds seed 199 with the
+    values pinned before).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -519,7 +541,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 199):
+    for seed in (*FULL_SEEDS, 183):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -554,13 +576,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 199:
+        if seed == 183:
             saw_case = True
-            assert census["seats"][2]["end.endgame_vp"] == 1
+            assert census["seats"][1]["end.endgame_vp"] == 2
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 199 regression case must run"
+    assert saw_case, "the seed 183 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(

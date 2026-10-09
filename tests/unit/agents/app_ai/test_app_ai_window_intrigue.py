@@ -50,7 +50,7 @@ from dune_imperium.rules.acquisition import acquirable_imperium_instance_ids
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
-SEAT = 3  # the deciding seat of every fixture below (seed 1)
+SEAT = 3  # the deciding seat of every fixture below (seed 1; the endgame seed 5)
 CITY = (
     "arrakis-research-station-sietch-tabr",
     "arrakis-research-station-spice-refinery",
@@ -77,9 +77,20 @@ def combat_state() -> GameState:
 
 @pytest.fixture(scope="module")
 def endgame_state() -> GameState:
-    """Seat 3's ``endgame_intrigue`` (won Conflicts with Crysknife icons)."""
+    """Seat 3's ``endgame_intrigue`` (won Conflicts with Crysknife icons).
 
-    return play_until(lambda s, o: s.decision_stack[-1].kind == "endgame_intrigue")
+    Seed 5, round 9: seat 3 won Seize Spice Refinery and Battle for Arrakeen
+    (Crysknife) and Protect the Sietches, beside a Crysknife Objective. Seed
+    1's first ``endgame_intrigue`` was seat 3's until Imperial Privilege's
+    card draw became its own icon (2026-10-10, OQ-027 (d)) moved that game
+    at round 4 seat 0's Imperial Privilege visit; there seat 3 now holds one
+    Crysknife Conflict, and 5 is the first seed whose seat 3 holds two.
+    """
+
+    return play_until(
+        lambda s, o: s.decision_stack[-1].kind == "endgame_intrigue" and o == SEAT,
+        seed=5,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -862,7 +873,7 @@ def test_battle_icon_flip_pairs_like_score_battle_icons_pairs(
     state = give(
         endgame_state,
         "crysknife",
-        face_down_battle_card_ids=("objective_desert_mouse", "protect_the_sietches"),
+        face_down_battle_card_ids=("protect_the_sietches", "objective_crysknife_2"),
     )
     choice = step(state, act("play_intrigue", card_id=iid("crysknife"), option=1))
     run = make_run(choice)

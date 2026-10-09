@@ -35,8 +35,9 @@ Imperial Privilege with no other Agent to recall: the recall greys out,
 (`resolve_imperial_privilege_without_recall`, user ruling 2026-09-30,
 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"), and goes once the
 confirm is taken. The greyed-out row reads as the recall alone, in both
-languages: the live recall's label also names the card draw (2026-10-10),
-which the confirm beside it still offers.
+languages, from the recall's own label: since the user ruling of 2026-10-10
+(OQ-027 (d)) the recall never draws, and the card draw is the space's own
+step offered beside the confirm, which draws nothing.
 
 A fifth case covers the "intrigue" surface in the Conflict-end window,
 which opens on public facts (OQ-103), so a seat may sit in it holding a
@@ -450,9 +451,8 @@ def recall_case(page, base: str, saves: Path) -> bool:
         "Imperial Privilege: the row sits under the choice heading, with its reason",
         korean,
     )
-    # The live recall's label names the card draw too (it is why the step
-    # cannot be undone); greyed out, only the recall is missing, so the row
-    # says only that, beside the confirm that still draws the card.
+    # The recall's own label names the recall alone (user ruling 2026-10-10,
+    # OQ-027 (d)); the card draw is the space's own step.
     body = page.evaluate(WORDS_OF_JS, BODY)
     ok &= check.ok(
         body == "에이전트 소환 (Imperial Privilege)",
@@ -483,6 +483,8 @@ def recall_case(page, base: str, saves: Path) -> bool:
     index = page.evaluate(
         "(id) => state.actions.actions.findIndex((a) => a.action_id === id)", confirm
     )
+    hand = "state.view.private.hand.length"
+    before = page.evaluate(hand)
     page.evaluate(f"applyAction({index})")
     assert settled(page, 20)
     after = page.evaluate("state.actions.actions.map((a) => a.action_id)")
@@ -491,6 +493,11 @@ def recall_case(page, base: str, saves: Path) -> bool:
         confirm not in after and left == 0,
         "Imperial Privilege: the row goes once the confirm is taken",
         [left, after],
+    )
+    ok &= check.ok(
+        page.evaluate(hand) == before,
+        "Imperial Privilege: the confirm draws no card (the draw is its own step)",
+        [before, page.evaluate(hand)],
     )
     return ok
 

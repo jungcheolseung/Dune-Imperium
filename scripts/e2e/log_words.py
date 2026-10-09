@@ -28,7 +28,11 @@ A few synthetic lines whose words come from elsewhere than their own label
 (user report 2026-10-10) render too: Staban Tuek's Smuggle Spice payout names
 the ability and the Leader by the catalog's names, under a "Leader ability"
 card title, and Esmar Tuek's Signet taking a bonus spice says it was gained.
-Imperial Privilege's recall step names the card it also draws.
+Imperial Privilege's recall steps name the recall alone: the card draw is
+the space's own step since the user ruling of 2026-10-10 ("4번은 소환과
+뽑기가 당연히 두 단계로 나눠야지", OQ-027 (d)). A Sardaukar Commander paying
+a troop cost (Piter, Genius Advisor; Bene Gesserit Treachery's garrison unit;
+Prison Planet's Commander way in; OQ-105) reads as words in both languages.
 
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
@@ -127,8 +131,13 @@ GAMES = (
         # scan over seeds 1-159 finds seed 107 first that, with the other
         # five games, reaches every surface again (a round modifier, Mating
         # Season, mission troops).
-        "game_seed": 107,
-        "policy_seed": 107,
+        # Imperial Privilege's card draw as its own icon (user ruling
+        # 2026-10-10, OQ-027 (d)) moves seed 107 off its round modifier (the
+        # previous commit's engine still gives it); the same scan over seeds
+        # 1-160 finds seed 126 first with a round modifier, Mating Season and
+        # mission troops.
+        "game_seed": 126,
+        "policy_seed": 126,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -487,15 +496,17 @@ def check_named_lines(page, posts: list[str], names: list[str]) -> None:
     print(f"  .. {shown['ko']['taken']}")
 
 
-# Imperial Privilege's recall also draws a card in the same step, which is
-# why it cannot be undone (OQ-027 (d), OQ-010); its log line and button say
-# so (user question 2026-10-10), the board and the Into the Fray recall alike.
+# Imperial Privilege's recall and its draw are two steps (user ruling
+# 2026-10-10, OQ-027 (d)): the recall steps, the Into the Fray recall and the
+# confirm with no Agent to recall, name the recall alone, no card draw (they
+# named it from 2026-10-10 morning, while the recall still drew the card).
 RECALL_JS = r"""() => {
   const out = {};
   const steps = [
     {action_id: "recall_agent_for_imperial_privilege",
      arguments: {space_id: "arrakeen"}},
     {action_id: "recall_conflict_agent_for_imperial_privilege", arguments: {}},
+    {action_id: "resolve_imperial_privilege_without_recall", arguments: {}},
   ];
   try {
     for (const lang of ["ko", "en"]) {
@@ -511,16 +522,61 @@ RECALL_JS = r"""() => {
 }"""
 
 
-def check_recall_draw(page, posts: list[str], names: list[str]) -> None:
+def check_recall_steps(page, posts: list[str], names: list[str]) -> None:
     shown = page.evaluate(RECALL_JS)
-    for lang, draw in (("ko", "카드 1장 뽑기"), ("en", "Draw 1 card")):
+    for lang, recall, draw in (
+        ("ko", "소환", "뽑기"),
+        ("en", "Recall", "Draw"),
+    ):
         for text in shown[lang]:
             check.ok(
-                draw in text and not engine_ids(strip(text, names), posts),
-                f"{lang}: the Imperial Privilege recall names its card draw",
+                recall.lower() in text.lower()
+                and draw.lower() not in text.lower()
+                and not engine_ids(strip(text, names), posts),
+                f"{lang}: the Imperial Privilege recall step names the recall alone",
                 text,
             )
-    print(f"  .. {shown['ko'][0]} | {shown['en'][0]}")
+    print(f"  .. {shown['ko'][0]} | {shown['en'][0]} | {shown['en'][2]}")
+
+
+# A Sardaukar Commander pays the self-paid troop costs (OQ-105, user ruling
+# 2026-10-10): Piter's Commander loss, Bene Gesserit Treachery's garrison
+# unit and Prison Planet's Commander way in read as words in both languages,
+# logged (no live detail) as they are in the review.
+COMMANDER_COSTS_JS = r"""() => {
+  const out = {};
+  const steps = [
+    {action_id: "lose_agent_card_troop",
+     arguments: {commanders: 1, zone: "garrison"}},
+    {action_id: "scouts_lose_garrison_unit", arguments: {}},
+    {action_id: "scouts_lose_garrison_unit", arguments: {commanders: 1}},
+    {action_id: "scouts_join_mission", arguments: {target: "commander"}},
+  ];
+  try {
+    for (const lang of ["ko", "en"]) {
+      setLanguage(lang, false);
+      out[lang] = steps.map((step) => describeActionText({type: "action", index: 9,
+        actor: 0, events: [], ...step}));
+    }
+  } finally {
+    setLanguage("ko", false);
+  }
+  return out;
+}"""
+
+
+def check_commander_costs(page, posts: list[str], names: list[str]) -> None:
+    shown = page.evaluate(COMMANDER_COSTS_JS)
+    for lang in ("ko", "en"):
+        for text in shown[lang]:
+            check.ok(
+                not engine_ids(strip(text, names), posts)
+                and (lang == "ko" or not HANGUL.search(text)),
+                f"{lang}: a Commander paying a troop cost reads as words",
+                text,
+            )
+    print(f"  .. {' | '.join(shown['ko'])}")
+    print(f"  .. {' | '.join(shown['en'])}")
 
 
 def check_page(page, base: str, game_id: str, posts: list[str], names) -> None:
@@ -569,7 +625,8 @@ def main() -> None:
         check_pass_quiet(records)
         print("[1b] lines named from elsewhere than their own label")
         check_named_lines(page, posts, names)
-        check_recall_draw(page, posts, names)
+        check_recall_steps(page, posts, names)
+        check_commander_costs(page, posts, names)
         print("[2] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)

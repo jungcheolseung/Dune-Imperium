@@ -507,45 +507,47 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
     assert not leaks, "; ".join(leaks[:40])
 
 
-_IMPERIAL_PRIVILEGE_RECALLS = (
+_IMPERIAL_PRIVILEGE_STEPS = (
     "recall_agent_for_imperial_privilege",
     "recall_conflict_agent_for_imperial_privilege",
+    "resolve_imperial_privilege_without_recall",
 )
 
 
-def test_imperial_privilege_recall_labels_name_the_card_draw() -> None:
-    """The recall button says it also draws a card.
+def test_imperial_privilege_recall_labels_name_only_the_recall() -> None:
+    """The recall and its skip confirmation say nothing of a card draw.
 
-    User question 2026-10-10: "에이전트 소환은 왜 되돌리기 불가야?" Imperial
-    Privilege's printed sentence recalls an Agent and draws a card, kept as
-    one step (OQ-027 (d), docs/rules/open-questions.md), and a draw from the
-    hidden deck cannot be taken back (OQ-010's related design), so the
-    button carries the "cannot undo" badge. It read only "{agent} 소환",
-    so nothing on it showed what made it irreversible; both labels now name
-    the draw, as resolve_imperial_privilege_without_recall already did.
-
-    The greyed-out recall (no other Agent to recall) keeps a recall-only
-    text, render.js UNAVAILABLE_ROW_TEXT: the draw is still offered beside it.
+    "4번은 소환과 뽑기가 당연히 두 단계로 나눠야지. 이건 정말 기본적인
+    원칙인데" (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
+    recall only recalls and its draw is the space's own ``cards`` icon
+    (``resolve_board_effect``), so the recall button, the Into the Fray
+    recall and the confirm with no Agent to recall name the recall alone,
+    in both languages. Before the split the recall also drew the card, so
+    its label named the draw and render.js kept a recall-only text for its
+    greyed-out row (``UNAVAILABLE_ROW_TEXT``); the plain label serves that
+    row again.
     """
     korean = _korean_tables()["ACTION_LABELS"]
     english = _json_const("LABELS_EN", "labels_en.js")["ACTION_LABELS"]
-    for action_id in _IMPERIAL_PRIVILEGE_RECALLS:
+    for action_id in _IMPERIAL_PRIVILEGE_STEPS:
         for table in (korean, english):
-            assert "{draw}" in table[action_id], (action_id, table[action_id])
+            assert "{draw}" not in table[action_id], (action_id, table[action_id])
             assert "{agent}" in table[action_id], (action_id, table[action_id])
-    grey = _ui_text()["render.unavailable_imperial_privilege_recall"]
-    assert all("{agent}" in text and "{draw}" not in text for text in grey.values())
-    render = (_STATIC / "render.js").read_text()
-    block = re.search(
-        r"^const UNAVAILABLE_ROW_TEXT = \{(.*?)\n\};", render, re.S | re.M
+    assert korean["recall_agent_for_imperial_privilege"] == (
+        "{agent} 소환 (Imperial Privilege)"
     )
-    assert block, "no UNAVAILABLE_ROW_TEXT block in render.js"
-    assert re.search(
-        r'^\s+recall_agent_for_imperial_privilege:\s*'
-        r'"render\.unavailable_imperial_privilege_recall"',
-        block.group(1),
-        re.M,
+    assert english["recall_agent_for_imperial_privilege"] == (
+        "Recall {agent} (Imperial Privilege)"
     )
+    # The confirm reads like its Contract sibling's.
+    assert korean["resolve_imperial_privilege_without_recall"] == (
+        "{agent} 소환 없이 확인 (Imperial Privilege)"
+    )
+    assert english["resolve_imperial_privilege_without_recall"] == (
+        "Confirm without recalling {agent} (Imperial Privilege)"
+    )
+    assert "render.unavailable_imperial_privilege_recall" not in _ui_text()
+    assert "UNAVAILABLE_ROW_TEXT" not in (_STATIC / "render.js").read_text()
 
 
 def test_every_label_table_switches_language() -> None:
