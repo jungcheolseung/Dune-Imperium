@@ -73,6 +73,10 @@ self-play collection이라 부른다).
 5. **모방학습.** 서버의 저장본은 전체 `GameReplay`라 기술적으로는 가능하지만, 수십 판은 수천 결정뿐이고
    (학습은 수백만) 저장본은 codec 버전이 정확히 맞아야 한다. 초기 정책 만들기 단계는 이미 지났다. 사람 기보는
    **사람 대 정책 평가**에 쓰는 편이 낫다.
+   (2026-10-10: codec이 달라도 판을 쓸 수 있게 됐다. 저장본은 수를 뜻으로 적으므로 `records`가 지금 엔진으로
+   옮긴다([human-records.md](human-records.md)). 첫 진단은 [evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md)에
+   있다. 사람 판 두 개의 1,030개 결정 중 탐색 두 번이 모두 사람 쪽을 낫다고 본 것은 59곳이다. 모방학습이 낮다는 판단은
+   그대로다.)
 6. **보상 shaping.** 정책은 사람이 매긴 대리 지표를 최적화하고, 이미 이긴 편향된 사전을 다시 주입하게 된다.
    최적해를 보존하는 potential-based shaping만 안전한데 value head가 이미 그 역할이다. 순위 보상도 효과가 없었다
    ([evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md)).
