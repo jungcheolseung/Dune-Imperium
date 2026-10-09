@@ -1042,6 +1042,14 @@ function renderBanner() {
       }
       if (state.actions) renderActionPanel(actionsBox, turnEnd);
     }
+    /* While the Arrakeen Scouts step resolves an item, name it (and its
+       lines) under the prompt, above the turn-end or 확정 row, for the
+       deciding seat and the waiting ones alike (panels.js). */
+    const scoutsHeader = scoutsDecisionHeader();
+    if (scoutsHeader) {
+      const below = info.querySelector(":scope > .held-hint, :scope > .confirm-row");
+      info.insertBefore(scoutsHeader, below);
+    }
   }
 
   /* A human seat may still have takeable-back steps after the game ends

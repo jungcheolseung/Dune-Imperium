@@ -1650,13 +1650,74 @@ function scoutsCurrencyLine(currency) {
   return line;
 }
 
-function scoutsItemLines(item, box) {
-  if (item.kind === "auction" && TERMS[item.currency]) {
+/* `currency: false` leaves an auction's bid resource out: the decision
+   panel's header (scoutsDecisionHeader) leaves it to #actions, which shows
+   it once (turn.js renderActionPanel). */
+function scoutsItemLines(item, box, { currency = true } = {}) {
+  if (currency && item.kind === "auction" && TERMS[item.currency]) {
     box.appendChild(scoutsCurrencyLine(item.currency));
   }
   item.lines.forEach((line, index) => {
     box.appendChild(effectLine(line, item.lines_ko[index], "scouts-line"));
   });
+}
+
+/* The Scouts step's cursor while due secret picks resolve
+   (rules/scouts_secrets.py SECRET_ITEM): not an item of the catalog. */
+const SCOUTS_SECRETS_CURSOR = "secrets";
+
+/* The item the Scouts step is resolving now, or null outside the step.
+   view.scouts_item is public (every seat's view) and empty during the
+   round's turns (rules/scouts.py advance_scouts_step clears it); the
+   seat's own choice names its item first, so a revealed secret pick shows
+   its event while the cursor is "secrets". */
+function scoutsDecisionItemId() {
+  const view = state.view;
+  if (!state.summary || !state.summary.arrakeen_scouts || !view || !view.scouts_item) {
+    return null;
+  }
+  const own = state.actions && state.actions.scouts_lines;
+  return (own && own.item_id) || view.scouts_item;
+}
+
+/* Whether the seat's own rows in #actions already are the item's lines:
+   its Scouts choice of that item, or a secret pick's four lines. */
+function scoutsRowsAreLines(itemId) {
+  const actions = state.actions;
+  if (!actions) return false;
+  const own = actions.scouts_lines;
+  if (own && own.frame === "scouts_choice" && own.item_id === itemId) return true;
+  return (actions.actions || []).some((action) => action.action_id === "scouts_secret_pick");
+}
+
+/* User request 2026-10-10 (feedback item 8): the decision panel names the
+   item a Scouts decision belongs to, with its lines, so nobody has to look
+   down at the Scouts panel while choosing or waiting. Display only: it
+   reads the public view and the seat's own actions. */
+function scoutsDecisionHeader() {
+  const id = scoutsDecisionItemId();
+  if (!id) return null;
+  const box = document.createElement("div");
+  box.className = "scouts-decision-item";
+  box.dataset.item = id;
+  const title = document.createElement("div");
+  title.className = "scouts-decision-title";
+  box.appendChild(title);
+  const known = Boolean(state.catalog && state.catalog.scouts_items
+    && state.catalog.scouts_items[id]);
+  const item = scoutsItem(id);
+  if (state.view.scouts_item === SCOUTS_SECRETS_CURSOR) {
+    title.textContent = known
+      ? t("render.scouts_decision_secret_item", { name: item.name })
+      : t("render.scouts_decision_secrets");
+  } else {
+    title.textContent = t("render.scouts_decision_item", {
+      kind: scoutsKindName(item.kind),
+      name: item.name,
+    });
+  }
+  if (known && !scoutsRowsAreLines(id)) scoutsItemLines(item, box, { currency: false });
+  return box;
 }
 
 function scoutsGoodsText(resource, amount) {

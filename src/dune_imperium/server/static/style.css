@@ -1316,6 +1316,17 @@ kbd {
 /* ITEM 5: the most recently resolved Conflict, one muted line above the
    prompt (render.js's combatResultLine) -- no badge, no animation. */
 #decision-info .combat-result { font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.35rem; }
+/* Feedback item 8: the Arrakeen Scouts item a decision belongs to, under
+   the prompt (panels.js scoutsDecisionHeader). */
+#decision-info .scouts-decision-item {
+  margin: 0.3rem 0 0.2rem;
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid var(--accent);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+#decision-info .scouts-decision-title { font-weight: 700; }
+#decision-info .scouts-decision-item .scouts-line { margin-left: 0.8em; opacity: 0.85; }
 
 #actions {
   display: flex;

@@ -1317,6 +1317,18 @@ const UI_TEXT = {
     "ko": "공용 덱 순서",
     "en": "Shared deck order"
   },
+  "render.scouts_decision_item": {
+    "ko": "아라킨 스카웃 · {{kind}} · {{name}}",
+    "en": "Arrakeen Scouts · {{kind}} · {{name}}"
+  },
+  "render.scouts_decision_secrets": {
+    "ko": "아라킨 스카웃 · 비밀 선택 공개",
+    "en": "Arrakeen Scouts · Secret picks revealed"
+  },
+  "render.scouts_decision_secret_item": {
+    "ko": "아라킨 스카웃 · 비밀 선택 공개 · {{name}}",
+    "en": "Arrakeen Scouts · Secret picks revealed · {{name}}"
+  },
   "render.scouts_joined_by": {
     "ko": "{{player}} 가입",
     "en": "Joined by {{player}}"
