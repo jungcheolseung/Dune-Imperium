@@ -581,6 +581,14 @@ const UI_TEXT = {
     "ko": "프로모 카드 (봉기 3장: 아라키스 반란, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 무자비한 리더십, 불멸을 켜면 틀레이락스 덱에 천재적인 조언자, 파이터도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
   },
+  "html.opt_shuffle_seats": {
+    "ko": "자리 무작위 배치",
+    "en": "Random seating"
+  },
+  "html.shuffle_seats_note": {
+    "ko": "시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.",
+    "en": "Shuffles the configured players' seats (turn order and colour) when the game starts."
+  },
   "html.opt_seed_label": {
     "ko": "시드 (빈칸 = 무작위)",
     "en": "Seed (blank = random)"

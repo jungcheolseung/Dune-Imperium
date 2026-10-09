@@ -70,6 +70,18 @@ def test_the_play_server_paces_its_ai_seats_unless_told_otherwise() -> None:
         _build_parser().parse_args(["--ai-pace", "slow"])
 
 
+def test_the_play_server_shuffles_the_seats_unless_told_otherwise() -> None:
+    # docs/rules does not seat players: the First Player comes from the
+    # Objective deal [Main p. 5] (docs/rules/setup-and-game-flow.md). The
+    # setup screen's box that shuffles the configured seats opens checked
+    # unless the server says --seating fixed (project convention, user
+    # request 2026-10-10).
+    assert _build_parser().parse_args([]).seating == "random"
+    assert _build_parser().parse_args(["--seating", "fixed"]).seating == "fixed"
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["--seating", "rotate"])
+
+
 def test_default_arguments_resolve_to_open_access() -> None:
     arguments = _build_parser().parse_args([])
 
@@ -363,6 +375,39 @@ def test_main_prints_the_search_ai_line_at_startup(
     expected = f"search AI: {real}" if configured else "search AI: off (no checkpoint;"
     assert len(search_lines) == 1, output
     assert search_lines[0].startswith(expected), output
+
+
+@pytest.mark.parametrize(
+    ("flag", "expected"), [((), "random"), (("--seating", "fixed"), "fixed")]
+)
+def test_main_hands_the_seating_to_the_setup_screen(
+    flag: tuple[str, ...],
+    expected: str,
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uvicorn = pytest.importorskip("uvicorn")
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    served: list[object] = []
+
+    def keep_the_app(self: object, *args: object, **kwargs: object) -> None:
+        # Everything but serving: keep the app the server would have run.
+        served.append(self.config.app)  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(uvicorn.Server, "run", keep_the_app)
+    monkeypatch.delenv(SEARCH_CHECKPOINT_ENVIRONMENT, raising=False)
+
+    code = main(
+        ["--port", str(_free_port()), "--saves-dir", str(tmp_path / "saves"), *flag]
+    )
+
+    assert code == 0
+    assert len(served) == 1
+    whoami = TestClient(served[0]).get("/whoami")  # type: ignore[arg-type]
+    assert whoami.json()["seating"] == expected
 
 
 # --- admin_link ----------------------------------------------------------

@@ -70,6 +70,39 @@ def test_root_serves_the_ui_and_static_assets(client: TestClient) -> None:
     assert "cache-control" not in client.get("/catalog").headers
 
 
+@pytest.mark.parametrize("seating", ["random", "fixed"])
+def test_whoami_tells_the_setup_screen_whether_to_shuffle_the_seats(
+    seating: str, tmp_path: Path
+) -> None:
+    # docs/rules does not seat players: the First Player comes from the
+    # Objective deal [Main p. 5] (docs/rules/setup-and-game-flow.md). The
+    # browser shuffles the configured seats before POST /games when its box
+    # is checked, which the server's --seating only opens (project
+    # convention, user request 2026-10-10); game creation is unchanged.
+    app = create_app(
+        saves_dir=tmp_path / "saves",
+        card_images_dir=tmp_path / "no-images",
+        icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
+        board_image=tmp_path / "no-map.jpg",
+        bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
+        default_seating=seating,
+    )
+    client = TestClient(app)
+    assert client.get("/whoami").json()["seating"] == seating
+    # The seats reach the game exactly as posted, whatever the seating.
+    seats = ["heuristic", "human", "heuristic", "heuristic"]
+    assert _create(client, seats=seats)["seats"] == seats
+
+
+def test_the_play_server_defaults_to_shuffled_seats_and_knows_no_other(
+    client: TestClient, tmp_path: Path
+) -> None:
+    assert client.get("/whoami").json()["seating"] == "random"
+    with pytest.raises(ValueError, match="seating"):
+        create_app(saves_dir=tmp_path / "saves", default_seating="rotate")
+
+
 def test_catalog_endpoint_serves_display_names(client: TestClient) -> None:
     response = client.get("/catalog")
     assert response.status_code == 200

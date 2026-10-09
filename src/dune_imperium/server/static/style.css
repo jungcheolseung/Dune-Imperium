@@ -189,6 +189,16 @@ fieldset label:has(input:disabled) { opacity: 0.5; }
 }
 #opt-seed-row input, #opt-checkpoint-row input { margin-top: 0.4rem; }
 #setup-form #opt-search-note { margin: 1rem 0 0; font-size: 0.8rem; line-height: 1.5; }
+#setup-form #opt-shuffle-seats-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+#opt-shuffle-seats-row input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: #826336; }
+#setup-form #opt-shuffle-seats-note { margin: 0.4rem 0 0; font-size: 0.8rem; line-height: 1.5; }
 #rule-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
 #rule-options label {
   display: flex;

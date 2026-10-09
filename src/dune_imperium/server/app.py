@@ -56,6 +56,7 @@ from dune_imperium.server.persistence import (
     UnknownSaveError,
     default_saves_directory,
 )
+from dune_imperium.server.seating import DEFAULT_SEATING, SEATINGS
 from dune_imperium.server.sessions import (
     AdminAccessError,
     GameSessionManager,
@@ -347,6 +348,7 @@ def create_app(
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
     public_url: str | None = None,
     autosave: bool | None = None,
+    default_seating: str = DEFAULT_SEATING,
 ) -> FastAPI:
     """Build the local play server around one session manager.
 
@@ -358,8 +360,14 @@ def create_app(
     passes on (``server.autosave``). Left at ``None`` it follows the access
     mode: on for a remote server, off for an open one, whose save
     directory holds what its one user chose to save and nothing else.
+
+    ``default_seating`` is only reported (``GET /whoami``): whether the setup
+    screen's box that shuffles the configured seats opens checked
+    (``server.seating``; the browser shuffles, game creation does not).
     """
 
+    if default_seating not in SEATINGS:
+        raise ValueError(f"unknown seating {default_seating!r}")
     sessions = manager if manager is not None else GameSessionManager()
     hub = DoorbellHub()
     sessions.add_change_listener(hub.publish)
@@ -495,6 +503,8 @@ def create_app(
             "search_ai": sessions.search_checkpoint is not None,
             # The AI pace a new game starts with (server/pacing.py).
             "ai_pace": sessions.default_ai_pace,
+            # Whether the setup screen shuffles the seats (server/seating.py).
+            "seating": default_seating,
         }
 
     @app.post("/auth/admin")
