@@ -420,6 +420,10 @@ function renderActionPanel(box, turnEnd) {
     const currency = scoutsAuctionCurrency();
     if (currency) box.appendChild(scoutsCurrencyLine(currency));
   }
+  /* Controlled's choice: the top card it is about, above its buttons
+     (panels.js deckTopChoicePicture; the seat's own view, nobody else's). */
+  const deckTop = deckTopChoicePicture();
+  if (deckTop) box.appendChild(deckTop);
   if (state.summary.decision && state.summary.decision.kind === "reveal") {
     renderRevealPanel(box, actions);
     return;

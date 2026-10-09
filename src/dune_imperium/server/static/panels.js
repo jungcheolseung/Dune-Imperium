@@ -1516,18 +1516,57 @@ function renderLog() {
 
 /* Controlled's choice on the deck's top card (rules/intrigue.py, the
    PeekTopCard choice): these actions are offered exactly while that choice
-   is up for the seat, and none of them names the card. */
-const DECK_TOP_CHOICES = new Set([
-  "put_back_top_card",
-  "discard_top_card",
-  "draw_top_card_for_solari",
-]);
+   is up for the seat. Their live buttons name the card the seat is looking
+   at (deckTopChoiceLabel, the text keyed here); the logged step keeps its
+   plain label (ACTION_LABELS), since the log is everyone's to read. */
+const DECK_TOP_CHOICE_TEXT = {
+  put_back_top_card: "panels.deck_top_put_back",
+  discard_top_card: "panels.deck_top_discard",
+  draw_top_card_for_solari: "panels.deck_top_draw",
+};
+const DECK_TOP_CHOICES = new Set(Object.keys(DECK_TOP_CHOICE_TEXT));
 
 function deckTopChoiceOffered() {
   return Boolean(
     !state.review && state.actions &&
       state.actions.actions.some((action) => DECK_TOP_CHOICES.has(action.action_id)),
   );
+}
+
+/* The card Controlled's choice is about while it is offered to the seat:
+   the seat's own view's peeked_card_id (only the owner's view carries it,
+   core/observation.py), or "" -- no such choice, a review (no actions), or
+   nothing peeked. The view and the actions are one seat's snapshot
+   (session.js adoptSnapshot), so the card is the deciding seat's own. */
+function deckTopChoiceCard() {
+  if (!deckTopChoiceOffered()) return "";
+  const own = state.view && state.view.private;
+  return (own && own.peeked_card_id) || "";
+}
+
+/* One of those live buttons naming the card ("덱 맨 위 카드(Dagger)
+   {discard}"), by its name on screen; null for any other action, or when
+   no card is known (the plain label then stands). Only actionItem (render.js),
+   which draws the seat's offered actions, asks for it. */
+function deckTopChoiceLabel(action) {
+  if (!DECK_TOP_CHOICES.has(action.action_id)) return null;
+  const card = deckTopChoiceCard();
+  return card ? tNode(DECK_TOP_CHOICE_TEXT[action.action_id], { card: nameOf(card) }) : null;
+}
+
+/* The card itself above those buttons in the decision panel
+   (renderActionPanel, turn.js): its picture like any card on the table,
+   enlarged on hover or click, badged as the deck's top. null when the
+   choice is not up for the seat. */
+function deckTopChoicePicture() {
+  const card = deckTopChoiceCard();
+  if (!card) return null;
+  const box = document.createElement("div");
+  box.className = "deck-top-choice";
+  box.appendChild(
+    visualCard(card, { className: "deck-top-choice-card", badge: t("panels.deck_top_badge") }),
+  );
+  return box;
 }
 
 /* What shows the seat its deck's top card, by its name on screen: the
@@ -1654,26 +1693,18 @@ function renderPrivate() {
     }
     zones.appendChild(intrigue);
   }
-  /* Owner-only peeks: the deck's top card and peeked Intrigue. Kota
-     Odax's Secret Project tile is on his leader popover (core.js
-     leaderSecretProjectBox). Glowglobes' standing look at the top card is
-     the deck list's "Top" mark (openDeckList), not a card here; the strip
-     still shows the top card while Controlled's choice is up, since its
-     put back / discard / draw buttons name no card. Without Glowglobes a
-     top card can only be Controlled's, so the strip is as it always was. */
+  /* Owner-only peeks beside the Intrigue cards: the Intrigue deck's top
+     cards Imperium Ceremony shows while one is kept. Kota Odax's Secret
+     Project tile is on his leader popover (core.js
+     leaderSecretProjectBox). The seat's own deck's top card is never
+     here (user decision 2026-10-10): Glowglobes' standing look is the deck
+     list's "Top" entry (openDeckList), and Controlled's is its picture
+     above the put back / discard / draw buttons, which name it
+     (deckTopChoicePicture, deckTopChoiceLabel). */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
-  const deckTop = peeked && (!glowglobes || deckTopChoiceOffered()) ? peeked : "";
-  if (deckTop || peekedIntrigue.length) {
+  if (peekedIntrigue.length) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
-    if (deckTop) {
-      peeks.appendChild(
-        visualCard(deckTop, {
-          className: "small",
-          badge: t("panels.deck_top_badge"),
-        })
-      );
-    }
     for (const cardId of peekedIntrigue) {
       peeks.appendChild(
         visualCard(cardId, { className: "small", badge: t("panels.intrigue_deck_top_badge") })

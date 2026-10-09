@@ -1867,7 +1867,9 @@ function actionItem(action, onApply, zone) {
   wrap.dataset.index = String(action.index);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   const button = document.createElement("button");
-  button.appendChild(describeAction(action));
+  /* Controlled's choice names the top card the seat is looking at on its
+     own buttons only (panels.js deckTopChoiceLabel), never in the log. */
+  button.appendChild(deckTopChoiceLabel(action) || describeAction(action));
   if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>

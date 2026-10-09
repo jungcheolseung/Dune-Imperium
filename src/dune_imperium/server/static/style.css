@@ -1434,6 +1434,11 @@ kbd {
   border-top: 1px solid var(--line);
 }
 #actions > .zone-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* Controlled's choice: the deck's top card it is about, above its buttons
+   (panels.js deckTopChoicePicture), a little smaller than a hand card. */
+.deck-top-choice { display: flex; flex: none; padding: 2px 0; }
+.vcard.deck-top-choice-card { width: 92px; }
+.vcard.deck-top-choice-card .vcard-badge { white-space: nowrap; }
 .pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
 .pick-option .icon { height: 1.1em; }
 .pick-graft { font-weight: 600; }
