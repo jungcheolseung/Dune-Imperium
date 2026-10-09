@@ -471,10 +471,23 @@ function skillIdOf(instanceId) {
   return match ? match[1] : String(instanceId);
 }
 
+/* A list drawn into the popover is never pinned, whatever was pinned
+   before it: the opener's click stops at the opener (openerStat), so the
+   document's click-elsewhere close never ran and a pin left from another
+   popover (a clicked card, a leader, the Conflict history) would otherwise
+   carry over. render() closes an unpinned popover on every update,
+   foreign ones included, so a list never outlives the state it was drawn
+   from -- the deck list's top card mark least of all. */
+function unpinPopover() {
+  popoverPinned = false;
+  pinnedLeaderSeat = null;
+}
+
 /* A pile listing (discard, Intrigue piles) in the popover: one pile as
    `(title, ids, anchor)`, or several as `([[title, ids], ...], null, anchor)`
    (empty piles are left out). */
 function openPileList(title, ids, anchor) {
+  unpinPopover();
   const piles = Array.isArray(title) ? title : [[title, ids]];
   const pop = el("card-popover");
   pop.textContent = "";
@@ -498,14 +511,28 @@ function openPileList(title, ids, anchor) {
    sorts the groups by the name on screen, so the list is a function of the
    deck's contents alone and shows no trace of the draw order (OQ-010
    ruling 5). A click on a card here does nothing: a deck card is never
-   something to act on from a list. */
-function openDeckList(title, ids, anchor) {
+   something to act on from a list.
+
+   The one exception is the top card when a card effect lets the owner see
+   it (`top`: `{id, source}`, the view's own `peeked_card_id` and the name
+   of what shows it -- Glowglobes, or Controlled while its choice is up).
+   The group holding it is marked "Top" ("맨 위 · ×3" with copies) and
+   outlined, and a second note says where the mark comes from. The group's
+   place in the name order and its representative card (the smallest
+   instance id) stay as they were, so the list still says nothing about
+   the cards below the top. */
+function openDeckList(title, ids, anchor, top = null) {
+  unpinPopover();
+  const groupKey = (id) => {
+    const ref = instanceRef(id);
+    return `${ref.kind}:${ref.id}`;
+  };
+  const topKey = top && top.id && ids.includes(top.id) ? groupKey(top.id) : "";
   const groups = new Map();
   for (const id of ids) {
-    const ref = instanceRef(id);
-    const key = `${ref.kind}:${ref.id}`;
+    const key = groupKey(id);
     const group = groups.get(key);
-    if (!group) groups.set(key, { id, count: 1, name: nameOf(id) });
+    if (!group) groups.set(key, { key, id, count: 1, name: nameOf(id) });
     else {
       group.count += 1;
       if (id < group.id) group.id = id;
@@ -523,20 +550,31 @@ function openDeckList(title, ids, anchor) {
   const note = document.createElement("div");
   note.className = "popover-note";
   note.textContent = t("panels.deck_list_note");
+  const notes = [note];
+  if (topKey) {
+    const topNote = document.createElement("div");
+    topNote.className = "popover-note deck-top-note";
+    topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
+    notes.push(topNote);
+  }
   const row = document.createElement("div");
   row.className = "strip-cards wrap";
   for (const group of sorted) {
     const copies = group.count > 1 ? `×${group.count}` : "";
+    const named = copies ? `${group.name} ${copies}` : group.name;
+    const isTop = group.key === topKey;
     row.appendChild(
       visualCard(group.id, {
-        className: "small",
-        badge: copies,
-        title: copies ? `${group.name} ${copies}` : group.name,
+        className: isTop ? "small deck-top" : "small",
+        badge: isTop
+          ? [t("panels.deck_list_top_badge"), copies].filter(Boolean).join(" · ")
+          : copies,
+        title: isTop ? `${named} · ${t("panels.deck_list_top_title")}` : named,
         onClick: () => {},
       }),
     );
   }
-  pop.append(head, note, row);
+  pop.append(head, ...notes, row);
   placePopover(pop, anchor, 420);
   /* Card images arrive after the first placement and make the list taller
      (openPopover does the same): place it again, only while it is still
@@ -1389,6 +1427,31 @@ function renderLog() {
 
 /* ---------- own hand ---------- */
 
+/* Controlled's choice on the deck's top card (rules/intrigue.py, the
+   PeekTopCard choice): these actions are offered exactly while that choice
+   is up for the seat, and none of them names the card. */
+const DECK_TOP_CHOICES = new Set([
+  "put_back_top_card",
+  "discard_top_card",
+  "draw_top_card_for_solari",
+]);
+
+function deckTopChoiceOffered() {
+  return Boolean(
+    !state.review && state.actions &&
+      state.actions.actions.some((action) => DECK_TOP_CHOICES.has(action.action_id)),
+  );
+}
+
+/* What shows the seat its deck's top card, by its name on screen: the
+   Glowglobes tile it owns, or else Controlled (the one Intrigue that peeks
+   at a deck, content/uprising/intrigue.py). */
+function deckTopSource(glowglobes) {
+  const id = glowglobes ? "glowglobes" : "twisted_controlled";
+  const entry = lookup(id, glowglobes ? "tech" : "intrigue");
+  return entry ? entry.name : prettify(id);
+}
+
 function renderPrivate() {
   const panel = el("private-zone");
   /* The board-width hand can scroll even with a normal five-card hand.
@@ -1441,10 +1504,19 @@ function renderPrivate() {
     statNode("intrigue", phraseText("{intrigue}"), view.private.intrigue_cards.length)
   );
   /* The deck's contents, never its order, are the owner's to see (OQ-010
-     ruling 5): the server's `deck_cards` is a sorted list of card ids. */
+     ruling 5): the server's `deck_cards` is a sorted list of card ids.
+     The top card is the exception when a card effect shows it to the owner
+     (`peeked_card_id`: Glowglobes at any time, Controlled while its choice
+     is up; core/observation.py): the list marks it, and the count's title
+     says so, so the mark is found without opening the list first. */
   const deckCards = view.private.deck_cards || [];
+  const peeked = view.private.peeked_card_id || "";
+  const glowglobes = (own.tech_ids || []).includes("glowglobes");
+  const top = peeked && deckCards.includes(peeked)
+    ? { id: peeked, source: deckTopSource(glowglobes) }
+    : null;
   if (deckCards.length) {
-    openerStat(deckStat, t("panels.deck_view"), () =>
+    openerStat(deckStat, t(top ? "panels.deck_view_top" : "panels.deck_view"), () =>
       openDeckList(
         mine
           ? t("panels.my_deck", { count: deckCards.length })
@@ -1453,7 +1525,8 @@ function renderPrivate() {
               count: deckCards.length,
             }),
         deckCards,
-        deckStat
+        deckStat,
+        top
       )
     );
   }
@@ -1494,16 +1567,21 @@ function renderPrivate() {
     }
     zones.appendChild(intrigue);
   }
-  /* Owner-only peeks: the deck's top card (Controlled, Glowglobes) and
-     peeked Intrigue. Kota Odax's Secret Project tile is on his leader
-     popover (core.js leaderSecretProjectBox). */
+  /* Owner-only peeks: the deck's top card and peeked Intrigue. Kota
+     Odax's Secret Project tile is on his leader popover (core.js
+     leaderSecretProjectBox). Glowglobes' standing look at the top card is
+     the deck list's "Top" mark (openDeckList), not a card here; the strip
+     still shows the top card while Controlled's choice is up, since its
+     put back / discard / draw buttons name no card. Without Glowglobes a
+     top card can only be Controlled's, so the strip is as it always was. */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
-  if (view.private.peeked_card_id || peekedIntrigue.length) {
+  const deckTop = peeked && (!glowglobes || deckTopChoiceOffered()) ? peeked : "";
+  if (deckTop || peekedIntrigue.length) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
-    if (view.private.peeked_card_id) {
+    if (deckTop) {
       peeks.appendChild(
-        visualCard(view.private.peeked_card_id, {
+        visualCard(deckTop, {
           className: "small",
           badge: t("panels.deck_top_badge"),
         })

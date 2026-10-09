@@ -733,6 +733,22 @@ const UI_TEXT = {
     "ko": "{deck} 구성 보기 (순서 비공개)",
     "en": "View {deck} contents (order hidden)"
   },
+  "panels.deck_view_top": {
+    "ko": "{deck} 구성 보기 (순서 비공개, 맨 위 카드 표시)",
+    "en": "View {deck} contents (order hidden, top card marked)"
+  },
+  "panels.deck_list_top_badge": {
+    "ko": "맨 위",
+    "en": "Top"
+  },
+  "panels.deck_list_top_title": {
+    "ko": "{deck} 맨 위 카드",
+    "en": "top card of the {deck}"
+  },
+  "panels.deck_list_top_note": {
+    "ko": "맨 위로 표시한 카드는 {{source}} 효과로 확인한 {deck} 맨 위 카드입니다.",
+    "en": "The card marked Top is the top card of the {deck}, seen through {{source}}."
+  },
   "panels.my_deck": {
     "ko": "내 {deck} · {{count}}장 (순서 비공개)",
     "en": "My deck · {{count}} cards (order hidden)"

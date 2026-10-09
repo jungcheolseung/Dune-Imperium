@@ -4,6 +4,11 @@ The fixture producer plays legal actions through GameSessionManager, then
 saves just before each purchase. No edited UI state or injected resources:
 the browser loads those replays, buys the tile, resolves another effect,
 refreshes, and chooses a specific faction in Korean and English.
+
+Right after the Glowglobes purchase the seat sees its deck's top card
+(``private.peeked_card_id``; user decision 2026-10-10, feedback item 3): it is
+marked "맨 위" in the deck list, the count's title says so, and nothing is left
+beside the Intrigue cards. The Navigation Chamber buyer's list marks nothing.
 """
 
 from __future__ import annotations
@@ -28,6 +33,98 @@ def rows(page, action_id):
 def click_action(page, action):
     page.locator(f".action-item[data-index='{action['index']}'] > button").first.click()
     assert settled(page, 20)
+
+
+DECK_TOP_JS = """() => {
+  const stat = document.querySelector('#private-zone .hand-counts .stat');
+  const cards = state.view.private.deck_cards || [];
+  const peeked = state.view.private.peeked_card_id || '';
+  return {
+    peeked,
+    inDeck: cards.includes(peeked),
+    size: cards.length,
+    owns: (state.view.players[state.view.player].tech_ids || []).includes('glowglobes'),
+    title: stat.getAttribute('title'),
+    strip: [...document.querySelectorAll('#private-zone .vcard')]
+      .filter((card) => {
+        const badge = card.querySelector('.vcard-badge');
+        return badge && badge.textContent === t('panels.deck_top_badge');
+      })
+      .map((card) => card.dataset.instance),
+  };
+}"""
+
+DECK_LIST_JS = """() => {
+  const key = (id) => { const ref = instanceRef(id); return `${ref.kind}:${ref.id}`; };
+  const pop = document.getElementById('card-popover');
+  return {
+    hidden: pop.hidden,
+    topKey: state.view.private.peeked_card_id
+      ? key(state.view.private.peeked_card_id) : null,
+    notes: [...pop.querySelectorAll('.popover-note')].map((node) => node.textContent),
+    marked: [...pop.querySelectorAll('.vcard.deck-top')].map((card) => ({
+      key: key(card.dataset.instance),
+      badge: card.querySelector('.vcard-badge').textContent,
+    })),
+  };
+}"""
+
+
+def check_deck_top(page, tech_id):
+    """The bought Glowglobes shows the top card in the deck list only."""
+    top = page.evaluate(DECK_TOP_JS)
+    glow = tech_id == "glowglobes"
+    if glow:
+        check.ok(top["owns"], f"{tech_id}: the seat owns the tile after the purchase")
+        check.ok(
+            top["strip"] == [],
+            f"{tech_id}: no top card is left beside the Intrigue cards",
+            top["strip"],
+        )
+        if not check.ok(
+            top["size"] > 0 and top["inDeck"],
+            f"{tech_id}: the view names a card of the deck as its top",
+            top,
+        ):
+            return
+        check.ok(
+            top["title"] == "카드덱 구성 보기 (순서 비공개, 맨 위 카드 표시)",
+            f"{tech_id}: the deck count's title says the top card is marked",
+            top["title"],
+        )
+    else:
+        check.ok(
+            not top["owns"] and top["peeked"] == "",
+            f"{tech_id}: no top card is named without Glowglobes",
+            top,
+        )
+        if not top["size"]:
+            print(f"  .. {tech_id}: the deck is empty, no list to open")
+            return
+    page.locator("#private-zone .hand-counts .stat").first.click()
+    page.wait_for_function("!document.getElementById('card-popover').hidden")
+    listing = page.evaluate(DECK_LIST_JS)
+    if glow:
+        marked = listing["marked"]
+        check.ok(
+            len(marked) == 1
+            and marked[0]["key"] == listing["topKey"]
+            and marked[0]["badge"].startswith("맨 위"),
+            f"{tech_id}: exactly the top card's group is marked 맨 위",
+            listing,
+        )
+        check.ok(
+            len(listing["notes"]) == 2 and "발광구" in listing["notes"][1],
+            f"{tech_id}: the second note names Glowglobes as 발광구",
+            listing["notes"],
+        )
+    else:
+        check.ok(
+            listing["marked"] == [] and len(listing["notes"]) == 1,
+            f"{tech_id}: the deck list marks nothing",
+            listing,
+        )
+    page.keyboard.press("Escape")
 
 
 def main():
@@ -74,6 +171,7 @@ def main():
                     == before,
                     f"{tech_id}: purchase leaves every Influence unchanged",
                 )
+                check_deck_top(page, tech_id)
                 rewards = [
                     a
                     for a in rows(page, "resolve_tech_acquire_effect")

@@ -129,8 +129,10 @@ class PrivatePlayerView:
     deck_size: int
     hand: tuple[str, ...]
     intrigue_cards: tuple[str, ...]
-    # Controlled (Twisted Intrigue): the deck's top card while the owner
-    # decides what to do with it; "" otherwise.
+    # The deck's top card when a card effect lets the owner see it: always
+    # with Glowglobes (Tech tile, "look at the top card of your deck at any
+    # time"), and with Controlled (Twisted Intrigue) while the owner decides
+    # what to do with it; "" otherwise (``peeked_card_id`` below).
     peeked_card_id: str = ""
     # Imperium Ceremony: the Intrigue deck's top cards while the owner
     # keeps one of them; () otherwise.
