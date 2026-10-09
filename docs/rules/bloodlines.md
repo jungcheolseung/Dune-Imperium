@@ -127,6 +127,8 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치 |
 | Training Depot | 1 | — | Reveal Turn: Command (6+): 검 2 |
 
+- Navigation Chamber의 감소는 의무다. spice와 Solari를 함께 받는 칸에서만 어느 쪽을 줄일지 고르고(4인 보드에는 그런 칸이 없다), Spice Refinery·Gather Support의 화살표 비용 옵션(`[Board Guide pp. 1-2]`)에도 닿는다. 타일 문장(may 없음)을 읽은 project reading이며 공식 판정은 아니다([OQ-104](open-questions.md#oq-104--navigation-chamber의-할인은-의무인가)).
+
 ### Tech 전용 카드와 Leader
 
 - **Ixian Ambassador ×2**(Imperium, 4, 진영 없음, Landsraad 아이콘): Agent: spice 1. Reveal: Persuasion 1; Tech tile 2장 이상이면 Influence 1 선택. `[card face]`

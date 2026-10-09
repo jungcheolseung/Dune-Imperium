@@ -923,3 +923,9 @@
 - 재발 방지:
   - 결정 창, 공개 이벤트, 대기 표시처럼 다른 좌석에게 보이는 것이 생길지 말지는 공개된 사실로만 정한다. 숨은 정보는 그 창 안에서 주인에게 내놓는 행동만 정한다. 새 창이나 창이 남는 규칙을 만들면 "카드를 쥔 좌석과 안 쥔 좌석이 남에게 똑같이 보이는가"를 테스트로 고정한다(`test_immortality_intrigue.py`의 `..._looks_the_same_with_and_without_harvest_cells`).
   - 서버가 사람 대신 답하는 길을 만들면, 그 답의 유무와 시점이 다른 사람에게 무엇을 알리는지부터 적는다. "실물과 같다"는 비교는 실물에서 그 정보가 어떻게 드러나는지를 구체적으로 대 본 뒤에만 쓴다.
+
+## 2026-10-10 — 규칙 근거 없이 Navigation Chamber의 "할인 없이" 선택지를 만들었음
+
+- 무슨 일: 2026-09-07 Tech tile 능력 슬라이스(`66ec9504`)가 Navigation Chamber("Board spaces cost you [1 spice] or [1 Solari] less." `[Tech tile face]`)를 구현하며, 할인한 placement 옆에 정가 placement도 늘 함께 제시했다. 코드 주석은 "each discount is its own placement choice"라고만 적었고, 정가를 고를 수 있다는 규칙 근거는 어디에도 없었다. 타일에는 may가 없고, 이 문서 세트의 읽기 원칙은 "원문이 선택 여부를 명시하지 않으면 이 문서가 임의로 선택 여부를 만들지 않는다."다. 한 달 동안 아무 리뷰도 보지 못했고, 사용자가 화면의 "할인 없이" 줄을 보고 물었다(2026-10-10 피드백 9). 그동안 heuristic AI는 두 줄을 같은 점수로 보아 무작위로 골랐고, 칸마다 절반쯤 정가를 냈다(200개 시드에서 High Council 108번, Heighliner 95번).
+- 원인: 인쇄된 "or"(spice 또는 Solari)를 선택지로 구현하면서 "할인하지 않음"까지 같은 목록에 넣었다. 감소를 거절할 수 있는지는 규칙 문서에서 확인하지 않았다. 엔진의 다른 비용 감소(Duncan, Sardaukar High Command, High Council 자리의 Tech 할인)는 모두 선택 없이 적용되는데, 그 차이를 묻는 사람이 없었다.
+- 재발 방지: 플레이어가 고르는 선택지(합법 행동)를 새로 만들 때는, 그 선택을 허락하는 문장(may, 화살표 비용, 검은 trash 아이콘, 사용자 판정)을 코드 주석과 테스트에 인용한다. 인용할 문장이 없으면 선택지를 만들지 않거나 `open-questions.md`에 올린다. 효과가 여러 갈래(spice 또는 Solari)일 때 "아무것도 하지 않음"은 따로 근거가 필요한 갈래로 본다. 고친 것: [OQ-104](rules/open-questions.md#oq-104--navigation-chamber의-할인은-의무인가), codec v142.
