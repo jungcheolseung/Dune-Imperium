@@ -24,6 +24,11 @@ prettify() wrapped, and asserts:
   QUIET_ACTIONS), the class that keeps an Intrigue window's pass from
   reading as a full-weight turn card.
 
+A few synthetic lines whose words come from elsewhere than their own label
+(user report 2026-10-10) render too: Staban Tuek's Smuggle Spice payout names
+the ability and the Leader by the catalog's names, under a "Leader ability"
+card title, and Esmar Tuek's Signet taking a bonus spice says it was gained.
+
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
 holds no engine id either. The games must still reach the surfaces this
@@ -390,6 +395,97 @@ def check_log(records, names, posts) -> None:
         check.ok(not ids, f"{lang} log: no engine id's shape", ids[:4])
 
 
+# Lines whose words come from somewhere other than the event's own label
+# (user report 2026-10-10), rendered with the page's functions in both
+# languages: Staban Tuek's Smuggle Spice payout names the ability and the
+# Leader (panels.js EVENT_IMPLIED_LEADER, the catalog's names), the "game"
+# card holding it is titled for a Leader ability, and Esmar Tuek's Signet
+# taking a bonus spice says the spice was gained (not "-1").
+NAMED_JS = r"""() => {
+  const out = {};
+  const calls = [];
+  const realPrettify = window.prettify;
+  window.prettify = (id) => { calls.push(String(id)); return realPrettify(id); };
+  const smuggle = {kind: "leader_ability_spice_gained",
+    payload: {player: 0, space_id: "hagga_basin", spice: 1, visitor: 3}};
+  const taken = {kind: "leader_signet_resolved",
+    payload: {bonus_spice: -1, player: 2, space_id: "hagga_basin"}};
+  const placed = {kind: "leader_signet_resolved",
+    payload: {bonus_spice: 1, player: 2, space_id: "tuek_sietch"}};
+  try {
+    for (const lang of ["ko", "en"]) {
+      setLanguage(lang, false);
+      const staban = lookup("staban_tuek", "leaders");
+      const group = {kind: "neutral", firstIndex: 1, lastIndex: 1,
+        items: [{event: smuggle, index: 1}]};
+      out[lang] = {
+        leader: staban.name,
+        ability: staban.ability,
+        smuggle: logEventLine(smuggle).textContent,
+        title: neutralTitle(group),
+        taken: logEventLine(taken).textContent,
+        placed: logEventLine(placed).textContent,
+      };
+    }
+  } finally {
+    window.prettify = realPrettify;
+    setLanguage("ko", false);
+  }
+  out.pretty = calls;
+  return out;
+}"""
+
+
+def check_named_lines(page, posts: list[str], names: list[str]) -> None:
+    shown = page.evaluate(NAMED_JS)
+    check.ok(not shown["pretty"], "named lines: prettify() is never called", shown)
+    expected = {
+        "ko": ("스타반 튜엑", "스파이스 밀수", "지도자 능력", "보너스 스파이스 1"),
+        "en": ("Staban Tuek", "Smuggle Spice", "Leader ability", "Took 1 bonus spice"),
+    }
+    verbs = {"ko": "획득", "en": "gained"}
+    for lang, (leader, ability, title, gained) in expected.items():
+        row = shown[lang]
+        check.ok(
+            (row["leader"], row["ability"]) == (leader, ability),
+            f"{lang}: the catalog names Staban Tuek and Smuggle Spice",
+            row,
+        )
+        check.ok(
+            leader in row["smuggle"] and ability in row["smuggle"],
+            f"{lang}: the Smuggle Spice line names the ability and the Leader",
+            row["smuggle"],
+        )
+        check.ok(
+            row["title"] == title,
+            f"{lang}: the card holding it is titled for a Leader ability",
+            row["title"],
+        )
+        check.ok(
+            gained in row["taken"]
+            and verbs[lang] in row["taken"]
+            and "-1" not in row["taken"],
+            f"{lang}: Esmar's Signet taking a bonus spice says it was gained",
+            row["taken"],
+        )
+        check.ok(
+            "1" in row["placed"] and gained not in row["placed"],
+            f"{lang}: placing a bonus spice keeps its plain line",
+            row["placed"],
+        )
+        texts = [row["smuggle"], row["title"], row["taken"], row["placed"]]
+        ids = [
+            found for text in texts if (found := engine_ids(strip(text, names), posts))
+        ]
+        check.ok(not ids, f"{lang}: the named lines show no engine id", ids)
+        if lang == "en":
+            hangul = [text for text in texts if HANGUL.search(text)]
+            check.ok(not hangul, "en: the named lines hold no Hangul", hangul)
+    print(f"  .. {shown['ko']['smuggle']}")
+    print(f"  .. {shown['en']['smuggle']}")
+    print(f"  .. {shown['ko']['taken']}")
+
+
 def check_page(page, base: str, game_id: str, posts: list[str], names) -> None:
     page.goto(f"{base}/#game={game_id}")
     page.wait_for_function("state.review !== null && state.view !== null")
@@ -434,6 +530,8 @@ def main() -> None:
         check_coverage(records)
         check_log(records, names, posts)
         check_pass_quiet(records)
+        print("[1b] lines named from elsewhere than their own label")
+        check_named_lines(page, posts, names)
         print("[2] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)

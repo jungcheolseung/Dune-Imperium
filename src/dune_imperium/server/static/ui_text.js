@@ -837,6 +837,18 @@ const UI_TEXT = {
     "ko": "게임 진행",
     "en": "Game in progress"
   },
+  "panels.neutral_leader_ability": {
+    "ko": "{leader} 능력",
+    "en": "{leader} ability"
+  },
+  "panels.log_leader_ability_spice_gained": {
+    "ko": "{{ability}}({{leader}})로 {spice} 획득",
+    "en": "{spice} Gained from {{ability}} ({{leader}})"
+  },
+  "panels.log_bonus_spice_taken": {
+    "ko": "보너스 {spice} {{count}} 가져와 획득",
+    "en": "Took {{count}} bonus {spice} and gained it"
+  },
   "panels.neutral_round_started": {
     "ko": "라운드 {{round}} 시작",
     "en": "Round {{round}} started"

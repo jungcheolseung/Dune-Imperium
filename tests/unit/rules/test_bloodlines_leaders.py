@@ -1285,11 +1285,28 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     ]
     assert actions[0].action_id == "place_leader_bonus_spice"
     assert all(a.action_id != "decline_leader_signet_payment" for a in actions)
-    placed = apply_leader_bonus_spice(state, actions[0]).state
+    placed_result = apply_leader_bonus_spice(state, actions[0])
+    placed = placed_result.state
     assert dict(placed.maker_bonus_spice)["tuek_sietch"] == 2
-    taken = apply_leader_bonus_spice(state, actions[1]).state
+    taken_result = apply_leader_bonus_spice(state, actions[1])
+    taken = taken_result.state
     assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
     assert taken.players[0].resources.spice == 1
+    # The log's reading (panels.js logEventPayload): bonus_spice is the
+    # space's change, so -1 is the spice the Signet's player took and
+    # gained, +1 the one placed on Tuek's Sietch.
+    assert [(e.kind, dict(e.payload)) for e in taken_result.events] == [
+        (
+            "leader_signet_resolved",
+            {"bonus_spice": -1, "player": 0, "space_id": "hagga_basin"},
+        )
+    ]
+    assert [(e.kind, dict(e.payload)) for e in placed_result.events] == [
+        (
+            "leader_signet_resolved",
+            {"bonus_spice": 1, "player": 0, "space_id": "tuek_sietch"},
+        )
+    ]
 
 
 def test_makers_phase_feeds_tueks_sietch_like_the_other_maker_spaces() -> None:
