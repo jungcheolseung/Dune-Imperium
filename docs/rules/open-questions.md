@@ -1499,10 +1499,10 @@
 
 ## OQ-105 — 스스로 내는 "troop 잃기" 비용에 Sardaukar Commander를 쓸 수 있는가
 
-- 상태: `OPEN` (사용자 결정 대기, 2026-10-10 기록; 코드는 바꾸지 않았다)
+- 상태: `DECIDED` (2026-10-10 사용자 판정, project convention — 아래 "판정")
 - 질문: Bloodlines를 함께 쓸 때, 좌석이 스스로 troop을 잃는 비용 — Piter, Genius Advisor의 Agent box "Lose a troop → draw two cards and Research" `[card face]`, Arrakeen Scouts의 garrison troop 비용 — 에 Sardaukar Commander를 낼 수 있는가. Scouts 쪽은 두 가지다: Bene Gesserit Treachery 이벤트의 "각자 선택: garrison의 troop 1 잃기, 또는 Bene Gesserit −1"([arrakeen-scouts.md](arrakeen-scouts.md) 6절, 패스가 없는 각 좌석의 의무 선택)과 Prison Planet 임무의 "각자 원하면 garrison의 troop 1을 잃고"(참여 비용).
 - 공식 출처: "Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다." `[Bloodlines p. 4]`([bloodlines.md](bloodlines.md) 3절). [immortality.md](immortality.md) 9절은 "Bloodlines와 함께 쓸 때 "lose a troop"·retreat 효과의 Commander 취급은 bloodlines.md 3절을 따른다."라고 적는다(프로젝트 문장, 쪽 인용 없음). Scouts는 앱 모드라 공식 룰북이 없고, 앱도 Bloodlines를 모른다([arrakeen-scouts.md](arrakeen-scouts.md)). 어느 문서도 이 비용들에 Commander를 쓸 수 있는지 말하지 않는다.
-- 현재 엔진(2026-10-10):
+- 판정 전 엔진(2026-10-10 기록, 아래 판정으로 바뀜):
   - Piter, Genius Advisor: `rules/agent_effects.py:2499-2512`는 garrison과 Conflict의 troop만 `lose_agent_card_troop(zone)`으로 제시한다(Commander 인자가 없다). 그 주석은 "the owner picks the zone like an Intrigue loss (OQ-038)"라고 하지만, OQ-038의 Intrigue 손실은 Commander도 받는다.
   - Bene Gesserit Treachery(`content/arrakeen_scouts/events.py:276`의 `LoseGarrisonTroops(1)`): 지불 가능 판정 `rules/scouts_effects.py:197-199`(`owner.troops_garrison < count`)와 지불 `rules/scouts_effects.py:648-655`(troop만 supply로)가 garrison의 Commander를 세지 않는다. 그래서 garrison에 Commander만 있는 좌석은 troop 쪽을 고를 수 없어 Bene Gesserit −1을 해야 하고, 그것도 못 하면 아무 일도 없다(6절 "할 수 없는 쪽은 고를 수 없다").
   - Prison Planet(`content/arrakeen_scouts/missions.py:143`): 참여 판정 `rules/scouts_missions.py:311-313`·`:349-350`과 지불 `:509-515`가 `troops_garrison`만 본다. garrison에 Commander만 있으면 참여할 수 없다.
@@ -1511,4 +1511,11 @@
   - (A) 셋 다 Commander를 받는다(OQ-036·OQ-038과 같게). Piter는 `lose_agent_card_troop`에 Commander 인자 템플릿이 새로 필요해 codec이 오른다. Scouts 두 비용은 지불 판정·지불과 화면 문구를 바꾼다.
   - (B) 지금대로 troop만 받는다. 이 항목에 근거를 적고 `DECIDED`로 바꾼다.
   - (C) 나눠 정한다. 예: Piter는 카드 효과라 `[Bloodlines p. 4]`대로 받고, Scouts 비용은 앱이 Bloodlines를 모르므로 troop만 받는다.
-- 재개 조건: 사용자 결정, 또는 공식 FAQ가 Commander와 "lose a troop" 비용의 관계를 정할 때.
+- 판정(2026-10-10 사용자 판정, project convention — 선택지 (A)): "3은 그럼 통일해야지. 지휘관도 낼 수 있게 해야지". 근거는 [bloodlines.md](bloodlines.md) 3절의 "Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다." `[Bloodlines p. 4]`와, garrison의 Commander가 garrison에서 deploy하는 "`up to two` 유닛 중 하나가 될 수 있다" `[Bloodlines p. 4]`(garrison의 유닛으로 센다). Holy War(OQ-036)와 Intrigue "Lose troops"(OQ-038)처럼, 비용을 내는 좌석은 둘 다 있으면 troop과 Commander 가운데 고르고, garrison에서 잃은 Commander는 그 좌석의 supply로 돌아가며, 지불 가능 판정은 garrison의 Commander를 센다(그래서 Commander만 있는 garrison도 낼 수 있다). 구현(codec v142에 함께 듦, 새 템플릿):
+  - Piter, Genius Advisor: `lose_agent_card_troop(zone)` 옆에 그 zone에 Commander가 있으면 `lose_agent_card_troop(commanders=1, zone)`을 제시한다(zone마다 troop이 먼저). Commander는 `lose_unit`으로 잃고, Conflict에서 잃으면 deployment 창이 Commander 몫을 줄인다(OQ-029·OQ-070). Bloodlines + Immortality catalog에 템플릿 2개.
+  - Bene Gesserit Treachery의 `LoseGarrisonTroops(1)`: 지불 가능 판정이 garrison의 troop + Commander를 세고, 둘 다 있으면 선 단계에서 `scouts_lose_garrison_unit` / `scouts_lose_garrison_unit(commanders=1)`을 고르며, 한 종류만 있으면 그것을 잃는다(Commander는 `unit_lost` 이벤트, troop은 전과 같은 `scouts_troops_lost`). Bloodlines Scouts catalog에 템플릿 2개.
+  - Prison Planet: 참여 방법에 `scouts_join_mission(target="commander")`(garrison의 Commander로 낸다)를 더한다. troop 방법(`target=""`)과 Commander 방법은 각자 그 유닛이 있을 때 제시되고, 화면은 Bloodlines 게임에서 두 줄을 보이며 없는 쪽을 이유("{garrison}에 {commander} 1 필요")와 함께 흐리게 둔다. Prison Planet이 풀에 있는 Bloodlines Scouts catalog에 템플릿 1개.
+  - Tleilaxu Surgeon의 "Lose two troops"는 그대로 troop만 받는다(OQ-053: specimen은 troop 공급에서만 나온다 `[Immortality p. 8]`).
+  - app_ai: Piter·두 Scouts 비용 모두 Commander를 유닛으로 세고(D1), 둘 다 있으면 troop을 먼저 낸다(D14). heuristic은 바꾸지 않았다(같은 점수에서 무작위, `lose_intrigue_troop`과 같다).
+  - 테스트: `tests/unit/rules/test_immortality_tleilaxu_cards.py`(`test_piter_may_pay_with_a_garrison_commander_alone`, `test_piter_offers_troop_or_commander_in_each_zone`, `test_piter_without_commanders_offers_troops_only`), `tests/unit/rules/test_scouts_choices.py`(`test_bene_gesserit_treachery_*`), `tests/unit/rules/test_scouts_missions.py`(`test_prison_planet_*commander*`, `test_prison_planet_skips_a_seat_with_no_garrison_unit`), `tests/unit/rules/test_immortality_imperium_choices.py::test_tleilaxu_surgeon_still_refuses_sardaukar_commanders`.
+- 재개 조건: 공식 FAQ가 Commander와 "lose a troop" 비용의 관계를 정할 때.
