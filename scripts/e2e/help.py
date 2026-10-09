@@ -263,8 +263,31 @@ def help_panel(page) -> None:
         "every icon drawn on the seats and in the hand has a legend row",
         (len(legend["drawn"]), legend["missing"]),
     )
-    for want in ("C2", "시작", "시작 플레이어 마커", "사다우카 지휘관"):
+    for want in ("개인 공급처", "시작", "시작 플레이어 마커", "사다우카 지휘관"):
         check.ok(want in legend["text"], f"the seat marks explain {want}")
+    # This game has no Bloodlines, so no seat draws the supply Commander stat
+    # and the cross-check above cannot see it: its row is checked by hand.
+    # It shows the stat's picture (catalog.commander_token), so a Bloodlines
+    # seat panel's figure finds its legend row (2026-10-10).
+    commander = page.evaluate(
+        """() => {
+            const url = state.catalog.commander_token;
+            const img = [...document.querySelectorAll('#help-body img.icon')]
+                .find((i) => i.getAttribute('src') === url);
+            return {
+                url,
+                text: img
+                    ? img.closest('.help-mark').nextElementSibling.textContent
+                    : null,
+                want: t('help.seat_mark_commander'),
+            };
+        }"""
+    )
+    check.ok(
+        bool(commander["url"]) and commander["text"] == commander["want"],
+        "the supply Commander figure has its legend row",
+        commander,
+    )
     for key in ("c", "s", "Esc", "?"):
         check.ok(
             page.evaluate(

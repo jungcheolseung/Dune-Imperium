@@ -234,6 +234,36 @@ def test_observation_is_pure_and_rejects_invalid_seats() -> None:
         observe_state(state, 4)
 
 
+def test_every_seat_sees_each_seats_commanders_in_supply() -> None:
+    """The seat panel shows every seat's Sardaukar Commanders in its supply.
+
+    "각 플레이어의 남은 개인 구성물은 다른 모든 플레이어가 명확히 볼 수
+    있는 supply에 둔다." (docs/rules/information-visibility.md, [Main p. 5]),
+    and a Commander goes back to that supply after a Combat
+    (docs/rules/bloodlines.md, [Bloodlines p. 4]). The count is a public
+    field, so an opponent reads it as well as the owner, apart from the
+    garrison and Conflict counts the board draws.
+    """
+
+    state = _state()
+    state = replace(state, config=RulesetConfig(bloodlines=True))
+    players = list(state.players)
+    players[1] = replace(
+        players[1],
+        commanders_supply=2,
+        commanders_garrison=1,
+        commanders_conflict=0,
+    )
+    state = replace(state, players=tuple(players))
+
+    for observer in range(4):
+        view = observe_state(state, player=observer)
+        assert view.players[1].commanders_supply == 2
+        assert view.players[1].commanders_garrison == 1
+        assert view.players[1].commanders_conflict == 0
+        assert view.players[0].commanders_supply == 0
+
+
 def test_game_state_rejects_duplicate_hidden_and_public_conflicts() -> None:
     with pytest.raises(ValueError, match="Conflict card"):
         replace(

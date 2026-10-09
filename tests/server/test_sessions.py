@@ -96,6 +96,32 @@ def test_every_seat_view_serializes_the_shared_deck_sizes() -> None:
         assert "imperium_deck" not in view and "intrigue_deck" not in view
 
 
+def test_every_seat_view_carries_each_seats_commanders_in_supply() -> None:
+    """The seat panel's Commander stat reads ``players[i].commanders_supply``.
+
+    "각 플레이어의 남은 개인 구성물은 다른 모든 플레이어가 명확히 볼 수
+    있는 supply에 둔다." (docs/rules/information-visibility.md, [Main p. 5]):
+    every seat's view and snapshot carry each seat's supply Commanders, the
+    opponents' included. Display only; nothing in the engine changes.
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, game_seed=13, bloodlines=True)
+    assert summary["bloodlines"] is True
+    game_id = _text(summary["game_id"])
+    session = manager._get(game_id)
+    players = list(session.state.players)
+    players[1] = replace(players[1], commanders_supply=2)
+    session.state = replace(session.state, players=tuple(players))
+
+    for seat in range(4):
+        view = manager.view(game_id, seat)
+        rows = _rows(view["players"])
+        assert [row["commanders_supply"] for row in rows] == [0, 2, 0, 0]
+        snapshot = _obj(manager.snapshot(game_id, seat)["view"])
+        assert _rows(snapshot["players"])[1]["commanders_supply"] == 2
+
+
 @pytest.mark.parametrize("epic_game", [False, True])
 def test_every_view_names_the_tier_on_the_conflict_deck_back(epic_game: bool) -> None:
     """ "Conflict 카드를 I, II, III 뒷면별로 나눈다." and "완성된 덱은

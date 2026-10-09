@@ -414,8 +414,8 @@ const UI_TEXT = {
     "en": "Icons"
   },
   "help.seat_mark_commander": {
-    "ko": "{commander} — {garrison}·{conflict}·{supply}에 있는 수",
-    "en": "{commander} — count at {garrison} · {conflict} · {supply}"
+    "ko": "{supply}에 있는 {commander} 수 ({garrison}·{conflict}에 있는 것은 보드에 그려짐)",
+    "en": "{commander} count in {supply} (those in the {garrison} or the {conflict} are drawn on the board)"
   },
   "help.seat_mark_first_player": {
     "ko": "{first_player}",
@@ -712,10 +712,6 @@ const UI_TEXT = {
   "panels.chairdog_return": {
     "ko": "의자개: {reveal_turn} 시작 때 {hand}로 {{cards}}",
     "en": "Chairdog: returns to {hand} at the start of {reveal_turn} — {{cards}}"
-  },
-  "panels.commander_where": {
-    "ko": "{{where}}의 {commander} {{count}}",
-    "en": "{{where}} {commander} {{count}}"
   },
   "panels.completed_suffix": {
     "ko": " (완료)",
@@ -1080,6 +1076,10 @@ const UI_TEXT = {
   "panels.supply_spy": {
     "ko": "{supply}의 {spy}",
     "en": "{spy} in {supply}"
+  },
+  "panels.supply_commander": {
+    "ko": "{supply}의 {commander}",
+    "en": "{commander} in {supply}"
   },
   "panels.tactics_space": {
     "ko": "전술 트랙 {{space}}칸",

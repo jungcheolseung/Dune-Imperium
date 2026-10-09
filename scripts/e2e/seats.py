@@ -12,6 +12,13 @@ remain as an icon count. Head, compact stats and the zone counts stay. The rest
 folds, and the fold still says what it is holding rather than going blank. `s`
 folds or opens all four, and the choice is remembered per browser.
 
+The one supply count of Sardaukar Commanders is the exception (2026-10-10,
+user request): the board draws the garrison and Conflict ones but nothing on
+it shows those back in the supply after a Combat [Bloodlines p. 4], and the
+supply is public [Main p. 5]. A Bloodlines game shows it beside the Spies,
+0 included, as the rulebook figure (`catalog.commander_token`) or a drawn
+"C" without it; a game without Bloodlines does not.
+
 The holder of the First Player marker shows the app's token beside its
 name (`catalog.first_player_token`), or the text badge without the picture;
 a review step marks that step's holder, not the game's last one.
@@ -108,6 +115,7 @@ def check_compact_stats(page) -> None:
                     phraseText('{specimen}'),
                     t('panels.agent_remaining'),
                     t('panels.supply_spy'),
+                    t('panels.supply_commander'),
                 ],
                 supplyLine: lines.some((line) =>
                     line.querySelector('strong')?.textContent.trim() ===
@@ -142,6 +150,155 @@ def check_compact_stats(page) -> None:
         not missing,
         "seat stats omit board-visible tracks and forces, but show specimen icons",
         missing,
+    )
+
+
+COMMANDER_STATS = """() => [...document.querySelectorAll('#seats article.seat')]
+    .map((card) => {
+        const rows = [...card.querySelectorAll(':scope > .stats')];
+        const stat = card.querySelector('.stat[data-stat="commander"]');
+        if (!stat) return { seat: Number(card.dataset.seat), stat: null };
+        const img = stat.querySelector('img.commander-stat-icon');
+        const drawn = stat.querySelector('.commander-stat-icon.drawn');
+        const spy = card.querySelector('.stat[data-stat="spy"] .icon');
+        const count = [...stat.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent).join('').trim();
+        return {
+            seat: Number(card.dataset.seat),
+            stat: {
+                title: stat.title,
+                count,
+                row: rows.findIndex((row) => row.contains(stat)),
+                afterSpy: stat.previousElementSibling
+                    ? stat.previousElementSibling.dataset.stat : null,
+                image: img ? {
+                    src: img.getAttribute('src'), alt: img.alt, title: img.title,
+                    loaded: img.complete && img.naturalWidth > 0,
+                    height: img.getBoundingClientRect().height,
+                } : null,
+                drawn: drawn ? {
+                    text: drawn.textContent, title: drawn.title,
+                    role: drawn.getAttribute('role'),
+                    aria: drawn.getAttribute('aria-label'),
+                    height: drawn.getBoundingClientRect().height,
+                    width: drawn.getBoundingClientRect().width,
+                } : null,
+                spyHeight: spy ? spy.getBoundingClientRect().height : null,
+            },
+        };
+    })"""
+
+
+def check_supply_commanders(page, label: str) -> None:
+    """Each seat's Sardaukar Commanders in its supply, in a Bloodlines game.
+
+    "각 플레이어의 남은 개인 구성물은 다른 모든 플레이어가 명확히 볼 수
+    있는 supply에 둔다." (docs/rules/information-visibility.md, [Main p. 5]);
+    "Combat이 해결되고 보상이 지급되면 Commander는 소유자의 supply로
+    돌아간다." (docs/rules/bloodlines.md, [Bloodlines p. 4]). Display only:
+    the count is ``players[i].commanders_supply`` of every seat's view.
+    """
+    # A language switch in review re-fetches the step (redrawForLanguage's
+    # reviewSeek); a value injected before it lands would be overwritten.
+    page.wait_for_function("!state.review || !state.review.seek")
+    page.wait_for_function(
+        "[...document.querySelectorAll('#seats img')].every((i) => i.complete)"
+    )
+    name = page.evaluate("t('panels.supply_commander')")
+    url = page.evaluate("state.catalog.commander_token")
+    counts = page.evaluate(
+        "state.view.players.map((player) => String(player.commanders_supply || 0))"
+    )
+    rows = page.evaluate(COMMANDER_STATS)
+    wrong = [
+        row
+        for row, count in zip(rows, counts, strict=True)
+        if not row["stat"]
+        or row["stat"]["title"] != name
+        or row["stat"]["count"] != count
+        or row["stat"]["row"] != 1
+        or row["stat"]["afterSpy"] != "spy"
+    ]
+    check.ok(
+        len(rows) == 4 and not wrong,
+        f"{label}: each seat counts supply Commanders beside its Spies ({name!r})",
+        wrong or rows,
+    )
+    check.ok(
+        bool(url)
+        and all(
+            row["stat"]["image"]
+            and row["stat"]["image"]["src"] == url
+            and row["stat"]["image"]["loaded"]
+            and row["stat"]["image"]["alt"] == row["stat"]["image"]["title"] == name
+            and row["stat"]["spyHeight"]
+            and abs(row["stat"]["image"]["height"] - row["stat"]["spyHeight"]) < 1
+            and row["stat"]["drawn"] is None
+            for row in rows
+        ),
+        f"{label}: the stat is the rulebook's Commander figure at a stat icon's height",
+        [(url, row["stat"]) for row in rows[:1]],
+    )
+
+    # Seed 7 has no Commander in any supply at this step: inject one.
+    page.evaluate(
+        "state.keptCommanders = state.view.players[1].commanders_supply;"
+        " state.view.players[1].commanders_supply = 2; renderSeats();"
+    )
+    injected = page.evaluate(COMMANDER_STATS)
+    check.ok(
+        injected[1]["stat"]
+        and injected[1]["stat"]["count"] == "2"
+        and [row["stat"]["count"] for row in injected[:1] + injected[2:]]
+        == counts[:1] + counts[2:],
+        f"{label}: two Commanders in seat 2's supply read 2 there only",
+        [row["stat"] and row["stat"]["count"] for row in injected],
+    )
+
+    # Without the picture: the drawn mark, named the same, at the same height.
+    page.evaluate(
+        "state.commanderUrl = state.catalog.commander_token;"
+        " state.catalog.commander_token = null; renderSeats();"
+    )
+    drawn = page.evaluate(COMMANDER_STATS)[1]["stat"]
+    check.ok(
+        drawn
+        and drawn["image"] is None
+        and drawn["drawn"]
+        and drawn["drawn"]["text"] == "C"
+        and drawn["drawn"]["title"] == drawn["drawn"]["aria"] == name
+        and drawn["drawn"]["role"] == "img"
+        and drawn["count"] == "2"
+        and drawn["spyHeight"]
+        and abs(drawn["drawn"]["height"] - drawn["spyHeight"]) < 1.5
+        and drawn["drawn"]["width"] < drawn["drawn"]["height"],
+        f"{label}: without the picture, a drawn C mark of the same height",
+        drawn,
+    )
+    page.evaluate(
+        "state.catalog.commander_token = state.commanderUrl;"
+        " delete state.commanderUrl; renderSeats();"
+    )
+
+    # A game without Bloodlines has no Commanders to count.
+    page.evaluate("state.summary.bloodlines = false; renderSeats();")
+    absent = page.evaluate(COMMANDER_STATS)
+    check.ok(
+        all(row["stat"] is None for row in absent),
+        f"{label}: no Commander stat without Bloodlines",
+        absent,
+    )
+    page.evaluate(
+        "state.summary.bloodlines = true;"
+        " state.view.players[1].commanders_supply = state.keptCommanders;"
+        " delete state.keptCommanders; renderSeats();"
+    )
+    restored = page.evaluate(COMMANDER_STATS)
+    check.ok(
+        [row["stat"] and row["stat"]["count"] for row in restored] == counts,
+        f"{label}: the stat returns with the real counts",
+        [row["stat"] and row["stat"]["count"] for row in restored],
     )
 
 
@@ -292,6 +449,7 @@ def run(base: str, browser) -> None:
             numbers["review"],
         )
         check_first_player(page, language)
+        check_supply_commanders(page, language)
     page.evaluate("setLanguage('ko')")
     check_first_player_in_review(page)
 
