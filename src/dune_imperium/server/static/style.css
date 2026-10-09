@@ -831,7 +831,10 @@ img.seat-disc.pictured { border-radius: 50%; }
    board's own numeral style (.bonus-spice-count): a box as large as the
    disc laid over its centre (the disc may be a picture, which cannot hold
    it), above the discs that share its cell. The one number on a board
-   token, at the user's request (2026-10-10). */
+   token, at the user's request (2026-10-10). The text stays on the disc's
+   face, inside the app picture's bevel and dark rim (about 0.78 of its
+   width): at most three quarters of the disc wide (board_tokens.py [3h]),
+   so the "+" is smaller than the figures, which keep the size. */
 .vp-lap {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -845,13 +848,14 @@ img.seat-disc.pictured { border-radius: 50%; }
 }
 .vp-lap-text {
   color: #fff;
-  font-weight: 800;
-  font-size: 44cqh;
+  font-weight: 700;
+  font-size: 40cqh;
   line-height: 1;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.06em;
   white-space: nowrap;
   text-shadow: 0 0 2px #000, 0 1px 2px #000;
 }
+.vp-lap-plus { font-size: 0.7em; }
 /* The strength token's "+20" face: inverted colours and the printed +20. */
 .strength-token { position: absolute; }
 .strength-token.flipped {

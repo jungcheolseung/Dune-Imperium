@@ -714,8 +714,9 @@ function scoreCluster(seats, lapOf, halfX, halfY) {
 }
 
 /* The lap of a Score disc past 12 ("+13"): the board's own white numeral
-   centred on the disc, a sibling laid over it (the disc may be a picture).
-   The disc's title keeps the real score. */
+   centred on the disc, a sibling laid over it (the disc may be a picture),
+   its "+" a size smaller than the figures so the whole fits the disc's
+   face (style.css .vp-lap). The disc's title keeps the real score. */
 function scoreLapMark(seat, lap, size) {
   const mark = document.createElement("span");
   mark.className = "vp-lap";
@@ -724,7 +725,10 @@ function scoreLapMark(seat, lap, size) {
   mark.style.width = `${size}%`;
   const text = document.createElement("span");
   text.className = "vp-lap-text";
-  text.textContent = `+${lap}`;
+  const plus = document.createElement("span");
+  plus.className = "vp-lap-plus";
+  plus.textContent = "+";
+  text.append(plus, String(lap));
   mark.appendChild(text);
   return mark;
 }
