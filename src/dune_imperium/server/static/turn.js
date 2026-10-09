@@ -290,13 +290,22 @@ function paidCost(cost, discount) {
    grafted. Navigation Chamber's cut is mandatory (OQ-104), so it never
    tells two lines apart; it is named on every line that carries it, and a
    cost shown there is the printed one struck through, then what the seat
-   pays. */
+   pays with the cut beside it in brackets, before the arrow, so the cut
+   reads as the reason for that cost and not as something the space gives. */
 function placementOptionNode(action, candidates) {
   const line = document.createElement("span");
   line.className = "pick-option";
   const space = state.catalog.spaces[action.arguments.space_id];
   const option = space && spaceOptionsFor(space)[action.arguments.cost_option || 0];
   const discount = action.arguments.discount;
+  const cutNode = (bracketed) => {
+    const cut = document.createElement("span");
+    cut.className = "pick-discount";
+    if (bracketed) cut.append("(");
+    cut.append(amount(discount, termLabel(discount), 1), t("turn.discount_suffix"));
+    if (bracketed) cut.append(")");
+    return cut;
+  };
   const costParts = [];
   if (option && candidates.some((other) => other.arguments.cost_option !== action.arguments.cost_option)) {
     if (discount) {
@@ -304,8 +313,9 @@ function placementOptionNode(action, candidates) {
       printed.classList.add("cost-printed");
       costParts.push(printed);
     }
+    costParts.push(costNode(paidCost(option.cost, discount)));
+    if (discount) costParts.push(cutNode(true));
     costParts.push(
-      costNode(paidCost(option.cost, discount)),
       icon("arrow_right", "→"),
       effectNode(option.effect, option.effect_ko),
     );
@@ -333,12 +343,7 @@ function placementOptionNode(action, candidates) {
     return line;
   }
   line.append(...costParts);
-  if (discount) {
-    const cut = document.createElement("span");
-    cut.className = "pick-discount";
-    cut.append(amount(discount, termLabel(discount), 1), t("turn.discount_suffix"));
-    line.appendChild(cut);
-  }
+  if (discount && !costParts.length) line.appendChild(cutNode(false));
   line.append(...otherParts);
   return line;
 }

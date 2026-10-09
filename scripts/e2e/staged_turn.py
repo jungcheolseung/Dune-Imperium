@@ -411,6 +411,13 @@ CHOOSER_LINES = """() => [...document.querySelectorAll("#card-popover .action-it
       cut: cut ? cut.textContent : null,
       cutTitle: cut && cut.querySelector(".amount")
         ? cut.querySelector(".amount").title : null,
+      // The cut stands right after the paid cost, before the arrow, so it
+      // does not read as part of what the space gives.
+      parts: [...node.querySelector(".pick-option").children].map((part) =>
+        part.classList.contains("pick-discount") ? "cut"
+          : part.classList.contains("cost-printed") ? "printed"
+          : part.classList.contains("cost") ? "paid"
+          : (part.alt || part.textContent) === "→" ? "arrow" : "other"),
       printed: printed ? printed.textContent : null,
       paid: [...node.querySelectorAll(".pick-option > .cost:not(.cost-printed)")]
         .map((c) => c.textContent),
@@ -456,13 +463,17 @@ def navigation_chamber_scenario(browser) -> None:
             "the seat holds Navigation Chamber",
         )
         check.ok(page.evaluate("stagedTurn()"), "its Agent turn is staged")
-        full_price = page.evaluate(
-            "(costed) => placementActions().filter((a) =>"
-            " costed.includes(a.arguments.space_id) && !a.arguments.discount).length",
+        full_price, with_cut = page.evaluate(
+            "(costed) => { const at = placementActions().filter((a) =>"
+            " costed.includes(a.arguments.space_id));"
+            " return [at.filter((a) => !a.arguments.discount).length,"
+            " at.filter((a) => a.arguments.discount).length]; }",
             COSTED_SPACES,
         )
         check.ok(
-            full_price == 0, "no costed space is offered at full price", full_price
+            full_price == 0 and with_cut > 0,
+            "costed spaces are offered, and none at full price",
+            (full_price, with_cut),
         )
         card = page.evaluate(REFINERY_CARD)
         check.ok(card is not None, "a card reaches both Spice Refinery options")
@@ -496,10 +507,15 @@ def navigation_chamber_scenario(browser) -> None:
             check.ok(
                 cut["discount"] == "spice"
                 and cut["cut"] is not None
-                and cut["cut"].strip().endswith(suffix)
+                and cut["cut"].strip().strip("()").strip().endswith(suffix)
                 and cut["cutTitle"] == f"1 {spice_word}",
                 f"{lang}: the cut option names the 1 spice cut",
                 cut,
+            )
+            check.ok(
+                cut["parts"][:4] == ["printed", "paid", "cut", "arrow"],
+                f"{lang}: the cut stands beside the paid cost, before the arrow",
+                cut["parts"],
             )
             check.ok(
                 cut["printed"] == "1" and cut["paid"] == [free],
