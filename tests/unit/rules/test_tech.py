@@ -1520,6 +1520,46 @@ def test_navigation_chamber_cut_is_mandatory_on_every_costed_space() -> None:
     assert traded.players[0].resources.solari == 9 + 4
 
 
+def test_navigation_chamber_offers_both_cuts_on_a_cost_of_spice_and_solari() -> None:
+    """OQ-104 (b), project reading: the printed "or" of "Board spaces cost
+    you [1 spice] or [1 Solari] less." [Tech tile face] is a choice only on a
+    cost holding both resources, where the owner picks which to cut; the full
+    price is still never offered. No 4-player space costs both, so the space
+    here is High Council with a made-up spice-and-Solari cost.
+    """
+
+    from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, ResourceCost
+    from dune_imperium.rules.agent_turn import _actions_for_affordable_costs
+
+    space = replace(
+        BOARD_SPACES_BY_ID["high_council"],
+        cost_options=(ResourceCost(spice=1, solari=5),),
+    )
+    card = starting_deck_instance_ids(0)[0]
+
+    def discounts(*tech_ids: str, resources: Resources) -> list[object]:
+        owner = _tech_owner(
+            *tech_ids,
+            hand=starting_deck_instance_ids(0),
+            deck=(),
+            resources=resources,
+        )
+        state = _turn_state(owner)
+        return [
+            dict(action.arguments).get("discount")
+            for action in _actions_for_affordable_costs(
+                0, card, space, state.players[0], state
+            )
+        ]
+
+    plenty = Resources(solari=9, spice=9)
+    assert discounts("navigation_chamber", resources=plenty) == ["spice", "solari"]
+    assert discounts(resources=plenty) == [None]
+    # Only the spice cut is affordable: the Solari cut is not offered, and
+    # neither is the full price.
+    assert discounts("navigation_chamber", resources=Resources(solari=5)) == ["spice"]
+
+
 def test_servo_receivers_give_the_signet_ring_the_faction_icons() -> None:
     signet = "player:0:starter:signet_ring:0"
     owner = _tech_owner("servo_receivers", hand=(signet,), deck=())
