@@ -4,6 +4,23 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-09 앱 AI: Navigation Chamber로 공짜가 된 Spice Refinery 거래에서 음수 spice 오류 (codec 그대로 v141)
+
+RL 실행 `checkpoints/2026-10-09/readapt-v141/Y`(전체 룰셋 + 드래프트, 상대 앱 AI 어려움)에서 앱 AI가 Agent 턴 결정 중 `ValueError: player resources must not be negative`로 실패해 무작위로 답했다. 718회차까지 두 판, 네 번이다. 브랜치 `app-ai-refinery-cost`.
+
+- **원인**:
+  - Navigation Chamber의 spice 할인(`discount=spice`)이 있으면 Spice Refinery의 1-spice 거래(`cost_option=1`)는 spice 0에서도 합법이다(`rules/agent_turn.py` `_actions_for_affordable_costs`). 엔진은 0을 낸다.
+  - 앱 AI의 `windows/turn.py` `_realise_costs`는 다른 좌석이 차지한 칸에 Spy를 둘 이상 연결해 두었을 때 회수할 Spy(state 240)를 고른다. 이때 비용 먼저 능력(state 220)을 치른 상태를 흉내 내는데, 할인 없는 칸 entity로 spice 1을 그대로 빼서 0 − 1이 되었다.
+  - 조건이 겹쳐야 난다: Navigation Chamber, spice 0, 남이 차지한 Spice Refinery, 그 칸의 두 관측 초소 모두에 내 Spy. 2026-10-05 이후 코드는 그대로이고, v139 실행(같은 명령, 1,000회차)은 이 상태를 만나지 않았을 뿐이다.
+- **앱과의 대조**:
+  - 앱은 거래를 `0..min(Spice, 1)`로만 내놓는다(로컬 `analysis/ai/spec/board.md` §1.4.19).
+  - Navigation Chamber는 앱에 없는 앱식 확장(D60)이다. 그래서 고친 방향은 건너뛰기나 깎기가 아니다. 고른 할인 변형의 칸(`space_with_cost_cut`)으로 엔진과 같은 금액을 치른다.
+  - Spice Refinery는 `max(0, option + SpiceDiscount)` = 0 spice다(`SpiceRefineryAbility.evaluate`와 같은 식). Gather Support는 `FindSolariCost`가 이미 `SolariDiscount`를 더해 1 Solari다(이 칸은 초소가 하나라 실제로는 터지지 않았다).
+- **테스트**(`test_app_ai_window_turn_bloodlines.py`):
+  - 그 상태를 만들고, 엔진 합법 행동에 할인 거래가 있는지 확인한다. turn 창이 예외 없이 그 행동을 고르는지, Spy 회수가 spice 0·Solari +4 상태에서 판단되는지, 엔진이 spice 0을 남기는지도 본다.
+  - 두 비용 먼저 능력의 할인 지급도 확인한다. 둘 다 고치기 전 코드에서는 실패한다.
+- **검증**(브랜치): pytest **6,949개 통과**, Ruff 통과, mypy(449파일) 통과. tips-v1·골든 다이제스트는 움직이지 않았다.
+
 ## 2026-10-09 학습 정리: expert iteration v2는 수집 도중 마무리 (코드 병합, codec 그대로 v141)
 
 사용자 결정("지금 단계로 마무리 하고 master 반영"): master의 codec이 v141로 올랐고 학습은 나중에 다시 한다. 그래서 ExIt v2를 판정 전 단계에서 멈추고 병합했다(`0747caec`). 경위와 숫자는 [evaluation/exit-v2-2026-10-08.md](evaluation/exit-v2-2026-10-08.md)에 있다.

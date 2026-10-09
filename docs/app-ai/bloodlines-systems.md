@@ -148,7 +148,11 @@ correct, because a shared post is not free.
   `space_solari_cost` (`abilities/generic.py:273`, the app's `DecreaseInitialCost` precedent) (D35). Navigation
   Chamber: every legal `agent_turn(discount=spice|solari)` variant is its own target with the space cost reduced by 1
   (`agent_turn.py:941`). `SolariDiscount` −1 or **NEW** `SpiceDiscount` −1 feed `SpaceAbility` "Space … Cost" and
-  `CanAgentAbilityBePlayedWithSpace`. The first strictly best variant wins (D60).
+  `CanAgentAbilityBePlayedWithSpace`. The first strictly best variant wins (D60). The chosen variant's cut also
+  prices the cost-first payment (state 220, `windows/turn.py` `_after_cost_first`) on which the Spy recall (240) is
+  judged: Spice Refinery's 1-spice trade with the spice cut pays `max(0, 1 + SpiceDiscount)` = 0 spice, and Gather
+  Support's water costs `FindSolariCost` = 1 Solari with the Solari cut. Until 2026-10-09 the full cost was charged,
+  and the free trade at 0 spice (legal in the engine) raised on negative spice.
 
 ## 2. Sardaukar Commanders and Skills (R8 §3)
 

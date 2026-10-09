@@ -362,6 +362,13 @@ def _after_cost_first(
     the supply; option 1 also pays ``FindSolariCost`` (2) Solari for 1 water
     (literal). Spice Refinery (board §1.4.19): pay ``option`` spice and gain
     ``SolariAmount(option)`` Solari. Any other ability: unchanged.
+
+    App-style (Navigation Chamber, D60): the ability's space is the chosen
+    discount variant's (``space_with_cost_cut``), so the payment is the
+    engine's discounted one: ``FindSolariCost`` already adds
+    ``SolariDiscount``, and the spice paid is ``option + SpiceDiscount``
+    floored at 0, as in ``SpiceRefineryAbility::Evaluate``. Without that cut
+    the free 1-spice trade (legal at 0 spice) drove the spice negative.
     """
 
     players = list(state.players)
@@ -382,9 +389,10 @@ def _after_cost_first(
             troops_garrison=me.troops_garrison + troops,
         )
     elif isinstance(ability, SpiceRefineryAbility):
+        paid = max(0, option + ability.owner.int_attr("SpiceDiscount"))
         resources = replace(
             resources,
-            spice=resources.spice - option,
+            spice=resources.spice - paid,
             solari=resources.solari + ability.solari_amount(option),
         )
         me = replace(me, resources=resources)
@@ -399,15 +407,21 @@ def _profile_on(run: DecisionRun, state: GameState) -> Profile:
     return Profile(ctx, run.profile.C, run.rng)
 
 
-def _cost_first_ability(space_id: str, board: Board) -> Ability | None:
+def _cost_first_ability(
+    space_id: str, board: Board, discount: str | None = None
+) -> Ability | None:
     """The chosen ``SpaceAbility`` when it is cost-first, else None.
 
     ``<DetermineAbilities>d__23`` @0x49de650: the space's first
     ``SpaceAbility`` that can run; state 220 runs only if it carries
-    ``CostFirstSpaceAbility``.
+    ``CostFirstSpaceAbility``. A Navigation Chamber ``discount`` (D60) puts
+    the ability on that variant's space (``space_with_cost_cut``).
     """
 
-    for ability in abilities_of(space_entity(space_id, board)):
+    space = space_entity(space_id, board)
+    if discount is not None:
+        space = space_with_cost_cut(space, discount)
+    for ability in abilities_of(space):
         if isinstance(ability, SpaceAbility):
             return ability if isinstance(ability, _COST_FIRST) else None
     return None
@@ -470,16 +484,21 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
             return variants[0]
     if len(variants) <= 1:
         return chosen
-    realised = _realise_costs(run, card_ref, space_id, variants)
+    realised = _realise_costs(run, card_ref, space_id, variants, discount)
     if graft:
         _store_graft_partner(run, realised)
     return realised
 
 
 def _realise_costs(
-    run: DecisionRun, card_ref: str, space_id: str, variants: list[DomainAction]
+    run: DecisionRun,
+    card_ref: str,
+    space_id: str,
+    variants: list[DomainAction],
+    discount: str | None = None,
 ) -> DomainAction:
-    """States 220 and 240 over the variants of one (card, space, graft)."""
+    """States 220 and 240 over the variants of one (card, space, graft)
+    played with Navigation Chamber's ``discount`` (D60; None: full cost)."""
 
     seat = run.ctx.seat
     board = run.ctx.board
@@ -492,7 +511,7 @@ def _realise_costs(
             if option is not None
         )
     )
-    ability = _cost_first_ability(space_id, board)
+    ability = _cost_first_ability(space_id, board, discount)
     cost_first: tuple[Ability, int] | None = None
     if options:
         # Only cost-first spaces have several cost options in Uprising; any

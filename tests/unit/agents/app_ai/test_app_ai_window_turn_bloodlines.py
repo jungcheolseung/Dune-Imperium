@@ -14,6 +14,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai.abilities.base import (
+    Answer,
     Request,
     TargetInfo,
     abilities_of,
@@ -24,6 +25,7 @@ from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
 from dune_imperium.agents.app_ai.abilities.bloodlines_systems import (
     GeneLockedVaultAcquiredAbility,
 )
+from dune_imperium.agents.app_ai.abilities.board import RecallSpyInfiltrateAbility
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility
 from dune_imperium.agents.app_ai.abilities.tech import MemocordersAcquiredAbility
 from dune_imperium.agents.app_ai.catalog import (
@@ -32,6 +34,7 @@ from dune_imperium.agents.app_ai.catalog import (
     tech_entity,
     track_entity,
 )
+from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
 from dune_imperium.agents.app_ai.testing import (
     ENGINE,
@@ -44,11 +47,14 @@ from dune_imperium.agents.app_ai.windows import turn
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory, arg
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.player import Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import TECH_ACQUIRE_PENDING_KEY, with_context
 
 BL = RulesetConfig(bloodlines=True, tech_module=True, choam_module=True)
 LITANY = "imperium:litany_against_fear:0"
+RS_REFINERY = "arrakis-research-station-spice-refinery"
+REFINERY_ARRAKEEN = "arrakis-spice-refinery-arrakeen"
 
 
 @pytest.fixture(autouse=True)
@@ -285,3 +291,93 @@ def test_without_navigation_chamber_the_targets_are_the_plain_spaces() -> None:
     board = run.ctx.board
     targets = turn._space_targets("high_council", board, {None})
     assert targets == (space_entity("high_council", board),)
+
+
+def _broke_at_a_taken_refinery() -> tuple[GameState, int]:
+    """Navigation Chamber held, no spice, Spice Refinery taken by the next
+    seat and the seat's Spies on both of its posts."""
+
+    state, seat = _turn()
+    state = _give_tech(state, seat, "navigation_chamber")
+    me = state.players[seat]
+    state = with_player(
+        state,
+        seat,
+        resources=replace(me.resources, spice=0),
+        spy_post_ids=(RS_REFINERY, REFINERY_ARRAKEEN),
+        spies_supply=1,
+    )
+    opponent = (seat + 1) % 4
+    state = with_player(
+        state,
+        opponent,
+        agent_locations=("spice_refinery",),
+        agents_available=state.players[opponent].agents_available - 1,
+    )
+    return state, seat
+
+
+def test_the_free_spice_refinery_trade_is_realised_at_no_spice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 2026-10-09 RL run (readapt-v141): the spice cut makes the 1-spice trade
+    # legal at 0 spice; the Spy recall (state 240) was judged on a state that
+    # paid the full spice, and the negative spice raised in the window.
+    state, seat = _broke_at_a_taken_refinery()
+    recon = f"player:{seat}:starter:reconnaissance:0"
+    legal = ENGINE.legal_actions(state, seat)
+    variants = tuple(
+        a
+        for a in legal
+        if a.action_id == "agent_turn"
+        and arg(a, "card_id") == recon
+        and arg(a, "space_id") == "spice_refinery"
+    )
+    # The game's own legal set offers the trade at 0 spice, with the cut only.
+    assert {
+        (arg(a, "cost_option"), arg(a, "discount"), arg(a, "infiltrate_post_id"))
+        for a in variants
+    } == {
+        (0, None, RS_REFINERY),
+        (0, None, REFINERY_ARRAKEEN),
+        (1, "spice", RS_REFINERY),
+        (1, "spice", REFINERY_ARRAKEEN),
+    }
+    reveal = next(a for a in legal if a.action_id == "reveal_turn")
+    seen: list[Resources] = []
+    recall = RecallSpyInfiltrateAbility.evaluate
+
+    def record(
+        self: RecallSpyInfiltrateAbility, p: Profile, request: Request
+    ) -> Answer:
+        seen.append(p.ctx.me.resources)
+        return recall(self, p, request)
+
+    monkeypatch.setattr(RecallSpyInfiltrateAbility, "evaluate", record)
+    chosen = turn.turn_window(_run(state, seat, (*variants, reveal)))
+    assert chosen in variants
+    assert (arg(chosen, "cost_option"), arg(chosen, "discount")) == (1, "spice")
+    # GetRecallSpy saw the cut trade: no spice paid, 4 Solari gained.
+    before = state.players[seat].resources
+    assert seen == [replace(before, solari=before.solari + 4)]
+    # The engine charges the same: still no spice after the placement.
+    assert ENGINE.apply(state, chosen).state.players[seat].resources.spice == 0
+
+
+def test_the_cost_first_payment_takes_the_navigation_chamber_cut() -> None:
+    state, seat = _turn()
+    me = state.players[seat]
+    state = with_player(state, seat, resources=replace(me.resources, solari=1, spice=0))
+    board = make_profile(state, seat).ctx.board
+    refinery = turn._cost_first_ability("spice_refinery", board, "spice")
+    gather = turn._cost_first_ability("gather_support", board, "solari")
+    assert refinery is not None and gather is not None
+    # Spice Refinery: the 1-spice trade costs nothing; 4 Solari.
+    after = turn._after_cost_first(state, seat, refinery, 1).players[seat]
+    assert (after.resources.spice, after.resources.solari) == (0, 5)
+    # Gather Support: the water costs 1 Solari instead of 2.
+    after = turn._after_cost_first(state, seat, gather, 1).players[seat]
+    assert (after.resources.solari, after.resources.water) == (
+        0,
+        me.resources.water + 1,
+    )
