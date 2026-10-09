@@ -24,7 +24,7 @@ import json
 import os
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, TypeGuard
@@ -270,8 +270,17 @@ def build_save_document(
     }
 
 
-def parse_save_document(document: object) -> ParsedSave:
-    """Validate one save document against this build's versions."""
+def parse_save_document(
+    document: object, *, check_versions: bool = True
+) -> ParsedSave:
+    """Validate one save document against this build's versions.
+
+    ``check_versions=False`` skips the version check and keeps the save's
+    own version stamps on the replay. The server never does that: such a
+    replay need not run on this engine as recorded. It is for reading a
+    saved game as a record (``records.saves``), which brings the steps onto
+    this engine itself (``records.migration``).
+    """
 
     if not isinstance(document, dict):
         raise SaveError("a save document must be a JSON object")
@@ -383,16 +392,19 @@ def parse_save_document(document: object) -> ParsedSave:
             expected_state_hash=expected_state_hash,
             action_codec_version=ACTION_CODEC_VERSION,
         )
+        if not check_versions:
+            replay = _with_recorded_versions(replay, document)
     except ValueError as error:
         raise SaveError(str(error)) from error
-    for field in ("ruleset_version", "content_version", "action_codec_version"):
-        recorded = document.get(field)
-        current = getattr(replay, field)
-        if recorded != current:
-            raise SaveError(
-                f"save {field} {recorded!r} does not match "
-                f"this server's {current!r}"
-            )
+    if check_versions:
+        for field in ("ruleset_version", "content_version", "action_codec_version"):
+            recorded = document.get(field)
+            current = getattr(replay, field)
+            if recorded != current:
+                raise SaveError(
+                    f"save {field} {recorded!r} does not match "
+                    f"this server's {current!r}"
+                )
 
     return ParsedSave(
         replay=replay,
@@ -402,6 +414,29 @@ def parse_save_document(document: object) -> ParsedSave:
         log=log,
         hand_over=hand_over,
         ai_pace=ai_pace,
+    )
+
+
+def _with_recorded_versions(
+    replay: GameReplay, document: dict[str, object]
+) -> GameReplay:
+    """``replay`` stamped with the versions its save document records."""
+
+    ruleset_version = document.get("ruleset_version")
+    content_version = document.get("content_version")
+    codec_version = document.get("action_codec_version")
+    if (
+        not isinstance(ruleset_version, str)
+        or not isinstance(content_version, str)
+        or not isinstance(codec_version, int)
+        or isinstance(codec_version, bool)
+    ):
+        raise SaveError("the save needs its ruleset, content and codec versions")
+    return replace(
+        replay,
+        ruleset_version=ruleset_version,
+        content_version=content_version,
+        action_codec_version=codec_version,
     )
 
 

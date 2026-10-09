@@ -197,6 +197,38 @@ def test_restoring_rejects_stale_or_tampered_documents(
         manager.restore_game(_roundtrip(bad_seats))
 
 
+def test_a_save_of_another_version_reads_as_a_record_when_asked(
+    finished_game: tuple[GameSessionManager, JsonObject],
+) -> None:
+    """``check_versions=False`` keeps the save's own stamps (``records.saves``)."""
+
+    manager, summary = finished_game
+    document = manager.save_game(_text(summary["game_id"]))
+    older = _obj(
+        _roundtrip(
+            {
+                **document,
+                "action_codec_version": ACTION_CODEC_VERSION - 2,
+                "content_version": "older-content",
+            }
+        )
+    )
+
+    with pytest.raises(SaveError, match="does not match this server"):
+        parse_save_document(older)
+    parsed = parse_save_document(older, check_versions=False)
+    assert parsed.replay.action_codec_version == ACTION_CODEC_VERSION - 2
+    assert parsed.replay.content_version == "older-content"
+    assert parsed.replay.ruleset_version == document["ruleset_version"]
+    assert len(parsed.replay.steps) == len(_rows(document["steps"]))
+
+    unstamped = {
+        key: value for key, value in older.items() if key != "action_codec_version"
+    }
+    with pytest.raises(SaveError, match="codec versions"):
+        parse_save_document(unstamped, check_versions=False)
+
+
 def test_the_save_store_lists_reads_and_deletes(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     assert store.list() == []
