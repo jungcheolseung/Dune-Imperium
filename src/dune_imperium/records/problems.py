@@ -19,7 +19,10 @@ record onto this engine (``records.migration``). A position resolves when
 its record migrates past it and both of its moves are legal there (the
 person's move in its migrated form, as a bridge may have rewritten it);
 otherwise ``resolve`` says why, and the position is left out of a score
-instead of being scored on another game.
+instead of being scored on another game. "Another game" includes one that
+an engine change made different before the position: every problem keeps
+the public state it was judged in (``public_state``), and a position whose
+state no longer matches it does not resolve.
 """
 
 import hashlib
@@ -35,7 +38,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
 from dune_imperium.paths import LOCAL_DIR
-from dune_imperium.records.migration import migrate_record, walk
+from dune_imperium.records.migration import migrate_record, rewrite_step, walk
 from dune_imperium.records.saves import SavedGame
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.persistence import (
@@ -67,6 +70,37 @@ _RECORD_FIELDS: Final = (
     "source_game_id",
     "finished",
 )
+# What ``public_state`` compares: every seat's public counts and holdings.
+_PLAYER_FIELDS: Final = (
+    "victory_points",
+    "resources",
+    "influence",
+    "troops_supply",
+    "troops_garrison",
+    "spies_supply",
+    "spy_post_ids",
+    "alliance_faction_ids",
+    "control_space_ids",
+    "agent_locations",
+    "agents_available",
+)
+_ZONE_SIZES: Final = ("hand", "deck", "discard", "played", "intrigue", "contracts")
+
+
+def public_state(state: GameState) -> dict[str, Any]:
+    """The round and every seat's public counts, for telling positions apart."""
+
+    players = []
+    for player in state.players:
+        entry: dict[str, Any] = {
+            name: repr(getattr(player, name, None)) for name in _PLAYER_FIELDS
+        }
+        for zone in _ZONE_SIZES:
+            cards = getattr(player, zone, None)
+            if cards is not None:
+                entry[zone] = len(cards)
+        players.append(entry)
+    return {"round": state.round_number, "players": players}
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +120,8 @@ class HumanProblem:
     right: DomainAction
     wrong: DomainAction
     evidence: Mapping[str, Any]
+    # ``public_state`` of the position as it was judged.
+    judged_state: Mapping[str, Any]
 
     @property
     def person(self) -> DomainAction:
@@ -166,18 +202,31 @@ def build_suite(
 
     by_short = {game.game_id[:8]: game for game in games}
     first = {(row["game"], row["step"]): row for row in judged}
+    agreed = [
+        row
+        for row in confirmed
+        if row["first"] == row["second"] and row["second"] in ("human", "net")
+    ]
+    keys = [(row["game"], int(row["step"])) for row in agreed]
+    if len(keys) != len(set(keys)):
+        raise ValueError(
+            "a decision is confirmed twice; remove stale confirm shards first"
+        )
+    wanted: dict[str, tuple[SavedGame, set[int]]] = {}
+    for short, step in keys:
+        game = by_short[short]
+        wanted.setdefault(game.game_id, (game, set()))[1].add(step)
+    positions = _judged_positions(wanted)
     problems: list[HumanProblem] = []
     records: dict[str, Mapping[str, Any]] = {}
-    for row in confirmed:
-        if row["first"] != row["second"] or row["second"] not in ("human", "net"):
-            continue
+    for row in agreed:
         game = by_short[row["game"]]
         index = int(row["step"])
         seat = int(row["seat"])
-        person = game.parsed.replay.steps[index]
-        if not isinstance(person, DomainAction) or person != _action(
-            row["human"], seat
-        ):
+        # The judge saw the person's move as the migration replayed it (a
+        # bridge may have rewritten the recorded step).
+        person, judged_state = positions[(game.game_id, index)]
+        if person != _action(row["human"], seat):
             raise ValueError(f"{row['game']} step {index} is not the judged move")
         network = _action(row["net_first"], seat)
         family = "human_right" if row["second"] == "human" else "network_right"
@@ -203,6 +252,7 @@ def build_suite(
                     "second_error": float(row["error"]),
                     "p_person": float(row["p_human"]),
                 },
+                judged_state=judged_state,
             )
         )
         if game.game_id not in records:
@@ -214,6 +264,31 @@ def build_suite(
             }
     problems.sort(key=lambda problem: (problem.game, problem.recorded_index))
     return Suite(note=note, records=records, problems=tuple(problems))
+
+
+def _judged_positions(
+    wanted: Mapping[str, tuple[SavedGame, set[int]]],
+) -> dict[tuple[str, int], tuple[DomainAction, dict[str, Any]]]:
+    """The person's migrated move and the public state at each wanted step."""
+
+    engine = UprisingRulesEngine()
+    found: dict[tuple[str, int], tuple[DomainAction, dict[str, Any]]] = {}
+    for game, steps in wanted.values():
+        record = migrate_record(game.parsed.replay, engine)
+        for state, migrated in walk(record, engine):
+            if migrated.recorded_index in steps and isinstance(
+                migrated.step, DomainAction
+            ):
+                found[(game.game_id, migrated.recorded_index)] = (
+                    migrated.step,
+                    public_state(state),
+                )
+        missing = steps - {step for game_id, step in found if game_id == game.game_id}
+        if missing:
+            raise ValueError(
+                f"{game.game_id[:8]} does not reach steps {sorted(missing)} here"
+            )
+    return found
 
 
 def save_suite(path: Path, suite: Suite) -> None:
@@ -235,6 +310,7 @@ def save_suite(path: Path, suite: Suite) -> None:
                 "right": serialize_step(problem.right),
                 "wrong": serialize_step(problem.wrong),
                 "evidence": dict(problem.evidence),
+                "judged_state": dict(problem.judged_state),
             }
             for problem in suite.problems
         ],
@@ -268,6 +344,7 @@ def load_suite(path: Path = DEFAULT_SUITE) -> Suite:
                 right=right,
                 wrong=wrong,
                 evidence=item["evidence"],
+                judged_state=item["judged_state"],
             )
         )
     return Suite(
@@ -298,7 +375,7 @@ def resolve(
                 continue
             problem = wanted[migrated.recorded_index]
             resolved[problem.problem_id] = _position(
-                engine, problem, state, migrated.step
+                engine, problem, state, migrated.step, replay.action_codec_version
             )
         for problem in problems:
             if problem.problem_id in resolved:
@@ -318,18 +395,27 @@ def _position(
     problem: HumanProblem,
     state: GameState,
     migrated: ReplayStep,
+    codec: int,
 ) -> Resolved | str:
     decision = engine.current_decision(state)
     if getattr(decision, "owner", None) != problem.seat:
         return f"seat {problem.seat} does not decide here on this engine"
+    now = public_state(state)
+    if now != problem.judged_state:
+        return "the position differs from the judged one: " + _difference(
+            problem.judged_state, now
+        )
     legal = engine.legal_actions(state, problem.seat)
-    # The person's move as the migration replayed it (a bridge may have
-    # rewritten it); the network's move as judged.
+    # The person's move as the migration replayed it, and the network's move
+    # through the same rewrite bridges (either may have been renamed).
     person = migrated if isinstance(migrated, DomainAction) else problem.person
+    network = problem.wrong if problem.family == "human_right" else problem.right
+    if network not in legal:
+        rewritten = rewrite_step(engine, state, network, codec)
+        if isinstance(rewritten, DomainAction):
+            network = rewritten
     right, wrong = (
-        (person, problem.wrong)
-        if problem.family == "human_right"
-        else (problem.right, person)
+        (person, network) if problem.family == "human_right" else (network, person)
     )
     for move, name in ((right, "right"), (wrong, "wrong")):
         if move not in legal:
@@ -337,6 +423,18 @@ def _position(
                 f"the {name} move {move.action_id}{dict(move.arguments)} is not legal"
             )
     return Resolved(problem, state, legal, right, wrong)
+
+
+def _difference(judged: Mapping[str, Any], now: Mapping[str, Any]) -> str:
+    if judged.get("round") != now.get("round"):
+        return f"round {judged.get('round')} then, {now.get('round')} now"
+    for seat, (then, here) in enumerate(
+        zip(judged.get("players", []), now.get("players", []), strict=False)
+    ):
+        for name in then:
+            if then[name] != here.get(name):
+                return f"seat {seat} {name} {then[name]} then, {here.get(name)} now"
+    return "the seats differ"
 
 
 def _agent_seed(problem_id: str, seed: int) -> int:
@@ -360,6 +458,13 @@ def answer(
     agent = make_agent(kind, _agent_seed(problem.problem_id, seed), state.config)
     view = engine.observe(state, problem.seat)
     probabilities = policy_probabilities(agent, view, legal)
+    untrained_only = getattr(agent, "untrained_only", None)
+    if probabilities is not None and untrained_only is not None:
+        codec = getattr(agent, "codec")  # noqa: B009 - a network agent's
+        if untrained_only([codec.encode(action) for action in probabilities]):
+            # The network was never trained on any offered action; its choice
+            # comes from its heuristic fallback, so its flat logits say nothing.
+            probabilities = None
     if isinstance(agent, StateAgent):
         chosen = agent.choose_action_with_state(state, view, legal)
     else:

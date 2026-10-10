@@ -186,6 +186,29 @@ def walk(
         state = engine.apply(state, migrated.step).state
 
 
+def rewrite_step(
+    engine: UprisingRulesEngine, state: GameState, step: ReplayStep, codec: int
+) -> ReplayStep | None:
+    """``step`` in this engine's terms by a rewrite bridge open to ``codec``.
+
+    For a move that was never recorded but was judged in an older engine's
+    terms (``records.problems``: the play network's candidate); ``None``
+    when no rewrite bridge applies to it at ``state``.
+    """
+
+    decision = engine.current_decision(state)
+    if decision is None:
+        return None
+    for bridge in BRIDGES:
+        if bridge.rewrites and (
+            bridge.before_codec is None or codec < bridge.before_codec
+        ):
+            answer = bridge.answer(engine, state, decision, step)
+            if answer is not None:
+                return answer
+    return None
+
+
 def _bridge(
     engine: UprisingRulesEngine,
     state: GameState,

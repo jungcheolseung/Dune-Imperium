@@ -233,3 +233,203 @@ def test_the_cli_checks_and_scores_a_suite(
     assert "## random" in out
     report = json.loads(answers.read_text(encoding="utf-8"))
     assert len(report["random"]["answers"]) == 2
+
+
+def _game_with_human(tmp_path: Path, seat: int) -> SavedGame:
+    document = json.loads((DATA / "v135-app_ai-3.json").read_text(encoding="utf-8"))
+    document["seats"] = ["app_ai"] * 4
+    document["seats"][seat] = "human"
+    path = tmp_path / f"{'b' * 32}.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return read_saved_game(path)
+
+
+def test_a_person_move_a_bridge_rewrote_is_frozen_in_its_migrated_form(
+    tmp_path: Path,
+) -> None:
+    game = _game_with_human(tmp_path, 3)
+    recorded = game.parsed.replay.steps
+    decision = next(
+        decision
+        for decision in human_decisions(game)
+        if decision.chosen != recorded[decision.recorded_index]
+    )
+    assert decision.chosen.action_id == "resolve_agent_card_effect"
+    other = next(
+        action
+        for action in without_undo_actions(decision.legal_actions)
+        if action != decision.chosen
+    )
+    common = {
+        "game": "bbbbbbbb",
+        "step": decision.recorded_index,
+        "round": decision.state.round_number,
+        "seat": 3,
+        "human": _text(decision.chosen),
+    }
+    judged = [
+        {**common, "effect_order": True, "values": [[0, 1], [0, 1]], "human_col": 1}
+    ]
+    confirmed = [
+        {
+            **common,
+            "first": "human",
+            "second": "human",
+            "mean": 0.1,
+            "error": 0.01,
+            "p_human": 0.1,
+            "net_first": _text(other),
+        }
+    ]
+
+    suite = build_suite([game], judged, confirmed, "test")
+
+    (problem,) = suite.problems
+    assert problem.person == decision.chosen
+    position = resolve(suite)[problem.problem_id]
+    assert isinstance(position, Resolved)
+    assert position.right == decision.chosen
+
+
+def test_a_position_an_engine_change_moved_does_not_resolve(game: SavedGame) -> None:
+    judged, confirmed = _rows(game, ["human", "net"])
+    suite = build_suite([game], judged, confirmed, "test")
+    first, second = suite.problems
+    players = [dict(entry) for entry in first.judged_state["players"]]
+    players[0]["victory_points"] = "99"
+    moved = replace(first, judged_state={**first.judged_state, "players": players})
+
+    resolved = resolve(replace(suite, problems=(moved, second)))
+
+    assert "differs from the judged one: seat 0 victory_points" in str(
+        resolved[first.problem_id]
+    )
+    assert isinstance(resolved[second.problem_id], Resolved)
+
+
+def test_the_network_move_goes_through_the_rewrite_bridges(tmp_path: Path) -> None:
+    from dune_imperium.records.migration import migrate_record, walk
+    from dune_imperium.rules import UprisingRulesEngine
+
+    game = _game_with_human(tmp_path, 0)
+    engine = UprisingRulesEngine()
+    record = migrate_record(game.parsed.replay, engine)
+    # A position where one named card effect is offered and the seat did
+    # something else: the network's move, judged in old terms, is the
+    # argument-less effect.
+    for state, migrated in walk(record, engine):
+        step = migrated.step
+        if not isinstance(step, DomainAction) or migrated.recorded_index is None:
+            continue
+        named = [
+            action
+            for action in engine.legal_actions(state, step.actor)
+            if action.action_id == "resolve_agent_card_effect" and action.arguments
+        ]
+        if len(named) == 1 and step.action_id != "resolve_agent_card_effect":
+            break
+    else:
+        pytest.fail("no position with one named card effect in the record")
+    seat = step.actor
+    document = json.loads(game.path.read_text(encoding="utf-8"))
+    document["seats"] = ["app_ai"] * 4
+    document["seats"][seat] = "human"
+    game.path.write_text(json.dumps(document), encoding="utf-8")
+    game = read_saved_game(game.path)
+    common = {
+        "game": "bbbbbbbb",
+        "step": migrated.recorded_index,
+        "round": state.round_number,
+        "seat": seat,
+        "human": _text(step),
+    }
+    judged = [
+        {**common, "effect_order": True, "values": [[0, 1], [0, 1]], "human_col": 1}
+    ]
+    confirmed = [
+        {
+            **common,
+            "first": "human",
+            "second": "human",
+            "mean": 0.1,
+            "error": 0.01,
+            "p_human": 0.1,
+            "net_first": {"id": "resolve_agent_card_effect", "args": {}},
+        }
+    ]
+    suite = build_suite([game], judged, confirmed, "test")
+
+    (position,) = resolve(suite).values()
+
+    assert isinstance(position, Resolved), position
+    assert position.wrong == named[0]
+
+
+def test_a_decision_confirmed_twice_is_refused(game: SavedGame) -> None:
+    judged, confirmed = _rows(game, ["human"])
+
+    with pytest.raises(ValueError, match="confirmed twice"):
+        build_suite([game], judged, confirmed + confirmed, "test")
+
+
+def test_untrained_network_rows_give_no_probabilities(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    from dune_imperium.adapters.action_codec import ActionCodec
+    from dune_imperium.training.checkpoint import save_checkpoint
+    from dune_imperium.training.network import PolicyValueNetwork
+
+    # A file trained without Arrakeen Scouts plays a Scouts game: every
+    # Scouts row is untrained, and such a decision goes to its heuristic.
+    document = json.loads((DATA / "v135-app_ai-3.json").read_text(encoding="utf-8"))
+    document["seats"] = ["human"] * 4
+    path = tmp_path / f"{GAME}.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    game = read_saved_game(path)
+    without = replace(game.parsed.replay.ruleset, arrakeen_scouts=False)
+    codec = ActionCodec(without)
+    torch.manual_seed(0)
+    network = PolicyValueNetwork(codec.size, hidden=(16,))
+    policy = tmp_path / "policy.pt"
+    save_checkpoint(
+        policy, network, ruleset=without.identifier, iteration=1, codec=codec
+    )
+    decisions = [
+        decision
+        for decision in human_decisions(game)
+        if len(offered := without_undo_actions(decision.legal_actions)) >= 2
+        and all(action.action_id.startswith("scouts_") for action in offered)
+    ]
+    decision = decisions[0]
+    other = next(
+        action
+        for action in without_undo_actions(decision.legal_actions)
+        if action != decision.chosen
+    )
+    common = {
+        "game": GAME[:8],
+        "step": decision.recorded_index,
+        "round": decision.state.round_number,
+        "seat": decision.seat,
+        "human": _text(decision.chosen),
+    }
+    judged = [
+        {**common, "effect_order": False, "values": [[0, 1], [0, 1]], "human_col": 1}
+    ]
+    confirmed = [
+        {
+            **common,
+            "first": "human",
+            "second": "human",
+            "mean": 0.1,
+            "error": 0.01,
+            "p_human": 0.1,
+            "net_first": _text(other),
+        }
+    ]
+    suite = build_suite([game], judged, confirmed, "test")
+    (position,) = resolve(suite).values()
+    assert isinstance(position, Resolved)
+
+    result = answer(position, f"checkpoint:{policy}")
+
+    assert result.p_right is None and result.rank_right is None
