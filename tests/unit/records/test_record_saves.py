@@ -95,6 +95,22 @@ def test_a_restored_session_is_the_same_game(tmp_path: Path) -> None:
     assert len(saved_games(tmp_path, every_save=True)) == 3
 
 
+def test_saves_with_other_seats_are_other_games(tmp_path: Path) -> None:
+    # A record corpus plays every seat mix of a combo on the same seeds.
+    heuristic = _save(
+        tmp_path, "a" * 32, seats=["heuristic"] * 4, saved_at="2026-10-01T10:00:00"
+    )
+    mixed = _save(
+        tmp_path,
+        "b" * 32,
+        seats=["heuristic", "app_ai", "heuristic", "app_ai"],
+        steps=150,
+        saved_at="2026-10-01T11:00:00",
+    )
+
+    assert [game.path for game in saved_games(tmp_path)] == [heuristic, mixed]
+
+
 def test_a_branch_the_players_left_is_dropped(tmp_path: Path) -> None:
     seats = ["human", "app_ai", "app_ai", "app_ai"]
     # Saved, then taken back: the older save holds moves the game left.
