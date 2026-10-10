@@ -424,11 +424,12 @@ def corpora(root: Path = CORPUS_ROOT) -> list[Corpus]:
 #
 # Every run of consecutive differing compared points gets one of
 # ``VERDICTS`` against the nearest preceding ``around`` hit (an index key's
-# recorded step, from the corpus row) and the firings of the ``bridge`` under
-# review (``judge``). Fields that differ already in the reset state, and
-# fields the schema drift explains (a field this engine removed or renamed,
-# at the top or in a nested class: ``schema_drift``), are reported once and
-# kept out of the outcomes and verdicts.
+# recorded step, from the corpus row) and the firings of the bridges under
+# review (``judge``); a run that some bridge ends, reviewed or not, names it.
+# Fields that differ already in the reset state, and fields the schema drift
+# explains (a field this engine removed or renamed, at the top or in a
+# nested class: ``schema_drift``), are reported once and kept out of the
+# outcomes and verdicts.
 
 OUTCOMES: Final = ("exact", "equal", "transient", "persistent", "diverged", "failed")
 VERDICTS: Final = (
@@ -465,6 +466,9 @@ class DifferingRun:
     # The ``around`` hit the verdict leans on: (recorded step, key).
     hit: tuple[int, str] | None = None
     diverged: bool = False
+    # The bridges, reviewed or not, that fired right where the run ends
+    # (before the first equal point), comma-separated.
+    ended_by: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,7 +491,7 @@ class RecordCheck:
     # Steps each bridge answered or rewrote.
     bridges: Mapping[str, int] = field(default_factory=dict)
     runs: tuple[DifferingRun, ...] = ()
-    # Where the reviewed bridge fired: before which recorded step (or the
+    # Where the reviewed bridges fired: before which recorded step (or the
     # end point), once per firing.
     firings: tuple[int, ...] = ()
     # Those of ``firings`` without an ``around`` hit in the window before.
@@ -512,22 +516,25 @@ def judge(
     firings: Iterable[int] = (),
     divergence: int | None = None,
     window: int = DEFAULT_WINDOW,
+    ending: Mapping[int, str] | None = None,
 ) -> tuple[tuple[DifferingRun, ...], tuple[int, ...]]:
     """The verdict of every differing run, and the firings without a hit.
 
     ``differences`` maps each differing compared point (a recorded step
     index; the state before it) to its fields; ``hits`` are the recorded
     steps of ``around`` keys (a hit at ``h`` changed the state seen at
-    ``h + 1``); ``firings`` the points the reviewed bridge fired before;
-    ``divergence`` the recorded step this engine refused. Verdicts:
+    ``h + 1``); ``firings`` the points the reviewed bridges fired before;
+    ``divergence`` the recorded step this engine refused; ``ending`` names
+    the bridges, reviewed or not, that fired before each point, for the
+    runs' ``ended_by``. Verdicts:
 
     - ``diverged-at-hit``: the run that ends where the record diverged
       (one is made, without fields, when the state still matched there),
-      with a hit at or before the divergence and no earlier than ``window``
-      steps before the run starts;
+      with a hit before the divergence (or, failing one, at the refused
+      step itself) no earlier than ``window`` steps before the run starts;
     - ``bridged-window``: the run starts at most ``window`` steps after a
-      hit and ends right where the bridge fires, the firing being the step
-      that makes the state equal again;
+      hit and ends right where a reviewed bridge fires, the firing being
+      the step that makes the state equal again;
     - ``differs-unbridged``: the run starts in a hit's window, but no
       firing ends it (it lasts to the end, or something else ends it);
     - ``collateral``: no hit in the window before the run, or before the
@@ -554,8 +561,11 @@ def judge(
         start, end = group[0], group[-1]
         fields = tuple(sorted({name for i in group for name in differences.get(i, ())}))
         if divergence is not None and end == divergence:
-            hit = _nearest(hit_list, divergence)
+            hit = _nearest(hit_list, divergence - 1)
             leans = hit is not None and hit[0] >= start - window
+            if not leans:
+                hit = _nearest(hit_list, divergence)
+                leans = hit is not None and hit[0] == divergence
             verdict = "diverged-at-hit" if leans else "collateral"
         else:
             hit = _nearest(hit_list, start - 1)
@@ -574,13 +584,14 @@ def judge(
                 verdict,
                 hit if leans else None,
                 diverged=divergence is not None and end == divergence,
+                ended_by=(ending or {}).get(end + 1),
             )
         )
-    ending = {run.end + 1 for run in runs if run.verdict == "bridged-window"}
+    bridged_ends = {run.end + 1 for run in runs if run.verdict == "bridged-window"}
     lone = []
     for point in firing_points:
         hit = _nearest(hit_list, point - 1)
-        if (hit is None or point - hit[0] > window) and point not in ending:
+        if (hit is None or point - hit[0] > window) and point not in bridged_ends:
             lone.append(point)
     return tuple(runs), tuple(lone)
 
@@ -809,14 +820,14 @@ class _Checker:
         migration: ModuleType,
         *,
         around: Sequence[str],
-        bridge: str | None,
+        bridges: Sequence[str],
         window: int,
     ) -> None:
         self.corpus = corpus
         self.engine = engine
         self.migration = migration
         self.around = tuple(around)
-        self.bridge = bridge
+        self.bridges = frozenset(bridges)
         self.window = window
         self.schema: Mapping[str, Sequence[str]] = corpus.manifest["class_schema"]
         self.rows = {row.id: row for row in corpus.rows()}
@@ -847,25 +858,30 @@ class _Checker:
         record = self.migration.migrate_record(replay, self.engine)
         fingerprint = self.corpus.fingerprint()
         comparison = _Comparison(fingerprint, self.schema)
-        firings: list[int] = []
-        waiting = 0
+        # Each bridge firing, at the point (recorded step) it ran before.
+        fired: list[tuple[int, str]] = []
+        waiting: list[str] = []
         for state, migrated in self.migration.walk(record, self.engine):
             comparison.reset(state, trace.reset)
-            if self.bridge is not None and migrated.bridge == self.bridge:
-                waiting += 1
+            if migrated.bridge is not None:
+                waiting.append(migrated.bridge)
             index = migrated.recorded_index
             if index is None:
                 continue
-            firings.extend([index] * waiting)
-            waiting = 0
+            fired.extend((index, name) for name in waiting)
+            waiting = []
             comparison.point(index, state, trace.before(index))
         comparison.reset(record.state, trace.reset)
         divergence = record.divergence
         end = trace.steps if divergence is None else divergence.recorded_index
         if end <= comparison.last:
             raise ValueError(f"the migration ends at step {end}, already compared")
-        firings.extend([end] * waiting)
+        fired.extend((end, name) for name in waiting)
         comparison.point(end, record.state, trace.before(end))
+        firings = [point for point, name in fired if name in self.bridges]
+        ending: dict[int, set[str]] = defaultdict(set)
+        for point, name in fired:
+            ending[point].add(name)
         for qualname, names in fingerprint.class_schema.items():
             self.classes.setdefault(qualname, names)
 
@@ -876,6 +892,7 @@ class _Checker:
             firings=firings,
             divergence=None if divergence is None else end,
             window=self.window,
+            ending={point: ", ".join(sorted(names)) for point, names in ending.items()},
         )
         bridges = dict(sorted(record.bridge_counts().items()))
         if divergence is not None:
@@ -940,7 +957,8 @@ class CheckReport:
     engine_codec: int
     migration: str
     around: tuple[str, ...]
-    bridge: str | None
+    # The bridges under review.
+    bridges: tuple[str, ...]
     window: int
     records: tuple[RecordCheck, ...]
     # Manifest ``class_schema`` against this engine's classes (``schema_drift``).
@@ -983,6 +1001,22 @@ class CheckReport:
                 groups[record.divergence.signature].append(
                     f"{record.id}@{record.divergence.index}"
                 )
+        return sorted(groups.items(), key=lambda item: (-len(item[1]), item[0]))
+
+    def divergence_hits(self) -> list[tuple[tuple[str, str], list[str]]]:
+        """``diverged-at-hit`` divergences by (pending frame, hit key),
+        most records first, with every ``id@step``."""
+
+        groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for record in self.records:
+            if record.divergence is None:
+                continue
+            for run in record.runs:
+                if run.diverged and run.verdict == "diverged-at-hit":
+                    assert run.hit is not None
+                    groups[(record.divergence.signature[0], run.hit[1])].append(
+                        f"{record.id}@{record.divergence.index}"
+                    )
         return sorted(groups.items(), key=lambda item: (-len(item[1]), item[0]))
 
     def verdicts(self) -> dict[str, list[tuple[str, DifferingRun | int]]]:
@@ -1029,6 +1063,7 @@ class CheckReport:
                         "end": item.end,
                         "fields": list(item.fields),
                         "hit": None if item.hit is None else list(item.hit),
+                        "ended_by": item.ended_by,
                     }
                 else:
                     entry = {"id": record_id, "firing": item}
@@ -1047,7 +1082,7 @@ class CheckReport:
             "engine_codec": self.engine_codec,
             "migration": self.migration,
             "around": list(self.around),
-            "bridge": self.bridge,
+            "bridges_reviewed": list(self.bridges),
             "window": self.window,
             "records": self.selected(),
             "controls": self.controls(),
@@ -1075,6 +1110,15 @@ class CheckReport:
                     "examples": ids[:3],
                 }
                 for signature, ids in self.signatures()
+            ],
+            "diverged_at_hit": [
+                {
+                    "pending": frame,
+                    "hit": key,
+                    "records": len(ids),
+                    "examples": ids[:3],
+                }
+                for (frame, key), ids in self.divergence_hits()
             ],
             "verdicts": verdicts,
             "findings": listed[:findings],
@@ -1117,7 +1161,7 @@ def check(
     engine: UprisingRulesEngine | None = None,
     migration: ModuleType | Path | None = None,
     around: Sequence[str] = (),
-    bridge: str | None = None,
+    bridge: str | Sequence[str] | None = None,
     window: int = DEFAULT_WINDOW,
     controls: int = 0,
     workers: int = 1,
@@ -1128,10 +1172,11 @@ def check(
 
     ``migration`` is ``records.migration`` by default, or a module or the
     path of one (``load_migration``). ``around`` are index-key patterns
-    whose hits the verdicts lean on; ``bridge`` names the bridge under
-    review. ``workers`` processes (at most ``MAX_WORKERS``, under ``nice``)
-    share the records; with more than one, ``engine`` must be ``None`` and
-    a ``migration`` module must have a file. Nothing is written.
+    whose hits the verdicts lean on; ``bridge`` names the bridge (or
+    bridges) under review. ``workers`` processes (at most ``MAX_WORKERS``,
+    under ``nice``) share the records; with more than one, ``engine`` must
+    be ``None`` and a ``migration`` module must have a file. Nothing is
+    written.
     """
 
     if not 1 <= workers <= MAX_WORKERS:
@@ -1144,9 +1189,10 @@ def check(
     path = None if module is records_migration or source is None else Path(source)
     if workers > 1 and module is not records_migration and path is None:
         raise ValueError("a migration module without a file cannot go to workers")
+    reviewed = (bridge,) if isinstance(bridge, str) else tuple(bridge or ())
     settings: dict[str, Any] = {
         "around": tuple(around),
-        "bridge": bridge,
+        "bridges": reviewed,
         "window": window,
     }
     tasks = [(row.id, False) for row in rows] + [
@@ -1191,7 +1237,7 @@ def check(
             else str(path or module.__name__)
         ),
         around=tuple(around),
-        bridge=bridge,
+        bridges=reviewed,
         window=window,
         records=tuple(results),
         drift=schema_drift(corpus.manifest["class_schema"], classes) if classes else {},

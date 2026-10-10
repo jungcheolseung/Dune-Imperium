@@ -14,6 +14,7 @@ import shutil
 import struct
 from collections.abc import Callable, Mapping
 from compression import zstd
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -400,7 +401,7 @@ def test_a_follows_bridge_is_compared_after_it_ran(
 
 
 def test_verdicts_lean_on_hits_and_bridge_firings(
-    tiny_corpus: Path, tmp_path: Path
+    tiny_corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     copy = _copy(tiny_corpus, tmp_path)
     corpus = Corpus.open(copy)
@@ -421,22 +422,45 @@ def test_verdicts_lean_on_hits_and_bridge_firings(
     corpus = Corpus.open(copy)
     options: dict[str, Any] = {"migration": module, "bridge": "split_follow"}
 
+    bridged = DifferingRun(
+        at - 2,
+        at - 1,
+        (name,),
+        "bridged-window",
+        (near, "draws:card@near"),
+        ended_by="split_follow",
+    )
+
     result = _one(corpus, around=["draws:card@near"], **options)
     assert result.outcome == "transient"
-    assert result.runs == (
-        DifferingRun(
-            at - 2, at - 1, (name,), "bridged-window", (near, "draws:card@near")
-        ),
-    )
+    assert result.runs == (bridged,)
     assert result.lone_firings == ()
 
     result = _one(corpus, around=["draws:card@far"], **options)
-    assert result.runs == (DifferingRun(at - 2, at - 1, (name,), "collateral"),)
+    assert result.runs == (
+        DifferingRun(at - 2, at - 1, (name,), "collateral", ended_by="split_follow"),
+    )
     assert result.lone_firings == (at,)
 
-    # Without its bridge firing, the run in the hit's window is unbridged.
-    result = _one(corpus, around=["draws:card@near"], migration=module, bridge="pause")
-    assert [run.verdict for run in result.runs] == ["differs-unbridged"]
+    # Without its bridge under review, the run in the hit's window is
+    # unbridged; the bridge that ended it is still named.
+    other: dict[str, Any] = {"migration": module, "around": ["draws:card@near"]}
+    result = _one(corpus, bridge="pause", **other)
+    assert result.runs == (replace(bridged, verdict="differs-unbridged"),)
+    assert result.firings == ()
+    # Several bridges may be under review.
+    result = _one(corpus, bridge=["pause", "split_follow"], **other)
+    assert result.runs == (bridged,) and result.firings == (at,)
+
+    argv = ["corpus", "check", str(copy), "--migration-module", str(module)]
+    argv += ["--around", "draws:card@near", "--bridge", "pause", "split_follow"]
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert "bridges under review: pause, split_follow; window 16" in out
+    assert (
+        f"  {RECORD} steps {at - 2}-{at - 1}: {name}; hit draws:card@near at "
+        f"{near}; ends where split_follow fires\n"
+    ) in out
 
 
 def test_a_divergence_after_a_hit_is_diverged_at_hit(
@@ -471,6 +495,9 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
         "action actor does not own the current decision",
     )
     assert report.signatures() == [(result.divergence.signature, [f"{record_id}@{at}"])]
+    assert report.divergence_hits() == [
+        ((result.divergence.signature[0], "draws:card@near"), [f"{record_id}@{at}"])
+    ]
 
     frame = result.divergence.signature[0]
 
@@ -480,6 +507,7 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
     assert main(["corpus", "check", str(copy), "--around", "draws:card@near"]) == 0
     out = capsys.readouterr().out
     assert f"pending {frame} at {steps[at]['action_id']}: " in out
+    assert f"pending {frame} after draws:card@near  e.g. {record_id}@{at}" in out
     assert f"e.g. {record_id}@{at}" in out
     assert (
         f"  {record_id} step {at} (diverged): no field differs; hit draws:card@near"
@@ -577,6 +605,15 @@ def test_judge_names_fields_and_the_hit() -> None:
         "bridged-window",
         (5, "draws:card@y"),
     )
+    # A divergence leans on the hit before the refused step, and on the
+    # refused step's own hit only when no earlier one is near.
+    (run,), _ = judge({}, hits=[(9, "before"), (10, "own")], divergence=10)
+    assert (run.verdict, run.hit) == ("diverged-at-hit", (9, "before"))
+    (run,), _ = judge({}, hits=[(1, "old"), (40, "own")], divergence=40)
+    assert (run.verdict, run.hit) == ("diverged-at-hit", (40, "own"))
+    # The bridges that fired where a run ends are named, reviewed or not.
+    (run,), _ = judge({4: {"a"}}, ending={5: "pause, split"})
+    assert (run.verdict, run.ended_by) == ("collateral", "pause, split")
     assert seatless("players[1].hand") == "players[*].hand"
     assert seatless("round_number") == "round_number"
 

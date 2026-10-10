@@ -133,7 +133,14 @@ def _add_corpus_parser(
         metavar="PATTERN",
         help="index keys whose hits the verdicts lean on",
     )
-    checking.add_argument("--bridge", help="the bridge under review")
+    checking.add_argument(
+        "--bridge",
+        action="extend",
+        nargs="+",
+        default=[],
+        metavar="NAME",
+        help="the bridges under review",
+    )
     checking.add_argument("--window", type=int, default=DEFAULT_WINDOW)
     checking.add_argument(
         "--control",
@@ -366,7 +373,8 @@ def check_lines(report: CheckReport) -> list[str]:
     lines = [
         f"corpus {report.corpus} (codec v{report.corpus_codec}) on this engine "
         f"(codec v{report.engine_codec}), migration {report.migration}",
-        f"around: {' '.join(report.around) or '-'}; bridge: {report.bridge or '-'}; "
+        f"around: {' '.join(report.around) or '-'}; "
+        f"bridges under review: {', '.join(report.bridges) or '-'}; "
         f"window {report.window}",
         "",
     ]
@@ -459,6 +467,14 @@ def check_lines(report: CheckReport) -> list[str]:
         shown = ", ".join(f"{name} {count}" for name, count in fields.most_common(4))
         records = len({record_id for record_id, _ in items})
         lines.append(f"{verdict:20s} {len(items):6d} {records:8d}  {shown}")
+    at_hit = report.divergence_hits()
+    if at_hit:
+        lines.append("diverged-at-hit by pending frame and hit:")
+        for (frame, key), ids in at_hit:
+            lines.append(
+                f"  {len(ids):5d}  pending {frame} after {key}  "
+                f"e.g. {', '.join(ids[:3])}"
+            )
     for verdict, items in verdicts.items():
         if not items:
             continue
@@ -492,9 +508,10 @@ def _finding_text(item: DifferingRun | int) -> str:
         else f"steps {item.start}-{item.end}"
     )
     hit = "" if item.hit is None else f"; hit {item.hit[1]} at {item.hit[0]}"
+    ended = "" if item.ended_by is None else f"; ends where {item.ended_by} fires"
     fields = ", ".join(item.fields[:4]) + (" ..." if len(item.fields) > 4 else "")
     diverged = " (diverged)" if item.diverged else ""
-    return f"{steps}{diverged}: {fields or 'no field differs'}{hit}"
+    return f"{steps}{diverged}: {fields or 'no field differs'}{hit}{ended}"
 
 
 def _problems(args: argparse.Namespace) -> int:
