@@ -4,6 +4,27 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-10 기보 묶음(record corpus) 1단계와 v141 묶음 (codec 그대로 v141)
+
+사용자 결정 "그래 1·2단계 진행해". 설계는 워크플로(설계 셋·심사 둘·종합)의 최종안이다(세션 임시 `corpus-design-final.json`, 요지는 아래). 브랜치 `records-corpus`, 병합 `a61acb7e`(미푸시).
+
+- **왜:** 기보 이전 다리를 리뷰할 때마다 옛 엔진 판을 수천 개 새로 두며 드문 상황을 기다렸다. 그 리뷰 하나가 디스크 80GB를 채웠다(lessons 2026-10-10). 대신 엔진 버전마다 기보 묶음을 한 번 만들고 색인으로 골라 쓴다.
+- **1단계(병합됨):**
+  - `scripts/records/old_engine_record.py`를 `play_record`로 리팩터했다. CLI 출력은 바이트 그대로다.
+  - `records/portable/trace.py`는 표준 라이브러리만 쓴다. 상태 지문(필드별 4바이트), 수마다의 변화 기록, 색인 키(결정 틀·내놓은 행동·`draws:card|intrigue@<행동>`·이벤트·chance 값·coverage 센서스)를 만든다.
+  - `scripts/records/corpus_generate.py`는 옛 엔진을 PYTHONPATH에 두고 돌린다.
+  - `records/corpus.py`와 `dune-imperium-records corpus list|keys|pick [--export]`로 읽는다.
+  - 리뷰 워크플로가 지적 12건(reveal 턴의 뽑기 누락, 셔플 값 색인, 같은 시드의 다른 좌석 판이 `check`에서 하나로 묶임 등)을 찾았고 모두 고쳤다. 판 묶기 기준에 좌석 구성을 더했다(`one_save_per_game`).
+- **v141 묶음:** `local/records-corpus/v141-a61acb7e`(git 무시)
+  - 2,000판(모듈 조합 6 × AI 조합), 실패 0, 35MB, 3코어로 약 20분
+  - 표본 20판을 master에서 걸어 보니 모두 그대로 재생됐고, 19,005수에서 지문 차이가 0이었다.
+  - **v142가 master에 들어오기 전에 만들어 둔 것이 요점이다.** 다음 codec 변경 리뷰는 이 묶음으로 한다.
+- **진행 중:**
+  - 2단계 `corpus check`(작업 트리 `.claude/worktrees/corpus-check`)
+  - OQ-106 분리의 follows 다리(작업 트리 `tmp/claude/c1c2c75f…/wt142`, records-v142에 fb-land 병합 중; 다른 세션과 합의한 착지 순서 ②)
+- **같은 날 따로 고친 것:** 런처 창 테스트 둘이 전체 pytest마다 실제 Chrome을 `127.0.0.1:8127`로 열었다. 모듈 전체에서 브라우저 열기를 막았다(`fa2abf9d`).
+- **검증**(병합 전, staged): pytest **7,034개 통과**, Ruff·mypy 통과, E2E 54개 통과.
+
 ## 2026-10-10 사람 문제집: 판정이 일치한 112곳을 기보째 고정 (codec 그대로 v141)
 
 사용자 "그래 진행해보자"(아래 항목의 "다음" 1번). 브랜치 `human-problems`, 미푸시.
