@@ -21,10 +21,11 @@ person's move in its migrated form, as a bridge may have rewritten it);
 otherwise ``resolve`` says why, and the position is left out of a score
 instead of being scored on another game. "Another game" includes one that
 an engine change made different before the position: every problem keeps
-the public state it was judged in (``public_state``), and a position whose
+the seats' state it was judged in (``position_state``), and a position whose
 state no longer matches it does not resolve.
 """
 
+import dataclasses
 import hashlib
 import json
 from collections import defaultdict
@@ -48,7 +49,9 @@ from dune_imperium.server.persistence import (
 )
 
 SUITE_FORMAT: Final = "dune-imperium-human-problems"
-SUITE_VERSION: Final = 1
+# Version 2 (2026-10-10): ``position_state`` keeps every seat field; version
+# 1 kept a handful, and named four card zones wrongly so they were skipped.
+SUITE_VERSION: Final = 2
 FAMILIES: Final = ("human_right", "network_right")
 # Kept with the machine's other lasting local files (git-ignored ``local/``):
 # the suite holds people's games, which the public repository does not.
@@ -70,37 +73,76 @@ _RECORD_FIELDS: Final = (
     "source_game_id",
     "finished",
 )
-# What ``public_state`` compares: every seat's public counts and holdings.
-_PLAYER_FIELDS: Final = (
-    "victory_points",
-    "resources",
-    "influence",
-    "troops_supply",
-    "troops_garrison",
-    "spies_supply",
-    "spy_post_ids",
-    "alliance_faction_ids",
-    "control_space_ids",
-    "agent_locations",
-    "agents_available",
+# Card zones whose order a newer engine may change without changing the game
+# (a seat's draws taken in another order): compared as sorted lists.
+_UNORDERED_ZONES: Final = frozenset(
+    {"hand", "hand_public", "discard_pile", "in_play", "intrigue_cards"}
 )
-_ZONE_SIZES: Final = ("hand", "deck", "discard", "played", "intrigue", "contracts")
 
 
-def public_state(state: GameState) -> dict[str, Any]:
-    """The round and every seat's public counts, for telling positions apart."""
+def _plain(value: object) -> Any:
+    """``value`` as JSON-ready data, nested dataclasses as field dicts."""
+
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: _plain(getattr(value, field.name))
+            for field in dataclasses.fields(value)
+        }
+    if isinstance(value, (tuple, list)):
+        return [_plain(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted((_plain(item) for item in value), key=repr)
+    if isinstance(value, Mapping):
+        return {str(key): _plain(item) for key, item in sorted(value.items())}
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return repr(value)
+
+
+def position_state(state: GameState) -> dict[str, Any]:
+    """The round and every field of every seat, for telling positions apart.
+
+    Every ``PlayerState`` field is kept, so nothing is left out by a
+    misspelt name; ``_matches`` compares only the fields a snapshot holds,
+    so a field a newer engine adds does not move a position.
+    """
 
     players = []
     for player in state.players:
-        entry: dict[str, Any] = {
-            name: repr(getattr(player, name, None)) for name in _PLAYER_FIELDS
+        entry = {
+            field.name: _plain(getattr(player, field.name))
+            for field in dataclasses.fields(player)
         }
-        for zone in _ZONE_SIZES:
-            cards = getattr(player, zone, None)
-            if cards is not None:
-                entry[zone] = len(cards)
+        for zone in _UNORDERED_ZONES & entry.keys():
+            entry[zone] = sorted(entry[zone], key=repr)
         players.append(entry)
     return {"round": state.round_number, "players": players}
+
+
+def _matches(then: Any, now: Any) -> str | None:
+    """Where ``now`` differs from the snapshot ``then`` (``None`` if nowhere).
+
+    Dicts are compared on ``then``'s keys only: a key ``now`` adds is a field
+    a newer engine added; a key it lacks is a field it removed, a difference.
+    """
+
+    if isinstance(then, Mapping):
+        if not isinstance(now, Mapping):
+            return f"{then} then, {now} now"
+        for key, value in then.items():
+            if key not in now:
+                return f"{key} is gone"
+            found = _matches(value, now[key])
+            if found is not None:
+                return f"{key}{'' if found.startswith('[') else ' '}{found}"
+        return None
+    if isinstance(then, list) and isinstance(now, list) and len(then) == len(now):
+        for index, (a, b) in enumerate(zip(then, now, strict=True)):
+            found = _matches(a, b)
+            if found is not None:
+                return f"[{index}] {found}"
+        return None
+    return None if then == now else f"{then} then, {now} now"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +162,7 @@ class HumanProblem:
     right: DomainAction
     wrong: DomainAction
     evidence: Mapping[str, Any]
-    # ``public_state`` of the position as it was judged.
+    # ``position_state`` of the position as it was judged.
     judged_state: Mapping[str, Any]
 
     @property
@@ -281,7 +323,7 @@ def _judged_positions(
             ):
                 found[(game.game_id, migrated.recorded_index)] = (
                     migrated.step,
-                    public_state(state),
+                    position_state(state),
                 )
         missing = steps - {step for game_id, step in found if game_id == game.game_id}
         if missing:
@@ -400,11 +442,9 @@ def _position(
     decision = engine.current_decision(state)
     if getattr(decision, "owner", None) != problem.seat:
         return f"seat {problem.seat} does not decide here on this engine"
-    now = public_state(state)
-    if now != problem.judged_state:
-        return "the position differs from the judged one: " + _difference(
-            problem.judged_state, now
-        )
+    moved = _matches(problem.judged_state, position_state(state))
+    if moved is not None:
+        return f"the position differs from the judged one: {moved}"
     legal = engine.legal_actions(state, problem.seat)
     # The person's move as the migration replayed it, and the network's move
     # through the same rewrite bridges (either may have been renamed).
@@ -423,18 +463,6 @@ def _position(
                 f"the {name} move {move.action_id}{dict(move.arguments)} is not legal"
             )
     return Resolved(problem, state, legal, right, wrong)
-
-
-def _difference(judged: Mapping[str, Any], now: Mapping[str, Any]) -> str:
-    if judged.get("round") != now.get("round"):
-        return f"round {judged.get('round')} then, {now.get('round')} now"
-    for seat, (then, here) in enumerate(
-        zip(judged.get("players", []), now.get("players", []), strict=False)
-    ):
-        for name in then:
-            if then[name] != here.get(name):
-                return f"seat {seat} {name} {then[name]} then, {here.get(name)} now"
-    return "the seats differ"
 
 
 def _agent_seed(problem_id: str, seed: int) -> int:
