@@ -182,16 +182,19 @@ class PlayerState:
     # Suspensor Suits still has to answer with a deployed troop.
     spies_recalled_turn: int = 0
     suspensor_owed: int = 0
-    # Cards owed by CHOAM Transports (a contract completed) and Planetary
-    # Array (a Conflict won), drawn by the engine after the transition so a
-    # reshuffle never lands inside another effect's frame bookkeeping.
+    # Cards owed by CHOAM Transports (a contract completed outside the seat's
+    # own turn) and Planetary Array (a Conflict won), drawn by the engine
+    # after the transition so a reshuffle never lands inside another
+    # effect's frame bookkeeping.
     tech_cards_owed: int = 0
     # Draws a trigger earned during this seat's own Agent or Reveal turn,
     # each waiting as the seat's own step (``draw_owed_intrigue`` /
-    # ``draw_owed_card``) in any order before the turn ends, as (deck
-    # "intrigue" or "card", origin key, event source), oldest first
-    # (``rules.owed_draws``; user ruling 2026-10-10, OQ-106). Public: only
-    # the count and origin, never a card.
+    # ``draw_owed_card``) before the turn ends, as (deck "intrigue" or
+    # "card", origin key, event source), oldest first (``rules.owed_draws``;
+    # user ruling 2026-10-10, OQ-106): in any order with the turn's other
+    # steps, or, for an immediate origin (``frames.draw_is_immediate``), as
+    # the seat's very next step. Public: only the count and origin, never a
+    # card.
     owed_draws: tuple[tuple[str, str, str], ...] = ()
     # Immortality [Immortality pp. 4-8, 12]: the research token's space on
     # the Bene Tleilax board ("" without the option), the Tleilaxu token's

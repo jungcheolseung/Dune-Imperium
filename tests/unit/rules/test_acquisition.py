@@ -665,10 +665,15 @@ def test_price_is_no_object_resolves_the_acquired_cards_bonus() -> None:
 
     result = apply_agent_card_acquisition(state, action)
 
-    # Overthrow's acquire-box Intrigue card waits as the owner's own step in
-    # its turn (user ruling 2026-10-10, OQ-106).
+    # Overthrow's acquire-box Intrigue card is the owner's own step in its
+    # turn, the one right after the purchase (user decision 2026-10-10,
+    # OQ-106: "Acquire Effects must be taken immediately upon acquiring the
+    # Card or Tech.", Direwolf Discord).
     assert result.state.players[0].hand == (overthrow,)
     assert result.state.players[0].intrigue_cards == ()
+    assert [entry[:2] for entry in result.state.players[0].owed_draws] == [
+        ("intrigue", f"acquire:{overthrow}")
+    ]
     assert tuple(event.kind for event in result.events) == ("card_acquired",)
     drawn = apply_owed_draw(
         result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
@@ -825,17 +830,17 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
 
     result = apply_imperium_acquisition(state, action)
 
-    # The acquire box's Intrigue card waits as the owner's own step in its
-    # Reveal turn, taken in any order before the Reveal ends (user ruling
-    # 2026-10-10, OQ-106; OQ-042): the purchase itself draws nothing.
+    # The acquire box's Intrigue card is the owner's own step in its Reveal
+    # turn, the one right after the purchase, before any other acquisition
+    # or the Reveal's end: "Acquire Effects must be taken immediately upon
+    # acquiring the Card or Tech." (Direwolf Discord; user decision
+    # 2026-10-10, OQ-106; OQ-042). The purchase itself draws nothing.
     assert result.state.players[0].discard_pile == (overthrow,)
     assert result.state.players[0].intrigue_cards == ()
     assert tuple(event.kind for event in result.events) == ("card_acquired",)
     engine = UprisingRulesEngine()
     draw = DomainAction(action_id="draw_owed_intrigue", actor=0)
-    offered = engine.legal_actions(result.state, 0)
-    assert draw in offered
-    assert DomainAction(action_id="finish_reveal", actor=0) not in offered
+    assert engine.legal_actions(result.state, 0) == (draw,)
     drawn = engine.apply(result.state, draw)
     assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)
     assert drawn.state.intrigue_deck == ()

@@ -573,6 +573,17 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # winner's reward (the commit before) moves none of the six. With the trash
 # drawing again (a scratch copy of the previous commit's source) all six
 # games reproduce the pins above exactly.
+# v142, seventh change (user decision 2026-10-10, OQ-106 "가 로 가자"): the
+# Bene Gesserit Influence 4 card, Imperial Birthright, Overthrow's acquire
+# box and CHOAM Transports' card are the owner's only action right after
+# their trigger. Two games move, each at a Faction icon that reached Bene
+# Gesserit 4 in an Agent turn: everything at decision 697 (round 9, seat 3),
+# where the random seat had flipped a Tech tile from 3 actions before the
+# draw (same 3,544 vectors, other order), and scouts at decision 702 (round
+# 9, seat 0), where it drew from 3 actions (3,552 -> 3,532 vectors). With
+# the draws free again and CHOAM Transports drawn by the post-step hook (a
+# scratch copy of this change's source) all six games reproduce the pins
+# above exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
@@ -581,13 +592,13 @@ _GOLDEN_DIGESTS = {
         3164,
     ),
     "everything": (
-        "59dda2cf4dc4292e56d3a3525851a67939dbdab5d1754d2193465e1552bea5c1",
+        "4879457a851074b334d07f118a711f1688aa0b20411ede2fb4731965e48fa983",
         3544,
     ),
     "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
-        "cee146800ade32ee6787068fcba6f28b8fe0812d759e7efed2baa0a968d1c4ad",
-        3552,
+        "6bb338f6e47f357c0c7556c34c02efa6623a39196f6a4d931f4960af6e759d27",
+        3532,
     ),
 }
 _GOLDEN_CONFIGS = {

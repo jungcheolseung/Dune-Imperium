@@ -771,7 +771,7 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         if MISSIONS_BY_ID[mission_id].kind is MissionKind.CHOAM_RESEARCH:
             if _is_immediate(card_id):
                 raise RuntimeError("the Immediate never reaches the Research Station")
-            owner = receive_contract(owner, card_id)
+            owner = receive_contract(state, owner, card_id)
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:contract",
