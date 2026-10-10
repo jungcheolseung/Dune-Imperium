@@ -370,7 +370,9 @@ _LISTED_FINDINGS = 12
 def check_lines(report: CheckReport) -> list[str]:
     """``corpus check``'s readable report."""
 
-    lines = [
+    portable = report.portable_warning()
+    lines = [] if portable is None else [f"WARNING: {portable}", ""]
+    lines += [
         f"corpus {report.corpus} (codec v{report.corpus_codec}) on this engine "
         f"(codec v{report.engine_codec}), migration {report.migration}",
         f"around: {' '.join(report.around) or '-'}; "
@@ -435,6 +437,9 @@ def check_lines(report: CheckReport) -> list[str]:
     ]
     if odd_controls:
         lines.append(f"controls not exact or equal: {', '.join(odd_controls)}")
+    reset_warning = report.reset_warning()
+    if reset_warning is not None:
+        lines.append(f"warning: {reset_warning}")
 
     totals = report.bridge_totals()
     lines.append("")
@@ -475,12 +480,18 @@ def check_lines(report: CheckReport) -> list[str]:
                 f"  {len(ids):5d}  pending {frame} after {key}  "
                 f"e.g. {', '.join(ids[:3])}"
             )
+    divergences = {
+        record.id: record.divergence.signature
+        for record in report.records
+        if record.divergence is not None
+    }
     for verdict, items in verdicts.items():
         if not items:
             continue
         lines.append(f"{verdict}:")
         for record_id, item in items[:_LISTED_FINDINGS]:
-            lines.append(f"  {record_id} {_finding_text(item)}")
+            text = _finding_text(item, divergences.get(record_id))
+            lines.append(f"  {record_id} {text}")
         if len(items) > _LISTED_FINDINGS:
             lines.append(f"  ... {len(items) - _LISTED_FINDINGS} more")
 
@@ -499,7 +510,9 @@ def check_lines(report: CheckReport) -> list[str]:
     return lines
 
 
-def _finding_text(item: DifferingRun | int) -> str:
+def _finding_text(
+    item: DifferingRun | int, signature: tuple[str, str, str] | None = None
+) -> str:
     if not isinstance(item, DifferingRun):
         return f"fired before step {item}"
     steps = (
@@ -510,7 +523,13 @@ def _finding_text(item: DifferingRun | int) -> str:
     hit = "" if item.hit is None else f"; hit {item.hit[1]} at {item.hit[0]}"
     ended = "" if item.ended_by is None else f"; ends where {item.ended_by} fires"
     fields = ", ".join(item.fields[:4]) + (" ..." if len(item.fields) > 4 else "")
-    diverged = " (diverged)" if item.diverged else ""
+    diverged = ""
+    if item.diverged:
+        diverged = (
+            " (diverged)"
+            if signature is None
+            else f" (diverged: pending {signature[0]} at {signature[1]})"
+        )
     return f"{steps}{diverged}: {fields or 'no field differs'}{hit}{ended}"
 
 

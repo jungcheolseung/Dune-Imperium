@@ -50,6 +50,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.paths import LOCAL_DIR
 from dune_imperium.records import migration as records_migration
+from dune_imperium.records.portable import trace as portable_trace
 from dune_imperium.records.portable.trace import (
     Digests,
     Fingerprint,
@@ -435,7 +436,11 @@ def corpora(root: Path = CORPUS_ROOT) -> list[Corpus]:
 # reset vector is the recording engine's state there -- and fields the
 # schema drift explains (a field this engine removed or renamed, at the top
 # or in a nested class: ``schema_drift``), are reported once and kept out of
-# the outcomes and verdicts.
+# the outcomes and verdicts; a record judged without reset differences is
+# listed with them (``CheckReport.reset_excluded``) under a warning. So is
+# a manifest ``portable_tree`` other than that of the portable code this
+# checkout loads (``portable_tree``): another canonical form would make
+# every field differ at reset, be kept out, and every record come out exact.
 
 OUTCOMES: Final = ("exact", "equal", "transient", "persistent", "diverged", "failed")
 VERDICTS: Final = (
@@ -444,6 +449,13 @@ VERDICTS: Final = (
     "differs-unbridged",
     "collateral",
     "bridge-without-hit",
+)
+# The verdicts a summary lists one by one, those a reviewer must quote first.
+REVIEW_FIRST: Final = (
+    "collateral",
+    "differs-unbridged",
+    "bridge-without-hit",
+    "diverged-at-hit",
 )
 DEFAULT_WINDOW: Final = 16
 MAX_WORKERS: Final = 4
@@ -670,6 +682,25 @@ def schema_drift(
         if removed or added:
             drift[qualname] = {"removed": removed, "added": added}
     return drift
+
+
+def portable_tree(folder: Path | None = None) -> str:
+    """The git tree hash of the portable code's ``*.py`` files.
+
+    ``folder`` defaults to the portable package this checkout loads
+    (``records.portable``). ``scripts/records/corpus_generate.py`` stamps
+    a corpus's manifest with the same hash of the files it loaded; it
+    equals ``git rev-parse <commit>:src/dune_imperium/records/portable``
+    when they are committed and the folder holds nothing else.
+    """
+
+    folder = folder or Path(portable_trace.__file__).parent
+    entries = b""
+    for path in sorted(folder.glob("*.py"), key=lambda item: item.name.encode()):
+        data = path.read_bytes()
+        blob = hashlib.sha1(b"blob %d\0" % len(data) + data).digest()
+        entries += b"100644 " + path.name.encode() + b"\0" + blob
+    return hashlib.sha1(b"tree %d\0" % len(entries) + entries).hexdigest()
 
 
 def seatless(name: str) -> str:
@@ -996,6 +1027,52 @@ class CheckReport:
     # Manifest ``class_schema`` against this engine's classes (``schema_drift``).
     drift: Mapping[str, Mapping[str, Any]]
     wall_seconds: float
+    # The manifest's ``portable_tree`` (``None`` when it names none) and
+    # that of the portable code this checkout loads (``portable_tree``).
+    corpus_portable_tree: str | None = None
+    engine_portable_tree: str | None = None
+
+    def portable_warning(self) -> str | None:
+        """Why the digests may not compare, when the portable code differs."""
+
+        if self.corpus_portable_tree == self.engine_portable_tree:
+            return None
+        return (
+            f"the corpus names portable_tree {self.corpus_portable_tree or '-'}, "
+            f"this checkout loads {self.engine_portable_tree}: with another "
+            "canonical form or field split, fields differ already at reset and "
+            "are left out, so records come out exact or equal that are not"
+        )
+
+    def reset_excluded(self) -> list[RecordCheck]:
+        """The records judged without fields that differ already at reset."""
+
+        return [record for record in self.records if record.reset_fields]
+
+    def reset_warning(self) -> str | None:
+        """That some outcomes leave reset differences out, and which."""
+
+        excluded = self.reset_excluded()
+        if not excluded:
+            return None
+        outcomes = Counter(record.outcome for record in excluded)
+        counts = ", ".join(
+            f"{outcome} {outcomes[outcome]}"
+            for outcome in OUTCOMES
+            if outcomes[outcome]
+        )
+        return (
+            f"{len(excluded)} records ({counts}) count without fields that differ "
+            "already at reset; their digests are not all equal, e.g. "
+            + ", ".join(record.id for record in excluded[:3])
+        )
+
+    def warnings(self) -> list[str]:
+        return [
+            warning
+            for warning in (self.portable_warning(), self.reset_warning())
+            if warning is not None
+        ]
 
     def outcomes(self, *, control: bool = False) -> dict[str, int]:
         counts = dict.fromkeys(OUTCOMES, 0)
@@ -1078,11 +1155,19 @@ class CheckReport:
             counts.update(record.unpositioned)
         return dict(sorted(counts.items()))
 
-    def summary(self, *, examples: int = 20, findings: int = 200) -> dict[str, Any]:
-        """The report as JSON data: counts, examples and capped finding lists."""
+    def summary(self, *, examples: int = 20, findings: int = 100) -> dict[str, Any]:
+        """The report as JSON data: counts, examples and capped finding lists.
 
+        The listed findings are the items of every verdict but
+        ``bridged-window``, in ``REVIEW_FIRST`` order (those a reviewer
+        must quote first), up to ``findings`` items per verdict;
+        ``findings_by_verdict`` keeps each verdict's total and how many were
+        left out. The failed and reset-excluded records are capped alike.
+        """
+
+        by_id = {record.id: record for record in self.records}
         verdicts: dict[str, Any] = {}
-        listed: list[dict[str, Any]] = []
+        entries_of: dict[str, list[dict[str, Any]]] = {}
         for verdict, items in self.verdicts().items():
             fields: Counter[str] = Counter()
             entries = []
@@ -1096,7 +1181,11 @@ class CheckReport:
                         "fields": list(item.fields),
                         "hit": None if item.hit is None else list(item.hit),
                         "ended_by": item.ended_by,
+                        "diverged": item.diverged,
                     }
+                    divergence = by_id[record_id].divergence
+                    if item.diverged and divergence is not None:
+                        entry["signature"] = list(divergence.signature)
                 else:
                     entry = {"id": record_id, "firing": item}
                 entries.append(entry)
@@ -1106,10 +1195,23 @@ class CheckReport:
                 "fields": dict(fields.most_common()),
                 "examples": entries[:examples],
             }
-            if verdict != "bridged-window":
-                listed.extend({"verdict": verdict, **entry} for entry in entries)
+            entries_of[verdict] = entries
+        listed: list[dict[str, Any]] = []
+        listing: dict[str, dict[str, int]] = {}
+        for verdict in REVIEW_FIRST:
+            entries = entries_of[verdict]
+            listed.extend({"verdict": verdict, **entry} for entry in entries[:findings])
+            listing[verdict] = _capped(len(entries), findings)
+        failed = [record for record in self.records if record.outcome == "failed"]
+        excluded = self.reset_excluded()
         return {
             "corpus": self.corpus,
+            "warnings": self.warnings(),
+            "portable_tree": {
+                "corpus": self.corpus_portable_tree,
+                "checkout": self.engine_portable_tree,
+                "match": self.corpus_portable_tree == self.engine_portable_tree,
+            },
             "corpus_codec": self.corpus_codec,
             "engine_codec": self.engine_codec,
             "migration": self.migration,
@@ -1131,6 +1233,19 @@ class CheckReport:
             },
             "schema_drift": self.drift,
             "reset_fields": self.field_records("reset_fields"),
+            "reset_excluded": {
+                "outcomes": dict(Counter(record.outcome for record in excluded)),
+                **_capped(len(excluded), findings),
+                "items": [
+                    {
+                        "id": record.id,
+                        "outcome": record.outcome,
+                        "control": record.control,
+                        "fields": list(record.reset_fields),
+                    }
+                    for record in excluded[:findings]
+                ],
+            },
             "drift_fields": self.field_records("drift_fields"),
             "unpositioned_hit_keys": self.unpositioned(),
             "divergences": [
@@ -1153,16 +1268,23 @@ class CheckReport:
                 for (frame, key), ids in self.divergence_hits()
             ],
             "verdicts": verdicts,
-            "findings": listed[:findings],
-            "findings_total": len(listed),
+            "findings": listed,
+            "findings_total": sum(item["total"] for item in listing.values()),
+            "findings_by_verdict": listing,
             "failed": [
-                {"id": record.id, "error": record.error}
-                for record in self.records
-                if record.outcome == "failed"
-            ][:findings],
+                {"id": record.id, "error": record.error} for record in failed[:findings]
+            ],
+            "failed_left_out": _capped(len(failed), findings)["left_out"],
             "wall_seconds": round(self.wall_seconds, 1),
             "cpu_seconds": round(self.cpu_seconds(), 1),
         }
+
+
+def _capped(total: int, cap: int) -> dict[str, int]:
+    """``{"total", "listed", "left_out"}`` of ``total`` items listed up to ``cap``."""
+
+    listed = min(total, cap)
+    return {"total": total, "listed": listed, "left_out": total - listed}
 
 
 def control_rows(
@@ -1276,4 +1398,6 @@ def check(
         records=tuple(results),
         drift=schema_drift(corpus.manifest["class_schema"], classes) if classes else {},
         wall_seconds=time.monotonic() - started,
+        corpus_portable_tree=corpus.manifest.get("portable_tree"),
+        engine_portable_tree=portable_tree(),
     )

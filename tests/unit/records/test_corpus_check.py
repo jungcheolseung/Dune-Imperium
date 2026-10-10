@@ -26,12 +26,15 @@ from dune_imperium.records import corpus as corpus_module
 from dune_imperium.records.corpus import (
     DEFAULT_WINDOW,
     NICENESS,
+    CheckReport,
     Corpus,
     DifferingRun,
+    DivergenceCheck,
     RecordCheck,
     check,
     judge,
     load_migration,
+    portable_tree,
     seatless,
 )
 from dune_imperium.records.migration import migrate_record, walk
@@ -244,6 +247,49 @@ def test_the_tiny_corpus_checks_exact(
     assert "\nexact               4\n" in out
     assert "schema drift: none" in out
     assert "fields that differ already at reset: none" in out
+    assert "warning" not in out.lower()
+    summary = report.summary()
+    assert summary["warnings"] == [] and summary["portable_tree"]["match"]
+    assert summary["reset_excluded"]["total"] == 0
+
+
+def test_a_corpus_of_other_portable_code_is_warned_about(
+    tiny_corpus: Path,
+    tmp_path: Path,
+    generator: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The generator stamps the tree of the portable code it loaded, the
+    # check that of the code this checkout loads: here the same folder.
+    here = portable_tree()
+    assert here == generator.portable_tree()
+    assert Corpus.open(tiny_corpus).manifest["portable_tree"] == here
+
+    copy = _copy(tiny_corpus, tmp_path)
+    manifest_path = copy / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["portable_tree"] = "f" * 40
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    corpus = Corpus.open(copy)
+    report = check(corpus, [corpus.row(RECORD)])
+    warning = report.portable_warning()
+    assert warning is not None and f"portable_tree {'f' * 40}" in warning
+    assert here in warning
+    summary = report.summary()
+    assert summary["portable_tree"] == {
+        "corpus": "f" * 40,
+        "checkout": here,
+        "match": False,
+    }
+    assert summary["warnings"] == [warning]
+
+    out_json = tmp_path / "check.json"
+    argv = ["corpus", "check", str(copy), "--ids", _ids(tmp_path, RECORD)]
+    assert main([*argv, "--json", str(out_json)]) == 0
+    out = capsys.readouterr().out
+    # At the top, under the line naming the selection.
+    assert out.splitlines()[1] == f"WARNING: {warning}"
+    assert json.loads(out_json.read_text(encoding="utf-8"))["warnings"] == [warning]
 
 
 def test_an_altered_digest_differs_at_its_step_and_names_the_field(
@@ -291,6 +337,23 @@ def test_a_field_that_differs_at_reset_is_listed_and_kept_out(
     assert result.outcome == "exact" and result.runs == ()
     assert report.field_records("reset_fields") == {"players[*].deck": 1}
     assert all(not items for items in report.verdicts().values())
+    # The record is exact only without the field: it says so.
+    assert report.reset_excluded() == [result]
+    summary = report.summary()
+    assert summary["reset_excluded"] == {
+        "outcomes": {"exact": 1},
+        "total": 1,
+        "listed": 1,
+        "left_out": 0,
+        "items": [
+            {"id": RECORD, "outcome": "exact", "control": False, "fields": [name]}
+        ],
+    }
+    warning = (
+        "1 records (exact 1) count without fields that differ already at reset; "
+        f"their digests are not all equal, e.g. {RECORD}"
+    )
+    assert summary["warnings"] == [warning]
 
     assert main(["corpus", "check", str(copy)]) == 0
     out = capsys.readouterr().out
@@ -298,6 +361,7 @@ def test_a_field_that_differs_at_reset_is_listed_and_kept_out(
         "fields that differ already at reset (kept out of outcomes and verdicts):\n"
         "  players[*].deck in 1 records\n"
     ) in out
+    assert f"\ntotal               4\nwarning: {warning}\n" in out
 
 
 def test_schema_drift_is_listed_and_explains_its_fields(
@@ -621,9 +685,9 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
     assert f"pending {frame} after draws:card@near  e.g. {record_id}@{at}" in out
     assert f"e.g. {record_id}@{at}" in out
     assert (
-        f"  {record_id} step {at} (diverged): no field differs; hit draws:card@near"
-        in out
-    )
+        f"  {record_id} step {at} (diverged: pending {frame} at "
+        f"{steps[at]['action_id']}): no field differs; hit draws:card@near"
+    ) in out
 
     # The state this engine stopped in is compared with the trace too.
     vectors = _vectors(corpus, record_id)
@@ -651,6 +715,19 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
     assert result.divergence is not None
     assert report.signatures() == [(result.divergence.signature, [f"{record_id}@{at}"])]
     assert report.divergence_hits() == []
+    assert report.summary()["findings"] == [
+        {
+            "verdict": "collateral",
+            "id": record_id,
+            "start": at - 30,
+            "end": at,
+            "fields": [name],
+            "hit": None,
+            "ended_by": None,
+            "diverged": True,
+            "signature": list(result.divergence.signature),
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -754,6 +831,77 @@ def test_judge_names_fields_and_the_hit() -> None:
     assert (run.verdict, run.ended_by) == ("collateral", "pause, split")
     assert seatless("players[1].hand") == "players[*].hand"
     assert seatless("round_number") == "round_number"
+
+
+def test_the_summary_lists_what_to_quote_first_and_counts_what_it_leaves_out() -> None:
+    collateral = DifferingRun(10, 11, ("players[0].hand",), "collateral")
+    records = [
+        RecordCheck(f"c{n}", "transient", 100, runs=(collateral,)) for n in range(105)
+    ]
+    records += [
+        RecordCheck(
+            "u",
+            "persistent",
+            100,
+            runs=(DifferingRun(20, 100, ("b",), "differs-unbridged", (15, "k")),),
+        ),
+        RecordCheck(
+            "b",
+            "transient",
+            100,
+            bridges={"x": 2},
+            runs=(
+                DifferingRun(30, 31, ("c",), "bridged-window", (25, "k"), ended_by="x"),
+            ),
+            firings=(32, 60),
+            lone_firings=(60,),
+        ),
+        RecordCheck(
+            "d",
+            "diverged",
+            100,
+            runs=(DifferingRun(50, 50, (), "diverged-at-hit", (49, "k"), True),),
+            divergence=DivergenceCheck(50, ("turn", "send_agent", "reason")),
+        ),
+    ]
+    report = CheckReport(
+        "v141-test", 141, 141, "records.migration", ("k",), ("x",), 16,
+        tuple(records), {}, 0.0, "tree", "tree",
+    )  # fmt: skip
+    summary = report.summary()
+    assert {
+        verdict: item["count"] for verdict, item in summary["verdicts"].items()
+    } == {
+        "bridged-window": 1,
+        "diverged-at-hit": 1,
+        "differs-unbridged": 1,
+        "collateral": 105,
+        "bridge-without-hit": 1,
+    }
+    assert summary["verdicts"]["collateral"]["fields"] == {"players[*].hand": 105}
+    listed = [(item["verdict"], item["id"]) for item in summary["findings"]]
+    assert listed == [
+        *[("collateral", f"c{n}") for n in range(100)],
+        ("differs-unbridged", "u"),
+        ("bridge-without-hit", "b"),
+        ("diverged-at-hit", "d"),
+    ]
+    assert summary["findings_total"] == 108
+    assert summary["findings_by_verdict"] == {
+        "collateral": {"total": 105, "listed": 100, "left_out": 5},
+        "differs-unbridged": {"total": 1, "listed": 1, "left_out": 0},
+        "bridge-without-hit": {"total": 1, "listed": 1, "left_out": 0},
+        "diverged-at-hit": {"total": 1, "listed": 1, "left_out": 0},
+    }
+    assert summary["findings"][-2] == {
+        "verdict": "bridge-without-hit",
+        "id": "b",
+        "firing": 60,
+    }
+    assert summary["findings"][-1]["signature"] == ["turn", "send_agent", "reason"]
+    assert summary["warnings"] == [] and summary["failed_left_out"] == 0
+    capped = report.summary(findings=2)["findings_by_verdict"]
+    assert capped["collateral"] == {"total": 105, "listed": 2, "left_out": 103}
 
 
 def test_controls_leave_out_records_with_hits(
