@@ -13,7 +13,10 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    OWED_INTRIGUE,
     FrameKind,
+    draw_waits_for_owner,
+    hold_draw,
     turn_owner_of,
     update_turn_recruits,
 )
@@ -151,7 +154,14 @@ def trash_personal_card(
             )
     if _trash_effect(card_id) is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD:
         draw_source = f"{source}:trash:{card_id}:intrigue_draw"
-        if intrigue_deck:
+        if draw_waits_for_owner(state, player):
+            # Sardaukar Soldier's "when trashed" Intrigue card waits as the
+            # seat's own step in its turn, so the trash choice stays
+            # undoable (user ruling 2026-10-10, OQ-106).
+            next_owner = hold_draw(
+                next_owner, OWED_INTRIGUE, f"card:{card_id}", draw_source
+            )
+        elif intrigue_deck:
             next_owner = credit_suspensor_suits(
                 state,
                 replace(

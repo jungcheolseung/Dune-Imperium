@@ -252,6 +252,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     int_arg,
     spy_answer,
     str_arg,
+    triggered_draw,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import (
@@ -2038,6 +2039,9 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     (``finish_reveal``).
     """
 
+    drawn = triggered_draw(run)
+    if drawn is not None:
+        return drawn
     if any(a.action_id not in _REVEAL_ACTIONS for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
     # A resumed choice frame has been answered by now; an intent left behind

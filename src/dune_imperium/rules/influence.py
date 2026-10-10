@@ -8,7 +8,12 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.frames import (
+    OWED_INTRIGUE,
+    draw_waits_for_owner,
+    hold_draw,
+    replace_player,
+)
 from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 
 MAX_INFLUENCE = 6
@@ -37,6 +42,9 @@ def gain_faction_influence(
     pending_navigation = state.pending_navigation_plays
     pending_spies = state.pending_track_spies
     pending_four = state.scouts_four_bonus_choices
+    # Inside the seat's own turn a bonus Intrigue card waits as its own step
+    # (user ruling 2026-10-10, OQ-106).
+    hold = draw_waits_for_owner(state, player)
     gained = 0
     events: list[GameEvent] = []
     for step in range(amount):
@@ -67,6 +75,7 @@ def gain_faction_influence(
                     player,
                     faction,
                     event_id=f"{event_prefix}:leader_bonus:{step}",
+                    hold=hold,
                 )
             )
             # Imperial Birthright's Intrigue draw counts for Suspensor Suits.
@@ -114,6 +123,7 @@ def gain_faction_influence(
                     player,
                     faction,
                     source=track_bonus_source,
+                    hold=hold,
                 )
                 events.append(bonus_event)
 
@@ -163,6 +173,7 @@ def _grant_four_bonus(
     faction: Faction,
     *,
     source: str,
+    hold: bool,
     reached: Faction | None = None,
 ) -> tuple[
     tuple[PlayerState, ...],
@@ -175,6 +186,8 @@ def _grant_four_bonus(
 
     ``reached`` names the track actually reached when Friends Everywhere
     let the seat take another Faction's bonus (it is added to the event).
+    With ``hold`` the Bene Gesserit bonus's Intrigue card waits as the
+    seat's own step (``draw_waits_for_owner``, OQ-106).
     """
 
     deck_before = len(intrigue_deck)
@@ -183,6 +196,8 @@ def _grant_four_bonus(
         intrigue_deck,
         player,
         faction,
+        hold=hold,
+        source=source,
     )
     # The Bene Gesserit bonus's Intrigue draw counts for Suspensor Suits.
     players = replace_player(
@@ -240,6 +255,7 @@ def grant_chosen_four_bonus(
         player,
         chosen,
         source=source,
+        hold=draw_waits_for_owner(state, player),
         reached=reached,
     )
     return RuleResult(
@@ -431,6 +447,7 @@ def _apply_reach_two_leader_bonus(
     faction: Faction,
     *,
     event_id: str,
+    hold: bool,
 ) -> tuple[
     tuple[PlayerState, ...],
     tuple[str, ...],
@@ -441,7 +458,9 @@ def _apply_reach_two_leader_bonus(
 
     Loyalty grants two Spice on reaching two Bene Gesserit Influence
     [Lady Margot Fenring card]; Imperial Birthright draws one Intrigue card
-    on reaching two Emperor Influence [Princess Irulan card].
+    on reaching two Emperor Influence [Princess Irulan card]. With ``hold``
+    that card waits as the seat's own step (user ruling 2026-10-10,
+    OQ-106).
     """
 
     owner = players[player]
@@ -462,7 +481,12 @@ def _apply_reach_two_leader_bonus(
         return replace_player(players, owner), intrigue_deck, pending_draws, (event,)
     if owner.leader_id == "princess_irulan" and faction is Faction.EMPEROR:
         # Card identity stays hidden [Main p. 7]; only the count is public.
-        if intrigue_deck:
+        if hold:
+            players = replace_player(
+                players,
+                hold_draw(owner, OWED_INTRIGUE, "imperial_birthright", event_id),
+            )
+        elif intrigue_deck:
             owner = replace(
                 owner,
                 intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
@@ -489,6 +513,9 @@ def _apply_track_bonus(
     intrigue_deck: tuple[str, ...],
     player: int,
     faction: Faction,
+    *,
+    hold: bool,
+    source: str,
 ) -> tuple[
     tuple[PlayerState, ...],
     tuple[str, ...],
@@ -518,7 +545,13 @@ def _apply_track_bonus(
         case Faction.BENE_GESSERIT:
             # Card identity stays hidden [Main p. 7]; only the count is public.
             payload = (("intrigue", 1),)
-            if intrigue_deck:
+            if hold:
+                # Inside the seat's own turn the card waits as its own step
+                # (user ruling 2026-10-10, OQ-106).
+                owner = hold_draw(
+                    owner, OWED_INTRIGUE, "bene_gesserit_4", f"{source}:intrigue"
+                )
+            elif intrigue_deck:
                 owner = replace(
                     owner,
                     intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),

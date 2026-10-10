@@ -32,6 +32,26 @@ from dune_imperium.agents.app_ai.choice import (
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, arg
 from dune_imperium.core.actions import DomainAction
 
+#: A draw another effect triggered in the seat's own turn, which the project
+#: holds as the owner's own step (user ruling 2026-10-10, OQ-106); the app
+#: draws it inside the triggering step.
+TRIGGERED_DRAWS: frozenset[str] = frozenset(
+    {"draw_owed_intrigue", "draw_owed_card"}
+)
+
+
+def triggered_draw(run: DecisionRun) -> DomainAction | None:
+    """The waiting triggered draw, taken before anything else (OQ-106).
+
+    The app has no such step: its trigger (a track bonus, a Leader ability,
+    a "when trashed" or acquire box, a Tech tile) draws inside the step that
+    fired it, before the next prompt. So the turn, Agent-effect and Reveal
+    windows take it first, and the decision after it sees the hand the
+    app's would.
+    """
+
+    return next((a for a in run.legal if a.action_id in TRIGGERED_DRAWS), None)
+
 
 class Stage(IntEnum):
     """Where the app engine resolves a source (lower runs first)."""

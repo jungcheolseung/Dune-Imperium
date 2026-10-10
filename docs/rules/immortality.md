@@ -62,6 +62,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 
 - Tleilaxu 아이콘을 얻을 때마다 Tleilaxu token을 한 칸 전진한다. 보너스가 있는 칸에 도달하면 즉시 얻는다. `[Immortality pp. 7, 16]`
 - 칸 0이 시작 칸이다. 칸 2: Intrigue 1, 칸 4: VP 1(각 플레이어가 도달할 때마다; **처음** 도달한 플레이어는 setup 때 놓인 spice 2도 가져간다), 칸 6: Intrigue 1, 칸 7(마지막): VP 1. `[Immortality pp. 4, 7]` `[Immortality p. 3 board artwork]`
+- 자기 turn 안에서 칸 2·6에 닿으면 token 전진(공개)은 그 단계에서 하고 Intrigue 카드는 소유자의 단계 `draw_owed_intrigue`로 남는다 — 연구 방향 선택, Replacement Eyes의 trash 트리거 등 그 전진을 일으킨 선택을 되돌릴 수 있게(2026-10-10 사용자 판정, [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 6 — project convention). 자기 turn 밖이면 바로 뽑는다.
 - Bene Tleilax는 Faction이 아니다. "아무 Faction의 Influence"를 주는 효과로 Tleilaxu track을 전진할 수 없다. `[FAQ p. 4]`
 - 마지막 칸(7)에서는 Tleilaxu 아이콘이 아무것도 하지 않으므로(OQ-048) 비용을 내고 Tleilaxu 전진만 얻는 줄 — Slig Farmer의 Solari 5, Tleilaxu Surgeon의 specimen 2, 연구 칸 c8r6의 Solari 7, Reclaimed Forces의 Tleilaxu 선택 — 은 제시하지 않는다(2026-10-06, 사용자 결정 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"의 확장, OQ-071). 같은 날 사용자 판정("아무 효과 없이 책략을 쓸 수 없는거지", OQ-071의 카드 확장 2)으로 비용이 없는 Intrigue의 전진도 같다: Illicit Dealings와 Shadowy Bargain의 Endgame option은 마지막 칸에서 낼 수 없고, Gruesome Sacrifice는 specimen을 만들 troop이 있을 때만 낸다(OQ-048의 2026-10-06 귀결).
 
@@ -118,7 +119,7 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 
 - specimen은 supply의 troop이므로 [player-turns.md](player-turns.md)의 recruit 규칙과 OQ-030이 그대로 적용된다. recruit는 해결 시점의 supply만큼 일어나고, 못 한 수는 같은 player turn 안에서 supply에 troop이 돌아오면 자동으로 채운다(2026-10-04 재판정). specimen 부족분도 같은 방식이다(OQ-049). 플레이어는 specimen을 먼저 돌려보내 supply를 채울 수도 있다 `[Immortality p. 8]`. 반환을 제시하는 창은 OQ-050이다(자기 turn, Combat Intrigue 우선권, supply가 빈 Control 방어).
 - Graft는 [player-turns.md](player-turns.md)의 "카드 1장과 일치하는 Agent 아이콘 하나로 Agent 1개 배치" `[Main p. 9]`를 카드 두 장으로 넓히는 예외이며, 두 카드의 Agent box는 space 효과와 같은 자유 순서 그룹에 들어간다(OQ-027).
-- Bloodlines와 함께 쓸 때 "lose a troop"·retreat 효과의 Commander 취급은 [bloodlines.md](bloodlines.md) 3절을 따른다. Piter, Genius Advisor의 "Lose a troop" 비용에도 Commander를 낼 수 있다(2026-10-10 사용자 판정, [OQ-105](open-questions.md#oq-105--스스로-내는-troop-잃기-비용에-sardaukar-commander를-쓸-수-있는가)). Tleilaxu Surgeon의 "Lose two troops"만 troop을 요구한다(OQ-053).
+- Bloodlines와 함께 쓸 때 "lose a troop"·retreat 효과의 Commander 취급은 [bloodlines.md](bloodlines.md) 3절을 따른다. Piter, Genius Advisor의 "Lose a troop" 비용에도 Commander를 낼 수 있다(2026-10-10 사용자 판정, [OQ-105](open-questions.md#oq-105--스스로-내는-troop-잃기-비용에-sardaukar-commander를-쓸-수-있는가)). 비용을 낸 뒤 "draw two cards and Research"는 각자의 단계로 순서 자유다(2026-10-10 사용자 판정, project convention [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다)). Tleilaxu Surgeon의 "Lose two troops"만 troop을 요구한다(OQ-053).
 - 공식 문서가 침묵하는 판정은 [open-questions.md](open-questions.md)에 기록한다.
 
 ## 10. 구현 상태

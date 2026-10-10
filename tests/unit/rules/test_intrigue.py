@@ -1626,14 +1626,23 @@ def test_cunning_offers_a_free_draw_or_a_paid_draw_with_optional_trash() -> None
         _starter("reconnaissance"),
     }
 
+    # The trash (or its decline) draws nothing: the line's draw waits for
+    # its own step, the only one left (user ruling 2026-10-10, OQ-106).
+    rewards = DomainAction(action_id="resolve_intrigue_rewards", actor=0)
     trashed = engine.apply(opened, _trash(dagger)).state
     assert trashed.players[0].trashed == (dagger,)
+    assert trashed.players[0].hand == ()
+    assert engine.legal_actions(trashed, 0) == (rewards,)
+    trashed = engine.apply(trashed, rewards).state
     assert trashed.players[0].hand == deck
     assert trashed.intrigue_discard == (card,)
 
     declined = engine.apply(
         opened, DomainAction(action_id="decline_intrigue_trash", actor=0)
     ).state
+    assert declined.players[0].hand == (dagger,)
+    assert engine.legal_actions(declined, 0) == (rewards,)
+    declined = engine.apply(declined, rewards).state
     assert declined.players[0].trashed == ()
     assert declined.players[0].hand == (dagger, *deck)
 
@@ -1673,6 +1682,49 @@ def test_cunning_owner_may_draw_first_and_trash_the_drawn_card() -> None:
     assert trashed.players[0].hand == (dagger,)
     assert trashed.players[0].deck == ()
     assert trashed.intrigue_discard == (card,)
+
+
+def test_cunning_trash_first_leaves_the_draw_its_own_step() -> None:
+    """ "그 외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기
+    전에 버림더미 카드를 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10,
+    OQ-106; OQ-015 (d)): Cunning's "1 spice -> [draw 1] [trash a card]"
+    [Cunning card] lets the owner trash first. The trash is a public choice
+    and no longer draws with it; the draw stays its own step, the card's
+    only one left, and draws exactly once. With an empty deck, trashing the
+    discard pile's card first keeps it out of the reshuffle; drawing first
+    reshuffles it back into the hand.
+    """
+
+    card = _intrigue("cunning")
+    junk = _starter("dagger")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        discard_pile=(junk,),
+        resources=Resources(spice=1),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+    rewards = DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    assert rewards in engine.legal_actions(opened, 0)
+    trashed = engine.apply(opened, _trash(junk))
+    assert trashed.state.players[0].trashed == (junk,)
+    assert trashed.state.decision_stack[-1].kind == "intrigue_choice"
+    assert engine.legal_actions(trashed.state, 0) == (rewards,)
+    finished = engine.apply(trashed.state, rewards).state
+    assert finished.players[0].hand == ()
+    assert finished.intrigue_discard == (card,)
+    assert finished.decision_stack[-1].kind == "turn"
+    assert rewards not in engine.legal_actions(finished, 0)
+
+    drawn = engine.apply(opened, rewards)
+    decision = drawn.next_decision
+    assert isinstance(decision, ChanceDecision)
+    shuffled = engine.apply(drawn.state, ChanceResolver(seed=1).resolve(decision))
+    assert shuffled.state.players[0].hand == (junk,)
+    assert rewards not in engine.legal_actions(shuffled.state, 0)
 
 
 def test_cunning_trash_of_eliminate_allies_before_placement_joins_the_combat_turn() -> (

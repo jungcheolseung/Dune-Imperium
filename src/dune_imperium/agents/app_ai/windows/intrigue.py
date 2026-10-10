@@ -32,10 +32,13 @@ separate lines (OQ-058), the ``intrigue_effects`` window.
   unmirrored window), the card's ability is evaluated again on the current
   state and its answer recorded as the intent; a step the answer does not
   cover is answered by the slot's app evaluator (the "fallback" column).
-- ``resolve_intrigue_rewards`` is never chosen: the app runs each card's
-  automatic part after its choices (Cunning trashes before it draws,
-  ``<RunImmediateEffects>d__11 @0x4c08f00``; Unexpected Allies blows the wall
-  before the worm), which our engine does when the last slot finishes.
+- ``resolve_intrigue_rewards`` is chosen only once every slot is answered:
+  the app runs each card's automatic part after its choices (Cunning trashes
+  before it draws, ``<RunImmediateEffects>d__11 @0x4c08f00``; Unexpected
+  Allies blows the wall before the worm). Our engine applies a part that
+  draws nothing with the last slot, and leaves one that draws (Cunning,
+  Insider Information) as that one action, taken at once (user ruling
+  2026-10-10, OQ-106).
 - Returns None (random fallback, counted) only for cards and slots this port
   has no app or app-style answer for (an intrigue card without an archetype,
   a slot kind a card does not print).
@@ -1492,6 +1495,10 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
     slot through the app evaluator that asks it (module table).
     """
 
+    rewards = run.first("resolve_intrigue_rewards")
+    if rewards is not None and len(run.legal) == 1:
+        # Every slot is answered; the line's draw is its own step (OQ-106).
+        return rewards
     frame = _choice_frame(run)
     if frame is None:
         return None

@@ -537,21 +537,57 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # reproduce the pins above exactly; base and everything never visit Imperial
 # Privilege. ``adapters/observation_encoding.py`` and ``core/observation.py``
 # are unchanged.
+# v142, third change (user ruling 2026-10-10, OQ-106): the draw Urgent
+# Shigawire adds to a boosted Bene Gesserit card's Agent box is its own
+# ``resolve_agent_card_effect(cards)`` step, so the legal list right after a
+# boosted placement holds one more action. Only "everything" moves: at
+# decision 631 (round 8, seat 1, after Weirding Woman's boosted placement on
+# Arrakeen) the random seat draws from 6 actions instead of 5 (3,620 ->
+# 3,640 vectors). With the placement drawing the card again (a scratch copy
+# of the previous commit's source) all six games reproduce the pins above
+# exactly.
+# v142, fourth change (OQ-106): Cunning's and Insider Information's draw is
+# its own ``resolve_intrigue_rewards`` step when the owner resolves the
+# trash first. Only promo_bloodlines_tech moves: at decision 547 (round 8,
+# seat 2, right after Insider Information's trash) the draw is the seat's
+# one legal action, where the trash had drawn already and the random seat
+# chose among 6 (3,172 -> 3,164 vectors). With the
+# trash drawing again (a scratch copy of the previous commit's source) all
+# six games reproduce the pins above exactly.
+# v142, fifth change (OQ-106): a draw another printed effect triggers in
+# the seat's own turn waits as its own ``draw_owed_intrigue`` step. Two
+# games move: everything at decision 216 (round 4, seat 2, right after its
+# research direction c3r5 moved its Tleilaxu token onto the track's
+# Intrigue space), where the random seat draws the card from 4 actions
+# instead of deploying (3,640 -> 3,544 vectors), and scouts at decision 812
+# (round 10, seat 3, right after its Reveal bought Overthrow), where the
+# draw is the seat's one legal action (3,368 -> 3,372 vectors). With the
+# triggers drawing again (a scratch copy of the previous commit's source)
+# all six games reproduce the pins above exactly.
+# v142, sixth change (OQ-106): a draw printed after one of an Arrakeen
+# Scouts line's reward choices waits as the line's own
+# ``scouts_rewards_first``. Only scouts moves: at decision 384 (round 6,
+# seat 2, right after its Water Discipline trash) the draw is the seat's
+# one legal action, where the trash had drawn already and seat 3 chose its
+# line next (3,372 -> 3,552 vectors). The pause before a later auction
+# winner's reward (the commit before) moves none of the six. With the trash
+# drawing again (a scratch copy of the previous commit's source) all six
+# games reproduce the pins above exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
     "promo_bloodlines_tech": (
-        "1af539caf7c6a6dbe94605a3411935c0198f495c2ae7263a65e32e45b71b540c",
-        3172,
+        "92815f46b8d9f8e393f8d102df256f113c5d6e1bf628297a18d18c5504c38519",
+        3164,
     ),
     "everything": (
-        "40104687a06f0898476d74e4b00588f893a5a53457631162cc92f91bd4e6fd0f",
-        3620,
+        "59dda2cf4dc4292e56d3a3525851a67939dbdab5d1754d2193465e1552bea5c1",
+        3544,
     ),
     "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
-        "bbcab915e68bfe5956bf4340c62f6fd0cfdb524c16c58a2c5b7598b1469bc42d",
-        3368,
+        "cee146800ade32ee6787068fcba6f28b8fe0812d759e7efed2baa0a968d1c4ad",
+        3552,
     ),
 }
 _GOLDEN_CONFIGS = {

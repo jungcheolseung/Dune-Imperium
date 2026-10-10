@@ -17,7 +17,12 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import FrameKind, owes_track_spy, reset_turn_counters
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owes_held_draw,
+    owes_track_spy,
+    reset_turn_counters,
+)
 from dune_imperium.rules.strength import conflict_agent_strength
 
 
@@ -164,6 +169,8 @@ def open_next_turn(state: GameState, player: int) -> GameState:
 
     if owes_track_spy(state, player):
         raise RuntimeError("a turn cannot pass over an owed Emperor track Spy")
+    if owes_held_draw(state, player):
+        raise RuntimeError("a turn cannot pass over a waiting triggered draw")
     next_player = next_unrevealed_player(state, player)
     players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
@@ -295,6 +302,24 @@ def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
     remaining.remove(key)
     context["pending_agent_icons"] = ",".join(remaining)
     context["pending_agent_effect"] = bool(remaining)
+
+
+# Urgent Shigawire: "The next Bene Gesserit card you play this round has all
+# Agent icons and, added to its Agent box: draw a card." [Urgent Shigawire
+# card]. The boosted card's instance ID while that added draw waits for its
+# own ``resolve_agent_card_effect(effect=cards)``; absent otherwise. It is
+# kept apart from the box's own icons because the card's box may be a
+# single effect, an arrow, a box of its own icons or no box at all.
+BOOST_DRAW_KEY = "boost_draw_card_id"
+
+
+def pending_boost_draw(context: Mapping[str, ActionValue]) -> str:
+    """Return the boosted card whose added draw still waits ("" if none)."""
+
+    value = context.get(BOOST_DRAW_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Agent-turn effect frame has invalid boost draw")
+    return value
 
 
 # The Bloodlines Sardaukar Commander offer of a visited space: "an effect of
@@ -442,6 +467,10 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
         # Placed in any order, but before the turn ends (user ruling
         # 2026-10-04, overriding OQ-057 (15)).
         raise RuntimeError("an Agent turn cannot close over an owed track Spy")
+    if owes_held_draw(state, owner):
+        # Taken in any order, but before the turn ends (user ruling
+        # 2026-10-10, OQ-106).
+        raise RuntimeError("an Agent turn cannot close over a waiting draw")
     next_player = next_unrevealed_player(state, owner)
     players = reset_turn_counters(state.players, next_player, closing=owner)
     next_frame = DecisionFrame(
@@ -482,6 +511,9 @@ def agent_turn_has_other_pending_effects(
         False if ignore_agent_effect else context.get("graft_pending_effect", False),
         context["pending_board_effect"],
         context["pending_faction_influence"],
+        # Urgent Shigawire's added draw is offered whatever the box does
+        # (user ruling 2026-10-10, OQ-106).
+        bool(pending_boost_draw(context)),
     )
     if any(value is True for value in regular_pending):
         return True

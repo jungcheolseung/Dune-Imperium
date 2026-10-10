@@ -1384,7 +1384,9 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     owner = paid.state.players[0]
     assert owner.specimens == 0 and owner.troops_supply == 9
     assert owner.tleilaxu_space == 2
-    assert len(owner.intrigue_cards) == 1  # the track's second space
+    # The track's second space: its Intrigue card waits as the owner's own
+    # step (user ruling 2026-10-10, OQ-106).
+    assert [entry[1] for entry in owner.owed_draws] == ["tleilaxu_track"]
 
     revealed = _reveal(
         _state(

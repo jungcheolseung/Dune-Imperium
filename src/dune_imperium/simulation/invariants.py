@@ -326,6 +326,39 @@ def check_track_spy_queue(state: GameState) -> None:
         )
 
 
+def check_owed_draws(state: GameState) -> None:
+    """Fail when a triggered draw waits anywhere but in its seat's own turn.
+
+    A draw a trigger earns waits as its seat's own step only inside that
+    seat's Agent or Reveal turn (user ruling 2026-10-10, OQ-106,
+    ``frames.draw_waits_for_owner``); the turn's end is not offered while
+    one waits, and ``owed_draws.pay_stale_owed_draws`` would pay one left
+    anywhere else. Only an owner action earns one, so it never waits while
+    the turn's start is open (OQ-095 (6)). Checked at a player decision.
+    """
+
+    owner = turn_owner_of(state)
+    stray = [
+        seat.player_id
+        for seat in state.players
+        if seat.owed_draws and seat.player_id != owner
+    ]
+    if stray:
+        raise InvariantViolation(
+            f"triggered draws of seats {stray} wait outside their turn "
+            f"(turn owner {owner})"
+        )
+    if (
+        owner is not None
+        and state.players[owner].owed_draws
+        and turn_start_is_open(state, owner)
+    ):
+        raise InvariantViolation(
+            f"seat {owner} has a triggered draw waiting while its turn start "
+            "is still open"
+        )
+
+
 def check_observation_privacy(state: GameState) -> None:
     """Fail when any observation depends on hidden information.
 

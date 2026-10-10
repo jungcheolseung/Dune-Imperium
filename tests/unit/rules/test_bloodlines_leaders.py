@@ -1096,16 +1096,97 @@ def test_arrakis_planetologist_ignores_sietch_tabr_and_replaces_sandworms() -> N
     seat = replaced.state.players[0]
     assert seat.sandworms_conflict == 0
     assert seat.resources.spice == 1
-    assert len(seat.intrigue_cards) == 1
+    # The Intrigue card is its own step in the replacement's frame (user
+    # ruling 2026-10-10, OQ-106): the summon draws nothing.
+    assert seat.intrigue_cards == ()
     assert "sandworms_replaced" in {event.kind for event in replaced.events}
     frame = replaced.state.decision_stack[-1]
     assert frame.kind == "optional_trash"
     options = legal_optional_trash_actions(replaced.state, 0)
     assert options[0].action_id == "decline_optional_trash"
+    assert options[-1] == _DRAW_PLANETOLOGIST
     trash_recon = next(a for a in options[1:] if dict(a.arguments)["card_id"] == RECON)
     trashed = apply_optional_trash(replaced.state, trash_recon).state
     assert RECON in trashed.players[0].trashed
-    assert trashed.decision_stack[-1].kind != "optional_trash"
+    assert trashed.decision_stack[-1].kind == "optional_trash"
+    assert legal_optional_trash_actions(trashed, 0) == (_DRAW_PLANETOLOGIST,)
+    drawn = apply_optional_trash(trashed, _DRAW_PLANETOLOGIST).state
+    assert len(drawn.players[0].intrigue_cards) == 1
+    assert drawn.decision_stack[-1].kind != "optional_trash"
+
+
+_DRAW_PLANETOLOGIST = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+
+
+def test_planetologist_intrigue_is_its_own_step_in_either_order() -> None:
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): the
+    replacement's "[trash a card] [1 spice] [1 Intrigue]" [Liet Kynes card]
+    pays the spice with the summon, while the Intrigue card waits as its own
+    step beside the trash, in either order, and is drawn exactly once. The
+    summon itself reveals nothing (OQ-010).
+    """
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(RECON, DUNE),
+        maker_hooks=True,
+        resources=Resources(water=2),
+    )
+    placed = _play(_turn_state(owner), DUNE, "hagga_basin")
+    summon = next(
+        a
+        for a in legal_maker_space_actions(placed, 0)
+        if a.action_id == "summon_maker_sandworms"
+    )
+    replaced = apply_maker_space_action(placed, summon).state
+    assert replaced.players[0].intrigue_cards == ()
+    assert replaced.intrigue_deck == placed.intrigue_deck
+
+    drawn = apply_optional_trash(replaced, _DRAW_PLANETOLOGIST).state
+    assert len(drawn.players[0].intrigue_cards) == 1
+    assert drawn.decision_stack[-1].kind == "optional_trash"
+    after_draw = legal_optional_trash_actions(drawn, 0)
+    assert _DRAW_PLANETOLOGIST not in after_draw
+    assert after_draw[0].action_id == "decline_optional_trash"
+    declined = apply_optional_trash(drawn, after_draw[0]).state
+    assert declined.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert len(declined.players[0].intrigue_cards) == 1
+
+
+def test_unexpected_allies_shield_wall_choice_draws_nothing_for_liet_kynes() -> None:
+    """Unexpected Allies' Shield Wall choice summons the sandworm Arrakis
+    Planetologist replaces; the replacement's Intrigue card is its own step
+    (user ruling 2026-10-10, OQ-106), so the Shield Wall choice reveals no
+    hidden card."""
+
+    card = "intrigue:unexpected_allies:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(RECON,),
+        intrigue_cards=(card,),
+        resources=Resources(water=2),
+    )
+    engine = UprisingRulesEngine()
+    state = _turn_state(owner)
+    play = next(
+        a
+        for a in engine.legal_actions(state, 0)
+        if a.action_id == "play_intrigue" and dict(a.arguments)["card_id"] == card
+    )
+    opened = engine.apply(state, play).state
+    keep = next(
+        a
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "keep_shield_wall"
+    )
+    kept = engine.apply(opened, keep).state
+    assert kept.players[0].intrigue_cards == ()
+    assert kept.decision_stack[-1].kind == "optional_trash"
+    assert _DRAW_PLANETOLOGIST in engine.legal_actions(kept, 0)
+    drawn = engine.apply(kept, _DRAW_PLANETOLOGIST).state
+    assert len(drawn.players[0].intrigue_cards) == 1
 
 
 def test_planetologist_credits_eliminate_allies_from_either_stacked_trash_frame() -> (
@@ -1145,8 +1226,12 @@ def test_planetologist_credits_eliminate_allies_from_either_stacked_trash_frame(
         a for a in top_options[1:] if dict(a.arguments)["card_id"] == ELIMINATE_ALLIES
     )
     after_first = apply_optional_trash(replaced, trash_first).state
-    # The trash is applied; only its recruit count was ever at risk.
+    # The trash is applied; only its recruit count was ever at risk. The
+    # frame still holds its Intrigue card (OQ-106), so the trash was made
+    # with no Agent-turn frame on top at all.
     assert after_first.players[0].troops_garrison == 5
+    assert after_first.decision_stack[-1].kind == "optional_trash"
+    after_first = apply_optional_trash(after_first, _DRAW_PLANETOLOGIST).state
     assert after_first.decision_stack[-1].kind == "optional_trash"
 
     decline_second = next(
@@ -1155,6 +1240,8 @@ def test_planetologist_credits_eliminate_allies_from_either_stacked_trash_frame(
         if a.action_id == "decline_optional_trash"
     )
     resolved = apply_optional_trash(after_first, decline_second).state
+    resolved = apply_optional_trash(resolved, _DRAW_PLANETOLOGIST).state
+    assert len(resolved.players[0].intrigue_cards) == 2
 
     assert resolved.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 2
@@ -1196,6 +1283,7 @@ def test_planetologist_single_trash_frame_does_not_double_count_eliminate_allies
         if dict(a.arguments)["card_id"] == ELIMINATE_ALLIES
     )
     resolved = apply_optional_trash(replaced, trash).state
+    resolved = apply_optional_trash(resolved, _DRAW_PLANETOLOGIST).state
 
     assert resolved.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     assert resolved.players[0].troops_garrison == 5

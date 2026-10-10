@@ -8,8 +8,11 @@ placement, a Contract pick, a reshuffle) or a choice this frame offers (a
 card to discard or trash, a Spy to recall, a Faction, an Agent). The frame
 stays on the stack under any frame a step opens and moves its cursor before
 opening it, so it resumes by itself once that frame pops; the engine's
-automatic advance runs the automatic steps. The same frame serves inside a
-turn (a subcommittee joined at the High Council) and in the Scouts step.
+automatic advance runs the automatic steps. A hidden draw printed after one
+of the line's reward choices is the exception: it waits as its own step
+(``reward_was_chosen``, user ruling 2026-10-10, OQ-106), so the step that
+made the choice reveals nothing. The same frame serves inside a turn (a
+subcommittee joined at the High Council) and in the Scouts step.
 
 Subcommittees [Scouts help] (docs/rules/arrakeen-scouts.md 4): taking a
 High Council seat lets the seat choose a subcommittee any time in that turn
@@ -425,7 +428,41 @@ def _is_choice(
             # The seat picks a troop or a Sardaukar Commander when its
             # garrison holds both (OQ-105).
             return owner.troops_garrison > 0 and owner.commanders_garrison > 0
+        case DrawIntrigueCards() | DrawPersonalCards():
+            # A draw after one of the line's reward choices is its own step
+            # (OQ-106), taken with ``scouts_rewards_first``.
+            return reward_was_chosen(frame)
     return False
+
+
+# Set on a line once one of its rewards was a choice of its owner: a choice
+# step of the line itself (a Faction, a specimen top-up) or a frame a reward
+# opened (an optional trash, a Spy post, a Contract, a Research direction).
+_CHOSE: Final = "chose"
+
+
+def reward_was_chosen(frame: DecisionFrame) -> bool:
+    """Whether one of the line's rewards was a choice of its owner.
+
+    A hidden draw printed after it then waits as its own step instead of
+    being drawn by the step that settled the choice (user ruling 2026-10-10,
+    OQ-106: "그 외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우
+    하기 전에 버림더미 카드를 폐기하고 싶을 수 있잖아."), so the choice stays
+    undoable (OQ-010) and only the draw does not. A choice among the costs
+    does not count: an arrow cost and what it buys stay one unit (Rotating
+    Doors' "trash an Intrigue card -> [Intrigue] [draw 1]"), as do lines
+    whose draw is the line itself (Secrets for Sale, Forecasting).
+    """
+
+    return dict(frame.context).get(_CHOSE) == 1
+
+
+def _marked_chosen(frame: DecisionFrame) -> DecisionFrame:
+    if reward_was_chosen(frame):
+        return frame
+    context = dict(frame.context)
+    context[_CHOSE] = 1
+    return replace(frame, context=tuple(sorted(context.items())))
 
 
 def _specimen_top_up(
@@ -489,7 +526,25 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
         # Units already picked one at a time while both kinds were in the
         # garrison count toward the cost (OQ-105).
         current = replace(current, count=current.count - picked)
-    return _apply_automatic(moved, player, current, source=f"{source}:{step}")
+    result = _apply_automatic(moved, player, current, source=f"{source}:{step}")
+    if step < len(option.costs):
+        return result
+    stack = result.state.decision_stack
+    index = next(
+        (i for i, above in enumerate(stack) if above.frame_id == frame.frame_id),
+        None,
+    )
+    if index is None or not any(
+        _owned_by(above, player) for above in stack[index + 1 :]
+    ):
+        return result
+    # The reward opened a choice of the owner's (a Spy post, an optional
+    # trash, a Contract, a Research direction): a draw printed after it
+    # waits for its own step (OQ-106).
+    marked = (*stack[:index], _marked_chosen(stack[index]), *stack[index + 1 :])
+    return RuleResult(
+        state=replace(result.state, decision_stack=marked), events=result.events
+    )
 
 
 # --- Rewards ahead of a pending choice (OQ-100) -------------------------------------
@@ -525,9 +580,12 @@ def _rewards_ahead(
     step (a Faction, a card to trash from hand), or a frame that reward
     opened on top of it (an optional trash, a Spy placement, a Contract
     pick, a Research advance or bonus), recognised by its frame id. The rewards
-    printed after it must all be automatic gains. Returns the line's stack
-    index, the index of its first later reward and those rewards; None when
-    nothing may resolve ahead.
+    printed after it must all be automatic gains. A draw that waits after one
+    of the line's reward choices (``reward_was_chosen``, OQ-106) is itself
+    the first of them: once the choice is made the draw is not taken by the
+    step that made it, but by this action. Returns the line's stack index,
+    the index of its first later reward and those rewards; None when nothing
+    may resolve ahead.
     """
 
     stack = state.decision_stack
@@ -535,9 +593,14 @@ def _rewards_ahead(
         return None
     if stack[-1].kind == FrameKind.SCOUTS_EFFECT:
         index, line = len(stack) - 1, stack[-1]
-        if _current_step(state, line) is None:
+        current = _current_step(state, line)
+        if current is None:
             return None
         waiting = _cursor(line)[3]
+        if isinstance(current, (DrawIntrigueCards, DrawPersonalCards)):
+            # The draw waiting after a reward's choice is itself the first
+            # of the rewards taken now (OQ-106).
+            waiting -= 1
     elif len(stack) >= 2 and stack[-2].kind == FrameKind.SCOUTS_EFFECT:
         index, line = len(stack) - 2, stack[-2]
         waiting = _cursor(line)[3] - 1
@@ -569,12 +632,17 @@ def scouts_rewards_ahead(state: GameState, player: int) -> tuple[ScoutsStep, ...
 def legal_scouts_rewards_first_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
-    """Offer a line's later automatic rewards ahead of its pending choice.
+    """Offer a line's later automatic rewards ahead of its pending choice,
+    or the draw that waits once that choice is made.
 
     Icons of one line are independent effects whose order the owner picks
     once the arrow cost is paid (OQ-015 (d), [Main p. 9]); for a Scouts line
     that is the user's ruling of 2026-10-05 (OQ-100): Water Discipline's
     card may be drawn before the trash, so the drawn card can be trashed.
+    Drawn after the choice, the card is its own step too (user ruling
+    2026-10-10, OQ-106: "그 외에는 전부 나누자"), so the trash, the Faction
+    of Leverage, the Spy post of Spies for Hire or the Contract of CHOAM
+    Negotiations can still be taken back before it.
     """
 
     if _rewards_ahead(state, player) is None:
@@ -583,7 +651,7 @@ def legal_scouts_rewards_first_actions(
 
 
 def apply_scouts_rewards_first(state: GameState, action: DomainAction) -> RuleResult:
-    """Resolve the line's later rewards now; the pending choice stays open."""
+    """Resolve the line's later rewards now; a pending choice stays open."""
 
     if action not in legal_scouts_rewards_first_actions(state, action.actor):
         raise ValueError("action is not a legal Scouts rewards-first choice")
@@ -1014,6 +1082,10 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
         raise ValueError("action is not a legal Arrakeen Scouts choice")
     frame = state.decision_stack[-1]
     player, _, option, step, picked = _cursor(frame)
+    if step >= len(option.costs):
+        # A reward's choice: a draw printed after it waits (OQ-106).
+        frame = _marked_chosen(frame)
+        state = replace(state, decision_stack=(*state.decision_stack[:-1], frame))
     context = dict(frame.context)
     source = f"{context_str(context, 'source', owner=_EFFECT_FRAME)}:{step}"
     current = option_steps(option)[step]

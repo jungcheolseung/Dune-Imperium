@@ -413,15 +413,27 @@ def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> No
     seat = result.state.players[0]
     assert seat.discard_pile == (FAVOR,)
     assert seat.resources.spice == 3
-    assert seat.deck == ()
+    # The earned card waits as his own step in the Reveal (user ruling
+    # 2026-10-10, OQ-106); drawn, it is revealed late.
+    assert seat.deck == (RECON,)
     assert [
         (event.kind, dict(event.payload).get("card_id")) for event in result.events
     ] == [
         ("top_card_discarded", FAVOR),
         ("personal_card_discard_effect_resolved", FAVOR),
         ("leader_ability_resolved", None),
-        ("personal_card_late_revealed", RECON),
     ]
+    assert result.state.decision_stack[-1].kind == "reveal"
+    assert DomainAction(action_id="finish_reveal", actor=0) not in (
+        ENGINE.legal_actions(result.state, 0)
+    )
+    drawn = ENGINE.apply(
+        result.state, DomainAction(action_id="draw_owed_card", actor=0)
+    )
+    assert drawn.state.players[0].deck == ()
+    assert [
+        (event.kind, dict(event.payload).get("card_id")) for event in drawn.events
+    ] == [("personal_card_late_revealed", RECON)]
 
 
 def test_devious_trashes_from_hand_without_a_decline_or_deploys_two() -> None:

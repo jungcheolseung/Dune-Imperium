@@ -1544,7 +1544,7 @@ function deckTopChoiceCard() {
   return (own && own.peeked_card_id) || "";
 }
 
-/* One of those live buttons naming the card ("덱 맨 위 카드(Dagger)
+/* One of those live buttons naming the card ("{deck} 맨 위 카드(Dagger)
    {discard}"), by its name on screen; null for any other action, or when
    no card is known (the plain label then stands). Only actionItem (render.js),
    which draws the seat's offered actions, asks for it. */

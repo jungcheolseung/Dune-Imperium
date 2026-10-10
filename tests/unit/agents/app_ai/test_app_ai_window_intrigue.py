@@ -654,6 +654,26 @@ def test_cunning_trashes_through_its_trash_ability(
     assert W.intrigue_choice(keep) == act("decline_intrigue_trash")
 
 
+def test_cunning_draws_after_its_trash_as_its_own_step(
+    turn_state: GameState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The app trashes before it draws (``<RunImmediateEffects>d__11``); our
+    engine leaves Cunning's draw after the trash as its own
+    ``resolve_intrigue_rewards`` (user ruling 2026-10-10, OQ-106), which the
+    window takes at once instead of falling back."""
+
+    state = give(turn_state, "cunning", resources=Resources(spice=1))
+    hand = state.players[SEAT].hand
+    fix_answer(monkeypatch, "cunning", Answer(5.0, ((1,),)))
+    memory = Memory()
+    choice = app_play(state, memory, "cunning")
+    trash = act("trash_intrigue_card", card_id=hand[0])
+    after = ENGINE.apply(choice, trash).state
+    run = make_run(after, memory)
+    assert run.legal == (act("resolve_intrigue_rewards"),)
+    assert W.intrigue_choice(run) == act("resolve_intrigue_rewards")
+
+
 def test_devour_trashes_the_answered_card_or_declines(
     combat_state: GameState, monkeypatch: pytest.MonkeyPatch
 ) -> None:

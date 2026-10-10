@@ -77,6 +77,7 @@ from dune_imperium.rules.contracts import (
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.owed_draws import apply_owed_draw
 from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
     legal_gather_intelligence_actions,
@@ -736,16 +737,24 @@ def test_treacherous_maneuver_pays_both_cards_for_two_influence() -> None:
     assert paid.state.players[0].hand == (non_emperor,)
     assert paid.state.players[0].in_play == ()
     assert paid.state.players[0].trashed == (sardaukar, maneuver)
-    assert paid.state.players[0].intrigue_cards == ("intrigue:test",)
+    # Sardaukar Soldier's "when trashed" Intrigue card waits as the owner's
+    # own step (user ruling 2026-10-10, OQ-106).
+    assert paid.state.players[0].intrigue_cards == ()
+    assert [entry[:2] for entry in paid.state.players[0].owed_draws] == [
+        ("intrigue", f"card:{sardaukar}")
+    ]
     # The 2-Influence threshold's VP comes with the single gain of 2.
     assert paid.state.players[0].influence.emperor == 2
     assert paid.state.players[0].victory_points == 2
     assert [event.kind for event in paid.events] == [
         "card_trashed",
-        "intrigue_card_drawn",
         "card_trashed",
         "influence_gained",
     ]
+    drawn = apply_owed_draw(
+        paid.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
     assert (
         dict(paid.state.decision_stack[-1].context)["pending_faction_influence"]
         is False
@@ -4276,14 +4285,19 @@ def test_long_live_the_fighters_trashes_from_deck_with_shared_trash_triggers() -
     assert owner.hand == (draw_card,)
     assert owner.discard_pile == (discard_card,)
     assert owner.trashed == (sardaukar,)
-    assert owner.intrigue_cards == ("intrigue:test",)
-    assert result.state.intrigue_deck == ()
+    # The trashed Sardaukar Soldier's Intrigue card waits as the owner's own
+    # step (user ruling 2026-10-10, OQ-106).
+    assert owner.intrigue_cards == ()
     assert [event.kind for event in result.events] == [
         "card_discarded",
         "card_trashed",
-        "intrigue_card_drawn",
         "agent_card_effect_resolved",
     ]
+    drawn = apply_owed_draw(
+        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.intrigue_deck == ()
 
 
 # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate Allies
@@ -4607,10 +4621,12 @@ def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> N
 
     result = _resolve_long_live(state, draw_card, favor)
 
+    # The earned card waits as the owner's own step (user ruling 2026-10-10,
+    # OQ-106) and is drawn when taken.
     seat = result.state.players[0]
     assert seat.resources.spice == 3
-    assert seat.hand == (draw_card, tail)
-    assert seat.deck == ()
+    assert seat.hand == (draw_card,)
+    assert seat.deck == (tail,)
     assert [event.kind for event in result.events] == [
         "card_discarded",
         "personal_card_discard_effect_resolved",
@@ -4618,6 +4634,11 @@ def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> N
         "agent_card_effect_resolved",
         "leader_ability_resolved",
     ]
+    drawn = UprisingRulesEngine().apply(
+        result.state, DomainAction(action_id="draw_owed_card", actor=0)
+    )
+    assert drawn.state.players[0].hand == (draw_card, tail)
+    assert drawn.state.players[0].deck == ()
 
 
 def test_shishakli_may_trash_a_personal_card_to_draw_one() -> None:
@@ -5958,8 +5979,9 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
         ),
     )
 
-    # The Bene Gesserit track's step to four also draws an Intrigue card:
-    # the same card the newly granted Alliance then lets the owner trash for
+    # The Bene Gesserit track's step to four also earns an Intrigue card,
+    # taken as the owner's own step (user ruling 2026-10-10, OQ-106): the
+    # same card the newly granted Alliance then lets the owner trash for
     # Branching Path's own reward.
     state = replace(state, intrigue_deck=("intrigue:track_bonus", "intrigue:reward"))
     placed = apply_agent_action(state, _action_to(state, "espionage")).state
@@ -5969,6 +5991,10 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
 
     allied = resolve_faction_influence(placed).state
     assert allied.players[0].alliance_faction_ids == (Faction.BENE_GESSERIT.value,)
+    assert allied.players[0].intrigue_cards == ()
+    allied = apply_owed_draw(
+        allied, DomainAction(action_id="draw_owed_intrigue", actor=0)
+    ).state
     assert allied.players[0].intrigue_cards == ("intrigue:track_bonus",)
     trash = next(
         action

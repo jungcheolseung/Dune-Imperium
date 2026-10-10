@@ -12,6 +12,7 @@ from dune_imperium.simulation.invariants import (
     InvariantViolation,
     check_event_visibility,
     check_observation_privacy,
+    check_owed_draws,
     check_state_invariants,
     check_track_spy_queue,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "SweepReport",
     "check_event_visibility",
     "check_observation_privacy",
+    "check_owed_draws",
     "check_state_invariants",
     "check_track_spy_queue",
     "collect_game_coverage",

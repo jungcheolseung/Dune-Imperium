@@ -166,10 +166,21 @@ def test_hungry_for_spice_draws_once_per_turn() -> None:
         ),
     )
     fed = grant_hungry_for_spice(RuleResult(state=richer)).state
-    assert fed.players[0].hand == (DAGGER,)
+    # Inside his own turn the card waits as his own step (user ruling
+    # 2026-10-10, OQ-106) and is drawn once, when he takes it.
+    assert fed.players[0].hand == ()
+    assert [entry[:2] for entry in fed.players[0].owed_draws] == [
+        ("card", "hungry_for_spice")
+    ]
     assert fed.players[0].hungry_for_spice_granted_turn is True
     again = grant_hungry_for_spice(RuleResult(state=fed)).state
-    assert again.players[0].hand == (DAGGER,)
+    assert len(again.players[0].owed_draws) == 1
+    draw = DomainAction(action_id="draw_owed_card", actor=0)
+    assert ENGINE.legal_actions(again, 0).count(draw) == 1
+    drawn = ENGINE.apply(again, draw).state
+    assert drawn.players[0].hand == (DAGGER,)
+    assert drawn.players[0].owed_draws == ()
+    assert draw not in ENGINE.legal_actions(drawn, 0)
 
 
 def _with_spice(state: GameState, spice: int) -> GameState:
@@ -274,14 +285,20 @@ def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
     # turn's last step: two before it, three with it.
     resolved = act(state, "resolve_agent_card_effect")
     # The turn stays open until its owner ends it (OQ-095 (1)); the third
-    # spice is judged in it already.
+    # spice is judged in it already, and its card waits as his own step
+    # (user ruling 2026-10-10, OQ-106), holding the turn's end back.
     frame = resolved.decision_stack[-1]
     assert frame.kind == "agent_effects"
+    assert [a.action_id for a in ENGINE.legal_actions(resolved, 0)] == [
+        "draw_owed_card"
+    ]
+    assert resolved.players[0].hand == ()
+    assert resolved.players[0].hungry_for_spice_granted_turn is True
+    resolved = act(resolved, "draw_owed_card")
     assert [a.action_id for a in ENGINE.legal_actions(resolved, 0)] == [
         "finish_agent_turn"
     ]
     assert resolved.players[0].hand == (DAGGER,)
-    assert resolved.players[0].hungry_for_spice_granted_turn is True
 
     closed = finish_agent_turn(resolved)
     frame = closed.decision_stack[-1]
@@ -885,11 +902,14 @@ def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_this_turns() -> N
     # with nothing carried over.
     dagger = "player:0:starter:dagger:0"
     desert_planet = "player:0:starter:dune_the_desert_planet:0"
+    # The spice held at the turn's start is not a gain (no Hungry for
+    # Spice card waiting as its own step, OQ-106, in this turn).
     owner = _steersman(
         (_card(6),),
         influence=Influence(emperor=1),
         hand=(dagger, desert_planet),
         resources=Resources(solari=4, spice=6, water=2),
+        spice_at_turn_start=6,
     )
     state = _turn_state(
         owner,

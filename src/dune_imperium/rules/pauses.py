@@ -33,7 +33,15 @@ seat anything:
 - ``ROUND_START`` before every round's reshuffles and reveal after the first
   round (``rules/engine.py``), after any Conflict-end Intrigue window;
 - ``ROUND_DRAW`` after a Control defense, before the round's draw
-  (``rules/phases.py``).
+  (``rules/phases.py``);
+- ``SCOUTS_REWARD`` before each Arrakeen Scouts auction winner's reward
+  after the first (``rules/scouts_auctions.py``), like the Conflict's
+  recipients: Competitive Study's second place may research past the second
+  genetic marker, which draws its card, or move on a single path onto a
+  Tleilaxu track Intrigue space, so the first place's Research direction
+  stood right before another seat's hidden card (user ruling 2026-10-10,
+  OQ-106: "그 외에는 전부 나누자"). The order of the winners is public once
+  the bids are revealed.
 
 Every step a pause holds back runs as it did, in the same order. The one
 hook the engine runs at the end of a step on that step's own events, Earn
@@ -58,7 +66,10 @@ REWARDS: Final = "rewards"
 CONFLICT_END: Final = "conflict_end"
 ROUND_START: Final = "round_start"
 ROUND_DRAW: Final = "round_draw"
-PAUSE_POINTS: Final = frozenset({REWARDS, CONFLICT_END, ROUND_START, ROUND_DRAW})
+SCOUTS_REWARD: Final = "scouts_reward"
+PAUSE_POINTS: Final = frozenset(
+    {REWARDS, CONFLICT_END, ROUND_START, ROUND_DRAW, SCOUTS_REWARD}
+)
 CONTINUE: Final = "continue"
 
 

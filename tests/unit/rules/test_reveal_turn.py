@@ -40,6 +40,7 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.owed_draws import apply_owed_draw
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
     apply_contract_reveal_choice,
@@ -623,6 +624,12 @@ def test_desert_power_replacement_credits_eliminate_allies_in_combat_reveal() ->
         if dict(action.arguments)["card_id"] == eliminate_allies
     )
     resolved = apply_optional_trash(replaced, trash).state
+    # The replacement's Intrigue card is its own step in the same frame
+    # (user ruling 2026-10-10, OQ-106); the trash was credited before it.
+    assert dict(resolved.decision_stack[-2].context)["reveal_troops_recruited"] == 2
+    resolved = apply_optional_trash(
+        resolved, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    ).state
 
     assert resolved.decision_stack[-1].kind == "reveal"
     assert resolved.players[0].troops_garrison == 5
@@ -664,15 +671,20 @@ def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
 
     assert result.state.players[0].in_play == (calculus,)
     assert result.state.players[0].trashed == (sardaukar,)
-    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    # Sardaukar Soldier's Intrigue card waits as the owner's own step in the
+    # Reveal (user ruling 2026-10-10, OQ-106).
+    assert result.state.players[0].intrigue_cards == ()
     assert result.state.players[0].combat_strength == 6
     assert context["strength"] == 6
     assert context["optional_sword_strength"] == 3
     assert [event.kind for event in result.events] == [
         "card_trashed",
-        "intrigue_card_drawn",
         "reveal_strength_gained",
     ]
+    drawn = apply_owed_draw(
+        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
 
 
 
@@ -3165,7 +3177,11 @@ def test_a_trashed_stilgar_gains_nothing_from_a_later_fremen_arrival() -> None:
         if action.action_id == "trash_intrigue_card"
         and dict(action.arguments)["card_id"] == stilgar
     )
-    result = engine.apply(plotted, trash)
+    # The trash leaves Cunning's draw as its own step (OQ-106).
+    trashed = engine.apply(plotted, trash).state
+    result = engine.apply(
+        trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    )
 
     owner = result.state.players[0]
     assert owner.trashed == (stilgar,)
@@ -3215,7 +3231,11 @@ def test_stilgar_adds_two_for_a_fremen_arrival_after_a_fremen_card_was_trashed()
         if action.action_id == "trash_intrigue_card"
         and dict(action.arguments)["card_id"] == loyalty
     )
-    result = engine.apply(plotted, trash)
+    # The trash leaves Cunning's draw as its own step (OQ-106).
+    trashed = engine.apply(plotted, trash).state
+    result = engine.apply(
+        trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    )
 
     owner = result.state.players[0]
     assert owner.trashed == (loyalty,)

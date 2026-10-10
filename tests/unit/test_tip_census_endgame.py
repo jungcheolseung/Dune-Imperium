@@ -534,6 +534,24 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     steps; with the bundled recall-and-draw patched back in, a scratch
     checkout of the previous commit, the capture finds seed 199 with the
     values pinned before).
+
+    Re-derived 2026-10-10 for a triggered draw held as the owner's own step
+    (user ruling 2026-10-10, OQ-106, codec v142): seed 183 first diverges at
+    round 4, seat 0's Reveal, where Overthrow's acquire-box Intrigue card is
+    now its own step, and no longer has an Endgame-opening Tech change the
+    leader. On the previous commit's engine the same capture over full
+    seeds 1-200 finds seeds 24, 85, 130, 167 and 183 (later commits of the
+    batch had added the others without moving 183). On this engine it
+    finds seeds 53, 72, 99 and 123; the case is seed 53, the first.
+    Endgame opens there in round 10 on the empty Conflict deck with check
+    VP [6, 7, 7, 7]: seat 3 (Liet Kynes) ranks first of its tie with seats
+    1 and 2 on spice (13 to 2 and 3). Seat 2 (Steersman Y'rkoon) holds
+    Panopticon; its Emperor 0 -> 1 gain does not score but its Spacing Guild
+    1 -> 2 gain does (and plays its next Navigation card), taking it to 8
+    and the lead. Every seat then passes its Endgame Intrigue, and seat 2
+    ends on 8 as the winner. The buggy collector would read
+    ``end.endgame_vp`` == 0 for seat 2 and ``end.leader_changed`` == False
+    (independent replay of the Endgame steps).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -541,7 +559,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 183):
+    for seed in (*FULL_SEEDS, 53):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -576,13 +594,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 183:
+        if seed == 53:
             saw_case = True
-            assert census["seats"][1]["end.endgame_vp"] == 2
+            assert census["seats"][2]["end.endgame_vp"] == 1
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 183 regression case must run"
+    assert saw_case, "the seed 53 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -721,23 +739,33 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     ``commanders`` 1: ``unit_lost`` with one Commander) and a troop for
     slot 1 (independent replay; with the previous window rule patched back
     in, it gives seed 15 seat 0's retreat pinned before).
+
+    Re-derived 2026-10-10 for Cunning's and Insider Information's draw as
+    its own step after their trash (OQ-106, codec v142): seed 23 first
+    diverges at round 2, seat 3's Insider Information trash, and seat 2 no
+    longer retreats a Commander (the previous commit's engine gives the
+    retreat pinned before). The same listing over full seeds 1-200 gives
+    seed 2 seat 0 (Gurney Halleck) first: in round 6 its Gruesome Sacrifice
+    pays the Commander for slot 1 (``lose_intrigue_troop`` with
+    ``commanders`` 1), its only Commander retreat event, and the census
+    counts no Commander retreat for it (scratch replay).
     """
 
-    spec = _spec(True, 23)
+    spec = _spec(True, 2)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
         event.event_id
         for event in events
         if event.kind == "troops_retreated"
-        and dict(event.payload).get("player") == 2
+        and dict(event.payload).get("player") == 0
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:10:player:2:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
+        "round:6:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
-    assert census["seats"][2]["bt.commander_retreats"] == 0
+    assert census["seats"][0]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(

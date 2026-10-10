@@ -9,6 +9,7 @@ abilities are not implemented yet — their Signet Ring placements stay withheld
 through ``leader_signet_is_implemented``.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Final
 
@@ -55,7 +56,10 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import (
+    OWED_CARD,
     FrameKind,
+    draw_waits_for_owner,
+    hold_draw,
     hungry_for_spice_is_due,
     own_turn_frame_index,
     owned_top_frame,
@@ -68,6 +72,7 @@ from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
     add_reveal_strength,
+    queue_reveal_intrigue_draw,
 )
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -1263,7 +1268,18 @@ def legal_leader_signet_actions(
 
     if owner.leader_id == "kota_odax_of_ix":
         # Reverse Engineering: one spice, or trash one of your Tech tiles for
-        # an Intrigue card and a card [Kota Odax of Ix card].
+        # an Intrigue card and a card [Kota Odax of Ix card]. Once a tile is
+        # trashed the two reward icons wait for their own steps (OQ-106).
+        rewards = signet_rewards(context)
+        if rewards:
+            return tuple(
+                DomainAction(
+                    action_id="resolve_agent_card_effect",
+                    actor=player,
+                    arguments=(("effect", key),),
+                )
+                for key in dict.fromkeys(rewards)
+            )
         return (
             DomainAction(action_id="gain_leader_signet_spice", actor=player),
             *(
@@ -1961,7 +1977,12 @@ def apply_leader_signet_acquire(
 
 
 def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Reverse Engineering: one spice, or a Tech tile for an Intrigue and a card."""
+    """Reverse Engineering: one spice, or a Tech tile for an Intrigue and a card.
+
+    The tile is the cost; its two rewards are then drawn by their own
+    ``resolve_agent_card_effect(effect=intrigue|cards)`` in either order
+    (user ruling 2026-10-10, OQ-106).
+    """
 
     if action not in legal_leader_signet_actions(state, action.actor):
         raise ValueError("action is not a legal Reverse Engineering choice")
@@ -1987,6 +2008,8 @@ def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResu
                 ),
             ),
         )
+    if action.action_id == "resolve_agent_card_effect":
+        return _resolve_kota_reward(state, context, player, action, source)
     tech_id = str(dict(action.arguments)["tech_id"])
     next_owner = replace(
         owner,
@@ -1995,24 +2018,77 @@ def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResu
     )
     players = replace_player(state.players, next_owner)
     working = replace(state, players=players, tech_trash=(*state.tech_trash, tech_id))
+    # "trash one of your Tech tiles -> [Intrigue] [draw 1]": the trashed tile
+    # is the arrow's cost; the reward icons then wait for their own steps in
+    # the owner's order (OQ-027 (b), like Captured Mentat's), so the public
+    # choice of the tile stays undoable and only the draws close the undo
+    # window: "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106).
+    context["pending_agent_effect"] = True
+    context[SIGNET_REWARDS_KEY] = ",".join(_REVERSE_ENGINEERING_REWARDS)
     working = _store_signet(working, context, players)
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:tech_trashed",
-            kind="tech_trashed",
-            payload=(("player", player), ("tech_id", tech_id)),
+    return RuleResult(
+        state=working,
+        events=(
+            GameEvent(
+                event_id=f"{source}:tech_trashed",
+                kind="tech_trashed",
+                payload=(("player", player), ("tech_id", tech_id)),
+            ),
         ),
-        GameEvent(
-            event_id=source,
-            kind="leader_signet_resolved",
-            payload=(("cards", 1), ("intrigue", 1), ("player", player)),
-        ),
-    ]
-    intrigue = draw_or_queue_intrigue_cards(working, player, 1, source=source)
-    events.extend(intrigue.events)
-    drawn = draw_or_request_personal_cards(intrigue.state, player, 1, source=source)
-    events.extend(drawn.events)
-    return RuleResult(state=drawn.state, events=tuple(events))
+    )
+
+
+# Reverse Engineering's reward icons after its Tech-tile cost, each its own
+# ``resolve_agent_card_effect(effect=<key>)`` (OQ-106), in either host of the
+# ability: the Signet Ring card's Agent box or a Servo-Receivers frame.
+SIGNET_REWARDS_KEY = "signet_rewards"
+_REVERSE_ENGINEERING_REWARDS = ("intrigue", "cards")
+
+
+def signet_rewards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the Signet Ring ability's reward icons still waiting."""
+
+    value = context.get(SIGNET_REWARDS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Signet Ring context has invalid rewards")
+    return tuple(key for key in value.split(",") if key)
+
+
+def _resolve_kota_reward(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    action: DomainAction,
+    source: str,
+) -> RuleResult:
+    """Draw one of Reverse Engineering's rewards after its Tech-tile cost.
+
+    The host is written back first (closing a Servo-Receivers frame with the
+    last reward), so a reshuffle the draw needs stacks above it.
+    """
+
+    key = str(dict(action.arguments)["effect"])
+    remaining = list(signet_rewards(context))
+    remaining.remove(key)
+    if remaining:
+        context[SIGNET_REWARDS_KEY] = ",".join(remaining)
+        context["pending_agent_effect"] = True
+    else:
+        del context[SIGNET_REWARDS_KEY]
+    working = _store_signet(state, context)
+    reward_source = f"{source}:{key}"
+    event = GameEvent(
+        event_id=reward_source,
+        kind="leader_signet_resolved",
+        payload=((key, 1), ("player", player)),
+    )
+    if key == "intrigue":
+        drawn = draw_or_queue_intrigue_cards(working, player, 1, source=reward_source)
+    else:
+        drawn = draw_or_request_personal_cards(
+            working, player, 1, source=reward_source
+        )
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
 
 
 def apply_leader_card_trash(
@@ -2477,24 +2553,47 @@ def grant_hungry_for_spice(
     a deck the Round Start reshuffle has already filled for that draw, so
     the card comes after the round's hand (OQ-072), like the owed Tech
     draw (``tech.draw_owed_tech_cards``).
+
+    A draw earned while the seat's own turn is still open waits as the
+    seat's own ``draw_owed_card`` step instead, taken in any order with the
+    turn's other effects and before the turn ends (user ruling 2026-10-10,
+    OQ-106: "특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미
+    카드를 폐기하고 싶을 수 있잖아."), so the step that gained the spice
+    stays undoable. Only a draw judged in the transition that closed the
+    turn is drawn by this hook.
     """
 
     state = result.state
     judged = {turn_owner_of(state)}
     if before is not None and state.phase is GamePhase.PLAYER_TURNS:
         judged.add(turn_owner_of(before))
+    events = list(result.events)
     for seat in state.players:
         if seat.player_id in judged and hungry_for_spice_is_due(seat):
-            earned = replace(
-                seat, hungry_for_spice_granted_turn=True, hungry_for_spice_owed=True
+            source = (
+                f"round:{state.round_number}:player:{seat.player_id}:"
+                "hungry_for_spice"
             )
+            if draw_waits_for_owner(state, seat.player_id):
+                earned = hold_draw(
+                    replace(seat, hungry_for_spice_granted_turn=True),
+                    OWED_CARD,
+                    "hungry_for_spice",
+                    source,
+                )
+                events.append(_hungry_for_spice_event(source, seat.player_id))
+            else:
+                earned = replace(
+                    seat,
+                    hungry_for_spice_granted_turn=True,
+                    hungry_for_spice_owed=True,
+                )
             state = replace(state, players=replace_player(state.players, earned))
     if state.phase is GamePhase.ROUND_START or (
         state.decision_stack
         and isinstance(state.decision_stack[-1].decision, ChanceDecision)
     ):
-        return RuleResult(state=state, events=result.events)
-    events = list(result.events)
+        return RuleResult(state=state, events=tuple(events))
     for seat in state.players:
         if not seat.hungry_for_spice_owed:
             continue
@@ -2503,18 +2602,20 @@ def grant_hungry_for_spice(
         source = f"round:{state.round_number}:player:{seat.player_id}:hungry_for_spice"
         drawn = draw_or_request_personal_cards(state, seat.player_id, 1, source=source)
         state = drawn.state
-        events.append(
-            GameEvent(
-                event_id=source,
-                kind="leader_ability_resolved",
-                payload=(
-                    ("leader_id", "steersman_y_rkoon"),
-                    ("player", seat.player_id),
-                ),
-            )
-        )
+        events.append(_hungry_for_spice_event(source, seat.player_id))
         events.extend(drawn.events)
     return RuleResult(state=state, events=tuple(events))
+
+
+def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
+    return GameEvent(
+        event_id=source,
+        kind="leader_ability_resolved",
+        payload=(
+            ("leader_id", "steersman_y_rkoon"),
+            ("player", player),
+        ),
+    )
 
 
 def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
@@ -2575,17 +2676,26 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
                     state.decision_stack, frame, "leader_intrigue_granted"
                 ),
             )
-            drawn = draw_or_queue_intrigue_cards(
-                flagged,
-                player,
-                1,
-                source=(
-                    f"round:{state.round_number}:player:{player}:leader_reveal:intrigue"
-                ),
+            # The card waits on the Reveal's pending gains as the owner's own
+            # ``draw_reveal_intrigue`` (OQ-045), so the step that put the
+            # sandworm in the Conflict (or the Reveal itself) stays
+            # undoable (user ruling 2026-10-10, OQ-106).
+            queued = queue_reveal_intrigue_draw(
+                flagged, 1, "leader_reveal:unpredictable_foe"
             )
             return RuleResult(
-                state=drawn.state,
-                events=(*result.events, *drawn.events),
+                state=queued,
+                events=(
+                    *result.events,
+                    GameEvent(
+                        event_id=(
+                            f"round:{state.round_number}:player:{player}:"
+                            "leader_reveal:intrigue"
+                        ),
+                        kind="leader_ability_resolved",
+                        payload=(("leader_id", "muad_dib"), ("player", player)),
+                    ),
+                ),
             )
         return result
     return result
