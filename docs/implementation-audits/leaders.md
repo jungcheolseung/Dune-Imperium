@@ -46,7 +46,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 
 ### Princess Irulan
 
-- **Imperial Birthright** — "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." Loyalty와 같은 지점에 연결했고, Intrigue deck이 비면 기존 `pending_intrigue_draws` 경로로 보류한다. 2026-10-10부터 자기 turn 안에서는 카드를 그 단계에서 뽑지 않고 소유자의 단계 `draw_owed_intrigue`로 남긴다([OQ-106](../rules/open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 5).
+- **Imperial Birthright** — "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." Loyalty와 같은 지점에 연결했고, Intrigue deck이 비면 기존 `pending_intrigue_draws` 경로로 보류한다. 2026-10-10부터 자기 turn 안에서는 카드를 그 단계에서 뽑지 않고 소유자의 단계 `draw_owed_intrigue`로 남긴다([OQ-106](../rules/open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 5). 그 단계는 Influence 단계 바로 다음의 유일한 행동이다(같은 날 사용자 결정 "가 로 가자", OQ-106 곧바른 단계 14).
 - **Chronicler's Insight(Signet)** — "You may choose: Acquire a card that costs 1 to your hand —OR— Trash a card from your hand. If it has a cost of 1 or more: Spice 2." 획득은 인쇄 비용이 정확히 1인 Row/Reserve 카드를 Persuasion 없이 hand로 가져오며(현재 콘텐츠에서 비용 1은 Imperium 5종), 기존 공용 획득 경로(Row 보충 `[Main p. 13]`, acquire box, Contract 완료 확인)를 재사용한다. Imperium deck이 고갈돼도 Row의 비용 1 카드는 그대로 획득할 수 있고 Row는 보충 없이 줄어든다(OQ-004; 2026-09-26 정정 — 카드면에 deck 조건이 없다). trash는 hand 한정이고 시작 카드는 인쇄 비용이 없어 Spice를 주지 않는다. "may choose"이므로 전체 거절이 가능하다.
 
 ### Staban Tuek
