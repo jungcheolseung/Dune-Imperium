@@ -12,16 +12,30 @@ import path and this checkout's virtual environment:
 
 (``tmp/`` is git-ignored; remove the worktree afterwards with
 ``git worktree remove``.) Every module is on, with the Leader draft, as at
-the play server's tables. The engine's commit goes into the record's name.
+the play server's tables, unless ``--without MODULE`` turns one off (Prison
+Planet, for one, is drawn only without Immortality). The engine's commit
+goes into the record's name: the commit of the checkout ``dune_imperium``
+was imported from, whatever the current directory.
 
-usage: old_engine_record.py OUT_DIR ROUNDS AGENT SEED [SEED ...]
+``play_record`` is the same writer as a function, for the record corpus
+(``corpus_generate.py``): per-seat agent kinds, the whole game unless
+``rounds`` cuts it, and an ``on_step`` hook inside the one replay that
+makes the record's state hash. Like every driver in this folder it runs
+under older engines, so it touches the engine only through the names the
+corpus tests allow (tests/unit/records/test_corpus_generate.py).
+
+usage: old_engine_record.py [--without MODULE ...] OUT_DIR ROUNDS AGENT SEED [SEED ...]
 """
 
+import dataclasses
 import json
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
+import dune_imperium
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.agents.registry import make_agent
 from dune_imperium.config import RulesetConfig
@@ -43,45 +57,116 @@ MODULES = {
     "arrakeen_scouts": True,
 }
 
+# ``on_step(index, before, step, transition)``: the recorded step's index,
+# the state before it, the step, and the engine's ``Transition``.
+type StepHook = Callable[[int, Any, Any, Any], None]
 
-def main(argv: list[str]) -> None:
-    out_dir, rounds, kind = Path(argv[0]), int(argv[1]), argv[2]
-    out_dir.mkdir(parents=True, exist_ok=True)
-    commit = subprocess.run(
-        ["git", "rev-parse", "--short=8", "HEAD"],
+
+def modules_with(without: Sequence[str] = ()) -> dict[str, Any]:
+    """``MODULES`` with every module named in ``without`` turned off."""
+
+    modules: dict[str, Any] = dict(MODULES)
+    for name in without:
+        if not isinstance(modules.get(name), bool):
+            raise SystemExit(f"--without takes a module flag, not {name!r}")
+        modules[name] = False
+    return modules
+
+
+def engine_checkout() -> Path:
+    """The checkout ``dune_imperium`` was imported from."""
+
+    return Path(dune_imperium.__file__).resolve().parents[2]
+
+
+def engine_commit() -> str:
+    """The short commit of that checkout, for the record's name."""
+
+    return subprocess.run(
+        ["git", "-C", str(engine_checkout()), "rev-parse", "--short=8", "HEAD"],
         capture_output=True,
         text=True,
         check=True,
     ).stdout.strip()
-    config = RulesetConfig(**MODULES)
+
+
+def play_record(
+    engine: Any,
+    config: Any,
+    seats: Sequence[str],
+    seed: int,
+    *,
+    rounds: int | None = None,
+    commit: str,
+    on_step: StepHook | None = None,
+) -> tuple[dict[str, Any], Any]:
+    """Play one game and return its save document and the state it ends in.
+
+    Seat ``i`` is ``make_agent(seats[i], seed * 10 + i)``. The game is
+    played whole, then replayed step by step to make the document's state
+    hash; ``rounds`` cuts that replay after the step that opens round
+    ``rounds + 1``. ``on_step`` sees every kept step of that replay.
+    """
+
+    agents = [make_agent(kind, seed * 10 + seat) for seat, kind in enumerate(seats)]
+    game = run_policy_game(engine, config, seed, agents)
+    state = engine.reset(config, seed)
+    kept = []
+    for index, step in enumerate(game.replay.steps):
+        before = state
+        transition = engine.apply(state, step)
+        state = transition.state
+        kept.append(step)
+        if on_step is not None:
+            on_step(index, before, step, transition)
+        if rounds is not None and state.round_number > rounds:
+            break
+    expected_state_hash = canonical_state_hash(state)
+    if len(kept) == len(game.replay.steps) and (
+        expected_state_hash != game.replay.expected_state_hash
+    ):
+        raise RuntimeError(f"seed {seed}: the replay does not reach the played state")
+    label = seats[0] if len(set(seats)) == 1 else "/".join(seats)
+    span = "" if rounds is None else f", rounds 1-{rounds}"
+    document = {
+        "format": "dune-imperium-save",
+        "format_version": 1,
+        "ruleset": {
+            field.name: getattr(config, field.name)
+            for field in dataclasses.fields(config)
+        },
+        "game_seed": seed,
+        "policy_seed": seed,
+        "seats": list(seats),
+        "steps": [serialize_step(step) for step in kept],
+        "expected_state_hash": expected_state_hash,
+        "ruleset_version": game.replay.ruleset_version,
+        "content_version": game.replay.content_version,
+        "action_codec_version": ACTION_CODEC_VERSION,
+        "name": f"{label} seed {seed}{span}, engine {commit}",
+    }
+    return document, state
+
+
+def main(argv: list[str]) -> None:
+    without: list[str] = []
+    while argv and argv[0] == "--without":
+        without.append(argv[1])
+        argv = argv[2:]
+    modules = modules_with(without)
+    out_dir, rounds, kind = Path(argv[0]), int(argv[1]), argv[2]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    commit = engine_commit()
+    config = RulesetConfig(**modules)
     engine = UprisingRulesEngine()
     for seed in map(int, argv[3:]):
-        agents = [make_agent(kind, seed * 10 + seat) for seat in range(4)]
-        game = run_policy_game(engine, config, seed, agents)
-        state = engine.reset(config, seed)
-        kept = []
-        for step in game.replay.steps:
-            state = engine.apply(state, step).state
-            kept.append(step)
-            if state.round_number > rounds:
-                break
-        document = {
-            "format": "dune-imperium-save",
-            "format_version": 1,
-            "ruleset": MODULES,
-            "game_seed": seed,
-            "policy_seed": seed,
-            "seats": [kind] * 4,
-            "steps": [serialize_step(step) for step in kept],
-            "expected_state_hash": canonical_state_hash(state),
-            "ruleset_version": game.replay.ruleset_version,
-            "content_version": game.replay.content_version,
-            "action_codec_version": ACTION_CODEC_VERSION,
-            "name": f"{kind} seed {seed}, rounds 1-{rounds}, engine {commit}",
-        }
-        path = out_dir / f"v{ACTION_CODEC_VERSION}-{kind}-{seed}.json"
+        document, _ = play_record(
+            engine, config, [kind] * 4, seed, rounds=rounds, commit=commit
+        )
+        suffix = "".join(f"-no-{name}" for name in without)
+        path = out_dir / f"v{ACTION_CODEC_VERSION}{suffix}-{kind}-{seed}.json"
         path.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
-        print(path, len(kept), "steps")
+        print(path, len(document["steps"]), "steps")
 
 
 if __name__ == "__main__":
