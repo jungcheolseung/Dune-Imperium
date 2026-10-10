@@ -546,7 +546,9 @@ def test_a_reshuffled_intrigue_draw_from_the_turn_end_payment_counts_for_suspens
 
     Bene Gesserit 4 draws an Intrigue card [Main p. 7]; with the deck empty
     the draw waits for a reshuffle, which used to run in the next seat's
-    turn, where Suspensor Suits does not count it.
+    turn, where Suspensor Suits does not count it. The card now waits as the
+    seat's own step (user ruling 2026-10-10, OQ-106), so the press reopens
+    the turn ("다시 열리고", OQ-095 (5)) and the draw is taken in it.
     """
 
     tech = RulesetConfig(immortality=True, bloodlines=True, tech_module=True)
@@ -563,14 +565,23 @@ def test_a_reshuffled_intrigue_draw_from_the_turn_end_payment_counts_for_suspens
     )
     before = ready.players[0].troops_conflict
     engine = UprisingRulesEngine()
-    state = engine.apply(ready, DomainAction("finish_agent_turn", 0)).state
+    pressed = engine.apply(ready, DomainAction("finish_agent_turn", 0))
+    assert pressed.events[-1].kind == "agent_turn_reopened"
+    state = pressed.state
+    assert state.players[0].influence.bene_gesserit == 4
+    assert state.players[0].intrigue_cards == ready.players[0].intrigue_cards
+    draw = DomainAction("draw_owed_intrigue", 0)
+    offered = engine.legal_actions(state, 0)
+    assert draw in offered
+    assert DomainAction("finish_agent_turn", 0) not in offered
+    state = engine.apply(state, draw).state
     chance = ChanceResolver(seed=3)
     while isinstance(decision := engine.current_decision(state), ChanceDecision):
         state = engine.apply(state, chance.resolve(decision)).state
-    assert state.players[0].influence.bene_gesserit == 4
     drawn = len(state.players[0].intrigue_cards) - len(ready.players[0].intrigue_cards)
     assert drawn == 1
     assert state.players[0].troops_conflict == before + 1
+    state = engine.apply(state, DomainAction("finish_agent_turn", 0)).state
     nxt = state.decision_stack[-1].decision
     assert isinstance(nxt, PlayerDecision) and nxt.owner == 1
 
@@ -615,7 +626,9 @@ def test_the_same_seat_s_next_turn_keeps_the_press_s_suspensor_troop() -> None:
 
     OQ-095 (3): "Suspensor Suits도 마지막 효과 뒤의 draw까지 센다". The
     Bene Gesserit 4 Intrigue drawn by the press owes a troop; it used to be
-    wiped when the next turn's counters were reset.
+    wiped when the next turn's counters were reset. The card now waits as
+    the seat's own step (OQ-106), so the press reopens the turn and the
+    troop comes with the draw, before the second press.
     """
 
     tech = RulesetConfig(immortality=True, bloodlines=True, tech_module=True)
@@ -628,9 +641,12 @@ def test_the_same_seat_s_next_turn_keeps_the_press_s_suspensor_troop() -> None:
     before = ready.players[0].troops_conflict
     engine = UprisingRulesEngine()
     pressed = engine.apply(ready, DomainAction("finish_agent_turn", 0))
-    state = pressed.state
-    assert state.players[0].influence.bene_gesserit == 4
-    assert "troops_deployed" in {event.kind for event in pressed.events}
+    assert pressed.events[-1].kind == "agent_turn_reopened"
+    assert pressed.state.players[0].influence.bene_gesserit == 4
+    drew = engine.apply(pressed.state, DomainAction("draw_owed_intrigue", 0))
+    assert "troops_deployed" in {event.kind for event in drew.events}
+    assert drew.state.players[0].troops_conflict == before + 1
+    state = engine.apply(drew.state, DomainAction("finish_agent_turn", 0)).state
     assert state.players[0].troops_conflict == before + 1
     nxt = state.decision_stack[-1]
     assert nxt.kind == FrameKind.TURN

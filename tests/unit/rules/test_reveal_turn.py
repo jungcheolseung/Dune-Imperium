@@ -40,6 +40,7 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.owed_draws import apply_owed_draw
 from dune_imperium.rules.reveal_turn import (
     RevealSandwormBlock,
     apply_contract_reveal_choice,
@@ -670,15 +671,20 @@ def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
 
     assert result.state.players[0].in_play == (calculus,)
     assert result.state.players[0].trashed == (sardaukar,)
-    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    # Sardaukar Soldier's Intrigue card waits as the owner's own step in the
+    # Reveal (user ruling 2026-10-10, OQ-106).
+    assert result.state.players[0].intrigue_cards == ()
     assert result.state.players[0].combat_strength == 6
     assert context["strength"] == 6
     assert context["optional_sword_strength"] == 3
     assert [event.kind for event in result.events] == [
         "card_trashed",
-        "intrigue_card_drawn",
         "reveal_strength_gained",
     ]
+    drawn = apply_owed_draw(
+        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
 
 
 

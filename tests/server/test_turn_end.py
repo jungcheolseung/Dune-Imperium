@@ -2642,16 +2642,20 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
     # Seed 79 since 2026-10-10: Cunning's draw after its trash became its own
     # step (OQ-106), so seed 70's walk no longer meets such a reward choice
     # (it does on the previous commit's engine); 79 is the first seed after
-    # it whose walk does (round 9, seat 0's reward beside seat 3).
+    # it whose walk does (round 9, seat 0's reward beside seat 3). Seed 81
+    # since a triggered Intrigue draw waits as the owner's own step (OQ-106):
+    # 79's walk no longer meets one (it does on the previous commit's
+    # engine); 81 is the first seed after it whose walk does (round 9, seat
+    # 1's reward beside seat 2).
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
-        game_seed=79,
+        game_seed=81,
         immortality=True,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(79)
+    rng = random.Random(81)
     compared = 0
     for _ in range(9000):
         if summary["finished"]:

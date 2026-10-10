@@ -554,6 +554,16 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # chose among 6 (3,172 -> 3,164 vectors). With the
 # trash drawing again (a scratch copy of the previous commit's source) all
 # six games reproduce the pins above exactly.
+# v142, fifth change (OQ-106): a draw another printed effect triggers in
+# the seat's own turn waits as its own ``draw_owed_intrigue`` step. Two
+# games move: everything at decision 216 (round 4, seat 2, right after its
+# research direction c3r5 moved its Tleilaxu token onto the track's
+# Intrigue space), where the random seat draws the card from 4 actions
+# instead of deploying (3,640 -> 3,544 vectors), and scouts at decision 812
+# (round 10, seat 3, right after its Reveal bought Overthrow), where the
+# draw is the seat's one legal action (3,368 -> 3,372 vectors). With the
+# triggers drawing again (a scratch copy of the previous commit's source)
+# all six games reproduce the pins above exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
@@ -562,13 +572,13 @@ _GOLDEN_DIGESTS = {
         3164,
     ),
     "everything": (
-        "f55433f456bb38bb07fb221e3ba4224190a5369b0b9eab537eb6530914ecee18",
-        3640,
+        "59dda2cf4dc4292e56d3a3525851a67939dbdab5d1754d2193465e1552bea5c1",
+        3544,
     ),
     "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
-        "bbcab915e68bfe5956bf4340c62f6fd0cfdb524c16c58a2c5b7598b1469bc42d",
-        3368,
+        "8cfd0248ba40467e17c6e1f7ea119839005e49a61318d576015a48a5bc236a3c",
+        3372,
     ),
 }
 _GOLDEN_CONFIGS = {

@@ -375,6 +375,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Kota Odax's ``trash_leader_tech`` pay only the arrow's cost; their rewards
 # are then their own ``resolve_agent_card_effect(effect=cards|research)`` and
 # ``(effect=intrigue|cards)`` steps. No template change.
+# Also in v142 (OQ-106, triggered draws): a draw another printed effect
+# triggers inside the seat's own Agent or Reveal turn waits as the seat's own
+# step (``PlayerState.owed_draws``) instead of being drawn by the step that
+# triggered it -- the Bene Gesserit Influence 4 bonus and Princess Irulan's
+# Imperial Birthright. Every catalog adds the nullary ``draw_owed_intrigue``.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -545,6 +550,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # The owner's waiting Emperor track Spy, opened in any order
             # inside its own turn (user ruling 2026-10-04).
             "place_track_spy",
+            # An Intrigue card a trigger earned in the owner's own turn, its
+            # own step (user ruling 2026-10-10, OQ-106; codec v142).
+            "draw_owed_intrigue",
             # An acquisition-bonus Spy may pass up the recall-first without a
             # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
             "decline_acquisition_spy",

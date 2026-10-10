@@ -402,6 +402,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     int_arg,
     spy_answer,
     str_arg,
+    triggered_draw,
     with_arg,
     worst_recall_action,
 )
@@ -4099,6 +4100,9 @@ def _collect(t: _Turn) -> None:
 def agent_effects_window(run: DecisionRun) -> DomainAction | None:
     """The app's answer to one ``agent_effects`` decision (module docstring)."""
 
+    drawn = triggered_draw(run)
+    if drawn is not None:
+        return drawn
     if run.first("gather_intelligence") or run.first("decline_gather_intelligence"):
         return _gather_intelligence(run)
     t = _turn(run)

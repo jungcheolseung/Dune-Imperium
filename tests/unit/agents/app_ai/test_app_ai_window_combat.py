@@ -734,17 +734,21 @@ def test_reward_spy_with_an_empty_supply_recalls_the_worst_post() -> None:
 
 
 def test_endgame_plays_first_then_matches_then_passes() -> None:
-    # Base seed 61: seat 2 holds Secure Spice Trade (offered) beside an
-    # unplayable Buy Access, and a face-up desert mouse Objective beside
-    # Propaganda. (Seed 18, where seat 2 also held an unplayable Secure Spice
-    # Trade, reached this until Imperial Privilege's card draw became its
-    # own icon, 2026-10-10, OQ-027 (d), which moved its game at round 8 seat
-    # 0's Imperial Privilege visit; then seed 47, where seat 3 held Shadow
-    # Alliance and a crysknife Objective, until Cunning's draw after its
-    # trash became its own step, 2026-10-10, OQ-106, which moved its game at
-    # round 7 seat 3's Cunning; 61 is the first seed from 47 that offers a
-    # play and a match together.)
-    state = _reach("endgame_intrigue", choam=False, seed=61, want="play_and_match")
+    # Base seed 103: seat 1 holds Shadow Alliance (offered), and a face-up
+    # Battle for Arrakeen beside Propaganda. (Seed 18, where seat 2 also held
+    # an unplayable Secure Spice Trade, reached this until Imperial
+    # Privilege's card draw became its own icon, 2026-10-10, OQ-027 (d),
+    # which moved its game at round 8 seat 0's Imperial Privilege visit;
+    # then seed 47, where seat 3 held Shadow Alliance and a crysknife
+    # Objective, until Cunning's draw after its trash became its own step,
+    # 2026-10-10, OQ-106, which moved its game at round 7 seat 3's Cunning;
+    # then seed 61, where seat 2 held Secure Spice Trade beside an
+    # unplayable Buy Access and a face-up desert mouse Objective beside
+    # Propaganda, until a triggered Intrigue draw became the owner's own
+    # step, 2026-10-10, OQ-106, which moved its game at round 3 seat 0's
+    # trash of Sardaukar Soldier; 103 is the first seed from 61 that offers a
+    # play and a match together and takes them in that order.)
+    state = _reach("endgame_intrigue", choam=False, seed=103, want="play_and_match")
     seat = _seat(state)
     taken: list[tuple[str, dict[str, object]]] = []
     while state.decision_stack and state.decision_stack[-1].kind == "endgame_intrigue":
@@ -756,11 +760,11 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
         taken.append(_args(action))
         state = ENGINE.apply(state, action, legal_actions=run.legal).state
     assert taken == [
-        ("play_intrigue", {"card_id": "intrigue:secure_spice_trade:0", "option": 0}),
+        ("play_intrigue", {"card_id": "intrigue:shadow_alliance:0", "option": 0}),
         (
             "match_endgame_wild_icon",
             {
-                "matching_card_id": "objective_desert_mouse_4_6p",
+                "matching_card_id": "battle_for_arrakeen",
                 "wild_card_id": "propaganda",
             },
         ),
@@ -769,11 +773,15 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
 
 
 def test_endgame_plays_secure_spice_trade() -> None:
-    # CHOAM seed 3: seat 2 holds Secure Spice Trade and Inspire Awe. (Seed 1
+    # CHOAM seed 9: seat 1 holds Secure Spice Trade and Mercenaries. (Seed 1
     # until Imperial Privilege's card draw became its own icon, 2026-10-10,
     # OQ-027 (d), moved its game at round 4 seat 0's Imperial Privilege
-    # visit; its seat now holds no Intrigue card and takes a wild match.)
-    state = _reach("endgame_intrigue", choam=True, seed=3, want="several")
+    # visit; its seat now holds no Intrigue card and takes a wild match. Then
+    # seed 3, where seat 2 held Secure Spice Trade and Inspire Awe, until the
+    # Bene Gesserit Influence 4 card became the owner's own step, 2026-10-10,
+    # OQ-106, which moved its game at round 6 seat 3's Secrets visit; 9 is the
+    # first seed from 3 whose seat plays it.)
+    state = _reach("endgame_intrigue", choam=True, seed=9, want="several")
     assert _args(W.endgame_intrigue(_run(state))) == (
         "play_intrigue",
         {"card_id": "intrigue:secure_spice_trade:0", "option": 0},

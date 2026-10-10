@@ -110,8 +110,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_owed_intrigue (OQ-106)
     )
-    assert first.size == 4412
+    assert first.size == 4413
 
 
 def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
@@ -135,8 +136,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
         assert set(with_scouts.catalog) - set(without.catalog) == scouts_only
         assert all(t.action_id.startswith(_SCOUTS_ACTION_PREFIXES) for t in scouts_only)
         assert set(without.catalog) <= set(with_scouts.catalog)
-    assert ActionCodec(RulesetConfig()).size == 4412
-    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4412 + len(
+    assert ActionCodec(RulesetConfig()).size == 4413
+    assert ActionCodec(RulesetConfig(arrakeen_scouts=True)).size == 4413 + len(
         _scouts_templates(RulesetConfig(arrakeen_scouts=True))
     )
 
@@ -246,6 +247,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+            + 1  # v142: draw_owed_intrigue (OQ-106)
     )
 
     try:
@@ -369,6 +371,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_planetologist_intrigue (OQ-106)
+        + 1  # v142: draw_owed_intrigue (OQ-106)
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

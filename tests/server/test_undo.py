@@ -1500,3 +1500,213 @@ def test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot() -> No
     assert all(row["undoable"] is False for row in rewards)
     summary = _play_raw(manager, summary, index=_int(rewards[1]["index"]))
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+# ------------------------------------------------ triggered draws (OQ-106)
+
+
+def test_influence_choice_reaching_a_bonus_can_be_taken_back_and_its_card_cannot() -> (
+    None
+):
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): a draw a
+    trigger earns is not drawn inside the step that triggered it. Change
+    Allegiances' "3 spice -> +1 Influence" [Change Allegiances card] raised
+    to Bene Gesserit 4 earns the track's Intrigue card [Main p. 7]; the
+    Faction choice stays in the seat's undo window, and the card waits as
+    the seat's own ``draw_owed_intrigue``, which closes it (OQ-010). Before
+    the split the choice drew the card in the same step.
+
+    Seed 0: seat 0's first turn, given the card, three spice and Bene
+    Gesserit 3 by hand (served flags and the window only).
+    """
+
+    card = "intrigue:change_allegiances:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        intrigue_deck=tuple(c for c in session.state.intrigue_deck if c != card),
+        players=(
+            replace(
+                owner,
+                intrigue_cards=(card,),
+                resources=replace(owner.resources, spice=3),
+                influence=replace(owner.influence, bene_gesserit=3),
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    play = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "play_intrigue"
+        and _obj(row["arguments"]).get("card_id") == card
+    )
+    summary = _play_raw(manager, summary, index=_int(play["index"]))
+    line = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "use_intrigue_effect"
+        and _obj(row["arguments"]).get("section") == 1
+    )
+    summary = _play_raw(manager, summary, index=_int(line["index"]))
+    choice = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "choose_intrigue_faction"
+        and _obj(row["arguments"]).get("faction") == "bene_gesserit"
+    )
+    assert choice["undoable"] is True
+    intrigue_before = manager._get(game_id).state.players[0].intrigue_cards
+    summary = _play_raw(manager, summary, index=_int(choice["index"]))
+    chosen = manager._get(game_id).state.players[0]
+    assert chosen.influence.bene_gesserit == 4
+    assert chosen.intrigue_cards == intrigue_before  # nothing drawn
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    finish = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "finish_intrigue_effects"
+    )
+    summary = _play_raw(manager, summary, index=_int(finish["index"]))
+    rows = _served(manager, game_id)
+    draw = next(row for row in rows if row["action_id"] == "draw_owed_intrigue")
+    assert draw["undoable"] is False
+    assert draw["detail"] == "Bene Gesserit Influence 4"
+    assert all(row["action_id"] != "finish_agent_turn" for row in rows)
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    drawn = manager._get(game_id).state.players[0]
+    assert len(drawn.intrigue_cards) == 1 and drawn.owed_draws == ()
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+def test_research_direction_reaching_a_tleilaxu_intrigue_can_be_taken_back() -> None:
+    """A research space's Tleilaxu icon [Immortality pp. 6, 16] that moves
+    the Tleilaxu token onto an Intrigue space ("칸 2: Intrigue 1"
+    [Immortality pp. 4, 7]) holds that card as the seat's own step (user
+    ruling 2026-10-10, OQ-106), so the public direction choice stays in the
+    undo window and only the draw closes it (OQ-010).
+
+    Seed 0 with Immortality: seat 0's first turn, its research token on
+    c1r3 and Tleilaxu token on 1, Reconnaissance and two water given by hand
+    for the Research Station (served flags and the window only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    city = next(card for card in owner.deck if ":reconnaissance:" in card)
+    session.state = replace(
+        session.state,
+        players=(
+            replace(
+                owner,
+                research_space="c1r3",
+                tleilaxu_space=1,
+                resources=replace(owner.resources, water=2),
+                hand=(city, *owner.hand),
+                deck=tuple(card for card in owner.deck if card != city),
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    placement = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]) == {"card_id": city, "space_id": "research_station"}
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    research = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "resolve_board_effect"
+        and _obj(row["arguments"]) == {"effect": "research"}
+    )
+    summary = _play_raw(manager, summary, index=_int(research["index"]))
+    direction = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "choose_research_space"
+        and _obj(row["arguments"]) == {"space_id": "c2r4"}
+    )
+    assert direction["undoable"] is True
+    summary = _play_raw(manager, summary, index=_int(direction["index"]))
+    moved = manager._get(game_id).state.players[0]
+    assert moved.tleilaxu_space == 2 and moved.intrigue_cards == ()
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
+    draw = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "draw_owed_intrigue"
+    )
+    assert draw["undoable"] is False
+    assert draw["detail"] == "Tleilaxu track"
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert len(manager._get(game_id).state.players[0].intrigue_cards) == 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+def test_trashing_sardaukar_soldier_can_be_taken_back_and_its_card_cannot() -> None:
+    """Sardaukar Soldier draws an Intrigue card "when trashed" [card face]:
+    a separate printed trigger, so the trash choice (here Desert Tactics'
+    "trash a card" [Board Guide p. 1]) stays undoable and the card waits as
+    the seat's own step (user ruling 2026-10-10, OQ-106; OQ-010).
+
+    Seed 0: seat 0's first turn, a Sardaukar Soldier put in its discard pile
+    by hand (served flags and the window only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    soldier = next(
+        card for card in session.state.imperium_deck if ":sardaukar_soldier:" in card
+    )
+    session.state = replace(
+        session.state,
+        imperium_deck=tuple(c for c in session.state.imperium_deck if c != soldier),
+        players=(replace(owner, discard_pile=(soldier,)), *session.state.players[1:]),
+    )
+    summary = manager.summary(game_id)
+    placement = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("space_id") == "desert_tactics"
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    trash = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "trash_card_for_desert_tactics"
+        and _obj(row["arguments"]).get("card_id") == soldier
+    )
+    assert trash["undoable"] is True
+    summary = _play_raw(manager, summary, index=_int(trash["index"]))
+    trashed = manager._get(game_id).state.players[0]
+    assert trashed.trashed == (soldier,) and trashed.intrigue_cards == ()
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    draw = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "draw_owed_intrigue"
+    )
+    assert draw["undoable"] is False
+    assert draw["detail"] == "Sardaukar Soldier"
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert len(manager._get(game_id).state.players[0].intrigue_cards) == 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []

@@ -1367,6 +1367,7 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_owed_intrigue (OQ-106)
     )
 
     actions = (

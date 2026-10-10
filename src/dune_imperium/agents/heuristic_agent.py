@@ -74,6 +74,10 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Liet Kynes' replacement Intrigue card, its own step beside the trash
     # (user ruling 2026-10-10, OQ-106): taken first, like an icon.
     "draw_planetologist_intrigue": 2.0,
+    # A draw a trigger earned in the agent's own turn, its own step (user
+    # ruling 2026-10-10, OQ-106): taken early, like an icon, as when the
+    # trigger drew it.
+    "draw_owed_intrigue": 2.0,
     "gather_intelligence": 2.0,
     "resolve_espionage_place_spy": 2.0,
     "advance_feyd_track": 2.0,

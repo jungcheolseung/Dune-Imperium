@@ -65,6 +65,7 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_signet_actions,
     signet_influence_withheld,
 )
+from dune_imperium.rules.owed_draws import apply_owed_draw, legal_owed_draw_actions
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.setup import create_initial_state
 
@@ -1238,7 +1239,11 @@ def test_loyalty_ignores_other_factions_and_leaders() -> None:
     assert other_leader.state.players[0].resources.spice == 0
 
 
-def test_imperial_birthright_draws_an_intrigue_card_on_reaching_two() -> None:
+def test_imperial_birthright_waits_as_the_owners_own_step_in_its_turn() -> None:
+    # "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." [Princess
+    # Irulan card]. Inside the seat's own turn the card is not drawn by the
+    # step that raised the Influence: it waits as the seat's own step (user
+    # ruling 2026-10-10, OQ-106: "그 외에는 전부 나누자").
     owner = PlayerState(player_id=0, leader_id="princess_irulan")
     state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
 
@@ -1250,24 +1255,48 @@ def test_imperial_birthright_draws_an_intrigue_card_on_reaching_two() -> None:
         event_prefix="test:birthright",
     )
 
-    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
-    assert result.state.intrigue_deck == ()
+    held = result.state.players[0]
+    assert held.intrigue_cards == ()
+    assert result.state.intrigue_deck == ("intrigue:test",)
+    assert [entry[:2] for entry in held.owed_draws] == [
+        ("intrigue", "imperial_birthright")
+    ]
+    (draw,) = legal_owed_draw_actions(result.state, 0)
+    assert draw == DomainAction(action_id="draw_owed_intrigue", actor=0)
+    drawn = apply_owed_draw(result.state, draw).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.players[0].owed_draws == ()
+    assert drawn.intrigue_deck == ()
+    assert legal_owed_draw_actions(drawn, 0) == ()
 
 
-def test_imperial_birthright_queues_the_draw_on_an_empty_deck() -> None:
+def test_imperial_birthright_draws_at_once_outside_the_seats_turn() -> None:
+    # Outside the seat's own turn (a Conflict reward) the card is drawn at
+    # once, and an empty deck queues it for the reshuffle as before (OQ-106).
     owner = PlayerState(player_id=0, leader_id="princess_irulan")
-    state = _turn_state(owner)
+    combat = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        decision_stack=(),
+        intrigue_deck=("intrigue:test",),
+    )
 
-    result = gain_faction_influence(
-        state,
+    drawn = gain_faction_influence(
+        combat, 0, Faction.EMPEROR, 2, event_prefix="test:birthright"
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.players[0].owed_draws == ()
+
+    queued = gain_faction_influence(
+        replace(combat, intrigue_deck=()),
         0,
         Faction.EMPEROR,
         2,
         event_prefix="test:birthright:empty",
-    )
-
-    (owed,) = result.state.pending_intrigue_draws
+    ).state
+    (owed,) = queued.pending_intrigue_draws
     assert owed[:2] == (0, 1)
+    assert queued.players[0].owed_draws == ()
 
 
 def test_arrakis_informant_places_a_spy_only_next_to_city_spaces() -> None:

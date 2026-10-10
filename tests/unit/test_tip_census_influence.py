@@ -441,13 +441,24 @@ def test_navigation_gain_is_bucketed_leader_in_a_real_game(
     # 4 Conflict-reward and 1 Agent-card gain: 17 total (independent replay,
     # no collector imports; the previous commit's engine gives the values
     # pinned before).
+    # Re-counted 2026-10-10 for a triggered draw held as the owner's own step
+    # (user ruling 2026-10-10, OQ-106, codec v142): seed 27 first diverges at
+    # round 6, seat 0's research direction (c3r5), whose Tleilaxu track
+    # Intrigue card is now its own step, after its round-3 Emperor visit has
+    # triggered Navigation; no earlier full seed has a bare visit trigger it
+    # (a scan of seeds 1-27's "navigation" gains). Its own events now contain
+    # 8 visits, 1 Navigation, 1 Intrigue (Tenuous Bond), 1 Conflict reward of
+    # 2, 1 Agent-card (Scientific Breakthrough's research step) and 1 Tech
+    # (Navigation Chamber's acquire icon) gain: 14 total (independent replay,
+    # no collector imports; the previous commit's engine gives the values
+    # pinned before).
     game = tip_census.play(_spec(True, 27), ("influence",))
     seat0 = game["seats"][0]
     assert seat0["leader"] == "steersman_y_rkoon"
     sources = seat0["infl.sources"]
     assert sources.get("leader") == 1
     assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 8
-    assert seat0["infl.gained"] == 17
+    assert seat0["infl.gained"] == 14
 
 
 def test_fremen2_round_uses_the_decision_round_not_a_folded_next_round(
@@ -749,31 +760,44 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # and declined once, Gather Intelligence once, at a 1/2 lag; one Spy left
     # on the board. The values below are the collectors' own on a scratch
     # replay (not recounted independently this time).
-    game = tip_census.play(_spec(True, 26), ("influence",))
-    seat = game["seats"][1]
+    # Re-derived 2026-10-10 for a triggered draw held as the owner's own step
+    # (OQ-106, codec v142): seed 26 first diverges at round 4, seat 2's
+    # Reveal, where the Tleilaxu track's Intrigue card its Subject X-137
+    # purchase reached is now its own step; seat 1 no longer has an Intrigue
+    # source, so it no longer fills the first role (the previous commit's
+    # engine gives the values pinned before). Full seeds 1-600 give seed 209
+    # (seat 0) alone in the first role and seeds 54 (seat 2), 248 (seat 2),
+    # 478 (seat 1) and 515 (seat 1) in the second; seed 54 seat 2 keeps its
+    # role with every column unchanged. Seed 209 seat 0 (Kota Odax of Ix):
+    # Tech, Intrigue, Agent-card (twice) and Conflict-reward sources, one
+    # loss; a trashed Spy and one other recall; two of three Infiltrates
+    # taken; Gather Intelligence twice; no Maker Hooks; a 7/4 Spy use lag;
+    # one Spy left on the board. The values below are the collectors' own on
+    # a scratch replay (not recounted independently).
+    game = tip_census.play(_spec(True, 209), ("influence",))
+    seat = game["seats"][0]
     assert seat["infl.sources"] == {
-        "visit:starter": 4,
-        "visit:bought": 3,
+        "visit:starter": 5,
+        "visit:bought": 4,
         "agent_card": 2,
-        "acquisition": 1,
         "combat_reward": 1,
-        "tech": 2,
+        "tech": 1,
         "intrigue": 1,
     }
     assert seat["infl.gained"] == 14
     assert seat["infl.lost"] == 1
     assert seat["infl.fremen2_round"] == 6
     assert seat["infl.hooks_round"] is None
-    assert seat["lands.reveal_cards"] == pytest.approx(2.9)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(5.1)
-    assert seat["spy.placed"] == 5
+    assert seat["lands.reveal_cards"] == pytest.approx(4.5)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(6.0)
+    assert seat["spy.placed"] == 7
     assert seat["spy.used_gather"] == 2
     assert seat["spy.recalled_other"] == 1
     assert seat["spy.trashed"] == 1
-    assert seat["spy.on_board_end"] == 0
-    assert seat["spy.use_lag"] == pytest.approx(4 / 3)
-    assert seat["spy.infiltrate_offered"] == 2
-    assert seat["spy.infiltrate_taken"] == 1
+    assert seat["spy.on_board_end"] == 1
+    assert seat["spy.use_lag"] == pytest.approx(7 / 4)
+    assert seat["spy.infiltrate_offered"] == 3
+    assert seat["spy.infiltrate_taken"] == 2
 
     game = tip_census.play(_spec(True, 54), ("influence",))
     seat = game["seats"][2]

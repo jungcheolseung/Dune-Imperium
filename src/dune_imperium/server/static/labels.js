@@ -318,6 +318,7 @@ const ACTION_LABELS = {
   trash_optional_card: "카드 {trash} (선택)",
   decline_optional_trash: "{trash} 거절",
   draw_planetologist_intrigue: "{intrigue} {draw} (Arrakis Planetologist)",
+  draw_owed_intrigue: "{intrigue} {draw}",
 };
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to
    prettify(kind) for anything not listed here. */

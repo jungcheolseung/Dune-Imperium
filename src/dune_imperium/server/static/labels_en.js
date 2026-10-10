@@ -283,7 +283,8 @@ const LABELS_EN = {
     "deploy_leader_agent": "Into the Fray: Deploy {agent} to {conflict}",
     "trash_optional_card": "{trash} card (optional)",
     "decline_optional_trash": "Decline {trash}",
-    "draw_planetologist_intrigue": "{draw} {intrigue} (Arrakis Planetologist)"
+    "draw_planetologist_intrigue": "{draw} {intrigue} (Arrakis Planetologist)",
+    "draw_owed_intrigue": "{draw} {intrigue}"
   },
   "SEAT_KINDS": {
     "human": "Human",

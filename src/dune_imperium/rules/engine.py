@@ -227,6 +227,11 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.owed_draws import (
+    apply_owed_draw,
+    legal_owed_draw_actions,
+    pay_stale_owed_draws,
+)
 from dune_imperium.rules.pauses import (
     CONFLICT_END,
     REWARDS,
@@ -470,6 +475,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # The owner's waiting Emperor track Spy, before the Agent or Reveal
         # too: a Plot is part of the turn (user ruling 2026-10-04).
         legal_track_spy_actions,
+        # A draw a Plot's trigger earned, its own step (OQ-106).
+        legal_owed_draw_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -486,6 +493,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # The owner's waiting Emperor track Spy, placed in any order before
         # the Reveal ends (user ruling 2026-10-04).
         legal_track_spy_actions,
+        # A draw a trigger earned in the turn, its own step taken in any
+        # order before the Reveal ends (user ruling 2026-10-10, OQ-106).
+        legal_owed_draw_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -744,6 +754,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_tech_trash": apply_tech_choice,
     "place_tech_spy": apply_place_tech_spy,
     "place_track_spy": apply_place_track_spy,
+    # A triggered draw held as the owner's own step (OQ-106).
+    "draw_owed_intrigue": apply_owed_draw,
     "decline_skill": apply_skill_choice,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
@@ -963,7 +975,9 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            pay_stale_owed_draws(
+                draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            )
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))
@@ -1006,7 +1020,9 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            pay_stale_owed_draws(
+                draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            )
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))

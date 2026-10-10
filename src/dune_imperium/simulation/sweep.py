@@ -36,6 +36,7 @@ from dune_imperium.simulation.invariants import (
     InvariantViolation,
     check_event_visibility,
     check_observation_privacy,
+    check_owed_draws,
     check_state_invariants,
     check_track_spy_queue,
 )
@@ -152,6 +153,7 @@ def run_checked_game(
                 )
             try:
                 check_track_spy_queue(state)
+                check_owed_draws(state)
             except InvariantViolation as violation:
                 raise InvariantViolation(
                     f"after step {len(steps)}: {violation}"

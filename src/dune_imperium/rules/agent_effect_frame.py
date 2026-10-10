@@ -63,6 +63,7 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_placement_ability_actions,
     legal_leader_signet_actions,
 )
+from dune_imperium.rules.owed_draws import legal_owed_draw_actions
 from dune_imperium.rules.sardaukar import (
     legal_commander_recruit_actions,
     legal_sardaukar_commander_actions,
@@ -121,6 +122,9 @@ def legal_agent_effect_frame_actions(
         # The Emperor track's Influence 4 Spy waits in the turn and is
         # placed in any order before its end (user ruling 2026-10-04).
         *legal_track_spy_actions(state, player),
+        # So does a draw a trigger earned in it, taken as its own step
+        # (user ruling 2026-10-10, OQ-106).
+        *legal_owed_draw_actions(state, player),
         *_graft_switch_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),

@@ -17,7 +17,12 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import FrameKind, owes_track_spy, reset_turn_counters
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owes_held_draw,
+    owes_track_spy,
+    reset_turn_counters,
+)
 from dune_imperium.rules.strength import conflict_agent_strength
 
 
@@ -164,6 +169,8 @@ def open_next_turn(state: GameState, player: int) -> GameState:
 
     if owes_track_spy(state, player):
         raise RuntimeError("a turn cannot pass over an owed Emperor track Spy")
+    if owes_held_draw(state, player):
+        raise RuntimeError("a turn cannot pass over a waiting triggered draw")
     next_player = next_unrevealed_player(state, player)
     players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
@@ -460,6 +467,10 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
         # Placed in any order, but before the turn ends (user ruling
         # 2026-10-04, overriding OQ-057 (15)).
         raise RuntimeError("an Agent turn cannot close over an owed track Spy")
+    if owes_held_draw(state, owner):
+        # Taken in any order, but before the turn ends (user ruling
+        # 2026-10-10, OQ-106).
+        raise RuntimeError("an Agent turn cannot close over a waiting draw")
     next_player = next_unrevealed_player(state, owner)
     players = reset_turn_counters(state.players, next_player, closing=owner)
     next_frame = DecisionFrame(

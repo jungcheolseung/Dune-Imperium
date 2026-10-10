@@ -534,6 +534,24 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     steps; with the bundled recall-and-draw patched back in, a scratch
     checkout of the previous commit, the capture finds seed 199 with the
     values pinned before).
+
+    Re-derived 2026-10-10 for a triggered draw held as the owner's own step
+    (user ruling 2026-10-10, OQ-106, codec v142): seed 183 first diverges at
+    round 4, seat 0's Reveal, where Overthrow's acquire-box Intrigue card is
+    now its own step, and no longer has an Endgame-opening Tech change the
+    leader. On the previous commit's engine the same capture over full
+    seeds 1-200 finds seeds 24, 85, 130, 167 and 183 (later commits of the
+    batch had added the others without moving 183). On this engine it
+    finds seeds 53, 72, 99 and 123; the case is seed 53, the first.
+    Endgame opens there in round 10 on the empty Conflict deck with check
+    VP [6, 7, 7, 7]: seat 3 (Liet Kynes) ranks first of its tie with seats
+    1 and 2 on spice (13 to 2 and 3). Seat 2 (Steersman Y'rkoon) holds
+    Panopticon; its Emperor 0 -> 1 gain does not score but its Spacing Guild
+    1 -> 2 gain does (and plays its next Navigation card), taking it to 8
+    and the lead. Every seat then passes its Endgame Intrigue, and seat 2
+    ends on 8 as the winner. The buggy collector would read
+    ``end.endgame_vp`` == 0 for seat 2 and ``end.leader_changed`` == False
+    (independent replay of the Endgame steps).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -541,7 +559,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 183):
+    for seed in (*FULL_SEEDS, 53):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -576,13 +594,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 183:
+        if seed == 53:
             saw_case = True
-            assert census["seats"][1]["end.endgame_vp"] == 2
+            assert census["seats"][2]["end.endgame_vp"] == 1
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 183 regression case must run"
+    assert saw_case, "the seed 53 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(

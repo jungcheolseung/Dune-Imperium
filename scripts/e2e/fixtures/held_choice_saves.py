@@ -9,9 +9,12 @@ game, no edited state.
 - ``held-defense`` (seed 0, round 7): seat 0's Control defense in Round
   Start, both answers undoable: the engine pauses before the round's draw
   (rules/pauses.py), where the server holds the answer for the press;
-- ``held-acquire`` (seed 0, the same walk): an Intrigue card's acquisition
-  outside the turns, every row marked ``sent_by_turn_end`` (the acquisition
-  refills the Imperium Row, a reveal inside the step itself);
+- ``held-acquire`` (seed 32, round 3): an Intrigue card's acquisition
+  outside the turns, every Row offer marked ``sent_by_turn_end`` (the
+  acquisition refills the Imperium Row, a reveal inside the step itself)
+  and every Reserve offer undoable. Seed 0's walk reached one in round 7
+  until a triggered draw became its owner's own step (user ruling
+  2026-10-10, OQ-106) moved its game; 32 is the first seed whose walk does;
 - ``held-reward-spy`` (seed 19, round 4): a Conflict reward Spy whose posts
   can be taken back, saved right before seat 0 places it; placing it holds
   the seat's unit end before the next round (the engine's pause).
@@ -36,6 +39,7 @@ SEATS = (
 )
 SPY_POST = "place_combat_reward_spy"
 ACQUIRE = "acquire_intrigue_imperium"
+RESERVE = "acquire_intrigue_reserve"
 STEPS = 40_000
 
 store = SaveStore(Path(sys.argv[1]))
@@ -59,8 +63,7 @@ def seat_0_decision(manager, gid, summary):
     return summary
 
 
-# Seed 0: the Control defense held by the server, then an Intrigue card's
-# acquisition held by the browser.
+# Seed 0: the Control defense held by the server.
 manager, gid, summary, rng = start(0)
 for _step in range(STEPS):
     summary = seat_0_decision(manager, gid, summary)
@@ -69,24 +72,35 @@ for _step in range(STEPS):
     kind = summary["decision"]["kind"]
     actions = manager.legal_actions(gid, 0)["actions"]
     if (
-        "held-defense" not in found
-        and kind == "control_defense"
+        kind == "control_defense"
         and len(actions) == 2
         and all(a["undoable"] and not a["sent_by_turn_end"] for a in actions)
     ):
         found["held-defense"] = store.write(
             manager.save_game(gid, name="held-defense")
         )["save_id"]
+        break
+    choice = rng.choice(actions)
+    summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])
+
+# Seed 32: an Intrigue card's acquisition held by the browser.
+manager, gid, summary, rng = start(32)
+for _step in range(STEPS):
+    summary = seat_0_decision(manager, gid, summary)
+    if summary["finished"]:
+        break
+    actions = manager.legal_actions(gid, 0)["actions"]
     acquire = [a for a in actions if a["action_id"] == ACQUIRE]
+    reserve = [a for a in actions if a["action_id"] == RESERVE]
     if (
-        "held-acquire" not in found
-        and len(acquire) >= 2
-        and all(a["sent_by_turn_end"] for a in acquire)
+        len(acquire) >= 3
+        and all(a["sent_by_turn_end"] and not a["undoable"] for a in acquire)
+        and reserve
+        and all(a["undoable"] and not a["sent_by_turn_end"] for a in reserve)
     ):
         found["held-acquire"] = store.write(
             manager.save_game(gid, name="held-acquire")
         )["save_id"]
-    if {"held-defense", "held-acquire"} <= set(found):
         break
     choice = rng.choice(actions)
     summary = manager.apply_action(gid, 0, summary["revision"], choice["index"])

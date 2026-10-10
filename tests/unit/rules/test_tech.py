@@ -1888,11 +1888,25 @@ def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
     return owed, deployed.players[player].troops_conflict
 
 
+def _owed_taken(state: GameState, player: int = 0) -> GameState:
+    """Take every triggered draw waiting as the seat's own step (OQ-106)."""
+
+    from dune_imperium.rules.owed_draws import apply_owed_draw
+
+    while state.players[player].owed_draws:
+        state = apply_owed_draw(
+            state, DomainAction(action_id="draw_owed_intrigue", actor=player)
+        ).state
+    return state
+
+
 def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None:
     # "For each Intrigue card you draw or steal during your turn: [troop]
     # Deploy it to the Conflict" [Suspensor Suits Tech tile]; the face limits
     # only the turn (OQ-042 (a)), not which effect draws. Draws that took a
-    # card straight off the Intrigue deck skipped the troop.
+    # card straight off the Intrigue deck skipped the troop. A triggered draw
+    # waits as the seat's own step in its turn (user ruling 2026-10-10,
+    # OQ-106) and counts when it is taken.
     from dune_imperium.content.uprising.board import Faction
     from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
     from dune_imperium.rules.card_trash import trash_personal_card
@@ -1911,6 +1925,8 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     gained = gain_faction_influence(
         bene_gesserit, 0, Faction.BENE_GESSERIT, 1, event_prefix="test"
     ).state
+    assert _owed_and_deployed(gained) == (0, 0)
+    gained = _owed_taken(gained)
     assert len(gained.players[0].intrigue_cards) == 1
     assert _owed_and_deployed(gained) == (1, 1)
 
@@ -1927,7 +1943,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     gained = gain_faction_influence(
         irulan, 0, Faction.EMPEROR, 1, event_prefix="test"
     ).state
-    assert _owed_and_deployed(gained) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(gained)) == (1, 1)
 
     # Sardaukar Soldier: "When this card is trashed: [Intrigue]".
     soldier = "imperium:sardaukar_soldier:0"
@@ -1936,7 +1952,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
         stacks=stacks,
     )
     trashed = trash_personal_card(trashing, 0, soldier, source="test").state
-    assert _owed_and_deployed(trashed) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(trashed)) == (1, 1)
 
     # Overthrow's acquire box draws an Intrigue card.
     overthrow = "imperium:overthrow:0"
@@ -1949,7 +1965,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     acquired = acquire_imperium_for_intrigue(
         acquiring, 0, overthrow, to_hand=False, source="test"
     ).result.state
-    assert _owed_and_deployed(acquired) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(acquired)) == (1, 1)
 
     # Spy Network's Reveal: recall one of two placed Spies to draw.
     network = "imperium:spy_network:0"

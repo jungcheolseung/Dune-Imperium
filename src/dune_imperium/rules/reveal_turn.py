@@ -57,6 +57,7 @@ from dune_imperium.rules.frames import (
     context_int,
     context_str,
     frame_context,
+    owes_held_draw,
     owes_track_spy,
     owned_top_frame,
     recruited_commander_count,
@@ -4680,6 +4681,10 @@ def legal_finish_reveal_actions(
         # (15)); its placement window, like Panopticon's, offers only the
         # decline when nothing can be placed.
         return ()
+    if owes_held_draw(state, player):
+        # A triggered draw waits as its own step and is taken before the
+        # Reveal ends (user ruling 2026-10-10, OQ-106).
+        return ()
     return (DomainAction(action_id="finish_reveal", actor=player),)
 
 
@@ -4690,6 +4695,8 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         # Placed in any order, but before the turn ends (user ruling
         # 2026-10-04, overriding OQ-057 (15)).
         raise RuntimeError("a Reveal turn cannot end over an owed track Spy")
+    if owes_held_draw(state, action.actor):
+        raise RuntimeError("a Reveal turn cannot end over a waiting draw")
     if action not in legal_finish_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal cleanup")
     # Deferred choices whose printed condition never came back lapse here.

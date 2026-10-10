@@ -41,6 +41,7 @@ from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
+    owes_held_draw,
     owes_track_spy,
     own_turn_frame_index,
     recruited_commander_count,
@@ -408,6 +409,10 @@ def legal_agent_turn_finish_actions(
     if agent_turn_is_finishing(context):
         return ()
     if owes_track_spy(state, player) or context.get(TECH_ACQUIRE_PENDING_KEY):
+        return ()
+    if owes_held_draw(state, player):
+        # A triggered draw waits as its own step and is taken before the
+        # turn ends (user ruling 2026-10-10, OQ-106).
         return ()
     stalled_box = context["pending_agent_effect"] is True and graft_boxes_are_stalled(
         state
@@ -874,6 +879,7 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
     if (
         agent_turn_has_other_pending_effects(reopened, state.players)
         or owes_track_spy(state, owner)
+        or owes_held_draw(state, owner)
         or (
             recruited_more
             and (
