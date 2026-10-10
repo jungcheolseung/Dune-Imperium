@@ -10,10 +10,16 @@ was waiting for instead). See docs/human-records.md.
 ``problems`` checks or scores a suite of judged human positions
 (``records.problems``): ``check`` resolves every position on this engine,
 ``score`` asks agents for them.
+
+``corpus`` reads a record corpus (``records.corpus``): ``list`` the corpora,
+the ``keys`` of one with how many records and occurrences each has, and
+``pick`` records by key patterns, optionally ``--export``-ing them as save
+files ``check --every-save`` reads.
 """
 
 import argparse
 import json
+import subprocess
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -22,7 +28,8 @@ from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, Decision
 from dune_imperium.core.replay import ReplayStep
-from dune_imperium.paths import SAVES_DIR
+from dune_imperium.paths import PROJECT_ROOT, SAVES_DIR
+from dune_imperium.records.corpus import CORPUS_ROOT, Corpus, corpora
 from dune_imperium.records.migration import MigratedRecord, migrate_record
 from dune_imperium.records.problems import (
     DEFAULT_SUITE,
@@ -57,14 +64,159 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     problems.add_argument("--seed", type=int, default=0)
     problems.add_argument("--json", type=Path, help="write every answer here")
+    _add_corpus_parser(sub)
     return parser
+
+
+def _add_corpus_parser(
+    sub: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    corpus = sub.add_parser("corpus", help="read a record corpus")
+    actions = corpus.add_subparsers(dest="corpus_command", required=True)
+    listing = actions.add_parser("list", help="every corpus")
+    keys = actions.add_parser("keys", help="records and occurrences per key")
+    keys.add_argument("corpus", help="corpus id or folder")
+    keys.add_argument("pattern", nargs="?", default="*", help="fnmatch pattern")
+    keys.add_argument("--natural", action="store_true", help="natural games only")
+    pick = actions.add_parser("pick", help="records by key patterns")
+    pick.add_argument("corpus", help="corpus id or folder")
+    pick.add_argument("--has", action="append", default=[], metavar="PATTERN")
+    pick.add_argument(
+        "--not", dest="without", action="append", default=[], metavar="PATTERN"
+    )
+    pick.add_argument("--min-count", type=int, default=1)
+    pick.add_argument("--combo")
+    pick.add_argument("--mix")
+    pick.add_argument(
+        "--steered", action="store_true", help="include steered and branched games"
+    )
+    pick.add_argument("--limit", type=int)
+    pick.add_argument("--seed", type=int, default=0, help="shuffle within groups")
+    pick.add_argument("--ids-out", type=Path, help="write the picked ids here")
+    pick.add_argument("--export", type=Path, metavar="DIR", help="write save files")
+    for parser in (listing, keys, pick):
+        parser.add_argument("--root", type=Path, default=CORPUS_ROOT)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "problems":
         return _problems(args)
+    if args.command == "corpus":
+        return _corpus(args)
     return _check(args.saves_dir, every_save=args.every_save)
+
+
+# The engine trees a corpus names (scripts/records/corpus_generate.py).
+_ENGINE_TREES = {
+    "core": "src/dune_imperium/core",
+    "rules": "src/dune_imperium/rules",
+    "content": "src/dune_imperium/content",
+    "adapters": "src/dune_imperium/adapters",
+    "config.py": "src/dune_imperium/config.py",
+}
+
+
+def _head_engine_trees() -> dict[str, str] | None:
+    """This checkout's engine trees at HEAD, or ``None`` without git."""
+
+    trees = {}
+    for name, path in _ENGINE_TREES.items():
+        result = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", f"HEAD:{path}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        trees[name] = result.stdout.strip()
+    return trees
+
+
+def _corpus(args: argparse.Namespace) -> int:
+    if args.corpus_command == "list":
+        found = corpora(args.root)
+        print(f"{args.root}: {len(found)} corpora")
+        head = _head_engine_trees() if found else None
+        for corpus in found:
+            manifest = corpus.manifest
+            trees = manifest.get("engine_trees")
+            match = "?" if head is None else "yes" if trees == head else "no"
+            failures = sum(len(shard["failures"]) for shard in manifest["shards"])
+            print(
+                f"\n{corpus.id}  codec v{manifest['action_codec_version']}, "
+                f"commit {str(manifest['engine_commit'])[:8]}, "
+                f"{'on master' if manifest['on_master'] else 'off master'}, "
+                f"engine trees match HEAD: {match}"
+            )
+            print(
+                f"  {manifest['games']} games, {failures} failures, "
+                f"{corpus.size() / 1e6:.1f} MB"
+            )
+            games = ", ".join(
+                f"{combo}.{mix} {count}"
+                for (combo, mix), count in corpus.games().items()
+            )
+            print(f"  {games}")
+            runs = manifest.get("situation_runs") or {}
+            if runs:
+                print(f"  situation runs: {', '.join(sorted(runs))}")
+        return 0
+    corpus = Corpus.open(args.corpus, args.root)
+    if args.corpus_command == "keys":
+        counts = corpus.key_counts(args.pattern, natural=args.natural)
+        rows = [row for row in corpus.rows() if row.natural or not args.natural]
+        print(
+            f"{corpus.id}: {len(counts)} keys match {args.pattern!r} "
+            f"over {len(rows)} records"
+        )
+        print(f"{'records':>8} {'count':>8}  key")
+        for key, (records, count) in counts.items():
+            print(f"{records:8d} {count:8d}  {key}")
+        return 0
+    natural = not args.steered
+    total = sum(1 for row in corpus.rows() if row.natural or not natural)
+    picked = corpus.pick(
+        args.has,
+        args.without,
+        combo=args.combo,
+        mix=args.mix,
+        natural=natural,
+        min_count=args.min_count,
+        limit=args.limit,
+        seed=args.seed,
+    )
+    matched = len(
+        corpus.pick(
+            args.has,
+            args.without,
+            combo=args.combo,
+            mix=args.mix,
+            natural=natural,
+            min_count=args.min_count,
+        )
+    )
+    print(
+        f"{corpus.id}: {matched} of {total} records match"
+        + (f"; {len(picked)} picked" if len(picked) != matched else "")
+    )
+    for row in picked:
+        hits = []
+        for pattern in args.has:
+            for key in sorted(row.matching(pattern, min_count=args.min_count)):
+                first = row.first_step(key)
+                at = "" if first is None else f"@{first}"
+                hits.append(f"{key} x{row.count(key)}{at}")
+        print(f"  {row.id}  {row.combo} {row.mix} {row.steps} steps  {'  '.join(hits)}")
+    if args.ids_out is not None:
+        args.ids_out.write_text(
+            "".join(f"{row.id}\n" for row in picked), encoding="utf-8"
+        )
+    if args.export is not None:
+        paths = corpus.export(picked, args.export)
+        print(f"wrote {len(paths)} save files to {args.export}")
+    return 0
 
 
 def _problems(args: argparse.Namespace) -> int:
