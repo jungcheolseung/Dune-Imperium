@@ -774,30 +774,44 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # taken; Gather Intelligence twice; no Maker Hooks; a 7/4 Spy use lag;
     # one Spy left on the board. The values below are the collectors' own on
     # a scratch replay (not recounted independently).
-    game = tip_census.play(_spec(True, 209), ("influence",))
-    seat = game["seats"][0]
+    # Re-derived 2026-10-10 for Muad'Dib's Reveal Intrigue card as a pending
+    # Reveal gain (OQ-106, OQ-045): seed 209 first diverges at round 7, seat
+    # 2's Reveal, where Unpredictable Foe's card is now its own step; seat 0
+    # no longer has an Intrigue source, so it no longer fills the first role
+    # (the previous commit's engine gives the values pinned before). No seat
+    # of full seeds 1-600 fills it now; seeds 601-1200 give seeds 788 (seat
+    # 1) and 859 (seat 0), and the second role stays seed 54 seat 2 (every
+    # column unchanged; 248, 478, 515 and nine seats of 601-1200 follow).
+    # Seed 788 seat 1 (Feyd-Rautha Harkonnen): Tech, Intrigue (twice),
+    # Agent-card and Conflict-reward (twice) sources, one loss; Maker Hooks
+    # in round 3; a trashed Spy and five other recalls; one of three
+    # Infiltrates taken; Gather Intelligence twice at a 2/3 lag; no Spy left
+    # on the board. The values below are the collectors' own on a scratch
+    # replay (not recounted independently).
+    game = tip_census.play(_spec(True, 788), ("influence",))
+    seat = game["seats"][1]
     assert seat["infl.sources"] == {
-        "visit:starter": 5,
+        "visit:starter": 2,
         "visit:bought": 4,
-        "agent_card": 2,
-        "combat_reward": 1,
+        "agent_card": 1,
+        "combat_reward": 2,
         "tech": 1,
-        "intrigue": 1,
+        "intrigue": 2,
     }
-    assert seat["infl.gained"] == 14
+    assert seat["infl.gained"] == 12
     assert seat["infl.lost"] == 1
-    assert seat["infl.fremen2_round"] == 6
-    assert seat["infl.hooks_round"] is None
-    assert seat["lands.reveal_cards"] == pytest.approx(4.5)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(6.0)
-    assert seat["spy.placed"] == 7
+    assert seat["infl.fremen2_round"] == 3
+    assert seat["infl.hooks_round"] == 3
+    assert seat["lands.reveal_cards"] == pytest.approx(29 / 9)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(52 / 9)
+    assert seat["spy.placed"] == 9
     assert seat["spy.used_gather"] == 2
-    assert seat["spy.recalled_other"] == 1
+    assert seat["spy.recalled_other"] == 5
     assert seat["spy.trashed"] == 1
-    assert seat["spy.on_board_end"] == 1
-    assert seat["spy.use_lag"] == pytest.approx(7 / 4)
+    assert seat["spy.on_board_end"] == 0
+    assert seat["spy.use_lag"] == pytest.approx(2 / 3)
     assert seat["spy.infiltrate_offered"] == 3
-    assert seat["spy.infiltrate_taken"] == 2
+    assert seat["spy.infiltrate_taken"] == 1
 
     game = tip_census.play(_spec(True, 54), ("influence",))
     seat = game["seats"][2]

@@ -72,6 +72,7 @@ from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
     add_reveal_strength,
+    queue_reveal_intrigue_draw,
 )
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -2675,17 +2676,26 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
                     state.decision_stack, frame, "leader_intrigue_granted"
                 ),
             )
-            drawn = draw_or_queue_intrigue_cards(
-                flagged,
-                player,
-                1,
-                source=(
-                    f"round:{state.round_number}:player:{player}:leader_reveal:intrigue"
-                ),
+            # The card waits on the Reveal's pending gains as the owner's own
+            # ``draw_reveal_intrigue`` (OQ-045), so the step that put the
+            # sandworm in the Conflict (or the Reveal itself) stays
+            # undoable (user ruling 2026-10-10, OQ-106).
+            queued = queue_reveal_intrigue_draw(
+                flagged, 1, "leader_reveal:unpredictable_foe"
             )
             return RuleResult(
-                state=drawn.state,
-                events=(*result.events, *drawn.events),
+                state=queued,
+                events=(
+                    *result.events,
+                    GameEvent(
+                        event_id=(
+                            f"round:{state.round_number}:player:{player}:"
+                            "leader_reveal:intrigue"
+                        ),
+                        kind="leader_ability_resolved",
+                        payload=(("leader_id", "muad_dib"), ("player", player)),
+                    ),
+                ),
             )
         return result
     return result

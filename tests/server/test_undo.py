@@ -1780,3 +1780,52 @@ def test_a_harvest_can_be_taken_back_before_its_hungry_for_spice_card() -> None:
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
     seat = manager._get(game_id).state.players[0]
     assert len(seat.hand) == len(hand_before) + 1 and seat.owed_draws == ()
+
+
+def test_muad_dibs_reveal_can_be_taken_back_before_its_intrigue_card() -> None:
+    """Muad'Dib's Unpredictable Foe ("Reveal Turn: If you have one or more
+    sandworms in the Conflict: [Intrigue 1 draw]." [Muad'Dib card]) puts its
+    card on the Reveal's pending gains as his own ``draw_reveal_intrigue``
+    (OQ-045; user ruling 2026-10-10, OQ-106), so the Reveal itself stays in
+    the undo window, where it used to draw the card and close it (OQ-010).
+
+    Seed 0: seat 0's first turn, made Muad'Dib with a sandworm in the
+    Conflict by hand (served flags and the window only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        players=(
+            replace(
+                owner,
+                leader_id="muad_dib",
+                leader_face_id="muad_dib",
+                sandworms_conflict=1,
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    reveal = next(
+        row for row in _served(manager, game_id) if row["action_id"] == "reveal_turn"
+    )
+    assert reveal["undoable"] is True
+    intrigue_before = manager._get(game_id).state.players[0].intrigue_cards
+    summary = _play_raw(manager, summary, index=_int(reveal["index"]))
+    assert manager._get(game_id).state.players[0].intrigue_cards == intrigue_before
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    rows = _served(manager, game_id)
+    assert all(row["action_id"] != "finish_reveal" for row in rows)
+    draw = next(row for row in rows if row["action_id"] == "draw_reveal_intrigue")
+    assert draw["undoable"] is False
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert len(manager._get(game_id).state.players[0].intrigue_cards) == (
+        len(intrigue_before) + 1
+    )
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []

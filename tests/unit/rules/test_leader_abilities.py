@@ -1427,9 +1427,23 @@ def test_unpredictable_foe_draws_intrigue_with_a_sandworm() -> None:
     context = dict(transition.state.decision_stack[-1].context)
 
     # Unpredictable Foe: one or more sandworms in the Conflict during the
-    # Reveal turn draw one Intrigue card [Muad'Dib card].
-    assert transition.state.players[0].intrigue_cards == ("intrigue:test",)
+    # Reveal turn draw one Intrigue card [Muad'Dib card]. The card waits on
+    # the Reveal's pending gains as his own ``draw_reveal_intrigue`` (OQ-045),
+    # so the Reveal itself stays undoable (user ruling 2026-10-10, OQ-106).
+    assert transition.state.players[0].intrigue_cards == ()
     assert context["leader_intrigue_granted"] is True
+    draw = DomainAction(action_id="draw_reveal_intrigue", actor=0)
+    offered = engine.legal_actions(transition.state, 0)
+    assert draw in offered
+    assert DomainAction(action_id="finish_reveal", actor=0) not in offered
+    drawn = engine.apply(transition.state, draw).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert draw not in engine.legal_actions(drawn, 0)
+    # Granted once per Reveal: no second card comes.
+    assert dict(drawn.decision_stack[-1].context)["leader_intrigue_granted"] is True
+    assert DomainAction(action_id="finish_reveal", actor=0) in (
+        engine.legal_actions(drawn, 0)
+    )
 
 
 def test_unpredictable_foe_stays_quiet_without_sandworms() -> None:
