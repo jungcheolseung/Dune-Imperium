@@ -13,7 +13,8 @@
   - 망이 정답: `network_right` 53곳(대조군)
 - **코드**: `records.problems`. 만들기는 `scripts/records/human_diagnosis.py freeze`, 채점은 `dune-imperium-records problems check|score`다.
 - **채굴 문제집과 다른 점**: 사람 판은 다시 캘 수 없다.
-  - 그래서 파일이 기보를 품는다. git 무시 `local/records/human-problems.json`, 317KB다.
+  - 그래서 파일이 기보를 품는다. git 무시 `local/records/human-problems.json`, 1.7MB다(형식 2).
+  - 같은 날 고침(`fix-position-state` 병합): 판정 당시 상태 비교가 카드 영역 이름을 잘못 적어 손패·덱 크기만 보던 것을, 모든 좌석 필드(`PlayerState` 83개)로 바꾸고 다시 고정했다. 설계 워크플로가 찾았다.
   - 포지션은 `records` 이전으로 되살린다.
   - 판정 당시의 공개 상태와 다르거나 두 수 중 하나가 불법이 된 포지션은 이유를 대고 뺀다.
 - **첫 채점**([evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 6절): 숫자는 human_right 맞음 / network_right 맞음이다.
@@ -33,7 +34,7 @@
   - OQ-105의 garrison 유닛 선택
   - 이 둘을 옮기는 다리는 `f1e17be0` 위의 별도 브랜치로 준비한다. v142가 master에 들어온 뒤 병합한다.
   - Navigation Chamber 할인 의무화로 걸리는 기보는 갈라짐이 맞다(독립 검증).
-- **검증**(브랜치): pytest **6,981개 통과**, Ruff·mypy 통과, E2E 54개 통과.
+- **검증**(브랜치): pytest **6,981개 통과**, Ruff·mypy 통과, E2E 54개 통과. 위치 상태 수정 뒤 pytest **6,982개**, E2E 54개 통과.
 
 ## 2026-10-10 사람이 둔 판: 옛 저장본을 지금 엔진으로 옮기기, 첫 진단 (codec 그대로 v141)
 
