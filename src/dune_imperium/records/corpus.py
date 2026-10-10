@@ -8,7 +8,7 @@ reads the files; it never imports the old engine's code.
 
 Layout, under ``CORPUS_ROOT`` (git-ignored ``local/records-corpus``)::
 
-    v141-<commit8>/                     <codec>-<commit of the engine that played>
+    v<codec>-<commit8>/                 the engine that played: codec, commit
       manifest.json                     written last; a shard it omits is ignored
       shards/<combo>.<mix>.<lo>-<hi>.records.jsonl.zst   save-format v1 records
       shards/<same stem>.index.jsonl.zst                 one index row per record
@@ -344,16 +344,21 @@ class Corpus:
 
     def export(self, rows: Iterable[CorpusRow], out_dir: Path) -> list[Path]:
         """Write each row's record as ``<id>.json``, a save file
-        ``dune-imperium-records check --saves-dir`` reads (use
-        ``--every-save``: records of one combo share a seed)."""
+        ``dune-imperium-records check --saves-dir`` reads.
+
+        Each file is one record; ``--every-save`` checks every one even
+        where records share a ruleset, seed and seats (a steered or
+        branched record beside its natural one). The document gains the
+        row's ``finished``, as a play server save carries it.
+        """
 
         out_dir.mkdir(parents=True, exist_ok=True)
         paths = []
         for row in rows:
             path = out_dir / f"{row.id}.json"
+            document = {**self.document(row), "finished": row.finished}
             path.write_text(
-                json.dumps(self.document(row), separators=(",", ":")),
-                encoding="utf-8",
+                json.dumps(document, separators=(",", ":")), encoding="utf-8"
             )
             paths.append(path)
         return paths

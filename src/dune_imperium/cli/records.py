@@ -163,7 +163,10 @@ def _corpus(args: argparse.Namespace) -> int:
             if runs:
                 print(f"  situation runs: {', '.join(sorted(runs))}")
         return 0
-    corpus = Corpus.open(args.corpus, args.root)
+    try:
+        corpus = Corpus.open(args.corpus, args.root)
+    except FileNotFoundError as error:
+        raise SystemExit(str(error)) from None
     if args.corpus_command == "keys":
         counts = corpus.key_counts(args.pattern, natural=args.natural)
         rows = [row for row in corpus.rows() if row.natural or not args.natural]
@@ -215,7 +218,11 @@ def _corpus(args: argparse.Namespace) -> int:
         )
     if args.export is not None:
         paths = corpus.export(picked, args.export)
-        print(f"wrote {len(paths)} save files to {args.export}")
+        print(
+            f"wrote {len(paths)} save files to {args.export}, one per record; "
+            f"check them with: dune-imperium-records check "
+            f"--saves-dir {args.export} --every-save"
+        )
     return 0
 
 

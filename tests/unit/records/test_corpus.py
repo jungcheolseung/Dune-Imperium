@@ -1,13 +1,16 @@
 """Reading a record corpus (records.corpus) and the ``corpus`` command."""
 
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.cli.records import main
 from dune_imperium.records.corpus import Corpus, CorpusRow, corpora
 from dune_imperium.records.migration import migrate_record, walk
+from dune_imperium.records.saves import read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
 
 
@@ -18,7 +21,8 @@ def _ids(rows: list[CorpusRow]) -> list[str]:
 def test_a_corpus_opens_by_id_or_by_path(tiny_corpus: Path) -> None:
     assert [corpus.path for corpus in corpora(tiny_corpus.parent)] == [tiny_corpus]
     by_id = Corpus.open(tiny_corpus.name, root=tiny_corpus.parent)
-    assert by_id.id == Corpus.open(tiny_corpus).id == "v141-01234567-r1"
+    assert by_id.id == Corpus.open(tiny_corpus).id == tiny_corpus.name
+    assert tiny_corpus.name == f"v{ACTION_CODEC_VERSION}-01234567-r1"
     with pytest.raises(FileNotFoundError):
         Corpus.open("v0-missing", root=tiny_corpus.parent)
     assert corpora(tiny_corpus / "nowhere") == []
@@ -72,8 +76,24 @@ def test_pick_filters_by_keys_groups_and_counts(tiny_corpus: Path) -> None:
         if other.count("action_ids:agent_turn") > count
     ]
     assert corpus.pick(["action_ids:agent_turn", "no_such:*"]) == []
-    # The seed shuffles within a group, deterministically.
-    assert corpus.pick(combo="full", seed=5) == corpus.pick(combo="full", seed=5)
+
+
+def test_a_pick_seed_shuffles_each_group_deterministically(tiny_corpus: Path) -> None:
+    corpus = Corpus.open(tiny_corpus)
+    full = corpus.row("full.h4.1")
+    # Eight records in the full.h4 group.
+    corpus._rows = (
+        *corpus.rows(),
+        *(replace(full, id=f"full.h4.{seed}", seed=seed) for seed in range(3, 9)),
+    )
+    by_seed = [f"full.h4.{seed}" for seed in range(1, 9)]
+    assert _ids(corpus.pick(combo="full")) == by_seed
+    orders = [_ids(corpus.pick(combo="full", seed=seed)) for seed in range(1, 6)]
+    assert all(sorted(order) == sorted(by_seed) for order in orders)
+    # Some seed reorders the group, seeds differ, and a seed repeats itself.
+    assert any(order != by_seed for order in orders)
+    assert len({tuple(order) for order in orders}) > 1
+    assert _ids(corpus.pick(combo="full", seed=3)) == orders[2]
 
 
 def test_pick_leaves_steered_records_out_unless_asked(tiny_corpus: Path) -> None:
@@ -118,6 +138,45 @@ def test_a_record_walked_on_its_engine_matches_its_trace(tiny_corpus: Path) -> N
                 differences += 1
         assert differences == 0, row.id
         assert fingerprint(record.state) == trace.final()
+
+
+def test_a_shard_file_that_does_not_match_the_manifest_is_refused(
+    tiny_corpus: Path, tmp_path: Path
+) -> None:
+    copy = tmp_path / tiny_corpus.name
+    shutil.copytree(tiny_corpus, copy)
+    corpus = Corpus.open(copy)
+    row = corpus.row("full.h4.1")
+    index = copy / "shards" / "full.h4.1-2.index.jsonl.zst"
+    index.write_bytes(index.read_bytes() + b"\0")
+    with pytest.raises(ValueError, match="does not match the manifest's sha256"):
+        Corpus.open(copy).rows()
+    records = copy / "shards" / "full.h4.1-2.records.jsonl.zst"
+    data = bytearray(records.read_bytes())
+    data[-1] ^= 1
+    records.write_bytes(bytes(data))
+    with pytest.raises(ValueError, match="does not match the manifest's sha256"):
+        corpus.document(row)
+
+
+def test_a_row_that_names_another_line_is_refused(tiny_corpus: Path) -> None:
+    corpus = Corpus.open(tiny_corpus)
+    row = corpus.row("full.h4.1")
+    assert corpus.document(row)["corpus"]["id"] == "full.h4.1"
+    with pytest.raises(ValueError, match="line 1 is not full.h4.1"):
+        corpus.document(replace(row, line=1))
+
+
+def test_an_exported_record_says_whether_its_game_finished(
+    tiny_corpus: Path, tmp_path: Path
+) -> None:
+    corpus = Corpus.open(tiny_corpus)
+    row = corpus.row("full.h4.1")
+    assert not row.finished
+    (unfinished,) = corpus.export([row], tmp_path / "unfinished")
+    (finished,) = corpus.export([replace(row, finished=True)], tmp_path / "finished")
+    assert not read_saved_game(unfinished).finished
+    assert read_saved_game(finished).finished
 
 
 def test_exported_records_check_exact(
