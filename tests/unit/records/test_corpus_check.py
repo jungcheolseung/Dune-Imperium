@@ -133,8 +133,10 @@ def _rewrite(
     steps: list[dict[str, Any]] | None = None,
     vectors: list[list[bytes]] | None = None,
     keys: Mapping[str, list[Any]] | None = None,
+    row_fields: Mapping[str, Any] | None = None,
 ) -> None:
-    """Replace a record's steps, trace vectors or (added) index keys."""
+    """Replace a record's steps, trace vectors, (added) index keys or other
+    index row fields."""
 
     corpus = Corpus.open(copy)
     row = corpus.row(record_id)
@@ -162,6 +164,7 @@ def _rewrite(
                 if steps is not None:
                     item["steps"] = len(steps)
                 item["keys"] = {**item["keys"], **(keys or {})}
+                item.update(row_fields or {})
         return "".join(json.dumps(item) + "\n" for item in rows).encode()
 
     def edit_trace(data: bytes) -> bytes:
@@ -177,7 +180,7 @@ def _rewrite(
 
     if steps is not None:
         update("records", edit_records)
-    if steps is not None or keys is not None:
+    if steps is not None or keys is not None or row_fields is not None:
         update("index", edit_index)
     if vectors is not None:
         update("trace", edit_trace)
@@ -402,6 +405,53 @@ def test_schema_drift_is_listed_and_explains_its_fields(
         "  Resources: removed ghost (absent from digests); added - (left out)\n" in out
     )
     assert "    players[*].resources in 1 records\n" in out
+
+
+def _ghost_resources(copy: Path) -> None:
+    """Give the copy's recording engine a Resources field this one lacks."""
+
+    manifest_path = copy / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["class_schema"]["Resources"].append("ghost")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_schema_drift_explains_only_fields_that_hold_the_drifted_class(
+    tiny_corpus: Path, tmp_path: Path
+) -> None:
+    copy = _copy(tiny_corpus, tmp_path)
+    _ghost_resources(copy)
+    corpus = Corpus.open(copy)
+    name = "players[1].hand"
+    vectors = _vectors(corpus, RECORD)
+    vectors[30][_field(corpus, name)] = GARBAGE
+    _rewrite(copy, RECORD, vectors=vectors)
+
+    result = _one(Corpus.open(copy))
+    assert result.drift_fields == tuple(
+        f"players[{seat}].resources" for seat in range(4)
+    )
+    # A hand holds no Resources: its difference is no drift.
+    assert result.outcome == "transient"
+    assert result.runs == (DifferingRun(30, 30, (name,), "collateral"),)
+
+
+def test_workers_report_the_schema_drift_they_met(
+    tiny_corpus: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    copy = _copy(tiny_corpus, tmp_path)
+    _ghost_resources(copy)
+    corpus = Corpus.open(copy)
+    rows = corpus.pick()
+    one = check(corpus, rows)
+    # One record per task, so both workers check some.
+    monkeypatch.setattr(corpus_module, "_CHECK_CHUNK", 1)
+    two = check(corpus, rows, workers=2)
+    assert two.drift == one.drift == {"Resources": {"removed": ["ghost"], "added": []}}
+    assert [record.drift_fields for record in two.records] == [
+        record.drift_fields for record in one.records
+    ]
+    assert all(record.outcome == "exact" for record in two.records)
 
 
 def _ids(tmp_path: Path, *ids: str) -> str:
@@ -637,6 +687,36 @@ def test_verdicts_lean_on_hits_and_bridge_firings(
         f"{near}; ends where split_follow fires\n"
     ) in out
 
+    # The summary counts every verdict and lists none of a bridged window.
+    out_json = tmp_path / "check.json"
+    argv += ["--ids", _ids(tmp_path, RECORD), "--json", str(out_json)]
+    assert main(argv) == 0
+    capsys.readouterr()
+    summary = json.loads(out_json.read_text(encoding="utf-8"))
+    counts = {verdict: item["count"] for verdict, item in summary["verdicts"].items()}
+    assert counts == {
+        "bridged-window": 1,
+        "diverged-at-hit": 0,
+        "differs-unbridged": 0,
+        "collateral": 0,
+        "bridge-without-hit": 0,
+    }
+    (example,) = summary["verdicts"]["bridged-window"]["examples"]
+    assert (example["start"], example["ended_by"]) == (at - 2, "split_follow")
+    assert summary["findings"] == [] and summary["findings_total"] == 0
+
+    # A window narrower than the 3 steps from the hit to the run leaves
+    # both the run and the firing without it.
+    assert main([*argv, "--window", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "bridges under review: pause, split_follow; window 2" in out
+    summary = json.loads(out_json.read_text(encoding="utf-8"))
+    assert summary["window"] == 2
+    assert [
+        (item["verdict"], item.get("start", item.get("firing")))
+        for item in summary["findings"]
+    ] == [("collateral", at - 2), ("bridge-without-hit", at)]
+
 
 def test_a_divergence_after_a_hit_is_diverged_at_hit(
     tiny_corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -728,6 +808,87 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
             "signature": list(result.divergence.signature),
         }
     ]
+
+
+def test_a_divergence_signature_names_the_frame_on_top(
+    tiny_corpus: Path, tmp_path: Path
+) -> None:
+    """A recorded ``take_contract`` answers the Contract market, a frame an
+    Agent box's effects push over their own: refused, it names that frame."""
+
+    copy = _copy(tiny_corpus, tmp_path)
+    corpus = Corpus.open(copy)
+    steps = _steps(corpus, RECORD)
+    at = next(
+        index
+        for index, step in enumerate(steps)
+        if step["type"] == "action" and step["action_id"] == "take_contract"
+    )
+    # The market sits on another frame, so the bottom one would not do.
+    engine = UprisingRulesEngine()
+    record = migrate_record(corpus.replay(corpus.row(RECORD)), engine)
+    stack = next(
+        state.decision_stack
+        for state, migrated in walk(record, engine)
+        if migrated.recorded_index == at
+    )
+    assert len(stack) > 1 and stack[0].kind != "contract_market"
+
+    steps[at] = {**steps[at], "actor": (steps[at]["actor"] + 1) % 4}
+    _rewrite(copy, RECORD, steps=steps)
+    result = _one(Corpus.open(copy))
+    assert result.divergence == DivergenceCheck(
+        at,
+        (
+            "contract_market",
+            "take_contract",
+            "action actor does not own the current decision",
+        ),
+    )
+
+
+def test_a_bridge_firing_right_before_a_divergence_is_kept(
+    tiny_corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pause taken out of the record comes back as the pause bridge, and
+    the recorded step after it is refused: the firing is at the point the
+    record diverged at."""
+
+    copy = _copy(tiny_corpus, tmp_path)
+    corpus = Corpus.open(copy)
+    steps = _steps(corpus, RECORD)
+    vectors = _vectors(corpus, RECORD)
+    at = next(
+        index
+        for index, step in enumerate(steps[:-1])
+        if step["type"] == "chance"
+        and step["decision_id"].endswith(":pause")
+        and steps[index + 1]["type"] == "action"
+    )
+    refused = {**steps[at + 1], "actor": (steps[at + 1]["actor"] + 1) % 4}
+    _rewrite(
+        copy,
+        RECORD,
+        steps=[*steps[:at], refused, *steps[at + 2 :]],
+        vectors=vectors[:at] + vectors[at + 1 :],
+        keys={"draws:card@near": [1, at - 1, [at - 1]]},
+    )
+    corpus = Corpus.open(copy)
+
+    result = _one(corpus, bridge="pause")
+    assert result.outcome == "diverged" and result.bridges == {"pause": 1}
+    assert result.divergence is not None and result.divergence.index == at
+    assert result.firings == (at,) and result.lone_firings == (at,)
+    result = _one(corpus, bridge="pause", around=["draws:card@near"])
+    assert result.firings == (at,) and result.lone_firings == ()
+    assert [(run.start, run.verdict) for run in result.runs] == [
+        (at, "diverged-at-hit")
+    ]
+
+    argv = ["corpus", "check", str(copy), "--ids", _ids(tmp_path, RECORD)]
+    assert main([*argv, "--bridge", "pause"]) == 0
+    out = capsys.readouterr().out
+    assert f"bridge-without-hit:\n  {RECORD} fired before step {at}\n" in out
 
 
 @pytest.mark.parametrize(
@@ -922,6 +1083,34 @@ def test_controls_leave_out_records_with_hits(
     assert f"checking 3 of 4 records ('{scouts}')" in out
     assert "\nexact               3         1\n" in out
     assert "only 1 of the 2 control records asked for exist" in out
+
+
+def test_steered_records_are_checked_only_with_steered(
+    tiny_corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    copy = _copy(tiny_corpus, tmp_path)
+    # base.h4.1 is the one record without the Arrakeen Scouts (the
+    # controls test); here it was steered.
+    _rewrite(copy, "base.h4.1", row_fields={"steer": "test"})
+    argv = ["corpus", "check", str(copy)]
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert "checking 3 of 3 records (every record)" in out
+    assert "\nexact               3\n" in out
+    assert main([*argv, "--steered"]) == 0
+    out = capsys.readouterr().out
+    assert "checking 4 of 4 records (every record)" in out
+    assert "\nexact               4\n" in out
+
+    # Controls are natural records too, unless --steered.
+    scouts = "chance_kinds:round:scouts:*"
+    argv += ["--has", scouts, "--around", scouts, "--control", "1"]
+    assert main(argv) == 0
+    assert "only 0 of the 1 control records asked for exist" in capsys.readouterr().out
+    assert main([*argv, "--steered"]) == 0
+    out = capsys.readouterr().out
+    assert "\nexact               3         1\n" in out
+    assert "control records asked for exist" not in out
 
 
 def test_a_record_that_cannot_be_checked_fails_alone(
