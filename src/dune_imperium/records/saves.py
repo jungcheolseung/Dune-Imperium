@@ -93,9 +93,11 @@ def saved_games(directory: Path, *, every_save: bool = False) -> list[SavedGame]
 def one_save_per_game(games: list[SavedGame]) -> list[SavedGame]:
     """One save per game played, oldest first.
 
-    The saves of one game share its ruleset and seed: its autosave slot,
-    every save a player made, and the saves of a session restored from one
-    of them (a restored session gets a new game id). The game's line runs
+    The saves of one game share its ruleset, seed and seat assignment: its
+    autosave slot, every save a player made, and the saves of a session
+    restored from one of them (a restored session gets a new game id but
+    keeps the seats). Games of one ruleset and seed with other seats, such
+    as a record corpus's seat mixes, are other games. The game's line runs
     through its newest finished save, or its newest save while it is
     unfinished; the saves on that line (one a prefix of the other) are the
     same game, and the one with the most steps is kept. A save off the line
@@ -103,9 +105,12 @@ def one_save_per_game(games: list[SavedGame]) -> list[SavedGame]:
     dropped.
     """
 
-    groups: dict[tuple[RulesetConfig, int], list[SavedGame]] = defaultdict(list)
+    groups: dict[tuple[RulesetConfig, int, tuple[str, ...]], list[SavedGame]] = (
+        defaultdict(list)
+    )
     for game in games:
-        groups[(game.parsed.replay.ruleset, game.parsed.replay.seed)].append(game)
+        replay = game.parsed.replay
+        groups[(replay.ruleset, replay.seed, game.parsed.seats)].append(game)
     kept = []
     for group in groups.values():
         anchor = max(group, key=lambda game: (game.finished, game.saved_at or ""))
