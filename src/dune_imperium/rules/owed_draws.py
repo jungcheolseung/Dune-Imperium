@@ -27,6 +27,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
+    OWED_CARD,
     OWED_INTRIGUE,
     FrameKind,
     draw_waits_for_owner,
@@ -35,12 +36,21 @@ from dune_imperium.rules.frames import (
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 
 # The turn's own frames, where a waiting draw is offered (as the Emperor
-# track's Spy is, ``spy_moves.legal_track_spy_actions``).
+# track's Spy is, ``spy_moves.legal_track_spy_actions``), and the owner's
+# open "[trash a card]" icon (Oversight's, a Tech tile's, a research
+# space's): an independent effect too, so the card may be drawn first and
+# then trashed, or the trash made first (OQ-027, OQ-100).
 _TURN_FRAME_KINDS = frozenset(
-    {FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL}
+    {
+        FrameKind.TURN,
+        FrameKind.AGENT_EFFECTS,
+        FrameKind.REVEAL,
+        FrameKind.OPTIONAL_TRASH,
+    }
 )
 _ACTION_DECKS = {
     "draw_owed_intrigue": OWED_INTRIGUE,
+    "draw_owed_card": OWED_CARD,
 }
 
 
@@ -51,8 +61,9 @@ def legal_owed_draw_actions(
     """Offer the owner's waiting triggered draws on its turn's own frames.
 
     One action per deck: the waiting draws of one deck are interchangeable
-    (the same deck, one card each), so each press takes the oldest. Never on
-    a frame stacked above the turn's frame, and only inside the seat's own
+    (the same deck, one card each), so each press takes the oldest. Offered
+    on the turn's own frame and on the owner's optional "[trash a card]"
+    frame above it, never on another frame, and only inside the seat's own
     turn (``draw_waits_for_owner``); a draw waiting anywhere else is paid by
     ``pay_stale_owed_draws``.
     """

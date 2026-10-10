@@ -284,7 +284,8 @@ const LABELS_EN = {
     "trash_optional_card": "{trash} card (optional)",
     "decline_optional_trash": "Decline {trash}",
     "draw_planetologist_intrigue": "{draw} {intrigue} (Arrakis Planetologist)",
-    "draw_owed_intrigue": "{draw} {intrigue}"
+    "draw_owed_intrigue": "{draw} {intrigue}",
+    "draw_owed_card": "{draw} a card"
   },
   "SEAT_KINDS": {
     "human": "Human",

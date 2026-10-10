@@ -35,7 +35,9 @@ from dune_imperium.core.actions import DomainAction
 #: A draw another effect triggered in the seat's own turn, which the project
 #: holds as the owner's own step (user ruling 2026-10-10, OQ-106); the app
 #: draws it inside the triggering step.
-TRIGGERED_DRAWS: frozenset[str] = frozenset({"draw_owed_intrigue"})
+TRIGGERED_DRAWS: frozenset[str] = frozenset(
+    {"draw_owed_intrigue", "draw_owed_card"}
+)
 
 
 def triggered_draw(run: DecisionRun) -> DomainAction | None:

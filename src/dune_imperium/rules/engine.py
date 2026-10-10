@@ -575,6 +575,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.OPTIONAL_TRASH: (
         legal_optional_trash_actions,
         legal_scouts_rewards_first_actions,
+        # A triggered draw waiting in the owner's turn: drawn before or
+        # after the trash, as the owner orders (user ruling 2026-10-10,
+        # OQ-106).
+        legal_owed_draw_actions,
     ),
     FrameKind.LONG_LIVE_FIGHTERS: (legal_agent_card_long_live_actions,),
     FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
@@ -756,6 +760,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_track_spy": apply_place_track_spy,
     # A triggered draw held as the owner's own step (OQ-106).
     "draw_owed_intrigue": apply_owed_draw,
+    "draw_owed_card": apply_owed_draw,
     "decline_skill": apply_skill_choice,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,

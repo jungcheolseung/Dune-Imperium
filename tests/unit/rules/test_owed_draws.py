@@ -14,7 +14,14 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.core import DomainAction, GamePhase, GameState
+from dune_imperium.core import (
+    ChanceDecision,
+    DomainAction,
+    GamePhase,
+    GameState,
+    PlayerDecision,
+)
+from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import OWED_INTRIGUE, hold_draw
@@ -191,3 +198,84 @@ def test_a_draw_left_waiting_outside_its_seats_turn_is_paid_and_flagged() -> Non
         ),
     )
     assert pay_stale_owed_draws(RuleResult(state=own)).state == own
+
+
+def _hungry_turn() -> tuple[GameState, int, str, str]:
+    """Steersman Y'rkoon's first Agent turn at Desert Tactics, deck empty.
+
+    The seat to act first (seed 0 with Bloodlines) is made Y'rkoon holding
+    three spice gained this turn, so "Whenever you gain 3 or more spice in a
+    single turn: draw a card" [Steersman Y'rkoon card] is earned by the
+    placement's step and waits as his own step (OQ-106). Two starter cards
+    lie in his discard pile; returns the state, the seat and those cards.
+    """
+
+    state = ENGINE.reset(RulesetConfig(bloodlines=True), 0)
+    decision = ENGINE.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    owner = state.players[seat]
+    cards = (*owner.hand, *owner.deck)
+    seek_allies = next(card for card in cards if ":seek_allies:" in card)
+    weak, kept = [card for card in cards if card != seek_allies][:2]
+    steersman = replace(
+        owner,
+        leader_id="steersman_y_rkoon",
+        leader_face_id="steersman_y_rkoon",
+        hand=(seek_allies,),
+        deck=(),
+        discard_pile=(weak, kept),
+        resources=replace(owner.resources, spice=3),
+        spice_at_turn_start=0,
+    )
+    players = list(state.players)
+    players[seat] = steersman
+    state = replace(state, players=tuple(players))
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, seat)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "desert_tactics"
+    )
+    return ENGINE.apply(state, placement).state, seat, weak, kept
+
+
+def test_a_card_owed_by_hungry_for_spice_waits_so_a_discard_trash_comes_first() -> (
+    None
+):
+    # "특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
+    # 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10, OQ-106): with the
+    # deck empty the draw reshuffles the discard pile [Main p. 10], so a
+    # discard-pile card trashed first (Desert Tactics' "trash a card")
+    # never comes back; drawn first, the same card may.
+    turn, seat, weak, kept = _hungry_turn()
+    draw = DomainAction(action_id="draw_owed_card", actor=seat)
+    assert [entry[:2] for entry in turn.players[seat].owed_draws] == [
+        ("card", "hungry_for_spice")
+    ]
+    offered = ENGINE.legal_actions(turn, seat)
+    assert draw in offered
+    assert DomainAction(action_id="finish_agent_turn", actor=seat) not in offered
+    trash = DomainAction(
+        action_id="trash_card_for_desert_tactics",
+        actor=seat,
+        arguments=(("card_id", weak),),
+    )
+    assert trash in offered
+
+    trashed = ENGINE.apply(turn, trash).state
+    assert trashed.players[seat].trashed == (weak,)
+    drawn = ENGINE.apply(trashed, draw).state
+    decision = ENGINE.current_decision(drawn)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == (kept,)  # the reshuffle cannot bring it back
+    drawn = ENGINE.apply(drawn, ChanceOutcome(decision.decision_id, (kept,))).state
+    assert drawn.players[seat].hand == (kept,)
+    assert drawn.players[seat].owed_draws == ()
+    assert draw not in ENGINE.legal_actions(drawn, seat)
+
+    # Drawn first, the reshuffle holds both cards.
+    early = ENGINE.apply(turn, draw).state
+    decision = ENGINE.current_decision(early)
+    assert isinstance(decision, ChanceDecision)
+    assert set(decision.options) == {weak, kept}

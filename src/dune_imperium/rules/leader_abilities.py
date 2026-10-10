@@ -56,7 +56,10 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import (
+    OWED_CARD,
     FrameKind,
+    draw_waits_for_owner,
+    hold_draw,
     hungry_for_spice_is_due,
     own_turn_frame_index,
     owned_top_frame,
@@ -2549,24 +2552,47 @@ def grant_hungry_for_spice(
     a deck the Round Start reshuffle has already filled for that draw, so
     the card comes after the round's hand (OQ-072), like the owed Tech
     draw (``tech.draw_owed_tech_cards``).
+
+    A draw earned while the seat's own turn is still open waits as the
+    seat's own ``draw_owed_card`` step instead, taken in any order with the
+    turn's other effects and before the turn ends (user ruling 2026-10-10,
+    OQ-106: "특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미
+    카드를 폐기하고 싶을 수 있잖아."), so the step that gained the spice
+    stays undoable. Only a draw judged in the transition that closed the
+    turn is drawn by this hook.
     """
 
     state = result.state
     judged = {turn_owner_of(state)}
     if before is not None and state.phase is GamePhase.PLAYER_TURNS:
         judged.add(turn_owner_of(before))
+    events = list(result.events)
     for seat in state.players:
         if seat.player_id in judged and hungry_for_spice_is_due(seat):
-            earned = replace(
-                seat, hungry_for_spice_granted_turn=True, hungry_for_spice_owed=True
+            source = (
+                f"round:{state.round_number}:player:{seat.player_id}:"
+                "hungry_for_spice"
             )
+            if draw_waits_for_owner(state, seat.player_id):
+                earned = hold_draw(
+                    replace(seat, hungry_for_spice_granted_turn=True),
+                    OWED_CARD,
+                    "hungry_for_spice",
+                    source,
+                )
+                events.append(_hungry_for_spice_event(source, seat.player_id))
+            else:
+                earned = replace(
+                    seat,
+                    hungry_for_spice_granted_turn=True,
+                    hungry_for_spice_owed=True,
+                )
             state = replace(state, players=replace_player(state.players, earned))
     if state.phase is GamePhase.ROUND_START or (
         state.decision_stack
         and isinstance(state.decision_stack[-1].decision, ChanceDecision)
     ):
-        return RuleResult(state=state, events=result.events)
-    events = list(result.events)
+        return RuleResult(state=state, events=tuple(events))
     for seat in state.players:
         if not seat.hungry_for_spice_owed:
             continue
@@ -2575,18 +2601,20 @@ def grant_hungry_for_spice(
         source = f"round:{state.round_number}:player:{seat.player_id}:hungry_for_spice"
         drawn = draw_or_request_personal_cards(state, seat.player_id, 1, source=source)
         state = drawn.state
-        events.append(
-            GameEvent(
-                event_id=source,
-                kind="leader_ability_resolved",
-                payload=(
-                    ("leader_id", "steersman_y_rkoon"),
-                    ("player", seat.player_id),
-                ),
-            )
-        )
+        events.append(_hungry_for_spice_event(source, seat.player_id))
         events.extend(drawn.events)
     return RuleResult(state=state, events=tuple(events))
+
+
+def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
+    return GameEvent(
+        event_id=source,
+        kind="leader_ability_resolved",
+        payload=(
+            ("leader_id", "steersman_y_rkoon"),
+            ("player", player),
+        ),
+    )
 
 
 def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:

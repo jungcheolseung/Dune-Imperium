@@ -4256,6 +4256,7 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_planetologist_intrigue (OQ-106)
         + 1  # v142: draw_owed_intrigue (OQ-106)
+        + 1  # v142: draw_owed_card (OQ-106)
     )
     action = DomainAction(
         action_id="trash_agent_card",

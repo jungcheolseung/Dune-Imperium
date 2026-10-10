@@ -161,6 +161,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     Stage,
     decide,
     str_arg,
+    triggered_draw,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import (
@@ -439,10 +440,12 @@ def optional_trash(run: DecisionRun) -> DomainAction | None:
 
     Liet Kynes' replacement frame also holds its Intrigue card as its own
     step (``draw_planetologist_intrigue``, user ruling 2026-10-10, OQ-106);
-    it is taken first, as the replacement paid it before the trash.
+    it is taken first, as the replacement paid it before the trash. So is a
+    triggered draw waiting in the turn (``triggered_draw``), which the app
+    drew before this prompt.
     """
 
-    draw = run.first("draw_planetologist_intrigue")
+    draw = run.first("draw_planetologist_intrigue") or triggered_draw(run)
     if draw is not None:
         return draw
     decline = run.first("decline_optional_trash")

@@ -1710,3 +1710,73 @@ def test_trashing_sardaukar_soldier_can_be_taken_back_and_its_card_cannot() -> N
     summary = _play_raw(manager, summary, index=_int(draw["index"]))
     assert len(manager._get(game_id).state.players[0].intrigue_cards) == 1
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+def test_a_harvest_can_be_taken_back_before_its_hungry_for_spice_card() -> None:
+    """Steersman Y'rkoon's Hungry for Spice ("Whenever you gain 3 or more
+    spice in a single turn: draw a card" [Steersman Y'rkoon card]) holds its
+    card as his own ``draw_owed_card`` step (user ruling 2026-10-10, OQ-106:
+    "특히 카드 드로우는 나눠야하는게"), so the Deep Desert harvest that
+    earned it stays in the undo window and only the draw closes it (OQ-010).
+    CHOAM Transports' card is not held: "The card draw from CHOAM Transports
+    is triggered as soon as the contract is completed and can't be
+    deferred." (Message from designer; docs/rules/designer-rulings-audit.md).
+
+    Seed 0 with Bloodlines: seat 0's first turn, made Y'rkoon with Dune and
+    three water by hand (served flags and the window only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, bloodlines=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    desert = next(
+        card
+        for card in (*owner.hand, *owner.deck)
+        if ":dune_the_desert_planet:" in card
+    )
+    session.state = replace(
+        session.state,
+        players=(
+            replace(
+                owner,
+                leader_id="steersman_y_rkoon",
+                leader_face_id="steersman_y_rkoon",
+                hand=(desert, *(c for c in owner.hand if c != desert)),
+                deck=tuple(c for c in owner.deck if c != desert),
+                resources=replace(owner.resources, water=3),
+                spice_at_turn_start=owner.resources.spice,
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    placement = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]) == {"card_id": desert, "space_id": "deep_desert"}
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    spice = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "harvest_maker_spice"
+    )
+    assert spice["undoable"] is True
+    hand_before = manager._get(game_id).state.players[0].hand
+    summary = _play_raw(manager, summary, index=_int(spice["index"]))
+    seat = manager._get(game_id).state.players[0]
+    assert seat.hand == hand_before  # nothing drawn yet
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    rows = _served(manager, game_id)
+    assert all(row["action_id"] != "finish_agent_turn" for row in rows)
+    draw = next(row for row in rows if row["action_id"] == "draw_owed_card")
+    assert draw["undoable"] is False
+    assert draw["detail"] == "Hungry for Spice"
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    seat = manager._get(game_id).state.players[0]
+    assert len(seat.hand) == len(hand_before) + 1 and seat.owed_draws == ()

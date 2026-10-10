@@ -615,10 +615,21 @@ def _end_open_agent_turn(state: GameState) -> GameState:
     # nothing left to resolve (OQ-095 (1)): the owner's Agent-turn frame
     # stays on top with the end offered, and pressing it opens the next
     # unrevealed seat's turn.
+    # A draw a trigger earned in the turn (Steersman Y'rkoon's Hungry for
+    # Spice on a seat built with spice and no turn-start snapshot) is taken
+    # first: it waits as the owner's own step (user ruling 2026-10-10,
+    # OQ-106).
     assert state.decision_stack[-1].kind == "agent_effects"
     owner = _decider(state)
+    engine = UprisingRulesEngine()
+    while draws := [
+        action
+        for action in engine.legal_actions(state, owner)
+        if action.action_id in ("draw_owed_card", "draw_owed_intrigue")
+    ]:
+        state = engine.apply(state, draws[0]).state
     assert DomainAction("finish_agent_turn", owner) in (
-        UprisingRulesEngine().legal_actions(state, owner)
+        engine.legal_actions(state, owner)
     )
     ended: GameState = finish_agent_turn(state)
     return ended
@@ -931,8 +942,9 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
 
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
-    # [Steersman Y'rkoon card] (OQ-062).
-    state = _servo_visit("steersman_y_rkoon")
+    # [Steersman Y'rkoon card] (OQ-062). The spice held at the turn's start
+    # is no gain: no Hungry for Spice card waits in the turn (OQ-106).
+    state = _servo_visit("steersman_y_rkoon", spice_at_turn_start=6)
     result = _purchase_and_resolve(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"

@@ -380,6 +380,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # step (``PlayerState.owed_draws``) instead of being drawn by the step that
 # triggered it -- the Bene Gesserit Influence 4 bonus and Princess Irulan's
 # Imperial Birthright. Every catalog adds the nullary ``draw_owed_intrigue``.
+# Also in v142 (OQ-106): the card Steersman Y'rkoon's Hungry for Spice owes
+# inside his own turn waits likewise: Bloodlines catalogs add the nullary
+# ``draw_owed_card``.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -1162,6 +1165,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Liet Kynes' Arrakis Planetologist: the replacement's Intrigue
             # card, its own step beside the trash (codec v142, OQ-106).
             "draw_planetologist_intrigue",
+            # A card Hungry for Spice owes in Steersman Y'rkoon's own turn,
+            # its own step (codec v142, OQ-106).
+            "draw_owed_card",
             "take_tuek_sietch_spice",
             "take_tuek_sietch_card",
             "place_leader_bonus_spice",

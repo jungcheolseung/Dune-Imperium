@@ -344,8 +344,8 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
 
 # Where a triggered draw held as the owner's own step came from
 # (``PlayerState.owed_draws``, user ruling 2026-10-10, OQ-106): English and
-# Korean. Cards (``card:<instance>``) and Tech tiles (``tech:<id>``) are
-# named from the catalog; Leader abilities keep their printed English name.
+# Korean. Cards (``card:<instance>``) are named from the catalog; Leader
+# abilities keep their printed English name.
 _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "bene_gesserit_4": (
         "Bene Gesserit Influence 4",
@@ -355,7 +355,7 @@ _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "tleilaxu_track": ("Tleilaxu track", "{tleilaxu} 트랙"),
     "hungry_for_spice": ("Hungry for Spice", "Hungry for Spice"),
 }
-_OWED_DECKS = {"draw_owed_intrigue": "intrigue"}
+_OWED_DECKS = {"draw_owed_intrigue": "intrigue", "draw_owed_card": "card"}
 
 
 def owed_draw_origin_text(origin: str) -> tuple[str, str]:
@@ -367,9 +367,6 @@ def owed_draw_origin_text(origin: str) -> tuple[str, str]:
     if kind == "card":
         card = imperium_card_for_instance(key).card
         return card.name, KOREAN_CARD_NAMES["cards"].get(card.card_id, card.name)
-    if kind == "tech":
-        name = TECH_TILES_BY_ID[key].name
-        return name, KOREAN_CARD_NAMES["tech"].get(key, name)
     return origin, origin
 
 

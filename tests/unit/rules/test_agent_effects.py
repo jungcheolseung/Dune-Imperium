@@ -4621,10 +4621,12 @@ def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> N
 
     result = _resolve_long_live(state, draw_card, favor)
 
+    # The earned card waits as the owner's own step (user ruling 2026-10-10,
+    # OQ-106) and is drawn when taken.
     seat = result.state.players[0]
     assert seat.resources.spice == 3
-    assert seat.hand == (draw_card, tail)
-    assert seat.deck == ()
+    assert seat.hand == (draw_card,)
+    assert seat.deck == (tail,)
     assert [event.kind for event in result.events] == [
         "card_discarded",
         "personal_card_discard_effect_resolved",
@@ -4632,6 +4634,11 @@ def test_long_live_the_fighters_deck_discard_spice_feeds_hungry_for_spice() -> N
         "agent_card_effect_resolved",
         "leader_ability_resolved",
     ]
+    drawn = UprisingRulesEngine().apply(
+        result.state, DomainAction(action_id="draw_owed_card", actor=0)
+    )
+    assert drawn.state.players[0].hand == (draw_card, tail)
+    assert drawn.state.players[0].deck == ()
 
 
 def test_shishakli_may_trash_a_personal_card_to_draw_one() -> None:
