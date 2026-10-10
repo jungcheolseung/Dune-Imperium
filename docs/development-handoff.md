@@ -4,6 +4,35 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-10 플레이 피드백 10항목과 "공개 선택과 숨은 뽑기는 별개 단계" (codec v142, OQ-104·105·106)
+
+사용자가 플레이 뒤 남긴 10개 항목(로그·상태창·발광구·되돌리기·점수 트랙·자리·탐색 AI·스카웃·운항실·지휘관)을 처리했다. 4번 질문("에이전트 소환은 왜 되돌리기 불가야?")에서 나온 사용자 원칙 "소환과 뽑기가 당연히 두 단계로 나눠야지. 이건 정말 기본적인 원칙인데"를 엔진 전체에 적용했다(OQ-106). 브랜치 `fb-*` → 통합 `fb-integration` → 착지 `fb-land`(master 쪽에서 병합) → `fb-preview`. 기보 다리는 다른 세션(`records-v142`)이 맡았다.
+
+- **화면·로그(코덱 무관):**
+  - 1 스파이스 밀수: 로그 줄이 "스파이스 밀수(스타반 튜엑)로 스파이스 획득"이고, 그 카드 제목은 "지도자 능력"이다. 에스마르의 가져가기 줄도 고쳤다.
+  - 2 공급처 지휘관 수: 혈통 게임의 좌석 패널에 늘 보인다(0 포함). 지난 9/22에 지워진 C2 칩의 도움말도 고쳤다.
+  - 3 발광구: 카드덱 목록에서 맨 위 한 장을 "맨 위"로 떼어 보인다. Controlled는 선택 창 세 버튼 위에 카드 그림을 보이고 버튼에 이름을 붙인다("카드덱 맨 위 카드(단검) 그대로 두기"). 책략 옆 따로 줄은 없앴다. 덤으로, 고정 팝오버 위에서 연 목록이 AI 수 뒤에도 낡은 채 남던 결함을 고쳤다.
+  - 5 점수: 인쇄된 13칸(0~12)을 돌고, 원판 위에 흰 "+13"(26 이상은 "+26")을 그린다. 사용자가 허락한 숫자 예외다.
+  - 6 자리: 설정 화면에 "자리 무작위 배치"(기본 켬)를 두었다. 섞기는 브라우저가 하고, 서버 기본값은 `--seating {random,fixed}`, e2e는 fixed다. 규칙은 자리를 정하지 않는다(project convention, setup-and-game-flow.md).
+  - 8 스카웃: 스카웃 단계 동안 결정 창에 "아라킨 스카웃 · 종류 · 이름"과 효과 줄을 보인다.
+- **규칙·엔진(codec v142, v141 저장은 서버가 불러오지 못한다):**
+  - 9 운항실 할인은 의무다(OQ-104, 타일 문구에 따른 프로젝트 판단). "할인 없이" 줄은 없어졌다. heuristic이 절반쯤 정가를 내던 원인이다(lessons).
+  - 10 상대 효과로 병력을 잃을 때 지휘관만 있으면 지휘관을 잃는다(OQ-036 (a), 테스트 추가). OQ-105(사용자 판정 "통일해야지"): Piter의 "병력 1 잃기", Bene Gesserit Treachery, Prison Planet도 지휘관으로 낼 수 있다.
+  - 4 Imperial Privilege 소환과 뽑기를 나눴다(OQ-027 (d) 재판정, lessons). 전수 점검 뒤 OQ-106으로 넓혔다: 같은 카드에 따로 인쇄된 효과(Urgent Shigawire, Cunning·Insider Information, 리에트 카인즈, Piter·Kota 화살표 보상), 촉발 뽑기(영향력 트랙 보너스, 연구→Tleilaxu 책략, Hungry for Spice, Unpredictable Foe, 폐기 촉발, Overthrow), 스카웃 줄(Leverage, Water Discipline, Spies for Hire, CHOAM Negotiations, Competitive Study)이 모두 공개 선택 뒤 별개 단계다. 사용자 이유: "드로우 하기 전에 버림더미 카드를 폐기하고 싶을 수 있잖아".
+    - 예외: 에스마르 튜엑의 Tuek's Sietch 책략은 방문과 함께 그대로 받는다("다른 지배 보너스도 … 방문하자마자 바로 받잖아").
+    - 디자이너 판정과 부딪친 세 곳(CHOAM Transports, BG 4·이룰란, Overthrow)은 사용자 선택 (가)로 "곧바로 이어지는 별개 단계"다: 촉발 단계는 되돌릴 수 있고, 그다음 결정은 그 뽑기 하나뿐이다.
+    - 남은 순서 자유 뽑기는 소유자가 다른 효과와 원하는 순서로 한다. turn 밖의 촉발 뽑기는 OQ-103대로 "확정 ▶"이 붙잡는다.
+- **7 탐색 AI의 첫 턴 가문 핵:** 분석만 했다(사용자 "다음에 다루기"). 원인은 탐색 없이 망이 바로 답하는 Agent 효과 순서 결정에서 가문 핵 로짓이 상황과 무관하게 0.5~0.9라는 데 있다. 효과 순서에서만 막거나 Reveal에서만 허용하는 길은 검증으로 반박됐다. 고치려면 모든 탐욕 결정·플레이아웃에서 빼고 앱 AI 규칙으로 대신하고 측정해야 한다. 다음 후보 망 Y도 같은 습관이다.
+- **AI·학습:** search.pt(X)는 v139→v142로 이관된다(33,979 kept / 7 new / 0 dropped). 새 행 7개(Planetologist 뽑기, 지휘관 비용 4, owed draw 2)는 학습 안 됨이라 heuristic이 답한다. 규칙 수정이라 측정 게이트는 없다. 이전 측정과 직접 비교할 수 없다.
+- **기보:** 다리 `imperial_privilege_draw`·`garrison_unit_troop`·`prison_planet_commanders_only`와 OQ-106 follows 다리(records-v142, 다른 세션). 다리 없이 갈라지는 것이 맞는 경우: Navigation Chamber 정가 지불, 지휘관만·BG 0인 Treachery, Sardaukar Standard 폐기 + 빈 덱(공개 Skill 선택이 숨은 뽑기보다 먼저).
+- **검증**(`fb-preview` = master `07a2d425` + `fb-land`):
+  - pytest **7,247개 통과**, Ruff·mypy(469파일) 통과, Chrome E2E **55종 통과**(직전 미리보기, 그 뒤로 바뀐 것은 기보 코드·문서뿐).
+  - `dune-imperium-records check`: 로컬 저장 4판 모두 옮겨짐(갈라짐 0).
+  - `dune-imperium-records problems check`: 사람 문제집 **112곳 중 110곳**(빠진 2곳 `c3adefb4:1089`·`fb716981:739`는 운항실 정가 지불이 불법이 된 자리).
+  - `dune-imperium-records corpus check v141-a61acb7e`: 2,000판 중 exact 6·equal 639·transient 1,046·persistent 0·diverged 309·failed 0. 갈라짐은 모두 새 규칙이 불법으로 만든 수다(운항실 정가 298, 지휘관만·BG 0 Treachery 8, Shigawire·Gather Intelligence 순서와 reshuffle 3).
+  - 단위마다 독립 리뷰(엔진·숨은 정보·게임 생성·분리 묶음·곧바른 단계)를 거쳤고, 찾은 결함은 모두 고쳤다.
+- **남은 것:** 7번(탐색 AI 가문 핵) 다음에 다루기. 학습 망의 다음 재적응은 v142 엔진에서 해야 한다(새 행 7개).
+
 ## 2026-10-10 기보 묶음(record corpus) 1·2단계와 v141 묶음 (codec 그대로 v141)
 
 사용자 결정 "그래 1·2단계 진행해". 설계는 워크플로(설계 셋·심사 둘·종합)의 최종안이다(세션 임시 `corpus-design-final.json`, 요지는 아래). 브랜치 `records-corpus`, 병합 `a61acb7e`(미푸시).
@@ -27,8 +56,7 @@
   - **v141 묶음 2,000판 전체가 master에서 exact**다(2코어 약 9분).
   - fb-land(v142) 시연(200판)에서 `owed_draw` 차이는 다리가 메운 구간으로, Cunning·Planetologist 정지는 분리 지점 갈라짐으로 분류됐다.
   - 리뷰 워크플로 지적 13건(분류가 결함을 숨김, 요약 잘림, nice 오류 등)을 고쳤다.
-- **진행 중:**
-  - OQ-106 분리의 follows 다리(작업 트리 `tmp/claude/c1c2c75f…/wt142`, records-v142에 fb-land 병합 중; 다른 세션과 합의한 착지 순서 ②)
+- **끝남(위 플레이 피드백 항목과 함께 병합):** OQ-106 분리의 follows 다리(`records-v142`, 다른 세션과 합의한 착지 순서 ②)
 - **같은 날 따로 고친 것:** 런처 창 테스트 둘이 전체 pytest마다 실제 Chrome을 `127.0.0.1:8127`로 열었다. 모듈 전체에서 브라우저 열기를 막았다(`fa2abf9d`).
 - **검증**(병합 전, staged): 1단계 pytest **7,034개**, 2단계 뒤 **7,074개 통과**, Ruff·mypy 통과, E2E 54개 통과(두 번 모두).
 
