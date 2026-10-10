@@ -80,6 +80,7 @@
 | 사람 판 v135(사람 2 + rollout_strong 2, R7) | 759 | 8 |
 | AI 판 v139 10개(heuristic·app_ai 각 5, 3라운드) | 각 233~269 | 모두 0 |
 | AI 판 v140 3개(heuristic, 3라운드) | 각 261~277 | 모두 0 |
+| AI 판 v135 6개(멈추지 않은 것) | 각 233~267 | 1~5 |
 | v142 엔진(`f1e17be0` + 다리)으로 옮긴 v141 AI 판 7개(IP 1~2회 2개, garrison 1~2회 3개, Prison Planet 1회 1개, Prison Planet을 병력·Commander 둘 다 가진 좌석이 병력으로 참가 1개; 2~9라운드) | 각 160~873 | 모두 0 |
 | v142 엔진으로 옮긴 사람 판 4개(v135·v139·v141 ×2) | 123~1,202 | 모두 0(v141 엔진으로 옮긴 판과 대조) |
 
@@ -96,7 +97,14 @@ OQ-106 분리(codec v142에 함께 들어감)와 그 다리를 넣은 뒤 같은
 - 갈라지기 전까지 비교한 1,487,504수 가운데 다른 수는 505다. 모두 2절의 "한두 수 늦는 draw"다: Deep Desert 267, Shigawire 93(한 수 37곳, box 아이콘 먼저인 연속 1~7수), Foe 78(1~3수), owed draw 65(1~3수), Sardaukar Standard 뒤 `choose_skill` 2.
 - 다리 쓰임: owed draw 3,831, IP 2,572, 경매 멈춤 1,805, Scouts 줄 1,536, Cunning·Insider 961, Planetologist 897, Piter 368, Foe 284, Shigawire 273, reshuffle 이름 170, Reverse Engineering 148, garrison 124, Prison Planet 3.
 - 사람 판 7개(4판)는 모두 끝까지 옮겨졌다. 세 판은 모든 수가 v141과 같다. v141 판 8124f5a2/fb716981은 929 한 수가 다르다. 겹친 Reveal 선택 안에서 닿은 BG 4 카드가 다음 선택이 닫힐 때까지 기다린다.
-| AI 판 v135 6개(멈추지 않은 것) | 각 233~267 | 1~5 |
+
+즉시 owed draw(fb-immediate)까지 넣은 `34aecd31`을 기보 corpus(v141 AI 판 2,000개, `local/records-corpus/v141-a61acb7e`)로 대조했다(2026-10-10, `dune-imperium-records corpus check`, `--around 'draws:*'`, 다리 15개 검토).
+- exact 6, equal 639, transient 1,046, persistent 0, diverged 309, failed 0.
+- 갈라진 309판은 모두 다리를 두지 않기로 한 경우다: Navigation Chamber를 할인 없이 둔 Agent 턴 298, Commander만 있는 Treachery 8, Shigawire(Gather Intelligence나 box 아이콘이 먼저, reshuffle) 3.
+- 상태가 다른 구간 1,615곳은 다리가 끝냈다(`bridged-window`).
+- 다리 없이 다른 7곳은 다음 수에 같아진다: Piter 뒤 `pending_track_spies` 출처 이름 6(값은 같다), owed draw로 늦게 공개된 카드가 Fremen War Name의 +2를 그 단계에서 줌 1(옛 엔진은 다음 수에서 줬다).
+- `collateral` 88: Scouts 경매 멈춤·줄 draw 67, 근처에 hit 없는 Navigation Chamber 갈라짐 19, 옛 엔진이 CHOAM Transports 카드를 한 수 동안 `tech_cards_owed`에 둔 것 2(v142는 붙잡은 draw로 둔다).
+- `bridge-without-hit` 106곳 중 목록에 오른 100곳(97판)은 절반이 뽑는 다리였다. 옛 엔진은 다리 바로 뒤에 적힌 reshuffle chance에서 뽑았는데, 판정이 그 chance의 hit을 세지 않았다. 세도록 고친 판정(`07a2d425`)으로 97판을 다시 보니 25곳이 남고, 모두 뽑지 않는 다리다(경매 멈춤 22, garrison 답 3).
 
 리뷰 반영 뒤의 코드(`records.migration.walk`)로 사람 판 v135, 테스트 기보 셋(v135·v139·v140), AI 판 v140 셋을 다시 대조했다. 결과는 위와 같다.
 
