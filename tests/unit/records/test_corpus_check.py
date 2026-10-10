@@ -10,6 +10,7 @@ a game beyond the fixture's four.
 
 import hashlib
 import json
+import os
 import shutil
 import struct
 from collections.abc import Callable, Mapping
@@ -21,7 +22,10 @@ from typing import Any
 import pytest
 
 from dune_imperium.cli.records import main
+from dune_imperium.records import corpus as corpus_module
 from dune_imperium.records.corpus import (
+    DEFAULT_WINDOW,
+    NICENESS,
     Corpus,
     DifferingRun,
     RecordCheck,
@@ -672,6 +676,44 @@ def test_workers_give_the_same_report(tiny_corpus: Path) -> None:
     assert two.drift == one.drift == {}
     with pytest.raises(ValueError, match="workers must be 1 to 4"):
         check(corpus, rows, workers=5)
+
+
+def test_a_check_in_this_process_runs_under_nice(
+    tiny_corpus: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    niceness = [0]
+
+    def nice(increment: int) -> int:
+        niceness[0] += increment
+        return niceness[0]
+
+    monkeypatch.setattr(os, "nice", nice)
+    corpus = Corpus.open(tiny_corpus)
+    assert _one(corpus).outcome == "exact"
+    assert niceness == [NICENESS]
+    # A second check asks for the same niceness, it does not add to it.
+    assert _one(corpus).outcome == "exact"
+    assert niceness == [NICENESS]
+
+
+def test_a_refused_nice_does_not_stop_a_check(
+    tiny_corpus: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """macOS refuses ``os.nice`` at niceness 20; the check goes on as it is."""
+
+    def refuse(increment: int) -> int:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "nice", refuse)
+    corpus = Corpus.open(tiny_corpus)
+    assert _one(corpus).outcome == "exact"
+    # A worker process starts the same way (a spawned one does not see
+    # this monkeypatch, so its start is run here).
+    monkeypatch.setattr(corpus_module, "_WORKER", None)
+    settings = {"around": (), "bridges": (), "window": DEFAULT_WINDOW}
+    corpus_module._start_worker(tiny_corpus, None, settings)
+    results, _ = corpus_module._check_chunk([(RECORD, False)])
+    assert [result.outcome for result in results] == ["exact"]
 
 
 def test_a_migration_module_is_loaded_from_its_path(tmp_path: Path) -> None:

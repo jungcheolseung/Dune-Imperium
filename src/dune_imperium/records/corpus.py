@@ -441,6 +441,8 @@ VERDICTS: Final = (
 )
 DEFAULT_WINDOW: Final = 16
 MAX_WORKERS: Final = 4
+# The niceness ``check`` runs at, in its own process and in its workers.
+NICENESS: Final = 10
 # Records per worker task.
 _CHECK_CHUNK: Final = 10
 # Divergence reasons are grouped by this many characters, digits blanked.
@@ -923,11 +925,27 @@ class _Checker:
 _WORKER: _Checker | None = None
 
 
+def _lower_priority() -> None:
+    """Run at niceness ``NICENESS`` at least, or at whatever the system allows.
+
+    Asking for a niceness, not adding one, keeps repeated checks in one
+    process at ``NICENESS``. macOS refuses ``os.nice`` (even ``os.nice(0)``)
+    at niceness 20, and Windows has none; the check then runs as it is.
+    """
+
+    try:
+        current = os.nice(0)
+        if current < NICENESS:
+            os.nice(NICENESS - current)
+    except AttributeError, OSError:
+        pass
+
+
 def _start_worker(
     corpus_path: Path, migration_path: Path | None, settings: dict[str, Any]
 ) -> None:
     global _WORKER
-    os.nice(10)
+    _lower_priority()
     migration = (
         records_migration if migration_path is None else load_migration(migration_path)
     )
@@ -1173,10 +1191,11 @@ def check(
     ``migration`` is ``records.migration`` by default, or a module or the
     path of one (``load_migration``). ``around`` are index-key patterns
     whose hits the verdicts lean on; ``bridge`` names the bridge (or
-    bridges) under review. ``workers`` processes (at most ``MAX_WORKERS``,
-    under ``nice``) share the records; with more than one, ``engine`` must
-    be ``None`` and a ``migration`` module must have a file. Nothing is
-    written.
+    bridges) under review. ``workers`` processes (at most ``MAX_WORKERS``)
+    share the records; with more than one, ``engine`` must be ``None`` and
+    a ``migration`` module must have a file. The check runs at niceness
+    ``NICENESS`` or more (``_lower_priority``): with one worker, this
+    process stays at it afterwards. Nothing is written.
     """
 
     if not 1 <= workers <= MAX_WORKERS:
@@ -1202,6 +1221,7 @@ def check(
     results: list[RecordCheck] = []
     classes: dict[str, list[str]] = {}
     if workers == 1:
+        _lower_priority()
         checker = _Checker(corpus, engine or UprisingRulesEngine(), module, **settings)
         for record_id, control in tasks:
             results.append(checker.run(checker.rows[record_id], control=control))
