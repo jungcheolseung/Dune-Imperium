@@ -315,6 +315,76 @@ def _named_card_effect(
     return named[0] if len(named) == 1 else None
 
 
+_OWED_DRAWS = frozenset({"draw_owed_intrigue", "draw_owed_card"})
+
+
+def _owed_draw(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Take a triggered draw the recording engine drew inside its trigger.
+
+    Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw that another
+    printed effect triggers in the seat's own turn -- a track bonus, a
+    Leader ability, a "when trashed" or acquire box -- as the
+    seat's own ``draw_owed_*`` step; an older engine drew it inside the
+    triggering step. So when a recorded step is refused while one waits for
+    the deciding seat (its turn end, or a Plot of the card it drew), the
+    draw is taken first, as the older engine had taken it. The cards drawn
+    are the same; only their order among the seat's draws of that turn may
+    differ.
+    """
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or not isinstance(step, DomainAction)
+        or step.action_id in _OWED_DRAWS
+    ):
+        return None
+    return next(
+        (
+            action
+            for action in engine.legal_actions(state, decision.owner)
+            if action.action_id in _OWED_DRAWS
+        ),
+        None,
+    )
+
+
+_SCOUTS_HELD_DRAW = "scouts_rewards_first"
+
+
+def _scouts_held_draw(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Take an Arrakeen Scouts line's draw an older engine drew at once.
+
+    Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw printed after
+    one of a Scouts line's reward choices (Leverage's Faction, Water
+    Discipline's trash, Spies for Hire's Spy post, CHOAM Negotiations'
+    Contract) as the line's own ``scouts_rewards_first``; an older engine
+    drew it in the step that made the choice. So when a recorded step is
+    refused while the line waits on that draw alone, it is taken first. The
+    card is the same; only the draw's place in the log moves.
+    """
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or not isinstance(step, DomainAction)
+        or state.decision_stack[-1].kind != FrameKind.SCOUTS_EFFECT
+    ):
+        return None
+    held = DomainAction(action_id=_SCOUTS_HELD_DRAW, actor=decision.owner)
+    if step == held or engine.legal_actions(state, decision.owner) != (held,):
+        return None
+    return held
+
+
 BRIDGES: tuple[Bridge, ...] = (
     Bridge("pause", _pause),
     # Codec v141 (e7eef001) opens the Conflict-end Intrigue window on public
@@ -347,4 +417,8 @@ BRIDGES: tuple[Bridge, ...] = (
         before_codec=137,
         rewrites=True,
     ),
+    # Codec v142 (OQ-106) holds a triggered draw as the owner's own step.
+    Bridge("owed_draw", _owed_draw, before_codec=142),
+    # Codec v142 (OQ-106) holds a Scouts line's draw after its choice.
+    Bridge("scouts_held_draw", _scouts_held_draw, before_codec=142),
 )

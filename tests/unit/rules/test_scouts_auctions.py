@@ -111,6 +111,18 @@ def _act(state: GameState, action_id: str, **arguments: Any) -> GameState:
     return ENGINE.apply(state, action, legal_actions=legal).state
 
 
+def _resume(state: GameState) -> GameState:
+    """Answer the pause before the next auction winner's reward."""
+
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.PAUSE
+    decision = frame.decision
+    assert isinstance(decision, ChanceDecision)
+    return ENGINE.apply(
+        state, ChanceOutcome(decision_id=decision.decision_id, values=decision.options)
+    ).state
+
+
 def _bid_all(state: GameState, bids: dict[int, int]) -> GameState:
     order = []
     while state.decision_stack[-1].kind == FrameKind.SCOUTS_BID:
@@ -165,9 +177,11 @@ def test_the_winner_pays_and_takes_the_reward() -> None:
         solari[3],
     ]
     assert len(state.players[1].hand) == hands[1] + 1
-    assert len(state.players[2].hand) == hands[2] + 1
     assert state.scouts_bids == ()
     assert reveals_hidden_information(before, state, 3)
+    # The second winner's reward waits behind a pause (rules/pauses.py).
+    state = _resume(state)
+    assert len(state.players[2].hand) == hands[2] + 1
 
 
 def test_mercenaries_everyone_pays_and_the_lowest_may_retreat() -> None:
@@ -515,9 +529,13 @@ def test_auction_rewards_resolve_by_place_then_turn_order() -> None:
         scouts_bids=((0, 3, True), (1, 3, True), (2, 0, True), (3, 5, True)),
     )
     result = close_bids(state, "highest_bidder_late", (0, 1, 2, 3))
+    # A pause stands before each winner's reward after the first, as before
+    # a Conflict reward recipient's (rules/pauses.py, OQ-106).
     assert result.state.scouts_tasks == (
         "auction_reward:3:0",
+        "auction_pause:0",
         "auction_reward:0:1",
+        "auction_pause:1",
         "auction_reward:1:1",
     )
 
@@ -675,3 +693,102 @@ def test_spies_for_hire_may_draw_its_intrigue_before_placing_the_spy() -> None:
     state = _act(state, "place_spy_on_space", post_id=post)
     assert post in state.players[1].spy_post_ids
     assert len(state.players[1].intrigue_cards) == intrigue + 1
+
+
+def _late(config: RulesetConfig = SCOUTS, **seat_fields: Any) -> GameState:
+    """Round 8's Scouts step about to draw its late auction."""
+
+    return replace(
+        _base(round_number=8, config=config, **seat_fields),
+        scouts_mid_auction_round=5,
+        scouts_late_auction_round=8,
+    )
+
+
+def test_spies_for_hire_spy_post_first_leaves_the_intrigue_its_own_step() -> None:
+    """User ruling 2026-10-10 (OQ-106, project convention): "그 외에는 전부
+    나누자." Spies for Hire's late first place, "Spy 1 배치 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 8): the Spy post no longer draws the card
+    in the same step, so it stays undoable (OQ-010); the card waits as the
+    line's ``scouts_rewards_first``, drawn once. Then the pause before the
+    second place's Spy."""
+    state = _draw(_late(), "spies_for_hire_late")
+    state = _bid_all(state, {0: 0, 1: 3, 2: 1, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    intrigue = len(state.players[1].intrigue_cards)
+    post = next(
+        dict(a.arguments)["post_id"]
+        for a in ENGINE.legal_actions(state, 1)
+        if a.action_id == "place_spy_on_space"
+    )
+    state = _act(state, "place_spy_on_space", post_id=post)
+    assert post in state.players[1].spy_post_ids
+    assert len(state.players[1].intrigue_cards) == intrigue
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    assert ENGINE.legal_actions(state, 1) == (
+        DomainAction(action_id="scouts_rewards_first", actor=1),
+    )
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[1].intrigue_cards) == intrigue + 1
+    state = _resume(state)
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert _owner(state) == 2
+    assert len(state.players[1].intrigue_cards) == intrigue + 1
+
+
+CHOAM_SCOUTS = RulesetConfig(arrakeen_scouts=True, choam_module=True)
+
+
+def test_choam_negotiations_contract_first_leaves_the_intrigue_its_own_step() -> (
+    None
+):
+    """CHOAM Negotiations' late first place, "Contract 1 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 8): the Contract pick refills the market,
+    so it stays irreversible, but its Intrigue card is still its own step
+    (OQ-106), drawn once."""
+    state = _draw(_late(CHOAM_SCOUTS), "choam_negotiations_late")
+    state = _bid_all(state, {0: 4, 1: 0, 2: 2, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+    assert _owner(state) == 0
+    intrigue = len(state.players[0].intrigue_cards)
+    pick = next(
+        a for a in ENGINE.legal_actions(state, 0) if a.action_id == "take_contract"
+    )
+    state = ENGINE.apply(state, pick).state
+    assert len(state.players[0].active_contract_ids) == 1
+    assert len(state.players[0].intrigue_cards) == intrigue
+    assert ENGINE.legal_actions(state, 0) == (
+        DomainAction(action_id="scouts_rewards_first", actor=0),
+    )
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[0].intrigue_cards) == intrigue + 1
+    state = _resume(state)
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+    assert _owner(state) == 2
+
+
+def test_competitive_study_pauses_before_the_second_place_research() -> None:
+    """Competitive Study's late places, "Research + specimen 1" and
+    "Research" (docs/rules/arrakeen-scouts.md 8). Past the second genetic
+    marker a Research draws a card instead [Immortality p. 6]: the second
+    place's card no longer comes out in the first place's Research step
+    (user ruling 2026-10-10, OQ-106); a pause stands between them
+    (rules/pauses.py), so the first place's direction can be taken back on
+    the play server before it."""
+    state = _draw(
+        _late(
+            IMMORTALITY,
+            **{"0": {"research_space": "c1r3"}, "2": {"research_space": "c8r2"}},
+        ),
+        "competitive_study_late",
+    )
+    state = _bid_all(state, {0: 4, 1: 0, 2: 2, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    assert _owner(state) == 0
+    hand = state.players[2].hand
+    state = _act(state, "choose_research_space", space_id="c2r2")
+    assert state.players[0].research_space == "c2r2"
+    assert state.decision_stack[-1].kind == FrameKind.PAUSE
+    assert state.players[2].hand == hand
+    state = _resume(state)
+    assert len(state.players[2].hand) == len(hand) + 1

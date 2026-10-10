@@ -132,7 +132,7 @@ const LABELS_EN = {
     "resolve_espionage_without_spy": "Resolve without {spy}",
     "resolve_faction_influence": "Resolve {faction} {influence_any}",
     "resolve_imperial_privilege_without_recall": "Confirm without recalling {agent} (Imperial Privilege)",
-    "resolve_intrigue_rewards": "Resolve {intrigue} automatic rewards first",
+    "resolve_intrigue_rewards": "Resolve {intrigue} automatic rewards",
     "resolve_unit_loss_without_unit": "No unit to lose — confirm",
     "resolve_commander_without_skill": "Gain the {commander} without a {commander_skill} — confirm",
     "defer_reveal_choice": "Defer this {reveal_turn} choice",
@@ -258,7 +258,7 @@ const LABELS_EN = {
     "scouts_decline_card": "Do Not Buy",
     "scouts_decline_mission": "Pass on the Mission",
     "scouts_collect_mission": "Collect the Mission Pieces",
-    "scouts_rewards_first": "Take the remaining rewards first",
+    "scouts_rewards_first": "Take the remaining rewards",
     "take_desert_riding_hooks": "Take {maker_hooks} Instead of {spice}",
     "trash_intrigue_for_research_bonus": "{research} bonus: {trash} {intrigue} -> card + {intrigue}",
     "pay_research_bonus": "{research} bonus: 7 {solari} -> {tleilaxu} x2",
@@ -282,7 +282,10 @@ const LABELS_EN = {
     "pay_leader_signet_water": "Pay {water} -> {draw} 2 cards ({signet_ring})",
     "deploy_leader_agent": "Into the Fray: Deploy {agent} to {conflict}",
     "trash_optional_card": "{trash} card (optional)",
-    "decline_optional_trash": "Decline {trash}"
+    "decline_optional_trash": "Decline {trash}",
+    "draw_planetologist_intrigue": "{draw} {intrigue} (Arrakis Planetologist)",
+    "draw_owed_intrigue": "{draw} {intrigue}",
+    "draw_owed_card": "{draw} a card"
   },
   "SEAT_KINDS": {
     "human": "Human",

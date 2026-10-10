@@ -437,3 +437,49 @@ Piter, Genius Advisor의 "Lose a troop" 비용에 지휘관 변형 `lose_agent_c
 선택지에서 온다. 위 "다시 캐는 명령"을 그대로 실행했다. 결과는 **127개**(문항별 수는 바로 위와 같다)이며 `check`가 **127/127**
 복원을 확인했다. 포지션 id로 견주면 그대로 126(선택 번호와 지문까지 같은 것 119, 지문은 같고 선택 번호만 바뀐 것 7), 빠진 것 1,
 새것 1(둘 다 마지막 라운드 보유)이다. 채점은 하지 않았다.
+
+## 재채굴 (2026-10-10, 공개 선택과 숨은 draw의 분리 첫 묶음, OQ-106, codec v142)
+
+사용자 판정 "그 외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를 폐기하고 싶을 수 있잖아."
+([OQ-106](../rules/open-questions.md))의 첫 묶음은 커밋 넷이고, 넷 모두 이 문제집의 구성(CHOAM·프로모·Bloodlines·Tech·Immortality)에
+나오는 카드나 Leader라 커밋마다 문제집을 다시 캤다. 매번 위 "다시 캐는 명령"을 그대로 실행했다(5081은 메인 체크아웃의 절대 경로로). 채점은
+하지 않았다. 각 커밋에서 바로 앞 문제집은 앞 커밋의 엔진에서 전부 복원된다.
+
+- `6947f446`(Urgent Shigawire의 더해진 draw가 배치와 따로): 바로 위 127개 가운데 124개가 복원되었다(Endgame `s644/p3`·`s733/p3`,
+  마지막 라운드 보유 `s2327/p2`가 빠짐). 결과는 **125개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 29(heuristic
+  27 + 5081 2), Endgame 16(heuristic 16)이며 `check`가 125/125를 확인했다. 그대로 125(선택 번호와 지문까지 같은 것 124, 지문은 같고
+  선택 번호만 바뀐 것 1), 빠진 것 2, 새것 0이다.
+- `21069cbd`(Cunning·Insider Information의 trash 뒤 draw가 따로): 125개 가운데 102개가 복원되었다. 결과는 **132개** — sandworm
+  80(40 + 40), 마지막 라운드 보유 33(heuristic 31 + 5081 2), Endgame 19(heuristic 19)이며 132/132. 그대로 113(같은 것 100, 선택
+  번호만 바뀐 것 12, 지문까지 바뀐 것 1), 빠진 것 12, 새것 19다. 문항별로는 sandworm 75 그대로·5 빠짐·5 새것, 마지막 라운드 보유
+  23·6·10, Endgame 15·1·4다.
+- `9e9fbd71`(Arrakis Planetologist의 Intrigue가 따로): 132개 가운데 97개가 복원되었다. 결과는 **126개** — sandworm 80(40 + 40),
+  마지막 라운드 보유 26(heuristic 25 + 5081 1), Endgame 20(heuristic 20)이며 126/126. 그대로 113(같은 것 97, 선택 번호만 바뀐 것
+  7, 지문까지 바뀐 것 9), 빠진 것 19, 새것 13이다. 문항별로는 sandworm 76·4·4, 마지막 라운드 보유 21·12·5, Endgame 16·3·4다.
+- `2f76372b`(Piter·Reverse Engineering의 비용과 보상이 따로): 126개 가운데 115개가 복원되었다. 결과는 **124개** — sandworm
+  80(40 + 40), 마지막 라운드 보유 25(heuristic 24 + 5081 1), Endgame 19(heuristic 19)이며 124/124. 그대로 119(같은 것 115, 선택
+  번호만 바뀐 것 4), 빠진 것 7, 새것 5다. 문항별로는 sandworm 79·1·1, 마지막 라운드 보유 22·4·3, Endgame 18·2·1이다.
+
+`tests/unit/test_problem_set.py`는 고칠 것이 없었다.
+
+## 재채굴 (2026-10-10, 공개 선택과 숨은 draw의 분리 둘째 묶음 — 촉발 draw, OQ-106, codec v142)
+
+같은 판정([OQ-106](../rules/open-questions.md))의 둘째 묶음은 다른 인쇄 효과가 촉발한 draw를 소유자의 단계로 남기는 커밋 셋이고,
+셋 모두 이 문제집의 구성에 나오는 촉발(Bene Gesserit Influence 4·Imperial Birthright·Tleilaxu track·Sardaukar Soldier·Overthrow,
+Hungry for Spice, Unpredictable Foe)이라 커밋마다 문제집을 다시 캤다. 매번 위 "다시 캐는 명령"을 그대로 실행했다(5081은 메인
+체크아웃의 절대 경로로). 채점은 하지 않았다. 각 커밋에서 바로 앞 문제집은 앞 커밋의 엔진에서 전부 복원된다.
+
+- `6ec211d8`(촉발된 Intrigue draw가 소유자의 단계로): 바로 앞 124개 가운데 8개만 복원되었다 — Bene Gesserit Influence 4는 거의
+  모든 판에 나온다. 결과는 **131개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 32(heuristic 31 + 5081 1),
+  Endgame 19(heuristic 19)이며 `check`가 131/131을 확인했다. 포지션 id로 견주면 그대로 72(선택 번호와 지문까지 같은 것 7, 지문은
+  같고 선택 번호만 바뀐 것 51, 지문까지 바뀐 것 14), 빠진 것 52, 새것 59다. 문항별로는 sandworm 67 그대로·13 빠짐·13 새것,
+  마지막 라운드 보유 2·23·30, Endgame 3·16·16이다.
+- `43fa4fa7`(Hungry for Spice의 카드가 소유자의 단계로): 131개 가운데 121개가 복원되었다. 결과는 **134개** — sandworm 80(40 +
+  40), 마지막 라운드 보유 35(heuristic 34 + 5081 1), Endgame 19(heuristic 19)이며 134/134. 그대로 127(같은 것 119, 선택 번호만
+  바뀐 것 7, 지문까지 바뀐 것 1), 빠진 것 4, 새것 7이다. 문항별로는 sandworm 79·1·1, 마지막 라운드 보유 31·1·4, Endgame 17·2·2다.
+- `f8f7e080`(Unpredictable Foe의 Intrigue가 Reveal 대기 목록으로): 134개 가운데 124개가 복원되었다. 결과는 **135개** — sandworm
+  80(40 + 40), 마지막 라운드 보유 33(heuristic 32 + 5081 1), Endgame 22(heuristic 22)이며 135/135. 그대로 131(같은 것 123,
+  선택 번호만 바뀐 것 7, 지문까지 바뀐 것 1), 빠진 것 3, 새것 4다. 문항별로는 sandworm 79·1·1, 마지막 라운드 보유 33·2·0,
+  Endgame 19·0·3이다.
+
+`tests/unit/test_problem_set.py`는 고칠 것이 없었다.

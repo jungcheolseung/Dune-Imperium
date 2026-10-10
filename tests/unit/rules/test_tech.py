@@ -615,10 +615,21 @@ def _end_open_agent_turn(state: GameState) -> GameState:
     # nothing left to resolve (OQ-095 (1)): the owner's Agent-turn frame
     # stays on top with the end offered, and pressing it opens the next
     # unrevealed seat's turn.
+    # A draw a trigger earned in the turn (Steersman Y'rkoon's Hungry for
+    # Spice on a seat built with spice and no turn-start snapshot) is taken
+    # first: it waits as the owner's own step (user ruling 2026-10-10,
+    # OQ-106).
     assert state.decision_stack[-1].kind == "agent_effects"
     owner = _decider(state)
+    engine = UprisingRulesEngine()
+    while draws := [
+        action
+        for action in engine.legal_actions(state, owner)
+        if action.action_id in ("draw_owed_card", "draw_owed_intrigue")
+    ]:
+        state = engine.apply(state, draws[0]).state
     assert DomainAction("finish_agent_turn", owner) in (
-        UprisingRulesEngine().legal_actions(state, owner)
+        engine.legal_actions(state, owner)
     )
     ended: GameState = finish_agent_turn(state)
     return ended
@@ -931,8 +942,9 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
 
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
-    # [Steersman Y'rkoon card] (OQ-062).
-    state = _servo_visit("steersman_y_rkoon")
+    # [Steersman Y'rkoon card] (OQ-062). The spice held at the turn's start
+    # is no gain: no Hungry for Spice card waits in the turn (OQ-106).
+    state = _servo_visit("steersman_y_rkoon", spice_at_turn_start=6)
     result = _purchase_and_resolve(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"
@@ -1888,11 +1900,25 @@ def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
     return owed, deployed.players[player].troops_conflict
 
 
+def _owed_taken(state: GameState, player: int = 0) -> GameState:
+    """Take every triggered draw waiting as the seat's own step (OQ-106)."""
+
+    from dune_imperium.rules.owed_draws import apply_owed_draw
+
+    while state.players[player].owed_draws:
+        state = apply_owed_draw(
+            state, DomainAction(action_id="draw_owed_intrigue", actor=player)
+        ).state
+    return state
+
+
 def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None:
     # "For each Intrigue card you draw or steal during your turn: [troop]
     # Deploy it to the Conflict" [Suspensor Suits Tech tile]; the face limits
     # only the turn (OQ-042 (a)), not which effect draws. Draws that took a
-    # card straight off the Intrigue deck skipped the troop.
+    # card straight off the Intrigue deck skipped the troop. A triggered draw
+    # waits as the seat's own step in its turn (user ruling 2026-10-10,
+    # OQ-106) and counts when it is taken.
     from dune_imperium.content.uprising.board import Faction
     from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
     from dune_imperium.rules.card_trash import trash_personal_card
@@ -1911,6 +1937,8 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     gained = gain_faction_influence(
         bene_gesserit, 0, Faction.BENE_GESSERIT, 1, event_prefix="test"
     ).state
+    assert _owed_and_deployed(gained) == (0, 0)
+    gained = _owed_taken(gained)
     assert len(gained.players[0].intrigue_cards) == 1
     assert _owed_and_deployed(gained) == (1, 1)
 
@@ -1927,7 +1955,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     gained = gain_faction_influence(
         irulan, 0, Faction.EMPEROR, 1, event_prefix="test"
     ).state
-    assert _owed_and_deployed(gained) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(gained)) == (1, 1)
 
     # Sardaukar Soldier: "When this card is trashed: [Intrigue]".
     soldier = "imperium:sardaukar_soldier:0"
@@ -1936,7 +1964,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
         stacks=stacks,
     )
     trashed = trash_personal_card(trashing, 0, soldier, source="test").state
-    assert _owed_and_deployed(trashed) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(trashed)) == (1, 1)
 
     # Overthrow's acquire box draws an Intrigue card.
     overthrow = "imperium:overthrow:0"
@@ -1949,7 +1977,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     acquired = acquire_imperium_for_intrigue(
         acquiring, 0, overthrow, to_hand=False, source="test"
     ).result.state
-    assert _owed_and_deployed(acquired) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(acquired)) == (1, 1)
 
     # Spy Network's Reveal: recall one of two placed Spies to draw.
     network = "imperium:spy_network:0"
@@ -2976,9 +3004,28 @@ def test_reverse_engineering_takes_spice_or_trades_a_tile_for_cards() -> None:
     seat = traded.players[0]
     assert seat.tech_ids == ()
     assert traded.tech_trash == ("glowglobes",)
-    # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
-    assert len(seat.intrigue_cards) == 1
-    assert len(seat.hand) == 1
+    # The tile is the arrow's cost; the Intrigue card and the card wait for
+    # their own steps in either order (user ruling 2026-10-10, OQ-106), and
+    # the turn cannot end before both.
+    assert seat.intrigue_cards == () and seat.hand == ()
+    rewards = legal_leader_signet_actions(traded, 0)
+    assert rewards == (
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "intrigue"),)),
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),)),
+    )
+    engine = UprisingRulesEngine()
+    legal = engine.legal_actions(traded, 0)
+    assert set(rewards) <= set(legal)
+    assert DomainAction("finish_agent_turn", 0) not in legal
+    for order in (rewards, tuple(reversed(rewards))):
+        working = traded
+        for reward in order:
+            working = engine.apply(working, reward).state
+        seat = working.players[0]
+        # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
+        assert len(seat.intrigue_cards) == 1
+        assert len(seat.hand) == 1
+        assert not set(rewards) & set(engine.legal_actions(working, 0))
 
 
 def test_kota_actions_round_trip_in_the_tech_catalog() -> None:

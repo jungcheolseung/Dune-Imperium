@@ -413,3 +413,65 @@ def test_a_ghola_copy_of_cargo_runner_names_each_contract_line() -> None:
         "Draw 1 card (if you have completed 4 or more contracts)",
         "{draw:1} ({contract} 넷 이상 완수했다면)",
     )
+
+
+def test_urgent_shigawire_draw_is_named_apart_from_the_box_draw() -> None:
+    """The draw Urgent Shigawire adds to a boosted card's box is its own
+    ``cards`` step (user ruling 2026-10-10, OQ-106) with no condition: below
+    Hidden Missive's two Bene Gesserit Influence the one ``cards`` action is
+    that added draw and says so; at the threshold it is the box's own."""
+
+    missive = "imperium:hidden_missive:0"
+    for influence, english, korean in (
+        (0, "Draw 1 card (Urgent Shigawire)", "{draw:1} (다급한 시거와이어)"),
+        (2, "Draw 1 card (at 2 Bene Gesserit Influence)", None),
+    ):
+        seat = PlayerState(
+            player_id=0,
+            hand=(missive,),
+            deck=(_SIGNET,),
+            influence=Influence(bene_gesserit=influence),
+            bene_gesserit_boost_pending=True,
+        )
+        state = GameState(
+            config=RulesetConfig(bloodlines=True),
+            seed=1,
+            phase=GamePhase.PLAYER_TURNS,
+            round_number=1,
+            intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+            players=(seat, *(PlayerState(player_id=other) for other in range(1, 4))),
+            decision_stack=(
+                DecisionFrame(
+                    kind="turn",
+                    frame_id="round:1:turn:0",
+                    decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+                ),
+            ),
+        )
+        place = next(
+            action
+            for action in _ENGINE.legal_actions(state, 0)
+            if action.action_id == "agent_turn"
+            and dict(action.arguments).get("space_id") == "secrets"
+        )
+        placed = _ENGINE.apply(state, place).state
+        text, text_ko = _icon_text(placed, "cards")
+        assert text == english
+        if korean is not None:
+            assert text_ko == korean
+
+
+def test_piter_genius_advisor_reward_icons_say_what_they_give() -> None:
+    """Piter's "draw two cards and Research" are armed icons after its troop
+    cost (user ruling 2026-10-10, OQ-106): two cards, and a Research with
+    no specimen (Industrial Espionage's line keeps its specimen)."""
+
+    piter = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+    assert agent_card_icon_text(piter, "cards") == "Draw 2 cards"
+    assert agent_card_icon_text_ko(piter, "cards") == "{draw:2}"
+    assert agent_card_icon_text(piter, "research") == "Research"
+    assert agent_card_icon_text_ko(piter, "research") == "{research}"
+    espionage = PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
+    assert agent_card_icon_text(espionage, "research").startswith(
+        "Research, Generate 1 specimen"
+    )

@@ -601,6 +601,23 @@ def test_kota_reverse_engineering_signet() -> None:
         assert action == run.first("gain_leader_signet_spice")
 
 
+def test_kota_reverse_engineering_rewards_follow_in_a_servo_frame() -> None:
+    """Through Servo-Receivers the trashed tile's Intrigue and card wait in
+    the Signet frame as their own steps (user ruling 2026-10-10, OQ-106);
+    the window takes them as the rest of the answer."""
+
+    state = _signet_state(
+        "kota_odax_of_ix", _give_tech(_turn_state(), 0, "training_depot")
+    )
+    trash = _run(state).first("trash_leader_tech")
+    assert trash is not None
+    state = ENGINE.apply(state, trash).state
+    assert state.decision_stack[-1].kind == "leader_signet"
+    run = _run(state)
+    assert {a.action_id for a in run.legal} == {"resolve_agent_card_effect"}
+    assert W.leader_signet(run) == run.legal[0]
+
+
 def test_chani_fedaykin_with_nothing_to_do_only_declines() -> None:
     state = _turn_state()
     resources = replace(state.players[0].resources, water=0)

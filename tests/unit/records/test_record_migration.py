@@ -342,6 +342,71 @@ def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
     assert not record.bridge_counts()
 
 
+def test_a_triggered_draw_an_older_engine_drew_at_once_is_taken_when_needed(
+    game: GameReplay,
+) -> None:
+    # Codec v142 (user ruling 2026-10-10, OQ-106) holds a triggered draw as
+    # the owner's own ``draw_owed_*`` step; an older engine drew it inside
+    # the trigger, so its record has no such step. Dropped from this
+    # engine's record, each is taken again when a later step needs it. The
+    # cards are the same; the draw's place in the log differs, so the hash
+    # does not match.
+    owed = {
+        index
+        for index, step in enumerate(game.steps)
+        if isinstance(step, DomainAction) and step.action_id.startswith("draw_owed_")
+    }
+    assert owed
+
+    before = migrate_record(_older(game, 141, owed))
+    assert before.complete, before.divergence
+    assert before.bridge_counts() == {"owed_draw": len(owed)}
+    recorded = ENGINE.reset(game.ruleset, game.seed)
+    for step in game.steps:
+        recorded = ENGINE.apply(recorded, step).state
+    assert before.state.phase is recorded.phase
+    assert [seat.victory_points for seat in before.state.players] == [
+        seat.victory_points for seat in recorded.players
+    ]
+
+    # A v142 record took every such draw itself.
+    after = migrate_record(_older(game, 142, owed))
+    assert after.divergence is not None
+
+
+def test_a_scouts_line_draw_an_older_engine_drew_at_once_is_taken_first() -> None:
+    # Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw printed after
+    # one of an Arrakeen Scouts line's reward choices as the line's own
+    # ``scouts_rewards_first``, then its only action; an older engine drew
+    # it in the choice's step, so its record has no such step. Seed 3's
+    # heuristic game holds one (round 6, Leverage's Intrigue card). Dropped
+    # from this engine's record, it is taken right where it was, so the game
+    # ends in the same state.
+    agents = [make_agent("heuristic", 10 + seat) for seat in range(4)]
+    game = run_policy_game(ENGINE, FULL, 3, agents).replay
+    held = {
+        index
+        for index, (state, step) in enumerate(
+            zip(_states(game), game.steps, strict=True)
+        )
+        if isinstance(step, DomainAction)
+        and step.action_id == "scouts_rewards_first"
+        and state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+        and ENGINE.legal_actions(state, step.actor) == (step,)
+    }
+    assert held
+
+    before = migrate_record(_older(game, 141, held))
+    assert before.complete, before.divergence
+    assert before.bridge_counts() == {"scouts_held_draw": len(held)}
+    assert [migrated.step for migrated in before.steps] == _steps(game.steps)
+    assert canonical_state_hash(before.state) == game.expected_state_hash
+
+    # A v142 record took every such draw itself.
+    after = migrate_record(_older(game, 142, held))
+    assert after.divergence is not None
+
+
 def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> None:
     record = migrate_record(_older(game, 139, _pause_indices(game)))
     walked = list(walk(record))
@@ -364,6 +429,8 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
                 "conflict_end_window",
                 "combat_intrigue_pass",
                 "agent_card_effect_named",
+                # Codec v142 (OQ-106): a triggered draw is its own step.
+                "owed_draw",
             },
         ),
         ("v139-heuristic-1", 139, {"pause", "conflict_end_window"}),

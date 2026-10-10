@@ -87,7 +87,11 @@ GAMES = (
     # counting, Conflict rewards paid one recipient at a time) move seed 10
     # off its Secrets steal too; the same scan over seeds 1-100 finds seed 4
     # first (again with Family Atomics, the Feyd track and research).
-    {"seats": ["random"] * 4, "game_seed": 4, "policy_seed": 4, **EVERY_EXPANSION},
+    # A triggered draw held as the owner's own step (user ruling 2026-10-10,
+    # OQ-106) moves seed 4 off its Secrets steal (the previous commit's
+    # engine still gives it); the same scan from seed 5 finds seed 14 first
+    # (again with Family Atomics, the Feyd track and research).
+    {"seats": ["random"] * 4, "game_seed": 14, "policy_seed": 14, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,

@@ -359,6 +359,43 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``recall_conflict_agent_for_imperial_privilege`` and
 # ``resolve_imperial_privilege_without_recall`` no longer draw. No template
 # change.
+# Also in v142 (user ruling 2026-10-10, OQ-106: "그 외에는 전부 나누자"): the
+# draw Urgent Shigawire adds to the boosted Bene Gesserit card's Agent box is
+# its own ``resolve_agent_card_effect(effect=cards)`` step after the
+# placement instead of being drawn by the ``agent_turn`` itself. No template
+# change.
+# Also in v142 (OQ-106): Cunning's and Insider Information's draw is its own
+# ``resolve_intrigue_rewards`` when the owner resolves the line's trash slot
+# first. No template change.
+# Also in v142 (OQ-106): Liet Kynes' Arrakis Planetologist pays a replaced
+# sandworm's spice at once and holds its Intrigue card in the replacement's
+# trash frame as its own step: Bloodlines catalogs add the nullary
+# ``draw_planetologist_intrigue``.
+# Also in v142 (OQ-106): Piter, Genius Advisor's ``lose_agent_card_troop`` and
+# Kota Odax's ``trash_leader_tech`` pay only the arrow's cost; their rewards
+# are then their own ``resolve_agent_card_effect(effect=cards|research)`` and
+# ``(effect=intrigue|cards)`` steps. No template change.
+# Also in v142 (OQ-106, triggered draws): a draw another printed effect
+# triggers inside the seat's own Agent or Reveal turn waits as the seat's own
+# step (``PlayerState.owed_draws``) instead of being drawn by the step that
+# triggered it -- the Bene Gesserit Influence 4 bonus, Princess Irulan's
+# Imperial Birthright, a Tleilaxu track Intrigue space, Sardaukar Soldier's
+# "when trashed" and Overthrow's acquire box. Every catalog adds the nullary
+# ``draw_owed_intrigue``. Muad'Dib's Unpredictable Foe queues its card on the
+# Reveal's pending gains for the existing ``draw_reveal_intrigue``.
+# Also in v142 (OQ-106): the card Steersman Y'rkoon's Hungry for Spice owes
+# inside his own turn waits likewise: Bloodlines catalogs add the nullary
+# ``draw_owed_card``.
+# Also in v142 (OQ-106, Arrakeen Scouts): a pause stands before each auction
+# winner's reward after the first (rules/pauses.py), so Competitive Study's
+# second place no longer researches, or draws past the second genetic
+# marker, in the first place's step. No template change; recorded step
+# sequences gain those chance steps.
+# Also in v142 (OQ-106, Arrakeen Scouts lines): a draw printed after one of a
+# line's reward choices (Leverage's Faction, Water Discipline's trash, the
+# late Spies for Hire's Spy post and CHOAM Negotiations' Contract) waits as
+# the line's own ``scouts_rewards_first``, then that line's only action,
+# instead of being drawn by the choice. No template change.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -529,6 +566,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # The owner's waiting Emperor track Spy, opened in any order
             # inside its own turn (user ruling 2026-10-04).
             "place_track_spy",
+            # An Intrigue card a trigger earned in the owner's own turn, its
+            # own step (user ruling 2026-10-10, OQ-106; codec v142).
+            "draw_owed_intrigue",
             # An acquisition-bonus Spy may pass up the recall-first without a
             # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
             "decline_acquisition_spy",
@@ -1135,6 +1175,12 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "recall_conflict_agent_for_agent_card",
             "pay_leader_signet_water",
             "decline_optional_trash",
+            # Liet Kynes' Arrakis Planetologist: the replacement's Intrigue
+            # card, its own step beside the trash (codec v142, OQ-106).
+            "draw_planetologist_intrigue",
+            # A card Hungry for Spice owes in Steersman Y'rkoon's own turn,
+            # its own step (codec v142, OQ-106).
+            "draw_owed_card",
             "take_tuek_sietch_spice",
             "take_tuek_sietch_card",
             "place_leader_bonus_spice",

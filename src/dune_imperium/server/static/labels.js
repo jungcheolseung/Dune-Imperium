@@ -166,7 +166,7 @@ const ACTION_LABELS = {
   resolve_espionage_without_spy: "{spy} 없이 해결",
   resolve_faction_influence: "{faction} {influence_any} 해결",
   resolve_imperial_privilege_without_recall: "{agent} 소환 없이 확인 (Imperial Privilege)",
-  resolve_intrigue_rewards: "{intrigue} 자동 보상 먼저 해결",
+  resolve_intrigue_rewards: "{intrigue} 자동 보상 해결",
   resolve_unit_loss_without_unit: "잃을 유닛 없음 — 확인",
   resolve_commander_without_skill: "{commander_skill} 없이 {commander} 획득 — 확인",
   defer_reveal_choice: "이 {reveal_turn} 선택은 나중에",
@@ -292,7 +292,7 @@ const ACTION_LABELS = {
   scouts_decline_card: "사지 않기",
   scouts_decline_mission: "임무 참여 안 함",
   scouts_collect_mission: "임무 보상 받기",
-  scouts_rewards_first: "남은 보상 먼저 받기",
+  scouts_rewards_first: "남은 보상 받기",
   take_desert_riding_hooks: "{spice} 대신 {maker_hooks} 받기",
   trash_intrigue_for_research_bonus: "{research} 보너스: {intrigue} {trash} → 카드 + {intrigue}",
   pay_research_bonus: "{research} 보너스: 7 {solari} → {tleilaxu} ×2",
@@ -317,6 +317,9 @@ const ACTION_LABELS = {
   deploy_leader_agent: "Into the Fray: {agent}를 {conflict}에 배치",
   trash_optional_card: "카드 {trash} (선택)",
   decline_optional_trash: "{trash} 거절",
+  draw_planetologist_intrigue: "{intrigue} {draw} (Arrakis Planetologist)",
+  draw_owed_intrigue: "{intrigue} {draw}",
+  draw_owed_card: "카드 {draw}",
 };
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to
    prettify(kind) for anything not listed here. */

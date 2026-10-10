@@ -60,7 +60,8 @@ _LOGGER: Final = logging.getLogger(__name__)
 # Choices the project offers that the app has no counterpart for and never
 # takes: the app resolves a Scouts line's steps in printed order
 # (docs/app-ai/scouts.md), never the line's later rewards ahead of a pending
-# choice (OQ-100).
+# choice (OQ-100). Once the choice is made, a draw printed after it waits as
+# the same action alone (OQ-106), which the app's printed order then takes.
 _PROJECT_ONLY_ACTIONS: Final = frozenset({"scouts_rewards_first"})
 
 

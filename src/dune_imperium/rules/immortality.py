@@ -48,6 +48,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 from dune_imperium.rules.intrigue_deck import (
+    draw_or_hold_intrigue_cards,
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
@@ -257,7 +258,13 @@ def advance_tleilaxu(
             working = offered.state
             events.extend(offered.events)
         if bonus is TleilaxuBonus.INTRIGUE:
-            drawn = draw_or_queue_intrigue_cards(working, player, 1, source=step_source)
+            # Inside the seat's own turn the card waits as its own step, so
+            # the choice that moved the token (a research direction, a
+            # trash of Replacement Eyes) stays undoable (user ruling
+            # 2026-10-10, OQ-106).
+            drawn = draw_or_hold_intrigue_cards(
+                working, player, 1, origin="tleilaxu_track", source=step_source
+            )
             working = drawn.state
             events.extend(drawn.events)
     return RuleResult(state=working, events=tuple(events))

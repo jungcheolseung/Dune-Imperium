@@ -104,7 +104,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `analytics` | Analytics (분석) | 1 | Solari 1 → Research | Immortality 풀 |
 | `relations` | Relations (외교) | 2 | spice 2 → 원하는 Faction Influence +1 | |
 | `contingencies` | Contingencies (유사시 대비) | 2 | Intrigue 1장 trash → 방금 보낸 Agent가 아닌 자기 Agent 1개 회수(Into the Fray로 Conflict에 있는 Agent 포함) | OQ-075 |
-| `leverage` | Leverage (권위) | 2 | Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장 | |
+| `leverage` | Leverage (권위) | 2 | Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장 | Faction을 고른 뒤 Intrigue는 따로 뽑는다(OQ-106) |
 | `tleilaxu_relations` | Tleilaxu Relations (협력: 틀레이락스) | 2 | spice 3 → Tleilaxu track 2칸 | Immortality 풀 |
 
 ## 5. 임무
@@ -153,7 +153,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `smoke_and_mirrors` | Smoke and Mirrors (진실의 왜곡) | 책략 보너스 | 5 | 4~7 | 각자 선택: Spy 1 배치, 또는 Solari 1 → Intrigue 1장 |
 | `rotating_doors` | Rotating Doors (회전문) | 책략 보너스 | 5 | 4~7 | 각자 선택: Intrigue 1장 trash → Intrigue 1장 + 카드 1장 draw, 또는 패스 |
 | `moment_of_revelation` | Moment of Revelation (폭로의 순간) | 단일 | 10 | 4~7 | 각자 원하면 spice 2를 내고 Reserve의 Prepare the Way를 **손으로** 획득. Reserve에 남은 카드가 없으면 제시하지 않고 spice도 받지 않는다(OQ-071) |
-| `water_discipline` | Water Discipline (물 규칙) | 단일 | 10 | 4~7 | 각자 선택: 물 1 → 카드 1장 trash + 카드 1장 draw, 또는 패스. trash와 draw는 원하는 순서(OQ-100) |
+| `water_discipline` | Water Discipline (물 규칙) | 단일 | 10 | 4~7 | 각자 선택: 물 1 → 카드 1장 trash + 카드 1장 draw, 또는 패스. trash와 draw는 원하는 순서(OQ-100)이고, trash를 먼저 하면 draw는 따로 한다(OQ-106) |
 | `royal_delegation` | Royal Delegation (왕실 대표단) | 영향력 증가 | 6 | 4~7 | 각자 선택: Solari 2 → Emperor +1, 또는 패스 |
 | `guild_negotiation` | Guild Negotiation (길드 협상) | 영향력 증가 | 6 | 4~7 | 각자 선택: spice 1 + 손의 카드 1장 버리기 → Spacing Guild +1, 또는 패스 |
 | `covert_assistance` | Covert Assistance (비밀스러운 지원) | 영향력 증가 | 6 | 4~7 | 각자 선택: Spy 1 회수 → Bene Gesserit +1, 또는 패스 |
@@ -234,6 +234,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
   - 순위가 이기는 자리 수 이내이고 입찰액이 0보다 크면 이긴다. 1위가 동점이면 모두 1위 보상을 받고 2위 보상은 없다. 2위가 여럿 동점이면 모두 2위 보상을 받는다.
   - 이긴 좌석만 입찰액을 낸다. 진 좌석은 내지 않는다(Mercenaries는 예외).
   - 이긴 좌석들의 보상은 순위대로(1위 먼저) 해결하고, 같은 순위끼리는 First Player부터 차례로 해결한다(OQ-073). 앱 영어의 "turn order"는 1위 동점의 괄호에만 있다.
+  - 두 번째 이후 각 승자의 보상 전에 엔진이 멈춘다(project convention, OQ-103·OQ-106): Competitive Study 2위의 Research가 1위의 방향 선택과 한 단계에서 카드를 뽑지 않게. Spies for Hire·CHOAM Negotiations 후반 1위의 Intrigue는 Spy 배치·Contract 뒤의 따로 된 단계다(OQ-106).
 
 | id | 이름 (공식 한국어) | 자리 | 통화 | 1위 | 2위 |
 |---|---|---|---|---|---|
@@ -285,6 +286,10 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 
 ## 11. 구현 상태
 
+- 2026-10-10 OQ-106 셋째 묶음(사용자 판정 "그 외에는 전부 나누자", project convention; codec v142에 함께, 템플릿 변화 없음).
+  - 줄의 보상 하나가 소유자의 선택이었으면(Faction, 선택 trash, Spy 배치, Contract, Research 방향) 그 뒤에 인쇄된 숨은 draw는 줄의 자기 단계로 남아 `scouts_rewards_first`("남은 보상 받기") 하나로 뽑는다: Leverage, Water Discipline, Spies for Hire 후반 1위, CHOAM Negotiations 후반 1위. 비용 칸의 선택(Rotating Doors의 Intrigue trash)은 보상과 한 단위로 남는다.
+  - 봉인 경매의 두 번째 이후 각 승자의 보상 앞에 멈춤(`rules/pauses.py` `SCOUTS_REWARD`): Competitive Study 2위의 Research(두 번째 genetic marker 뒤의 draw, 한 갈래 전진)가 1위의 방향 선택 단계에서 일어나지 않는다.
+  - records bridge `scouts_held_draw`(codec 142 미만), 멈춤은 기존 `pause` bridge.
 - 2026-09-30 AI 좌석(사용자 결정, 설계 D6·4.9절).
   - Scouts 게임에 `checkpoint:`·`search:` 좌석을 앉힐 수 있다. 서버와 대회의 거절을 풀었고, 좌석은 게임의 설정으로 만들어져 정책 head가 Scouts 카탈로그로 옮겨진다(Epic 병합의 룰셋 재지정). 비밀 선택·봉인 입찰·뒷면 카드는 7·8절대로 `known_card_seats`에 있어 탐색 좌석의 재추첨이 섞는다.
   - 합법 행동이 전부 체크포인트가 학습하지 않은 템플릿인 결정(Scouts 없이 학습한 파일에게는 입찰·호가·비밀 선택·임무 참여·소위원회 가입·이벤트 줄 대부분)은 에이전트 seed의 heuristic이 답한다. 섞인 결정은 네트워크가 답한다. 규칙 동작은 바뀌지 않는다(엔진·codec·관측 무변경).

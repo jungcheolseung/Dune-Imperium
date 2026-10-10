@@ -39,7 +39,7 @@
 | Urgent Shigawire의 boost는 배치 시 소비되며 Litany의 turn 시작 pass는 소비하지 않음; Weirding Woman이 hand로 돌아오면 boost 흔적 없음 | `rules/agent_turn.py`(`bene_gesserit_boost_pending` 소비), `rules/agent_effects.py`(`RETURN_SELF_IF_BENE_GESSERIT_BOND`) |
 | Long Live the Fighters·Imperium Ceremony는 하나의 원자 효과 | `rules/agent_effect_frame.py`, `rules/intrigue_peek.py`, OQ-052 |
 | CHOAM Demands: 이번 turn에 받은 contract도 Agent box로 완료 가능 | `rules/agent_effects.py`(`active_contract_ids` 전부 제시) |
-| CHOAM Transports: 완료 즉시 draw(미룰 수 없음) | `rules/contract_tiles.py` `owe_contract_completion_draw` |
+| CHOAM Transports: 완료 즉시 draw(미룰 수 없음) — "The card draw from CHOAM Transports is triggered as soon as the contract is completed and can't be deferred." (Message from designer) | `rules/contract_tiles.py` `owe_contract_completion_draw`. 2026-10-10 [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다)이 다른 촉발 draw를 소유자의 단계로 나눌 때 이 판정 때문에 나누지 않았다(사용자 결정 대기). |
 | Sardaukar II contract: recall 대상이 없으면 불발 | `rules/contracts.py`(`contract_recall_unavailable`; 2026-10-02부터 소유자가 recall 창에서 `resolve_contract_without_recall`로 확인한다, OQ-068) |
 | Harvest contract: contract를 받기 전 같은 turn에 얻은 spice도 셈 | `rules/effects.py` `eligible_agent_contract_ids`(turn이 열린 때부터의 좌석 카운터 `spice_at_turn_start`·`spice_spent_turn`), `docs/lessons.md` 2026-08-28. **2026-10-06 정정**: 이 행은 "일치"로 적혀 있었지만 엔진은 Agent 배치 뒤에 얻은 spice만 세어, 같은 turn에 배치 전 Plot으로 얻은 spice가 빠졌다(Steam 앱과의 카드 대조에서 발견). 이제 turn 전체를 세어 판정과 일치한다(`tests/unit/rules/test_contracts.py::test_harvest_counts_plot_spice_gained_before_the_placement`). |
 | Rapid Dropships는 Agent 배치 뒤에만 | `rules/tech.py` `legal_tech_flip_actions` |

@@ -422,6 +422,56 @@ def track_spy_waits(state: GameState, seat: int) -> bool:
     return turn_owner_of(state) == seat
 
 
+OWED_INTRIGUE = "intrigue"
+"""An owed draw from the Intrigue deck (``PlayerState.owed_draws``)."""
+
+OWED_CARD = "card"
+"""An owed draw from the seat's own deck (``PlayerState.owed_draws``)."""
+
+
+def draw_waits_for_owner(state: GameState, seat: int) -> bool:
+    """Whether a draw a trigger earns ``seat`` now waits as its own step.
+
+    User ruling 2026-10-10 (OQ-106, project convention): "그 외에는 전부
+    나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
+    폐기하고 싶을 수 있잖아." A draw triggered by another printed effect (a
+    track bonus, a Leader ability, a "when trashed" or acquire box; not
+    CHOAM Transports', whose adopted designer ruling says it "can't be
+    deferred") is not drawn inside the step that triggered it: during the seat's
+    own Agent or Reveal turn it waits for the owner's own step, taken in any
+    order with the turn's other effects ("You may carry out all these
+    effects in any order." [Main p. 9], OQ-027) and before the turn ends,
+    so the public choice that triggered it stays undoable (OQ-010). Like the
+    Emperor track's Spy (``track_spy_waits``, user ruling 2026-10-04),
+    anywhere else -- another seat's turn, Combat, the Arrakeen Scouts step,
+    the Endgame -- the draw happens at once, where every choice is already
+    held to its seat's confirm press (OQ-103).
+    """
+
+    return turn_owner_of(state) == seat
+
+
+def hold_draw(owner: PlayerState, deck: str, origin: str, source: str) -> PlayerState:
+    """Return ``owner`` with one more draw waiting as its own step (OQ-106).
+
+    ``deck`` is ``OWED_INTRIGUE`` or ``OWED_CARD``; ``origin`` names the
+    printed effect that earned it (shown with the step) and ``source`` is the
+    event source the draw is logged under when it is taken.
+    """
+
+    return replace(owner, owed_draws=(*owner.owed_draws, (deck, origin, source)))
+
+
+def owes_held_draw(state: GameState, seat: int) -> bool:
+    """Whether ``seat`` still has a triggered draw waiting (OQ-106).
+
+    Like an owed Emperor track Spy, a waiting draw holds the turn's end back:
+    it must be taken before the turn ends, so no draw is ever lost.
+    """
+
+    return bool(state.players[seat].owed_draws)
+
+
 def reveal_is_open_for(state: GameState, player: int) -> bool:
     """Return whether ``player``'s Reveal frame is on the decision stack."""
 

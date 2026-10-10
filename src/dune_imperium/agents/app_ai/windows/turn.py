@@ -135,6 +135,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     decide,
     int_arg,
     str_arg,
+    triggered_draw,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
@@ -1002,6 +1003,9 @@ def _acquire_effect_action(
 def turn_window(run: DecisionRun) -> DomainAction | None:
     """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer)."""
 
+    drawn = triggered_draw(run)
+    if drawn is not None:
+        return drawn
     if any(action.action_id not in _KNOWN_ACTION_IDS for action in run.legal):
         return None  # an id with no app key: fall back, never pass it over
     owed = tech_acquire_effect_sources(run)

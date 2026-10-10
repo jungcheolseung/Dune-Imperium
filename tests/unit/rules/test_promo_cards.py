@@ -49,6 +49,7 @@ from dune_imperium.rules.combat import (
     resolve_combat_rewards,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.optional_trash import apply_optional_trash
 from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
 from dune_imperium.simulation import run_random_game
 
@@ -237,8 +238,14 @@ def test_liet_may_pay_arrakis_revolt_and_keep_the_wall_behind_it() -> None:
     assert kept.state.shield_wall_present is True
     assert liet.sandworms_conflict == 0
     assert liet.resources.spice == 1  # 2 paid, 1 from the replacement
-    assert liet.intrigue_cards == ("intrigue:bribery:0",)
+    # The replacement's Intrigue card waits in its trash frame as its own
+    # step (user ruling 2026-10-10, OQ-106).
+    assert liet.intrigue_cards == ()
     assert kept.state.decision_stack[-1].kind == "optional_trash"
+    drawn = apply_optional_trash(
+        kept.state, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:bribery:0",)
 
 
 def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
@@ -727,6 +734,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_owed_intrigue (OQ-106)
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -744,6 +752,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_owed_intrigue (OQ-106)
     )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",

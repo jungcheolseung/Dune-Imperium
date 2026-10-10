@@ -499,6 +499,18 @@ def test_optional_trash_with_an_unknown_card_is_a_gap() -> None:
     assert W.optional_trash(_with_legal(_run(state), stray)) is None
 
 
+def test_planetologist_frame_draws_its_intrigue_first() -> None:
+    """Liet Kynes' replacement frame holds its Intrigue card as its own step
+    (``draw_planetologist_intrigue``, user ruling 2026-10-10, OQ-106); the
+    window takes it before the trash, as the replacement paid it before."""
+
+    state, seat = _research_seat()
+    source = f"round:{state.round_number}:player:{seat}:hagga_basin:planetologist:0"
+    state = state.push_decision(optional_trash_frame(seat, source, intrigue=True))
+    action = W.optional_trash(_run(state))
+    assert action == DomainAction(action_id="draw_planetologist_intrigue", actor=seat)
+
+
 _CONTROL_THE_SPICE = "player:1:starter:control_the_spice:0"
 
 

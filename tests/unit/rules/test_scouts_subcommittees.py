@@ -250,15 +250,22 @@ def test_oversight_spice_as_the_last_effect_counts_for_hungry_for_spice() -> Non
     seat = state.players[0]
     assert seat.resources.spice == 6
     assert seat.hungry_for_spice_granted_turn
-    assert seat.hand == (second_dagger,)
+    # The card waits as his own step (user ruling 2026-10-10, OQ-106),
+    # holding the turn's end back until he takes it.
+    assert seat.hand == ()
+    assert ("finish_agent_turn", "") not in _options(state)
+    state = _act(state, "draw_owed_card")
+    assert state.players[0].hand == (second_dagger,)
     assert _scouts_frames_done(state)
 
 
 def test_oversight_spice_first_lets_steersman_trash_the_card_it_draws() -> None:
     """OQ-100 (user ruling 2026-10-05, "순서 자유로"): Oversight's spice may
     come before its trash icon. Taken first, it brings Steersman Y'rkoon's
-    turn to 3 spice, so his draw [Steersman Y'rkoon card] lands while the
-    trash is still open and the drawn card can be trashed."""
+    turn to 3 spice, so his draw [Steersman Y'rkoon card] is earned while
+    the trash is still open. The card waits as his own step (user ruling
+    2026-10-10, OQ-106), offered beside the open trash, so he may draw it
+    and trash the drawn card, or trash first and draw after."""
     second_dagger = "player:0:starter:dagger:1"
     owner = _owner(
         leader_id="steersman_y_rkoon",
@@ -277,13 +284,24 @@ def test_oversight_spice_first_lets_steersman_trash_the_card_it_draws() -> None:
     seat = state.players[0]
     assert seat.resources.spice == 6
     assert seat.hungry_for_spice_granted_turn
-    assert second_dagger in seat.hand
+    assert second_dagger not in seat.hand
+    assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    held = state
+    state = _act(state, "draw_owed_card")
+    assert second_dagger in state.players[0].hand
     assert state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
     state = _act(state, "trash_optional_card", card_id=second_dagger)
     seat = state.players[0]
     assert second_dagger in seat.trashed
     assert seat.resources.spice == 6  # the spice is not paid out twice
     assert _scouts_frames_done(state)
+    # The other order: the trash first, the card drawn afterwards.
+    first = _act(held, "trash_optional_card", card_id=DAGGER)
+    assert DAGGER in first.players[0].trashed
+    assert first.players[0].hand == ()
+    drawn = _act(first, "draw_owed_card")
+    assert drawn.players[0].hand == (second_dagger,)
+    assert drawn.players[0].owed_draws == ()
 
 
 def test_leverage_may_draw_its_intrigue_before_choosing_the_faction() -> None:
@@ -316,6 +334,12 @@ def test_leverage_may_draw_its_intrigue_before_choosing_the_faction() -> None:
 
 
 def test_leverage_recalls_two_chosen_spies_then_gains() -> None:
+    """Leverage: "Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 4). The Faction choice and the Intrigue
+    card are separate steps (user ruling 2026-10-10, OQ-106: "그 외에는
+    전부 나누자"), so the choice stays undoable (OQ-010): the card waits as
+    the line's ``scouts_rewards_first``, the only action, and the turn
+    cannot end before it is drawn, once."""
     owner = _owner(
         spies_supply=1,
         spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
@@ -330,7 +354,12 @@ def test_leverage_recalls_two_chosen_spies_then_gains() -> None:
     intrigue = len(state.players[0].intrigue_cards)
     state = _act(state, "scouts_choose_faction", faction="emperor")
     assert state.players[0].influence.emperor == 1
+    assert len(state.players[0].intrigue_cards) == intrigue
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    assert _options(state) == {("scouts_rewards_first", "")}
+    state = _act(state, "scouts_rewards_first")
     assert len(state.players[0].intrigue_cards) == intrigue + 1
+    assert _scouts_frames_done(state)
 
 
 def test_contingencies_recalls_another_agent_not_the_high_council_one() -> None:
