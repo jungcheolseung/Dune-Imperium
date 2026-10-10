@@ -41,8 +41,13 @@ from PIL import Image, ImageDraw
 
 from dune_imperium.agents.app_ai import catalog
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
+from dune_imperium.agents.app_ai.data.synthetic import SYNTHETIC
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.contracts import (
+    BLOODLINES_CONTRACTS,
+    ContractConditionKind,
+)
 from dune_imperium.display.images import load_card_manifest
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 
@@ -1342,15 +1347,24 @@ BATTLE_ICONS = {
     "Wildcard": "hud_Icon_Conflict_Wild",
 }
 PLACE_WORDS = {"en": ("st", "nd", "rd"), "ko": ("등", "등", "등")}
+# Bloodlines' four-dot set mark in the third box's bottom-right corner
+# (template units; offsets from the box corner measured on the scans)
+CONFLICT_SET_MARK = {"centre": (435.0, 734.0), "radius": 3.3, "gap": 8.3}
+
+
+def conflict_archetype(short):
+    """The app's archetype, else the app-style one made for Bloodlines
+    (``data/synthetic.py``: no app strings, its texts are in en_text.json)."""
+    return ARCHETYPES.get(short) or SYNTHETIC.get(short)
 
 
 def conflict_spec(inp, content_id):
     # the printed card is the CHOAM version (contract icons)
     short = catalog.CONFLICT_ARCHETYPES[content_id][1]
-    arch = ARCHETYPES[short]
+    arch = conflict_archetype(short)
     at = arch.attributes
-    slug = at["Name"]  # card.conflict.<slug>
     last = short.rsplit(".", 1)[1].lower()
+    slug = at.get("Name") or f"card.conflict.{last}"  # card.conflict.<slug>
     rewards = []
     for n in (1, 2, 3):
         keys = [f"{slug}.reward.{n}", f"card.conflict.{last}.reward.{n}"]
@@ -1370,7 +1384,7 @@ def conflict_spec(inp, content_id):
         "arch": short,
         "slug": slug,
         "title": {
-            "en": inp.text_en(slug),
+            "en": inp.en.get(slug) or inp.text_en(slug),
             # our names add the battle icon in brackets; the card prints only the name
             "ko": re.sub(
                 r"\s*\(.*\)$", "", KOREAN_CARD_NAMES["conflicts"].get(content_id) or ""
@@ -1380,6 +1394,7 @@ def conflict_spec(inp, content_id):
         "level": at.get("ConflictLevel"),
         "battle": at.get("BattleIcon"),
         "shield": bool(ours and ours.shield_wall_protected),
+        "bloodlines": "Bloodlines" in at.get("SetList", ()),
         "texts": [] if prefab else [r for r in rewards if r["en"] or r["ko"]],
         "rewards": rewards,
         "art": "conflict",
@@ -1468,7 +1483,13 @@ def bind_conflict(inp, spec, lang):
                 pad=(12, 8, 12, 42),
             )
         )
+    if spec["bloodlines"]:
+        t["_post"] = [conflict_set_mark]
     return t
+
+
+def conflict_set_mark(img, scale):
+    return draw_set_mark(img, scale, fill=(232, 170, 130, 160), **CONFLICT_SET_MARK)
 
 
 # ---------------------------------------------------------------- whole prefabs
@@ -1540,6 +1561,8 @@ def prefab_texts(inp, nodes):
 
 
 def contract_spec(inp, content_id):
+    if content_id in BLOODLINES_CONTRACT_TEMPLATES:
+        return bloodlines_contract_spec(inp, content_id)
     short = catalog.CONTRACT_ARCHETYPES[content_id]
     number = short.rsplit("_", 1)[1]
     prefab = f"UI_crd_Contract_Base_{number}.prefab.json"
@@ -1550,21 +1573,24 @@ def contract_spec(inp, content_id):
         "id": content_id,
         "arch": short,
         "prefab": prefab if tree else None,
-        # our names number the copies (원로회 I/II); the card prints only the name
-        "title": {
-            "en": None,
-            "ko": re.sub(
-                r"\s+[IVX]+$", "", KOREAN_CARD_NAMES["contracts"].get(content_id) or ""
-            )
-            or None,
-        },
+        "title": {"en": None, "ko": contract_title_ko(content_id)},
         "texts": prefab_texts(inp, nodes),
         "art": "contract" if tree else None,
         "path": inp.manifest.get(("contract", content_id)),
     }
 
 
+def contract_title_ko(content_id):
+    """Our names number the copies (원로회 I/II) and give the Harvest
+    threshold (채취 3+); the card prints only the name, the threshold sits in
+    its hexagon."""
+    name = KOREAN_CARD_NAMES["contracts"].get(content_id) or ""
+    return re.sub(r"\s+(?:[IVX]+|\d\+)$", "", name) or None
+
+
 def bind_contract(inp, spec, lang):
+    if spec.get("bloodlines"):
+        return bind_bloodlines_contract(inp, spec, lang)
     t = copy.deepcopy(inp.tree(spec["prefab"]))
     if lang == "ko" and spec["title"]["ko"]:
         head = R.find(t, "HeaderRoot")
@@ -1572,6 +1598,206 @@ def bind_contract(inp, spec, lang):
             head["text"] = spec["title"]["ko"]
             head["fallback"] = str(KOREAN_FONT_BOLD)
     return bind_prefab_texts(inp, t, lang, spec["prefab"])
+
+
+# ---------------------------------------------------------------- Bloodlines contracts
+# The app has no Bloodlines content. Each of the eight contract tokens is drawn
+# on the Uprising contract prefab of its space or kind (Secrets on the Bene
+# Gesserit one, Espionage's; Earn Any Alliance on Immediate's), with its
+# printed title and a reward row built from the engine's printed reward
+# (content/uprising/contracts.py) out of the Uprising prefabs' own icon nodes.
+BLOODLINES_CONTRACT_TEMPLATES = {
+    "bloodlines_deliver_supplies": "UI_crd_Contract_Base_14.prefab.json",
+    "bloodlines_earn_any_alliance": "UI_crd_Contract_Base_19.prefab.json",
+    "bloodlines_harvest_3": "UI_crd_Contract_Base_1.prefab.json",
+    "bloodlines_harvest_4": "UI_crd_Contract_Base_3.prefab.json",
+    "bloodlines_high_council": "UI_crd_Contract_Base_10.prefab.json",
+    "bloodlines_immediate": "UI_crd_Contract_Base_19.prefab.json",
+    "bloodlines_secrets": "UI_crd_Contract_Base_17.prefab.json",
+    "bloodlines_spice_refinery": "UI_crd_Contract_Base_6.prefab.json",
+}
+BLOODLINES_CONTRACT_BY_ID = {c.card.card_id: c for c in BLOODLINES_CONTRACTS}
+# Reward icons: the Uprising prefabs' coin and troop nodes (their ink matches
+# the tokens' print), the others drawn so their ink fills the printed box
+# (template units, measured on the English scans: the print's Spy is smaller
+# than the app's, the cards and the arrow are larger than the inline glyphs)
+CONTRACT_ICON_NODES = {
+    "Solari": ("UI_crd_Contract_Base_14.prefab.json", "Icon_Resource_Coin"),
+    "Troop": ("UI_crd_Contract_Base_4.prefab.json", "Icon_Resource_Troop"),
+}
+CONTRACT_ICON_INK = {
+    # icon: (sprite, from the inline set?, printed ink w x h)
+    "Spy": ("UI_crd_ActionIcon_Spy", False, (83.0, 120.0)),
+    "SuperSpy": ("SuperSpy", True, (114.0, 146.0)),
+    "DrawCard": ("UI_crd_ActionIcon_DrawCard", False, (92.0, 147.0)),
+    "IntrigueCard": ("UI_crd_ActionIcon_IntrigueCard", False, (92.0, 147.0)),
+    "TrashIntrigue": ("UI_crd_ActionIcon_IntrigueTrash", False, (92.0, 147.0)),
+    "Arrow": ("UI_crd_CostIcon_IfThenArrow_Large", False, (74.0, 68.0)),
+}
+# printed gaps between neighbouring icons' ink (units); others CONTRACT_GAP
+CONTRACT_GAP = 19.0
+CONTRACT_GAPS = {
+    ("Solari", "Troop"): 42.0,
+    ("Troop", "Troop"): 11.0,
+    ("IntrigueCard", "DrawCard"): 12.0,
+    ("TrashIntrigue", "Arrow"): 34.0,
+    ("Arrow", "IntrigueCard"): 30.0,
+}
+# The Recall-an-Agent reward is Sardaukar II's whole row (backer glow + icon).
+CONTRACT_RECALL_PREFAB = "UI_crd_Contract_Base_13.prefab.json"
+# Immediate's "Requires an Intrigue card" line is set like Acquire's subtitle
+# (its prefab), the reward row lowered below it to the print's height
+CONTRACT_SUBHEADER_PREFAB = "UI_crd_Contract_Base_20.prefab.json"
+CONTRACT_LOWERED_ROW_Y = -26.5
+CONTRACT_REQUIREMENT_KEY = "card.contract.bloodlinesimmediate.requirement"
+# the four-dot set mark printed bottom right (template units, from the scans)
+CONTRACT_SET_MARK = {"centre": (558.0, 328.0), "radius": 4.5, "gap": 12.0}
+
+
+def bloodlines_contract_row(contract):
+    """The reward row's icons left to right as the tokens print them."""
+    r = contract.reward
+    if r.contracts or r.influence:
+        raise ValueError(f"{contract.card.card_id}: no Bloodlines token prints this")
+    row = []
+    if contract.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH:
+        row += ["TrashIntrigue", "Arrow"]
+    if r.solari:
+        row.append(f"Solari_{r.solari}")
+    row += ["Water"] * r.water
+    row += ["SuperSpy"] * r.deep_cover_spies
+    row += ["Spy"] * r.spies
+    row += ["Troop"] * r.troops
+    row += ["IntrigueCard"] * r.intrigue_cards
+    row += ["DrawCard"] * r.personal_cards
+    row += ["RecallAgent"] * r.recall_agents
+    return row
+
+
+def bloodlines_contract_spec(inp, content_id):
+    contract = BLOODLINES_CONTRACT_BY_ID[content_id]
+    requirement = (
+        contract.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH
+    )
+    title = {
+        # the card prints the name only; Harvest's threshold is in its hexagon
+        "en": re.sub(r"\s+\d\+$", "", contract.card.name),
+        "ko": contract_title_ko(content_id),
+    }
+    texts = [dict(title, key=f"card.contract.{content_id}.title")]
+    if requirement:
+        texts.append(
+            {
+                "key": CONTRACT_REQUIREMENT_KEY,
+                "en": inp.en.get(CONTRACT_REQUIREMENT_KEY),
+                "ko": inp.ko.get(CONTRACT_REQUIREMENT_KEY),
+            }
+        )
+    return {
+        "kind": "contract",
+        "id": content_id,
+        "bloodlines": True,
+        "prefab": BLOODLINES_CONTRACT_TEMPLATES[content_id],
+        "title": title,
+        "requirement": texts[1] if requirement else None,
+        "row": bloodlines_contract_row(contract),
+        "texts": texts,
+        "art": "contract",
+        "path": inp.manifest.get(("contract", content_id)),
+    }
+
+
+def contract_icon(inp, name):
+    """One reward icon: its row nodes and the ink's left and right margins
+    inside the laid-out node."""
+    if name == "RecallAgent":
+        nodes = copy.deepcopy(
+            R.find(inp.tree(CONTRACT_RECALL_PREFAB), "ContentsRoot")["children"]
+        )
+    else:
+        base, _, n = name.partition("_")
+        if base in CONTRACT_ICON_INK:
+            sprite, inline, (bw, bh) = CONTRACT_ICON_INK[base]
+            img = (inp.inline if inline else inp.sprites).get(sprite)
+            alpha = img.getchannel("A").point(lambda v: 255 if v > 40 else 0)
+            x0, _, x1, _ = box = alpha.getbbox()
+            k = min(bw / (x1 - x0), bh / (box[3] - box[1]))
+            node = tech_image_node(sprite, inline, img.width * k, img.height * k, base)
+            return [node], (x0 * k, (img.width - x1) * k)
+        prefab, node_name = CONTRACT_ICON_NODES[base]
+        nodes = [copy.deepcopy(R.find(inp.tree(prefab), node_name))]
+        if n:
+            qty = next(c for c in nodes[0]["children"] if c["name"].endswith("QTY"))
+            qty["text"] = n
+    laid = next(
+        n for n in nodes if not (R.comp(n, "LayoutElement") or {}).get("m_IgnoreLayout")
+    )
+    w, h = R.comp(laid, "RT")["size"]
+    x0, _, x1, _ = probe_ink(inp, laid, w, h, layout_child=True)
+    return nodes, (x0, w - x1)
+
+
+def gap_node(width):
+    """An empty layout child that sets the space between two icons."""
+    return {
+        "name": "Gap",
+        "active": True,
+        "children": [],
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [width, 0.0],
+                "amin": [0.0, 0.0],
+                "amax": [0.0, 0.0],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            }
+        ],
+    }
+
+
+def contract_row(inp, names):
+    """The reward row's layout children, spaced so the icons' ink sits the
+    printed gaps apart (the layout group's own spacing is then 0)."""
+    out, prev = [], None
+    for name in names:
+        nodes, (left, right) = contract_icon(inp, name)
+        base = name.partition("_")[0]
+        if prev:
+            gap = CONTRACT_GAPS.get((prev[0], base), CONTRACT_GAP)
+            out.append(gap_node(gap - prev[1] - left))
+        out += nodes
+        prev = (base, right)
+    return out
+
+
+def bind_bloodlines_contract(inp, spec, lang):
+    t = copy.deepcopy(inp.tree(spec["prefab"]))
+    root = R.find(t, "Root")
+    head = R.find(t, "HeaderRoot")
+    head["text"] = pick(spec["title"], lang)
+    if lang == "ko":
+        head["fallback"] = str(KOREAN_FONT_BOLD)
+    row = R.find(t, "ContentsRoot")
+    if spec["requirement"]:
+        source = inp.tree(CONTRACT_SUBHEADER_PREFAB)
+        sub = copy.deepcopy(R.find(source, "SubHeader"))
+        sub["text"] = pick(spec["requirement"], lang)
+        if lang == "ko":
+            sub["fallback"] = str(KOREAN_FONT_BOLD)
+        root["children"].insert(root["children"].index(head) + 1, sub)
+        rt = R.comp(row, "RT")
+        rt["pos"] = [rt["pos"][0], CONTRACT_LOWERED_ROW_Y]
+    row["children"] = contract_row(inp, spec["row"])
+    R.comp(row, "HorizontalLayoutGroup")["m_Spacing"] = 0.0
+    t["_post"] = [contract_set_mark]
+    # the template's other texts (Harvest's 3+ / 4+) as the prefab sets them
+    return bind_prefab_texts(inp, t, lang, spec["prefab"])
+
+
+def contract_set_mark(img, scale):
+    return draw_set_mark(img, scale, fill=(208, 212, 196, 150), **CONTRACT_SET_MARK)
 
 
 # ---------------------------------------------------------------- tech tiles
@@ -1834,28 +2060,49 @@ def tech_strip_nodes(inp, strip, lang):
     return nodes, height > TECH_STRIP_SHORT
 
 
+def draw_set_mark(img, scale, centre, radius, gap, fill):
+    """Bloodlines' set mark, four small dots, centred at `centre` (template
+    units from the face's top left); the app has no sprite for it. The dots
+    are composited over the face (drawn straight on it, a translucent fill
+    would replace the face's pixels and leave see-through holes)."""
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    cx, cy = centre
+    r, half = radius * scale, gap * scale / 2
+    for dx in (-half, half):
+        for dy in (-half, half):
+            x, y = cx * scale + dx, cy * scale + dy
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=fill)
+    return Image.alpha_composite(img.convert("RGBA"), layer)
+
+
 def tech_set_mark(spec):
-    """Draw the four-dot set mark after rendering (no app sprite for it)."""
+    """Draw the four-dot set mark after rendering."""
 
     def post(img, scale):
-        draw = ImageDraw.Draw(img)
         cx, cy = TECH_SET_MARK
         if spec["rival"]:
             cy -= TECH_SET_MARK_ABOVE_SHELL
-        r, gap = 2.7 * scale, 9.5 * scale
-        for dx in (-gap / 2, gap / 2):
-            for dy in (-gap / 2, gap / 2):
-                x, y = cx * scale + dx, cy * scale + dy
-                draw.ellipse((x - r, y - r, x + r, y + r), fill=(208, 212, 196, 150))
-        return img
+        return draw_set_mark(img, scale, (cx, cy), 2.7, 9.5, (208, 212, 196, 150))
 
     return post
 
 
 def tech_probe(inp, node, w, h, pad=60.0, scale=2.0):
     """Render one node alone; its ink's top and bottom from the rect's top."""
+    _, top, _, bottom = probe_ink(inp, node, w, h, pad, scale)
+    return top, bottom
+
+
+def probe_ink(inp, node, w, h, pad=60.0, scale=2.0, layout_child=False):
+    """Render one node alone at w x h; its ink's box (left, top, right,
+    bottom) from the rect's top left, or the whole rect when it draws none.
+    A layout child is re-anchored to the probe's centre, as its group would
+    place it, and may show inline sprites."""
     probe = copy.deepcopy(node)
     R.comp(probe, "RT").update(pos=[0.0, 0.0], size=[w, h])
+    if layout_child:
+        R.comp(probe, "RT").update(amin=[0.5, 0.5], amax=[0.5, 0.5])
     W, H = w + 2 * pad, h + 2 * pad
     root = {
         "name": "Probe",
@@ -1873,11 +2120,14 @@ def tech_probe(inp, node, w, h, pad=60.0, scale=2.0):
             }
         ],
     }
-    img = R.CardRenderer(inp.sprites, inp.text, scale).render(root, W, H)
+    r = R.CardRenderer(inp.sprites, inp.text, scale)
+    if layout_child:
+        r.alt = inp.inline
+    img = r.render(root, W, H)
     box = img.getchannel("A").point(lambda v: 255 if v > 60 else 0).getbbox()
     if not box:
-        return 0.0, h
-    return box[1] / scale - pad, box[3] / scale - pad
+        return 0.0, 0.0, w, h
+    return tuple(v / scale - pad for v in box)
 
 
 def tech_centre_title(inp, head):
@@ -2175,13 +2425,18 @@ KIND_IDS = {
     "conflict": lambda: [
         cid
         for cid, (short, _six) in catalog.CONFLICT_ARCHETYPES.items()
-        if short in ARCHETYPES and (".Uprising." in short or cid in EPIC_GAME_MODE_IDS)
+        if (short in ARCHETYPES and ".Uprising." in short)
+        or cid in EPIC_GAME_MODE_IDS
+        or "Bloodlines" in conflict_archetype(short).attributes.get("SetList", ())
     ],
-    "contract": lambda: [
-        cid
-        for cid, short in catalog.CONTRACT_ARCHETYPES.items()
-        if ".Uprising." in short
-    ],
+    "contract": lambda: (
+        [
+            cid
+            for cid, short in catalog.CONTRACT_ARCHETYPES.items()
+            if ".Uprising." in short
+        ]
+        + list(BLOODLINES_CONTRACT_TEMPLATES)
+    ),
     "tech": lambda: [tile.tech_id for tile in TECH_TILES],
 }
 
