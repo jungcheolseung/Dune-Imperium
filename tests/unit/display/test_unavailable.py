@@ -910,7 +910,7 @@ def test_an_option_with_every_effect_dead_explains_each_of_them() -> None:
     assert _intrigue_reason(mercenaries, "mercenaries") == (
         "No Intrigue card to draw: the Intrigue deck is empty and its discard"
         " pile holds nothing to shuffle; Needs 1 troop in your supply (you have 0)",
-        "뽑을 {intrigue} 없음: {intrigue} 더미가 비었고 버린 더미에 섞을 카드 없음"
+        "뽑을 {intrigue_card} 없음: 책략 카드덱이 비었고 버린 더미에 섞을 카드 없음"
         " · {supply}에 {troop:1} 필요 (보유 0)",
         "reward",
     )
@@ -1630,7 +1630,7 @@ def test_a_research_bonus_without_an_intrigue_card_greys_out_the_trash() -> None
     assert row["refs"] == []
     assert (row["reason"], row["reason_ko"], row["code"]) == (
         "No Intrigue card to trash",
-        "{trash}할 {intrigue} 없음",
+        "폐기할 {intrigue_card} 없음",
         "cost",
     )
     assert found["refs"] == {}
@@ -2472,7 +2472,7 @@ _IMMEDIATE = "contract:bloodlines_immediate"
 _CHOAM_BLOODLINES = RulesetConfig(choam_module=True, bloodlines=True)
 _NO_INTRIGUE_TO_TRASH = (
     "No Intrigue card to trash",
-    "{trash}할 {intrigue} 없음",
+    "폐기할 {intrigue_card} 없음",
     "cost",
 )
 _HOLD = DomainAction(action_id="hold_contract_icons", actor=0)
@@ -2538,7 +2538,7 @@ def _held_reason(lapse_en: str, lapse_ko: str) -> tuple[str, str, str]:
     return (
         "1 Contract icon held: taken once you have an Intrigue card to trash,"
         f" lost when {lapse_en}",
-        "{contract} 아이콘 1개 보류 — {trash}할 {intrigue}가 생기면 가져감,"
+        "{contract} 아이콘 1개 보류 — 폐기할 {intrigue_card}가 생기면 가져감,"
         f" {lapse_ko} 사라짐",
         "waiting",
     )
@@ -2658,7 +2658,7 @@ def test_icons_held_in_the_scouts_step_say_when_they_lapse() -> None:
     assert (row["reason"], row["reason_ko"], row["code"]) == (
         "1 Contract icon held: taken once you have an Intrigue card to trash,"
         " lost when the Arrakeen Scouts step ends",
-        "{contract} 아이콘 1개 보류 — {trash}할 {intrigue}가 생기면 가져감,"
+        "{contract} 아이콘 1개 보류 — 폐기할 {intrigue_card}가 생기면 가져감,"
         " 아라킨 스카웃 단계가 끝나면 사라짐",
         "waiting",
     )
