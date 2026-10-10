@@ -110,6 +110,7 @@ from dune_imperium.rules.agent_effects import (
     AUTOMATIC_AGENT_ICONS,
     agent_card_effect_is_unavailable,
     agent_icon_condition_holds,
+    legal_agent_card_boost_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
@@ -702,6 +703,8 @@ def _old_pending_groups(state: GameState, player: int) -> tuple[DomainAction, ..
             actions.append(
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )
+    # 2026-10-10: Urgent Shigawire's added draw became its own step (OQ-106).
+    actions.extend(legal_agent_card_boost_actions(state, player))
     actions.extend(legal_board_effect_actions(state, player))
     if context["pending_faction_influence"] is True:
         actions.append(

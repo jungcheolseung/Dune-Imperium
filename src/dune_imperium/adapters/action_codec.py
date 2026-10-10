@@ -359,6 +359,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # ``recall_conflict_agent_for_imperial_privilege`` and
 # ``resolve_imperial_privilege_without_recall`` no longer draw. No template
 # change.
+# Also in v142 (user ruling 2026-10-10, OQ-106: "그 외에는 전부 나누자"): the
+# draw Urgent Shigawire adds to the boosted Bene Gesserit card's Agent box is
+# its own ``resolve_agent_card_effect(effect=cards)`` step after the
+# placement instead of being drawn by the ``agent_turn`` itself. No template
+# change.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

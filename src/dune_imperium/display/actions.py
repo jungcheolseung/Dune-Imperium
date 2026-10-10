@@ -16,11 +16,13 @@ from dune_imperium.content.uprising.types import (
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import scouts_action_text
 from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
 )
+from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
@@ -29,6 +31,10 @@ from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
 _BOX = PersonalCardAgentEffect
+# The card whose added Agent-box draw ``resolves_boost_draw`` names, by its
+# Korean print in Korean text (``names_ko``).
+_SHIGAWIRE = "Urgent Shigawire"
+_SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
 
 # Printed conditions of the multi-icon Agent boxes, judged when the icon
 # resolves (OQ-027); shown after the icon's effect.
@@ -385,6 +391,9 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or not card_id:
         return None
+    if resolves_boost_draw(state, action):
+        # Urgent Shigawire's draw added to the boosted card's box (OQ-106).
+        return f"{agent_card_icon_text(None, key)} ({_SHIGAWIRE})"
     # The box resolving, a Ghola's borrowed one included, as the engine's
     # own icon actions read it (``legal_agent_card_icon_actions``).
     return agent_card_icon_text(active_agent_card(context).agent_effect, key)
@@ -429,4 +438,6 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or not card_id:
         return None
+    if resolves_boost_draw(state, action):
+        return f"{agent_card_icon_text_ko(None, key)} ({_SHIGAWIRE_KO})"
     return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)

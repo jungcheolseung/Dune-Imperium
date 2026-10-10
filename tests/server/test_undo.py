@@ -1157,3 +1157,74 @@ def test_imperial_privilege_recall_can_be_taken_back_and_its_draw_cannot() -> No
             revision=_int(summary["revision"]),
             undo_count=_int(summary["undo_count"]),
         )
+
+
+# ------------------------------------------------ Urgent Shigawire
+
+
+def test_urgent_shigawire_placement_can_be_taken_back_and_its_draw_cannot() -> None:
+    """ "그 외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기
+    전에 버림더미 카드를 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10,
+    OQ-106): the draw Urgent Shigawire adds to the boosted card's Agent box
+    [Urgent Shigawire card] is its own step, so the placement reveals
+    nothing and stays in the seat's undo window, while the draw from the
+    hidden deck closes it (OQ-010). Before the split the placement drew the
+    card in the same step and could never be taken back.
+
+    Seed 0 with Bloodlines: seat 0's first turn, given Truthtrance and a
+    boost waiting from an Urgent Shigawire played earlier in the round.
+    Truthtrance prints no Agent box, so the added draw is its only one. The
+    state is set by hand, so the served flags and the window are checked
+    but not an actual undo, which replays the log from the game's start.
+    """
+
+    truthtrance = "imperium:truthtrance:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, bloodlines=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        players=(
+            replace(
+                owner,
+                hand=(*owner.hand, truthtrance),
+                bene_gesserit_boost_pending=True,
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+
+    def served() -> list[dict[str, object]]:
+        return _rows(manager.legal_actions(game_id, 0)["actions"])
+
+    placement = next(
+        row
+        for row in served()
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("card_id") == truthtrance
+        and _obj(row["arguments"]).get("space_id") == "gather_support"
+    )
+    assert placement["undoable"] is True
+    hand_before = manager._get(game_id).state.players[0].hand
+
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    placed = manager._get(game_id).state.players[0]
+    assert placed.hand == tuple(c for c in hand_before if c != truthtrance)
+    assert placed.bene_gesserit_boost_pending is False
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 1}]
+    draw = next(
+        row
+        for row in served()
+        if row["action_id"] == "resolve_agent_card_effect"
+        and row["arguments"] == {"effect": "cards"}
+    )
+    assert draw["undoable"] is False
+
+    # The draw seals the window.
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before)
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+

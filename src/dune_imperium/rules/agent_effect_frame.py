@@ -15,6 +15,7 @@ from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
     graft_boxes_are_stalled,
+    legal_agent_card_boost_actions,
     legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
@@ -235,6 +236,9 @@ def _pending_group_actions(
     elif context["pending_agent_effect"] is True:
         # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
         actions.extend(_single_box_actions(state, player))
+    # Urgent Shigawire's draw added to the boosted card's box, its own step
+    # whatever the box is (user ruling 2026-10-10, OQ-106).
+    actions.extend(legal_agent_card_boost_actions(state, player))
     # One action per pending automatic icon of the visited space; its
     # choice icons are offered by the dedicated providers below (OQ-027).
     actions.extend(legal_board_effect_actions(state, player))

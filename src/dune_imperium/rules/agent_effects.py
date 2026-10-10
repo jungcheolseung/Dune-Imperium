@@ -53,6 +53,7 @@ from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
+    BOOST_DRAW_KEY,
     active_agent_card,
     advance_after_effect,
     arm_agent_icons,
@@ -62,6 +63,7 @@ from dune_imperium.rules.effects import (
     is_grafted,
     other_grafted_card_id,
     pending_agent_icons,
+    pending_boost_draw,
     recall_conflict_agent,
     recallable_conflict_agents,
     recruit_shortfall_events,
@@ -3274,6 +3276,19 @@ def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
     return card_instance_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
 
 
+def _left_play_by_own_effect(
+    context: Mapping[str, ActionValue], card_instance_id: str
+) -> bool:
+    """Whether the played card left play through its own printed cost or
+    icon, so its remaining printed rewards still pay out (OQ-022)."""
+
+    if card_instance_id == context.get("card_id"):
+        return context.get("agent_card_self_trashed") is True
+    if card_instance_id == other_grafted_card_id(context):
+        return context.get("graft_card_self_trashed") is True
+    return False
+
+
 def holds_space_influence(effect: PersonalCardAgentEffect | None) -> bool:
     """Return whether a waiting box of this effect holds the space's Influence.
 
@@ -3377,6 +3392,18 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         context["graft_pending_effect"] = False
         context["graft_pending_icons"] = ""
         expired.append(graft_card_id)
+    boost_card_id = pending_boost_draw(context)
+    if (
+        boost_card_id
+        and not _still_owned(owner, boost_card_id)
+        and not _left_play_by_own_effect(context, boost_card_id)
+    ):
+        # Urgent Shigawire's draw was "added to its Agent box" [Urgent
+        # Shigawire card], so it is that card's effect and lapses with its
+        # box (OQ-022; user ruling 2026-10-10, OQ-106).
+        del context[BOOST_DRAW_KEY]
+        if boost_card_id not in expired:
+            expired.append(boost_card_id)
     if not expired:
         return result
     _release_space_influence(
@@ -3442,6 +3469,92 @@ def legal_agent_card_icon_actions(
         for key in pending_agent_icons(context)
         if key in AUTOMATIC_AGENT_ICONS
         and agent_icon_condition_holds(owner, context, effect, key)
+    )
+
+
+_BOOST_DRAW_ACTION_ARGUMENTS: Final = (("effect", AGENT_ICON_CARDS),)
+
+
+def legal_agent_card_boost_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer Urgent Shigawire's added draw as its own step.
+
+    "The next Bene Gesserit card you play this round has all Agent icons
+    and, added to its Agent box: draw a card." [Urgent Shigawire card]. The
+    added draw is one more card-draw icon of the boosted card's box,
+    resolved by ``resolve_agent_card_effect(effect=cards)`` in any order
+    with the turn's other effects [Main p. 9]; whatever the box itself is
+    (no box, one effect, an arrow, its own icons) it is unconditional. "그
+    외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에
+    버림더미 카드를 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10,
+    OQ-106): the placement no longer draws, so it stays undoable.
+
+    While the box's own card-draw icon is offered too, the one action
+    resolves the box's icon first (``resolve_agent_card_icon``); this
+    provider offers the action only when the box does not, so it is never
+    listed twice.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if not pending_boost_draw(context):
+        return ()
+    action = DomainAction(
+        action_id="resolve_agent_card_effect",
+        actor=player,
+        arguments=_BOOST_DRAW_ACTION_ARGUMENTS,
+    )
+    if action in legal_agent_card_icon_actions(state, player):
+        return ()
+    return (action,)
+
+
+def resolves_boost_draw(state: GameState, action: DomainAction) -> bool:
+    """Whether ``action`` resolves Urgent Shigawire's added draw now.
+
+    True for the ``resolve_agent_card_effect(effect=cards)`` that
+    ``legal_agent_card_boost_actions`` offers: the box's own card-draw
+    icon, when also offered, is resolved first by the same action.
+    """
+
+    return action in legal_agent_card_boost_actions(state, action.actor)
+
+
+def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
+    """Draw Urgent Shigawire's added card for the boosted card's box."""
+
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    card_instance_id = pending_boost_draw(context)
+    del context[BOOST_DRAW_KEY]
+    source = (
+        f"round:{state.round_number}:player:{player}:shigawire:{card_instance_id}"
+    )
+    drawn = draw_or_request_personal_cards(
+        advance_after_effect(state, context), player, 1, source=f"{source}:cards"
+    )
+    return RuleResult(
+        state=drawn.state,
+        events=(
+            *drawn.events,
+            GameEvent(
+                event_id=f"{source}:cards:resolved",
+                kind="agent_card_effect_resolved",
+                payload=(
+                    ("card_id", card_instance_id),
+                    ("effect", AGENT_ICON_CARDS),
+                    ("player", player),
+                ),
+            ),
+        ),
     )
 
 
@@ -3660,6 +3773,8 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     while its condition holds (``agent_icon_condition_holds``).
     """
 
+    if resolves_boost_draw(state, action):
+        return _resolve_boost_draw(state, action)
     if action not in legal_agent_card_icon_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card icon resolution")
     _, context = current_agent_effect_context(state)

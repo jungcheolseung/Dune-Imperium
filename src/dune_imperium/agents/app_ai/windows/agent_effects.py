@@ -119,6 +119,9 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   Steersman ``cards`` and Cargo Runner's ``cards`` / ``cards_second`` (two
   and four contracts) -> their draw (600 or E). The reward icons Captured
   Mentat, Guild Spy and Branching Path arm after their cost: follow-ups.
+- Urgent Shigawire's draw added to the boosted Bene Gesserit card's box,
+  its own ``cards`` (user ruling 2026-10-10, OQ-106): a ``DrawAbility`` on
+  that card (600 or E), after its own abilities.
 - ``trash_agent_card(card)`` / ``decline_agent_card_trash``:
   ``TrashAgentAbility`` (Calculus of Power, Desert Survival; E),
   ``BeneGesseritTrashAbility`` (Tread in Darkness; E; its draw is its own
@@ -409,7 +412,11 @@ from dune_imperium.agents.app_ai.windows.run import (
 from dune_imperium.agents.app_ai.windows.turn import board_space_order, playmat_sources
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
-from dune_imperium.rules.agent_effects import STITCHED_HORROR_REWARDS
+from dune_imperium.rules.agent_effects import (
+    STITCHED_HORROR_REWARDS,
+    resolves_boost_draw,
+)
+from dune_imperium.rules.effects import pending_boost_draw
 from dune_imperium.rules.frames import COMMANDERS_RECRUITED_KEY
 from dune_imperium.rules.graft import apply_graft_switch
 
@@ -518,6 +525,9 @@ _GENERIC_ICON_BOXES = frozenset({("stillsuit_manufacturer", "water")})
 #: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
 #: troop (and Combat icon) follow.
 _ARMED_REWARD_CARDS = ("captured_mentat", "guild_spy", "branching_path", "elite_forces")
+#: Urgent Shigawire's added draw comes after the boosted card's own
+#: abilities in the card row (``_boost_draw``).
+_BOOST_DRAW_INDEX = 99
 #: Our trash choice of each card -> its app ability.
 _TRASH_ABILITY: Mapping[str, str] = {
     "calculus_of_power": "TrashAgentAbility",
@@ -1853,8 +1863,32 @@ def _card_box(t: _Turn) -> None:
         effect = str_arg(action, "effect")
         if effect is None:
             _single_box(t, action)
+        elif resolves_boost_draw(t.run.ctx.state, action):
+            _boost_draw(t, action)
         else:
             _box_icon(t, action, effect)
+
+
+def _boost_draw(t: _Turn, action: DomainAction) -> None:
+    """Urgent Shigawire's draw added to the boosted card's box (its own
+    ``resolve_agent_card_effect(effect=cards)``, user ruling 2026-10-10,
+    OQ-106): a plain ``DrawAbility`` on that card, 600 unless the threshold
+    is reached, else (E) at its ``DeferValue``, after the card's own
+    abilities in the row."""
+
+    ref = pending_boost_draw(t.context)
+    try:
+        owner = card_entity(ref, t.seat)
+    except KeyError:
+        t.unmapped.append("urgent_shigawire draw")
+        return
+    _ability_source(
+        t,
+        "urgent_shigawire draw",
+        (DrawAbility(owner), _BOOST_DRAW_INDEX),
+        _ROW_CARD,
+        action,
+    )
 
 
 def _single_box(t: _Turn, action: DomainAction) -> None:

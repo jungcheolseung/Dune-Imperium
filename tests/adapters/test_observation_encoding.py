@@ -537,6 +537,15 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # reproduce the pins above exactly; base and everything never visit Imperial
 # Privilege. ``adapters/observation_encoding.py`` and ``core/observation.py``
 # are unchanged.
+# v142, third change (user ruling 2026-10-10, OQ-106): the draw Urgent
+# Shigawire adds to a boosted Bene Gesserit card's Agent box is its own
+# ``resolve_agent_card_effect(cards)`` step, so the legal list right after a
+# boosted placement holds one more action. Only "everything" moves: at
+# decision 631 (round 8, seat 1, after Weirding Woman's boosted placement on
+# Arrakeen) the random seat draws from 6 actions instead of 5 (3,620 ->
+# 3,640 vectors). With the placement drawing the card again (a scratch copy
+# of the previous commit's source) all six games reproduce the pins above
+# exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
@@ -545,8 +554,8 @@ _GOLDEN_DIGESTS = {
         3172,
     ),
     "everything": (
-        "40104687a06f0898476d74e4b00588f893a5a53457631162cc92f91bd4e6fd0f",
-        3620,
+        "f55433f456bb38bb07fb221e3ba4224190a5369b0b9eab537eb6530914ecee18",
+        3640,
     ),
     "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
