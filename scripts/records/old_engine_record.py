@@ -12,9 +12,11 @@ import path and this checkout's virtual environment:
 
 (``tmp/`` is git-ignored; remove the worktree afterwards with
 ``git worktree remove``.) Every module is on, with the Leader draft, as at
-the play server's tables. The engine's commit goes into the record's name.
+the play server's tables, unless ``--without MODULE`` turns one off (Prison
+Planet, for one, is drawn only without Immortality). The engine's commit
+goes into the record's name.
 
-usage: old_engine_record.py OUT_DIR ROUNDS AGENT SEED [SEED ...]
+usage: old_engine_record.py [--without MODULE ...] OUT_DIR ROUNDS AGENT SEED [SEED ...]
 """
 
 import json
@@ -45,6 +47,14 @@ MODULES = {
 
 
 def main(argv: list[str]) -> None:
+    modules = dict(MODULES)
+    off: list[str] = []
+    while argv and argv[0] == "--without":
+        off.append(argv[1])
+        if not isinstance(modules.get(argv[1]), bool):
+            raise SystemExit(f"--without takes a module flag, not {argv[1]!r}")
+        modules[argv[1]] = False
+        argv = argv[2:]
     out_dir, rounds, kind = Path(argv[0]), int(argv[1]), argv[2]
     out_dir.mkdir(parents=True, exist_ok=True)
     commit = subprocess.run(
@@ -53,7 +63,7 @@ def main(argv: list[str]) -> None:
         text=True,
         check=True,
     ).stdout.strip()
-    config = RulesetConfig(**MODULES)
+    config = RulesetConfig(**modules)
     engine = UprisingRulesEngine()
     for seed in map(int, argv[3:]):
         agents = [make_agent(kind, seed * 10 + seat) for seat in range(4)]
@@ -68,7 +78,7 @@ def main(argv: list[str]) -> None:
         document = {
             "format": "dune-imperium-save",
             "format_version": 1,
-            "ruleset": MODULES,
+            "ruleset": modules,
             "game_seed": seed,
             "policy_seed": seed,
             "seats": [kind] * 4,
@@ -79,7 +89,8 @@ def main(argv: list[str]) -> None:
             "action_codec_version": ACTION_CODEC_VERSION,
             "name": f"{kind} seed {seed}, rounds 1-{rounds}, engine {commit}",
         }
-        path = out_dir / f"v{ACTION_CODEC_VERSION}-{kind}-{seed}.json"
+        without = "".join(f"-no-{name}" for name in off)
+        path = out_dir / f"v{ACTION_CODEC_VERSION}{without}-{kind}-{seed}.json"
         path.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
         print(path, len(kept), "steps")
 
