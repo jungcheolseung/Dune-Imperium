@@ -118,7 +118,8 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   Wheels -> their ``AlwaysRunImmediately`` riders, 600; Hidden Missive and
   Steersman ``cards`` and Cargo Runner's ``cards`` / ``cards_second`` (two
   and four contracts) -> their draw (600 or E). The reward icons Captured
-  Mentat, Guild Spy and Branching Path arm after their cost: follow-ups.
+  Mentat, Guild Spy, Branching Path and Piter, Genius Advisor (OQ-106) arm
+  after their cost: follow-ups.
 - Urgent Shigawire's draw added to the boosted Bene Gesserit card's box,
   its own ``cards`` (user ruling 2026-10-10, OQ-106): a ``DrawAbility`` on
   that card (600 or E), after its own abilities.
@@ -303,7 +304,9 @@ Bloodlines, the Tech Module and Arrakeen Scouts (app-style extensions,
 - The leader: Harkonnen Advisor (``WarmasterAbility``) and Judge of the
   Change run by themselves; Fedaykin Maneuver, Corrino Liaison, Into the
   Fray and Listeners (O), Smuggle Spice and Reverse Engineering (E) are
-  their ``SignetAbility`` keys (``_BLOODLINES_SIGNETS``); Duncan's Into the
+  their ``SignetAbility`` keys (``_BLOODLINES_SIGNETS``); Reverse
+  Engineering's Intrigue and card after the trashed tile are its own
+  ``resolve_agent_card_effect`` steps (OQ-106): follow-ups; Duncan's Into the
   Fray Agent is the last recall candidate (D55: Steersman, Imperial
   Privilege, and the targets a ``RecallAgentContractAbility`` key is valued
   with); Mohiam's mandatory Gather Intelligence recalls ``GetRecallSpy``'s
@@ -524,7 +527,14 @@ _GENERIC_ICON_BOXES = frozenset({("stillsuit_manufacturer", "water")})
 #: the whole ability at once, so the icons are follow-ups. Elite Forces
 #: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
 #: troop (and Combat icon) follow.
-_ARMED_REWARD_CARDS = ("captured_mentat", "guild_spy", "branching_path", "elite_forces")
+_ARMED_REWARD_CARDS = (
+    "captured_mentat",
+    "guild_spy",
+    "branching_path",
+    "elite_forces",
+    # Its "draw two cards and Research" after the lost troop (OQ-106).
+    "piter_genius_advisor",
+)
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).
 _BOOST_DRAW_INDEX = 99
@@ -697,6 +707,12 @@ _SIGNET_ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("lady_amber_metulli", "spice"): "FillCoffersAbility",
 }
 _SIGNET_TRIGGER_ICONS = frozenset({("lady_amber_metulli", "solari")})
+#: Signet reward icons armed after the ability's arrow cost: the rest of the
+#: answer already given (Kota's Reverse Engineering after the trashed tile,
+#: user ruling 2026-10-10, OQ-106).
+_SIGNET_ARMED_REWARDS = frozenset(
+    {("kota_odax_of_ix", "intrigue"), ("kota_odax_of_ix", "cards")}
+)
 #: Bloodlines Agent boxes resolved by ``resolve_agent_card_effect()`` and the
 #: card's own ability (bloodlines-cards.md §3), gated by its ``Cost`` (a box
 #: whose Cost fails has no app key: a chore).
@@ -2080,6 +2096,9 @@ def _signet_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     label = f"signet {leader_id} {effect}"
     if (leader_id, effect) in _SIGNET_TRIGGER_ICONS:
         # Paid when the Signet icon is gained, before any box: no question.
+        _automatic(t, label, _FOLLOW_UP, action, -1)
+        return
+    if (leader_id, effect) in _SIGNET_ARMED_REWARDS:
         _automatic(t, label, _FOLLOW_UP, action, -1)
         return
     name = _SIGNET_ICON_ABILITY.get((leader_id, effect))

@@ -9,6 +9,7 @@ abilities are not implemented yet — their Signet Ring placements stay withheld
 through ``leader_signet_is_implemented``.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Final
 
@@ -1263,7 +1264,18 @@ def legal_leader_signet_actions(
 
     if owner.leader_id == "kota_odax_of_ix":
         # Reverse Engineering: one spice, or trash one of your Tech tiles for
-        # an Intrigue card and a card [Kota Odax of Ix card].
+        # an Intrigue card and a card [Kota Odax of Ix card]. Once a tile is
+        # trashed the two reward icons wait for their own steps (OQ-106).
+        rewards = signet_rewards(context)
+        if rewards:
+            return tuple(
+                DomainAction(
+                    action_id="resolve_agent_card_effect",
+                    actor=player,
+                    arguments=(("effect", key),),
+                )
+                for key in dict.fromkeys(rewards)
+            )
         return (
             DomainAction(action_id="gain_leader_signet_spice", actor=player),
             *(
@@ -1961,7 +1973,12 @@ def apply_leader_signet_acquire(
 
 
 def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Reverse Engineering: one spice, or a Tech tile for an Intrigue and a card."""
+    """Reverse Engineering: one spice, or a Tech tile for an Intrigue and a card.
+
+    The tile is the cost; its two rewards are then drawn by their own
+    ``resolve_agent_card_effect(effect=intrigue|cards)`` in either order
+    (user ruling 2026-10-10, OQ-106).
+    """
 
     if action not in legal_leader_signet_actions(state, action.actor):
         raise ValueError("action is not a legal Reverse Engineering choice")
@@ -1987,6 +2004,8 @@ def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResu
                 ),
             ),
         )
+    if action.action_id == "resolve_agent_card_effect":
+        return _resolve_kota_reward(state, context, player, action, source)
     tech_id = str(dict(action.arguments)["tech_id"])
     next_owner = replace(
         owner,
@@ -1995,24 +2014,77 @@ def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResu
     )
     players = replace_player(state.players, next_owner)
     working = replace(state, players=players, tech_trash=(*state.tech_trash, tech_id))
+    # "trash one of your Tech tiles -> [Intrigue] [draw 1]": the trashed tile
+    # is the arrow's cost; the reward icons then wait for their own steps in
+    # the owner's order (OQ-027 (b), like Captured Mentat's), so the public
+    # choice of the tile stays undoable and only the draws close the undo
+    # window: "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106).
+    context["pending_agent_effect"] = True
+    context[SIGNET_REWARDS_KEY] = ",".join(_REVERSE_ENGINEERING_REWARDS)
     working = _store_signet(working, context, players)
-    events: list[GameEvent] = [
-        GameEvent(
-            event_id=f"{source}:tech_trashed",
-            kind="tech_trashed",
-            payload=(("player", player), ("tech_id", tech_id)),
+    return RuleResult(
+        state=working,
+        events=(
+            GameEvent(
+                event_id=f"{source}:tech_trashed",
+                kind="tech_trashed",
+                payload=(("player", player), ("tech_id", tech_id)),
+            ),
         ),
-        GameEvent(
-            event_id=source,
-            kind="leader_signet_resolved",
-            payload=(("cards", 1), ("intrigue", 1), ("player", player)),
-        ),
-    ]
-    intrigue = draw_or_queue_intrigue_cards(working, player, 1, source=source)
-    events.extend(intrigue.events)
-    drawn = draw_or_request_personal_cards(intrigue.state, player, 1, source=source)
-    events.extend(drawn.events)
-    return RuleResult(state=drawn.state, events=tuple(events))
+    )
+
+
+# Reverse Engineering's reward icons after its Tech-tile cost, each its own
+# ``resolve_agent_card_effect(effect=<key>)`` (OQ-106), in either host of the
+# ability: the Signet Ring card's Agent box or a Servo-Receivers frame.
+SIGNET_REWARDS_KEY = "signet_rewards"
+_REVERSE_ENGINEERING_REWARDS = ("intrigue", "cards")
+
+
+def signet_rewards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the Signet Ring ability's reward icons still waiting."""
+
+    value = context.get(SIGNET_REWARDS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Signet Ring context has invalid rewards")
+    return tuple(key for key in value.split(",") if key)
+
+
+def _resolve_kota_reward(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    action: DomainAction,
+    source: str,
+) -> RuleResult:
+    """Draw one of Reverse Engineering's rewards after its Tech-tile cost.
+
+    The host is written back first (closing a Servo-Receivers frame with the
+    last reward), so a reshuffle the draw needs stacks above it.
+    """
+
+    key = str(dict(action.arguments)["effect"])
+    remaining = list(signet_rewards(context))
+    remaining.remove(key)
+    if remaining:
+        context[SIGNET_REWARDS_KEY] = ",".join(remaining)
+        context["pending_agent_effect"] = True
+    else:
+        del context[SIGNET_REWARDS_KEY]
+    working = _store_signet(state, context)
+    reward_source = f"{source}:{key}"
+    event = GameEvent(
+        event_id=reward_source,
+        kind="leader_signet_resolved",
+        payload=((key, 1), ("player", player)),
+    )
+    if key == "intrigue":
+        drawn = draw_or_queue_intrigue_cards(working, player, 1, source=reward_source)
+    else:
+        drawn = draw_or_request_personal_cards(
+            working, player, 1, source=reward_source
+        )
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
 
 
 def apply_leader_card_trash(

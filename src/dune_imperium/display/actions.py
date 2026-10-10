@@ -27,6 +27,7 @@ from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
 )
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
@@ -34,6 +35,9 @@ _BOX = PersonalCardAgentEffect
 # The card whose added Agent-box draw ``resolves_boost_draw`` names, by its
 # Korean print in Korean text (``names_ko``).
 _SHIGAWIRE = "Urgent Shigawire"
+# Piter, Genius Advisor's reward icons, armed after its troop cost (OQ-106):
+# its card draw draws two and its Research generates no specimen.
+_PITER = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 _SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
 
 # Printed conditions of the multi-icon Agent boxes, judged when the icon
@@ -188,7 +192,7 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
 
     match key:
         case "cards" | "cards_second":
-            base = "Draw 1 card"
+            base = "Draw 2 cards" if effect is _PITER else "Draw 1 card"
         case "intrigue":
             base = "Draw 1 Intrigue card"
         case "troops":
@@ -211,7 +215,7 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "water":
             base = "Gain 1 water"
         case "research":
-            base = "Research, Generate 1 specimen"
+            base = "Research" if effect is _PITER else "Research, Generate 1 specimen"
         case "return_self":
             base = "Return this card from play to your hand"
         case "trash_self":
@@ -249,7 +253,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
 
     match key:
         case "cards" | "cards_second":
-            base = "{draw:1}"
+            base = "{draw:2}" if effect is _PITER else "{draw:1}"
         case "intrigue":
             base = "{intrigue:1}"
         case "troops":
@@ -270,7 +274,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
             base = "{water:1}"
         case "research":
             # tokens_ko.py's words for Industrial Espionage's line.
-            base = "{research}, 표본 1개 생성"
+            base = "{research}" if effect is _PITER else "{research}, 표본 1개 생성"
         case "return_self":
             # tokens_ko.py's words for Stillsuit Manufacturer's return.
             base = "{in_play}에서 이 카드를 핸드로 되돌림"
@@ -384,6 +388,9 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
         return reveal_choice_prompt(PersonalCardRevealChoiceEffect(key))
     if action.action_id != "resolve_agent_card_effect":
         return None
+    if _servo_signet_frame(state):
+        # Reverse Engineering's reward icon in a Servo-Receivers frame.
+        return agent_card_icon_text(_BOX.LEADER_SIGNET, key)
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
@@ -397,6 +404,15 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     # The box resolving, a Ghola's borrowed one included, as the engine's
     # own icon actions read it (``legal_agent_card_icon_actions``).
     return agent_card_icon_text(active_agent_card(context).agent_effect, key)
+
+
+def _servo_signet_frame(state: GameState) -> bool:
+    """Whether a Servo-Receivers ``leader_signet`` frame is deciding (its
+    Signet Ring ability has no Agent box, OQ-062)."""
+
+    return bool(state.decision_stack) and (
+        state.decision_stack[-1].kind == FrameKind.LEADER_SIGNET
+    )
 
 
 def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
@@ -431,6 +447,8 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
         return board_effect_action_text_ko(state, action)
     if action.action_id != "resolve_agent_card_effect":
         return None
+    if _servo_signet_frame(state):
+        return agent_card_icon_text_ko(_BOX.LEADER_SIGNET, key)
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:

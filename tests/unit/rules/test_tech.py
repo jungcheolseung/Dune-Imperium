@@ -2976,9 +2976,28 @@ def test_reverse_engineering_takes_spice_or_trades_a_tile_for_cards() -> None:
     seat = traded.players[0]
     assert seat.tech_ids == ()
     assert traded.tech_trash == ("glowglobes",)
-    # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
-    assert len(seat.intrigue_cards) == 1
-    assert len(seat.hand) == 1
+    # The tile is the arrow's cost; the Intrigue card and the card wait for
+    # their own steps in either order (user ruling 2026-10-10, OQ-106), and
+    # the turn cannot end before both.
+    assert seat.intrigue_cards == () and seat.hand == ()
+    rewards = legal_leader_signet_actions(traded, 0)
+    assert rewards == (
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "intrigue"),)),
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),)),
+    )
+    engine = UprisingRulesEngine()
+    legal = engine.legal_actions(traded, 0)
+    assert set(rewards) <= set(legal)
+    assert DomainAction("finish_agent_turn", 0) not in legal
+    for order in (rewards, tuple(reversed(rewards))):
+        working = traded
+        for reward in order:
+            working = engine.apply(working, reward).state
+        seat = working.players[0]
+        # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
+        assert len(seat.intrigue_cards) == 1
+        assert len(seat.hand) == 1
+        assert not set(rewards) & set(engine.legal_actions(working, 0))
 
 
 def test_kota_actions_round_trip_in_the_tech_catalog() -> None:

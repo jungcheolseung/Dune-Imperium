@@ -699,6 +699,12 @@ def leader_signet(run: DecisionRun) -> DomainAction | None:
     if leader_id is None or leader_id not in LEADER_ARCHETYPES:
         return None
     if leader_id in _BLOODLINES_SIGNETS:
+        reward = run.first("resolve_agent_card_effect")
+        if reward is not None and leader_id == "kota_odax_of_ix":
+            # Reverse Engineering's reward icons after the trashed tile, each
+            # its own step (user ruling 2026-10-10, OQ-106): the rest of the
+            # app answer already given.
+            return reward
         if not _known_only(run, _SIGNET_IDS):
             return None
         return _bloodlines_signet(run, leader_id)

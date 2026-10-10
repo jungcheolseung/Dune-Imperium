@@ -1230,7 +1230,11 @@ def _old_icon_condition_holds(
         if key == "spice":
             return bool(owner.alliance_faction_ids)
     # Industrial Espionage's grafted Research line became its own icon.
+    # 2026-10-10: Piter, Genius Advisor's reward Research too, armed after
+    # its troop cost with no condition (OQ-106).
     if key == "research":
+        if effect is PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH:
+            return True
         return (
             effect
             is PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED

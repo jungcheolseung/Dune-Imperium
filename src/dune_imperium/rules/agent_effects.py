@@ -95,6 +95,8 @@ from dune_imperium.rules.intrigue_deck import (
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.leader_abilities import (
+    apply_kota_signet_action,
+    legal_leader_signet_actions,
     resolve_leader_signet,
     units_deployment_blocked,
 )
@@ -2947,12 +2949,17 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
             state=gained.state, events=(*trashed.events, *gained.events)
         )
     if action.action_id == "lose_agent_card_troop":
-        # Piter, Genius Advisor: the troop (or a Sardaukar Commander, OQ-105)
-        # is the cost; the two cards and the research follow once the box
-        # has settled.
+        # Piter, Genius Advisor: "Lose a troop -> draw two cards and
+        # Research" [card face]. The troop (or a Sardaukar Commander,
+        # OQ-105) is the arrow's cost; the reward icons are then queued for
+        # their own actions in the owner's order, like Captured Mentat's and
+        # Guild Spy's (OQ-027 (b)), so the public choice of the cost stays
+        # undoable and only the draw closes the undo window (user ruling
+        # 2026-10-10, OQ-106: "그 외에는 전부 나누자").
         arguments = dict(action.arguments)
         zone = str(arguments["zone"])
         commander = arguments.get("commanders") == 1
+        arm_agent_icons(context, (AGENT_ICON_CARDS, AGENT_ICON_RESEARCH))
         # The box's frame is written first, so what the loss records on it
         # stays: the shrunk withdrawal window (OQ-029; the deployment
         # allowance stays used, user ruling 2026-10-04) or Harkonnen
@@ -2973,16 +2980,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
                 troops=int(not commander),
                 commanders=int(commander),
             )
-        researched = advance_research(
-            next_state, action.actor, source=f"{source}:research"
-        )
-        drawn = draw_or_request_personal_cards(
-            researched.state, action.actor, 2, source=f"{source}:draw"
-        )
-        return RuleResult(
-            state=drawn.state,
-            events=(*lost.events, *researched.events, *drawn.events),
-        )
+        return RuleResult(state=next_state, events=lost.events)
     if action.action_id == "choose_agent_card_reward":
         return _apply_stitched_horror_reward(state, action, context, source)
     if action.action_id == "pay_agent_card_specimen":
@@ -3671,6 +3669,9 @@ def agent_icon_block(
     if key == AGENT_ICON_CARDS_SECOND:
         return _NOT_PRINTED
     if key == AGENT_ICON_RESEARCH:
+        if effect is _LOSE_TROOP_FOR_CARDS:
+            # Piter, Genius Advisor's reward, armed once its cost is paid.
+            return None
         if effect is not _DRAW_RESEARCH_SPECIMEN:
             return _NOT_PRINTED
         if is_grafted(context):
@@ -3775,6 +3776,10 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
 
     if resolves_boost_draw(state, action):
         return _resolve_boost_draw(state, action)
+    if action in legal_leader_signet_actions(state, action.actor):
+        # Reverse Engineering's reward icons after its Tech-tile cost, in
+        # the Signet Ring's box or a Servo-Receivers frame (OQ-106).
+        return apply_kota_signet_action(state, action)
     if action not in legal_agent_card_icon_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card icon resolution")
     _, context = current_agent_effect_context(state)
@@ -3824,7 +3829,8 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     match key:
         case "cards" | "cards_second":
             if available:
-                personal_draw_count = 1
+                # Piter, Genius Advisor's reward draws two cards.
+                personal_draw_count = 2 if effect is _LOSE_TROOP_FOR_CARDS else 1
         case "intrigue":
             if available:
                 intrigue_draw_count = 1
@@ -3913,7 +3919,12 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
         intrigue_events = intrigue_draw.events
     next_state = advance_after_effect(effect_state, context)
     research_events: tuple[GameEvent, ...] = ()
-    if key == AGENT_ICON_RESEARCH and available:
+    if key == AGENT_ICON_RESEARCH and available and effect is _LOSE_TROOP_FOR_CARDS:
+        # Piter, Genius Advisor's reward Research, after its cost (OQ-106).
+        researched = advance_research(next_state, player, source=f"{source}:research")
+        next_state = researched.state
+        research_events = researched.events
+    elif key == AGENT_ICON_RESEARCH and available:
         # Industrial Espionage's grafted line: a specimen and a Research
         # step, as one icon (the printed line) [Immortality pp. 6, 8].
         generated = generate_specimens(

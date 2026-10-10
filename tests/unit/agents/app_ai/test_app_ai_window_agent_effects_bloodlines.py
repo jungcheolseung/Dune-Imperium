@@ -1108,6 +1108,21 @@ def test_reverse_engineering(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_reverse_engineering_rewards_follow_the_trashed_tile() -> None:
+    """Reverse Engineering's Intrigue and card after the trashed tile are
+    its own ``resolve_agent_card_effect`` steps (user ruling 2026-10-10,
+    OQ-106): the rest of the app answer, follow-ups."""
+
+    state, seat = _signet("kota_odax_of_ix", resources=RICH)
+    state = _give_tech(state, seat, "glowglobes")
+    state = _apply(state, seat, _a(seat, "trash_leader_tech", tech_id="glowglobes"))
+    t = _turn(state, seat)
+    for effect in ("intrigue", "cards"):
+        source = _source(t, f"signet kota_odax_of_ix {effect}")
+        assert source.stage is Stage.COST_FIRST
+    assert ae.agent_effects_window(_run(state, seat)) is not None
+
+
 # ---------------------------------------------------------------------------
 # The Into the Fray Agent as a recall candidate (D55)
 # ---------------------------------------------------------------------------

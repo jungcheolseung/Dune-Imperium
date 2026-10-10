@@ -868,14 +868,68 @@ def test_piter_loses_a_troop_for_two_cards_and_research() -> None:
     result = apply_agent_card_payment(
         state, _payment(state, "lose_agent_card_troop", zone="conflict")
     )
-    owner = result.state.players[0]
+    assert "unit_lost" in {event.kind for event in result.events}
+    # The troop is the arrow's cost; its "draw two cards and Research" wait
+    # as two armed icons (OQ-027 (b); user ruling 2026-10-10, OQ-106).
+    paid = result.state.players[0]
+    assert paid.hand == () and paid.research_space == state.players[0].research_space
+    owner = _piter_rewards(result.state).players[0]
     # The lost troop returns to the supply; the first research space then
     # takes one specimen from it.
     assert owner.troops_conflict == 0 and owner.troops_supply == 10
     assert owner.specimens == 1
     assert len(owner.hand) == 2
     assert owner.research_space == "c1r3"
-    assert "unit_lost" in {event.kind for event in result.events}
+
+
+_PITER_DRAW = DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),))
+_PITER_RESEARCH = DomainAction(
+    "resolve_agent_card_effect", 0, (("effect", "research"),)
+)
+
+
+def _piter_rewards(
+    state: GameState, order: tuple[DomainAction, ...] = (_PITER_DRAW, _PITER_RESEARCH)
+) -> GameState:
+    """Take Piter's two armed reward icons in ``order``."""
+
+    engine = UprisingRulesEngine()
+    for action in order:
+        assert action in engine.legal_actions(state, 0)
+        state = engine.apply(state, action).state
+    return state
+
+
+def test_piters_rewards_are_their_own_steps_after_the_cost() -> None:
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): "Lose a
+    troop -> draw two cards and Research" [Piter, Genius Advisor card] pays
+    the troop as one step and queues the reward icons, like Captured
+    Mentat's (OQ-027 (b)), so the cost reveals nothing; the two cards are
+    drawn exactly once, in either order with the Research, and the turn
+    cannot end before both."""
+
+    piter = _tleilaxu("piter_genius_advisor")
+    state = _place(
+        _state(_owner((piter,), troops_garrison=1, troops_supply=11)),
+        piter,
+        "assembly_hall",
+    )
+    paid = apply_agent_card_payment(
+        state, _payment(state, "lose_agent_card_troop", zone="garrison")
+    ).state
+    assert paid.players[0].deck == state.players[0].deck
+    engine = UprisingRulesEngine()
+    legal = engine.legal_actions(paid, 0)
+    assert {_PITER_DRAW, _PITER_RESEARCH} <= set(legal)
+    assert DomainAction("finish_agent_turn", 0) not in legal
+    for order in ((_PITER_DRAW, _PITER_RESEARCH), (_PITER_RESEARCH, _PITER_DRAW)):
+        done = _piter_rewards(paid, order)
+        owner = done.players[0]
+        assert len(owner.hand) == 2
+        assert owner.research_space == "c1r3"
+        assert not {_PITER_DRAW, _PITER_RESEARCH} & set(
+            engine.legal_actions(done, 0)
+        )
 
 
 def test_piters_troop_lost_from_the_conflict_does_not_reopen_the_deployment() -> None:
@@ -903,7 +957,8 @@ def test_piters_troop_lost_from_the_conflict_does_not_reopen_the_deployment() ->
     assert (owner.troops_garrison, owner.troops_conflict) == (3, 1)
     assert paid.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
     _, context = current_agent_effect_context(paid)
-    assert context["pending_agent_effect"] is False
+    # Only the reward icons armed after the cost wait (OQ-106).
+    assert context["pending_agent_icons"] == "cards,research"
     # The allowance used stays at two; only the withdrawal window shrinks.
     assert context["combat_troops_deployed"] == 2
     assert context["combat_troops_withdrawable"] == 1
@@ -939,7 +994,7 @@ def test_piters_garrison_troop_is_the_undeployable_one() -> None:
     ).state
     assert paid.players[0].troops_garrison == 2
     _, context = current_agent_effect_context(paid)
-    assert context["pending_agent_effect"] is False
+    assert context["pending_agent_icons"] == "cards,research"
     assert context["undeployable_troops"] == 0
 
 
@@ -981,7 +1036,7 @@ def test_piter_may_pay_with_a_garrison_commander_alone() -> None:
         state,
         _payment(state, "lose_agent_card_troop", zone="garrison", commanders=1),
     )
-    owner = result.state.players[0]
+    owner = _piter_rewards(result.state).players[0]
     assert (owner.commanders_garrison, owner.commanders_supply) == (0, 1)
     # The first research space takes one specimen from the troop supply.
     assert owner.troops_supply == 12 - 1
@@ -1013,7 +1068,7 @@ def test_piter_offers_troop_or_commander_in_each_zone() -> None:
         state,
         _payment(state, "lose_agent_card_troop", zone="conflict", commanders=1),
     )
-    owner = result.state.players[0]
+    owner = _piter_rewards(result.state).players[0]
     assert (owner.commanders_conflict, owner.commanders_supply) == (0, 1)
     assert (owner.troops_garrison, owner.troops_conflict) == (1, 1)
     assert len(owner.hand) == 2

@@ -1363,3 +1363,140 @@ def test_planetologist_summon_can_be_taken_back_and_its_intrigue_cannot() -> Non
     assert len(held) == len(intrigue_before) + 1
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
 
+
+# ------------------------------------------------ arrow costs (OQ-027 (b))
+
+
+def _served(manager: GameSessionManager, game_id: str) -> list[dict[str, object]]:
+    return _rows(manager.legal_actions(game_id, 0)["actions"])
+
+
+def test_piter_troop_cost_can_be_taken_back_and_its_draw_cannot() -> None:
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): Piter,
+    Genius Advisor's "Lose a troop -> draw two cards and Research" pays the
+    troop as one step and arms the rewards as their own steps (OQ-027 (b)),
+    so the cost stays in the seat's undo window and the draw closes it
+    (OQ-010). Before, the cost drew the cards in the same step.
+
+    Seed 0 with Immortality and promo cards: seat 0's first turn, given
+    Piter by hand (served flags and the window, not an actual undo, which
+    replays the log from the game's start).
+    """
+
+    piter = "tleilaxu:piter_genius_advisor:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST, game_seed=0, immortality=True, promo_cards=True
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        tleilaxu_deck=tuple(c for c in session.state.tleilaxu_deck if c != piter),
+        tleilaxu_row=tuple(c for c in session.state.tleilaxu_row if c != piter),
+        players=(
+            replace(owner, hand=(*owner.hand, piter)),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    placement = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("card_id") == piter
+        and _obj(row["arguments"]).get("space_id") == "assembly_hall"
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    cost = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "lose_agent_card_troop"
+        and row["arguments"] == {"zone": "garrison"}
+    )
+    assert cost["undoable"] is True
+    hand_before = manager._get(game_id).state.players[0].hand
+
+    summary = _play_raw(manager, summary, index=_int(cost["index"]))
+    assert manager._get(game_id).state.players[0].hand == hand_before
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    draw = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "resolve_agent_card_effect"
+        and row["arguments"] == {"effect": "cards"}
+    )
+    assert draw["undoable"] is False
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before) + 2
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+def test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot() -> None:
+    """Kota Odax's Reverse Engineering "trash one of your Tech tiles ->
+    [Intrigue] [draw 1]" [Kota Odax of Ix card] pays the tile as one step
+    and leaves the two rewards as their own steps (user ruling 2026-10-10,
+    OQ-106), so the tile stays in the seat's undo window and either draw
+    closes it (OQ-010).
+
+    Seed 0 with Bloodlines and the Tech Module: seat 0's first turn, given
+    Kota Odax and a Tech tile by hand (served flags and the window only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST, game_seed=0, bloodlines=True, tech_module=True
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    signet = "player:0:starter:signet_ring:0"
+    session.state = replace(
+        session.state,
+        tech_stacks=tuple(
+            tuple(t for t in stack if t != "glowglobes")
+            for stack in session.state.tech_stacks
+        ),
+        players=(
+            replace(
+                owner,
+                leader_id="kota_odax_of_ix",
+                leader_face_id="kota_odax_of_ix",
+                tech_ids=("glowglobes",),
+                hand=(signet, *(c for c in owner.hand if c != signet)),
+                deck=tuple(c for c in owner.deck if c != signet),
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    placement = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("card_id") == signet
+        and _obj(row["arguments"]).get("space_id") == "assembly_hall"
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    trash = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "trash_leader_tech"
+    )
+    assert trash["undoable"] is True
+    summary = _play_raw(manager, summary, index=_int(trash["index"]))
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    rewards = [
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "resolve_agent_card_effect"
+    ]
+    assert [row["arguments"] for row in rewards] == [
+        {"effect": "intrigue"},
+        {"effect": "cards"},
+    ]
+    assert all(row["undoable"] is False for row in rewards)
+    summary = _play_raw(manager, summary, index=_int(rewards[1]["index"]))
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []

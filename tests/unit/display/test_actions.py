@@ -460,3 +460,18 @@ def test_urgent_shigawire_draw_is_named_apart_from_the_box_draw() -> None:
         if korean is not None:
             assert text_ko == korean
 
+
+def test_piter_genius_advisor_reward_icons_say_what_they_give() -> None:
+    """Piter's "draw two cards and Research" are armed icons after its troop
+    cost (user ruling 2026-10-10, OQ-106): two cards, and a Research with
+    no specimen (Industrial Espionage's line keeps its specimen)."""
+
+    piter = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+    assert agent_card_icon_text(piter, "cards") == "Draw 2 cards"
+    assert agent_card_icon_text_ko(piter, "cards") == "{draw:2}"
+    assert agent_card_icon_text(piter, "research") == "Research"
+    assert agent_card_icon_text_ko(piter, "research") == "{research}"
+    espionage = PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
+    assert agent_card_icon_text(espionage, "research").startswith(
+        "Research, Generate 1 specimen"
+    )
