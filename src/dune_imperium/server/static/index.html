@@ -108,11 +108,25 @@
     <section id="game-screen" hidden>
       <div id="table">
         <aside id="seats" aria-label="플레이어" data-i18n-attr="aria-label=html.seats_aria"></aside>
+        <!-- Column handles (layout.js): positioned over the gaps, outside
+             the grid's placement. -->
+        <div id="split-seats" class="col-splitter" data-column="seats" role="separator"
+          aria-orientation="vertical" aria-controls="seats" tabindex="0"
+          aria-label="플레이어 열 너비" title="열 너비 조절 (두 번 클릭: 기본값)"
+          data-i18n-attr="aria-label=html.split_seats_aria;title=html.split_title"></div>
         <div id="center">
           <section id="board" aria-label="게임 보드" data-i18n-attr="aria-label=html.board_aria"></section>
           <section id="market" aria-label="공용 카드" data-i18n-attr="aria-label=html.market_aria"></section>
           <section id="private-zone" aria-label="내 손패" data-i18n-attr="aria-label=html.private_zone_aria"></section>
+          <div id="split-market" class="col-splitter" data-column="market" role="separator"
+            aria-orientation="vertical" aria-controls="market" tabindex="0"
+            aria-label="공용 카드 열 너비" title="열 너비 조절 (두 번 클릭: 기본값)"
+            data-i18n-attr="aria-label=html.split_market_aria;title=html.split_title"></div>
         </div>
+        <div id="split-actions" class="col-splitter" data-column="actions" role="separator"
+          aria-orientation="vertical" aria-controls="side" tabindex="0"
+          aria-label="행동 열 너비" title="열 너비 조절 (두 번 클릭: 기본값)"
+          data-i18n-attr="aria-label=html.split_actions_aria;title=html.split_title"></div>
         <aside id="side">
           <div id="side-main">
             <details id="host-panel" class="panel" hidden>
@@ -204,6 +218,7 @@
   <script src="/static/effects.js"></script>
   <script src="/static/help.js"></script>
   <script src="/static/clock.js"></script>
+  <script src="/static/layout.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

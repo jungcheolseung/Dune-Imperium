@@ -1584,9 +1584,11 @@ function deckTopSource(glowglobes) {
 
 function renderPrivate() {
   const panel = el("private-zone");
+  cancelHandDrag();
   /* The board-width hand can scroll even with a normal five-card hand.
      A staged pick or a foreign update must not hide the card just read.
-     Restore only an unchanged list, so a different hand starts at zero. */
+     Restore only an unchanged list, so a different hand starts at zero
+     (the list as drawn: the player's own order, layout.js, when set). */
   const cardIds = pane => [...pane.querySelectorAll(".vcard")]
     .map(card => card.dataset.instance).join("\n");
   const scrolled = [...panel.querySelectorAll(".hand-zones, .strip-cards")]
@@ -1678,6 +1680,10 @@ function renderPrivate() {
 
   const zones = document.createElement("div");
   zones.className = "hand-zones";
+  /* The player's own live hand and Intrigue cards come in the order the
+     player gave them in this browser (layout.js); anything else in the
+     server's order. */
+  const reorderable = handReorderable();
   const hand = document.createElement("div");
   hand.className = "strip-cards hand-cards";
   if (!view.private.hand.length) {
@@ -1686,15 +1692,19 @@ function renderPrivate() {
     empty.textContent = t("panels.hand_empty");
     hand.appendChild(empty);
   }
-  for (const cardId of view.private.hand) hand.appendChild(visualCard(cardId));
+  for (const cardId of orderedStripIds("hand", view.private.hand)) {
+    hand.appendChild(visualCard(cardId));
+  }
+  if (reorderable && view.private.hand.length) enableStripOrder(hand, "hand");
   zones.appendChild(hand);
 
   if (view.private.intrigue_cards.length) {
     const intrigue = document.createElement("div");
     intrigue.className = "strip-cards intrigue-cards";
-    for (const cardId of view.private.intrigue_cards) {
+    for (const cardId of orderedStripIds("intrigue", view.private.intrigue_cards)) {
       intrigue.appendChild(visualCard(cardId, { className: "intrigue" }));
     }
+    if (reorderable) enableStripOrder(intrigue, "intrigue");
     zones.appendChild(intrigue);
   }
   /* Owner-only peeks beside the Intrigue cards: the Intrigue deck's top
@@ -1721,6 +1731,7 @@ function renderPrivate() {
     const pane = panel.querySelector(scroll.selector);
     if (pane && cardIds(pane) === scroll.cards) pane.scrollLeft = scroll.left;
   }
+  syncHandOrderReset();
 }
 
 function renderStandings() {

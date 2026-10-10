@@ -23,6 +23,9 @@ async function init() {
   loadLanguage();
   loadCollapsedStrips();
   loadExpandedSeats();
+  /* The column widths and the hand's own order (layout.js). */
+  watchColumnSplitters();
+  watchHandOrder();
   window.addEventListener("resize", positionPlayEffect);
   window.addEventListener("resize", positionPhaseBanner);
   el("side").classList.toggle("log-expanded", storageGet(LOG_EXPANDED_KEY) === "1");

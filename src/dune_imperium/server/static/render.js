@@ -493,10 +493,22 @@ function fitActionLog() {
     const borrowed = table.classList.contains("log-beside")
       ? side.getBoundingClientRect().width - actionWidth
       : 0;
-    const spare = Math.floor(box.width + borrowed - box.height * width / height - gap - 2);
+    /* A side column the player has just widened (layout.js) can push the
+       table past its right edge while history still stands beside the
+       actions, the board column held at its floor: what sticks out is room
+       the board column does not have. */
+    const inner = table.getBoundingClientRect().right
+      - parseFloat(getComputedStyle(table).paddingRight);
+    const overflow = Math.max(0, side.getBoundingClientRect().right - inner);
+    const room = box.width + borrowed - overflow;
+    const spare = Math.floor(room - box.height * width / height - gap - 2);
     /* Keep history at least as readable as the normal 340px column, and
-       cap its width rather than stretching a log card across a monitor. */
-    if (spare >= 340) historyWidth = Math.min(spare, 600);
+       cap its width rather than stretching a log card across a monitor or
+       taking the board column under its floor (--board-min). */
+    const floor =
+      parseFloat(getComputedStyle(el("game-screen")).getPropertyValue("--board-min")) || 0;
+    const allowed = Math.min(spare, 600, Math.floor(room - floor - gap));
+    if (allowed >= 340) historyWidth = allowed;
   }
   table.classList.toggle("log-beside", historyWidth > 0);
   if (historyWidth) table.style.setProperty("--history-width", `${historyWidth}px`);
