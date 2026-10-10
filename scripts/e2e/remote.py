@@ -139,6 +139,34 @@ def drive(pages, seat_pages, game_id: str, steps: int, label: str) -> int:
     return done
 
 
+# Both tables' play clock right now (static/clock.js), read back to back.
+CLOCK_JS = """() => {
+    const reading = clockReading();
+    return reading && {
+        elapsed: reading.elapsed,
+        seats: reading.seats,
+        running: reading.running,
+        shown: document.getElementById('game-clock').textContent,
+    };
+}"""
+
+
+def clocks_agree(host, guest, label: str) -> None:
+    """The two browsers count from the server's own clock (clock_age_ms), so
+    they agree to about a second whatever each machine's wall clock says."""
+    one, two = host.evaluate(CLOCK_JS), guest.evaluate(CLOCK_JS)
+    agree = (
+        one is not None
+        and two is not None
+        and one["running"] == two["running"]
+        and abs(one["elapsed"] - two["elapsed"]) <= 1_000
+        and all(
+            abs(a - b) <= 1_000 for a, b in zip(one["seats"], two["seats"], strict=True)
+        )
+    )
+    check.ok(agree, f"{label}: both tables show the same play clock", (one, two))
+
+
 def seat_two_players(base: str, host, guest) -> str:
     """Host (seat 0) and guest (seat 1) at the table of a fresh remote game.
 
@@ -353,6 +381,8 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
             waiting.title(),
         )
 
+    clocks_agree(host, guest, "after the first stretch")
+
     print("[8] reload comes back to the table with the same seat")
     guest.reload()
     guest.wait_for_selector("#game-screen:not([hidden])")
@@ -367,6 +397,7 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
         host.evaluate("state.summary.players[1].online") is True,
         "host sees the guest online again",
     )
+    clocks_agree(host, guest, "after the guest's reload")
     played = drive(pages, seat_pages, game_id, 10, "after reload")
     check.ok(played == 10, "10 more converging steps after the reload", played)
 

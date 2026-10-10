@@ -171,6 +171,39 @@ def names(page) -> None:
         "seat tokens are named images",
         roles["seatMarks"],
     )
+    # The play clock (clock.js) ticks every second: a timer with a name, in
+    # no live region, so a screen reader is not read a number a second.
+    clock = page.evaluate(
+        """() => {
+            const header = document.getElementById('game-clock');
+            const ticking = [...document.querySelectorAll('[data-clock]')];
+            return {
+                role: header.getAttribute('role'),
+                live: header.getAttribute('aria-live'),
+                title: header.title,
+                nodes: ticking.length,
+                inLive: ticking.filter((node) =>
+                    node.closest('[aria-live], [role=status], [role=alert]')).length,
+                liveRegions: [...document.querySelectorAll('[aria-live]')]
+                    .map((node) => node.id).sort(),
+            };
+        }"""
+    )
+    check.ok(
+        clock["role"] == "timer" and clock["live"] is None and clock["title"],
+        "the game time is a named timer that does not announce itself",
+        clock,
+    )
+    check.ok(
+        clock["nodes"] >= 5 and clock["inLive"] == 0,
+        "no ticking clock sits inside a live region",
+        clock,
+    )
+    check.ok(
+        clock["liveRegions"] == ["announcer", "phase-banner", "play-effects"],
+        "the clock adds no live region",
+        clock["liveRegions"],
+    )
 
 
 def help_panel(page) -> None:

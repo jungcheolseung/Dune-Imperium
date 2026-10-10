@@ -87,6 +87,18 @@ header h1 { font-size: 1.05rem; margin: 0; }
 }
 header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header > button { flex: none; }
+/* The game time (clock.js), beside the status line rather than in it: a
+   tick writes this span alone. Digits of one width, so the header does not
+   shift every second; sized for h:mm:ss. */
+#game-clock {
+  flex: none;
+  min-width: 3.6em;
+  text-align: right;
+  font-size: 0.9rem;
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 #connection-note {
   flex: 0 1 auto;
   min-width: 6em;
@@ -98,6 +110,11 @@ header > button { flex: none; }
 @media (max-width: 760px) {
   header { gap: 0.5rem; padding: 0 0.6rem; }
   header button { padding: 0.2rem 0.45rem; }
+}
+/* Narrower still, the round and the buttons need it more than the game
+   time, which the seat panels' totals add up to anyway. */
+@media (max-width: 640px) {
+  #game-clock { display: none; }
 }
 header button { padding: 0.2rem 0.7rem; }
 
@@ -1327,6 +1344,15 @@ kbd {
    "thinking" in the badge's own place and size. */
 .seat .badge.ai.thinking { background: var(--accent-soft); color: var(--accent); }
 .seat .stats { margin-top: 0.15rem; gap: 0.15rem 0.55rem; }
+/* The seat's time holding control (clock.js), last in the pieces row; the
+   seat whose clock moves now shows it in the accent colour. */
+.seat-clock {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.seat-clock.running { opacity: 1; color: var(--accent); font-weight: 700; }
 .seat .zones { font-size: 0.75rem; opacity: 0.7; margin-top: 0.15rem; }
 .zone-count { white-space: nowrap; }
 
@@ -1352,6 +1378,22 @@ kbd {
 }
 #decision-info { flex: none; }
 #decision-info .prompt { font-weight: 700; font-size: 1rem; }
+/* The running seat's spell follows the prompt on its line (clock.js). */
+#decision-info .prompt:has(+ .clock-spell) { display: inline; }
+#decision-info .clock-spell {
+  margin-left: 0.3em;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#decision-info .clock-spell::before { content: "· "; }
+#standings .clock-totals {
+  margin: 0.4rem 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 #decision-info .meta { font-size: 0.8rem; opacity: 0.75; }
 /* ITEM 5: the most recently resolved Conflict, one muted line above the
    prompt (render.js's combatResultLine) -- no badge, no animation. */

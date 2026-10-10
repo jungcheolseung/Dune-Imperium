@@ -5,6 +5,18 @@
    hole the caller fills, {term} a rule term in the current language (see
    t() and tNode() in i18n.js). */
 const UI_TEXT = {
+  "clock.game_title": { "ko": "게임 시간", "en": "Game time" },
+  "clock.seat_title": { "ko": "{{name}} 사용 시간", "en": "Time used by {{name}}" },
+  "clock.spell_title": {
+    "ko": "{{name}} 이번 차례 시간",
+    "en": "{{name}}'s time this turn"
+  },
+  "clock.since_load": {
+    "ko": "이 판을 불러온 뒤부터 센 시간",
+    "en": "counted since the game was loaded"
+  },
+  "clock.totals_game": { "ko": "게임 시간 {{time}}", "en": "Game time {{time}}" },
+  "clock.totals_seat": { "ko": "{{name}} {{time}}", "en": "{{name}} {{time}}" },
   "board.seat_specimens": {
     "ko": "플레이어{{seat}} · {specimen} {{count}}",
     "en": "Player {{seat}} · {specimen} {{count}}"
@@ -416,6 +428,10 @@ const UI_TEXT = {
   "help.seat_mark_commander": {
     "ko": "{supply}에 있는 {commander} 수 ({garrison}·{conflict}에 있는 것은 보드에 그려짐)",
     "en": "{commander} count in {supply} (those in the {garrison} or the {conflict} are drawn on the board)"
+  },
+  "help.seat_mark_clock": {
+    "ko": "결정권을 쥔 시간의 합(사람·AI 모두). 강조된 것이 지금 흐르는 시계이고, 머리글 오른쪽의 시간은 게임 시간",
+    "en": "Total time holding control (humans and AI alike). The highlighted one is running; the time at the right of the header is the game time"
   },
   "help.seat_mark_first_player": {
     "ko": "{first_player}",

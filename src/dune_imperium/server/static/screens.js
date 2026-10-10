@@ -446,6 +446,7 @@ function resetGameState() {
   resetPlayEffects();
   resetStatFloats();
   resetPhaseBanner();
+  resetClocks();
   state.gameId = null;
   state.summary = null;
   state.view = null;
@@ -520,6 +521,7 @@ async function openGame(gameId) {
   if (ticket !== openTicket) return;
   state.gameId = gameId;
   state.summary = entry.summary;
+  anchorClock(entry);
   state.me = entry.you;
   setRoomHash(gameId);
   storageSet("dune.lastGame", gameId);

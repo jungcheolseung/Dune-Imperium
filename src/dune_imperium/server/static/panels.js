@@ -255,6 +255,8 @@ function renderSeats() {
         statNode("commander", t("panels.supply_commander"), player.commanders_supply || 0),
       );
     }
+    /* The seat's time holding control, ticking on its own (clock.js). */
+    if (clocksShown()) pieces.appendChild(seatClockNode(seat));
     card.appendChild(pieces);
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons. The
@@ -491,6 +493,7 @@ function renderSeats() {
   // the seat's own live state, which the update may have just changed;
   // redraw it (core.js) against the seat panel this call just rebuilt.
   refreshPinnedLeaderPopover();
+  paintClocks();
 }
 
 /* A Skill tile instance ("skill:<id>:<copy>") to its catalog id. */
@@ -1781,6 +1784,9 @@ function renderStandings() {
     if (entry.rank === 1) row.className = "winner";
   }
   panel.appendChild(table);
+  /* The final clocks: a line of its own, not an eighth column. */
+  const clocks = clockTotalsNode();
+  if (clocks) panel.appendChild(clocks);
 
   const humans = humanSeats();
   const open = document.createElement("button");

@@ -107,6 +107,26 @@ def opens_playing(page) -> None:
     )
     own = page.inner_text("#review-next-own")
     check.ok("이 플레이어" in own, "nobody's actions are called mine", own)
+    no_clock(page, "a watched game")
+
+
+# A watched game shows no play clock (clock.js): it has no time per step,
+# and nobody played it live.
+NO_CLOCK_JS = """() => ({
+    header: !document.getElementById('game-clock').hidden,
+    nodes: document.querySelectorAll('#seats [data-clock], #decision-info [data-clock]')
+        .length,
+    totals: document.querySelectorAll('#standings .clock-totals').length,
+})"""
+
+
+def no_clock(page, where: str) -> None:
+    shown = page.evaluate(NO_CLOCK_JS)
+    check.ok(
+        not shown["header"] and not shown["nodes"] and not shown["totals"],
+        f"{where} shows no play clock",
+        shown,
+    )
 
 
 def walks_turn_by_turn(page, rec) -> None:
@@ -389,6 +409,7 @@ def the_end(page) -> None:
     page.wait_for_function("state.review === null && refreshFlight === null")
     check.ok(not page.evaluate("playback.playing"), "leaving stops playback")
     check.ok(page.is_visible("#standings"), "the result stays outside the review")
+    no_clock(page, "the finished watched game outside its review")
     check.ok(
         "AI 대국 다시 보기" in page.inner_text("#board"),
         "the empty board says how to get back in",
@@ -420,6 +441,11 @@ def human_game_is_left_alone(page, base: str) -> None:
     check.ok(not page.evaluate("playback.playing"), "no playback running")
     check.ok(not page.is_visible("#review-bar"), "no review bar")
     check.ok(page.evaluate("state.actions !== null"), "the human seat has its actions")
+    check.ok(
+        page.is_visible("#game-clock")
+        and page.locator("#seats [data-clock='seat']").count() == 4,
+        "a game with a human seat shows its play clock",
+    )
 
 
 def main() -> None:

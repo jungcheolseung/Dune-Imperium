@@ -204,6 +204,8 @@ function adoptSnapshot(snapshot, seat) {
   if (!errorBox.hidden && errorBox.dataset.source === "refresh") hideGameError();
   const held = mySeats().length > 0;
   state.summary = snapshot.summary;
+  /* The play clock counts on from this snapshot (clock.js). */
+  anchorClock(snapshot);
   state.me = snapshot.you;
   state.viewSeat = seat;
   if (held && !mySeats().length && isRemote()) {
