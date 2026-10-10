@@ -3263,6 +3263,77 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     assert dict(finished.decision_stack[-1].context)["turn_owner"] == 1
 
 
+@pytest.mark.parametrize("zone", ["garrison", "conflict"])
+def test_holy_war_a_seat_with_only_commanders_must_lose_one(zone: str) -> None:
+    """A seat whose only unit on the board is a Sardaukar Commander loses it.
+
+    "Each opponent loses one troop." [Holy War card]; "Commander는 Conflict에서
+    strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의
+    retreat)는 Commander에도 적용된다." [Bloodlines p. 4] (bloodlines.md);
+    OQ-036 (a): "잃는 좌석이 zone(garrison/Conflict)과 유닛 종류
+    (troop/Commander)를 모두 고른다 ... Commander는 [Bloodlines p. 4]에 따라
+    card 효과의 troop이므로 대상이다." The loss line has no "may", arrow or
+    black trash icon, so it cannot be declined: "공간과 카드의 효과는 원칙적으로
+    의무다." [FAQ p. 3] (player-turns.md). A Commander only in the supply is
+    not on the board and is no candidate (tests/unit/display/
+    test_unavailable.py pins that case).
+    """
+
+    from dune_imperium.rules.unit_loss import apply_unit_loss
+
+    card = _card("holy_war")
+    on_board = (
+        {"commanders_garrison": 1}
+        if zone == "garrison"
+        else {"commanders_conflict": 1, "combat_strength": 2}
+    )
+    commander_only = replace(
+        PlayerState(player_id=1),
+        troops_supply=12,
+        troops_garrison=0,
+        troops_conflict=0,
+        commanders_supply=0,
+        **on_board,  # type: ignore[arg-type]
+    )
+    others = tuple(
+        replace(PlayerState(player_id=seat), troops_supply=12, troops_garrison=0)
+        for seat in (2, 3)
+    )
+    base = _state(_owner(hand=(card,)))
+    base = replace(base, players=(base.players[0], commander_only, *others))
+    state = resolve_agent_card_effect(_play(base, card, "assembly_hall")).state
+    # Seat 1, the next seat, answers first (OQ-036 (b)); its only action is
+    # the Commander's loss -- no decline, nothing else.
+    assert state.decision_stack[-1].kind == "opponent_unit_loss"
+    offered = UprisingRulesEngine().legal_actions(state, 1)
+    assert offered == (
+        DomainAction(
+            action_id="lose_unit",
+            actor=1,
+            arguments=(("commanders", 1), ("zone", zone)),
+        ),
+    )
+    lost = apply_unit_loss(state, offered[0])
+    seat = lost.state.players[1]
+    assert (seat.commanders_garrison, seat.commanders_conflict) == (0, 0)
+    assert seat.commanders_supply == 1
+    if zone == "garrison":
+        assert [event.kind for event in lost.events] == ["unit_lost"]
+    else:
+        # A loss from the Conflict retreats the Commander first, taking its
+        # strength 2 (OQ-036 (a)).
+        assert [event.kind for event in lost.events] == [
+            "troops_retreated",
+            "unit_lost",
+        ]
+        assert seat.combat_strength == 0
+    assert dict(lost.events[-1].payload) == {
+        "commanders": 1,
+        "player": 1,
+        "zone": zone,
+    }
+
+
 @pytest.mark.parametrize("actor", [0, 1, 2, 3])
 def test_unit_loss_frames_ask_every_opponent_clockwise_from_the_next_seat(
     actor: int,

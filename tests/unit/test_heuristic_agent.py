@@ -741,10 +741,12 @@ def test_the_flat_card_variant_reproduces_the_earlier_behaviour() -> None:
 
 
 def test_the_swap_changes_the_card_and_nothing_else() -> None:
-    # A card is offered once per cost option and once more per Navigation
-    # Chamber discount, and every variant forfeits the same Reveal box. Taking
-    # the first cheapest would quietly move the cost option the draw made and
-    # drop a discount that costs nothing to keep.
+    # A card is offered once per cost option, and every variant forfeits the
+    # same Reveal box. Taking the first cheapest would quietly move the cost
+    # option the draw made. The variants are hand-built: the undiscounted
+    # paid one below is no longer legal since Navigation Chamber's cut became
+    # mandatory (codec v142, OQ-104), but the swap must still keep every term
+    # the draw settled, the discount among them.
     from dune_imperium.agents.heuristic_agent import (
         SPENT_CARD_VALUE,
         cheapest_card_for_the_same_space,

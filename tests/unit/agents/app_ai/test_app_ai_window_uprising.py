@@ -10,6 +10,7 @@ import math
 import random
 from collections import Counter
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 
 import pytest
 
@@ -181,9 +182,14 @@ def _with_top_context(state: GameState, **changes: ActionValue) -> GameState:
 
 # -- real states (heuristic games, CHOAM) ----------------------------------------------
 
-# Round 7, seat 0 (Feyd), Emperor-4 track Spy, supply 3, no spy out. Post
-# values: Emperor, Landsraad (High Council), BG, Fremen 2.0; the rest 0.0.
-SPY = _first("spy_placement", 1)
+# Round 3, seat 3 (Lady Jessica), the Emperor track Spy of a Change
+# Allegiances gain, supply 3, no spy out. Post values: Landsraad (High
+# Council), Fremen 3.0; Emperor, Spacing Guild, BG 2.0; Assembly Hall 1.0;
+# the rest 0.0. (Seed 1, round 7 seat 0 (Feyd), until Imperial Privilege's
+# card draw became its own icon, 2026-10-10, OQ-027 (d), moved its game at
+# round 4 seat 0's Imperial Privilege visit; 4 is the first seed from 1 that
+# passes the spy_placement tests below again.)
+SPY = _first("spy_placement", 4)
 # Seat 1 (Gurney), supply 3: Landsraad (High Council) 3.0, Fremen 3.0,
 # Emperor/Guild/BG 2.0, Assembly Hall 1.0, the rest 0.0.
 CONTRACT_SPY = _first("contract_reward_spy", 2)
@@ -212,14 +218,24 @@ MARKET = _first("contract_market", 1)
 RECALL = _first(
     "contract_reward_recall", 123, lambda s, o: len(ENGINE.legal_actions(s, o)) > 1
 )
-# Round 10, seat 2 (Lady Amber Metulli), one Agent left, hand: Dune, Dune,
-# Convincing Argument, Leadership. Seed 7 reached a Covert Operation victim
-# with two Dunes until 5654d7f8 moved its game; 57 is the first seed from 7
-# whose victim has one Agent left, two Dunes leading its discard order and
-# room for the two-card hand below (37's victim holds a single Dune).
-DISCARD = _first("opponent_card_discard", 57)
-# Seat 1: top three Weirding Woman (1), Unswerving Loyalty (1), Signet Ring (0).
-LLTF = _first("long_live_fighters", 1)
+# Round 3, seat 2 (Lady Amber Metulli), one Agent left, hand: Signet Ring,
+# Dune :0, Convincing Argument, Dune :1. Seed 7 reached a Covert Operation
+# victim with two Dunes until 5654d7f8 moved its game, then seed 57 until
+# Imperial Privilege's card draw became its own icon (user ruling
+# 2026-10-10, OQ-027 (d)) moved that game at round 4 seat 2's Imperial
+# Privilege visit; 121 is the only seed of 57-599 whose victim has one Agent
+# left, two Dunes leading its discard order and room for the two-card hand
+# below (90's victim holds a single Dune).
+DISCARD = _first("opponent_card_discard", 121)
+# Round 6, seat 3 (Lady Jessica), three cards left in the deck; seat 3's own
+# discard pile holds The Spice Must Flow (9). Each test puts the three cards
+# it needs on top (``_deck_top``). (Seed 1 dealt Weirding Woman (1),
+# Unswerving Loyalty (1) and Signet Ring (0) on top by itself until Imperial
+# Privilege's card draw became its own icon, 2026-10-10, OQ-027 (d), moved
+# its game at round 4 seat 0's Imperial Privilege visit. Seed 1 still reaches
+# the window, but no seat there has acquired The Spice Must Flow (9), which
+# the last test swaps in; 2 is the first seed that has it.)
+LLTF = _first("long_live_fighters", 2)
 
 
 def test_handlers_are_registered() -> None:
@@ -232,7 +248,7 @@ def test_handlers_are_registered() -> None:
 
 def test_spy_placement_places_on_the_best_post() -> None:
     seat = _owner(SPY)
-    # Free: Assembly Hall, Imperial Basin, Deep Desert 0.0; BG 2.0.
+    # Free: Imperial Basin, Deep Desert 0.0, Assembly Hall 1.0; BG 2.0.
     state = _occupy(SPY, seat, {POST_ASSEMBLY, POST_BASIN, POST_BG, POST_DEEP})
     _, legal = _run(state)
     assert {a.action_id for a in legal} == {"place_spy_on_space"}
@@ -254,8 +270,8 @@ def test_spy_placement_breaks_ties_at_random() -> None:
 
 def test_spy_placement_with_an_empty_supply_recalls_the_worst_post_first() -> None:
     seat = _owner(SPY)
-    # Own spies on Emperor (2.0), Assembly Hall (0.0), BG (2.0); free: Fremen
-    # (2.0) and Deep Desert (0.0).
+    # Own spies on Emperor (2.0), Assembly Hall (1.0), BG (2.0); free: Fremen
+    # (3.0) and Deep Desert (0.0).
     state = with_player(
         SPY, seat, spies_supply=0, spy_post_ids=(POST_EMPEROR, POST_ASSEMBLY, POST_BG)
     )
@@ -582,11 +598,12 @@ def test_board_order_keeps_unknown_spaces_last_in_offered_order() -> None:
 def test_covert_operation_victim_discards_the_first_of_its_discard_order() -> None:
     seat = _owner(DISCARD)
     assert DISCARD.players[seat].agents_available == 1
-    # Both Dunes lead (TrashValue 1.0); the stable sort keeps hand order.
+    # Both Dunes lead (TrashValue 1.0); the stable sort keeps hand order,
+    # which holds Dune :0 first.
     assert _answer(DISCARD) == _act(
         "discard_opponent_card",
         seat,
-        card_id=f"player:{seat}:starter:dune_the_desert_planet:1",
+        card_id=f"player:{seat}:starter:dune_the_desert_planet:0",
     )
 
 
@@ -633,10 +650,44 @@ def test_choose_discard_evaluator_with_nothing_to_pick() -> None:
 # -- long_live_fighters ----------------------------------------------------------------
 
 
+def _swap(state: GameState, card: str, other: str) -> GameState:
+    """``card`` and ``other`` trade places wherever they are (a seat's zone,
+    the Imperium deck or the Row), so every instance stays in one place."""
+
+    def swapped(cards: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(other if c == card else card if c == other else c for c in cards)
+
+    players = tuple(
+        replace(
+            p,
+            hand=swapped(p.hand),
+            deck=swapped(p.deck),
+            discard_pile=swapped(p.discard_pile),
+            in_play=swapped(p.in_play),
+            trashed=swapped(p.trashed),
+        )
+        for p in state.players
+    )
+    return with_state(
+        state,
+        players=players,
+        imperium_deck=swapped(state.imperium_deck),
+        imperium_row=swapped(state.imperium_row),
+    )
+
+
 def _deck_top(state: GameState, top: tuple[str, ...]) -> GameState:
+    """The deciding seat's deck with ``top`` on top, in that order. A card
+    of ``top`` held elsewhere first trades places with one of the seat's
+    other deck cards (``_swap``): the window reads only the top three."""
+
     seat = _owner(state)
+    for card in top:
+        deck = state.players[seat].deck
+        if card not in deck:
+            spare = next(c for c in reversed(deck) if c not in top)
+            state = _swap(state, card, spare)
     deck = state.players[seat].deck
-    assert set(top) <= set(deck)
     return with_player(state, seat, deck=(*top, *(c for c in deck if c not in top)))
 
 
@@ -646,11 +697,19 @@ def test_lltf_draw_trashes_the_cheapest_when_nothing_is_junk() -> None:
     drawn, the other discarded."""
 
     seat = _owner(LLTF)
-    draw = _answer(LLTF)
+    state = _deck_top(
+        LLTF,
+        (
+            "imperium:weirding_woman:0",
+            "imperium:unswerving_loyalty:0",
+            f"player:{seat}:starter:signet_ring:0",
+        ),
+    )
+    draw = _answer(state)
     assert draw == _act(
         "select_long_live_fighters_draw", seat, card_id="imperium:weirding_woman:0"
     )
-    after = ENGINE.apply(LLTF, draw).state
+    after = ENGINE.apply(state, draw).state
     assert _answer(after) == _act(
         "select_long_live_fighters_discard",
         seat,
@@ -697,20 +756,10 @@ def test_lltf_draw_skips_the_spice_must_flow() -> None:
 
     seat = _owner(LLTF)
     tsmf = "reserve:the_spice_must_flow:9"
-    pino = "imperium:price_is_no_object:0"
-    holder = next(p for p in LLTF.players if tsmf in p.discard_pile)
-    swapped = with_player(
-        LLTF,
-        holder.player_id,
-        discard_pile=tuple(pino if c == tsmf else c for c in holder.discard_pile),
-    )
-    deck = swapped.players[seat].deck
-    swapped = with_player(
-        swapped, seat, deck=tuple(tsmf if c == pino else c for c in deck)
-    )
-    # The Spice Must Flow (9) took Price is No Object's place in the deck.
+    assert any(tsmf in p.discard_pile for p in LLTF.players)
+    # The Spice Must Flow (9) trades places with one of the seat's deck cards.
     paracompass = "imperium:paracompass:0"  # cost 4
-    state = _deck_top(swapped, (tsmf, paracompass, f"player:{seat}:starter:dagger:1"))
+    state = _deck_top(LLTF, (tsmf, paracompass, f"player:{seat}:starter:dagger:1"))
     assert _answer(state) == _act(
         "select_long_live_fighters_draw", seat, card_id=paracompass
     )

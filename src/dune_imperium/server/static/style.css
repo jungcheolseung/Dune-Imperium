@@ -189,6 +189,16 @@ fieldset label:has(input:disabled) { opacity: 0.5; }
 }
 #opt-seed-row input, #opt-checkpoint-row input { margin-top: 0.4rem; }
 #setup-form #opt-search-note { margin: 1rem 0 0; font-size: 0.8rem; line-height: 1.5; }
+#setup-form #opt-shuffle-seats-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+#opt-shuffle-seats-row input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: #826336; }
+#setup-form #opt-shuffle-seats-note { margin: 0.4rem 0 0; font-size: 0.8rem; line-height: 1.5; }
 #rule-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
 #rule-options label {
   display: flex;
@@ -817,6 +827,36 @@ img.seat-disc.pictured { border-radius: 50%; }
   position: absolute;
   transform: translate(-50%, -50%);
 }
+/* A Score disc past 12 counts on from 0 and carries its lap, "+13", in the
+   board's own numeral style (.bonus-spice-count): a box as large as the
+   disc laid over its centre (the disc may be a picture, which cannot hold
+   it), above the discs that share its cell. The one number on a board
+   token, at the user's request (2026-10-10). The text stays on the disc's
+   face, inside the app picture's bevel and dark rim (about 0.78 of its
+   width): at most three quarters of the disc wide (board_tokens.py [3h]),
+   so the figures are 40cqh and a weight lighter than that style (700, not
+   800) and the "+" is 0.7 of them. */
+.vp-lap {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  pointer-events: none;
+  z-index: 1;
+}
+.vp-lap-text {
+  color: #fff;
+  font-weight: 700;
+  font-size: 40cqh;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  white-space: nowrap;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+}
+.vp-lap-plus { font-size: 0.7em; }
 /* The strength token's "+20" face: inverted colours and the printed +20. */
 .strength-token { position: absolute; }
 .strength-token.flipped {
@@ -1316,6 +1356,17 @@ kbd {
 /* ITEM 5: the most recently resolved Conflict, one muted line above the
    prompt (render.js's combatResultLine) -- no badge, no animation. */
 #decision-info .combat-result { font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.35rem; }
+/* Feedback item 8: the Arrakeen Scouts item a decision belongs to, under
+   the prompt (panels.js scoutsDecisionHeader). */
+#decision-info .scouts-decision-item {
+  margin: 0.3rem 0 0.2rem;
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid var(--accent);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+#decision-info .scouts-decision-title { font-weight: 700; }
+#decision-info .scouts-decision-item .scouts-line { margin-left: 0.8em; opacity: 0.85; }
 
 #actions {
   display: flex;
@@ -1388,9 +1439,17 @@ kbd {
   border-top: 1px solid var(--line);
 }
 #actions > .zone-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* Controlled's choice: the deck's top card it is about, above its buttons
+   (panels.js deckTopChoicePicture), a little smaller than a hand card. */
+.deck-top-choice { display: flex; flex: none; padding: 2px 0; }
+.vcard.deck-top-choice-card { width: 92px; }
+.vcard.deck-top-choice-card .vcard-badge { white-space: nowrap; }
 .pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
 .pick-option .icon { height: 1.1em; }
 .pick-graft { font-weight: 600; }
+/* Navigation Chamber's cut: the printed cost struck through, then the paid one. */
+.pick-option .cost-printed { text-decoration: line-through; opacity: 0.6; }
+.pick-discount { font-weight: 600; }
 #actions .action-list-toggle {
   align-self: flex-end;
   margin-top: 0.4rem;
@@ -1690,6 +1749,12 @@ kbd {
 .popover.hover { pointer-events: none; }
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover-note { font-size: 0.75rem; opacity: 0.75; margin-bottom: 0.3rem; }
+/* The deck list's top card, when a card effect shows it (panels.js
+   openDeckList): its own entry, outlined, its "Top" / "맨 위" badge on one
+   line on the list's 60px cards. The outline sits inside the strip's 3px
+   padding. */
+.vcard.deck-top { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vcard.deck-top .vcard-badge { white-space: nowrap; }
 .conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .conflict-history-close { padding: 0 0.4rem; font-size: 1.2rem; }
 .conflict-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.8rem; margin-top: 0.5rem; }
@@ -1940,11 +2005,29 @@ kbd {
   font-size: 0.7rem;
   font-weight: 700;
 }
-.seat .commander-count, .help-mark .commander-count {
-  font-size: 0.72rem;
+/* A seat's Commanders in its supply (panels.js commanderStatIcon): the same
+   figure, at a stat icon's height, with the same hairline; without the
+   picture, the drawn mark scaled down to that height. */
+.commander-stat-icon { filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)); }
+.commander-stat-icon.drawn {
+  display: inline-flex;
+  box-sizing: border-box;
+  /* 1.35em, -0.3em and 0.1em of the stat's text (.stat .icon), divided
+     by this mark's own smaller letter. */
+  height: calc(1.35em / 0.7);
+  aspect-ratio: 130 / 195;
+  align-items: center;
+  justify-content: center;
+  vertical-align: calc(-0.3em / 0.7);
+  margin-right: calc(0.1em / 0.7);
+  border: 1px solid #111;
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  color: #111;
+  font-size: 0.7em;
   font-weight: 700;
-  color: #ffb3b3;
-  margin-left: 0.25em;
+  line-height: 1;
+  filter: none;
 }
 
 /* Immortality: the Bene Tleilax board panel (research hexes as a grid, the

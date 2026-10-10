@@ -1042,6 +1042,14 @@ function renderBanner() {
       }
       if (state.actions) renderActionPanel(actionsBox, turnEnd);
     }
+    /* While the Arrakeen Scouts step resolves an item, name it (and its
+       lines) under the prompt, above the turn-end or 확정 row, for the
+       deciding seat and the waiting ones alike (panels.js). */
+    const scoutsHeader = scoutsDecisionHeader();
+    if (scoutsHeader) {
+      const below = info.querySelector(":scope > .held-hint, :scope > .confirm-row");
+      info.insertBefore(scoutsHeader, below);
+    }
   }
 
   /* A human seat may still have takeable-back steps after the game ends
@@ -1848,7 +1856,9 @@ function actionItem(action, onApply, zone) {
   wrap.dataset.index = String(action.index);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   const button = document.createElement("button");
-  button.appendChild(describeAction(action));
+  /* Controlled's choice names the top card the seat is looking at on its
+     own buttons only (panels.js deckTopChoiceLabel), never in the log. */
+  button.appendChild(deckTopChoiceLabel(action) || describeAction(action));
   if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>

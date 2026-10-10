@@ -192,7 +192,8 @@ def static_board_effects(
     catalog reads it too, so effect text shown to players always derives from
     the same table the engine executes. Choice-driven spaces list only their
     automatic icons here (Espionage's card draw, Desert Tactics' troop,
-    Shipping's Solari); High Council's revisit rewards depend on the visitor
+    Shipping's Solari, Imperial Privilege's card draw); High Council's
+    revisit rewards depend on the visitor
     and live in ``visit_board_effects``.
     """
 
@@ -242,6 +243,12 @@ def static_board_effects(
         case "accept_contract", 0 if not choam_module:
             return (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))
         case "accept_contract", 0:
+            return (DrawImperiumCardsEffect(1),)
+        case "imperial_privilege", 0:
+            # "Recall one of your other Agents from the board, and draw a
+            # card" [Board Guide p. 2]: the draw is its own icon, apart from
+            # the recall (user ruling 2026-10-10, OQ-027 (d)); the Intrigue
+            # slot and the recall are the space's written-sentence choice.
             return (DrawImperiumCardsEffect(1),)
         case _:
             raise NotImplementedError(
@@ -295,9 +302,12 @@ def board_icons_for(
     Each key is one independently resolved effect [Main p. 9]: automatic keys
     through ``resolve_board_effect``, the rest through the space's own choice
     actions. A printed choose-one row (Sietch Tabr, the Maker spaces' spice or
-    sandworms) and Imperial Privilege's two written sentences stay single
-    keys, and Secrets' random steal is text that follows its Intrigue draw
-    (OQ-027). Those single printed keys still take the Bloodlines additions
+    sandworms) stays a single key, and Secrets' random steal is text that
+    follows its Intrigue draw (OQ-027). Imperial Privilege's optional
+    Intrigue trade and its recall share one key, the trade first, while the
+    card draw printed beside the recall is its own ``cards`` icon: "소환과
+    뽑기가 당연히 두 단계로 나눠야지" (user ruling 2026-10-10, OQ-027 (d)).
+    Those single printed keys still take the Bloodlines additions
     every visit gets: a waiting Sardaukar Commander [Bloodlines p. 4] and,
     on a Landsraad space, the Ixian Embassy's Acquire Tech -- a first High
     Council visit included, as in the rulebook's Brennen example
@@ -317,7 +327,19 @@ def board_icons_for(
         case "deep_desert" | "hagga_basin" | "imperial_basin":
             icons = [BOARD_ICON_MAKER]
         case "imperial_privilege":
-            icons = [BOARD_ICON_IMPERIAL_PRIVILEGE]
+            icons = [
+                BOARD_ICON_IMPERIAL_PRIVILEGE,
+                *(
+                    board_icon_for_effect(effect)
+                    for effect in visit_board_effects(
+                        owner,
+                        space_id,
+                        cost_option,
+                        choam_module=choam_module,
+                        immortality=state.config.immortality,
+                    )
+                ),
+            ]
         case "tuek_sietch":
             icons = [BOARD_ICON_TUEK_SIETCH]
         case _:
@@ -1116,11 +1138,17 @@ def legal_imperial_privilege_actions(
     2026-10-04).
 
     The recall offers one action per ``imperial_privilege_recall_targets``
-    entry. With none, only the recall is skipped and the card is still
-    drawn (OQ-023), through ``resolve_imperial_privilege_without_recall``:
-    the owner confirms it instead of the engine skipping it unasked (user
-    ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
-    연다").
+    entry. With none, only the recall is skipped (OQ-023), through
+    ``resolve_imperial_privilege_without_recall``: the owner confirms it
+    instead of the engine skipping it unasked (user ruling 2026-09-30, "결정
+    창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다").
+
+    The recall only recalls: the card draw printed beside it is the space's
+    own ``cards`` icon, resolved through ``resolve_board_effect`` in any
+    order with this one ("4번은 소환과 뽑기가 당연히 두 단계로 나눠야지. 이건
+    정말 기본적인 원칙인데", user ruling 2026-10-10; OQ-027 (d), OQ-023's
+    "별개의 효과"). A recall reveals nothing, so it can be taken back; the
+    draw from the hidden deck cannot (OQ-010).
     """
 
     if not 0 <= player < state.config.players:
@@ -1243,7 +1271,12 @@ def apply_imperial_privilege_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve Imperial Privilege's optional Intrigue trade, then its recall."""
+    """Resolve Imperial Privilege's optional Intrigue trade, then its recall.
+
+    The recall (or its confirm without a target) is the icon's last step and
+    draws nothing: the card draw is the space's ``cards`` icon (user ruling
+    2026-10-10, OQ-027 (d)).
+    """
 
     if action not in legal_imperial_privilege_actions(state, action.actor):
         raise ValueError("action is not a legal Imperial Privilege choice")
@@ -1309,14 +1342,11 @@ def apply_imperial_privilege_action(
             for candidate in state.players
         )
         finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
+        # The recall alone: the card draw is the space's own ``cards`` icon
+        # (user ruling 2026-10-10, OQ-027 (d)).
         next_state = advance_after_effect(state, context, players)
-        draw = draw_or_request_personal_cards(
-            next_state, action.actor, 1, source=source
-        )
-        next_state = draw.state
         recall_events = (
             recall_event,
-            *draw.events,
             GameEvent(
                 event_id=source,
                 kind="board_effect_resolved",
@@ -1381,21 +1411,20 @@ def _resolve_imperial_privilege_without_recall(
     player: int,
     source: str,
 ) -> RuleResult:
-    """Skip the impossible recall and still draw the card (OQ-023)."""
+    """Confirm the skipped recall when no other Agent can be recalled (OQ-023)."""
 
     # With no other deployed Agent only the recall is skipped; the card
-    # draw is a separate printed effect and still resolves (OQ-023 decided
-    # ruling, [Board Guide p. 2]).
+    # draw is a separate printed effect (OQ-023 decided ruling, [Board Guide
+    # p. 2]) and its own ``cards`` icon, which still waits for its action
+    # if it has not resolved yet (user ruling 2026-10-10, OQ-027 (d)).
     finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
     next_state = advance_after_effect(state, context, state.players)
-    draw = draw_or_request_personal_cards(next_state, player, 1, source=source)
     events = (
         GameEvent(
             event_id=f"{source}:recall_skipped",
             kind="imperial_privilege_recall_skipped",
             payload=(("player", player),),
         ),
-        *draw.events,
         GameEvent(
             event_id=source,
             kind="board_effect_resolved",
@@ -1407,7 +1436,7 @@ def _resolve_imperial_privilege_without_recall(
             ),
         ),
     )
-    return RuleResult(state=draw.state, events=events)
+    return RuleResult(state=next_state, events=events)
 
 
 def legal_tuek_sietch_actions(

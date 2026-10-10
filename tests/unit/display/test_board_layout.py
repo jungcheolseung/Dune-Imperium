@@ -114,7 +114,12 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
         for lower, upper in zip(victory["levels"], victory["levels"][1:], strict=False)
     ]
     assert all(abs(pitch - cell_height) < 0.02 for pitch in score_pitches)
-    assert victory["overflow_y"] < victory["levels"][-1] - disc
+    # The 13 printed cells 0..12 are the modulus of the score shown on the
+    # board: a score past 12 [FAQ p. 4] counts on from cell 0 with its lap
+    # ("+13") on the disc (display convention, user request 2026-10-10), so
+    # there is no overflow spot on the emblem above 12.
+    assert len(victory["levels"]) == 13
+    assert "overflow_y" not in victory
     assert len(layout["garrisons"]) == 4
     assert len(layout["conflict_quadrants"]) == 4
     # The units in the Conflict stand in the printed quadrants, one piece

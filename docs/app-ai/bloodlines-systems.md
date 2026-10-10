@@ -147,8 +147,11 @@ correct, because a shared post is not free.
 - **Costs.** Duncan: Swordmaster's runtime `SolariCost` − 2, floor 0 (`rules/agent_turn.py:1000`), in
   `space_solari_cost` (`abilities/generic.py:273`, the app's `DecreaseInitialCost` precedent) (D35). Navigation
   Chamber: every legal `agent_turn(discount=spice|solari)` variant is its own target with the space cost reduced by 1
-  (`agent_turn.py:941`). `SolariDiscount` −1 or **NEW** `SpiceDiscount` −1 feed `SpaceAbility` "Space … Cost" and
-  `CanAgentAbilityBePlayedWithSpace`. The first strictly best variant wins (D60). The chosen variant's cut also
+  (`agent_turn.py` `_actions_for_affordable_costs`). `SolariDiscount` −1 or **NEW** `SpiceDiscount` −1 feed
+  `SpaceAbility` "Space … Cost" and `CanAgentAbilityBePlayedWithSpace`. The first strictly best variant wins (D60).
+  Since codec v142 the cut is mandatory (OQ-104): a costed space has only its cut variant, so two variants share a
+  space only at Spice Refinery and Gather Support (the plain one for the free option 0, the cut one for option 1);
+  until then the engine also offered the full price, and a tie kept it. The chosen variant's cut also
   prices the cost-first payment (state 220, `windows/turn.py` `_after_cost_first`) on which the Spy recall (240) is
   judged: Spice Refinery's 1-spice trade with the spice cut pays `max(0, 1 + SpiceDiscount)` = 0 spice, and Gather
   Support's water costs `FindSolariCost` = 1 Solari with the Solari cut. Until 2026-10-09 the full cost was charged,
@@ -771,7 +774,7 @@ alone is included because they share the answer, though they were legal: `resolv
 | D57 | CHOAM Transports' draw in `ContractAbility.GetResourceValue` | `Draw2ContractAbility` (influence §3.5) |
 | D58 | Planetary Array's draw in `RelativeConflictValue` | Windtraps (profile-combat §5.2) |
 | D59 | Suspensor Suits: + `troop_value(1)` on `IntrigueValue` in the own turn | no precedent (Sonic Snoopers is a ×mod of another effect): rule 11.4 one-time price |
-| D60 | Navigation Chamber: each discount variant is a target; the first strictly best wins | `AgentAbility::Evaluate` (generic §2.1) |
+| D60 | Navigation Chamber: each discount variant is a target; the first strictly best wins (the cut is mandatory since codec v142, OQ-104, so variants differ only by Spice Refinery's and Gather Support's free option 0) | `AgentAbility::Evaluate` (generic §2.1) |
 | D61 | Reveal-turn and off-Combat-space deploys use `DeployUnitsAbility` at 0.5 | `SardaukarCoordinationAgentAbility` (imperium-b) |
 | D62 | Self-Destroying Messages, Charismatic, Navigation 3 add Persuasion to `GetRevealPreview` | Minimic Film (profile-economy §5.1) |
 

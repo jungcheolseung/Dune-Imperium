@@ -294,6 +294,86 @@ def test_prison_planet_needs_a_free_control_marker() -> None:
     assert _owner(state) == 1
 
 
+# OQ-105, user ruling 2026-10-10: "3은 그럼 통일해야지. 지휘관도 낼 수 있게
+# 해야지". docs/rules/bloodlines.md 3: "troop을 대상으로 하는 효과(예: Go to
+# Ground의 retreat)는 Commander에도 적용된다." [Bloodlines p. 4]. Prison
+# Planet: "각자 원하면 garrison의 troop 1을 잃고, Sardaukar 칸에 자기 Control
+# 마커를 둔다" (docs/rules/arrakeen-scouts.md 5).
+BLOODLINES = RulesetConfig(arrakeen_scouts=True, choam_module=True, bloodlines=True)
+
+
+def _prison_planet(troops: int, commanders: int) -> GameState:
+    base = _base(BLOODLINES)
+    seat = base.players[0]
+    seat = replace(
+        seat,
+        troops_garrison=troops,
+        troops_supply=seat.troops_supply + seat.troops_garrison - troops,
+        commanders_garrison=commanders,
+    )
+    return _reveal(replace(base, players=(seat, *base.players[1:])), "prison_planet")
+
+
+def _targets(state: GameState) -> list[object]:
+    return [
+        dict(a.arguments)["target"]
+        for a in ENGINE.legal_actions(state, _owner(state))
+        if a.action_id == "scouts_join_mission"
+    ]
+
+
+def test_prison_planet_takes_a_garrison_commander_alone() -> None:
+    state = _prison_planet(troops=0, commanders=1)
+    assert _owner(state) == 0
+    assert _targets(state) == ["commander"]
+    state = _answer(state, {0: "commander"})
+    seat = state.players[0]
+    assert (seat.commanders_garrison, seat.commanders_supply) == (0, 1)
+    assert seat.troops_garrison == 0
+    mine = sorted(row[2:] for row in state.scouts_goods if row[4] == 0)
+    assert mine == [("marker", 1, 0), ("spice", 2, 0)]
+
+
+def test_prison_planet_offers_troop_or_commander_when_both() -> None:
+    from dune_imperium.display.scouts import scouts_choice_lines
+
+    state = _prison_planet(troops=2, commanders=1)
+    assert _targets(state) == ["", "commander"]
+    info = scouts_choice_lines(state, 0, ENGINE.legal_actions(state, 0))
+    assert info is not None
+    lines = info["lines"]
+    assert isinstance(lines, list)
+    assert [(line["key"], line["enabled"]) for line in lines] == [
+        ("target:", True),
+        ("target:commander", True),
+    ]
+    paid = _answer(state, {0: "commander"}).players[0]
+    assert (paid.troops_garrison, paid.commanders_garrison) == (2, 0)
+    paid = _answer(state, {0: ""}).players[0]
+    assert (paid.troops_garrison, paid.commanders_garrison) == (1, 1)
+
+
+def test_prison_planet_with_troops_only_greys_out_the_commander_way() -> None:
+    from dune_imperium.display.scouts import scouts_choice_lines
+
+    state = _prison_planet(troops=2, commanders=0)
+    assert _targets(state) == [""]
+    info = scouts_choice_lines(state, 0, ENGINE.legal_actions(state, 0))
+    assert info is not None
+    lines = info["lines"]
+    assert isinstance(lines, list)
+    troop, commander = lines
+    assert troop["enabled"] and not commander["enabled"]
+    assert commander["reason"] == (
+        "Needs 1 Sardaukar Commander in your garrison (you have 0)"
+    )
+    assert commander["reason_ko"] == "{garrison}에 {commander} 1 필요 (보유 0)"
+
+
+def test_prison_planet_skips_a_seat_with_no_garrison_unit() -> None:
+    assert _owner(_prison_planet(troops=0, commanders=0)) == 1
+
+
 def test_fedaykin_assistance_recruits_its_troops_on_a_visit() -> None:
     state = _reveal(_base(), "fedaykin_assistance")
     spice = state.players[0].resources.spice

@@ -57,13 +57,17 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.scouts_effects import (
     ScoutsStep,
+    garrison_units,
     joinable_subcommittees,
     line_unavailable_reason,
     pending_subcommittee_exclude,
     scouts_option,
     scouts_rewards_ahead,
 )
-from dune_imperium.rules.scouts_missions import join_unavailable_reason
+from dune_imperium.rules.scouts_missions import (
+    PRISON_PLANET_COMMANDER,
+    join_unavailable_reason,
+)
 from dune_imperium.rules.scouts_offers import open_subcommittees
 
 SCOUTS_ITEM_NAMES_KO: Final[Mapping[str, str]] = {
@@ -490,6 +494,13 @@ def scouts_action_text(
             target = arguments.get("target")
             if target == "recruit":
                 return "Recruit 1 troop", "{troop:1} 소집"
+            if target == PRISON_PLANET_COMMANDER:
+                # Prison Planet paid with a garrison Commander (OQ-105).
+                return (
+                    "Lose 1 garrison Sardaukar Commander to put a Control marker"
+                    " on Sardaukar",
+                    "{garrison}의 {commander} 1을 잃고 Sardaukar에 {control} 마커 두기",
+                )
             if target == "":
                 mission_id = context.get("mission_id")
                 return (
@@ -508,6 +519,12 @@ def scouts_action_text(
             return None
         case "scouts_recall_agent" if arguments.get("space_id") == "conflict":
             return "Recall the Agent in the Conflict", "{conflict}의 {agent} 소환"
+        case "scouts_lose_garrison_unit":
+            # A "lose a garrison troop" cost with a troop and a Sardaukar
+            # Commander in the garrison (OQ-105).
+            if arguments.get("commanders") == 1:
+                return "1 Sardaukar Commander", "{commander} 1"
+            return "1 troop", "{troop:1}"
         case "scouts_collect_mission":
             choice = arguments.get("choice")
             if choice == "solari":
@@ -573,7 +590,8 @@ def _cost_reason(state: GameState, seat: int, cost: object) -> Reason:
         case TrashPersonalCard():
             return "No card to trash", "{trash}할 카드 없음", "cost"
         case LoseGarrisonTroops(count=count):
-            en, ko, _ = _troops_reason("garrison", count, owner.troops_garrison)
+            # A garrison Sardaukar Commander pays too (OQ-105).
+            en, ko, _ = _troops_reason("garrison", count, garrison_units(owner))
             return en, ko, "cost"
         case PaySpecimens(count=count):
             en, ko, _ = _troops_reason("specimens", count, owner.specimens)
@@ -635,6 +653,13 @@ def _mission_reason(what: str, needed: int, held: int) -> Reason:
     match what:
         case "supply" | "garrison" | "specimens":
             return _troops_reason(what, needed, held)
+        case "commander":
+            en, ko = _held(held)
+            return (
+                f"Needs {needed} Sardaukar Commander in your garrison{en}",
+                f"{{garrison}}에 {{commander}} {needed} 필요{ko}",
+                what,
+            )
         case "spice" | "solari":
             return _resource_reason(what, needed, held)
         case "marker":
@@ -861,6 +886,9 @@ def _mission_lines(
     mission = MISSIONS_BY_ID[mission_id]
     if mission.kind is MissionKind.CHOAM_ESCORT:
         targets = ("recruit", *state.players[seat].active_contract_ids)
+    elif mission.kind is MissionKind.PRISON_PLANET and state.config.bloodlines:
+        # A garrison Sardaukar Commander may pay instead of the troop (OQ-105).
+        targets = ("", PRISON_PLANET_COMMANDER)
     else:
         targets = ("",)
     lines = []

@@ -525,21 +525,33 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # only for a playable card, close after a play unless another copy is
 # playable) a scratch run reproduces the old pin exactly; the Earn Any
 # Alliance timing of the same change moves none of the six.
+# v142, second change (user ruling 2026-10-10, OQ-027 (d)): Imperial
+# Privilege's card draw is its own ``resolve_board_effect(cards)`` icon, so
+# the legal list right after an Imperial Privilege placement holds one more
+# action and the random seat draws from it. Four games move, each at its
+# first Imperial Privilege visit: choam at decision 497 (round 8, seat 1;
+# 2,904 -> 2,816 vectors), draft at 556 (round 9, seat 3; 2,808 -> 2,864),
+# promo_bloodlines_tech at 517 (round 8, seat 2; 3,004 -> 3,172) and scouts
+# at 340 (round 5, seat 3; 3,712 -> 3,368). With the bundled recall-and-draw
+# patched back in (a scratch checkout of the previous commit) all six games
+# reproduce the pins above exactly; base and everything never visit Imperial
+# Privilege. ``adapters/observation_encoding.py`` and ``core/observation.py``
+# are unchanged.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
-    "choam": ("cf414bd3f23f711e42d9b33f6f54001cf70435f3872091501b670434a6c34e62", 2904),
+    "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
     "promo_bloodlines_tech": (
-        "23337f08fcf35626d22ed6503c1b21922a7bc061ce3244beb429b688823940ee",
-        3004,
+        "1af539caf7c6a6dbe94605a3411935c0198f495c2ae7263a65e32e45b71b540c",
+        3172,
     ),
     "everything": (
         "40104687a06f0898476d74e4b00588f893a5a53457631162cc92f91bd4e6fd0f",
         3620,
     ),
-    "draft": ("98a71a1ab408346e10573193c4d415db03c1ba0b525527e5d46835ab8f362ebf", 2808),
+    "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
-        "f288d4ca32c84ead9b610cb1eb8dd14ad16cab8dd26ec0b1eaa5e62521e769f1",
-        3712,
+        "bbcab915e68bfe5956bf4340c62f6fd0cfdb524c16c58a2c5b7598b1469bc42d",
+        3368,
     ),
 }
 _GOLDEN_CONFIGS = {

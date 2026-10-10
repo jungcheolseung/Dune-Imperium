@@ -11,6 +11,7 @@ the preview describes what could be joined once the seat is taken.
 """
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -21,7 +22,8 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
-from dune_imperium.rules.scouts_effects import offer_scouts_choice
+from dune_imperium.rules.scouts_effects import offer_scouts_choice, offer_secret_reward
+from dune_imperium.rules.scouts_secrets import SECRET_ITEM
 from dune_imperium.server.sessions import GameSessionManager, _serialize_action
 
 ENGINE = UprisingRulesEngine()
@@ -259,3 +261,71 @@ def test_a_step_without_a_council_seat_has_no_preview() -> None:
     rows = manager.legal_actions(str(summary["game_id"]), 0)["actions"]
     assert isinstance(rows, list) and rows
     assert all("subcommittee_preview" not in _obj(row) for row in rows)
+
+
+def _scouts_session(**fields: Any) -> tuple[GameSessionManager, str, Any]:
+    """A four-human Scouts game whose round 4 step resolves ``fields``."""
+
+    manager = GameSessionManager()
+    game_id = str(
+        manager.create_game(("human",) * 4, game_seed=21, arrakeen_scouts=True)[
+            "game_id"
+        ]
+    )
+    session = manager._get(game_id)
+    values: dict[str, Any] = {
+        "round_number": 4,
+        "first_player": 0,
+        "decision_stack": (),
+        "scouts_opening": True,
+        "scouts_tasks": (),
+    }
+    values.update(fields)
+    session.state = replace(session.state, **values)
+    return manager, game_id, session
+
+
+def test_view_names_the_scouts_item_being_resolved() -> None:
+    """Feedback item 8: the decision panel names the item a Scouts decision
+    belongs to, for the deciding seat and the waiting ones. It reads the
+    public view.scouts_item (and the seat's own scouts_lines.item_id),
+    which is empty once the step has opened the round's first turn."""
+    manager, game_id, session = _scouts_session(
+        scouts_item="private_stock", scouts_revealed=((4, "private_stock"),)
+    )
+    session.state = offer_scouts_choice(
+        session.state, 0, "private_stock", source="round:4:scouts:private_stock:0"
+    ).state
+
+    for seat in (0, 1):
+        assert manager.view(game_id, seat)["scouts_item"] == "private_stock"
+    own = _obj(manager.legal_actions(game_id, 0)["scouts_lines"])
+    assert own["frame"] == "scouts_choice" and own["item_id"] == "private_stock"
+    assert manager.legal_actions(game_id, 1)["scouts_lines"] is None
+
+    # The seat's choice is the item's last task: the step clears its cursor
+    # and opens the First Player's turn.
+    choice = ENGINE.legal_actions(session.state, 0)[0]
+    session.state = ENGINE.apply(session.state, choice).state
+    assert _obj(manager.summary(game_id)["decision"])["kind"] == "turn"
+    for seat in (0, 1):
+        assert manager.view(game_id, seat)["scouts_item"] == ""
+
+
+def test_a_revealed_secret_line_names_its_event() -> None:
+    """While due secret picks resolve, the step's cursor is "secrets"
+    (rules/scouts_secrets.py SECRET_ITEM); a pick's line with a cost is the
+    seat's own choice, and its scouts_lines name the pick's event."""
+    manager, game_id, session = _scouts_session(
+        scouts_item=SECRET_ITEM, scouts_revealed=((4, "private_stock"),)
+    )
+    # Covert Operation's third line: discard a card to recruit three troops.
+    session.state = offer_secret_reward(
+        session.state, 0, "covert_operation", 2, source="round:4:scouts:secret:0"
+    ).state
+
+    assert manager.view(game_id, 0)["scouts_item"] == SECRET_ITEM
+    assert manager.view(game_id, 1)["scouts_item"] == SECRET_ITEM
+    own = _obj(manager.legal_actions(game_id, 0)["scouts_lines"])
+    assert own["frame"] == "scouts_choice"
+    assert own["item_id"] == "covert_operation"

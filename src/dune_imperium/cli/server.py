@@ -16,6 +16,7 @@ from types import FrameType
 from dune_imperium.paths import SAVES_DIR, SEARCH_CHECKPOINT
 from dune_imperium.server.access import AccessMode, new_token
 from dune_imperium.server.pacing import AI_PACES
+from dune_imperium.server.seating import DEFAULT_SEATING, SEATINGS
 
 ADMIN_KEY_ENVIRONMENT = "DUNE_IMPERIUM_ADMIN_KEY"
 SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
@@ -114,6 +115,18 @@ def _build_parser() -> argparse.ArgumentParser:
             "time to show each AI turn and card, 'fast' 0.6 of it, "
             "'instant' answers inside the request (default: normal; the "
             "setup screen can choose another per game)"
+        ),
+    )
+    parser.add_argument(
+        "--seating",
+        choices=SEATINGS,
+        default=DEFAULT_SEATING,
+        help=(
+            "whether the setup screen's 'Random seating' box opens "
+            "checked ('random': the browser shuffles the configured seats, "
+            "and with them turn order and colours, when it creates a game) "
+            "or unchecked ('fixed': row N plays seat N); a project "
+            f"convention, the rules do not seat players (default: {DEFAULT_SEATING})"
         ),
     )
     parser.add_argument(
@@ -401,6 +414,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         card_images_dir=arguments.card_images_dir,
         public_url=public_url,
         autosave=autosave,
+        default_seating=arguments.seating,
     )
     hub = app.state.doorbell_hub
 

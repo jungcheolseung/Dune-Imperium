@@ -619,6 +619,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_recall_agent": apply_scouts_effect_action,
     "scouts_lose_influence": apply_scouts_effect_action,
     "scouts_lose_influence_to": apply_scouts_effect_action,
+    "scouts_lose_garrison_unit": apply_scouts_effect_action,
     "scouts_rewards_first": apply_scouts_rewards_first,
     "scouts_choose_option": apply_scouts_choice_action,
     "scouts_pass": apply_scouts_choice_action,

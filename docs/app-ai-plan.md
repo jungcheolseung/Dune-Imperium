@@ -125,7 +125,7 @@ Bloodlines·Scouts(앱식 확장, 창 단계에서 정한 것):
   남은 와일드끼리 짝짓고, Grasp Arrakis의 Endgame 뒤집기는 짝을 매긴 뒤에 쓴다(cards 사양 D17).
 - Command(6+) 선택은 그 선택 창에서 바로 답한다(구매 전, 11.5). 늦게 열린 Command는 Reveal 자동 단계로 이어 처리한다.
 - Disruption Tactics: 이미 Combat 아이콘이 열려 있거나 배치 여유가 없으면 자기 Trash로 얻는 배치는 0이다(Rapid Dropships D24와 같은 판단).
-- Navigation Chamber의 할인 변형은 변형마다 칸 값을 다시 매겨 가장 좋은 것을 고른다. Spice Refinery에서는 1-spice 교환이 공짜가 된다.
+- Navigation Chamber의 할인 변형은 변형마다 칸 값을 다시 매겨 가장 좋은 것을 고른다. Spice Refinery에서는 1-spice 교환이 공짜가 된다. 할인은 의무라(OQ-104, codec v142) 비용이 있는 칸에는 할인한 변형 하나만 있고, 둘이 함께 있는 곳은 Spice Refinery·Gather Support의 무료 option 0과 할인한 option 1뿐이다.
 - Scouts 입찰은 두 단계(`scouts_bid`, `confirm_scouts_bid`) 모두 같은 결정적 평가기로 답한다(의도 기억 없이도 같은 값).
 - 피해자 쪽 결정(`opponent_unit_loss`, `opponent_spy_move`)은 잃는 가치가 가장 작은 것(11.4).
 - 알려진 엔진 차이 아닌 한계: `agents/determinize.py`는 상대의 Navigation 칸·Secret Project를 다시 섞지 않으므로 정직성 테스트가 이

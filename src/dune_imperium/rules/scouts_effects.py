@@ -116,6 +116,7 @@ from dune_imperium.rules.scouts_offers import (
 from dune_imperium.rules.specimens import return_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.strength import reveal_in_progress
+from dune_imperium.rules.unit_loss import lose_unit
 
 _EFFECT_FRAME: Final = "Scouts effect frame"
 _OFFER_FRAME: Final = "Subcommittee offer frame"
@@ -195,7 +196,8 @@ def option_is_affordable(state: GameState, player: int, option: ScoutsOption) ->
                 if not zones:
                     return False
             case LoseGarrisonTroops(count=count):
-                if owner.troops_garrison < count:
+                # A garrison Sardaukar Commander pays too (OQ-105).
+                if garrison_units(owner) < count:
                     return False
             case PaySpecimens(count=count):
                 if owner.specimens < count:
@@ -419,6 +421,10 @@ def _is_choice(
             return len(_loss_actions(state, player, (faction,))) > 1
         case LoseHighestInfluence():
             return len(_loss_actions(state, player, highest_factions(owner))) > 1
+        case LoseGarrisonTroops():
+            # The seat picks a troop or a Sardaukar Commander when its
+            # garrison holds both (OQ-105).
+            return owner.troops_garrison > 0 and owner.commanders_garrison > 0
     return False
 
 
@@ -477,7 +483,13 @@ def advance_scouts_effect(state: GameState) -> RuleResult:
             ),
         )
     moved = _moved(state, frame, step=step + 1)
-    return _apply_automatic(moved, player, steps[step], source=f"{source}:{step}")
+    current = steps[step]
+    picked = context_int(context, "picked", owner=_EFFECT_FRAME)
+    if isinstance(current, LoseGarrisonTroops) and picked:
+        # Units already picked one at a time while both kinds were in the
+        # garrison count toward the cost (OQ-105).
+        current = replace(current, count=current.count - picked)
+    return _apply_automatic(moved, player, current, source=f"{source}:{step}")
 
 
 # --- Rewards ahead of a pending choice (OQ-100) -------------------------------------
@@ -646,21 +658,26 @@ def _apply_automatic(
                 ),
             )
         case LoseGarrisonTroops(count=count):
+            # Troops first, then Sardaukar Commanders: a Commander is a troop
+            # for card effects [Bloodlines p. 4] (OQ-105). The seat picks the
+            # kind when its garrison holds both (``_is_choice``), so this
+            # automatic path meets one kind only.
             lost = min(count, owner.troops_garrison)
-            next_owner = replace(
-                owner,
-                troops_garrison=owner.troops_garrison - lost,
-                troops_supply=owner.troops_supply + lost,
-            )
-            return _owner_event(
-                state,
-                next_owner,
-                GameEvent(
-                    event_id=f"{source}:scouts_troops_lost",
-                    kind="scouts_troops_lost",
-                    payload=(("count", lost), ("player", player)),
-                ),
-            )
+            commanders = min(count - lost, owner.commanders_garrison)
+            result = RuleResult(state=state)
+            if lost or not commanders:
+                result = _lose_garrison_troops(state, player, lost, source=source)
+            events = list(result.events)
+            for index in range(commanders):
+                result = lose_unit(
+                    result.state,
+                    player,
+                    "garrison",
+                    commander=True,
+                    source=f"{source}:commander:{index}",
+                )
+                events.extend(result.events)
+            return RuleResult(state=result.state, events=tuple(events))
         case PaySpecimens(count=count):
             paid_count = min(count, owner.specimens)
             next_owner = replace(
@@ -778,6 +795,33 @@ def _apply_automatic(
         outcome.result.state, player, troops=outcome.troops_recruited
     )
     return RuleResult(state=next_state, events=outcome.result.events)
+
+
+def garrison_units(owner: PlayerState) -> int:
+    """Troops and Sardaukar Commanders in the garrison: what a "lose a
+    garrison troop" cost may take (OQ-105, [Bloodlines p. 4])."""
+
+    return owner.troops_garrison + owner.commanders_garrison
+
+
+def _lose_garrison_troops(
+    state: GameState, player: int, count: int, *, source: str
+) -> RuleResult:
+    owner = state.players[player]
+    next_owner = replace(
+        owner,
+        troops_garrison=owner.troops_garrison - count,
+        troops_supply=owner.troops_supply + count,
+    )
+    return _owner_event(
+        state,
+        next_owner,
+        GameEvent(
+            event_id=f"{source}:scouts_troops_lost",
+            kind="scouts_troops_lost",
+            payload=(("count", count), ("player", player)),
+        ),
+    )
 
 
 def _owner_event(state: GameState, owner: PlayerState, event: GameEvent) -> RuleResult:
@@ -949,6 +993,17 @@ def legal_scouts_effect_actions(
             return _loss_actions(state, player, (faction,))
         case LoseHighestInfluence():
             return _loss_actions(state, player, highest_factions(owner))
+        case LoseGarrisonTroops():
+            # A troop or a Sardaukar Commander (OQ-105, user ruling
+            # 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼 수 있게 해야지").
+            return (
+                DomainAction(action_id="scouts_lose_garrison_unit", actor=player),
+                DomainAction(
+                    action_id="scouts_lose_garrison_unit",
+                    actor=player,
+                    arguments=(("commanders", 1),),
+                ),
+            )
     return ()
 
 
@@ -975,6 +1030,8 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
             ),
         )
         return return_specimens(topped, player, returned, source=source)
+    if action.action_id == "scouts_lose_garrison_unit":
+        return _apply_garrison_unit_loss(state, action, frame, picked, source)
     value = str(dict(action.arguments)[action.arguments[0][0]])
     count = getattr(current, "count", 1)
     done = picked + 1 >= count or action.action_id in (
@@ -1110,6 +1167,42 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
                 alliance_recipient=recipient if isinstance(recipient, int) else None,
             )
     raise RuntimeError(f"unknown Scouts choice: {action.action_id}")
+
+
+def _apply_garrison_unit_loss(
+    state: GameState,
+    action: DomainAction,
+    frame: DecisionFrame,
+    picked: int,
+    source: str,
+) -> RuleResult:
+    """One unit of a "lose garrison troops" cost, the kind the seat picked:
+    a Sardaukar Commander is a troop for card effects [Bloodlines p. 4]
+    (OQ-105). Each pick pays one unit; the step moves on once the cost's
+    count is paid."""
+
+    player, _, option, step, _ = _cursor(frame)
+    current = option_steps(option)[step]
+    if not isinstance(current, LoseGarrisonTroops):  # pragma: no cover - legality
+        raise RuntimeError("a garrison unit loss outside its cost step")
+    if picked + 1 >= current.count:
+        cursor_state = _moved(state, frame, step=step + 1)
+    else:
+        context = dict(frame.context)
+        context["picked"] = picked + 1
+        cursor_state = replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+    pick_source = f"{source}:{picked}"
+    if dict(action.arguments).get("commanders") == 1:
+        return lose_unit(
+            cursor_state, player, "garrison", commander=True, source=pick_source
+        )
+    return _lose_garrison_troops(cursor_state, player, 1, source=pick_source)
 
 
 # --- One seat's turn-order choice ---------------------------------------------------

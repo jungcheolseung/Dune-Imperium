@@ -1426,6 +1426,45 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     ] == [None, "garrison,conflict"]
 
 
+def test_tleilaxu_surgeon_still_refuses_sardaukar_commanders() -> None:
+    """OQ-105 (user ruling 2026-10-10) lets a Commander pay the self-paid
+    troop costs, but not Tleilaxu Surgeon's "Lose two troops": its specimens
+    come from the troop supply [Immortality p. 8] (OQ-053, unchanged). A
+    seat whose garrison and Conflict hold only Commanders is offered no
+    sacrifice, and one with a troop in each zone still pays with those."""
+
+    surgeon = _card("tleilaxu_surgeon")
+    commanders = _reveal(
+        _state(
+            _owner(
+                (surgeon,),
+                troops_garrison=0,
+                troops_supply=12,
+                commanders_garrison=1,
+                commanders_conflict=1,
+            ),
+            config=IMMORTALITY_BLOODLINES,
+        )
+    )
+    assert legal_reveal_troop_sacrifice_actions(commanders, 0) == ()
+    mixed = _reveal(
+        _state(
+            _owner(
+                (surgeon,),
+                troops_garrison=1,
+                troops_conflict=1,
+                troops_supply=10,
+                commanders_garrison=1,
+            ),
+            config=IMMORTALITY_BLOODLINES,
+        )
+    )
+    assert [
+        dict(a.arguments).get("zones")
+        for a in legal_reveal_troop_sacrifice_actions(mixed, 0)
+    ] == [None, "garrison,conflict"]
+
+
 def test_tleilaxu_surgeon_offers_no_payment_at_the_tleilaxu_track_end() -> None:
     # On the track's last space a further advance does nothing (OQ-048), so
     # the two specimens would buy nothing and are not offered (OQ-071, user

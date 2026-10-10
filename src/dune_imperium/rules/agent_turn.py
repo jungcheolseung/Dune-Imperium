@@ -955,14 +955,25 @@ def _actions_for_affordable_costs(
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
-        # Navigation Chamber: "Board spaces cost you 1 spice or 1 Solari
-        # less" [Tech tile face]; each discount is its own placement choice.
-        variants: list[tuple[str | None, ResourceCost]] = [(None, cost)]
+        # Navigation Chamber: "Board spaces cost you [1 spice] or [1 Solari]
+        # less." [Tech tile face] (bloodlines.md: "board space 비용이 spice 1
+        # 또는 Solari 1 줄어든다" [Bloodlines p. 7]). The tile has no "may",
+        # so the cut always applies, as the rulebook's "the Tech tile costs
+        # him 1 less Spice" [Bloodlines p. 7] and every other cost cut here
+        # (Duncan's below, Sardaukar High Command, the High Council Tech
+        # discount) do; the printed "or" is a choice only on a cost holding
+        # both resources, which no 4-player space has (OQ-104, project
+        # reading). Spice Refinery's and Gather Support's arrow payments are
+        # cost options [Board Guide pp. 1-2], so the cut reaches them; their
+        # free option and water-only costs keep the plain variant.
+        variants: list[tuple[str | None, ResourceCost]] = []
         if has_tech(owner.tech_ids, TechAbility.SPACE_DISCOUNT):
             if cost.spice >= 1:
                 variants.append(("spice", replace(cost, spice=cost.spice - 1)))
             if cost.solari >= 1:
                 variants.append(("solari", replace(cost, solari=cost.solari - 1)))
+        if not variants:
+            variants.append((None, cost))
         for discount, effective in variants:
             if not _can_afford(owner, effective):
                 continue

@@ -943,6 +943,108 @@ def test_piters_garrison_troop_is_the_undeployable_one() -> None:
     assert context["undeployable_troops"] == 0
 
 
+# OQ-105, user ruling 2026-10-10: "3은 그럼 통일해야지. 지휘관도 낼 수 있게
+# 해야지". docs/rules/bloodlines.md 3: "Commander는 Conflict에서 strength 2인
+# "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는
+# Commander에도 적용된다." [Bloodlines p. 4], like Holy War (OQ-036) and the
+# Intrigue "Lose troops" costs (OQ-038).
+BLOODLINES_IMMORTALITY = RulesetConfig(
+    bloodlines=True, immortality=True, promo_cards=True
+)
+
+
+def _piter_losses(state: GameState) -> set[tuple[str, int]]:
+    return {
+        (str(dict(a.arguments)["zone"]), int(dict(a.arguments).get("commanders", 0)))
+        for a in legal_agent_card_payment_actions(state, 0)
+        if a.action_id == "lose_agent_card_troop"
+    }
+
+
+def _piter_with(**units: int) -> GameState:
+    piter = _tleilaxu("piter_genius_advisor")
+    return _place(
+        _state(_owner((piter,), **units), config=BLOODLINES_IMMORTALITY),
+        piter,
+        "assembly_hall",
+    )
+
+
+def test_piter_may_pay_with_a_garrison_commander_alone() -> None:
+    """OQ-105 (user ruling 2026-10-10): a garrison holding only a Sardaukar
+    Commander can pay "Lose a troop"; the Commander goes back to the
+    seat's supply."""
+
+    state = _piter_with(troops_garrison=0, troops_supply=12, commanders_garrison=1)
+    assert _piter_losses(state) == {("garrison", 1)}
+    result = apply_agent_card_payment(
+        state,
+        _payment(state, "lose_agent_card_troop", zone="garrison", commanders=1),
+    )
+    owner = result.state.players[0]
+    assert (owner.commanders_garrison, owner.commanders_supply) == (0, 1)
+    # The first research space takes one specimen from the troop supply.
+    assert owner.troops_supply == 12 - 1
+    assert owner.specimens == 1
+    assert len(owner.hand) == 2
+    assert owner.research_space == "c1r3"
+    lost = [dict(e.payload) for e in result.events if e.kind == "unit_lost"]
+    assert lost == [{"commanders": 1, "player": 0, "zone": "garrison"}]
+
+
+def test_piter_offers_troop_or_commander_in_each_zone() -> None:
+    """With both kinds in both zones the seat picks the zone and the kind
+    (OQ-105, as OQ-038 does for the Intrigue costs)."""
+
+    state = _piter_with(
+        troops_garrison=1,
+        troops_conflict=1,
+        troops_supply=10,
+        commanders_garrison=1,
+        commanders_conflict=1,
+    )
+    assert _piter_losses(state) == {
+        ("garrison", 0),
+        ("garrison", 1),
+        ("conflict", 0),
+        ("conflict", 1),
+    }
+    result = apply_agent_card_payment(
+        state,
+        _payment(state, "lose_agent_card_troop", zone="conflict", commanders=1),
+    )
+    owner = result.state.players[0]
+    assert (owner.commanders_conflict, owner.commanders_supply) == (0, 1)
+    assert (owner.troops_garrison, owner.troops_conflict) == (1, 1)
+    assert len(owner.hand) == 2
+
+
+def test_piter_without_commanders_offers_troops_only() -> None:
+    """Troops only: the same offer as before the ruling."""
+
+    state = _piter_with(troops_garrison=1, troops_conflict=0, troops_supply=11)
+    assert _piter_losses(state) == {("garrison", 0)}
+    assert all(
+        "commanders" not in dict(a.arguments)
+        for a in legal_agent_card_payment_actions(state, 0)
+    )
+
+
+def test_the_codec_holds_piters_commander_loss_with_bloodlines() -> None:
+    codec = ActionCodec(BLOODLINES_IMMORTALITY)
+    for zone in ("garrison", "conflict"):
+        action = DomainAction(
+            "lose_agent_card_troop", 0, (("commanders", 1), ("zone", zone))
+        )
+        assert codec.decode(codec.encode(action), 0) == action
+    plain = {
+        template.arguments
+        for template in ActionCodec(IMMORTALITY).catalog
+        if template.action_id == "lose_agent_card_troop"
+    }
+    assert plain == {(("zone", "garrison"),), (("zone", "conflict"),)}
+
+
 def test_the_codec_holds_the_tleilaxu_choices() -> None:
     codec = ActionCodec(IMMORTALITY)
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}

@@ -146,6 +146,13 @@ def main() -> None:
             host.select_option("#seat-selects select[data-seat='1']", "human")
             host.select_option("#seat-selects select[data-seat='2']", "heuristic")
             host.select_option("#seat-selects select[data-seat='3']", "heuristic")
+            # The launcher passes no --seating: the server's default holds.
+            check.ok(
+                host.is_checked("#opt-shuffle-seats"),
+                "the seat shuffle opens checked (the server's default)",
+            )
+            # The player below claims seat 2 by its number.
+            host.uncheck("#opt-shuffle-seats")
             set_rule_options(host)
             host.click("#create-game")
             host.wait_for_selector("#lobby-screen:not([hidden])")
