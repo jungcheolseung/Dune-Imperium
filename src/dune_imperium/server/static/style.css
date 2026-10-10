@@ -1301,7 +1301,18 @@ kbd {
   margin-bottom: 0.2rem;
 }
 .hand-counts { display: inline-flex; gap: 0.8rem; }
-.hand-zones { display: flex; gap: 1.2rem; align-items: flex-start; overflow-x: auto; }
+/* The row keeps one hand card's height (110px wide, a 695x970 face, its
+   2px border and the strip's 3px padding) even when the hand is empty or
+   holds only the smaller Intrigue cards. The board above is square and
+   takes the height left over, so a shorter row grew it, wider too, on a
+   Reveal turn with nothing left in hand (user, 2026-10-11). */
+.hand-zones {
+  display: flex;
+  gap: 1.2rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  min-height: calc((110px - 4px) * 970 / 695 + 10px);
+}
 .hand-cards { flex: 0 1 auto; min-width: 0; }
 .intrigue-cards { flex: 0 1 auto; min-width: 80px; border-left: 1px solid var(--line); padding-left: 0.8rem; }
 

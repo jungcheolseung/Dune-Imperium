@@ -223,11 +223,12 @@ function renderSeats() {
     const stats = document.createElement("div");
     stats.className = "stats";
     /* Counts that are not already visible on a board track stay at a glance.
+       Spice before Solari (user, 2026-10-11: "스파이스/솔라리/물 순으로").
        Immortality p. 16 names the green cube as the Specimen icon. */
     stats.append(
       statNode("victory_point", phraseText("{victory_point}"), player.victory_points),
-      statNode("solari", phraseText("{solari}"), player.resources.solari),
       statNode("spice", phraseText("{spice}"), player.resources.spice),
+      statNode("solari", phraseText("{solari}"), player.resources.solari),
       statNode("water", phraseText("{water}"), player.resources.water),
       statNode("intrigue", phraseText("{intrigue}"), player.intrigue_card_count),
     );

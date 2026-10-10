@@ -109,8 +109,8 @@ def check_compact_stats(page) -> None:
                 statTitles: stats.map((s) => s.title),
                 expectedTitles: [
                     phraseText('{victory_point}'),
-                    phraseText('{solari}'),
                     phraseText('{spice}'),
+                    phraseText('{solari}'),
                     phraseText('{water}'),
                     phraseText('{intrigue}'),
                     phraseText('{specimen}'),
