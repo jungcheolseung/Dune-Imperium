@@ -366,12 +366,20 @@ POSITION_LIMIT: Final = 16
 FRAME_QUALIFIERS: Final = frozenset(
     {"card_id", "item_id", "mission_id", "source", "space_id"}
 )
-# Chance families whose drawn values are not indexed: whole deck orders and
-# the one fixed outcome of a pause.
-SKIPPED_CHANCE_FAMILIES: Final = frozenset({"discard_shuffle", "pause"})
+# Chance families whose drawn values are not indexed: every family whose
+# last segment ends in ``SHUFFLE_SUFFIX`` (a whole pile's new order:
+# ``discard_shuffle``, ``intrigue_shuffle``, ``contract_shuffle``, ...), and
+# the ``SKIPPED_CHANCE_FAMILIES`` (the one fixed outcome of a pause).
+SHUFFLE_SUFFIX: Final = "_shuffle"
+SKIPPED_CHANCE_FAMILIES: Final = frozenset({"pause"})
+# Event kinds whose ``card_id`` the census counts as a played card, as
+# ``coverage.collect_game_coverage`` reads the event log: a card revealed as
+# it arrives in its owner's Reveal turn, and a Graft partner.
+PLAY_EVENT_KINDS: Final = frozenset({"card_grafted", "personal_card_late_revealed"})
 # ``simulation.coverage``'s census dimensions, by where they come from: the
-# recorded steps (computed here, with positions) or the final event log
-# (``collect_game_coverage(final_state, ())``, a count only).
+# recorded steps and the events each one reported (computed here, with
+# positions; ``cards_played`` includes the ``PLAY_EVENT_KINDS`` plays) or the
+# final event log (``collect_game_coverage(final_state, ())``, a count only).
 CENSUS_STEP_DIMENSIONS: Final = (
     "action_ids",
     "agent_placements",
@@ -380,7 +388,6 @@ CENSUS_STEP_DIMENSIONS: Final = (
 )
 CENSUS_EVENT_DIMENSIONS: Final = (
     "cards_acquired",
-    "cards_played",
     "conflicts",
     "contracts",
     "event_kinds",
@@ -402,6 +409,13 @@ def chance_family(decision_id: str) -> str:
     return _INTEGER_TOKEN.sub("", decision_id)
 
 
+def indexes_values(family: str) -> bool:
+    """Whether a chance ``family``'s drawn values become ``chance_values`` keys."""
+
+    last = family.rpartition(":")[2]
+    return not (last.endswith(SHUFFLE_SUFFIX) or last in SKIPPED_CHANCE_FAMILIES)
+
+
 def _text(value: object) -> str:
     return str(value.value) if isinstance(value, enum.Enum) else str(value)
 
@@ -417,13 +431,34 @@ def _seats(before: object, after: object) -> Iterator[tuple[Any, Any]]:
     )
 
 
+def _held(seat: object) -> int:
+    # ``hand_public`` names cards of ``hand``, so it is not counted again.
+    return _length(seat, "hand") + _length(seat, "in_play")
+
+
+def _piles(seat: object) -> int:
+    return _length(seat, "deck") + _length(seat, "discard_pile")
+
+
 def _drew_cards(before: object, after: object) -> bool:
+    """Whether a seat drew an Imperium card during the step.
+
+    A seat drew when its deck shrank, or when its hand and in-play cards
+    together grew while its deck and discard pile together shrank. The
+    first covers a plain draw, also in a step that discards or trashes a
+    hand card as well; the second covers a draw that reshuffles the discard
+    pile into the deck, and a card drawn in the seat's own Reveal turn,
+    which goes from the deck straight to ``in_play``
+    (``card_draw._draw_available``), with or without a reshuffle. Known
+    false positives: a card that leaves the deck for anywhere else
+    (discarded or trashed from its top, a Leader's setup), and a card
+    returned from the discard pile to the hand.
+    """
+
     for old, new in _seats(before, after):
         if _length(new, "deck") < _length(old, "deck"):
             return True
-        if _length(new, "hand") > _length(old, "hand") and _length(
-            new, "discard_pile"
-        ) < _length(old, "discard_pile"):
+        if _held(new) > _held(old) and _piles(new) < _piles(old):
             return True
     return False
 
@@ -465,14 +500,16 @@ def step_keys(
       ``frames:<kind>@<context>=<value>`` for its ``FRAME_QUALIFIERS``;
     - ``offered:<action_id>`` per distinct offered id, and
       ``forced:<kind>:<1|2|3+>`` by how many actions were offered;
-    - ``draws:card@<owner>`` when a seat's deck shrank, or its hand grew
-      while its discard pile shrank (a reshuffle); ``draws:intrigue@<owner>``
-      when the Intrigue deck shrank, or a seat's Intrigue cards grew while
-      the Intrigue discard shrank. The owner is the step's ``action_id``,
-      or ``chance:<family>`` for a chance step;
-    - ``events:<kind>`` per event the step reported;
-    - ``chance_values:<family>=<value>`` per drawn value, except the
-      ``SKIPPED_CHANCE_FAMILIES``.
+    - ``draws:card@<owner>`` when a seat drew an Imperium card
+      (``_drew_cards``); ``draws:intrigue@<owner>`` when the Intrigue deck
+      shrank, or a seat's Intrigue cards grew while the Intrigue discard
+      shrank. The owner is the step's ``action_id``, or
+      ``chance:<family>`` for a chance step;
+    - ``events:<kind>`` per event the step reported, and
+      ``cards_played:<card>`` per ``PLAY_EVENT_KINDS`` event, as the census
+      counts it from the event log;
+    - ``chance_values:<family>=<value>`` per drawn value, for the families
+      ``indexes_values`` keeps.
     """
 
     keys: list[str] = []
@@ -509,7 +546,7 @@ def step_keys(
         family = chance_family(str(getattr(step, "decision_id", "")))
         owner = f"chance:{family}"
         keys.append(f"chance_kinds:{family}")
-        if family.rpartition(":")[2] not in SKIPPED_CHANCE_FAMILIES:
+        if indexes_values(family):
             for value in getattr(step, "values", ()):
                 drawn = _COPY_TOKEN.sub("", normalize(str(value)))
                 keys.append(f"chance_values:{family}={drawn}")
@@ -518,10 +555,13 @@ def step_keys(
             keys.append(f"draws:card@{owner}")
         if _drew_intrigue(before, after):
             keys.append(f"draws:intrigue@{owner}")
-    keys.extend(
-        f"events:{_text(getattr(event, 'kind', ''))}"
-        for event in getattr(transition, "events", ())
-    )
+    for event in getattr(transition, "events", ()):
+        kind = _text(getattr(event, "kind", ""))
+        keys.append(f"events:{kind}")
+        if kind in PLAY_EVENT_KINDS:
+            card_id = dict(getattr(event, "payload", ())).get("card_id")
+            if isinstance(card_id, str):
+                keys.append(f"cards_played:{normalize(card_id)}")
     return keys
 
 
@@ -547,9 +587,10 @@ class KeyIndex:
         ``positions`` (distinct step indices) is kept for the
         ``FULL_POSITION_DIMENSIONS`` and wherever the count is at most
         ``POSITION_LIMIT``. ``census`` adds the event-derived census counts
-        (``collect_game_coverage(final_state, ())``), and ``leaders`` one
-        ``leaders:<id>`` per seat; those carry a count only. A key both
-        sources count keeps its first step but no positions.
+        (``collect_game_coverage(final_state, ())``) except its
+        ``CENSUS_STEP_DIMENSIONS``, which the steps already count (the
+        event-derived card plays included), and ``leaders`` one
+        ``leaders:<id>`` per seat; those carry a count only.
         """
 
         entries: dict[str, list[Any]] = {}
@@ -560,12 +601,10 @@ class KeyIndex:
                 entry.append(sorted(set(hits)))
             entries[key] = entry
         for dimension, counts in (census or {}).items():
+            if dimension in CENSUS_STEP_DIMENSIONS:
+                continue
             for name, count in counts.items():
-                key = f"{dimension}:{name}"
-                found = entries.get(key)
-                entries[key] = (
-                    [count] if found is None else [found[0] + count, found[1]]
-                )
+                entries[f"{dimension}:{name}"] = [count]
         for leader in leaders:
             key = f"leaders:{leader}"
             entries[key] = [entries.get(key, [0])[0] + 1]

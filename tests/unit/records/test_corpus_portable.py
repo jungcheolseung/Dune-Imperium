@@ -15,6 +15,7 @@ import pytest
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.records.portable import trace
@@ -234,6 +235,7 @@ def _seat(**zones: tuple[str, ...]) -> SimpleNamespace:
         "deck": (),
         "hand": (),
         "discard_pile": (),
+        "in_play": (),
         "intrigue_cards": (),
     }
     return SimpleNamespace(**{**empty, **zones})
@@ -251,11 +253,14 @@ def _keys(
     step: object,
     after: SimpleNamespace | None = None,
     legal: tuple[DomainAction, ...] = (),
-    events: tuple[str, ...] = (),
+    events: tuple[str | GameEvent, ...] = (),
 ) -> list[str]:
     transition = SimpleNamespace(
         state=after if after is not None else before,
-        events=tuple(SimpleNamespace(kind=kind) for kind in events),
+        events=tuple(
+            SimpleNamespace(kind=event) if isinstance(event, str) else event
+            for event in events
+        ),
     )
     return step_keys(before, step, transition, legal, normalize=normalize_instance_id)
 
@@ -330,6 +335,49 @@ def test_draws_are_state_deltas_inside_another_step() -> None:
     )
 
 
+def _draws(before: SimpleNamespace, after: SimpleNamespace) -> list[str]:
+    step = DomainAction("resolve_board_effect", 0)
+    return [key for key in _keys(before, step, after) if key.startswith("draws:")]
+
+
+def test_a_draw_in_the_reveal_turn_goes_straight_to_in_play() -> None:
+    # card_draw._draw_available reveals a card drawn in its owner's Reveal
+    # turn at once (reveal_late_arrivals): the hand never grows. Here the
+    # draw also reshuffles the discard pile into the deck (full.h4.9's
+    # round:10:player:1:tech_draw:discard_shuffle).
+    played = tuple(f"p{index}" for index in range(6))
+    discard = tuple(f"d{index}" for index in range(19))
+    before = _state(_seat(in_play=played, discard_pile=discard))
+    after = _state(_seat(in_play=(*played, "d0"), deck=discard[1:]))
+    chance = ChanceOutcome("round:10:player:1:tech_draw:discard_shuffle", discard)
+    assert "draws:card@chance:round:player:tech_draw:discard_shuffle" in _keys(
+        before, chance, after
+    )
+    # Without a reshuffle: the deck shrinks into in_play.
+    before = _state(_seat(in_play=played, deck=("a", "b")))
+    after = _state(_seat(in_play=(*played, "a"), deck=("b",)))
+    assert _draws(before, after) == ["draws:card@resolve_board_effect"]
+
+
+def test_a_draw_beside_a_discard_or_a_played_card_still_counts() -> None:
+    # Discard a hand card, then draw one, in one step: the hand keeps its
+    # size and the deck and discard pile together keep theirs.
+    before = _state(_seat(hand=("h",), deck=("a", "b")))
+    after = _state(_seat(hand=("a",), deck=("b",), discard_pile=("h",)))
+    assert _draws(before, after) == ["draws:card@resolve_board_effect"]
+    # A public hand card played while another is drawn (hand_public is part
+    # of hand, so it is not counted twice).
+    before = _state(_seat(hand=("h",), hand_public=("h",), deck=("a",)))
+    after = _state(_seat(hand=("a",), in_play=("h",)))
+    assert _draws(before, after) == ["draws:card@resolve_board_effect"]
+    # Cards moving between hand, play and discard are no draw.
+    before = _state(_seat(hand=("h", "i"), deck=("a",)))
+    after = _state(_seat(hand=("i",), in_play=("h",), deck=("a",)))
+    assert _draws(before, after) == []
+    after = _state(_seat(in_play=("h",), deck=("a",), discard_pile=("i",)))
+    assert _draws(before, after) == []
+
+
 def test_chance_values_skip_deck_orders_and_pauses() -> None:
     state = _state(_seat())
     shuffle = ChanceOutcome("round:2:player:1:discard_shuffle", ("x:1", "y:2"))
@@ -340,6 +388,17 @@ def test_chance_values_skip_deck_orders_and_pauses() -> None:
     )
     assert _keys(state, shuffle) == ["chance_kinds:round:player:discard_shuffle"]
     assert _keys(state, pause) == ["chance_kinds:round:conflict_end:pause"]
+    # Every whole-pile permutation, whatever pile it orders.
+    contracts = ChanceOutcome(
+        "round:scouts:contract_shuffle", tuple(f"contract_{i}" for i in range(22))
+    )
+    intrigue = ChanceOutcome(
+        "round:3:player:0:board:secrets:intrigue_shuffle", ("intrigue:ambush:1",)
+    )
+    assert _keys(state, contracts) == ["chance_kinds:round:scouts:contract_shuffle"]
+    assert _keys(state, intrigue) == [
+        "chance_kinds:round:player:board:secrets:intrigue_shuffle"
+    ]
     assert _keys(state, event) == [
         "chance_kinds:round:scouts:event",
         "chance_values:round:scouts:event=choam_bargain",
@@ -364,12 +423,46 @@ def test_positions_are_kept_in_full_only_where_the_schema_says() -> None:
     assert row["offered:many"] == [20, 0]
     assert row["offered:few"] == [16, 0, list(range(16))]
     assert row["draws:card@x"] == [20, 0, list(range(20))]
-    # A key both the steps and the event log count keeps no positions.
-    assert row["cards_played:dagger"] == [3, 20]
+    # The steps count every card play, the event-derived ones too, so the
+    # census's step dimensions are left to them.
+    assert row["cards_played:dagger"] == [1, 20, [20]]
     assert row["event_kinds:k"] == [3]
     assert row["leaders:leader_a"] == [2]
     assert list(row) == sorted(row)
     assert trace.census_of(row) == {
-        "cards_played": {"dagger": 3},
+        "cards_played": {"dagger": 1},
         "event_kinds": {"k": 3},
     }
+
+
+def test_a_card_played_by_an_event_counts_at_its_step() -> None:
+    # collect_game_coverage counts these two events' cards as played cards
+    # from the event log; the keys count them at the step that reported
+    # them, so the key has its first step and positions.
+    revealed = GameEvent(
+        "x:late_reveal",
+        "personal_card_late_revealed",
+        (("card_id", "imperium:spice_hunt:2"), ("player", 1)),
+    )
+    grafted = GameEvent(
+        "round:4:player:0:graft:tleilaxu:clandestine_meeting:1",
+        "card_grafted",
+        (("card_id", "tleilaxu:clandestine_meeting:1"), ("player", 0)),
+    )
+    step = DomainAction("resolve_board_effect", 0)
+    state = _state(_seat())
+    keys = _keys(state, step, events=(revealed, grafted, "agent_placed"))
+    assert keys == [
+        "action_ids:resolve_board_effect",
+        "events:personal_card_late_revealed",
+        "cards_played:spice_hunt",
+        "events:card_grafted",
+        "cards_played:clandestine_meeting",
+        "events:agent_placed",
+    ]
+    index = KeyIndex()
+    index.add(0, ["action_ids:agent_turn", "cards_played:dagger"])
+    index.add(7, keys)
+    row = index.row_keys({"cards_played": {"spice_hunt": 1, "clandestine_meeting": 1}})
+    assert row["cards_played:spice_hunt"] == [1, 7, [7]]
+    assert row["cards_played:clandestine_meeting"] == [1, 7, [7]]
