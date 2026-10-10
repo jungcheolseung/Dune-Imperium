@@ -9,6 +9,7 @@ import pytest
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.records.problems import (
+    HumanProblem,
     Resolved,
     answer,
     build_suite,
@@ -301,10 +302,44 @@ def test_a_position_an_engine_change_moved_does_not_resolve(game: SavedGame) -> 
 
     resolved = resolve(replace(suite, problems=(moved, second)))
 
-    assert "differs from the judged one: seat 0 victory_points" in str(
+    assert "differs from the judged one: players[0] victory_points 99 then" in str(
         resolved[first.problem_id]
     )
     assert isinstance(resolved[second.problem_id], Resolved)
+
+
+def test_the_position_state_keeps_every_seat_field_and_ignores_new_ones(
+    game: SavedGame,
+) -> None:
+    judged, confirmed = _rows(game, ["human"])
+    suite = build_suite([game], judged, confirmed, "test")
+    (problem,) = suite.problems
+    seat = problem.judged_state["players"][0]
+    # Every field, card zones by their real names (a misspelt list once
+    # left the discard pile, cards in play, Intrigue and Contracts out).
+    for name in ("discard_pile", "in_play", "intrigue_cards", "commanders_garrison"):
+        assert name in seat
+    discard = [*seat["discard_pile"], "imperium:not_a_card:0"]
+
+    def with_seat(**fields: object) -> HumanProblem:
+        players = [dict(entry) for entry in problem.judged_state["players"]]
+        players[0] = {**players[0], **fields}
+        return replace(
+            problem, judged_state={**problem.judged_state, "players": players}
+        )
+
+    def resolves(changed: HumanProblem) -> object:
+        return resolve(replace(suite, problems=(changed,)))[problem.problem_id]
+
+    assert "players[0] discard_pile" in str(resolves(with_seat(discard_pile=discard)))
+    assert "players[0] retired_field is gone" in str(
+        resolves(with_seat(retired_field=1))
+    )
+    # A snapshot without a field this engine has still matches.
+    players = [dict(entry) for entry in problem.judged_state["players"]]
+    del players[0]["memories"]
+    older = replace(problem, judged_state={**problem.judged_state, "players": players})
+    assert isinstance(resolves(older), Resolved)
 
 
 def test_the_network_move_goes_through_the_rewrite_bridges(tmp_path: Path) -> None:
