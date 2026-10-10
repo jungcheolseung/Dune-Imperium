@@ -55,7 +55,9 @@ dad97e2021144d45b5b4f022e07bd3b3.
   ``agent_effects`` window stores the card it names
   (``CONTROL_THE_SPICE_TRASH_INTENT`` keyed by the paying card,
   ``STITCHED_HORROR_TRASH_INTENT`` by the Stitched Horror card), and this
-  window trashes that card when it is legal, else declines. Every other
+  window trashes that card when it is legal, else declines. Liet Kynes'
+  replacement frame's ``draw_planetologist_intrigue`` (its Intrigue card,
+  OQ-106) is taken first, before the trash. Every other
   source (the research hexes c3r3 / c7r5 ``TrashCustomAbility``, Throne Room
   Politics ``TrashAgentAbility``, Liet Kynes' sandworm replacement, tech and
   Scouts trash icons) and a Control the Spice or Stitched Horror trash
@@ -433,8 +435,16 @@ def _stored_trash(run: DecisionRun, source: str) -> object:
 
 
 def optional_trash(run: DecisionRun) -> DomainAction | None:
-    """One optional trash, whatever granted it."""
+    """One optional trash, whatever granted it.
 
+    Liet Kynes' replacement frame also holds its Intrigue card as its own
+    step (``draw_planetologist_intrigue``, user ruling 2026-10-10, OQ-106);
+    it is taken first, as the replacement paid it before the trash.
+    """
+
+    draw = run.first("draw_planetologist_intrigue")
+    if draw is not None:
+        return draw
     decline = run.first("decline_optional_trash")
     trashes = run.by_id("trash_optional_card")
     granted_by = _frame_source(run)

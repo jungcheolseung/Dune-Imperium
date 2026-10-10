@@ -3,7 +3,11 @@
 "You summon no sandworms. For each one you would, instead: trash a card
 (optional), 1 spice, 1 Intrigue card. (Even when the Conflict is protected
 by the Shield Wall.)" Every sandworm summon site asks ``replaces_sandworms``
-and pays the replacement through ``replace_sandworms``.
+and pays the replacement through ``replace_sandworms``. The spice is paid at
+once; the trash and the Intrigue card wait in one frame per replacement,
+each its own step in either order, so the choice that summoned (a Maker
+space's sandworms, Unexpected Allies' Shield Wall, ...) never draws a hidden
+card itself (user ruling 2026-10-10, OQ-106).
 """
 
 from dataclasses import replace
@@ -13,7 +17,6 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import replace_player
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.optional_trash import optional_trash_frame
 
 
@@ -30,7 +33,10 @@ def replace_sandworms(
     *,
     source: str,
 ) -> RuleResult:
-    """Pay ``count`` replacements: spice and Intrigue now, trashes as frames."""
+    """Pay ``count`` replacements: the spice now, then one frame each for
+    the optional trash and the Intrigue card (``draw_planetologist_intrigue``),
+    resolved in either order (user ruling 2026-10-10, OQ-106: "그 외에는
+    전부 나누자")."""
 
     if count < 1:
         return RuleResult(state=state)
@@ -40,13 +46,11 @@ def replace_sandworms(
         resources=replace(owner.resources, spice=owner.resources.spice + count),
     )
     working = replace(state, players=replace_player(state.players, paid))
-    drawn = draw_or_queue_intrigue_cards(
-        working, player, count, source=f"{source}:planetologist"
-    )
-    working = drawn.state
     for index in range(count):
         working = working.push_decision(
-            optional_trash_frame(player, f"{source}:planetologist:{index}")
+            optional_trash_frame(
+                player, f"{source}:planetologist:{index}", intrigue=True
+            )
         )
     return RuleResult(
         state=working,
@@ -56,6 +60,5 @@ def replace_sandworms(
                 kind="sandworms_replaced",
                 payload=(("count", count), ("player", player), ("spice", count)),
             ),
-            *drawn.events,
         ),
     )

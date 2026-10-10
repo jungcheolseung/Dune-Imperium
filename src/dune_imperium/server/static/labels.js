@@ -317,6 +317,7 @@ const ACTION_LABELS = {
   deploy_leader_agent: "Into the Fray: {agent}를 {conflict}에 배치",
   trash_optional_card: "카드 {trash} (선택)",
   decline_optional_trash: "{trash} 거절",
+  draw_planetologist_intrigue: "{intrigue} {draw} (Arrakis Planetologist)",
 };
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to
    prettify(kind) for anything not listed here. */

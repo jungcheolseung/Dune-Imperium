@@ -1295,3 +1295,71 @@ def test_cunning_trash_can_be_taken_back_and_its_draw_cannot() -> None:
     assert len(manager._get(game_id).state.players[0].hand) == len(hand_before)
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
 
+
+# ------------------------------------------------ Arrakis Planetologist
+
+
+def test_planetologist_summon_can_be_taken_back_and_its_intrigue_cannot() -> None:
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): Liet Kynes'
+    replacement "[trash a card] [1 spice] [1 Intrigue]" [Liet Kynes card]
+    holds its Intrigue card as its own step, so the summon at a Maker space
+    reveals nothing and stays in the seat's undo window; the Intrigue draw
+    closes it (OQ-010). Before the split the summon drew it at once.
+
+    Seed 0 with Bloodlines: seat 0's first turn, given Liet Kynes, Maker
+    hooks and a water by hand (the served flags and the window are checked,
+    not an actual undo, which replays the log from the game's start).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, bloodlines=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        players=(
+            replace(
+                owner,
+                leader_id="liet_kynes",
+                leader_face_id="liet_kynes",
+                maker_hooks=True,
+                resources=replace(owner.resources, water=1),
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+
+    def served() -> list[dict[str, object]]:
+        return _rows(manager.legal_actions(game_id, 0)["actions"])
+
+    placement = next(
+        row
+        for row in served()
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("space_id") == "hagga_basin"
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    summon = next(
+        row for row in served() if row["action_id"] == "summon_maker_sandworms"
+    )
+    assert summon["undoable"] is True
+    intrigue_before = manager._get(game_id).state.players[0].intrigue_cards
+
+    summary = _play_raw(manager, summary, index=_int(summon["index"]))
+    assert manager._get(game_id).state.players[0].intrigue_cards == intrigue_before
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    rows = served()
+    draw = next(
+        row for row in rows if row["action_id"] == "draw_planetologist_intrigue"
+    )
+    assert draw["undoable"] is False
+    decline = next(row for row in rows if row["action_id"] == "decline_optional_trash")
+    assert decline["undoable"] is True
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    held = manager._get(game_id).state.players[0].intrigue_cards
+    assert len(held) == len(intrigue_before) + 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+

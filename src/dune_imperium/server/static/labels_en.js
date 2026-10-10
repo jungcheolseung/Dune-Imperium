@@ -282,7 +282,8 @@ const LABELS_EN = {
     "pay_leader_signet_water": "Pay {water} -> {draw} 2 cards ({signet_ring})",
     "deploy_leader_agent": "Into the Fray: Deploy {agent} to {conflict}",
     "trash_optional_card": "{trash} card (optional)",
-    "decline_optional_trash": "Decline {trash}"
+    "decline_optional_trash": "Decline {trash}",
+    "draw_planetologist_intrigue": "{draw} {intrigue} (Arrakis Planetologist)"
   },
   "SEAT_KINDS": {
     "human": "Human",

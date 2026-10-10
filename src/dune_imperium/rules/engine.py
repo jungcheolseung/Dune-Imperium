@@ -790,6 +790,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_navigation": apply_navigation_play,
     "decline_navigation": apply_navigation_play,
     "decline_optional_trash": apply_optional_trash,
+    # Arrakis Planetologist's Intrigue card, its own step in the trash
+    # frame (user ruling 2026-10-10, OQ-106).
+    "draw_planetologist_intrigue": apply_optional_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
     "recall_spy_for_leader_placement": apply_leader_spy_action,

@@ -623,6 +623,12 @@ def test_desert_power_replacement_credits_eliminate_allies_in_combat_reveal() ->
         if dict(action.arguments)["card_id"] == eliminate_allies
     )
     resolved = apply_optional_trash(replaced, trash).state
+    # The replacement's Intrigue card is its own step in the same frame
+    # (user ruling 2026-10-10, OQ-106); the trash was credited before it.
+    assert dict(resolved.decision_stack[-2].context)["reveal_troops_recruited"] == 2
+    resolved = apply_optional_trash(
+        resolved, DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+    ).state
 
     assert resolved.decision_stack[-1].kind == "reveal"
     assert resolved.players[0].troops_garrison == 5

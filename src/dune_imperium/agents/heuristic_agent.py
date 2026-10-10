@@ -71,6 +71,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # 2026-10-10, OQ-027 (d)), which at 2.0 the agent takes before the
     # Intrigue slot and the recall (1.0 each, or a decline).
     "resolve_imperial_privilege_without_recall": 2.0,
+    # Liet Kynes' replacement Intrigue card, its own step beside the trash
+    # (user ruling 2026-10-10, OQ-106): taken first, like an icon.
+    "draw_planetologist_intrigue": 2.0,
     "gather_intelligence": 2.0,
     "resolve_espionage_place_spy": 2.0,
     "advance_feyd_track": 2.0,

@@ -367,6 +367,10 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Also in v142 (OQ-106): Cunning's and Insider Information's draw is its own
 # ``resolve_intrigue_rewards`` when the owner resolves the line's trash slot
 # first. No template change.
+# Also in v142 (OQ-106): Liet Kynes' Arrakis Planetologist pays a replaced
+# sandworm's spice at once and holds its Intrigue card in the replacement's
+# trash frame as its own step: Bloodlines catalogs add the nullary
+# ``draw_planetologist_intrigue``.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -1143,6 +1147,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "recall_conflict_agent_for_agent_card",
             "pay_leader_signet_water",
             "decline_optional_trash",
+            # Liet Kynes' Arrakis Planetologist: the replacement's Intrigue
+            # card, its own step beside the trash (codec v142, OQ-106).
+            "draw_planetologist_intrigue",
             "take_tuek_sietch_spice",
             "take_tuek_sietch_card",
             "place_leader_bonus_spice",

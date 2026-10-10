@@ -368,6 +368,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_planetologist_intrigue (OQ-106)
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
