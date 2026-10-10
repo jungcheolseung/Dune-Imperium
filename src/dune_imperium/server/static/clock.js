@@ -31,6 +31,7 @@ function clockWallNow() {
    clock goes on: once the wall clock pulls this far ahead, the page asks
    for a fresh snapshot rather than guess. */
 const CLOCK_STALL_MS = 2000;
+const CLOCK_RETRY_MS = 5000;
 
 const playClock = { anchor: null, timer: 0, stallAsked: false };
 
@@ -119,8 +120,9 @@ function formatClock(ms) {
   return hours ? `${hours}:${two(minutes)}:${two(seconds)}` : `${minutes}:${two(seconds)}`;
 }
 
-function clockTitle(text, reading) {
-  return reading && !reading.known ? `${text} · ${t("clock.since_load")}` : text;
+/* `clock` is a reading or the summary's clock: both say whether it is known. */
+function clockTitle(text, clock) {
+  return clock && !clock.known ? `${text} · ${t("clock.since_load")}` : text;
 }
 
 /* A seat panel's total (renderSeats): its own span in the pieces row, not
@@ -130,7 +132,7 @@ function seatClockNode(seat) {
   node.className = "seat-clock";
   node.dataset.clock = "seat";
   node.dataset.clockSeat = String(seat);
-  node.title = clockTitle(t("clock.seat_title", { name: playerLabel(seat) }), clockReading());
+  node.title = clockTitle(t("clock.seat_title", { name: playerLabel(seat) }), state.summary.clock);
   return node;
 }
 
@@ -224,7 +226,13 @@ function clockStalled() {
   if (lag <= CLOCK_STALL_MS) return false;
   if (!playClock.stallAsked) {
     playClock.stallAsked = true;
-    refresh(null, { foreign: true }).catch(showRefreshError);
+    refresh(null, { foreign: true }).catch((error) => {
+      /* Still unreachable (the network is coming back too): ask again. */
+      playClock.stallAsked = false;
+      clearTimeout(playClock.timer);
+      playClock.timer = setTimeout(paintClocks, CLOCK_RETRY_MS);
+      showRefreshError(error);
+    });
   }
   return true;
 }
