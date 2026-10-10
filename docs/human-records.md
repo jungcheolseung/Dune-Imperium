@@ -88,6 +88,7 @@ uv run dune-imperium-records check
 - `records.saves.saved_games(디렉터리)` → `SavedGame`
 - `human_decisions(game)` → 사람이 둔 수마다 그 직전 상태, 합법 행동, 고른 수(`HumanDecision`). 다리가 넣은 수는 사람의 선택이 아니므로 빠진다.
 - 진단 도구 `scripts/records/human_diagnosis.py`가 이것을 쓴다.
+- `records.problems`: 진단에서 두 판정이 일치한 포지션을 기보째 고정한 문제집이다. 포지션은 이 이전으로 되살린다. 채점은 `dune-imperium-records problems check|score`([evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 6절).
 
 ## 5. 한계
 

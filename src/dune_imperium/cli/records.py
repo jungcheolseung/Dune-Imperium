@@ -6,10 +6,16 @@ onto this engine (``records.migration``) and reports per game:
 exact (replays as recorded), migrated (with the bridges it needed), or
 diverged (the first recorded step this engine refuses, and what the engine
 was waiting for instead). See docs/human-records.md.
+
+``problems`` checks or scores a suite of judged human positions
+(``records.problems``): ``check`` resolves every position on this engine,
+``score`` asks agents for them.
 """
 
 import argparse
+import json
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
@@ -18,6 +24,14 @@ from dune_imperium.core.decisions import ChanceDecision, Decision
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.paths import SAVES_DIR
 from dune_imperium.records.migration import MigratedRecord, migrate_record
+from dune_imperium.records.problems import (
+    DEFAULT_SUITE,
+    Resolved,
+    answer,
+    load_suite,
+    resolve,
+    summarize,
+)
 from dune_imperium.records.saves import SavedGame, one_save_per_game, read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
 
@@ -35,12 +49,67 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="check every save, not only the longest save of each game",
     )
+    problems = sub.add_parser("problems", help="a suite of judged human positions")
+    problems.add_argument("action", choices=("check", "score"))
+    problems.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
+    problems.add_argument(
+        "--agents", default="", help="comma-separated agent kinds (score)"
+    )
+    problems.add_argument("--seed", type=int, default=0)
+    problems.add_argument("--json", type=Path, help="write every answer here")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if args.command == "problems":
+        return _problems(args)
     return _check(args.saves_dir, every_save=args.every_save)
+
+
+def _problems(args: argparse.Namespace) -> int:
+    suite = load_suite(args.suite)
+    engine = UprisingRulesEngine()
+    resolved = resolve(suite, engine)
+    positions = [item for item in resolved.values() if isinstance(item, Resolved)]
+    families = sorted({problem.family for problem in suite.problems})
+    print(
+        f"{args.suite}: {len(suite.problems)} problems "
+        f"({', '.join(families)}), {len(positions)} resolve on this engine "
+        f"(codec v{ACTION_CODEC_VERSION})"
+    )
+    for problem_id, item in resolved.items():
+        if not isinstance(item, Resolved):
+            print(f"  unresolved {problem_id}: {item}")
+    if args.action == "check":
+        return 0 if len(positions) == len(suite.problems) else 1
+    kinds = [kind for kind in args.agents.split(",") if kind]
+    if not kinds:
+        raise SystemExit("score needs --agents")
+    report: dict[str, object] = {}
+    for kind in kinds:
+        answers = [answer(position, kind, args.seed, engine) for position in positions]
+        summary = summarize(answers)
+        report[kind] = {
+            "summary": summary,
+            "answers": [asdict(item) for item in answers],
+        }
+        print(f"\n## {kind}")
+        print("group                         n  right  wrong neither  p(right) share")
+        for name, row in summary.items():
+            p_right = row["mean_p_right"]
+            share = row["mean_pair_share"]
+            print(
+                f"{name:28s} {row['n']:3d} {row['right']:6.0%} {row['wrong']:6.0%}"
+                f" {row['neither']:7.0%}"
+                f"  {'' if p_right is None else f'{p_right:7.3f}'}"
+                f"  {'' if share is None else f'{share:5.3f}'}"
+            )
+    if args.json is not None:
+        args.json.write_text(
+            json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+    return 0
 
 
 def _check(directory: Path, *, every_save: bool) -> int:
