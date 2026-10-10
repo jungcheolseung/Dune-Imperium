@@ -30,6 +30,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
+from dune_imperium.rules.owed_draws import next_owed_draw
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
 _BOX = PersonalCardAgentEffect
@@ -344,8 +345,11 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
 
 # Where a triggered draw held as the owner's own step came from
 # (``PlayerState.owed_draws``, user ruling 2026-10-10, OQ-106): English and
-# Korean. Cards (``card:<instance>``) are named from the catalog; Leader
-# abilities keep their printed English name.
+# Korean. Cards (``card:<instance>`` for a "when trashed" trigger,
+# ``acquire:<instance>`` for an acquire box) are named from the catalog, a
+# Tech tile by its catalog name; Leader abilities keep their printed English
+# name.
+_CHOAM_TRANSPORTS = TECH_TILES_BY_ID["choam_transports"].name
 _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "bene_gesserit_4": (
         "Bene Gesserit Influence 4",
@@ -354,6 +358,10 @@ _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "imperial_birthright": ("Imperial Birthright", "Imperial Birthright"),
     "tleilaxu_track": ("Tleilaxu track", "{tleilaxu} 트랙"),
     "hungry_for_spice": ("Hungry for Spice", "Hungry for Spice"),
+    "choam_transports": (
+        _CHOAM_TRANSPORTS,
+        KOREAN_CARD_NAMES["tech"].get("choam_transports", _CHOAM_TRANSPORTS),
+    ),
 }
 _OWED_DECKS = {"draw_owed_intrigue": "intrigue", "draw_owed_card": "card"}
 
@@ -364,7 +372,7 @@ def owed_draw_origin_text(origin: str) -> tuple[str, str]:
     if origin in _OWED_ORIGINS:
         return _OWED_ORIGINS[origin]
     kind, _, key = origin.partition(":")
-    if kind == "card":
+    if kind in ("card", "acquire"):
         card = imperium_card_for_instance(key).card
         return card.name, KOREAN_CARD_NAMES["cards"].get(card.card_id, card.name)
     return origin, origin
@@ -375,21 +383,16 @@ def owed_draw_action_text(
 ) -> tuple[str, str] | None:
     """Name what earned the draw a ``draw_owed_*`` step takes (OQ-106).
 
-    The step takes the oldest waiting draw of its deck, so that one is named.
+    The step takes the deck's oldest immediate draw if one waits, else its
+    oldest (``owed_draws.next_owed_draw``), so that one is named.
     """
 
     deck = _OWED_DECKS.get(action.action_id)
     if deck is None or not 0 <= action.actor < len(state.players):
         return None
-    origin = next(
-        (
-            origin
-            for entry_deck, origin, _ in state.players[action.actor].owed_draws
-            if entry_deck == deck
-        ),
-        None,
-    )
-    return None if origin is None else owed_draw_origin_text(origin)
+    owner = state.players[action.actor]
+    index = next_owed_draw(owner, deck)
+    return None if index is None else owed_draw_origin_text(owner.owed_draws[index][1])
 
 
 def intrigue_faction_choice_text(

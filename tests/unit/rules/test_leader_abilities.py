@@ -1239,11 +1239,13 @@ def test_loyalty_ignores_other_factions_and_leaders() -> None:
     assert other_leader.state.players[0].resources.spice == 0
 
 
-def test_imperial_birthright_waits_as_the_owners_own_step_in_its_turn() -> None:
+def test_imperial_birthright_is_the_owners_next_step_in_its_turn() -> None:
     # "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." [Princess
     # Irulan card]. Inside the seat's own turn the card is not drawn by the
-    # step that raised the Influence: it waits as the seat's own step (user
-    # ruling 2026-10-10, OQ-106: "그 외에는 전부 나누자").
+    # step that raised the Influence: it is the seat's own step (user ruling
+    # 2026-10-10, OQ-106: "그 외에는 전부 나누자"), the very next one (user
+    # decision 2026-10-10, "가 로 가자": "faction bonuses ... may interrupt
+    # this flow", Message from designer).
     owner = PlayerState(player_id=0, leader_id="princess_irulan")
     state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
 
@@ -1263,6 +1265,7 @@ def test_imperial_birthright_waits_as_the_owners_own_step_in_its_turn() -> None:
     ]
     (draw,) = legal_owed_draw_actions(result.state, 0)
     assert draw == DomainAction(action_id="draw_owed_intrigue", actor=0)
+    assert UprisingRulesEngine().legal_actions(result.state, 0) == (draw,)
     drawn = apply_owed_draw(result.state, draw).state
     assert drawn.players[0].intrigue_cards == ("intrigue:test",)
     assert drawn.players[0].owed_draws == ()

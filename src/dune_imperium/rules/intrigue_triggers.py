@@ -492,7 +492,7 @@ def apply_trigger_contract_action(
     revealed = state.contract_bank[:count]
     instance_id = str(dict(action.arguments)["instance_id"])
     definition = contract_for_instance(instance_id)
-    owner = receive_contract(state.players[player], instance_id)
+    owner = receive_contract(state, state.players[player], instance_id)
     popped = state.pop_decision()
     if definition.requires_intrigue_trash:
         popped = popped.push_decision(

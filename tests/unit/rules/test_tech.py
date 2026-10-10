@@ -2444,15 +2444,25 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
     from dune_imperium.rules.tech import draw_owed_tech_cards
 
     owner = _tech_owner("choam_transports", "panopticon")
-    # The Immediate tile completes as it is taken [Main p. 16] and owes the
-    # draw, paid once the step settles.
-    completed = receive_contract(owner, "contract:immediate")
+    # The Immediate tile completes as it is taken [Main p. 16]. Outside the
+    # owner's own turn (here a Conflict reward) the card is owed to the
+    # engine's post-step draw.
+    turn = _turn_state(owner, stacks=((), (), ()), config=TECH_CHOAM)
+    combat = replace(turn, phase=GamePhase.COMBAT, decision_stack=())
+    completed = receive_contract(combat, owner, "contract:immediate")
     assert completed.completed_contract_ids == ("contract:immediate",)
     assert completed.tech_cards_owed == 1
-    state = _turn_state(completed, stacks=((), (), ()), config=TECH_CHOAM)
+    assert completed.owed_draws == ()
+    state = replace(combat, players=(completed, *combat.players[1:]))
     drawn = draw_owed_tech_cards(RuleResult(state=state)).state
     assert len(drawn.players[0].hand) == 5 + 1
     assert drawn.players[0].tech_cards_owed == 0
+    # Inside the owner's own turn it is the owner's own step right after
+    # the completion ("can't be deferred", Message from designer; user
+    # decision 2026-10-10, OQ-106), tests/unit/rules/test_owed_draws.py.
+    held = receive_contract(turn, owner, "contract:immediate")
+    assert held.tech_cards_owed == 0
+    assert [entry[:2] for entry in held.owed_draws] == [("card", "choam_transports")]
 
     def endgame(contracts: int) -> RuleResult:
         seat = replace(

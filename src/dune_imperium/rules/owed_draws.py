@@ -17,9 +17,15 @@ and before the turn ends, like the Emperor track's Spy (user ruling
 only the draw is not. The one bundle kept is Esmar Tuek's Intrigue for an
 opponent's visit to Tuek's Sietch, which is another seat's and comes with the
 visit like a control bonus ("오히려 에스마르 튜엑만 안 나누는게 맞는 듯?").
-CHOAM Transports' draw is not held either: the adopted designer ruling says
-it "can't be deferred" (docs/rules/designer-rulings-audit.md), and whether
-to split it waits for the user (OQ-106).
+
+Some of them are immediate (user decision 2026-10-10, "가 로 가자";
+``frames.draw_is_immediate``): CHOAM Transports' card, whose adopted
+designer ruling says it "can't be deferred", the Bene Gesserit Influence 4
+card and Imperial Birthright ("faction bonuses ... may interrupt this
+flow"), and an acquire box's card ("Acquire Effects must be taken
+immediately"). Each is still its own step after its trigger, so the trigger
+stays undoable, but while one waits it is the owner's only action, on
+whatever frame of the owner's is open (``immediate_owed_draw_actions``).
 """
 
 from dataclasses import replace
@@ -27,12 +33,14 @@ from dataclasses import replace
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.frames import (
     OWED_CARD,
     OWED_INTRIGUE,
     FrameKind,
+    draw_is_immediate,
     draw_waits_for_owner,
     replace_player,
 )
@@ -68,9 +76,14 @@ def legal_owed_draw_actions(
     on the turn's own frame and on the owner's optional "[trash a card]"
     frame above it, never on another frame, and only inside the seat's own
     turn (``draw_waits_for_owner``); a draw waiting anywhere else is paid by
-    ``pay_stale_owed_draws``.
+    ``pay_stale_owed_draws``. While an immediate draw waits, only its deck's
+    action is offered, on any of the owner's frames
+    (``immediate_owed_draw_actions``).
     """
 
+    immediate = immediate_owed_draw_actions(state, player)
+    if immediate:
+        return immediate
     frame = state.decision_stack[-1] if state.decision_stack else None
     if (
         frame is None
@@ -82,7 +95,40 @@ def legal_owed_draw_actions(
     owed = state.players[player].owed_draws
     if not owed or not draw_waits_for_owner(state, player):
         return ()
-    decks = {deck for deck, _, _ in owed}
+    return _deck_actions(player, {deck for deck, _, _ in owed})
+
+
+def immediate_owed_draw_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """The owner's only actions while an immediate triggered draw waits.
+
+    User decision 2026-10-10 (OQ-106, "가 로 가자"): CHOAM Transports' card,
+    the Bene Gesserit Influence 4 card, Imperial Birthright and an acquire
+    box's card (``frames.draw_is_immediate``) are drawn as the step right
+    after their trigger, so the trigger stays undoable while nothing of the
+    owner's comes between: on whatever frame of the owner's is open, these
+    draws are all it is offered (``UprisingRulesEngine.legal_actions``), the
+    turn's other effects, a Plot, a free-timing action and the turn end
+    included. Empty when no such draw waits for ``player``'s own decision.
+    """
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        frame is None
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+    ):
+        return ()
+    owed = state.players[player].owed_draws
+    decks = {deck for deck, origin, _ in owed if draw_is_immediate(origin)}
+    if not decks or not draw_waits_for_owner(state, player):
+        return ()
+    return _deck_actions(player, decks)
+
+
+def _deck_actions(player: int, decks: set[str]) -> tuple[DomainAction, ...]:
     return tuple(
         DomainAction(action_id=action_id, actor=player)
         for action_id, deck in _ACTION_DECKS.items()
@@ -91,20 +137,39 @@ def legal_owed_draw_actions(
 
 
 def apply_owed_draw(state: GameState, action: DomainAction) -> RuleResult:
-    """Draw the owner's oldest waiting card of the action's deck."""
+    """Draw the owner's next waiting card of the action's deck."""
 
     if action not in legal_owed_draw_actions(state, action.actor):
         raise ValueError("action is not a legal owed draw")
     return _draw_owed(state, action.actor, _ACTION_DECKS[action.action_id])
 
 
+def next_owed_draw(owner: PlayerState, deck: str) -> int | None:
+    """Index of the waiting draw a press of ``deck``'s action takes.
+
+    The oldest immediate one of the deck if any (its press is the one
+    forced right after the trigger), else the deck's oldest; ``None`` when
+    the deck has none.
+    """
+
+    entries = [
+        (position, origin)
+        for position, (entry_deck, origin, _) in enumerate(owner.owed_draws)
+        if entry_deck == deck
+    ]
+    if not entries:
+        return None
+    return next(
+        (position for position, origin in entries if draw_is_immediate(origin)),
+        entries[0][0],
+    )
+
+
 def _draw_owed(state: GameState, player: int, deck: str) -> RuleResult:
     owner = state.players[player]
-    index = next(
-        position
-        for position, (entry_deck, _, _) in enumerate(owner.owed_draws)
-        if entry_deck == deck
-    )
+    index = next_owed_draw(owner, deck)
+    if index is None:
+        raise ValueError("no draw of that deck waits")
     source = owner.owed_draws[index][2]
     remaining = replace(
         owner,

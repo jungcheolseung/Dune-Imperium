@@ -27,6 +27,7 @@ from dune_imperium.server.session_log import (
     undo_window,
 )
 from dune_imperium.server.sessions import (
+    GameSession,
     GameSessionManager,
     JsonObject,
     SeatAccessError,
@@ -1511,19 +1512,36 @@ def test_reverse_engineering_tile_can_be_taken_back_and_its_draws_cannot() -> No
 # ------------------------------------------------ triggered draws (OQ-106)
 
 
-def test_influence_choice_reaching_a_bonus_can_be_taken_back_and_its_card_cannot() -> (
-    None
-):
+def _replay_from(
+    monkeypatch: pytest.MonkeyPatch, session: GameSession, start: GameState
+) -> None:
+    """Make an undo replay from ``start``, a position set up by hand.
+
+    The server rebuilds an undone state by replaying the session's steps
+    from ``engine.reset`` (``_state_after``); a test that edited the opening
+    state by hand has that reset return its edit, so the undo is real.
+    """
+
+    assert not session.steps
+    monkeypatch.setattr(session.engine, "reset", lambda config, seed: start)
+
+
+def test_influence_choice_reaching_a_bonus_can_be_taken_back_and_its_card_cannot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): a draw a
     trigger earns is not drawn inside the step that triggered it. Change
     Allegiances' "3 spice -> +1 Influence" [Change Allegiances card] raised
     to Bene Gesserit 4 earns the track's Intrigue card [Main p. 7]; the
-    Faction choice stays in the seat's undo window, and the card waits as
-    the seat's own ``draw_owed_intrigue``, which closes it (OQ-010). Before
-    the split the choice drew the card in the same step.
+    Faction choice stays in the seat's undo window, and the card is the
+    seat's own ``draw_owed_intrigue``, which closes it (OQ-010). It is the
+    very next step, before the card's own finish: "faction bonuses (such as
+    drawing an Intrigue on the BG track) may interrupt this flow" (Message
+    from designer; user decision 2026-10-10, "가 로 가자"). Before the split
+    the choice drew the card in the same step.
 
     Seed 0: seat 0's first turn, given the card, three spice and Bene
-    Gesserit 3 by hand (served flags and the window only).
+    Gesserit 3 by hand; the undo replays from that position.
     """
 
     card = "intrigue:change_allegiances:0"
@@ -1545,6 +1563,7 @@ def test_influence_choice_reaching_a_bonus_can_be_taken_back_and_its_card_cannot
             *session.state.players[1:],
         ),
     )
+    _replay_from(monkeypatch, session, session.state)
     summary = manager.summary(game_id)
     play = next(
         row
@@ -1560,36 +1579,45 @@ def test_influence_choice_reaching_a_bonus_can_be_taken_back_and_its_card_cannot
         and _obj(row["arguments"]).get("section") == 1
     )
     summary = _play_raw(manager, summary, index=_int(line["index"]))
-    choice = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "choose_intrigue_faction"
-        and _obj(row["arguments"]).get("faction") == "bene_gesserit"
-    )
-    assert choice["undoable"] is True
-    intrigue_before = manager._get(game_id).state.players[0].intrigue_cards
-    summary = _play_raw(manager, summary, index=_int(choice["index"]))
+
+    def choose(summary: JsonObject) -> JsonObject:
+        choice = next(
+            row
+            for row in _served(manager, game_id)
+            if row["action_id"] == "choose_intrigue_faction"
+            and _obj(row["arguments"]).get("faction") == "bene_gesserit"
+        )
+        assert choice["undoable"] is True
+        return _play_raw(manager, summary, index=_int(choice["index"]))
+
+    before = manager._get(game_id).state
+    summary = choose(summary)
     chosen = manager._get(game_id).state.players[0]
     assert chosen.influence.bene_gesserit == 4
-    assert chosen.intrigue_cards == intrigue_before  # nothing drawn
+    assert chosen.intrigue_cards == before.players[0].intrigue_cards  # no draw
     assert _rows(summary["undo"]) == [{"seat": 0, "steps": 3}]
-    finish = next(
-        row
-        for row in _served(manager, game_id)
-        if row["action_id"] == "finish_intrigue_effects"
-    )
-    summary = _play_raw(manager, summary, index=_int(finish["index"]))
     rows = _served(manager, game_id)
-    draw = next(row for row in rows if row["action_id"] == "draw_owed_intrigue")
-    assert draw["undoable"] is False
-    assert draw["detail"] == "Bene Gesserit Influence 4"
-    assert all(row["action_id"] != "finish_agent_turn" for row in rows)
-    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 4}]
+    # The draw is all the seat may do now: not the card's finish, not the
+    # turn's end.
+    assert [row["action_id"] for row in rows] == ["draw_owed_intrigue"]
+    assert rows[0]["undoable"] is False
+    assert rows[0]["detail"] == "Bene Gesserit Influence 4"
 
+    # The Faction choice is taken back to the exact position before it.
+    summary = manager.undo(game_id, seat=0, revision=_int(summary["revision"]))
+    assert manager._get(game_id).state == before
+    summary = choose(summary)
+
+    (draw,) = _served(manager, game_id)
     summary = _play_raw(manager, summary, index=_int(draw["index"]))
     drawn = manager._get(game_id).state.players[0]
-    assert len(drawn.intrigue_cards) == 1 and drawn.owed_draws == ()
+    assert len(drawn.intrigue_cards) == len(before.players[0].intrigue_cards) + 1
+    assert drawn.owed_draws == ()
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+    assert any(
+        row["action_id"] == "finish_intrigue_effects"
+        for row in _served(manager, game_id)
+    )
 
 
 def test_research_direction_reaching_a_tleilaxu_intrigue_can_be_taken_back() -> None:
@@ -1724,9 +1752,6 @@ def test_a_harvest_can_be_taken_back_before_its_hungry_for_spice_card() -> None:
     card as his own ``draw_owed_card`` step (user ruling 2026-10-10, OQ-106:
     "특히 카드 드로우는 나눠야하는게"), so the Deep Desert harvest that
     earned it stays in the undo window and only the draw closes it (OQ-010).
-    CHOAM Transports' card is not held: "The card draw from CHOAM Transports
-    is triggered as soon as the contract is completed and can't be
-    deferred." (Message from designer; docs/rules/designer-rulings-audit.md).
 
     Seed 0 with Bloodlines: seat 0's first turn, made Y'rkoon with Dune and
     three water by hand (served flags and the window only).
@@ -1786,6 +1811,94 @@ def test_a_harvest_can_be_taken_back_before_its_hungry_for_spice_card() -> None:
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
     seat = manager._get(game_id).state.players[0]
     assert len(seat.hand) == len(hand_before) + 1 and seat.owed_draws == ()
+
+
+def test_a_contract_completion_can_be_taken_back_before_its_transports_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CHOAM Transports: "When you complete a contract: draw a card" [Tech
+    tile]; "The card draw from CHOAM Transports is triggered as soon as the
+    contract is completed and can't be deferred." (Message from designer;
+    docs/rules/designer-rulings-audit.md). The card is the seat's own
+    ``draw_owed_card`` step, the one right after the completion with nothing
+    else of the seat's in between (user decision 2026-10-10, OQ-106: "가 로
+    가자"), so the completion stays in the undo window and the draw closes
+    it (OQ-010). Before, the completion drew the card in its own step.
+
+    Seed 1 with CHOAM, Bloodlines and Tech: seat 0's first turn, given CHOAM
+    Transports and the Arrakeen I Contract by hand; the undo replays from
+    that position.
+    """
+
+    contract = "contract:arrakeen_i"
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST, game_seed=1, choam_module=True, bloodlines=True, tech_module=True
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    state = session.state
+    session.state = replace(
+        state,
+        face_up_contract_ids=tuple(
+            c for c in state.face_up_contract_ids if c != contract
+        ),
+        contract_bank=tuple(c for c in state.contract_bank if c != contract),
+        tech_stacks=tuple(
+            tuple(tile for tile in stack if tile != "choam_transports")
+            for stack in state.tech_stacks
+        ),
+        players=(
+            replace(
+                state.players[0],
+                tech_ids=("choam_transports",),
+                active_contract_ids=(contract,),
+            ),
+            *state.players[1:],
+        ),
+    )
+    _replay_from(monkeypatch, session, session.state)
+    summary = manager.summary(game_id)
+    placement = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "agent_turn"
+        and _obj(row["arguments"]).get("space_id") == "arrakeen"
+    )
+    summary = _play_raw(manager, summary, index=_int(placement["index"]))
+    complete = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "complete_contract"
+    )
+    assert complete["undoable"] is True
+    before = manager._get(game_id).state
+    summary = _play_raw(manager, summary, index=_int(complete["index"]))
+    seat = manager._get(game_id).state.players[0]
+    assert seat.completed_contract_ids == (contract,)
+    assert seat.hand == before.players[0].hand  # nothing drawn yet
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    rows = _served(manager, game_id)
+    assert [row["action_id"] for row in rows] == ["draw_owed_card"]
+    assert rows[0]["undoable"] is False
+    assert rows[0]["detail"] == "CHOAM Transports"
+    assert rows[0]["detail_ko"] == "초암 수송선"
+
+    summary = manager.undo(game_id, seat=0, revision=_int(summary["revision"]))
+    assert manager._get(game_id).state == before
+
+    complete = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "complete_contract"
+    )
+    summary = _play_raw(manager, summary, index=_int(complete["index"]))
+    (draw,) = _served(manager, game_id)
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    seat = manager._get(game_id).state.players[0]
+    assert len(seat.hand) == len(before.players[0].hand) + 1
+    assert seat.owed_draws == ()
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
 
 
 def test_muad_dibs_reveal_can_be_taken_back_before_its_intrigue_card() -> None:

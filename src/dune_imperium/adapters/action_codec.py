@@ -396,6 +396,13 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # late Spies for Hire's Spy post and CHOAM Negotiations' Contract) waits as
 # the line's own ``scouts_rewards_first``, then that line's only action,
 # instead of being drawn by the choice. No template change.
+# Also in v142 (OQ-106, user decision 2026-10-10 "가 로 가자"): three held
+# draws whose adopted community rulings say they come at once -- the Bene
+# Gesserit Influence 4 card and Imperial Birthright, Overthrow's acquire box,
+# and CHOAM Transports' card, which is now held too instead of being drawn by
+# the completing step -- are the owner's only action right after their
+# trigger, on whatever frame of the owner's is open (``draw_owed_intrigue``,
+# ``draw_owed_card``). No template change.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

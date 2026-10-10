@@ -10,6 +10,8 @@ from dune_imperium.core.player import Influence, PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
     OWED_INTRIGUE,
+    OWED_ORIGIN_BENE_GESSERIT_4,
+    OWED_ORIGIN_IMPERIAL_BIRTHRIGHT,
     draw_waits_for_owner,
     hold_draw,
     replace_player,
@@ -42,8 +44,8 @@ def gain_faction_influence(
     pending_navigation = state.pending_navigation_plays
     pending_spies = state.pending_track_spies
     pending_four = state.scouts_four_bonus_choices
-    # Inside the seat's own turn a bonus Intrigue card waits as its own step
-    # (user ruling 2026-10-10, OQ-106).
+    # Inside the seat's own turn a bonus Intrigue card is its own step, the
+    # owner's next one (user decision 2026-10-10, OQ-106).
     hold = draw_waits_for_owner(state, player)
     gained = 0
     events: list[GameEvent] = []
@@ -186,8 +188,9 @@ def _grant_four_bonus(
 
     ``reached`` names the track actually reached when Friends Everywhere
     let the seat take another Faction's bonus (it is added to the event).
-    With ``hold`` the Bene Gesserit bonus's Intrigue card waits as the
-    seat's own step (``draw_waits_for_owner``, OQ-106).
+    With ``hold`` the Bene Gesserit bonus's Intrigue card is the seat's own
+    step right after this one (``draw_waits_for_owner``,
+    ``draw_is_immediate``, OQ-106).
     """
 
     deck_before = len(intrigue_deck)
@@ -459,8 +462,8 @@ def _apply_reach_two_leader_bonus(
     Loyalty grants two Spice on reaching two Bene Gesserit Influence
     [Lady Margot Fenring card]; Imperial Birthright draws one Intrigue card
     on reaching two Emperor Influence [Princess Irulan card]. With ``hold``
-    that card waits as the seat's own step (user ruling 2026-10-10,
-    OQ-106).
+    that card is the seat's own step right after this one (user decision
+    2026-10-10, OQ-106, ``draw_is_immediate``).
     """
 
     owner = players[player]
@@ -484,7 +487,9 @@ def _apply_reach_two_leader_bonus(
         if hold:
             players = replace_player(
                 players,
-                hold_draw(owner, OWED_INTRIGUE, "imperial_birthright", event_id),
+                hold_draw(
+                    owner, OWED_INTRIGUE, OWED_ORIGIN_IMPERIAL_BIRTHRIGHT, event_id
+                ),
             )
         elif intrigue_deck:
             owner = replace(
@@ -546,10 +551,16 @@ def _apply_track_bonus(
             # Card identity stays hidden [Main p. 7]; only the count is public.
             payload = (("intrigue", 1),)
             if hold:
-                # Inside the seat's own turn the card waits as its own step
-                # (user ruling 2026-10-10, OQ-106).
+                # Inside the seat's own turn the card is its own step, the
+                # one right after the Influence step that reached 4 ("faction
+                # bonuses (such as drawing an Intrigue on the BG track) may
+                # interrupt this flow", Message from designer; user decision
+                # 2026-10-10, OQ-106, ``draw_is_immediate``).
                 owner = hold_draw(
-                    owner, OWED_INTRIGUE, "bene_gesserit_4", f"{source}:intrigue"
+                    owner,
+                    OWED_INTRIGUE,
+                    OWED_ORIGIN_BENE_GESSERIT_4,
+                    f"{source}:intrigue",
                 )
             elif intrigue_deck:
                 owner = replace(
