@@ -1267,7 +1267,7 @@ function turnCard(group, glowFrom) {
 /* The label for a folded chain of Combat/Endgame Intrigue passes: the words
    the engine's own event carries for it, once for the whole card. Combat
    Intrigue already has one that names the window
-   (EVENT_LABELS.combat_intrigue_passed, "{combat} {intrigue} 패스"); Endgame
+   (EVENT_LABELS.combat_intrigue_passed, "{combat} {intrigue_card} 패스"); Endgame
    Intrigue's own event label is bare ("Passed", EVENT_LABELS.
    endgame_intrigue_passed) -- and so is the action label next to it
    (ACTION_LABELS.pass_endgame_intrigue is just "패스"/"Pass" too, nothing on
@@ -1549,7 +1549,7 @@ function deckTopChoiceCard() {
 }
 
 /* One of those live buttons naming the card ("{deck} 맨 위 카드(Dagger)
-   {discard}"), by its name on screen; null for any other action, or when
+   버리기"), by its name on screen; null for any other action, or when
    no card is known (the plain label then stands). Only actionItem (render.js),
    which draws the seat's offered actions, asks for it. */
 function deckTopChoiceLabel(action) {

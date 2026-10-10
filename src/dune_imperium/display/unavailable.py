@@ -351,7 +351,7 @@ _NO_OTHER_AGENT: Final[Reason] = (
 )
 _NO_INTRIGUE_TO_TRASH: Final[Reason] = (
     "No Intrigue card to trash",
-    "{trash}할 {intrigue} 없음",
+    "폐기할 {intrigue_card} 없음",
     "cost",
 )
 _AT_THE_TOP: Final[Reason] = ("Already at the top", "이미 최고치", "top")
@@ -606,7 +606,7 @@ def _choice_cost_reason(
         case GiveIntrigueToOpponent() | TrashIntrigueCard():
             return (
                 "Needs another Intrigue card in hand",
-                "다른 {intrigue} 필요",
+                "다른 {intrigue_card} 필요",
                 "cost",
             )
         case RetreatTroops():
@@ -709,7 +709,7 @@ def _tech_reward_reason(state: GameState, seat: int, discount: int) -> Reason:
     ):
         return (
             "Advanced Data Analysis needs a Spy of yours on the board to trash",
-            "Advanced Data Analysis는 보드에 있는 내 {spy}를 {trash}해야 함",
+            "Advanced Data Analysis는 보드에 있는 내 {spy}를 폐기해야 함",
             "reward",
         )
     return (
@@ -770,7 +770,7 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
             return (
                 "No Intrigue card to draw: the Intrigue deck is empty"
                 " and its discard pile holds nothing to shuffle",
-                "뽑을 {intrigue} 없음: {intrigue} 더미가 비었고"
+                "뽑을 {intrigue_card} 없음: 책략 카드덱이 비었고"
                 " 버린 더미에 섞을 카드 없음",
                 "empty",
             )
@@ -844,7 +844,7 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
                 "No Contract you can take: only the Immediate is left and you"
                 " hold no other Intrigue card to trash",
                 "가져갈 {contract} 없음: Immediate만 남았고"
-                " {trash}할 다른 {intrigue} 없음",
+                " 폐기할 다른 {intrigue_card} 없음",
                 "reward",
             )
         case SetAsideImperiumRowCard():
@@ -1444,7 +1444,7 @@ def _held_contracts(state: GameState, seat: int, found: _Found) -> None:
     icons_en = f"{held} Contract icon{plural_s(held)} held"
     icons_ko = f"{{contract}} 아이콘 {held}개 보류"
     take_en = "taken once you have an Intrigue card to trash"
-    take_ko = "{trash}할 {intrigue}가 생기면 가져감"
+    take_ko = "폐기할 {intrigue_card}가 생기면 가져감"
     reason: Reason
     if state.phase is GamePhase.COMBAT:
         reason = (

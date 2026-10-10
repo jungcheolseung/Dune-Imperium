@@ -149,7 +149,7 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
 # action log has); on the buttons this detail replaces it (static/core.js
 # describeAction). English is card wording for iconize(), in the printed
 # order; Korean keeps tokens_ko.py's words for the same boxes and labels.js's
-# "카드 {trash} (선택)".
+# "{trash} (선택)".
 _PAYMENT_TEXT: dict[tuple[str, PersonalCardAgentEffect], tuple[str, str]] = {
     ("pay_agent_card_spice", _BOX.MAY_PAY_FOUR_SPICE_FOR_VP): (
         "Pay 4 spice → Gain 1 VP",
@@ -157,7 +157,7 @@ _PAYMENT_TEXT: dict[tuple[str, PersonalCardAgentEffect], tuple[str, str]] = {
     ),
     ("pay_agent_card_spice", _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT): (
         "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
-        "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}",
+        "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
     ),
 }
 _PAYMENT_ACTION_IDS = frozenset(action_id for action_id, _ in _PAYMENT_TEXT)
@@ -241,10 +241,14 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
     1 troop", "Gain 2 solari", …), so each becomes the matching
     ``{term:count}``. "trash_self" reuses this project's own established
     Korean for the same concept: ``labels.js`` ``EFFECT_ICON_LABELS``
-    ``trash_self``: "이 카드 {trash}" (that table is the Korean *fallback*
+    ``trash_self``: "이 카드 폐기" (that table is the Korean *fallback*
     label for this key when ``detail`` is null; this function supplies the
     real ``detail_ko``, so the wording matches on purpose rather than by
-    coincidence). "pledge" instead uses ``docs/rules/glossary-ko.md``'s own
+    coincidence). Its trash is the word, not the ``{trash}`` icon: that
+    icon means "Trash one card" ([Main p. 20], glossary-ko.md "카드 동작"),
+    and beside "이 카드" it read as a second effect (user, 2026-10-11:
+    one rulebook icon per effect). "pledge" instead uses
+    ``docs/rules/glossary-ko.md``'s own
     "first / second / third place | 1등 / 2등 / 3등 칸 | `[Main p. 14]`" —
     not ``labels.js``'s ``pledge``/``first_place_influence_pledged``, which
     say "1위" (a pre-existing mismatch noted for a separate fix, 2026-09-25
@@ -281,7 +285,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
             # tokens_ko.py's words for Stillsuit Manufacturer's return.
             base = "{in_play}에서 이 카드를 핸드로 되돌림"
         case "trash_self":
-            base = "이 카드 {trash}"
+            base = "이 카드 폐기"
         case "pledge":
             base = "1등 보상에 {influence_any} 선택 추가"
         case _:
@@ -336,7 +340,7 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
                 "지도자의 {signet_ring} 능력 사용",
             )
         case "trash":
-            return "Trash a card (optional)", "카드 {trash} (선택)"
+            return "Trash a card (optional)", "{trash} (선택)"
         case _:
             if effect.startswith("spy_"):
                 return "Place a Spy with Deep Cover", "{spy} 배치 (잠복 스파이)"

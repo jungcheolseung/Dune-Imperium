@@ -146,16 +146,16 @@ const UI_TEXT = {
     "en": "Player {{seat}} · {{faction}} {influence_any} {{level}}"
   },
   "board.intrigue_discard_count": {
-    "ko": "{intrigue} {discard_pile} {{count}}장",
-    "en": "{intrigue} {discard_pile} {{count}}"
+    "ko": "{intrigue_card} {discard_pile} {{count}}장",
+    "en": "{intrigue_card} {discard_pile} {{count}}"
   },
   "board.intrigue_deck_count": {
-    "ko": "{intrigue} {deck} {{count}}장",
-    "en": "{intrigue} {deck} {{count}}"
+    "ko": "책략 카드덱 {{count}}장",
+    "en": "Intrigue deck {{count}}"
   },
   "board.intrigue_pile_title": {
-    "ko": "{intrigue} {discard_pile} 보기",
-    "en": "See the {intrigue} {discard_pile}"
+    "ko": "{intrigue_card} {discard_pile} 보기",
+    "en": "See the {intrigue_card} {discard_pile}"
   },
   "board.leader_taken": {
     "ko": "선택됨",
@@ -178,8 +178,8 @@ const UI_TEXT = {
     "en": "This game has no human players. Use \"Watch the AI game again\" in the final standings to watch it from the start."
   },
   "board.pile_intrigue_discard": {
-    "ko": "{intrigue} {discard_pile}",
-    "en": "{intrigue} {discard_pile}"
+    "ko": "{intrigue_card} {discard_pile}",
+    "en": "{intrigue_card} {discard_pile}"
   },
   "board.post_seats": {
     "ko": "{{post}}: {{seats}}",
@@ -354,8 +354,8 @@ const UI_TEXT = {
     "en": "Cost"
   },
   "core.intrigue_timings": {
-    "ko": "{intrigue} ({{timings}})",
-    "en": "{intrigue} ({{timings}})"
+    "ko": "{intrigue_card} ({{timings}})",
+    "en": "{intrigue_card} ({{timings}})"
   },
   "core.not_implemented": {
     "ko": "미구현 · 배치 불가",
@@ -750,12 +750,12 @@ const UI_TEXT = {
     "en": "Leave top card of {deck} ({{card}}) on top"
   },
   "panels.deck_top_discard": {
-    "ko": "{deck} 맨 위 카드({{card}}) {discard}",
-    "en": "{discard} top card of {deck} ({{card}})"
+    "ko": "{deck} 맨 위 카드({{card}}) 버리기",
+    "en": "Discard top card of {deck} ({{card}})"
   },
   "panels.deck_top_draw": {
-    "ko": "{solari} 1 지불 → {deck} 맨 위 카드({{card}}) {draw}",
-    "en": "Pay 1 {solari} -> {draw} top card of {deck} ({{card}})"
+    "ko": "{solari} 1 지불 → {deck} 맨 위 카드({{card}}) 뽑기",
+    "en": "Pay 1 {solari} -> Draw top card of {deck} ({{card}})"
   },
   "panels.deck_list_note": {
     "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
@@ -826,11 +826,11 @@ const UI_TEXT = {
     "en": "Top of Intrigue deck"
   },
   "panels.intrigue_faceup_label": {
-    "ko": "공개 대기 {intrigue} ",
+    "ko": "공개 대기 {intrigue_card} ",
     "en": "Face-up Intrigue "
   },
   "panels.intrigue_resolving_label": {
-    "ko": "{intrigue} 해결 중 ",
+    "ko": "{intrigue_card} 해결 중 ",
     "en": "Intrigue resolving "
   },
   "panels.leader_unset": {
@@ -910,12 +910,12 @@ const UI_TEXT = {
     "en": "Game setup"
   },
   "panels.pass_fold_conflict_end_intrigue": {
-    "ko": "{conflict} 종료 발동 {intrigue} 쓰지 않음",
-    "en": "{conflict} End Trigger {intrigue} Declined"
+    "ko": "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
+    "en": "{conflict} End Trigger {intrigue_card} Declined"
   },
   "panels.pass_fold_endgame_intrigue": {
-    "ko": "{endgame} {intrigue} 패스",
-    "en": "{endgame} {intrigue} Passed"
+    "ko": "{endgame} {intrigue_card} 패스",
+    "en": "{endgame} {intrigue_card} Passed"
   },
   "panels.reveal_preview_prefix": {
     "ko": "지금 공개하면 ",
@@ -1150,8 +1150,8 @@ const UI_TEXT = {
     "en": " (undone)"
   },
   "panels.usurp_trash": {
-    "ko": "Usurp: 차례 끝에 {{card}} {trash}",
-    "en": "Usurp: {trash} {{card}} at end of turn"
+    "ko": "Usurp: 차례 끝에 {{card}} 폐기",
+    "en": "Usurp: Trash {{card}} at end of turn"
   },
   "panels.watch_ai_button": {
     "ko": "AI 대국 다시 보기",
@@ -1286,8 +1286,8 @@ const UI_TEXT = {
     "en": "In progress…"
   },
   "render.intrigue_line": {
-    "ko": "{intrigue} ({{count}})",
-    "en": "{intrigue} ({{count}})"
+    "ko": "{intrigue_card} ({{count}})",
+    "en": "{intrigue_card} ({{count}})"
   },
   "render.irreversible_badge": {
     "ko": "되돌리기 불가",
@@ -1410,11 +1410,11 @@ const UI_TEXT = {
     "en": "{{requested}} {contract} icon(s) fizzle: no {contract} you can take"
   },
   "render.shortfall_intrigue": {
-    "ko": "{intrigue} 더미와 {discard_pile}를 합쳐도 {{short}}장 모자람",
+    "ko": "책략 카드덱과 {discard_pile}를 합쳐도 {{short}}장 모자람",
     "en": "Intrigue deck and {discard_pile} are {{short}} short of the draw"
   },
   "render.shortfall_intrigue_twisted": {
-    "ko": "{intrigue} 더미와 {discard_pile}를 합쳐도 {{short}}장 모자람 ({discard_pile}의 뒤틀린 책략 {{twisted}}장은 섞지 않음)",
+    "ko": "책략 카드덱과 {discard_pile}를 합쳐도 {{short}}장 모자람 ({discard_pile}의 뒤틀린 책략 {{twisted}}장은 섞지 않음)",
     "en": "Intrigue deck and {discard_pile} are {{short}} short of the draw (not counting {{twisted}} Twisted Intrigue there, which are never reshuffled)"
   },
   "render.shortfall_specimens": {
@@ -1554,8 +1554,8 @@ const UI_TEXT = {
     "en": "{{seat}}'s {discard_pile} shuffled"
   },
   "core.chance_intrigue_shuffle": {
-    "ko": "{intrigue} {discard_pile} 섞기",
-    "en": "{intrigue} {discard_pile} shuffled"
+    "ko": "{intrigue_card} {discard_pile} 섞기",
+    "en": "{intrigue_card} {discard_pile} shuffled"
   },
   "core.chance_secrets_steal": {
     "ko": "{{thief}}, {{victim}}에게서 {steal_intrigue}",
