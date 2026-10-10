@@ -67,14 +67,36 @@ them (a decline). The per-row suffix above stays. Checked here:
 The expected headings, counts and zones are rebuilt here from
 `state.actions` and the view's hand / discard_pile / in_play lists, never
 from the rendered text.
+
+This turn's card (user feedback 2026-10-11: "플레이 영역에 같은게 2개
+있어버리니 이번턴에 플레이한거랑 저번턴꺼랑 구분이 안 되네"). Two copies of
+one card in play shared one pile, so their trash rows read alike and the
+seat trashed the copy its open Agent turn had just played, whose Agent box
+the engine then expired (OQ-022). The server's view now names the open
+Agent turn's cards (`turn_card_ids`: the played card and its graft
+partner) and those whose box still waits (`pending_box_card_ids`,
+sessions.py `turn_cards`); a trash row of such a card says "이번 차례에 낸
+카드" (and, while its box waits, that trashing it loses the rest of the
+box), a row of the same action naming an earlier copy in play says "앞
+차례에 낸 카드", and the seat panel's in-play chip carries a "이번 차례"
+mark. Two real positions (`fixtures/turn_card_trash_saves.py`, four human
+seats with Immortality, seeded random play) rest on the optional trash the
+user met (`trash_optional_card`, here a Research track space's bonus)
+offering both copies: seed 23 with this turn's Prepare the Way still to
+resolve its box, seed 2 with this turn's Experimentation done.
+The expected lists come from that script's own reading of the effect
+frame, and the expected words are reconstructed here, not read off the
+client's tables.
 """
 
 from __future__ import annotations
 
 import itertools
+import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -82,8 +104,10 @@ from typing import Any
 
 from common import (
     LAPTOP_VIEWPORT,
+    REPO,
     SERVER_LOG_COPY,
     Check,
+    ServerProcess,
     chrome,
     open_context,
     server,
@@ -725,6 +749,281 @@ def check_three_zones(browser, base: str) -> None:
     context.close()
 
 
+# The suffix of a trash row naming one of the open Agent turn's cards, or an
+# earlier copy of it in play, and the in-play chip's mark with its title --
+# the wording of the design (2026-10-11), reconstructed here rather than read
+# off ui_text.js.
+TURN_SUFFIXES = {
+    "pending": {
+        "ko": " (이번 차례에 낸 카드 · 폐기하면 남은 에이전트 효과 사라짐)",
+        "en": " (card played this turn · trashing it loses its remaining Agent "
+        "effects)",
+    },
+    "done": {"ko": " (이번 차례에 낸 카드)", "en": " (card played this turn)"},
+    "earlier": {
+        "ko": " (앞 차례에 낸 카드)",
+        "en": " (card played on an earlier turn)",
+    },
+}
+TURN_MARK = {"ko": "이번 차례", "en": "This turn"}
+TURN_MARK_TITLE = {
+    "pending": {
+        "ko": "에이전트 효과가 아직 남아 있음 — 폐기하면 남은 효과는 사라집니다",
+        "en": "Agent effects still pending — trashing it loses the rest",
+    },
+    "done": {"ko": "이번 차례에 낸 카드", "en": "Played this turn"},
+}
+
+# Each in-play chip of a seat panel, in the seat's in_play order: its
+# classes, its own mark (if any) and the seat's fold summary.
+SEAT_CHIPS_JS = """(seat) => {
+    const card = document.querySelector(`#seats .seat[data-seat='${seat}']`);
+    const label = t('panels.in_play_label');
+    const line = [...card.querySelectorAll('.cardline')].find(
+        (row) => (row.querySelector('strong') || {}).textContent?.trim() === label);
+    const more = card.querySelector('.seat-more');
+    return {
+        chips: line ? [...line.querySelectorAll('.tag')].map((tag) => {
+            const mark = tag.querySelector('.this-turn-mark');
+            return {
+                thisTurn: tag.classList.contains('this-turn'),
+                pending: tag.classList.contains('box-pending'),
+                mark: mark ? mark.textContent : null,
+                markTitle: mark ? mark.title : null,
+                clickable: tag.classList.contains('clickable'),
+            };
+        }) : null,
+        marks: card.querySelectorAll('.this-turn-mark').length,
+        more: more ? more.textContent : null,
+        expanded: more ? more.getAttribute('aria-expanded') : null,
+    };
+}"""
+
+
+def open_save(browser, base: str, name: str, label: str, viewport=None):
+    context, page, rec = open_context(browser, label, viewport)
+    page.goto(base + "/")
+    page.locator(f"#save-list li:has-text('{name}') button").first.click()
+    page.wait_for_function(
+        "state.view !== null && refreshFlight === null"
+        " && Boolean(state.actions && state.actions.actions.length)"
+    )
+    assert settled(page, 20)
+    return context, page, rec
+
+
+def turn_rows(page, case: dict) -> tuple[dict | None, dict | None]:
+    """The rows of the fixture's trash action naming this turn's card and
+    the earlier copy."""
+
+    actions = page.evaluate("state.actions.actions")
+    by_card = {
+        a["arguments"].get("card_id"): a
+        for a in actions
+        if a["action_id"] == case["action_id"]
+    }
+    return by_card.get(case["this_turn"]), by_card.get(case["earlier"])
+
+
+def check_turn_rows(page, what: str, lang: str, case: dict) -> None:
+    this_row, earlier_row = turn_rows(page, case)
+    if not check.ok(
+        this_row is not None and earlier_row is not None,
+        f"{what}: both copies are offered by {case['action_id']}",
+        (case["this_turn"], case["earlier"]),
+    ):
+        return
+    kind = "pending" if case["pending"] else "done"
+    texts = {}
+    for name, row, suffix in (
+        ("this turn's card", this_row, TURN_SUFFIXES[kind][lang]),
+        ("the earlier copy", earlier_row, TURN_SUFFIXES["earlier"][lang]),
+    ):
+        button = row_button(page, row["index"])
+        if not check.ok(button.count() == 1, f"{what}: {name}'s row is on screen"):
+            continue
+        text = button.inner_text()
+        texts[name] = text
+        check.ok(
+            text.endswith(suffix), f"{what}: {name}'s row ends with {suffix!r}", text
+        )
+        card_name = page.evaluate(
+            "(id) => lookup(baseId(id)).name", row["arguments"]["card_id"]
+        )
+        check.ok(card_name in text, f"{what}: {name}'s row names the card", text)
+    check.ok(
+        len(set(texts.values())) == 2, f"{what}: the two rows read apart", texts
+    )
+    warn = page.evaluate(
+        "(i) => { const node = document.querySelector("
+        "`#actions .action-item[data-index='${i}'] .turn-card-suffix`);"
+        " return node ? node.dataset.turnCard : null; }",
+        this_row["index"],
+    )
+    check.ok(
+        warn == ("turn_pending" if case["pending"] else "turn"),
+        f"{what}: this turn's suffix is marked "
+        f"{'as a warning' if case['pending'] else 'plainly'}",
+        warn,
+    )
+    if lang == "en":
+        check.ok(
+            not any(HANGUL.search(text) for text in texts.values()),
+            f"{what}: no Hangul in the rows",
+            texts,
+        )
+
+
+def check_turn_chips(page, what: str, lang: str, case: dict) -> None:
+    seat = case["seat"]
+    view = page.evaluate("state.view")
+    in_play = view["players"][seat]["in_play"]
+    shown = page.evaluate(SEAT_CHIPS_JS, seat)
+    chips = shown["chips"] or []
+    check.ok(
+        len(chips) == len(in_play),
+        f"{what}: one chip per in-play card (the mark is no chip)",
+        (len(chips), in_play),
+    )
+    label = {"ko": "플레이 영역", "en": "In play"}[lang]
+    if shown["expanded"] == "false":
+        check.ok(
+            f"{label} {len(in_play)}" in (shown["more"] or ""),
+            f"{what}: the fold still counts {len(in_play)} in-play cards",
+            shown["more"],
+        )
+    kind = "pending" if case["pending"] else "done"
+    for position, card_id in enumerate(in_play):
+        if position >= len(chips):
+            break
+        chip = chips[position]
+        if card_id == case["this_turn"]:
+            check.ok(
+                chip["thisTurn"] and chip["mark"] == TURN_MARK[lang],
+                f"{what}: this turn's chip carries {TURN_MARK[lang]!r}",
+                chip,
+            )
+            check.ok(
+                chip["markTitle"] == TURN_MARK_TITLE[kind][lang]
+                and chip["pending"] == case["pending"],
+                f"{what}: its mark's title says {TURN_MARK_TITLE[kind][lang]!r}",
+                chip,
+            )
+            check.ok(chip["clickable"], f"{what}: the chip still opens its card")
+        elif card_id not in case["turn_card_ids"]:
+            check.ok(
+                not chip["thisTurn"] and chip["mark"] is None,
+                f"{what}: {card_id} (not this turn's) has no mark",
+                chip,
+            )
+    check.ok(
+        shown["marks"] == len(case["turn_card_ids"]),
+        f"{what}: one mark per card of this turn on the seat",
+        shown["marks"],
+    )
+
+
+def check_turn_case(browser, base: str, name: str, case: dict) -> None:
+    kind = "pending box" if case["pending"] else "resolved box"
+    print(f"[5] {name}: this turn's card and an earlier copy in play ({kind})")
+    context, page, rec = open_save(browser, base, name, name, LAPTOP_VIEWPORT)
+    check.ok(
+        page.evaluate("state.viewSeat") == case["seat"]
+        and page.evaluate("state.summary.decision.owner") == case["seat"],
+        f"{name}: the save rests on seat {case['seat']}'s choice",
+    )
+    view = page.evaluate("state.view")
+    check.ok(
+        view.get("turn_card_ids") == case["turn_card_ids"]
+        and view.get("pending_box_card_ids") == case["pending_box_card_ids"],
+        f"{name}: the view names the effect frame's cards",
+        (view.get("turn_card_ids"), view.get("pending_box_card_ids"), case),
+    )
+    in_play = view["players"][case["seat"]]["in_play"]
+    check.ok(
+        case["this_turn"] in in_play and case["earlier"] in in_play,
+        f"{name}: both copies are in play",
+        in_play,
+    )
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    for lang in ("ko", "en"):
+        switch_language(page, lang)
+        what = f"{name} ({lang})"
+        check_turn_rows(page, what, lang, case)
+        check_turn_chips(page, what, lang, case)
+        page.locator(f"#seats .seat[data-seat='{case['seat']}'] .seat-more").click()
+        check_turn_chips(page, f"{what}, unfolded", lang, case)
+        page.screenshot(path=str(SHOTS / f"turn_card_{name}_{lang}.png"))
+        print(f"  screenshot: {SHOTS / f'turn_card_{name}_{lang}.png'}")
+        page.locator(f"#seats .seat[data-seat='{case['seat']}'] .seat-more").click()
+
+    # The earlier copy's row trashes that copy; this turn's card stays in
+    # play with its mark, and an undo brings the same choice back.
+    _, earlier_row = turn_rows(page, case)
+    if earlier_row is not None:
+        before = [a["index"] for a in page.evaluate("state.actions.actions")]
+        with page.expect_request(
+            lambda r: r.method == "POST" and r.url.endswith("/actions")
+        ) as sent:
+            row_button(page, earlier_row["index"]).click()
+        check.ok(
+            sent.value.post_data_json["index"] == earlier_row["index"],
+            f"{name}: the earlier copy's row sends its own action",
+            sent.value.post_data_json,
+        )
+        assert settled(page, 20)
+        after = page.evaluate("state.view")
+        now = after["players"][case["seat"]]["in_play"]
+        check.ok(
+            case["earlier"] not in now and case["this_turn"] in now,
+            f"{name}: the earlier copy is trashed, this turn's card stays",
+            now,
+        )
+        check.ok(
+            after.get("turn_card_ids") == case["turn_card_ids"]
+            and after.get("pending_box_card_ids") == case["pending_box_card_ids"],
+            f"{name}: this turn's lists are unchanged by the trash",
+            (after.get("turn_card_ids"), after.get("pending_box_card_ids")),
+        )
+        page.click("#decision-info .undo-row button")
+        assert settled(page, 20)
+        again = [a["index"] for a in page.evaluate("state.actions.actions")]
+        check.ok(again == before, f"{name}: undo restores the same choice")
+    failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
+    check.ok(not failed, f"{name}: no failed requests", failed[:5])
+    check.ok(not rec.js_errors, f"{name}: no JS exceptions", rec.js_errors[:5])
+    context.close()
+
+
+def check_turn_cards(browser) -> None:
+    saves = tempfile.mkdtemp(prefix="dune-turn-card-e2e-")
+    found = json.loads(
+        subprocess.run(
+            [
+                str(REPO / ".venv/bin/python"),
+                str(Path(__file__).parent / "fixtures/turn_card_trash_saves.py"),
+                saves,
+            ],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    print(f"fixtures: {sorted(found)}")
+    process = ServerProcess(saves=saves).start()
+    try:
+        for name, case in found.items():
+            check_turn_case(browser, process.base, name, case)
+    finally:
+        process.stop()
+    text = process.log_path.read_text()
+    check.ok(
+        "Traceback" not in text and "ERROR" not in text,
+        f"no server errors with the saved games (see {process.log_path})",
+    )
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
@@ -775,6 +1074,7 @@ def main() -> None:
             context.close()
             check_three_zones(browser, base)
             check_one_pile_list(browser, base)
+            check_turn_cards(browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

@@ -124,6 +124,7 @@ from dune_imperium.server.session_log import (
     undo_history,
     undo_window,
 )
+from dune_imperium.server.turn_cards import turn_cards
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
     TURN_PASS_EVENTS,
@@ -2805,6 +2806,15 @@ def _serialize_view(
     (OQ-010 ruling 5: the owner can deduce the composition, so showing it
     reveals nothing new; the order stays hidden). ``view.player`` is the
     observer, so no other seat's block ever carries it.
+
+    ``turn_card_ids`` names the cards the open Agent turn's owner played
+    with it (the played card and its graft partner) and
+    ``pending_box_card_ids`` the ones of them whose Agent box is not fully
+    resolved yet (``turn_cards``): the page tells this turn's copy of a
+    card from an earlier one, since trashing it now expires the rest of
+    its box (OQ-022). Both are public, the same for every seat and in a
+    review, and kept beside the other public table facts here rather than
+    in ``PlayerView``, so the AI observation's encoding stays as it was.
     """
 
     serialized = _jsonify(asdict(view))
@@ -2822,6 +2832,9 @@ def _serialize_view(
     serialized["conflict_deck_top_tier"] = (
         CONFLICTS_BY_ID[state.conflict_deck[0]].tier.value if state.conflict_deck else 0
     )
+    played, pending = turn_cards(state)
+    serialized["turn_card_ids"] = list(played)
+    serialized["pending_box_card_ids"] = list(pending)
     if disclose:
         serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))
     return serialized

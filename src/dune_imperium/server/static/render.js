@@ -1382,7 +1382,8 @@ function ownCardZone(cardId) {
    (item 8c: the Feyd track, Desert Tactics and Combat reward trashes all
    offer hand, then discard pile, then in-play candidates). A duplicate
    that shares one pile with its sibling rows is interchangeable and keeps
-   its plain label. */
+   its plain label -- unless it is a trash row of a card the open Agent turn
+   played (turnCardSuffixes). */
 function zoneSuffixes(actions) {
   const groups = new Map();
   for (const action of actions) {
@@ -1396,17 +1397,67 @@ function zoneSuffixes(actions) {
   }
   const suffixes = new Map();
   for (const entries of groups.values()) {
-    if (new Set(entries.map((entry) => entry.zone)).size < 2) continue;
-    for (const { action, zone } of entries) suffixes.set(action, zone);
+    if (new Set(entries.map((entry) => entry.zone)).size >= 2) {
+      for (const { action, zone } of entries) suffixes.set(action, zone);
+    }
+    turnCardSuffixes(entries, suffixes);
   }
   return suffixes;
 }
 
+/* The words of a turn card's suffix (turnCardSuffixes), by its kind. */
+const TURN_CARD_SUFFIX_TEXT = {
+  turn_pending: "render.turn_card_pending_suffix",
+  turn: "render.turn_card_suffix",
+  earlier_turn: "render.earlier_turn_card_suffix",
+};
+
+/* Within one group of zoneSuffixes (rows of one action naming one card):
+   a trash row of a card the open Agent turn played -- the played card or
+   its graft partner, the server's view.turn_card_ids (sessions.py
+   turn_cards) -- says "card played this turn", and while that card's Agent
+   box still waits (view.pending_box_card_ids) also that trashing it loses
+   the rest of the box: "you can't receive or activate an effect from a
+   card that is already trashed" (OQ-022). A row of the same action naming
+   an in-play copy of that card from an earlier turn says so, so two
+   copies in play are no longer read as interchangeable (user feedback
+   2026-10-11: this turn's grafted Experimentation was trashed instead of
+   the earlier one). A hand or discard-pile copy keeps its pile's word.
+   Every trash of a chosen personal card names it in card_id and has
+   "trash" in its id: trash_optional_card, trash_agent_card,
+   trash_card_for_desert_tactics, trash_combat_reward_card,
+   trash_leader_card, trash_reveal_card, trash_intrigue_card (an Intrigue
+   card's personal-card trash), trash_grafted_card_for_influence,
+   trash_grafted_card_for_specimen and scouts_trash_card. */
+function turnCardSuffixes(entries, suffixes) {
+  const view = state.view || {};
+  const turn = view.turn_card_ids || [];
+  if (!turn.length || !entries[0].action.action_id.includes("trash")) return;
+  if (!entries.some(({ action }) => turn.includes(action.arguments.card_id))) return;
+  const pending = view.pending_box_card_ids || [];
+  for (const { action, zone } of entries) {
+    const cardId = action.arguments.card_id;
+    if (turn.includes(cardId)) {
+      suffixes.set(action, pending.includes(cardId) ? "turn_pending" : "turn");
+    } else if (zone === "in_play") {
+      suffixes.set(action, "earlier_turn");
+    }
+  }
+}
+
 /* " (hand)" / " (discard pile)" / " (in play)": the TERMS glossary word for
    the zone a row's card sits in ([Main p. 20]), through phrase() so it
-   reads in the chosen language like the rest of the row. */
+   reads in the chosen language like the rest of the row. A turn card's
+   suffix (turnCardSuffixes) is its own words, in a span the page can
+   colour: the pending one warns. */
 function zoneSuffixNode(zone) {
-  return phrase(` ({${zone}})`);
+  const key = TURN_CARD_SUFFIX_TEXT[zone];
+  if (!key) return phrase(` ({${zone}})`);
+  const node = document.createElement("span");
+  node.className = "turn-card-suffix";
+  node.dataset.turnCard = zone;
+  node.textContent = ` (${t(key)})`;
+  return node;
 }
 
 /* The zone of the card a row names (ownCardZone), or null for a row that

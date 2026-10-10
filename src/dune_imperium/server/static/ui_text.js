@@ -821,6 +821,18 @@ const UI_TEXT = {
     "ko": "플레이 영역",
     "en": "In play"
   },
+  "panels.this_turn_badge": {
+    "ko": "이번 차례",
+    "en": "This turn"
+  },
+  "panels.this_turn_title": {
+    "ko": "이번 차례에 낸 카드",
+    "en": "Played this turn"
+  },
+  "panels.this_turn_pending_title": {
+    "ko": "에이전트 효과가 아직 남아 있음 — 폐기하면 남은 효과는 사라집니다",
+    "en": "Agent effects still pending — trashing it loses the rest"
+  },
   "panels.intrigue_deck_top_badge": {
     "ko": "책략 카드덱 맨 위",
     "en": "Top of Intrigue deck"
@@ -1540,6 +1552,18 @@ const UI_TEXT = {
   "render.zone_heading": {
     "ko": "{{zone}} · {{count}}",
     "en": "{{zone}} · {{count}}"
+  },
+  "render.turn_card_suffix": {
+    "ko": "이번 차례에 낸 카드",
+    "en": "card played this turn"
+  },
+  "render.turn_card_pending_suffix": {
+    "ko": "이번 차례에 낸 카드 · 폐기하면 남은 에이전트 효과 사라짐",
+    "en": "card played this turn · trashing it loses its remaining Agent effects"
+  },
+  "render.earlier_turn_card_suffix": {
+    "ko": "앞 차례에 낸 카드",
+    "en": "card played on an earlier turn"
   },
   "review.before_game_start": {
     "ko": "게임 시작 전",
