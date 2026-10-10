@@ -1228,3 +1228,70 @@ def test_urgent_shigawire_placement_can_be_taken_back_and_its_draw_cannot() -> N
     assert len(manager._get(game_id).state.players[0].hand) == len(hand_before)
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
 
+
+# ------------------------------------------------ Cunning
+
+
+def test_cunning_trash_can_be_taken_back_and_its_draw_cannot() -> None:
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106; OQ-015 (d)):
+    Cunning's "1 spice -> [draw 1] [trash a card]" [Cunning card] trashed
+    first leaves the draw as its own step. The trash is the seat's own
+    choice and stays in its undo window; the draw from the hidden deck
+    closes it (OQ-010). Before the split the trash drew in the same step.
+
+    Seed 0: seat 0's first turn, given Cunning and one spice by hand (the
+    served flags and the window are checked, not an actual undo, which
+    replays the log from the game's start).
+    """
+
+    cunning = "intrigue:cunning:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        intrigue_deck=tuple(c for c in session.state.intrigue_deck if c != cunning),
+        players=(
+            replace(
+                owner,
+                intrigue_cards=(cunning,),
+                resources=replace(owner.resources, spice=1),
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+
+    def served() -> list[dict[str, object]]:
+        return _rows(manager.legal_actions(game_id, 0)["actions"])
+
+    play = next(
+        row
+        for row in served()
+        if row["action_id"] == "play_intrigue"
+        and row["arguments"] == {"card_id": cunning, "option": 1}
+    )
+    summary = _play_raw(manager, summary, index=_int(play["index"]))
+    rows = served()
+    rewards = next(
+        row for row in rows if row["action_id"] == "resolve_intrigue_rewards"
+    )
+    assert rewards["undoable"] is False
+    trash = next(row for row in rows if row["action_id"] == "trash_intrigue_card")
+    assert trash["undoable"] is True
+    hand_before = manager._get(game_id).state.players[0].hand
+
+    summary = _play_raw(manager, summary, index=_int(trash["index"]))
+    trashed = manager._get(game_id).state.players[0]
+    assert len(trashed.hand) == len(hand_before) - 1  # nothing drawn
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 2}]
+    rows = served()
+    assert [row["action_id"] for row in rows] == ["resolve_intrigue_rewards"]
+    assert rows[0]["undoable"] is False
+
+    summary = _play_raw(manager, summary, index=_int(rows[0]["index"]))
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before)
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+

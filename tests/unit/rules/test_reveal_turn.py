@@ -3165,7 +3165,11 @@ def test_a_trashed_stilgar_gains_nothing_from_a_later_fremen_arrival() -> None:
         if action.action_id == "trash_intrigue_card"
         and dict(action.arguments)["card_id"] == stilgar
     )
-    result = engine.apply(plotted, trash)
+    # The trash leaves Cunning's draw as its own step (OQ-106).
+    trashed = engine.apply(plotted, trash).state
+    result = engine.apply(
+        trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    )
 
     owner = result.state.players[0]
     assert owner.trashed == (stilgar,)
@@ -3215,7 +3219,11 @@ def test_stilgar_adds_two_for_a_fremen_arrival_after_a_fremen_card_was_trashed()
         if action.action_id == "trash_intrigue_card"
         and dict(action.arguments)["card_id"] == loyalty
     )
-    result = engine.apply(plotted, trash)
+    # The trash leaves Cunning's draw as its own step (OQ-106).
+    trashed = engine.apply(plotted, trash).state
+    result = engine.apply(
+        trashed, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    )
 
     owner = result.state.players[0]
     assert owner.trashed == (loyalty,)

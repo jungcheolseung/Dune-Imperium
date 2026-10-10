@@ -1699,11 +1699,18 @@ def test_insider_information_recalls_a_spy_to_trash_and_draw() -> None:
         if a.action_id == "trash_intrigue_card"
         and dict(a.arguments)["card_id"] == STARTERS[4]
     )
-    done = engine.apply(recalled, trash).state
+    trashed = engine.apply(recalled, trash).state
+    # The trash draws nothing: the line's draw is its own step (user ruling
+    # 2026-10-10, OQ-106) and the only one left.
+    assert trashed.players[0].hand == ()
+    rewards = DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    assert engine.legal_actions(trashed, 0) == (rewards,)
+    done = engine.apply(trashed, rewards).state
     owner_after = done.players[0]
     assert owner_after.spies_supply == 3
     assert owner_after.trashed == (STARTERS[4],)
     assert len(owner_after.hand) == 1  # the drawn card
+    assert done.intrigue_discard[-1] == card
 
 
 def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:

@@ -721,23 +721,33 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     ``commanders`` 1: ``unit_lost`` with one Commander) and a troop for
     slot 1 (independent replay; with the previous window rule patched back
     in, it gives seed 15 seat 0's retreat pinned before).
+
+    Re-derived 2026-10-10 for Cunning's and Insider Information's draw as
+    its own step after their trash (OQ-106, codec v142): seed 23 first
+    diverges at round 2, seat 3's Insider Information trash, and seat 2 no
+    longer retreats a Commander (the previous commit's engine gives the
+    retreat pinned before). The same listing over full seeds 1-200 gives
+    seed 2 seat 0 (Gurney Halleck) first: in round 6 its Gruesome Sacrifice
+    pays the Commander for slot 1 (``lose_intrigue_troop`` with
+    ``commanders`` 1), its only Commander retreat event, and the census
+    counts no Commander retreat for it (scratch replay).
     """
 
-    spec = _spec(True, 23)
+    spec = _spec(True, 2)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
         event.event_id
         for event in events
         if event.kind == "troops_retreated"
-        and dict(event.payload).get("player") == 2
+        and dict(event.payload).get("player") == 0
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:10:player:2:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat"
+        "round:6:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
     ]
     census = tip_census.play(spec, ("endgame",))
-    assert census["seats"][2]["bt.commander_retreats"] == 0
+    assert census["seats"][0]["bt.commander_retreats"] == 0
 
 
 def test_commander_retreats_counts_the_reveal_two_troop_retreat_choice(

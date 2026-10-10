@@ -364,6 +364,9 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # its own ``resolve_agent_card_effect(effect=cards)`` step after the
 # placement instead of being drawn by the ``agent_turn`` itself. No template
 # change.
+# Also in v142 (OQ-106): Cunning's and Insider Information's draw is its own
+# ``resolve_intrigue_rewards`` when the owner resolves the line's trash slot
+# first. No template change.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

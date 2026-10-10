@@ -166,7 +166,7 @@ const ACTION_LABELS = {
   resolve_espionage_without_spy: "{spy} 없이 해결",
   resolve_faction_influence: "{faction} {influence_any} 해결",
   resolve_imperial_privilege_without_recall: "{agent} 소환 없이 확인 (Imperial Privilege)",
-  resolve_intrigue_rewards: "{intrigue} 자동 보상 먼저 해결",
+  resolve_intrigue_rewards: "{intrigue} 자동 보상 해결",
   resolve_unit_loss_without_unit: "잃을 유닛 없음 — 확인",
   resolve_commander_without_skill: "{commander_skill} 없이 {commander} 획득 — 확인",
   defer_reveal_choice: "이 {reveal_turn} 선택은 나중에",

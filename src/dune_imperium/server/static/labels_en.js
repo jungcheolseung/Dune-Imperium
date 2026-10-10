@@ -132,7 +132,7 @@ const LABELS_EN = {
     "resolve_espionage_without_spy": "Resolve without {spy}",
     "resolve_faction_influence": "Resolve {faction} {influence_any}",
     "resolve_imperial_privilege_without_recall": "Confirm without recalling {agent} (Imperial Privilege)",
-    "resolve_intrigue_rewards": "Resolve {intrigue} automatic rewards first",
+    "resolve_intrigue_rewards": "Resolve {intrigue} automatic rewards",
     "resolve_unit_loss_without_unit": "No unit to lose — confirm",
     "resolve_commander_without_skill": "Gain the {commander} without a {commander_skill} — confirm",
     "defer_reveal_choice": "Defer this {reveal_turn} choice",

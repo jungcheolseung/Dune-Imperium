@@ -734,13 +734,17 @@ def test_reward_spy_with_an_empty_supply_recalls_the_worst_post() -> None:
 
 
 def test_endgame_plays_first_then_matches_then_passes() -> None:
-    # Base seed 47: seat 3 holds Shadow Alliance (offered) and a face-up
-    # crysknife Objective beside Propaganda. (Seed 18, where seat 2 also held
-    # an unplayable Secure Spice Trade, reached this until Imperial
-    # Privilege's card draw became its own icon, 2026-10-10, OQ-027 (d),
-    # which moved its game at round 8 seat 0's Imperial Privilege visit; 47
-    # is the first seed from 18 that offers a play and a match together.)
-    state = _reach("endgame_intrigue", choam=False, seed=47, want="play_and_match")
+    # Base seed 61: seat 2 holds Secure Spice Trade (offered) beside an
+    # unplayable Buy Access, and a face-up desert mouse Objective beside
+    # Propaganda. (Seed 18, where seat 2 also held an unplayable Secure Spice
+    # Trade, reached this until Imperial Privilege's card draw became its
+    # own icon, 2026-10-10, OQ-027 (d), which moved its game at round 8 seat
+    # 0's Imperial Privilege visit; then seed 47, where seat 3 held Shadow
+    # Alliance and a crysknife Objective, until Cunning's draw after its
+    # trash became its own step, 2026-10-10, OQ-106, which moved its game at
+    # round 7 seat 3's Cunning; 61 is the first seed from 47 that offers a
+    # play and a match together.)
+    state = _reach("endgame_intrigue", choam=False, seed=61, want="play_and_match")
     seat = _seat(state)
     taken: list[tuple[str, dict[str, object]]] = []
     while state.decision_stack and state.decision_stack[-1].kind == "endgame_intrigue":
@@ -752,10 +756,13 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
         taken.append(_args(action))
         state = ENGINE.apply(state, action, legal_actions=run.legal).state
     assert taken == [
-        ("play_intrigue", {"card_id": "intrigue:shadow_alliance:0", "option": 0}),
+        ("play_intrigue", {"card_id": "intrigue:secure_spice_trade:0", "option": 0}),
         (
             "match_endgame_wild_icon",
-            {"matching_card_id": "objective_crysknife_1", "wild_card_id": "propaganda"},
+            {
+                "matching_card_id": "objective_desert_mouse_4_6p",
+                "wild_card_id": "propaganda",
+            },
         ),
         ("pass_endgame_intrigue", {}),
     ]

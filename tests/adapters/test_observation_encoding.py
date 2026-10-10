@@ -546,12 +546,20 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # 3,640 vectors). With the placement drawing the card again (a scratch copy
 # of the previous commit's source) all six games reproduce the pins above
 # exactly.
+# v142, fourth change (OQ-106): Cunning's and Insider Information's draw is
+# its own ``resolve_intrigue_rewards`` step when the owner resolves the
+# trash first. Only promo_bloodlines_tech moves: at decision 547 (round 8,
+# seat 2, right after Insider Information's trash) the draw is the seat's
+# one legal action, where the trash had drawn already and the random seat
+# chose among 6 (3,172 -> 3,164 vectors). With the
+# trash drawing again (a scratch copy of the previous commit's source) all
+# six games reproduce the pins above exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
     "promo_bloodlines_tech": (
-        "1af539caf7c6a6dbe94605a3411935c0198f495c2ae7263a65e32e45b71b540c",
-        3172,
+        "92815f46b8d9f8e393f8d102df256f113c5d6e1bf628297a18d18c5504c38519",
+        3164,
     ),
     "everything": (
         "f55433f456bb38bb07fb221e3ba4224190a5369b0b9eab537eb6530914ecee18",
