@@ -1,0 +1,420 @@
+"""Positions from people's games where two searches agreed which move was right.
+
+The human-game diagnosis (``scripts/records/human_diagnosis.py``,
+docs/evaluation/human-games-2026-10-10.md) leaves decisions where the play
+network's first choice and the person's move were judged twice, by two
+networks' searches, with the same clear verdict: the person's move was
+better (family ``human_right``) or the network's was (``network_right``).
+A suite freezes those positions to score later agents on them. Like the
+mined suite (``evaluation.problem_set``, docs/evaluation/problem-set.md) it
+is an evaluation only, never a training target, and a disagreement is a
+lead to investigate rather than a wrong answer. The ``network_right``
+family is the control: an agent that learned people's moves wholesale
+would lose it.
+
+Unlike the mined suite, these positions cannot be mined again: they come
+from people's games. So a suite carries its records -- each game's save
+document without its undo log -- and resolves a position by migrating its
+record onto this engine (``records.migration``). A position resolves when
+its record migrates past it and both of its moves are legal there (the
+person's move in its migrated form, as a bridge may have rewritten it);
+otherwise ``resolve`` says why, and the position is left out of a score
+instead of being scored on another game.
+"""
+
+import hashlib
+import json
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Final
+
+from dune_imperium.agents import StateAgent, make_agent
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.replay import ReplayStep
+from dune_imperium.core.state import GameState
+from dune_imperium.paths import LOCAL_DIR
+from dune_imperium.records.migration import migrate_record, walk
+from dune_imperium.records.saves import SavedGame
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.server.persistence import (
+    deserialize_step,
+    parse_save_document,
+    serialize_step,
+)
+
+SUITE_FORMAT: Final = "dune-imperium-human-problems"
+SUITE_VERSION: Final = 1
+FAMILIES: Final = ("human_right", "network_right")
+# Kept with the machine's other lasting local files (git-ignored ``local/``):
+# the suite holds people's games, which the public repository does not.
+DEFAULT_SUITE: Final = LOCAL_DIR / "records" / "human-problems.json"
+# The save fields a record keeps; the undo log and the session's turn-end
+# state are not part of the game.
+_RECORD_FIELDS: Final = (
+    "ruleset",
+    "game_seed",
+    "policy_seed",
+    "seats",
+    "steps",
+    "expected_state_hash",
+    "ruleset_version",
+    "content_version",
+    "action_codec_version",
+    "name",
+    "saved_at",
+    "source_game_id",
+    "finished",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class HumanProblem:
+    """One judged decision of a person."""
+
+    problem_id: str
+    game: str
+    # The decision's index among the record's steps: the person's move.
+    recorded_index: int
+    seat: int
+    round_number: int
+    # ``agent_turn``, ``effect_order`` (an Agent turn's effect ordering), or
+    # the person's action id.
+    kind: str
+    family: str
+    right: DomainAction
+    wrong: DomainAction
+    evidence: Mapping[str, Any]
+
+    @property
+    def person(self) -> DomainAction:
+        """The move the person made."""
+
+        return self.right if self.family == "human_right" else self.wrong
+
+
+@dataclass(frozen=True, slots=True)
+class Suite:
+    note: str
+    records: Mapping[str, Mapping[str, Any]]
+    problems: tuple[HumanProblem, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Resolved:
+    """A problem's position on this engine."""
+
+    problem: HumanProblem
+    state: GameState
+    legal: tuple[DomainAction, ...]
+    right: DomainAction
+    wrong: DomainAction
+
+
+@dataclass(frozen=True, slots=True)
+class HumanAnswer:
+    problem_id: str
+    family: str
+    kind: str
+    # ``right``, ``wrong`` (the other judged move) or ``neither``.
+    outcome: str
+    chosen: str
+    # A network's probabilities (``None`` for other agents): on the right
+    # move, on the wrong one, and the right move's share of the two.
+    p_right: float | None
+    p_wrong: float | None
+    pair_share: float | None
+    # The right move's place in the network's order (1 = its first choice).
+    rank_right: int | None
+    offered: int
+
+
+def _action(value: Mapping[str, Any], seat: int) -> DomainAction:
+    arguments = tuple(sorted(dict(value["args"]).items()))
+    return DomainAction(action_id=str(value["id"]), actor=seat, arguments=arguments)
+
+
+def _kind(row: Mapping[str, Any]) -> str:
+    if row.get("effect_order"):
+        return "effect_order"
+    human = row["human"]
+    assert isinstance(human, Mapping)
+    return str(human["id"])
+
+
+def _paired(values: Sequence[Sequence[float]], human: int) -> tuple[float, float]:
+    diffs = [world[human] - world[0] for world in values]
+    mean = sum(diffs) / len(diffs)
+    variance = sum((d - mean) ** 2 for d in diffs) / max(1, len(diffs) - 1)
+    return mean, (variance / len(diffs)) ** 0.5
+
+
+def build_suite(
+    games: Iterable[SavedGame],
+    judged: Iterable[Mapping[str, Any]],
+    confirmed: Iterable[Mapping[str, Any]],
+    note: str,
+) -> Suite:
+    """Freeze the positions both judges agreed on.
+
+    ``judged`` and ``confirmed`` are the rows of the diagnosis tool's
+    ``judge`` and ``confirm`` steps; ``games`` are the saves they judged
+    (``records.saves.saved_games``), matched by the first eight characters
+    of the game id as the tool writes them.
+    """
+
+    by_short = {game.game_id[:8]: game for game in games}
+    first = {(row["game"], row["step"]): row for row in judged}
+    problems: list[HumanProblem] = []
+    records: dict[str, Mapping[str, Any]] = {}
+    for row in confirmed:
+        if row["first"] != row["second"] or row["second"] not in ("human", "net"):
+            continue
+        game = by_short[row["game"]]
+        index = int(row["step"])
+        seat = int(row["seat"])
+        person = game.parsed.replay.steps[index]
+        if not isinstance(person, DomainAction) or person != _action(
+            row["human"], seat
+        ):
+            raise ValueError(f"{row['game']} step {index} is not the judged move")
+        network = _action(row["net_first"], seat)
+        family = "human_right" if row["second"] == "human" else "network_right"
+        judged_row = first[(row["game"], index)]
+        first_mean, first_error = _paired(
+            judged_row["values"], int(judged_row["human_col"])
+        )
+        problems.append(
+            HumanProblem(
+                problem_id=f"{row['game']}:{index}",
+                game=game.game_id,
+                recorded_index=index,
+                seat=seat,
+                round_number=int(row["round"]),
+                kind=_kind(judged_row),
+                family=family,
+                right=person if family == "human_right" else network,
+                wrong=network if family == "human_right" else person,
+                evidence={
+                    "first_mean": first_mean,
+                    "first_error": first_error,
+                    "second_mean": float(row["mean"]),
+                    "second_error": float(row["error"]),
+                    "p_person": float(row["p_human"]),
+                },
+            )
+        )
+        if game.game_id not in records:
+            document = json.loads(game.path.read_text(encoding="utf-8"))
+            records[game.game_id] = {
+                "format": "dune-imperium-save",
+                "format_version": 1,
+                **{key: document[key] for key in _RECORD_FIELDS if key in document},
+            }
+    problems.sort(key=lambda problem: (problem.game, problem.recorded_index))
+    return Suite(note=note, records=records, problems=tuple(problems))
+
+
+def save_suite(path: Path, suite: Suite) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = {
+        "format": SUITE_FORMAT,
+        "version": SUITE_VERSION,
+        "note": suite.note,
+        "records": suite.records,
+        "problems": [
+            {
+                "problem_id": problem.problem_id,
+                "game": problem.game,
+                "recorded_index": problem.recorded_index,
+                "seat": problem.seat,
+                "round": problem.round_number,
+                "kind": problem.kind,
+                "family": problem.family,
+                "right": serialize_step(problem.right),
+                "wrong": serialize_step(problem.wrong),
+                "evidence": dict(problem.evidence),
+            }
+            for problem in suite.problems
+        ],
+    }
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+
+
+def load_suite(path: Path = DEFAULT_SUITE) -> Suite:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("format") != SUITE_FORMAT or document.get("version") != (
+        SUITE_VERSION
+    ):
+        raise ValueError(f"{path} is not a version {SUITE_VERSION} human problem suite")
+    problems = []
+    for index, item in enumerate(document["problems"]):
+        right = deserialize_step(item["right"], index)
+        wrong = deserialize_step(item["wrong"], index)
+        if not isinstance(right, DomainAction) or not isinstance(wrong, DomainAction):
+            raise ValueError(f"problem {item['problem_id']} needs two actions")
+        if item["family"] not in FAMILIES:
+            raise ValueError(f"problem {item['problem_id']} has no known family")
+        problems.append(
+            HumanProblem(
+                problem_id=item["problem_id"],
+                game=item["game"],
+                recorded_index=int(item["recorded_index"]),
+                seat=int(item["seat"]),
+                round_number=int(item["round"]),
+                kind=item["kind"],
+                family=item["family"],
+                right=right,
+                wrong=wrong,
+                evidence=item["evidence"],
+            )
+        )
+    return Suite(
+        note=str(document.get("note", "")),
+        records=document["records"],
+        problems=tuple(problems),
+    )
+
+
+def resolve(
+    suite: Suite, engine: UprisingRulesEngine | None = None
+) -> dict[str, Resolved | str]:
+    """Each problem's position on this engine, or why it has none."""
+
+    engine = engine or UprisingRulesEngine()
+    by_game: dict[str, list[HumanProblem]] = defaultdict(list)
+    for problem in suite.problems:
+        by_game[problem.game].append(problem)
+    resolved: dict[str, Resolved | str] = {}
+    for game, problems in by_game.items():
+        replay = parse_save_document(
+            dict(suite.records[game]), check_versions=False
+        ).replay
+        record = migrate_record(replay, engine)
+        wanted = {problem.recorded_index: problem for problem in problems}
+        for state, migrated in walk(record, engine):
+            if migrated.recorded_index not in wanted:
+                continue
+            problem = wanted[migrated.recorded_index]
+            resolved[problem.problem_id] = _position(
+                engine, problem, state, migrated.step
+            )
+        for problem in problems:
+            if problem.problem_id in resolved:
+                continue
+            divergence = record.divergence
+            resolved[problem.problem_id] = (
+                f"the record stops at step {divergence.recorded_index} on this "
+                f"engine: {divergence.reason}"
+                if divergence is not None
+                else "the record never reaches the position"
+            )
+    return resolved
+
+
+def _position(
+    engine: UprisingRulesEngine,
+    problem: HumanProblem,
+    state: GameState,
+    migrated: ReplayStep,
+) -> Resolved | str:
+    decision = engine.current_decision(state)
+    if getattr(decision, "owner", None) != problem.seat:
+        return f"seat {problem.seat} does not decide here on this engine"
+    legal = engine.legal_actions(state, problem.seat)
+    # The person's move as the migration replayed it (a bridge may have
+    # rewritten it); the network's move as judged.
+    person = migrated if isinstance(migrated, DomainAction) else problem.person
+    right, wrong = (
+        (person, problem.wrong)
+        if problem.family == "human_right"
+        else (problem.right, person)
+    )
+    for move, name in ((right, "right"), (wrong, "wrong")):
+        if move not in legal:
+            return (
+                f"the {name} move {move.action_id}{dict(move.arguments)} is not legal"
+            )
+    return Resolved(problem, state, legal, right, wrong)
+
+
+def _agent_seed(problem_id: str, seed: int) -> int:
+    digest = hashlib.sha256(problem_id.encode()).hexdigest()
+    return seed + int(digest[:8], 16) % 1_000_000
+
+
+def answer(
+    position: Resolved,
+    kind: str,
+    seed: int = 0,
+    engine: UprisingRulesEngine | None = None,
+) -> HumanAnswer:
+    """Ask a fresh ``kind`` agent for the position's decision."""
+
+    # Imported here: the mined suite's helper pulls torch only for networks.
+    from dune_imperium.evaluation.problem_set import policy_probabilities
+
+    engine = engine or UprisingRulesEngine()
+    problem, state, legal = position.problem, position.state, position.legal
+    agent = make_agent(kind, _agent_seed(problem.problem_id, seed), state.config)
+    view = engine.observe(state, problem.seat)
+    probabilities = policy_probabilities(agent, view, legal)
+    if isinstance(agent, StateAgent):
+        chosen = agent.choose_action_with_state(state, view, legal)
+    else:
+        chosen = agent.choose_action(view, legal)
+    outcome = (
+        "right"
+        if chosen == position.right
+        else "wrong"
+        if chosen == position.wrong
+        else "neither"
+    )
+    p_right = p_wrong = pair_share = None
+    rank_right = None
+    if probabilities is not None:
+        p_right = probabilities.get(position.right, 0.0)
+        p_wrong = probabilities.get(position.wrong, 0.0)
+        pair = p_right + p_wrong
+        pair_share = p_right / pair if pair > 0 else None
+        rank_right = 1 + sum(1 for value in probabilities.values() if value > p_right)
+    return HumanAnswer(
+        problem_id=problem.problem_id,
+        family=problem.family,
+        kind=problem.kind,
+        outcome=outcome,
+        chosen=f"{chosen.action_id}{dict(chosen.arguments)}",
+        p_right=p_right,
+        p_wrong=p_wrong,
+        pair_share=pair_share,
+        rank_right=rank_right,
+        offered=len(legal),
+    )
+
+
+def summarize(answers: Sequence[HumanAnswer]) -> dict[str, dict[str, Any]]:
+    """Per family, and per family and kind group: shares and mean probabilities.
+
+    The kind groups are ``agent_turn``, ``effect_order`` and ``other``.
+    """
+
+    groups: dict[str, list[HumanAnswer]] = defaultdict(list)
+    for item in answers:
+        group = item.kind if item.kind in ("agent_turn", "effect_order") else "other"
+        groups[item.family].append(item)
+        groups[f"{item.family}/{group}"].append(item)
+    summary: dict[str, dict[str, Any]] = {}
+    for name in sorted(groups):
+        items = groups[name]
+        p_right = [item.p_right for item in items if item.p_right is not None]
+        shares = [item.pair_share for item in items if item.pair_share is not None]
+        summary[name] = {
+            "n": len(items),
+            "right": sum(item.outcome == "right" for item in items) / len(items),
+            "wrong": sum(item.outcome == "wrong" for item in items) / len(items),
+            "neither": sum(item.outcome == "neither" for item in items) / len(items),
+            "mean_p_right": sum(p_right) / len(p_right) if p_right else None,
+            "mean_pair_share": sum(shares) / len(shares) if shares else None,
+        }
+    return summary

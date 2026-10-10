@@ -13,6 +13,9 @@ Three steps, each writing JSON lines under ``--diag``:
              (``--net``) and more worlds: the candidates are the first
              network's choice and the person's.
 ``report``   Tables and the confirmed decisions.
+``freeze``   Write the decisions both judges agreed on as a suite of human
+             problems with their games (``records.problems``), to score
+             later agents with ``dune-imperium-records problems score``.
 
 A verdict is clear when the mean paired difference (person minus network,
 on the value head's scale: a win is 1, a loss -1/3) is beyond two standard
@@ -48,6 +51,7 @@ from dune_imperium.agents.network_search_agent import (
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.paths import SAVES_DIR
+from dune_imperium.records.problems import DEFAULT_SUITE, build_suite, save_suite
 from dune_imperium.records.saves import HumanDecision, human_decisions, saved_games
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.training.expert import decision_frame
@@ -270,6 +274,18 @@ def _report(diag: Path) -> None:
         )
 
 
+def _freeze(diag: Path, saves_dir: Path, out: Path, note: str) -> None:
+    confirmed = [
+        json.loads(line)
+        for path in sorted(glob.glob(str(diag / "confirm-*.jsonl")))
+        for line in Path(path).read_text(encoding="utf-8").splitlines()
+    ]
+    suite = build_suite(saved_games(saves_dir), _judged(diag), confirmed, note)
+    save_suite(out, suite)
+    families = Counter(problem.family for problem in suite.problems)
+    print(f"wrote {out}: {dict(families)} from {len(suite.records)} games")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -288,10 +304,20 @@ def main() -> None:
             )
     report = sub.add_parser("report")
     report.add_argument("--diag", type=Path, required=True)
+    freeze = sub.add_parser("freeze")
+    freeze.add_argument("--diag", type=Path, required=True)
+    freeze.add_argument("--saves-dir", type=Path, default=SAVES_DIR)
+    freeze.add_argument("--out", type=Path, default=DEFAULT_SUITE)
+    freeze.add_argument(
+        "--note", required=True, help="the judges and worlds, for the suite file"
+    )
     args = parser.parse_args()
 
     if args.command == "report":
         _report(args.diag)
+        return
+    if args.command == "freeze":
+        _freeze(args.diag, args.saves_dir, args.out, args.note)
         return
     args.diag.mkdir(parents=True, exist_ok=True)
     shards = args.workers
