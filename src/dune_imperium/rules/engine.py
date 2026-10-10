@@ -236,6 +236,7 @@ from dune_imperium.rules.pauses import (
     CONFLICT_END,
     REWARDS,
     ROUND_START,
+    SCOUTS_REWARD,
     pause_is_pending,
     pending_pause_point,
     push_pause,
@@ -1140,6 +1141,10 @@ def _resume_pause(state: GameState) -> RuleResult:
         return offer_conflict_end_triggers(resumed)
     if point == ROUND_START:
         return prepare_round_start(resumed)
+    if point == SCOUTS_REWARD:
+        # The Scouts step's next task is the held-back winner's reward; the
+        # automatic advance runs it (rules/scouts.py).
+        return RuleResult(state=resumed)
     return draw_round_hands(resumed)
 
 

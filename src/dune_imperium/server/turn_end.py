@@ -28,7 +28,8 @@ unit's steps back. So a held unit end comes before the chance outcomes that
 follow the unit (the next Arrakeen Scouts card, a reshuffle, and the
 engine's pauses before a reveal: before each Conflict reward recipient
 after the first, before every Round Start after the first, after a Control
-defense, rules/pauses.py): those reveal hidden information or stand right
+defense, before each Arrakeen Scouts auction winner's reward after the
+first, rules/pauses.py): those reveal hidden information or stand right
 before it, the reveal closes the undo window (OQ-010), and a press after
 it would confirm nothing ("전투 보상으로 받은 스파이 둘 위치를 골랐다가 …
 확정 전에 다른 곳에 두고 싶을 수 있잖아", user, 2026-10-08). A chance

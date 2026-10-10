@@ -383,6 +383,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Also in v142 (OQ-106): the card Steersman Y'rkoon's Hungry for Spice owes
 # inside his own turn waits likewise: Bloodlines catalogs add the nullary
 # ``draw_owed_card``.
+# Also in v142 (OQ-106, Arrakeen Scouts): a pause stands before each auction
+# winner's reward after the first (rules/pauses.py), so Competitive Study's
+# second place no longer researches, or draws past the second genetic
+# marker, in the first place's step. No template change; recorded step
+# sequences gain those chance steps.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

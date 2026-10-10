@@ -9,8 +9,14 @@ from dune_imperium import RulesetConfig
 from dune_imperium.core import GameState, PlayerState
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import Resources
 from dune_imperium.core.replay import ReplayStep
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.engine import _advance_automatic
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.persistence import SAVE_FORMAT_VERSION
 from dune_imperium.server.session_log import (
@@ -1829,3 +1835,115 @@ def test_muad_dibs_reveal_can_be_taken_back_before_its_intrigue_card() -> None:
         len(intrigue_before) + 1
     )
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+# ------------------------------------------------ Arrakeen Scouts lines (OQ-106)
+
+_ENGINE = UprisingRulesEngine()
+
+
+def _scouts_draw(state: GameState, item_id: str) -> GameState:
+    """Answer the Scouts step's draws until ``item_id`` is revealed."""
+
+    while True:
+        state = _advance_automatic(RuleResult(state=state)).state
+        frame = state.decision_stack[-1]
+        if frame.kind != FrameKind.SCOUTS_DRAW:
+            return state
+        decision = frame.decision
+        assert isinstance(decision, ChanceDecision)
+        wanted = [o for o in decision.options if o.split("#")[0] == item_id]
+        value = wanted[0] if wanted else decision.options[0]
+        state = _ENGINE.apply(
+            state, ChanceOutcome(decision.decision_id, (value,))
+        ).state
+        if wanted:
+            return state
+
+
+def _scouts_act(
+    state: GameState, action_id: str, **arguments: str | int
+) -> GameState:
+    decision = state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    action = DomainAction(
+        action_id=action_id,
+        actor=decision.owner,
+        arguments=tuple(sorted(arguments.items())),
+    )
+    legal = _ENGINE.legal_actions(state, decision.owner)
+    assert action in legal, (action, legal)
+    return _ENGINE.apply(state, action, legal_actions=legal).state
+
+
+def _scouts_step(
+    manager: GameSessionManager, game_id: str, round_number: int, **fields: object
+) -> GameState:
+    """The session's state turned into ``round_number``'s Scouts step about
+    to draw, seat 0 the First Player and every seat rich."""
+
+    state = manager._get(game_id).state
+    rich = Resources(solari=6, spice=6, water=2)
+    return replace(
+        state,
+        round_number=round_number,
+        first_player=0,
+        players=tuple(replace(p, resources=rich) for p in state.players),
+        decision_stack=(),
+        scouts_opening=True,
+        **fields,  # type: ignore[arg-type]
+    )
+
+
+def test_competitive_study_direction_can_be_taken_back_before_the_next_card() -> (
+    None
+):
+    """Competitive Study's late second place, researching past the second
+    genetic marker, draws a card [Immortality p. 6]; that card came out in
+    the first place's Research-direction step, so the direction was served
+    irreversible. A pause now stands before the second place's reward
+    (rules/pauses.py; user ruling 2026-10-10, OQ-106), and the direction is
+    served undoable, held by the server until seat 0's press (OQ-103).
+
+    Seed 0 with Arrakeen Scouts and Immortality, made round 8's Scouts step
+    with the late Competitive Study drawn by hand (served flags only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST, game_seed=0, arrakeen_scouts=True, immortality=True
+    )
+    game_id = str(summary["game_id"])
+    state = _scouts_step(
+        manager,
+        game_id,
+        8,
+        scouts_mid_auction_round=5,
+        scouts_late_auction_round=8,
+        scouts_secrets_round=8,
+    )
+    research = {0: "c1r3", 2: "c8r2"}
+    state = replace(
+        state,
+        players=tuple(
+            replace(p, research_space=research.get(p.player_id, p.research_space))
+            for p in state.players
+        ),
+    )
+    state = _scouts_draw(state, "competitive_study_late")
+    bids = {0: 4, 1: 0, 2: 2, 3: 0}
+    while state.decision_stack[-1].kind == FrameKind.SCOUTS_BID:
+        decision = state.decision_stack[-1].decision
+        assert isinstance(decision, PlayerDecision)
+        state = _scouts_act(state, "scouts_bid", count=bids[decision.owner])
+        state = _scouts_act(state, "confirm_scouts_bid")
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    manager._get(game_id).state = state
+    rows = [
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "choose_research_space"
+    ]
+    assert len(rows) == 2
+    assert all(row["undoable"] is True for row in rows)
+    assert all(row["sent_by_turn_end"] is False for row in rows)
