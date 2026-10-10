@@ -566,9 +566,12 @@ def judge(
     - ``collateral``: no hit in the window before the run starts, diverged
       or not (a diverged one keeps its record's divergence signature);
     - ``bridge-without-hit`` (the second result): a firing with no hit in
-      the ``window`` steps before it that does not end a ``bridged-window``
-      run either (a held draw may be taken more than ``window`` steps after
-      its hit, at the seat's turn end).
+      the ``window`` steps before it, nor at the recorded step it ran
+      before, that does not end a ``bridged-window`` run either (a held
+      draw may be taken more than ``window`` steps after its hit, at the
+      seat's turn end). The step it ran before counts because a draw that
+      needs a reshuffle is that step: the old engine drew in the recorded
+      discard-shuffle chance, which answers the bridge's draw here.
     """
 
     hit_list = sorted(hits)
@@ -614,7 +617,7 @@ def judge(
     bridged_ends = {run.end + 1 for run in runs if run.verdict == "bridged-window"}
     lone = []
     for point in firing_points:
-        hit = _nearest(hit_list, point - 1)
+        hit = _nearest(hit_list, point)
         if (hit is None or point - hit[0] > window) and point not in bridged_ends:
             lone.append(point)
     return tuple(runs), tuple(lone)

@@ -941,9 +941,11 @@ def test_a_bridge_firing_right_before_a_divergence_is_kept(
         ({}, [(4, "k")], [20], None, [], []),
         ({}, [(4, "k")], [21], None, [], [21]),
         # (a firing that ends a bridged-window run has its run's hit: the
-        # first case's is 18 steps after it); a hit at the firing's own
-        # recorded step comes after it.
-        ({}, [(21, "k")], [21], None, [], [21]),
+        # first case's is 18 steps after it). A hit at the firing's own
+        # recorded step is its draw's reshuffle chance; one a step later
+        # comes after it.
+        ({}, [(21, "k")], [21], None, [], []),
+        ({}, [(22, "k")], [21], None, [], [21]),
     ],
 )
 def test_judge(
