@@ -16,6 +16,9 @@ Three steps, each writing JSON lines under ``--diag``:
 ``freeze``   Write the decisions both judges agreed on as a suite of human
              problems with their games (``records.problems``), to score
              later agents with ``dune-imperium-records problems score``.
+             ``--append`` adds a later run's games to the suite at ``--out``
+             (judge only the new saves: ``--saves-dir`` a folder holding
+             just them).
 
 A verdict is clear when the mean paired difference (person minus network,
 on the value head's scale: a win is 1, a loss -1/3) is beyond two standard
@@ -51,7 +54,13 @@ from dune_imperium.agents.network_search_agent import (
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.paths import SAVES_DIR
-from dune_imperium.records.problems import DEFAULT_SUITE, build_suite, save_suite
+from dune_imperium.records.problems import (
+    DEFAULT_SUITE,
+    build_suite,
+    load_suite,
+    merge_suites,
+    save_suite,
+)
 from dune_imperium.records.saves import HumanDecision, human_decisions, saved_games
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.training.expert import decision_frame
@@ -274,13 +283,15 @@ def _report(diag: Path) -> None:
         )
 
 
-def _freeze(diag: Path, saves_dir: Path, out: Path, note: str) -> None:
+def _freeze(diag: Path, saves_dir: Path, out: Path, note: str, append: bool) -> None:
     confirmed = [
         json.loads(line)
         for path in sorted(glob.glob(str(diag / "confirm-*.jsonl")))
         for line in Path(path).read_text(encoding="utf-8").splitlines()
     ]
     suite = build_suite(saved_games(saves_dir), _judged(diag), confirmed, note)
+    if append and out.exists():
+        suite = merge_suites(load_suite(out), suite)
     save_suite(out, suite)
     families = Counter(problem.family for problem in suite.problems)
     print(f"wrote {out}: {dict(families)} from {len(suite.records)} games")
@@ -311,13 +322,18 @@ def main() -> None:
     freeze.add_argument(
         "--note", required=True, help="the judges and worlds, for the suite file"
     )
+    freeze.add_argument(
+        "--append",
+        action="store_true",
+        help="add these games' problems to the suite already at --out",
+    )
     args = parser.parse_args()
 
     if args.command == "report":
         _report(args.diag)
         return
     if args.command == "freeze":
-        _freeze(args.diag, args.saves_dir, args.out, args.note)
+        _freeze(args.diag, args.saves_dir, args.out, args.note, args.append)
         return
     args.diag.mkdir(parents=True, exist_ok=True)
     shards = args.workers
