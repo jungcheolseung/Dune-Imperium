@@ -109,7 +109,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Tile | 비용 | 획득 효과(1회) | 능력 |
 | --- | --- | --- | --- |
 | Advanced Data Analysis | 3 | 획득 조건: 보드의 자기 Spy 하나를 trash(box로) | Flip → Intrigue 1 |
-| CHOAM Transports (CHOAM 전용) | 6 | contract 1 | contract를 완료할 때마다 draw 1. Endgame: 완료 contract 4+면 VP 1 |
+| CHOAM Transports (CHOAM 전용) | 6 | contract 1 | contract를 완료할 때마다 draw 1(디자이너 판정 "can't be deferred"대로 완료와 함께 뽑는다 — [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다)이 나누지 않은 하나). Endgame: 완료 contract 4+면 VP 1 |
 | Delivery Bay | 3 | draw 1 | Reveal Turn: Command (6+): Solari 2 |
 | Forbidden Weapons | 2 | Shield Wall 파괴(선택) + troop 1 | Reveal Turn: 반드시 선택 — 검 3(+ Influence 1 이상인 진영에서 Influence 1 잃기, 가능하면) 또는 spice 전부 잃고 이 tile trash |
 | Gene-Locked Vault | 2 | Intrigue 1 또는 draw 1 | 자신의 Intrigue 카드는 5장 이상일 때만 도둑맞는다 |
@@ -143,6 +143,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - Duncan Idaho: Into the Fray로 Conflict에 보낸 Agent는 여전히 자신의 Agent라서 뒤의 turn에 Imperial Privilege의 recall 대상이 된다(디자이너 판정, [OQ-037](open-questions.md#oq-037--into-the-fray로-conflict에-간-agent와-bloodlines-leader-카드면의-아이콘-읽기)(d)). `[Board Guide p. 2]` `[Duncan Idaho card]`
 - Esmar Tuek: setup 때 Tuek's Sietch board space를 game board 옆에 놓는다. Maker board space이므로 spice가 쌓인다. Signet Ring으로 Tuek's Sietch에 bonus spice를 놓고 같은 turn에 그곳으로 보낸 Agent로 그 spice를 가져갈 수 있다. `[Bloodlines p. 12]`
 - Steersman Y'rkoon: 자신의 face-down Navigation 카드를 언제든 볼 수 있다. Influence를 잃었다가 다시 얻으면 같은 Faction에서 Influence 2에 여러 번 도달할 수 있고, 그때마다 Navigation 카드를 play한다. `[Bloodlines p. 12]`
+- Steersman Y'rkoon의 Hungry for Spice가 그의 turn 안에서 준 카드는 그 spice를 준 단계에서 뽑지 않고 그의 단계 `draw_owed_card`로 남는다 — 그 전에 버림 더미의 카드를 trash할 수 있게(2026-10-10 사용자 판정, [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 8 — project convention; OQ-063).
 
 ## 7. 기존 명세와의 관계
 
