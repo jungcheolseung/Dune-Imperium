@@ -451,6 +451,11 @@ def _prison_planet_commanders_only(
         )
     ):
         return None
+    # The frame check above and the commander target below are defensive:
+    # on this engine a Prison Planet decision with no troop target always
+    # offers the commander, and the join actions exist only in this frame.
+    # The troop target is what tells a seat the old engine asked (it has its
+    # recorded answer) from one it skipped.
     legal = engine.legal_actions(state, decision.owner)
     owner = decision.owner
 

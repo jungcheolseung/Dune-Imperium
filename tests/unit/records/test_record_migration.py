@@ -4,12 +4,21 @@ Two kinds of evidence. Records made on *this* engine and then stripped of
 what an older engine never recorded (its pauses, the Conflict-end windows
 it never opened, the Combat Intrigue pass it never asked for) must come
 back step for step through the bridges, while the codec gates keep each
-bridge away from records that did meet the decision. And two records made
-by the older engines themselves (``data/``, written by
-``scripts/records/old_engine_record.py`` at master 37727846, codec v135,
-5a2dfc19, codec v139, 6b033158, codec v140, and 21eccca4, codec v141)
-must replay to their end; replayed on their own engines, the v141 ones
-match the migrated public state at every step.
+bridge away from records that did meet the decision. And records made by
+the older engines themselves (``data/``, written by
+``scripts/records/old_engine_record.py``) must replay to their end:
+- master 37727846 (codec v135): ``v135-app_ai-3``;
+- 5a2dfc19 (v139): ``v139-heuristic-1``;
+- 6b033158 (v140): ``v140-heuristic-1``;
+- 21eccca4 (v141): ``v141-heuristic-21`` (Imperial Privilege, each recall
+  followed by its reshuffle), ``v141-heuristic-1023`` (a recall followed by
+  a step the engine accepts), ``v141-heuristic-150`` (Bene Gesserit
+  Treachery with a troop and a Commander in the garrison) and
+  ``v141-no-immortality-no-go_to_11-heuristic-1211`` (Prison Planet, a
+  seat with only Commanders) and ``v141-no-immortality-no-go_to_11-app_ai-6005``
+  (Prison Planet, a seat with a troop and a Commander, asked by both).
+Replayed on their own engines, the v141 ones match the migrated public
+state at every recorded step.
 
 When an engine change makes a ``data/`` record stop, read the module
 docstring of ``records.migration`` and docs/human-records.md before
@@ -371,6 +380,7 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
         ("v139-heuristic-1", 139, {"pause", "conflict_end_window"}),
         ("v140-heuristic-1", 140, {"conflict_end_window"}),
         ("v141-heuristic-21", 141, {"imperial_privilege_draw"}),
+        ("v141-heuristic-1023", 141, {"imperial_privilege_draw"}),
         ("v141-heuristic-150", 141, {"garrison_unit_troop"}),
         (
             "v141-no-immortality-no-go_to_11-heuristic-1211",
@@ -418,33 +428,133 @@ def test_the_v142_bridges_stay_away_from_v142_records(name: str) -> None:
     } & set(record.bridge_counts())
 
 
-def test_imperial_privilege_draws_right_after_the_recorded_recall() -> None:
-    # The record reshuffles for Imperial Privilege right after a recall:
-    # that chance outcome applies only if the draw was made at once, as the
-    # recording engine made it, not when a later step was refused.
-    document = json.loads((DATA / "v141-heuristic-21.json").read_text(encoding="utf-8"))
+@pytest.mark.parametrize("name", ["v141-heuristic-21", "v141-heuristic-1023"])
+def test_imperial_privilege_draws_right_after_the_recorded_recall(name: str) -> None:
+    # The recording engine drew inside the recall, so the draw must come
+    # right after it. In v141-heuristic-1023 the recall is followed by a
+    # step this engine accepts (``decline_tech``): a bridge that waited for
+    # a refusal would draw only after it, a step late.
+    document = json.loads((DATA / f"{name}.json").read_text(encoding="utf-8"))
     replay = parse_save_document(document, check_versions=False).replay
-    reshuffles = [
-        index
-        for index, step in enumerate(replay.steps)
-        if isinstance(step, ChanceOutcome)
-        and step.decision_id.endswith(":board:imperial_privilege:discard_shuffle")
-    ]
-    assert reshuffles
 
     record = migrate_record(replay)
 
     assert record.complete
-    for position, migrated in enumerate(record.steps):
-        if migrated.bridge != "imperial_privilege_draw":
-            continue
+    draws = [
+        position
+        for position, migrated in enumerate(record.steps)
+        if migrated.bridge == "imperial_privilege_draw"
+    ]
+    assert draws
+    for position in draws:
         before = record.steps[position - 1]
         assert before.recorded_index is not None
         assert isinstance(before.step, DomainAction)
         assert "imperial_privilege" in before.step.action_id
-    drawn_before = {
-        record.steps[position - 1].recorded_index
-        for position, migrated in enumerate(record.steps)
-        if migrated.bridge == "imperial_privilege_draw"
-    }
-    assert {index - 1 for index in reshuffles} <= drawn_before
+
+
+def _fixture(name: str) -> GameReplay:
+    document = json.loads((DATA / f"{name}.json").read_text(encoding="utf-8"))
+    return parse_save_document(document, check_versions=False).replay
+
+
+def _first_bridged(replay: GameReplay, bridge: str) -> tuple[int, int]:
+    """The recorded index a bridge first answered before, and its seat."""
+
+    record = migrate_record(replay)
+    for position, migrated in enumerate(record.steps):
+        if migrated.bridge == bridge:
+            step = migrated.step
+            assert isinstance(step, DomainAction)
+            following = next(
+                later
+                for later in record.steps[position + 1 :]
+                if later.recorded_index is not None
+            )
+            assert following.recorded_index is not None
+            return following.recorded_index, step.actor
+    raise AssertionError(f"{bridge} never answered")
+
+
+@pytest.mark.parametrize(
+    ("name", "bridge", "own_answer"),
+    [
+        (
+            "v141-heuristic-150",
+            "garrison_unit_troop",
+            DomainAction(
+                action_id="scouts_lose_garrison_unit",
+                actor=0,
+                arguments=(("commanders", 2),),
+            ),
+        ),
+        (
+            "v141-no-immortality-no-go_to_11-heuristic-1211",
+            "prison_planet_commanders_only",
+            DomainAction(
+                action_id="scouts_join_mission",
+                actor=0,
+                arguments=(("target", "elsewhere"),),
+            ),
+        ),
+    ],
+)
+def test_the_oq105_bridges_never_answer_the_seat_own_recorded_answer(
+    name: str, bridge: str, own_answer: DomainAction
+) -> None:
+    # Where the bridge answered, the record now holds the seat's own answer
+    # to that very decision, one this engine refuses: the bridge must not
+    # answer in its place, and the migration stops on that step.
+    replay = _fixture(name)
+    index, seat = _first_bridged(replay, bridge)
+    answer = replace(own_answer, actor=seat)
+    steps = list(replay.steps)
+    steps.insert(index, answer)
+
+    record = migrate_record(replace(replay, steps=tuple(steps)))
+
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == index
+    assert record.divergence.step == answer
+    assert bridge not in record.bridge_counts()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "v141-no-immortality-no-go_to_11-heuristic-1211",
+        "v141-no-immortality-no-go_to_11-app_ai-6005",
+    ],
+)
+def test_prison_planet_is_not_declined_for_a_seat_that_could_join_with_a_troop(
+    name: str,
+) -> None:
+    # The older engine asked this seat too (it held a troop), so the record
+    # has its answer; with that answer gone the next step is refused, and
+    # the bridge must not decline for a seat the old engine did ask. In
+    # app_ai-6005 the seat also holds a Commander, so this engine offers the
+    # Commander as well: only the troop target tells the two cases apart.
+    replay = _fixture(name)
+    engine = UprisingRulesEngine()
+    asked = next(
+        migrated.recorded_index
+        for state, migrated in walk(migrate_record(replay, engine), engine)
+        if migrated.recorded_index is not None
+        and isinstance(migrated.step, DomainAction)
+        and state.decision_stack
+        and state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
+        and DomainAction(
+            action_id="scouts_join_mission",
+            actor=migrated.step.actor,
+            arguments=(("target", ""),),
+        )
+        in engine.legal_actions(state, migrated.step.actor)
+    )
+    steps = list(replay.steps)
+    del steps[asked]
+
+    record = migrate_record(replace(replay, steps=tuple(steps)))
+
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == asked
+    assert "prison_planet_commanders_only" not in record.bridge_counts()
