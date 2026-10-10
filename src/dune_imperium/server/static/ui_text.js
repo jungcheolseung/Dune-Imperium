@@ -830,8 +830,8 @@ const UI_TEXT = {
     "en": "Played this turn"
   },
   "panels.this_turn_pending_title": {
-    "ko": "에이전트 효과가 아직 남아 있음 — 다른 효과로 폐기하면 남은 효과는 사라집니다",
-    "en": "Agent effects still pending — trashing it by another effect loses the rest"
+    "ko": "에이전트 칸이 아직 남아 있음 — 다른 효과로 폐기하면 에이전트 칸의 남은 효과는 사라집니다",
+    "en": "Agent box still pending — trashing it by another effect loses the rest of its Agent box"
   },
   "panels.intrigue_deck_top_badge": {
     "ko": "책략 카드덱 맨 위",
@@ -1558,8 +1558,8 @@ const UI_TEXT = {
     "en": "card played this turn"
   },
   "render.turn_card_pending_suffix": {
-    "ko": "이번 차례에 낸 카드 · 폐기하면 남은 에이전트 효과 사라짐",
-    "en": "card played this turn · trashing it loses its remaining Agent effects"
+    "ko": "이번 차례에 낸 카드 · 폐기하면 에이전트 칸의 남은 효과 사라짐",
+    "en": "card played this turn · trashing it loses the rest of its Agent box"
   },
   "render.earlier_turn_card_suffix": {
     "ko": "앞 차례에 낸 카드",

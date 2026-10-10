@@ -591,3 +591,36 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
     assert box_losing_trash(ENGINE, kit, 0) == (
         ("trash_grafted_card_for_specimen", FACE_DANCER),
     )
+
+
+def test_a_usurped_row_card_is_this_turns_card_but_never_pending() -> None:
+    """A Row card borrowed with Usurp is not "in play" for any trash choice
+    (OQ-054) and is trashed when the turn ends, so its box is never shown as
+    one another effect could lose (2026-10-11 review)."""
+
+    from tests.unit.rules import test_usurp_not_in_play as usurp
+
+    owner = usurp._owner((usurp.USURP, usurp.DAGGER))
+    state = usurp._usurp(
+        usurp._state(owner, usurp.REPLACEMENT_EYES), "arrakeen", usurp.REPLACEMENT_EYES
+    )
+    for position in (state, usurp._switch(state)):
+        played, pending = turn_cards(position)
+        assert usurp.REPLACEMENT_EYES in played
+        assert usurp.REPLACEMENT_EYES not in pending
+        assert box_losing_trash(UprisingRulesEngine(), position, 0) == ()
+
+
+def test_a_failing_read_drops_the_marks_instead_of_the_snapshot(
+    monkeypatch: Any,
+) -> None:
+    from dune_imperium.server import turn_cards as module
+
+    def broken(*_args: object) -> Any:
+        raise RuntimeError("unexpected engine state")
+
+    monkeypatch.setattr(module, "_turn_cards", broken)
+    monkeypatch.setattr(module, "_box_losing_trash", broken)
+    state = _state(())
+    assert module.turn_cards(state) == ((), ())
+    assert module.box_losing_trash(UprisingRulesEngine(), state, 0) == ()

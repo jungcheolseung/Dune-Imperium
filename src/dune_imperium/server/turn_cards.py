@@ -33,6 +33,7 @@ Signet Ring box trashes the Signet Ring and so completes the box.
 decision owner's trash choices would lose a box.
 """
 
+import logging
 from typing import Final
 
 from dune_imperium.core.decisions import PlayerDecision
@@ -41,6 +42,8 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.effects import pending_boost_draw
 from dune_imperium.rules.frames import FrameKind
+
+_LOGGER = logging.getLogger(__name__)
 
 # Each card key of the effect frame, the flag of that card's own box, and
 # the flag set when that card left play by its own effect (OQ-022).
@@ -76,6 +79,17 @@ _GRAFT_TRASHES: Final = frozenset(
 
 
 def turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``_turn_cards``, or nothing if it fails: these marks are display
+    only, and an unexpected engine state must not fail a whole snapshot."""
+
+    try:
+        return _turn_cards(state)
+    except Exception:
+        _LOGGER.exception("could not read the open Agent turn's cards")
+        return (), ()
+
+
+def _turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return the open Agent turn's played cards and those with a box left.
 
     The first tuple is the card instances the turn's owner put into play
@@ -83,7 +97,9 @@ def turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
     partner, while they are still in play, in play-area order; empty
     outside an Agent turn. The second is the ones of them whose Agent box
     is not fully resolved yet, so that trashing them now would expire the
-    rest of it (OQ-022).
+    rest of it (OQ-022). A Row card borrowed with Usurp is never pending:
+    it is not "in play" for any trash choice (OQ-054) and is trashed when
+    the turn ends anyway.
     """
 
     played: set[str] = set()
@@ -100,12 +116,15 @@ def turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
             continue
         boosted = pending_boost_draw(context)
         in_play = state.players[owner].in_play
+        borrowed = state.players[owner].usurped_row_card_id
         for card_key, pending_key, _ in _CARD_KEYS:
             card_id = context.get(card_key)
             if not isinstance(card_id, str) or card_id not in in_play:
                 continue
             played.add(card_id)
             owners.append(owner)
+            if card_id == borrowed:
+                continue
             if context.get(pending_key) is True or card_id == boosted:
                 pending.add(card_id)
     order = [
@@ -120,6 +139,19 @@ def turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 def box_losing_trash(
+    engine: UprisingRulesEngine, state: GameState, seat: int
+) -> tuple[tuple[str, str], ...]:
+    """``_box_losing_trash``, or no rows if it fails (display only, as
+    ``turn_cards``)."""
+
+    try:
+        return _box_losing_trash(engine, state, seat)
+    except Exception:
+        _LOGGER.exception("could not dry-run the trash rows of seat %s", seat)
+        return ()
+
+
+def _box_losing_trash(
     engine: UprisingRulesEngine, state: GameState, seat: int
 ) -> tuple[tuple[str, str], ...]:
     """Return the ``(action_id, card_id)`` trash rows that would lose a box.
@@ -169,7 +201,8 @@ def box_losing_trash(
             continue
         try:
             result = engine.apply(state, action)
-        except Exception:  # noqa: BLE001 - a failing dry run marks nothing
+        except Exception:
+            _LOGGER.exception("the dry run of %s failed", action.action_id)
             continue
         if _box_expired(result.events, card_id) or _box_doomed(result.state, card_id):
             losing.append((action.action_id, card_id))
