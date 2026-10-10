@@ -378,8 +378,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # Also in v142 (OQ-106, triggered draws): a draw another printed effect
 # triggers inside the seat's own Agent or Reveal turn waits as the seat's own
 # step (``PlayerState.owed_draws``) instead of being drawn by the step that
-# triggered it -- the Bene Gesserit Influence 4 bonus and Princess Irulan's
-# Imperial Birthright. Every catalog adds the nullary ``draw_owed_intrigue``.
+# triggered it -- the Bene Gesserit Influence 4 bonus, Princess Irulan's
+# Imperial Birthright, a Tleilaxu track Intrigue space, Sardaukar Soldier's
+# "when trashed" and Overthrow's acquire box. Every catalog adds the nullary
+# ``draw_owed_intrigue``. Muad'Dib's Unpredictable Foe queues its card on the
+# Reveal's pending gains for the existing ``draw_reveal_intrigue``.
 # Also in v142 (OQ-106): the card Steersman Y'rkoon's Hungry for Spice owes
 # inside his own turn waits likewise: Bloodlines catalogs add the nullary
 # ``draw_owed_card``.

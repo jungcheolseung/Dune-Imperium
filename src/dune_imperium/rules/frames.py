@@ -435,8 +435,9 @@ def draw_waits_for_owner(state: GameState, seat: int) -> bool:
     User ruling 2026-10-10 (OQ-106, project convention): "그 외에는 전부
     나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
     폐기하고 싶을 수 있잖아." A draw triggered by another printed effect (a
-    track bonus, a Leader ability, a "when trashed" or acquire box, a Tech
-    tile) is not drawn inside the step that triggered it: during the seat's
+    track bonus, a Leader ability, a "when trashed" or acquire box; not
+    CHOAM Transports', whose adopted designer ruling says it "can't be
+    deferred") is not drawn inside the step that triggered it: during the seat's
     own Agent or Reveal turn it waits for the owner's own step, taken in any
     order with the turn's other effects ("You may carry out all these
     effects in any order." [Main p. 9], OQ-027) and before the turn ends,

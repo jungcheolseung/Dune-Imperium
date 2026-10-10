@@ -7,7 +7,7 @@ User ruling 2026-10-10 (project convention, not an official rule): "4번은
 triggers -- the Bene Gesserit Influence 4 bonus and Princess Irulan's
 Imperial Birthright, a Tleilaxu track Intrigue space, Steersman Y'rkoon's
 Hungry for Spice, Sardaukar Soldier's "when trashed", Overthrow's acquire
-box, CHOAM Transports -- is not drawn inside the step that triggered it.
+box -- is not drawn inside the step that triggered it.
 During the seat's own Agent or Reveal turn it waits in
 ``PlayerState.owed_draws`` (``frames.draw_waits_for_owner``) and is taken
 with its own action, in any order with the turn's other effects
@@ -17,6 +17,9 @@ and before the turn ends, like the Emperor track's Spy (user ruling
 only the draw is not. The one bundle kept is Esmar Tuek's Intrigue for an
 opponent's visit to Tuek's Sietch, which is another seat's and comes with the
 visit like a control bonus ("오히려 에스마르 튜엑만 안 나누는게 맞는 듯?").
+CHOAM Transports' draw is not held either: the adopted designer ruling says
+it "can't be deferred" (docs/rules/designer-rulings-audit.md), and whether
+to split it waits for the user (OQ-106).
 """
 
 from dataclasses import replace

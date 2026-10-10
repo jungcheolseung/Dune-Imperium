@@ -328,7 +328,7 @@ def _owed_draw(
 
     Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw that another
     printed effect triggers in the seat's own turn -- a track bonus, a
-    Leader ability, a "when trashed" or acquire box, a Tech tile -- as the
+    Leader ability, a "when trashed" or acquire box -- as the
     seat's own ``draw_owed_*`` step; an older engine drew it inside the
     triggering step. So when a recorded step is refused while one waits for
     the deciding seat (its turn end, or a Plot of the card it drew), the
