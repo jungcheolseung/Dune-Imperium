@@ -28,7 +28,7 @@
 - **검증**(`fb-preview` = master `07a2d425` + `fb-land`):
   - pytest **7,247개 통과**, Ruff·mypy(469파일) 통과, Chrome E2E **55종 통과**(직전 미리보기, 그 뒤로 바뀐 것은 기보 코드·문서뿐).
   - `dune-imperium-records check`: 로컬 저장 4판 모두 옮겨짐(갈라짐 0).
-  - `dune-imperium-records problems check`: 사람 문제집 **112곳 중 110곳**(빠진 2곳 `c3adefb4:1089`·`fb716981:739`는 운항실 정가 지불이 불법이 된 자리).
+  - `dune-imperium-records problems check`: 사람 문제집 **112곳 중 110곳**(빠진 2곳 `c3adefb4:1089`·`fb716981:739`는 운항실 정가 지불이 불법이 된 자리). 병합 뒤 그 2곳을 문제집에서 뺐다(사용자 결정). 지금은 110곳이 모두 되살아난다.
   - `dune-imperium-records corpus check v141-a61acb7e`: 2,000판 중 exact 6·equal 639·transient 1,046·persistent 0·diverged 309·failed 0. 갈라짐은 모두 새 규칙이 불법으로 만든 수다(운항실 정가 298, 지휘관만·BG 0 Treachery 8, Shigawire·Gather Intelligence 순서와 reshuffle 3).
   - 단위마다 독립 리뷰(엔진·숨은 정보·게임 생성·분리 묶음·곧바른 단계)를 거쳤고, 찾은 결함은 모두 고쳤다.
 - **남은 것:** 7번(탐색 AI 가문 핵) 다음에 다루기. 학습 망의 다음 재적응은 v142 엔진에서 해야 한다(새 행 7개).

@@ -100,6 +100,8 @@ Y는 X를 v141에서 800 iteration 이은 망이다(`readapt-v141/Y/iteration_10
 - 사람이 정답: `human_right` 59곳
 - 망이 정답: `network_right` 53곳(대조군)
 
+v142 병합 뒤(같은 날) `human_right` 2곳(`c3adefb4:1089`, `fb716981:739`)을 뺐다(사용자 결정). 두 곳 모두 판정에서 진 망의 수가 Navigation Chamber 정가를 내는 수였는데, v142부터 불법이다. 지금 문제집은 110곳(`human_right` 57, `network_right` 53)이다.
+
 코드는 `records.problems`다. 만든 명령은 `scripts/records/human_diagnosis.py freeze`, 채점은 `dune-imperium-records problems check|score`다.
 
 - **채굴 문제집과의 차이.** 사람 판은 다시 캘 수 없다([problem-set.md](problem-set.md)는 엔진이 바뀌면 시드로 다시 캔다).
