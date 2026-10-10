@@ -4,7 +4,7 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
-## 2026-10-10 기보 묶음(record corpus) 1단계와 v141 묶음 (codec 그대로 v141)
+## 2026-10-10 기보 묶음(record corpus) 1·2단계와 v141 묶음 (codec 그대로 v141)
 
 사용자 결정 "그래 1·2단계 진행해". 설계는 워크플로(설계 셋·심사 둘·종합)의 최종안이다(세션 임시 `corpus-design-final.json`, 요지는 아래). 브랜치 `records-corpus`, 병합 `a61acb7e`(미푸시).
 
@@ -19,11 +19,18 @@
   - 2,000판(모듈 조합 6 × AI 조합), 실패 0, 35MB, 3코어로 약 20분
   - 표본 20판을 master에서 걸어 보니 모두 그대로 재생됐고, 19,005수에서 지문 차이가 0이었다.
   - **v142가 master에 들어오기 전에 만들어 둔 것이 요점이다.** 다음 codec 변경 리뷰는 이 묶음으로 한다.
+- **2단계 `corpus check`(병합됨, 브랜치 `corpus-check`):**
+  - `dune-imperium-records corpus check CORPUS [--has P | --ids F] [--around P] [--bridge NAME ...] [--migration-module PATH] [--control N] [--workers N] [--json OUT]`
+  - 묶음의 기보를 이 엔진에서 이전(`migrate_record`)하며 걷고, 적힌 수마다 직전 상태의 필드 지문을 저장된 기록과 맞댄다. 다리 적용 뒤, 묶음의 필드 목록·클래스 스키마 기준이다.
+  - 결과는 exact·equal·transient·persistent·diverged·failed로 나뉜다. 차이 구간마다 판정이 붙는다(다리가 메운 구간, 분리 지점에서 갈라짐, 다리 없는 차이, 원인 모를 차이, 근거 없는 다리 발동).
+  - 요약 JSON만 쓴다. 지문 코드가 묶음과 다르거나 시작 상태 필드를 뺐으면 경고한다.
+  - **v141 묶음 2,000판 전체가 master에서 exact**다(2코어 약 9분).
+  - fb-land(v142) 시연(200판)에서 `owed_draw` 차이는 다리가 메운 구간으로, Cunning·Planetologist 정지는 분리 지점 갈라짐으로 분류됐다.
+  - 리뷰 워크플로 지적 13건(분류가 결함을 숨김, 요약 잘림, nice 오류 등)을 고쳤다.
 - **진행 중:**
-  - 2단계 `corpus check`(작업 트리 `.claude/worktrees/corpus-check`)
   - OQ-106 분리의 follows 다리(작업 트리 `tmp/claude/c1c2c75f…/wt142`, records-v142에 fb-land 병합 중; 다른 세션과 합의한 착지 순서 ②)
 - **같은 날 따로 고친 것:** 런처 창 테스트 둘이 전체 pytest마다 실제 Chrome을 `127.0.0.1:8127`로 열었다. 모듈 전체에서 브라우저 열기를 막았다(`fa2abf9d`).
-- **검증**(병합 전, staged): pytest **7,034개 통과**, Ruff·mypy 통과, E2E 54개 통과.
+- **검증**(병합 전, staged): 1단계 pytest **7,034개**, 2단계 뒤 **7,074개 통과**, Ruff·mypy 통과, E2E 54개 통과(두 번 모두).
 
 ## 2026-10-10 사람 문제집: 판정이 일치한 112곳을 기보째 고정 (codec 그대로 v141)
 
