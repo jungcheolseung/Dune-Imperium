@@ -4,6 +4,37 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-10 사람 문제집: 판정이 일치한 112곳을 기보째 고정 (codec 그대로 v141)
+
+사용자 "그래 진행해보자"(아래 항목의 "다음" 1번). 브랜치 `human-problems`, 미푸시.
+
+- **무엇**: 진단에서 두 탐색이 같은 판정을 낸 112곳을 문제집으로 고정했다.
+  - 사람이 정답: `human_right` 59곳
+  - 망이 정답: `network_right` 53곳(대조군)
+- **코드**: `records.problems`. 만들기는 `scripts/records/human_diagnosis.py freeze`, 채점은 `dune-imperium-records problems check|score`다.
+- **채굴 문제집과 다른 점**: 사람 판은 다시 캘 수 없다.
+  - 그래서 파일이 기보를 품는다. git 무시 `local/records/human-problems.json`, 317KB다.
+  - 포지션은 `records` 이전으로 되살린다.
+  - 판정 당시의 공개 상태와 다르거나 두 수 중 하나가 불법이 된 포지션은 이유를 대고 뺀다.
+- **첫 채점**([evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 6절): 숫자는 human_right 맞음 / network_right 맞음이다.
+  - X 망: 0% / 100%(만든 방식 그대로)
+  - Y 망: 5% / 79%
+  - 탐색 X: 46% / 70%
+  - 앱 AI: 37% / 25%
+- **독립 리뷰 워크플로**: 결함 다섯을 찾았고 모두 고쳤다. 고칠 때마다 되돌리면 실패하는 테스트를 붙였다.
+  - 다시 쓰기 다리가 바꾼 수에서 고정이 멈춤
+  - 판정 상태 비교 없음
+  - 망 수의 이름 변경
+  - 중복 행
+  - 배운 적 없는 행
+- **ExIt 레이블(②)은 미뤘다**: 다른 세션이 엔진 흐름을 바꾸는 중이고(codec v142, 아래), 학습은 "나중에"로 정해져 있다.
+- **다른 세션의 v142(`f1e17be0`, 아직 master 밖)**: 그 엔진에서 로컬 사람 판 4개 중 3개가 갈라지고, 문제집 112곳 중 48곳이 빠진다. 원인은 둘이다.
+  - Imperial Privilege의 회수·뽑기 분리
+  - OQ-105의 garrison 유닛 선택
+  - 이 둘을 옮기는 다리는 `f1e17be0` 위의 별도 브랜치로 준비한다. v142가 master에 들어온 뒤 병합한다.
+  - Navigation Chamber 할인 의무화로 걸리는 기보는 갈라짐이 맞다(독립 검증).
+- **검증**(브랜치): pytest **6,981개 통과**, Ruff·mypy 통과, E2E 54개 통과.
+
 ## 2026-10-10 사람이 둔 판: 옛 저장본을 지금 엔진으로 옮기기, 첫 진단 (codec 그대로 v141)
 
 사용자 질문 "사람이 플레이했던 기록을 학습에 반영하기 위한 데이터로 쓸 수 있을까?"에서 시작했다. 고른 일은 둘이다. (1) 진단, (2) 엔진이 바뀌어도 기보가 살아남게 하기. 누가 뒀는지·무르기 기록은 쓰지 않기로 했다(누가 잘하는지 판단하기 어렵고, 물렀다가 같은 수를 다시 두기도 한다). 브랜치 `human-records`, 병합 `54d57be7`(미푸시).
