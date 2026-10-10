@@ -335,6 +335,7 @@ function showScreen(name) {
   if (name !== "game-screen") {
     clearPlayEffects();
     clearPhaseBanner();
+    closePileViewer();
   }
   for (const id of SCREENS) el(id).hidden = id !== name;
   const atTable = name === "game-screen";

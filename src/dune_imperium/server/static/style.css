@@ -1791,8 +1791,35 @@ kbd {
 .popover.hover { pointer-events: none; }
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover-note { font-size: 0.75rem; opacity: 0.75; margin-bottom: 0.3rem; }
+/* The pile viewer (panels.js openPileViewer): a discard pile or the deck
+   list, open until its ×, Escape or its opener closes it. Above the board,
+   the card-use cues and the phase banner; below the Bene Tleilax zoom, the
+   help and the card popover, which shows a card from it enlarged on top.
+   The title row stays put and the cards scroll under it, so a long pile
+   never runs off the window. */
+#pile-viewer {
+  z-index: 38;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  overflow: hidden;
+  padding: 0;
+}
+#pile-viewer[hidden] { display: none; }
+.pile-viewer-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.2rem 0.9rem;
+}
+.pile-viewer-head .popover-title { margin: 0.2rem 0 0; min-width: 0; overflow-wrap: anywhere; }
+.pile-viewer-close { flex: none; padding: 0 0.4rem; font-size: 1.2rem; line-height: 1.3; }
+.pile-viewer-body { min-height: 0; overflow-y: auto; padding: 0 0.9rem 0.7rem; }
+.pile-viewer-body > .popover-title { margin-top: 0.4rem; }
 /* The deck list's top card, when a card effect shows it (panels.js
-   openDeckList): its own entry, outlined, its "Top" / "맨 위" badge on one
+   deckListContent): its own entry, outlined, its "Top" / "맨 위" badge on one
    line on the list's 60px cards. The outline sits inside the strip's 3px
    padding. */
 .vcard.deck-top { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -504,9 +504,9 @@ def run(base: str, browser) -> None:
     titles = {}
     for seat in discard_seats:
         page.click(f"#seats article.seat[data-seat='{seat}'] .zones")
-        page.wait_for_selector("#card-popover .popover-title")
+        page.wait_for_selector("#pile-viewer:not([hidden]) .popover-title")
         titles[seat] = page.evaluate(
-            "document.querySelector('#card-popover .popover-title').textContent"
+            "document.querySelector('#pile-viewer .popover-title').textContent"
         )
         page.keyboard.press("Escape")
     latin = {
@@ -514,7 +514,7 @@ def run(base: str, browser) -> None:
     }
     check.ok(not latin, "no seat's discard popover title has Latin letters", latin)
     expected = {
-        # openPileList appends " (<count>)" itself (panels.js ~419).
+        # pileListContent appends " (<count>)" itself (panels.js).
         seat: page.evaluate(
             "t('panels.seat_discard', { seat: t('common.seat', { seat: "
             f"{seat}"

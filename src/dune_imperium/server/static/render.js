@@ -455,6 +455,10 @@ function render(options) {
   fitActionLog();
   renderEffects();
   refreshConflictHistory();
+  /* The pile viewer outlives every update, anyone's move included: drawn
+     again from the state just rendered, or closed when its pile is gone
+     (panels.js refreshPileViewer). */
+  refreshPileViewer();
   paintClocks();
 }
 
