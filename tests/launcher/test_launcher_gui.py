@@ -53,6 +53,19 @@ def tk_root() -> Iterator[tk.Tk]:
     root.destroy()
 
 
+@pytest.fixture(autouse=True)
+def _no_real_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never open the machine's browser from a test.
+
+    A started server opens the play page when ``open_browser`` is on, which
+    is the default: tests that applied ``Started`` without asking for
+    ``opened`` popped Chrome up at http://127.0.0.1:8127/ on every full
+    pytest run (2026-10-10).
+    """
+
+    monkeypatch.setattr(gui, "_open_in_browser", lambda url: None)
+
+
 @pytest.fixture
 def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     urls: list[str] = []
