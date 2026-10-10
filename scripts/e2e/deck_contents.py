@@ -12,12 +12,13 @@ checks, in Korean and English at 1366x768:
   seats, the Intrigue figure equal to the view's intrigue_card_count (and to
   the icon stat that stays beside it), and no count is broken across lines;
 - the hand strip's deck count is a keyboard-reachable button; the list it
-  opens is titled "My deck - N cards (order hidden)", N equals the shown deck
-  size and the server's deck_cards, the cards are the deck's multiset, copies
-  grouped as xN, sorted by name (Intl.Collator), and the popover fits the
-  window; Enter and Space open it, Escape closes it and leaves focus on the
-  count; a click opens it, a click elsewhere closes it, and clicking a card in
-  it posts no action;
+  opens in the pile viewer (#pile-viewer, 2026-10-11) is titled "My deck - N
+  cards (order hidden)", N equals the shown deck size and the server's
+  deck_cards, the cards are the deck's multiset, copies grouped as xN, sorted
+  by name (Intl.Collator), and the viewer fits the window; Enter and Space
+  open it, Escape closes it and leaves focus on the count; a click opens it,
+  a click elsewhere leaves it open, and clicking a card in it pins that
+  card's popover above it and posts no action;
 - the discard pile count still opens its list, by mouse and keyboard.
 
 Scenario A also checks the top card a card effect shows the owner
@@ -49,8 +50,8 @@ ko and en, the strip beside the Intrigue cards is gone, the card is drawn
 nowhere else, a logged step of the choice names no card and the action log is
 unchanged; without Glowglobes the list's note names Controlled. It also
 opens the deck list and a pile list while a card or a leader popover is
-pinned and checks that a foreign render closes them (the pin used to carry
-over).
+pinned: the pinned popover gives way (its pin used to carry over to the
+list), and the list stays open through a foreign render, drawn again.
 
 E2E_SHOTS_DIR optionally names where the screenshots go ({start,mid}_deck_{ko,en}.png,
 {start,mid}_zones_{ko,en}.png, top_mark_{ko,en}.png and controlled_{ko,en}.png);
@@ -156,8 +157,8 @@ CARD_KEY = re.compile(
     r"(?P<id>.+)):\d+$"
 )
 
-POPOVER_JS = """() => {
-  const pop = document.getElementById('card-popover');
+POPOVER_JS = """(id) => {
+  const pop = document.getElementById(id);
   const box = pop.getBoundingClientRect();
   const text = (selector) => {
     const node = pop.querySelector(selector);
@@ -329,7 +330,14 @@ def drive_to(page: Any, stage: str, cap: int = 2500) -> int:
 
 
 def popover(page: Any) -> dict[str, Any]:
-    result: dict[str, Any] = page.evaluate(POPOVER_JS)
+    """The card popover: one card enlarged, hovered or pinned."""
+    result: dict[str, Any] = page.evaluate(POPOVER_JS, "card-popover")
+    return result
+
+
+def viewer(page: Any) -> dict[str, Any]:
+    """The pile viewer, where the deck list and the pile lists open."""
+    result: dict[str, Any] = page.evaluate(POPOVER_JS, "pile-viewer")
     return result
 
 
@@ -340,11 +348,11 @@ def open_deck_list(page: Any, how: str) -> dict[str, Any]:
     else:
         stat.focus()
         page.keyboard.press(how)
-    page.wait_for_function("!document.getElementById('card-popover').hidden")
+    page.wait_for_function("!document.getElementById('pile-viewer').hidden")
     page.wait_for_function(
-        "[...document.querySelectorAll('#card-popover img')].every(i => i.complete)"
+        "[...document.querySelectorAll('#pile-viewer img')].every(i => i.complete)"
     )
-    return popover(page)
+    return viewer(page)
 
 
 def check_zone_lines(page: Any, lang: str, stage: str) -> None:
@@ -575,15 +583,28 @@ def check_deck_list(
         page.screenshot(path=str(SHOTS / f"{stage}_zones_{lang}.png"), clip=seats_box)
 
     before = rec.count("POST", "/actions")
-    page.locator("#card-popover .vcard").first.click()
+    page.locator("#pile-viewer .vcard").first.click()
     check.ok(
         rec.count("POST", "/actions") == before,
         f"{label} clicking a card in the list posts no action",
     )
+    pinned = popover(page)
+    check.ok(
+        not pinned["hidden"] and pinned["pinned"] and not viewer(page)["hidden"],
+        f"{label} the click pins the card's popover and the list stays open",
+        (pinned["title"], pinned["pinned"]),
+    )
     page.keyboard.press("Escape")
-    open_deck_list(page, "click")
+    check.ok(
+        popover(page)["hidden"] and not viewer(page)["hidden"],
+        f"{label} Escape closes the pinned card first, the list stays",
+    )
     page.mouse.click(5, 5)
-    check.ok(popover(page)["hidden"], f"{label} a click elsewhere closes the list")
+    check.ok(
+        not viewer(page)["hidden"], f"{label} a click elsewhere leaves the list open"
+    )
+    page.keyboard.press("Escape")
+    check.ok(viewer(page)["hidden"], f"{label} the next Escape closes the list")
 
     for key in ("Enter", "Space"):
         shown = open_deck_list(page, key)
@@ -593,7 +614,7 @@ def check_deck_list(
             shown["title"],
         )
         page.keyboard.press("Escape")
-        check.ok(popover(page)["hidden"], f"{label} Escape closes it")
+        check.ok(viewer(page)["hidden"], f"{label} Escape closes it")
         check.ok(
             page.evaluate(
                 "document.activeElement === document.querySelector("
@@ -616,8 +637,8 @@ def check_discard_list(page: Any, lang: str, stage: str) -> None:
     )
     discard.focus()
     page.keyboard.press("Enter")
-    page.wait_for_function("!document.getElementById('card-popover').hidden")
-    opened = popover(page)
+    page.wait_for_function("!document.getElementById('pile-viewer').hidden")
+    opened = viewer(page)
     check.ok(
         opened["title"] == words["discard_title"].format(n=size)
         and len(opened["cards"]) == size,
@@ -625,7 +646,7 @@ def check_discard_list(page: Any, lang: str, stage: str) -> None:
         (opened["title"], len(opened["cards"]), size),
     )
     page.keyboard.press("Escape")
-    check.ok(popover(page)["hidden"], f"{label} Escape closes the discard list")
+    check.ok(viewer(page)["hidden"], f"{label} Escape closes the discard list")
 
 
 def scenario_a(base: str, browser: Any) -> None:
@@ -1054,14 +1075,29 @@ def check_controlled_panel(page: Any, lang: str, top: str, case: str) -> None:
 
 
 def check_stale_pin(page: Any) -> None:
-    """A list opened while another popover is pinned is not pinned itself:
-    the opener's click never reaches the document's click-elsewhere close,
-    so the old pin used to carry over and keep the list (and its top mark)
-    open, unrefreshed, through every foreign update."""
+    """A list opened while another popover is pinned: the pin gives way.
+
+    The lists used to be drawn into the card popover, and the opener's click
+    never reaches the document's click-elsewhere close, so the old pin
+    carried over and kept the list (and its top mark) open, unrefreshed,
+    through every foreign update. They open in the pile viewer now
+    (2026-10-11): the pinned popover closes, nothing stays pinned, and the
+    list stays open through a foreign update, drawn again from the fresh
+    view. The seat's discard pile is empty this early, so the view lends it
+    the hand's cards for the pile list."""
 
     label = "[C pin]"
     title = TEXT[page.evaluate("TERM_LANGUAGE")]["title"].format(
         n=page.evaluate("state.view.private.deck_size")
+    )
+    page.evaluate(
+        """() => {
+          window.__pinView = state.view;
+          state.view = structuredClone(state.view);
+          state.view.players[state.view.player].discard_pile =
+            [...state.view.private.hand];
+          render();
+        }"""
     )
     pins = {
         "a card": """() => {
@@ -1081,15 +1117,16 @@ def check_stale_pin(page: Any) -> None:
     }
     opens = {
         "deck list": (
-            "document.querySelector('#private-zone .hand-counts .stat').click()"
+            "document.querySelectorAll('#private-zone .hand-counts .stat')[0].click()"
         ),
         "pile list": (
-            "openPileList(t('panels.my_discard'), state.view.private.hand,"
-            " document.querySelector('#private-zone .hand-counts .stat'))"
+            "document.querySelectorAll('#private-zone .hand-counts .stat')[1].click()"
         ),
     }
     for pin_name, pin_js in pins.items():
         for list_name, open_js in opens.items():
+            # Escape closes the topmost first: a card popover, then the list.
+            page.keyboard.press("Escape")
             page.keyboard.press("Escape")
             where = f"{label} {list_name} over {pin_name}"
             if not check.ok(
@@ -1097,21 +1134,31 @@ def check_stale_pin(page: Any) -> None:
             ):
                 continue
             page.evaluate(open_js)
-            opened = popover(page)
+            opened = viewer(page)
+            want = title if list_name == "deck list" else opened["title"]
             check.ok(
                 not opened["hidden"]
-                and not opened["pinned"]
+                and popover(page)["hidden"]
+                and not page.evaluate("popoverPinned")
                 and page.evaluate("pinnedLeaderSeat === null")
-                and (list_name != "deck list" or opened["title"] == title),
-                f"{where}: the list opens unpinned",
-                (opened["title"], opened["pinned"]),
+                and opened["title"] == want,
+                f"{where}: the list opens and the pinned popover gives way",
+                (opened["title"], popover(page)["hidden"]),
             )
             page.evaluate("render({ foreign: true })")
+            again = viewer(page)
             check.ok(
-                popover(page)["hidden"],
-                f"{where}: a foreign update closes it",
-                popover(page)["title"],
+                not again["hidden"]
+                and again["title"] == opened["title"]
+                and [card["instance"] for card in again["cards"]]
+                == [card["instance"] for card in opened["cards"]]
+                and popover(page)["hidden"],
+                f"{where}: a foreign update keeps the list open, drawn again",
+                (again["hidden"], again["title"]),
             )
+    page.keyboard.press("Escape")
+    page.keyboard.press("Escape")
+    page.evaluate("() => { state.view = window.__pinView; render(); }")
 
 
 def scenario_c(base: str, browser: Any) -> None:

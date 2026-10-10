@@ -100,7 +100,7 @@ def test_agent_card_icon_text_ko_golden_base_cases() -> None:
     assert agent_card_icon_text_ko(None, "solari") == "{solari:2}"
     assert agent_card_icon_text_ko(None, "spice") == "{spice:1}"
     assert agent_card_icon_text_ko(None, "water") == "{water:1}"
-    assert agent_card_icon_text_ko(None, "trash_self") == "이 카드 {trash}"
+    assert agent_card_icon_text_ko(None, "trash_self") == "이 카드 폐기"
     assert (
         agent_card_icon_text_ko(None, "pledge")
         == "1등 보상에 {influence_any} 선택 추가"
@@ -240,7 +240,7 @@ def test_control_the_spice_payment_says_what_it_buys() -> None:
     korean = effect_action_text_ko(placed, payment)
 
     assert english == "Pay 1 spice → Trash a card (optional) + Recruit 1 troop"
-    assert korean == "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}"
+    assert korean == "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}"
     assert_placeholders_are_terms(korean, terms_keys())
     assert_no_stray_latin(korean)
     assert_trash_and_discard_match(english, korean)

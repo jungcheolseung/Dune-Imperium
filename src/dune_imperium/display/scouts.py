@@ -282,7 +282,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "emperors_schemes": (
         "2 face-down Intrigue cards at Sardaukar, one per visit.",
-        "Sardaukar에 뒷면 {intrigue} 2장. 방문할 때마다 1장.",
+        "Sardaukar에 뒷면 {intrigue_card} 2장. 방문할 때마다 1장.",
     ),
     "fedaykin_assistance": (
         "Each may pay 1 spice to park 2 supply troops at Desert Tactics, "
@@ -584,7 +584,7 @@ def _cost_reason(state: GameState, seat: int, cost: object) -> Reason:
                 "cost",
             )
         case TrashIntrigueCard():
-            return "No Intrigue card to trash", "{trash}할 {intrigue} 없음", "cost"
+            return "No Intrigue card to trash", "폐기할 {intrigue_card} 없음", "cost"
         case TrashPersonalCard(hand_only=True):
             return "No card in hand to trash", "{hand}에 {trash}할 카드 없음", "cost"
         case TrashPersonalCard():

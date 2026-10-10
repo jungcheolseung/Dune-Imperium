@@ -1465,7 +1465,7 @@ def test_serialized_control_the_spice_payment_says_what_it_buys() -> None:
     assert details == {
         "pay_agent_card_spice": (
             "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
-            "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}",
+            "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
         ),
         "decline_agent_card_payment": (None, None),
     }

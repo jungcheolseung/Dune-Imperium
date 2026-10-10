@@ -308,6 +308,29 @@ def build_suite(
     return Suite(note=note, records=records, problems=tuple(problems))
 
 
+def merge_suites(base: Suite, added: Suite) -> Suite:
+    """Add a later diagnosis run's problems to a suite.
+
+    A run judges its own games. A game already in ``base`` is refused: its
+    positions were judged once, and some may have been dropped by hand since
+    (a rule change that made one of the two moves illegal), so freezing it
+    again would bring those back.
+    """
+
+    again = sorted(game[:8] for game in set(base.records) & set(added.records))
+    if again:
+        raise ValueError(f"games already in the suite: {', '.join(again)}")
+    problems = sorted(
+        (*base.problems, *added.problems),
+        key=lambda problem: (problem.game, problem.recorded_index),
+    )
+    return Suite(
+        note=f"{base.note}; {added.note}" if base.note else added.note,
+        records={**base.records, **added.records},
+        problems=tuple(problems),
+    )
+
+
 def _judged_positions(
     wanted: Mapping[str, tuple[SavedGame, set[int]]],
 ) -> dict[tuple[str, int], tuple[DomainAction, dict[str, Any]]]:

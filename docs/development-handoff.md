@@ -4,6 +4,22 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-11 친구 판 뒤 피드백 7항목 중 6항목과 기보 보태기 (codec 그대로 v142)
+
+친구들과 둔 판(`saves/8f8df4bc…`, 사람 0·1·3번 + 탐색 X 2번, v142) 뒤 사용자 피드백 7항목. 계획 뒤 사용자 결정: 3번은 "맞는 아이콘 하나로", 5번은 "그건 너가 앱 깐거 봐", 나머지는 "추천대로". 통합 브랜치 `fb11`(항목 브랜치 `fb11-icons`·`fb11-piles`·`fb11-turncard`·`fb11-layout`를 병합). 엔진·코덱·관측·저장은 그대로다.
+
+- **1 자원 순서:** 좌석 패널이 승점·스파이스·솔라리·물·책략 순이다.
+- **4 빈 손의 보드:** 손패 줄(`.hand-zones`)이 손패 카드 한 장 높이를 늘 유지한다. 보드는 정사각형이라 남는 높이만큼 커지는데, 공개 차례에 손이 비면 1440×900에서 손패 줄이 198px에서 66px로 줄며 보드가 커졌다. `table_layout.py`의 "빈 손은 줄어든다" 검사를 "줄과 보드 크기 그대로"로 바꿨다.
+- **3 아이콘:** 룰북 아이콘 하나가 효과 하나다(`[Main p. 20]`, glossary-ko.md "카드 동작"). "{intrigue} {draw}"는 `{intrigue}`, "{intrigue} {trash}"는 `{trash_intrigue}`, "카드 {trash}"는 `{trash}`, 책략 강탈은 `{steal_intrigue}`로 바꿨다. 아이콘이 뜻하지 않는 것은 글자로 쓴다: 명사 책략 카드는 새 글자 용어 `{intrigue_card}`, "이 카드/기술 타일/스파이 폐기"는 글자다. labels.js·labels_en.js 94쌍, ui_text 16, prompts_ko 17, display 생성 줄 11개를 바꿨다. 인쇄 문구의 한국어 쌍둥이(카드·지도자·보드)는 인쇄된 아이콘 그대로 두었다(영어 iconize와의 일치 검사). 새 `tests/server/test_label_icons.py`가 옛 짝을 막는다.
+  - 남은 것: Immediate 계약 조건(`structs.py` "{intrigue} 1장 필요, {trash} 후…")은 영어 iconize와 짝이라 그대로다. `actions.py`의 `trash_self` 세부는 한국어만 "이 카드 폐기"(영어는 iconize가 여전히 아이콘).
+- **6 더미 목록:** 버림 더미·덱·책략 버림 더미 목록이 자기 창 `#pile-viewer`에 열린다. 전에는 카드 확대와 같은 팝오버를 써서, 목록 안 카드에 마우스를 올리면 확대가 목록을 덮고 그 밑 보드 칸의 확대가 대신 떴으며, `render()`가 갱신마다(남의 수 포함) 닫았다(브라우저로 원인 확인). 이제 ×·Esc·같은 버튼으로만 닫히고, 갱신 때 새 상태로 다시 그리며, 목록 안 카드 확대는 그 위에 뜬다. 덱 목록 규칙(OQ-010 5, 맨 위 표시)은 그대로다. 새 e2e `pile_viewer.py`.
+- **7 이번 차례 카드:** 기보 로그 478수에서 카인즈 좌석이 Planetologist 폐기로 이번 차례의 Experimentation을 골랐다가 되돌렸다. 엔진은 OQ-022(디자이너 판정)대로 맞다. 서버가 화면용 공개 필드 `turn_card_ids`(열린 Agent turn이 낸 카드와 접합 짝)·`pending_box_card_ids`(그중 에이전트 칸이 남은 것)를 보내고(`server/turn_cards.py`, `_serialize_view`), 결정을 가진 좌석에만 `box_losing_trash`(그 좌석의 폐기 행을 엔진에 미리 적용해 칸이 사라지는 행)를 보낸다. 자기 효과로 자신을 폐기하는 카드(Feyd 인장 반지 등)는 이득을 받으므로 경고하지 않는다. 좌석 패널의 플레이 영역 칩에 "이번 차례", 폐기 행에 "이번 차례에 낸 카드 (· 폐기하면 에이전트 칸의 남은 효과 사라짐)"/"앞 차례에 낸 카드"가 붙는다. Usurp로 빌린 카드는 칸이 남은 것으로 치지 않는다(OQ-054). 관측·학습·엔진 무변경.
+  - 독립 리뷰: 무작위 1,200판(설정 4종) 220,632 국면, 폐기 행 8,272개에서 경고와 실제 만료(뒤 수까지 두어 확인)가 모두 일치했다. 숨은 정보를 다시 섞어도 결과 차이 0, 결정 주인 아닌 좌석은 늘 빈 목록이었다. nit 셋(예외 시 표시만 빼기, Usurp, 용어 "에이전트 칸")을 고쳤다.
+- **2 열 너비·손패 순서:** 좌석|보드|결정, 보드|공용 카드 사이 손잡이(끌기·화살표·두 번 클릭 기본값). 너비는 브라우저에 `dune.layout.columns.v1`로 저장된다. 보드는 480px 아래로 줄지 않는다. 손패·책략 줄의 카드를 끌거나 Alt+←/→로 순서를 바꾸고 판·좌석별로 브라우저에만 저장한다(`dune.handOrder.v1.<game>.<seat>`, 서버로 아무것도 안 감). 새로 뽑은 카드는 끝에 붙고, "순서 되돌리기"가 있다. 리뷰에서는 서버 순서. 새 `static/layout.js`, e2e `layout_custom.py`.
+- **5 스카웃 큰 창:** 진행 중. Game Room 설치본의 스카웃 화면 구조·그림을 뽑아(로컬 참고 자료) 보드 위 창의 모양을 정한다.
+- **기보:** 이번 판을 진단해 문제집에 89곳을 더했다(199곳). 새 판만 판정해 잇는 `human_diagnosis.py freeze --append`(`records.problems.merge_suites`). 숫자는 [evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 8절. 학습 레이블(B)은 다음 v142 재적응 때.
+- **검증**(fb11 `e2927007`): pytest **7,284개 통과**, ruff·mypy(474파일) 통과, E2E **58종 통과**(새 `pile_viewer`·`layout_custom`).
+
 ## 2026-10-11 Bloodlines Conflict·계약 앞면도 앱 틀로 (codec 그대로)
 
 사용자 제안 "bloodlines의 conflict, contract 이미지도 듄 게임 앱의 데이터로부터 만들어낼 수 있지 않을까?". 브랜치 `bloodlines-app-faces`. 앱에는 Bloodlines가 없어 Tech 타일(2026-10-08)처럼 Uprising 틀에 인쇄된 내용을 얹었다. 설명은 `scripts/dwgr/README.md`의 `app_cards.py` 줄.

@@ -1938,9 +1938,13 @@ function renderIntriguePiles(market, view) {
   pile.dataset.pile = "intrigue";
   pile.appendChild(tNode("board.intrigue_discard_count", { count: discard.length }));
   pile.title = t("board.intrigue_pile_title");
+  pile.dataset.pileOpener = "intrigue-discard";
   pile.addEventListener("click", (event) => {
     event.stopPropagation();
-    openPileList(t("board.pile_intrigue_discard"), [...discard].reverse(), pile);
+    togglePileViewer(
+      { kind: "intrigue_discard", seat: null, mine: false, opener: "intrigue-discard" },
+      pile,
+    );
   });
   box.appendChild(pile);
   market.appendChild(box);

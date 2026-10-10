@@ -133,17 +133,32 @@ def check_hand(base: str, browser) -> None:
         (after, changed),
     )
     page.set_viewport_size({"width": 1440, "height": 900})
+    sizes = """() => ({
+        zone: document.querySelector('#private-zone').getBoundingClientRect().height,
+        board: document.querySelector('#board .board-stage, #board')
+            .getBoundingClientRect().width,
+    })"""
     page.evaluate("""() => {
         state.view.private = structuredClone(window.__originalPrivate);
+        render();
+    }""")
+    settle_layout(page)
+    full = page.evaluate(sizes)
+    page.evaluate("""() => {
         state.view.private.hand = [];
         state.view.private.intrigue_cards = [];
         render();
     }""")
     settle_layout(page)
+    empty = page.evaluate(sizes)
+    # A Reveal turn with nothing left in hand must not grow the square board
+    # into the hand row (user, 2026-10-11): the row keeps a card's height.
     check.ok(
-        page.locator("#private-zone").bounding_box()["height"] < 100
+        abs(empty["zone"] - full["zone"]) <= 1
+        and abs(empty["board"] - full["board"]) <= 1
         and page.locator("#private-zone .muted").is_visible(),
-        "an empty hand collapses to its heading and empty message",
+        "an empty hand keeps the hand row's height, so the board keeps its size",
+        (full, empty),
     )
     page.evaluate("state.view.private = null; renderPrivate()")
     settle_layout(page)

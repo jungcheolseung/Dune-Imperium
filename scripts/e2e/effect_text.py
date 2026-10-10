@@ -720,7 +720,7 @@ PAYMENT_ACTION = {
     "action_id": "pay_agent_card_spice",
     "arguments": {},
     "detail": "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
-    "detail_ko": "{spice:1} 지불 {arrow_right} 카드 {trash} (선택) + {troop:1}",
+    "detail_ko": "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
 }
 # The same action without a detail, as a logged step: the label.
 LABELLED_PAYMENT_ACTION = {**PAYMENT_ACTION, "detail": None, "detail_ko": None}

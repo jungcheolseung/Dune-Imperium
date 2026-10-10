@@ -14,6 +14,7 @@ from dune_imperium.records.problems import (
     answer,
     build_suite,
     load_suite,
+    merge_suites,
     resolve,
     save_suite,
     summarize,
@@ -468,3 +469,29 @@ def test_untrained_network_rows_give_no_probabilities(tmp_path: Path) -> None:
     result = answer(position, f"checkpoint:{policy}")
 
     assert result.p_right is None and result.rank_right is None
+
+
+def test_a_later_run_is_appended_and_a_game_is_never_frozen_twice(
+    game: SavedGame, tmp_path: Path
+) -> None:
+    judged, confirmed = _rows(game, ["human", "net"])
+    first = build_suite([game], judged[:1], confirmed[:1], "run 1")
+    # The same game under another id stands for a later game.
+    later_id = "b" * 32
+    later_path = tmp_path / f"{later_id}.json"
+    later_path.write_text(game.path.read_text(encoding="utf-8"), encoding="utf-8")
+    later = read_saved_game(later_path)
+    rows = [{**row, "game": later_id[:8]} for row in judged[1:]]
+    agreed = [{**row, "game": later_id[:8]} for row in confirmed[1:]]
+    second = build_suite([later], rows, agreed, "run 2")
+
+    merged = merge_suites(first, second)
+
+    assert merged.note == "run 1; run 2"
+    assert set(merged.records) == {GAME, later_id}
+    assert [(p.game, p.family) for p in merged.problems] == [
+        (GAME, "human_right"),
+        (later_id, "network_right"),
+    ]
+    with pytest.raises(ValueError, match="games already in the suite: aaaaaaaa"):
+        merge_suites(merged, first)

@@ -122,6 +122,29 @@ function seatDetailSummary(detail) {
   return parts;
 }
 
+/* One in-play card's chip. The card the open Agent turn played, or its
+   graft partner, carries a "this turn" mark (server view.turn_card_ids,
+   sessions.py turn_cards), so it reads apart from a copy of the same card
+   played on an earlier turn; while its Agent box still waits
+   (view.pending_box_card_ids) the mark's title says trashing it by another
+   effect loses the rest of that box (OQ-022, user feedback 2026-10-11; a
+   card trashing itself by its own effect keeps its rewards). The mark is no
+   .tag, so seatDetailSummary still counts one chip per card, and the chip
+   keeps its own hover and click. */
+function inPlayChip(id, view) {
+  const tag = chip(id);
+  if (!(view.turn_card_ids || []).includes(id)) return tag;
+  const pending = (view.pending_box_card_ids || []).includes(id);
+  tag.classList.add("this-turn");
+  if (pending) tag.classList.add("box-pending");
+  const mark = document.createElement("span");
+  mark.className = "this-turn-mark";
+  mark.textContent = t("panels.this_turn_badge");
+  mark.title = pending ? t("panels.this_turn_pending_title") : t("panels.this_turn_title");
+  tag.appendChild(mark);
+  return tag;
+}
+
 function renderSeats() {
   const wrap = el("seats");
   wrap.textContent = "";
@@ -223,11 +246,12 @@ function renderSeats() {
     const stats = document.createElement("div");
     stats.className = "stats";
     /* Counts that are not already visible on a board track stay at a glance.
+       Spice before Solari (user, 2026-10-11: "스파이스/솔라리/물 순으로").
        Immortality p. 16 names the green cube as the Specimen icon. */
     stats.append(
       statNode("victory_point", phraseText("{victory_point}"), player.victory_points),
-      statNode("solari", phraseText("{solari}"), player.resources.solari),
       statNode("spice", phraseText("{spice}"), player.resources.spice),
+      statNode("solari", phraseText("{solari}"), player.resources.solari),
       statNode("water", phraseText("{water}"), player.resources.water),
       statNode("intrigue", phraseText("{intrigue}"), player.intrigue_card_count),
     );
@@ -370,15 +394,11 @@ function renderSeats() {
       const mine = isRemote()
         ? mySeats().includes(seat)
         : seat === activeSeat() && (!state.review || mySeats().includes(seat));
+      const opener = `seat-discard:${seat}`;
+      zones.dataset.pileOpener = opener;
       zones.addEventListener("click", (event) => {
         event.stopPropagation();
-        openPileList(
-          mine
-            ? t("panels.my_discard")
-            : t("panels.seat_discard", { seat: t("common.seat", { seat }) }),
-          player.discard_pile,
-          zones,
-        );
+        togglePileViewer({ kind: "discard", seat, mine, opener }, zones);
       });
     }
     card.appendChild(zones);
@@ -444,7 +464,7 @@ function renderSeats() {
       const strong = document.createElement("strong");
       strong.textContent = `${t("panels.in_play_label")} `;
       line.appendChild(strong);
-      for (const id of player.in_play) line.appendChild(chip(id));
+      for (const id of player.in_play) line.appendChild(inPlayChip(id, view));
       detail.appendChild(line);
     }
     /* Hand cards that entered through a public move (Corrinth City, an
@@ -502,38 +522,234 @@ function skillIdOf(instanceId) {
   return match ? match[1] : String(instanceId);
 }
 
-/* A list drawn into the popover is never pinned, whatever was pinned
-   before it: the opener's click stops at the opener (openerStat), so the
-   document's click-elsewhere close never ran and a pin left from another
-   popover (a clicked card, a leader, the Conflict history) would otherwise
-   carry over. render() closes an unpinned popover on every update,
-   foreign ones included, so a list never outlives the state it was drawn
-   from -- the deck list's top card mark least of all. */
-function unpinPopover() {
-  popoverPinned = false;
-  pinnedLeaderSeat = null;
+/* ---------- the pile viewer ---------- */
+
+/* A pile's cards in a window of their own, #pile-viewer (index.html): a
+   seat's discard pile, the Intrigue discard pile or the owner's draw deck.
+   The lists used to be drawn into the card popover, where a card's hover
+   enlargement replaced them: the enlargement ignores the pointer, so the
+   card under it on the table took the pointer and its own enlargement took
+   the popover, and render() closed the list on every update, anyone's move
+   included (user feedback after a remote game, 2026-10-11). Now a card in
+   the viewer shows enlarged in the card popover above it, and the viewer
+   stays open until its ×, Escape or a second click on its opener closes
+   it; a click elsewhere on the page leaves it open.
+
+   It remembers which pile it shows, never the cards: `pileViewerKey` is
+   `{kind, seat, mine, opener, scene}`, with kind "discard" (a seat's),
+   "intrigue_discard" or "deck" (the seat's own); the seat it belongs to
+   (null for the Intrigue discard); `mine`, the opener's own "my pile" test
+   that picks the title; `opener`, the name in its opener's
+   `data-pile-opener`, so a second click there closes it; and the table it
+   was opened on (pileViewerScene). Every render draws it again from the
+   fresh state (refreshPileViewer) and closes it when the pile is empty or
+   gone or the table is another one. */
+let pileViewerKey = null;
+const PILE_VIEWER_WIDTH = 420;
+
+/* The table a pile was opened on: the game, the seat looked from and, in a
+   review, the step on screen (the openers read the reviewed view). Leaving
+   the game, switching seats or moving the review cursor closes the
+   viewer. */
+function pileViewerScene() {
+  return {
+    game: state.gameId,
+    seat: activeSeat(),
+    cursor: state.review ? state.review.cursor : null,
+  };
 }
 
-/* A pile listing (discard, Intrigue piles) in the popover: one pile as
-   `(title, ids, anchor)`, or several as `([[title, ids], ...], null, anchor)`
-   (empty piles are left out). */
-function openPileList(title, ids, anchor) {
-  unpinPopover();
-  const piles = Array.isArray(title) ? title : [[title, ids]];
-  const pop = el("card-popover");
-  pop.textContent = "";
-  for (const [pileTitle, pileIds] of piles) {
-    if (!pileIds.length && piles.length > 1) continue;
-    const head = document.createElement("div");
-    head.className = "popover-title";
-    head.textContent = `${pileTitle} (${pileIds.length})`;
-    pop.appendChild(head);
+function pileViewerOpen() {
+  return pileViewerKey !== null;
+}
+
+/* An opener's click: its pile in the viewer, or, when the viewer already
+   shows what this same opener put there, the viewer closed (with a card
+   popover pinned from it: the opener's click stops at the opener, before
+   the document's click-elsewhere close). Another opener's pile replaces
+   the contents and moves the viewer to it. */
+function togglePileViewer(key, anchor) {
+  if (pileViewerKey && pileViewerKey.opener === key.opener) {
+    closePopover();
+    closePileViewer();
+    return;
+  }
+  openPileViewer(key, anchor);
+}
+
+function openPileViewer(key, anchor) {
+  const content = pileViewerContent(key);
+  if (!content) return;
+  /* A card popover, pinned or not, gives way: it would lie over the list,
+     and the opener's click stops at the opener, before the document's
+     click-elsewhere close. */
+  closePopover();
+  pileViewerKey = { ...key, scene: pileViewerScene() };
+  const viewer = el("pile-viewer");
+  fillPileViewer(content);
+  el("pile-viewer-body").scrollTop = 0;
+  /* Below the opener, or above it when it would run off the bottom; then
+     inside the window, for an opener the table has scrolled partly out of
+     it (a narrow window scrolls the table sideways). */
+  const place = () => {
+    placePopover(viewer, anchor, PILE_VIEWER_WIDTH);
+    keepPileViewerInWindow();
+  };
+  place();
+  /* Card images arrive after the first placement and make the list taller
+     (openPopover does the same). Once the table has re-rendered the anchor
+     is gone and placePopover only pulls the viewer back inside. */
+  placePileViewerOnImages(place);
+}
+
+/* Focus inside the viewer goes back to its opener, when that can take it
+   (the seat panel's zone line cannot). */
+function closePileViewer() {
+  const viewer = el("pile-viewer");
+  const opener = pileViewerKey ? pileViewerKey.opener : null;
+  const focused = viewer.contains(document.activeElement);
+  pileViewerKey = null;
+  viewer.hidden = true;
+  el("pile-viewer-body").textContent = "";
+  if (focused && opener) {
+    const node = document.querySelector(`[data-pile-opener="${opener}"]`);
+    if (node) node.focus();
+  }
+}
+
+/* After every render: the open pile drawn again from the fresh state where
+   the viewer stands, its scroll and a focused card kept; closed when the
+   pile is empty or gone or the table is another one. */
+function refreshPileViewer() {
+  const key = pileViewerKey;
+  if (!key) return;
+  const scene = pileViewerScene();
+  const same =
+    !el("game-screen").hidden &&
+    scene.game === key.scene.game &&
+    scene.seat === key.scene.seat &&
+    scene.cursor === key.scene.cursor;
+  const content = same ? pileViewerContent(key) : null;
+  if (!content) {
+    closePileViewer();
+    return;
+  }
+  const viewer = el("pile-viewer");
+  const body = el("pile-viewer-body");
+  const scroll = body.scrollTop;
+  const active = document.activeElement;
+  const focused =
+    active && body.contains(active) && active.dataset ? active.dataset.instance : null;
+  fillPileViewer(content);
+  body.scrollTop = scroll;
+  keepPileViewerInWindow();
+  placePileViewerOnImages(keepPileViewerInWindow);
+  if (focused) {
+    const card = [...body.querySelectorAll(".vcard")].find(
+      (node) => node.dataset.instance === focused,
+    );
+    if (card) card.focus();
+  }
+}
+
+/* The viewer where it stands, pulled back inside the window when new
+   contents or a smaller window would leave it running off. */
+function keepPileViewerInWindow() {
+  const viewer = el("pile-viewer");
+  if (viewer.hidden) return;
+  const width = Math.min(PILE_VIEWER_WIDTH, window.innerWidth - 16);
+  viewer.style.width = `${width}px`;
+  const left = parseFloat(viewer.style.left) || 8;
+  viewer.style.left = `${Math.max(8, Math.min(left, window.innerWidth - width - 8))}px`;
+  const top = parseFloat(viewer.style.top) || 8;
+  const lowest = window.innerHeight - viewer.offsetHeight - 8;
+  viewer.style.top = `${Math.max(8, Math.min(top, lowest))}px`;
+}
+
+/* `place` again as each card image still loading arrives, while it is
+   this viewer's image. */
+function placePileViewerOnImages(place) {
+  const viewer = el("pile-viewer");
+  for (const image of viewer.querySelectorAll("img")) {
+    if (image.complete) continue;
+    image.addEventListener(
+      "load",
+      () => {
+        if (image.isConnected && !viewer.hidden) place();
+      },
+      { once: true },
+    );
+  }
+}
+
+/* `content.sections`: `[{title, notes, cards}]`. The first title is the
+   viewer's own, its accessible name beside the ×; a later section is
+   headed inside, above its cards. */
+function fillPileViewer(content) {
+  const body = el("pile-viewer-body");
+  body.textContent = "";
+  content.sections.forEach((section, index) => {
+    if (index) {
+      const head = document.createElement("div");
+      head.className = "popover-title";
+      head.textContent = section.title;
+      body.appendChild(head);
+    } else {
+      el("pile-viewer-title").textContent = section.title;
+    }
     const row = document.createElement("div");
     row.className = "strip-cards wrap";
-    for (const id of pileIds) row.appendChild(visualCard(id, { className: "small" }));
-    pop.appendChild(row);
+    row.append(...section.cards);
+    body.append(...(section.notes || []), row);
+  });
+}
+
+/* What a key shows in the current state, or null when there is nothing to
+   show. The openers read the same fields: a seat's public discard pile,
+   the Intrigue discard (newest first) and the seat's own deck_cards. */
+function pileViewerContent(key) {
+  const view = state.view;
+  if (!view) return null;
+  if (key.kind === "deck") return deckListContent(key, view);
+  if (key.kind === "intrigue_discard") {
+    const ids = [...(view.intrigue_discard || [])].reverse();
+    return pileListContent([[t("board.pile_intrigue_discard"), ids]]);
   }
-  placePopover(pop, anchor, 420);
+  const player = view.players.find((p) => p.player === key.seat);
+  const title = key.mine
+    ? t("panels.my_discard")
+    : t("panels.seat_discard", { seat: t("common.seat", { seat: key.seat }) });
+  return pileListContent([[title, player ? player.discard_pile : []]]);
+}
+
+/* A pile listing (discard, Intrigue piles): one pile, or several as
+   `[[title, ids], ...]` with the empty ones left out, each titled with its
+   count. */
+function pileListContent(piles) {
+  const shown = piles.length > 1 ? piles.filter(([, ids]) => ids.length) : piles;
+  if (!shown.length || !shown[0][1].length) return null;
+  return {
+    sections: shown.map(([title, ids]) => ({
+      title: `${title} (${ids.length})`,
+      cards: ids.map((id) => visualCard(id, { className: "small" })),
+    })),
+  };
+}
+
+/* The deck list's cards and its marked top card, as the hand strip's deck
+   count reads them: `deck_cards` (sorted by card id, OQ-010 ruling 5) and
+   the top card only when `peeked_card_id` names one of them (Glowglobes at
+   any time, Controlled while its choice is up; core/observation.py), with
+   the name of what shows it. */
+function deckListState(view) {
+  const own = view.players[view.player];
+  const deckCards = view.private.deck_cards || [];
+  const peeked = view.private.peeked_card_id || "";
+  const glowglobes = (own.tech_ids || []).includes("glowglobes");
+  const top = peeked && deckCards.includes(peeked)
+    ? { id: peeked, source: deckTopSource(glowglobes) }
+    : null;
+  return { deckCards, top };
 }
 
 /* The owner's draw deck as a pile list: which cards and how many copies,
@@ -541,8 +757,8 @@ function openPileList(title, ids, anchor) {
    (sessions.py `_serialize_view`); this groups copies of one card (x N) and
    sorts the groups by the name on screen, so the list is a function of the
    deck's contents alone and shows no trace of the draw order (OQ-010
-   ruling 5). A click on a card here does nothing: a deck card is never
-   something to act on from a list.
+   ruling 5). A click on a card here only pins its enlargement: a deck card
+   is never something to act on from a list.
 
    The one exception is the top card when a card effect lets the owner see
    it (`top`: `{id, source}`, the view's own `peeked_card_id` and the name
@@ -554,8 +770,16 @@ function openPileList(title, ids, anchor) {
    name order is as before and each remaining group's card is its smallest
    instance id, so the list still says nothing about the cards below the
    top (user decision 2026-10-10). */
-function openDeckList(title, ids, anchor, top = null) {
-  unpinPopover();
+function deckListContent(key, view) {
+  if (!view.private) return null;
+  const { deckCards: ids, top } = deckListState(view);
+  if (!ids.length) return null;
+  const title = key.mine
+    ? t("panels.my_deck", { count: ids.length })
+    : t("panels.seat_deck", {
+        seat: t("common.seat", { seat: key.seat }),
+        count: ids.length,
+      });
   const groupKey = (id) => {
     const ref = instanceRef(id);
     return `${ref.kind}:${ref.id}`;
@@ -580,11 +804,6 @@ function openDeckList(title, ids, anchor, top = null) {
     if (rest.length < group.ids.length) entries.push({ id: topId, name: group.name, top: true });
     if (rest.length) entries.push({ id: first(rest), name: group.name, count: rest.length });
   }
-  const pop = el("card-popover");
-  pop.textContent = "";
-  const head = document.createElement("div");
-  head.className = "popover-title";
-  head.textContent = title;
   const note = document.createElement("div");
   note.className = "popover-note";
   note.textContent = t("panels.deck_list_note");
@@ -595,41 +814,26 @@ function openDeckList(title, ids, anchor, top = null) {
     topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
     notes.push(topNote);
   }
-  const row = document.createElement("div");
-  row.className = "strip-cards wrap";
-  for (const entry of entries) {
+  const pin = (entry, card) => {
+    if (entry) pinPopover(entry, card);
+  };
+  const cards = entries.map((entry) => {
     const copies = entry.count > 1 ? `×${entry.count}` : "";
-    row.appendChild(
-      visualCard(entry.id, entry.top
-        ? {
-            className: "small deck-top",
-            badge: t("panels.deck_list_top_badge"),
-            title: `${entry.name} · ${t("panels.deck_list_top_title")}`,
-            onClick: () => {},
-          }
-        : {
-            className: "small",
-            badge: copies,
-            title: copies ? `${entry.name} ${copies}` : entry.name,
-            onClick: () => {},
-          }),
-    );
-  }
-  pop.append(head, ...notes, row);
-  placePopover(pop, anchor, 420);
-  /* Card images arrive after the first placement and make the list taller
-     (openPopover does the same): place it again, only while it is still
-     this list's card images, not a later popover's. */
-  for (const image of pop.querySelectorAll("img")) {
-    if (image.complete) continue;
-    image.addEventListener(
-      "load",
-      () => {
-        if (image.isConnected && !pop.hidden) placePopover(pop, anchor, 420);
-      },
-      { once: true },
-    );
-  }
+    return visualCard(entry.id, entry.top
+      ? {
+          className: "small deck-top",
+          badge: t("panels.deck_list_top_badge"),
+          title: `${entry.name} · ${t("panels.deck_list_top_title")}`,
+          onClick: pin,
+        }
+      : {
+          className: "small",
+          badge: copies,
+          title: copies ? `${entry.name} ${copies}` : entry.name,
+          onClick: pin,
+        });
+  });
+  return { sections: [{ title, notes, cards }] };
 }
 
 /* Unlike won Battle cards, this timeline keeps a reveal in its original
@@ -1266,7 +1470,7 @@ function turnCard(group, glowFrom) {
 /* The label for a folded chain of Combat/Endgame Intrigue passes: the words
    the engine's own event carries for it, once for the whole card. Combat
    Intrigue already has one that names the window
-   (EVENT_LABELS.combat_intrigue_passed, "{combat} {intrigue} 패스"); Endgame
+   (EVENT_LABELS.combat_intrigue_passed, "{combat} {intrigue_card} 패스"); Endgame
    Intrigue's own event label is bare ("Passed", EVENT_LABELS.
    endgame_intrigue_passed) -- and so is the action label next to it
    (ACTION_LABELS.pass_endgame_intrigue is just "패스"/"Pass" too, nothing on
@@ -1548,7 +1752,7 @@ function deckTopChoiceCard() {
 }
 
 /* One of those live buttons naming the card ("{deck} 맨 위 카드(Dagger)
-   {discard}"), by its name on screen; null for any other action, or when
+   버리기"), by its name on screen; null for any other action, or when
    no card is known (the plain label then stands). Only actionItem (render.js),
    which draws the seat's offered actions, asks for it. */
 function deckTopChoiceLabel(action) {
@@ -1583,9 +1787,11 @@ function deckTopSource(glowglobes) {
 
 function renderPrivate() {
   const panel = el("private-zone");
+  cancelHandDrag();
   /* The board-width hand can scroll even with a normal five-card hand.
      A staged pick or a foreign update must not hide the card just read.
-     Restore only an unchanged list, so a different hand starts at zero. */
+     Restore only an unchanged list, so a different hand starts at zero
+     (the list as drawn: the player's own order, layout.js, when set). */
   const cardIds = pane => [...pane.querySelectorAll(".vcard")]
     .map(card => card.dataset.instance).join("\n");
   const scrolled = [...panel.querySelectorAll(".hand-zones, .strip-cards")]
@@ -1637,38 +1843,27 @@ function renderPrivate() {
      The top card is the exception when a card effect shows it to the owner
      (`peeked_card_id`: Glowglobes at any time, Controlled while its choice
      is up; core/observation.py): the list marks it, and the count's title
-     says so, so the mark is found without opening the list first. */
-  const deckCards = view.private.deck_cards || [];
-  const peeked = view.private.peeked_card_id || "";
-  const glowglobes = (own.tech_ids || []).includes("glowglobes");
-  const top = peeked && deckCards.includes(peeked)
-    ? { id: peeked, source: deckTopSource(glowglobes) }
-    : null;
+     says so, so the mark is found without opening the list first. The
+     viewer reads the same two fields again on every render
+     (deckListState). */
+  const { deckCards, top } = deckListState(view);
   if (deckCards.length) {
+    deckStat.dataset.pileOpener = "hand-deck";
     openerStat(deckStat, t(top ? "panels.deck_view_top" : "panels.deck_view"), () =>
-      openDeckList(
-        mine
-          ? t("panels.my_deck", { count: deckCards.length })
-          : t("panels.seat_deck", {
-              seat: t("common.seat", { seat: activeSeat() }),
-              count: deckCards.length,
-            }),
-        deckCards,
+      togglePileViewer(
+        { kind: "deck", seat: activeSeat(), mine, opener: "hand-deck" },
         deckStat,
-        top
       )
     );
   }
   /* Discard piles are public (OQ-010); the owner's copy lives in the seat's
      public block like everyone else's. */
   if (own.discard_pile.length) {
+    discardStat.dataset.pileOpener = "hand-discard";
     openerStat(discardStat, t("panels.discard_pile_view"), () =>
-      openPileList(
-        mine
-          ? t("panels.my_discard")
-          : t("panels.seat_discard", { seat: t("common.seat", { seat: activeSeat() }) }),
-        own.discard_pile,
-        discardStat
+      togglePileViewer(
+        { kind: "discard", seat: activeSeat(), mine, opener: "hand-discard" },
+        discardStat,
       )
     );
   }
@@ -1677,6 +1872,10 @@ function renderPrivate() {
 
   const zones = document.createElement("div");
   zones.className = "hand-zones";
+  /* The player's own live hand and Intrigue cards come in the order the
+     player gave them in this browser (layout.js); anything else in the
+     server's order. */
+  const reorderable = handReorderable();
   const hand = document.createElement("div");
   hand.className = "strip-cards hand-cards";
   if (!view.private.hand.length) {
@@ -1685,15 +1884,19 @@ function renderPrivate() {
     empty.textContent = t("panels.hand_empty");
     hand.appendChild(empty);
   }
-  for (const cardId of view.private.hand) hand.appendChild(visualCard(cardId));
+  for (const cardId of orderedStripIds("hand", view.private.hand)) {
+    hand.appendChild(visualCard(cardId));
+  }
+  if (reorderable && view.private.hand.length) enableStripOrder(hand, "hand");
   zones.appendChild(hand);
 
   if (view.private.intrigue_cards.length) {
     const intrigue = document.createElement("div");
     intrigue.className = "strip-cards intrigue-cards";
-    for (const cardId of view.private.intrigue_cards) {
+    for (const cardId of orderedStripIds("intrigue", view.private.intrigue_cards)) {
       intrigue.appendChild(visualCard(cardId, { className: "intrigue" }));
     }
+    if (reorderable) enableStripOrder(intrigue, "intrigue");
     zones.appendChild(intrigue);
   }
   /* Owner-only peeks beside the Intrigue cards: the Intrigue deck's top
@@ -1701,7 +1904,7 @@ function renderPrivate() {
      Project tile is on his leader popover (core.js
      leaderSecretProjectBox). The seat's own deck's top card is never
      here (user decision 2026-10-10): Glowglobes' standing look is the deck
-     list's "Top" entry (openDeckList), and Controlled's is its picture
+     list's "Top" entry (deckListContent), and Controlled's is its picture
      above the put back / discard / draw buttons, which name it
      (deckTopChoicePicture, deckTopChoiceLabel). */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
@@ -1720,6 +1923,7 @@ function renderPrivate() {
     const pane = panel.querySelector(scroll.selector);
     if (pane && cardIds(pane) === scroll.cards) pane.scrollLeft = scroll.left;
   }
+  syncHandOrderReset();
 }
 
 function renderStandings() {
