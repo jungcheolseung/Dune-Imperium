@@ -730,16 +730,16 @@ const UI_TEXT = {
     "en": "Top of deck"
   },
   "panels.deck_top_put_back": {
-    "ko": "덱 맨 위 카드({{card}}) 되돌리기",
-    "en": "Put back top card of deck ({{card}})"
+    "ko": "{deck} 맨 위 카드({{card}}) 그대로 두기",
+    "en": "Leave top card of {deck} ({{card}}) on top"
   },
   "panels.deck_top_discard": {
-    "ko": "덱 맨 위 카드({{card}}) {discard}",
-    "en": "{discard} top card of deck ({{card}})"
+    "ko": "{deck} 맨 위 카드({{card}}) {discard}",
+    "en": "{discard} top card of {deck} ({{card}})"
   },
   "panels.deck_top_draw": {
-    "ko": "{solari} 1 지불 → 덱 맨 위 카드({{card}}) {draw}",
-    "en": "Pay 1 {solari} -> {draw} top card of deck ({{card}})"
+    "ko": "{solari} 1 지불 → {deck} 맨 위 카드({{card}}) {draw}",
+    "en": "Pay 1 {solari} -> {draw} top card of {deck} ({{card}})"
   },
   "panels.deck_list_note": {
     "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",

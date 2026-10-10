@@ -100,15 +100,17 @@ TEXT = {
         "strip_badge": "덱 맨 위",
         # Controlled's buttons, naming the card (icons read as their words).
         "choices": {
-            "put_back_top_card": "덱 맨 위 카드({card}) 되돌리기",
-            "discard_top_card": "덱 맨 위 카드({card}) 버리기",
-            "draw_top_card_for_solari": "솔라리 1 지불 → 덱 맨 위 카드({card}) 뽑기",
+            "put_back_top_card": "카드덱 맨 위 카드({card}) 그대로 두기",
+            "discard_top_card": "카드덱 맨 위 카드({card}) 버리기",
+            "draw_top_card_for_solari": (
+                "솔라리 1 지불 → 카드덱 맨 위 카드({card}) 뽑기"
+            ),
         },
         # The same steps as the log names them: no card.
         "logged": {
-            "put_back_top_card": "덱 맨 위 카드 되돌리기",
-            "discard_top_card": "덱 맨 위 카드 버리기",
-            "draw_top_card_for_solari": "솔라리 1 지불 → 덱 맨 위 카드 뽑기",
+            "put_back_top_card": "카드덱 맨 위 카드 그대로 두기",
+            "discard_top_card": "카드덱 맨 위 카드 버리기",
+            "draw_top_card_for_solari": "솔라리 1 지불 → 카드덱 맨 위 카드 뽑기",
         },
         "discard_button": "버림 더미 보기",
         "discard_title": "내 버림 더미 ({n})",
@@ -129,14 +131,14 @@ TEXT = {
         "glowglobes": "Glowglobes",
         "strip_badge": "Top of deck",
         "choices": {
-            "put_back_top_card": "Put back top card of deck ({card})",
+            "put_back_top_card": "Leave top card of deck ({card}) on top",
             "discard_top_card": "Discard top card of deck ({card})",
             "draw_top_card_for_solari": (
                 "Pay 1 Solari -> Draw top card of deck ({card})"
             ),
         },
         "logged": {
-            "put_back_top_card": "Put back top card of deck",
+            "put_back_top_card": "Leave top card of deck on top",
             "discard_top_card": "Discard top card of deck",
             "draw_top_card_for_solari": "Pay 1 Solari -> Draw top card of deck",
         },
