@@ -12,14 +12,20 @@ was waiting for instead). See docs/human-records.md.
 ``score`` asks agents for them.
 
 ``corpus`` reads a record corpus (``records.corpus``): ``list`` the corpora,
-the ``keys`` of one with how many records and occurrences each has, and
+the ``keys`` of one with how many records and occurrences each has,
 ``pick`` records by key patterns, optionally ``--export``-ing them as save
-files ``check --every-save`` reads.
+files ``check --every-save`` reads, and ``check`` its records on this engine
+against their traces (``records.corpus.check``): outcomes, divergence
+signatures, bridge counts and the verdict of every differing run of steps
+around ``--around`` hits and the ``--bridge`` under review. It writes
+nothing but the ``--json`` summary.
 """
 
 import argparse
 import json
 import subprocess
+import sys
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -29,7 +35,19 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, Decision
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.paths import PROJECT_ROOT, SAVES_DIR
-from dune_imperium.records.corpus import CORPUS_ROOT, Corpus, corpora
+from dune_imperium.records.corpus import (
+    CORPUS_ROOT,
+    DEFAULT_WINDOW,
+    MAX_WORKERS,
+    CheckReport,
+    Corpus,
+    CorpusRow,
+    DifferingRun,
+    check,
+    corpora,
+    load_migration,
+    seatless,
+)
 from dune_imperium.records.migration import MigratedRecord, migrate_record
 from dune_imperium.records.problems import (
     DEFAULT_SUITE,
@@ -94,7 +112,54 @@ def _add_corpus_parser(
     pick.add_argument("--seed", type=int, default=0, help="shuffle within groups")
     pick.add_argument("--ids-out", type=Path, help="write the picked ids here")
     pick.add_argument("--export", type=Path, metavar="DIR", help="write save files")
-    for parser in (listing, keys, pick):
+    checking = actions.add_parser(
+        "check", help="compare records with their traces on this engine"
+    )
+    checking.add_argument("corpus", help="corpus id or folder")
+    chosen = checking.add_mutually_exclusive_group()
+    chosen.add_argument("--ids", type=Path, metavar="FILE", help="one id per line")
+    chosen.add_argument(
+        "--has", action="extend", nargs="+", default=[], metavar="PATTERN"
+    )
+    checking.add_argument("--limit", type=int, help="at most this many records")
+    checking.add_argument(
+        "--steered", action="store_true", help="include steered and branched games"
+    )
+    checking.add_argument(
+        "--around",
+        action="extend",
+        nargs="+",
+        default=[],
+        metavar="PATTERN",
+        help="index keys whose hits the verdicts lean on",
+    )
+    checking.add_argument(
+        "--bridge",
+        action="extend",
+        nargs="+",
+        default=[],
+        metavar="NAME",
+        help="the bridges under review",
+    )
+    checking.add_argument("--window", type=int, default=DEFAULT_WINDOW)
+    checking.add_argument(
+        "--control",
+        type=int,
+        default=0,
+        metavar="N",
+        help="also check N records without --around hits",
+    )
+    checking.add_argument(
+        "--migration-module",
+        type=Path,
+        metavar="PATH",
+        help="a migration module to use instead of records.migration",
+    )
+    checking.add_argument(
+        "--workers", type=int, default=1, help=f"processes, at most {MAX_WORKERS}"
+    )
+    checking.add_argument("--json", type=Path, metavar="OUT", help="write a summary")
+    for parser in (listing, keys, pick, checking):
         parser.add_argument("--root", type=Path, default=CORPUS_ROOT)
 
 
@@ -167,6 +232,8 @@ def _corpus(args: argparse.Namespace) -> int:
         corpus = Corpus.open(args.corpus, args.root)
     except FileNotFoundError as error:
         raise SystemExit(str(error)) from None
+    if args.corpus_command == "check":
+        return _corpus_check(corpus, args)
     if args.corpus_command == "keys":
         counts = corpus.key_counts(args.pattern, natural=args.natural)
         rows = [row for row in corpus.rows() if row.natural or not args.natural]
@@ -224,6 +291,246 @@ def _corpus(args: argparse.Namespace) -> int:
             f"--saves-dir {args.export} --every-save"
         )
     return 0
+
+
+def _check_rows(corpus: Corpus, args: argparse.Namespace) -> list[CorpusRow]:
+    natural = not args.steered
+    if args.ids is None:
+        rows = corpus.pick(args.has, natural=natural, limit=args.limit)
+        total = sum(1 for row in corpus.rows() if row.natural or not natural)
+        what = " and ".join(repr(pattern) for pattern in args.has) or "every record"
+        print(
+            f"{corpus.id}: checking {len(rows)} of {total} records ({what})",
+            flush=True,
+        )
+        return rows
+    ids = [
+        line.strip()
+        for line in args.ids.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    known = {row.id: row for row in corpus.rows()}
+    unknown = [record_id for record_id in ids if record_id not in known]
+    if unknown:
+        raise SystemExit(f"{corpus.id} has no record {', '.join(unknown[:5])}")
+    rows = [known[record_id] for record_id in dict.fromkeys(ids)]
+    if args.limit is not None:
+        rows = rows[: args.limit]
+    print(f"{corpus.id}: checking {len(rows)} records from {args.ids}", flush=True)
+    return rows
+
+
+def _corpus_check(corpus: Corpus, args: argparse.Namespace) -> int:
+    if not 1 <= args.workers <= MAX_WORKERS:
+        raise SystemExit(f"--workers must be 1 to {MAX_WORKERS}")
+    if args.migration_module is not None:
+        try:
+            load_migration(args.migration_module)
+        except (OSError, ValueError) as error:
+            raise SystemExit(f"--migration-module: {error}") from None
+    rows = _check_rows(corpus, args)
+    step = max(1, (len(rows) + args.control) // 10)
+
+    def progress(done: int, total: int) -> None:
+        if done == total or done // step != (done - 1) // step:
+            print(f"  checked {done} of {total}", file=sys.stderr, flush=True)
+
+    report = check(
+        corpus,
+        rows,
+        migration=args.migration_module,
+        around=args.around,
+        bridge=args.bridge,
+        window=args.window,
+        controls=args.control,
+        workers=args.workers,
+        natural=not args.steered,
+        progress=progress,
+    )
+    for line in check_lines(report):
+        print(line)
+    if report.controls() < args.control:
+        print(
+            f"only {report.controls()} of the {args.control} control records asked "
+            f"for exist: records outside the selection without --around hits"
+        )
+    if args.json is not None:
+        args.json.write_text(
+            json.dumps(report.summary(), ensure_ascii=False, indent=1) + "\n",
+            encoding="utf-8",
+        )
+        print(f"wrote the summary to {args.json}")
+    return 0
+
+
+# Verdict findings listed one by one, per class.
+_LISTED_FINDINGS = 12
+
+
+def check_lines(report: CheckReport) -> list[str]:
+    """``corpus check``'s readable report."""
+
+    portable = report.portable_warning()
+    lines = [] if portable is None else [f"WARNING: {portable}", ""]
+    lines += [
+        f"corpus {report.corpus} (codec v{report.corpus_codec}) on this engine "
+        f"(codec v{report.engine_codec}), migration {report.migration}",
+        f"around: {' '.join(report.around) or '-'}; "
+        f"bridges under review: {', '.join(report.bridges) or '-'}; "
+        f"window {report.window}",
+        "",
+    ]
+    if report.drift:
+        lines.append("schema drift (manifest class_schema against this engine):")
+        for qualname, change in report.drift.items():
+            if change.get("unmet"):
+                lines.append(f"  {qualname}: no checked state held it")
+                continue
+            removed = ", ".join(change["removed"]) or "-"
+            added = ", ".join(change["added"]) or "-"
+            lines.append(
+                f"  {qualname}: removed {removed} (absent from digests); "
+                f"added {added} (left out)"
+            )
+    else:
+        lines.append("schema drift: none")
+    drift_fields = report.field_records("drift_fields")
+    if drift_fields:
+        lines.append("  fields it explains (kept out of outcomes and verdicts):")
+        lines.extend(
+            f"    {name} in {count} records" for name, count in drift_fields.items()
+        )
+    reset = report.field_records("reset_fields")
+    if reset:
+        lines.append(
+            "fields that differ already at reset (kept out of outcomes and verdicts):"
+        )
+        lines.extend(f"  {name} in {count} records" for name, count in reset.items())
+    else:
+        lines.append("fields that differ already at reset: none")
+    unpositioned = report.unpositioned()
+    if unpositioned:
+        lines.append("--around keys whose rows kept only the first step:")
+        lines.extend(
+            f"  {key} in {count} records" for key, count in unpositioned.items()
+        )
+
+    selected, controls = report.outcomes(), report.outcomes(control=True)
+    lines += [
+        "",
+        f"{'outcome':12s} {'records':>8s}"
+        + (f" {'controls':>9s}" if report.controls() else ""),
+    ]
+    for outcome, count in selected.items():
+        lines.append(
+            f"{outcome:12s} {count:8d}"
+            + (f" {controls[outcome]:9d}" if report.controls() else "")
+        )
+    lines.append(
+        f"{'total':12s} {report.selected():8d}"
+        + (f" {report.controls():9d}" if report.controls() else "")
+    )
+    odd_controls = [
+        f"{record.id} {record.outcome}"
+        for record in report.records
+        if record.control and record.outcome not in ("exact", "equal")
+    ]
+    if odd_controls:
+        lines.append(f"controls not exact or equal: {', '.join(odd_controls)}")
+    reset_warning = report.reset_warning()
+    if reset_warning is not None:
+        lines.append(f"warning: {reset_warning}")
+
+    totals = report.bridge_totals()
+    lines.append("")
+    lines.append(
+        "bridges: "
+        + (
+            ", ".join(
+                f"{name} {steps} steps in {records} records"
+                for name, (steps, records) in totals.items()
+            )
+            or "none fired"
+        )
+    )
+    signatures = report.signatures()
+    if signatures:
+        lines.append("divergences (pending frame, recorded step, reason):")
+        for (frame, step, reason), ids in signatures:
+            lines.append(
+                f"  {len(ids):5d}  pending {frame} at {step}: {reason}  "
+                f"e.g. {', '.join(ids[:3])}"
+            )
+
+    verdicts = report.verdicts()
+    lines += ["", f"{'verdict':20s} {'items':>6s} {'records':>8s}  fields"]
+    for verdict, items in verdicts.items():
+        fields: Counter[str] = Counter()
+        for _, item in items:
+            if isinstance(item, DifferingRun):
+                fields.update({seatless(name) for name in item.fields})
+        shown = ", ".join(f"{name} {count}" for name, count in fields.most_common(4))
+        records = len({record_id for record_id, _ in items})
+        lines.append(f"{verdict:20s} {len(items):6d} {records:8d}  {shown}")
+    at_hit = report.divergence_hits()
+    if at_hit:
+        lines.append("diverged-at-hit by pending frame and hit:")
+        for (frame, key), ids in at_hit:
+            lines.append(
+                f"  {len(ids):5d}  pending {frame} after {key}  "
+                f"e.g. {', '.join(ids[:3])}"
+            )
+    divergences = {
+        record.id: record.divergence.signature
+        for record in report.records
+        if record.divergence is not None
+    }
+    for verdict, items in verdicts.items():
+        if not items:
+            continue
+        lines.append(f"{verdict}:")
+        for record_id, item in items[:_LISTED_FINDINGS]:
+            text = _finding_text(item, divergences.get(record_id))
+            lines.append(f"  {record_id} {text}")
+        if len(items) > _LISTED_FINDINGS:
+            lines.append(f"  ... {len(items) - _LISTED_FINDINGS} more")
+
+    failed = [record for record in report.records if record.outcome == "failed"]
+    if failed:
+        lines.append("")
+        lines.append("failed:")
+        lines.extend(f"  {record.id}: {record.error}" for record in failed)
+    records = len(report.records)
+    lines.append("")
+    lines.append(
+        f"{records} records in {report.wall_seconds:.1f} s wall, "
+        f"{report.cpu_seconds():.1f} s cpu"
+        + (f" ({report.cpu_seconds() / records:.2f} s per record)" if records else "")
+    )
+    return lines
+
+
+def _finding_text(
+    item: DifferingRun | int, signature: tuple[str, str, str] | None = None
+) -> str:
+    if not isinstance(item, DifferingRun):
+        return f"fired before step {item}"
+    steps = (
+        f"step {item.start}"
+        if item.start == item.end
+        else f"steps {item.start}-{item.end}"
+    )
+    hit = "" if item.hit is None else f"; hit {item.hit[1]} at {item.hit[0]}"
+    ended = "" if item.ended_by is None else f"; ends where {item.ended_by} fires"
+    fields = ", ".join(item.fields[:4]) + (" ..." if len(item.fields) > 4 else "")
+    diverged = ""
+    if item.diverged:
+        diverged = (
+            " (diverged)"
+            if signature is None
+            else f" (diverged: pending {signature[0]} at {signature[1]})"
+        )
+    return f"{steps}{diverged}: {fields or 'no field differs'}{hit}{ended}"
 
 
 def _problems(args: argparse.Namespace) -> int:
