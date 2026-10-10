@@ -122,6 +122,29 @@ function seatDetailSummary(detail) {
   return parts;
 }
 
+/* One in-play card's chip. The card the open Agent turn played, or its
+   graft partner, carries a "this turn" mark (server view.turn_card_ids,
+   sessions.py turn_cards), so it reads apart from a copy of the same card
+   played on an earlier turn; while its Agent box still waits
+   (view.pending_box_card_ids) the mark's title says trashing it by another
+   effect loses the rest of that box (OQ-022, user feedback 2026-10-11; a
+   card trashing itself by its own effect keeps its rewards). The mark is no
+   .tag, so seatDetailSummary still counts one chip per card, and the chip
+   keeps its own hover and click. */
+function inPlayChip(id, view) {
+  const tag = chip(id);
+  if (!(view.turn_card_ids || []).includes(id)) return tag;
+  const pending = (view.pending_box_card_ids || []).includes(id);
+  tag.classList.add("this-turn");
+  if (pending) tag.classList.add("box-pending");
+  const mark = document.createElement("span");
+  mark.className = "this-turn-mark";
+  mark.textContent = t("panels.this_turn_badge");
+  mark.title = pending ? t("panels.this_turn_pending_title") : t("panels.this_turn_title");
+  tag.appendChild(mark);
+  return tag;
+}
+
 function renderSeats() {
   const wrap = el("seats");
   wrap.textContent = "";
@@ -441,7 +464,7 @@ function renderSeats() {
       const strong = document.createElement("strong");
       strong.textContent = `${t("panels.in_play_label")} `;
       line.appendChild(strong);
-      for (const id of player.in_play) line.appendChild(chip(id));
+      for (const id of player.in_play) line.appendChild(inPlayChip(id, view));
       detail.appendChild(line);
     }
     /* Hand cards that entered through a public move (Corrinth City, an
