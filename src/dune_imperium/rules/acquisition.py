@@ -37,6 +37,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     OWED_INTRIGUE,
+    OWED_ORIGIN_ACQUIRE,
     FrameKind,
     context_int,
     draw_waits_for_owner,
@@ -1024,10 +1025,14 @@ def _resolve_imperium_acquisition_bonus(
         )
         if draw_waits_for_owner(state, player):
             # Overthrow's acquire box: inside the seat's own turn the card
-            # waits as its own step, ordered freely with the turn's other
-            # effects (user ruling 2026-10-10, OQ-106; OQ-042). The Row
-            # refill still makes the purchase itself irreversible.
-            owner = hold_draw(owner, OWED_INTRIGUE, f"card:{instance_id}", source)
+            # is its own step, the one right after the purchase: "Acquire
+            # Effects must be taken immediately upon acquiring the Card or
+            # Tech." (Direwolf Discord; user decision 2026-10-10, OQ-106,
+            # ``draw_is_immediate``; OQ-042). The Row refill still makes the
+            # purchase itself irreversible.
+            owner = hold_draw(
+                owner, OWED_INTRIGUE, f"{OWED_ORIGIN_ACQUIRE}{instance_id}", source
+            )
         elif intrigue_deck:
             owner = credit_suspensor_suits(
                 state,

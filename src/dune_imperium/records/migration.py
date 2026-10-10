@@ -846,12 +846,18 @@ def _owed_draw(
 ) -> ReplayStep | None:
     """Take a triggered draw right after the recorded step that earned it.
 
-    Codec v142 (6ec211d8, 43fa4fa7) holds a draw that another printed effect
-    triggers in the seat's own turn -- the Bene Gesserit Influence 4 bonus,
-    Imperial Birthright, a Tleilaxu track Intrigue space, Sardaukar Soldier's
-    trash, Overthrow's acquire box, Hungry for Spice -- as the seat's own
-    ``draw_owed_*`` step; an older engine drew it inside the triggering step
-    (Hungry for Spice's at its end). The oldest waiting draw is taken as
+    Codec v142 (6ec211d8, 43fa4fa7, fb-immediate) holds a draw that another
+    printed effect triggers in the seat's own turn -- the Bene Gesserit
+    Influence 4 bonus, Imperial Birthright, a Tleilaxu track Intrigue space,
+    Sardaukar Soldier's trash, Overthrow's acquire box, Hungry for Spice,
+    CHOAM Transports on a Contract completed in the seat's own turn -- as the
+    seat's own ``draw_owed_*`` step; an older engine drew it inside the
+    triggering step (Hungry for Spice's at its end, CHOAM Transports' in the
+    completing step's hook). Four of them (Bene Gesserit 4, Imperial
+    Birthright, Overthrow, CHOAM Transports) are immediate: right after the
+    trigger the draw is the owner's only legal action
+    (``frames.draw_is_immediate``), which this bridge takes at once anyway.
+    The oldest waiting draw is taken as
     soon as it is offered: right after the step, or after the recorded step
     that closes the frame it waits behind (an Intrigue effect, a Reveal,
     Skill or Scouts choice; one to three steps see the hand a card short).

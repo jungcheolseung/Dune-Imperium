@@ -8,23 +8,50 @@ from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import (
+    OWED_CARD,
+    OWED_ORIGIN_CHOAM_TRANSPORTS,
+    FrameKind,
+    draw_waits_for_owner,
+    hold_draw,
+)
 
 
-def owe_contract_completion_draw(owner: PlayerState) -> PlayerState:
+def owe_contract_completion_draw(state: GameState, owner: PlayerState) -> PlayerState:
     """CHOAM Transports: "When you complete a contract: draw a card" [Tech tile].
 
-    The card is owed to the engine's post-step draw so a discard reshuffle
-    never interrupts the completing effect.
+    "The card draw from CHOAM Transports is triggered as soon as the
+    contract is completed and can't be deferred." (Message from designer,
+    docs/rules/designer-rulings-audit.md). Inside the owner's own turn the
+    card is its own step, the one right after the completing step, with
+    nothing of the owner's in between, so the completion stays undoable
+    (user decision 2026-10-10, OQ-106, ``draw_is_immediate``). Anywhere else
+    (a Conflict reward, the Arrakeen Scouts step) it is owed to the engine's
+    post-step draw (``tech.draw_owed_tech_cards``) so a discard reshuffle
+    never interrupts the completing effect. ``state`` is the state the
+    completion happens in (its turn and round).
     """
 
     if not has_tech(owner.tech_ids, TechAbility.CONTRACT_COMPLETION_DRAW):
         return owner
+    if draw_waits_for_owner(state, owner.player_id):
+        return hold_draw(
+            owner,
+            OWED_CARD,
+            OWED_ORIGIN_CHOAM_TRANSPORTS,
+            f"round:{state.round_number}:player:{owner.player_id}:tech_draw",
+        )
     return replace(owner, tech_cards_owed=owner.tech_cards_owed + 1)
 
 
-def receive_contract(owner: PlayerState, instance_id: str) -> PlayerState:
-    """Give ``owner`` a Contract tile: active, or completed at once [Main p. 16]."""
+def receive_contract(
+    state: GameState, owner: PlayerState, instance_id: str
+) -> PlayerState:
+    """Give ``owner`` a Contract tile: active, or completed at once [Main p. 16].
+
+    ``state`` is the state the tile is taken in (CHOAM Transports' draw for
+    an Immediate tile, ``owe_contract_completion_draw``).
+    """
 
     definition = contract_for_instance(instance_id)
     if definition.requires_intrigue_trash:
@@ -54,6 +81,7 @@ def receive_contract(owner: PlayerState, instance_id: str) -> PlayerState:
                 "Immediate Contracts with non-Solari rewards are not implemented"
             )
         return owe_contract_completion_draw(
+            state,
             replace(
                 owner,
                 resources=replace(
@@ -62,7 +90,7 @@ def receive_contract(owner: PlayerState, instance_id: str) -> PlayerState:
                 ),
                 completed_contract_ids=(*owner.completed_contract_ids, instance_id),
                 contracts_completed_turn=owner.contracts_completed_turn + 1,
-            )
+            ),
         )
     return replace(
         owner,

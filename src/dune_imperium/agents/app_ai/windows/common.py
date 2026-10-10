@@ -47,7 +47,9 @@ def triggered_draw(run: DecisionRun) -> DomainAction | None:
     a "when trashed" or acquire box, a Tech tile) draws inside the step that
     fired it, before the next prompt. So the turn, Agent-effect and Reveal
     windows take it first, and the decision after it sees the hand the
-    app's would.
+    app's would. An immediate draw (user decision 2026-10-10, OQ-106) is
+    all its frame offers, whatever the frame; the agent answers such a
+    decision before any window (``AppAIAgent.choose_action_with_state``).
     """
 
     return next((a for a in run.legal if a.action_id in TRIGGERED_DRAWS), None)

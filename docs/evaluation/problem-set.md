@@ -483,3 +483,14 @@ Hungry for Spice, Unpredictable Foe)이라 커밋마다 문제집을 다시 캤�
   Endgame 19·0·3이다.
 
 `tests/unit/test_problem_set.py`는 고칠 것이 없었다.
+
+## 재채굴 (2026-10-10, 곧바른 촉발 draw — OQ-106 곧바른 단계, codec v142)
+
+사용자 결정 "가 로 가자"([OQ-106](../rules/open-questions.md) 곧바른 단계)로 Bene Gesserit Influence 4 카드·Imperial Birthright·Overthrow
+획득 box·CHOAM Transports의 카드가 그 촉발 바로 다음의 유일한 행동이 되자(자유 순서였던 것은 heuristic이 다른 행동을 먼저 고르기도 했다),
+바로 위 135개 가운데 85개만 복원되었다. 두 변경(곧바른 제한과 CHOAM Transports의 보류)을 scratch 사본에서 되돌리면 135/135가 그대로
+복원된다. 위 "다시 캐는 명령"을 그대로 실행했다(worker 4, 5081은 메인 체크아웃의 절대 경로로). 결과는 **133개** — sandworm
+80(heuristic 40 + 5081 40), 마지막 라운드 보유 31(heuristic 30 + 5081 1), Endgame 22(heuristic 22)이며 `check`가 **133/133** 복원을
+확인했다. 포지션 id로 견주면 그대로 126(선택 번호와 지문까지 같은 것 82, 지문은 같고 선택 번호만 바뀐 것 42, 지문까지 바뀐 것 2), 빠진 것
+9, 새것 7이다. 문항별로는 sandworm 79 그대로·1 빠짐·1 새것, 마지막 라운드 보유 28·5·3, Endgame 19·3·3이다. 채점은 하지 않았다.
+`tests/unit/test_problem_set.py`는 고칠 것이 없었다.

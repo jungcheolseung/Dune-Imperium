@@ -229,6 +229,7 @@ from dune_imperium.rules.optional_trash import (
 )
 from dune_imperium.rules.owed_draws import (
     apply_owed_draw,
+    immediate_owed_draw_actions,
     legal_owed_draw_actions,
     pay_stale_owed_draws,
 )
@@ -994,13 +995,23 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         player: int,
     ) -> tuple[DomainAction, ...]:
-        """Return the actions the top frame's providers offer to ``player``."""
+        """Return the actions the top frame's providers offer to ``player``.
+
+        While an immediate triggered draw waits for ``player`` (CHOAM
+        Transports, the Bene Gesserit Influence 4 card, Imperial Birthright,
+        an acquire box; user decision 2026-10-10, OQ-106), that draw is all
+        any of its frames offers, so nothing of the owner's comes between
+        the trigger and it.
+        """
 
         if not state.decision_stack:
             return ()
         frame = state.decision_stack[-1]
         if not isinstance(frame.decision, PlayerDecision):
             return ()
+        immediate = immediate_owed_draw_actions(state, player)
+        if immediate:
+            return immediate
         providers = LEGAL_ACTION_PROVIDERS.get(frame.kind)
         if providers is None:
             raise RuntimeError(f"unknown decision frame kind: {frame.kind}")
