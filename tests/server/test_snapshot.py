@@ -42,20 +42,23 @@ def _text(value: object) -> str:
 # --- shape: seatless vs. seated -------------------------------------------
 
 
-def test_a_snapshot_without_a_seat_is_exactly_summary_and_you() -> None:
+def test_a_snapshot_without_a_seat_is_summary_you_and_the_clock_age() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)
     game_id = _text(summary["game_id"])
 
     snapshot = manager.snapshot(game_id)
 
-    assert set(snapshot) == {"summary", "you"}
+    # Plus the play clock's age, which only an envelope carries: the summary
+    # holds the clock as of its last change (``play_clock``).
+    assert set(snapshot) == {"summary", "you", "clock_age_ms"}
+    assert _int(snapshot["clock_age_ms"]) >= 0
     assert snapshot["summary"] == manager.summary(game_id)
     assert snapshot["you"] == manager.identify(game_id)
     json.dumps(snapshot)
 
 
-def test_a_seat_snapshot_has_the_five_keys_and_equals_the_separate_calls() -> None:
+def test_a_seat_snapshot_has_the_six_keys_and_equals_the_separate_calls() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)
     game_id = _text(summary["game_id"])
@@ -63,7 +66,15 @@ def test_a_seat_snapshot_has_the_five_keys_and_equals_the_separate_calls() -> No
 
     snapshot = manager.snapshot(game_id, 0)
 
-    assert set(snapshot) == {"summary", "you", "view", "actions", "log"}
+    assert set(snapshot) == {
+        "summary",
+        "you",
+        "clock_age_ms",
+        "view",
+        "actions",
+        "log",
+    }
+    assert _int(snapshot["clock_age_ms"]) >= 0
     assert snapshot["summary"] == manager.summary(game_id)
     assert snapshot["you"] == manager.identify(game_id)
     assert snapshot["view"] == manager.view(game_id, 0)

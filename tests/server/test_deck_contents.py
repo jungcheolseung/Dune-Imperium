@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import random
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import replace
 
@@ -30,6 +31,7 @@ import pytest
 
 from dune_imperium.core import GamePhase, GameState
 from dune_imperium.rules.frames import replace_player
+from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.access import ANONYMOUS, AccessMode, Credentials
 from dune_imperium.server.sessions import (
     GameSessionManager,
@@ -188,8 +190,22 @@ def test_states_differing_only_in_deck_order_serialize_identically(seed: int) ->
 # --- (c) nobody else gets it ----------------------------------------------
 
 
-def test_no_other_view_log_or_summary_depends_on_a_seats_deck() -> None:
+def _freeze_play_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop the server's clock so two reads differ only by the state.
+
+    A snapshot carries the play clock's age (``play_clock``), which grows
+    between the two reads below whatever the deck holds.
+    """
+
+    frozen = time.monotonic()
+    monkeypatch.setattr(sessions_module, "_monotonic", lambda: frozen)
+
+
+def test_no_other_view_log_or_summary_depends_on_a_seats_deck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     manager, game_id = _midgame()
+    _freeze_play_clock(monkeypatch)
     session = manager._get(game_id)
     original = session.state
     owner = 0
@@ -425,8 +441,11 @@ def test_glowglobes_owner_sees_the_top_card_and_nothing_below_it() -> None:
         }
 
 
-def test_no_other_reader_learns_the_glowglobes_top_card() -> None:
+def test_no_other_reader_learns_the_glowglobes_top_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     manager, game_id, _ = _glowglobes_midgame()
+    _freeze_play_clock(monkeypatch)
     session = manager._get(game_id)
     original = session.state
     deck = original.players[0].deck
