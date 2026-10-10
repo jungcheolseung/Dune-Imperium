@@ -426,10 +426,16 @@ def corpora(root: Path = CORPUS_ROOT) -> list[Corpus]:
 # ``VERDICTS`` against the nearest preceding ``around`` hit (an index key's
 # recorded step, from the corpus row) and the firings of the bridges under
 # review (``judge``); a run that some bridge ends, reviewed or not, names it.
-# Fields that differ already in the reset state, and fields the schema drift
-# explains (a field this engine removed or renamed, at the top or in a
-# nested class: ``schema_drift``), are reported once and kept out of the
-# outcomes and verdicts.
+# A bridge fires at the first point its step shows in: an answer or
+# ``follows`` bridge's step runs before the next recorded step, so it fires
+# at that point; a rewrite bridge's step is recorded step i itself, so it
+# fires at i + 1.
+# Fields that differ already in the reset state -- point 0, the state before
+# recorded step 0 after any bridged steps in front of it, as the trace's
+# reset vector is the recording engine's state there -- and fields the
+# schema drift explains (a field this engine removed or renamed, at the top
+# or in a nested class: ``schema_drift``), are reported once and kept out of
+# the outcomes and verdicts.
 
 OUTCOMES: Final = ("exact", "equal", "transient", "persistent", "diverged", "failed")
 VERDICTS: Final = (
@@ -469,7 +475,7 @@ class DifferingRun:
     hit: tuple[int, str] | None = None
     diverged: bool = False
     # The bridges, reviewed or not, that fired right where the run ends
-    # (before the first equal point), comma-separated.
+    # (at the first equal point), comma-separated.
     ended_by: str | None = None
 
 
@@ -493,8 +499,8 @@ class RecordCheck:
     # Steps each bridge answered or rewrote.
     bridges: Mapping[str, int] = field(default_factory=dict)
     runs: tuple[DifferingRun, ...] = ()
-    # Where the reviewed bridges fired: before which recorded step (or the
-    # end point), once per firing.
+    # Where the reviewed bridges fired: the point (recorded step, or the
+    # end point) their step first shows in, once per firing.
     firings: tuple[int, ...] = ()
     # Those of ``firings`` without an ``around`` hit in the window before.
     lone_firings: tuple[int, ...] = ()
@@ -525,22 +531,28 @@ def judge(
     ``differences`` maps each differing compared point (a recorded step
     index; the state before it) to its fields; ``hits`` are the recorded
     steps of ``around`` keys (a hit at ``h`` changed the state seen at
-    ``h + 1``); ``firings`` the points the reviewed bridges fired before;
+    ``h + 1``); ``firings`` the points where the reviewed bridges' steps
+    first show (an answer or ``follows`` bridge's at the recorded step it
+    ran before, a rewrite bridge's at the one after the step it rewrote);
     ``divergence`` the recorded step this engine refused; ``ending`` names
-    the bridges, reviewed or not, that fired before each point, for the
-    runs' ``ended_by``. Verdicts:
+    the bridges, reviewed or not, that fired at each point, for the runs'
+    ``ended_by``. Verdicts:
+
+    Every verdict but the last leans on the nearest hit before the run's
+    start, at most ``window`` steps before it (a hit at the start itself
+    changed nothing the run starts with).
 
     - ``diverged-at-hit``: the run that ends where the record diverged
-      (one is made, without fields, when the state still matched there),
-      with a hit before the divergence (or, failing one, at the refused
-      step itself) no earlier than ``window`` steps before the run starts;
-    - ``bridged-window``: the run starts at most ``window`` steps after a
-      hit and ends right where a reviewed bridge fires, the firing being
-      the step that makes the state equal again;
+      (one is made, without fields, when the state still matched there)
+      starts in a hit's window; a run that starts at the refused step
+      itself leans, failing an earlier hit, on that step's own hit;
+    - ``bridged-window``: the run starts in a hit's window and ends right
+      where a reviewed bridge fires, the firing being the step that makes
+      the state equal again;
     - ``differs-unbridged``: the run starts in a hit's window, but no
       firing ends it (it lasts to the end, or something else ends it);
-    - ``collateral``: no hit in the window before the run, or before the
-      divergence;
+    - ``collateral``: no hit in the window before the run starts, diverged
+      or not (a diverged one keeps its record's divergence signature);
     - ``bridge-without-hit`` (the second result): a firing with no hit in
       the ``window`` steps before it that does not end a ``bridged-window``
       run either (a held draw may be taken more than ``window`` steps after
@@ -562,22 +574,20 @@ def judge(
     for group in groups:
         start, end = group[0], group[-1]
         fields = tuple(sorted({name for i in group for name in differences.get(i, ())}))
-        if divergence is not None and end == divergence:
-            hit = _nearest(hit_list, divergence - 1)
-            leans = hit is not None and hit[0] >= start - window
-            if not leans:
-                hit = _nearest(hit_list, divergence)
-                leans = hit is not None and hit[0] == divergence
-            verdict = "diverged-at-hit" if leans else "collateral"
+        diverged = divergence is not None and end == divergence
+        hit = _nearest(hit_list, start - 1)
+        leans = hit is not None and start - hit[0] <= window
+        if not leans and diverged and start == divergence:
+            hit = _nearest(hit_list, divergence)
+            leans = hit is not None and hit[0] == divergence
+        if not leans:
+            verdict = "collateral"
+        elif diverged:
+            verdict = "diverged-at-hit"
+        elif end + 1 in fired:
+            verdict = "bridged-window"
         else:
-            hit = _nearest(hit_list, start - 1)
-            leans = hit is not None and start - hit[0] <= window
-            if not leans:
-                verdict = "collateral"
-            elif end + 1 in fired:
-                verdict = "bridged-window"
-            else:
-                verdict = "differs-unbridged"
+            verdict = "differs-unbridged"
         runs.append(
             DifferingRun(
                 start,
@@ -585,7 +595,7 @@ def judge(
                 fields,
                 verdict,
                 hit if leans else None,
-                diverged=divergence is not None and end == divergence,
+                diverged=diverged,
                 ended_by=(ending or {}).get(end + 1),
             )
         )
@@ -727,24 +737,25 @@ class _Comparison:
         self._started = False
         self._drifted_values: dict[int, tuple[object, bool]] = {}
 
-    def reset(self, state: Any, expected: Digests) -> None:
-        """Compare the reset state once; its differing fields are left out."""
-
-        if self._started:
-            return
-        self._started = True
-        for index in self._differing(self.fingerprint(state), expected):
-            self.excluded.add(index)
-            if self._drifted(state, index):
-                self.drift_fields.add(self.names[index])
-            else:
-                self.reset_fields.append(self.names[index])
-
     def point(self, index: int, state: Any, expected: Digests) -> None:
-        """Compare the state at recorded point ``index``."""
+        """Compare the state at recorded point ``index``.
+
+        The first point compared -- point 0, the state before recorded step
+        0 after any bridged steps in front of it, which the trace's reset
+        vector describes -- is the reset state: its differing fields are
+        left out of every point.
+        """
 
         self.last = index
         digests = self.fingerprint(state)
+        if not self._started:
+            self._started = True
+            for field_index in self._differing(digests, expected):
+                self.excluded.add(field_index)
+                if self._drifted(state, field_index):
+                    self.drift_fields.add(self.names[field_index])
+                else:
+                    self.reset_fields.append(self.names[field_index])
         if digests == expected:
             return
         fields = set()
@@ -860,20 +871,23 @@ class _Checker:
         record = self.migration.migrate_record(replay, self.engine)
         fingerprint = self.corpus.fingerprint()
         comparison = _Comparison(fingerprint, self.schema)
-        # Each bridge firing, at the point (recorded step) it ran before.
+        # Each bridge firing, at the first point (recorded step, or the end)
+        # its step shows in: a bridged step (an answer or a ``follows``
+        # step) at the next recorded step, a rewritten recorded step at the
+        # one after it.
         fired: list[tuple[int, str]] = []
         waiting: list[str] = []
         for state, migrated in self.migration.walk(record, self.engine):
-            comparison.reset(state, trace.reset)
-            if migrated.bridge is not None:
-                waiting.append(migrated.bridge)
             index = migrated.recorded_index
             if index is None:
+                if migrated.bridge is not None:
+                    waiting.append(migrated.bridge)
                 continue
             fired.extend((index, name) for name in waiting)
             waiting = []
             comparison.point(index, state, trace.before(index))
-        comparison.reset(record.state, trace.reset)
+            if migrated.bridge is not None:
+                waiting.append(migrated.bridge)
         divergence = record.divergence
         end = trace.steps if divergence is None else divergence.recorded_index
         if end <= comparison.last:

@@ -78,6 +78,28 @@ def migrate_record(replay, engine=None):
     return base.MigratedRecord(replay, tuple(migrated), full.state, full.divergence)
 '''
 
+# A migration module with a rewrite bridge that rewrites recorded step AT
+# (into itself): the rewritten step applies in the recorded step's place.
+REWRITE_MODULE = '''\
+"""Test migration: a rewrite bridge takes recorded step AT's place."""
+
+from dune_imperium.records import migration as base
+
+AT = {at}
+walk = base.walk
+
+
+def migrate_record(replay, engine=None):
+    full = base.migrate_record(replay, engine)
+    steps = tuple(
+        base.MigratedStep(item.step, item.recorded_index, "rewrite")
+        if item.recorded_index == AT
+        else item
+        for item in full.steps
+    )
+    return base.MigratedRecord(replay, steps, full.state, full.divergence)
+'''
+
 
 def _copy(tiny_corpus: Path, tmp_path: Path) -> Path:
     copy = tmp_path / "root" / tiny_corpus.name
@@ -165,20 +187,28 @@ def _one(corpus: Corpus, record_id: str = RECORD, **options: Any) -> RecordCheck
     return result
 
 
-def _split(corpus: Corpus, tmp_path: Path) -> tuple[Path, int]:
-    """Make RECORD a record of an engine that ran step ``at`` inside the one
-    before it; return a migration module whose follows bridge splits it off
-    again, and ``at``."""
+def _changing_action(corpus: Corpus, record_id: str = RECORD, after: int = 40) -> int:
+    """The first action step after ``after`` that changes a digest."""
 
-    steps = _steps(corpus, RECORD)
-    vectors = _vectors(corpus, RECORD)
-    at = next(
+    vectors = _vectors(corpus, record_id)
+    return next(
         index
-        for index, step in enumerate(steps)
-        if index > 40
+        for index, step in enumerate(_steps(corpus, record_id))
+        if index > after
         and step["type"] == "action"
         and vectors[index] != vectors[index + 1]
     )
+
+
+def _split(corpus: Corpus, tmp_path: Path, at: int | None = None) -> tuple[Path, int]:
+    """Make RECORD a record of an engine that ran step ``at`` inside the one
+    before it (or, at 0, at its reset); return a migration module whose
+    follows bridge splits it off again, and ``at``."""
+
+    steps = _steps(corpus, RECORD)
+    vectors = _vectors(corpus, RECORD)
+    if at is None:
+        at = _changing_action(corpus)
     module = tmp_path / "follows_migration.py"
     module.write_text(FOLLOWS_MODULE.format(at=at, step=steps[at]), encoding="utf-8")
     _rewrite(
@@ -404,6 +434,83 @@ def test_a_follows_bridge_is_compared_after_it_ran(
     assert "\nequal               1\n" in out
 
 
+def test_the_reset_is_compared_after_bridged_steps_before_step_0(
+    tiny_corpus: Path, tmp_path: Path
+) -> None:
+    """The trace's reset vector is the recording engine's state before
+    recorded step 0; a bridged step this engine runs in front of it comes
+    first, and the fields it changes are no reset difference."""
+
+    copy = _copy(tiny_corpus, tmp_path)
+    corpus = Corpus.open(copy)
+    vectors = _vectors(corpus, RECORD)
+    changed = [
+        index
+        for index, (before, after) in enumerate(
+            zip(vectors[0], vectors[1], strict=True)
+        )
+        if before != after
+    ]
+    assert changed
+    module, _ = _split(corpus, tmp_path, at=0)
+    corpus = Corpus.open(copy)
+    options: dict[str, Any] = {"migration": module, "bridge": "split_follow"}
+
+    result = _one(corpus, **options)
+    assert (result.outcome, result.reset_fields, result.runs) == ("equal", (), ())
+    assert result.firings == (0,)
+
+    # So a later difference in such a field is found.
+    name = corpus.manifest["fingerprint_fields"][changed[0]]
+    edited = _vectors(corpus, RECORD)
+    edited[10][changed[0]] = GARBAGE
+    _rewrite(copy, RECORD, vectors=edited)
+    result = _one(Corpus.open(copy), **options)
+    assert result.outcome == "transient"
+    assert result.runs == (DifferingRun(10, 10, (name,), "collateral"),)
+
+
+def test_a_rewrite_bridge_fires_where_its_step_shows(
+    tiny_corpus: Path, tmp_path: Path
+) -> None:
+    """A rewrite bridge's step is the recorded step itself, so it shows in
+    the state before the next one; an answer or follows bridge's step shows
+    before the recorded step it ran in front of (the follows and pause
+    tests)."""
+
+    copy = _copy(tiny_corpus, tmp_path)
+    corpus = Corpus.open(copy)
+    at = _changing_action(corpus)
+    module = tmp_path / "rewrite_migration.py"
+    module.write_text(REWRITE_MODULE.format(at=at), encoding="utf-8")
+    vectors = _vectors(corpus, RECORD)
+    name = "players[0].intrigue_cards"
+    for vector in vectors[at - 1 : at + 1]:
+        vector[_field(corpus, name)] = GARBAGE
+    near = at - 5
+    _rewrite(copy, RECORD, vectors=vectors, keys={"draws:card@near": [1, near, [near]]})
+
+    result = _one(
+        Corpus.open(copy),
+        migration=module,
+        bridge="rewrite",
+        around=["draws:card@near"],
+    )
+    assert result.bridges == {"rewrite": 1}
+    assert result.firings == (at + 1,)
+    assert result.runs == (
+        DifferingRun(
+            at - 1,
+            at,
+            (name,),
+            "bridged-window",
+            (near, "draws:card@near"),
+            ended_by="rewrite",
+        ),
+    )
+    assert result.lone_firings == ()
+
+
 def test_verdicts_lean_on_hits_and_bridge_firings(
     tiny_corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -530,6 +637,21 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
         ),
     )
 
+    # A run that differs since long before the hit is no divergence at it:
+    # collateral, still under its divergence signature.
+    for vector in vectors[at - 30 : at]:
+        vector[_field(corpus, name)] = GARBAGE
+    _rewrite(copy, record_id, vectors=vectors)
+    corpus = Corpus.open(copy)
+    report = check(corpus, [corpus.row(record_id)], around=["draws:card@near"])
+    (result,) = report.records
+    assert result.runs == (
+        DifferingRun(at - 30, at, (name,), "collateral", None, True),
+    )
+    assert result.divergence is not None
+    assert report.signatures() == [(result.divergence.signature, [f"{record_id}@{at}"])]
+    assert report.divergence_hits() == []
+
 
 @pytest.mark.parametrize(
     ("differences", "hits", "firings", "divergence", "verdicts", "lone"),
@@ -569,6 +691,11 @@ def test_a_divergence_after_a_hit_is_diverged_at_hit(
         ({30: {"a"}, 31: {"a"}}, [(14, "k")], [], 31, ["diverged-at-hit"], []),
         # ... and with no hit near it.
         ({}, [(1, "k")], [], 40, ["collateral"], []),
+        # A diverged run that started long before the hit near its end ...
+        ({i: {"a"} for i in range(10, 41)}, [(35, "k")], [], 40, ["collateral"], []),
+        # ... or before the refused step, whose own hit leans only for a
+        # run that starts at it.
+        ({39: {"a"}, 40: {"a"}}, [(40, "k")], [], 40, ["collateral"], []),
         # A run before a divergence keeps its own verdict.
         ({8: {"a"}}, [(7, "k")], [9], 12, ["bridged-window", "diverged-at-hit"], []),
         # A firing exactly window steps after a hit has its hit; one more
@@ -615,6 +742,13 @@ def test_judge_names_fields_and_the_hit() -> None:
     assert (run.verdict, run.hit) == ("diverged-at-hit", (9, "before"))
     (run,), _ = judge({}, hits=[(1, "old"), (40, "own")], divergence=40)
     assert (run.verdict, run.hit) == ("diverged-at-hit", (40, "own"))
+    # A diverged run leans on the hit before its start, not on a later one.
+    (run,), _ = judge(
+        {i: {"a"} for i in range(20, 31)},
+        hits=[(10, "start"), (28, "late")],
+        divergence=30,
+    )
+    assert (run.verdict, run.hit) == ("diverged-at-hit", (10, "start"))
     # The bridges that fired where a run ends are named, reviewed or not.
     (run,), _ = judge({4: {"a"}}, ending={5: "pause, split"})
     assert (run.verdict, run.ended_by) == ("collateral", "pause, split")
