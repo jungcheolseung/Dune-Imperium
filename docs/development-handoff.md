@@ -4,6 +4,16 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-11 Bloodlines Conflict·계약 앞면도 앱 틀로 (codec 그대로)
+
+사용자 제안 "bloodlines의 conflict, contract 이미지도 듄 게임 앱의 데이터로부터 만들어낼 수 있지 않을까?". 브랜치 `bloodlines-app-faces`. 앱에는 Bloodlines가 없어 Tech 타일(2026-10-08)처럼 Uprising 틀에 인쇄된 내용을 얹었다. 설명은 `scripts/dwgr/README.md`의 `app_cards.py` 줄.
+
+- **Conflict 2장**(Skirmish 와일드, Storms in the South): Uprising과 같은 `UI_crd_Conflict_Dynamic` 틀. 단계·배틀 아이콘은 합성 아키타입, 보상은 `en_text.json`/`ko_text.json`의 `card.conflict.<이름>.reward.N`(아이콘뿐).
+- **계약 토큰 8장**: 같은 칸이나 종류의 Uprising 계약 프리팹(Secrets는 Espionage, Earn Any Alliance는 Immediate)에 인쇄 제목, 보상 줄은 엔진 `ContractReward`에서. 아이콘 크기·간격은 영어 스캔에서 쟀다. Immediate의 "Requires an Intrigue card"/"책략 카드 1장 필요"는 Acquire의 부제 노드.
+- 둘 다 네 점 세트 표식을 그린다. 이 점을 면에 바로 써서 반투명 구멍이 되던 결함을 고치고 Tech 타일 36장을 다시 그렸다(점 픽셀만 바뀜). 한국어 Uprising Harvest 계약 2장의 제목은 인쇄판처럼 "채취"(전에는 "채취 3+").
+- 플레이 UI는 코드 변경 없이 앱 앞면을 먼저 쓴다(`display/images.py`). 혈통·초암 게임의 계약 시장에서 새 앞면이 뜨는 것을 확인했다. 앱 앞면은 영어 260장·한국어 221장(Tech·보드 칸·지도자 포함 파일 수).
+- 에셋 커밋 `6b7465e`(새 앞면·문구)·`96eab6d`(Tech 점). 두 저장소를 함께 푸시해야 한다.
+
 ## 2026-10-11 플레이 시계: 게임 시간과 좌석별 제어 시간 (codec 그대로 v142)
 
 사용자 요청 "게임 ui에 플레이한 시간이 기록되면 좋겠어 … 각 플레이어가 자기 차례에 시간을 얼마나 썼는지(제어권을 가진 상태라고 해야하나?)", "ai 좌석도 구분 없이 시간 세자", 조사 뒤 추천안에 "추천대로". 브랜치 `play-clock`, 병합 `e8cca927`(사용자가 바로 플레이하려고 리뷰 도중 병합; 리뷰 수정 `94a97c1b`까지 들어 있음). 설계는 [play-clock.md](play-clock.md).
