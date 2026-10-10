@@ -1,17 +1,22 @@
 """The record-corpus drivers: the record writer and the corpus generator."""
 
 import ast
+import gc
 import hashlib
 import json
 import subprocess
+import time
+import weakref
 from collections.abc import Callable
 from compression import zstd
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import pytest
 
+from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.state import canonical_state_hash
 from dune_imperium.records.corpus import Corpus
@@ -131,7 +136,7 @@ def test_the_cli_writes_the_bytes_play_record_makes(
     record = generator.record
     monkeypatch.setattr(record, "engine_commit", lambda: "01234567")
     record.main([str(tmp_path), "1", "heuristic", "1"])
-    written = (tmp_path / "v141-heuristic-1.json").read_bytes()
+    written = (tmp_path / f"v{ACTION_CODEC_VERSION}-heuristic-1.json").read_bytes()
     assert capsys.readouterr().out.endswith(" steps\n")
     corpus = Corpus.open(tiny_corpus)
     document = corpus.document(corpus.row("full.h4.1"))
@@ -141,7 +146,8 @@ def test_the_cli_writes_the_bytes_play_record_makes(
 
 def test_the_manifest_lists_every_shard_with_its_hashes(tiny_corpus: Path) -> None:
     manifest = json.loads((tiny_corpus / "manifest.json").read_text())
-    assert manifest["id"] == "v141-01234567-r1"
+    assert manifest["id"] == f"v{ACTION_CODEC_VERSION}-01234567-r1"
+    assert manifest["action_codec_version"] == ACTION_CODEC_VERSION
     assert manifest["games"] == 4
     assert len(manifest["fingerprint_fields"]) == len(
         portable_trace.field_names(UprisingRulesEngine().reset(RulesetConfig(), 1))
@@ -274,6 +280,56 @@ def test_shards_split_at_250_games(generator: ModuleType) -> None:
     assert (
         sum(spec.hi - spec.lo + 1 for spec in generator.plan_shards(standard)) == 2000
     )
+
+
+class _Payload:
+    """A chunk result part a weak reference can watch."""
+
+
+def test_the_pool_lets_each_chunk_result_go_once_finished(
+    generator: ModuleType,
+) -> None:
+    # A --standard run once kept every chunk's result (about 1 GB) through
+    # its future until the run ended.
+    payloads: list[weakref.ref[_Payload]] = []
+    alive: list[int] = []
+
+    def play(task: dict[str, Any]) -> dict[str, Any]:
+        return {"seed": task["seed"], "payload": _Payload()}
+
+    def finish(chunk: dict[str, Any]) -> None:
+        gc.collect()
+        alive.append(sum(ref() is not None for ref in payloads))
+        payloads.append(weakref.ref(chunk["payload"]))
+
+    tasks = [{"seed": seed} for seed in range(6)]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        generator.play_in_pool(pool, play, tasks, finish)
+    assert alive == [0] * len(tasks)
+
+
+def test_a_failing_shard_write_cancels_the_queued_chunks(
+    generator: ModuleType,
+) -> None:
+    played: list[int] = []
+
+    def play(task: dict[str, Any]) -> dict[str, Any]:
+        played.append(task["seed"])
+        if task["seed"]:
+            time.sleep(0.02)
+        return {"seed": task["seed"]}
+
+    def finish(chunk: dict[str, Any]) -> None:
+        raise OSError(28, "No space left on device")
+
+    tasks = [{"seed": seed} for seed in range(20)]
+    with (
+        pytest.raises(OSError, match="No space left"),
+        ThreadPoolExecutor(max_workers=1) as pool,
+    ):
+        generator.play_in_pool(pool, play, tasks, finish)
+    # Only the chunks already running finish; the queued ones never start.
+    assert len(played) < len(tasks)
 
 
 def _git(repo: Path, *args: str) -> None:

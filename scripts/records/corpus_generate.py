@@ -48,7 +48,13 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from compression import zstd
-from concurrent.futures import Future, ProcessPoolExecutor, as_completed
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    Executor,
+    Future,
+    ProcessPoolExecutor,
+    wait,
+)
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -466,6 +472,32 @@ def write_shard(
     return meta
 
 
+def play_in_pool(
+    pool: Executor,
+    play: Callable[[dict[str, Any]], dict[str, Any]],
+    tasks: Sequence[dict[str, Any]],
+    finish: Callable[[dict[str, Any]], None],
+) -> None:
+    """Run ``play`` on every task in ``pool``, ``finish``-ing each result.
+
+    Only pending futures are kept: a chunk's result is let go once
+    ``finish`` has taken it, so the parent holds no more than the shards
+    still being gathered. If ``finish`` (or a chunk) raises, the queued
+    chunks are cancelled before the error goes on; only the chunks already
+    running are waited for.
+    """
+
+    pending: set[Future[dict[str, Any]]] = {pool.submit(play, task) for task in tasks}
+    try:
+        while pending:
+            finished, pending = wait(pending, return_when=FIRST_COMPLETED)
+            while finished:
+                finish(finished.pop().result())
+    except BaseException:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+
+
 def plan_shards(requests: Sequence[Request]) -> list[ShardSpec]:
     """Split the requested ranges into shards of at most ``SHARD_SIZE``."""
 
@@ -646,11 +678,7 @@ def generate(
             finish(play_chunk(task))
     else:
         with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures: list[Future[dict[str, Any]]] = [
-                pool.submit(play_chunk, task) for task in tasks
-            ]
-            for future in as_completed(futures):
-                finish(future.result())
+            play_in_pool(pool, play_chunk, tasks, finish)
 
     previous = corpus_dir / "manifest.json"
     plan = (
