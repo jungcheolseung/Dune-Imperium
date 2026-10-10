@@ -12,9 +12,11 @@ from dune_imperium.content.arrakeen_scouts import (
     MAX_MERCENARIES_BID,
     MAX_SPECIMEN_TOP_UP,
     SALES,
+    missions_for,
     scouts_pool,
     subcommittees_for,
 )
+from dune_imperium.content.arrakeen_scouts.types import MissionKind
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import (
@@ -336,7 +338,72 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # when that step stopped at a pause, so in Combat before the cleanup.
 # Legal-action sequences change with no template change, so saves and
 # replays from v140 are refused by the version check.
-ACTION_CODEC_VERSION = 141
+# v142 (user decision 2026-10-10, OQ-104): Navigation Chamber's cut ("Board
+# spaces cost you [1 spice] or [1 Solari] less." [Tech tile face]) is
+# mandatory, so its holder is no longer offered the undiscounted
+# ``agent_turn`` beside the discounted one on a costed space. Legal-action
+# sequences change with no template change, so saves and replays from v141
+# are refused by the version check.
+# Also in v142 (user ruling 2026-10-10, OQ-105): a Sardaukar Commander pays
+# the self-paid troop costs too. Bloodlines catalogs with Immortality add
+# ``lose_agent_card_troop(commanders=1, zone)`` (Piter, Genius Advisor);
+# Bloodlines Scouts catalogs add ``scouts_lose_garrison_unit`` and its
+# ``commanders=1`` twin (Bene Gesserit Treachery's garrison troop, picked
+# when the garrison holds both kinds) and, with Prison Planet in the pool,
+# ``scouts_join_mission(target="commander")``. New templates; the other
+# catalogs are unchanged.
+# Also in v142 (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
+# recall and its card draw are two steps. The draw is the space's own
+# ``resolve_board_effect(effect=cards)`` icon, ordered freely with the
+# Intrigue slot and the recall; ``recall_agent_for_imperial_privilege``,
+# ``recall_conflict_agent_for_imperial_privilege`` and
+# ``resolve_imperial_privilege_without_recall`` no longer draw. No template
+# change.
+# Also in v142 (user ruling 2026-10-10, OQ-106: "그 외에는 전부 나누자"): the
+# draw Urgent Shigawire adds to the boosted Bene Gesserit card's Agent box is
+# its own ``resolve_agent_card_effect(effect=cards)`` step after the
+# placement instead of being drawn by the ``agent_turn`` itself. No template
+# change.
+# Also in v142 (OQ-106): Cunning's and Insider Information's draw is its own
+# ``resolve_intrigue_rewards`` when the owner resolves the line's trash slot
+# first. No template change.
+# Also in v142 (OQ-106): Liet Kynes' Arrakis Planetologist pays a replaced
+# sandworm's spice at once and holds its Intrigue card in the replacement's
+# trash frame as its own step: Bloodlines catalogs add the nullary
+# ``draw_planetologist_intrigue``.
+# Also in v142 (OQ-106): Piter, Genius Advisor's ``lose_agent_card_troop`` and
+# Kota Odax's ``trash_leader_tech`` pay only the arrow's cost; their rewards
+# are then their own ``resolve_agent_card_effect(effect=cards|research)`` and
+# ``(effect=intrigue|cards)`` steps. No template change.
+# Also in v142 (OQ-106, triggered draws): a draw another printed effect
+# triggers inside the seat's own Agent or Reveal turn waits as the seat's own
+# step (``PlayerState.owed_draws``) instead of being drawn by the step that
+# triggered it -- the Bene Gesserit Influence 4 bonus, Princess Irulan's
+# Imperial Birthright, a Tleilaxu track Intrigue space, Sardaukar Soldier's
+# "when trashed" and Overthrow's acquire box. Every catalog adds the nullary
+# ``draw_owed_intrigue``. Muad'Dib's Unpredictable Foe queues its card on the
+# Reveal's pending gains for the existing ``draw_reveal_intrigue``.
+# Also in v142 (OQ-106): the card Steersman Y'rkoon's Hungry for Spice owes
+# inside his own turn waits likewise: Bloodlines catalogs add the nullary
+# ``draw_owed_card``.
+# Also in v142 (OQ-106, Arrakeen Scouts): a pause stands before each auction
+# winner's reward after the first (rules/pauses.py), so Competitive Study's
+# second place no longer researches, or draws past the second genetic
+# marker, in the first place's step. No template change; recorded step
+# sequences gain those chance steps.
+# Also in v142 (OQ-106, Arrakeen Scouts lines): a draw printed after one of a
+# line's reward choices (Leverage's Faction, Water Discipline's trash, the
+# late Spies for Hire's Spy post and CHOAM Negotiations' Contract) waits as
+# the line's own ``scouts_rewards_first``, then that line's only action,
+# instead of being drawn by the choice. No template change.
+# Also in v142 (OQ-106, user decision 2026-10-10 "가 로 가자"): three held
+# draws whose adopted community rulings say they come at once -- the Bene
+# Gesserit Influence 4 card and Imperial Birthright, Overthrow's acquire box,
+# and CHOAM Transports' card, which is now held too instead of being drawn by
+# the completing step -- are the owner's only action right after their
+# trigger, on whatever frame of the owner's is open (``draw_owed_intrigue``,
+# ``draw_owed_card``). No template change.
+ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -506,6 +573,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # The owner's waiting Emperor track Spy, opened in any order
             # inside its own turn (user ruling 2026-10-04).
             "place_track_spy",
+            # An Intrigue card a trigger earned in the owner's own turn, its
+            # own step (user ruling 2026-10-10, OQ-106; codec v142).
+            "draw_owed_intrigue",
             # An acquisition-bonus Spy may pass up the recall-first without a
             # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
             "decline_acquisition_spy",
@@ -764,7 +834,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_trash",
             "decline_intrigue_spy",
             "decline_imperial_privilege_intrigue",
-            # Imperial Privilege's recall with no target is confirmed.
+            # Imperial Privilege's recall with no target is confirmed (the
+            # card draw is the space's own ``cards`` icon, codec v142).
             "resolve_imperial_privilege_without_recall",
             "resolve_intrigue_rewards",
         )
@@ -1111,6 +1182,12 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "recall_conflict_agent_for_agent_card",
             "pay_leader_signet_water",
             "decline_optional_trash",
+            # Liet Kynes' Arrakis Planetologist: the replacement's Intrigue
+            # card, its own step beside the trash (codec v142, OQ-106).
+            "draw_planetologist_intrigue",
+            # A card Hungry for Spice owes in Steersman Y'rkoon's own turn,
+            # its own step (codec v142, OQ-106).
+            "draw_owed_card",
             "take_tuek_sietch_spice",
             "take_tuek_sietch_card",
             "place_leader_bonus_spice",
@@ -1320,6 +1397,19 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for recipient in range(config.players)
             for faction in Faction
         ),
+        # A "lose a garrison troop" cost with a troop and a Sardaukar
+        # Commander in the garrison: the seat picks which (OQ-105, codec v142).
+        *(
+            (
+                ActionTemplate(action_id="scouts_lose_garrison_unit"),
+                ActionTemplate(
+                    action_id="scouts_lose_garrison_unit",
+                    arguments=(("commanders", 1),),
+                ),
+            )
+            if config.bloodlines
+            else ()
+        ),
         # A line's later automatic rewards taken ahead of an earlier reward's
         # pending choice (OQ-100).
         ActionTemplate(action_id="scouts_rewards_first"),
@@ -1345,6 +1435,20 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 *(
                     ("recruit", *contract_instance_ids(bloodlines=config.bloodlines))
                     if config.choam_module
+                    else ()
+                ),
+                # Prison Planet paid with a garrison Sardaukar Commander
+                # (OQ-105, codec v142; the mission is in the Uprising pool).
+                *(
+                    ("commander",)
+                    if config.bloodlines
+                    and any(
+                        mission.kind is MissionKind.PRISON_PLANET
+                        for mission in missions_for(
+                            scouts_pool(immortality=config.immortality),
+                            choam=config.choam_module,
+                        )
+                    )
                     else ()
                 ),
             )
@@ -1465,6 +1569,15 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="lose_agent_card_troop", arguments=(("zone", zone),))
         for zone in ("garrison", "conflict")
     )
+    if config.bloodlines:
+        # A Sardaukar Commander may pay Piter's troop (OQ-105, codec v142).
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_agent_card_troop",
+                arguments=(("commanders", 1), ("zone", zone)),
+            )
+            for zone in ("garrison", "conflict")
+        )
     templates.extend(
         ActionTemplate(
             action_id="choose_agent_card_reward", arguments=(("reward", reward),)

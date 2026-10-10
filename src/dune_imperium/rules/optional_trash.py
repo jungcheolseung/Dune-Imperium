@@ -2,6 +2,9 @@
 
 Liet Kynes' Arrakis Planetologist offers one per replaced sandworm: the
 owner may trash a card from hand, discard pile or play area, or decline.
+Its frame also holds the replacement's Intrigue card as a step of its own
+(``draw_planetologist_intrigue``), in either order with the trash; the
+frame closes once both are done (user ruling 2026-10-10, OQ-106).
 """
 
 from dataclasses import replace
@@ -13,21 +16,48 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
-from dune_imperium.rules.frames import FrameKind, context_str, owned_top_frame
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_str,
+    owned_top_frame,
+    replace_top_frame,
+    with_context,
+)
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+
+# Arrakis Planetologist's Intrigue card still waiting in the frame, and
+# whether the frame's trash (or its decline) is already done.
+INTRIGUE_PENDING_KEY = "intrigue_pending"
+TRASH_DONE_KEY = "trash_done"
 
 
-def optional_trash_frame(player: int, source: str) -> DecisionFrame:
-    """Return the decision frame offering one optional trash."""
+def optional_trash_frame(
+    player: int, source: str, *, intrigue: bool = False
+) -> DecisionFrame:
+    """Return the decision frame offering one optional trash.
+
+    With ``intrigue`` the frame also holds Arrakis Planetologist's Intrigue
+    card for its own step (``draw_planetologist_intrigue``).
+    """
 
     return DecisionFrame(
         kind=FrameKind.OPTIONAL_TRASH,
         frame_id=f"{source}:optional_trash",
         decision=PlayerDecision(owner=player, prompt="Trash a card or decline"),
         context=(
+            *(((INTRIGUE_PENDING_KEY, True),) if intrigue else ()),
             ("player", player),
             ("source", source),
         ),
     )
+
+
+def _intrigue_pending(frame: DecisionFrame) -> bool:
+    return dict(frame.context).get(INTRIGUE_PENDING_KEY) is True
+
+
+def _trash_done(frame: DecisionFrame) -> bool:
+    return dict(frame.context).get(TRASH_DONE_KEY) is True
 
 
 def legal_optional_trash_actions(
@@ -40,6 +70,13 @@ def legal_optional_trash_actions(
     if frame is None:
         return ()
     owner = state.players[player]
+    draw = (
+        (DomainAction(action_id="draw_planetologist_intrigue", actor=player),)
+        if _intrigue_pending(frame)
+        else ()
+    )
+    if _trash_done(frame):
+        return draw
     return (
         DomainAction(action_id="decline_optional_trash", actor=player),
         *(
@@ -52,6 +89,7 @@ def legal_optional_trash_actions(
             # ``counted_in_play``), so it is no trash target.
             for card_id in (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
         ),
+        *draw,
     )
 
 
@@ -62,7 +100,15 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
         raise ValueError("action is not a legal optional trash choice")
     frame = state.decision_stack[-1]
     source = context_str(dict(frame.context), "source", owner="Optional trash frame")
-    popped = replace(state, decision_stack=state.decision_stack[:-1])
+    if action.action_id == "draw_planetologist_intrigue":
+        return _draw_planetologist_intrigue(state, frame, action.actor, source)
+    if _intrigue_pending(frame):
+        # The Intrigue card still waits: the frame stays for it.
+        popped = replace_top_frame(
+            state, with_context(frame, {**dict(frame.context), TRASH_DONE_KEY: True})
+        )
+    else:
+        popped = replace(state, decision_stack=state.decision_stack[:-1])
     if action.action_id == "decline_optional_trash":
         return RuleResult(
             state=popped,
@@ -101,3 +147,26 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
         # turn.
         trashed = credit_trash_recruits(trashed, action.actor)
     return trashed
+
+
+def _draw_planetologist_intrigue(
+    state: GameState, frame: DecisionFrame, player: int, source: str
+) -> RuleResult:
+    """Draw Arrakis Planetologist's Intrigue card of this replacement.
+
+    "For each one you would, instead: [trash a card] [1 spice] [1 Intrigue]"
+    [Liet Kynes card]: three printed icons, each its own effect (OQ-027).
+    The Intrigue card is the one hidden draw, so it is a step of its own,
+    in either order with the trash, and the summon or harvest choice before
+    it stays undoable (OQ-010): "그 외에는 전부 나누자." (user ruling
+    2026-10-10, OQ-106). The frame closes once the trash is done too; the
+    frame is updated before the draw, so a reshuffle stacks above it.
+    """
+
+    if _trash_done(frame):
+        working = replace(state, decision_stack=state.decision_stack[:-1])
+    else:
+        context = dict(frame.context)
+        del context[INTRIGUE_PENDING_KEY]
+        working = replace_top_frame(state, with_context(frame, context))
+    return draw_or_queue_intrigue_cards(working, player, 1, source=source)

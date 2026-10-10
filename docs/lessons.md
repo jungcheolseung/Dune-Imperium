@@ -940,3 +940,18 @@
     - 새로 둘 판 수 상한(또는 이미 만든 기보 묶음을 쓰라는 지시)
   - 긴 workflow가 도는 동안 `df -h`와 `du -sh tmp/claude/<session>`을 본다.
   - 드문 상황을 찾으려고 판을 많이 두는 대신, 한 번 만든 옛 엔진 기보 묶음과 그 색인을 다시 쓰는 쪽으로 간다(2026-10-10 사용자와 논의, 설계 중).
+
+## 2026-10-10 — 규칙 근거 없이 Navigation Chamber의 "할인 없이" 선택지를 만들었음
+
+- 무슨 일: 2026-09-07 Tech tile 능력 슬라이스(`66ec9504`)가 Navigation Chamber("Board spaces cost you [1 spice] or [1 Solari] less." `[Tech tile face]`)를 구현하며, 할인한 placement 옆에 정가 placement도 늘 함께 제시했다. 코드 주석은 "each discount is its own placement choice"라고만 적었고, 정가를 고를 수 있다는 규칙 근거는 어디에도 없었다. 타일에는 may가 없고, 이 문서 세트의 읽기 원칙은 "원문이 선택 여부를 명시하지 않으면 이 문서가 임의로 선택 여부를 만들지 않는다."다. 한 달 동안 아무 리뷰도 보지 못했고, 사용자가 화면의 "할인 없이" 줄을 보고 물었다(2026-10-10 피드백 9). 그동안 heuristic AI는 두 줄을 같은 점수로 보아 무작위로 골랐고, 칸마다 절반쯤 정가를 냈다(200개 시드에서 High Council 108번, Heighliner 95번).
+- 원인: 인쇄된 "or"(spice 또는 Solari)를 선택지로 구현하면서 "할인하지 않음"까지 같은 목록에 넣었다. 감소를 거절할 수 있는지는 규칙 문서에서 확인하지 않았다. 엔진의 다른 비용 감소(Duncan, Sardaukar High Command, High Council 자리의 Tech 할인)는 모두 선택 없이 적용되는데, 그 차이를 묻는 사람이 없었다.
+- 재발 방지: 플레이어가 고르는 선택지(합법 행동)를 새로 만들 때는, 그 선택을 허락하는 문장(may, 화살표 비용, 검은 trash 아이콘, 사용자 판정)을 코드 주석과 테스트에 인용한다. 인용할 문장이 없으면 선택지를 만들지 않거나 `open-questions.md`에 올린다. 효과가 여러 갈래(spice 또는 Solari)일 때 "아무것도 하지 않음"은 따로 근거가 필요한 갈래로 본다. 고친 것: [OQ-104](rules/open-questions.md#oq-104--navigation-chamber의-할인은-의무인가), codec v142.
+
+## 2026-10-10 — Imperial Privilege의 공개 선택(recall)과 숨은 draw를 한 단계로 묶어, recall을 되돌릴 수 없게 했음
+
+- 무슨 일: 2026-09-01 Imperial Privilege 구현(`49a5bb62`)이 둘째 문장 "Recall one of your other Agents from the board, and draw a card" `[Board Guide p. 2]`를 행동 하나로 만들었고, 2026-09-03 OQ-027 (d)가 그것을 "문장 단위"로 굳혔다. 그래서 어느 Agent를 recall할지 고르는 순간 숨은 덱에서 card가 뽑혀, 되돌리기 경계(OQ-010)에 걸린 recall은 한 번도 되돌릴 수 없었다. 구현과 같은 날(2026-09-01) OQ-023이 이미 recall과 draw를 "별개의 효과"로 판정했는데도(`bce829e`) 행동은 묶인 채 남았다. 사용자가 플레이 중 "에이전트 소환은 왜 되돌리기 불가야?"라고 물었고, 첫 대응(`99c6d91d`)은 단계를 나누지 않고 버튼 문구에 draw를 적는 데 그쳤다. 사용자 판정: "4번은 소환과 뽑기가 당연히 두 단계로 나눠야지. 이건 정말 기본적인 원칙인데".
+- 원인: 인쇄된 문장의 경계를 결정 단위로 삼았고, 그 단위가 공개된 선택과 숨은 정보 공개를 함께 담는지는 보지 않았다. 규칙상 둘을 묶을 이유는 없었다(OQ-027의 주 판정은 인쇄된 효과마다 따로 해결이다).
+- 재발 방지: 별개로 인쇄된 효과(또는 별개라고 판정한 효과)라면, 공개된 선택(recall·배치·대상 지정)과 숨은 더미에서 뽑기를 한 행동에 묶지 않는다. 행동 하나가 "되돌릴 수 없음"이 되면, 그 이유가 그 선택 자체인지 함께 묶인 다른 효과인지부터 확인한다. 묶인 효과 때문이면 문구로 설명하지 말고 단계를 나눈다. 고친 것: [OQ-027](rules/open-questions.md#oq-027--보드-공간에-인쇄된-여러-아이콘의-해결-단위) (d)의 Imperial Privilege 분리, codec v142.
+- 같은 날의 전수 감사는 같은 묶음을 더 찾았다(Urgent Shigawire의 더해진 draw, Cunning·Insider Information의 trash 뒤 draw, Arrakis Planetologist의 Intrigue, Piter·Reverse Engineering의 화살표 보상, 그리고 track 보너스·Leader 능력·trash 트리거 같은 촉발 draw). 사용자 판정("그 외에는 전부 나누자", Esmar Tuek만 예외)으로 [OQ-106](rules/open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다)에 모으고 첫 묶음(같은 카드·Leader의 네 가지)을 나눴다.
+- 둘째 묶음(촉발 draw: track 보너스·Imperial Birthright·Tleilaxu track·trash와 획득 box·Hungry for Spice·Unpredictable Foe)을 나눌 때, 감사가 "촉발 묶음"으로 함께 적은 CHOAM Transports에는 이 프로젝트가 채택한 디자이너 판정 "The card draw from CHOAM Transports is triggered as soon as the contract is completed and can't be deferred."(designer-rulings-audit.md)가 있었다. 순서를 미루는 단계로 만들면 그 판정을 어기므로 나누지 않고 사용자에게 넘겼다. 재발 방지: "곧바로 일어나는" 효과를 소유자가 순서를 고르는 단계로 바꾸기 전에 designer-rulings-audit.md와 OQ-057에서 그 카드·효과의 "즉시/미룰 수 없음" 판정부터 찾는다.
+- 셋째 묶음(Arrakeen Scouts 줄: Leverage·Water Discipline·Spies for Hire·CHOAM Negotiations의 선택 뒤 draw, Competitive Study 2위의 Research)도 같은 감사가 찾았다. OQ-100(2026-10-05)은 뒤의 자동 보상을 선택 "앞에" 받는 길만 열었고, 선택을 먼저 하면 줄의 커서가 draw까지 한 단계로 해결했다 — 순서를 자유롭게 하는 것과 단계를 나누는 것은 다른 일이었다. 선택 뒤의 draw는 줄의 자기 단계가 됐고(같은 행동 `scouts_rewards_first`), 좌석을 건너는 Competitive Study에는 Conflict 보상 수령자처럼 승자 사이에 멈춤을 세웠다([OQ-106](rules/open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 10-12).

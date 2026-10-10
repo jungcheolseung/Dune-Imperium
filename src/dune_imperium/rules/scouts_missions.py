@@ -53,6 +53,9 @@ TLEILAXU_OFFERING_SPACE: Final = "tleilaxu_track"
 # setup spice's "fourth space" (index 4, the start space uncounted)
 # [Immortality p. 4] (OQ-089 (a)).
 TLEILAXU_OFFERING_TRACK_SPACE: Final = 3
+# Prison Planet's way in that pays with a garrison Sardaukar Commander
+# instead of a troop (OQ-105); the plain way in is "".
+PRISON_PLANET_COMMANDER: Final = "commander"
 # Where the goods of the missions paid off away from a visit wait.
 HELIX: Final = "helix"
 RECLAIMED_FORCES: Final = "reclaimed_forces"
@@ -309,8 +312,16 @@ def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, 
             *owner.active_contract_ids,
         )
     if kind is MissionKind.PRISON_PLANET:
-        free_marker = len(owner.control_space_ids) + _markers_out(state, player) < 3
-        return ("",) if owner.troops_garrison and free_marker else ()
+        # "Lose 1 garrison troop": a garrison Sardaukar Commander may pay it
+        # instead, as the ``PRISON_PLANET_COMMANDER`` way in (OQ-105, user
+        # ruling 2026-10-10; "troop을 대상으로 하는 효과는 Commander에도
+        # 적용된다" [Bloodlines p. 4]).
+        if len(owner.control_space_ids) + _markers_out(state, player) >= 3:
+            return ()
+        return (
+            *(("",) if owner.troops_garrison else ()),
+            *((PRISON_PLANET_COMMANDER,) if owner.commanders_garrison else ()),
+        )
     if not _parking_open(state, player, mission):
         return ()
     source, count = _PARKING[kind]
@@ -328,7 +339,9 @@ def join_unavailable_reason(
     """Why ``target`` is not among ``join_targets``; None when it is.
 
     ``(what, needed, held)``: "supply", "garrison" or "specimens" (troops
-    short, OQ-088), "spice" or "solari" (the participation cost), "marker"
+    short, OQ-088), "commander" (no garrison Sardaukar Commander for Prison
+    Planet's Commander way in, OQ-105), "spice" or "solari" (the
+    participation cost), "marker"
     (all three Control markers are out), "tleilaxu_track" (the token is
     already on or past the third space, OQ-089 (a)), "contract" (not one of
     the seat's face-up Contracts) or "none" (no participation at all). For
@@ -347,7 +360,9 @@ def join_unavailable_reason(
             return ("supply", 1, owner.troops_supply)
         return ("contract", 1, 0)
     if kind is MissionKind.PRISON_PLANET:
-        if not owner.troops_garrison:
+        if target == PRISON_PLANET_COMMANDER and not owner.commanders_garrison:
+            return ("commander", 1, 0)
+        if target != PRISON_PLANET_COMMANDER and not owner.troops_garrison:
             return ("garrison", 1, 0)
         return ("marker", 1, 0)
     if (
@@ -508,11 +523,19 @@ def _join(state: GameState, player: int, mission: Mission, target: str) -> GameS
         return replace(state, scouts_goods=tuple(goods))
     if kind is MissionKind.PRISON_PLANET:
         assert mission.space_id is not None and mission.seat_goods is not None
-        owner = replace(
-            owner,
-            troops_garrison=owner.troops_garrison - 1,
-            troops_supply=owner.troops_supply + 1,
-        )
+        if target == PRISON_PLANET_COMMANDER:
+            # The Commander goes back to its owner's supply (OQ-105).
+            owner = replace(
+                owner,
+                commanders_garrison=owner.commanders_garrison - 1,
+                commanders_supply=owner.commanders_supply + 1,
+            )
+        else:
+            owner = replace(
+                owner,
+                troops_garrison=owner.troops_garrison - 1,
+                troops_supply=owner.troops_supply + 1,
+            )
         goods += [
             (mission_id, mission.space_id, "marker", 1, player),
             (mission_id, mission.space_id, "spice", mission.seat_goods.spice, player),
@@ -748,7 +771,7 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         if MISSIONS_BY_ID[mission_id].kind is MissionKind.CHOAM_RESEARCH:
             if _is_immediate(card_id):
                 raise RuntimeError("the Immediate never reaches the Research Station")
-            owner = receive_contract(owner, card_id)
+            owner = receive_contract(state, owner, card_id)
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:contract",

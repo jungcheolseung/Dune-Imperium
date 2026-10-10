@@ -135,6 +135,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     decide,
     int_arg,
     str_arg,
+    triggered_draw,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
@@ -173,7 +174,10 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
 )
 #: Navigation Chamber's discount variants of one space, in our legal order
 #: (``rules/agent_turn.py`` ``_actions_for_affordable_costs``): the plain
-#: cost, then the spice cut, then the Solari cut.
+#: cost, then the spice cut, then the Solari cut. The cut is mandatory
+#: (OQ-104, codec v142), so a plain variant beside a cut one is a free cost
+#: option (Spice Refinery's and Gather Support's option 0); both cuts would
+#: appear only on a cost with both resources, which no 4-player space has.
 _DISCOUNT_ORDER: tuple[str | None, ...] = (None, "spice", "solari")
 #: A tile's Flip activation (bloodlines-systems.md §3.3; D23-D25).
 _FLIP_ABILITIES = (AdvancedDataAnalysisAbility, SpyDronesAbility, RapidDropshipsAbility)
@@ -775,7 +779,9 @@ def _space_targets(
     """The targets of one legal space: the space itself, or (Navigation
     Chamber, D60) one target per legal discount variant in our legal order
     (``_DISCOUNT_ORDER``). Without a discount variant this is the plain space
-    alone, as before."""
+    alone, as before. With the tile a costed space has only its cut variant
+    (OQ-104); Spice Refinery and Gather Support also keep the plain space for
+    their free option 0."""
 
     base = space_entity(space_id, board)
     return tuple(
@@ -793,7 +799,10 @@ def _best_discount(
     ``AgentAbility::Evaluate`` answers the space ref only; every variant
     shares it, so each variant is valued alone (the same loop on a one-space
     target list) and the first strictly best one, in target order, is the one
-    the full evaluation kept.
+    the full evaluation kept. Since the cut became mandatory (OQ-104, codec
+    v142) two variants share a space only at Spice Refinery and Gather
+    Support: the plain one stands for the free option 0, the cut one for
+    option 1.
     """
 
     best: tuple[float, str | None] | None = None
@@ -994,6 +1003,9 @@ def _acquire_effect_action(
 def turn_window(run: DecisionRun) -> DomainAction | None:
     """``DetermineTurn``: place an Agent, play a Plot, or Reveal (empty answer)."""
 
+    drawn = triggered_draw(run)
+    if drawn is not None:
+        return drawn
     if any(action.action_id not in _KNOWN_ACTION_IDS for action in run.legal):
         return None  # an id with no app key: fall back, never pass it over
     owed = tech_acquire_effect_sources(run)

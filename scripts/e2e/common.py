@@ -85,6 +85,10 @@ class ServerProcess:
             # the checks here want every AI answer inside the request, as
             # before, unless a script asks for a pace (ai_pace.py).
             *(() if "--ai-pace" in self._extra else ("--ai-pace", "instant")),
+            # The setup screen shuffles the configured seats by default; the
+            # checks here expect row N to play seat N, unless a script asks
+            # for a seating (setup_options.py).
+            *(() if "--seating" in self._extra else ("--seating", "fixed")),
             *self._extra,
         ]
         self._process = subprocess.Popen(

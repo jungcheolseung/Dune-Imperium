@@ -22,11 +22,45 @@
 | `conflict_end_window` | codec 141 미만 | Conflict 끝 책략 창을 거절한다 | v141(`e7eef001`)부터 창이 공개 사실로 열린다. 옛 엔진은 낼 카드가 없는 좌석에게 묻지 않았다 |
 | `combat_intrigue_pass` | codec 139 미만 | 전투 책략에 pass한다 | v139(`5654d7f8`)부터 카드를 낸 바로 뒤의 pass는 창을 닫는 데 세지 않는다. 그래서 옛 엔진이 이미 닫은 자리에서 한 번 더 묻는다 |
 | `agent_card_effect_named` | codec 137 미만 | 적힌 수를 다시 쓴다 | v137(`752c39fe`, 앱 카드 대조)부터 Stillsuit Manufacturer의 Water처럼 한 번에 풀던 Agent 칸 일부가 `effect`를 단 아이콘으로 나뉘었다. 인자 없는 `resolve_agent_card_effect`를, 지금 내놓는 이름 붙은 아이콘이 **딱 하나**일 때만 그것으로 바꾼다. 둘 이상이면 어느 것인지 기보가 말하지 않으므로 멈춘다 |
+| `imperial_privilege_draw` | codec 142 미만, **직후** | 회수 직후 `resolve_board_effect{effect: cards}` | v142(`4c7150d3`)부터 Imperial Privilege의 카드 뽑기가 회수와 따로 노는 보드 아이콘이다. 옛 엔진은 회수 세 가지(`recall_agent_for_imperial_privilege`, `recall_conflict_agent_for_imperial_privilege`, `resolve_imperial_privilege_without_recall`) 단계의 맨 끝에서 같은 출처로 뽑았다 |
+| `garrison_unit_troop` | codec 142 미만 | `scouts_lose_garrison_unit{}`(병력) | v142(`0ef97fa1`, OQ-105)부터 Bene Gesserit Treachery의 유닛 비용을 garrison에 병력과 Commander가 함께 있으면 묻는다. 옛 엔진은 묻지 않고 병력을 냈다 |
+| `prison_planet_commanders_only` | codec 142 미만 | `scouts_decline_mission` | 같은 커밋부터 Prison Planet에 Commander로 참가할 수 있다. 옛 엔진은 garrison에 Commander만 있는 좌석에게 묻지 않고 건너뛰었다. 거절은 아무것도 바꾸지 않는다 |
+| `shigawire_draw` | codec 142 미만, **직후** | `resolve_agent_card_effect{effect: cards}`(더해진 카드) | v142(`6947f446`, OQ-106 1)부터 Urgent Shigawire가 더한 draw가 배치와 따로 논다. 옛 엔진은 부스트된 배치 단계의 맨 끝에서 뽑았다. 그 행동이 더해진 카드를 뽑을 때만(box 자신의 `cards`가 먼저가 아닐 때) 쓴다 |
+| `planetologist_intrigue` | codec 142 미만, **직후** | `draw_planetologist_intrigue` | v142(`9e9fbd71`, OQ-106 3)부터 Arrakis Planetologist의 Intrigue 카드가 대체마다 trash frame 안의 단계다. 옛 엔진은 소환 단계에서 모두 뽑았다 |
+| `intrigue_held_rewards` | codec 142 미만, **직후** | `resolve_intrigue_rewards` | v142(`21069cbd`, OQ-106 2)부터 Cunning·Insider Information의 trash(또는 거절) 뒤 draw가 따로 남는다. 옛 엔진은 trash 단계에서 뽑고 카드를 끝냈다 |
+| `piter_reward` | codec 142 미만, **직후** | `resolve_agent_card_effect{effect: research\|cards}` | v142(`2f76372b`, OQ-106 4)부터 Piter, Genius Advisor의 보상이 troop 비용과 따로 논다. 옛 엔진은 `lose_agent_card_troop` 안에서 Research 뒤 두 장을 뽑았다. 곧바로 끝나는 Research면 Research 먼저, 묻는 Research면 카드 먼저(옛 엔진은 방향을 묻기 전에 뽑았다) |
+| `reverse_engineering_reward` | codec 142 미만, **직후** | `resolve_agent_card_effect{effect: intrigue\|cards}` | 같은 커밋부터 Kota Odax의 Reverse Engineering도 Tech tile 비용과 보상이 따로 논다. 옛 엔진은 `trash_leader_tech` 안에서 Intrigue, 카드 순으로 뽑았다 |
+| `scouts_held_draw` | codec 142 미만, **직후** | `scouts_rewards_first` | v142(`2626df03`, OQ-106 10·11)부터 Scouts 줄의 보상 선택 뒤 draw가 줄의 단계로 남는다. 옛 엔진은 선택 단계에서 뽑았다 |
+| `scouts_reward_pause` | codec 142 미만, **직후** | 멈춤의 한 결과 | v142(`aa600ee0`, OQ-106 12)부터 봉인 경매의 두 번째 이후 승자 보상 앞에 멈춤이 선다. 옛 엔진은 앞 승자를 끝낸 단계 안에서 다음 승자의 보상까지 줬다. `pause`도 답하지만 거절될 때만이라, 그 자리에서 끝나는 기보가 옛 상태로 끝나도록 바로 답한다 |
+| `owed_draw` | codec 142 미만, **직후** | `draw_owed_intrigue`·`draw_owed_card` | v142(`6ec211d8`, `43fa4fa7`, OQ-106 5~8)부터 자기 turn 안에서 촉발된 draw(BG 4, Imperial Birthright, Tleilaxu track Intrigue, Sardaukar Soldier, Overthrow, Hungry for Spice)가 소유자의 단계로 남는다. 옛 엔진은 촉발한 단계 안에서 뽑았다 |
+| `unpredictable_foe_draw` | codec 142 미만, **직후** | `draw_reveal_intrigue` | v142(`f8f7e080`, OQ-106 9)부터 Muad'Dib의 Unpredictable Foe 카드가 Reveal의 대기 목록에 들어간다. 옛 엔진은 조건을 처음 채운 단계에서 뽑았다. 부여 한 번에 한 번만(`draw_reveal_intrigue`가 가장 오래된 항목을 가져가므로) |
+| `reshuffle_renamed` | codec 142 미만 | 적힌 reshuffle을 다시 쓴다 | 위 분리로 일부 draw의 출처 이름이 바뀌어(Piter `agent_card_payment` → `agent_card:<카드>:cards`·`:research`, Reverse Engineering `leader_signet:cards`, Shigawire `shigawire:<카드>:cards`, Cunning `:rewards:draw`) reshuffle id도 바뀌었다. 같은 라운드·같은 좌석의 **개인 덱** reshuffle이고 적힌 값이 지금 버림 더미와 정확히 같은(multiset) 때만 지금의 id로 바꾸고 순서는 그대로 둔다. Intrigue reshuffle은 바꾸지 않는다 |
+| `refinish_agent_turn` | codec 142 미만 | `finish_agent_turn`을 한 번 더 | turn 종료 누름 자체(Usurp trash 등)가 번 draw를 v142는 붙잡아 turn을 다시 연다. 옛 엔진은 누름 안에서 뽑고 turn을 닫았다. `owed_draw`가 뽑은 뒤, 다음 적힌 수(다른 좌석의 것)가 거절되면 다시 누른다. 다시 열린 까닭이 그 draw뿐이고 누름이 turn을 닫을 때만 |
 
 - **안전장치:** 다리는 적힌 수가 **바로 그 결정의 답**일 때는 끼어들지 않는다(`_made_for`). 결정을 가진 좌석이 둔 수가 다음 중 하나이면 그 결정의 답으로 본다.
   - 그 틀(frame)이 답으로 받는 `action_id`다. 전투 책략은 pass·`play_intrigue`, Conflict 끝 창은 거절·`play_conflict_end_intrigue`다.
   - 지금 그 결정이 내놓는 `action_id`다.
   - 첫째 조건은 규칙 변경으로 그 종류의 행동이 **모두** 사라진 경우를 위한 것이다(독립 리뷰가 찾은 빈틈).
+- **직후 다리(`follows`).** 대부분의 다리는 적힌 수가 거절될 때 끼어든다. 그런데 새 엔진이 한 단계를 둘로 나눈 경우(Imperial Privilege)는 그때 끼우면 늦다.
+  - 그 사이에 적힌 수들은 옛 판에서 이미 뽑은 카드를 보고 둔 것이다. 실제로 그 카드를 Insider Information으로 버린 판이 있었다.
+  - 다른 뽑기의 reshuffle id도 어긋난다.
+  - 그래서 `follows` 다리는 적힌 수가 적용된 **직후**, 옛 엔진이 그 일을 한 바로 그 순간에 나머지를 적용한다. 거절될 때는 쓰지 않는다.
+  - 한 수 뒤에 여럿이 따라올 수 있다(Piter의 보상 둘, Scouts 줄 draw 뒤에야 제시되는 BG 4 카드, 연이은 경매 멈춤 셋). 그래서 `follows` 다리를 `BRIDGES` 순서로 처음부터 다시 묻고, 하나가 답하면 적용한 뒤 또 처음부터 묻는다. 아무도 답하지 않을 때 멈춘다(고정점). `BRIDGES` 순서는 옛 엔진이 그 단계 안에서 한 순서다: 그 수 자신의 draw, 그다음 hook의 draw(Hungry for Spice, 그다음 Reveal 수동 능력). 한 수 뒤에 32번을 넘게 답하면 서로 주고받는 다리로 보고 그 수에서 `Divergence`로 멈춘다.
+- **다리 없이 갈라짐이 맞는 v142 변경**(독립 조사·반박 검증):
+  - Navigation Chamber 할인 의무화(`4870efd5`): 옛 기보가 할인 없이 낸 수는 지금 불법이다. 할인된 수로 바꾸면 자원이 달라진다.
+  - Bene Gesserit Treachery에서 garrison에 Commander만 있고 BG 영향력이 0인 좌석: 옛 엔진은 건너뛰었다. v142는 Commander를 잃는 선택지 하나를 강제한다. 강제 수로 이으면 그 Commander를 나중에 쓰는 적힌 수에서 반드시 다시 갈라진다(13개 기보 모두).
+- **OQ-106 분리 가운데 다리로 잇지 못하는 경우**(독립 조사·반박 검증, 2026-10-10). 엔진은 바꾸지 않았다.
+  - Urgent Shigawire: 옛 엔진이 부스트된 배치 바로 뒤에 reshuffle을 적었는데, v142에서 먼저 답할 것(Gather Intelligence, graft 상대, box 자신의 `cards` 아이콘)이 있으면 그 자리에 기다리는 draw가 없다. box 아이콘을 미리 뽑는 다리는 기보가 그 아이콘을 끝내 쓰지 않으면(trash로 소멸) 멈추므로 두지 않았다. 1,563판 중 5판(Gather Intelligence 2, box 아이콘 3).
+  - Cunning·Insider Information이 Sardaukar Standard를 trash하고 그 draw가 reshuffle하는 경우: 옛 엔진은 reshuffle 뒤 Skill 선택을 열었고, v142는 붙잡은 Intrigue 선택 위에 Skill 선택을 먼저 연다. 적힌 chance가 Skill 선택을 만나 멈춘다. 1,563판에는 없고, 같은 판에서 다른 trash를 고른 v141 기보 셋으로 재현됐다. reshuffle이 없으면 draw가 `choose_skill` 뒤로 한 수 늦을 뿐이다(2판). 엔진 순서는 바꾸지 않는다(2026-10-10 엔진 세션 결정 (b)): "trash될 때" 촉발의 Skill 선택은 공개 정보만으로 하는 선택이라 숨은 draw보다 먼저 오는 것이 OQ-106 원칙에 맞고, 옛 기보를 맞추려고 플레이어가 보는 순서를 바꾸지 않는다.
+  - Muad'Dib의 Unpredictable Foe 카드가 Reveal 선택 아래에서 기다리는 동안 그 선택이 그 카드를 쓰는 경우(Intrigue를 trash하는 Immediate Contract): 1판.
+  - 아직 어느 기보에도 없는 Intrigue reshuffle(Piter의 Research가 닿은 Tleilaxu Intrigue, 빈 Intrigue 덱의 Reverse Engineering, BG 4 카드, Planetologist): id가 새 출처를 따르는데 `reshuffle_renamed`는 개인 덱 reshuffle만 바꾼다.
+- **한두 수 늦는 draw**(멈추지 않고 그 사이의 수가 카드 한 장 모자란 손을 본다). 엔진이 그 틀에서 draw를 내놓지 않기 때문이다.
+  - Deep Desert의 두 번째 Planetologist 카드: 첫 trash 답 한 수(267곳).
+  - Gather Intelligence·graft 상대 뒤의 Shigawire 카드 한 수, box 아이콘 먼저인 경우 기보의 box draw까지 1~7수.
+  - Reveal 선택 아래의 Foe 카드 1~3수, Intrigue 효과·Reveal·Skill·Scouts 선택 안에서 촉발된 owed draw 1~3수.
+- **codec 번호 한 개에 흐름 변경이 여럿.** v142에는 Navigation Chamber, Imperial Privilege, OQ-105가 들어 있고 OQ-106 분리도 들어갈 예정이다(다른 세션과 합의, 2026-10-10).
+  - 문턱은 master가 지나온 번호다. master에서 만든 저장본은 v141 다음이 바로 이 묶음 전체의 v142다.
+  - 그 사이의 브랜치 엔진이 쓴 v142 저장본(테스트 산출물뿐)은 지원하지 않는다.
 - **다시 쓰기는 일반 규칙으로 두지 않는다.** 이 엔진에서는 인자가 없다는 것 자체가 선택이다. `graft`가 없으면 카드 한 장, `discount`·`infiltrate_post_id`·`commanders`가 없으면 그것을 쓰지 않은 것이다.
   - 처음에는 "같은 id에 인자만 늘어난 행동이 하나면 그것으로"라는 일반 규칙을 두었다. 독립 리뷰가 그 규칙이 불법이 된 수를 다른 선택으로 바꿔 끝까지 옮기는 경우를 재현했다.
   - 그래서 행동 하나·인자 하나·codec 문턱이 정해진 다리로 좁혔다.
@@ -38,7 +72,7 @@
 
 ## 3. 검증 — 옛 엔진과 한 수씩 대조
 
-옮긴 판이 "같은 판"인지는 옛 코드로 확인했다. 기보를 쓴 날 master의 커밋(v135 `37727846`, v139 `5a2dfc19`, v140 `6b033158`)을 git worktree로 꺼내고, 그 엔진으로 기보를 그대로 재생했다. 최종 해시는 모두 일치했다. 그리고 적힌 수마다 공개 상태를 비교했다. 비교한 것은 좌석별 VP·자원·영향력·병력·Spy·Alliance·Control·Agent 위치·손패·덱 크기다.
+옮긴 판이 "같은 판"인지는 옛 코드로 확인했다. 기보를 쓴 날 master의 커밋(v135 `37727846`, v139 `5a2dfc19`, v140 `6b033158`)을 git worktree로 꺼내고(v141은 master `21eccca4`의 메인 체크아웃), 그 엔진으로 기보를 그대로 재생했다. 최종 해시는 모두 일치했다. 그리고 적힌 수마다 공개 상태를 비교했다. 비교한 것은 좌석별 VP·자원·영향력·병력·Spy·Alliance·Control·Agent 위치·손패·덱 크기다.
 
 | 기보 | 수 | 옛 엔진과 다른 수 |
 |---|---|---|
@@ -47,6 +81,30 @@
 | AI 판 v139 10개(heuristic·app_ai 각 5, 3라운드) | 각 233~269 | 모두 0 |
 | AI 판 v140 3개(heuristic, 3라운드) | 각 261~277 | 모두 0 |
 | AI 판 v135 6개(멈추지 않은 것) | 각 233~267 | 1~5 |
+| v142 엔진(`f1e17be0` + 다리)으로 옮긴 v141 AI 판 7개(IP 1~2회 2개, garrison 1~2회 3개, Prison Planet 1회 1개, Prison Planet을 병력·Commander 둘 다 가진 좌석이 병력으로 참가 1개; 2~9라운드) | 각 160~873 | 모두 0 |
+| v142 엔진으로 옮긴 사람 판 4개(v135·v139·v141 ×2) | 123~1,202 | 모두 0(v141 엔진으로 옮긴 판과 대조) |
+
+넓은 대조도 했다(2026-10-10). 리뷰 워크플로가 만든 v141 AI 기보 1,563판이다. 무작위·heuristic·앱 AI가 두었고, 모듈 조합은 전부 켬, Immortality 끔, Epic 끔, Tech 끔을 섞었다.
+- 매 수 모든 좌석의 모든 필드(`PlayerState` 83개, 카드 영역 전부, 순서 없는 영역은 정렬)를 짧은 해시로만 남겨 v141과 v142(다리 포함)를 맞댔다. 처음에는 필드 몇 개와 손패·덱 크기만 비교했고, 이렇게 넓혀 다시 돌렸다.
+- 1,422판은 끝까지 옮겨졌다. 다리는 IP 1,161회, garrison 92회, Prison Planet 3회 쓰였다.
+- 141판은 갈라졌는데 모두 다리를 두지 않기로 한 두 경우다.
+  - 140판: Navigation Chamber를 가진 좌석이 할인 없이 둔 Agent 턴
+  - 1판: Commander만 있고 BG 영향력이 0인 좌석에게 강제된 Treachery
+- 갈라지기 전까지 비교한 1,489,233수 가운데 다른 수는 0이다.
+
+OQ-106 분리(codec v142에 함께 들어감)와 그 다리를 넣은 뒤 같은 1,563판과 사람 판을 다시 대조했다(2026-10-10, 같은 해시).
+- 1,417판은 끝까지 옮겨졌다. 146판이 갈라졌다: Navigation Chamber 139, Treachery 1(위의 두 경우), Urgent Shigawire 5(배치 바로 뒤에 적힌 reshuffle), Unpredictable Foe 1(Reveal 선택이 그 카드를 씀). 모두 2절의 다리로 잇지 못하는 경우다.
+- 갈라지기 전까지 비교한 1,487,504수 가운데 다른 수는 505다. 모두 2절의 "한두 수 늦는 draw"다: Deep Desert 267, Shigawire 93(한 수 37곳, box 아이콘 먼저인 연속 1~7수), Foe 78(1~3수), owed draw 65(1~3수), Sardaukar Standard 뒤 `choose_skill` 2.
+- 다리 쓰임: owed draw 3,831, IP 2,572, 경매 멈춤 1,805, Scouts 줄 1,536, Cunning·Insider 961, Planetologist 897, Piter 368, Foe 284, Shigawire 273, reshuffle 이름 170, Reverse Engineering 148, garrison 124, Prison Planet 3.
+- 사람 판 7개(4판)는 모두 끝까지 옮겨졌다. 세 판은 모든 수가 v141과 같다. v141 판 8124f5a2/fb716981은 929 한 수가 다르다. 겹친 Reveal 선택 안에서 닿은 BG 4 카드가 다음 선택이 닫힐 때까지 기다린다.
+
+즉시 owed draw(fb-immediate)까지 넣은 `34aecd31`을 기보 corpus(v141 AI 판 2,000개, `local/records-corpus/v141-a61acb7e`)로 대조했다(2026-10-10, `dune-imperium-records corpus check`, `--around 'draws:*'`, 다리 15개 검토).
+- exact 6, equal 639, transient 1,046, persistent 0, diverged 309, failed 0.
+- 갈라진 309판은 모두 다리를 두지 않기로 한 경우다: Navigation Chamber를 할인 없이 둔 Agent 턴 298, Commander만 있는 Treachery 8, Shigawire(Gather Intelligence나 box 아이콘이 먼저, reshuffle) 3.
+- 상태가 다른 구간 1,615곳은 다리가 끝냈다(`bridged-window`).
+- 다리 없이 다른 7곳은 다음 수에 같아진다: Piter 뒤 `pending_track_spies` 출처 이름 6(값은 같다), owed draw로 늦게 공개된 카드가 Fremen War Name의 +2를 그 단계에서 줌 1(옛 엔진은 다음 수에서 줬다).
+- `collateral` 88: Scouts 경매 멈춤·줄 draw 67, 근처에 hit 없는 Navigation Chamber 갈라짐 19, 옛 엔진이 CHOAM Transports 카드를 한 수 동안 `tech_cards_owed`에 둔 것 2(v142는 붙잡은 draw로 둔다).
+- `bridge-without-hit` 106곳 중 목록에 오른 100곳(97판)은 절반이 뽑는 다리였다. 옛 엔진은 다리 바로 뒤에 적힌 reshuffle chance에서 뽑았는데, 판정이 그 chance의 hit을 세지 않았다. 세도록 고친 판정(`07a2d425`)으로 97판을 다시 보니 25곳이 남고, 모두 뽑지 않는 다리다(경매 멈춤 22, garrison 답 3).
 
 리뷰 반영 뒤의 코드(`records.migration.walk`)로 사람 판 v135, 테스트 기보 셋(v135·v139·v140), AI 판 v140 셋을 다시 대조했다. 결과는 위와 같다.
 
@@ -60,8 +118,20 @@ v135 기보의 차이는 모두 **Conflict 보상을 주는 도중**이다.
 - codec 문턱을 넘은 기보에서는 그 다리가 끼어들지 않는다.
 - 결정의 답이었던 수에는 다리가 끼어들지 않는다. 그 종류의 행동이 지금 하나도 없을 때도 마찬가지다.
 - 다른 곳에서 빠진 인자(`discount`)는 선택이므로 다시 쓰지 않고 멈춘다.
-- 옛 엔진이 실제로 쓴 기보 셋(v135 app_ai seed 3, v139 heuristic seed 1, v140 heuristic seed 1)이 끝까지 재생된다.
+- 옛 엔진이 실제로 쓴 기보 열아홉 개가 끝까지 재생된다. 어느 기보가 무엇을 지키는지는 테스트 모듈 머리말과 `OQ106_FIXTURES`에 있다.
+  - v135 app_ai seed 3, v139 heuristic seed 1, v140 heuristic seed 1
+  - v141 다섯: IP 둘, garrison 하나, Prison Planet 둘
+  - v141 열하나(OQ-106, 1~5라운드): Shigawire, Cunning·Insider와 그 reshuffle, Piter(reshuffle 뒤 Research, 곧바로 끝나는 Research 뒤 reshuffle), Reverse Engineering 둘(Servo-Receivers, reshuffle), Water Discipline(reshuffle), 경매 멈춤, owed draw 둘(Overthrow 카드를 Intrigue 선택에서 trash, Hungry for Spice의 reshuffle), Foe 둘(부여 한 번에 한 번만)
+- OQ-106 다리는 적힌 수 바로 뒤에 그 단계를 넣는다. 기보마다 어느 적힌 수 뒤에 몇 번 넣는지를 정확히 대조한다(거절을 기다리면 늦거나 못 넣는다). 옮긴 수를 v142로 찍으면 다리 없이 그대로 재생된다(문턱이 없으면 다리가 그 단계를 먼저 가져간다).
+- reshuffle 이름은 같은 좌석·같은 버림 더미일 때만 바꾼다(다른 좌석, 다른 값, Intrigue reshuffle, v142 기보는 멈춘다). 한 수 뒤의 다리가 정해진 수(32)를 넘으면 그 수에서 멈춘다. 경매 멈춤 직후에 끝나는 기보는 다음 승자의 보상까지 준 상태로 끝난다.
+- turn 종료 누름이 번 draw로 다시 열린 turn은 v141 기보에 없어서, 만든 상태(Usurp한 Replacement Eyes가 Tleilaxu token을 Intrigue 칸으로)로 `refinish_agent_turn`을 지킨다.
+- v142 문턱: 같은 v141 기보를 v142로 찍으면 v142 다리가 끼어들지 않고 멈춘다.
+- IP 뽑기는 회수 바로 다음에 들어간다. v141 heuristic seed 1023은 회수 뒤에 엔진이 받아들이는 수(`decline_tech`)가 와서, 거절을 기다리는 방식이면 한 수 늦게 뽑는다.
+- OQ-105 다리 둘은 그 결정에 대한 좌석 자신의 답(지금은 불법)에는 끼어들지 않는다. Prison Planet 거절은 옛 엔진이 물었던 좌석(병력 참가 가능)에는 하지 않는다.
 - 다리 하나씩, 문턱 하나씩, 안전장치를 빼면 각각 해당 테스트가 실패하는 것을 확인했다.
+  - 리뷰가 찾은 빈틈(IP 타이밍 테스트가 두 방식을 구별하지 못함, OQ-105 안전장치 미검증)도 그렇게 막았다.
+  - OQ-106 다리 열하나는 각각 빼기, 문턱 없애기, `follows`(또는 rewrite·거절) 종류 뒤집기 33가지와 고정점을 한 번 묻기로 되돌리기 1가지를 모두 테스트가 잡는다. 안쪽 조건도 다섯 가지를 확인했다: Foe의 부여 한 번 조건, Piter 순서를 카드 먼저·Research 먼저로 고정, reshuffle 이름의 좌석·더미 조건, turn 다시 닫기의 "다시 열렸는가" 조건.
+  - Prison Planet의 Commander 대상 조건과 틀 확인은 지금 엔진에서 빠져도 결과가 같은 방어용이다. 코드 주석에 적었다.
 
 옛 엔진 기보를 다시 만드는 법은 `scripts/records/old_engine_record.py` 머리말에 있다. 그 스크립트가 같은 파일을 바이트까지 똑같이 만든다. 사람 기보는 공개 저장소에 넣지 않으려고 AI 판을 썼다.
 
@@ -82,7 +152,7 @@ uv run dune-imperium-records check
 - 갈라짐(diverged, 몇 번째 수, 엔진이 기다린 결정)
 - 엔진 오류(failed). 그 판만 보고하고 다음 판으로 간다.
 
-2026-10-10 로컬 결과는 네 판 중 2판 exact, 2판 migrated다.
+2026-10-10 로컬 결과는 네 판 중 2판 exact, 2판 migrated다. codec v142(OQ-106 다리 포함)에서는 네 판 모두 migrated다. 모두 v142보다 옛 판이라 v142 다리를 쓴다.
 
 코드에서는 다음과 같이 쓴다.
 - `records.saves.saved_games(디렉터리)` → `SavedGame`

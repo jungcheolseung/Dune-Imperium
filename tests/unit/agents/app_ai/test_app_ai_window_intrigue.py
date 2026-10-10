@@ -50,7 +50,7 @@ from dune_imperium.rules.acquisition import acquirable_imperium_instance_ids
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
-SEAT = 3  # the deciding seat of every fixture below (seed 1)
+SEAT = 3  # the deciding seat of every fixture below (seed 1; the endgame seed 5)
 CITY = (
     "arrakis-research-station-sietch-tabr",
     "arrakis-research-station-spice-refinery",
@@ -77,9 +77,20 @@ def combat_state() -> GameState:
 
 @pytest.fixture(scope="module")
 def endgame_state() -> GameState:
-    """Seat 3's ``endgame_intrigue`` (won Conflicts with Crysknife icons)."""
+    """Seat 3's ``endgame_intrigue`` (won Conflicts with Crysknife icons).
 
-    return play_until(lambda s, o: s.decision_stack[-1].kind == "endgame_intrigue")
+    Seed 5, round 9: seat 3 won Seize Spice Refinery and Battle for Arrakeen
+    (Crysknife) and Protect the Sietches, beside a Crysknife Objective. Seed
+    1's first ``endgame_intrigue`` was seat 3's until Imperial Privilege's
+    card draw became its own icon (2026-10-10, OQ-027 (d)) moved that game
+    at round 4 seat 0's Imperial Privilege visit; there seat 3 now holds one
+    Crysknife Conflict, and 5 is the first seed whose seat 3 holds two.
+    """
+
+    return play_until(
+        lambda s, o: s.decision_stack[-1].kind == "endgame_intrigue" and o == SEAT,
+        seed=5,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +654,26 @@ def test_cunning_trashes_through_its_trash_ability(
     assert W.intrigue_choice(keep) == act("decline_intrigue_trash")
 
 
+def test_cunning_draws_after_its_trash_as_its_own_step(
+    turn_state: GameState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The app trashes before it draws (``<RunImmediateEffects>d__11``); our
+    engine leaves Cunning's draw after the trash as its own
+    ``resolve_intrigue_rewards`` (user ruling 2026-10-10, OQ-106), which the
+    window takes at once instead of falling back."""
+
+    state = give(turn_state, "cunning", resources=Resources(spice=1))
+    hand = state.players[SEAT].hand
+    fix_answer(monkeypatch, "cunning", Answer(5.0, ((1,),)))
+    memory = Memory()
+    choice = app_play(state, memory, "cunning")
+    trash = act("trash_intrigue_card", card_id=hand[0])
+    after = ENGINE.apply(choice, trash).state
+    run = make_run(after, memory)
+    assert run.legal == (act("resolve_intrigue_rewards"),)
+    assert W.intrigue_choice(run) == act("resolve_intrigue_rewards")
+
+
 def test_devour_trashes_the_answered_card_or_declines(
     combat_state: GameState, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -862,7 +893,7 @@ def test_battle_icon_flip_pairs_like_score_battle_icons_pairs(
     state = give(
         endgame_state,
         "crysknife",
-        face_down_battle_card_ids=("objective_desert_mouse", "protect_the_sietches"),
+        face_down_battle_card_ids=("protect_the_sietches", "objective_crysknife_2"),
     )
     choice = step(state, act("play_intrigue", card_id=iid("crysknife"), option=1))
     run = make_run(choice)

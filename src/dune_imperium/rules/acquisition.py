@@ -36,8 +36,12 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import (
+    OWED_INTRIGUE,
+    OWED_ORIGIN_ACQUIRE,
     FrameKind,
     context_int,
+    draw_waits_for_owner,
+    hold_draw,
     replace_player,
     reveal_is_open_for,
     turn_owner_of,
@@ -1019,7 +1023,17 @@ def _resolve_imperium_acquisition_bonus(
             f"round:{state.round_number}:player:{player}:"
             f"acquire:{instance_id}:intrigue_draw"
         )
-        if intrigue_deck:
+        if draw_waits_for_owner(state, player):
+            # Overthrow's acquire box: inside the seat's own turn the card
+            # is its own step, the one right after the purchase: "Acquire
+            # Effects must be taken immediately upon acquiring the Card or
+            # Tech." (Direwolf Discord; user decision 2026-10-10, OQ-106,
+            # ``draw_is_immediate``; OQ-042). The Row refill still makes the
+            # purchase itself irreversible.
+            owner = hold_draw(
+                owner, OWED_INTRIGUE, f"{OWED_ORIGIN_ACQUIRE}{instance_id}", source
+            )
+        elif intrigue_deck:
             owner = credit_suspensor_suits(
                 state,
                 replace(

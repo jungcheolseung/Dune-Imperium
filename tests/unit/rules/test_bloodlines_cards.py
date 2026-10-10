@@ -16,6 +16,8 @@ from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
     DecisionFrame,
     DomainAction,
     GameEvent,
@@ -1697,11 +1699,18 @@ def test_insider_information_recalls_a_spy_to_trash_and_draw() -> None:
         if a.action_id == "trash_intrigue_card"
         and dict(a.arguments)["card_id"] == STARTERS[4]
     )
-    done = engine.apply(recalled, trash).state
+    trashed = engine.apply(recalled, trash).state
+    # The trash draws nothing: the line's draw is its own step (user ruling
+    # 2026-10-10, OQ-106) and the only one left.
+    assert trashed.players[0].hand == ()
+    rewards = DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    assert engine.legal_actions(trashed, 0) == (rewards,)
+    done = engine.apply(trashed, rewards).state
     owner_after = done.players[0]
     assert owner_after.spies_supply == 3
     assert owner_after.trashed == (STARTERS[4],)
     assert len(owner_after.hand) == 1  # the drawn card
+    assert done.intrigue_discard[-1] == card
 
 
 def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
@@ -2578,9 +2587,194 @@ def test_urgent_shigawire_boosts_the_next_bene_gesserit_card() -> None:
     played = _play(boosted, bene_gesserit, "arrakeen")
     owner = played.players[0]
     assert owner.bene_gesserit_boost_pending is False
-    # Arrakeen's own draw plus the boost's draw: the hand lost one card and
-    # gained two.
-    assert len(owner.hand) == 2 - 1 + 2
+    # Arrakeen's own draw only: the boost's draw waits for its own step
+    # (user ruling 2026-10-10, OQ-106).
+    assert len(owner.hand) == 2 - 1 + 1
+    drawn = resolve_agent_card_icon(played, _boost_draw()).state
+    assert len(drawn.players[0].hand) == 2 - 1 + 2
+
+
+def _boost_draw() -> DomainAction:
+    return DomainAction(
+        action_id="resolve_agent_card_effect",
+        actor=0,
+        arguments=(("effect", "cards"),),
+    )
+
+
+def test_urgent_shigawire_draw_is_its_own_step_after_the_placement() -> None:
+    """ "그 외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기
+    전에 버림더미 카드를 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10,
+    OQ-106): the draw "added to its Agent box" [Urgent Shigawire card] is
+    not drawn by the placement. It waits as one more freely ordered effect
+    [Main p. 9], the turn cannot end over it, and it draws exactly once.
+    Truthtrance prints no Agent box, so the added draw is its only one.
+    """
+
+    truthtrance = _card("truthtrance")
+    engine = UprisingRulesEngine()
+    state = _state(
+        _owner(hand=(truthtrance,), deck=STARTERS[:3], bene_gesserit_boost_pending=True)
+    )
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "secrets"
+    )
+    placed = engine.apply(state, placement)
+    owner = placed.state.players[0]
+    assert owner.bene_gesserit_boost_pending is False
+    assert owner.hand == ()
+    assert owner.deck == STARTERS[:3]
+    assert "agent_card_boost_consumed" in {event.kind for event in placed.events}
+
+    legal = engine.legal_actions(placed.state, 0)
+    assert legal.count(_boost_draw()) == 1
+    assert DomainAction(action_id="finish_agent_turn", actor=0) not in legal
+
+    # Secrets' own Intrigue icon first, then the added draw.
+    secrets = engine.apply(
+        placed.state,
+        DomainAction(
+            action_id="resolve_board_effect",
+            actor=0,
+            arguments=(("effect", "intrigue"),),
+        ),
+    ).state
+    assert _boost_draw() in engine.legal_actions(secrets, 0)
+    drawn = engine.apply(secrets, _boost_draw())
+    assert drawn.state.players[0].hand == STARTERS[:1]
+    assert any(
+        event.kind == "agent_card_effect_resolved"
+        and dict(event.payload)["card_id"] == truthtrance
+        for event in drawn.events
+    )
+    after = engine.legal_actions(drawn.state, 0)
+    assert _boost_draw() not in after
+    influenced = engine.apply(
+        drawn.state, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+    assert DomainAction(action_id="finish_agent_turn", actor=0) in (
+        engine.legal_actions(influenced, 0)
+    )
+
+
+def test_urgent_shigawire_draw_may_wait_for_a_trash_from_the_discard_pile() -> None:
+    """The reason the user gave for splitting draws (OQ-106): with an empty
+    deck the draw reshuffles the discard pile, so the owner may first trash
+    a discard-pile card (Desert Tactics' trash [Board Guide p. 1]) to keep
+    it out of the deck, or draw first and get it back. Both orders work.
+    """
+
+    truthtrance = _card("truthtrance")
+    junk = STARTERS[0]
+    engine = UprisingRulesEngine()
+    state = _state(
+        _owner(
+            hand=(truthtrance,),
+            deck=(),
+            discard_pile=(junk,),
+            resources=Resources(water=1),
+            bene_gesserit_boost_pending=True,
+        )
+    )
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "desert_tactics"
+    )
+    placed = engine.apply(state, placement).state
+    trash = DomainAction(
+        action_id="trash_card_for_desert_tactics",
+        actor=0,
+        arguments=(("card_id", junk),),
+    )
+    legal = engine.legal_actions(placed, 0)
+    assert trash in legal and _boost_draw() in legal
+
+    trashed_first = engine.apply(engine.apply(placed, trash).state, _boost_draw())
+    owner = trashed_first.state.players[0]
+    assert owner.trashed == (junk,)
+    assert owner.hand == ()
+
+    shuffle = engine.apply(placed, _boost_draw())
+    decision = shuffle.next_decision
+    assert isinstance(decision, ChanceDecision)
+    drawn_first = engine.apply(
+        shuffle.state, ChanceResolver(seed=1).resolve(decision)
+    ).state
+    assert drawn_first.players[0].hand == (junk,)
+    assert _boost_draw() not in engine.legal_actions(drawn_first, 0)
+
+
+def test_urgent_shigawire_draw_joins_a_box_with_its_own_card_draw() -> None:
+    """Hidden Missive's own draw waits for two Bene Gesserit Influence
+    [Hidden Missive card]; the added draw does not. Below the threshold the
+    one ``cards`` action is the added draw; at it, the box's draw goes
+    first and the added draw follows, never both offered twice.
+    """
+
+    missive = _card("hidden_missive")
+    engine = UprisingRulesEngine()
+    for influence, expected in ((0, 1), (2, 2)):
+        state = _state(
+            _owner(
+                hand=(missive,),
+                deck=STARTERS[:4],
+                influence=Influence(bene_gesserit=influence),
+                bene_gesserit_boost_pending=True,
+            )
+        )
+        placement = next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments)["space_id"] == "secrets"
+        )
+        working = engine.apply(state, placement).state
+        draws = 0
+        while _boost_draw() in (legal := engine.legal_actions(working, 0)):
+            assert legal.count(_boost_draw()) == 1
+            working = engine.apply(working, _boost_draw()).state
+            draws += 1
+        assert draws == expected
+        assert len(working.players[0].hand) == expected
+
+
+def test_urgent_shigawire_draw_lapses_with_a_box_trashed_by_another_effect() -> None:
+    """The draw was "added to its Agent box" [Urgent Shigawire card], so a
+    card trashed by another effect before its box takes the draw with it:
+    "you can't receive or activate an effect from a card that is already
+    trashed" (OQ-022 designer ruling; user ruling 2026-10-10, OQ-106).
+    """
+
+    truthtrance = _card("truthtrance")
+    engine = UprisingRulesEngine()
+    state = _state(
+        _owner(
+            hand=(truthtrance,),
+            deck=STARTERS[:2],
+            resources=Resources(water=1),
+            bene_gesserit_boost_pending=True,
+        )
+    )
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "desert_tactics"
+    )
+    placed = engine.apply(state, placement).state
+    trashed = engine.apply(
+        placed,
+        DomainAction(
+            action_id="trash_card_for_desert_tactics",
+            actor=0,
+            arguments=(("card_id", truthtrance),),
+        ),
+    )
+    assert "agent_card_effect_expired" in {event.kind for event in trashed.events}
+    legal = engine.legal_actions(trashed.state, 0)
+    assert _boost_draw() not in legal
+    assert trashed.state.players[0].hand == ()
 
 
 def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
@@ -3261,6 +3455,77 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     finished = finish_agent_turn(moved)
     assert finished.decision_stack[-1].kind == "turn"
     assert dict(finished.decision_stack[-1].context)["turn_owner"] == 1
+
+
+@pytest.mark.parametrize("zone", ["garrison", "conflict"])
+def test_holy_war_a_seat_with_only_commanders_must_lose_one(zone: str) -> None:
+    """A seat whose only unit on the board is a Sardaukar Commander loses it.
+
+    "Each opponent loses one troop." [Holy War card]; "Commander는 Conflict에서
+    strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의
+    retreat)는 Commander에도 적용된다." [Bloodlines p. 4] (bloodlines.md);
+    OQ-036 (a): "잃는 좌석이 zone(garrison/Conflict)과 유닛 종류
+    (troop/Commander)를 모두 고른다 ... Commander는 [Bloodlines p. 4]에 따라
+    card 효과의 troop이므로 대상이다." The loss line has no "may", arrow or
+    black trash icon, so it cannot be declined: "공간과 카드의 효과는 원칙적으로
+    의무다." [FAQ p. 3] (player-turns.md). A Commander only in the supply is
+    not on the board and is no candidate (tests/unit/display/
+    test_unavailable.py pins that case).
+    """
+
+    from dune_imperium.rules.unit_loss import apply_unit_loss
+
+    card = _card("holy_war")
+    on_board = (
+        {"commanders_garrison": 1}
+        if zone == "garrison"
+        else {"commanders_conflict": 1, "combat_strength": 2}
+    )
+    commander_only = replace(
+        PlayerState(player_id=1),
+        troops_supply=12,
+        troops_garrison=0,
+        troops_conflict=0,
+        commanders_supply=0,
+        **on_board,  # type: ignore[arg-type]
+    )
+    others = tuple(
+        replace(PlayerState(player_id=seat), troops_supply=12, troops_garrison=0)
+        for seat in (2, 3)
+    )
+    base = _state(_owner(hand=(card,)))
+    base = replace(base, players=(base.players[0], commander_only, *others))
+    state = resolve_agent_card_effect(_play(base, card, "assembly_hall")).state
+    # Seat 1, the next seat, answers first (OQ-036 (b)); its only action is
+    # the Commander's loss -- no decline, nothing else.
+    assert state.decision_stack[-1].kind == "opponent_unit_loss"
+    offered = UprisingRulesEngine().legal_actions(state, 1)
+    assert offered == (
+        DomainAction(
+            action_id="lose_unit",
+            actor=1,
+            arguments=(("commanders", 1), ("zone", zone)),
+        ),
+    )
+    lost = apply_unit_loss(state, offered[0])
+    seat = lost.state.players[1]
+    assert (seat.commanders_garrison, seat.commanders_conflict) == (0, 0)
+    assert seat.commanders_supply == 1
+    if zone == "garrison":
+        assert [event.kind for event in lost.events] == ["unit_lost"]
+    else:
+        # A loss from the Conflict retreats the Commander first, taking its
+        # strength 2 (OQ-036 (a)).
+        assert [event.kind for event in lost.events] == [
+            "troops_retreated",
+            "unit_lost",
+        ]
+        assert seat.combat_strength == 0
+    assert dict(lost.events[-1].payload) == {
+        "commanders": 1,
+        "player": 1,
+        "zone": zone,
+    }
 
 
 @pytest.mark.parametrize("actor", [0, 1, 2, 3])
@@ -3989,6 +4254,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         + 1  # v137: the Intrigue Influence confirm
         + 1  # v137: Tactical Option retreats 0
         + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_planetologist_intrigue (OQ-106)
+        + 1  # v142: draw_owed_intrigue (OQ-106)
+        + 1  # v142: draw_owed_card (OQ-106)
     )
     action = DomainAction(
         action_id="trash_agent_card",

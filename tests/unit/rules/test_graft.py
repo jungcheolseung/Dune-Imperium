@@ -415,7 +415,9 @@ def test_imperial_privilege_recalls_the_fray_agent_after_a_mentat_recall() -> No
     seat = apply_imperial_privilege_action(declined.state, recalls[0]).state.players[0]
     assert seat.agent_in_conflict == 0
     assert seat.agents_available == 2
-    assert len(seat.hand) == hand_before + 1
+    # The recall only recalls; the card is the space's own icon ("4번은
+    # 소환과 뽑기가 당연히 두 단계로 나눠야지", user ruling 2026-10-10).
+    assert len(seat.hand) == hand_before
 
 
 def test_twisted_mentat_recalls_this_turns_agent_from_the_conflict() -> None:

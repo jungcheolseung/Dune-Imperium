@@ -104,7 +104,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `analytics` | Analytics (분석) | 1 | Solari 1 → Research | Immortality 풀 |
 | `relations` | Relations (외교) | 2 | spice 2 → 원하는 Faction Influence +1 | |
 | `contingencies` | Contingencies (유사시 대비) | 2 | Intrigue 1장 trash → 방금 보낸 Agent가 아닌 자기 Agent 1개 회수(Into the Fray로 Conflict에 있는 Agent 포함) | OQ-075 |
-| `leverage` | Leverage (권위) | 2 | Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장 | |
+| `leverage` | Leverage (권위) | 2 | Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장 | Faction을 고른 뒤 Intrigue는 따로 뽑는다(OQ-106) |
 | `tleilaxu_relations` | Tleilaxu Relations (협력: 틀레이락스) | 2 | spice 3 → Tleilaxu track 2칸 | Immortality 풀 |
 
 ## 5. 임무
@@ -127,7 +127,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `choam_escort` | CHOAM Escort (초암 호송대) | 0 | 2~3 | 각자 원하면 둘 중 하나: troop 1 recruit, 또는 자기 앞면 Contract 하나 위에 Solari 1 + spice 1을 올려 두고 그 Contract를 완료할 때 함께 받는다. CHOAM 전용 |
 | `sponsored_research` | Sponsored Research (연구 후원) | 0 | 2 | research track의 Helix 옆에 spice 2를 둔다. 다음에 Helix에 닿는 좌석이 가진다. Immortality 풀 |
 | `back_room_deal` | Back Room Deal (밀실 거래) | 0 | 2~3 | Tleilaxu Row의 Reclaimed Forces 위에 Solari 2를 둔다. 다음에 Reclaimed Forces를 "획득"하는 좌석이 가진다. Immortality 풀 |
-| `prison_planet` | Prison Planet (정예 사다우카 - 감옥 행성) | 1 | 2~3 | 각자 원하면 garrison의 troop 1을 잃고, Sardaukar 칸에 자기 Control 마커를 둔다. 은행의 spice 2를 그 위에 둔다. 그 좌석이 그 칸을 방문하면 마커를 되찾고 spice를 얻는다. 세 번째 칸을 지배하게 될 때 마커가 모자라면 이 마커를 가져다 쓰고 임무는 spice 없이 끝난다(도움말). Uprising 풀 |
+| `prison_planet` | Prison Planet (정예 사다우카 - 감옥 행성) | 1 | 2~3 | 각자 원하면 garrison의 troop 1을 잃고(Bloodlines에서는 garrison의 Sardaukar Commander로 낼 수도 있다, OQ-105), Sardaukar 칸에 자기 Control 마커를 둔다. 은행의 spice 2를 그 위에 둔다. 그 좌석이 그 칸을 방문하면 마커를 되찾고 spice를 얻는다. 세 번째 칸을 지배하게 될 때 마커가 모자라면 이 마커를 가져다 쓰고 임무는 spice 없이 끝난다(도움말). Uprising 풀 |
 | `emperors_schemes` | Emperor's Schemes (정예 사다우카 - 황제의 계략) | 1 | 2~3 | Intrigue 2장을 Sardaukar 칸에 둔다(덱이 모자라면 버린 Intrigue를 섞어 채운다). 방문할 때마다 1장씩 가져간다(OQ-078) |
 | `fedaykin_assistance` | Fedaykin Assistance (페다이킨의 지원) | 1 | 3 | 각자 원하면 spice 1을 내고 supply의 troop 2를 모두 Desert Tactics에 세운다. 다음에 그 칸을 방문할 때 그 troop을 recruit한다 |
 | `weirding_warfare` | Weirding Warfare (기이한 전투) | 1 | 2~3 | 각자 원하면 Solari 2를 내고 supply의 troop 2를 모두 Espionage에 세운다. 다음 방문 때 recruit해 곧바로 Conflict에 배치한다 |
@@ -153,7 +153,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `smoke_and_mirrors` | Smoke and Mirrors (진실의 왜곡) | 책략 보너스 | 5 | 4~7 | 각자 선택: Spy 1 배치, 또는 Solari 1 → Intrigue 1장 |
 | `rotating_doors` | Rotating Doors (회전문) | 책략 보너스 | 5 | 4~7 | 각자 선택: Intrigue 1장 trash → Intrigue 1장 + 카드 1장 draw, 또는 패스 |
 | `moment_of_revelation` | Moment of Revelation (폭로의 순간) | 단일 | 10 | 4~7 | 각자 원하면 spice 2를 내고 Reserve의 Prepare the Way를 **손으로** 획득. Reserve에 남은 카드가 없으면 제시하지 않고 spice도 받지 않는다(OQ-071) |
-| `water_discipline` | Water Discipline (물 규칙) | 단일 | 10 | 4~7 | 각자 선택: 물 1 → 카드 1장 trash + 카드 1장 draw, 또는 패스. trash와 draw는 원하는 순서(OQ-100) |
+| `water_discipline` | Water Discipline (물 규칙) | 단일 | 10 | 4~7 | 각자 선택: 물 1 → 카드 1장 trash + 카드 1장 draw, 또는 패스. trash와 draw는 원하는 순서(OQ-100)이고, trash를 먼저 하면 draw는 따로 한다(OQ-106) |
 | `royal_delegation` | Royal Delegation (왕실 대표단) | 영향력 증가 | 6 | 4~7 | 각자 선택: Solari 2 → Emperor +1, 또는 패스 |
 | `guild_negotiation` | Guild Negotiation (길드 협상) | 영향력 증가 | 6 | 4~7 | 각자 선택: spice 1 + 손의 카드 1장 버리기 → Spacing Guild +1, 또는 패스 |
 | `covert_assistance` | Covert Assistance (비밀스러운 지원) | 영향력 증가 | 6 | 4~7 | 각자 선택: Spy 1 회수 → Bene Gesserit +1, 또는 패스 |
@@ -162,7 +162,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `political_equilibrium` | Political Equilibrium (정치적 균형) | 영향력 축소 | 6 | 4~7 | 모두 자기 Influence가 가장 높은 Faction에서 −1. 동률이면 그중 하나를 고른다. First Player부터 한 좌석씩 처리한다(Alliance가 오갈 수 있어 순서가 결과를 바꾼다, OQ-071) |
 | `crackdown` | Crackdown (강력 단속) | 영향력 축소 | 6 | 4~7 | 각자 선택: Spy 1 회수, 또는 Emperor −1 |
 | `water_for_spice_smugglers` | Water for Spice Smugglers (밀수업자들에게 물 제공) | 영향력 축소 | 6 | 4~7 | 각자 선택: 물 1 잃기, 또는 Spacing Guild −1 |
-| `bene_gesserit_treachery` | Bene Gesserit Treachery (베네 게세리트의 음모) | 영향력 축소 | 6 | 4~7 | 각자 선택: garrison의 troop 1 잃기, 또는 Bene Gesserit −1 |
+| `bene_gesserit_treachery` | Bene Gesserit Treachery (베네 게세리트의 음모) | 영향력 축소 | 6 | 4~7 | 각자 선택: garrison의 troop 1 잃기, 또는 Bene Gesserit −1. Bloodlines에서는 garrison의 Sardaukar Commander로도 낼 수 있고, 둘 다 있으면 고른다(OQ-105) |
 | `funeral_rites` | Funeral Rites (장례 의식) | 영향력 축소 | 6 | 4~7 | 각자 선택: 손의 카드 1장 trash, 또는 Fremen −1 |
 | `covert_operation` | Covert Operation (작전 변경) | CHOAM 변형 | 10 | 4~7 | 비밀 선택(7절). CHOAM 없을 때 전용 |
 | `covert_operation_choam` | Covert Operation (작전 변경) | CHOAM 변형 | 10 | 4~7 | 비밀 선택(7절). CHOAM 전용 |
@@ -234,6 +234,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
   - 순위가 이기는 자리 수 이내이고 입찰액이 0보다 크면 이긴다. 1위가 동점이면 모두 1위 보상을 받고 2위 보상은 없다. 2위가 여럿 동점이면 모두 2위 보상을 받는다.
   - 이긴 좌석만 입찰액을 낸다. 진 좌석은 내지 않는다(Mercenaries는 예외).
   - 이긴 좌석들의 보상은 순위대로(1위 먼저) 해결하고, 같은 순위끼리는 First Player부터 차례로 해결한다(OQ-073). 앱 영어의 "turn order"는 1위 동점의 괄호에만 있다.
+  - 두 번째 이후 각 승자의 보상 전에 엔진이 멈춘다(project convention, OQ-103·OQ-106): Competitive Study 2위의 Research가 1위의 방향 선택과 한 단계에서 카드를 뽑지 않게. Spies for Hire·CHOAM Negotiations 후반 1위의 Intrigue는 Spy 배치·Contract 뒤의 따로 된 단계다(OQ-106).
 
 | id | 이름 (공식 한국어) | 자리 | 통화 | 1위 | 2위 |
 |---|---|---|---|---|---|
@@ -285,6 +286,10 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 
 ## 11. 구현 상태
 
+- 2026-10-10 OQ-106 셋째 묶음(사용자 판정 "그 외에는 전부 나누자", project convention; codec v142에 함께, 템플릿 변화 없음).
+  - 줄의 보상 하나가 소유자의 선택이었으면(Faction, 선택 trash, Spy 배치, Contract, Research 방향) 그 뒤에 인쇄된 숨은 draw는 줄의 자기 단계로 남아 `scouts_rewards_first`("남은 보상 받기") 하나로 뽑는다: Leverage, Water Discipline, Spies for Hire 후반 1위, CHOAM Negotiations 후반 1위. 비용 칸의 선택(Rotating Doors의 Intrigue trash)은 보상과 한 단위로 남는다.
+  - 봉인 경매의 두 번째 이후 각 승자의 보상 앞에 멈춤(`rules/pauses.py` `SCOUTS_REWARD`): Competitive Study 2위의 Research(두 번째 genetic marker 뒤의 draw, 한 갈래 전진)가 1위의 방향 선택 단계에서 일어나지 않는다.
+  - records bridge `scouts_held_draw`(codec 142 미만), 멈춤은 기존 `pause` bridge.
 - 2026-09-30 AI 좌석(사용자 결정, 설계 D6·4.9절).
   - Scouts 게임에 `checkpoint:`·`search:` 좌석을 앉힐 수 있다. 서버와 대회의 거절을 풀었고, 좌석은 게임의 설정으로 만들어져 정책 head가 Scouts 카탈로그로 옮겨진다(Epic 병합의 룰셋 재지정). 비밀 선택·봉인 입찰·뒷면 카드는 7·8절대로 `known_card_seats`에 있어 탐색 좌석의 재추첨이 섞는다.
   - 합법 행동이 전부 체크포인트가 학습하지 않은 템플릿인 결정(Scouts 없이 학습한 파일에게는 입찰·호가·비밀 선택·임무 참여·소위원회 가입·이벤트 줄 대부분)은 에이전트 seed의 heuristic이 답한다. 섞인 결정은 네트워크가 답한다. 규칙 동작은 바뀌지 않는다(엔진·codec·관측 무변경).
@@ -340,7 +345,7 @@ Shadow Warfare의 두 줄은 아이콘이고(화살표 왼쪽이 비용, 오른�
 - 2026-09-28 슬라이스 6a: 5절 임무의 뼈대(`rules/scouts_missions.py`).
   - 공개하면 은행 물품과 뒷면 카드를 놓고(`scouts_goods`, `scouts_goods_cards`), 참여 임무는 First Player부터 좌석마다 참여/패스를 묻는다(frame `scouts_mission`; 참여할 수 없는 좌석은 묻지 않는다, OQ-088).
   - 세워 둔 troop은 `PlayerState.troops_parked`로 12개 보존에 든다(`scouts_parked`가 위치를 적는다).
-  - Agent가 그 칸을 방문하면 그 좌석의 조각을 받는 것이 방문 효과 하나로 붙는다(`scouts_collect_mission`, Bloodlines Commander 선례). Security Detail·Weirding Warfare·Send for Aid의 troop은 Conflict로, Fedaykin Assistance의 troop은 이번 turn에 recruit한 troop으로 garrison에, Coordinate With The Emperor의 specimen은 garrison으로 간다(OQ-077). Imperial Reserve는 둘 중 하나를 고른다(OQ-078). Prison Planet은 garrison troop 1을 잃고 지배 마커와 spice 2를 둔다; 마커는 지배 칸과 합쳐 3개를 넘지 않고, 그 좌석이 Conflict 보상으로 세 번째 칸을 지배하게 되면 마커를 가져다 쓰고 spice는 은행으로 돌아간다(`scouts_prison_marker_taken`). CHOAM Research의 뒷면 카드가 Bloodlines의 Immediate이고 방문자에게 Intrigue가 없으면 다음 장을 받는다(OQ-090).
+  - Agent가 그 칸을 방문하면 그 좌석의 조각을 받는 것이 방문 효과 하나로 붙는다(`scouts_collect_mission`, Bloodlines Commander 선례). Security Detail·Weirding Warfare·Send for Aid의 troop은 Conflict로, Fedaykin Assistance의 troop은 이번 turn에 recruit한 troop으로 garrison에, Coordinate With The Emperor의 specimen은 garrison으로 간다(OQ-077). Imperial Reserve는 둘 중 하나를 고른다(OQ-078). Prison Planet은 garrison troop 1(또는 Bloodlines의 garrison Commander 1, OQ-105)을 잃고 지배 마커와 spice 2를 둔다; 마커는 지배 칸과 합쳐 3개를 넘지 않고, 그 좌석이 Conflict 보상으로 세 번째 칸을 지배하게 되면 마커를 가져다 쓰고 spice는 은행으로 돌아간다(`scouts_prison_marker_taken`). CHOAM Research의 뒷면 카드가 Bloodlines의 Immediate이고 방문자에게 Intrigue가 없으면 다음 장을 받는다(OQ-090).
   - CHOAM Research의 Contract 2장과 Emperor's Schemes의 Intrigue 2장은 뒷면이다: 누구도 모르며(`known_card_seats`), 탐색 AI의 재추첨과 비공개 검사에서 bank·덱과 함께 섞이고, 카드 보존 검사에 든다. 방문마다 1장씩 받는다.
   - 관측 v23(임무별 세워 둔 troop과 물품), codec v116.
   - 남은 것은 슬라이스 6b에서 끝냈다(아래).

@@ -24,6 +24,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
+    DrawIntrigueCards,
+    DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
@@ -789,7 +791,12 @@ def current_intrigue_choice_slot(state: GameState, player: int) -> ChoiceSlot | 
     """
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, player)
-    return _current_slot(frame_context(frame)) if frame is not None else None
+    if frame is None:
+        return None
+    context = frame_context(frame)
+    if _rewards_await_after_slots(context):
+        return None
+    return _current_slot(context)
 
 
 def legal_intrigue_choice_actions(
@@ -802,6 +809,10 @@ def legal_intrigue_choice_actions(
     if frame is None:
         return ()
     context = frame_context(frame)
+    if _rewards_await_after_slots(context):
+        # Every slot is done and the line's card draw waits for its own
+        # step (``_rewards_wait_for_their_step``, OQ-106).
+        return (DomainAction(action_id="resolve_intrigue_rewards", actor=player),)
     slot = _current_slot(context)
     owner = state.players[player]
     actions: list[DomainAction] = []
@@ -1176,6 +1187,17 @@ def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult
         raise RuntimeError("Intrigue rewards resolution requires its choice frame")
     context = frame_context(frame)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
+    if _rewards_await_after_slots(context):
+        # The last slot left the line's draw as its own step (OQ-106): the
+        # rewards apply now and the card finishes, as the last slot used to.
+        return finish_intrigue_play(
+            state.pop_decision(),
+            action.actor,
+            context_str(context, "card_id", owner=_CHOICE_FRAME),
+            _sections(context),
+            f"{source}:rewards",
+            discard=context.get("separate_effect") is not True,
+        )
     # The frame is marked before the rewards apply so a draw that pushes a
     # reshuffle chance frame stacks on the already-updated frame, exactly
     # like the acquisition slot's advance-before-move pattern.
@@ -1546,7 +1568,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     context["slot"] = slot_index + 1
     lifted, pushed = _lift_pushed_frames(frame.frame_id, result.state)
     next_state = replace_top_frame(lifted, with_context(frame, context))
-    if slot_index + 1 < len(_slots(context)):
+    if slot_index + 1 < len(_slots(context)) or _rewards_await_after_slots(context):
         return RuleResult(state=_restack(next_state, pushed), events=result.events)
 
     finished = finish_intrigue_play(
@@ -2352,6 +2374,42 @@ def _sections(context: dict[str, ActionValue]) -> tuple[EffectSection, ...]:
     option = intrigue_card_for_instance(card_id).options[option_index]
     raw = context_str(context, "sections", owner=_CHOICE_FRAME)
     return tuple(option.sections[int(index)] for index in raw.split(",") if index)
+
+
+def _rewards_draw_hidden_cards(sections: tuple[EffectSection, ...]) -> bool:
+    """Whether the sections' automatic rewards draw from a hidden deck."""
+
+    return any(
+        isinstance(reward, DrawPersonalCards | DrawIntrigueCards)
+        for reward in automatic_rewards(sections)
+    )
+
+
+def _rewards_await_after_slots(context: dict[str, ActionValue]) -> bool:
+    """Whether every slot is done and the automatic rewards wait for their step.
+
+    Icons on one Intrigue line are independent effects in the owner's order
+    (OQ-015 (d)), so the rewards may resolve before, between or after the
+    reward slots (``resolve_intrigue_rewards``). When they draw hidden cards
+    and the owner resolved the last reward slot first -- Cunning's and
+    Insider Information's trash before their draw -- the draw stays its own
+    step instead of riding on that slot, so the public choice stays undoable
+    and only the draw closes the undo window (OQ-010): "그 외에는 전부
+    나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
+    폐기하고 싶을 수 있잖아." (user ruling 2026-10-10, OQ-106). Rewards that
+    draw nothing still finish the card with its last slot, and so does a
+    line whose only slots are arrow costs ("discard -> draw"): the cost is
+    paid for that draw, one printed unit [Main pp. 9, 20].
+    """
+
+    sections = _sections(context)
+    slots = _slots(context)
+    return (
+        context.get("rewards_applied") is not True
+        and context_int(context, "slot", owner=_CHOICE_FRAME) >= len(slots)
+        and len(slots) > len(cost_slots(sections))
+        and _rewards_draw_hidden_cards(sections)
+    )
 
 
 def _slots(context: dict[str, ActionValue]) -> tuple[ChoiceSlot, ...]:

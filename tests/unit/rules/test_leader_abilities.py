@@ -65,6 +65,7 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_signet_actions,
     signet_influence_withheld,
 )
+from dune_imperium.rules.owed_draws import apply_owed_draw, legal_owed_draw_actions
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.setup import create_initial_state
 
@@ -1238,7 +1239,13 @@ def test_loyalty_ignores_other_factions_and_leaders() -> None:
     assert other_leader.state.players[0].resources.spice == 0
 
 
-def test_imperial_birthright_draws_an_intrigue_card_on_reaching_two() -> None:
+def test_imperial_birthright_is_the_owners_next_step_in_its_turn() -> None:
+    # "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." [Princess
+    # Irulan card]. Inside the seat's own turn the card is not drawn by the
+    # step that raised the Influence: it is the seat's own step (user ruling
+    # 2026-10-10, OQ-106: "그 외에는 전부 나누자"), the very next one (user
+    # decision 2026-10-10, "가 로 가자": "faction bonuses ... may interrupt
+    # this flow", Message from designer).
     owner = PlayerState(player_id=0, leader_id="princess_irulan")
     state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
 
@@ -1250,24 +1257,49 @@ def test_imperial_birthright_draws_an_intrigue_card_on_reaching_two() -> None:
         event_prefix="test:birthright",
     )
 
-    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
-    assert result.state.intrigue_deck == ()
+    held = result.state.players[0]
+    assert held.intrigue_cards == ()
+    assert result.state.intrigue_deck == ("intrigue:test",)
+    assert [entry[:2] for entry in held.owed_draws] == [
+        ("intrigue", "imperial_birthright")
+    ]
+    (draw,) = legal_owed_draw_actions(result.state, 0)
+    assert draw == DomainAction(action_id="draw_owed_intrigue", actor=0)
+    assert UprisingRulesEngine().legal_actions(result.state, 0) == (draw,)
+    drawn = apply_owed_draw(result.state, draw).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.players[0].owed_draws == ()
+    assert drawn.intrigue_deck == ()
+    assert legal_owed_draw_actions(drawn, 0) == ()
 
 
-def test_imperial_birthright_queues_the_draw_on_an_empty_deck() -> None:
+def test_imperial_birthright_draws_at_once_outside_the_seats_turn() -> None:
+    # Outside the seat's own turn (a Conflict reward) the card is drawn at
+    # once, and an empty deck queues it for the reshuffle as before (OQ-106).
     owner = PlayerState(player_id=0, leader_id="princess_irulan")
-    state = _turn_state(owner)
+    combat = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        decision_stack=(),
+        intrigue_deck=("intrigue:test",),
+    )
 
-    result = gain_faction_influence(
-        state,
+    drawn = gain_faction_influence(
+        combat, 0, Faction.EMPEROR, 2, event_prefix="test:birthright"
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.players[0].owed_draws == ()
+
+    queued = gain_faction_influence(
+        replace(combat, intrigue_deck=()),
         0,
         Faction.EMPEROR,
         2,
         event_prefix="test:birthright:empty",
-    )
-
-    (owed,) = result.state.pending_intrigue_draws
+    ).state
+    (owed,) = queued.pending_intrigue_draws
     assert owed[:2] == (0, 1)
+    assert queued.players[0].owed_draws == ()
 
 
 def test_arrakis_informant_places_a_spy_only_next_to_city_spaces() -> None:
@@ -1398,9 +1430,23 @@ def test_unpredictable_foe_draws_intrigue_with_a_sandworm() -> None:
     context = dict(transition.state.decision_stack[-1].context)
 
     # Unpredictable Foe: one or more sandworms in the Conflict during the
-    # Reveal turn draw one Intrigue card [Muad'Dib card].
-    assert transition.state.players[0].intrigue_cards == ("intrigue:test",)
+    # Reveal turn draw one Intrigue card [Muad'Dib card]. The card waits on
+    # the Reveal's pending gains as his own ``draw_reveal_intrigue`` (OQ-045),
+    # so the Reveal itself stays undoable (user ruling 2026-10-10, OQ-106).
+    assert transition.state.players[0].intrigue_cards == ()
     assert context["leader_intrigue_granted"] is True
+    draw = DomainAction(action_id="draw_reveal_intrigue", actor=0)
+    offered = engine.legal_actions(transition.state, 0)
+    assert draw in offered
+    assert DomainAction(action_id="finish_reveal", actor=0) not in offered
+    drawn = engine.apply(transition.state, draw).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert draw not in engine.legal_actions(drawn, 0)
+    # Granted once per Reveal: no second card comes.
+    assert dict(drawn.decision_stack[-1].context)["leader_intrigue_granted"] is True
+    assert DomainAction(action_id="finish_reveal", actor=0) in (
+        engine.legal_actions(drawn, 0)
+    )
 
 
 def test_unpredictable_foe_stays_quiet_without_sandworms() -> None:
@@ -1474,7 +1520,15 @@ def test_smuggle_spice_pays_staban_for_spied_maker_visits() -> None:
     # Smuggle Spice: another player's Agent on a spied Maker space pays one
     # Spice [Staban Tuek card].
     assert result.state.players[1].resources.spice == 1
-    assert any(event.kind == "leader_ability_spice_gained" for event in result.events)
+    # The log reads this payload as it is: the seat paid, the visited space,
+    # the amount and the visitor. It names no Leader, so panels.js
+    # EVENT_IMPLIED_LEADER names Staban Tuek and Smuggle Spice from the
+    # catalog; the payload stays put (it is in saved games' state hashes).
+    smuggled = [e for e in result.events if e.kind == "leader_ability_spice_gained"]
+    assert [dict(event.payload) for event in smuggled] == [
+        {"player": 1, "space_id": "hagga_basin", "spice": 1, "visitor": 0}
+    ]
+    assert smuggled[0].visible_to is None
 
 
 def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:

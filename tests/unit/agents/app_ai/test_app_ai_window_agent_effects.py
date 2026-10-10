@@ -680,9 +680,19 @@ def _privilege(**changes: Any) -> tuple[GameState, int]:
     return state, seat
 
 
+_PRIVILEGE_DRAW = "resolve_board_effect"
+
+
 def test_imperial_privilege_trashes_a_bad_intrigue() -> None:
+    """The space's draw is its own icon (user ruling 2026-10-10, OQ-027
+    (d)), the app's ``DrawAbility`` at 600: it goes first, then
+    ``ImperialPrivilegeAbility`` trashes the bad Intrigue card or
+    declines."""
+
     held = ("intrigue:buy_access:0", "intrigue:impress:0")
     state, seat = _privilege(intrigue_cards=held)
+    assert _must(state, seat, NO_DEPLOY) == _a(seat, _PRIVILEGE_DRAW, effect="cards")
+    state = _apply(state, seat, _a(seat, _PRIVILEGE_DRAW, effect="cards"))
 
     def bad() -> list[Entity]:
         from dune_imperium.agents.app_ai.catalog import intrigue_entity
@@ -705,24 +715,40 @@ def test_imperial_privilege_recall_uses_get_recall_agent() -> None:
         agents_available=1,
         swordmaster_acquired=True,
     )
-    state = _apply(state, seat, _a(seat, "decline_imperial_privilege_intrigue"))
     patches: Patches = {
         **NO_DEPLOY,
         "recall_agent": lambda agents: agents[1],
         "recall_agent_value": _const(2.0),
     }
-    assert _must(state, seat, patches) == _a(
-        seat, "recall_agent_for_imperial_privilege", space_id="sardaukar"
-    )
+    taken, _ = _drive(state, seat, patches)
+    # The draw at 600 first, then the Intrigue slot and the recall alone.
+    assert _ids(taken) == [
+        "resolve_board_effect:cards",
+        "decline_imperial_privilege_intrigue",
+        "recall_agent_for_imperial_privilege:sardaukar",
+        "finish_agent_turn",
+    ]
 
 
-def test_imperial_privilege_without_a_recall_is_the_draw() -> None:
+def test_imperial_privilege_without_a_recall_is_a_chore() -> None:
+    """No Agent to recall: the confirm has no app question, so it is a
+    chore taken when the app would End Turn, and the draw is the space's
+    ``DrawAbility`` through ``_board_icons`` (user ruling 2026-10-10)."""
+
     state, seat = _privilege()
     state = _apply(state, seat, _a(seat, "decline_imperial_privilege_intrigue"))
-    labels = {
-        s.label: s.stage for s in _sources_with(state, seat, ae._imperial_privilege)
-    }
-    assert labels == {"Imperial Privilege draw": Stage.IMMEDIATE}
+    turn = ae._turn(_run(state, seat))
+    ae._imperial_privilege(turn)
+    assert turn.sources == []
+    assert turn.chores == [_a(seat, "resolve_imperial_privilege_without_recall")]
+    labels = {s.label: s.stage for s in _sources_with(state, seat, ae._board_icons)}
+    assert labels == {"board cards": Stage.IMMEDIATE}
+    taken, _ = _drive(state, seat, NO_DEPLOY)
+    assert _ids(taken) == [
+        "resolve_board_effect:cards",
+        "resolve_imperial_privilege_without_recall",
+        "finish_agent_turn",
+    ]
 
 
 # ---------------------------------------------------------------------------

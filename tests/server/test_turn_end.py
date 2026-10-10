@@ -2625,7 +2625,7 @@ def _reward_marks(manager: GameSessionManager, game_id: str, seat: int) -> list[
 
 
 def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> None:
-    # Seed 70, Immortality, seats 0 and 1 human: seat 0 chooses its optional
+    # Seed 79, Immortality, seats 0 and 1 human: seat 0 chooses its optional
     # Conflict reward while another seat has enough troops in the Conflict
     # for Harvest Cells. Before the engine's pauses, whether seat 0's rows
     # were marked "can't be taken back, send with 확정 ▶" depended on
@@ -2639,15 +2639,23 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
     # card it really holds (the same count either way); also when this is
     # the last round (a seat at the endgame score), which has no Round Start
     # and ran on into the Endgame Intrigue windows (2026-10-08 review).
+    # Seed 79 since 2026-10-10: Cunning's draw after its trash became its own
+    # step (OQ-106), so seed 70's walk no longer meets such a reward choice
+    # (it does on the previous commit's engine); 79 is the first seed after
+    # it whose walk does (round 9, seat 0's reward beside seat 3). Seed 81
+    # since a triggered Intrigue draw waits as the owner's own step (OQ-106):
+    # 79's walk no longer meets one (it does on the previous commit's
+    # engine); 81 is the first seed after it whose walk does (round 9, seat
+    # 1's reward beside seat 2).
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
-        game_seed=70,
+        game_seed=81,
         immortality=True,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(70)
+    rng = random.Random(81)
     compared = 0
     for _ in range(9000):
         if summary["finished"]:

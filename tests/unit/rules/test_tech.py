@@ -392,7 +392,9 @@ def test_a_non_landsraad_visit_offers_no_tile() -> None:
     ("space_id", "printed_key"),
     [
         ("high_council", "high_council"),
-        ("imperial_privilege", "imperial_privilege"),
+        # The written-sentence key and its own card draw (user ruling
+        # 2026-10-10, OQ-027 (d)).
+        ("imperial_privilege", "imperial_privilege,cards"),
         ("swordmaster", "swordmaster"),
     ],
 )
@@ -401,9 +403,9 @@ def test_every_landsraad_visit_offers_acquire_tech(
 ) -> None:
     # "The Ixian Embassy board gives you this option each time you send an
     # Agent to a [Landsraad] board space" [Bloodlines p. 12]; the spaces
-    # whose printed effect is one special key (a first High Council seat,
-    # Imperial Privilege's sentences, the Swordmaster) are Landsraad spaces
-    # too.
+    # whose printed effect is a special key (a first High Council seat,
+    # Imperial Privilege's Intrigue slot and recall beside its card draw,
+    # the Swordmaster) are Landsraad spaces too.
     owner = _owner(
         resources=Resources(solari=10, spice=6, water=2),
         influence=Influence(emperor=2),
@@ -613,10 +615,21 @@ def _end_open_agent_turn(state: GameState) -> GameState:
     # nothing left to resolve (OQ-095 (1)): the owner's Agent-turn frame
     # stays on top with the end offered, and pressing it opens the next
     # unrevealed seat's turn.
+    # A draw a trigger earned in the turn (Steersman Y'rkoon's Hungry for
+    # Spice on a seat built with spice and no turn-start snapshot) is taken
+    # first: it waits as the owner's own step (user ruling 2026-10-10,
+    # OQ-106).
     assert state.decision_stack[-1].kind == "agent_effects"
     owner = _decider(state)
+    engine = UprisingRulesEngine()
+    while draws := [
+        action
+        for action in engine.legal_actions(state, owner)
+        if action.action_id in ("draw_owed_card", "draw_owed_intrigue")
+    ]:
+        state = engine.apply(state, draws[0]).state
     assert DomainAction("finish_agent_turn", owner) in (
-        UprisingRulesEngine().legal_actions(state, owner)
+        engine.legal_actions(state, owner)
     )
     ended: GameState = finish_agent_turn(state)
     return ended
@@ -772,7 +785,10 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     legal = {action.action_id for action in engine.legal_actions(declined.state, 0)}
     assert "recall_conflict_agent_for_imperial_privilege" not in legal
     # With no other Agent the owner confirms the skipped recall (user ruling
-    # 2026-09-30); the card is drawn then (OQ-023).
+    # 2026-09-30); the card is still drawn (OQ-023), by the space's own icon
+    # since the user ruling of 2026-10-10 (OQ-027 (d)), which ``_visit``
+    # resolved with the visit's other automatic icons, so the confirm draws
+    # nothing more.
     assert "resolve_imperial_privilege_without_recall" in legal
     confirmed = engine.apply(
         declined.state,
@@ -782,9 +798,12 @@ def test_servo_into_the_fray_agent_is_not_imperial_privileges_other_agent() -> N
     seat = confirmed.state.players[0]
     assert seat.agent_in_conflict == 1
     assert seat.agents_available == 1
-    assert len(seat.hand) == hand_before + 1
+    assert len(seat.hand) == hand_before
     assert "imperial_privilege_recall_skipped" in {
         event.kind for event in confirmed.events
+    }
+    assert "resolve_board_effect" not in {
+        action.action_id for action in engine.legal_actions(confirmed.state, 0)
     }
 
 
@@ -923,8 +942,9 @@ def test_choam_demands_recall_reward_fizzles_after_its_own_into_the_fray() -> No
 
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     # Plot Course sits where a Signet Ring ability would be but prints none
-    # [Steersman Y'rkoon card] (OQ-062).
-    state = _servo_visit("steersman_y_rkoon")
+    # [Steersman Y'rkoon card] (OQ-062). The spice held at the turn's start
+    # is no gain: no Hungry for Spice card waits in the turn (OQ-106).
+    state = _servo_visit("steersman_y_rkoon", spice_at_turn_start=6)
     result = _purchase_and_resolve(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"
@@ -1434,6 +1454,132 @@ def test_navigation_chamber_offers_a_spice_or_solari_discount_on_placements() ->
     assert placed.players[0].agent_locations == ("high_council",)
 
 
+def test_navigation_chamber_cut_is_mandatory_on_every_costed_space() -> None:
+    """The cut always applies; the full price is never offered (OQ-104).
+
+    Tile face: "Board spaces cost you [1 spice] or [1 Solari] less." -- no
+    "may", no Flip icon, no once-per-round mark. docs/rules/bloodlines.md:
+    "| Navigation Chamber | 5 | Influence 1 선택 | board space 비용이 spice 1
+    또는 Solari 1 줄어든다 |" [Tech tile faces] [Bloodlines p. 7], applied
+    without a choice like the rulebook's "the Tech tile costs him 1 less
+    Spice" [Bloodlines p. 7]; docs/rules/README.md: "원문이 선택 여부를
+    명시하지 않으면 이 문서가 임의로 선택 여부를 만들지 않는다." The FAQ's
+    "Most effects from a board space or card you play are mandatory"
+    [FAQ p. 3] supports this only by analogy (a Tech tile is neither).
+    Spice Refinery's and Gather Support's arrow payments are costs
+    ("cost로 0 또는 1 spice 선택", "cost로 0 또는 2 Solari 선택"
+    [Board Guide pp. 1-2], board-spaces.md), so the cut reaches their
+    option 1; their free option 0 and water costs carry no cut.
+    """
+
+    owner = _tech_owner(
+        "navigation_chamber",
+        hand=starting_deck_instance_ids(0),
+        deck=(),
+        resources=Resources(solari=9, spice=9, water=9),
+        influence=Influence(emperor=3, spacing_guild=3, bene_gesserit=3, fremen=3),
+    )
+    state = _turn_state(owner)
+    placements = [
+        dict(action.arguments)
+        for action in legal_agent_actions(state, 0)
+        if action.action_id == "agent_turn"
+    ]
+    costed = {
+        "sardaukar": "spice",
+        "heighliner": "spice",
+        "espionage": "spice",
+        "shipping": "spice",
+        "high_council": "solari",
+        "imperial_privilege": "solari",
+        "swordmaster": "solari",
+    }
+    cost_options = {"spice_refinery": "spice", "gather_support": "solari"}
+    water = {"desert_tactics", "research_station", "deep_desert", "hagga_basin"}
+    seen = {str(arguments["space_id"]) for arguments in placements}
+    assert set(costed) | set(cost_options) | water <= seen
+    for arguments in placements:
+        space_id = str(arguments["space_id"])
+        discount = arguments.get("discount")
+        if space_id in costed:
+            assert discount == costed[space_id], arguments
+        elif space_id in cost_options:
+            option = arguments["cost_option"]
+            assert discount == (cost_options[space_id] if option == 1 else None), (
+                arguments
+            )
+        else:
+            assert discount is None, arguments
+
+    def placement(space_id: str, **extra: str | int) -> DomainAction:
+        return next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments)["space_id"] == space_id
+            and all(dict(action.arguments).get(k) == v for k, v in extra.items())
+        )
+
+    council = placement("high_council")
+    full_price = DomainAction(
+        action_id="agent_turn",
+        actor=0,
+        arguments=tuple(item for item in council.arguments if item[0] != "discount"),
+    )
+    with pytest.raises(ValueError, match="not a legal Agent turn"):
+        apply_agent_action(state, full_price)
+    paid = apply_agent_action(state, council).state.players[0]
+    assert paid.resources.solari == 9 - 4
+
+    refinery = placement("spice_refinery", cost_option=1)
+    traded = apply_agent_action(state, refinery).state
+    assert traded.players[0].resources.spice == 9
+    assert traded.players[0].spice_spent_turn == 0
+    for board_action in legal_board_effect_actions(traded, 0):
+        traded = resolve_board_effect(traded, board_action).state
+    assert traded.players[0].resources.spice == 9
+    assert traded.players[0].resources.solari == 9 + 4
+
+
+def test_navigation_chamber_offers_both_cuts_on_a_cost_of_spice_and_solari() -> None:
+    """OQ-104 (b), project reading: the printed "or" of "Board spaces cost
+    you [1 spice] or [1 Solari] less." [Tech tile face] is a choice only on a
+    cost holding both resources, where the owner picks which to cut; the full
+    price is still never offered. No 4-player space costs both, so the space
+    here is High Council with a made-up spice-and-Solari cost.
+    """
+
+    from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, ResourceCost
+    from dune_imperium.rules.agent_turn import _actions_for_affordable_costs
+
+    space = replace(
+        BOARD_SPACES_BY_ID["high_council"],
+        cost_options=(ResourceCost(spice=1, solari=5),),
+    )
+    card = starting_deck_instance_ids(0)[0]
+
+    def discounts(*tech_ids: str, resources: Resources) -> list[object]:
+        owner = _tech_owner(
+            *tech_ids,
+            hand=starting_deck_instance_ids(0),
+            deck=(),
+            resources=resources,
+        )
+        state = _turn_state(owner)
+        return [
+            dict(action.arguments).get("discount")
+            for action in _actions_for_affordable_costs(
+                0, card, space, state.players[0], state
+            )
+        ]
+
+    plenty = Resources(solari=9, spice=9)
+    assert discounts("navigation_chamber", resources=plenty) == ["spice", "solari"]
+    assert discounts(resources=plenty) == [None]
+    # Only the spice cut is affordable: the Solari cut is not offered, and
+    # neither is the full price.
+    assert discounts("navigation_chamber", resources=Resources(solari=5)) == ["spice"]
+
+
 def test_servo_receivers_give_the_signet_ring_the_faction_icons() -> None:
     signet = "player:0:starter:signet_ring:0"
     owner = _tech_owner("servo_receivers", hand=(signet,), deck=())
@@ -1754,11 +1900,25 @@ def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
     return owed, deployed.players[player].troops_conflict
 
 
+def _owed_taken(state: GameState, player: int = 0) -> GameState:
+    """Take every triggered draw waiting as the seat's own step (OQ-106)."""
+
+    from dune_imperium.rules.owed_draws import apply_owed_draw
+
+    while state.players[player].owed_draws:
+        state = apply_owed_draw(
+            state, DomainAction(action_id="draw_owed_intrigue", actor=player)
+        ).state
+    return state
+
+
 def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None:
     # "For each Intrigue card you draw or steal during your turn: [troop]
     # Deploy it to the Conflict" [Suspensor Suits Tech tile]; the face limits
     # only the turn (OQ-042 (a)), not which effect draws. Draws that took a
-    # card straight off the Intrigue deck skipped the troop.
+    # card straight off the Intrigue deck skipped the troop. A triggered draw
+    # waits as the seat's own step in its turn (user ruling 2026-10-10,
+    # OQ-106) and counts when it is taken.
     from dune_imperium.content.uprising.board import Faction
     from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
     from dune_imperium.rules.card_trash import trash_personal_card
@@ -1777,6 +1937,8 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     gained = gain_faction_influence(
         bene_gesserit, 0, Faction.BENE_GESSERIT, 1, event_prefix="test"
     ).state
+    assert _owed_and_deployed(gained) == (0, 0)
+    gained = _owed_taken(gained)
     assert len(gained.players[0].intrigue_cards) == 1
     assert _owed_and_deployed(gained) == (1, 1)
 
@@ -1793,7 +1955,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     gained = gain_faction_influence(
         irulan, 0, Faction.EMPEROR, 1, event_prefix="test"
     ).state
-    assert _owed_and_deployed(gained) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(gained)) == (1, 1)
 
     # Sardaukar Soldier: "When this card is trashed: [Intrigue]".
     soldier = "imperium:sardaukar_soldier:0"
@@ -1802,7 +1964,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
         stacks=stacks,
     )
     trashed = trash_personal_card(trashing, 0, soldier, source="test").state
-    assert _owed_and_deployed(trashed) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(trashed)) == (1, 1)
 
     # Overthrow's acquire box draws an Intrigue card.
     overthrow = "imperium:overthrow:0"
@@ -1815,7 +1977,7 @@ def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None
     acquired = acquire_imperium_for_intrigue(
         acquiring, 0, overthrow, to_hand=False, source="test"
     ).result.state
-    assert _owed_and_deployed(acquired) == (1, 1)
+    assert _owed_and_deployed(_owed_taken(acquired)) == (1, 1)
 
     # Spy Network's Reveal: recall one of two placed Spies to draw.
     network = "imperium:spy_network:0"
@@ -2282,15 +2444,25 @@ def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> Non
     from dune_imperium.rules.tech import draw_owed_tech_cards
 
     owner = _tech_owner("choam_transports", "panopticon")
-    # The Immediate tile completes as it is taken [Main p. 16] and owes the
-    # draw, paid once the step settles.
-    completed = receive_contract(owner, "contract:immediate")
+    # The Immediate tile completes as it is taken [Main p. 16]. Outside the
+    # owner's own turn (here a Conflict reward) the card is owed to the
+    # engine's post-step draw.
+    turn = _turn_state(owner, stacks=((), (), ()), config=TECH_CHOAM)
+    combat = replace(turn, phase=GamePhase.COMBAT, decision_stack=())
+    completed = receive_contract(combat, owner, "contract:immediate")
     assert completed.completed_contract_ids == ("contract:immediate",)
     assert completed.tech_cards_owed == 1
-    state = _turn_state(completed, stacks=((), (), ()), config=TECH_CHOAM)
+    assert completed.owed_draws == ()
+    state = replace(combat, players=(completed, *combat.players[1:]))
     drawn = draw_owed_tech_cards(RuleResult(state=state)).state
     assert len(drawn.players[0].hand) == 5 + 1
     assert drawn.players[0].tech_cards_owed == 0
+    # Inside the owner's own turn it is the owner's own step right after
+    # the completion ("can't be deferred", Message from designer; user
+    # decision 2026-10-10, OQ-106), tests/unit/rules/test_owed_draws.py.
+    held = receive_contract(turn, owner, "contract:immediate")
+    assert held.tech_cards_owed == 0
+    assert [entry[:2] for entry in held.owed_draws] == [("card", "choam_transports")]
 
     def endgame(contracts: int) -> RuleResult:
         seat = replace(
@@ -2842,9 +3014,28 @@ def test_reverse_engineering_takes_spice_or_trades_a_tile_for_cards() -> None:
     seat = traded.players[0]
     assert seat.tech_ids == ()
     assert traded.tech_trash == ("glowglobes",)
-    # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
-    assert len(seat.intrigue_cards) == 1
-    assert len(seat.hand) == 1
+    # The tile is the arrow's cost; the Intrigue card and the card wait for
+    # their own steps in either order (user ruling 2026-10-10, OQ-106), and
+    # the turn cannot end before both.
+    assert seat.intrigue_cards == () and seat.hand == ()
+    rewards = legal_leader_signet_actions(traded, 0)
+    assert rewards == (
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "intrigue"),)),
+        DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),)),
+    )
+    engine = UprisingRulesEngine()
+    legal = engine.legal_actions(traded, 0)
+    assert set(rewards) <= set(legal)
+    assert DomainAction("finish_agent_turn", 0) not in legal
+    for order in (rewards, tuple(reversed(rewards))):
+        working = traded
+        for reward in order:
+            working = engine.apply(working, reward).state
+        seat = working.players[0]
+        # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
+        assert len(seat.intrigue_cards) == 1
+        assert len(seat.hand) == 1
+        assert not set(rewards) & set(engine.legal_actions(working, 0))
 
 
 def test_kota_actions_round_trip_in_the_tech_catalog() -> None:

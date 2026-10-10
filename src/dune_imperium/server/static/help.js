@@ -92,7 +92,7 @@ function announceTurn(summary) {
 /* What the seat panel draws that no rulebook icon explains: how to draw
    the mark, and what it means (a phrase template). */
 const HELP_SEAT_MARKS = [
-  [() => commanderChip(2, "{garrison}"), "help.seat_mark_commander"],
+  [() => commanderStatIcon(phraseText("{commander}")), "help.seat_mark_commander"],
   [() => firstPlayerMark(), "help.seat_mark_first_player"],
 ];
 

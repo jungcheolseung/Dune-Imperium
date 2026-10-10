@@ -507,6 +507,49 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
     assert not leaks, "; ".join(leaks[:40])
 
 
+_IMPERIAL_PRIVILEGE_STEPS = (
+    "recall_agent_for_imperial_privilege",
+    "recall_conflict_agent_for_imperial_privilege",
+    "resolve_imperial_privilege_without_recall",
+)
+
+
+def test_imperial_privilege_recall_labels_name_only_the_recall() -> None:
+    """The recall and its skip confirmation say nothing of a card draw.
+
+    "4번은 소환과 뽑기가 당연히 두 단계로 나눠야지. 이건 정말 기본적인
+    원칙인데" (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
+    recall only recalls and its draw is the space's own ``cards`` icon
+    (``resolve_board_effect``), so the recall button, the Into the Fray
+    recall and the confirm with no Agent to recall name the recall alone,
+    in both languages. Before the split the recall also drew the card, so
+    its label named the draw and render.js kept a recall-only text for its
+    greyed-out row (``UNAVAILABLE_ROW_TEXT``); the plain label serves that
+    row again.
+    """
+    korean = _korean_tables()["ACTION_LABELS"]
+    english = _json_const("LABELS_EN", "labels_en.js")["ACTION_LABELS"]
+    for action_id in _IMPERIAL_PRIVILEGE_STEPS:
+        for table in (korean, english):
+            assert "{draw}" not in table[action_id], (action_id, table[action_id])
+            assert "{agent}" in table[action_id], (action_id, table[action_id])
+    assert korean["recall_agent_for_imperial_privilege"] == (
+        "{agent} 소환 (Imperial Privilege)"
+    )
+    assert english["recall_agent_for_imperial_privilege"] == (
+        "Recall {agent} (Imperial Privilege)"
+    )
+    # The confirm reads like its Contract sibling's.
+    assert korean["resolve_imperial_privilege_without_recall"] == (
+        "{agent} 소환 없이 확인 (Imperial Privilege)"
+    )
+    assert english["resolve_imperial_privilege_without_recall"] == (
+        "Confirm without recalling {agent} (Imperial Privilege)"
+    )
+    assert "render.unavailable_imperial_privilege_recall" not in _ui_text()
+    assert "UNAVAILABLE_ROW_TEXT" not in (_STATIC / "render.js").read_text()
+
+
 def test_every_label_table_switches_language() -> None:
     """A table left out of ``LABEL_TABLES`` stays Korean in English.
 
@@ -614,6 +657,22 @@ def test_static_page_keys_exist_and_match_the_korean() -> None:
     }
     unmarked = [text for text in leftover if text not in marked]
     assert not unmarked, f"Korean text in index.html without data-i18n: {unmarked[:8]}"
+
+
+def test_the_seat_shuffle_box_is_no_rule_option() -> None:
+    # The box that shuffles the configured seats (server/seating.py) is a
+    # table convention, not a rule: docs/rules does not seat players and the
+    # First Player comes from the Objective deal [Main p. 5]. It sits with
+    # the seats, outside the rule options the setup summary counts, and
+    # speaks both languages.
+    table = _ui_text()
+    for key in ("html.opt_shuffle_seats", "html.shuffle_seats_note"):
+        assert table[key]["ko"] and table[key]["en"], key
+    html = (_STATIC / "index.html").read_text()
+    seats = html.index('<fieldset class="setup-seats">')
+    box = html.index('id="opt-shuffle-seats"')
+    rules = html.index('<fieldset class="setup-rules">')
+    assert seats < box < rules
 
 
 def _prompts() -> set[str]:

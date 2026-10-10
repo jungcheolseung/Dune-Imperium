@@ -33,6 +33,9 @@
         <fieldset class="setup-seats">
           <legend data-i18n="html.seat_assignment_legend">플레이어 배정</legend>
           <div id="seat-selects"></div>
+          <label id="opt-shuffle-seats-row"><input type="checkbox" id="opt-shuffle-seats">
+            <span data-i18n="html.opt_shuffle_seats">자리 무작위 배치</span></label>
+          <p id="opt-shuffle-seats-note" class="muted" hidden data-i18n="html.shuffle_seats_note">시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.</p>
           <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (플레이어 유형에서 "학습 체크포인트"를 고르면 사용; train extra 필요)</span>
             <input type="text" id="opt-checkpoint" placeholder="checkpoints/2026-09-06/champion_iter200.pt"></label>
           <p id="opt-search-note" class="muted" hidden data-i18n="html.search_ai_note">탐색 AI는 학습한 망으로 몇 수 앞을 두어 보고 고릅니다. 한 결정에 보통 1–3초 걸리고, 생각하는 동안에도 화면은 움직입니다.</p>

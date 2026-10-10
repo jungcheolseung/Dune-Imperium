@@ -550,6 +550,55 @@ def test_piter_loses_the_troop_the_app_names() -> None:
     assert t.declines == [_a(seat, "decline_agent_card_payment")]
 
 
+def test_piter_rewards_follow_the_lost_troop() -> None:
+    """After the lost troop, Piter's "draw two cards and Research" are two
+    armed icons, each its own ``resolve_agent_card_effect`` (user ruling
+    2026-10-10, OQ-106): the rest of the app answer, follow-ups."""
+
+    state, seat, _ref, _ = _place(PROMO_IMM, "piter_genius_advisor")
+    state = _apply(state, seat, _a(seat, "lose_agent_card_troop", zone="garrison"))
+    t = _turn(state, seat)
+    for effect in ("cards", "research"):
+        source = _source(t, f"piter_genius_advisor {effect}")
+        assert source.stage is Stage.COST_FIRST
+        assert source.actions == (
+            _a(seat, "resolve_agent_card_effect", effect=effect),
+        )
+
+
+PROMO_IMM_BLOODLINES = RulesetConfig(
+    choam_module=False, promo_cards=True, immortality=True, bloodlines=True
+)
+
+
+@pytest.mark.parametrize(
+    ("troops", "commanders", "expected"),
+    [
+        (1, 1, (("zone", "garrison"),)),
+        (0, 1, (("commanders", 1), ("zone", "garrison"))),
+    ],
+)
+def test_piter_pays_a_garrison_troop_before_a_commander(
+    troops: int, commanders: int, expected: tuple[tuple[str, object], ...]
+) -> None:
+    """A Sardaukar Commander may pay Piter's troop (OQ-105, user ruling
+    2026-10-10; D1): in a zone the app names, the troop goes before the
+    Commander (D14), the order the engine lists them in."""
+
+    state, seat, _ref, _ = _place(
+        PROMO_IMM_BLOODLINES,
+        "piter_genius_advisor",
+        troops_garrison=troops,
+        troops_conflict=0,
+        troops_supply=12 - troops,
+        commanders_garrison=commanders,
+    )
+    t = _turn(state, seat, {"research_value": lambda: _summer(5.0)})
+    value, action = _evaluate(_source(t, "Piter"))
+    assert value > 0
+    assert action is not None and action.arguments == expected
+
+
 def test_stitched_horror_answers_two_rewards_over_two_decisions() -> None:
     state, seat, ref, _ = _place(IMM, "stitched_horror", partner="dagger")
     pinned = {

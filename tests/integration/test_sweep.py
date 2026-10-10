@@ -585,10 +585,15 @@ def test_coverage_census_records_expansion_components() -> None:
     # effect that can change something; codec v138): seed 62's game no
     # longer acquires a Tleilaxu card, and 63 is the first after it that
     # takes all three.
+    # Re-derived 2026-10-10 for Urgent Shigawire's draw as its own step
+    # (OQ-106; seed 63's game plays a boosted card): seed 63's game no longer
+    # acquires a Tleilaxu card (it does again with the placement drawing, a
+    # scratch copy of the previous commit), and 66 is the first after it
+    # that takes all three.
     report = run_checked_game(
         RulesetConfig(bloodlines=True, tech_module=True, immortality=True),
-        game_seed=63,
-        policy_seed=700063,
+        game_seed=66,
+        policy_seed=700066,
         privacy_interval=0,
         verify_replay=False,
         collect_coverage=True,

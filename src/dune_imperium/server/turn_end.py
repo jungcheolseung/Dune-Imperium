@@ -28,7 +28,8 @@ unit's steps back. So a held unit end comes before the chance outcomes that
 follow the unit (the next Arrakeen Scouts card, a reshuffle, and the
 engine's pauses before a reveal: before each Conflict reward recipient
 after the first, before every Round Start after the first, after a Control
-defense, rules/pauses.py): those reveal hidden information or stand right
+defense, before each Arrakeen Scouts auction winner's reward after the
+first, rules/pauses.py): those reveal hidden information or stand right
 before it, the reveal closes the undo window (OQ-010), and a press after
 it would confirm nothing ("전투 보상으로 받은 스파이 둘 위치를 골랐다가 …
 확정 전에 다른 곳에 두고 싶을 수 있잖아", user, 2026-10-08). A chance
@@ -46,7 +47,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_agent_turn_finish_actions,
 )
 from dune_imperium.rules.effects import agent_turn_has_other_pending_effects
-from dune_imperium.rules.frames import FrameKind, owes_track_spy
+from dune_imperium.rules.frames import FrameKind, owes_held_draw, owes_track_spy
 
 # Engine actions whose whole meaning is "I am done": pressing one is the
 # seat's turn end itself, so no second press follows it.
@@ -265,12 +266,14 @@ def agent_turn_end_ready(state: GameState) -> int | None:
 
     The seat may still take optional steps (a Plot Intrigue, a deployment,
     a specimen return) before its one press. Read from public facts only --
-    the effect frame's pending flags, the Contracts it must complete and an
+    the effect frame's pending flags, the Contracts it must complete, an
     Emperor track Spy still owed (placed before the turn ends, user ruling
-    2026-10-04) -- so every seat may be told. A box that keeps only icons
-    whose conditions are false is ready too (``_only_blocked_icons_wait``);
-    a stalled single-effect Agent box (OQ-057), whose judgment can depend
-    on the owner's hand, counts as not ready here.
+    2026-10-04) and a triggered draw still waiting (taken before the turn
+    ends, user ruling 2026-10-10, OQ-106) -- so every seat may be told. A
+    box that keeps only icons whose conditions are false is ready too
+    (``_only_blocked_icons_wait``); a stalled single-effect Agent box
+    (OQ-057), whose judgment can depend on the owner's hand, counts as not
+    ready here.
     """
 
     if not state.decision_stack:
@@ -288,6 +291,6 @@ def agent_turn_end_ready(state: GameState) -> int | None:
         context, state.players
     ) and not _only_blocked_icons_wait(state, context, owner):
         return None
-    if owes_track_spy(state, owner):
+    if owes_track_spy(state, owner) or owes_held_draw(state, owner):
         return None
     return owner

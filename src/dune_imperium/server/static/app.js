@@ -33,6 +33,9 @@ async function init() {
   state.server = await api("/whoami");
   /* The host of a remote game plays too and must not know the seed. */
   el("opt-seed-row").hidden = isRemote();
+  /* The server's default (its --seating); the box keeps what is chosen
+     after that, a language switch included. */
+  el("opt-shuffle-seats").checked = state.server.seating === "random";
   buildSeatSelects();
   el("open-help").addEventListener("click", () => openHelp());
   el("language-toggle").addEventListener("click", () =>

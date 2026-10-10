@@ -18,9 +18,12 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
+    OWED_INTRIGUE,
     FrameKind,
     context_int,
     context_str,
+    draw_waits_for_owner,
+    hold_draw,
     replace_player,
     top_frame_of_kind,
     turn_owner_of,
@@ -218,6 +221,40 @@ def draw_or_queue_intrigue_cards(
         ),
     )
     return RuleResult(state=queued, events=drawn_now.events)
+
+
+def draw_or_hold_intrigue_cards(
+    state: GameState,
+    player: int,
+    count: int,
+    *,
+    origin: str,
+    source: str,
+) -> RuleResult:
+    """Draw Intrigue a trigger earned, or hold it as the owner's own step.
+
+    Inside the seat's own Agent or Reveal turn each card waits in
+    ``PlayerState.owed_draws`` for ``draw_owed_intrigue`` (user ruling
+    2026-10-10, OQ-106, ``draw_waits_for_owner``); anywhere else it is drawn
+    now, the shortfall queued for the dispatcher as before
+    (``draw_or_queue_intrigue_cards``). ``origin`` names the printed effect.
+    """
+
+    if not draw_waits_for_owner(state, player):
+        return draw_or_queue_intrigue_cards(state, player, count, source=source)
+    if count < 1:
+        raise ValueError("Intrigue draw count must be positive")
+    owner = state.players[player]
+    for index in range(count):
+        owner = hold_draw(
+            owner,
+            OWED_INTRIGUE,
+            origin,
+            source if count == 1 else f"{source}:{index}",
+        )
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, owner))
+    )
 
 
 def intrigue_draw_is_queued(state: GameState) -> bool:

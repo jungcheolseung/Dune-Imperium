@@ -573,6 +573,51 @@ def test_mission_top_up_then_joins_the_troop_way() -> None:
     assert key not in run.memory.intents
 
 
+def _garrison(state: GameState, troops: int, commanders: int) -> GameState:
+    me = state.players[ME]
+    return _me(
+        state,
+        troops_garrison=troops,
+        troops_supply=me.troops_supply + me.troops_garrison - troops,
+        commanders_garrison=commanders,
+    )
+
+
+@pytest.mark.parametrize(
+    ("troops", "commanders", "target"),
+    [(2, 1, ""), (0, 1, "commander"), (2, 0, "")],
+)
+def test_prison_planet_pays_a_troop_before_a_commander(
+    troops: int, commanders: int, target: str
+) -> None:
+    """A garrison Sardaukar Commander may pay Prison Planet's troop (OQ-105,
+    user ruling 2026-10-10); the app names no unit, so the troop goes first
+    (D14) and the Commander way is taken only without one."""
+
+    state = _garrison(_base(), troops, commanders)
+    state = offer_mission_join(state, ME, "prison_planet", source=SOURCE).state
+    run = _run(state)
+    offered = {str(_arg(a, "target")) for a in run.by_id("scouts_join_mission")}
+    assert offered == {t for t, n in (("", troops), ("commander", commanders)) if n}
+    run.profile.scouts_line_value = lambda *_a, **_k: Summer(50.0)  # type: ignore[method-assign]
+    action = W.scouts_mission(run)
+    assert action is not None and action.action_id == "scouts_join_mission"
+    assert _arg(action, "target") == target
+
+
+def test_garrison_loss_pays_a_troop_before_a_commander() -> None:
+    """Bene Gesserit Treachery's garrison troop with a troop and a Sardaukar
+    Commander in the garrison: the seat picks (OQ-105); the app's
+    ``LoseGarrisonTroopsCostAbility`` names no unit, so the troop goes first
+    (D14)."""
+
+    state = _effect(_garrison(_base(), 2, 1), "bene_gesserit_treachery", 0)
+    run = _run(state)
+    assert [a.arguments for a in run.legal] == [(), (("commanders", 1),)]
+    action = _decide(state)
+    assert action == _act("scouts_lose_garrison_unit")
+
+
 # ---------------------------------------------------------------------------
 # scouts_secret, scouts_bid (§3.6, §3.7)
 # ---------------------------------------------------------------------------

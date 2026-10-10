@@ -10,25 +10,37 @@ the rules execute.
 
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
+from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import scouts_action_text
 from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
 )
+from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
 )
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
+from dune_imperium.rules.owed_draws import next_owed_draw
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
 _BOX = PersonalCardAgentEffect
+# The card whose added Agent-box draw ``resolves_boost_draw`` names, by its
+# Korean print in Korean text (``names_ko``).
+_SHIGAWIRE = "Urgent Shigawire"
+# Piter, Genius Advisor's reward icons, armed after its troop cost (OQ-106):
+# its card draw draws two and its Research generates no specimen.
+_PITER = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+_SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
 
 # Printed conditions of the multi-icon Agent boxes, judged when the icon
 # resolves (OQ-027); shown after the icon's effect.
@@ -182,7 +194,7 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
 
     match key:
         case "cards" | "cards_second":
-            base = "Draw 1 card"
+            base = "Draw 2 cards" if effect is _PITER else "Draw 1 card"
         case "intrigue":
             base = "Draw 1 Intrigue card"
         case "troops":
@@ -205,7 +217,7 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "water":
             base = "Gain 1 water"
         case "research":
-            base = "Research, Generate 1 specimen"
+            base = "Research" if effect is _PITER else "Research, Generate 1 specimen"
         case "return_self":
             base = "Return this card from play to your hand"
         case "trash_self":
@@ -243,7 +255,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
 
     match key:
         case "cards" | "cards_second":
-            base = "{draw:1}"
+            base = "{draw:2}" if effect is _PITER else "{draw:1}"
         case "intrigue":
             base = "{intrigue:1}"
         case "troops":
@@ -264,7 +276,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
             base = "{water:1}"
         case "research":
             # tokens_ko.py's words for Industrial Espionage's line.
-            base = "{research}, 표본 1개 생성"
+            base = "{research}" if effect is _PITER else "{research}, 표본 1개 생성"
         case "return_self":
             # tokens_ko.py's words for Stillsuit Manufacturer's return.
             base = "{in_play}에서 이 카드를 핸드로 되돌림"
@@ -331,6 +343,58 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
             raise ValueError(f"unknown Tech acquire effect: {effect}")
 
 
+# Where a triggered draw held as the owner's own step came from
+# (``PlayerState.owed_draws``, user ruling 2026-10-10, OQ-106): English and
+# Korean. Cards (``card:<instance>`` for a "when trashed" trigger,
+# ``acquire:<instance>`` for an acquire box) are named from the catalog, a
+# Tech tile by its catalog name; Leader abilities keep their printed English
+# name.
+_CHOAM_TRANSPORTS = TECH_TILES_BY_ID["choam_transports"].name
+_OWED_ORIGINS: dict[str, tuple[str, str]] = {
+    "bene_gesserit_4": (
+        "Bene Gesserit Influence 4",
+        "{influence_bene_gesserit} 4",
+    ),
+    "imperial_birthright": ("Imperial Birthright", "Imperial Birthright"),
+    "tleilaxu_track": ("Tleilaxu track", "{tleilaxu} 트랙"),
+    "hungry_for_spice": ("Hungry for Spice", "Hungry for Spice"),
+    "choam_transports": (
+        _CHOAM_TRANSPORTS,
+        KOREAN_CARD_NAMES["tech"].get("choam_transports", _CHOAM_TRANSPORTS),
+    ),
+}
+_OWED_DECKS = {"draw_owed_intrigue": "intrigue", "draw_owed_card": "card"}
+
+
+def owed_draw_origin_text(origin: str) -> tuple[str, str]:
+    """English and Korean name of a held draw's printed origin (OQ-106)."""
+
+    if origin in _OWED_ORIGINS:
+        return _OWED_ORIGINS[origin]
+    kind, _, key = origin.partition(":")
+    if kind in ("card", "acquire"):
+        card = imperium_card_for_instance(key).card
+        return card.name, KOREAN_CARD_NAMES["cards"].get(card.card_id, card.name)
+    return origin, origin
+
+
+def owed_draw_action_text(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """Name what earned the draw a ``draw_owed_*`` step takes (OQ-106).
+
+    The step takes the deck's oldest immediate draw if one waits, else its
+    oldest (``owed_draws.next_owed_draw``), so that one is named.
+    """
+
+    deck = _OWED_DECKS.get(action.action_id)
+    if deck is None or not 0 <= action.actor < len(state.players):
+        return None
+    owner = state.players[action.actor]
+    index = next_owed_draw(owner, deck)
+    return None if index is None else owed_draw_origin_text(owner.owed_draws[index][1])
+
+
 def intrigue_faction_choice_text(
     state: GameState, action: DomainAction
 ) -> tuple[str, str] | None:
@@ -360,6 +424,9 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     faction = intrigue_faction_choice_text(state, action)
     if faction is not None:
         return faction[0]
+    owed = owed_draw_action_text(state, action)
+    if owed is not None:
+        return owed[0]
     tech = tech_acquire_action_text(action)
     if tech is not None:
         return tech[0]
@@ -378,6 +445,9 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
         return reveal_choice_prompt(PersonalCardRevealChoiceEffect(key))
     if action.action_id != "resolve_agent_card_effect":
         return None
+    if _servo_signet_frame(state):
+        # Reverse Engineering's reward icon in a Servo-Receivers frame.
+        return agent_card_icon_text(_BOX.LEADER_SIGNET, key)
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
@@ -385,9 +455,21 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or not card_id:
         return None
+    if resolves_boost_draw(state, action):
+        # Urgent Shigawire's draw added to the boosted card's box (OQ-106).
+        return f"{agent_card_icon_text(None, key)} ({_SHIGAWIRE})"
     # The box resolving, a Ghola's borrowed one included, as the engine's
     # own icon actions read it (``legal_agent_card_icon_actions``).
     return agent_card_icon_text(active_agent_card(context).agent_effect, key)
+
+
+def _servo_signet_frame(state: GameState) -> bool:
+    """Whether a Servo-Receivers ``leader_signet`` frame is deciding (its
+    Signet Ring ability has no Agent box, OQ-062)."""
+
+    return bool(state.decision_stack) and (
+        state.decision_stack[-1].kind == FrameKind.LEADER_SIGNET
+    )
 
 
 def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
@@ -406,6 +488,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     faction = intrigue_faction_choice_text(state, action)
     if faction is not None:
         return faction[1]
+    owed = owed_draw_action_text(state, action)
+    if owed is not None:
+        return owed[1]
     tech = tech_acquire_action_text(action)
     if tech is not None:
         return tech[1]
@@ -422,6 +507,8 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
         return board_effect_action_text_ko(state, action)
     if action.action_id != "resolve_agent_card_effect":
         return None
+    if _servo_signet_frame(state):
+        return agent_card_icon_text_ko(_BOX.LEADER_SIGNET, key)
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
@@ -429,4 +516,6 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or not card_id:
         return None
+    if resolves_boost_draw(state, action):
+        return f"{agent_card_icon_text_ko(None, key)} ({_SHIGAWIRE_KO})"
     return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)

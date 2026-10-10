@@ -414,8 +414,8 @@ const UI_TEXT = {
     "en": "Icons"
   },
   "help.seat_mark_commander": {
-    "ko": "{commander} — {garrison}·{conflict}·{supply}에 있는 수",
-    "en": "{commander} — count at {garrison} · {conflict} · {supply}"
+    "ko": "{supply}에 있는 {commander} 수 ({garrison}·{conflict}에 있는 것은 보드에 그려짐)",
+    "en": "{commander} count in {supply} (those in the {garrison} or the {conflict} are drawn on the board)"
   },
   "help.seat_mark_first_player": {
     "ko": "{first_player}",
@@ -581,6 +581,14 @@ const UI_TEXT = {
     "ko": "프로모 카드 (봉기 3장: 아라키스 반란, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 무자비한 리더십, 불멸을 켜면 틀레이락스 덱에 천재적인 조언자, 파이터도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
   },
+  "html.opt_shuffle_seats": {
+    "ko": "자리 무작위 배치",
+    "en": "Random seating"
+  },
+  "html.shuffle_seats_note": {
+    "ko": "시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.",
+    "en": "Shuffles the configured players' seats (turn order and colour) when the game starts."
+  },
   "html.opt_seed_label": {
     "ko": "시드 (빈칸 = 무작위)",
     "en": "Seed (blank = random)"
@@ -705,10 +713,6 @@ const UI_TEXT = {
     "ko": "의자개: {reveal_turn} 시작 때 {hand}로 {{cards}}",
     "en": "Chairdog: returns to {hand} at the start of {reveal_turn} — {{cards}}"
   },
-  "panels.commander_where": {
-    "ko": "{{where}}의 {commander} {{count}}",
-    "en": "{{where}} {commander} {{count}}"
-  },
   "panels.completed_suffix": {
     "ko": " (완료)",
     "en": " (completed)"
@@ -725,6 +729,18 @@ const UI_TEXT = {
     "ko": "덱 맨 위",
     "en": "Top of deck"
   },
+  "panels.deck_top_put_back": {
+    "ko": "{deck} 맨 위 카드({{card}}) 그대로 두기",
+    "en": "Leave top card of {deck} ({{card}}) on top"
+  },
+  "panels.deck_top_discard": {
+    "ko": "{deck} 맨 위 카드({{card}}) {discard}",
+    "en": "{discard} top card of {deck} ({{card}})"
+  },
+  "panels.deck_top_draw": {
+    "ko": "{solari} 1 지불 → {deck} 맨 위 카드({{card}}) {draw}",
+    "en": "Pay 1 {solari} -> {draw} top card of {deck} ({{card}})"
+  },
   "panels.deck_list_note": {
     "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
     "en": "Shown by name, not in draw order."
@@ -732,6 +748,22 @@ const UI_TEXT = {
   "panels.deck_view": {
     "ko": "{deck} 구성 보기 (순서 비공개)",
     "en": "View {deck} contents (order hidden)"
+  },
+  "panels.deck_view_top": {
+    "ko": "{deck} 구성 보기 (순서 비공개, 맨 위 카드 표시)",
+    "en": "View {deck} contents (order hidden, top card marked)"
+  },
+  "panels.deck_list_top_badge": {
+    "ko": "맨 위",
+    "en": "Top"
+  },
+  "panels.deck_list_top_title": {
+    "ko": "{deck} 맨 위 카드",
+    "en": "top card of the {deck}"
+  },
+  "panels.deck_list_top_note": {
+    "ko": "맨 위로 표시한 카드는 {{source}} 효과로 확인한 {deck} 맨 위 카드입니다.",
+    "en": "The card marked Top is the top card of the {deck}, seen through {{source}}."
   },
   "panels.my_deck": {
     "ko": "내 {deck} · {{count}}장 (순서 비공개)",
@@ -836,6 +868,18 @@ const UI_TEXT = {
   "panels.neutral_default": {
     "ko": "게임 진행",
     "en": "Game in progress"
+  },
+  "panels.neutral_leader_ability": {
+    "ko": "{leader} 능력",
+    "en": "{leader} ability"
+  },
+  "panels.log_leader_ability_spice_gained": {
+    "ko": "{{ability}}({{leader}})로 {spice} 획득",
+    "en": "{spice} Gained from {{ability}} ({{leader}})"
+  },
+  "panels.log_bonus_spice_taken": {
+    "ko": "보너스 {spice} {{count}} 가져와 획득",
+    "en": "Took {{count}} bonus {spice} and gained it"
   },
   "panels.neutral_round_started": {
     "ko": "라운드 {{round}} 시작",
@@ -1056,6 +1100,10 @@ const UI_TEXT = {
   "panels.supply_spy": {
     "ko": "{supply}의 {spy}",
     "en": "{spy} in {supply}"
+  },
+  "panels.supply_commander": {
+    "ko": "{supply}의 {commander}",
+    "en": "{commander} in {supply}"
   },
   "panels.tactics_space": {
     "ko": "전술 트랙 {{space}}칸",
@@ -1316,6 +1364,18 @@ const UI_TEXT = {
   "render.shared_deck_order_title": {
     "ko": "공용 덱 순서",
     "en": "Shared deck order"
+  },
+  "render.scouts_decision_item": {
+    "ko": "아라킨 스카웃 · {{kind}} · {{name}}",
+    "en": "Arrakeen Scouts · {{kind}} · {{name}}"
+  },
+  "render.scouts_decision_secrets": {
+    "ko": "아라킨 스카웃 · 비밀 선택 공개",
+    "en": "Arrakeen Scouts · Secret picks revealed"
+  },
+  "render.scouts_decision_secret_item": {
+    "ko": "아라킨 스카웃 · 비밀 선택 공개 · {{name}}",
+    "en": "Arrakeen Scouts · Secret picks revealed · {{name}}"
   },
   "render.scouts_joined_by": {
     "ko": "{{player}} 가입",
@@ -1816,10 +1876,6 @@ const UI_TEXT = {
   "turn.multiple_choices": {
     "ko": "{{name}}: 선택지가 {{count}}개입니다. 오른쪽 행동 목록에서 고르세요.",
     "en": "{{name}}: {{count}} choices available. Choose from the action list on the right."
-  },
-  "turn.no_discount": {
-    "ko": "할인 없이",
-    "en": "No discount"
   },
   "turn.no_route": {
     "ko": "{{from}} → {{to}}: 갈 수 없습니다.",

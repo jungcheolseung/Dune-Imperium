@@ -89,9 +89,11 @@ The space:
 - ``trash_intrigue_for_imperial_privilege(card)`` /
   ``decline_imperial_privilege_intrigue``: ``ImperialPrivilegeAbility`` (O);
   card -> trash, unused -> decline.
-- ``recall_agent_for_imperial_privilege(space)``: ``RecallAgentAbility`` (E)
-  (the space's draw rides along); ``resolve_imperial_privilege_without_recall``:
-  the space's ``DrawAbility`` (600 or E).
+- ``recall_agent_for_imperial_privilege(space)``: ``RecallAgentAbility`` (E);
+  the space's draw is its own ``resolve_board_effect(cards)``, the
+  ``DrawAbility`` (600 or E), as in the app (user ruling 2026-10-10, OQ-027
+  (d)); ``resolve_imperial_privilege_without_recall`` (no Agent to recall)
+  confirms the skipped recall only: a chore, no app question.
 - ``resolve_faction_influence``: ``GainInfluenceAbility`` (space), 600 or (E)
   at its ``DeferValue``.
 
@@ -116,7 +118,11 @@ The card's Agent box (``resolve_agent_card_effect``, by card):
   Wheels -> their ``AlwaysRunImmediately`` riders, 600; Hidden Missive and
   Steersman ``cards`` and Cargo Runner's ``cards`` / ``cards_second`` (two
   and four contracts) -> their draw (600 or E). The reward icons Captured
-  Mentat, Guild Spy and Branching Path arm after their cost: follow-ups.
+  Mentat, Guild Spy, Branching Path and Piter, Genius Advisor (OQ-106) arm
+  after their cost: follow-ups.
+- Urgent Shigawire's draw added to the boosted Bene Gesserit card's box,
+  its own ``cards`` (user ruling 2026-10-10, OQ-106): a ``DrawAbility`` on
+  that card (600 or E), after its own abilities.
 - ``trash_agent_card(card)`` / ``decline_agent_card_trash``:
   ``TrashAgentAbility`` (Calculus of Power, Desert Survival; E),
   ``BeneGesseritTrashAbility`` (Tread in Darkness; E; its draw is its own
@@ -298,7 +304,9 @@ Bloodlines, the Tech Module and Arrakeen Scouts (app-style extensions,
 - The leader: Harkonnen Advisor (``WarmasterAbility``) and Judge of the
   Change run by themselves; Fedaykin Maneuver, Corrino Liaison, Into the
   Fray and Listeners (O), Smuggle Spice and Reverse Engineering (E) are
-  their ``SignetAbility`` keys (``_BLOODLINES_SIGNETS``); Duncan's Into the
+  their ``SignetAbility`` keys (``_BLOODLINES_SIGNETS``); Reverse
+  Engineering's Intrigue and card after the trashed tile are its own
+  ``resolve_agent_card_effect`` steps (OQ-106): follow-ups; Duncan's Into the
   Fray Agent is the last recall candidate (D55: Steersman, Imperial
   Privilege, and the targets a ``RecallAgentContractAbility`` key is valued
   with); Mohiam's mandatory Gather Intelligence recalls ``GetRecallSpy``'s
@@ -394,6 +402,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     int_arg,
     spy_answer,
     str_arg,
+    triggered_draw,
     with_arg,
     worst_recall_action,
 )
@@ -407,7 +416,11 @@ from dune_imperium.agents.app_ai.windows.run import (
 from dune_imperium.agents.app_ai.windows.turn import board_space_order, playmat_sources
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
-from dune_imperium.rules.agent_effects import STITCHED_HORROR_REWARDS
+from dune_imperium.rules.agent_effects import (
+    STITCHED_HORROR_REWARDS,
+    resolves_boost_draw,
+)
+from dune_imperium.rules.effects import pending_boost_draw
 from dune_imperium.rules.frames import COMMANDERS_RECRUITED_KEY
 from dune_imperium.rules.graft import apply_graft_switch
 
@@ -515,7 +528,17 @@ _GENERIC_ICON_BOXES = frozenset({("stillsuit_manufacturer", "water")})
 #: the whole ability at once, so the icons are follow-ups. Elite Forces
 #: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
 #: troop (and Combat icon) follow.
-_ARMED_REWARD_CARDS = ("captured_mentat", "guild_spy", "branching_path", "elite_forces")
+_ARMED_REWARD_CARDS = (
+    "captured_mentat",
+    "guild_spy",
+    "branching_path",
+    "elite_forces",
+    # Its "draw two cards and Research" after the lost troop (OQ-106).
+    "piter_genius_advisor",
+)
+#: Urgent Shigawire's added draw comes after the boosted card's own
+#: abilities in the card row (``_boost_draw``).
+_BOOST_DRAW_INDEX = 99
 #: Our trash choice of each card -> its app ability.
 _TRASH_ABILITY: Mapping[str, str] = {
     "calculus_of_power": "TrashAgentAbility",
@@ -685,6 +708,12 @@ _SIGNET_ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("lady_amber_metulli", "spice"): "FillCoffersAbility",
 }
 _SIGNET_TRIGGER_ICONS = frozenset({("lady_amber_metulli", "solari")})
+#: Signet reward icons armed after the ability's arrow cost: the rest of the
+#: answer already given (Kota's Reverse Engineering after the trashed tile,
+#: user ruling 2026-10-10, OQ-106).
+_SIGNET_ARMED_REWARDS = frozenset(
+    {("kota_odax_of_ix", "intrigue"), ("kota_odax_of_ix", "cards")}
+)
 #: Bloodlines Agent boxes resolved by ``resolve_agent_card_effect()`` and the
 #: card's own ability (bloodlines-cards.md §3), gated by its ``Cost`` (a box
 #: whose Cost fails has no app key: a chore).
@@ -1577,9 +1606,11 @@ def _imperial_privilege(t: _Turn) -> None:
     recall = t.by_id("recall_agent_for_imperial_privilege")
     conflict = t.run.first("recall_conflict_agent_for_imperial_privilege")
     if recall or conflict is not None:
-        # UNTRACED order: our engine draws the space's card with the recall;
-        # the app draws it at state 600 unless the threshold is reached.
-        # Duncan's Into the Fray Agent is the last candidate (D55).
+        # The recall only recalls: the space's card is its own
+        # ``resolve_board_effect(cards)`` (``_board_icons``), the app's
+        # ``DrawAbility`` at state 600 unless the threshold is reached (user
+        # ruling 2026-10-10, OQ-027 (d)). Duncan's Into the Fray Agent is the
+        # last candidate (D55).
         _choice_source(
             t,
             "Imperial Privilege recall",
@@ -1591,13 +1622,10 @@ def _imperial_privilege(t: _Turn) -> None:
         )
     without = t.run.first("resolve_imperial_privilege_without_recall")
     if without is not None:
-        _ability_source(
-            t,
-            "Imperial Privilege draw",
-            _first_of(t.space, DrawAbility),
-            _ROW_SPACE,
-            without,
-        )
+        # No Agent to recall: the confirm has no app question (the app's
+        # ``RecallAgentAbility`` cannot run), so it is a chore taken when the
+        # app would End Turn; the draw is ``_board_icons``' own.
+        t.chores.append(without)
 
 
 # -- Bloodlines and Arrakeen Scouts on the space ---------------------------------------
@@ -1852,8 +1880,32 @@ def _card_box(t: _Turn) -> None:
         effect = str_arg(action, "effect")
         if effect is None:
             _single_box(t, action)
+        elif resolves_boost_draw(t.run.ctx.state, action):
+            _boost_draw(t, action)
         else:
             _box_icon(t, action, effect)
+
+
+def _boost_draw(t: _Turn, action: DomainAction) -> None:
+    """Urgent Shigawire's draw added to the boosted card's box (its own
+    ``resolve_agent_card_effect(effect=cards)``, user ruling 2026-10-10,
+    OQ-106): a plain ``DrawAbility`` on that card, 600 unless the threshold
+    is reached, else (E) at its ``DeferValue``, after the card's own
+    abilities in the row."""
+
+    ref = pending_boost_draw(t.context)
+    try:
+        owner = card_entity(ref, t.seat)
+    except KeyError:
+        t.unmapped.append("urgent_shigawire draw")
+        return
+    _ability_source(
+        t,
+        "urgent_shigawire draw",
+        (DrawAbility(owner), _BOOST_DRAW_INDEX),
+        _ROW_CARD,
+        action,
+    )
 
 
 def _single_box(t: _Turn, action: DomainAction) -> None:
@@ -2045,6 +2097,9 @@ def _signet_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     label = f"signet {leader_id} {effect}"
     if (leader_id, effect) in _SIGNET_TRIGGER_ICONS:
         # Paid when the Signet icon is gained, before any box: no question.
+        _automatic(t, label, _FOLLOW_UP, action, -1)
+        return
+    if (leader_id, effect) in _SIGNET_ARMED_REWARDS:
         _automatic(t, label, _FOLLOW_UP, action, -1)
         return
     name = _SIGNET_ICON_ABILITY.get((leader_id, effect))
@@ -2423,6 +2478,8 @@ def _piter(t: _Turn) -> None:
     Targets: one zone code per troop, garrison first (``0`` garrison, ``1``
     Conflict; ``GetTroopTargets``). With exactly two targets the app answers
     both (a quirk): the first names our zone (the nearest legal action).
+    A Bloodlines Commander is a troop target too (D1; OQ-105): the zone's
+    troop is paid before its Commander (D14, the engine lists it first).
     """
 
     lose = t.by_id("lose_agent_card_troop")
@@ -2434,8 +2491,16 @@ def _piter(t: _Turn) -> None:
     me = t.run.ctx.me
     zones = set(_arg_refs(lose, "zone"))
     options = (
-        *((0,) * me.troops_garrison if "garrison" in zones else ()),
-        *((1,) * me.troops_conflict if "conflict" in zones else ()),
+        *(
+            (0,) * (me.troops_garrison + me.commanders_garrison)
+            if "garrison" in zones
+            else ()
+        ),
+        *(
+            (1,) * (me.troops_conflict + me.commanders_conflict)
+            if "conflict" in zones
+            else ()
+        ),
     )
     request = Request(infos=(TargetInfo(options=options),))
 
@@ -4035,6 +4100,9 @@ def _collect(t: _Turn) -> None:
 def agent_effects_window(run: DecisionRun) -> DomainAction | None:
     """The app's answer to one ``agent_effects`` decision (module docstring)."""
 
+    drawn = triggered_draw(run)
+    if drawn is not None:
+        return drawn
     if run.first("gather_intelligence") or run.first("decline_gather_intelligence"):
         return _gather_intelligence(run)
     t = _turn(run)

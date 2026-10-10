@@ -56,6 +56,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import grant_chosen_four_bonus
 from dune_imperium.rules.scouts_auctions import (
+    AUCTION_PAUSE,
     auction_tasks,
     clear_market,
     close_bids,
@@ -65,6 +66,7 @@ from dune_imperium.rules.scouts_auctions import (
     offer_call,
     offer_retreat,
     offer_take,
+    pause_auction_reward,
     reveal_market,
     run_auction_reward,
 )
@@ -557,6 +559,8 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         return offer_bid(state, bid_seat, item, source=f"{source}:{bid_seat}")
     if task == "bids_close":
         return close_bids(state, item, turn_order(state))
+    if task.startswith(AUCTION_PAUSE):
+        return pause_auction_reward(state, task)
     if task.startswith("auction_reward:"):
         return run_auction_reward(state, task)
     if task.startswith("mercenaries:"):

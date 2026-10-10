@@ -227,10 +227,17 @@ from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
 )
+from dune_imperium.rules.owed_draws import (
+    apply_owed_draw,
+    immediate_owed_draw_actions,
+    legal_owed_draw_actions,
+    pay_stale_owed_draws,
+)
 from dune_imperium.rules.pauses import (
     CONFLICT_END,
     REWARDS,
     ROUND_START,
+    SCOUTS_REWARD,
     pause_is_pending,
     pending_pause_point,
     push_pause,
@@ -470,6 +477,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # The owner's waiting Emperor track Spy, before the Agent or Reveal
         # too: a Plot is part of the turn (user ruling 2026-10-04).
         legal_track_spy_actions,
+        # A draw a Plot's trigger earned, its own step (OQ-106).
+        legal_owed_draw_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -486,6 +495,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         # The owner's waiting Emperor track Spy, placed in any order before
         # the Reveal ends (user ruling 2026-10-04).
         legal_track_spy_actions,
+        # A draw a trigger earned in the turn, its own step taken in any
+        # order before the Reveal ends (user ruling 2026-10-10, OQ-106).
+        legal_owed_draw_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -565,6 +577,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.OPTIONAL_TRASH: (
         legal_optional_trash_actions,
         legal_scouts_rewards_first_actions,
+        # A triggered draw waiting in the owner's turn: drawn before or
+        # after the trash, as the owner orders (user ruling 2026-10-10,
+        # OQ-106).
+        legal_owed_draw_actions,
     ),
     FrameKind.LONG_LIVE_FIGHTERS: (legal_agent_card_long_live_actions,),
     FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
@@ -619,6 +635,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "scouts_recall_agent": apply_scouts_effect_action,
     "scouts_lose_influence": apply_scouts_effect_action,
     "scouts_lose_influence_to": apply_scouts_effect_action,
+    "scouts_lose_garrison_unit": apply_scouts_effect_action,
     "scouts_rewards_first": apply_scouts_rewards_first,
     "scouts_choose_option": apply_scouts_choice_action,
     "scouts_pass": apply_scouts_choice_action,
@@ -743,6 +760,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_tech_trash": apply_tech_choice,
     "place_tech_spy": apply_place_tech_spy,
     "place_track_spy": apply_place_track_spy,
+    # A triggered draw held as the owner's own step (OQ-106).
+    "draw_owed_intrigue": apply_owed_draw,
+    "draw_owed_card": apply_owed_draw,
     "decline_skill": apply_skill_choice,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
@@ -789,6 +809,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_navigation": apply_navigation_play,
     "decline_navigation": apply_navigation_play,
     "decline_optional_trash": apply_optional_trash,
+    # Arrakis Planetologist's Intrigue card, its own step in the trash
+    # frame (user ruling 2026-10-10, OQ-106).
+    "draw_planetologist_intrigue": apply_optional_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
     "recall_spy_for_leader_placement": apply_leader_spy_action,
@@ -959,7 +982,9 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            pay_stale_owed_draws(
+                draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            )
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))
@@ -970,13 +995,23 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         player: int,
     ) -> tuple[DomainAction, ...]:
-        """Return the actions the top frame's providers offer to ``player``."""
+        """Return the actions the top frame's providers offer to ``player``.
+
+        While an immediate triggered draw waits for ``player`` (CHOAM
+        Transports, the Bene Gesserit Influence 4 card, Imperial Birthright,
+        an acquire box; user decision 2026-10-10, OQ-106), that draw is all
+        any of its frames offers, so nothing of the owner's comes between
+        the trigger and it.
+        """
 
         if not state.decision_stack:
             return ()
         frame = state.decision_stack[-1]
         if not isinstance(frame.decision, PlayerDecision):
             return ()
+        immediate = immediate_owed_draw_actions(state, player)
+        if immediate:
+            return immediate
         providers = LEGAL_ACTION_PROVIDERS.get(frame.kind)
         if providers is None:
             raise RuntimeError(f"unknown decision frame kind: {frame.kind}")
@@ -1002,7 +1037,9 @@ class UprisingRulesEngine(RulesEngine):
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
         advanced = _advance_automatic(result)
         result = deploy_suspensor_troops(
-            draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            pay_stale_owed_draws(
+                draw_owed_tech_cards(_complete_alliance_contracts(advanced))
+            )
         )
         return refresh_pre_reveal_strength(
             _settle_finishing(record_deployment_peak(_advance_automatic(result)))
@@ -1115,6 +1152,10 @@ def _resume_pause(state: GameState) -> RuleResult:
         return offer_conflict_end_triggers(resumed)
     if point == ROUND_START:
         return prepare_round_start(resumed)
+    if point == SCOUTS_REWARD:
+        # The Scouts step's next task is the held-back winner's reward; the
+        # automatic advance runs it (rules/scouts.py).
+        return RuleResult(state=resumed)
     return draw_round_hands(resumed)
 
 

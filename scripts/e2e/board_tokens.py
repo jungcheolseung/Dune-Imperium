@@ -18,8 +18,13 @@ seat's Agent figure, the neutral Commander and sandworm pictures, and no
 number; so is every unit in a garrison, inside its printed ring's circle
 (`catalog.tracks.garrison_units`) and clear of a Maker Hooks token in the
 ring's slot, and a busy Conflict area is laid out without overlaps at three
-window sizes down to a 268 px board. Where the private assets have the Steam
-app's pictures of the seat pieces (`catalog.seat_pieces`: agent, spy,
+window sizes down to a 268 px board. A score past 12 [FAQ p. 4] counts on
+from cell 0 of the 13 printed cells with its lap ("+13") in white on the
+disc, inside the disc's face (at most three quarters of its width), nothing
+left on the emblem above 12 and no two marks touching where discs share a
+cell (section [3h], a display convention the user asked for on 2026-10-10).
+Where the private assets have the Steam app's pictures of the seat pieces
+(`catalog.seat_pieces`: agent, spy,
 control, troop, sandworm) each of those pieces is checked to be the loaded
 `<img>` of its kind for its seat; section [3g] runs the same sections with the
 pictures taken away, so the flat drawing's colour checks keep running. A
@@ -1281,6 +1286,193 @@ def garrison_units(page) -> None:
     page.evaluate(SET_GARRISONS_JS, [[{}, {}, {}, {}], GARRISON_FIELDS, []])
 
 
+# Scores past 12 [FAQ p. 4] on the 13 printed cells 0..12: the disc counts
+# on from 0 and carries its lap ("+13"), a display convention the user asked
+# for on 2026-10-10. Each case is the four seats' scores; the comment is
+# what shares a cell.
+SCORE_CASES = [
+    [0, 12, 13, 25],  # pairs on 0 and 12, one lapped disc in each
+    [14, 14, 1, 5],  # a triangle on 1 with two lapped discs
+    [26, 0, 0, 0],  # "+26" in a 2x2
+    [0, 13, 0, 26],  # a 2x2 with "+13" and "+26" on a diagonal
+]
+
+SET_SCORES_JS = """(scores) => {
+  state.view.players.forEach((player, index) => {
+    player.victory_points = scores[index];
+  });
+  render();
+}"""
+
+# The Score discs and lap marks as drawn: centres in percent of the board
+# stage, the discs' and the marks' text boxes in pixels, and each disc's
+# title beside the title its real score should give.
+SCORE_DISCS_JS = """() => {
+  const stage = document.querySelector(".board-stage").getBoundingClientRect();
+  const centre = (r) => ({
+    x: ((r.left + r.width / 2 - stage.left) / stage.width) * 100,
+    y: ((r.top + r.height / 2 - stage.top) / stage.height) * 100,
+  });
+  const discs = [...document.querySelectorAll(".board-stage .vp-token")].map((disc) => {
+    const r = disc.getBoundingClientRect();
+    const seat = Number(disc.dataset.seat);
+    const vp = state.view.players[seat].victory_points;
+    return {
+      seat, ...centre(r),
+      top: ((r.top - stage.top) / stage.height) * 100,
+      px: { left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+            width: r.width, height: r.height },
+      tag: disc.tagName.toLowerCase(),
+      title: disc.title,
+      want: t("board.seat_vp", { seat, vp }),
+    };
+  });
+  const marks = [...document.querySelectorAll(".board-stage .vp-lap")].map((mark) => {
+    const text = mark.querySelector(".vp-lap-text");
+    const box = text ? text.getBoundingClientRect() : null;
+    return {
+      seat: Number(mark.dataset.seat),
+      ...centre(mark.getBoundingClientRect()),
+      text: mark.textContent,
+      textCentre: box ? centre(box) : null,
+      box: box && {
+        left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+      },
+      color: text ? getComputedStyle(text).color : null,
+      hidden: mark.getAttribute("aria-hidden"),
+    };
+  });
+  return { discs, marks };
+}"""
+
+
+def boxes_meet(a: dict, b: dict) -> bool:
+    return (
+        a["left"] < b["right"]
+        and b["left"] < a["right"]
+        and a["top"] < b["bottom"]
+        and b["top"] < a["bottom"]
+    )
+
+
+def score_laps(page, flat: bool = False) -> None:
+    label = ", flat pieces" if flat else ""
+    print(f"[3h] Score discs past 12 (edited view{label})")
+    tracks = page.evaluate("state.catalog.tracks")
+    track = tracks["victory_points"]
+    levels, x = track["levels"], track["x"]
+    cell_width, cell_height = track["cell"]
+    count = len(levels)
+    check.ok(
+        count == 13 and "overflow_y" not in track,
+        "13 printed cells and no overflow spot",
+        sorted(track),
+    )
+    original = page.evaluate("state.view.players.map((p) => p.victory_points)")
+    for scores in SCORE_CASES:
+        where = f"scores {scores}{label}"
+        page.evaluate(SET_SCORES_JS, scores)
+        images_loaded(page)
+        drawn = page.evaluate(SCORE_DISCS_JS)
+        discs = {disc["seat"]: disc for disc in drawn["discs"]}
+        check.ok(
+            sorted(discs) == [0, 1, 2, 3], f"{where}: a disc per seat", sorted(discs)
+        )
+        laps = {seat: score - score % count for seat, score in enumerate(scores)}
+        check.ok(
+            all(
+                abs(disc["x"] - x) <= cell_width / 2
+                and abs(disc["y"] - levels[scores[seat] % count]) <= cell_height / 2
+                for seat, disc in discs.items()
+            ),
+            f"{where}: every disc inside the cell of its score modulo 13",
+            {seat: (round(d["x"], 2), round(d["y"], 2)) for seat, d in discs.items()},
+        )
+        check.ok(
+            all(
+                disc["top"] >= levels[-1] - cell_height / 2 - TOLERANCE
+                for disc in discs.values()
+            ),
+            f"{where}: nothing on the emblem above 12",
+            [round(d["top"], 2) for d in discs.values()],
+        )
+        check.ok(
+            all(disc["title"] == disc["want"] for disc in discs.values()),
+            f"{where}: each disc's title keeps the real score",
+            [d["title"] for d in discs.values()],
+        )
+        marks = {mark["seat"]: mark for mark in drawn["marks"]}
+        lapped = {seat for seat, lap in laps.items() if lap}
+        check.ok(
+            len(drawn["marks"]) == len(marks) and set(marks) == lapped,
+            f"{where}: one lap mark per disc past 12",
+            sorted(marks),
+        )
+        for seat, mark in marks.items():
+            disc = discs.get(seat)
+            check.ok(
+                mark["text"] == f"+{laps[seat]}"
+                and mark["hidden"] == "true"
+                and mark["color"] == "rgb(255, 255, 255)",
+                f"{where}: seat {seat} reads +{laps[seat]} in white",
+                mark,
+            )
+            check.ok(
+                disc is not None
+                and near(mark["x"], disc["x"])
+                and near(mark["y"], disc["y"])
+                and mark["textCentre"] is not None
+                and near(mark["textCentre"]["x"], disc["x"], 0.15)
+                and near(mark["textCentre"]["y"], disc["y"], 0.15),
+                f"{where}: seat {seat}'s mark is centred on its disc",
+                (mark, disc),
+            )
+            # The mark sits on the disc's face, inside the app picture's
+            # bevel and dark rim (about 0.78 of its width): the text box at
+            # most three quarters of the disc wide and half of it tall, and
+            # never past the disc's own box. The first "+13" (44cqh) was
+            # 0.86 of the disc and ran onto the rim.
+            box = mark["box"]
+            square = disc["px"] if disc else None
+            check.ok(
+                square is not None
+                and box is not None
+                and box["right"] - box["left"] <= 0.75 * square["width"]
+                and box["bottom"] - box["top"] <= 0.5 * square["height"]
+                and box["left"] >= square["left"]
+                and box["right"] <= square["right"]
+                and box["top"] >= square["top"]
+                and box["bottom"] <= square["bottom"],
+                f"{where}: seat {seat}'s +{laps[seat]} fits inside its disc",
+                (box, square),
+            )
+        meeting = [
+            (a, b)
+            for a in marks
+            for b in marks
+            if a < b and boxes_meet(marks[a]["box"], marks[b]["box"])
+        ]
+        check.ok(not meeting, f"{where}: the lap marks do not touch", meeting)
+        for cell in {score % count for score in scores}:
+            sharing = [seat for seat in range(4) if scores[seat] % count == cell]
+            if len(sharing) == 2 and any(laps[seat] for seat in sharing):
+                first, second = (discs[seat] for seat in sharing)
+                check.ok(
+                    near(first["x"], second["x"]) and abs(first["y"] - second["y"]) > 1,
+                    f"{where}: the pair on {cell} with a lapped disc stands upright",
+                    (first, second),
+                )
+        name = "-".join(map(str, scores)) + ("-flat" if flat else "")
+        board_shot(page, f"score-laps-{name}.png", (0.9, 0.25, 0.1, 0.75))
+    page.evaluate(SET_SCORES_JS, original)
+    check.ok(
+        page.locator(".board-stage .vp-lap").count()
+        == sum(1 for score in original if score >= count),
+        "the real scores again: a lap mark only past 12",
+    )
+
+
+
 # A busy table for the overlap sweep: every garrison and quadrant holds
 # pieces, and two seats have a Maker Hooks token in their ring's slot.
 BUSY_GARRISONS = [
@@ -1309,6 +1501,12 @@ def busy_table(page) -> None:
 def conflict_area_shot(page, name: str) -> None:
     """A picture of the Conflict area for a reviewer, into E2E_SHOTS_DIR
     when it is set (no default: a session's scratch path is not portable)."""
+    board_shot(page, name, (0.36, 0.53, 0.57, 0.38))
+
+
+def board_shot(page, name: str, region: tuple[float, float, float, float]) -> None:
+    """A picture of `region` (left, top, width, height as fractions of the
+    board stage) into E2E_SHOTS_DIR when it is set."""
     shots = os.environ.get("E2E_SHOTS_DIR")
     if not shots:
         return
@@ -1318,13 +1516,14 @@ def conflict_area_shot(page, name: str) -> None:
           .getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }"""
     )
     left, top, width, height = box
+    x, y, w, h = region
     page.screenshot(
         path=str(Path(shots) / name),
         clip={
-            "x": left + width * 0.36,
-            "y": top + height * 0.53,
-            "width": width * 0.57,
-            "height": height * 0.38,
+            "x": left + width * x,
+            "y": top + height * y,
+            "width": width * w,
+            "height": height * h,
         },
     )
 
@@ -1703,6 +1902,7 @@ def flat_pieces(base: str, browser) -> None:
     spy_pieces(page)
     conflict_units(page)
     garrison_units(page)
+    score_laps(page, flat=True)
     check.ok(not rec.js_errors, "no JS exceptions (flat pieces)", rec.js_errors[:5])
     context.close()
 
@@ -1721,6 +1921,7 @@ def main() -> None:
             spy_pieces(page)
             conflict_units(page)
             garrison_units(page)
+            score_laps(page)
             intrigue_pile(page)
             failed = [r for r in rec.requests if r[3] >= 400]
             check.ok(not failed, "no failed requests", failed[:5])

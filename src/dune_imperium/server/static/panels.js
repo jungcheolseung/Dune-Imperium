@@ -8,7 +8,11 @@ function statNode(name, label, value) {
   stat.dataset.stat = name;
   stat.title = label;
   stat.append(
-    name === "agent" ? agentPieceIcon(label) : icon(name, label),
+    name === "agent"
+      ? agentPieceIcon(label)
+      : name === "commander"
+        ? commanderStatIcon(label)
+        : icon(name, label),
     String(value),
   );
   return stat;
@@ -36,14 +40,28 @@ function openerStat(stat, label, open) {
   });
 }
 
-/* Sardaukar Commanders as the board draws them (renderTrackMarkers): "C2",
-   with where they stand in the title. `where` is a term template. */
-function commanderChip(count, where) {
-  const chip = document.createElement("span");
-  chip.className = "commander-count";
-  chip.textContent = `C${count}`;
-  chip.title = t("panels.commander_where", { where: phraseText(where), count });
-  return chip;
+/* A Sardaukar Commander as the board draws one (unitPiece): the rulebook's
+   neutral figure (catalog.commander_token), or without the picture the drawn
+   mark in the plastic's grey (.commander-piece.drawn). The rule term has
+   no icon of its own (TERMS.commander), so the piece itself is the icon. */
+function commanderStatIcon(label) {
+  const picture = state.catalog && state.catalog.commander_token;
+  if (picture) {
+    const img = document.createElement("img");
+    img.className = "icon commander-stat-icon";
+    img.src = picture;
+    img.alt = label;
+    img.title = label;
+    img.draggable = false;
+    return img;
+  }
+  const mark = document.createElement("span");
+  mark.className = "commander-stat-icon drawn";
+  mark.textContent = "C";
+  mark.title = label;
+  mark.setAttribute("role", "img");
+  mark.setAttribute("aria-label", label);
+  return mark;
 }
 
 function seatLine(container, label, content) {
@@ -227,6 +245,16 @@ function renderSeats() {
       statNode("agent", t("panels.agent_remaining"), player.agents_available),
       statNode("spy", t("panels.supply_spy"), player.spies_supply),
     );
+    /* Commanders in the supply: the board draws the ones in the garrison
+       and the Conflict, but nothing on it shows the ones that went home
+       after a Combat [Bloodlines p. 4], and the supply is public
+       [Main p. 5]. Always shown in a Bloodlines game, 0 included, like the
+       Specimens above. */
+    if (summary.bloodlines) {
+      pieces.appendChild(
+        statNode("commander", t("panels.supply_commander"), player.commanders_supply || 0),
+      );
+    }
     card.appendChild(pieces);
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons. The
@@ -471,10 +499,23 @@ function skillIdOf(instanceId) {
   return match ? match[1] : String(instanceId);
 }
 
+/* A list drawn into the popover is never pinned, whatever was pinned
+   before it: the opener's click stops at the opener (openerStat), so the
+   document's click-elsewhere close never ran and a pin left from another
+   popover (a clicked card, a leader, the Conflict history) would otherwise
+   carry over. render() closes an unpinned popover on every update,
+   foreign ones included, so a list never outlives the state it was drawn
+   from -- the deck list's top card mark least of all. */
+function unpinPopover() {
+  popoverPinned = false;
+  pinnedLeaderSeat = null;
+}
+
 /* A pile listing (discard, Intrigue piles) in the popover: one pile as
    `(title, ids, anchor)`, or several as `([[title, ids], ...], null, anchor)`
    (empty piles are left out). */
 function openPileList(title, ids, anchor) {
+  unpinPopover();
   const piles = Array.isArray(title) ? title : [[title, ids]];
   const pop = el("card-popover");
   pop.textContent = "";
@@ -498,23 +539,44 @@ function openPileList(title, ids, anchor) {
    sorts the groups by the name on screen, so the list is a function of the
    deck's contents alone and shows no trace of the draw order (OQ-010
    ruling 5). A click on a card here does nothing: a deck card is never
-   something to act on from a list. */
-function openDeckList(title, ids, anchor) {
+   something to act on from a list.
+
+   The one exception is the top card when a card effect lets the owner see
+   it (`top`: `{id, source}`, the view's own `peeked_card_id` and the name
+   of what shows it -- Glowglobes, or Controlled while its choice is up).
+   That one copy is split off as its own entry, badged "Top" ("맨 위") and
+   outlined, right before the rest of the same card, which keep their group
+   ("×2", or no count for one copy left); a card with a single copy is just
+   that entry. A second note says where the mark comes from. The groups'
+   name order is as before and each remaining group's card is its smallest
+   instance id, so the list still says nothing about the cards below the
+   top (user decision 2026-10-10). */
+function openDeckList(title, ids, anchor, top = null) {
+  unpinPopover();
+  const groupKey = (id) => {
+    const ref = instanceRef(id);
+    return `${ref.kind}:${ref.id}`;
+  };
+  const topId = top && top.id && ids.includes(top.id) ? top.id : "";
   const groups = new Map();
   for (const id of ids) {
-    const ref = instanceRef(id);
-    const key = `${ref.kind}:${ref.id}`;
-    const group = groups.get(key);
-    if (!group) groups.set(key, { id, count: 1, name: nameOf(id) });
-    else {
-      group.count += 1;
-      if (id < group.id) group.id = id;
-    }
+    const key = groupKey(id);
+    const group = groups.get(key) || { key, ids: [], name: nameOf(id) };
+    group.ids.push(id);
+    groups.set(key, group);
   }
   const locale = TERM_LANGUAGE === "ko" ? "ko" : "en";
+  const first = (list) => list.reduce((low, id) => (id < low ? id : low));
   const sorted = [...groups.values()].sort(
-    (a, b) => a.name.localeCompare(b.name, locale) || (a.id < b.id ? -1 : 1),
+    (a, b) => a.name.localeCompare(b.name, locale) || (first(a.ids) < first(b.ids) ? -1 : 1),
   );
+  /* One entry per group, the top copy split off before its group. */
+  const entries = [];
+  for (const group of sorted) {
+    const rest = group.ids.filter((id) => id !== topId);
+    if (rest.length < group.ids.length) entries.push({ id: topId, name: group.name, top: true });
+    if (rest.length) entries.push({ id: first(rest), name: group.name, count: rest.length });
+  }
   const pop = el("card-popover");
   pop.textContent = "";
   const head = document.createElement("div");
@@ -523,20 +585,34 @@ function openDeckList(title, ids, anchor) {
   const note = document.createElement("div");
   note.className = "popover-note";
   note.textContent = t("panels.deck_list_note");
+  const notes = [note];
+  if (topId) {
+    const topNote = document.createElement("div");
+    topNote.className = "popover-note deck-top-note";
+    topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
+    notes.push(topNote);
+  }
   const row = document.createElement("div");
   row.className = "strip-cards wrap";
-  for (const group of sorted) {
-    const copies = group.count > 1 ? `×${group.count}` : "";
+  for (const entry of entries) {
+    const copies = entry.count > 1 ? `×${entry.count}` : "";
     row.appendChild(
-      visualCard(group.id, {
-        className: "small",
-        badge: copies,
-        title: copies ? `${group.name} ${copies}` : group.name,
-        onClick: () => {},
-      }),
+      visualCard(entry.id, entry.top
+        ? {
+            className: "small deck-top",
+            badge: t("panels.deck_list_top_badge"),
+            title: `${entry.name} · ${t("panels.deck_list_top_title")}`,
+            onClick: () => {},
+          }
+        : {
+            className: "small",
+            badge: copies,
+            title: copies ? `${entry.name} ${copies}` : entry.name,
+            onClick: () => {},
+          }),
     );
   }
-  pop.append(head, note, row);
+  pop.append(head, ...notes, row);
   placePopover(pop, anchor, 420);
   /* Card images arrive after the first placement and make the list taller
      (openPopover does the same): place it again, only while it is still
@@ -686,6 +762,20 @@ function logEventPayload(payload, eventKind) {
     ) {
       continue;
     }
+    /* Esmar Tuek's Signet Ring, Smuggle Spice, taking a bonus spice off a
+       Maker space (rules/leader_abilities.py apply_leader_bonus_spice): the
+       payload writes the space's loss, -1, and the spice goes to the
+       Signet's player, so the line says so rather than "Bonus spice: -1".
+       Placing one on Tuek's Sietch (+1) keeps the plain pair. */
+    if (
+      key === "bonus_spice" &&
+      eventKind === "leader_signet_resolved" &&
+      typeof value === "number" &&
+      value < 0
+    ) {
+      parts.push(t("panels.log_bonus_spice_taken", { count: -value }));
+      continue;
+    }
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
     if (SEAT_PAYLOAD_KEYS.has(key)) {
@@ -741,12 +831,40 @@ function logEventPayload(payload, eventKind) {
   return parts.join(" · ");
 }
 
+/* Event kinds only one Leader's ability emits, so their payload names no
+   Leader: the line names the ability and the Leader from the catalog
+   (lookup(id, "leaders"), localized by i18n.js) through its own text, whose
+   holes are {{ability}} and {{leader}}, in place of the bare "{leader}" of
+   EVENT_LABELS (kept for a catalog without the Leader).
+   tests/server/test_action_labels.py checks that each kind here has one
+   emitter in the engine and that it names this Leader, so a row cannot go
+   stale silently.
+   - leader_ability_spice_gained: rules/leader_abilities.py
+     apply_smuggle_spice pays only staban_tuek, Smuggle Spice [Staban Tuek
+     card]. Its Korean particle, 로, follows that ability's name. */
+const EVENT_IMPLIED_LEADER = {
+  leader_ability_spice_gained: {
+    leader: "staban_tuek",
+    text: "panels.log_leader_ability_spice_gained",
+  },
+};
+
+/* An event line's words before the payload. */
+function logEventHead(event) {
+  const implied = EVENT_IMPLIED_LEADER[event.kind];
+  const leader = implied ? lookup(implied.leader, "leaders") : null;
+  if (leader && leader.ability) {
+    return tNode(implied.text, { ability: leader.ability, leader: leader.name });
+  }
+  /* phrase(), not textContent: an event label may name a term, and the
+     braces must never reach the screen. */
+  return phrase(EVENT_LABELS[event.kind] || prettify(event.kind));
+}
+
 function logEventLine(event) {
   const line = document.createElement("div");
   line.className = "logevent";
-  /* phrase(), not textContent: an event label may name a term, and the
-     braces must never reach the screen. */
-  line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
+  line.appendChild(logEventHead(event));
   const payload = logEventPayload(event.payload, event.kind);
   if (payload) line.append(` — ${payload}`);
   addLogEventIcon(line, event);
@@ -957,6 +1075,13 @@ function neutralTitle(group) {
         ? t("panels.neutral_round_started", { round })
         : t("panels.neutral_round_started_generic")
     );
+  }
+  /* A Leader's ability paying out on another seat's step: Staban Tuek's
+     Smuggle Spice, Esmar Tuek's Tuek's Sietch, Steersman Y'rkoon's Hungry
+     for Spice (an event aimed at a seat other than the actor's lands here,
+     splitEntryEvents). */
+  if (kinds.has("leader_ability_spice_gained") || kinds.has("leader_ability_resolved")) {
+    parts.push(t("panels.neutral_leader_ability"));
   }
   if (kinds.has("endgame_started")) parts.push(phraseText("{endgame}"));
   if (kinds.has("game_finished")) parts.push(t("common.game_over"));
@@ -1389,6 +1514,70 @@ function renderLog() {
 
 /* ---------- own hand ---------- */
 
+/* Controlled's choice on the deck's top card (rules/intrigue.py, the
+   PeekTopCard choice): these actions are offered exactly while that choice
+   is up for the seat. Their live buttons name the card the seat is looking
+   at (deckTopChoiceLabel, the text keyed here); the logged step keeps its
+   plain label (ACTION_LABELS), since the log is everyone's to read. */
+const DECK_TOP_CHOICE_TEXT = {
+  put_back_top_card: "panels.deck_top_put_back",
+  discard_top_card: "panels.deck_top_discard",
+  draw_top_card_for_solari: "panels.deck_top_draw",
+};
+const DECK_TOP_CHOICES = new Set(Object.keys(DECK_TOP_CHOICE_TEXT));
+
+function deckTopChoiceOffered() {
+  return Boolean(
+    !state.review && state.actions &&
+      state.actions.actions.some((action) => DECK_TOP_CHOICES.has(action.action_id)),
+  );
+}
+
+/* The card Controlled's choice is about while it is offered to the seat:
+   the seat's own view's peeked_card_id (only the owner's view carries it,
+   core/observation.py), or "" -- no such choice, a review (no actions), or
+   nothing peeked. The view and the actions are one seat's snapshot
+   (session.js adoptSnapshot), so the card is the deciding seat's own. */
+function deckTopChoiceCard() {
+  if (!deckTopChoiceOffered()) return "";
+  const own = state.view && state.view.private;
+  return (own && own.peeked_card_id) || "";
+}
+
+/* One of those live buttons naming the card ("{deck} 맨 위 카드(Dagger)
+   {discard}"), by its name on screen; null for any other action, or when
+   no card is known (the plain label then stands). Only actionItem (render.js),
+   which draws the seat's offered actions, asks for it. */
+function deckTopChoiceLabel(action) {
+  if (!DECK_TOP_CHOICES.has(action.action_id)) return null;
+  const card = deckTopChoiceCard();
+  return card ? tNode(DECK_TOP_CHOICE_TEXT[action.action_id], { card: nameOf(card) }) : null;
+}
+
+/* The card itself above those buttons in the decision panel
+   (renderActionPanel, turn.js): its picture like any card on the table,
+   enlarged on hover or click, badged as the deck's top. null when the
+   choice is not up for the seat. */
+function deckTopChoicePicture() {
+  const card = deckTopChoiceCard();
+  if (!card) return null;
+  const box = document.createElement("div");
+  box.className = "deck-top-choice";
+  box.appendChild(
+    visualCard(card, { className: "deck-top-choice-card", badge: t("panels.deck_top_badge") }),
+  );
+  return box;
+}
+
+/* What shows the seat its deck's top card, by its name on screen: the
+   Glowglobes tile it owns, or else Controlled (the one Intrigue that peeks
+   at a deck, content/uprising/intrigue.py). */
+function deckTopSource(glowglobes) {
+  const id = glowglobes ? "glowglobes" : "twisted_controlled";
+  const entry = lookup(id, glowglobes ? "tech" : "intrigue");
+  return entry ? entry.name : prettify(id);
+}
+
 function renderPrivate() {
   const panel = el("private-zone");
   /* The board-width hand can scroll even with a normal five-card hand.
@@ -1441,10 +1630,19 @@ function renderPrivate() {
     statNode("intrigue", phraseText("{intrigue}"), view.private.intrigue_cards.length)
   );
   /* The deck's contents, never its order, are the owner's to see (OQ-010
-     ruling 5): the server's `deck_cards` is a sorted list of card ids. */
+     ruling 5): the server's `deck_cards` is a sorted list of card ids.
+     The top card is the exception when a card effect shows it to the owner
+     (`peeked_card_id`: Glowglobes at any time, Controlled while its choice
+     is up; core/observation.py): the list marks it, and the count's title
+     says so, so the mark is found without opening the list first. */
   const deckCards = view.private.deck_cards || [];
+  const peeked = view.private.peeked_card_id || "";
+  const glowglobes = (own.tech_ids || []).includes("glowglobes");
+  const top = peeked && deckCards.includes(peeked)
+    ? { id: peeked, source: deckTopSource(glowglobes) }
+    : null;
   if (deckCards.length) {
-    openerStat(deckStat, t("panels.deck_view"), () =>
+    openerStat(deckStat, t(top ? "panels.deck_view_top" : "panels.deck_view"), () =>
       openDeckList(
         mine
           ? t("panels.my_deck", { count: deckCards.length })
@@ -1453,7 +1651,8 @@ function renderPrivate() {
               count: deckCards.length,
             }),
         deckCards,
-        deckStat
+        deckStat,
+        top
       )
     );
   }
@@ -1494,21 +1693,18 @@ function renderPrivate() {
     }
     zones.appendChild(intrigue);
   }
-  /* Owner-only peeks: the deck's top card (Controlled, Glowglobes) and
-     peeked Intrigue. Kota Odax's Secret Project tile is on his leader
-     popover (core.js leaderSecretProjectBox). */
+  /* Owner-only peeks beside the Intrigue cards: the Intrigue deck's top
+     cards Imperium Ceremony shows while one is kept. Kota Odax's Secret
+     Project tile is on his leader popover (core.js
+     leaderSecretProjectBox). The seat's own deck's top card is never
+     here (user decision 2026-10-10): Glowglobes' standing look is the deck
+     list's "Top" entry (openDeckList), and Controlled's is its picture
+     above the put back / discard / draw buttons, which name it
+     (deckTopChoicePicture, deckTopChoiceLabel). */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
-  if (view.private.peeked_card_id || peekedIntrigue.length) {
+  if (peekedIntrigue.length) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
-    if (view.private.peeked_card_id) {
-      peeks.appendChild(
-        visualCard(view.private.peeked_card_id, {
-          className: "small",
-          badge: t("panels.deck_top_badge"),
-        })
-      );
-    }
     for (const cardId of peekedIntrigue) {
       peeks.appendChild(
         visualCard(cardId, { className: "small", badge: t("panels.intrigue_deck_top_badge") })
@@ -1650,13 +1846,74 @@ function scoutsCurrencyLine(currency) {
   return line;
 }
 
-function scoutsItemLines(item, box) {
-  if (item.kind === "auction" && TERMS[item.currency]) {
+/* `currency: false` leaves an auction's bid resource out: the decision
+   panel's header (scoutsDecisionHeader) leaves it to #actions, which shows
+   it once (turn.js renderActionPanel). */
+function scoutsItemLines(item, box, { currency = true } = {}) {
+  if (currency && item.kind === "auction" && TERMS[item.currency]) {
     box.appendChild(scoutsCurrencyLine(item.currency));
   }
   item.lines.forEach((line, index) => {
     box.appendChild(effectLine(line, item.lines_ko[index], "scouts-line"));
   });
+}
+
+/* The Scouts step's cursor while due secret picks resolve
+   (rules/scouts_secrets.py SECRET_ITEM): not an item of the catalog. */
+const SCOUTS_SECRETS_CURSOR = "secrets";
+
+/* The item the Scouts step is resolving now, or null outside the step.
+   view.scouts_item is public (every seat's view) and empty during the
+   round's turns (rules/scouts.py advance_scouts_step clears it); the
+   seat's own choice names its item first, so a revealed secret pick shows
+   its event while the cursor is "secrets". */
+function scoutsDecisionItemId() {
+  const view = state.view;
+  if (!state.summary || !state.summary.arrakeen_scouts || !view || !view.scouts_item) {
+    return null;
+  }
+  const own = state.actions && state.actions.scouts_lines;
+  return (own && own.item_id) || view.scouts_item;
+}
+
+/* Whether the seat's own rows in #actions already are the item's lines:
+   its Scouts choice of that item, or a secret pick's four lines. */
+function scoutsRowsAreLines(itemId) {
+  const actions = state.actions;
+  if (!actions) return false;
+  const own = actions.scouts_lines;
+  if (own && own.frame === "scouts_choice" && own.item_id === itemId) return true;
+  return (actions.actions || []).some((action) => action.action_id === "scouts_secret_pick");
+}
+
+/* User request 2026-10-10 (feedback item 8): the decision panel names the
+   item a Scouts decision belongs to, with its lines, so nobody has to look
+   down at the Scouts panel while choosing or waiting. Display only: it
+   reads the public view and the seat's own actions. */
+function scoutsDecisionHeader() {
+  const id = scoutsDecisionItemId();
+  if (!id) return null;
+  const box = document.createElement("div");
+  box.className = "scouts-decision-item";
+  box.dataset.item = id;
+  const title = document.createElement("div");
+  title.className = "scouts-decision-title";
+  box.appendChild(title);
+  const known = Boolean(state.catalog && state.catalog.scouts_items
+    && state.catalog.scouts_items[id]);
+  const item = scoutsItem(id);
+  if (state.view.scouts_item === SCOUTS_SECRETS_CURSOR) {
+    title.textContent = known
+      ? t("render.scouts_decision_secret_item", { name: item.name })
+      : t("render.scouts_decision_secrets");
+  } else {
+    title.textContent = t("render.scouts_decision_item", {
+      kind: scoutsKindName(item.kind),
+      name: item.name,
+    });
+  }
+  if (known && !scoutsRowsAreLines(id)) scoutsItemLines(item, box, { currency: false });
+  return box;
 }
 
 function scoutsGoodsText(resource, amount) {

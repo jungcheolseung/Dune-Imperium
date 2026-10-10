@@ -24,6 +24,16 @@ prettify() wrapped, and asserts:
   QUIET_ACTIONS), the class that keeps an Intrigue window's pass from
   reading as a full-weight turn card.
 
+A few synthetic lines whose words come from elsewhere than their own label
+(user report 2026-10-10) render too: Staban Tuek's Smuggle Spice payout names
+the ability and the Leader by the catalog's names, under a "Leader ability"
+card title, and Esmar Tuek's Signet taking a bonus spice says it was gained.
+Imperial Privilege's recall steps name the recall alone: the card draw is
+the space's own step since the user ruling of 2026-10-10 ("4번은 소환과
+뽑기가 당연히 두 단계로 나눠야지", OQ-027 (d)). A Sardaukar Commander paying
+a troop cost (Piter, Genius Advisor; Bene Gesserit Treachery's garrison unit;
+Prison Planet's Commander way in; OQ-105) reads as words in both languages.
+
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
 holds no engine id either. The games must still reach the surfaces this
@@ -77,7 +87,11 @@ GAMES = (
     # counting, Conflict rewards paid one recipient at a time) move seed 10
     # off its Secrets steal too; the same scan over seeds 1-100 finds seed 4
     # first (again with Family Atomics, the Feyd track and research).
-    {"seats": ["random"] * 4, "game_seed": 4, "policy_seed": 4, **EVERY_EXPANSION},
+    # A triggered draw held as the owner's own step (user ruling 2026-10-10,
+    # OQ-106) moves seed 4 off its Secrets steal (the previous commit's
+    # engine still gives it); the same scan from seed 5 finds seed 14 first
+    # (again with Family Atomics, the Feyd track and research).
+    {"seats": ["random"] * 4, "game_seed": 14, "policy_seed": 14, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -121,8 +135,13 @@ GAMES = (
         # scan over seeds 1-159 finds seed 107 first that, with the other
         # five games, reaches every surface again (a round modifier, Mating
         # Season, mission troops).
-        "game_seed": 107,
-        "policy_seed": 107,
+        # Imperial Privilege's card draw as its own icon (user ruling
+        # 2026-10-10, OQ-027 (d)) moves seed 107 off its round modifier (the
+        # previous commit's engine still gives it); the same scan over seeds
+        # 1-160 finds seed 126 first with a round modifier, Mating Season and
+        # mission troops.
+        "game_seed": 126,
+        "policy_seed": 126,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
@@ -390,6 +409,180 @@ def check_log(records, names, posts) -> None:
         check.ok(not ids, f"{lang} log: no engine id's shape", ids[:4])
 
 
+# Lines whose words come from somewhere other than the event's own label
+# (user report 2026-10-10), rendered with the page's functions in both
+# languages: Staban Tuek's Smuggle Spice payout names the ability and the
+# Leader (panels.js EVENT_IMPLIED_LEADER, the catalog's names), the "game"
+# card holding it is titled for a Leader ability, and Esmar Tuek's Signet
+# taking a bonus spice says the spice was gained (not "-1").
+NAMED_JS = r"""() => {
+  const out = {};
+  const calls = [];
+  const realPrettify = window.prettify;
+  window.prettify = (id) => { calls.push(String(id)); return realPrettify(id); };
+  const smuggle = {kind: "leader_ability_spice_gained",
+    payload: {player: 0, space_id: "hagga_basin", spice: 1, visitor: 3}};
+  const taken = {kind: "leader_signet_resolved",
+    payload: {bonus_spice: -1, player: 2, space_id: "hagga_basin"}};
+  const placed = {kind: "leader_signet_resolved",
+    payload: {bonus_spice: 1, player: 2, space_id: "tuek_sietch"}};
+  try {
+    for (const lang of ["ko", "en"]) {
+      setLanguage(lang, false);
+      const staban = lookup("staban_tuek", "leaders");
+      const group = {kind: "neutral", firstIndex: 1, lastIndex: 1,
+        items: [{event: smuggle, index: 1}]};
+      out[lang] = {
+        leader: staban.name,
+        ability: staban.ability,
+        smuggle: logEventLine(smuggle).textContent,
+        title: neutralTitle(group),
+        taken: logEventLine(taken).textContent,
+        placed: logEventLine(placed).textContent,
+      };
+    }
+  } finally {
+    window.prettify = realPrettify;
+    setLanguage("ko", false);
+  }
+  out.pretty = calls;
+  return out;
+}"""
+
+
+def check_named_lines(page, posts: list[str], names: list[str]) -> None:
+    shown = page.evaluate(NAMED_JS)
+    check.ok(not shown["pretty"], "named lines: prettify() is never called", shown)
+    expected = {
+        "ko": ("스타반 튜엑", "스파이스 밀수", "지도자 능력", "보너스 스파이스 1"),
+        "en": ("Staban Tuek", "Smuggle Spice", "Leader ability", "Took 1 bonus spice"),
+    }
+    verbs = {"ko": "획득", "en": "gained"}
+    for lang, (leader, ability, title, gained) in expected.items():
+        row = shown[lang]
+        check.ok(
+            (row["leader"], row["ability"]) == (leader, ability),
+            f"{lang}: the catalog names Staban Tuek and Smuggle Spice",
+            row,
+        )
+        check.ok(
+            leader in row["smuggle"] and ability in row["smuggle"],
+            f"{lang}: the Smuggle Spice line names the ability and the Leader",
+            row["smuggle"],
+        )
+        check.ok(
+            row["title"] == title,
+            f"{lang}: the card holding it is titled for a Leader ability",
+            row["title"],
+        )
+        check.ok(
+            gained in row["taken"]
+            and verbs[lang] in row["taken"]
+            and "-1" not in row["taken"],
+            f"{lang}: Esmar's Signet taking a bonus spice says it was gained",
+            row["taken"],
+        )
+        check.ok(
+            "1" in row["placed"] and gained not in row["placed"],
+            f"{lang}: placing a bonus spice keeps its plain line",
+            row["placed"],
+        )
+        texts = [row["smuggle"], row["title"], row["taken"], row["placed"]]
+        ids = [
+            found for text in texts if (found := engine_ids(strip(text, names), posts))
+        ]
+        check.ok(not ids, f"{lang}: the named lines show no engine id", ids)
+        if lang == "en":
+            hangul = [text for text in texts if HANGUL.search(text)]
+            check.ok(not hangul, "en: the named lines hold no Hangul", hangul)
+    print(f"  .. {shown['ko']['smuggle']}")
+    print(f"  .. {shown['en']['smuggle']}")
+    print(f"  .. {shown['ko']['taken']}")
+
+
+# Imperial Privilege's recall and its draw are two steps (user ruling
+# 2026-10-10, OQ-027 (d)): the recall steps, the Into the Fray recall and the
+# confirm with no Agent to recall, name the recall alone, no card draw (they
+# named it from 2026-10-10 morning, while the recall still drew the card).
+RECALL_JS = r"""() => {
+  const out = {};
+  const steps = [
+    {action_id: "recall_agent_for_imperial_privilege",
+     arguments: {space_id: "arrakeen"}},
+    {action_id: "recall_conflict_agent_for_imperial_privilege", arguments: {}},
+    {action_id: "resolve_imperial_privilege_without_recall", arguments: {}},
+  ];
+  try {
+    for (const lang of ["ko", "en"]) {
+      setLanguage(lang, false);
+      // describeActionText: the label's icons as their words (alt, title).
+      out[lang] = steps.map((step) => describeActionText({type: "action", index: 9,
+        actor: 0, events: [], ...step}));
+    }
+  } finally {
+    setLanguage("ko", false);
+  }
+  return out;
+}"""
+
+
+def check_recall_steps(page, posts: list[str], names: list[str]) -> None:
+    shown = page.evaluate(RECALL_JS)
+    for lang, recall, draw in (
+        ("ko", "소환", "뽑기"),
+        ("en", "Recall", "Draw"),
+    ):
+        for text in shown[lang]:
+            check.ok(
+                recall.lower() in text.lower()
+                and draw.lower() not in text.lower()
+                and not engine_ids(strip(text, names), posts),
+                f"{lang}: the Imperial Privilege recall step names the recall alone",
+                text,
+            )
+    print(f"  .. {shown['ko'][0]} | {shown['en'][0]} | {shown['en'][2]}")
+
+
+# A Sardaukar Commander pays the self-paid troop costs (OQ-105, user ruling
+# 2026-10-10): Piter's Commander loss, Bene Gesserit Treachery's garrison
+# unit and Prison Planet's Commander way in read as words in both languages,
+# logged (no live detail) as they are in the review.
+COMMANDER_COSTS_JS = r"""() => {
+  const out = {};
+  const steps = [
+    {action_id: "lose_agent_card_troop",
+     arguments: {commanders: 1, zone: "garrison"}},
+    {action_id: "scouts_lose_garrison_unit", arguments: {}},
+    {action_id: "scouts_lose_garrison_unit", arguments: {commanders: 1}},
+    {action_id: "scouts_join_mission", arguments: {target: "commander"}},
+  ];
+  try {
+    for (const lang of ["ko", "en"]) {
+      setLanguage(lang, false);
+      out[lang] = steps.map((step) => describeActionText({type: "action", index: 9,
+        actor: 0, events: [], ...step}));
+    }
+  } finally {
+    setLanguage("ko", false);
+  }
+  return out;
+}"""
+
+
+def check_commander_costs(page, posts: list[str], names: list[str]) -> None:
+    shown = page.evaluate(COMMANDER_COSTS_JS)
+    for lang in ("ko", "en"):
+        for text in shown[lang]:
+            check.ok(
+                not engine_ids(strip(text, names), posts)
+                and (lang == "ko" or not HANGUL.search(text)),
+                f"{lang}: a Commander paying a troop cost reads as words",
+                text,
+            )
+    print(f"  .. {' | '.join(shown['ko'])}")
+    print(f"  .. {' | '.join(shown['en'])}")
+
+
 def check_page(page, base: str, game_id: str, posts: list[str], names) -> None:
     page.goto(f"{base}/#game={game_id}")
     page.wait_for_function("state.review !== null && state.view !== null")
@@ -434,6 +627,10 @@ def main() -> None:
         check_coverage(records)
         check_log(records, names, posts)
         check_pass_quiet(records)
+        print("[1b] lines named from elsewhere than their own label")
+        check_named_lines(page, posts, names)
+        check_recall_steps(page, posts, names)
+        check_commander_costs(page, posts, names)
         print("[2] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)

@@ -51,6 +51,7 @@ from dune_imperium.rules.contracts import apply_contract_action, legal_contract_
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.owed_draws import apply_owed_draw
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     legal_reveal_actions,
@@ -664,13 +665,22 @@ def test_price_is_no_object_resolves_the_acquired_cards_bonus() -> None:
 
     result = apply_agent_card_acquisition(state, action)
 
+    # Overthrow's acquire-box Intrigue card is the owner's own step in its
+    # turn, the one right after the purchase (user decision 2026-10-10,
+    # OQ-106: "Acquire Effects must be taken immediately upon acquiring the
+    # Card or Tech.", Direwolf Discord).
     assert result.state.players[0].hand == (overthrow,)
-    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
-    assert result.state.intrigue_deck == ()
-    assert tuple(event.kind for event in result.events) == (
-        "card_acquired",
-        "intrigue_card_drawn",
+    assert result.state.players[0].intrigue_cards == ()
+    assert [entry[:2] for entry in result.state.players[0].owed_draws] == [
+        ("intrigue", f"acquire:{overthrow}")
+    ]
+    assert tuple(event.kind for event in result.events) == ("card_acquired",)
+    drawn = apply_owed_draw(
+        result.state, DomainAction(action_id="draw_owed_intrigue", actor=0)
     )
+    assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert drawn.state.intrigue_deck == ()
+    assert tuple(event.kind for event in drawn.events) == ("intrigue_card_drawn",)
 
 
 def test_price_is_no_object_preserves_acquisition_spy_follow_up() -> None:
@@ -820,13 +830,22 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
 
     result = apply_imperium_acquisition(state, action)
 
+    # The acquire box's Intrigue card is the owner's own step in its Reveal
+    # turn, the one right after the purchase, before any other acquisition
+    # or the Reveal's end: "Acquire Effects must be taken immediately upon
+    # acquiring the Card or Tech." (Direwolf Discord; user decision
+    # 2026-10-10, OQ-106; OQ-042). The purchase itself draws nothing.
     assert result.state.players[0].discard_pile == (overthrow,)
-    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
-    assert result.state.intrigue_deck == ()
-    assert tuple(event.kind for event in result.events) == (
-        "card_acquired",
-        "intrigue_card_drawn",
-    )
+    assert result.state.players[0].intrigue_cards == ()
+    assert tuple(event.kind for event in result.events) == ("card_acquired",)
+    engine = UprisingRulesEngine()
+    draw = DomainAction(action_id="draw_owed_intrigue", actor=0)
+    assert engine.legal_actions(result.state, 0) == (draw,)
+    drawn = engine.apply(result.state, draw)
+    assert drawn.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert drawn.state.intrigue_deck == ()
+    assert "intrigue_card_drawn" in {event.kind for event in drawn.events}
+    assert engine.legal_actions(drawn.state, 0).count(draw) == 0
 
 
 def test_steersman_acquisition_gains_spacing_guild_influence() -> None:

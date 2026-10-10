@@ -1196,17 +1196,38 @@ def test_imperial_privilege_trashes_an_intrigue_then_offers_the_other_agent() ->
     assert dict(recall_actions[0].arguments) == {"space_id": "arrakeen"}
 
 
-def test_imperial_privilege_recall_returns_agent_and_draws_a_card() -> None:
-    state = _imperial_privilege_state(other_agent_space="arrakeen")
-    decline = next(
-        candidate
-        for candidate in legal_imperial_privilege_actions(state, 0)
-        if candidate.action_id == "decline_imperial_privilege_intrigue"
-    )
-    declined = apply_imperial_privilege_action(state, decline).state
+# The user ruling that splits Imperial Privilege's second sentence, "Recall
+# one of your other Agents from the board, and draw a card" [Board Guide p. 2]
+# [Main p. 20], into two steps: "4번은 소환과 뽑기가 당연히 두 단계로
+# 나눠야지. 이건 정말 기본적인 원칙인데" (user ruling 2026-10-10, OQ-027 (d)).
+# OQ-023 already rules the recall and the draw are "별개의 효과". The draw is
+# the space's own ``cards`` icon, ordered freely with the Intrigue slot and
+# the recall ("You may carry out all these effects in any order" [Main p. 9]);
+# the slot still comes before the recall inside the written-sentence icon.
+_IP_RULING = "user ruling 2026-10-10, OQ-027 (d)"
+
+_CONFIRM = DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0)
+_DECLINE_SLOT = DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
+_DRAW = DomainAction(
+    action_id="resolve_board_effect", actor=0, arguments=(("effect", "cards"),)
+)
+
+
+def _with_deck(state: GameState, *cards: str) -> GameState:
+    owner = replace(state.players[0], deck=cards)
+    return replace(state, players=(owner, *state.players[1:]))
+
+
+def test_imperial_privilege_recall_returns_the_agent_and_draws_nothing() -> None:
+    # The recall only recalls; the card is drawn by the space's own icon
+    # (_IP_RULING).
     drawn = _instance("reconnaissance")
-    declined_owner = replace(declined.players[0], deck=(drawn,))
-    declined = replace(declined, players=(declined_owner, *declined.players[1:]))
+    state = _with_deck(_imperial_privilege_state(other_agent_space="arrakeen"), drawn)
+    assert board_icons_for(state, 0, "imperial_privilege", 0) == (
+        "imperial_privilege",
+        "cards",
+    )
+    declined = apply_imperial_privilege_action(state, _DECLINE_SLOT).state
     recall = next(
         candidate
         for candidate in legal_imperial_privilege_actions(declined, 0)
@@ -1215,43 +1236,115 @@ def test_imperial_privilege_recall_returns_agent_and_draws_a_card() -> None:
 
     result = apply_imperial_privilege_action(declined, recall)
     resolved_owner = result.state.players[0]
-    decision = _finish_open_turn(result.state).decision_stack[-1].decision
 
     assert "arrakeen" not in resolved_owner.agent_locations
     assert resolved_owner.agents_available == 1
-    assert resolved_owner.hand == (drawn,)
-    assert isinstance(decision, PlayerDecision)
-    assert decision.owner == 1
-    assert result.events[-1].kind == "board_effect_resolved"
+    assert resolved_owner.hand == ()
+    assert resolved_owner.deck == (drawn,)
+    assert [event.kind for event in result.events] == [
+        "agent_recalled",
+        "board_effect_resolved",
+    ]
     assert dict(result.events[-1].payload) == {
         "action_id": "recall_agent_for_imperial_privilege",
         "effect": "imperial_privilege",
         "player": 0,
         "space_id": "imperial_privilege",
     }
-    assert any(event.kind == "agent_recalled" for event in result.events)
+    # The draw still waits, and with it the turn end.
+    assert legal_imperial_privilege_actions(result.state, 0) == ()
+    assert legal_board_effect_actions(result.state, 0) == (_DRAW,)
+    assert not legal_agent_turn_finish_actions(result.state, 0)
+
+    drew = resolve_board_effect(result.state, _DRAW)
+    assert drew.state.players[0].hand == (drawn,)
+    assert dict(drew.events[-1].payload) == {
+        "effect": "cards",
+        "player": 0,
+        "space_id": "imperial_privilege",
+    }
+    decision = _finish_open_turn(drew.state).decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
 
 
-_CONFIRM = DomainAction(
-    action_id="resolve_imperial_privilege_without_recall", actor=0
+@pytest.mark.parametrize(
+    "order",
+    [
+        ("draw", "slot", "recall"),
+        ("slot", "draw", "recall"),
+        ("slot", "recall", "draw"),
+    ],
 )
+def test_imperial_privilege_draw_and_recall_resolve_in_any_order(
+    order: tuple[str, ...],
+) -> None:
+    # _IP_RULING: the two pieces are independent, each resolved once; the
+    # card is drawn exactly once whatever the order, and the turn end waits
+    # until both have resolved.
+    drawn, second = _instance("reconnaissance"), _instance("diplomacy")
+    state = _with_deck(
+        _imperial_privilege_state(other_agent_space="arrakeen"), drawn, second
+    )
+    steps = {
+        "draw": _DRAW,
+        "slot": _DECLINE_SLOT,
+        "recall": DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
+    }
+    engine = UprisingRulesEngine()
+    for done, step in enumerate(order):
+        assert not legal_agent_turn_finish_actions(state, 0)
+        assert (_DRAW in engine.legal_actions(state, 0)) is ("draw" not in order[:done])
+        state = engine.apply(state, steps[step]).state
+        assert state.players[0].hand == (
+            (drawn,) if "draw" in order[: done + 1] else ()
+        )
+
+    owner = state.players[0]
+    assert owner.hand == (drawn,)
+    assert owner.deck == (second,)
+    assert owner.agent_locations == ("imperial_privilege",)
+    legal = engine.legal_actions(state, 0)
+    assert _DRAW not in legal
+    assert not any("imperial_privilege" in action.action_id for action in legal)
+    assert legal_agent_turn_finish_actions(state, 0)
 
 
-def test_imperial_privilege_confirms_the_skipped_recall_without_another_agent() -> (
-    None
-):
+def test_imperial_privilege_turn_end_waits_for_the_recall_after_the_draw() -> None:
+    # The draw alone does not settle the space: the written-sentence icon
+    # (the Intrigue slot, then the recall) still blocks finish_agent_turn.
+    state = _with_deck(
+        _imperial_privilege_state(other_agent_space="arrakeen"),
+        _instance("reconnaissance"),
+    )
+    drew = resolve_board_effect(state, _DRAW).state
+
+    assert dict(drew.decision_stack[-1].context)["pending_board_effect"] is True
+    assert not legal_agent_turn_finish_actions(drew, 0)
+    assert legal_imperial_privilege_actions(drew, 0) == (_DECLINE_SLOT,)
+    declined = apply_imperial_privilege_action(drew, _DECLINE_SLOT).state
+    assert not legal_agent_turn_finish_actions(declined, 0)
+    assert legal_board_effect_actions(declined, 0) == ()
+
+
+def test_imperial_privilege_confirms_the_skipped_recall_without_another_agent() -> None:
     # OQ-023 (decided): with no other deployed Agent only the recall is
     # skipped; the card draw is a separate printed effect and still resolves
     # [Board Guide p. 2]. User ruling 2026-09-30 ("결정 창 없이 자동으로
     # 넘어가는 곳도 모두 결정 창을 연다"): the owner confirms the skip
-    # instead of the engine resolving it unasked. The Intrigue deck holds a
-    # card so the slot's draw needs no reshuffle of the trashed one (OQ-061).
+    # instead of the engine resolving it unasked. Since _IP_RULING the
+    # confirm only confirms: the draw is the space's own icon and waits for
+    # its own action. The Intrigue deck holds a card so the slot's draw needs
+    # no reshuffle of the trashed one (OQ-061).
     state = _imperial_privilege_state(
         intrigue_cards=("intrigue:held",), intrigue_deck=("intrigue:replacement",)
     )
     drawn = _instance("reconnaissance")
-    owner = replace(state.players[0], deck=(drawn,))
-    state = replace(state, players=(owner, *state.players[1:]))
+    state = _with_deck(state, drawn)
     action = next(
         candidate
         for candidate in legal_imperial_privilege_actions(state, 0)
@@ -1271,23 +1364,30 @@ def test_imperial_privilege_confirms_the_skipped_recall_without_another_agent() 
 
     result = apply_imperial_privilege_action(traded.state, _CONFIRM)
     resolved = result.state
-    decision = _finish_open_turn(resolved).decision_stack[-1].decision
 
     assert legal_imperial_privilege_actions(resolved, 0) == ()
     assert imperial_privilege_recall_targets(resolved, 0) is None
-    assert drawn in resolved.players[0].hand
-    assert isinstance(decision, PlayerDecision)
-    assert decision.owner == 1
-    kinds = [event.kind for event in result.events]
-    assert kinds[0] == "imperial_privilege_recall_skipped"
-    assert kinds[-1] == "board_effect_resolved"
+    # The confirm draws nothing; the card still waits for its own icon.
+    assert drawn not in resolved.players[0].hand
+    assert resolved.players[0].deck == (drawn,)
+    assert [event.kind for event in result.events] == [
+        "imperial_privilege_recall_skipped",
+        "board_effect_resolved",
+    ]
     assert dict(result.events[-1].payload) == {
         "action_id": "resolve_imperial_privilege_without_recall",
         "effect": "imperial_privilege",
         "player": 0,
         "space_id": "imperial_privilege",
     }
-    assert "agent_recalled" not in kinds
+    assert legal_board_effect_actions(resolved, 0) == (_DRAW,)
+    assert not legal_agent_turn_finish_actions(resolved, 0)
+
+    drew = resolve_board_effect(resolved, _DRAW).state
+    assert drew.players[0].hand == (drawn,)
+    decision = _finish_open_turn(drew).decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
 
 
 def test_imperial_privilege_recall_is_confirmed_only_without_a_target() -> None:
@@ -1295,9 +1395,7 @@ def test_imperial_privilege_recall_is_confirmed_only_without_a_target() -> None:
     # another Agent on the board only the recall is offered.
     state = _imperial_privilege_state(other_agent_space="arrakeen")
     assert imperial_privilege_recall_targets(state, 0) is None  # slot first
-    declined = apply_imperial_privilege_action(
-        state, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
-    ).state
+    declined = apply_imperial_privilege_action(state, _DECLINE_SLOT).state
 
     assert imperial_privilege_recall_targets(declined, 0) == ("arrakeen",)
     assert legal_imperial_privilege_actions(declined, 0) == (
@@ -1322,9 +1420,7 @@ def test_imperial_privilege_recall_that_lost_its_target_turns_into_the_confirm()
     # confirm, so the decision is never left without a legal action (the
     # 2026-09-06 self-play deadlock) and no engine hook skips it unasked.
     state = _imperial_privilege_state(other_agent_space="arrakeen")
-    declined = apply_imperial_privilege_action(
-        state, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
-    ).state
+    declined = apply_imperial_privilege_action(state, _DECLINE_SLOT).state
     drawn = _instance("reconnaissance")
     owner = replace(
         declined.players[0],
@@ -1337,13 +1433,14 @@ def test_imperial_privilege_recall_that_lost_its_target_turns_into_the_confirm()
     assert legal_imperial_privilege_actions(lost, 0) == (_CONFIRM,)
     result = apply_imperial_privilege_action(lost, _CONFIRM)
 
-    decision = _finish_open_turn(result.state).decision_stack[-1].decision
+    kinds = [event.kind for event in result.events]
+    assert kinds == ["imperial_privilege_recall_skipped", "board_effect_resolved"]
+    assert drawn not in result.state.players[0].hand
+    drew = resolve_board_effect(result.state, _DRAW).state
+    assert drawn in drew.players[0].hand
+    decision = _finish_open_turn(drew).decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
-    assert drawn in result.state.players[0].hand
-    kinds = [event.kind for event in result.events]
-    assert kinds[0] == "imperial_privilege_recall_skipped"
-    assert kinds[-1] == "board_effect_resolved"
 
 
 def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> None:
@@ -1384,9 +1481,7 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     )
     engine = UprisingRulesEngine()
     placed = engine.apply(state, _action_to(state, "imperial_privilege")).state
-    declined = engine.apply(
-        placed, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
-    ).state
+    declined = engine.apply(placed, _DECLINE_SLOT).state
     assert any(
         action.action_id == "recall_agent_for_imperial_privilege"
         for action in engine.legal_actions(declined, 0)
@@ -1422,10 +1517,41 @@ def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> 
     assert any(
         event.kind == "imperial_privilege_recall_skipped" for event in confirmed.events
     )
-    assert dict(confirmed.state.decision_stack[-1].context)[
-        "pending_board_effect"
-    ] is False
-    assert deck[0] in confirmed.state.players[0].hand
+    # The space's draw is still its own pending icon (_IP_RULING).
+    assert (
+        dict(confirmed.state.decision_stack[-1].context)["pending_board_icons"]
+        == "cards"
+    )
+    assert deck[0] not in confirmed.state.players[0].hand
+    drew = engine.apply(confirmed.state, _DRAW).state
+    assert dict(drew.decision_stack[-1].context)["pending_board_effect"] is False
+    assert deck[0] in drew.players[0].hand
+
+
+def test_reverend_mother_never_repeats_imperial_privilege() -> None:
+    # Reverend Mother's paid repeat re-queues every printed icon of the
+    # visit, but only "on a Bene Gesserit or Fremen board space" [Reverend
+    # Mother Jessica card] (rules/agent_turn.py); Imperial Privilege is a
+    # Landsraad space with no Faction [Board Guide p. 2], so the split
+    # pieces are never armed a second time.
+    state = _imperial_privilege_state(other_agent_space="arrakeen")
+    unplaced = _state("dagger", Resources(solari=3))
+    jessica = replace(
+        unplaced.players[0],
+        influence=Influence(emperor=2),
+        leader_face_id="reverend_mother_jessica",
+        resources=Resources(solari=3, water=1),
+    )
+    unplaced = replace(unplaced, players=(jessica, *unplaced.players[1:]))
+    placed = apply_agent_action(
+        unplaced, _action_to(unplaced, "imperial_privilege")
+    ).state
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_board_icons"] == "imperial_privilege,cards"
+    assert context["pending_leader_board_repeat"] is False
+    assert dict(state.decision_stack[-1].context)["pending_leader_board_repeat"] is (
+        False
+    )
 
 
 def test_imperial_privilege_reshuffle_includes_the_trashed_intrigue() -> None:
@@ -1832,7 +1958,8 @@ def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
 # None where the automatic-effects channel does not cover the space (spaces
 # resolved entirely through choice frames, or a not-yet-implemented effect).
 # Choice-driven spaces with an automatic icon (Espionage's draw, Desert
-# Tactics' troop, Shipping's Solari) list just that icon (OQ-027).
+# Tactics' troop, Shipping's Solari, Imperial Privilege's draw since the user
+# ruling of 2026-10-10) list just that icon (OQ-027).
 _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
     "dutiful_service": {0: (GainResourcesEffect(solari=2),)},
     "sardaukar": {0: (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))},
@@ -1848,7 +1975,7 @@ _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
         1: (RecruitTroopsEffect(2), GainResourcesEffect(water=1)),
     },
     "high_council": {0: ()},
-    "imperial_privilege": {0: None},
+    "imperial_privilege": {0: (DrawImperiumCardsEffect(1),)},
     "swordmaster": {0: (), 1: ()},
     "arrakeen": {0: (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))},
     "research_station": {0: (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))},
@@ -1884,7 +2011,7 @@ _BASE_ICON_TABLE: dict[str, dict[int, str]] = {
     "assembly_hall": {0: "intrigue"},
     "gather_support": {0: "troops", 1: "troops,resources"},
     "high_council": {0: "high_council"},
-    "imperial_privilege": {0: "imperial_privilege"},
+    "imperial_privilege": {0: "imperial_privilege,cards"},
     "swordmaster": {0: "swordmaster", 1: "swordmaster"},
     "arrakeen": {0: "troops,cards"},
     "research_station": {0: "troops,cards"},

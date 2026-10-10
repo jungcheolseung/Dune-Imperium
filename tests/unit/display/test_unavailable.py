@@ -1497,10 +1497,14 @@ def test_imperial_privilege_with_no_other_agent_greys_out_the_recall() -> None:
     """OQ-023: with no other Agent only the recall is skipped and the card
     still drawn; user ruling 2026-09-30 ("결정 창 없이 자동으로 넘어가는
     곳도 모두 결정 창을 연다") makes the owner confirm it, with the recall
-    greyed out beside the confirm on the "choice" surface."""
+    greyed out beside the confirm on the "choice" surface. Since the user
+    ruling of 2026-10-10 ("4번은 소환과 뽑기가 당연히 두 단계로 나눠야지",
+    OQ-027 (d)) the draw is the space's own ``cards`` icon: offered beside
+    the confirm and left pending by it."""
 
     state = _imperial_privilege()
     assert _legal(state, "resolve_imperial_privilege_without_recall") == [{}]
+    assert _legal(state, "resolve_board_effect") == [{"effect": "cards"}]
     found = _found(state)
     assert found["frame"] == FrameKind.AGENT_EFFECTS
     row = _rows(found, "choice")["choice:imperial_privilege_recall"]
@@ -1509,11 +1513,14 @@ def test_imperial_privilege_with_no_other_agent_greys_out_the_recall() -> None:
     assert (row["reason"], row["reason_ko"], row["code"]) == _NO_OTHER_AGENT
     assert row["refs"] == []
 
-    # The confirm draws the card and the row goes with the pending recall.
+    # The confirm draws nothing and the row goes with the pending recall;
+    # the draw stays offered on its own.
     confirmed = ENGINE.apply(
         state,
         DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0),
     ).state
+    assert confirmed.players[0].hand == state.players[0].hand
+    assert _legal(confirmed, "resolve_board_effect") == [{"effect": "cards"}]
     after = unavailable_choices(confirmed, 0, ENGINE.legal_actions(confirmed, 0))
     assert after is None or not _rows(after, "choice")
 

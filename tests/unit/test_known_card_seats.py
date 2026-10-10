@@ -228,6 +228,9 @@ _NOT_ZONES = frozenset(
 )
 _NOT_PLAYER_ZONES = frozenset(
     {
+        # Triggered draws waiting as the seat's own step (OQ-106): a deck,
+        # an origin and an event source, never a card.
+        "owed_draws",
         "leader_id",
         "leader_face_id",
         "feyd_track_space",

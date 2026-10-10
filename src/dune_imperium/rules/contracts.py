@@ -728,7 +728,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
             del market[market_index]
 
     definition = contract_for_instance(instance_value)
-    next_owner = receive_contract(state.players[action.actor], instance_value)
+    next_owner = receive_contract(state, state.players[action.actor], instance_value)
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players
@@ -1237,8 +1237,9 @@ def _complete_contract_without_choices(
         ),
         contracts_completed_turn=next_owner.contracts_completed_turn + 1,
     )
-    # CHOAM Transports' draw is owed to the engine's post-step draw.
-    next_owner = owe_contract_completion_draw(next_owner)
+    # CHOAM Transports' draw: the owner's next step in its own turn, else the
+    # engine's post-step draw (user decision 2026-10-10, OQ-106).
+    next_owner = owe_contract_completion_draw(state, next_owner)
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),
@@ -1435,6 +1436,7 @@ def apply_contract_intrigue_trash(
     if instance_id not in owner.active_contract_ids:
         raise RuntimeError("the Immediate Contract awaiting its trash must be active")
     next_owner = owe_contract_completion_draw(
+        state,
         replace(
             owner,
             intrigue_cards=tuple(
@@ -1445,7 +1447,7 @@ def apply_contract_intrigue_trash(
             ),
             completed_contract_ids=(*owner.completed_contract_ids, instance_id),
             contracts_completed_turn=owner.contracts_completed_turn + 1,
-        )
+        ),
     )
     remaining = state.decision_stack[:-1]
     next_state = with_trashed_intrigue(

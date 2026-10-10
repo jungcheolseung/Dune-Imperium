@@ -122,6 +122,20 @@ KNOWN = (
         ("icons", "influence_any"),
     ),
     ({"kind": "game_finished", "payload": {}}, ("log_icons", "vp_winner")),
+    # Its words name Smuggle Spice and Staban Tuek (panels.js
+    # EVENT_IMPLIED_LEADER), not the label the picture's alt text reads.
+    (
+        {
+            "kind": "leader_ability_spice_gained",
+            "payload": {
+                "player": 0,
+                "space_id": "hagga_basin",
+                "spice": 1,
+                "visitor": 3,
+            },
+        },
+        ("icons", "spice"),
+    ),
     # Text only: a kind without a picture, and an event without its Faction.
     ({"kind": "turn_passed", "payload": {"player": 0}}, None),
     ({"kind": "agent_turn_finished", "payload": {"player": 0}}, None),
@@ -343,6 +357,19 @@ def check_neutral(page, language: str) -> None:
             {"kind": "endgame_started", "payload": {}},
             {"kind": "game_finished", "payload": {}},
         ],
+        # Staban Tuek's Smuggle Spice on another seat's visit: titled for a
+        # Leader ability, not "게임 진행", and keeps the ⚙ mark.
+        [
+            {
+                "kind": "leader_ability_spice_gained",
+                "payload": {
+                    "player": 0,
+                    "space_id": "hagga_basin",
+                    "spice": 1,
+                    "visitor": 3,
+                },
+            }
+        ],
     ]
     cards = page.evaluate(NEUTRAL_JS, {"groups": groups, "language": language})
     page.wait_for_function(LOADED_JS)
@@ -354,6 +381,7 @@ def check_neutral(page, language: str) -> None:
         None,
         ("log_icons", "conflict"),
         ("log_icons", "vp_winner"),
+        None,
     ]
     names = [
         "Round 3",
@@ -363,7 +391,14 @@ def check_neutral(page, language: str) -> None:
         "setup",
         "Combat Intrigue",
         "game over",
+        "Leader ability",
     ]
+    ability_title = {"ko": "지도자 능력", "en": "Leader ability"}[language]
+    check.ok(
+        cards[-1]["title"] == ability_title,
+        f"{language}: a Leader ability's card is titled {ability_title!r}",
+        cards[-1]["title"],
+    )
     for card, where, name in zip(cards, wanted, names, strict=True):
         url = expected_url(page, where)
         label = f"{language}: {name} card"

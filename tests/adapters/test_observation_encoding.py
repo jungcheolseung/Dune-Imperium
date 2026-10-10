@@ -525,21 +525,80 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # only for a playable card, close after a play unless another copy is
 # playable) a scratch run reproduces the old pin exactly; the Earn Any
 # Alliance timing of the same change moves none of the six.
+# v142, second change (user ruling 2026-10-10, OQ-027 (d)): Imperial
+# Privilege's card draw is its own ``resolve_board_effect(cards)`` icon, so
+# the legal list right after an Imperial Privilege placement holds one more
+# action and the random seat draws from it. Four games move, each at its
+# first Imperial Privilege visit: choam at decision 497 (round 8, seat 1;
+# 2,904 -> 2,816 vectors), draft at 556 (round 9, seat 3; 2,808 -> 2,864),
+# promo_bloodlines_tech at 517 (round 8, seat 2; 3,004 -> 3,172) and scouts
+# at 340 (round 5, seat 3; 3,712 -> 3,368). With the bundled recall-and-draw
+# patched back in (a scratch checkout of the previous commit) all six games
+# reproduce the pins above exactly; base and everything never visit Imperial
+# Privilege. ``adapters/observation_encoding.py`` and ``core/observation.py``
+# are unchanged.
+# v142, third change (user ruling 2026-10-10, OQ-106): the draw Urgent
+# Shigawire adds to a boosted Bene Gesserit card's Agent box is its own
+# ``resolve_agent_card_effect(cards)`` step, so the legal list right after a
+# boosted placement holds one more action. Only "everything" moves: at
+# decision 631 (round 8, seat 1, after Weirding Woman's boosted placement on
+# Arrakeen) the random seat draws from 6 actions instead of 5 (3,620 ->
+# 3,640 vectors). With the placement drawing the card again (a scratch copy
+# of the previous commit's source) all six games reproduce the pins above
+# exactly.
+# v142, fourth change (OQ-106): Cunning's and Insider Information's draw is
+# its own ``resolve_intrigue_rewards`` step when the owner resolves the
+# trash first. Only promo_bloodlines_tech moves: at decision 547 (round 8,
+# seat 2, right after Insider Information's trash) the draw is the seat's
+# one legal action, where the trash had drawn already and the random seat
+# chose among 6 (3,172 -> 3,164 vectors). With the
+# trash drawing again (a scratch copy of the previous commit's source) all
+# six games reproduce the pins above exactly.
+# v142, fifth change (OQ-106): a draw another printed effect triggers in
+# the seat's own turn waits as its own ``draw_owed_intrigue`` step. Two
+# games move: everything at decision 216 (round 4, seat 2, right after its
+# research direction c3r5 moved its Tleilaxu token onto the track's
+# Intrigue space), where the random seat draws the card from 4 actions
+# instead of deploying (3,640 -> 3,544 vectors), and scouts at decision 812
+# (round 10, seat 3, right after its Reveal bought Overthrow), where the
+# draw is the seat's one legal action (3,368 -> 3,372 vectors). With the
+# triggers drawing again (a scratch copy of the previous commit's source)
+# all six games reproduce the pins above exactly.
+# v142, sixth change (OQ-106): a draw printed after one of an Arrakeen
+# Scouts line's reward choices waits as the line's own
+# ``scouts_rewards_first``. Only scouts moves: at decision 384 (round 6,
+# seat 2, right after its Water Discipline trash) the draw is the seat's
+# one legal action, where the trash had drawn already and seat 3 chose its
+# line next (3,372 -> 3,552 vectors). The pause before a later auction
+# winner's reward (the commit before) moves none of the six. With the trash
+# drawing again (a scratch copy of the previous commit's source) all six
+# games reproduce the pins above exactly.
+# v142, seventh change (user decision 2026-10-10, OQ-106 "가 로 가자"): the
+# Bene Gesserit Influence 4 card, Imperial Birthright, Overthrow's acquire
+# box and CHOAM Transports' card are the owner's only action right after
+# their trigger. Two games move, each at a Faction icon that reached Bene
+# Gesserit 4 in an Agent turn: everything at decision 697 (round 9, seat 3),
+# where the random seat had flipped a Tech tile from 3 actions before the
+# draw (same 3,544 vectors, other order), and scouts at decision 702 (round
+# 9, seat 0), where it drew from 3 actions (3,552 -> 3,532 vectors). With
+# the draws free again and CHOAM Transports drawn by the post-step hook (a
+# scratch copy of this change's source) all six games reproduce the pins
+# above exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
-    "choam": ("cf414bd3f23f711e42d9b33f6f54001cf70435f3872091501b670434a6c34e62", 2904),
+    "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
     "promo_bloodlines_tech": (
-        "23337f08fcf35626d22ed6503c1b21922a7bc061ce3244beb429b688823940ee",
-        3004,
+        "92815f46b8d9f8e393f8d102df256f113c5d6e1bf628297a18d18c5504c38519",
+        3164,
     ),
     "everything": (
-        "40104687a06f0898476d74e4b00588f893a5a53457631162cc92f91bd4e6fd0f",
-        3620,
+        "4879457a851074b334d07f118a711f1688aa0b20411ede2fb4731965e48fa983",
+        3544,
     ),
-    "draft": ("98a71a1ab408346e10573193c4d415db03c1ba0b525527e5d46835ab8f362ebf", 2808),
+    "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
-        "f288d4ca32c84ead9b610cb1eb8dd14ad16cab8dd26ec0b1eaa5e62521e769f1",
-        3712,
+        "6bb338f6e47f357c0c7556c34c02efa6623a39196f6a4d931f4960af6e759d27",
+        3532,
     ),
 }
 _GOLDEN_CONFIGS = {

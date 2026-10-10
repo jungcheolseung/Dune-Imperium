@@ -21,6 +21,10 @@ to the end, and on the way the page must show:
   the legal line actions; in English, no Hangul in the action list;
 - a choice the seat is skipped for (nothing it could take) says so in the
   note, naming the item;
+- at every decision of the walk, while the step resolves an item the
+  decision panel names it (feedback item 8, 2026-10-10: the seat's own
+  choice's item, else view.scouts_item), and an ordinary turn has no such
+  header;
 - after the game, the finished page without errors;
 - a seat steered to the High Council (OQ-076 alternative C, 2026-09-30):
   its subcommittee choice is one more row of the turn ("소위원회 선택"),
@@ -78,8 +82,15 @@ check = Check()
 # GameSessionManager (one human seat playing CHOOSE_JS's policy against three
 # heuristic seats, CHOAM only) finds seed 64 first with all three: its seat is
 # offered the four pick buttons, holds its own pick for the next 27 views,
-# and meets a three-card market.
-SEEDS = (21, 58, 64)
+# and meets a three-card market. Imperial Privilege's card draw as its own
+# icon (user ruling 2026-10-10, OQ-027 (d)) moves seed 64 at seat 3's first
+# Imperial Privilege visit off all three (the previous commit's engine
+# still gives them); the same scan finds seed 84 first with all three. A
+# triggered draw held as the owner's own step (user ruling 2026-10-10,
+# OQ-106) moves seed 84 off its three-card market (the previous commit's
+# engine still gives it); the same scan from 85 finds seed 87 first with
+# all three.
+SEEDS = (21, 58, 87)
 # COUNCIL_JS's walk takes a council seat with a subcommittee still to join
 # (round 4; the list then offers two joins and the decline). Seed 21 until
 # OQ-095's explicit Agent-turn end moved its seat to round 7, when every
@@ -398,8 +409,50 @@ def inspect_market(page, seen: dict[str, bool]) -> None:
         seen["market_take"] = ok
 
 
+# The decision panel's Scouts item header against the view (feedback item
+# 8): the item the step resolves (the seat's own choice's item first), or
+# none during the round's turns.
+DECISION_ITEM_JS = """(() => {
+  const cursor = state.view.scouts_item;
+  const own = state.actions && state.actions.scouts_lines;
+  const expected = cursor ? ((own && own.item_id) || cursor) : null;
+  const headers = document.querySelectorAll('#decision-info .scouts-decision-item');
+  const title = headers.length
+    ? headers[0].querySelector('.scouts-decision-title').innerText : '';
+  const name = expected === 'secrets'
+    ? '비밀 선택 공개' : expected && scoutsItem(expected).name;
+  return {cursor, expected, count: headers.length,
+    item: headers.length ? headers[0].dataset.item : null, title,
+    named: Boolean(name) && title.startsWith('아라킨 스카웃 · ')
+      && title.includes(name)};
+})()"""
+
+
+def inspect_decision_item(page, seen: dict[str, bool]) -> None:
+    """Every decision of the walk: while the Scouts step resolves an item the
+    decision panel names it (data-item = the seat's own item, else the
+    cursor; "secrets" while due picks resolve), and an ordinary turn has no
+    header. Each outcome is reported once; a later mismatch still fails."""
+
+    row = page.evaluate(DECISION_ITEM_JS)
+    if row["cursor"]:
+        key = "decision_item"
+        label = "a Scouts step decision names its item in the decision panel"
+        good = row["count"] == 1 and row["item"] == row["expected"] and row["named"]
+    else:
+        key = "decision_item_none"
+        label = "an ordinary turn of a Scouts game has no item header"
+        good = row["count"] == 0
+    if good and key not in seen:
+        seen[key] = check.ok(True, label, row)
+    elif not good and not seen.get(f"{key}_bad"):
+        seen[f"{key}_bad"] = True
+        check.ok(False, label, row)
+
+
 def inspect(page, seen: dict[str, bool]) -> bool:
     ids = page.evaluate("state.actions.actions.map((a) => a.action_id)")
+    inspect_decision_item(page, seen)
     text = panel_text(page)
     inspect_lines(page, seen)
     inspect_market(page, seen)
@@ -1217,7 +1270,8 @@ def main() -> None:
         print("[game] the High Council seat's subcommittee choice")
         create(page, base, COUNCIL_SEED)
         council(page, seen)
-        for name in (*wanted, "choose", "choose_list"):
+        extra = ("choose", "choose_list", "decision_item", "decision_item_none")
+        for name in (*wanted, *extra):
             check.ok(bool(seen.get(name)), f"seen: {name}")
         piece_games(page, base, Path(_server_log).parent)
         fullest_table(base, browser)

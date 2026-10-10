@@ -46,7 +46,7 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
-from dune_imperium.rules.effects import open_next_turn
+from dune_imperium.rules.effects import BOOST_DRAW_KEY, open_next_turn
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     TECH_ACQUIRE_PENDING_KEY,
@@ -515,6 +515,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         "existing_troop_deployment_limit",
                         2 if combat_space or owner.combat_icon_turn else 0,
                     ),
+                    *(((BOOST_DRAW_KEY, card_instance_id),) if boosted else ()),
                     ("pending_agent_effect", agent_effect_pending),
                     ("pending_agent_icons", agent_icons),
                     ("pending_board_effect", bool(board_icons)),
@@ -711,24 +712,23 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         )
         events = (*events, *sietch_events)
     if boosted:
-        # Urgent Shigawire: "added to its Agent box: draw a card". The draw
-        # resolves with the placement (its box is freely ordered anyway).
-        draw_source = (
-            f"round:{state.round_number}:player:{action.actor}:"
-            f"shigawire:{card_instance_id}"
-        )
-        drawn = draw_or_request_personal_cards(
-            next_state, action.actor, 1, source=draw_source
-        )
-        next_state = drawn.state
+        # Urgent Shigawire: "added to its Agent box: draw a card". The boost
+        # is spent by the placement; the draw waits in the effect frame
+        # (``BOOST_DRAW_KEY``) for its own step in any order with the other
+        # effects [Main p. 9], so the public placement stays undoable and only
+        # the hidden draw closes the undo window: "그 외에는 전부 나누자.
+        # 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
+        # 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10, OQ-106).
         events = (
             *events,
             GameEvent(
-                event_id=draw_source,
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"shigawire:{card_instance_id}"
+                ),
                 kind="agent_card_boost_consumed",
                 payload=(("card_id", card_instance_id), ("player", action.actor)),
             ),
-            *drawn.events,
         )
     return RuleResult(state=next_state, events=events)
 
@@ -955,14 +955,25 @@ def _actions_for_affordable_costs(
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
-        # Navigation Chamber: "Board spaces cost you 1 spice or 1 Solari
-        # less" [Tech tile face]; each discount is its own placement choice.
-        variants: list[tuple[str | None, ResourceCost]] = [(None, cost)]
+        # Navigation Chamber: "Board spaces cost you [1 spice] or [1 Solari]
+        # less." [Tech tile face] (bloodlines.md: "board space 비용이 spice 1
+        # 또는 Solari 1 줄어든다" [Bloodlines p. 7]). The tile has no "may",
+        # so the cut always applies, as the rulebook's "the Tech tile costs
+        # him 1 less Spice" [Bloodlines p. 7] and every other cost cut here
+        # (Duncan's below, Sardaukar High Command, the High Council Tech
+        # discount) do; the printed "or" is a choice only on a cost holding
+        # both resources, which no 4-player space has (OQ-104, project
+        # reading). Spice Refinery's and Gather Support's arrow payments are
+        # cost options [Board Guide pp. 1-2], so the cut reaches them; their
+        # free option and water-only costs keep the plain variant.
+        variants: list[tuple[str | None, ResourceCost]] = []
         if has_tech(owner.tech_ids, TechAbility.SPACE_DISCOUNT):
             if cost.spice >= 1:
                 variants.append(("spice", replace(cost, spice=cost.spice - 1)))
             if cost.solari >= 1:
                 variants.append(("solari", replace(cost, solari=cost.solari - 1)))
+        if not variants:
+            variants.append((None, cost))
         for discount, effective in variants:
             if not _can_afford(owner, effective):
                 continue

@@ -26,7 +26,8 @@ the app does [Scouts schedule]:
   (``retreat_units``: Chani's Tactics token counts it, OQ-074 (c)).
 
 Winners' rewards resolve by place, first place first, and seats sharing a
-place from the First Player on (OQ-073, user ruling 2026-09-29).
+place from the First Player on (OQ-073, user ruling 2026-09-29), with a
+pause before each winner's reward after the first (rules/pauses.py, OQ-106).
 
 Critical Moment is open: the Imperium deck's top two (late: three) cards are
 revealed (``GameState.scouts_market_cards``), each seat from the First
@@ -59,6 +60,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
 )
+from dune_imperium.rules.pauses import SCOUTS_REWARD, push_pause
 from dune_imperium.rules.scouts_effects import push_scouts_effect
 from dune_imperium.rules.specimens import return_specimens
 from dune_imperium.rules.units import retreat_units
@@ -67,6 +69,8 @@ _BID_FRAME: Final = "Scouts bid frame"
 _CALL_FRAME: Final = "Scouts call frame"
 _TAKE_FRAME: Final = "Scouts market frame"
 _RETREAT_FRAME: Final = "Mercenaries retreat frame"
+# The task that pauses before a later auction winner's reward.
+AUCTION_PAUSE: Final = "auction_pause:"
 
 
 def auction_tasks(auction_id: str, order: tuple[int, ...]) -> tuple[str, ...]:
@@ -245,8 +249,13 @@ def close_bids(state: GameState, auction_id: str, order: tuple[int, ...]) -> Rul
                 )
             )
         # First place first; seats sharing a place from the First Player on.
+        # A pause stands before each winner's reward after the first
+        # (rules/pauses.py), as before a Conflict reward recipient's.
         by_place = sorted(winners, key=lambda seat: (winners[seat], order.index(seat)))
-        tasks = [f"auction_reward:{seat}:{winners[seat]}" for seat in by_place]
+        for rank, seat in enumerate(by_place):
+            if rank:
+                tasks.append(f"{AUCTION_PAUSE}{seat}")
+            tasks.append(f"auction_reward:{seat}:{winners[seat]}")
     return RuleResult(
         state=replace(
             state,
@@ -256,6 +265,22 @@ def close_bids(state: GameState, auction_id: str, order: tuple[int, ...]) -> Rul
         ),
         events=tuple(events),
     )
+
+
+def pause_auction_reward(state: GameState, task: str) -> RuleResult:
+    """Stop before the next winner's reward (rules/pauses.py).
+
+    The previous winner's last choice (Competitive Study's Research
+    direction, a Spy post) may stand right before a hidden card of this
+    winner's (Competitive Study's second place researching past the second
+    genetic marker draws, user ruling 2026-10-10, OQ-106); the pause keeps
+    that choice open to undo on the play server until its seat's press,
+    like a Conflict reward recipient's (OQ-103).
+    """
+
+    seat = task.removeprefix(AUCTION_PAUSE)
+    where = f"round:{state.round_number}:scouts:{state.scouts_item}:reward:{seat}"
+    return push_pause(state, SCOUTS_REWARD, where)
 
 
 def run_auction_reward(state: GameState, task: str) -> RuleResult:

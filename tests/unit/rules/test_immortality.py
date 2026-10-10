@@ -428,7 +428,11 @@ def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
     owner = paid.state.players[0]
     assert owner.resources.solari == 0
     assert owner.tleilaxu_space == 2
-    assert len(owner.intrigue_cards) == 1  # the second space's Intrigue
+    # The second space's Intrigue card waits as the owner's own step in its
+    # turn (user ruling 2026-10-10, OQ-106).
+    assert [entry[:2] for entry in owner.owed_draws] == [
+        ("intrigue", "tleilaxu_track")
+    ]
 
 
 def test_seven_solari_bonus_is_not_offered_at_the_tleilaxu_track_end() -> None:
@@ -482,21 +486,26 @@ def test_tleilaxu_track_pays_intrigue_victory_points_and_the_first_spice() -> No
     first = advance_tleilaxu(state, 0, 4, source="test")
     owner = first.state.players[0]
     assert owner.tleilaxu_space == 4
-    assert len(owner.intrigue_cards) == 1
+    # Inside the seat's own turn the second space's Intrigue card waits as
+    # its own step (user ruling 2026-10-10, OQ-106).
+    assert owner.intrigue_cards == ()
+    assert [entry[1] for entry in owner.owed_draws] == ["tleilaxu_track"]
     assert owner.victory_points == 2
     assert owner.resources.spice == 4
     assert first.state.tleilaxu_track_spice == 0
 
-    # The second player to reach the space gains the point but no spice.
+    # The second player to reach the space gains the point but no spice;
+    # outside its own turn the Intrigue card is drawn at once.
     second = advance_tleilaxu(first.state, 1, 4, source="test")
     other = second.state.players[1]
     assert other.victory_points == 2 and other.resources.spice == 0
+    assert len(other.intrigue_cards) == 1 and other.owed_draws == ()
 
     end = advance_tleilaxu(second.state, 0, 4, source="test")
     owner = end.state.players[0]
     assert owner.tleilaxu_space == TLEILAXU_TRACK_END
     assert owner.victory_points == 3
-    assert len(owner.intrigue_cards) == 2
+    assert [entry[1] for entry in owner.owed_draws] == ["tleilaxu_track"] * 2
     # OQ-048: an advance on the last space does nothing.
     assert "tleilaxu_track_end" in {event.kind for event in end.events}
 

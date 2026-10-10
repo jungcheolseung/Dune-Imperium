@@ -154,3 +154,51 @@ def test_go_to_11_reads_vp_on_the_apps_scale(
     assert ctx.vp(player) == player.victory_points + offset
     # Both games start one app VP in: 1 in the app's 4-player setup.
     assert ctx.vp(player) == 1
+
+
+def test_immediate_draws_are_answered_before_any_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User decision 2026-10-10 (OQ-106, "가 로 가자"): an immediate
+    triggered draw is all its frame offers, whatever the frame. With two of
+    them (CHOAM Transports' card and a Bene Gesserit Influence 4 card) the
+    agent takes one at once, with no window asked and no random fallback;
+    the app draws both inside their triggers.
+
+    Seed 1 with CHOAM, Bloodlines and Tech: seat 0's first Agent at
+    Arrakeen, both draws held for it by hand.
+    """
+
+    from dataclasses import replace
+
+    from dune_imperium.agents.app_ai import agent as agent_module
+    from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, hold_draw
+
+    config = RulesetConfig(choam_module=True, bloodlines=True, tech_module=True)
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, 1)
+    placement = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(state, placement).state
+    owner = hold_draw(
+        hold_draw(placed.players[0], OWED_CARD, "choam_transports", "test:card"),
+        OWED_INTRIGUE,
+        "bene_gesserit_4",
+        "test:intrigue",
+    )
+    state = replace(placed, players=(owner, *placed.players[1:]))
+    actions = engine.legal_actions(state, 0)
+    assert {action.action_id for action in actions} == {
+        "draw_owed_intrigue",
+        "draw_owed_card",
+    }
+
+    monkeypatch.setattr(agent_module, "handler_for", lambda kind: None)
+    app = AppAIAgent(seed=0)
+    pick = app.choose_action_with_state(state, engine.observe(state, 0), actions)
+    assert pick in actions
+    assert not app.fallbacks

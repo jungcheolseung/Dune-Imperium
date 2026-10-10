@@ -46,6 +46,7 @@ from dune_imperium.agents.app_ai.context import AppContext
 from dune_imperium.agents.app_ai.data.constants import TABLES
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows import DecisionRun, Memory, handler_for
+from dune_imperium.agents.app_ai.windows.common import TRIGGERED_DRAWS
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
@@ -60,7 +61,8 @@ _LOGGER: Final = logging.getLogger(__name__)
 # Choices the project offers that the app has no counterpart for and never
 # takes: the app resolves a Scouts line's steps in printed order
 # (docs/app-ai/scouts.md), never the line's later rewards ahead of a pending
-# choice (OQ-100).
+# choice (OQ-100). Once the choice is made, a draw printed after it waits as
+# the same action alone (OQ-106), which the app's printed order then takes.
 _PROJECT_ONLY_ACTIONS: Final = frozenset({"scouts_rewards_first"})
 
 
@@ -118,6 +120,11 @@ class AppAIAgent:
         legal_actions = app_offered(legal_actions)
         kind = observation.decision_kind
         if len(legal_actions) == 1:
+            return legal_actions[0]
+        if all(action.action_id in TRIGGERED_DRAWS for action in legal_actions):
+            # Immediate triggered draws (OQ-106, user decision 2026-10-10)
+            # can be all a frame of any kind offers; the app draws them
+            # inside their trigger, in no order that matters.
             return legal_actions[0]
         action: DomainAction | None = None
         try:

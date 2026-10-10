@@ -431,13 +431,34 @@ def test_navigation_gain_is_bucketed_leader_in_a_real_game(
     # 2 starter + 5 bought visits, 1 Navigation, 1 Intrigue (Tenuous Bond)
     # and 1 Agent-card (Scientific Breakthrough's research step) gain, 10
     # total (independent replay, no collector imports).
+    # Re-counted 2026-10-10 for Imperial Privilege's card draw as its own
+    # icon (user ruling 2026-10-10, OQ-027 (d), codec v142): seed 27 first
+    # diverges at round 4, seat 1's Imperial Privilege visit, after seat 0's
+    # round-3 Emperor visit has triggered Navigation, so seat 0 is still the
+    # first seat in full seeds 1-200 whose bare visit triggers it (seed 6
+    # seat 1's Navigation gain comes from a Conflict reward). Its own events
+    # now contain 2 starter + 6 bought visits, 1 Navigation, 3 Intrigue,
+    # 4 Conflict-reward and 1 Agent-card gain: 17 total (independent replay,
+    # no collector imports; the previous commit's engine gives the values
+    # pinned before).
+    # Re-counted 2026-10-10 for a triggered draw held as the owner's own step
+    # (user ruling 2026-10-10, OQ-106, codec v142): seed 27 first diverges at
+    # round 6, seat 0's research direction (c3r5), whose Tleilaxu track
+    # Intrigue card is now its own step, after its round-3 Emperor visit has
+    # triggered Navigation; no earlier full seed has a bare visit trigger it
+    # (a scan of seeds 1-27's "navigation" gains). Its own events now contain
+    # 8 visits, 1 Navigation, 1 Intrigue (Tenuous Bond), 1 Conflict reward of
+    # 2, 1 Agent-card (Scientific Breakthrough's research step) and 1 Tech
+    # (Navigation Chamber's acquire icon) gain: 14 total (independent replay,
+    # no collector imports; the previous commit's engine gives the values
+    # pinned before).
     game = tip_census.play(_spec(True, 27), ("influence",))
     seat0 = game["seats"][0]
     assert seat0["leader"] == "steersman_y_rkoon"
     sources = seat0["infl.sources"]
     assert sources.get("leader") == 1
-    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 7
-    assert seat0["infl.gained"] == 10
+    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 8
+    assert seat0["infl.gained"] == 14
 
 
 def test_fremen2_round_uses_the_decision_round_not_a_folded_next_round(
@@ -690,54 +711,130 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # left on the board. An independent replay, not importing the
     # collectors, recounted every column below from the games' own events,
     # decision action sets and state, and matched the collectors exactly.
-    game = tip_census.play(_spec(True, 264), ("influence",))
-    seat = game["seats"][3]
+    # Re-derived 2026-10-10 for Imperial Privilege's card draw as its own
+    # icon (user ruling 2026-10-10, OQ-027 (d), codec v142): seed 264 first
+    # diverges at round 7, seat 0's Imperial Privilege visit, and seed 345 at
+    # round 6, seat 3's; seed 264 seat 3 no longer has an Intrigue or
+    # Conflict-reward source, and seed 345 seat 2 no longer has an
+    # acquisition source, so neither fills its role (the previous commit's
+    # engine gives the values pinned before). Full seeds 1-600 give seeds
+    # 486 (seat 3), 494 (seat 0) and 555 (seat 2) in the first role and
+    # seeds 56 (seat 2), 67 (seat 2), 478
+    # (seat 1) and 509 (seat 3) in the second; the pins are the first of
+    # each. Seed 486 seat 3 (Lady Margot Fenring): an Endgame Panopticon
+    # Tech gain, Intrigue from Change Allegiances (its one loss too),
+    # Agent-card from Interstellar Conspiracy (twice) and Subversive
+    # Advisor, two Conflict-reward gains; its Spice Refinery Spy is trashed
+    # for Advanced Data Analysis, and Insider Information and Panopticon's
+    # placement recall two more; Infiltrates taken in rounds 1, 6 and 8,
+    # declined in rounds 4, 8 and 9; Gather Intelligence in rounds 7 and 8;
+    # no Maker Hooks; five Spy uses at a whole 1.0 lag. Seed 56 seat 2
+    # (Steersman Y'rkoon): Imperial Throneship's acquisition bonus is the
+    # acquisition source, Ixian Ambassador's Reveal the Reveal-card source,
+    # Navigation Chamber's queued acquire icon the Tech source; Maker Hooks
+    # in round 10; Infiltrate in rounds 7 and 9 and Gather Intelligence in
+    # round 10 at a fractional 10/3 lag; one Spy moved off by seat 1's Holy
+    # War; Infiltrate declined once in round 7. An independent replay, not
+    # importing the collectors, recounted every column below from the
+    # games' own events, decision action sets and state, and matched the
+    # collectors exactly.
+    # Re-derived 2026-10-10 for Cunning's and Insider Information's draw as
+    # its own step after their trash (OQ-106, codec v142): seed 486 first
+    # diverges at round 4, seat 3's Insider Information trash, and seed 56
+    # at round 5, seat 3's Cunning trash; seed 486 seat 3 no longer has an
+    # Agent-card or Conflict-reward source and seed 56 seat 2 no longer has
+    # a Reveal-card source, so neither fills its role (the previous commit's
+    # engine gives the values pinned before). Full seeds 1-600 give seeds 26
+    # (seat 1), 494 (seat 0) and 555 (seat 2) in the first role and seeds 54
+    # (seat 2), 67 (seat 2), 478 (seat 1) and 509 (seat 3) in the second
+    # (Reveal-card and acquisition sources, Maker Hooks, a fractional Spy use
+    # lag, an Infiltrate taken and one declined); the pins are the first of
+    # each, and the later splits of the same batch (Arrakis Planetologist,
+    # Piter's and Reverse Engineering's rewards) leave both seats' columns
+    # unchanged. Seed 26 seat 1 (Kota Odax of Ix): Tech (twice), Intrigue,
+    # Agent-card (twice), acquisition and Conflict-reward sources, one loss;
+    # a trashed Spy and one other recall; Infiltrate taken once and declined
+    # once; Gather Intelligence twice; no Maker Hooks; a 4/3 Spy use lag.
+    # Seed 54 seat 2 (Chani): acquisition and Reveal-card sources, five
+    # Conflict-reward gains; Maker Hooks in round 6; Infiltrate taken once
+    # and declined once, Gather Intelligence once, at a 1/2 lag; one Spy left
+    # on the board. The values below are the collectors' own on a scratch
+    # replay (not recounted independently this time).
+    # Re-derived 2026-10-10 for a triggered draw held as the owner's own step
+    # (OQ-106, codec v142): seed 26 first diverges at round 4, seat 2's
+    # Reveal, where the Tleilaxu track's Intrigue card its Subject X-137
+    # purchase reached is now its own step; seat 1 no longer has an Intrigue
+    # source, so it no longer fills the first role (the previous commit's
+    # engine gives the values pinned before). Full seeds 1-600 give seed 209
+    # (seat 0) alone in the first role and seeds 54 (seat 2), 248 (seat 2),
+    # 478 (seat 1) and 515 (seat 1) in the second; seed 54 seat 2 keeps its
+    # role with every column unchanged. Seed 209 seat 0 (Kota Odax of Ix):
+    # Tech, Intrigue, Agent-card (twice) and Conflict-reward sources, one
+    # loss; a trashed Spy and one other recall; two of three Infiltrates
+    # taken; Gather Intelligence twice; no Maker Hooks; a 7/4 Spy use lag;
+    # one Spy left on the board. The values below are the collectors' own on
+    # a scratch replay (not recounted independently).
+    # Re-derived 2026-10-10 for Muad'Dib's Reveal Intrigue card as a pending
+    # Reveal gain (OQ-106, OQ-045): seed 209 first diverges at round 7, seat
+    # 2's Reveal, where Unpredictable Foe's card is now its own step; seat 0
+    # no longer has an Intrigue source, so it no longer fills the first role
+    # (the previous commit's engine gives the values pinned before). No seat
+    # of full seeds 1-600 fills it now; seeds 601-1200 give seeds 788 (seat
+    # 1) and 859 (seat 0), and the second role stays seed 54 seat 2 (every
+    # column unchanged; 248, 478, 515 and nine seats of 601-1200 follow).
+    # Seed 788 seat 1 (Feyd-Rautha Harkonnen): Tech, Intrigue (twice),
+    # Agent-card and Conflict-reward (twice) sources, one loss; Maker Hooks
+    # in round 3; a trashed Spy and five other recalls; one of three
+    # Infiltrates taken; Gather Intelligence twice at a 2/3 lag; no Spy left
+    # on the board. The values below are the collectors' own on a scratch
+    # replay (not recounted independently).
+    game = tip_census.play(_spec(True, 788), ("influence",))
+    seat = game["seats"][1]
     assert seat["infl.sources"] == {
-        "visit:starter": 3,
-        "visit:bought": 2,
-        "combat_reward": 2,
-        "intrigue": 2,
+        "visit:starter": 2,
+        "visit:bought": 4,
         "agent_card": 1,
-        "tech": 2,
+        "combat_reward": 2,
+        "tech": 1,
+        "intrigue": 2,
     }
     assert seat["infl.gained"] == 12
-    assert seat["infl.lost"] == 4
-    assert seat["infl.fremen2_round"] == 8
-    assert seat["infl.hooks_round"] == 10
-    assert seat["lands.reveal_cards"] == pytest.approx(3.2)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(6.0)
-    assert seat["spy.placed"] == 8
-    assert seat["spy.used_gather"] == 0
-    assert seat["spy.recalled_other"] == 2
+    assert seat["infl.lost"] == 1
+    assert seat["infl.fremen2_round"] == 3
+    assert seat["infl.hooks_round"] == 3
+    assert seat["lands.reveal_cards"] == pytest.approx(29 / 9)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(52 / 9)
+    assert seat["spy.placed"] == 9
+    assert seat["spy.used_gather"] == 2
+    assert seat["spy.recalled_other"] == 5
     assert seat["spy.trashed"] == 1
-    assert seat["spy.on_board_end"] == 2
+    assert seat["spy.on_board_end"] == 0
     assert seat["spy.use_lag"] == pytest.approx(2 / 3)
-    assert seat["spy.infiltrate_offered"] == 4
-    assert seat["spy.infiltrate_taken"] == 3
+    assert seat["spy.infiltrate_offered"] == 3
+    assert seat["spy.infiltrate_taken"] == 1
 
-    game = tip_census.play(_spec(True, 345), ("influence",))
+    game = tip_census.play(_spec(True, 54), ("influence",))
     seat = game["seats"][2]
     assert seat["infl.sources"] == {
-        "visit:starter": 4,
-        "visit:bought": 2,
-        "combat_reward": 1,
-        "intrigue": 1,
+        "visit:starter": 2,
+        "visit:bought": 5,
+        "combat_reward": 5,
         "acquisition": 1,
-        "reveal_card": 3,
+        "reveal_card": 1,
     }
-    assert seat["infl.gained"] == 12
-    assert seat["infl.lost"] == 5
+    assert seat["infl.gained"] == 14
+    assert seat["infl.lost"] == 0
     assert seat["infl.fremen2_round"] == 2
-    assert seat["infl.hooks_round"] == 3
-    assert seat["lands.reveal_cards"] == pytest.approx(3.8)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(5.8)
-    assert seat["spy.placed"] == 5
-    assert seat["spy.used_gather"] == 2
+    assert seat["infl.hooks_round"] == 6
+    assert seat["lands.reveal_cards"] == pytest.approx(4.0)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(6.1)
+    assert seat["spy.placed"] == 4
+    assert seat["spy.used_gather"] == 1
     assert seat["spy.recalled_other"] == 1
-    assert seat["spy.on_board_end"] == 0
+    assert seat["spy.on_board_end"] == 1
     assert seat["spy.use_lag"] == pytest.approx(1 / 2)
-    assert seat["spy.infiltrate_offered"] == 3
-    assert seat["spy.infiltrate_taken"] == 2
+    assert seat["spy.infiltrate_offered"] == 2
+    assert seat["spy.infiltrate_taken"] == 1
 
 
 def test_subversive_advisor_credits_the_visit_and_the_card_effect(

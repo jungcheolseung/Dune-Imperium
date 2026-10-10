@@ -1384,7 +1384,9 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     owner = paid.state.players[0]
     assert owner.specimens == 0 and owner.troops_supply == 9
     assert owner.tleilaxu_space == 2
-    assert len(owner.intrigue_cards) == 1  # the track's second space
+    # The track's second space: its Intrigue card waits as the owner's own
+    # step (user ruling 2026-10-10, OQ-106).
+    assert [entry[1] for entry in owner.owed_draws] == ["tleilaxu_track"]
 
     revealed = _reveal(
         _state(
@@ -1423,6 +1425,45 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     assert [
         dict(a.arguments).get("zones")
         for a in legal_reveal_troop_sacrifice_actions(one_each, 0)
+    ] == [None, "garrison,conflict"]
+
+
+def test_tleilaxu_surgeon_still_refuses_sardaukar_commanders() -> None:
+    """OQ-105 (user ruling 2026-10-10) lets a Commander pay the self-paid
+    troop costs, but not Tleilaxu Surgeon's "Lose two troops": its specimens
+    come from the troop supply [Immortality p. 8] (OQ-053, unchanged). A
+    seat whose garrison and Conflict hold only Commanders is offered no
+    sacrifice, and one with a troop in each zone still pays with those."""
+
+    surgeon = _card("tleilaxu_surgeon")
+    commanders = _reveal(
+        _state(
+            _owner(
+                (surgeon,),
+                troops_garrison=0,
+                troops_supply=12,
+                commanders_garrison=1,
+                commanders_conflict=1,
+            ),
+            config=IMMORTALITY_BLOODLINES,
+        )
+    )
+    assert legal_reveal_troop_sacrifice_actions(commanders, 0) == ()
+    mixed = _reveal(
+        _state(
+            _owner(
+                (surgeon,),
+                troops_garrison=1,
+                troops_conflict=1,
+                troops_supply=10,
+                commanders_garrison=1,
+            ),
+            config=IMMORTALITY_BLOODLINES,
+        )
+    )
+    assert [
+        dict(a.arguments).get("zones")
+        for a in legal_reveal_troop_sacrifice_actions(mixed, 0)
     ] == [None, "garrison,conflict"]
 
 

@@ -65,9 +65,20 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "play_intrigue": 3.0,
     "resolve_agent_card_effect": 2.0,
     "resolve_board_effect": 2.0,
-    # Imperial Privilege's card draw when no Agent can be recalled: drawn
-    # right after the Intrigue slot, as before the confirm existed.
+    # Imperial Privilege's skipped recall when no Agent can be recalled:
+    # confirmed as soon as offered, like the icon resolutions. Its card draw
+    # is the space's own ``resolve_board_effect(cards)`` (user ruling
+    # 2026-10-10, OQ-027 (d)), which at 2.0 the agent takes before the
+    # Intrigue slot and the recall (1.0 each, or a decline).
     "resolve_imperial_privilege_without_recall": 2.0,
+    # Liet Kynes' replacement Intrigue card, its own step beside the trash
+    # (user ruling 2026-10-10, OQ-106): taken first, like an icon.
+    "draw_planetologist_intrigue": 2.0,
+    # A draw a trigger earned in the agent's own turn, its own step (user
+    # ruling 2026-10-10, OQ-106): taken early, like an icon, as when the
+    # trigger drew it.
+    "draw_owed_intrigue": 2.0,
+    "draw_owed_card": 2.0,
     "gather_intelligence": 2.0,
     "resolve_espionage_place_spy": 2.0,
     "advance_feyd_track": 2.0,
@@ -111,7 +122,8 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "defer_reveal_choice": -5.0,
     "resume_reveal_choice": -5.0,
     # Likewise a Scouts line's later rewards taken ahead of its pending
-    # choice (OQ-100): the agent keeps the printed order.
+    # choice (OQ-100): the agent keeps the printed order. A draw waiting
+    # after the choice (OQ-106) is this action alone, so it is taken then.
     "scouts_rewards_first": -5.0,
     # Deploy everything the engine allows, then close the turn. Taking
     # troops back (OQ-029) ranks below every decline and pass so the agent
@@ -587,12 +599,13 @@ def cheapest_card_for_the_same_space(
         return chosen
     winners = tuple(action for cost, action in priced if cost == cheapest)
     # Swap the card and nothing else. One card reaches one space once per cost
-    # option, once more per Navigation Chamber discount, and again for a Graft
-    # or an Infiltrate, and every one of those forfeits the same Reveal box --
-    # so taking the first cheapest would quietly move the cost option the draw
-    # made, drop a discount that costs nothing to keep (97 of 6,198 separating
-    # swaps over a 40-game all-option probe, and 777 with several cost
-    # options), or spend a Spy on an Infiltrate the draw did not ask for.
+    # option (each carrying its Navigation Chamber cut, which is mandatory
+    # since codec v142, OQ-104) and again for a Graft or an Infiltrate, and
+    # every one of those forfeits the same Reveal box -- so taking the first
+    # cheapest would quietly move the cost option the draw made (777 of the
+    # separating swaps over a 40-game all-option probe) or spend a Spy on an
+    # Infiltrate the draw did not ask for. Before v142 it could also drop an
+    # optional discount (97 of 6,198 separating swaps).
     terms = _placement_terms(chosen)
     return next(
         (action for action in winners if _placement_terms(action) == terms),
