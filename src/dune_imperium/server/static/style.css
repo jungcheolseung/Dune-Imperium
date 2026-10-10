@@ -338,11 +338,26 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    --market-min), and a window too narrow for the three columns at their
    floors scrolls sideways (body.in-game main) instead. --table-min is that
    floor summed. The hand belongs to the board column; the other columns
-   can use the full height of the table. */
+   can use the full height of the table.
+
+   The player can resize the seat, action and shared-card columns
+   (layout.js, user request 2026-10-11): it sets --seats-user,
+   --actions-user and --market-user here, and a width never set keeps the
+   default below. The floor sums whatever widths are in force, so a wide
+   side column pushes the table into the sideways scroll, never the board
+   under its floor. */
 #game-screen {
   --board-min: 480px;
   --market-min: 190px;
-  --table-min: calc(210px + var(--board-min) + var(--market-min) + 340px + 2.5rem);
+  --seats-width: var(--seats-user, 210px);
+  --actions-width: var(--actions-user, 340px);
+  /* The shared-card column's share of the centre's floor. Unsized, the
+     column fits its content up to --market-min (#center). */
+  --market-room: var(--market-user, var(--market-min));
+  --table-min: calc(
+    var(--seats-width) + var(--board-min) + var(--market-room)
+    + var(--actions-width) + 2.5rem
+  );
   display: grid;
   /* The column is the window's width down to the table's floor; its
      min-content would have taken whatever the widest row happened to hold. */
@@ -351,17 +366,56 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   height: 100%;
 }
 #table {
-  --actions-width: 340px;
+  position: relative;
   display: grid;
   /* Spend extra desktop width on the board, keeping the reading column
      steady. The board still has its 480px floor on a narrow window. */
   grid-template-columns:
-    210px
-    minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
+    var(--seats-width)
+    minmax(calc(var(--board-min) + var(--market-room) + 0.5rem), 1fr)
     var(--actions-width);
   gap: 0.5rem;
   min-height: 0;
   padding: 0.5rem;
+}
+/* The handles between the columns (layout.js). Each lies over the gap
+   beside the column it resizes, positioned in that column's grid area so
+   it follows the column's edge without taking a grid cell; a 6px strip to
+   grab, its 2px line drawn on hover, focus and while dragging. */
+.col-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.col-splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+.col-splitter:hover::after,
+.col-splitter:focus-visible::after,
+.col-splitter.dragging::after { background: var(--accent); }
+.col-splitter:focus-visible { outline: none; }
+/* Both lines named: for a positioned child an `auto` end line is the
+   container's padding edge, not the next line. */
+#split-seats { grid-area: 1 / 1 / 2 / 2; right: calc(-0.25rem - 3px); }
+#split-actions { grid-area: 1 / 3 / 2 / 4; left: calc(-0.25rem - 3px); }
+#split-market { grid-area: 1 / 2 / -1 / 3; left: calc(-0.25rem - 3px); }
+/* Every shared-card column folded gives its room back to the board
+   (columns.py), so there is no width left to set. */
+#center:has(> #market.all-folded) > #split-market { display: none; }
+body.column-resizing, body.column-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 #seats {
   min-height: 0;
@@ -399,8 +453,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 @media (min-width: 1341px) {
   #table.log-beside {
     grid-template-columns:
-      210px
-      minmax(calc(var(--board-min) + var(--market-min) + 0.5rem), 1fr)
+      var(--seats-width)
+      minmax(calc(var(--board-min) + var(--market-room) + 0.5rem), 1fr)
       calc(var(--actions-width) + var(--history-width) + 0.5rem);
   }
   #table.log-beside #side {
@@ -411,11 +465,13 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 /* The hand sits directly below the board. Shared cards and expansion
    boards span both rows beside them, keeping the height that used to be
-   reserved by the full-width hand. Narrow screens stack all three zones. */
+   reserved by the full-width hand. Narrow screens stack all three zones.
+   The shared-card column fits its content until the player sets its width
+   (--market-user, layout.js). */
 #center {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(190px);
+  grid-template-columns: minmax(0, 1fr) var(--market-user, fit-content(190px));
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas: "board market" "hand market";
   gap: 0.5rem;
@@ -425,6 +481,13 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 #center:has(#private-zone[hidden]) {
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "board market";
+}
+/* Every column folded fits the headings again, even at a width the player
+   set: folding them (`c`) is how the board gets that room back. */
+@media (min-width: 1341px) {
+  #center:has(> #market.all-folded) {
+    grid-template-columns: minmax(0, 1fr) fit-content(190px);
+  }
 }
 #board {
   grid-area: board;
@@ -1000,7 +1063,8 @@ img.seat-disc.pictured { border-radius: 50%; }
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-width: var(--market-min);
+  /* A width the player set is the column's, narrower than --market-min too. */
+  min-width: var(--market-user, var(--market-min));
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -1315,6 +1379,40 @@ kbd {
 }
 .hand-cards { flex: 0 1 auto; min-width: 0; }
 .intrigue-cards { flex: 0 1 auto; min-width: 80px; border-left: 1px solid var(--line); padding-left: 0.8rem; }
+/* The player's own hand and Intrigue cards in an order of their own
+   (layout.js, user request 2026-10-11): a card dragged along its row shows
+   where it will land; the order lives in this browser only. */
+.strip-cards.reorderable { position: relative; }
+.vcard.dragging { opacity: 0.45; }
+.hand-drop-marker {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  pointer-events: none;
+}
+body.hand-dragging, body.hand-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.hand-order-reset {
+  all: unset;
+  cursor: pointer;
+  margin-left: auto;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  opacity: 0.8;
+}
+.hand-order-reset:hover { opacity: 1; color: var(--accent); }
+.hand-order-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
 
 /* ---------- seats ---------- */
 
@@ -2013,11 +2111,21 @@ kbd {
    crowd the board, retain the compact table layout and its horizontal
    scrolling floor (the 2026-09-27 narrow-window convention). */
 @media (max-width: 1340px) {
-  #game-screen { --table-min: calc(200px + var(--board-min) + 300px + 2rem); }
-  #table {
-    --actions-width: 300px;
-    grid-template-columns: 200px minmax(var(--board-min), 1fr) var(--actions-width);
+  /* The side columns keep a width the player set; unset, they are narrower
+     here. The shared cards stack under the board, so their width (and the
+     handle that sets it) has no part in this layout. */
+  #game-screen {
+    --seats-width: var(--seats-user, 200px);
+    --actions-width: var(--actions-user, 300px);
+    --table-min: calc(
+      var(--seats-width) + var(--board-min) + var(--actions-width) + 2rem
+    );
   }
+  #table {
+    grid-template-columns:
+      var(--seats-width) minmax(var(--board-min), 1fr) var(--actions-width);
+  }
+  #split-market { display: none; }
   /* Split the room above the hand between board and market. Content-sized
      market rows previously consumed the entire board row with all the
      expansions on; both rows keep their independent scrolling instead. */

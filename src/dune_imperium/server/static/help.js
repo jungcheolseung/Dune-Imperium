@@ -111,6 +111,8 @@ const HELP_SHORTCUTS = [
   ["s", "help.shortcut_expand_seats"],
   ["Esc", "help.shortcut_cancel"],
   ["?", "help.shortcut_open_help"],
+  /* The column handles and the hand's own order (layout.js). */
+  ["Alt+←/→", "help.shortcut_layout"],
 ];
 
 const HELP_TURN = [

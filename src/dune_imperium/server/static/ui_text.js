@@ -453,6 +453,10 @@ const UI_TEXT = {
     "ko": "모든 플레이어의 자세히 펴기 / 접기",
     "en": "Expand / collapse every player's detail"
   },
+  "help.shortcut_layout": {
+    "ko": "열 사이 경계를 끌면 열 너비가 바뀝니다(두 번 클릭: 기본값). 손패와 {intrigue}는 끌거나 Alt+←/→로 순서를 바꿉니다. 둘 다 이 브라우저에만 저장됩니다.",
+    "en": "Drag the line between two columns to resize them (double-click: default). Drag a card in your hand or an {intrigue}, or press Alt+←/→, to reorder it. Both are kept in this browser only."
+  },
   "help.shortcut_open_help": {
     "ko": "이 도움말 열기",
     "en": "Open this help"
@@ -712,6 +716,30 @@ const UI_TEXT = {
   "html.setup_title": {
     "ko": "새 게임",
     "en": "New Game"
+  },
+  "html.split_actions_aria": {
+    "ko": "행동 열 너비",
+    "en": "Actions column width"
+  },
+  "html.split_market_aria": {
+    "ko": "공용 카드 열 너비",
+    "en": "Shared cards column width"
+  },
+  "html.split_seats_aria": {
+    "ko": "플레이어 열 너비",
+    "en": "Players column width"
+  },
+  "html.split_title": {
+    "ko": "열 너비 조절 (두 번 클릭: 기본값)",
+    "en": "Resize the column (double-click: default width)"
+  },
+  "layout.hand_order_reset": {
+    "ko": "순서 되돌리기",
+    "en": "Reset order"
+  },
+  "layout.hand_order_reset_title": {
+    "ko": "이 브라우저에서 바꾼 카드 순서를 지우고 원래 순서로 되돌립니다",
+    "en": "Forget the card order set in this browser and show the original order"
   },
   "panels.agent_remaining": {
     "ko": "남은 {agent}",
