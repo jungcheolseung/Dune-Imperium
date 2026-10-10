@@ -15,7 +15,10 @@ training or diagnosis data (docs/human-records.md).
 refuses one, the first bridge in ``BRIDGES`` that applies answers the
 pending decision the way the recording engine did by not asking it -- a
 pause with its one outcome, a window that engine never opened declined --
-and the recorded step is tried again. A bridge never answers a decision the
+and the recorded step is tried again. Where this engine splits off part of
+what one recorded step did (Imperial Privilege's draw), a ``follows``
+bridge adds that part right after the recorded step, at the moment the
+recording engine did it. A bridge never answers a decision the
 recorded step itself was made for (``_made_for``), so a recorded choice that
 a rule change made illegal ends the migration there as a ``Divergence``
 instead of being skipped past; every step before it still stands.
@@ -63,12 +66,20 @@ class Bridge:
     recording engine never asked for, applied before the recorded one.
     ``before_codec`` limits a bridge to records stamped with an older
     action codec; ``None`` applies it to every record.
+
+    With ``follows`` the bridge runs after every recorded step that applied
+    (never on a refusal), with that step as ``step`` and the decision the
+    engine waits for after it: it adds a part of the recorded step that this
+    engine splits off into a step of its own, at the moment the recording
+    engine did it. Waiting for a refusal would be too late there: the
+    recorded steps in between already saw that part done.
     """
 
     name: str
     answer: BridgeAnswer
     before_codec: int | None = None
     rewrites: bool = False
+    follows: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +173,7 @@ def migrate_record(
                 migrated.append(MigratedStep(answer, None, bridge.name))
                 continue
             migrated.append(MigratedStep(step, index, rewritten_by))
+            state = _follow(engine, state, step, bridges, migrated)
             break
         else:
             divergence = Divergence(
@@ -196,10 +208,34 @@ def _bridge(
     if decision is None:
         return None
     for bridge in bridges:
+        if bridge.follows:
+            continue
         answer = bridge.answer(engine, state, decision, step)
         if answer is not None:
             return bridge, answer
     return None
+
+
+def _follow(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    step: ReplayStep,
+    bridges: tuple[Bridge, ...],
+    migrated: list[MigratedStep],
+) -> GameState:
+    """Apply what the ``follows`` bridges add right after the applied ``step``."""
+
+    for bridge in bridges:
+        if not bridge.follows:
+            continue
+        decision = engine.current_decision(state)
+        if decision is None:
+            break
+        answer = bridge.answer(engine, state, decision, step)
+        if answer is not None:
+            state = engine.apply(state, answer).state
+            migrated.append(MigratedStep(answer, None, bridge.name))
+    return state
 
 
 def _made_for(
@@ -315,6 +351,122 @@ def _named_card_effect(
     return named[0] if len(named) == 1 else None
 
 
+_PRIVILEGE_RECALLS = frozenset(
+    {
+        "recall_agent_for_imperial_privilege",
+        "recall_conflict_agent_for_imperial_privilege",
+        "resolve_imperial_privilege_without_recall",
+    }
+)
+
+
+def _privilege_draw(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Draw Imperial Privilege's card right after a recorded recall.
+
+    Before codec v142 (4c7150d3) each of the three recall answers also drew
+    the card, as the last thing its step did; this engine holds the draw as
+    the board icon ``cards``. Resolving it at once draws the same card from
+    the same deck with the same source, so a reshuffle meets the recorded
+    chance outcome, and later recorded steps see the card in hand, as they
+    did (one trashes it with Insider Information).
+    """
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id in _PRIVILEGE_RECALLS
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+        and state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+        and dict(state.decision_stack[-1].context).get("space_id")
+        == "imperial_privilege"
+    ):
+        return None
+    draw = DomainAction(
+        action_id="resolve_board_effect",
+        actor=step.actor,
+        arguments=(("effect", "cards"),),
+    )
+    return draw if draw in engine.legal_actions(state, step.actor) else None
+
+
+def _troop_from_garrison(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Pay Bene Gesserit Treachery's lost unit with a troop.
+
+    Before codec v142 (0ef97fa1, OQ-105) the garrison cost was paid in
+    troops without a question; this engine asks which unit when the
+    garrison holds a troop and a Sardaukar Commander. The troop is what the
+    recording engine took.
+    """
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or state.decision_stack[-1].kind != FrameKind.SCOUTS_EFFECT
+        or _made_for(
+            engine, state, decision, step, frozenset({"scouts_lose_garrison_unit"})
+        )
+    ):
+        return None
+    troop = DomainAction(action_id="scouts_lose_garrison_unit", actor=decision.owner)
+    return troop if troop in engine.legal_actions(state, decision.owner) else None
+
+
+def _prison_planet_commanders_only(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Decline Prison Planet for a seat whose garrison holds only Commanders.
+
+    Before codec v142 (0ef97fa1, OQ-105) only a garrison troop could join
+    Prison Planet, so such a seat was never asked; this engine offers the
+    Commander. Declining changes nothing, as the skip did.
+    """
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or state.decision_stack[-1].kind != FrameKind.SCOUTS_MISSION
+        or _made_for(
+            engine,
+            state,
+            decision,
+            step,
+            frozenset(
+                {
+                    "scouts_decline_mission",
+                    "scouts_join_mission",
+                    "scouts_return_specimens",
+                }
+            ),
+        )
+    ):
+        return None
+    legal = engine.legal_actions(state, decision.owner)
+    owner = decision.owner
+
+    def join(target: str) -> DomainAction:
+        return DomainAction(
+            action_id="scouts_join_mission",
+            actor=owner,
+            arguments=(("target", target),),
+        )
+
+    if join("") in legal or join("commander") not in legal:
+        return None
+    decline = DomainAction(action_id="scouts_decline_mission", actor=owner)
+    return decline if decline in legal else None
+
+
 BRIDGES: tuple[Bridge, ...] = (
     Bridge("pause", _pause),
     # Codec v141 (e7eef001) opens the Conflict-end Intrigue window on public
@@ -346,5 +498,17 @@ BRIDGES: tuple[Bridge, ...] = (
         _named_card_effect,
         before_codec=137,
         rewrites=True,
+    ),
+    # Codec v142 (4c7150d3) holds Imperial Privilege's draw as its own board
+    # icon; older recalls drew at once.
+    Bridge("imperial_privilege_draw", _privilege_draw, before_codec=142, follows=True),
+    # Codec v142 (0ef97fa1, OQ-105) lets a Sardaukar Commander pay a seat's
+    # own troop costs, so it asks where an older engine paid with a troop or
+    # skipped a seat that had only Commanders.
+    Bridge("garrison_unit_troop", _troop_from_garrison, before_codec=142),
+    Bridge(
+        "prison_planet_commanders_only",
+        _prison_planet_commanders_only,
+        before_codec=142,
     ),
 )

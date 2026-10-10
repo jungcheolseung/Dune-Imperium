@@ -7,7 +7,9 @@ back step for step through the bridges, while the codec gates keep each
 bridge away from records that did meet the decision. And two records made
 by the older engines themselves (``data/``, written by
 ``scripts/records/old_engine_record.py`` at master 37727846, codec v135,
-5a2dfc19, codec v139, and 6b033158, codec v140) must replay to their end.
+5a2dfc19, codec v139, 6b033158, codec v140, and 21eccca4, codec v141)
+must replay to their end; replayed on their own engines, the v141 ones
+match the migrated public state at every step.
 
 When an engine change makes a ``data/`` record stop, read the module
 docstring of ``records.migration`` and docs/human-records.md before
@@ -368,6 +370,13 @@ def test_walk_yields_the_state_before_each_migrated_step(game: GameReplay) -> No
         ),
         ("v139-heuristic-1", 139, {"pause", "conflict_end_window"}),
         ("v140-heuristic-1", 140, {"conflict_end_window"}),
+        ("v141-heuristic-21", 141, {"imperial_privilege_draw"}),
+        ("v141-heuristic-150", 141, {"garrison_unit_troop"}),
+        (
+            "v141-no-immortality-no-go_to_11-heuristic-1211",
+            141,
+            {"prison_planet_commanders_only"},
+        ),
     ],
 )
 def test_records_of_older_engines_replay_to_their_end(
@@ -383,3 +392,59 @@ def test_records_of_older_engines_replay_to_their_end(
     assert bridges <= set(record.bridge_counts())
     recorded = [m.recorded_index for m in record.steps if m.recorded_index is not None]
     assert recorded == list(range(len(replay.steps)))
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "v141-heuristic-21",
+        "v141-heuristic-150",
+        "v141-no-immortality-no-go_to_11-heuristic-1211",
+    ],
+)
+def test_the_v142_bridges_stay_away_from_v142_records(name: str) -> None:
+    # Stamped v142, the same steps claim this engine's flow, so the engine's
+    # new questions are the record's own to answer, and it stops there.
+    document = json.loads((DATA / f"{name}.json").read_text(encoding="utf-8"))
+    replay = parse_save_document(document, check_versions=False).replay
+
+    record = migrate_record(replace(replay, action_codec_version=142))
+
+    assert record.divergence is not None
+    assert not {
+        "imperial_privilege_draw",
+        "garrison_unit_troop",
+        "prison_planet_commanders_only",
+    } & set(record.bridge_counts())
+
+
+def test_imperial_privilege_draws_right_after_the_recorded_recall() -> None:
+    # The record reshuffles for Imperial Privilege right after a recall:
+    # that chance outcome applies only if the draw was made at once, as the
+    # recording engine made it, not when a later step was refused.
+    document = json.loads((DATA / "v141-heuristic-21.json").read_text(encoding="utf-8"))
+    replay = parse_save_document(document, check_versions=False).replay
+    reshuffles = [
+        index
+        for index, step in enumerate(replay.steps)
+        if isinstance(step, ChanceOutcome)
+        and step.decision_id.endswith(":board:imperial_privilege:discard_shuffle")
+    ]
+    assert reshuffles
+
+    record = migrate_record(replay)
+
+    assert record.complete
+    for position, migrated in enumerate(record.steps):
+        if migrated.bridge != "imperial_privilege_draw":
+            continue
+        before = record.steps[position - 1]
+        assert before.recorded_index is not None
+        assert isinstance(before.step, DomainAction)
+        assert "imperial_privilege" in before.step.action_id
+    drawn_before = {
+        record.steps[position - 1].recorded_index
+        for position, migrated in enumerate(record.steps)
+        if migrated.bridge == "imperial_privilege_draw"
+    }
+    assert {index - 1 for index in reshuffles} <= drawn_before

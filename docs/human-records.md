@@ -22,11 +22,24 @@
 | `conflict_end_window` | codec 141 미만 | Conflict 끝 책략 창을 거절한다 | v141(`e7eef001`)부터 창이 공개 사실로 열린다. 옛 엔진은 낼 카드가 없는 좌석에게 묻지 않았다 |
 | `combat_intrigue_pass` | codec 139 미만 | 전투 책략에 pass한다 | v139(`5654d7f8`)부터 카드를 낸 바로 뒤의 pass는 창을 닫는 데 세지 않는다. 그래서 옛 엔진이 이미 닫은 자리에서 한 번 더 묻는다 |
 | `agent_card_effect_named` | codec 137 미만 | 적힌 수를 다시 쓴다 | v137(`752c39fe`, 앱 카드 대조)부터 Stillsuit Manufacturer의 Water처럼 한 번에 풀던 Agent 칸 일부가 `effect`를 단 아이콘으로 나뉘었다. 인자 없는 `resolve_agent_card_effect`를, 지금 내놓는 이름 붙은 아이콘이 **딱 하나**일 때만 그것으로 바꾼다. 둘 이상이면 어느 것인지 기보가 말하지 않으므로 멈춘다 |
+| `imperial_privilege_draw` | codec 142 미만, **직후** | 회수 직후 `resolve_board_effect{effect: cards}` | v142(`4c7150d3`)부터 Imperial Privilege의 카드 뽑기가 회수와 따로 노는 보드 아이콘이다. 옛 엔진은 회수 세 가지(`recall_agent_for_imperial_privilege`, `recall_conflict_agent_for_imperial_privilege`, `resolve_imperial_privilege_without_recall`) 단계의 맨 끝에서 같은 출처로 뽑았다 |
+| `garrison_unit_troop` | codec 142 미만 | `scouts_lose_garrison_unit{}`(병력) | v142(`0ef97fa1`, OQ-105)부터 Bene Gesserit Treachery의 유닛 비용을 garrison에 병력과 Commander가 함께 있으면 묻는다. 옛 엔진은 묻지 않고 병력을 냈다 |
+| `prison_planet_commanders_only` | codec 142 미만 | `scouts_decline_mission` | 같은 커밋부터 Prison Planet에 Commander로 참가할 수 있다. 옛 엔진은 garrison에 Commander만 있는 좌석에게 묻지 않고 건너뛰었다. 거절은 아무것도 바꾸지 않는다 |
 
 - **안전장치:** 다리는 적힌 수가 **바로 그 결정의 답**일 때는 끼어들지 않는다(`_made_for`). 결정을 가진 좌석이 둔 수가 다음 중 하나이면 그 결정의 답으로 본다.
   - 그 틀(frame)이 답으로 받는 `action_id`다. 전투 책략은 pass·`play_intrigue`, Conflict 끝 창은 거절·`play_conflict_end_intrigue`다.
   - 지금 그 결정이 내놓는 `action_id`다.
   - 첫째 조건은 규칙 변경으로 그 종류의 행동이 **모두** 사라진 경우를 위한 것이다(독립 리뷰가 찾은 빈틈).
+- **직후 다리(`follows`).** 대부분의 다리는 적힌 수가 거절될 때 끼어든다. 그런데 새 엔진이 한 단계를 둘로 나눈 경우(Imperial Privilege)는 그때 끼우면 늦다.
+  - 그 사이에 적힌 수들은 옛 판에서 이미 뽑은 카드를 보고 둔 것이다. 실제로 그 카드를 Insider Information으로 버린 판이 있었다.
+  - 다른 뽑기의 reshuffle id도 어긋난다.
+  - 그래서 `follows` 다리는 적힌 수가 적용된 **직후**, 옛 엔진이 그 일을 한 바로 그 순간에 나머지를 적용한다. 거절될 때는 쓰지 않는다.
+- **다리 없이 갈라짐이 맞는 v142 변경**(독립 조사·반박 검증):
+  - Navigation Chamber 할인 의무화(`4870efd5`): 옛 기보가 할인 없이 낸 수는 지금 불법이다. 할인된 수로 바꾸면 자원이 달라진다.
+  - Bene Gesserit Treachery에서 garrison에 Commander만 있고 BG 영향력이 0인 좌석: 옛 엔진은 건너뛰었다. v142는 Commander를 잃는 선택지 하나를 강제한다. 강제 수로 이으면 그 Commander를 나중에 쓰는 적힌 수에서 반드시 다시 갈라진다(13개 기보 모두).
+- **codec 번호 한 개에 흐름 변경이 여럿.** v142에는 Navigation Chamber, Imperial Privilege, OQ-105가 들어 있고 OQ-106 분리도 들어갈 예정이다(다른 세션과 합의, 2026-10-10).
+  - 문턱은 master가 지나온 번호다. master에서 만든 저장본은 v141 다음이 바로 이 묶음 전체의 v142다.
+  - 그 사이의 브랜치 엔진이 쓴 v142 저장본(테스트 산출물뿐)은 지원하지 않는다.
 - **다시 쓰기는 일반 규칙으로 두지 않는다.** 이 엔진에서는 인자가 없다는 것 자체가 선택이다. `graft`가 없으면 카드 한 장, `discount`·`infiltrate_post_id`·`commanders`가 없으면 그것을 쓰지 않은 것이다.
   - 처음에는 "같은 id에 인자만 늘어난 행동이 하나면 그것으로"라는 일반 규칙을 두었다. 독립 리뷰가 그 규칙이 불법이 된 수를 다른 선택으로 바꿔 끝까지 옮기는 경우를 재현했다.
   - 그래서 행동 하나·인자 하나·codec 문턱이 정해진 다리로 좁혔다.
@@ -46,6 +59,8 @@
 | 사람 판 v135(사람 2 + rollout_strong 2, R7) | 759 | 8 |
 | AI 판 v139 10개(heuristic·app_ai 각 5, 3라운드) | 각 233~269 | 모두 0 |
 | AI 판 v140 3개(heuristic, 3라운드) | 각 261~277 | 모두 0 |
+| v142 엔진(`f1e17be0` + 다리)으로 옮긴 v141 AI 판 5개(IP 2회 1개, garrison 1~2회 3개, Prison Planet 1회 1개; 4~9라운드) | 각 364~873 | 모두 0 |
+| v142 엔진으로 옮긴 사람 판 4개(v135·v139·v141 ×2) | 123~1,202 | 모두 0(v141 엔진으로 옮긴 판과 대조) |
 | AI 판 v135 6개(멈추지 않은 것) | 각 233~267 | 1~5 |
 
 리뷰 반영 뒤의 코드(`records.migration.walk`)로 사람 판 v135, 테스트 기보 셋(v135·v139·v140), AI 판 v140 셋을 다시 대조했다. 결과는 위와 같다.
