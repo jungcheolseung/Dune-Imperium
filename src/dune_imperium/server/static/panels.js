@@ -126,8 +126,9 @@ function seatDetailSummary(detail) {
    graft partner, carries a "this turn" mark (server view.turn_card_ids,
    sessions.py turn_cards), so it reads apart from a copy of the same card
    played on an earlier turn; while its Agent box still waits
-   (view.pending_box_card_ids) the mark's title says trashing it now loses
-   the rest of that box (OQ-022, user feedback 2026-10-11). The mark is no
+   (view.pending_box_card_ids) the mark's title says trashing it by another
+   effect loses the rest of that box (OQ-022, user feedback 2026-10-11; a
+   card trashing itself by its own effect keeps its rewards). The mark is no
    .tag, so seatDetailSummary still counts one chip per card, and the chip
    keeps its own hover and click. */
 function inPlayChip(id, view) {

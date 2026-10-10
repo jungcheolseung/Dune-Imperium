@@ -1402,6 +1402,13 @@ function zoneSuffixes(actions) {
     }
     turnCardSuffixes(entries, suffixes);
   }
+  /* Dissecting Kit's trash names no card: it always trashes the other
+     grafted card, and the server says when that loses its box. */
+  for (const action of actions) {
+    if (typeof action.arguments.card_id !== "string" && losesBox(action)) {
+      suffixes.set(action, "turn_pending");
+    }
+  }
   return suffixes;
 }
 
@@ -1415,34 +1422,47 @@ const TURN_CARD_SUFFIX_TEXT = {
 /* Within one group of zoneSuffixes (rows of one action naming one card):
    a trash row of a card the open Agent turn played -- the played card or
    its graft partner, the server's view.turn_card_ids (sessions.py
-   turn_cards) -- says "card played this turn", and while that card's Agent
-   box still waits (view.pending_box_card_ids) also that trashing it loses
-   the rest of the box: "you can't receive or activate an effect from a
-   card that is already trashed" (OQ-022). A row of the same action naming
-   an in-play copy of that card from an earlier turn says so, so two
-   copies in play are no longer read as interchangeable (user feedback
-   2026-10-11: this turn's grafted Experimentation was trashed instead of
-   the earlier one). A hand or discard-pile copy keeps its pile's word.
-   Every trash of a chosen personal card names it in card_id and has
-   "trash" in its id: trash_optional_card, trash_agent_card,
-   trash_card_for_desert_tactics, trash_combat_reward_card,
-   trash_leader_card, trash_reveal_card, trash_intrigue_card (an Intrigue
-   card's personal-card trash), trash_grafted_card_for_influence,
-   trash_grafted_card_for_specimen and scouts_trash_card. */
+   turn_cards) -- says "card played this turn", and also that trashing it
+   loses the rest of its Agent box when the server's dry run says so
+   (view.box_losing_trash, turn_cards.box_losing_trash): "you can't receive
+   or activate an effect from a card that is already trashed" (OQ-022),
+   but a card trashing itself by its own effect keeps its rewards (Feyd's
+   Signet Ring trashed by its own box), so a pending box alone does not
+   decide it. A row of the same action naming an in-play copy of that card
+   from an earlier turn says so, so two copies in play are no longer read
+   as interchangeable (user feedback 2026-10-11: this turn's grafted
+   Experimentation was trashed instead of the earlier one). A hand or
+   discard-pile copy keeps its pile's word. Every trash of a chosen
+   personal card names it in card_id and has "trash" in its id:
+   trash_optional_card, trash_agent_card, trash_card_for_desert_tactics,
+   trash_combat_reward_card, trash_leader_card, trash_reveal_card,
+   trash_intrigue_card (an Intrigue card's personal-card trash),
+   trash_grafted_card_for_influence and scouts_trash_card. */
 function turnCardSuffixes(entries, suffixes) {
   const view = state.view || {};
   const turn = view.turn_card_ids || [];
   if (!turn.length || !entries[0].action.action_id.includes("trash")) return;
   if (!entries.some(({ action }) => turn.includes(action.arguments.card_id))) return;
-  const pending = view.pending_box_card_ids || [];
   for (const { action, zone } of entries) {
     const cardId = action.arguments.card_id;
     if (turn.includes(cardId)) {
-      suffixes.set(action, pending.includes(cardId) ? "turn_pending" : "turn");
+      suffixes.set(action, losesBox(action) ? "turn_pending" : "turn");
     } else if (zone === "in_play") {
       suffixes.set(action, "earlier_turn");
     }
   }
+}
+
+/* Whether the server's dry run says this trash row loses an Agent box of
+   the open Agent turn (view.box_losing_trash, sent with the seat's own
+   rows only). A row naming no card (Dissecting Kit) matches on its action. */
+function losesBox(action) {
+  const cardId = action.arguments.card_id;
+  const losing = (state.view && state.view.box_losing_trash) || [];
+  return losing.some(
+    (row) => row.action_id === action.action_id
+      && (typeof cardId !== "string" || row.card_id === cardId)
+  );
 }
 
 /* " (hand)" / " (discard pile)" / " (in play)": the TERMS glossary word for

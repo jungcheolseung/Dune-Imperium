@@ -19,11 +19,13 @@ hold is confirmed at once (the walk of held_choice_saves.py, all seats):
   resolved its Agent box (Research), whose track space offers the trash.
 
 The expected lists are read off the Agent turn's effect frame here, not
-through the server's ``turn_cards``, so the script checks the server's
-payload rather than repeating it.
+through the server's ``turn_cards``, and the rows that lose a box
+(``box_losing_trash``) are the ones whose own engine step expires the box
+(``agent_card_effect_expired``), so the script checks the server's payload
+rather than repeating it.
 
 Prints {name: {save_id, seat, action_id, this_turn, earlier, pending,
-turn_card_ids, pending_box_card_ids}} as JSON.
+turn_card_ids, pending_box_card_ids, box_losing_trash}} as JSON.
 """
 
 import json
@@ -32,6 +34,7 @@ import re
 import sys
 from pathlib import Path
 
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
@@ -81,6 +84,20 @@ def frame_lists(state) -> tuple[list[str], list[str]]:
         played.sort(key=order.index)
         pending.sort(key=order.index)
     return played, pending
+
+
+def expires_box(engine, state, owner, card_id) -> bool:
+    """Whether trashing ``card_id`` with the fixture's action expires an
+    Agent box of that card in the engine's own step."""
+
+    action = DomainAction(
+        action_id=TRASH, actor=owner, arguments=(("card_id", card_id),)
+    )
+    return any(
+        event.kind == "agent_card_effect_expired"
+        and dict(event.payload).get("card_id") == card_id
+        for event in engine.apply(state, action).events
+    )
 
 
 def twin_rows(state, owner, actions) -> tuple[str, str] | None:
@@ -138,6 +155,11 @@ for name, seed, want_pending in CASES:
                     "pending": want_pending,
                     "turn_card_ids": played,
                     "pending_box_card_ids": pending,
+                    "box_losing_trash": [
+                        {"action_id": TRASH, "card_id": card}
+                        for card in pair
+                        if expires_box(session.engine, session.state, owner, card)
+                    ],
                 }
                 break
         summary = manager.apply_action(

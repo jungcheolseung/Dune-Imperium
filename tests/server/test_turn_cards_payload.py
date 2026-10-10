@@ -13,12 +13,19 @@ Display only: both lists are read off the Agent turn's effect frame
 (``server.turn_cards``), every seat sees the same public values, and
 ``PlayerView``, the AI observation, the codec and the engine stay as they
 were.
+
+A pending box alone does not say a trash loses it: a card trashing itself
+by its own effect still pays its printed rewards (OQ-022: "카드가 자기
+효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"), as Feyd's Signet Ring
+does when its own box trashes it. ``box_losing_trash`` dry-runs the decision
+owner's trash rows naming a pending card and lists the ones that lose the
+box; only that seat's view carries it, beside the rows it describes.
 """
 
 from __future__ import annotations
 
 import random
-from dataclasses import fields
+from dataclasses import fields, replace
 from typing import Any
 
 from dune_imperium import RulesetConfig
@@ -46,12 +53,13 @@ from dune_imperium.rules.agent_turn import legal_agent_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import legal_graft_partner_actions
+from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.server.sessions import (
     GameSessionManager,
     _serialize_view,
     _state_after,
 )
-from dune_imperium.server.turn_cards import turn_cards
+from dune_imperium.server.turn_cards import box_losing_trash, turn_cards
 
 ENGINE = UprisingRulesEngine()
 IMMORTALITY = RulesetConfig(immortality=True, promo_cards=True)
@@ -62,6 +70,8 @@ FACE_DANCER = "tleilaxu:face_dancer:0"
 PHEROMONES = "tleilaxu:beguiling_pheromones:0"
 FOUR_HUMANS = ("human", "human", "human", "human")
 ALL_AI = ("heuristic", "heuristic", "heuristic", "heuristic")
+ONE_HUMAN = ("human", "heuristic", "heuristic", "heuristic")
+DISSECTING_KIT = "imperium:dissecting_kit:0"
 
 
 def _obj(value: object) -> dict[str, Any]:
@@ -320,6 +330,8 @@ def test_a_review_step_carries_the_lists_of_that_step() -> None:
             tuple(view["turn_card_ids"]),
             tuple(view["pending_box_card_ids"]),
         ) == expected
+        # A review serves no legal rows, so nothing to mark.
+        assert view["box_losing_trash"] == []
     final = _obj(manager.review_state(game_id, 1, len(session.steps))["view"])
     assert final["turn_card_ids"] == [] and final["pending_box_card_ids"] == []
 
@@ -344,3 +356,238 @@ def test_the_ai_observation_never_sees_the_lists() -> None:
     assert _lists(grafted) == {(both, both)}
     after = [encode_player_view(ENGINE.observe(grafted, seat)) for seat in range(4)]
     assert before == after
+
+
+# --- which trash rows lose a box (``box_losing_trash``) ---------------------
+
+
+def _rows(view: dict[str, Any]) -> list[tuple[str, str]]:
+    rows = view["box_losing_trash"]
+    assert isinstance(rows, list)
+    return [(str(row["action_id"]), str(row["card_id"])) for row in rows]
+
+
+def _walk(
+    seats: tuple[str, ...],
+    seed: int,
+    found: Any,
+    *,
+    random_play: bool,
+    immortality: bool = False,
+) -> tuple[GameSessionManager, str, int, Any]:
+    """Walk a session until ``found(state, owner, actions)`` is truthy: every
+    hold confirmed at once, the owner playing ``random.Random(seed)`` over
+    its legal actions (or its first one); Leader draft off."""
+
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        seats, game_seed=seed, immortality=immortality, leader_draft=False
+    )
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    rng = random.Random(seed)
+    for _ in range(6000):
+        assert not summary["finished"]
+        revision = summary["revision"]
+        assert isinstance(revision, int)
+        held = summary["confirmation"]
+        if isinstance(held, int):
+            summary = manager.confirm_turn(game_id, held, revision)
+            continue
+        owner = _obj(summary["decision"])["owner"]
+        assert isinstance(owner, int)
+        actions = ENGINE.legal_actions(session.state, owner)
+        hit = found(session.state, owner, actions)
+        if hit:
+            return manager, game_id, owner, hit
+        index = rng.randrange(len(actions)) if random_play else 0
+        summary = manager.apply_action(game_id, owner, revision, index)
+    raise AssertionError("the walk never reached the position")
+
+
+def _twin_trash(state: GameState, owner: int, actions: Any) -> Any:
+    """This turn's pending card offered by an optional trash beside an
+    earlier copy in play (the user's position)."""
+
+    played, pending = turn_cards(state)
+    offered = [
+        str(dict(action.arguments)["card_id"])
+        for action in actions
+        if action.action_id == "trash_optional_card"
+    ]
+    for card in offered:
+        if card not in pending:
+            continue
+        base = card.rsplit(":", 1)[0]
+        for other in offered:
+            if (
+                other != card
+                and other.rsplit(":", 1)[0] == base
+                and other in state.players[owner].in_play
+                and other not in played
+            ):
+                return card, other
+    return None
+
+
+def test_a_research_trash_of_this_turns_pending_card_loses_its_box() -> None:
+    """Seed 23 (four human seats, Immortality, Leader draft off, seeded
+    random play): the Research Station's Research offers its trash bonus
+    while this turn's Prepare the Way still has its box, beside an earlier
+    Prepare the Way in play. Trashing this turn's copy expires its box; only
+    the owner's view says so, and working that out leaves the session as it
+    was."""
+
+    manager, game_id, owner, (card, earlier) = _walk(
+        FOUR_HUMANS, 23, _twin_trash, random_play=True, immortality=True
+    )
+    assert (card, earlier) == ("reserve:prepare_the_way:6", "reserve:prepare_the_way:1")
+    session = manager._get(game_id)
+    before = (
+        session.state,
+        tuple(session.log),
+        tuple(session.steps),
+        session.undo_count,
+        dict(session.open_units),
+    )
+
+    snapshot = _obj(manager.snapshot(game_id, owner)["view"])
+    assert snapshot["pending_box_card_ids"] == [card]
+    assert _rows(snapshot) == [("trash_optional_card", card)]
+    assert _rows(manager.view(game_id, owner)) == [("trash_optional_card", card)]
+    for seat in set(range(4)) - {owner}:
+        other = _obj(manager.snapshot(game_id, seat)["view"])
+        assert other["pending_box_card_ids"] == [card]
+        assert _rows(other) == []
+
+    after = (
+        session.state,
+        tuple(session.log),
+        tuple(session.steps),
+        session.undo_count,
+        dict(session.open_units),
+    )
+    assert after[0] is before[0]
+    assert after == before
+
+    # The flag says what the engine does with the row.
+    trash = next(
+        action
+        for action in ENGINE.legal_actions(session.state, owner)
+        if action.action_id == "trash_optional_card"
+        and dict(action.arguments)["card_id"] == card
+    )
+    events = ENGINE.apply(session.state, trash).events
+    assert ("agent_card_effect_expired", card) in {
+        (event.kind, dict(event.payload).get("card_id")) for event in events
+    }
+
+
+def test_planetologists_trash_loses_the_box_before_its_intrigue_card() -> None:
+    """Arrakis Planetologist's frame also holds its Intrigue card as a step
+    of its own (OQ-106): trashing this turn's card first leaves that frame
+    on top, and the engine expires the box only once the frame closes.
+    The row is flagged all the same, and so is the plain optional trash."""
+
+    start = _state((THIS_TURN,), in_play=(EARLIER,))
+    placed = _place(start, THIS_TURN, "accept_contract")
+    for intrigue in (True, False):
+        state = replace(
+            placed,
+            decision_stack=(
+                *placed.decision_stack,
+                optional_trash_frame(
+                    0, "round:1:player:0:planetologist", intrigue=intrigue
+                ),
+            ),
+        )
+        assert box_losing_trash(ENGINE, state, 0) == (
+            ("trash_optional_card", THIS_TURN),
+        )
+        assert box_losing_trash(ENGINE, state, 1) == ()
+        trash = DomainAction(
+            action_id="trash_optional_card",
+            actor=0,
+            arguments=(("card_id", THIS_TURN),),
+        )
+        first = ENGINE.apply(state, trash)
+        expired_now = any(
+            event.kind == "agent_card_effect_expired" for event in first.events
+        )
+        assert expired_now is not intrigue
+        if intrigue:
+            draw = DomainAction(action_id="draw_planetologist_intrigue", actor=0)
+            assert "agent_card_effect_expired" in {
+                event.kind for event in ENGINE.apply(first.state, draw).events
+            }
+
+
+def _signet_trash(state: GameState, owner: int, actions: Any) -> Any:
+    played, _ = turn_cards(state)
+    return next(
+        (
+            str(dict(action.arguments)["card_id"])
+            for action in actions
+            if action.action_id == "trash_leader_card"
+            and dict(action.arguments).get("card_id") in played
+        ),
+        None,
+    )
+
+
+def test_feyds_signet_ring_trashed_by_its_own_box_keeps_its_rewards() -> None:
+    """Seed 1, base game, Leader draft off, seat 0 Feyd-Rautha playing its
+    first legal action (the walk of scripts/e2e/trash_zone.py): the Signet
+    Ring's box offers Personal Training's paid trash with the Signet Ring
+    itself among the cards. Its box is pending, but trashing the Signet Ring
+    there is the box's own step and completes it (OQ-022, own effect): the
+    row is not flagged."""
+
+    manager, game_id, owner, signet = _walk(
+        ONE_HUMAN, 1, _signet_trash, random_play=False
+    )
+    assert owner == 0 and signet == "player:0:starter:signet_ring:0"
+    view = _obj(manager.snapshot(game_id, 0)["view"])
+    assert view["turn_card_ids"] == [signet]
+    assert view["pending_box_card_ids"] == [signet]
+    assert _rows(view) == []
+
+    session = manager._get(game_id)
+    trash = next(
+        action
+        for action in ENGINE.legal_actions(session.state, 0)
+        if action.action_id == "trash_leader_card"
+        and dict(action.arguments)["card_id"] == signet
+    )
+    result = ENGINE.apply(session.state, trash)
+    assert "agent_card_effect_expired" not in {event.kind for event in result.events}
+    _, pending = turn_cards(result.state)
+    assert pending == ()
+
+
+def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
+    """Beguiling Pheromones and Dissecting Kit clear the other grafted
+    card's box themselves (no expired event): trashing the partner loses
+    its box, trashing the active card itself is that card's own cost."""
+
+    grafted = _graft(
+        _state((FACE_DANCER, PHEROMONES)), FACE_DANCER, "dutiful_service", PHEROMONES
+    )
+    switched = _apply(grafted, "switch_graft_card")
+    _, pending = turn_cards(switched)
+    assert set(pending) == {FACE_DANCER, PHEROMONES}
+    assert box_losing_trash(ENGINE, switched, 0) == (
+        ("trash_grafted_card_for_influence", FACE_DANCER),
+    )
+    assert box_losing_trash(ENGINE, switched, 2) == ()
+
+    kit = _graft(
+        _state((DISSECTING_KIT, FACE_DANCER)), DISSECTING_KIT, "arrakeen", FACE_DANCER
+    )
+    assert "trash_grafted_card_for_specimen" in {
+        action.action_id for action in ENGINE.legal_actions(kit, 0)
+    }
+    # The row names no card: it always trashes the partner.
+    assert box_losing_trash(ENGINE, kit, 0) == (
+        ("trash_grafted_card_for_specimen", FACE_DANCER),
+    )

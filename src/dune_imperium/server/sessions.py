@@ -124,7 +124,7 @@ from dune_imperium.server.session_log import (
     undo_history,
     undo_window,
 )
-from dune_imperium.server.turn_cards import turn_cards
+from dune_imperium.server.turn_cards import box_losing_trash, turn_cards
 from dune_imperium.server.turn_end import (
     EXPLICIT_TURN_ENDS,
     TURN_PASS_EVENTS,
@@ -698,6 +698,13 @@ class GameSessionManager:
                 and session.awaiting_confirmation != seat
                 else None
             )
+            # Which of the served trash rows would lose a box of this Agent
+            # turn: a dry run of each, only beside the rows themselves.
+            losing = (
+                box_losing_trash(session.engine, state, seat)
+                if actions is not None
+                else ()
+            )
             entries = tuple(session.log)
             epoch = _log_epoch(session, seat)
         finished = _is_finished(state)
@@ -708,7 +715,9 @@ class GameSessionManager:
             "summary": summary,
             "you": you,
             "clock_age_ms": age,
-            "view": _serialize_view(view, state, disclose=finished),
+            "view": _serialize_view(
+                view, state, disclose=finished, box_losing=losing
+            ),
             "actions": actions,
             "log": {
                 "seat": seat,
@@ -798,7 +807,16 @@ class GameSessionManager:
             self._authorize_seat_locked(session, seat, credentials)
             state = session.state
             view = session.engine.observe(state, seat)
-        return _serialize_view(view, state, disclose=_is_finished(state))
+            # The seat's legal rows come from ``legal_actions``, which has
+            # none while its own turn end waits for its press.
+            losing = (
+                ()
+                if session.awaiting_confirmation == seat
+                else box_losing_trash(session.engine, state, seat)
+            )
+        return _serialize_view(
+            view, state, disclose=_is_finished(state), box_losing=losing
+        )
 
     def legal_actions(
         self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
@@ -2782,7 +2800,11 @@ def _review_step_label(step: ReplayStep) -> JsonObject:
 
 
 def _serialize_view(
-    view: PlayerView, state: GameState, *, disclose: bool = False
+    view: PlayerView,
+    state: GameState,
+    *,
+    disclose: bool = False,
+    box_losing: tuple[tuple[str, str], ...] = (),
 ) -> JsonObject:
     """Serialize a view with the public round-by-round Conflict history.
 
@@ -2815,6 +2837,14 @@ def _serialize_view(
     its box (OQ-022). Both are public, the same for every seat and in a
     review, and kept beside the other public table facts here rather than
     in ``PlayerView``, so the AI observation's encoding stays as it was.
+
+    ``box_losing_trash`` lists, as ``{action_id, card_id}``, the decision
+    owner's legal trash rows that would lose such a box (``box_losing``,
+    from ``turn_cards.box_losing_trash``'s dry runs): a card trashing itself
+    by its own effect keeps its rewards (OQ-022), so a pending box alone
+    does not say it. Like the legal rows it describes, it is filled only in
+    the view of the seat those rows are served to, and empty in every other
+    view and in a review.
     """
 
     serialized = _jsonify(asdict(view))
@@ -2835,6 +2865,10 @@ def _serialize_view(
     played, pending = turn_cards(state)
     serialized["turn_card_ids"] = list(played)
     serialized["pending_box_card_ids"] = list(pending)
+    serialized["box_losing_trash"] = [
+        {"action_id": action_id, "card_id": card_id}
+        for action_id, card_id in box_losing
+    ]
     if disclose:
         serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))
     return serialized

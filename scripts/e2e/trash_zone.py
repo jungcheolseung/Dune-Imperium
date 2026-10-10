@@ -76,8 +76,12 @@ the engine then expired (OQ-022). The server's view now names the open
 Agent turn's cards (`turn_card_ids`: the played card and its graft
 partner) and those whose box still waits (`pending_box_card_ids`,
 sessions.py `turn_cards`); a trash row of such a card says "이번 차례에 낸
-카드" (and, while its box waits, that trashing it loses the rest of the
-box), a row of the same action naming an earlier copy in play says "앞
+카드", and also that trashing it loses the rest of its box when the
+server's dry run of that row says so (`box_losing_trash`, sent only with
+the seat's own rows): a card trashing itself by its own effect keeps its
+rewards (OQ-022), so Feyd's Signet Ring at seed 1 below, whose own box
+offers it, reads "이번 차례에 낸 카드" with no warning although its box is
+pending. A row of the same action naming an earlier copy in play says "앞
 차례에 낸 카드", and the seat panel's in-play chip carries a "이번 차례"
 mark. Two real positions (`fixtures/turn_card_trash_saves.py`, four human
 seats with Immortality, seeded random play) rest on the optional trash the
@@ -768,8 +772,10 @@ TURN_SUFFIXES = {
 TURN_MARK = {"ko": "이번 차례", "en": "This turn"}
 TURN_MARK_TITLE = {
     "pending": {
-        "ko": "에이전트 효과가 아직 남아 있음 — 폐기하면 남은 효과는 사라집니다",
-        "en": "Agent effects still pending — trashing it loses the rest",
+        "ko": "에이전트 효과가 아직 남아 있음 — 다른 효과로 폐기하면 남은 효과는 "
+        "사라집니다",
+        "en": "Agent effects still pending — trashing it by another effect loses "
+        "the rest",
     },
     "done": {"ko": "이번 차례에 낸 카드", "en": "Played this turn"},
 }
@@ -833,7 +839,15 @@ def check_turn_rows(page, what: str, lang: str, case: dict) -> None:
         (case["this_turn"], case["earlier"]),
     ):
         return
-    kind = "pending" if case["pending"] else "done"
+    losing = [
+        (row["action_id"], row["card_id"]) for row in case["box_losing_trash"]
+    ]
+    loses = (case["action_id"], case["this_turn"]) in losing
+    check.ok(
+        (case["action_id"], case["earlier"]) not in losing,
+        f"{what}: the earlier copy's row loses no box of this turn",
+    )
+    kind = "pending" if loses else "done"
     texts = {}
     for name, row, suffix in (
         ("this turn's card", this_row, TURN_SUFFIXES[kind][lang]),
@@ -861,9 +875,9 @@ def check_turn_rows(page, what: str, lang: str, case: dict) -> None:
         this_row["index"],
     )
     check.ok(
-        warn == ("turn_pending" if case["pending"] else "turn"),
+        warn == ("turn_pending" if loses else "turn"),
         f"{what}: this turn's suffix is marked "
-        f"{'as a warning' if case['pending'] else 'plainly'}",
+        f"{'as a warning' if loses else 'plainly'}",
         warn,
     )
     if lang == "en":
@@ -923,6 +937,48 @@ def check_turn_chips(page, what: str, lang: str, case: dict) -> None:
     )
 
 
+def check_own_box_rows(page, what: str, lang: str) -> None:
+    """Seed 1's decision is Feyd's Personal Training, a step of the Signet
+    Ring's own box, and it offers the Signet Ring itself: this turn's card,
+    its box pending, yet trashing it there completes the box rather than
+    losing it (OQ-022, a card's own effect). The row says only that it is
+    this turn's card, and the server flags no row."""
+
+    view = page.evaluate("state.view")
+    turn = view.get("turn_card_ids") or []
+    rows = [
+        a
+        for a in page.evaluate("state.actions.actions")
+        if a["action_id"] == "trash_leader_card"
+        and a["arguments"].get("card_id") in turn
+    ]
+    if not check.ok(
+        len(rows) == 1, f"{what}: one trash row names this turn's card", turn
+    ):
+        return
+    card = rows[0]["arguments"]["card_id"]
+    check.ok(
+        card in (view.get("pending_box_card_ids") or [])
+        and view.get("box_losing_trash") == [],
+        f"{what}: {card}'s box is pending, but no row is flagged as losing it",
+        (view.get("pending_box_card_ids"), view.get("box_losing_trash")),
+    )
+    text = row_button(page, rows[0]["index"]).inner_text()
+    suffix = TURN_SUFFIXES["done"][lang]
+    check.ok(
+        text.endswith(suffix),
+        f"{what}: its row ends with {suffix!r}, no warning",
+        text,
+    )
+    warn = page.evaluate(
+        "(i) => { const node = document.querySelector("
+        "`#actions .action-item[data-index='${i}'] .turn-card-suffix`);"
+        " return node ? node.dataset.turnCard : null; }",
+        rows[0]["index"],
+    )
+    check.ok(warn == "turn", f"{what}: its suffix is not a warning", warn)
+
+
 def check_turn_case(browser, base: str, name: str, case: dict) -> None:
     kind = "pending box" if case["pending"] else "resolved box"
     print(f"[5] {name}: this turn's card and an earlier copy in play ({kind})")
@@ -938,6 +994,11 @@ def check_turn_case(browser, base: str, name: str, case: dict) -> None:
         and view.get("pending_box_card_ids") == case["pending_box_card_ids"],
         f"{name}: the view names the effect frame's cards",
         (view.get("turn_card_ids"), view.get("pending_box_card_ids"), case),
+    )
+    check.ok(
+        view.get("box_losing_trash") == case["box_losing_trash"],
+        f"{name}: the view flags the rows whose engine step expires a box",
+        (view.get("box_losing_trash"), case["box_losing_trash"]),
     )
     in_play = view["players"][case["seat"]]["in_play"]
     check.ok(
@@ -1042,6 +1103,7 @@ def main() -> None:
             else:
                 check_rows(page, "Korean", "ko", entries)
                 check_zone_layout(page, "Korean", "ko", ["hand", "in_play"])
+                check_own_box_rows(page, "Korean", "ko")
 
                 print("[2] the same rows in English")
                 switch_language(page, "en")
@@ -1058,6 +1120,7 @@ def main() -> None:
                 if entries_en:
                     check_rows(page, "English", "en", entries_en)
                     check_zone_layout(page, "English", "en", ["hand", "in_play"])
+                    check_own_box_rows(page, "English", "en")
                     texts_en = [
                         row_button(page, e["action"]["index"]).inner_text()
                         for e in entries_en

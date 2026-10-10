@@ -830,8 +830,8 @@ const UI_TEXT = {
     "en": "Played this turn"
   },
   "panels.this_turn_pending_title": {
-    "ko": "에이전트 효과가 아직 남아 있음 — 폐기하면 남은 효과는 사라집니다",
-    "en": "Agent effects still pending — trashing it loses the rest"
+    "ko": "에이전트 효과가 아직 남아 있음 — 다른 효과로 폐기하면 남은 효과는 사라집니다",
+    "en": "Agent effects still pending — trashing it by another effect loses the rest"
   },
   "panels.intrigue_deck_top_badge": {
     "ko": "책략 카드덱 맨 위",
