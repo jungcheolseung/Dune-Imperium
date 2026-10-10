@@ -705,6 +705,68 @@ def _late(config: RulesetConfig = SCOUTS, **seat_fields: Any) -> GameState:
     )
 
 
+def test_spies_for_hire_spy_post_first_leaves_the_intrigue_its_own_step() -> None:
+    """User ruling 2026-10-10 (OQ-106, project convention): "그 외에는 전부
+    나누자." Spies for Hire's late first place, "Spy 1 배치 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 8): the Spy post no longer draws the card
+    in the same step, so it stays undoable (OQ-010); the card waits as the
+    line's ``scouts_rewards_first``, drawn once. Then the pause before the
+    second place's Spy."""
+    state = _draw(_late(), "spies_for_hire_late")
+    state = _bid_all(state, {0: 0, 1: 3, 2: 1, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    intrigue = len(state.players[1].intrigue_cards)
+    post = next(
+        dict(a.arguments)["post_id"]
+        for a in ENGINE.legal_actions(state, 1)
+        if a.action_id == "place_spy_on_space"
+    )
+    state = _act(state, "place_spy_on_space", post_id=post)
+    assert post in state.players[1].spy_post_ids
+    assert len(state.players[1].intrigue_cards) == intrigue
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    assert ENGINE.legal_actions(state, 1) == (
+        DomainAction(action_id="scouts_rewards_first", actor=1),
+    )
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[1].intrigue_cards) == intrigue + 1
+    state = _resume(state)
+    assert state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    assert _owner(state) == 2
+    assert len(state.players[1].intrigue_cards) == intrigue + 1
+
+
+CHOAM_SCOUTS = RulesetConfig(arrakeen_scouts=True, choam_module=True)
+
+
+def test_choam_negotiations_contract_first_leaves_the_intrigue_its_own_step() -> (
+    None
+):
+    """CHOAM Negotiations' late first place, "Contract 1 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 8): the Contract pick refills the market,
+    so it stays irreversible, but its Intrigue card is still its own step
+    (OQ-106), drawn once."""
+    state = _draw(_late(CHOAM_SCOUTS), "choam_negotiations_late")
+    state = _bid_all(state, {0: 4, 1: 0, 2: 2, 3: 0})
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+    assert _owner(state) == 0
+    intrigue = len(state.players[0].intrigue_cards)
+    pick = next(
+        a for a in ENGINE.legal_actions(state, 0) if a.action_id == "take_contract"
+    )
+    state = ENGINE.apply(state, pick).state
+    assert len(state.players[0].active_contract_ids) == 1
+    assert len(state.players[0].intrigue_cards) == intrigue
+    assert ENGINE.legal_actions(state, 0) == (
+        DomainAction(action_id="scouts_rewards_first", actor=0),
+    )
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[0].intrigue_cards) == intrigue + 1
+    state = _resume(state)
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
+    assert _owner(state) == 2
+
+
 def test_competitive_study_pauses_before_the_second_place_research() -> None:
     """Competitive Study's late places, "Research + specimen 1" and
     "Research" (docs/rules/arrakeen-scouts.md 8). Past the second genetic

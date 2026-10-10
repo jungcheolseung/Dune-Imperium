@@ -258,7 +258,7 @@ const LABELS_EN = {
     "scouts_decline_card": "Do Not Buy",
     "scouts_decline_mission": "Pass on the Mission",
     "scouts_collect_mission": "Collect the Mission Pieces",
-    "scouts_rewards_first": "Take the remaining rewards first",
+    "scouts_rewards_first": "Take the remaining rewards",
     "take_desert_riding_hooks": "Take {maker_hooks} Instead of {spice}",
     "trash_intrigue_for_research_bonus": "{research} bonus: {trash} {intrigue} -> card + {intrigue}",
     "pay_research_bonus": "{research} bonus: 7 {solari} -> {tleilaxu} x2",

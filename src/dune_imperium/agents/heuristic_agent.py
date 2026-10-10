@@ -122,7 +122,8 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "defer_reveal_choice": -5.0,
     "resume_reveal_choice": -5.0,
     # Likewise a Scouts line's later rewards taken ahead of its pending
-    # choice (OQ-100): the agent keeps the printed order.
+    # choice (OQ-100): the agent keeps the printed order. A draw waiting
+    # after the choice (OQ-106) is this action alone, so it is taken then.
     "scouts_rewards_first": -5.0,
     # Deploy everything the engine allows, then close the turn. Taking
     # troops back (OQ-029) ranks below every decline and pass so the agent

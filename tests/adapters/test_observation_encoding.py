@@ -564,6 +564,15 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # draw is the seat's one legal action (3,368 -> 3,372 vectors). With the
 # triggers drawing again (a scratch copy of the previous commit's source)
 # all six games reproduce the pins above exactly.
+# v142, sixth change (OQ-106): a draw printed after one of an Arrakeen
+# Scouts line's reward choices waits as the line's own
+# ``scouts_rewards_first``. Only scouts moves: at decision 384 (round 6,
+# seat 2, right after its Water Discipline trash) the draw is the seat's
+# one legal action, where the trash had drawn already and seat 3 chose its
+# line next (3,372 -> 3,552 vectors). The pause before a later auction
+# winner's reward (the commit before) moves none of the six. With the trash
+# drawing again (a scratch copy of the previous commit's source) all six
+# games reproduce the pins above exactly.
 _GOLDEN_DIGESTS = {
     "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
     "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
@@ -577,8 +586,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
     "scouts": (
-        "8cfd0248ba40467e17c6e1f7ea119839005e49a61318d576015a48a5bc236a3c",
-        3372,
+        "cee146800ade32ee6787068fcba6f28b8fe0812d759e7efed2baa0a968d1c4ad",
+        3552,
     ),
 }
 _GOLDEN_CONFIGS = {

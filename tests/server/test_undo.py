@@ -1876,6 +1876,80 @@ def _scouts_act(
     return _ENGINE.apply(state, action, legal_actions=legal).state
 
 
+def test_leverage_faction_can_be_taken_back_and_its_intrigue_cannot() -> None:
+    """ "그 외에는 전부 나누자." (user ruling 2026-10-10, OQ-106): Leverage's
+    "Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 4) no longer draws its card in the
+    Faction step, so the choice stays in the seat's undo window and the
+    line's own ``scouts_rewards_first`` draws and closes it (OQ-010).
+
+    Seed 0 with Arrakeen Scouts: seat 0's first turn, given two posted Spies,
+    Solari and Leverage on the display by hand; the visit, the join and the
+    recalls are played through the server.
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, arrakeen_scouts=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        scouts_subcommittees=(
+            *session.state.scouts_subcommittees[:-1],
+            "leverage",
+        ),
+        players=(
+            replace(
+                owner,
+                resources=Resources(solari=10, spice=5, water=1),
+                spies_supply=1,
+                spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
+            ),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+
+    def first(action_id: str, **arguments: object) -> dict[str, object]:
+        return next(
+            row
+            for row in _served(manager, game_id)
+            if row["action_id"] == action_id
+            and all(_obj(row["arguments"]).get(k) == v for k, v in arguments.items())
+        )
+
+    steps: tuple[tuple[str, dict[str, object]], ...] = (
+        (
+            "agent_turn",
+            {"card_id": "player:0:starter:dagger:0", "space_id": "high_council"},
+        ),
+        ("resolve_board_effect", {"effect": "high_council"}),
+        ("choose_subcommittee", {}),
+        ("join_subcommittee", {"subcommittee_id": "leverage"}),
+        ("scouts_recall_spy", {}),
+        ("scouts_recall_spy", {}),
+    )
+    for action_id, arguments in steps:
+        row = first(action_id, **arguments)
+        summary = _play_raw(manager, summary, index=_int(row["index"]))
+    choice = first("scouts_choose_faction", faction="emperor")
+    assert choice["undoable"] is True
+    intrigue_before = manager._get(game_id).state.players[0].intrigue_cards
+    summary = _play_raw(manager, summary, index=_int(choice["index"]))
+    assert manager._get(game_id).state.players[0].intrigue_cards == intrigue_before
+    assert _rows(summary["undo"]) == [{"seat": 0, "steps": 7}]
+    rows = _served(manager, game_id)
+    assert [row["action_id"] for row in rows] == ["scouts_rewards_first"]
+    assert rows[0]["undoable"] is False
+
+    summary = _play_raw(manager, summary, index=_int(rows[0]["index"]))
+    assert len(manager._get(game_id).state.players[0].intrigue_cards) == (
+        len(intrigue_before) + 1
+    )
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
 def _scouts_step(
     manager: GameSessionManager, game_id: str, round_number: int, **fields: object
 ) -> GameState:
@@ -1893,6 +1967,40 @@ def _scouts_step(
         scouts_opening=True,
         **fields,  # type: ignore[arg-type]
     )
+
+
+def test_water_discipline_trash_can_be_taken_back_and_its_draw_cannot() -> None:
+    """Water Discipline's "물 1 → 카드 1장 trash + 카드 1장 draw"
+    (docs/rules/arrakeen-scouts.md 6, OQ-100): outside the turns the trash
+    used to draw the card in the same step, so it was served irreversible and
+    held only by the browser's "확정 ▶". Now the trash is undoable and the
+    draw is its own step, served irreversible (user ruling 2026-10-10,
+    OQ-106).
+
+    Seed 0 with Arrakeen Scouts, made round 4's Scouts step with Water
+    Discipline drawn by hand (served flags only).
+    """
+
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, arrakeen_scouts=True)
+    game_id = str(summary["game_id"])
+    state = _scouts_draw(_scouts_step(manager, game_id, 4), "water_discipline")
+    state = _scouts_act(state, "scouts_choose_option", option=0)
+    session = manager._get(game_id)
+    session.state = state
+    rows = _served(manager, game_id)
+    trashes = [row for row in rows if row["action_id"] == "trash_optional_card"]
+    assert trashes and all(row["undoable"] is True for row in trashes)
+    assert all(row["sent_by_turn_end"] is False for row in trashes)
+    decline = next(row for row in rows if row["action_id"] == "decline_optional_trash")
+    assert decline["undoable"] is True
+
+    card = str(_obj(trashes[0]["arguments"])["card_id"])
+    session.state = _scouts_act(state, "trash_optional_card", card_id=card)
+    rows = _served(manager, game_id)
+    assert [row["action_id"] for row in rows] == ["scouts_rewards_first"]
+    assert rows[0]["undoable"] is False
+    assert rows[0]["sent_by_turn_end"] is True
 
 
 def test_competitive_study_direction_can_be_taken_back_before_the_next_card() -> (

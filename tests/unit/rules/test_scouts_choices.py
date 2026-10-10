@@ -434,15 +434,94 @@ def test_water_discipline_may_draw_before_trashing_the_drawn_card() -> None:
     assert _owner(state) == 1
 
 
-def test_water_discipline_still_trashes_first_by_default() -> None:
+def test_water_discipline_trash_first_leaves_the_draw_its_own_step() -> None:
+    """User ruling 2026-10-10 (OQ-106, project convention): "그 외에는 전부
+    나누자. 특히 카드 드로우는 나눠야하는게, 드로우 하기 전에 버림더미 카드를
+    폐기하고 싶을 수 있잖아." The trash and the draw are separate icons of
+    the line (OQ-100); trashing first no longer draws the card in the same
+    step, so the trash stays undoable (OQ-010). The draw waits as the line's
+    own ``scouts_rewards_first`` and nothing else is offered."""
     before = _base().players[0]
     state = _water_discipline()
     discarded = before.hand[0]
     state = _act(state, "trash_optional_card", card_id=discarded)
     seat = state.players[0]
     assert discarded in seat.trashed
+    assert seat.deck == before.deck
+    assert len(seat.hand) == len(before.hand) - 1
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    assert _offered(state) == [("scouts_rewards_first", ())]
+    state = _act(state, "scouts_rewards_first")
+    seat = state.players[0]
     assert before.deck[0] in seat.hand
     assert len(seat.hand) == len(before.hand)
+    assert _owner(state) == 1
+
+
+def test_rotating_doors_draws_with_its_arrow_cost() -> None:
+    """The boundary of OQ-106: a choice among a line's costs is the price of
+    what it buys, so Rotating Doors' "trash an Intrigue card -> [Intrigue]
+    [draw 1]" stays one unit (the 2026-10-10 audit's arrow cost->reward
+    units, kept by the user's instruction)."""
+    base = _base()
+    held = base.intrigue_deck[0]
+    state = _reveal(
+        replace(
+            base,
+            intrigue_deck=base.intrigue_deck[1:],
+            players=(
+                replace(base.players[0], intrigue_cards=(held,)),
+                *base.players[1:],
+            ),
+        ),
+        "rotating_doors",
+    )
+    assert _owner(state) == 0
+    state = _act(state, "scouts_choose_option", option=0)
+    hand = state.players[0].hand
+    state = _act(state, "scouts_trash_intrigue", card_id=held)
+    seat = state.players[0]
+    assert len(seat.intrigue_cards) == 1 and held not in seat.intrigue_cards
+    assert len(seat.hand) == len(hand) + 1
+    assert not any(f.kind == FrameKind.SCOUTS_EFFECT for f in state.decision_stack)
+
+
+def test_water_discipline_declined_trash_still_waits_for_the_draw() -> None:
+    """Declining the trash icon is the line's choice too (OQ-106)."""
+    before = _base().players[0]
+    state = _act(_water_discipline(), "decline_optional_trash")
+    assert state.players[0].hand == before.hand
+    assert _offered(state) == [("scouts_rewards_first", ())]
+    state = _act(state, "scouts_rewards_first")
+    assert state.players[0].hand == (*before.hand, before.deck[0])
+    assert _owner(state) == 1
+
+
+def test_water_discipline_trashes_a_discard_card_before_the_draw_shuffles() -> None:
+    """The user's reason for the split (OQ-106): with the deck empty, a card
+    trashed from the discard pile before the draw stays out of the reshuffle
+    the draw makes [Main p. 6]. Drawn once."""
+    base = _base()
+    seat0 = base.players[0]
+    pile = (*seat0.deck, *seat0.discard_pile)
+    state = _water_discipline(**{"0": {"deck": (), "discard_pile": pile}})
+    trashed = pile[0]
+    state = _act(state, "trash_optional_card", card_id=trashed)
+    assert state.players[0].discard_pile == pile[1:]
+    state = _act(state, "scouts_rewards_first")
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    decision = frame.decision
+    assert isinstance(decision, ChanceDecision)
+    assert trashed not in decision.options
+    state = ENGINE.apply(
+        state,
+        ChanceOutcome(decision_id=decision.decision_id, values=decision.options),
+    ).state
+    seat = state.players[0]
+    assert trashed in seat.trashed
+    assert trashed not in (*seat.hand, *seat.deck, *seat.discard_pile)
+    assert len(seat.hand) == len(seat0.hand) + 1
     assert _owner(state) == 1
 
 

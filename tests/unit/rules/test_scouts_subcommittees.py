@@ -334,6 +334,12 @@ def test_leverage_may_draw_its_intrigue_before_choosing_the_faction() -> None:
 
 
 def test_leverage_recalls_two_chosen_spies_then_gains() -> None:
+    """Leverage: "Spy 2 회수 → 원하는 Faction Influence +1 + Intrigue 1장"
+    (docs/rules/arrakeen-scouts.md 4). The Faction choice and the Intrigue
+    card are separate steps (user ruling 2026-10-10, OQ-106: "그 외에는
+    전부 나누자"), so the choice stays undoable (OQ-010): the card waits as
+    the line's ``scouts_rewards_first``, the only action, and the turn
+    cannot end before it is drawn, once."""
     owner = _owner(
         spies_supply=1,
         spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
@@ -348,7 +354,12 @@ def test_leverage_recalls_two_chosen_spies_then_gains() -> None:
     intrigue = len(state.players[0].intrigue_cards)
     state = _act(state, "scouts_choose_faction", faction="emperor")
     assert state.players[0].influence.emperor == 1
+    assert len(state.players[0].intrigue_cards) == intrigue
+    assert state.decision_stack[-1].kind == FrameKind.SCOUTS_EFFECT
+    assert _options(state) == {("scouts_rewards_first", "")}
+    state = _act(state, "scouts_rewards_first")
     assert len(state.players[0].intrigue_cards) == intrigue + 1
+    assert _scouts_frames_done(state)
 
 
 def test_contingencies_recalls_another_agent_not_the_high_council_one() -> None:

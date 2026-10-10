@@ -388,6 +388,11 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # second place no longer researches, or draws past the second genetic
 # marker, in the first place's step. No template change; recorded step
 # sequences gain those chance steps.
+# Also in v142 (OQ-106, Arrakeen Scouts lines): a draw printed after one of a
+# line's reward choices (Leverage's Faction, Water Discipline's trash, the
+# late Spies for Hire's Spy post and CHOAM Negotiations' Contract) waits as
+# the line's own ``scouts_rewards_first``, then that line's only action,
+# instead of being drawn by the choice. No template change.
 ACTION_CODEC_VERSION = 142
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
