@@ -48,6 +48,10 @@
   - 2,000판(모듈 조합 6 × AI 조합), 실패 0, 35MB, 3코어로 약 20분
   - 표본 20판을 master에서 걸어 보니 모두 그대로 재생됐고, 19,005수에서 지문 차이가 0이었다.
   - **v142가 master에 들어오기 전에 만들어 둔 것이 요점이다.** 다음 codec 변경 리뷰는 이 묶음으로 한다.
+- **v142 묶음:** `local/records-corpus/v142-c29f79d1`(git 무시, 2026-10-10 v142 병합 뒤)
+  - 같은 계획 2,000판, 실패 0, 35MB, 2코어(nice)로 13분
+  - 만든 엔진(master `c29f79d1`)에서 `corpus check`로 걸어 보니 2,000판 모두 exact였다.
+  - 다음 codec 변경(v143)의 다리 리뷰는 이 묶음으로 한다. codec 변경이 master에 들어가면 그 버전의 묶음을 다시 만든다.
 - **2단계 `corpus check`(병합됨, 브랜치 `corpus-check`):**
   - `dune-imperium-records corpus check CORPUS [--has P | --ids F] [--around P] [--bridge NAME ...] [--migration-module PATH] [--control N] [--workers N] [--json OUT]`
   - 묶음의 기보를 이 엔진에서 이전(`migrate_record`)하며 걷고, 적힌 수마다 직전 상태의 필드 지문을 저장된 기록과 맞댄다. 다리 적용 뒤, 묶음의 필드 목록·클래스 스키마 기준이다.
