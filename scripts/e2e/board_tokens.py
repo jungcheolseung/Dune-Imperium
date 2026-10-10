@@ -690,7 +690,7 @@ def intrigue_pile(page) -> None:
     )
     pile.click()
     listed = page.evaluate(
-        "[...document.querySelectorAll('#card-popover .vcard')]"
+        "[...document.querySelectorAll('#pile-viewer .vcard')]"
         ".map((n) => n.dataset.instance)"
     )
     check.ok(
@@ -699,7 +699,7 @@ def intrigue_pile(page) -> None:
         listed,
     )
     titles = page.evaluate(
-        "[...document.querySelectorAll('#card-popover .popover-title')]"
+        "[...document.querySelectorAll('#pile-viewer .popover-title')]"
         ".map((n) => n.textContent)"
     )
     check.ok(len(titles) == 1, "one headed pile", titles)

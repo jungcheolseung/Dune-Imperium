@@ -58,7 +58,7 @@ DECK_TOP_JS = """() => {
 
 DECK_LIST_JS = """() => {
   const key = (id) => { const ref = instanceRef(id); return `${ref.kind}:${ref.id}`; };
-  const pop = document.getElementById('card-popover');
+  const pop = document.getElementById('pile-viewer');
   return {
     hidden: pop.hidden,
     peeked: state.view.private.peeked_card_id || null,
@@ -115,7 +115,7 @@ def check_deck_top(page, tech_id):
             print(f"  .. {tech_id}: the deck is empty, no list to open")
             return
     page.locator("#private-zone .hand-counts .stat").first.click()
-    page.wait_for_function("!document.getElementById('card-popover').hidden")
+    page.wait_for_function("!document.getElementById('pile-viewer').hidden")
     listing = page.evaluate(DECK_LIST_JS)
     if glow:
         marked = listing["marked"]

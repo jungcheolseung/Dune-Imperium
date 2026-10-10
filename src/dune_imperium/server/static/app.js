@@ -49,16 +49,30 @@ async function init() {
     /* the backdrop, not the board itself */
     if (event.target === el("bt-zoom")) closeBeneTleilaxZoom();
   });
+  /* A click elsewhere closes the card popover, inside the pile viewer too;
+     the viewer itself only closes by its ×, Escape or its opener. */
   document.addEventListener("click", (event) => {
     const pop = el("card-popover");
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
   });
+  el("pile-viewer-close").addEventListener("click", () => closePileViewer());
+  window.addEventListener("resize", keepPileViewerInWindow);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       if (!el("help").hidden) closeHelp();
       else if (!el("bt-zoom").hidden) closeBeneTleilaxZoom();
       else if (state.pick) clearPick();
-      else if (!closeResultBoard() && !clearHeldChoice()) closePopover();
+      else if (!closeResultBoard() && !clearHeldChoice()) {
+        /* The topmost first: a pinned card popover (one from the pile viewer
+           lies above it), then the viewer, with any hover enlargement. */
+        const pinned = popoverPinned && !el("card-popover").hidden;
+        if (pileViewerOpen() && !pinned) {
+          closePopover();
+          closePileViewer();
+        } else {
+          closePopover();
+        }
+      }
       return;
     }
     /* Shortcuts are matched on event.code, the physical key, not event.key.
