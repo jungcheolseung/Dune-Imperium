@@ -569,6 +569,13 @@ def test_a_save_carries_the_clock_and_a_load_continues_it(clock: _Clock) -> None
             ),
             id="wrong_seats",
         ),
+        pytest.param(
+            # Too large to become seconds at all: still no reason to refuse.
+            lambda document: document.update(
+                clock={"elapsed_ms": 10**400, "seat_ms": [0, 0, 0, 0], "known": True}
+            ),
+            id="huge",
+        ),
     ],
 )
 def test_a_save_without_a_usable_clock_loads_and_counts_from_the_load(

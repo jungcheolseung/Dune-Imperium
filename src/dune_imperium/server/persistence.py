@@ -519,14 +519,25 @@ def read_saved_clock(document: object, seats: int) -> SavedClock | None:
     seat_ms = raw.get("seat_ms")
     known = raw.get("known", True)
     if (
-        not _is_count(elapsed)
+        not _is_clock_ms(elapsed)
         or not isinstance(seat_ms, list)
         or len(seat_ms) != seats
-        or not all(_is_count(value) for value in seat_ms)
+        or not all(_is_clock_ms(value) for value in seat_ms)
         or not isinstance(known, bool)
     ):
         return None
     return SavedClock(elapsed_ms=elapsed, seat_ms=tuple(seat_ms), known=known)
+
+
+# The most milliseconds a saved clock may hold: the largest integer a
+# browser's number keeps exact. A larger one (only an edited file has it)
+# would not even convert to seconds, so it reads as no clock, never as a
+# save that fails to load.
+_MAX_CLOCK_MS = 2**53 - 1
+
+
+def _is_clock_ms(value: object) -> TypeGuard[int]:
+    return _is_count(value) and value <= _MAX_CLOCK_MS
 
 
 def _is_count(value: object) -> TypeGuard[int]:
