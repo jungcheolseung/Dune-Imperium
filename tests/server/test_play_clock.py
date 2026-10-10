@@ -13,7 +13,9 @@ Every test stands in its own monotonic clock (``sessions._monotonic``), so
 the charges are exact.
 """
 
+import json
 import threading
+from collections.abc import Callable
 from dataclasses import replace
 
 import pytest
@@ -29,8 +31,10 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
 )
+from dune_imperium.records.problems import _RECORD_FIELDS
 from dune_imperium.server import sessions as sessions_module
 from dune_imperium.server.pacing import MAX_WAIT_SECONDS, TURN_BANNER_SECONDS
+from dune_imperium.server.persistence import parse_save_document, read_saved_clock
 from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.sessions import GameSessionManager, JsonObject
 
@@ -481,7 +485,7 @@ def test_an_instant_game_narrates_its_ai_run_before_the_humans_clock(
     assert all(start >= acted for _, start, _ in session.clock.narration)
 
 
-# --- finish and un-finish ------------------------------------------------
+# --- finish, un-finish, save and load -----------------------------------
 
 
 def test_a_finished_game_stops_the_clock_and_an_undo_that_unfinishes_resumes_it(
@@ -520,6 +524,90 @@ def test_a_finished_game_stops_the_clock_and_an_undo_that_unfinishes_resumes_it(
     clock.advance(4.0)
     manager.connect(game_id)
     assert _clock_of(manager.summary(game_id))["elapsed_ms"] == 7000
+
+
+def test_a_save_carries_the_clock_and_a_load_continues_it(clock: _Clock) -> None:
+    manager = GameSessionManager()
+    summary = manager.create_game(FOUR_HUMANS, game_seed=3)
+    game_id = _text(summary["game_id"])
+    seat = _owner(summary)
+    clock.advance(3.0)
+    summary = manager.apply_action(game_id, seat, _int(summary["revision"]), 0)
+    clock.advance(2.0)
+
+    document = manager.save_document(game_id)
+
+    # Folded in at the save, the running interval included; the summary is
+    # untouched (no change happened).
+    expected = [0, 0, 0, 0]
+    expected[seat] = 5000
+    assert document["clock"] == {"elapsed_ms": 5000, "seat_ms": expected, "known": True}
+    assert manager.summary(game_id) == summary
+    # The replay of a load counts nothing: the time it takes is no one's.
+    clock.advance(100.0)
+    restored = manager.restore_game(json.loads(json.dumps(document)))
+    assert _clock_of(restored)["seat_ms"] == expected
+    assert _clock_of(restored)["elapsed_ms"] == 5000
+    assert _clock_of(restored)["known"] is True
+    assert _clock_of(restored)["running"] == seat
+    clock.advance(1.5)
+    again = manager.save_document(_text(restored["game_id"]))
+    expected[seat] = 6500
+    assert _obj(again["clock"])["seat_ms"] == expected
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        pytest.param(lambda document: document.pop("clock"), id="absent"),
+        pytest.param(
+            lambda document: document.update(clock={"elapsed_ms": -1}), id="malformed"
+        ),
+        pytest.param(
+            lambda document: document.update(
+                clock={"elapsed_ms": 5, "seat_ms": [1, 2], "known": True}
+            ),
+            id="wrong_seats",
+        ),
+    ],
+)
+def test_a_save_without_a_usable_clock_loads_and_counts_from_the_load(
+    clock: _Clock, damage: Callable[[JsonObject], object]
+) -> None:
+    manager = GameSessionManager()
+    summary = manager.create_game(FOUR_HUMANS, game_seed=3)
+    game_id = _text(summary["game_id"])
+    clock.advance(3.0)
+    document = manager.save_document(game_id)
+    damage(document)
+
+    restored = manager.restore_game(document)
+
+    loaded = _clock_of(restored)
+    assert loaded["known"] is False
+    assert loaded["elapsed_ms"] == 0 and _seat_ms(restored) == [0, 0, 0, 0]
+    # It saves as unknown in turn, so a later load still says so.
+    clock.advance(2.0)
+    again = manager.save_document(_text(restored["game_id"]))
+    assert _obj(again["clock"])["known"] is False
+    assert _obj(again["clock"])["elapsed_ms"] == 2000
+
+
+def test_the_clock_stays_out_of_records(clock: _Clock) -> None:
+    # Timing is never record data (decision 7, 2026-10-10): the parser the
+    # records read saves with ignores it, and a problem suite copies a fixed
+    # list of save fields.
+    manager = GameSessionManager()
+    summary = manager.create_game(FOUR_HUMANS, game_seed=3)
+    clock.advance(3.0)
+    document = manager.save_document(_text(summary["game_id"]))
+    assert "clock" in document
+
+    parsed = parse_save_document(document, check_versions=False)
+
+    assert "clock" not in _RECORD_FIELDS
+    assert not hasattr(parsed, "clock")
+    assert read_saved_clock(document, 4) is not None
 
 
 # --- the clock itself -----------------------------------------------------

@@ -103,10 +103,12 @@ from dune_imperium.server.persistence import (
     JsonValue as JsonValue,
 )
 from dune_imperium.server.persistence import (
+    SavedClock,
     SavedHandOver,
     SaveError,
     build_save_document,
     parse_save_document,
+    read_saved_clock,
 )
 from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.session_log import (
@@ -1063,6 +1065,7 @@ class GameSessionManager:
 
         session = self._get(game_id)
         with session.lock:
+            elapsed, seat_seconds = session.clock.totals(_monotonic())
             return build_save_document(
                 config=session.config,
                 game_seed=session.game_seed,
@@ -1080,6 +1083,11 @@ class GameSessionManager:
                 sealed_steps=session.undo_floor,
                 open_units=tuple(sorted(session.open_units.items())),
                 ai_pace=session.ai_pace,
+                clock=SavedClock(
+                    elapsed_ms=round(elapsed * 1000),
+                    seat_ms=tuple(round(seconds * 1000) for seconds in seat_seconds),
+                    known=session.clock.known,
+                ),
             )
 
     def restore_game(
@@ -1152,8 +1160,11 @@ class GameSessionManager:
                 self._restore_hand_over_locked(session, parsed.hand_over)
             else:
                 self._restore_legacy_hand_over_locked(session)
-            # A load counts from the load: the replay is no play time.
-            _start_clock_locked(session, restored=True)
+            # Counting again from the saved totals: the time the game spent
+            # unloaded (the server down, the save waiting) is no play time.
+            _start_clock_locked(
+                session, read_saved_clock(document, len(parsed.seats)), restored=True
+            )
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
@@ -2533,11 +2544,14 @@ def _human_acts_locked(session: GameSession) -> None:
     session.narration_clock = 0.0
 
 
-def _start_clock_locked(session: GameSession, *, restored: bool = False) -> None:
+def _start_clock_locked(
+    session: GameSession, saved: SavedClock | None = None, *, restored: bool = False
+) -> None:
     """Start the play clock once the game rests; the caller holds the lock.
 
-    A new game starts at zero; a load (``restored``) counts from the load,
-    with ``known`` False.
+    A new game starts at zero. A load (``restored``) continues from the
+    totals its save recorded, or, for a save that recorded none or a clock
+    it cannot read, counts from the load with ``known`` False.
     """
 
     holder = _clock_holder(session, resting=True)
@@ -2546,7 +2560,11 @@ def _start_clock_locked(session: GameSession, *, restored: bool = False) -> None
         holder=holder,
         grace=holder is not None and session.seats[holder] == HUMAN_SEAT,
         counting=not _is_finished(session.state),
-        known=not restored,
+        elapsed=saved.elapsed_ms / 1000 if saved is not None else 0.0,
+        seat_seconds=(
+            tuple(ms / 1000 for ms in saved.seat_ms) if saved is not None else None
+        ),
+        known=saved.known if saved is not None else not restored,
     )
 
 
