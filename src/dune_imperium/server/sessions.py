@@ -103,11 +103,14 @@ from dune_imperium.server.persistence import (
     JsonValue as JsonValue,
 )
 from dune_imperium.server.persistence import (
+    SavedClock,
     SavedHandOver,
     SaveError,
     build_save_document,
     parse_save_document,
+    read_saved_clock,
 )
+from dune_imperium.server.play_clock import PlayClock
 from dune_imperium.server.session_log import (
     SEALED_ACTION_IDS,
     SEALED_REVEAL_EVENTS,
@@ -288,7 +291,22 @@ class GameSession:
     # Set to cut short the worker's wait for the tables: the game was
     # deleted or its pace changed.
     pace_wake: threading.Event = field(default_factory=threading.Event)
+    # The play clock (``play_clock``): game time and each seat's time
+    # holding control, settled at every transition (``_settle_clock_locked``).
+    # In an instant game ``narration_clock`` stands in for ``cue_clock``:
+    # when the tables are presumed done showing the steps so far, at the
+    # browser's own cue lengths (``cue_unit`` seconds a full-length cue),
+    # and ``narrated_turn`` the AI turn start whose banner it last counted.
+    # Neither paces anything; they only keep a human's clock from running
+    # while the tables still show the AI moves before its decision.
+    clock: PlayClock = field(init=False)
+    narration_clock: float = 0.0
+    narrated_turn: str | None = None
+    cue_unit: float = 0.0
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        self.clock = PlayClock(seats=len(self.seats))
 
 
 @dataclass(frozen=True, slots=True)
@@ -572,6 +590,8 @@ class GameSessionManager:
         with session.lock:
             self._set_pace_locked(session, pace)
             self._advance_locked(session)
+            # The clock starts with the game, its Leader draft included.
+            _start_clock_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
@@ -658,9 +678,13 @@ class GameSessionManager:
             raise SessionError("log cursor is out of range")
         with session.lock:
             summary = self._summary_locked(session)
+            # How long ago the clock in the summary was settled, on the
+            # server's own clock: a client adds its own elapsed time to it
+            # and never compares wall clocks (``play_clock``).
+            age = session.clock.age_ms(_monotonic())
             you = self._identify_locked(session, credentials)
             if seat is None:
-                return {"summary": summary, "you": you}
+                return {"summary": summary, "you": you, "clock_age_ms": age}
             self._authorize_seat_locked(session, seat, credentials)
             state = session.state
             view = session.engine.observe(state, seat)
@@ -682,6 +706,7 @@ class GameSessionManager:
         return {
             "summary": summary,
             "you": you,
+            "clock_age_ms": age,
             "view": _serialize_view(view, state, disclose=finished),
             "actions": actions,
             "log": {
@@ -721,7 +746,9 @@ class GameSessionManager:
             elif not token_matches(token, credentials.seat_tokens):
                 raise SeatTakenError(f"seat {seat} is already taken")
             session.seat_names[seat] = cleaned
-            claim = SeatClaim(token=token, summary=self._summary_locked(session))
+            claim = SeatClaim(
+                token=token, summary=self._changed_summary_locked(session)
+            )
             bell = self._ring_locked(session, claim.summary)
         self._publish(game_id, bell)
         return claim
@@ -750,7 +777,7 @@ class GameSessionManager:
                 )
             session.seat_tokens.pop(seat, None)
             session.seat_names.pop(seat, None)
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
         return summary
@@ -828,12 +855,13 @@ class GameSessionManager:
                 # An open server lets the next seat act past a pending press;
                 # that hands the held seat's turn over all the same.
                 session.open_units.pop(held, None)
+            _human_acts_locked(session)
             before = session.state
             _apply_step(session, action)
             own_steps = len(session.steps)
             ended = self._settle_locked(session, before, action)
             passed = ended or _turn_passed(session, seat, own_steps)
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
             bell = self._ring_locked(session, summary)
         try:
             self._publish(game_id, bell)
@@ -866,11 +894,12 @@ class GameSessionManager:
             _require_current(session, revision, undo_count)
             if session.awaiting_confirmation != seat:
                 raise SessionError(f"seat {seat} has no turn end to confirm")
+            _human_acts_locked(session)
             session.awaiting_confirmation = None
             session.open_units.pop(seat, None)
             session.undo_floor = len(session.steps)
             self._advance_locked(session)
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
             bell = self._ring_locked(session, summary)
         try:
             self._publish(game_id, bell)
@@ -912,6 +941,7 @@ class GameSessionManager:
                     f"seat {seat} may take back at most {window} step(s) now"
                 )
             keep = len(session.steps) - steps
+            _human_acts_locked(session)
             session.state = _state_after(session, keep)
             del session.steps[keep:]
             mark_undone(session.log, seat, steps)
@@ -922,7 +952,7 @@ class GameSessionManager:
             for owner, opened in tuple(session.open_units.items()):
                 if opened >= keep:
                     del session.open_units[owner]
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
         return summary
@@ -996,7 +1026,7 @@ class GameSessionManager:
         with session.lock:
             self._set_pace_locked(session, pace)
             session.pace_wake.set()
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._ring_out(game_id, bell, False)
         return summary
@@ -1035,6 +1065,7 @@ class GameSessionManager:
 
         session = self._get(game_id)
         with session.lock:
+            elapsed, seat_seconds = session.clock.totals(_monotonic())
             return build_save_document(
                 config=session.config,
                 game_seed=session.game_seed,
@@ -1052,6 +1083,11 @@ class GameSessionManager:
                 sealed_steps=session.undo_floor,
                 open_units=tuple(sorted(session.open_units.items())),
                 ai_pace=session.ai_pace,
+                clock=SavedClock(
+                    elapsed_ms=round(elapsed * 1000),
+                    seat_ms=tuple(round(seconds * 1000) for seconds in seat_seconds),
+                    known=session.clock.known,
+                ),
             )
 
     def restore_game(
@@ -1124,6 +1160,11 @@ class GameSessionManager:
                 self._restore_hand_over_locked(session, parsed.hand_over)
             else:
                 self._restore_legacy_hand_over_locked(session)
+            # Counting again from the saved totals: the time the game spent
+            # unloaded (the server down, the save waiting) is no play time.
+            _start_clock_locked(
+                session, read_saved_clock(document, len(parsed.seats)), restored=True
+            )
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
@@ -1329,13 +1370,25 @@ class GameSessionManager:
         """Bump the doorbell sequence and build the payload to publish.
 
         The caller holds the session lock and publishes after releasing it;
-        ``summary`` spares a second summary when the caller just made one.
+        ``summary`` spares a second summary when the caller just made one
+        (``_changed_summary_locked``, which settles the clock first).
         """
 
         session.event_seq += 1
         if summary is None:
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
         return _doorbell(session, summary)
+
+    def _changed_summary_locked(self, session: GameSession) -> JsonObject:
+        """The summary after a change: the play clock settles at it first.
+
+        Every change rings, so this is the clock's transition point; a
+        summary read between changes leaves the clock alone and so reads the
+        same (``play_clock``).
+        """
+
+        _settle_clock_locked(session)
+        return self._summary_locked(session)
 
     def _publish(self, game_id: str, payload: JsonObject | None) -> None:
         """Hand one payload to every listener; never call this under a lock."""
@@ -1553,6 +1606,8 @@ class GameSessionManager:
             ):
                 session.thinking = decision.owner
                 return
+            # The seat holds control while it computes its answer here.
+            _settle_clock_locked(session, resting=False)
             action = _agent_action(session, decision.owner)
             if self._agent_step_locked(session, decision.owner, action):
                 return
@@ -1618,6 +1673,7 @@ class GameSessionManager:
 
         session.ai_pace = pace
         session.pace_seconds = PACE_SCALE[pace] * self._pace_unit
+        session.cue_unit = self._pace_unit
 
     def _kick_ai(self, session: GameSession) -> None:
         """Start the game's AI worker if a background seat waits for one.
@@ -1773,7 +1829,7 @@ class GameSessionManager:
             session.thinking = None
             if not ended:
                 self._advance_locked(session)
-            summary = self._summary_locked(session)
+            summary = self._changed_summary_locked(session)
             bell = self._ring_locked(session, summary)
             handed_over = _rests_on_human(session)
         self._ring_out(game_id, bell, handed_over)
@@ -1940,6 +1996,9 @@ class GameSessionManager:
             "seats": list(kinds),
             "players": players,
             "decision": decision,
+            # Game time and each seat's time holding control, as of the last
+            # change (``play_clock``); the snapshot adds how long ago that was.
+            "clock": session.clock.payload(),
             "finished": finished,
             "standings": (
                 [_jsonify(asdict(standing)) for standing in final_standings(state)]
@@ -2347,9 +2406,17 @@ def _pace_ready_locked(session: GameSession, seat: int) -> float:
 
 
 def _apply_step(session: GameSession, step: ReplayStep) -> None:
-    """Apply one step to the session and record it in steps and log."""
+    """Apply one step to the session and record it in steps and log.
+
+    It also keeps the time the tables need to show the step: ``cue_clock``
+    in a paced game, which paces the next AI answer, and in an instant game
+    with a human seat ``narration_clock``, which paces nothing. An AI
+    step's share of either is charged to that seat while a human waits for
+    it (``play_clock``).
+    """
 
     before = session.state
+    banner = _narrates_turn_start(session, step)
     transition = session.engine.apply(before, step)
     session.state = transition.state
     session.steps.append(step)
@@ -2357,7 +2424,148 @@ def _apply_step(session: GameSession, step: ReplayStep) -> None:
     if _paced(session):
         seconds = cue_seconds(transition.events) * session.pace_seconds
         if seconds:
-            session.cue_clock = max(session.cue_clock, _monotonic()) + seconds
+            now = _monotonic()
+            start = max(session.cue_clock, now)
+            session.cue_clock = start + seconds
+            _narrate_locked(session, step, start, session.cue_clock, now)
+    elif session.clock.live and HUMAN_SEAT in session.seats:
+        seconds = cue_seconds(transition.events)
+        if banner:
+            seconds += TURN_BANNER_SECONDS
+        # The browser shows an instant game's cues at full length (its
+        # cueScale), a whole AI run of them after the request that played
+        # it; like a paced answer, no one step waits longer than the cap.
+        seconds = min(seconds * session.cue_unit, MAX_WAIT_SECONDS)
+        if seconds:
+            now = _monotonic()
+            start = max(session.narration_clock, now)
+            session.narration_clock = start + seconds
+            _narrate_locked(session, step, start, session.narration_clock, now)
+
+
+def _narrates_turn_start(session: GameSession, step: ReplayStep) -> bool:
+    """Whether an instant game's AI step opens a turn the tables announce.
+
+    The browser shows that seat's turn banner before the turn's steps
+    (static/effects.js); a paced game shows it while the seat waits at its
+    turn start instead (``_pace_ready_locked``). Called before the step is
+    applied; the caller holds the lock.
+    """
+
+    if (
+        _paced(session)
+        or not session.clock.live
+        or not isinstance(step, DomainAction)
+        or session.seats[step.actor] == HUMAN_SEAT
+    ):
+        return False
+    key = _turn_start_key(session, step.actor)
+    if key is None or key == session.narrated_turn:
+        return False
+    session.narrated_turn = key
+    return True
+
+
+def _narrate_locked(
+    session: GameSession, step: ReplayStep, start: float, end: float, now: float
+) -> None:
+    """Charge the tables' time for one step, [start, end), to its AI seat.
+
+    An AI step's segment starts when it is applied: the cues still on the
+    tables before it are the seat's wait too, as a paced seat waits for them
+    before it answers. A chance step's cues carry on the AI segment they
+    follow; a human step's are nobody's grace. The caller holds the lock.
+    """
+
+    if isinstance(step, ChanceOutcome):
+        session.clock.extend_narration(start, end)
+    elif session.seats[step.actor] != HUMAN_SEAT:
+        session.clock.narrate(step.actor, now, end)
+
+
+def _clock_holder(session: GameSession, *, resting: bool) -> int | None:
+    """The seat holding control now, read off public fields; caller holds the lock.
+
+    As the browser reads it (static/session.js isMyTurn): nobody once the
+    game is over or deleted, else the seat whose turn end waits for its
+    press, else the seat thinking in the background, else the owner of the
+    pending decision, human or AI. A chance outcome between steps is
+    nobody's, and so is an AI seat's decision with the game at rest and no
+    seat thinking: nothing answers it (the stall a failed worker step
+    leaves). ``resting`` is False only while the advance is about to have
+    that seat answer inside the request.
+    """
+
+    if session.closed or _is_finished(session.state):
+        return None
+    if session.awaiting_confirmation is not None:
+        return session.awaiting_confirmation
+    if session.thinking is not None:
+        return session.thinking
+    decision = session.engine.current_decision(session.state)
+    if not isinstance(decision, PlayerDecision):
+        return None
+    if resting and session.seats[decision.owner] != HUMAN_SEAT:
+        return None
+    return decision.owner
+
+
+def _settle_clock_locked(session: GameSession, *, resting: bool = True) -> None:
+    """Charge the time since the last transition and hand control on.
+
+    Called at every change (``_changed_summary_locked``) and before a
+    synchronous AI answer; a no-op until the clock starts, so a load's
+    replay charges nobody. The caller holds the lock.
+    """
+
+    if not session.clock.live:
+        return
+    holder = _clock_holder(session, resting=resting)
+    session.clock.settle(
+        _monotonic(),
+        holder=holder,
+        grace=holder is not None and session.seats[holder] == HUMAN_SEAT,
+        counting=not session.closed and not _is_finished(session.state),
+    )
+
+
+def _human_acts_locked(session: GameSession) -> None:
+    """A human's own request (a move, a press, an undo) is about to change the game.
+
+    The time up to it is charged by the schedule in force, narration and
+    all; then the narration still due is dropped, the tables' own clock with
+    it: whoever acted was not waiting for the tables any more, and a quick
+    player would otherwise pile up AI narration nobody waits for. The caller
+    holds the lock and has validated the request.
+    """
+
+    _settle_clock_locked(session)
+    session.clock.drop_narration()
+    session.narration_clock = 0.0
+
+
+def _start_clock_locked(
+    session: GameSession, saved: SavedClock | None = None, *, restored: bool = False
+) -> None:
+    """Start the play clock once the game rests; the caller holds the lock.
+
+    A new game starts at zero. A load (``restored``) continues from the
+    totals its save recorded, or, for a save that recorded none or a clock
+    it cannot read, counts from the load with ``known`` False.
+    """
+
+    holder = _clock_holder(session, resting=True)
+    session.clock.start(
+        _monotonic(),
+        holder=holder,
+        grace=holder is not None and session.seats[holder] == HUMAN_SEAT,
+        counting=not _is_finished(session.state),
+        elapsed=saved.elapsed_ms / 1000 if saved is not None else 0.0,
+        seat_seconds=(
+            tuple(ms / 1000 for ms in saved.seat_ms) if saved is not None else None
+        ),
+        known=saved.known if saved is not None else not restored,
+    )
 
 
 def _state_after(session: GameSession, count: int) -> GameState:

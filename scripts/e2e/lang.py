@@ -61,6 +61,20 @@ PROMPT_KO_SAMPLES = {
     "Retreat any of your Mercenaries troops": "용병 병력 후퇴",
 }
 
+# The play clock ticks on its own (static/clock.js): stopped at one moment
+# for the round trip below, so its digits cannot turn a second between the
+# two snapshots; the language switch must give back everything else.
+FREEZE_CLOCK_JS = """() => {
+    window.__clockSources = [clockNow, clockWallNow];
+    const [perf, wall] = [clockNow(), clockWallNow()];
+    window.clockNow = () => perf;
+    window.clockWallNow = () => wall;
+}"""
+THAW_CLOCK_JS = """() => {
+    [window.clockNow, window.clockWallNow] = window.__clockSources;
+    paintClocks();
+}"""
+
 # The text of the main surfaces, to compare one position in two moments.
 SNAPSHOT_JS = """() => Object.fromEntries(
     ['header-status', 'decision-banner', 'seats', 'market', 'private-zone',
@@ -343,10 +357,12 @@ def live_table(base: str, browser) -> None:
             shown_prompt,
         )
     # A round trip at one position must give back exactly the Korean it left.
+    page.evaluate(FREEZE_CLOCK_JS)
     before = page.evaluate(SNAPSHOT_JS)
     switch(page, "en")
     switch(page, "ko")
     after = page.evaluate(SNAPSHOT_JS)
+    page.evaluate(THAW_CLOCK_JS)
     changed = [name for name in before if before[name] != after[name]]
     check.ok(not changed, "Korean → English → Korean gives back the same page", changed)
 

@@ -33,6 +33,7 @@ from __future__ import annotations
 import re
 
 from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context, server
+from open_mode import settled
 
 check = Check()
 
@@ -680,12 +681,74 @@ def run_laptop(base: str, browser) -> None:
     context.close()
 
 
+# Each live seat's play clock (static/clock.js): last in the pieces row, on
+# that row's line, and not a .stat.
+CLOCK_ROW_JS = """() => [...document.querySelectorAll('#seats article.seat')].map((card) => {
+    const rows = card.querySelectorAll(':scope > .stats');
+    const clock = card.querySelector('.seat-clock');
+    const first = rows[1] && rows[1].firstElementChild;
+    const top = (node) => node.getBoundingClientRect().top;
+    return {
+        inPieces: Boolean(clock && rows[1] && clock.parentElement === rows[1]
+            && rows[1].lastElementChild === clock),
+        oneLine: Boolean(clock && first && Math.abs(top(clock) - top(first)) < 4),
+        isStat: Boolean(clock && clock.classList.contains('stat')),
+        text: clock ? clock.textContent : null,
+    };
+})"""
+
+
+def run_laptop_live(base: str, browser) -> None:
+    """A live game on a 1366x768 laptop: the seat clocks take no extra line,
+    so the four folded seats still fit the column."""
+    context, page, rec = open_context(browser, "seats-laptop-live", LAPTOP_VIEWPORT)
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(1, 4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "heuristic")
+    for option in EXPANSIONS:
+        page.check(f"#opt-{option}")
+    page.fill("#opt-seed", str(SEED))
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    for stretch in (0, 25, 60):
+        for _ in range(stretch):
+            assert settled(page, 20)
+            if page.evaluate("state.summary.finished"):
+                break
+            page.evaluate(
+                "state.summary.confirmation === state.viewSeat"
+                " ? confirmTurn() : applyAction(0)"
+            )
+        assert settled(page, 20)
+        where = f"live 1366x768, round {page.evaluate('state.summary.round_number')}"
+        rows = page.evaluate(CLOCK_ROW_JS)
+        check.ok(
+            len(rows) == 4
+            and all(r["inPieces"] and r["oneLine"] and not r["isStat"] for r in rows),
+            f"{where}: each seat's clock ends its pieces row, on its line",
+            rows,
+        )
+        seats = page.evaluate(SEATS)
+        check.ok(
+            seats["scroll"] <= seats["client"],
+            f"{where}: all four folded seats fit the column with their clocks",
+            (seats["scroll"], seats["client"]),
+        )
+    check_compact_stats(page)
+    check.ok(not rec.js_errors, "no JS errors in the live game", rec.js_errors[:3])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
             run(base, browser)
             print("[laptop] 1366x768")
             run_laptop(base, browser)
+            print("[laptop] 1366x768, live, with the play clocks")
+            run_laptop_live(base, browser)
         errors = [
             line
             for line in log_path.read_text().splitlines()

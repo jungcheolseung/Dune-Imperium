@@ -64,24 +64,33 @@ def _create(client: TestClient, **overrides: object) -> dict[str, object]:
 # --- shape and errors --------------------------------------------------
 
 
-def test_a_seat_snapshot_over_http_has_the_five_keys(client: TestClient) -> None:
+def test_a_seat_snapshot_over_http_has_the_six_keys(client: TestClient) -> None:
     summary = _create(client)
     game_id = summary["game_id"]
 
     response = client.get(f"/games/{game_id}/snapshot", params={"seat": 0})
 
     assert response.status_code == 200, response.text
-    assert set(response.json()) == {"summary", "you", "view", "actions", "log"}
+    assert set(response.json()) == {
+        "summary",
+        "you",
+        "clock_age_ms",
+        "view",
+        "actions",
+        "log",
+    }
 
 
-def test_a_seatless_snapshot_over_http_is_summary_and_you(client: TestClient) -> None:
+def test_a_seatless_snapshot_over_http_is_summary_you_and_the_clock_age(
+    client: TestClient,
+) -> None:
     summary = _create(client)
     game_id = summary["game_id"]
 
     response = client.get(f"/games/{game_id}/snapshot")
 
     assert response.status_code == 200, response.text
-    assert set(response.json()) == {"summary", "you"}
+    assert set(response.json()) == {"summary", "you", "clock_age_ms"}
 
 
 def test_snapshot_errors_map_to_the_conventional_http_status_codes(
@@ -223,7 +232,14 @@ def test_large_json_responses_are_gzipped(client: TestClient) -> None:
     assert seat_snapshot.status_code == 200, seat_snapshot.text
     assert seat_snapshot.headers.get("content-encoding") == "gzip"
     # The test client decodes transparently: the body is still the same JSON.
-    assert set(seat_snapshot.json()) == {"summary", "you", "view", "actions", "log"}
+    assert set(seat_snapshot.json()) == {
+        "summary",
+        "you",
+        "clock_age_ms",
+        "view",
+        "actions",
+        "log",
+    }
 
     script = client.get("/static/app.js")
     assert script.status_code == 200

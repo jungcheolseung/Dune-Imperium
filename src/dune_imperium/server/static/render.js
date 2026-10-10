@@ -455,6 +455,7 @@ function render(options) {
   fitActionLog();
   renderEffects();
   refreshConflictHistory();
+  paintClocks();
 }
 
 /* A height-limited board can leave broad margins on a wide window. Spend
@@ -1050,6 +1051,8 @@ function renderBanner() {
       const below = info.querySelector(":scope > .held-hint, :scope > .confirm-row");
       info.insertBefore(scoutsHeader, below);
     }
+    /* How long the seat holding control has held it (clock.js). */
+    appendSpellClock(info);
   }
 
   /* A human seat may still have takeable-back steps after the game ends

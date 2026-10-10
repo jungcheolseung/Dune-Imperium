@@ -235,7 +235,13 @@ HEADER_JS = """() => {
             && span.scrollWidth <= span.clientWidth + 0.5;
     };
     const badges = status.querySelector('.status-badges');
+    const clock = document.getElementById('game-clock');
+    const tick = clock.getBoundingClientRect();
     return {
+        clockShown: !clock.hidden && clock.getClientRects().length > 0,
+        clockWhole: tick.left >= box.right - 0.5 && tick.right <= innerWidth + 0.5
+            && clock.scrollWidth <= clock.clientWidth + 0.5
+            && tick.top >= header.top - 0.5 && tick.bottom <= header.bottom + 0.5,
         headerH: header.height,
         inside: box.top >= header.top - 0.5 && box.bottom <= header.bottom + 0.5,
         statusH: box.height,
@@ -294,6 +300,17 @@ def check_header(browser, base: str) -> None:
                 if width >= 1366 and language == "ko" and mode == "live":
                     check.ok(
                         g["badgesWhole"], f"{where}: nothing is cut when there is room"
+                    )
+                # The play clock (clock.js) sits after the status line: whole
+                # where it shows, gone below 641px, never in a watched game.
+                if mode == "watched":
+                    check.ok(not g["clockShown"], f"{where}: no game time is shown")
+                else:
+                    check.ok(
+                        g["clockShown"] == (width > 640)
+                        and (not g["clockShown"] or g["clockWhole"]),
+                        f"{where}: the game time is whole, or hidden below 641px",
+                        g,
                     )
         context.close()
 

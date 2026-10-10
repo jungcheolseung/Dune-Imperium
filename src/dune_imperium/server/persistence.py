@@ -8,6 +8,10 @@ so a loaded game's live log and review still show what was taken back. The sessi
 owns the load walk that replays those steps; this module only defines the
 document schema, its version checks, and the JSON file store.
 
+A document may also carry the play clock (``clock``: the game time and each
+seat's time holding control). It is display only, so it adds no format
+version, and a load reads it leniently (``read_saved_clock``).
+
 Version stamps are strict: a save must match this build's format version,
 ruleset/content versions, and ``ACTION_CODEC_VERSION`` exactly, so a stale
 save fails up front with a nameable reason instead of a late hash mismatch.
@@ -75,6 +79,21 @@ class SavedHandOver:
     confirmation: int | None
     sealed_steps: int
     open_units: tuple[tuple[int, int], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SavedClock:
+    """The play clock a save recorded (``server/play_clock.py``).
+
+    The game time and each seat's time holding control, in milliseconds,
+    as of the save; ``known`` is False when they count only since a load of
+    a save that recorded none. Display only: a load reads it leniently
+    (``read_saved_clock``) and records never see it.
+    """
+
+    elapsed_ms: int
+    seat_ms: tuple[int, ...]
+    known: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,8 +242,13 @@ def build_save_document(
     sealed_steps: int = 0,
     open_units: tuple[tuple[int, int], ...] = (),
     ai_pace: str = "instant",
+    clock: SavedClock | None = None,
 ) -> JsonObject:
-    """Serialize one resting session as a save document."""
+    """Serialize one resting session as a save document.
+
+    ``clock`` is optional and display only, like ``ai_pace`` it needs no
+    new format version: a build that does not know it reads past it.
+    """
 
     replay = GameReplay(
         ruleset=config,
@@ -233,7 +257,7 @@ def build_save_document(
         expected_state_hash=expected_state_hash,
         action_codec_version=ACTION_CODEC_VERSION,
     )
-    return {
+    document: JsonObject = {
         "format": SAVE_FORMAT,
         "format_version": SAVE_FORMAT_VERSION,
         "ruleset": {
@@ -268,6 +292,13 @@ def build_save_document(
         "open_units": [[seat, opened] for seat, opened in open_units],
         "ai_pace": ai_pace,
     }
+    if clock is not None:
+        document["clock"] = {
+            "elapsed_ms": clock.elapsed_ms,
+            "seat_ms": list(clock.seat_ms),
+            "known": clock.known,
+        }
+    return document
 
 
 def parse_save_document(
@@ -468,6 +499,45 @@ def _parse_hand_over(document: dict[str, object]) -> SavedHandOver | None:
         sealed_steps=sealed_steps,
         open_units=tuple(open_units),
     )
+
+
+def read_saved_clock(document: object, seats: int) -> SavedClock | None:
+    """Read a save's play clock, or ``None`` when it has none it can use.
+
+    Lenient on purpose: the clock is display only, so a save without one (it
+    predates 2026-10-10) or with a malformed one loads all the same, counting
+    from the load. ``parse_save_document`` never looks at it, so neither do
+    records (``records.saves``).
+    """
+
+    if not isinstance(document, dict):
+        return None
+    raw = document.get("clock")
+    if not isinstance(raw, dict):
+        return None
+    elapsed = raw.get("elapsed_ms")
+    seat_ms = raw.get("seat_ms")
+    known = raw.get("known", True)
+    if (
+        not _is_clock_ms(elapsed)
+        or not isinstance(seat_ms, list)
+        or len(seat_ms) != seats
+        or not all(_is_clock_ms(value) for value in seat_ms)
+        or not isinstance(known, bool)
+    ):
+        return None
+    return SavedClock(elapsed_ms=elapsed, seat_ms=tuple(seat_ms), known=known)
+
+
+# The most milliseconds a saved clock may hold: the largest integer a
+# browser's number keeps exact. A larger one (only an edited file has it)
+# would not even convert to seconds, so it reads as no clock, never as a
+# save that fails to load.
+_MAX_CLOCK_MS = 2**53 - 1
+
+
+def _is_clock_ms(value: object) -> TypeGuard[int]:
+    return _is_count(value) and value <= _MAX_CLOCK_MS
 
 
 def _is_count(value: object) -> TypeGuard[int]:

@@ -19,9 +19,22 @@ likely to lose them all to the next such move.
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import tempfile
+from pathlib import Path
 
-from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    LAPTOP_VIEWPORT,
+    REPO,
+    SERVER_LOG_COPY,
+    Check,
+    ServerProcess,
+    chrome,
+    open_context,
+    server,
+)
 
 check = Check()
 
@@ -492,11 +505,111 @@ def run_laptop(base: str, browser) -> None:
     context.close()
 
 
+# The final clocks of a finished game with a human seat (static/clock.js):
+# fixtures/finished_human_save.py saves one with these totals.
+FINAL_CLOCK = {"elapsed_ms": 3_725_000, "seat_ms": [1_234_000, 61_000, 5_500, 999]}
+
+FINAL_CLOCK_JS = """() => {
+    const line = document.querySelector('#standings .clock-totals');
+    const panel = document.getElementById('standings');
+    return {
+        text: line ? line.textContent : null,
+        afterTable: Boolean(line && line.previousElementSibling
+            && line.previousElementSibling.tagName === 'TABLE'),
+        columns: document.querySelectorAll('#standings tr:first-child th').length,
+        // The line itself: the table's own width is not this line's to fix.
+        fits: Boolean(line) && line.scrollWidth <= line.clientWidth + 1
+            && line.getBoundingClientRect().right
+                <= panel.getBoundingClientRect().right + 1,
+        lineBox: line ? [line.scrollWidth, line.clientWidth,
+            line.getBoundingClientRect().right] : null,
+        panelBox: [panel.scrollWidth, panel.clientWidth,
+            panel.getBoundingClientRect().right],
+        header: document.getElementById('game-clock').textContent,
+        seats: [...document.querySelectorAll("#seats [data-clock='seat']")]
+            .map((node) => node.textContent),
+        running: document.querySelectorAll('#seats .seat-clock.running').length,
+        spell: document.querySelectorAll("#decision-info [data-clock='spell']").length,
+        timer: playClock.timer !== 0,
+        expected: [t('clock.totals_game', {time: '1:02:05'}),
+            ...['20:34', '1:01', '0:05', '0:00'].map((time, seat) =>
+                t('clock.totals_seat', {name: playerLabel(seat), time}))].join(' · '),
+    };
+}"""
+
+
+def run_final_clocks(browser) -> None:
+    """A finished game with a human seat freezes its clocks: the totals stay
+    on the seat panels and the header, and a line under the standings sums
+    them up, outside the table's seven columns."""
+    saves = tempfile.mkdtemp(prefix="dune-endgame-clock-e2e-")
+    found = json.loads(
+        subprocess.run(
+            [
+                str(REPO / ".venv/bin/python"),
+                str(Path(__file__).parent / "fixtures/finished_human_save.py"),
+                saves,
+            ],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    process = ServerProcess(saves=saves).start()
+    try:
+        context, page, _rec = open_context(browser, "endgame-clock", LAPTOP_VIEWPORT)
+        page.goto(process.base + "/")
+        page.wait_for_selector("#setup-screen:not([hidden])")
+        loaded = page.evaluate(
+            "(id) => api(`/saves/${id}/load`, {method: 'POST'})", found["finished"]
+        )
+        page.evaluate("(id) => openGame(id)", loaded["game_id"])
+        page.wait_for_function(
+            "(id) => state.gameId === id && state.view !== null"
+            " && refreshFlight === null",
+            arg=loaded["game_id"],
+        )
+        shown = page.evaluate(FINAL_CLOCK_JS)
+        check.ok(
+            shown["text"] == shown["expected"] and shown["afterTable"],
+            "the final clocks read as one line under the standings table",
+            shown,
+        )
+        check.ok(shown["columns"] == 7, "the table keeps its seven columns", shown)
+        check.ok(shown["fits"], "the line fits the panel at 1366x768", shown)
+        check.ok(
+            shown["header"] == "1:02:05"
+            and shown["seats"] == ["20:34", "1:01", "0:05", "0:00"],
+            "the header and the seat panels keep the final totals",
+            shown,
+        )
+        check.ok(
+            not shown["running"] and not shown["spell"] and not shown["timer"],
+            "a finished game's clocks stand still and mark nobody",
+            shown,
+        )
+        page.click("#language-toggle")
+        page.wait_for_function("TERM_LANGUAGE === 'en'")
+        english = page.evaluate(FINAL_CLOCK_JS)
+        check.ok(
+            english["text"] == english["expected"]
+            and english["text"].startswith("Game time 1:02:05 · Player 1"),
+            "the final clocks in English",
+            english["text"],
+        )
+        context.close()
+    finally:
+        process.stop()
+
+
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
             run(base, browser)
             run_laptop(base, browser)
+            print("[clock] the final clocks of a game with a human seat")
+            run_final_clocks(browser)
         errors = [
             line
             for line in log_path.read_text().splitlines()

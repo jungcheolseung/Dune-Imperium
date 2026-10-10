@@ -94,7 +94,17 @@ function announceTurn(summary) {
 const HELP_SEAT_MARKS = [
   [() => commanderStatIcon(phraseText("{commander}")), "help.seat_mark_commander"],
   [() => firstPlayerMark(), "help.seat_mark_first_player"],
+  [helpClockSample, "help.seat_mark_clock"],
 ];
+
+/* A seat's play clock as its panel draws it (clock.js), running; a sample,
+   so the painter never touches it. */
+function helpClockSample() {
+  const sample = document.createElement("span");
+  sample.className = "seat-clock running";
+  sample.textContent = "1:23";
+  return sample;
+}
 
 const HELP_SHORTCUTS = [
   ["c", "help.shortcut_collapse_columns"],
