@@ -20,27 +20,45 @@ plus a ``corpus`` entry; each index row lists what the game did as
 ``"dimension:key" -> [count, first_step, positions]``
 (``records.portable.trace.step_keys``); each trace holds the digests of the
 fields every recorded step changed (``records.portable.trace``).
+
+``check`` replays records on *this* engine through ``records.migration``
+and compares the state before every recorded step with the trace, so a
+review of an engine change needs only the new engine (docs/human-records.md).
 """
 
 import fnmatch
 import hashlib
+import importlib.util
 import json
+import os
 import random
 import re
-from collections import defaultdict
+import sys
+import time
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from compression import zstd
-from dataclasses import dataclass, field
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass, field, replace
+from multiprocessing import get_context
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Final
 
-from dune_imperium.core.replay import GameReplay
+from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.paths import LOCAL_DIR
+from dune_imperium.records import migration as records_migration
 from dune_imperium.records.portable.trace import (
+    Digests,
     Fingerprint,
     TraceReader,
+    canonical,
+    chance_family,
     trace_payloads,
 )
+from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.persistence import parse_save_document
 
 CORPUS_ROOT: Final = LOCAL_DIR / "records-corpus"
@@ -380,3 +398,802 @@ def corpora(root: Path = CORPUS_ROOT) -> list[Corpus]:
     return [
         Corpus(path) for path in sorted(root.iterdir()) if (path / MANIFEST).is_file()
     ]
+
+
+# --- check: a corpus on this engine -------------------------------------------
+#
+# ``check`` replays each record on this engine through a migration module
+# (``records.migration`` or one loaded by path, to review a proposed one
+# before it is merged): ``migrate_record``, then ``walk``. At every migrated
+# step with a ``recorded_index`` i it digests the state before that step --
+# after any bridged steps in front of it -- with the corpus's own field list
+# and class schema (``Corpus.fingerprint``: fields a newer engine adds are
+# left out, nested classes keep their old fields) and compares the digests
+# with the trace's ``before(i)``; then the final state with ``final()``, or,
+# for a record this engine refuses, the state it stopped in with
+# ``before(divergence)``. It never compares the state right after a
+# recorded step: a bridge that answers a question the recording engine did
+# not ask, or that adds a part of the recorded step this engine splits off
+# (a ``follows`` bridge), restores the recorded state only once it has run.
+#
+# Each record's outcome is one of ``OUTCOMES``: exact (no bridge, every
+# digest equal), equal (bridges fired, every digest equal), transient
+# (differs, then equal again by the end), persistent (the final state
+# differs), diverged (this engine refused a recorded step that no bridge
+# reached) and failed (an exception; reported, and the check goes on).
+#
+# Every run of consecutive differing compared points gets one of
+# ``VERDICTS`` against the nearest preceding ``around`` hit (an index key's
+# recorded step, from the corpus row) and the firings of the ``bridge`` under
+# review (``judge``). Fields that differ already in the reset state, and
+# fields the schema drift explains (a field this engine removed or renamed,
+# at the top or in a nested class: ``schema_drift``), are reported once and
+# kept out of the outcomes and verdicts.
+
+OUTCOMES: Final = ("exact", "equal", "transient", "persistent", "diverged", "failed")
+VERDICTS: Final = (
+    "bridged-window",
+    "diverged-at-hit",
+    "differs-unbridged",
+    "collateral",
+    "bridge-without-hit",
+)
+DEFAULT_WINDOW: Final = 16
+MAX_WORKERS: Final = 4
+# Records per worker task.
+_CHECK_CHUNK: Final = 10
+# Divergence reasons are grouped by this many characters, digits blanked.
+_REASON_PREFIX: Final = 60
+_SEAT: Final = re.compile(r"^players\[(?P<seat>\d+)\]\.(?P<attr>.+)$")
+_MISSING: Final = object()
+
+
+@dataclass(frozen=True, slots=True)
+class DifferingRun:
+    """Consecutive compared points whose digests differ from the trace.
+
+    ``start`` and ``end`` are recorded step indices: the point ``i`` is the
+    state before recorded step ``i`` (``steps`` is the final state). A run
+    that ends where the record diverged has ``diverged`` set; its
+    ``fields`` may be empty when the state still matched there.
+    """
+
+    start: int
+    end: int
+    fields: tuple[str, ...]
+    verdict: str
+    # The ``around`` hit the verdict leans on: (recorded step, key).
+    hit: tuple[int, str] | None = None
+    diverged: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DivergenceCheck:
+    """Where this engine refused a recorded step, grouped by ``signature``."""
+
+    index: int
+    # (pending frame kind, recorded step, reason prefix).
+    signature: tuple[str, str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class RecordCheck:
+    """One record compared with its trace on this engine."""
+
+    id: str
+    outcome: str
+    steps: int
+    control: bool = False
+    # Steps each bridge answered or rewrote.
+    bridges: Mapping[str, int] = field(default_factory=dict)
+    runs: tuple[DifferingRun, ...] = ()
+    # Where the reviewed bridge fired: before which recorded step (or the
+    # end point), once per firing.
+    firings: tuple[int, ...] = ()
+    # Those of ``firings`` without an ``around`` hit in the window before.
+    lone_firings: tuple[int, ...] = ()
+    divergence: DivergenceCheck | None = None
+    # Fields that differ already in the reset state.
+    reset_fields: tuple[str, ...] = ()
+    # Fields whose difference the schema drift explains.
+    drift_fields: tuple[str, ...] = ()
+    # ``around`` hits, and the hit keys whose row kept no positions (only
+    # their first step is used).
+    hits: int = 0
+    unpositioned: tuple[str, ...] = ()
+    error: str | None = None
+    seconds: float = 0.0
+
+
+def judge(
+    differences: Mapping[int, Iterable[str]],
+    *,
+    hits: Iterable[tuple[int, str]] = (),
+    firings: Iterable[int] = (),
+    divergence: int | None = None,
+    window: int = DEFAULT_WINDOW,
+) -> tuple[tuple[DifferingRun, ...], tuple[int, ...]]:
+    """The verdict of every differing run, and the firings without a hit.
+
+    ``differences`` maps each differing compared point (a recorded step
+    index; the state before it) to its fields; ``hits`` are the recorded
+    steps of ``around`` keys (a hit at ``h`` changed the state seen at
+    ``h + 1``); ``firings`` the points the reviewed bridge fired before;
+    ``divergence`` the recorded step this engine refused. Verdicts:
+
+    - ``diverged-at-hit``: the run that ends where the record diverged
+      (one is made, without fields, when the state still matched there),
+      with a hit at or before the divergence and no earlier than ``window``
+      steps before the run starts;
+    - ``bridged-window``: the run starts at most ``window`` steps after a
+      hit and ends right where the bridge fires, the firing being the step
+      that makes the state equal again;
+    - ``differs-unbridged``: the run starts in a hit's window, but no
+      firing ends it (it lasts to the end, or something else ends it);
+    - ``collateral``: no hit in the window before the run, or before the
+      divergence;
+    - ``bridge-without-hit`` (the second result): a firing with no hit in
+      the ``window`` steps before it that does not end a ``bridged-window``
+      run either (a held draw may be taken more than ``window`` steps after
+      its hit, at the seat's turn end).
+    """
+
+    hit_list = sorted(hits)
+    firing_points = sorted(firings)
+    fired = set(firing_points)
+    groups: list[list[int]] = []
+    for index in sorted(differences):
+        if groups and index == groups[-1][-1] + 1:
+            groups[-1].append(index)
+        else:
+            groups.append([index])
+    if divergence is not None and not (groups and groups[-1][-1] == divergence):
+        groups.append([divergence])
+    runs = []
+    for group in groups:
+        start, end = group[0], group[-1]
+        fields = tuple(sorted({name for i in group for name in differences.get(i, ())}))
+        if divergence is not None and end == divergence:
+            hit = _nearest(hit_list, divergence)
+            leans = hit is not None and hit[0] >= start - window
+            verdict = "diverged-at-hit" if leans else "collateral"
+        else:
+            hit = _nearest(hit_list, start - 1)
+            leans = hit is not None and start - hit[0] <= window
+            if not leans:
+                verdict = "collateral"
+            elif end + 1 in fired:
+                verdict = "bridged-window"
+            else:
+                verdict = "differs-unbridged"
+        runs.append(
+            DifferingRun(
+                start,
+                end,
+                fields,
+                verdict,
+                hit if leans else None,
+                diverged=divergence is not None and end == divergence,
+            )
+        )
+    ending = {run.end + 1 for run in runs if run.verdict == "bridged-window"}
+    lone = []
+    for point in firing_points:
+        hit = _nearest(hit_list, point - 1)
+        if (hit is None or point - hit[0] > window) and point not in ending:
+            lone.append(point)
+    return tuple(runs), tuple(lone)
+
+
+def _nearest(hits: Sequence[tuple[int, str]], at: int) -> tuple[int, str] | None:
+    """The last hit at or before recorded step ``at``."""
+
+    found = None
+    for hit in hits:
+        if hit[0] > at:
+            break
+        found = hit
+    return found
+
+
+def row_hits(
+    row: CorpusRow, patterns: Sequence[str]
+) -> tuple[list[tuple[int, str]], list[str]]:
+    """``row``'s hits of ``patterns`` as (recorded step, key), sorted.
+
+    A key whose row kept no positions (counted more than
+    ``portable.trace.POSITION_LIMIT`` times outside the full-position
+    dimensions) gives its first step only; such keys come second.
+    """
+
+    hits: set[tuple[int, str]] = set()
+    unpositioned: set[str] = set()
+    matchers = [_matcher(pattern) for pattern in patterns]
+    for key, entry in row.keys.items():
+        if not any(match(key) for match in matchers):
+            continue
+        positions = row.positions(key)
+        if positions is None:
+            first = row.first_step(key)
+            if first is None:
+                continue
+            positions = (first,)
+            if int(entry[0]) > 1:
+                unpositioned.add(key)
+        hits.update((position, key) for position in positions)
+    return sorted(hits), sorted(unpositioned)
+
+
+def schema_drift(
+    old: Mapping[str, Sequence[str]], current: Mapping[str, Sequence[str]]
+) -> dict[str, dict[str, Any]]:
+    """The classes whose fields changed from ``old`` to ``current``.
+
+    ``{qualname: {"removed": [...], "added": [...]}}``, and
+    ``{qualname: {"unmet": True}}`` for a class of ``old`` that no checked
+    state held on this engine (renamed, removed, or only absent from these
+    records). A removed field digests as absent; an added one is left out of
+    the digests.
+    """
+
+    drift: dict[str, dict[str, Any]] = {}
+    for qualname, names in sorted(old.items()):
+        now = current.get(qualname)
+        if now is None:
+            drift[qualname] = {"unmet": True}
+            continue
+        removed = [name for name in names if name not in now]
+        added = [name for name in now if name not in names]
+        if removed or added:
+            drift[qualname] = {"removed": removed, "added": added}
+    return drift
+
+
+def seatless(name: str) -> str:
+    """A field name with its seat replaced by ``*`` (``players[*].hand``)."""
+
+    match = _SEAT.match(name)
+    return name if match is None else f"players[*].{match.group('attr')}"
+
+
+def load_migration(path: Path) -> ModuleType:
+    """A migration module (``records.migration``'s interface) loaded from ``path``.
+
+    It is imported under a private name, so it may sit anywhere, e.g. a
+    branch's proposed ``records/migration.py`` reviewed before merging; it
+    runs on this checkout's engine.
+    """
+
+    path = path.resolve()
+    digest = hashlib.sha1(str(path).encode()).hexdigest()[:12]
+    name = f"_corpus_migration_{digest}"
+    loaded = sys.modules.get(name)
+    if loaded is not None:
+        return loaded
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"{path} is not a Python module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[name]
+        raise
+    missing = [name for name in ("migrate_record", "walk") if not hasattr(module, name)]
+    if missing:
+        del sys.modules[name]
+        raise ValueError(f"{path} has no {', '.join(missing)}")
+    return module
+
+
+def _field_value(state: Any, name: str) -> Any:
+    match = _SEAT.match(name)
+    if match is None:
+        return getattr(state, name, _MISSING)
+    players = getattr(state, "players", ())
+    seat = int(match.group("seat"))
+    if seat >= len(players):
+        return _MISSING
+    return getattr(players[seat], match.group("attr"), _MISSING)
+
+
+class _Comparison:
+    """One record's digests against its trace, point by point."""
+
+    def __init__(self, fingerprint: Fingerprint, schema: Mapping[str, Sequence[str]]):
+        assert fingerprint.names is not None
+        self.fingerprint = fingerprint
+        self.names = fingerprint.names
+        self.schema = schema
+        self.excluded: set[int] = set()
+        self.reset_fields: list[str] = []
+        self.drift_fields: set[str] = set()
+        self.differences: dict[int, frozenset[str]] = {}
+        self.last = -1
+        self._started = False
+        self._drifted_values: dict[int, tuple[object, bool]] = {}
+
+    def reset(self, state: Any, expected: Digests) -> None:
+        """Compare the reset state once; its differing fields are left out."""
+
+        if self._started:
+            return
+        self._started = True
+        for index in self._differing(self.fingerprint(state), expected):
+            self.excluded.add(index)
+            if self._drifted(state, index):
+                self.drift_fields.add(self.names[index])
+            else:
+                self.reset_fields.append(self.names[index])
+
+    def point(self, index: int, state: Any, expected: Digests) -> None:
+        """Compare the state at recorded point ``index``."""
+
+        self.last = index
+        digests = self.fingerprint(state)
+        if digests == expected:
+            return
+        fields = set()
+        for field_index in self._differing(digests, expected):
+            if field_index in self.excluded:
+                continue
+            if self._drifted(state, field_index):
+                self.excluded.add(field_index)
+                self.drift_fields.add(self.names[field_index])
+                continue
+            fields.add(self.names[field_index])
+        if fields:
+            self.differences[index] = frozenset(fields)
+
+    @staticmethod
+    def _differing(digests: Digests, expected: Digests) -> list[int]:
+        if len(digests) != len(expected):
+            raise ValueError("the trace and the corpus field list differ in length")
+        return [
+            index
+            for index, (new, old) in enumerate(zip(digests, expected, strict=True))
+            if new != old
+        ]
+
+    def _drifted(self, state: Any, index: int) -> bool:
+        """Whether the schema drift explains field ``index``'s difference."""
+
+        value = _field_value(state, self.names[index])
+        if value is _MISSING:
+            return True
+        current = self.fingerprint.class_schema
+        drifting = {
+            qualname
+            for qualname, names in self.schema.items()
+            if qualname in current
+            and any(name not in current[qualname] for name in names)
+        }
+        if not drifting:
+            return False
+        hit = self._drifted_values.get(id(value))
+        if hit is not None and hit[0] is value:
+            return hit[1]
+        seen: dict[str, list[str]] = {}
+        canonical(value, None, seen)
+        drifted = any(qualname in drifting for qualname in seen)
+        self._drifted_values[id(value)] = (value, drifted)
+        return drifted
+
+
+def _step_name(step: ReplayStep) -> str:
+    if isinstance(step, DomainAction):
+        return step.action_id
+    return f"chance {chance_family(step.decision_id)}"
+
+
+def _signature(record: Any) -> tuple[str, str, str]:
+    divergence = record.divergence
+    stack = getattr(record.state, "decision_stack", ())
+    if divergence.pending is None or not stack:
+        frame = "none"
+    else:
+        kind = stack[-1].kind
+        frame = str(getattr(kind, "value", kind))
+    reason = re.sub(r"\d+", "#", str(divergence.reason))[:_REASON_PREFIX]
+    return frame, _step_name(divergence.step), reason
+
+
+class _Checker:
+    """Checks records of one corpus on one engine and migration module."""
+
+    def __init__(
+        self,
+        corpus: Corpus,
+        engine: UprisingRulesEngine,
+        migration: ModuleType,
+        *,
+        around: Sequence[str],
+        bridge: str | None,
+        window: int,
+    ) -> None:
+        self.corpus = corpus
+        self.engine = engine
+        self.migration = migration
+        self.around = tuple(around)
+        self.bridge = bridge
+        self.window = window
+        self.schema: Mapping[str, Sequence[str]] = corpus.manifest["class_schema"]
+        self.rows = {row.id: row for row in corpus.rows()}
+        # This engine's classes as the digests met them.
+        self.classes: dict[str, list[str]] = {}
+
+    def run(self, row: CorpusRow, *, control: bool = False) -> RecordCheck:
+        started = time.process_time()
+        try:
+            result = self._check(row, control)
+        except Exception as error:  # noqa: BLE001 - one record's failure is a finding
+            result = RecordCheck(
+                row.id,
+                "failed",
+                row.steps,
+                control=control,
+                error=f"{type(error).__name__}: {error}",
+            )
+        return replace(result, seconds=time.process_time() - started)
+
+    def _check(self, row: CorpusRow, control: bool) -> RecordCheck:
+        replay = self.corpus.replay(row)
+        trace = self.corpus.trace(row)
+        if trace.steps != len(replay.steps):
+            raise ValueError(
+                f"the trace has {trace.steps} steps, the record {len(replay.steps)}"
+            )
+        record = self.migration.migrate_record(replay, self.engine)
+        fingerprint = self.corpus.fingerprint()
+        comparison = _Comparison(fingerprint, self.schema)
+        firings: list[int] = []
+        waiting = 0
+        for state, migrated in self.migration.walk(record, self.engine):
+            comparison.reset(state, trace.reset)
+            if self.bridge is not None and migrated.bridge == self.bridge:
+                waiting += 1
+            index = migrated.recorded_index
+            if index is None:
+                continue
+            firings.extend([index] * waiting)
+            waiting = 0
+            comparison.point(index, state, trace.before(index))
+        comparison.reset(record.state, trace.reset)
+        divergence = record.divergence
+        end = trace.steps if divergence is None else divergence.recorded_index
+        if end <= comparison.last:
+            raise ValueError(f"the migration ends at step {end}, already compared")
+        firings.extend([end] * waiting)
+        comparison.point(end, record.state, trace.before(end))
+        for qualname, names in fingerprint.class_schema.items():
+            self.classes.setdefault(qualname, names)
+
+        hits, unpositioned = row_hits(row, self.around)
+        runs, lone = judge(
+            comparison.differences,
+            hits=hits,
+            firings=firings,
+            divergence=None if divergence is None else end,
+            window=self.window,
+        )
+        bridges = dict(sorted(record.bridge_counts().items()))
+        if divergence is not None:
+            outcome = "diverged"
+        elif comparison.differences:
+            outcome = "persistent" if end in comparison.differences else "transient"
+        else:
+            outcome = "equal" if bridges else "exact"
+        return RecordCheck(
+            row.id,
+            outcome,
+            row.steps,
+            control=control,
+            bridges=bridges,
+            runs=runs,
+            firings=tuple(firings),
+            lone_firings=lone,
+            divergence=(
+                None if divergence is None else DivergenceCheck(end, _signature(record))
+            ),
+            reset_fields=tuple(comparison.reset_fields),
+            drift_fields=tuple(sorted(comparison.drift_fields)),
+            hits=len(hits),
+            unpositioned=tuple(unpositioned),
+        )
+
+
+_WORKER: _Checker | None = None
+
+
+def _start_worker(
+    corpus_path: Path, migration_path: Path | None, settings: dict[str, Any]
+) -> None:
+    global _WORKER
+    os.nice(10)
+    migration = (
+        records_migration if migration_path is None else load_migration(migration_path)
+    )
+    _WORKER = _Checker(
+        Corpus(corpus_path), UprisingRulesEngine(), migration, **settings
+    )
+
+
+def _check_chunk(
+    task: Sequence[tuple[str, bool]],
+) -> tuple[list[RecordCheck], dict[str, list[str]]]:
+    checker = _WORKER
+    assert checker is not None, "the worker was not started"
+    results = [
+        checker.run(checker.rows[record_id], control=control)
+        for record_id, control in task
+    ]
+    return results, checker.classes
+
+
+@dataclass(frozen=True, slots=True)
+class CheckReport:
+    """What ``check`` found over a corpus's records."""
+
+    corpus: str
+    corpus_codec: int
+    engine_codec: int
+    migration: str
+    around: tuple[str, ...]
+    bridge: str | None
+    window: int
+    records: tuple[RecordCheck, ...]
+    # Manifest ``class_schema`` against this engine's classes (``schema_drift``).
+    drift: Mapping[str, Mapping[str, Any]]
+    wall_seconds: float
+
+    def outcomes(self, *, control: bool = False) -> dict[str, int]:
+        counts = dict.fromkeys(OUTCOMES, 0)
+        for record in self.records:
+            if record.control == control:
+                counts[record.outcome] += 1
+        return counts
+
+    def selected(self) -> int:
+        return sum(1 for record in self.records if not record.control)
+
+    def controls(self) -> int:
+        return sum(1 for record in self.records if record.control)
+
+    def cpu_seconds(self) -> float:
+        return sum(record.seconds for record in self.records)
+
+    def bridge_totals(self) -> dict[str, tuple[int, int]]:
+        """``{bridge: (steps, records)}``."""
+
+        steps: Counter[str] = Counter()
+        records: Counter[str] = Counter()
+        for record in self.records:
+            for name, count in record.bridges.items():
+                steps[name] += count
+                records[name] += 1
+        return {name: (steps[name], records[name]) for name in sorted(steps)}
+
+    def signatures(self) -> list[tuple[tuple[str, str, str], list[str]]]:
+        """Divergence signatures, most records first, with every ``id@step``."""
+
+        groups: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+        for record in self.records:
+            if record.divergence is not None:
+                groups[record.divergence.signature].append(
+                    f"{record.id}@{record.divergence.index}"
+                )
+        return sorted(groups.items(), key=lambda item: (-len(item[1]), item[0]))
+
+    def verdicts(self) -> dict[str, list[tuple[str, DifferingRun | int]]]:
+        """Every verdict's items: (record id, run), or (id, firing point)."""
+
+        items: dict[str, list[tuple[str, DifferingRun | int]]] = {
+            verdict: [] for verdict in VERDICTS
+        }
+        for record in self.records:
+            for run in record.runs:
+                items[run.verdict].append((record.id, run))
+            for point in record.lone_firings:
+                items["bridge-without-hit"].append((record.id, point))
+        return items
+
+    def field_records(self, attribute: str) -> dict[str, int]:
+        """Records per seatless field of ``reset_fields`` or ``drift_fields``."""
+
+        counts: Counter[str] = Counter()
+        for record in self.records:
+            counts.update({seatless(name) for name in getattr(record, attribute)})
+        return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+    def unpositioned(self) -> dict[str, int]:
+        counts: Counter[str] = Counter()
+        for record in self.records:
+            counts.update(record.unpositioned)
+        return dict(sorted(counts.items()))
+
+    def summary(self, *, examples: int = 20, findings: int = 200) -> dict[str, Any]:
+        """The report as JSON data: counts, examples and capped finding lists."""
+
+        verdicts: dict[str, Any] = {}
+        listed: list[dict[str, Any]] = []
+        for verdict, items in self.verdicts().items():
+            fields: Counter[str] = Counter()
+            entries = []
+            for record_id, item in items:
+                if isinstance(item, DifferingRun):
+                    fields.update({seatless(name) for name in item.fields})
+                    entry = {
+                        "id": record_id,
+                        "start": item.start,
+                        "end": item.end,
+                        "fields": list(item.fields),
+                        "hit": None if item.hit is None else list(item.hit),
+                    }
+                else:
+                    entry = {"id": record_id, "firing": item}
+                entries.append(entry)
+            verdicts[verdict] = {
+                "count": len(items),
+                "records": len({record_id for record_id, _ in items}),
+                "fields": dict(fields.most_common()),
+                "examples": entries[:examples],
+            }
+            if verdict != "bridged-window":
+                listed.extend({"verdict": verdict, **entry} for entry in entries)
+        return {
+            "corpus": self.corpus,
+            "corpus_codec": self.corpus_codec,
+            "engine_codec": self.engine_codec,
+            "migration": self.migration,
+            "around": list(self.around),
+            "bridge": self.bridge,
+            "window": self.window,
+            "records": self.selected(),
+            "controls": self.controls(),
+            "outcomes": self.outcomes(),
+            "control_outcomes": self.outcomes(control=True),
+            "controls_not_exact_or_equal": [
+                f"{record.id} {record.outcome}"
+                for record in self.records
+                if record.control and record.outcome not in ("exact", "equal")
+            ],
+            "bridges": {
+                name: {"steps": steps, "records": records}
+                for name, (steps, records) in self.bridge_totals().items()
+            },
+            "schema_drift": self.drift,
+            "reset_fields": self.field_records("reset_fields"),
+            "drift_fields": self.field_records("drift_fields"),
+            "unpositioned_hit_keys": self.unpositioned(),
+            "divergences": [
+                {
+                    "pending": signature[0],
+                    "recorded": signature[1],
+                    "reason": signature[2],
+                    "records": len(ids),
+                    "examples": ids[:3],
+                }
+                for signature, ids in self.signatures()
+            ],
+            "verdicts": verdicts,
+            "findings": listed[:findings],
+            "findings_total": len(listed),
+            "failed": [
+                {"id": record.id, "error": record.error}
+                for record in self.records
+                if record.outcome == "failed"
+            ][:findings],
+            "wall_seconds": round(self.wall_seconds, 1),
+            "cpu_seconds": round(self.cpu_seconds(), 1),
+        }
+
+
+def control_rows(
+    corpus: Corpus,
+    rows: Sequence[CorpusRow],
+    around: Sequence[str],
+    count: int,
+    *,
+    natural: bool = True,
+) -> list[CorpusRow]:
+    """``count`` records outside ``rows`` with no key matching ``around``.
+
+    They come round-robin over the corpus's (combo, mix) groups
+    (``Corpus.pick``); they should check exact or equal.
+    """
+
+    if count <= 0:
+        return []
+    chosen = {row.id for row in rows}
+    candidates = corpus.pick(without=around, natural=natural)
+    return [row for row in candidates if row.id not in chosen][:count]
+
+
+def check(
+    corpus: Corpus,
+    rows: Sequence[CorpusRow],
+    *,
+    engine: UprisingRulesEngine | None = None,
+    migration: ModuleType | Path | None = None,
+    around: Sequence[str] = (),
+    bridge: str | None = None,
+    window: int = DEFAULT_WINDOW,
+    controls: int = 0,
+    workers: int = 1,
+    natural: bool = True,
+    progress: Callable[[int, int], None] | None = None,
+) -> CheckReport:
+    """Compare ``rows`` (and ``controls`` control records) with their traces.
+
+    ``migration`` is ``records.migration`` by default, or a module or the
+    path of one (``load_migration``). ``around`` are index-key patterns
+    whose hits the verdicts lean on; ``bridge`` names the bridge under
+    review. ``workers`` processes (at most ``MAX_WORKERS``, under ``nice``)
+    share the records; with more than one, ``engine`` must be ``None`` and
+    a ``migration`` module must have a file. Nothing is written.
+    """
+
+    if not 1 <= workers <= MAX_WORKERS:
+        raise ValueError(f"workers must be 1 to {MAX_WORKERS}")
+    started = time.monotonic()
+    if isinstance(migration, Path):
+        migration = load_migration(migration)
+    module = migration or records_migration
+    source = getattr(module, "__file__", None)
+    path = None if module is records_migration or source is None else Path(source)
+    if workers > 1 and module is not records_migration and path is None:
+        raise ValueError("a migration module without a file cannot go to workers")
+    settings: dict[str, Any] = {
+        "around": tuple(around),
+        "bridge": bridge,
+        "window": window,
+    }
+    tasks = [(row.id, False) for row in rows] + [
+        (row.id, True)
+        for row in control_rows(corpus, rows, around, controls, natural=natural)
+    ]
+    results: list[RecordCheck] = []
+    classes: dict[str, list[str]] = {}
+    if workers == 1:
+        checker = _Checker(corpus, engine or UprisingRulesEngine(), module, **settings)
+        for record_id, control in tasks:
+            results.append(checker.run(checker.rows[record_id], control=control))
+            if progress is not None:
+                progress(len(results), len(tasks))
+        classes = checker.classes
+    else:
+        if engine is not None:
+            raise ValueError("an engine object cannot go to worker processes")
+        chunks = [
+            tasks[start : start + _CHECK_CHUNK]
+            for start in range(0, len(tasks), _CHECK_CHUNK)
+        ]
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=get_context("spawn"),
+            initializer=_start_worker,
+            initargs=(corpus.path, path, settings),
+        ) as pool:
+            for chunk_results, chunk_classes in pool.map(_check_chunk, chunks):
+                results.extend(chunk_results)
+                for qualname, names in chunk_classes.items():
+                    classes.setdefault(qualname, names)
+                if progress is not None:
+                    progress(len(results), len(tasks))
+    return CheckReport(
+        corpus=corpus.id,
+        corpus_codec=int(corpus.manifest["action_codec_version"]),
+        engine_codec=ACTION_CODEC_VERSION,
+        migration=(
+            "records.migration"
+            if module is records_migration
+            else str(path or module.__name__)
+        ),
+        around=tuple(around),
+        bridge=bridge,
+        window=window,
+        records=tuple(results),
+        drift=schema_drift(corpus.manifest["class_schema"], classes) if classes else {},
+        wall_seconds=time.monotonic() - started,
+    )
