@@ -4128,14 +4128,30 @@ def box_in_progress(state: GameState) -> bool:
     Leadership's and The Beast's Spoils' trashes still owed, a Leader
     Signet ability between its stages, and an arrow's reward icons once its
     cost is paid (Piter, Branching Path, Captured Mentat, Guild Spy, Elite
-    Forces, Pivotal Gambit). Only the active box can be under way: the
-    other one's rows are what this hides.
+    Forces, Pivotal Gambit). Only the active box holds the other one's rows
+    back, and only while it can go on: a selection that can no longer
+    continue this moment -- Long Reach's second Faction after the visited
+    space raised the last other cube to the top -- offers no rows and waits
+    for the turn's end like any box that can only fizzle (OQ-057 (1)), so
+    the other box is offered again and the turn can still end.
     """
 
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
         return False
+    if not _box_selection_under_way(state, context):
+        return False
+    from dune_imperium.rules.agent_effect_frame import active_box_can_act
+
+    return active_box_can_act(state, context_int(context, "turn_owner"))
+
+
+def _box_selection_under_way(
+    state: GameState, context: dict[str, ActionValue]
+) -> bool:
+    """Whether the active Agent box is part way through a bundled selection."""
+
     if context.get("pending_agent_effect") is not True:
         return False
     if context.get("influence_chosen") or _chosen_rewards(context):

@@ -12,7 +12,7 @@
 
 - "You gain the effects on both cards, in addition to the board space effects, in any order you choose." `[Immortality pp. 10-11]` (`rules/graft.py` docstring, [rules/immortality.md](rules/immortality.md) 5절).
 - 두 box는 space 효과와 같은 자유 순서 그룹에 든다(OQ-027, immortality.md 121행). 아이콘마다 해결(OQ-027 확장).
-- 이 작업은 **규칙 결과를 바꾸지 않는다.** 바뀌는 것은 결정의 모양(어떤 행동이 언제 제시되나)뿐이다. 예외: 4.5절의 결함 수정(Ghola + Stitched Horror)은 결과가 바뀐다. 근거는 "Ghola는 상대 카드의 Agent box 전체를 복사한다" `[Immortality p. 14]`와 같은 원칙의 기존 처리(Ghola + Long Reach는 자기 영향력 둘을 따로 고른다, 코드 `graft.py`·AE:1123-1125, 테스트 `test_immortality_imperium.py:731`)다. 이 원칙을 OQ-057 (12)에 글로 남긴다(지금은 코드에만 있다).
+- 이 작업은 **규칙 결과를 바꾸지 않는다.** 바뀌는 것은 결정의 모양(어떤 행동이 언제 제시되나)뿐이다. 예외(모두 옛 엔진의 결함 수정, 2026-10-12 구현·리뷰에서 확인): 4.5절의 Ghola + Stitched Horror, Ghola의 복사가 Corrinth City·Arrakis Observer·Signet Ring(Feyd, Staban, Gaius)의 진행 키를 복사된 box와 함께 쓰던 것(칸별 키로 따로 둔다, OQ-057 (12) 보강), 옛 switch가 dry run의 오판으로 숨기던 선택 box(Piter의 선택 화살표, Dissecting Kit 등)에 다시 닿는 것(OQ-057 (1) 보강)은 결과가 바뀐다. 근거는 "Ghola는 상대 카드의 Agent box 전체를 복사한다" `[Immortality p. 14]`와 같은 원칙의 기존 처리(Ghola + Long Reach는 자기 영향력 둘을 따로 고른다, 코드 `graft.py`·AE:1123-1125, 테스트 `test_immortality_imperium.py:731`)다. 이 원칙을 OQ-057 (12)에 글로 남긴다(지금은 코드에만 있다).
 
 ## 3. 바뀐 뒤의 모습
 

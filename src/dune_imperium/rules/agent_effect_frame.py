@@ -255,6 +255,31 @@ def _active_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     return _single_box_actions(state, player)
 
 
+def active_box_can_act(state: GameState, player: int) -> bool:
+    """Whether the Agent box whose card sits in ``card_id`` offers a row now.
+
+    A bundled selection holds the other grafted box's rows back only while
+    it can go on (``agent_effects.box_in_progress``); one that offers
+    nothing waits for the turn's end (OQ-057 (1)).
+    """
+
+    return bool(_active_box_actions(state, player))
+
+
+def box_actions(
+    state: GameState, player: int, box: int
+) -> tuple[DomainAction, ...]:
+    """Box ``box``'s rows with that box active, untagged.
+
+    What the box's machinery offers, whether or not the other box's
+    bundled selection holds it back now (``agent_box_rows`` applies that):
+    a record before codec v143 reads a recorded step as a box's row by
+    this (``records.migration``).
+    """
+
+    return _active_box_actions(state_with_active_box(state, box), player)
+
+
 def agent_box_rows(
     state: GameState, player: int
 ) -> tuple[tuple[DomainAction, ...], tuple[DomainAction, ...]]:

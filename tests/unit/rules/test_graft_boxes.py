@@ -8,6 +8,7 @@ so these tests keep a new key from riding along unclassified.
 """
 
 import ast
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,7 @@ from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
     GameState,
+    Influence,
     PlayerState,
     Resources,
 )
@@ -143,10 +145,27 @@ OTHER_FRAME_KEYS = frozenset(
 )
 
 
-def _module_string_constants() -> dict[str, str]:
+def _string_tuple(value: ast.expr | None) -> tuple[str, ...] | None:
+    if isinstance(value, ast.Tuple | ast.List) and all(
+        isinstance(item, ast.Constant) and isinstance(item.value, str)
+        for item in value.elts
+    ):
+        return tuple(
+            str(item.value) for item in value.elts if isinstance(item, ast.Constant)
+        )
+    return None
+
+
+def _module_string_constants(
+    sources: dict[str, str],
+) -> tuple[dict[str, str], dict[str, set[str]]]:
+    """Module-level string names, and every name bound to a string tuple."""
+
     constants: dict[str, str] = {}
-    for path in sorted(RULES.glob("*.py")):
-        for node in ast.parse(path.read_text()).body:
+    tuples: dict[str, set[str]] = {}
+    for source in sources.values():
+        tree = ast.parse(source)
+        for node in tree.body:
             target: ast.expr | None = None
             value: ast.expr | None = None
             if isinstance(node, ast.Assign) and len(node.targets) == 1:
@@ -159,42 +178,141 @@ def _module_string_constants() -> dict[str, str]:
                 and isinstance(value.value, str)
             ):
                 constants[target.id] = value.value
-    return constants
+        # A loop over a name bound to string tuples anywhere in rules/
+        # (``for key in keys`` with ``keys = ("a", "b")`` in each branch).
+        for inner in ast.walk(tree):
+            if isinstance(inner, ast.Assign) and len(inner.targets) == 1:
+                target, value = inner.targets[0], inner.value
+            elif isinstance(inner, ast.AnnAssign):
+                target, value = inner.target, inner.value
+            else:
+                continue
+            names = _string_tuple(value)
+            if isinstance(target, ast.Name) and names is not None:
+                tuples.setdefault(target.id, set()).update(names)
+    return constants, tuples
+
+
+def _context_names(tree: ast.Module) -> set[str]:
+    """Names bound to a copy of a frame's context (``host = dict(frame.context)``)."""
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "dict"
+            and node.value.args
+            and "context" in ast.unparse(node.value.args[0])
+        ):
+            names.add(node.targets[0].id)
+    return names
+
+
+def _is_context(base: ast.expr | None, aliases: set[str]) -> bool:
+    return isinstance(base, ast.Name) and (
+        "context" in base.id or base.id in aliases
+    )
+
+
+def _key_names(
+    key: ast.expr | None,
+    constants: dict[str, str],
+    loops: dict[str, set[str]],
+) -> set[str]:
+    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+        return {key.value}
+    if isinstance(key, ast.Name) and key.id in constants:
+        return {constants[key.id]}
+    if isinstance(key, ast.Name) and key.id in loops:
+        return set(loops[key.id])
+    return set()
 
 
 def _context_keys_in_rules() -> dict[str, set[str]]:
-    """Every string key read or written on a ``*context*`` mapping of rules/."""
+    """Every string key read or written on a frame context of rules/."""
 
-    constants = _module_string_constants()
+    return _context_keys_in(
+        {path.name: path.read_text() for path in sorted(RULES.glob("*.py"))}
+    )
+
+
+def _context_keys_in(sources: dict[str, str]) -> dict[str, set[str]]:
+    """Every string key read or written on a frame context of ``sources``.
+
+    A context is a name containing ``context`` or one bound to a copy of a
+    frame's context (``host = dict(frame.context)``). A key is read or
+    written by subscript, ``get``/``pop``/``setdefault``, ``in``, a
+    ``{**context, key: ...}`` literal or ``update``; it is a string, a
+    module string constant, or a loop variable over string tuples.
+    """
+
+    constants, tuples = _module_string_constants(sources)
     found: dict[str, set[str]] = {}
-    for path in sorted(RULES.glob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text())):
+    for file_name, source in sources.items():
+        tree = ast.parse(source)
+        aliases = _context_names(tree)
+        loops: dict[str, set[str]] = {}
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.For)
+                and isinstance(node.target, ast.Name)
+                and isinstance(node.iter, ast.Name)
+                and node.iter.id in tuples
+            ):
+                loops.setdefault(node.target.id, set()).update(tuples[node.iter.id])
+
+        for node in ast.walk(tree):
+            keys: list[ast.expr | None] = []
             base: ast.expr | None = None
-            key: ast.expr | None = None
             if isinstance(node, ast.Subscript):
-                base, key = node.value, node.slice
+                base, keys = node.value, [node.slice]
             elif (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr in ("get", "pop", "setdefault")
                 and node.args
             ):
-                base, key = node.func.value, node.args[0]
+                base, keys = node.func.value, [node.args[0]]
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "update"
+            ):
+                base = node.func.value
+                keys = [
+                    ast.Constant(keyword.arg)
+                    for keyword in node.keywords
+                    if keyword.arg is not None
+                ]
+                for argument in node.args:
+                    if isinstance(argument, ast.Dict):
+                        keys.extend(argument.keys)
             elif (
                 isinstance(node, ast.Compare)
                 and len(node.ops) == 1
                 and isinstance(node.ops[0], ast.In | ast.NotIn)
             ):
-                base, key = node.comparators[0], node.left
-            if not isinstance(base, ast.Name) or "context" not in base.id:
+                base, keys = node.comparators[0], [node.left]
+            elif isinstance(node, ast.Dict) and any(
+                key is None and _is_context(value, aliases)
+                for key, value in zip(node.keys, node.values, strict=True)
+            ):
+                # ``{**context, "key": value}``: a copy with keys written.
+                base = next(
+                    value
+                    for key, value in zip(node.keys, node.values, strict=True)
+                    if key is None and _is_context(value, aliases)
+                )
+                keys = [key for key in node.keys if key is not None]
+            if not _is_context(base, aliases):
                 continue
-            name: str | None = None
-            if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                name = key.value
-            elif isinstance(key, ast.Name) and key.id in constants:
-                name = constants[key.id]
-            if name is not None:
-                found.setdefault(name, set()).add(path.name)
+            for key in keys:
+                for name in _key_names(key, constants, loops):
+                    found.setdefault(name, set()).add(file_name)
     return found
 
 
@@ -210,6 +328,37 @@ def test_every_context_key_in_the_rules_is_classified() -> None:
     # The list of other frames' keys stays current and disjoint.
     assert sorted(OTHER_FRAME_KEYS - set(found)) == []
     assert OTHER_FRAME_KEYS.isdisjoint(classified)
+
+
+def test_the_key_scan_sees_every_way_a_rule_module_writes_a_context() -> None:
+    """A copy of a frame's context under another name, a ``{**context}``
+    literal, ``update`` and a loop over key tuples all count, so a new key
+    written that way fails the classification test above instead of
+    stopping a live game's swap (``swap_boxes``)."""
+
+    source = (
+        'KEY = "constant_key"\n'
+        '_COUNTERS = ("loop_one", "loop_two")\n'
+        "def write(frame, context):\n"
+        "    host = dict(frame.context)\n"
+        '    host["host_key"] = 1\n'
+        "    for key in _COUNTERS:\n"
+        "        host[key] = 2\n"
+        '    reopened = {**context, "literal_key": True}\n'
+        '    context.update({"update_key": 1}, keyword_key=2)\n'
+        "    context[KEY] = reopened\n"
+        '    other = {"unrelated": 1}\n'
+        '    other["not_a_context"] = 1\n'
+    )
+    assert set(_context_keys_in({"module.py": source})) == {
+        "constant_key",
+        "loop_one",
+        "loop_two",
+        "host_key",
+        "literal_key",
+        "update_key",
+        "keyword_key",
+    }
 
 
 def test_the_classes_are_disjoint_and_pair_each_box_key_once() -> None:
@@ -331,6 +480,10 @@ PITER = "tleilaxu:piter_genius_advisor:0"
 PHEROMONES = "tleilaxu:beguiling_pheromones:0"
 INFILTRATOR = "tleilaxu:tleilaxu_infiltrator:0"
 COUPLING = "imperium:planned_coupling:0"
+LONG_REACH = "imperium:long_reach:0"
+BEAST = "imperium:the_beast_s_spoils:0"
+DISSECTING = "imperium:dissecting_kit:0"
+CORRINTH = "imperium:corrinth_city:0"
 ENGINE = UprisingRulesEngine()
 
 
@@ -526,6 +679,138 @@ def test_the_turn_ends_while_only_the_partner_s_box_waits() -> None:
         event.kind for event in finished.events
     }
     assert finished.state.decision_stack[-1].kind == FrameKind.TURN
+
+
+def test_a_choose_two_that_cannot_go_on_frees_the_other_box_and_the_end() -> (
+    None
+):
+    """Long Reach (box 1) names the Emperor first; the Secrets space then
+    raises Bene Gesserit to the top, so no second Faction can be named. The
+    selection waits for the turn's end like any box that can only fizzle
+    (OQ-057 (1)) instead of holding box 0 back: box 0 is offered again, the
+    turn can end, and the end pays the Faction already named (Long Reach's
+    one named Faction is paid and the rest is lost, OQ-060). The lock held
+    while box 0 could do nothing left no legal action at all."""
+
+    influence = Influence(emperor=3, spacing_guild=6, bene_gesserit=5, fremen=6)
+    state = _graft(
+        _state((COUPLING, LONG_REACH), influence=influence),
+        COUPLING,
+        "secrets",
+        LONG_REACH,
+    )
+    named = _apply(state, "choose_agent_card_influence", box=1, faction="emperor")
+    # The second pick is still open: box 0 waits (plan 4.3).
+    assert agent_effects.box_in_progress(named)
+    assert _boxes_offered(named, "resolve_agent_card_effect") == set()
+    assert named.players[0].influence.emperor == 3
+    raised = ENGINE.apply(named, DomainAction("resolve_faction_influence", 0)).state
+    assert raised.players[0].influence.bene_gesserit == 6
+    assert not agent_effects.box_in_progress(raised)
+    assert _boxes_offered(raised, "choose_agent_card_influence") == set()
+    assert _boxes_offered(raised, "resolve_agent_card_effect") == {0}
+    coupled = _apply(raised, "resolve_agent_card_effect")
+    while _boxes_offered(coupled, "resolve_board_effect"):
+        coupled = _apply(coupled, "resolve_board_effect")
+    assert agent_effects.graft_boxes_are_stalled(coupled)
+    finished = ENGINE.apply(coupled, DomainAction("finish_agent_turn", 0))
+    assert finished.events[0].kind == "agent_card_effect_unavailable"
+    assert finished.state.players[0].influence.emperor == 4
+
+
+def _settle_all_but_box_one(state: GameState) -> GameState:
+    """Resolve the visited space and box 0's automatic rows."""
+
+    while True:
+        legal = ENGINE.legal_actions(state, 0)
+        rows = [
+            action
+            for action in legal
+            if action.action_id in ("resolve_board_effect", "resolve_faction_influence")
+            or (
+                action.action_id == "resolve_agent_card_effect"
+                and row_box(action) == 0
+            )
+        ]
+        if not rows:
+            return state
+        state = ENGINE.apply(state, rows[0], legal_actions=legal).state
+
+
+@pytest.mark.parametrize(
+    ("placed", "partner", "taken", "argument"),
+    [
+        (INFILTRATOR, PITER, "lose_agent_card_troop", ("zone", "garrison")),
+        (BEAST, DISSECTING, "trash_grafted_card_for_specimen", None),
+    ],
+)
+def test_a_partner_box_with_a_choice_stays_reachable(
+    placed: str, partner: str, taken: str, argument: tuple[str, str] | None
+) -> None:
+    """"You gain the effects on both cards, in addition to the board space
+    effects, in any order you choose." [Immortality pp. 10-11]. Piter's
+    optional arrow and Dissecting Kit's trash are the partner's box to
+    take. The engine before codec v143 hid its switch once a dry run called
+    both boxes unavailable, which misread such choice boxes, so the
+    partner's box could only fizzle at the turn's end; now its rows stay
+    offered next to the turn end."""
+
+    state = _settle_all_but_box_one(
+        _graft(_state((placed, partner), troops_supply=9), placed, "arrakeen", partner)
+    )
+    offered = {
+        action.action_id
+        for action in ENGINE.legal_actions(state, 0)
+        if row_box(action) == 1
+    }
+    assert {taken, "decline_agent_card_payment"} <= offered
+    row = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == taken
+        and row_box(action) == 1
+        and (argument is None or argument in action.arguments)
+    )
+    before = state.players[0]
+    after = ENGINE.apply(state, row).state.players[0]
+    if partner == PITER:
+        assert after.troops_garrison == before.troops_garrison - 1
+    else:
+        assert after.specimens == before.specimens + 1
+        assert placed in after.trashed
+
+
+def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
+    """Ghola "copies the entire Agent box of the card it's grafted to"
+    [Immortality p. 14]: the copy is a box of its own (OQ-057 (12)).
+    Corrinth City selects its first discard and declines; the copy then
+    selects its own first discard. Before codec v143 the two boxes shared
+    the selection, so the copy could only pay with the first box's card."""
+
+    other = next(card for card in STARTERS if card != DAGGER)
+    state = _state((CORRINTH, GHOLA, DAGGER, other), troops_supply=9)
+    owner = state.players[0]
+    state = replace(
+        state,
+        players=(
+            replace(owner, resources=replace(owner.resources, solari=12)),
+            *state.players[1:],
+        ),
+    )
+    state = _graft(state, CORRINTH, "assembly_hall", GHOLA)
+    hand = state.players[0].hand
+    assert len(hand) >= 2
+    selected = _apply(state, "select_corrinth_city_discard", card_id=hand[0])
+    declined = _apply(selected, "decline_corrinth_city_payment")
+    copy_rows = {
+        (action.action_id, dict(action.arguments).get("card_id"))
+        for action in ENGINE.legal_actions(declined, 0)
+        if row_box(action) == 1
+    }
+    assert copy_rows == {
+        ("decline_corrinth_city_payment", None),
+        *(("select_corrinth_city_discard", card) for card in hand),
+    }
 
 
 def test_box_one_s_card_draw_is_never_urgent_shigawire_s() -> None:
