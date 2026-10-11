@@ -48,7 +48,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | 대상 | 정책 |
 | --- | --- |
 | UI 크롬, 결정 prompt, 행동 로그 라벨 | 이 표의 한국어를 쓴다 |
-| 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 항해 카드는 제목이 인쇄되지 않아 영어 그대로 |
+| 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 운항 카드는 제목이 인쇄되지 않아 엔진의 번호를 붙여 "운항 카드 3"(영어 "Navigation Card 3"과 같은 번호, 2026-10-11; 그 전에는 영어 그대로) |
 | **공간 이름** | **한국어 게임판 장소 설명서의 이름**(2026-10-11 사용자 결정: "선택 칸이나 활동 로그에 나오는 게임판 장소는 한국어 설정일 때는 한국어로"). 보드 스캔은 영어판 그대로 쓴다. 아래 "게임판 장소 이름" 표, `src/dune_imperium/display/names_ko.py`의 `spaces`. 그 전(2026-09-20~10-10)에는 영어 그대로였다 |
 | 목적 카드 **이름** | 제목이 인쇄되지 않아 룰북의 부르는 방식("오니솝터 목적 카드")에 인쇄된 인원수 표시(4/6P, 1-3P)를 붙인다(2026-10-11, 아래 "그 밖의 게임 용어"의 Objective 행) |
 | 카드 그림 | 화면 언어를 따른다 — 한국어 화면은 한글판 그림(있을 때), 영어 화면은 영어판 그림 |
@@ -228,6 +228,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Fremen Influence | 프레멘 영향력 | 위와 같음 |
 | Lose Influence | 영향력 잃기 | `[Main p. 20]`("영향력 1 잃기") |
 | Trash an Intrigue card | 책략 카드 폐기 | `[Main p. 20]`("책략 카드 1장 폐기")에서 수량만 뺀 형태 |
+| Wild card (종료 시 와일드 짝짓기 로그의 그 카드) | 와일드 배틀 아이콘 카드 | 와일드 배틀 아이콘 `[Bloodlines p. 5]` + 카드; 좌석 패널의 "배틀 아이콘 카드"와 같은 꼴 (2026-10-11) |
 
 수량은 아이콘 옆에 숫자로 붙으므로("영향력 1 잃기" → `2` + 아이콘) 합성 표기에는
 수량을 넣지 않는다.
@@ -288,6 +289,28 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Tuek's Sietch (Bloodlines) | 튜엑의 시치 | `[Bloodlines p. 2]`, `[Bloodlines p. 12]` |
 
 조사는 한국어 이름에 맞춰 붙인다(지원자 모집**으로**, 사다우카**로**).
+
+## 지도자 능력 이름과 그 밖의 행동·로그 단어
+
+행동 목록·로그 라벨(`static/labels.js` 등)이 지도자 능력·인장 반지 이름을 부르는
+자리다. 2026-09-25부터 지도자 팝오버는 한글판 카드 인쇄를 옮겨 썼지만(`display/leaders_ko.py`,
+두 번 독립적으로 옮겨 대조) 라벨은 영어로 남아 있었다. 2026-10-11 사용자 결정("확실한 한국어
+공식 표현이 있는거지? 그럼 한국어 변환 하자")으로 라벨도 인쇄된 이름을 쓴다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Other Memories (Lady Jessica) | 다른 기억들 | `[KO card: Lady Jessica]` | 적용(2026-10-11) |
+| Memories (Lady Jessica의 병력) | 기억 / 보낸 기억(Memories returned) | `[KO card: Lady Jessica]`("이것은 이제 당신의 기억이 됨", "그렇게 보낸 기억 1당 카드 1장을 뽑을 수 있음") | 적용(2026-10-11) |
+| Into the Fray (Duncan Idaho) | 전투 속으로 | `[KO card: Duncan Idaho]` | 적용(2026-10-11) |
+| Fedaykin Maneuver (Chani) | 페다이킨의 책략 | `[KO card: Chani]` | 적용(2026-10-11) |
+| Secret Project (Kota Odax of Ix) | 비밀 프로젝트 | `[KO card: Kota Odax of Ix]` | 적용(2026-10-11) |
+| Arrakis Planetologist (Liet Kynes) | 아라키스 행성학자 | `[KO card: Liet Kynes]` | 적용(2026-10-11) |
+| Feyd token | 페이드 토큰 | `[Main p. 3]`(구성물 "페이드 토큰"), `[Main p. 17]`("페이드 토큰을 지도자에 표시된 훈련 트랙 맨 왼쪽"), `[KO card: Feyd-Rautha Harkonnen]`("훈련 트랙에 놓인 페이드 토큰") | 적용(2026-10-11) |
+| Immediate (Contract) | 즉시 / 즉시 계약 | `[Main p. 16]`("즉시 계약은 그 계약을 가져가자마자 완수됩니다"), `[KO card: Immediate]`(`names_ko.py`) | 적용(2026-10-11) |
+
+같은 날 카드 이름이 한글판 인쇄로 확인된 카드를 라벨·문구에 영어로 적던 곳도 고쳤다:
+Usurp → 찬탈, Reclaimed Forces → 되돌아온 병사들, Advanced Data Analysis → 고급 데이터 분석
+(`names_ko.py`).
 
 ## Bloodlines 확장과 Tech Module
 
@@ -444,8 +467,9 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 
 ## 아직 채우지 않은 것
 
-- Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,
-  Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
+- Bloodlines·Immortality의 **Leader 전용 용어**는 해당 Leader UI를 건드릴 때 각 룰북과
+  한글판 지도자 카드에서 채운다. 행동·로그 라벨에 나오던 능력·인장 반지 이름은
+  2026-10-11에 채웠다(아래 "지도자 능력 이름").
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
   용어는 본문 룰북의 단어를 쓴다.
 - (2026-10-11 확인) 엔진 event kind는 모두 한국어 라벨이 있다(`static/labels.js`의
