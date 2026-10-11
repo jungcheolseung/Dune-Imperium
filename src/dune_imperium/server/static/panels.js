@@ -2173,10 +2173,18 @@ function renderScouts() {
     return;
   }
   panel.hidden = false;
-  panel.textContent = "";
-  const heading = document.createElement("h2");
-  heading.textContent = t("panels.scouts_heading");
-  panel.appendChild(heading);
+  /* The heading row stays from one render to the next: beside the heading
+     is the button that brings the Scouts card back over the board
+     (scouts_stage.js scoutsStageOpener), which keeps its node and focus. */
+  let head = panel.querySelector(":scope > .scouts-panel-head");
+  if (!head) {
+    head = document.createElement("div");
+    head.className = "scouts-panel-head";
+    head.append(document.createElement("h2"), scoutsStageOpener());
+  }
+  for (const node of [...panel.childNodes]) if (node !== head) node.remove();
+  if (head.parentNode !== panel) panel.appendChild(head);
+  head.querySelector("h2").textContent = t("panels.scouts_heading");
 
   if (view.scouts_subcommittees.length) {
     const box = scoutsSection(panel, t("panels.scouts_subcommittees"));

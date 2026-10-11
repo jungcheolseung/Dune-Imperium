@@ -1086,8 +1086,8 @@ const UI_TEXT = {
     "en": "Secret picks"
   },
   "panels.scouts_secret_waiting": {
-    "ko": "{{round}}라운드 {{name}}: {{seats}}",
-    "en": "Round {{round}} {{name}}: {{seats}}"
+    "ko": "아직 비공개: {{round}}라운드 {{name}} — {{seats}}",
+    "en": "Not revealed yet: Round {{round}} {{name}} — {{seats}}"
   },
   "panels.scouts_own_pick": {
     "ko": "내 선택 — {{name}}: ",
@@ -1438,13 +1438,19 @@ const UI_TEXT = {
     "ko": "카드를 접고 보드를 봅니다 (A)",
     "en": "Fold the card away to see the board (A)"
   },
-  "scouts_stage.tab": {
-    "ko": "스카웃 카드 · {{name}}",
-    "en": "Scouts card · {{name}}"
+  "scouts_stage.show": { "ko": "카드로 보기", "en": "Show card" },
+  "scouts_stage.show_more": {
+    "ko": "{{name}} 외 {{more}}",
+    "en": "{{name}} +{{more}}"
   },
-  "scouts_stage.tab_more": {
-    "ko": "스카웃 카드 · {{name}} 외 {{more}}",
-    "en": "Scouts card · {{name}} +{{more}}"
+  "scouts_stage.show_title": {
+    "ko": "아라킨 스카웃 카드를 보드 위에 펼칩니다 (A)",
+    "en": "Bring the Arrakeen Scouts card up over the board (A)"
+  },
+  "scouts_stage.fold": { "ko": "카드 접기", "en": "Hide card" },
+  "scouts_stage.fold_title": {
+    "ko": "보드 위 아라킨 스카웃 카드를 접습니다 (A)",
+    "en": "Fold the Arrakeen Scouts card over the board away (A)"
   },
   "scouts_stage.prev": { "ko": "◀ 이전", "en": "◀ Previous" },
   "scouts_stage.next": { "ko": "다음 ▶", "en": "Next ▶" },
@@ -1473,13 +1479,17 @@ const UI_TEXT = {
     "ko": "{{index}} / {{total}}",
     "en": "{{index}} / {{total}}"
   },
-  "scouts_stage.tab_title": {
-    "ko": "아라킨 스카웃 카드를 다시 펼칩니다 (A)",
-    "en": "Bring the Arrakeen Scouts card back (A)"
-  },
   "scouts_stage.secrets_name": {
     "ko": "비밀 선택 공개",
     "en": "Secret picks revealed"
+  },
+  "scouts_stage.secrets_pending_name": {
+    "ko": "비밀 선택 공개 준비",
+    "en": "Secret picks: reveal to come"
+  },
+  "scouts_stage.secrets_event": {
+    "ko": "{{round}}라운드 {{name}}",
+    "en": "Round {{round}} {{name}}"
   },
   "render.scouts_decision_item": {
     "ko": "아라킨 스카웃 · {{kind}} · {{name}}",
