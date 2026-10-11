@@ -32,6 +32,7 @@
   - 그림: 에셋 `cards/app/scouts/`(그림 다섯·양피지·머리 띠 둘·구분선·별 배경, WebP, 출처 `scouts_sources.json`, 에셋 커밋 `a8dbfc3`), 만드는 스크립트 `scripts/dwgr/dwgr_scouts_ui.py`. 카탈로그 `scouts_art`.
   - 소위원회 공개는 공개 단계가 없어(1라운드 스카웃 단계는 chance뿐) 카드를 따로 두지 않았다. 옆 패널 그대로다.
   - e2e 새 `scouts_stage.py`(540검사). `scouts.py`의 임무 조각 클릭 검사는 카드를 접고 잰다.
+  - 후속(같은 날, 사용자 "그냥 이벤트도 동일하게 뜨면 좋겠어 … 접기 아이콘이 턴 중에도 떠있으면 … 이벤트가 여러개면 이전, 다음 버튼"): 선택 없는 항목은 엔진이 공개와 처리를 한 단계에 끝내 `view.scouts_item`에 잡히지 않았다. 이제 카드의 쪽은 이번 라운드에 공개된 항목 전체(`view.scouts_revealed`)다. 이 브라우저가 처음 보는 항목이면 스카웃 단계 밖에서 저절로 열린다. 단계 중에는 결정 중인 항목에 머물고, 안 본 쪽으로 가는 버튼에 "새" 표시를 붙인다. 단계가 끝나도 접을 때까지 남고, 탭은 라운드 내내 보인다("외 N"). 항목이 둘 이상이면 "◀ 이전 / 다음 ▶"과 "2 / 3"이 붙고, 카드 안에 포커스가 있으면 ←/→로 넘긴다. 내 보드 결정은 결정마다 한 번 접는다. e2e는 seed 21(4·5·6라운드)과 seed 4(2라운드) 전체 AI 판으로 722검사.
 - **기보:** 이번 판을 진단해 문제집에 89곳을 더했다(199곳). 새 판만 판정해 잇는 `human_diagnosis.py freeze --append`(`records.problems.merge_suites`). 숫자는 [evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 8절. 학습 레이블(B)은 다음 v142 재적응 때.
 - **검증**(fb11 `e2927007`): pytest **7,284개 통과**, ruff·mypy(474파일) 통과, E2E **58종 통과**(새 `pile_viewer`·`layout_custom`).
 

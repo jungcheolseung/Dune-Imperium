@@ -454,8 +454,8 @@ const UI_TEXT = {
     "en": "Expand / collapse every player's detail"
   },
   "help.shortcut_scouts_card": {
-    "ko": "보드 위 아라킨 스카웃 카드 접기 / 펴기 (스카웃 단계)",
-    "en": "Fold away / bring back the Arrakeen Scouts card over the board (Scouts step)"
+    "ko": "보드 위 아라킨 스카웃 카드 접기 / 펴기 (이번 라운드에 공개된 항목이 있을 때)",
+    "en": "Fold away / bring back the Arrakeen Scouts card over the board (when this round revealed an item)"
   },
   "help.shortcut_layout": {
     "ko": "열 사이 경계를 끌면 열 너비가 바뀝니다(두 번 클릭: 기본값). 손패와 {intrigue}는 끌거나 Alt+←/→로 순서를 바꿉니다. 둘 다 이 브라우저에만 저장됩니다.",
@@ -1437,6 +1437,37 @@ const UI_TEXT = {
   "scouts_stage.tab": {
     "ko": "스카웃 카드 · {{name}}",
     "en": "Scouts card · {{name}}"
+  },
+  "scouts_stage.tab_more": {
+    "ko": "스카웃 카드 · {{name}} 외 {{more}}",
+    "en": "Scouts card · {{name}} +{{more}}"
+  },
+  "scouts_stage.prev": { "ko": "◀ 이전", "en": "◀ Previous" },
+  "scouts_stage.next": { "ko": "다음 ▶", "en": "Next ▶" },
+  "scouts_stage.prev_aria": {
+    "ko": "이번 라운드의 이전 스카웃 항목",
+    "en": "This round's previous Scouts item"
+  },
+  "scouts_stage.next_aria": {
+    "ko": "이번 라운드의 다음 스카웃 항목",
+    "en": "This round's next Scouts item"
+  },
+  "scouts_stage.prev_title": {
+    "ko": "이전 항목 (카드 안에서 ←)",
+    "en": "Previous item (← inside the card)"
+  },
+  "scouts_stage.next_title": {
+    "ko": "다음 항목 (카드 안에서 →)",
+    "en": "Next item (→ inside the card)"
+  },
+  "scouts_stage.new": { "ko": "새", "en": "New" },
+  "scouts_stage.with_new": {
+    "ko": "{{label}} · 아직 안 본 항목이 있습니다",
+    "en": "{{label}} · an item you have not seen yet"
+  },
+  "scouts_stage.count": {
+    "ko": "{{index}} / {{total}}",
+    "en": "{{index}} / {{total}}"
   },
   "scouts_stage.tab_title": {
     "ko": "아라킨 스카웃 카드를 다시 펼칩니다 (A)",

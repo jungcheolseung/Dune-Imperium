@@ -121,7 +121,7 @@
                the board's own grid cell, the board square inside it. -->
           <div id="scouts-stage" hidden>
             <div class="scouts-stage-frame">
-              <article id="scouts-stage-card" class="scouts-stage-card" role="region">
+              <article id="scouts-stage-card" class="scouts-stage-card" role="region" tabindex="-1">
                 <div class="scouts-stage-art"></div>
                 <div class="scouts-stage-panel">
                   <div class="scouts-stage-lines"></div>
@@ -129,7 +129,15 @@
                 <div class="scouts-stage-header">
                   <span class="scouts-stage-bar upper" aria-hidden="true"></span>
                   <span class="scouts-stage-bar lower" aria-hidden="true"></span>
-                  <div class="scouts-stage-kind"></div>
+                  <div class="scouts-stage-top">
+                    <div class="scouts-stage-kind"></div>
+                    <!-- This round's items, two or more: previous / next and a counter. -->
+                    <div class="scouts-stage-pager" hidden>
+                      <button type="button" class="scouts-stage-prev" aria-controls="scouts-stage-card"></button>
+                      <span class="scouts-stage-count"></span>
+                      <button type="button" class="scouts-stage-next" aria-controls="scouts-stage-card"></button>
+                    </div>
+                  </div>
                   <h2 class="scouts-stage-name"></h2>
                 </div>
                 <button type="button" class="scouts-stage-hide" aria-controls="scouts-stage-card" aria-expanded="true"></button>
