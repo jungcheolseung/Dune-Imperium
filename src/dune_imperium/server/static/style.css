@@ -1954,6 +1954,44 @@ body.hand-dragging, body.hand-dragging * {
    padding. */
 .vcard.deck-top { outline: 2px solid var(--accent); outline-offset: 1px; }
 .vcard.deck-top .vcard-badge { white-space: nowrap; }
+/* A seat's Victory Point ledger in the pile viewer (panels.js
+   vpLedgerContent): one row per step that moved its points, round, change
+   and points after it in fixed columns, the cause beside them in the log's
+   own words. A row whose step is in the log finds it there on a click. */
+.vp-ledger {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.vp-row-main {
+  display: grid;
+  grid-template-columns: 2.2em 2.1em 2.6em minmax(0, 1fr);
+  gap: 0.1rem 0.4rem;
+  align-items: baseline;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.vp-row-main[role="button"] { cursor: pointer; }
+.vp-row-main[role="button"]:hover { border-color: var(--accent); }
+.vp-row-main[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vp-round { font-size: 0.75rem; opacity: 0.7; white-space: nowrap; }
+.vp-delta { font-weight: 800; text-align: right; white-space: nowrap; }
+.vp-delta.gain { color: var(--good); }
+.vp-delta.loss { color: var(--bad); }
+.vp-total { opacity: 0.8; white-space: nowrap; }
+.vp-cause { min-width: 0; font-size: 0.78rem; word-break: keep-all; overflow-wrap: anywhere; }
+/* The head reads as one line of text that wraps, like a log line: the
+   seat mark and the icons sit in it. */
+.vp-cause-head .seat-mark,
+.vp-cause-head .neutral-mark { vertical-align: middle; margin-right: 0.25rem; }
+.vp-cause-head strong { margin-right: 0.3rem; }
+.vp-cause-step.after { font-size: 0.72rem; opacity: 0.7; }
+.vp-cause .icon { height: 1.2em; }
+.vp-cause .logevent { margin-left: 0.2rem; }
 .conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .conflict-history-close { padding: 0 0.4rem; font-size: 1.2rem; }
 .conflict-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.8rem; margin-top: 0.5rem; }
@@ -2124,6 +2162,14 @@ body.hand-dragging, body.hand-dragging * {
 .turn-cards { display: flex; flex-direction: column; gap: 0.25rem; flex: none; }
 .turn-cards .vcard.small { width: 54px; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
+/* The step a Victory Point ledger row asked for (panels.js findLogEntry). */
+.log-target {
+  outline: 2px solid var(--glow);
+  outline-offset: 1px;
+  border-radius: 4px;
+  background: rgba(235, 200, 126, 0.14);
+  opacity: 1;
+}
 
 .log-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
 .log-heading h2 { margin: 0; font-size: 0.85rem; }

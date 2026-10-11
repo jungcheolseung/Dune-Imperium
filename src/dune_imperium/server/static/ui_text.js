@@ -32,6 +32,33 @@ const UI_TEXT = {
     "ko": "← 교전 카드 이력",
     "en": "← Conflict card history"
   },
+  "panels.vp_ledger_open": {
+    "ko": "{victory_point} {{points}} · 클릭하여 얻은 기록 보기",
+    "en": "{victory_point} {{points}} · Click to see how they were scored"
+  },
+  "panels.vp_ledger_title": {
+    "ko": "{{name}} · {victory_point} 기록 (현재 {{points}})",
+    "en": "{{name}} · {victory_point} history (now {{points}})"
+  },
+  "panels.vp_ledger_note": {
+    "ko": "행을 누르면 행동 기록에서 그 단계를 찾아 줍니다.",
+    "en": "Click a row to find its step in the action log."
+  },
+  "panels.vp_ledger_loading": { "ko": "불러오는 중…", "en": "Loading…" },
+  "panels.vp_ledger_failed": {
+    "ko": "기록을 불러오지 못했습니다: {{message}}",
+    "en": "Could not load the history: {{message}}"
+  },
+  "panels.vp_ledger_start": { "ko": "게임 시작", "en": "Game start" },
+  "panels.vp_ledger_round": { "ko": "R{{round}}", "en": "R{{round}}" },
+  "panels.vp_ledger_total": {
+    "ko": "이 단계 뒤 {{points}}",
+    "en": "{{points}} after this step"
+  },
+  "panels.vp_ledger_find": {
+    "ko": "행동 기록에서 이 단계 보기",
+    "en": "Show this step in the action log"
+  },
   "effects.agent": { "ko": "에이전트 카드 사용", "en": "Agent card played" },
   "effects.played": { "ko": "카드 사용", "en": "Card played" },
   "effects.graft": { "ko": "접목 카드 사용", "en": "Graft card played" },

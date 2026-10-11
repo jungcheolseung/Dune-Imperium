@@ -138,6 +138,12 @@ from dune_imperium.server.turn_end import (
     unit_over,
     unit_seat,
 )
+from dune_imperium.server.vp_ledger import (
+    VpLedger,
+    extend_ledger,
+    ledger_json,
+    start_ledger,
+)
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -304,6 +310,9 @@ class GameSession:
     narration_clock: float = 0.0
     narrated_turn: str | None = None
     cue_unit: float = 0.0
+    # The Victory Point ledger walked so far (``vp_ledger``), kept so a
+    # second look does not replay the game again; never saved.
+    vp_ledger: VpLedger | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -1006,6 +1015,51 @@ class GameSessionManager:
             "seat": seat,
             "count": len(entries),
             "entries": _log_entries_json(entries, seat, finished, after),
+        }
+
+    def vp_ledger(self, game_id: str) -> JsonObject:
+        """Return how every seat's Victory Points moved, step by step.
+
+        ``entries`` lists every live step that changed a seat's Victory
+        Points as ``{index, round, seat, delta, total}``, ``index`` being the
+        step's log entry (``log``), and ``start`` each seat's opening points,
+        so a seat's ``start`` plus its deltas is its points now. Steps taken
+        back never appear (``vp_ledger``, the module, says how it is walked).
+
+        It is table knowledge, like the summary: the Victory Point track is
+        on the board in front of every seat, and a row names its step only
+        by the log index every seat's log already carries, never by what
+        was done. So no seat is asked for and no credentials are checked: a
+        remote seat, a client holding none and a finished game's review read
+        it alike. Rows past a client's own log (its ``count``) are a state
+        the client has not drawn yet; a review cuts the rows at its cursor's
+        last log entry the same way.
+
+        The ledger is cached on the session and only extended by the steps
+        played since; the walk runs off the session lock, like a review's
+        replay, so a long game's first look does not hold up the table.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            live = _indexed_live_steps(session)
+            log_count = len(session.log)
+            cached = session.vp_ledger
+        if cached is None or not cached.extends(live):
+            opening = session.engine.reset(session.config, session.game_seed)
+            cached = start_ledger(opening)
+        ledger = extend_ledger(session.engine, cached, live)
+        with session.lock:
+            now = _indexed_live_steps(session)
+            kept = session.vp_ledger
+            if ledger.extends(now) and (
+                kept is None or not kept.extends(now) or kept.steps < ledger.steps
+            ):
+                session.vp_ledger = ledger
+        return {
+            "game_id": session.game_id,
+            "log_count": log_count,
+            **ledger_json(ledger),
         }
 
     def delete(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> None:
@@ -2599,6 +2653,23 @@ def _state_after(session: GameSession, count: int) -> GameState:
     for recorded in session.steps[:count]:
         state = engine.apply(state, recorded).state
     return state
+
+
+def _indexed_live_steps(session: GameSession) -> tuple[tuple[int, ReplayStep], ...]:
+    """Every live step in order, with the index of its log entry.
+
+    The live log entries are ``steps`` one for one (``GameSession.log``);
+    the caller holds the session lock.
+    """
+
+    indices = [
+        index
+        for index, entry in enumerate(session.log)
+        if isinstance(entry, LoggedStep) and not entry.undone
+    ]
+    if len(indices) != len(session.steps):
+        raise RuntimeError("the session log does not match the recorded steps")
+    return tuple(zip(indices, session.steps, strict=True))
 
 
 def _rebuild_log(

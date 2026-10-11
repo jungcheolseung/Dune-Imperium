@@ -748,6 +748,13 @@ def create_app(
                 credentials=_credentials(request, game_id),
             )
 
+    @app.get("/games/{game_id}/vp-ledger")
+    def vp_ledger(game_id: str) -> JsonObject:
+        # Public table knowledge like the summary (no seat, no credentials):
+        # Victory Point moves and the log indices of their steps.
+        with _http_errors():
+            return sessions.vp_ledger(game_id)
+
     @app.delete("/games/{game_id}")
     def delete_game(game_id: str, request: Request) -> JsonObject:
         with _http_errors():
