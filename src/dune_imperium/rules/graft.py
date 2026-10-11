@@ -14,7 +14,6 @@ and ``switch_graft_card`` swaps them so either box resolves through the
 ordinary Agent-box machinery in the owner's order.
 """
 
-from collections.abc import Mapping
 from dataclasses import replace
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
@@ -60,6 +59,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     with_context,
 )
+from dune_imperium.rules.graft_boxes import swap_boxes
 
 _PARTNER_LABEL = "Graft partner frame"
 _CHAIRDOG_RETURN = PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START
@@ -348,61 +348,22 @@ def legal_graft_switch_actions(
     return (DomainAction(action_id="switch_graft_card", actor=player),)
 
 
-def _both_boxes_choose_two(context: Mapping[str, object]) -> bool:
-    """Whether both grafted boxes are Long Reach's "Choose two" Influence."""
-
-    card_id, graft_card_id = context.get("card_id"), context.get("graft_card_id")
-    if not isinstance(card_id, str) or not isinstance(graft_card_id, str):
-        return False
-    if not card_id or not graft_card_id:
-        return False
-    two = PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE
-    return all(
-        borrowed_agent_card(personal_card_for_instance(card), partner).agent_effect
-        is two
-        for card, partner in ((card_id, graft_card_id), (graft_card_id, card_id))
-    )
-
-
 def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
-    """Make the other grafted card the active one of the effect frame."""
+    """Make the other grafted card the active one of the effect frame.
+
+    Every key of a box moves with it (``graft_boxes.swap_boxes``): its
+    queued icons, a self-trash flag (a card that left play by its own
+    printed icon still pays its other icons, OQ-022), the picks of a
+    "Choose two" box (Long Reach, Stitched Horror and the Ghola that
+    copies either name their own two, OQ-057 (12)) and any other choice
+    under way.
+    """
 
     if action not in legal_graft_switch_actions(state, action.actor):
         raise ValueError("action is not a legal Graft switch")
     frame = state.decision_stack[-1]
     context = frame_context(frame)
-    active = (
-        context["card_id"],
-        context["pending_agent_effect"],
-        context["pending_agent_icons"],
-    )
-    context["card_id"] = context["graft_card_id"]
-    context["pending_agent_effect"] = context["graft_pending_effect"]
-    context["pending_agent_icons"] = context["graft_pending_icons"]
-    (
-        context["graft_card_id"],
-        context["graft_pending_effect"],
-        context["graft_pending_icons"],
-    ) = active
-    # A self-trash flag belongs to the box it was set for, so it moves with
-    # that box: a card that left play by its own printed icon still pays
-    # its other icons after the owner switches away and back (OQ-022).
-    active_flag = context.pop("agent_card_self_trashed", None)
-    graft_flag = context.pop("graft_card_self_trashed", None)
-    if graft_flag is True:
-        context["agent_card_self_trashed"] = True
-    if active_flag is True:
-        context["graft_card_self_trashed"] = True
-    # So do a "Choose two" box's picks when both boxes are one: Long Reach
-    # and the Ghola that copies it (OQ-057 (12)) each name their own two
-    # Factions. With any other partner only one box reads them.
-    if _both_boxes_choose_two(context):
-        active_picks = context.pop("influence_chosen", None)
-        graft_picks = context.pop("graft_influence_chosen", None)
-        if graft_picks:
-            context["influence_chosen"] = graft_picks
-        if active_picks:
-            context["graft_influence_chosen"] = active_picks
+    swap_boxes(context)
     return RuleResult(
         state=replace(
             state,

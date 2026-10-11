@@ -635,6 +635,47 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
     assert trashed_and_troop.players[0].troops_garrison == 4
 
 
+def test_ghola_s_copy_of_stitched_horror_names_its_own_two_rewards() -> None:
+    """"Ghola copies the entire Agent box of the card it's grafted to"
+    [Immortality p. 14], so the turn has two "Choose two" boxes and each
+    names and pays its own two rewards, as Ghola's copy of Long Reach names
+    its own two Factions (OQ-057 (12)). The picks used to be one key for
+    both boxes: the copy saw the first box's picks, was offered the other
+    two only, and its one pick paid the first box's rewards again."""
+
+    horror = _tleilaxu("stitched_horror")
+    ghola = _tleilaxu("ghola")
+    state = _graft(
+        _state(_owner((horror, ghola), troops_supply=9)), horror, "arrakeen", ghola
+    )
+    water = _payment(state, "choose_agent_card_reward", reward="water")
+    first = apply_agent_card_payment(state, water).state
+    troop = _payment(first, "choose_agent_card_reward", reward="troop")
+    both = apply_agent_card_payment(first, troop).state
+    owner = both.players[0]
+    assert (owner.resources.water, owner.troops_garrison) == (3, 4)
+
+    copy = _switch(both)
+    assert {
+        dict(a.arguments)["reward"] for a in legal_agent_card_payment_actions(copy, 0)
+    } == {"water", "troop", "trash", "tleilaxu"}
+    once = apply_agent_card_payment(
+        copy, _payment(copy, "choose_agent_card_reward", reward="water")
+    ).state
+    _, context = current_agent_effect_context(once)
+    assert context["pending_agent_effect"] is True  # named, not yet paid
+    assert once.players[0].resources.water == 3
+    twice = apply_agent_card_payment(
+        once, _payment(once, "choose_agent_card_reward", reward="tleilaxu")
+    ).state
+    owner = twice.players[0]
+    assert (owner.resources.water, owner.troops_garrison) == (4, 4)
+    assert owner.tleilaxu_space == 1
+    _, context = current_agent_effect_context(twice)
+    assert context["pending_agent_effect"] is False
+    assert context["graft_pending_effect"] is False
+
+
 def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() -> None:
     pheromones = _tleilaxu("beguiling_pheromones")
     # Arrakeen is no Faction space: nothing to trade.
