@@ -4,7 +4,7 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
-## 2026-10-11 친구 판 뒤 피드백 7항목 중 6항목과 기보 보태기 (codec 그대로 v142)
+## 2026-10-11 친구 판 뒤 피드백 7항목과 기보 보태기 (codec 그대로 v142)
 
 친구들과 둔 판(`saves/8f8df4bc…`, 사람 0·1·3번 + 탐색 X 2번, v142) 뒤 사용자 피드백 7항목. 계획 뒤 사용자 결정: 3번은 "맞는 아이콘 하나로", 5번은 "그건 너가 앱 깐거 봐", 나머지는 "추천대로". 통합 브랜치 `fb11`(항목 브랜치 `fb11-icons`·`fb11-piles`·`fb11-turncard`·`fb11-layout`를 병합). 엔진·코덱·관측·저장은 그대로다.
 
@@ -16,7 +16,13 @@
 - **7 이번 차례 카드:** 기보 로그 478수에서 카인즈 좌석이 Planetologist 폐기로 이번 차례의 Experimentation을 골랐다가 되돌렸다. 엔진은 OQ-022(디자이너 판정)대로 맞다. 서버가 화면용 공개 필드 `turn_card_ids`(열린 Agent turn이 낸 카드와 접합 짝)·`pending_box_card_ids`(그중 에이전트 칸이 남은 것)를 보내고(`server/turn_cards.py`, `_serialize_view`), 결정을 가진 좌석에만 `box_losing_trash`(그 좌석의 폐기 행을 엔진에 미리 적용해 칸이 사라지는 행)를 보낸다. 자기 효과로 자신을 폐기하는 카드(Feyd 인장 반지 등)는 이득을 받으므로 경고하지 않는다. 좌석 패널의 플레이 영역 칩에 "이번 차례", 폐기 행에 "이번 차례에 낸 카드 (· 폐기하면 에이전트 칸의 남은 효과 사라짐)"/"앞 차례에 낸 카드"가 붙는다. Usurp로 빌린 카드는 칸이 남은 것으로 치지 않는다(OQ-054). 관측·학습·엔진 무변경.
   - 독립 리뷰: 무작위 1,200판(설정 4종) 220,632 국면, 폐기 행 8,272개에서 경고와 실제 만료(뒤 수까지 두어 확인)가 모두 일치했다. 숨은 정보를 다시 섞어도 결과 차이 0, 결정 주인 아닌 좌석은 늘 빈 목록이었다. nit 셋(예외 시 표시만 빼기, Usurp, 용어 "에이전트 칸")을 고쳤다.
 - **2 열 너비·손패 순서:** 좌석|보드|결정, 보드|공용 카드 사이 손잡이(끌기·화살표·두 번 클릭 기본값). 너비는 브라우저에 `dune.layout.columns.v1`로 저장된다. 보드는 480px 아래로 줄지 않는다. 손패·책략 줄의 카드를 끌거나 Alt+←/→로 순서를 바꾸고 판·좌석별로 브라우저에만 저장한다(`dune.handOrder.v1.<game>.<seat>`, 서버로 아무것도 안 감). 새로 뽑은 카드는 끝에 붙고, "순서 되돌리기"가 있다. 리뷰에서는 서버 순서. 새 `static/layout.js`, e2e `layout_custom.py`.
-- **5 스카웃 큰 창:** 진행 중. Game Room 설치본의 스카웃 화면 구조·그림을 뽑아(로컬 참고 자료) 보드 위 창의 모양을 정한다.
+- **5 스카웃 큰 창**(브랜치 `fb11-scouts`): 설치된 Game Room을 데이터로 재구성했다(로컬 `assets/reference/dwgr-arrakeen-scouts/ui/`: NOTES.md·렌더·스프라이트). 앱은 디지털 보드가 없는 동반 앱이라 항목마다 전체 화면 페이지다(파란 머리 띠의 종류·이름, 왼쪽 종류별 그림, 오른쪽 양피지). 이것을 보드 칸 위 카드 `#scouts-stage`로 옮겼다(`static/scouts_stage.js`·`.css`).
+  - 공개 `view.scouts_item`이 있는 동안(스카웃 단계) 모든 좌석·관전·리뷰에 보인다. 내용은 우리 의역 줄(`scoutsItemLines`)이고 앱 문구는 쓰지 않는다. 비밀 선택 공개 중엔 자기 이벤트나 대기 목록을 보인다.
+  - "보드 보기" 버튼·단축키 `a`로 접고, 접으면 보드 위 가장자리에 "스카웃 카드 · 이름" 탭이 남는다. 새 항목이면 다시 열린다. 보드를 눌러 답하는 결정은 접힌 채 시작한다.
+  - 보드가 좁으면(< 620px) 머리 띠·그림 띠·양피지를 위아래로 쌓는다. 그림이 없는 체크아웃은 CSS만으로 그린다.
+  - 그림: 에셋 `cards/app/scouts/`(그림 다섯·양피지·머리 띠 둘·구분선·별 배경, WebP, 출처 `scouts_sources.json`, 에셋 커밋 `a8dbfc3`), 만드는 스크립트 `scripts/dwgr/dwgr_scouts_ui.py`. 카탈로그 `scouts_art`.
+  - 소위원회 공개는 공개 단계가 없어(1라운드 스카웃 단계는 chance뿐) 카드를 따로 두지 않았다. 옆 패널 그대로다.
+  - e2e 새 `scouts_stage.py`(540검사). `scouts.py`의 임무 조각 클릭 검사는 카드를 접고 잰다.
 - **기보:** 이번 판을 진단해 문제집에 89곳을 더했다(199곳). 새 판만 판정해 잇는 `human_diagnosis.py freeze --append`(`records.problems.merge_suites`). 숫자는 [evaluation/human-games-2026-10-10.md](evaluation/human-games-2026-10-10.md) 8절. 학습 레이블(B)은 다음 v142 재적응 때.
 - **검증**(fb11 `e2927007`): pytest **7,284개 통과**, ruff·mypy(474파일) 통과, E2E **58종 통과**(새 `pile_viewer`·`layout_custom`).
 
