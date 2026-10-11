@@ -23,6 +23,14 @@ B: a remote room (host seat 0, guest seat 1): the guest's turn start reads
 C: AI-only playback shows phase banners and every seat's turn as another
    player's; pausing and seeking clear them.
 
+Sounds (sounds.js, user request 2026-10-11): the page's playSound is
+recorded instead of played. A Round, combat and Scouts banner each asks for
+its own sound once as the live queue starts it (a turn or the Endgame for
+none), a local table has no decision sound, the real Web Audio path plays
+every sound without an error, a review plays none, and on the remote table
+the host's round 1 banner sounds and a decision reaching the guest plays
+the decision sound.
+
 Screenshots of every banner in both languages go to E2E_SHOTS_DIR (a
 temporary folder by default).
 """
@@ -59,7 +67,11 @@ SIZES = (
 # that does not depend on reading the page before a banner times out.
 RECORDER = """
 window.__banners = [];
+window.__sounds = [];
 document.addEventListener('DOMContentLoaded', () => {
+  // Every sound the page asks for (sounds.js), recorded instead of played.
+  window.__playSound = window.playSound;
+  window.playSound = (name) => { window.__sounds.push(name); };
   const box = document.getElementById('phase-banner');
   new MutationObserver((changes) => {
     for (const change of changes) for (const node of change.addedNodes) {
@@ -680,6 +692,47 @@ def look(page, seen: dict, tag: str) -> None:
         )
 
 
+# The banners that sound (sounds.js PHASE_SOUNDS), user request 2026-10-11:
+# "라운드 시작 / 전투 단계 시작 / 아라킨 스카웃 이때도 소리 들어가면 좋겠는데".
+def sounds(page) -> None:
+    """The walk draws its banners directly (SHOW_JS), so the sounds are
+    checked here through the page's own queue: the game's real cues, one of
+    each kind, each started by nextPhaseBanner as advanceEffects does."""
+    page.evaluate("window.__sounds = []")
+    heard = page.evaluate(
+        """() => {
+          const cues = phaseBannerCues(state.log.entries, 0);
+          const pick = ['round', 'combat', 'scouts', 'turn', 'endgame']
+            .map((type) => cues.find((cue) => cue.type === type)).filter(Boolean);
+          const kinds = pick.map((cue) => cue.type);
+          for (const cue of pick) {
+            phaseBanner.queue = [cue];
+            nextPhaseBanner();
+            clearTimeout(phaseBanner.timer);
+          }
+          hidePhaseBanner();
+          return {kinds, sounds: window.__sounds.slice()};
+        }"""
+    )
+    check.ok(
+        {"round", "combat", "scouts", "turn"} <= set(heard["kinds"])
+        and heard["sounds"] == ["round", "combat", "scouts"],
+        "a Round, combat and Scouts banner each plays its own sound; a turn or"
+        " the Endgame plays none",
+        heard,
+    )
+    check.ok(
+        "decision" not in page.evaluate("window.__sounds"),
+        "a local table plays no decision sound",
+    )
+    played = page.evaluate(
+        """() => ['decision', 'round', 'combat', 'scouts'].map((name) => {
+          try { window.__playSound(name); return true; } catch (e) { return false; }
+        })"""
+    )
+    check.ok(all(played), "every sound plays through the real Web Audio path", played)
+
+
 def live(browser, base: str) -> None:
     print("[A] a seeded Scouts game, one human seat against three heuristic seats")
     context, page, rec = open_context(browser, "phase-banner", LAPTOP_VIEWPORT)
@@ -704,6 +757,7 @@ def live(browser, base: str) -> None:
     check.ok(page.is_hidden("#phase-banner"), "joining a game is a quiet baseline")
     # A whole game first for the cues; a second one for the turn lifecycle.
     seen = walk(page)
+    sounds(page)
     look(page, seen, "look")
     page.evaluate("leaveGame()")
     check.ok(page.is_hidden("#phase-banner"), "leaving the table clears the banner")
@@ -781,6 +835,16 @@ def remote(browser) -> None:
             host.evaluate("window.__banners.some((b) => b.cue === 'round')"),
             "the round 1 reveal after the Leader draft shows on the host's screen",
         )
+        check.ok(
+            host.evaluate("window.__sounds.includes('round')"),
+            "the host's round 1 banner, shown by the live queue, sounds",
+            host.evaluate("window.__sounds"),
+        )
+        check.ok(
+            guest.evaluate("window.__sounds.includes('decision')"),
+            "a decision coming to the guest's seat plays the decision sound",
+            guest.evaluate("window.__sounds"),
+        )
         host_context.close()
         guest_context.close()
 
@@ -802,6 +866,11 @@ def playback(browser, base: str) -> None:
         all(not b["mine"] and b["title"].endswith("차례") for b in turns),
         "AI-only playback announces each turn as another player's",
         turns,
+    )
+    check.ok(
+        page.evaluate("window.__sounds.length") == 0,
+        "a review plays no sound",
+        page.evaluate("window.__sounds"),
     )
     page.evaluate("stopPlayback()")
     check.ok(page.is_hidden("#phase-banner"), "pausing playback clears the banners")

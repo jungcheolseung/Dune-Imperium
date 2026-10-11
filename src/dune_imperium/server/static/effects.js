@@ -780,6 +780,8 @@ function nextPhaseBanner() {
     : (waiting >= 2 ? busy : full) * cueScale();
   phaseBanner.shownAt = performance.now();
   drawPhaseBanner();
+  /* A Round, combat or Scouts banner sounds once, as it appears. */
+  playPhaseSound(phaseBanner.current);
   phaseBanner.timer = setTimeout(endPhaseBanner, phaseBanner.duration);
 }
 
