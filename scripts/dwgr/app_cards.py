@@ -1170,6 +1170,10 @@ INTRIGUE_TYPE_WORD = {
     "ko": {"Plot": "음모", "Combat": "전투", "Endgame": "종료 단계"},
 }
 INTRIGUE_TEXT = [1, 0.99, 0.92, 1]
+# The title band of the Intrigue frames runs from 7 to 144 units below the
+# card's top (inside the black border); the print centres the title in it,
+# one line or two.
+INTRIGUE_BAND_MIDDLE = 75.5
 
 
 def intrigue_spec(inp, content_id):
@@ -1398,6 +1402,7 @@ def bind_intrigue_prefab(inp, spec, lang):
             + R.find_all(t, "CardTypeText_Anchor")[0]["children"]
         ):
             n["fallback"] = str(KOREAN_FONT_BOLD)
+    centre_ink(inp, head, R.comp(t, "RT")["size"], INTRIGUE_BAND_MIDDLE)
     return bind_prefab_texts(inp, t, lang, spec["prefab"])
 
 
@@ -1447,9 +1452,8 @@ def bind_intrigue(inp, spec, lang):
     }
     if lang == "ko":
         head["fallback"] = str(KOREAN_FONT_BOLD)
-    R.comp(head, "RT")["size"][1] = (
-        196.0  # centre the title in the black band, as printed
-    )
+    R.comp(head, "RT")["size"][1] = 196.0
+    centre_ink(inp, head, R.comp(t, "RT")["size"], INTRIGUE_BAND_MIDDLE)
     R.comp(R.find(t, "CardTypeText_Anchor"), "RT")["size"][1] = (
         92.0  # type line nearer the edge
     )
@@ -2324,7 +2328,14 @@ def probe_ink(inp, node, w, h, pad=60.0, scale=2.0, layout_child=False):
 
 def tech_centre_title(inp, head):
     """Move the title so its ink sits in the middle of the gold band."""
-    probe = copy.deepcopy(head)
+    centre_ink(inp, head, (794.0, 520.0), TECH_BAND_MIDDLE)
+
+
+def centre_ink(inp, node, card_size, middle):
+    """Move a card's direct child node up or down so that its ink, drawn
+    alone on a card-sized root, centres on `middle` units below the top."""
+    w, h = card_size
+    probe = copy.deepcopy(node)
     root = {
         "name": "Probe",
         "active": True,
@@ -2333,7 +2344,7 @@ def tech_centre_title(inp, head):
             {
                 "_": "RT",
                 "pos": [0.0, 0.0],
-                "size": [794.0, 520.0],
+                "size": [w, h],
                 "amin": [0.5, 0.5],
                 "amax": [0.5, 0.5],
                 "pivot": [0.5, 0.5],
@@ -2341,10 +2352,10 @@ def tech_centre_title(inp, head):
             }
         ],
     }
-    img = R.CardRenderer(inp.sprites, inp.text, 2.0).render(root, 794, 520)
+    img = R.CardRenderer(inp.sprites, inp.text, 2.0).render(root, int(w), int(h))
     box = img.getchannel("A").point(lambda v: 255 if v > 60 else 0).getbbox()
     if box:
-        R.comp(head, "RT")["pos"][1] += (box[1] + box[3]) / 4.0 - TECH_BAND_MIDDLE
+        R.comp(node, "RT")["pos"][1] += (box[1] + box[3]) / 4.0 - middle
 
 
 def tech_rows(text):
