@@ -19,9 +19,15 @@ from pathlib import Path
 import pytest
 
 from dune_imperium.core.chance import ChanceOutcome
-from dune_imperium.server.access import AccessMode
+from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.session_log import SEALED_ACTION_IDS, LoggedStep
-from dune_imperium.server.sessions import GameSession, GameSessionManager, JsonObject
+from dune_imperium.server.sessions import (
+    GameSession,
+    GameSessionManager,
+    JsonObject,
+    SeatAccessError,
+    UnknownGameError,
+)
 
 TABLE = ("heuristic_uprising_table",) * 4
 ENTRY_KEYS = {"index", "round", "seat", "delta", "total"}
@@ -384,8 +390,6 @@ def test_sealed_scouts_choices_never_score() -> None:
 
 
 def test_an_unknown_game_has_no_ledger() -> None:
-    from dune_imperium.server.sessions import UnknownGameError
-
     with pytest.raises(UnknownGameError):
         GameSessionManager().vp_ledger("nope")
 
@@ -410,9 +414,16 @@ def _app(tmp_path: Path, manager: GameSessionManager | None = None) -> object:
     )
 
 
-def test_a_remote_seat_and_a_client_holding_none_read_the_same_ledger(
+def test_a_remote_ledger_is_for_the_seated_until_the_game_ends(
     tmp_path: Path,
 ) -> None:
+    """On a remote server a client with only the room link gets no more than
+    before while the game runs (the summary carries no Victory Points until
+    the end; spectators are a non-goal, docs/multiplayer-design.md): any of
+    the game's seat cookies reads the ledger, the host's admin cookie alone
+    does not, and once a game has finished the room link is enough, as for
+    the review (OQ-010 ruling 4)."""
+
     testclient = pytest.importorskip("fastapi.testclient")
     manager = GameSessionManager(access=AccessMode.REMOTE, admin_key=ADMIN_KEY)
     app = _app(tmp_path, manager)
@@ -428,15 +439,52 @@ def test_a_remote_seat_and_a_client_holding_none_read_the_same_ledger(
     claim = seated.post(f"/games/{game_id}/seats/0/claim", json={"name": "Ann"})
     assert claim.status_code == 200, claim.text
 
-    stranger = testclient.TestClient(app).get(f"/games/{game_id}/vp-ledger")
-    assert stranger.status_code == 200, stranger.text
     mine = seated.get(f"/games/{game_id}/vp-ledger")
     assert mine.status_code == 200, mine.text
-    assert stranger.json() == mine.json() == manager.vp_ledger(game_id)
     assert set(mine.json()) == PAYLOAD_KEYS
-
+    stranger = testclient.TestClient(app).get(f"/games/{game_id}/vp-ledger")
+    assert stranger.status_code == 403, stranger.text
+    host = admin.get(f"/games/{game_id}/vp-ledger")
+    assert host.status_code == 403, host.text
     missing = testclient.TestClient(app).get("/games/nope/vp-ledger")
     assert missing.status_code == 404
+
+    finished = admin.post("/games", json={"seats": list(TABLE), "game_seed": 1})
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["finished"] is True
+    done = finished.json()["game_id"]
+    after = testclient.TestClient(app).get(f"/games/{done}/vp-ledger")
+    assert after.status_code == 200, after.text
+    assert after.json() == manager.vp_ledger(done)
+
+
+def test_a_remote_games_ledger_opens_to_the_room_link_when_it_ends() -> None:
+    """The same game: refused to a seatless client while it runs, served to
+    it once the seat has played it to the end."""
+
+    manager = GameSessionManager(access=AccessMode.REMOTE, admin_key=ADMIN_KEY)
+    admin = Credentials(admin_key=ADMIN_KEY)
+    summary = manager.create_game(
+        ("human", *TABLE[1:]), game_seed=21, credentials=admin
+    )
+    game_id = str(summary["game_id"])
+    claim = manager.claim_seat(game_id, 0, "Ann")
+    seat = Credentials(seat_tokens=frozenset({claim.token}))
+    summary = claim.summary
+    manager.vp_ledger(game_id, credentials=seat)
+    with pytest.raises(SeatAccessError):
+        manager.vp_ledger(game_id)
+    for _ in range(3000):
+        if summary["finished"]:
+            break
+        revision = _int(summary["revision"])
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(game_id, 0, revision, credentials=seat)
+            continue
+        summary = manager.apply_action(game_id, 0, revision, 0, credentials=seat)
+    assert summary["finished"] is True
+    session = manager._get(game_id)
+    assert _points(manager.vp_ledger(game_id)) == _seat_points(session)
 
 
 def test_an_open_server_serves_a_finished_games_ledger(tmp_path: Path) -> None:

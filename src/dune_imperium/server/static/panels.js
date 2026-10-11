@@ -251,11 +251,13 @@ function renderSeats() {
       phraseText("{victory_point}"),
       player.victory_points,
     );
-    const pointsOpener = `seat-vp:${seat}`;
-    points.dataset.pileOpener = pointsOpener;
-    openerStat(points, t("panels.vp_ledger_open", { points: player.victory_points }), () =>
-      togglePileViewer({ kind: "vp", seat, opener: pointsOpener }, points)
-    );
+    if (vpLedgerReadable()) {
+      const pointsOpener = `seat-vp:${seat}`;
+      points.dataset.pileOpener = pointsOpener;
+      openerStat(points, t("panels.vp_ledger_open", { points: player.victory_points }), () =>
+        togglePileViewer({ kind: "vp", seat, opener: pointsOpener }, points)
+      );
+    }
     /* Counts that are not already visible on a board track stay at a glance.
        Spice before Solari (user, 2026-10-11: "스파이스/솔라리/물 순으로").
        Immortality p. 16 names the green cube as the Specimen icon. */
@@ -924,6 +926,17 @@ const VP_CAUSE_KINDS = new Set([
   "agent_card_reward_chosen",
 ]);
 
+/* Whether this page may read the ledger: always on an open server; on a
+   remote one while it holds a seat of the game, or once the game has
+   finished (sessions.py vp_ledger: a client with only the room link gets
+   nothing more than before until the end). Elsewhere the count is a plain
+   number. */
+function vpLedgerReadable() {
+  return (
+    !isRemote() || mySeats().length > 0 || Boolean(state.summary && state.summary.finished)
+  );
+}
+
 /* The ledger for the state on screen: `{data, fresh, error}`, `data` the
    last one fetched (possibly older than the page, while a newer one
    loads). Starts that fetch when there is none. */
@@ -981,7 +994,7 @@ function shownLog() {
    so a reader (or a check) knows the rows may still be catching up. */
 function vpLedgerContent(key, view) {
   const player = view.players.find((p) => p.player === key.seat);
-  if (!player) return null;
+  if (!player || !vpLedgerReadable()) return null;
   const { data, fresh, error } = vpLedgerState();
   const title = t("panels.vp_ledger_title", {
     name: seatLeaderName(key.seat),

@@ -1017,7 +1017,9 @@ class GameSessionManager:
             "entries": _log_entries_json(entries, seat, finished, after),
         }
 
-    def vp_ledger(self, game_id: str) -> JsonObject:
+    def vp_ledger(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
         """Return how every seat's Victory Points moved, step by step.
 
         ``entries`` lists every live step that changed a seat's Victory
@@ -1026,14 +1028,19 @@ class GameSessionManager:
         so a seat's ``start`` plus its deltas is its points now. Steps taken
         back never appear (``vp_ledger``, the module, says how it is walked).
 
-        It is table knowledge, like the summary: the Victory Point track is
-        on the board in front of every seat, and a row names its step only
-        by the log index every seat's log already carries, never by what
-        was done. So no seat is asked for and no credentials are checked: a
-        remote seat, a client holding none and a finished game's review read
-        it alike. Rows past a client's own log (its ``count``) are a state
-        the client has not drawn yet; a review cuts the rows at its cursor's
-        last log entry the same way.
+        It is table knowledge: the Victory Point track is on the board in
+        front of every seat, and a row names its step only by the log index
+        every seat's log already carries, never by what was done. So it is
+        the same for every seat and no seat is asked for. Who may read it
+        is the table, though, not anyone holding the room link: a remote
+        client that holds no seat gets no more than before (the summary,
+        which carries no Victory Points until the end), so before the game
+        ends a remote server serves it only to a client proving one of the
+        game's seats (``_authorize_table_locked``); once the game has
+        finished everything is public (OQ-010 ruling 4) and the room link is
+        enough, as for ``review``. Rows past a client's own log (its
+        ``count``) are a state the client has not drawn yet; a review cuts
+        the rows at its cursor's last log entry the same way.
 
         The ledger is cached on the session and only extended by the steps
         played since; the walk runs off the session lock, like a review's
@@ -1042,6 +1049,7 @@ class GameSessionManager:
 
         session = self._get(game_id)
         with session.lock:
+            self._authorize_table_locked(session, credentials)
             live = _indexed_live_steps(session)
             log_count = len(session.log)
             cached = session.vp_ledger
@@ -1497,6 +1505,27 @@ class GameSessionManager:
         token = session.seat_tokens.get(seat)
         if token is None or not token_matches(token, credentials.seat_tokens):
             raise SeatAccessError(f"this client does not hold seat {seat}")
+
+    def _authorize_table_locked(
+        self, session: GameSession, credentials: Credentials
+    ) -> None:
+        """Refuse a remote client that holds none of the game's seats while
+        the game runs: public table facts are for the table until the end.
+
+        Any seat's token will do, the facts being the same for every seat;
+        the admin key opens nothing, as in ``_authorize_seat_locked``. The
+        caller holds the session lock.
+        """
+
+        if self._access is AccessMode.OPEN or _is_finished(session.state):
+            return
+        if not any(
+            token_matches(token, credentials.seat_tokens)
+            for token in session.seat_tokens.values()
+        ):
+            raise SeatAccessError(
+                "only a client holding a seat may read this before the game ends"
+            )
 
     def _settle_locked(
         self, session: GameSession, before: GameState, action: DomainAction

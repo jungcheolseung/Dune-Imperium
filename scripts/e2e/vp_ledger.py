@@ -30,8 +30,10 @@ reviewed points); back at the end, all rows return.
 stays open while the game is played on, and when the watched seat's points
 change it refreshes, its rows adding up to the new count.
 
-[C] A remote server: the seated host opens a seat's ledger, and a browser
-holding no seat reads the same ledger from the server.
+[C] A remote server: the seated host opens a seat's ledger; a browser
+holding no seat is refused it while the game runs (403, and its page offers
+no opener), and reads a finished game's ledger with the room link alone,
+opening it from the review.
 
 Every scenario: no failed request, no JS error. E2E_SHOTS_DIR names where
 the screenshots go (vp_ledger_{ko,en}_{1366,1600}.png), otherwise a
@@ -409,6 +411,50 @@ def scenario_live(base: str, browser: Any) -> None:
     context.close()
 
 
+FETCH_LEDGER_JS = """async (id) => {
+  const response = await fetch(`/games/${id}/vp-ledger`);
+  return { status: response.status, body: await response.json() };
+}"""
+
+CREATE_AI_GAME_JS = """async () => {
+  const response = await fetch('/games', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seats: ['heuristic', 'heuristic', 'heuristic',
+                                   'heuristic'], game_seed: 3 }),
+  });
+  return response.json();
+}"""
+
+
+def check_finished_remote(guest: Any, host: Any, base: str) -> None:
+    """A finished game is public (OQ-010 ruling 4): the room link alone reads
+    its ledger, and a seatless browser watching it opens the viewer."""
+
+    done = host.evaluate(CREATE_AI_GAME_JS)
+    check.ok(done.get("finished") is True, "[remote] the host made a finished AI game")
+    allowed = guest.evaluate(FETCH_LEDGER_JS, done["game_id"])
+    check.ok(
+        allowed["status"] == 200 and "entries" in allowed["body"],
+        "[remote] the room link reads a finished game's ledger",
+        allowed["status"],
+    )
+    guest.goto(f"{base}/#game={done['game_id']}")
+    guest.wait_for_function(
+        "(id) => state.gameId === id && state.review !== null && state.view !== null",
+        arg=done["game_id"],
+    )
+    guest.evaluate("stopPlayback()")
+    end = guest.evaluate("state.review.meta.step_count")
+    guest.evaluate("(cursor) => reviewSeek(cursor)", end)
+    guest.wait_for_function(
+        "(end) => state.review.cursor === end && !state.review.seek", arg=end
+    )
+    info = open_ledger(guest, 0)
+    check_rows(info, "[remote] seatless, finished game, seat 0", "ko")
+    close_viewer(guest)
+
+
 def scenario_remote(browser: Any) -> None:
     print("[C] a remote server: a seat and a browser holding none")
     with server("--remote", "--admin-key", KEY) as (base, log_path):
@@ -445,24 +491,30 @@ def scenario_remote(browser: Any) -> None:
             close_viewer(host)
             guest.goto(f"{base}/#game={game_id}")
             guest.wait_for_selector("#lobby-screen:not([hidden])")
-            read = guest.evaluate(
-                "async (id) => { const r = await fetch(`/games/${id}/vp-ledger`);"
-                " return { status: r.status, body: await r.json() }; }",
-                game_id,
-            )
-            mine = host.evaluate(
-                "async (id) => (await fetch(`/games/${id}/vp-ledger`)).json()", game_id
+            refused = guest.evaluate(FETCH_LEDGER_JS, game_id)
+            check.ok(
+                refused["status"] == 403 and "entries" not in refused["body"],
+                "[remote] a browser holding no seat gets no ledger while the game"
+                " runs (403)",
+                refused,
             )
             check.ok(
-                read["status"] == 200 and read["body"] == mine,
-                "[remote] a browser holding no seat reads the same ledger",
-                read["status"],
+                not guest.evaluate("vpLedgerReadable()")
+                and host.evaluate("vpLedgerReadable()"),
+                "[remote] so its page offers no opener; the seated host's does",
             )
+            check_finished_remote(guest, host, base)
             for name, recorder in (("host", rec), ("guest", guest_rec)):
                 failed = [
-                    r for r in recorder.requests if r[3] is not None and r[3] >= 400
+                    r
+                    for r in recorder.requests
+                    if r[3] is not None
+                    and r[3] >= 400
+                    and not (name == "guest" and r[3] == 403 and "vp-ledger" in r[2])
                 ]
-                check.ok(not failed, f"[C] {name}: no failed requests", failed[:5])
+                check.ok(
+                    not failed, f"[C] {name}: no other failed requests", failed[:5]
+                )
         finally:
             context.close()
             guest_context.close()
