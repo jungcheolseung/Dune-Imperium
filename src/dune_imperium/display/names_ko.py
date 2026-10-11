@@ -13,8 +13,11 @@ that made them (the WSL laptop; the assets README says why).
 
 Keyed like the display catalog's sections (``cards`` holds Imperium,
 Tleilaxu, starting, Reserve and promo cards; ``skills`` the Sardaukar
-Commander Skills, ``tech`` the Tech tiles). Navigation cards print no title
-and board spaces keep their English names, so neither is here. The
+Commander Skills, ``tech`` the Tech tiles). Two sections come from the
+Korean rulebooks instead of card photos: ``spaces``, the board spaces'
+names from the Korean Board Space Guide (the board scan itself stays
+English), and ``objectives``, which print no title. Navigation cards print
+no title either and are not here. The
 engine's English name sometimes carries a distinguisher the card does not
 print: a contract's numeral ("Arrakeen I") or spice threshold ("Harvest
 3+"), and a Skirmish's battle icon. The Korean name carries the same
@@ -309,6 +312,55 @@ _TECH: Final[dict[str, str]] = {
 }
 
 
+# Board spaces, from the Korean Board Space Guide, not a photo (user decision
+# 2026-10-11: the board scan stays English, the choice list and the log name
+# a space in Korean). The KR and EN guides list the same 22 spaces with the
+# same Agent icon, cost and effect, each in its own alphabetical order
+# [Board Guide pp. 1-2]; every pair below was matched by that content.
+# Tuek's Sietch is Bloodlines' [Bloodlines p. 12], as Esmar Tuek's Korean
+# card prints it (display.leaders_ko).
+_SPACES: Final[dict[str, str]] = {
+    "accept_contract": "계약 수락",
+    "arrakeen": "아라킨",
+    "assembly_hall": "회의장",
+    "deep_desert": "사막 심부",
+    "deliver_supplies": "보급품 배송",
+    "desert_tactics": "사막 전술",
+    "dutiful_service": "순종적인 공헌",
+    "espionage": "첩보 활동",
+    "fremkit": "프렘 행낭",
+    "gather_support": "지원자 모집",
+    "hagga_basin": "하가 분지",
+    "heighliner": "하이라이너",
+    "high_council": "원로회",
+    "imperial_basin": "제국 분지",
+    "imperial_privilege": "제국 특권",
+    "research_station": "연구 기지",
+    "sardaukar": "사다우카",
+    "secrets": "비밀",
+    "shipping": "운송",
+    "sietch_tabr": "시치 타브르",
+    "spice_refinery": "스파이스 정제소",
+    "swordmaster": "소드마스터",
+    "tuek_sietch": "튜엑의 시치",
+}
+
+
+# Objective cards print no title, only their battle icon and, on some, the
+# player counts they are for. Named as the Korean rulebook names them, the
+# icon's word before 목적 카드 ("오니솝터 목적 카드" [Main p. 3]; 목적 카드
+# [Main pp. 3, 5]; the icons [Main p. 20]), with the printed mark ("4/6P",
+# "1-3P" [Main p. 5]) where the English id has one: the two Crysknife
+# cards differ by the 4/6P that only the second prints.
+_OBJECTIVES: Final[dict[str, str]] = {
+    "objective_crysknife_1": "크리스나이프 목적 카드",
+    "objective_crysknife_2": "크리스나이프 목적 카드 4/6P",
+    "objective_desert_mouse": "사막쥐 목적 카드",
+    "objective_desert_mouse_4_6p": "사막쥐 목적 카드 4/6P",
+    "objective_ornithopter_1_3p": "오니솝터 목적 카드 1-3P",
+}
+
+
 KOREAN_CARD_NAMES: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
     {
         "cards": MappingProxyType(_CARDS),
@@ -318,6 +370,8 @@ KOREAN_CARD_NAMES: Final[Mapping[str, Mapping[str, str]]] = MappingProxyType(
         "leaders": MappingProxyType(_LEADERS),
         "skills": MappingProxyType(_SKILLS),
         "tech": MappingProxyType(_TECH),
+        "spaces": MappingProxyType(_SPACES),
+        "objectives": MappingProxyType(_OBJECTIVES),
     }
 )
 """``{catalog section: {id: Korean name}}``; an absent id keeps its English."""

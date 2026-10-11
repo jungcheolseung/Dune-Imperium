@@ -4,7 +4,6 @@ import dataclasses
 import sys
 from pathlib import Path
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS,
     ConflictDefinition,
@@ -43,18 +42,12 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
     terms_keys,
 )
 
-# Every board space's English name may appear, untranslated, inside a
-# Korean condition/reward line (glossary "공간 이름" row).
-_SPACE_NAMES = frozenset(space.name for space in BOARD_SPACES_BY_ID.values())
-
 
 def _allowed_latin_for_condition(
     kind: ContractConditionKind, target: str
 ) -> frozenset[str]:
     """English names a Korean condition line may legitimately still carry."""
 
-    if kind is ContractConditionKind.BOARD_SPACE:
-        return frozenset({BOARD_SPACES_BY_ID[target].name})
     if kind is ContractConditionKind.ACQUIRE_CARD:
         english, korean = _card_name(target), _card_name_ko(target)
         return frozenset({english}) if english == korean else frozenset()
@@ -243,7 +236,7 @@ def test_every_conflict_reward_ko_line_matches_the_english_count_and_terms() -> 
             assert line.startswith(label)
             assert line.strip() != label.strip()
             assert_placeholders_are_terms(line, terms)
-            assert_no_stray_latin(line, _SPACE_NAMES)
+            assert_no_stray_latin(line)
 
 
 def test_ko_reward_lines_never_mix_trash_and_discard() -> None:
@@ -309,7 +302,7 @@ def test_contract_condition_text_ko_resolves_a_board_space_name() -> None:
     contract = CONTRACTS_BY_ID["arrakeen_i"]
 
     assert contract_condition_text_ko(contract.condition) == (
-        "Arrakeen 장소로 {agent}를 보냄"
+        "아라킨 장소로 {agent}를 보냄"
     )
 
 
@@ -370,7 +363,7 @@ def test_conflict_reward_text_ko_renders_a_control_space_row() -> None:
     assert conflict.rewards is not None
 
     assert conflict_reward_text_ko(conflict.rewards[0]) == (
-        "{solari:2}, {troop:2}, Arrakeen 지배"
+        "{solari:2}, {troop:2}, 아라킨 지배"
     )
 
 
@@ -379,7 +372,7 @@ def test_conflict_reward_text_ko_renders_an_optional_trade() -> None:
     assert conflict.rewards is not None
 
     assert conflict_reward_text_ko(conflict.rewards[0]) == (
-        "{victory_point:1}, Arrakeen 지배, "
+        "{victory_point:1}, 아라킨 지배, "
         "{spy} 2 소환 가능 {arrow_right} {victory_point:1}"
     )
 

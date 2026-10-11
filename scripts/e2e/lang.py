@@ -232,14 +232,14 @@ KOREAN_SCOPED_ENGLISH = ((".slot-deck", ("교전 III", "교전 II")),)
 
 
 # The seat status line, every seat opened: in Korean the High Council seat
-# and the Swordmaster are 원로회 and 소드마스터, which the name strip above
-# cannot tell from the board spaces of the same English names.
+# and the Swordmaster are 원로회 and 소드마스터 (since 2026-10-11 the board
+# spaces of the same names are too, so only the status lines are read).
 SEAT_STATUS_JS = r"""() => {
     const before = expandedSeats;
     expandedSeats = new Set(state.view.players.map((p) => p.player));
     renderSeats();
     /* Only the status lines: the contracts and placed-Agent lines name
-       catalog contracts and spaces ("High Council"), which stay English. */
+       catalog contracts and spaces by their catalog names. */
     const label = t('panels.status_label');
     const text = [...document.querySelectorAll('#seats .seat-detail .cardline')]
         .filter((line) => line.querySelector('strong')?.textContent.trim() === label)

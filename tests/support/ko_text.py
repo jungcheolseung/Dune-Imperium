@@ -10,7 +10,7 @@ generator (a later step's ``effect_dsl_text_ko.py``, ``cards_ko`` helpers,
 - every ``{term}``/``{term:count}`` placeholder names a real
   ``static/labels.js`` ``TERMS`` key (``assert_placeholders_are_terms``);
 - a Korean line holds no Latin-alphabet word beyond an explicitly allowed
-  one — a board-space name (always English), a card with no known Korean
+  one — a card with no known Korean
   print, or another caller-supplied exception
   (``assert_no_stray_latin``);
 - an English line that trashes renders 폐기 (or the ``{trash}``/
@@ -90,8 +90,7 @@ def assert_no_stray_latin(
     """Every Latin-alphabet run in ``text`` sits inside an allowed phrase.
 
     ``allowed`` holds whole phrases that may legitimately stay English — a
-    board-space name (glossary "공간 이름" row: always English), a card
-    with no known Korean print, a Leader's own name, or anything else a
+    card with no known Korean print, a Leader's own name, or anything else a
     caller passes. Phrases are stripped longest-first, so a short name
     nested inside a longer one (e.g. "Arrakeen" inside "Arrakeen I") is not
     double-counted; whatever Latin remains after that is a stray leak.

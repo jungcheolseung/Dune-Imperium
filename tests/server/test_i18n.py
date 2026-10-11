@@ -534,14 +534,14 @@ def test_imperial_privilege_recall_labels_name_only_the_recall() -> None:
             assert "{draw}" not in table[action_id], (action_id, table[action_id])
             assert "{agent}" in table[action_id], (action_id, table[action_id])
     assert korean["recall_agent_for_imperial_privilege"] == (
-        "{agent} 소환 (Imperial Privilege)"
+        "{agent} 소환 (제국 특권)"
     )
     assert english["recall_agent_for_imperial_privilege"] == (
         "Recall {agent} (Imperial Privilege)"
     )
     # The confirm reads like its Contract sibling's.
     assert korean["resolve_imperial_privilege_without_recall"] == (
-        "{agent} 소환 없이 확인 (Imperial Privilege)"
+        "{agent} 소환 없이 확인 (제국 특권)"
     )
     assert english["resolve_imperial_privilege_without_recall"] == (
         "Confirm without recalling {agent} (Imperial Privilege)"

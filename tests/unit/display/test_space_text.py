@@ -56,13 +56,11 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
     terms_keys,
 )
 
-# Every board space's own English name may appear, untranslated, inside a
-# Korean effect/note line (glossary "공간 이름" row). Esmar Tuek (the
-# leader tuek_sietch's flavor line names) has a confirmed Korean-print
-# transcription in names_ko.py and is rendered from it, so it is not an
-# allowed-Latin exception here.
-_SPACE_NAMES = frozenset(space.name for space in BOARD_SPACES_BY_ID.values())
-_ALLOWED_LATIN = _SPACE_NAMES
+# A Korean effect/note line names a board space in Korean, by the Korean
+# Board Space Guide (display.names_ko; glossary "공간 이름" row, 2026-10-11),
+# so no English word is allowed in it. Esmar Tuek (the leader tuek_sietch's
+# flavor line names) has a confirmed Korean-print transcription in
+# names_ko.py and is rendered from it.
 
 
 @pytest.mark.parametrize("choam_module", (False, True))
@@ -352,7 +350,7 @@ def test_every_space_option_ko_renders_valid_korean(choam_module: bool) -> None:
         for english, korean in zip(effects, effects_ko, strict=True):
             assert isinstance(korean, str) and korean.strip(), space.space_id
             assert_placeholders_are_terms(korean, terms)
-            assert_no_stray_latin(korean, _ALLOWED_LATIN)
+            assert_no_stray_latin(korean)
             assert_trash_and_discard_match(english, korean)
             assert_no_summon_for_sandworm(english, korean)
 
@@ -499,7 +497,7 @@ def test_notes_ko_cover_the_same_spaces_as_english() -> None:
         ):
             assert isinstance(korean, str) and korean.strip(), space.space_id
             assert_placeholders_are_terms(korean, terms)
-            assert_no_stray_latin(korean, _ALLOWED_LATIN)
+            assert_no_stray_latin(korean)
             assert_trash_and_discard_match(english, korean)
             assert_no_summon_for_sandworm(english, korean)
     assert "{persuasion:1}" in space_notes_ko("assembly_hall")[0]

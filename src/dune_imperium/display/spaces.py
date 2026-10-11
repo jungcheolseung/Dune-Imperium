@@ -49,9 +49,10 @@ FACTION_NAMES: Mapping[Faction, str] = MappingProxyType(
 )
 
 # Board-space text below has a Korean twin (feature decided 2026-09-25, Step
-# K4: the effect text the engine *generates* gets a Korean version; a board
-# space's own printed NAME stays English, per docs/rules/glossary-ko.md's
-# "공간 이름" row). Every Korean function/table here mirrors the English one
+# K4: the effect text the engine *generates* gets a Korean version). A
+# space named inside a Korean line goes by its Korean Board Space Guide name
+# (``display.names_ko``, glossary-ko.md's "공간 이름" row, 2026-10-11).
+# Every Korean function/table here mirrors the English one
 # directly above it one-for-one; a test asserts the ``_KO`` tables share the
 # same keys as their English counterparts. Word choice follows only
 # ``docs/rules/glossary-ko.md`` (game terms) or ordinary Korean grammar for
@@ -293,8 +294,9 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
 # The Swordmaster note is the Korean Board Guide's own cost line ("비용:
 # 아무도 소드마스터가 없다면 8 솔라리, 누군가가 소드마스터를 얻었다면 6
 # 솔라리" [Board Guide p. 2]); 소드마스터 is the glossary's word for the
-# piece a player gains ([Main p. 17]; the board space keeps its English
-# name). The Shield Wall note follows the Korean rulebook's own sentences
+# piece a player gains ([Main p. 17]) and the board space's own Korean name
+# [Board Guide pp. 1-2]. The Shield Wall note follows the Korean rulebook's
+# own sentences
 # ("이 토큰이 놓여 있는 동안, 이렇게 보호받는 세 장소 중 어딘가에서 일어나는
 # 교전에서는 모래벌레를 부를 수 없습니다", "방어벽 토큰이 한번 제거되고
 # 나면, 이제 아무 교전에서든 모래벌레를 부를 수 있게 됩니다" [Main p. 10]):
@@ -306,8 +308,8 @@ SPACE_NOTES_KO: Mapping[str, tuple[str, ...]] = MappingProxyType(
             " 얻었다면 {solari:6}",
         ),
         "sietch_tabr": (
-            "{shield_wall}: 토큰이 게임판에 놓여 있는 동안 Arrakeen,"
-            " Spice Refinery, Imperial Basin {conflict}에서는 {sandworm}를"
+            "{shield_wall}: 토큰이 게임판에 놓여 있는 동안 아라킨,"
+            " 스파이스 정제소, 제국 분지 {conflict}에서는 {sandworm}를"
             " 부를 수 없음. 토큰이 제거되고 나면 아무 {conflict}에서든"
             " {sandworm}를 부를 수 있음",
         ),

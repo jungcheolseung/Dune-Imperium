@@ -12,6 +12,7 @@ from pathlib import Path
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import SCOUTS_ITEM_IDS
 from dune_imperium.content.arrakeen_scouts import EVENTS_BY_ID
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.state import GameState
@@ -25,6 +26,7 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.server.catalog import build_catalog
 
 _GLOSSARY = Path(__file__).resolve().parents[3] / "docs/rules/glossary-ko.md"
+_SPACE_NAMES = frozenset(space.name for space in BOARD_SPACES_BY_ID.values())
 
 
 def test_every_item_has_names_and_lines() -> None:
@@ -134,8 +136,10 @@ def test_an_event_line_and_a_subcommittee_are_described() -> None:
 def test_korean_scouts_text_leaves_no_rules_word_in_english() -> None:
     """The Korean Scouts texts say rules words in Korean ("supply" is 개인
     공급처, the research track 연구 트랙; docs/rules/glossary-ko.md) or
-    through a {term} token. Board space and card names printed on the
-    English board scan stay as printed (capitalised), and so pass."""
+    through a {term} token. A board space goes by its Korean name (the
+    Korean Board Space Guide, display.names_ko), never the English one on
+    the board scan; card names without a known Korean print stay English
+    (capitalised), and so pass."""
 
     source = (
         Path(__file__).resolve().parents[3]
@@ -148,4 +152,5 @@ def test_korean_scouts_text_leaves_no_rules_word_in_english() -> None:
                 continue
             bare = re.sub(r"\{[^}]*\}", " ", text)
             stray += [(number, word) for word in re.findall(r"\b[a-z]{2,}\b", bare)]
+            stray += [(number, name) for name in _SPACE_NAMES if name in bare]
     assert not stray, stray

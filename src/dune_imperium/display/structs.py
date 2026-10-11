@@ -129,6 +129,12 @@ def _card_name_ko(card_id: str) -> str:
     return korean if korean is not None else _card_name(card_id)
 
 
+def _space_name_ko(space_id: str) -> str:
+    """The board space's Korean name (every space has one)."""
+
+    return KOREAN_CARD_NAMES["spaces"][space_id]
+
+
 def contract_condition_text(condition: ContractCondition) -> str:
     """Render one standard Contract's printed completion condition."""
 
@@ -168,13 +174,13 @@ def contract_condition_text_ko(condition: ContractCondition) -> str:
     glossary-ko.md``: "그 장소에 에이전트를 보내면 완수됩니다", "즉시 계약은
     그 계약을 가져가자마자 완수됩니다") — kept distinct from Acquire's 획득
     so the same word does not mean two different actions (2026-09-25
-    review). Board-space names stay English (glossary "공간 이름" row).
+    review). A board space goes by its Korean Board Space Guide name
+    (``display.names_ko``, glossary "공간 이름" row).
     """
 
     match condition.kind:
         case ContractConditionKind.BOARD_SPACE:
-            space = BOARD_SPACES_BY_ID[condition.target]
-            return f"{space.name} 장소로 {{agent}}를 보냄"
+            return f"{_space_name_ko(condition.target)} 장소로 {{agent}}를 보냄"
         case ContractConditionKind.HARVEST_SPICE:
             return (
                 "메이커 게임판 장소로 {agent}를 보내고, 그 차례에 "
@@ -482,7 +488,7 @@ def conflict_reward_text_ko(reward: ConflictReward) -> str:
     (`[Main p. 20]`), not the ``{control}`` icon: ``ICON_RULES`` has no rule
     for "Control" at all, so English's "Take control of X" stays plain words
     too — drawing the icon in Korean was a render-parity blocker (2026-09-25
-    review). The space name stays English (공간 이름 row) either way.
+    review). The space goes by its Korean name (공간 이름 row) either way.
     """
 
     parts: list[str] = []
@@ -520,8 +526,7 @@ def conflict_reward_text_ko(reward: ConflictReward) -> str:
             f"{{influence_{reward.influence_faction.value}:{reward.faction_influence}}}"
         )
     if reward.control_space_id is not None:
-        space = BOARD_SPACES_BY_ID[reward.control_space_id]
-        parts.append(f"{space.name} 지배")
+        parts.append(f"{_space_name_ko(reward.control_space_id)} 지배")
     parts.extend(_optional_trade_text_ko(reward))
     return ", ".join(parts)
 

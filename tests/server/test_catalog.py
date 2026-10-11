@@ -256,7 +256,6 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
     Latin (``tests/support/ko_text.py``, shared with the unit-level
     ``display/structs.py`` tests).
     """
-    from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
     from dune_imperium.content.uprising.contracts import (
         CONTRACTS_BY_ID,
         ContractConditionKind,
@@ -264,7 +263,6 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
     from dune_imperium.display.structs import _card_name, _card_name_ko
 
     terms = terms_keys()
-    space_names = frozenset(space.name for space in BOARD_SPACES_BY_ID.values())
     catalog = build_catalog()
 
     contracts = catalog["contracts"]
@@ -278,13 +276,11 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
         assert_placeholders_are_terms(condition_ko, terms)
         assert_placeholders_are_terms(reward_ko, terms)
         assert_no_stray_latin(reward_ko)
-        # A board space name always stays English; an acquired card with no
-        # known Korean print keeps its English name too.
+        # A board space goes by its Korean name; an acquired card with no
+        # known Korean print keeps its English name.
         condition = CONTRACTS_BY_ID[contract_id].condition
         allowed: frozenset[str] = frozenset()
-        if condition.kind is ContractConditionKind.BOARD_SPACE:
-            allowed = frozenset({BOARD_SPACES_BY_ID[condition.target].name})
-        elif condition.kind is ContractConditionKind.ACQUIRE_CARD:
+        if condition.kind is ContractConditionKind.ACQUIRE_CARD:
             english = _card_name(condition.target)
             korean = _card_name_ko(condition.target)
             allowed = frozenset({english}) if english == korean else frozenset()
@@ -304,7 +300,7 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
             assert isinstance(line, str)
             assert line.startswith(label)
             assert_placeholders_are_terms(line, terms)
-            assert_no_stray_latin(line, space_names)
+            assert_no_stray_latin(line)
 
 
 def test_catalog_serves_korean_personal_card_text() -> None:
@@ -659,7 +655,10 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     (``display.names_ko``); a card not read keeps only its English name.
     A distinguisher the engine's English name carries but the card does
     not print stays in the Korean name: a contract's numeral, a Skirmish's
-    battle icon in the glossary's words [Main p. 20]."""
+    battle icon in the glossary's words [Main p. 20]. Board spaces and
+    Objective cards are named from the Korean rulebooks instead (the Board
+    Space Guide; 목적 카드 [Main pp. 3, 5]), an Objective with the player
+    counts its face prints ("4/6P", "1-3P" [Main p. 5])."""
 
     from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 
@@ -674,10 +673,14 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
             assert entry["name_ko"] == name
             assert hangul.search(name), name
             # Latin only where the English has it too: a contract's numeral,
-            # or printed on the Korean card as well ("실험체 X-137").
+            # or printed on the Korean card as well ("실험체 X-137", an
+            # Objective's "4/6P").
             english = entry["name"]
             assert isinstance(english, str)
-            for latin in re.findall(r"[A-Za-z]+", name):
+            printed = name
+            if section == "objectives":
+                printed = re.sub(r"\b\d[-/]\dP$", "", name)
+            for latin in re.findall(r"[A-Za-z]+", printed):
                 assert latin in english, (name, english)
     cards = catalog["cards"]
     contracts = catalog["contracts"]
@@ -715,6 +718,18 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     assert isinstance(intrigue, dict)
     assert korean(leaders, "reverend_mother_jessica") is None
     assert korean(intrigue, "adaptive_tactics") is None
+    # Every board space and Objective card has its Korean name.
+    spaces = catalog["spaces"]
+    objectives = catalog["objectives"]
+    assert isinstance(spaces, dict) and isinstance(objectives, dict)
+    assert all(korean(spaces, space_id) for space_id in spaces)
+    assert all(korean(objectives, objective_id) for objective_id in objectives)
+    assert korean(spaces, "imperial_privilege") == "제국 특권"
+    assert korean(spaces, "fremkit") == "프렘 행낭"
+    assert korean(spaces, "tuek_sietch") == "튜엑의 시치"
+    assert korean(objectives, "objective_crysknife_1") == "크리스나이프 목적 카드"
+    assert korean(objectives, "objective_crysknife_2") == "크리스나이프 목적 카드 4/6P"
+    assert korean(objectives, "objective_ornithopter_1_3p") == "오니솝터 목적 카드 1-3P"
 
 
 def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:

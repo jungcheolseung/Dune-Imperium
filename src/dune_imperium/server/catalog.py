@@ -20,11 +20,12 @@ Leader's tile, ``spaces[].tile_box``) and Immortality's Research Station
 overlay (``spaces[].immortality.tile_box``) carry ``tile_image`` (and
 ``tile_image_ko``) for that board piece, which must keep the printed
 tile's shape, while ``image`` (the app render where there is one) is what
-the popovers show. Cards whose Korean print is known
-(``display.names_ko``) carry ``name_ko`` beside ``name``; the page shows
-the pair of its language. An entry's engine-*generated* effect text (as
-opposed to printed card wording, which stays English) carries its Korean
-twin the same way, suffixed ``_ko``: so far ``contracts[].condition_ko``/
+the popovers show. Cards whose Korean print is known, every board space
+and every Objective card (``display.names_ko``) carry ``name_ko`` beside
+``name``; the page shows the pair of its language. An entry's
+engine-*generated* effect text (as opposed to printed card wording, which
+stays English) carries its Korean twin the same way, suffixed ``_ko``:
+so far ``contracts[].condition_ko``/
 ``reward_ko``, ``conflicts[].rewards_ko`` (``display.structs``'s ``_ko``
 renderers), ``cards[].text_ko`` (``display.cards``'s
 ``personal_card_text_ko``, Step K2) and ``intrigue[].text_ko``

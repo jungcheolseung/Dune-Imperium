@@ -236,16 +236,16 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     "security_detail": (
         "Each may park 1 supply troop at Deliver Supplies; their first Agent "
         "there sends it into the Conflict.",
-        "각자 {supply}의 {troop:1}을 Deliver Supplies에 세울 수 있다. 그 칸에 처음 "
+        "각자 {supply}의 {troop:1}을 보급품 배송에 세울 수 있다. 그 칸에 처음 "
         "{agent}를 보내면 그 병력이 {conflict}으로 간다.",
     ),
     "imperial_reserve": (
         "1 spice and 2 Solari at Imperial Privilege; each visitor takes one.",
-        "Imperial Privilege에 {spice:1}와 {solari:2}. 방문자가 하나씩 가진다.",
+        "제국 특권에 {spice:1}와 {solari:2}. 방문자가 하나씩 가진다.",
     ),
     "desert_riding": (
         "A Maker Hooks token by Hagga Basin, taken there instead of its 2 spice.",
-        "Hagga Basin 옆 {maker_hooks}. 방문자는 칸의 {spice:2} 대신 가질 수 있다.",
+        "하가 분지 옆 {maker_hooks}. 방문자는 칸의 {spice:2} 대신 가질 수 있다.",
     ),
     "urban_surveillance": (
         "1 Solari on each empty post by a City space, for the Spy placed there.",
@@ -257,7 +257,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "choam_research": (
         "2 face-down Contracts at Research Station, one per visit.",
-        "Research Station에 뒷면 {contract} 2장. 방문할 때마다 1장.",
+        "연구 기지에 뒷면 {contract} 2장. 방문할 때마다 1장.",
     ),
     "choam_escort": (
         "Each may recruit 1 troop, or load 1 Solari and 1 spice onto a face-up "
@@ -277,30 +277,30 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "Each may lose a garrison troop to put a Control marker on Sardaukar "
         "with 2 spice from the bank; their visit takes the marker back and "
         "gains the spice.",
-        "각자 주둔지 {troop:1}을 잃고 Sardaukar에 {control} 마커를 둘 수 있다. "
+        "각자 주둔지 {troop:1}을 잃고 사다우카에 {control} 마커를 둘 수 있다. "
         "은행의 {spice:2}를 그 위에 둔다. 방문하면 마커를 되찾고 그 {spice}를 얻는다.",
     ),
     "emperors_schemes": (
         "2 face-down Intrigue cards at Sardaukar, one per visit.",
-        "Sardaukar에 뒷면 {intrigue_card} 2장. 방문할 때마다 1장.",
+        "사다우카에 뒷면 {intrigue_card} 2장. 방문할 때마다 1장.",
     ),
     "fedaykin_assistance": (
         "Each may pay 1 spice to park 2 supply troops at Desert Tactics, "
         "recruited by the next visit.",
-        "각자 {spice:1}를 내고 {supply}의 {troop:2}를 Desert Tactics에 세울 수 "
+        "각자 {spice:1}를 내고 {supply}의 {troop:2}를 사막 전술에 세울 수 "
         "있다. 다음 방문 때 소집한다.",
     ),
     "weirding_warfare": (
         "Each may pay 2 Solari to park 2 supply troops at Espionage, sent into "
         "the Conflict by the next visit.",
-        "각자 {solari:2}를 내고 {supply}의 {troop:2}를 Espionage에 세울 수 있다. "
+        "각자 {solari:2}를 내고 {supply}의 {troop:2}를 첩보 활동에 세울 수 있다. "
         "다음 방문 때 {conflict}으로 간다.",
     ),
     "send_for_aid": (
         "Each may move a garrison troop to Gather Support, with 1 water from "
         "the bank under it; their next visit sends the troop into the Conflict "
         "and gains the water.",
-        "각자 주둔지 {troop:1}을 Gather Support로 옮길 수 있다. 은행의 {water:1}을 "
+        "각자 주둔지 {troop:1}을 지원자 모집으로 옮길 수 있다. 은행의 {water:1}을 "
         "그 밑에 둔다. 다음 방문 때 병력은 {conflict}으로 가고 물은 그 플레이어가 "
         "얻는다.",
     ),
@@ -308,7 +308,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
         "Each may move a specimen to Sardaukar, with 2 Solari from the bank "
         "under it; their first visit gains both, the specimen recruited as a "
         "garrison troop.",
-        "각자 {specimen:1}을 Sardaukar로 옮길 수 있다. 은행의 {solari:2}를 그 "
+        "각자 {specimen:1}을 사다우카로 옮길 수 있다. 은행의 {solari:2}를 그 "
         "밑에 둔다. 처음 방문 때 둘 다 얻고, 표본은 주둔지로 소집된다.",
     ),
     "tleilaxu_offering": (
@@ -361,23 +361,23 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
 _JOIN_LINES: Final[Mapping[str, tuple[str, str]]] = {
     "security_detail": (
         "Park 1 supply troop at Deliver Supplies",
-        "{supply}의 {troop:1}을 Deliver Supplies에 세우기",
+        "{supply}의 {troop:1}을 보급품 배송에 세우기",
     ),
     "fedaykin_assistance": (
         "Pay 1 spice, park 2 supply troops at Desert Tactics",
-        "{spice:1} 내고 {supply}의 {troop:2}를 Desert Tactics에 세우기",
+        "{spice:1} 내고 {supply}의 {troop:2}를 사막 전술에 세우기",
     ),
     "weirding_warfare": (
         "Pay 2 Solari, park 2 supply troops at Espionage",
-        "{solari:2} 내고 {supply}의 {troop:2}를 Espionage에 세우기",
+        "{solari:2} 내고 {supply}의 {troop:2}를 첩보 활동에 세우기",
     ),
     "send_for_aid": (
         "Move 1 garrison troop to Gather Support",
-        "{garrison}의 {troop:1}을 Gather Support로 옮기기",
+        "{garrison}의 {troop:1}을 지원자 모집으로 옮기기",
     ),
     "coordinate_with_the_emperor": (
         "Move 1 specimen to Sardaukar",
-        "{specimen:1}을 Sardaukar로 옮기기",
+        "{specimen:1}을 사다우카로 옮기기",
     ),
     "tleilaxu_offering": (
         "Put 2 supply troops on the Tleilaxu track's third space",
@@ -385,7 +385,7 @@ _JOIN_LINES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "prison_planet": (
         "Lose 1 garrison troop to put a Control marker on Sardaukar",
-        "{garrison}의 {troop:1}을 잃고 Sardaukar에 {control} 마커 두기",
+        "{garrison}의 {troop:1}을 잃고 사다우카에 {control} 마커 두기",
     ),
 }
 
@@ -499,7 +499,7 @@ def scouts_action_text(
                 return (
                     "Lose 1 garrison Sardaukar Commander to put a Control marker"
                     " on Sardaukar",
-                    "{garrison}의 {commander} 1을 잃고 Sardaukar에 {control} 마커 두기",
+                    "{garrison}의 {commander} 1을 잃고 사다우카에 {control} 마커 두기",
                 )
             if target == "":
                 mission_id = context.get("mission_id")
