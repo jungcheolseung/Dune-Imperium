@@ -1259,6 +1259,44 @@ def _refinish_agent_turn(
     return press
 
 
+def _shigawire_partner_draw(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Draw a Bene Gesserit graft partner's Urgent Shigawire card before the
+    recorded turn end.
+
+    Codec v144 (user ruling 2026-10-12, OQ-107: "1. 짝도 받음"): a Bene
+    Gesserit graft partner played while the boost is pending takes it, and
+    the draw added to its box waits as box 1's
+    ``resolve_agent_card_effect(effect=cards)``; the turn cannot end over
+    it. An older engine gave the partner nothing, so its record never took
+    that draw and pressed ``finish_agent_turn`` with it waiting. The draw is
+    taken as late as it may be, right before that press, so every recorded
+    step of the turn sees the hand the recording engine showed. The boost
+    the older engine kept pending is spent here: a later Bene Gesserit card
+    of the round that leaned on it diverges (the rule change).
+    """
+
+    if not (
+        isinstance(decision, PlayerDecision)
+        and isinstance(step, DomainAction)
+        and step.actor == decision.owner
+        and step.action_id == _FINISH_AGENT_TURN
+        and state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    ):
+        return None
+    draw = _reward_icon(decision.owner, "cards", 1)
+    if not (
+        resolves_boost_draw(state, draw)
+        and draw in engine.legal_actions(state, decision.owner)
+    ):
+        return None
+    return draw
+
+
 def _reopened_since_press(state: GameState, player: int) -> bool:
     """Whether ``player``'s Agent turn was reopened after its last press."""
 
@@ -1359,4 +1397,9 @@ BRIDGES: tuple[Bridge, ...] = (
     ),
     Bridge("reshuffle_renamed", _reshuffle_renamed, before_codec=142, rewrites=True),
     Bridge("refinish_agent_turn", _refinish_agent_turn, before_codec=142),
+    # Codec v144 (OQ-107) gives a Bene Gesserit graft partner a pending
+    # Urgent Shigawire boost; its added draw holds the turn end.
+    Bridge(
+        "shigawire_partner_draw", _shigawire_partner_draw, before_codec=144
+    ),
 )

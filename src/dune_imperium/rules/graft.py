@@ -49,6 +49,7 @@ from dune_imperium.rules.agent_turn import (
 )
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
+    BOOST_DRAW_KEY,
     borrowed_agent_card,
     current_agent_effect_context,
 )
@@ -184,6 +185,17 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
         if from_row
         else (state.imperium_row, state.imperium_deck)
     )
+    # Urgent Shigawire: "The next Bene Gesserit card you play this round has
+    # all Agent icons and, added to its Agent box: draw a card." [Urgent
+    # Shigawire card]. A graft plays two cards [Immortality p. 10] and "Both
+    # played cards are considered to have “sent” the Agent, no matter which
+    # card’s icon you use." [Immortality p. 10], so a Bene Gesserit partner
+    # is a card played: it takes a boost still pending -- the placed card
+    # took it first when it is Bene Gesserit too (``agent_turn``) -- and the
+    # draw is added to its box, box 1 (user ruling 2026-10-12, OQ-107: "1.
+    # 짝도 받음"). Its "all Agent icons" reach the space only where the
+    # partner's icons send the Agent (Usurp, ``card_is_boosted`` above).
+    partner_boosted = card_is_boosted(personal_card_for_instance(partner_id), owner)
     # Ghola borrows the other card's box, whichever side it is on.
     partner = borrowed_agent_card(personal_card_for_instance(partner_id), placed_id)
     placed = borrowed_agent_card(personal_card_for_instance(placed_id), partner_id)
@@ -202,6 +214,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     )
     next_owner = replace(
         owner,
+        bene_gesserit_boost_pending=(
+            owner.bene_gesserit_boost_pending and not partner_boosted
+        ),
         hand=tuple(card_id for card_id in owner.hand if card_id != partner_id),
         in_play=(*owner.in_play, partner_id),
         # Usurp: the borrowed Row card is trashed when the turn closes.
@@ -227,6 +242,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     )
     effect_context["graft_card_id"] = partner_id
     effect_context["graft_pending_effect"] = pending
+    if partner_boosted:
+        # The added draw waits for its own step, box 1's (OQ-106, OQ-107).
+        effect_context[BOOST_DRAW_KEY] = partner_id
     if effect_context.get("units_deploy_blocked") is not True and any(
         isinstance(card, ImperiumCardEntry) and card.allows_recruited_troop_deployment
         for card in (partner, placed)
@@ -266,24 +284,27 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
             with_context(effect_frame, effect_context),
         ),
     )
-    return RuleResult(
-        state=next_state,
-        events=(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:graft:{partner_id}"
-                ),
-                kind="card_grafted",
-                payload=(
-                    ("card_id", partner_id),
-                    ("from_row", from_row),
-                    ("placed_card_id", placed_id),
-                    ("player", player),
-                    ("space_id", space_id),
-                ),
-            ),
+    grafted = GameEvent(
+        event_id=f"round:{state.round_number}:player:{player}:graft:{partner_id}",
+        kind="card_grafted",
+        payload=(
+            ("card_id", partner_id),
+            ("from_row", from_row),
+            ("placed_card_id", placed_id),
+            ("player", player),
+            ("space_id", space_id),
         ),
     )
+    if not partner_boosted:
+        return RuleResult(state=next_state, events=(grafted,))
+    boost = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{player}:shigawire:{partner_id}"
+        ),
+        kind="agent_card_boost_consumed",
+        payload=(("card_id", partner_id), ("player", player)),
+    )
+    return RuleResult(state=next_state, events=(grafted, boost))
 
 
 def trash_usurped_card(state: GameState, player: int) -> RuleResult:

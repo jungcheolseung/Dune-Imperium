@@ -251,8 +251,14 @@ def _placements_for_card(
             )
         )
     # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
-    # icons", so every space's icon is satisfied.
-    any_icon = card_is_boosted(card, owner)
+    # icons", so every space's icon is satisfied. A Bene Gesserit card
+    # grafted to Usurp is a card played, so it takes a boost still pending
+    # (user ruling 2026-10-12, OQ-107: "1. 짝도 받음"), and Usurp sends the
+    # Agent with its partner's icons: such a partner opens every space,
+    # and the partner choice below keeps it.
+    any_icon = card_is_boosted(card, owner) or any(
+        boosted for _, _, boosted in usurp_partners
+    )
     for space in BOARD_SPACES:
         if space.required_leader_id is not None and all(
             seat.leader_id != space.required_leader_id for seat in state.players

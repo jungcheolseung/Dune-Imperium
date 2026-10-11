@@ -1246,6 +1246,108 @@ def test_a_turn_reopened_only_for_its_held_draw_is_ended_again() -> None:
     assert migration._bridge(ENGINE, ready, next_seat, older) is None
 
 
+def _bene_gesserit_partner_turn() -> GameState:
+    """Seat 0 grafts Truthtrance (Bene Gesserit) to Tleilaxu Infiltrator
+    with Urgent Shigawire's boost pending, and resolves everything but the
+    partner's added draw (codec v144, OQ-107)."""
+
+    infiltrator = "tleilaxu:tleilaxu_infiltrator:0"
+    truthtrance = "imperium:truthtrance:0"
+    starters = starting_deck_instance_ids(0, immortality=True)
+    imperium = tuple(
+        card for card in imperium_deck_instance_ids(False) if card != truthtrance
+    )
+
+    def seat(player: int, **extra: object) -> PlayerState:
+        values: dict[str, object] = {
+            "player_id": player,
+            "research_space": RESEARCH_START_ID,
+            "family_atomics": True,
+        }
+        values.update(extra)
+        return PlayerState(**values)  # type: ignore[arg-type]
+
+    owner = seat(
+        0,
+        hand=(infiltrator, truthtrance),
+        deck=starters,
+        resources=Resources(solari=4, spice=2, water=2),
+        bene_gesserit_boost_pending=True,
+    )
+    state = GameState(
+        config=RulesetConfig(immortality=True, promo_cards=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False, immortality=True)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        tleilaxu_track_spice=2,
+        players=(owner, *(seat(player) for player in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.TURN,
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == infiltrator
+        and dict(action.arguments)["space_id"] == "arrakeen"
+        and dict(action.arguments).get("graft") is True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    state = ENGINE.apply(state, placement).state
+    state = ENGINE.apply(
+        state,
+        DomainAction("choose_graft_partner", 0, (("card_id", truthtrance),)),
+    ).state
+    while rest := [
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id in ("resolve_board_effect", "resolve_agent_card_effect")
+        and action != _PARTNER_DRAW
+    ]:
+        state = ENGINE.apply(state, rest[0]).state
+    return state
+
+
+_PARTNER_DRAW = DomainAction(
+    "resolve_agent_card_effect", 0, (("box", 1), ("effect", "cards"))
+)
+
+
+def test_a_bene_gesserit_partner_s_draw_comes_right_before_the_recorded_end() -> (
+    None
+):
+    # Codec v144 (OQ-107) gives the Bene Gesserit partner the pending boost;
+    # its added draw holds the turn end. An older engine's record never took
+    # it and pressed the end: the draw is taken right before that press.
+    # No corpus record is known to hold this, so the state is built.
+    state = _bene_gesserit_partner_turn()
+    assert resolves_boost_draw(state, _PARTNER_DRAW)
+    assert _PRESS not in ENGINE.legal_actions(state, 0)
+    older = _bridges_for(143)
+
+    bridged = migration._bridge(ENGINE, state, _PRESS, older)
+
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == ("shigawire_partner_draw", _PARTNER_DRAW)
+    drawn = ENGINE.apply(state, _PARTNER_DRAW).state
+    assert _PRESS in ENGINE.legal_actions(drawn, 0)
+    # Only before the press, and only for a record before codec v144.
+    other = next(
+        action for action in ENGINE.legal_actions(state, 0) if action != _PARTNER_DRAW
+    )
+    assert migration._bridge(ENGINE, state, other, older) is None
+    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(144)) is None
+
+
 _OQ106_BRIDGES = V142_BRIDGES - {
     "imperial_privilege_draw",
     "garrison_unit_troop",

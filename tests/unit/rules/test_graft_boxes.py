@@ -26,6 +26,7 @@ from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -37,6 +38,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.engine import Transition
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules import (
     UprisingRulesEngine,
@@ -46,6 +48,7 @@ from dune_imperium.rules import (
     frames,
     leader_abilities,
 )
+from dune_imperium.rules.agent_icons import card_is_boosted
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import (
@@ -1062,11 +1065,12 @@ def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:
     }
 
 
-def test_box_one_s_card_draw_is_never_urgent_shigawire_s() -> None:
+def test_box_one_s_own_card_draw_leaves_the_placed_card_s_added_draw() -> None:
     """Urgent Shigawire adds its draw to the boosted card's box: the placed
-    Planned Coupling, box 0. Box 0 prints no card-draw icon, so the untagged
-    ``effect=cards`` is the added draw; box 1's (Tleilaxu Infiltrator's) is
-    its own icon and leaves the added draw waiting (OQ-106 1)."""
+    Planned Coupling, box 0 (Tleilaxu Infiltrator, box 1, is no Bene
+    Gesserit card, OQ-107). Box 0 prints no card-draw icon, so the untagged
+    ``effect=cards`` is the added draw; box 1's is its own icon and leaves
+    the added draw waiting (OQ-106 1)."""
 
     state = _graft(
         _state((COUPLING, INFILTRATOR), bene_gesserit_boost_pending=True),
@@ -1139,3 +1143,228 @@ def test_the_observation_names_both_boxes_by_their_fixed_number() -> None:
         1,
         0,
     )
+
+
+# Urgent Shigawire and a Bene Gesserit graft partner (OQ-107, codec v144)
+# ---------------------------------------------------------------------------
+#
+# "The next Bene Gesserit card you play this round has all Agent icons and,
+# added to its Agent box: draw a card." [Urgent Shigawire card]. A graft
+# plays two cards -- "You must play two cards (and only two) on that turn"
+# [Immortality p. 10] -- and "Both played cards are considered to have
+# “sent” the Agent, no matter which card’s icon you use." [Immortality p.
+# 10]. User ruling 2026-10-12 (OQ-107): "1. 짝도 받음" -- the partner is a
+# card played, so a Bene Gesserit partner takes a boost still pending: its
+# box gets the added draw (``box=1``) and the boost is spent. With two Bene
+# Gesserit cards the placed one takes it.
+
+TRUTHTRANCE = "imperium:truthtrance:0"
+USURP = "tleilaxu:usurp:0"
+CARDS = (("effect", "cards"),)
+BOX_ZERO_DRAW = DomainAction("resolve_agent_card_effect", 0, CARDS)
+PARTNER_DRAW = DomainAction("resolve_agent_card_effect", 0, (("box", 1), *CARDS))
+
+
+def _placed(state: GameState, card_id: str, space_id: str) -> GameState:
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == card_id
+        and dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments).get("graft") is True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    return ENGINE.apply(state, placement).state
+
+
+def _choose_partner(state: GameState, partner: str) -> Transition:
+    return ENGINE.apply(
+        state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
+    )
+
+
+def _boost_consumed(result: Transition) -> list[object]:
+    return [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "agent_card_boost_consumed"
+    ]
+
+
+def test_a_bene_gesserit_partner_takes_the_boost_and_its_draw() -> None:
+    """Tleilaxu Infiltrator (no Bene Gesserit card) is placed; Truthtrance
+    (Bene Gesserit, no Agent box of its own) is its partner, so Truthtrance
+    is "the next Bene Gesserit card you play": the boost is spent on it and
+    its box, box 1, gets the added draw. The placed card's own card-draw
+    icon stays its own (untagged); the turn end waits for the added draw;
+    the boost is not carried to a later Bene Gesserit card."""
+
+    placed = _placed(
+        _state((INFILTRATOR, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+        INFILTRATOR,
+        "arrakeen",
+    )
+    assert placed.players[0].bene_gesserit_boost_pending is True
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == [TRUTHTRANCE]
+    state = grafted.state
+    owner = state.players[0]
+    assert owner.bene_gesserit_boost_pending is False
+    _, context = current_agent_effect_context(state)
+    assert context["boost_draw_card_id"] == TRUTHTRANCE
+    legal = ENGINE.legal_actions(state, 0)
+    assert PARTNER_DRAW in legal and BOX_ZERO_DRAW in legal
+    assert agent_effects.resolves_boost_draw(state, PARTNER_DRAW)
+    assert not agent_effects.resolves_boost_draw(state, BOX_ZERO_DRAW)
+    assert FINISH not in legal
+
+    drawn = ENGINE.apply(state, PARTNER_DRAW)
+    assert len(drawn.state.players[0].hand) == len(owner.hand) + 1
+    assert any(
+        event.kind == "agent_card_effect_resolved"
+        and dict(event.payload)["card_id"] == TRUTHTRANCE
+        for event in drawn.events
+    )
+    _, context = current_agent_effect_context(drawn.state)
+    assert "boost_draw_card_id" not in context
+    # The draw is bound to its card: no box was made active for it.
+    assert context["card_id"] == INFILTRATOR
+    later = drawn.state
+    assert PARTNER_DRAW not in ENGINE.legal_actions(later, 0)
+    # Infiltrator's own card-draw icon is still box 0's to take.
+    assert BOX_ZERO_DRAW in ENGINE.legal_actions(later, 0)
+    # Spent: a Bene Gesserit card played later this round is not boosted.
+    assert not card_is_boosted(
+        personal_card_for_instance(COUPLING), later.players[0]
+    )
+
+
+def test_a_usurp_partner_from_the_row_takes_the_boost() -> None:
+    """Usurp has no icons of its own; a boosted Bene Gesserit Row partner's
+    "all Agent icons" send the Agent ("You may use an Agent icon from either
+    card" [Immortality p. 10]), here to Arrakeen, which no candidate's
+    printed icons reach. Before codec v144 Usurp's placement read only the
+    candidates' printed icons, so the boosted partner's reach counted only
+    where another candidate's printed icon opened the space. That partner
+    is a card played, so it also spends the boost and gets the added draw
+    in its box."""
+
+    base = _state((USURP, DAGGER), bene_gesserit_boost_pending=True)
+    # No other Row card (nor Dagger) prints a City icon or is Bene Gesserit.
+    row = (
+        TRUTHTRANCE,
+        "imperium:captured_mentat:0",
+        CORRINTH,
+        "imperium:desert_power:0",
+        "imperium:desert_survival:0",
+    )
+    base = replace(
+        base,
+        imperium_row=row,
+        imperium_deck=tuple(
+            card
+            for card in (*base.imperium_row, *base.imperium_deck)
+            if card not in row
+        ),
+    )
+    unboosted = replace(
+        base,
+        players=(
+            replace(base.players[0], bene_gesserit_boost_pending=False),
+            *base.players[1:],
+        ),
+    )
+    assert not any(
+        action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == USURP
+        and dict(action.arguments)["space_id"] == "arrakeen"
+        for action in ENGINE.legal_actions(unboosted, 0)
+    )
+    placed = _placed(base, USURP, "arrakeen")
+    assert {
+        dict(action.arguments)["card_id"]
+        for action in ENGINE.legal_actions(placed, 0)
+        if action.action_id == "choose_graft_partner"
+    } == {TRUTHTRANCE}
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == [TRUTHTRANCE]
+    state = grafted.state
+    assert state.players[0].bene_gesserit_boost_pending is False
+    assert state.players[0].usurped_row_card_id == TRUTHTRANCE
+    state = _settle_space(state)
+    assert FINISH not in ENGINE.legal_actions(state, 0)
+    drawn = ENGINE.apply(state, PARTNER_DRAW).state
+    assert len(drawn.players[0].hand) == len(state.players[0].hand) + 1
+    assert FINISH in ENGINE.legal_actions(drawn, 0)
+
+
+def test_with_two_bene_gesserit_cards_the_placed_one_takes_the_boost() -> None:
+    """Planned Coupling (Bene Gesserit) is placed first and spends the boost
+    at its placement; its Bene Gesserit partner finds none left."""
+
+    placed = _placed(
+        _state((COUPLING, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+        COUPLING,
+        "arrakeen",
+    )
+    assert placed.players[0].bene_gesserit_boost_pending is False
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == []
+    _, context = current_agent_effect_context(grafted.state)
+    assert context["boost_draw_card_id"] == COUPLING
+    legal = ENGINE.legal_actions(grafted.state, 0)
+    assert PARTNER_DRAW not in legal
+    assert BOX_ZERO_DRAW in legal
+    assert agent_effects.resolves_boost_draw(grafted.state, BOX_ZERO_DRAW)
+
+
+def test_a_partner_that_is_not_bene_gesserit_leaves_the_boost_pending() -> None:
+    grafted = _choose_partner(
+        _placed(
+            _state((INFILTRATOR, DAGGER), bene_gesserit_boost_pending=True),
+            INFILTRATOR,
+            "arrakeen",
+        ),
+        DAGGER,
+    )
+    assert _boost_consumed(grafted) == []
+    assert grafted.state.players[0].bene_gesserit_boost_pending is True
+    _, context = current_agent_effect_context(grafted.state)
+    assert "boost_draw_card_id" not in context
+    assert PARTNER_DRAW not in ENGINE.legal_actions(grafted.state, 0)
+
+
+def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
+    """The draw was "added to its Agent box" [Urgent Shigawire card]: when
+    Dissecting Kit (box 0) trashes the boosted partner first, the partner's
+    box and the added draw expire with it -- "you can't receive or activate
+    an effect from a card that is already trashed" (OQ-022 designer ruling;
+    OQ-106 1). Taken first, the draw stands and the trash still follows."""
+
+    state = _choose_partner(
+        _placed(
+            _state((DISSECTING, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+            DISSECTING,
+            "arrakeen",
+        ),
+        TRUTHTRANCE,
+    ).state
+    trash = DomainAction("trash_grafted_card_for_specimen", 0)
+    assert PARTNER_DRAW in ENGINE.legal_actions(state, 0)
+
+    trashed = ENGINE.apply(state, trash)
+    assert any(
+        event.kind == "agent_card_effect_expired"
+        and dict(event.payload)["card_id"] == TRUTHTRANCE
+        for event in trashed.events
+    )
+    _, context = current_agent_effect_context(trashed.state)
+    assert "boost_draw_card_id" not in context
+    assert PARTNER_DRAW not in ENGINE.legal_actions(trashed.state, 0)
+    assert trashed.state.players[0].hand == state.players[0].hand
+
+    drawn_first = ENGINE.apply(state, PARTNER_DRAW).state
+    assert len(drawn_first.players[0].hand) == len(state.players[0].hand) + 1
+    after = ENGINE.apply(drawn_first, trash).state
+    assert TRUTHTRANCE in after.players[0].trashed

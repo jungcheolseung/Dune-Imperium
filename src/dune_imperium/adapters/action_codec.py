@@ -423,6 +423,11 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # that can only fizzle (one offering only its refusal still does). No
 # template change; recorded step sequences change, so saves and replays
 # from v143 are refused by the version check.
+# Also in v144 (user ruling 2026-10-12 "1. 짝도 받음", OQ-107): a Bene
+# Gesserit graft partner played while Urgent Shigawire's boost is pending
+# takes it; the draw added to its box is box 1's
+# ``resolve_agent_card_effect(box=1, effect=cards)`` (an existing template),
+# and Usurp reaches every space through such a partner. No template change.
 ACTION_CODEC_VERSION = 144
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

@@ -71,7 +71,8 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
 CARD_KEYS: Final = frozenset(
     {
         # Urgent Shigawire's added draw names the boosted card itself
-        # (``effects.BOOST_DRAW_KEY``; the placed card, box 0).
+        # (``effects.BOOST_DRAW_KEY``): the placed card, or a Bene Gesserit
+        # partner that took the boost (OQ-107).
         "boost_draw_card_id",
         # The cards whose Scientific Breakthrough box did its Research: a
         # Ghola copying it researches once more (``agent_effects``).
@@ -187,7 +188,8 @@ def box_is_pending(context: Mapping[str, ActionValue], box: int) -> bool:
 
 # The argument that names box 1 on an Agent-box row (codec v143). A row
 # without it is box 0's, or no box's: the turn's other effects, Urgent
-# Shigawire's added draw, a Servo-Receivers Signet frame's rows.
+# Shigawire's draw added to the placed card (a partner's carries ``box=1``,
+# OQ-107), a Servo-Receivers Signet frame's rows.
 BOX_ARGUMENT: Final = "box"
 
 # Every action an Agent box offers (``agent_effect_frame._active_box_actions``:

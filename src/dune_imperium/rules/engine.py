@@ -412,8 +412,9 @@ def _handle(state: GameState, action: DomainAction) -> RuleResult:
 
     Box 1's rows carry ``box=1`` and box 0's none (docs/graft-boxes-plan.md
     4.6): ``route_box_action`` makes the row's box the one the Agent-box
-    machinery reads, and drops the tag. Box 1's ``effect=cards`` is its own
-    icon, never Urgent Shigawire's draw added to box 0's card.
+    machinery reads, and drops the tag. Urgent Shigawire's added draw is
+    routed as no box's row (it is bound to its card, OQ-106, OQ-107), so a
+    ``effect=cards`` routed to box 1 is box 1's own icon.
     """
 
     state, action, box = route_box_action(state, action)

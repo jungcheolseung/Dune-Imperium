@@ -38,6 +38,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
     legal_corrinth_city_payment_actions,
+    resolves_boost_draw,
 )
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
@@ -97,6 +98,8 @@ from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
 )
+
+_RESOLVE_BOX = "resolve_agent_card_effect"
 
 # Serial Agent-card choices. When any of these offers an action, the generic
 # ``resolve_agent_card_effect`` action is withheld until the choice is made.
@@ -342,10 +345,14 @@ def route_box_action(
     """The state to apply a legal row on, the row untagged, and its box.
 
     A ``box=1`` row is box 1's; an untagged row is box 0's when box 0
-    offers it, and otherwise no box's (the turn's other effects, Urgent
-    Shigawire's added draw). A box's row is applied with that box active,
-    so the ordinary Agent-box handlers read it; any other row is applied
-    as it is (box ``None``).
+    offers it, and otherwise no box's (the turn's other effects). Urgent
+    Shigawire's added draw is no box's either, whichever box it was added
+    to (untagged for box 0, ``box=1`` for a Bene Gesserit partner, OQ-107):
+    it is bound to its card (``effects.BOOST_DRAW_KEY``) and kept as it is,
+    so no box is made active for it -- not even while the other box is part
+    way through a bundled selection. A box's row is applied with that box
+    active, so the ordinary Agent-box handlers read it; any other row is
+    applied as it is (box ``None``).
     """
 
     if not state.decision_stack:
@@ -354,6 +361,8 @@ def route_box_action(
     if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
         frame.decision, PlayerDecision
     ):
+        return state, action, None
+    if action.action_id == _RESOLVE_BOX and resolves_boost_draw(state, action):
         return state, action, None
     context = dict(frame.context)
     if row_box(action) == 1:
@@ -387,7 +396,8 @@ def _pending_group_actions(
         *(tagged(action, 1) for action in box_one),
     ]
     # Urgent Shigawire's draw added to the boosted card's box, its own step
-    # whatever the box is (user ruling 2026-10-10, OQ-106).
+    # whatever the box is (user ruling 2026-10-10, OQ-106); ``box=1`` when
+    # the boosted card is the graft partner (OQ-107).
     actions.extend(legal_agent_card_boost_actions(state, player))
     # One action per pending automatic icon of the visited space; its
     # choice icons are offered by the dedicated providers below (OQ-027).
