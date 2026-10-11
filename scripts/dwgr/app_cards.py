@@ -417,8 +417,11 @@ def icon_picture(inp, name):
     return _TRIMMED[name]
 
 
-# Icons drawn smaller than their neighbours, as printed (fraction of the row height).
-SMALL_ICONS = {"IfThenArrow": 0.45}
+# Icons drawn smaller than their neighbours, as printed (fraction of the row
+# height): the arrows between icons, and the down arrow on its own row (about
+# half the icons above and below it on Spice is Power, Go To Ground and
+# Battlefield Research)
+SMALL_ICONS = {"IfThenArrow": 0.45, "ArrowDown": 0.55}
 BOTH_SIDES_H = 46.0  # icon height when a sentence has icons on both sides
 ROW_GAP = 10.0  # between the pieces of an icon row (a lone ":" sits closer)
 LABEL_SCALE = 0.62  # a faction symbol standing alone in an icon row ("<BG> Alliance:")
