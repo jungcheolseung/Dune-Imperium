@@ -37,6 +37,7 @@ import sys
 from pathlib import Path
 
 import app_render as R
+import numpy as np
 from PIL import Image, ImageDraw
 
 from dune_imperium.agents.app_ai import catalog
@@ -48,6 +49,7 @@ from dune_imperium.content.uprising.contracts import (
     BLOODLINES_CONTRACTS,
     ContractConditionKind,
 )
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.display.images import load_card_manifest
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 
@@ -174,6 +176,10 @@ HIRES = {
     "WildRankUp": "UI_crd_ActionIcon_FactionWildUp",
     "WildRankUp2": "UI_crd_ActionIcon_FactionWildUp2",
     "WildRankDown": "UI_crd_ActionIcon_FactionWildDown",
+    # board-space symbols printed as framed Agent icons, not as words
+    "ActLandsraad": "UI_crd_ActionAct_Landsraad",
+    "ActPopulationCenter": "UI_crd_ActionAct_PopulationCenter",
+    "ActCommerce": "UI_crd_ActionAct_Commerce",
 }
 SPRITE_TAG = r'<sprite name="?([^">]+)"?>'
 
@@ -241,6 +247,7 @@ class Inputs:
         self.en = json.loads(en_path.read_text()) if en_path.exists() else {}
         self.ko = json.loads(ko_path.read_text()) if ko_path.exists() else {}
         self.manifest = load_card_manifest(ASSETS / "cards" / "manifest.json")
+        add_tech_set_glyph(self)
 
     def tree(self, name):
         return json.loads((self.prefab_dir / name).read_text())
@@ -417,11 +424,25 @@ def icon_picture(inp, name):
     return _TRIMMED[name]
 
 
-# Icons drawn smaller than their neighbours, as printed (fraction of the row height).
-SMALL_ICONS = {"IfThenArrow": 0.45}
+# Icons drawn smaller than their neighbours, as printed (fraction of the row
+# height): the arrows between icons, and the down arrow on its own row (about
+# half the icons above and below it on Spice is Power, Go To Ground and
+# Battlefield Research)
+SMALL_ICONS = {"IfThenArrow": 0.45, "ArrowDown": 0.55}
 BOTH_SIDES_H = 46.0  # icon height when a sentence has icons on both sides
 ROW_GAP = 10.0  # between the pieces of an icon row (a lone ":" sits closer)
 LABEL_SCALE = 0.62  # a faction symbol standing alone in an icon row ("<BG> Alliance:")
+
+
+# Rows sit `gap / 2` apart. Two paragraphs of plain text with an empty line
+# between them in the text ("a<br><br>b") print a blank half line apart, as
+# some cards do (Coercive Negotiation, Withdrawn) and others do not
+# (Manipulate, Double Agent: "a<br>b" or "a\nb").
+PARA_GAP = 0.6  # x the text size
+
+
+def plain_text(r):
+    return r["kind"] == "sentence" and not r["lead"] and not r["trail"]
 
 
 def row_gap(a, b):
@@ -483,12 +504,15 @@ class PrintBox:
         )
 
     def plan(self, text, width, height, text_scale, icon_scale):
-        paras = [
+        paras, blank_before, blank = [], [], False
+        for p in split_paragraphs(IGNORED_TAGS.sub("", text)):
+            if not (strip_tags(p).strip() or re.search(SPRITE_TAG, p)):
+                blank = bool(paras)
+                continue
             # a "+" before an icon stays with the word before it, as printed
-            re.sub(r" \+(?=<sprite)", "\u00a0+", p.strip())
-            for p in split_paragraphs(IGNORED_TAGS.sub("", text))
-            if strip_tags(p).strip() or re.search(SPRITE_TAG, p)
-        ]
+            paras.append(re.sub(r" \+(?=<sprite)", "\u00a0+", p.strip()))
+            blank_before.append(blank)
+            blank = False
         fs = max(self.text_min, self.text_max * text_scale)
         self.inp.text.cur_fallback = self.korean
         self.inp.text.force_tt = self.lang == "ko"
@@ -517,14 +541,16 @@ class PrintBox:
         n_icon = sum(1 for p in parsed if p[4] or p[1] or p[2])
         gaps = self.gap * 0.5 * max(0, len(parsed) - 1)
         H = min(self.icon_h, (height - plain_h - gaps) / max(1, n_icon)) * icon_scale
-        # icons keep a floor next to long text; below it the text shrinks instead
-        floor = min(self.icon_h, 0.36 * height) * icon_scale
+        # icons keep a floor next to long text; below it the text shrinks
+        # instead. Several icon rows share the floor (Insidious: three rows of
+        # icons beside two sentences), or the text would shrink to nothing.
+        floor = min(self.icon_h, 0.36 * height / max(1, n_icon)) * icon_scale
         # only plain text can give way; with no text there is nothing to squeeze
         can_shrink = plain_h > 0 and self.text_max * text_scale > self.text_min + 0.5
         self.squeezed = n_icon > 0 and can_shrink and H < floor - 0.5
         H = max(H, floor if (n_icon and plain_h > 0) else H, 8.0)
         rows = []
-        for para, lead, trail, mid, row in parsed:
+        for k, (para, lead, trail, mid, row) in enumerate(parsed):
             if row:
                 items = self.row_items(para, H, fs)
                 w = sum(i["w"] for i in items) + sum(
@@ -571,6 +597,7 @@ class PrintBox:
             rows.append(
                 {
                     "kind": "sentence",
+                    "blank_before": blank_before[k],
                     "lead": lead,
                     "sep": sep,
                     "trail": trail,
@@ -618,7 +645,7 @@ class PrintBox:
         ts, isc = 1.0, 1.0
         for _ in range(80):
             rows = self.plan(text, w, h, ts, isc)
-            total = sum(r["h"] for r in rows) + self.gap * 0.5 * max(0, len(rows) - 1)
+            total = sum(r["h"] for r in rows) + sum(self.row_gaps(rows))
             too_wide = any(r["w"] > w + 0.5 for r in rows)
             if total <= h + 0.5 and not too_wide and not self.squeezed:
                 break
@@ -641,12 +668,25 @@ class PrintBox:
                 isc *= 0.95
         return rows, ts, isc, total
 
+    def row_gaps(self, rows):
+        """The space below each row but the last."""
+        return [
+            self.gap * 0.5
+            + (
+                PARA_GAP * a["fs"]
+                if plain_text(a) and plain_text(b) and b["blank_before"]
+                else 0
+            )
+            for a, b in zip(rows, rows[1:], strict=False)
+        ]
+
     def draw(self, renderer, canvas, rect, text):
         x, y, w, h = rect
         rows, _ts, _isc, total = self.fit(text, w, h)
         S, top = renderer.S, renderer.top
         cur = y + h - (h - total) / 2.0  # unity top of the first row
-        for r in rows:
+        below = [*self.row_gaps(rows), 0.0]
+        for r, gap in zip(rows, below, strict=True):
             mid_y = cur - r["h"] / 2.0
             px = x + (w - r["w"]) / 2.0
             if r["kind"] == "row":
@@ -697,7 +737,7 @@ class PrintBox:
                 )
                 px += r["tw"] + (self.gap if r["trail"] else 0)
                 self.draw_cluster(renderer, canvas, r["trail"], px, mid_y, r["H"])
-            cur -= r["h"] + self.gap * 0.5
+            cur -= r["h"] + gap
 
     def draw_cluster(self, renderer, canvas, names, px, mid_y, H):
         for n in names:
@@ -1134,6 +1174,8 @@ INTRIGUE_TEXT = [1, 0.99, 0.92, 1]
 
 def intrigue_spec(inp, content_id):
     short = catalog.INTRIGUE_ARCHETYPES[content_id]
+    if short not in ARCHETYPES:
+        return bloodlines_intrigue_spec(inp, content_id, SYNTHETIC[short])
     arch = ARCHETYPES[short]
     at = arch.attributes
     slug = at["Name"].rsplit(".", 1)[0]  # card.intrigue.<slug>
@@ -1168,6 +1210,147 @@ def intrigue_spec(inp, content_id):
         "art": "intrigue",  # no illustration: the frames are the face
         "path": inp.manifest.get(("intrigue", content_id)),
     }
+
+
+def bloodlines_intrigue_spec(inp, content_id, arch):
+    """Bloodlines' Intrigue and Piter De Vries' Twisted Intrigue cards: the
+    app has none, so the printed English (read off the scans) and the Korean
+    edition's words are in the text tables under ``card.intrigue.<id>``; the
+    types come from the app-style archetype, the title and its module mark
+    from the engine's card."""
+    card = INTRIGUE_CARDS_BY_ID[content_id]
+    slug = "card.intrigue." + content_id.replace("_", "")
+    texts = []
+    for n in (1, 2):
+        key = f"{slug}.text.{n}"
+        if key in inp.en or key in inp.ko:
+            texts.append({"en": inp.en.get(key), "ko": inp.ko.get(key), "key": key})
+    return {
+        "kind": "intrigue",
+        "id": content_id,
+        "arch": arch.attributes["ArchID"],
+        "slug": slug,
+        "prefab": None,
+        "title": {
+            # the Twisted cards print only the adjective ("Ambitious")
+            "en": card.card.name.removeprefix("Twisted Intrigue: "),
+            "ko": KOREAN_CARD_NAMES["intrigue"].get(content_id),
+        },
+        "types": list(arch.attributes["IntrigueTypeList"]),
+        "texts": texts,
+        "choam": card.choam_only,
+        "tech": card.tech_only,
+        "twisted": card.twisted,
+        "bloodlines": True,
+        "art": "intrigue" if texts else None,
+        "skip": None if texts else "no English text (en_text.json)",
+        "path": inp.manifest.get(("intrigue", content_id)),
+    }
+
+
+# ------------------------------------------------ Bloodlines Intrigue marks
+# Bloodlines' Tech Module mark printed before a title (Battlefield Research,
+# Rapid Engineering): the gear of the app's Tech tile icon, cut out by its
+# colour, set inline like the CHOAM mark (<sprite name="TechSet">, with the
+# CHOAM mark's metrics).
+TECH_SET_SOURCE = (
+    "UI_crd_Icon_buytech",
+    (113, 66),
+    50,
+)  # sprite, gear centre, half box
+TECH_SET_GROUND = (65, 70, 39)  # the tile's green
+TECH_SET_INK = (233, 225, 137)  # the gear's yellow
+# the four-dot set mark of Bloodlines Intrigue (and Twisted) cards, measured
+# on the scans: right of the type word in the bottom strip
+INTRIGUE_SET_MARK = {"centre": (467.0, 740.0), "radius": 5.2, "gap": 14.5}
+# Piter De Vries' Twisted Intrigue cards print his portrait at the left of
+# the title band, fading into it. The picture is the Bloodlines leader card's
+# art (the app has no Piter of that painting; user decision 2026-10-11): the
+# leader scan cropped at the print's scale (0.40 template units per scan
+# pixel: hood 75 units wide and 86 from its top to the chin, as on the
+# Twisted cards) into the band's inner area.
+TWISTED_PORTRAIT_SCAN = "cards/en/bloodlines/leader/Piter De Vries.webp"
+TWISTED_PORTRAIT_CROP = (705, 135, 1055, 477)  # scan pixels -> the box below
+# template units: the band inside the card's black border; the portrait is
+# opaque up to the fade's first value (from the box's left) and gone at the second
+TWISTED_PORTRAIT_BOX = (7.0, 7.0, 147.0, 144.0)
+TWISTED_PORTRAIT_FADE = (103.0, 140.0)
+# the leader card's title tab cuts into the crop's top-left corner (dark
+# below its diagonal from (692, 178) to (765, 132)); those pixels are filled
+# with the rain sky 45 px further down
+TWISTED_TAB_EDGE = ((692, 178), (765, 132))
+TWISTED_TAB_FILL_DY = 45
+# the title is centred in the band right of the portrait, as printed
+TWISTED_TITLE_INSET = (140.0, 20.0)  # left, right
+
+
+def add_tech_set_glyph(inp):
+    """Register the Tech Module mark as the inline sprite "TechSet": the gear
+    cut out of the Tech tile icon by how far each pixel is from the tile's
+    green towards the gear's yellow, fitted to the CHOAM mark's ink box on
+    its canvas so the CHOAM mark's metrics place it alike."""
+    sprite, (cx, cy), half = TECH_SET_SOURCE
+    src = inp.sprites.get(sprite).crop((cx - half, cy - half, cx + half, cy + half))
+    a = np.asarray(src).astype(float)
+    ground, ink = np.array(TECH_SET_GROUND, float), np.array(TECH_SET_INK, float)
+    t = ((a[..., :3] - ground) @ (ink - ground)) / ((ink - ground) @ (ink - ground))
+    out = np.zeros_like(a)
+    out[..., :3] = ink
+    out[..., 3] = np.clip((t - 0.25) / 0.5, 0, 1) * a[..., 3]
+    gear = Image.fromarray(out.astype(np.uint8), "RGBA")
+    gear = gear.crop(
+        gear.getchannel("A").point(lambda v: 255 if v > 30 else 0).getbbox()
+    )
+    choam = inp.inline.get("CHOAMSet")
+    x0, y0, x1, y1 = (
+        choam.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox()
+    )
+    canvas = Image.new("RGBA", choam.size, (0, 0, 0, 0))
+    canvas.alpha_composite(gear.resize((x1 - x0, y1 - y0), Image.LANCZOS), (x0, y0))
+    inp.inline.cache[("TechSet", False)] = canvas
+    inp.text.sa["TechSet"] = dict(inp.text.sa["CHOAMSet"])
+
+
+def intrigue_set_mark(img, scale):
+    return draw_set_mark(img, scale, fill=(208, 212, 196, 150), **INTRIGUE_SET_MARK)
+
+
+_TWISTED_PORTRAIT = {}
+
+
+def twisted_portrait():
+    """Piter's portrait cropped from the leader scan, the title tab's corner
+    filled with the sky below it."""
+    if "img" not in _TWISTED_PORTRAIT:
+        im = Image.open(ASSETS / TWISTED_PORTRAIT_SCAN).convert("RGBA")
+        px = im.load()
+        (bx, by), (tx, ty) = TWISTED_TAB_EDGE
+        left, top = TWISTED_PORTRAIT_CROP[:2]
+        for y in range(max(top, ty), by + 1):
+            edge = bx + (by - y) * (tx - bx) / (by - ty)
+            for x in range(left, int(edge) + 1):
+                px[x, y] = px[x, y + TWISTED_TAB_FILL_DY]
+        _TWISTED_PORTRAIT["img"] = im.crop(TWISTED_PORTRAIT_CROP)
+    return _TWISTED_PORTRAIT["img"]
+
+
+def twisted_portrait_post(img, scale):
+    """Lay the portrait into the title band's inner area, fading out to the
+    right; the band's own pixels (not the black border) mask it."""
+    img = img.convert("RGBA")
+    x0, y0, x1, y1 = (round(v * scale) for v in TWISTED_PORTRAIT_BOX)
+    w, h = x1 - x0, y1 - y0
+    pic = np.asarray(twisted_portrait().resize((w, h), Image.LANCZOS)).astype(float)
+    fa, fb = (v * scale for v in TWISTED_PORTRAIT_FADE)
+    fade = np.clip((fb - np.arange(w)) / (fb - fa), 0, 1)[None, :]
+    under = np.asarray(img.crop((x0, y0, x1, y1))).astype(float)
+    band = (under[..., :3].mean(axis=2) > 15).astype(float)
+    alpha = (pic[..., 3] / 255) * fade * band
+    under[..., :3] = (
+        under[..., :3] * (1 - alpha[..., None]) + pic[..., :3] * alpha[..., None]
+    )
+    img.paste(Image.fromarray(under.astype(np.uint8), "RGBA"), (x0, y0))
+    return img
 
 
 def bind_intrigue_prefab(inp, spec, lang):
@@ -1243,11 +1426,17 @@ def bind_intrigue(inp, spec, lang):
             ft["fallback"] = str(KOREAN_FONT_BOLD)
     title = spec["title"].get(lang) or spec["title"]["en"]
     head = R.find(t, "HeaderText")
+    # the module mark before the title: the CHOAM ring prints smaller than
+    # the Tech gear (about the capitals' height)
+    mark = "CHOAMSet" if spec["choam"] else "TechSet" if spec.get("tech") else None
+    size = {"CHOAMSet": "70%", "TechSet": "100%"}.get(mark)
     head["text"] = (
-        ('<size=70%><sprite name="CHOAMSet"></size> ' + title)
-        if spec["choam"]
-        else title
+        f'<size={size}><sprite name="{mark}"></size> ' + title if mark else title
     )
+    if spec.get("twisted"):
+        left, right = TWISTED_TITLE_INSET
+        R.comp(head, "RT")["size"][0] = -(left + right)
+        R.comp(head, "RT")["pos"][0] = (left - right) / 2
     # printed Intrigue cards set the title and the type in a wide face, in capitals
     head["tmp_patch"] = {
         "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
@@ -1336,6 +1525,9 @@ def bind_intrigue(inp, spec, lang):
                 "amax": [0.5, 0.5],
             }
         )
+    if spec.get("bloodlines"):
+        t["_post"] = [twisted_portrait_post] if spec["twisted"] else []
+        t["_post"].append(intrigue_set_mark)
     return t
 
 
@@ -2419,8 +2611,11 @@ KIND_IDS = {
     "intrigue": lambda: [
         cid
         for cid, short in catalog.INTRIGUE_ARCHETYPES.items()
-        if short in ARCHETYPES
-        and short.split(".")[1] in ("Uprising", "Promo", "Immortality")
+        if (
+            short in ARCHETYPES
+            and short.split(".")[1] in ("Uprising", "Promo", "Immortality")
+        )
+        or (short in SYNTHETIC and INTRIGUE_CARDS_BY_ID[cid].bloodlines_only)
     ],
     "conflict": lambda: [
         cid

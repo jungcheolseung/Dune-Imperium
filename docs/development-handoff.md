@@ -4,6 +4,15 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-11 Bloodlines 책략·Twisted 책략 앞면도 앱 틀로 (codec 그대로)
+
+사용자 질문 "bloodlines 책략도 마찬가지로 만들 수 있을까?". 같은 브랜치 `bloodlines-app-faces`.
+
+- Bloodlines 책략 18장과 Piter De Vries의 Twisted 책략 12장(영어 30장, 한글판 사진이 있는 7장은 한국어도)을 Uprising 책략과 같은 Dynamic 틀로 그렸다. 영어 문구는 스캔에서 두 agent가 따로 받아 적었다(74칸 중 73칸 일치, Adaptive Tactics의 흰 교차 검은 엔진 정의 `GrantCombatDeployment`로 `Combat` 아이콘). 나머지 23장은 한국어 UI에서 영어 앱 앞면으로 보인다(전에는 영어 스캔).
+- 제목 앞 Tech Module 톱니는 앱 Tech 타일 아이콘의 톱니를 오려 인라인 `TechSet`으로 쓴다. Twisted 머리띠의 Piter 초상은 앱에 없는 그림이라 Bloodlines 지도자 카드 스캔에서 오렸다(사용자 결정: 앱의 다른 Piter 그림 대신 인쇄판과 같은 그림). 오른쪽 아래 네 점 표식도 그린다.
+- 하다가 고친 글상자 동작(기존 앞면도 바뀜): 줄 혼자인 아래 화살표를 인쇄처럼 행 높이의 절반쯤으로(Uprising 책략 16장), 여러 아이콘 줄이 문장 옆 최소 크기를 나눠 써서 글이 쪼그라들지 않게(Crysknife·Desert Mouse·Ornithopter·Spice is Power), 문단 사이 빈 줄(`<br><br>`)은 인쇄처럼 반 줄 띄움(Coercive Negotiation·False Orders·Withdrawn; 기존 앞면엔 해당 없음).
+- 에셋 커밋 `b4a694f`(화살표 16장)·`7463ac2`(4장)·`c88aa84`(새 앞면 37장·문구). 두 저장소를 함께 푸시해야 한다.
+
 ## 2026-10-11 친구 판 뒤 피드백 7항목과 기보 보태기 (codec 그대로 v142)
 
 친구들과 둔 판(`saves/8f8df4bc…`, 사람 0·1·3번 + 탐색 X 2번, v142) 뒤 사용자 피드백 7항목. 계획 뒤 사용자 결정: 3번은 "맞는 아이콘 하나로", 5번은 "그건 너가 앱 깐거 봐", 나머지는 "추천대로". 통합 브랜치 `fb11`(항목 브랜치 `fb11-icons`·`fb11-piles`·`fb11-turncard`·`fb11-layout`를 병합). 엔진·코덱·관측·저장은 그대로다.
