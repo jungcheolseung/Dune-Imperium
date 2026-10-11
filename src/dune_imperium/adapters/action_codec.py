@@ -414,7 +414,16 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # rewards there, Urgent Shigawire's added draw). Other catalogs are
 # unchanged. Recorded step sequences change (no switch, tagged rows), so
 # saves and replays from v142 are refused by the version check.
-ACTION_CODEC_VERSION = 143
+# v144 (user ruling 2026-10-12 "2. 고치자", OQ-057 (1)): a pending Agent box
+# that still offers a choice giving its effect -- Stitched Horror's "Choose
+# two", Beguiling Pheromones' trash, Piter's, Tleilaxu Surgeon's and
+# Dissecting Kit's arrows while their cost can be paid, Tleilaxu Master's
+# acquisition, Ghola's copies of them -- holds the turn end until it is
+# answered; the dry run behind ``finish_agent_turn`` misread them as boxes
+# that can only fizzle (one offering only its refusal still does). No
+# template change; recorded step sequences change, so saves and replays
+# from v143 are refused by the version check.
+ACTION_CODEC_VERSION = 144
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

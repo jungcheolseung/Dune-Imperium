@@ -752,8 +752,9 @@ def test_a_partner_box_with_a_choice_stays_reachable(
     optional arrow and Dissecting Kit's trash are the partner's box to
     take. The engine before codec v143 hid its switch once a dry run called
     both boxes unavailable, which misread such choice boxes, so the
-    partner's box could only fizzle at the turn's end; now its rows stay
-    offered next to the turn end."""
+    partner's box could only fizzle at the turn's end; now its rows are
+    offered, and the turn end waits for them (codec v144,
+    ``test_a_box_with_a_choice_holds_the_turn_end``)."""
 
     state = _settle_all_but_box_one(
         _graft(_state((placed, partner), troops_supply=9), placed, "arrakeen", partner)
@@ -778,6 +779,254 @@ def test_a_partner_box_with_a_choice_stays_reachable(
     else:
         assert after.specimens == before.specimens + 1
         assert placed in after.trashed
+
+
+# A box that offers a choice holds the turn end (codec v144)
+# ---------------------------------------------------------------------------
+
+SURGEON = "imperium:tleilaxu_surgeon:0"
+MASTER = "imperium:tleilaxu_master:0"
+DIPLOMACY = next(card for card in STARTERS if "diplomacy:0" in card)
+# The first research column with a genetic marker [Immortality p. 6].
+FIRST_MARKER_SPACE = "c4r2"
+FINISH = DomainAction("finish_agent_turn", 0)
+
+
+def _settle_space(state: GameState) -> GameState:
+    """Resolve the visited space's own effects and its Faction Influence."""
+
+    while True:
+        legal = ENGINE.legal_actions(state, 0)
+        rows = [
+            action
+            for action in legal
+            if action.action_id in ("resolve_board_effect", "resolve_faction_influence")
+        ]
+        if not rows:
+            return state
+        state = ENGINE.apply(state, rows[0], legal_actions=legal).state
+
+
+def _place_alone(state: GameState, card_id: str, space_id: str) -> GameState:
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == card_id
+        and dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments).get("graft") is not True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    return ENGINE.apply(state, placement).state
+
+
+def test_stitched_horror_holds_the_turn_end_until_it_names_two() -> None:
+    """Stitched Horror's box is "Choose two" of water, troop, trash and
+    Tleilaxu (docs/rules/immortality.md, slice 5c-1), named before either
+    resolves (OQ-057 (4)). It has no arrow and no condition, so it is a
+    mandatory effect that can always resolve: "'턴 종료'는 의무 효과가 모두
+    끝났을 때만 제시된다" (OQ-095 2), and a mandatory box fizzles at the end
+    only when "turn이 끝날 때까지 불가능할 때만" (OQ-057 (1)). Before codec
+    v144 the dry run behind the turn end tried the box's generic resolution,
+    which a choice box does not take, read it as unavailable, and offered
+    the end beside the four rewards; the press then fizzled the box with no
+    reward (water, garrison and Tleilaxu unchanged)."""
+
+    state = _settle_space(
+        _graft(_state((HORROR, DAGGER), troops_supply=9), HORROR, "arrakeen", DAGGER)
+    )
+    assert not agent_effects.agent_card_effect_is_unavailable(state)
+    assert not agent_effects.graft_boxes_are_stalled(state)
+    legal = ENGINE.legal_actions(state, 0)
+    assert FINISH not in legal
+    assert {
+        dict(action.arguments)["reward"]
+        for action in legal
+        if action.action_id == "choose_agent_card_reward"
+    } == {"water", "troop", "trash", "tleilaxu"}
+    named = _apply(state, "choose_agent_card_reward", reward="water")
+    assert FINISH not in ENGINE.legal_actions(named, 0)
+    done = _apply(named, "choose_agent_card_reward", reward="tleilaxu")
+    assert FINISH in ENGINE.legal_actions(done, 0)
+    owner = done.players[0]
+    before = state.players[0]
+    assert owner.resources.water == before.resources.water + 1
+    assert owner.tleilaxu_space == before.tleilaxu_space + 1
+    finished = ENGINE.apply(done, FINISH)
+    assert "agent_card_effect_unavailable" not in {
+        event.kind for event in finished.events
+    }
+
+
+def test_ghola_s_copy_of_stitched_horror_holds_the_turn_end_too() -> None:
+    """Ghola's copy is a box of its own (OQ-057 (12)): once Stitched Horror
+    names its two, the copy's "Choose two" still holds the end."""
+
+    state = _settle_space(
+        _graft(_state((HORROR, GHOLA), troops_supply=9), HORROR, "arrakeen", GHOLA)
+    )
+    assert FINISH not in ENGINE.legal_actions(state, 0)
+    first = _apply(state, "choose_agent_card_reward", reward="water")
+    horror_done = _apply(first, "choose_agent_card_reward", reward="troop")
+    assert _boxes_offered(horror_done, "choose_agent_card_reward") == {1}
+    assert FINISH not in ENGINE.legal_actions(horror_done, 0)
+    copy_first = _apply(horror_done, "choose_agent_card_reward", box=1, reward="water")
+    both_done = _apply(copy_first, "choose_agent_card_reward", box=1, reward="tleilaxu")
+    assert FINISH in ENGINE.legal_actions(both_done, 0)
+
+
+def _arrow_box(case: str) -> GameState:
+    if case == "piter":
+        return _settle_space(
+            _place_alone(_state((PITER, DAGGER)), PITER, "accept_contract")
+        )
+    if case == "piter_no_unit":
+        return _settle_space(
+            _place_alone(
+                _state((PITER, DAGGER), troops_garrison=0, troops_supply=12),
+                PITER,
+                "accept_contract",
+            )
+        )
+    if case == "surgeon":
+        return _settle_space(
+            _place_alone(
+                _state((SURGEON, DAGGER), specimens=2, troops_supply=7),
+                SURGEON,
+                "dutiful_service",
+            )
+        )
+    if case == "surgeon_one_specimen":
+        return _settle_space(
+            _place_alone(
+                _state((SURGEON, DAGGER), specimens=1, troops_supply=8),
+                SURGEON,
+                "dutiful_service",
+            )
+        )
+    if case == "tleilaxu_master":
+        return _settle_space(
+            _place_alone(
+                _state((MASTER, DAGGER), research_space=FIRST_MARKER_SPACE),
+                MASTER,
+                "accept_contract",
+            )
+        )
+    assert case == "dissecting_kit"
+    return _settle_space(
+        _graft(_state((DISSECTING, DAGGER)), DISSECTING, "arrakeen", DAGGER)
+    )
+
+
+_PAY = "decline_agent_card_payment"
+_ACQUIRE = "decline_agent_card_acquisition"
+
+
+@pytest.mark.parametrize(
+    ("case", "rows", "refusal"),
+    [
+        ("piter", {_PAY, "lose_agent_card_troop"}, _PAY),
+        ("surgeon", {_PAY, "pay_agent_card_two_specimens"}, _PAY),
+        ("dissecting_kit", {_PAY, "trash_grafted_card_for_specimen"}, _PAY),
+        ("tleilaxu_master", {_ACQUIRE, "acquire_imperium_by_card"}, _ACQUIRE),
+    ],
+)
+def test_a_box_with_a_choice_holds_the_turn_end(
+    case: str, rows: set[str], refusal: str
+) -> None:
+    """Effects are mandatory unless they say "may", pay an arrow's cost or
+    show the black trash icon [FAQ p. 3] (docs/rules/official-rulings-
+    index.md), and "화살표(→) 비용 효과는 어디서나 선택이다 ... Intrigue 밖의
+    화살표 효과는 이미 거절 행동을 가진다: ... Tleilaxu(Surgeon·Slig
+    Farmer·Scientific Breakthrough·Dissecting Kit)" (OQ-058). Piter's "Lose
+    a troop -> draw two cards and Research", Tleilaxu Surgeon's "2
+    specimens -> Tleilaxu Tleilaxu", Dissecting Kit's "Trash the other
+    grafted card -> a specimen" and Tleilaxu Master's "[one genetic marker]:
+    you may acquire a card costing 6 or less" can still resolve while the
+    cost can be paid (the card acquired), so the box is answered, paying or
+    refusing, before the turn ends. Before codec v144 the turn end's dry run
+    misread these four as unavailable and offered the end beside their
+    rows. The refusal answers the box; the end follows."""
+
+    state = _arrow_box(case)
+    legal = ENGINE.legal_actions(state, 0)
+    assert {
+        action.action_id for action in legal if action.action_id in rows
+    } == rows
+    assert FINISH not in legal
+    assert not agent_effects.agent_card_effect_is_unavailable(state)
+    declined = _apply(state, refusal)
+    assert FINISH in ENGINE.legal_actions(declined, 0)
+
+
+@pytest.mark.parametrize("case", ["piter_no_unit", "surgeon_one_specimen"])
+def test_an_arrow_whose_cost_cannot_be_paid_still_lets_the_turn_end(
+    case: str,
+) -> None:
+    """With no unit to lose (Piter) or one specimen short of two (Tleilaxu
+    Surgeon) the box offers only its refusal: its effect cannot happen
+    this turn, so it is a box that can only fizzle (OQ-057 (1)) and the
+    turn end is offered beside the refusal, as before codec v144. The press
+    fizzles it with the refusal's result: nothing."""
+
+    state = _arrow_box(case)
+    legal = ENGINE.legal_actions(state, 0)
+    assert {action.action_id for action in legal if action.action_id == _PAY} == {
+        _PAY
+    }
+    assert agent_effects.agent_card_effect_is_unavailable(state)
+    assert FINISH in legal
+    finished = ENGINE.apply(state, FINISH)
+    assert "agent_card_effect_unavailable" in {
+        event.kind for event in finished.events
+    }
+
+
+def test_beguiling_pheromones_holds_the_turn_end_on_a_faction_space() -> None:
+    """Beguiling Pheromones' "trash one of the grafted cards and gain an
+    additional Influence" has no "may", arrow or black trash icon, so it is
+    mandatory [FAQ p. 3] (``legal_agent_card_payment_actions``): on a
+    Faction space it can resolve, so the turn end waits for the trash
+    (OQ-095 2, OQ-057 (1)). Before codec v144 the end was offered beside
+    the trash and the press fizzled the box."""
+
+    state = _settle_space(
+        _graft(_state((DIPLOMACY, PHEROMONES)), DIPLOMACY, "secrets", PHEROMONES)
+    )
+    legal = ENGINE.legal_actions(state, 0)
+    assert FINISH not in legal
+    assert _boxes_offered(state, "trash_grafted_card_for_influence") == {1}
+    trashed = _apply(
+        state, "trash_grafted_card_for_influence", box=1, card_id=PHEROMONES
+    )
+    assert trashed.players[0].influence.bene_gesserit == (
+        state.players[0].influence.bene_gesserit + 1
+    )
+    assert FINISH in ENGINE.legal_actions(trashed, 0)
+
+
+def test_dissecting_kit_without_its_partner_in_play_can_only_fizzle() -> None:
+    """With no other grafted card in play Dissecting Kit's box offers
+    nothing ("without a partner still in play the box does nothing",
+    ``legal_agent_card_payment_actions``), so it is one that only fizzles
+    and the turn end stays offered (OQ-057 (1))."""
+
+    state = _graft(_state((DISSECTING, DAGGER)), DISSECTING, "arrakeen", DAGGER)
+    owner = state.players[0]
+    gone = replace(
+        state,
+        players=(
+            replace(
+                owner,
+                in_play=tuple(card for card in owner.in_play if card != DAGGER),
+                trashed=(*owner.trashed, DAGGER),
+            ),
+            *state.players[1:],
+        ),
+    )
+    assert agent_effects.agent_card_effect_is_unavailable(gone)
+    assert agent_effects.graft_boxes_are_stalled(_settle_space(gone))
+    assert FINISH in ENGINE.legal_actions(_settle_space(gone), 0)
 
 
 def test_ghola_s_copy_of_corrinth_city_picks_its_own_first_discard() -> None:

@@ -4018,6 +4018,17 @@ def _dry_run_effect_is_unavailable(state: GameState) -> bool:
         return False
     if pending_agent_icons(context):
         return _pending_icons_offer_nothing(state, context)
+    from dune_imperium.rules.agent_effect_frame import agent_box_can_resolve_by_choice
+
+    if agent_box_can_resolve_by_choice(state, context_int(context, "turn_owner")):
+        # A box resolved by a choice it still offers can resolve, so it is
+        # not one that only fizzles and the turn end waits for it (OQ-057
+        # (1), OQ-095 2). The generic resolution below is not its path and
+        # would report it unavailable: Stitched Horror's "Choose two"
+        # (OQ-057 (4)), Beguiling Pheromones' trash, the optional arrows of
+        # Piter, Tleilaxu Surgeon and Dissecting Kit and Tleilaxu Master's
+        # acquisition while they can be taken (OQ-058), and Ghola's copies.
+        return False
     try:
         dry_run = resolve_agent_card_effect(state)
     except (NotImplementedError, RuntimeError, ValueError):

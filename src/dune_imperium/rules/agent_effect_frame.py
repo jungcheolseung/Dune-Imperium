@@ -212,6 +212,43 @@ def agent_box_is_waiting(
     return not _single_box_actions(view, player)
 
 
+# A box choice that answers the box without its effect: an optional
+# arrow's or "may" effect's refusal ("You do not have to pay such a cost on
+# a card" [Main p. 20], OQ-058).
+_REFUSALS = frozenset(
+    action_id for action_id in BOX_ACTION_IDS if action_id.startswith("decline_")
+)
+
+
+def _box_choice_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The serial choices the Agent box in ``card_id`` offers now."""
+
+    return tuple(
+        action
+        for provider in _AGENT_CARD_CHOICE_PROVIDERS
+        for action in provider(state, player)
+    )
+
+
+def agent_box_can_resolve_by_choice(state: GameState, player: int) -> bool:
+    """Whether the Agent box in ``card_id`` offers a choice that gives its effect.
+
+    A box resolved by a choice -- Stitched Horror's "Choose two", Beguiling
+    Pheromones' trash, an optional arrow whose cost can be paid, Tleilaxu
+    Master's acquisition -- does not take the generic resolution, so its
+    dry run reads "unavailable" whatever it offers. While it offers such a
+    choice it can still resolve, and the turn end waits for it (OQ-057
+    (1), OQ-095 2; ``agent_effects.agent_card_effect_is_unavailable``). A
+    box that offers only its refusal (an arrow whose cost cannot be paid)
+    cannot: the end fizzles it, as the refusal would.
+    """
+
+    return any(
+        action.action_id not in _REFUSALS
+        for action in _box_choice_actions(state, player)
+    )
+
+
 def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """What a pending single-effect Agent box offers now; () while it waits.
 
@@ -222,11 +259,7 @@ def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     (OQ-057); ``finish_agent_turn`` resolves it then.
     """
 
-    choice_actions = tuple(
-        action
-        for provider in _AGENT_CARD_CHOICE_PROVIDERS
-        for action in provider(state, player)
-    )
+    choice_actions = _box_choice_actions(state, player)
     if choice_actions:
         return choice_actions
     if agent_card_effect_is_unavailable(state):
