@@ -14,9 +14,10 @@ function isMyTurn(summary) {
 }
 
 /* On a remote server a player waits for the others with the tab in the
-   background: the title says when the wait is over, and a short tone marks
-   the moment. (Notifications need a secure context, which a Tailscale
-   address over plain HTTP is not.) */
+   background: the title says when the wait is over, and a sound marks the
+   moment (every decision that comes to the seat, not only its turns).
+   (Notifications need a secure context, which a Tailscale address over
+   plain HTTP is not.) */
 function noticeTurn() {
   if (!isRemote()) return;
   const mine = isMyTurn(state.summary);
@@ -25,22 +26,9 @@ function noticeTurn() {
   myTurnBefore = mine;
 }
 
+/* The decision sound (sounds.js; the user's pick, 2026-10-11). */
 function turnTone() {
-  try {
-    const Context = window.AudioContext || window.webkitAudioContext;
-    const context = new Context();
-    const tone = context.createOscillator();
-    const gain = context.createGain();
-    tone.frequency.value = 880;
-    gain.gain.value = 0.08;
-    tone.connect(gain);
-    gain.connect(context.destination);
-    tone.start();
-    tone.stop(context.currentTime + 0.18);
-    tone.onended = () => context.close();
-  } catch (error) {
-    /* no audio: the title still tells */
-  }
+  playSound("decision");
 }
 
 function note(text) {
