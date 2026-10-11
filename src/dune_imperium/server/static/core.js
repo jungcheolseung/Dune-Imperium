@@ -199,6 +199,34 @@ function entryOf(instanceId, kind) {
   return lookup(ref.id, kind || ref.kind);
 }
 
+/* entryOf()'s entry with the section it was found in ({section, entry}),
+   or null. An id of unknown kind is searched as lookup() does, the first
+   section first; an id two sections share is reported by lookup() itself
+   when the line's words are made, so not again here. */
+function entrySection(instanceId, kind) {
+  const c = state.catalog;
+  if (!c) return null;
+  const ref = instanceRef(instanceId);
+  const known = kind || ref.kind;
+  for (const section of known ? [known] : LOOKUP_SECTIONS) {
+    const entry = c[section] && c[section][ref.id];
+    if (entry) return { section, entry };
+  }
+  return null;
+}
+
+/* The sections whose entries are cards to look at: a card name in the
+   action log and a decision row about a card show the card's popover on
+   hover (user request 2026-10-11). A board space, an Objective or a
+   Commander skill is not one. */
+const CARD_SECTIONS = new Set(["cards", "intrigue", "contracts", "conflicts", "tech", "leaders"]);
+
+/* The card an id names (entryOf()), or null for anything else. */
+function cardEntryOf(instanceId, kind) {
+  const found = entrySection(instanceId, kind);
+  return found && CARD_SECTIONS.has(found.section) ? found.entry : null;
+}
+
 /* One argument only: callers map ids through it (`ids.map(nameOf)`), which
    passes the index second. A kind-bearing caller uses spaceName() or
    lookup(id, kind). */
@@ -266,14 +294,21 @@ const PROVENANCE_KINDS = {
    Trade, not the Acquire contract). A single bare segment ("espionage",
    "forbidden_weapons") is the whole source and is searched by kind. */
 function sourceName(value) {
+  const found = sourceRef(value);
+  return found ? found.entry.name : null;
+}
+
+/* sourceName()'s entry with its section ({section, entry}), or null: the
+   log shows a card's picture on its name (CARD_SECTIONS). */
+function sourceRef(value) {
   const parts = String(value).split(":");
   for (let index = 1; index < parts.length; index += 1) {
     const kind = PROVENANCE_KINDS[parts[index - 1]];
     const entry = kind ? lookup(parts[index], kind) : null;
-    if (entry) return entry.name;
+    if (entry) return { section: kind, entry };
   }
   const entry = parts.length === 1 ? lookup(parts[0]) : null;
-  return entry ? entry.name : null;
+  return entry ? entrySection(parts[0]) : null;
 }
 
 /* What one engine value reads as on screen, given the field that holds it
@@ -381,6 +416,43 @@ function fieldWord(key, text, siblings) {
   return entry ? entry.name : null;
 }
 
+/* The card fieldWord() named one value by, when `word` (its words) is that
+   card's own name; null for a space, a post, a Scouts item or any other
+   word. */
+function fieldCard(key, text, word) {
+  if (key === "post_id" || key.endsWith("_post_id")) return null;
+  if (SCOUTS_ITEM_FIELDS.has(key) || key === "kind" || key === "locations") return null;
+  const found = entrySection(text, SPACE_FIELD.test(key) ? "spaces" : undefined);
+  if (!found || !CARD_SECTIONS.has(found.section)) return null;
+  return found.entry.name === word ? found.entry : null;
+}
+
+/* fieldText()'s words for running text that shows cards (the action log):
+   each value naming a card is its cardNameNode(), the rest the same words
+   as strings. Null when no card is named, or when the pieces would not read
+   exactly `shown`, the words fieldText() gave: the line's text never
+   changes. */
+function fieldNodes(key, value, siblings, shown) {
+  const text = String(value);
+  const values = text.includes(",") ? text.split(",").filter(Boolean) : [text];
+  const pieces = [];
+  let named = false;
+  values.forEach((part, index) => {
+    if (index) pieces.push(", ");
+    const word = fieldWord(key, part, siblings);
+    const card = word === null ? null : fieldCard(key, part, word);
+    if (card) {
+      pieces.push(cardNameNode(card, word));
+      named = true;
+    } else {
+      pieces.push(word === null ? part : word);
+    }
+  });
+  if (!named) return null;
+  const read = pieces.map((piece) => (typeof piece === "string" ? piece : piece.textContent));
+  return read.join("") === shown ? pieces : null;
+}
+
 /* A chance step as words: whose pile was shuffled, or who stole from whom,
    and the card or space that made it happen. The engine's decision id
    (rules/card_draw.py, intrigue_deck.py, board_effects.py) is a provenance
@@ -393,8 +465,16 @@ function isPauseChance(decisionId) {
 }
 
 function describeChance(decisionId) {
+  return chanceWords(decisionId).text;
+}
+
+/* describeChance()'s words, and the card or space that made it happen
+   (sourceRef(), {section, entry}; null when none is named), whose name the
+   words end with in parentheses. */
+function chanceWords(decisionId) {
   const id = String(decisionId);
-  if (isPauseChance(id)) return t("core.pause_step");
+  const plain = (text) => ({ text, cause: null });
+  if (isPauseChance(id)) return plain(t("core.pause_step"));
   const owner = id.match(/(?:^|:)player:(\d+)(?=:|$)/);
   const seat = owner ? t("common.seat", { seat: Number(owner[1]) }) : null;
   const steal = id.match(/:secrets:steal:(\d+)$/);
@@ -409,13 +489,13 @@ function describeChance(decisionId) {
   } else if (id.endsWith(":intrigue_shuffle")) {
     what = t("core.chance_intrigue_shuffle");
   } else if (SCOUTS_DRAW.test(id)) {
-    return t("core.chance_scouts", { what: scoutsDrawName(id.match(SCOUTS_DRAW)[1]) });
+    return plain(t("core.chance_scouts", { what: scoutsDrawName(id.match(SCOUTS_DRAW)[1]) }));
   } else {
-    return t("core.chance_other");
+    return plain(t("core.chance_other"));
   }
   /* The seat's own "player:N" and the last word are the kind, not the cause. */
-  const cause = steal ? null : sourceName(id.split(":").slice(0, -1).join(":"));
-  return cause ? `${what} (${cause})` : what;
+  const cause = steal ? null : sourceRef(id.split(":").slice(0, -1).join(":"));
+  return cause ? { text: `${what} (${cause.entry.name})`, cause } : plain(what);
 }
 
 /* An Arrakeen Scouts draw (rules/scouts.py _draw_frame):
@@ -511,6 +591,40 @@ function chip(instanceId, kind) {
     hoverPopover(span, () => entry);
   }
   return span;
+}
+
+/* A card's name inside a line of text (the action log): the same words,
+   in a span that opens the card's popover on hover and pins it on a click,
+   as a chip does (user request 2026-10-11: a revealed card read only as
+   text once its cue was gone). Only a name the line already shows is
+   wrapped, so nothing hidden from the seat is looked up. No role or title:
+   the line reads as before. */
+function cardNameNode(entry, text = entry.name) {
+  const span = document.createElement("span");
+  span.className = "card-name";
+  span.textContent = text;
+  span.addEventListener("click", (event) => {
+    event.stopPropagation();
+    pinPopover(entry, span);
+  });
+  hoverPopover(span, () => entry);
+  return span;
+}
+
+/* Append strings and nodes to `target`, a run of strings as one text node:
+   a line with no card name in it keeps the single text node it had. */
+function appendRun(target, pieces) {
+  let text = "";
+  for (const piece of pieces) {
+    if (typeof piece === "string") {
+      text += piece;
+      continue;
+    }
+    if (text) target.append(text);
+    text = "";
+    target.append(piece);
+  }
+  if (text) target.append(text);
 }
 
 /* ---------- detail popover ---------- */
@@ -881,8 +995,10 @@ function popoverNodes(entry) {
 /* `seatState` is the seat's own `PublicPlayerView` (panels.js's `player`)
    when this popover was opened from a seat's leader thumbnail or name, so
    the leader image can draw that seat's own state on the card; every other
-   caller leaves it out and gets the plain card popover unchanged. */
-function openPopover(entry, anchor, seatState) {
+   caller leaves it out and gets the plain card popover unchanged.
+   `place` puts the popover by its anchor (placePopover below or above it,
+   placePopoverBeside beside a decision row), now and as images arrive. */
+function openPopover(entry, anchor, seatState, place = placePopover) {
   const pop = el("card-popover");
   pop.classList.remove("hover");
   pop.textContent = "";
@@ -983,11 +1099,11 @@ function openPopover(entry, anchor, seatState) {
     const sardaukarRow = leaderSardaukarRow(seatState);
     if (sardaukarRow) pop.appendChild(sardaukarRow);
   }
-  placePopover(pop, anchor, 340);
+  place(pop, anchor, 340);
   /* Every `<img>` this popover ends up with -- the leader's own portrait
      and, now, any eager card below or above it -- lacks an explicit
      `aspect-ratio`, so before it finishes loading the browser lays it out
-     at no height at all; `placePopover` above, called synchronously, then
+     at no height at all; `place` above, called synchronously, then
      measures a too-short popover and misplaces it. Repositioning again as
      each image finishes loading (there again once it is already
      `.complete`, e.g. from the browser's own cache, is harmless) fixes
@@ -1003,7 +1119,7 @@ function openPopover(entry, anchor, seatState) {
            sets `pop.hidden = true`, leaving a slow image connected and
            able to un-hide the popover from under a pointer that has
            already left. Check both. */
-        if (loadingImage.isConnected && !pop.hidden) placePopover(pop, anchor, 340);
+        if (loadingImage.isConnected && !pop.hidden) place(pop, anchor, 340);
       },
       { once: true },
     );
@@ -1040,6 +1156,40 @@ function placePopover(pop, anchor, maxWidth) {
   }
 }
 
+/* Beside a decision row instead of under it (render.js actionItem): left of
+   the column that holds the row list, or right of it when the window has
+   no room on the left, level with the row and kept inside the window, so
+   the picture never covers the rows the pointer moves along. With no room
+   on either side (a narrow window) it goes under or over the row as
+   placePopover() puts it. A row the list has since dropped keeps the
+   popover where it is, as placePopover() does. */
+function placePopoverBeside(pop, anchor, maxWidth) {
+  const column = anchor.isConnected ? anchor.closest("#side-main") || anchor.parentElement : null;
+  if (!column) {
+    placePopover(pop, anchor, maxWidth);
+    return;
+  }
+  const box = column.getBoundingClientRect();
+  const width = Math.min(maxWidth, window.innerWidth - 16);
+  const gap = 8;
+  /* A spot counts only inside the window: a narrow window scrolls the
+     table sideways, and the column may lie partly past its edge. */
+  const fits = (left) => left >= 8 && left + width <= window.innerWidth - 8;
+  let left;
+  if (fits(box.left - gap - width)) left = box.left - gap - width;
+  else if (fits(box.right + gap)) left = box.right + gap;
+  else {
+    placePopover(pop, anchor, maxWidth);
+    return;
+  }
+  pop.hidden = false;
+  pop.style.width = `${width}px`;
+  pop.style.left = `${left}px`;
+  const height = pop.offsetHeight;
+  const row = anchor.getBoundingClientRect();
+  pop.style.top = `${Math.max(8, Math.min(row.top, window.innerHeight - height - 8))}px`;
+}
+
 function closePopover() {
   const pop = el("card-popover");
   pop.hidden = true;
@@ -1064,13 +1214,13 @@ const HOVER_DELAY_MS = 120;
    otherwise stays open unrefreshed through a foreign one. */
 let pinnedLeaderSeat = null;
 
-function hoverPopover(anchor, entryOf, seatOf) {
+function hoverPopover(anchor, entryOf, seatOf, place) {
   anchor.addEventListener("mouseenter", () => {
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       const entry = entryOf();
       if (!entry || popoverPinned) return;
-      openPopover(entry, anchor, seatOf ? seatOf() : undefined);
+      openPopover(entry, anchor, seatOf ? seatOf() : undefined, place);
       popoverPinned = false;
       el("card-popover").classList.add("hover");
     }, HOVER_DELAY_MS);
@@ -1157,9 +1307,32 @@ const DETAIL_REPLACES_LABEL = new Set(["pay_agent_card_spice"]);
    name is a proper noun and is appended as plain text. That split is the
    point: the old version joined both into one string and ran ICON_RULES over
    it, so the card named "Signet Ring" was replaced by the Signet Ring icon
-   and its line read "배치 — , Arrakeen". */
-function describeAction(action) {
+   and its line read "배치 — , Arrakeen".
+
+   `options.cardNames`: a card the step names is its cardNameNode(), the
+   picture on hover, with the same words (the action log, panels.js
+   turnLine). A decision row's button leaves it out: a click there
+   chooses. */
+function describeAction(action, options = {}) {
   const fragment = document.createDocumentFragment();
+  if (action.detail && action.detail_title) {
+    /* An Agent box's row (the box's resolution, one of its icons, the graft
+       switch to the other card's box): the server names the card it works
+       on and what that box or icon does (display/actions.py
+       agent_box_row_title), and that pair is the button -- "동맹 물색: 이
+       카드 폐기", not "카드 효과 해결" with the effect beside it (user,
+       2026-10-11). The title is ours (phrase(): a card name is plain text in
+       it, never iconized); the detail is the card's wording. A logged step
+       has no detail and keeps its label. */
+    const title =
+      TERM_LANGUAGE === "ko" && action.detail_title_ko
+        ? action.detail_title_ko
+        : action.detail_title;
+    fragment.appendChild(phrase(title));
+    fragment.append(": ");
+    fragment.appendChild(effectNode(action.detail, action.detail_ko));
+    return fragment;
+  }
   if (action.detail && DETAIL_REPLACES_LABEL.has(action.action_id)) {
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
@@ -1284,7 +1457,12 @@ function describeAction(action) {
       const entry = cardId && state.catalog ? state.catalog.intrigue[baseId(cardId)] : null;
       const lines = entry && Array.isArray(entry.text) ? entry.text : null;
       if (cardId && lines && lines[value] !== undefined) {
-        parts.push(document.createTextNode(nameOf(cardId)));
+        const name = nameOf(cardId);
+        parts.push(
+          options.cardNames && entry.name === name
+            ? cardNameNode(entry, name)
+            : document.createTextNode(name),
+        );
         if (lines.length > 1) {
           parts.push(intrigueOptionBody(entry, value));
         }
@@ -1302,7 +1480,17 @@ function describeAction(action) {
       /* A card, space or post names itself; a faction, reward or zone
          reads with the field that says what it is. */
       const named = key.endsWith("_id") || key.endsWith("_ids") || shown === t("common.hidden");
-      parts.push(document.createTextNode(named ? shown : `${label}: ${shown}`));
+      const cards =
+        options.cardNames && text !== null
+          ? fieldNodes(key, value, action.arguments, shown)
+          : null;
+      if (cards) {
+        const words = document.createDocumentFragment();
+        appendRun(words, named ? cards : [`${label}: `, ...cards]);
+        parts.push(words);
+      } else {
+        parts.push(document.createTextNode(named ? shown : `${label}: ${shown}`));
+      }
     }
   }
   parts.forEach((part, index) => {

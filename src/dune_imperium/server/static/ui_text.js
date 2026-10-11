@@ -32,6 +32,33 @@ const UI_TEXT = {
     "ko": "← 교전 카드 이력",
     "en": "← Conflict card history"
   },
+  "panels.vp_ledger_open": {
+    "ko": "{victory_point} {{points}} · 클릭하여 얻은 기록 보기",
+    "en": "{victory_point} {{points}} · Click to see how they were scored"
+  },
+  "panels.vp_ledger_title": {
+    "ko": "{{name}} · {victory_point} 기록 (현재 {{points}})",
+    "en": "{{name}} · {victory_point} history (now {{points}})"
+  },
+  "panels.vp_ledger_note": {
+    "ko": "행을 누르면 행동 기록에서 그 단계를 찾아 줍니다.",
+    "en": "Click a row to find its step in the action log."
+  },
+  "panels.vp_ledger_loading": { "ko": "불러오는 중…", "en": "Loading…" },
+  "panels.vp_ledger_failed": {
+    "ko": "기록을 불러오지 못했습니다: {{message}}",
+    "en": "Could not load the history: {{message}}"
+  },
+  "panels.vp_ledger_start": { "ko": "게임 시작", "en": "Game start" },
+  "panels.vp_ledger_round": { "ko": "R{{round}}", "en": "R{{round}}" },
+  "panels.vp_ledger_total": {
+    "ko": "이 단계 뒤 {{points}}",
+    "en": "{{points}} after this step"
+  },
+  "panels.vp_ledger_find": {
+    "ko": "행동 기록에서 이 단계 보기",
+    "en": "Show this step in the action log"
+  },
   "effects.agent": { "ko": "에이전트 카드 사용", "en": "Agent card played" },
   "effects.played": { "ko": "카드 사용", "en": "Card played" },
   "effects.graft": { "ko": "접목 카드 사용", "en": "Graft card played" },
@@ -1086,8 +1113,8 @@ const UI_TEXT = {
     "en": "Secret picks"
   },
   "panels.scouts_secret_waiting": {
-    "ko": "{{round}}라운드 {{name}}: {{seats}}",
-    "en": "Round {{round}} {{name}}: {{seats}}"
+    "ko": "아직 비공개: {{round}}라운드 {{name}} — {{seats}}",
+    "en": "Not revealed yet: Round {{round}} {{name}} — {{seats}}"
   },
   "panels.scouts_own_pick": {
     "ko": "내 선택 — {{name}}: ",
@@ -1438,13 +1465,19 @@ const UI_TEXT = {
     "ko": "카드를 접고 보드를 봅니다 (A)",
     "en": "Fold the card away to see the board (A)"
   },
-  "scouts_stage.tab": {
-    "ko": "스카웃 카드 · {{name}}",
-    "en": "Scouts card · {{name}}"
+  "scouts_stage.show": { "ko": "카드로 보기", "en": "Show card" },
+  "scouts_stage.show_more": {
+    "ko": "{{name}} 외 {{more}}",
+    "en": "{{name}} +{{more}}"
   },
-  "scouts_stage.tab_more": {
-    "ko": "스카웃 카드 · {{name}} 외 {{more}}",
-    "en": "Scouts card · {{name}} +{{more}}"
+  "scouts_stage.show_title": {
+    "ko": "아라킨 스카웃 카드를 보드 위에 펼칩니다 (A)",
+    "en": "Bring the Arrakeen Scouts card up over the board (A)"
+  },
+  "scouts_stage.fold": { "ko": "카드 접기", "en": "Hide card" },
+  "scouts_stage.fold_title": {
+    "ko": "보드 위 아라킨 스카웃 카드를 접습니다 (A)",
+    "en": "Fold the Arrakeen Scouts card over the board away (A)"
   },
   "scouts_stage.prev": { "ko": "◀ 이전", "en": "◀ Previous" },
   "scouts_stage.next": { "ko": "다음 ▶", "en": "Next ▶" },
@@ -1473,13 +1506,17 @@ const UI_TEXT = {
     "ko": "{{index}} / {{total}}",
     "en": "{{index}} / {{total}}"
   },
-  "scouts_stage.tab_title": {
-    "ko": "아라킨 스카웃 카드를 다시 펼칩니다 (A)",
-    "en": "Bring the Arrakeen Scouts card back (A)"
-  },
   "scouts_stage.secrets_name": {
     "ko": "비밀 선택 공개",
     "en": "Secret picks revealed"
+  },
+  "scouts_stage.secrets_pending_name": {
+    "ko": "비밀 선택 공개 준비",
+    "en": "Secret picks: reveal to come"
+  },
+  "scouts_stage.secrets_event": {
+    "ko": "{{round}}라운드 {{name}}",
+    "en": "Round {{round}} {{name}}"
   },
   "render.scouts_decision_item": {
     "ko": "아라킨 스카웃 · {{kind}} · {{name}}",

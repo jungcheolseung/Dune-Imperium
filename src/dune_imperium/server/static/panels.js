@@ -245,11 +245,24 @@ function renderSeats() {
 
     const stats = document.createElement("div");
     stats.className = "stats";
+    /* The Victory Points open how they were scored (vpLedgerContent). */
+    const points = statNode(
+      "victory_point",
+      phraseText("{victory_point}"),
+      player.victory_points,
+    );
+    if (vpLedgerReadable()) {
+      const pointsOpener = `seat-vp:${seat}`;
+      points.dataset.pileOpener = pointsOpener;
+      openerStat(points, t("panels.vp_ledger_open", { points: player.victory_points }), () =>
+        togglePileViewer({ kind: "vp", seat, opener: pointsOpener }, points)
+      );
+    }
     /* Counts that are not already visible on a board track stay at a glance.
        Spice before Solari (user, 2026-10-11: "스파이스/솔라리/물 순으로").
        Immortality p. 16 names the green cube as the Specimen icon. */
     stats.append(
-      statNode("victory_point", phraseText("{victory_point}"), player.victory_points),
+      points,
       statNode("spice", phraseText("{spice}"), player.resources.spice),
       statNode("solari", phraseText("{solari}"), player.resources.solari),
       statNode("water", phraseText("{water}"), player.resources.water),
@@ -537,7 +550,8 @@ function skillIdOf(instanceId) {
 
    It remembers which pile it shows, never the cards: `pileViewerKey` is
    `{kind, seat, mine, opener, scene}`, with kind "discard" (a seat's),
-   "intrigue_discard" or "deck" (the seat's own); the seat it belongs to
+   "intrigue_discard", "deck" (the seat's own) or "vp" (a seat's Victory
+   Point ledger, which is no pile: vpLedgerContent); the seat it belongs to
    (null for the Intrigue discard); `mine`, the opener's own "my pile" test
    that picks the title; `opener`, the name in its opener's
    `data-pile-opener`, so a second click there closes it; and the table it
@@ -550,7 +564,9 @@ const PILE_VIEWER_WIDTH = 420;
 /* The table a pile was opened on: the game, the seat looked from and, in a
    review, the step on screen (the openers read the reviewed view). Leaving
    the game, switching seats or moving the review cursor closes the
-   viewer. */
+   viewer. The Victory Point ledger is the exception: what it shows is public
+   and belongs to the seat it was opened for, so it stays open for the
+   whole game and follows the review cursor (vpLedgerContent). */
 function pileViewerScene() {
   return {
     game: state.gameId,
@@ -627,8 +643,8 @@ function refreshPileViewer() {
   const same =
     !el("game-screen").hidden &&
     scene.game === key.scene.game &&
-    scene.seat === key.scene.seat &&
-    scene.cursor === key.scene.cursor;
+    (key.kind === "vp" ||
+      (scene.seat === key.scene.seat && scene.cursor === key.scene.cursor));
   const content = same ? pileViewerContent(key) : null;
   if (!content) {
     closePileViewer();
@@ -640,6 +656,8 @@ function refreshPileViewer() {
   const active = document.activeElement;
   const focused =
     active && body.contains(active) && active.dataset ? active.dataset.instance : null;
+  const focusedRow =
+    active && body.contains(active) && active.dataset ? active.dataset.ledgerRow : null;
   fillPileViewer(content);
   body.scrollTop = scroll;
   keepPileViewerInWindow();
@@ -649,6 +667,10 @@ function refreshPileViewer() {
       (node) => node.dataset.instance === focused,
     );
     if (card) card.focus();
+  }
+  if (focusedRow) {
+    const row = body.querySelector(`[data-ledger-row="${focusedRow}"]`);
+    if (row) row.focus();
   }
 }
 
@@ -684,7 +706,8 @@ function placePileViewerOnImages(place) {
 
 /* `content.sections`: `[{title, notes, cards}]`. The first title is the
    viewer's own, its accessible name beside the ×; a later section is
-   headed inside, above its cards. */
+   headed inside, above its cards. A section with a `body` node (the
+   Victory Point ledger's list) shows that in place of a card strip. */
 function fillPileViewer(content) {
   const body = el("pile-viewer-body");
   body.textContent = "";
@@ -696,6 +719,10 @@ function fillPileViewer(content) {
       body.appendChild(head);
     } else {
       el("pile-viewer-title").textContent = section.title;
+    }
+    if (section.body) {
+      body.append(...(section.notes || []), section.body);
+      return;
     }
     const row = document.createElement("div");
     row.className = "strip-cards wrap";
@@ -710,6 +737,7 @@ function fillPileViewer(content) {
 function pileViewerContent(key) {
   const view = state.view;
   if (!view) return null;
+  if (key.kind === "vp") return vpLedgerContent(key, view);
   if (key.kind === "deck") return deckListContent(key, view);
   if (key.kind === "intrigue_discard") {
     const ids = [...(view.intrigue_discard || [])].reverse();
@@ -836,6 +864,398 @@ function deckListContent(key, view) {
   return { sections: [{ title, notes, cards }] };
 }
 
+/* ---------- the Victory Point ledger ---------- */
+
+/* How a seat scored its Victory Points (user request 2026-10-11): its
+   Victory Point count on the seat panel opens the pile viewer on every step
+   that moved them, "R3 +1 → 4" and the cause. The server walks the game
+   and reports each seat's change step by step (GET /games/{id}/vp-ledger,
+   sessions.py vp_ledger): most changes come with no Victory Point event of
+   their own (an Influence track reaching 2, an Alliance passing on). A row
+   names its step by log index only, so the cause is drawn here from this
+   page's own log entry, as redacted as the log already is for this seat,
+   and a click on the row finds that entry in the action log.
+
+   The ledger is fetched while the viewer shows it and again whenever the
+   game has moved on (summary.log_count). The rows kept are the ones before
+   the end of the log on screen, so they add up to the points the seat
+   panel shows: live, a ledger read a moment after the snapshot loses the
+   steps the page has not drawn yet; in a review, the rows stop at the
+   cursor. */
+const vpLedger = {
+  gameId: null,
+  /* The payload: {log_count, start, entries}. */
+  data: null,
+  /* The log_count being fetched, and the one a fetch failed at (no retry
+     until the game moves on). */
+  loading: null,
+  failedAt: null,
+  error: null,
+};
+
+/* Event kinds that can carry a Victory Point change; the row lists the ones
+   its log entry holds for the seat. A sweep of 24 app AI games (every
+   expansion) and the review's 75 found one in nearly every scoring step;
+   a step with none still shows its own head. */
+const VP_CAUSE_KINDS = new Set([
+  "victory_points_gained",
+  "reveal_victory_point_gained",
+  "influence_gained",
+  "influence_lost",
+  "leader_influence_bonus_gained",
+  "alliance_gained",
+  "alliance_transferred",
+  "alliance_lost",
+  "conflict_won",
+  "combat_reward_gained",
+  "combat_reward_paid",
+  "battle_icons_matched",
+  "endgame_wild_matched",
+  "card_acquired",
+  "agent_card_trashed_for_vp",
+  "contract_reveal_card_trashed_for_vp",
+  "corrinth_city_payment_resolved",
+  "contract_completed",
+  "tleilaxu_advanced",
+  "tleilaxu_track_end",
+  "research_advanced",
+  "intrigue_effect_used",
+  "board_effect_resolved",
+  "scouts_effect_resolved",
+  "tech_acquire_effect_resolved",
+  "agent_card_effect_resolved",
+  "agent_card_reward_chosen",
+  /* Two steps that score without a point event of their own (2026-10-11
+     review, 27 of 2,576 rows in 75 games): a Combat reward paid by
+     recalling Spies, and an Agent box's arrow payment. */
+  "spies_recalled",
+  "agent_card_payment_resolved",
+]);
+
+/* Whether this page may read the ledger: always on an open server; on a
+   remote one while it holds a seat of the game, or once the game has
+   finished (sessions.py vp_ledger: a client with only the room link gets
+   nothing more than before until the end). Elsewhere the count is a plain
+   number. */
+function vpLedgerReadable() {
+  return (
+    !isRemote() || mySeats().length > 0 || Boolean(state.summary && state.summary.finished)
+  );
+}
+
+/* The ledger for the state on screen: `{data, fresh, error}`, `data` the
+   last one fetched (possibly older than the page, while a newer one
+   loads). Starts that fetch when there is none. */
+function vpLedgerState() {
+  const gameId = state.gameId;
+  if (vpLedger.gameId !== gameId) {
+    Object.assign(vpLedger, {
+      gameId,
+      data: null,
+      loading: null,
+      failedAt: null,
+      error: null,
+    });
+  }
+  const wanted = state.summary ? state.summary.log_count : 0;
+  const fresh = Boolean(vpLedger.data) && vpLedger.data.log_count >= wanted;
+  if (!fresh && vpLedger.loading === null && vpLedger.failedAt !== wanted) {
+    loadVpLedger(gameId, wanted);
+  }
+  return {
+    data: vpLedger.data,
+    fresh,
+    error: vpLedger.failedAt === wanted ? vpLedger.error : null,
+  };
+}
+
+function loadVpLedger(gameId, wanted) {
+  vpLedger.loading = wanted;
+  api(`/games/${gameId}/vp-ledger`)
+    .then((data) => {
+      if (vpLedger.gameId !== gameId) return;
+      vpLedger.data = data;
+      vpLedger.failedAt = null;
+      vpLedger.error = null;
+    })
+    .catch((error) => {
+      if (vpLedger.gameId !== gameId) return;
+      vpLedger.failedAt = wanted;
+      vpLedger.error = error.message;
+    })
+    .finally(() => {
+      if (vpLedger.gameId !== gameId) return;
+      vpLedger.loading = null;
+      if (pileViewerKey && pileViewerKey.kind === "vp") refreshPileViewer();
+    });
+}
+
+/* The log on screen: the live one, or a review's up to its cursor. */
+function shownLog() {
+  return state.review ? reviewLog(state.review) : state.log;
+}
+
+/* The viewer's contents for one seat: a title with its current points, a
+   note, and the rows. `aria-busy` stays "true" while a newer ledger loads,
+   so a reader (or a check) knows the rows may still be catching up. */
+function vpLedgerContent(key, view) {
+  const player = view.players.find((p) => p.player === key.seat);
+  if (!player || !vpLedgerReadable()) return null;
+  const { data, fresh, error } = vpLedgerState();
+  const title = t("panels.vp_ledger_title", {
+    name: seatLeaderName(key.seat),
+    points: player.victory_points,
+  });
+  const note = document.createElement("div");
+  note.className = "popover-note";
+  note.textContent = t("panels.vp_ledger_note");
+  const notes = [note];
+  if (error) {
+    const failed = document.createElement("div");
+    failed.className = "popover-note error";
+    failed.textContent = t("panels.vp_ledger_failed", { message: error });
+    notes.push(failed);
+  } else if (!fresh) {
+    const loading = document.createElement("div");
+    loading.className = "popover-note";
+    loading.textContent = t("panels.vp_ledger_loading");
+    notes.push(loading);
+  }
+  const list = document.createElement("ol");
+  list.className = "vp-ledger";
+  list.dataset.seat = String(key.seat);
+  list.setAttribute("aria-busy", fresh ? "false" : "true");
+  if (data) {
+    const log = shownLog();
+    const end = log ? log.count : 0;
+    const entries = new Map(((log && log.entries) || []).map((entry) => [entry.index, entry]));
+    list.appendChild(vpStartRow(data.start[key.seat]));
+    for (const row of data.entries) {
+      if (row.seat !== key.seat || row.index >= end) continue;
+      list.appendChild(vpLedgerRow(row, entries.get(row.index)));
+    }
+  }
+  return { sections: [{ title, notes, body: list }] };
+}
+
+/* The points every seat starts with, as the first row, so the rows add up
+   to the count on the seat panel. */
+function vpStartRow(points) {
+  const item = document.createElement("li");
+  item.className = "vp-row vp-start";
+  item.dataset.delta = String(points);
+  item.dataset.total = String(points);
+  const main = document.createElement("div");
+  main.className = "vp-row-main";
+  const cause = document.createElement("div");
+  cause.className = "vp-cause";
+  cause.textContent = t("panels.vp_ledger_start");
+  main.append(
+    vpCell("vp-round", ""),
+    vpCell("vp-delta", String(points)),
+    vpCell("vp-total", `→ ${points}`),
+    cause,
+  );
+  item.appendChild(main);
+  return item;
+}
+
+function vpCell(className, text) {
+  const cell = document.createElement("span");
+  cell.className = className;
+  cell.textContent = text;
+  return cell;
+}
+
+/* One step that moved the seat's points: its round, the change, the points
+   after it and what the log says the step did. A row whose log entry is on
+   screen finds it in the action log (findLogEntry). */
+function vpLedgerRow(row, entry) {
+  const item = document.createElement("li");
+  item.className = "vp-row";
+  item.dataset.ledgerIndex = String(row.index);
+  item.dataset.delta = String(row.delta);
+  item.dataset.total = String(row.total);
+  const main = document.createElement("div");
+  main.className = "vp-row-main";
+  const round = vpCell("vp-round", t("panels.vp_ledger_round", { round: row.round }));
+  round.title = t("review.round_label", { round: row.round });
+  const sign = row.delta > 0 ? "+" : "−";
+  const delta = vpCell(
+    `vp-delta ${row.delta > 0 ? "gain" : "loss"}`,
+    `${sign}${Math.abs(row.delta)}`,
+  );
+  const total = vpCell("vp-total", `→ ${row.total}`);
+  total.title = t("panels.vp_ledger_total", { points: row.total });
+  const cause = document.createElement("div");
+  cause.className = "vp-cause";
+  vpCause(cause, entry, row.seat, row.index);
+  main.append(round, delta, total, cause);
+  item.appendChild(main);
+  if (entry) {
+    main.tabIndex = 0;
+    main.setAttribute("role", "button");
+    main.dataset.ledgerRow = String(row.index);
+    main.title = t("panels.vp_ledger_find");
+    main.addEventListener("click", (event) => {
+      event.stopPropagation();
+      findLogEntry(row.index);
+    });
+    main.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      findLogEntry(row.index);
+    });
+  }
+  return item;
+}
+
+/* Whether an event is aimed at `seat` (its player, an Alliance's giver or
+   taker, ...). */
+function eventNamesSeat(event, seat) {
+  const payload = event.payload || {};
+  return [...SEAT_PAYLOAD_KEYS].some((key) => payload[key] === seat);
+}
+
+/* The cause of one row from the page's own log entry: the step's head as
+   the action log reads it (the seat and its action; a chance step's name,
+   or for the engine's pause what it went on to do), then the entry's
+   events that can move this seat's points. Where those events are all the
+   game's own doing after the step (splitEntryEvents: the Combat resolved
+   by the last pass), the head names that first, as the log's "game in
+   progress" card does, and the step that set it off after it. Without an
+   entry on screen, the step's number alone. */
+function vpCause(cause, entry, seat, index) {
+  if (!entry) {
+    cause.textContent = `#${index}`;
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "vp-cause-head";
+  const explains = (event) => VP_CAUSE_KINDS.has(event.kind) && eventNamesSeat(event, seat);
+  const events = (entry.events || []).filter(explains);
+  /* What the log's own card calls the game's doing; null when it has no
+     better name than "game in progress". */
+  const gameTitle = (items, always) => {
+    const title = neutralTitle({ items: items.map((event) => ({ event })) });
+    if (!always && title === t("panels.neutral_default")) return null;
+    const mark = document.createElement("span");
+    mark.className = "neutral-mark";
+    mark.textContent = "⚙";
+    const what = document.createElement("strong");
+    what.textContent = title;
+    return [mark, what];
+  };
+  if (entry.type === "chance") {
+    /* A pause, or a chance step whose point events are the game's own
+       (Scouts secret rewards resolving inside a discard shuffle): the
+       log files these under a neutral game card, so the row says so too. */
+    const flow = splitEntryEvents({ ...entry, events: entry.events || [] }).neutral;
+    if (isPauseChance(entry.decision_id)) head.append(...gameTitle(entry.events || [], true));
+    else if (events.length > 0 && events.every((event) => flow.includes(event))) {
+      head.append(...gameTitle(flow, true));
+    } else {
+      const what = document.createElement("strong");
+      what.textContent = t("core.chance_label", {
+        decision: describeChance(entry.decision_id),
+      });
+      head.append(what);
+    }
+  } else {
+    const flow = splitEntryEvents(entry).neutral;
+    const byGame =
+      events.length > 0 && events.every((event) => flow.includes(event))
+        ? gameTitle(flow, false)
+        : null;
+    const step = document.createElement("span");
+    step.className = byGame ? "vp-cause-step after" : "vp-cause-step";
+    const who = document.createElement("strong");
+    who.textContent = seatLeaderName(entry.actor);
+    const action = document.createElement("span");
+    action.className = "turn-action";
+    action.appendChild(describeAction(entry));
+    step.append(seatToken(entry.actor, "seat-mark"), who, action);
+    if (byGame) head.append(...byGame);
+    head.appendChild(step);
+  }
+  cause.appendChild(head);
+  for (const event of events) cause.appendChild(logEventLine(event));
+}
+
+/* ---------- finding a step in the action log ---------- */
+
+/* A ledger row's click scrolls the action log to its entry and marks it for
+   a moment. The log is rebuilt by every render, so the mark is kept here
+   and put back by renderLog until it runs out. */
+const LOG_TARGET_MS = 2500;
+let logTarget = { gameId: null, index: null, until: 0 };
+let logTargetTimer = 0;
+
+function findLogEntry(index) {
+  logTarget = { gameId: state.gameId, index, until: performance.now() + LOG_TARGET_MS };
+  window.clearTimeout(logTargetTimer);
+  logTargetTimer = window.setTimeout(() => {
+    logTarget = { gameId: null, index: null, until: 0 };
+    for (const node of document.querySelectorAll(".log-target")) {
+      node.classList.remove("log-target");
+    }
+  }, LOG_TARGET_MS);
+  const list = document.querySelector("#action-log .log-list");
+  if (!list) return false;
+  const nodes = markLogTarget(list);
+  if (!nodes.length) return false;
+  /* The line that carries a Victory Point event first (the game's own
+     card for a Combat's rewards), else the step's own line. */
+  const target =
+    nodes.find((node) => VP_CAUSE_KINDS.has(node.dataset.eventKind)) ||
+    nodes.find((node) => node.querySelector(".logevent")) ||
+    nodes[0];
+  let placed = scrollLogTo(list, target);
+  /* The log's card pictures load lazily once scrolled to, and the ones
+     above the target push it down as they arrive: keep it in place while
+     it is marked, unless the reader has scrolled the log meanwhile. */
+  for (const image of list.querySelectorAll("img")) {
+    if (image.complete) continue;
+    image.addEventListener(
+      "load",
+      () => {
+        const still =
+          target.isConnected &&
+          target.classList.contains("log-target") &&
+          Math.abs(list.scrollTop - placed) <= 2;
+        if (still) placed = scrollLogTo(list, target);
+      },
+      { once: true },
+    );
+  }
+  return true;
+}
+
+/* `node` a third of the way down the log's box; the scrollTop it set. */
+function scrollLogTo(list, node) {
+  const offset = node.getBoundingClientRect().top - list.getBoundingClientRect().top;
+  list.scrollTop = Math.max(0, list.scrollTop + offset - list.clientHeight / 3);
+  return list.scrollTop;
+}
+
+/* Mark the log's lines of the target entry, if one is still marked. */
+function markLogTarget(list) {
+  for (const node of list.querySelectorAll(".log-target")) {
+    node.classList.remove("log-target");
+  }
+  if (
+    logTarget.gameId !== state.gameId ||
+    logTarget.index === null ||
+    performance.now() > logTarget.until
+  ) {
+    return [];
+  }
+  const nodes = [...list.querySelectorAll(`[data-log-index="${logTarget.index}"]`)];
+  for (const node of nodes) node.classList.add("log-target");
+  return nodes;
+}
+
 /* Unlike won Battle cards, this timeline keeps a reveal in its original
    round even after a tie, an award or a later transfer of the card. The
    server projects only public reveals, up to the live/reviewed state. */
@@ -952,7 +1372,19 @@ const SEAT_PAYLOAD_KEYS = new Set([
   "visitor",
 ]);
 
+/* The payload's pairs as one string, the words its line shows
+   (logEventParts). */
 function logEventPayload(payload, eventKind) {
+  const words = (piece) => (typeof piece === "string" ? piece : piece.textContent);
+  return logEventParts(payload, eventKind)
+    .map((part) => (Array.isArray(part) ? part.map(words).join("") : part))
+    .join(" · ");
+}
+
+/* The pairs of logEventPayload(), each a string, or a list of strings and
+   nodes when it names a card (cardNameNode, its picture on hover);
+   logEventLine joins them. */
+function logEventParts(payload, eventKind) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
@@ -1002,8 +1434,12 @@ function logEventPayload(payload, eventKind) {
     if (value === 0 || value === "" || value === null || value === false) continue;
     if (Array.isArray(value) && value.length === 0) continue;
     if (key === "source") {
-      const name = sourceName(value);
-      if (name) parts.push(`${label}: ${name}`);
+      const found = sourceRef(value);
+      if (found && CARD_SECTIONS.has(found.section)) {
+        parts.push([`${label}: `, cardNameNode(found.entry)]);
+      } else if (found) {
+        parts.push(`${label}: ${found.entry.name}`);
+      }
       continue;
     }
     /* A flag says itself by its name. */
@@ -1017,6 +1453,7 @@ function logEventPayload(payload, eventKind) {
        does. */
     const isIdField = key.endsWith("_id");
     let shown;
+    let cards = null;
     if (key === "effect") {
       /* A keyed board icon has a label; a Reveal choice's effect id is the
          engine's name for what the event line already says. */
@@ -1029,13 +1466,14 @@ function logEventPayload(payload, eventKind) {
       const text = typeof raw === "string" ? fieldText(key, raw, payload) : null;
       if (text === "") continue;
       shown = text === null ? String(value) : text;
+      if (text !== null) cards = fieldNodes(key, raw, payload, shown);
     }
     /* card_id and instance_id of one event resolve to the same name. */
     if (isIdField && shownNames.has(shown)) continue;
     if (isIdField) shownNames.add(shown);
-    parts.push(`${label}: ${shown}`);
+    parts.push(cards ? [`${label}: `, ...cards] : `${label}: ${shown}`);
   }
-  return parts.join(" · ");
+  return parts;
 }
 
 /* Event kinds only one Leader's ability emits, so their payload names no
@@ -1071,9 +1509,15 @@ function logEventHead(event) {
 function logEventLine(event) {
   const line = document.createElement("div");
   line.className = "logevent";
+  line.dataset.eventKind = event.kind;
   line.appendChild(logEventHead(event));
-  const payload = logEventPayload(event.payload, event.kind);
-  if (payload) line.append(` — ${payload}`);
+  const pieces = [];
+  logEventParts(event.payload, event.kind).forEach((part, index) => {
+    pieces.push(index ? " · " : " — ");
+    if (Array.isArray(part)) pieces.push(...part);
+    else pieces.push(part);
+  });
+  appendRun(line, pieces);
   addLogEventIcon(line, event);
   return line;
 }
@@ -1313,7 +1757,10 @@ function neutralCard(group, glowFrom) {
   const lines = document.createElement("div");
   lines.className = "turn-lines";
   for (const item of group.items) {
-    lines.appendChild(item.chance ? chanceLine(item.chance) : logEventLine(item.event));
+    const line = item.chance ? chanceLine(item.chance) : logEventLine(item.event);
+    /* Its log entry, for findLogEntry. */
+    line.dataset.logIndex = String(item.chance ? item.chance.index : item.index);
+    lines.appendChild(line);
   }
   card.appendChild(lines);
   /* Spotlight what the game touched (Maker spice, the new Conflict). */
@@ -1341,22 +1788,43 @@ function chanceLine(entry) {
     line.textContent = t("core.pause_step");
     return line;
   }
-  let text = t("core.chance_label", { decision: describeChance(entry.decision_id) });
+  /* The card behind the step, and a drawn card, show their picture on
+     hover (cardNameNode); the words are describeChance()'s and
+     chanceValueName()'s. */
+  const words = chanceWords(entry.decision_id);
+  const text = t("core.chance_label", { decision: words.text });
+  const cause = words.cause && CARD_SECTIONS.has(words.cause.section) ? words.cause.entry : null;
+  const at = cause ? text.lastIndexOf(`(${cause.name})`) : -1;
+  const pieces =
+    at < 0
+      ? [text]
+      : [text.slice(0, at + 1), cardNameNode(cause), text.slice(at + 1 + cause.name.length)];
   if (entry.values) {
-    const valueName = (value) => chanceValueName(entry.decision_id, value);
-    const shown =
-      entry.values.length <= 3
-        ? entry.values.map(valueName).join(", ")
-        : `${entry.values.slice(0, 3).map(valueName).join(", ")} …`;
-    text += ` — ${shown}`;
+    pieces.push(" — ");
+    entry.values.slice(0, 3).forEach((value, index) => {
+      if (index) pieces.push(", ");
+      pieces.push(chanceValueNode(entry.decision_id, value));
+    });
+    if (entry.values.length > 3) pieces.push(" …");
   }
-  line.textContent = text;
+  appendRun(line, pieces);
   return line;
+}
+
+/* One drawn value of a chance line: chanceValueName()'s words, as the
+   card's cardNameNode() when they are that card's name. A Scouts draw
+   names an item, a layout or a round, never a card. */
+function chanceValueNode(decisionId, value) {
+  const name = chanceValueName(decisionId, value);
+  if (SCOUTS_DRAW.test(String(decisionId))) return name;
+  const card = cardEntryOf(value);
+  return card && card.name === name ? cardNameNode(card) : name;
 }
 
 function turnLine(entry) {
   const line = document.createElement("div");
   line.className = "turn-line";
+  line.dataset.logIndex = String(entry.index);
   if (QUIET_ACTIONS.has(entry.action_id)) line.classList.add("quiet");
   if (entry.undone) line.classList.add("undone");
   const head = document.createElement("div");
@@ -1368,7 +1836,7 @@ function turnLine(entry) {
      fragment to the flex head makes each piece a separate wrapping column. */
   const label = document.createElement("span");
   label.className = "turn-action";
-  label.appendChild(describeAction(entry));
+  label.appendChild(describeAction(entry, { cardNames: true }));
   if (entry.undone) label.append(t("panels.undone_suffix"));
   /* A parenthesized icon is one unit, including both punctuation marks. */
   for (const token of label.querySelectorAll(".icon, .amount, .agent-piece-icon, .term-text")) {
@@ -1400,6 +1868,16 @@ function seatLeaderName(seat) {
   return leaderFace ? prettify(leaderFace) : t("common.seat", { seat });
 }
 
+/* seatLeaderName() as a node: the Leader's name shows its card on hover
+   (cardNameNode), "Seat N" stays text. */
+function seatLeaderNode(seat) {
+  const name = seatLeaderName(seat);
+  const player = state.view && state.view.players[seat];
+  const leaderFace = player && (player.leader_face_id || player.leader_id);
+  const entry = leaderFace ? lookup(leaderFace, "leaders") : null;
+  return entry && entry.name === name ? cardNameNode(entry) : document.createTextNode(name);
+}
+
 function turnCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card";
@@ -1412,7 +1890,7 @@ function turnCard(group, glowFrom) {
   head.className = "turn-head";
   head.appendChild(seatToken(group.actor, "seat-mark"));
   const who = document.createElement("strong");
-  who.textContent = seatLeaderName(group.actor);
+  who.appendChild(seatLeaderNode(group.actor));
   head.appendChild(who);
   const kind = state.summary.seats[group.actor];
   const badge = document.createElement("span");
@@ -1506,9 +1984,10 @@ function passesCard(group, glowFrom) {
     if (index) head.append(" · ");
     const seat = document.createElement("span");
     seat.className = "pass-seat";
+    seat.dataset.logIndex = String(entry.index);
     if (entry.undone) seat.classList.add("undone");
     seat.appendChild(seatToken(entry.actor, "seat-mark"));
-    seat.append(seatLeaderName(entry.actor));
+    seat.append(seatLeaderNode(entry.actor));
     head.appendChild(seat);
   });
   card.appendChild(head);
@@ -1705,6 +2184,8 @@ function renderLog() {
     list.appendChild(node);
   }
   panel.appendChild(list);
+  /* A step a Victory Point ledger row asked for stays marked (findLogEntry). */
+  markLogTarget(list);
   /* Review drives the cursor itself, so it always shows the step it moved to. */
   if (!following && !state.review) {
     list.scrollTop = previousTop;
@@ -2173,10 +2654,18 @@ function renderScouts() {
     return;
   }
   panel.hidden = false;
-  panel.textContent = "";
-  const heading = document.createElement("h2");
-  heading.textContent = t("panels.scouts_heading");
-  panel.appendChild(heading);
+  /* The heading row stays from one render to the next: beside the heading
+     is the button that brings the Scouts card back over the board
+     (scouts_stage.js scoutsStageOpener), which keeps its node and focus. */
+  let head = panel.querySelector(":scope > .scouts-panel-head");
+  if (!head) {
+    head = document.createElement("div");
+    head.className = "scouts-panel-head";
+    head.append(document.createElement("h2"), scoutsStageOpener());
+  }
+  for (const node of [...panel.childNodes]) if (node !== head) node.remove();
+  if (head.parentNode !== panel) panel.appendChild(head);
+  head.querySelector("h2").textContent = t("panels.scouts_heading");
 
   if (view.scouts_subcommittees.length) {
     const box = scoutsSection(panel, t("panels.scouts_subcommittees"));

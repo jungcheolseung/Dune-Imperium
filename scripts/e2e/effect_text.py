@@ -785,6 +785,73 @@ def check_payment_rows(page, language: str) -> None:
         )
 
 
+# An Agent box's rows (user request 2026-10-11, "그냥 선택지에 카드 효과가
+# 바로 보여지는게 낫지 않나?"): the server names the card a row works on
+# (detail_title, display/actions.py agent_box_row_title) and what its box
+# does (detail), and the button reads "<card>: <box>" -- Seek Allies' plain
+# box resolution, and the graft switch to it from Face Dancer. The pairs are
+# the ones tests/unit/display/test_actions.py pins against the engine.
+BOX_ROW_ACTIONS = [
+    {
+        "action_id": "resolve_agent_card_effect",
+        "arguments": {},
+        "detail": "Trash this card",
+        "detail_ko": "이 카드 폐기",
+        "detail_title": "Seek Allies",
+        "detail_title_ko": "동맹 물색",
+    },
+    {
+        "action_id": "switch_graft_card",
+        "arguments": {},
+        "detail": "Trash this card",
+        "detail_ko": "이 카드 폐기",
+        "detail_title": "Go to Seek Allies ({graft})",
+        "detail_title_ko": "{graft} 동맹 물색으로 넘어가기",
+    },
+]
+BOX_ROW_TEXT_KO = [
+    "동맹 물색: 이 카드 폐기",
+    "접합 동맹 물색으로 넘어가기: 이 카드 폐기",
+]
+BOX_ROW_TITLES_EN = ["Seek Allies: ", "Go to Seek Allies (Graft): "]
+
+
+def check_box_rows(page, language: str) -> None:
+    """Each Agent-box row reads as its card and its box, never the generic
+    label; the same action without a detail (a logged step) keeps it."""
+
+    for action, korean, english in zip(
+        BOX_ROW_ACTIONS, BOX_ROW_TEXT_KO, BOX_ROW_TITLES_EN, strict=True
+    ):
+        label = page.evaluate(LABEL_TEXT_JS, action["action_id"])
+        shown = page.evaluate(ROW_JS, action)
+        logged = page.evaluate(
+            ROW_JS, {**action, "detail": None, "detail_ko": None}
+        )
+        what = f"{language} {action['action_id']} box row"
+        check.ok(
+            logged["text"] == label,
+            f"{what} without a detail (a logged step): the label",
+            (logged, label),
+        )
+        check.ok(label not in shown["text"], f"{what}: no generic label", shown)
+        if language == "Korean":
+            check.ok(
+                shown["text"] == korean and shown["cardTextSpans"] == 0,
+                f"{what}: reads {korean!r}",
+                shown,
+            )
+        else:
+            expected = english + page.evaluate(ICONIZE_TEXT_JS, action["detail"])
+            check.ok(
+                shown["text"] == expected
+                and shown["cardTextSpans"] > 0
+                and shown["icons"] >= 1,
+                f"{what}: the card, then its iconized box ({expected!r})",
+                shown,
+            )
+
+
 # A REAL resolve_board_effect decision (2026-09-25 review): the synthetic
 # BOARD_RESOLUTION_ACTION check above only proves describeAction() renders a
 # hand-built detail/detail_ko pair correctly -- it would keep passing even
@@ -1079,6 +1146,8 @@ def main() -> None:
 
         print("[2c3] Korean: Control the Spice's payment row (Epic Game Mode)")
         check_payment_rows(page, "Korean")
+        print("[2c3b] Korean: Agent-box rows read as their card and box")
+        check_box_rows(page, "Korean")
         row_shot = page.evaluate(
             """(actions) => {
               const box = document.getElementById("card-popover");
@@ -1146,6 +1215,7 @@ def main() -> None:
         check_resolution_row_english(page)
         check_board_resolution_row_english(page)
         check_payment_rows(page, "English")
+        check_box_rows(page, "English")
         check_play_intrigue_rows_english(page)
         # ... and match iconize(condition/reward) computed independently.
         contract = page.evaluate("(id) => lookup(id)", CONTRACT_ID)

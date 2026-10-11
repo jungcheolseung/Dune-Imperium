@@ -76,7 +76,11 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
-from dune_imperium.display import effect_action_text, effect_action_text_ko
+from dune_imperium.display import (
+    agent_box_row_title,
+    effect_action_text,
+    effect_action_text_ko,
+)
 from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
@@ -137,6 +141,12 @@ from dune_imperium.server.turn_end import (
     turn_start_seat,
     unit_over,
     unit_seat,
+)
+from dune_imperium.server.vp_ledger import (
+    VpLedger,
+    extend_ledger,
+    ledger_json,
+    start_ledger,
 )
 
 _LOGGER: Final = logging.getLogger(__name__)
@@ -304,6 +314,9 @@ class GameSession:
     narration_clock: float = 0.0
     narrated_turn: str | None = None
     cue_unit: float = 0.0
+    # The Victory Point ledger walked so far (``vp_ledger``), kept so a
+    # second look does not replay the game again; never saved.
+    vp_ledger: VpLedger | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -1008,6 +1021,59 @@ class GameSessionManager:
             "entries": _log_entries_json(entries, seat, finished, after),
         }
 
+    def vp_ledger(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Return how every seat's Victory Points moved, step by step.
+
+        ``entries`` lists every live step that changed a seat's Victory
+        Points as ``{index, round, seat, delta, total}``, ``index`` being the
+        step's log entry (``log``), and ``start`` each seat's opening points,
+        so a seat's ``start`` plus its deltas is its points now. Steps taken
+        back never appear (``vp_ledger``, the module, says how it is walked).
+
+        It is table knowledge: the Victory Point track is on the board in
+        front of every seat, and a row names its step only by the log index
+        every seat's log already carries, never by what was done. So it is
+        the same for every seat and no seat is asked for. Who may read it
+        is the table, though, not anyone holding the room link: a remote
+        client that holds no seat gets no more than before (the summary,
+        which carries no Victory Points until the end), so before the game
+        ends a remote server serves it only to a client proving one of the
+        game's seats (``_authorize_table_locked``); once the game has
+        finished everything is public (OQ-010 ruling 4) and the room link is
+        enough, as for ``review``. Rows past a client's own log (its
+        ``count``) are a state the client has not drawn yet; a review cuts
+        the rows at its cursor's last log entry the same way.
+
+        The ledger is cached on the session and only extended by the steps
+        played since; the walk runs off the session lock, like a review's
+        replay, so a long game's first look does not hold up the table.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            self._authorize_table_locked(session, credentials)
+            live = _indexed_live_steps(session)
+            log_count = len(session.log)
+            cached = session.vp_ledger
+        if cached is None or not cached.extends(live):
+            opening = session.engine.reset(session.config, session.game_seed)
+            cached = start_ledger(opening)
+        ledger = extend_ledger(session.engine, cached, live)
+        with session.lock:
+            now = _indexed_live_steps(session)
+            kept = session.vp_ledger
+            if ledger.extends(now) and (
+                kept is None or not kept.extends(now) or kept.steps < ledger.steps
+            ):
+                session.vp_ledger = ledger
+        return {
+            "game_id": session.game_id,
+            "log_count": log_count,
+            **ledger_json(ledger),
+        }
+
     def delete(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> None:
         """Forget one session (host-only on a remote server).
 
@@ -1443,6 +1509,27 @@ class GameSessionManager:
         token = session.seat_tokens.get(seat)
         if token is None or not token_matches(token, credentials.seat_tokens):
             raise SeatAccessError(f"this client does not hold seat {seat}")
+
+    def _authorize_table_locked(
+        self, session: GameSession, credentials: Credentials
+    ) -> None:
+        """Refuse a remote client that holds none of the game's seats while
+        the game runs: public table facts are for the table until the end.
+
+        Any seat's token will do, the facts being the same for every seat;
+        the admin key opens nothing, as in ``_authorize_seat_locked``. The
+        caller holds the session lock.
+        """
+
+        if self._access is AccessMode.OPEN or _is_finished(session.state):
+            return
+        if not any(
+            token_matches(token, credentials.seat_tokens)
+            for token in session.seat_tokens.values()
+        ):
+            raise SeatAccessError(
+                "only a client holding a seat may read this before the game ends"
+            )
 
     def _settle_locked(
         self, session: GameSession, before: GameState, action: DomainAction
@@ -2601,6 +2688,23 @@ def _state_after(session: GameSession, count: int) -> GameState:
     return state
 
 
+def _indexed_live_steps(session: GameSession) -> tuple[tuple[int, ReplayStep], ...]:
+    """Every live step in order, with the index of its log entry.
+
+    The live log entries are ``steps`` one for one (``GameSession.log``);
+    the caller holds the session lock.
+    """
+
+    indices = [
+        index
+        for index, entry in enumerate(session.log)
+        if isinstance(entry, LoggedStep) and not entry.undone
+    ]
+    if len(indices) != len(session.steps):
+        raise RuntimeError("the session log does not match the recorded steps")
+    return tuple(zip(indices, session.steps, strict=True))
+
+
 def _rebuild_log(
     session: GameSession,
     saved: tuple[tuple[ReplayStep, bool] | LoggedUndo, ...],
@@ -2886,7 +2990,11 @@ def _serialize_action(
     ``display.actions.agent_card_icon_text_ko``) and a board-space icon
     (Step K4, ``display.spaces.board_effect_action_text_ko``); the client
     falls back to ``detail`` whenever a resolution kind has no Korean text
-    yet, ``static/core.js`` ``describeAction``. ``undoable`` says whether
+    yet, ``static/core.js`` ``describeAction``. An Agent-box row (a box
+    resolution, one of its icons, the graft switch) also carries
+    ``detail_title``/``detail_title_ko``, the card it works on
+    (``display.actions.agent_box_row_title``): the page then shows the
+    title and the detail as the button's text. ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
@@ -2945,6 +3053,9 @@ def _serialize_action(
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
+    title = agent_box_row_title(session.state, action)
+    if title is not None:
+        serialized["detail_title"], serialized["detail_title_ko"] = title
     revealed = reveal_preview(action, outcome)
     if revealed is not None:
         serialized["reveal_preview"] = revealed

@@ -1689,10 +1689,13 @@ function unavailableRow(row) {
   const body = document.createElement("span");
   body.className = "unavailable-body";
   body.appendChild(describeAction(row.action));
-  /* A waiting effect names the card it sits on. A card that cannot be
-     bought shows no cost of its own: its reason names the cost and what
-     the seat holds ("Needs 5 Persuasion (you have 3)"). */
-  if (row.card_id) body.append(" · ", nameOf(row.card_id));
+  /* A waiting effect names the card it sits on, unless its row already
+     leads with it (an Agent box, display/actions.py agent_box_row_title).
+     A card that cannot be bought shows no cost of its own: its reason names
+     the cost and what the seat holds ("Needs 5 Persuasion (you have 3)"). */
+  if (row.card_id && !(row.action.detail && row.action.detail_title)) {
+    body.append(" · ", nameOf(row.card_id));
+  }
   item.append(body, unavailableBadge(row));
   return item;
 }
@@ -2012,7 +2015,41 @@ function actionItem(action, onApply, zone) {
     wrap.append(info, detail);
   }
   if (action.subcommittee_preview) wrap.appendChild(subcommitteePreview(action.subcommittee_preview));
+  rowCardPreview(wrap, action);
   return wrap;
+}
+
+/* The card a row is about: the first argument naming a card (cardEntryOf),
+   read as actionPreviewEntries() reads them, so it is one of the "ⓘ"
+   entries. Null for a row about a space, a post or nothing. */
+function actionCardEntry(action) {
+  for (const [key, value] of Object.entries(action.arguments)) {
+    if (key === "space_id" || typeof value !== "string") continue;
+    const card = cardEntryOf(value);
+    if (card) return card;
+  }
+  return null;
+}
+
+/* A row about a card shows the card's popover beside the decision column
+   while the pointer rests on the row (user request 2026-10-11: choosing
+   which card to trash meant opening "ⓘ" on every row). The usual hover
+   delay, gone when the pointer leaves; "ⓘ" stays for the keyboard and
+   touch. In hover mode the popover takes no clicks, so the row and the
+   table under it still do. A click on the row cancels a popover still on
+   its delay, so it does not open over the step the click starts. Not for
+   the rows of the placement chooser, which lives in the popover itself
+   (turn.js openPlacementChooser). */
+function rowCardPreview(wrap, action) {
+  const card = actionCardEntry(action);
+  if (!card) return;
+  hoverPopover(
+    wrap,
+    () => (wrap.closest("#card-popover") ? null : card),
+    undefined,
+    placePopoverBeside,
+  );
+  wrap.addEventListener("click", () => clearTimeout(hoverTimer), true);
 }
 
 /* Focus the action list on one card instance or space (table click with

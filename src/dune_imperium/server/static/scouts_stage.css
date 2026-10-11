@@ -8,7 +8,8 @@
 
 /* The board's grid cell; the frame inside is the board square, sized and
    placed like .board-stage (aspect 6012/6005, as wide as fits, centred,
-   at the top). Clicks pass through everywhere but the card and the tab. */
+   at the top). Folded, the whole cell is hidden (scouts_stage.js); nothing
+   of it is left over the board. */
 #scouts-stage {
   grid-area: board;
   position: relative;
@@ -35,11 +36,6 @@
   width: 100%;
   height: 100%;
   aspect-ratio: auto;
-}
-/* Folded: only the tab is left, at the board's top edge. */
-#scouts-stage.folded .scouts-stage-frame {
-  background: transparent;
-  pointer-events: none;
 }
 
 /* ---------- the card ---------- */
@@ -265,7 +261,22 @@
   letter-spacing: 0.08em;
   color: #ffe2b0;
 }
-.scouts-stage-waiting { font-size: max(14px, 0.9em); }
+/* The reveal page (scouts_stage.js scoutsStageSecretsPage): an event's
+   heading, each seat's revealed line, then the picks still secret, set
+   apart in italics so they never read as revealed. */
+.scouts-stage-event {
+  margin-top: 0.3em;
+  font-size: max(14px, 0.85em);
+  letter-spacing: 0.08em;
+  color: #ffe2b0;
+}
+.scouts-stage-event:first-child { margin-top: 0; }
+.scouts-stage-waiting {
+  margin-top: 0.4em;
+  font-size: max(14px, 0.9em);
+  font-style: italic;
+  color: #e8dcc4;
+}
 /* Between two lines, the app's translucent bar (or its look). */
 .scouts-stage-divider {
   flex: none;
@@ -378,32 +389,43 @@
 .scouts-stage-card:focus { outline: none; }
 .scouts-stage-card:focus-visible { outline: 2px solid #a9e6ff; outline-offset: -2px; }
 
-/* The tab that brings the card back, on the board's top edge. */
-#scouts-stage .scouts-stage-tab {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 90%;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  padding: 0.15em 1em 0.25em;
-  border: 1px solid #6f9fd8;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
+/* The Scouts panel's button beside its heading (scouts_stage.js
+   scoutsStageOpener): it brings the folded card back, naming the page, or
+   folds it. A long name gives way to an ellipsis. */
+#scouts-panel .scouts-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 0.6rem;
+  margin: 0 0 0.6rem;
+}
+#scouts-panel .scouts-panel-head h2 { margin: 0; }
+#scouts-panel .scouts-stage-open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.2rem 0.6rem;
+  border-color: #6f9fd8;
   background: linear-gradient(180deg, #24365a, #172440);
   color: #bfe8ff;
   font-size: 14px;
-  line-height: 1.4;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
-  pointer-events: auto;
+  line-height: 1.35;
+  white-space: nowrap;
 }
-#scouts-stage .scouts-stage-tab::before { content: "▾ "; }
-#scouts-stage .scouts-stage-tab:hover:not(:disabled) {
+#scouts-panel .scouts-stage-open:hover:not(:disabled) {
   background: linear-gradient(180deg, #2e4672, #1d2d50);
   color: #ffffff;
   border-color: #a9d0ff;
+}
+.scouts-stage-open-word,
+.scouts-stage-open-arrow { flex: none; }
+.scouts-stage-open-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* A narrow board: the header, a strip of the painting, then the parchment

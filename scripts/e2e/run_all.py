@@ -41,6 +41,8 @@ SECONDS = {
     "search_seats": 32,
     "spectate": 16,
     "turn_end": 15,
+    # 2026-10-11, -j 2 beside other agents' runs.
+    "card_hover": 30,
     "remote_fresh": 14,
     "recovery": 14,
     "save_delete": 11,

@@ -5,8 +5,10 @@ up over the board as a big card, like Dire Wolf Game Room's reveal page, with
 a toggle to see the board. #scouts-stage takes the board's grid cell; its
 frame is the board square and the card sits inside it: a header band with
 the kind in spaced capitals and the item's name, the kind's painting, the
-item's lines on a parchment, and a "보드 보기" button; folded, a tab on the
-board's top edge names the item and brings it back; `a` toggles it too.
+item's lines on a parchment, and a "보드 보기" button; folded, nothing of
+it is left over the board (third request, below) and a button beside the
+Scouts panel's heading names the item and brings it back; `a` toggles it
+too.
 
 Real engine/server payloads (GameSessionManager, the step run by
 advance_scouts_step, every seat given resources so nobody is skipped), drawn
@@ -18,26 +20,27 @@ every line of the item (the Scouts panel's own rendering of the same lines,
 and the count of catalog scouts_items), the app pictures when the catalog has
 them and the CSS look without, the card inside the board square and nothing
 of the decision panel, seats or market covered, Korean text at least 14px,
-no sideways overflow, no Hangul in English; the button, the tab and the
-shortcut (with the Hangul IME's key), Escape leaving it alone, a refresh
-keeping the fold and the very same nodes, a new item opening it again, a
-round without items having no card; the help's shortcut row; and a finished
-all-AI game's review at a Scouts step.
+no sideways overflow, no Hangul in English; the button, the panel's button
+and the shortcut (with the Hangul IME's key), Escape leaving it alone, a
+refresh keeping the fold and the very same nodes, a new item opening it
+again, a round without items having no card; the help's shortcut row; and a
+finished all-AI game's review at a Scouts step.
 
 Second request the same day: every revealed item comes up, not only those
 with a choice, and the card stays at hand all round. All-AI games replayed
 step by step (their rounds as a table sees them). Seed 21: round 4's choice
-stays up after the step and through the turns, its tab reopens it, the
-viewer's own Agent turn folds it once (reopened, it stays); round 5's
-auction is on the card while the calls are open, and another seat's call
-leaves it there; Unlikely Allies, revealed after the auction closed and
-resolved with no Scouts decision, opens it by itself after the step as page
-2 of 2 -- the counter, previous / next disabled at the ends, the arrows with
-focus inside the card (not outside, not with Alt), the browsed page kept on
-a refresh, the tab naming the page and how many more; a browser arriving
-after the step opens the first unseen page and marks next "new" (mark and
-title) without an update moving the card; round 6 has no card before its
-reveal and Market Opening, also choice-less, opens it again. Seed 4's round
+stays up after the step and through the turns, the panel's button reopens
+it, the viewer's own Agent turn folds it once (reopened, it stays); round
+5's auction is on the card while the calls are open, and another seat's
+call leaves it there; Unlikely Allies, revealed after the auction closed
+and resolved with no Scouts decision, opens it by itself after the step as
+page 2 of 2 -- the counter, previous / next disabled at the ends, the
+arrows with focus inside the card (not outside, not with Alt), the browsed
+page kept on a refresh, the panel's button naming the page and how many
+more; a browser arriving after the step opens the first unseen page and
+marks next "new" (mark and title) without an update moving the card; round
+6 has no card before its reveal and Market Opening, also choice-less, opens
+it again. Seed 4's round
 2 (Planetary Exploration with no decision, then Send for Aid): the card
 stays on the item being decided, previous marked new, through another
 seat's decision; the unseen item opens by itself once the step is over,
@@ -46,10 +49,31 @@ two reveals and opens again at the next round's reveal. Korean and English
 at 1366x768 and 1600x950, the pager inside the header, the kind word not
 cut and the name clear.
 
+Third request (2026-10-11, after a real game). One: the tab left on the
+board's top edge while folded covered the board. Folded, #scouts-stage is
+now hidden whole -- no point across the board hits it, and the tab is gone
+from the page -- and the re-open control is a button beside the Scouts
+panel's heading ("카드로 보기 ▸ <name> 외 N" / "Show card ▸ <name> +N",
+named by its word and the item, "카드 접기" / "Hide card" while the card is
+up), which keeps its node and focus across renders; clicking it, Enter and
+Space on it, and `a` open and fold the card. Two: during a Scouts step that
+revealed secret picks, the card listed the picks still waiting under "비밀
+선택 공개", so players read them as revealed. Seed 2's Covert Operation
+(round 6: seat 2 picks a next-round line, the other three two-round lines),
+replayed with the log the table holds: at round 7's reveal a waiting seat's
+card shows exactly seat 2's row with its line under "6라운드 작전 변경", the
+other three apart as "아직 비공개: …" with none of their lines anywhere, and
+the Scouts panel words them the same way; at round 8's the three rows and
+nothing waiting; with no log reaching the step, the title says the reveal is
+to come ("비밀 선택 공개 준비"). Korean and English at 1366x768 and
+1600x950, and seed 2's review at round 7's reveal.
+
 Nothing is submitted: a UI callback records any index the page would send.
 Screenshots per kind (Korean, 1600x950) go to E2E_SHOTS_DIR as
 stage_<kind>.png, with stage_two_items.png, stage_choiceless_event.png,
-stage_tab_agent_turn.png, stage_step_new.png and stage_next_new.png.
+stage_folded_agent_turn.png, stage_folded_panel_button.png,
+stage_step_new.png, stage_next_new.png, stage_sec_r7_reveal.png,
+stage_sec_r8_reveal.png and stage_review_secrets.png.
 """
 
 from __future__ import annotations
@@ -83,8 +107,8 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import Resources
 from dune_imperium.rules.scouts import _item_tasks, advance_scouts_step
 from dune_imperium.rules.scouts_effects import offer_secret_reward
-from dune_imperium.rules.scouts_secrets import SECRET_ITEM
-from dune_imperium.server.sessions import GameSessionManager
+from dune_imperium.rules.scouts_secrets import SECRET_ITEM, pick_delay
+from dune_imperium.server.sessions import GameSessionManager, _log_entries_json
 
 manager = GameSessionManager()
 game_id = str(manager.create_game(("human",) * 4, game_seed=21,
@@ -201,7 +225,60 @@ aid_turn = turns(g4, 2)[0]
 watcher = next(seat for seat in range(4)
                if seat not in {owner(aid[0]), owner(aid_later), owner(aid_turn)})
 
+# Seed 2: round 6 reveals Covert Operation; seat 2 picks a next-round line,
+# the other three two-round lines. Round 7's Scouts step reveals seat 2's
+# pick alone (its Spy placement is being decided) while the other three wait;
+# round 8's reveals those three. The table sees them with the log it would
+# hold (the AI game's own, cut at that step, redacted for the seat).
+ai2 = manager._get(str(manager.create_game(
+    ("heuristic",) * 4, game_seed=2, arrakeen_scouts=True)["game_id"]))
+g2 = [ai2.engine.reset(ai2.config, ai2.game_seed)]
+for recorded in ai2.steps:
+    g2.append(ai2.engine.apply(g2[-1], recorded).state)
+assert len(ai2.log) == len(ai2.steps)
+table2 = str(manager.create_game(("human",) * 4, game_seed=2,
+                                 arrakeen_scouts=True)["game_id"])
+picks2 = sorted({row for s in g2 for row in s.scouts_secret_picks})
+assert {(r, e) for r, e, _, _ in picks2} == {(6, "covert_operation")}, picks2
+
+def due(round_number):
+    return sorted([seat, pick] for r, e, seat, pick in picks2
+                  if r + pick_delay(e, pick) == round_number)
+
+def secret_cursor(round_number):
+    return next(i for i, s in enumerate(g2) if s.round_number == round_number
+                and s.scouts_item == SECRET_ITEM and owner(s) is not None)
+
+assert len(due(7)) == 1 and len(due(8)) == 3, (due(7), due(8))
+
+def with_log(index, seat):
+    state = g2[index]
+    fixture = played(state, seat, table2)
+    fixture["log"] = {"seat": seat, "epoch": "e2e", "count": index,
+                      "entries": _log_entries_json(
+                          tuple(ai2.log[:index]), seat, False, 0)}
+    fixture["expect"] = {
+        "event_round": 6, "event": "covert_operation",
+        "revealed": due(state.round_number),
+        "pending": sorted(seat for _, _, seat, _ in state.scouts_secret_picks),
+        "hidden_picks": sorted({pick for _, _, _, pick in state.scouts_secret_picks}),
+    }
+    return fixture
+
+r7 = secret_cursor(7)
+r7_viewer = next(seat for _, _, seat, _ in g2[r7].scouts_secret_picks
+                 if seat != owner(g2[r7]))
+r8 = secret_cursor(8)
+r8_viewer = next(seat for seat in range(4)
+                 if seat != owner(g2[r8]) and seat not in {s for s, _ in due(8)})
+sec_r7 = with_log(r7, r7_viewer)
+sec_r7_nolog = dict(sec_r7, log={"seat": r7_viewer, "epoch": "e2e", "count": 0,
+                                  "entries": []})
+
 fixtures = {
+    "sec_r7": sec_r7,
+    "sec_r7_nolog": sec_r7_nolog,
+    "sec_r8": with_log(r8, r8_viewer),
     "r4_choice": played(scouts_choices(g21, 4, "bene_gesserit_treachery")[0]),
     "r4_turn": waiting(turns(g21, 4)[0]),
     "r4_turn_own": played(turns(g21, 4)[0]),
@@ -234,7 +311,7 @@ RENDER = """({fixture, seat, language}) => {
     if (TERM_LANGUAGE !== language) setLanguage(language, false);
     Object.assign(state, fixture, {viewSeat: seat, me: {seats: [0, 1, 2, 3]},
         gameId: fixture.summary.game_id, review: null, busy: false,
-        pick: null, held: null, counts: {}, log: {entries: []}});
+        pick: null, held: null, counts: {}, log: fixture.log || {entries: []}});
     window.sentIndexes = [];
     window.applyAction = (index) => window.sentIndexes.push(index);
     showScreen('game-screen');
@@ -245,7 +322,7 @@ RENDER = """({fixture, seat, language}) => {
 STAGE_JS = """() => {
     const stage = el('scouts-stage');
     const card = stage.querySelector('.scouts-stage-card');
-    const tab = stage.querySelector('.scouts-stage-tab');
+    const opener = document.querySelector('#scouts-panel .scouts-stage-open');
     const box = (node) => {
         const r = node.getBoundingClientRect();
         return {left: r.left, top: r.top, right: r.right, bottom: r.bottom,
@@ -260,16 +337,49 @@ STAGE_JS = """() => {
     const row = document.querySelector(`#scouts-panel .scouts-row[data-item="${id}"]`);
     const sizes = [...stage.querySelectorAll(
         '.scouts-stage-lines .scouts-line, .scouts-stage-name, .scouts-stage-kind,'
-        + ' .scouts-stage-hide, .scouts-stage-tab, .scouts-stage-note,'
+        + ' .scouts-stage-hide, .scouts-stage-note, .scouts-stage-event,'
         + ' .scouts-stage-pager button, .scouts-stage-count, .scouts-stage-new')]
         .filter(visible)
         .map((node) => parseFloat(getComputedStyle(node).fontSize));
     const linesBox = stage.querySelector('.scouts-stage-lines');
+    // What lies over the board: points across the board's box that hit
+    // anything of the Scouts card.
+    const over = [];
+    const b = el('board').getBoundingClientRect();
+    for (let i = 1; i < 10; i += 1) {
+        for (let j = 1; j < 10; j += 1) {
+            const hit = document.elementFromPoint(
+                b.left + (b.width * i) / 10, b.top + (b.height * j) / 10);
+            if (hit && stage.contains(hit)) over.push(hit.className);
+        }
+    }
     return {
         hidden: stage.hidden,
         open: visible(card),
-        tab: visible(tab),
-        folded: stage.classList.contains('folded'),
+        // The Scouts panel's button, and whether it would bring the card
+        // back (aria-expanded false) or fold it.
+        opener: Boolean(opener) && visible(opener),
+        openerOpen: Boolean(opener) && opener.getAttribute('aria-expanded') === 'true',
+        openerText: opener ? opener.textContent : '',
+        openerTitle: opener ? opener.title : '',
+        openerFont: opener && visible(opener)
+            ? parseFloat(getComputedStyle(opener).fontSize) : null,
+        openerInPanel: Boolean(opener)
+            && opener.parentElement.classList.contains('scouts-panel-head')
+            && Boolean(opener.parentElement.querySelector('h2')),
+        openerFocused: Boolean(opener) && document.activeElement === opener,
+        // Inside the Scouts panel, which does not scroll sideways for it.
+        openerFits: Boolean(opener) && (() => {
+            const panel = el('scouts-panel');
+            const o = opener.getBoundingClientRect();
+            const r = panel.getBoundingClientRect();
+            return o.left >= r.left - 1 && o.right <= r.right + 1
+                && panel.scrollWidth <= panel.clientWidth + 1;
+        })(),
+        // The board tab of before 2026-10-11 must be gone, and nothing of
+        // the card over the board while it is folded.
+        tabExists: Boolean(document.querySelector('.scouts-stage-tab')),
+        over,
         item: id || null,
         kind: stage.dataset.kind || null,
         kindWord: stage.querySelector('.scouts-stage-kind').textContent,
@@ -280,7 +390,6 @@ STAGE_JS = """() => {
         kindFont: getComputedStyle(stage.querySelector('.scouts-stage-kind'))
             .fontFamily,
         name: stage.querySelector('.scouts-stage-name').textContent,
-        tabText: tab.textContent,
         hideText: stage.querySelector('.scouts-stage-hide').textContent,
         lineHtml: lines.map((n) => n.innerHTML),
         lineText: lines.map((n) => n.textContent),
@@ -311,7 +420,6 @@ STAGE_JS = """() => {
             ? getComputedStyle(stage.querySelector('.scouts-stage-divider'))
                 .backgroundImage : null,
         card: box(card),
-        tabBox: box(tab),
         frame: box(stage.querySelector('.scouts-stage-frame')),
         board: box(el('board')),
         boardStage: el('board').querySelector('.board-stage')
@@ -384,6 +492,11 @@ KIND_WORD = {
     "sale": {"ko": "판매", "en": "Sale"},
 }
 SECRETS_NAME = {"ko": "비밀 선택 공개", "en": "Secret picks revealed"}
+SECRETS_PENDING = {"ko": "비밀 선택 공개 준비", "en": "Secret picks: reveal to come"}
+NOT_REVEALED = {"ko": "아직 비공개: ", "en": "Not revealed yet: "}
+# The Scouts panel's button: folded, it names the page it brings back.
+SHOW_WORD = {"ko": "카드로 보기", "en": "Show card"}
+FOLD_WORD = {"ko": "카드 접기", "en": "Hide card"}
 
 # name: (seat, item id on the card, kind)
 CASES = {
@@ -415,6 +528,36 @@ def settle(page) -> None:
     page.wait_for_function("!document.querySelector('#scouts-stage .entering')")
 
 
+def folded(stage: dict) -> bool:
+    """Folded: nothing of the card over the board, no tab, and the Scouts
+    panel's button there to bring it back."""
+    return (
+        not stage["open"]
+        and stage["hidden"]
+        and not stage["over"]
+        and not stage["tabExists"]
+        and stage["opener"]
+        and not stage["openerOpen"]
+    )
+
+
+def up(stage: dict) -> bool:
+    """The card is up, and the Scouts panel's button would fold it."""
+    return (
+        stage["open"]
+        and not stage["hidden"]
+        and stage["opener"]
+        and stage["openerOpen"]
+        and not stage["tabExists"]
+    )
+
+
+def show_label(language: str, name: str, more: int = 0) -> str:
+    """The folded button's text: the word, the arrow and the page."""
+    extra = {"ko": f" 외 {more}", "en": f" +{more}"}[language] if more else ""
+    return f"{SHOW_WORD[language]} ▸ {name}{extra}"
+
+
 def inside(inner: dict, outer: dict, slack: float = 1.0) -> bool:
     return (
         inner["left"] >= outer["left"] - slack
@@ -439,9 +582,10 @@ def check_case(page, fixtures, items, art, language, viewport, name) -> None:
     stage = render(page, fixtures, name, language)
     catalog_item = page.evaluate("(id) => scoutsItem(id)", item_id)
     check.ok(
-        not stage["hidden"] and stage["open"] and not stage["tab"],
-        f"{where}: the card is up over the board",
-        (stage["hidden"], stage["open"], stage["tab"]),
+        up(stage) and stage["openerText"] == FOLD_WORD[language]
+        and stage["openerInPanel"],
+        f"{where}: the card is up; the Scouts panel's button folds it",
+        (stage["hidden"], stage["open"], stage["openerText"]),
     )
     check.ok(
         stage["item"] == item_id and stage["kind"] == kind,
@@ -456,8 +600,11 @@ def check_case(page, fixtures, items, art, language, viewport, name) -> None:
         f"{where}: the kind word in spaced serif capitals",
         (stage["kindWord"], stage["kindTransform"], stage["kindSpacing"]),
     )
+    # The made-up "secrets" fixture has no log, so no reveal of this round's
+    # step to show: the page says the reveal is to come (secret_reveals()
+    # checks a real one).
     expected_name = (
-        SECRETS_NAME[language] if item_id == "secrets" else catalog_item["name"]
+        SECRETS_PENDING[language] if item_id == "secrets" else catalog_item["name"]
     )
     check.ok(
         stage["name"] == expected_name,
@@ -469,8 +616,9 @@ def check_case(page, fixtures, items, art, language, viewport, name) -> None:
         pending = {(r, e) for r, e, _ in rows}
         check.ok(
             len(stage["lineText"]) == len(pending) and len(pending) > 0
-            and stage["dividers"] == len(pending) - 1,
-            f"{where}: one line per event whose picks are revealed",
+            and stage["dividers"] == len(pending) - 1
+            and all(t.startswith(NOT_REVEALED[language]) for t in stage["lineText"]),
+            f"{where}: one 'not revealed yet' line per event whose picks wait",
             (stage["lineText"], pending),
         )
     else:
@@ -545,7 +693,10 @@ def check_case(page, fixtures, items, art, language, viewport, name) -> None:
         (stage["linesFit"], stage["pageFits"]),
     )
     if language == "en":
-        leaks = HANGUL.findall(stage["text"] + stage["tabText"] + stage["attributes"])
+        leaks = HANGUL.findall(
+            stage["text"] + stage["openerText"] + stage["openerTitle"]
+            + stage["attributes"]
+        )
         check.ok(not leaks, f"{where}: no Hangul in English", leaks[:8])
     if language == "ko" and name in SHOT_CASES:
         if viewport["width"] == 1600:
@@ -559,33 +710,44 @@ def toggles(page, fixtures, language: str) -> None:
     stage = render(page, fixtures, "event", language)
     name = page.evaluate("scoutsItem('private_stock').name")
     hide = page.locator("#scouts-stage .scouts-stage-hide")
+    opener = page.locator("#scouts-panel .scouts-stage-open")
     check.ok(
         stage["hideText"] == {"ko": "보드 보기", "en": "Show board"}[language],
         f"{where}: the button says what it does",
         stage["hideText"],
     )
+    check.ok(
+        up(stage) and stage["openerText"] == FOLD_WORD[language]
+        and stage["openerInPanel"] and stage["openerFont"] >= 14,
+        f"{where}: beside the Scouts panel's heading, a button that folds it",
+        (stage["openerText"], stage["openerInPanel"], stage["openerFont"]),
+    )
     hide.click()
     stage = page.evaluate(STAGE_JS)
     check.ok(
-        not stage["open"]
-        and stage["tab"]
-        and stage["folded"]
-        and name in stage["tabText"]
-        and stage["tabText"].startswith(
-            {"ko": "스카웃 카드", "en": "Scouts card"}[language]
-        ),
-        f"{where}: the button folds it to a tab naming the item",
-        (stage["open"], stage["tab"], stage["tabText"]),
+        folded(stage) and stage["openerText"] == show_label(language, name)
+        and stage["openerFits"],
+        f"{where}: folded, nothing over the board; the panel's button names it",
+        (stage["open"], stage["hidden"], stage["over"], stage["openerText"]),
     )
     check.ok(
-        page.evaluate("document.activeElement.classList.contains('scouts-stage-tab')"),
-        f"{where}: focus moves to the tab",
+        stage["openerFocused"],
+        f"{where}: focus moves to the panel's button",
+        stage["focusClass"],
+    )
+    # Its accessible name: the word and the item (the arrow is hidden).
+    named = page.get_by_role(
+        "button", name=re.compile(rf"^{re.escape(SHOW_WORD[language])}\s+"
+                                  rf"{re.escape(name)}$")
     )
     check.ok(
-        abs(stage["tabBox"]["top"] - stage["frame"]["top"]) < 2
-        and stage["tabBox"]["height"] < 40,
-        f"{where}: a small tab on the board's top edge",
-        stage["tabBox"],
+        named.count() == 1,
+        f"{where}: the panel's button is named by its word and the item",
+    )
+    check.ok(
+        "(A)" in stage["openerTitle"],
+        f"{where}: its title names the shortcut",
+        stage["openerTitle"],
     )
     # Folded, the board takes clicks again: the hotspot under a space's
     # centre is the board's own.
@@ -600,40 +762,61 @@ def toggles(page, fixtures, language: str) -> None:
         }"""
     )
     check.ok(reach, f"{where}: folded, the board's spaces are reachable")
-    # A refresh (another seat's move) keeps the fold and the very nodes.
+    # A refresh (another seat's move) keeps the fold, the card's nodes and
+    # the panel's button with its focus, though the panel is drawn again.
     page.evaluate(
         "window.markedLine = document.querySelector('#scouts-stage .scouts-line');"
+        " window.markedOpener = scoutsStage.opener;"
         " render({foreign: true});"
     )
     stage = page.evaluate(STAGE_JS)
     check.ok(
-        not stage["open"] and stage["tab"]
+        folded(stage)
         and page.evaluate(
             "window.markedLine === document.querySelector('#scouts-stage .scouts-line')"
-        ),
-        f"{where}: a refresh keeps the fold and rebuilds nothing",
+            " && window.markedOpener === document.querySelector("
+            "'#scouts-panel .scouts-stage-open')"
+        )
+        and stage["openerFocused"],
+        f"{where}: a refresh keeps the fold, the nodes and the focus",
     )
-    page.locator("#scouts-stage .scouts-stage-tab").click()
+    opener.click()
     stage = page.evaluate(STAGE_JS)
     check.ok(
-        stage["open"] and not stage["tab"]
-        and page.evaluate(
-            "document.activeElement.classList.contains('scouts-stage-hide')"
-        ),
-        f"{where}: the tab brings it back",
+        up(stage) and stage["openerText"] == FOLD_WORD[language]
+        and stage["openerFocused"],
+        f"{where}: the panel's button brings it back and keeps the focus",
+        (stage["open"], stage["openerText"], stage["focusClass"]),
     )
+    opener.click()
+    stage = page.evaluate(STAGE_JS)
+    check.ok(
+        folded(stage), f"{where}: pressed again, it folds the card", stage["over"]
+    )
+    # The keyboard: focused, Enter and Space press it.
+    page.keyboard.press("Enter")
+    opened = page.evaluate(STAGE_JS)
+    page.keyboard.press("Space")
+    shut = page.evaluate(STAGE_JS)
+    check.ok(
+        up(opened) and folded(shut),
+        f"{where}: Enter and Space on the focused button open and fold it",
+        (opened["open"], shut["open"]),
+    )
+    opener.click()
     # The shortcut, with the Hangul IME on (code KeyA, key ㅁ) and plain.
     page.evaluate(
         "document.dispatchEvent(new KeyboardEvent('keydown',"
         " {key: 'ㅁ', code: 'KeyA', bubbles: true}))"
     )
-    folded = page.evaluate(STAGE_JS)
+    shut = page.evaluate(STAGE_JS)
     page.keyboard.press("a")
     reopened = page.evaluate(STAGE_JS)
     check.ok(
-        not folded["open"] and folded["tab"] and reopened["open"],
-        f"{where}: `a` folds and unfolds it",
-        (folded["open"], reopened["open"]),
+        folded(shut) and shut["openerText"] == show_label(language, name)
+        and up(reopened) and reopened["openerText"] == FOLD_WORD[language],
+        f"{where}: `a` folds and unfolds it, and the panel's button follows",
+        (shut["open"], reopened["open"], shut["openerText"]),
     )
     page.keyboard.press("Escape")
     check.ok(page.evaluate(STAGE_JS)["open"], f"{where}: Escape leaves it alone")
@@ -654,22 +837,22 @@ def toggles(page, fixtures, language: str) -> None:
     hide.click()
     stage = render(page, fixtures, "auction", language)
     check.ok(
-        stage["open"] and stage["item"] == "highest_bidder_late",
+        up(stage) and stage["item"] == "highest_bidder_late",
         f"{where}: a new item opens it again",
     )
-    # Round 1 revealed nothing: no card, no tab, and `a` does nothing.
+    # Round 1 revealed nothing: no card, no button, and `a` does nothing.
     stage = render(page, fixtures, "turn", language)
     check.ok(
-        stage["hidden"] and not stage["tab"]
+        stage["hidden"] and not stage["opener"] and not stage["over"]
         and page.evaluate("toggleScoutsStage()") is False,
-        f"{where}: no card in a round without items; the shortcut does nothing",
+        f"{where}: no card nor button in a round without items; no shortcut",
     )
 
     # A decision the board answers starts folded: Smoke and Mirrors' choice
     # is up, its Spy placement (a post on the board) folds it.
     stage = render(page, fixtures, "choice", language, seat=0)
     check.ok(
-        stage["open"] and stage["legalOnBoard"] == 0,
+        up(stage) and stage["legalOnBoard"] == 0,
         f"{where}: a line choice opens it",
     )
     stage = render(page, fixtures, "spy", language, seat=0)
@@ -684,27 +867,25 @@ def toggles(page, fixtures, language: str) -> None:
         }"""
     )
     check.ok(
-        not stage["open"] and stage["tab"] and stage["legalOnBoard"] > 0 and post,
+        folded(stage) and stage["legalOnBoard"] > 0 and post,
         f"{where}: the Spy placement starts folded and its posts take the click",
-        (stage["open"], stage["legalOnBoard"], post),
+        (stage["open"], stage["legalOnBoard"], post, stage["over"]),
     )
     page.evaluate("render({foreign: true})")
     check.ok(
-        not page.evaluate(STAGE_JS)["open"], f"{where}: and stays folded on a refresh"
+        folded(page.evaluate(STAGE_JS)), f"{where}: and stays folded on a refresh"
     )
-    page.locator("#scouts-stage .scouts-stage-tab").click()
-    check.ok(page.evaluate(STAGE_JS)["open"], f"{where}: the tab still opens it there")
+    opener.click()
+    check.ok(
+        up(page.evaluate(STAGE_JS)), f"{where}: the panel's button still opens it there"
+    )
     # A board decision starting from a fresh item: folded from the start.
     render(page, fixtures, "turn", language)
     stage = render(page, fixtures, "spy", language, seat=0)
-    check.ok(
-        not stage["open"] and stage["tab"],
-        f"{where}: folded when the item opens on it",
-    )
+    check.ok(folded(stage), f"{where}: folded when the item opens on it")
     check.ok(page.evaluate("window.sentIndexes") == [], f"{where}: nothing was sent")
 
 
-TAB_WORD = {"ko": "스카웃 카드", "en": "Scouts card"}
 PAGER_WORDS = {"ko": ("◀ 이전", "다음 ▶"), "en": ("◀ Previous", "Next ▶")}
 
 
@@ -742,7 +923,7 @@ def pager_fits(stage: dict) -> bool:
 
 def rounds(page, fixtures, language: str, viewport: dict) -> None:
     """Seed 21's rounds 4 to 6 as one table sees them (the replayed all-AI
-    game): every revealed item comes up, a choice or not, the tab stays
+    game): every revealed item comes up, a choice or not, the button stays
     through the turns, two items page, a new round opens it again."""
 
     where = f"{language} {viewport['width']}x{viewport['height']} rounds"
@@ -773,23 +954,24 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
     stage = page.evaluate(STAGE_JS)
     treachery = name("bene_gesserit_treachery")
     check.ok(
-        not stage["open"] and stage["tab"]
-        and stage["tabText"] == f"{TAB_WORD[language]} · {treachery}",
-        f"{where}: folded, the tab stays through another seat's turn",
-        (stage["open"], stage["tab"], stage["tabText"]),
+        folded(stage) and stage["openerText"] == show_label(language, treachery),
+        f"{where}: folded through another seat's turn, the panel's button stays",
+        (stage["open"], stage["over"], stage["openerText"]),
     )
-    page.locator("#scouts-stage .scouts-stage-tab").click()
-    check.ok(page.evaluate(STAGE_JS)["open"], f"{where}: the tab reopens it in a turn")
+    page.locator("#scouts-panel .scouts-stage-open").click()
+    check.ok(
+        up(page.evaluate(STAGE_JS)), f"{where}: the panel's button reopens it in a turn"
+    )
     # The viewer's own Agent turn is answered on the board: it folds, once.
     stage = render(page, fixtures, "r4_turn_own", language)
     check.ok(
-        not stage["open"] and stage["tab"] and stage["legalOnBoard"] > 0,
-        f"{where}: the viewer's own Agent turn folds it",
-        (stage["open"], stage["tab"], stage["legalOnBoard"]),
+        folded(stage) and stage["legalOnBoard"] > 0,
+        f"{where}: the viewer's own Agent turn folds it, nothing over the board",
+        (stage["open"], stage["over"], stage["legalOnBoard"]),
     )
     if shots:
-        shot(page, "stage_tab_agent_turn.png")
-    page.locator("#scouts-stage .scouts-stage-tab").click()
+        shot(page, "stage_folded_agent_turn.png")
+    page.locator("#scouts-panel .scouts-stage-open").click()
     page.evaluate("render({foreign: true})")
     check.ok(
         page.evaluate(STAGE_JS)["open"],
@@ -846,7 +1028,10 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
     covered = page.evaluate(COVER_JS)
     check.ok(not covered, f"{where}: the decision panel stays reachable", covered)
     if language == "en":
-        leaks = HANGUL.findall(stage["text"] + stage["tabText"] + stage["attributes"])
+        leaks = HANGUL.findall(
+            stage["text"] + stage["openerText"] + stage["openerTitle"]
+            + stage["attributes"]
+        )
         check.ok(not leaks, f"{where}: no Hangul in the English pager", leaks[:8])
     if shots:
         shot(page, "stage_two_items.png")
@@ -905,25 +1090,36 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
     arrow(page, "ArrowLeft")
     page.locator("#scouts-stage .scouts-stage-hide").click()
     stage = page.evaluate(STAGE_JS)
-    more = {"ko": " 외 1", "en": " +1"}[language]
     check.ok(
-        not stage["open"]
-        and stage["tabText"]
-        == f"{TAB_WORD[language]} · {name('critical_moment_mid')}{more}",
-        f"{where}: the tab names the page shown and how many more",
-        stage["tabText"],
+        folded(stage)
+        and stage["openerText"]
+        == show_label(language, name("critical_moment_mid"), 1)
+        and stage["openerFits"] and stage["openerFont"] >= 14,
+        f"{where}: the panel's button names the page shown and how many more",
+        stage["openerText"],
     )
+    named = page.get_by_role(
+        "button",
+        name=re.compile(
+            rf"^{re.escape(SHOW_WORD[language])}\s+"
+            rf"{re.escape(name('critical_moment_mid'))}"
+        ),
+    )
+    check.ok(named.count() == 1, f"{where}: and is named so")
     stage = render(page, fixtures, "r5_later", language)
     check.ok(
-        not stage["open"] and stage["tab"],
+        folded(stage),
         f"{where}: folded, it stays folded through later turns",
+        (stage["open"], stage["over"]),
     )
-    page.locator("#scouts-stage .scouts-stage-tab").click()
+    if shots:
+        shot(page, "stage_folded_panel_button.png")
+    page.locator("#scouts-panel .scouts-stage-open").click()
     stage = page.evaluate(STAGE_JS)
     check.ok(
-        stage["open"] and stage["item"] == "critical_moment_mid"
+        up(stage) and stage["item"] == "critical_moment_mid"
         and stage["count"] == "1 / 2",
-        f"{where}: the tab brings back the page that was shown",
+        f"{where}: the panel's button brings back the page that was shown",
         (stage["item"], stage["count"]),
     )
 
@@ -965,10 +1161,10 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         (stage["item"], stage["marks"]),
     )
 
-    # Round 6 starts with nothing revealed yet: no card, no tab.
+    # Round 6 starts with nothing revealed yet: no card, no button.
     stage = render(page, fixtures, "r6_start", language)
     check.ok(
-        stage["hidden"] and not stage["tab"]
+        stage["hidden"] and not stage["opener"]
         and page.evaluate("toggleScoutsStage()") is False,
         f"{where}: a round with no item yet takes it away",
     )
@@ -988,8 +1184,9 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         shot(page, "stage_choiceless_event.png")
     stage = render(page, fixtures, "r6_turn_own", language)
     check.ok(
-        not stage["open"] and stage["tab"],
+        folded(stage),
         f"{where}: and folds for the viewer's own Agent turn",
+        (stage["open"], stage["over"]),
     )
     reach = page.evaluate(
         """() => {
@@ -1069,11 +1266,209 @@ def step_mark(page, fixtures, language: str, viewport: dict) -> None:
     page.locator("#scouts-stage .scouts-stage-hide").click()
     stage = render(page, fixtures, "aid_turn", language)
     check.ok(
-        not stage["open"] and stage["tab"],
+        folded(stage),
         f"{where}: nothing unseen, so the step's end leaves it folded",
-        (stage["open"], stage["tab"]),
+        (stage["open"], stage["over"]),
     )
     check.ok(page.evaluate("window.sentIndexes") == [], f"{where}: nothing was sent")
+
+
+# The reveal page's rows against what the engine revealed (expect, from the
+# fixture): the event headings, each revealed seat's row, the rows of picks
+# still secret, and the rows the page must draw for them, made in the page
+# with its own helpers.
+SECRETS_JS = """(expect) => {
+    const stage = el('scouts-stage');
+    const lines = stage.querySelector('.scouts-stage-lines');
+    const item = scoutsItem(expect.event);
+    const effectHtml = (pick) => {
+        const box = document.createElement('div');
+        box.appendChild(effectNode(item.lines[pick] || '', item.lines_ko[pick]));
+        return box.innerHTML;
+    };
+    const rowHtml = ([seat, pick]) => {
+        const box = document.createElement('div');
+        box.append(`${playerLabel(seat)}: `, effectNode(
+            item.lines[pick] || '', item.lines_ko[pick]));
+        return box.innerHTML;
+    };
+    const waitingText = expect.pending.length
+        ? [t('panels.scouts_secret_waiting', {round: expect.event_round,
+            name: item.name, seats: expect.pending.map(playerLabel).join(', ')})]
+        : [];
+    // The Scouts panel's "secret picks" section: the rows after its h3.
+    const panelRows = [];
+    for (const h3 of document.querySelectorAll('#scouts-panel h3')) {
+        if (h3.textContent !== t('panels.scouts_secrets')) continue;
+        for (const row of h3.nextElementSibling.querySelectorAll('.scouts-row')) {
+            if (!row.classList.contains('scouts-own')) panelRows.push(row.textContent);
+        }
+    }
+    return {
+        events: [...lines.querySelectorAll('.scouts-stage-event')]
+            .map((n) => n.textContent),
+        wantEvents: expect.revealed.length
+            ? [t('scouts_stage.secrets_event', {round: expect.event_round,
+                name: item.name})]
+            : [],
+        revealed: [...lines.querySelectorAll('.scouts-stage-revealed')]
+            .map((n) => [Number(n.dataset.seat), n.innerHTML]),
+        wantRevealed: expect.revealed.map((row) => [row[0], rowHtml(row)]),
+        waiting: [...lines.querySelectorAll('.scouts-stage-waiting')]
+            .map((n) => n.textContent),
+        wantWaiting: waitingText,
+        // A pick still secret: its line is nowhere on the card.
+        hiddenShown: expect.hidden_picks.filter(
+            (pick) => lines.innerHTML.includes(effectHtml(pick))),
+        panelRows,
+    };
+}"""
+
+
+def secret_reveals(page, fixtures, language: str, viewport: dict) -> None:
+    """Seed 2's Covert Operation (round 6) as a waiting seat sees its reveal
+    (user report 2026-10-11: the page listed the picks still waiting, under
+    "secret picks revealed", so they read as revealed). Round 7's step
+    reveals seat 2's next-round pick only: the page shows exactly that row
+    with its line, and the other three seats apart as not revealed, none of
+    their lines anywhere. Round 8's reveals those three, nothing left. A
+    log that does not reach the step: the page says the reveal is to come."""
+
+    where = f"{language} {viewport['width']}x{viewport['height']} secrets"
+    shots = language == "ko" and viewport["width"] == 1600
+    render(page, fixtures, "turn", language)
+    fresh_browser(page)
+    for name in ("sec_r7", "sec_r8", "sec_r7_nolog"):
+        expect = dict(fixtures[name]["expect"])
+        logged = bool(fixtures[name]["log"]["entries"])
+        if not logged:
+            expect["revealed"] = []
+        stage = render(page, fixtures, name, language)
+        page.evaluate("clearPlayEffects()")
+        got = page.evaluate(SECRETS_JS, expect)
+        label = f"{where} {name}"
+        check.ok(
+            up(stage) and stage["item"] == "secrets" and stage["kind"] == "event",
+            f"{label}: the reveal page is up",
+            (stage["open"], stage["item"], stage["kind"]),
+        )
+        title = SECRETS_NAME if logged else SECRETS_PENDING
+        check.ok(
+            stage["name"] == title[language],
+            f"{label}: titled {'as a reveal' if logged else 'as still to come'}",
+            stage["name"],
+        )
+        check.ok(
+            got["events"] == got["wantEvents"],
+            f"{label}: the event the revealed picks belong to",
+            (got["events"], got["wantEvents"]),
+        )
+        check.ok(
+            sorted(got["revealed"]) == sorted(got["wantRevealed"])
+            and len(got["revealed"]) == len(expect["revealed"]),
+            f"{label}: exactly the picks this step revealed, each seat's line",
+            (got["revealed"], got["wantRevealed"]),
+        )
+        check.ok(
+            got["waiting"] == got["wantWaiting"]
+            and all(t.startswith(NOT_REVEALED[language]) for t in got["waiting"]),
+            f"{label}: the seats whose picks wait, worded as not revealed",
+            (got["waiting"], got["wantWaiting"]),
+        )
+        check.ok(
+            not got["hiddenShown"],
+            f"{label}: no line of a pick still secret on the card",
+            got["hiddenShown"],
+        )
+        check.ok(
+            got["panelRows"] == got["wantWaiting"],
+            f"{label}: the Scouts panel words the waiting picks the same way",
+            (got["panelRows"], got["wantWaiting"]),
+        )
+        check.ok(
+            stage["minFont"] >= 14 and stage["linesFit"] and stage["pageFits"]
+            and not page.evaluate(COVER_JS),
+            f"{label}: text 14px+, nothing overflows, the decision panel clear",
+            (stage["minFont"], stage["linesFit"], stage["pageFits"]),
+        )
+        if language == "en":
+            leaks = HANGUL.findall(
+                stage["text"] + stage["openerText"] + stage["attributes"]
+                + " ".join(got["panelRows"])
+            )
+            check.ok(not leaks, f"{label}: no Hangul in English", leaks[:8])
+        if shots and name != "sec_r7_nolog":
+            shot(page, f"stage_{name}_reveal.png")
+    check.ok(page.evaluate("window.sentIndexes") == [], f"{where}: nothing was sent")
+
+
+def secrets_review(browser, base: str) -> None:
+    """Seed 2's finished all-AI game reviewed at round 7's reveal: the page
+    reads the review's log up to its cursor."""
+
+    context, page, _ = open_context(browser, "scouts-stage-secrets", VIEWPORTS[1])
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "heuristic")
+    # The fixture's game: Arrakeen Scouts and nothing else the form turns on
+    # (a dependent option before the one it hangs on).
+    for option in ("go-to-11", "tech", "epic-game", "leader-draft", "choam",
+                   "promo", "immortality", "bloodlines"):
+        page.set_checked(f"#opt-{option}", False)
+    page.set_checked("#opt-scouts", True)
+    page.fill("#opt-seed", "2")
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.review !== null && state.view !== null")
+    # The steps that revealed secret picks, and the cursor right after each.
+    found = page.evaluate(
+        """() => {
+            const review = state.review;
+            const found = [];
+            for (const entry of review.meta.log) {
+                const picks = (entry.events || [])
+                    .filter((ev) => ev.kind === 'scouts_secret_revealed')
+                    .map((ev) => [ev.payload.player, ev.payload.pick]);
+                const cursor = review.liveIndex.indexOf(entry.index) + 1;
+                if (picks.length && cursor > 0) found.push([cursor, picks]);
+            }
+            return found;
+        }"""
+    )
+    check.ok(
+        [len(picks) for _, picks in found] == [1, 3],
+        "secrets review: one pick revealed in round 7, three in round 8",
+        found,
+    )
+    if not found:
+        context.close()
+        return
+    cursor, picks = found[0]
+    page.evaluate("async (c) => { stopPlayback(); await reviewGoto(c); }", cursor)
+    settle(page)
+    stage = page.evaluate(STAGE_JS)
+    got = page.evaluate(
+        """() => ({
+            cursor: state.view.scouts_item,
+            seats: [...document.querySelectorAll(
+                '#scouts-stage .scouts-stage-revealed')]
+                .map((n) => Number(n.dataset.seat)),
+            waiting: [...document.querySelectorAll(
+                '#scouts-stage .scouts-stage-waiting')].map((n) => n.textContent),
+        })"""
+    )
+    check.ok(
+        got["cursor"] == "secrets" and stage["open"] and stage["item"] == "secrets"
+        and stage["name"] == SECRETS_NAME["ko"]
+        and got["seats"] == [seat for seat, _ in picks]
+        and len(got["waiting"]) == 1
+        and got["waiting"][0].startswith(NOT_REVEALED["ko"]),
+        "secrets review: the reveal page shows round 7's pick, the rest waiting",
+        (got, stage["name"]),
+    )
+    page.screenshot(path=str(SHOTS / "stage_review_secrets.png"))
+    context.close()
 
 
 def no_pictures(page, fixtures, language: str) -> None:
@@ -1173,10 +1568,13 @@ def review(browser, base: str) -> None:
     )
     page.screenshot(path=str(SHOTS / "stage_review.png"))
     page.locator("#scouts-stage .scouts-stage-hide").click()
-    check.ok(page.evaluate(STAGE_JS)["tab"], "review: it folds there too")
+    check.ok(folded(page.evaluate(STAGE_JS)), "review: it folds there too")
     page.screenshot(path=str(SHOTS / "stage_review_folded.png"))
     page.evaluate("async () => { await reviewGoto(0); }")
-    check.ok(page.evaluate(STAGE_JS)["hidden"], "review: no card before the step")
+    stage = page.evaluate(STAGE_JS)
+    check.ok(
+        stage["hidden"] and not stage["opener"], "review: no card before the step"
+    )
 
     # Every reveal of the game: (round, item, the cursor right after it).
     reveals = page.evaluate(
@@ -1254,8 +1652,8 @@ def review(browser, base: str) -> None:
         page.locator("#scouts-stage .scouts-stage-hide").click()
         page.evaluate("async (c) => { await reviewGoto(c + 1); }", turn_cursor)
         check.ok(
-            page.evaluate(STAGE_JS)["tab"] and not page.evaluate(STAGE_JS)["open"],
-            "review: folded, a step on keeps the tab",
+            folded(page.evaluate(STAGE_JS)),
+            "review: folded, a step on keeps it folded, the panel's button there",
         )
     # The next round with a reveal: its new page opens it again.
     later = next((r for r in sorted(rounds_seen) if r > paired), None)
@@ -1301,12 +1699,14 @@ def main() -> None:
         for viewport in VIEWPORTS[:2]:
             page.set_viewport_size(viewport)
             for language in ("ko", "en"):
+                secret_reveals(page, fixtures, language, viewport)
                 rounds(page, fixtures, language, viewport)
                 step_mark(page, fixtures, language, viewport)
         help_row(page, fixtures)
         check.ok(not recorder.js_errors, "no JavaScript errors", recorder.js_errors)
         context.close()
         review(browser, base)
+        secrets_review(browser, base)
     print(f"Screenshots: {SHOTS}")
     check.finish()
 

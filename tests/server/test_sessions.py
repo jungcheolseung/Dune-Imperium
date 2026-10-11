@@ -1396,6 +1396,70 @@ def test_serialized_actions_carry_the_agent_box_icon_detail_ko() -> None:
     }
 
 
+def test_serialized_agent_box_rows_name_the_card_and_its_box() -> None:
+    """User request 2026-10-11: a box resolution row says what it does. Seek
+    Allies' one row carries its box ("Trash this card") and its card, which
+    the page shows as the button ("동맹 물색: 이 카드 폐기"); a row of no
+    Agent box carries no title."""
+
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.core import (
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        PlayerDecision,
+        PlayerState,
+    )
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.server.sessions import _serialize_action
+
+    seek_allies = "player:0:starter:seek_allies:0"
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        players=(
+            PlayerState(player_id=0, hand=(seek_allies,)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    place = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "dutiful_service"
+    )
+    placed = engine.apply(state, place).state
+    session = SimpleNamespace(engine=engine, state=placed)
+    rows = [
+        _serialize_action(index, action, session)  # type: ignore[arg-type]
+        for index, action in enumerate(engine.legal_actions(placed, 0))
+    ]
+    box = next(row for row in rows if row["action_id"] == "resolve_agent_card_effect")
+    assert (
+        box["detail"],
+        box["detail_ko"],
+        box["detail_title"],
+        box["detail_title_ko"],
+    ) == ("Trash this card", "이 카드 폐기", "Seek Allies", "동맹 물색")
+    others = [row for row in rows if row["action_id"] != "resolve_agent_card_effect"]
+    assert others
+    assert not any("detail_title" in row for row in others)
+
+
 def test_serialized_control_the_spice_payment_says_what_it_buys() -> None:
     """Control the Spice (Epic Game Mode) pays with Smuggler's Haven's
     ``pay_agent_card_spice``, whose client label only says a card effect's

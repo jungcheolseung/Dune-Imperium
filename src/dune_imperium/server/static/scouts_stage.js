@@ -24,7 +24,20 @@
    secret pick of an earlier round's event, or the picks being revealed)
    is a page too, the first. With two or more pages, previous / next
    buttons and a counter page through them (and the arrow keys while focus
-   is inside the card); nothing wraps. No page, no card and no tab.
+   is inside the card); nothing wraps. No page, no card and no button to
+   bring it back.
+
+   The picks being revealed (third request, 2026-10-11, after a real game:
+   a page that listed the picks still waiting under "secret picks
+   revealed" read as if they had been revealed): the page shows what this
+   round's Scouts step revealed -- the scouts_secret_revealed events of the
+   log since this round's Conflict was revealed (the step comes after
+   Round Start, docs/rules/arrakeen-scouts.md 3), each seat with the line
+   it picked -- and, apart and worded as not revealed, the seats whose
+   picks still wait (view.scouts_secret_pending, which names who picked,
+   never what). Nothing found in the log (a log that does not reach back
+   that far): the page says the reveal is still to come rather than claim
+   one.
 
    When it opens: during the Scouts step, on the item the step moves to
    (scoutsDecisionItemId), and nothing else takes the card from it there:
@@ -35,13 +48,15 @@
    memory), at the first such page -- so an item resolved with no choice
    comes up like one with a choice. A page still unseen while the card
    shows another marks the pager button that leads to it as new.
-   It stays until the player folds it (the button, the tab, `a`); folded,
-   the tab on the board's top edge stays for the whole round, for every
-   seat, spectators and review alike. The one exception: a decision of the
-   viewer's own that the board answers (a space, a post, a card or a troop
-   stepper on the board lights up) folds it, once per decision, so it never
-   covers a click; reopened during that decision, it stays. A round with
-   no item takes it away. */
+   It stays until the player folds it (its button, `a`, the Scouts panel's
+   button). Folded, nothing of it is left over the board (third request,
+   2026-10-11: the tab that stayed on the board's top edge covered it); the
+   button beside the Scouts panel's heading names the page and brings the
+   card back, for the whole round, for every seat, spectators and review
+   alike. The one exception: a decision of the viewer's own that the board
+   answers (a space, a post, a card or a troop stepper on the board lights
+   up) folds it, once per decision, so it never covers a click; reopened
+   during that decision, it stays. A round with no item takes it away. */
 
 const scoutsStage = {
   /* The page on the card ("<round>:<id>") and its place, or null and 0
@@ -66,6 +81,9 @@ const scoutsStage = {
   /* What the card's content was built from: rebuilt only when it changes,
      so an update with the same page neither flickers nor replays. */
   content: null,
+  /* The Scouts panel's button that opens and folds the card
+     (scoutsStageOpener), made once and kept across renders. */
+  opener: null,
 };
 
 /* The pieces every card shares, by catalog.scouts_art name, and the CSS
@@ -117,39 +135,91 @@ function scoutsStageItemPage(round, id, secret) {
     name: item.name,
     note: secret ? t("scouts_stage.secrets_name") : null,
     item,
-    waiting: [],
+    rows: [],
   };
 }
 
-/* While the due secret picks resolve (SCOUTS_SECRETS_CURSOR) and the seat
-   has no reward of its own to choose, the page stands for the picks being
-   revealed, naming the events they belong to. */
-function scoutsStageSecretsPage(round) {
-  const events = [];
-  const seats = new Map();
-  for (const [pickRound, event, seat] of state.view.scouts_secret_pending || []) {
-    const key = `${pickRound}|${event}`;
-    if (!seats.has(key)) {
-      seats.set(key, []);
-      events.push([pickRound, event]);
+/* The picks this round's Scouts step revealed, as their public
+   scouts_secret_revealed payloads ({event_round, item_id, pick, player}),
+   in the order the engine revealed them. The step comes after Round Start
+   (docs/rules/arrakeen-scouts.md 3), so they are the ones logged since the
+   Conflict of `round` was revealed; taken-back steps do not count, and a
+   review reads only up to its cursor. */
+function scoutsStageRevealedPicks(round) {
+  const log = state.review ? reviewLog(state.review) : state.log;
+  const picks = [];
+  let at = null;
+  for (const entry of (log && log.entries) || []) {
+    if (entry.undone) continue;
+    for (const event of entry.events || []) {
+      if (event.kind === "conflict_revealed") at = event.payload.round;
+      else if (event.kind === "scouts_secret_revealed" && at === round) {
+        picks.push(event.payload);
+      }
     }
-    seats.get(key).push(playerLabel(seat));
   }
-  const kinds = events.map(([, event]) => scoutsItem(event).kind).filter(Boolean);
+  return picks;
+}
+
+/* Rows of one key ("<event round>|<event>") each, in first-seen order. */
+function scoutsStageGroups(rows) {
+  const groups = new Map();
+  for (const [eventRound, event, value] of rows) {
+    const key = `${eventRound}|${event}`;
+    if (!groups.has(key)) groups.set(key, { eventRound, event, values: [] });
+    groups.get(key).values.push(value);
+  }
+  return [...groups.values()];
+}
+
+/* While the due secret picks resolve (SCOUTS_SECRETS_CURSOR) and the seat
+   has no reward of its own to choose, the page stands for the reveal: each
+   event whose picks this step revealed, with every seat's picked line,
+   then the picks that stay secret, by event, naming only who picked. */
+function scoutsStageSecretsPage(round) {
+  const revealed = scoutsStageGroups(scoutsStageRevealedPicks(round).map(
+    (pick) => [pick.event_round, pick.item_id, pick]));
+  const waiting = scoutsStageGroups(state.view.scouts_secret_pending || []);
+  const rows = [];
+  for (const { eventRound, event, values } of revealed) {
+    const item = scoutsItem(event);
+    rows.push({
+      kind: "event",
+      text: t("scouts_stage.secrets_event", { round: eventRound, name: item.name }),
+    });
+    for (const { pick, player } of values) {
+      rows.push({
+        kind: "revealed",
+        seat: player,
+        text: `${playerLabel(player)}: `,
+        line: item.lines[pick] || "",
+        lineKo: item.lines_ko[pick],
+      });
+    }
+  }
+  for (const { eventRound, event, values } of waiting) {
+    rows.push({
+      kind: "waiting",
+      text: t("panels.scouts_secret_waiting", {
+        round: eventRound,
+        name: scoutsItem(event).name,
+        seats: values.map(playerLabel).join(", "),
+      }),
+    });
+  }
+  const kinds = [...revealed, ...waiting]
+    .map(({ event }) => scoutsItem(event).kind)
+    .filter(Boolean);
   return {
     key: `${round}:${SCOUTS_SECRETS_CURSOR}`,
     id: SCOUTS_SECRETS_CURSOR,
     kind: kinds[0] || "event",
-    name: t("scouts_stage.secrets_name"),
+    name: revealed.length
+      ? t("scouts_stage.secrets_name")
+      : t("scouts_stage.secrets_pending_name"),
     note: null,
     item: null,
-    waiting: events.map(([pickRound, event]) =>
-      t("panels.scouts_secret_waiting", {
-        round: pickRound,
-        name: scoutsItem(event).name,
-        seats: seats.get(`${pickRound}|${event}`).join(", "),
-      }),
-    ),
+    rows,
   };
 }
 
@@ -188,6 +258,7 @@ function renderScoutsStage() {
     scoutsStage.open = false;
     scoutsStage.decision = null;
     scoutsStage.current = null;
+    labelScoutsStageOpener();
     return;
   }
   const wasHidden = stage.hidden || !scoutsStage.open;
@@ -229,12 +300,11 @@ function renderScoutsStage() {
   }
   scoutsStage.decision = decision;
   showScoutsStagePage(stage, index);
-  stage.hidden = false;
   applyScoutsStageOpen(wasHidden);
 }
 
-/* Put pages[index] on the card, with the pager and the tab that go with
-   it. */
+/* Put pages[index] on the card, with the pager and the Scouts panel's
+   button that go with it. */
 function showScoutsStagePage(stage, index) {
   const pages = scoutsStage.pages;
   const shown = pages[index];
@@ -264,12 +334,68 @@ function showScoutsStagePage(stage, index) {
     aria: t("scouts_stage.next_aria"),
     title: t("scouts_stage.next_title"),
   });
-  const tab = stage.querySelector(".scouts-stage-tab");
-  const label = paged
-    ? t("scouts_stage.tab_more", { name: shown.name, more: pages.length - 1 })
-    : t("scouts_stage.tab", { name: shown.name });
-  if (tab.textContent !== label) tab.textContent = label;
-  tab.title = t("scouts_stage.tab_title");
+  labelScoutsStageOpener();
+}
+
+/* The Scouts panel's button (panels.js renderScouts puts it beside the
+   panel's heading): made once, so a render of the panel keeps the node
+   and its focus. */
+function scoutsStageOpener() {
+  if (!scoutsStage.opener) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "scouts-stage-open";
+    button.setAttribute("aria-controls", "scouts-stage-card");
+    button.hidden = true;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      event.currentTarget.focus();
+      toggleScoutsStage();
+    });
+    scoutsStage.opener = button;
+    labelScoutsStageOpener();
+  }
+  return scoutsStage.opener;
+}
+
+/* The button's words: with the card folded, "Show card ▸" and the page it
+   brings back (and how many more this round has); with it open, "Hide
+   card". None without a page. Rebuilt only when the words change. */
+function labelScoutsStageOpener() {
+  const button = scoutsStage.opener;
+  if (!button) return;
+  const pages = scoutsStage.pages;
+  const shown = scoutsStage.page
+    ? pages.find((page) => page.key === scoutsStage.page)
+    : null;
+  button.hidden = !shown;
+  if (!shown) return;
+  const open = scoutsStage.open;
+  const name = pages.length > 1
+    ? t("scouts_stage.show_more", { name: shown.name, more: pages.length - 1 })
+    : shown.name;
+  const word = open ? t("scouts_stage.fold") : t("scouts_stage.show");
+  const signature = JSON.stringify([open, word, name]);
+  if (button.dataset.label !== signature) {
+    button.dataset.label = signature;
+    button.textContent = "";
+    const words = document.createElement("span");
+    words.className = "scouts-stage-open-word";
+    words.textContent = word;
+    button.appendChild(words);
+    if (!open) {
+      const arrow = document.createElement("span");
+      arrow.className = "scouts-stage-open-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "▸";
+      const item = document.createElement("span");
+      item.className = "scouts-stage-open-name";
+      item.textContent = name;
+      button.append(" ", arrow, " ", item);
+    }
+  }
+  button.setAttribute("aria-expanded", String(open));
+  button.title = open ? t("scouts_stage.fold_title") : t("scouts_stage.show_title");
 }
 
 /* A pager button's words, with the "new" mark when an unseen page lies
@@ -325,7 +451,7 @@ function fillScoutsStage(stage, shown) {
     shown.key,
     shown.name,
     shown.note,
-    shown.waiting,
+    shown.rows,
     TERM_LANGUAGE,
     painting,
     Object.keys(SCOUTS_STAGE_PIECES).map(scoutsArtUrl),
@@ -375,11 +501,22 @@ function fillScoutsStage(stage, shown) {
   }
   const body = document.createElement("div");
   if (shown.item) scoutsItemLines(shown.item, body);
-  for (const text of shown.waiting) {
-    const row = document.createElement("div");
-    row.className = "scouts-line scouts-stage-waiting";
-    row.appendChild(phrase(text));
-    body.appendChild(row);
+  /* The reveal page's rows (scoutsStageSecretsPage): an event's heading,
+     a seat's revealed line, a pick still secret. */
+  for (const row of shown.rows) {
+    const node = document.createElement("div");
+    if (row.kind === "event") {
+      node.className = "scouts-stage-event";
+      node.appendChild(phrase(row.text));
+    } else if (row.kind === "revealed") {
+      node.className = "scouts-line scouts-stage-revealed";
+      node.dataset.seat = String(row.seat);
+      node.append(row.text, effectNode(row.line, row.lineKo));
+    } else {
+      node.className = "scouts-line scouts-stage-waiting";
+      node.appendChild(phrase(row.text));
+    }
+    body.appendChild(node);
   }
   /* The bar the app puts between alternatives, here only as a divider
      between two lines: it says nothing about how the lines combine. */
@@ -401,15 +538,14 @@ function fillScoutsStage(stage, shown) {
   hide.title = t("scouts_stage.hide_title");
 }
 
-/* Show the card or its tab. `entering`: the card comes into view, so it
-   slides in once (scouts_stage.css; nothing moves under reduced motion). */
+/* Show the card, or fold it away with nothing of it left over the board.
+   `entering`: the card comes into view, so it slides in once
+   (scouts_stage.css; nothing moves under reduced motion). */
 function applyScoutsStageOpen(entering) {
   const stage = el("scouts-stage");
   const open = scoutsStage.open;
-  stage.classList.toggle("folded", !open);
+  stage.hidden = !open;
   const card = stage.querySelector(".scouts-stage-card");
-  card.hidden = !open;
-  stage.querySelector(".scouts-stage-tab").hidden = open;
   /* An update meanwhile leaves a running slide-in alone. */
   if (!open) card.classList.remove("entering");
   else if (entering) {
@@ -418,22 +554,21 @@ function applyScoutsStageOpen(entering) {
     void card.offsetWidth;
     card.classList.add("entering");
   }
+  labelScoutsStageOpener();
 }
 
-/* The button, the tab and the shortcut. False when there is no card. */
+/* The card's button, the Scouts panel's button and the shortcut. False
+   when there is no card. Folded from inside the card, focus goes to the
+   panel's button, which brings it back. */
 function toggleScoutsStage() {
   const stage = el("scouts-stage");
-  if (stage.hidden || !scoutsStage.page) return false;
+  if (!scoutsStage.page) return false;
   const card = stage.querySelector(".scouts-stage-card");
-  const hadFocus = card.contains(document.activeElement)
-    || stage.querySelector(".scouts-stage-tab") === document.activeElement;
+  const hadFocus = card.contains(document.activeElement);
   scoutsStage.open = !scoutsStage.open;
   applyScoutsStageOpen(scoutsStage.open);
-  if (hadFocus) {
-    const target = scoutsStage.open
-      ? stage.querySelector(".scouts-stage-hide")
-      : stage.querySelector(".scouts-stage-tab");
-    target.focus();
+  if (hadFocus && !scoutsStage.open && scoutsStage.opener) {
+    scoutsStage.opener.focus({ preventScroll: true });
   }
   return true;
 }
@@ -441,11 +576,6 @@ function toggleScoutsStage() {
 function watchScoutsStage() {
   const stage = el("scouts-stage");
   stage.querySelector(".scouts-stage-hide").addEventListener("click", (event) => {
-    event.stopPropagation();
-    event.currentTarget.focus();
-    toggleScoutsStage();
-  });
-  stage.querySelector(".scouts-stage-tab").addEventListener("click", (event) => {
     event.stopPropagation();
     event.currentTarget.focus();
     toggleScoutsStage();

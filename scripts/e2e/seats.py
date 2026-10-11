@@ -108,7 +108,8 @@ def check_compact_stats(page) -> None:
                 specimenImage: specimen?.querySelector('img.icon')?.getAttribute('src'),
                 statTitles: stats.map((s) => s.title),
                 expectedTitles: [
-                    phraseText('{victory_point}'),
+                    // The Victory Points open their ledger (vp_ledger.py).
+                    t('panels.vp_ledger_open', { points: player.victory_points }),
                     phraseText('{spice}'),
                     phraseText('{solari}'),
                     phraseText('{water}'),
