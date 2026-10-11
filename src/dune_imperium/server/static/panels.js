@@ -893,9 +893,10 @@ const vpLedger = {
   error: null,
 };
 
-/* Event kinds that can carry a Victory Point change. A sweep of 24 app AI
-   games (every expansion) found one of these aimed at the seat in every
-   step that moved its points; the row lists the ones its log entry holds. */
+/* Event kinds that can carry a Victory Point change; the row lists the ones
+   its log entry holds for the seat. A sweep of 24 app AI games (every
+   expansion) and the review's 75 found one in nearly every scoring step;
+   a step with none still shows its own head. */
 const VP_CAUSE_KINDS = new Set([
   "victory_points_gained",
   "reveal_victory_point_gained",
@@ -924,6 +925,11 @@ const VP_CAUSE_KINDS = new Set([
   "tech_acquire_effect_resolved",
   "agent_card_effect_resolved",
   "agent_card_reward_chosen",
+  /* Two steps that score without a point event of their own (2026-10-11
+     review, 27 of 2,576 rows in 75 games): a Combat reward paid by
+     recalling Spies, and an Agent box's arrow payment. */
+  "spies_recalled",
+  "agent_card_payment_resolved",
 ]);
 
 /* Whether this page may read the ledger: always on an open server; on a
@@ -1142,8 +1148,14 @@ function vpCause(cause, entry, seat, index) {
     return [mark, what];
   };
   if (entry.type === "chance") {
+    /* A pause, or a chance step whose point events are the game's own
+       (Scouts secret rewards resolving inside a discard shuffle): the
+       log files these under a neutral game card, so the row says so too. */
+    const flow = splitEntryEvents({ ...entry, events: entry.events || [] }).neutral;
     if (isPauseChance(entry.decision_id)) head.append(...gameTitle(entry.events || [], true));
-    else {
+    else if (events.length > 0 && events.every((event) => flow.includes(event))) {
+      head.append(...gameTitle(flow, true));
+    } else {
       const what = document.createElement("strong");
       what.textContent = t("core.chance_label", {
         decision: describeChance(entry.decision_id),
