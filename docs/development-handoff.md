@@ -4,6 +4,18 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-11 게임판 장소·목적 카드 이름을 한국어로 (codec 그대로)
+
+사용자 요청: "보드판 이미지는 영어판 밖에 없지만 이건 그대로 사용하고, 선택 칸이나 활동 로그에 나오는 게임판 장소는 한국어 설정일 때는 한국어로", 목적 카드는 "objective card → 목적 카드, Crysknife, Desert Mouse, Ornithopter → 크리스나이프, 사막쥐, 오니솝터". 브랜치 `ko-names`. 엔진·코덱·관측·저장은 그대로다.
+
+- **장소 23곳:** `display/names_ko.py`에 `spaces` 절. 22곳은 KR·EN 게임판 장소 설명서 `[Board Guide pp. 1-2]`를 에이전트 아이콘·비용·효과로 짝지었고(두 판의 정렬 순서가 달라 같은 장소가 다른 쪽에 있다; KR PDF의 제목은 글리프 번호뿐이라 쪽을 그림으로 읽고 글리프 번호로 교차 확인), 튜엑의 시치는 `[Bloodlines pp. 2, 12]`. 계약 타일의 한글판 인쇄 제목과도 맞는다. 카탈로그가 `name_ko`를 실어 클라이언트의 기존 이름 바꾸기가 선택 줄·로그·좌석 패널·팝오버·보드 툴팁·관측소 이름에 모두 적용된다. 보드 스캔은 영어판 그대로.
+- **목적 카드 5장:** `objectives` 절, "크리스나이프 목적 카드", "사막쥐 목적 카드 4/6P", "오니솝터 목적 카드 1-3P" 꼴(룰북의 "오니솝터 목적 카드" `[Main p. 3]` + 인쇄된 인원수 표시 `[Main p. 5]`). 영어 이름("Objective Desert Mouse 4 6P")은 그대로다.
+- 한국어 문장에 영어로 박혀 있던 장소 이름도 바꿨다: `labels.js` 12줄, 방어벽 메모, 계약 조건·지배 보상(`structs.py`), 스카웃 항목 줄 17곳(조사: 지원자 모집**으로**). 테스트가 한국어 문장의 영어 장소 이름을 더는 허용하지 않는다.
+- 용어집 `glossary-ko.md`의 "공간 이름" 정책 행과 새 "게임판 장소 이름" 표, Objective 행.
+- **검증:** `ko-names`에서 pytest 7,301개 통과, ruff·mypy 통과. E2E 59종 중 56종 통과 → 실패 3종 중 `unavailable`(라벨 문구 고정)·`table_layout`(부하)은 고친 뒤/다시 돌려 통과, `staged_turn`의 "chooser offers both options"는 부하에서 카드 그림이 덜 뜬 채 누르는 기존 결함으로 다른 세션이 `fix-staged-turn-chooser-wait`에서 고치는 중. 브라우저에서 한국어 선택 줄·로그·보드 툴팁·목적 카드 칩, 영어 화면 그대로임을 확인.
+- **사고 기록:** 15:58–15:59에 다른 세션이 이 체크아웃(당시 `ko-space-names` 브랜치)에 `bloodlines-app-faces`(두 줄 책략 제목 `92eb3778`)와 `fix-launcher-link-claim-wait`를 병합했다. master에는 런처 쪽만 들어갔고(`7c33125c`) 두 줄 책략 제목 병합(`5422f1b8`)은 `ko-space-names`에만 있다. 이 작업은 master에서 새로 딴 `ko-names`로 옮겼다. `bloodlines-app-faces` 브랜치는 그대로라 잃은 것은 없다.
+- **남은 영어(한글판 스캔 없음 제외, 조사 2026-10-11):** ① 지도자 능력·인장 반지 이름을 라벨에 영어로 박음 — Other Memories(다른 기억들), Into the Fray(전투 속으로), Fedaykin Maneuver(페다이킨의 책략), Secret Project(비밀 프로젝트), Arrakis Planetologist(아라키스 행성학자), Memories(기억), Feyd 토큰(페이드 토큰); 한국어는 이미 카탈로그 `ability_ko`/`signet_ko`와 룰북에 있다. ② 한국어 이름이 있는 카드를 영어로 박음 — Immediate 계약(즉시, 매 결정 233회 노출), Usurp(찬탈), Reclaimed Forces(되돌아온 병사들, 스카웃 줄), Advanced Data Analysis(고급 데이터 분석, 회색 사유), Wild card(로그). ③ "AI" 좌석 이름, ④ 설정 화면의 OQ 번호·경로·명령 인자, ⑤ 도움말 용어 옆 영어 쌍둥이 40개(의도된 것), ⑥ `index.html`의 `aria-label="Bene Tleilax board"`, ⑦ 서버 오류 문구(HTTP 400/409 등 93곳, 한국어 접두어만), ⑧ 런처의 서버 로그 창(서버 stdout 영어)과 창 제목 "Dune Imperium 서버", ⑨ 항해 카드 이름 "Navigation Card 3"(제목 없음, 용어집 "운항 카드"로 지을 수 있음). 원자료: `tmp/claude/bbb914d3-a01f-4969-b986-c74ba1d902f7/inventory/raw_words_dynamic.txt`(git 무시). 용어집 "아직 채우지 않은 것"의 낡은 줄 "event kind 177개 라벨 없음"은 "모두 있음"으로 고쳤다.
+
 ## 2026-10-11 런처 로컬 모드도 자동 저장 (codec 그대로)
 
 사용자가 런처의 "이 컴퓨터에서만 (로컬)"로 혼자 AI와 둔 판이 런처를 닫자 사라졌다. 자동 저장이 원격 서버에만 있었기 때문이다(`docs/multiplayer-design.md` D6). 사용자 결정 "그래 진행해". 브랜치 `local-autosave`.

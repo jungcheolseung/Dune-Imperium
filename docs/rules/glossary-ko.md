@@ -448,8 +448,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
   Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
   용어는 본문 룰북의 단어를 쓴다.
-- 엔진 event kind 207개 중 177개가 아직 한국어 라벨이 없다
-  (`static/labels.js`의 `EVENT_LABELS`). 이 표가 그 라벨을 쓸 때의 어휘를 정한다.
+- (2026-10-11 확인) 엔진 event kind는 모두 한국어 라벨이 있다(`static/labels.js`의
+  `EVENT_LABELS`, `tests/server/test_action_labels.py`가 지킨다). 이 표가 그 라벨의 어휘를 정한다.
 
 ## 규칙
 
