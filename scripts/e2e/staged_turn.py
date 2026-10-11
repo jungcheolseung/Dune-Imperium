@@ -481,13 +481,24 @@ def navigation_chamber_scenario(browser) -> None:
             context.close()
             return
         spice = page.evaluate("state.view.players[state.viewSeat].resources.spice")
+        hand_card = f".hand-cards .vcard[data-instance='{card}']"
         for lang, free, suffix, no_cut in (
             ("ko", "무료", "할인", "할인 없이"),
             ("en", "Free", "discount", "No discount"),
         ):
             page.evaluate("lang => setLanguage(lang)", lang)
             page.evaluate("clearPick()")
-            page.click(f".hand-cards .vcard[data-instance='{card}']")
+            # Fresh from the save (ko) or with the other language's pictures
+            # (en), the card's picture may still be loading, and until it has
+            # the card is a 4px sliver (its img is height: auto): a click then
+            # lands on the strip, only the space is picked and no chooser
+            # opens (2026-10-11, under run_all.py's load).
+            page.wait_for_function(
+                "(sel) => document.querySelector(sel) && [...document"
+                ".querySelectorAll(sel + ' img')].every((i) => i.complete)",
+                arg=hand_card,
+            )
+            page.click(hand_card)
             page.click(".hotspot[data-space='spice_refinery']")
             lines = page.evaluate(CHOOSER_LINES)
             check.ok(len(lines) == 2, f"{lang}: the chooser offers both options", lines)
