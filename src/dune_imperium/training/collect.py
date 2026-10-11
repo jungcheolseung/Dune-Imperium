@@ -71,6 +71,7 @@ class _ChunkJob:
     max_steps: int
     rank_rewards: bool
     out_path: str
+    score_rewards: bool = False
     stall_dir: str | None = None
 
 
@@ -125,6 +126,7 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         record=True,
         undo_actions=False,
         rank_rewards=job.rank_rewards,
+        score_rewards=job.score_rewards,
         stall_dir=None if job.stall_dir is None else Path(job.stall_dir),
     )
     policies = _policies(
@@ -170,6 +172,7 @@ class Collector:
         temperature: float = 1.0,
         opponent: str | None = None,
         rank_rewards: bool = False,
+        score_rewards: bool = False,
         stall_dir: Path | None = None,
     ) -> None:
         if workers < 1:
@@ -182,6 +185,7 @@ class Collector:
         self.temperature = temperature
         self.opponent = opponent
         self.rank_rewards = rank_rewards
+        self.score_rewards = score_rewards
         self._pool: ProcessPoolExecutor | None = None
         self._scratch: Path | None = None
         if workers > 1:
@@ -226,6 +230,7 @@ class Collector:
                 record=True,
                 undo_actions=False,
                 rank_rewards=self.rank_rewards,
+                score_rewards=self.score_rewards,
                 stall_dir=self.stall_dir,
             )
             policies = _policies(
@@ -268,6 +273,7 @@ class Collector:
                 opponent_seed=opponent_seed + index * 104_729,
                 max_steps=self.max_steps,
                 rank_rewards=self.rank_rewards,
+                score_rewards=self.score_rewards,
                 out_path=str(self._scratch / f"chunk_{policy_seed}_{index}.npz"),
                 stall_dir=None if self.stall_dir is None else str(self.stall_dir),
             )

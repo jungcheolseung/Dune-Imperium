@@ -106,6 +106,9 @@ class TrainConfig:
     # Pay the finishing order instead of winner-take-all during collection
     # (training.selfplay.rank_reward); a learning-side reward transform.
     rank_rewards: bool = False
+    # Pay each seat its own final Victory Points instead (score_reward); an
+    # experiment arm, exclusive with rank_rewards.
+    score_rewards: bool = False
     # Learning-side shaping: cost per own decision charged against the
     # terminal reward (see apply_step_penalty); 0 disables it.
     step_penalty: float = 0.0005
@@ -417,6 +420,7 @@ def train(
         max_steps=config.max_steps,
         temperature=config.temperature,
         rank_rewards=config.rank_rewards,
+        score_rewards=config.score_rewards,
         opponent=config.opponent,
         # A game stuck on a decision without legal actions (an engine
         # defect) is kept here and ends truncated instead of ending the run;

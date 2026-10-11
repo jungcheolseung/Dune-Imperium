@@ -19,6 +19,7 @@
 - **종료 보상만** 사용한다: `final_standings` 기준 승자 +1, 나머지 각 −1/3(zero-sum, 승자독식). 공식 tiebreak 체인(자원 → FAQ의 최근 Reveal)이 순위를 항상 확정하므로 승자는 유일하다.
 - 중간 보상(per-step VP delta 등)은 환경에서 제공하지 않는다. shaping은 학습 쪽 wrapper의 몫이며, 종료 시 `infos`에 각 좌석의 `rank`와 `victory_points`를 노출해 wrapper 작성을 지원한다.
 - **학습 쪽 보상 변환(2026-09-20, 기본 꺼짐).** `dune-imperium-train --rank-rewards`는 수집에서 승자독식 대신 **순위를 [+1, −1]에 선형으로** 편다(4인 기준 1, 1/3, −1/3, −1; `training.selfplay.rank_reward`). 한 테이블의 합은 0이라 zero-sum이 유지된다. 근거: 승자독식은 좌석당 0.811 bit만 주고 2위와 4위를 같은 값으로 취급하는데, 엔진이 이미 계산하는 순위는 2.0 bit다. **환경(`pettingzoo_env`)의 보상과 대회의 승리 판정은 그대로**이며, 이것은 이 문서가 위에서 "학습 쪽 wrapper의 몫"이라고 적은 변환이다. M10 계획서의 "reward shaping은 ablation으로 비교한다" 항목에 해당한다.
+- **점수 보상 실험 갈래(2026-10-11, 기본 꺼짐).** `dune-imperium-train --score-rewards`는 수집에서 각 좌석에 **자기 최종 VP ÷ 10**을 준다(`training.selfplay.score_reward`). 사용자 질문 "'종료했을 때 점수를 최대한 먹기'로 설정하면 목표가 바뀌려나?" → "실험 갈래 추가해보자". 순위 보상과 달리 zero-sum이 아니다: 순위와 상관없이 자기 점수만 키우도록 배운다. `--rank-rewards`와 함께 쓸 수 없다. 환경 보상·대회 승리 판정·탐색의 가치 읽기는 그대로다. 판정은 대조군(승자독식)과의 짝지은 대전으로 한다.
 
 ## Episode 메커니즘 (`dune_imperium_uprising_v1`)
 
