@@ -204,7 +204,11 @@ const ACTION_LABELS = {
   trash_card_for_desert_tactics: "{trash} (Desert Tactics)",
   trash_combat_reward_card: "{trash} ({combat} 보상)",
   trash_contract_reveal_for_vp: "이 카드 폐기 → {victory_point}",
-  trash_intrigue_card: "{trash_intrigue}",
+  /* An Intrigue card's trash of a personal card from hand, discard pile or
+     in play (rules/intrigue.py TrashPersonalCard, Tenuous Bond): the plain
+     trash icon, with the Intrigue card as its source. The Intrigue-card
+     trash is trash_intrigue_hand_card. */
+  trash_intrigue_card: "{trash} ({intrigue_card})",
   trash_leader_card: "{trash} ({leader})",
   trash_reveal_card: "{trash}",
   use_other_memories: "Other Memories 사용",

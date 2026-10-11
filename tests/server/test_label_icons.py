@@ -153,3 +153,20 @@ def test_an_intrigue_card_named_as_a_noun_is_a_word() -> None:
     assert korean["EVENT_LABELS.intrigue_card_stolen"] == "{steal_intrigue}"
     assert korean["EVENT_LABELS.card_trashed"] == "{trash}"
     assert korean["EVENT_LABELS.cards_drawn"] == "{draw}"
+
+
+def test_an_intrigue_cards_personal_card_trash_shows_the_card_trash_icon() -> None:
+    """``trash_intrigue_card`` trashes a card from hand, discard pile or play
+    (rules/intrigue.py ``TrashPersonalCard``, Tenuous Bond's discard-pile
+    trash), not an Intrigue card: its label is the trash icon with the
+    Intrigue card as its source. 2026-10-11 the first pass of this guard
+    read the old "{intrigue} {trash}" as "trash an Intrigue card" and drew
+    the Intrigue-trash icon on a personal card's trash (user report)."""
+
+    for name in ("labels.js", "labels_en.js"):
+        text = (_STATIC / name).read_text(encoding="utf-8")
+        match = re.search(r'"?trash_intrigue_card"?: "([^"]*)"', text)
+        assert match, name
+        assert "{trash}" in match.group(1) and "{trash_intrigue}" not in match.group(1)
+        hand = re.search(r'"?trash_intrigue_hand_card"?: "([^"]*)"', text)
+        assert hand and "{trash_intrigue}" in hand.group(1), name

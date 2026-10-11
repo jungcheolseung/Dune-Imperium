@@ -170,7 +170,7 @@ const LABELS_EN = {
     "trash_card_for_desert_tactics": "{trash} (Desert Tactics)",
     "trash_combat_reward_card": "{trash} ({combat} reward)",
     "trash_contract_reveal_for_vp": "Trash this card -> {victory_point}",
-    "trash_intrigue_card": "{trash_intrigue}",
+    "trash_intrigue_card": "{trash} ({intrigue_card})",
     "trash_leader_card": "{trash} ({leader})",
     "trash_reveal_card": "{trash}",
     "use_other_memories": "Use Other Memories",
