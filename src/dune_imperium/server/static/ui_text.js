@@ -1460,6 +1460,11 @@ const UI_TEXT = {
     "ko": "다음 항목 (카드 안에서 →)",
     "en": "Next item (→ inside the card)"
   },
+  "scouts_stage.new": { "ko": "새", "en": "New" },
+  "scouts_stage.with_new": {
+    "ko": "{{label}} · 아직 안 본 항목이 있습니다",
+    "en": "{{label}} · an item you have not seen yet"
+  },
   "scouts_stage.count": {
     "ko": "{{index}} / {{total}}",
     "en": "{{index}} / {{total}}"

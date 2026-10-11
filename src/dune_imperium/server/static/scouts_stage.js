@@ -26,10 +26,15 @@
    buttons and a counter page through them (and the arrow keys while focus
    is inside the card); nothing wraps. No page, no card and no tab.
 
-   When it opens: on a page this browser has not shown yet in this game
-   (by game, live or review, round and item; kept in memory), at the first
-   such page -- so an item resolved with no choice comes up like one with a
-   choice -- and, during the Scouts step, on the item the step moves to.
+   When it opens: during the Scouts step, on the item the step moves to
+   (scoutsDecisionItemId), and nothing else takes the card from it there:
+   a seat bidding or choosing sees the item it decides on, whatever
+   updates arrive meanwhile. Outside the step (it is over, or an item was
+   resolved with no choice at all), on a page this browser has not shown
+   yet in this game (by game, live or review, round and item; kept in
+   memory), at the first such page -- so an item resolved with no choice
+   comes up like one with a choice. A page still unseen while the card
+   shows another marks the pager button that leads to it as new.
    It stays until the player folds it (the button, the tab, `a`); folded,
    the tab on the board's top edge stays for the whole round, for every
    seat, spectators and review alike. The one exception: a decision of the
@@ -51,8 +56,13 @@ const scoutsStage = {
   /* The item the Scouts step resolved at the last render ("<round>:<id>"),
      or null outside the step. */
   current: null,
-  /* Pages this browser has put up (scoutsStageSeenKey). */
+  /* Pages this browser has shown (scoutsStageSeenKey): on the card while
+     it was open, or put there by the step or an auto-open. */
   seen: new Set(),
+  /* Pages an auto-open has already weighed: one still unseen among them
+     waits for the player behind its marked button instead of taking the
+     card again at every update. */
+  weighed: new Set(),
   /* What the card's content was built from: rebuilt only when it changes,
      so an update with the same page neither flickers nor replays. */
   content: null,
@@ -186,17 +196,26 @@ function renderScoutsStage() {
   let index = pages.findIndex((page) => page.key === scoutsStage.page);
   if (index < 0) index = Math.min(scoutsStage.index, pages.length - 1);
   let opened = false;
-  const fresh = pages.find((page) => !scoutsStage.seen.has(scoutsStageSeenKey(page)));
-  for (const page of pages) scoutsStage.seen.add(scoutsStageSeenKey(page));
+  const seen = scoutsStage.seen;
   const id = scoutsDecisionItemId();
   const current = id ? `${state.view.round_number}:${id}` : null;
-  if (fresh) {
-    index = pages.indexOf(fresh);
-    opened = true;
-  } else if (current && current !== scoutsStage.current) {
+  if (current) {
+    /* The step's item: the card goes to it when it changes and stays
+       with whatever the player browses to until it changes again. */
     const at = pages.findIndex((page) => page.key === current);
-    if (at >= 0) index = at;
-    opened = true;
+    if (current !== scoutsStage.current && at >= 0) {
+      index = at;
+      opened = true;
+      seen.add(scoutsStageSeenKey(pages[at]));
+    }
+  } else {
+    const unseen = pages.filter((page) => !seen.has(scoutsStageSeenKey(page)));
+    if (unseen.some((page) => !scoutsStage.weighed.has(scoutsStageSeenKey(page)))) {
+      index = pages.indexOf(unseen[0]);
+      opened = true;
+      seen.add(scoutsStageSeenKey(unseen[0]));
+    }
+    for (const page of pages) scoutsStage.weighed.add(scoutsStageSeenKey(page));
   }
   scoutsStage.current = current;
   if (opened) scoutsStage.open = true;
@@ -221,6 +240,7 @@ function showScoutsStagePage(stage, index) {
   const shown = pages[index];
   scoutsStage.index = index;
   scoutsStage.page = shown.key;
+  if (scoutsStage.open) scoutsStage.seen.add(scoutsStageSeenKey(shown));
   fillScoutsStage(stage, shown);
   const paged = pages.length > 1;
   stage.classList.toggle("paged", paged);
@@ -228,22 +248,51 @@ function showScoutsStagePage(stage, index) {
   const count = stage.querySelector(".scouts-stage-count");
   const counted = t("scouts_stage.count", { index: index + 1, total: pages.length });
   if (count.textContent !== counted) count.textContent = counted;
+  /* Which way an unseen page lies. */
+  const unseen = pages.map((page) => !scoutsStage.seen.has(scoutsStageSeenKey(page)));
   const previous = stage.querySelector(".scouts-stage-prev");
   const next = stage.querySelector(".scouts-stage-next");
   previous.disabled = index === 0;
   next.disabled = index === pages.length - 1;
-  previous.textContent = t("scouts_stage.prev");
-  next.textContent = t("scouts_stage.next");
-  previous.setAttribute("aria-label", t("scouts_stage.prev_aria"));
-  next.setAttribute("aria-label", t("scouts_stage.next_aria"));
-  previous.title = t("scouts_stage.prev_title");
-  next.title = t("scouts_stage.next_title");
+  labelScoutsPagerButton(previous, unseen.slice(0, index).some(Boolean), {
+    text: t("scouts_stage.prev"),
+    aria: t("scouts_stage.prev_aria"),
+    title: t("scouts_stage.prev_title"),
+  });
+  labelScoutsPagerButton(next, unseen.slice(index + 1).some(Boolean), {
+    text: t("scouts_stage.next"),
+    aria: t("scouts_stage.next_aria"),
+    title: t("scouts_stage.next_title"),
+  });
   const tab = stage.querySelector(".scouts-stage-tab");
   const label = paged
     ? t("scouts_stage.tab_more", { name: shown.name, more: pages.length - 1 })
     : t("scouts_stage.tab", { name: shown.name });
   if (tab.textContent !== label) tab.textContent = label;
   tab.title = t("scouts_stage.tab_title");
+}
+
+/* A pager button's words, with the "new" mark when an unseen page lies
+   its way; rebuilt only when that changes, so a focused button keeps its
+   node. */
+function labelScoutsPagerButton(button, fresh, { text, aria, title }) {
+  const words = fresh ? t("scouts_stage.new") : "";
+  const signature = `${text}|${words}`;
+  if (button.dataset.label !== signature) {
+    button.dataset.label = signature;
+    button.textContent = text;
+    if (fresh) {
+      const mark = document.createElement("span");
+      mark.className = "scouts-stage-new";
+      mark.textContent = words;
+      button.append(" ", mark);
+    }
+  }
+  button.classList.toggle("has-new", fresh);
+  button.setAttribute("aria-label", fresh
+    ? t("scouts_stage.with_new", { label: aria })
+    : aria);
+  button.title = fresh ? t("scouts_stage.with_new", { label: title }) : title;
 }
 
 /* Previous (-1) or next (+1) page; false at either end, which does not

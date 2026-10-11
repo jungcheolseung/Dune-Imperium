@@ -25,23 +25,31 @@ round without items having no card; the help's shortcut row; and a finished
 all-AI game's review at a Scouts step.
 
 Second request the same day: every revealed item comes up, not only those
-with a choice, and the card stays at hand all round. The all-AI game of seed
-21, replayed step by step (rounds 4-6 as a table sees them): round 4's
-choice stays up after the step and through the turns, its tab reopens it,
-the viewer's own Agent turn folds it once (reopened, it stays); round 5's
-auction comes up, then Unlikely Allies, resolved with no Scouts decision,
-opens it by itself as page 2 of 2 -- the counter, previous / next disabled
-at the ends, the arrows with focus inside the card (not outside, not with
-Alt), the browsed page kept on a refresh, the tab naming the page and how
-many more; round 6 has no card before its reveal and Market Opening, also
-choice-less, opens it again. The review pages a round of two reveals and
-opens again at the next round's reveal. Korean and English at 1366x768 and
-1600x950, the pager inside the header and clear of the kind and the name.
+with a choice, and the card stays at hand all round. All-AI games replayed
+step by step (their rounds as a table sees them). Seed 21: round 4's choice
+stays up after the step and through the turns, its tab reopens it, the
+viewer's own Agent turn folds it once (reopened, it stays); round 5's
+auction is on the card while the calls are open, and another seat's call
+leaves it there; Unlikely Allies, revealed after the auction closed and
+resolved with no Scouts decision, opens it by itself after the step as page
+2 of 2 -- the counter, previous / next disabled at the ends, the arrows with
+focus inside the card (not outside, not with Alt), the browsed page kept on
+a refresh, the tab naming the page and how many more; a browser arriving
+after the step opens the first unseen page and marks next "new" (mark and
+title) without an update moving the card; round 6 has no card before its
+reveal and Market Opening, also choice-less, opens it again. Seed 4's round
+2 (Planetary Exploration with no decision, then Send for Aid): the card
+stays on the item being decided, previous marked new, through another
+seat's decision; the unseen item opens by itself once the step is over,
+and not if the player paged to it meanwhile. The review pages a round of
+two reveals and opens again at the next round's reveal. Korean and English
+at 1366x768 and 1600x950, the pager inside the header, the kind word not
+cut and the name clear.
 
 Nothing is submitted: a UI callback records any index the page would send.
 Screenshots per kind (Korean, 1600x950) go to E2E_SHOTS_DIR as
-stage_<kind>.png, with stage_two_items.png, stage_choiceless_event.png and
-stage_tab_agent_turn.png.
+stage_<kind>.png, with stage_two_items.png, stage_choiceless_event.png,
+stage_tab_agent_turn.png, stage_step_new.png and stage_next_new.png.
 """
 
 from __future__ import annotations
@@ -88,10 +96,11 @@ turn = replace(turn, players=tuple(
     replace(p, resources=Resources(solari=6, spice=6, water=3))
     for p in turn.players))
 
-def snapshot(state, seat):
-    session.state = state
-    return {"summary": manager.summary(game_id), "view": manager.view(game_id, seat),
-            "actions": manager.legal_actions(game_id, seat)}
+def snapshot(state, seat, game=None):
+    game = game or game_id
+    manager._get(game).state = state
+    return {"summary": manager.summary(game), "view": manager.view(game, seat),
+            "actions": manager.legal_actions(game, seat)}
 
 def step(item):
     # The real step: the item's tasks run until its first seat decides.
@@ -125,16 +134,20 @@ secrets = offer_secret_reward(
                                  (4, "covert_operation", 1, 0))),
     0, "covert_operation", 2, source="round:6:scouts:secret:0").state
 
-# An all-AI game of seed 21, replayed step by step: its rounds as a table
-# sees them. Round 4 resolves Bene Gesserit Treachery with choices; round 5
-# reveals the Critical Moment auction (bids) and then Unlikely Allies,
-# which resolves with no Scouts decision; round 6 reveals only Market
-# Opening, also with none.
-ai = manager._get(str(manager.create_game(("heuristic",) * 4, game_seed=21,
-                                          arrakeen_scouts=True)["game_id"]))
-replay = [ai.engine.reset(ai.config, ai.game_seed)]
-for recorded in ai.steps:
-    replay.append(ai.engine.apply(replay[-1], recorded).state)
+# All-AI games replayed step by step: their rounds as a table sees them.
+# Seed 21: round 4 resolves Bene Gesserit Treachery with choices; round 5
+# reveals the Critical Moment auction (calls) and only after it closes
+# Unlikely Allies, which resolves with no Scouts decision; round 6 reveals
+# only Market Opening, also with none. Seed 4: round 2 reveals Planetary
+# Exploration, resolved with no decision, and then Send for Aid, which every
+# seat decides on -- an unseen page behind the step's item.
+def replayed(seed):
+    ai = manager._get(str(manager.create_game(
+        ("heuristic",) * 4, game_seed=seed, arrakeen_scouts=True)["game_id"]))
+    states = [ai.engine.reset(ai.config, ai.game_seed)]
+    for recorded in ai.steps:
+        states.append(ai.engine.apply(states[-1], recorded).state)
+    return states
 
 def this_round(state):
     return [i for r, i in state.scouts_revealed if r == state.round_number]
@@ -143,46 +156,65 @@ def owner(state):
     decision = state.decision_stack[-1].decision if state.decision_stack else None
     return decision.owner if isinstance(decision, PlayerDecision) else None
 
-def decided(round_number, item):
-    return any(s.round_number == round_number and s.scouts_item == item
-               and owner(s) is not None for s in replay)
+def scouts_choices(replay, round_number, item):
+    # The step's states with a seat deciding on the item.
+    return [s for s in replay if s.round_number == round_number
+            and s.scouts_item == item and owner(s) is not None]
 
-def turns(round_number):
+def turns(replay, round_number):
     # The round's Agent turns, after its Scouts step.
     return [s for s in replay if s.round_number == round_number
             and not s.scouts_opening and s.decision_stack
             and str(s.decision_stack[-1].kind) == "turn"]
 
-def scouts_choice(round_number, item):
-    return next(s for s in replay if s.round_number == round_number
-                and s.scouts_item == item and owner(s) is not None)
-
-assert this_round(turns(4)[0]) == ["bene_gesserit_treachery"]
-assert decided(4, "bene_gesserit_treachery")
-assert this_round(turns(5)[0]) == ["critical_moment_mid", "unlikely_allies"]
-assert decided(5, "critical_moment_mid") and not decided(5, "unlikely_allies")
-assert this_round(turns(6)[0]) == ["market_opening"]
-assert not decided(6, "market_opening")
-r6_start = next(s for s in replay if s.round_number == 6 and not this_round(s))
-
-def played(state, seat=None):
-    # The seat whose decision it is, or another one, waiting.
+def played(state, seat=None, game=None):
+    # The seat whose decision it is, or the one given (then usually waiting).
     seat = owner(state) if seat is None else seat
-    return dict(snapshot(state, seat), seat=seat)
+    return dict(snapshot(state, seat, game), seat=seat)
 
 def waiting(state):
     return played(state, (owner(state) + 1) % 4)
 
+g21 = replayed(21)
+assert this_round(turns(g21, 4)[0]) == ["bene_gesserit_treachery"]
+assert scouts_choices(g21, 4, "bene_gesserit_treachery")
+assert this_round(turns(g21, 5)[0]) == ["critical_moment_mid", "unlikely_allies"]
+calls = scouts_choices(g21, 5, "critical_moment_mid")
+assert calls and not scouts_choices(g21, 5, "unlikely_allies")
+assert all(this_round(s) == ["critical_moment_mid"] for s in calls)
+assert this_round(turns(g21, 6)[0]) == ["market_opening"]
+assert not scouts_choices(g21, 6, "market_opening")
+r6_start = next(s for s in g21 if s.round_number == 6 and not this_round(s))
+# Another seat's call after the viewer's own: an update during the auction.
+call_later = next(s for s in calls if owner(s) != owner(calls[0]))
+
+g4 = replayed(4)
+# A table of seed 4 to show them (its own game id and seed).
+table4 = str(manager.create_game(("human",) * 4, game_seed=4,
+                                 arrakeen_scouts=True)["game_id"])
+aid = scouts_choices(g4, 2, "send_for_aid")
+assert aid and not scouts_choices(g4, 2, "planetary_exploration")
+assert this_round(aid[0]) == ["planetary_exploration", "send_for_aid"]
+aid_later = next(s for s in aid if owner(s) != owner(aid[0]))
+aid_turn = turns(g4, 2)[0]
+# One seat that waits through all three.
+watcher = next(seat for seat in range(4)
+               if seat not in {owner(aid[0]), owner(aid_later), owner(aid_turn)})
+
 fixtures = {
-    "r4_choice": played(scouts_choice(4, "bene_gesserit_treachery")),
-    "r4_turn": waiting(turns(4)[0]),
-    "r4_turn_own": played(turns(4)[0]),
-    "r5_auction": played(scouts_choice(5, "critical_moment_mid")),
-    "r5_turn": waiting(turns(5)[0]),
-    "r5_later": waiting(turns(5)[2]),
+    "r4_choice": played(scouts_choices(g21, 4, "bene_gesserit_treachery")[0]),
+    "r4_turn": waiting(turns(g21, 4)[0]),
+    "r4_turn_own": played(turns(g21, 4)[0]),
+    "r5_auction": played(calls[0]),
+    "r5_auction_later": played(call_later, owner(calls[0])),
+    "r5_turn": waiting(turns(g21, 5)[0]),
+    "r5_later": waiting(turns(g21, 5)[2]),
     "r6_start": played(r6_start, 0),
-    "r6_turn": waiting(turns(6)[0]),
-    "r6_turn_own": played(turns(6)[0]),
+    "r6_turn": waiting(turns(g21, 6)[0]),
+    "r6_turn_own": played(turns(g21, 6)[0]),
+    "aid_choice": played(aid[0], watcher, table4),
+    "aid_later": played(aid_later, watcher, table4),
+    "aid_turn": played(aid_turn, watcher, table4),
     "mission": snapshot(step("security_detail"), 1),
     "mission_own": snapshot(step("security_detail"), 0),
     "event": snapshot(step("private_stock"), 1),
@@ -229,7 +261,7 @@ STAGE_JS = """() => {
     const sizes = [...stage.querySelectorAll(
         '.scouts-stage-lines .scouts-line, .scouts-stage-name, .scouts-stage-kind,'
         + ' .scouts-stage-hide, .scouts-stage-tab, .scouts-stage-note,'
-        + ' .scouts-stage-pager button, .scouts-stage-count')]
+        + ' .scouts-stage-pager button, .scouts-stage-count, .scouts-stage-new')]
         .filter(visible)
         .map((node) => parseFloat(getComputedStyle(node).fontSize));
     const linesBox = stage.querySelector('.scouts-stage-lines');
@@ -308,6 +340,18 @@ STAGE_JS = """() => {
         nextDisabled: stage.querySelector('.scouts-stage-next').disabled,
         prevName: stage.querySelector('.scouts-stage-prev').getAttribute('aria-label'),
         nextName: stage.querySelector('.scouts-stage-next').getAttribute('aria-label'),
+        prevNew: stage.querySelector('.scouts-stage-prev')
+            .classList.contains('has-new'),
+        nextNew: stage.querySelector('.scouts-stage-next')
+            .classList.contains('has-new'),
+        marks: [...stage.querySelectorAll('.scouts-stage-pager .scouts-stage-new')]
+            .filter(visible).map((n) => n.textContent),
+        prevTitle: stage.querySelector('.scouts-stage-prev').title,
+        nextTitle: stage.querySelector('.scouts-stage-next').title,
+        kindCut: (() => {
+            const kind = stage.querySelector('.scouts-stage-kind');
+            return kind.scrollWidth > kind.clientWidth + 1;
+        })(),
         focusInCard: card.contains(document.activeElement),
         focusClass: document.activeElement ? document.activeElement.className : null,
     };
@@ -664,9 +708,20 @@ TAB_WORD = {"ko": "스카웃 카드", "en": "Scouts card"}
 PAGER_WORDS = {"ko": ("◀ 이전", "다음 ▶"), "en": ("◀ Previous", "Next ▶")}
 
 
+NEW_MARK = {"ko": "새", "en": "New"}
+NEW_TITLE = {"ko": "아직 안 본 항목", "en": "not seen yet"}
+
+
+def shot(page, name: str) -> None:
+    """A screenshot without the turn banner a fixture swap may have raised
+    over the card (phase_banner.js; it would pass on its own)."""
+    page.evaluate("el('phase-banner').hidden = true")
+    page.screenshot(path=str(SHOTS / name))
+
+
 def fresh_browser(page) -> None:
-    """A browser that has put no page up yet (the memory a reload clears)."""
-    page.evaluate("scoutsStage.seen.clear()")
+    """A browser that has shown no page yet (the memory a reload clears)."""
+    page.evaluate("scoutsStage.seen.clear(); scoutsStage.weighed.clear();")
 
 
 def arrow(page, key: str) -> None:
@@ -675,10 +730,12 @@ def arrow(page, key: str) -> None:
 
 
 def pager_fits(stage: dict) -> bool:
-    """The pager inside the card, clear of the kind word and the name."""
+    """The pager inside the card, clear of the kind word (not cut) and the
+    name."""
     return (
         inside(stage["pagerBox"], stage["card"])
         and stage["kindBox"]["right"] <= stage["pagerBox"]["left"] + 1
+        and not stage["kindCut"]
         and stage["pagerBox"]["bottom"] <= stage["nameBox"]["top"] + 1
     )
 
@@ -731,7 +788,7 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         (stage["open"], stage["tab"], stage["legalOnBoard"]),
     )
     if shots:
-        page.screenshot(path=str(SHOTS / "stage_tab_agent_turn.png"))
+        shot(page, "stage_tab_agent_turn.png")
     page.locator("#scouts-stage .scouts-stage-tab").click()
     page.evaluate("render({foreign: true})")
     check.ok(
@@ -741,16 +798,24 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
     page.keyboard.press("a")
     check.ok(not page.evaluate(STAGE_JS)["open"], f"{where}: `a` folds it in a turn")
 
-    # Round 5: the auction (a choice) comes up as the round's first item.
+    # Round 5: the auction comes up while its calls are open, and another
+    # seat's call (an update meanwhile) leaves the card on it.
     stage = render(page, fixtures, "r5_auction", language)
     check.ok(
         stage["open"] and stage["item"] == "critical_moment_mid" and not stage["pager"],
-        f"{where}: a new round's first item opens it again",
+        f"{where}: the card is on the auction while the viewer calls",
         (stage["open"], stage["item"], stage["pager"]),
     )
+    stage = render(page, fixtures, "r5_auction_later", language)
+    check.ok(
+        stage["open"] and stage["item"] == "critical_moment_mid",
+        f"{where}: another seat's call leaves it on the auction",
+        (stage["open"], stage["item"]),
+    )
     page.keyboard.press("a")
-    # Unlikely Allies resolved with no Scouts decision: it comes up by itself
-    # once the step is over, as the second of two.
+    # Unlikely Allies, revealed only once the auction closed and resolved
+    # with no Scouts decision, comes up by itself after the step, as the
+    # second of two, even folded.
     stage = render(page, fixtures, "r5_turn", language)
     prev_word, next_word = PAGER_WORDS[language]
     check.ok(
@@ -768,6 +833,11 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         (stage["pager"], stage["count"], stage["prevDisabled"], stage["nextDisabled"]),
     )
     check.ok(
+        not stage["prevNew"] and not stage["nextNew"] and not stage["marks"],
+        f"{where}: both seen, no button marked new",
+        (stage["prevNew"], stage["nextNew"], stage["marks"]),
+    )
+    check.ok(
         pager_fits(stage) and stage["pageFits"] and stage["linesFit"]
         and stage["minFont"] >= 14,
         f"{where}: the pager fits the header, nothing overflows, text 14px+",
@@ -779,7 +849,7 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         leaks = HANGUL.findall(stage["text"] + stage["tabText"] + stage["attributes"])
         check.ok(not leaks, f"{where}: no Hangul in the English pager", leaks[:8])
     if shots:
-        page.screenshot(path=str(SHOTS / "stage_two_items.png"))
+        shot(page, "stage_two_items.png")
     page.locator("#scouts-stage .scouts-stage-prev").click()
     stage = page.evaluate(STAGE_JS)
     check.ok(
@@ -857,6 +927,44 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         (stage["item"], stage["count"]),
     )
 
+    # A browser that first sees round 5 after its step (a reload, a late
+    # spectator): the first unseen page opens, the next one waits behind a
+    # "new" mark, and an update does not move the card to it.
+    fresh_browser(page)
+    stage = render(page, fixtures, "r5_later", language)
+    check.ok(
+        stage["open"] and stage["item"] == "critical_moment_mid"
+        and stage["count"] == "1 / 2",
+        f"{where}: arriving after the step, the first unseen page opens",
+        (stage["open"], stage["item"], stage["count"]),
+    )
+    check.ok(
+        stage["nextNew"] and not stage["prevNew"]
+        and stage["marks"] == [NEW_MARK[language]]
+        and NEW_TITLE[language] in stage["nextTitle"]
+        and NEW_TITLE[language] not in stage["prevTitle"]
+        and pager_fits(stage),
+        f"{where}: next is marked new (mark and title), the pager still fits",
+        (stage["nextNew"], stage["marks"], stage["nextTitle"], stage["kindBox"]),
+    )
+    if shots:
+        shot(page, "stage_next_new.png")
+    page.evaluate("render({foreign: true})")
+    stage = page.evaluate(STAGE_JS)
+    check.ok(
+        stage["item"] == "critical_moment_mid" and stage["nextNew"],
+        f"{where}: an update leaves the card where it is, still marked",
+        (stage["item"], stage["nextNew"]),
+    )
+    page.locator("#scouts-stage .scouts-stage-next").click()
+    stage = page.evaluate(STAGE_JS)
+    check.ok(
+        stage["item"] == "unlikely_allies" and not stage["marks"]
+        and not stage["prevNew"],
+        f"{where}: paged to, the unseen page is seen and the mark goes",
+        (stage["item"], stage["marks"]),
+    )
+
     # Round 6 starts with nothing revealed yet: no card, no tab.
     stage = render(page, fixtures, "r6_start", language)
     check.ok(
@@ -877,7 +985,7 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         f"{where}: round 6's card fits",
     )
     if shots:
-        page.screenshot(path=str(SHOTS / "stage_choiceless_event.png"))
+        shot(page, "stage_choiceless_event.png")
     stage = render(page, fixtures, "r6_turn_own", language)
     check.ok(
         not stage["open"] and stage["tab"],
@@ -894,6 +1002,77 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         }"""
     )
     check.ok(reach, f"{where}: folded, a legal space takes the click", reach)
+    check.ok(page.evaluate("window.sentIndexes") == [], f"{where}: nothing was sent")
+
+
+def step_mark(page, fixtures, language: str, viewport: dict) -> None:
+    """Seed 4's round 2 for a seat that waits: Planetary Exploration was
+    resolved with no decision, Send for Aid is being decided. The card stays
+    on the step's item, the way back marked new; after the step the unseen
+    page opens by itself, unless the player already paged to it."""
+
+    where = f"{language} {viewport['width']}x{viewport['height']} step"
+    shots = language == "ko" and viewport["width"] == 1600
+    render(page, fixtures, "turn", language)
+    fresh_browser(page)
+    stage = render(page, fixtures, "aid_choice", language)
+    check.ok(
+        stage["open"] and stage["item"] == "send_for_aid" and stage["count"] == "2 / 2",
+        f"{where}: the card is on the item being decided, not the unseen one",
+        (stage["open"], stage["item"], stage["count"]),
+    )
+    check.ok(
+        stage["prevNew"] and not stage["nextNew"]
+        and stage["marks"] == [NEW_MARK[language]]
+        and NEW_TITLE[language] in stage["prevTitle"]
+        and pager_fits(stage) and stage["pageFits"] and stage["minFont"] >= 14,
+        f"{where}: previous is marked new, the pager fits",
+        (stage["prevNew"], stage["marks"], stage["prevTitle"], stage["minFont"]),
+    )
+    if language == "en":
+        leaks = HANGUL.findall(stage["text"] + stage["attributes"])
+        check.ok(not leaks, f"{where}: no Hangul in English", leaks[:8])
+    if shots:
+        shot(page, "stage_step_new.png")
+    stage = render(page, fixtures, "aid_later", language)
+    check.ok(
+        stage["open"] and stage["item"] == "send_for_aid" and stage["prevNew"],
+        f"{where}: another seat's decision leaves the card on the item",
+        (stage["open"], stage["item"], stage["prevNew"]),
+    )
+    stage = render(page, fixtures, "aid_turn", language)
+    check.ok(
+        stage["open"] and stage["item"] == "planetary_exploration"
+        and stage["count"] == "1 / 2" and not stage["marks"],
+        f"{where}: the step over, the unseen item opens by itself",
+        (stage["open"], stage["item"], stage["count"], stage["marks"]),
+    )
+
+    # Paged to during the step, it is seen: the step's end opens nothing.
+    render(page, fixtures, "turn", language)
+    fresh_browser(page)
+    render(page, fixtures, "aid_choice", language)
+    page.locator("#scouts-stage .scouts-stage-prev").click()
+    stage = page.evaluate(STAGE_JS)
+    check.ok(
+        stage["item"] == "planetary_exploration" and not stage["marks"],
+        f"{where}: paging back shows it and takes the mark away",
+        (stage["item"], stage["marks"]),
+    )
+    stage = render(page, fixtures, "aid_later", language)
+    check.ok(
+        stage["item"] == "planetary_exploration" and stage["count"] == "1 / 2",
+        f"{where}: the browsed page stays while the step's item is the same",
+        (stage["item"], stage["count"]),
+    )
+    page.locator("#scouts-stage .scouts-stage-next").click()
+    page.locator("#scouts-stage .scouts-stage-hide").click()
+    stage = render(page, fixtures, "aid_turn", language)
+    check.ok(
+        not stage["open"] and stage["tab"],
+        f"{where}: nothing unseen, so the step's end leaves it folded",
+        (stage["open"], stage["tab"]),
+    )
     check.ok(page.evaluate("window.sentIndexes") == [], f"{where}: nothing was sent")
 
 
@@ -1051,14 +1230,17 @@ def review(browser, base: str) -> None:
     )
     check.ok(bool(turn_cursor), "review: the step ends in that round", turn_cursor)
     if turn_cursor:
-        page.evaluate("async () => { await reviewGoto(0); scoutsStage.seen.clear(); }")
+        page.evaluate(
+            "async () => { await reviewGoto(0);"
+            " scoutsStage.seen.clear(); scoutsStage.weighed.clear(); }"
+        )
         page.evaluate("async (c) => { await reviewGoto(c); }", turn_cursor)
         settle(page)
         stage = page.evaluate(STAGE_JS)
         check.ok(
             stage["open"] and stage["pager"] and stage["count"] == "1 / 2"
-            and stage["item"] == first,
-            "review: arriving after two reveals opens the first, with the pager",
+            and stage["item"] == first and stage["nextNew"],
+            "review: arriving after two reveals opens the first, next marked new",
             (stage["open"], stage["count"], stage["item"], first, second),
         )
         page.locator("#scouts-stage .scouts-stage-next").click()
@@ -1120,6 +1302,7 @@ def main() -> None:
             page.set_viewport_size(viewport)
             for language in ("ko", "en"):
                 rounds(page, fixtures, language, viewport)
+                step_mark(page, fixtures, language, viewport)
         help_row(page, fixtures)
         check.ok(not recorder.js_errors, "no JavaScript errors", recorder.js_errors)
         context.close()
