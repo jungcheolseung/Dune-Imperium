@@ -1302,6 +1302,36 @@ function intrigueOptionBody(entry, index) {
    card resolving and stands in for the label. */
 const DETAIL_REPLACES_LABEL = new Set(["pay_agent_card_spice"]);
 
+/* Whether describeAction() leads the row with the card its Agent box
+   belongs to (display/actions.py agent_box_row_title): a row with effect
+   text always does; one without (a payment, a pick) does on a grafted
+   turn's box 1 (box=1), and under its card's header (`boxed`), where the
+   name is only for screen readers (rowTitleNode). */
+function rowLeadsWithCard(action, boxed = false) {
+  if (!action.detail_title) return false;
+  if (action.detail) return true;
+  return Boolean(boxed) || Boolean(action.arguments && "box" in action.arguments);
+}
+
+/* "<card>: " before a box row's words. Under its card's header (`boxed`,
+   render.js appendDecisionItems) the header already names the card: the
+   words go in a span the page does not draw (style.css .box-row-title), so
+   the button reads as the effect alone (plan 4.11, user 2026-10-11:
+   "그냥 선택지에 카드 효과가 바로 보여지는게 낫지 않나?") while a screen
+   reader still hears which card's box it is -- two boxes can offer the same
+   words (a Ghola copies its partner's box) -- and a row lifted out of its
+   group by focusActions shows the card again. */
+function rowTitleNode(action, boxed = false) {
+  const title =
+    TERM_LANGUAGE === "ko" && action.detail_title_ko
+      ? action.detail_title_ko
+      : action.detail_title;
+  const node = boxed ? document.createElement("span") : document.createDocumentFragment();
+  if (boxed) node.className = "box-row-title";
+  node.append(phrase(title), ": ");
+  return node;
+}
+
 /* One action as nodes, not a string. The verb and any effect label are ours,
    so they go through phrase() and may name terms; a card, Leader or space
    name is a proper noun and is appended as plain text. That split is the
@@ -1312,24 +1342,22 @@ const DETAIL_REPLACES_LABEL = new Set(["pay_agent_card_spice"]);
    `options.cardNames`: a card the step names is its cardNameNode(), the
    picture on hover, with the same words (the action log, panels.js
    turnLine). A decision row's button leaves it out: a click there
-   chooses. */
+   chooses.
+
+   `options.boxed`: the row sits under its card's header in the decision
+   panel (render.js appendDecisionItems), which names the card, so the row
+   shows only what it does (rowTitleNode). */
 function describeAction(action, options = {}) {
   const fragment = document.createDocumentFragment();
   if (action.detail && action.detail_title) {
-    /* An Agent box's row (the box's resolution, one of its icons, the graft
-       switch to the other card's box): the server names the card it works
-       on and what that box or icon does (display/actions.py
-       agent_box_row_title), and that pair is the button -- "동맹 물색: 이
-       카드 폐기", not "카드 효과 해결" with the effect beside it (user,
-       2026-10-11). The title is ours (phrase(): a card name is plain text in
-       it, never iconized); the detail is the card's wording. A logged step
-       has no detail and keeps its label. */
-    const title =
-      TERM_LANGUAGE === "ko" && action.detail_title_ko
-        ? action.detail_title_ko
-        : action.detail_title;
-    fragment.appendChild(phrase(title));
-    fragment.append(": ");
+    /* An Agent box's row (the box's resolution, one of its icons): the
+       server names the card it works on and what that box or icon does
+       (display/actions.py agent_box_row_title), and that pair is the
+       button -- "동맹 물색: 이 카드 폐기", not "카드 효과 해결" with the
+       effect beside it (user, 2026-10-11). The title is ours (phrase(): a
+       card name is plain text in it, never iconized); the detail is the
+       card's wording. A logged step has no detail and keeps its label. */
+    fragment.appendChild(rowTitleNode(action, options.boxed));
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
   }
@@ -1337,19 +1365,13 @@ function describeAction(action, options = {}) {
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
   }
-  if (action.detail_title && action.arguments && "box" in action.arguments) {
+  if (rowLeadsWithCard(action, options.boxed)) {
     /* A grafted turn's box 1 row with no effect text of its own (a payment,
        a pick): the card whose box it is leads, then the usual label
        (display/actions.py agent_box_row_title). Both cards' boxes are
-       offered at once (codec v143); box 1's rows carry box=1. */
-    fragment.appendChild(
-      phrase(
-        TERM_LANGUAGE === "ko" && action.detail_title_ko
-          ? action.detail_title_ko
-          : action.detail_title,
-      ),
-    );
-    fragment.append(": ");
+       offered at once (codec v143); box 1's rows carry box=1. Under its
+       card's header any box row with a title keeps it for screen readers. */
+    fragment.appendChild(rowTitleNode(action, options.boxed));
   }
   const factionChoice = action.action_id === "choose_intrigue_faction";
   let label = ACTION_LABELS[action.action_id] || prettify(action.action_id);

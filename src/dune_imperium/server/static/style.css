@@ -1607,6 +1607,51 @@ body.hand-dragging, body.hand-dragging * {
   border-top: 1px solid var(--line);
 }
 #actions > .zone-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* An Agent turn's rows by the card whose box they are (render.js
+   appendDecisionItems): the card's name over its rows behind an accent
+   rule, then the turn's other rows under a quieter one. A box held back by
+   the other box's bundled selection says so under its name. */
+#actions .agent-box-heading {
+  margin-top: 0.45rem;
+  padding: 0.05rem 0 0.05rem 0.45rem;
+  border-left: 3px solid var(--accent);
+  font-size: 0.85em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+#actions > .agent-box-heading:first-child { margin-top: 0; }
+#actions .agent-box-heading.agent-box-others {
+  border-left-color: var(--line);
+  opacity: 0.8;
+}
+#actions .agent-box-note {
+  padding-left: 0.6rem;
+  font-size: 0.82em;
+  font-style: italic;
+}
+/* A box row's card under its header: read by screen readers, not drawn
+   (as .visually-hidden), but shown again on a row focusActions lifts out
+   of its group. */
+#actions .box-row-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+#actions .action-item.action-match .box-row-title {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
 /* Controlled's choice: the deck's top card it is about, above its buttons
    (panels.js deckTopChoicePicture), a little smaller than a hand card. */
 .deck-top-choice { display: flex; flex: none; padding: 2px 0; }

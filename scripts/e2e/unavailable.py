@@ -17,9 +17,10 @@ both of these, and the page must show:
 - the table: every card the payload dims (`refs`) is dimmed wherever it is
   drawn, with the reason in its title, only those, and never a lit one.
 
-The seat takes the first legal action (not a graft switch), so it buys what
-the first row offers and plays along; the seeds were picked to meet an
-unplayable Intrigue card early.
+The seat takes the first legal action, so it buys what the first row offers
+and plays along; the seeds were picked to meet an unplayable Intrigue card
+early. (It used to skip the graft switch, which no longer exists: both
+grafted boxes are offered from the start, codec v143.)
 
 A third case covers the "choice" surface, a branch of an open choice the
 seat cannot take: Desert Power revealed without Maker Hooks opens its
@@ -83,11 +84,7 @@ check = Check()
 SEEDS = (3, 8, 13, 21)
 HANGUL = re.compile(r"[가-힣]")
 
-CHOOSE_JS = """(() => {
-  const actions = state.actions.actions;
-  const other = actions.findIndex((a) => a.action_id !== "switch_graft_card");
-  return other >= 0 ? other : 0;
-})()"""
+CHOOSE_JS = "0"
 
 # The payload rows of one surface against the greyed-out rows on the page.
 ROWS_JS = """(surface) => {
