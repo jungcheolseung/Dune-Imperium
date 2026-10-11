@@ -298,6 +298,64 @@
   outline-offset: -5px;
 }
 
+/* Paging through this round's items (two or more): the counter between
+   the two buttons at the header's top right, on the dark strip, and the
+   kind word kept clear of them. */
+.scouts-stage-pager {
+  position: absolute;
+  top: calc(var(--hh) * 0.26);
+  right: max(10px, 2.4%);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: clamp(14px, calc(var(--hh) * 0.14), 18px);
+  line-height: 1.2;
+}
+.scouts-stage-pager[hidden] { display: none; }
+#scouts-stage.paged .scouts-stage-kind { right: max(250px, 44%); }
+#scouts-stage .scouts-stage-pager button {
+  min-height: 1.9em;
+  padding: 0.2em 0.75em;
+  border: 1px solid #6fd3ff;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0f5d8a, #0b3a59);
+  color: #ebfdff;
+  font-size: 1em;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: inset 0 0 8px rgba(111, 211, 255, 0.3);
+}
+#scouts-stage .scouts-stage-pager button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #1471a6, #0e4a72);
+  color: #ffffff;
+  border-color: #a9e6ff;
+}
+#scouts-stage .scouts-stage-pager button:disabled {
+  border-color: rgba(111, 211, 255, 0.3);
+  background: rgba(11, 30, 48, 0.75);
+  color: rgba(235, 253, 255, 0.5);
+  box-shadow: none;
+  opacity: 1;
+  cursor: default;
+}
+#scouts-stage .scouts-stage-pager button:focus-visible {
+  outline: 2px solid #a9e6ff;
+  outline-offset: 2px;
+}
+.scouts-stage-count {
+  min-width: 3.2em;
+  color: #bfe8ff;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+/* The card takes focus on a click (tabindex -1), so the arrows page; only
+   the keyboard's focus is drawn. */
+.scouts-stage-card:focus { outline: none; }
+.scouts-stage-card:focus-visible { outline: 2px solid #a9e6ff; outline-offset: -2px; }
+
 /* The tab that brings the card back, on the board's top edge. */
 #scouts-stage .scouts-stage-tab {
   position: absolute;

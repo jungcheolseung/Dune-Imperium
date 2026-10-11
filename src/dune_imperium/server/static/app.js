@@ -116,7 +116,7 @@ async function init() {
       toggleAllSeats();
     }
     /* `a` folds the Arrakeen Scouts card over the board away, or brings it
-       back (scouts_stage.js); nothing outside the Scouts step. */
+       back (scouts_stage.js); nothing in a round with no revealed item. */
     if (pressed("KeyA", "a")) {
       if (el("game-screen").hidden) return;
       if (toggleScoutsStage()) event.preventDefault();
