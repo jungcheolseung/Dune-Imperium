@@ -1231,6 +1231,14 @@ def test_a_choose_a_faction_box_with_every_cube_at_the_top_waits_with_why() -> N
         " — 차례가 끝날 때까지 못 채우면 사라짐"
     )
     assert row["code"] == "waiting"
+    # The greyed row is led by its card and its box, like a legal box row
+    # (display.actions.agent_box_row_title, user request 2026-10-11).
+    action = row["action"]
+    assert (action["detail_title"], action["detail_title_ko"]) == (
+        "Interstellar Trade",
+        "성간 교역",
+    )
+    assert action["detail"] and action["detail_ko"]
 
 
 def test_a_reveal_influence_choice_with_every_cube_at_the_top_waits_with_why() -> (

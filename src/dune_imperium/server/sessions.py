@@ -76,7 +76,11 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
-from dune_imperium.display import effect_action_text, effect_action_text_ko
+from dune_imperium.display import (
+    agent_box_row_title,
+    effect_action_text,
+    effect_action_text_ko,
+)
 from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
@@ -2886,7 +2890,11 @@ def _serialize_action(
     ``display.actions.agent_card_icon_text_ko``) and a board-space icon
     (Step K4, ``display.spaces.board_effect_action_text_ko``); the client
     falls back to ``detail`` whenever a resolution kind has no Korean text
-    yet, ``static/core.js`` ``describeAction``. ``undoable`` says whether
+    yet, ``static/core.js`` ``describeAction``. An Agent-box row (a box
+    resolution, one of its icons, the graft switch) also carries
+    ``detail_title``/``detail_title_ko``, the card it works on
+    (``display.actions.agent_box_row_title``): the page then shows the
+    title and the detail as the button's text. ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
@@ -2945,6 +2953,9 @@ def _serialize_action(
         "shortfall": shortfall_details(shortfalls, action.actor),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
+    title = agent_box_row_title(session.state, action)
+    if title is not None:
+        serialized["detail_title"], serialized["detail_title_ko"] = title
     revealed = reveal_preview(action, outcome)
     if revealed is not None:
         serialized["reveal_preview"] = revealed

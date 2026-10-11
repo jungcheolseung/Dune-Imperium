@@ -2088,11 +2088,14 @@ def shadow_action(state: GameState, action: DomainAction) -> dict[str, object]:
 
     The id, the arguments and the detail text (``effect_action_text``), with
     no index and no dry run: the engine refuses an action that is not legal.
+    A waiting Agent box is led by its card, as its legal row would be
+    (``agent_box_row_title``).
     """
 
     # Imported here: display.actions imports display.scouts, which imports
     # this module for its reason helpers.
     from dune_imperium.display.actions import (
+        agent_box_row_title,
         effect_action_text,
         effect_action_text_ko,
     )
@@ -2100,14 +2103,19 @@ def shadow_action(state: GameState, action: DomainAction) -> dict[str, object]:
     try:
         detail = effect_action_text(state, action)
         detail_ko = effect_action_text_ko(state, action)
+        title = agent_box_row_title(state, action)
     except Exception:  # noqa: BLE001 - written for legal actions; a miss is no detail
         detail = detail_ko = None
-    return {
+        title = None
+    shadow: dict[str, object] = {
         "action_id": action.action_id,
         "arguments": dict(action.arguments),
         "detail": detail,
         "detail_ko": detail_ko,
     }
+    if title is not None:
+        shadow["detail_title"], shadow["detail_title_ko"] = title
+    return shadow
 
 
 def _why(reason: Reason) -> dict[str, object]:

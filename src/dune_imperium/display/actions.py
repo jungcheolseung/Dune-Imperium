@@ -4,19 +4,29 @@ The play server attaches this to each legal action so the browser can show
 which printed effect a keyed resolution (``resolve_board_effect`` /
 ``resolve_agent_card_effect`` with an ``effect`` argument) stands for, or
 what a payment shared by several Agent boxes buys on the card resolving
-(``_PAYMENT_TEXT``). It is derived from the same engine tables and card data
-the rules execute.
+(``_PAYMENT_TEXT``). A whole Agent box -- the argument-less
+``resolve_agent_card_effect`` and the graft's ``switch_graft_card`` to the
+other card's box -- is described by that card's box text
+(``display.cards.agent_box_text``), and every Agent-box row is led by the
+card it works on (``agent_box_row_title``): the page shows that pair as the
+button itself (user request 2026-10-11: "그냥 선택지에 카드 효과가 바로
+보여지는게 낫지 않나?"). It is derived from the same engine tables and card
+data the rules execute.
 """
+
+import re
 
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import GainInfluence, LoseInfluence
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.state import GameState
+from dune_imperium.display.cards import agent_box_text, agent_box_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.scouts import scouts_action_text
 from dune_imperium.display.spaces import (
@@ -26,7 +36,10 @@ from dune_imperium.display.spaces import (
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import (
     active_agent_card,
+    borrowed_agent_card,
     current_agent_effect_context,
+    other_grafted_card_id,
+    pending_boost_draw,
 )
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
@@ -294,6 +307,121 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
     return f"{base} ({condition})" if condition else base
 
 
+_RESOLVE_BOX = "resolve_agent_card_effect"
+_SWITCH_GRAFT = "switch_graft_card"
+_BOX_ROWS = frozenset({_RESOLVE_BOX, _SWITCH_GRAFT})
+
+# A card's printed Korean twin (``tokens_ko.AGENT_EFFECT_TEXT_KO``) keeps the
+# icons the card prints, such as Seek Allies' trash icon after "이 카드".
+# On a button one rulebook icon stands for one whole effect (user,
+# 2026-10-11; tests/server/test_label_icons.py): the trash and discard
+# icons already mean "a card", so beside the word 카드 the verb is a word.
+_CARD_VERB_ICON_KO = re.compile(r"(카드를?(?: \d+장)?) \{(trash|discard)\}")
+_CARD_VERB_WORDS_KO = {"trash": "폐기", "discard": "버리기"}
+
+
+def _one_icon_per_effect_ko(text: str) -> str:
+    """``text`` with a card's trash or discard written as the word."""
+
+    return _CARD_VERB_ICON_KO.sub(
+        lambda match: f"{match.group(1)} {_CARD_VERB_WORDS_KO[match.group(2)]}",
+        text,
+    )
+
+
+def _effect_frame_context(state: GameState) -> dict[str, ActionValue] | None:
+    """The Agent-turn effect frame's context while it decides, else None."""
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    card_id = context.get("card_id")
+    if not isinstance(card_id, str) or not card_id:
+        return None
+    return context
+
+
+def _card_names(card_id: str) -> tuple[str, str]:
+    """A personal card's English name and its Korean print name."""
+
+    card = personal_card_for_instance(card_id).card
+    return card.name, KOREAN_CARD_NAMES["cards"].get(card.card_id, card.name)
+
+
+def _toward_ko(word: str) -> str:
+    """로 after a vowel or a final ㄹ, 으로 after any other final consonant."""
+
+    last = word.rstrip()[-1:]
+    if "가" <= last <= "힣":
+        final = (ord(last) - ord("가")) % 28
+        return "로" if final in (0, 8) else "으로"
+    return "로"
+
+
+def agent_box_text_for_action(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """What a whole Agent box does, for the row that resolves or reaches it.
+
+    The argument-less ``resolve_agent_card_effect`` resolves the active
+    card's box (a Ghola's borrowed one included, as the engine reads it);
+    ``switch_graft_card`` makes the other grafted card's box the active one
+    (``rules.graft``). English and Korean, or None for any other row.
+    """
+
+    if action.action_id not in _BOX_ROWS or action.arguments:
+        return None
+    context = _effect_frame_context(state)
+    if context is None:
+        return None
+    if action.action_id == _SWITCH_GRAFT:
+        partner = other_grafted_card_id(context)
+        if not partner:
+            return None
+        entry = borrowed_agent_card(
+            personal_card_for_instance(partner), str(context["card_id"])
+        )
+    else:
+        entry = active_agent_card(context)
+    text, text_ko = agent_box_text(entry), agent_box_text_ko(entry)
+    if text is None or text_ko is None:
+        return None
+    return text, _one_icon_per_effect_ko(text_ko)
+
+
+def agent_box_row_title(
+    state: GameState, action: DomainAction
+) -> tuple[str, str] | None:
+    """The card an Agent-box row works on, which leads its button.
+
+    A box resolution or one of its icons names the active card; Urgent
+    Shigawire's added draw names the card it was added to; the graft switch
+    says it moves to the other grafted card ("{graft} 계획된 교배로
+    넘어가기"), for today the click only switches the active box. English
+    and Korean (card names stay plain text), or None for any other row.
+    """
+
+    if action.action_id not in _BOX_ROWS:
+        return None
+    context = _effect_frame_context(state)
+    if context is None:
+        return None
+    if action.action_id == _SWITCH_GRAFT:
+        partner = other_grafted_card_id(context)
+        if not partner:
+            return None
+        name, name_ko = _card_names(partner)
+        return (
+            f"Go to {name} ({{graft}})",
+            f"{{graft}} {name_ko}{_toward_ko(name_ko)} 넘어가기",
+        )
+    card_id = str(context["card_id"])
+    if action.arguments and resolves_boost_draw(state, action):
+        card_id = pending_boost_draw(context) or card_id
+    return _card_names(card_id)
+
+
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
     """Describe one queued Tech reward and its currently chosen branch."""
 
@@ -440,6 +568,9 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     payment = agent_card_payment_text(state, action)
     if payment is not None:
         return payment[0]
+    box = agent_box_text_for_action(state, action)
+    if box is not None:
+        return box[0]
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None
@@ -504,6 +635,9 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     payment = agent_card_payment_text(state, action)
     if payment is not None:
         return payment[1]
+    box = agent_box_text_for_action(state, action)
+    if box is not None:
+        return box[1]
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None

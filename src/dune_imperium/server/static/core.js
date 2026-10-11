@@ -1160,6 +1160,24 @@ const DETAIL_REPLACES_LABEL = new Set(["pay_agent_card_spice"]);
    and its line read "배치 — , Arrakeen". */
 function describeAction(action) {
   const fragment = document.createDocumentFragment();
+  if (action.detail && action.detail_title) {
+    /* An Agent box's row (the box's resolution, one of its icons, the graft
+       switch to the other card's box): the server names the card it works
+       on and what that box or icon does (display/actions.py
+       agent_box_row_title), and that pair is the button -- "동맹 물색: 이
+       카드 폐기", not "카드 효과 해결" with the effect beside it (user,
+       2026-10-11). The title is ours (phrase(): a card name is plain text in
+       it, never iconized); the detail is the card's wording. A logged step
+       has no detail and keeps its label. */
+    const title =
+      TERM_LANGUAGE === "ko" && action.detail_title_ko
+        ? action.detail_title_ko
+        : action.detail_title;
+    fragment.appendChild(phrase(title));
+    fragment.append(": ");
+    fragment.appendChild(effectNode(action.detail, action.detail_ko));
+    return fragment;
+  }
   if (action.detail && DETAIL_REPLACES_LABEL.has(action.action_id)) {
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
