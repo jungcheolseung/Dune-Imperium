@@ -148,7 +148,7 @@ def test_no_korean_literal_outside_the_tables() -> None:
 # UI_TEXT keys are "<file stem>.<name>" (plus common. and html.).
 _KEY_LITERAL = re.compile(
     r"^(?:common|html|app|board|clock|core|effects|help|i18n|layout|panels|render"
-    r"|review|screens|session|turn)\.[a-z0-9_]+$"
+    r"|review|screens|scouts_stage|session|turn)\.[a-z0-9_]+$"
 )
 
 

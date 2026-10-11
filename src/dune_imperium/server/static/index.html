@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/space_text.css">
   <link rel="stylesheet" href="/static/log_icons.css">
   <link rel="stylesheet" href="/static/piles.css">
+  <link rel="stylesheet" href="/static/scouts_stage.css">
 </head>
 <body>
   <header>
@@ -116,6 +117,26 @@
           data-i18n-attr="aria-label=html.split_seats_aria;title=html.split_title"></div>
         <div id="center">
           <section id="board" aria-label="게임 보드" data-i18n-attr="aria-label=html.board_aria"></section>
+          <!-- The revealed Arrakeen Scouts item over the board (scouts_stage.js):
+               the board's own grid cell, the board square inside it. -->
+          <div id="scouts-stage" hidden>
+            <div class="scouts-stage-frame">
+              <article id="scouts-stage-card" class="scouts-stage-card" role="region">
+                <div class="scouts-stage-art"></div>
+                <div class="scouts-stage-panel">
+                  <div class="scouts-stage-lines"></div>
+                </div>
+                <div class="scouts-stage-header">
+                  <span class="scouts-stage-bar upper" aria-hidden="true"></span>
+                  <span class="scouts-stage-bar lower" aria-hidden="true"></span>
+                  <div class="scouts-stage-kind"></div>
+                  <h2 class="scouts-stage-name"></h2>
+                </div>
+                <button type="button" class="scouts-stage-hide" aria-controls="scouts-stage-card" aria-expanded="true"></button>
+              </article>
+              <button type="button" class="scouts-stage-tab" aria-controls="scouts-stage-card" aria-expanded="false" hidden></button>
+            </div>
+          </div>
           <section id="market" aria-label="공용 카드" data-i18n-attr="aria-label=html.market_aria"></section>
           <section id="private-zone" aria-label="내 손패" data-i18n-attr="aria-label=html.private_zone_aria"></section>
           <div id="split-market" class="col-splitter" data-column="market" role="separator"
@@ -222,6 +243,7 @@
   <script src="/static/board.js"></script>
   <script src="/static/panels.js"></script>
   <script src="/static/piles.js"></script>
+  <script src="/static/scouts_stage.js"></script>
   <script src="/static/effects.js"></script>
   <script src="/static/help.js"></script>
   <script src="/static/clock.js"></script>

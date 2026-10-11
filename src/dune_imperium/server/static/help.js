@@ -207,7 +207,12 @@ function openHelp() {
   for (const [draw, textKey] of HELP_SEAT_MARKS) helpRow(marks, draw(), t(textKey));
 
   const keys = helpSection(body, t("help.shortcuts_heading"));
-  for (const [key, textKey] of HELP_SHORTCUTS) {
+  const shortcuts = [...HELP_SHORTCUTS];
+  /* The Scouts card's key, only in a game of Arrakeen Scouts. */
+  if (state.summary && state.summary.arrakeen_scouts) {
+    shortcuts.splice(2, 0, ["a", "help.shortcut_scouts_card"]);
+  }
+  for (const [key, textKey] of shortcuts) {
     const kbd = document.createElement("kbd");
     kbd.textContent = key;
     helpRow(keys, kbd, t(textKey));

@@ -663,6 +663,44 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         assert len(tracks["maker_hooks"]["points"]) == 4
 
 
+def test_scouts_card_pictures_are_served_when_present(tmp_path: Path) -> None:
+    cards = tmp_path / "cards"
+    art = cards / "app" / "scouts"
+    art.mkdir(parents=True)
+    (art / "event.webp").write_bytes(b"webp-event-painting")
+    (art / "back.webp").write_bytes(b"webp-parchment")
+    (art / "scouts_sources.json").write_text("{}")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=cards,
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+        )
+    ) as art_client:
+        scouts_art = art_client.get("/catalog").json()["scouts_art"]
+        assert list(scouts_art) == ["event", "back"]
+        event = scouts_art["event"]
+        # Versioned like every asset URL: a replaced painting gets a new URL.
+        assert event != _unversioned(event)
+        assert _unversioned(event) == "/card-images/app/scouts/event.webp"
+        assert art_client.get(event).content == b"webp-event-painting"
+        assert art_client.get(scouts_art["back"]).content == b"webp-parchment"
+
+    # A checkout without the folder serves no pictures: the card is CSS.
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+        )
+    ) as bare_client:
+        assert bare_client.get("/catalog").json()["scouts_art"] == {}
+
+
 def test_a_picture_replaced_in_place_gets_a_new_url(tmp_path: Path) -> None:
     """The owner swaps pictures under the same name (Tuek's Sietch,
     2026-09-18). The mounts send no Cache-Control, so a browser keeps showing

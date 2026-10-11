@@ -46,6 +46,9 @@ the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
 scan (``/board-image``): the catalog also carries the percent coordinates
 that place the live state on that scan (``display.board_layout``).
+``scouts_art_files`` is the listing of the card-image directory's
+``app/scouts/`` (``display.scouts_art``), the Arrakeen Scouts card's
+pictures, served from the card-image mount.
 """
 
 from functools import cache
@@ -136,6 +139,7 @@ from dune_imperium.display.scouts import (
     scouts_item_lines,
     scouts_item_name,
 )
+from dune_imperium.display.scouts_art import available_scouts_art
 from dune_imperium.display.token_images import (
     FIRST_PLAYER_TOKEN_FILENAME,
     MAKER_HOOKS_TOKEN_FILENAME,
@@ -160,6 +164,7 @@ def build_catalog(
     image_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
     tile_index: frozenset[tuple[str, str, str]] = frozenset(),
     tile_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
+    scouts_art_files: frozenset[str] = frozenset(),
 ) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID.
 
@@ -553,6 +558,13 @@ def build_catalog(
         # Arrakeen Scouts items (``display.scouts``): kind, names and the
         # lines each offers, in English and Korean.
         "scouts_items": _scouts_items(),
+        # The pictures of the Scouts card over the board (display.scouts_art):
+        # a painting per item kind and the header, parchment, divider and
+        # background pieces; an absent one is drawn in CSS.
+        "scouts_art": {
+            name: versioned(card_image_url(path))
+            for name, path in available_scouts_art(scouts_art_files).items()
+        },
     }
     _add_korean(catalog, korean_images, korean_tiles)
     return catalog
