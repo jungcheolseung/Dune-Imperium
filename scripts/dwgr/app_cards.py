@@ -1174,6 +1174,12 @@ INTRIGUE_TEXT = [1, 0.99, 0.92, 1]
 # card's top (inside the black border); the print centres the title in it,
 # one line or two.
 INTRIGUE_BAND_MIDDLE = 75.5
+# A title whose ink runs longer than this on one line prints on two: on every
+# English scan the one-line titles measure up to 432.5 units in our face
+# (Shadowy Bargain) and the two-line ones from 438.5 (Contingency Plan). The
+# print breaks where the longer line is shortest (RIPPLES IN / THE SAND,
+# SECURE / SPICE TRADE, (CHOAM) BACKED / BY CHOAM). No Korean title is this long.
+INTRIGUE_TITLE_MAX = 435.0
 
 
 def intrigue_spec(inp, content_id):
@@ -1368,7 +1374,6 @@ def bind_intrigue_prefab(inp, spec, lang):
             n["stretch_sprite"] = True
     title = spec["title"].get(lang) or spec["title"]["en"]
     head = R.find(t, "HeaderText")
-    head["text"] = title
     head["tmp_patch"] = {
         "m_fontAsset": "MonoBehaviour:Gotham-Medium SDF",
         "m_fontStyle": 16,
@@ -1376,6 +1381,9 @@ def bind_intrigue_prefab(inp, spec, lang):
         "m_fontSizeMax": 40.0,
         "m_characterSpacing": 1.0,
     }
+    if lang == "ko":
+        head["fallback"] = str(KOREAN_FONT_BOLD)
+    head["text"] = intrigue_title_lines(inp, head, "", title)
     R.comp(head, "RT")["size"][1] = 196.0
     words_ = INTRIGUE_TYPE_WORD[lang]
     for tnode in R.find_all(t, "CardTypeText_Anchor")[0]["children"]:
@@ -1435,9 +1443,7 @@ def bind_intrigue(inp, spec, lang):
     # the Tech gear (about the capitals' height)
     mark = "CHOAMSet" if spec["choam"] else "TechSet" if spec.get("tech") else None
     size = {"CHOAMSet": "70%", "TechSet": "100%"}.get(mark)
-    head["text"] = (
-        f'<size={size}><sprite name="{mark}"></size> ' + title if mark else title
-    )
+    prefix = f'<size={size}><sprite name="{mark}"></size> ' if mark else ""
     if spec.get("twisted"):
         left, right = TWISTED_TITLE_INSET
         R.comp(head, "RT")["size"][0] = -(left + right)
@@ -1452,6 +1458,7 @@ def bind_intrigue(inp, spec, lang):
     }
     if lang == "ko":
         head["fallback"] = str(KOREAN_FONT_BOLD)
+    head["text"] = intrigue_title_lines(inp, head, prefix, title)
     R.comp(head, "RT")["size"][1] = 196.0
     centre_ink(inp, head, R.comp(t, "RT")["size"], INTRIGUE_BAND_MIDDLE)
     R.comp(R.find(t, "CardTypeText_Anchor"), "RT")["size"][1] = (
@@ -2329,6 +2336,48 @@ def probe_ink(inp, node, w, h, pad=60.0, scale=2.0, layout_child=False):
 def tech_centre_title(inp, head):
     """Move the title so its ink sits in the middle of the gold band."""
     centre_ink(inp, head, (794.0, 520.0), TECH_BAND_MIDDLE)
+
+
+def intrigue_title_lines(inp, head, prefix, title):
+    """The title text, broken in two as the print breaks it when it is too
+    long for one line (INTRIGUE_TITLE_MAX)."""
+    if ink_width(inp, head, prefix + title) <= INTRIGUE_TITLE_MAX:
+        return prefix + title
+    words = title.split(" ")
+    splits = [
+        (prefix + " ".join(words[:i]), " ".join(words[i:]))
+        for i in range(1, len(words))
+    ]
+    if not splits:
+        return prefix + title
+    first, rest = min(splits, key=lambda ab: max(ink_width(inp, head, x) for x in ab))
+    return f"{first}<br>{rest}"
+
+
+def ink_width(inp, node, text):
+    """Width in units of `text` set in `node`'s face on one line."""
+    probe = copy.deepcopy(node)
+    probe["text"] = text
+    w, h = 1600.0, 300.0
+    root = {
+        "name": "Probe",
+        "active": True,
+        "children": [probe],
+        "comps": [
+            {
+                "_": "RT",
+                "pos": [0.0, 0.0],
+                "size": [w, h],
+                "amin": [0.5, 0.5],
+                "amax": [0.5, 0.5],
+                "pivot": [0.5, 0.5],
+                "scale": [1.0, 1.0],
+            }
+        ],
+    }
+    img = R.CardRenderer(inp.sprites, inp.text, 2.0).render(root, int(w), int(h))
+    box = img.getchannel("A").point(lambda v: 255 if v > 60 else 0).getbbox()
+    return (box[2] - box[0]) / 2.0 if box else 0.0
 
 
 def centre_ink(inp, node, card_size, middle):
