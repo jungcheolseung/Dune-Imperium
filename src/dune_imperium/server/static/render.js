@@ -1689,10 +1689,13 @@ function unavailableRow(row) {
   const body = document.createElement("span");
   body.className = "unavailable-body";
   body.appendChild(describeAction(row.action));
-  /* A waiting effect names the card it sits on. A card that cannot be
-     bought shows no cost of its own: its reason names the cost and what
-     the seat holds ("Needs 5 Persuasion (you have 3)"). */
-  if (row.card_id) body.append(" · ", nameOf(row.card_id));
+  /* A waiting effect names the card it sits on, unless its row already
+     leads with it (an Agent box, display/actions.py agent_box_row_title).
+     A card that cannot be bought shows no cost of its own: its reason names
+     the cost and what the seat holds ("Needs 5 Persuasion (you have 3)"). */
+  if (row.card_id && !(row.action.detail && row.action.detail_title)) {
+    body.append(" · ", nameOf(row.card_id));
+  }
   item.append(body, unavailableBadge(row));
   return item;
 }

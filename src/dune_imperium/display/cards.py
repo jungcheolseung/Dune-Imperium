@@ -338,7 +338,13 @@ _REVEAL_ACQUISITION_PREFIX_KO: Final = (
 )
 
 
-def _agent_line(entry: PersonalCardDefinition) -> str | None:
+def agent_box_text(entry: PersonalCardDefinition) -> str | None:
+    """The card's Agent box, as its popover line prints it without "Agent:".
+
+    ``None`` for a card with no Agent box. The play page names a box
+    resolution row with it (``display.actions``).
+    """
+
     effect = entry.agent_effect
     if effect is None:
         return None
@@ -347,12 +353,11 @@ def _agent_line(entry: PersonalCardDefinition) -> str | None:
         return None
     if entry.agent_spy_factions:
         text = f"{text} ({_factions_or(entry.agent_spy_factions)} Spy)"
-    return f"Agent: {text}"
+    return text
 
 
-def _agent_line_ko(entry: PersonalCardDefinition) -> str | None:
-    """Korean twin of ``_agent_line``; see the module docstring for why the
-    "에이전트 칸:" prefix is a plain word, never the ``{agent}`` icon term."""
+def agent_box_text_ko(entry: PersonalCardDefinition) -> str | None:
+    """Korean twin of ``agent_box_text``."""
 
     effect = entry.agent_effect
     if effect is None:
@@ -362,7 +367,20 @@ def _agent_line_ko(entry: PersonalCardDefinition) -> str | None:
         return None
     if entry.agent_spy_factions:
         text = f"{text} ({_factions_or_ko(entry.agent_spy_factions)} {{spy}})"
-    return f"에이전트 칸: {text}"
+    return text
+
+
+def _agent_line(entry: PersonalCardDefinition) -> str | None:
+    text = agent_box_text(entry)
+    return None if text is None else f"Agent: {text}"
+
+
+def _agent_line_ko(entry: PersonalCardDefinition) -> str | None:
+    """Korean twin of ``_agent_line``; see the module docstring for why the
+    "에이전트 칸:" prefix is a plain word, never the ``{agent}`` icon term."""
+
+    text = agent_box_text_ko(entry)
+    return None if text is None else f"에이전트 칸: {text}"
 
 
 def _reveal_line(entry: PersonalCardDefinition) -> str | None:

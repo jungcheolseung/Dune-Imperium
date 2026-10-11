@@ -1,5 +1,6 @@
 """Tests for one printed Agent-box icon's English/Korean detail text."""
 
+import re
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -24,11 +25,14 @@ from dune_imperium.core import (
 from dune_imperium.display.actions import (
     _ICON_CONDITIONS,
     _ICON_CONDITIONS_KO,
+    _one_icon_per_effect_ko,
+    agent_box_row_title,
     agent_card_icon_text,
     agent_card_icon_text_ko,
     effect_action_text,
     effect_action_text_ko,
 )
+from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
 from dune_imperium.rules.engine import UprisingRulesEngine
 
 # tests/support isn't a package pytest or mypy resolve from a dotted import
@@ -475,3 +479,207 @@ def test_piter_genius_advisor_reward_icons_say_what_they_give() -> None:
     assert agent_card_icon_text(espionage, "research").startswith(
         "Research, Generate 1 specimen"
     )
+
+
+# --- An Agent box's rows name the card and what its box does --------------
+#
+# User request 2026-10-11: "그냥 선택지에 카드 효과가 바로 보여지는게 낫지
+# 않나? 접합했을 때도 왜 다른 접합한 카드 효과 보기를 또 눌러야 그렇게 되게
+# 한거야." The argument-less ``resolve_agent_card_effect`` and the graft's
+# ``switch_graft_card`` carry the box text of the card they work on, every
+# box row carries that card's name (``agent_box_row_title``), and the page
+# shows the pair as the button ("동맹 물색: 이 카드 폐기").
+
+_IMMORTALITY = RulesetConfig(immortality=True, choam_module=True)
+_SEEK_ALLIES = "player:0:starter:seek_allies:0"
+_FACE_DANCER = "tleilaxu:face_dancer:0"
+_RESOLVE_BOX = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+_SWITCH = DomainAction(action_id="switch_graft_card", actor=0)
+
+
+def _turn(hand: tuple[str, ...]) -> GameState:
+    seat = PlayerState(
+        player_id=0, hand=hand, resources=Resources(solari=4, spice=2, water=2)
+    )
+    imperium = imperium_deck_instance_ids(True)
+    return GameState(
+        config=_IMMORTALITY,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=("choam_security",),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=(seat, *(PlayerState(player_id=other) for other in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _place(state: GameState, card: str, partner: str | None = None) -> GameState:
+    """Seat 0 sends ``card`` to Dutiful Service (grafted with ``partner``)."""
+
+    place = next(
+        action
+        for action in _ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("card_id") == card
+        and dict(action.arguments).get("space_id") == "dutiful_service"
+        and (dict(action.arguments).get("graft") is True) == (partner is not None)
+    )
+    placed = _ENGINE.apply(state, place).state
+    if partner is None:
+        return placed
+    graft = next(
+        action
+        for action in _ENGINE.legal_actions(placed, 0)
+        if action.action_id == "choose_graft_partner"
+        and dict(action.arguments).get("card_id") == partner
+    )
+    return _ENGINE.apply(placed, graft).state
+
+
+def _row(state: GameState, action: DomainAction) -> tuple[object, ...]:
+    assert action in _ENGINE.legal_actions(state, 0)
+    return (
+        agent_box_row_title(state, action),
+        effect_action_text(state, action),
+        effect_action_text_ko(state, action),
+    )
+
+
+def test_seek_allies_box_row_reads_its_trash() -> None:
+    # Seek Allies' Agent box is "Trash this card" [Seek Allies card]: its
+    # one row names the card and the trash, as a word in Korean (one
+    # rulebook icon per effect: the trash icon is "Trash one card").
+    placed = _place(_turn((_SEEK_ALLIES,)), _SEEK_ALLIES)
+
+    assert _row(placed, _RESOLVE_BOX) == (
+        ("Seek Allies", "동맹 물색"),
+        "Trash this card",
+        "이 카드 폐기",
+    )
+
+
+def test_a_graft_pairs_two_rows_name_each_card_and_its_box() -> None:
+    grafted = _place(_turn((_FACE_DANCER, _SEEK_ALLIES)), _FACE_DANCER, _SEEK_ALLIES)
+
+    # The placed card's own box, and the switch to the other grafted card's
+    # box (the click only makes that box active, rules/graft.py).
+    assert _row(grafted, _RESOLVE_BOX) == (
+        ("Face Dancer", "얼굴의 춤꾼"),
+        "Draw 1 card",
+        "{draw:1}",
+    )
+    assert _row(grafted, _SWITCH) == (
+        ("Go to Seek Allies ({graft})", "{graft} 동맹 물색으로 넘어가기"),
+        "Trash this card",
+        "이 카드 폐기",
+    )
+
+    switched = _ENGINE.apply(grafted, _SWITCH).state
+    assert _row(switched, _RESOLVE_BOX) == (
+        ("Seek Allies", "동맹 물색"),
+        "Trash this card",
+        "이 카드 폐기",
+    )
+    assert _row(switched, _SWITCH) == (
+        ("Go to Face Dancer ({graft})", "{graft} 얼굴의 춤꾼으로 넘어가기"),
+        "Draw 1 card",
+        "{draw:1}",
+    )
+
+
+def test_the_switch_names_planned_coupling_with_the_vowel_particle() -> None:
+    planned = "imperium:planned_coupling:0"
+    grafted = _place(_turn((_FACE_DANCER, planned)), _FACE_DANCER, planned)
+
+    assert agent_box_row_title(grafted, _SWITCH) == (
+        "Go to Planned Coupling ({graft})",
+        "{graft} 계획된 교배로 넘어가기",
+    )
+
+
+def test_a_ghola_switch_names_ghola_with_the_box_it_copies() -> None:
+    # "This card has the same Agent box as the other grafted card" [Ghola
+    # card]: seen from Seek Allies, the other card is Ghola with Seek
+    # Allies' own box.
+    ghola = _ghola_box(_SEEK_ALLIES)
+    assert _row(ghola, _RESOLVE_BOX) == (
+        ("Ghola", "골라"),
+        "Trash this card",
+        "이 카드 폐기",
+    )
+    switched = _ENGINE.apply(ghola, _SWITCH).state
+    assert _row(switched, _SWITCH) == (
+        ("Go to Ghola ({graft})", "{graft} 골라로 넘어가기"),
+        "Trash this card",
+        "이 카드 폐기",
+    )
+
+
+def test_keyed_icon_rows_are_led_by_their_card() -> None:
+    # Hidden Missive's two icons (OQ-027) keep their icon text and gain the
+    # card's name.
+    missive = "imperium:hidden_missive:0"
+    seat = PlayerState(
+        player_id=0, hand=(missive,), influence=Influence(bene_gesserit=2)
+    )
+    state = replace(
+        _turn(()),
+        config=RulesetConfig(),
+        players=(seat, *(PlayerState(player_id=other) for other in range(1, 4))),
+    )
+    place = next(
+        action
+        for action in _ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("space_id") == "assembly_hall"
+    )
+    placed = _ENGINE.apply(state, place).state
+    rows = {
+        dict(action.arguments)["effect"]: _row(placed, action)
+        for action in _ENGINE.legal_actions(placed, 0)
+        if action.action_id == "resolve_agent_card_effect"
+    }
+    assert rows == {
+        "troops": (
+            ("Hidden Missive", "비밀 서신"),
+            "Recruit 1 troop (at 2 Bene Gesserit Influence)",
+            "{troop:1} ({influence_bene_gesserit:2}일 때)",
+        ),
+        "cards": (
+            ("Hidden Missive", "비밀 서신"),
+            "Draw 1 card (at 2 Bene Gesserit Influence)",
+            "{draw:1} ({influence_bene_gesserit:2}일 때)",
+        ),
+    }
+
+
+def test_other_rows_have_no_box_title() -> None:
+    placed = _place(_turn((_SEEK_ALLIES,)), _SEEK_ALLIES)
+    others = [
+        action
+        for action in _ENGINE.legal_actions(placed, 0)
+        if action.action_id not in ("resolve_agent_card_effect", "switch_graft_card")
+    ]
+    assert others
+    assert all(agent_box_row_title(placed, action) is None for action in others)
+
+
+@pytest.mark.parametrize("effect", list(AGENT_EFFECT_TEXT_KO))
+def test_box_text_on_a_button_writes_one_icon_per_effect(
+    effect: PersonalCardAgentEffect,
+) -> None:
+    # The printed twin keeps the card's icons (popover); a button writes a
+    # card's trash or discard beside the word 카드 as the word
+    # (tests/server/test_label_icons.py, user 2026-10-11).
+    text = _one_icon_per_effect_ko(AGENT_EFFECT_TEXT_KO[effect])
+    for icon in ("trash", "discard"):
+        assert not re.search(rf"카드를?(?: \d+장)? \{{{icon}\}}", text), text
