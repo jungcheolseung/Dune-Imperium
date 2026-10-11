@@ -510,3 +510,18 @@ Hungry for Spice, Unpredictable Foe)이라 커밋마다 문제집을 다시 캤�
 Endgame 문항이 22 → 9로 줄어 따로 확인했다. 같은 명령으로 Endgame 문항만 상한 없이 캐면 seed 0-799는 옛 엔진 22개·새 엔진 9개,
 seed 800-1599는 옛 엔진 10개·새 엔진 11개다 — 판이 바뀐 데서 온 흔들림이다(앞선 재채굴에서도 3 ↔ 17 사이를 오갔다). 채점은 하지
 않았다. `tests/unit/test_problem_set.py`는 고칠 것이 없었다.
+
+## 재채굴 (2026-10-12, 선택을 제시하는 Agent box가 턴 종료를 막음, codec v144)
+
+선택을 아직 제시하는 Agent box(Stitched Horror의 "Choose two", Beguiling Pheromones, 비용을 낼 수 있는 Piter·Tleilaxu Surgeon·Dissecting
+Kit의 화살표와 Tleilaxu Master의 획득)가 남아 있으면 "턴 종료"가 제시되지 않게 되자([OQ-057](../rules/open-questions.md) (1)의
+2026-10-12 codec v144 보강, 사용자 지시 "2. 고치자") heuristic이 그 자리에서 턴 종료 대신 box에 답하게 되어, 커밋된 129개 가운데 7개(heuristic의
+sandworm 3, 마지막 라운드 보유 4)가 복원되지 않았다. 5081 포지션 41개는 모두 그대로 복원되었다. 위 "다시 캐는 명령"의 heuristic 두 줄을 그
+커밋의 트리(`git archive`로 꺼낸 것)에서 worker 3으로 실행했다(90개). **5081 줄은 다시 캐지 않았다**: 이 작업 동안 메인 체크아웃의
+`checkpoints/`를 건드리지 않기로 해서(학습이 도는 중), 커밋된 파일의 5081 포지션 41개를 그대로 이어 붙였다 — 41개 모두 새 엔진에서
+복원되지만, 5081로 다시 캐면 그 판들의 뒤쪽에서 포지션이 더 나오거나 빠질 수 있다. 결과는 **131개** — sandworm 80(heuristic 40 + 5081
+40), 마지막 라운드 보유 41(heuristic 40 + 5081 1), Endgame 10(heuristic 10)이며 `check`가 **131/131** 복원을 확인했다. 포지션 id로 견주면
+그대로 127(선택 번호와 지문까지 같은 것 122, 지문은 같고 선택 번호만 바뀐 것 3, 지문까지 바뀐 것 2), 빠진 것 2(마지막 라운드 보유
+`s1613/p3`·`s1904/p3`), 새것 4(Endgame `s652/p3`, 마지막 라운드 보유 `s2/p2`·`s369/p1`·`s449/p2`)다. 같은 codec v144의 Urgent Shigawire 변경
+([OQ-107](../rules/open-questions.md))은 이 문제집을 움직이지 않는다(그 변경까지 넣은 엔진에서도 131/131). 채점은 하지 않았다.
+`tests/unit/test_problem_set.py`는 고칠 것이 없었다.
