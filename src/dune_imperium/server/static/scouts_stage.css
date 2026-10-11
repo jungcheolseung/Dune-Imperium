@@ -1,0 +1,353 @@
+/* The revealed Arrakeen Scouts item as a card over the board
+   (scouts_stage.js), laid out like Dire Wolf Game Room's reveal page: a
+   header band (the kind in spaced capitals, the item's name below), the
+   kind's painting on the left, the item on a parchment with a slanted left
+   edge on the right, the button bottom right. The app's pictures come from
+   catalog.scouts_art as the variables below and the .has-* classes; every
+   part has a CSS look of its own for a checkout without them. */
+
+/* The board's grid cell; the frame inside is the board square, sized and
+   placed like .board-stage (aspect 6012/6005, as wide as fits, centred,
+   at the top). Clicks pass through everywhere but the card and the tab. */
+#scouts-stage {
+  grid-area: board;
+  position: relative;
+  z-index: 6;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 0;
+  container: scouts-cell / size;
+  pointer-events: none;
+}
+.scouts-stage-frame {
+  position: relative;
+  flex: none;
+  width: min(100cqw, calc(100cqh * 6012 / 6005));
+  aspect-ratio: 6012 / 6005;
+  border-radius: 6px;
+  background: rgba(4, 7, 12, 0.62);
+  container: scouts-frame / size;
+  pointer-events: auto;
+}
+#scouts-stage.no-scan .scouts-stage-frame {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+/* Folded: only the tab is left, at the board's top edge. */
+#scouts-stage.folded .scouts-stage-frame {
+  background: transparent;
+  pointer-events: none;
+}
+
+/* ---------- the card ---------- */
+
+.scouts-stage-card {
+  /* The header band's height, from the board square (the frame). */
+  --hh: clamp(64px, 17cqh, 150px);
+  position: absolute;
+  inset: max(8px, 3cqh) max(8px, 3cqw);
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid rgba(150, 190, 230, 0.35);
+  background: radial-gradient(ellipse at 30% 15%, #1d2c48 0%, #0b1220 55%, #05080d 100%);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  color: #fff8e8;
+  font-size: clamp(15px, 2.9cqw, 26px);
+  line-height: 1.4;
+}
+#scouts-stage.has-starfield .scouts-stage-card {
+  /* The app tints its starfield to #6f6f6f; a dark veil does the same. */
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+    var(--scouts-starfield) center / cover no-repeat,
+    #05080d;
+}
+.scouts-stage-card.entering {
+  animation: scouts-stage-in 0.35s ease-out;
+}
+.scouts-stage-card.entering .scouts-stage-panel {
+  animation: scouts-stage-panel-in 0.35s ease-out;
+}
+@keyframes scouts-stage-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes scouts-stage-panel-in {
+  from { transform: translateX(18%); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scouts-stage-card.entering,
+  .scouts-stage-card.entering .scouts-stage-panel { animation: none; }
+}
+
+/* The header band. The app's two bars, placed where its header puts them
+   (a 1920-unit wide, 226.7-unit tall band): the dark strip behind the kind
+   (HeaderBar3, 1799 x 116 at x -115, y -8) and the blue band behind the
+   name (HeaderBar2, whose stored 2048 x 161 pixels are the top of a
+   2605 x 233 box at x -199, y -3), which steps up to the top on the
+   right. */
+.scouts-stage-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--hh);
+  overflow: hidden;
+  color: #bfe8ff;
+}
+.scouts-stage-bar {
+  position: absolute;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.scouts-stage-bar.upper {
+  left: -6%;
+  width: 93.7%;
+  top: -3.5%;
+  height: 51.2%;
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.55),
+    rgba(0, 0, 0, 0.35) 80%,
+    transparent
+  );
+}
+.scouts-stage-bar.lower {
+  left: -10.36%;
+  width: 135.68%;
+  top: -1.39%;
+  height: 90.4%;
+  /* The blue band under the name, and the line along its top. */
+  background-image: linear-gradient(
+    180deg,
+    transparent 51.5%,
+    rgba(150, 200, 240, 0.8) 51.5%,
+    rgba(150, 200, 240, 0.8) 53%,
+    #2b3c5f 53%,
+    #1e2c48 100%
+  );
+}
+#scouts-stage.has-header-upper .scouts-stage-bar.upper {
+  background-image: var(--scouts-header-upper);
+}
+#scouts-stage.has-header-lower .scouts-stage-bar.lower {
+  background-image: var(--scouts-header-lower);
+}
+.scouts-stage-kind,
+.scouts-stage-name {
+  position: absolute;
+  left: max(12px, 3.3%);
+  right: max(12px, 3.3%);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+/* The kind in spaced capitals, in a serif like the app's Trajan; no font
+   is shipped, so the stack ends in the system's serif (Korean included). */
+.scouts-stage-kind {
+  top: 26%;
+  transform: translateY(-50%);
+  font-family: "Trajan Pro 3", "Trajan Pro", "Cinzel", Optima, "Palatino Linotype",
+    Palatino, "Book Antiqua", "Times New Roman", "AppleMyungjo", "Nanum Myeongjo",
+    Batang, serif;
+  font-size: clamp(18px, calc(var(--hh) * 0.3), 44px);
+  font-weight: 400;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.scouts-stage-name {
+  top: 68%;
+  transform: translateY(-50%);
+  margin: 0;
+  font-size: clamp(15px, calc(var(--hh) * 0.2), 30px);
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+/* The kind's painting on the left, fading into the background at its top,
+   right and bottom as the app's pictures do. */
+.scouts-stage-art {
+  position: absolute;
+  left: 0;
+  top: calc(var(--hh) * 0.6);
+  bottom: 0;
+  width: 52%;
+  overflow: hidden;
+}
+.scouts-stage-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left center;
+  user-select: none;
+}
+
+/* The parchment on the right. The app's picture is a parallelogram whose
+   slanted left edge lets the painting show through; the part of it the app
+   shows (columns 0-1073 of 1436, rows 255-1335 of 1418) fills the panel. */
+.scouts-stage-panel {
+  position: absolute;
+  right: 0;
+  top: calc(var(--hh) - 2px);
+  bottom: 0;
+  width: 58%;
+  background: linear-gradient(165deg, #3b2915 0%, #5e4225 35%, #8e6136 75%, #a27142 100%);
+  clip-path: polygon(19% 0, 100% 0, 100% 100%, 3% 100%);
+}
+#scouts-stage.has-back .scouts-stage-panel {
+  background: var(--scouts-back) 0 75.4% / 133.8% 131.3% no-repeat;
+  clip-path: none;
+}
+/* No painting: the parchment takes the whole width, without the slant. */
+#scouts-stage:not(.has-art) .scouts-stage-art { display: none; }
+#scouts-stage:not(.has-art) .scouts-stage-panel {
+  left: 0;
+  width: auto;
+  clip-path: none;
+}
+#scouts-stage:not(.has-art).has-back .scouts-stage-panel {
+  /* columns 260-1280, rows 300-1330: inside the slanted edges */
+  background-position: 62.5% 77%;
+  background-size: 140.8% 137.7%;
+}
+
+/* The item's lines, centred like the app's, clear of the slant on the left
+   and of the button at the bottom. */
+.scouts-stage-lines {
+  position: absolute;
+  inset: 6% 6% calc(2.6em + 4%) 21%;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  gap: 0.2em;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+#scouts-stage:not(.has-art) .scouts-stage-lines { left: 6%; }
+.scouts-stage-lines .scouts-line {
+  margin: 0;
+  font-size: 1em;
+  opacity: 1;
+}
+.scouts-stage-lines .icon { height: 1.6em; vertical-align: -0.45em; }
+.scouts-stage-lines .icon-text {
+  border-color: rgba(255, 248, 232, 0.6);
+  color: #fff8e8;
+}
+.scouts-stage-lines .scouts-auction-currency {
+  margin: 0 0 0.3em;
+  font-size: max(14px, 0.9em);
+}
+.scouts-stage-note {
+  font-size: max(14px, 0.85em);
+  letter-spacing: 0.08em;
+  color: #ffe2b0;
+}
+.scouts-stage-waiting { font-size: max(14px, 0.9em); }
+/* Between two lines, the app's translucent bar (or its look). */
+.scouts-stage-divider {
+  flex: none;
+  height: 0.5em;
+  margin: 0.15em 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(200, 210, 235, 0.32) 28%,
+    rgba(200, 210, 235, 0.32) 72%,
+    transparent
+  );
+}
+#scouts-stage.has-or-backer .scouts-stage-divider {
+  background: var(--scouts-or-backer) center / 100% 100% no-repeat;
+}
+
+/* The button: bottom right like the app's Continue, a blue slab with a cyan
+   rim. */
+#scouts-stage .scouts-stage-hide {
+  position: absolute;
+  right: max(10px, 3%);
+  bottom: max(10px, 3%);
+  min-height: 2.1em;
+  padding: 0.25em 1.6em;
+  border: 2px solid #6fd3ff;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0f5d8a, #0b3a59);
+  color: #ebfdff;
+  font-size: clamp(14px, 0.85em, 20px);
+  font-weight: 600;
+  clip-path: polygon(0 0, calc(100% - 0.9em) 0, 100% 50%, calc(100% - 0.9em) 100%, 0 100%);
+  box-shadow: inset 0 0 12px rgba(111, 211, 255, 0.35);
+}
+#scouts-stage .scouts-stage-hide:hover:not(:disabled) {
+  background: linear-gradient(180deg, #1471a6, #0e4a72);
+  color: #ffffff;
+  border-color: #a9e6ff;
+}
+#scouts-stage .scouts-stage-hide:focus-visible {
+  outline: 2px solid #a9e6ff;
+  outline-offset: -5px;
+}
+
+/* The tab that brings the card back, on the board's top edge. */
+#scouts-stage .scouts-stage-tab {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0.15em 1em 0.25em;
+  border: 1px solid #6f9fd8;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(180deg, #24365a, #172440);
+  color: #bfe8ff;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+#scouts-stage .scouts-stage-tab::before { content: "▾ "; }
+#scouts-stage .scouts-stage-tab:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2e4672, #1d2d50);
+  color: #ffffff;
+  border-color: #a9d0ff;
+}
+
+/* A narrow board: the header, a strip of the painting, then the parchment
+   across the whole width (no slant), so the lines keep a readable width. */
+@container scouts-frame (max-width: 619px) {
+  .scouts-stage-card { --hh: clamp(64px, 16cqh, 110px); }
+  .scouts-stage-art {
+    top: var(--hh);
+    bottom: auto;
+    width: auto;
+    right: 0;
+    height: 24cqh;
+  }
+  .scouts-stage-art img { object-position: center 40%; }
+  .scouts-stage-panel {
+    left: 0;
+    width: auto;
+    top: calc(var(--hh) + 24cqh);
+    clip-path: none;
+  }
+  #scouts-stage:not(.has-art) .scouts-stage-panel { top: calc(var(--hh) - 2px); }
+  #scouts-stage.has-back .scouts-stage-panel {
+    background-position: 62.5% 77%;
+    background-size: 140.8% 137.7%;
+  }
+  .scouts-stage-lines { left: 6%; top: 5%; }
+}

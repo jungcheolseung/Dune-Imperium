@@ -1030,6 +1030,8 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     assert catalog["first_player_token"] is None
     # No card backs: every deck keeps its drawing.
     assert catalog["card_backs"] == {}
+    # No Scouts card pictures: the card over the board is drawn in CSS.
+    assert catalog["scouts_art"] == {}
 
     with_assets = build_catalog(
         frozenset(),
@@ -1072,6 +1074,16 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     assert with_assets["card_backs"] == {
         "imperium": "/tokens/back_imperium.webp",
         "conflict_2": "/tokens/back_conflict_2.webp",
+    }
+    # The Scouts card's pictures come from the card-image mount, each on its
+    # own: an event painting and the parchment, nothing else.
+    scouts = build_catalog(
+        scouts_art_files=frozenset({"event.webp", "back.webp", "stray.png"}),
+        asset_versions=frozenset({("/card-images/app/scouts/event.webp", "7-a")}),
+    )
+    assert scouts["scouts_art"] == {
+        "event": "/card-images/app/scouts/event.webp?v=7-a",
+        "back": "/card-images/app/scouts/back.webp",
     }
 
 

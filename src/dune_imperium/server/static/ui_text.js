@@ -453,6 +453,10 @@ const UI_TEXT = {
     "ko": "모든 플레이어의 자세히 펴기 / 접기",
     "en": "Expand / collapse every player's detail"
   },
+  "help.shortcut_scouts_card": {
+    "ko": "보드 위 아라킨 스카웃 카드 접기 / 펴기 (스카웃 단계)",
+    "en": "Fold away / bring back the Arrakeen Scouts card over the board (Scouts step)"
+  },
   "help.shortcut_layout": {
     "ko": "열 사이 경계를 끌면 열 너비가 바뀝니다(두 번 클릭: 기본값). 손패와 {intrigue}는 끌거나 Alt+←/→로 순서를 바꿉니다. 둘 다 이 브라우저에만 저장됩니다.",
     "en": "Drag the line between two columns to resize them (double-click: default). Drag a card in your hand or an {intrigue}, or press Alt+←/→, to reorder it. Both are kept in this browser only."
@@ -1420,6 +1424,27 @@ const UI_TEXT = {
   "render.shared_deck_order_title": {
     "ko": "공용 덱 순서",
     "en": "Shared deck order"
+  },
+  "scouts_stage.region": {
+    "ko": "아라킨 스카웃 카드 · {{kind}} · {{name}}",
+    "en": "Arrakeen Scouts card · {{kind}} · {{name}}"
+  },
+  "scouts_stage.hide": { "ko": "보드 보기", "en": "Show board" },
+  "scouts_stage.hide_title": {
+    "ko": "카드를 접고 보드를 봅니다 (A)",
+    "en": "Fold the card away to see the board (A)"
+  },
+  "scouts_stage.tab": {
+    "ko": "스카웃 카드 · {{name}}",
+    "en": "Scouts card · {{name}}"
+  },
+  "scouts_stage.tab_title": {
+    "ko": "아라킨 스카웃 카드를 다시 펼칩니다 (A)",
+    "en": "Bring the Arrakeen Scouts card back (A)"
+  },
+  "scouts_stage.secrets_name": {
+    "ko": "비밀 선택 공개",
+    "en": "Secret picks revealed"
   },
   "render.scouts_decision_item": {
     "ko": "아라킨 스카웃 · {{kind}} · {{name}}",

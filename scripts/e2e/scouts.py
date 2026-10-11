@@ -712,9 +712,15 @@ BLOCKERS_JS = """(() => {
         top ? top.className.baseVal ?? top.className : null]);
     }
   };
+  // The Arrakeen Scouts card (scouts_stage.js) covers the board on purpose
+  // while it is open; the pieces are measured with it out of the way.
+  const card = document.getElementById('scouts-stage');
+  const cardHidden = card.hidden;
+  card.hidden = true;
   for (const n of stage.querySelectorAll('.hotspot')) hit(n, '.hotspot');
   for (const n of stage.querySelectorAll('.hotspot .agent-token')) hit(n, '.hotspot');
   for (const n of stage.querySelectorAll('.spy-post')) hit(n, '.spy-post');
+  card.hidden = cardHidden;
   return { boxes, missed };
 })()"""
 

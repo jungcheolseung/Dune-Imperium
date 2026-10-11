@@ -59,6 +59,7 @@ async function init() {
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
   });
   el("pile-viewer-close").addEventListener("click", () => closePileViewer());
+  watchScoutsStage();
   window.addEventListener("resize", keepPileViewerInWindow);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -113,6 +114,12 @@ async function init() {
       if (el("game-screen").hidden) return;
       event.preventDefault();
       toggleAllSeats();
+    }
+    /* `a` folds the Arrakeen Scouts card over the board away, or brings it
+       back (scouts_stage.js); nothing outside the Scouts step. */
+    if (pressed("KeyA", "a")) {
+      if (el("game-screen").hidden) return;
+      if (toggleScoutsStage()) event.preventDefault();
     }
   });
   el("setup-form").addEventListener("submit", createGame);

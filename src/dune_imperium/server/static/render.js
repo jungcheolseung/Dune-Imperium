@@ -439,6 +439,8 @@ function render(options) {
   renderStandings();
   renderScouts();
   renderBoard();
+  /* After the board: whether the board answers the seat's decision. */
+  renderScoutsStage();
   renderMarket();
   renderSeats();
   renderLog();

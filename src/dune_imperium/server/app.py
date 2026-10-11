@@ -46,6 +46,7 @@ from dune_imperium.display.images import (
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
     resolve_card_images,
 )
+from dune_imperium.display.scouts_art import SCOUTS_ART_DIR
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.autosave import Autosaver
 from dune_imperium.server.catalog import build_catalog, card_image_url
@@ -419,6 +420,14 @@ def create_app(
         if token_dir.is_dir()
         else frozenset()
     )
+    # The Arrakeen Scouts card's pictures (display.scouts_art), served from
+    # the card-image mount like the app's card faces.
+    scouts_art_dir = images_dir / SCOUTS_ART_DIR
+    scouts_art_files = (
+        frozenset(path.name for path in scouts_art_dir.iterdir() if path.is_file())
+        if scouts_art_dir.is_dir()
+        else frozenset()
+    )
     board_path = (
         board_image if board_image is not None else default_board_image_path()
     )
@@ -436,6 +445,10 @@ def create_app(
         }
         | {f"/icons/{name}": icon_dir / name for name in icon_files}
         | {f"/tokens/{name}": token_dir / name for name in token_files}
+        | {
+            card_image_url(f"{SCOUTS_ART_DIR}/{name}"): scouts_art_dir / name
+            for name in scouts_art_files
+        }
         | {"/board-image": board_path, "/bene-tleilax-image": bene_tleilax_path}
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
@@ -464,6 +477,7 @@ def create_app(
             image_index_ko=image_index_ko,
             tile_index=tile_index,
             tile_index_ko=tile_index_ko,
+            scouts_art_files=scouts_art_files,
         )
 
     @app.get("/board-image", include_in_schema=False)
