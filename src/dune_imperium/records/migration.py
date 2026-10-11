@@ -59,10 +59,18 @@ from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effect_frame import box_actions, route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import active_agent_card, pending_agent_icons
 from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, FrameKind
-from dune_imperium.rules.graft_boxes import active_box, row_box, tagged, untagged
+from dune_imperium.rules.graft_boxes import (
+    BOX_ACTION_IDS,
+    active_box,
+    is_grafted_turn,
+    row_box,
+    tagged,
+    untagged,
+)
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
@@ -216,6 +224,19 @@ def migrate_record(
                 step, rewritten_by = (
                     (boxed, GRAFT_BOX_TAGGED) if boxed is not None else (recorded, None)
                 )
+                held = (
+                    graft_box_held(engine, state, recorded, graft.box)
+                    if boxed is None
+                    else None
+                )
+                if held is not None:
+                    divergence = Divergence(
+                        recorded_index=index,
+                        step=recorded,
+                        reason=held,
+                        pending=engine.current_decision(state),
+                    )
+                    return ended(divergence, state)
             try:
                 after = engine.apply(state, step).state
             except IllegalActionError as error:
@@ -296,6 +317,8 @@ class _GraftSlot:
     active the shared ``resolve_agent_card_effect(effect=cards)`` was box
     1's own icon whenever box 1 offered one, as that engine resolved it
     (Urgent Shigawire's added draw only otherwise), which the tagged row is.
+    A step of the active box that this engine holds back behind the other
+    box's bundled selection ends the migration (``graft_box_held``).
     """
 
     box: int = 0
@@ -339,6 +362,47 @@ class _GraftSlot:
             )
 
 
+def graft_box_held(
+    engine: UprisingRulesEngine, state: GameState, step: ReplayStep, box: int
+) -> str | None:
+    """Why ``step``, box ``box``'s step in a record before codec v143, is not
+    that box's row here; None when it is, or when it is no box's step.
+
+    The recording engine resolved the box it had active (``_GraftSlot``)
+    and let a switch leave the other box part way through a bundled
+    selection; this engine holds the other box's rows until that selection
+    is done (docs/graft-boxes-plan.md 4.3). Such a step would be read here
+    as the other box's row or as none (Urgent Shigawire's added draw), and
+    play on as a different move, so the record diverges there instead. A
+    step the box's machinery does not offer (``agent_effect_frame.
+    box_actions``) is the turn's other effects' and keeps its form.
+    """
+
+    if not isinstance(step, DomainAction) or step.action_id not in BOX_ACTION_IDS:
+        return None
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
+        return None
+    if not is_grafted_turn(dict(frame.context)):
+        return None
+    if step not in box_actions(state, step.actor, box):
+        return None
+    legal = engine.legal_actions(state, step.actor)
+    if box == 1:
+        if tagged(step, 1) in legal:
+            return None
+    elif step in legal and route_box_action(state, step)[2] == 0:
+        return None
+    return (
+        f"box {box}'s {step.action_id} waits here until the other box's "
+        "selection is done (codec v143)"
+    )
+
+
 def walk(
     record: MigratedRecord, engine: UprisingRulesEngine | None = None
 ) -> Iterator[tuple[GameState, MigratedStep]]:
@@ -365,7 +429,9 @@ def rewrite_step(
     when no rewrite bridge applies to it at ``state``. ``graft_box`` is the
     grafted box that engine had active there (``MigratedStep.graft_box``):
     box 1's step is its tagged row (``_GraftSlot``). A
-    ``switch_graft_card`` has no counterpart (codec v143).
+    ``switch_graft_card`` has no counterpart (codec v143), nor has a box's
+    step this engine holds back behind the other box's bundled selection
+    (``graft_box_held``).
     """
 
     decision = engine.current_decision(state)
@@ -377,6 +443,8 @@ def rewrite_step(
         boxed = _GraftSlot(graft_box).boxed(engine, state, step)
         if boxed is not None:
             return boxed
+        if graft_box_held(engine, state, step, graft_box) is not None:
+            return None
         if graft_box == 1:
             step = (
                 tagged(step, 1) if isinstance(step, DomainAction) else step

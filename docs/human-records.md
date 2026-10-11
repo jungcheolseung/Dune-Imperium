@@ -36,7 +36,7 @@
 | `unpredictable_foe_draw` | codec 142 미만, **직후** | `draw_reveal_intrigue` | v142(`f8f7e080`, OQ-106 9)부터 Muad'Dib의 Unpredictable Foe 카드가 Reveal의 대기 목록에 들어간다. 옛 엔진은 조건을 처음 채운 단계에서 뽑았다. 부여 한 번에 한 번만(`draw_reveal_intrigue`가 가장 오래된 항목을 가져가므로) |
 | `reshuffle_renamed` | codec 142 미만 | 적힌 reshuffle을 다시 쓴다 | 위 분리로 일부 draw의 출처 이름이 바뀌어(Piter `agent_card_payment` → `agent_card:<카드>:cards`·`:research`, Reverse Engineering `leader_signet:cards`, Shigawire `shigawire:<카드>:cards`, Cunning `:rewards:draw`) reshuffle id도 바뀌었다. 같은 라운드·같은 좌석의 **개인 덱** reshuffle이고 적힌 값이 지금 버림 더미와 정확히 같은(multiset) 때만 지금의 id로 바꾸고 순서는 그대로 둔다. Intrigue reshuffle은 바꾸지 않는다 |
 | `refinish_agent_turn` | codec 142 미만 | `finish_agent_turn`을 한 번 더 | turn 종료 누름 자체(Usurp trash 등)가 번 draw를 v142는 붙잡아 turn을 다시 연다. 옛 엔진은 누름 안에서 뽑고 turn을 닫았다. `owed_draw`가 뽑은 뒤, 다음 적힌 수(다른 좌석의 것)가 거절되면 다시 누른다. 다시 열린 까닭이 그 draw뿐이고 누름이 turn을 닫을 때만 |
-| `graft_switch`·`graft_box` | codec 143 미만 | 적힌 `switch_graft_card`를 지우고, 짝(칸 1)이 활성이던 동안의 칸 행동에 `box=1`을 붙인다 | v143([graft-boxes-plan.md](graft-boxes-plan.md))부터 graft한 Agent turn의 두 칸을 처음부터 함께 제시한다. 옛 엔진은 한 번에 한 칸만 풀었고 `switch_graft_card`로 다른 칸을 활성으로 바꿨다. 다른 다리와 달리 기보를 따라가며 옛 엔진의 활성 칸을 기억한다(`_GraftSlot`): `agent_turn`·`choose_graft_partner`에서 칸 0, switch마다 뒤집기, `finish_agent_turn` 뒤에는 그 누름이 남긴 칸(옛 엔진의 turn 종료도 대기 중인 짝 칸으로 바꿨고 이 엔진도 같다). 칸 1이 활성인 동안 적힌 칸 행동은 `box=1`을 붙인 행이 합법일 때만 그것으로 바꾼다(아니면 turn의 다른 효과라 그대로). 옛 엔진에서 같은 `effect=cards`는 활성 칸의 아이콘이 먼저였으므로 칸 1의 아이콘이면 `box=1`, 아니면 Urgent Shigawire의 추가 draw다 |
+| `graft_switch`·`graft_box` | codec 143 미만 | 적힌 `switch_graft_card`를 지우고, 짝(칸 1)이 활성이던 동안의 칸 행동에 `box=1`을 붙인다 | v143([graft-boxes-plan.md](graft-boxes-plan.md))부터 graft한 Agent turn의 두 칸을 처음부터 함께 제시한다. 옛 엔진은 한 번에 한 칸만 풀었고 `switch_graft_card`로 다른 칸을 활성으로 바꿨다. 다른 다리와 달리 기보를 따라가며 옛 엔진의 활성 칸을 기억한다(`_GraftSlot`): `agent_turn`·`choose_graft_partner`에서 칸 0, switch마다 뒤집기, `finish_agent_turn` 뒤에는 그 누름이 남긴 칸(옛 엔진의 turn 종료도 대기 중인 짝 칸으로 바꿨고 이 엔진도 같다). 칸 1이 활성인 동안 적힌 칸 행동은 `box=1`을 붙인 행이 합법일 때 그것으로 바꾼다. 그 칸의 장치가 내지 않는 수는 turn의 다른 효과라 그대로 둔다. 그 칸의 수인데 이 엔진이 다른 칸의 묶음 선택(계획 4.3의 잠금) 때문에 그 칸 행을 숨기는 자리면 그 수에서 `Divergence`로 멈춘다(`graft_box_held`; 칸 0이 활성이던 수도 같다). 그대로 적용하면 다른 칸의 행이나 칸 없는 행으로 읽혀 다른 수가 되기 때문이다. 예: Piter의 troop을 낸 뒤 switch해 적힌 Tleilaxu Infiltrator의 `effect=cards`는 이 엔진에서 Piter의 두 장 보상이다. 칸 1이 활성인 동안의 `effect=cards`: 옛 엔진은 활성 칸의 아이콘이 먼저였으므로 칸 1이 그 아이콘을 내면 `box=1`이다. 칸 1에 그 아이콘이 없으면 옛 엔진에서는 Urgent Shigawire의 추가 draw였다. 이 엔진에서 태그 없는 같은 행은 칸 0이 자기 draw 아이콘을 아직 내면 칸 0의 아이콘을 해결한다. 뽑는 장수는 같고, 남는 것이 칸 0의 아이콘 대신 추가 draw일 뿐이다(나중에 적힌 칸 0의 `effect=cards`가 그 추가 draw가 된다) |
 
 - **안전장치:** 다리는 적힌 수가 **바로 그 결정의 답**일 때는 끼어들지 않는다(`_made_for`). 결정을 가진 좌석이 둔 수가 다음 중 하나이면 그 결정의 답으로 본다.
   - 그 틀(frame)이 답으로 받는 `action_id`다. 전투 책략은 pass·`play_intrigue`, Conflict 끝 창은 거절·`play_conflict_end_intrigue`다.
@@ -117,8 +117,9 @@ graft 두 칸 변환(codec v143, 2절 표의 `graft_switch`·`graft_box`)을 넣
 - `problems check`(사람 판 문제집 285곳): 285곳 모두 풀린다. 판정 수가 `switch_graft_card`인 곳이 없어 빠진 곳은 0이다. 칸 1이 활성인 자리가 10곳이고, 그중 4곳은 사람 수에 `box=1`을 붙였다.
 - `corpus check local/records-corpus/v142-c29f79d1`(2,000판, 3코어 약 7분): exact 560, equal 1,436, transient 0, persistent 0, diverged 4, failed 0.
   - 다리 쓰임: `graft_box` 11,474수(1,434판), `graft_switch` 14,682수(1,440판).
-  - 갈라진 4판은 2절의 v143 경우다(Ghola + Stitched Horror 1, 잠금 3). 판정은 4판 모두 `collateral`이다. 셋은 갈라진 자리에서도 필드 차이가 없고, Ghola 판은 그 좌석의 자원·병력이 다르다(옛 엔진이 다시 준 보상과 병력).
+  - 갈라진 4판은 2절의 v143 경우다(Ghola + Stitched Horror 1, 잠금 3). 판정은 4판 모두 `collateral`이다. 잠금 3판은 리뷰 뒤(`graft_box_held`)에는 "그 칸의 수가 다른 칸의 선택이 끝날 때까지 기다린다"는 이유로 같은 수에서 멈춘다. 그 전에는 같은 수가 불법이라는 이유로 멈췄다. 결과 수는 리뷰 전후가 같다. 셋은 갈라진 자리에서도 필드 차이가 없고, Ghola 판은 그 좌석의 자원·병력이 다르다(옛 엔진이 다시 준 보상과 병력).
   - 갈라지기 전까지 필드가 다른 구간은 없다.
+- 리뷰 반영(잠금 교착 수정, `graft_box_held`) 뒤 세 측정을 다시 돌렸고, 수는 모두 같다.
 
 v135 기보의 차이는 모두 **Conflict 보상을 주는 도중**이다.
 - 옛 엔진은 받는 사람들의 자동 보상을 한꺼번에 주고 선택을 물었다. 지금 엔진은 받는 사람 순서대로 준다.
