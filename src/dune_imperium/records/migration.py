@@ -59,7 +59,11 @@ from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
-from dune_imperium.rules.agent_effect_frame import box_actions, route_box_action
+from dune_imperium.rules.agent_effect_frame import (
+    agent_box_can_resolve_by_choice,
+    box_actions,
+    route_box_action,
+)
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import active_agent_card, pending_agent_icons
 from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, FrameKind
@@ -68,6 +72,7 @@ from dune_imperium.rules.graft_boxes import (
     active_box,
     is_grafted_turn,
     row_box,
+    state_with_active_box,
     tagged,
     untagged,
 )
@@ -1297,6 +1302,69 @@ def _shigawire_partner_draw(
     return draw
 
 
+# Codec v144 (OQ-057 (1)): the optional boxes whose choice an older
+# engine's turn end skipped -- its dry run read them as boxes that can only
+# fizzle -- with the refusal that answers each.
+_REFUSED_AT_TURN_END: Final = {
+    PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH: (
+        "decline_agent_card_payment"
+    ),
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
+        "decline_agent_card_payment"
+    ),
+    PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: (
+        "decline_agent_card_payment"
+    ),
+    PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER: (
+        "decline_agent_card_acquisition"
+    ),
+}
+
+
+def _box_refused_at_turn_end(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Refuse an optional Agent box before the recorded turn end.
+
+    Codec v144 (user instruction 2026-10-12 "2. 고치자", OQ-057 (1)): a box
+    that still offers a choice giving its effect holds the turn end. An
+    older engine's turn end was offered beside Piter's, Tleilaxu Surgeon's
+    and Dissecting Kit's payable arrows and Tleilaxu Master's acquisition
+    (a dry run misread them), and its press fizzled the box: the result of
+    the refusal ("You do not have to pay such a cost on a card" [Main p.
+    20], OQ-058). So right before that recorded press the box is refused,
+    box 1's tagged. A mandatory box the press skipped (Stitched Horror's
+    "Choose two", Beguiling Pheromones' trash) has no refusal, and the
+    record diverges there: the rule fix.
+    """
+
+    if not (
+        isinstance(decision, PlayerDecision)
+        and isinstance(step, DomainAction)
+        and step.actor == decision.owner
+        and step.action_id == _FINISH_AGENT_TURN
+        and state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    ):
+        return None
+    context = dict(state.decision_stack[-1].context)
+    legal = engine.legal_actions(state, decision.owner)
+    for box in (0, 1) if is_grafted_turn(context) else (0,):
+        view = state_with_active_box(state, box)
+        effect = active_agent_card(dict(view.decision_stack[-1].context)).agent_effect
+        refusal_id = None if effect is None else _REFUSED_AT_TURN_END.get(effect)
+        if refusal_id is None:
+            continue
+        refusal = tagged(DomainAction(refusal_id, decision.owner), box)
+        # Only a box that holds the end: one offering just its refusal (the
+        # cost cannot be paid) still lets the press fizzle it.
+        if refusal in legal and agent_box_can_resolve_by_choice(view, decision.owner):
+            return refusal
+    return None
+
+
 def _reopened_since_press(state: GameState, player: int) -> bool:
     """Whether ``player``'s Agent turn was reopened after its last press."""
 
@@ -1401,5 +1469,10 @@ BRIDGES: tuple[Bridge, ...] = (
     # Urgent Shigawire boost; its added draw holds the turn end.
     Bridge(
         "shigawire_partner_draw", _shigawire_partner_draw, before_codec=144
+    ),
+    # Codec v144 (OQ-057 (1)) holds the turn end for an optional box whose
+    # choice is still open; an older engine's press fizzled it.
+    Bridge(
+        "box_refused_at_turn_end", _box_refused_at_turn_end, before_codec=144
     ),
 )

@@ -1246,16 +1246,22 @@ def test_a_turn_reopened_only_for_its_held_draw_is_ended_again() -> None:
     assert migration._bridge(ENGINE, ready, next_seat, older) is None
 
 
-def _bene_gesserit_partner_turn() -> GameState:
-    """Seat 0 grafts Truthtrance (Bene Gesserit) to Tleilaxu Infiltrator
-    with Urgent Shigawire's boost pending, and resolves everything but the
-    partner's added draw (codec v144, OQ-107)."""
+def _arrakeen_graft(
+    placed: str,
+    partner: str,
+    *,
+    skip: tuple[DomainAction, ...] = (),
+    space_id: str = "arrakeen",
+    **owner: object,
+) -> GameState:
+    """Seat 0 grafts ``partner`` to ``placed`` at ``space_id`` (Arrakeen)
+    and resolves the space and every box resolution but ``skip``."""
 
-    infiltrator = "tleilaxu:tleilaxu_infiltrator:0"
-    truthtrance = "imperium:truthtrance:0"
     starters = starting_deck_instance_ids(0, immortality=True)
     imperium = tuple(
-        card for card in imperium_deck_instance_ids(False) if card != truthtrance
+        card
+        for card in imperium_deck_instance_ids(False)
+        if card not in (placed, partner)
     )
 
     def seat(player: int, **extra: object) -> PlayerState:
@@ -1267,12 +1273,12 @@ def _bene_gesserit_partner_turn() -> GameState:
         values.update(extra)
         return PlayerState(**values)  # type: ignore[arg-type]
 
-    owner = seat(
+    seat_zero = seat(
         0,
-        hand=(infiltrator, truthtrance),
-        deck=starters,
+        hand=(placed, partner),
+        deck=tuple(card for card in starters if card not in (placed, partner)),
         resources=Resources(solari=4, spice=2, water=2),
-        bene_gesserit_boost_pending=True,
+        **owner,
     )
     state = GameState(
         config=RulesetConfig(immortality=True, promo_cards=True),
@@ -1284,7 +1290,7 @@ def _bene_gesserit_partner_turn() -> GameState:
         imperium_row=imperium[:5],
         imperium_deck=imperium[5:20],
         tleilaxu_track_spice=2,
-        players=(owner, *(seat(player) for player in range(1, 4))),
+        players=(seat_zero, *(seat(player) for player in range(1, 4))),
         decision_stack=(
             DecisionFrame(
                 kind=FrameKind.TURN,
@@ -1297,24 +1303,41 @@ def _bene_gesserit_partner_turn() -> GameState:
         action
         for action in ENGINE.legal_actions(state, 0)
         if action.action_id == "agent_turn"
-        and dict(action.arguments)["card_id"] == infiltrator
-        and dict(action.arguments)["space_id"] == "arrakeen"
+        and dict(action.arguments)["card_id"] == placed
+        and dict(action.arguments)["space_id"] == space_id
         and dict(action.arguments).get("graft") is True
         and "infiltrate_post_id" not in dict(action.arguments)
     )
     state = ENGINE.apply(state, placement).state
     state = ENGINE.apply(
-        state,
-        DomainAction("choose_graft_partner", 0, (("card_id", truthtrance),)),
+        state, DomainAction("choose_graft_partner", 0, (("card_id", partner),))
     ).state
     while rest := [
         action
         for action in ENGINE.legal_actions(state, 0)
-        if action.action_id in ("resolve_board_effect", "resolve_agent_card_effect")
-        and action != _PARTNER_DRAW
+        if action.action_id
+        in (
+            "resolve_board_effect",
+            "resolve_agent_card_effect",
+            "resolve_faction_influence",
+        )
+        and action not in skip
     ]:
         state = ENGINE.apply(state, rest[0]).state
     return state
+
+
+def _bene_gesserit_partner_turn() -> GameState:
+    """Seat 0 grafts Truthtrance (Bene Gesserit) to Tleilaxu Infiltrator
+    with Urgent Shigawire's boost pending, and resolves everything but the
+    partner's added draw (codec v144, OQ-107)."""
+
+    return _arrakeen_graft(
+        "tleilaxu:tleilaxu_infiltrator:0",
+        "imperium:truthtrance:0",
+        skip=(_PARTNER_DRAW,),
+        bene_gesserit_boost_pending=True,
+    )
 
 
 _PARTNER_DRAW = DomainAction(
@@ -1346,6 +1369,68 @@ def test_a_bene_gesserit_partner_s_draw_comes_right_before_the_recorded_end() ->
     )
     assert migration._bridge(ENGINE, state, other, older) is None
     assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(144)) is None
+
+
+@pytest.mark.parametrize(
+    ("placed", "partner", "box"),
+    [
+        ("imperium:dissecting_kit:0", "player:0:starter:dagger:0", 0),
+        # Ghola's copy of Dissecting Kit, box 1, after the Kit's own refusal.
+        ("imperium:dissecting_kit:0", "tleilaxu:ghola:0", 1),
+    ],
+)
+def test_an_optional_box_is_refused_right_before_the_recorded_end(
+    placed: str, partner: str, box: int
+) -> None:
+    # Codec v144 (OQ-057 (1)) holds the turn end while Dissecting Kit can
+    # still trash its partner for a specimen. An older engine offered the
+    # end beside it and the press fizzled the box: the refusal's result. So
+    # the refusal comes right before that recorded press.
+    state = _arrakeen_graft(placed, partner)
+    refusal = DomainAction("decline_agent_card_payment", 0)
+    if box == 1:
+        state = ENGINE.apply(state, refusal).state
+        refusal = DomainAction(
+            "decline_agent_card_payment", 0, (("box", 1),)
+        )
+    assert _PRESS not in ENGINE.legal_actions(state, 0)
+    older = _bridges_for(143)
+
+    bridged = migration._bridge(ENGINE, state, _PRESS, older)
+
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == ("box_refused_at_turn_end", refusal)
+    assert _PRESS in ENGINE.legal_actions(ENGINE.apply(state, refusal).state, 0)
+    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(144)) is None
+
+
+@pytest.mark.parametrize(
+    ("placed", "partner", "space_id"),
+    [
+        ("tleilaxu:stitched_horror:0", "player:0:starter:dagger:0", "arrakeen"),
+        # Beguiling Pheromones' trash on a Faction space, beside a Tleilaxu
+        # Surgeon one specimen short: the Surgeon offers only its refusal,
+        # so it does not hold the end and is not refused for the record.
+        (
+            "imperium:tleilaxu_surgeon:0",
+            "tleilaxu:beguiling_pheromones:0",
+            "dutiful_service",
+        ),
+    ],
+)
+def test_a_mandatory_box_skipped_by_an_older_turn_end_diverges(
+    placed: str, partner: str, space_id: str
+) -> None:
+    # Stitched Horror's "Choose two" and Beguiling Pheromones' trash are
+    # mandatory and have no refusal: an older engine's press skipped them,
+    # which this engine no longer allows (OQ-057 (1), OQ-095 2), so no
+    # bridge answers before that press.
+    state = _arrakeen_graft(
+        placed, partner, space_id=space_id, specimens=1, troops_supply=8
+    )
+    assert _PRESS not in ENGINE.legal_actions(state, 0)
+
+    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(143)) is None
 
 
 _OQ106_BRIDGES = V142_BRIDGES - {
