@@ -10,6 +10,8 @@ summaries under ``docs/rules/``.
 """
 
 from dune_imperium.display.actions import (
+    agent_box_headers,
+    agent_box_of_rows,
     agent_box_row_title,
     agent_card_icon_text,
     agent_card_icon_text_ko,
@@ -67,6 +69,8 @@ __all__ = [
     "RECLAIMED_FORCES_TEXT_KO",
     "LeaderFaceTextKo",
     "STRENGTH_TOKEN_COLORS",
+    "agent_box_headers",
+    "agent_box_of_rows",
     "agent_box_row_title",
     "agent_card_icon_text",
     "agent_card_icon_text_ko",

@@ -12,7 +12,10 @@ button itself (user request 2026-10-11: "그냥 선택지에 카드 효과가 �
 보여지는게 낫지 않나?"). A grafted turn offers both cards' boxes (box 1's rows
 carry ``box=1``, codec v143); each row is read with its own box active
 (``rules.agent_effect_frame.route_box_action``), as the engine resolves it.
-It is derived from the same engine tables and card data the rules execute.
+The decision panel groups the rows under a header per card
+(``agent_box_of_rows``, ``agent_box_headers``; docs/graft-boxes-plan.md
+4.11). It is derived from the same engine tables and card data the rules
+execute.
 """
 
 import re
@@ -26,6 +29,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.display.cards import agent_box_text, agent_box_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
@@ -34,15 +38,22 @@ from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
 )
-from dune_imperium.rules.agent_effect_frame import route_box_action
-from dune_imperium.rules.agent_effects import resolves_boost_draw
+from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
+from dune_imperium.rules.agent_effects import box_in_progress, resolves_boost_draw
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
     pending_boost_draw,
 )
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.graft_boxes import is_grafted_turn, untagged
+from dune_imperium.rules.graft_boxes import (
+    active_box,
+    box_card_id,
+    box_is_pending,
+    is_grafted_turn,
+    tagged,
+    untagged,
+)
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.owed_draws import next_owed_draw
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
@@ -396,6 +407,83 @@ def agent_box_row_title(
     if box is None and plain.arguments and resolves_boost_draw(view, plain):
         card_id = pending_boost_draw(context) or card_id
     return _card_names(card_id)
+
+
+def _own_effect_frame_context(
+    state: GameState, seat: int
+) -> dict[str, ActionValue] | None:
+    """The open Agent turn's effect frame context while ``seat`` decides it."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != seat:
+        return None
+    return context
+
+
+def agent_box_of_rows(
+    state: GameState, seat: int, actions: tuple[DomainAction, ...]
+) -> tuple[int | None, ...]:
+    """The Agent box each of ``seat``'s legal rows belongs to, in order.
+
+    0 for the placed card's box, 1 for its graft partner's (codec v143,
+    ``agent_effect_frame.agent_box_rows``: box 1's rows carry ``box=1``),
+    None for any other row: the space's effects, Urgent Shigawire's added
+    draw, an Intrigue play, a deployment, the turn's end. Only while
+    ``seat`` decides the Agent turn's own effect frame; every row is None
+    otherwise. The decision panel groups the rows by it under a header per
+    card (user request 2026-10-11, docs/graft-boxes-plan.md 4.11). Public:
+    both cards lie face up in play.
+    """
+
+    if _own_effect_frame_context(state, seat) is None:
+        return (None,) * len(actions)
+    box_zero, box_one = agent_box_rows(state, seat)
+    zero = frozenset(box_zero)
+    one = frozenset(tagged(action, 1) for action in box_one)
+    return tuple(
+        0 if action in zero else 1 if action in one else None for action in actions
+    )
+
+
+def agent_box_headers(state: GameState, seat: int) -> list[dict[str, object]] | None:
+    """The open Agent turn's boxes, for the decision panel's card headers.
+
+    None unless ``seat`` decides the Agent turn's effect frame. Otherwise
+    one entry per box, box 0 (the placed card) first, then box 1 on a
+    grafted turn (its partner): ``box``, ``card_id``, the card's English
+    ``name`` and Korean ``name_ko`` (a Ghola's own name, whatever box it
+    copies), and ``locked``: the box still waits but its rows are not
+    offered because the other box is part way through one bundled
+    selection (``agent_effects.box_in_progress``, user decision
+    2026-10-12, docs/graft-boxes-plan.md 4.3). Public: both cards lie face
+    up in play, and each box's resolution is announced as it happens.
+    """
+
+    context = _own_effect_frame_context(state, seat)
+    if context is None:
+        return None
+    grafted = is_grafted_turn(context)
+    locked = grafted and box_in_progress(state)
+    current = active_box(context)
+    headers: list[dict[str, object]] = []
+    for box in (0, 1) if grafted else (0,):
+        card_id = box_card_id(context, box)
+        if not card_id:
+            continue
+        name, name_ko = _card_names(card_id)
+        headers.append(
+            {
+                "box": box,
+                "card_id": card_id,
+                "name": name,
+                "name_ko": name_ko,
+                "locked": locked and box != current and box_is_pending(context, box),
+            }
+        )
+    return headers
 
 
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:

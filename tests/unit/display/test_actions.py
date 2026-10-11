@@ -26,6 +26,8 @@ from dune_imperium.display.actions import (
     _ICON_CONDITIONS,
     _ICON_CONDITIONS_KO,
     _one_icon_per_effect_ko,
+    agent_box_headers,
+    agent_box_of_rows,
     agent_box_row_title,
     agent_card_icon_text,
     agent_card_icon_text_ko,
@@ -693,3 +695,134 @@ def test_box_text_on_a_button_writes_one_icon_per_effect(
     text = _one_icon_per_effect_ko(AGENT_EFFECT_TEXT_KO[effect])
     for icon in ("trash", "discard"):
         assert not re.search(rf"카드를?(?: \d+장)? \{{{icon}\}}", text), text
+
+
+# --- The decision panel groups an Agent turn's rows by box ----------------
+#
+# Plan stage 4 (docs/graft-boxes-plan.md 4.11, user request 2026-10-11): the
+# page sets each Agent box's rows under a header naming its card, box 0 (the
+# placed card) first, then box 1 (its graft partner). The server says which
+# box each legal row is (``agent_box_of_rows``) and which boxes the turn has
+# (``agent_box_headers``), so the page never guesses from the arguments.
+
+
+def _boxes(state: GameState) -> dict[DomainAction, int | None]:
+    legal = _ENGINE.legal_actions(state, 0)
+    return dict(zip(legal, agent_box_of_rows(state, 0, legal), strict=True))
+
+
+def test_each_row_of_a_grafted_turn_names_its_box() -> None:
+    grafted = _place(_turn((_FACE_DANCER, _SEEK_ALLIES)), _FACE_DANCER, _SEEK_ALLIES)
+    boxes = _boxes(grafted)
+
+    assert boxes[_RESOLVE_BOX] == 0
+    assert boxes[_RESOLVE_BOX_ONE] == 1
+    # The space's effects, deployments, the turn's end: no box.
+    others = [
+        action
+        for action in boxes
+        if action.action_id != "resolve_agent_card_effect"
+    ]
+    assert others and all(boxes[action] is None for action in others)
+    assert agent_box_headers(grafted, 0) == [
+        {
+            "box": 0,
+            "card_id": _FACE_DANCER,
+            "name": "Face Dancer",
+            "name_ko": "얼굴의 춤꾼",
+            "locked": False,
+        },
+        {
+            "box": 1,
+            "card_id": _SEEK_ALLIES,
+            "name": "Seek Allies",
+            "name_ko": "동맹 물색",
+            "locked": False,
+        },
+    ]
+
+    # Box 1 acted and is the active box now: the numbers stay fixed.
+    partner_done = _ENGINE.apply(grafted, _RESOLVE_BOX_ONE).state
+    assert _boxes(partner_done)[_RESOLVE_BOX] == 0
+    headers = agent_box_headers(partner_done, 0)
+    assert headers is not None
+    assert [(entry["box"], entry["card_id"]) for entry in headers] == [
+        (0, _FACE_DANCER),
+        (1, _SEEK_ALLIES),
+    ]
+
+
+def test_a_single_card_turn_has_one_box() -> None:
+    # Hidden Missive's two icons (OQ-027) are box 0's rows.
+    missive = "imperium:hidden_missive:0"
+    seat = PlayerState(
+        player_id=0, hand=(missive,), influence=Influence(bene_gesserit=2)
+    )
+    state = replace(
+        _turn(()),
+        config=RulesetConfig(),
+        players=(seat, *(PlayerState(player_id=other) for other in range(1, 4))),
+    )
+    place = next(
+        action
+        for action in _ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments).get("space_id") == "assembly_hall"
+    )
+    placed = _ENGINE.apply(state, place).state
+    boxes = _boxes(placed)
+
+    icons = [
+        action
+        for action in boxes
+        if action.action_id == "resolve_agent_card_effect"
+    ]
+    assert len(icons) == 2 and all(boxes[action] == 0 for action in icons)
+    assert all(
+        boxes[action] is None for action in boxes if action not in icons
+    )
+    assert agent_box_headers(placed, 0) == [
+        {
+            "box": 0,
+            "card_id": missive,
+            "name": "Hidden Missive",
+            "name_ko": "비밀 서신",
+            "locked": False,
+        }
+    ]
+
+
+def test_a_box_held_back_by_the_other_box_s_choice_is_marked_locked() -> None:
+    # "Choose two" names both before either resolves (OQ-057 (4)); the
+    # other box's rows wait meanwhile (user decision 2026-10-12, plan 4.3).
+    horror = "tleilaxu:stitched_horror:0"
+    ghola = _ghola_box(horror)
+    first_pick = next(
+        action
+        for action in _ENGINE.legal_actions(ghola, 0)
+        if action.action_id == "choose_agent_card_reward"
+        and dict(action.arguments).get("box") == 1
+    )
+    picked = _ENGINE.apply(ghola, first_pick).state
+    boxes = _boxes(picked)
+
+    assert {box for box in boxes.values() if box is not None} == {1}
+    headers = agent_box_headers(picked, 0)
+    assert headers is not None
+    assert [(entry["box"], entry["name"], entry["locked"]) for entry in headers] == [
+        (0, "Ghola", True),
+        (1, "Stitched Horror", False),
+    ]
+
+
+def test_only_the_seat_deciding_the_effect_frame_gets_boxes() -> None:
+    grafted = _place(_turn((_FACE_DANCER, _SEEK_ALLIES)), _FACE_DANCER, _SEEK_ALLIES)
+    legal = _ENGINE.legal_actions(grafted, 0)
+
+    assert agent_box_headers(grafted, 1) is None
+    assert agent_box_of_rows(grafted, 1, legal) == (None,) * len(legal)
+    # Before the placement the turn has no Agent box yet.
+    start = _turn((_SEEK_ALLIES,))
+    start_legal = _ENGINE.legal_actions(start, 0)
+    assert agent_box_headers(start, 0) is None
+    assert set(agent_box_of_rows(start, 0, start_legal)) == {None}

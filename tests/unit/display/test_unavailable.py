@@ -2354,6 +2354,69 @@ def test_a_conditioned_agent_icon_is_greyed_with_its_threshold() -> None:
     assert _icon_rows(_place(_state(met), "gather_support")) == {}
 
 
+def test_a_grafted_box_s_greyed_icons_name_their_own_card_and_box() -> None:
+    """Hidden Missive's icons wait for 2 Bene Gesserit Influence (OQ-027)
+    while it is grafted to Face Dancer (codec v143: both boxes from the
+    start). Each greyed row names its box (``box``, plan 4.11: the page sets
+    it under its card's header), and box 0's rows keep reading Hidden
+    Missive with its condition after box 1 resolved and became the active
+    box: they used to be described with whichever box acted last ("Face
+    Dancer: Recruit 1 troop")."""
+
+    missive = "imperium:hidden_missive:0"
+    face_dancer = "tleilaxu:face_dancer:0"
+    owner = PlayerState(player_id=0, hand=(missive, face_dancer))
+    config = RulesetConfig(immortality=True)
+    placed = _agent_turn(
+        _state(owner, config=config, imperium_deck=imperium_deck_instance_ids(True)),
+        missive,
+        "assembly_hall",
+        graft=True,
+    )
+    grafted = ENGINE.apply(
+        placed,
+        DomainAction(
+            action_id="choose_graft_partner",
+            actor=0,
+            arguments=(("card_id", face_dancer),),
+        ),
+    ).state
+    partner = DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("box", 1),)
+    )
+    assert partner in ENGINE.legal_actions(grafted, 0)
+    expected = {
+        "waiting:agent_icon:troops": (
+            "Hidden Missive",
+            "Recruit 1 troop (at 2 Bene Gesserit Influence)",
+        ),
+        "waiting:agent_icon:cards": (
+            "Hidden Missive",
+            "Draw 1 card (at 2 Bene Gesserit Influence)",
+        ),
+    }
+    for state in (grafted, ENGINE.apply(grafted, partner).state):
+        rows = _rows(_found(state), "waiting")
+        assert {
+            key: (row["action"]["detail_title"], row["action"]["detail"])
+            for key, row in rows.items()
+        } == expected
+        assert {row["box"] for row in rows.values()} == {0}
+
+
+def test_a_single_card_s_greyed_box_rows_are_box_zero() -> None:
+    """A single card's turn has box 0 only; its greyed rows say so, and a
+    row of no box (a Faction space's recall) carries none."""
+
+    missive = "imperium:hidden_missive:0"
+    owner = PlayerState(player_id=0, hand=(missive,))
+    state = _place(_state(owner), "gather_support")
+    rows = _rows(_found(state), "waiting")
+    assert set(rows) == {"waiting:agent_icon:troops", "waiting:agent_icon:cards"}
+    assert {row["box"] for row in rows.values()} == {0}
+    assert all("box" not in row for row in _found(_imperial_privilege())["rows"])
+
+
 def test_an_ungrafted_card_s_icons_are_greyed_among_the_choices() -> None:
     """Sardaukar Quartermaster's "If grafted: [troop] [card]": played alone
     the icons wait for the turn's end and fizzle there (OQ-057 (1)), but
