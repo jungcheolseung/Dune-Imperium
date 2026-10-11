@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 30
+    assert OBSERVATION_VERSION == 31
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -74,6 +74,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # is gone: Intrigue cards have no trash pile (4,619 -> 4,529; OQ-061);
     # each relative seat's owed Emperor track Spies are appended, 4 columns
     # (4,529 -> 4,533; user ruling 2026-10-04).
+    # v31: the open Agent turn's two boxes, card identity + 1 and pending
+    # flag each, 4 columns (4,533 -> 4,537; docs/graft-boxes-plan.md 4.7).
     assert OBSERVATION_SIZE == (
         3038
         + 24
@@ -103,8 +105,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4 * 2
         - 90
         + 4
+        + 4
     )
-    assert OBSERVATION_SIZE == 4_533
+    assert OBSERVATION_SIZE == 4_537
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -130,7 +133,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert segment_slice("scouts_calls").stop == segment_slice("epic_game").start
     assert segment_slice("epic_game").stop == segment_slice("shortfall").start
     assert segment_slice("shortfall").stop == segment_slice("track_spies_owed").start
-    assert segment_slice("track_spies_owed").stop == OBSERVATION_SIZE
+    assert segment_slice("track_spies_owed").stop == segment_slice("agent_boxes").start
+    assert segment_slice("agent_boxes").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -584,20 +588,30 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # the draws free again and CHOAM Transports drawn by the post-step hook (a
 # scratch copy of this change's source) all six games reproduce the pins
 # above exactly.
+# Re-pinned 2026-10-12 for observation v31 and codec v143 (both grafted
+# Agent boxes offered from the start, docs/graft-boxes-plan.md): the open
+# Agent turn's two boxes are appended as a 4-column ``agent_boxes`` segment.
+# For all six games each vector cut back to the v30 layout (its last 4
+# columns dropped) reproduces the v30 digests above exactly with the same
+# vector counts (base e176cf70, choam 441cc626, draft 274b33e5, everything
+# 4879457a, promo_bloodlines_tech 92815f46, scouts 6bb338f6), so no
+# trajectory moved. The new columns are nonzero in 1,880 (base), 1,760
+# (choam), 1,748 (draft), 2,208 (everything), 2,084 (promo_bloodlines_tech)
+# and 2,036 (scouts) vectors: every open Agent turn names its placed card.
 _GOLDEN_DIGESTS = {
-    "base": ("e176cf70eb9dad4825ef363fdba718d087ef29965f11f967296ab204b6185098", 3052),
-    "choam": ("441cc62604c387dbb3090ff470b3db29765391da3e610e9420564cbb8a7ef561", 2816),
+    "base": ("d96a5baa97b1594cd8099093f6c9e37278b86528dee02198a97fdf5dfc3c23a9", 3052),
+    "choam": ("2f49afd38bd894f7b8978d0dc79bdc218c53cf2f32274b07612b806c8fa8db86", 2816),
     "promo_bloodlines_tech": (
-        "92815f46b8d9f8e393f8d102df256f113c5d6e1bf628297a18d18c5504c38519",
+        "2a4e10aaf584a460eabce7ea00bfc71a078fba3079cfda2c1b7e79f4d03e4ac0",
         3164,
     ),
     "everything": (
-        "4879457a851074b334d07f118a711f1688aa0b20411ede2fb4731965e48fa983",
+        "a63b5a287d3dcdf27c0126c4fbe51c916174c9bae8a5e274753c8059b520b132",
         3544,
     ),
-    "draft": ("274b33e5f473caf4e1f3c39db90696a8fa3a5861a346624c47180ff17dca2421", 2864),
+    "draft": ("e8e7e54fa0f101fd04321aeb5edfa5a342c2d60f153b8424e35c4057b3a66916", 2864),
     "scouts": (
-        "6bb338f6e47f357c0c7556c34c02efa6623a39196f6a4d931f4960af6e759d27",
+        "f6b5fc5eaddcd66c8b7f104c03906b37390a4896711e7aec4995bfdd8ee35e92",
         3532,
     ),
 }

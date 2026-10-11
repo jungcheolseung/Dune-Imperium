@@ -83,7 +83,11 @@ SLOT_VERSION: Final = 1
 # field reads (fields address the segments by name), so no row changes.
 # It also appends each relative seat's owed Emperor track Spies
 # (``track_spies_owed``): counts, not identities, so no row changes.
-SLOT_OBSERVATION_VERSION: Final = 30
+# v31 (docs/graft-boxes-plan.md 4.7) appends ``agent_boxes``: the open Agent
+# turn's two box cards as identity + 1 and their pending flags. No slot
+# field reads it (fields address the segments by name), so no row changes;
+# the ``mlp`` trunk reads it through ``log1p`` like every other column.
+SLOT_OBSERVATION_VERSION: Final = 31
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

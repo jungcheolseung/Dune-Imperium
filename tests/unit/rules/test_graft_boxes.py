@@ -15,6 +15,11 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.adapters.action_codec import ActionTemplate
+from dune_imperium.adapters.observation_encoding import (
+    PERSONAL_CARD_IDS,
+    encode_player_view,
+    segment_slice,
+)
 from dune_imperium.agents import RandomAgent
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -577,3 +582,26 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
             )
             assert twin in templates
     assert "switch_graft_card" not in {t.action_id for t in codec.catalog}
+
+
+def test_the_observation_names_both_boxes_by_their_fixed_number() -> None:
+    """Observation v31 (plan 4.7): box 0 the placed card, box 1 the partner,
+    each with its pending flag, whichever box the frame holds in
+    ``card_id``; public, like the cards in play."""
+
+    state = _graft(_state((GHOLA, TANKS), troops_supply=9), GHOLA, "arrakeen", TANKS)
+    assert ENGINE.observe(state, 1).agent_boxes == ((GHOLA, True), (TANKS, True))
+    partner_first = _apply(state, "resolve_agent_card_effect", box=1)
+    assert ENGINE.observe(partner_first, 2).agent_boxes == (
+        (GHOLA, True),
+        (TANKS, False),
+    )
+    boxes = encode_player_view(ENGINE.observe(partner_first, 0))[
+        segment_slice("agent_boxes")
+    ]
+    assert boxes == (
+        PERSONAL_CARD_IDS.index("ghola") + 1,
+        PERSONAL_CARD_IDS.index("from_the_tanks") + 1,
+        1,
+        0,
+    )
