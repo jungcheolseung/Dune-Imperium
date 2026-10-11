@@ -11,6 +11,7 @@ from dune_imperium import RulesetConfig  # noqa: E402
 from dune_imperium.adapters.action_codec import (  # noqa: E402
     ACTION_CODEC_VERSION,
     ActionCodec,
+    ActionTemplate,
 )
 from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     CONTRACT_IDS,
@@ -18,6 +19,7 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
+    segment_slice,
 )
 from dune_imperium.cli.checkpoint import main as checkpoint_main  # noqa: E402
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID  # noqa: E402
@@ -286,6 +288,86 @@ def test_migration_moves_rows_and_columns_by_identity(tmp_path: Path) -> None:
     assert int(moments[0]["step"]) == int(before[0]["step"])
 
 
+def test_box_one_rows_start_from_their_untagged_twins(tmp_path: Path) -> None:
+    """Codec v143 adds box 1's twin of every grafted Agent-box template
+    (``box=1``, docs/graft-boxes-plan.md 4.8). A file written before it
+    starts each twin from the untagged row it stands beside: the same
+    weights, bias and Adam moments, counted as trained (aliased, not new),
+    so a network-only seat never hands such a decision to a heuristic."""
+
+    codec = ActionCodec(RulesetConfig(immortality=True))
+    network, learner = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=3,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    document = torch.load(current, weights_only=True)
+    twins = [i for i, t in enumerate(codec.catalog) if ("box", 1) in t.arguments]
+    assert twins
+    keep = [i for i in range(codec.size) if i not in set(twins)]
+    rows = torch.tensor(keep)
+    state = dict(document["state_dict"])
+    for name in ("policy_head.weight", "policy_head.bias"):
+        state[name] = state[name][rows]
+    forged = {
+        **document,
+        "state_dict": state,
+        "action_templates": [document["action_templates"][i] for i in keep],
+        "action_size": len(keep),
+        "action_codec_version": ACTION_CODEC_VERSION - 1,
+    }
+    optimizer = document["optimizer_state"]
+    moved = {}
+    for index, moments in optimizer["state"].items():
+        entry = dict(moments)
+        for key in ("exp_avg", "exp_avg_sq"):
+            tensor = entry[key]
+            if int(index) != 0 and tensor.shape[0] == codec.size:
+                entry[key] = tensor[rows]
+        moved[index] = entry
+    forged["optimizer_state"] = {**optimizer, "state": moved}
+    older = tmp_path / "v142.pt"
+    torch.save(forged, older)
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (
+        report.actions_kept,
+        report.actions_aliased,
+        report.actions_new,
+        report.actions_dropped,
+    ) == (len(keep), len(twins), 0, 0)
+    assert report.new_action_rows == frozenset()
+    assert "aliased" in report.describe()
+    index = {template: row for row, template in enumerate(codec.catalog)}
+    weight = migrated.policy_head.weight.detach()
+    bias = migrated.policy_head.bias.detach()
+    original = network.policy_head.weight.detach()
+    assert torch.equal(weight[rows], original[rows])
+    resumed = Learner(migrated, _CPU, LearnerConfig(minibatch_size=256), seed=0)
+    assert info.optimizer_state is not None
+    resumed.restore_optimizer(info.optimizer_state)
+    moments = resumed.optimizer.state_dict()["state"][2 * len(network.hidden)]
+    for twin in twins:
+        template = codec.catalog[twin]
+        plain = index[
+            ActionTemplate(
+                template.action_id,
+                tuple(item for item in template.arguments if item != ("box", 1)),
+            )
+        ]
+        assert torch.equal(weight[twin], original[plain])
+        assert torch.equal(bias[twin], bias[plain])
+        assert torch.equal(moments["exp_avg"][twin], moments["exp_avg"][plain])
+
+
 def test_a_format_1_mismatch_is_refused_and_stamping_fixes_it(tmp_path: Path) -> None:
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)
@@ -393,14 +475,15 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # A file written under v27 knows neither the v28 Epic card nor its flag,
-    # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, and
-    # still has the 90-column intrigue_trash segment v30 removed (OQ-061):
-    # each v27 segment's columns keep their place at its start, the
-    # 24 + 8 + 4 new columns start at zero, the trash columns are dropped,
-    # and a game without the option, without a waiting shortfall, without
-    # an owed track Spy and without an Intrigue trash (every new and every
-    # dropped column 0; seed 6's 80 steps trash no Intrigue card) scores
-    # exactly as the v27 network did.
+    # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, nor
+    # v31's Agent boxes, and still has the 90-column intrigue_trash segment
+    # v30 removed (OQ-061): each v27 segment's columns keep their place at
+    # its start, the 24 + 8 + 4 + 4 new columns start at zero, the trash
+    # columns are dropped, and a game without the option, without a waiting
+    # shortfall, without an owed track Spy, without an Intrigue trash and
+    # without an open Agent turn at the compared decisions (every new and
+    # every dropped column 0; seed 6's 80 steps trash no Intrigue card)
+    # scores exactly as the v27 network did.
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)
     current = tmp_path / "current.pt"
@@ -415,7 +498,12 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     layout: list[tuple[str, int, int]] = []
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
-        if segment.name in ("epic_game", "shortfall", "track_spies_owed"):
+        if segment.name in (
+            "epic_game",
+            "shortfall",
+            "track_spies_owed",
+            "agent_boxes",
+        ):
             continue
         length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
         kept.extend(range(segment.offset, segment.offset + length))
@@ -429,7 +517,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             layout.append(("intrigue_trash", offset, 90))
             offset += 90
     assert ("intrigue_trash", 289, 90) in layout
-    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8 - 4 + 90
+    assert offset == 4_587 == OBSERVATION_SIZE - 24 - 8 - 4 - 4 + 90
     state["body.0.weight"] = torch.cat(columns, dim=1)
     older = tmp_path / "v27.pt"
     torch.save(
@@ -456,7 +544,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (4_587 - 90, 24 + 8 + 4, 90)
+    ) == (4_587 - 90, 24 + 8 + 4 + 4, 90)
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
         codec.size,
         0,
@@ -503,11 +591,20 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         ]
     )
     assert observations.shape[1] == OBSERVATION_SIZE
-    # Every new column of a game without the option is 0, so the network the
-    # v27 file was cut from computes the v27 file's function on it.
-    assert not bool(observations[:, new].any())
+    # v31's Agent boxes name the card of every open Agent turn, so they are
+    # not 0 here; the migrated network's columns for them are 0 (asserted
+    # above), so they cannot move its outputs, and the network the v27 file
+    # was cut from is fed the observations without them. Every other new
+    # column of a game without the option is 0, so that network computes
+    # the v27 file's function on them.
+    boxes = segment_slice("agent_boxes")
+    assert bool(observations[:, boxes].any())
+    others = new[(new < boxes.start) | (new >= boxes.stop)]
+    assert not bool(observations[:, others].any())
+    cut = observations.clone()
+    cut[:, boxes] = 0
     masks = torch.ones(observations.shape[0], codec.size, dtype=torch.int8)
-    expected, expected_values = network(observations, masks)
+    expected, expected_values = network(cut, masks)
     actual, actual_values = migrated(observations, masks)
     assert torch.equal(actual, expected)
     assert torch.equal(actual_values, expected_values)

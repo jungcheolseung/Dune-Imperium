@@ -1540,8 +1540,11 @@ function zoneDivider() {
    own piles (a trash or discard choice offering hand, discard pile and
    in-play cards), each run of rows in one pile goes under a zone heading
    and a divider sets the rows that follow (a decline) apart. A list whose
-   card rows share one pile, or that has no card rows, is unchanged. */
-function appendActionItems(box, actions) {
+   card rows share one pile, or that has no card rows, is unchanged.
+
+   `options.boxed`: the rows are one Agent box's, under its card's header
+   (appendDecisionItems), and leave the card's name to it. */
+function appendActionItems(box, actions, options = {}) {
   const families = countFamilies(actions);
   const suffixes = zoneSuffixes(actions);
   const done = new Set();
@@ -1570,8 +1573,120 @@ function appendActionItems(box, actions) {
       run = row.zone;
     }
     if (row.family) box.appendChild(countRow(row.action.action_id, row.family, false));
-    else box.appendChild(actionItem(row.action, undefined, suffixes.get(row.action)));
+    else {
+      box.appendChild(
+        actionItem(row.action, undefined, suffixes.get(row.action), options.boxed),
+      );
+    }
   });
+}
+
+/* ---------- an Agent turn's boxes ----------
+
+   A grafted Agent turn offers both cards' Agent boxes from the start
+   (codec v143, docs/graft-boxes-plan.md): "You gain the effects on both
+   cards, in addition to the board space effects, in any order you choose."
+   [Immortality pp. 10-11]. The decision panel sets each box's rows under a
+   header naming its card, box 0 (the placed card) first, then box 1 (its
+   graft partner), and the turn's other rows (the space's effects, Intrigue
+   cards, deployments...) after them under a header of their own (user
+   request 2026-10-11, plan 4.11). The server says which box a row is
+   (`box` on a row and on a greyed-out row, display/actions.py
+   agent_box_of_rows) and which boxes the turn has (state.actions.
+   agent_boxes, agent_box_headers). A box's greyed-out rows (an icon
+   waiting on its condition, display/unavailable.py) sit under its header
+   too, after the rows it can take now.
+
+   A single card's turn gets its header only with two or more box rows; with
+   one it is the flat list it always was. A grafted box with no row left
+   (resolved, or waiting for nothing) gets no header. While one box is part
+   way through a bundled selection (a "Choose two" after its first pick, an
+   arrow's rewards once paid; plan 4.3) the server leaves the other box's
+   rows out (`locked`): its header stays, with a line saying it comes back
+   after that choice, so the card does not seem to have lost its box. */
+function agentBoxGroups(actions) {
+  const boxes = state.actions && state.actions.agent_boxes;
+  if (!boxes || !boxes.length) return null;
+  const greyed = (state.actions.unavailable && state.actions.unavailable.rows) || [];
+  const grafted = boxes.length > 1;
+  const groups = boxes.map((entry) => {
+    const rows = actions.filter((action) => action.box === entry.box);
+    const waiting = greyed.filter((row) => row.box === entry.box);
+    const count = rows.length + waiting.length;
+    return {
+      entry,
+      rows,
+      waiting,
+      headed: grafted ? count > 0 || Boolean(entry.locked) : count >= 2,
+    };
+  });
+  return groups.some((group) => group.headed) ? groups : null;
+}
+
+/* "<card> — 에이전트 칸": the card is plain text, never iconized. A heading
+   for a screen reader (its rows follow it), not a control: Tab and
+   focusActions pass it by. */
+function agentBoxHeading(entry) {
+  const heading = document.createElement("div");
+  heading.className = "agent-box-heading";
+  heading.dataset.box = String(entry.box);
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "4");
+  const name = TERM_LANGUAGE === "ko" && entry.name_ko ? entry.name_ko : entry.name;
+  heading.textContent = t("render.agent_box_heading", { name });
+  return heading;
+}
+
+/* The line under a box held back by the other box's bundled selection. */
+function agentBoxLockedNote(entry) {
+  const note = document.createElement("div");
+  note.className = "agent-box-note muted";
+  note.dataset.box = String(entry.box);
+  note.textContent = t("render.agent_box_locked");
+  return note;
+}
+
+/* The header over the turn's rows that belong to no Agent box. */
+function agentBoxOthersHeading() {
+  const heading = document.createElement("div");
+  heading.className = "agent-box-heading agent-box-others";
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "4");
+  heading.textContent = t("render.agent_box_others_heading");
+  return heading;
+}
+
+/* The decision panel's list (turn.js renderActionPanel): an Agent turn's
+   rows grouped by Agent box (agentBoxGroups), any other list as
+   appendActionItems lays it out. Returns the keys of the greyed-out rows it
+   placed under a box, which appendUnavailableRows then leaves out. */
+function appendDecisionItems(box, actions) {
+  const groups = agentBoxGroups(actions);
+  const placed = new Set();
+  if (!groups) {
+    appendActionItems(box, actions);
+    return placed;
+  }
+  const grouped = new Set();
+  for (const group of groups) {
+    if (!group.headed) continue;
+    box.appendChild(agentBoxHeading(group.entry));
+    if (group.entry.locked && !group.rows.length && !group.waiting.length) {
+      box.appendChild(agentBoxLockedNote(group.entry));
+    }
+    appendActionItems(box, group.rows, { boxed: true });
+    for (const action of group.rows) grouped.add(action);
+    for (const row of group.waiting) {
+      box.appendChild(unavailableRow(row, true));
+      placed.add(row.key);
+    }
+  }
+  const others = actions.filter((action) => !grouped.has(action));
+  if (others.length) {
+    box.appendChild(agentBoxOthersHeading());
+    appendActionItems(box, others);
+  }
+  return placed;
 }
 
 /* ---------- Arrakeen Scouts lines ----------
@@ -1677,33 +1792,44 @@ function unavailableText(why) {
 
 /* One greyed-out row: like unavailableLineItem, not an .action-item (which
    focusActions matches by its refs) and not a disabled button (which means
-   "busy" on this page). */
-function unavailableRow(row) {
+   "busy" on this page). `boxed`: it sits under its Agent box's card header
+   (appendDecisionItems), which names the card for the eye. */
+function unavailableRow(row, boxed = false) {
   const item = document.createElement("div");
   item.className = "unavailable-item";
   item.setAttribute("role", "button");
   item.setAttribute("aria-disabled", "true");
   item.dataset.key = row.key;
   item.dataset.surface = row.surface;
+  if (typeof row.box === "number") item.dataset.box = String(row.box);
   item.title = t("render.unavailable_title");
   const body = document.createElement("span");
   body.className = "unavailable-body";
-  body.appendChild(describeAction(row.action));
+  body.appendChild(describeAction(row.action, { boxed }));
   /* A waiting effect names the card it sits on, unless its row already
      leads with it (an Agent box, display/actions.py agent_box_row_title).
      A card that cannot be bought shows no cost of its own: its reason names
      the cost and what the seat holds ("Needs 5 Persuasion (you have 3)"). */
-  if (row.card_id && !(row.action.detail && row.action.detail_title)) {
-    body.append(" · ", nameOf(row.card_id));
+  if (row.card_id && !rowLeadsWithCard(row.action, boxed)) {
+    if (boxed) {
+      const name = document.createElement("span");
+      name.className = "box-row-title";
+      name.append(" · ", nameOf(row.card_id));
+      body.appendChild(name);
+    } else {
+      body.append(" · ", nameOf(row.card_id));
+    }
   }
   item.append(body, unavailableBadge(row));
   return item;
 }
 
-/* The greyed-out rows of `surfaces`, each kind under its own heading. */
-function appendUnavailableRows(box, surfaces) {
+/* The greyed-out rows of `surfaces`, each kind under its own heading,
+   leaving out the ones already set under an Agent box (`placed`, their
+   keys: appendDecisionItems). */
+function appendUnavailableRows(box, surfaces, placed = new Set()) {
   for (const surface of surfaces) {
-    const rows = unavailableRows(surface);
+    const rows = unavailableRows(surface).filter((row) => !placed.has(row.key));
     if (!rows.length) continue;
     const heading = document.createElement("div");
     heading.className = "pick-others muted unavailable-heading";
@@ -1945,15 +2071,19 @@ function appendShortfallBadge(row, button, action) {
   button.appendChild(badge);
 }
 
-function actionItem(action, onApply, zone) {
+/* `boxed`: the row sits under its Agent box's card header
+   (appendDecisionItems) and leaves the card's name to it (core.js
+   rowTitleNode). */
+function actionItem(action, onApply, zone, boxed = false) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
   wrap.dataset.index = String(action.index);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
+  if (typeof action.box === "number") wrap.dataset.box = String(action.box);
   const button = document.createElement("button");
   /* Controlled's choice names the top card the seat is looking at on its
      own buttons only (panels.js deckTopChoiceLabel), never in the log. */
-  button.appendChild(deckTopChoiceLabel(action) || describeAction(action));
+  button.appendChild(deckTopChoiceLabel(action) || describeAction(action, { boxed }));
   if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>

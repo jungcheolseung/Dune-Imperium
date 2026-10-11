@@ -11,13 +11,14 @@ Agent box resolves loses what is left of that box.
 The Agent turn's effect frame (``FrameKind.AGENT_EFFECTS``) replaces the
 turn frame at placement and stays on the stack until its owner presses
 ``finish_agent_turn`` (OQ-095, ``rules.effects.close_agent_turn``), so it
-holds the played card (``card_id``) and its graft partner
-(``graft_card_id``, Immortality) for the whole turn, even after every
-effect has resolved. ``switch_graft_card`` swaps the two keys together
-with their pending flags, so each card is read with its own flag:
-``pending_agent_effect`` for ``card_id``, ``graft_pending_effect`` for
-``graft_card_id``, and a boosted card's added draw (``BOOST_DRAW_KEY``,
-"added to its Agent box" [Urgent Shigawire card]) for the card it names.
+holds the played card and its graft partner (Immortality) for the whole
+turn, even after every effect has resolved: the box being resolved in
+``card_id`` and the other in ``graft_card_id``, swapped together with their
+pending flags when the other box's row is taken (``rules.graft_boxes``), so
+each card is read with its own flag: ``pending_agent_effect`` for
+``card_id``, ``graft_pending_effect`` for ``graft_card_id``, and a boosted
+card's added draw (``BOOST_DRAW_KEY``, "added to its Agent box" [Urgent
+Shigawire card]) for the card it names.
 
 Every fact here is public: the played card and its partner lie face up in
 play, and each box's resolution is announced as it happens. A Reveal turn
@@ -40,6 +41,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.effects import pending_boost_draw
 from dune_imperium.rules.frames import FrameKind
 
@@ -182,13 +184,16 @@ def _box_losing_trash(
     _, pending = turn_cards(state)
     if not pending:
         return ()
-    context = _effect_context(state)
-    active = context.get("card_id")
-    partner = context.get("graft_card_id")
     losing: list[tuple[str, str]] = []
     for action in engine.legal_actions(state, seat):
         if action.action_id not in TRASH_CARD_ACTIONS:
             continue
+        # The row's own box is active in ``view``: a grafted turn's box 1
+        # row (``box=1``) trashes "the other grafted card" of box 1.
+        view, _, _ = route_box_action(state, action)
+        context = _effect_context(view)
+        active = context.get("card_id")
+        partner = context.get("graft_card_id")
         card_id = dict(action.arguments).get(
             "card_id",
             partner if action.action_id == "trash_grafted_card_for_specimen" else None,

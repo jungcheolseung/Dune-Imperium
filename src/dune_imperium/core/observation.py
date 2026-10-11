@@ -260,12 +260,49 @@ class PlayerView:
     # Epic Game Mode (``RulesetConfig.epic_game``), public like every setup
     # option: the game ends at 12 instead of 10 [Rise of Ix p. 10].
     epic_game: bool = False
+    # The open Agent turn's Agent boxes, as (card instance, still pending):
+    # box 0 the placed card, then box 1 its graft partner (Immortality);
+    # empty outside an Agent turn. Both cards lie face up in play and each
+    # box's resolution is announced (``agent_box_cards``).
+    agent_boxes: tuple[tuple[str, bool], ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
 
 # A separate-lines card (OQ-058) stays in play under ``intrigue_effects``.
 _RESOLVING_INTRIGUE_FRAME_KINDS = frozenset({"intrigue_choice", "intrigue_effects"})
+
+# The Agent-turn effect frame's two boxes (``rules.graft_boxes``): the box
+# being resolved sits in ``card_id``/``pending_agent_effect`` and the other
+# in ``graft_card_id``/``graft_pending_effect``; ``graft_active_box`` says
+# which of the two (box 0 the placed card, box 1 the partner) is in
+# ``card_id`` (absent: box 0).
+_AGENT_BOX_SLOTS: Final = (
+    ("card_id", "pending_agent_effect"),
+    ("graft_card_id", "graft_pending_effect"),
+)
+_ACTIVE_BOX_KEY: Final = "graft_active_box"
+
+
+def agent_box_cards(state: GameState) -> tuple[tuple[str, bool], ...]:
+    """The open Agent turn's boxes: (card, pending) for box 0, then box 1."""
+
+    for frame in state.decision_stack:
+        if str(frame.kind) != "agent_effects":
+            continue
+        context = dict(frame.context)
+        slots = (
+            _AGENT_BOX_SLOTS[::-1]
+            if context.get(_ACTIVE_BOX_KEY) == 1
+            else _AGENT_BOX_SLOTS
+        )
+        boxes: list[tuple[str, bool]] = []
+        for card_key, pending_key in slots:
+            card_id = context.get(card_key)
+            if isinstance(card_id, str) and card_id:
+                boxes.append((card_id, context.get(pending_key) is True))
+        return tuple(boxes)
+    return ()
 
 
 def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
@@ -569,6 +606,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_market_cards=state.scouts_market_cards,
         scouts_calls=state.scouts_calls,
         epic_game=state.config.epic_game,
+        agent_boxes=agent_box_cards(state),
     )
 
 

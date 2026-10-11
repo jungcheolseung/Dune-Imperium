@@ -117,7 +117,13 @@ from dune_imperium.rules.frames import FrameKind
 # Also v30 (user ruling 2026-10-04, overriding OQ-057 (15)): the Emperor
 # track Spies each relative seat still owes, which wait inside the owner's
 # turn, appended after the shortfall segment as ``track_spies_owed``.
-OBSERVATION_VERSION: Final = 30
+# v31 (user decision 2026-10-12, docs/graft-boxes-plan.md 4.7): a grafted
+# Agent turn offers both boxes from the start, so the open Agent turn's two
+# boxes are appended as ``agent_boxes``: box 0's (the placed card's) and box
+# 1's (the graft partner's) personal-card identity + 1 (0 when there is no
+# such box), then whether each is still pending. Every older column keeps
+# its offset; a v30 checkpoint migrates by segment and starts them at 0.
+OBSERVATION_VERSION: Final = 31
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -365,6 +371,9 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # v30: per relative seat, the Emperor track Influence 4 Spies
             # still owed (they wait in the owner's own turn).
             ("track_spies_owed", _SEATS),
+            # v31: the open Agent turn's box 0 and box 1 card identity + 1,
+            # then each box's pending flag.
+            ("agent_boxes", 4),
         )
     )
     return tuple(lengths)
@@ -596,6 +605,10 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     offset = _OFFSET["track_spies_owed"]
     for seat_view in view.players:
         values[offset + relative(seat_view.player) - 1] = seat_view.track_spies_owed
+    offset = _OFFSET["agent_boxes"]
+    for box, (card_id, pending) in enumerate(view.agent_boxes[:2]):
+        values[offset + box] = _personal_identity_index(card_id) + 1
+        values[offset + 2 + box] = int(pending)
     return tuple(values)
 
 

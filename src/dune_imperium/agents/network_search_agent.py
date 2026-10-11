@@ -31,10 +31,12 @@ where three candidates in four worlds won 62.0% of the same deals
 
 Like greedy play, the search keeps a cycle guard (``_Taken``), both for its
 own decisions and inside every playout. Without one a search seat stalled a
-tournament match on ``switch_graft_card``: the network ranked the switch
-first, so the switch playouts looped to ``max_rollout_steps``, and the value
-head rated that stalled mid-turn position above finishing the turn, so the
-seat switched forever (docs/evaluation/m10-2026-09-22.md section 13).
+tournament match on the graft switch (``switch_graft_card``, removed in codec
+v143 when both grafted boxes came to be offered at once): the network ranked
+the switch first, so the switch playouts looped to ``max_rollout_steps``,
+and the value head rated that stalled mid-turn position above finishing the
+turn, so the seat switched forever (docs/evaluation/m10-2026-09-22.md
+section 13).
 
 Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
 ``search:<policy path>::value=<value path>`` reads the leaves of unfinished

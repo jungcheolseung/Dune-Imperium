@@ -77,6 +77,8 @@ from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.display import (
+    agent_box_headers,
+    agent_box_of_rows,
     agent_box_row_title,
     effect_action_text,
     effect_action_text_ko,
@@ -1381,6 +1383,18 @@ class GameSessionManager:
         among ``actions``, which stay exactly the engine's. The rows are
         display only: if working them out fails, the error is logged and
         the key is None, so the seat still gets its legal actions.
+
+        ``agent_boxes`` lists the open Agent turn's boxes while the seat
+        decides its effect frame (``display.actions.agent_box_headers``:
+        box 0 the placed card, box 1 its graft partner, each with its card
+        and whether the other box's bundled selection holds it back), and
+        each row of an Agent box carries ``box`` (0 or 1,
+        ``agent_box_of_rows``); a greyed-out row of a box carries it too
+        (``display.unavailable``). The page groups those rows under a
+        header per card (user request 2026-10-11,
+        docs/graft-boxes-plan.md 4.11). None, and no ``box`` on any row,
+        for any other decision; display only like ``unavailable``, so a
+        failure is logged and leaves them out.
         """
 
         actions = (
@@ -1390,6 +1404,8 @@ class GameSessionManager:
         )
         lines = scouts_choice_lines(session.state, seat, actions) if actions else None
         unavailable: dict[str, object] | None = None
+        boxes: tuple[int | None, ...] = (None,) * len(actions)
+        headers: list[dict[str, object]] | None = None
         if actions:
             try:
                 unavailable = unavailable_choices(session.state, seat, actions)
@@ -1399,16 +1415,30 @@ class GameSessionManager:
                     session.game_id,
                     seat,
                 )
+            try:
+                headers = agent_box_headers(session.state, seat)
+                boxes = agent_box_of_rows(session.state, seat, actions)
+            except Exception:
+                _LOGGER.exception(
+                    "Agent-box groups failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
+                headers, boxes = None, (None,) * len(actions)
+        serialized: list[JsonValue] = []
+        for index, (action, box) in enumerate(zip(actions, boxes, strict=True)):
+            row = _serialize_action(index, action, session)
+            if box is not None:
+                row["box"] = box
+            serialized.append(row)
         return {
             "game_id": session.game_id,
             "revision": session.state.revision,
             "seat": seat,
-            "actions": [
-                _serialize_action(index, action, session)
-                for index, action in enumerate(actions)
-            ],
+            "actions": serialized,
             "scouts_lines": None if lines is None else _jsonify(lines),
             "unavailable": None if unavailable is None else _jsonify(unavailable),
+            "agent_boxes": None if headers is None else _jsonify(headers),
         }
 
     def _online_seats_locked(self, session: GameSession) -> frozenset[int]:

@@ -75,6 +75,7 @@ from dune_imperium.content.uprising.types import (
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
+from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -403,7 +404,17 @@ from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 # the completing step -- are the owner's only action right after their
 # trigger, on whatever frame of the owner's is open (``draw_owed_intrigue``,
 # ``draw_owed_card``). No template change.
-ACTION_CODEC_VERSION = 142
+# v143 (user decision 2026-10-12, docs/graft-boxes-plan.md): a grafted Agent
+# turn offers both cards' Agent boxes from the start [Immortality pp. 10-11].
+# Box 0 is the placed card, box 1 the partner; box 1's rows carry
+# ``box=1``. Immortality catalogs add the ``box=1`` twin of every template an
+# Agent box offers (``rules.graft_boxes.BOX_ACTION_IDS``) and drop
+# ``switch_graft_card``; the untagged templates stay box 0's and every
+# source outside a box (a Servo-Receivers Signet frame, Kota Odax's
+# rewards there, Urgent Shigawire's added draw). Other catalogs are
+# unchanged. Recorded step sequences change (no switch, tagged rows), so
+# saves and replays from v142 are refused by the version check.
+ACTION_CODEC_VERSION = 143
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1080,6 +1091,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "trash_card_for_desert_tactics"))
     templates.extend(_trash_templates(config, "select_corrinth_city_discard"))
     templates.extend(_trash_templates(config, "pay_corrinth_city"))
+    if config.immortality:
+        # v143: a grafted turn offers both Agent boxes from the start, box
+        # 1's rows tagged ``box=1`` (docs/graft-boxes-plan.md 4.6). Every
+        # template an Agent box can offer gets that twin; the untagged one
+        # stays box 0's and every source outside a box's (a Servo-Receivers
+        # Signet frame, Urgent Shigawire's added draw).
+        templates.extend(
+            ActionTemplate(
+                action_id=template.action_id,
+                arguments=tuple(sorted((*template.arguments, (BOX_ARGUMENT, 1)))),
+            )
+            for template in tuple(templates)
+            if template.action_id in BOX_ACTION_IDS
+        )
     return tuple(sorted(templates, key=_template_sort_key))
 
 
@@ -1698,14 +1723,13 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for choice in ("troops", "tleilaxu")
     )
     # Graft [Immortality p. 10]: the partner choice over every personal
-    # card, the box switch, and Twisted Mentat's recall decline.
+    # card, and Twisted Mentat's recall decline.
     templates.extend(
         ActionTemplate(
             action_id="choose_graft_partner", arguments=(("card_id", card_id),)
         )
         for card_id in _personal_card_instance_ids(config)
     )
-    templates.append(ActionTemplate(action_id="switch_graft_card"))
     templates.append(ActionTemplate(action_id="decline_agent_card_recall"))
     # Harvest Cells' offer: a Row card (to the discard pile or the deck
     # top) or the decline.

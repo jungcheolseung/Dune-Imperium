@@ -19,7 +19,6 @@ from dune_imperium import RulesetConfig
 from dune_imperium.rules import (
     UprisingRulesEngine,
     combat_deployment,
-    graft,
     sardaukar,
     tech,
 )
@@ -40,14 +39,12 @@ def test_expansion_providers_stop_at_the_ruleset_flag(
     monkeypatch.setattr(sardaukar, "_owned_effect_context", _explode)
     monkeypatch.setattr(sardaukar, "owned_top_frame", _explode)
     monkeypatch.setattr(combat_deployment, "_deployment_context", _explode)
-    monkeypatch.setattr(graft, "current_agent_effect_context", _explode)
     monkeypatch.setattr(tech, "_reveal_top", _explode)
 
     assert sardaukar.legal_sardaukar_commander_actions(state, 0) == ()
     assert sardaukar.legal_skill_trash_actions(state, 0) == ()
     assert combat_deployment.legal_commander_deployments(state, 0) == ()
     assert combat_deployment.legal_commander_withdrawals(state, 0) == ()
-    assert graft.legal_graft_switch_actions(state, 0) == ()
     assert tech.legal_tech_reveal_actions(state, 0) == ()
 
 
@@ -71,10 +68,6 @@ def test_expansion_providers_stop_at_the_ruleset_flag(
             lambda state: combat_deployment.legal_commander_withdrawals(state, 0),
         ),
         (
-            RulesetConfig(immortality=True),
-            lambda state: graft.legal_graft_switch_actions(state, 0),
-        ),
-        (
             RulesetConfig(bloodlines=True, tech_module=True),
             lambda state: tech.legal_tech_reveal_actions(state, 0),
         ),
@@ -84,7 +77,6 @@ def test_expansion_providers_stop_at_the_ruleset_flag(
         "skill_trash",
         "commander_deployments",
         "commander_withdrawals",
-        "graft_switch",
         "tech_reveal",
     ],
 )
@@ -99,7 +91,6 @@ def test_the_gate_opens_when_the_module_is_on(
     monkeypatch.setattr(sardaukar, "_owned_effect_context", _explode)
     monkeypatch.setattr(sardaukar, "owned_top_frame", _explode)
     monkeypatch.setattr(combat_deployment, "_deployment_context", _explode)
-    monkeypatch.setattr(graft, "current_agent_effect_context", _explode)
     monkeypatch.setattr(tech, "_reveal_top", _explode)
 
     with pytest.raises(AssertionError, match="looked past its ruleset gate"):

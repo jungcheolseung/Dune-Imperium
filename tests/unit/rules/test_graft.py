@@ -44,10 +44,9 @@ from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import (
     apply_graft_partner,
-    apply_graft_switch,
     legal_graft_partner_actions,
-    legal_graft_switch_actions,
 )
+from dune_imperium.rules.graft_boxes import other_box_state, row_box, tagged
 from dune_imperium.rules.leader_abilities import (
     apply_leader_agent_deploy,
     legal_leader_signet_actions,
@@ -189,26 +188,34 @@ def test_either_card_may_provide_the_icon() -> None:
     assert "dutiful_service" in grafted.players[0].agent_locations
 
 
-def test_the_partners_box_resolves_after_a_switch_in_the_owners_order() -> None:
+def test_the_partners_box_is_offered_beside_the_placed_card_s() -> None:
+    """"You gain the effects on both cards, in addition to the board space
+    effects, in any order you choose." [Immortality pp. 10-11]: the
+    partner's box is offered from the start as box 1 (``box=1``, user
+    decision 2026-10-12), and the engine resolves it with its box active."""
+
     state = _state(_owner((FACE_DANCER, DAGGER)))
     grafted = _graft(state, DAGGER, "assembly_hall", FACE_DANCER)
-    switch = legal_graft_switch_actions(grafted, 0)
-    assert [action.action_id for action in switch] == ["switch_graft_card"]
-    assert any(
-        action.action_id == "switch_graft_card"
-        for action in legal_agent_effect_frame_actions(grafted, 0)
+    offered = legal_agent_effect_frame_actions(grafted, 0)
+    resolve_partner = tagged(
+        DomainAction(action_id="resolve_agent_card_effect", actor=0), 1
     )
-    switched = apply_graft_switch(grafted, switch[0]).state
-    _, context = current_agent_effect_context(switched)
+    assert resolve_partner in offered
+    assert resolve_partner.arguments == (("box", 1),)
+    assert "switch_graft_card" not in {action.action_id for action in offered}
+
+    hand_before = len(grafted.players[0].hand)
+    drawn = UprisingRulesEngine().apply(grafted, resolve_partner).state
+    assert len(drawn.players[0].hand) == hand_before + 1
+    _, context = current_agent_effect_context(drawn)
+    # The engine resolved box 1 with it active: Face Dancer in ``card_id``.
     assert context["card_id"] == FACE_DANCER
     assert context["graft_card_id"] == DAGGER
-    assert context["pending_agent_effect"] is True
+    assert context["pending_agent_effect"] is False
     assert context["graft_pending_effect"] is False
-    assert legal_graft_switch_actions(switched, 0) == ()
-
-    hand_before = len(switched.players[0].hand)
-    drawn = resolve_agent_card_effect(switched)
-    assert len(drawn.state.players[0].hand) == hand_before + 1
+    assert not any(
+        row_box(action) == 1 for action in legal_agent_effect_frame_actions(drawn, 0)
+    )
 
 
 def test_corrino_genes_advances_only_when_grafted() -> None:
@@ -437,11 +444,9 @@ def test_twisted_mentat_recalls_this_turns_agent_from_the_conflict() -> None:
         config=config,
     )
     grafted = _graft(state, MENTAT, "assembly_hall", SIGNET)
-    # The Mentat's box is active first; switch to the Signet's box for Into
-    # the Fray (OQ-027 lets the owner order a multi-box turn).
-    switched = apply_graft_switch(
-        grafted, next(iter(legal_graft_switch_actions(grafted, 0)))
-    ).state
+    # The Signet's box (box 1) first for Into the Fray (OQ-027 lets the
+    # owner order a multi-box turn).
+    switched = other_box_state(grafted)
     deploy = next(
         action
         for action in legal_leader_signet_actions(switched, 0)
@@ -451,10 +456,8 @@ def test_twisted_mentat_recalls_this_turns_agent_from_the_conflict() -> None:
     assert deployed.players[0].agent_locations == ()
     assert deployed.players[0].agent_in_conflict == 1
 
-    # Switch back to the Mentat's still-pending box.
-    fighting = apply_graft_switch(
-        deployed, next(iter(legal_graft_switch_actions(deployed, 0)))
-    ).state
+    # Then the Mentat's still-pending box (box 0).
+    fighting = other_box_state(deployed)
     actions = legal_agent_card_recall_actions(fighting, 0)
     assert {action.action_id for action in actions} == {
         "decline_agent_card_recall",
@@ -520,9 +523,7 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     # its Graft partner, sending Into the Fray this same turn -- joining the
     # earlier turn's Agent already in the Conflict (OQ-037 (e)).
     grafted = _graft(state, FACE_DANCER, "sardaukar", SIGNET)
-    switched = apply_graft_switch(
-        grafted, next(iter(legal_graft_switch_actions(grafted, 0)))
-    ).state
+    switched = other_box_state(grafted)
     deploy = next(
         action
         for action in legal_leader_signet_actions(switched, 0)
@@ -589,9 +590,7 @@ def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> N
         config=config,
     )
     grafted = _graft(state, FACE_DANCER, "sardaukar", SIGNET)
-    switched = apply_graft_switch(
-        grafted, next(iter(legal_graft_switch_actions(grafted, 0)))
-    ).state
+    switched = other_box_state(grafted)
     deploy = next(
         action
         for action in legal_leader_signet_actions(switched, 0)
@@ -657,7 +656,10 @@ def test_a_trashed_partner_loses_its_unactivated_box() -> None:
     _, context = current_agent_effect_context(expired.state)
     assert context["graft_pending_effect"] is False
     assert expired.events[-1].kind == "agent_card_effect_expired"
-    assert legal_graft_switch_actions(expired.state, 0) == ()
+    assert not any(
+        row_box(action) == 1
+        for action in legal_agent_effect_frame_actions(expired.state, 0)
+    )
 
 
 def test_bene_tleilax_researcher_reveals_marker_persuasion() -> None:

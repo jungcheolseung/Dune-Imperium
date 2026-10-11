@@ -37,6 +37,8 @@ from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.graft_boxes import other_box_state
 
 IMM = RulesetConfig(choam_module=False, immortality=True)
 EPIC = RulesetConfig(choam_module=False, epic_game=True)
@@ -165,7 +167,12 @@ def _run(
 
 
 def _turn(state: GameState, seat: int, patches: Patches | None = None) -> ae._Turn:
-    t = ae._turn(_run(state, seat, patches))
+    """The turn as the window reads it: on a grafted turn, the active box's
+    view (its rows untagged, ``ae._box_views``)."""
+
+    run = _run(state, seat, patches)
+    views = ae._box_views(run)
+    t = ae._turn(views[0].run if views is not None else run)
     ae._collect(t)
     return t
 
@@ -504,9 +511,11 @@ def test_slig_farmer_never_pays_past_tleilaxu_rank_seven(
 
 
 def _switched(state: GameState, seat: int) -> GameState:
-    """The state after ``switch_graft_card`` (the partner's box active)."""
+    """The state with the partner's box (box 1) active, as the engine holds
+    it once one of that box's rows is taken."""
 
-    return _apply(state, seat, _a(seat, "switch_graft_card"))
+    del seat
+    return other_box_state(state)
 
 
 def test_beguiling_pheromones_picks_the_grafted_card_to_trash() -> None:
@@ -879,19 +888,17 @@ def test_the_partners_box_500_comes_before_the_played_cards_600() -> None:
         IMM, "face_dancer", partner="from_the_tanks", space="deliver_supplies"
     )
     assert partner is not None
-    memory = Memory()
-    answer, state, memory = _drive_until(
-        state,
-        seat,
-        ("switch_graft_card", "resolve_agent_card_effect"),
-        memory=memory,
+    answer, state, _memory = _drive_until(
+        state, seat, ("resolve_agent_card_effect",)
     )
-    assert answer == _a(seat, "switch_graft_card")
-    key = (ae._GRAFT_SWITCH_INTENT, state.round_number, partner)
-    assert memory.intents[key] == (_a(seat, "resolve_agent_card_effect"), [])
+    # The partner's box (box 1) is offered beside the played card's, so the
+    # app's 500 winner is its own row (codec v143).
+    assert answer == DomainAction(
+        "resolve_agent_card_effect", seat, arguments=(("box", 1),)
+    )
     state = _apply(state, seat, answer)
-    assert _answer(state, seat, memory=memory) == _a(seat, "resolve_agent_card_effect")
-    assert key not in memory.intents
+    _, context = current_agent_effect_context(state)
+    assert context["card_id"] == partner and context["graft_card_id"] == ref
 
 
 def test_the_played_cards_box_resolves_before_the_partners() -> None:
@@ -905,21 +912,14 @@ def test_the_played_cards_box_resolves_before_the_partners() -> None:
     assert (source.stage, source.order) == (Stage.AGENT_BOX, 1)
 
 
-def test_a_waiting_partner_box_is_switched_to_before_the_turn_ends() -> None:
+def test_a_waiting_partner_box_lets_the_turn_end() -> None:
     state, seat, _ref, _partner = _place(
         IMM, "dagger", partner="beguiling_pheromones", space="assembly_hall"
     )
     # Beguiling Pheromones' box waits (no Faction space): nothing to resolve,
-    # but no End Turn either until it is the active box.
-    answer, state, _memory = _drive_until(
-        state, seat, ("switch_graft_card", "finish_agent_turn")
-    )
-    assert answer == _a(seat, "switch_graft_card")
-    assert "finish_agent_turn" not in {
-        a.action_id for a in ENGINE.legal_actions(state, seat)
-    }
-    state = _apply(state, seat, answer)
-    assert _answer(state, seat) == _a(seat, "finish_agent_turn")
+    # and with every pending box waiting the End Turn is offered at once.
+    answer, state, _memory = _drive_until(state, seat, ("finish_agent_turn",))
+    assert answer == _a(seat, "finish_agent_turn")
 
 
 # ---------------------------------------------------------------------------

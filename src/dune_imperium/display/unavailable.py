@@ -158,6 +158,7 @@ from dune_imperium.rules.agent_effects import (
     agent_card_payment_block,
     agent_card_recall_targets,
     agent_icon_block,
+    box_in_progress,
 )
 from dune_imperium.rules.agent_turn import turn_start_cards
 from dune_imperium.rules.board_effects import (
@@ -198,6 +199,12 @@ from dune_imperium.rules.effects import (
     pending_agent_icons,
 )
 from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
+from dune_imperium.rules.graft_boxes import (
+    active_box,
+    is_grafted_turn,
+    state_with_active_box,
+    tagged,
+)
 from dune_imperium.rules.immortality import (
     SEVEN_SOLARI_COST,
     ResearchBonusBlock,
@@ -2042,15 +2049,57 @@ def _subcommittee_choice(state: GameState, seat: int, found: _Found) -> None:
     )
 
 
+def _each_box(
+    collect: Callable[[GameState, int, _Found], None],
+) -> Callable[[GameState, int, _Found], None]:
+    """``collect``, which reads the Agent box in ``card_id``, for each box.
+
+    A grafted turn offers both cards' boxes (codec v143): the collector runs
+    once per box on the state with that box active, and box 1's rows carry
+    ``box=1`` like its legal rows (and a key of their own). A box whose rows
+    wait while the other box is part way through a bundled selection
+    (``box_in_progress``) shows none. Every row also names its box in
+    ``box`` (0 on a single card's turn), as the legal rows do
+    (``display.actions.agent_box_of_rows``), so the page can set it under
+    its card's header.
+    """
+
+    def run(state: GameState, seat: int, found: _Found) -> None:
+        try:
+            _, context = current_agent_effect_context(state)
+        except ValueError:
+            collect(state, seat, found)
+            return
+        grafted = is_grafted_turn(context)
+        current = active_box(context)
+        locked = grafted and box_in_progress(state)
+        for box in (0, 1) if grafted else (0,):
+            if locked and box != current:
+                continue
+            boxed = _Found()
+            collect(state_with_active_box(state, box), seat, boxed)
+            for action, row in boxed.rows:
+                action = tagged(action, box)
+                row["action"] = action
+                row["box"] = box
+                if box == 1:
+                    row["key"] = f"{row['key']}:box1"
+                found.rows.append((action, row))
+            for ref, reason in boxed.refs.items():
+                found.refs.setdefault(ref, reason)
+
+    return run
+
+
 _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ...]]] = {
     FrameKind.REVEAL: (_shop, _deferred, _subcommittee_choice, _intrigue),
     FrameKind.REVEAL_CHOICE: (_reveal_choice,),
     FrameKind.AGENT_EFFECTS: (
-        _agent_box,
-        _agent_box_payment,
-        _signet_influence,
+        _each_box(_agent_box),
+        _each_box(_agent_box_payment),
+        _each_box(_signet_influence),
         _shipping_influence,
-        _agent_icons,
+        _each_box(_agent_icons),
         _imperial_privilege_recall,
         _subcommittee_choice,
         _intrigue,
@@ -2175,7 +2224,12 @@ def unavailable_choices(
             refs[dim] = _why(
                 (str(row["reason"]), str(row["reason_ko"]), str(row["code"]))
             )
-        rows.append({**row, "action": shadow_action(state, action)})
+        # A box's row is described with its own box active, as it was
+        # collected (``_each_box``): box 0's untagged row would otherwise
+        # read the card of whichever box acted last.
+        box = row.get("box")
+        described = state_with_active_box(state, box) if isinstance(box, int) else state
+        rows.append({**row, "action": shadow_action(described, action)})
     for ref, reason in found.refs.items():
         if ref not in named and ref not in refs:
             refs[ref] = _why(reason)

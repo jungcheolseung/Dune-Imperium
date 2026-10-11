@@ -53,10 +53,9 @@ from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import (
     apply_graft_partner,
-    apply_graft_switch,
     legal_graft_partner_actions,
-    legal_graft_switch_actions,
 )
+from dune_imperium.rules.graft_boxes import other_box_state, tagged
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.rules.spy_placement import observation_post_ids_for_factions
 
@@ -141,7 +140,9 @@ def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> Ga
 
 
 def _switch(state: GameState) -> GameState:
-    return apply_graft_switch(state, legal_graft_switch_actions(state, 0)[0]).state
+    """The state with the other grafted box active (``other_box_state``)."""
+
+    return other_box_state(state)
 
 
 def _payment(state: GameState, action_id: str, **arguments: object) -> DomainAction:
@@ -635,6 +636,47 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
     assert trashed_and_troop.players[0].troops_garrison == 4
 
 
+def test_ghola_s_copy_of_stitched_horror_names_its_own_two_rewards() -> None:
+    """"Ghola copies the entire Agent box of the card it's grafted to"
+    [Immortality p. 14], so the turn has two "Choose two" boxes and each
+    names and pays its own two rewards, as Ghola's copy of Long Reach names
+    its own two Factions (OQ-057 (12)). The picks used to be one key for
+    both boxes: the copy saw the first box's picks, was offered the other
+    two only, and its one pick paid the first box's rewards again."""
+
+    horror = _tleilaxu("stitched_horror")
+    ghola = _tleilaxu("ghola")
+    state = _graft(
+        _state(_owner((horror, ghola), troops_supply=9)), horror, "arrakeen", ghola
+    )
+    water = _payment(state, "choose_agent_card_reward", reward="water")
+    first = apply_agent_card_payment(state, water).state
+    troop = _payment(first, "choose_agent_card_reward", reward="troop")
+    both = apply_agent_card_payment(first, troop).state
+    owner = both.players[0]
+    assert (owner.resources.water, owner.troops_garrison) == (3, 4)
+
+    copy = _switch(both)
+    assert {
+        dict(a.arguments)["reward"] for a in legal_agent_card_payment_actions(copy, 0)
+    } == {"water", "troop", "trash", "tleilaxu"}
+    once = apply_agent_card_payment(
+        copy, _payment(copy, "choose_agent_card_reward", reward="water")
+    ).state
+    _, context = current_agent_effect_context(once)
+    assert context["pending_agent_effect"] is True  # named, not yet paid
+    assert once.players[0].resources.water == 3
+    twice = apply_agent_card_payment(
+        once, _payment(once, "choose_agent_card_reward", reward="tleilaxu")
+    ).state
+    owner = twice.players[0]
+    assert (owner.resources.water, owner.troops_garrison) == (4, 4)
+    assert owner.tleilaxu_space == 1
+    _, context = current_agent_effect_context(twice)
+    assert context["pending_agent_effect"] is False
+    assert context["graft_pending_effect"] is False
+
+
 def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() -> None:
     pheromones = _tleilaxu("beguiling_pheromones")
     # Arrakeen is no Faction space: nothing to trade.
@@ -704,13 +746,14 @@ def test_subversive_advisor_partner_replaces_the_space_influence() -> None:
     assert context["graft_pending_effect"] is True
     assert context["pending_faction_influence"] is False
     engine = UprisingRulesEngine()
-    switched = _switch(grafted)
     assert "resolve_faction_influence" not in {
-        action.action_id for action in engine.legal_actions(switched, 0)
+        action.action_id for action in engine.legal_actions(grafted, 0)
     }
 
+    # Subversive Advisor's box is box 1, resolved through its own row.
     resolved = engine.apply(
-        switched, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+        grafted,
+        tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
     ).state
 
     owner = resolved.players[0]
@@ -753,7 +796,8 @@ def test_pheromones_trashing_subversive_advisor_keeps_the_space_influence() -> N
         if dict(action.arguments).get("card_id") == SUBVERSIVE
     )
 
-    traded = engine.apply(switched, trash)
+    # Pheromones is box 1: its row carries ``box=1``.
+    traded = engine.apply(declined, tagged(trash, 1))
 
     owner = traded.state.players[0]
     assert SUBVERSIVE in owner.trashed and owner.influence.emperor == 1
@@ -834,7 +878,8 @@ def test_two_resolved_subversive_boxes_each_gain_two() -> None:
         DomainAction(action_id="resolve_agent_card_effect", actor=0),
     ).state
     second = engine.apply(
-        _switch(first), DomainAction(action_id="resolve_agent_card_effect", actor=0)
+        first,
+        tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
     ).state
 
     assert second.players[0].influence.fremen == 4
@@ -1097,7 +1142,11 @@ def test_the_codec_holds_piters_commander_loss_with_bloodlines() -> None:
         for template in ActionCodec(IMMORTALITY).catalog
         if template.action_id == "lose_agent_card_troop"
     }
-    assert plain == {(("zone", "garrison"),), (("zone", "conflict"),)}
+    assert plain == {
+        *((("zone", zone),) for zone in ("garrison", "conflict")),
+        # Box 1's twins of a grafted turn (codec v143).
+        *((("box", 1), ("zone", zone)) for zone in ("garrison", "conflict")),
+    }
 
 
 def test_the_codec_holds_the_tleilaxu_choices() -> None:
@@ -1962,8 +2011,8 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
     )
     state = _apply(state, "recall_agent_for_agent_card", space_id="dutiful_service")
     assert state.players[0].agent_locations == ("arrakeen",)
-    state = _apply(state, "switch_graft_card")
-    state = _apply(state, "resolve_agent_card_effect", effect="cards")
+    # Box 1's own card draw, offered beside box 0's from the start.
+    state = _apply(state, "resolve_agent_card_effect", effect="cards", box=1)
 
     context = dict(state.decision_stack[-1].context)
     assert context["pending_agent_effect"] is True
@@ -1975,7 +2024,6 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
     assert not offered & {
         "resolve_agent_card_effect",
         "recall_agent_for_agent_card",
-        "switch_graft_card",
     }
     finished = engine.apply(
         state, DomainAction(action_id="finish_agent_turn", actor=0)
@@ -2085,13 +2133,16 @@ TRUTHTRANCE = "imperium:truthtrance:0"
 
 
 def _engine_step(
-    state: GameState, action_id: str, **arguments: object
+    state: GameState, action_id: str, box: int = 0, **arguments: object
 ) -> tuple[GameState, tuple[str, ...]]:
+    """Apply the legal row of grafted box ``box`` (``box=1`` for box 1)."""
+
     engine = UprisingRulesEngine()
     action = next(
         action
         for action in engine.legal_actions(state, 0)
         if action.action_id == action_id
+        and dict(action.arguments).get("box", 0) == box
         and all(
             dict(action.arguments).get(key) == value for key, value in arguments.items()
         )
@@ -2100,13 +2151,13 @@ def _engine_step(
     return result.state, tuple(event.kind for event in result.events)
 
 
-def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_a_graft_switch() -> (
+def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_the_other_box() -> (
     None
 ):
     # A card that leaves play by its own printed icon still pays its other
     # icons (OQ-022 "자기 효과" exception, docs/rules/open-questions.md):
     # Tread in Darkness's trash icon trashes Tread itself, then the owner
-    # resolves Ghola's box first. Switching away used to drop the
+    # resolves Ghola's box (box 1). Moving to the other box used to drop the
     # self-trash flag, so Tread's draw expired as if another effect had
     # trashed it.
     ghola = _tleilaxu("ghola")
@@ -2119,20 +2170,20 @@ def test_tread_in_darkness_trashing_itself_keeps_its_draw_across_a_graft_switch(
     trashed, _ = _engine_step(grafted, "trash_agent_card", card_id=TREAD)
     assert TREAD in trashed.players[0].trashed
 
-    switched, kinds = _engine_step(trashed, "switch_graft_card")
+    other, kinds = _engine_step(trashed, "decline_agent_card_trash", box=1)
 
     assert "agent_card_effect_expired" not in kinds
-    _, context = current_agent_effect_context(switched)
+    _, context = current_agent_effect_context(other)
     assert context["card_id"] == ghola
     assert context["graft_pending_effect"] is True
     assert context["graft_pending_icons"] == "cards"
-    back, kinds = _engine_step(switched, "switch_graft_card")
+    hand = len(other.players[0].hand)
+    drawn, kinds = _engine_step(other, "resolve_agent_card_effect", effect="cards")
     assert "agent_card_effect_expired" not in kinds
-    drawn, _ = _engine_step(back, "resolve_agent_card_effect", effect="cards")
-    assert len(drawn.players[0].hand) == len(back.players[0].hand) + 1
+    assert len(drawn.players[0].hand) == hand + 1
 
 
-def test_ghola_copy_trashing_itself_keeps_its_draw_across_a_graft_switch() -> None:
+def test_ghola_copy_trashing_itself_keeps_its_draw_across_the_other_box() -> None:
     # The same for Ghola's copy of Tread's box [Immortality p. 14]: "this
     # card" is Ghola, so its trash icon may trash Ghola itself, and Ghola's
     # draw still pays after the owner resolves Tread's box in between.
@@ -2143,21 +2194,21 @@ def test_ghola_copy_trashing_itself_keeps_its_draw_across_a_graft_switch() -> No
         "arrakeen",
         ghola,
     )
-    on_ghola, _ = _engine_step(grafted, "switch_graft_card")
-    trashed, _ = _engine_step(on_ghola, "trash_agent_card", card_id=ghola)
+    trashed, _ = _engine_step(grafted, "trash_agent_card", box=1, card_id=ghola)
     assert ghola in trashed.players[0].trashed
 
-    on_tread, kinds = _engine_step(trashed, "switch_graft_card")
+    declined, kinds = _engine_step(trashed, "decline_agent_card_trash")
 
     assert "agent_card_effect_expired" not in kinds
-    _, context = current_agent_effect_context(on_tread)
+    _, context = current_agent_effect_context(declined)
     assert context["card_id"] == TREAD
     assert context["graft_pending_icons"] == "cards"
-    declined, _ = _engine_step(on_tread, "decline_agent_card_trash")
     tread_drew, kinds = _engine_step(
         declined, "resolve_agent_card_effect", effect="cards"
     )
     assert "agent_card_effect_expired" not in kinds
-    back, _ = _engine_step(tread_drew, "switch_graft_card")
-    ghola_drew, _ = _engine_step(back, "resolve_agent_card_effect", effect="cards")
-    assert len(ghola_drew.players[0].hand) == len(back.players[0].hand) + 1
+    hand = len(tread_drew.players[0].hand)
+    ghola_drew, _ = _engine_step(
+        tread_drew, "resolve_agent_card_effect", box=1, effect="cards"
+    )
+    assert len(ghola_drew.players[0].hand) == hand + 1

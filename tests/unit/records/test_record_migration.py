@@ -58,8 +58,10 @@ from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.records import migration
 from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.graft_boxes import active_box
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
@@ -495,7 +497,8 @@ def test_a_bridge_never_answers_a_decision_whose_answer_a_rule_change_removed(
 
 
 def _card_effect_steps(game: GameReplay) -> list[int]:
-    """Steps naming an icon where it was the only icon offered."""
+    """Steps naming an icon where it was the only icon offered (a placed
+    card's box: a graft partner's box 1 rows carry ``box=1``, codec v143)."""
 
     states = _states(game)
     return [
@@ -503,7 +506,7 @@ def _card_effect_steps(game: GameReplay) -> list[int]:
         for index, step in enumerate(game.steps)
         if isinstance(step, DomainAction)
         and step.action_id == "resolve_agent_card_effect"
-        and step.arguments
+        and tuple(key for key, _ in step.arguments) == ("effect",)
         and [
             action
             for action in ENGINE.legal_actions(states[index], step.actor)
@@ -535,6 +538,246 @@ def test_a_card_effect_recorded_before_v137_named_its_icon_is_rewritten(
     after = migrate_record(replace(older, action_codec_version=137))
     assert after.divergence is not None
     assert after.divergence.recorded_index == position
+
+
+def _with_graft_switches(replay: GameReplay) -> GameReplay:
+    """``replay`` as an engine before codec v143 recorded it.
+
+    That engine resolved one grafted box at a time, the placed card's first,
+    and ``switch_graft_card`` made the other one active: each run of box 1's
+    rows (``box=1``) is preceded by a switch and untagged, and a switch back
+    precedes box 0's next row. Its turn end switched to a pending partner box
+    as this engine's does, so the active box after a press is the frame's.
+    """
+
+    state = ENGINE.reset(replay.ruleset, replay.seed)
+    steps: list[ReplayStep] = []
+    active = 0
+    for step in replay.steps:
+        if isinstance(step, DomainAction):
+            _, plain, box = route_box_action(state, step)
+            if box is not None and box != active:
+                steps.append(DomainAction("switch_graft_card", step.actor))
+                active = box
+            steps.append(plain)
+        else:
+            steps.append(step)
+        state = ENGINE.apply(state, step).state
+        if isinstance(step, DomainAction):
+            if step.action_id in ("agent_turn", "choose_graft_partner"):
+                active = 0
+            elif step.action_id == "finish_agent_turn":
+                top = state.decision_stack[-1] if state.decision_stack else None
+                active = (
+                    active_box(dict(top.context))
+                    if top is not None and top.kind == FrameKind.AGENT_EFFECTS
+                    else 0
+                )
+    return replace(replay, steps=tuple(steps), action_codec_version=142)
+
+
+def test_a_record_with_graft_switches_migrates_to_the_box_rows(
+    game: GameReplay,
+) -> None:
+    """Codec v143 offers both grafted boxes at once (docs/graft-boxes-plan.md
+    4.10): an older record's switches are dropped and the steps box 1 took
+    become its ``box=1`` rows, the same game."""
+
+    boxed = sum(
+        isinstance(step, DomainAction) and ("box", 1) in step.arguments
+        for step in game.steps
+    )
+    assert boxed
+    older = _with_graft_switches(game)
+    switches = sum(
+        isinstance(step, DomainAction) and step.action_id == "switch_graft_card"
+        for step in older.steps
+    )
+    assert switches >= boxed > 0
+
+    record = migrate_record(older)
+
+    assert record.complete, record.divergence
+    assert [migrated.step for migrated in record.steps] == list(game.steps)
+    assert record.bridge_counts() == {
+        "graft_switch": switches,
+        "graft_box": boxed,
+    }
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+    # Stamped v143 the same steps are this engine's: the switch is no action.
+    current = migrate_record(replace(older, action_codec_version=143))
+    assert current.divergence is not None
+    assert current.divergence.step == DomainAction(
+        "switch_graft_card", current.divergence.step.actor  # type: ignore[union-attr]
+    )
+
+
+def test_a_network_move_judged_on_box_one_is_rewritten_to_its_row(
+    game: GameReplay,
+) -> None:
+    """``rewrite_step`` reads an older engine's move by the graft box that
+    engine had active (``MigratedStep.graft_box``); a switch has no row."""
+
+    states = _states(game)
+    index = next(
+        index
+        for index, step in enumerate(game.steps)
+        if isinstance(step, DomainAction) and ("box", 1) in step.arguments
+    )
+    step = game.steps[index]
+    assert isinstance(step, DomainAction)
+    plain = DomainAction(
+        step.action_id,
+        step.actor,
+        tuple(item for item in step.arguments if item != ("box", 1)),
+    )
+    state = states[index]
+    assert migration.rewrite_step(ENGINE, state, plain, 142, graft_box=1) == step
+    assert (
+        migration.rewrite_step(
+            ENGINE, state, DomainAction("switch_graft_card", step.actor), 142
+        )
+        is None
+    )
+    assert migration.rewrite_step(ENGINE, state, plain, 143, graft_box=1) is None
+
+
+_PITER = "tleilaxu:piter_genius_advisor:0"
+_INFILTRATOR = "tleilaxu:tleilaxu_infiltrator:0"
+
+
+def _grafted_turn(placed: str, partner: str, space_id: str) -> GameState:
+    """Seat 0's grafted Agent turn: ``placed`` (box 0) with ``partner``
+    (box 1) at ``space_id``, no box resolved yet."""
+
+    starters = starting_deck_instance_ids(0, immortality=True)
+    imperium = imperium_deck_instance_ids(False)
+
+    def seat(player: int, **extra: object) -> PlayerState:
+        values: dict[str, object] = {
+            "player_id": player,
+            "research_space": RESEARCH_START_ID,
+            "family_atomics": True,
+        }
+        values.update(extra)
+        return PlayerState(**values)  # type: ignore[arg-type]
+
+    owner = seat(
+        0,
+        hand=(placed, partner),
+        deck=starters,
+        resources=Resources(solari=4, spice=2, water=2),
+    )
+    state = GameState(
+        config=RulesetConfig(immortality=True, promo_cards=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False, immortality=True)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        tleilaxu_track_spice=2,
+        players=(owner, *(seat(player) for player in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.TURN,
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == placed
+        and dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments).get("graft") is True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    state = ENGINE.apply(state, placement).state
+    choice = DomainAction("choose_graft_partner", 0, arguments=(("card_id", partner),))
+    return ENGINE.apply(state, choice).state
+
+
+_PAY_PITER = DomainAction("lose_agent_card_troop", 0, arguments=(("zone", "garrison"),))
+_CARDS = DomainAction("resolve_agent_card_effect", 0, arguments=(("effect", "cards"),))
+_SWITCH = DomainAction("switch_graft_card", 0)
+
+
+class _StartingAt(UprisingRulesEngine):
+    """An engine whose every game starts at ``start`` (a built position)."""
+
+    def __init__(self, start: GameState) -> None:
+        super().__init__()
+        self._start = start
+
+    def reset(self, config: RulesetConfig, seed: int) -> GameState:
+        return self._start
+
+
+def _v142_record(start: GameState, *steps: ReplayStep) -> GameReplay:
+    return GameReplay(
+        ruleset=start.config,
+        seed=1,
+        steps=steps,
+        expected_state_hash="unused",
+        action_codec_version=142,
+    )
+
+
+def test_a_box_step_held_behind_the_other_box_s_selection_diverges() -> None:
+    """An engine before codec v143 let a switch leave Piter's paid arrow
+    with its rewards waiting and resolve Tleilaxu Infiltrator's own card
+    draw (box 1). This engine holds box 1 until Piter's rewards are taken
+    (docs/graft-boxes-plan.md 4.3), and the same untagged ``effect=cards``
+    is Piter's two-card reward here, so the record stops at that step
+    instead of playing on as another move."""
+
+    start = ENGINE.apply(
+        _grafted_turn(_PITER, _INFILTRATOR, "assembly_hall"), _PAY_PITER
+    ).state
+    # Taken as recorded the step would draw Piter's two cards.
+    assert _CARDS in ENGINE.legal_actions(start, 0)
+    assert route_box_action(start, _CARDS)[2] == 0
+
+    record = migrate_record(
+        _v142_record(start, _SWITCH, _CARDS), _StartingAt(start)
+    )
+
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == 1
+    assert "waits here" in record.divergence.reason
+    assert record.dropped == ((0, "graft_switch"),)
+    assert record.steps == ()
+    # The network's move judged on box 1 there has no row either.
+    assert migration.graft_box_held(ENGINE, start, _CARDS, 1) is not None
+    assert migration.rewrite_step(ENGINE, start, _CARDS, 142, graft_box=1) is None
+    # Box 0's own step is Piter's, as recorded.
+    assert migration.graft_box_held(ENGINE, start, _CARDS, 0) is None
+
+
+def test_box_zero_s_step_held_behind_box_one_s_selection_diverges() -> None:
+    """The mirror: Piter is the partner (box 1). The record switched to
+    it, paid the troop, switched back and took Tleilaxu Infiltrator's draw
+    (box 0) while Piter's rewards waited; this engine holds box 0 there."""
+
+    start = _grafted_turn(_INFILTRATOR, _PITER, "arrakeen")
+    record = migrate_record(
+        _v142_record(start, _SWITCH, _PAY_PITER, _SWITCH, _CARDS),
+        _StartingAt(start),
+    )
+
+    assert record.divergence is not None
+    assert record.divergence.recorded_index == 3
+    assert "box 0's" in record.divergence.reason
+    assert [migrated.step for migrated in record.steps] == [
+        DomainAction(
+            "lose_agent_card_troop", 0, arguments=(("box", 1), ("zone", "garrison"))
+        )
+    ]
+    assert record.dropped == ((0, "graft_switch"), (2, "graft_switch"))
 
 
 def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
@@ -684,7 +927,15 @@ def test_records_of_older_engines_replay_to_their_end(
     assert record.complete, record.divergence
     assert bridges <= set(record.bridge_counts())
     recorded = [m.recorded_index for m in record.steps if m.recorded_index is not None]
-    assert recorded == list(range(len(replay.steps)))
+    # Codec v143 drops every recorded ``switch_graft_card`` (both grafted
+    # boxes are offered at once); every other recorded step applies.
+    switches = [
+        index
+        for index, step in enumerate(replay.steps)
+        if isinstance(step, DomainAction) and step.action_id == "switch_graft_card"
+    ]
+    assert [index for index, _ in record.dropped] == switches
+    assert sorted((*recorded, *switches)) == list(range(len(replay.steps)))
 
 
 @pytest.mark.parametrize(

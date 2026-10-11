@@ -157,11 +157,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "acquire_tleilaxu": 2.5,
     "acquire_reclaimed_forces": 1.0,
     # Graft: the partner is mandatory once a grafted placement was chosen.
-    # Switching to the other card's box ranks below every box resolution
-    # and decline, or the agent would switch back and forth forever
-    # (2026-09-08 all-option soak, seeds 3 and 6).
+    # Both cards' boxes are offered together (codec v143); a ``box=1`` row
+    # ranks like the same row of box 0.
     "choose_graft_partner": 4.0,
-    "switch_graft_card": 0.2,
     "decline_agent_card_recall": 0.5,
     "acquire_intrigue_tleilaxu": 2.5,
     "decline_intrigue_tleilaxu": 0.5,
@@ -260,20 +258,6 @@ _ZERO_COUNT_UNIT_MOVES: Final = frozenset(
     {"deploy_intrigue_troops", "retreat_intrigue_troops"}
 )
 
-# Actions that leave a grafted card's box untouched; when only these
-# accompany the switch, switching is the way forward.
-_SWITCH_NEUTRAL_ACTIONS: Final = frozenset(
-    {
-        "switch_graft_card",
-        "withdraw_troops",
-        "withdraw_commanders",
-        "deploy_troops",
-        "deploy_commanders",
-        "return_specimen",
-        "use_family_atomics",
-        "finish_agent_turn",
-    }
-)
 _ACQUISITION_BASE: Final = 3.0
 _SPY_PLACEMENT_SCORE: Final = 3.0
 _MINOR_ACTION_SCORE: Final = 1.0
@@ -1161,18 +1145,6 @@ def demote_pointless_actions(
     ``scripts/ab`` call it too, so they keep tracking this agent.
     """
 
-    if any(
-        action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
-    ):
-        # Switching to the other grafted card only reorders the boxes;
-        # whenever the active box (or a decline of it) can be resolved,
-        # that comes first, or two boxes whose offers rank below the
-        # switch loop forever (Ghola copying Corrinth City or CHOAM
-        # Demands, 2026-09-08 seeds 11 and 32).
-        scored = tuple(
-            min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
-            for action, s in zip(legal_actions, scored, strict=True)
-        )
     if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
         # A specimen may be returned at Combat Intrigue priority too
         # (OQ-050), but nothing then refills from the supply, so it only

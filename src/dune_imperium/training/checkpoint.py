@@ -54,6 +54,7 @@ from dune_imperium.adapters.observation_encoding import (
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
+from dune_imperium.rules.graft_boxes import BOX_ARGUMENT
 from dune_imperium.training.network import (
     MlpSlotsNetwork,
     PolicyValueNetwork,
@@ -90,11 +91,18 @@ class MigrationReport:
     # templates: rows the file was never trained on, which start at zero.
     # A ``NetworkAgent`` hands a decision made only of these to a heuristic.
     new_action_rows: frozenset[int] = frozenset()
+    # Templates the file never had that start from a twin it trained
+    # (``_ALIASES``: box 1's rows of a grafted turn from the untagged ones,
+    # codec v143). They count as trained, so they are not ``new_action_rows``.
+    actions_aliased: int = 0
 
     def describe(self) -> str:
+        aliased = (
+            f"{self.actions_aliased} aliased, " if self.actions_aliased else ""
+        )
         return (
             f"codec v{self.from_codec_version} -> v{self.to_codec_version}: "
-            f"{self.actions_kept} actions kept, {self.actions_new} new, "
+            f"{self.actions_kept} actions kept, {aliased}{self.actions_new} new, "
             f"{self.actions_dropped} dropped; observation "
             f"v{self.from_observation_version} -> v{self.to_observation_version}: "
             f"{self.observation_kept} columns kept, {self.observation_new} new, "
@@ -474,9 +482,15 @@ def _migrate(
     }
     if len(old_index) != int(document["action_size"]):
         raise ValueError("checkpoint template list does not match its action size")
-    # Policy-head row for each current template: the old row, or -1 for new.
+    # Policy-head row for each current template: the old row, the old row
+    # of its alias (``_alias``), or -1 for new.
+    exact = [old_index.get((t.action_id, t.arguments), -1) for t in codec.catalog]
+    aliased = [
+        -1 if row >= 0 else _alias_row(old_index, (t.action_id, t.arguments))
+        for row, t in zip(exact, codec.catalog, strict=True)
+    ]
     action_source = torch.tensor(
-        [old_index.get((t.action_id, t.arguments), -1) for t in codec.catalog],
+        [row if row >= 0 else alias for row, alias in zip(exact, aliased, strict=True)],
         dtype=torch.long,
     )
     old_columns = {
@@ -509,8 +523,11 @@ def _migrate(
         optimizer_state = _migrate_optimizer(
             optimizer_state, hidden, column_source, action_source
         )
-    kept_actions = int((action_source >= 0).sum())
+    kept_actions = sum(1 for row in exact if row >= 0)
+    aliased_actions = sum(1 for row in aliased if row >= 0)
     new_rows = frozenset(int(row) for row in (action_source < 0).nonzero().flatten())
+    # An old row read by its own template and by aliases counts once.
+    read_rows = len(set(action_source[action_source >= 0].tolist()))
     kept_columns = int((column_source >= 0).sum())
     # A second Contract copy reads its first copy's column: count old
     # columns once, so the ones nothing reads any more show as dropped.
@@ -521,14 +538,37 @@ def _migrate(
         from_observation_version=int(document["observation_version"]),
         to_observation_version=OBSERVATION_VERSION,
         actions_kept=kept_actions,
-        actions_new=codec.size - kept_actions,
-        actions_dropped=len(old_index) - kept_actions,
+        actions_new=codec.size - kept_actions - aliased_actions,
+        actions_dropped=len(old_index) - read_rows,
         observation_kept=kept_columns,
         observation_new=OBSERVATION_SIZE - kept_columns,
         observation_dropped=old_observation_size - read_columns,
         new_action_rows=new_rows,
+        actions_aliased=aliased_actions,
     )
     return migrated, optimizer_state, report
+
+
+def _alias_row(old_index: Mapping[TemplateKey, int], key: TemplateKey) -> int:
+    """The old row a new template starts from through ``_alias``, or -1."""
+
+    alias = _alias(key)
+    return -1 if alias is None else old_index.get(alias, -1)
+
+
+def _alias(key: TemplateKey) -> TemplateKey | None:
+    """The older template a new one starts from, or None.
+
+    Codec v143 offers a grafted turn's box 1 rows as the box 0 rows' twins
+    with ``box=1`` (docs/graft-boxes-plan.md 4.8): the same Agent-box choice
+    of the other grafted card, so its row starts from the untagged one's
+    weights and Adam moments (``_gather_rows`` reads one old row twice).
+    """
+
+    action_id, arguments = key
+    if (BOX_ARGUMENT, 1) not in arguments:
+        return None
+    return action_id, tuple(item for item in arguments if item != (BOX_ARGUMENT, 1))
 
 
 def _gather_rows(tensor: torch.Tensor, source: torch.Tensor) -> torch.Tensor:

@@ -193,10 +193,10 @@ def test_clandestine_meeting_needs_a_graft_and_pays_influence_and_intrigue() -> 
     state = _graft(
         _state(_owner((FACE_DANCER, meeting))), FACE_DANCER, "dutiful_service", meeting
     )
-    from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
+    from dune_imperium.rules.graft_boxes import other_box_state
 
-    switched = apply_graft_switch(state, legal_graft_switch_actions(state, 0)[0]).state
-    resolved = resolve_agent_card_effect(switched)
+    # The partner's box (box 1), resolved with it active.
+    resolved = resolve_agent_card_effect(other_box_state(state))
     owner = resolved.state.players[0]
     assert owner.influence.bene_gesserit == 1
     assert len(owner.intrigue_cards) == 1
@@ -734,6 +734,8 @@ def test_ghola_s_copy_of_long_reach_names_its_own_two_factions() -> None:
     see the first box's picks: it could not name them again and paid them a
     second time (review of the 2026-10-08 Long Reach change)."""
 
+    from dune_imperium.rules.graft_boxes import other_box_state
+
     reach = _card("long_reach")
     ghola = "tleilaxu:ghola:0"
     engine = UprisingRulesEngine()
@@ -753,12 +755,14 @@ def test_ghola_s_copy_of_long_reach_names_its_own_two_factions() -> None:
         return apply_agent_card_influence(state, action).state
 
     def switched(state: GameState) -> GameState:
-        (switch,) = [
-            a
+        # Box 1 (the Ghola copy) offers its picks beside box 0's; a pick of
+        # box 1 is resolved with that box active.
+        assert any(
+            a.action_id == "choose_agent_card_influence"
+            and ("box", 1) in a.arguments
             for a in engine.legal_actions(state, 0)
-            if a.action_id == "switch_graft_card"
-        ]
-        return engine.apply(state, switch).state
+        )
+        return other_box_state(state)
 
     # All four below the top: two distinct Factions per box, any of the four.
     start = grafted(Influence(emperor=1, spacing_guild=1, bene_gesserit=1, fremen=1))

@@ -39,9 +39,16 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
 from dune_imperium.paths import LOCAL_DIR
-from dune_imperium.records.migration import migrate_record, rewrite_step, walk
+from dune_imperium.records.migration import (
+    GRAFT_BOXES_CODEC,
+    graft_box_held,
+    migrate_record,
+    rewrite_step,
+    walk,
+)
 from dune_imperium.records.saves import SavedGame
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.graft_boxes import tagged
 from dune_imperium.server.persistence import (
     deserialize_step,
     parse_save_document,
@@ -440,10 +447,24 @@ def resolve(
                 continue
             problem = wanted[migrated.recorded_index]
             resolved[problem.problem_id] = _position(
-                engine, problem, state, migrated.step, replay.action_codec_version
+                engine,
+                problem,
+                state,
+                migrated.step,
+                replay.action_codec_version,
+                migrated.graft_box,
             )
+        dropped = dict(record.dropped)
         for problem in problems:
             if problem.problem_id in resolved:
+                continue
+            if problem.recorded_index in dropped:
+                # Codec v143 offers both grafted boxes at once: the person's
+                # ``switch_graft_card`` has no counterpart here.
+                resolved[problem.problem_id] = (
+                    f"the person's move at step {problem.recorded_index} has no "
+                    f"counterpart on this engine ({dropped[problem.recorded_index]})"
+                )
                 continue
             divergence = record.divergence
             resolved[problem.problem_id] = (
@@ -461,6 +482,7 @@ def _position(
     state: GameState,
     migrated: ReplayStep,
     codec: int,
+    graft_box: int = 0,
 ) -> Resolved | str:
     decision = engine.current_decision(state)
     if getattr(decision, "owner", None) != problem.seat:
@@ -473,8 +495,19 @@ def _position(
     # through the same rewrite bridges (either may have been renamed).
     person = migrated if isinstance(migrated, DomainAction) else problem.person
     network = problem.wrong if problem.family == "human_right" else problem.right
-    if network not in legal:
-        rewritten = rewrite_step(engine, state, network, codec)
+    # Judged in the recording engine's terms: before codec v143 with the
+    # graft box that engine had active there (``MigratedStep.graft_box``).
+    if codec < GRAFT_BOXES_CODEC:
+        held = graft_box_held(engine, state, network, graft_box)
+        if held is not None:
+            return f"the network's move {network.action_id}: {held}"
+    boxed = (
+        codec < GRAFT_BOXES_CODEC
+        and graft_box == 1
+        and tagged(network, 1) in legal
+    )
+    if network not in legal or boxed:
+        rewritten = rewrite_step(engine, state, network, codec, graft_box)
         if isinstance(rewritten, DomainAction):
             network = rewritten
     right, wrong = (

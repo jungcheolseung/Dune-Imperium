@@ -110,6 +110,7 @@ from dune_imperium.rules.agent_effects import (
     AUTOMATIC_AGENT_ICONS,
     agent_card_effect_is_unavailable,
     agent_icon_condition_holds,
+    box_in_progress,
     legal_agent_card_boost_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
@@ -163,6 +164,12 @@ from dune_imperium.rules.effects import (
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_start_is_open
+from dune_imperium.rules.graft_boxes import (
+    active_box,
+    is_grafted_turn,
+    other_box_state,
+    tagged,
+)
 from dune_imperium.rules.immortality import legal_research_bonus_actions
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.intrigue import PLOT_FRAME_KINDS, legal_intrigue_play_actions
@@ -677,13 +684,10 @@ def _pending_groups(state: GameState, player: int) -> tuple[DomainAction, ...]:
     return agent_effect_frame._pending_group_actions(state, player, context)
 
 
-def _old_pending_groups(state: GameState, player: int) -> tuple[DomainAction, ...]:
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
+def _old_box_rows(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The rows of the Agent box in ``card_id``, as the provider offered them."""
+
+    _, context = current_agent_effect_context(state)
     actions: list[DomainAction] = []
     if context["pending_agent_effect"] is True and pending_agent_icons(context):
         actions.extend(legal_agent_card_icon_actions(state, player))
@@ -703,6 +707,30 @@ def _old_pending_groups(state: GameState, player: int) -> tuple[DomainAction, ..
             actions.append(
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )
+    return tuple(actions)
+
+
+def _old_pending_groups(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    actions: list[DomainAction] = list(_old_box_rows(state, player))
+    if is_grafted_turn(context):
+        # 2026-10-12: a grafted turn offers both boxes' rows from the start,
+        # box 1's tagged ``box=1`` (codec v143, docs/graft-boxes-plan.md);
+        # the other box waits while the active one is part way through a
+        # bundled selection (plan 4.3).
+        current = active_box(context)
+        other = (
+            ()
+            if box_in_progress(state)
+            else _old_box_rows(other_box_state(state), player)
+        )
+        zero, one = (actions, other) if current == 0 else (other, actions)
+        actions = [*zero, *(tagged(action, 1) for action in one)]
     # 2026-10-10: Urgent Shigawire's added draw became its own step (OQ-106).
     actions.extend(legal_agent_card_boost_actions(state, player))
     actions.extend(legal_board_effect_actions(state, player))

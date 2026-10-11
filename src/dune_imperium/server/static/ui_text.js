@@ -1678,6 +1678,18 @@ const UI_TEXT = {
     "ko": "{{zone}} · {{count}}",
     "en": "{{zone}} · {{count}}"
   },
+  "render.agent_box_heading": {
+    "ko": "{{name}} — {agent_box}",
+    "en": "{{name}} — {agent_box}"
+  },
+  "render.agent_box_locked": {
+    "ko": "다른 칸의 선택을 마친 뒤 해결할 수 있음",
+    "en": "Available after the other box's choice"
+  },
+  "render.agent_box_others_heading": {
+    "ko": "그 밖의 선택",
+    "en": "Other choices"
+  },
   "render.turn_card_suffix": {
     "ko": "이번 차례에 낸 카드",
     "en": "card played this turn"
