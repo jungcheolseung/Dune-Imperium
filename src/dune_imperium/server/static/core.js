@@ -214,7 +214,7 @@ function spaceName(spaceId) {
 }
 
 /* An observation post has no printed name: it is called after the spaces
-   it watches (catalog.post_spaces), "관측소 (Hagga Basin)". */
+   it watches (catalog.post_spaces), "관측소 (하가 분지)". */
 function postName(postId) {
   const spaces = postSpaces(postId);
   return spaces ? t("core.post_name", { spaces }) : phraseText("{observation_post}");

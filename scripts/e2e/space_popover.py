@@ -84,7 +84,12 @@ ROW_JS = """(spaceId) => {
   };
 }"""
 
-CRITICAL_LOCATIONS = ("Arrakeen", "Spice Refinery", "Imperial Basin")
+# The three spaces the Shield Wall guards, as each language names them (the
+# Korean Board Space Guide's names since 2026-10-11).
+CRITICAL_LOCATIONS = {
+    "ko": ("아라킨", "스파이스 정제소", "제국 분지"),
+    "en": ("Arrakeen", "Spice Refinery", "Imperial Basin"),
+}
 
 IMAGES_LOADED_JS = (
     "[...document.querySelectorAll('#card-popover img')]"
@@ -195,7 +200,7 @@ def check_sietch_tabr(lang: str, shown: dict) -> None:
         len(notes) == 1
         and notes[0]["icons"].count("shield_wall") == 1
         and notes[0]["icons"].count("sandworm") == 2
-        and all(name in notes[0]["text"] for name in CRITICAL_LOCATIONS),
+        and all(name in notes[0]["text"] for name in CRITICAL_LOCATIONS[lang]),
         f"{lang} Sietch Tabr: the note says what the Shield Wall does",
         notes,
     )

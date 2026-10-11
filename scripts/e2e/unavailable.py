@@ -455,7 +455,7 @@ def recall_case(page, base: str, saves: Path) -> bool:
     # OQ-027 (d)); the card draw is the space's own step.
     body = page.evaluate(WORDS_OF_JS, BODY)
     ok &= check.ok(
-        body == "에이전트 소환 (Imperial Privilege)",
+        body == "에이전트 소환 (제국 특권)",
         "Imperial Privilege: the greyed-out row reads as the recall alone",
         body,
     )

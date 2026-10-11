@@ -185,12 +185,18 @@ def one_language(page, lang: str) -> None:
     print(f"[{lang}]")
     switch(page, lang)
     names = page.evaluate(NAMES_JS)
-    # In English the space and the contract are both "Deliver Supplies", so
-    # only the popover, the pictures and the log targets tell them apart; in
-    # Korean the names differ too, and every text check below discriminates.
+    # The space and the contract print the same name in both languages
+    # ("Deliver Supplies"; "보급품 배송" on the Korean contract tile and, since
+    # 2026-10-11, the Korean Board Space Guide's name for the space), so the
+    # popover, the pictures and the log targets tell them apart; a text check
+    # below discriminates only where the names differ.
     distinct = names["space"] != names["contract"]
     if lang == "ko":
-        check.ok(distinct, "Korean names the contract apart from the space", names)
+        check.ok(
+            names["space"] == "보급품 배송",
+            "Korean names the space by the Korean Board Space Guide",
+            names,
+        )
 
     def names_space(text: str | None) -> bool:
         return bool(text) and names["space"] in text and (

@@ -1,6 +1,6 @@
 # 한국어 용어집 (KR·EN 룰북 대조)
 
-기준일: 2026-09-20
+기준일: 2026-09-20 (공간 이름·목적 카드 2026-10-11)
 
 브라우저 UI의 언어 설정(ko/en)이 쓸 게임 용어를 **공식 한국어 룰북**에서 가져와
 영어 원어와 짝지은 표다. 목적은 하나다 — 화면에 쓰는 한국어 단어를 **발명하지
@@ -20,7 +20,8 @@ Boardgames). 네 문서를 [`../../scripts/official-rule-sources.json`](../../sc
 **KR판과 EN판은 쪽수가 정렬돼 있다** — Uprising 본문 20쪽, Supplements 14쪽,
 Bloodlines 12쪽, Immortality 16쪽으로 양쪽이 같고, 같은 쪽에 같은 내용이 온다.
 그래서 아래 인용은 한 쪽 번호로 양쪽을 가리킨다: `[Main p. 20]`은 EN·KR 두
-룰북의 20쪽을 함께 뜻한다.
+룰북의 20쪽을 함께 뜻한다. 예외: 게임판 장소 설명서 1~2쪽은 양쪽이 각자
+가나다순·알파벳순이라 한 장소가 두 판에서 다른 쪽에 있다(아래 "게임판 장소 이름").
 
 대부분의 항목은 **본문 20쪽의 용어집 페이지**("ICON GUIDE AND ADDITIONAL
 TERMS")에서 왔다. 그 페이지에 없는 항목은 나온 쪽을 따로 적었다.
@@ -48,9 +49,10 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | --- | --- |
 | UI 크롬, 결정 prompt, 행동 로그 라벨 | 이 표의 한국어를 쓴다 |
 | 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 항해 카드는 제목이 인쇄되지 않아 영어 그대로 |
-| **공간 이름** | **영어 그대로** |
+| **공간 이름** | **한국어 게임판 장소 설명서의 이름**(2026-10-11 사용자 결정: "선택 칸이나 활동 로그에 나오는 게임판 장소는 한국어 설정일 때는 한국어로"). 보드 스캔은 영어판 그대로 쓴다. 아래 "게임판 장소 이름" 표, `src/dune_imperium/display/names_ko.py`의 `spaces`. 그 전(2026-09-20~10-10)에는 영어 그대로였다 |
+| 목적 카드 **이름** | 제목이 인쇄되지 않아 룰북의 부르는 방식("오니솝터 목적 카드")에 인쇄된 인원수 표시(4/6P, 1-3P)를 붙인다(2026-10-11, 아래 "그 밖의 게임 용어"의 Objective 행) |
 | 카드 그림 | 화면 언어를 따른다 — 한국어 화면은 한글판 그림(있을 때), 영어 화면은 영어판 그림 |
-| 카드·Contract·Conflict·기술 타일·공간의 **효과 문구** | **화면 언어를 따른다**(2026-09-25 사용자 결정). 화면의 효과 문장은 카드 인쇄를 옮긴 것이 아니라 `display/*.py`가 엔진 데이터로 짓는 문장이다 — 카드 능력(`cards.py`·`tokens.py`), 책략·운항 카드(`effect_dsl_text.py`), 계약·교전 보상(`structs.py`), 공간(`spaces.py`), 기술 타일·지휘관 기술 토큰(`bloodlines.py`), 선택 줄의 효과 설명(`actions.py`). 한국어는 그 옆의 `*_ko` 쌍둥이가 이 표의 단어와 한글판 카드의 문체([`korean-card-style.md`](korean-card-style.md))로 짓고, 영어가 아이콘으로 그리는 자리는 `{term}`/`{term:count}` 자리표시자로 같은 아이콘을 그린다. 공간 이름은 여기서도 영어 그대로 |
+| 카드·Contract·Conflict·기술 타일·공간의 **효과 문구** | **화면 언어를 따른다**(2026-09-25 사용자 결정). 화면의 효과 문장은 카드 인쇄를 옮긴 것이 아니라 `display/*.py`가 엔진 데이터로 짓는 문장이다 — 카드 능력(`cards.py`·`tokens.py`), 책략·운항 카드(`effect_dsl_text.py`), 계약·교전 보상(`structs.py`), 공간(`spaces.py`), 기술 타일·지휘관 기술 토큰(`bloodlines.py`), 선택 줄의 효과 설명(`actions.py`). 한국어는 그 옆의 `*_ko` 쌍둥이가 이 표의 단어와 한글판 카드의 문체([`korean-card-style.md`](korean-card-style.md))로 짓고, 영어가 아이콘으로 그리는 자리는 `{term}`/`{term:count}` 자리표시자로 같은 아이콘을 그린다. 문장 속 공간 이름도 한국어(2026-10-11부터) |
 | 리더 능력·인장 반지 능력 **문구** | **한국어 화면은 한글판 카드 인쇄를 그대로 옮긴다**(2026-09-25 사용자 결정). 이름 행과 같이 두 번 독립적으로 옮기고 대조했다(`display/leaders_ko.py`, 기록은 [`../implementation-audits/leaders-ko.md`](../implementation-audits/leaders-ko.md)). 인쇄가 이 표와 다른 단어를 쓴 곳(Liet Kynes가 모래벌레에 "소환")이나 공간 이름을 한국어로 적은 곳(시치 타브르, 튜엑의 시치)도 인쇄대로다. 한글판 스캔이 없는 Reverend Mother Jessica는 영어 |
 | 카드 그림에 인쇄된 문구 | 그림 그대로 — 한국어 화면은 한글판 그림이 있을 때 그것 |
 
@@ -200,14 +202,17 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Dune: Imperium — Uprising (제품 이름) | 듄 임페리움: 봉기 | `[Main p. 2]`("듄 임페리움: 봉기는 덱빌딩 일꾼 놓기 게임으로"), `[Bloodlines p. 3]` | 적용(페이지 제목, 2026-09-22 사용자 결정) |
 | set aside (Shaddam의 사다우카 계약) | 따로 치워두다 | `[Board Guide p. 8]`("사다우카 계약 2개를 따로 치워둡니다") | 적용 |
 | set aside (나중에 쓰려고 빼 둔 카드, Manipulate) | 따로 빼두다 | `[Immortality p. 14]`("이 지도자를 사용해 따로 빼둔 카드") | 적용 |
-| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 적용(획득·좌석 상태; 보드 공간 이름은 영어) |
-| High Council | 원로회 / 원로회 자리 | `[Main p. 17]`, `[Board Guide p. 2]`("원로회의 빈자리에 의원 토큰을 놓습니다") | 적용(자리·좌석 상태; 보드 공간 이름은 영어) |
-| Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 참고(공간 이름) |
+| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 적용(획득·좌석 상태; 2026-10-11부터 보드 공간 이름도) |
+| High Council | 원로회 / 원로회 자리 | `[Main p. 17]`, `[Board Guide p. 2]`("원로회의 빈자리에 의원 토큰을 놓습니다") | 적용(자리·좌석 상태; 2026-10-11부터 보드 공간 이름도) |
+| Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 적용(공간 이름, 2026-10-11; 아래 "게임판 장소 이름") |
+| Objective card | 목적 카드 | `[Main p. 3]`("목적 카드 5", "라이벌에게 오니솝터 목적 카드를 주고"), `[Main p. 5]`("목적 카드를 잘 섞습니다. (일부 카드에는 인원수를 의미하는 “1-3P”나 “4/6P”와 같은 …") | 적용(2026-10-11). 카드 이름은 배틀 아이콘 + 목적 카드 + 인쇄된 인원수 표시: 크리스나이프 목적 카드 / 크리스나이프 목적 카드 4/6P / 사막쥐 목적 카드 / 사막쥐 목적 카드 4/6P / 오니솝터 목적 카드 1-3P |
 
-"참고"로 적은 공간·카드 이름은 룰북이 한국어로 옮겼지만 UI는 영어를 유지한다 —
-보드 스캔과 카드 그림이 영어판이라 화면의 글자와 그림이 어긋나기 때문이다.
+"참고"로 적은 카드 이름은 룰북이 한국어로 옮겼지만 UI는 영어를 유지한다 —
+카드 그림이 영어판이라 화면의 글자와 그림이 어긋나기 때문이다.
 한국어 스캔을 확보하면 그림은 코드 변경 없이 바뀌고(`display/images.py`의
 `DEFAULT_LANGUAGES = ("ko", "en")`), 그때 이 항목들의 "적용"을 다시 판단한다.
+공간 이름은 2026-10-11 사용자 결정으로 보드 스캔이 영어판인 채로 한국어를 쓴다
+(아래 "게임판 장소 이름").
 
 ## 합성 표기
 
@@ -242,6 +247,48 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Landsraad | 랜드스래드 | 적용 |
 | Spice Trade | 스파이스 거래 | 적용 |
 
+## 게임판 장소 이름
+
+2026-10-11 사용자 결정: 보드 스캔은 영어판 그대로 쓰고, 선택 칸·행동 로그·팝오버
+등 화면의 글자로 나오는 게임판 장소는 한국어 화면에서 아래 이름을 쓴다(영어 화면은
+영어 그대로). 22곳은 KR·EN 게임판 장소 설명서 `[Board Guide pp. 1-2]`에서 짝지었다.
+두 설명서는 각자 가나다순·알파벳순이라 순서가 다르고 같은 장소가 한쪽에서는 1쪽,
+다른 쪽에서는 2쪽에 있기도 하므로(아라킨은 KR 2쪽, EN 1쪽) 모두 두 쪽을 함께 인용한다. 에이전트 아이콘·전투 장소
+여부·조건·비용·효과가 같은 항목끼리 맞췄다. KR판 PDF는 장소 제목만 글리프 번호로
+들어 있어(텍스트 추출이 `/_2689/_1204` 꼴) 쪽을 그림으로 읽었고, 같은 글자가 다른
+제목에서 같은 글리프 번호인지(예: "제"는 제국 분지·제국 특권·스파이스 정제소에서
+모두 `_2689`) 대조해 확인했다. 계약 타일의 한글판 인쇄 제목(`names_ko.py`의
+`contracts`: 보급품 배송·원로회·비밀·스파이스 정제소·첩보 활동·하이라이너)과도
+일치한다. 코드는 `src/dune_imperium/display/names_ko.py`의 `_SPACES`.
+
+| EN | 한국어 | 인용 |
+| --- | --- | --- |
+| Accept Contract | 계약 수락 | `[Board Guide pp. 1-2]` |
+| Arrakeen | 아라킨 | `[Board Guide pp. 1-2]`, `[Main p. 20]` |
+| Assembly Hall | 회의장 | `[Board Guide pp. 1-2]` |
+| Deep Desert | 사막 심부 | `[Board Guide pp. 1-2]` |
+| Deliver Supplies | 보급품 배송 | `[Board Guide pp. 1-2]` |
+| Desert Tactics | 사막 전술 | `[Board Guide pp. 1-2]` |
+| Dutiful Service | 순종적인 공헌 | `[Board Guide pp. 1-2]` |
+| Espionage | 첩보 활동 | `[Board Guide pp. 1-2]` |
+| Fremkit | 프렘 행낭 | `[Board Guide pp. 1-2]` |
+| Gather Support | 지원자 모집 | `[Board Guide pp. 1-2]` |
+| Hagga Basin | 하가 분지 | `[Board Guide pp. 1-2]` |
+| Heighliner | 하이라이너 | `[Board Guide pp. 1-2]` |
+| High Council | 원로회 | `[Board Guide pp. 1-2]` |
+| Imperial Basin | 제국 분지 | `[Board Guide pp. 1-2]`, `[Main p. 20]` |
+| Imperial Privilege | 제국 특권 | `[Board Guide pp. 1-2]` |
+| Research Station | 연구 기지 | `[Board Guide pp. 1-2]`, `[Immortality p. 16]` |
+| Sardaukar | 사다우카 | `[Board Guide pp. 1-2]` |
+| Secrets | 비밀 | `[Board Guide pp. 1-2]` |
+| Shipping | 운송 | `[Board Guide pp. 1-2]` |
+| Sietch Tabr | 시치 타브르 | `[Board Guide pp. 1-2]` |
+| Spice Refinery | 스파이스 정제소 | `[Board Guide pp. 1-2]`, `[Main p. 20]` |
+| Swordmaster | 소드마스터 | `[Board Guide pp. 1-2]` |
+| Tuek's Sietch (Bloodlines) | 튜엑의 시치 | `[Bloodlines p. 2]`, `[Bloodlines p. 12]` |
+
+조사는 한국어 이름에 맞춰 붙인다(지원자 모집**으로**, 사다우카**로**).
+
 ## Bloodlines 확장과 Tech Module
 
 대부분 `[Bloodlines p. 12]`의 "ICON GUIDE AND TERMS"에서 왔다.
@@ -264,7 +311,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Navigation slot | 운항 구획 | `[KO card: Navigation Card 3]` ("이 카드가 운항 구획 4에 놓여 있었다면") | 적용 |
 | Tactics token / track | 전술 토큰 / 전술 트랙 | `[Bloodlines p. 12]` | 적용 |
 | Rival Tech Tile | 라이벌 기술 타일 | `[Bloodlines p. 12]` | 범위 밖(1인 게임) |
-| Tuek's Sietch | 튜엑의 시치 | `[Bloodlines p. 12]` | 참고(공간 이름) |
+| Tuek's Sietch | 튜엑의 시치 | `[Bloodlines p. 12]`, `[Bloodlines p. 2]`("튜엑의 시치 게임판 장소 (에스마르 튜엑 전용)") | 적용(공간 이름, 2026-10-11) |
 | Forbidden Weapon | 금지된 무기 | `[Bloodlines p. 12]` | 참고(타일 이름) |
 
 > **기술은 두 가지를 가리킨다.** 한국어판은 Tech tile을 `기술 타일`, Sardaukar
@@ -292,7 +339,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Reserve (더미) | 예비 카드 더미 | `[Immortality p. 4]` | 적용 |
 | Graft | 접합 | `[Immortality p. 10]` | 적용 |
 | Family Atomics token | 가문 핵 토큰 | `[Immortality p. 3]`(구성물), `[Immortality p. 5]`(준비), `[Immortality p. 12]`("각 플레이어는 게임 준비 단계에 가문 핵 토큰을 1개씩 받습니다… 가문 핵 토큰을 소비할 수 있습니다… 임페리움 열을 다시 채웁니다") | 적용 |
-| Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
+| Research Station | 연구 기지 | `[Immortality p. 16]`, `[Board Guide p. 2]` | 적용(공간 이름, 2026-10-11) |
 | Go to 11 (변형) | 11점을 향해 | `[Immortality p. 12]`("11점을 향해 … 4인 게임이라면, 승점 트랙의 0칸에서 게임을 시작해서 종료 점수를 10점으로 설정하면 됩니다") | 적용 |
 
 ## Rise of Ix Epic Game Mode
@@ -401,8 +448,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
   Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
   용어는 본문 룰북의 단어를 쓴다.
-- 엔진 event kind 207개 중 177개가 아직 한국어 라벨이 없다
-  (`static/labels.js`의 `EVENT_LABELS`). 이 표가 그 라벨을 쓸 때의 어휘를 정한다.
+- (2026-10-11 확인) 엔진 event kind는 모두 한국어 라벨이 있다(`static/labels.js`의
+  `EVENT_LABELS`, `tests/server/test_action_labels.py`가 지킨다). 이 표가 그 라벨의 어휘를 정한다.
 
 ## 규칙
 
@@ -410,7 +457,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 2. 표에 없는 용어가 필요하면 먼저 공식 한국어 룰북에서 찾아 이 표에 인용과 함께
    더한다. 룰북이 침묵하면 [`open-questions.md`](open-questions.md)에 적고,
    프로젝트 관례임을 분명히 한 뒤에 쓴다.
-3. 고유명사 중 공간 이름은 영어를 유지한다. 카드·리더·Conflict·Contract·기술
+3. 공간 이름은 아래 "게임판 장소 이름" 표의 한국어를 쓴다(2026-10-11). 카드·리더·Conflict·Contract·기술
    타일·사다우카 지휘관 기술 토큰 이름은 한글판 인쇄가 확인된 것(`display/names_ko.py`)만
    한국어이고, 나머지는 영어를 유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.
    리더 능력·인장 반지 문구는 한글판 인쇄를 옮긴 것이라 그 안의 공간 이름도 인쇄대로다.
