@@ -56,6 +56,25 @@ def wait_for(page, predicate_js: str, timeout: float = 5.0) -> bool:
     return False
 
 
+def click_hand_card(page, card: str) -> None:
+    """Click a hand card once its picture has loaded.
+
+    Fresh from a new game, a save or a language switch, or with a newly drawn
+    card, the picture may still be loading, and until it has the card is a
+    4px sliver (its img is height: auto): a click then lands on the strip and
+    no card is picked (2026-10-11, steps [2] and [8] under run_all.py's load).
+    The picture is lazy, so the card is scrolled into view first.
+    """
+    selector = f".hand-cards .vcard[data-instance='{card}']"
+    page.locator(selector).scroll_into_view_if_needed()
+    page.wait_for_function(
+        "(sel) => document.querySelector(sel) && [...document"
+        ".querySelectorAll(sel + ' img')].every((i) => i.complete)",
+        arg=selector,
+    )
+    page.click(selector)
+
+
 def to_agent_turn(page) -> list[dict]:
     """Play first legal actions until this seat is offered placements again."""
     for _ in range(200):
@@ -113,7 +132,7 @@ def scenario(base, browser) -> None:
     posts = rec.count("POST", "/actions")
     revision = page.evaluate("state.summary.revision")
     card = cards[0]
-    page.click(f".hand-cards .vcard[data-instance='{card}']")
+    click_hand_card(page, card)
     check.ok(
         page.evaluate("state.pick && state.pick.cardId") == card, "the card is the pick"
     )
@@ -133,10 +152,10 @@ def scenario(base, browser) -> None:
     page.keyboard.press("Escape")
     check.ok(page.evaluate("state.pick") is None, "Escape cancels the pick")
     check.ok(page.evaluate(LIT_SPACES) == spaces, "every reachable space is lit again")
-    page.click(f".hand-cards .vcard[data-instance='{card}']")
+    click_hand_card(page, card)
     other = next((c for c in cards if c != card), None)
     if other is not None:
-        page.click(f".hand-cards .vcard[data-instance='{other}']")
+        click_hand_card(page, other)
         check.ok(
             page.evaluate("state.pick && state.pick.cardId") == other,
             "another card swaps the pick",
@@ -163,7 +182,7 @@ def scenario(base, browser) -> None:
         (pair, idx) for pair, idx in by_pair.items() if len(idx) == 1
     )
     wanted = page.evaluate(f"state.actions.actions[{index}].arguments")
-    page.click(f".hand-cards .vcard[data-instance='{card}']")
+    click_hand_card(page, card)
     page.click(f".hotspot[data-space='{space}']")
     check.ok(
         wait_for(page, f"state.summary.revision === {revision + 1} && !state.busy"),
@@ -201,7 +220,7 @@ def scenario(base, browser) -> None:
     else:
         (card, space), indexes = found
         before = page.evaluate("state.summary.revision")
-        page.click(f".hand-cards .vcard[data-instance='{card}']")
+        click_hand_card(page, card)
         page.click(f".hotspot[data-space='{space}']")
         check.ok(
             page.evaluate("state.summary.revision") == before,
@@ -307,7 +326,7 @@ def graft_scenario(base, browser) -> None:
         return
 
     first = grafts[0]["card"]
-    page.click(f".hand-cards .vcard[data-instance='{first}']")
+    click_hand_card(page, first)
     partners = page.evaluate(
         "[...document.querySelectorAll('.hand-cards .vcard.partner')]"
         ".map((n) => n.dataset.instance)"
@@ -324,7 +343,7 @@ def graft_scenario(base, browser) -> None:
         (first, partners, graft_cards),
     )
     second = partners[0]
-    page.click(f".hand-cards .vcard[data-instance='{second}']")
+    click_hand_card(page, second)
     check.ok(
         page.evaluate("state.pick && state.pick.partnerId") == second
         and page.evaluate("state.pick.cardId") == first,
@@ -481,7 +500,6 @@ def navigation_chamber_scenario(browser) -> None:
             context.close()
             return
         spice = page.evaluate("state.view.players[state.viewSeat].resources.spice")
-        hand_card = f".hand-cards .vcard[data-instance='{card}']"
         for lang, free, suffix, no_cut in (
             ("ko", "무료", "할인", "할인 없이"),
             ("en", "Free", "discount", "No discount"),
@@ -489,16 +507,9 @@ def navigation_chamber_scenario(browser) -> None:
             page.evaluate("lang => setLanguage(lang)", lang)
             page.evaluate("clearPick()")
             # Fresh from the save (ko) or with the other language's pictures
-            # (en), the card's picture may still be loading, and until it has
-            # the card is a 4px sliver (its img is height: auto): a click then
-            # lands on the strip, only the space is picked and no chooser
-            # opens (2026-10-11, under run_all.py's load).
-            page.wait_for_function(
-                "(sel) => document.querySelector(sel) && [...document"
-                ".querySelectorAll(sel + ' img')].every((i) => i.complete)",
-                arg=hand_card,
-            )
-            page.click(hand_card)
+            # (en): without the wait only the space is picked and no chooser
+            # opens.
+            click_hand_card(page, card)
             page.click(".hotspot[data-space='spice_refinery']")
             lines = page.evaluate(CHOOSER_LINES)
             check.ok(len(lines) == 2, f"{lang}: the chooser offers both options", lines)
