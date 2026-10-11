@@ -4,6 +4,15 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-11 런처 로컬 모드도 자동 저장 (codec 그대로)
+
+사용자가 런처의 "이 컴퓨터에서만 (로컬)"로 혼자 AI와 둔 판이 런처를 닫자 사라졌다. 자동 저장이 원격 서버에만 있었기 때문이다(`docs/multiplayer-design.md` D6). 사용자 결정 "그래 진행해". 브랜치 `local-autosave`.
+
+- **서버:** `--autosave`가 `--remote` 없이도 원격과 같은 게임당 자동 저장을 켠다. `--no-autosave`와 함께 주면 거부한다. 손으로 띄운 서버의 기본값은 그대로다(테스트·e2e·미리보기 서버는 `saves/`를 건드리지 않는다).
+- **런처:** 로컬 모드에서 자동 저장 체크(기본 켬)가 켜져 있으면 `--autosave`를 넘긴다. 체크는 두 모드에서 고를 수 있고 서버가 켜져 있는 동안 잠긴다. 창 닫기 확인은 모드와 자동 저장에 따라 잃는 것(진행 중 턴 또는 저장 안 한 게임 전체)과 저장 버튼(로컬 "저장", 원격 "지금 저장")을 말한다(`view.close_question`).
+- **확인:** 독립 리뷰 1회(버그 없음, 문구·문서 지적 4건 반영). 런처를 `--start` 로컬 설정으로 실제로 띄워 게임을 만들면 `saves/`에 "자동 저장 · R0"이 생기고 목록에 배지와 함께 나온다.
+- 알아 둘 것: 체크 하나가 두 모드에 함께 적용된다. 런처 로컬 판은 한 턴만 하고 그만둬도 파일이 남는다(저장 목록에서 지운다).
+
 ## 2026-10-11 Bloodlines 책략·Twisted 책략 앞면도 앱 틀로 (codec 그대로)
 
 사용자 질문 "bloodlines 책략도 마찬가지로 만들 수 있을까?". 같은 브랜치 `bloodlines-app-faces`.

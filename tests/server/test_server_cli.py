@@ -194,6 +194,24 @@ def test_no_autosave_without_remote_is_refused() -> None:
         resolve_autosave(arguments)
 
 
+@pytest.mark.parametrize("argv", [["--autosave"], ["--remote", "--autosave"]])
+def test_autosave_resolves_to_true_with_or_without_remote(argv: list[str]) -> None:
+    arguments = _build_parser().parse_args(argv)
+
+    assert resolve_autosave(arguments) is True
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--autosave", "--no-autosave"], ["--remote", "--autosave", "--no-autosave"]],
+)
+def test_autosave_and_no_autosave_together_are_refused(argv: list[str]) -> None:
+    arguments = _build_parser().parse_args(argv)
+
+    with pytest.raises(ValueError, match="contradict"):
+        resolve_autosave(arguments)
+
+
 # --- resolve_search_checkpoint ------------------------------------------------
 
 
@@ -408,6 +426,47 @@ def test_main_hands_the_seating_to_the_setup_screen(
     assert len(served) == 1
     whoami = TestClient(served[0]).get("/whoami")  # type: ignore[arg-type]
     assert whoami.json()["seating"] == expected
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_main_autosaves_an_open_server_only_with_the_flag(
+    on: bool,
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    uvicorn = pytest.importorskip("uvicorn")
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    served: list[object] = []
+
+    def keep_the_app(self: object, *args: object, **kwargs: object) -> None:
+        # Everything but serving: keep the app the server would have run.
+        served.append(self.config.app)  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(uvicorn.Server, "run", keep_the_app)
+    monkeypatch.delenv(SEARCH_CHECKPOINT_ENVIRONMENT, raising=False)
+    saves = tmp_path / "saves"
+    flag = ["--autosave"] if on else []
+
+    code = main(["--port", str(_free_port()), "--saves-dir", str(saves), *flag])
+
+    output = capsys.readouterr().out.splitlines()
+    assert code == 0
+    whoami = TestClient(served[0]).get("/whoami")  # type: ignore[arg-type]
+    assert whoami.json()["access"] == "open"
+    assert whoami.json()["autosave"] is on
+    said = [line for line in output if "Autosave" in line]
+    if on:
+        assert said == [
+            f"Autosave is on: every game keeps one current save in {saves}"
+        ]
+        assert "  (after a crash: restart and load that save)" in output
+    else:
+        # An open server without the flag says nothing about saving, as before.
+        assert said == []
 
 
 # --- admin_link ----------------------------------------------------------
