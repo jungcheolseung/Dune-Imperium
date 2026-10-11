@@ -35,7 +35,10 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
     legal_reveal_command_acquisition_actions,
 )
-from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
+from dune_imperium.rules.agent_effect_frame import (
+    legal_agent_effect_frame_actions,
+    route_box_action,
+)
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_contract_completion,
     apply_agent_card_discard,
@@ -150,7 +153,6 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.graft import (
     apply_graft_partner,
-    apply_graft_switch,
     legal_graft_partner_actions,
 )
 from dune_imperium.rules.immortality import (
@@ -403,6 +405,23 @@ def _apply_agent_card_effect(state: GameState, action: DomainAction) -> RuleResu
     if any(key == "effect" for key, _ in action.arguments):
         return resolve_agent_card_icon(state, action)
     return resolve_agent_card_effect(state)
+
+
+def _handle(state: GameState, action: DomainAction) -> RuleResult:
+    """Run ``action``'s handler; a grafted box's row with its box active.
+
+    Box 1's rows carry ``box=1`` and box 0's none (docs/graft-boxes-plan.md
+    4.6): ``route_box_action`` makes the row's box the one the Agent-box
+    machinery reads, and drops the tag. Box 1's ``effect=cards`` is its own
+    icon, never Urgent Shigawire's draw added to box 0's card.
+    """
+
+    state, action, box = route_box_action(state, action)
+    if box == 1 and action.action_id == "resolve_agent_card_effect" and any(
+        key == "effect" for key, _ in action.arguments
+    ):
+        return resolve_agent_card_icon(state, action, boost=False)
+    return ACTION_HANDLERS[action.action_id](state, action)
 
 
 def _apply_faction_influence(state: GameState, action: DomainAction) -> RuleResult:
@@ -745,7 +764,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_tleilaxu": apply_tleilaxu_acquisition,
     "acquire_reclaimed_forces": apply_tleilaxu_acquisition,
     "choose_graft_partner": apply_graft_partner,
-    "switch_graft_card": apply_graft_switch,
     "decline_agent_card_recall": apply_agent_card_recall,
     # Bloodlines Sardaukar Commanders
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
@@ -1020,9 +1038,7 @@ class UprisingRulesEngine(RulesEngine):
         )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
-        handled = _end_turn_start(
-            state, action, ACTION_HANDLERS[action.action_id](state, action)
-        )
+        handled = _end_turn_start(state, action, _handle(state, action))
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs

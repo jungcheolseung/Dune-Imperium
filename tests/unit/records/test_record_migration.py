@@ -58,8 +58,10 @@ from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.records import migration
 from dune_imperium.records.migration import migrate_record, walk
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.graft_boxes import active_box
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.reveal_turn import reveal_pending_gains
@@ -495,7 +497,8 @@ def test_a_bridge_never_answers_a_decision_whose_answer_a_rule_change_removed(
 
 
 def _card_effect_steps(game: GameReplay) -> list[int]:
-    """Steps naming an icon where it was the only icon offered."""
+    """Steps naming an icon where it was the only icon offered (a placed
+    card's box: a graft partner's box 1 rows carry ``box=1``, codec v143)."""
 
     states = _states(game)
     return [
@@ -503,7 +506,7 @@ def _card_effect_steps(game: GameReplay) -> list[int]:
         for index, step in enumerate(game.steps)
         if isinstance(step, DomainAction)
         and step.action_id == "resolve_agent_card_effect"
-        and step.arguments
+        and tuple(key for key, _ in step.arguments) == ("effect",)
         and [
             action
             for action in ENGINE.legal_actions(states[index], step.actor)
@@ -535,6 +538,108 @@ def test_a_card_effect_recorded_before_v137_named_its_icon_is_rewritten(
     after = migrate_record(replace(older, action_codec_version=137))
     assert after.divergence is not None
     assert after.divergence.recorded_index == position
+
+
+def _with_graft_switches(replay: GameReplay) -> GameReplay:
+    """``replay`` as an engine before codec v143 recorded it.
+
+    That engine resolved one grafted box at a time, the placed card's first,
+    and ``switch_graft_card`` made the other one active: each run of box 1's
+    rows (``box=1``) is preceded by a switch and untagged, and a switch back
+    precedes box 0's next row. Its turn end switched to a pending partner box
+    as this engine's does, so the active box after a press is the frame's.
+    """
+
+    state = ENGINE.reset(replay.ruleset, replay.seed)
+    steps: list[ReplayStep] = []
+    active = 0
+    for step in replay.steps:
+        if isinstance(step, DomainAction):
+            _, plain, box = route_box_action(state, step)
+            if box is not None and box != active:
+                steps.append(DomainAction("switch_graft_card", step.actor))
+                active = box
+            steps.append(plain)
+        else:
+            steps.append(step)
+        state = ENGINE.apply(state, step).state
+        if isinstance(step, DomainAction):
+            if step.action_id in ("agent_turn", "choose_graft_partner"):
+                active = 0
+            elif step.action_id == "finish_agent_turn":
+                top = state.decision_stack[-1] if state.decision_stack else None
+                active = (
+                    active_box(dict(top.context))
+                    if top is not None and top.kind == FrameKind.AGENT_EFFECTS
+                    else 0
+                )
+    return replace(replay, steps=tuple(steps), action_codec_version=142)
+
+
+def test_a_record_with_graft_switches_migrates_to_the_box_rows(
+    game: GameReplay,
+) -> None:
+    """Codec v143 offers both grafted boxes at once (docs/graft-boxes-plan.md
+    4.10): an older record's switches are dropped and the steps box 1 took
+    become its ``box=1`` rows, the same game."""
+
+    boxed = sum(
+        isinstance(step, DomainAction) and ("box", 1) in step.arguments
+        for step in game.steps
+    )
+    assert boxed
+    older = _with_graft_switches(game)
+    switches = sum(
+        isinstance(step, DomainAction) and step.action_id == "switch_graft_card"
+        for step in older.steps
+    )
+    assert switches >= boxed > 0
+
+    record = migrate_record(older)
+
+    assert record.complete, record.divergence
+    assert [migrated.step for migrated in record.steps] == list(game.steps)
+    assert record.bridge_counts() == {
+        "graft_switch": switches,
+        "graft_box": boxed,
+    }
+    assert canonical_state_hash(record.state) == game.expected_state_hash
+    # Stamped v143 the same steps are this engine's: the switch is no action.
+    current = migrate_record(replace(older, action_codec_version=143))
+    assert current.divergence is not None
+    assert current.divergence.step == DomainAction(
+        "switch_graft_card", current.divergence.step.actor  # type: ignore[union-attr]
+    )
+
+
+def test_a_network_move_judged_on_box_one_is_rewritten_to_its_row(
+    game: GameReplay,
+) -> None:
+    """``rewrite_step`` reads an older engine's move by the graft box that
+    engine had active (``MigratedStep.graft_box``); a switch has no row."""
+
+    states = _states(game)
+    index = next(
+        index
+        for index, step in enumerate(game.steps)
+        if isinstance(step, DomainAction) and ("box", 1) in step.arguments
+    )
+    step = game.steps[index]
+    assert isinstance(step, DomainAction)
+    plain = DomainAction(
+        step.action_id,
+        step.actor,
+        tuple(item for item in step.arguments if item != ("box", 1)),
+    )
+    state = states[index]
+    assert migration.rewrite_step(ENGINE, state, plain, 142, graft_box=1) == step
+    assert (
+        migration.rewrite_step(
+            ENGINE, state, DomainAction("switch_graft_card", step.actor), 142
+        )
+        is None
+    )
+    assert migration.rewrite_step(ENGINE, state, plain, 143, graft_box=1) is None
 
 
 def test_a_missing_argument_elsewhere_is_a_choice_not_a_gap(
@@ -684,7 +789,15 @@ def test_records_of_older_engines_replay_to_their_end(
     assert record.complete, record.divergence
     assert bridges <= set(record.bridge_counts())
     recorded = [m.recorded_index for m in record.steps if m.recorded_index is not None]
-    assert recorded == list(range(len(replay.steps)))
+    # Codec v143 drops every recorded ``switch_graft_card`` (both grafted
+    # boxes are offered at once); every other recorded step applies.
+    switches = [
+        index
+        for index, step in enumerate(replay.steps)
+        if isinstance(step, DomainAction) and step.action_id == "switch_graft_card"
+    ]
+    assert [index for index, _ in record.dropped] == switches
+    assert sorted((*recorded, *switches)) == list(range(len(replay.steps)))
 
 
 @pytest.mark.parametrize(

@@ -1337,6 +1337,20 @@ function describeAction(action, options = {}) {
     fragment.appendChild(effectNode(action.detail, action.detail_ko));
     return fragment;
   }
+  if (action.detail_title && action.arguments && "box" in action.arguments) {
+    /* A grafted turn's box 1 row with no effect text of its own (a payment,
+       a pick): the card whose box it is leads, then the usual label
+       (display/actions.py agent_box_row_title). Both cards' boxes are
+       offered at once (codec v143); box 1's rows carry box=1. */
+    fragment.appendChild(
+      phrase(
+        TERM_LANGUAGE === "ko" && action.detail_title_ko
+          ? action.detail_title_ko
+          : action.detail_title,
+      ),
+    );
+    fragment.append(": ");
+  }
   const factionChoice = action.action_id === "choose_intrigue_faction";
   let label = ACTION_LABELS[action.action_id] || prettify(action.action_id);
   if (factionChoice && action.detail) {
@@ -1365,6 +1379,8 @@ function describeAction(action, options = {}) {
   for (const [key, value] of Object.entries(action.arguments)) {
     /* An empty argument is "none" (a mission's one plain way in). */
     if (value === "") continue;
+    /* A grafted turn's box 1 row: its card already leads (detail_title). */
+    if (key === "box") continue;
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     if (key === "effect" && typeof value === "string") {
       /* action.detail is the server's English effect fragment; it is printed

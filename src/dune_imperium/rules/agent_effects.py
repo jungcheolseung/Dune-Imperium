@@ -78,6 +78,12 @@ from dune_imperium.rules.frames import (
     replace_player,
     with_context,
 )
+from dune_imperium.rules.graft_boxes import (
+    active_box,
+    box_is_pending,
+    is_grafted_turn,
+    state_with_active_box,
+)
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
@@ -1120,9 +1126,10 @@ def apply_agent_card_influence(
             for other in Faction
         )
         waiting = len(chosen) < 2 and second_possible
-        # The picks belong to this box; a graft switch carries them with it
-        # (``graft.apply_graft_switch``), so a second Long Reach box of the
-        # turn (Ghola copying it, OQ-057 (12)) names its own two Factions.
+        # The picks belong to this box; they move with it when the other
+        # grafted box is made active (``graft_boxes.swap_boxes``), so a
+        # second Long Reach box of the turn (Ghola copying it, OQ-057 (12))
+        # names its own two Factions.
         context["influence_chosen"] = ",".join(chosen)
         context["pending_agent_effect"] = waiting
         if waiting:
@@ -3379,8 +3386,8 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     if (
         context.get("graft_pending_effect") is True
         and graft_card_id
-        # The partner's box was switched away from after its card trashed
-        # itself by its own icon (``apply_graft_switch`` moves the flag);
+        # The partner's box was left after its card trashed itself by its
+        # own icon (``graft_boxes.swap_boxes`` moves the flag with the box);
         # its remaining icons still pay out (OQ-022).
         and context.get("graft_card_self_trashed") is not True
         and not _still_owned(owner, graft_card_id)
@@ -3492,7 +3499,10 @@ def legal_agent_card_boost_actions(
     While the box's own card-draw icon is offered too, the one action
     resolves the box's icon first (``resolve_agent_card_icon``); this
     provider offers the action only when the box does not, so it is never
-    listed twice.
+    listed twice. The boosted card is the placed one, box 0 of a graft
+    (``agent_turn``): the row is box 0's card-draw icon while box 0 offers
+    one, and this added draw otherwise -- also while box 0's rows wait for
+    box 1 to finish a bundled selection (``box_in_progress``).
     """
 
     if not 0 <= player < state.config.players:
@@ -3510,7 +3520,12 @@ def legal_agent_card_boost_actions(
         actor=player,
         arguments=_BOOST_DRAW_ACTION_ARGUMENTS,
     )
-    if action in legal_agent_card_icon_actions(state, player):
+    box_zero_waits = (
+        is_grafted_turn(context) and active_box(context) == 1 and box_in_progress(state)
+    )
+    if not box_zero_waits and action in legal_agent_card_icon_actions(
+        state_with_active_box(state, 0), player
+    ):
         return ()
     return (action,)
 
@@ -3765,16 +3780,21 @@ def agent_icon_condition_holds(
     return agent_icon_block(owner, context, effect, key) is None
 
 
-def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResult:
+def resolve_agent_card_icon(
+    state: GameState, action: DomainAction, *, boost: bool = True
+) -> RuleResult:
     """Resolve one printed icon of the played card's Agent box.
 
     Conditions printed on the box (Hidden Missive's, Maker Keeper's and
     Wheels Within Wheels' Influence thresholds) are judged when the icon
     resolves in the owner's order [Main pp. 7, 9]; an icon is offered only
-    while its condition holds (``agent_icon_condition_holds``).
+    while its condition holds (``agent_icon_condition_holds``). Box 1's
+    rows never stand for Urgent Shigawire's added draw, which is box 0's
+    card's (``boost=False``: the engine resolves a ``box=1`` row on the
+    state with box 1 active).
     """
 
-    if resolves_boost_draw(state, action):
+    if boost and resolves_boost_draw(state, action):
         return _resolve_boost_draw(state, action)
     if action in legal_leader_signet_actions(state, action.actor):
         # Reverse Engineering's reward icons after its Tech-tile cost, in
@@ -4066,27 +4086,78 @@ def fizzle_pending_agent_icons(state: GameState) -> RuleResult:
 
 
 def graft_boxes_are_stalled(state: GameState) -> bool:
-    """Return whether the pending box, and the grafted partner's if any, only fizzle.
+    """Return whether every pending Agent box of the turn could only fizzle.
 
-    With a graft the owner may switch to the other card's box; the turn is
-    stalled only when that box would fizzle as well (or has none).
+    With a graft each of the two boxes is judged with itself active
+    (``graft_boxes.state_with_active_box``); the turn is stalled only when
+    each box still pending would fizzle now (OQ-057 (1)), and not at all
+    when no box is pending.
     """
 
-    if not agent_card_effect_is_unavailable(state):
-        return False
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
         return False
-    if context.get("graft_pending_effect") is not True:
-        return True
-    from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
+    pending = tuple(box for box in (0, 1) if box_is_pending(context, box))
+    return bool(pending) and all(
+        agent_card_effect_is_unavailable(state_with_active_box(state, box))
+        for box in pending
+    )
 
-    switches = legal_graft_switch_actions(state, context_int(context, "turn_owner"))
-    if not switches:
+
+# The Leader Signet stages a Signet Ring's box holds while its ability is
+# under way (``leader_abilities``).
+_SIGNET_STAGE_KEYS: Final = (
+    "feyd_track_stage",
+    "feyd_spy_recalled",
+    "leader_spy_recalled",
+    "staban_bonus_post",
+    "listeners_paid",
+    "signet_rewards",
+)
+
+
+def box_in_progress(state: GameState) -> bool:
+    """Whether the active Agent box is part way through one bundled selection.
+
+    While it is, the other grafted box's rows wait until it is done (user
+    decision 2026-10-12, docs/graft-boxes-plan.md 4.3): a "Choose two"
+    after its first pick (Long Reach, Stitched Horror -- both are named
+    before either resolves, OQ-057 (4)), Corrinth City between its two
+    discards, Arrakis Observer's Spy after its discard, Ruthless
+    Leadership's and The Beast's Spoils' trashes still owed, a Leader
+    Signet ability between its stages, and an arrow's reward icons once its
+    cost is paid (Piter, Branching Path, Captured Mentat, Guild Spy, Elite
+    Forces, Pivotal Gambit). Only the active box can be under way: the
+    other one's rows are what this hides.
+    """
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get("pending_agent_effect") is not True:
+        return False
+    if context.get("influence_chosen") or _chosen_rewards(context):
         return True
-    switched = apply_graft_switch(state, switches[0]).state
-    return agent_card_effect_is_unavailable(switched)
+    player = context_int(context, "turn_owner")
+    owner = state.players[player]
+    first = context.get("corrinth_first_card_id")
+    if isinstance(first, str) and first in owner.hand:
+        return True
+    if context.get("agent_card_spy_pending") is True:
+        return True
+    if "trashes_remaining" in context:
+        return True
+    if any(key in context for key in _SIGNET_STAGE_KEYS):
+        return True
+    if pending_agent_icons(context):
+        # Icons the box did not print at placement are an arrow's rewards.
+        printed = agent_card_icons_at_placement(
+            active_agent_card(context).agent_effect, owner.leader_id
+        )
+        return not printed
+    return False
 
 
 def resolve_agent_card_effect(state: GameState) -> RuleResult:

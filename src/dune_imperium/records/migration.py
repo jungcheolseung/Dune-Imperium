@@ -25,6 +25,14 @@ never answers a decision the recorded step itself was made for
 the migration there as a ``Divergence`` instead of being skipped past;
 every step before it still stands.
 
+A record before codec v143 also had ``switch_graft_card``: a grafted Agent
+turn resolved one box at a time and the switch made the other one active.
+This engine offers both boxes at once, box 1's rows tagged ``box=1``
+(docs/graft-boxes-plan.md), so ``migrate_record`` follows the recording
+engine's active box through the turn (``_GraftSlot``): it drops each
+switch and tags the steps the partner's box took. A dropped switch is
+counted as ``graft_switch``, a tagged step as ``graft_box``.
+
 Adding a bridge: when an engine change makes a recorded game stop, compare
 the record with the engine's pending decision (``dune-imperium-records
 check`` names both). If the new engine merely asks something the old one
@@ -37,6 +45,7 @@ the divergence is the right answer.
 from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from typing import Final
 
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
@@ -53,6 +62,7 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import active_agent_card, pending_agent_icons
 from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, FrameKind
+from dune_imperium.rules.graft_boxes import active_box, row_box, tagged, untagged
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import INTRIGUE_PENDING_KEY
@@ -115,6 +125,9 @@ class MigratedStep:
     # The bridge that answered or rewrote it; ``None`` for a recorded step
     # that applied as recorded.
     bridge: str | None = None
+    # For a record before codec v143, the grafted box the recording engine
+    # had active when the step was taken (``_GraftSlot``); 0 otherwise.
+    graft_box: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +149,10 @@ class MigratedRecord:
     steps: tuple[MigratedStep, ...]
     state: GameState
     divergence: Divergence | None
+    # Recorded steps this engine has no counterpart for, by record index
+    # and the reason's name: ``graft_switch`` (codec v143 offers both
+    # grafted boxes at once, so ``switch_graft_card`` is dropped).
+    dropped: tuple[tuple[int, str], ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -154,9 +171,13 @@ class MigratedRecord:
         )
 
     def bridge_counts(self) -> Counter[str]:
-        """How many steps each bridge answered or rewrote."""
+        """How many steps each bridge answered or rewrote, or dropped."""
 
-        return Counter(step.bridge for step in self.steps if step.bridge is not None)
+        counts = Counter(
+            step.bridge for step in self.steps if step.bridge is not None
+        )
+        counts.update(name for _, name in self.dropped)
+        return counts
 
 
 def migrate_record(
@@ -173,13 +194,39 @@ def migrate_record(
     )
     state = engine.reset(replay.ruleset, replay.seed)
     migrated: list[MigratedStep] = []
+    dropped: list[tuple[int, str]] = []
+    graft = (
+        _GraftSlot() if replay.action_codec_version < GRAFT_BOXES_CODEC else None
+    )
+
+    def ended(divergence: Divergence | None, at: GameState) -> MigratedRecord:
+        return MigratedRecord(
+            replay, tuple(migrated), at, divergence, tuple(dropped)
+        )
+
     for index, recorded in enumerate(replay.steps):
+        if graft is not None and graft.drops(recorded):
+            dropped.append((index, GRAFT_SWITCH_DROPPED))
+            continue
         step, rewritten_by = recorded, None
+        box = 0 if graft is None else graft.box
         for _ in range(MAX_BRIDGES_PER_STEP):
+            if graft is not None and rewritten_by in (None, GRAFT_BOX_TAGGED):
+                boxed = graft.boxed(engine, state, recorded)
+                step, rewritten_by = (
+                    (boxed, GRAFT_BOX_TAGGED) if boxed is not None else (recorded, None)
+                )
             try:
                 after = engine.apply(state, step).state
             except IllegalActionError as error:
-                bridged = _bridge(engine, state, step, bridges)
+                # While box 1 was active, a rewrite bridge reads the step as
+                # box 1's (``agent_card_effect_named``).
+                asked = (
+                    tagged(step, 1)
+                    if box == 1 and isinstance(step, DomainAction)
+                    else step
+                )
+                bridged = _bridge(engine, state, asked, bridges)
                 if bridged is None:
                     divergence = Divergence(
                         recorded_index=index,
@@ -187,7 +234,7 @@ def migrate_record(
                         reason=str(error),
                         pending=engine.current_decision(state),
                     )
-                    return MigratedRecord(replay, tuple(migrated), state, divergence)
+                    return ended(divergence, state)
                 bridge, answer = bridged
                 if bridge.rewrites:
                     step, rewritten_by = answer, bridge.name
@@ -196,7 +243,9 @@ def migrate_record(
                 migrated.append(MigratedStep(answer, None, bridge.name))
                 continue
             before, mark = state, len(migrated)
-            migrated.append(MigratedStep(step, index, rewritten_by))
+            migrated.append(MigratedStep(step, index, rewritten_by, box))
+            if graft is not None:
+                graft.applied(after, step)
             followed = _follow(engine, after, step, bridges, migrated)
             if followed is None:
                 del migrated[mark:]
@@ -209,7 +258,7 @@ def migrate_record(
                     ),
                     pending=engine.current_decision(before),
                 )
-                return MigratedRecord(replay, tuple(migrated), before, divergence)
+                return ended(divergence, before)
             state = followed
             break
         else:
@@ -219,8 +268,75 @@ def migrate_record(
                 reason=f"{MAX_BRIDGES_PER_STEP} bridges did not reach the step",
                 pending=engine.current_decision(state),
             )
-            return MigratedRecord(replay, tuple(migrated), state, divergence)
-    return MigratedRecord(replay, tuple(migrated), state, None)
+            return ended(divergence, state)
+    return ended(None, state)
+
+
+# Codec v143 (docs/graft-boxes-plan.md 4.10): a grafted Agent turn offers
+# both boxes from the start, box 1's rows tagged ``box=1``, and
+# ``switch_graft_card`` is gone.
+GRAFT_BOXES_CODEC: Final = 143
+GRAFT_SWITCH: Final = "switch_graft_card"
+GRAFT_SWITCH_DROPPED: Final = "graft_switch"
+GRAFT_BOX_TAGGED: Final = "graft_box"
+
+
+@dataclass
+class _GraftSlot:
+    """The grafted box a recording engine before codec v143 had active.
+
+    That engine's effect frame resolved one grafted box at a time: the
+    placed card's first (box 0), the partner's (box 1) after a
+    ``switch_graft_card``, and back after another. Its turn end switched to
+    a partner box still pending as this engine's does, so a reopened turn
+    goes on with the box the press left active. This engine offers both
+    boxes at once: a switch is dropped, and while box 1 was active each of
+    its steps is that box's tagged row. A step of the turn's other effects
+    keeps its form: its tagged twin is not a legal row. While box 1 was
+    active the shared ``resolve_agent_card_effect(effect=cards)`` was box
+    1's own icon whenever box 1 offered one, as that engine resolved it
+    (Urgent Shigawire's added draw only otherwise), which the tagged row is.
+    """
+
+    box: int = 0
+
+    def drops(self, step: ReplayStep) -> bool:
+        if isinstance(step, DomainAction) and step.action_id == GRAFT_SWITCH:
+            self.box = 1 - self.box
+            return True
+        return False
+
+    def boxed(
+        self, engine: UprisingRulesEngine, state: GameState, step: ReplayStep
+    ) -> DomainAction | None:
+        """``step`` as box 1's row while box 1 was active, if that is legal."""
+
+        if self.box == 0 or not isinstance(step, DomainAction):
+            return None
+        if not state.decision_stack or (
+            state.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS
+        ):
+            return None
+        candidate = tagged(step, 1)
+        if candidate in engine.legal_actions(state, step.actor):
+            return candidate
+        return None
+
+    def applied(self, state: GameState, step: ReplayStep) -> None:
+        if not isinstance(step, DomainAction):
+            return
+        if step.action_id in ("agent_turn", "choose_graft_partner"):
+            self.box = 0
+        elif step.action_id == "finish_agent_turn":
+            frame = state.decision_stack[-1] if state.decision_stack else None
+            self.box = (
+                active_box(dict(frame.context))
+                if frame is not None
+                and frame.kind == FrameKind.AGENT_EFFECTS
+                and isinstance(frame.decision, PlayerDecision)
+                and frame.decision.owner == step.actor
+                else 0
+            )
 
 
 def walk(
@@ -236,18 +352,35 @@ def walk(
 
 
 def rewrite_step(
-    engine: UprisingRulesEngine, state: GameState, step: ReplayStep, codec: int
+    engine: UprisingRulesEngine,
+    state: GameState,
+    step: ReplayStep,
+    codec: int,
+    graft_box: int = 0,
 ) -> ReplayStep | None:
     """``step`` in this engine's terms by a rewrite bridge open to ``codec``.
 
     For a move that was never recorded but was judged in an older engine's
     terms (``records.problems``: the play network's candidate); ``None``
-    when no rewrite bridge applies to it at ``state``.
+    when no rewrite bridge applies to it at ``state``. ``graft_box`` is the
+    grafted box that engine had active there (``MigratedStep.graft_box``):
+    box 1's step is its tagged row (``_GraftSlot``). A
+    ``switch_graft_card`` has no counterpart (codec v143).
     """
 
     decision = engine.current_decision(state)
     if decision is None:
         return None
+    if codec < GRAFT_BOXES_CODEC:
+        if isinstance(step, DomainAction) and step.action_id == GRAFT_SWITCH:
+            return None
+        boxed = _GraftSlot(graft_box).boxed(engine, state, step)
+        if boxed is not None:
+            return boxed
+        if graft_box == 1:
+            step = (
+                tagged(step, 1) if isinstance(step, DomainAction) else step
+            )
     for bridge in BRIDGES:
         if bridge.rewrites and (
             bridge.before_codec is None or codec < bridge.before_codec
@@ -426,14 +559,18 @@ def _named_card_effect(
         and isinstance(step, DomainAction)
         and step.actor == decision.owner
         and step.action_id == _CARD_EFFECT
-        and not step.arguments
+        and not untagged(step).arguments
     ):
         return None
+    # The icons of the box that resolved: box 1's carry ``box=1`` (codec
+    # v143), and a record's step is box 1's while that box was active.
+    box = row_box(step)
     named = [
         action
         for action in engine.legal_actions(state, decision.owner)
         if action.action_id == _CARD_EFFECT
-        and tuple(key for key, _ in action.arguments) == ("effect",)
+        and row_box(action) == box
+        and tuple(key for key, _ in untagged(action).arguments) == ("effect",)
     ]
     return named[0] if len(named) == 1 else None
 
@@ -672,10 +809,22 @@ _PITER = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 _PITER_REWARDS = frozenset({"cards", "research"})
 
 
-def _reward_icon(player: int, key: str) -> DomainAction:
-    return DomainAction(
+def _reward_icon(player: int, key: str, box: int = 0) -> DomainAction:
+    """A reward icon of the Agent box ``box`` (box 1's tagged, codec v143)."""
+
+    icon = DomainAction(
         action_id=_CARD_EFFECT, actor=player, arguments=(("effect", key),)
     )
+    return tagged(icon, box)
+
+
+def _top_box(state: GameState) -> int:
+    """The grafted box active in the Agent-turn effect frame on top (0 if none)."""
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if frame is None or frame.kind != FrameKind.AGENT_EFFECTS:
+        return 0
+    return active_box(dict(frame.context))
 
 
 def _piter_rewards_waiting(state: GameState, player: int) -> tuple[str, ...]:
@@ -728,9 +877,11 @@ def _piter_reward(
         return None
     legal = engine.legal_actions(state, player)
     key = waiting[0]
-    if len(waiting) == 2 and _reward_icon(player, "research") in legal:
+    # Piter's box is the active one: box 1's rewards are its tagged rows.
+    box = _top_box(state)
+    if len(waiting) == 2 and _reward_icon(player, "research", box) in legal:
         trial = engine.apply(
-            state, _reward_icon(player, "research"), legal_actions=legal
+            state, _reward_icon(player, "research", box), legal_actions=legal
         ).state
         top = trial.decision_stack[-1]
         settles = isinstance(top.decision, ChanceDecision) or (
@@ -739,7 +890,7 @@ def _piter_reward(
             and top.decision.owner == player
         )
         key = "research" if settles else "cards"
-    action = _reward_icon(player, key)
+    action = _reward_icon(player, key, box)
     return action if action in legal else None
 
 
@@ -786,12 +937,15 @@ def _reverse_engineering_reward(
         else _REVERSE_ENGINEERING_ORDER[::-1]
     )
     legal = engine.legal_actions(state, player)
+    # In the Signet Ring's box the rewards are that box's rows: box 1's
+    # tagged (codec v143). A Servo-Receivers frame is no box.
+    box = _top_box(state)
     return next(
         (
-            _reward_icon(player, key)
+            _reward_icon(player, key, box)
             for key in order
             if _reward_icon(player, key) in rewards
-            and _reward_icon(player, key) in legal
+            and _reward_icon(player, key, box) in legal
         ),
         None,
     )

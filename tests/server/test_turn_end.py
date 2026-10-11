@@ -2646,16 +2646,20 @@ def test_a_reward_rows_marks_do_not_depend_on_another_seats_hidden_hand() -> Non
     # since a triggered Intrigue draw waits as the owner's own step (OQ-106):
     # 79's walk no longer meets one (it does on the previous commit's
     # engine); 81 is the first seed after it whose walk does (round 9, seat
-    # 1's reward beside seat 2).
+    # 1's reward beside seat 2). Seed 87 since both grafted Agent boxes are
+    # offered from the start (codec v143, docs/graft-boxes-plan.md): 81's
+    # walk meets a grafted Agent turn (walk step 235, no switch row any
+    # more) before its case (step 363 on the previous commit's engine) and
+    # no longer meets one; 87 is the first seed after it whose walk does.
     manager = GameSessionManager()
     summary = manager.create_game(
         ("human", "human", "heuristic_uprising_table", "heuristic_uprising_table"),
-        game_seed=81,
+        game_seed=87,
         immortality=True,
     )
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(81)
+    rng = random.Random(87)
     compared = 0
     for _ in range(9000):
         if summary["finished"]:
@@ -2757,7 +2761,7 @@ def _at_endgame_score(state: GameState, seat: int) -> GameState:
 
 
 def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> None:
-    # The 2026-10-08 review's construction: seed 12, Immortality, four human
+    # The 2026-10-08 review's construction: seed 12 (now 22), Immortality, four human
     # seats answered by the pinned table heuristic. At the last reward
     # recipient's choice, another seat with three units in the Conflict
     # holds one Intrigue card: a Harvest Cells in one world, another card in
@@ -2767,9 +2771,14 @@ def test_the_last_recipients_rows_do_not_depend_on_a_hidden_harvest_cells() -> N
     # and ran on in the other; in the last round (no Round Start) it ran
     # into the Endgame, so the rows' strength previews and whether the seat
     # was held differed. Now both worlds stop at the pause, and past it the
-    # window opens in both, on public facts (OQ-103, 2026-10-09).
+    # window opens in both, on public facts (OQ-103, 2026-10-09). Seed 22
+    # since both grafted Agent boxes are offered from the start (codec v143,
+    # docs/graft-boxes-plan.md): seed 12's walk meets a grafted Agent turn
+    # (walk step 154, no switch row any more) before its case (step 439 on
+    # the previous commit's engine) and no longer meets one; 22 is the first
+    # seed after it whose walk does.
     manager = GameSessionManager()
-    summary = manager.create_game(("human",) * 4, game_seed=12, immortality=True)
+    summary = manager.create_game(("human",) * 4, game_seed=22, immortality=True)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
     config = session.state.config

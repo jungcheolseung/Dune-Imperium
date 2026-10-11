@@ -329,88 +329,53 @@ def test_effect_ordering_can_be_left_to_the_network(
     assert playouts
 
 
-def _switch_offered(config: RulesetConfig, seed: int) -> GameState:
-    """Play heuristic seats until a seat can switch its Graft pair back and forth.
+def test_the_cycle_guard_steers_a_repeated_decision_to_an_untried_move() -> None:
+    """``_Taken``: an identical decision (observation and legal set) in the
+    same round is steered to a move not yet made there; once every move was
+    made, all are offered again, and a new round forgets them."""
 
-    Some pairs offer the switch once; this waits for one that still offers
-    it after switching, the reversible case a search seat can loop on.
-    """
+    from dune_imperium.agents.network_search_agent import _Taken
 
-    engine = UprisingRulesEngine()
-    state = engine.reset(config, seed)
-    chance = ChanceResolver(seed=seed)
-    agents = [make_agent("heuristic", index) for index in range(config.players)]
-    while state.phase is not GamePhase.FINISHED:
-        decision = engine.current_decision(state)
-        if isinstance(decision, ChanceDecision):
-            state = engine.apply(state, chance.resolve(decision)).state
-            continue
-        assert isinstance(decision, PlayerDecision)
-        actions = engine.legal_actions(state, decision.owner)
-        offered = without_undo_actions(actions)
-        switch = next(
-            (action for action in offered if action.action_id == "switch_graft_card"),
-            None,
-        )
-        if len(offered) > 1 and switch is not None:
-            switched = engine.apply(state, switch).state
-            again = engine.legal_actions(switched, decision.owner)
-            if any(action.action_id == "switch_graft_card" for action in again):
-                return state
-        choice = agents[decision.owner].choose_action(
-            engine.observe(state, decision.owner), actions
-        )
-        state = engine.apply(state, choice).state
-    raise AssertionError("no Graft switch in the game")  # pragma: no cover
+    guard = _Taken()
+    first, second = DomainAction("x", 0), DomainAction("y", 0)
+    encoded = np.zeros(3, dtype=np.int32)
+    key, moves = guard.untried(1, 0, encoded, (first, second))
+    assert tuple(moves) == (first, second)
+    guard.record(key, first)
+    again, moves = guard.untried(1, 0, encoded, (first, second))
+    assert again == key and tuple(moves) == (second,)
+    assert guard.breaks == 1
+    guard.record(key, second)
+    assert tuple(guard.untried(1, 0, encoded, (first, second))[1]) == (first, second)
+    assert tuple(guard.untried(2, 0, encoded, (first, second))[1]) == (first, second)
 
 
-def test_a_reversible_move_cannot_stall_a_search_seat(
+def test_a_search_seat_finishes_a_turn_whose_boxes_offer_the_same_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A search seat never loops on ``switch_graft_card``.
+    """Ghola copying From the Tanks: both grafted boxes offer the same plain
+    resolution (box 0's untagged, box 1's ``box=1``, codec v143). A search
+    seat that always ranks the box rows first resolves each box once and
+    ends the turn: there is no switch to loop on any more (it once stalled
+    a tournament match, docs/evaluation/m10-2026-09-22.md section 13)."""
 
-    Switching a Graft pair is reversible: after a switch the only move is to
-    switch back, which returns the seat to the same decision. On 2026-09-23 a
-    tournament match stalled for hours on exactly that: the network ranked
-    the switch first, so the switch playouts looped to the step cap, and the
-    value head rated that stalled mid-turn position above finishing the
-    turn (docs/evaluation/m10-2026-09-22.md section 13). Here the network
-    always ranks the switch first and every leaf is worth the same, so only
-    the cycle guard lets the turn go on.
-    """
+    from tests.unit.rules.test_graft_boxes import GHOLA, IMMORTALITY, TANKS
+    from tests.unit.rules.test_graft_boxes import _graft as graft
+    from tests.unit.rules.test_graft_boxes import _state as box_state
 
-    config = RulesetConfig(immortality=True)
-    path = _checkpoint(tmp_path, config)
+    path = _checkpoint(tmp_path, IMMORTALITY)
     engine = UprisingRulesEngine()
-    # Seed 4 (round 8, seat 2: Experimentation grafted). Seed 1 served until
-    # 5654d7f8 (a Combat Intrigue pass right after a card play no longer
-    # counts as a consecutive pass, 2026-10-07) moved its game to a For
-    # Humanity / Face Dancer pair whose two lead cards offer different moves
-    # (an Influence choice against a single effect): the observation is the
-    # same after a switch but the legal set is not, so the guard lets the
-    # switch back through, refuses the repeat, and a later decision of the
-    # same turn offers the switch once more -- 3 switches, still no stall.
-    # Seeds 2 and 3 are the same kind; 4 is the first from 1 whose switch
-    # leaves both the observation and the legal set unchanged, the case the
-    # assertion below describes.
-    state = _switch_offered(config, seed=4)
-    decision = engine.current_decision(state)
-    assert isinstance(decision, PlayerDecision)
-    seat = decision.owner
+    state = graft(box_state((GHOLA, TANKS), troops_supply=9), GHOLA, "arrakeen", TANKS)
 
-    def switch_first(
+    def boxes_first(
         self: NetworkSearchAgent, encoded: np.ndarray, legal: Sequence[DomainAction]
     ) -> np.ndarray:
         return np.array(
-            [float(action.action_id == "switch_graft_card") for action in legal]
+            [float(action.action_id == "resolve_agent_card_effect") for action in legal]
         )
 
-    monkeypatch.setattr(NetworkSearchAgent, "_scores", switch_first)
+    monkeypatch.setattr(NetworkSearchAgent, "_scores", boxes_first)
     monkeypatch.setattr(NetworkSearchAgent, "_leaf_value", lambda self, view: 0.0)
-    # The switch is offered while the Agent turn's effects are ordered, which
-    # the default seat leaves to the greedy network: its untrained weights
-    # (sized by the action catalog) would then pick the moves instead of the
-    # patched scores, and any new action template changed the count.
     agent = NetworkSearchAgent(
         path,
         seed=0,
@@ -419,27 +384,24 @@ def test_a_reversible_move_cannot_stall_a_search_seat(
         max_rollout_steps=300,
         search_effect_order=True,
     )
-
-    switches = 0
-    for _ in range(10):
+    resolved = 0
+    for _ in range(40):
         decision = engine.current_decision(state)
-        if not isinstance(decision, PlayerDecision) or decision.owner != seat:
+        if not isinstance(decision, PlayerDecision) or decision.owner != 0:
             break
-        actions = engine.legal_actions(state, seat)
-        if not any(action.action_id == "switch_graft_card" for action in actions):
-            break
+        actions = engine.legal_actions(state, 0)
         choice = agent.choose_action_with_state(
-            state, engine.observe(state, seat), actions
+            state, engine.observe(state, 0), actions
         )
-        switches += choice.action_id == "switch_graft_card"
+        resolved += choice.action_id == "resolve_agent_card_effect"
         state = engine.apply(state, choice, legal_actions=actions).state
     else:  # pragma: no cover - the failure this test guards against
-        pytest.fail("the search seat kept switching its Graft pair")
-
-    # The seat moved on after at most a switch and the switch back. The
-    # observation does not show which card of the pair leads, so here the
-    # guard already refuses the switch back.
-    assert 1 <= switches <= 2
+        pytest.fail("the search seat never ended its grafted turn")
+    assert resolved == 2
+    # Three troops, From the Tanks' two twice and Arrakeen's one (a Combat
+    # space, so some may have been deployed).
+    seat = state.players[0]
+    assert seat.troops_garrison + seat.troops_conflict == 3 + 2 + 2 + 1
 
 
 def test_a_finished_playout_is_read_as_the_value_head_s_reward(

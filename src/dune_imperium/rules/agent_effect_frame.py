@@ -6,6 +6,17 @@ module decides which of those groups may currently offer actions and in which
 order, so the dispatcher does not have to know the frame's internal flags.
 ``agent_box_is_waiting`` exposes the one test that withholds a single-effect
 Agent box (OQ-057), for the page's greyed-out row (``display.unavailable``).
+
+A grafted turn has two Agent boxes, offered together from the start (user
+decision 2026-10-12, docs/graft-boxes-plan.md): "You gain the effects on
+both cards, in addition to the board space effects, in any order you
+choose." [Immortality pp. 10-11]. Box 0 is the placed card, box 1 the
+partner; box 1's rows carry ``box=1`` (``graft_boxes.tagged``). Each box's
+rows are what the box machinery offers with that box active
+(``graft_boxes.state_with_active_box``), and ``route_box_action`` makes a
+chosen row's box active before its handler runs. While one box is part way
+through a bundled selection (``agent_effects.box_in_progress``) the other
+box's rows wait.
 """
 
 from dune_imperium.core.actions import DomainAction
@@ -14,7 +25,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
-    graft_boxes_are_stalled,
+    box_in_progress,
     legal_agent_card_boost_actions,
     legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
@@ -51,7 +62,16 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
 )
-from dune_imperium.rules.graft import legal_graft_switch_actions
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.graft_boxes import (
+    BOX_ACTION_IDS,
+    active_box,
+    is_grafted_turn,
+    row_box,
+    state_with_active_box,
+    tagged,
+    untagged,
+)
 from dune_imperium.rules.immortality import (
     legal_family_atomics_actions,
     legal_specimen_return_actions,
@@ -125,7 +145,6 @@ def legal_agent_effect_frame_actions(
         # So does a draw a trigger earned in it, taken as its own step
         # (user ruling 2026-10-10, OQ-106).
         *legal_owed_draw_actions(state, player),
-        *_graft_switch_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),
@@ -158,25 +177,10 @@ def legal_agent_effect_frame_actions(
     )
 
 
-def _graft_switch_actions(
-    state: GameState,
-    player: int,
-) -> tuple[DomainAction, ...]:
-    """Offer the graft switch unless both boxes could only fizzle (OQ-057).
-
-    With the active box stalled the owner may still switch to a live partner
-    box; when the partner's box would fizzle too, only the turn end remains
-    (otherwise a policy could switch back and forth forever).
-    """
-
-    actions = legal_graft_switch_actions(state, player)
-    if not actions or not graft_boxes_are_stalled(state):
-        return actions
-    return ()
-
-
-def agent_box_is_waiting(state: GameState, player: int) -> bool:
-    """Whether ``player``'s pending single-effect Agent box is withheld now.
+def agent_box_is_waiting(
+    state: GameState, player: int, box: int | None = None
+) -> bool:
+    """Whether ``player``'s pending single-effect Agent box ``box`` is withheld.
 
     The box is pending as one effect (not a multi-icon box, OQ-027), none
     of its serial choices is offered, and it would resolve without effect
@@ -186,7 +190,9 @@ def agent_box_is_waiting(state: GameState, player: int) -> bool:
     ``resolve_agent_card_effect`` is not offered. The legal list offers the
     box through the same ``_single_box_actions``, and the page greys the
     waiting box out with this predicate (``display.unavailable``, user
-    request 2026-09-29), so the two cannot drift.
+    request 2026-09-29), so the two cannot drift. ``box`` names a grafted
+    turn's box 0 or 1, judged with that box active; ``None`` (the default)
+    is the box in ``card_id``.
     """
 
     try:
@@ -195,9 +201,15 @@ def agent_box_is_waiting(state: GameState, player: int) -> bool:
         return False
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return False
+    if box is None:
+        box = active_box(context)
+    if box == 1 and not is_grafted_turn(context):
+        return False
+    view = state_with_active_box(state, box)
+    _, context = current_agent_effect_context(view)
     if context["pending_agent_effect"] is not True or pending_agent_icons(context):
         return False
-    return not _single_box_actions(state, player)
+    return not _single_box_actions(view, player)
 
 
 def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -222,24 +234,100 @@ def _single_box_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     return (DomainAction(action_id="resolve_agent_card_effect", actor=player),)
 
 
+def _active_box_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The rows of the Agent box whose card sits in ``card_id``, untagged."""
+
+    _, context = current_agent_effect_context(state)
+    if context["pending_agent_effect"] is not True:
+        return ()
+    if pending_agent_icons(context):
+        # A multi-icon Agent box: every pending icon is offered at once, the
+        # automatic ones through their keyed resolution and the choice icons
+        # (Steersman's recall, Dangerous Rhetoric's Faction, Tread in
+        # Darkness's trash) through their own providers (OQ-027).
+        return (
+            *legal_agent_card_icon_actions(state, player),
+            *legal_agent_card_recall_actions(state, player),
+            *legal_agent_card_influence_actions(state, player),
+            *legal_agent_card_trash_actions(state, player),
+        )
+    # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
+    return _single_box_actions(state, player)
+
+
+def agent_box_rows(
+    state: GameState, player: int
+) -> tuple[tuple[DomainAction, ...], tuple[DomainAction, ...]]:
+    """Box 0's and box 1's rows as offered now, both untagged.
+
+    Each box's rows are its machinery's with that box active. While the
+    active box is part way through a bundled selection
+    (``box_in_progress``), the other box offers none (user decision
+    2026-10-12, docs/graft-boxes-plan.md 4.3). A single-card turn has box
+    0 only.
+    """
+
+    _, context = current_agent_effect_context(state)
+    own = _active_box_actions(state, player)
+    if not is_grafted_turn(context):
+        return own, ()
+    current = active_box(context)
+    other: tuple[DomainAction, ...] = ()
+    if not box_in_progress(state):
+        other = _active_box_actions(state_with_active_box(state, 1 - current), player)
+    return (own, other) if current == 0 else (other, own)
+
+
+def route_box_action(
+    state: GameState, action: DomainAction
+) -> tuple[GameState, DomainAction, int | None]:
+    """The state to apply a legal row on, the row untagged, and its box.
+
+    A ``box=1`` row is box 1's; an untagged row is box 0's when box 0
+    offers it, and otherwise no box's (the turn's other effects, Urgent
+    Shigawire's added draw). A box's row is applied with that box active,
+    so the ordinary Agent-box handlers read it; any other row is applied
+    as it is (box ``None``).
+    """
+
+    if not state.decision_stack:
+        return state, action, None
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
+        return state, action, None
+    context = dict(frame.context)
+    if row_box(action) == 1:
+        return state_with_active_box(state, 1), untagged(action), 1
+    if not is_grafted_turn(context):
+        return state, action, None
+    zero = state_with_active_box(state, 0)
+    if box_in_progress(state) and active_box(context) == 1:
+        return state, action, None
+    if action in _active_box_actions(zero, action.actor):
+        return zero, action, 0
+    return state, action, None
+
+
 def _pending_group_actions(
     state: GameState,
     player: int,
     context: dict[str, bool | int | str],
 ) -> tuple[DomainAction, ...]:
-    actions: list[DomainAction] = []
-    if context["pending_agent_effect"] is True and pending_agent_icons(context):
-        # A multi-icon Agent box: every pending icon is offered at once, the
-        # automatic ones through their keyed resolution and the choice icons
-        # (Steersman's recall, Dangerous Rhetoric's Faction, Tread in
-        # Darkness's trash) through their own providers (OQ-027).
-        actions.extend(legal_agent_card_icon_actions(state, player))
-        actions.extend(legal_agent_card_recall_actions(state, player))
-        actions.extend(legal_agent_card_influence_actions(state, player))
-        actions.extend(legal_agent_card_trash_actions(state, player))
-    elif context["pending_agent_effect"] is True:
-        # Nothing while the box waits (``agent_box_is_waiting``, OQ-057).
-        actions.extend(_single_box_actions(state, player))
+    box_zero, box_one = agent_box_rows(state, player)
+    uncoded = sorted(
+        {action.action_id for action in box_one} - BOX_ACTION_IDS
+    )
+    if uncoded:
+        raise RuntimeError(
+            "a grafted box offers actions with no box=1 template: "
+            + ", ".join(uncoded)
+        )
+    actions: list[DomainAction] = [
+        *box_zero,
+        *(tagged(action, 1) for action in box_one),
+    ]
     # Urgent Shigawire's draw added to the boosted card's box, its own step
     # whatever the box is (user ruling 2026-10-10, OQ-106).
     actions.extend(legal_agent_card_boost_actions(state, player))

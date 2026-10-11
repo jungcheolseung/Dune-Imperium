@@ -53,10 +53,9 @@ from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import (
     apply_graft_partner,
-    apply_graft_switch,
     legal_graft_partner_actions,
-    legal_graft_switch_actions,
 )
+from dune_imperium.rules.graft_boxes import other_box_state
 from dune_imperium.rules.intrigue_peek import (
     apply_intrigue_peek,
     legal_intrigue_peek_actions,
@@ -251,9 +250,7 @@ def test_dissecting_kit_trashing_subversive_advisor_keeps_the_space_influence() 
     _, context = current_agent_effect_context(grafted)
     assert context["pending_agent_effect"] is True
     assert context["pending_faction_influence"] is False
-    switched = apply_graft_switch(
-        grafted, legal_graft_switch_actions(grafted, 0)[0]
-    ).state
+    switched = other_box_state(grafted)
 
     result = apply_agent_card_payment(
         switched, _payment(switched, "trash_grafted_card_for_specimen")

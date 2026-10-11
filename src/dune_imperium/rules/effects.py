@@ -343,8 +343,8 @@ def other_grafted_card_id(context: Mapping[str, ActionValue]) -> str:
     """Return "the other grafted card" of the box being resolved ("" if none).
 
     The active box's card sits in ``card_id`` and its partner in
-    ``graft_card_id``; ``switch_graft_card`` swaps them, so the partner is
-    always the inactive one.
+    ``graft_card_id``; making the other box active swaps them
+    (``graft_boxes.swap_boxes``), so the partner is always the inactive one.
     """
 
     value = context.get("graft_card_id", "")

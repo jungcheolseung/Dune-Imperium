@@ -31,7 +31,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 142
+    assert ACTION_CODEC_VERSION == 143
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -112,6 +112,8 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         + 1  # v137: an "up to" deploy of 0
         + 1  # v142: draw_owed_intrigue (OQ-106)
     )
+    # v143: the box 1 twins of a grafted turn join the Immortality catalogs
+    # only, so the base catalog is unchanged.
     assert first.size == 4413
 
 

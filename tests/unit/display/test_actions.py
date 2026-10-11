@@ -494,7 +494,10 @@ _IMMORTALITY = RulesetConfig(immortality=True, choam_module=True)
 _SEEK_ALLIES = "player:0:starter:seek_allies:0"
 _FACE_DANCER = "tleilaxu:face_dancer:0"
 _RESOLVE_BOX = DomainAction(action_id="resolve_agent_card_effect", actor=0)
-_SWITCH = DomainAction(action_id="switch_graft_card", actor=0)
+# Box 1's plain resolution on a grafted turn (codec v143).
+_RESOLVE_BOX_ONE = DomainAction(
+    action_id="resolve_agent_card_effect", actor=0, arguments=(("box", 1),)
+)
 
 
 def _turn(hand: tuple[str, ...]) -> GameState:
@@ -570,58 +573,65 @@ def test_seek_allies_box_row_reads_its_trash() -> None:
 def test_a_graft_pairs_two_rows_name_each_card_and_its_box() -> None:
     grafted = _place(_turn((_FACE_DANCER, _SEEK_ALLIES)), _FACE_DANCER, _SEEK_ALLIES)
 
-    # The placed card's own box, and the switch to the other grafted card's
-    # box (the click only makes that box active, rules/graft.py).
+    # Both cards' boxes are offered from the start (codec v143): the placed
+    # card's untagged, the partner's with ``box=1``, each led by its card.
     assert _row(grafted, _RESOLVE_BOX) == (
         ("Face Dancer", "얼굴의 춤꾼"),
         "Draw 1 card",
         "{draw:1}",
     )
-    assert _row(grafted, _SWITCH) == (
-        ("Go to Seek Allies ({graft})", "{graft} 동맹 물색으로 넘어가기"),
-        "Trash this card",
-        "이 카드 폐기",
-    )
-
-    switched = _ENGINE.apply(grafted, _SWITCH).state
-    assert _row(switched, _RESOLVE_BOX) == (
+    assert _row(grafted, _RESOLVE_BOX_ONE) == (
         ("Seek Allies", "동맹 물색"),
         "Trash this card",
         "이 카드 폐기",
     )
-    assert _row(switched, _SWITCH) == (
-        ("Go to Face Dancer ({graft})", "{graft} 얼굴의 춤꾼으로 넘어가기"),
+
+    # With box 1 resolved (and active in the frame), box 0's row still names
+    # Face Dancer: each row is read with its own box active.
+    partner_done = _ENGINE.apply(grafted, _RESOLVE_BOX_ONE).state
+    assert _row(partner_done, _RESOLVE_BOX) == (
+        ("Face Dancer", "얼굴의 춤꾼"),
         "Draw 1 card",
         "{draw:1}",
     )
+    assert _RESOLVE_BOX_ONE not in _ENGINE.legal_actions(partner_done, 0)
 
 
-def test_the_switch_names_planned_coupling_with_the_vowel_particle() -> None:
-    planned = "imperium:planned_coupling:0"
-    grafted = _place(_turn((_FACE_DANCER, planned)), _FACE_DANCER, planned)
-
-    assert agent_box_row_title(grafted, _SWITCH) == (
-        "Go to Planned Coupling ({graft})",
-        "{graft} 계획된 교배로 넘어가기",
-    )
-
-
-def test_a_ghola_switch_names_ghola_with_the_box_it_copies() -> None:
+def test_a_ghola_box_names_ghola_with_the_box_it_copies() -> None:
     # "This card has the same Agent box as the other grafted card" [Ghola
-    # card]: seen from Seek Allies, the other card is Ghola with Seek
-    # Allies' own box.
+    # card]: Ghola's row (box 0) and Seek Allies' (box 1) both read Seek
+    # Allies' box, each led by its own card.
     ghola = _ghola_box(_SEEK_ALLIES)
     assert _row(ghola, _RESOLVE_BOX) == (
         ("Ghola", "골라"),
         "Trash this card",
         "이 카드 폐기",
     )
-    switched = _ENGINE.apply(ghola, _SWITCH).state
-    assert _row(switched, _SWITCH) == (
-        ("Go to Ghola ({graft})", "{graft} 골라로 넘어가기"),
+    assert _row(ghola, _RESOLVE_BOX_ONE) == (
+        ("Seek Allies", "동맹 물색"),
         "Trash this card",
         "이 카드 폐기",
     )
+
+
+def test_a_grafted_payment_row_is_led_by_its_box_s_card() -> None:
+    # A pick of a grafted box names its card even with no effect text of its
+    # own, so Stitched Horror's and its Ghola copy's picks tell apart.
+    horror = "tleilaxu:stitched_horror:0"
+    ghola = _ghola_box(horror)
+    rows = [
+        action
+        for action in _ENGINE.legal_actions(ghola, 0)
+        if action.action_id == "choose_agent_card_reward"
+    ]
+    titles = {
+        dict(action.arguments).get("box", 0): agent_box_row_title(ghola, action)
+        for action in rows
+    }
+    assert titles == {
+        0: ("Ghola", "골라"),
+        1: ("Stitched Horror", "공포의 누더기 괴물"),
+    }
 
 
 def test_keyed_icon_rows_are_led_by_their_card() -> None:

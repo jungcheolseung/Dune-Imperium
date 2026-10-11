@@ -789,8 +789,9 @@ def check_payment_rows(page, language: str) -> None:
 # 바로 보여지는게 낫지 않나?"): the server names the card a row works on
 # (detail_title, display/actions.py agent_box_row_title) and what its box
 # does (detail), and the button reads "<card>: <box>" -- Seek Allies' plain
-# box resolution, and the graft switch to it from Face Dancer. The pairs are
-# the ones tests/unit/display/test_actions.py pins against the engine.
+# box resolution, placed or as a graft partner's box 1 row (``box=1``, codec
+# v143). The pairs are the ones tests/unit/display/test_actions.py pins
+# against the engine.
 BOX_ROW_ACTIONS = [
     {
         "action_id": "resolve_agent_card_effect",
@@ -801,19 +802,19 @@ BOX_ROW_ACTIONS = [
         "detail_title_ko": "동맹 물색",
     },
     {
-        "action_id": "switch_graft_card",
-        "arguments": {},
+        "action_id": "resolve_agent_card_effect",
+        "arguments": {"box": 1},
         "detail": "Trash this card",
         "detail_ko": "이 카드 폐기",
-        "detail_title": "Go to Seek Allies ({graft})",
-        "detail_title_ko": "{graft} 동맹 물색으로 넘어가기",
+        "detail_title": "Seek Allies",
+        "detail_title_ko": "동맹 물색",
     },
 ]
 BOX_ROW_TEXT_KO = [
     "동맹 물색: 이 카드 폐기",
-    "접합 동맹 물색으로 넘어가기: 이 카드 폐기",
+    "동맹 물색: 이 카드 폐기",
 ]
-BOX_ROW_TITLES_EN = ["Seek Allies: ", "Go to Seek Allies (Graft): "]
+BOX_ROW_TITLES_EN = ["Seek Allies: ", "Seek Allies: "]
 
 
 def check_box_rows(page, language: str) -> None:
@@ -829,10 +830,15 @@ def check_box_rows(page, language: str) -> None:
             ROW_JS, {**action, "detail": None, "detail_ko": None}
         )
         what = f"{language} {action['action_id']} box row"
+        # A box 1 row keeps its card before the label (core.js).
+        title = action["detail_title_ko" if language == "Korean" else "detail_title"]
+        expected_logged = (
+            f"{title}: {label}" if "box" in action["arguments"] else label
+        )
         check.ok(
-            logged["text"] == label,
+            logged["text"] == expected_logged,
             f"{what} without a detail (a logged step): the label",
-            (logged, label),
+            (logged, expected_logged),
         )
         check.ok(label not in shown["text"], f"{what}: no generic label", shown)
         if language == "Korean":

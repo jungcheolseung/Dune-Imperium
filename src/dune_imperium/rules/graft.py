@@ -8,10 +8,11 @@ in addition to the board space effects, in any order you choose."
 
 The placement (``agent_turn`` with ``graft``) commits the first card and the
 space, then a ``GRAFT_PARTNER`` frame takes the second card from the hand.
-Both cards are in play; the effect frame keeps the active card in
-``card_id`` and the partner in ``graft_card_id`` with its own pending box,
-and ``switch_graft_card`` swaps them so either box resolves through the
-ordinary Agent-box machinery in the owner's order.
+Both cards are in play. The placed card's box is box 0 and the partner's
+box 1, and both are offered together from the start (user decision
+2026-10-12, docs/graft-boxes-plan.md): box 1's rows carry ``box=1``, and
+the engine makes a row's box the active one (``graft_boxes``) so either box
+resolves through the ordinary Agent-box machinery in the owner's order.
 """
 
 from dataclasses import replace
@@ -54,12 +55,10 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
-    frame_context,
     owned_top_frame,
     replace_player,
     with_context,
 )
-from dune_imperium.rules.graft_boxes import swap_boxes
 
 _PARTNER_LABEL = "Graft partner frame"
 _CHAIRDOG_RETURN = PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START
@@ -323,60 +322,3 @@ def trash_usurped_card(state: GameState, player: int) -> RuleResult:
         allow_deck=True,
     )
     return RuleResult(state=trashed.state, events=(event, *trashed.events))
-
-
-def legal_graft_switch_actions(
-    state: GameState,
-    player: int,
-) -> tuple[DomainAction, ...]:
-    """Offer resolving the other grafted card's box next.
-
-    Available whenever the inactive partner still has a pending box and no
-    atomic selection of the active box is under way.
-    """
-
-    if not state.config.immortality:
-        return ()
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
-        return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("graft_pending_effect") is not True:
-        return ()
-    return (DomainAction(action_id="switch_graft_card", actor=player),)
-
-
-def apply_graft_switch(state: GameState, action: DomainAction) -> RuleResult:
-    """Make the other grafted card the active one of the effect frame.
-
-    Every key of a box moves with it (``graft_boxes.swap_boxes``): its
-    queued icons, a self-trash flag (a card that left play by its own
-    printed icon still pays its other icons, OQ-022), the picks of a
-    "Choose two" box (Long Reach, Stitched Horror and the Ghola that
-    copies either name their own two, OQ-057 (12)) and any other choice
-    under way.
-    """
-
-    if action not in legal_graft_switch_actions(state, action.actor):
-        raise ValueError("action is not a legal Graft switch")
-    frame = state.decision_stack[-1]
-    context = frame_context(frame)
-    swap_boxes(context)
-    return RuleResult(
-        state=replace(
-            state,
-            decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
-        ),
-        events=(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"graft_switch:{context['card_id']}"
-                ),
-                kind="graft_card_switched",
-                payload=(("card_id", context["card_id"]), ("player", action.actor)),
-            ),
-        ),
-    )

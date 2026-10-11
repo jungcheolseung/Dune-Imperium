@@ -196,19 +196,22 @@ def test_a_pinned_tech_table_reorders_the_tiles() -> None:
     assert HeuristicAgent(seed=1).choose_action(_view(), offer) == command
 
 
-def test_switch_graft_card_never_outranks_a_resolvable_box() -> None:
-    """Two grafted boxes whose offers rank below the switch would otherwise
-    loop forever (Ghola copying CHOAM Demands, 2026-09-08 sweep seed 32)."""
+def test_a_grafted_box_one_row_ranks_like_box_zero_s() -> None:
+    """Both grafted boxes are offered from the start (codec v143); box 1's
+    row carries ``box=1`` and ranks like the same row of box 0, so a Ghola
+    copy's rows compete on what they do, never on which box offers them."""
 
-    agent = HeuristicAgent(seed=1)
     complete = _action("complete_contract_by_card", ("instance_id", "contract:acquire"))
+    partner = _action(
+        "complete_contract_by_card", ("box", 1), ("instance_id", "contract:acquire")
+    )
+    assert score_action(partner) == score_action(complete)
     decline = _action("decline_agent_card_payment")
-    switch = _action("switch_graft_card")
-    assert agent.choose_action(_view(), (switch, complete)) == complete
-    assert agent.choose_action(_view(), (switch, decline)) == decline
-    # With nothing of the box left to resolve, the switch is the way on.
-    withdraw = _action("withdraw_troops", ("count", 1))
-    assert agent.choose_action(_view(), (withdraw, switch)) == switch
+    resolve = _action("resolve_agent_card_effect", ("box", 1))
+    assert score_action(resolve) == score_action(
+        _action("resolve_agent_card_effect")
+    )
+    assert HeuristicAgent(seed=1).choose_action(_view(), (decline, partner)) == partner
 
 
 def test_tleilaxu_acquisition_scales_with_the_printed_specimen_cost() -> None:

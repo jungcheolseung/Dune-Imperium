@@ -229,18 +229,19 @@ Judgement calls (our engine cannot ask the app's question exactly):
 Immortality, Epic Game Mode and the promos (``spec/immortality.md`` §4-§8,
 ``spec/epic-goto11-promo-draft.md`` §2.3, §4, §6):
 
-- Graft (``switch_graft_card``). The app holds both cards' agent boxes in
-  ``chosenAgentAbilities`` (the played card, then the grafted card; engine
-  order §3.2) and their deferred abilities side by side; our engine shows
-  one box at a time. The window also builds the inactive box's sources on
-  the switched state (``_partner_box``) and competes both: the played
-  card's 500 box before the partner's (``rank``), the card row in that
-  order at 600, values in the prompt. A partner winner is realised by
-  ``switch_graft_card`` and remembered (``_GRAFT_SWITCH_INTENT``) so the
-  next decision takes it; the empty answer needs the partner's Optional
-  keys declined first (switch, then decline). Ghola's box is the partner's
-  (valued by the partner's abilities) and runs at state 210 like the
-  ``SpecimenAgentAbility`` box (Bene Tleilax Lab).
+- Graft (both boxes offered from the start, codec v143). The app holds
+  both cards' agent boxes in ``chosenAgentAbilities`` (the played card,
+  then the grafted card; engine order §3.2) and their deferred abilities
+  side by side; our engine offers both boxes' rows too, box 1's tagged
+  ``box=1`` (``rules.graft_boxes``). The window reads each box as the
+  engine resolves it, with that box active (``_box_views``): the active
+  one as the turn (``_turn``) and the other on the state with it active
+  (``_partner_box``), and competes both: the played card's 500 box before
+  the partner's (``rank``), the card row in that order at 600, values in
+  the prompt. A partner winner is its own row. The empty answer takes the
+  partner's Optional keys' decline when the active box has none. Ghola's
+  box is the partner's (valued by the partner's abilities) and runs at
+  state 210 like the ``SpecimenAgentAbility`` box (Bene Tleilax Lab).
 - Single boxes (``_expansion_box``): Research (Experimentation, Bene
   Tleilax Researcher, Scientific Breakthrough, the Research Station's
   ``research`` icon) is ``GainResearchAgentAbility`` (Explicit) at its E
@@ -415,14 +416,21 @@ from dune_imperium.agents.app_ai.windows.run import (
 )
 from dune_imperium.agents.app_ai.windows.turn import board_space_order, playmat_sources
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
+from dune_imperium.rules.agent_effect_frame import agent_box_rows
 from dune_imperium.rules.agent_effects import (
     STITCHED_HORROR_REWARDS,
     resolves_boost_draw,
 )
 from dune_imperium.rules.effects import pending_boost_draw
 from dune_imperium.rules.frames import COMMANDERS_RECRUITED_KEY
-from dune_imperium.rules.graft import apply_graft_switch
+from dune_imperium.rules.graft_boxes import (
+    active_box,
+    box_is_pending,
+    is_grafted_turn,
+    row_box,
+    state_with_active_box,
+    tagged,
+)
 
 _AU = "worm.canis.abilities.ActivatedAbilities.Uprising."
 _PLACE_SPY_CUSTOM = _AU + "PlaceSpyCustomAbility"
@@ -683,12 +691,10 @@ _PAYMENT_IDS = (
 #: ``(CONTROL_THE_SPICE_TRASH_INTENT, round, card ref) -> trash ref | None``
 #: (the ``optional_trash`` window), ``(STITCHED_HORROR_TRASH_INTENT, round,
 #: card ref) -> trash ref`` (the ``optional_trash`` window, Stitched Horror's
-#: trash reward), ``(_GRAFT_SWITCH_INTENT, round, partner ref) -> (action,
-#: intents)`` (this window, after ``switch_graft_card``), and the second pick
-#: of Long Reach / Stitched Horror (this window).
+#: trash reward), and the second pick of Long Reach / Stitched Horror (this
+#: window).
 CONTROL_THE_SPICE_TRASH_INTENT = "control_the_spice_trash"
 STITCHED_HORROR_TRASH_INTENT = "stitched_horror_trash"
-_GRAFT_SWITCH_INTENT = "agent_effects_graft_switch"
 _PARTNER_LABEL = "graft partner | "
 #: Signet boxes resolved by ``resolve_agent_card_effect()``, by leader.
 _SIGNET_BOX_ABILITY: Mapping[str, str] = {
@@ -844,7 +850,6 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "return_specimen",
         "select_corrinth_city_discard",
         "summon_maker_sandworms",
-        "switch_graft_card",
         "take_agent_card_combat_icon",
         "take_sietch_tabr_supplies",
         "take_sietch_tabr_water",
@@ -3858,48 +3863,103 @@ def _apply_entries(
 # -- Graft: both cards' boxes in the app's order ----------------------------------
 
 
+@dataclass(frozen=True)
+class _BoxView:
+    """One grafted box as the engine resolves it: with that box active.
+
+    ``run`` holds the box's rows untagged and the turn's other rows, on the
+    state with the box active; ``real`` maps each of the box's untagged rows
+    to the legal row it stands for (``box=1`` for box 1).
+    """
+
+    run: DecisionRun
+    box: int
+    real: Mapping[DomainAction, DomainAction]
+
+    def to_real(self, action: DomainAction) -> DomainAction:
+        return self.real.get(action, action)
+
+
+def _box_views(run: DecisionRun) -> tuple[_BoxView, _BoxView | None] | None:
+    """The active box's view and the other box's, or None without a graft.
+
+    The other box has a view while it is pending and its rows are offered
+    (not while the active box is part way through a bundled selection,
+    ``rules.agent_effects.box_in_progress``).
+    """
+
+    state = run.ctx.state
+    context = run.ctx.top_frame_context
+    if not is_grafted_turn(context):
+        return None
+    seat = run.ctx.seat
+    rows = agent_box_rows(state, seat)
+    real_rows = {
+        tagged(action, box): action for box in (0, 1) for action in rows[box]
+    }
+    shared = tuple(action for action in run.legal if action not in real_rows)
+    current = active_box(context)
+
+    def view(box: int, ctx: AppContext, memory: Memory) -> _BoxView:
+        own = rows[box]
+        legal = tuple(
+            action
+            for action in run.legal
+            if real_rows.get(action) in own and row_box(action) == box
+            or action in shared
+        )
+        visible = tuple(real_rows.get(action, action) for action in legal)
+        profile = (
+            run.profile
+            if ctx is run.ctx
+            else Profile(ctx, run.profile.C, run.rng)
+        )
+        return _BoxView(
+            DecisionRun(ctx, profile, visible, run.rng, memory),
+            box,
+            {action: tagged(action, box) for action in own},
+        )
+
+    active = view(current, run.ctx, run.memory)
+    other_box = 1 - current
+    if not box_is_pending(context, other_box) or not rows[other_box]:
+        return active, None
+    other_state = state_with_active_box(state, other_box)
+    # A copy of the memory: the partner's follow-ups are read, not used up.
+    partner = view(
+        other_box,
+        AppContext(other_state, seat, run.ctx.view),
+        Memory(dict(run.memory.intents), dict(run.memory.data)),
+    )
+    return active, partner
+
+
 @dataclass
 class _Partner:
     """The inactive grafted card's box, as the app sees it.
 
-    ``sources`` are the partner box's sources with ``switch_graft_card`` as
-    their action (``real`` maps each label to the partner action it stands
-    for); ``declines``/``chores`` say the box still needs an End-Turn step.
+    ``sources`` are the partner box's sources with its own rows as their
+    actions; ``declines``/``chores`` say the box still needs an End-Turn
+    step.
     """
 
     turn: _Turn
-    switch: DomainAction
+    view: _BoxView
     sources: list[Source]
-    real: dict[str, DomainAction]
-    values: dict[str, tuple[float, DomainAction | None]]
 
 
-def _partner_box(t: _Turn, switch: DomainAction) -> _Partner:
-    """The other grafted card's box, evaluated on the switched state.
+def _partner_box(t: _Turn, view: _BoxView) -> _Partner:
+    """The other grafted card's box, evaluated with that box active.
 
     The app holds both cards' agent boxes in ``chosenAgentAbilities``
     (played card first, spec engine-order §3.2) and their deferred abilities
-    side by side (600 and the post-action prompt). Our engine shows one box
-    at a time and ``switch_graft_card`` swaps them, so the window builds the
-    inactive box's sources on the state after the switch (an ordering
-    device: the same seat's own frame, nothing hidden) and competes them
-    with the active box's; a winning partner source is realised by the
-    switch, its action kept for the next decision (``_GRAFT_SWITCH_INTENT``).
+    side by side (600 and the post-action prompt). Our engine offers both
+    boxes' rows and resolves each with its box active, so the window builds
+    the other box's sources on that state (the same seat's own frame,
+    nothing hidden) and competes them with the active box's.
     """
 
-    run = t.run
-    seat = run.ctx.seat
-    switched = apply_graft_switch(run.ctx.state, switch).state
-    ctx = AppContext(switched, seat, run.ctx.view)
-    # A copy of the memory: the partner's follow-ups are read, not used up.
-    other_run = DecisionRun(
-        ctx,
-        Profile(ctx, run.profile.C, run.rng),
-        legal_agent_effect_frame_actions(switched, seat),
-        run.rng,
-        Memory(dict(run.memory.intents), dict(run.memory.data)),
-    )
-    other = _turn(other_run)
+    other = _turn(view.run)
     _unknown_ids(other)
     _card_box(other)
     _card_choices(other)
@@ -3909,7 +3969,7 @@ def _partner_box(t: _Turn, switch: DomainAction) -> _Partner:
         # repeat, …) is the active state's already.
         counts = (len(other.sources), len(other.declines), len(other.chores))
         _leader_choices(other)
-        legal = set(run.legal)
+        legal = set(t.run.legal)
         other.sources[counts[0] :] = [
             s for s in other.sources[counts[0] :] if not set(s.actions) <= legal
         ]
@@ -3919,135 +3979,60 @@ def _partner_box(t: _Turn, switch: DomainAction) -> _Partner:
         other.chores[counts[2] :] = [
             a for a in other.chores[counts[2] :] if a not in legal
         ]
-    real: dict[str, DomainAction] = {}
-    values: dict[str, tuple[float, DomainAction | None]] = {}
-    sources: list[Source] = []
-    for source in other.sources:
-        label = _PARTNER_LABEL + source.label
-        if source.stage < Stage.PROMPT:
-            if source.actions:
-                real[label] = source.actions[0]
-            sources.append(Source(label, source.stage, (switch,), order=source.order))
-            continue
-        sources.append(
-            Source(
-                label,
-                Stage.PROMPT,
-                (switch,),
-                evaluate=_switching(source, label, switch, real, values),
-                extra=dict(source.extra),
-            )
-        )
-    return _Partner(other, switch, sources, real, values)
+    sources = [
+        _real_source(source, view, _PARTNER_LABEL + source.label)
+        for source in other.sources
+    ]
+    return _Partner(other, view, sources)
 
 
-def _switching(
-    source: Source,
-    label: str,
-    switch: DomainAction,
-    real: dict[str, DomainAction],
-    values: dict[str, tuple[float, DomainAction | None]],
-) -> Evaluation:
+def _real_source(source: Source, view: _BoxView, label: str | None = None) -> Source:
+    """``source`` answering with the legal rows its box's actions stand for."""
+
     evaluate = source.evaluate
 
     def wrapped() -> tuple[float, DomainAction | None]:
         if evaluate is None:
             return 0.0, None
         value, action = evaluate()
-        values[label] = (value, action)
-        if action is None:
-            return value, None
-        real[label] = action
-        return value, switch
+        return value, None if action is None else view.to_real(action)
 
-    return wrapped
-
-
-def _recording(
-    source: Source, values: dict[str, tuple[float, DomainAction | None]]
-) -> Source:
-    """``source`` with its evaluation recorded under its label."""
-
-    evaluate = source.evaluate
-    if source.stage is not Stage.PROMPT or evaluate is None:
-        return source
-
-    def wrapped() -> tuple[float, DomainAction | None]:
-        result = evaluate()
-        values[source.label] = result
-        return result
-
-    return replace(source, evaluate=wrapped)
+    return replace(
+        source,
+        label=source.label if label is None else label,
+        actions=tuple(view.to_real(action) for action in source.actions),
+        evaluate=wrapped if evaluate is not None else None,
+    )
 
 
-def _partner_winner(
-    sources: Sequence[Source],
-    partner: _Partner,
-    current: Mapping[str, tuple[float, DomainAction | None]],
+def _decide_both(
+    t: _Turn,
+    view: _BoxView,
+    partner: _Partner | None,
+    skip: DomainAction | None,
+    forced: bool,
 ) -> DomainAction | None:
-    """The partner action a ``switch_graft_card`` answer stands for.
+    """``decide`` over both boxes' sources, answering with legal rows.
 
-    An automatic winner is ``decide``'s ``min`` (stage, order); a prompt
-    winner is a partner candidate at the top value of every candidate
-    (``MakeChoice`` keeps one of the best; judgement: the first partner one
-    in source order when several tie, as the shuffle cannot be replayed).
-    None when the switch was the empty answer (a partner decline waits) or
-    the forced prompt's random answer (no candidate above 0).
+    The active box's ``on_choose`` entries are kept for its own answers and
+    the partner's for the partner's.
     """
 
-    automatic = [s for s in sources if s.stage < Stage.PROMPT and s.actions]
-    if automatic:
-        first = min(automatic, key=lambda s: (s.stage, s.order))
-        return partner.real.get(first.label)
-    positive = [
-        value
-        for value, action in (*current.values(), *partner.values.values())
-        if action is not None and value > 0
-    ]
-    if not positive:
+    sources = [_real_source(source, view) for source in t.sources]
+    if partner is not None:
+        sources.extend(partner.sources)
+    chosen = decide(t.run, sources, skip=skip, forced=forced)
+    if chosen is None:
         return None
-    best = max(positive)
-    for label, (value, action) in partner.values.items():
-        if action is not None and value == best:
-            return partner.real.get(label)
-    return None
-
-
-def _graft_intent(
-    t: _Turn,
-) -> tuple[DomainAction, list[tuple[tuple[object, ...], object]]] | None:
-    """The partner action a ``switch_graft_card`` was taken for, if legal."""
-
-    if t.card_ref is None:
-        return None
-    key = (_GRAFT_SWITCH_INTENT, t.run.ctx.round_number, t.card_ref)
-    stored = t.run.memory.intents.pop(key, None)
-    if not isinstance(stored, tuple) or len(stored) != 2:
-        return None
-    action, entries = stored
-    if not isinstance(action, DomainAction) or action not in t.run.legal:
-        return None
-    return action, list(entries)
-
-
-def _decide_with_partner(
-    t: _Turn, partner: _Partner, skip: DomainAction | None, forced: bool
-) -> DomainAction | None:
-    """``decide`` over both boxes; a partner winner is realised by the
-    switch and remembered for the next decision."""
-
-    run = t.run
-    current: dict[str, tuple[float, DomainAction | None]] = {}
-    sources = [_recording(s, current) for s in t.sources]
-    sources.extend(partner.sources)
-    chosen = decide(run, sources, skip=skip, forced=forced)
-    if chosen != partner.switch:
-        return chosen
-    winner = _partner_winner(sources, partner, current)
-    if winner is not None:
-        entries = list(partner.turn.on_choose.get(winner, ()))
-        key = (_GRAFT_SWITCH_INTENT, run.ctx.round_number, partner.turn.card_ref)
-        run.memory.intents[key] = (winner, entries)
+    own = {real: plain for plain, real in view.real.items()}
+    if partner is not None and chosen not in own:
+        theirs = {real: plain for plain, real in partner.view.real.items()}
+        if chosen in theirs:
+            _apply_entries(
+                t.run.memory, partner.turn.on_choose.get(theirs[chosen], ())
+            )
+            return chosen
+    _store_on_choose(t, own.get(chosen, chosen))
     return chosen
 
 
@@ -4105,34 +4090,40 @@ def agent_effects_window(run: DecisionRun) -> DomainAction | None:
         return drawn
     if run.first("gather_intelligence") or run.first("decline_gather_intelligence"):
         return _gather_intelligence(run)
-    t = _turn(run)
-    intended = _graft_intent(t)
-    if intended is not None:
-        action, entries = intended
-        _apply_entries(run.memory, entries)
-        return action
+    views = _box_views(run)
+    if views is None:
+        t = _turn(run)
+        _collect(t)
+        if t.unmapped:
+            return None
+        finish = run.first("finish_agent_turn")
+        skip = next(iter((*t.declines, *t.chores)), None)
+        forced = _explicit_pending(t.sources)
+        chosen = decide(run, t.sources, skip=skip or finish, forced=forced)
+        _store_on_choose(t, chosen)
+        return chosen
+    view, partner_view = views
+    t = _turn(view.run)
     _collect(t)
-    switch = run.first("switch_graft_card")
-    partner = _partner_box(t, switch) if switch is not None else None
+    partner = _partner_box(t, partner_view) if partner_view is not None else None
     if t.unmapped or (partner is not None and partner.turn.unmapped):
         return None
     finish = run.first("finish_agent_turn")
-    skip = next(iter((*t.declines, *t.chores)), None)
+    skip = next((view.to_real(a) for a in (*t.declines, *t.chores)), None)
     forced = _explicit_pending(t.sources)
-    if partner is None:
-        chosen = decide(run, t.sources, skip=skip or finish, forced=forced)
-    else:
-        if skip is None and (
-            partner.turn.declines or partner.turn.chores or finish is None
-        ):
+    if partner is not None:
+        if skip is None:
             # The empty answer (End Turn) needs the partner's box settled
-            # first: its Optional keys declined, or (no End Turn offered
-            # while it is pending) the box made active so it can wait.
-            skip = switch
+            # first: its Optional keys declined.
+            skip = next(
+                (
+                    partner.view.to_real(a)
+                    for a in (*partner.turn.declines, *partner.turn.chores)
+                ),
+                None,
+            )
         forced = forced or _explicit_pending(partner.sources)
-        chosen = _decide_with_partner(t, partner, skip or finish, forced)
-    _store_on_choose(t, chosen)
-    return chosen
+    return _decide_both(t, view, partner, skip or finish, forced)
 
 
 HANDLERS: dict[str, Handler] = {"agent_effects": agent_effects_window}

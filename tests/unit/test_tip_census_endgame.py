@@ -552,6 +552,20 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     ends on 8 as the winner. The buggy collector would read
     ``end.endgame_vp`` == 0 for seat 2 and ``end.leader_changed`` == False
     (independent replay of the Endgame steps).
+
+    Re-derived 2026-10-12 for both grafted Agent boxes offered from the start
+    (codec v143, docs/graft-boxes-plan.md: no ``switch_graft_card``, box 1's
+    rows tagged ``box=1``): seed 53 first diverges at round 4, seat 3's
+    grafted Agent turn (its legal list no longer holds the switch), and no
+    longer has an Endgame-opening Tech change the leader (the previous
+    commit's engine gives the values pinned before). The same capture over
+    full seeds 1-200 finds seeds 28, 113, 127, 136, 141 and 167; the case is
+    seed 28, the first. Endgame opens there in round 10 on the empty
+    Conflict deck with no seat at 10 VP: seat 0 (Lady Jessica) leads at the
+    check. Seat 2 (Muad'Dib) holds the Endgame-opening Tech, whose 1 VP
+    takes it to the lead, and it ends on 8 as the winner. The buggy
+    collector would read ``end.endgame_vp`` == 0 for seat 2 and
+    ``end.leader_changed`` == False (scratch replay with the same capture).
     """
 
     import dune_imperium.rules.engine as rules_engine
@@ -559,7 +573,7 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
     saw_case = False
-    for seed in (*FULL_SEEDS, 53):
+    for seed in (*FULL_SEEDS, 28):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -594,13 +608,13 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 53:
+        if seed == 28:
             saw_case = True
             assert census["seats"][2]["end.endgame_vp"] == 1
             assert census["game"]["end.leader_changed"] is True
             assert census["game"]["end.trigger_vp"] is False
 
-    assert saw_case, "the seed 53 regression case must run"
+    assert saw_case, "the seed 28 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(
@@ -749,9 +763,20 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     pays the Commander for slot 1 (``lose_intrigue_troop`` with
     ``commanders`` 1), its only Commander retreat event, and the census
     counts no Commander retreat for it (scratch replay).
+
+    Re-derived 2026-10-12 for both grafted Agent boxes offered from the start
+    (codec v143, docs/graft-boxes-plan.md): seed 2 first diverges at round
+    5, seat 2's grafted Agent turn (its legal list no longer holds the
+    switch), and seat 0 no longer retreats a Commander through the loss (the
+    previous commit's engine gives the retreat pinned before). The same
+    listing over full seeds 1-200 gives seed 29 seat 0 (Kota Odax of Ix)
+    first: in round 8 its Gruesome Sacrifice pays a Commander for each slot
+    (``lose_intrigue_troop`` with ``commanders`` 1, twice), its only
+    Commander retreat events, and the census counts no Commander retreat
+    for it (scratch replay).
     """
 
-    spec = _spec(True, 2)
+    spec = _spec(True, 29)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
@@ -762,7 +787,8 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:6:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat"
+        "round:8:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:0:loss:retreat",
+        "round:8:player:0:intrigue:intrigue:gruesome_sacrifice:1:slot:1:loss:retreat",
     ]
     census = tip_census.play(spec, ("endgame",))
     assert census["seats"][0]["bt.commander_retreats"] == 0

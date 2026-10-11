@@ -452,13 +452,23 @@ def test_navigation_gain_is_bucketed_leader_in_a_real_game(
     # (Navigation Chamber's acquire icon) gain: 14 total (independent replay,
     # no collector imports; the previous commit's engine gives the values
     # pinned before).
+    # Re-counted 2026-10-12 for both grafted Agent boxes offered from the
+    # start (codec v143, docs/graft-boxes-plan.md: no ``switch_graft_card``,
+    # box 1's rows tagged ``box=1``): seed 27 first diverges at round 4,
+    # seat 1's grafted Agent turn at Hagga Basin, whose legal list no longer
+    # holds the switch, after seat 0's round-3 Emperor visit has triggered
+    # Navigation. Its own events now contain 7 visits (rounds 1, 2, 3, 3, 5,
+    # 5, 7), 1 Navigation, 2 Intrigue (Tenuous Bond, Withdrawal Agreement)
+    # and 1 acquisition (Spiritual Fervor's Research bonus) gain: 11 total
+    # (independent replay, no collector imports; the previous commit's
+    # engine gives the values pinned before).
     game = tip_census.play(_spec(True, 27), ("influence",))
     seat0 = game["seats"][0]
     assert seat0["leader"] == "steersman_y_rkoon"
     sources = seat0["infl.sources"]
     assert sources.get("leader") == 1
-    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 8
-    assert seat0["infl.gained"] == 14
+    assert sources.get("visit:starter", 0) + sources.get("visit:bought", 0) == 7
+    assert seat0["infl.gained"] == 11
 
 
 def test_fremen2_round_uses_the_decision_round_not_a_folded_next_round(
@@ -788,52 +798,74 @@ def test_pinned_influence_lands_and_spy_columns_for_two_traced_seats(
     # Infiltrates taken; Gather Intelligence twice at a 2/3 lag; no Spy left
     # on the board. The values below are the collectors' own on a scratch
     # replay (not recounted independently).
-    game = tip_census.play(_spec(True, 788), ("influence",))
-    seat = game["seats"][1]
-    assert seat["infl.sources"] == {
-        "visit:starter": 2,
-        "visit:bought": 4,
-        "agent_card": 1,
-        "combat_reward": 2,
-        "tech": 1,
-        "intrigue": 2,
-    }
-    assert seat["infl.gained"] == 12
-    assert seat["infl.lost"] == 1
-    assert seat["infl.fremen2_round"] == 3
-    assert seat["infl.hooks_round"] == 3
-    assert seat["lands.reveal_cards"] == pytest.approx(29 / 9)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(52 / 9)
-    assert seat["spy.placed"] == 9
-    assert seat["spy.used_gather"] == 2
-    assert seat["spy.recalled_other"] == 5
-    assert seat["spy.trashed"] == 1
-    assert seat["spy.on_board_end"] == 0
-    assert seat["spy.use_lag"] == pytest.approx(2 / 3)
-    assert seat["spy.infiltrate_offered"] == 3
-    assert seat["spy.infiltrate_taken"] == 1
-
-    game = tip_census.play(_spec(True, 54), ("influence",))
+    # Re-derived 2026-10-12 for both grafted Agent boxes offered from the
+    # start (codec v143, docs/graft-boxes-plan.md: no ``switch_graft_card``,
+    # box 1's rows tagged ``box=1``): seed 788 first diverges at round 4,
+    # seat 1's grafted Agent turn at Hagga Basin, and seed 54 at round 3,
+    # seat 1's grafted Agent turn (the switch is gone from both legal
+    # lists); seat 1 of 788 no longer trashes a Spy or declines an
+    # Infiltrate and seat 2 of 54 no longer has an acquisition or
+    # Reveal-card source, so neither fills its role (the previous commit's
+    # engine gives the values pinned before). Full seeds 1-1200 give seeds
+    # 268 (seat 2), 334 (seat 0) and 974 (seat 0) in the first role and
+    # seed 37 seat 0 first of eleven in the second (74, 358, 478, 481, ...);
+    # the pins are the first of each. Seed 268 seat 2 (Gurney Halleck):
+    # Tech (twice), Intrigue (twice), Agent-card and Conflict-reward (twice)
+    # sources, one loss; a trashed Spy and five other recalls; one of two
+    # Infiltrates taken; Gather Intelligence five times at a 7/6 lag; no
+    # Fremen 2, no Maker Hooks; two Spies left on the board. Seed 37 seat 0
+    # (Lady Amber Metulli): acquisition, Reveal-card (twice) and Tech
+    # sources; Maker Hooks in round 9; one of four Infiltrates taken and
+    # Gather Intelligence three times at a 3/4 lag; six other recalls; two
+    # Spies left on the board. The values below are the collectors' own on a
+    # scratch replay (not recounted independently).
+    game = tip_census.play(_spec(True, 268), ("influence",))
     seat = game["seats"][2]
     assert seat["infl.sources"] == {
-        "visit:starter": 2,
-        "visit:bought": 5,
-        "combat_reward": 5,
-        "acquisition": 1,
-        "reveal_card": 1,
+        "visit:starter": 3,
+        "visit:bought": 3,
+        "agent_card": 1,
+        "combat_reward": 2,
+        "tech": 2,
+        "intrigue": 2,
     }
-    assert seat["infl.gained"] == 14
-    assert seat["infl.lost"] == 0
-    assert seat["infl.fremen2_round"] == 2
-    assert seat["infl.hooks_round"] == 6
-    assert seat["lands.reveal_cards"] == pytest.approx(4.0)
-    assert seat["lands.reveal_persuasion"] == pytest.approx(6.1)
-    assert seat["spy.placed"] == 4
-    assert seat["spy.used_gather"] == 1
-    assert seat["spy.recalled_other"] == 1
-    assert seat["spy.on_board_end"] == 1
-    assert seat["spy.use_lag"] == pytest.approx(1 / 2)
+    assert seat["infl.gained"] == 13
+    assert seat["infl.lost"] == 1
+    assert seat["infl.fremen2_round"] is None
+    assert seat["infl.hooks_round"] is None
+    assert seat["lands.reveal_cards"] == pytest.approx(3.2)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(6.3)
+    assert seat["spy.placed"] == 14
+    assert seat["spy.used_gather"] == 5
+    assert seat["spy.recalled_other"] == 5
+    assert seat["spy.trashed"] == 1
+    assert seat["spy.on_board_end"] == 2
+    assert seat["spy.use_lag"] == pytest.approx(7 / 6)
     assert seat["spy.infiltrate_offered"] == 2
+    assert seat["spy.infiltrate_taken"] == 1
+
+    game = tip_census.play(_spec(True, 37), ("influence",))
+    seat = game["seats"][0]
+    assert seat["infl.sources"] == {
+        "visit:starter": 3,
+        "visit:bought": 5,
+        "intrigue": 1,
+        "reveal_card": 2,
+        "tech": 1,
+        "acquisition": 1,
+    }
+    assert seat["infl.gained"] == 13
+    assert seat["infl.lost"] == 0
+    assert seat["infl.fremen2_round"] == 4
+    assert seat["infl.hooks_round"] == 9
+    assert seat["lands.reveal_cards"] == pytest.approx(4.0)
+    assert seat["lands.reveal_persuasion"] == pytest.approx(6.5)
+    assert seat["spy.placed"] == 12
+    assert seat["spy.used_gather"] == 3
+    assert seat["spy.recalled_other"] == 6
+    assert seat["spy.on_board_end"] == 2
+    assert seat["spy.use_lag"] == pytest.approx(3 / 4)
+    assert seat["spy.infiltrate_offered"] == 4
     assert seat["spy.infiltrate_taken"] == 1
 
 

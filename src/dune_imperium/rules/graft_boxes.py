@@ -25,7 +25,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Final
 
-from dune_imperium.core.actions import ActionValue
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind, with_context
@@ -183,6 +183,116 @@ def box_is_pending(context: Mapping[str, ActionValue], box: int) -> bool:
         "pending_agent_effect" if box == active_box(context) else "graft_pending_effect"
     )
     return context.get(key) is True
+
+
+# The argument that names box 1 on an Agent-box row (codec v143). A row
+# without it is box 0's, or no box's: the turn's other effects, Urgent
+# Shigawire's added draw, a Servo-Receivers Signet frame's rows.
+BOX_ARGUMENT: Final = "box"
+
+# Every action an Agent box offers (``agent_effect_frame._active_box_actions``:
+# its icons, its serial choices and its plain resolution, the Signet Ring's
+# Leader ability included). The codec holds a ``box=1`` twin of each of
+# their templates in a catalog with Immortality; the effect frame refuses a
+# box 1 row outside this set, so a new box action cannot go uncoded.
+BOX_ACTION_IDS: Final = frozenset(
+    {
+        # Plain resolution and keyed icons (OQ-027).
+        "resolve_agent_card_effect",
+        # Trash, discard, Contract, retreat, recall, Spy, Influence.
+        "trash_agent_card",
+        "decline_agent_card_trash",
+        "discard_agent_card",
+        "decline_agent_card_discard",
+        "complete_contract_by_card",
+        "retreat_opponent_troop",
+        "recall_agent_for_agent_card",
+        "recall_conflict_agent_for_agent_card",
+        "decline_agent_card_recall",
+        "place_agent_card_spy",
+        "recall_spy_for_agent_card",
+        "decline_agent_card_spy",
+        "choose_agent_card_influence",
+        # Payments.
+        "pay_agent_card_water",
+        "pay_agent_card_spice",
+        "pay_agent_card_spice_for_sandworm",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+        "pay_agent_card_specimen",
+        "pay_agent_card_two_specimens",
+        "pay_agent_card_five_solari_for_tleilaxu",
+        "trash_grafted_card_for_specimen",
+        "trash_grafted_card_for_influence",
+        "trash_agent_card_self_for_vp",
+        "take_agent_card_combat_icon",
+        "lose_agent_card_troop",
+        "choose_agent_card_reward",
+        "decline_agent_card_payment",
+        "pay_corrinth_city",
+        "select_corrinth_city_discard",
+        "decline_corrinth_city_payment",
+        "pay_agent_card_intrigue_and_spice",
+        "trash_intrigue_for_agent_card",
+        "decline_agent_card_intrigue_payment",
+        # Acquisitions.
+        "acquire_imperium_with_solari",
+        "acquire_reserve_with_solari",
+        "acquire_imperium_by_card",
+        "acquire_reserve_by_card",
+        "decline_agent_card_acquisition",
+        # The Signet Ring's box: its Leader ability.
+        "advance_feyd_track",
+        "trash_leader_card",
+        "decline_leader_card_trash",
+        "place_leader_spy",
+        "recall_spy_for_leader_placement",
+        "decline_leader_spy_placement",
+        "pay_leader_signet_water",
+        "pay_leader_signet_spice",
+        "pay_leader_signet_solari",
+        "decline_leader_signet_payment",
+        "gain_leader_signet_troop",
+        "choose_leader_signet_influence",
+        "acquire_leader_imperium",
+        "acquire_leader_reserve",
+        "retreat_leader_troops",
+        "place_leader_bonus_spice",
+        "take_leader_bonus_spice",
+        "deploy_leader_agent",
+        "gain_leader_signet_spice",
+        "trash_leader_tech",
+    }
+)
+
+
+def row_box(action: DomainAction) -> int:
+    """1 for a row tagged with box 1, else 0."""
+
+    return 1 if dict(action.arguments).get(BOX_ARGUMENT) == 1 else 0
+
+
+def tagged(action: DomainAction, box: int) -> DomainAction:
+    """``action`` as box ``box``'s row: box 1 adds ``box=1``, box 0 none."""
+
+    plain = untagged(action)
+    if box == 0:
+        return plain
+    return replace(
+        plain, arguments=tuple(sorted((*plain.arguments, (BOX_ARGUMENT, 1))))
+    )
+
+
+def untagged(action: DomainAction) -> DomainAction:
+    """``action`` without its box argument."""
+
+    if all(key != BOX_ARGUMENT for key, _ in action.arguments):
+        return action
+    return replace(
+        action,
+        arguments=tuple(
+            (key, value) for key, value in action.arguments if key != BOX_ARGUMENT
+        ),
+    )
 
 
 def _top_effect_frame_context(state: GameState) -> dict[str, ActionValue] | None:

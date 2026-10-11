@@ -5,13 +5,14 @@ which printed effect a keyed resolution (``resolve_board_effect`` /
 ``resolve_agent_card_effect`` with an ``effect`` argument) stands for, or
 what a payment shared by several Agent boxes buys on the card resolving
 (``_PAYMENT_TEXT``). A whole Agent box -- the argument-less
-``resolve_agent_card_effect`` and the graft's ``switch_graft_card`` to the
-other card's box -- is described by that card's box text
+``resolve_agent_card_effect`` -- is described by that card's box text
 (``display.cards.agent_box_text``), and every Agent-box row is led by the
 card it works on (``agent_box_row_title``): the page shows that pair as the
 button itself (user request 2026-10-11: "그냥 선택지에 카드 효과가 바로
-보여지는게 낫지 않나?"). It is derived from the same engine tables and card
-data the rules execute.
+보여지는게 낫지 않나?"). A grafted turn offers both cards' boxes (box 1's rows
+carry ``box=1``, codec v143); each row is read with its own box active
+(``rules.agent_effect_frame.route_box_action``), as the engine resolves it.
+It is derived from the same engine tables and card data the rules execute.
 """
 
 import re
@@ -33,15 +34,15 @@ from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
 )
+from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.effects import (
     active_agent_card,
-    borrowed_agent_card,
     current_agent_effect_context,
-    other_grafted_card_id,
     pending_boost_draw,
 )
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.graft_boxes import is_grafted_turn, untagged
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.owed_draws import next_owed_draw
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
@@ -185,8 +186,9 @@ def agent_card_payment_text(
     payment.
     """
 
-    if action.action_id not in _PAYMENT_ACTION_IDS:
+    if untagged(action).action_id not in _PAYMENT_ACTION_IDS:
         return None
+    state, action, _ = route_box_action(state, action)
     try:
         _, context = current_agent_effect_context(state)
     except ValueError:
@@ -308,8 +310,6 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
 
 
 _RESOLVE_BOX = "resolve_agent_card_effect"
-_SWITCH_GRAFT = "switch_graft_card"
-_BOX_ROWS = frozenset({_RESOLVE_BOX, _SWITCH_GRAFT})
 
 # A card's printed Korean twin (``tokens_ko.AGENT_EFFECT_TEXT_KO``) keeps the
 # icons the card prints, such as Seek Allies' trash icon after "이 카드".
@@ -349,41 +349,23 @@ def _card_names(card_id: str) -> tuple[str, str]:
     return card.name, KOREAN_CARD_NAMES["cards"].get(card.card_id, card.name)
 
 
-def _toward_ko(word: str) -> str:
-    """로 after a vowel or a final ㄹ, 으로 after any other final consonant."""
-
-    last = word.rstrip()[-1:]
-    if "가" <= last <= "힣":
-        final = (ord(last) - ord("가")) % 28
-        return "로" if final in (0, 8) else "으로"
-    return "로"
-
-
 def agent_box_text_for_action(
     state: GameState, action: DomainAction
 ) -> tuple[str, str] | None:
-    """What a whole Agent box does, for the row that resolves or reaches it.
+    """What a whole Agent box does, for the row that resolves it.
 
-    The argument-less ``resolve_agent_card_effect`` resolves the active
-    card's box (a Ghola's borrowed one included, as the engine reads it);
-    ``switch_graft_card`` makes the other grafted card's box the active one
-    (``rules.graft``). English and Korean, or None for any other row.
+    The argument-less ``resolve_agent_card_effect`` resolves its box's card
+    (a Ghola's borrowed one included, as the engine reads it), box 1's with
+    ``box=1``. English and Korean, or None for any other row.
     """
 
-    if action.action_id not in _BOX_ROWS or action.arguments:
+    if untagged(action) != DomainAction(_RESOLVE_BOX, action.actor):
         return None
+    state, action, _ = route_box_action(state, action)
     context = _effect_frame_context(state)
     if context is None:
         return None
-    if action.action_id == _SWITCH_GRAFT:
-        partner = other_grafted_card_id(context)
-        if not partner:
-            return None
-        entry = borrowed_agent_card(
-            personal_card_for_instance(partner), str(context["card_id"])
-        )
-    else:
-        entry = active_agent_card(context)
+    entry = active_agent_card(context)
     text, text_ko = agent_box_text(entry), agent_box_text_ko(entry)
     if text is None or text_ko is None:
         return None
@@ -395,29 +377,23 @@ def agent_box_row_title(
 ) -> tuple[str, str] | None:
     """The card an Agent-box row works on, which leads its button.
 
-    A box resolution or one of its icons names the active card; Urgent
-    Shigawire's added draw names the card it was added to; the graft switch
-    says it moves to the other grafted card ("{graft} 계획된 교배로
-    넘어가기"), for today the click only switches the active box. English
-    and Korean (card names stay plain text), or None for any other row.
+    A box resolution or one of its icons names its box's card; on a grafted
+    turn every row of either box does (box 1's carry ``box=1``), so the two
+    cards' rows tell apart. Urgent Shigawire's added draw names the card it
+    was added to. English and Korean (card names stay plain text), or None
+    for any other row.
     """
 
-    if action.action_id not in _BOX_ROWS:
-        return None
-    context = _effect_frame_context(state)
+    view, plain, box = route_box_action(state, action)
+    context = _effect_frame_context(view)
     if context is None:
         return None
-    if action.action_id == _SWITCH_GRAFT:
-        partner = other_grafted_card_id(context)
-        if not partner:
+    if plain.action_id != _RESOLVE_BOX:
+        if box is None or not is_grafted_turn(context):
             return None
-        name, name_ko = _card_names(partner)
-        return (
-            f"Go to {name} ({{graft}})",
-            f"{{graft}} {name_ko}{_toward_ko(name_ko)} 넘어가기",
-        )
+        return _card_names(str(context["card_id"]))
     card_id = str(context["card_id"])
-    if action.arguments and resolves_boost_draw(state, action):
+    if box is None and plain.arguments and resolves_boost_draw(view, plain):
         card_id = pending_boost_draw(context) or card_id
     return _card_names(card_id)
 
@@ -571,6 +547,7 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     box = agent_box_text_for_action(state, action)
     if box is not None:
         return box[0]
+    state, action, row_box = route_box_action(state, action)
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None
@@ -590,7 +567,7 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or not card_id:
         return None
-    if resolves_boost_draw(state, action):
+    if row_box is None and resolves_boost_draw(state, action):
         # Urgent Shigawire's draw added to the boosted card's box (OQ-106).
         return f"{agent_card_icon_text(None, key)} ({_SHIGAWIRE})"
     # The box resolving, a Ghola's borrowed one included, as the engine's
@@ -638,6 +615,7 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     box = agent_box_text_for_action(state, action)
     if box is not None:
         return box[1]
+    state, action, row_box = route_box_action(state, action)
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None
@@ -654,6 +632,6 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or not card_id:
         return None
-    if resolves_boost_draw(state, action):
+    if row_box is None and resolves_boost_draw(state, action):
         return f"{agent_card_icon_text_ko(None, key)} ({_SHIGAWIRE_KO})"
     return agent_card_icon_text_ko(active_agent_card(context).agent_effect, key)

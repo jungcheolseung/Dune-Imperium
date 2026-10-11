@@ -440,10 +440,24 @@ def resolve(
                 continue
             problem = wanted[migrated.recorded_index]
             resolved[problem.problem_id] = _position(
-                engine, problem, state, migrated.step, replay.action_codec_version
+                engine,
+                problem,
+                state,
+                migrated.step,
+                replay.action_codec_version,
+                migrated.graft_box,
             )
+        dropped = dict(record.dropped)
         for problem in problems:
             if problem.problem_id in resolved:
+                continue
+            if problem.recorded_index in dropped:
+                # Codec v143 offers both grafted boxes at once: the person's
+                # ``switch_graft_card`` has no counterpart here.
+                resolved[problem.problem_id] = (
+                    f"the person's move at step {problem.recorded_index} has no "
+                    f"counterpart on this engine ({dropped[problem.recorded_index]})"
+                )
                 continue
             divergence = record.divergence
             resolved[problem.problem_id] = (
@@ -461,6 +475,7 @@ def _position(
     state: GameState,
     migrated: ReplayStep,
     codec: int,
+    graft_box: int = 0,
 ) -> Resolved | str:
     decision = engine.current_decision(state)
     if getattr(decision, "owner", None) != problem.seat:
@@ -474,7 +489,9 @@ def _position(
     person = migrated if isinstance(migrated, DomainAction) else problem.person
     network = problem.wrong if problem.family == "human_right" else problem.right
     if network not in legal:
-        rewritten = rewrite_step(engine, state, network, codec)
+        # Judged in the recording engine's terms: before codec v143 with the
+        # graft box that engine had active there (``MigratedStep.graft_box``).
+        rewritten = rewrite_step(engine, state, network, codec, graft_box)
         if isinstance(rewritten, DomainAction):
             network = rewritten
     right, wrong = (

@@ -13,7 +13,21 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.adapters import ActionCodec
+from dune_imperium.adapters.action_codec import ActionTemplate
 from dune_imperium.agents import RandomAgent
+from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GameState,
+    PlayerState,
+    Resources,
+)
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.state import GamePhase
@@ -25,14 +39,17 @@ from dune_imperium.rules import (
     frames,
     leader_abilities,
 )
+from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import (
     ACTIVE_BOX_KEY,
+    BOX_ACTION_IDS,
     BOX_KEY_PAIRS,
     BOX_KEYS,
     CARD_KEYS,
     TURN_KEYS,
     active_box,
+    row_box,
     swap_boxes,
     unclassified_keys,
 )
@@ -293,3 +310,270 @@ def test_every_key_of_a_played_effect_frame_is_classified(seed: int) -> None:
         state = engine.apply(state, action, legal_actions=legal).state
     assert state.phase is GamePhase.FINISHED
     assert unclassified_keys(dict.fromkeys(seen, 0)) == ()
+
+
+# ---------------------------------------------------------------------------
+# Both boxes offered from the start (docs/graft-boxes-plan.md 4.1-4.6)
+# ---------------------------------------------------------------------------
+
+IMMORTALITY = RulesetConfig(immortality=True, promo_cards=True)
+STARTERS = starting_deck_instance_ids(0, immortality=True)
+DAGGER = next(card for card in STARTERS if "dagger:0" in card)
+GHOLA = "tleilaxu:ghola:0"
+TANKS = "tleilaxu:from_the_tanks:0"
+HORROR = "tleilaxu:stitched_horror:0"
+PITER = "tleilaxu:piter_genius_advisor:0"
+PHEROMONES = "tleilaxu:beguiling_pheromones:0"
+INFILTRATOR = "tleilaxu:tleilaxu_infiltrator:0"
+COUPLING = "imperium:planned_coupling:0"
+ENGINE = UprisingRulesEngine()
+
+
+def _seat(seat: int, **extra: object) -> PlayerState:
+    values: dict[str, object] = {
+        "player_id": seat,
+        "research_space": RESEARCH_START_ID,
+        "family_atomics": True,
+    }
+    values.update(extra)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def _state(hand: tuple[str, ...], **owner: object) -> GameState:
+    imperium = imperium_deck_instance_ids(False)
+    seats = [
+        _seat(
+            0,
+            hand=hand,
+            deck=tuple(card for card in STARTERS if card not in hand),
+            resources=Resources(solari=4, spice=2, water=2),
+            **owner,
+        ),
+        *(_seat(seat) for seat in range(1, 4)),
+    ]
+    return GameState(
+        config=IMMORTALITY,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False, immortality=True)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        tleilaxu_track_spice=2,
+        players=tuple(seats),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _graft(state: GameState, card_id: str, space_id: str, partner: str) -> GameState:
+    placement = next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["card_id"] == card_id
+        and dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments).get("graft") is True
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    placed = ENGINE.apply(state, placement).state
+    choice = DomainAction(
+        "choose_graft_partner", 0, arguments=(("card_id", partner),)
+    )
+    return ENGINE.apply(placed, choice).state
+
+
+def _row(state: GameState, action_id: str, box: int = 0, **arguments: object) -> (
+    DomainAction
+):
+    return next(
+        action
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == action_id
+        and dict(action.arguments).get("box", 0) == box
+        and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+    )
+
+
+def _apply(state: GameState, action_id: str, box: int = 0, **arguments: object) -> (
+    GameState
+):
+    return ENGINE.apply(state, _row(state, action_id, box, **arguments)).state
+
+
+def _boxes_offered(state: GameState, action_id: str) -> set[int]:
+    return {
+        row_box(action)
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == action_id
+    }
+
+
+def test_both_boxes_are_offered_from_the_start_in_either_order() -> None:
+    """Ghola copies From the Tanks' box, so both boxes offer the same plain
+    resolution: box 0's untagged, box 1's with ``box=1``. Either may go
+    first, and each resolves its own box once (no switch, no loop)."""
+
+    state = _graft(_state((GHOLA, TANKS), troops_supply=9), GHOLA, "arrakeen", TANKS)
+    assert _boxes_offered(state, "resolve_agent_card_effect") == {0, 1}
+    assert "switch_graft_card" not in {
+        action.action_id for action in ENGINE.legal_actions(state, 0)
+    }
+    partner_first = _apply(state, "resolve_agent_card_effect", box=1)
+    assert partner_first.players[0].troops_garrison == 5
+    _, context = current_agent_effect_context(partner_first)
+    assert (context["card_id"], context["graft_card_id"]) == (TANKS, GHOLA)
+    assert _boxes_offered(partner_first, "resolve_agent_card_effect") == {0}
+    # The untagged row is box 0's although box 1 is the active one now.
+    both = _apply(partner_first, "resolve_agent_card_effect")
+    assert both.players[0].troops_garrison == 7
+    assert "resolve_agent_card_effect" not in {
+        action.action_id for action in ENGINE.legal_actions(both, 0)
+    }
+
+
+def test_a_choose_two_box_keeps_the_other_box_waiting_until_its_second_pick() -> (
+    None
+):
+    """"Choose two" names both before either resolves (OQ-057 (4)), and the
+    other box waits meanwhile (user decision 2026-10-12, plan 4.3)."""
+
+    state = _graft(
+        _state((HORROR, GHOLA), troops_supply=9), HORROR, "arrakeen", GHOLA
+    )
+    assert _boxes_offered(state, "choose_agent_card_reward") == {0, 1}
+    first = _apply(state, "choose_agent_card_reward", box=1, reward="water")
+    assert _boxes_offered(first, "choose_agent_card_reward") == {1}
+    assert not any(
+        ("box", 1) not in action.arguments
+        and action.action_id == "choose_agent_card_reward"
+        for action in ENGINE.legal_actions(first, 0)
+    )
+    second = _apply(first, "choose_agent_card_reward", box=1, reward="troop")
+    owner = second.players[0]
+    assert (owner.resources.water, owner.troops_garrison) == (3, 4)
+    # Box 0 (Stitched Horror) names its own two from all four.
+    assert {
+        dict(action.arguments)["reward"]
+        for action in ENGINE.legal_actions(second, 0)
+        if action.action_id == "choose_agent_card_reward"
+    } == {"water", "troop", "trash", "tleilaxu"}
+    third = _apply(second, "choose_agent_card_reward", reward="water")
+    assert _boxes_offered(third, "choose_agent_card_reward") == {0}
+    done = _apply(third, "choose_agent_card_reward", reward="tleilaxu")
+    owner = done.players[0]
+    assert (owner.resources.water, owner.troops_garrison) == (4, 4)
+    assert owner.tleilaxu_space == 1
+
+
+def test_an_arrow_s_rewards_keep_the_other_box_waiting() -> None:
+    """Piter's "Lose a troop -> draw two cards and Research": once the troop
+    is paid, its two rewards wait as icons and the Ghola copy's rows wait
+    until both are taken (plan 4.3)."""
+
+    state = _graft(_state((PITER, GHOLA)), PITER, "assembly_hall", GHOLA)
+    assert _boxes_offered(state, "lose_agent_card_troop") == {0, 1}
+    paid = _apply(state, "lose_agent_card_troop", zone="garrison")
+    assert not any(
+        ("box", 1) in action.arguments for action in ENGINE.legal_actions(paid, 0)
+    )
+    drew = _apply(paid, "resolve_agent_card_effect", effect="cards")
+    assert not any(
+        ("box", 1) in action.arguments for action in ENGINE.legal_actions(drew, 0)
+    )
+    researched = _apply(drew, "resolve_agent_card_effect", effect="research")
+    while researched.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS:
+        decision = ENGINE.current_decision(researched)
+        assert isinstance(decision, PlayerDecision)
+        researched = ENGINE.apply(
+            researched, ENGINE.legal_actions(researched, decision.owner)[0]
+        ).state
+    assert _boxes_offered(researched, "lose_agent_card_troop") == {1}
+
+
+def test_the_turn_ends_while_only_the_partner_s_box_waits() -> None:
+    """Beguiling Pheromones' box needs a Faction space; at the Assembly Hall
+    it waits for the turn's end (OQ-057 (1)). With no other box pending the
+    end is offered at once -- there is no switch to make it the active box
+    first -- and the press fizzles it."""
+
+    state = _graft(_state((DAGGER, PHEROMONES)), DAGGER, "assembly_hall", PHEROMONES)
+    _, context = current_agent_effect_context(state)
+    assert context["pending_agent_effect"] is False
+    assert context["graft_pending_effect"] is True
+    while any(
+        action.action_id == "resolve_board_effect"
+        for action in ENGINE.legal_actions(state, 0)
+    ):
+        state = _apply(state, "resolve_board_effect")
+    assert "finish_agent_turn" in {
+        action.action_id for action in ENGINE.legal_actions(state, 0)
+    }
+    finished = ENGINE.apply(state, DomainAction("finish_agent_turn", 0))
+    assert "agent_card_effect_unavailable" in {
+        event.kind for event in finished.events
+    }
+    assert finished.state.decision_stack[-1].kind == FrameKind.TURN
+
+
+def test_box_one_s_card_draw_is_never_urgent_shigawire_s() -> None:
+    """Urgent Shigawire adds its draw to the boosted card's box: the placed
+    Planned Coupling, box 0. Box 0 prints no card-draw icon, so the untagged
+    ``effect=cards`` is the added draw; box 1's (Tleilaxu Infiltrator's) is
+    its own icon and leaves the added draw waiting (OQ-106 1)."""
+
+    state = _graft(
+        _state((COUPLING, INFILTRATOR), bene_gesserit_boost_pending=True),
+        COUPLING,
+        "arrakeen",
+        INFILTRATOR,
+    )
+    _, context = current_agent_effect_context(state)
+    assert context["boost_draw_card_id"] == COUPLING
+    rows = ENGINE.legal_actions(state, 0)
+    cards = (("effect", "cards"),)
+    assert DomainAction("resolve_agent_card_effect", 0, cards) in rows
+    assert (
+        DomainAction("resolve_agent_card_effect", 0, (("box", 1), *cards)) in rows
+    )
+    partner = ENGINE.apply(
+        state, DomainAction("resolve_agent_card_effect", 0, (("box", 1), *cards))
+    ).state
+    _, context = current_agent_effect_context(partner)
+    assert context["boost_draw_card_id"] == COUPLING
+    assert context["card_id"] == INFILTRATOR
+    assert "cards" not in str(context["pending_agent_icons"])
+    added = ENGINE.apply(
+        partner, DomainAction("resolve_agent_card_effect", 0, cards)
+    ).state
+    _, context = current_agent_effect_context(added)
+    assert "boost_draw_card_id" not in context
+    assert len(added.players[0].hand) == len(partner.players[0].hand) + 1
+
+
+def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
+    plain = ActionCodec(RulesetConfig(choam_module=True, bloodlines=True))
+    assert not any(
+        ("box", 1) in template.arguments for template in plain.catalog
+    )
+    assert ActionCodec(RulesetConfig()).size == 4413
+    codec = ActionCodec(IMMORTALITY)
+    templates = set(codec.catalog)
+    twins = {t for t in codec.catalog if ("box", 1) in t.arguments}
+    assert twins
+    assert all(t.action_id in BOX_ACTION_IDS for t in twins)
+    for template in codec.catalog:
+        if template.action_id in BOX_ACTION_IDS and template not in twins:
+            twin = ActionTemplate(
+                template.action_id,
+                tuple(sorted((*template.arguments, ("box", 1)))),
+            )
+            assert twin in templates
+    assert "switch_graft_card" not in {t.action_id for t in codec.catalog}

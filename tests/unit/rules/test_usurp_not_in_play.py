@@ -40,10 +40,9 @@ from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft import (
     apply_graft_partner,
-    apply_graft_switch,
     legal_graft_partner_actions,
-    legal_graft_switch_actions,
 )
+from dune_imperium.rules.graft_boxes import other_box_state
 from dune_imperium.rules.optional_trash import (
     legal_optional_trash_actions,
     optional_trash_frame,
@@ -143,7 +142,9 @@ def _usurp(state: GameState, space_id: str, row_card: str) -> GameState:
 
 
 def _switch(state: GameState) -> GameState:
-    return apply_graft_switch(state, legal_graft_switch_actions(state, 0)[0]).state
+    """The state with the partner's box (box 1) active."""
+
+    return other_box_state(state)
 
 
 def _trash_targets(actions: tuple[DomainAction, ...]) -> set[str]:
@@ -196,7 +197,10 @@ def test_a_borrowed_weirding_woman_never_returns_to_hand() -> None:
     _, context = current_agent_effect_context(grafted)
     # The box is never left waiting: it could never resolve.
     assert context["graft_pending_effect"] is False
-    assert legal_graft_switch_actions(grafted, 0) == ()
+    assert not any(
+        ("box", 1) in action.arguments
+        for action in UprisingRulesEngine().legal_actions(grafted, 0)
+    )
     assert all(
         action.action_id != "resolve_agent_card_effect"
         for action in UprisingRulesEngine().legal_actions(grafted, 0)

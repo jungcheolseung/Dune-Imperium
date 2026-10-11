@@ -146,7 +146,7 @@ def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> Ga
     return ENGINE.apply(placed, partner).state
 
 
-def _apply(state: GameState, action_id: str, **arguments: str) -> GameState:
+def _apply(state: GameState, action_id: str, **arguments: str | int) -> GameState:
     action = DomainAction(
         action_id=action_id, actor=0, arguments=tuple(sorted(arguments.items()))
     )
@@ -204,7 +204,7 @@ def test_the_card_played_this_turn_is_named_beside_the_earlier_copy() -> None:
 def test_a_graft_names_both_cards_each_with_its_own_box() -> None:
     """The user's case: the placed card and its graft partner are both this
     turn's; each stays pending until its own box resolves, whichever of the
-    two is the active one (``switch_graft_card`` swaps them)."""
+    two the frame holds in ``card_id`` (box 1's row makes it that one)."""
 
     grafted = _graft(
         _state((FACE_DANCER, THIS_TURN), in_play=(EARLIER,)),
@@ -218,17 +218,18 @@ def test_a_graft_names_both_cards_each_with_its_own_box() -> None:
     face_dancer_done = _apply(grafted, "resolve_agent_card_effect")
     assert _lists(face_dancer_done) == {(both, (THIS_TURN,))}
 
-    switched = _apply(face_dancer_done, "switch_graft_card")
+    partner_done = _apply(face_dancer_done, "resolve_agent_card_effect", box=1)
     _, context = next(
         (frame, dict(frame.context))
-        for frame in switched.decision_stack
+        for frame in partner_done.decision_stack
         if frame.kind == FrameKind.AGENT_EFFECTS
     )
     assert context["card_id"] == THIS_TURN
-    assert _lists(switched) == {(both, (THIS_TURN,))}
-
-    partner_done = _apply(switched, "resolve_agent_card_effect")
     assert _lists(partner_done) == {(both, ())}
+
+    # Box 1 first: its card leaves the pending list, box 0's stays.
+    partner_first = _apply(grafted, "resolve_agent_card_effect", box=1)
+    assert _lists(partner_first) == {(both, (FACE_DANCER,))}
 
 
 def test_a_card_trashed_out_of_play_leaves_both_lists() -> None:
@@ -239,11 +240,13 @@ def test_a_card_trashed_out_of_play_leaves_both_lists() -> None:
     grafted = _graft(
         _state((FACE_DANCER, PHEROMONES)), FACE_DANCER, "dutiful_service", PHEROMONES
     )
-    switched = _apply(grafted, "switch_graft_card")
     both = (FACE_DANCER, PHEROMONES)
-    assert _lists(switched) == {(both, both)}
+    assert _lists(grafted) == {(both, both)}
 
-    trashed = _apply(switched, "trash_grafted_card_for_influence", card_id=FACE_DANCER)
+    # Pheromones is box 1: its trash row carries ``box=1``.
+    trashed = _apply(
+        grafted, "trash_grafted_card_for_influence", box=1, card_id=FACE_DANCER
+    )
     assert FACE_DANCER not in trashed.players[0].in_play
     played, pending = turn_cards(trashed)
     assert played == (PHEROMONES,)
@@ -573,13 +576,14 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
     grafted = _graft(
         _state((FACE_DANCER, PHEROMONES)), FACE_DANCER, "dutiful_service", PHEROMONES
     )
-    switched = _apply(grafted, "switch_graft_card")
-    _, pending = turn_cards(switched)
+    _, pending = turn_cards(grafted)
     assert set(pending) == {FACE_DANCER, PHEROMONES}
-    assert box_losing_trash(ENGINE, switched, 0) == (
+    # Pheromones' box (box 1) may trash Face Dancer, the other grafted card
+    # (its box is lost), or itself (its own cost).
+    assert box_losing_trash(ENGINE, grafted, 0) == (
         ("trash_grafted_card_for_influence", FACE_DANCER),
     )
-    assert box_losing_trash(ENGINE, switched, 2) == ()
+    assert box_losing_trash(ENGINE, grafted, 2) == ()
 
     kit = _graft(
         _state((DISSECTING_KIT, FACE_DANCER)), DISSECTING_KIT, "arrakeen", FACE_DANCER

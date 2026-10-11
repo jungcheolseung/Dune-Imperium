@@ -414,9 +414,9 @@ def legal_agent_turn_finish_actions(
         # A triggered draw waits as its own step and is taken before the
         # turn ends (user ruling 2026-10-10, OQ-106).
         return ()
-    stalled_box = context["pending_agent_effect"] is True and graft_boxes_are_stalled(
-        state
-    )
+    # Every Agent box still pending -- both of a graft, each judged with
+    # itself active -- can only fizzle (OQ-057 (1)).
+    stalled_box = graft_boxes_are_stalled(state)
     if agent_turn_has_other_pending_effects(
         context, state.players, ignore_agent_effect=stalled_box
     ):
@@ -738,11 +738,8 @@ def apply_agent_turn_finish(
     )
     from dune_imperium.rules.contracts import fizzle_held_contract_icons
     from dune_imperium.rules.effects import pending_agent_icons
-    from dune_imperium.rules.graft import (
-        apply_graft_switch,
-        legal_graft_switch_actions,
-        trash_usurped_card,
-    )
+    from dune_imperium.rules.graft import trash_usurped_card
+    from dune_imperium.rules.graft_boxes import swap_boxes
 
     if action not in legal_agent_turn_finish_actions(state, action.actor):
         raise ValueError("the Agent turn cannot be finished yet")
@@ -751,8 +748,8 @@ def apply_agent_turn_finish(
     events: list[GameEvent] = []
     for _ in range(4):
         # Mandatory boxes that could not be met by the turn's end fizzle now
-        # (OQ-057), the grafted partner's after a switch.
-        _, context = current_agent_effect_context(working)
+        # (OQ-057), the grafted partner's with its box made active.
+        frame, context = current_agent_effect_context(working)
         if context["pending_agent_effect"] is True and (
             agent_card_effect_is_unavailable(working)
         ):
@@ -769,12 +766,14 @@ def apply_agent_turn_finish(
         if context["pending_agent_effect"] is not True and (
             context.get("graft_pending_effect") is True
         ):
-            switches = legal_graft_switch_actions(working, player)
-            if not switches:
-                break
-            switched = apply_graft_switch(working, switches[0])
-            working = switched.state
-            events.extend(switched.events)
+            swap_boxes(context)
+            working = replace(
+                working,
+                decision_stack=(
+                    *working.decision_stack[:-1],
+                    with_context(frame, context),
+                ),
+            )
             continue
         break
     # A box left pending here was revived by the press itself: the first
