@@ -952,7 +952,19 @@ const SEAT_PAYLOAD_KEYS = new Set([
   "visitor",
 ]);
 
+/* The payload's pairs as one string, the words its line shows
+   (logEventParts). */
 function logEventPayload(payload, eventKind) {
+  const words = (piece) => (typeof piece === "string" ? piece : piece.textContent);
+  return logEventParts(payload, eventKind)
+    .map((part) => (Array.isArray(part) ? part.map(words).join("") : part))
+    .join(" · ");
+}
+
+/* The pairs of logEventPayload(), each a string, or a list of strings and
+   nodes when it names a card (cardNameNode, its picture on hover);
+   logEventLine joins them. */
+function logEventParts(payload, eventKind) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
@@ -1002,8 +1014,12 @@ function logEventPayload(payload, eventKind) {
     if (value === 0 || value === "" || value === null || value === false) continue;
     if (Array.isArray(value) && value.length === 0) continue;
     if (key === "source") {
-      const name = sourceName(value);
-      if (name) parts.push(`${label}: ${name}`);
+      const found = sourceRef(value);
+      if (found && CARD_SECTIONS.has(found.section)) {
+        parts.push([`${label}: `, cardNameNode(found.entry)]);
+      } else if (found) {
+        parts.push(`${label}: ${found.entry.name}`);
+      }
       continue;
     }
     /* A flag says itself by its name. */
@@ -1017,6 +1033,7 @@ function logEventPayload(payload, eventKind) {
        does. */
     const isIdField = key.endsWith("_id");
     let shown;
+    let cards = null;
     if (key === "effect") {
       /* A keyed board icon has a label; a Reveal choice's effect id is the
          engine's name for what the event line already says. */
@@ -1029,13 +1046,14 @@ function logEventPayload(payload, eventKind) {
       const text = typeof raw === "string" ? fieldText(key, raw, payload) : null;
       if (text === "") continue;
       shown = text === null ? String(value) : text;
+      if (text !== null) cards = fieldNodes(key, raw, payload, shown);
     }
     /* card_id and instance_id of one event resolve to the same name. */
     if (isIdField && shownNames.has(shown)) continue;
     if (isIdField) shownNames.add(shown);
-    parts.push(`${label}: ${shown}`);
+    parts.push(cards ? [`${label}: `, ...cards] : `${label}: ${shown}`);
   }
-  return parts.join(" · ");
+  return parts;
 }
 
 /* Event kinds only one Leader's ability emits, so their payload names no
@@ -1072,8 +1090,13 @@ function logEventLine(event) {
   const line = document.createElement("div");
   line.className = "logevent";
   line.appendChild(logEventHead(event));
-  const payload = logEventPayload(event.payload, event.kind);
-  if (payload) line.append(` — ${payload}`);
+  const pieces = [];
+  logEventParts(event.payload, event.kind).forEach((part, index) => {
+    pieces.push(index ? " · " : " — ");
+    if (Array.isArray(part)) pieces.push(...part);
+    else pieces.push(part);
+  });
+  appendRun(line, pieces);
   addLogEventIcon(line, event);
   return line;
 }
@@ -1341,17 +1364,37 @@ function chanceLine(entry) {
     line.textContent = t("core.pause_step");
     return line;
   }
-  let text = t("core.chance_label", { decision: describeChance(entry.decision_id) });
+  /* The card behind the step, and a drawn card, show their picture on
+     hover (cardNameNode); the words are describeChance()'s and
+     chanceValueName()'s. */
+  const words = chanceWords(entry.decision_id);
+  const text = t("core.chance_label", { decision: words.text });
+  const cause = words.cause && CARD_SECTIONS.has(words.cause.section) ? words.cause.entry : null;
+  const at = cause ? text.lastIndexOf(`(${cause.name})`) : -1;
+  const pieces =
+    at < 0
+      ? [text]
+      : [text.slice(0, at + 1), cardNameNode(cause), text.slice(at + 1 + cause.name.length)];
   if (entry.values) {
-    const valueName = (value) => chanceValueName(entry.decision_id, value);
-    const shown =
-      entry.values.length <= 3
-        ? entry.values.map(valueName).join(", ")
-        : `${entry.values.slice(0, 3).map(valueName).join(", ")} …`;
-    text += ` — ${shown}`;
+    pieces.push(" — ");
+    entry.values.slice(0, 3).forEach((value, index) => {
+      if (index) pieces.push(", ");
+      pieces.push(chanceValueNode(entry.decision_id, value));
+    });
+    if (entry.values.length > 3) pieces.push(" …");
   }
-  line.textContent = text;
+  appendRun(line, pieces);
   return line;
+}
+
+/* One drawn value of a chance line: chanceValueName()'s words, as the
+   card's cardNameNode() when they are that card's name. A Scouts draw
+   names an item, a layout or a round, never a card. */
+function chanceValueNode(decisionId, value) {
+  const name = chanceValueName(decisionId, value);
+  if (SCOUTS_DRAW.test(String(decisionId))) return name;
+  const card = cardEntryOf(value);
+  return card && card.name === name ? cardNameNode(card) : name;
 }
 
 function turnLine(entry) {
@@ -1368,7 +1411,7 @@ function turnLine(entry) {
      fragment to the flex head makes each piece a separate wrapping column. */
   const label = document.createElement("span");
   label.className = "turn-action";
-  label.appendChild(describeAction(entry));
+  label.appendChild(describeAction(entry, { cardNames: true }));
   if (entry.undone) label.append(t("panels.undone_suffix"));
   /* A parenthesized icon is one unit, including both punctuation marks. */
   for (const token of label.querySelectorAll(".icon, .amount, .agent-piece-icon, .term-text")) {
@@ -1400,6 +1443,16 @@ function seatLeaderName(seat) {
   return leaderFace ? prettify(leaderFace) : t("common.seat", { seat });
 }
 
+/* seatLeaderName() as a node: the Leader's name shows its card on hover
+   (cardNameNode), "Seat N" stays text. */
+function seatLeaderNode(seat) {
+  const name = seatLeaderName(seat);
+  const player = state.view && state.view.players[seat];
+  const leaderFace = player && (player.leader_face_id || player.leader_id);
+  const entry = leaderFace ? lookup(leaderFace, "leaders") : null;
+  return entry && entry.name === name ? cardNameNode(entry) : document.createTextNode(name);
+}
+
 function turnCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card";
@@ -1412,7 +1465,7 @@ function turnCard(group, glowFrom) {
   head.className = "turn-head";
   head.appendChild(seatToken(group.actor, "seat-mark"));
   const who = document.createElement("strong");
-  who.textContent = seatLeaderName(group.actor);
+  who.appendChild(seatLeaderNode(group.actor));
   head.appendChild(who);
   const kind = state.summary.seats[group.actor];
   const badge = document.createElement("span");
@@ -1508,7 +1561,7 @@ function passesCard(group, glowFrom) {
     seat.className = "pass-seat";
     if (entry.undone) seat.classList.add("undone");
     seat.appendChild(seatToken(entry.actor, "seat-mark"));
-    seat.append(seatLeaderName(entry.actor));
+    seat.append(seatLeaderNode(entry.actor));
     head.appendChild(seat);
   });
   card.appendChild(head);
