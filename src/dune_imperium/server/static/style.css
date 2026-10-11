@@ -2116,6 +2116,17 @@ body.hand-dragging, body.hand-dragging * {
   vertical-align: bottom;
 }
 .log-term-group { white-space: nowrap; }
+/* A card named in the log (core.js cardNameNode): its picture on hover,
+   pinned by a click. A faint dotted underline says so; the words and their
+   wrapping are the line's own. */
+.card-name {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 2px;
+}
+.card-name:hover { color: var(--accent); text-decoration-color: currentColor; }
+.turn-head .card-name { text-decoration: none; }
 .turn-line .icon { height: 1.25em; }
 .turn-index { font-size: 0.7rem; opacity: 0.5; flex: none; }
 .turn-line.quiet { opacity: 0.5; font-size: 0.75rem; }
