@@ -89,6 +89,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--autosave",
+        action="store_true",
+        help=(
+            "keep the same per-game autosave without --remote, which a "
+            "remote server keeps by default (the server launcher passes it "
+            "in local mode)"
+        ),
+    )
+    parser.add_argument(
         "--saves-dir",
         type=Path,
         default=None,
@@ -204,11 +213,14 @@ def resolve_public_url(arguments: argparse.Namespace) -> str | None:
 
 
 def resolve_autosave(arguments: argparse.Namespace) -> bool:
-    """Return whether games are autosaved: a remote server's default."""
+    """Return whether games are autosaved: a remote server's default, and an
+    open server's with ``--autosave``."""
 
+    if arguments.autosave and arguments.no_autosave:
+        raise ValueError("--autosave and --no-autosave contradict each other")
     if arguments.no_autosave and not arguments.remote:
         raise ValueError("--no-autosave only applies together with --remote")
-    return bool(arguments.remote and not arguments.no_autosave)
+    return bool((arguments.remote or arguments.autosave) and not arguments.no_autosave)
 
 
 def resolve_search_checkpoint(
@@ -393,15 +405,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if admin_key is not None:
         print("Remote multiplayer access is on. Host admin link (keep it private):")
         print(f"  {admin_link(arguments.host, arguments.port, admin_key)}", flush=True)
+    if autosave:
         saves_dir = arguments.saves_dir or default_saves_directory()
-        if autosave:
-            print(f"Autosave is on: every game keeps one current save in {saves_dir}")
+        print(f"Autosave is on: every game keeps one current save in {saves_dir}")
+        if admin_key is not None:
             print(
                 "  (after a crash: restart, open the admin link, load that save "
                 "and share the new room link)"
             )
         else:
-            print("Autosave is off: a game lives only as long as this process.")
+            print("  (after a crash: restart and load that save)")
+    elif admin_key is not None:
+        print("Autosave is off: a game lives only as long as this process.")
     print(search_line, flush=True)
     app = create_app(
         manager=GameSessionManager(

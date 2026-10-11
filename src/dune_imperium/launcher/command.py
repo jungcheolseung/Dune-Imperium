@@ -201,6 +201,8 @@ def build_plan(
             args += ["--public-url", public_url.rstrip("/")]
         if not settings.autosave:
             args.append("--no-autosave")
+    elif settings.autosave:
+        args.append("--autosave")
     reach = _WILDCARDS.get(host, host)
     if remote:
         if admin_key is None:

@@ -185,6 +185,21 @@ def test_the_remote_fields_follow_the_mode_and_lock_while_running(
         window.root.destroy()
 
 
+def test_autosave_can_be_chosen_in_both_modes_and_locks_while_running(
+    tk_root: tk.Tk, tmp_path: Path
+) -> None:
+    window = _window(tk_root, tmp_path)
+    try:
+        for mode in ("local", "remote"):
+            window.mode.set(mode)
+            window._refresh()
+            assert _enabled(window.autosave_box), mode
+        window.apply(PhaseChanged(Phase.RUNNING))
+        assert not _enabled(window.autosave_box)
+    finally:
+        window.root.destroy()
+
+
 def test_a_started_server_shows_its_links_and_opens_the_browser(
     tk_root: tk.Tk, tmp_path: Path, opened: list[str]
 ) -> None:

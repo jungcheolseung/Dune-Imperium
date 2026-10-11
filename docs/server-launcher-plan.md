@@ -40,7 +40,7 @@
 | 모드 | 로컬(이 컴퓨터만, `127.0.0.1` 고정) / 원격(같은 네트워크·Tailscale, `--remote`) |
 | 주소·포트 | 라벨 붙은 후보 목록(Tailscale / LAN / 인터넷으로 나가는 주소 / 직접 입력) + "다시 찾기", 포트(기본 8000) + "빈 포트 찾기", 공개 주소(`--public-url`, 자동 채움·수정 가능) |
 | 관리자 키 | 고정(설정에 저장) / 매번 새로, 마스킹 표시, "새로 만들기" |
-| 저장 | 저장 폴더(기본 `saves/`), 자동 저장 체크(원격만) |
+| 저장 | 저장 폴더(기본 `saves/`), 자동 저장 체크(두 모드; 로컬은 2026-10-11부터 `--autosave`로) |
 | AI | 탐색 AI 체크포인트 파일(기본 `checkpoints/play/search.pt`; 링크면 "search.pt → mix-v139-10081.pt"처럼 대상까지) + 상태 라벨("켜짐" / "꺼짐: torch 없음 — `uv sync --extra train`" / "링크가 가리키는 파일 없음: <대상>"), AI 속도(보통/빠르게/즉시) |
 | 그림 | 에셋 폴더(비우면 기존 `assets` 링크 기본값; 하위 `cards/ icons/ tokens/ board/` 유무 표시) |
 | 실행 | 잠자기 방지 체크(원격 기본 켬), 시작 뒤 브라우저 열기 체크, **[시작]** **[중지]**, 상태 줄(글자 + 색) |
@@ -111,7 +111,7 @@
 
 ### 5.2 서버 띄우기와 내리기
 
-**명령.** `[python, "-u", "-m", "dune_imperium.cli.server", "--exit-when-stdin-closes", "--host", host, "--port", port, "--ai-pace", pace, (--saves-dir는 설정이 있을 때만; --remote, --public-url, --no-autosave, --search-checkpoint <resolve()한 실제 파일>)]`, `cwd=PROJECT_ROOT`, `stdin=PIPE, stdout=PIPE, stderr=STDOUT`. `python`은 `sys.executable`이되 Windows에서 그것이 `pythonw.exe`면 같은 폴더의 `python.exe`로 바꾼다(`CREATE_NO_WINDOW`). `uv run`이나 `.venv\Scripts\dune-imperium-server.exe`(스크립트 트램펄린)는 쓰지 않는다: Windows에서는 `.venv\Scripts\python.exe` 자체가 리디렉터라(4절) `sys.executable -m`도 2단이고, 그 위에 `uv run`은 uv.exe(CTRL_BREAK 미전달, gui-scripts는 #20100), 스크립트 exe는 트램펄린 한 층을 더 얹는다. 층이 가장 적고 종료 코드가 그대로 올라오는 `sys.executable -m`을 쓴다(기존 `tests/server/test_server_cli.py::_server_process`와 같은 방식). `scripts/e2e/common.py`의 POSIX 전용 `.venv/bin/…` 패턴은 런처에 들이지 않는다. 카드·아이콘·토큰·보드 그림은 argv가 아니라 환경 변수 한 길로만 넘긴다.
+**명령.** `[python, "-u", "-m", "dune_imperium.cli.server", "--exit-when-stdin-closes", "--host", host, "--port", port, "--ai-pace", pace, (--saves-dir는 설정이 있을 때만; --remote, --public-url, --no-autosave, 로컬 모드의 --autosave(2026-10-11), --search-checkpoint <resolve()한 실제 파일>)]`, `cwd=PROJECT_ROOT`, `stdin=PIPE, stdout=PIPE, stderr=STDOUT`. `python`은 `sys.executable`이되 Windows에서 그것이 `pythonw.exe`면 같은 폴더의 `python.exe`로 바꾼다(`CREATE_NO_WINDOW`). `uv run`이나 `.venv\Scripts\dune-imperium-server.exe`(스크립트 트램펄린)는 쓰지 않는다: Windows에서는 `.venv\Scripts\python.exe` 자체가 리디렉터라(4절) `sys.executable -m`도 2단이고, 그 위에 `uv run`은 uv.exe(CTRL_BREAK 미전달, gui-scripts는 #20100), 스크립트 exe는 트램펄린 한 층을 더 얹는다. 층이 가장 적고 종료 코드가 그대로 올라오는 `sys.executable -m`을 쓴다(기존 `tests/server/test_server_cli.py::_server_process`와 같은 방식). `scripts/e2e/common.py`의 POSIX 전용 `.venv/bin/…` 패턴은 런처에 들이지 않는다. 카드·아이콘·토큰·보드 그림은 argv가 아니라 환경 변수 한 길로만 넘긴다.
 
 **환경.** 부모 환경을 복사하되 `DUNE_IMPERIUM_*`는 **모두 지운 뒤** 런처가 정한 것만 넣는다(설정의 `null`이 정말 서버 기본값이 되게; 터미널에서 띄운 런처가 부모의 `DUNE_IMPERIUM_SEARCH_CHECKPOINT`를 조용히 물려주지 않게). + `PYTHONUNBUFFERED=1`, `PYTHONUTF8=1`, `PYTHONIOENCODING=utf-8`; 관리자 키는 `DUNE_IMPERIUM_ADMIN_KEY`(argv에 두면 작업 관리자·`ps`에 보인다; `resolve_access`가 이미 읽는다); 에셋 폴더가 있으면 `DUNE_IMPERIUM_CARD_IMAGE_DIR=<폴더>/cards`, `…_ICON_DIR=<폴더>/icons`, `…_TOKEN_DIR=<폴더>/tokens`, `…_BOARD_IMAGE=<폴더>/board/map.jpg`, `…_BENE_TLEILAX_IMAGE=<폴더>/board/bene_tleilax.jpg`(`server/app.py` 기본값과 같은 상대 경로; 서버 무변경).
 

@@ -330,11 +330,12 @@ class LauncherWindow:
         game.grid(row=1, column=0, sticky="new", pady=(10, 0))
         game.columnconfigure(1, weight=1)
         self._path_row(game, 0, "저장 폴더", self.saves_dir, directory=True)
-        autosave = ttk.Checkbutton(
-            game, text="자동 저장 (원격: 턴이 넘어갈 때마다)", variable=self.autosave
+        # Both modes: a local game otherwise lives only as long as the server.
+        self.autosave_box = ttk.Checkbutton(
+            game, text="자동 저장 (턴이 넘어갈 때마다)", variable=self.autosave
         )
-        autosave.grid(row=1, column=1, columnspan=2, sticky="w")
-        self._remote_widgets.append(autosave)
+        self.autosave_box.grid(row=1, column=1, columnspan=2, sticky="w")
+        self._edit_widgets.append(self.autosave_box)
         self._path_row(game, 2, "탐색 AI 망", self.search_checkpoint, directory=False)
         ttk.Label(game, text="비우면 checkpoints/play/search.pt").grid(
             row=3, column=1, columnspan=2, sticky="w"

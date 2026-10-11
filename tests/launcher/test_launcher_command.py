@@ -78,6 +78,24 @@ def test_a_remote_start_is_what_the_server_itself_accepts() -> None:
     assert plan.room_base == "http://100.101.102.103:8001"
 
 
+@pytest.mark.parametrize("autosave", [True, False])
+def test_a_local_start_autosaves_as_the_settings_say(autosave: bool) -> None:
+    # A local game used to vanish with the server; the launcher's local mode
+    # now keeps the same per-game autosave as a remote one (2026-10-11).
+    settings = LauncherSettings(port=8123, autosave=autosave)
+    plan = build_plan(settings, None, python="py", environ={})
+    arguments = _parsed(plan)
+    assert server_cli.resolve_access(arguments, plan.env) == (AccessMode.OPEN, None)
+    assert server_cli.resolve_autosave(arguments) is autosave
+    assert ("--autosave" in plan.server_args) is autosave
+    assert "--no-autosave" not in plan.server_args
+
+
+def test_the_default_settings_autosave_a_local_start() -> None:
+    plan = build_plan(LauncherSettings(port=8123), None, python="py", environ={})
+    assert server_cli.resolve_autosave(_parsed(plan)) is True
+
+
 def test_the_admin_key_variable_is_the_one_the_server_reads() -> None:
     assert ADMIN_KEY_ENVIRONMENT == server_cli.ADMIN_KEY_ENVIRONMENT
 
