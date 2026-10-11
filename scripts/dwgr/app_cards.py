@@ -427,6 +427,17 @@ ROW_GAP = 10.0  # between the pieces of an icon row (a lone ":" sits closer)
 LABEL_SCALE = 0.62  # a faction symbol standing alone in an icon row ("<BG> Alliance:")
 
 
+# Rows sit `gap / 2` apart. Two paragraphs of plain text with an empty line
+# between them in the text ("a<br><br>b") print a blank half line apart, as
+# some cards do (Coercive Negotiation, Withdrawn) and others do not
+# (Manipulate, Double Agent: "a<br>b" or "a\nb").
+PARA_GAP = 0.6  # x the text size
+
+
+def plain_text(r):
+    return r["kind"] == "sentence" and not r["lead"] and not r["trail"]
+
+
 def row_gap(a, b):
     short = [i for i in (a, b) if i["kind"] == "text" and len(i["text"]) <= 2]
     return 3.0 if short else ROW_GAP
@@ -486,12 +497,15 @@ class PrintBox:
         )
 
     def plan(self, text, width, height, text_scale, icon_scale):
-        paras = [
+        paras, blank_before, blank = [], [], False
+        for p in split_paragraphs(IGNORED_TAGS.sub("", text)):
+            if not (strip_tags(p).strip() or re.search(SPRITE_TAG, p)):
+                blank = bool(paras)
+                continue
             # a "+" before an icon stays with the word before it, as printed
-            re.sub(r" \+(?=<sprite)", "\u00a0+", p.strip())
-            for p in split_paragraphs(IGNORED_TAGS.sub("", text))
-            if strip_tags(p).strip() or re.search(SPRITE_TAG, p)
-        ]
+            paras.append(re.sub(r" \+(?=<sprite)", "\u00a0+", p.strip()))
+            blank_before.append(blank)
+            blank = False
         fs = max(self.text_min, self.text_max * text_scale)
         self.inp.text.cur_fallback = self.korean
         self.inp.text.force_tt = self.lang == "ko"
@@ -520,14 +534,16 @@ class PrintBox:
         n_icon = sum(1 for p in parsed if p[4] or p[1] or p[2])
         gaps = self.gap * 0.5 * max(0, len(parsed) - 1)
         H = min(self.icon_h, (height - plain_h - gaps) / max(1, n_icon)) * icon_scale
-        # icons keep a floor next to long text; below it the text shrinks instead
-        floor = min(self.icon_h, 0.36 * height) * icon_scale
+        # icons keep a floor next to long text; below it the text shrinks
+        # instead. Several icon rows share the floor (Insidious: three rows of
+        # icons beside two sentences), or the text would shrink to nothing.
+        floor = min(self.icon_h, 0.36 * height / max(1, n_icon)) * icon_scale
         # only plain text can give way; with no text there is nothing to squeeze
         can_shrink = plain_h > 0 and self.text_max * text_scale > self.text_min + 0.5
         self.squeezed = n_icon > 0 and can_shrink and H < floor - 0.5
         H = max(H, floor if (n_icon and plain_h > 0) else H, 8.0)
         rows = []
-        for para, lead, trail, mid, row in parsed:
+        for k, (para, lead, trail, mid, row) in enumerate(parsed):
             if row:
                 items = self.row_items(para, H, fs)
                 w = sum(i["w"] for i in items) + sum(
@@ -574,6 +590,7 @@ class PrintBox:
             rows.append(
                 {
                     "kind": "sentence",
+                    "blank_before": blank_before[k],
                     "lead": lead,
                     "sep": sep,
                     "trail": trail,
@@ -621,7 +638,7 @@ class PrintBox:
         ts, isc = 1.0, 1.0
         for _ in range(80):
             rows = self.plan(text, w, h, ts, isc)
-            total = sum(r["h"] for r in rows) + self.gap * 0.5 * max(0, len(rows) - 1)
+            total = sum(r["h"] for r in rows) + sum(self.row_gaps(rows))
             too_wide = any(r["w"] > w + 0.5 for r in rows)
             if total <= h + 0.5 and not too_wide and not self.squeezed:
                 break
@@ -644,12 +661,25 @@ class PrintBox:
                 isc *= 0.95
         return rows, ts, isc, total
 
+    def row_gaps(self, rows):
+        """The space below each row but the last."""
+        return [
+            self.gap * 0.5
+            + (
+                PARA_GAP * a["fs"]
+                if plain_text(a) and plain_text(b) and b["blank_before"]
+                else 0
+            )
+            for a, b in zip(rows, rows[1:], strict=False)
+        ]
+
     def draw(self, renderer, canvas, rect, text):
         x, y, w, h = rect
         rows, _ts, _isc, total = self.fit(text, w, h)
         S, top = renderer.S, renderer.top
         cur = y + h - (h - total) / 2.0  # unity top of the first row
-        for r in rows:
+        below = [*self.row_gaps(rows), 0.0]
+        for r, gap in zip(rows, below, strict=True):
             mid_y = cur - r["h"] / 2.0
             px = x + (w - r["w"]) / 2.0
             if r["kind"] == "row":
@@ -700,7 +730,7 @@ class PrintBox:
                 )
                 px += r["tw"] + (self.gap if r["trail"] else 0)
                 self.draw_cluster(renderer, canvas, r["trail"], px, mid_y, r["H"])
-            cur -= r["h"] + self.gap * 0.5
+            cur -= r["h"] + gap
 
     def draw_cluster(self, renderer, canvas, names, px, mid_y, H):
         for n in names:
