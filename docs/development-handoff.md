@@ -48,6 +48,20 @@
 - 에셋 커밋 `b4a694f`(화살표 16장)·`7463ac2`(4장)·`c88aa84`(새 앞면 37장·문구)·`2d64881`(제목 가운데 103장)·`1b44c11`(두 줄 제목 23장). 두 저장소를 함께 푸시해야 한다.
 - 뒤이은 사용자 요청 "제목이 띠 안에서 조금 아래에 있네 … uprising 책략도": 책략 제목을 인쇄처럼 띠(위 7–144단위)의 가운데에 둔다. 제목만 따로 그려 잉크를 재고 옮긴다(Tech 타일과 같은 `centre_ink`). 책략 앞면 103장 전부(영어·한국어) 다시 그림(`f9b72918`, 에셋 `2d64881`). 이어서 "두 줄 제목도 인쇄판처럼": 영어 스캔에서 한 줄 제목은 우리 글꼴로 432.5단위 이하, 두 줄 제목은 438.5단위 이상이라 435단위를 넘는 제목을 두 줄로 나누고, 나눌 곳은 긴 줄이 가장 짧아지는 단어다(인쇄판 두 줄 23장 모두 일치). 새로 두 줄이 된 6장(Backed by CHOAM·Contingency Plan·Reach Agreement·Ripples in the Sand·Secure Spice Trade·Unexpected Allies)과 이미 두 줄이던 17장이 다시 그려졌다(`6da37308`, 에셋 `1b44c11`; 커밋 메시지의 "seven"은 6장의 오기). 한국어 제목은 모두 짧아 한 줄 그대로.
 
+## 2026-10-12 접합 두 칸을 처음부터 따로 (codec v143, 관측 v31)
+
+사용자 피드백 "카드 효과 해결 … 접합했을 때도 왜 다른 접합한 카드 효과 보기를 또 눌러야" → "그럼 완전한 방식으로 진행하자" → 계획에 "그래 추천한 대로 진행해보자". 설계 [graft-boxes-plan.md](graft-boxes-plan.md). 브랜치 `graft-boxes`(+ 화면 `graft-boxes-ui`), 착지 `graft-land`(master 쪽에서 병합).
+
+- **무엇이 바뀌었나:** 접합한 Agent turn에서 두 카드의 Agent 칸 행이 처음부터 함께 나온다(칸 0 = 놓은 카드, 칸 1 = 짝; 칸 1 행동은 같은 id에 `box=1`). `switch_graft_card`는 없다. 결정 창은 카드별 머리글("<카드> — 에이전트 칸")로 묶고, 나머지는 "그 밖의 선택". 한 칸의 묶음 선택(Choose two, Corrinth, Observer, 남은 trash, Signet 단계, 화살표 뒤 보상)이 진행 중이면 다른 칸은 잠기고 "다른 칸의 선택을 마친 뒤 해결할 수 있음"을 보인다. 더 나아갈 수 없는 선택은 잠금을 놓는다(리뷰가 찾은 교착 수정).
+- **엔진 안쪽:** 칸 1 행은 칸별 문맥 키 16쌍을 바꾸는 가상 교환으로 기존 box 기계를 그대로 쓴다(`rules/graft_boxes.py`). 분류 안 된 키는 정적 스캔 테스트와 무작위 게임 테스트가 막는다.
+- **규칙 결과가 바뀐 곳(모두 옛 엔진 결함의 교정, 문서와 테스트):** Ghola + Stitched Horror가 자기 보상 둘을 고른다(전에는 첫 칸 보상을 다시 지급); 옛 엔진이 dry run 오판으로 숨겨 소멸시키던 짝 칸(Piter, Dissecting Kit 등)에 닿는다(OQ-057 (1), `[Immortality pp. 10-11]`); Ghola 복사가 Corrinth·Observer·Signet의 진행 키를 공유하지 않는다(OQ-057 (12), `[Immortality p. 14]`).
+- **코덱·관측·망:** codec 143(Immortality 카탈로그에 `box=1` 1,378~1,987행, `switch_graft_card` 삭제; base 4,413 그대로), 관측 v31(`agent_boxes` 4열, 4,533 → 4,537). 체크포인트 이관에 별칭: `box=1` 행은 같은 행동의 표시 없는 행에서 가중치·Adam 상태를 복사하고 학습된 행으로 센다. X(`mix-v139-10081.pt`)는 kept 33,978 / aliased 1,985 / new 9 / dropped 1.
+- **AI:** heuristic(switch 점수 삭제 — 이제 짝 칸 전에 Family Atomics를 쓰지 않아 접합 turn을 다르게 둔다: v142에 고정한 heuristic 측정과 비교 불가), 앱 AI(칸마다 직접 평가, 713 접합 turn 중 609 동일·나머지는 엔진 선택지 변화), 탐색 AI(순환 방지 점검).
+- **기보:** 옛 기록은 `_GraftSlot`이 옛 활성 칸을 따라 switch를 지우고 칸 1 행동에 `box=1`을 붙인다(`graft_switch`·`graft_box`). 잠금에 걸리는 옛 순서는 조용히 바꾸지 않고 `Divergence`로 멈춘다. 측정: 로컬 저장본 6/6 migrated(옛 엔진과 5,344수 필드 차이 0), 문제집 285/285, 묶음 v142-c29f79d1 2,000판 exact 560·equal 1,436·diverged 4(Ghola+SH 1, 잠금 3)·failed 0.
+- **검증:** pytest **7,461개 통과**, ruff·mypy(481파일) 통과, e2e **62종**(새 `graft_boxes.py`; `endgame`·`log_words` 시드 다시 고정 — heuristic이 접합 turn을 다르게 둬서). 소크 450판(접합 3,595, `box=1` 2,792수) 실패 0, 잠금 무작위 38,700 walks 합법 행동 없음 0. 독립 리뷰(차등 시험 10,320 walks ×2, 숨은 정보 누출 없음) 지적 1 blocker·3 should-fix 모두 고침.
+- **주의:** v142 저장본은 서버가 불러오지 못한다(끝난 판의 기보는 `records`로 옮겨진다).
+- **남은 것:** OQ-107(Urgent Shigawire 부스트와 BG graft 짝, 사용자 판정 대기, 엔진 그대로). 기존 결함(양쪽 엔진): Stitched Horror의 의무 "Choose two"가 남았는데 dry run이 소멸로 판정해 `finish_agent_turn`이 열리고 누르면 보상을 잃는다(`tmp/graft-boxes/scripts/horror_finish_any.py`로 재현). 재적응: 대조군(승자독식) 대 `--score-rewards` 실험 갈래(v143에서, 시작 전 사용자 확인).
+
 ## 2026-10-11 밤 두 번째 판 뒤 피드백 (codec 그대로 v142)
 
 같은 날 밤 판(`saves/885ed2f0…`, 사람 0·2·3번 + 탐색 X 1번; 이랑 요르쿤 15, 차니 13, 에스마르 13, 던컨(X) 10). 사용자 결정 "1,2,4는 추천대로", 3은 엔진 쪽으로(아래 "남은 것"), 5는 "실험 갈래 추가해보자". 통합 브랜치 `fb12-integration`(항목 `fb12-scouts`·`fb12-hover`·`fb12-graft`(표시만)·`fb12-reward`·`fb12-vp`).
