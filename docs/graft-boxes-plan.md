@@ -101,7 +101,7 @@
 
 ### 4.10 기록 변환 (codec 143 미만)
 
-- 옛 기록에서 같은 Agent turn 안의 `switch_graft_card`는 지우고, 그 뒤 활성이던 칸이 짝(칸 1)인 동안의 칸 행동에 `box=1`을 붙인다. 행동 순서는 그대로라 새 엔진에서 같은 상태로 이어져야 한다.
+- 옛 기록에서 같은 Agent turn 안의 `switch_graft_card`는 지우고, 그 뒤 활성이던 칸이 짝(칸 1)인 동안의 칸 행동에 `box=1`을 붙인다. 행동 순서는 그대로라 새 엔진에서 같은 상태로 이어져야 한다. 단, 옛 엔진이 한 칸의 묶음 선택 도중에 switch한 순서는 4.3의 잠금 때문에 이어지지 않는다(v142 묶음 2,000판 중 3판, [human-records.md](human-records.md) 2절). 순서를 바꾸는 다리는 두지 않았다.
 - 지금의 다리는 상태 없고 수를 지울 수 없다(`records/migration.py` `Bridge` 77-104). "지금 어느 칸이 활성인가"를 따라가는 새 변환이 필요하다: 기록 단계에서 하는 다시 쓰기(옛 수 → 새 수, 또는 없음)로, 옛 엔진의 활성 칸을 추적한다. 같은 `effect=cards`가 짝의 아이콘인지 Shigawire 추가 뽑기인지처럼 모호한 경우는 옛 엔진의 라우팅(AE:3777: 추가 뽑기를 먼저)을 따라 판정한다.
 - 같이 고칠 다리: `_named_card_effect`(407-438), `_shigawire_draw`(567-607), `_reward_icon`·`_piter_reward`(675-743), `_reverse_engineering_reward`(749-797), `rewrite_step`(문제집의 망 후보).
 - 판정 수 자체가 `switch_graft_card`인 문제집 포지션은 새 엔진에 같은 수가 없다. 개수를 세고 이유를 적어 뺀다.

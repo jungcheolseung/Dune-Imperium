@@ -50,6 +50,9 @@
 - **다리 없이 갈라짐이 맞는 v142 변경**(독립 조사·반박 검증):
   - Navigation Chamber 할인 의무화(`4870efd5`): 옛 기보가 할인 없이 낸 수는 지금 불법이다. 할인된 수로 바꾸면 자원이 달라진다.
   - Bene Gesserit Treachery에서 garrison에 Commander만 있고 BG 영향력이 0인 좌석: 옛 엔진은 건너뛰었다. v142는 Commander를 잃는 선택지 하나를 강제한다. 강제 수로 이으면 그 Commander를 나중에 쓰는 적힌 수에서 반드시 다시 갈라진다(13개 기보 모두).
+- **다리 없이 갈라지는 v143(graft 두 칸) 경우**(v142 묶음 2,000판 중 4판, 2026-10-12):
+  - Ghola + Stitched Horror(1판): 옛 엔진은 두 번째 칸에 남은 보상 둘만 내고 한 번 고르면 끝냈고, 첫 칸의 보상을 다시 줬다. v143은 칸마다 둘을 고른다(OQ-057 (12) 보강, 규칙 수정). 적힌 다음 수(그 보상 병력의 배치)가 불법이 된다.
+  - 잠금([graft-boxes-plan.md](graft-boxes-plan.md) 4.3)이 막는 순서(3판): 옛 엔진은 한 칸의 묶음 선택 도중에도 `switch_graft_card`로 다른 칸에 갈 수 있었다. The Beast's Spoils의 남은 trash를 두고 Dissecting Kit 칸으로 간 판 1, Signet Ring 칸의 Spy 회수 뒤 배치 전 1, Staban Tuek Signet의 Spy 배치 뒤 지불 전 1. 새 엔진은 그 칸의 묶음이 끝날 때까지 다른 칸 행을 숨기므로 적힌 다른 칸의 수가 불법이 된다. 적힌 수의 순서를 바꾸는 다리는 두지 않았다.
 - **OQ-106 분리 가운데 다리로 잇지 못하는 경우**(독립 조사·반박 검증, 2026-10-10). 엔진은 바꾸지 않았다.
   - Urgent Shigawire: 옛 엔진이 부스트된 배치 바로 뒤에 reshuffle을 적었는데, v142에서 먼저 답할 것(Gather Intelligence, graft 상대, box 자신의 `cards` 아이콘)이 있으면 그 자리에 기다리는 draw가 없다. box 아이콘을 미리 뽑는 다리는 기보가 그 아이콘을 끝내 쓰지 않으면(trash로 소멸) 멈추므로 두지 않았다. 1,563판 중 5판(Gather Intelligence 2, box 아이콘 3).
   - Cunning·Insider Information이 Sardaukar Standard를 trash하고 그 draw가 reshuffle하는 경우: 옛 엔진은 reshuffle 뒤 Skill 선택을 열었고, v142는 붙잡은 Intrigue 선택 위에 Skill 선택을 먼저 연다. 적힌 chance가 Skill 선택을 만나 멈춘다. 1,563판에는 없고, 같은 판에서 다른 trash를 고른 v141 기보 셋으로 재현됐다. reshuffle이 없으면 draw가 `choose_skill` 뒤로 한 수 늦을 뿐이다(2판). 엔진 순서는 바꾸지 않는다(2026-10-10 엔진 세션 결정 (b)): "trash될 때" 촉발의 Skill 선택은 공개 정보만으로 하는 선택이라 숨은 draw보다 먼저 오는 것이 OQ-106 원칙에 맞고, 옛 기보를 맞추려고 플레이어가 보는 순서를 바꾸지 않는다.
@@ -108,6 +111,14 @@ OQ-106 분리(codec v142에 함께 들어감)와 그 다리를 넣은 뒤 같은
 - `bridge-without-hit` 106곳 중 목록에 오른 100곳(97판)은 절반이 뽑는 다리였다. 옛 엔진은 다리 바로 뒤에 적힌 reshuffle chance에서 뽑았는데, 판정이 그 chance의 hit을 세지 않았다. 세도록 고친 판정(`07a2d425`)으로 97판을 다시 보니 25곳이 남고, 모두 뽑지 않는 다리다(경매 멈춤 22, garrison 답 3).
 
 리뷰 반영 뒤의 코드(`records.migration.walk`)로 사람 판 v135, 테스트 기보 셋(v135·v139·v140), AI 판 v140 셋을 다시 대조했다. 결과는 위와 같다.
+
+graft 두 칸 변환(codec v143, 2절 표의 `graft_switch`·`graft_box`)을 넣은 뒤 다시 쟀다(2026-10-12).
+- `dune-imperium-records check`(로컬 저장본 6판: v135·v139·v141 ×2·v142 ×2): 6판 모두 끝까지 옮겨졌다. 지운 `switch_graft_card`는 판마다 9·0·9·9·12·18, `box=1`을 붙인 수는 6·0·9·8·10·14다. 6판 모두 마지막 상태(`decision_stack`·`event_log`·`revision` 제외)의 해시가 switch를 쓰던 엔진(`f88cd455`)으로 옮긴 것과 같다.
+- `problems check`(사람 판 문제집 285곳): 285곳 모두 풀린다. 판정 수가 `switch_graft_card`인 곳이 없어 빠진 곳은 0이다. 칸 1이 활성인 자리가 10곳이고, 그중 4곳은 사람 수에 `box=1`을 붙였다.
+- `corpus check local/records-corpus/v142-c29f79d1`(2,000판, 3코어 약 7분): exact 560, equal 1,436, transient 0, persistent 0, diverged 4, failed 0.
+  - 다리 쓰임: `graft_box` 11,474수(1,434판), `graft_switch` 14,682수(1,440판).
+  - 갈라진 4판은 2절의 v143 경우다(Ghola + Stitched Horror 1, 잠금 3). 판정은 4판 모두 `collateral`이다. 셋은 갈라진 자리에서도 필드 차이가 없고, Ghola 판은 그 좌석의 자원·병력이 다르다(옛 엔진이 다시 준 보상과 병력).
+  - 갈라지기 전까지 필드가 다른 구간은 없다.
 
 v135 기보의 차이는 모두 **Conflict 보상을 주는 도중**이다.
 - 옛 엔진은 받는 사람들의 자동 보상을 한꺼번에 주고 선택을 물었다. 지금 엔진은 받는 사람 순서대로 준다.
