@@ -69,6 +69,7 @@ from common import (
     server,
     set_rule_options,
 )
+from log_words import KOREAN_KEEPS_ENGLISH
 
 check = Check()
 
@@ -107,21 +108,8 @@ PASS_WORDS = {
 # line is told by its action label instead.
 LONE_PASS_WORDS = {"ko": ["패스", "쓰지 않음"], "en": ["Passed", "Decline to use"]}
 
-# English on purpose in the Korean page (mirrors log_words.py's own list,
-# docs/rules/glossary-ko.md, "아직 채우지 않은 것"): a stray Leader or card
-# name is not what this check guards against.
-KOREAN_KEEPS_ENGLISH = (
-    "Other Memories",
-    "Memories returned",
-    "Memories",
-    "Secret Project",
-    "Wild card",
-    "Immediate",
-    "Usurp",
-    "Feyd",
-    "Into the Fray",
-    "Fedaykin Maneuver",
-)
+# English allowed on purpose in the Korean page: log_words.KOREAN_KEEPS_ENGLISH
+# (empty since 2026-10-11).
 
 # Mirrors PASS_ACTION_IDS (static/review.js) and QUIET_ACTIONS/SOLO_ACTIONS/
 # PASS_MARKER_KINDS (static/panels.js) -- the same engine action/event ids

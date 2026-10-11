@@ -77,7 +77,7 @@ from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.leaders import LEADERS
-from dune_imperium.content.uprising.objectives import OBJECTIVES
+from dune_imperium.content.uprising.objectives import OBJECTIVES, ObjectiveDefinition
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display import (
@@ -451,7 +451,7 @@ def build_catalog(
         },
         "objectives": {
             objective.objective_id: {
-                "name": objective.objective_id.replace("_", " ").title(),
+                "name": _objective_name(objective),
                 "icon": objective.battle_icon.value,
                 "image": _image_url("objective", objective.objective_id, image_files),
             }
@@ -710,6 +710,25 @@ def _leader_face(
         entry["signet_text_ko"] = texts_ko.signet_text
         entry["notes_ko"] = list(texts_ko.notes)
     return entry
+
+
+def _objective_name(objective: ObjectiveDefinition) -> str:
+    """An Objective card's name as the English rules call it.
+
+    The card prints no title, only its battle icon and, on some, the player
+    counts it is for: "the Ornithopter Objective", "one Crysknife Objective"
+    [Board Guide pp. 3, 8], then the printed "4/6P" or "1-3P" [Main p. 5]
+    that tells two cards of one icon apart (``display.names_ko`` names the
+    Korean the same way).
+    """
+
+    name = f"{objective.battle_icon.value.replace('_', ' ').title()} Objective"
+    counts = objective.marked_player_counts
+    if not counts:
+        return name
+    if len(counts) > 2 and counts == tuple(range(counts[0], counts[-1] + 1)):
+        return f"{name} {counts[0]}-{counts[-1]}P"
+    return f"{name} {'/'.join(map(str, counts))}P"
 
 
 def _space(

@@ -17,7 +17,7 @@ Commander Skills, ``tech`` the Tech tiles). Two sections come from the
 Korean rulebooks instead of card photos: ``spaces``, the board spaces'
 names from the Korean Board Space Guide (the board scan itself stays
 English), and ``objectives``, which print no title. Navigation cards print
-no title either and are not here. The
+no title either; they keep the engine's number after 운항 카드. The
 engine's English name sometimes carries a distinguisher the card does not
 print: a contract's numeral ("Arrakeen I") or spice threshold ("Harvest
 3+"), and a Skirmish's battle icon. The Korean name carries the same
@@ -202,6 +202,11 @@ _INTRIGUE: Final[dict[str, str]] = {
     "vicious_talents": "포악한 재능",
     "withdrawal_agreement": "병력 철수 합의",
 }
+# Navigation cards print no title: the engine numbers them ("Navigation
+# Card 3") and the Korean name keeps that number after the Korean word for
+# them, 운항 카드 ([Bloodlines p. 12]; Steersman Y'rkoon's Korean card,
+# display.leaders_ko).
+_INTRIGUE.update({f"navigation_card_{n}": f"운항 카드 {n}" for n in range(1, 11)})
 
 
 _CONTRACTS: Final[dict[str, str]] = {

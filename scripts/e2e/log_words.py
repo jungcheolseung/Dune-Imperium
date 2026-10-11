@@ -14,9 +14,9 @@ logEventLine, chanceLine, describeReviewStep) in both languages, with
 prettify() wrapped, and asserts:
 
 - prettify() is never called: every id resolves through a table;
-- in Korean, no Latin word is left outside catalog names (proper nouns stay
-  English by policy) and the phrases the glossary deliberately leaves English
-  (docs/rules/glossary-ko.md has no row for them, e.g. Secret Project);
+- in Korean, no Latin word is left outside the catalog names of the current
+  language (a card whose Korean print is unknown stays English) and the
+  phrases KOREAN_KEEPS_ENGLISH lists (none since 2026-10-11);
 - in English, no Hangul, and nowhere an engine id's shape: snake_case, a
   colon path, a research coordinate, a post id;
 - every pass_combat_intrigue / pass_endgame_intrigue /
@@ -147,23 +147,11 @@ GAMES = (
     },
 )
 
-# English on purpose in the Korean page: the glossary has no Korean for these
-# yet (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a
-# Leader's name. Whole phrases, so a stray "card" or "set" is still caught.
-# tests/server/test_i18n.py keeps the same list for the tables' Korean.
-KOREAN_KEEPS_ENGLISH = (
-    "Other Memories",
-    "Memories returned",
-    "Memories",
-    "Secret Project",
-    "Wild card",
-    "Immediate",
-    "Usurp",
-    "Feyd",
-    # A Leader's ability, named on the Leader card.
-    "Into the Fray",
-    "Fedaykin Maneuver",
-)
+# English on purpose in the Korean page, as whole phrases (a stray "card" or
+# "set" is still caught). Empty since 2026-10-11: the Leader ability names,
+# Feyd's token, Memories, the Immediate contract, Usurp and the wild battle
+# icon card all read in Korean now (docs/rules/glossary-ko.md).
+KOREAN_KEEPS_ENGLISH: tuple[str, ...] = ()
 
 RENDER_JS = r"""
 async ({gameId}) => {

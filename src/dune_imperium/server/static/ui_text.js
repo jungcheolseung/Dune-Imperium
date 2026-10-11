@@ -565,6 +565,10 @@ const UI_TEXT = {
     "ko": "도움말 (?)",
     "en": "Help (?)"
   },
+  "html.bt_zoom_label": {
+    "ko": "{bene_tleilax_board}",
+    "en": "{bene_tleilax_board}"
+  },
   "html.open_lobby": {
     "ko": "플레이어",
     "en": "Players"
@@ -990,7 +994,7 @@ const UI_TEXT = {
     "en": "Details ▸ · {{summary}}"
   },
   "panels.secret_project": {
-    "ko": "Secret Project (뒷면 {tech_tile})",
+    "ko": "비밀 프로젝트 (뒷면 {tech_tile})",
     "en": "Secret Project (face-down {tech_tile})"
   },
   "panels.skills_label": {
@@ -1194,7 +1198,7 @@ const UI_TEXT = {
     "en": " (undone)"
   },
   "panels.usurp_trash": {
-    "ko": "Usurp: 차례 끝에 {{card}} 폐기",
+    "ko": "찬탈: 차례 끝에 {{card}} 폐기",
     "en": "Usurp: Trash {{card}} at end of turn"
   },
   "panels.watch_ai_button": {

@@ -300,36 +300,27 @@ def test_an_agent_box_is_written_as_the_word_never_the_agent_icon() -> None:
     assert not leaks, "; ".join(leaks[:10])
 
 
-# English on purpose in Korean text: the glossary has no row for these yet
-# (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a Leader's own
-# name. scripts/e2e/log_words.py keeps the same list for the rendered log.
-_KOREAN_KEEPS_ENGLISH = (
-    "Other Memories",
-    "Memories returned",
-    "Memories",
-    "Secret Project",
-    "Wild card",
-    "Immediate",
-    "Usurp",
-    "Feyd",
-    "Into the Fray",
-    "Fedaykin Maneuver",
-)
-# Glossary rows the UI applies that have no TERMS entry of their own.
+# Glossary rows the UI applies that have no TERMS entry of their own. Since
+# 2026-10-11 no English phrase is kept in Korean text on purpose any more
+# (the Leader ability names, Feyd's token, Memories, the Immediate contract,
+# Usurp and the wild battle icon all have their Korean, glossary-ko.md).
 _GLOSSARY_WORDS = {
     "aside",
     "atomics",
     "bloodlines",
     "embassy",
+    "feyd",
     "flip",
     "flipped",
     "immortality",
     "infiltrate",
     "intelligence",
     "ixian",
+    "memories",
     "navigation",
     "tactics",
     "uprising",
+    "wild",
 }
 _TERM_FILLERS = {"a", "an", "and", "any", "card", "cards", "for", "in", "of", "on"}
 _TERM_FILLERS |= {"one", "or", "the", "this", "to", "turn", "two"}
@@ -360,7 +351,7 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
             name = entry.get("name") if isinstance(entry, dict) else None
             if isinstance(name, str):
                 names.add(name)
-    keep = sorted(names | set(_KOREAN_KEEPS_ENGLISH), key=len, reverse=True)
+    keep = sorted(names, key=len, reverse=True)
 
     texts = [
         (f"{table}.{key}", text)
@@ -387,8 +378,8 @@ def test_korean_prompts_leave_no_english_word_behind() -> None:
     User report 2026-10-05: the Arrakeen Scouts call read "spice 호가, 또는
     패스" -- the one prompt that wrote the currency as a bare English word
     where the rest use {spice} ("스파이스"); the Mercenaries retreat likewise
-    said "용병 troop 후퇴". Only the words ``_KOREAN_KEEPS_ENGLISH`` lists
-    (the glossary has no row for them yet) may stay English.
+    said "용병 troop 후퇴". No English word may stay (since 2026-10-11 the
+    Secret Project and Immediate prompts say 비밀 프로젝트 and 즉시 too).
     """
     texts = list(_json_const("PROMPT_KO", "prompts_ko.js").values())
     texts += [
@@ -397,8 +388,6 @@ def test_korean_prompts_leave_no_english_word_behind() -> None:
     leaks = []
     for text in texts:
         bare = re.sub(r"\{[a-z_]+(?::\d+)?\}", " ", text)
-        for name in sorted(_KOREAN_KEEPS_ENGLISH, key=len, reverse=True):
-            bare = bare.replace(name, " ")
         found = re.findall(r"[A-Za-z]+", bare)
         if found:
             leaks.append(f"{found} in {text!r}")
@@ -452,9 +441,9 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
     The page shows such a card's catalog name in Korean (``name_ko``), so
     Korean chrome that spells it in English (the promo option's "Arrakis
     Revolt", 2026-09-23) reads as two different cards. Cards without a known
-    Korean print keep their English name, in the chrome as on the table. A
-    name that is also a rule word still waiting for its glossary row
-    (``_KOREAN_KEEPS_ENGLISH``: the Immediate contract) is left for that row.
+    Korean print keep their English name, in the chrome as on the table.
+    A Leader's ability and Signet Ring names count too: "Other Memories"
+    is 다른 기억들 on the Korean card (2026-10-11).
 
     Covers ``PROMPT_KO`` too (ITEM 8f, 2026-09-25): the engine's English
     prompts for Plasteel Blades and Covert Operation still named them in
@@ -474,8 +463,15 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
             assert isinstance(entry, dict)
             name = entry["name"]
             assert isinstance(name, str)
-            if name not in _KOREAN_KEEPS_ENGLISH:
-                english[name] = korean
+            english[name] = korean
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+    for leader in leaders.values():
+        assert isinstance(leader, dict)
+        for field in ("ability", "signet"):
+            name, korean_name = leader.get(field), leader.get(f"{field}_ko")
+            if isinstance(name, str) and isinstance(korean_name, str):
+                english[name] = korean_name
     texts = [
         (f"{table}.{key}", text)
         for table, rows in _korean_tables().items()
@@ -492,9 +488,12 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
         if not isinstance(table, dict):
             continue
         for entry in table.values():
-            other = entry.get("name") if isinstance(entry, dict) else None
-            if isinstance(other, str) and other not in english:
-                kept.add(other)
+            if not isinstance(entry, dict):
+                continue
+            for field in ("name", "ability", "signet"):
+                other = entry.get(field)
+                if isinstance(other, str) and other not in english:
+                    kept.add(other)
     others = sorted(kept, key=len, reverse=True)
     leaks = []
     for where, text in texts:
