@@ -92,9 +92,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--autosave",
         action="store_true",
         help=(
-            "keep the same per-game autosave without --remote, which a "
-            "remote server keeps by default (the server launcher passes it "
-            "in local mode)"
+            "keep the same per-game autosave without --remote (redundant "
+            "with it: a remote server keeps one by default); the server "
+            "launcher passes it in local mode"
         ),
     )
     parser.add_argument(

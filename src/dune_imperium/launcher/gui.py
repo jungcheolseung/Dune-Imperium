@@ -58,6 +58,7 @@ from dune_imperium.launcher.view import (
     GameRow,
     Tone,
     address_from_choice,
+    close_question,
     controls,
     game_rows,
     problem_lines,
@@ -602,15 +603,12 @@ class LauncherWindow:
             self._finish_close()
             return
         playing = sum(1 for row in self._games if not row.finished)
-        games = f"진행 중인 게임이 {playing}개 있습니다. " if playing else ""
+        # The form is locked while the server runs, so it is what started it.
+        mode: Mode = "remote" if self.mode.get() == "remote" else "local"
+        question = close_question(playing, mode=mode, autosave=self.autosave.get())
         self._asking = True
         try:
-            sure = messagebox.askyesno(
-                TITLE,
-                f"서버를 끄고 런처를 닫을까요?\n\n{games}진행 중이던 턴은 사라질 "
-                "수 있습니다. 먼저 게임 화면에서 '지금 저장'을 누르면 안전합니다.",
-                parent=self.root,
-            )
+            sure = messagebox.askyesno(TITLE, question, parent=self.root)
         finally:
             self._asking = False
         if not sure:

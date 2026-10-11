@@ -367,7 +367,7 @@ def test_closing_a_running_server_asks_with_the_games_in_play(
             GamesListed(({"game_id": "aaaa1111", "round_number": 2, "players": []},))
         )
         window.close()
-        assert "진행 중인 게임이 1개" in asked[0] and "지금 저장" in asked[0]
+        assert "진행 중인 게임이 1개" in asked[0] and "'저장'" in asked[0]
         assert window.root.winfo_exists()
     finally:
         window.root.destroy()

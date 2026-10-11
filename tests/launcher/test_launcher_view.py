@@ -8,6 +8,7 @@ from dune_imperium.launcher.settings import Window
 from dune_imperium.launcher.view import (
     address_choice,
     address_from_choice,
+    close_question,
     controls,
     problem_lines,
     status,
@@ -137,3 +138,14 @@ def test_each_open_game_gets_a_line_and_a_room_link() -> None:
         room_link("http://100.1.2.3:8000/", "abc")
         == "http://100.1.2.3:8000/#game=abc"
     )
+
+
+def test_closing_says_what_is_lost_and_which_button_saves() -> None:
+    local = close_question(2, mode="local", autosave=True)
+    assert "진행 중인 게임이 2개" in local and "턴은 사라질 수" in local
+    assert "'저장'" in local and "지금 저장" not in local
+    remote = close_question(0, mode="remote", autosave=True)
+    assert "진행 중인 게임" not in remote and "'지금 저장'" in remote
+    # Without autosave nothing survives the server but what was saved by hand.
+    unsaved = close_question(1, mode="local", autosave=False)
+    assert "자동 저장이 꺼져" in unsaved and "모두 사라집니다" in unsaved

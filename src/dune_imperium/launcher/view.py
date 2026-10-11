@@ -43,6 +43,26 @@ def controls(phase: Phase, mode: Mode) -> Controls:
     )
 
 
+def close_question(playing: int, *, mode: Mode, autosave: bool) -> str:
+    """What closing the window asks while the server runs.
+
+    An autosaving server loses only the turn in progress; without autosave
+    every unsaved game goes. The save button is the host panel's "지금 저장"
+    in a remote game and the top bar's "저장" in a local one.
+    """
+
+    games = f"진행 중인 게임이 {playing}개 있습니다. " if playing else ""
+    if autosave:
+        loss = "진행 중이던 턴은 사라질 수 있습니다."
+    else:
+        loss = "자동 저장이 꺼져 있어 저장하지 않은 게임은 모두 사라집니다."
+    button = "지금 저장" if mode == "remote" else "저장"
+    return (
+        f"서버를 끄고 런처를 닫을까요?\n\n{games}{loss} "
+        f"먼저 게임 화면에서 '{button}'을 누르면 안전합니다."
+    )
+
+
 def status(phase: Phase, *, error: str | None = None) -> tuple[str, Tone]:
     """The status line: a word for the state, never colour alone."""
 
