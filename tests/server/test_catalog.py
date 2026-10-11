@@ -658,7 +658,8 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     battle icon in the glossary's words [Main p. 20]. Board spaces and
     Objective cards are named from the Korean rulebooks instead (the Board
     Space Guide; 목적 카드 [Main pp. 3, 5]), an Objective with the player
-    counts its face prints ("4/6P", "1-3P" [Main p. 5])."""
+    counts its face prints ("4/6P", "1-3P" [Main p. 5]) in both languages.
+    Navigation cards print no title and keep their number: 운항 카드 3."""
 
     from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 
@@ -677,10 +678,7 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
             # Objective's "4/6P").
             english = entry["name"]
             assert isinstance(english, str)
-            printed = name
-            if section == "objectives":
-                printed = re.sub(r"\b\d[-/]\dP$", "", name)
-            for latin in re.findall(r"[A-Za-z]+", printed):
+            for latin in re.findall(r"[A-Za-z]+", name):
                 assert latin in english, (name, english)
     cards = catalog["cards"]
     contracts = catalog["contracts"]
@@ -730,6 +728,22 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     assert korean(objectives, "objective_crysknife_1") == "크리스나이프 목적 카드"
     assert korean(objectives, "objective_crysknife_2") == "크리스나이프 목적 카드 4/6P"
     assert korean(objectives, "objective_ornithopter_1_3p") == "오니솝터 목적 카드 1-3P"
+    # The English names the rules' way too [Board Guide pp. 3, 8], with the
+    # same printed mark as the Korean.
+    for entry in objectives.values():
+        assert isinstance(entry, dict)
+        english, name_ko = entry["name"], entry["name_ko"]
+        assert isinstance(english, str) and isinstance(name_ko, str)
+        assert english.split(" Objective")[1] == name_ko.split(" 목적 카드")[1]
+    english_names = {
+        objective_id: entry["name"]
+        for objective_id, entry in objectives.items()
+        if isinstance(entry, dict)
+    }
+    assert english_names["objective_crysknife_1"] == "Crysknife Objective"
+    assert english_names["objective_crysknife_2"] == "Crysknife Objective 4/6P"
+    assert english_names["objective_ornithopter_1_3p"] == "Ornithopter Objective 1-3P"
+    assert korean(intrigue, "navigation_card_3") == "운항 카드 3"
 
 
 def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:

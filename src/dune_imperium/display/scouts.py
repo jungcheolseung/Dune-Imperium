@@ -271,7 +271,7 @@ _NOTES: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "back_room_deal": (
         "2 Solari on Reclaimed Forces, for the next player to acquire it.",
-        "Reclaimed Forces 위 {solari:2}. 다음에 획득하는 플레이어가 가진다.",
+        "되돌아온 병사들 위 {solari:2}. 다음에 획득하는 플레이어가 가진다.",
     ),
     "prison_planet": (
         "Each may lose a garrison troop to put a Control marker on Sardaukar "

@@ -709,7 +709,7 @@ def _tech_reward_reason(state: GameState, seat: int, discount: int) -> Reason:
     ):
         return (
             "Advanced Data Analysis needs a Spy of yours on the board to trash",
-            "Advanced Data Analysis는 보드에 있는 내 {spy}를 폐기해야 함",
+            "고급 데이터 분석은 보드에 있는 내 {spy}를 폐기해야 함",
             "reward",
         )
     return (
@@ -843,7 +843,7 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
             return (
                 "No Contract you can take: only the Immediate is left and you"
                 " hold no other Intrigue card to trash",
-                "가져갈 {contract} 없음: Immediate만 남았고"
+                "가져갈 {contract} 없음: 즉시 {contract}만 남았고"
                 " 폐기할 다른 {intrigue_card} 없음",
                 "reward",
             )

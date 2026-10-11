@@ -4,6 +4,19 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-11 공식 한국어가 있는 남은 영어를 한국어로, 영어 목적 카드 이름 정리 (codec 그대로)
+
+바로 아래 항목의 "남은 영어" 조사 뒤 사용자 결정: "1,2,4,7 은 확실한 한국어 공식 표현이 있는거지? 그럼 한국어 변환 하자", "영어판 목적 카드도 같이 정리하자". 브랜치 `ko-names-2`(worktree). 엔진·코덱·관측·저장은 그대로다.
+
+- **① 지도자 능력·인장 반지 이름:** 라벨·로그·결정 문구가 팝오버와 같은 한글판 카드 인쇄(`display/leaders_ko.py`)를 쓴다. 다른 기억들, 전투 속으로, 페다이킨의 책략, 비밀 프로젝트, 아라키스 행성학자. Lady Jessica의 Memories는 기억/보낸 기억(인쇄 문구), Feyd 토큰은 페이드 토큰(`[Main pp. 3, 17]`, Feyd 카드 인쇄).
+- **② 카드:** 즉시 계약(`[Main p. 16]`), 찬탈, 되돌아온 병사들, 고급 데이터 분석(`names_ko.py`). 종료 시 와일드 짝짓기의 그 카드는 "와일드 배틀 아이콘 카드"(`[Bloodlines p. 5]`의 와일드 배틀 아이콘 + 카드, 합성).
+- **④ 운항 카드:** "운항 카드 3"(`[Bloodlines p. 12]`, Steersman Y'rkoon 한글판 인쇄의 말 + 영어 이름과 같은 엔진 번호).
+- **⑦ 베네 틀레이락스 게임판 크게 보기:** 창의 `aria-label`이 화면 언어를 따른다(`data-i18n-attr`).
+- **영어 목적 카드:** "Crysknife Objective 4/6P", "Ornithopter Objective 1-3P"처럼 영어 룰 표현(`[Board Guide pp. 3, 8]` "the Ornithopter Objective")과 인쇄 표시, 한국어 이름과 같은 표시.
+- 테스트·E2E의 "한국어에서 영어 유지" 목록(Other Memories … Fedaykin Maneuver)을 비웠다. 카드 인쇄 이름 테스트가 지도자 능력·인장 반지 이름도 본다. 용어집에 "지도자 능력 이름과 그 밖의 행동·로그 단어" 절.
+- **남은 영어(이번에 손대지 않음):** ③ "AI", ⑤ 설정 화면의 OQ 번호·경로·명령 인자, ⑥ 도움말 아이콘 범례의 회색 영어 병기(의도된 것, 사용자에게 설명함), ⑧ 서버 오류 문구, ⑨ 런처 로그·창 제목.
+- **검증:** pytest 7,301개 통과, ruff·mypy 통과. E2E 59종 중 57종 통과 → `lang`(숨은 크게 보기 창의 정적 `aria-label`이 영어 화면에 한국어로 남음, `data-i18n-attr`로 고침)·`app_ai_seats`(스냅숏 수 95 대 94, 다시 돌려 통과) 둘 다 다시 돌려 통과.
+
 ## 2026-10-11 게임판 장소·목적 카드 이름을 한국어로 (codec 그대로)
 
 사용자 요청: "보드판 이미지는 영어판 밖에 없지만 이건 그대로 사용하고, 선택 칸이나 활동 로그에 나오는 게임판 장소는 한국어 설정일 때는 한국어로", 목적 카드는 "objective card → 목적 카드, Crysknife, Desert Mouse, Ornithopter → 크리스나이프, 사막쥐, 오니솝터". 브랜치 `ko-names`. 엔진·코덱·관측·저장은 그대로다.
