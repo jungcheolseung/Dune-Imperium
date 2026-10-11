@@ -25,7 +25,7 @@ import threading
 from pathlib import Path
 
 from common import HOST, REPO, Check, chrome, free_port, open_context, set_rule_options
-from remote import wait_for_setup
+from remote import wait_for_setup, wait_until
 
 check = Check()
 PYTHON = REPO / ".venv" / "bin" / "python"
@@ -169,8 +169,16 @@ def main() -> None:
             guest.fill("#lobby-name", "친구")
             guest.click("#lobby-seats li[data-seat='1'] button")
             guest.wait_for_selector("#game-screen:not([hidden])")
+            # The table shows before the summary that carries the claim
+            # arrives, so poll for it (remote.holds_seats); one read failed
+            # under run_all.py's load on 2026-10-11.
             check.ok(
-                guest.evaluate("state.summary.players[1].claimed") is True,
+                wait_until(
+                    guest,
+                    "state.summary && state.summary.players[1].claimed === true",
+                    10,
+                    "the player holds seat 2",
+                ),
                 "the player holds seat 2",
             )
             check.ok(
