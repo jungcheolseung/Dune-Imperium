@@ -67,6 +67,26 @@ def rank_reward(rank: int, players: int) -> float:
     return 1.0 - 2.0 * (rank - 1) / (players - 1)
 
 
+# The Victory Points that score 1.0 under ``score_reward``: the base game's
+# win threshold [Main p. 3], so a typical final score lands near 1.
+SCORE_REWARD_SCALE: float = 10.0
+
+
+def score_reward(victory_points: int) -> float:
+    """Pay a seat its own final Victory Points instead of whether it won.
+
+    User request 2026-10-11 ("종료했을 때 점수를 최대한 먹기"로 설정하면 목표가
+    바뀌려나? -> "실험 갈래 추가해보자"): an experiment arm against the
+    winner-take-all default. Unlike ``rank_reward`` it is not zero-sum: each
+    seat is told only how many points it ended with, so a policy trained on
+    it maximizes its own score, not its place. A learning-side transform;
+    the environment, the tournament's win criterion and the search's value
+    reading are untouched.
+    """
+
+    return victory_points / SCORE_REWARD_SCALE
+
+
 class NoLegalActionsError(RuntimeError):
     """A pending player decision offered no action: an engine defect."""
 
@@ -251,10 +271,13 @@ class SelfPlayRunner:
         record: bool = True,
         undo_actions: bool = True,
         rank_rewards: bool = False,
+        score_rewards: bool = False,
         stall_dir: Path | None = None,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
+        if rank_rewards and score_rewards:
+            raise ValueError("rank_rewards and score_rewards are exclusive")
         # Where a game that reaches a decision without legal actions (an
         # engine defect) is pickled before it is ended as truncated. Unset,
         # such a game raises and takes the run down with it; a long training
@@ -270,6 +293,9 @@ class SelfPlayRunner:
         # ``rank_reward``. A learning-side transform, off by default so the
         # environment's documented reward stays the baseline.
         self.rank_rewards = rank_rewards
+        # True pays each seat its own final Victory Points; see
+        # ``score_reward``.
+        self.score_rewards = score_rewards
         self.codec = ActionCodec(config)
         self._engines: dict[tuple[str, ...] | None, UprisingRulesEngine] = {}
 
@@ -440,9 +466,11 @@ class SelfPlayRunner:
             by_player = {standing.player: standing for standing in standings}
             ranks = tuple(by_player[seat].rank for seat in range(players))
             rewards = tuple(
-                rank_reward(rank, players) if self.rank_rewards
+                score_reward(game.state.players[seat].victory_points)
+                if self.score_rewards
+                else rank_reward(rank, players) if self.rank_rewards
                 else (WINNER_REWARD if rank == 1 else LOSER_REWARD)
-                for rank in ranks
+                for seat, rank in enumerate(ranks)
             )
         return Episode(
             game_seed=game.spec.game_seed,

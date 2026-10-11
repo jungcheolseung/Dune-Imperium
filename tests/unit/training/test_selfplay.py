@@ -20,6 +20,7 @@ from dune_imperium.training import (
     TrainingBatch,
     apply_step_penalty,
     rank_reward,
+    score_reward,
     stack_episodes,
     without_undo_actions,
 )
@@ -419,3 +420,26 @@ def test_a_decision_without_legal_actions_is_kept_and_truncates_its_game(
     monkeypatch.setattr(plain._engine(None), "legal_actions", flaky)
     with pytest.raises(NoLegalActionsError):
         plain.run({"r": RandomBatchPolicy(seed=4)}, _specs("r", (1, 2)))
+
+
+def test_score_rewards_pay_each_seat_its_own_final_points() -> None:
+    """The experiment arm (user, 2026-10-11): each seat's reward is its own
+    final Victory Points / 10, whatever its place; the games are the same."""
+
+    assert score_reward(10) == pytest.approx(1.0)
+    assert score_reward(0) == pytest.approx(0.0)
+    specs = _specs("r", (31, 32))
+    default = SelfPlayRunner(RulesetConfig()).run(
+        {"r": RandomBatchPolicy(seed=3)}, specs
+    )
+    scored = SelfPlayRunner(RulesetConfig(), score_rewards=True).run(
+        {"r": RandomBatchPolicy(seed=3)}, specs
+    )
+
+    assert [e.ranks for e in scored.episodes] == [e.ranks for e in default.episodes]
+    for episode in scored.episodes:
+        assert episode.rewards == pytest.approx(
+            tuple(points / 10 for points in episode.victory_points)
+        )
+    with pytest.raises(ValueError, match="exclusive"):
+        SelfPlayRunner(RulesetConfig(), rank_rewards=True, score_rewards=True)
