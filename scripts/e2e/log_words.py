@@ -91,7 +91,12 @@ GAMES = (
     # OQ-106) moves seed 4 off its Secrets steal (the previous commit's
     # engine still gives it); the same scan from seed 5 finds seed 14 first
     # (again with Family Atomics, the Feyd track and research).
-    {"seats": ["random"] * 4, "game_seed": 14, "policy_seed": 14, **EVERY_EXPANSION},
+    # Offering both grafted Agent boxes from the start (graft-boxes, codec
+    # v143: the heuristic plays grafted turns differently, and random seats
+    # choose from a different list of actions) moves seed 14 off its Secrets
+    # steal; the same scan from seed 1 finds seed 10 first (again with
+    # Family Atomics, the Feyd track and research).
+    {"seats": ["random"] * 4, "game_seed": 10, "policy_seed": 10, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
@@ -140,8 +145,14 @@ GAMES = (
         # previous commit's engine still gives it); the same scan over seeds
         # 1-160 finds seed 126 first with a round modifier, Mating Season and
         # mission troops.
-        "game_seed": 126,
-        "policy_seed": 126,
+        # Offering both grafted Agent boxes from the start (graft-boxes,
+        # codec v143: the heuristic plays grafted turns differently, and
+        # random seats choose from a different list of actions) moves seed
+        # 126 off its round modifier and Mating Season; the same scan from
+        # seed 1 finds seed 22 first with a round modifier, Mating Season,
+        # mission troops and an auction won.
+        "game_seed": 22,
+        "policy_seed": 22,
         "arrakeen_scouts": True,
         **EVERY_EXPANSION,
     },
