@@ -748,6 +748,15 @@ def create_app(
                 credentials=_credentials(request, game_id),
             )
 
+    @app.get("/games/{game_id}/vp-ledger")
+    def vp_ledger(game_id: str, request: Request) -> JsonObject:
+        # The same for every seat; on a remote server any of the game's seat
+        # cookies, or the room link once the game has finished.
+        with _http_errors():
+            return sessions.vp_ledger(
+                game_id, credentials=_credentials(request, game_id)
+            )
+
     @app.delete("/games/{game_id}")
     def delete_game(game_id: str, request: Request) -> JsonObject:
         with _http_errors():
