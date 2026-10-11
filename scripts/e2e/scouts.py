@@ -117,8 +117,7 @@ CHOOSE_JS = """(() => {
   if (call >= 0) return call;
   const join = actions.findIndex((a) => a.action_id === "scouts_join_mission");
   if (join >= 0) return join;
-  const other = actions.findIndex((a) => a.action_id !== "switch_graft_card");
-  return other >= 0 ? other : 0;
+  return 0;
 })()"""
 
 

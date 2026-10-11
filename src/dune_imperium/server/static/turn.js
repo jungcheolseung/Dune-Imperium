@@ -441,13 +441,17 @@ function renderActionPanel(box, turnEnd) {
     /* The flat list of an Agent turn is long: its way back to the steps
        goes on top, where the panel cannot push it under the log. */
     if (placements.length) box.appendChild(actionListToggle(false, actions.length));
-    /* An Arrakeen Scouts choice shows the lines it cannot take too. */
+    /* An Arrakeen Scouts choice shows the lines it cannot take too; an
+       Agent turn's effects are grouped by the card whose box they are
+       (render.js appendDecisionItems). */
     const choice = state.actions.scouts_lines;
+    let placed = new Set();
     if (choice) appendScoutsLines(box, actions, choice);
-    else appendActionItems(box, actions);
+    else placed = appendDecisionItems(box, actions);
     /* And any decision what else it cannot take now, with the reason
-       (render.js appendUnavailableRows). */
-    appendUnavailableRows(box, ["choice", "waiting", "intrigue"]);
+       (render.js appendUnavailableRows), but for an Agent box's own greyed
+       rows, already under its card. */
+    appendUnavailableRows(box, ["choice", "waiting", "intrigue"], placed);
     return;
   }
   const pick = state.pick || {};

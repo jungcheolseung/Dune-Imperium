@@ -66,7 +66,12 @@ them (a decline). The per-row suffix above stays. Checked here:
   one heading per run.
 The expected headings, counts and zones are rebuilt here from
 `state.actions` and the view's hand / discard_pile / in_play lists, never
-from the rendered text.
+from the rendered text. Since the Agent-turn list is grouped by Agent box
+(2026-10-12, docs/graft-boxes-plan.md 4.11: a header per card over its box's
+rows, then "그 밖의 선택" over the turn's other rows), the piles are laid out
+within each part: seed 1's and seed 5's trash choices are steps of the
+Signet Ring's own box, and the board effect that followed them behind a
+divider now follows the other rows' header instead (`sections`).
 
 This turn's card (user feedback 2026-10-11: "플레이 영역에 같은게 2개
 있어버리니 이번턴에 플레이한거랑 저번턴꺼랑 구분이 안 되네"). Two copies of
@@ -347,8 +352,10 @@ def check_rows(page, what: str, lang: str, entries: list[dict]) -> None:
 LAYOUT_JS = """() => [...document.getElementById('actions').children].map((child) => ({
     kind: child.classList.contains('zone-heading') ? 'heading'
         : child.classList.contains('zone-divider') ? 'divider'
+        : child.classList.contains('agent-box-heading') ? 'box'
         : child.classList.contains('action-item') ? 'row' : 'other',
     index: child.dataset.index === undefined ? null : Number(child.dataset.index),
+    box: child.dataset.box === undefined ? null : Number(child.dataset.box),
     text: child.innerText.trim(),
     ariaHidden: child.getAttribute('aria-hidden'),
     role: child.getAttribute('role'),
@@ -404,13 +411,36 @@ def expected_tokens(zones: list[str | None], lang: str) -> list[tuple]:
     return out
 
 
+def sections(layout: list[dict]) -> list[tuple[dict | None, list[dict]]]:
+    """The panel split at its Agent-box headers (render.js
+    appendDecisionItems, docs/graft-boxes-plan.md 4.11): an Agent turn's
+    rows sit under a header per card whose box they are, the turn's other
+    rows under one of their own; each part lays its piles out on its own.
+    A list with no header is one part."""
+
+    parts: list[tuple[dict | None, list[dict]]] = [(None, [])]
+    for child in layout:
+        if child["kind"] == "box":
+            parts.append((child, []))
+        else:
+            parts[-1][1].append(child)
+    return [part for part in parts if part[0] is not None or part[1]]
+
+
 def check_zone_layout(
     page, what: str, lang: str, expected_zones: list[str]
 ) -> list[dict]:
     """The zone headings of the decision on screen: in engine order, each
     with the number of rows under it, every row under the heading of the pile
     its card is really in, a divider before the rows that follow the cards,
-    and nothing in the headings a keyboard or screen reader would trip on."""
+    and nothing in the headings a keyboard or screen reader would trip on.
+
+    An Agent turn's list is grouped by Agent box first (``sections``): the
+    card rows all sit in one part, laid out there as before, and the rows
+    that follow them in another part come after that part's header instead
+    of a divider. Every row of a part under a card's header is that box's
+    (the payload's ``box``), and the rows under the turn's other header
+    belong to no box."""
 
     actions, view, seat = decision_state(page)
     by_index = {action["index"]: action for action in actions}
@@ -430,7 +460,37 @@ def check_zone_layout(
         present,
     )
 
-    headings = [c for c in layout if c["kind"] == "heading"]
+    parts = sections(layout)
+    for header, children in parts:
+        if header is None:
+            continue
+        boxes = {
+            by_index[c["index"]].get("box")
+            for c in children
+            if c["kind"] == "row" and c["index"] in by_index
+        }
+        check.ok(
+            boxes <= {header["box"]},
+            f"{what}: the rows under {header['text']!r} belong to it",
+            (header, boxes),
+        )
+    carded = [
+        children
+        for _, children in parts
+        if any(
+            c["kind"] == "row"
+            and c["index"] in by_index
+            and row_zone(by_index[c["index"]], view, seat)
+            for c in children
+        )
+    ]
+    if not check.ok(
+        len(carded) == 1, f"{what}: the card rows sit in one part of the list", parts
+    ):
+        return layout
+    part = carded[0]
+
+    headings = [c for c in part if c["kind"] == "heading"]
     check.ok(
         [h["text"] for h in headings]
         == [f"{ZONE_HEADINGS[z][lang]} · {totals[z]}" for z in present],
@@ -445,7 +505,7 @@ def check_zone_layout(
     divider_seen = False
     seen_heading = False
     next_heading = iter(present)
-    for child in layout:
+    for child in part:
         if child["kind"] == "heading":
             section = next(next_heading, None)
             under[section] = []
@@ -488,8 +548,21 @@ def check_zone_layout(
             f"{what}: the {zone} heading counts the rows under it ({shown})",
         )
     # A row naming no pile card is first a decline, last the board effect; the
-    # divider is only wanted where such a row follows card rows.
-    expected = expected_tokens(zones, lang)
+    # divider is only wanted where such a row follows card rows in one part.
+    expected: list[tuple] = []
+    for header, children in parts:
+        if header is not None:
+            expected.append(("box",))
+        expected.extend(
+            expected_tokens(
+                [
+                    row_zone(by_index[c["index"]], view, seat)
+                    for c in children
+                    if c["kind"] == "row" and c["index"] in by_index
+                ],
+                lang,
+            )
+        )
     expected_dividers = sum(1 for token in expected if token[0] == "divider")
     dividers = [c for c in layout if c["kind"] == "divider"]
     check.ok(
@@ -509,7 +582,7 @@ def check_zone_layout(
     actual = [
         (c["kind"], c["text"]) if c["kind"] == "heading" else (c["kind"],)
         for c in layout
-        if c["kind"] in ("heading", "divider")
+        if c["kind"] in ("heading", "divider", "box")
         or (c["kind"] == "row" and c["index"] in by_index)
     ]
     check.ok(actual == expected, f"{what}: the whole layout matches the piles", actual)
