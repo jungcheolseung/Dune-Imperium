@@ -199,6 +199,8 @@ def test_sampling_reads_only_the_legal_rows_of_the_full_masked_softmax() -> None
             illegal = ~np.isin(catalog, request.legal_indices)
             assert float(probabilities[row, torch.from_numpy(illegal)].sum()) == 0.0
     assert max(peaks) > 0.5
+    with pytest.raises(ValueError, match="at least one"):
+        policy.distribution(())
 
 
 def test_collection_deals_each_lineup_evenly_over_the_workers() -> None:
@@ -223,6 +225,17 @@ def test_collection_deals_each_lineup_evenly_over_the_workers() -> None:
     plain = specs[::2]
     assert collect_module.deal(plain, 4) == [plain[i::4] for i in range(4)]
     assert [len(chunk) for chunk in collect_module.deal(specs[:6], 4)] == [2, 2, 1, 1]
+    # A game's cost follows how many seats each policy holds, not which.
+    one = ("learner", "app_ai", "app_ai", "app_ai")
+    turned = ("app_ai", "learner", "app_ai", "app_ai")
+    mixed = (
+        SelfPlaySpec(game_seed=0, lineup=against),
+        SelfPlaySpec(game_seed=1, lineup=one),
+        SelfPlaySpec(game_seed=2, lineup=turned),
+        SelfPlaySpec(game_seed=3, lineup=against),
+    )
+    dealt_seeds = [[s.game_seed for s in c] for c in collect_module.deal(mixed, 2)]
+    assert dealt_seeds == [[0, 1], [3, 2]]
 
 
 def test_checkpoint_round_trip_and_version_guard(tmp_path: Path) -> None:

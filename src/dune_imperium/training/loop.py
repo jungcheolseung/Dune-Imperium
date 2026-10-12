@@ -99,8 +99,8 @@ class TrainConfig:
     learner_seats: int = 1
     # Games per iteration seated against ``opponent``; the others are pure
     # self-play. None seats every game against it. The opponent games are
-    # spread evenly through the iteration so every collection worker gets
-    # its share (workers deal the specs round-robin).
+    # spread evenly through the iteration, and the collector deals every
+    # worker its share of them (``collect.deal``).
     opponent_games: int | None = None
     temperature: float = 1.0
     # Pay the finishing order instead of winner-take-all during collection

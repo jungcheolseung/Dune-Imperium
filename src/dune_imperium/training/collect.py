@@ -177,7 +177,9 @@ def deal(specs: Sequence[SelfPlaySpec], workers: int) -> list[tuple[SelfPlaySpec
 
     groups: dict[tuple[str, ...], list[SelfPlaySpec]] = {}
     for spec in specs:
-        groups.setdefault(tuple(sorted(set(spec.lineup))), []).append(spec)
+        # The seat count of every policy, not its seats: a game costs the
+        # same whichever seats the opponent holds.
+        groups.setdefault(tuple(sorted(spec.lineup)), []).append(spec)
     chunks: list[list[SelfPlaySpec]] = [[] for _ in range(workers)]
     position = 0
     for group in groups.values():

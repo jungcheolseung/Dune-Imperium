@@ -168,6 +168,8 @@ class TorchBatchPolicy:
         ``MASKED_LOGIT`` and so exactly zero probability, as before.
         """
 
+        if not requests:
+            raise ValueError("a distribution needs at least one request")
         observations = torch.from_numpy(
             np.stack([request.observation for request in requests])
         ).to(self.device)
