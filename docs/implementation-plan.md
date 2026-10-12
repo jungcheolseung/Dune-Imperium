@@ -1,8 +1,36 @@
 # Dune: Imperium - Uprising 구현 계획
 
-상태: 초안 7 (2026-08-30) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널, M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다. M6는 Leader 9종 능력·Signet Ring과 Objective 상호작용 재감사까지 마쳐 완료됐고, M8도 Shaddam의 Sardaukar contract와 CHOAM 전용 콘텐츠까지 연결돼 완료됐다. 전체 게임 러너와 PettingZoo 전체 게임 episode ([rl-environment.md](rl-environment.md)), 그리고 M7의 `dune-imperium-sweep` 완주 검증(룰셋당 10,000판 실패 0)까지 끝났다. M11 사람용 플레이 인터페이스(2026-08-30 순서 변경으로 M9·M10보다 선행)는 2026-08-31에 저장/불러오기와 replay 검토까지, 2026-09-03에 슬라이스 7(보드 스캔 테이블 + 아이콘)까지 완료됐다. 다음 마일스톤은 M9 평가 환경이고 M10 강화학습이 그 뒤를 잇는다.
+상태: 초안 7 (2026-08-30). 마일스톤 현황은 아래 표(2026-10-12 기준)를 본다. 진행 중인 일과 다음 작업은 [개발 인수인계](development-handoff.md)의 "진행 중·다음 작업"이 관리한다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심 계층의 책임을 유지하고, 마일스톤별 검증을 통과한 뒤 다음 범위로 진행한다.
+
+
+## 마일스톤 현황 (2026-10-12)
+
+| 마일스톤 | 상태 | 근거·남은 것 |
+| --- | --- | --- |
+| R0 공식 규칙 명세 기준선 | 완료 (2026-08-12) | `fe29f63b` |
+| M0 개발 골격과 규칙 추적 체계 | 완료 (2026-08-12) | `ca45e138` |
+| M1 엔진 커널 | 완료 (2026-08-12) | `44d01af8` |
+| M2 4인 setup과 정적 보드 | 완료 (2026-08-13) | `6efb4839` |
+| M3 한 라운드 수직 조각 | 완료 (2026-08-14) | `f1941ea0` |
+| M4 RL 인터페이스 조기 검증 | 완료 (2026-08-14) | 2026-08-30부터 전체 게임 episode(`dune_imperium_uprising_v1`) |
+| M5 기본 게임 시스템 규칙 | 완료 (2026-08-30) | 따로 선언한 기록은 없고, M7 완주 검증으로 완료 조건을 채웠다 |
+| M6 Uprising 기본 콘텐츠 완성 | 완료 (2026-08-30) | |
+| M7 기본 게임 완주 검증 | 완료 (2026-08-30) | 룰셋당 10,000판 실패 0 |
+| M8 CHOAM 계약 모듈 | 완료 (2026-08-30) | |
+| M11 사람용 플레이 인터페이스 | 완료 (2026-08-31) | 화면 개선은 계속된다([ui-improvement-plan.md](ui-improvement-plan.md), 인수인계 "플레이 화면") |
+| M9 평가 환경과 강한 baseline | 완료 (2026-09-06) | |
+| M10 강화학습과 league self-play | 진행 중 | 탐색 좌석이 모든 baseline을 이긴 표([evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md) 14절)와 앱 AI 어려움을 이긴 L3가 있지만 완료를 선언하지 않았다. 과거 체크포인트 league 대신 앱 AI 상대를 섞는다. 남은 결정은 인수인계 "학습·AI" |
+| M12 Bloodlines 확장과 Tech Module | 완료 (2026-09-07) | |
+| M13 Immortality 확장 | 완료 (2026-09-08) | Go to 11 변형은 2026-09-28에 더했다 |
+| M14 원격 멀티플레이 | 구현 완료 (2026-09-17, 슬라이스 1~6) | 친구들과 실제로 둔 판과 피드백 반영(2026-10-11). 완료 조건의 복구(끊김·새로고침·서버 재시작)는 E2E·SIGKILL 테스트로만 확인했고 실전 기록은 없다 |
+| M14+ 서버 런처 | 1~6단계 완료 (2026-10-09) | 7단계 Windows 실기 검증이 남았다([server-launcher-plan.md](server-launcher-plan.md)) |
+| M15 Arrakeen Scouts 모듈 | 완료 (2026-09-30) | D8 판정 일괄 검토까지 |
+
+계획 밖에서 더한 것: Epic Game Mode(2026-09-30), 앱 AI(2026-10-05, [app-ai-plan.md](app-ai-plan.md)), 탐색 AI 좌석(2026-10-06,
+[search-ai.md](search-ai.md)), 사람 기보·평가 문제집(2026-10-10, [human-records.md](human-records.md)), 플레이 시계(2026-10-11,
+[play-clock.md](play-clock.md)).
 
 ## 1. 확정된 방향
 
@@ -94,6 +122,8 @@ results(state) -> tuple[PlayerResult, ...]
 - replay에는 `ruleset_version`, `content_version`, `action_codec_version`, seed와 행동·chance stream을 저장한다.
 
 ### 예상 패키지 구조
+
+아래는 2026-08 계획 때의 예상이다. 지금 구조는 [개발 인수인계](development-handoff.md)의 "코드 탐색 지도"를 본다.
 
 ```text
 src/dune_imperium/
@@ -195,7 +225,7 @@ tests/
 
 ### M4. RL 인터페이스 조기 검증
 
-상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v71의 기본 룰셋은 3,923개 행동이며, CHOAM 룰셋은 contract 시장·완료·Spy·전용 Imperium·Intrigue 선택을 포함해 4,169개 행동이다. `dune_imperium_uprising_v0` AEC 환경은 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다. 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
+상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 아래 수치는 당시 값이다. 2026-08-30부터 환경은 전체 게임을 episode로 하는 `dune_imperium_uprising_v1`이고, 지금 codec·카탈로그 크기는 [개발 인수인계](development-handoff.md)의 기준선에 있다. 기본 룰셋은 versioned actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v71의 기본 룰셋은 3,923개 행동이며, CHOAM 룰셋은 contract 시장·완료·Spy·전용 Imperium·Intrigue 선택을 포함해 4,169개 행동이다. `dune_imperium_uprising_v0` AEC 환경은 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다. 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
 - 코어의 구조적 행동과 별도로 고정 정수 action catalog를 만든다.
 - 복합 선택은 원자적 ID로 인코딩하고 합법 ID만 켜진 action mask를 제공한다.
@@ -206,7 +236,7 @@ tests/
 
 ### M5. 기본 게임 시스템 규칙
 
-상태: **진행 중** (현황 갱신 2026-08-27). Influence·Alliance, Spy의 Infiltrate와 Gather Intelligence, Shield Wall·Maker Hook·sandworm·critical location control, High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall 및 Endgame 진입을 구현했다. 최종 순위는 공식 tiebreak 전체를 적용한다. Endgame은 First Player부터 시계 방향의 Endgame Intrigue window(OQ-001 convention)에서 Endgame play와 wild battle icon matching을 해결한 뒤 `FINISHED`로 진행하며, Intrigue 보유와 wild 쌍이 모두 없으면 window 없이 즉시 종료한다. random 4인 게임이 FINISHED까지 완주되고 replay로 재현된다. 개인 덱 draw는 부족할 때 discard를 replayable chance로 shuffle하며, 두 라운드와 세 번째 Round Start shuffle까지 같은 action/chance stream으로 재생한다.
+상태: **완료** (2026-08-30). 따로 완료를 선언한 기록은 없고, M7 완주 검증(룰셋당 10,000판, 매 전이 불변식 검사)으로 완료 조건을 채웠다. 아래는 2026-08-27 현황 갱신 때의 설명이다. Influence·Alliance, Spy의 Infiltrate와 Gather Intelligence, Shield Wall·Maker Hook·sandworm·critical location control, High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall 및 Endgame 진입을 구현했다. 최종 순위는 공식 tiebreak 전체를 적용한다. Endgame은 First Player부터 시계 방향의 Endgame Intrigue window(OQ-001 convention)에서 Endgame play와 wild battle icon matching을 해결한 뒤 `FINISHED`로 진행하며, Intrigue 보유와 wild 쌍이 모두 없으면 window 없이 즉시 종료한다. random 4인 게임이 FINISHED까지 완주되고 replay로 재현된다. 개인 덱 draw는 부족할 때 discard를 replayable chance로 shuffle하며, 두 라운드와 세 번째 Round Start shuffle까지 같은 action/chance stream으로 재생한다.
 
 - Influence, Friendship, Alliance 이동과 VP 경계를 구현한다.
 - Spy의 Infiltrate, Gather Intelligence와 회수 제한을 구현한다.
@@ -223,7 +253,7 @@ tests/
 
 완료된 범위:
 
-- 시작 카드 7종, Reserve 2종(Prepare the Way, The Spice Must Flow), 기본 Imperium 50종, CHOAM 전용 Imperium 4종의 play data를 모두 전사해 실제 Agent·Reveal·acquire 경로에 연결했다. codec은 Reserve Agent 행동의 v7에서 시작해 카드 묶음마다 올라 현재 v64이다.
+- 시작 카드 7종, Reserve 2종(Prepare the Way, The Spice Must Flow), 기본 Imperium 50종, CHOAM 전용 Imperium 4종의 play data를 모두 전사해 실제 Agent·Reveal·acquire 경로에 연결했다. codec은 Reserve Agent 행동의 v7에서 시작해 카드 묶음마다 올라 2026-08-30에 v64였다.
 - 카드 구현 과정에서 다음 공통 경계를 확립했다. 개인 카드 resolver, typed Reveal 효과 schema, Faction Bond·Influence 조건 판정, 선택형 획득 보너스, Spy 배치·회수와 turn 범위 recall 조건, hand discard·trash·deck-top 선택과 카드별 trigger, Agent-card 결제·Solari 구매·Agent 회수, 상대 hand discard의 player-owned frame, Reveal 중첩 선택 frame, Influence 감소·Alliance 이전.
 - 카드별 인쇄 효과와 규칙 민감 판정은 [personal-cards audit](implementation-audits/personal-cards.md)에, 묶음 단위 구현 이력은 git의 `Play ...` / `Document ...` 커밋 쌍에 기록돼 있다.
 - 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
@@ -283,6 +313,8 @@ tests/
 
 ### M9. 평가 환경과 강한 baseline
 
+상태: **완료** (2026-09-06; lockstep self-play 러너, 대회 도구, rollout baseline).
+
 - 여러 게임을 직접 구동하고 정책 추론만 batch하는 self-play runner를 만든다.
 - random, 규칙 기반 heuristic, rollout/search baseline을 순서대로 만든다. heuristic은 M11의 사람용 상대로 먼저 구현한 agent에서 출발한다.
 - 좌석, 리더, first-player, seed를 교차한 대회 도구를 만든다.
@@ -291,6 +323,8 @@ tests/
 완료 조건: 버전이 다른 agent들의 재현 가능한 평가 행렬과 성능 보고서를 만들 수 있다.
 
 ### M10. 강화학습과 league self-play
+
+상태: **진행 중**. 체크포인트의 관측·codec 버전 고정, 종료 보상 학습, 학습·평가 seed 분리는 됐다. 탐색 좌석이 모든 baseline을 이긴 표([evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md) 14절)와 앱 AI 어려움을 이긴 L3가 있지만 완료를 선언하지 않았다. recurrent policy·centralized critic은 시도하지 않았고, 과거 체크포인트 league는 배울 것이 적다는 실험 뒤 앱 AI 상대 섞기로 대신했다. 다음 결정은 [개발 인수인계](development-handoff.md)의 "학습·AI"에 있다.
 
 - 관측 encoder와 action codec 버전을 고정하고 체크포인트에 저장한다.
 - terminal reward를 기준선으로 masked multi-agent 학습을 시작한다.
@@ -301,6 +335,8 @@ tests/
 완료 조건: 고정 평가 대회에서 이전 champion과 모든 baseline보다 유의미하게 강한 모델을 재현할 수 있다.
 
 ### M12. Bloodlines 확장과 Tech Module
+
+상태: **완료** (2026-09-07).
 
 2026-09-07 착수(사용자 결정: Tech Module까지 전부, 출처 등록 + 옵션 골격 + Sardaukar Commander부터). 규범 근거는 [`rules/bloodlines.md`](rules/bloodlines.md)이며, 확장은 `RulesetConfig(bloodlines=True)`, Tech Module은 `tech_module=True`(Bloodlines 필요) 옵션으로 켠다. 기본값은 둘 다 꺼짐이라 기존 룰셋의 codec·관측·체크포인트 호환성은 옵션을 켠 룰셋에서만 달라진다.
 
@@ -314,11 +350,13 @@ tests/
 6. Tech Module: Ixian Embassy board와 Tech tile 18장(획득·할인·Flip·acquire 효과·능력), Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix.
 7. 서버·UI 옵션, sweep·soak(`--bloodlines`, `--tech-module`), heuristic agent의 새 행동 처리, 학습 재개.
 
-진행(2026-09-07): 슬라이스 1~7 완료 — 슬라이스 6은 Ixian Embassy와 Tech tile 18장(획득·할인·Flip·획득 효과·능력), Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix까지(관측 v9, codec v91→v94; 판정 OQ-040~045). 슬라이스 7(같은 날 밤): 웹 UI의 Commander·Skill·Ixian Embassy·보유 Tech tile·Secret Project 표시(`/catalog`의 `skills`·`tech` 절, tile 이미지 키), heuristic의 tile별 `acquire_tech` 가중치와 rollout `player_value`의 Bloodlines 자산, `--bloodlines --tech-module` 교차 소크 7,000판 실패 0(첫 소크가 적발한 3계열 결함 수정: Engineered Miracle의 만료된 Command 선택, Harkonnen Advisor troop만 있는 garrison의 배치 Plot 교착, Faction 없는 space의 Treacherous Maneuver — OQ-022·038 보강, OQ-046), 관측 v9·codec v94 기준 `dune-imperium-train` smoke(3 iteration, 체크포인트·평가 정상). 저장 문서가 `promo_cards`·`bloodlines`·`tech_module`을 잃던 결함도 함께 고쳤다. **M12 완료.** 후속 후보: 학습 루프에 `--bloodlines`/`--tech-module` 옵션(현재 `--choam`뿐), Endgame tiebreaker의 Commander 계수 판정. 2026-09-08: OQ-047(Endgame tiebreaker의 garrison Commander 포함), Bloodlines 프로모 Ruthless Leadership(`promo_cards`+`bloodlines` 옵션, 카드면 전사), 서버 AI 좌석에 `rollout`/`checkpoint:` 연결, UI의 Agent 토큰 애니메이션·1700px 패널 기준. 사용자 결정(2026-09-08): M10 학습은 최후순위로 두고 구현을 먼저 완결한다. 2026-09-09: 디자이너 판정 대조가 드러낸 콘텐츠 공백인 CHOAM Module contract token 8개(Earn Any Alliance·새 Immediate 포함)를 전사·구현했다(관측 v16, codec v98, OQ-056).
+진행(2026-09-07): 슬라이스 1~7 완료 — 슬라이스 6은 Ixian Embassy와 Tech tile 18장(획득·할인·Flip·획득 효과·능력), Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix까지(관측 v9, codec v91→v94; 판정 OQ-040~045). 슬라이스 7(같은 날 밤): 웹 UI의 Commander·Skill·Ixian Embassy·보유 Tech tile·Secret Project 표시(`/catalog`의 `skills`·`tech` 절, tile 이미지 키), heuristic의 tile별 `acquire_tech` 가중치와 rollout `player_value`의 Bloodlines 자산, `--bloodlines --tech-module` 교차 소크 7,000판 실패 0(첫 소크가 적발한 3계열 결함 수정: Engineered Miracle의 만료된 Command 선택, Harkonnen Advisor troop만 있는 garrison의 배치 Plot 교착, Faction 없는 space의 Treacherous Maneuver — OQ-022·038 보강, OQ-046), 관측 v9·codec v94 기준 `dune-imperium-train` smoke(3 iteration, 체크포인트·평가 정상). 저장 문서가 `promo_cards`·`bloodlines`·`tech_module`을 잃던 결함도 함께 고쳤다. **M12 완료.** 후속 후보였던 학습 루프의 `--bloodlines`/`--tech-module` 옵션과 Endgame tiebreaker의 Commander 계수 판정(OQ-047)은 뒤에 끝났다. 2026-09-08: OQ-047(Endgame tiebreaker의 garrison Commander 포함), Bloodlines 프로모 Ruthless Leadership(`promo_cards`+`bloodlines` 옵션, 카드면 전사), 서버 AI 좌석에 `rollout`/`checkpoint:` 연결, UI의 Agent 토큰 애니메이션·1700px 패널 기준. 사용자 결정(2026-09-08): M10 학습은 최후순위로 두고 구현을 먼저 완결한다. 2026-09-09: 디자이너 판정 대조가 드러낸 콘텐츠 공백인 CHOAM Module contract token 8개(Earn Any Alliance·새 Immediate 포함)를 전사·구현했다(관측 v16, codec v98, OQ-056).
 
 완료 조건: `bloodlines`·`tech_module` 룰셋의 random·heuristic 소크가 실패 0으로 완주하고, 모든 Bloodlines 구성물이 카드면 검증을 거쳐 audit 문서에 기록되며, 공식 문서가 침묵하는 판정은 open-questions에 convention으로 남는다.
 
 ### M13. Immortality 확장
+
+상태: **완료** (2026-09-08). Go to 11 변형은 2026-09-28에 더했다.
 
 2026-09-08 착수(사용자 지시). 규범 근거는 [`rules/immortality.md`](rules/immortality.md)이며, 확장은 `RulesetConfig(immortality=True)` 옵션으로 켠다. Uprising Main p. 18의 "Adding Immortality"(Research Station overlay)가 조합을 공식 지원하고, Bloodlines와 독립이다. 기본값은 꺼짐이라 기존 룰셋의 codec 카탈로그는 바뀌지 않는다(관측은 identity 우주 확장으로 v11).
 
@@ -335,7 +373,7 @@ tests/
 
 ### M14. 원격 멀티플레이
 
-상태: **진행 중 — 슬라이스 1~5 완료** (2026-09-17; 같은 날 사용자가 설계의 결정 항목 D1~D7을 제안대로 확정). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
+상태: **구현 완료** (2026-09-17, 슬라이스 1~6). 친구들과 실제로 둔 판과 그 피드백을 2026-10-11에 반영했다. 완료 조건의 복구(끊김·새로고침·서버 재시작)는 E2E·SIGKILL 테스트로만 확인했다. 아래는 착수 때의 설명이다(2026-09-17; 같은 날 사용자가 설계의 결정 항목 D1~D7을 제안대로 확정). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
 
 슬라이스 순서(설계 문서 11절):
 
@@ -348,9 +386,13 @@ tests/
 
 완료 조건: remote 모드에서 자격 없는 좌석 접근이 전부 거부되고, 원격의 사람 2~4명이 각자 브라우저로 설정부터 최종 점수까지 한 판을 끝내며(끊김·새로고침·서버 재시작 복구 포함), 옵션 없이 띄운 로컬 서버와 기존 `tests/server/` 테스트는 그대로 동작한다.
 
+### M14+ 서버 런처
+
+상태: **1~6단계 완료** (2026-10-09; 로컬 모드 자동 저장 2026-10-11). 호스트가 터미널 없이 창에서 플레이 서버를 켜고 끄는 tkinter 런처다. 남은 것은 7단계 Windows 실기 검증이다. 계획과 기록은 [server-launcher-plan.md](server-launcher-plan.md)에 있다.
+
 ### M15. Arrakeen Scouts 모듈
 
-상태: **구현 완료, OQ 일괄 검토 대기** (2026-09-28 설계·착수·슬라이스 1~10 완료; 사용자가 D1~D9를 정했다 — 설계 12절. D8에 따라 OQ-071~OQ-090의 잠정 판정을 한꺼번에 검토받는다). 사용자 요구는 Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(공식 한국어 "아라킨 스카웃")를 확장팩·모듈처럼 시작 옵션으로 넣는 것이다. 설계·근거·사용자 결정 항목은 [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md)에 있다.
+상태: **완료** (2026-09-30, D8의 OQ-071~090 일괄 검토까지). 아래는 착수 때의 설명이다(2026-09-28 설계·착수·슬라이스 1~10 완료; 사용자가 D1~D9를 정했다 — 설계 12절. D8에 따라 OQ-071~OQ-090의 잠정 판정을 한꺼번에 검토받는다). 사용자 요구는 Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 "Arrakeen Scouts"(공식 한국어 "아라킨 스카웃")를 확장팩·모듈처럼 시작 옵션으로 넣는 것이다. 설계·근거·사용자 결정 항목은 [`arrakeen-scouts-design.md`](arrakeen-scouts-design.md)에 있다.
 
 - **출처.** 공식 룰북이 없어 앱 설치본(build-guid `84d64e12…`)에서 추출한 정의·문구·일정 생성 절차가 유일한 출처다. 추출 도구는 [`scripts/dwgr/`](../scripts/dwgr/README.md)에 있고, 추출 결과와 분석은 git 밖의 로컬 폴더(에셋 체크아웃의 `reference/dwgr-arrakeen-scouts/`, 에셋 `.gitignore`)에만 둔다. 이 저장소에는 이름·수치·의역만 넣는다.
 - **모드.** 게임 시작 때 소위원회 5개가 공개되고 원로회 자리를 차지할 때 하나에 가입한다. 라운드마다 정해진 일정이 공개된다: 2~3라운드 임무 3개, 4~7라운드 이벤트 1개씩, 5/6라운드 중간 경매, 8·9라운드 후반 경매와 판매.
@@ -417,20 +459,4 @@ tests/
 
 ## 8. 바로 다음 작업
 
-2026-09-16 기준으로 R0~M9, M11, M12, M13이 완료됐고 M10은 첫 슬라이스(학습 루프·체크포인트·대회 연동)만
-끝난 상태다. 9월 10~16일은 구현 대신 **기준선 정비**에 썼다: heuristic의 보드 공간 표를 축별 A/B와 소거로
-재정비해 random 3명 상대 89 → 98%가 됐고(표는 양방향 국소 최적, `evaluation/baseline-2026-09-10.md` 13~18절),
-rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 44%가 됐으며(`evaluation/baseline-2026-09-16.md`
-13절), 처리량 결함 3건과 병목 2건을 고쳤고(`evaluation/throughput-2026-09-10.md`), A/B 실행이 찾은 엔진 결함
-5건을 수정했다. 2026-09-16 밤의 마무리 세션은 M10 파이프라인의 v20·codec v104 smoke(self-play와 rollout 상대 경로), heuristic의
-동점 census와 가족 안 tie-break 채택(고정 변형 상대 전 룰셋 +5 ~ +9%p, `evaluation/baseline-2026-09-16.md` 14절), M10
-수집 경로의 관측 인코더 재작성(수집 벽시계 −16 ~ −18%, `evaluation/throughput-2026-09-10.md` 8절), A/B가 찾은 엔진
-결함 1건 수정으로 끝났다. 다음은 **M10 학습 재개**(관측 v20·codec v104라 체크포인트는 전부 새로 시작)이며, 학습 밖의
-남은 후보(heuristic 표 밖 항의 나머지, rollout 가치 함수, 처리량의 남은 병목, 리팩토링 후속)는
-[개발 인수인계](development-handoff.md)의 "진행 중·다음 작업"이 관리한다(2026-10-12 전의 "다음 구현 순서" 원문은
-[worklog/handoff-core-before-2026-10-12.md](worklog/handoff-core-before-2026-10-12.md)). 2026-09-17에 서버·UI 쪽 병행 트랙으로
-**M14 원격 멀티플레이**([multiplayer-design.md](multiplayer-design.md), 같은 날 확정)가 시작돼 슬라이스 1(접근 계층과 좌석
-claim), 슬라이스 2(snapshot + 증분 로그 + gzip), 슬라이스 3(SSE 초인종 + presence + 폴링 fallback), 슬라이스 4(클라이언트 원격 UX와 브라우저
-E2E), 슬라이스 5(자동 저장과 복구), 슬라이스 6의 리허설과 운영 문서가 끝났고 남은 것은 실제 친구와의 한 판과 그 피드백이다.
-2026-09-28에 **M15 Arrakeen Scouts 모듈**의 설계([arrakeen-scouts-design.md](arrakeen-scouts-design.md))를 세우고, 같은 날
-사용자가 D1~D9를 정해 착수했고, 같은 날 슬라이스 1~10을 모두 끝냈다(codec v119, 관측 v25). 남은 것은 D8의 OQ 일괄 검토와 푸시다.
+진행 중인 일과 다음 작업은 [개발 인수인계](development-handoff.md)의 "진행 중·다음 작업"이 관리하고, 마일스톤별 상태는 위의 "마일스톤 현황" 표에 있다. 이 절에 있던 2026-09-16~09-28의 경과(기준선 정비, M10 학습 재개, M14·M15 착수)는 [worklog/2026-09.md](worklog/2026-09.md)와 커밋 이력에 있다.
