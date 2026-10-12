@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from dune_imperium.agents.app_ai.family_atomics import FAMILY_ATOMICS_DECIDERS
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX
 from dune_imperium.config import RulesetConfig
 from dune_imperium.paths import TMP_DIR
@@ -75,6 +76,7 @@ class _ChunkJob:
     out_path: str
     score_rewards: bool = False
     stall_dir: str | None = None
+    family_atomics_rule: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +132,7 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         rank_rewards=job.rank_rewards,
         score_rewards=job.score_rewards,
         stall_dir=None if job.stall_dir is None else Path(job.stall_dir),
+        family_atomics_rule=job.family_atomics_rule,
     )
     policies = _policies(
         network,
@@ -203,9 +206,12 @@ class Collector:
         rank_rewards: bool = False,
         score_rewards: bool = False,
         stall_dir: Path | None = None,
+        family_atomics: str = "network",
     ) -> None:
         if workers < 1:
             raise ValueError("workers must be positive")
+        if family_atomics not in FAMILY_ATOMICS_DECIDERS:
+            raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         # See SelfPlayRunner.stall_dir.
         self.stall_dir = stall_dir
         self.config = config
@@ -215,6 +221,16 @@ class Collector:
         self.opponent = opponent
         self.rank_rewards = rank_rewards
         self.score_rewards = score_rewards
+        # "app": the network seats (the learner and a frozen checkpoint
+        # opponent) spend Family Atomics by the app AI's rule, so the value
+        # head meets positions that still hold the token (SelfPlayRunner).
+        # A baseline opponent keeps its own way.
+        self.family_atomics_rule: frozenset[str] = frozenset()
+        if family_atomics == "app":
+            networks = {LEARNER}
+            if opponent is not None and opponent.startswith(CHECKPOINT_PREFIX):
+                networks.add(opponent)
+            self.family_atomics_rule = frozenset(networks)
         self._pool: ProcessPoolExecutor | None = None
         self._scratch: Path | None = None
         if workers > 1:
@@ -261,6 +277,7 @@ class Collector:
                 rank_rewards=self.rank_rewards,
                 score_rewards=self.score_rewards,
                 stall_dir=self.stall_dir,
+                family_atomics_rule=self.family_atomics_rule,
             )
             policies = _policies(
                 network,
@@ -305,6 +322,7 @@ class Collector:
                 score_rewards=self.score_rewards,
                 out_path=str(self._scratch / f"chunk_{policy_seed}_{index}.npz"),
                 stall_dir=None if self.stall_dir is None else str(self.stall_dir),
+                family_atomics_rule=self.family_atomics_rule,
             )
             for index, chunk in enumerate(chunks)
             if chunk

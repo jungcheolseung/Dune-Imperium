@@ -20,6 +20,7 @@
 - 중간 보상(per-step VP delta 등)은 환경에서 제공하지 않는다. shaping은 학습 쪽 wrapper의 몫이며, 종료 시 `infos`에 각 좌석의 `rank`와 `victory_points`를 노출해 wrapper 작성을 지원한다.
 - **학습 쪽 보상 변환(2026-09-20, 기본 꺼짐).** `dune-imperium-train --rank-rewards`는 수집에서 승자독식 대신 **순위를 [+1, −1]에 선형으로** 편다(4인 기준 1, 1/3, −1/3, −1; `training.selfplay.rank_reward`). 한 테이블의 합은 0이라 zero-sum이 유지된다. 근거: 승자독식은 좌석당 0.811 bit만 주고 2위와 4위를 같은 값으로 취급하는데, 엔진이 이미 계산하는 순위는 2.0 bit다. **환경(`pettingzoo_env`)의 보상과 대회의 승리 판정은 그대로**이며, 이것은 이 문서가 위에서 "학습 쪽 wrapper의 몫"이라고 적은 변환이다. M10 계획서의 "reward shaping은 ablation으로 비교한다" 항목에 해당한다.
 - **점수 보상 실험 갈래(2026-10-11, 기본 꺼짐).** `dune-imperium-train --score-rewards`는 수집에서 각 좌석에 **자기 최종 VP ÷ 10**을 준다(`training.selfplay.score_reward`). 사용자 질문 "'종료했을 때 점수를 최대한 먹기'로 설정하면 목표가 바뀌려나?" → "실험 갈래 추가해보자". 순위 보상과 달리 zero-sum이 아니다: 순위와 상관없이 자기 점수만 키우도록 배운다. `--rank-rewards`와 함께 쓸 수 없다. 환경 보상·대회 승리 판정·탐색의 가치 읽기는 그대로다. 판정은 대조군(승자독식)과의 짝지은 대전으로 한다.
+- **가문 핵은 앱 AI 규칙으로(2026-10-12, 기본 꺼짐).** `dune-imperium-train --family-atomics app`는 수집에서 망이 두는 좌석(학습자와 얼린 checkpoint 상대)의 가문 핵 토큰을 앱 AI 어려움의 규칙(`agents.app_ai.family_atomics`: 자기 Reveal 턴, 설득력 4~8, 예측 구매의 가치/비용 ≤ 1)에 맡긴다. 규칙이 쓰면 러너가 아무 정책도 기록하지 않는 수로 두고, 그 밖에는 정책에 보이지 않는다. 학습한 망은 매 판 1라운드 첫 Agent 턴에 써서(40판 160자리) 가치 head가 토큰이 남은 국면을 본 적이 없었다. 관측에는 좌석마다 토큰 유무가 이미 있다(`family_atomics`). 다음 단계는 이렇게 배운 망에게 가문 핵을 다시 돌려주어(기본값) 정책이 시점을 배우게 하는 것이다(사용자 목표 2026-10-12, [evaluation/search-atomics-2026-10-12.md](evaluation/search-atomics-2026-10-12.md) 4절).
 
 ## Episode 메커니즘 (`dune_imperium_uprising_v1`)
 
