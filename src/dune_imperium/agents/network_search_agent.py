@@ -61,6 +61,16 @@ Under the app's rule the seat spends it in its own Reveal turn when the
 Imperium Row offers poor buys, and keeps it otherwise; every seat of every
 playout follows the same rule.
 
+A Combat Intrigue that only adds strength is held while the seat alone
+leads the Conflict (``hold_combat_lead``): the card-playing step ends only
+when every participant passes in a row `[Main p. 14]`, so a leader that
+passes is asked again after any opponent plays, and playing first only
+spends the card and its cost. The app AI holds them the same way ("sole
+first now: hold", ``StrengthIntrigueAbility``). The network had played
+Spice is Power, paying 3 spice, at 12 strength against 6, 2 and 0, where
+the search rated playing and passing alike. Every seat of every playout
+holds the same way.
+
 A loaded save does not search its recorded decisions again: the seat
 retraces each one (``replay_decision``, the ``ReplayableAgent`` protocol),
 drawing the worlds a search would have drawn without playing them out, so
@@ -70,6 +80,7 @@ it resumes with the RNG stream and cycle guard of the seat that was saved.
 import random
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from functools import cache
 
 import numpy as np
 import torch
@@ -86,6 +97,8 @@ from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.agents.rollout_agent import past_horizon
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.uprising.effect_dsl import GainCombatStrength, IntrigueTiming
+from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -117,6 +130,8 @@ DEFAULT_SEARCH_EFFECT_ORDER = False
 # Who decides when to spend the Family Atomics token (FAMILY_ATOMICS_DECIDERS):
 # the app AI's rule by default. See the module docstring.
 DEFAULT_FAMILY_ATOMICS = "app"
+# Hold strength-only Combat Intrigue while alone in the lead (module docstring).
+DEFAULT_HOLD_COMBAT_LEAD = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +231,7 @@ class NetworkSearchAgent:
         config: RulesetConfig | None = None,
         value_path: str | None = None,
         family_atomics: str = DEFAULT_FAMILY_ATOMICS,
+        hold_combat_lead: bool = DEFAULT_HOLD_COMBAT_LEAD,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
@@ -243,6 +259,7 @@ class NetworkSearchAgent:
         self.max_rollout_steps = max_rollout_steps
         self.search_effect_order = search_effect_order
         self.family_atomics = family_atomics
+        self.hold_combat_lead = hold_combat_lead
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
         self._taken = _Taken()
@@ -429,6 +446,8 @@ class NetworkSearchAgent:
         if isinstance(ruled, DomainAction):
             return ruled
         legal_actions = ruled
+        if self.hold_combat_lead:
+            legal_actions = holds_combat_lead(state, observation.player, legal_actions)
         if not self.search_effect_order and orders_agent_effects(state):
             return self.greedy.choose_action(observation, legal_actions)
         offered = without_undo_actions(legal_actions)
@@ -530,6 +549,8 @@ class NetworkSearchAgent:
             offered = self._family_atomics(
                 state, decision.owner, without_undo_actions(actions)
             )
+            if self.hold_combat_lead and not isinstance(offered, DomainAction):
+                offered = holds_combat_lead(state, decision.owner, offered)
             if isinstance(offered, DomainAction):
                 action = offered
             elif len(offered) == 1:
@@ -568,6 +589,65 @@ def finished_reward(state: GameState, seat: int) -> float:
 
     rank = next(s.rank for s in final_standings(state) if s.player == seat)
     return WINNER_REWARD if rank == 1 else LOSER_REWARD
+
+
+def holds_combat_lead(
+    state: GameState, seat: int, offered: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """``offered`` without strength-only Combat Intrigue while ``seat`` alone leads.
+
+    Only at the Combat Intrigue step itself, and only when ``seat``'s
+    strength is above every other seat's; a tie or a deficit keeps the
+    offer. Never empty: passing is always offered there.
+    """
+
+    if not (
+        state.decision_stack
+        and state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE
+    ):
+        return offered
+    mine = state.players[seat].combat_strength
+    if any(
+        player.combat_strength >= mine
+        for index, player in enumerate(state.players)
+        if index != seat
+    ):
+        return offered
+    kept = tuple(action for action in offered if not adds_only_strength(action))
+    return kept or offered
+
+
+def adds_only_strength(action: DomainAction) -> bool:
+    """Whether ``action`` plays a Combat Intrigue whose rewards are all strength.
+
+    Its costs do not matter: holding the card keeps them unpaid too.
+    """
+
+    if action.action_id != "play_intrigue":
+        return False
+    arguments = dict(action.arguments)
+    card_id = arguments.get("card_id")
+    option = arguments.get("option")
+    if not isinstance(card_id, str) or not isinstance(option, int):
+        return False
+    return _option_adds_only_strength(card_id, option)
+
+
+@cache
+def _option_adds_only_strength(card_id: str, option: int) -> bool:
+    options = intrigue_card_for_instance(card_id).options
+    if not 0 <= option < len(options):
+        return False
+    chosen = options[option]
+    return (
+        chosen.timing is IntrigueTiming.COMBAT
+        and chosen.trigger is None
+        and all(
+            isinstance(reward, GainCombatStrength)
+            for section in chosen.sections
+            for reward in section.rewards
+        )
+    )
 
 
 def orders_agent_effects(state: GameState) -> bool:
