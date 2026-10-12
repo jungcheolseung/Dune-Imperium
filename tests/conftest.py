@@ -10,6 +10,9 @@ side by side do not clobber each other.
 
 import os
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from dune_imperium.paths import TMP_DIR
 
@@ -17,3 +20,23 @@ _TEST_TMP = TMP_DIR / "pytest"
 _TEST_TMP.mkdir(parents=True, exist_ok=True)
 os.environ["TMPDIR"] = str(_TEST_TMP)
 tempfile.tempdir = str(_TEST_TMP)
+
+
+@pytest.fixture
+def symlink_support(tmp_path: Path) -> None:
+    """Only link-specific tests need Windows symlink permission.
+
+    Ordinary hosts choose real files in the launcher and need neither
+    administrator rights nor Developer Mode.
+    """
+    if os.name != "nt":
+        return
+    probe = tmp_path / "symlink-permission-probe"
+    try:
+        probe.symlink_to("missing-target")
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows account has no symlink permission")
+        raise
+    else:
+        probe.unlink()

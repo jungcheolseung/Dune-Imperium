@@ -6,6 +6,8 @@ clipboard or opens a browser. Set DUNE_IMPERIUM_SKIP_GUI_TESTS=1 to skip.
 """
 
 import os
+import socket
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -37,7 +39,7 @@ from dune_imperium.launcher.settings import (  # noqa: E402
     load,
     save,
 )
-from dune_imperium.launcher.supervisor import Stopped  # noqa: E402
+from dune_imperium.launcher.supervisor import ServerProcess, Stopped  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -114,6 +116,70 @@ def _window(
 
 def _enabled(widget: tk.Misc) -> bool:
     return "disabled" not in widget.state()  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("remote", [False, True])
+def test_the_window_buttons_start_and_stop_a_real_server(
+    tk_root: tk.Tk, tmp_path: Path, remote: bool,
+) -> None:
+    """Exercise the Tk queue, controller and native child process together."""
+    pytest.importorskip("uvicorn")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    settings_path = tmp_path / "launcher.json"
+    save(
+        LauncherSettings(
+            mode="remote" if remote else "local",
+            host="127.0.0.1",
+            port=port,
+            saves_dir=str(tmp_path / "saves"),
+            open_browser=False,
+            keep_awake=False,
+        ),
+        settings_path,
+    )
+
+    def make(path: Path, emit: Emit) -> Controller:
+        return Controller(
+            path, emit,
+            discover_addresses=lambda: Discovery((), None, True),
+            check_torch=False,
+            server_factory=lambda plan: ServerProcess(plan, log_dir=tmp_path / "logs"),
+        )
+
+    top = tk.Toplevel(tk_root)
+    top.withdraw()
+    window = LauncherWindow(top, settings_path, make_controller=make)
+
+    def wait_for(phase: Phase) -> None:
+        deadline = time.monotonic() + 30
+        while window._phase is not phase:
+            assert time.monotonic() < deadline, window.status_text.get()
+            tk_root.update()
+            time.sleep(0.01)
+        tk_root.update()
+
+    try:
+        window.start_button.invoke()
+        wait_for(Phase.RUNNING)
+        server = window.controller.server
+        assert server is not None and server.is_alive()
+        assert _enabled(window.stop_button) and not _enabled(window.start_button)
+        assert window._open_url_value.startswith(f"http://127.0.0.1:{port}/")
+        assert ("#admin=" in window._open_url_value) is remote
+        window.stop_button.invoke()
+        wait_for(Phase.IDLE)
+        assert not server.is_alive() and server.exit_code() == 0
+        assert _enabled(window.start_button) and not _enabled(window.stop_button)
+        with socket.socket() as probe:
+            if os.name != "nt":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("127.0.0.1", port))
+    finally:
+        window.controller.shutdown()
+        window.keep_awake.release()
+        top.destroy()
 
 
 def test_the_form_shows_the_settings_and_reads_them_back(

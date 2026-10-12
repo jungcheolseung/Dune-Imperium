@@ -28,6 +28,9 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
+PROJECT_PYTHON = REPO / ".venv" / (
+    "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+)
 E2E_TMP = Path(__file__).resolve().parents[2] / "tmp" / "e2e"
 E2E_TMP.mkdir(parents=True, exist_ok=True)
 os.environ["TMPDIR"] = str(E2E_TMP)
@@ -74,7 +77,9 @@ class ServerProcess:
     def start(self) -> ServerProcess:
         self._log = open(self.log_path, "w")
         command = [
-            str(REPO / ".venv/bin/dune-imperium-server"),
+            str(PROJECT_PYTHON),
+            "-m",
+            "dune_imperium.cli.server",
             "--host",
             HOST,
             "--port",
