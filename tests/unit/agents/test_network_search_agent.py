@@ -22,7 +22,9 @@ from dune_imperium.agents import (  # noqa: E402
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
     SearchResult,
+    adds_only_strength,
     finished_reward,
+    holds_combat_lead,
     orders_agent_effects,
 )
 from dune_imperium.agents.registry import SEARCH_PREFIX, is_agent_kind  # noqa: E402
@@ -36,6 +38,7 @@ from dune_imperium.core.observation import PlayerView  # noqa: E402
 from dune_imperium.core.state import GamePhase, GameState  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.rules.endgame import final_standings  # noqa: E402
+from dune_imperium.rules.frames import FrameKind  # noqa: E402
 from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
 from dune_imperium.training.network import PolicyValueNetwork  # noqa: E402
 from dune_imperium.training.policy import without_undo_actions  # noqa: E402
@@ -983,3 +986,166 @@ def test_a_search_seat_names_who_decides_family_atomics(tmp_path: Path) -> None:
     path = _checkpoint(tmp_path, RulesetConfig())
     with pytest.raises(ValueError, match="family_atomics"):
         NetworkSearchAgent(path, seed=0, family_atomics="heuristic")
+
+
+def _play(card: str, option: int) -> DomainAction:
+    return DomainAction(
+        "play_intrigue", 0, (("card_id", f"intrigue:{card}:0"), ("option", option))
+    )
+
+
+def test_a_combat_intrigue_that_only_adds_strength_is_recognised() -> None:
+    assert adds_only_strength(_play("spice_is_power", 1))  # pay 3 spice: 6 swords
+    assert adds_only_strength(_play("weirding_combat", 0))
+    assert not adds_only_strength(_play("spice_is_power", 0))  # retreat: 3 spice
+    assert not adds_only_strength(_play("devour", 0))  # also trashes a card
+    assert not adds_only_strength(_play("contingency_plan", 0))  # the Plot half
+    assert not adds_only_strength(DomainAction("pass_combat_intrigue", 0))
+
+
+def _combat_intrigue_choices(
+    config: RulesetConfig, seed: int
+) -> list[tuple[GameState, int, tuple[DomainAction, ...]]]:
+    """Every Combat Intrigue decision of a heuristic game offering such a card."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    agents = [make_agent("heuristic", index) for index in range(config.players)]
+    found = []
+    while state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        if state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE and any(
+            adds_only_strength(action) for action in actions
+        ):
+            found.append((state, decision.owner, actions))
+        choice = agents[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, choice).state
+    return found
+
+
+def _alone_in_the_lead(state: GameState, seat: int) -> bool:
+    mine = state.players[seat].combat_strength
+    return all(
+        player.combat_strength < mine
+        for index, player in enumerate(state.players)
+        if index != seat
+    )
+
+
+def test_a_search_seat_holds_strength_intrigue_only_while_alone_in_the_lead(
+    tmp_path: Path,
+) -> None:
+    """Passing keeps every option while the seat leads `[Main p. 14]`; tied
+    or behind, the cards stay offered."""
+
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    choices = _combat_intrigue_choices(config, seed=0)
+    leading = [c for c in choices if _alone_in_the_lead(c[0], c[1])]
+    trailing = [c for c in choices if not _alone_in_the_lead(c[0], c[1])]
+    assert leading and trailing
+
+    for state, seat, actions in leading:
+        held = holds_combat_lead(state, seat, actions)
+        assert held == tuple(a for a in actions if not adds_only_strength(a))
+        view = engine.observe(state, seat)
+        plan = NetworkSearchAgent(path, seed=1, config=config)._shortlist(
+            state, view, actions
+        )
+        chosen = plan if isinstance(plan, DomainAction) else plan.candidates
+        assert not any(
+            adds_only_strength(action)
+            for action in ((chosen,) if isinstance(chosen, DomainAction) else chosen)
+        )
+        plain = NetworkSearchAgent(
+            path, seed=1, config=config, hold_combat_lead=False
+        )._shortlist(state, view, actions)
+        assert not isinstance(plain, DomainAction)
+        assert any(adds_only_strength(action) for action in plain.candidates)
+    for state, seat, actions in trailing:
+        assert holds_combat_lead(state, seat, actions) == actions
+
+
+def _before_the_lead(config: RulesetConfig, seed: int) -> GameState:
+    """A seat's last own decision before it alone leads at Combat Intrigue
+    holding a card that only adds strength (that seat decides there)."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    agents = [make_agent("heuristic", index) for index in range(config.players)]
+    last: dict[int, GameState] = {}
+    while state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        seat = decision.owner
+        actions = engine.legal_actions(state, seat)
+        if state.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE:
+            if seat in last and _alone_in_the_lead(state, seat) and any(
+                adds_only_strength(action) for action in actions
+            ):
+                return last[seat]
+        else:
+            last[seat] = state
+        choice = agents[seat].choose_action(engine.observe(state, seat), actions)
+        state = engine.apply(state, choice).state
+    raise AssertionError("no such decision in the game")  # pragma: no cover
+
+
+def test_every_seat_of_a_playout_holds_strength_intrigue_in_the_lead(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    start = _before_the_lead(config, seed=0)
+    decision = engine.current_decision(start)
+    assert isinstance(decision, PlayerDecision)
+    candidates = without_undo_actions(engine.legal_actions(start, decision.owner))[:2]
+
+    violations: list[DomainAction] = []
+    real_apply = UprisingRulesEngine.apply
+
+    def checking(self: UprisingRulesEngine, *args: object, **kwargs: object) -> object:
+        before, step = args[0], args[1]
+        if (
+            isinstance(before, GameState)
+            and isinstance(step, DomainAction)
+            and before.decision_stack
+            and before.decision_stack[-1].kind == FrameKind.COMBAT_INTRIGUE
+            and adds_only_strength(step)
+            and _alone_in_the_lead(before, step.actor)
+        ):
+            violations.append(step)
+        return real_apply(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    held: list[int] = []
+    real_hold = network_search_agent.holds_combat_lead
+
+    def counting(
+        state: GameState, seat: int, offered: tuple[DomainAction, ...]
+    ) -> tuple[DomainAction, ...]:
+        kept = real_hold(state, seat, offered)
+        if len(kept) < len(offered):
+            held.append(seat)
+        return kept
+
+    monkeypatch.setattr(UprisingRulesEngine, "apply", checking)
+    monkeypatch.setattr(network_search_agent, "holds_combat_lead", counting)
+    NetworkSearchAgent(path, seed=1, rollouts=4, config=config).evaluate_candidates(
+        start, decision.owner, candidates
+    )
+    assert held
+    assert violations == []
