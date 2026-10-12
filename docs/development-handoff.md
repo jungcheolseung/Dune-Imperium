@@ -31,7 +31,7 @@
 | master | engine-speed-audit 병합 (2026-10-12) |
 | pytest | 7,524개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip) |
 | Ruff · mypy | `src tests` 통과, mypy 487파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 "접합 두 칸" 병합 |
+| 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 engine-speed-audit 병합(62 통과) |
 | action codec | **v145** (다음 번호 v146) |
 | 관측 | v31, 4,537 int |
 | action catalog | 기본 4,413 · CHOAM 4,704 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 35,972 |
