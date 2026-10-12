@@ -25,7 +25,7 @@
 | M12 Bloodlines 확장과 Tech Module | 완료 (2026-09-07) | |
 | M13 Immortality 확장 | 완료 (2026-09-08) | Go to 11 변형은 2026-09-28에 더했다 |
 | M14 원격 멀티플레이 | 구현 완료 (2026-09-17, 슬라이스 1~6) | 친구들과 원격으로 한 판을 완주하고 피드백을 반영했다(2026-10-11; 원격이었음은 사용자 확인 2026-10-12). 끊김·새로고침·서버 재시작 복구는 E2E·SIGKILL 테스트로 확인했다 |
-| M14+ 서버 런처 | 1~6단계 완료 (2026-10-09) | 7단계 Windows 실기 검증이 남았다([server-launcher-plan.md](server-launcher-plan.md)) |
+| M14+ 서버 런처 | 1~6단계·Windows 기능 검증 완료 (2026-10-12) | 7단계의 외부 기기 접속·수동 화면/OS 확인이 남았다([검증 범위](windows-host-validation.md)) |
 | M15 Arrakeen Scouts 모듈 | 완료 (2026-09-30) | D8 판정 일괄 검토까지 |
 
 계획 밖에서 더한 것: Epic Game Mode(2026-09-30), 앱 AI(2026-10-05, [app-ai-plan.md](app-ai-plan.md)), 탐색 AI 좌석(2026-10-06,
@@ -388,7 +388,10 @@ tests/
 
 ### M14+ 서버 런처
 
-상태: **1~6단계 완료** (2026-10-09; 로컬 모드 자동 저장 2026-10-11). 호스트가 터미널 없이 창에서 플레이 서버를 켜고 끄는 tkinter 런처다. 남은 것은 7단계 Windows 실기 검증이다. 계획과 기록은 [server-launcher-plan.md](server-launcher-plan.md)에 있다.
+상태: **1~6단계·Windows 기능 검증 완료** (2026-10-12; 로컬 모드 자동 저장 2026-10-11).
+호스트가 터미널 없이 창에서 플레이 서버를 켜고 끄는 tkinter 런처다. Windows 네이티브 GUI·서버와
+Chrome 플레이·저장·복구를 확인했고, 7단계의 다른 물리 PC 접속과 배율·IME·OS 수동 확인이 남았다.
+계획은 [server-launcher-plan.md](server-launcher-plan.md), 결과는 [Windows 검증 기록](windows-host-validation.md)에 있다.
 
 ### M15. Arrakeen Scouts 모듈
 

@@ -19,8 +19,21 @@ uv pip install --python .venv/bin/python playwright
 브라우저는 플레이 서버 말고는 어떤 이름도 찾지 못하게 띄운다(`common.BROWSER_ARGS`의 `--host-resolver-rules`). Chrome이
 스스로 Google에 보내는 요청(자동완성 서버·새 탭 준비·푸시 등록·구성요소 업데이트)이 4개씩 돌 때 쌓여서, 기계의 다른
 프로그램까지 새 연결을 최대 43초 못 열었다(2026-10-09).
-서버는 이 체크아웃의 `.venv/bin/dune-imperium-server`를 빈 포트에 직접 띄우고 끝나면 내린다(`common.ServerProcess`; `kill()`은 SIGKILL이다)
+서버는 이 체크아웃의 Python(`.venv/bin/python`, Windows는 `.venv/Scripts/python.exe`)으로
+`-m dune_imperium.cli.server`를 실행하고 끝나면 내린다(`common.ServerProcess`; `kill()`은 강제 종료다)
 (`uv sync --extra ui`가 돼 있어야 한다). 다른 체크아웃을 검사하려면 `E2E_REPO=<경로>`.
+
+Windows 네이티브에서 확인한 검사는 `launcher_link.py`, `app_ai_seats.py`, `remote.py`,
+`recovery.py`다([검증 기록](../../docs/windows-host-validation.md)). 프로젝트 루트의 PowerShell에서:
+
+```powershell
+uv venv scripts/e2e/.venv --python 3.12
+uv pip install --python scripts/e2e/.venv/Scripts/python.exe playwright
+& .\scripts\e2e\.venv\Scripts\python.exe scripts/e2e/launcher_link.py
+```
+
+Windows에서도 시스템 Chrome을 쓴다. 나머지 스크립트 일부에는 POSIX 전용 경로가 남아 있으므로
+`run_all.py` 전체의 Windows 지원을 뜻하지 않는다.
 
 ## 한꺼번에 돌리기 (`run_all.py`)
 

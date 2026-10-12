@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-12 (master `29f70d7c`, Ghola 부스트 draw 병합 뒤)
+기준일: 2026-10-12 (코드 기준 `2bcb0ea4`, Windows 네이티브 기능 검증 뒤)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,8 +28,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | `29f70d7c` (2026-10-12) |
-| pytest | 7,494개 통과(에셋을 연결한 체크아웃; 에셋이 없으면 그중 8개가 skip) |
+| 코드 기준 | `2bcb0ea4` (2026-10-12) |
+| pytest | 7,496개 수집. WSL 전체 7,485 통과·9 skip 뒤 신규 GUI 회귀 2개와 변경 모듈 통과. Windows 런처·서버 검사 및 재검사 통과([범위](windows-host-validation.md)) |
 | Ruff · mypy | `src tests` 통과, mypy 482파일. `scripts/`에는 기존 Ruff 오류 68건이 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 62종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-12 "접합 두 칸" 병합 |
 | action codec | **v145** (다음 번호 v146) |
@@ -89,7 +89,9 @@
 
 **도구·인프라**
 
-- **서버 런처 7단계:** Windows 실기 검증. [`server-launcher-plan.md`](server-launcher-plan.md)
+- **서버 런처 7단계:** Windows 11 기능 검증 완료(실제 Tk 시작·중지, Chrome E2E 174개).
+  다른 물리 PC의 접속, 배율·IME·방화벽·GUI 강제 종료·잠자기 복귀 확인이 남았다.
+  [`windows-host-validation.md`](windows-host-validation.md), [`server-launcher-plan.md`](server-launcher-plan.md)
 - **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 v143-944bb1b7이고 v144·v145 묶음은 없다. v145의 새 다리
   `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 없다. [2026-10-12 Ghola, [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
