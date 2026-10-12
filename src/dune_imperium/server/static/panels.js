@@ -1195,8 +1195,10 @@ let logTargetTimer = 0;
 function findLogEntry(index) {
   logTarget = { gameId: state.gameId, index, until: performance.now() + LOG_TARGET_MS };
   window.clearTimeout(logTargetTimer);
+  releaseLogTarget();
   logTargetTimer = window.setTimeout(() => {
     logTarget = { gameId: null, index: null, until: 0 };
+    releaseLogTarget();
     for (const node of document.querySelectorAll(".log-target")) {
       node.classList.remove("log-target");
     }
@@ -1211,25 +1213,41 @@ function findLogEntry(index) {
     nodes.find((node) => VP_CAUSE_KINDS.has(node.dataset.eventKind)) ||
     nodes.find((node) => node.querySelector(".logevent")) ||
     nodes[0];
-  let placed = scrollLogTo(list, target);
-  /* The log's card pictures load lazily once scrolled to, and the ones
-     above the target push it down as they arrive: keep it in place while
-     it is marked, unless the reader has scrolled the log meanwhile. */
-  for (const image of list.querySelectorAll("img")) {
-    if (image.complete) continue;
-    image.addEventListener(
-      "load",
-      () => {
-        const still =
-          target.isConnected &&
-          target.classList.contains("log-target") &&
-          Math.abs(list.scrollTop - placed) <= 2;
-        if (still) placed = scrollLogTo(list, target);
-      },
-      { once: true },
-    );
-  }
+  scrollLogTo(list, target);
+  holdLogTarget(list, target);
   return true;
+}
+
+/* The log's card pictures load lazily once scrolled to, and the ones above
+   the target push it down as they arrive: keep it a third of the way down
+   while it is marked, until the reader takes the log in hand (a wheel, a
+   touch, the scrollbar or a key on it). The log's scrollTop cannot tell
+   that apart: the browser's scroll anchoring moves it too as pictures
+   arrive, holding the line at the top of the box rather than the target.
+   An entry whose Victory Point line the game's own card files below its
+   step's line (an Endgame match, a Combat's rewards) has pictures between
+   the two, so in a short log (1366x768) the target slid out of the box
+   while the anchored line stayed (2026-10-12). */
+const LOG_READER_INPUTS = ["wheel", "touchstart", "pointerdown", "keydown"];
+let releaseLogTarget = () => {};
+
+function holdLogTarget(list, target) {
+  const keep = () => {
+    if (target.isConnected && target.classList.contains("log-target")) {
+      scrollLogTo(list, target);
+    } else release();
+  };
+  const release = () => {
+    list.removeEventListener("load", keep, true);
+    for (const kind of LOG_READER_INPUTS) list.removeEventListener(kind, release);
+    if (releaseLogTarget === release) releaseLogTarget = () => {};
+  };
+  /* A picture's load does not bubble, but the log sees it on the way down. */
+  list.addEventListener("load", keep, true);
+  for (const kind of LOG_READER_INPUTS) {
+    list.addEventListener(kind, release, { passive: true });
+  }
+  releaseLogTarget = release;
 }
 
 /* `node` a third of the way down the log's box; the scrollTop it set. */

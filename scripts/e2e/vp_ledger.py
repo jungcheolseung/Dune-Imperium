@@ -35,6 +35,18 @@ holding no seat is refused it while the game runs (403, and its page offers
 no opener), and reads a finished game's ledger with the room link alone,
 opening it from the review.
 
+[D] The log's pictures arriving after the click (2026-10-12): the finished
+game of [A] opened in a fresh 1366x768 browser per language, its pictures
+held back until a row is clicked. A row whose Victory Point line the game's
+own card files apart from its step's line (seed 3: seat 0's Endgame wild
+battle icon match, #1014, with the two matched cards' pictures between)
+starts out of the log's view; the click shows it marked, and it stays in
+view, marked, once the pictures above it have arrived. The page used to
+stop holding it there when the browser's scroll anchoring moved the log as
+the pictures came, taking that for the reader's own scroll. A third browser
+wheels the log away from the line before the pictures come, and they leave
+it where the reader put it.
+
 Every scenario: no failed request, no JS error. E2E_SHOTS_DIR names where
 the screenshots go (vp_ledger_{ko,en}_{1366,1600}.png), otherwise a
 temporary folder.
@@ -59,6 +71,7 @@ from common import (
 )
 from log_follow import take_step
 from open_mode import create_game, settled
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 check = Check()
 
@@ -124,6 +137,63 @@ LOG_TARGET_JS = """(index) => {
       const r = n.getBoundingClientRect();
       return r.bottom > box.top && r.top < box.bottom && r.height > 0;
     }),
+  };
+}"""
+
+
+# The first of `indices` whose Victory Point line (the one findLogEntry aims
+# at) the game's own card files apart from the step's own line: an Endgame
+# match, a Combat's rewards.
+APART_JS = """(indices) => {
+  const list = document.querySelector('#action-log .log-list');
+  for (const index of indices) {
+    const nodes = [...list.querySelectorAll(`[data-log-index="${index}"]`)];
+    const line = nodes.find((n) => n.classList.contains('turn-line'));
+    const vp = nodes.find((n) => VP_CAUSE_KINDS.has(n.dataset.eventKind));
+    if (line && vp && line.closest('.turn-card') !== vp.closest('.turn-card')) {
+      return index;
+    }
+  }
+  return null;
+}"""
+
+# From here on, count the pictures above the entry's Victory Point line that
+# arrive; and say where that line is and how many pictures above it wait.
+WATCH_JS = """(index) => {
+  const list = document.querySelector('#action-log .log-list');
+  const nodes = [...list.querySelectorAll(`[data-log-index="${index}"]`)];
+  const vp = nodes.find((n) => VP_CAUSE_KINDS.has(n.dataset.eventKind));
+  const above = (image) =>
+    Boolean(image.compareDocumentPosition(vp) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const watch = { arrived: 0, last: performance.now() };
+  window.vpLedgerPictures = watch;
+  list.addEventListener('load', (event) => {
+    if (event.target.tagName !== 'IMG') return;
+    watch.last = performance.now();
+    if (above(event.target)) watch.arrived += 1;
+  }, true);
+  const box = list.getBoundingClientRect();
+  const line = vp.getBoundingClientRect();
+  return {
+    inView: line.bottom > box.top && line.top < box.bottom,
+    waiting: [...list.querySelectorAll('img')]
+      .filter((image) => !image.complete && above(image)).length,
+  };
+}"""
+
+# The entry's Victory Point line itself against the log's box.
+VP_LINE_JS = """(index) => {
+  const list = document.querySelector('#action-log .log-list');
+  const nodes = [...list.querySelectorAll(`[data-log-index="${index}"]`)];
+  const vp = nodes.find((n) => VP_CAUSE_KINDS.has(n.dataset.eventKind));
+  const box = list.getBoundingClientRect();
+  const line = vp.getBoundingClientRect();
+  return {
+    arrived: window.vpLedgerPictures.arrived,
+    marked: nodes.length > 0 && nodes.every((n) => n.classList.contains('log-target')),
+    visible: line.bottom > box.top && line.top < box.bottom && line.height > 0,
+    line: [Math.round(line.top - box.top), Math.round(line.bottom - box.top)],
+    box: Math.round(box.height),
   };
 }"""
 
@@ -277,10 +347,10 @@ def shoot(page: Any, info: dict[str, Any], name: str) -> None:
     page.screenshot(path=str(SHOTS / name))
 
 
-def scenario_review(base: str, browser: Any) -> None:
+def scenario_review(base: str, browser: Any) -> str:
     print("[A] a finished game of AI seats, reviewed")
     context, page, rec = open_context(browser, "review", VIEWPORTS[0])
-    create_game(page, base, humans=(), seed=3, options=None)
+    game_id = create_game(page, base, humans=(), seed=3, options=None)
     page.wait_for_function("state.review !== null && state.view !== null")
     page.evaluate("stopPlayback()")
     end = page.evaluate("state.review.meta.step_count")
@@ -315,6 +385,7 @@ def scenario_review(base: str, browser: Any) -> None:
     failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not failed, "[A] no failed requests", failed[:5])
     context.close()
+    return game_id
 
 
 def settle_review(page: Any) -> None:
@@ -357,6 +428,142 @@ def check_review_cut(page: Any, end: int) -> None:
         (len(back["rows"]), full),
     )
     close_viewer(page)
+
+
+def scenario_slow_pictures(base: str, browser: Any, game_id: str) -> None:
+    """[D] The log's pictures arrive after the click, as over a slow link.
+
+    A row whose Victory Point line the game's own card files apart from its
+    step's line (an Endgame match, a Combat's rewards) has the log's card
+    pictures between the two. They load as they come, and the browser's
+    scroll anchoring holds the line at the top of the box in place as they
+    arrive, not the target: in a 1366x768 window, whose log is a few lines
+    tall, the Victory Point line slid out of view (2026-10-12, an Endgame
+    wild battle icon match, while the first pictures were still loading).
+    Each language opens the finished game of [A] in a fresh browser whose
+    pictures are held back until after the click, then let through. A third
+    browser scrolls the log itself before they come: the page leaves the
+    reader's own scroll alone.
+    """
+
+    print("[D] the log's pictures arrive after a row's click")
+    for lang in ("ko", "en"):
+        check_slow_pictures(base, browser, game_id, lang, reader_scrolls=False)
+    check_slow_pictures(base, browser, game_id, "ko", reader_scrolls=True)
+
+
+def check_slow_pictures(
+    base: str, browser: Any, game_id: str, lang: str, reader_scrolls: bool
+) -> None:
+    label = f"[pictures {lang} {VIEWPORTS[0]['width']}{' scrolled' * reader_scrolls}]"
+    context, page, rec = open_context(browser, f"pictures-{lang}", VIEWPORTS[0])
+    held: list[Any] = []
+    holding = [True]
+
+    def hold(route: Any) -> None:
+        if holding[0] and route.request.resource_type == "image":
+            held.append(route)
+        else:
+            route.continue_()
+
+    def release() -> None:
+        holding[0] = False
+        while held:
+            held.pop().continue_()
+
+    context.route("**/*", hold)
+    try:
+        page.goto(f"{base}/#game={game_id}")
+        page.wait_for_function(
+            "(id) => state.gameId === id && state.review !== null"
+            " && state.view !== null",
+            arg=game_id,
+        )
+        page.evaluate("stopPlayback()")
+        end = page.evaluate("state.review.meta.step_count")
+        page.evaluate("(cursor) => reviewSeek(cursor)", end)
+        page.wait_for_function(
+            "(end) => state.review.cursor === end && !state.review.seek", arg=end
+        )
+        if page.evaluate("TERM_LANGUAGE") != lang:
+            page.click("#language-toggle")
+            page.wait_for_function(f"TERM_LANGUAGE === '{lang}'")
+        settle_review(page)
+        index = None
+        for seat in range(4):
+            info = open_ledger(page, seat)
+            steps = [row["index"] for row in info["rows"] if row["index"] is not None]
+            index = page.evaluate(APART_JS, steps)
+            if index is not None:
+                break
+            close_viewer(page)
+        if not check.ok(
+            index is not None,
+            f"{label}: some seat's row has its Victory Point line in the game's"
+            " card, apart from its step's line",
+        ):
+            return
+        before = page.evaluate(WATCH_JS, index)
+        check.ok(
+            not before["inView"] and before["waiting"] > 0 and bool(held),
+            f"{label} seat {seat}: entry #{index}'s line is out of the log's view,"
+            " below pictures held back",
+            (before, len(held)),
+        )
+        page.locator(
+            f"#pile-viewer .vp-row[data-ledger-index='{index}'] [role=button]"
+        ).click()
+        # The pictures the scroll brings near are asked for, and held too.
+        page.wait_for_timeout(200)
+        placed = page.evaluate(VP_LINE_JS, index)
+        check.ok(
+            placed["marked"] and placed["visible"],
+            f"{label} seat {seat}: a click on its row shows that line marked",
+            placed,
+        )
+        if reader_scrolls:
+            # The reader's own wheel on the log, up and away from the line.
+            box = page.locator("#action-log .log-list").bounding_box()
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            page.mouse.wheel(0, -400)
+            page.wait_for_function(
+                "(index) => { const list = document.querySelector("
+                "'#action-log .log-list'); const vp = [...list.querySelectorAll("
+                "`[data-log-index=\"${index}\"]`)].find((n) =>"
+                " VP_CAUSE_KINDS.has(n.dataset.eventKind));"
+                " return vp.getBoundingClientRect().top"
+                " > list.getBoundingClientRect().bottom; }",
+                arg=index,
+            )
+        release()
+        try:
+            page.wait_for_function(
+                "() => window.vpLedgerPictures.arrived > 0"
+                " && performance.now() - window.vpLedgerPictures.last > 250",
+                timeout=2000,
+            )
+        except PlaywrightTimeout:  # reported by the check below
+            pass
+        found = page.evaluate(VP_LINE_JS, index)
+        if reader_scrolls:
+            check.ok(
+                found["arrived"] > 0 and found["marked"] and not found["visible"],
+                f"{label} seat {seat}: once the reader scrolls the log, the"
+                " pictures arriving leave it where the reader put it",
+                found,
+            )
+        else:
+            check.ok(
+                found["arrived"] > 0 and found["marked"] and found["visible"],
+                f"{label} seat {seat}: it stays in view, marked, while the pictures"
+                " above it arrive",
+                found,
+            )
+        failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
+        check.ok(not failed, f"{label}: no failed requests", failed[:5])
+    finally:
+        release()
+        context.close()
 
 
 def vp_of(page: Any) -> list[int]:
@@ -529,7 +736,8 @@ def scenario_remote(browser: Any) -> None:
 def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         try:
-            scenario_review(base, browser)
+            game_id = scenario_review(base, browser)
+            scenario_slow_pictures(base, browser, game_id)
             scenario_live(base, browser)
             scenario_remote(browser)
         finally:
