@@ -46,7 +46,7 @@ Known content differences (``scratchpad R5`` / ``spec/archetypes.md``):
   ``...UP`` archetype (no CHOAM) and a ``...CHOAM`` one; pick by ``choam``.
 """
 
-from functools import cache
+from functools import cache, lru_cache
 from types import MappingProxyType
 from typing import Final
 
@@ -599,22 +599,26 @@ _archetype = archetype
 
 
 _CARD_ENTITY_CACHE_LIMIT: Final = 4096
-_CARD_ENTITY_CACHE: dict[tuple[str, int | None], Entity] = {}
+
+
+@lru_cache(maxsize=_CARD_ENTITY_CACHE_LIMIT)
+def _static_card_entity(instance_id: str, owner: int | None, short: str) -> Entity:
+    """Reuse a static content lookup; no decision-dependent data is stored."""
+
+    return Entity(Kind.CARD, instance_id, _archetype(short), owner)
 
 
 def card_entity(instance_id: str, owner: int | None = None) -> Entity:
     """A personal card (starter, reserve or Imperium) by instance id."""
 
-    definition = _archetype(CARD_ARCHETYPES[card_id(instance_id)])
-    key = (instance_id, owner)
-    cached = _CARD_ENTITY_CACHE.get(key)
-    if cached is not None and cached.archetype is definition:
+    short = CARD_ARCHETYPES[card_id(instance_id)]
+    definition = _archetype(short)
+    cached = _static_card_entity(instance_id, owner, short)
+    if cached.archetype is definition:
         return cached
-    entity = Entity(Kind.CARD, instance_id, definition, owner)
-    if len(_CARD_ENTITY_CACHE) >= _CARD_ENTITY_CACHE_LIMIT:
-        _CARD_ENTITY_CACHE.clear()
-    _CARD_ENTITY_CACHE[key] = entity
-    return entity
+    # Caller-modified catalogs are read fresh, even if a pure lookup for
+    # this name was cached before its definition changed.
+    return Entity(Kind.CARD, instance_id, definition, owner)
 
 
 def intrigue_entity(instance_id: str, owner: int | None = None) -> Entity:

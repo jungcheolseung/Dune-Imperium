@@ -99,7 +99,10 @@ def test_entity_cache_is_bounded_and_evicted_entities_still_match() -> None:
     first = catalog.card_entity("imperium:captured_mentat:0", 0)
     for index in range(catalog._CARD_ENTITY_CACHE_LIMIT + 1):
         catalog.card_entity(f"imperium:captured_mentat:{index}", 0)
-    assert len(catalog._CARD_ENTITY_CACHE) <= catalog._CARD_ENTITY_CACHE_LIMIT
+    assert (
+        catalog._static_card_entity.cache_info().currsize
+        <= catalog._CARD_ENTITY_CACHE_LIMIT
+    )
     assert catalog.card_entity(first.ref, 0) == first
 
 
