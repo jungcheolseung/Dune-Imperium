@@ -14,7 +14,11 @@ from dune_imperium.adapters.pettingzoo_env import (  # noqa: E402
     LOSER_REWARD,
     WINNER_REWARD,
 )
-from dune_imperium.agents import StateAgent, make_agent  # noqa: E402
+from dune_imperium.agents import (  # noqa: E402
+    StateAgent,
+    make_agent,
+    network_search_agent,
+)
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
     SearchResult,
@@ -724,9 +728,11 @@ def _search_seat_game(
     return decided
 
 
-@pytest.mark.parametrize("scouts", [False, True], ids=["base", "scouts"])
+@pytest.mark.parametrize(
+    "expansion", [None, "arrakeen_scouts", "immortality"], ids=["base", "scouts", "imm"]
+)
 def test_a_retraced_search_seat_answers_like_the_one_that_searched(
-    tmp_path: Path, scouts: bool
+    tmp_path: Path, expansion: str | None
 ) -> None:
     """Retracing decisions 1..k leaves the seat where searching them did.
 
@@ -735,10 +741,12 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     be the ones the saved seat would have given, so its RNG stream and its
     cycle guard end where the searching seat's did, and the greedy agent's
     own guard and heuristic fallback too. The Scouts game seats a file
-    trained without Scouts, so some decisions go to that heuristic.
+    trained without Scouts, so some decisions go to that heuristic; the
+    Immortality game offers the Family Atomics token, which the app's rule
+    keeps or spends.
     """
 
-    config = RulesetConfig(arrakeen_scouts=scouts)
+    config = RulesetConfig(**({expansion: True} if expansion else {}))
     path = _base_checkpoint_with_templates(tmp_path)
 
     def seat_agent() -> NetworkSearchAgent:
@@ -750,7 +758,7 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     assert len(decided) == 70
     kinds = {entry.kind for entry in decided}
     assert {"searched", "effect order", "forced"} <= kinds
-    if scouts:
+    if expansion == "arrakeen_scouts":
         assert "untrained" in kinds
 
     for split in (9, 35, 69):
@@ -817,3 +825,161 @@ def test_retracing_refuses_an_answer_the_seat_could_not_have_given(
     )
     wrong = next(action for action in entry.actions if action != entry.result.chosen)
     assert refused(index, wrong)
+
+
+FAMILY_ATOMICS = DomainAction("use_family_atomics", 0)
+
+
+def _atomics_checkpoint(tmp_path: Path, config: RulesetConfig) -> str:
+    """A network that ranks the Family Atomics token first wherever offered."""
+
+    from dune_imperium.adapters.action_codec import ActionCodec
+
+    torch.manual_seed(0)
+    codec = ActionCodec(config)
+    network = PolicyValueNetwork(codec.size, hidden=(32,))
+    with torch.no_grad():
+        network.policy_head.bias[codec.encode(FAMILY_ATOMICS)] = 50.0
+    path = tmp_path / "atomics.pt"
+    save_checkpoint(path, network, ruleset=config.identifier, iteration=1)
+    return str(path)
+
+
+def _first_atomics_choice(config: RulesetConfig, seed: int) -> GameState:
+    """Play heuristic seats to the first Agent-effect choice offering the token."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    agents = [make_agent("heuristic", index) for index in range(config.players)]
+    while state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        if orders_agent_effects(state) and any(
+            action.action_id == FAMILY_ATOMICS.action_id for action in actions
+        ):
+            return state
+        choice = agents[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, choice).state
+    raise AssertionError("no such decision in the game")  # pragma: no cover
+
+
+def test_the_app_s_rule_decides_when_a_search_seat_spends_family_atomics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A network that always spends the token is overruled by the app's rule.
+
+    With ``family_atomics="network"`` the seat spends it at the first Agent
+    effect choice, as the trained networks do; by default it asks the app's
+    rule, keeps the token when the rule says no and spends it when it says
+    yes.
+    """
+
+    config = RulesetConfig(immortality=True)
+    path = _atomics_checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    state = _first_atomics_choice(config, seed=3)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    actions = engine.legal_actions(state, seat)
+    view = engine.observe(state, seat)
+    asked: list[int] = []
+
+    def rule(answer: bool) -> object:
+        def ask(state: GameState, observation: PlayerView) -> bool:
+            asked.append(observation.player)
+            return answer
+
+        return ask
+
+    def seat_agent(family_atomics: str = "app") -> NetworkSearchAgent:
+        return NetworkSearchAgent(
+            path,
+            seed=1,
+            rollouts=1,
+            candidates=2,
+            config=config,
+            family_atomics=family_atomics,
+        )
+
+    monkeypatch.setattr(network_search_agent, "app_uses_family_atomics", rule(False))
+    chosen = seat_agent(family_atomics="network").choose_action_with_state(
+        state, view, actions
+    )
+    assert chosen.action_id == FAMILY_ATOMICS.action_id
+    assert asked == []
+
+    chosen = seat_agent().choose_action_with_state(state, view, actions)
+    assert chosen.action_id != FAMILY_ATOMICS.action_id
+    assert asked == [seat]
+    # Without a state the rule cannot be read, and the seat keeps the token.
+    assert seat_agent().choose_action(view, actions).action_id != "use_family_atomics"
+
+    monkeypatch.setattr(network_search_agent, "app_uses_family_atomics", rule(True))
+    chosen = seat_agent().choose_action_with_state(state, view, actions)
+    assert chosen.action_id == FAMILY_ATOMICS.action_id
+
+
+def test_every_seat_of_a_playout_follows_the_app_s_family_atomics_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The playouts ask the rule for every seat that is offered the token.
+
+    Under a rule that always keeps it, no playout spends it, although the
+    network ranks it first; the same playouts with the network deciding do.
+    """
+
+    config = RulesetConfig(immortality=True)
+    path = _atomics_checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    state = _first_atomics_choice(config, seed=3)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    candidates = tuple(
+        action
+        for action in without_undo_actions(engine.legal_actions(state, seat))
+        if action.action_id != FAMILY_ATOMICS.action_id
+    )[:2]
+    applied: list[str] = []
+    real_apply = UprisingRulesEngine.apply
+
+    def recording(self: UprisingRulesEngine, *args: object, **kwargs: object) -> object:
+        step = args[1]
+        if isinstance(step, DomainAction):
+            applied.append(step.action_id)
+        return real_apply(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    asked: list[int] = []
+
+    def keep(state: GameState, observation: PlayerView) -> bool:
+        asked.append(observation.player)
+        return False
+
+    monkeypatch.setattr(UprisingRulesEngine, "apply", recording)
+    monkeypatch.setattr(network_search_agent, "app_uses_family_atomics", keep)
+
+    searcher = NetworkSearchAgent(path, seed=1, rollouts=1, config=config)
+    searcher.evaluate_candidates(state, seat, candidates)
+    assert FAMILY_ATOMICS.action_id not in applied
+    assert set(asked) - {seat}
+
+    applied.clear()
+    networked = NetworkSearchAgent(
+        path, seed=1, rollouts=1, config=config, family_atomics="network"
+    )
+    networked.evaluate_candidates(state, seat, candidates)
+    assert FAMILY_ATOMICS.action_id in applied
+
+
+def test_a_search_seat_names_who_decides_family_atomics(tmp_path: Path) -> None:
+    path = _checkpoint(tmp_path, RulesetConfig())
+    with pytest.raises(ValueError, match="family_atomics"):
+        NetworkSearchAgent(path, seed=0, family_atomics="heuristic")

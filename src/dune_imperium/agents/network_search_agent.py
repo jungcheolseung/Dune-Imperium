@@ -53,6 +53,14 @@ agent, which hands it to a heuristic, and every playout does the same with
 a heuristic seeded from the playout's chance seed, so the candidates of one
 decision still meet the same answers (docs/arrakeen-scouts-design.md 4.9).
 
+The Family Atomics token is the app AI's to spend (``family_atomics``,
+``agents.app_ai.family_atomics``): the network used it on its first Agent
+turn in every game, at an effect choice the search leaves to it and where a
+search would only compare spending it now with spending it a step later.
+Under the app's rule the seat spends it in its own Reveal turn when the
+Imperium Row offers poor buys, and keeps it otherwise; every seat of every
+playout follows the same rule.
+
 A loaded save does not search its recorded decisions again: the seat
 retraces each one (``replay_decision``, the ``ReplayableAgent`` protocol),
 drawing the worlds a search would have drawn without playing them out, so
@@ -68,6 +76,10 @@ import torch
 
 from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
+from dune_imperium.agents.app_ai.family_atomics import (
+    FAMILY_ATOMICS_ACTION,
+    app_uses_family_atomics,
+)
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.agents.rollout_agent import past_horizon
@@ -100,6 +112,11 @@ DEFAULT_HORIZON_ROUNDS = 1
 # (10% against 22.6% overall), and leaving it to the network cost nothing
 # measurable (docs/evaluation/m10-2026-09-22.md section 13).
 DEFAULT_SEARCH_EFFECT_ORDER = False
+# Who decides when to spend the Family Atomics token: "app" (the app AI's
+# rule, ``agents.app_ai.family_atomics``) or "network" (the network, as
+# every other decision). See the module docstring.
+FAMILY_ATOMICS_DECIDERS = ("app", "network")
+DEFAULT_FAMILY_ATOMICS = "app"
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,11 +215,14 @@ class NetworkSearchAgent:
         search_effect_order: bool = DEFAULT_SEARCH_EFFECT_ORDER,
         config: RulesetConfig | None = None,
         value_path: str | None = None,
+        family_atomics: str = DEFAULT_FAMILY_ATOMICS,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
         if rollouts < 1 or candidates < 1 or horizon_rounds < 1:
             raise ValueError("rollouts, candidates, and horizon_rounds are positive")
+        if family_atomics not in FAMILY_ATOMICS_DECIDERS:
+            raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         from dune_imperium.training.torch_policy import load_network_agent
 
         # The greedy agent owns the cached network and the catalog (the
@@ -222,6 +242,7 @@ class NetworkSearchAgent:
         self.horizon_rounds = horizon_rounds
         self.max_rollout_steps = max_rollout_steps
         self.search_effect_order = search_effect_order
+        self.family_atomics = family_atomics
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
         self._taken = _Taken()
@@ -254,6 +275,32 @@ class NetworkSearchAgent:
     ) -> np.ndarray:
         return self._scores(self._encode(view), legal)
 
+    def _family_atomics(
+        self,
+        state: GameState,
+        seat: int,
+        offered: tuple[DomainAction, ...],
+        observation: PlayerView | None = None,
+    ) -> DomainAction | tuple[DomainAction, ...]:
+        """Apply the app's Family Atomics rule to ``seat``'s decision.
+
+        Returns the token's action when the rule spends it now, else the
+        offer without it; a decision that does not offer it (or a seat that
+        leaves the token to the network) keeps its offer. ``observation`` is
+        the seat's view when the caller has one; playouts let it be built
+        only for the decisions that offer the token.
+        """
+
+        if self.family_atomics != "app":
+            return offered
+        if not any(action.action_id == FAMILY_ATOMICS_ACTION for action in offered):
+            return offered
+        if observation is None:
+            observation = self._engine.observe(state, seat)
+        if app_uses_family_atomics(state, observation):
+            return next(a for a in offered if a.action_id == FAMILY_ATOMICS_ACTION)
+        return _without_family_atomics(offered)
+
     def _untrained_only(self, offered: Sequence[DomainAction]) -> bool:
         """Whether every offered action is a template the file never saw."""
 
@@ -275,8 +322,14 @@ class NetworkSearchAgent:
         observation: PlayerView,
         legal_actions: tuple[DomainAction, ...],
     ) -> DomainAction:
-        """Without a state to branch from, play the network greedily."""
+        """Without a state to branch from, play the network greedily.
 
+        The app's Family Atomics rule reads the state, so without one the
+        seat keeps the token.
+        """
+
+        if self.family_atomics == "app":
+            legal_actions = _without_family_atomics(legal_actions)
         return self.greedy.choose_action(observation, legal_actions)
 
     def choose_action_with_state(
@@ -370,6 +423,12 @@ class NetworkSearchAgent:
 
         if not legal_actions:
             raise ValueError("a search agent requires at least one legal action")
+        ruled = self._family_atomics(
+            state, observation.player, legal_actions, observation
+        )
+        if isinstance(ruled, DomainAction):
+            return ruled
+        legal_actions = ruled
         if not self.search_effect_order and orders_agent_effects(state):
             return self.greedy.choose_action(observation, legal_actions)
         offered = without_undo_actions(legal_actions)
@@ -468,8 +527,12 @@ class NetworkSearchAgent:
             actions = engine.legal_actions(state, decision.owner)
             if not actions:
                 break
-            offered = without_undo_actions(actions)
-            if len(offered) == 1:
+            offered = self._family_atomics(
+                state, decision.owner, without_undo_actions(actions)
+            )
+            if isinstance(offered, DomainAction):
+                action = offered
+            elif len(offered) == 1:
                 action = offered[0]
             elif self._untrained_only(offered):
                 if fallback is None:
@@ -505,6 +568,16 @@ def finished_reward(state: GameState, seat: int) -> float:
 
     rank = next(s.rank for s in final_standings(state) if s.player == seat)
     return WINNER_REWARD if rank == 1 else LOSER_REWARD
+
+
+def _without_family_atomics(
+    offered: tuple[DomainAction, ...],
+) -> tuple[DomainAction, ...]:
+    """``offered`` without the Family Atomics token (never empty: the token is
+    optional, so a decision offering it always offers something else)."""
+
+    kept = tuple(a for a in offered if a.action_id != FAMILY_ATOMICS_ACTION)
+    return kept or offered
 
 
 def orders_agent_effects(state: GameState) -> bool:
