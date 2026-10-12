@@ -598,12 +598,23 @@ def archetype(short: str) -> Archetype:
 _archetype = archetype
 
 
+_CARD_ENTITY_CACHE_LIMIT: Final = 4096
+_CARD_ENTITY_CACHE: dict[tuple[str, int | None], Entity] = {}
+
+
 def card_entity(instance_id: str, owner: int | None = None) -> Entity:
     """A personal card (starter, reserve or Imperium) by instance id."""
 
-    return Entity(
-        Kind.CARD, instance_id, _archetype(CARD_ARCHETYPES[card_id(instance_id)]), owner
-    )
+    definition = _archetype(CARD_ARCHETYPES[card_id(instance_id)])
+    key = (instance_id, owner)
+    cached = _CARD_ENTITY_CACHE.get(key)
+    if cached is not None and cached.archetype is definition:
+        return cached
+    entity = Entity(Kind.CARD, instance_id, definition, owner)
+    if len(_CARD_ENTITY_CACHE) >= _CARD_ENTITY_CACHE_LIMIT:
+        _CARD_ENTITY_CACHE.clear()
+    _CARD_ENTITY_CACHE[key] = entity
+    return entity
 
 
 def intrigue_entity(instance_id: str, owner: int | None = None) -> Entity:

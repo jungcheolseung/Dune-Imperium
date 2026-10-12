@@ -9,7 +9,32 @@ back to legal actions and the matching app archetype for every read.
 from dataclasses import dataclass
 from enum import StrEnum
 
-from dune_imperium.agents.app_ai.data.archetypes import Archetype
+from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
+from dune_imperium.agents.app_ai.data.synthetic import SYNTHETIC
+
+
+def _list_value(value: object) -> tuple[str, ...]:
+    if isinstance(value, tuple):
+        return tuple(str(item) for item in value)
+    if isinstance(value, str):
+        return (value,)
+    return ()
+
+
+# Generated archetypes are immutable, so normalize their static lists once.
+# Restrict this finite table to those exact objects: caller-created archetypes
+# may wrap mutable mappings or values and must be read afresh on every call.
+_STATIC_LIST_ATTRIBUTES: dict[int, tuple[Archetype, dict[str, tuple[str, ...]]]] = {
+    id(archetype): (
+        archetype,
+        {
+            name: _list_value(value)
+            for name, value in archetype.attributes.items()
+            if isinstance(value, tuple | str)
+        },
+    )
+    for archetype in (*ARCHETYPES.values(), *SYNTHETIC.values())
+}
 
 
 class Kind(StrEnum):
@@ -99,12 +124,10 @@ class Entity:
         return float(value)
 
     def list_attr(self, name: str) -> tuple[str, ...]:
-        value = self.attr(name, ())
-        if isinstance(value, tuple):
-            return tuple(str(item) for item in value)
-        if isinstance(value, str):
-            return (value,)
-        return ()
+        entry = _STATIC_LIST_ATTRIBUTES.get(id(self.archetype))
+        if entry is not None and entry[0] is self.archetype:
+            return entry[1].get(name, ())
+        return _list_value(self.attr(name, ()))
 
     @property
     def short(self) -> str | None:

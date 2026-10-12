@@ -26,7 +26,7 @@ must not change when ``determinize`` re-deals every hidden zone.
 
 from collections import Counter
 from collections.abc import Mapping
-from functools import cached_property
+from functools import cached_property, lru_cache
 from typing import NamedTuple
 
 from dune_imperium.config import RulesetConfig
@@ -108,6 +108,7 @@ class Board(NamedTuple):
         )
 
 
+@lru_cache(maxsize=4096)
 def card_id(instance_id: str) -> str:
     """The bare card id of a card instance id.
 
