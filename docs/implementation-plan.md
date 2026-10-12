@@ -427,7 +427,8 @@ rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 
 수집 경로의 관측 인코더 재작성(수집 벽시계 −16 ~ −18%, `evaluation/throughput-2026-09-10.md` 8절), A/B가 찾은 엔진
 결함 1건 수정으로 끝났다. 다음은 **M10 학습 재개**(관측 v20·codec v104라 체크포인트는 전부 새로 시작)이며, 학습 밖의
 남은 후보(heuristic 표 밖 항의 나머지, rollout 가치 함수, 처리량의 남은 병목, 리팩토링 후속)는
-[개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다. 2026-09-17에 서버·UI 쪽 병행 트랙으로
+[개발 인수인계](development-handoff.md)의 "진행 중·다음 작업"이 관리한다(2026-10-12 전의 "다음 구현 순서" 원문은
+[worklog/handoff-core-before-2026-10-12.md](worklog/handoff-core-before-2026-10-12.md)). 2026-09-17에 서버·UI 쪽 병행 트랙으로
 **M14 원격 멀티플레이**([multiplayer-design.md](multiplayer-design.md), 같은 날 확정)가 시작돼 슬라이스 1(접근 계층과 좌석
 claim), 슬라이스 2(snapshot + 증분 로그 + gzip), 슬라이스 3(SSE 초인종 + presence + 폴링 fallback), 슬라이스 4(클라이언트 원격 UX와 브라우저
 E2E), 슬라이스 5(자동 저장과 복구), 슬라이스 6의 리허설과 운영 문서가 끝났고 남은 것은 실제 친구와의 한 판과 그 피드백이다.
