@@ -1,11 +1,11 @@
 """The app's Family Atomics rule as a network seat borrows it."""
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.family_atomics import (
     FAMILY_ATOMICS_ACTION,
     app_uses_family_atomics,
 )
-from dune_imperium.agents.registry import make_agent
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.state import GamePhase, GameState
@@ -34,7 +34,7 @@ def test_the_rule_spends_the_token_only_in_the_seat_s_reveal_with_4_to_8() -> No
     for seed in (1, 2):
         state = engine.reset(config, seed)
         chance = ChanceResolver(seed=seed)
-        agents = [make_agent("app_ai", seed * 10 + seat) for seat in range(4)]
+        agents = [AppAIAgent(seed * 10 + seat) for seat in range(4)]
         while state.phase is not GamePhase.FINISHED:
             decision = engine.current_decision(state)
             if isinstance(decision, ChanceDecision):

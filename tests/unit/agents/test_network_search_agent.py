@@ -899,9 +899,14 @@ def test_the_app_s_rule_decides_when_a_search_seat_spends_family_atomics(
 
         return ask
 
-    def seat_agent(**options: str) -> NetworkSearchAgent:
+    def seat_agent(family_atomics: str = "app") -> NetworkSearchAgent:
         return NetworkSearchAgent(
-            path, seed=1, rollouts=1, candidates=2, config=config, **options
+            path,
+            seed=1,
+            rollouts=1,
+            candidates=2,
+            config=config,
+            family_atomics=family_atomics,
         )
 
     monkeypatch.setattr(network_search_agent, "app_uses_family_atomics", rule(False))
