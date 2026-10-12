@@ -53,17 +53,17 @@ from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
-    BOOST_DRAW_KEY,
     active_agent_card,
     advance_after_effect,
     arm_agent_icons,
     borrowed_agent_card,
     current_agent_effect_context,
+    drop_boost_draw,
     finish_agent_icon,
     is_grafted,
     other_grafted_card_id,
     pending_agent_icons,
-    pending_boost_draw,
+    pending_boost_draws,
     recall_conflict_agent,
     recallable_conflict_agents,
     recruit_shortfall_events,
@@ -83,6 +83,7 @@ from dune_imperium.rules.graft_boxes import (
     box_card_id,
     box_is_pending,
     is_grafted_turn,
+    row_box,
     state_with_active_box,
     tagged,
 )
@@ -3399,16 +3400,16 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         context["graft_pending_effect"] = False
         context["graft_pending_icons"] = ""
         expired.append(graft_card_id)
-    boost_card_id = pending_boost_draw(context)
-    if (
-        boost_card_id
-        and not _still_owned(owner, boost_card_id)
-        and not _left_play_by_own_effect(context, boost_card_id)
-    ):
+    for boost_card_id in pending_boost_draws(context):
+        if _still_owned(owner, boost_card_id) or _left_play_by_own_effect(
+            context, boost_card_id
+        ):
+            continue
         # Urgent Shigawire's draw was "added to its Agent box" [Urgent
         # Shigawire card], so it is that card's effect and lapses with its
-        # box (OQ-022; user ruling 2026-10-10, OQ-106).
-        del context[BOOST_DRAW_KEY]
+        # box (OQ-022; user ruling 2026-10-10, OQ-106) -- a Ghola's copy of
+        # it with the Ghola (OQ-107).
+        drop_boost_draw(context, boost_card_id)
         if boost_card_id not in expired:
             expired.append(boost_card_id)
     if not expired:
@@ -3482,25 +3483,38 @@ def legal_agent_card_icon_actions(
 _BOOST_DRAW_ACTION_ARGUMENTS: Final = (("effect", AGENT_ICON_CARDS),)
 
 
-def boost_draw_box(context: Mapping[str, ActionValue]) -> int:
-    """The grafted box Urgent Shigawire's added draw belongs to.
+def boost_draw_box(context: Mapping[str, ActionValue], card_instance_id: str) -> int:
+    """The grafted box the added draw of ``card_instance_id`` belongs to.
 
-    Box 1 when the boosted card is the graft partner (a Bene Gesserit
-    partner played with a card that is not, user ruling 2026-10-12,
-    OQ-107), else box 0: the placed card, or a single-card turn.
+    Box 1 when that card is the graft partner -- a Bene Gesserit partner
+    that took the boost (user ruling 2026-10-12, OQ-107), or a Ghola
+    grafted to the boosted placed card -- else box 0: the placed card, or a
+    single-card turn.
     """
 
-    boosted = pending_boost_draw(context)
-    if boosted and is_grafted_turn(context) and boosted == box_card_id(context, 1):
+    if is_grafted_turn(context) and card_instance_id == box_card_id(context, 1):
         return 1
     return 0
+
+
+def boost_draw_card(context: Mapping[str, ActionValue], box: int) -> str:
+    """The card whose added draw waits in box ``box`` ("" if none)."""
+
+    return next(
+        (
+            card
+            for card in pending_boost_draws(context)
+            if boost_draw_box(context, card) == box
+        ),
+        "",
+    )
 
 
 def legal_agent_card_boost_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer Urgent Shigawire's added draw as its own step.
+    """Offer Urgent Shigawire's added draws, each as its own step.
 
     "The next Bene Gesserit card you play this round has all Agent icons
     and, added to its Agent box: draw a card." [Urgent Shigawire card]. The
@@ -3512,13 +3526,15 @@ def legal_agent_card_boost_actions(
     버림더미 카드를 폐기하고 싶을 수 있잖아." (user ruling 2026-10-10,
     OQ-106): the placement no longer draws, so it stays undoable.
 
-    The row is the boosted card's box's: untagged for box 0 (the placed
-    card), ``box=1`` for a Bene Gesserit graft partner that took the boost
-    (OQ-107, ``boost_draw_box``). While that box's own card-draw icon is
-    offered too, the one row resolves the box's icon first
-    (``resolve_agent_card_icon``); this provider offers the row only when
-    the box does not, so it is never listed twice -- also while the box's
-    rows wait for the other box to finish a bundled selection
+    Each row is its card's box's: untagged for box 0 (the placed card),
+    ``box=1`` for the graft partner (OQ-107, ``boost_draw_box``). A Ghola
+    grafted to the boosted card copies its box with the added draw ("Ghola
+    copies the entire Agent box of the card it's grafted to" [Immortality
+    p. 14]; user ruling 2026-10-12), so both boxes may hold one. While a
+    box's own card-draw icon is offered too, its one row resolves the box's
+    icon first (``resolve_agent_card_icon``); this provider offers the row
+    only when the box does not, so it is never listed twice -- also while
+    the box's rows wait for the other box to finish a bundled selection
     (``box_in_progress``), when the row is this added draw.
     """
 
@@ -3530,30 +3546,33 @@ def legal_agent_card_boost_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if not pending_boost_draw(context):
-        return ()
-    box = boost_draw_box(context)
     draw = DomainAction(
         action_id="resolve_agent_card_effect",
         actor=player,
         arguments=_BOOST_DRAW_ACTION_ARGUMENTS,
     )
-    box_waits = (
-        is_grafted_turn(context)
-        and active_box(context) != box
-        and box_in_progress(state)
+    rows: list[DomainAction] = []
+    boxes = sorted(
+        {boost_draw_box(context, card) for card in pending_boost_draws(context)}
     )
-    if not box_waits and draw in legal_agent_card_icon_actions(
-        state_with_active_box(state, box), player
-    ):
-        return ()
-    return (tagged(draw, box),)
+    for box in boxes:
+        box_waits = (
+            is_grafted_turn(context)
+            and active_box(context) != box
+            and box_in_progress(state)
+        )
+        if not box_waits and draw in legal_agent_card_icon_actions(
+            state_with_active_box(state, box), player
+        ):
+            continue
+        rows.append(tagged(draw, box))
+    return tuple(rows)
 
 
 def resolves_boost_draw(state: GameState, action: DomainAction) -> bool:
-    """Whether ``action`` resolves Urgent Shigawire's added draw now.
+    """Whether ``action`` resolves one of Urgent Shigawire's added draws now.
 
-    True for the ``resolve_agent_card_effect(effect=cards)`` that
+    True for a ``resolve_agent_card_effect(effect=cards)`` that
     ``legal_agent_card_boost_actions`` offers: the box's own card-draw
     icon, when also offered, is resolved first by the same action.
     """
@@ -3562,12 +3581,12 @@ def resolves_boost_draw(state: GameState, action: DomainAction) -> bool:
 
 
 def _resolve_boost_draw(state: GameState, action: DomainAction) -> RuleResult:
-    """Draw Urgent Shigawire's added card for the boosted card's box."""
+    """Draw Urgent Shigawire's added card for the row's box."""
 
     _, context = current_agent_effect_context(state)
     player = action.actor
-    card_instance_id = pending_boost_draw(context)
-    del context[BOOST_DRAW_KEY]
+    card_instance_id = boost_draw_card(context, row_box(action))
+    drop_boost_draw(context, card_instance_id)
     source = (
         f"round:{state.round_number}:player:{player}:shigawire:{card_instance_id}"
     )

@@ -39,11 +39,14 @@ from dune_imperium.display.spaces import (
     board_effect_action_text_ko,
 )
 from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
-from dune_imperium.rules.agent_effects import box_in_progress, resolves_boost_draw
+from dune_imperium.rules.agent_effects import (
+    boost_draw_card,
+    box_in_progress,
+    resolves_boost_draw,
+)
 from dune_imperium.rules.effects import (
     active_agent_card,
     current_agent_effect_context,
-    pending_boost_draw,
 )
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import (
@@ -51,6 +54,7 @@ from dune_imperium.rules.graft_boxes import (
     box_card_id,
     box_is_pending,
     is_grafted_turn,
+    row_box,
     tagged,
     untagged,
 )
@@ -405,7 +409,7 @@ def agent_box_row_title(
         return _card_names(str(context["card_id"]))
     card_id = str(context["card_id"])
     if box is None and plain.arguments and resolves_boost_draw(view, plain):
-        card_id = pending_boost_draw(context) or card_id
+        card_id = boost_draw_card(context, row_box(plain)) or card_id
     return _card_names(card_id)
 
 

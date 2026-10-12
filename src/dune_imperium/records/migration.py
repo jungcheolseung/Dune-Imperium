@@ -47,6 +47,10 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Final
 
+from dune_imperium.content.uprising.personal_cards import (
+    card_is_ghola,
+    personal_card_for_instance,
+)
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import (
@@ -64,8 +68,12 @@ from dune_imperium.rules.agent_effect_frame import (
     box_actions,
     route_box_action,
 )
-from dune_imperium.rules.agent_effects import resolves_boost_draw
-from dune_imperium.rules.effects import active_agent_card, pending_agent_icons
+from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
+from dune_imperium.rules.effects import (
+    active_agent_card,
+    current_agent_effect_context,
+    pending_agent_icons,
+)
 from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, FrameKind
 from dune_imperium.rules.graft_boxes import (
     BOX_ACTION_IDS,
@@ -1302,6 +1310,49 @@ def _shigawire_partner_draw(
     return draw
 
 
+def _ghola_copy_boost_draw(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Draw a Ghola's copy of Urgent Shigawire's added card before the
+    recorded turn end.
+
+    Codec v145 (user ruling 2026-10-12, OQ-107): Ghola "copies the entire
+    Agent box of the card it's grafted to" [Immortality p. 14], and the
+    boosted card's draw was "added to its Agent box" [Urgent Shigawire
+    card], so Ghola's box draws a card too, as its own
+    ``resolve_agent_card_effect(effect=cards)`` row; the turn cannot end
+    over it. An older engine gave the copy nothing, so its record never
+    took that draw and pressed ``finish_agent_turn`` with it waiting. The
+    draw is taken as late as it may be, right before that press, so every
+    recorded step of the turn sees the hand the recording engine showed.
+    """
+
+    if not (
+        isinstance(decision, PlayerDecision)
+        and isinstance(step, DomainAction)
+        and step.actor == decision.owner
+        and step.action_id == _FINISH_AGENT_TURN
+        and state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    ):
+        return None
+    _, context = current_agent_effect_context(state)
+    legal = engine.legal_actions(state, decision.owner)
+    for box in (0, 1):
+        card_id = boost_draw_card(context, box)
+        draw = _reward_icon(decision.owner, "cards", box)
+        if (
+            card_id
+            and card_is_ghola(personal_card_for_instance(card_id))
+            and resolves_boost_draw(state, draw)
+            and draw in legal
+        ):
+            return draw
+    return None
+
+
 # Codec v144 (OQ-057 (1)): the optional boxes whose choice an older
 # engine's turn end skipped -- its dry run read them as boxes that can only
 # fizzle -- with the refusal that answers each.
@@ -1474,5 +1525,10 @@ BRIDGES: tuple[Bridge, ...] = (
     # choice is still open; an older engine's press fizzled it.
     Bridge(
         "box_refused_at_turn_end", _box_refused_at_turn_end, before_codec=144
+    ),
+    # Codec v145 (OQ-107) gives a Ghola grafted to the boosted card a copy
+    # of its added draw; that draw holds the turn end.
+    Bridge(
+        "ghola_copy_boost_draw", _ghola_copy_boost_draw, before_codec=145
     ),
 )

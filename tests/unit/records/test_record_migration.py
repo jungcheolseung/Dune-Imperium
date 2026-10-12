@@ -1371,6 +1371,37 @@ def test_a_bene_gesserit_partner_s_draw_comes_right_before_the_recorded_end() ->
     assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(144)) is None
 
 
+_GHOLA_COPY_DRAW = DomainAction("resolve_agent_card_effect", 0, (("effect", "cards"),))
+
+
+def test_a_ghola_copy_s_draw_comes_right_before_the_recorded_end() -> None:
+    # Codec v145 (user ruling 2026-10-12, OQ-107): Ghola, placed, copies
+    # the draw added to its boosted Bene Gesserit partner's box, and that
+    # copy holds the turn end. An older engine's record took the partner's
+    # draw only and pressed the end: the copy's draw (box 0, Ghola's) is
+    # taken right before that press. The state is built.
+    state = _arrakeen_graft(
+        "tleilaxu:ghola:0",
+        "imperium:truthtrance:0",
+        skip=(_GHOLA_COPY_DRAW,),
+        bene_gesserit_boost_pending=True,
+    )
+    assert resolves_boost_draw(state, _GHOLA_COPY_DRAW)
+    assert not resolves_boost_draw(state, _PARTNER_DRAW)
+    assert _PRESS not in ENGINE.legal_actions(state, 0)
+
+    bridged = migration._bridge(ENGINE, state, _PRESS, _bridges_for(144))
+
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == (
+        "ghola_copy_boost_draw",
+        _GHOLA_COPY_DRAW,
+    )
+    drawn = ENGINE.apply(state, _GHOLA_COPY_DRAW).state
+    assert _PRESS in ENGINE.legal_actions(drawn, 0)
+    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(145)) is None
+
+
 @pytest.mark.parametrize(
     ("placed", "partner", "box"),
     [

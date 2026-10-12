@@ -428,7 +428,15 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # takes it; the draw added to its box is box 1's
 # ``resolve_agent_card_effect(box=1, effect=cards)`` (an existing template),
 # and Usurp reaches every space through such a partner. No template change.
-ACTION_CODEC_VERSION = 144
+# v145 (user ruling 2026-10-12 "그래 고치자", OQ-107): a Ghola grafted to the
+# card that took Urgent Shigawire's boost copies the draw added to its box
+# ("Ghola copies the entire Agent box of the card it's grafted to"
+# [Immortality p. 14]): Ghola's box offers its own
+# ``resolve_agent_card_effect(effect=cards)`` row (``box=1`` when Ghola is
+# the partner), which holds the turn end. No template change; recorded step
+# sequences change, so saves and replays from v144 are refused by the
+# version check.
+ACTION_CODEC_VERSION = 145
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

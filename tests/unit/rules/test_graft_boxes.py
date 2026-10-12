@@ -402,7 +402,7 @@ def test_swap_boxes_moves_every_box_key_and_flips_the_active_box() -> None:
         "graft_pending_icons": "",
         "rewards_chosen": "water",
         "graft_trashes_remaining": 1,
-        "boost_draw_card_id": "a",
+        "boost_draw_card_ids": "a",
         "space_id": "arrakeen",
     }
     swap_boxes(context)
@@ -416,7 +416,7 @@ def test_swap_boxes_moves_every_box_key_and_flips_the_active_box() -> None:
         "graft_pending_icons": "cards",
         "graft_rewards_chosen": "water",
         "trashes_remaining": 1,
-        "boost_draw_card_id": "a",
+        "boost_draw_card_ids": "a",
         "space_id": "arrakeen",
         ACTIVE_BOX_KEY: 1,
     }
@@ -1079,7 +1079,7 @@ def test_box_one_s_own_card_draw_leaves_the_placed_card_s_added_draw() -> None:
         INFILTRATOR,
     )
     _, context = current_agent_effect_context(state)
-    assert context["boost_draw_card_id"] == COUPLING
+    assert context["boost_draw_card_ids"] == COUPLING
     rows = ENGINE.legal_actions(state, 0)
     cards = (("effect", "cards"),)
     assert DomainAction("resolve_agent_card_effect", 0, cards) in rows
@@ -1090,14 +1090,14 @@ def test_box_one_s_own_card_draw_leaves_the_placed_card_s_added_draw() -> None:
         state, DomainAction("resolve_agent_card_effect", 0, (("box", 1), *cards))
     ).state
     _, context = current_agent_effect_context(partner)
-    assert context["boost_draw_card_id"] == COUPLING
+    assert context["boost_draw_card_ids"] == COUPLING
     assert context["card_id"] == INFILTRATOR
     assert "cards" not in str(context["pending_agent_icons"])
     added = ENGINE.apply(
         partner, DomainAction("resolve_agent_card_effect", 0, cards)
     ).state
     _, context = current_agent_effect_context(added)
-    assert "boost_draw_card_id" not in context
+    assert "boost_draw_card_ids" not in context
     assert len(added.players[0].hand) == len(partner.players[0].hand) + 1
 
 
@@ -1212,7 +1212,7 @@ def test_a_bene_gesserit_partner_takes_the_boost_and_its_draw() -> None:
     owner = state.players[0]
     assert owner.bene_gesserit_boost_pending is False
     _, context = current_agent_effect_context(state)
-    assert context["boost_draw_card_id"] == TRUTHTRANCE
+    assert context["boost_draw_card_ids"] == TRUTHTRANCE
     legal = ENGINE.legal_actions(state, 0)
     assert PARTNER_DRAW in legal and BOX_ZERO_DRAW in legal
     assert agent_effects.resolves_boost_draw(state, PARTNER_DRAW)
@@ -1227,7 +1227,7 @@ def test_a_bene_gesserit_partner_takes_the_boost_and_its_draw() -> None:
         for event in drawn.events
     )
     _, context = current_agent_effect_context(drawn.state)
-    assert "boost_draw_card_id" not in context
+    assert "boost_draw_card_ids" not in context
     # The draw is bound to its card: no box was made active for it.
     assert context["card_id"] == INFILTRATOR
     later = drawn.state
@@ -1312,7 +1312,7 @@ def test_with_two_bene_gesserit_cards_the_placed_one_takes_the_boost() -> None:
     grafted = _choose_partner(placed, TRUTHTRANCE)
     assert _boost_consumed(grafted) == []
     _, context = current_agent_effect_context(grafted.state)
-    assert context["boost_draw_card_id"] == COUPLING
+    assert context["boost_draw_card_ids"] == COUPLING
     legal = ENGINE.legal_actions(grafted.state, 0)
     assert PARTNER_DRAW not in legal
     assert BOX_ZERO_DRAW in legal
@@ -1331,7 +1331,7 @@ def test_a_partner_that_is_not_bene_gesserit_leaves_the_boost_pending() -> None:
     assert _boost_consumed(grafted) == []
     assert grafted.state.players[0].bene_gesserit_boost_pending is True
     _, context = current_agent_effect_context(grafted.state)
-    assert "boost_draw_card_id" not in context
+    assert "boost_draw_card_ids" not in context
     assert PARTNER_DRAW not in ENGINE.legal_actions(grafted.state, 0)
 
 
@@ -1360,7 +1360,7 @@ def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
         for event in trashed.events
     )
     _, context = current_agent_effect_context(trashed.state)
-    assert "boost_draw_card_id" not in context
+    assert "boost_draw_card_ids" not in context
     assert PARTNER_DRAW not in ENGINE.legal_actions(trashed.state, 0)
     assert trashed.state.players[0].hand == state.players[0].hand
 
@@ -1368,3 +1368,96 @@ def test_a_partner_s_added_draw_lapses_when_another_effect_trashes_it() -> None:
     assert len(drawn_first.players[0].hand) == len(state.players[0].hand) + 1
     after = ENGINE.apply(drawn_first, trash).state
     assert TRUTHTRANCE in after.players[0].trashed
+
+
+# A Ghola grafted to the boosted card (user ruling 2026-10-12, codec v145):
+# "Ghola copies the entire Agent box of the card it's grafted to"
+# [Immortality p. 14] and the draw was "added to its Agent box" [Urgent
+# Shigawire card], so Ghola's copy draws a card too -- "그럼 부스트 받은거까지
+# 복사되는게 맞는거 아니야?" -> "그래 고치자". Ghola itself is no Bene
+# Gesserit card [Immortality p. 14] and never takes the boost.
+
+
+def _drawn(result: Transition) -> list[object]:
+    return [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "agent_card_effect_resolved"
+        and dict(event.payload).get("effect") == "cards"
+    ]
+
+
+def test_a_ghola_partner_copies_the_placed_card_s_added_draw() -> None:
+    """Planned Coupling (Bene Gesserit, no card-draw icon of its own) is
+    placed and spends the boost; Ghola, its partner, copies its box with
+    the added draw, so box 0 and box 1 each draw a card, and the turn end
+    waits for both."""
+
+    state = _graft(
+        _state((COUPLING, GHOLA), bene_gesserit_boost_pending=True),
+        COUPLING,
+        "arrakeen",
+        GHOLA,
+    )
+    _, context = current_agent_effect_context(state)
+    assert effects.pending_boost_draws(context) == (COUPLING, GHOLA)
+    assert agent_effects.resolves_boost_draw(state, BOX_ZERO_DRAW)
+    assert agent_effects.resolves_boost_draw(state, PARTNER_DRAW)
+    state = _settle_space(state)
+    hand = len(state.players[0].hand)
+
+    copy = ENGINE.apply(state, PARTNER_DRAW)
+    assert _drawn(copy) == [GHOLA]
+    assert FINISH not in ENGINE.legal_actions(copy.state, 0)
+    assert PARTNER_DRAW not in ENGINE.legal_actions(copy.state, 0)
+    added = ENGINE.apply(copy.state, BOX_ZERO_DRAW)
+    assert _drawn(added) == [COUPLING]
+    assert len(added.state.players[0].hand) == hand + 2
+    _, context = current_agent_effect_context(added.state)
+    assert effects.BOOST_DRAW_KEY not in context
+
+
+def test_a_placed_ghola_copies_its_boosted_partner_s_draw() -> None:
+    """Ghola is placed; Truthtrance (Bene Gesserit, no Agent box of its own)
+    is its partner and takes the boost (OQ-107), so its box 1 holds the
+    added draw -- and Ghola's box 0, a copy of it, holds one too."""
+
+    placed = _placed(
+        _state((GHOLA, TRUTHTRANCE), bene_gesserit_boost_pending=True),
+        GHOLA,
+        "arrakeen",
+    )
+    assert placed.players[0].bene_gesserit_boost_pending is True
+    grafted = _choose_partner(placed, TRUTHTRANCE)
+    assert _boost_consumed(grafted) == [TRUTHTRANCE]
+    state = grafted.state
+    _, context = current_agent_effect_context(state)
+    assert effects.pending_boost_draws(context) == (TRUTHTRANCE, GHOLA)
+    state = _settle_space(state)
+    hand = len(state.players[0].hand)
+    assert FINISH not in ENGINE.legal_actions(state, 0)
+
+    ghola = ENGINE.apply(state, BOX_ZERO_DRAW)
+    assert _drawn(ghola) == [GHOLA]
+    partner = ENGINE.apply(ghola.state, PARTNER_DRAW)
+    assert _drawn(partner) == [TRUTHTRANCE]
+    assert len(partner.state.players[0].hand) == hand + 2
+    assert FINISH in ENGINE.legal_actions(partner.state, 0)
+
+
+def test_a_ghola_copy_s_draw_lapses_only_with_ghola() -> None:
+    """Each added draw belongs to its own card's box (OQ-022, OQ-106 1):
+    the other effects of the turn that trash a card take only that card's
+    draw. Without a boost Ghola's copy has no added draw."""
+
+    plain = _graft(_state((GHOLA, COUPLING)), GHOLA, "arrakeen", COUPLING)
+    _, context = current_agent_effect_context(plain)
+    assert effects.pending_boost_draws(context) == ()
+    assert not agent_effects.resolves_boost_draw(plain, BOX_ZERO_DRAW)
+    assert not agent_effects.resolves_boost_draw(plain, PARTNER_DRAW)
+
+    context = {"boost_draw_card_ids": f"{COUPLING},{GHOLA}"}
+    effects.drop_boost_draw(context, GHOLA)
+    assert context == {"boost_draw_card_ids": COUPLING}
+    effects.drop_boost_draw(context, COUPLING)
+    assert context == {}

@@ -306,20 +306,44 @@ def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
 
 # Urgent Shigawire: "The next Bene Gesserit card you play this round has all
 # Agent icons and, added to its Agent box: draw a card." [Urgent Shigawire
-# card]. The boosted card's instance ID while that added draw waits for its
-# own ``resolve_agent_card_effect(effect=cards)``; absent otherwise. It is
-# kept apart from the box's own icons because the card's box may be a
-# single effect, an arrow, a box of its own icons or no box at all.
-BOOST_DRAW_KEY = "boost_draw_card_id"
+# card]. The comma-joined instance IDs of the cards whose added draw waits
+# for its own ``resolve_agent_card_effect(effect=cards)``; absent when none
+# does. It is kept apart from the box's own icons because the card's box may
+# be a single effect, an arrow, a box of its own icons or no box at all. At
+# most two: the boosted card, and a Ghola grafted to it, which "copies the
+# entire Agent box of the card it's grafted to" [Immortality p. 14] with the
+# draw added to it (user ruling 2026-10-12, OQ-107).
+BOOST_DRAW_KEY = "boost_draw_card_ids"
 
 
-def pending_boost_draw(context: Mapping[str, ActionValue]) -> str:
-    """Return the boosted card whose added draw still waits ("" if none)."""
+def pending_boost_draws(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the cards whose added draw still waits, in the order added."""
 
     value = context.get(BOOST_DRAW_KEY, "")
     if not isinstance(value, str):
         raise RuntimeError("Agent-turn effect frame has invalid boost draw")
-    return value
+    return tuple(value.split(",")) if value else ()
+
+
+def add_boost_draw(context: dict[str, ActionValue], card_instance_id: str) -> None:
+    """Add ``card_instance_id``'s draw to the waiting added draws."""
+
+    pending = pending_boost_draws(context)
+    if card_instance_id in pending:
+        raise RuntimeError("the card's added draw already waits")
+    context[BOOST_DRAW_KEY] = ",".join((*pending, card_instance_id))
+
+
+def drop_boost_draw(context: dict[str, ActionValue], card_instance_id: str) -> None:
+    """Remove ``card_instance_id``'s added draw (drawn, or lapsed with it)."""
+
+    remaining = tuple(
+        card for card in pending_boost_draws(context) if card != card_instance_id
+    )
+    if remaining:
+        context[BOOST_DRAW_KEY] = ",".join(remaining)
+    else:
+        context.pop(BOOST_DRAW_KEY, None)
 
 
 # The Bloodlines Sardaukar Commander offer of a visited space: "an effect of
@@ -513,7 +537,7 @@ def agent_turn_has_other_pending_effects(
         context["pending_faction_influence"],
         # Urgent Shigawire's added draw is offered whatever the box does
         # (user ruling 2026-10-10, OQ-106).
-        bool(pending_boost_draw(context)),
+        bool(pending_boost_draws(context)),
     )
     if any(value is True for value in regular_pending):
         return True

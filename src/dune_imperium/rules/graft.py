@@ -20,6 +20,7 @@ from dataclasses import replace
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.personal_cards import (
+    card_is_ghola,
     card_is_graft,
     card_is_usurp,
     personal_card_for_instance,
@@ -49,9 +50,10 @@ from dune_imperium.rules.agent_turn import (
 )
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
-    BOOST_DRAW_KEY,
+    add_boost_draw,
     borrowed_agent_card,
     current_agent_effect_context,
+    pending_boost_draws,
 )
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -244,7 +246,20 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     effect_context["graft_pending_effect"] = pending
     if partner_boosted:
         # The added draw waits for its own step, box 1's (OQ-106, OQ-107).
-        effect_context[BOOST_DRAW_KEY] = partner_id
+        add_boost_draw(effect_context, partner_id)
+    # Ghola "copies the entire Agent box of the card it's grafted to"
+    # [Immortality p. 14], and the boosted card's draw was "added to its
+    # Agent box" [Urgent Shigawire card]: the copy has it too, as its own
+    # step in Ghola's box (user ruling 2026-10-12, OQ-107: "그럼 부스트
+    # 받은거까지 복사되는게 맞는거 아니야?" -> "그래 고치자"). Ghola itself
+    # is no Bene Gesserit card [Immortality p. 14], so it never takes the
+    # boost: the boosted card is the other one, placed or partner.
+    boosted_ids = pending_boost_draws(effect_context)
+    for ghola_id, other_id in ((placed_id, partner_id), (partner_id, placed_id)):
+        if other_id in boosted_ids and card_is_ghola(
+            personal_card_for_instance(ghola_id)
+        ):
+            add_boost_draw(effect_context, ghola_id)
     if effect_context.get("units_deploy_blocked") is not True and any(
         isinstance(card, ImperiumCardEntry) and card.allows_recruited_troop_deployment
         for card in (partner, placed)

@@ -18,7 +18,7 @@ pending flags when the other box's row is taken (``rules.graft_boxes``), so
 each card is read with its own flag: ``pending_agent_effect`` for
 ``card_id``, ``graft_pending_effect`` for ``graft_card_id``, and a boosted
 card's added draw (``BOOST_DRAW_KEY``, "added to its Agent box" [Urgent
-Shigawire card]) for the card it names.
+Shigawire card]; a Ghola's copy of it, OQ-107) for the card it names.
 
 Every fact here is public: the played card and its partner lie face up in
 play, and each box's resolution is announced as it happens. A Reveal turn
@@ -42,7 +42,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effect_frame import route_box_action
-from dune_imperium.rules.effects import pending_boost_draw
+from dune_imperium.rules.effects import pending_boost_draws
 from dune_imperium.rules.frames import FrameKind
 
 _LOGGER = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ def _turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
         owner = context.get("turn_owner")
         if isinstance(owner, bool) or not isinstance(owner, int):
             continue
-        boosted = pending_boost_draw(context)
+        boosted = pending_boost_draws(context)
         in_play = state.players[owner].in_play
         borrowed = state.players[owner].usurped_row_card_id
         for card_key, pending_key, _ in _CARD_KEYS:
@@ -127,7 +127,7 @@ def _turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
             owners.append(owner)
             if card_id == borrowed:
                 continue
-            if context.get(pending_key) is True or card_id == boosted:
+            if context.get(pending_key) is True or card_id in boosted:
                 pending.add(card_id)
     order = [
         card_id
@@ -253,6 +253,6 @@ def _box_doomed(state: GameState, card_id: str) -> bool:
                 continue
             if context.get(pending_key) is True:
                 return True
-            if pending_boost_draw(context) == card_id:
+            if card_id in pending_boost_draws(context):
                 return True
     return False

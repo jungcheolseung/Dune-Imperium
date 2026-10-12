@@ -70,10 +70,10 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
 # Bound to a card, not to the box resolving it.
 CARD_KEYS: Final = frozenset(
     {
-        # Urgent Shigawire's added draw names the boosted card itself
-        # (``effects.BOOST_DRAW_KEY``): the placed card, or a Bene Gesserit
-        # partner that took the boost (OQ-107).
-        "boost_draw_card_id",
+        # Urgent Shigawire's added draws name their cards themselves
+        # (``effects.BOOST_DRAW_KEY``): the placed card or a Bene Gesserit
+        # partner that took the boost, and a Ghola grafted to it (OQ-107).
+        "boost_draw_card_ids",
         # The cards whose Scientific Breakthrough box did its Research: a
         # Ghola copying it researches once more (``agent_effects``).
         "research_resolved_card_ids",

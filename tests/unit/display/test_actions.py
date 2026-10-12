@@ -626,6 +626,37 @@ def test_a_bene_gesserit_partner_s_added_draw_names_its_card() -> None:
     assert _row(grafted, _RESOLVE_BOX)[0] == ("Face Dancer", "얼굴의 춤꾼")
 
 
+def test_a_ghola_copy_of_the_added_draw_names_ghola() -> None:
+    # Ghola grafted to the boosted card copies the draw added to its box
+    # (user ruling 2026-10-12, OQ-107, codec v145): Truthtrance, boosted, is
+    # placed with "all Agent icons" and keeps its draw (box 0); Ghola's copy
+    # is box 1's row, led by Ghola.
+    truthtrance = "imperium:truthtrance:0"
+    ghola = "tleilaxu:ghola:0"
+    state = _turn((truthtrance, ghola))
+    state = replace(
+        state,
+        players=(
+            replace(state.players[0], bene_gesserit_boost_pending=True),
+            *state.players[1:],
+        ),
+    )
+    grafted = _place(state, truthtrance, ghola)
+    draw = (("effect", "cards"),)
+    placed = DomainAction("resolve_agent_card_effect", 0, draw)
+    copy = DomainAction("resolve_agent_card_effect", 0, (("box", 1), *draw))
+    assert _row(grafted, placed) == (
+        ("Truthtrance", "진실의 무아지경"),
+        "Draw 1 card (Urgent Shigawire)",
+        "{draw:1} (다급한 시거와이어)",
+    )
+    assert _row(grafted, copy) == (
+        ("Ghola", "골라"),
+        "Draw 1 card (Urgent Shigawire)",
+        "{draw:1} (다급한 시거와이어)",
+    )
+
+
 def test_a_ghola_box_names_ghola_with_the_box_it_copies() -> None:
     # "This card has the same Agent box as the other grafted card" [Ghola
     # card]: Ghola's row (box 0) and Seek Allies' (box 1) both read Seek
