@@ -1,139 +1,117 @@
 # Dune: Imperium AI
 
-구현의 규칙 기준은 [Uprising 4인 규칙 명세](docs/rules/README.md), 구현 순서와 완료 조건은 [구현 계획](docs/implementation-plan.md)을 따른다. 새 개발 세션은 [개발 인수인계](docs/development-handoff.md)에서 현재 구현 범위, 검증 기준, 다음 작업을 먼저 확인한다.
+Dune: Imperium - Uprising을 Python으로 규칙에 맞게, 재현 가능하게 구현하고, 그 엔진 위에서
+사람이 AI 상대나 원격의 친구들과 브라우저로 한 판을 두며, self-play로 더 강한 AI를 학습하는
+프로젝트다. 최종 목표는 사람이 충분히 강하고 재미있는 AI와 완전한 게임을 즐기는 것이다.
 
-## 멀티플레이 환경·접속 안내
+엔진은 Uprising 4인 기본 게임과 아래 옵션들을 처음부터 끝까지 플레이한다. 지금 작업은 AI의
+실력과 플레이 화면을 다듬는 쪽에 있다. 버전·테스트 수·승률 같은 현재 수치와 다음 작업은
+[개발 인수인계](docs/development-handoff.md)에 있다.
 
-역할에 맞는 문서를 선택한다. 참가자는 게임 저장소나 Python을 설치할 필요가 없다.
+<!-- 이 문서는 입구다. codec·관측 버전, 테스트·E2E 수, 승률처럼 자주 바뀌는 숫자와 날짜별
+작업 기록은 여기 쓰지 않고 docs/development-handoff.md에 둔다(사용자 결정 2026-10-12). -->
 
-- [서버 호스트용 가이드](docs/remote-play-host-guide.md): 서버 설치·실행, LAN·Tailscale 설정, 방 생성·공유, 저장·복구와 서버 문제 해결. 터미널 대신 창으로 서버를 띄우고 끄려면 그 문서의 **서버 런처로 실행** 절(`scripts/launcher/Install Launcher.command`·`.cmd`를 한 번 더블클릭).
-- [플레이어용 접속 가이드](docs/remote-play-player-guide.md): 필요한 준비, 방 링크로 접속, 플레이어 선택, 재접속·기기 변경과 접속 문제 해결.
+## 바로 한 판
 
-전체 진입점은 [멀티플레이 안내](docs/remote-play-guide.md)다.
+- **창으로:** `scripts/launcher/Install Launcher.command`(macOS)나 `Install Launcher.cmd`(Windows)를
+  한 번 더블클릭하면 서버 런처가 설치된다. 런처 창에서 이 컴퓨터에서만 둘지(로컬) 친구들과 둘지(원격)
+  골라 서버를 띄우고 끈다([호스트 가이드의 "서버 런처로 실행"](docs/remote-play-host-guide.md)).
+- **터미널로:**
 
-## 현재 구현 상태
+  ```bash
+  uv sync --extra rl --extra ui --extra train
+  uv run dune-imperium-server
+  ```
 
-2026-09-20 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle, 기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어 있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료 조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 보드 공간과 카드 Agent box의 인쇄 아이콘은 각각 별개 행동으로 해결하고, Reveal의 선택형 효과도 미루기/재개로 원하는 순서에 해결하며(OQ-027), 카드의 인쇄 조건은 효과를 해결하는 시점에 판정해 같은 turn의 뒤 선택으로 성립한 조건도 인정한다(OQ-028). Combat space에 배치한 병력은 그 Agent turn 안에서 되돌리거나 나눠 배치할 수 있고(OQ-029), 모든 Agent turn은 마지막 효과 뒤에도 열려 있다가 소유자의 "턴 종료"(`finish_agent_turn`)로만 끝난다 — 누르기 전까지 Plot Intrigue·Family Atomics·표본 반환 같은 자유 시점 행동을 할 수 있다(OQ-095). supply 부족으로 다 못 한 recruit는 해결 시점에 소멸하고 소급하지 않으며 부족분은 공개 이벤트로 로그에 남긴다(OQ-030). Reveal turn의 troop recruit·Intrigue draw·자원·Influence 획득은 소유자가 시점을 고르는 행동이다(OQ-045; Persuasion·검만 시작 시 합산). 현재 action codec은 v107이며 기본 룰셋은 4,439개, CHOAM 룰셋은 4,729개다(`promo_cards` 옵션 시 4,539/4,829개, `bloodlines` 옵션 시 Commander·retreat·wild 템플릿, `tech_module` 옵션 시 Tech tile 획득·Flip·할인 템플릿, `immortality` 옵션 시 research·Tleilaxu·graft 템플릿 추가). 전체 테스트 1,800개, Ruff, mypy가 통과한다(브라우저 E2E 14종은 `scripts/e2e/`)(2026-09-20: 인쇄된 아이콘 전수 대조로 Branching Path·Bene Tleilax c7r3·Imperial Privilege의 Intrigue trash와 Influence 4 보너스(Emperor Spy, Spacing Guild 3 Solari)를 바로잡고, 디자이너 정오표대로 Spy 배치를 의무로 했다 — [교훈](docs/lessons.md)). Immortality 확장은 2026-09-08에 `immortality` 옵션(sweep `--immortality`, UI 체크박스)으로 구현을 마쳤다(슬라이스 1: 출처·[규칙 명세](docs/rules/immortality.md)·Bene Tleilax board 전사·카드 카탈로그, 슬라이스 2: research·Tleilaxu track·specimen·개정 Research Station·Experimentation·Family Atomics, 슬라이스 3: Tleilaxu Row 획득·Reclaimed Forces, 슬라이스 4: Graft와 Graft 카드 8장, 슬라이스 5a: Intrigue 11장, 슬라이스 5b: Imperium 25종 전부 완료(관측 v14, OQ-052~053); 슬라이스 5c: Tleilaxu 18장 + 프로모 Piter — 카드 play data 전부 완결(관측 v15, OQ-052~055), 슬라이스 6: 웹 UI의 Tleilaxu Row와 Bene Tleilax board 스캔 오버레이(`assets/board/bene_tleilax.jpg`; 없으면 합성 grid)와 830판 소크 실패 0·census; [docs/rules/immortality.md](docs/rules/immortality.md), OQ-048~055). Immortality 룰북의 Go to 11 변형("11점을 향해")은 2026-09-28에 `go_to_11` 옵션(Immortality 필요, sweep·tournament `--go-to-11`, UI 체크박스는 기본으로 켜짐)으로 더했다: 4인 게임의 승점 마커가 1이 아니라 0에서 시작하고 종료 조건 10점은 그대로다([immortality.md](docs/rules/immortality.md) 8절, OQ-091). Rise of Ix의 Epic Game Mode("에픽 게임 모드")는 2026-09-28에 Rise of Ix 확장 없이 독립 옵션 `epic_game`(sweep·tournament `--epic`, UI 체크박스는 기본으로 켜짐)으로 더했다: 12점까지 하고, Conflict deck은 I 없이 II 5장 위에 III 5장(Economic Supremacy 포함)이며, 사막 행성 듄 1장이 Control the Spice로 바뀌고(Immortality와 함께면 버린 더미에서 시작), 수비대 5와 Intrigue 1장으로 시작한다. checkpoint·search 좌석은 게임의 action 목록으로 정책 출력층을 옮겨 앉는다([epic-game-mode.md](docs/rules/epic-game-mode.md), OQ-092~094).
+  브라우저에서 http://127.0.0.1:8000 을 열고 좌석과 옵션을 골라 게임을 만든다. 로컬 서버의 기본
+  상대는 앱 AI(어려움)다.
+- **친구와 원격으로:** 호스트는 [서버 호스트용 가이드](docs/remote-play-host-guide.md), 참가자는
+  [플레이어용 접속 가이드](docs/remote-play-player-guide.md)를 본다(입구는
+  [멀티플레이 안내](docs/remote-play-guide.md)). 참가자는 저장소나 Python을 설치할 필요가 없다.
 
-코어 엔진은 Endgame Intrigue window(OQ-001 convention)까지 갖춰 random 4인 게임을 FINISHED까지 완주하고 replay할 수 있다. Intrigue 44장은 39개 identity 전부가 effect DSL로 play되어 완결됐고, 인쇄된 Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과 Signet Ring도 모두 play된다. `run_random_game`/`run_policy_game` 러너와 `dune_imperium_uprising_v1` PettingZoo adapter는 전체 게임을 하나의 episode로 실행하며, 관측은 버전이 붙은 4,327-int 전체 게임 인코딩(v20; Reveal 전에도 배치 유닛 기준 전투력을 담고 Bloodlines Commander·Skill·Tech tile과 Immortality의 Bene Tleilax board 세그먼트를 포함한다), 보상은 승자독식 zero-sum 종료 보상이다 ([학습 환경 설계](docs/rl-environment.md)). AI 상대로는 seeded random 외에 M11의 규칙 기반 `HeuristicAgent`가 있으며(보드 공간 표는 2026-09-16의 축별 A/B와 소거로 재정비, [baseline-2026-09-10.md](docs/evaluation/baseline-2026-09-10.md) 13~18절; 같은 날 밤 동점 census로 찾은 Influence 진영·trash 카드·같은 비용 구매의 가족 안 tie-break를 채택해 고정 변형 상대 전 룰셋 +5 ~ +9%p, [baseline-2026-09-16.md](docs/evaluation/baseline-2026-09-16.md) 14절), 검증 sweep은 `--policy {random,heuristic}`으로 두 baseline을 모두 완주 검사할 수 있다. M9의 `dune-imperium-tournament`는 이름 붙인 baseline들을 좌석 회전·Leader 회전·seed 범위로 교차 대전시켜 승률·평균 순위·VP margin·좌석/Leader/선공별 성적·불법 행동·결정 시간을 Markdown/JSON으로 보고한다(현행 기준선: [docs/evaluation/baseline-2026-09-16.md](docs/evaluation/baseline-2026-09-16.md), heuristic이 random 3명 상대 98.4% 승률/800판; 이전 기준선은 [2026-09-10판](docs/evaluation/baseline-2026-09-10.md)(heuristic 보드 공간 표의 A/B 기록 13~18절 포함)과 [2026-09-06판](docs/evaluation/baseline-2026-09-06.md)). 첫 search baseline `RolloutAgent`는 자기 좌석이 아는 정보만으로 숨겨진 존을 다시 나눈 세계(`agents/determinize.py`)에서 후보 행동마다 heuristic rollout을 돌려 고르며, heuristic 3명 상대 54.0% 승률(평균 순위 1.74)이고 확장을 전부 켜면 60.0%다(2026-09-16 기준선 요약 표의 마지막 열, tie-break heuristic 상대, 15절의 값 함수 채택 뒤; 강해진 heuristic 앞에서 28%까지 내려왔던 rollout을 같은 예산에서 세계 4 · 후보 3 · 공통 난수로 재정비한 값이며, 두 배 예산의 `rollout_strong`은 base에서 60%다). M10 진입점인 `dune-imperium-selfplay`(`training/` 패키지)는 여러 게임을 lockstep으로 돌리며 좌석별 정책의 추론을 batch로 묶고, zero-sum 종료 보상과 관측·mask·행동 궤적을 NumPy 배열로 내놓는다(단일 프로세스 약 4,900 decisions/s). M10 첫 슬라이스 `dune-imperium-train`(`train` extra, PyTorch)은 masked policy/value MLP를 self-play 종료 보상으로 학습(REINFORCE + value baseline)하고, 관측·codec 버전을 기록한 체크포인트를 저장하며, 체크포인트는 `checkpoint:<경로>` 이름으로 대회 도구에 바로 들어간다. 이 Mac CPU에서 6분(self-play 960판) 학습한 첫 체크포인트가 random 3명 상대 100%, heuristic 3명 상대 56% 승률로 당시 rollout(48%; 현행 기준선에서는 54.0%)을 넘었고, 8 worker 병렬 수집으로 14분(6,400판) 학습한 두 번째 체크포인트는 heuristic 상대 89%, 첫 체크포인트 상대 61%, rollout 상대 67%이며, 거기서 100 iteration을 이은 세 번째 체크포인트는 두 번째 상대 35%(동률 25%), heuristic 상대 91%다. 이 승률 세 묶음은 모두 **관측 v4 체크포인트 기준**이고 현행 로더(관측 v20·codec v104)가 그 체크포인트를 거부하므로 M10 재개 시 새로 측정한다; 권위 있는 현행 기준선은 위에 적은 [docs/evaluation/baseline-2026-09-16.md](docs/evaluation/baseline-2026-09-16.md)다. Leader 선택은 OQ-007의 6종 공개 draft convention을 `RulesetConfig(leader_draft=True)` 옵션(sweep·tournament `--leader-draft`)으로 켤 수 있다(공식 규칙 아님; 기본은 고정 배정; 대회 도구의 match 행은 `leader_draft`를 따로 적는다). 정식 덱 밖의 Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 `RulesetConfig(promo_cards=True)` 옵션(sweep `--promo-cards`, UI 체크박스)으로 덱에 넣으며, 카드면만이 출처라 공식 문서가 침묵하는 판정은 OQ-024~026에 project convention으로 기록했다. Bloodlines 프로모 Ruthless Leadership은 같은 옵션에 `bloodlines=True`를 함께 켤 때 덱에 들어간다(2026-09-08). Bloodlines 확장은 `RulesetConfig(bloodlines=True)`(sweep `--bloodlines`, UI 체크박스)로 켜며 2026-09-07 현재 Sardaukar Commander와 Skill(획득·지불 recruit·배치·strength·Reveal 보너스·정리·기존 troop 효과 포함), Conflict 카드 2장, wild끼리의 Endgame 매칭, Tech Module 전용을 뺀 Imperium 카드 25종(Command (6+)·Combat 아이콘·Spy with Deep Cover 포함)과 Intrigue 16장, Leader 8종(Chani·Fenring·Duncan Idaho·Esmar Tuek과 Tuek's Sietch·Mohiam·Liet Kynes·Piter De Vries와 Twisted Intrigue 12장·Steersman Y'rkoon과 Navigation 10장), 그리고 `tech_module=True`(sweep `--tech-module`)로 켜는 Tech Module(Ixian Embassy와 Tech tile 18장의 획득·할인·Flip·능력, Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix)까지 구현돼 있어 Bloodlines 구성물 전부가 play된다([docs/rules/bloodlines.md](docs/rules/bloodlines.md); 공식 문서가 침묵하는 판정은 OQ-031~047; Endgame tiebreaker의 garrison troop 수에는 Commander를 포함한다). 2026-09-07 밤의 슬라이스 7로 웹 UI가 Commander·Skill·Ixian Embassy·보유 Tech tile을 표시하고, heuristic이 tile별 가치로 Tech를 사며, `--bloodlines --tech-module` 교차 소크 7,000판(random 4,000·heuristic 2,000·draft 1,000, `--soundness-interval 25`)이 실패 0으로 통과하고 관측 v9·codec v94 기준 학습 루프 smoke도 끝나 M12는 완료다(소크가 적발한 엔진 결함 3계열은 OQ-022·038 보강과 OQ-046으로 수정). M11 사람용 플레이(완료)는 FastAPI 기반 로컬 서버(`uv sync --extra rl --extra ui` 후 `uv run dune-imperium-server`, 기본 http://127.0.0.1:8000)로 한다: 브라우저에서 좌석 배정(사람, 또는 AI 종류: 앱 AI 어려움·보통·쉬움(Steam 앱의 컴퓨터 상대를 옮긴 `app_ai`·`app_ai_medium`·`app_ai_easy`; 2026-10-05부터 로컬 서버의 기본 AI, 원격 방은 그대로 전원 사람)·휴리스틱·롤아웃 탐색·랜덤·학습 체크포인트 경로, 서버가 망을 가지고 떴으면 탐색 AI)·CHOAM·leader draft 설정부터 한 화면 게임 테이블(로컬 보드 스캔 위에 합법 공간 발광·Agent 토큰·Control·Spy를 겹쳐 그리고, 카드는 인쇄 이미지, 효과는 공식 룰북에서 추출한 아이콘으로 표시; 스캔·이미지·아이콘이 없으면 텍스트로 대체)·행동 선택·최종 순위까지 한 게임을 완주할 수 있고, 같은 API를 JSON으로도 쓸 수 있다. 탐색 AI(좌석 종류 `search`; 학습한 정책망 주위에 결정론화 탐색을 두른 `NetworkSearchAgent`, 어떻게 두는지는 [그림과 함께 설명](docs/search-ai.md))는 서버를 `--search-checkpoint 경로`로 띄우거나 환경 변수 `DUNE_IMPERIUM_SEARCH_CHECKPOINT`에 경로를 두거나 저장소 안의 `checkpoints/play/search.pt`(보통 같은 폴더의 가중치 사본을 가리키는 심볼릭 링크, git 무시)를 두면 좌석 목록에 나온다. 망을 읽으려면 `train` extra(PyTorch, `uv sync --extra rl --extra ui --extra train`)가 필요하고, 서버는 시작할 때 `search AI: <경로>` 또는 꺼진 까닭(파일 없음·torch 없음)을 콘솔 한 줄로 알린다. 경로는 시작할 때 실제 파일로 풀어 그 좌석과 저장 파일에 `search:<실제 경로>`로 기록하므로, 링크를 새 체크포인트로 바꿔도 옛 저장은 원래 망으로 이어진다(새 망은 서버를 다시 띄워야 쓰인다). UI 기본 규칙에서 탐색한 결정 하나에 평균 1.4초(p90 3.3초)가 걸리지만 서버의 일꾼 스레드에서 생각하므로 그동안에도 화면은 움직이고, 그 좌석의 배지와 배너가 "생각 중…"을 보인다. 진행 중이거나 끝난 게임은 `GameReplay` 직렬화 기반 로컬 저장 파일(`--saves-dir`, 기본은 저장소 안의 `saves/`, git 무시; 프로젝트 파일은 모두 저장소 폴더 안에 둔다)로 저장·불러오기가 되며, 불러온 게임은 저장하지 않은 세션과 동일하게 이어진다. 끝난 게임은 모든 좌석 시점을 step 단위로 되돌려 보는 replay 검토 화면으로 복기할 수 있고, 종료 후에는 모든 비공개 존이 공개된다(OQ-010). 진행 중에는 실시간 행동 로그(이벤트를 좌석별 가시성으로 걸러 표시)와 행동 되돌리기(자기 연속 행동만, 무작위 결과·다른 좌석 행동·숨겨진 정보의 공개 이후로는 불가; 되돌린 행동은 로그에 남음)를 쓸 수 있다. 각 행동에는 되돌리기 가능 여부가 표시되고, 되돌릴 수 있는 행동으로 턴이 끝나면 플레이어가 턴 종료를 확정하기 전까지 다음 좌석으로 넘어가지 않는다. 보드 스캔 위에는 Influence 큐브·VP·전투력·High Council 마커와, 인쇄된 자리에 놓이는 조각들(칸 아래 깃발의 Control marker, Maker 육각형의 bonus spice 수량, garrison 옆 슬롯의 Maker Hooks token, 진영 strip의 원과 획득 후 보유자 색 고리로 표시되는 Alliance token), 모서리 원의 garrison과 사분면의 Conflict 배치 병력, 인쇄된 슬롯의 Conflict 카드·Conflict 덱·face-up Contract도 그려지고, 카드와 공간은 마우스를 올리면 상세가 뜬다. 공용 카드 영역은 보드 옆 세로 열에, 행동 로그는 행동 목록 옆에 좌석별 턴 카드(게임 진행 이벤트는 별도 카드)로 놓이며 카드 위에 마우스를 올리면 관련 공간이 보드에서 켜진다. 새로 놓인 Agent 토큰은 좌석 패널에서 보드 공간으로 날아와 자리잡고, 1700px 이하 화면에서는 오른쪽 패널이 1열로 쌓인다. 머리글의 **English / 한국어** 버튼이 화면 언어를 바꾸고(카드·리더·공간 이름과 인쇄 텍스트는 두 언어 모두 영어, 규칙 용어는 공식 한국어 룰북 용어집을 따른다), **도움말**(`?`)이 아이콘 범례·단축키·한 턴 진행을 보여 주며, 차례 변경과 오류는 스크린 리더에도 읽힌다. 끝난 판의 배너는 승자와 동점 판정 근거를 말한다.
+카드·보드 그림은 저작권 때문에 저장소에 없고, 없으면 화면이 텍스트로 대신한다. 그림을 연결하는
+방법은 [로컬 UI 이미지](docs/local-images.md)에 있다.
 
-M14 원격 멀티플레이(원격의 친구들과 각자 PC에서 한 판; [설계](docs/multiplayer-design.md), 2026-09-17 확정)는 진행 중이다. 슬라이스 1(2026-09-17)로 서버에 접근 계층이 생겼다: `uv run dune-imperium-server --remote`는 방 링크 하나로 들어온 사람이 빈 사람 좌석을 claim하게 하고(좌석 자격은 그 브라우저의 HttpOnly 쿠키에만 있다), 게임 생성·저장·불러오기·삭제는 시작할 때 콘솔에 찍히는 관리자 링크로만 허용하며, 결정론적 엔진에서 seed는 곧 모든 덱 순서이므로 게임이 끝날 때까지 seed를 어떤 응답에도 싣지 않는다. loopback이 아닌 `--host`는 `--remote` 없이는 시작을 거부한다. 옵션 없이 띄운 로컬 서버는 예전과 똑같이 동작한다. 슬라이스 2(같은 날)로 화면 갱신이 요청 하나가 됐다: `GET /games/{id}/snapshot`이 summary·좌석 view·합법 행동·로그의 새 항목만을 한 상태에서 읽어 주고 응답은 gzip으로 나가서, 전 확장 한 판 기준 갱신 한 번이 4요청·120.7 KB에서 1요청·14.6 KB(gzip 3.3 KB)로, 한 판 누적이 64.8 MB에서 8.3 MB(gzip 1.81 MB)로 줄었다(혼자 하는 로컬 판도 같은 경로를 쓴다; `uv run python scripts/measure_server_payloads.py`로 재현). 슬라이스 3(같은 날)으로 실시간 갱신이 붙었다: 게임이 바뀔 때마다 서버가 `GET /games/{id}/events`(Server-Sent Events)로 공개 필드만 담은 "초인종"을 울리고, 브라우저는 자기 화면이 낡았을 때만 snapshot을 다시 받는다(다른 브라우저의 행동이 약 0.2초 안에 반영되고, 자기 행동에는 추가 요청이 없다). 스트림이 통하지 않는 프록시 뒤에서는 2초 간격 폴링으로 스스로 전환한다. 열린 스트림이 곧 접속 표시(`players[].online`)다. 슬라이스 4(같은 날)로 브라우저 UI가 원격 흐름을 갖췄다: 호스트는 콘솔의 관리자 링크로 들어와 방을 만들고 호스트 패널의 방 링크(`--public-url`로 친구들이 접속하는 주소를 지정) 하나를 보내며, 친구는 그 링크에서 이름을 적고 빈 좌석에 앉는다. 화면은 자기 좌석 시점으로 고정되고, 남의 차례에는 "좌석 N (이름) 결정 대기 중"과 접속 점이, 자기 차례에는 탭 제목과 짧은 신호음이 알린다. remote 서버에서는 앞 좌석이 턴 종료를 확정하기 전에는 다음 좌석이 행동할 수 없다. 새로고침·탭 닫기 뒤에는 같은 링크(또는 첫 화면의 "이어 하기")로 같은 좌석에 돌아오고, 호스트는 좌석을 비워 다른 사람이 앉게 할 수 있다. 이 흐름과 기존 로컬 흐름의 브라우저 E2E는 [`scripts/e2e/`](scripts/e2e/README.md)에 있다(Playwright는 프로젝트 의존성이 아니다). 슬라이스 5(같은 날)로 remote 서버는 턴이 넘어갈 때마다 게임당 하나의 자동 저장을 저장 폴더에 갈아 끼운다(`--no-autosave`로 끔). 서버가 죽으면 다시 띄우고 관리자 링크로 들어가 저장 목록의 "자동 저장"을 불러온 뒤 새 방 링크를 보내면 되고, 잃는 것은 진행 중이던 한 턴이다. 기다리던 친구의 화면에는 "서버 연결 끊김"이, 서버가 돌아오면 "호스트의 새 방 링크로 들어오세요"가 뜬다. 슬라이스 6(같은 날)으로 호스트·친구용 절차를 [원격 한 판 운영 안내](docs/remote-play-guide.md)에 적었고, 이 Mac mini의 Tailscale 주소에 실제로 bind해 리허설했다(평문 HTTP origin에서의 쿠키·링크 복사, 회선 에뮬레이션: 가정 회선에서 첫 접속 1.8초·한 수의 반영 29 ms). 남은 것은 다른 집의 친구와 실제로 하는 한 판과 그 피드백이다.
+## 구현된 것
 
-## 프로젝트 비전
+**규칙.** Uprising 4인 기본 게임 전체([규칙 명세](docs/rules/README.md))와, 게임을 만들 때 켜는 옵션:
 
-Dune: Imperium을 Python으로 정확하고 재현 가능하게 구현하고, 이를 이용해 강화학습 및 self-play가 가능한 게임 플레이 AI를 만든다. 최종 목표는 사람이 충분히 강하고 재미있는 AI 상대와 완전한 게임을 플레이하며 높은 수준의 Dune: Imperium 경험을 할 수 있게 하는 것이다.
+- CHOAM Module([choam-module.md](docs/rules/choam-module.md))
+- Bloodlines 확장과 Tech Module([bloodlines.md](docs/rules/bloodlines.md))
+- Immortality 확장과 그 변형 Go to 11 "11점을 향해"([immortality.md](docs/rules/immortality.md))
+- Rise of Ix의 Epic Game Mode "에픽 게임 모드"([epic-game-mode.md](docs/rules/epic-game-mode.md))
+- Arrakeen Scouts — Dire Wolf Game Room 앱의 3-4인 모듈([arrakeen-scouts.md](docs/rules/arrakeen-scouts.md),
+  [설계](docs/arrakeen-scouts-design.md))
+- Uprising·Bloodlines 프로모 카드, 공개 Leader draft(공식 규칙이 아닌 project convention, OQ-007)
 
-## 구현 방향
+공식 문서가 답하지 않는 판정은 지어내지 않고 [판정 대장](docs/rules/open-questions.md)에 OQ 번호로
+남긴 뒤 테스트로 고정한다.
 
-- 최초 구현 대상은 **Dune: Imperium - Uprising 4인 플레이, CHOAM Module OFF**다. 기본 게임 완주 검증 뒤 CHOAM Module을 설정 옵션으로 추가한다.
-- 개발 및 실행 환경은 **Python 3.14**와 **uv**를 사용한다.
-- 현재 `dune/`의 코드는 이전 구현 시도의 참고 자료다. 호환성을 유지할 필요는 없으며, 더 적합한 구조를 위해 처음부터 다시 구현할 수 있다.
-- 규칙 구현과 검증에는 Dire Wolf Digital의 공식 온라인 자료를 우선 사용한다. `assets/rulebooks/`의 PDF는 사용자가 로컬에서 열람하기 위한 사본이므로 자동으로 전체를 읽거나 분석하지 않는다. 애매한 규칙 해석과 선택한 판정은 문서화하고 테스트로 고정한다.
-- 인접한 `../TabletopGames` 저장소는 보드게임 AI를 위한 구조적 참고 자료다. 특히 game state, forward model/rules, actions, parameters/components의 분리와 RL 연동 방식을 조사해 유용한 개념을 선택적으로 적용한다. 그대로 포팅하거나 런타임 의존성을 두는 것은 아직 결정하지 않았다.
-- 게임 규칙 엔진은 UI와 학습 코드에서 분리한다.
-- 학습 환경에 필요한 결정론적 실행과 seed 기반 난수, 합법 행동 열거 및 action mask, 플레이어별 관측과 비공개 정보, 상태 복제/직렬화, headless 병렬 실행을 처음부터 고려한다.
-- 우선순위는 규칙 정확성, 테스트 가능성, 학습 처리량, AI 성능, 사람이 즐길 수 있는 플레이 경험의 순서로 둔다.
+**플레이 화면.** 보드 스캔 위에 모든 것을 얹은 한 화면 테이블. Agent 턴은 카드 → 칸 → 남은 선택
+순서로 고르고, "턴 종료 ▶"를 눌러야 끝난다. 되돌리기, 저장·불러오기·자동 저장, 끝난 판의 리플레이
+검토, AI끼리 두는 판의 관전, 한국어/영어 전환(공식 한국어 룰북 용어, [용어집](docs/rules/glossary-ko.md)),
+도움말, [플레이 시계](docs/play-clock.md), 연출과 효과음이 있다
+([UI 개선 계획](docs/ui-improvement-plan.md)).
 
-## 목표 상태
+**AI 상대.** 좌석마다 고른다.
 
-1. 선택한 Dune: Imperium 룰셋을 끝까지 플레이할 수 있는 게임 엔진을 완성한다.
-2. 규칙 단위 테스트, 시나리오 테스트, seeded replay로 구현을 검증한다.
-3. RL 환경과 baseline 플레이어를 만들고 self-play 학습 및 평가 파이프라인을 구축한다.
-4. 학습한 AI의 실력을 재현 가능한 상대전과 지표로 평가하며 지속적으로 높인다.
-5. 사람이 학습한 AI와 편리하게 완전한 게임을 플레이할 수 있는 인터페이스를 제공한다.
+- 탐색 AI: 학습한 정책망 주위에 결정론화 탐색을 두른 가장 강한 상대([어떻게 두나](docs/search-ai.md)).
+  `train` extra와 망 파일 `checkpoints/play/search.pt`가 있어야 좌석 목록에 나온다.
+- 앱 AI 어려움·보통·쉬움: 공식 Steam 앱의 컴퓨터 상대를 옮긴 것([설계](docs/app-ai-plan.md)).
+- 휴리스틱(규칙 기반), 롤아웃 탐색, 랜덤, 학습 체크포인트 경로.
 
-## 아직 결정하지 않은 사항
+AI끼리의 실력 비교는 [docs/evaluation/](docs/evaluation/)에 있다.
 
-- 학습 알고리즘과 모델 구조(관측 인코딩 v1과 종료 보상은 [학습 환경 설계](docs/rl-environment.md)로 확정했다)
-- 사람용 UI의 추가 조작 개선(형태는 로컬 웹 UI로 확정, 2026-08-30; 구현 순서도 M11을 M9·M10보다 앞으로 조정했다. 2026-08-31에 효과 정보 전면 표시를, 2026-09-03에 보드 스캔 기반 한 화면 테이블과 룰북 아이콘 표시를 추가했다. 2026-09-06 저녁에 호버 팝오버, 보드 슬롯의 Conflict·Contract·덱, 병력 칩, 카드 열 세로 배치, 행동 로그 턴 카드를 추가했다. 2026-09-20에 전 좌석 AI 게임의 관전을 추가했다 — 사람 좌석 없이 만든 게임은 리플레이 검토가 처음부터 자동 재생으로 열린다(기본 한 턴씩 · 1초, 한 수씩·간격 선택, 행동 로그가 커서를 따라간다). Agent 토큰 이동 애니메이션 등은 열려 있다. 2026-09-21에 종료 화면·좌석 스탯·접근성·도움말·한국어/영어 전환을 더했다 — [UI 개선 계획](docs/ui-improvement-plan.md) 5단계)
-- CHOAM 이후 다른 확장팩을 추가할 범위와 순서(2026-09-28: Dire Wolf Game Room 컴패니언 앱의 3-4인 모드 Arrakeen Scouts를 시작 옵션으로 넣는 M15를 [설계](docs/arrakeen-scouts-design.md)했다 — 착수 전, 사용자 결정 D1~D9 대기)
+**원격 멀티플레이.** 호스트가 보낸 방 링크 하나로 친구들이 각자 브라우저에서 빈 좌석에 앉는다.
+화면은 실시간으로 갱신되고, 새로고침 뒤 같은 좌석으로 돌아오며, 서버가 턴마다 자동 저장한다
+([설계](docs/multiplayer-design.md)).
 
-규칙 코어는 특정 RL 라이브러리에 의존하지 않게 만들고, 첫 표준 다중 에이전트 adapter는 PettingZoo AEC로 한다. 나머지 결정은 규칙 엔진의 수직 조각과 처리량 기준선을 확인한 뒤 명시적인 설계 문서와 테스트 기준으로 확정한다.
+**학습과 평가.**
 
-## 공식 규칙 자료
+- PettingZoo AEC 환경 `dune_imperium_uprising_v1`: 전체 게임이 한 episode, 승자독식 종료 보상
+  ([학습 환경 설계](docs/rl-environment.md)).
+- `dune-imperium-selfplay`(self-play 수집), `dune-imperium-train`(PyTorch 학습),
+  `dune-imperium-tournament`(좌석·Leader를 돌려 가며 하는 교차 대전 보고), `dune-imperium-sweep`(완주 소크).
+- `dune-imperium-records`: 사람이 둔 판을 지금 엔진의 기보로 옮긴다([기보 이전](docs/human-records.md)).
+- 학습 알고리즘과 모델 구조는 아직 실험 중이다. 기록은 [docs/evaluation/](docs/evaluation/)의 `m10-*.md`.
 
-- [Dune: Imperium 공식 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)
-- [Dune: Imperium - Uprising 메인 룰북](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)
-- [Uprising Board Space Guide와 보충 규칙](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf)
-- [공식 FAQ (2025-01-13)](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf)
+## 문서 지도
 
-규칙 조사가 필요할 때는 위 공식 자료에서 해당 규칙과 관련된 부분만 확인한다. 로컬 `assets/rulebooks/` PDF는 공식 자료에 접근할 수 없거나 사용자가 명시적으로 요청한 경우에만 사용한다.
-
-### 공식 룰 문서 작업 도구
-
-공식 PDF를 다시 검증하거나 새 FAQ와 비교할 때는 저장소의 로컬 PDF 대신 다음 도구를 사용한다.
-
-```bash
-uv run scripts/prepare_official_rules.py
-```
-
-도구는 [고정된 공식 출처 manifest](scripts/official-rule-sources.json)의 PDF를 검증하고, PDF 페이지 marker가 붙은 text working copy를 기본적으로 저장소 안의 git 무시 폴더 `tmp/official-rules/`에 만든다(프로젝트 파일은 프로젝트 폴더 밖에 두지 않는다). 생성된 PDF와 text는 저장소에 커밋하지 않는다. FAQ만 다시 준비하려면 `--source faq`, 기존 working copy만 쓰려면 `--offline`을 사용한다. 공식 파일의 SHA-256이 바뀌면 자동으로 받아들이지 않으며, 공식 리소스 페이지에서 새 버전인지 먼저 확인해야 한다.
-
-## 카드 및 이미지 자료
-
-- [Dune Cards Hub - Uprising](https://dunecardshub.com/uprising): Uprising의 리더, 각종 덱 카드, 계약 등 카드 이미지와 카드별 정보를 찾을 때 사용한다.
-- [Dune Cards Hub](https://dunecardshub.com): 다른 확장팩 자료가 필요할 때 해당 확장팩을 선택해 사용한다.
-- 외부 구조화 데이터의 사용 범위와 검증 정책은 [카드 데이터 전사 출처](docs/card-data-sources.md)에 기록한다.
-
-Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규칙 설명과 카드 효과 해석이 충돌할 경우에는 Dire Wolf Digital의 공식 룰북과 공식 보충 자료를 우선한다. 이미지 파일을 프로젝트에 포함하거나 재배포하기 전에는 필요한 범위와 이용 조건을 별도로 확인한다.
-
-### 로컬 UI 이미지 준비
-
-카드·보드·아이콘·토큰 원본은 저작권 때문에 이 저장소에 넣지 않는다. 플레이 서버는
-아래 네 위치를 있을 때만 서빙하고, 없으면 텍스트(및 텍스트 보드 목록, 그려 넣은 좌석 토큰)로
-대체한다. 소유자의 머신에서는 비공개 `Dune-Imperium-assets` 저장소를 옆에
-clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 참고).
-
-- `assets/cards/` (또는 `DUNE_IMPERIUM_CARD_IMAGE_DIR`): 카드 스캔 체크아웃.
-  `cards/manifest.json`이 `<세트>/<종류>/<인쇄 카드명>.<확장자>` 파일과 엔진
-  content ID를 잇는 유일한 매핑이고, 서버가 시작 시 읽어 존재하는 파일만
-  연결한다(`ko/` 스캔이 있으면 파일 단위로 우선, 없으면 `en/`). 같은 언어 안에서는
-  Steam 앱의 카드 틀로 그린 `app/<언어>/` 앞면(`scripts/dwgr/app_cards.py render`)을
-  스캔보다 먼저 쓴다. 다만 보드 스캔 위에 놓는 조각(Tuek's Sietch 같은 지도자
-  타일, Immortality의 Research Station 덮개)은 인쇄 타일 모양의 상자에 맞아야 해서
-  스캔만 쓴다(카탈로그 `tile_image`, 팝오버는 그대로 `image`).
-  `uv run scripts/fetch_card_images.py`는 manifest가 기록한 출처에서 빠진
-  파일만 내려받는다.
-- `assets/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 게임 아이콘 투명 PNG 46장.
-  공식 Uprising Main Rulebook의 Icon Guide(20쪽)와 Agent 아이콘(9쪽)에서
-  `uv run --with pymupdf --with pillow scripts/extract_rulebook_icons.py`로 잘라낸 뒤,
-  설치된 Steam 앱이 있으면 `scripts/dwgr/app_assets.py icons`가 같은 그림의 앱판으로
-  덮어쓴다(이름 목록은 `dune_imperium.display.icons`).
-- `assets/tokens/` (또는 `DUNE_IMPERIUM_TOKEN_DIR`): 좌석 색상별 Combat marker
-  그림 8장(`strength_<blue|red|green|yellow>.png`과 `+20` 면
-  `strength_<색>_plus20.png`; 이름 규칙은 `dune_imperium.display.token_images`).
-  보드 하단 Combat track의 전투력 토큰이 이 그림으로 바뀌고, 전투력이 20을
-  넘으면 `+20` 면으로 뒤집힌다[Main p. 12]. 한 색의 두 면이 다 있어야 그 좌석에
-  적용된다. 같은 폴더의 `shield_wall.png`는 Shield Wall 토큰으로, 제거되기 전까지
-  Spice Refinery 아래의 표시된 위치에 놓인다[Main p. 4]. 보드의 좌석 말(Agent·Spy·
-  Control marker·병력과 영향력 큐브·모래벌레·High Council 원판, 점수와 Bene Tleilax
-  트랙의 player disc)은 `<말>_<색>.png` 그림이 네 색 다 있으면 그 그림으로,
-  없으면 단색 도형으로 그린다(`scripts/dwgr/app_assets.py pieces`). 출처는 에셋 저장소 README 참고.
-- `assets/board/map.jpg` (또는 `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
-  좌표(`dune_imperium.display.board_layout`)는 소유자의 6012×6005 정사각형
-  스캔 기준 퍼센트 값이라 다른 프레이밍의 스캔은 재측정이 필요하다.
-
-## 학습 체크포인트
-
-학습된 정책 체크포인트(`dune-imperium-train`의 `latest.pt`, 14~40MB)와 학습 로그는 저장소 루트의 `checkpoints/`에 두며 git이 무시한다. 현재 champion은 `checkpoints/2026-09-06/champion_iter200.pt`이고, `checkpoint:<경로>` 이름으로 대회 도구에, `--resume <경로>`로 학습 루프에 넣는다. 다른 머신에서는 파일을 복사해 쓴다.
+| 문서 | 내용 |
+|---|---|
+| [development-handoff.md](docs/development-handoff.md) | 현재 기준선(버전·테스트 수), 날짜별 작업 기록, 다음 작업. 새 개발 세션은 여기서 시작한다 |
+| [implementation-plan.md](docs/implementation-plan.md) | 마일스톤 M0~M15와 완료 조건 |
+| [rules/README.md](docs/rules/README.md) | 규칙 명세: 공식 룰북·FAQ를 구현 단위로 정리한 요약과 출처 |
+| [rules/open-questions.md](docs/rules/open-questions.md) | 공식 문서로 정할 수 없는 판정의 대장(OQ) |
+| [lessons.md](docs/lessons.md) | 같은 실수를 막기 위한 교훈 기록 |
+| [implementation-audits/](docs/implementation-audits/) | 카드·Leader·계약 등 구현 감사 |
+| [card-data-sources.md](docs/card-data-sources.md) | 카드 데이터 전사 출처 |
+| [evaluation/](docs/evaluation/) | 기준선·대회·학습 측정 기록 |
+| `docs/*-design.md`, `docs/*-plan.md` | 기능별 설계와 계획(원격, Arrakeen Scouts, 앱 AI, 런처, UI 등) |
 
 ## 개발 환경
 
 ```bash
 uv sync --extra rl --extra ui --extra train
-uv run python --version
 uv run pytest
 uv run ruff check src tests
 uv run mypy src tests
 ```
 
-서버 런처(`dune-imperium-launcher`, 또는 `uv run python -m dune_imperium.launcher`)는 플레이 서버를 자식 프로세스로 띄우고 끄는 tkinter 창이다([계획](docs/server-launcher-plan.md)). 설정은 git 무시 `local/launcher.json`, 로그는 `tmp/launcher/`에 둔다. 창 없이 진단만 보려면 `uv run python -m dune_imperium.launcher.cli --check`.
+- `uv sync`는 `.python-version`의 Python 3.14로 `.venv`를 만들고 `uv.lock`에 고정된 의존성을
+  설치한다. 환경을 나열한 extras와 정확히 맞추므로 extra를 빼고 실행하면 그 extra의 패키지가
+  지워진다(예: `--extra ui`만 주면 rl의 gymnasium·pettingzoo가 지워진다). 표준 명령은 위의 세
+  extra다(`train`은 PyTorch; 없으면 `tests/unit/training/test_torch_policy.py`가 skip된다).
+- 브라우저 E2E는 [`scripts/e2e/`](scripts/e2e/README.md)에 있다(Playwright는 프로젝트 의존성이 아니다).
+- 서버 런처(`dune-imperium-launcher`)의 설정은 git 무시 `local/launcher.json`, 로그는 `tmp/launcher/`.
+  창 없이 진단만 보려면 `uv run python -m dune_imperium.launcher.cli --check`.
+- 프로젝트 파일은 저장소 폴더 밖에 두지 않는다. 저장은 `saves/`, 학습 체크포인트와 로그는
+  `checkpoints/`(탐색 AI의 망은 `checkpoints/play/search.pt`, 보통 같은 폴더의 가중치 파일을 가리키는
+  링크), 임시 파일은 `tmp/`이고 모두 git이 무시한다. 다른 머신에는 체크포인트 파일을 복사해 쓴다.
+- 새 코드는 `src/dune_imperium/`에 둔다. `dune/`는 이전 구현의 참고 자료일 뿐 import하지 않는다.
 
-`uv sync`는 `.python-version`에 지정된 Python 3.14로 `.venv`를 만들고 `uv.lock`에 고정된 의존성을 설치한다. 주의: `uv sync`는 환경을 나열한 extras와 정확히 일치시키므로, extra를 빼고 실행하면 그 extra의 패키지가 제거된다(예: `--extra ui`만 주면 rl의 gymnasium·pettingzoo가 지워진다). 이 저장소의 표준 동기화 명령은 `uv sync --extra rl --extra ui --extra train`이다(`train`은 PyTorch; 없으면 `tests/unit/training/test_torch_policy.py`가 skip된다). 새 구현은 `src/dune_imperium/`에 두며, 기존 `dune/` 패키지는 이전 구현의 참고 자료일 뿐 새 코드에서 import하지 않는다.
-
-### PettingZoo 전체 게임 환경
-
-RL optional 의존성(`rl` extra, 표준 동기화 명령에 포함)을 설치하면 고정 action catalog와 mask를 사용하는 AEC 환경을 실행할 수 있다.
+PettingZoo 환경(`rl` extra)은 고정 action catalog와 mask를 쓴다. 관측 벡터와 보상 근거는
+[학습 환경 설계](docs/rl-environment.md)를 따른다.
 
 ```python
 from dune_imperium.adapters.pettingzoo_env import env
@@ -143,4 +121,46 @@ environment.reset(seed=7)
 observation, reward, terminated, truncated, info = environment.last()
 ```
 
-`dune_imperium_uprising_v1`은 전체 게임을 하나의 episode로 실행한다. 덱 reshuffle 같은 chance 결정은 episode seed에서 유도한 resolver로 내부 해결하고, 게임이 끝나면 공식 최종 순위의 승자가 +1, 나머지가 각 −1/3을 받는다 (중간 보상 없음). 관측 벡터와 세그먼트 표, 보상 근거는 [학습 환경 설계](docs/rl-environment.md)를 따른다.
+## 구현 원칙
+
+- 규칙의 기준은 **Dune: Imperium - Uprising 4인 플레이**이고, 확장은 옵션으로 얹는다.
+- 우선순위는 규칙 정확성, 테스트 가능성, 학습 처리량, AI 성능, 사람이 즐길 수 있는 플레이 경험의 순서다.
+- 게임 규칙 엔진은 UI와 학습 코드에서 분리하고, 특정 RL 라이브러리에 의존하지 않는다(표준
+  adapter는 PettingZoo AEC).
+- 결정론적 실행과 seed 기반 난수, 합법 행동 열거와 action mask, 좌석별 관측과 비공개 정보,
+  상태 복제·직렬화, headless 병렬 실행을 처음부터 고려한다.
+- 애매한 규칙 해석과 선택한 판정은 문서화하고 테스트로 고정한다.
+- 인접한 `../TabletopGames` 저장소는 game state, forward model, actions, parameters의 분리와 RL
+  연동 방식을 보는 구조 참고 자료다. 포팅하거나 의존하지 않는다.
+
+## 공식 규칙 자료
+
+- [Dune: Imperium 공식 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)
+- [Dune: Imperium - Uprising 메인 룰북](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)
+- [Uprising Board Space Guide와 보충 규칙](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf)
+- [공식 FAQ (2025-01-13)](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf)
+
+규칙 조사가 필요할 때는 위 공식 자료에서 관련된 부분만 확인한다. 로컬 `assets/rulebooks/`의 PDF는
+사용자가 열람하는 사본이므로, 공식 자료에 접근할 수 없거나 사용자가 명시적으로 요청한 경우에만 쓴다.
+
+공식 PDF를 다시 검증하거나 새 FAQ와 비교할 때는 다음 도구를 쓴다.
+
+```bash
+uv run scripts/prepare_official_rules.py
+```
+
+도구는 [고정된 공식 출처 manifest](scripts/official-rule-sources.json)의 PDF를 검증하고, PDF 페이지
+marker가 붙은 text working copy를 git 무시 폴더 `tmp/official-rules/`에 만든다(커밋하지 않는다).
+FAQ만 다시 준비하려면 `--source faq`, 기존 working copy만 쓰려면 `--offline`. 공식 파일의 SHA-256이
+바뀌면 자동으로 받아들이지 않으며, 공식 리소스 페이지에서 새 버전인지 먼저 확인해야 한다.
+
+## 카드 및 이미지 자료
+
+- [Dune Cards Hub - Uprising](https://dunecardshub.com/uprising): Uprising의 리더, 각종 덱 카드, 계약 등
+  카드 이미지와 카드별 정보를 찾을 때 쓴다. 다른 확장팩은 [Dune Cards Hub](https://dunecardshub.com)에서
+  그 확장팩을 고른다.
+- 외부 구조화 데이터의 사용 범위와 검증 정책은 [카드 데이터 전사 출처](docs/card-data-sources.md)에 기록한다.
+
+Dune Cards Hub는 카드와 시각 자료의 참고 출처다. 규칙 설명과 카드 효과 해석이 충돌하면 Dire Wolf
+Digital의 공식 룰북과 보충 자료를 우선한다. 이미지 파일을 프로젝트에 포함하거나 재배포하기 전에는
+필요한 범위와 이용 조건을 따로 확인한다.
