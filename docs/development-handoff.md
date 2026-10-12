@@ -1,8 +1,17 @@
 # 개발 인수인계
 
-기준일: 2026-10-11
+기준일: 2026-10-12
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
+
+## 2026-10-12 README를 입구로 다시 씀 (codec 그대로)
+
+사용자 지적 "readme.md 문서가 최신화가 안 된 것 같은데? 현재 구현상태 이 부분도 글이 너무 길고", 제안한 구조에 "그래 그렇게 수정해보자". 브랜치 `readme-refresh`. 코드는 그대로다.
+
+- README는 2026-09-20 무렵에 멈춰 있었다(codec v107·관측 v20·테스트 1,800개·E2E 14종, M14 "진행 중", M15 "착수 전", 2026-09-06 champion 체크포인트). "현재 구현 상태"는 25 KB짜리 날짜별 작업 기록이었다.
+- 새 구성: 소개, 바로 한 판(런처·서버 명령·원격 가이드), 구현된 것(규칙 옵션·플레이 화면·AI 상대·원격·학습, 줄마다 자세한 문서 링크), 문서 지도, 개발 환경, 구현 원칙, 공식 규칙 자료, 카드 자료. "아직 결정하지 않은 사항"과 "목표 상태"는 소개와 원칙에 합쳤다.
+- **규칙(사용자 결정):** README에는 버전·테스트 수·승률처럼 자주 바뀌는 숫자와 작업 기록을 쓰지 않는다. 그런 숫자는 이 문서에만 둔다(README 첫머리 주석).
+- "로컬 UI 이미지 준비" 절은 README에만 있던 내용이라 그대로 [`local-images.md`](local-images.md)로 옮겼다. 탐색 AI 서버 옵션과 원격 서버 옵션은 [`search-ai.md`](search-ai.md)와 호스트 가이드에 이미 있어 README에서 뺐다.
 
 ## 2026-10-11 공식 한국어가 있는 남은 영어를 한국어로, 영어 목적 카드 이름 정리 (codec 그대로)
 
