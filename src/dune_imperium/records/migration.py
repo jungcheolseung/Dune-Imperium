@@ -47,6 +47,10 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Final
 
+from dune_imperium.content.uprising.personal_cards import (
+    card_is_ghola,
+    personal_card_for_instance,
+)
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import (
@@ -64,8 +68,12 @@ from dune_imperium.rules.agent_effect_frame import (
     box_actions,
     route_box_action,
 )
-from dune_imperium.rules.agent_effects import resolves_boost_draw
-from dune_imperium.rules.effects import active_agent_card, pending_agent_icons
+from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
+from dune_imperium.rules.effects import (
+    active_agent_card,
+    current_agent_effect_context,
+    pending_agent_icons,
+)
 from dune_imperium.rules.frames import OWED_CARD, OWED_INTRIGUE, FrameKind
 from dune_imperium.rules.graft_boxes import (
     BOX_ACTION_IDS,
@@ -814,7 +822,21 @@ def _shigawire_draw(
         and draw in engine.legal_actions(state, decision.owner)
     ):
         return None
+    if _ghola_draw(state, 0):
+        # Codec v145's copy in a placed Ghola's box: an older engine had no
+        # such draw at all, so it waits for the recorded turn end
+        # (``_boost_draw_at_turn_end``) instead of shifting the turn's
+        # later draws by a card.
+        return None
     return draw
+
+
+def _ghola_draw(state: GameState, box: int) -> bool:
+    """Whether box ``box``'s waiting added draw is a Ghola's copy (v145)."""
+
+    _, context = current_agent_effect_context(state)
+    card_id = boost_draw_card(context, box)
+    return bool(card_id) and card_is_ghola(personal_card_for_instance(card_id))
 
 
 def _planetologist_intrigue(
@@ -1299,7 +1321,61 @@ def _shigawire_partner_draw(
         and draw in engine.legal_actions(state, decision.owner)
     ):
         return None
+    if _ghola_draw(state, 1):
+        # A Ghola partner's copy of the placed card's draw is codec v145's
+        # (``_boost_draw_at_turn_end``), not a boosted partner's.
+        return None
     return draw
+
+
+def _boost_draw_at_turn_end(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Draw an Urgent Shigawire card an older engine never had before the
+    recorded turn end.
+
+    Codec v145 leaves two added draws waiting where an older engine had
+    none (user ruling 2026-10-12, OQ-107; OQ-022):
+    - Ghola "copies the entire Agent box of the card it's grafted to"
+      [Immortality p. 14], and the boosted card's draw was "added to its
+      Agent box" [Urgent Shigawire card], so Ghola's box draws a card too;
+    - a card that trashes itself with its own trash icon (Throne Room
+      Politics' optional trash) leaves play by its own effect, so its added
+      draw stays; an older engine lapsed it.
+    Either draw holds the turn end, so the record pressed
+    ``finish_agent_turn`` with it waiting. It is taken as late as it may
+    be, right before that press, so every recorded step of the turn sees
+    the hand the recording engine showed. Only these two are answered: a
+    Ghola's draw, or the draw of a card no longer in play; any other added
+    draw waiting at the press is a record of a flow that held it otherwise
+    (a v141 placement drew it at once: ``_shigawire_draw``).
+    """
+
+    if not (
+        isinstance(decision, PlayerDecision)
+        and isinstance(step, DomainAction)
+        and step.actor == decision.owner
+        and step.action_id == _FINISH_AGENT_TURN
+        and state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    ):
+        return None
+    _, context = current_agent_effect_context(state)
+    in_play = state.players[decision.owner].in_play
+    legal = engine.legal_actions(state, decision.owner)
+    for box in (0, 1):
+        card_id = boost_draw_card(context, box)
+        draw = _reward_icon(decision.owner, "cards", box)
+        if (
+            card_id
+            and (_ghola_draw(state, box) or card_id not in in_play)
+            and resolves_boost_draw(state, draw)
+            and draw in legal
+        ):
+            return draw
+    return None
 
 
 # Codec v144 (OQ-057 (1)): the optional boxes whose choice an older
@@ -1474,5 +1550,11 @@ BRIDGES: tuple[Bridge, ...] = (
     # choice is still open; an older engine's press fizzled it.
     Bridge(
         "box_refused_at_turn_end", _box_refused_at_turn_end, before_codec=144
+    ),
+    # Codec v145 gives a Ghola grafted to the boosted card a copy of its
+    # added draw (OQ-107) and keeps the draw of a card that trashed itself
+    # with its own trash icon (OQ-022); either holds the turn end.
+    Bridge(
+        "boost_draw_at_turn_end", _boost_draw_at_turn_end, before_codec=145
     ),
 )

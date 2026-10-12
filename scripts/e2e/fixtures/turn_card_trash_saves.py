@@ -78,7 +78,8 @@ def frame_lists(state) -> tuple[list[str], list[str]]:
             if not card or card not in in_play:
                 continue
             played.append(card)
-            if context.get(flag) is True or context.get("boost_draw_card_id") == card:
+            boosted = str(context.get("boost_draw_card_ids", "")).split(",")
+            if context.get(flag) is True or card in boosted:
                 pending.append(card)
         order = list(in_play)
         played.sort(key=order.index)

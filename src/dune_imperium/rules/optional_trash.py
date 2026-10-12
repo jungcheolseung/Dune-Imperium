@@ -16,6 +16,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
+from dune_imperium.rules.effects import agent_card_source
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
@@ -128,6 +129,8 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
         and isinstance(top.decision, PlayerDecision)
         and top.decision.owner == action.actor
     )
+    if credited_in_place:
+        popped = _own_box_trash(popped, action.actor, source, card_id)
     trashed = trash_personal_card(popped, action.actor, card_id, source=source)
     if not credited_in_place:
         # trash_personal_card's own crediting (card_trash._with_recruited_
@@ -147,6 +150,34 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
         # turn.
         trashed = credit_trash_recruits(trashed, action.actor)
     return trashed
+
+
+def _own_box_trash(
+    state: GameState, player: int, source: str, card_id: str
+) -> GameState:
+    """Mark a box whose own trash icon trashes its own card.
+
+    Throne Room Politics' optional trash icon may pick the card itself (or
+    a Ghola copying it, Ghola). That card leaves play by its own icon, so
+    what remains of its box -- Urgent Shigawire's draw "added to its Agent
+    box" -- still pays out: "카드가 자기 효과로 자신을 trash하는 경우 인쇄된
+    이득은 정상 지급" (OQ-022 designer ruling; the OQ-027 extension's "자기
+    비용이나 자기 아이콘으로"). The box opened this frame when ``source`` is
+    its own (``effects.agent_card_source``); a trash another effect opened
+    (a board space, the other grafted card's box) is not the card's own.
+    """
+
+    if source != agent_card_source(state.round_number, player, card_id):
+        return state
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if context.get("card_id") == card_id:
+        key = "agent_card_self_trashed"
+    elif context.get("graft_card_id") == card_id:
+        key = "graft_card_self_trashed"
+    else:
+        return state
+    return replace_top_frame(state, with_context(frame, {**context, key: True}))
 
 
 def _draw_planetologist_intrigue(

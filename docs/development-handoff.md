@@ -4,6 +4,17 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-12 Ghola도 부스트 draw를 복사 (codec v145)
+
+사용자 질문 "골라 카드 보면 agent box를 똑같이 같는다인데, 그럼 부스트 받은거까지 복사되는게 맞는거 아니야?" → "그래 고치자". OQ-107에 판정 대기로 남아 있던 Ghola 항목이다. 브랜치 `ghola-boost`.
+
+- **판정:** Urgent Shigawire의 draw는 "added to its Agent box"이고 Ghola는 "copies the entire Agent box of the card it's grafted to" `[Immortality p. 14]`이므로, 부스트를 받은 카드와 graft한 Ghola의 복사 box도 draw를 갖는다(같은 방향의 선례: Ghola + Carryall은 기본 spice 네 배 `[FAQ p. 2]`). Ghola를 놓든 짝으로 쓰든 draw가 둘이고, 각자 자기 칸의 `resolve_agent_card_effect(effect=cards)` 행이며 둘 다 turn 종료를 막는다. "모든 Agent 아이콘"은 복사되지 않는다.
+- **엔진:** 기다리는 draw를 카드 하나에서 목록으로(`effects.BOOST_DRAW_KEY` = `boost_draw_card_ids`, 많아야 둘). graft 때 부스트된 카드의 상대가 Ghola이면 Ghola도 적는다. 화면 이름·앱 AI·이번 차례 카드도 칸마다 맞는 카드를 읽는다.
+- **리뷰에서 나온 기존 결함(같이 고침, OQ-022 보강):** Throne Room Politics가 자기 선택 trash 아이콘으로 자신을 trash하면 더해진 draw가 사라졌다. 디자이너 판정 "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"대로 이제 남는다. trash 창을 연 것이 그 카드 자신의 box일 때만이다(`optional_trash._own_box_trash`).
+- **기보:** 다리 `boost_draw_at_turn_end`(codec 145 미만)가 위 두 draw를 기록된 턴 종료 바로 앞에 넣는다. 옛 다리 `shigawire_draw`·`shigawire_partner_draw`는 Ghola의 복사 draw를 건드리지 않는다. 측정: 로컬 저장본 6/6 migrated, 문제집 285/285, 묶음 v143-944bb1b7 2,000판은 v144 때와 같다(exact 1,861·equal 5·persistent 1·diverged 133·failed 0; Throne Room Politics 수정 뒤에도 같음, 이 묶음에는 해당 장면이 없어 새 다리는 쓰이지 않음).
+- **검증:** pytest **7,494개 통과**, ruff·mypy(482파일) 통과, e2e `trash_zone`·`graft_boxes`. 독립 리뷰: blocker 없음, 무작위·heuristic 250판과 구성한 장면 롤아웃에서 합법 행동 없음 0·숨은 정보 누출 없음; 지적(Throne Room Politics, 옛 다리 둘의 순서, 계획 문서의 옛 키 이름, 실제 엔진 소멸 테스트)을 모두 고쳤다.
+- **주의:** v144 저장본은 서버가 불러오지 못한다(끝난 판의 기보는 `records`로 옮겨진다).
+
 ## 2026-10-12 readapt-v143: 대조군 C만 돌리고 멈춤 (codec 그대로)
 
 사용자 결정 "지금 일단 Arm C까지만 하고 정리할 수 있어?". 설계와 미리 선언한 판정은 `checkpoints/2026-10-12/readapt-v143/README.md`(git 무시).

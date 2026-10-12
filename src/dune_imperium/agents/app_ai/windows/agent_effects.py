@@ -419,9 +419,9 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effect_frame import agent_box_rows
 from dune_imperium.rules.agent_effects import (
     STITCHED_HORROR_REWARDS,
+    boost_draw_card,
     resolves_boost_draw,
 )
-from dune_imperium.rules.effects import pending_boost_draw
 from dune_imperium.rules.frames import COMMANDERS_RECRUITED_KEY
 from dune_imperium.rules.graft_boxes import (
     active_box,
@@ -1898,7 +1898,7 @@ def _boost_draw(t: _Turn, action: DomainAction) -> None:
     is reached, else (E) at its ``DeferValue``, after the card's own
     abilities in the row."""
 
-    ref = pending_boost_draw(t.context)
+    ref = boost_draw_card(t.context, row_box(action))
     try:
         owner = card_entity(ref, t.seat)
     except KeyError:

@@ -53,7 +53,7 @@
 구현에서 확인한 최종 분류(2026-10-12, `rules/graft_boxes.py`):
 
 - 칸별 쌍(16): `card_id`/`graft_card_id`, `pending_agent_effect`/`graft_pending_effect`, `pending_agent_icons`/`graft_pending_icons`(화살표 비용 뒤의 보상 아이콘도 여기 대기한다), `agent_card_self_trashed`/`graft_card_self_trashed`, `influence_chosen`/`graft_influence_chosen`, 그리고 새 쌍 `rewards_chosen`, `trashes_remaining`, `corrinth_first_card_id`, `agent_card_spy_pending`, `agent_card_spy_recalled`, `feyd_track_stage`, `feyd_spy_recalled`, `leader_spy_recalled`, `staban_bonus_post`, `listeners_paid`, `signet_rewards`(각각 `graft_` 접두의 짝).
-- 카드에 묶임: `boost_draw_card_id`, `research_resolved_card_ids`.
+- 카드에 묶임: `boost_draw_card_id`(v145부터 `boost_draw_card_ids`: 부스트된 카드와 그 카드에 graft한 Ghola, OQ-107), `research_resolved_card_ids`.
 - turn 전체: `graft_active_box`(새 키: 지금 `card_id` 쪽에 있는 칸 번호, 없으면 0), `turn_agent_recalled`, `space_influence_replaced`, 배치·회수 키(`combat_*`, `existing_troop_deployment_limit`, `undeployable_troops`, `units_deploy_blocked`, `pending_combat_deployment`), 턴 종료 키(`finishing`, `finish_*`), space·board 키, `troops_recruited`, `commanders_recruited`, `pending_*` 그룹 플래그, `cost_option`, `turn_owner`, `imperial_privilege_intrigue_resolved`, `espionage_spy_recalled`, `pending_tech_acquire_effects`.
 - `partner_waives_influence`·`occupied`·`placed_reaches`·`infiltrate_post_id`는 effect frame이 아니라 graft 상대 frame의 키다.
 - 지키는 장치: `swap_boxes`는 분류되지 않은 키를 만나면 멈추고(`RuntimeError`), `tests/unit/rules/test_graft_boxes.py`가 rules/의 모든 문맥 키(정적 스캔)와 무작위 전 옵션 판의 effect frame 키를 분류와 대조한다.
