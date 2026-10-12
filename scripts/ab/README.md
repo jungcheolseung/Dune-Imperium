@@ -52,6 +52,7 @@ heuristic·rollout 변경을 측정으로 채택하는 데 쓰는 스크립트�
 | `value_swap_probe.py` | 체크포인트가 Imperium Row·손패·Conflict의 **정체**에 반응하는지: 실제 관측에서 하나씩 바꿔 가치 출력의 평균 \|ΔV\|를 낸다(같은 행·같은 교체를 모든 체크포인트에; 형식 3 `mlp_slots`면 slot 행 노름도). 기본 입력은 ExIt 라벨 shard — [`docs/evaluation/m10-2026-09-27.md`](../../docs/evaluation/m10-2026-09-27.md) 3절 |
 | `profile_run.py`, `profile_legal.py`, `profile_guards.py` | 대회 경로 cProfile(전체 / legal·관측 / handler guard 비용) |
 | `profile_selfplay.py` | M10 수집 경로(`SelfPlayRunner`) cProfile |
+| `compare_engine_collection.py` | 두 소스 트리의 실제 `Collector`를 번갈아 측정. 관측·합법 집합·행동·보상·종료 점수가 같아야 비교를 인정하며, worker 2 이상은 시작·전송을 포함한 첫 수집 시간 |
 | `soak.sh`, `soak_summary.py` | 전 룰셋 검증 소크와 census 요약 |
 | `baseline_cells.sh`, `summarize_cells.py` | 기준선 12셀 재측정과 요약 행 |
 
