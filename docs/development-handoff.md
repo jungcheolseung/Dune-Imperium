@@ -4,6 +4,14 @@
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
+## 2026-10-12 readapt-v143: 대조군 C만 돌리고 멈춤 (codec 그대로)
+
+사용자 결정 "지금 일단 Arm C까지만 하고 정리할 수 있어?". 설계와 미리 선언한 판정은 `checkpoints/2026-10-12/readapt-v143/README.md`(git 무시).
+
+- **돌린 것:** Y@10881에서 v143(고정 작업 트리 `measure-v143`, master `944bb1b7`)으로 승자독식 보상 800 iteration(06:54-11:01) → `C/iteration_11681.pt`(읽기 전용). 빠른 수집(`85a51097`) 전 코드라 iteration당 약 18초였다.
+- **루프 안 평가**(앱 AI 어려움 셋 상대 25판, ±10%p쯤): 10900 56%, 11000 40%, 11100 63%, 11200 52%, 11300 53%, 11400 45%, 11500 50%, 11600 46%(평균 50.6%). 이것으로는 결론을 내지 않는다.
+- **안 돌린 것:** 점수 보상 갈래 S(`--score-rewards`)와 판정 `judge.sh`(G1 S 대 C, G2 C 대 Y, G3 S 대 Y). 판정 전이므로 학습 계보의 머리는 그대로 Y다. C가 Y보다 나은지는 G2(1,400판, 시드 6,200,000-, 약 25분)만 따로 돌리면 알 수 있다. S를 나중에 돌리면 빠른 수집 뒤 코드라 C와 같은 시드라도 판이 달라진다(위 "학습 수집 약 2배 빠르게"의 주의).
+
 ## 2026-10-12 README를 입구로 다시 씀 (codec 그대로)
 
 사용자 지적 "readme.md 문서가 최신화가 안 된 것 같은데? 현재 구현상태 이 부분도 글이 너무 길고", 제안한 구조에 "그래 그렇게 수정해보자". 브랜치 `readme-refresh`. 코드는 그대로다.
