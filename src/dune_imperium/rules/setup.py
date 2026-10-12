@@ -1,6 +1,7 @@
 """Pure constructors for official four-player setup state."""
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.config import RulesetConfig

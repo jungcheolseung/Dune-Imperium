@@ -7,7 +7,8 @@ exposed as ordered *choice slots* that the owning rule module resolves one
 decision at a time; everything else is applied automatically.
 """
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached

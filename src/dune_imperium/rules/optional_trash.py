@@ -7,7 +7,7 @@ Its frame also holds the replacement's Intrigue card as a step of its own
 frame closes once both are done (user ruling 2026-10-10, OQ-106).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision

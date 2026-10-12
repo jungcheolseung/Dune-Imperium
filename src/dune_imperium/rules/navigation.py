@@ -8,7 +8,7 @@ frame offering the card's playable options, which then resolve through the
 Intrigue choice machinery (the cards are transcribed in the effect DSL).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.core.actions import DomainAction

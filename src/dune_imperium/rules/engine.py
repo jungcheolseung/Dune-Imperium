@@ -8,7 +8,7 @@ entry per side rather than editing dispatcher logic.
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.config import RulesetConfig

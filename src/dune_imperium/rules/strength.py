@@ -16,7 +16,7 @@ change of a condition (an opponent's sandworm, a lost Influence) adjusts
 the total by the difference only.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_STRENGTH,

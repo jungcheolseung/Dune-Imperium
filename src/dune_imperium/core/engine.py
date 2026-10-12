@@ -2,7 +2,8 @@
 
 import copy
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction

@@ -11,7 +11,7 @@ Ornithopter, so it never pairs (OQ-094 (c)). A leaf module so both
 ``combat`` and ``tech`` can use it.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID

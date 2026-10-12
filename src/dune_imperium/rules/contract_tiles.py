@@ -1,6 +1,6 @@
 """Giving a Contract tile to a seat (leaf: only frame helpers)."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.contracts import contract_for_instance

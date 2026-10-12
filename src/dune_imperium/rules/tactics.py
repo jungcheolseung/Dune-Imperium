@@ -6,7 +6,7 @@ which the token returns to the starting space. Retreating or losing enough
 troops to pass the end still only resets the token [Bloodlines p. 12].
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState

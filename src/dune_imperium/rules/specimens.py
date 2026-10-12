@@ -5,7 +5,7 @@ specimens without importing the research modules (which import the card
 draw, which imports the Reveal turn).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent

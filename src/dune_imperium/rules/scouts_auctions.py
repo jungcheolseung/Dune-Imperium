@@ -39,7 +39,7 @@ is removed from the game (OQ-083, OQ-087). It is not drawn while the deck
 holds fewer cards than it reveals (OQ-087 (b), user ruling 2026-09-29).
 """
 
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.content.arrakeen_scouts import AUCTIONS_BY_ID, AuctionKind

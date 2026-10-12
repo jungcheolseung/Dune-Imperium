@@ -13,7 +13,7 @@ of which (zone, unit) a seat can lose, read by the provider and by the
 page's greyed-out rows (``display.unavailable``).
 """
 
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 from typing import Final
 

@@ -24,7 +24,7 @@ The basic deployment of a recruited or garrisoned Commander lives in
 ``combat_deployment`` and its strength in ``strength``.
 """
 
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 
 from dune_imperium.content.bloodlines.sardaukar import (

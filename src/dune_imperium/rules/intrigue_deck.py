@@ -7,7 +7,7 @@ it. Piter De Vries' Twisted cards are the exception: they stay in the discard
 when it is shuffled (``shufflable_intrigue_discard``, OQ-097).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue

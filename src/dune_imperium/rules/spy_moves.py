@@ -13,7 +13,7 @@ owner's supply, by analogy with the Rival rule "If all other Faction
 observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-065).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import DomainAction

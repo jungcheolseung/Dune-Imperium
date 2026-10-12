@@ -24,7 +24,8 @@ troop's only by a troop, and the garrison extra (normally two) is shared by
 both kinds on top of those (user ruling OQ-070, ``deployment_rooms``).
 """
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.core.actions import ActionValue, DomainAction

@@ -1,6 +1,7 @@
 """Card acquisition during Reveal and card-driven Agent effects."""
 
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached

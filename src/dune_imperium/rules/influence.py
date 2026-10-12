@@ -1,6 +1,6 @@
 """Shared Faction Influence, track-bonus, and Alliance transitions."""
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.arrakeen_scouts import RoundModifier
 from dune_imperium.content.uprising.board import Faction

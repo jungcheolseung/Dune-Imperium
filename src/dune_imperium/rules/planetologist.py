@@ -10,7 +10,7 @@ space's sandworms, Unexpected Allies' Shield Wall, ...) never draws a hidden
 card itself (user ruling 2026-10-10, OQ-106).
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent

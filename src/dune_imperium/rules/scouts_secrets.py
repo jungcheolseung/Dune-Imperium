@@ -15,7 +15,7 @@ anything; the server hides its argument from the other seats' log
 (``server.session_log.SEALED_ACTION_IDS``).
 """
 
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.content.arrakeen_scouts import EVENTS_BY_ID

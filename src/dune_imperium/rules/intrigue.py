@@ -12,7 +12,7 @@ per action; the card is discarded when the last slot completes.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached

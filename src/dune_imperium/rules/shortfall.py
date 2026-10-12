@@ -15,7 +15,7 @@ turn is open (``drop_stale_shortfalls``): outside a turn nothing is
 refilled, so a Combat reward's shortfall is simply dropped.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent

@@ -10,7 +10,7 @@ dedicated actions further down this module.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from copy import replace
 from typing import Final, assert_never
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech

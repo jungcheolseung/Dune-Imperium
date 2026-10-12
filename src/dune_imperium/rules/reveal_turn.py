@@ -14,7 +14,7 @@ and the ones still unavailable at the end simply never happen.
 """
 
 from collections.abc import Mapping
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 from typing import Final
 

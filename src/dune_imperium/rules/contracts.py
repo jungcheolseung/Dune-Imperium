@@ -1,6 +1,6 @@
 """Public Contract market choices for the Uprising CHOAM Module."""
 
-from dataclasses import replace
+from copy import replace
 from enum import StrEnum
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS

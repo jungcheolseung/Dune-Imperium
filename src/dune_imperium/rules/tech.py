@@ -18,7 +18,7 @@ the stack's next tile face up. The tile's acquire effect pays once
 within the current turn. ``decline_tech`` refuses the offer.
 """
 
-from dataclasses import replace
+from copy import replace
 
 from dune_imperium.content.bloodlines.tech import (
     HIGH_COUNCIL_TECH_DISCOUNT,

@@ -18,7 +18,7 @@ frame Coercive Negotiation opens when played lives here.
 """
 
 from collections.abc import Iterable
-from dataclasses import replace
+from copy import replace
 from typing import Final
 
 from dune_imperium.content.uprising.contracts import contract_for_instance
