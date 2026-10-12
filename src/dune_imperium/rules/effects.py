@@ -334,6 +334,16 @@ def add_boost_draw(context: dict[str, ActionValue], card_instance_id: str) -> No
     context[BOOST_DRAW_KEY] = ",".join((*pending, card_instance_id))
 
 
+def agent_card_source(round_number: int, player: int, card_instance_id: str) -> str:
+    """The event source of ``card_instance_id``'s Agent box resolution.
+
+    ``agent_effects.resolve_agent_card_effect`` names its events, and the
+    optional trash frame its box opens (Throne Room Politics), with it.
+    """
+
+    return f"round:{round_number}:player:{player}:agent_card:{card_instance_id}"
+
+
 def drop_boost_draw(context: dict[str, ActionValue], card_instance_id: str) -> None:
     """Remove ``card_instance_id``'s added draw (drawn, or lapsed with it)."""
 

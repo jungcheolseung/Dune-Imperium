@@ -1394,11 +1394,99 @@ def test_a_ghola_copy_s_draw_comes_right_before_the_recorded_end() -> None:
 
     assert bridged is not None
     assert (bridged[0].name, bridged[1]) == (
-        "ghola_copy_boost_draw",
+        "boost_draw_at_turn_end",
         _GHOLA_COPY_DRAW,
     )
     drawn = ENGINE.apply(state, _GHOLA_COPY_DRAW).state
     assert _PRESS in ENGINE.legal_actions(drawn, 0)
+    assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(145)) is None
+
+
+def test_a_ghola_partner_s_copy_is_the_v145_bridge_s_not_the_partner_s() -> None:
+    # Planned Coupling, boosted, is placed; Ghola, its partner, copies the
+    # added draw (codec v145). In a record before codec v144 the box-1 draw
+    # waiting at the press is that copy, not a boosted Bene Gesserit
+    # partner's: ``boost_draw_at_turn_end`` takes it, not
+    # ``shigawire_partner_draw``.
+    state = _arrakeen_graft(
+        "imperium:planned_coupling:0",
+        "tleilaxu:ghola:0",
+        skip=(_PARTNER_DRAW,),
+        bene_gesserit_boost_pending=True,
+    )
+    assert resolves_boost_draw(state, _PARTNER_DRAW)
+
+    bridged = migration._bridge(ENGINE, state, _PRESS, _bridges_for(143))
+
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == ("boost_draw_at_turn_end", _PARTNER_DRAW)
+
+
+def test_a_placed_ghola_s_copy_waits_past_the_v142_draw_bridge() -> None:
+    # Before codec v142 the boosted card's placement drew the added card at
+    # once, and ``shigawire_draw`` takes it right after the step this engine
+    # asks first. A placed Ghola's copy (codec v145) had no draw at all in
+    # such a record, so taking it there would shift the turn's later draws
+    # by a card: it waits for the recorded turn end instead.
+    placed = _arrakeen_graft(
+        "tleilaxu:ghola:0",
+        "imperium:truthtrance:0",
+        skip=(_GHOLA_COPY_DRAW, _PARTNER_DRAW),
+        bene_gesserit_boost_pending=True,
+    )
+    assert resolves_boost_draw(placed, _GHOLA_COPY_DRAW)
+    migrated: list[migration.MigratedStep] = []
+    choice = DomainAction(
+        "choose_graft_partner", 0, (("card_id", "imperium:truthtrance:0"),)
+    )
+
+    followed = migration._follow(ENGINE, placed, choice, _bridges_for(141), migrated)
+
+    assert followed is not None
+    assert [step.bridge for step in migrated] == []
+
+
+def test_a_card_s_own_trash_keeps_its_draw_for_the_recorded_end() -> None:
+    # Throne Room Politics, boosted, is placed with Ghola and trashes itself
+    # with its own optional trash icon. Codec v145 keeps its added draw
+    # ("자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급",
+    # OQ-022); an older engine lapsed it, so its record pressed the end with
+    # nothing to draw for it. Ghola's copied trash is declined.
+    throne = "imperium:throne_room_politics:0"
+    draws = (_GHOLA_COPY_DRAW, _PARTNER_DRAW)
+    state = _arrakeen_graft(
+        throne, "tleilaxu:ghola:0", skip=draws, bene_gesserit_boost_pending=True
+    )
+    trash = DomainAction("trash_optional_card", 0, (("card_id", throne),))
+    decline = DomainAction("decline_optional_trash", 0)
+    while True:
+        legal = ENGINE.legal_actions(state, 0)
+        if trash in legal:
+            step = trash
+        elif decline in legal:
+            step = decline
+        else:
+            rest = [
+                action
+                for action in legal
+                if action.action_id
+                in ("resolve_agent_card_effect", "resolve_board_effect")
+                and action not in draws
+            ]
+            if not rest:
+                break
+            step = rest[0]
+        state = ENGINE.apply(state, step).state
+    assert throne in state.players[0].trashed
+    assert resolves_boost_draw(state, _GHOLA_COPY_DRAW)
+
+    bridged = migration._bridge(ENGINE, state, _PRESS, _bridges_for(144))
+
+    assert bridged is not None
+    assert (bridged[0].name, bridged[1]) == (
+        "boost_draw_at_turn_end",
+        _GHOLA_COPY_DRAW,
+    )
     assert migration._bridge(ENGINE, state, _PRESS, _bridges_for(145)) is None
 
 

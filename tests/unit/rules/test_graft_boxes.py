@@ -1445,19 +1445,74 @@ def test_a_placed_ghola_copies_its_boosted_partner_s_draw() -> None:
     assert FINISH in ENGINE.legal_actions(partner.state, 0)
 
 
+THRONE = "imperium:throne_room_politics:0"
+BOX_ZERO = DomainAction("resolve_agent_card_effect", 0)
+BOX_ONE = DomainAction("resolve_agent_card_effect", 0, (("box", 1),))
+
+
+def _trash(card_id: str) -> DomainAction:
+    return DomainAction("trash_optional_card", 0, (("card_id", card_id),))
+
+
+def _expired(result: Transition) -> list[object]:
+    return [
+        dict(event.payload)["card_id"]
+        for event in result.events
+        if event.kind == "agent_card_effect_expired"
+    ]
+
+
+def test_throne_room_politics_trashing_itself_keeps_its_added_draw() -> None:
+    """Throne Room Politics (Bene Gesserit) recruits and opens its optional
+    trash icon; picking the card itself there is the card leaving play by
+    its own icon, so the draw "added to its Agent box" still pays out --
+    "카드가 자기 효과로 자신을 trash하는 경우 인쇄된 이득은 정상 지급"
+    (OQ-022 designer ruling, OQ-106 1). Before this the trash lapsed it."""
+
+    state = _place_alone(
+        _state((THRONE,), bene_gesserit_boost_pending=True), THRONE, "arrakeen"
+    )
+    boxed = ENGINE.apply(state, BOX_ZERO).state
+    trashed = ENGINE.apply(boxed, _trash(THRONE))
+    assert THRONE in trashed.state.players[0].trashed
+    assert _expired(trashed) == []
+    assert agent_effects.resolves_boost_draw(trashed.state, BOX_ZERO_DRAW)
+    drawn = ENGINE.apply(trashed.state, BOX_ZERO_DRAW)
+    assert _drawn(drawn) == [THRONE]
+
+
 def test_a_ghola_copy_s_draw_lapses_only_with_ghola() -> None:
-    """Each added draw belongs to its own card's box (OQ-022, OQ-106 1):
-    the other effects of the turn that trash a card take only that card's
-    draw. Without a boost Ghola's copy has no added draw."""
+    """Throne Room Politics, boosted, is placed with Ghola, which copies its
+    box with the added draw. Ghola's copied trash icon trashing Ghola is
+    Ghola's own icon: its draw stays. The same icon trashing Throne Room
+    Politics is another card's effect: Throne Room Politics' draw lapses
+    with it (OQ-022), Ghola's stays. Without a boost Ghola's copy has no
+    added draw."""
+
+    state = _graft(
+        _state((THRONE, GHOLA), bene_gesserit_boost_pending=True),
+        THRONE,
+        "arrakeen",
+        GHOLA,
+    )
+    _, context = current_agent_effect_context(state)
+    assert effects.pending_boost_draws(context) == (THRONE, GHOLA)
+    copy = ENGINE.apply(state, BOX_ONE).state
+
+    own = ENGINE.apply(copy, _trash(GHOLA))
+    assert _expired(own) == []
+    _, context = current_agent_effect_context(own.state)
+    assert effects.pending_boost_draws(context) == (THRONE, GHOLA)
+
+    other = ENGINE.apply(copy, _trash(THRONE))
+    assert _expired(other) == [THRONE]
+    _, context = current_agent_effect_context(other.state)
+    assert effects.pending_boost_draws(context) == (GHOLA,)
+    assert agent_effects.resolves_boost_draw(other.state, PARTNER_DRAW)
+    assert not agent_effects.resolves_boost_draw(other.state, BOX_ZERO_DRAW)
 
     plain = _graft(_state((GHOLA, COUPLING)), GHOLA, "arrakeen", COUPLING)
     _, context = current_agent_effect_context(plain)
     assert effects.pending_boost_draws(context) == ()
     assert not agent_effects.resolves_boost_draw(plain, BOX_ZERO_DRAW)
     assert not agent_effects.resolves_boost_draw(plain, PARTNER_DRAW)
-
-    context = {"boost_draw_card_ids": f"{COUPLING},{GHOLA}"}
-    effects.drop_boost_draw(context, GHOLA)
-    assert context == {"boost_draw_card_ids": COUPLING}
-    effects.drop_boost_draw(context, COUPLING)
-    assert context == {}

@@ -55,6 +55,7 @@ from dune_imperium.rules.contracts import (
 from dune_imperium.rules.effects import (
     active_agent_card,
     advance_after_effect,
+    agent_card_source,
     arm_agent_icons,
     borrowed_agent_card,
     current_agent_effect_context,
@@ -4240,9 +4241,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     effect = card.agent_effect
 
     owner = state.players[player]
-    event_source = (
-        f"round:{state.round_number}:player:{player}:agent_card:{card_instance_id}"
-    )
+    event_source = agent_card_source(state.round_number, player, card_instance_id)
     recruit_shortfall: tuple[GameEvent, ...] = ()
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
@@ -4995,7 +4994,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH:
         # Throne Room Politics: a troop and a black trash icon (optional
-        # [Main p. 20]); the trash opens after the recruit.
+        # [Main p. 20]); the trash opens after the recruit. Its source names
+        # this box, so trashing the card itself there is the card leaving
+        # play by its own icon (``optional_trash``, OQ-022).
         next_owner, recruited = recruit_troops(owner, 1)
         previous = context.get("troops_recruited")
         if isinstance(previous, bool) or not isinstance(previous, int):

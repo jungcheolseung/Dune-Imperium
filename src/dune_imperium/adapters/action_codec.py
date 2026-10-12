@@ -433,8 +433,10 @@ from dune_imperium.rules.graft_boxes import BOX_ACTION_IDS, BOX_ARGUMENT
 # ("Ghola copies the entire Agent box of the card it's grafted to"
 # [Immortality p. 14]): Ghola's box offers its own
 # ``resolve_agent_card_effect(effect=cards)`` row (``box=1`` when Ghola is
-# the partner), which holds the turn end. No template change; recorded step
-# sequences change, so saves and replays from v144 are refused by the
+# the partner), which holds the turn end. Also (OQ-022): a card that trashes
+# itself with its own optional trash icon (Throne Room Politics) keeps its
+# added draw, which an older engine lapsed. No template change; recorded
+# step sequences change, so saves and replays from v144 are refused by the
 # version check.
 ACTION_CODEC_VERSION = 145
 MAX_DEPLOYMENT_COUNT = 12

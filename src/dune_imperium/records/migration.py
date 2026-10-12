@@ -822,7 +822,21 @@ def _shigawire_draw(
         and draw in engine.legal_actions(state, decision.owner)
     ):
         return None
+    if _ghola_draw(state, 0):
+        # Codec v145's copy in a placed Ghola's box: an older engine had no
+        # such draw at all, so it waits for the recorded turn end
+        # (``_boost_draw_at_turn_end``) instead of shifting the turn's
+        # later draws by a card.
+        return None
     return draw
+
+
+def _ghola_draw(state: GameState, box: int) -> bool:
+    """Whether box ``box``'s waiting added draw is a Ghola's copy (v145)."""
+
+    _, context = current_agent_effect_context(state)
+    card_id = boost_draw_card(context, box)
+    return bool(card_id) and card_is_ghola(personal_card_for_instance(card_id))
 
 
 def _planetologist_intrigue(
@@ -1307,27 +1321,37 @@ def _shigawire_partner_draw(
         and draw in engine.legal_actions(state, decision.owner)
     ):
         return None
+    if _ghola_draw(state, 1):
+        # A Ghola partner's copy of the placed card's draw is codec v145's
+        # (``_boost_draw_at_turn_end``), not a boosted partner's.
+        return None
     return draw
 
 
-def _ghola_copy_boost_draw(
+def _boost_draw_at_turn_end(
     engine: UprisingRulesEngine,
     state: GameState,
     decision: Decision,
     step: ReplayStep,
 ) -> ReplayStep | None:
-    """Draw a Ghola's copy of Urgent Shigawire's added card before the
+    """Draw an Urgent Shigawire card an older engine never had before the
     recorded turn end.
 
-    Codec v145 (user ruling 2026-10-12, OQ-107): Ghola "copies the entire
-    Agent box of the card it's grafted to" [Immortality p. 14], and the
-    boosted card's draw was "added to its Agent box" [Urgent Shigawire
-    card], so Ghola's box draws a card too, as its own
-    ``resolve_agent_card_effect(effect=cards)`` row; the turn cannot end
-    over it. An older engine gave the copy nothing, so its record never
-    took that draw and pressed ``finish_agent_turn`` with it waiting. The
-    draw is taken as late as it may be, right before that press, so every
-    recorded step of the turn sees the hand the recording engine showed.
+    Codec v145 leaves two added draws waiting where an older engine had
+    none (user ruling 2026-10-12, OQ-107; OQ-022):
+    - Ghola "copies the entire Agent box of the card it's grafted to"
+      [Immortality p. 14], and the boosted card's draw was "added to its
+      Agent box" [Urgent Shigawire card], so Ghola's box draws a card too;
+    - a card that trashes itself with its own trash icon (Throne Room
+      Politics' optional trash) leaves play by its own effect, so its added
+      draw stays; an older engine lapsed it.
+    Either draw holds the turn end, so the record pressed
+    ``finish_agent_turn`` with it waiting. It is taken as late as it may
+    be, right before that press, so every recorded step of the turn sees
+    the hand the recording engine showed. Only these two are answered: a
+    Ghola's draw, or the draw of a card no longer in play; any other added
+    draw waiting at the press is a record of a flow that held it otherwise
+    (a v141 placement drew it at once: ``_shigawire_draw``).
     """
 
     if not (
@@ -1339,13 +1363,14 @@ def _ghola_copy_boost_draw(
     ):
         return None
     _, context = current_agent_effect_context(state)
+    in_play = state.players[decision.owner].in_play
     legal = engine.legal_actions(state, decision.owner)
     for box in (0, 1):
         card_id = boost_draw_card(context, box)
         draw = _reward_icon(decision.owner, "cards", box)
         if (
             card_id
-            and card_is_ghola(personal_card_for_instance(card_id))
+            and (_ghola_draw(state, box) or card_id not in in_play)
             and resolves_boost_draw(state, draw)
             and draw in legal
         ):
@@ -1526,9 +1551,10 @@ BRIDGES: tuple[Bridge, ...] = (
     Bridge(
         "box_refused_at_turn_end", _box_refused_at_turn_end, before_codec=144
     ),
-    # Codec v145 (OQ-107) gives a Ghola grafted to the boosted card a copy
-    # of its added draw; that draw holds the turn end.
+    # Codec v145 gives a Ghola grafted to the boosted card a copy of its
+    # added draw (OQ-107) and keeps the draw of a card that trashed itself
+    # with its own trash icon (OQ-022); either holds the turn end.
     Bridge(
-        "ghola_copy_boost_draw", _ghola_copy_boost_draw, before_codec=145
+        "boost_draw_at_turn_end", _boost_draw_at_turn_end, before_codec=145
     ),
 )
