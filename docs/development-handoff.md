@@ -17,7 +17,7 @@
 ## 세션 시작 체크리스트
 
 1. `AGENTS.md`(도구 중립 공통 지침), 도구별 진입점(Claude Code는 `CLAUDE.md`), `README.md`, 이 문서,
-   [`lessons.md`](lessons.md), 그리고 이번 달 worklog의 맨 위 기록 몇 개를 읽는다.
+   [`lessons.md`](lessons.md)의 맨 위 "지금 지키는 규칙", 그리고 이번 달 worklog의 맨 위 기록 몇 개를 읽는다.
 2. `git status --short`와 `git log --oneline -10`으로 작업 트리를 본다. 기존 변경은 사용자 작업으로 보고 덮어쓰지 않는다.
 3. `git fetch origin` 뒤 `git log --oneline origin/master..master`와 `master..origin/master`를 둘 다 본다. 여러
    기기에서 작업하므로 원격이 앞서 있으면 먼저 맞춘다. 비공개 에셋 저장소(`assets` → `../Dune-Imperium-assets`)도 같다.
@@ -83,8 +83,8 @@
   패널에만 있음). [2026-10-04 저녁 앱 방식 재판정 둘째 묶음, 2026-10-06 Steam 앱과 카드·보드 전수 대조]
 - 플레이 시계 후속 후보: 접속이 끊긴 동안 멈춤, 수마다 시각(검토 화면에 시계), 저장 목록의 플레이 시간.
   작은 흠: 끼어든 답 뒤 배너의 "이번 차례"가 0에서 다시 시작, 멈춘 동기 AI 동안 시계가 흐름. [2026-10-11 플레이 시계]
-- **확인 필요:** 선택 불가 표시 3단계(옛 작업 배분의 C1, 18곳). 대부분은 L2 때 `display/unavailable.py`에 들어갔지만
-  계획 표의 17행(Leader Reveal 능력)·18행(배치 비용 변형)은 찾지 못했다. [`unavailable-options-plan.md`](unavailable-options-plan.md) 4절과 대조한다.
+- **선택 불가 표시 3단계(옛 C1, 18곳):** 일부만 됐다. 2026-10-12 대조에서 다 된 곳 3, 일부 5, 없음 10이다(행 번호는
+  [`unavailable-options-plan.md`](unavailable-options-plan.md) 머리말). 사용자 결정(2026-09-30)은 "3단계는 전부 한다"이다.
 - 정리 후보: `display/board_layout.py`가 내는 `tracks.garrisons`·`tracks.conflict_quadrants`를 클라이언트가 더 읽지 않는다.
 
 **도구·인프라**
@@ -94,12 +94,6 @@
   `boost_draw_at_turn_end`를 쓰는 장면이 묶음에 없다. [2026-10-12 Ghola, [`human-records.md`](human-records.md)]
 - 부하에서만 깨지는 검사: E2E `table_layout`의 "the last card remains visible", 런처 supervisor 테스트의 2초 단언
   (`test_a_local_server_stops_on_its_closed_input_with_a_stream_open`). 둘 다 혼자 돌리면 통과한다.
-
-**문서**
-
-- [`explicit-turn-end-plan.md`](explicit-turn-end-plan.md) 7절의 `search_effect_order` 설명은 틀렸다(구현 기록에서 지적).
-  머리말도 아직 "다른 세션에서 구현할 계획"이다(L1로 구현됨).
-- [`unavailable-options-plan.md`](unavailable-options-plan.md)에 C1의 상태 줄이 없다(위 "확인 필요").
 
 ## 알아 둘 것
 

@@ -2,6 +2,8 @@
 
 기준일: 2026-08-28
 
+상태(2026-10-12): A·B 완료(2026-08-28). C의 Intrigue DSL 전사는 2026-08-29에 39 identity 전부 끝났다. C의 Imperium enum DSL 이관과 "남은 항목"의 `ACTION_HANDLERS` (frame, action) 키잉, Reserve copy id 카운터, 테스트 파일 분할은 착수하지 않았다. 카드 구현이 끝난 지금 할지는 따로 정한다.
+
 M6 Imperium 54종을 구현하는 동안 `rules/` 층이 "카드 수에 비례해 자라는" 구조가 됐다. Intrigue 44장을 같은 방식으로 얹으면 문제가 두 배가 되므로, Intrigue 공통 경계를 만들기 전에 아래 항목을 정리한다. `core/` (`state`, `engine`, `decisions`, `chance`, `replay`)는 견고하므로 손대지 않는다.
 
 ## 유지할 것

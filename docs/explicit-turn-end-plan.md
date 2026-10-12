@@ -1,5 +1,7 @@
 # Agent 턴은 "턴 종료"로만 닫는다 — 구현 계획
 
+상태(2026-10-12): **구현됨.** 작업 배분의 L1로 2026-10-02에 병합했다(codec v125, OQ-095). 뒤이어 턴 종료 누름을 확정으로 바꿨고(2026-10-08), 선택으로 풀리는 box가 남으면 턴 종료를 보류한다(2026-10-12, v144). 8절의 질문은 둘 다 답이 났다(Q2의 재적응은 L3). 7절의 `search_effect_order` 설명은 틀렸다(그 자리의 정정 참고). 아래는 작성 때의 계획이다.
+
 기준일: 2026-09-30. 기준 코드: master `402d124`(codec v123, 관측 v27). 이 문서는 다른 세션에서 구현하도록 남긴 계획이다
 (사용자 2026-09-30: "구현은 다른 세션에서 이어서 할게"). 조사는 읽기 전용 workflow 여섯 갈래(엔진의 닫힘 경로, 턴 중 선택 행동,
 서버·UI, AI·학습, 테스트, 규칙 문서)와 설계·완전성 점검으로 했다. 아래 file:line은 `402d124` 기준이므로 착수 때 다시 확인한다.
@@ -176,7 +178,7 @@ Atomics·표본 반환을 할 수 있는지는 **사용자 질문 Q1**(아래).
 - seed 게임의 RNG 흐름이 첫 옛 자동 닫힘부터 달라져 이전 A/B·대회 수치와 비교할 수 없다(handoff에 적는다).
 - v111 네트워크는 `finish_agent_turn`을 배치 창에서만 봤다. heuristic이 몰 때 Immortality 턴 끝의 첫 선택이 표본 반환이었다(게임당
   9.5번). **전문가 반복 학습은 이 결정을 탐색하지 않는다**: `training/expert.py:158-165`가 `AGENT_EFFECTS` 결정을 anchor 행으로만 쓰고
-  `NetworkSearchAgent`는 탐욕으로 답한다(network_search_agent.py:255, `orders_agent_effects` :380-391). `search_effect_order`를 켜지 않으면
+  `NetworkSearchAgent`는 탐욕으로 답한다(network_search_agent.py:255, `orders_agent_effects` :380-391). (정정 2026-10-02: 아래 문장은 틀렸다. 전문가 반복 학습은 Agent 효과 결정을 anchor 행으로만 쓰므로 이 결정을 다시 배우는 길은 PPO 재적응이고, 병합 뒤 L3로 돌렸다 — [worklog/2026-10.md](worklog/2026-10.md)의 2026-10-01~02 L1 기록.) `search_effect_order`를 켜지 않으면
   재적응으로 고쳐지지 않는다. 몇 시간 걸리는 재적응은 착수 전에 사용자에게 묻는다(long-run 관례).
 - 속도: 탐욕 대회 약 4-5% 느려짐, `NetworkSearchAgent` 탐색 결정당 2-6%.
 

@@ -83,7 +83,7 @@ code-review finding — without first opening the relevant `docs/rules/*.md`
 section and quoting the sentence and citation that justifies the change. If
 the docs are silent, add an entry to `docs/rules/open-questions.md` instead of
 guessing. Past failures of this discipline are logged in `docs/lessons.md`;
-read it at session start.
+read its "지금 지키는 규칙" summary at session start.
 
 ## Long-running commands
 
