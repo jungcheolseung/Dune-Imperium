@@ -2,8 +2,10 @@
 
 Read `README.md` before making architectural or rules-related changes. Before
 continuing implementation in a new session, also read
-`docs/development-handoff.md` for the current baseline and next work item. If
-that status conflicts with code or tests, treat the executable repository as
+`docs/development-handoff.md` for the current baseline and next work item,
+follow its session-start checklist, and read the top entries of the current
+month's `docs/worklog/<YYYY-MM>.md` for the latest work. If that status
+conflicts with code or tests, treat the executable repository as
 authoritative and update the handoff in the same work unit.
 
 ## Work log and handoff
@@ -15,6 +17,10 @@ authoritative and update the handoff in the same work unit.
   in-progress / next-work list, or its standing cautions change, and never
   append dated entries to it. (User decision 2026-10-12: as a running log it
   had grown to 783 KB, and sessions no longer reached its baseline.)
+- A branch cut before 2026-10-12 may still add a dated entry at the top of
+  the handoff. When merging it, move that entry to the top of the worklog
+  month instead.
+- These rules hold for every tool (Codex, Claude Code, or any other).
 
 ## Commit workflow
 
