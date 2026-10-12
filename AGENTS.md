@@ -63,7 +63,8 @@ authoritative and update the handoff in the same work unit.
   expectations: a reviewer's or your own reading of a rule is not evidence.
   Quote the `docs/rules/` line (with its `[Main p. N]` / `[FAQ p. N]` citation)
   in the commit or test before changing rule behaviour, and record any
-  mistake of this kind in `docs/lessons.md`.
+  mistake of this kind in `docs/lessons.md` (a dated case, and a line in the
+  "지금 지키는 규칙" summary at its top, which sessions read at start).
   Do not silently fill a gap in the official documents. Add it to
   `docs/rules/open-questions.md`, and clearly distinguish any later project
   convention from an official rule.
