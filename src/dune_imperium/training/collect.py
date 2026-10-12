@@ -1,7 +1,9 @@
 """Self-play collection for the learner, in-process or over worker processes.
 
-Collection dominates training time (the Python engine, not the network),
-so ``Collector`` can fan one iteration's games out over worker processes.
+Collection dominates training time (the Python engine and, until the
+sampled policy read only the legal rows of its head on 2026-10-12, the
+network), so ``Collector`` can fan one iteration's games out over worker
+processes, dealt so every chunk holds the same mix of lineups (``deal``).
 Each worker rebuilds the learner network on the CPU from its architecture
 document (``arch_spec``) and the state dict it receives, plays its chunk
 of games with the lockstep runner, keeps only the learner's own
@@ -160,6 +162,33 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
     )
 
 
+def deal(specs: Sequence[SelfPlaySpec], workers: int) -> list[tuple[SelfPlaySpec, ...]]:
+    """Split ``specs`` into ``workers`` chunks, every lineup spread evenly.
+
+    An iteration waits for its slowest chunk. Dealt by position alone
+    (``specs[index::workers]``), the opponent games, which alternate with
+    the self-play games, all went to the odd workers: with app_ai as the
+    opponent those chunks ran about 40% longer than the self-play ones
+    while the even workers sat idle (2026-10-12). Each kind of lineup is
+    now dealt round-robin in the order it first appears, continuing where
+    the previous kind left off, so the chunks differ by at most one game
+    of each kind. Specs of one lineup keep the old positional deal.
+    """
+
+    groups: dict[tuple[str, ...], list[SelfPlaySpec]] = {}
+    for spec in specs:
+        # The seat count of every policy, not its seats: a game costs the
+        # same whichever seats the opponent holds.
+        groups.setdefault(tuple(sorted(spec.lineup)), []).append(spec)
+    chunks: list[list[SelfPlaySpec]] = [[] for _ in range(workers)]
+    position = 0
+    for group in groups.values():
+        for spec in group:
+            chunks[position % workers].append(spec)
+            position += 1
+    return [tuple(chunk) for chunk in chunks]
+
+
 class Collector:
     """Collect one iteration of learner self-play, serially or in parallel."""
 
@@ -259,7 +288,7 @@ class Collector:
             },
             weights_path,
         )
-        chunks = [tuple(specs[index :: self.workers]) for index in range(self.workers)]
+        chunks = deal(specs, self.workers)
         jobs = [
             _ChunkJob(
                 weights_path=str(weights_path),

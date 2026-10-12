@@ -147,6 +147,97 @@ def test_torch_batch_policy_plays_legal_self_play_games() -> None:
     assert resolve_device("auto").type in {"cpu", "mps", "cuda"}
 
 
+class _Capture:
+    """A batch policy that keeps every batch it answers."""
+
+    def __init__(self, inner: BatchPolicy) -> None:
+        self.inner = inner
+        self.batches: list[tuple[PolicyRequest, ...]] = []
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        self.batches.append(tuple(requests))
+        return self.inner.act(requests)
+
+
+def test_sampling_reads_only_the_legal_rows_of_the_full_masked_softmax() -> None:
+    """The sampled distribution is the full forward pass's, over fewer rows.
+
+    Since 2026-10-12 a sampled batch computes logits for the union of its
+    requests' legal actions only (``TorchBatchPolicy.distribution``). Every
+    request's probabilities must equal the full masked softmax at those
+    catalog indices, sum to one there (so nothing outside the union could
+    have been drawn), and give an action legal elsewhere in the batch zero.
+    """
+
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=300)
+    network = _network(runner.codec.size)
+    with torch.no_grad():
+        network.policy_head.weight.mul_(25.0)  # a peaked, not near-uniform, policy
+    policy = TorchBatchPolicy(network, _CPU, seed=3, sample=True, temperature=0.7)
+    capture = _Capture(policy)
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=("s",) * 4) for seed in (5, 6, 7)
+    )
+    runner.run({"s": capture}, specs)
+
+    batches = [batch for batch in capture.batches if len(batch) > 1]
+    assert len(batches) > 50
+    peaks: list[float] = []
+    for batch in batches[:80]:
+        catalog, probabilities = policy.distribution(batch)
+        with torch.no_grad():
+            logits, _ = network(
+                torch.from_numpy(np.stack([request.observation for request in batch])),
+                torch.from_numpy(np.stack([request.mask for request in batch])),
+            )
+        full = torch.softmax(logits / 0.7, dim=-1)
+        expected = full[:, torch.from_numpy(catalog)]
+        assert torch.allclose(probabilities, expected, atol=1e-6)
+        assert torch.allclose(expected.sum(-1), torch.ones(len(batch)))
+        peaks.append(float(probabilities.max()))
+        for row, request in enumerate(batch):
+            illegal = ~np.isin(catalog, request.legal_indices)
+            assert float(probabilities[row, torch.from_numpy(illegal)].sum()) == 0.0
+    assert max(peaks) > 0.5
+    with pytest.raises(ValueError, match="at least one"):
+        policy.distribution(())
+
+
+def test_collection_deals_each_lineup_evenly_over_the_workers() -> None:
+    selfplay = ("learner",) * 4
+    against = ("learner", "app_ai", "learner", "app_ai")
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=against if seed % 2 else selfplay)
+        for seed in range(32)
+    )
+
+    chunks = collect_module.deal(specs, 4)
+
+    # Dealt by position, workers 1 and 3 took all sixteen opponent games.
+    def opponent_games(chunk: Sequence[SelfPlaySpec]) -> int:
+        return sum(spec.lineup == against for spec in chunk)
+
+    assert [opponent_games(specs[i::4]) for i in range(4)] == [0, 8, 0, 8]
+    assert [opponent_games(chunk) for chunk in chunks] == [4, 4, 4, 4]
+    dealt = sorted(spec.game_seed for chunk in chunks for spec in chunk)
+    assert dealt == list(range(32))
+    # One lineup keeps the positional deal, and no chunk falls two behind.
+    plain = specs[::2]
+    assert collect_module.deal(plain, 4) == [plain[i::4] for i in range(4)]
+    assert [len(chunk) for chunk in collect_module.deal(specs[:6], 4)] == [2, 2, 1, 1]
+    # A game's cost follows how many seats each policy holds, not which.
+    one = ("learner", "app_ai", "app_ai", "app_ai")
+    turned = ("app_ai", "learner", "app_ai", "app_ai")
+    mixed = (
+        SelfPlaySpec(game_seed=0, lineup=against),
+        SelfPlaySpec(game_seed=1, lineup=one),
+        SelfPlaySpec(game_seed=2, lineup=turned),
+        SelfPlaySpec(game_seed=3, lineup=against),
+    )
+    dealt_seeds = [[s.game_seed for s in c] for c in collect_module.deal(mixed, 2)]
+    assert dealt_seeds == [[0, 1], [3, 2]]
+
+
 def test_checkpoint_round_trip_and_version_guard(tmp_path: Path) -> None:
     network = _network(action_size=11)
     path = tmp_path / "ckpt" / "net.pt"

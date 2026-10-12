@@ -63,6 +63,8 @@ class PolicyRequest:
     # pure-undo actions when the runner withholds them.
     legal_actions: tuple[DomainAction, ...]
     # Catalog index of every legal action, parallel to ``legal_actions``.
+    # The sampled network policy reads these, not ``mask``
+    # (``TorchBatchPolicy.distribution``): restrict a request through both.
     legal_indices: tuple[int, ...]
     observation: np.ndarray
     mask: np.ndarray
