@@ -96,7 +96,12 @@ GAMES = (
     # choose from a different list of actions) moves seed 14 off its Secrets
     # steal; the same scan from seed 1 finds seed 10 first (again with
     # Family Atomics, the Feyd track and research).
-    {"seats": ["random"] * 4, "game_seed": 10, "policy_seed": 10, **EVERY_EXPANSION},
+    # Withholding the Agent turn end while a box still offers an
+    # effect-giving choice (codec v144: random seats choose from a different
+    # list of actions, e.g. Beguiling Pheromones' trash before the turn end)
+    # moves seed 10 off its Secrets steal; the same scan from seed 1 finds
+    # seed 24 first (again with Family Atomics, the Feyd track and research).
+    {"seats": ["random"] * 4, "game_seed": 24, "policy_seed": 24, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,
