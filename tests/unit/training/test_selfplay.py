@@ -10,6 +10,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import OBSERVATION_SIZE
 from dune_imperium.cli.selfplay import main as selfplay_main
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.training import (
     UNDO_ACTION_IDS,
     AgentBatchPolicy,
@@ -443,3 +444,70 @@ def test_score_rewards_pay_each_seat_its_own_final_points() -> None:
         )
     with pytest.raises(ValueError, match="exclusive"):
         SelfPlayRunner(RulesetConfig(), rank_rewards=True, score_rewards=True)
+
+
+class _AtomicsFirst:
+    """Spends Family Atomics whenever offered, else answers at random."""
+
+    def __init__(self, seed: int) -> None:
+        self.inner = RandomBatchPolicy(seed=seed)
+        self.offered: list[int] = []
+        self.taken: list[int] = []
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        answers = list(self.inner.act(requests))
+        for position, request in enumerate(requests):
+            for index, action in zip(
+                request.legal_indices, request.legal_actions, strict=True
+            ):
+                if action.action_id == "use_family_atomics":
+                    self.offered.append(request.seat)
+                    self.taken.append(request.seat)
+                    answers[position] = index
+        return answers
+
+
+@pytest.mark.parametrize("spends", [False, True], ids=["keeps", "spends"])
+def test_the_family_atomics_rule_answers_for_the_named_policies(
+    monkeypatch: pytest.MonkeyPatch, spends: bool
+) -> None:
+    """The ruled policy is never offered the token; the rule keeps it or
+    plays it as a step nobody records. The other policy is offered it."""
+
+    from dune_imperium.training import selfplay
+
+    asked: list[int] = []
+
+    def rule(state: object, observation: object) -> bool:
+        asked.append(observation.player)  # type: ignore[attr-defined]
+        return spends
+
+    monkeypatch.setattr(selfplay, "app_uses_family_atomics", rule)
+    ruled = _AtomicsFirst(seed=1)
+    free = _AtomicsFirst(seed=2)
+    runner = SelfPlayRunner(
+        RulesetConfig(immortality=True),
+        max_steps=300,
+        family_atomics_rule=frozenset({"ruled"}),
+    )
+    result = runner.run(
+        {"ruled": ruled, "free": free},
+        (SelfPlaySpec(game_seed=5, lineup=("ruled", "free", "ruled", "free")),),
+    )
+
+    assert ruled.offered == []
+    assert set(free.taken) == {1, 3}
+    assert set(asked) == {0, 2}
+    if spends:
+        # Spent at the first offer, so each ruled seat is asked once.
+        assert sorted(asked) == [0, 2]
+    atomics = {
+        runner.codec.encode(action)
+        for action in (
+            DomainAction("use_family_atomics", seat) for seat in range(4)
+        )
+    }
+    recorded = [
+        step for step in result.episodes[0].steps if step.action in atomics
+    ]
+    assert {step.seat for step in recorded} == {1, 3}

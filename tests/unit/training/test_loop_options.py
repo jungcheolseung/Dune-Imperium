@@ -88,6 +88,7 @@ def test_without_opponent_games_every_game_seats_the_opponent() -> None:
         ({"rotate_leaders": True, "leader_draft": True}, "cannot be combined"),
         ({"go_to_11": True}, "requires the Immortality"),
         ({"retarget": True}, "needs a checkpoint"),
+        ({"family_atomics": "heuristic"}, "family_atomics must be one of"),
     ],
 )
 def test_invalid_option_mixes_are_rejected(
@@ -279,10 +280,13 @@ def test_cli_forwards_the_new_options(
                 "--resume",
                 str(tmp_path / "x.pt"),
                 "--retarget",
+                "--family-atomics",
+                "app",
             ]
         )
 
     (config,) = seen
+    assert config.family_atomics == "app"
     assert config.go_to_11 and config.epic_game and config.arrakeen_scouts
     assert config.leader_draft and not config.rotate_leaders
     assert config.opponent == "app_ai" and config.opponent_games == 16
@@ -290,3 +294,21 @@ def test_cli_forwards_the_new_options(
     with pytest.raises(SystemExit) as excinfo:
         train_main(["--out", str(tmp_path), "--leader-draft", "--rotate-leaders"])
     assert excinfo.value.code == 2
+
+
+def test_the_collector_names_the_network_seats_that_follow_the_atomics_rule() -> None:
+    """``family_atomics="app"`` puts the learner, and a frozen checkpoint
+    opponent, under the app's Family Atomics rule; a baseline keeps its own."""
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.training.collect import LEARNER, Collector
+
+    config = RulesetConfig(immortality=True)
+    assert Collector(config).family_atomics_rule == frozenset()
+    against_app = Collector(config, opponent="app_ai", family_atomics="app")
+    assert against_app.family_atomics_rule == {LEARNER}
+    frozen = "checkpoint:frozen.pt"
+    against_frozen = Collector(config, opponent=frozen, family_atomics="app")
+    assert against_frozen.family_atomics_rule == {LEARNER, frozen}
+    with pytest.raises(ValueError, match="family_atomics"):
+        Collector(config, family_atomics="heuristic")

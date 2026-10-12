@@ -16,6 +16,10 @@ per-step return is the acting seat's terminal reward. With
 ``undo_actions=False`` the runner withholds the pure-undo actions from every
 policy (request, mask and recorded trajectory alike, so a learner stays
 on-policy) while the engine still validates against its full legal set.
+The seats of the policies named in ``family_atomics_rule`` spend the Family
+Atomics token by the app AI's rule instead (``agents.app_ai.family_atomics``):
+the runner plays it for them when the rule fires, as a step no policy took
+and none records, and withholds it from their requests otherwise.
 """
 
 import pickle
@@ -29,6 +33,11 @@ import numpy as np
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
+from dune_imperium.agents.app_ai.family_atomics import (
+    FAMILY_ATOMICS_ACTION,
+    app_uses_family_atomics,
+    without_family_atomics,
+)
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
@@ -273,6 +282,7 @@ class SelfPlayRunner:
         rank_rewards: bool = False,
         score_rewards: bool = False,
         stall_dir: Path | None = None,
+        family_atomics_rule: frozenset[str] = frozenset(),
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
@@ -296,6 +306,11 @@ class SelfPlayRunner:
         # True pays each seat its own final Victory Points; see
         # ``score_reward``.
         self.score_rewards = score_rewards
+        # Policies whose seats spend the Family Atomics token by the app AI's
+        # rule (module docstring). The trained networks spent it on their
+        # first Agent turn in every game, so their value head never saw a
+        # position that still holds it.
+        self.family_atomics_rule = family_atomics_rule
         self.codec = ActionCodec(config)
         self._engines: dict[tuple[str, ...] | None, UprisingRulesEngine] = {}
 
@@ -340,20 +355,8 @@ class SelfPlayRunner:
             waiting: list[_Game] = []
             requests: dict[str, list[tuple[_Game, PolicyRequest]]] = {}
             for game in active:
-                self._advance_chance(game)
-                if game.state.phase is GamePhase.FINISHED:
-                    episodes[game.index] = self._finish(game, truncated=False)
-                    continue
-                if game.decisions >= self.max_steps:
-                    episodes[game.index] = self._finish(game, truncated=True)
-                    continue
-                try:
-                    request = self._request(game)
-                except NoLegalActionsError:
-                    if self.stall_dir is None:
-                        raise
-                    self._record_stall(game)
-                    episodes[game.index] = self._finish(game, truncated=True)
+                request = self._next_request(game, episodes)
+                if request is None:
                     continue
                 requests.setdefault(game.spec.lineup[request.seat], []).append(
                     (game, request)
@@ -371,6 +374,34 @@ class SelfPlayRunner:
             duration_seconds=time.perf_counter() - started,
         )
 
+    def _next_request(
+        self, game: _Game, episodes: dict[int, Episode]
+    ) -> PolicyRequest | None:
+        """The game's next policy decision, or None once it has ended.
+
+        An ended game's episode goes into ``episodes``. Chance decisions and
+        the Family Atomics token spent by the rule are played on the way.
+        """
+
+        while True:
+            self._advance_chance(game)
+            if game.state.phase is GamePhase.FINISHED:
+                episodes[game.index] = self._finish(game, truncated=False)
+                return None
+            if game.decisions >= self.max_steps:
+                episodes[game.index] = self._finish(game, truncated=True)
+                return None
+            try:
+                request = self._request(game)
+            except NoLegalActionsError:
+                if self.stall_dir is None:
+                    raise
+                self._record_stall(game)
+                episodes[game.index] = self._finish(game, truncated=True)
+                return None
+            if request is not None:
+                return request
+
     def _advance_chance(self, game: _Game) -> None:
         engine = self._engine(game.spec.leader_ids)
         for _ in range(_MAX_CONSECUTIVE_CHANCE_STEPS):
@@ -380,7 +411,13 @@ class SelfPlayRunner:
             game.state = engine.apply(game.state, game.chance.resolve(decision)).state
         raise RuntimeError("too many consecutive chance decisions")
 
-    def _request(self, game: _Game) -> PolicyRequest:
+    def _request(self, game: _Game) -> PolicyRequest | None:
+        """The pending decision as a request to its seat's policy.
+
+        None when the Family Atomics rule answered it instead: the token is
+        played, the game moves on, and the caller asks again.
+        """
+
         engine = self._engine(game.spec.leader_ids)
         decision = engine.current_decision(game.state)
         if not isinstance(decision, PlayerDecision):
@@ -392,10 +429,22 @@ class SelfPlayRunner:
         game.legal = legal_actions
         if not self.undo_actions:
             legal_actions = without_undo_actions(legal_actions)
+        view = engine.observe(game.state, seat)
+        if game.spec.lineup[seat] in self.family_atomics_rule:
+            atomics = next(
+                (a for a in legal_actions if a.action_id == FAMILY_ATOMICS_ACTION),
+                None,
+            )
+            if atomics is not None:
+                if app_uses_family_atomics(game.state, view):
+                    game.state = engine.apply(
+                        game.state, atomics, legal_actions=game.legal
+                    ).state
+                    return None
+                legal_actions = without_family_atomics(legal_actions)
         legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
         mask = np.zeros(self.codec.size, dtype=np.int8)
         mask[list(legal_indices)] = 1
-        view = engine.observe(game.state, seat)
         return PolicyRequest(
             game=game.index,
             seat=seat,

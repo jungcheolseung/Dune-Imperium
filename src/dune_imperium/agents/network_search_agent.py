@@ -78,7 +78,9 @@ from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.app_ai.family_atomics import (
     FAMILY_ATOMICS_ACTION,
+    FAMILY_ATOMICS_DECIDERS,
     app_uses_family_atomics,
+    without_family_atomics,
 )
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
@@ -112,10 +114,8 @@ DEFAULT_HORIZON_ROUNDS = 1
 # (10% against 22.6% overall), and leaving it to the network cost nothing
 # measurable (docs/evaluation/m10-2026-09-22.md section 13).
 DEFAULT_SEARCH_EFFECT_ORDER = False
-# Who decides when to spend the Family Atomics token: "app" (the app AI's
-# rule, ``agents.app_ai.family_atomics``) or "network" (the network, as
-# every other decision). See the module docstring.
-FAMILY_ATOMICS_DECIDERS = ("app", "network")
+# Who decides when to spend the Family Atomics token (FAMILY_ATOMICS_DECIDERS):
+# the app AI's rule by default. See the module docstring.
 DEFAULT_FAMILY_ATOMICS = "app"
 
 
@@ -299,7 +299,7 @@ class NetworkSearchAgent:
             observation = self._engine.observe(state, seat)
         if app_uses_family_atomics(state, observation):
             return next(a for a in offered if a.action_id == FAMILY_ATOMICS_ACTION)
-        return _without_family_atomics(offered)
+        return without_family_atomics(offered)
 
     def _untrained_only(self, offered: Sequence[DomainAction]) -> bool:
         """Whether every offered action is a template the file never saw."""
@@ -329,7 +329,7 @@ class NetworkSearchAgent:
         """
 
         if self.family_atomics == "app":
-            legal_actions = _without_family_atomics(legal_actions)
+            legal_actions = without_family_atomics(legal_actions)
         return self.greedy.choose_action(observation, legal_actions)
 
     def choose_action_with_state(
@@ -568,16 +568,6 @@ def finished_reward(state: GameState, seat: int) -> float:
 
     rank = next(s.rank for s in final_standings(state) if s.player == seat)
     return WINNER_REWARD if rank == 1 else LOSER_REWARD
-
-
-def _without_family_atomics(
-    offered: tuple[DomainAction, ...],
-) -> tuple[DomainAction, ...]:
-    """``offered`` without the Family Atomics token (never empty: the token is
-    optional, so a decision offering it always offers something else)."""
-
-    kept = tuple(a for a in offered if a.action_id != FAMILY_ATOMICS_ACTION)
-    return kept or offered
 
 
 def orders_agent_effects(state: GameState) -> bool:

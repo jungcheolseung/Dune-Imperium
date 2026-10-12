@@ -150,6 +150,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--family-atomics",
+        choices=("network", "app"),
+        default="network",
+        help=(
+            "who spends the Family Atomics token for the network seats during "
+            "collection: the policy (default), or the app AI's rule (the token "
+            "is then withheld from the policy, so the value head learns "
+            "positions that still hold it)"
+        ),
+    )
+    parser.add_argument(
         "--rank-rewards",
         action="store_true",
         help=(
@@ -263,6 +274,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             temperature=arguments.temperature,
             rank_rewards=arguments.rank_rewards,
             score_rewards=arguments.score_rewards,
+            family_atomics=arguments.family_atomics,
             step_penalty=arguments.step_penalty,
             max_steps=arguments.max_steps,
             eval_every=arguments.eval_every,

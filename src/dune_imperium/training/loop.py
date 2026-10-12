@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from dune_imperium.agents.app_ai.family_atomics import FAMILY_ATOMICS_DECIDERS
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX, is_agent_kind
 from dune_imperium.config import RulesetConfig
 from dune_imperium.evaluation import (
@@ -109,6 +110,10 @@ class TrainConfig:
     # Pay each seat its own final Victory Points instead (score_reward); an
     # experiment arm, exclusive with rank_rewards.
     score_rewards: bool = False
+    # "app": the network seats of collection spend Family Atomics by the app
+    # AI's rule and the policy never chooses it (Collector); "network": the
+    # policy decides it like every other action.
+    family_atomics: str = "network"
     # Learning-side shaping: cost per own decision charged against the
     # terminal reward (see apply_step_penalty); 0 disables it.
     step_penalty: float = 0.0005
@@ -157,6 +162,8 @@ class TrainConfig:
             raise ValueError("workers must be positive")
         if self.step_penalty < 0.0:
             raise ValueError("step_penalty must not be negative")
+        if self.family_atomics not in FAMILY_ATOMICS_DECIDERS:
+            raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         if not 1 <= self.learner_seats <= 3:
             raise ValueError("learner_seats must be between 1 and 3")
         if self.learner_seats != 1 and self.opponent is None:
@@ -421,6 +428,7 @@ def train(
         temperature=config.temperature,
         rank_rewards=config.rank_rewards,
         score_rewards=config.score_rewards,
+        family_atomics=config.family_atomics,
         opponent=config.opponent,
         # A game stuck on a decision without legal actions (an engine
         # defect) is kept here and ends truncated instead of ending the run;
